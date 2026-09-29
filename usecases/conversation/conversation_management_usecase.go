@@ -19,7 +19,6 @@ import (
 	"vozko/domain/actor"
 	"vozko/domain/agent"
 	"vozko/domain/ai"
-	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	ia "vozko/domain/inbox_assignment"
@@ -1427,7 +1426,7 @@ type MessageSenderService struct {
 	aiService      ai.Service
 	toolRegistry   toolsdomain.Service
 	stageRepo      stage.Repository
-	sharedState    cache.SharedState
+	analysis       *AnalysisScheduler
 
 	callPermissionRepo callpermission.Repository
 
@@ -1526,7 +1525,7 @@ func (s *MessageSenderService) sendViaAdapter(
 		log.Printf("[MessageSender] failed to save %s message: %v", entryType, err)
 		return nil, fmt.Errorf("failed to save message: %w", err)
 	}
-	s.scheduleAnalysis(ctx, entryID, entryType, ec.ContactRef)
+	s.scheduleAnalysis(entryID, entryType)
 	return message, nil
 }
 
@@ -1542,7 +1541,7 @@ func NewMessageSenderService(
 	aiService ai.Service,
 	toolRegistry toolsdomain.Service,
 	stageRepo stage.Repository,
-	sharedState cache.SharedState,
+	analysis *AnalysisScheduler,
 ) *MessageSenderService {
 	return &MessageSenderService{
 		messageRepo:           messageRepo,
@@ -1556,7 +1555,7 @@ func NewMessageSenderService(
 		aiService:             aiService,
 		toolRegistry:          toolRegistry,
 		stageRepo:             stageRepo,
-		sharedState:           sharedState,
+		analysis:              analysis,
 	}
 }
 
@@ -1633,7 +1632,7 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 
 	log.Printf("[MessageSender] Sent message to %s, WhatsApp ID: %s", leadNumber, output.MessageID)
 
-	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
+	s.scheduleAnalysis(entryID, entryType)
 	return message, nil
 }
 
@@ -1979,7 +1978,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 
 	log.Printf("[MessageSender] Sent %s media to %s, WhatsApp ID: %s", mediaType, leadNumber, output.MessageID)
 
-	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
+	s.scheduleAnalysis(entryID, entryType)
 	return message, nil
 }
 
@@ -2050,18 +2049,12 @@ func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, rep
 
 	log.Printf("[MessageSender] Sent button message to %s, WhatsApp ID: %s", leadNumber, output.MessageID)
 
-	go s.scheduleAnalysis(context.Background(), entryID, entryType, leadNumber)
+	s.scheduleAnalysis(entryID, entryType)
 	return message, nil
 }
 
-func (s *MessageSenderService) scheduleAnalysis(_ context.Context, entryID, entryType, _ string) {
-	if s.sharedState == nil || entryID == "" {
-		return
-	}
-	value := encodeAnalysisDebounceValue(shared.EntryType(entryType), time.Now().UTC())
-	if err := s.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
-		log.Printf("[MessageSender] failed to stamp analysis debounce for entry %s: %v", entryID, err)
-	}
+func (s *MessageSenderService) scheduleAnalysis(entryID, entryType string) {
+	s.analysis.ScheduleAnalysis(entryID, shared.EntryType(entryType))
 }
 
 func (s *MessageSenderService) downloadMediaFromCDN(mediaURL, originalFilename string) ([]byte, string, string, error) {

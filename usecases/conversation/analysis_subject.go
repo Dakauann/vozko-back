@@ -8,6 +8,7 @@ import (
 
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
+	"vozko/domain/livedecision"
 	"vozko/domain/shared"
 )
 
@@ -37,12 +38,17 @@ func (s *AnalysisSubject) WantsWork() bool {
 
 type AnalysisSubjectResolver func(ctx context.Context, entryID string) (*AnalysisSubject, error)
 
-type AnalysisScheduler struct {
-	sharedState cache.SharedState
+type LiveQueue interface {
+	Queue(ref livedecision.EntryRef)
 }
 
-func NewAnalysisScheduler(sharedState cache.SharedState) *AnalysisScheduler {
-	return &AnalysisScheduler{sharedState: sharedState}
+type AnalysisScheduler struct {
+	sharedState cache.SharedState
+	live        LiveQueue
+}
+
+func NewAnalysisScheduler(sharedState cache.SharedState, live LiveQueue) *AnalysisScheduler {
+	return &AnalysisScheduler{sharedState: sharedState, live: live}
 }
 
 func (s *AnalysisScheduler) ScheduleAnalysis(entryID string, entryType shared.EntryType) {
@@ -52,6 +58,9 @@ func (s *AnalysisScheduler) ScheduleAnalysis(entryID string, entryType shared.En
 	value := encodeAnalysisDebounceValue(entryType, time.Now().UTC())
 	if err := s.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
 		log.Printf("[analysis] failed to stamp debounce for %s entry %s: %v", entryType, entryID, err)
+	}
+	if s.live != nil {
+		s.live.Queue(livedecision.EntryRef{EntryID: entryID, EntryType: string(entryType)})
 	}
 }
 

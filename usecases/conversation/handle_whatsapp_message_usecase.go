@@ -45,6 +45,7 @@ import (
 	"vozko/usecases/conversation/loopguard"
 
 	aa "vozko/domain/ai_attendance"
+	stage_usecase "vozko/usecases/stage"
 )
 
 const (
@@ -88,6 +89,8 @@ type handleWhatsAppMessageUseCase struct {
 	billingPub messaging.MessageQueuePub
 
 	loopGuard loopguard.Guard
+	live      LiveMode
+	analysis  *AnalysisScheduler
 }
 
 const failedStatusRefundTTL = 30 * 24 * time.Hour
@@ -116,6 +119,22 @@ func (uc *handleWhatsAppMessageUseCase) SetBillingPub(pub messaging.MessageQueue
 
 func (uc *handleWhatsAppMessageUseCase) SetLoopGuard(g loopguard.Guard) {
 	uc.loopGuard = g
+}
+
+type LiveMode interface {
+	Acts(ctx context.Context, workspaceID string) bool
+}
+
+func (uc *handleWhatsAppMessageUseCase) SetLiveGate(g LiveMode) {
+	uc.live = g
+}
+
+func (uc *handleWhatsAppMessageUseCase) SetAnalysisScheduler(scheduler *AnalysisScheduler) {
+	uc.analysis = scheduler
+}
+
+func (uc *handleWhatsAppMessageUseCase) liveActs(workspaceID string) bool {
+	return uc.live != nil && uc.live.Acts(context.Background(), workspaceID)
 }
 
 func (uc *handleWhatsAppMessageUseCase) recordAIAttendance(agentCtx *agentContext, entryID string, entryType shared.EntryType, messageID string) {
@@ -721,7 +740,6 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		}
 	}
 	recipientPhone := strings.TrimSpace(message.From)
-
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
 	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: message.Text.Body})
 
@@ -1045,12 +1063,7 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 			return
 		}
 
-		if uc.sharedState != nil {
-			value := encodeAnalysisDebounceValue(shared.EntryTypeWhatsApp, time.Now().UTC())
-			if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
-				log.Printf("[whatsapp-usecase] failed to stamp analysis debounce for entry %s: %v", entryID, err)
-			}
-		}
+		uc.analysis.ScheduleAnalysis(entryID, shared.EntryTypeWhatsApp)
 		return
 	}
 
@@ -1063,8 +1076,12 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 
 	campaignAnalysisEnabled := isWhatsAppCampaign && agentCtx.wcCampaign.EnableAnalysis
 	autoTagEnabled := isWhatsAppCampaign && agentCtx.wcCampaign.EnableAutoStaging
+	liveStages := autoTagEnabled && uc.liveActs(agentCtx.wcCampaign.WorkspaceID)
+	if liveStages {
+		autoTagEnabled = false
+	}
 
-	if !campaignAnalysisEnabled && !autoTagEnabled {
+	if !campaignAnalysisEnabled && !autoTagEnabled && !liveStages {
 		return
 	}
 
@@ -1122,11 +1139,8 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
 
-	if campaignAnalysisEnabled && uc.sharedState != nil {
-		value := encodeAnalysisDebounceValue(shared.EntryType(entryType), time.Now().UTC())
-		if err := uc.sharedState.HSet(AnalysisDebounceRedisKey, entryID, value); err != nil {
-			log.Printf("[whatsapp-usecase] stamping %s entry %s for analysis: %v", entryType, entryID, err)
-		}
+	if campaignAnalysisEnabled || liveStages {
+		uc.analysis.ScheduleAnalysis(entryID, shared.EntryType(entryType))
 	}
 
 	const wantAnalysis = false
@@ -1167,21 +1181,25 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		})
 	} else {
 
-		transcript := BuildTranscript(history)
 		var currentTagName string
 		var allTags []*stage.Stage
 		if uc.stageRepo != nil {
-			if et, err := uc.stageRepo.GetEntryStage(entryID, entryType, workspaceID); err == nil && et != nil {
-				currentTagName = et.StageName
-			}
-			if tags, err := uc.stageRepo.ListByCampaign(workspaceID, campaignID, entryType); err == nil {
-				allTags = tags
+			current, err := stage_usecase.StagesForEntry(uc.stageRepo, workspaceID, stage_usecase.EntryRef{
+				EntryID: entryID, EntryType: entryType, CampaignID: campaignID, CampaignType: entryType,
+			})
+			if err != nil {
+				log.Printf("[whatsapp-message] reading the funnel of entry %s failed, offering no stage: %v", entryID, err)
+			} else {
+				allTags = current.Stages
+				if current.Current != nil {
+					currentTagName = current.Current.StageName
+				}
 			}
 		}
 		systemPrompt = BuildAutoTagPrompt(AutoTagPromptInput{
 			CampaignName:   campaignName,
 			MessageCount:   int(totalCount),
-			Transcript:     transcript,
+			History:        history,
 			CurrentTagName: currentTagName,
 			Tags:           allTags,
 		})
@@ -1196,7 +1214,7 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	case wantAnalysis:
 		userMessage = "Analise a conversa acima e chame a ferramenta conversation_analysis com sua avaliação."
 	case wantAutoTag:
-		userMessage = "Siga os passos do sistema: leia a transcrição INTEIRA, identifique o estado MAIS RECENTE da negociação (foque nas últimas mensagens), compare com as descrições das etapas, e chame manage_entry_stage com a etapa correta. Se a etapa atual já está correta, passe a mesma etapa."
+		userMessage = autoTagInstruction
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)

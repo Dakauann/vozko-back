@@ -88,3 +88,10 @@ func TestWithActorKeepsAWorkflowAWorkflow(t *testing.T) {
 		t.Fatalf("actor = %q %q, want workflow workflow:wf-1", ev.ActorKind, ev.ActorID)
 	}
 }
+
+func TestAnEventByThePlatformAIShowsAsAI(t *testing.T) {
+	ev := New("ws", "entry", "whatsapp", EventStageChanged).WithActor(actor.PlatformAI).Build()
+	if ev.ActorKind != actor.KindAI || ev.ActorID != "" {
+		t.Fatalf("actor = %s %q", ev.ActorKind, ev.ActorID)
+	}
+}

@@ -29,11 +29,8 @@ type roleResponse struct {
 }
 
 func (r *aiRoleInferrer) InferRole(ctx context.Context, req ca.RoleInferRequest) (*ca.RoleInferResult, error) {
-	if strings.TrimSpace(req.WorkspaceID) == "" {
-		return nil, ca.ErrWorkspaceRequired
-	}
-	if len(req.Comments) < ca.MinCommentsForRole {
-		return nil, fmt.Errorf("%w: not enough comments to judge anyone by", ca.ErrInvalidFilter)
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
 	model := strings.TrimSpace(req.Model)
 	if model == "" {

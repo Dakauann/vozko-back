@@ -374,7 +374,8 @@ type InboxPayload struct {
 }
 
 type EntryUpdatePayload struct {
-	Entry conversation.InboxEntry `json:"entry"`
+	Entry  conversation.InboxEntry `json:"entry"`
+	Silent bool                    `json:"silent,omitempty"`
 }
 
 type EntryRemovedPayload struct {

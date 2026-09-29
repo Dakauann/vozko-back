@@ -110,6 +110,8 @@ type ConversationHub struct {
 	done       chan struct{}
 
 	connUserDebounce   map[string]*time.Timer
+	refreshWindow      time.Duration
+	pendingRefresh     sync.Map
 	connUserDebounceMu sync.Mutex
 
 	sharedState   cache.SharedState
@@ -139,6 +141,7 @@ func NewConversationHub(
 		broadcast:         make(chan *broadcastMessage, 4096),
 		done:              make(chan struct{}),
 		connUserDebounce:  make(map[string]*time.Timer),
+		refreshWindow:     entryRefreshWindow,
 		sharedState:       sharedState,
 		replicaID:         replicaID,
 		publicAddress:     publicAddress,
@@ -495,6 +498,7 @@ func (h *ConversationHub) BroadcastTyping(entryID, entryType, fromUserID string,
 func (h *ConversationHub) BroadcastStageUpdate(workspaceID, entryID, entryType string) {
 	h.broadcastStageUpdateLocal(workspaceID, entryID, entryType)
 	h.publishWorkspaceBroadcast("stage_update", entryID, entryType, workspaceID, "", "")
+	h.RefreshEntry(entryID, entryType)
 }
 
 func (h *ConversationHub) broadcastStageUpdateLocal(workspaceID, entryID, entryType string) {
@@ -593,12 +597,48 @@ func (h *ConversationHub) broadcastLabelUpdateLocal(workspaceID, entryID, entryT
 }
 
 func (h *ConversationHub) BroadcastEntryUpdate(entryID, entryType string, message *conversation.Message) {
-	h.broadcastEntryUpdateLocal(entryID, entryType, message)
+	h.broadcastEntryUpdateLocal(entryID, entryType, message, false)
 	h.publishWorkspaceBroadcast("entry_update", entryID, entryType, "", "", "")
 }
 
-func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, message *conversation.Message) {
+const entryRefreshWindow = 150 * time.Millisecond
+
+func (h *ConversationHub) RefreshEntry(entryID, entryType string) {
+	key := entryType + "|" + entryID
+	if _, waiting := h.pendingRefresh.LoadOrStore(key, struct{}{}); waiting {
+		return
+	}
+	time.AfterFunc(h.refreshWindow, func() {
+		h.pendingRefresh.Delete(key)
+		h.broadcastEntryUpdateLocal(entryID, entryType, nil, true)
+		h.publishWorkspaceBroadcast("entry_refresh", entryID, entryType, "", "", "")
+	})
+}
+
+func (h *ConversationHub) hasViewersIn(workspaceID string) bool {
+	if workspaceID == "" {
+		return true
+	}
+	h.connMu.RLock()
+	defer h.connMu.RUnlock()
+	for _, conn := range h.connections {
+		if conn.WorkspaceID == "" || conn.WorkspaceID == workspaceID {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, message *conversation.Message, silent bool) {
 	if h.authorizer == nil {
+		return
+	}
+
+	var workspaceID string
+	if h.workspaceResolver != nil {
+		workspaceID, _ = h.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
+	}
+	if !h.hasViewersIn(workspaceID) {
 		return
 	}
 
@@ -621,10 +661,6 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 		return
 	}
 
-	var workspaceID string
-	if h.workspaceResolver != nil {
-		workspaceID, _ = h.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
-	}
 	var entryCampaignID string
 	if h.workspaceResolver != nil {
 		entryCampaignID, _ = h.workspaceResolver.GetEntryCampaignID(entryID, entryType)
@@ -634,7 +670,7 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 
 	event := &WSOutgoingMessage{
 		Type:    WSEventEntryUpdate,
-		Payload: EntryUpdatePayload{Entry: *entry},
+		Payload: EntryUpdatePayload{Entry: *entry, Silent: silent},
 	}
 	data, err := json.Marshal(event)
 	if err != nil {
@@ -681,7 +717,9 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 	}
 
 	h.connMu.RUnlock()
-	h.broadcastConversationStatusCountsUpdateLocal(workspaceID, entryCampaignID, entryType)
+	if !silent {
+		h.broadcastConversationStatusCountsUpdateLocal(workspaceID, entryCampaignID, entryType)
+	}
 }
 
 func (h *ConversationHub) broadcastConversationStatusCountsUpdateLocal(workspaceID, entryCampaignID, entryType string) {
@@ -3452,7 +3490,9 @@ func (h *ConversationHub) runRedisWorkspaceBroadcastSubscriber() {
 		case "label_update":
 			h.broadcastLabelUpdateLocal(p.StageWorkspaceID, p.EntryID, p.EntryType)
 		case "entry_update":
-			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil)
+			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil, false)
+		case "entry_refresh":
+			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil, true)
 		case "entry_removed":
 			h.broadcastEntryRemovedLocal(p.EntryID, p.EntryType, p.WorkspaceID, p.ExcludeUserID)
 		case "audience_analyzed":

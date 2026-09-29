@@ -65,9 +65,33 @@ func truncateRunes(s string, max int) string {
 	return out
 }
 
+func buildSystemPromptOf(req ca.ClassifyRequest) string {
+	if req.SummaryOnly {
+		return buildConversationSummaryPrompt(req.Context, req.Instructions)
+	}
+	return BuildSystemPromptFor(req.SubjectKind, req.Topics, req.Context, req.Instructions)
+}
+
+func buildConversationSummaryPrompt(ctx ca.ContainerContext, instructions string) string {
+	var b strings.Builder
+	b.WriteString("Você é um analista de atendimento. Vai receber uma lista de CONVERSAS entre uma empresa e seus clientes e deve resumir CADA conversa, individualmente.\n\n")
+	writeCampaignContext(&b, ctx, instructions)
+	b.WriteString(ca.ConversationSummaryPrompt())
+	writeConversationFormat(&b)
+	return b.String()
+}
+
 func buildConversationSystemPrompt(ctx ca.ContainerContext, instructions string) string {
 	var b strings.Builder
 	b.WriteString("Você é um analista de atendimento. Vai receber uma lista de CONVERSAS entre uma empresa e seus clientes e deve classificar CADA conversa, individualmente, seguindo a rubrica abaixo.\n\n")
+	writeCampaignContext(&b, ctx, instructions)
+	b.WriteString(ca.ConversationSubjectPrompt())
+	writeConversationFormat(&b)
+	b.WriteString("- Use apenas os valores listados; se estiver em dúvida entre dois, escolha o mais conservador.\n")
+	return b.String()
+}
+
+func writeCampaignContext(b *strings.Builder, ctx ca.ContainerContext, instructions string) {
 
 	if instructions = strings.TrimSpace(instructions); instructions != "" {
 		b.WriteString("CONTEXTO DO OPERADOR (sobre a conta e esta campanha; use para interpretar, não para mudar a rubrica):\n\"\"\"\n")
@@ -82,13 +106,11 @@ func buildConversationSystemPrompt(ctx ca.ContainerContext, instructions string)
 	} else {
 		b.WriteString("OBJETIVO DA CAMPANHA: indisponível; infira o objetivo pela própria conversa e seja conservador ao julgar avanço.\n\n")
 	}
+}
 
-	b.WriteString(ca.ConversationSubjectPrompt())
-
+func writeConversationFormat(b *strings.Builder) {
 	b.WriteString("\nFORMATO DA RESPOSTA:\n")
 	b.WriteString("- Responda SOMENTE com o JSON pedido, sem texto antes ou depois.\n")
 	b.WriteString("- Cada conversa recebida tem um número \"ref\". Devolva UMA entrada por ref, com o mesmo número, e nunca repita nem invente refs.\n")
 	b.WriteString("- Não copie as mensagens na resposta.\n")
-	b.WriteString("- Use apenas os valores listados; se estiver em dúvida entre dois, escolha o mais conservador.\n")
-	return b.String()
 }

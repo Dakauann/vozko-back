@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/actor"
 	"vozko/domain/auth"
 	"vozko/domain/customfield"
 	opportunitydomain "vozko/domain/opportunity"
@@ -25,6 +26,7 @@ type OpportunityHandler struct {
 	io      *opportunityio.Service
 	deals   opportunitydomain.PersonDealsUseCase
 	reports *report_usecase.Service
+	names   actor.Namer
 }
 
 func NewOpportunityHandler(
@@ -32,8 +34,9 @@ func NewOpportunityHandler(
 	io *opportunityio.Service,
 	deals opportunitydomain.PersonDealsUseCase,
 	reports *report_usecase.Service,
+	names actor.Namer,
 ) *OpportunityHandler {
-	return &OpportunityHandler{svc: svc, io: io, deals: deals, reports: reports}
+	return &OpportunityHandler{svc: svc, io: io, deals: deals, reports: reports, names: names}
 }
 
 func personFrom(claims *auth.Claims) shared.Person {
@@ -89,6 +92,7 @@ func (h *OpportunityHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, created)
 	response.WriteSuccess(w, http.StatusCreated, created)
 }
 
@@ -141,6 +145,7 @@ func (h *OpportunityHandler) Update(w http.ResponseWriter, r *http.Request) {
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, updated)
 	response.WriteSuccess(w, http.StatusOK, updated)
 }
 
@@ -183,6 +188,7 @@ func (h *OpportunityHandler) MoveStage(w http.ResponseWriter, r *http.Request) {
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, moved)
 	response.WriteSuccess(w, http.StatusOK, moved)
 }
 
@@ -211,6 +217,7 @@ func (h *OpportunityHandler) Get(w http.ResponseWriter, r *http.Request) {
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, o)
 	response.WriteSuccess(w, http.StatusOK, o)
 }
 
@@ -243,6 +250,7 @@ func (h *OpportunityHandler) ListByPipeline(w http.ResponseWriter, r *http.Reque
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, list...)
 	response.WriteSuccess(w, http.StatusOK, list)
 }
 
@@ -354,7 +362,7 @@ func (h *OpportunityHandler) UnlinkConversation(w http.ResponseWriter, r *http.R
 // @Tags			Oportunidades
 // @Produce		json
 // @Param			id	path		string	true	"ID da oportunidade"
-// @Success		200	{array}		opportunity.ConversationLink
+// @Success		200	{array}		opportunity_usecase.LinkedConversation
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -407,6 +415,7 @@ func (h *OpportunityHandler) ListForEntry(w http.ResponseWriter, r *http.Request
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, opps...)
 	response.WriteSuccess(w, http.StatusOK, opps)
 }
 
@@ -466,5 +475,6 @@ func (h *OpportunityHandler) ListEvents(w http.ResponseWriter, r *http.Request) 
 		h.handleDomainError(w, err)
 		return
 	}
+	opportunitydomain.NameEventActors(h.names, events)
 	response.WriteSuccess(w, http.StatusOK, events)
 }

@@ -77,22 +77,21 @@ func (s *tagProviderService) GetStageCountsForWorkspace(workspaceID, entryType s
 	return s.repo.GetStageCountsForWorkspace(workspaceID, entryType)
 }
 
-func (s *tagProviderService) GetAvailableStageByCampaigns(workspaceID string, campaignIDs []string) (map[string][]conversation.InboxEntryStage, error) {
-	tagsByCampaign, err := s.repo.ListByCampaignIDs(workspaceID, campaignIDs)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string][]conversation.InboxEntryStage, len(tagsByCampaign))
-	for campaignID, tags := range tagsByCampaign {
-		mapped := make([]conversation.InboxEntryStage, len(tags))
-		for i, t := range tags {
-			mapped[i] = conversation.InboxEntryStage{
-				StageID: t.ID,
-				Name:    t.Name,
-				Color:   t.Color,
+func (s *tagProviderService) GetAvailableStages(workspaceID string, placements []conversation.StagePlacement) ([][]conversation.InboxEntryStage, error) {
+	funnel := NewEntryFunnel(s.repo)
+	out := make([][]conversation.InboxEntryStage, len(placements))
+	for i, p := range placements {
+		stages, err := funnel.Stages(workspaceID, Placement{CurrentStageID: p.CurrentStageID, CampaignID: p.CampaignID, CampaignType: p.CampaignType})
+		if err != nil {
+			return nil, err
+		}
+		mapped := make([]conversation.InboxEntryStage, 0, len(stages))
+		for _, st := range stages {
+			if st != nil {
+				mapped = append(mapped, conversation.InboxEntryStage{StageID: st.ID, Name: st.Name, Color: st.Color})
 			}
 		}
-		result[campaignID] = mapped
+		out[i] = mapped
 	}
-	return result, nil
+	return out, nil
 }

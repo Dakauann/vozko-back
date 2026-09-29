@@ -44,14 +44,39 @@ func BuildAnalysisPrompt(input AnalysisPromptInput) string {
 	return buildOngoingConversationPrompt(input.CampaignName, input.MessageCount, agentInstructionsSection, transcript)
 }
 
-func BuildTranscript(history []*conversation.Message) string {
-	var transcript strings.Builder
+const (
+	recentMessageCount    = 8
+	earlierHistoryHeading = "HISTÓRICO ANTERIOR (só contexto)"
+	recentMessagesHeading = "MENSAGENS MAIS RECENTES (definem o estado atual)"
+	latestPositionRule    = "A conversa pode mudar de rumo: o cliente pode desistir e voltar, ou pedir algo e cancelar depois. Quando as mensagens se contradizem, vale a posição MAIS RECENTE; o histórico anterior serve só de contexto."
+)
+
+func transcriptLines(history []*conversation.Message) []string {
+	lines := make([]string, 0, len(history))
 	for _, msg := range history {
 		if !msg.Transcribable() {
 			continue
 		}
-		fmt.Fprintf(&transcript, "%s: %s\n", transcriptRole(msg), strings.TrimSpace(msg.Text))
+		lines = append(lines, fmt.Sprintf("%s: %s\n", transcriptRole(msg), strings.TrimSpace(msg.Text)))
 	}
+	return lines
+}
+
+func BuildTranscript(history []*conversation.Message) string {
+	return strings.Join(transcriptLines(history), "")
+}
+
+func BuildRecencyTranscript(history []*conversation.Message) string {
+	lines := transcriptLines(history)
+	split := max(len(lines)-recentMessageCount, 0)
+	var transcript strings.Builder
+	if split > 0 {
+		transcript.WriteString(earlierHistoryHeading + "\n")
+		transcript.WriteString(strings.Join(lines[:split], ""))
+		transcript.WriteString("\n")
+	}
+	transcript.WriteString(recentMessagesHeading + "\n")
+	transcript.WriteString(strings.Join(lines[split:], ""))
 	return transcript.String()
 }
 
@@ -118,29 +143,17 @@ const autoMemoryRules = `- Salve apenas FATOS duráveis e declarativos sobre o l
 - NÃO salve trivialidades, dados já visíveis (nome, telefone), instruções, nem trechos da conversa.
 - Antes de salvar, confira o bloco "Memórias sobre este lead": se o fato já existe, use action='update' com o memory_id em vez de criar outro.
 - Se um fato salvo deixou de valer ou o lead pediu para esquecer, use action='forget' com o memory_id.
-- Se a conversa não trouxe nenhum fato durável novo ou alterado, NÃO chame a ferramenta manage_lead_memory.`
-
-func BuildAutoMemorySection(currentMemories string) string {
-	memories := currentMemories
-	if strings.TrimSpace(memories) == "" {
-		memories = "\n(nenhuma memória salva sobre este lead até agora)\n"
-	}
-	return fmt.Sprintf(`
-
-═══════════════════════════════════════════════════
-MEMÓRIA DO LEAD (tarefa adicional)
-═══════════════════════════════════════════════════
-Além da tarefa acima, mantenha a memória de longo prazo deste lead usando a ferramenta manage_lead_memory:
-%s
-%s`, autoMemoryRules, memories)
-}
+- NÃO salve o estado do atendimento ou da negociação (quer continuar, desistiu, voltou atrás, quer finalizar, agendou e cancelou): isso é a etapa do funil, não memória. Memória é só fato durável sobre a pessoa ou o combinado vigente.
+- Use action='forget' só com um memory_id que esteja na lista de memórias acima; sem memórias salvas, nunca use 'forget'.
+- Se a conversa não trouxe nenhum fato durável novo ou alterado, NÃO chame a ferramenta manage_lead_memory.
+- ` + latestPositionRule
 
 type AutoMemoryPromptInput struct {
 	ContainerName   string
 	ContactLabel    string
 	MessageCount    int
 	CurrentMemories string
-	Transcript      string
+	History         []*conversation.Message
 }
 
 func BuildAutoMemoryPrompt(input AutoMemoryPromptInput) string {
@@ -163,7 +176,7 @@ REGRAS
 %s
 
 ═══════════════════════════════════════════════════
-TRANSCRIÇÃO COMPLETA DA CONVERSA
+TRANSCRIÇÃO DA CONVERSA
 ═══════════════════════════════════════════════════
 %s`,
 		input.ContainerName,
@@ -171,14 +184,14 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 		input.MessageCount,
 		memories,
 		autoMemoryRules,
-		input.Transcript,
+		BuildRecencyTranscript(input.History),
 	)
 }
 
 type AutoTagPromptInput struct {
 	CampaignName   string
 	MessageCount   int
-	Transcript     string
+	History        []*conversation.Message
 	CurrentTagName string
 	Tags           []*stage.Stage
 }
@@ -203,7 +216,7 @@ func BuildAutoTagPrompt(input AutoTagPromptInput) string {
 		currentTagSection = fmt.Sprintf("\"%s\"", input.CurrentTagName)
 	}
 
-	return fmt.Sprintf(`Você é um classificador de leads altamente experiente. Sua ÚNICA tarefa é ler a transcrição COMPLETA abaixo e determinar em qual tag o lead deve estar AGORA.
+	return fmt.Sprintf(`Você é um classificador de leads altamente experiente. Sua ÚNICA tarefa é ler a transcrição abaixo e determinar em qual tag o lead deve estar AGORA.
 
 ═══════════════════════════════════════════════════
 CONTEXTO
@@ -220,26 +233,27 @@ TAGS DISPONÍVEIS (com descrições)
 COMO CLASSIFICAR
 ═══════════════════════════════════════════════════
 
-PASSO 1: Leia a transcrição INTEIRA do início ao fim.
-PASSO 2: Identifique o ESTADO MAIS RECENTE da negociação, o que aconteceu nas ÚLTIMAS mensagens é o mais importante.
+PASSO 1: Leia o histórico anterior só para entender o contexto.
+PASSO 2: Identifique o ESTADO ATUAL pelas mensagens mais recentes.
 PASSO 3: Compare a descrição de CADA tag disponível com o estado atual da conversa.
 PASSO 4: Escolha a tag cuja descrição MELHOR descreve a situação ATUAL do lead.
 
 IMPORTANTE:
-- Foque no que aconteceu mais recentemente na conversa, não apenas nas primeiras mensagens.
+- %s
 - Se a tag atual já descreve corretamente o estado do lead, MANTENHA ela (não chame a ferramenta ou passe a mesma tag).
 - Se a tag atual NÃO corresponde mais ao estado real da conversa, MUDE para a tag correta.
 - Leia as descrições das tags com atenção, a classificação deve bater com a descrição.
 
 ═══════════════════════════════════════════════════
-TRANSCRIÇÃO COMPLETA DA CONVERSA
+TRANSCRIÇÃO DA CONVERSA
 ═══════════════════════════════════════════════════
 %s`,
 		input.CampaignName,
 		input.MessageCount,
 		currentTagSection,
 		tagList.String(),
-		input.Transcript,
+		latestPositionRule,
+		BuildRecencyTranscript(input.History),
 	)
 }
 
@@ -247,33 +261,23 @@ const autoDealRules = `- Mantenha as oportunidades desta conversa no funil usand
 - create: quando o cliente demonstra intenção real de compra e ainda não há oportunidade aberta para esse interesse. create_new: só para um contrato diferente dos que já existem.
 - update_value: quando um valor é combinado ou alterado. move: quando a negociação avança para outra etapa aberta.
 - win: quando o cliente CONFIRMA a compra, sempre com o valor fechado em "value".
-- lose: quando o cliente desiste ou a conversa termina sem compra, com o motivo em "lost_reason".
+- lose: só quando desistir é a posição MAIS RECENTE do cliente, com o motivo em "lost_reason". Se ele desistiu e depois voltou atrás, a oportunidade continua aberta.
 - Quando houver mais de uma oportunidade aberta, informe em "opportunity_id" o id exato da lista abaixo.
-- NUNCA invente valores nem oportunidades. Se nada mudou nas oportunidades, não chame a ferramenta.`
+- NUNCA invente valores nem oportunidades. Se nada mudou nas oportunidades, não chame a ferramenta.
+- ` + latestPositionRule
 
-const autoDealInstruction = "Siga as instruções do sistema: leia a transcrição INTEIRA e mantenha as oportunidades da conversa com a ferramenta auto_manage_opportunity. Se nada mudou nas oportunidades, não chame nenhuma ferramenta."
-
-const autoDealFollowUp = "Além disso, mantenha as oportunidades da conversa via auto_manage_opportunity, se algo mudou."
-
-func BuildAutoDealSection(currentDeals string) string {
-	return fmt.Sprintf(`
-
-═══════════════════════════════════════════════════
-OPORTUNIDADES DA CONVERSA (tarefa adicional)
-═══════════════════════════════════════════════════
-Além da tarefa acima, mantenha as oportunidades desta conversa:
-%s
-
-%s
-`, autoDealRules, currentDeals)
-}
+const (
+	autoTagInstruction    = "Siga os passos do sistema: descubra a posição MAIS RECENTE do cliente nas mensagens mais recentes e chame manage_entry_stage com a etapa que a descreve. Se a etapa atual já está correta, passe a mesma etapa."
+	autoMemoryInstruction = "Siga as instruções do sistema: gerencie a memória do lead com a ferramenta manage_lead_memory. Se não houver fatos duráveis novos ou alterados, não chame nenhuma ferramenta."
+	autoDealInstruction   = "Siga as instruções do sistema: mantenha as oportunidades da conversa com a ferramenta auto_manage_opportunity, pela posição MAIS RECENTE do cliente. Se nada mudou nas oportunidades, não chame nenhuma ferramenta."
+)
 
 type AutoDealPromptInput struct {
 	ContainerName string
 	ContactLabel  string
 	MessageCount  int
 	CurrentDeals  string
-	Transcript    string
+	History       []*conversation.Message
 }
 
 func BuildAutoDealPrompt(input AutoDealPromptInput) string {
@@ -294,7 +298,7 @@ REGRAS
 %s
 
 ═══════════════════════════════════════════════════
-TRANSCRIÇÃO COMPLETA DA CONVERSA
+TRANSCRIÇÃO DA CONVERSA
 ═══════════════════════════════════════════════════
 %s`,
 		input.ContainerName,
@@ -302,6 +306,6 @@ TRANSCRIÇÃO COMPLETA DA CONVERSA
 		input.MessageCount,
 		input.CurrentDeals,
 		autoDealRules,
-		input.Transcript,
+		BuildRecencyTranscript(input.History),
 	)
 }

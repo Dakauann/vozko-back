@@ -9,7 +9,6 @@ type Repository interface {
 	ListByWorkspace(workspaceID string) ([]*Stage, error)
 	ListDistinctByWorkspace(workspaceID string) ([]*Stage, error)
 	ListByCampaign(workspaceID, campaignID, campaignType string) ([]*Stage, error)
-	ListByCampaignIDs(workspaceID string, campaignIDs []string) (map[string][]*Stage, error)
 	ListByPipeline(workspaceID, pipelineID string) ([]*Stage, error)
 
 	EnsureDefaultOpportunityPipeline(workspaceID string) (string, error)
@@ -27,6 +26,7 @@ type Repository interface {
 	ReorderStages(workspaceID string, tagIDs []string) error
 
 	AssignStage(EntryStage *EntryStage) error
+	AssignStageIfNone(EntryStage *EntryStage) (bool, error)
 	RemoveStage(StageID, entryID, entryType, workspaceID string) error
 	RemoveEntryStage(entryID, entryType, workspaceID string) error
 	GetEntryStage(entryID, entryType, workspaceID string) (*EntryStage, error)

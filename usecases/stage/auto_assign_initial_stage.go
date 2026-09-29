@@ -40,11 +40,12 @@ func AutoAssignInitialStage(repo stage.Repository, workspaceID, campaignID, camp
 		WorkspaceID: workspaceID,
 	}
 
-	if err := repo.AssignStage(et); err != nil {
-		if err != stage.ErrEntryTagExists {
-			log.Printf("[TagAutoAssign] Error assigning initial tag %s to entry %s: %v", initialTag.ID, entryID, err)
-		}
-	} else {
+	assigned, err := repo.AssignStageIfNone(et)
+	if err != nil {
+		log.Printf("[TagAutoAssign] Error assigning initial tag %s to entry %s: %v", initialTag.ID, entryID, err)
+		return
+	}
+	if assigned {
 		log.Printf("[TagAutoAssign] Auto-assigned tag '%s' to entry %s (%s) for campaign %s", initialTag.Name, entryID, entryType, campaignID)
 	}
 }

@@ -308,3 +308,14 @@ func TestGetList_PassesFilterThrough(t *testing.T) {
 		t.Fatalf("sort not passed through: %+v", in)
 	}
 }
+
+func TestTheBoardListsTheOpportunitiesOfEveryColumn(t *testing.T) {
+	a, b := &opportunity.Opportunity{ID: "a"}, &opportunity.Opportunity{ID: "b"}
+	board := &Board{Columns: []Column{{Entries: []*opportunity.Opportunity{a}}, {}, {Entries: []*opportunity.Opportunity{b}}}}
+
+	got := board.Opportunities()
+
+	if len(got) != 2 || got[0] != a || got[1] != b {
+		t.Fatalf("opportunities = %v", got)
+	}
+}

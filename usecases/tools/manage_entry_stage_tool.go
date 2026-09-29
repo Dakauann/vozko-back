@@ -11,6 +11,7 @@ import (
 	"vozko/domain/shared"
 	"vozko/domain/stage"
 	"vozko/domain/tools"
+	stage_usecase "vozko/usecases/stage"
 )
 
 const ManageEntryStageToolName = "manage_entry_stage"
@@ -53,6 +54,7 @@ QUANDO USAR (mova ao identificar a intenção):
 Forneça SOMENTE um nome de etapa presente no enum do parâmetro "target_tag_name".
 NUNCA invente ou adivinhe nomes de etapas.`,
 		Parameters: map[string]tools.Parameter{
+			tools.CurrentPositionParameter: tools.CurrentPosition(),
 			"target_tag_name": {
 				Type:               "string",
 				Description:        "Nome exato da etapa destino. Use apenas nomes presentes no enum.",
@@ -60,7 +62,7 @@ NUNCA invente ou adivinhe nomes de etapas.`,
 				DisplayDescription: "Nome da etapa para classificar o lead",
 			},
 		},
-		Required:   []string{"target_tag_name"},
+		Required:   []string{tools.CurrentPositionParameter, "target_tag_name"},
 		Visibility: []tools.ToolVisibility{tools.VisibilityMessaging, tools.VisibilityPostConversation},
 		Category:   tools.CategoryAgentUtility,
 	}
@@ -73,16 +75,19 @@ func (t *manageEntryStageTool) stagesForEntry(ctx tools.ToolContext) ([]*stage.S
 	if ctx.CampaignID == "" {
 		ctx.CampaignID = ctx.EntryID
 	}
-	if ctx.EntryID != "" && ctx.CampaignType != "" {
-		current, err := t.stageRepo.GetEntryStage(ctx.EntryID, ctx.CampaignType, ctx.WorkspaceID)
-		if err == nil && current != nil && current.StageID != "" {
-			if placed, err := t.stageRepo.FindByID(current.StageID); err == nil &&
-				placed != nil && placed.PipelineID != "" {
-				return t.stageRepo.ListByPipeline(ctx.WorkspaceID, placed.PipelineID)
-			}
-		}
+	entryType := ctx.EntryType
+	if entryType == "" {
+		entryType = ctx.CampaignType
 	}
-	return t.stageRepo.ListByCampaign(ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType)
+	stages, _, err := t.funnel(ctx.WorkspaceID, ctx.CampaignID, ctx.CampaignType, ctx.EntryID, entryType)
+	return stages, err
+}
+
+func (t *manageEntryStageTool) funnel(workspaceID, campaignID, campaignType, entryID, entryType string) ([]*stage.Stage, *stage.EntryStage, error) {
+	found, err := stage_usecase.StagesForEntry(t.stageRepo, workspaceID, stage_usecase.EntryRef{
+		EntryID: entryID, EntryType: entryType, CampaignID: campaignID, CampaignType: campaignType,
+	})
+	return found.Stages, found.Current, err
 }
 
 func (t *manageEntryStageTool) DefinitionWithContext(ctx tools.ToolContext) tools.Definition {
@@ -113,6 +118,7 @@ func (t *manageEntryStageTool) DefinitionWithContext(ctx tools.ToolContext) tool
 
 	result := base
 	result.Parameters = map[string]tools.Parameter{
+		tools.CurrentPositionParameter: tools.CurrentPosition(),
 		"target_tag_name": {
 			Type:        "string",
 			Description: tagGuide,
@@ -192,22 +198,17 @@ func (t *manageEntryStageTool) moveActor(ctx context.Context, config map[string]
 	if agentID := agentActor(ctx, config); agentID != "" {
 		return agentID
 	}
-	return actor.SystemID
+	return actor.PlatformAI
 }
 
 func (t *manageEntryStageTool) handleView(workspaceID, campaignID, campaignType, entryID, entryType string) (tools.ExecutionResult, error) {
-	allTags, err := t.stageRepo.ListByCampaign(workspaceID, campaignID, campaignType)
+	allTags, currentTag, err := t.funnel(workspaceID, campaignID, campaignType, entryID, entryType)
 	if err != nil {
 		log.Printf("[ManageEntryTag] Error listing tags for workspace %s: %v", workspaceID, err)
 		return tools.ExecutionResult{
 			Result:  "Erro ao listar tags disponíveis.",
 			IsError: true,
 		}, nil
-	}
-
-	currentTag, err := t.stageRepo.GetEntryStage(entryID, entryType, workspaceID)
-	if err != nil && err != stage.ErrEntryTagNotFound {
-		log.Printf("[ManageEntryTag] Error getting entry tag: %v", err)
 	}
 
 	var sb strings.Builder
@@ -247,7 +248,7 @@ func (t *manageEntryStageTool) handleView(workspaceID, campaignID, campaignType,
 }
 
 func (t *manageEntryStageTool) handleMove(workspaceID, campaignID, campaignType, entryID, entryType, targetTagName, actorID string) (tools.ExecutionResult, error) {
-	allTags, err := t.stageRepo.ListByCampaign(workspaceID, campaignID, campaignType)
+	allTags, currentTag, err := t.funnel(workspaceID, campaignID, campaignType, entryID, entryType)
 	if err != nil {
 		log.Printf("[ManageEntryTag] Error listing tags for workspace %s: %v", workspaceID, err)
 		return tools.ExecutionResult{
@@ -276,7 +277,6 @@ func (t *manageEntryStageTool) handleMove(workspaceID, campaignID, campaignType,
 		}, nil
 	}
 
-	currentTag, _ := t.stageRepo.GetEntryStage(entryID, entryType, workspaceID)
 	if currentTag != nil && currentTag.StageID == targetTag.ID {
 		return tools.ExecutionResult{
 			Result: fmt.Sprintf("O lead já está na tag \"%s\". Nenhuma alteração necessária.", targetTag.Name),

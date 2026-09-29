@@ -136,13 +136,14 @@ func (r *fakeOppRepo) eventTypes(opportunityID string) []opportunity.EventType {
 }
 
 type fakeLinks struct {
-	byEntry []opportunity.ConversationLink
-	err     error
+	byEntry       []opportunity.ConversationLink
+	byOpportunity []opportunity.ConversationLink
+	err           error
 }
 
 func (l *fakeLinks) Unlink(string, string, string) error { return nil }
 func (l *fakeLinks) ListByOpportunity(string, string) ([]opportunity.ConversationLink, error) {
-	return nil, nil
+	return l.byOpportunity, l.err
 }
 func (l *fakeLinks) ListByEntry(string, string, string) ([]opportunity.ConversationLink, error) {
 	return l.byEntry, l.err

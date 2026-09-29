@@ -6,18 +6,17 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	openrouter "github.com/revrost/go-openrouter"
 
 	"vozko/domain/ai"
 	"vozko/domain/messaging"
 	"vozko/domain/tools"
+	"vozko/infra/ai/aibilling"
 )
 
 type Service struct {
@@ -769,40 +768,9 @@ func parseFloat64(s string) float64 {
 }
 
 func costToMicros(cost float64) int64 {
-	if cost <= 0 {
-		return 0
-	}
-	return int64(math.Ceil(cost * 1_000_000))
+	return aibilling.CostToMicros(cost)
 }
 
 func (s *Service) publishBillingEvent(workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64) {
-	if s.billingPub == nil {
-		return
-	}
-	event := ai.AICompletedEvent{
-		RequestID:          uuid.New().String(),
-		WorkspaceID:        workspaceID,
-		Model:              model,
-		PromptTokens:       promptTokens,
-		CompletionTokens:   completionTokens,
-		ProviderCostMicros: providerCostMicros,
-	}
-	data, err := json.Marshal(event)
-	if err != nil {
-		log.Printf("[ai-billing] failed to marshal event: %v", err)
-		return
-	}
-
-	delays := [3]time.Duration{100 * time.Millisecond, 500 * time.Millisecond, 2 * time.Second}
-	for i := range delays {
-		if err := s.billingPub.Publish(ai.TopicAIBillingCompleted, data); err == nil {
-			return
-		} else if i < len(delays)-1 {
-			log.Printf("[ai-billing] publish attempt %d failed, retrying in %v: %v", i+1, delays[i], err)
-			time.Sleep(delays[i])
-		} else {
-			log.Printf("[ai-billing] CRITICAL publish failed after %d attempts workspace=%s model=%s prompt=%d completion=%d: %v",
-				len(delays), workspaceID, model, promptTokens, completionTokens, err)
-		}
-	}
+	aibilling.NewPublisher(s.billingPub).Publish(workspaceID, model, promptTokens, completionTokens, providerCostMicros)
 }

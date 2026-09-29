@@ -331,6 +331,17 @@ type Parameter struct {
 	Enum               []string
 }
 
+const CurrentPositionParameter = "current_position"
+
+func CurrentPosition() Parameter {
+	return Parameter{
+		Type:               "string",
+		Description:        "Em uma frase, o que o cliente quer AGORA segundo as mensagens mais recentes. Se ele mudou de ideia, descreva a posição final.",
+		DisplayName:        "Posição atual do cliente",
+		DisplayDescription: "O que o cliente quer agora, segundo as mensagens mais recentes.",
+	}
+}
+
 type ParameterItems struct {
 	Type        string
 	Properties  map[string]Parameter

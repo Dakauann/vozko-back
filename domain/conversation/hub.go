@@ -5,6 +5,7 @@ import (
 
 	"vozko/domain/actor"
 	"vozko/domain/audience"
+	"vozko/domain/livedecision"
 	"vozko/domain/shared"
 )
 
@@ -24,44 +25,45 @@ const (
 )
 
 type InboxEntry struct {
-	EntryID                 string                 `json:"entry_id"`
-	EntryType               string                 `json:"entry_type"`
-	CampaignID              string                 `json:"campaign_id,omitempty"`
-	CampaignName            string                 `json:"campaign_name,omitempty"`
-	LeadID                  string                 `json:"lead_id,omitempty"`
-	LeadName                string                 `json:"lead_name,omitempty"`
-	LeadNumber              string                 `json:"lead_number,omitempty"`
-	Blocked                 bool                   `json:"blocked"`
-	LeadPicture             string                 `json:"lead_picture,omitempty"`
-	IsGroup                 bool                   `json:"is_group,omitempty"`
-	LeadMetadata            map[string]interface{} `json:"lead_metadata,omitempty"`
-	EntryVariables          []string               `json:"entry_variables,omitempty"`
-	UnreadCount             int64                  `json:"unread_count"`
-	LastMessagePreview      string                 `json:"last_message_preview,omitempty"`
-	LastMessageAt           time.Time              `json:"last_message_at"`
-	LastMessageType         string                 `json:"last_message_type,omitempty"`
-	LastMessageSender       string                 `json:"last_message_sender,omitempty"`
-	LastMessageSenderAvatar string                 `json:"last_message_sender_avatar,omitempty"`
-	WindowOpen              bool                   `json:"window_open"`
-	WindowExpiresAt         *time.Time             `json:"window_expires_at,omitempty"`
-	WindowClosedReason      string                 `json:"window_closed_reason,omitempty"`
-	BusinessPhoneID         string                 `json:"business_phone_id,omitempty"`
-	AssignedUserID          string                 `json:"assigned_user_id,omitempty"`
-	AssignedUsername        string                 `json:"assigned_username,omitempty"`
-	AutomationEnabled       bool                   `json:"automation_enabled"`
-	Stage                   *InboxEntryStage       `json:"stage,omitempty"`
-	Labels                  []InboxEntryLabel      `json:"labels,omitempty"`
-	AvailableStages         []InboxEntryStage      `json:"available_stages,omitempty"`
-	MatchedMessages         []MatchedMessage       `json:"matched_messages,omitempty"`
-	TotalMatches            int                    `json:"total_matches,omitempty"`
-	LatestAnalysis          *audience.Analysis     `json:"latest_analysis,omitempty"`
-	AnalysisPhase           AnalysisPhase          `json:"analysis_phase,omitempty"`
-	ConversationStatus      ConversationStatus     `json:"conversation_status,omitempty"`
-	CloseSource             CloseSource            `json:"close_source,omitempty"`
-	CloseReason             CloseReason            `json:"close_reason,omitempty"`
-	ClosedAt                *time.Time             `json:"closed_at,omitempty"`
-	CloseOutcome            string                 `json:"close_outcome,omitempty"`
-	AIHandler               *AIHandler             `json:"ai_handler,omitempty"`
+	EntryID                 string                     `json:"entry_id"`
+	EntryType               string                     `json:"entry_type"`
+	CampaignID              string                     `json:"campaign_id,omitempty"`
+	CampaignName            string                     `json:"campaign_name,omitempty"`
+	LeadID                  string                     `json:"lead_id,omitempty"`
+	LeadName                string                     `json:"lead_name,omitempty"`
+	LeadNumber              string                     `json:"lead_number,omitempty"`
+	Blocked                 bool                       `json:"blocked"`
+	LeadPicture             string                     `json:"lead_picture,omitempty"`
+	IsGroup                 bool                       `json:"is_group,omitempty"`
+	LeadMetadata            map[string]interface{}     `json:"lead_metadata,omitempty"`
+	EntryVariables          []string                   `json:"entry_variables,omitempty"`
+	UnreadCount             int64                      `json:"unread_count"`
+	LastMessagePreview      string                     `json:"last_message_preview,omitempty"`
+	LastMessageAt           time.Time                  `json:"last_message_at"`
+	LastMessageType         string                     `json:"last_message_type,omitempty"`
+	LastMessageSender       string                     `json:"last_message_sender,omitempty"`
+	LastMessageSenderAvatar string                     `json:"last_message_sender_avatar,omitempty"`
+	WindowOpen              bool                       `json:"window_open"`
+	WindowExpiresAt         *time.Time                 `json:"window_expires_at,omitempty"`
+	WindowClosedReason      string                     `json:"window_closed_reason,omitempty"`
+	BusinessPhoneID         string                     `json:"business_phone_id,omitempty"`
+	AssignedUserID          string                     `json:"assigned_user_id,omitempty"`
+	AssignedUsername        string                     `json:"assigned_username,omitempty"`
+	AutomationEnabled       bool                       `json:"automation_enabled"`
+	Stage                   *InboxEntryStage           `json:"stage,omitempty"`
+	Labels                  []InboxEntryLabel          `json:"labels,omitempty"`
+	AvailableStages         []InboxEntryStage          `json:"available_stages,omitempty"`
+	MatchedMessages         []MatchedMessage           `json:"matched_messages,omitempty"`
+	TotalMatches            int                        `json:"total_matches,omitempty"`
+	LatestAnalysis          *audience.Analysis         `json:"latest_analysis,omitempty"`
+	AnalysisPhase           AnalysisPhase              `json:"analysis_phase,omitempty"`
+	LiveRead                *livedecision.LiveReadView `json:"live_read,omitempty"`
+	ConversationStatus      ConversationStatus         `json:"conversation_status,omitempty"`
+	CloseSource             CloseSource                `json:"close_source,omitempty"`
+	CloseReason             CloseReason                `json:"close_reason,omitempty"`
+	ClosedAt                *time.Time                 `json:"closed_at,omitempty"`
+	CloseOutcome            string                     `json:"close_outcome,omitempty"`
+	AIHandler               *AIHandler                 `json:"ai_handler,omitempty"`
 }
 
 type AIHandler struct {
@@ -174,7 +176,13 @@ type StageProvider interface {
 	FindStageIDsByName(workspaceID, name string) ([]string, error)
 	GetStageCountsForCampaign(workspaceID, campaignID, entryType string) (map[string]int64, error)
 	GetStageCountsForWorkspace(workspaceID, entryType string) (map[string]int64, error)
-	GetAvailableStageByCampaigns(workspaceID string, campaignIDs []string) (map[string][]InboxEntryStage, error)
+	GetAvailableStages(workspaceID string, placements []StagePlacement) ([][]InboxEntryStage, error)
+}
+
+type StagePlacement struct {
+	CurrentStageID string
+	CampaignID     string
+	CampaignType   string
 }
 
 type LabelProvider interface {
@@ -187,6 +195,10 @@ type LabelProvider interface {
 type AnalysisProvider interface {
 	GetBatchLatestAnalysis(entryIDs []string, entryType string) (map[string]*audience.Analysis, error)
 	GetBatchAnalysisPending(entryIDs []string, entryType string) (map[string]bool, error)
+}
+
+type LiveReadProvider interface {
+	LiveReadViews(workspaceID string, entryIDs []string, entryType string) (map[string]*livedecision.LiveReadView, error)
 }
 
 type AnalysisScheduleReader interface {

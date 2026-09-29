@@ -4,15 +4,13 @@ import (
 	"log"
 	"strings"
 
-	"github.com/google/uuid"
-
-	"vozko/domain/actor"
 	agentdomain "vozko/domain/agent"
 	ce "vozko/domain/conversation_event"
 	labeldomain "vozko/domain/label"
 	stagedomain "vozko/domain/stage"
 	"vozko/domain/user"
 	"vozko/domain/workflow"
+	"vozko/usecases/actornames"
 )
 
 type WorkflowNameLookup interface {
@@ -147,75 +145,18 @@ func (uc *listEventsUseCase) resolveNames(events []*ce.ConversationEvent) {
 	if len(events) == 0 {
 		return
 	}
-
-	userIDs := map[string]bool{}
-	agentIDs := map[string]bool{}
-	workflowIDs := map[string]bool{}
-	want := func(id string) {
-		switch actor.KindOf(id) {
-		case actor.KindAI:
-			if bare := actor.ParseAI(id); isUUID(bare) {
-				agentIDs[bare] = true
-			}
-		case actor.KindWorkflow:
-			if bare := actor.ParseWorkflow(id); isUUID(bare) {
-				workflowIDs[bare] = true
-			}
-		case actor.KindHuman:
-			if isUUID(id) {
-				userIDs[id] = true
-			}
-		}
-	}
-
 	details := make([]map[string]string, len(events))
+	actorIDs := make([]string, 0, len(events)*3)
 	for i, ev := range events {
 		if ev == nil {
 			continue
 		}
-		want(ev.ActorID)
-		d := ev.DetailsMap()
-		details[i] = d
-		want(ce.LookupDetailID(d, ce.FromActorIDKeys))
-		want(ce.LookupDetailID(d, ce.ToActorIDKeys))
+		details[i] = ev.DetailsMap()
+		actorIDs = append(actorIDs, ev.ActorID,
+			ce.LookupDetailID(details[i], ce.FromActorIDKeys),
+			ce.LookupDetailID(details[i], ce.ToActorIDKeys))
 	}
-
-	names := map[string]string{}
-	if uc.users != nil && len(userIDs) > 0 {
-		if found, err := uc.users.FindByIDs(mapKeys(userIDs)); err != nil {
-			log.Printf("[conversation_event] could not resolve user names: %v", err)
-		} else {
-			for _, u := range found {
-				if u != nil {
-					names[u.ID] = u.Username
-				}
-			}
-		}
-	}
-	if uc.agents != nil && len(agentIDs) > 0 {
-		if found, err := uc.agents.FindByIDs(mapKeys(agentIDs)); err != nil {
-			log.Printf("[conversation_event] could not resolve agent names: %v", err)
-		} else {
-			for _, a := range found {
-				if a != nil {
-					names[actor.FormatAI(a.ID)] = a.Name
-				}
-			}
-		}
-	}
-
-	if uc.workflows != nil && len(workflowIDs) > 0 {
-		if found, err := uc.workflows.FindByIDs(mapKeys(workflowIDs)); err != nil {
-			log.Printf("[conversation_event] could not resolve workflow names: %v", err)
-		} else {
-			for _, w := range found {
-				if w != nil {
-					names[actor.FormatWorkflow(w.ID)] = w.Name
-				}
-			}
-		}
-	}
-
+	names := actornames.Directory{Users: uc.users, Agents: uc.agents, Workflows: uc.workflows}.Names(actorIDs...)
 	for i, ev := range events {
 		if ev == nil {
 			continue
@@ -224,17 +165,4 @@ func (uc *listEventsUseCase) resolveNames(events []*ce.ConversationEvent) {
 		ev.FromName = names[ce.LookupDetailID(details[i], ce.FromActorIDKeys)]
 		ev.ToName = names[ce.LookupDetailID(details[i], ce.ToActorIDKeys)]
 	}
-}
-
-func isUUID(s string) bool {
-	_, err := uuid.Parse(strings.TrimSpace(s))
-	return err == nil
-}
-
-func mapKeys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }

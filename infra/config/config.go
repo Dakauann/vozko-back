@@ -30,6 +30,8 @@ type Config struct {
 
 	OpenRouterAPIKey       string
 	OpenRouterDefaultModel string
+	DecisionModel          string
+	AudienceSummaryModel   string
 	OpenRouterHTTPReferer  string
 	OpenRouterXTitle       string
 
@@ -162,6 +164,8 @@ func LoadConfig() Config {
 
 		OpenRouterAPIKey:       mustGetEnvTrimmed("OPENROUTER_API_KEY"),
 		OpenRouterDefaultModel: getEnvTrimmed("OPENROUTER_DEFAULT_MODEL", "openai/gpt-4o"),
+		DecisionModel:          getEnvTrimmed("DECISION_MODEL", "typesafe/jev-1.13"),
+		AudienceSummaryModel:   getEnvTrimmed("AUDIENCE_SUMMARY_MODEL", "openai/gpt-4o-mini"),
 		OpenRouterHTTPReferer:  trimEnv("OPENROUTER_HTTP_REFERER"),
 		OpenRouterXTitle:       trimEnv("OPENROUTER_X_TITLE"),
 

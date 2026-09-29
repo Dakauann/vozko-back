@@ -3,10 +3,11 @@ package audience
 import "errors"
 
 var (
-	ErrNotFound          = errors.New("comment analysis: not found")
-	ErrWorkspaceRequired = errors.New("comment analysis: workspace id is required")
-	ErrSubjectIDRequired = errors.New("comment analysis: source comment id is required")
-	ErrContainerInvalid  = errors.New("comment analysis: container reference is invalid")
+	ErrNotFound               = errors.New("comment analysis: not found")
+	ErrWorkspaceRequired      = errors.New("comment analysis: workspace id is required")
+	ErrInvalidClassifyRequest = errors.New("comment analysis: only conversations can be summarised alone")
+	ErrSubjectIDRequired      = errors.New("comment analysis: source comment id is required")
+	ErrContainerInvalid       = errors.New("comment analysis: container reference is invalid")
 
 	ErrStatusTransition = errors.New("comment analysis: invalid status transition")
 

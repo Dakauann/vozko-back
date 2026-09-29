@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"vozko/delivery/http/response"
+	"vozko/domain/actor"
 	"vozko/domain/crmfilter"
+	opportunitydomain "vozko/domain/opportunity"
 	"vozko/domain/savedview"
 	"vozko/infra/http/middleware"
 	oppboard_usecase "vozko/usecases/oppboard"
@@ -14,10 +16,11 @@ import (
 
 type OpportunityBoardHandler struct {
 	service *oppboard_usecase.Service
+	names   actor.Namer
 }
 
-func NewOpportunityBoardHandler(service *oppboard_usecase.Service) *OpportunityBoardHandler {
-	return &OpportunityBoardHandler{service: service}
+func NewOpportunityBoardHandler(service *oppboard_usecase.Service, names actor.Namer) *OpportunityBoardHandler {
+	return &OpportunityBoardHandler{service: service, names: names}
 }
 
 // @Summary		Quadro de oportunidades
@@ -85,6 +88,7 @@ func (h *OpportunityBoardHandler) Board(w http.ResponseWriter, r *http.Request) 
 		h.handleError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, board.Opportunities()...)
 	response.WriteSuccess(w, http.StatusOK, board)
 }
 
@@ -135,6 +139,7 @@ func (h *OpportunityBoardHandler) List(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, err)
 		return
 	}
+	opportunitydomain.NameParticipants(h.names, opportunities...)
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"opportunities": opportunities,
 		"total":         total,

@@ -28,8 +28,8 @@ func NewClassifier(service ai.Service, defaultModel string) ca.Classifier {
 }
 
 func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*ca.ClassifyResult, error) {
-	if strings.TrimSpace(req.WorkspaceID) == "" {
-		return nil, ca.ErrWorkspaceRequired
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
 	model := strings.TrimSpace(req.Model)
 	if model == "" {
@@ -43,7 +43,7 @@ func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*c
 	out, err := c.ai.Generate(ctx, ai.GenerateInput{
 		WorkspaceID:        req.WorkspaceID,
 		Model:              model,
-		SystemPrompt:       BuildSystemPromptFor(req.SubjectKind, req.Topics, req.Context, req.Instructions),
+		SystemPrompt:       buildSystemPromptOf(req),
 		Messages:           []ai.Message{{Role: ai.RoleUser, Content: userMessage}},
 		Temperature:        0,
 		MaxTokens:          req.Batch.MaxOutputTokens(),
@@ -52,7 +52,7 @@ func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*c
 			Type:                  ai.ResponseFormatJSONSchema,
 			JSONSchemaName:        schemaName,
 			JSONSchemaDescription: "Classificação de um lote de comentários, uma entrada por ref.",
-			JSONSchema:            ca.BatchResponseSchemaFor(req.SubjectKind, req.Topics),
+			JSONSchema:            req.ResponseSchema(),
 			JSONSchemaStrict:      true,
 		},
 		Tools: nil,

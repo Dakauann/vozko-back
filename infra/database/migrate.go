@@ -139,6 +139,8 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.ProcessedWebhookEvent{},
 			&schema.Opportunity{},
 			&schema.DealAutomation{},
+			&schema.LiveDecisionRecord{},
+			&schema.ConversationLiveRead{},
 			&schema.OpportunityConversation{},
 			&schema.OpportunityEvent{},
 			&schema.CustomFieldDefinition{},

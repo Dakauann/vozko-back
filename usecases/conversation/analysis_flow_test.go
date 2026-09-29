@@ -9,6 +9,7 @@ import (
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	lmw "vozko/domain/lead_message_window"
+	"vozko/domain/livedecision"
 	"vozko/domain/shared"
 )
 
@@ -86,11 +87,12 @@ func TestAdapterSendsScheduleAnalysisAfterPersistence(t *testing.T) {
 			t.Run(string(kind)+map[bool]string{true: "/open", false: "/closed"}[open], func(t *testing.T) {
 				state := &analysisState{fields: map[string]string{}}
 				repo := &stubAudioMessageRepo{}
-				sender := &MessageSenderService{messageRepo: repo, sharedState: state}
+				live := &liveQueue{}
+				sender := &MessageSenderService{messageRepo: repo, analysis: NewAnalysisScheduler(state, live)}
 				sender.SetChannelAdapters(conversation.NewAdapterRegistry(&fakeWindowAdapter{entryType: kind, open: open}))
 				_, err := sender.SendTextMessage("entry", string(kind), "hello", "operator", "")
 				if !open {
-					if !errors.Is(err, conversation.ErrOutboundWindowClosed) || len(state.fields) != 0 || len(repo.created) != 0 {
+					if !errors.Is(err, conversation.ErrOutboundWindowClosed) || len(state.fields) != 0 || len(repo.created) != 0 || len(live.refs) != 0 {
 						t.Fatalf("closed window sent or scheduled: %v", err)
 					}
 					return
@@ -101,6 +103,9 @@ func TestAdapterSendsScheduleAnalysisAfterPersistence(t *testing.T) {
 				stamp, ok := decodeAnalysisDebounceValue(state.fields["entry"])
 				if !ok || stamp.EntryType != kind || len(repo.created) != 1 {
 					t.Fatalf("successful send not scheduled: %#v", state.fields)
+				}
+				if len(live.refs) != 1 || live.refs[0] != (livedecision.EntryRef{EntryID: "entry", EntryType: string(kind)}) {
+					t.Fatalf("our own message must queue the live decision too: %+v", live.refs)
 				}
 			})
 		}

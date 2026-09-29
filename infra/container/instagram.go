@@ -189,7 +189,7 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 		AIReply:       c.mustChannelAIReply(),
 		Workflows:     c.useCases.triggerEvaluator,
 		CommentRules:  bundle.CommentRuleEval,
-		Analysis:      conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
+		Analysis:      c.services.analysisScheduler,
 		Audience:      audienceEnqueuer(c),
 	})
 

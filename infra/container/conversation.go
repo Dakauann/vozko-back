@@ -286,7 +286,7 @@ func (c *Container) initConversationSenders() {
 		c.services.ai,
 		c.services.toolRegistry,
 		c.repositories.stage,
-		c.redisProvider.SharedState(),
+		c.services.analysisScheduler,
 	)
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
 	messageSender.SetMediaLibrary(c.repositories.media)

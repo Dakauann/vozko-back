@@ -14,12 +14,15 @@ import (
 	"vozko/domain/dealautomation"
 	"vozko/domain/lead"
 	leadmemory "vozko/domain/lead_memory"
+	"vozko/domain/livedecision"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
 	toolsdomain "vozko/domain/tools"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	lead_memory_usecase "vozko/usecases/lead_memory"
+	livedecisions_usecase "vozko/usecases/livedecisions"
+	stage_usecase "vozko/usecases/stage"
 	tools_usecase "vozko/usecases/tools"
 )
 
@@ -46,6 +49,27 @@ type analysisDebounceJob struct {
 	debouncePolicy       AnalysisDebouncePolicy
 	dealSettings         DealAutomationSettings
 	dealDesk             tools_usecase.OpportunityManager
+	cascade              QuietCascade
+}
+
+type QuietCascade interface {
+	StageNeedsReview(ctx context.Context, target livedecisions_usecase.Trigger) bool
+	QuietGate(ctx context.Context, target livedecisions_usecase.Trigger, wantMemory, wantDeals bool, memory, deals string) livedecision.QuietGate
+}
+
+func (j *analysisDebounceJob) SetQuietCascade(cascade QuietCascade) {
+	j.cascade = cascade
+}
+
+func (j *analysisDebounceJob) stageNeedsReview(ctx context.Context, target livedecisions_usecase.Trigger) bool {
+	return j.cascade == nil || j.cascade.StageNeedsReview(ctx, target)
+}
+
+func (j *analysisDebounceJob) quietGate(ctx context.Context, target livedecisions_usecase.Trigger, wantMemory, wantDeals bool, memory, deals string) livedecision.QuietGate {
+	if j.cascade == nil {
+		return livedecision.QuietGate{NeedsMemory: wantMemory, NeedsDeals: wantDeals}
+	}
+	return j.cascade.QuietGate(ctx, target, wantMemory, wantDeals, memory, deals)
 }
 
 type DealAutomationSettings interface {
@@ -319,162 +343,53 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		history = history[len(history)-100:]
 	}
 
-	campaignName := subject.ContainerName
 	workspaceID := subject.WorkspaceID
-	userPhoneNumber := subject.ContactLabel
 	entryTypeStr := string(entryType)
-
-	var aiTools []toolsdomain.Definition
-	toolConfigs := map[string]map[string]interface{}{}
-
-	const wantAnalysis = false
-
-	autoTagEnabled := subject.EnableAutoStaging
-	if autoTagEnabled {
-		if h, ok := j.toolRegistry.Handler(tools_usecase.ManageEntryStageToolName); ok {
-			aiTools = append(aiTools, toolDefinition(h, toolsdomain.ToolContext{
-				WorkspaceID:  workspaceID,
-				CampaignID:   subject.ContainerID,
-				CampaignType: entryTypeStr,
-				EntryID:      entryID,
-			}))
-			toolConfigs[tools_usecase.ManageEntryStageToolName] = map[string]interface{}{
-				"__entry_id":      entryID,
-				"__entry_type":    entryTypeStr,
-				"__workspace_id":  workspaceID,
-				"__campaign_id":   subject.ContainerID,
-				"__campaign_type": entryTypeStr,
-			}
-		}
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), analysisDebounceTimeout)
 	defer cancel()
+	target := livedecisions_usecase.Trigger{WorkspaceID: workspaceID, EntryID: entryID, EntryType: entryType}
+	quiet := quietConversation{subject: subject, entryID: entryID, entryType: entryTypeStr, history: history, messageCount: int(totalCount)}
 
-	wantMemory := subject.EnableAutoMemory && subject.LeadID != ""
+	var tasks []quietTask
+	if subject.EnableAutoStaging && j.stageNeedsReview(ctx, target) {
+		if task, ok := j.stageTask(quiet); ok {
+			tasks = append(tasks, task)
+		}
+	}
+
+	memoryHandler, memoryAvailable := j.toolRegistry.Handler(tools_usecase.ManageLeadMemoryToolName)
+	wantMemory := subject.EnableAutoMemory && subject.LeadID != "" && memoryAvailable
 	var memoryBlock string
 	if wantMemory {
-		if h, ok := j.toolRegistry.Handler(tools_usecase.ManageLeadMemoryToolName); ok {
-			aiTools = append(aiTools, h.Definition())
-			toolConfigs[tools_usecase.ManageLeadMemoryToolName] = map[string]interface{}{
-				"__workspace_id": workspaceID,
-				"__lead_id":      subject.LeadID,
-				"__agent_id":     subject.AgentID,
-				"__entry_id":     entryID,
-				"__entry_type":   entryTypeStr,
-			}
-			memoryBlock = lead_memory_usecase.BuildContext(ctx, j.leadMemories, lead_memory_usecase.ContextInput{
-				WorkspaceID:   workspaceID,
-				LeadID:        subject.LeadID,
-				HasMemoryTool: true,
-			})
-		} else {
-			wantMemory = false
-		}
+		memoryBlock = lead_memory_usecase.BuildContext(ctx, j.leadMemories, lead_memory_usecase.ContextInput{
+			WorkspaceID:   workspaceID,
+			LeadID:        subject.LeadID,
+			HasMemoryTool: true,
+		})
 	}
 
-	wantDeals := dealsPipeline != ""
+	dealHandler, dealAvailable := j.toolRegistry.Handler(tools_usecase.AutoManageOpportunityToolName)
+	wantDeals := dealsPipeline != "" && dealAvailable
 	var dealsBlock string
 	if wantDeals {
-		if h, ok := j.toolRegistry.Handler(tools_usecase.AutoManageOpportunityToolName); ok {
-			dealConfig := map[string]interface{}{
-				"__workspace_id": workspaceID,
-				"__entry_id":     entryID,
-				"__entry_type":   entryTypeStr,
-				"__lead_id":      subject.LeadID,
-				"__agent_id":     subject.AgentID,
-				"pipeline_id":    dealsPipeline,
-			}
-			described, err := tools_usecase.DescribeEntryDeals(j.dealDesk, workspaceID, dealsPipeline, entryID, entryTypeStr)
-			if err != nil {
-				return err
-			}
-			dealsBlock = described
-			aiTools = append(aiTools, toolDefinition(h, toolsdomain.ToolContext{WorkspaceID: workspaceID, Config: dealConfig}))
-			toolConfigs[tools_usecase.AutoManageOpportunityToolName] = dealConfig
-		} else {
-			wantDeals = false
+		described, err := tools_usecase.DescribeEntryDeals(j.dealDesk, workspaceID, dealsPipeline, entryID, entryTypeStr)
+		if err != nil {
+			return err
 		}
+		dealsBlock = described
 	}
 
-	if len(aiTools) == 0 {
+	gate := j.quietGate(ctx, target, wantMemory, wantDeals, memoryBlock, dealsBlock)
+	if gate.NeedsMemory {
+		tasks = append(tasks, memoryTask(quiet, memoryHandler, memoryBlock))
+	}
+	if gate.NeedsDeals {
+		tasks = append(tasks, dealTask(quiet, dealHandler, dealsBlock, dealsPipeline))
+	}
+
+	if len(tasks) == 0 {
 		return nil
-	}
-
-	wantAutoTag := autoTagEnabled
-
-	var systemPrompt string
-	switch {
-	case wantAnalysis:
-		systemPrompt = BuildAnalysisPrompt(AnalysisPromptInput{
-			AnalysisType:    AnalysisTypeOngoing,
-			CampaignName:    campaignName,
-			UserPhoneNumber: userPhoneNumber,
-			MessageCount:    int(totalCount),
-			History:         history,
-		})
-	case wantAutoTag:
-		transcript := BuildTranscript(history)
-		var currentTagName string
-		var allTags []*stage.Stage
-		if j.stageRepo != nil {
-			if et, err := j.stageRepo.GetEntryStage(entryID, entryTypeStr, workspaceID); err == nil && et != nil {
-				currentTagName = et.StageName
-			}
-			if tags, err := j.stageRepo.ListByCampaign(workspaceID, subject.ContainerID, entryTypeStr); err == nil {
-				allTags = tags
-			}
-		}
-		systemPrompt = BuildAutoTagPrompt(AutoTagPromptInput{
-			CampaignName:   campaignName,
-			MessageCount:   int(totalCount),
-			Transcript:     transcript,
-			CurrentTagName: currentTagName,
-			Tags:           allTags,
-		})
-	case wantMemory:
-		systemPrompt = BuildAutoMemoryPrompt(AutoMemoryPromptInput{
-			ContainerName:   campaignName,
-			ContactLabel:    userPhoneNumber,
-			MessageCount:    int(totalCount),
-			CurrentMemories: memoryBlock,
-			Transcript:      BuildTranscript(history),
-		})
-	default:
-		systemPrompt = BuildAutoDealPrompt(AutoDealPromptInput{
-			ContainerName: campaignName,
-			ContactLabel:  userPhoneNumber,
-			MessageCount:  int(totalCount),
-			CurrentDeals:  dealsBlock,
-			Transcript:    BuildTranscript(history),
-		})
-	}
-
-	if wantMemory && (wantAnalysis || wantAutoTag) {
-		systemPrompt += BuildAutoMemorySection(memoryBlock)
-	}
-	if wantDeals && (wantAnalysis || wantAutoTag || wantMemory) {
-		systemPrompt += BuildAutoDealSection(dealsBlock)
-	}
-
-	var userMessage string
-	switch {
-	case wantAnalysis && wantAutoTag:
-		userMessage = "Analise a conversa acima e: 1) chame a ferramenta conversation_analysis com sua avaliação; 2) chame a ferramenta manage_entry_stage para classificar o lead na etapa mais adequada baseado no estado atual da conversa."
-	case wantAnalysis:
-		userMessage = "Analise a conversa acima e chame a ferramenta conversation_analysis com sua avaliação."
-	case wantAutoTag:
-		userMessage = "Siga os passos do sistema: leia a transcrição INTEIRA, identifique o estado MAIS RECENTE da negociação (foque nas últimas mensagens), compare com as descrições das etapas, e chame manage_entry_stage com a etapa correta. Se a etapa atual já está correta, passe a mesma etapa."
-	case wantMemory:
-		userMessage = "Siga as instruções do sistema: leia a transcrição INTEIRA e gerencie a memória do lead com a ferramenta manage_lead_memory. Se não houver fatos duráveis novos ou alterados, não chame nenhuma ferramenta."
-	default:
-		userMessage = autoDealInstruction
-	}
-	if wantMemory && (wantAnalysis || wantAutoTag) {
-		userMessage += " Além disso, registre na memória do lead, via manage_lead_memory, os fatos duráveis novos ou alterados desta conversa, se houver."
-	}
-	if wantDeals && (wantAnalysis || wantAutoTag || wantMemory) {
-		userMessage += " " + autoDealFollowUp
 	}
 
 	aiModel := "openai/gpt-4o-mini"
@@ -494,33 +409,131 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		}
 	}
 
-	response, err := j.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  workspaceID,
-		Model:        aiModel,
-		Temperature:  0.2,
-		SystemPrompt: systemPrompt,
-		Messages: []ai.Message{
-			{
-				Role:    "user",
-				Content: userMessage,
-			},
-		},
-		Tools:       aiTools,
-		ToolConfigs: toolConfigs,
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, toolCall := range response.ToolCalls {
-		if toolCall.Name == tools_usecase.ManageEntryStageToolName && toolCall.Result != nil {
-			log.Printf("[analysis-debounce] auto-stage result for entry %s: %v", entryID, toolCall.Result.Result)
+	for _, task := range tasks {
+		response, err := j.aiService.Generate(ctx, ai.GenerateInput{
+			WorkspaceID:  workspaceID,
+			Model:        aiModel,
+			Temperature:  0.2,
+			SystemPrompt: task.system,
+			Messages:     []ai.Message{{Role: "user", Content: task.instruction}},
+			Tools:        []toolsdomain.Definition{task.tool},
+			ToolConfigs:  map[string]map[string]interface{}{task.tool.Name: task.config},
+		})
+		if err != nil {
+			return err
 		}
-		if toolCall.Name == tools_usecase.ManageLeadMemoryToolName && toolCall.Result != nil {
-			log.Printf("[analysis-debounce] auto-memory result for lead %s (entry %s): %v", subject.LeadID, entryID, toolCall.Result.Result)
+		for _, toolCall := range response.ToolCalls {
+			if toolCall.Result != nil {
+				log.Printf("[analysis-debounce] %s result for entry %s: %v", toolCall.Name, entryID, toolCall.Result.Result)
+			}
 		}
 	}
 
 	log.Printf("[analysis-debounce] completed analysis for entry %s", entryID)
 	return nil
+}
+
+type quietConversation struct {
+	subject      *AnalysisSubject
+	entryID      string
+	entryType    string
+	history      []*conversation.Message
+	messageCount int
+}
+
+type quietTask struct {
+	system      string
+	instruction string
+	tool        toolsdomain.Definition
+	config      map[string]interface{}
+}
+
+func (j *analysisDebounceJob) stageTask(c quietConversation) (quietTask, bool) {
+	handler, ok := j.toolRegistry.Handler(tools_usecase.ManageEntryStageToolName)
+	if !ok {
+		return quietTask{}, false
+	}
+	workspaceID := c.subject.WorkspaceID
+	var currentTagName string
+	var allTags []*stage.Stage
+	if j.stageRepo != nil {
+		current, err := stage_usecase.StagesForEntry(j.stageRepo, workspaceID, stage_usecase.EntryRef{
+			EntryID: c.entryID, EntryType: c.entryType, CampaignID: c.subject.ContainerID, CampaignType: c.entryType,
+		})
+		if err != nil {
+			log.Printf("[analysis-debounce] reading the funnel of entry %s failed, offering no stage: %v", c.entryID, err)
+		} else {
+			allTags = current.Stages
+			if current.Current != nil {
+				currentTagName = current.Current.StageName
+			}
+		}
+	}
+	return quietTask{
+		system: BuildAutoTagPrompt(AutoTagPromptInput{
+			CampaignName:   c.subject.ContainerName,
+			MessageCount:   c.messageCount,
+			History:        c.history,
+			CurrentTagName: currentTagName,
+			Tags:           allTags,
+		}),
+		instruction: autoTagInstruction,
+		tool: toolDefinition(handler, toolsdomain.ToolContext{
+			WorkspaceID:  workspaceID,
+			CampaignID:   c.subject.ContainerID,
+			CampaignType: c.entryType,
+			EntryID:      c.entryID,
+		}),
+		config: map[string]interface{}{
+			"__entry_id":      c.entryID,
+			"__entry_type":    c.entryType,
+			"__workspace_id":  workspaceID,
+			"__campaign_id":   c.subject.ContainerID,
+			"__campaign_type": c.entryType,
+		},
+	}, true
+}
+
+func memoryTask(c quietConversation, handler toolsdomain.Handler, memoryBlock string) quietTask {
+	return quietTask{
+		system: BuildAutoMemoryPrompt(AutoMemoryPromptInput{
+			ContainerName:   c.subject.ContainerName,
+			ContactLabel:    c.subject.ContactLabel,
+			MessageCount:    c.messageCount,
+			CurrentMemories: memoryBlock,
+			History:         c.history,
+		}),
+		instruction: autoMemoryInstruction,
+		tool:        handler.Definition(),
+		config: map[string]interface{}{
+			"__workspace_id": c.subject.WorkspaceID,
+			"__lead_id":      c.subject.LeadID,
+			"__agent_id":     c.subject.AgentID,
+			"__entry_id":     c.entryID,
+			"__entry_type":   c.entryType,
+		},
+	}
+}
+
+func dealTask(c quietConversation, handler toolsdomain.Handler, dealsBlock, pipelineID string) quietTask {
+	config := map[string]interface{}{
+		"__workspace_id": c.subject.WorkspaceID,
+		"__entry_id":     c.entryID,
+		"__entry_type":   c.entryType,
+		"__lead_id":      c.subject.LeadID,
+		"__agent_id":     c.subject.AgentID,
+		"pipeline_id":    pipelineID,
+	}
+	return quietTask{
+		system: BuildAutoDealPrompt(AutoDealPromptInput{
+			ContainerName: c.subject.ContainerName,
+			ContactLabel:  c.subject.ContactLabel,
+			MessageCount:  c.messageCount,
+			CurrentDeals:  dealsBlock,
+			History:       c.history,
+		}),
+		instruction: autoDealInstruction,
+		tool:        toolDefinition(handler, toolsdomain.ToolContext{WorkspaceID: c.subject.WorkspaceID, Config: config}),
+		config:      config,
+	}
 }

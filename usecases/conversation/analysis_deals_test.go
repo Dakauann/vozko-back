@@ -30,10 +30,14 @@ func (transcriptStub) CountByEntry(string, shared.EntryType) (int64, error) { re
 type generateRecorder struct {
 	ai.Service
 	inputs []ai.GenerateInput
+	err    error
 }
 
 func (g *generateRecorder) Generate(_ context.Context, input ai.GenerateInput) (*ai.GenerateOutput, error) {
 	g.inputs = append(g.inputs, input)
+	if g.err != nil {
+		return nil, g.err
+	}
 	return &ai.GenerateOutput{}, nil
 }
 

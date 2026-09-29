@@ -33,6 +33,7 @@ import (
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
+	livedecisionhttp "vozko/delivery/http/livedecision"
 	mediashttp "vozko/delivery/http/medias"
 	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
@@ -123,6 +124,7 @@ type router struct {
 	pipelineHandler                *pipelinehttp.PipelineHandler
 	savedViewHandler               *savedviewhttp.SavedViewHandler
 	dealAutomationHandler          *dealautomationhttp.Handler
+	liveDecisionHandler            *livedecisionhttp.Handler
 	opportunityHandler             *opportunityhttp.OpportunityHandler
 	opportunityBoardHandler        *opportunityboardhttp.OpportunityBoardHandler
 	customFieldHandler             *customfieldhttp.CustomFieldHandler
@@ -230,6 +232,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	pipelineHandler *pipelinehttp.PipelineHandler,
 	savedViewHandler *savedviewhttp.SavedViewHandler,
 	dealAutomationHandler *dealautomationhttp.Handler,
+	liveDecisionHandler *livedecisionhttp.Handler,
 	opportunityHandler *opportunityhttp.OpportunityHandler,
 	opportunityBoardHandler *opportunityboardhttp.OpportunityBoardHandler,
 	customFieldHandler *customfieldhttp.CustomFieldHandler,
@@ -341,6 +344,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		pipelineHandler:                pipelineHandler,
 		savedViewHandler:               savedViewHandler,
 		dealAutomationHandler:          dealAutomationHandler,
+		liveDecisionHandler:            liveDecisionHandler,
 		opportunityHandler:             opportunityHandler,
 		opportunityBoardHandler:        opportunityBoardHandler,
 		customFieldHandler:             customFieldHandler,
@@ -499,6 +503,7 @@ func (r *router) setupRoutes() {
 	r.setupAdminWorkspaceAddonRoutes(adminRoutes)
 	r.setupAdminAnalyticsRoutes(adminRoutes)
 	r.setupAdminIssueRoutes(adminRoutes)
+	livedecisionhttp.RegisterAdminRoutes(adminRoutes, r.liveDecisionHandler)
 	r.setupAdminAffiliateRoutes(adminRoutes)
 
 	r.setupConversationRoutes(protected)

@@ -5,6 +5,7 @@ import (
 	"log"
 
 	ca "vozko/domain/audience"
+	ld "vozko/domain/livedecision"
 )
 
 func (h *ConversationHub) BroadcastCommentsAnalyzed(event ca.AnalysisBatchAnalyzed) {
@@ -82,4 +83,11 @@ func (h *ConversationHub) AnalysisStateChanged(state ca.ConversationAnalysisStat
 			},
 		},
 	}
+}
+
+func (h *ConversationHub) LiveReadChanged(read ld.LiveRead) {
+	if h == nil || read.EntryID == "" || read.EntryType == "" || !read.HasLabels() {
+		return
+	}
+	go h.RefreshEntry(read.EntryID, read.EntryType)
 }

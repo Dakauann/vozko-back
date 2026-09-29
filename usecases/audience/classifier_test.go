@@ -151,3 +151,36 @@ func TestClassifier_ProviderErrorHasNoResult(t *testing.T) {
 		t.Fatalf("provider error: res=%+v err=%v", res, err)
 	}
 }
+
+func TestClassifier_SummaryOnlyAsksForTheTextAlone(t *testing.T) {
+	svc := &fakeAI{Output: &ai.GenerateOutput{
+		Message:      ai.Message{Content: `{"results":[{"ref":1,"summary":"Cliente quer agendar.","product_interest":"consulta"}]}`},
+		FinishReason: "stop",
+	}}
+	req := conversationRequest(1)
+	req.SummaryOnly = true
+	res, err := NewClassifier(svc, "m").Classify(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := svc.Inputs[0]
+	props := in.ResponseFormat.JSONSchema["properties"].(map[string]any)[ca.SchemaKeyResults].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	if len(props) != 3 {
+		t.Fatalf("summary schema properties = %v", props)
+	}
+	if strings.Contains(in.SystemPrompt, ca.FieldQualification) || !strings.Contains(in.SystemPrompt, ca.FieldSummary) || !strings.Contains(in.SystemPrompt, "Agendar consultas") {
+		t.Fatalf("summary prompt must carry the goal and ask only for text:\n%s", in.SystemPrompt)
+	}
+	if len(res.Results) != 1 || res.Results[0].Summary != "Cliente quer agendar." {
+		t.Fatalf("results = %+v", res.Results)
+	}
+}
+
+func TestClassifier_SummaryOnlyIsForConversations(t *testing.T) {
+	req := sampleRequest(1)
+	req.SummaryOnly = true
+	svc := &fakeAI{}
+	if _, err := NewClassifier(svc, "m").Classify(context.Background(), req); !errors.Is(err, ca.ErrInvalidClassifyRequest) || len(svc.Inputs) != 0 {
+		t.Fatalf("err = %v, calls = %d", err, len(svc.Inputs))
+	}
+}

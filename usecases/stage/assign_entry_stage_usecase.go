@@ -2,6 +2,8 @@ package stage_usecase
 
 import (
 	"log"
+	"math"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -80,6 +82,9 @@ func (uc *AssignEntryStageUseCase) logMove(
 		"to_stage_id": input.StageID,
 		"stage_name":  to.Name,
 	}
+	if input.Confidence > 0 {
+		details["confidence"] = strconv.Itoa(int(math.Round(input.Confidence * 100)))
+	}
 	if from != nil && from.StageID != "" && from.StageID != input.StageID {
 		details["from_stage_id"] = from.StageID
 		if prev, err := uc.repo.FindByID(from.StageID); err == nil && prev != nil {
@@ -92,11 +97,6 @@ func (uc *AssignEntryStageUseCase) logMove(
 		WithActor(input.ActorID).
 		WithChannel(channel).
 		WithDetails(details).
-		Build())
-	uc.events.Log(ce.New(workspaceID, input.EntryID, input.EntryType, ce.EventTagAdded).
-		WithActor(input.ActorID).
-		WithChannel(channel).
-		WithDetails(map[string]string{"stage_id": input.StageID, "stage_name": to.Name}).
 		Build())
 }
 

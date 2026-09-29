@@ -3,6 +3,8 @@ package conversation_usecase
 import (
 	"strings"
 	"testing"
+
+	"vozko/domain/conversation"
 )
 
 func TestBuildAutoMemoryPromptRendersWithoutFormatErrors(t *testing.T) {
@@ -11,7 +13,7 @@ func TestBuildAutoMemoryPromptRendersWithoutFormatErrors(t *testing.T) {
 		ContactLabel:    "+55 11 99999-0000",
 		MessageCount:    12,
 		CurrentMemories: "\n# Memórias sobre este lead\n- [abc12345 · 2026-08-01] Prefere boleto\n",
-		Transcript:      "User: quero pagar no boleto\nAgent: claro\n",
+		History:         []*conversation.Message{customerSays("quero pagar no boleto"), teamSays("claro")},
 	})
 
 	if strings.Contains(prompt, "%!") {
@@ -35,24 +37,9 @@ func TestBuildAutoMemoryPromptAnnouncesEmptyMemory(t *testing.T) {
 		ContainerName: "Campanha X",
 		ContactLabel:  "+55 11 99999-0000",
 		MessageCount:  3,
-		Transcript:    "User: oi\n",
+		History:       []*conversation.Message{customerSays("oi")},
 	})
 	if !strings.Contains(prompt, "nenhuma memória salva") {
 		t.Fatalf("prompt does not announce the empty memory state:\n%s", prompt)
-	}
-}
-
-func TestBuildAutoMemorySection(t *testing.T) {
-	section := BuildAutoMemorySection("\n# Memórias sobre este lead\n- [abc12345 · 2026-08-01] Prefere boleto\n")
-	if strings.Contains(section, "%!") {
-		t.Fatalf("section has fmt errors: %s", section)
-	}
-	if !strings.Contains(section, "manage_lead_memory") || !strings.Contains(section, "Prefere boleto") {
-		t.Fatalf("section missing tool guidance or the injected block:\n%s", section)
-	}
-
-	empty := BuildAutoMemorySection("")
-	if !strings.Contains(empty, "nenhuma memória salva") {
-		t.Fatalf("empty-memory section does not announce the empty state:\n%s", empty)
 	}
 }

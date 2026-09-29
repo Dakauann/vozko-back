@@ -72,7 +72,7 @@ func TestAssignEntryStage_RecordsTheMoveOnTheTimeline(t *testing.T) {
 	}
 }
 
-func TestAssignEntryStage_AlsoRecordsTagAdded(t *testing.T) {
+func TestAssignEntryStage_RecordsTheMoveOnce(t *testing.T) {
 	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "novo"})
 	log := &recordingLogger{}
 
@@ -82,8 +82,8 @@ func TestAssignEntryStage_AlsoRecordsTagAdded(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if log.ofType(ce.EventTagAdded) == nil {
-		t.Fatal("no tag_added event was recorded")
+	if len(log.events) != 1 || log.events[0].EventType != ce.EventStageChanged {
+		t.Fatalf("a move is one stage_changed event, got %d events", len(log.events))
 	}
 }
 
@@ -181,5 +181,46 @@ func TestAssignEntryStage_RecordsNothingWhenTheMoveIsRejected(t *testing.T) {
 	}
 	if len(log.events) != 0 {
 		t.Fatalf("recorded %d events for a rejected move", len(log.events))
+	}
+}
+
+func TestAMoveByThePlatformAIRecordsItsConfidence(t *testing.T) {
+	repo := stageRepoWith(
+		&stage.Stage{ID: "s-new", WorkspaceID: "ws", Name: "agendado"},
+		&stage.Stage{ID: "s-old", WorkspaceID: "ws", Name: "qualificando"},
+	)
+	repo.entryStage = &stage.EntryStage{EntryID: "e1", StageID: "s-old"}
+	log := &recordingLogger{}
+
+	if _, err := NewAssignEntryStageUseCase(repo, log).Execute("ws", stage.AssignEntryStageInput{
+		StageID:    "s-new",
+		EntryID:    "e1",
+		EntryType:  "unofficial_whatsapp",
+		ActorID:    actor.PlatformAI,
+		Confidence: 0.934,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ev := log.ofType(ce.EventStageChanged)
+	if ev.ActorKind != actor.KindAI || ev.ActorID != "" {
+		t.Fatalf("actor = %s %q, want the platform AI", ev.ActorKind, ev.ActorID)
+	}
+	if got := ev.DetailsMap()["confidence"]; got != "93" {
+		t.Fatalf("confidence = %q, want 93", got)
+	}
+}
+
+func TestAMoveWithoutAConfidenceRecordsNone(t *testing.T) {
+	repo := stageRepoWith(&stage.Stage{ID: "s1", WorkspaceID: "ws", Name: "novo"})
+	log := &recordingLogger{}
+
+	if _, err := NewAssignEntryStageUseCase(repo, log).Execute("ws", stage.AssignEntryStageInput{
+		StageID: "s1", EntryID: "e1", EntryType: "unofficial_whatsapp", ActorID: "user-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := log.ofType(ce.EventStageChanged).DetailsMap()["confidence"]; ok {
+		t.Fatal("a person's move carries no confidence")
 	}
 }

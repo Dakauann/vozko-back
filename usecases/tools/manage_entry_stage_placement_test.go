@@ -1,6 +1,9 @@
 package tools_usecase
 
 import (
+	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"vozko/domain/stage"
@@ -41,7 +44,7 @@ func movedEntryRepo() *placementStageRepo {
 	return &placementStageRepo{
 		entryStage: &stage.EntryStage{StageID: "stage-b1"},
 		stageByID: map[string]*stage.Stage{
-			"stage-b1": {ID: "stage-b1", Name: "Em negociacao", PipelineID: "funnel-b"},
+			"stage-b1": {ID: "stage-b1", WorkspaceID: "ws-1", Name: "Em negociacao", PipelineID: "funnel-b"},
 		},
 		byPipeline: map[string][]*stage.Stage{
 			"funnel-b": {
@@ -105,7 +108,7 @@ func TestAnUnstagedEntryStillUsesItsChannelFunnel(t *testing.T) {
 
 func TestAStageWithNoFunnelFallsBackInsteadOfShowingNothing(t *testing.T) {
 	repo := movedEntryRepo()
-	repo.stageByID["stage-b1"] = &stage.Stage{ID: "stage-b1", Name: "Orfa", PipelineID: ""}
+	repo.stageByID["stage-b1"] = &stage.Stage{ID: "stage-b1", WorkspaceID: "ws-1", Name: "Orfa", PipelineID: ""}
 	tool := &manageEntryStageTool{stageRepo: repo}
 
 	def := tool.DefinitionWithContext(tools.ToolContext{
@@ -153,5 +156,52 @@ func TestTheChannelAISeesTheConversationsOwnFunnel(t *testing.T) {
 	}
 	if repo.askedPipeline != "funnel-b" {
 		t.Fatalf("looked up pipeline %q, want funnel-b", repo.askedPipeline)
+	}
+}
+
+type recordingAssign struct{ moved []stage.AssignEntryStageInput }
+
+func (r *recordingAssign) Execute(_ string, input stage.AssignEntryStageInput) (*stage.EntryStage, error) {
+	r.moved = append(r.moved, input)
+	return &stage.EntryStage{StageID: input.StageID}, nil
+}
+
+func (r *placementStageRepo) EnsureDefaultStagesForCampaign(string, string, string) error { return nil }
+
+func movingTool() (*manageEntryStageTool, *recordingAssign) {
+	repo := movedEntryRepo()
+	repo.byPipeline["funnel-b"][1].ID = "stage-b2"
+	assign := &recordingAssign{}
+	return &manageEntryStageTool{stageRepo: repo, assignStage: assign}, assign
+}
+
+func moveTo(tool *manageEntryStageTool, name string) tools.ExecutionResult {
+	result, _ := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
+		"__entry_id":      "conv-1",
+		"__entry_type":    "telegram",
+		"__workspace_id":  "ws-1",
+		"__campaign_id":   "acc-1",
+		"__campaign_type": "telegram",
+	}, map[string]interface{}{"target_tag_name": name})
+	return result
+}
+
+func TestTheAIMovesWithinTheFunnelTheConversationIsIn(t *testing.T) {
+	tool, assign := movingTool()
+
+	result := moveTo(tool, "Fechado")
+
+	if result.IsError || len(assign.moved) != 1 || assign.moved[0].StageID != "stage-b2" {
+		t.Fatalf("result = %+v, moved = %+v", result, assign.moved)
+	}
+}
+
+func TestTheAICannotPickAStageOfTheCampaignFunnelTheConversationLeft(t *testing.T) {
+	tool, assign := movingTool()
+
+	result := moveTo(tool, "Recebido")
+
+	if !result.IsError || len(assign.moved) != 0 || !strings.Contains(fmt.Sprint(result.Result), "Em negociacao") {
+		t.Fatalf("result = %+v, moved = %+v", result, assign.moved)
 	}
 }

@@ -21,6 +21,7 @@ type Event struct {
 	OpportunityID string         `json:"opportunityId"`
 	Type          EventType      `json:"type"`
 	ActorID       string         `json:"actorId"`
+	ActorName     string         `json:"actorName,omitempty" gorm:"-"`
 	FromStageID   string         `json:"fromStageId,omitempty"`
 	ToStageID     string         `json:"toStageId,omitempty"`
 	ValueCents    int64          `json:"valueCents"`

@@ -158,6 +158,7 @@ AÇÕES:
 "opportunity_id" escolhe a oportunidade. Sem ele, a ação vale para a única oportunidade aberta da conversa; com mais de uma aberta, a ferramenta recusa e devolve a lista para você escolher.
 "value" é um número na moeda da oportunidade, com ponto decimal (ex.: 1500.50). NUNCA invente valores: use apenas o que foi combinado na conversa.`,
 		Parameters: map[string]tools.Parameter{
+			tools.CurrentPositionParameter: tools.CurrentPosition(),
 			"action": {
 				Type:        "string",
 				Description: "Ação a executar.",
@@ -184,7 +185,7 @@ AÇÕES:
 				Description: "Motivo da perda, nas palavras do cliente, para a ação lose.",
 			},
 		},
-		Required:   []string{"action"},
+		Required:   []string{"action", tools.CurrentPositionParameter},
 		Visibility: []tools.ToolVisibility{tools.VisibilityMessaging},
 		Category:   tools.CategoryAgentAction,
 		ConfigSchema: map[string]tools.ConfigParameter{

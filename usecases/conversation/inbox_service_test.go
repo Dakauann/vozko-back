@@ -1,12 +1,14 @@
 package conversation_usecase
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"vozko/domain/conversation"
+	"vozko/domain/livedecision"
 	"vozko/domain/shared"
 )
 
@@ -439,4 +441,40 @@ func TestSearchInbox_EmployeeOneDeptAutoScopesWithoutSelection(t *testing.T) {
 	require.Equal(t, 1, historyProvider.searchCalls)
 	require.True(t, historyProvider.lastSearch.RestrictDepartments)
 	require.Equal(t, []string{"dept-only"}, historyProvider.lastSearch.DepartmentIDs)
+}
+
+type liveReadsStub struct {
+	workspaceID string
+	asked       []string
+}
+
+func (l *liveReadsStub) LiveReadViews(workspaceID string, entryIDs []string, entryType string) (map[string]*livedecision.LiveReadView, error) {
+	l.workspaceID = workspaceID
+	l.asked = append(l.asked, entryType+":"+strings.Join(entryIDs, ","))
+	return map[string]*livedecision.LiveReadView{"e1": {Qualification: "hot_lead"}}, nil
+}
+
+func TestSearchInbox_AttachesTheLiveReadOfEachConversation(t *testing.T) {
+	historyProvider := &inboxServiceTestHistoryProvider{
+		entries: []conversation.InboxEntry{
+			{EntryID: "e1", EntryType: "whatsapp"},
+			{EntryID: "e2", EntryType: "whatsapp"},
+		},
+		totalItems: 2,
+	}
+	authorizer := &inboxServiceTestAuthorizer{canAccessCampaign: true, departmentScopeOkay: true}
+	service := NewInboxService(historyProvider, nil, nil, &inboxServiceTestResolver{workspaceID: "ws-1"}, nil, authorizer, nil, nil)
+	reads := &liveReadsStub{}
+	service.(interface {
+		SetLiveReadProvider(conversation.LiveReadProvider)
+	}).SetLiveReadProvider(reads)
+
+	entries, _, err := service.SearchInbox("user-1", conversation.SearchInboxInput{WorkspaceID: "ws-1", Page: 1, PageSize: 20, SortOrder: "desc"})
+
+	require.NoError(t, err)
+	require.Equal(t, "ws-1", reads.workspaceID)
+	require.Equal(t, []string{"whatsapp:e1,e2"}, reads.asked)
+	require.NotNil(t, entries[0].LiveRead)
+	require.Equal(t, "hot_lead", entries[0].LiveRead.Qualification)
+	require.Nil(t, entries[1].LiveRead)
 }

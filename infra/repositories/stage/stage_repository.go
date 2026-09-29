@@ -422,36 +422,6 @@ func (r *repository) ListByCampaign(workspaceID, campaignID, campaignType string
 	return result, nil
 }
 
-func (r *repository) ListByCampaignIDs(workspaceID string, campaignIDs []string) (map[string][]*stage.Stage, error) {
-	result := make(map[string][]*stage.Stage, len(campaignIDs))
-	if len(campaignIDs) == 0 {
-		return result, nil
-	}
-	stagesByPipeline := make(map[string][]*stage.Stage)
-	for _, cid := range campaignIDs {
-		if strings.TrimSpace(cid) == "" {
-			continue
-		}
-		pid, err := r.resolveConversationPipeline(workspaceID, cid, "")
-		if err != nil {
-			return nil, err
-		}
-		if pid == "" {
-			continue
-		}
-		stages, ok := stagesByPipeline[pid]
-		if !ok {
-			stages, err = r.ListByPipeline(workspaceID, pid)
-			if err != nil {
-				return nil, err
-			}
-			stagesByPipeline[pid] = stages
-		}
-		result[cid] = stages
-	}
-	return result, nil
-}
-
 func (r *repository) NameExistsInCampaign(workspaceID, campaignID, campaignType, name string, excludeID *string) (bool, error) {
 	pipelineID, err := r.resolveConversationPipeline(workspaceID, campaignID, campaignType)
 	if err != nil {
@@ -530,11 +500,6 @@ func (r *repository) GetInitialStageForCampaign(workspaceID, campaignID, campaig
 }
 
 func (r *repository) AssignStage(et *stage.EntryStage) error {
-	if err := r.db.Where("entry_id = ? AND entry_type = ? AND workspace_id = ?", et.EntryID, et.EntryType, et.WorkspaceID).
-		Delete(&schema.EntryStage{}).Error; err != nil {
-		return err
-	}
-
 	dbET := schema.EntryStage{
 		ID:          et.ID,
 		StageID:     et.StageID,
@@ -542,11 +507,45 @@ func (r *repository) AssignStage(et *stage.EntryStage) error {
 		EntryType:   et.EntryType,
 		WorkspaceID: et.WorkspaceID,
 	}
-	if err := r.db.Create(&dbET).Error; err != nil {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockEntryStage(tx, et); err != nil {
+			return err
+		}
+		if err := tx.Where("entry_id = ? AND entry_type = ? AND workspace_id = ?", et.EntryID, et.EntryType, et.WorkspaceID).
+			Delete(&schema.EntryStage{}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&dbET).Error
+	})
+	if err != nil {
 		return err
 	}
 	et.CreatedAt = dbET.CreatedAt
 	return nil
+}
+
+func (r *repository) AssignStageIfNone(et *stage.EntryStage) (bool, error) {
+	assigned := false
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockEntryStage(tx, et); err != nil {
+			return err
+		}
+		result := tx.Exec(`INSERT INTO entry_stages (id, stage_id, entry_id, entry_type, workspace_id, created_at)
+		SELECT ?, ?, ?, ?, ?, now()
+		WHERE NOT EXISTS (
+			SELECT 1 FROM entry_stages
+			WHERE entry_id = ? AND entry_type = ? AND workspace_id = ? AND deleted_at IS NULL
+		)`,
+			et.ID, et.StageID, et.EntryID, et.EntryType, et.WorkspaceID,
+			et.EntryID, et.EntryType, et.WorkspaceID)
+		assigned = result.RowsAffected == 1
+		return result.Error
+	})
+	return assigned, err
+}
+
+func lockEntryStage(tx *gorm.DB, et *stage.EntryStage) error {
+	return tx.Exec("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "entry_stage|"+et.WorkspaceID+"|"+et.EntryType+"|"+et.EntryID).Error
 }
 
 func (r *repository) RemoveStage(StageID, entryID, entryType, workspaceID string) error {

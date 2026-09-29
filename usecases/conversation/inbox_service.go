@@ -18,7 +18,36 @@ type inboxService struct {
 	templateSender       conversation.TemplateSender
 	analysisProvider     conversation.AnalysisProvider
 	analysisSchedule     conversation.AnalysisScheduleReader
+	liveReads            conversation.LiveReadProvider
 	statusProvider       conversation.ConversationStatusUpdater
+}
+
+func (s *inboxService) SetLiveReadProvider(p conversation.LiveReadProvider) {
+	if s != nil {
+		s.liveReads = p
+	}
+}
+
+func (s *inboxService) attachLiveReads(workspaceID string, entries []conversation.InboxEntry, groups map[string][]int) {
+	if s.liveReads == nil || workspaceID == "" {
+		return
+	}
+	for entryType, indices := range groups {
+		entryIDs := make([]string, len(indices))
+		for j, idx := range indices {
+			entryIDs[j] = entries[idx].EntryID
+		}
+		views, err := s.liveReads.LiveReadViews(workspaceID, entryIDs, entryType)
+		if err != nil {
+			log.Printf("[InboxService] reading live reads for %s failed: %v", entryType, err)
+			continue
+		}
+		for _, idx := range indices {
+			if view := views[entries[idx].EntryID]; view != nil {
+				entries[idx].LiveRead = view
+			}
+		}
+	}
 }
 
 func (s *inboxService) SetAnalysisScheduleReader(r conversation.AnalysisScheduleReader) {
@@ -170,106 +199,7 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 	}
 
 	s.assignInitialStages(entries, input.WorkspaceID)
-
-	entryTypeGroups := make(map[string][]int)
-	for i := range entries {
-		if entries[i].EntryID == "" || entries[i].EntryType == "" {
-			continue
-		}
-		entryTypeGroups[entries[i].EntryType] = append(entryTypeGroups[entries[i].EntryType], i)
-	}
-
-	if s.StageProvider != nil && len(entries) > 0 {
-		for entryType, indices := range entryTypeGroups {
-			entryIDs := make([]string, len(indices))
-			for j, idx := range indices {
-				entryIDs[j] = entries[idx].EntryID
-			}
-			batchStages, err := s.StageProvider.GetBatchEntryStages(entryIDs, entryType, stageWorkspaceID)
-			if err == nil {
-				for _, idx := range indices {
-					if tag, ok := batchStages[entries[idx].EntryID]; ok {
-						entries[idx].Stage = tag
-					}
-				}
-			}
-		}
-	}
-
-	if s.labelProvider != nil && len(entries) > 0 {
-		for entryType, indices := range entryTypeGroups {
-			entryIDs := make([]string, len(indices))
-			for j, idx := range indices {
-				entryIDs[j] = entries[idx].EntryID
-			}
-			batchLabels, err := s.labelProvider.GetBatchEntryLabels(entryIDs, entryType, stageWorkspaceID)
-			if err == nil {
-				for _, idx := range indices {
-					if labels, ok := batchLabels[entries[idx].EntryID]; ok {
-						entries[idx].Labels = labels
-					}
-				}
-			}
-		}
-	}
-
-	if len(entries) > 0 && stageWorkspaceID != "" {
-		campaignIDSet := make(map[string]struct{})
-		for i := range entries {
-			if entries[i].CampaignID != "" {
-				campaignIDSet[entries[i].CampaignID] = struct{}{}
-			}
-		}
-		campaignIDs := make([]string, 0, len(campaignIDSet))
-		for id := range campaignIDSet {
-			campaignIDs = append(campaignIDs, id)
-		}
-		if len(campaignIDs) > 0 && s.StageProvider != nil {
-			availStages, err := s.StageProvider.GetAvailableStageByCampaigns(stageWorkspaceID, campaignIDs)
-			if err == nil {
-				for i := range entries {
-					if tags, ok := availStages[entries[i].CampaignID]; ok {
-						entries[i].AvailableStages = tags
-					}
-				}
-			}
-		}
-	}
-
-	if s.analysisProvider != nil && len(entries) > 0 {
-		for entryType, indices := range entryTypeGroups {
-			entryIDs := make([]string, len(indices))
-			for j, idx := range indices {
-				entryIDs[j] = entries[idx].EntryID
-			}
-			batchAnalysis, err := s.analysisProvider.GetBatchLatestAnalysis(entryIDs, entryType)
-			if err == nil {
-				for _, idx := range indices {
-					if a, ok := batchAnalysis[entries[idx].EntryID]; ok {
-						entries[idx].LatestAnalysis = a
-					}
-				}
-			}
-			pending, err := s.analysisProvider.GetBatchAnalysisPending(entryIDs, entryType)
-			if err == nil {
-				for _, idx := range indices {
-					if pending[entries[idx].EntryID] {
-						entries[idx].AnalysisPhase = conversation.AnalysisPhaseQueued
-					}
-				}
-			}
-			if s.analysisSchedule != nil {
-				awaiting, err := s.analysisSchedule.AwaitingAnalysis(entryIDs, entryType)
-				if err == nil {
-					for _, idx := range indices {
-						if awaiting[entries[idx].EntryID] && entries[idx].AnalysisPhase == conversation.AnalysisPhaseNone {
-							entries[idx].AnalysisPhase = conversation.AnalysisPhaseAwaiting
-						}
-					}
-				}
-			}
-		}
-	}
+	s.decorateEntries(entries, stageWorkspaceID)
 
 	return entries, totalItems, nil
 }
@@ -287,7 +217,8 @@ func (s *inboxService) BuildInboxEntry(entryID, entryType string) (*conversation
 		workspaceID, _ = s.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
 	}
 	batch := []conversation.InboxEntry{*entry}
-	s.enrichEntries(batch, workspaceID)
+	s.assignInitialStages(batch, workspaceID)
+	s.decorateEntries(batch, workspaceID)
 	*entry = batch[0]
 	return entry, nil
 }
@@ -302,12 +233,31 @@ func (s *inboxService) SendTemplateForEntry(entryID, entryType, templateID strin
 	return s.templateSender.SendTemplate(entryID, entryType, templateID, parameters, userID, workspaceID)
 }
 
-func (s *inboxService) enrichEntries(entries []conversation.InboxEntry, campaignWorkspaceID string) {
+func (s *inboxService) attachAvailableStages(workspaceID string, entries []conversation.InboxEntry) {
+	if s.StageProvider == nil || workspaceID == "" || len(entries) == 0 {
+		return
+	}
+	placements := make([]conversation.StagePlacement, len(entries))
+	for i, entry := range entries {
+		placements[i] = conversation.StagePlacement{CampaignID: entry.CampaignID, CampaignType: entry.EntryType}
+		if entry.Stage != nil {
+			placements[i].CurrentStageID = entry.Stage.StageID
+		}
+	}
+	available, err := s.StageProvider.GetAvailableStages(workspaceID, placements)
+	if err != nil {
+		log.Printf("[InboxService] Error resolving the stages each conversation can move to: %v", err)
+		return
+	}
+	for i := range entries {
+		entries[i].AvailableStages = available[i]
+	}
+}
+
+func (s *inboxService) decorateEntries(entries []conversation.InboxEntry, campaignWorkspaceID string) {
 	if len(entries) == 0 {
 		return
 	}
-
-	s.assignInitialStages(entries, campaignWorkspaceID)
 
 	entryTypeGroups := make(map[string][]int)
 	for i := range entries {
@@ -355,30 +305,7 @@ func (s *inboxService) enrichEntries(entries []conversation.InboxEntry, campaign
 		}
 	}
 
-	if len(entries) > 0 && campaignWorkspaceID != "" {
-		campaignIDSet := make(map[string]struct{})
-		for i := range entries {
-			if entries[i].CampaignID != "" {
-				campaignIDSet[entries[i].CampaignID] = struct{}{}
-			}
-		}
-		campaignIDs := make([]string, 0, len(campaignIDSet))
-		for id := range campaignIDSet {
-			campaignIDs = append(campaignIDs, id)
-		}
-		if len(campaignIDs) > 0 && s.StageProvider != nil {
-			availStages, err := s.StageProvider.GetAvailableStageByCampaigns(campaignWorkspaceID, campaignIDs)
-			if err == nil {
-				for i := range entries {
-					if tags, ok := availStages[entries[i].CampaignID]; ok {
-						entries[i].AvailableStages = tags
-					}
-				}
-			} else {
-				log.Printf("[InboxService] Error batch-fetching available tags: %v", err)
-			}
-		}
-	}
+	s.attachAvailableStages(campaignWorkspaceID, entries)
 
 	if s.analysisProvider != nil {
 		for entryType, indices := range entryTypeGroups {
@@ -411,11 +338,10 @@ func (s *inboxService) enrichEntries(entries []conversation.InboxEntry, campaign
 						}
 					}
 				}
-			} else {
-				log.Printf("[InboxService] Error batch-fetching analysis for type %s: %v", entryType, err)
 			}
 		}
 	}
+	s.attachLiveReads(campaignWorkspaceID, entries, entryTypeGroups)
 }
 
 func (s *inboxService) assignInitialStages(entries []conversation.InboxEntry, campaignWorkspaceID string) {

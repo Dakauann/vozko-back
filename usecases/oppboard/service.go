@@ -67,6 +67,14 @@ type Board struct {
 	Columns []Column `json:"columns"`
 }
 
+func (b *Board) Opportunities() []*opportunity.Opportunity {
+	var out []*opportunity.Opportunity
+	for _, column := range b.Columns {
+		out = append(out, column.Entries...)
+	}
+	return out
+}
+
 type BoardInput struct {
 	WorkspaceID string
 	UserID      string

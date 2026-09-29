@@ -30,6 +30,7 @@ import (
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
+	livedecisionhttp "vozko/delivery/http/livedecision"
 	mediashttp "vozko/delivery/http/medias"
 	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
@@ -93,6 +94,7 @@ import (
 	"vozko/domain/customer"
 	customfield_domain "vozko/domain/customfield"
 	dealautomation_domain "vozko/domain/dealautomation"
+	decision_domain "vozko/domain/decision"
 	export_domain "vozko/domain/export"
 	ia_domain "vozko/domain/inbox_assignment"
 	"vozko/domain/insurance"
@@ -170,6 +172,7 @@ import (
 	customfield_usecase "vozko/usecases/customfield"
 	dealautomation_usecase "vozko/usecases/dealautomation"
 	ia_usecase "vozko/usecases/inbox_assignment"
+	livedecisions_usecase "vozko/usecases/livedecisions"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
 	"vozko/usecases/opportunityio"
@@ -206,6 +209,9 @@ type Container struct {
 
 	cfPublisher       *cloudflare.Publisher
 	cfPublisherCancel context.CancelFunc
+
+	liveCoalescer       *livedecisions_usecase.Coalescer
+	liveCoalescerCancel context.CancelFunc
 
 	analyticsGate cache.Gate
 }
@@ -411,6 +417,10 @@ type services struct {
 	recordingQueueSub             messaging.MessageQueueSub
 	googleCalendar                calendar_domain.GoogleOAuthService
 	cachedBalanceChecker          balance_domain.CachedBalanceChecker
+	liveGate                      *livedecisions_usecase.GateHandle
+	liveSubjects                  *conversation_usecase.LiveSubjects
+	analysisScheduler             *conversation_usecase.AnalysisScheduler
+	decisionModel                 decision_domain.Model
 	serviceMessageBilling         conversation_domain.ServiceMessageBilling
 
 	callSessions                callsession_domain.CallSessionRegistry
@@ -687,6 +697,7 @@ type useCases struct {
 	opportunity    *opportunity_usecase.Service
 	personDeals    opportunity_domain.PersonDealsUseCase
 	dealAutomation *dealautomation_usecase.UseCase
+	liveDecisions  *livedecisions_usecase.Service
 	customField    *customfield_usecase.Service
 
 	createLabel      label_domain.CreateLabelUseCase
@@ -969,6 +980,7 @@ type handlers_ struct {
 	pipeline                *pipelinehttp.PipelineHandler
 	savedView               *savedviewhttp.SavedViewHandler
 	dealAutomation          *dealautomationhttp.Handler
+	liveDecision            *livedecisionhttp.Handler
 	opportunity             *opportunityhttp.OpportunityHandler
 	opportunityBoard        *opportunityboardhttp.OpportunityBoardHandler
 	customField             *customfieldhttp.CustomFieldHandler

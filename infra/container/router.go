@@ -50,6 +50,7 @@ func (c *Container) initRouter() {
 		c.handlers.pipeline,
 		c.handlers.savedView,
 		c.handlers.dealAutomation,
+		c.handlers.liveDecision,
 		c.handlers.opportunity,
 		c.handlers.opportunityBoard,
 		c.handlers.customField,

@@ -167,7 +167,7 @@ func TestBroadcastEntryUpdateLocal_FiltersConnectionsByConversationStatus(t *tes
 		hub.userConnections[c.UserID] = map[string]bool{c.ID: true}
 	}
 
-	hub.broadcastEntryUpdateLocal("entry-1", "whatsapp", nil)
+	hub.broadcastEntryUpdateLocal("entry-1", "whatsapp", nil, false)
 
 	require.Len(t, connAll.Send, 1, "connection with no status filter should receive update")
 	require.Len(t, connNew.Send, 1, "connection filtering for 'new' should receive update")
@@ -195,9 +195,9 @@ func TestBroadcastEntryUpdateLocal_NoStatusFilterReceivesAllStatuses(t *testing.
 	hub.connections[conn.ID] = conn
 	hub.userConnections[conn.UserID] = map[string]bool{conn.ID: true}
 
-	hub.broadcastEntryUpdateLocal("e-new", "whatsapp", nil)
-	hub.broadcastEntryUpdateLocal("e-ongoing", "whatsapp", nil)
-	hub.broadcastEntryUpdateLocal("e-finished", "whatsapp", nil)
+	hub.broadcastEntryUpdateLocal("e-new", "whatsapp", nil, false)
+	hub.broadcastEntryUpdateLocal("e-ongoing", "whatsapp", nil, false)
+	hub.broadcastEntryUpdateLocal("e-finished", "whatsapp", nil, false)
 
 	require.Len(t, conn.Send, 3, "unfiltered connection should receive entry updates for all statuses")
 }

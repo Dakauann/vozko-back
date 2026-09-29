@@ -143,13 +143,23 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 		conversationAdapters[ca.SourceOf(e)] = bundle.ConversationAdapter
 	}
 
+	decisions := c.services.decisionModel
+	classifier := cauc.NewDecisionClassifier(
+		cauc.NewClassifier(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		decisions, c.services.liveGate, c.cfg.AudienceSummaryModel,
+	)
+	roleInferrer := cauc.NewDecisionRoleInferrer(
+		cauc.NewRoleInferrer(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		decisions, c.services.liveGate,
+	)
+
 	engine, err := cauc.NewEngine(cauc.EngineDeps{
 		Repo:            repo,
 		Settings:        resolver,
 		Batches:         batches,
 		Adapters:        adapters,
 		Conversations:   conversationAdapters,
-		Classifier:      cauc.NewClassifier(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Classifier:      classifier,
 		Scheduler:       scheduler,
 		Usage:           usageLimiter,
 		WorkspaceLimits: workspaceSettings,
@@ -176,7 +186,7 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 	bundle.Rollup = cauc.NewRollupJob(repo, settings, authors, rollups, state, clock)
 	bundle.Rollup.SetRoleInference(cauc.NewRoleInferenceJob(cauc.RoleInferenceDeps{
 		Authors: authors, Repo: repo, Settings: settings, Adapters: adapters,
-		Inferrer: cauc.NewRoleInferrer(c.services.ai, c.cfg.OpenRouterDefaultModel),
+		Inferrer: roleInferrer,
 		Batches:  batches,
 		Balance:  c.services.cachedBalanceChecker, Clock: clock,
 	}))

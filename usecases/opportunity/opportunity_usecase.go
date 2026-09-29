@@ -37,16 +37,17 @@ type EntryDirectory interface {
 }
 
 type Deps struct {
-	Repo      opportunity.Repository
-	Links     opportunity.LinkRepository
-	Fields    customfield.Repository
-	Stages    StageReader
-	Pipelines PipelineReader
-	Owners    opportunity.OwnerDirectory
-	Leads     LeadDirectory
-	Entries   EntryDirectory
-	Assign    AssignAccess
-	Clock     func() time.Time
+	Repo          opportunity.Repository
+	Links         opportunity.LinkRepository
+	Fields        customfield.Repository
+	Stages        StageReader
+	Pipelines     PipelineReader
+	Owners        opportunity.OwnerDirectory
+	Leads         LeadDirectory
+	Entries       EntryDirectory
+	Conversations ConversationDirectory
+	Assign        AssignAccess
+	Clock         func() time.Time
 }
 
 type AssignAccess interface {
@@ -54,16 +55,17 @@ type AssignAccess interface {
 }
 
 type Service struct {
-	repo      opportunity.Repository
-	links     opportunity.LinkRepository
-	fields    customfield.Repository
-	stages    StageReader
-	pipelines PipelineReader
-	owners    opportunity.OwnerDirectory
-	leads     LeadDirectory
-	entries   EntryDirectory
-	assign    AssignAccess
-	now       func() time.Time
+	repo          opportunity.Repository
+	links         opportunity.LinkRepository
+	fields        customfield.Repository
+	stages        StageReader
+	pipelines     PipelineReader
+	owners        opportunity.OwnerDirectory
+	leads         LeadDirectory
+	entries       EntryDirectory
+	conversations ConversationDirectory
+	assign        AssignAccess
+	now           func() time.Time
 }
 
 func NewService(deps Deps) *Service {
@@ -72,16 +74,17 @@ func NewService(deps Deps) *Service {
 		clock = func() time.Time { return time.Now().UTC() }
 	}
 	return &Service{
-		repo:      deps.Repo,
-		links:     deps.Links,
-		fields:    deps.Fields,
-		stages:    deps.Stages,
-		pipelines: deps.Pipelines,
-		owners:    deps.Owners,
-		leads:     deps.Leads,
-		entries:   deps.Entries,
-		assign:    deps.Assign,
-		now:       clock,
+		repo:          deps.Repo,
+		links:         deps.Links,
+		fields:        deps.Fields,
+		stages:        deps.Stages,
+		pipelines:     deps.Pipelines,
+		owners:        deps.Owners,
+		leads:         deps.Leads,
+		entries:       deps.Entries,
+		conversations: deps.Conversations,
+		assign:        deps.Assign,
+		now:           clock,
 	}
 }
 
@@ -367,10 +370,6 @@ func (s *Service) UnlinkConversation(workspaceID, opportunityID, entryID, entryT
 		return err
 	}
 	return s.links.Unlink(opportunityID, entryID, entryType)
-}
-
-func (s *Service) ListConversations(workspaceID, opportunityID string) ([]opportunity.ConversationLink, error) {
-	return s.links.ListByOpportunity(workspaceID, opportunityID)
 }
 
 func (s *Service) ListOpportunitiesForEntry(workspaceID, entryID, entryType string) ([]*opportunity.Opportunity, error) {

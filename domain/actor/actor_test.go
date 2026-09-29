@@ -76,3 +76,13 @@ func TestFormatCampaign(t *testing.T) {
 		t.Fatalf("FormatCampaign blank = %q", got)
 	}
 }
+
+func TestThePlatformAIIsAnAIWithoutAnAgent(t *testing.T) {
+	if KindOf(PlatformAI) != KindAI {
+		t.Fatalf("kind = %s", KindOf(PlatformAI))
+	}
+	kind, id := Normalize(KindOf(PlatformAI), PlatformAI)
+	if kind != KindAI || id != "" {
+		t.Fatalf("normalized to %s %q; the platform AI names no agent", kind, id)
+	}
+}

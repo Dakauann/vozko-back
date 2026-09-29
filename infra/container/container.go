@@ -15,6 +15,8 @@ import (
 	template_infra "vozko/infra/whatsapp/template"
 
 	balance_usecase "vozko/usecases/balance"
+	conversation_usecase "vozko/usecases/conversation"
+	livedecisions_usecase "vozko/usecases/livedecisions"
 	"vozko/usecases/whatsapp/servicemessage"
 	workspace_plan_usecase "vozko/usecases/workspace_plan"
 )
@@ -31,6 +33,7 @@ func New() *Container {
 	c.initDatabase()
 	c.initPII()
 	c.initServices()
+	c.initDecisionModel()
 	c.initRepositories()
 	c.wireContainerPipelines()
 
@@ -45,6 +48,9 @@ func New() *Container {
 
 	c.services.cachedBalanceChecker = balance_usecase.NewCachedBalanceChecker(
 		c.repositories.balance, c.redisProvider.SharedState(), 10*time.Second)
+	c.services.liveGate = &livedecisions_usecase.GateHandle{}
+	c.services.liveSubjects = conversation_usecase.NewLiveSubjects()
+	c.services.analysisScheduler = conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState(), c.services.liveGate)
 
 	serviceMessageBilling, err := servicemessage.NewBilling(servicemessage.Deps{
 		Pricer:         whatsappPricer,
@@ -65,6 +71,7 @@ func New() *Container {
 	c.initTelegram()
 	c.initUnofficialWhatsApp()
 	c.initUseCases(consumeWhatsappTemplateUC)
+	c.initLiveDecisions()
 	c.startConversationHub()
 	c.wireInstagramConversationStack()
 	c.wireFacebookConversationStack()
@@ -83,6 +90,7 @@ func (c *Container) Start(port string) error {
 
 	c.jobRunner.StartAll()
 	log.Println("Background jobs started")
+	c.startLiveDecisions()
 
 	c.metricsHTTP.Start()
 
@@ -114,6 +122,9 @@ func (c *Container) Shutdown() {
 
 	if c.cfPublisherCancel != nil {
 		c.cfPublisherCancel()
+	}
+	if c.liveCoalescerCancel != nil {
+		c.liveCoalescerCancel()
 	}
 
 	c.metricsHTTP.Shutdown()

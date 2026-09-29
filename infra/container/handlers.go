@@ -34,6 +34,7 @@ import (
 	labelhttp "vozko/delivery/http/label"
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
+	livedecisionhttp "vozko/delivery/http/livedecision"
 	mediashttp "vozko/delivery/http/medias"
 	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
@@ -367,6 +368,7 @@ func (c *Container) initHandlers() {
 			c.useCases.pipelineUsage,
 		),
 		dealAutomation: dealautomationhttp.NewHandler(c.useCases.dealAutomation),
+		liveDecision:   livedecisionhttp.NewHandler(c.useCases.liveDecisions),
 		savedView: savedviewhttp.NewSavedViewHandler(
 			c.useCases.createSavedView,
 			c.useCases.updateSavedView,
@@ -379,12 +381,13 @@ func (c *Container) initHandlers() {
 			c.services.opportunityIO,
 			c.useCases.personDeals,
 			c.services.reportService,
+			c.actorNames(),
 		),
 		opportunityBoard: opportunityboardhttp.NewOpportunityBoardHandler(oppboard_usecase.NewService(
 			c.repositories.opportunity,
 			c.repositories.stage,
 			c.services.conversationAuth,
-		)),
+		), c.actorNames()),
 		customField: customfieldhttp.NewCustomFieldHandler(c.useCases.customField),
 		crmBoard:    crmboardhttp.NewCRMBoardHandler(crmBoardService),
 		crmBulk:     crmbulkhttp.NewCRMBulkHandler(crmBulkService),

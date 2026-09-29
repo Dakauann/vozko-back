@@ -7,6 +7,7 @@ const (
 	WorkflowPrefix = "workflow:"
 	CampaignPrefix = "campaign:"
 	SystemID       = "system"
+	PlatformAI     = AIPrefix
 )
 
 type Kind string
@@ -114,4 +115,8 @@ func parsePrefixed(prefix, id string) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(id, prefix))
+}
+
+type Namer interface {
+	Names(actorIDs ...string) map[string]string
 }

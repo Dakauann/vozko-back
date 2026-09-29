@@ -158,15 +158,16 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	assignEntryStageUC := stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage, timeline)
 
 	opportunitySvc := opportunity_usecase.NewService(opportunity_usecase.Deps{
-		Repo:      c.repositories.opportunity,
-		Links:     c.repositories.opportunityLink,
-		Fields:    c.repositories.customField,
-		Stages:    c.repositories.stage,
-		Pipelines: c.repositories.pipeline,
-		Owners:    c.repositories.opportunityOwners,
-		Leads:     lead_usecase.NewQueries(c.repositories.lead),
-		Entries:   c.services.campaignWorkspaceResolver,
-		Assign:    workspace_usecase.NewCheckAccessUseCase(c.repositories.workspace),
+		Repo:          c.repositories.opportunity,
+		Links:         c.repositories.opportunityLink,
+		Fields:        c.repositories.customField,
+		Stages:        c.repositories.stage,
+		Pipelines:     c.repositories.pipeline,
+		Owners:        c.repositories.opportunityOwners,
+		Leads:         lead_usecase.NewQueries(c.repositories.lead),
+		Entries:       c.services.campaignWorkspaceResolver,
+		Conversations: c.services.inboxService,
+		Assign:        workspace_usecase.NewCheckAccessUseCase(c.repositories.workspace),
 	})
 
 	toolHandlers := []tools.Handler{
@@ -486,6 +487,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	handleWhatsAppMessageUC = conversation_usecase.AttachTemplateSendAttempts(
 		handleWhatsAppMessageUC, c.repositories.whatsappTemplateSend, c.repositories.balance)
+	if setter, ok := handleWhatsAppMessageUC.(interface {
+		SetAnalysisScheduler(*conversation_usecase.AnalysisScheduler)
+	}); ok {
+		setter.SetAnalysisScheduler(c.services.analysisScheduler)
+	}
 	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate)
 	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.services.fileReader)
 	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba).WithNotifier(notifierUC, dashboardURL)

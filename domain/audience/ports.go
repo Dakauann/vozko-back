@@ -2,6 +2,8 @@ package audience
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"vozko/domain/shared"
@@ -72,6 +74,24 @@ type ClassifyRequest struct {
 	Context      ContainerContext
 	Instructions string
 	Batch        BatchPlan
+	SummaryOnly  bool
+}
+
+func (r ClassifyRequest) Validate() error {
+	if strings.TrimSpace(r.WorkspaceID) == "" {
+		return ErrWorkspaceRequired
+	}
+	if r.SummaryOnly && r.SubjectKind != SubjectKindConversation {
+		return ErrInvalidClassifyRequest
+	}
+	return nil
+}
+
+func (r ClassifyRequest) ResponseSchema() map[string]any {
+	if r.SummaryOnly {
+		return ConversationSummaryResponseSchema()
+	}
+	return BatchResponseSchemaFor(r.SubjectKind, r.Topics)
 }
 
 type ClassifyResult struct {
@@ -151,6 +171,16 @@ type RoleInferRequest struct {
 	Model        string
 	Instructions string
 	Comments     []string
+}
+
+func (r RoleInferRequest) Validate() error {
+	if strings.TrimSpace(r.WorkspaceID) == "" {
+		return ErrWorkspaceRequired
+	}
+	if len(r.Comments) < MinCommentsForRole {
+		return fmt.Errorf("%w: not enough comments to judge anyone by", ErrInvalidFilter)
+	}
+	return nil
 }
 
 type RoleInferResult struct {

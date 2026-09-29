@@ -26,26 +26,29 @@ func SupportedCurrencies() []string {
 }
 
 type Opportunity struct {
-	ID           string         `json:"id"`
-	WorkspaceID  string         `json:"workspaceId"`
-	LeadID       string         `json:"leadId"`
-	PipelineID   string         `json:"pipelineId"`
-	StageID      string         `json:"stageId"`
-	OwnerID      string         `json:"ownerId,omitempty"`
-	CarteiraID   string         `json:"carteiraId,omitempty"`
-	Title        string         `json:"title"`
-	ValueCents   int64          `json:"valueCents"`
-	Currency     string         `json:"currency"`
-	Status       Status         `json:"status"`
-	LostReasonID string         `json:"lostReasonId,omitempty"`
-	Source       string         `json:"source,omitempty"`
-	CloseDate    *time.Time     `json:"closeDate,omitempty"`
-	CreatedBy    string         `json:"createdBy,omitempty"`
-	ClosedBy     string         `json:"closedBy,omitempty"`
-	CustomFields map[string]any `json:"customFields,omitempty"`
-	Version      int64          `json:"version"`
-	CreatedAt    time.Time      `json:"createdAt"`
-	UpdatedAt    time.Time      `json:"updatedAt"`
+	ID            string         `json:"id"`
+	WorkspaceID   string         `json:"workspaceId"`
+	LeadID        string         `json:"leadId"`
+	PipelineID    string         `json:"pipelineId"`
+	StageID       string         `json:"stageId"`
+	OwnerID       string         `json:"ownerId,omitempty"`
+	OwnerName     string         `json:"ownerName,omitempty" gorm:"-"`
+	CarteiraID    string         `json:"carteiraId,omitempty"`
+	Title         string         `json:"title"`
+	ValueCents    int64          `json:"valueCents"`
+	Currency      string         `json:"currency"`
+	Status        Status         `json:"status"`
+	LostReasonID  string         `json:"lostReasonId,omitempty"`
+	Source        string         `json:"source,omitempty"`
+	CloseDate     *time.Time     `json:"closeDate,omitempty"`
+	CreatedBy     string         `json:"createdBy,omitempty"`
+	CreatedByName string         `json:"createdByName,omitempty" gorm:"-"`
+	ClosedBy      string         `json:"closedBy,omitempty"`
+	ClosedByName  string         `json:"closedByName,omitempty" gorm:"-"`
+	CustomFields  map[string]any `json:"customFields,omitempty"`
+	Version       int64          `json:"version"`
+	CreatedAt     time.Time      `json:"createdAt"`
+	UpdatedAt     time.Time      `json:"updatedAt"`
 }
 
 var (

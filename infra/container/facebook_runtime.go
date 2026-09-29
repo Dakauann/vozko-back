@@ -56,7 +56,7 @@ func (c *Container) initFacebookRuntime(history conversation_domain.MessageHisto
 		Automation: conversation_usecase.NewInboundAutomation(
 			c.useCases.triggerEvaluator,
 			c.mustChannelAIReply(),
-			conversation_usecase.NewAnalysisScheduler(c.redisProvider.SharedState()),
+			c.services.analysisScheduler,
 			c.repositories.conversation,
 		),
 		OurAppID: c.cfg.MetaAppID,

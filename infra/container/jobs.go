@@ -14,8 +14,8 @@ import (
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	conversation_usecase "vozko/usecases/conversation"
-	tools_usecase "vozko/usecases/tools"
 	ia_usecase "vozko/usecases/inbox_assignment"
+	tools_usecase "vozko/usecases/tools"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	whatsapp_campaign_usecase "vozko/usecases/whatsapp_campaign"
 )
@@ -60,7 +60,7 @@ func (c *Container) initJobRunner() {
 		channels = append(channels, analysisChannel{shared.EntryTypeUnofficialWhatsApp, resolver})
 	}
 
-	sinks := []analysisSubjectSink{}
+	sinks := []analysisSubjectSink{c.services.liveSubjects}
 	if setter, ok := analysisDebounceJob.(analysisSubjectSink); ok {
 		sinks = append(sinks, setter)
 	}
@@ -83,6 +83,11 @@ func (c *Container) initJobRunner() {
 		SetDealAutomation(conversation_usecase.DealAutomationSettings, tools_usecase.OpportunityManager)
 	}); ok {
 		d.SetDealAutomation(c.useCases.dealAutomation, c.useCases.opportunity)
+	}
+	if q, ok := analysisDebounceJob.(interface {
+		SetQuietCascade(conversation_usecase.QuietCascade)
+	}); ok {
+		q.SetQuietCascade(c.services.liveGate)
 	}
 
 	registerAnalysisChannels(channels, sinks...)
