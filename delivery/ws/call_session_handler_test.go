@@ -35,6 +35,7 @@ type fakeCallSessionCRMCall struct {
 	hangupCount    int32
 	closeOnHangup  bool
 	closeAfterHang time.Duration
+	contact        conversation.CallContact
 }
 
 func newFakeCallSessionCRMCall(id string) *fakeCallSessionCRMCall {
@@ -50,6 +51,9 @@ func (c *fakeCallSessionCRMCall) ID() string                            { return
 func (c *fakeCallSessionCRMCall) AudioStream() <-chan []byte            { return c.audio }
 func (c *fakeCallSessionCRMCall) Events() <-chan conversation.CallEvent { return c.events }
 func (c *fakeCallSessionCRMCall) Done() <-chan struct{}                 { return c.done }
+func (c *fakeCallSessionCRMCall) Contact() (conversation.CallContact, bool) {
+	return c.contact, c.contact.Known()
+}
 
 func (c *fakeCallSessionCRMCall) SendAudio(pcm []byte) error {
 	c.mu.Lock()

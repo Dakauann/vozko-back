@@ -1,6 +1,10 @@
 package label
 
-import "vozko/domain/shared"
+import (
+	"strings"
+
+	"vozko/domain/shared"
+)
 
 type CreateLabelUseCase interface {
 	Execute(workspaceID string, input CreateLabelInput) (*Label, error)
@@ -65,4 +69,47 @@ type ReorderLabelsInput struct {
 type EntryLabelsUseCase interface {
 	Apply(workspaceID string, by shared.Person, input AssignEntryLabelInput) (*EntryLabel, error)
 	Remove(workspaceID string, by shared.Person, input RemoveEntryLabelInput) error
+}
+
+type LabelAction string
+
+const (
+	LabelActionAdd    LabelAction = "add"
+	LabelActionRemove LabelAction = "remove"
+)
+
+func LabelActions() []string {
+	return []string{string(LabelActionAdd), string(LabelActionRemove)}
+}
+
+func ParseLabelAction(raw string) (LabelAction, error) {
+	switch action := LabelAction(strings.ToLower(strings.TrimSpace(raw))); action {
+	case "", LabelActionAdd:
+		return LabelActionAdd, nil
+	case LabelActionRemove:
+		return LabelActionRemove, nil
+	}
+	return "", ErrInvalidLabelAction
+}
+
+type LabelChangeRequest struct {
+	Action    LabelAction
+	LabelID   string
+	EntryID   string
+	EntryType string
+	ActorID   string
+}
+
+type LabelChange struct {
+	LabelID   string
+	LabelName string
+	Unchanged bool
+}
+
+type AutomationLabeler interface {
+	Change(workspaceID string, request LabelChangeRequest) (LabelChange, error)
+}
+
+type UpdateBroadcaster interface {
+	BroadcastLabelUpdate(workspaceID, entryID, entryType string)
 }

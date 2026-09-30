@@ -108,6 +108,10 @@ func (r *JobRunner) SetUnofficialWhatsAppJobs(sessionHealth, verifyIntegrity, re
 
 }
 
+func (r *JobRunner) SetUnofficialWhatsAppHistoryJob(sweep ctxJob) {
+	r.addChannelJob("unofficial_whatsapp_history_sweep", time.Minute, sweep)
+}
+
 func (r *JobRunner) SetAssignmentJobs(rescue ctxJob) {
 	r.addChannelJob("assignment_rescue", time.Minute, rescue)
 }

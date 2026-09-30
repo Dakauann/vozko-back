@@ -196,6 +196,7 @@ type Instance struct {
 	LastDisconnectAt  *time.Time `json:"lastDisconnectAt,omitempty"`
 	LastDisconnectWhy string     `json:"lastDisconnectReason,omitempty"`
 	LastPolledAt      *time.Time `json:"lastPolledAt,omitempty"`
+	DeletedAt         *time.Time `json:"-"`
 
 	Restriction Restriction `json:"restriction"`
 
@@ -214,6 +215,7 @@ type Instance struct {
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
 	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 	HandleGroups         bool    `json:"handleGroups"`
+	ImportHistory        bool    `json:"importHistory"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

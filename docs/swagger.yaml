@@ -19015,6 +19015,825 @@ paths:
       summary: Listar permissões disponíveis
       tags:
       - Workspaces
+  /ws/call-session:
+    get:
+      description: |-
+        Leva o áudio das ligações entre o navegador e a Vozko: faz ligações por troncos SIP e pelo WhatsApp, recebe chamadas, transfere para colegas e filas e mostra quem está disponível.
+
+        ## Conectar
+
+        ```text
+        wss://SUA_URL_BASE/ws/call-session?token=SEU_ACCESS_TOKEN&workspaceId=SEU_WORKSPACE_ID&workspace_id=SEU_WORKSPACE_ID
+        ```
+
+        - Permissões: `conversations:update` e `call_session:use` no workspace.
+
+        Ao conectar você recebe `conversation:connected` com `{"feature": "call-session", "workspace_id": string, "user_id": string}` e, em seguida, a presença da equipe em `call-session:presence`.
+
+        ## Áudio
+
+        Nos dois sentidos o áudio é PCM de 16 bits little-endian, mono, codificado em base64.
+
+        - Você envia em `call_audio`, informando `sample_rate`. O servidor converte 16000, 22050, 24000, 32000, 44100 e 48000 Hz para 8000 Hz; outras taxas são descartadas.
+        - Você recebe em `call:audio`, sempre a 8000 Hz.
+
+        ## Mensagens que você envia
+
+        Formato: `{"type": "...", "payload": {...}}`. Tipos desconhecidos são ignorados.
+
+        | type | payload | O que faz |
+        |---|---|---|
+        | `start_call` | `{"phone_number": string, "trunk_id"?: string, "whatsapp_phone_id"?: string, "request_id"?: string}` | Faz uma ligação. Com `trunk_id` sai pelo tronco SIP (exige `sip_trunks:call`); sem ele, pelo número de WhatsApp em `whatsapp_phone_id`. O andamento chega em `call:status`. |
+        | `end_call` | `{}` | Desliga a ligação atual. |
+        | `call_audio` | `{"audio": string, "sample_rate"?: number}` | Áudio do microfone. Sem resposta. |
+        | `call:incoming_accept` | `{"offer_id": string}` | Atende uma chamada oferecida em `call:incoming`. Precisa vir da mesma conexão que recebeu a oferta. |
+        | `call:incoming_decline` | `{"offer_id": string, "reason"?: string}` | Recusa a chamada; ela segue para o próximo atendente. |
+        | `call:transfer` | `{"target_kind": "member" \| "queue", "user_id"?: string, "queue_id"?: string, "notes"?: string}` | Transfere a ligação atual para um colega (`user_id`) ou uma fila (`queue_id`). `notes` chega a quem atender, até 500 caracteres. O andamento chega em `call:transfer_status`. |
+        | `call:transfer_cancel` | `{"call_id": string}` | Cancela uma transferência para colega ainda tocando; a ligação volta para você. |
+
+        Para transferir é preciso `call_session:transfer` e poder atender aquele tipo de ligação. Colegas e filas disponíveis vêm de `call-session:presence` e de `GET /call-queues/transfer-targets`.
+
+        ## Mensagens que você recebe
+
+        | type | payload | Quando |
+        |---|---|---|
+        | `conversation:connected` | `{"feature": "call-session", "workspace_id", "user_id"}` | Ao conectar. |
+        | `call:status` | `{"status": "ringing" \| "answered", "reason"?, "call_id", "phone_number"?, "request_id"?}` | A ligação está chamando ou foi atendida. Também chega com `answered` quando você assume uma ligação transferida ou retomada. |
+        | `call:audio` | `{"audio": string, "sample_rate": 8000}` | Áudio de quem está do outro lado. |
+        | `call:ended` | `{"call_id", "phone_number"?, "reason"?, "duration_seconds": number, "request_id"?}` | A ligação terminou. `reason`: `ended`, `failed`, `busy`, `no_answer`, `declined`, `cancelled`, `insufficient_balance` ou `balance_check_error`. |
+        | `call:waiting_slot` | `{"reason": string}` | Todas as linhas estão ocupadas; a ligação começa quando uma liberar. |
+        | `call:incoming` | Veja Chamada oferecida | Uma chamada foi oferecida a você. |
+        | `call:incoming_withdrawn` | `{"offer_id": string, "reason": "no_answer" \| "caller_hung_up"}` | A oferta expirou ou quem ligou desistiu. |
+        | `call:transfer_status` | Veja Transferências | Andamento da sua transferência. |
+        | `call-session:presence` | `{"users": [{"user_id", "username"?, "busy": boolean, "on_call"?: boolean, "ringing"?: boolean, "has_browser": boolean}]}` | Alguém conectou, desconectou, entrou ou saiu de uma ligação. Sem `call_session:list_members`, a lista traz só você. |
+        | `telephony:board` | Veja Painel de telefonia | Junto com a presença, para quem tem `call_session:list_members`. |
+        | `conversation:error` | `{"code": string, "message": string, "entry_id"?: string}` | Veja Erros. |
+
+        ### Chamada oferecida
+
+        ```json
+        {
+        "offer_id": "string",
+        "call_id": "string",
+        "workspace_id": "string",
+        "from_number": "string",
+        "to_number": "string (opcional)",
+        "channel": "sip | whatsapp",
+        "expires_at": "RFC 3339",
+        "transfer": {
+        "from_user_id": "string (opcional)",
+        "from_name": "string (opcional)",
+        "queue_id": "string (opcional)",
+        "queue_name": "string (opcional)",
+        "notes": "string (opcional)"
+        },
+        "resume": true
+        }
+        ```
+
+        - `transfer` aparece quando a chamada vem de um colega, de uma fila ou de um fluxo de voz.
+        - `resume: true` indica que é a sua própria ligação voltando depois de a conexão cair (veja abaixo).
+
+        ### Transferências
+
+        `call:transfer_status` chega apenas para quem transferiu:
+
+        ```json
+        {
+        "transfer_id": "string",
+        "call_id": "string",
+        "status": "ringing | queued | connected | returned | ended",
+        "target_user_id": "string (opcional)",
+        "target_name": "string (opcional)",
+        "queue_id": "string (opcional)",
+        "queue_name": "string (opcional)",
+        "reason": "string (opcional)"
+        }
+        ```
+
+        - **Para um colega**: quem ligou ouve a música de espera e você recebe `ringing`. Se o colega atender, `connected` e a ligação sai do seu discador. Se recusar, não atender (20 segundos) ou você cancelar, a ligação volta para você com `call:status` `answered` e `returned` com `reason` `declined`, `no_answer` ou `cancelled`. Se quem ligou desistir, `ended` com `reason: "caller_hung_up"`.
+        - **Para uma fila**: você recebe `queued` e a ligação sai do seu discador na hora. Se ninguém da fila atender até a espera máxima, a ligação toca de novo para você como uma nova `call:incoming`.
+        - **Ligações do WhatsApp**: a conversa do contato vai junto e passa a ser de quem atender, com as mesmas regras da atribuição manual. Por isso só tocam colegas que podem receber essa conversa; para um colega que não pode, a transferência é recusada com `conversation_out_of_reach`.
+
+        ### Conexão perdida durante uma ligação
+
+        Se a sua conexão cair com uma ligação atendida, quem ligou ouve a música de espera por até 30 segundos. Ao reconectar, você recebe `call:incoming` com `resume: true`: aceite para continuar a mesma ligação ou recuse para encerrá-la. Sem reconexão nesse tempo, a ligação é encerrada. Ligações ainda chamando terminam na hora.
+
+        ### Painel de telefonia
+
+        ```json
+        {
+        "workspace_id": "string",
+        "rev": 0,
+        "as_of": "RFC 3339",
+        "capacity": {"used": 0, "max": 0, "pct": 0},
+        "humans": [{"user_id": "string", "username": "string (opcional)", "state": "free | ringing | on_call", "has_browser": true, "since": "RFC 3339"}],
+        "queue": {"depth": 0, "available": true},
+        "online": 0,
+        "free": 0,
+        "in_call": 0,
+        "ringing": 0,
+        "idle_pct": 0
+        }
+        ```
+
+        ## Erros
+
+        `conversation:error` traz `code` e `message`. Em erros de chamada oferecida, `entry_id` é o `offer_id`; em erros de transferência, é o `call_id`.
+
+        | code | Significado |
+        |---|---|
+        | `invalid_payload` | Mensagem ou `payload` fora do formato. |
+        | `missing_fields` | Falta `phone_number`, `offer_id` ou `call_id`. |
+        | `unauthorized` | Falta permissão para ligar, para usar o tronco ou para transferir esse tipo de ligação. |
+        | `already_in_call` | Você já está em uma ligação ou atendendo uma chamada. |
+        | `no_active_call` | Não há ligação para desligar. |
+        | `dial_failed` | Não foi possível iniciar a ligação. |
+        | `no_call_slots` | Todas as linhas ocupadas; tente em instantes. |
+        | `insufficient_balance` | Saldo insuficiente para ligar. |
+        | `not_configured` | Origem de ligação não configurada. |
+        | `whatsapp_permission_required` | O contato não autorizou receber ligações pelo WhatsApp. |
+        | `trunk_unavailable` | O tronco não existe, está desativado ou não faz ligações. |
+        | `trunk_not_registered` | O tronco não está registrado no provedor. |
+        | `invalid_number` | O número só pode ter dígitos, `*`, `#` e um `+` no início. |
+        | `inbound_unavailable` | Chamadas recebidas não estão disponíveis neste servidor. |
+        | `offer_not_found` | A oferta não está mais disponível. |
+        | `not_for_user` | A oferta não é sua ou foi enviada para outra conexão. |
+        | `offer_resolved` | A oferta já foi atendida ou recusada. |
+        | `inbound_failed` | Falha ao atender. |
+        | `transfer_unavailable` | Transferências não estão disponíveis neste servidor. |
+        | `no_call_to_transfer` | Não há ligação em andamento para transferir. |
+        | `call_not_found` | A ligação já terminou. |
+        | `not_call_owner` | Só quem está na ligação pode transferi-la. |
+        | `target_unavailable` | O colega não está livre ou não pode atender esse tipo de ligação. |
+        | `conversation_out_of_reach` | Em ligações do WhatsApp, a conversa do contato não pode ser passada para esse colega. |
+        | `transfer_to_self` | Não é possível transferir para você mesmo. |
+        | `transfer_in_progress` | Essa ligação já está sendo transferida. |
+        | `no_transfer` | Não há transferência para cancelar. |
+        | `queue_not_found` | A fila não existe neste workspace. |
+        | `notes_too_long` | A nota pode ter até 500 caracteres. |
+        | `invalid_target` | Escolha um colega ou uma fila. |
+        | `transfer_failed` | A transferência não pôde ser iniciada. |
+
+        ## Autenticação
+
+        Use o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.
+
+        ## Workspace
+
+        Informe o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.
+
+        ## Formato das mensagens
+
+        Cada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).
+      parameters:
+      - description: Access token (alternativa ao cabeçalho Authorization e ao cookie
+          accessToken)
+        in: query
+        name: token
+        type: string
+      - description: Workspace usado na checagem de permissão da conexão
+        in: query
+        name: workspace_id
+        type: string
+      - description: Workspace da sessão
+        in: query
+        name: workspaceId
+        type: string
+      responses:
+        "101":
+          description: 'Switching Protocols: a conexão vira WebSocket'
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: WebSocket de chamadas
+      tags:
+      - WebSockets
+  /ws/conversations:
+    get:
+      description: |-
+        Mantém a caixa de entrada e as conversas abertas atualizadas em tempo real: novas mensagens, leituras, digitação, mudanças de etapa, etiquetas, responsável e status. Também é por ele que o atendente envia mensagens e muda o status da conversa.
+
+        ## Conectar
+
+        ```text
+        wss://SUA_URL_BASE/ws/conversations?token=SEU_ACCESS_TOKEN&workspaceId=SEU_WORKSPACE_ID
+        ```
+
+        | Parâmetro | Obrigatório | Descrição |
+        |---|---|---|
+        | `workspaceId` | não | Workspace da conexão. Sem ele, vale o workspace padrão do usuário. |
+        | `departmentId` | não | Departamento selecionado; filtra a caixa de entrada. |
+        | `campaignId` + `campaignType` | não | Abre a conexão já na caixa de uma campanha. `campaignType`: `whatsapp`, `unofficial_whatsapp`, `instagram`, `facebook` ou `telegram`. |
+
+        - Permissão: `conversations:read` no workspace.
+        - O servidor envia um ping a cada 54 segundos; navegadores respondem sozinhos. Sem resposta em 60 segundos, a conexão é encerrada.
+        - Mensagens do cliente podem ter até 512 KiB.
+
+        Ao conectar, você recebe `conversation:connected`, depois `conversation:connected_users` e a primeira página da caixa de entrada em `conversation:inbox`.
+
+        ## Mensagens que você envia
+
+        Formato: `{"type": "...", "payload": {...}}`. Tipos desconhecidos recebem `conversation:error` com `code: "unknown_event"`.
+
+        | type | Permissão | payload | Resposta |
+        |---|---|---|---|
+        | `subscribe` | `conversations:read` | `{"entry_id": string, "entry_type": string, "page_size"?: number}` | `conversation:subscribed` e `conversation:history`. A partir daí você recebe os eventos dessa conversa. `page_size` padrão 50, máximo 100. |
+        | `unsubscribe` | | `{"entry_id": string, "entry_type": string}` | `conversation:unsubscribed` |
+        | `send` | `conversations:send` | `{"entry_id": string, "entry_type": string, "text"?: string, "media_id"?: string, "media_type"?: "image" \| "video" \| "audio" \| "document" \| "sticker", "signed"?: boolean, "request_id": string, "reply_to_message_id"?: string}` | `conversation:message_sent` para todos os inscritos, ou `conversation:message_error`. Informe `text` ou `media_id`. |
+        | `send_button` | `conversations:send` | `{"entry_id": string, "entry_type": string, "body_text": string, "buttons": [{"id": string, "title": string}], "header_type"?: string, "header_text"?: string, "footer_text"?: string, "request_id": string, "reply_to_message_id"?: string}` | Igual a `send`. De 1 a 3 botões. |
+        | `mark_read` | `conversations:read` | `{"entry_id": string, "entry_type": string, "message_ids": string[]}` | `conversation:read` para todos os inscritos. |
+        | `typing` | `conversations:read` | `{"entry_id": string, "entry_type": string, "is_typing"?: boolean}` | `conversation:typing` para os outros inscritos. Sem erros. |
+        | `request_connected_users` | `conversations:read` | `{}` | `conversation:connected_users` |
+        | `load_history` | `conversations:read` | `{"entry_id": string, "entry_type": string, "before": string, "page_size"?: number}` | `conversation:history` com mensagens anteriores a `before` (RFC 3339). |
+        | `load_around` | `conversations:read` | `{"entry_id": string, "entry_type": string, "timestamp": string, "page_size"?: number}` | `conversation:history` em torno de `timestamp` (RFC 3339). |
+        | `request_inbox_page` | `conversations:read` | `{"page"?: number, "page_size"?: number}` | `conversation:inbox`. `page_size` padrão 20, máximo 50. |
+        | `search_inbox` | `conversations:read` | Veja Busca na caixa de entrada | `conversation:search_results` |
+        | `search_messages` | `conversations:read` | `{"entry_id": string, "entry_type": string, "query": string, "page"?: number, "page_size"?: number}` | `conversation:search_messages_results` |
+        | `load_entry_matches` | `conversations:read` | Igual a `search_messages` (`page_size` padrão 10, máximo 50) | `conversation:entry_matches_results` |
+        | `reopen_window` | `conversations:reopen` | `{"entry_id": string, "entry_type": string, "template_id": string, "parameters"?: string[], "request_id"?: string}` | Envia um template para reabrir a janela de atendimento. Resposta `conversation:window_reopened`. |
+        | `assign_to` | `conversations:assign` | `{"entry_id": string, "entry_type": string, "user_id": string}` | Sem resposta direta: você recebe `conversation:entry_update`. |
+        | `request_funnel_column` | `conversations:read` | `{"stage_id": string, "page"?: number, "page_size"?: number}` | `conversation:funnel_column` |
+        | `request_funnel_summary` | `conversations:read` | `{"stage_ids": string[]}` | `conversation:funnel_summary` |
+        | `switch_view` | | `{"campaign_id"?: string, "campaign_type"?: string, "whatsapp_campaign_type"?: "standard" \| "organic", "container_kind"?: "" \| "campaign", "conversation_status"?: "new" \| "ongoing" \| "finished"}` | `conversation:view_switched` e a primeira página em `conversation:inbox`. Cancela todas as inscrições em conversas. |
+        | `set_conversation_status` | `conversations:send` | `{"entry_id": string, "entry_type": string, "status": "ongoing" \| "finished", "outcome_code"?: string}` | Sem resposta direta: você recebe `conversation:conversation_status_update`. |
+
+        `entry_type` é o canal da conversa: `whatsapp`, `unofficial_whatsapp`, `instagram`, `facebook` ou `telegram`.
+
+        Regras de `set_conversation_status`: uma conversa volta a `new` só quando o contato manda uma mensagem nova; uma conversa finalizada só reabre da mesma forma. Se o workspace exige um desfecho, envie `outcome_code`; sem ele você recebe `outcome_required` com a lista em `outcomes`.
+
+        Em `switch_view` com `campaign_type: "whatsapp"`, é preciso `whatsapp_campaigns:read`; com `unofficial_whatsapp` e `container_kind: "campaign"`, `unofficial_whatsapp_campaigns:read`.
+
+        ### Busca na caixa de entrada
+
+        Todos os campos de `search_inbox` são opcionais:
+
+        ```json
+        {
+        "query": "string",
+        "stage_id": "string",
+        "stage_name": "string",
+        "min_message_count": 0,
+        "max_message_count": 0,
+        "message_search": "string",
+        "window_open": true,
+        "has_unread": true,
+        "channel": "string",
+        "date_from": "RFC 3339",
+        "date_to": "RFC 3339",
+        "conversation_status": "new | ongoing | finished",
+        "responsible_user_id": "string",
+        "responsible_unassigned": true,
+        "responsible_kind": "ai | workflow",
+        "page": 1,
+        "page_size": 20
+        }
+        ```
+
+        ## Mensagens que você recebe
+
+        Formato: `{"type": "...", "payload": {...}}`.
+
+        ### Respostas aos seus pedidos
+
+        | type | payload |
+        |---|---|
+        | `conversation:connected` | `{"user_id": string, "connection_id": string}` |
+        | `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent"}` |
+        | `conversation:unsubscribed` | `{"entry_id": string, "entry_type": string}` |
+        | `conversation:history` | `{"entry_id", "entry_type", "messages": Message[], "has_more": boolean, "total": number, "page_size": number}` |
+        | `conversation:inbox` | `{"entries": InboxEntry[], "page", "page_size", "total_items", "total_pages", "stage_counts"?: object, "conversation_status_counts"?: object, "available_labels"?: Label[]}` |
+        | `conversation:search_results` | `{"query"?, "filters": object, "entries": InboxEntry[], "page", "page_size", "total_items", "total_pages"}` |
+        | `conversation:search_messages_results` | `{"entry_id", "entry_type", "query", "messages": Message[], "page", "page_size", "total_items", "total_pages"}` |
+        | `conversation:entry_matches_results` | `{"entry_id", "entry_type", "query", "matches": MatchedMessage[], "page", "page_size", "total_items", "total_pages"}` |
+        | `conversation:window_reopened` | `{"entry_id", "entry_type", "request_id"?, "template_id", "message_id"}` |
+        | `conversation:funnel_column` | `{"stage_id", "entries": InboxEntry[], "page", "page_size", "total_items", "total_pages"}` |
+        | `conversation:funnel_summary` | `{"columns": [{"stage_id": string, "total_items": number}]}` |
+        | `conversation:view_switched` | `{"view_mode": "global" \| "campaign", "campaign_id"?, "campaign_type"?, "whatsapp_campaign_type"?, "container_kind"?, "conversation_status"?}` |
+        | `conversation:connected_users` | `{"users": [{"user_id", "workspace_id", "campaign_id", "campaign_type", "campaign_name"?, "view_mode", "username"?, "email"?, "connected_at"}]}`. Também chega sozinho quando alguém entra, sai ou troca de visão. Você só vê colegas dos seus departamentos, salvo se tiver acesso a todo o workspace. |
+        | `conversation:message_error` | `{"request_id", "entry_id", "entry_type", "error": string, "code"?: string}`. Falha de `send` ou `send_button`. |
+        | `conversation:error` | Veja Erros. |
+
+        ### Eventos das conversas em que você se inscreveu
+
+        | type | payload | Quando |
+        |---|---|---|
+        | `conversation:message` | `{"entry_id", "entry_type", "message": Message}` | Chegou ou foi enviada uma mensagem (contato, IA, fluxo, agendamento, chamadas). |
+        | `conversation:message_sent` | `{"request_id", "entry_id", "entry_type", "message": Message}` | Um atendente enviou uma mensagem. Chega para todos os inscritos. |
+        | `conversation:read` | `{"entry_id", "entry_type", "message_ids": string[], "read_by": string, "read_at": string}` | Mensagens foram marcadas como lidas. |
+        | `conversation:typing` | `{"entry_id", "entry_type", "user_id"?, "is_typing": boolean}` | Um colega está digitando. |
+        | `conversation:message_status` | `{"entry_id", "entry_type", "message_id", "status": "sent" \| "delivered" \| "read" \| "failed"}` | O canal confirmou a entrega. |
+        | `conversation:analysis_update` | `{"entry_id", "entry_type", "analysis": Analysis \| null, "pending": boolean}` | A análise da conversa mudou. |
+        | `conversation:conversation_status_update` | `{"entry_id", "entry_type", "status", "close_source"?, "close_reason"?, "close_outcome"?, "closed_at"?}` | O status da conversa mudou. |
+
+        Uma mesma mensagem chega uma vez só por conexão: como `conversation:message` ou como `conversation:message_sent`.
+
+        ### Eventos do workspace
+
+        Chegam mesmo sem inscrição, para quem tem acesso à conversa e está na visão correspondente:
+
+        | type | payload | Quando |
+        |---|---|---|
+        | `conversation:entry_update` | `{"entry": InboxEntry, "silent"?: boolean}` | Nova mensagem, envio, troca de responsável, status ou etapa. `silent: true` indica atualização sem novidade para o atendente. |
+        | `conversation:conversation_status_counts_update` | `{"counts": {"new": number, "ongoing": number, "finished": number}}` | Os totais por status mudaram. |
+        | `conversation:stage_update` | `{"entry_id", "entry_type", "stage": Stage \| null}` | A etapa da conversa mudou. |
+        | `conversation:label_update` | `{"entry_id", "entry_type", "labels": Label[]}` | As etiquetas mudaram. |
+        | `conversation:entry_removed` | `{"entry_id", "entry_type", "reason": "assigned"}` | A conversa foi para outra pessoa e você não a vê mais. |
+        | `audience:analyzed` | `{"workspaceId", "source", "accountId", "containerId", "items": CommentAnalyzed[], "more": number}` | Um lote de comentários foi analisado. Só para quem tem `audience:read`. |
+
+        ## Tipos usados nas mensagens
+
+        **InboxEntry**: `entry_id`, `entry_type`, `campaign_id`?, `campaign_name`?, `lead_id`?, `lead_name`?, `lead_number`?, `blocked`, `lead_picture`?, `is_group`?, `lead_metadata`?, `entry_variables`?, `unread_count`, `last_message_preview`?, `last_message_at`, `last_message_type`?, `last_message_sender`?, `last_message_sender_avatar`?, `window_open`, `window_expires_at`?, `window_closed_reason`?, `business_phone_id`?, `assigned_user_id`?, `assigned_username`?, `automation_enabled`, `stage`?: Stage, `labels`?: Label[], `available_stages`?: Stage[], `matched_messages`?: MatchedMessage[], `total_matches`?, `latest_analysis`?: Analysis, `analysis_phase`?: `"awaiting" | "queued"`, `live_read`?: LiveRead, `conversation_status`?: `new | ongoing | finished`, `close_source`?: `human | ai | system`, `close_reason`?: `manual | customer_idle | ai_resolved | max_age | workflow`, `closed_at`?, `close_outcome`?, `ai_handler`?: AIHandler.
+
+        **Message** (chaves em camelCase): `id`, `entryId`, `entryType`, `channel`, `messageType`, `direction`?: `INBOUND | OUTBOUND`, `from`, `to`, `text`, `mediaId`?, `mediaType`?, `read`, `readAt`?, `readBy`?, `whatsappMessageId`?, `externalMessageId`?, `replyToMessageId`?, `deliveryStatus`?: `sent | delivered | read | failed`, `senderName`?, `senderAvatar`?, `sentVia`?: `business_app`, `sentBy`: `{"kind": "contact" | "human" | "ai" | "workflow" | "campaign" | "external" | "system", "id": string}`, `metadata`?, `createdAt`, `updatedAt`.
+
+        Valores de `messageType`: `user_message`, `ai_response`, `tool_call`, `tool_result`, `audio`, `system`, `media`, `operator`, `template`, `call_permission_request`, `call_permission_granted`, `call_permission_rejected`, `call_received`, `call_answered`, `call_missed`, `call_ended`, `story_reply`, `story_mention`, `reaction`, `unsupported`, `post_share`, `sticker`, `link_share`.
+
+        **Stage**: `stage_id`, `name`, `color`?. **Label**: `label_id`, `name`, `color`?.
+
+        **MatchedMessage**: `message_id`, `text`, `from`, `message_type`, `channel`, `created_at`, `position`, `page`.
+
+        **AIHandler**: `kind`, `agent_id`?, `agent_name`?, `agent_avatar`?, `agent_active`, `workflow_id`?, `workflow_name`?, `workflow_run_id`?, `run_status`?, `current_node_id`?, `current_node_type`?.
+
+        **LiveRead** (camelCase): `interest`?, `disposition`?, `sentiment`?, `qualification`?, `nextAction`?, `language`?, `attendanceQuality`, `certainty`?: object, `decidedAt`.
+
+        **Analysis** (camelCase): análise da conversa com `id`, `status`, `sentiment`?, `intent`?, `interest`?, `productInterest`?, `disposition`?, `qualification`?, `nextAction`?, `summary`?, `attendanceQuality`?, `messageCount`?, `requiresAction`, `excerpt`, `analyzedAt`? e demais campos de identificação (`workspaceId`, `source`, `accountId`, `containerId`, `subjectId`, `createdAt`, `updatedAt`).
+
+        **CommentAnalyzed** (camelCase): `commentId`, `subjectKind`, `authorExternalId`, `authorHandle`?, `stance`?, `sentiment`?, `intent`?, `topicKey`?, `severity`, `requiresAction`, `isSpam`, `excerpt`, `interest`?, `productInterest`?, `disposition`?, `qualification`?, `nextAction`?, `summary`?, `occurredAt`, `analyzedAt`.
+
+        Valores de `window_closed_reason`: `expired`, `no_inbound`, `contact_blocked`, `session_down`, `account_restricted`, `reply_revoked` e `channel_unavailable`.
+
+        Datas são strings RFC 3339.
+
+        ## Erros
+
+        `conversation:error` traz `{"code": string, "message": string}` e, em mudanças de status, também `entry_id`, `entry_type`, `status`, `previous_status` e `outcomes` (`[{"code", "label", "isDurable", "position"}]`).
+
+        | code | Significado |
+        |---|---|
+        | `forbidden` | Falta permissão, a campanha é de outro workspace ou a regra de status não permite a mudança. Se o acesso ao workspace for revogado, a conexão é encerrada logo depois. |
+        | `unauthorized` | Você não tem acesso a essa conversa, ou o responsável escolhido não pode recebê-la. |
+        | `unknown_event` | `type` desconhecido. |
+        | `invalid_payload` | O `payload` não tem o formato esperado. |
+        | `missing_fields` | Falta um campo obrigatório. |
+        | `missing_content` | Mensagem sem texto nem mídia. |
+        | `invalid_buttons` | É preciso de 1 a 3 botões. |
+        | `invalid_entry_type` | `entry_type` inválido. |
+        | `invalid_timestamp` | Data fora do formato RFC 3339. |
+        | `invalid_status` | Status diferente de `new`, `ongoing` ou `finished`. |
+        | `invalid_campaign_type`, `invalid_container_kind`, `invalid_whatsapp_campaign_type` | Filtro de visão inválido. |
+        | `not_found` | Campanha não encontrada. |
+        | `not_configured` | O recurso não está disponível neste servidor. |
+        | `outcome_required` | Escolha um desfecho (lista em `outcomes`) para finalizar. |
+        | `outcome_unknown` | O desfecho não existe no workspace (lista em `outcomes`). |
+        | `history_error`, `inbox_error`, `search_error`, `fetch_error`, `template_send_failed`, `assign_failed`, `internal_error` | Falha ao processar o pedido; tente de novo. |
+
+        Códigos de `conversation:message_error`: `unauthorized`, `not_configured`, `send_failed` e `internal_error`.
+
+        ## Autenticação
+
+        Use o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.
+
+        ## Workspace
+
+        Informe o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.
+
+        ## Formato das mensagens
+
+        Cada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).
+      parameters:
+      - description: Access token (alternativa ao cabeçalho Authorization e ao cookie
+          accessToken)
+        in: query
+        name: token
+        type: string
+      - description: Workspace usado na checagem de permissão da conexão
+        in: query
+        name: workspace_id
+        type: string
+      - description: Workspace da sessão
+        in: query
+        name: workspaceId
+        type: string
+      - description: Departamento selecionado; filtra a caixa de entrada
+        in: query
+        name: departmentId
+        type: string
+      - description: Abre a conexão na caixa de uma campanha (junto com campaignType)
+        in: query
+        name: campaignId
+        type: string
+      - description: Canal da campanha
+        enum:
+        - whatsapp
+        - unofficial_whatsapp
+        - instagram
+        - facebook
+        - telegram
+        in: query
+        name: campaignType
+        type: string
+      responses:
+        "101":
+          description: 'Switching Protocols: a conexão vira WebSocket'
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: WebSocket de conversas
+      tags:
+      - WebSockets
+  /ws/workflows/{id}/ai-builder:
+    get:
+      description: |-
+        Conversa com o assistente que monta e corrige fluxos. Você descreve o que quer; o assistente adiciona nós, liga as saídas e valida o fluxo, enviando cada passo em tempo real.
+
+        ## Conectar
+
+        ```text
+        wss://SUA_URL_BASE/ws/workflows/{id}/ai-builder?token=SEU_ACCESS_TOKEN&workspace_id=SEU_WORKSPACE_ID
+        wss://SUA_URL_BASE/ws/workflows/ai-builder?token=SEU_ACCESS_TOKEN&workspace_id=SEU_WORKSPACE_ID
+        ```
+
+        - Com `id`: edita um fluxo existente. Permissão `workflows:update`.
+        - Sem `id`: cria um fluxo novo, começando vazio e do tipo `messages`. Permissão `workflows:create`.
+
+        ## Limites
+
+        | Limite | Valor | Ao atingir |
+        |---|---|---|
+        | Sessões simultâneas por workspace | 3 | `error` e a conexão é encerrada. |
+        | Tempo por pedido | 10 minutos | `done` com o motivo em `summary`; a conexão continua aberta. |
+        | Tokens por sessão | 1.000.000 | `done`; novos pedidos na mesma conexão recebem o mesmo `done`. |
+        | Saldo | precisa ter saldo | `done` com `valid: false` e o motivo em `summary`. |
+
+        O uso do assistente é cobrado do saldo do workspace.
+
+        ## Mensagens que você envia
+
+        Formato: `{"type": "...", "data": {...}}`.
+
+        | type | data | O que faz |
+        |---|---|---|
+        | `user_prompt` | `{"text": string, "graph"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |
+        | `set_workflow_type` | `{"type": "messages" \| "voice"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |
+        | `set_model` | `{"model": string}` | Escolhe o modelo de IA dos próximos pedidos. |
+        | `hydrate_graph` | `{"graph": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |
+        | `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: "cancelado"`. |
+
+        ## Mensagens que você recebe
+
+        Formato: `{"type": "...", "payload": {...}}`.
+
+        | type | payload | Quando |
+        |---|---|---|
+        | `builder_ready` | `{"workflowType": "messages" \| "voice", "nodeCount": number, "mode": "create" \| "edit", "model": string}` | Logo após conectar. |
+        | `graph_snapshot` | `{"graph": Graph, "issues": LintIssue[], "valid": boolean}` | Após conectar, após trocar o tipo ou o fluxo, e a cada passo do assistente. |
+        | `iteration` | `{"n": number, "max": number, "tokensUsed": number, "tokenBudget": number}` | Início de cada passo do assistente. |
+        | `reasoning_delta` | `{"text": string}` | Trecho do raciocínio do assistente. |
+        | `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |
+        | `assistant_delta` | `{"text": string}` | Trecho da resposta do assistente. |
+        | `assistant_done` | `{"tools": number}` | Fim da resposta; `tools` é o número de ações do passo. |
+        | `tool` | `{"name": string, "summary": string, "ok": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |
+        | `resource_resolved` | `{"kind": string, "query": string, "matches": [{"id": string, "name": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |
+        | `meta` | `{"name": string, "description": string, "workflowType": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |
+        | `idle` | `{"valid": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |
+        | `done` | `{"valid": boolean, "summary": string, "residualIssues"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. |
+        | `error` | `{"error": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |
+
+        Valores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.
+
+        ## Tipos usados nas mensagens
+
+        ```json
+        {
+        "Graph": {"nodes": ["Node"], "edges": ["Edge"]},
+        "Node": {"id": "string", "type": "string", "position": {"x": 0, "y": 0}, "config": {}},
+        "Edge": {"source": "string", "target": "string", "label": "string (opcional)"},
+        "LintIssue": {
+        "code": "string",
+        "severity": "blocking | advisory",
+        "nodeId": "string (opcional)",
+        "field": "string (opcional)",
+        "edgeRef": "string (opcional)",
+        "message": "string",
+        "hint": "string (opcional)"
+        }
+        }
+        ```
+
+        Os tipos de nó e os campos de `config` são os de `GET /workflows/node-types`. Problemas `blocking` impedem ativar o fluxo; `advisory` são sugestões.
+
+        ## Autenticação
+
+        Use o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.
+
+        ## Workspace
+
+        Informe o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.
+
+        ## Formato das mensagens
+
+        Cada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).
+      parameters:
+      - description: ID do fluxo a editar
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Access token (alternativa ao cabeçalho Authorization e ao cookie
+          accessToken)
+        in: query
+        name: token
+        type: string
+      - description: Workspace usado na checagem de permissão da conexão
+        in: query
+        name: workspace_id
+        type: string
+      responses:
+        "101":
+          description: 'Switching Protocols: a conexão vira WebSocket'
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: WebSocket do construtor de fluxos com IA (editar fluxo)
+      tags:
+      - WebSockets
+  /ws/workflows/{id}/simulate:
+    get:
+      description: |-
+        Executa um fluxo em modo de teste, sem enviar mensagens nem fazer ligações de verdade. Você faz o papel do contato: responde mensagens, aperta teclas e acompanha cada nó executado.
+
+        ## Conectar
+
+        ```text
+        wss://SUA_URL_BASE/ws/workflows/{id}/simulate?token=SEU_ACCESS_TOKEN&workspace_id=SEU_WORKSPACE_ID
+        ```
+
+        - `id`: ID do fluxo.
+        - Permissão: `workflows:update` no workspace.
+
+        O modo depende do tipo do fluxo: fluxos `voice` simulam uma ligação; os demais simulam uma conversa de mensagens.
+
+        ## Mensagens que você envia
+
+        Formato: `{"type": "...", "data": {...}}`.
+
+        ### Fluxos de mensagens
+
+        | type | data | O que faz |
+        |---|---|---|
+        | `reply` | `{"text": string}` (obrigatório) | Mensagem do contato. Dispara o fluxo depois de `waiting_trigger` ou responde um `waiting_reply`. Em mensagens interativas, o texto é usado como a opção escolhida. |
+        | `set_variable` | `{"key": string, "value": any}` | Grava uma variável no estado da execução antes do próximo passo. |
+        | `cancel` | sem `data` | Cancela a execução. O servidor responde `run_cancelled`. |
+
+        ### Fluxos de voz
+
+        | type | data | O que faz |
+        |---|---|---|
+        | `key` | `{"key": string}` | Tecla do telefone: um caractere entre `0-9`, `*` e `#`. |
+        | `cancel` | sem `data` | Desliga a ligação simulada. O servidor responde `run_cancelled`. |
+
+        Fechar a conexão tem o mesmo efeito de `cancel`.
+
+        ## Mensagens que você recebe
+
+        Formato: `{"type": "...", "payload": {...}}`.
+
+        | type | payload | Quando |
+        |---|---|---|
+        | `waiting_trigger` | `{"triggerType": string}` | Só em fluxos disparados por mensagem: envie um `reply` para começar. |
+        | `sim_started` | `{"runId": string, "workflowId": string}` | A execução começou. |
+        | `state_update` | `{"vars": object}` | Antes e depois de cada passo, com todas as variáveis. |
+        | `node_executed` | `{"nodeId": string, "nodeType": string, "output"?: object, "error"?: string}` | Um nó terminou. |
+        | `message_sent` | `{"direction": "outbound", "text": string, "msgType": string, "nodeId"?: string, "messageId": string, "audioBase64"?: string, "audioMime"?: string, "audioUrl"?: string}` | O fluxo enviou uma mensagem ou, em voz, tocou um áudio (`msgType: "audio"` com `audioUrl`). |
+        | `waiting_reply` | `{"nodeId": string, "timeoutSeconds": number}` | O fluxo espera uma resposta do contato. |
+        | `wait_skipped` | `{"nodeId": string, "reason": "duration" \| "event"}` | Uma espera por tempo ou evento foi pulada para agilizar o teste. |
+        | `waiting_key` | `{"timeoutSeconds": number}` | Voz: o fluxo espera uma tecla. |
+        | `call_transferred` | `{"queueId": string, "queueName": string, "notes"?: string}` | Voz: a ligação foi para a fila. Na simulação ela é considerada atendida e o fluxo termina. |
+        | `run_completed` | `{"vars": object}` | A execução terminou. |
+        | `run_cancelled` | sem `payload` | A execução foi cancelada. |
+        | `run_error` | `{"error": string, "status"?: "error" \| "cancelled"}` | A execução parou com erro. |
+        | `error` | `{"error": string}` | Não foi possível simular (fluxo inexistente, de outro workspace ou sem gatilho). A conexão é encerrada. |
+
+        Valores de `msgType` em fluxos de mensagens: `text`, `button`, `list`, `media`, `audio`, `template` e `call_permission_request`.
+
+        A sessão termina depois de `run_completed`, `run_cancelled`, `run_error` ou `error`.
+
+        ## Autenticação
+
+        Use o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.
+
+        ## Workspace
+
+        Informe o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.
+
+        ## Formato das mensagens
+
+        Cada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).
+      parameters:
+      - description: ID do fluxo
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Access token (alternativa ao cabeçalho Authorization e ao cookie
+          accessToken)
+        in: query
+        name: token
+        type: string
+      - description: Workspace usado na checagem de permissão da conexão
+        in: query
+        name: workspace_id
+        type: string
+      responses:
+        "101":
+          description: 'Switching Protocols: a conexão vira WebSocket'
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: WebSocket do simulador de fluxos
+      tags:
+      - WebSockets
+  /ws/workflows/ai-builder:
+    get:
+      description: |-
+        Conversa com o assistente que monta e corrige fluxos. Você descreve o que quer; o assistente adiciona nós, liga as saídas e valida o fluxo, enviando cada passo em tempo real.
+
+        ## Conectar
+
+        ```text
+        wss://SUA_URL_BASE/ws/workflows/{id}/ai-builder?token=SEU_ACCESS_TOKEN&workspace_id=SEU_WORKSPACE_ID
+        wss://SUA_URL_BASE/ws/workflows/ai-builder?token=SEU_ACCESS_TOKEN&workspace_id=SEU_WORKSPACE_ID
+        ```
+
+        - Com `id`: edita um fluxo existente. Permissão `workflows:update`.
+        - Sem `id`: cria um fluxo novo, começando vazio e do tipo `messages`. Permissão `workflows:create`.
+
+        ## Limites
+
+        | Limite | Valor | Ao atingir |
+        |---|---|---|
+        | Sessões simultâneas por workspace | 3 | `error` e a conexão é encerrada. |
+        | Tempo por pedido | 10 minutos | `done` com o motivo em `summary`; a conexão continua aberta. |
+        | Tokens por sessão | 1.000.000 | `done`; novos pedidos na mesma conexão recebem o mesmo `done`. |
+        | Saldo | precisa ter saldo | `done` com `valid: false` e o motivo em `summary`. |
+
+        O uso do assistente é cobrado do saldo do workspace.
+
+        ## Mensagens que você envia
+
+        Formato: `{"type": "...", "data": {...}}`.
+
+        | type | data | O que faz |
+        |---|---|---|
+        | `user_prompt` | `{"text": string, "graph"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |
+        | `set_workflow_type` | `{"type": "messages" \| "voice"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |
+        | `set_model` | `{"model": string}` | Escolhe o modelo de IA dos próximos pedidos. |
+        | `hydrate_graph` | `{"graph": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |
+        | `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: "cancelado"`. |
+
+        ## Mensagens que você recebe
+
+        Formato: `{"type": "...", "payload": {...}}`.
+
+        | type | payload | Quando |
+        |---|---|---|
+        | `builder_ready` | `{"workflowType": "messages" \| "voice", "nodeCount": number, "mode": "create" \| "edit", "model": string}` | Logo após conectar. |
+        | `graph_snapshot` | `{"graph": Graph, "issues": LintIssue[], "valid": boolean}` | Após conectar, após trocar o tipo ou o fluxo, e a cada passo do assistente. |
+        | `iteration` | `{"n": number, "max": number, "tokensUsed": number, "tokenBudget": number}` | Início de cada passo do assistente. |
+        | `reasoning_delta` | `{"text": string}` | Trecho do raciocínio do assistente. |
+        | `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |
+        | `assistant_delta` | `{"text": string}` | Trecho da resposta do assistente. |
+        | `assistant_done` | `{"tools": number}` | Fim da resposta; `tools` é o número de ações do passo. |
+        | `tool` | `{"name": string, "summary": string, "ok": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |
+        | `resource_resolved` | `{"kind": string, "query": string, "matches": [{"id": string, "name": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |
+        | `meta` | `{"name": string, "description": string, "workflowType": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |
+        | `idle` | `{"valid": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |
+        | `done` | `{"valid": boolean, "summary": string, "residualIssues"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. |
+        | `error` | `{"error": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |
+
+        Valores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.
+
+        ## Tipos usados nas mensagens
+
+        ```json
+        {
+        "Graph": {"nodes": ["Node"], "edges": ["Edge"]},
+        "Node": {"id": "string", "type": "string", "position": {"x": 0, "y": 0}, "config": {}},
+        "Edge": {"source": "string", "target": "string", "label": "string (opcional)"},
+        "LintIssue": {
+        "code": "string",
+        "severity": "blocking | advisory",
+        "nodeId": "string (opcional)",
+        "field": "string (opcional)",
+        "edgeRef": "string (opcional)",
+        "message": "string",
+        "hint": "string (opcional)"
+        }
+        }
+        ```
+
+        Os tipos de nó e os campos de `config` são os de `GET /workflows/node-types`. Problemas `blocking` impedem ativar o fluxo; `advisory` são sugestões.
+
+        ## Autenticação
+
+        Use o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.
+
+        ## Workspace
+
+        Informe o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.
+
+        ## Formato das mensagens
+
+        Cada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).
+      parameters:
+      - description: Access token (alternativa ao cabeçalho Authorization e ao cookie
+          accessToken)
+        in: query
+        name: token
+        type: string
+      - description: Workspace usado na checagem de permissão da conexão
+        in: query
+        name: workspace_id
+        type: string
+      responses:
+        "101":
+          description: 'Switching Protocols: a conexão vira WebSocket'
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: WebSocket do construtor de fluxos com IA (novo fluxo)
+      tags:
+      - WebSockets
 securityDefinitions:
   BearerAuth:
     in: header

@@ -30,6 +30,7 @@ func dataRepairs() []dataRepair {
 		{"uw_merge_split_group_conversations", mergeSplitGroupConversations},
 		{"uw_retire_unattributable_conversations", retireUnattributableConversations},
 		{"uw_reset_never_read_profile_clocks", resetNeverReadProfileClocks},
+		{"uw_bare_instance_jids", bareInstanceJIDs},
 		{"cm_backfill_message_direction", backfillMessageDirection},
 		{"cm_correct_uw_device_sent_direction", correctUnofficialDeviceSentDirection},
 		{"cm_relink_uw_orphaned_media", relinkUnofficialOrphanedMedia},

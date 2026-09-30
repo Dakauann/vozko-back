@@ -1100,7 +1100,7 @@ func (r *router) setupWorkflowRoutes(protected *mux.Router) {
 	}
 	if r.wsWorkflowAIBuilderHandler != nil {
 		protected.HandleFunc("/ws/workflows/{id}/ai-builder", r.ac(wf, workspace_domain.ActionUpdate, r.wsWorkflowAIBuilderHandler.HandleSession))
-		protected.HandleFunc("/ws/workflows/ai-builder", r.ac(wf, workspace_domain.ActionCreate, r.wsWorkflowAIBuilderHandler.HandleSession))
+		protected.HandleFunc("/ws/workflows/ai-builder", r.ac(wf, workspace_domain.ActionCreate, r.wsWorkflowAIBuilderHandler.HandleNewSession))
 	}
 }
 

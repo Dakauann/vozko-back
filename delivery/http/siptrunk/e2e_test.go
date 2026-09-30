@@ -63,6 +63,8 @@ func startAPI(t *testing.T) *apiFixture {
 		WatchInterval:   100 * time.Millisecond,
 		PublicAddress:   "127.0.0.1",
 		UserAgent:       "VozkoTest",
+
+		AllowPrivateHosts: true,
 	}, repo)
 	if err != nil {
 		t.Fatal(err)

@@ -427,3 +427,71 @@ func TestMessageHistoryManager_Record_ALateEchoLeavesOurSendAlone(t *testing.T) 
 		t.Fatalf("the person's send must stay theirs: %+v, claims %d", repo.created[0].SentBy, repo.claims)
 	}
 }
+
+type countingHub struct {
+	conversation.EventBroadcaster
+	newMessages int32
+}
+
+func (h *countingHub) BroadcastNewMessage(string, string, *conversation.Message) {
+	atomic.AddInt32(&h.newMessages, 1)
+}
+
+func TestMessageHistoryManager_Record_ReadRecordLandsRead(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+	rec := newInboundRecord("wamid.read")
+	rec.Read = true
+
+	if err := mgr.Record(context.Background(), rec); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	msg := repo.created[0]
+	if !msg.Read || msg.ReadAt == nil {
+		t.Errorf("read = %v, readAt = %v; an imported message must not count as unread", msg.Read, msg.ReadAt)
+	}
+}
+
+func TestMessageHistoryManager_Record_DefaultRecordStaysUnread(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	mgr := NewMessageHistoryManager(repo)
+
+	if err := mgr.Record(context.Background(), newInboundRecord("wamid.unread")); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if repo.created[0].Read {
+		t.Error("a live message must arrive unread")
+	}
+}
+
+func TestMessageHistoryManager_Record_SilentRecordBroadcastsNothing(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	hub := &countingHub{}
+	mgr := NewMessageHistoryManagerWithHub(repo, hub)
+	rec := newInboundRecord("wamid.silent")
+	rec.Silent = true
+
+	if err := mgr.Record(context.Background(), rec); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&hub.newMessages); got != 0 {
+		t.Errorf("broadcasts = %d; an import must not open one websocket frame per message", got)
+	}
+}
+
+func TestMessageHistoryManager_Record_LiveRecordStillBroadcasts(t *testing.T) {
+	repo := &dedupMessageRepo{}
+	hub := &countingHub{}
+	mgr := NewMessageHistoryManagerWithHub(repo, hub)
+
+	if err := mgr.Record(context.Background(), newInboundRecord("wamid.live")); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&hub.newMessages); got != 1 {
+		t.Errorf("broadcasts = %d, want 1", got)
+	}
+}

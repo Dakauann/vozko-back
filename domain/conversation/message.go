@@ -73,6 +73,8 @@ const (
 const (
 	SeedMetadataKey      = "seed"
 	SeedSourceLeadImport = "lead_import"
+
+	BackfillMetadataKey = "backfill"
 )
 
 func (t MessageType) IsCallEvent() bool {

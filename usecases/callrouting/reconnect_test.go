@@ -163,16 +163,38 @@ func TestAWhatsAppCallInAQueueSkipsMembersWhoMayNotTakeIt(t *testing.T) {
 	caio := &operator{userID: "caio"}
 	f := newFixtureWith(answerPermission{"bia|whatsapp": false}, bia, caio)
 	f.activity.CallEnded("ws1", "caio", time.Now().Add(-time.Hour))
-	call := newHeldCall("wa-in-1")
-	call.channel = callsession.OfferChannelWhatsApp
+	f.dispatcher.SetConversationHandoff(&handoffBook{})
+	call := whatsAppCallOf(newHeldCall("wa-in-1"))
 	queue := testQueue("bia", "caio")
 	queue.WrapUpSeconds = 0
 
-	result, _ := f.dispatcher.Enqueue(context.Background(), EnqueueInput{Queue: queue, Call: call})
+	result, _ := f.dispatcher.Enqueue(context.Background(), EnqueueInput{Queue: queue, Call: call, FromUserID: "ana"})
 	if result.AgentUserID != "caio" || len(bia.receivedOffers()) != 0 {
 		t.Fatalf("result = %+v, bia offers = %d", result, len(bia.receivedOffers()))
 	}
 	if offer := caio.receivedOffers()[0]; offer.Channel != callsession.OfferChannelWhatsApp {
 		t.Fatalf("caio's offer channel = %q", offer.Channel)
+	}
+}
+
+func TestOnlyPeopleAllowedToTransferCanHandACallOver(t *testing.T) {
+	f := newTransferFixture(accepts, nil)
+	f.transfers.deps.Permission.(answerPermission)["ana|transfer"] = false
+	_, err := f.transfers.Transfer(context.Background(), TransferInput{
+		WorkspaceID: "ws1", UserID: "ana", CallID: "c1",
+		Target: callrouting.TransferTarget{Kind: callrouting.TargetMember, UserID: "bia"},
+	})
+	if !errors.Is(err, callrouting.ErrTransferNotAllowed) {
+		t.Fatalf("err = %v", err)
+	}
+	f.transfers.deps.Permission = nil
+	if _, err := f.transfers.Transfer(context.Background(), TransferInput{
+		WorkspaceID: "ws1", UserID: "ana", CallID: "c1",
+		Target: callrouting.TransferTarget{Kind: callrouting.TargetMember, UserID: "bia"},
+	}); !errors.Is(err, callrouting.ErrTransferNotAllowed) {
+		t.Fatalf("without a permission check err = %v", err)
+	}
+	if len(f.bia.receivedOffers()) != 0 {
+		t.Fatal("a refused transfer still rang the colleague")
 	}
 }

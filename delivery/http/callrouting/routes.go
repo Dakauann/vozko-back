@@ -15,7 +15,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler,
 	}
 	res := workspace_domain.ResourceCallQueues
 	queues := protected.PathPrefix("/call-queues").Subrouter()
-	queues.HandleFunc("/transfer-targets", ac(workspace_domain.ResourceCallSession, workspace_domain.ActionUse, h.ListTransferTargets)).Methods(http.MethodGet)
+	queues.HandleFunc("/transfer-targets", ac(workspace_domain.ResourceCallSession, workspace_domain.ActionTransfer, h.ListTransferTargets)).Methods(http.MethodGet)
 	queues.HandleFunc("/live", ac(res, workspace_domain.ActionRead, h.LiveQueues)).Methods(http.MethodGet)
 	queues.HandleFunc("/stats", ac(res, workspace_domain.ActionRead, h.QueueStats)).Methods(http.MethodGet)
 	queues.HandleFunc("", ac(res, workspace_domain.ActionCreate, h.CreateQueue)).Methods(http.MethodPost)

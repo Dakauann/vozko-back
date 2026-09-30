@@ -14,5 +14,6 @@ var (
 
 type PersonAssignUseCase interface {
 	Assign(by shared.Person, workspaceID, entryID, entryType, toUserID string) error
+	Check(by shared.Person, workspaceID, entryID, entryType, toUserID string) error
 	HandOff(by shared.Person, workspaceID, entryID, entryType, departmentID string) (string, error)
 }

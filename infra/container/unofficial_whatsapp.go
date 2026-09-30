@@ -3,6 +3,7 @@ package container
 import (
 	"context"
 	"log"
+	"time"
 	"vozko/domain/webhook"
 	webhook_repository "vozko/infra/repositories/webhook"
 
@@ -27,6 +28,7 @@ type unofficialWhatsAppBundle struct {
 	Groups        uw.GroupRepository
 
 	Provider  uw.ProviderAPI
+	History   uw.HistoryAPI
 	Messaging uw.MessagingAPI
 	GroupAPI  uw.GroupAPI
 	Assets    uw.RemoteAssetFetcher
@@ -41,6 +43,8 @@ type unofficialWhatsAppBundle struct {
 	WebhookHandler *uwhttp.WebhookHandler
 	GroupHandler   *uwhttp.GroupHandler
 
+	Connect            *uwuc.ConnectInstanceUseCase
+	HistorySync        *uwuc.HistorySyncUseCase
 	Consume            *uwuc.ConsumeWebhookUseCase
 	CheckHealth        *uwuc.CheckInstanceHealthUseCase
 	ReconcileCapacity  *uwuc.ReconcileServerCapacityUseCase
@@ -60,6 +64,7 @@ func (c *Container) initUnofficialWhatsApp() {
 
 	provider := uazapi.NewClient(uazapi.Config{})
 	bundle.Provider = provider
+	bundle.History = provider
 	bundle.Messaging = provider
 	bundle.GroupAPI = provider
 	bundle.Assets = provider
@@ -83,9 +88,11 @@ func (c *Container) initUnofficialWhatsApp() {
 	provision.SetEntitlements(bundle.Entitlements)
 	bundle.ProvisionInstances = provision
 
+	bundle.Connect = uwuc.NewConnectInstanceUseCase(bundle.Instances, bundle.Servers, provider)
+
 	bundle.Handler = uwhttp.NewHandler(uwhttp.HandlerDeps{
 		Provision:   provision,
-		Connect:     uwuc.NewConnectInstanceUseCase(bundle.Instances, bundle.Servers, provider),
+		Connect:     bundle.Connect,
 		List:        uwuc.NewListInstancesUseCase(bundle.Instances),
 		Get:         uwuc.NewGetInstanceUseCase(bundle.Instances),
 		UpdateCfg:   uwuc.NewUpdateInstanceConfigUseCase(bundle.Instances),
@@ -182,6 +189,8 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 				bundle.Conversations,
 				c.unofficialWhatsAppCampaigns.Campaigns))
 	}
+
+	c.wireUnofficialWhatsAppLineAndHistory(bundle, handler)
 
 	bundle.SeedInboxPublisher = uwuc.NewSeedInboxPublisher(c.services.uwSeedQueuePub)
 	bundle.ConsumeSeedInbox = uwuc.NewConsumeSeedInboxUseCase(
@@ -394,4 +403,42 @@ func unofficialWhatsAppWebhookHandler(c *Container) *uwhttp.WebhookHandler {
 		return nil
 	}
 	return c.unofficialWhatsApp.WebhookHandler
+}
+
+func (c *Container) wireUnofficialWhatsAppLineAndHistory(bundle *unofficialWhatsAppBundle, handler *uwuc.HandleWebhookUseCase) {
+	guard := uwuc.NewLinkGuard(bundle.Instances, bundle.Servers, bundle.Provider)
+	handler.SetLinkGate(guard)
+	bundle.Connect.SetLinkGate(guard)
+	bundle.CheckHealth.SetLinkGate(guard)
+
+	handover := uwuc.NewLineHandover(uwrepo.NewLineRepository(c.db))
+	handler.SetLineHandover(handover)
+	bundle.CheckHealth.SetLineHandover(handover)
+
+	if !c.cfg.UnofficialWhatsAppHistoryEnabled {
+		handler.DisableHistoryImport()
+		log.Printf("[unofficial-whatsapp] history import disabled (UW_HISTORY_ENABLED=false); line handover stays on")
+		return
+	}
+
+	historySync := uwuc.NewHistorySyncUseCase(uwuc.HistorySyncDeps{
+		Runs:      uwrepo.NewHistorySyncRepository(c.db),
+		Instances: bundle.Instances,
+		Servers:   bundle.Servers,
+		Source:    bundle.History,
+		Importer:  handler,
+		Handover:  handover,
+	})
+	window := time.Duration(c.cfg.UnofficialWhatsAppHistoryDays) * 24 * time.Hour
+	historySync.SetWindow(window)
+	handler.SetHistoryWindow(window)
+
+	handler.SetConnectionListener(historySync)
+	bundle.Connect.SetConnectionListener(historySync)
+	bundle.CheckHealth.SetConnectionListener(historySync)
+	bundle.Handler.SetHistorySync(historySync)
+	bundle.HistorySync = historySync
+
+	log.Printf("[unofficial-whatsapp] history import enabled: window %d days, sweep every minute",
+		c.cfg.UnofficialWhatsAppHistoryDays)
 }

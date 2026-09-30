@@ -47,6 +47,7 @@ type instanceDTO struct {
 	EnableAutoStaging    bool    `json:"enableAutoStaging"`
 	EnableAutoMemory     bool    `json:"enableAutoMemory"`
 	HandleGroups         bool    `json:"handleGroups"`
+	ImportHistory        bool    `json:"importHistory"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -115,6 +116,7 @@ func toInstanceDTO(i *uw.Instance) instanceDTO {
 		EnableAutoStaging:    i.EnableAutoStaging,
 		EnableAutoMemory:     i.EnableAutoMemory,
 		HandleGroups:         i.HandleGroups,
+		ImportHistory:        i.ImportHistory,
 
 		CreatedAt: i.CreatedAt,
 		UpdatedAt: i.UpdatedAt,

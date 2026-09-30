@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -56,6 +57,15 @@ func (m *SIPTrunkManager) connect(trunk *sip_trunk.SIPTrunk) (*trunkConnection, 
 		return nil, err
 	}
 	registrar := registrarAddress(trunk)
+	destination := registrar
+	if runtime.OutboundProxy != "" {
+		destination = runtime.OutboundProxy
+	}
+	if !m.cfg.AllowPrivateHosts {
+		if err := refusePrivateHosts(m.ctx, registrar, destination); err != nil {
+			return nil, err
+		}
+	}
 	ep, err := m.resolveEndpoints(trunk, runtime, registrar)
 	if err != nil {
 		return nil, err
@@ -89,10 +99,6 @@ func (m *SIPTrunkManager) connect(trunk *sip_trunk.SIPTrunk) (*trunkConnection, 
 		options = append(options, diago.WithMediaConfig(diago.MediaConfig{Codecs: runtime.Codecs}))
 	}
 
-	destination := registrar
-	if runtime.OutboundProxy != "" {
-		destination = runtime.OutboundProxy
-	}
 	ctx, cancel := context.WithCancel(m.ctx)
 	conn := &trunkConnection{
 		manager:        m,
@@ -178,21 +184,38 @@ func (m *SIPTrunkManager) resolveEndpoints(trunk *sip_trunk.SIPTrunk, runtime tr
 }
 
 func resolveHosts(ctx context.Context, addresses ...string) []net.IP {
-	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
 	var ips []net.IP
 	for _, address := range addresses {
-		host := stripHostPort(address)
-		if ip := net.ParseIP(host); ip != nil {
-			ips = append(ips, ip)
-			continue
-		}
-		resolved, err := net.DefaultResolver.LookupIP(lookupCtx, "ip", host)
-		if err == nil {
+		if resolved, err := lookupHost(ctx, address); err == nil {
 			ips = append(ips, resolved...)
 		}
 	}
 	return ips
+}
+
+func refusePrivateHosts(ctx context.Context, addresses ...string) error {
+	for _, address := range addresses {
+		ips, err := lookupHost(ctx, address)
+		if err != nil {
+			return fmt.Errorf("%w: %s does not resolve: %v", sip_trunk.ErrHostNotPublic, stripHostPort(address), err)
+		}
+		for _, ip := range ips {
+			if addr, ok := netip.AddrFromSlice(ip); !ok || !sip_trunk.IsPublicAddress(addr) {
+				return fmt.Errorf("%w: %s resolves to %s", sip_trunk.ErrHostNotPublic, stripHostPort(address), ip)
+			}
+		}
+	}
+	return nil
+}
+
+func lookupHost(ctx context.Context, address string) ([]net.IP, error) {
+	host := stripHostPort(address)
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return net.DefaultResolver.LookupIP(lookupCtx, "ip", host)
 }
 
 func (c *trunkConnection) startRegistration() {

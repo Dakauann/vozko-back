@@ -101,6 +101,7 @@ func toInstanceSchema(i *uw.Instance) *schema.UnofficialWhatsAppInstance {
 		EnableAutoStaging:    i.EnableAutoStaging,
 		EnableAutoMemory:     i.EnableAutoMemory,
 		HandleGroups:         i.HandleGroups,
+		ImportHistory:        i.ImportHistory,
 	}
 	if i.InstanceToken != "" {
 		record.InstanceToken = piigorm.NewEncrypted(i.InstanceToken)
@@ -115,7 +116,7 @@ func toInstanceDomain(record *schema.UnofficialWhatsAppInstance) *uw.Instance {
 	if record == nil {
 		return nil
 	}
-	return &uw.Instance{
+	instance := &uw.Instance{
 		ID:           record.ID,
 		WorkspaceID:  record.WorkspaceID,
 		DepartmentID: record.DepartmentID,
@@ -171,10 +172,16 @@ func toInstanceDomain(record *schema.UnofficialWhatsAppInstance) *uw.Instance {
 		EnableAutoStaging:    record.EnableAutoStaging,
 		EnableAutoMemory:     record.EnableAutoMemory,
 		HandleGroups:         record.HandleGroups,
+		ImportHistory:        record.ImportHistory,
 
 		CreatedAt: record.CreatedAt,
 		UpdatedAt: record.UpdatedAt,
 	}
+	if record.DeletedAt.Valid {
+		deleted := record.DeletedAt.Time
+		instance.DeletedAt = &deleted
+	}
+	return instance
 }
 
 func toContactDomain(record *schema.UnofficialWhatsAppContact) *uw.Contact {

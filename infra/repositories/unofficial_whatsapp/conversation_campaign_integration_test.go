@@ -15,7 +15,7 @@ import (
 	"vozko/infra/database/schema"
 )
 
-func conversationIntegrationDB(t *testing.T) *gorm.DB {
+func postgresTestDB(t *testing.T, models []any, statements []string) *gorm.DB {
 	t.Helper()
 	if os.Getenv("VOZKO_TEST_DB") != "1" {
 		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
@@ -44,22 +44,29 @@ func conversationIntegrationDB(t *testing.T) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := db.AutoMigrate(&schema.UnofficialWhatsAppConversation{}); err != nil {
+	if err := db.AutoMigrate(models...); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	for _, stmt := range []string{
-		`CREATE UNIQUE INDEX ux_uw_conversation_instance_contact_campaign
-			ON unofficial_whatsapp_conversations (instance_id, contact_id, campaign_id)
-			WHERE deleted_at IS NULL`,
-		`CREATE UNIQUE INDEX ux_uw_conversation_instance_chat_campaign
-			ON unofficial_whatsapp_conversations (instance_id, chat_id, campaign_id)
-			WHERE chat_id <> '' AND deleted_at IS NULL`,
-	} {
+	for _, stmt := range statements {
 		if err := db.Exec(stmt).Error; err != nil {
 			t.Fatalf("index: %v", err)
 		}
 	}
 	return db
+}
+
+var conversationIndexes = []string{
+	`CREATE UNIQUE INDEX ux_uw_conversation_instance_contact_campaign
+			ON unofficial_whatsapp_conversations (instance_id, contact_id, campaign_id)
+			WHERE deleted_at IS NULL`,
+	`CREATE UNIQUE INDEX ux_uw_conversation_instance_chat_campaign
+			ON unofficial_whatsapp_conversations (instance_id, chat_id, campaign_id)
+			WHERE chat_id <> '' AND deleted_at IS NULL`,
+}
+
+func conversationIntegrationDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	return postgresTestDB(t, []any{&schema.UnofficialWhatsAppConversation{}}, conversationIndexes)
 }
 
 func TestConversationsPerCampaignAgainstPostgres(t *testing.T) {

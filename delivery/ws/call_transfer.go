@@ -33,6 +33,7 @@ var transferErrorCodes = []struct {
 	{callrouting.ErrCallNotFound, "call_not_found"},
 	{callrouting.ErrNotCallOwner, "not_call_owner"},
 	{callrouting.ErrTargetUnavailable, "target_unavailable"},
+	{callrouting.ErrConversationOutOfReach, "conversation_out_of_reach"},
 	{callrouting.ErrTransferToSelf, "transfer_to_self"},
 	{callrouting.ErrTransferInProgress, "transfer_in_progress"},
 	{callrouting.ErrNoTransferToCancel, "no_transfer"},

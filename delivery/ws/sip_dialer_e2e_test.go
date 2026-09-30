@@ -115,7 +115,7 @@ func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 		SIPBindHost: "127.0.0.1", SIPPortStart: voiptest.FreeUDPPort(t), SIPPortCount: 1,
 		RTPPortStart: 43000, RTPPortEnd: 43999, RegisterExpiry: time.Minute, DialTimeout: 5 * time.Second,
 		MediaTimeout: mediaTimeout, MaxCallDuration: time.Hour, WatchInterval: 100 * time.Millisecond,
-		PublicAddress: "127.0.0.1", UserAgent: "VozkoTest",
+		PublicAddress: "127.0.0.1", UserAgent: "VozkoTest", AllowPrivateHosts: true,
 	}, repo)
 	if err != nil {
 		t.Fatal(err)
@@ -129,6 +129,7 @@ func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 		colleagueUser + "|" + dialerWorkspace + "|sip_trunks|call":    true,
 		colleagueUser + "|" + dialerWorkspace + "|call_session|use":   true,
 		colleagueUser + "|" + dialerWorkspace + "|conversations|read": true,
+		dialerUser + "|" + dialerWorkspace + "|call_session|transfer": true,
 		listenerUser + "|" + dialerWorkspace + "|call_session|use":    true,
 	}
 

@@ -196,6 +196,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.UnofficialWhatsAppGroupParticipant{},
 			&schema.UnofficialWhatsAppCampaign{},
 			&schema.UnofficialWhatsAppCampaignEntry{},
+			&schema.UnofficialWhatsAppHistorySync{},
 			&schema.WebhookProcessedEvent{},
 		); err != nil {
 			return err

@@ -28,6 +28,10 @@ func TestCSRFMiddleware(t *testing.T) {
 	origin := func(v string) func(*http.Request) { return func(r *http.Request) { r.Header.Set("Origin", v) } }
 	referer := func(v string) func(*http.Request) { return func(r *http.Request) { r.Header.Set("Referer", v) } }
 	bearer := func(r *http.Request) { r.Header.Set("Authorization", "Bearer t") }
+	socket := func(r *http.Request) {
+		r.Header.Set("Connection", "keep-alive, Upgrade")
+		r.Header.Set("Upgrade", "websocket")
+	}
 
 	cases := []struct {
 		name string
@@ -46,6 +50,11 @@ func TestCSRFMiddleware(t *testing.T) {
 		{"POST cookie + same-origin (API's own page) passes", req(http.MethodPost, accessCookie, origin("https://api.example.com")), http.StatusOK},
 		{"POST cookie + same-origin via Referer fallback passes", req(http.MethodPost, accessCookie, referer("https://api.example.com/oauth/meta/embedded")), http.StatusOK},
 		{"POST cookie + same host but wrong scheme blocked", req(http.MethodPost, accessCookie, origin("http://api.example.com")), http.StatusForbidden},
+		{"WebSocket upgrade with cookie + untrusted Origin blocked", req(http.MethodGet, socket, accessCookie, origin("https://evil.example")), http.StatusForbidden},
+		{"WebSocket upgrade with cookie + sibling subdomain blocked", req(http.MethodGet, socket, accessCookie, origin("https://docs.example.com")), http.StatusForbidden},
+		{"WebSocket upgrade with cookie + trusted Origin passes", req(http.MethodGet, socket, accessCookie, origin("https://app.example.com")), http.StatusOK},
+		{"WebSocket upgrade with cookie + no Origin blocked", req(http.MethodGet, socket, accessCookie), http.StatusForbidden},
+		{"WebSocket upgrade with a token and no cookie is exempt", req(http.MethodGet, socket, origin("https://partner.example")), http.StatusOK},
 	}
 
 	for _, tc := range cases {

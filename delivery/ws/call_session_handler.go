@@ -124,6 +124,185 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 	return h
 }
 
+// @Summary		WebSocket de chamadas
+// @Description	Leva o áudio das ligações entre o navegador e a Vozko: faz ligações por troncos SIP e pelo WhatsApp, recebe chamadas, transfere para colegas e filas e mostra quem está disponível.
+// @Description
+// @Description	## Conectar
+// @Description
+// @Description	```text
+// @Description	wss://SUA_URL_BASE/ws/call-session?token=SEU_ACCESS_TOKEN&workspaceId=SEU_WORKSPACE_ID&workspace_id=SEU_WORKSPACE_ID
+// @Description	```
+// @Description
+// @Description	- Permissões: `conversations:update` e `call_session:use` no workspace.
+// @Description
+// @Description	Ao conectar você recebe `conversation:connected` com `{"feature": "call-session", "workspace_id": string, "user_id": string}` e, em seguida, a presença da equipe em `call-session:presence`.
+// @Description
+// @Description	## Áudio
+// @Description
+// @Description	Nos dois sentidos o áudio é PCM de 16 bits little-endian, mono, codificado em base64.
+// @Description
+// @Description	- Você envia em `call_audio`, informando `sample_rate`. O servidor converte 16000, 22050, 24000, 32000, 44100 e 48000 Hz para 8000 Hz; outras taxas são descartadas.
+// @Description	- Você recebe em `call:audio`, sempre a 8000 Hz.
+// @Description
+// @Description	## Mensagens que você envia
+// @Description
+// @Description	Formato: `{"type": "...", "payload": {...}}`. Tipos desconhecidos são ignorados.
+// @Description
+// @Description	| type | payload | O que faz |
+// @Description	|---|---|---|
+// @Description	| `start_call` | `{"phone_number": string, "trunk_id"?: string, "whatsapp_phone_id"?: string, "request_id"?: string}` | Faz uma ligação. Com `trunk_id` sai pelo tronco SIP (exige `sip_trunks:call`); sem ele, pelo número de WhatsApp em `whatsapp_phone_id`. O andamento chega em `call:status`. |
+// @Description	| `end_call` | `{}` | Desliga a ligação atual. |
+// @Description	| `call_audio` | `{"audio": string, "sample_rate"?: number}` | Áudio do microfone. Sem resposta. |
+// @Description	| `call:incoming_accept` | `{"offer_id": string}` | Atende uma chamada oferecida em `call:incoming`. Precisa vir da mesma conexão que recebeu a oferta. |
+// @Description	| `call:incoming_decline` | `{"offer_id": string, "reason"?: string}` | Recusa a chamada; ela segue para o próximo atendente. |
+// @Description	| `call:transfer` | `{"target_kind": "member" \| "queue", "user_id"?: string, "queue_id"?: string, "notes"?: string}` | Transfere a ligação atual para um colega (`user_id`) ou uma fila (`queue_id`). `notes` chega a quem atender, até 500 caracteres. O andamento chega em `call:transfer_status`. |
+// @Description	| `call:transfer_cancel` | `{"call_id": string}` | Cancela uma transferência para colega ainda tocando; a ligação volta para você. |
+// @Description
+// @Description	Para transferir é preciso `call_session:transfer` e poder atender aquele tipo de ligação. Colegas e filas disponíveis vêm de `call-session:presence` e de `GET /call-queues/transfer-targets`.
+// @Description
+// @Description	## Mensagens que você recebe
+// @Description
+// @Description	| type | payload | Quando |
+// @Description	|---|---|---|
+// @Description	| `conversation:connected` | `{"feature": "call-session", "workspace_id", "user_id"}` | Ao conectar. |
+// @Description	| `call:status` | `{"status": "ringing" \| "answered", "reason"?, "call_id", "phone_number"?, "request_id"?}` | A ligação está chamando ou foi atendida. Também chega com `answered` quando você assume uma ligação transferida ou retomada. |
+// @Description	| `call:audio` | `{"audio": string, "sample_rate": 8000}` | Áudio de quem está do outro lado. |
+// @Description	| `call:ended` | `{"call_id", "phone_number"?, "reason"?, "duration_seconds": number, "request_id"?}` | A ligação terminou. `reason`: `ended`, `failed`, `busy`, `no_answer`, `declined`, `cancelled`, `insufficient_balance` ou `balance_check_error`. |
+// @Description	| `call:waiting_slot` | `{"reason": string}` | Todas as linhas estão ocupadas; a ligação começa quando uma liberar. |
+// @Description	| `call:incoming` | Veja Chamada oferecida | Uma chamada foi oferecida a você. |
+// @Description	| `call:incoming_withdrawn` | `{"offer_id": string, "reason": "no_answer" \| "caller_hung_up"}` | A oferta expirou ou quem ligou desistiu. |
+// @Description	| `call:transfer_status` | Veja Transferências | Andamento da sua transferência. |
+// @Description	| `call-session:presence` | `{"users": [{"user_id", "username"?, "busy": boolean, "on_call"?: boolean, "ringing"?: boolean, "has_browser": boolean}]}` | Alguém conectou, desconectou, entrou ou saiu de uma ligação. Sem `call_session:list_members`, a lista traz só você. |
+// @Description	| `telephony:board` | Veja Painel de telefonia | Junto com a presença, para quem tem `call_session:list_members`. |
+// @Description	| `conversation:error` | `{"code": string, "message": string, "entry_id"?: string}` | Veja Erros. |
+// @Description
+// @Description	### Chamada oferecida
+// @Description
+// @Description	```json
+// @Description	{
+// @Description	  "offer_id": "string",
+// @Description	  "call_id": "string",
+// @Description	  "workspace_id": "string",
+// @Description	  "from_number": "string",
+// @Description	  "to_number": "string (opcional)",
+// @Description	  "channel": "sip | whatsapp",
+// @Description	  "expires_at": "RFC 3339",
+// @Description	  "transfer": {
+// @Description	    "from_user_id": "string (opcional)",
+// @Description	    "from_name": "string (opcional)",
+// @Description	    "queue_id": "string (opcional)",
+// @Description	    "queue_name": "string (opcional)",
+// @Description	    "notes": "string (opcional)"
+// @Description	  },
+// @Description	  "resume": true
+// @Description	}
+// @Description	```
+// @Description
+// @Description	- `transfer` aparece quando a chamada vem de um colega, de uma fila ou de um fluxo de voz.
+// @Description	- `resume: true` indica que é a sua própria ligação voltando depois de a conexão cair (veja abaixo).
+// @Description
+// @Description	### Transferências
+// @Description
+// @Description	`call:transfer_status` chega apenas para quem transferiu:
+// @Description
+// @Description	```json
+// @Description	{
+// @Description	  "transfer_id": "string",
+// @Description	  "call_id": "string",
+// @Description	  "status": "ringing | queued | connected | returned | ended",
+// @Description	  "target_user_id": "string (opcional)",
+// @Description	  "target_name": "string (opcional)",
+// @Description	  "queue_id": "string (opcional)",
+// @Description	  "queue_name": "string (opcional)",
+// @Description	  "reason": "string (opcional)"
+// @Description	}
+// @Description	```
+// @Description
+// @Description	- **Para um colega**: quem ligou ouve a música de espera e você recebe `ringing`. Se o colega atender, `connected` e a ligação sai do seu discador. Se recusar, não atender (20 segundos) ou você cancelar, a ligação volta para você com `call:status` `answered` e `returned` com `reason` `declined`, `no_answer` ou `cancelled`. Se quem ligou desistir, `ended` com `reason: "caller_hung_up"`.
+// @Description	- **Para uma fila**: você recebe `queued` e a ligação sai do seu discador na hora. Se ninguém da fila atender até a espera máxima, a ligação toca de novo para você como uma nova `call:incoming`.
+// @Description	- **Ligações do WhatsApp**: a conversa do contato vai junto e passa a ser de quem atender, com as mesmas regras da atribuição manual. Por isso só tocam colegas que podem receber essa conversa; para um colega que não pode, a transferência é recusada com `conversation_out_of_reach`.
+// @Description
+// @Description	### Conexão perdida durante uma ligação
+// @Description
+// @Description	Se a sua conexão cair com uma ligação atendida, quem ligou ouve a música de espera por até 30 segundos. Ao reconectar, você recebe `call:incoming` com `resume: true`: aceite para continuar a mesma ligação ou recuse para encerrá-la. Sem reconexão nesse tempo, a ligação é encerrada. Ligações ainda chamando terminam na hora.
+// @Description
+// @Description	### Painel de telefonia
+// @Description
+// @Description	```json
+// @Description	{
+// @Description	  "workspace_id": "string",
+// @Description	  "rev": 0,
+// @Description	  "as_of": "RFC 3339",
+// @Description	  "capacity": {"used": 0, "max": 0, "pct": 0},
+// @Description	  "humans": [{"user_id": "string", "username": "string (opcional)", "state": "free | ringing | on_call", "has_browser": true, "since": "RFC 3339"}],
+// @Description	  "queue": {"depth": 0, "available": true},
+// @Description	  "online": 0,
+// @Description	  "free": 0,
+// @Description	  "in_call": 0,
+// @Description	  "ringing": 0,
+// @Description	  "idle_pct": 0
+// @Description	}
+// @Description	```
+// @Description
+// @Description	## Erros
+// @Description
+// @Description	`conversation:error` traz `code` e `message`. Em erros de chamada oferecida, `entry_id` é o `offer_id`; em erros de transferência, é o `call_id`.
+// @Description
+// @Description	| code | Significado |
+// @Description	|---|---|
+// @Description	| `invalid_payload` | Mensagem ou `payload` fora do formato. |
+// @Description	| `missing_fields` | Falta `phone_number`, `offer_id` ou `call_id`. |
+// @Description	| `unauthorized` | Falta permissão para ligar, para usar o tronco ou para transferir esse tipo de ligação. |
+// @Description	| `already_in_call` | Você já está em uma ligação ou atendendo uma chamada. |
+// @Description	| `no_active_call` | Não há ligação para desligar. |
+// @Description	| `dial_failed` | Não foi possível iniciar a ligação. |
+// @Description	| `no_call_slots` | Todas as linhas ocupadas; tente em instantes. |
+// @Description	| `insufficient_balance` | Saldo insuficiente para ligar. |
+// @Description	| `not_configured` | Origem de ligação não configurada. |
+// @Description	| `whatsapp_permission_required` | O contato não autorizou receber ligações pelo WhatsApp. |
+// @Description	| `trunk_unavailable` | O tronco não existe, está desativado ou não faz ligações. |
+// @Description	| `trunk_not_registered` | O tronco não está registrado no provedor. |
+// @Description	| `invalid_number` | O número só pode ter dígitos, `*`, `#` e um `+` no início. |
+// @Description	| `inbound_unavailable` | Chamadas recebidas não estão disponíveis neste servidor. |
+// @Description	| `offer_not_found` | A oferta não está mais disponível. |
+// @Description	| `not_for_user` | A oferta não é sua ou foi enviada para outra conexão. |
+// @Description	| `offer_resolved` | A oferta já foi atendida ou recusada. |
+// @Description	| `inbound_failed` | Falha ao atender. |
+// @Description	| `transfer_unavailable` | Transferências não estão disponíveis neste servidor. |
+// @Description	| `no_call_to_transfer` | Não há ligação em andamento para transferir. |
+// @Description	| `call_not_found` | A ligação já terminou. |
+// @Description	| `not_call_owner` | Só quem está na ligação pode transferi-la. |
+// @Description	| `target_unavailable` | O colega não está livre ou não pode atender esse tipo de ligação. |
+// @Description	| `conversation_out_of_reach` | Em ligações do WhatsApp, a conversa do contato não pode ser passada para esse colega. |
+// @Description	| `transfer_to_self` | Não é possível transferir para você mesmo. |
+// @Description	| `transfer_in_progress` | Essa ligação já está sendo transferida. |
+// @Description	| `no_transfer` | Não há transferência para cancelar. |
+// @Description	| `queue_not_found` | A fila não existe neste workspace. |
+// @Description	| `notes_too_long` | A nota pode ter até 500 caracteres. |
+// @Description	| `invalid_target` | Escolha um colega ou uma fila. |
+// @Description	| `transfer_failed` | A transferência não pôde ser iniciada. |
+// @Description
+// @Description	## Autenticação
+// @Description
+// @Description	Use o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.
+// @Description
+// @Description	## Workspace
+// @Description
+// @Description	Informe o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.
+// @Description
+// @Description	## Formato das mensagens
+// @Description
+// @Description	Cada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).
+// @Tags			WebSockets
+// @Param			token		query	string	false	"Access token (alternativa ao cabeçalho Authorization e ao cookie accessToken)"
+// @Param			workspace_id	query	string	false	"Workspace usado na checagem de permissão da conexão"
+// @Param			workspaceId	query	string	false	"Workspace da sessão"
+// @Success		101	{string}	string	"Switching Protocols: a conexão vira WebSocket"
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/ws/call-session [get]
 func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if h == nil || h.startUseCase == nil || h.endUseCase == nil {
 		http.Error(w, "Call session websocket not configured", http.StatusNotImplemented)

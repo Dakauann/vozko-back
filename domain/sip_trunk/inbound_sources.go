@@ -23,7 +23,11 @@ func ParseInboundSources(raw []string) (InboundSources, error) {
 
 func parseInboundSource(entry string) (netip.Prefix, error) {
 	if prefix, err := netip.ParsePrefix(entry); err == nil {
-		return prefix.Masked(), nil
+		prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-unmappedBits(prefix)).Masked()
+		if tooBroad(prefix) {
+			return netip.Prefix{}, fmt.Errorf("%w: %q", ErrInboundSourceTooBroad, entry)
+		}
+		return prefix, nil
 	}
 	if addr, err := netip.ParseAddr(entry); err == nil {
 		return netip.PrefixFrom(addr.Unmap(), addr.Unmap().BitLen()), nil

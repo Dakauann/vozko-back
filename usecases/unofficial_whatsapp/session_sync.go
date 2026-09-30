@@ -8,8 +8,14 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
+type ConnectionListener interface {
+	InstanceConnected(ctx context.Context, instance *uw.Instance)
+}
+
 type sessionSync struct {
 	instances uw.InstanceRepository
+	listener  ConnectionListener
+	gate      LinkGate
 }
 
 func (s sessionSync) apply(ctx context.Context, instance *uw.Instance, session *uw.Session) (*uw.Instance, error) {
@@ -17,10 +23,11 @@ func (s sessionSync) apply(ctx context.Context, instance *uw.Instance, session *
 		return instance, nil
 	}
 
+	wasLive := instance.SessionLive()
 	now := time.Now().UTC()
 	update := uw.SessionUpdate{
 		PolledAt:             now,
-		JID:                  session.JID,
+		JID:                  uw.BareJID(session.JID),
 		LID:                  session.LID,
 		PhoneNumber:          uw.PhoneFromJID(session.JID),
 		ProfileName:          session.ProfileName,
@@ -46,11 +53,20 @@ func (s sessionSync) apply(ctx context.Context, instance *uw.Instance, session *
 			instance.ID, session.State, instance.Status)
 	}
 
+	if !wasLive && update.Status != nil && *update.Status == uw.StatusConnected && update.JID != "" && s.gate != nil {
+		if err := s.gate.Admit(ctx, instance, update.JID); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := s.instances.UpdateSession(ctx, instance.ID, update); err != nil {
 		return nil, err
 	}
 
 	applyToDomain(instance, update, session)
+	if !wasLive && instance.SessionLive() && s.listener != nil {
+		s.listener.InstanceConnected(ctx, instance)
+	}
 	return instance, nil
 }
 
@@ -82,4 +98,28 @@ func assignIfPresent(target *string, value string) {
 	if value != "" {
 		*target = value
 	}
+}
+
+type sessionHost struct {
+	sync sessionSync
+}
+
+func (h *sessionHost) SetConnectionListener(listener ConnectionListener) {
+	h.sync.listener = listener
+}
+
+func (h *sessionHost) SetLinkGate(gate LinkGate) {
+	h.sync.gate = gate
+}
+
+func markInstanceDisconnected(ctx context.Context, instances uw.InstanceRepository, instance *uw.Instance, reason string) error {
+	if !instance.Status.CanTransitionTo(uw.StatusDisconnected) {
+		return nil
+	}
+	if err := instances.UpdateStatus(ctx, instance.ID, uw.StatusDisconnected, reason); err != nil {
+		return err
+	}
+	instance.Status = uw.StatusDisconnected
+	instance.StatusReason = reason
+	return nil
 }

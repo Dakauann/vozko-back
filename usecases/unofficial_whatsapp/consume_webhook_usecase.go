@@ -78,6 +78,9 @@ func dedupKeyForEvent(q *QueuedEvent) string {
 	if err != nil {
 		return ""
 	}
+	if env.IsHistory() {
+		return ""
+	}
 	events := uw.NormalizeEnvelope(q.InstanceID, env)
 	if len(events) == 0 {
 		return ""
@@ -92,7 +95,8 @@ func classifyWebhookFailure(err error) webhook_usecase.Disposition {
 
 	case errors.Is(err, ErrUnknownInstance),
 		errors.Is(err, uw.ErrInstanceNotFound),
-		errors.Is(err, uw.ErrInvalidEvent):
+		errors.Is(err, uw.ErrInvalidEvent),
+		errors.Is(err, uw.ErrNumberAlreadyLinked):
 		return webhook_usecase.DispositionDrop
 	}
 

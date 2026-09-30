@@ -110,7 +110,10 @@ type whatsappCRMCall struct {
 	hangupOnce   sync.Once
 }
 
-func (c *whatsappCRMCall) ID() string                                   { return c.id }
+func (c *whatsappCRMCall) ID() string { return c.id }
+func (c *whatsappCRMCall) Contact() (conversation_domain.CallContact, bool) {
+	return conversation_domain.CallContact{BusinessPhoneID: c.phoneID, ContactNumber: c.to}, true
+}
 func (c *whatsappCRMCall) AudioStream() <-chan []byte                   { return c.audioIn }
 func (c *whatsappCRMCall) Events() <-chan conversation_domain.CallEvent { return c.events }
 func (c *whatsappCRMCall) Done() <-chan struct{}                        { return c.done }

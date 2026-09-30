@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -132,9 +133,17 @@ func (c *trackedCall) enforceEncryption() {
 	_ = c.terminate(ctx)
 }
 
+func (c *trackedCall) trustsMediaFrom(source *net.UDPAddr) bool {
+	signaled, ok := newDialogMediaView(c.dialogMedia.MediaSession).RemoteAddr().(*net.UDPAddr)
+	if ok && signaled.IP.Equal(source.IP) {
+		return true
+	}
+	return c.conn.inboundSources.Contains(source.IP.String())
+}
+
 func (m *SIPTrunkManager) establish(call *trackedCall) (voip.PCMStream, error) {
 	session := call.dialogMedia.MediaSession()
-	latch, err := attachLatch(session)
+	latch, err := attachLatch(session, call.trustsMediaFrom)
 	if err != nil {
 		return nil, fmt.Errorf("attach RTP latch: %w", err)
 	}

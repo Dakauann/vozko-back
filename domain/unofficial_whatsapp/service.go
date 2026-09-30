@@ -2,6 +2,7 @@ package unofficial_whatsapp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -176,6 +177,20 @@ type GroupAPI interface {
 type GroupInfoOptions struct {
 	WithInviteLink bool
 	Force          bool
+}
+
+type FindMessagesInput struct {
+	Limit  int
+	Offset int
+}
+
+type MessagePage struct {
+	Messages json.RawMessage
+	Returned int
+}
+
+type HistoryAPI interface {
+	FindMessages(ctx context.Context, ref InstanceRef, in FindMessagesInput) (*MessagePage, error)
 }
 
 type ProviderAPI interface {

@@ -47,6 +47,7 @@ type ExecutorDeps struct {
 	SubWorkflowRunner       node_executors.SubWorkflowRunner
 	SharedState             cache.SharedState
 	LabelRepo               label_domain.Repository
+	Labeler                 label_domain.AutomationLabeler
 	StageRepo               node_executors.StageReader
 	AssignStage             stage_domain.AssignEntryStageUseCase
 	StageBroadcaster        node_executors.StageBroadcaster
@@ -106,7 +107,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionScheduleMeeting, node_executors.NewScheduleMeetingExecutor(deps.CalendarRepo, deps.GoogleCalendar))
 	registry.Register(workflow.NodeTypeActionRescheduleMeeting, node_executors.NewRescheduleMeetingExecutor(deps.RescheduleEventUC))
 	registry.Register(workflow.NodeTypeActionCheckCalendarAvailability, node_executors.NewCheckCalendarAvailabilityExecutor(deps.CalendarRepo, deps.GoogleCalendar))
-	registry.Register(workflow.NodeTypeActionAssignLabel, node_executors.NewAssignLabelExecutor(deps.LabelRepo))
+	registry.Register(workflow.NodeTypeActionAssignLabel, node_executors.NewAssignLabelExecutor(deps.Labeler))
 	registry.Register(workflow.NodeTypeActionMoveStage, node_executors.NewMoveStageExecutor(deps.StageRepo, deps.AssignStage, deps.StageBroadcaster))
 	registry.Register(workflow.NodeTypeActionManageOpportunity, node_executors.NewManageOpportunityExecutor(deps.Deals))
 	registry.Register(workflow.NodeTypeActionTransferDepartment, node_executors.NewTransferDepartmentExecutor(deps.DepartmentRepo, deps.WorkspaceRepo, deps.ConversationHandOff))

@@ -41,6 +41,8 @@ type TrunkManagerConfig struct {
 	UserAgent       string
 	Debug           bool
 	CallMetrics     calls.CallMetricsRecorder
+
+	AllowPrivateHosts bool
 }
 
 func (c TrunkManagerConfig) validate() error {

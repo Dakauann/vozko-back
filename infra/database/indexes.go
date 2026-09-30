@@ -616,10 +616,12 @@ func createSchemaConstraints(tx *gorm.DB) error {
 		},
 
 		{
-			name: "ux_uw_instance_jid",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_instance_jid
-				ON unofficial_whatsapp_instances (jid)
-				WHERE jid <> '' AND deleted_at IS NULL`,
+			name: "ux_uw_instance_jid (superseded)",
+			sql:  `DROP INDEX IF EXISTS ux_uw_instance_jid`,
+		},
+		{
+			name: "ux_uw_instance_live_jid",
+			sql:  uwLiveInstanceJIDIndexSQL,
 		},
 		{
 			name: "ux_uw_instance_delivery_token",
@@ -682,6 +684,12 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			name: "ux_uw_group_participant",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_group_participant
 				ON unofficial_whatsapp_group_participants (group_id, jid)`,
+		},
+		{
+			name: "ux_uw_history_active_per_instance",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_history_active_per_instance
+				ON unofficial_whatsapp_history_syncs (instance_id)
+				WHERE status IN ('QUEUED', 'RUNNING')`,
 		},
 
 		{

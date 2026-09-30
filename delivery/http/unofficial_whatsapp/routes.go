@@ -34,6 +34,8 @@ func RegisterProtectedRoutes(
 
 	r.HandleFunc("/instances/{id}/reset", ac(res, workspace_domain.ActionUpdate, h.Reset)).Methods(http.MethodPost)
 	r.HandleFunc("/instances/{id}/webhook/rotate", ac(res, workspace_domain.ActionUpdate, h.RotateWebhookToken)).Methods(http.MethodPost)
+	r.HandleFunc("/instances/{id}/history-sync", ac(res, workspace_domain.ActionRead, h.GetHistorySync)).Methods(http.MethodGet)
+	r.HandleFunc("/instances/{id}/history-sync", ac(res, workspace_domain.ActionUpdate, h.RequestHistorySync)).Methods(http.MethodPost)
 
 	r.HandleFunc("/instances/{id}/conversations", ac(res, workspace_domain.ActionSend, h.StartConversation)).Methods(http.MethodPost)
 

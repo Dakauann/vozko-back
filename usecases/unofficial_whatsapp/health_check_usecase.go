@@ -14,7 +14,8 @@ type CheckInstanceHealthUseCase struct {
 	instances uw.InstanceRepository
 	servers   uw.ServerRepository
 	provider  uw.ProviderAPI
-	sync      sessionSync
+	sessionHost
+	handover *LineHandover
 
 	webhookBaseURL string
 	staleAfter     time.Duration
@@ -31,7 +32,7 @@ func NewCheckInstanceHealthUseCase(
 		instances:      instances,
 		servers:        servers,
 		provider:       provider,
-		sync:           sessionSync{instances: instances},
+		sessionHost:    sessionHost{sync: sessionSync{instances: instances}},
 		webhookBaseURL: strings.TrimRight(strings.TrimSpace(webhookBaseURL), "/"),
 		staleAfter:     15 * time.Minute,
 		batchLimit:     200,
@@ -58,6 +59,9 @@ func (uc *CheckInstanceHealthUseCase) VerifyIntegrity(ctx context.Context) error
 
 	return uc.forEach(ctx, instances, func(ctx context.Context, server *uw.Server, instance *uw.Instance) {
 		ref := uw.RefFor(server, instance)
+		if err := uc.handover.Adopt(ctx, instance); err != nil {
+			log.Printf("[unofficial-whatsapp][line] instance %s: handover check failed: %v", instance.ID, err)
+		}
 		uc.verifyWebhook(ctx, ref, instance)
 		uc.drainDeliveryErrors(ctx, ref, instance)
 		uc.refreshLimits(ctx, ref, instance)
@@ -212,4 +216,8 @@ func missingEvents(have, want []string) []string {
 		}
 	}
 	return missing
+}
+
+func (uc *CheckInstanceHealthUseCase) SetLineHandover(handover *LineHandover) {
+	uc.handover = handover
 }

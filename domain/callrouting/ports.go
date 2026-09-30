@@ -16,6 +16,7 @@ type RoutedCall interface {
 	Channel() string
 	OwnerSession() (callsession.CallSession, bool)
 	Hold(music []byte) error
+	Contact() (conversation.CallContact, bool)
 	StopHold()
 	Connect(session callsession.CallSession) error
 	SendAudio(pcm []byte) error
@@ -60,6 +61,22 @@ type QueueEntry struct {
 
 type QueueEntrance interface {
 	EnterQueue(ctx context.Context, entry QueueEntry) (TransferOutcome, error)
+}
+
+type Handover struct {
+	WorkspaceID string
+	Contact     conversation.CallContact
+	FromUserID  string
+	ToUserID    string
+}
+
+type ConversationHandoff interface {
+	MayHandOver(ctx context.Context, handover Handover) error
+	HandOver(ctx context.Context, handover Handover) error
+}
+
+type TransferPermission interface {
+	MayTransferCalls(userID, workspaceID string) bool
 }
 
 type AnswerPermission interface {

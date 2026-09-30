@@ -897,3 +897,27 @@ func (f *fakeConversationRepo) StatusForEntry(context.Context, string) (string, 
 func (f *fakeConversationRepo) CountByStatus(context.Context, string, string) (map[string]int64, error) {
 	return nil, nil
 }
+
+func (f *fakeConversationRepo) EntryIDsForContact(_ context.Context, instanceID, contactID string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []string
+	for _, c := range f.convs {
+		if c.InstanceID == instanceID && c.ContactID == contactID {
+			ids = append(ids, c.ID)
+		}
+	}
+	return ids, nil
+}
+
+func (f *fakeInstanceRepo) ListLiveByJID(_ context.Context, jid string) ([]*uw.Instance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []*uw.Instance
+	for _, inst := range f.instances {
+		if inst.JID == jid && inst.Status == uw.StatusConnected && inst.DeletedAt == nil {
+			out = append(out, inst)
+		}
+	}
+	return out, nil
+}

@@ -226,3 +226,28 @@ func TestProvisionRequiresAWorkspace(t *testing.T) {
 		t.Fatalf("err = %v, want ErrWorkspaceIDRequired", err)
 	}
 }
+
+func TestProvisionImportsHistoryUnlessTheOwnerOptsOut(t *testing.T) {
+	off := false
+	for name, tc := range map[string]struct {
+		choice *bool
+		want   bool
+	}{
+		"no choice means import": {nil, true},
+		"an explicit opt-out":    {&off, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			instances := newFakeInstanceRepo()
+			uc := NewProvisionInstanceUseCase(newFakeServerRepo(healthyServer("srv-a", 10, 1)), instances,
+				&fakeProvider{}, "https://api.test")
+
+			instance, err := uc.Execute(context.Background(), ProvisionInput{WorkspaceID: "ws-1", ImportHistory: tc.choice})
+			if err != nil {
+				t.Fatalf("provision: %v", err)
+			}
+			if instance.ImportHistory != tc.want {
+				t.Errorf("import history = %v, want %v", instance.ImportHistory, tc.want)
+			}
+		})
+	}
+}

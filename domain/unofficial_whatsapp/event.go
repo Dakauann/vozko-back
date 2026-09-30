@@ -72,6 +72,8 @@ const (
 	providerEventPresence       = "presence"
 	providerEventNewsletter     = "newsletter_messages"
 	providerEventGroups         = "groups"
+
+	historyMessagesKey = "messages"
 )
 
 const TrackSource = "vozko"
@@ -81,6 +83,21 @@ type Envelope struct {
 	Instance string          `json:"instance"`
 	Owner    string          `json:"owner"`
 	Data     json.RawMessage `json:"data"`
+	Batch    HistoryBatch    `json:"-"`
+}
+
+type HistoryBatch struct {
+	Number int
+	Total  int
+	Status string
+}
+
+func (e *Envelope) IsHistory() bool {
+	return e != nil && e.Event == providerEventHistory
+}
+
+func HistoryEnvelope(messages json.RawMessage) *Envelope {
+	return &Envelope{Event: providerEventHistory, Data: messages}
 }
 
 type Event struct {
@@ -147,6 +164,10 @@ func (e *Event) RunsAutomation() bool {
 	return e.Kind == EventInboundMessage && !e.Backfill
 }
 
+func (e *Event) IsHistoryImport() bool {
+	return e.Backfill && (e.Kind == EventInboundMessage || e.Outbound())
+}
+
 func (e *Event) SubjectJID() string {
 	if e.IsGroup {
 		return e.ChatID
@@ -203,6 +224,16 @@ func DecodeEnvelope(body []byte) (*Envelope, error) {
 		return nil, ErrInvalidEvent
 	}
 
+	if env.IsHistory() {
+		env.Data = firstRaw(raw, "data", historyMessagesKey)
+		env.Batch = HistoryBatch{
+			Number: rawInt(raw, "batchNumber"),
+			Total:  rawInt(raw, "batchTotal"),
+			Status: rawString(raw, "batchHistoryStatus"),
+		}
+		return &env, nil
+	}
+
 	env.Data = firstRaw(raw, "data", env.Event, singular(env.Event))
 	if len(env.Data) == 0 {
 		env.Data = body
@@ -223,6 +254,26 @@ func DescribeUnknownBody(body []byte) []string {
 	return keys
 }
 
+func HasItems(data json.RawMessage) bool {
+	return ItemCount(data) > 0
+}
+
+func ItemCount(data json.RawMessage) int {
+	var items []json.RawMessage
+	if json.Unmarshal(data, &items) != nil {
+		return 0
+	}
+	return len(items)
+}
+
+func FirstItem(data json.RawMessage) json.RawMessage {
+	var items []json.RawMessage
+	if json.Unmarshal(data, &items) != nil || len(items) == 0 {
+		return data
+	}
+	return items[0]
+}
+
 func rawString(raw map[string]json.RawMessage, keys ...string) string {
 	for _, key := range keys {
 		var s string
@@ -233,6 +284,24 @@ func rawString(raw map[string]json.RawMessage, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func rawInt(raw map[string]json.RawMessage, key string) int {
+	value, ok := raw[key]
+	if !ok {
+		return 0
+	}
+	var n int
+	if json.Unmarshal(value, &n) == nil {
+		return n
+	}
+	var s string
+	if json.Unmarshal(value, &s) == nil {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func firstRaw(raw map[string]json.RawMessage, keys ...string) json.RawMessage {

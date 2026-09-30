@@ -55,6 +55,7 @@ func (r *instanceRepository) Update(ctx context.Context, i *uw.Instance) error {
 		"enable_auto_staging":    record.EnableAutoStaging,
 		"enable_auto_memory":     record.EnableAutoMemory,
 		"handle_groups":          record.HandleGroups,
+		"import_history":         record.ImportHistory,
 		"warmup_started_at":      record.WarmupStartedAt,
 	}
 	if i.InstanceToken != "" {
@@ -187,6 +188,23 @@ func (r *instanceRepository) FindByJID(ctx context.Context, jid string) (*uw.Ins
 		return nil, uw.ErrInstanceNotFound
 	}
 	return r.first(ctx, r.db.WithContext(ctx).Where("jid = ?", jid))
+}
+
+func (r *instanceRepository) ListLiveByJID(ctx context.Context, jid string) ([]*uw.Instance, error) {
+	if strings.TrimSpace(jid) == "" {
+		return nil, nil
+	}
+	var rows []schema.UnofficialWhatsAppInstance
+	if err := r.db.WithContext(ctx).
+		Where("jid = ? AND status = ?", jid, string(uw.StatusConnected)).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*uw.Instance, 0, len(rows))
+	for i := range rows {
+		out = append(out, toInstanceDomain(&rows[i]))
+	}
+	return out, nil
 }
 
 func (r *instanceRepository) FindByProviderInstanceID(ctx context.Context, serverID, providerInstanceID string) (*uw.Instance, error) {

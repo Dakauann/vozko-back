@@ -9,20 +9,23 @@ import (
 
 const rtpHeaderSize = 12
 
+type mediaSourceTrust func(*net.UDPAddr) bool
+
 type latchingConn struct {
 	net.PacketConn
 	expected map[uint8]struct{}
+	trusted  mediaSourceTrust
 
 	mu      sync.RWMutex
 	latched *net.UDPAddr
 }
 
-func newLatchingConn(conn net.PacketConn, expectedPayloadTypes []uint8) *latchingConn {
+func newLatchingConn(conn net.PacketConn, expectedPayloadTypes []uint8, trusted mediaSourceTrust) *latchingConn {
 	expected := make(map[uint8]struct{}, len(expectedPayloadTypes))
 	for _, pt := range expectedPayloadTypes {
 		expected[pt] = struct{}{}
 	}
-	return &latchingConn{PacketConn: conn, expected: expected}
+	return &latchingConn{PacketConn: conn, expected: expected, trusted: trusted}
 }
 
 func (c *latchingConn) ReadFrom(b []byte) (int, net.Addr, error) {
@@ -37,7 +40,7 @@ func (c *latchingConn) ReadFrom(b []byte) (int, net.Addr, error) {
 		}
 		latched := c.current()
 		if latched == nil {
-			if !c.isExpectedRTP(b[:n]) {
+			if !c.isExpectedRTP(b[:n]) || !c.trusted(source) {
 				continue
 			}
 			c.latch(source)
@@ -95,7 +98,7 @@ func payloadTypesFromCodecs(codecs []media.Codec) []uint8 {
 	return types
 }
 
-func attachLatch(session *media.MediaSession) (*latchingConn, error) {
+func attachLatch(session *media.MediaSession, trusted mediaSourceTrust) (*latchingConn, error) {
 	field, err := sessionField(session, "rtpConn")
 	if err != nil {
 		return nil, err
@@ -107,7 +110,7 @@ func attachLatch(session *media.MediaSession) (*latchingConn, error) {
 	if existing, ok := current.(*latchingConn); ok {
 		return existing, nil
 	}
-	latch := newLatchingConn(current, payloadTypesFromCodecs(session.Codecs))
+	latch := newLatchingConn(current, payloadTypesFromCodecs(session.Codecs), trusted)
 	field.Set(packetConnValue(net.PacketConn(latch)))
 	return latch, nil
 }

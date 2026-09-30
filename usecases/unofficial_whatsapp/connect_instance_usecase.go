@@ -12,7 +12,7 @@ type ConnectInstanceUseCase struct {
 	instances uw.InstanceRepository
 	servers   uw.ServerRepository
 	provider  uw.ProviderAPI
-	sync      sessionSync
+	sessionHost
 }
 
 func NewConnectInstanceUseCase(
@@ -21,10 +21,10 @@ func NewConnectInstanceUseCase(
 	provider uw.ProviderAPI,
 ) *ConnectInstanceUseCase {
 	return &ConnectInstanceUseCase{
-		instances: instances,
-		servers:   servers,
-		provider:  provider,
-		sync:      sessionSync{instances: instances},
+		instances:   instances,
+		servers:     servers,
+		provider:    provider,
+		sessionHost: sessionHost{sync: sessionSync{instances: instances}},
 	}
 }
 
@@ -77,22 +77,25 @@ func (uc *ConnectInstanceUseCase) Status(ctx context.Context, instanceID, worksp
 	if err != nil {
 		return nil, err
 	}
-
-	session, err := uc.provider.Status(ctx, uw.RefFor(server, instance))
+	session, err := uc.refresh(ctx, instance, server)
 	if err != nil {
-		if provErr, ok := uw.AsProviderError(err); ok && provErr.NeedsReconnect() {
-			if markErr := uc.markDisconnected(ctx, instance, provErr.Error()); markErr != nil {
-				return nil, markErr
-			}
-			return challengeFrom(instance, nil, ""), nil
-		}
-		return nil, fmt.Errorf("unofficial whatsapp: read status: %w", err)
-	}
-
-	if _, err := uc.sync.apply(ctx, instance, session); err != nil {
 		return nil, err
 	}
 	return challengeFrom(instance, session, ""), nil
+}
+
+func (uc *ConnectInstanceUseCase) refresh(ctx context.Context, instance *uw.Instance, server *uw.Server) (*uw.Session, error) {
+	session, err := uc.provider.Status(ctx, uw.RefFor(server, instance))
+	if err != nil {
+		if provErr, ok := uw.AsProviderError(err); ok && provErr.NeedsReconnect() {
+			return nil, uc.markDisconnected(ctx, instance, provErr.Error())
+		}
+		return nil, fmt.Errorf("unofficial whatsapp: read status: %w", err)
+	}
+	if _, err := uc.sync.apply(ctx, instance, session); err != nil {
+		return nil, err
+	}
+	return session, nil
 }
 
 func (uc *ConnectInstanceUseCase) Disconnect(ctx context.Context, instanceID, workspaceID string, scope uw.DepartmentScope) error {
@@ -116,19 +119,14 @@ func (uc *ConnectInstanceUseCase) Reset(ctx context.Context, instanceID, workspa
 	if err := uc.provider.Reset(ctx, uw.RefFor(server, instance)); err != nil {
 		return fmt.Errorf("unofficial whatsapp: reset: %w", err)
 	}
+	if _, err := uc.refresh(ctx, instance, server); err != nil {
+		return fmt.Errorf("unofficial whatsapp: reset went through but the session could not be re-read: %w", err)
+	}
 	return nil
 }
 
 func (uc *ConnectInstanceUseCase) markDisconnected(ctx context.Context, instance *uw.Instance, reason string) error {
-	if !instance.Status.CanTransitionTo(uw.StatusDisconnected) {
-		return nil
-	}
-	if err := uc.instances.UpdateStatus(ctx, instance.ID, uw.StatusDisconnected, reason); err != nil {
-		return err
-	}
-	instance.Status = uw.StatusDisconnected
-	instance.StatusReason = reason
-	return nil
+	return markInstanceDisconnected(ctx, uc.instances, instance, reason)
 }
 
 func (uc *ConnectInstanceUseCase) load(

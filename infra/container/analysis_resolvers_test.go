@@ -61,7 +61,10 @@ func TestChannelAnalysisResolverPropagatesAConversationFailure(t *testing.T) {
 	boom := errors.New("db down")
 	resolve := channelAnalysisResolver(shared.EntryTypeFacebook,
 		func(context.Context, string) (*analysisConversation, error) { return nil, boom },
-		func(context.Context, string) (*analysisContact, error) { t.Fatal("contact read without a conversation"); return nil, nil })
+		func(context.Context, string) (*analysisContact, error) {
+			t.Fatal("contact read without a conversation")
+			return nil, nil
+		})
 
 	if _, err := resolve(context.Background(), "conv-1"); !errors.Is(err, boom) {
 		t.Fatalf("got %v", err)

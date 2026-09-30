@@ -158,6 +158,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	leadMemories := c.buildLeadMemories()
 
 	assignEntryStageUC := stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage, timeline)
+	assignEntryLabelUC := label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline)
+	removeEntryLabelUC := label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label, timeline)
+	getEntryLabelsUC := label_usecase.NewGetEntryLabelsUseCase(c.repositories.label)
+	automationLabeler := label_usecase.NewAutomationLabeler(assignEntryLabelUC, removeEntryLabelUC, getEntryLabelsUC, c.services.conversationHub)
 
 	opportunitySvc := opportunity_usecase.NewService(opportunity_usecase.Deps{
 		Repo:          c.repositories.opportunity,
@@ -179,6 +183,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewValidateCEPToolUseCase(searchCEPUC),
 		tools_usecase.NewHTTPRequestToolUseCase(),
 		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, assignEntryStageUC, c.services.conversationHub),
+		tools_usecase.NewManageEntryLabelTool(label_usecase.NewListLabelsUseCase(c.repositories.label), automationLabeler),
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, outcomeCaptureReader{configs: c.repositories.workspaceConfig}),
 		tools_usecase.NewTransferToHumanToolUseCase(c.services.assignmentService),
@@ -820,14 +825,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		updateLabel:      label_usecase.NewUpdateLabelUseCase(c.repositories.label),
 		deleteLabel:      label_usecase.NewDeleteLabelUseCase(c.repositories.label),
 		listLabels:       label_usecase.NewListLabelsUseCase(c.repositories.label),
-		assignEntryLabel: label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline),
-		removeEntryLabel: label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label, timeline),
+		assignEntryLabel: assignEntryLabelUC,
+		removeEntryLabel: removeEntryLabelUC,
 		entryLabels: label_usecase.NewEntryLabelsUseCase(
 			c.services.conversationAuth,
-			label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline),
-			label_usecase.NewRemoveEntryLabelUseCase(c.repositories.label, timeline),
+			assignEntryLabelUC,
+			removeEntryLabelUC,
 		),
-		getEntryLabels: label_usecase.NewGetEntryLabelsUseCase(c.repositories.label),
+		getEntryLabels: getEntryLabelsUC,
 		reorderLabels:  label_usecase.NewReorderLabelsUseCase(c.repositories.label),
 
 		createMessageShortcut: msg_shortcut_usecase.NewCreateUseCase(c.repositories.messageShortcut),
@@ -1109,6 +1114,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		WorkspacePhoneAccess:    c.repositories.workspacePhoneAccess,
 		SharedState:             c.redisProvider.SharedState(),
 		LabelRepo:               c.repositories.label,
+		Labeler:                 automationLabeler,
 		StageRepo:               c.repositories.stage,
 		AssignStage:             assignEntryStageUC,
 		StageBroadcaster:        c.services.conversationHub,
@@ -1428,6 +1434,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Assigner:   c.services.assignmentService,
 		Roulette:   c.services.assignmentService,
 	})
+	c.handCallConversationsOver()
 	c.initUnofficialWhatsAppCampaigns(
 		c.services.messageSender, resolveCreationDepartmentUC)
 	c.useCases.copilot = c.buildCopilot(listAgentsUC, getAgentUC, createAgentUC, updateAgentUC, deleteAgentUC)

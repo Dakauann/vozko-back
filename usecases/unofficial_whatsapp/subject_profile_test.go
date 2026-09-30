@@ -94,7 +94,7 @@ func TestKnownSubjectCostsNoProviderCall(t *testing.T) {
 	}
 }
 
-func TestBackfillNeverCallsTheProvider(t *testing.T) {
+func TestBackfillReadsEachProfileOnceNotPerMessage(t *testing.T) {
 	h := newGroupHarness(t, false).withFreshGate()
 
 	body, _ := json.Marshal(map[string]any{
@@ -109,11 +109,11 @@ func TestBackfillNeverCallsTheProvider(t *testing.T) {
 		t.Fatalf("history ingest failed: %v", err)
 	}
 
-	if got := h.messaging.chatDetailCalls(); len(got) != 0 {
-		t.Errorf("a history replay made %d profile calls, want 0", len(got))
+	if got := h.messaging.chatDetailCalls(); len(got) != 1 {
+		t.Errorf("a history replay of three messages made %d profile calls, want exactly one for the contact", len(got))
 	}
-	if got := h.assets.fetched(); len(got) != 0 {
-		t.Errorf("a history replay downloaded %d avatars, want 0", len(got))
+	if got := h.assets.fetched(); len(got) > 1 {
+		t.Errorf("a history replay downloaded %d avatars, want at most one", len(got))
 	}
 	if got := len(h.history.all()); got != 3 {
 		t.Errorf("persisted %d backfilled messages, want 3", got)

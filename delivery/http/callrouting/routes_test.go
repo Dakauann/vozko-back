@@ -28,7 +28,7 @@ func TestEveryRouteIsGuardedByTheRightPermission(t *testing.T) {
 		{http.MethodGet, "/call-queues/q1", "call_queues:read"},
 		{http.MethodPut, "/call-queues/q1", "call_queues:update"},
 		{http.MethodDelete, "/call-queues/q1", "call_queues:delete"},
-		{http.MethodGet, "/call-queues/transfer-targets", "call_session:use"},
+		{http.MethodGet, "/call-queues/transfer-targets", "call_session:transfer"},
 		{http.MethodGet, "/call-queues/live", "call_queues:read"},
 		{http.MethodGet, "/call-queues/stats", "call_queues:read"},
 		{http.MethodGet, "/call-routing/settings", "call_queues:read"},

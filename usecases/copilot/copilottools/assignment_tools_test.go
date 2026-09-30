@@ -28,6 +28,10 @@ func (f *fakePersonAssign) Assign(by shared.Person, workspaceID, entryID, entryT
 	return f.err
 }
 
+func (f *fakePersonAssign) Check(shared.Person, string, string, string, string) error {
+	return nil
+}
+
 func (f *fakePersonAssign) HandOff(by shared.Person, workspaceID, entryID, entryType, departmentID string) (string, error) {
 	f.by = by
 	f.handed = append(f.handed, workspaceID+"|"+entryID+"|"+departmentID)

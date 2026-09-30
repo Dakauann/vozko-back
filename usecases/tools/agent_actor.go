@@ -20,3 +20,10 @@ func agentActor(ctx context.Context, config map[string]interface{}) string {
 	}
 	return actor.FormatAI(agentID)
 }
+
+func automationActor(ctx context.Context, config map[string]interface{}) string {
+	if agentID := agentActor(ctx, config); agentID != "" {
+		return agentID
+	}
+	return actor.PlatformAI
+}

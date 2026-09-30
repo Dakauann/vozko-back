@@ -93,6 +93,8 @@ type Config struct {
 	UnofficialWhatsAppAdminToken     string
 	UnofficialWhatsAppServerName     string
 	UnofficialWhatsAppMaxSessions    int
+	UnofficialWhatsAppHistoryEnabled bool
+	UnofficialWhatsAppHistoryDays    int
 
 	Dialog360PartnerID          string
 	Dialog360PartnerAPIKey      string
@@ -229,9 +231,11 @@ func LoadConfig() Config {
 			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_WEBHOOK_BASE_URL"), "/"),
 		UnofficialWhatsAppServerURL: strings.TrimRight(
 			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_URL"), "/"),
-		UnofficialWhatsAppAdminToken:  mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_ADMIN_TOKEN"),
-		UnofficialWhatsAppServerName:  getEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_NAME", "platform"),
-		UnofficialWhatsAppMaxSessions: mustGetEnvInt("UNOFFICIAL_WHATSAPP_MAX_SESSIONS"),
+		UnofficialWhatsAppAdminToken:     mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_ADMIN_TOKEN"),
+		UnofficialWhatsAppServerName:     getEnvTrimmed("UNOFFICIAL_WHATSAPP_SERVER_NAME", "platform"),
+		UnofficialWhatsAppMaxSessions:    mustGetEnvInt("UNOFFICIAL_WHATSAPP_MAX_SESSIONS"),
+		UnofficialWhatsAppHistoryEnabled: getBoolEnv("UW_HISTORY_ENABLED", true),
+		UnofficialWhatsAppHistoryDays:    envInt("UW_HISTORY_WINDOW_DAYS", 30),
 
 		GoogleOAuthClientID:     trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
 		GoogleOAuthClientSecret: trimEnv("GOOGLE_OAUTH_CLIENT_SECRET"),
@@ -517,6 +521,8 @@ type SIPConfig struct {
 	PublicAddress   string
 	STUNServers     []string
 	Debug           bool
+
+	AllowPrivateHosts bool
 }
 
 func loadSIPConfig() SIPConfig {
@@ -533,5 +539,7 @@ func loadSIPConfig() SIPConfig {
 		PublicAddress:   trimEnv("SIP_PUBLIC_ADDRESS"),
 		STUNServers:     parseCSVEnv("SIP_STUN_SERVERS"),
 		Debug:           getBoolEnv("SIP_DEBUG", false),
+
+		AllowPrivateHosts: getBoolEnv("SIP_ALLOW_PRIVATE_HOSTS", false),
 	}
 }

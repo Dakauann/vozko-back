@@ -40,9 +40,10 @@ func NewProvisionInstanceUseCase(
 }
 
 type ProvisionInput struct {
-	WorkspaceID  string
-	DepartmentID *string
-	DisplayName  string
+	WorkspaceID   string
+	DepartmentID  *string
+	DisplayName   string
+	ImportHistory *bool
 }
 
 func (uc *ProvisionInstanceUseCase) Execute(ctx context.Context, in ProvisionInput) (*uw.Instance, error) {
@@ -125,6 +126,7 @@ func (uc *ProvisionInstanceUseCase) provision(
 		DeliveryToken:     deliveryToken,
 		DeliveryTokenHash: uw.HashDeliveryToken(deliveryToken),
 		Status:            uw.StatusProvisioning,
+		ImportHistory:     in.ImportHistory == nil || *in.ImportHistory,
 	}
 	instance.Normalize()
 	created, err := uc.provider.CreateInstance(ctx, uw.ServerRef{

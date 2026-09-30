@@ -59,7 +59,7 @@ func newGroupHarness(t *testing.T, handleGroups bool) *groupHarness {
 	instance := &uw.Instance{
 		ID: "inst-1", WorkspaceID: "ws-1", ServerID: "srv-1",
 		Status: uw.StatusConnected, HandleGroups: handleGroups,
-		PhoneNumber: "5599999999999",
+		PhoneNumber: "5599999999999", ImportHistory: true,
 	}
 	h := &groupHarness{
 		instance:  instance,

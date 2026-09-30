@@ -28,6 +28,7 @@ type TransferDeps struct {
 	HoldMusic  WorkspaceHoldMusic
 	Log        callrouting.TransferLog
 	Names      callrouting.MemberNames
+	Permission callrouting.TransferPermission
 	Logger     *log.Logger
 
 	ReconnectGrace time.Duration
@@ -92,7 +93,8 @@ func (uc *TransferCall) Transfer(ctx context.Context, input TransferInput) (stri
 	if !owned || owner.UserID() != input.UserID {
 		return "", callrouting.ErrNotCallOwner
 	}
-	if !uc.deps.Dispatcher.mayAnswer(input.UserID, input.WorkspaceID, call.Channel()) {
+	if uc.deps.Permission == nil || !uc.deps.Permission.MayTransferCalls(input.UserID, input.WorkspaceID) ||
+		!uc.deps.Dispatcher.mayAnswer(input.UserID, input.WorkspaceID, call.Channel()) {
 		return "", callrouting.ErrTransferNotAllowed
 	}
 
@@ -109,6 +111,9 @@ func (uc *TransferCall) Transfer(ctx context.Context, input TransferInput) (stri
 		}
 		if target = uc.deps.Dispatcher.answerers(input.WorkspaceID, call.Channel())[input.Target.UserID]; target == nil {
 			return "", callrouting.ErrTargetUnavailable
+		}
+		if !uc.deps.Dispatcher.mayHandOver(ctx, input.WorkspaceID, call, input.UserID, input.Target.UserID) {
+			return "", callrouting.ErrConversationOutOfReach
 		}
 	}
 
@@ -180,7 +185,7 @@ func (uc *TransferCall) toMember(ctx context.Context, run *transferRun, target c
 
 	if outcome.Session != nil {
 		defer outcome.Session.Release(outcome.OfferID)
-		if err := run.call.Connect(outcome.Session); err == nil {
+		if err := uc.deps.Dispatcher.connect(ctx, run.record.WorkspaceID, run.call, outcome.Session, run.record.FromUserID); err == nil {
 			uc.finish(run.record, callrouting.OutcomeConnected, outcome.Session.UserID())
 			run.notify(callsession.TransferStatus{Status: callsession.TransferStatusConnected, TargetUserID: outcome.Session.UserID()})
 			return

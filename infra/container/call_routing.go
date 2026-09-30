@@ -5,15 +5,16 @@ import (
 	"net/http"
 
 	callroutinghttp "vozko/delivery/http/callrouting"
+	wsdelivery "vozko/delivery/ws"
 	callsession_domain "vozko/domain/callsession"
 	workspace_domain "vozko/domain/workspace"
-	wsdelivery "vozko/delivery/ws"
 	callrouting_infra "vozko/infra/callrouting"
 	"vozko/infra/holdmusic"
 	media_infra "vozko/infra/media"
 	callrouting_repository "vozko/infra/repositories/callrouting"
 	callrouting_usecase "vozko/usecases/callrouting"
 	callsession_usecase "vozko/usecases/callsession"
+	conversation_usecase "vozko/usecases/conversation"
 )
 
 type callRoutingBundle struct {
@@ -42,6 +43,10 @@ func (p callAnswerPermission) MayAnswerCalls(userID, workspaceID, channel string
 	return false
 }
 
+func (p callAnswerPermission) MayTransferCalls(userID, workspaceID string) bool {
+	return p.allowed(userID, workspaceID, workspace_domain.ResourceCallSession, workspace_domain.ActionTransfer)
+}
+
 func (p callAnswerPermission) allowed(userID, workspaceID string, resource workspace_domain.Resource, action workspace_domain.Action) bool {
 	return p.access.Execute(userID, workspaceID, resource, action) == nil
 }
@@ -58,9 +63,10 @@ func (c *Container) initCallRouting() {
 	settings := callrouting_usecase.NewRoutingSettings(callrouting_repository.NewSettingsRepository(c.db), library)
 	channels := wsdelivery.NewCallChannels(activity, c.services.callLifecycle, c.services.endOutboundCall, c.recordingPool, log.Default())
 	transferLog := callrouting_repository.NewTransferLog(c.db)
+	permission := callAnswerPermission{trunks: c.sipTrunks.Permissions, access: c.sipTrunks.Permissions.access}
 	dispatcher := callrouting_usecase.NewDispatcher(callrouting_usecase.DispatcherDeps{
 		Sessions:   c.services.callSessions,
-		Permission: callAnswerPermission{trunks: c.sipTrunks.Permissions, access: c.sipTrunks.Permissions.access},
+		Permission: permission,
 		Ringer:     callsession_usecase.NewInboundRinger(broker),
 		Activity:   activity,
 		Members:    callrouting_usecase.NewQueueMembers(c.repositories.workspaceDepartment),
@@ -82,6 +88,7 @@ func (c *Container) initCallRouting() {
 			HoldMusic:  settings,
 			Log:        transferLog,
 			Names:      c.services.callSessionUsernameResolver,
+			Permission: permission,
 			Logger:     log.Default(),
 		}),
 		Handler: callroutinghttp.NewHandler(callroutinghttp.HandlerDeps{
@@ -109,4 +116,12 @@ func callRoutingHandler(c *Container) *callroutinghttp.Handler {
 		return nil
 	}
 	return c.callRouting.Handler
+}
+
+func (c *Container) handCallConversationsOver() {
+	c.callRouting.Dispatcher.SetConversationHandoff(conversation_usecase.NewCallConversationHandoff(conversation_usecase.CallConversationHandoffDeps{
+		Phones:  c.repositories.businessPhone,
+		Entries: c.repositories.wcEntry,
+		Assign:  c.services.personAssign,
+	}))
 }

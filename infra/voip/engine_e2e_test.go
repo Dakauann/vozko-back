@@ -62,19 +62,20 @@ func testTrunk(provider *voiptest.Provider) *sip_trunk.SIPTrunk {
 func newEngine(t *testing.T, repo *siptrunktest.MemoryRepository, metrics *gaugeMetrics, tune func(*TrunkManagerConfig)) *SIPTrunkManager {
 	t.Helper()
 	cfg := TrunkManagerConfig{
-		SIPBindHost:     "127.0.0.1",
-		SIPPortStart:    voiptest.FreeUDPPort(t),
-		SIPPortCount:    1,
-		RTPPortStart:    41000,
-		RTPPortEnd:      41999,
-		RegisterExpiry:  60 * time.Second,
-		DialTimeout:     5 * time.Second,
-		MediaTimeout:    10 * time.Second,
-		MaxCallDuration: time.Hour,
-		WatchInterval:   50 * time.Millisecond,
-		PublicAddress:   "127.0.0.1",
-		UserAgent:       "VozkoTest",
-		CallMetrics:     metrics,
+		SIPBindHost:       "127.0.0.1",
+		SIPPortStart:      voiptest.FreeUDPPort(t),
+		SIPPortCount:      1,
+		RTPPortStart:      41000,
+		RTPPortEnd:        41999,
+		RegisterExpiry:    60 * time.Second,
+		DialTimeout:       5 * time.Second,
+		MediaTimeout:      10 * time.Second,
+		MaxCallDuration:   time.Hour,
+		WatchInterval:     50 * time.Millisecond,
+		PublicAddress:     "127.0.0.1",
+		UserAgent:         "VozkoTest",
+		CallMetrics:       metrics,
+		AllowPrivateHosts: true,
 	}
 	if tune != nil {
 		tune(&cfg)

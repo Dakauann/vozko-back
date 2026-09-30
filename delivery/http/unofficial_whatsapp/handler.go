@@ -28,6 +28,7 @@ type Handler struct {
 	startConv   *uwuc.StartConversationUseCase
 	allowance   *uwuc.GetAllowanceUseCase
 	departments DepartmentScopeResolver
+	history     *uwuc.HistorySyncUseCase
 }
 
 type DepartmentScopeResolver interface {
@@ -119,8 +120,9 @@ func (h *Handler) GetAllowance(w http.ResponseWriter, r *http.Request) {
 }
 
 type createInstanceRequest struct {
-	DisplayName  string  `json:"displayName"`
-	DepartmentID *string `json:"departmentId,omitempty"`
+	DisplayName   string  `json:"displayName"`
+	DepartmentID  *string `json:"departmentId,omitempty"`
+	ImportHistory *bool   `json:"importHistory,omitempty"`
 }
 
 func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
@@ -136,9 +138,10 @@ func (h *Handler) CreateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	instance, err := h.provision.Execute(r.Context(), uwuc.ProvisionInput{
-		WorkspaceID:  workspaceID,
-		DepartmentID: req.DepartmentID,
-		DisplayName:  req.DisplayName,
+		WorkspaceID:   workspaceID,
+		DepartmentID:  req.DepartmentID,
+		DisplayName:   req.DisplayName,
+		ImportHistory: req.ImportHistory,
 	})
 	if err != nil {
 		writeDomainError(w, err)
@@ -210,6 +213,7 @@ type updateInstanceRequest struct {
 	EnableAutoStaging    *bool `json:"enableAutoStaging"`
 	EnableAutoMemory     *bool `json:"enableAutoMemory"`
 	HandleGroups         *bool `json:"handleGroups"`
+	ImportHistory        *bool `json:"importHistory"`
 
 	DailySendCap    *int  `json:"dailySendCap"`
 	SendDelayMinMS  *int  `json:"sendDelayMinMs"`
@@ -248,6 +252,7 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		EnableAutoStaging:    req.EnableAutoStaging,
 		EnableAutoMemory:     req.EnableAutoMemory,
 		HandleGroups:         req.HandleGroups,
+		ImportHistory:        req.ImportHistory,
 
 		DailySendCap:    req.DailySendCap,
 		SendDelayMinMS:  req.SendDelayMinMS,

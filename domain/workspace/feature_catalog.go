@@ -370,7 +370,7 @@ var Features = []Feature{
 			{Key: "call_queues.create", Description: "Criar filas", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionCreate)}},
 			{Key: "call_queues.edit", Description: "Editar filas e a música de espera do workspace", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionUpdate)}},
 			{Key: "call_queues.remove", Description: "Remover filas", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionDelete)}},
-			{Key: "call_queues.transfer", Description: "Transferir uma ligação em andamento (tronco SIP ou WhatsApp) para um colega ou uma fila; quem recebe precisa poder atender aquele tipo de ligação", Requires: []PermissionEntry{need(ResourceCallSession, ActionUse)}},
+			{Key: "call_queues.transfer", Description: "Transferir uma ligação em andamento (tronco SIP ou WhatsApp) para um colega ou uma fila; quem recebe precisa poder atender aquele tipo de ligação", Requires: []PermissionEntry{need(ResourceCallSession, ActionUse), need(ResourceCallSession, ActionListMembers), need(ResourceCallSession, ActionTransfer)}},
 		},
 	},
 	{

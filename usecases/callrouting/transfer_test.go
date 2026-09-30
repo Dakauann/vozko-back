@@ -99,6 +99,7 @@ func newTransferFixture(biaBehaviour operatorBehaviour, queues queueBook) transf
 		Music:      music{},
 		Log:        book,
 		Names:      names{"ana": "Ana Souza"},
+		Permission: f.dispatcher.deps.Permission.(answerPermission),
 	})
 	transfers.ringTimeout = 300 * time.Millisecond
 	return transferFixture{transfers: transfers, call: call, log: book, ana: ana, bia: bia}

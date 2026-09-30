@@ -7,7 +7,6 @@ import (
 
 var inertPermissions = map[string]bool{
 	"workflows:read_details": true,
-	"call_session:transfer":  true,
 	"media:delete":           true,
 	"leads:delete":           true,
 }

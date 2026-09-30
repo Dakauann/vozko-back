@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/callrouting"
 	"vozko/domain/callsession"
+	"vozko/domain/conversation"
 	dept_domain "vozko/domain/workspace/workspace_department"
 	callrouting_infra "vozko/infra/callrouting"
 	callsession_usecase "vozko/usecases/callsession"
@@ -125,6 +126,7 @@ type heldCall struct {
 	id        string
 	mu        sync.Mutex
 	channel   string
+	contact   conversation.CallContact
 	held      int
 	unheld    int
 	owner     callsession.CallSession
@@ -140,6 +142,9 @@ func (c *heldCall) ID() string           { return c.id }
 func (c *heldCall) WorkspaceID() string  { return "ws1" }
 func (c *heldCall) RemoteNumber() string { return "5584994409684" }
 func (c *heldCall) Channel() string      { return c.channel }
+func (c *heldCall) Contact() (conversation.CallContact, bool) {
+	return c.contact, c.contact.Known()
+}
 func (c *heldCall) OwnerSession() (callsession.CallSession, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -199,6 +204,11 @@ func (p answerPermission) MayAnswerCalls(userID, workspaceID, channel string) bo
 	}
 	allowed, listed := p[userID]
 	return !listed || allowed
+}
+
+func (p answerPermission) MayTransferCalls(userID, workspaceID string) bool {
+	allowed, listed := p[userID+"|transfer"]
+	return workspaceID == "ws1" && (!listed || allowed)
 }
 
 type music struct{ callrouting.HoldMusicLibrary }

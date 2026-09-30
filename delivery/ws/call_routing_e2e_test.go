@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,11 +27,59 @@ import (
 )
 
 type routingParts struct {
-	channels  *CallChannels
-	transfers *callrouting_usecase.TransferCall
-	flows     workflow.InboundVoiceFlows
-	log       *memoryTransferLog
+	channels      *CallChannels
+	transfers     *callrouting_usecase.TransferCall
+	flows         workflow.InboundVoiceFlows
+	log           *memoryTransferLog
+	conversations *conversationLedger
 }
+
+type conversationLedger struct {
+	mu        sync.Mutex
+	unreached map[string]bool
+	handed    []callrouting.Handover
+}
+
+func (l *conversationLedger) MayHandOver(_ context.Context, handover callrouting.Handover) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.unreached[handover.ToUserID] {
+		return callrouting.ErrConversationOutOfReach
+	}
+	return nil
+}
+
+func (l *conversationLedger) HandOver(_ context.Context, handover callrouting.Handover) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.handed = append(l.handed, handover)
+	return nil
+}
+
+func (l *conversationLedger) handedTo(t *testing.T, from, to string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		l.mu.Lock()
+		handed := slices.ContainsFunc(l.handed, func(h callrouting.Handover) bool {
+			return h.FromUserID == from && h.ToUserID == to && h.Contact == whatsAppContact
+		})
+		l.mu.Unlock()
+		if handed {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("the conversation never went from %s to %s", from, to)
+}
+
+func (l *conversationLedger) keepAwayFrom(userID string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.unreached[userID] = true
+}
+
+var whatsAppContact = conversation.CallContact{BusinessPhoneID: "bp-wa", ContactNumber: "5584994409684"}
 
 type memoryQueues map[string]*callrouting.Queue
 
@@ -84,6 +133,10 @@ func (n displayNames) ResolveUsernames([]string) map[string]string { return n }
 
 type channelAnswerers struct{ grants dialerGrants }
 
+func (p channelAnswerers) MayTransferCalls(userID, workspaceID string) bool {
+	return p.grants[userID+"|"+workspaceID+"|call_session|transfer"]
+}
+
 func (p channelAnswerers) MayAnswerCalls(userID, workspaceID, channel string) bool {
 	switch channel {
 	case callsession.OfferChannelSIP:
@@ -118,12 +171,15 @@ func routedStackWithGrace(t *testing.T, flows workflow.InboundVoiceFlows, grace 
 			Sessions: s.sessions, Permission: channelAnswerers{s.grants}, Ringer: callsession_usecase.NewInboundRinger(s.broker),
 			Activity: activity, Members: callrouting_usecase.StaticMembers{}, Music: library,
 		})
+		conversations := &conversationLedger{unreached: map[string]bool{}}
+		dispatcher.SetConversationHandoff(conversations)
 		transferLog := &memoryTransferLog{outcomes: map[string]callrouting.TransferOutcome{}}
 		transfers := callrouting_usecase.NewTransferCall(callrouting_usecase.TransferDeps{
 			Calls: channels, Queues: queues, Dispatcher: dispatcher, Ringer: callsession_usecase.NewInboundRinger(s.broker),
 			Music: library, Log: transferLog, Names: displayNames{dialerUser: "Ana"}, ReconnectGrace: grace,
+			Permission: channelAnswerers{s.grants},
 		})
-		return &routingParts{channels: channels, transfers: transfers, flows: flows, log: transferLog}
+		return &routingParts{channels: channels, transfers: transfers, flows: flows, log: transferLog, conversations: conversations}
 	}})
 }
 
@@ -519,6 +575,7 @@ func (s *dialerStack) takeWhatsAppCall(t *testing.T, agent *dialerClient) *fakeC
 	}
 	call := newFakeCallSessionCRMCall("wa-in-" + dialerUser)
 	call.closeOnHangup = true
+	call.contact = whatsAppContact
 	if err := s.executor.AttachInboundCRMCall(context.Background(), callsession.AttachInboundCRMCallInput{
 		OfferID: "wa-offer", WorkspaceID: dialerWorkspace, UserID: dialerUser, Session: session,
 		PhoneNumber: "5584994409684", Call: call, StartedAt: time.Now(),
@@ -544,6 +601,7 @@ func TestAWhatsAppCallIsTransferredToAColleague(t *testing.T) {
 	}
 	bia.waitFor(WSEventCallStatus, statusIs("answered"))
 	ana.waitFor(WSEventType(callsession.CallSessionTransferStatus), transferStatusIs(callsession.TransferStatusConnected))
+	stack.routing.conversations.handedTo(t, dialerUser, colleagueUser)
 
 	call.audio <- make([]byte, 320)
 	bia.waitFor(WSEventCallAudioS, nil)
@@ -582,8 +640,27 @@ func TestAWhatsAppCallIsTransferredToAQueue(t *testing.T) {
 		t.Fatalf("bia's offer = %+v", offer)
 	}
 	bia.waitFor(WSEventCallStatus, statusIs("answered"))
+	stack.routing.conversations.handedTo(t, dialerUser, colleagueUser)
 	close(call.done)
 	bia.waitFor(WSEventCallEnded, nil)
+}
+
+func TestAWhatsAppCallStaysWhenItsConversationCannotFollow(t *testing.T) {
+	stack := routedStack(t, nil)
+	defer stack.nothingLeft(t)
+	ana := stack.connect(t, dialerUser, dialerWorkspace)
+	stack.takeWhatsAppCall(t, ana)
+	stack.connect(t, colleagueUser, dialerWorkspace)
+	stack.routing.conversations.keepAwayFrom(colleagueUser)
+
+	ana.send(WSEventCallTransfer, CallTransferPayload{TargetKind: "member", UserID: colleagueUser})
+	var got ErrorPayload
+	json.Unmarshal(ana.waitFor(WSEventError, nil), &got)
+	if got.Code != "conversation_out_of_reach" {
+		t.Fatalf("code = %q, want conversation_out_of_reach", got.Code)
+	}
+	ana.send(WSEventEndCall, map[string]string{"request_id": "end"})
+	ana.waitFor(WSEventCallEnded, nil)
 }
 
 func TestAWhatsAppCallIsKeptForItsOperatorAcrossAReload(t *testing.T) {

@@ -69,4 +69,3 @@ func TestCampaignRoutesRefuseWithoutADepartmentResolver(t *testing.T) {
 		t.Fatalf("status %d dispatches %d", w.Code, dispatch.calls)
 	}
 }
-

@@ -39,6 +39,10 @@ func NewRecordingCRMCall(inner conversation.CRMCall, pool *RecordingUploadPool, 
 
 func (c *RecordingCRMCall) ID() string { return c.inner.ID() }
 
+func (c *RecordingCRMCall) Contact() (conversation.CallContact, bool) {
+	return conversation.ContactOf(c.inner)
+}
+
 func (c *RecordingCRMCall) SendAudio(pcm16 []byte) error {
 	if len(pcm16) > 0 {
 		c.recorder.RecordRemotePCM(pcm16, recorderSampleRate)

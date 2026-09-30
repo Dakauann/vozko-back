@@ -74,9 +74,12 @@ type HandleWebhookUseCase struct {
 	workflows          WorkflowTrigger
 	leads              LeadLinker
 	analysis           AnalysisScheduler
-	sync               sessionSync
-	profiles           subjectProfile
-	groups             groupMetadata
+	sessionHost
+	profiles      subjectProfile
+	groups        groupMetadata
+	handover      *LineHandover
+	historyOff    bool
+	historyWindow time.Duration
 }
 
 type HandleWebhookDeps struct {
@@ -119,7 +122,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		workflows:     d.Workflows,
 		leads:         d.Leads,
 		analysis:      d.Analysis,
-		sync:          sessionSync{instances: d.Instances},
+		sessionHost:   sessionHost{sync: sessionSync{instances: d.Instances}},
 		profiles:      profiles,
 		groups:        newGroupMetadata(d, profiles),
 	}
@@ -138,6 +141,9 @@ func (uc *HandleWebhookUseCase) Execute(ctx context.Context, q *QueuedEvent) err
 	env, err := uw.DecodeEnvelope(q.Body)
 	if err != nil {
 		return err
+	}
+	if env.IsHistory() {
+		return uc.ingestHistoryBatch(ctx, instance, env)
 	}
 
 	var firstErr error
@@ -160,7 +166,7 @@ var errUnattributableEvent = errors.New("unofficial whatsapp: event identifies n
 
 func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
 	err := uc.dispatch(ctx, instance, ev)
-	if errors.Is(err, errUnattributableEvent) {
+	if errors.Is(err, errUnattributableEvent) || errors.Is(err, errAlreadyStored) {
 		return nil
 	}
 	return err
@@ -196,15 +202,8 @@ func (uc *HandleWebhookUseCase) dispatch(ctx context.Context, instance *uw.Insta
 }
 
 func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
-	sub, err := uc.resolveContext(ctx, instance, ev)
+	sub, err := uc.storeMessage(ctx, instance, ev)
 	if err != nil {
-		return err
-	}
-
-	if err := uc.conversations.RecordInbound(ctx, sub.conversation.ID, ev.Timestamp); err != nil {
-		return err
-	}
-	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.SentByContact(sub.authorHandle)); err != nil {
 		return err
 	}
 
@@ -224,15 +223,8 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 }
 
 func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
-	sub, err := uc.resolveContext(ctx, instance, ev)
+	sub, err := uc.storeMessage(ctx, instance, ev)
 	if err != nil {
-		return err
-	}
-
-	if err := uc.conversations.RecordOutbound(ctx, sub.conversation.ID, ev.Timestamp); err != nil {
-		return err
-	}
-	if err := uc.recordMessage(ctx, instance, sub, ev, conversation.SentExternally()); err != nil {
 		return err
 	}
 	if ev.Kind == uw.EventOutboundFromDevice && !ev.Backfill && sub.conversation.InScope(instance.HandleGroups) {
@@ -303,12 +295,13 @@ func (uc *HandleWebhookUseCase) enrich(
 	ev *uw.Event,
 	out *chatContext,
 ) {
-	if ev.Backfill {
+	if ev.IsGroup {
+		if !ev.Backfill {
+			out.group = uc.groups.ensureFresh(ctx, instance, ev.ChatID)
+		}
 		return
 	}
-
-	if ev.IsGroup {
-		out.group = uc.groups.ensureFresh(ctx, instance, ev.ChatID)
+	if ev.Backfill && ev.Outbound() {
 		return
 	}
 
@@ -316,7 +309,9 @@ func (uc *HandleWebhookUseCase) enrich(
 		uc.profiles.applyEventName(ctx, out.subject, ev.SenderName)
 	}
 	uc.bridgeLead(ctx, instance, out.subject)
-	uc.profiles.refresh(ctx, instance, out.subject, false)
+	if !ev.Backfill {
+		uc.profiles.refresh(ctx, instance, out.subject, false)
+	}
 }
 
 func (uc *HandleWebhookUseCase) resolveAuthor(
@@ -435,6 +430,8 @@ func (uc *HandleWebhookUseCase) recordMessage(
 		Metadata:          inboundMetadata(ev),
 		SenderName:        sub.authorName,
 		SenderAvatar:      sub.authorAvatar,
+		Read:              ev.Backfill,
+		Silent:            ev.Backfill,
 	}
 	if sentBy.IsContact() {
 		record.From, record.To = sub.authorHandle, instance.Label()
@@ -827,6 +824,18 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	}
 }
 
+func (uc *HandleWebhookUseCase) SetHistoryWindow(window time.Duration) {
+	uc.historyWindow = window
+}
+
+func (uc *HandleWebhookUseCase) DisableHistoryImport() {
+	uc.historyOff = true
+}
+
+func (uc *HandleWebhookUseCase) SetLineHandover(handover *LineHandover) {
+	uc.handover = handover
+}
+
 func (uc *HandleWebhookUseCase) SetCampaignDeliverySink(sink CampaignDeliverySink) {
 	uc.campaignStatus = sink
 }
@@ -888,7 +897,7 @@ func inboundMetadata(ev *uw.Event) json.RawMessage {
 		meta["isGroup"] = true
 	}
 	if ev.Backfill {
-		meta["backfill"] = true
+		meta[conversation.BackfillMetadataKey] = true
 	}
 	if ev.TrackID != "" {
 		meta["trackId"] = ev.TrackID

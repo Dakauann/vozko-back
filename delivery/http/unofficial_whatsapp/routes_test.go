@@ -47,6 +47,9 @@ func TestRegisterProtectedRoutes_AppliesRBAC(t *testing.T) {
 
 		{http.MethodPost, "/unofficial-whatsapp/instances/i-1/reset", res + ":update"},
 		{http.MethodPost, "/unofficial-whatsapp/instances/i-1/webhook/rotate", res + ":update"},
+
+		{http.MethodGet, "/unofficial-whatsapp/instances/i-1/history-sync", res + ":read"},
+		{http.MethodPost, "/unofficial-whatsapp/instances/i-1/history-sync", res + ":update"},
 	}
 
 	for _, c := range cases {

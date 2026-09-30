@@ -163,6 +163,9 @@ func (c *Container) initJobRunner() {
 			cronPackage.CtxJobFunc(c.unofficialWhatsApp.CheckHealth.VerifyIntegrity),
 			c.unofficialWhatsApp.ReconcileCapacity,
 		)
+		if c.unofficialWhatsApp.HistorySync != nil {
+			c.jobRunner.SetUnofficialWhatsAppHistoryJob(c.unofficialWhatsApp.HistorySync)
+		}
 	}
 }
 

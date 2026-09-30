@@ -6,7 +6,6 @@ import (
 	"log"
 	"strings"
 
-	"vozko/domain/actor"
 	conversation "vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
@@ -185,20 +184,13 @@ func (t *manageEntryStageTool) ExecuteWithConfig(ctx context.Context, config map
 				IsError: true,
 			}, nil
 		}
-		return t.handleMove(workspaceID, campaignID, campaignType, entryID, entryType, targetTagName, t.moveActor(ctx, config))
+		return t.handleMove(workspaceID, campaignID, campaignType, entryID, entryType, targetTagName, automationActor(ctx, config))
 	default:
 		return tools.ExecutionResult{
 			Result:  fmt.Sprintf("Ação inválida: %q. Forneça apenas 'target_tag_name' com um nome de tag válido.", action),
 			IsError: true,
 		}, nil
 	}
-}
-
-func (t *manageEntryStageTool) moveActor(ctx context.Context, config map[string]interface{}) string {
-	if agentID := agentActor(ctx, config); agentID != "" {
-		return agentID
-	}
-	return actor.PlatformAI
 }
 
 func (t *manageEntryStageTool) handleView(workspaceID, campaignID, campaignType, entryID, entryType string) (tools.ExecutionResult, error) {

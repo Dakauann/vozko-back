@@ -36,6 +36,7 @@ type InstanceRepository interface {
 	FindByID(ctx context.Context, id string) (*Instance, error)
 	FindByDeliveryTokenHash(ctx context.Context, tokenHash string) (*Instance, error)
 	FindByJID(ctx context.Context, jid string) (*Instance, error)
+	ListLiveByJID(ctx context.Context, jid string) ([]*Instance, error)
 	FindByProviderInstanceID(ctx context.Context, serverID, providerInstanceID string) (*Instance, error)
 
 	ListByWorkspace(ctx context.Context, in ListInstancesInput) (*shared.PaginatedResult[*Instance], error)
@@ -108,6 +109,7 @@ type ConversationRepository interface {
 	FindOrCreate(ctx context.Context, in FindOrCreateConversationInput) (*Conversation, error)
 	FindByID(ctx context.Context, id string) (*Conversation, error)
 	FindByChatID(ctx context.Context, instanceID, chatID string) (*Conversation, error)
+	EntryIDsForContact(ctx context.Context, instanceID, contactID string) ([]string, error)
 
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
 	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
@@ -145,4 +147,13 @@ type GroupRepository interface {
 	LinkParticipantContacts(ctx context.Context, groupID, instanceID string) error
 
 	Delete(ctx context.Context, id string) error
+}
+
+type HistorySyncRepository interface {
+	Create(ctx context.Context, s *HistorySync) error
+	FindActive(ctx context.Context, instanceID string) (*HistorySync, error)
+	FindLatest(ctx context.Context, instanceID string) (*HistorySync, error)
+	Resume(ctx context.Context, id string, now, pollUntil time.Time) error
+	ClaimDue(ctx context.Context, now time.Time, owner string, leaseUntil time.Time, limit int) ([]*HistorySync, error)
+	Save(ctx context.Context, s *HistorySync) error
 }

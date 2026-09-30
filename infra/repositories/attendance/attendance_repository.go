@@ -397,6 +397,7 @@ func ownerResponseLateralsSQL() string {
 				FROM conversation_messages m
 				WHERE m.entry_id = ia.entry_id AND m.entry_type = ia.entry_type
 				  AND m.deleted_at IS NULL AND ` + database.SentByContactSQL("m") + `
+				  AND ` + liveMessageSQL("m") + `
 				ORDER BY m.created_at ASC LIMIT 1
 			) usr
 			CROSS JOIN LATERAL (

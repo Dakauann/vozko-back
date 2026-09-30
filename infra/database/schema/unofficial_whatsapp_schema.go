@@ -95,6 +95,7 @@ type UnofficialWhatsAppInstance struct {
 	EnableAutoStaging    bool    `gorm:"not null;default:false"`
 	EnableAutoMemory     bool    `gorm:"not null;default:false"`
 	HandleGroups         bool    `gorm:"not null;default:false"`
+	ImportHistory        bool    `gorm:"not null;default:true"`
 
 	CreatedAt time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
@@ -246,6 +247,51 @@ func (UnofficialWhatsAppGroupParticipant) TableName() string {
 func (p *UnofficialWhatsAppGroupParticipant) BeforeCreate(tx *gorm.DB) error {
 	if p.ID == "" {
 		p.ID = uuid.New().String()
+	}
+	return nil
+}
+
+type UnofficialWhatsAppHistorySync struct {
+	ID          string `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string `gorm:"type:uuid;not null;index"`
+	InstanceID  string `gorm:"type:uuid;not null;index:idx_uw_history_instance"`
+	Status      string `gorm:"size:16;not null;index:idx_uw_history_due,priority:1"`
+	Trigger     string `gorm:"size:16;not null"`
+
+	WindowFrom      time.Time  `gorm:"type:timestamptz;not null"`
+	OldestMessageAt *time.Time `gorm:"type:timestamptz"`
+	NewestMessageAt *time.Time `gorm:"type:timestamptz"`
+
+	Passes            int `gorm:"not null;default:0"`
+	QuietPasses       int `gorm:"not null;default:0"`
+	MessagesSeen      int `gorm:"not null;default:0"`
+	MessagesImported  int `gorm:"not null;default:0"`
+	MessagesDuplicate int `gorm:"not null;default:0"`
+	MessagesSkipped   int `gorm:"not null;default:0"`
+	MessagesFailed    int `gorm:"not null;default:0"`
+
+	Attempts    int        `gorm:"not null;default:0"`
+	NextPollAt  time.Time  `gorm:"type:timestamptz;not null;index:idx_uw_history_due,priority:2"`
+	PollUntil   time.Time  `gorm:"type:timestamptz;not null"`
+	PausedSince *time.Time `gorm:"type:timestamptz"`
+
+	LeaseOwner string     `gorm:"size:64;not null;default:''"`
+	LeaseUntil *time.Time `gorm:"type:timestamptz"`
+
+	Reason    string `gorm:"size:255;not null;default:''"`
+	LastError string `gorm:"size:500;not null;default:''"`
+
+	StartedAt  *time.Time `gorm:"type:timestamptz"`
+	FinishedAt *time.Time `gorm:"type:timestamptz"`
+	CreatedAt  time.Time  `gorm:"autoCreateTime"`
+	UpdatedAt  time.Time  `gorm:"autoUpdateTime"`
+}
+
+func (UnofficialWhatsAppHistorySync) TableName() string { return "unofficial_whatsapp_history_syncs" }
+
+func (s *UnofficialWhatsAppHistorySync) BeforeCreate(tx *gorm.DB) error {
+	if s.ID == "" {
+		s.ID = uuid.New().String()
 	}
 	return nil
 }

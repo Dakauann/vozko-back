@@ -104,3 +104,29 @@ func TestHandOffDealsFromTheDepartmentRingAsTheCaller(t *testing.T) {
 		t.Fatalf("hand-off %+v", got)
 	}
 }
+
+func TestCheckingAnAssignmentAppliesTheSameRulesWithoutAssigning(t *testing.T) {
+	by := shared.Person{UserID: "u1"}
+	cases := []struct {
+		name                        string
+		access, eligible, reachable bool
+		want                        error
+	}{
+		{"allowed", true, true, true, nil},
+		{"caller cannot see it", false, true, true, ia.ErrAssignEntryAccess},
+		{"target has no access", true, false, true, ia.ErrAssignTargetIneligible},
+		{"target out of reach", true, true, false, ia.ErrAssignTargetOutOfReach},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := &assignRecorder{}
+			err := assignFixture(tc.access, tc.eligible, tc.reachable, recorder).Check(by, "ws1", "e1", "whatsapp", "u2")
+			if !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			if len(recorder.calls) != 0 {
+				t.Fatal("a check assigned the conversation")
+			}
+		})
+	}
+}

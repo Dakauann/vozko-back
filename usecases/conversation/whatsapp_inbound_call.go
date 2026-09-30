@@ -57,7 +57,10 @@ func newWhatsAppInboundCall(
 	}
 }
 
-func (c *whatsappInboundCall) ID() string                                   { return c.id }
+func (c *whatsappInboundCall) ID() string { return c.id }
+func (c *whatsappInboundCall) Contact() (conversation_domain.CallContact, bool) {
+	return conversation_domain.CallContact{BusinessPhoneID: c.phoneID, ContactNumber: c.from}, true
+}
 func (c *whatsappInboundCall) AudioStream() <-chan []byte                   { return c.audioIn }
 func (c *whatsappInboundCall) Events() <-chan conversation_domain.CallEvent { return c.events }
 func (c *whatsappInboundCall) Done() <-chan struct{}                        { return c.done }

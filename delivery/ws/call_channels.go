@@ -171,6 +171,10 @@ func (lc *liveCall) Hold(music []byte) error {
 
 func (lc *liveCall) StopHold() { lc.swapHold(nil) }
 
+func (lc *liveCall) Contact() (conversation.CallContact, bool) {
+	return conversation.ContactOf(lc.call)
+}
+
 func (lc *liveCall) Connect(session callsession_domain.CallSession) error {
 	target, ok := session.(*callSession)
 	if !ok || target == nil {

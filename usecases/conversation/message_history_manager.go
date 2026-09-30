@@ -91,6 +91,11 @@ func (m *messageHistoryManager) Record(_ context.Context, record conversation.Me
 		CreatedAt:    timestamp,
 		UpdatedAt:    timestamp,
 	}
+	if record.Read {
+		readAt := time.Now().UTC()
+		message.Read = true
+		message.ReadAt = &readAt
+	}
 
 	providerID := strings.TrimSpace(record.ProviderMessageID)
 	wamid := strings.TrimSpace(record.MessageID)
@@ -116,7 +121,7 @@ func (m *messageHistoryManager) Record(_ context.Context, record conversation.Me
 	}
 
 	if dedupID == "" {
-		return m.persist(message, entryID, entryType)
+		return m.persist(message, entryID, entryType, record.Silent)
 	}
 
 	_, err, _ := m.wamid.Do(string(entryType)+":"+entryID+":"+dedupID, func() (interface{}, error) {
@@ -140,7 +145,7 @@ func (m *messageHistoryManager) Record(_ context.Context, record conversation.Me
 			log.Printf("[MessageHistoryManager] failed to check existing message by id %s: %v", dedupID, err)
 
 		}
-		return nil, m.persist(message, entryID, entryType)
+		return nil, m.persist(message, entryID, entryType, record.Silent)
 	})
 	return err
 }
@@ -155,12 +160,12 @@ func (m *messageHistoryManager) resolveQuotedMessageID(entryType shared.EntryTyp
 	return ""
 }
 
-func (m *messageHistoryManager) persist(message *conversation.Message, entryID string, entryType shared.EntryType) error {
+func (m *messageHistoryManager) persist(message *conversation.Message, entryID string, entryType shared.EntryType, silent bool) error {
 	if err := m.repo.Create(message); err != nil {
 		return err
 	}
 
-	if m.hub != nil && entryID != "" {
+	if m.hub != nil && entryID != "" && !silent {
 		log.Printf("[MessageHistoryManager] Broadcasting message to entry %s:%s", entryType, entryID)
 		m.hub.BroadcastNewMessage(entryID, string(entryType), message)
 	}

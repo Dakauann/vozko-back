@@ -45,6 +45,8 @@ func (c *Container) initSIPTrunks() {
 		UserAgent:       brand.Active().Name,
 		Debug:           cfg.Debug,
 		CallMetrics:     c.services.metrics,
+
+		AllowPrivateHosts: cfg.AllowPrivateHosts,
 	}, repo)
 	if err != nil {
 		log.Fatalf("Failed to build the SIP trunk engine: %v", err)

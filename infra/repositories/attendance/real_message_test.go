@@ -41,3 +41,19 @@ func TestRealMessageSQL_HonoursTheAlias(t *testing.T) {
 		t.Fatalf("predicate did not apply the alias: %s", got)
 	}
 }
+
+func TestRealMessageSQL_ExcludesImportedHistory(t *testing.T) {
+	got := realMessageSQL("cm")
+
+	if !strings.Contains(got, "COALESCE(cm.metadata->>'backfill', '') <> 'true'") {
+		t.Fatalf("a message imported from the phone's history happened before Vozko; it must not count as attendance: %s", got)
+	}
+}
+
+func TestOwnerResponseTimeStartsFromARealMessage(t *testing.T) {
+	got := ownerResponseLateralsSQL()
+
+	if !strings.Contains(got, liveMessageSQL("m")) {
+		t.Fatalf("response time must start at the first real customer message, not days-old imported history: %s", got)
+	}
+}

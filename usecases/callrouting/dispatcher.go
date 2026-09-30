@@ -38,9 +38,10 @@ type EnqueueResult struct {
 }
 
 type Dispatcher struct {
-	deps  DispatcherDeps
-	retry time.Duration
-	now   func() time.Time
+	deps    DispatcherDeps
+	handoff callrouting.ConversationHandoff
+	retry   time.Duration
+	now     func() time.Time
 
 	mu          sync.Mutex
 	waiting     map[string][]*waitingCaller
@@ -77,6 +78,7 @@ func (d *Dispatcher) Enqueue(ctx context.Context, input EnqueueInput) (EnqueueRe
 	}
 	caller := d.join(queue.ID, call)
 	defer d.leave(queue.ID, caller)
+	mayReceive := d.handoverGate(ctx, queue.WorkspaceID, call, input.FromUserID)
 
 	deadline := d.now().Add(queue.MaxWait())
 	for {
@@ -94,6 +96,7 @@ func (d *Dispatcher) Enqueue(ctx context.Context, input EnqueueInput) (EnqueueRe
 		if err != nil {
 			return EnqueueResult{}, err
 		}
+		candidates = slices.DeleteFunc(candidates, func(session callsession.CallSession) bool { return !mayReceive(session) })
 		if d.position(queue.ID, caller) < len(candidates) {
 			if result, done := d.ring(ctx, input, candidates, deadline); done {
 				return result, nil
@@ -150,7 +153,7 @@ func (d *Dispatcher) ring(ctx context.Context, input EnqueueInput, candidates []
 		return EnqueueResult{}, false
 	}
 	defer outcome.Session.Release(outcome.OfferID)
-	if err := call.Connect(outcome.Session); err != nil {
+	if err := d.connect(ctx, queue.WorkspaceID, call, outcome.Session, input.FromUserID); err != nil {
 		d.deps.Logger.Printf("[CallQueue] queue %s could not connect call %s to %s: %v", queue.ID, call.ID(), outcome.Session.UserID(), err)
 		return EnqueueResult{}, false
 	}

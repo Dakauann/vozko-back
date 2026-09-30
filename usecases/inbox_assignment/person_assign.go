@@ -46,6 +46,18 @@ func NewPersonAssignUseCase(deps PersonAssignDeps) ia.PersonAssignUseCase {
 
 func (uc *personAssign) Assign(by shared.Person, workspaceID, entryID, entryType, toUserID string) error {
 	toUserID = strings.TrimSpace(toUserID)
+	if err := uc.Check(by, workspaceID, entryID, entryType, toUserID); err != nil {
+		return err
+	}
+	phone := ""
+	if uc.deps.Phones != nil {
+		phone = uc.deps.Phones.BusinessPhoneForEntry(entryID, entryType)
+	}
+	return uc.deps.Assigner.AssignManual(entryID, entryType, phone, workspaceID, toUserID, by.UserID, ia.TriggerManual)
+}
+
+func (uc *personAssign) Check(by shared.Person, workspaceID, entryID, entryType, toUserID string) error {
+	toUserID = strings.TrimSpace(toUserID)
 	if toUserID == "" || !by.MayActOn(uc.deps.Access, workspaceID, entryID, entryType) {
 		return ia.ErrAssignEntryAccess
 	}
@@ -65,11 +77,7 @@ func (uc *personAssign) Assign(by shared.Person, workspaceID, entryID, entryType
 	if !reachable {
 		return ia.ErrAssignTargetOutOfReach
 	}
-	phone := ""
-	if uc.deps.Phones != nil {
-		phone = uc.deps.Phones.BusinessPhoneForEntry(entryID, entryType)
-	}
-	return uc.deps.Assigner.AssignManual(entryID, entryType, phone, workspaceID, toUserID, by.UserID, ia.TriggerManual)
+	return nil
 }
 
 func (uc *personAssign) HandOff(by shared.Person, workspaceID, entryID, entryType, departmentID string) (string, error) {

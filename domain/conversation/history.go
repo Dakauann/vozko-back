@@ -50,6 +50,9 @@ type MessageHistoryRecord struct {
 
 	SenderName   string
 	SenderAvatar string
+
+	Read   bool
+	Silent bool
 }
 
 func (r MessageHistoryRecord) GetEntryID() string {

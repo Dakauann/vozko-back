@@ -96,6 +96,14 @@ func (r *conversationRepository) FindByChatID(ctx context.Context, instanceID, c
 	return r.findByChat(ctx, instanceID, chatID, "")
 }
 
+func (r *conversationRepository) EntryIDsForContact(ctx context.Context, instanceID, contactID string) ([]string, error) {
+	var ids []string
+	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppConversation{}).
+		Where("instance_id = ? AND contact_id = ?", instanceID, contactID).
+		Pluck("id", &ids).Error
+	return ids, err
+}
+
 func (r *conversationRepository) findByChat(ctx context.Context, instanceID, chatID, campaignID string) (*uw.Conversation, error) {
 	return r.findOne(ctx, r.db.WithContext(ctx).Where("instance_id = ? AND chat_id = ?", instanceID, chatID), campaignID)
 }

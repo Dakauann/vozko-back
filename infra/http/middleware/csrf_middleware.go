@@ -22,7 +22,7 @@ func NewCSRFMiddleware(trustedOrigins []string) *CSRFMiddleware {
 
 func (m *CSRFMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if csrfIsSafeMethod(r.Method) {
+		if csrfIsSafeMethod(r.Method) && !csrfIsSocketUpgrade(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -59,6 +59,10 @@ func csrfIsSafeMethod(method string) bool {
 	default:
 		return false
 	}
+}
+
+func csrfIsSocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket")
 }
 
 func csrfHasAuthCookie(r *http.Request) bool {
