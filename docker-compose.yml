@@ -17,8 +17,6 @@ services:
       RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-      SIP_DEBUG: "true"
-      SIP_SKIP_REGISTER: "false"
       WHISPER_URLS: ${WHISPER_URLS:-http://localhost:17071}
       WHISPER_MODEL: ${WHISPER_MODEL:-ggml-large-v3-turbo}
       OLLAMA_URL: ${OLLAMA_URL:-http://localhost:11434}
