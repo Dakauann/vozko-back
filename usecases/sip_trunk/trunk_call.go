@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/sip_trunk"
+	"vozko/domain/voip"
 )
 
 const (
@@ -30,6 +31,9 @@ type trunkCall struct {
 
 	mu      sync.Mutex
 	session *sip_trunk.TrunkCallSession
+
+	listenOnce sync.Once
+	listening  chan struct{}
 }
 
 var _ conversation.CRMCall = (*trunkCall)(nil)
@@ -37,14 +41,15 @@ var _ conversation.CRMCall = (*trunkCall)(nil)
 func newTrunkCall(id, trunkID string, engine sip_trunk.Engine) *trunkCall {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &trunkCall{
-		id:      id,
-		trunkID: trunkID,
-		engine:  engine,
-		events:  make(chan conversation.CallEvent, trunkCallEventBuffer),
-		audio:   make(chan []byte, trunkCallAudioBuffer),
-		done:    make(chan struct{}),
-		ctx:     ctx,
-		cancel:  cancel,
+		id:        id,
+		trunkID:   trunkID,
+		engine:    engine,
+		events:    make(chan conversation.CallEvent, trunkCallEventBuffer),
+		audio:     make(chan []byte, trunkCallAudioBuffer),
+		done:      make(chan struct{}),
+		listening: make(chan struct{}),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 }
 
@@ -96,7 +101,7 @@ func (c *trunkCall) currentSession() *sip_trunk.TrunkCallSession {
 
 func (c *trunkCall) dial(number string) {
 	c.emit(conversation.CallEvent{Type: conversation.CallEventRinging})
-	session, err := c.engine.Invite(c.ctx, c.trunkID, sip_trunk.TrunkInviteInput{PhoneNumber: number})
+	session, err := c.engine.Invite(c.ctx, c.trunkID, sip_trunk.TrunkInviteInput{PhoneNumber: number, Progress: c})
 	if err != nil {
 		c.finish(dialOutcome(c.ctx, err))
 		return
@@ -114,10 +119,36 @@ func (c *trunkCall) bridge(session sip_trunk.TrunkCallSession) {
 		return
 	}
 	c.emit(conversation.CallEvent{Type: conversation.CallEventAnswered})
-	for frame := range session.Audio.Frames() {
-		c.forward(frame)
-	}
+	c.listen(session.Audio)
+	<-c.listening
 	c.finish(conversation.CallEvent{Type: conversation.CallEventEnded})
+}
+
+func (c *trunkCall) Alerting() {
+	c.emit(conversation.CallEvent{Type: conversation.CallEventAlerting})
+}
+
+func (c *trunkCall) EarlyMedia(audio voip.PCMStream) {
+	c.listen(audio)
+}
+
+func (c *trunkCall) listen(audio voip.PCMStream) {
+	c.listenOnce.Do(func() {
+		go func() {
+			defer close(c.listening)
+			for {
+				select {
+				case <-c.ctx.Done():
+					return
+				case frame, ok := <-audio.Frames():
+					if !ok {
+						return
+					}
+					c.forward(frame)
+				}
+			}
+		}()
+	})
 }
 
 func (c *trunkCall) forward(frame []byte) {
@@ -141,6 +172,8 @@ func (c *trunkCall) emit(event conversation.CallEvent) {
 func (c *trunkCall) finish(event conversation.CallEvent) {
 	c.emit(event)
 	c.cancel()
+	c.listenOnce.Do(func() { close(c.listening) })
+	<-c.listening
 	close(c.done)
 	close(c.events)
 	close(c.audio)

@@ -14,8 +14,14 @@ const (
 	CallDirectionInbound  CallDirection = "inbound"
 )
 
+type InviteProgress interface {
+	Alerting()
+	EarlyMedia(audio voip.PCMStream)
+}
+
 type TrunkInviteInput struct {
 	PhoneNumber string
+	Progress    InviteProgress
 }
 
 type TrunkCallSession struct {

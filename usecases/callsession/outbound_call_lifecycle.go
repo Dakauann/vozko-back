@@ -305,17 +305,8 @@ func (r *OutboundCallLifecycleRunner) publishBilling(input OutboundCallLifecycle
 }
 
 func pendingTerminalReason(events <-chan conversation.CallEvent) string {
-	for {
-		select {
-		case ev, ok := <-events:
-			if !ok {
-				return string(conversation.CallEventEnded)
-			}
-			if ev.IsTerminal() {
-				return string(ev.Type)
-			}
-		default:
-			return string(conversation.CallEventEnded)
-		}
+	if outcome, ok := conversation.PendingOutcome(events); ok {
+		return string(outcome.Type)
 	}
+	return string(conversation.CallEventEnded)
 }

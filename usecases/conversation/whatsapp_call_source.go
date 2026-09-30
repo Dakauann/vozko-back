@@ -197,7 +197,7 @@ func (c *whatsappCRMCall) runSignalLoop(signals <-chan conversation_domain.Whats
 				}
 				go c.pipeIncomingAudio()
 			case conversation_domain.WhatsAppCallRinging:
-
+				c.events <- conversation_domain.CallEvent{Type: conversation_domain.CallEventAlerting}
 			case conversation_domain.WhatsAppCallAccepted:
 				c.answeredOnce.Do(func() {
 					c.events <- conversation_domain.CallEvent{Type: conversation_domain.CallEventAnswered}

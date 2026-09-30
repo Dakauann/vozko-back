@@ -62,6 +62,8 @@ type fakeEngine struct {
 	sessions    map[string]*fakePCM
 	inviteErr   error
 	inviteWait  chan struct{}
+	alerting    bool
+	earlyMedia  bool
 	registerErr error
 	hangupErr   error
 }
@@ -114,10 +116,18 @@ func (e *fakeEngine) TrunkStatus(trunkID string) (sip_trunk.SIPTrunkStatusUpdate
 }
 
 func (e *fakeEngine) Invite(ctx context.Context, trunkID string, input sip_trunk.TrunkInviteInput) (sip_trunk.TrunkCallSession, error) {
+	audio := newFakePCM()
 	e.mu.Lock()
 	e.invites = append(e.invites, input)
-	wait, inviteErr := e.inviteWait, e.inviteErr
+	e.sessions["engine-call-1"] = audio
+	wait, inviteErr, alerting, earlyMedia := e.inviteWait, e.inviteErr, e.alerting, e.earlyMedia
 	e.mu.Unlock()
+	if alerting {
+		input.Progress.Alerting()
+	}
+	if earlyMedia {
+		input.Progress.EarlyMedia(audio)
+	}
 	if wait != nil {
 		select {
 		case <-wait:
@@ -126,12 +136,9 @@ func (e *fakeEngine) Invite(ctx context.Context, trunkID string, input sip_trunk
 		}
 	}
 	if inviteErr != nil {
+		_ = audio.Close()
 		return sip_trunk.TrunkCallSession{}, inviteErr
 	}
-	audio := newFakePCM()
-	e.mu.Lock()
-	e.sessions["engine-call-1"] = audio
-	e.mu.Unlock()
 	return sip_trunk.TrunkCallSession{
 		ID:          "engine-call-1",
 		TrunkID:     trunkID,

@@ -230,3 +230,74 @@ func TestAnEngineFailureEndsTheCallAsFailed(t *testing.T) {
 	}
 	waitDone(t, call)
 }
+
+func TestTheProviderRingingTheFarEndIsReportedAsAlerting(t *testing.T) {
+	source, engine := newSource(ownedTrunk())
+	engine.alerting = true
+	engine.inviteWait = make(chan struct{})
+	call, _ := source.Dial(context.Background(), dialInput("100"))
+	if ev := nextEvent(t, call); ev.Type != conversation.CallEventRinging {
+		t.Fatalf("first event = %s, want ringing", ev.Type)
+	}
+	if ev := nextEvent(t, call); ev.Type != conversation.CallEventAlerting {
+		t.Fatalf("second event = %s, want alerting", ev.Type)
+	}
+	_ = call.Hangup()
+	waitDone(t, call)
+}
+
+func TestEarlyMediaReachesTheOperatorBeforeTheAnswerAndKeepsFlowingAfter(t *testing.T) {
+	source, engine := newSource(ownedTrunk())
+	engine.earlyMedia = true
+	engine.inviteWait = make(chan struct{})
+	call, _ := source.Dial(context.Background(), dialInput("100"))
+	nextEvent(t, call)
+
+	audio := engine.session("engine-call-1")
+	audio.frames <- []byte{9, 9}
+	select {
+	case frame := <-call.AudioStream():
+		if len(frame) != 2 || frame[0] != 9 {
+			t.Fatalf("early frame = %v", frame)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the carrier's early media never reached the operator")
+	}
+
+	close(engine.inviteWait)
+	if ev := nextEvent(t, call); ev.Type != conversation.CallEventAnswered {
+		t.Fatalf("event = %s, want answered", ev.Type)
+	}
+	for seq := byte(1); seq <= 3; seq++ {
+		audio.frames <- []byte{seq}
+	}
+	for seq := byte(1); seq <= 3; seq++ {
+		select {
+		case frame := <-call.AudioStream():
+			if frame[0] != seq {
+				t.Fatalf("frame %d arrived as %v: the stream must have a single reader", seq, frame)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("frame %d was lost after the answer", seq)
+		}
+	}
+	_ = audio.Close()
+	if ev := nextEvent(t, call); ev.Type != conversation.CallEventEnded {
+		t.Fatalf("event = %s, want ended", ev.Type)
+	}
+	waitDone(t, call)
+}
+
+func TestARejectionAfterEarlyMediaEndsCleanly(t *testing.T) {
+	source, engine := newSource(ownedTrunk())
+	engine.earlyMedia = true
+	engine.inviteErr = &sip_trunk.CallRejectedError{StatusCode: 486, Reason: "Busy Here"}
+	call, _ := source.Dial(context.Background(), dialInput("100"))
+	nextEvent(t, call)
+	if ev := nextEvent(t, call); ev.Type != conversation.CallEventBusy {
+		t.Fatalf("event = %s, want busy", ev.Type)
+	}
+	waitDone(t, call)
+	for range call.AudioStream() {
+	}
+}

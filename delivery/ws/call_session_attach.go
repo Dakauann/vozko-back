@@ -41,6 +41,9 @@ func buildLiveCall(input callAttachInput) *liveCall {
 			input.Call = rec
 		}
 	}
+	if input.Call != nil && input.Direction == cdr.DirectionOutbound {
+		input.Call = calls_usecase.NewProgressToneCall(input.Call, calls_usecase.BrazilProgressTones)
+	}
 	return &liveCall{
 		call:          input.Call,
 		admission:     input.Admission,

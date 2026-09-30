@@ -32,6 +32,7 @@ type CallEventType string
 
 const (
 	CallEventRinging  CallEventType = "ringing"
+	CallEventAlerting CallEventType = "alerting"
 	CallEventAnswered CallEventType = "answered"
 	CallEventEnded    CallEventType = "ended"
 	CallEventFailed   CallEventType = "failed"
@@ -51,4 +52,20 @@ func (e CallEvent) IsTerminal() bool {
 		return true
 	}
 	return false
+}
+
+func PendingOutcome(events <-chan CallEvent) (CallEvent, bool) {
+	for {
+		select {
+		case event, open := <-events:
+			if !open {
+				return CallEvent{}, false
+			}
+			if event.IsTerminal() {
+				return event, true
+			}
+		default:
+			return CallEvent{}, false
+		}
+	}
 }

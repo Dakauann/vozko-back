@@ -142,6 +142,40 @@ func (c *trackedCall) trustsMediaFrom(source *net.UDPAddr) bool {
 }
 
 func (m *SIPTrunkManager) establish(call *trackedCall) (voip.PCMStream, error) {
+	call.mu.Lock()
+	earlyLatch := call.latch
+	call.mu.Unlock()
+	if earlyLatch != nil {
+		earlyLatch.Reset()
+	}
+	stream, err := m.openMedia(call)
+	if err != nil {
+		return nil, err
+	}
+	call.mu.Lock()
+	if call.ended {
+		call.mu.Unlock()
+		return nil, errCallEndedDuringSetup
+	}
+	call.answered = true
+	call.info.AnsweredAt = time.Now()
+	call.state.Answered()
+	call.conn.track(call.info.ID, call)
+	call.mu.Unlock()
+
+	if !call.conn.spawn(func() { m.watch(call) }) {
+		return nil, errTrunkClosing
+	}
+	return stream, nil
+}
+
+func (m *SIPTrunkManager) openMedia(call *trackedCall) (voip.PCMStream, error) {
+	call.mu.Lock()
+	opened := call.media
+	call.mu.Unlock()
+	if opened != nil {
+		return opened, nil
+	}
 	session := call.dialogMedia.MediaSession()
 	latch, err := attachLatch(session, call.trustsMediaFrom)
 	if err != nil {
@@ -172,17 +206,10 @@ func (m *SIPTrunkManager) establish(call *trackedCall) (voip.PCMStream, error) {
 		return nil, errCallEndedDuringSetup
 	}
 	call.latch, call.buffer, call.media = latch, buffer, stream
-	call.answered = true
-	call.info.AnsweredAt = time.Now()
-	call.state.Answered()
-	call.conn.track(call.info.ID, call)
 	call.mu.Unlock()
 
 	buffer.OnDTMF(call.pressKey)
 	buffer.Run(call.conn.ctx)
-	if !call.conn.spawn(func() { m.watch(call) }) {
-		return nil, errTrunkClosing
-	}
 	return stream, nil
 }
 
@@ -242,6 +269,7 @@ func (m *SIPTrunkManager) Invite(ctx context.Context, trunkID string, input sip_
 		Password:      conn.trunk.Password,
 		Headers:       conn.runtime.inviteHeaders(conn.trunk.Username, domain),
 		OnMediaUpdate: call.onMediaUpdate,
+		OnResponse:    m.reportProgress(call, input.Progress),
 	})
 	if err == nil {
 		call.setID(dialog.ID)
@@ -260,6 +288,43 @@ func (m *SIPTrunkManager) Invite(ctx context.Context, trunkID string, input sip_
 		return sip_trunk.TrunkCallSession{}, err
 	}
 	return m.callSession(call, stream), nil
+}
+
+func (m *SIPTrunkManager) reportProgress(call *trackedCall, progress sip_trunk.InviteProgress) func(*sip.Response) error {
+	return func(res *sip.Response) error {
+		if progress == nil {
+			return nil
+		}
+		switch {
+		case res.StatusCode == sip.StatusRinging:
+			progress.Alerting()
+		case res.StatusCode == sip.StatusSessionInProgress && carriesSDP(res):
+			early, err := m.openEarlyMedia(call, res.Body())
+			if err != nil {
+				return err
+			}
+			progress.EarlyMedia(early)
+		}
+		return nil
+	}
+}
+
+func (m *SIPTrunkManager) openEarlyMedia(call *trackedCall, remoteSDP []byte) (voip.PCMStream, error) {
+	call.mu.Lock()
+	opened := call.media
+	call.mu.Unlock()
+	if opened != nil {
+		return opened, nil
+	}
+	if err := call.dialogMedia.MediaSession().RemoteSDP(remoteSDP); err != nil {
+		return nil, fmt.Errorf("apply early media SDP: %w", err)
+	}
+	return m.openMedia(call)
+}
+
+func carriesSDP(res *sip.Response) bool {
+	contentType := res.ContentType()
+	return contentType != nil && contentType.Value() == "application/sdp" && len(res.Body()) > 0
 }
 
 func (m *SIPTrunkManager) callSession(call *trackedCall, stream voip.PCMStream) sip_trunk.TrunkCallSession {

@@ -166,7 +166,7 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 // @Description	|---|---|---|
 // @Description	| `conversation:connected` | `{"feature": "call-session", "workspace_id", "user_id"}` | Ao conectar. |
 // @Description	| `call:status` | `{"status": "ringing" \| "answered", "reason"?, "call_id", "phone_number"?, "request_id"?}` | A ligação está chamando ou foi atendida. Também chega com `answered` quando você assume uma ligação transferida ou retomada. |
-// @Description	| `call:audio` | `{"audio": string, "sample_rate": 8000}` | Áudio de quem está do outro lado. |
+// @Description	| `call:audio` | `{"audio": string, "sample_rate": 8000}` | Áudio de quem está do outro lado. Em ligações feitas por você, também traz os tons de progresso padrão brasileiros (ITU-T E.180, 425 Hz): o tom de chamada enquanto o número toca, ou o áudio da própria operadora quando ela envia; e, por 3 segundos antes de `call:ended`, o tom de ocupado (número ocupado ou recusa) ou de congestionamento (falha). |
 // @Description	| `call:ended` | `{"call_id", "phone_number"?, "reason"?, "duration_seconds": number, "request_id"?}` | A ligação terminou. `reason`: `ended`, `failed`, `busy`, `no_answer`, `declined`, `cancelled`, `insufficient_balance` ou `balance_check_error`. |
 // @Description	| `call:waiting_slot` | `{"reason": string}` | Todas as linhas estão ocupadas; a ligação começa quando uma liberar. |
 // @Description	| `call:incoming` | Veja Chamada oferecida | Uma chamada foi oferecida a você. |

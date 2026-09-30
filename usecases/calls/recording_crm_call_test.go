@@ -15,8 +15,9 @@ type fakeCRMCall struct {
 	events  chan conversation.CallEvent
 	done    chan struct{}
 
-	mu   sync.Mutex
-	sent [][]byte
+	mu      sync.Mutex
+	sent    [][]byte
+	hangups int
 }
 
 func newFakeCRMCall(id string) *fakeCRMCall {
@@ -38,7 +39,12 @@ func (f *fakeCRMCall) SendAudio(pcm16 []byte) error {
 func (f *fakeCRMCall) AudioStream() <-chan []byte            { return f.audioIn }
 func (f *fakeCRMCall) Events() <-chan conversation.CallEvent { return f.events }
 func (f *fakeCRMCall) Done() <-chan struct{}                 { return f.done }
-func (f *fakeCRMCall) Hangup() error                         { return nil }
+func (f *fakeCRMCall) Hangup() error {
+	f.mu.Lock()
+	f.hangups++
+	f.mu.Unlock()
+	return nil
+}
 
 type capturingStorage struct {
 	mu       sync.Mutex
