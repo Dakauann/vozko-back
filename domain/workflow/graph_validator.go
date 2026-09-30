@@ -246,7 +246,7 @@ func validateCycles(nodeMap map[string]*Node, outgoing map[string][]string) erro
 		hasWaitOrLoop := false
 		for _, nodeID := range component {
 			nt := nodeMap[nodeID].Type
-			if nt.IsWait() || nt == NodeTypeActionLoop {
+			if nt.IsWait() || nt.WaitsForCaller() || nt == NodeTypeActionLoop {
 				hasWaitOrLoop = true
 				break
 			}

@@ -888,6 +888,7 @@ type useCases struct {
 	getWorkflow              workflow_domain.GetWorkflowUseCase
 	listWorkflows            workflow_domain.ListWorkflowsUseCase
 	activateWorkflow         workflow_domain.ActivateWorkflowUseCase
+	voiceFlows               workflow_domain.InboundVoiceFlows
 	pauseWorkflow            workflow_domain.PauseWorkflowUseCase
 	scopedWorkflows          workflow_domain.ScopedWorkflowsUseCase
 	startWorkflowRun         workflow_domain.StartRunUseCase

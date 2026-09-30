@@ -326,6 +326,10 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 
 		run.RetryCount = 0
 
+		if node.Type.WaitsForCaller() {
+			clear(nodeVisitCounts)
+		}
+
 		if result.Error != "" {
 			log.Printf("[workflow] engine: run=%s node=%s returned error: %s", run.ID, node.ID, result.Error)
 			run.SetError(result.Error)

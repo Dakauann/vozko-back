@@ -107,12 +107,8 @@ func (uc *startOutboundCallUseCase) resolveDialEntryType(input callsession.Start
 }
 
 func (uc *startOutboundCallUseCase) resolveTargetPhone(input callsession.StartOutboundCallInput) (string, error) {
-	if strings.TrimSpace(input.TrunkID) != "" {
-		dialString := strings.TrimSpace(input.TargetPhone)
-		if dialString == "" {
-			return "", callsession.ErrTargetPhoneRequired
-		}
-		return dialString, nil
+	if strings.TrimSpace(input.TrunkID) != "" && strings.TrimSpace(input.TargetPhone) == "" {
+		return "", callsession.ErrTargetPhoneRequired
 	}
 	if p := strings.TrimSpace(input.TargetPhone); p != "" {
 		return shared.EnsureDialablePhoneNumber(p), nil

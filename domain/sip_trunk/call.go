@@ -29,6 +29,7 @@ type TrunkCallSession struct {
 	RemoteAddr  string
 	Audio       voip.PCMStream
 	Media       voip.MediaInfo
+	Keys        <-chan rune
 }
 
 type InboundDialog interface {

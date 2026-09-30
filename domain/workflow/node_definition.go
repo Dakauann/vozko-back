@@ -21,6 +21,7 @@ type NodeScope string
 const (
 	NodeScopeShared   NodeScope = "shared"
 	NodeScopeWhatsApp NodeScope = "whatsapp"
+	NodeScopeVoice    NodeScope = "voice"
 )
 
 type HandleDefinition struct {
@@ -116,12 +117,20 @@ type NodeDefiner interface {
 	Definition() NodeDefinition
 }
 
-func (t TriggerType) PrimaryNodeScope() NodeScope {
-	return NodeScopeWhatsApp
+func (t WorkflowType) AcceptedScopes() []NodeScope {
+	if t == WorkflowTypeVoice {
+		return []NodeScope{NodeScopeVoice}
+	}
+	return []NodeScope{NodeScopeShared, NodeScopeWhatsApp}
 }
 
-func (t WorkflowType) PrimaryNodeScope() NodeScope {
-	return NodeScopeWhatsApp
+func (t WorkflowType) Accepts(scope NodeScope) bool {
+	for _, accepted := range t.AcceptedScopes() {
+		if accepted == scope {
+			return true
+		}
+	}
+	return false
 }
 
 func DefinitionAllowedForType(def NodeDefinition, wfType WorkflowType) bool {
@@ -129,9 +138,8 @@ func DefinitionAllowedForType(def NodeDefinition, wfType WorkflowType) bool {
 	if def.Type.IsTrigger() {
 		return TriggerType(def.Type).WorkflowType() == wfType
 	}
-	primaryScope := wfType.PrimaryNodeScope()
 	for _, scope := range def.Scopes {
-		if scope == NodeScopeShared || scope == primaryScope {
+		if wfType.Accepts(scope) {
 			return true
 		}
 	}
@@ -194,7 +202,7 @@ func (n NodeType) Category() NodeCategory {
 		return NodeCategoryDecoration
 	case n.IsTrigger():
 		return NodeCategoryTrigger
-	case n.IsWait():
+	case n.IsWait(), n.WaitsForCaller():
 		return NodeCategoryWait
 	case n.IsCondition():
 		return NodeCategoryCondition
@@ -257,11 +265,33 @@ func BuiltinDefinitions() []NodeDefinition {
 			},
 		},
 		{
+			Type:     NodeTypeTriggerCallReceived,
+			Category: NodeCategoryTrigger,
+			Scopes:   []NodeScope{NodeScopeVoice},
+			Label:    "Ligação Recebida",
+			Description: "Dispara quando uma ligação chega pelo tronco SIP escolhido. O fluxo atende a " +
+				"ligação no lugar de chamar a equipe.",
+			Icon:          "PhoneCall",
+			DefaultConfig: map[string]interface{}{"trunk_id": ""},
+			ConfigSchema: []ConfigField{
+				{Key: "trunk_id", Label: "Tronco SIP", Type: "select", OptionsSource: "sip_trunks", Required: true},
+			},
+			OutputKeys: []OutputKeyDefinition{
+				{Key: "caller_number", Description: "Número de quem ligou"},
+				{Key: "called_number", Description: "Número discado pelo cliente"},
+			},
+			Guidance: NodeGuidance{
+				When: "Inicia um fluxo de voz (URA) quando uma ligação chega por um tronco SIP. Só existe em fluxos do tipo voice.",
+				Behavior: "Atende a ligação e disponibiliza {{caller_number}} e {{called_number}}. Um tronco só pode ter um " +
+					"fluxo de voz ativo. Chegar em Fim desliga a ligação.",
+			},
+		},
+		{
 			Type:          NodeTypeEnd,
 			Category:      NodeCategoryEnd,
-			Scopes:        []NodeScope{NodeScopeShared},
+			Scopes:        []NodeScope{NodeScopeShared, NodeScopeVoice},
 			Label:         "Fim",
-			Description:   "Finaliza a execução do fluxo.",
+			Description:   "Finaliza a execução do fluxo. Em fluxos de voz, desliga a ligação.",
 			Icon:          "FlagCheckered",
 			DefaultConfig: map[string]interface{}{},
 			ConfigSchema:  nil,

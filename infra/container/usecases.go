@@ -93,6 +93,7 @@ import (
 	shipping_usecase "vozko/usecases/shipping"
 	shop_usecase "vozko/usecases/shop"
 	shortlink_usecase "vozko/usecases/shortlink"
+	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	stage_usecase "vozko/usecases/stage"
 	telephony_usecase "vozko/usecases/telephony"
 	ticket_usecase "vozko/usecases/ticket"
@@ -116,8 +117,9 @@ import (
 )
 
 const (
-	loginFailureThreshold = 10
-	loginFailureWindow    = 15 * time.Minute
+	loginFailureThreshold     = 10
+	loginFailureWindow        = 15 * time.Minute
+	voiceAudioDownloadTimeout = 30 * time.Second
 )
 
 func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.ConsumeWhatsappTemplateUseCase) {
@@ -1121,12 +1123,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		AIAttendance:            c.services.aiAttendanceService,
 		ConversationStatus:      c.services.conversationStatusUpdater,
 		Adapters:                c.liveAdapterRegistry(),
+		VoiceAudio:              media_infra.NewVoiceAudioLoader(c.repositories.media, &http.Client{Timeout: voiceAudioDownloadTimeout}),
 	}
 	workflow_usecase.RegisterDefaultExecutors(wfRegistry, executorDeps)
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
 	wfEngine.SetWakeScheduler(workflow_usecase.NewQueueWakeScheduler(c.services.workflowWakePub))
 	wfEngine.SetRunLocker(c.redisProvider.RunLocker())
 	wfEngine.SetAutomationGate(workflow_infra.NewAutomationGate(c.repositories.wcEntry))
+	c.useCases.voiceFlows = workflow_usecase.NewInboundVoiceFlows(c.repositories.workflow, c.repositories.workflowRun, wfEngine)
 	c.useCases.chatFunds = aichat_usecase.NewFundsGate(cachedBalanceChecker, c.repositories.workspaceSubscription)
 	c.useCases.aichat = aichat_usecase.NewService(
 		c.repositories.aichatThread,
@@ -1184,6 +1188,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Deals:       opportunitySvc,
 			Workflows:   c.repositories.workflow,
 			Members:     builderMemberLister{repo: c.repositories.workspace},
+			Trunks:      c.sipTrunks.Repository,
 		}),
 
 		NoProgressStop:            30,
@@ -1219,6 +1224,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		SetMediaRepo(media_domain.MediaRepository)
 	}); ok {
 		setter.SetMediaRepo(c.repositories.media)
+	}
+	if setter, ok := c.useCases.activateWorkflow.(interface {
+		SetInboundTrunks(workflow_usecase.InboundTrunkLookup)
+	}); ok && c.sipTrunks != nil {
+		setter.SetInboundTrunks(sip_trunk_usecase.NewInboundTrunks(c.sipTrunks.Repository))
 	}
 	if setter, ok := c.useCases.activateWorkflow.(interface {
 		SetLabelRepo(label_domain.Repository)

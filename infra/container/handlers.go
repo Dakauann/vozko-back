@@ -70,12 +70,12 @@ import (
 	lead_memory_repository "vozko/infra/repositories/lead_memory"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	callsession_usecase "vozko/usecases/callsession"
-	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	conversation_usecase "vozko/usecases/conversation"
 	crmboard_usecase "vozko/usecases/crmboard"
 	crmbulk_usecase "vozko/usecases/crmbulk"
 	oppboard_usecase "vozko/usecases/oppboard"
 	payment_usecase "vozko/usecases/payment"
+	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	workflow_usecase "vozko/usecases/workflow"
 )
 
@@ -666,15 +666,20 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 		}
 	}
 
-	c.sipTrunks.Engine.SetInboundInviteHandler(sip_trunk_usecase.NewInboundCallUseCase(sip_trunk_usecase.InboundCallConfig{
+	inboundSIP := sip_trunk_usecase.InboundCallConfig{
 		Sessions:    sessions,
 		Admission:   c.services.callAdmission,
 		Ringer:      callsession_usecase.NewInboundRinger(inboundBroker),
 		Executor:    inboundExecutor,
 		Permissions: c.sipTrunks.Permissions,
 		Engine:      c.sipTrunks.Engine,
+		VoiceFlows:  c.useCases.voiceFlows,
 		Logger:      log.Default(),
-	}))
+	}
+	if c.services.callLifecycle != nil {
+		inboundSIP.Lifecycle = c.services.callLifecycle
+	}
+	c.sipTrunks.Engine.SetInboundInviteHandler(sip_trunk_usecase.NewInboundCallUseCase(inboundSIP))
 
 	return base.
 		WithInboundCalls(inboundBroker).

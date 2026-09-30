@@ -558,3 +558,40 @@ func (f engineFixture) persistedStatus() sip_trunk.RegistrationStatus {
 	}
 	return stored.RegistrationStatus
 }
+
+func TestInboundCallerKeyPressesReachTheAnsweredSession(t *testing.T) {
+	f := startEngine(t, nil)
+	handler := &answeringHandler{answered: make(chan sip_trunk.TrunkCallSession, 1)}
+	f.manager.SetInboundInviteHandler(handler)
+
+	dialog, err := dialEngine(t, f.provider, f.manager, f.trunk.ID)
+	if err != nil {
+		t.Fatalf("inbound INVITE error = %v", err)
+	}
+	defer func() {
+		_ = dialog.Hangup(context.Background())
+		_ = dialog.Close()
+		f.waitNoCalls(t)
+	}()
+	var session sip_trunk.TrunkCallSession
+	select {
+	case session = <-handler.answered:
+	case <-time.After(eventually):
+		t.Fatal("inbound handler never answered")
+	}
+	if session.Keys == nil {
+		t.Fatal("answered session exposes no key presses")
+	}
+
+	if err := dialog.AudioWriterDTMF().WriteDTMF('5'); err != nil {
+		t.Fatalf("provider WriteDTMF error = %v", err)
+	}
+	select {
+	case key := <-session.Keys:
+		if key != '5' {
+			t.Fatalf("key = %q, want 5", key)
+		}
+	case <-time.After(eventually):
+		t.Fatal("the caller's key press never reached the session")
+	}
+}

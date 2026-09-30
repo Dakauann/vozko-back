@@ -3,6 +3,7 @@ package sip_trunk_usecase
 import (
 	"context"
 
+	"vozko/domain/shared"
 	"vozko/domain/sip_trunk"
 )
 
@@ -22,10 +23,11 @@ func (p *CallPlanner) Plan(ctx context.Context, input sip_trunk.CallPlanInput) (
 	if p.permissions == nil || !p.permissions.MayCallThroughTrunks(input.UserID, input.WorkspaceID, input.IsAdmin) {
 		return nil, sip_trunk.ErrCallNotPermitted
 	}
-	number, err := sip_trunk.NormalizeDialString(input.PhoneNumber)
+	dialString, err := sip_trunk.NormalizeDialString(input.PhoneNumber)
 	if err != nil {
 		return nil, err
 	}
+	number := shared.EnsureDialablePhoneNumber(dialString)
 	trunks, err := p.dialableTrunks(ctx, input)
 	if err != nil {
 		return nil, err

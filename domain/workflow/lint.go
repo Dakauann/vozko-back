@@ -40,6 +40,7 @@ const (
 	LintSegmentedSendConflict    LintIssueCode = "NODE_SEGMENTED_SEND_CONFLICT"
 	LintInvalidToolParamType     LintIssueCode = "NODE_INVALID_TOOL_PARAM_TYPE"
 	LintInvalidInteractiveConfig LintIssueCode = "NODE_INVALID_INTERACTIVE_CONFIG"
+	LintInvalidDTMFConfig        LintIssueCode = "NODE_INVALID_DTMF_CONFIG"
 
 	LintBadHandleLabel      LintIssueCode = "EDGE_BAD_HANDLE_LABEL"
 	LintDanglingDataRef     LintIssueCode = "DATA_REF_DANGLING"
@@ -120,6 +121,11 @@ var PureGraphRules = []GraphRule{
 		Code:     LintInvalidInteractiveConfig,
 		Hint:     "No nó de botões/lista: use até 3 botões OU até 10 linhas de lista (máx. 10 seções); cada opção precisa de id e título; ids únicos; títulos de botão únicos e com no máximo 20 caracteres.",
 		Validate: ValidateInteractivePromptConfig,
+	},
+	{
+		Code:     LintInvalidDTMFConfig,
+		Hint:     "No nó wait_dtmf, 'keys' precisa de ao menos uma tecla, só 0-9, * ou #, sem repetir. Cada tecla vira uma saída com o próprio dígito como rótulo.",
+		Validate: ValidateDTMFWaits,
 	},
 }
 

@@ -176,6 +176,24 @@ func TestTrunkCallsKeepTheTypedNumberAndArePricedAsSIP(t *testing.T) {
 	}
 }
 
+func TestTrunkCallsDialAndReportTheNumberAnatelDefines(t *testing.T) {
+	source := &stubCallSource{call: &stubCRMCall{}}
+	uc := NewStartOutboundCallUseCase(source, nil, &stubAdmission{lease: &callsession.CallAdmissionLease{WorkspaceID: "ws-1"}})
+
+	res, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
+		WorkspaceID: "ws-1",
+		UserID:      "user-1",
+		TargetPhone: "558494409684",
+		TrunkID:     "trunk-1",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if source.lastIn.PhoneNumber != "5584994409684" || res.PhoneNumber != "5584994409684" {
+		t.Fatalf("dialed %q and reported %q, want the ninth digit restored", source.lastIn.PhoneNumber, res.PhoneNumber)
+	}
+}
+
 func TestTrunkCallsRequireANumber(t *testing.T) {
 	uc := NewStartOutboundCallUseCase(&stubCallSource{}, nil, &stubAdmission{lease: &callsession.CallAdmissionLease{}})
 	_, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{WorkspaceID: "ws-1", UserID: "u", TrunkID: "trunk-1"})

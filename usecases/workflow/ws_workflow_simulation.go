@@ -45,6 +45,7 @@ type messagePayload struct {
 	MessageID   string `json:"messageId"`
 	AudioBase64 string `json:"audioBase64,omitempty"`
 	AudioMime   string `json:"audioMime,omitempty"`
+	AudioURL    string `json:"audioUrl,omitempty"`
 }
 
 type waitingReplyPayload struct {
@@ -118,6 +119,9 @@ func (s *wsWorkflowSimulation) HandleSession(ctx context.Context, conn *websocke
 	trigger := wf.Graph.TriggerNode()
 	if trigger == nil {
 		return s.sendError(conn, &writeMu, "workflow has no trigger node")
+	}
+	if wf.Type == workflow.WorkflowTypeVoice {
+		return s.runVoiceSimulation(ctx, conn, &writeMu, wf, trigger)
 	}
 	outboundCh := make(chan SimOutboundMessage, 100)
 	defer close(outboundCh)

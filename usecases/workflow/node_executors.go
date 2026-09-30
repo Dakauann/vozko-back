@@ -60,6 +60,7 @@ type ExecutorDeps struct {
 	EmailSender             email_usecase.SMTPSender
 	FileStorage             media_domain.FileStorage
 	ConversationMediaRepo   conversation.ConversationMediaRepository
+	VoiceAudio              workflow.VoiceAudio
 
 	AIAttendance       node_executors.WorkflowAIAttendance
 	ConversationStatus conversation.ConversationStatusUpdater
@@ -128,6 +129,8 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeConditionCheckLabel, node_executors.NewCheckLabelExecutor(deps.LabelRepo))
 	registry.Register(workflow.NodeTypeConditionCheckStage, node_executors.NewCheckStageExecutor(deps.StageRepo))
 	registry.Register(workflow.NodeTypeConditionCheckOpportunity, node_executors.NewCheckOpportunityExecutor(deps.Deals))
+	registry.Register(workflow.NodeTypeActionPlayAudio, node_executors.NewPlayAudioExecutor(deps.VoiceAudio))
+	registry.Register(workflow.NodeTypeWaitDTMF, node_executors.NewWaitDTMFExecutor())
 
 	registry.Register(workflow.NodeTypeDecorationBackground, node_executors.NewBackgroundNodeExecutor())
 

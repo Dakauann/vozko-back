@@ -40,7 +40,7 @@ func TestPlanPicksTheOnlyTrunkThatCanDial(t *testing.T) {
 	if !ok || chosen != (sip_trunk.TrunkChoice{ID: "ready", Name: "Principal"}) {
 		t.Fatalf("chosen = %+v, %v", chosen, ok)
 	}
-	if plan.PhoneNumber != "+5584999990000" {
+	if plan.PhoneNumber != "5584999990000" {
 		t.Fatalf("number = %q", plan.PhoneNumber)
 	}
 }
@@ -93,6 +93,18 @@ func TestPlanSaysSoWhenNoTrunkCanDial(t *testing.T) {
 	_, err := newPlanner(newFakeEngine(), trunkNamed("offline", "Offline")).Plan(context.Background(), planInput("100", ""))
 	if !errors.Is(err, sip_trunk.ErrNoDialableTrunk) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPlanDialsTheNumberAnatelDefinesNotTheLegacyWhatsAppID(t *testing.T) {
+	engine := newFakeEngine()
+	engine.markRegistered("ready")
+	plan, err := newPlanner(engine, trunkNamed("ready", "Principal")).Plan(context.Background(), planInput("558494409684", ""))
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if plan.PhoneNumber != "5584994409684" {
+		t.Fatalf("number = %q", plan.PhoneNumber)
 	}
 }
 

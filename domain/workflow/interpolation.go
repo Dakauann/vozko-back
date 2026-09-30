@@ -312,6 +312,7 @@ const (
 	DependencySourceSystem       DependencySource = "system"
 	DependencySourceCustom       DependencySource = "custom"
 	DependencySourceAgentVar     DependencySource = "agent_variable"
+	DependencySourceCaller       DependencySource = "caller"
 )
 
 type RequiredMock struct {
@@ -319,6 +320,7 @@ type RequiredMock struct {
 	DisplayName string           `json:"displayName"`
 	Source      DependencySource `json:"source"`
 	SourceNode  string           `json:"sourceNode"`
+	Optional    bool             `json:"optional,omitempty"`
 }
 
 func ExtractDependencies(config map[string]interface{}) []VariableDependency {

@@ -27,10 +27,11 @@ type WorkflowType string
 
 const (
 	WorkflowTypeMessages WorkflowType = "messages"
+	WorkflowTypeVoice    WorkflowType = "voice"
 )
 
 func (t WorkflowType) Valid() bool {
-	return t == WorkflowTypeMessages
+	return t == WorkflowTypeMessages || t == WorkflowTypeVoice
 }
 
 type TriggerType string
@@ -43,18 +44,23 @@ const (
 	TriggerManual          TriggerType = "trigger_manual"
 	TriggerNoReply         TriggerType = "trigger_no_reply"
 	TriggerWebhook         TriggerType = "trigger_webhook"
+	TriggerCallReceived    TriggerType = "trigger_call_received"
 )
 
 func (t TriggerType) Valid() bool {
 	switch t {
 	case TriggerFirstMessage, TriggerMessageReceived, TriggerCampaignSent,
-		TriggerStageAdded, TriggerManual, TriggerNoReply, TriggerWebhook:
+		TriggerStageAdded, TriggerManual, TriggerNoReply, TriggerWebhook,
+		TriggerCallReceived:
 		return true
 	}
 	return false
 }
 
 func (t TriggerType) WorkflowType() WorkflowType {
+	if t == TriggerCallReceived {
+		return WorkflowTypeVoice
+	}
 	return WorkflowTypeMessages
 }
 
@@ -68,8 +74,12 @@ const (
 	NodeTypeTriggerManual          NodeType = "trigger_manual"
 	NodeTypeTriggerNoReply         NodeType = "trigger_no_reply"
 	NodeTypeTriggerWebhook         NodeType = "trigger_webhook"
+	NodeTypeTriggerCallReceived    NodeType = "trigger_call_received"
 
-	NodeTypeActionSendText                  NodeType = "action_send_text"
+	NodeTypeActionPlayAudio NodeType = "action_play_audio"
+	NodeTypeWaitDTMF        NodeType = "wait_dtmf"
+
+	NodeTypeActionSendText                 NodeType = "action_send_text"
 	NodeTypeActionSendTemplate              NodeType = "action_send_template"
 	NodeTypeActionSendEmail                 NodeType = "action_send_email"
 	NodeTypeActionSendInteractive           NodeType = "action_send_interactive"
@@ -115,6 +125,7 @@ func (n NodeType) Valid() bool {
 	case NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
 		NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
 		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
+		NodeTypeTriggerCallReceived, NodeTypeActionPlayAudio, NodeTypeWaitDTMF,
 		NodeTypeActionSendText, NodeTypeActionSendTemplate,
 		NodeTypeActionSendEmail,
 		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,
@@ -150,10 +161,15 @@ func (n NodeType) IsTrigger() bool {
 	switch n {
 	case NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
 		NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
-		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook:
+		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
+		NodeTypeTriggerCallReceived:
 		return true
 	}
 	return false
+}
+
+func (n NodeType) WaitsForCaller() bool {
+	return n == NodeTypeWaitDTMF
 }
 
 func (n NodeType) IsWait() bool {

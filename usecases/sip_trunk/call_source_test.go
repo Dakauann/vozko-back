@@ -126,7 +126,7 @@ func TestAnsweredCallBridgesAudioBothWaysUntilTheRemoteHangsUp(t *testing.T) {
 	if ev := nextEvent(t, call); ev.Type != conversation.CallEventAnswered {
 		t.Fatalf("second event = %s, want answered", ev.Type)
 	}
-	if engine.invites[0].PhoneNumber != "+5511999990000" {
+	if engine.invites[0].PhoneNumber != "5511999990000" {
 		t.Fatalf("dialled %q, want the normalized number", engine.invites[0].PhoneNumber)
 	}
 

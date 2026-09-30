@@ -1,13 +1,11 @@
 package sip_trunk
 
-import "strings"
+import "vozko/domain/shared"
 
 const maxDialStringLength = 32
 
-var dialSeparators = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", ".", "")
-
 func NormalizeDialString(raw string) (string, error) {
-	dial := dialSeparators.Replace(strings.TrimSpace(raw))
+	dial := shared.CompactPhone(raw)
 	if dial == "" || len(dial) > maxDialStringLength {
 		return "", ErrInvalidPhoneNumber
 	}

@@ -8,6 +8,7 @@ import (
 	label_domain "vozko/domain/label"
 	"vozko/domain/pipeline"
 	"vozko/domain/shared"
+	"vozko/domain/sip_trunk"
 	"vozko/domain/stage"
 	"vozko/domain/workflow"
 	dept_domain "vozko/domain/workspace/workspace_department"
@@ -35,6 +36,9 @@ type dealCatalog interface {
 type workflowLister interface {
 	FindByWorkspaceID(workspaceID string) ([]*workflow.Workflow, error)
 }
+type trunkLister interface {
+	ListByWorkspace(ctx context.Context, workspaceID string) ([]*sip_trunk.SIPTrunk, error)
+}
 type memberLister interface {
 	ListMembers(ctx context.Context, workspaceID, query string, limit int) ([]ResourceMatch, error)
 }
@@ -48,6 +52,7 @@ type BuilderResourceResolverDeps struct {
 	Deals       dealCatalog
 	Workflows   workflowLister
 	Members     memberLister
+	Trunks      trunkLister
 }
 
 type builderResourceResolver struct {
@@ -69,6 +74,26 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 	match := func(name string) bool { return q == "" || strings.Contains(strings.ToLower(name), q) }
 
 	switch kind {
+	case "sip_trunks":
+		if r.deps.Trunks == nil {
+			return nil, nil
+		}
+		trunks, err := r.deps.Trunks.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ResourceMatch, 0, limit)
+		for _, t := range trunks {
+			if t == nil || t.WorkspaceID != workspaceID || !t.TrunkType.Supports(sip_trunk.CallDirectionInbound) || !match(t.Name) {
+				continue
+			}
+			out = append(out, ResourceMatch{ID: t.ID, Name: t.Name})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+
 	case "ai_models":
 		if r.deps.Models == nil {
 			return nil, nil

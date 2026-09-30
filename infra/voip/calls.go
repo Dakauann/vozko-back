@@ -27,6 +27,8 @@ var (
 	errTrunkClosing         = errors.New("trunk connection is closing")
 )
 
+const pressedKeyBuffer = 16
+
 type trackedCall struct {
 	conn        *trunkConnection
 	dialogMedia *diago.DialogMedia
@@ -34,6 +36,7 @@ type trackedCall struct {
 	close       func() error
 	state       *calls.CallStateMachine
 	done        chan struct{}
+	keys        chan rune
 
 	mu       sync.Mutex
 	info     sip_trunk.ActiveCall
@@ -53,6 +56,7 @@ func (m *SIPTrunkManager) newTrackedCall(conn *trunkConnection, direction sip_tr
 		hangup:      hangup,
 		close:       closeDialog,
 		state:       state,
+		keys:        make(chan rune, pressedKeyBuffer),
 		done:        make(chan struct{}),
 		info: sip_trunk.ActiveCall{
 			TrunkID:     conn.trunk.ID,
@@ -165,6 +169,7 @@ func (m *SIPTrunkManager) establish(call *trackedCall) (voip.PCMStream, error) {
 	call.conn.track(call.info.ID, call)
 	call.mu.Unlock()
 
+	buffer.OnDTMF(call.pressKey)
 	buffer.Run(call.conn.ctx)
 	if !call.conn.spawn(func() { m.watch(call) }) {
 		return nil, errTrunkClosing
@@ -262,6 +267,23 @@ func (m *SIPTrunkManager) callSession(call *trackedCall, stream voip.PCMStream) 
 		RemoteAddr:  session.Raddr.String(),
 		Audio:       stream,
 		Media:       buildMediaInfo(session),
+		Keys:        call.keys,
+	}
+}
+
+func (c *trackedCall) pressKey(key rune) {
+	select {
+	case c.keys <- key:
+		return
+	default:
+	}
+	select {
+	case <-c.keys:
+	default:
+	}
+	select {
+	case c.keys <- key:
+	default:
 	}
 }
 

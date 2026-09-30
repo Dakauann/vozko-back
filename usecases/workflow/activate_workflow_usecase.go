@@ -43,6 +43,16 @@ type activateWorkflowUseCase struct {
 	knowledgeBaseRepo knowledgeBaseLookup
 
 	modelLookup ModelLookup
+
+	inboundTrunks InboundTrunkLookup
+}
+
+type InboundTrunkLookup interface {
+	ReceivesCalls(workspaceID, trunkID string) (bool, error)
+}
+
+func (uc *activateWorkflowUseCase) SetInboundTrunks(trunks InboundTrunkLookup) {
+	uc.inboundTrunks = trunks
 }
 
 type knowledgeBaseLookup interface {
@@ -204,6 +214,12 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 
 	if err := workflow.ValidateRequiredDynamicOutputs(&w.Graph, builderHandleResolver); err != nil {
 		return nil, err
+	}
+
+	if w.Type == workflow.WorkflowTypeVoice {
+		if err := uc.validateVoiceTrunk(w); err != nil {
+			return nil, err
+		}
 	}
 
 	w.Status = workflow.WorkflowStatusActive
@@ -447,12 +463,47 @@ func (v *modelValidator) Validate(n *workflow.Node) error {
 	return nil
 }
 
+func (uc *activateWorkflowUseCase) validateVoiceTrunk(w *workflow.Workflow) error {
+	trunkID := w.VoiceTrunkID()
+	if trunkID == "" {
+		return workflow.ErrVoiceTrunkRequired
+	}
+	if uc.inboundTrunks == nil {
+		return workflow.ErrVoiceTrunkInvalid
+	}
+	receives, err := uc.inboundTrunks.ReceivesCalls(w.WorkspaceID, trunkID)
+	if err != nil {
+		return err
+	}
+	if !receives {
+		return workflow.ErrVoiceTrunkInvalid
+	}
+	active, err := uc.repo.FindActiveByTrigger(w.WorkspaceID, workflow.TriggerCallReceived)
+	if err != nil {
+		return err
+	}
+	for _, other := range active {
+		if other.ID != w.ID && other.VoiceTrunkID() == trunkID {
+			return workflow.ErrVoiceTrunkTaken
+		}
+	}
+	return nil
+}
+
 type mediaValidator struct {
 	repo        media_domain.MediaRepository
 	workspaceID string
 }
 
 func (v *mediaValidator) Validate(n *workflow.Node) error {
+	if n.Type == workflow.NodeTypeActionPlayAudio {
+		mediaID, _ := n.Config["media_id"].(string)
+		m, err := v.repo.GetMediaByID(strings.TrimSpace(mediaID))
+		if err != nil || !m.PlayableOnCallFor(v.workspaceID) {
+			return fmt.Errorf("%w: node %q media_id %q", workflow.ErrNodeInvalidMediaID, n.ID, mediaID)
+		}
+		return nil
+	}
 	if n.Type == workflow.NodeTypeActionSendMedia {
 		mediaURL, _ := n.Config["media_url"].(string)
 		if strings.TrimSpace(mediaURL) != "" {

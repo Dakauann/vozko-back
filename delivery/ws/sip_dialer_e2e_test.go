@@ -255,7 +255,7 @@ func TestDialerCallsThroughATrunkWithAudioBothWaysAndBillsTheMinute(t *testing.T
 	client := stack.connect(t, dialerUser, dialerWorkspace)
 	client.send(WSEventStartCall, StartCallPayload{PhoneNumber: "+55 11 99999-0000", TrunkID: stack.trunk.ID, RequestID: "req-1"})
 	client.waitFor(WSEventCallStatus, statusIs("answered"))
-	if got := <-stack.provider.InvitedUsers; got != "+5511999990000" {
+	if got := <-stack.provider.InvitedUsers; got != "5511999990000" {
 		t.Fatalf("provider was asked to reach %q", got)
 	}
 

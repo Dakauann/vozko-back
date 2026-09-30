@@ -49,6 +49,7 @@ var builderSessionSeq int64
 var resourceKinds = []string{
 	"ai_models", "agents", "templates", "departments", "medias",
 	"labels", "stages", "opportunity_pipelines", "opportunity_stages", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
+	"sip_trunks",
 }
 
 type ResourceMatch struct {
@@ -416,8 +417,8 @@ func (uc *aiBuilderUC) initState(workflowID, workspaceID string) (*builderState,
 }
 
 func (uc *aiBuilderUC) applyWorkflowType(st *builderState, t string) {
-	if workflow.WorkflowType(t) == workflow.WorkflowTypeMessages {
-		st.wfType = workflow.WorkflowTypeMessages
+	if wfType := workflow.WorkflowType(t); wfType.Valid() {
+		st.wfType = wfType
 	}
 }
 
@@ -488,6 +489,8 @@ func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) 
 		return node_executors.AIAgentToolOutputs(n.Config), true
 	case workflow.NodeTypeActionSendInteractive:
 		return node_executors.AskInteractiveOutputs(n.Config), true
+	case workflow.NodeTypeWaitDTMF:
+		return node_executors.WaitDTMFOutputs(n.Config), true
 	}
 	return nil, false
 }
@@ -706,8 +709,8 @@ func (uc *aiBuilderUC) applySetMeta(st *builderState, tc ai.ToolCall) (string, e
 		parts = append(parts, "descrição definida")
 	}
 	if v, ok := tc.Arguments["workflow_type"].(string); ok && strings.TrimSpace(v) != "" {
-		if v != string(workflow.WorkflowTypeMessages) {
-			return "", fmt.Errorf("workflow_type inválido %q (use 'messages')", v)
+		if !workflow.WorkflowType(v).Valid() {
+			return "", fmt.Errorf("workflow_type inválido %q (use %s)", v, strings.Join(workflowTypeNames(), " ou "))
 		}
 		uc.applyWorkflowType(st, v)
 		parts = append(parts, "tipo="+v)
@@ -1006,7 +1009,8 @@ func (uc *aiBuilderUC) systemPrompt(st *builderState) string {
 	b.WriteString("- Use get_node_spec(tipo) para ver o schema completo, saídas e orientações de um nó antes de configurá-lo.\n")
 	b.WriteString("- Referencie dados de nós anteriores (ancestrais) com {{node.<id>.<chave>}}, variáveis com {{var.<nome>}}.\n")
 	b.WriteString("- ORDEM TÍPICA DE CONSTRUÇÃO (siga e AJA, não fique só consultando): set_meta → add_node do gatilho → add_node dos nós de ação (ex.: action_ai_agent com source=prompt + model + instructions para conversar) → connect na ordem do fluxo → add_node 'end' e connect até ele → finish. Consulte get_node_spec/find_resource NO MÁXIMO uma vez por item; depois EXECUTE.\n")
-	b.WriteString("- Para um atendente conversacional de IA: use action_ai_agent (source=prompt, model resolvido via find_resource ai_models, instructions com o tom/lógica desejada). Para conversa contínua, ligue ai_agent → wait_for_reply e a saída 'replied' de volta ao ai_agent, com 'timeout' indo para 'end'.\n\n")
+	b.WriteString("- Para um atendente conversacional de IA: use action_ai_agent (source=prompt, model resolvido via find_resource ai_models, instructions com o tom/lógica desejada). Para conversa contínua, ligue ai_agent → wait_for_reply e a saída 'replied' de volta ao ai_agent, com 'timeout' indo para 'end'.\n")
+	b.WriteString("- Para URA ou atendimento por telefone (ligações recebidas em um tronco SIP): set_meta workflow_type=voice, gatilho trigger_call_received com trunk_id (find_resource sip_trunks), action_play_audio com um áudio (find_resource medias) anunciando as opções, depois wait_dtmf com as teclas; cada tecla leva a um passo, 'invalid'/'timeout' podem voltar ao áudio do menu, e 'end' desliga. Nós de mensagem não existem em fluxos de voz, e nós de voz não existem em fluxos de mensagem.\n\n")
 	b.WriteString(workflow.VariableSystemGuide())
 	b.WriteString("\n\n")
 
@@ -1155,7 +1159,7 @@ func (uc *aiBuilderUC) builderTools(st *builderState) []tools.Definition {
 			Parameters: map[string]tools.Parameter{
 				"name":          str("nome do workflow"),
 				"description":   str("descrição do workflow"),
-				"workflow_type": enum("tipo do workflow", []string{string(workflow.WorkflowTypeMessages)}),
+				"workflow_type": enum("tipo do workflow: messages para canais de mensagem, voice para ligações recebidas em um tronco SIP (URA)", workflowTypeNames()),
 			},
 		},
 		{
@@ -1335,7 +1339,16 @@ func allTriggerTypes() []workflow.TriggerType {
 	return []workflow.TriggerType{
 		workflow.TriggerFirstMessage, workflow.TriggerMessageReceived, workflow.TriggerCampaignSent,
 		workflow.TriggerStageAdded, workflow.TriggerManual, workflow.TriggerNoReply,
+		workflow.TriggerCallReceived,
 	}
+}
+
+func workflowTypeNames() []string {
+	names := make([]string, 0, len(workflow.WorkflowTypes()))
+	for _, t := range workflow.WorkflowTypes() {
+		names = append(names, string(t))
+	}
+	return names
 }
 
 func mutationSignature(tc ai.ToolCall) string {

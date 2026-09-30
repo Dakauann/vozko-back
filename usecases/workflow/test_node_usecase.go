@@ -145,6 +145,15 @@ func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) 
 		}
 	}
 
+	if node.Type == workflow.NodeTypeWaitDTMF {
+		requiredMocks = append(requiredMocks, workflow.RequiredMock{
+			StateKey:    testKeyMock,
+			DisplayName: "Tecla pressionada (vazio simula silêncio)",
+			Source:      workflow.DependencySourceCaller,
+			Optional:    true,
+		})
+	}
+
 	nodeLabel := string(node.Type)
 	if def, ok := uc.deps.Registry.definitions[node.Type]; ok {
 		nodeLabel = def.Label
@@ -207,14 +216,15 @@ func (uc *testNodeUseCase) Execute(ctx context.Context, input TestNodeInput) (*T
 
 	applyMockedState(&state, input.MockedState)
 
-	uc.satisfyCaptureDeps(ctx, prepared.run, wf, node, registry, mockRootKeys(input.MockedState))
+	runtime := testVoiceRuntime(wf, input.MockedState)
+	uc.satisfyCaptureDeps(ctx, prepared.run, wf, node, registry, mockRootKeys(input.MockedState), runtime)
 
 	hasUserProvidedMocks := len(input.MockedState) > 0
 	needsUpstreamExecution := testMode == TestModeExecuteUntil &&
 		(!hasUserProvidedMocks || len(missingMocks) > 0)
 
 	if needsUpstreamExecution {
-		if err := uc.executeUntilTarget(ctx, prepared.run, wf, node.ID, registry); err != nil {
+		if err := uc.executeUntilTarget(ctx, prepared.run, wf, node.ID, registry, runtime); err != nil {
 			applyMockedState(&state, input.MockedState)
 			errorMessage := err.Error()
 			if len(missingMocks) > 0 {
@@ -263,7 +273,7 @@ func (uc *testNodeUseCase) Execute(ctx context.Context, input TestNodeInput) (*T
 		State:    &state,
 		Graph:    &wf.Graph,
 		Workflow: wf,
-		Runtime:  nil,
+		Runtime:  runtime,
 	}
 
 	nodeCtx.Node = &workflow.Node{
@@ -419,7 +429,7 @@ func findCaptureProducer(g *workflow.Graph, varName string) *workflow.Node {
 	return nil
 }
 
-func (uc *testNodeUseCase) satisfyCaptureDeps(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, target *workflow.Node, registry *NodeExecutorRegistry, mockRoots map[string]bool) {
+func (uc *testNodeUseCase) satisfyCaptureDeps(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, target *workflow.Node, registry *NodeExecutorRegistry, mockRoots map[string]bool, runtime interface{}) {
 	visited := map[string]bool{}
 	var satisfy func(n *workflow.Node)
 	satisfy = func(n *workflow.Node) {
@@ -447,13 +457,13 @@ func (uc *testNodeUseCase) satisfyCaptureDeps(ctx context.Context, run *workflow
 				continue
 			}
 			satisfy(producer)
-			uc.executeProducer(ctx, run, wf, producer, registry)
+			uc.executeProducer(ctx, run, wf, producer, registry, runtime)
 		}
 	}
 	satisfy(target)
 }
 
-func (uc *testNodeUseCase) executeProducer(_ context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, node *workflow.Node, registry *NodeExecutorRegistry) {
+func (uc *testNodeUseCase) executeProducer(_ context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, node *workflow.Node, registry *NodeExecutorRegistry, runtime interface{}) {
 	executor, ok := registry.Get(node.Type)
 	if !ok {
 		return
@@ -465,6 +475,7 @@ func (uc *testNodeUseCase) executeProducer(_ context.Context, run *workflow.Work
 		State:    &run.State,
 		Graph:    &wf.Graph,
 		Workflow: wf,
+		Runtime:  runtime,
 	})
 	if err != nil || result == nil {
 		return
@@ -682,6 +693,7 @@ func newTestSimulationRegistry(deps ExecutorDeps, workspaceID, simLeadID string,
 		ConversationHandOff:     deps.ConversationHandOff,
 		WorkspaceRepo:           deps.WorkspaceRepo,
 		CachedBalanceChecker:    deps.CachedBalanceChecker,
+		VoiceAudio:              deps.VoiceAudio,
 	})
 	return registry
 }
@@ -709,7 +721,7 @@ func (uc *testNodeUseCase) shouldUseSimulationRegistry() bool {
 		deps.CachedBalanceChecker != nil
 }
 
-func (uc *testNodeUseCase) executeUntilTarget(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, targetNodeID string, registry *NodeExecutorRegistry) error {
+func (uc *testNodeUseCase) executeUntilTarget(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, targetNodeID string, registry *NodeExecutorRegistry, runtime interface{}) error {
 
 	ancestors := wf.Graph.AncestorsOf(targetNodeID)
 
@@ -784,6 +796,7 @@ func (uc *testNodeUseCase) executeUntilTarget(ctx context.Context, run *workflow
 			Graph:    &wf.Graph,
 			Workflow: wf,
 			State:    &run.State,
+			Runtime:  runtime,
 		})
 		executionCount++
 
@@ -854,6 +867,7 @@ type MockFieldSpec struct {
 	Source      string `json:"source"`
 	SourceNode  string `json:"source_node,omitempty"`
 	Hint        string `json:"hint,omitempty"`
+	Optional    bool   `json:"optional,omitempty"`
 }
 
 type UIAnalysis struct {
@@ -875,6 +889,7 @@ func (a *AnalyzeNodeOutput) ToUIAnalysis() UIAnalysis {
 			DisplayName: m.DisplayName,
 			Source:      string(m.Source),
 			SourceNode:  m.SourceNode,
+			Optional:    m.Optional,
 		})
 	}
 
