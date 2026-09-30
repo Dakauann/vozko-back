@@ -166,7 +166,7 @@ func (h *Handler) DeleteQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Filas para transferência
-// @Description	Lista as filas para onde quem está em uma ligação pode transferi-la, com quantas pessoas esperam e quantos atendentes estão livres agora. Os colegas disponíveis chegam pela presença do WebSocket de sessão de chamada; a transferência é feita pelo evento call:transfer.
+// @Description	Lista as filas para onde quem está em uma ligação (tronco SIP ou WhatsApp) pode transferi-la, com quantas pessoas esperam e quantos atendentes estão livres agora. Os colegas disponíveis chegam pela presença do WebSocket de sessão de chamada; a transferência é feita pelo evento call:transfer.
 // @Tags			Filas de atendimento
 // @Produce		json
 // @Success		200	{array}		QueueTargetResponse

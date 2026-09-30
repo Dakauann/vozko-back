@@ -2807,7 +2807,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista as filas para onde quem está em uma ligação pode transferi-la, com quantas pessoas esperam e quantos atendentes estão livres agora. Os colegas disponíveis chegam pela presença do WebSocket de sessão de chamada; a transferência é feita pelo evento call:transfer.",
+                "description": "Lista as filas para onde quem está em uma ligação (tronco SIP ou WhatsApp) pode transferi-la, com quantas pessoas esperam e quantos atendentes estão livres agora. Os colegas disponíveis chegam pela presença do WebSocket de sessão de chamada; a transferência é feita pelo evento call:transfer.",
                 "produces": [
                     "application/json"
                 ],
