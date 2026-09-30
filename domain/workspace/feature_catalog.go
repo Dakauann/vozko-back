@@ -361,6 +361,19 @@ var Features = []Feature{
 		},
 	},
 	{
+		Key:         "call_queues",
+		Name:        "Filas de atendimento",
+		Location:    "Menu lateral › Telefonia › Filas",
+		Description: "Filas que distribuem ligações entre quem está livre, com música de espera, e as transferências entre colegas e filas.",
+		Capabilities: []Capability{
+			{Key: "call_queues.view", Description: "Ver as filas, quem atende cada uma e a música de espera", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead)}, Screens: []Screen{ScreenCallQueues}},
+			{Key: "call_queues.create", Description: "Criar filas", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionCreate)}},
+			{Key: "call_queues.edit", Description: "Editar filas e a música de espera do workspace", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionUpdate)}},
+			{Key: "call_queues.remove", Description: "Remover filas", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionDelete)}},
+			{Key: "call_queues.transfer", Description: "Transferir uma ligação em andamento (tronco SIP ou WhatsApp) para um colega ou uma fila; quem recebe precisa poder atender aquele tipo de ligação", Requires: []PermissionEntry{need(ResourceCallSession, ActionUse)}},
+		},
+	},
+	{
 		Key:         "telegram",
 		Name:        "Telegram",
 		Location:    "Menu lateral › Telegram › Contas",

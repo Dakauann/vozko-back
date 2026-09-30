@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/callrouting"
 	cdr "vozko/domain/calls/cdr"
 	"vozko/domain/callsession"
 	"vozko/domain/conversation"
+	"vozko/domain/voip"
 	"vozko/domain/workflow"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	callsession_usecase "vozko/usecases/callsession"
@@ -31,7 +33,7 @@ func (f *scriptedFlows) Answer(flow *workflow.Workflow, call workflow.InboundVoi
 	f.mu.Lock()
 	f.answered = append(f.answered, call)
 	f.mu.Unlock()
-	_, err := call.Call.Play(make([]byte, pcmFrameBytes), true)
+	_, err := call.Call.Play(make([]byte, voip.PCMFrameBytes), true)
 	f.played = err == nil
 	return nil
 }
@@ -69,11 +71,73 @@ func (l *recordingLifecycle) Run(_ context.Context, input callsession_usecase.Ou
 	}
 }
 
+type parkedCall struct {
+	callrouting.RoutedCall
+	call        conversation.CRMCall
+	workspaceID string
+	mu          sync.Mutex
+	owner       callsession.CallSession
+}
+
+func (p *parkedCall) ID() string                 { return p.call.ID() }
+func (p *parkedCall) WorkspaceID() string        { return p.workspaceID }
+func (p *parkedCall) SendAudio(pcm []byte) error { return p.call.SendAudio(pcm) }
+func (p *parkedCall) Done() <-chan struct{}      { return p.call.Done() }
+func (p *parkedCall) Hangup() error              { return p.call.Hangup() }
+func (p *parkedCall) OwnerSession() (callsession.CallSession, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.owner, p.owner != nil
+}
+
+type recordingParking struct {
+	lifecycle *recordingLifecycle
+	mu        sync.Mutex
+	parked    []*parkedCall
+	onPark    func(*parkedCall)
+}
+
+func (r *recordingParking) Park(ctx context.Context, input callrouting.ParkInput) (callrouting.RoutedCall, error) {
+	go r.lifecycle.Run(ctx, callsession_usecase.OutboundCallLifecycleInput{
+		Call:        input.Call,
+		Admission:   input.Admission,
+		WorkspaceID: input.WorkspaceID,
+		StartedAt:   input.StartedAt,
+		Direction:   input.Direction,
+		PhoneTo:     input.Phone,
+	})
+	parked := &parkedCall{call: input.Call, workspaceID: input.WorkspaceID}
+	r.mu.Lock()
+	r.parked = append(r.parked, parked)
+	r.mu.Unlock()
+	if r.onPark != nil {
+		r.onPark(parked)
+	}
+	return parked, nil
+}
+
+type scriptedQueues struct {
+	outcome callrouting.TransferOutcome
+	entries []callrouting.QueueEntry
+	connect callsession.CallSession
+}
+
+func (q *scriptedQueues) EnterQueue(_ context.Context, entry callrouting.QueueEntry) (callrouting.TransferOutcome, error) {
+	q.entries = append(q.entries, entry)
+	if q.outcome == callrouting.OutcomeConnected {
+		parked := entry.Call.(*parkedCall)
+		parked.mu.Lock()
+		parked.owner = q.connect
+		parked.mu.Unlock()
+	}
+	return q.outcome, nil
+}
+
 func voiceFlowFixture(flows *scriptedFlows) (inboundFixture, *recordingLifecycle) {
 	f := newInboundFixture(nil, grantedCallers{})
 	lifecycle := newRecordingLifecycle()
 	f.handler.cfg.VoiceFlows = flows
-	f.handler.cfg.Lifecycle = lifecycle
+	f.handler.cfg.Parking = &recordingParking{lifecycle: lifecycle}
 	return f, lifecycle
 }
 
@@ -153,10 +217,83 @@ func TestATrunkWithoutAVoiceWorkflowStillRingsMembers(t *testing.T) {
 	member := newMemberSession("agent", ownerWorkspace)
 	f := newInboundFixture(map[string][]callsession.CallSession{ownerWorkspace: {member}}, grantedCallers{"agent|" + ownerWorkspace: true})
 	f.handler.cfg.VoiceFlows = &scriptedFlows{}
-	f.handler.cfg.Lifecycle = newRecordingLifecycle()
+	f.handler.cfg.Parking = &recordingParking{lifecycle: newRecordingLifecycle()}
 	dialog := newRingingDialog()
 
 	go func() { _ = f.handler.HandleInboundInvite(context.Background(), invite(dialog)) }()
 	f.accept(t, member)
 	close(dialog.gone)
+}
+
+type transferringFlows struct {
+	flow   *workflow.Workflow
+	result chan error
+}
+
+func (f *transferringFlows) FlowFor(string, string) (*workflow.Workflow, error) { return f.flow, nil }
+
+func (f *transferringFlows) Answer(_ *workflow.Workflow, call workflow.InboundVoiceCall) error {
+	transfers, ok := call.Call.(workflow.VoiceTransfers)
+	if !ok {
+		f.result <- workflow.ErrNotTransferable
+		return nil
+	}
+	_, err := transfers.TransferToQueue(context.Background(), workflow.QueueTransfer{QueueID: "q1", Notes: "suporte", From: "URA"})
+	f.result <- err
+	return nil
+}
+
+func TestAVoiceWorkflowCallHandedToAnOperatorStaysUpAfterTheFlowEnds(t *testing.T) {
+	flows := &transferringFlows{flow: &workflow.Workflow{ID: "wf-1", WorkspaceID: ownerWorkspace, Type: workflow.WorkflowTypeVoice}, result: make(chan error, 1)}
+	f := newInboundFixture(nil, grantedCallers{})
+	lifecycle := newRecordingLifecycle()
+	queues := &scriptedQueues{outcome: callrouting.OutcomeConnected, connect: newMemberSession("agent", ownerWorkspace)}
+	f.handler.cfg.VoiceFlows = flows
+	f.handler.cfg.Parking = &recordingParking{lifecycle: lifecycle}
+	f.handler.cfg.Queues = queues
+	dialog := newRingingDialog()
+	f.engine.mu.Lock()
+	f.engine.sessions["dialog-1"] = dialog.audio
+	f.engine.mu.Unlock()
+
+	returned := make(chan error, 1)
+	go func() { returned <- f.handler.HandleInboundInvite(context.Background(), invite(dialog)) }()
+	if err := <-flows.result; err != nil {
+		t.Fatalf("TransferToQueue: %v", err)
+	}
+	if len(queues.entries) != 1 || queues.entries[0].QueueID != "q1" || queues.entries[0].WorkspaceID != ownerWorkspace || queues.entries[0].From != "URA" {
+		t.Fatalf("entries = %+v", queues.entries)
+	}
+	select {
+	case <-returned:
+		t.Fatal("the invite finished while the operator was still on the call")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if f.engine.hangupCount() != 0 {
+		t.Fatal("the flow hung up a call an operator had taken")
+	}
+	_ = dialog.audio.Close()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the invite never finished after the call ended")
+	}
+}
+
+func TestVoiceWorkflowsCannotTransferWithoutQueues(t *testing.T) {
+	flows := &transferringFlows{flow: &workflow.Workflow{ID: "wf-1", WorkspaceID: ownerWorkspace, Type: workflow.WorkflowTypeVoice}, result: make(chan error, 1)}
+	f := newInboundFixture(nil, grantedCallers{})
+	f.handler.cfg.VoiceFlows = flows
+	f.handler.cfg.Parking = &recordingParking{lifecycle: newRecordingLifecycle()}
+	dialog := newRingingDialog()
+	f.engine.mu.Lock()
+	f.engine.sessions["dialog-1"] = dialog.audio
+	f.engine.mu.Unlock()
+
+	if err := f.handler.HandleInboundInvite(context.Background(), invite(dialog)); err != nil {
+		t.Fatalf("HandleInboundInvite: %v", err)
+	}
+	if err := <-flows.result; !errors.Is(err, workflow.ErrNotTransferable) {
+		t.Fatalf("err = %v", err)
+	}
 }

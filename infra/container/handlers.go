@@ -635,9 +635,9 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 		c.services.callLifecycle,
 		c.recordingPool,
 		log.Default(),
-	)
+	).WithChannels(c.callRouting.Channels)
 
-	inboundBroker := callsession_usecase.NewInboundOfferBroker()
+	inboundBroker := c.callRouting.Broker
 
 	if c.services.whatsappCallSignaling != nil && c.services.whatsappCallRegistry != nil {
 		whatsappInboundUC := conversation_usecase.NewWhatsAppInboundCallUseCase(conversation_usecase.WhatsAppInboundConfig{
@@ -674,10 +674,9 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 		Permissions: c.sipTrunks.Permissions,
 		Engine:      c.sipTrunks.Engine,
 		VoiceFlows:  c.useCases.voiceFlows,
+		Parking:     c.callRouting.Channels,
+		Queues:      c.callRouting.Transfers,
 		Logger:      log.Default(),
-	}
-	if c.services.callLifecycle != nil {
-		inboundSIP.Lifecycle = c.services.callLifecycle
 	}
 	c.sipTrunks.Engine.SetInboundInviteHandler(sip_trunk_usecase.NewInboundCallUseCase(inboundSIP))
 
@@ -685,7 +684,10 @@ func buildCallSessionWSHandler(c *Container) *wsdelivery.CallSessionWSHandler {
 		WithInboundCalls(inboundBroker).
 		WithRegistries(sessions, calls).
 		WithUserResolver(usernameResolver).
-		WithRecording(c.recordingPool)
+		WithRecording(c.recordingPool).
+		WithChannels(c.callRouting.Channels).
+		WithTransfers(c.callRouting.Transfers).
+		WithReconnects(c.callRouting.Transfers)
 }
 
 func (c *Container) buildWebhookHandler() *handlers.WebhookHandler {

@@ -2596,6 +2596,413 @@
                 }
             }
         },
+        "/call-queues": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as filas telefônicas do workspace com quem atende cada uma e a música de espera.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Listar filas de atendimento",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/callrouting.QueueResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria uma fila telefônica no workspace. Quem atende vem de um departamento ou de uma lista de pessoas do workspace, nunca dos dois. A estratégia padrão entrega a ligação a quem está livre há mais tempo (longest_idle); round_robin reveza a partir do último chamado, fewest_calls prioriza quem atendeu menos e random sorteia. Sem música informada, a fila usa o preset padrão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Criar fila de atendimento",
+                "parameters": [
+                    {
+                        "description": "Dados da fila",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.QueueRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.QueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/call-queues/live": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mostra, em cada fila, quem está esperando e há quanto tempo, e o estado de cada atendente: livre, tocando, em ligação, em pausa após a ligação ou fora (discador fechado ou sem permissão para atender). Os números vêm da memória do servidor e mudam a cada ligação; consulte de novo para acompanhar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Filas ao vivo",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/callrouting.QueueLiveResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/call-queues/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Para cada fila, no período informado (até 31 dias): ligações recebidas, atendidas, abandonadas por quem ligou e que esgotaram o tempo, espera média até o atendimento e nível de serviço (fração das ligações atendidas em até 20 segundos).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Números das filas no período",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Início do período (RFC 3339 ou AAAA-MM-DD)",
+                        "name": "from",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fim do período (RFC 3339 ou AAAA-MM-DD, inclusivo)",
+                        "name": "to",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/callrouting.QueueStatsResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/call-queues/transfer-targets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as filas para onde quem está em uma ligação pode transferi-la, com quantas pessoas esperam e quantos atendentes estão livres agora. Os colegas disponíveis chegam pela presença do WebSocket de sessão de chamada; a transferência é feita pelo evento call:transfer.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Filas para transferência",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/callrouting.QueueTargetResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/call-queues/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna uma fila telefônica do workspace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Obter fila de atendimento",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da fila",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.QueueResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Substitui a configuração de uma fila telefônica do workspace. Quem já está esperando continua na fila e passa a seguir a configuração nova na próxima tentativa.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Atualizar fila de atendimento",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da fila",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Configuração completa da fila",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.QueueRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.QueueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove uma fila telefônica do workspace. Fluxos de voz que enviam ligações a ela passam a seguir a saída de tempo esgotado.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Remover fila de atendimento",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da fila",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.StatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/call-recordings/by-entry": {
             "get": {
                 "security": [
@@ -2635,6 +3042,98 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/call-routing/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna a música tocada para quem espera uma transferência direta para um colega. Cada fila tem a sua própria música.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Música de espera do workspace",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.SettingsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Define a música de espera das transferências diretas: um preset ou um áudio enviado à biblioteca de mídia que possa tocar em ligações. Sem música informada, volta ao preset padrão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Definir música de espera do workspace",
+                "parameters": [
+                    {
+                        "description": "Música de espera",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.SettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/callrouting.SettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -5341,6 +5840,98 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/hold-music/presets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os presets de música de espera que acompanham o produto, cada um com o seu estilo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Listar músicas de espera prontas",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/callrouting.HoldPresetResponse"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/hold-music/presets/{id}/audio": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Devolve o preset em WAV (PCM 16 bits, 8 kHz, mono), exatamente como quem espera na linha vai ouvir.",
+                "produces": [
+                    "audio/wav"
+                ],
+                "tags": [
+                    "Filas de atendimento"
+                ],
+                "summary": "Ouvir música de espera pronta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do preset",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -20895,6 +21486,336 @@
                 "recordingUrl": {
                     "type": "string",
                     "example": "https://cdn.exemplo.com/rec/a1b2c3.mp3"
+                }
+            }
+        },
+        "callrouting.AgentCountsResponse": {
+            "type": "object",
+            "properties": {
+                "free": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "offline": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "onCall": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "ringing": {
+                    "type": "integer",
+                    "example": 0
+                },
+                "wrapUp": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
+        "callrouting.HoldMusicDTO": {
+            "type": "object",
+            "properties": {
+                "mediaId": {
+                    "type": "string",
+                    "example": ""
+                },
+                "presetId": {
+                    "type": "string",
+                    "example": "bossa_nova"
+                }
+            }
+        },
+        "callrouting.HoldPresetResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "bossa_nova"
+                },
+                "mood": {
+                    "type": "string",
+                    "enum": [
+                        "calm",
+                        "elegant",
+                        "professional",
+                        "brazilian",
+                        "modern",
+                        "upbeat",
+                        "seasonal"
+                    ],
+                    "example": "brazilian"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Bossa nova"
+                }
+            }
+        },
+        "callrouting.QueueAgentResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "Ana Souza"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "free",
+                        "ringing",
+                        "on_call",
+                        "wrap_up",
+                        "offline"
+                    ],
+                    "example": "free"
+                },
+                "userId": {
+                    "type": "string",
+                    "example": "7c1f0a52-5b7e-4d0c-9a1b-2c3d4e5f6a7b"
+                }
+            }
+        },
+        "callrouting.QueueLiveResponse": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/callrouting.QueueAgentResponse"
+                    }
+                },
+                "counts": {
+                    "$ref": "#/definitions/callrouting.AgentCountsResponse"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f"
+                },
+                "longestWaitSeconds": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Suporte"
+                },
+                "waiting": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/callrouting.WaitingCallerResponse"
+                    }
+                }
+            }
+        },
+        "callrouting.QueueRequest": {
+            "type": "object",
+            "properties": {
+                "departmentId": {
+                    "type": "string",
+                    "example": ""
+                },
+                "holdMusic": {
+                    "$ref": "#/definitions/callrouting.HoldMusicDTO"
+                },
+                "maxWaitSeconds": {
+                    "type": "integer",
+                    "maximum": 3600,
+                    "minimum": 10,
+                    "example": 300
+                },
+                "memberUserIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "7c1f0a52-5b7e-4d0c-9a1b-2c3d4e5f6a7b"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Suporte"
+                },
+                "ringSeconds": {
+                    "type": "integer",
+                    "maximum": 60,
+                    "minimum": 5,
+                    "example": 15
+                },
+                "strategy": {
+                    "type": "string",
+                    "enum": [
+                        "longest_idle",
+                        "round_robin",
+                        "fewest_calls",
+                        "random"
+                    ],
+                    "example": "longest_idle"
+                },
+                "wrapUpSeconds": {
+                    "type": "integer",
+                    "maximum": 300,
+                    "minimum": 0,
+                    "example": 10
+                }
+            }
+        },
+        "callrouting.QueueResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string",
+                    "example": ""
+                },
+                "holdMusic": {
+                    "$ref": "#/definitions/callrouting.HoldMusicDTO"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f"
+                },
+                "maxWaitSeconds": {
+                    "type": "integer",
+                    "example": 300
+                },
+                "memberUserIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "7c1f0a52-5b7e-4d0c-9a1b-2c3d4e5f6a7b"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Suporte"
+                },
+                "ringSeconds": {
+                    "type": "integer",
+                    "example": 15
+                },
+                "strategy": {
+                    "type": "string",
+                    "enum": [
+                        "longest_idle",
+                        "round_robin",
+                        "fewest_calls",
+                        "random"
+                    ],
+                    "example": "longest_idle"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "wrapUpSeconds": {
+                    "type": "integer",
+                    "example": 10
+                }
+            }
+        },
+        "callrouting.QueueStatsResponse": {
+            "type": "object",
+            "properties": {
+                "abandoned": {
+                    "type": "integer",
+                    "example": 11
+                },
+                "answered": {
+                    "type": "integer",
+                    "example": 104
+                },
+                "averageAnswerSeconds": {
+                    "type": "integer",
+                    "example": 18
+                },
+                "offered": {
+                    "type": "integer",
+                    "example": 120
+                },
+                "queueId": {
+                    "type": "string",
+                    "example": "5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f"
+                },
+                "serviceLevel": {
+                    "type": "number",
+                    "example": 0.82
+                },
+                "serviceLevelTargetSeconds": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "timedOut": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "callrouting.QueueTargetResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "5f0c2b1e-8d2a-4c61-9b7e-1a2b3c4d5e6f"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Suporte"
+                },
+                "ready": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "waiting": {
+                    "type": "integer",
+                    "example": 2
+                }
+            }
+        },
+        "callrouting.SettingsRequest": {
+            "type": "object",
+            "properties": {
+                "holdMusic": {
+                    "$ref": "#/definitions/callrouting.HoldMusicDTO"
+                }
+            }
+        },
+        "callrouting.SettingsResponse": {
+            "type": "object",
+            "properties": {
+                "holdMusic": {
+                    "$ref": "#/definitions/callrouting.HoldMusicDTO"
+                }
+            }
+        },
+        "callrouting.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "deleted"
+                }
+            }
+        },
+        "callrouting.WaitingCallerResponse": {
+            "type": "object",
+            "properties": {
+                "callId": {
+                    "type": "string",
+                    "example": "sip-in-7d9f2c4a"
+                },
+                "remoteNumber": {
+                    "type": "string",
+                    "example": "5584994409684"
+                },
+                "waitingSeconds": {
+                    "type": "integer",
+                    "example": 42
                 }
             }
         },

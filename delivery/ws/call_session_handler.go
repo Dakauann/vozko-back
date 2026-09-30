@@ -36,6 +36,9 @@ type CallSessionWSHandler struct {
 	callRegistry    callsession_domain.CallRegistry
 	inboundOffers   callsession_domain.InboundOfferResponder
 	recordingPool   *calls_usecase.RecordingUploadPool
+	channels        *CallChannels
+	transfers       CallTransfers
+	reconnects      CallReconnects
 
 	userResolver TransferUsernameResolver
 
@@ -116,6 +119,11 @@ func (h *CallSessionWSHandler) WithRecording(pool *calls_usecase.RecordingUpload
 	return h
 }
 
+func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSessionWSHandler {
+	h.channels = channels
+	return h
+}
+
 func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	if h == nil || h.startUseCase == nil || h.endUseCase == nil {
 		http.Error(w, "Call session websocket not configured", http.StatusNotImplemented)
@@ -184,7 +192,14 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 	if h.presenceTelemetry != nil {
 		session.SetPresenceTelemetry(h.presenceTelemetry)
 	}
+	if h.channels != nil {
+		session.SetActivity(h.channels.activity)
+	}
+	if h.reconnects != nil {
+		session.SetReconnects(h.reconnects)
+	}
 
+	leave := func() {}
 	if h.sessionRegistry != nil {
 
 		registry := h.sessionRegistry
@@ -194,7 +209,9 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 		if err != nil {
 			h.logger.Printf("[CallSessionWS] session registry rejected session: %v", err)
 		} else {
-			defer deregister()
+			var once sync.Once
+			leave = func() { once.Do(deregister) }
+			defer leave()
 		}
 	}
 
@@ -261,6 +278,7 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 				EndUseCase:    h.endUseCase,
 				Lifecycle:     h.lifecycle,
 				RecordingPool: h.recordingPool,
+				Channels:      h.channels,
 				Logger:        h.logger,
 			}); err != nil {
 				h.logger.Printf("[CallSessionWS] attach error: %v", err)
@@ -308,9 +326,14 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 			h.handleInboundCallAction(session, in.Payload, true)
 		case WSEventInboundCallDecline:
 			h.handleInboundCallAction(session, in.Payload, false)
+		case WSEventCallTransfer:
+			h.handleTransfer(session, in.Payload)
+		case WSEventCallTransferCancel:
+			h.handleTransferCancel(session, in.Payload)
 		}
 	}
 
+	leave()
 	session.Shutdown(context.Background())
 }
 

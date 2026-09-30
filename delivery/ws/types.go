@@ -69,6 +69,8 @@ const (
 
 	WSEventInboundCallAccept  WSEventType = "call:incoming_accept"
 	WSEventInboundCallDecline WSEventType = "call:incoming_decline"
+	WSEventCallTransfer       WSEventType = "call:transfer"
+	WSEventCallTransferCancel WSEventType = "call:transfer_cancel"
 
 	WSEventSetConversationStatus WSEventType = "set_conversation_status"
 

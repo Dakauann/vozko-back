@@ -38,6 +38,7 @@ var (
 	ErrNodeInvalidTemplateID            = errors.New("workflow: template ID is invalid or template not found")
 	ErrNodeInvalidAgentID               = errors.New("workflow: agent ID is invalid or agent not found")
 	ErrNodeInvalidMediaID               = errors.New("workflow: media ID is invalid or media not found")
+	ErrNodeInvalidQueueID               = errors.New("workflow: call queue ID is invalid or queue not found")
 	ErrNodeInvalidLabelID               = errors.New("workflow: label ID is invalid or label not found")
 	ErrNodeInvalidStageID               = errors.New("workflow: stage ID is invalid or stage not found")
 	ErrNodeInvalidOpportunityPipeline   = errors.New("workflow: pipeline ID is not a deals pipeline of this workspace")

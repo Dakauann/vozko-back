@@ -435,6 +435,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.services.callLifecycle.SetCDRAnswered(
 		calls_cdr_usecase.NewMarkCallAnsweredUseCase(c.repositories.callCDR),
 	)
+	c.initCallRouting()
 	publishDocProcessingUC := rag_usecase.NewPublishDocumentProcessingUseCase(c.services.ragQueuePub)
 
 	shortlinkHostGuard := netguard.New()
@@ -1123,7 +1124,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		AIAttendance:            c.services.aiAttendanceService,
 		ConversationStatus:      c.services.conversationStatusUpdater,
 		Adapters:                c.liveAdapterRegistry(),
-		VoiceAudio:              media_infra.NewVoiceAudioLoader(c.repositories.media, &http.Client{Timeout: voiceAudioDownloadTimeout}),
+		VoiceAudio:              c.callRouting.VoiceAudio,
 	}
 	workflow_usecase.RegisterDefaultExecutors(wfRegistry, executorDeps)
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
@@ -1170,6 +1171,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		CalendarRepo:   c.repositories.calendar,
 		GoogleCalendar: c.services.googleCalendar,
 		BillingPub:     c.services.billingQueuePub,
+		CallQueues:     c.callRouting.Queues,
 	})
 	var aiModelValidator workflow_usecase.ModelLookup
 	if orSvc, ok := c.services.ai.(*openrouter_service.Service); ok {
@@ -1189,6 +1191,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Workflows:   c.repositories.workflow,
 			Members:     builderMemberLister{repo: c.repositories.workspace},
 			Trunks:      c.sipTrunks.Repository,
+			Queues:      c.callRouting.Queues,
 		}),
 
 		NoProgressStop:            30,
@@ -1229,6 +1232,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		SetInboundTrunks(workflow_usecase.InboundTrunkLookup)
 	}); ok && c.sipTrunks != nil {
 		setter.SetInboundTrunks(sip_trunk_usecase.NewInboundTrunks(c.sipTrunks.Repository))
+	}
+	if setter, ok := c.useCases.activateWorkflow.(interface {
+		SetCallQueues(workflow_usecase.CallQueueLookup)
+	}); ok {
+		setter.SetCallQueues(c.callRouting.Queues)
 	}
 	if setter, ok := c.useCases.activateWorkflow.(interface {
 		SetLabelRepo(label_domain.Repository)

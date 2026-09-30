@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"vozko/domain/calls/recordings"
+	"vozko/domain/voip"
 )
 
 const (
@@ -243,7 +244,7 @@ func (r *CallRecorder) Close() (wavData []byte, duration time.Duration, err erro
 		return nil, 0, nil
 	}
 
-	return buildWAVBuffer(monoData, recorderSampleRate, recorderChannels, recorderBitDepth), totalDuration, nil
+	return voip.WAV(monoData, recorderSampleRate, recorderChannels, recorderBitDepth), totalDuration, nil
 }
 
 func (r *CallRecorder) readEventsFromFile(f *os.File) ([]audioEvent, error) {
@@ -339,61 +340,4 @@ func mixSamples(a, b int16) int16 {
 		return -32768
 	}
 	return int16(sum)
-}
-
-func buildWAVBuffer(pcmData []byte, sampleRate, channels, bitDepth int) []byte {
-	header := make([]byte, 44)
-	dataSize := len(pcmData)
-	fileSize := 36 + dataSize
-
-	copy(header[0:4], "RIFF")
-	binary.LittleEndian.PutUint32(header[4:8], uint32(fileSize))
-	copy(header[8:12], "WAVE")
-	copy(header[12:16], "fmt ")
-	binary.LittleEndian.PutUint32(header[16:20], 16)
-	binary.LittleEndian.PutUint16(header[20:22], 1)
-	binary.LittleEndian.PutUint16(header[22:24], uint16(channels))
-	binary.LittleEndian.PutUint32(header[24:28], uint32(sampleRate))
-	binary.LittleEndian.PutUint32(header[28:32], uint32(sampleRate*channels*bitDepth/8))
-	binary.LittleEndian.PutUint16(header[32:34], uint16(channels*bitDepth/8))
-	binary.LittleEndian.PutUint16(header[34:36], uint16(bitDepth))
-	copy(header[36:40], "data")
-	binary.LittleEndian.PutUint32(header[40:44], uint32(dataSize))
-
-	return append(header, pcmData...)
-}
-
-func writeWAVFile(path string, pcmData []byte, sampleRate, channels int) error {
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	header := make([]byte, 44)
-	dataSize := len(pcmData)
-	fileSize := 36 + dataSize
-
-	copy(header[0:4], "RIFF")
-	binary.LittleEndian.PutUint32(header[4:8], uint32(fileSize))
-	copy(header[8:12], "WAVE")
-	copy(header[12:16], "fmt ")
-	binary.LittleEndian.PutUint32(header[16:20], 16)
-	binary.LittleEndian.PutUint16(header[20:22], 1)
-	binary.LittleEndian.PutUint16(header[22:24], uint16(channels))
-	binary.LittleEndian.PutUint32(header[24:28], uint32(sampleRate))
-	binary.LittleEndian.PutUint32(header[28:32], uint32(sampleRate*channels*2))
-	binary.LittleEndian.PutUint16(header[32:34], uint16(channels*2))
-	binary.LittleEndian.PutUint16(header[34:36], 16)
-	copy(header[36:40], "data")
-	binary.LittleEndian.PutUint32(header[40:44], uint32(dataSize))
-
-	if _, err := file.Write(header); err != nil {
-		return err
-	}
-	if _, err := file.Write(pcmData); err != nil {
-		return err
-	}
-
-	return nil
 }

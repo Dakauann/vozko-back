@@ -198,6 +198,7 @@ type Container struct {
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
 	sipTrunks                   *sipTrunkBundle
+	callRouting                 *callRoutingBundle
 	unofficialWhatsApp          *unofficialWhatsAppBundle
 	unofficialWhatsAppCampaigns *unofficialWhatsAppCampaignBundle
 	mcpCollection               domainmcp.CollectionRepository

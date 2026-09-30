@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/voip"
 	"vozko/domain/workflow"
 )
 
@@ -40,7 +41,7 @@ func (l *recordingLine) sent() int {
 }
 
 func pcmFrames(n int) []byte {
-	return make([]byte, n*pcmFrameBytes)
+	return make([]byte, n*voip.PCMFrameBytes)
 }
 
 func TestPlaybackGoesOutInPacedTwentyMillisecondFrames(t *testing.T) {

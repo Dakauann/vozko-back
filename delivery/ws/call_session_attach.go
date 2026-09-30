@@ -28,7 +28,30 @@ type callAttachInput struct {
 	EndUseCase    callsession_domain.EndOutboundCallUseCase
 	Lifecycle     *callsession_usecase.OutboundCallLifecycleRunner
 	RecordingPool *calls_usecase.RecordingUploadPool
+	Channels      *CallChannels
 	Logger        *log.Logger
+}
+
+func buildLiveCall(input callAttachInput) *liveCall {
+	if input.StartedAt.IsZero() {
+		input.StartedAt = time.Now()
+	}
+	if input.RecordingPool != nil && input.Call != nil && cdr.IsRecordedCallID(input.Call.ID()) {
+		if rec := calls_usecase.NewRecordingCRMCall(input.Call, input.RecordingPool, input.WorkspaceID, input.EntryID, input.LeadID); rec != nil {
+			input.Call = rec
+		}
+	}
+	return &liveCall{
+		call:          input.Call,
+		admission:     input.Admission,
+		phone:         input.Phone,
+		requestID:     input.RequestID,
+		workspaceID:   input.WorkspaceID,
+		ownerUserID:   input.OwnerUserID,
+		startedAt:     input.StartedAt,
+		direction:     input.Direction,
+		lifecycleDone: make(chan struct{}),
+	}
 }
 
 func attachCall(ctx context.Context, input callAttachInput) (*liveCall, error) {
@@ -41,27 +64,8 @@ func attachCall(ctx context.Context, input callAttachInput) (*liveCall, error) {
 	if input.Session == nil {
 		return nil, errCallSessionBusy
 	}
-	if input.StartedAt.IsZero() {
-		input.StartedAt = time.Now()
-	}
-
-	if input.RecordingPool != nil && input.Call != nil && cdr.IsRecordedCallID(input.Call.ID()) {
-		if rec := calls_usecase.NewRecordingCRMCall(input.Call, input.RecordingPool, input.WorkspaceID, input.EntryID, input.LeadID); rec != nil {
-			input.Call = rec
-		}
-	}
-
-	liveCall := &liveCall{
-		call:          input.Call,
-		admission:     input.Admission,
-		phone:         input.Phone,
-		requestID:     input.RequestID,
-		workspaceID:   input.WorkspaceID,
-		ownerUserID:   input.OwnerUserID,
-		startedAt:     input.StartedAt,
-		direction:     input.Direction,
-		lifecycleDone: make(chan struct{}),
-	}
+	liveCall := buildLiveCall(input)
+	input.Call = liveCall.call
 
 	var unregisterCall func()
 	if input.CallRegistry != nil && input.Call != nil {
@@ -98,7 +102,9 @@ func attachCall(ctx context.Context, input callAttachInput) (*liveCall, error) {
 		return nil, err
 	}
 
+	untrack := input.Channels.track(liveCall)
 	liveCall.start(ctx, input.Lifecycle, input.EndUseCase, input.Logger, func() {
+		untrack()
 		if unregisterCall != nil {
 			unregisterCall()
 		}

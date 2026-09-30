@@ -31,12 +31,26 @@ func (a *simVoiceAudio) LoadPCM(_ context.Context, workspaceID, mediaID string) 
 }
 
 type simVoiceCall struct {
-	keys   *workflow.KeyQueue
-	onWait func(timeout time.Duration)
+	keys       *workflow.KeyQueue
+	onWait     func(timeout time.Duration)
+	onTransfer func(transfer workflow.QueueTransfer) error
 }
 
-func newSimVoiceCall(keys <-chan rune, ended <-chan struct{}, onWait func(timeout time.Duration)) *simVoiceCall {
-	return &simVoiceCall{keys: workflow.NewKeyQueue(keys, ended), onWait: onWait}
+func newSimVoiceCall(keys <-chan rune, ended <-chan struct{}, onWait func(timeout time.Duration), onTransfer func(transfer workflow.QueueTransfer) error) *simVoiceCall {
+	return &simVoiceCall{keys: workflow.NewKeyQueue(keys, ended), onWait: onWait, onTransfer: onTransfer}
+}
+
+func (c *simVoiceCall) TransferToQueue(_ context.Context, transfer workflow.QueueTransfer) (bool, error) {
+	if c.keys.Ended() {
+		return false, workflow.ErrCallEnded
+	}
+	if c.onTransfer == nil {
+		return false, workflow.ErrNotTransferable
+	}
+	if err := c.onTransfer(transfer); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (c *simVoiceCall) Play(_ []byte, interruptible bool) (bool, error) {
@@ -53,10 +67,19 @@ func (c *simVoiceCall) NextKey(timeout time.Duration) (rune, bool, error) {
 	return c.keys.Next(timeout)
 }
 
-const testKeyMock = "key"
+const (
+	testKeyMock          = "key"
+	testTransferMock     = "transfer"
+	testTransferTimedOut = "timeout"
+)
 
 type scriptedVoiceCall struct {
-	key string
+	key      string
+	transfer string
+}
+
+func (c scriptedVoiceCall) TransferToQueue(context.Context, workflow.QueueTransfer) (bool, error) {
+	return c.transfer != testTransferTimedOut, nil
 }
 
 func (c scriptedVoiceCall) Play([]byte, bool) (bool, error) {
@@ -75,5 +98,6 @@ func testVoiceRuntime(wf *workflow.Workflow, mockedState map[string]interface{})
 		return nil
 	}
 	key, _ := mockedState[testKeyMock].(string)
-	return scriptedVoiceCall{key: strings.TrimSpace(key)}
+	transfer, _ := mockedState[testTransferMock].(string)
+	return scriptedVoiceCall{key: strings.TrimSpace(key), transfer: strings.TrimSpace(transfer)}
 }

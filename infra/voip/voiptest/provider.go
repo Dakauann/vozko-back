@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emiago/diago"
+	"github.com/emiago/diago/media"
 	"github.com/emiago/sipgo"
 	"github.com/emiago/sipgo/sip"
 	"github.com/pion/rtp"
@@ -92,7 +93,11 @@ func (p *Provider) Registrations() int {
 	return int(p.registrations.Load())
 }
 
-func SendRTP(d *diago.DialogServerSession, count int) {
+type mediaDialog interface {
+	MediaSession() *media.MediaSession
+}
+
+func SendRTP(d mediaDialog, count int) {
 	session := d.MediaSession()
 	for seq := 1; seq <= count; seq++ {
 		packet := &rtp.Packet{

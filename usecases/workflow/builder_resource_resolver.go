@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"vozko/domain/agent"
+	"vozko/domain/callrouting"
 	label_domain "vozko/domain/label"
 	"vozko/domain/pipeline"
 	"vozko/domain/shared"
@@ -39,6 +40,9 @@ type workflowLister interface {
 type trunkLister interface {
 	ListByWorkspace(ctx context.Context, workspaceID string) ([]*sip_trunk.SIPTrunk, error)
 }
+type queueLister interface {
+	ListByWorkspace(ctx context.Context, workspaceID string) ([]*callrouting.Queue, error)
+}
 type memberLister interface {
 	ListMembers(ctx context.Context, workspaceID, query string, limit int) ([]ResourceMatch, error)
 }
@@ -53,6 +57,7 @@ type BuilderResourceResolverDeps struct {
 	Workflows   workflowLister
 	Members     memberLister
 	Trunks      trunkLister
+	Queues      queueLister
 }
 
 type builderResourceResolver struct {
@@ -88,6 +93,26 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 				continue
 			}
 			out = append(out, ResourceMatch{ID: t.ID, Name: t.Name})
+			if len(out) >= limit {
+				break
+			}
+		}
+		return out, nil
+
+	case "call_queues":
+		if r.deps.Queues == nil {
+			return nil, nil
+		}
+		queues, err := r.deps.Queues.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ResourceMatch, 0, limit)
+		for _, q := range queues {
+			if q == nil || q.WorkspaceID != workspaceID || !match(q.Name) {
+				continue
+			}
+			out = append(out, ResourceMatch{ID: q.ID, Name: q.Name})
 			if len(out) >= limit {
 				break
 			}

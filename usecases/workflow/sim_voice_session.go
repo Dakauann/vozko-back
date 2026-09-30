@@ -23,6 +23,12 @@ type waitingKeyPayload struct {
 	TimeoutSeconds int `json:"timeoutSeconds"`
 }
 
+type callTransferredPayload struct {
+	QueueID   string `json:"queueId"`
+	QueueName string `json:"queueName"`
+	Notes     string `json:"notes,omitempty"`
+}
+
 func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, wf *workflow.Workflow, trigger *workflow.Node) error {
 	send := func(msgType string, payload interface{}) {
 		_ = s.writeJSON(conn, writeMu, simServerMsg{Type: msgType, Payload: payload})
@@ -65,6 +71,16 @@ func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *web
 
 	call := newSimVoiceCall(keys, ended, func(timeout time.Duration) {
 		send("waiting_key", waitingKeyPayload{TimeoutSeconds: int(timeout / time.Second)})
+	}, func(transfer workflow.QueueTransfer) error {
+		if s.deps.CallQueues == nil {
+			return workflow.ErrNotTransferable
+		}
+		queue, err := s.deps.CallQueues.FindInWorkspace(ctx, wf.WorkspaceID, transfer.QueueID)
+		if err != nil {
+			return err
+		}
+		send("call_transferred", callTransferredPayload{QueueID: queue.ID, QueueName: queue.Name, Notes: transfer.Notes})
+		return nil
 	})
 	run := newVoiceRun(wf, trigger, workflow.InboundVoiceCall{
 		WorkspaceID:  wf.WorkspaceID,

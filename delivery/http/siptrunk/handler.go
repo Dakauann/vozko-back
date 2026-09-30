@@ -1,15 +1,14 @@
 package siptrunk
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/sip_trunk"
-	"vozko/infra/http/middleware"
 	sip_trunk_usecase "vozko/usecases/sip_trunk"
 )
 
@@ -45,23 +44,6 @@ func NewHandler(d HandlerDeps) *Handler {
 	}
 }
 
-func workspaceOf(w http.ResponseWriter, r *http.Request) (string, bool) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
-		return "", false
-	}
-	return workspaceID, true
-}
-
-func decode(w http.ResponseWriter, r *http.Request, into any) bool {
-	if err := json.NewDecoder(r.Body).Decode(into); err != nil {
-		response.WriteError(w, http.StatusBadRequest, "invalid request body", nil)
-		return false
-	}
-	return true
-}
-
 // @Summary		Criar tronco SIP
 // @Description	Cadastra um tronco SIP no workspace. Troncos habilitados passam a se registrar no provedor e a registração é mantida e renovada antes de expirar, sem depender de chamadas. É preciso ao menos um codec G.711 (PCMU ou PCMA).
 // @Tags			Troncos SIP
@@ -75,12 +57,12 @@ func decode(w http.ResponseWriter, r *http.Request, into any) bool {
 // @Security		BearerAuth
 // @Router			/sip-trunks [post]
 func (h *Handler) CreateTrunk(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
 	var req CreateTrunkRequest
-	if !decode(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
 	enabled := req.Enabled == nil || *req.Enabled
@@ -114,7 +96,7 @@ func (h *Handler) CreateTrunk(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/sip-trunks [get]
 func (h *Handler) ListTrunks(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -142,7 +124,7 @@ func (h *Handler) ListTrunks(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/sip-trunks/{id} [get]
 func (h *Handler) GetTrunk(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -169,12 +151,12 @@ func (h *Handler) GetTrunk(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/sip-trunks/{id} [put]
 func (h *Handler) UpdateTrunk(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
 	var req UpdateTrunkRequest
-	if !decode(w, r, &req) {
+	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
 	trunk, err := h.update.Execute(r.Context(), sip_trunk_usecase.UpdateTrunkInput{
@@ -210,7 +192,7 @@ func (h *Handler) UpdateTrunk(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/sip-trunks/{id} [delete]
 func (h *Handler) DeleteTrunk(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -233,7 +215,7 @@ func (h *Handler) DeleteTrunk(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/sip-trunks/{id}/calls [get]
 func (h *Handler) ListCalls(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -263,7 +245,7 @@ func (h *Handler) ListCalls(w http.ResponseWriter, r *http.Request) {
 // @Security		BearerAuth
 // @Router			/sip-trunks/{id}/calls/{callId} [delete]
 func (h *Handler) HangupCall(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := workspaceOf(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}

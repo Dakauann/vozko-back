@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"vozko/domain/callrouting"
 	cdr "vozko/domain/calls/cdr"
 	"vozko/domain/callsession"
 	"vozko/domain/sip_trunk"
@@ -17,14 +18,9 @@ import (
 const (
 	inboundRingWindowDefault = 28 * time.Second
 	inboundPerMemberDefault  = 15 * time.Second
-	inboundChannel           = "sip"
 )
 
 var ErrNoMemberAvailable = errors.New("no member with SIP calling permission is available")
-
-type CallLifecycle interface {
-	Run(ctx context.Context, input callsession_usecase.OutboundCallLifecycleInput)
-}
 
 type InboundCallConfig struct {
 	Sessions    callsession.CallSessionRegistry
@@ -34,7 +30,8 @@ type InboundCallConfig struct {
 	Permissions CallPermissions
 	Engine      sip_trunk.Engine
 	VoiceFlows  workflow.InboundVoiceFlows
-	Lifecycle   CallLifecycle
+	Parking     callrouting.CallParking
+	Queues      callrouting.QueueEntrance
 	RingWindow  time.Duration
 	PerMember   time.Duration
 	Logger      *log.Logger
@@ -88,7 +85,7 @@ func (uc *InboundCallUseCase) admit(ctx context.Context, workspaceID string) (*c
 }
 
 func (uc *InboundCallUseCase) answerWithFlow(ctx context.Context, invite sip_trunk.InboundInvite, flow *workflow.Workflow) error {
-	if uc.cfg.Lifecycle == nil {
+	if uc.cfg.Parking == nil {
 		return callsession.ErrBillingNotConfigured
 	}
 	lease, err := uc.admit(ctx, invite.WorkspaceID)
@@ -101,18 +98,19 @@ func (uc *InboundCallUseCase) answerWithFlow(ctx context.Context, invite sip_tru
 		return err
 	}
 	call := newAnsweredTrunkCall(cdr.SIPInboundCallID(session.ID), invite.TrunkID, uc.cfg.Engine, session)
-	billed := make(chan struct{})
-	go func() {
-		defer close(billed)
-		uc.cfg.Lifecycle.Run(ctx, callsession_usecase.OutboundCallLifecycleInput{
-			Call:        call,
-			Admission:   lease,
-			WorkspaceID: invite.WorkspaceID,
-			StartedAt:   time.Now(),
-			Direction:   cdr.DirectionInbound,
-			PhoneTo:     invite.FromNumber,
-		})
-	}()
+	routed, err := uc.cfg.Parking.Park(ctx, callrouting.ParkInput{
+		Call:        call,
+		Admission:   lease,
+		WorkspaceID: invite.WorkspaceID,
+		Phone:       invite.FromNumber,
+		Direction:   cdr.DirectionInbound,
+		StartedAt:   time.Now(),
+	})
+	if err != nil {
+		_ = call.Hangup()
+		_ = uc.cfg.Admission.Release(lease)
+		return err
+	}
 	call.Start()
 
 	flowErr := uc.cfg.VoiceFlows.Answer(flow, workflow.InboundVoiceCall{
@@ -121,13 +119,15 @@ func (uc *InboundCallUseCase) answerWithFlow(ctx context.Context, invite sip_tru
 		CallID:       call.ID(),
 		CallerNumber: invite.FromNumber,
 		CalledNumber: invite.ToNumber,
-		Call:         newLiveVoiceCall(call, session.Keys),
+		Call:         newRoutedVoiceCall(routed, session.Keys, uc.cfg.Queues),
 	})
 	if flowErr != nil {
 		uc.cfg.Logger.Printf("[SIPTrunk] voice workflow %s on call %s: %v", flow.ID, call.ID(), flowErr)
 	}
-	_ = call.Hangup()
-	<-billed
+	if _, owned := routed.OwnerSession(); !owned {
+		_ = routed.Hangup()
+	}
+	<-routed.Done()
 	return nil
 }
 
@@ -154,7 +154,7 @@ func (uc *InboundCallUseCase) ringMembers(ctx context.Context, invite sip_trunk.
 			WorkspaceID: invite.WorkspaceID,
 			FromNumber:  invite.FromNumber,
 			ToNumber:    invite.ToNumber,
-			Channel:     inboundChannel,
+			Channel:     callsession.OfferChannelSIP,
 		},
 		Candidates:   candidates,
 		PerCandidate: uc.cfg.PerMember,

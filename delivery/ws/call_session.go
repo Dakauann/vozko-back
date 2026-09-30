@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"vozko/domain/callrouting"
 	cdr "vozko/domain/calls/cdr"
 	callsession_domain "vozko/domain/callsession"
 	"vozko/domain/conversation"
@@ -37,6 +38,11 @@ type liveCall struct {
 	uplinkDone     chan struct{}
 
 	inboundConverter inboundAudioConverter
+
+	holdMu sync.Mutex
+	hold   *holdPlayback
+
+	answered atomic.Bool
 }
 
 const callSessionUplinkQueueDepth = 32
@@ -153,6 +159,9 @@ func (lc *liveCall) start(
 			Direction:   lc.direction,
 			PhoneTo:     lc.phone,
 			OnStatus: func(event conversation.CallEvent) {
+				if event.Type == conversation.CallEventAnswered {
+					lc.answered.Store(true)
+				}
 				if s := lc.forwarder.Load(); s != nil {
 					s.dispatchStatus(lc, event)
 				}
@@ -184,6 +193,7 @@ type callSession struct {
 
 	mu      sync.Mutex
 	current *liveCall
+	closed  bool
 
 	res callsession_domain.ReservationState
 	now func() time.Time
@@ -191,9 +201,19 @@ type callSession struct {
 	onPresenceChange func()
 
 	presenceTelemetry func(workspaceID, userID, state, source string)
+
+	activity   callrouting.AgentActivity
+	reconnects CallReconnects
 }
 
-var errCallSessionBusy = errors.New("call session already has an attached call")
+type CallReconnects interface {
+	HoldForOwner(ctx context.Context, call callrouting.RoutedCall, userID string) error
+}
+
+var (
+	errCallSessionBusy   = errors.New("call session already has an attached call")
+	errCallSessionClosed = errors.New("call session is closed")
+)
 
 const callSessionReservationTTL = callsession_domain.CallSessionReservationTTL
 
@@ -227,6 +247,10 @@ func (s *callSession) Attach(lc *liveCall) error {
 		return errors.New("nil live call")
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return errCallSessionClosed
+	}
 	if s.current != nil {
 		s.mu.Unlock()
 		return errCallSessionBusy
@@ -252,7 +276,23 @@ func (s *callSession) Detach() (*liveCall, bool) {
 	if lc == nil {
 		return nil, false
 	}
+	s.afterDetach(lc)
+	return lc, true
+}
 
+func (s *callSession) release(lc *liveCall) bool {
+	s.mu.Lock()
+	if s.current != lc {
+		s.mu.Unlock()
+		return false
+	}
+	s.current = nil
+	s.mu.Unlock()
+	s.afterDetach(lc)
+	return true
+}
+
+func (s *callSession) afterDetach(lc *liveCall) {
 	lc.forwarder.CompareAndSwap(s, nil)
 	if cb := s.onPresenceChange; cb != nil {
 		cb()
@@ -260,7 +300,35 @@ func (s *callSession) Detach() (*liveCall, bool) {
 	if tel := s.presenceTelemetry; tel != nil {
 		tel(s.workspaceID, s.userID, "online", "call_session")
 	}
-	return lc, true
+}
+
+func (s *callSession) SetActivity(activity callrouting.AgentActivity) {
+	if s != nil {
+		s.activity = activity
+	}
+}
+
+func (s *callSession) SetReconnects(reconnects CallReconnects) {
+	if s != nil {
+		s.reconnects = reconnects
+	}
+}
+
+func (s *callSession) close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+}
+
+func (s *callSession) keepForOwner(ctx context.Context, lc *liveCall) bool {
+	if s.reconnects == nil || !lc.answered.Load() {
+		return false
+	}
+	if err := s.reconnects.HoldForOwner(ctx, lc, s.userID); err != nil {
+		s.logger.Printf("[CallSessionWS] could not keep call %s for %s, hanging up: %v", lc.call.ID(), s.userID, err)
+		return false
+	}
+	return true
 }
 
 func (s *callSession) Current() *liveCall {
@@ -280,7 +348,7 @@ func (s *callSession) HasActiveCall() bool {
 func (s *callSession) Reserve(token string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.res.Reserve(token, s.current != nil, s.now(), callSessionReservationTTL)
+	return !s.closed && s.res.Reserve(token, s.current != nil, s.now(), callSessionReservationTTL)
 }
 
 func (s *callSession) Release(token string) {
@@ -341,9 +409,13 @@ func (s *callSession) Notify(msg callsession_domain.CallSessionControlMessage) e
 func (s *callSession) Shutdown(ctx context.Context) {
 
 	s.clearReservation()
+	s.close()
 
 	lc, ok := s.Detach()
 	if !ok {
+		return
+	}
+	if s.keepForOwner(ctx, lc) {
 		return
 	}
 
@@ -373,6 +445,7 @@ func (s *callSession) Shutdown(ctx context.Context) {
 }
 
 func (s *callSession) dispatchStatus(lc *liveCall, event conversation.CallEvent) {
+	recordActivity(s.activity, s.workspaceID, s.userID, event)
 	s.send(&WSOutgoingMessage{
 		Type: WSEventCallStatus,
 		Payload: CallStatusPayload{
@@ -396,6 +469,7 @@ func (s *callSession) dispatchAudio(pcm []byte) {
 }
 
 func (s *callSession) dispatchEnded(lc *liveCall, reason string, duration time.Duration) {
+	recordActivity(s.activity, s.workspaceID, s.userID, conversation.CallEvent{Type: conversation.CallEventEnded, Reason: reason})
 	s.send(&WSOutgoingMessage{
 		Type: WSEventCallEnded,
 		Payload: CallEndedPayload{

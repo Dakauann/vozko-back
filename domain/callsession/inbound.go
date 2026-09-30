@@ -25,6 +25,17 @@ type InboundCallOffer struct {
 
 	Channel   string    `json:"channel,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
+
+	Transfer *TransferContext `json:"transfer,omitempty"`
+	Resume   bool             `json:"resume,omitempty"`
+}
+
+type TransferContext struct {
+	FromUserID string `json:"from_user_id,omitempty"`
+	FromName   string `json:"from_name,omitempty"`
+	QueueID    string `json:"queue_id,omitempty"`
+	QueueName  string `json:"queue_name,omitempty"`
+	Notes      string `json:"notes,omitempty"`
 }
 
 type AcceptInboundCallInput struct {

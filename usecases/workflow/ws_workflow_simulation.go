@@ -82,6 +82,7 @@ type WSWorkflowSimulationDeps struct {
 	CalendarRepo   calendar.Repository
 	GoogleCalendar calendar.GoogleOAuthService
 	BillingPub     messaging.MessageQueuePub
+	CallQueues     CallQueueLookup
 }
 
 type WSWorkflowSimulationUseCase interface {

@@ -63,3 +63,42 @@ func TestTheKeyWaitTestOffersAnOptionalKeyField(t *testing.T) {
 		t.Fatalf("mock fields = %+v, want one optional key field", fields)
 	}
 }
+
+func queueNodeTester(t *testing.T) TestNodeUseCase {
+	t.Helper()
+	repo := NewMockWorkflowRepository()
+	w := voiceWorkflowWithQueue("q1")
+	w.Normalize()
+	_ = repo.Create(w)
+	return NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, ExecutorDeps: ExecutorDeps{MediaRepo: audioMediaStub{}}})
+}
+
+func TestTestingAQueueTransferFollowsTheMockedOutcome(t *testing.T) {
+	tester := queueNodeTester(t)
+
+	out, err := tester.Execute(context.Background(), TestNodeInput{WorkflowID: "wf-1", WorkspaceID: "ws1", NodeID: "fila"})
+	if err != nil || !out.Success || out.ExecutionOutput["transferred"] != true {
+		t.Fatalf("answered: %+v %v", out, err)
+	}
+	out, err = tester.Execute(context.Background(), TestNodeInput{WorkflowID: "wf-1", WorkspaceID: "ws1", NodeID: "fila", MockedState: map[string]interface{}{"transfer": "timeout"}})
+	if err != nil || !out.Success || out.ExecutionOutput["transferred"] != false {
+		t.Fatalf("timed out: %+v %v", out, err)
+	}
+}
+
+func TestTheQueueTransferTestOffersAnOptionalOutcomeField(t *testing.T) {
+	repo := NewMockWorkflowRepository()
+	w := voiceWorkflowWithQueue("q1")
+	w.Normalize()
+	_ = repo.Create(w)
+	tester := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: NewNodeExecutorRegistry()})
+
+	analysis, err := tester.Analyze(context.Background(), AnalyzeNodeInput{WorkflowID: "wf-1", WorkspaceID: "ws1", NodeID: "fila"})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	fields := analysis.ToUIAnalysis().MockFields
+	if len(fields) != 1 || fields[0].Key != "transfer" || !fields[0].Optional {
+		t.Fatalf("mock fields = %+v, want one optional transfer field", fields)
+	}
+}

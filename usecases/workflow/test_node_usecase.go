@@ -154,6 +154,15 @@ func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) 
 		})
 	}
 
+	if node.Type == workflow.NodeTypeTransferToQueue {
+		requiredMocks = append(requiredMocks, workflow.RequiredMock{
+			StateKey:    testTransferMock,
+			DisplayName: "Resultado da fila ('timeout' simula ninguém atendendo; vazio, atendido)",
+			Source:      workflow.DependencySourceCaller,
+			Optional:    true,
+		})
+	}
+
 	nodeLabel := string(node.Type)
 	if def, ok := uc.deps.Registry.definitions[node.Type]; ok {
 		nodeLabel = def.Label

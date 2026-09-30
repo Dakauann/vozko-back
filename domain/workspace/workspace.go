@@ -78,6 +78,7 @@ var (
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
 	ResourceSIPTrunks                   = registerResource("sip_trunks")
+	ResourceCallQueues                  = registerResource("call_queues")
 )
 
 func (r Resource) IsValid() bool {
@@ -312,6 +313,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 			{Resource: ResourceSIPTrunks, Action: ActionRead},
 			{Resource: ResourceCallSession, Action: ActionUse},
 		}},
+	},
+	ResourceCallQueues: {
+		{ActionName: ActionCreate, Description: "Criar filas de atendimento telefônico"},
+		{ActionName: ActionRead, Description: "Visualizar filas de atendimento telefônico, a música de espera e a espera de cada fila"},
+		{ActionName: ActionUpdate, Description: "Editar filas de atendimento telefônico, quem atende cada uma e a música de espera do workspace", Risks: []RiskKind{RiskChangesAutomation}},
+		{ActionName: ActionDelete, Description: "Remover filas de atendimento telefônico; fluxos de voz que enviam ligações a elas deixam de transferir", Risks: []RiskKind{RiskDeletesData, RiskChangesAutomation}},
 	},
 	ResourceTelegramAccounts: {
 		{ActionName: ActionCreate, Description: "Conectar bots do Telegram", Risks: []RiskKind{RiskConnectsAccounts}},

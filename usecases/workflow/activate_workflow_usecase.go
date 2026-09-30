@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"vozko/domain/agent"
+	"vozko/domain/callrouting"
 	domainmcp "vozko/domain/agent/mcp"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
@@ -45,6 +46,15 @@ type activateWorkflowUseCase struct {
 	modelLookup ModelLookup
 
 	inboundTrunks InboundTrunkLookup
+	callQueues    CallQueueLookup
+}
+
+type CallQueueLookup interface {
+	FindInWorkspace(ctx context.Context, workspaceID, id string) (*callrouting.Queue, error)
+}
+
+func (uc *activateWorkflowUseCase) SetCallQueues(queues CallQueueLookup) {
+	uc.callQueues = queues
 }
 
 type InboundTrunkLookup interface {
@@ -218,6 +228,9 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 
 	if w.Type == workflow.WorkflowTypeVoice {
 		if err := uc.validateVoiceTrunk(w); err != nil {
+			return nil, err
+		}
+		if err := uc.validateCallQueues(w); err != nil {
 			return nil, err
 		}
 	}
@@ -459,6 +472,23 @@ func (v *modelValidator) Validate(n *workflow.Node) error {
 	}
 	if !valid {
 		return fmt.Errorf("%w: node %q model %q", workflow.ErrNodeInvalidModelID, n.ID, model)
+	}
+	return nil
+}
+
+func (uc *activateWorkflowUseCase) validateCallQueues(w *workflow.Workflow) error {
+	for _, n := range w.Graph.Nodes {
+		if n.Type != workflow.NodeTypeTransferToQueue {
+			continue
+		}
+		queueID, _ := n.Config["queue_id"].(string)
+		queueID = strings.TrimSpace(queueID)
+		if uc.callQueues == nil || queueID == "" {
+			return fmt.Errorf("%w: node %q", workflow.ErrNodeInvalidQueueID, n.ID)
+		}
+		if _, err := uc.callQueues.FindInWorkspace(context.Background(), w.WorkspaceID, queueID); err != nil {
+			return fmt.Errorf("%w: node %q queue_id %q", workflow.ErrNodeInvalidQueueID, n.ID, queueID)
+		}
 	}
 	return nil
 }

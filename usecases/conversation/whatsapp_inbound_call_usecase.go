@@ -230,7 +230,7 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 			WorkspaceID: workspaceID,
 			FromNumber:  c.FromNumber,
 			ToNumber:    c.ToNumber,
-			Channel:     "whatsapp",
+			Channel:     callsession.OfferChannelWhatsApp,
 		},
 		Candidates:   candidates,
 		PerCandidate: whatsappInboundPerAgentRing,

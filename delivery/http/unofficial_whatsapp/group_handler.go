@@ -7,9 +7,9 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	uw "vozko/domain/unofficial_whatsapp"
-	"vozko/infra/http/middleware"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
@@ -90,7 +90,7 @@ func toGroupDTO(g *uw.Group) groupDTO {
 }
 
 func (h *GroupHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := requireWorkspace(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return
 	}
@@ -275,15 +275,6 @@ func (h *GroupHandler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]bool{"left": true})
 }
 
-func requireWorkspace(w http.ResponseWriter, r *http.Request) (string, bool) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
-		return "", false
-	}
-	return workspaceID, true
-}
-
 type target struct {
 	workspaceID string
 	instanceID  string
@@ -291,7 +282,7 @@ type target struct {
 }
 
 func (h *GroupHandler) resolveTarget(w http.ResponseWriter, r *http.Request) (target, bool) {
-	workspaceID, ok := requireWorkspace(w, r)
+	workspaceID, ok := httpx.RequireWorkspace(w, r)
 	if !ok {
 		return target{}, false
 	}

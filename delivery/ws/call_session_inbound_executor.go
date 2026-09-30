@@ -16,7 +16,13 @@ type CallSessionInboundExecutor struct {
 	endUseCase    callsession_domain.EndOutboundCallUseCase
 	lifecycle     *callsession_usecase.OutboundCallLifecycleRunner
 	recordingPool *calls_usecase.RecordingUploadPool
+	channels      *CallChannels
 	logger        *log.Logger
+}
+
+func (x *CallSessionInboundExecutor) WithChannels(channels *CallChannels) *CallSessionInboundExecutor {
+	x.channels = channels
+	return x
 }
 
 func NewCallSessionInboundExecutor(
@@ -64,6 +70,7 @@ func (x *CallSessionInboundExecutor) AttachInboundCRMCall(ctx context.Context, i
 		EndUseCase:    x.endUseCase,
 		Lifecycle:     x.lifecycle,
 		RecordingPool: x.recordingPool,
+		Channels:      x.channels,
 		Logger:        x.logger,
 	}); err != nil {
 		return err

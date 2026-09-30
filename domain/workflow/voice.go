@@ -17,11 +17,33 @@ var (
 	ErrDuplicateDTMF    = errors.New("each dtmf key can lead to one branch only")
 	ErrNoDTMFKeys       = errors.New("choose at least one key")
 	ErrAudioNotPlayable = errors.New("audio file cannot be played on calls")
+	ErrNotTransferable  = errors.New("this call cannot be transferred")
 )
 
 type VoiceCall interface {
 	Play(pcm []byte, interruptible bool) (interrupted bool, err error)
 	NextKey(timeout time.Duration) (key rune, pressed bool, err error)
+}
+
+type QueueTransfer struct {
+	QueueID string
+	Notes   string
+	From    string
+}
+
+type VoiceTransfers interface {
+	TransferToQueue(ctx context.Context, transfer QueueTransfer) (connected bool, err error)
+}
+
+func VoiceTransfersFrom(ctx *NodeContext) (VoiceTransfers, error) {
+	if _, err := VoiceCallFrom(ctx); err != nil {
+		return nil, err
+	}
+	transfers, ok := ctx.Runtime.(VoiceTransfers)
+	if !ok || transfers == nil {
+		return nil, ErrNotTransferable
+	}
+	return transfers, nil
 }
 
 type VoiceAudio interface {

@@ -131,6 +131,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeConditionCheckOpportunity, node_executors.NewCheckOpportunityExecutor(deps.Deals))
 	registry.Register(workflow.NodeTypeActionPlayAudio, node_executors.NewPlayAudioExecutor(deps.VoiceAudio))
 	registry.Register(workflow.NodeTypeWaitDTMF, node_executors.NewWaitDTMFExecutor())
+	registry.Register(workflow.NodeTypeTransferToQueue, node_executors.NewTransferToQueueExecutor())
 
 	registry.Register(workflow.NodeTypeDecorationBackground, node_executors.NewBackgroundNodeExecutor())
 

@@ -101,6 +101,7 @@ func (c *Container) initRouter() {
 		telegramHandler(c),
 		telegramWebhookHandler(c),
 		sipTrunkHandler(c),
+		callRoutingHandler(c),
 		unofficialWhatsAppHandler(c),
 		whatsAppOutreachHandler(c),
 		unofficialWhatsAppWebhookHandler(c),

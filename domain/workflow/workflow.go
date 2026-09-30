@@ -78,6 +78,7 @@ const (
 
 	NodeTypeActionPlayAudio NodeType = "action_play_audio"
 	NodeTypeWaitDTMF        NodeType = "wait_dtmf"
+	NodeTypeTransferToQueue NodeType = "action_transfer_to_queue"
 
 	NodeTypeActionSendText                 NodeType = "action_send_text"
 	NodeTypeActionSendTemplate              NodeType = "action_send_template"
@@ -126,6 +127,7 @@ func (n NodeType) Valid() bool {
 		NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
 		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
 		NodeTypeTriggerCallReceived, NodeTypeActionPlayAudio, NodeTypeWaitDTMF,
+		NodeTypeTransferToQueue,
 		NodeTypeActionSendText, NodeTypeActionSendTemplate,
 		NodeTypeActionSendEmail,
 		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/callrouting"
 	"vozko/domain/media"
 	"vozko/domain/workflow"
 )
@@ -34,7 +35,7 @@ func TestSimulatedAudioShowsTheFileInsteadOfStreamingIt(t *testing.T) {
 func TestTheSimulatedCallerAnswersKeyWaitsFromThePanel(t *testing.T) {
 	keys := make(chan rune, 1)
 	var asked []time.Duration
-	call := newSimVoiceCall(keys, make(chan struct{}), func(timeout time.Duration) { asked = append(asked, timeout) })
+	call := newSimVoiceCall(keys, make(chan struct{}), func(timeout time.Duration) { asked = append(asked, timeout) }, nil)
 
 	if _, pressed, _ := call.NextKey(20 * time.Millisecond); pressed {
 		t.Fatal("silence should time out")
@@ -55,7 +56,7 @@ func TestTheSimulatedCallerAnswersKeyWaitsFromThePanel(t *testing.T) {
 
 func TestAKeyTypedDuringSimulatedAudioCutsItAndIsKept(t *testing.T) {
 	keys := make(chan rune, 1)
-	call := newSimVoiceCall(keys, make(chan struct{}), func(time.Duration) {})
+	call := newSimVoiceCall(keys, make(chan struct{}), func(time.Duration) {}, nil)
 	keys <- '9'
 
 	interrupted, err := call.Play(nil, true)
@@ -69,12 +70,37 @@ func TestAKeyTypedDuringSimulatedAudioCutsItAndIsKept(t *testing.T) {
 
 func TestCancellingTheSimulationHangsUp(t *testing.T) {
 	ended := make(chan struct{})
-	call := newSimVoiceCall(make(chan rune), ended, func(time.Duration) {})
+	call := newSimVoiceCall(make(chan rune), ended, func(time.Duration) {}, nil)
 	close(ended)
 	if _, _, err := call.NextKey(time.Second); !errors.Is(err, workflow.ErrCallEnded) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, err := call.Play(nil, true); !errors.Is(err, workflow.ErrCallEnded) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTheSimulatedCallShowsTheTransferAndIsAnswered(t *testing.T) {
+	var shown []workflow.QueueTransfer
+	call := newSimVoiceCall(make(chan rune), make(chan struct{}), func(time.Duration) {}, func(transfer workflow.QueueTransfer) error {
+		shown = append(shown, transfer)
+		return nil
+	})
+	connected, err := call.TransferToQueue(context.Background(), workflow.QueueTransfer{QueueID: "q1", Notes: "suporte"})
+	if err != nil || !connected || len(shown) != 1 || shown[0].QueueID != "q1" {
+		t.Fatalf("TransferToQueue = %v, %v, shown %+v", connected, err, shown)
+	}
+}
+
+func TestASimulatedTransferFailsLikeARealOne(t *testing.T) {
+	refused := newSimVoiceCall(make(chan rune), make(chan struct{}), func(time.Duration) {}, func(workflow.QueueTransfer) error {
+		return callrouting.ErrQueueNotFound
+	})
+	if _, err := refused.TransferToQueue(context.Background(), workflow.QueueTransfer{QueueID: "nope"}); !errors.Is(err, callrouting.ErrQueueNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+	unwired := newSimVoiceCall(make(chan rune), make(chan struct{}), func(time.Duration) {}, nil)
+	if _, err := unwired.TransferToQueue(context.Background(), workflow.QueueTransfer{QueueID: "q1"}); !errors.Is(err, workflow.ErrNotTransferable) {
 		t.Fatalf("err = %v", err)
 	}
 }

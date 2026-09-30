@@ -1,9 +1,11 @@
 package workflow_usecase
 
 import (
+	"context"
 	"errors"
 	"testing"
 
+	"vozko/domain/callrouting"
 	"vozko/domain/media"
 	"vozko/domain/workflow"
 	"vozko/usecases/workflow/node_executors"
@@ -31,7 +33,29 @@ func voiceCatalog() []workflow.NodeDefinition {
 	return append(workflow.BuiltinDefinitions(),
 		node_executors.NewPlayAudioExecutor(nil).Definition(),
 		node_executors.NewWaitDTMFExecutor().Definition(),
+		node_executors.NewTransferToQueueExecutor().Definition(),
 	)
+}
+
+type callQueuesStub map[string]string
+
+func (s callQueuesStub) FindInWorkspace(_ context.Context, workspaceID, id string) (*callrouting.Queue, error) {
+	if s[id] != workspaceID {
+		return nil, callrouting.ErrQueueNotFound
+	}
+	return &callrouting.Queue{ID: id, WorkspaceID: workspaceID}, nil
+}
+
+func voiceWorkflowWithQueue(queueID string) *workflow.Workflow {
+	w := voiceWorkflow("wf-1", "trunk-1", "greeting")
+	w.Graph.Nodes = append(w.Graph.Nodes, workflow.Node{ID: "fila", Type: workflow.NodeTypeTransferToQueue, Config: map[string]interface{}{"queue_id": queueID}})
+	for i := range w.Graph.Edges {
+		if w.Graph.Edges[i].Label == "1" {
+			w.Graph.Edges[i].Target = "fila"
+		}
+	}
+	w.Graph.Edges = append(w.Graph.Edges, workflow.Edge{Source: "fila", Target: "end", Label: "timeout"})
+	return w
 }
 
 func voiceWorkflow(id, trunkID, mediaID string) *workflow.Workflow {
@@ -135,5 +159,32 @@ func TestPlayAudioMustPointAtAnAudioFileOfTheWorkspace(t *testing.T) {
 		if got := errors.Is(err, workflow.ErrNodeInvalidMediaID); got != wantErr {
 			t.Errorf("media %q: err = %v, want refused = %v", mediaID, err, wantErr)
 		}
+	}
+}
+
+func TestAQueueTransferMustPointAtAQueueOfTheWorkspace(t *testing.T) {
+	cases := map[string]struct {
+		queueID string
+		queues  CallQueueLookup
+		wantErr bool
+	}{
+		"own queue":          {"q1", callQueuesStub{"q1": "ws1"}, false},
+		"another workspace":  {"q2", callQueuesStub{"q2": "ws2"}, true},
+		"unknown queue":      {"nope", callQueuesStub{}, true},
+		"queues unavailable": {"q1", nil, true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := NewMockWorkflowRepository()
+			_ = repo.Create(voiceWorkflowWithQueue(tc.queueID))
+			uc := voiceActivation(repo, inboundTrunksStub{"ws1|trunk-1": true})
+			if tc.queues != nil {
+				uc.SetCallQueues(tc.queues)
+			}
+			_, err := uc.Execute("wf-1")
+			if tc.wantErr != errors.Is(err, workflow.ErrNodeInvalidQueueID) || (!tc.wantErr && err != nil) {
+				t.Fatalf("err = %v", err)
+			}
+		})
 	}
 }

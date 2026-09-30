@@ -49,7 +49,7 @@ var builderSessionSeq int64
 var resourceKinds = []string{
 	"ai_models", "agents", "templates", "departments", "medias",
 	"labels", "stages", "opportunity_pipelines", "opportunity_stages", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
-	"sip_trunks",
+	"sip_trunks", "call_queues",
 }
 
 type ResourceMatch struct {
@@ -1010,7 +1010,7 @@ func (uc *aiBuilderUC) systemPrompt(st *builderState) string {
 	b.WriteString("- Referencie dados de nós anteriores (ancestrais) com {{node.<id>.<chave>}}, variáveis com {{var.<nome>}}.\n")
 	b.WriteString("- ORDEM TÍPICA DE CONSTRUÇÃO (siga e AJA, não fique só consultando): set_meta → add_node do gatilho → add_node dos nós de ação (ex.: action_ai_agent com source=prompt + model + instructions para conversar) → connect na ordem do fluxo → add_node 'end' e connect até ele → finish. Consulte get_node_spec/find_resource NO MÁXIMO uma vez por item; depois EXECUTE.\n")
 	b.WriteString("- Para um atendente conversacional de IA: use action_ai_agent (source=prompt, model resolvido via find_resource ai_models, instructions com o tom/lógica desejada). Para conversa contínua, ligue ai_agent → wait_for_reply e a saída 'replied' de volta ao ai_agent, com 'timeout' indo para 'end'.\n")
-	b.WriteString("- Para URA ou atendimento por telefone (ligações recebidas em um tronco SIP): set_meta workflow_type=voice, gatilho trigger_call_received com trunk_id (find_resource sip_trunks), action_play_audio com um áudio (find_resource medias) anunciando as opções, depois wait_dtmf com as teclas; cada tecla leva a um passo, 'invalid'/'timeout' podem voltar ao áudio do menu, e 'end' desliga. Nós de mensagem não existem em fluxos de voz, e nós de voz não existem em fluxos de mensagem.\n\n")
+	b.WriteString("- Para URA ou atendimento por telefone (ligações recebidas em um tronco SIP): set_meta workflow_type=voice, gatilho trigger_call_received com trunk_id (find_resource sip_trunks), action_play_audio com um áudio (find_resource medias) anunciando as opções, depois wait_dtmf com as teclas; cada tecla leva a um passo, 'invalid'/'timeout' podem voltar ao áudio do menu, e 'end' desliga. Para passar a ligação a uma pessoa use action_transfer_to_queue com queue_id (find_resource call_queues) e notes para o atendente; ligue a saída 'timeout' a um áudio de desculpas ou a outra opção. Nós de mensagem não existem em fluxos de voz, e nós de voz não existem em fluxos de mensagem.\n\n")
 	b.WriteString(workflow.VariableSystemGuide())
 	b.WriteString("\n\n")
 

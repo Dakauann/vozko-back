@@ -212,3 +212,81 @@ func TestVoiceNodesAreVoiceOnly(t *testing.T) {
 		}
 	}
 }
+
+type fakeTransferCall struct {
+	fakeVoiceCall
+	transfers []workflow.QueueTransfer
+	connected bool
+	failure   error
+}
+
+func (c *fakeTransferCall) TransferToQueue(_ context.Context, transfer workflow.QueueTransfer) (bool, error) {
+	c.transfers = append(c.transfers, transfer)
+	return c.connected, c.failure
+}
+
+func transferNode(config map[string]interface{}) workflow.Node {
+	return workflow.Node{ID: "fila", Type: workflow.NodeTypeTransferToQueue, Config: config}
+}
+
+func TestTransferToQueueHandsTheCallerToAnOperatorAndEndsTheFlow(t *testing.T) {
+	call := &fakeTransferCall{connected: true}
+	ctx := voiceContext(transferNode(map[string]interface{}{"queue_id": " q1 ", "notes": "Cliente escolheu {{var.opcao}}"}), nil, call)
+	ctx.State.Set("opcao", "2")
+	ctx.Workflow.Name = "URA principal"
+
+	res, err := NewTransferToQueueExecutor().Execute(ctx)
+	if err != nil || res.Error != "" || !res.Complete {
+		t.Fatalf("result = %+v, %v", res, err)
+	}
+	want := workflow.QueueTransfer{QueueID: "q1", Notes: "Cliente escolheu 2", From: "URA principal"}
+	if len(call.transfers) != 1 || call.transfers[0] != want {
+		t.Fatalf("transfers = %+v", call.transfers)
+	}
+	if res.Output["transferred"] != true {
+		t.Fatalf("output = %v", res.Output)
+	}
+}
+
+func TestTransferToQueueFollowsTimeoutWhenNobodyAnswers(t *testing.T) {
+	call := &fakeTransferCall{}
+	edges := []workflow.Edge{{Source: "fila", Target: "desculpa", Label: "timeout"}}
+	res, err := NewTransferToQueueExecutor().Execute(voiceContext(transferNode(map[string]interface{}{"queue_id": "q1"}), edges, call))
+	if err != nil || res.NextNodeID != "desculpa" || res.Complete {
+		t.Fatalf("result = %+v, %v", res, err)
+	}
+}
+
+func TestTransferToQueueHangsUpWhenTimeoutIsNotConnected(t *testing.T) {
+	res, _ := NewTransferToQueueExecutor().Execute(voiceContext(transferNode(map[string]interface{}{"queue_id": "q1"}), nil, &fakeTransferCall{}))
+	if !res.Complete || res.NextNodeID != "" {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+func TestTransferToQueueRefusesWhatItCannotDo(t *testing.T) {
+	cases := map[string]struct {
+		runtime interface{}
+		config  map[string]interface{}
+	}{
+		"not in a call":        {nil, map[string]interface{}{"queue_id": "q1"}},
+		"call cannot transfer": {&fakeVoiceCall{}, map[string]interface{}{"queue_id": "q1"}},
+		"no queue chosen":      {&fakeTransferCall{}, map[string]interface{}{"queue_id": "  "}},
+		"queue refused":        {&fakeTransferCall{failure: errors.New("queue not found")}, map[string]interface{}{"queue_id": "q1"}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			res, err := NewTransferToQueueExecutor().Execute(voiceContext(transferNode(tc.config), nil, tc.runtime))
+			if err != nil || res.Error == "" {
+				t.Fatalf("result = %+v, %v", res, err)
+			}
+		})
+	}
+}
+
+func TestTransferToQueueStopsWhenTheCallerHangsUp(t *testing.T) {
+	call := &fakeTransferCall{failure: workflow.ErrCallEnded}
+	if _, err := NewTransferToQueueExecutor().Execute(voiceContext(transferNode(map[string]interface{}{"queue_id": "q1"}), nil, call)); !errors.Is(err, workflow.ErrCallEnded) {
+		t.Fatalf("err = %v", err)
+	}
+}

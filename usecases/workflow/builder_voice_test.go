@@ -2,10 +2,12 @@ package workflow_usecase
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"testing"
 
 	"vozko/domain/ai"
+	"vozko/domain/callrouting"
 	"vozko/domain/sip_trunk"
 	"vozko/domain/workflow"
 	"vozko/usecases/workflow/node_executors"
@@ -16,7 +18,7 @@ func TestTheCopilotOffersOnlyVoiceNodesInAVoiceWorkflow(t *testing.T) {
 	uc := &aiBuilderUC{}
 
 	voice := uc.typeEnum(&builderState{wfType: workflow.WorkflowTypeVoice, fullCatalog: catalog})
-	want := []string{"action_play_audio", "end", "trigger_call_received", "wait_dtmf"}
+	want := []string{"action_play_audio", "action_transfer_to_queue", "end", "trigger_call_received", "wait_dtmf"}
 	sort.Strings(want)
 	if len(voice) != len(want) {
 		t.Fatalf("voice nodes = %v, want %v", voice, want)
@@ -52,6 +54,33 @@ type trunkListStub []*sip_trunk.SIPTrunk
 
 func (s trunkListStub) ListByWorkspace(context.Context, string) ([]*sip_trunk.SIPTrunk, error) {
 	return s, nil
+}
+
+type queueListStub []*callrouting.Queue
+
+func (s queueListStub) ListByWorkspace(_ context.Context, workspaceID string) ([]*callrouting.Queue, error) {
+	var out []*callrouting.Queue
+	for _, q := range s {
+		if q.WorkspaceID == workspaceID {
+			out = append(out, q)
+		}
+	}
+	return out, nil
+}
+
+func TestTheCopilotFindsTheWorkspaceQueuesByName(t *testing.T) {
+	resolver := NewBuilderResourceResolver(BuilderResourceResolverDeps{Queues: queueListStub{
+		{ID: "q1", WorkspaceID: "ws1", Name: "Suporte"},
+		{ID: "q2", WorkspaceID: "ws1", Name: "Vendas"},
+		{ID: "q3", WorkspaceID: "ws2", Name: "Suporte técnico"},
+	}})
+	got, err := resolver.Search(context.Background(), "ws1", "call_queues", "sup", 10)
+	if err != nil || len(got) != 1 || got[0].ID != "q1" || got[0].Name != "Suporte" {
+		t.Fatalf("Search = %v, %v", got, err)
+	}
+	if !slices.Contains(resourceKinds, "call_queues") {
+		t.Fatal("the copilot cannot ask for call_queues")
+	}
 }
 
 func TestTheCopilotFindsOnlyTrunksThatTakeCalls(t *testing.T) {

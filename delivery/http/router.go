@@ -17,6 +17,7 @@ import (
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
+	callroutinghttp "vozko/delivery/http/callrouting"
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
@@ -165,6 +166,7 @@ type router struct {
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
 	sipTrunkHandler                *siptrunkhttp.Handler
+	callRoutingHandler             *callroutinghttp.Handler
 	telegramWebhookHandler         *telegramhttp.WebhookHandler
 	unofficialWhatsAppHandler      *unofficialwahttp.Handler
 	whatsappOutreachHandler        *whatsappoutreachhttp.Handler
@@ -285,6 +287,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	telegramHandler *telegramhttp.Handler,
 	telegramWebhookHandler *telegramhttp.WebhookHandler,
 	sipTrunkHandler *siptrunkhttp.Handler,
+	callRoutingHandler *callroutinghttp.Handler,
 	unofficialWhatsAppHandler *unofficialwahttp.Handler,
 	whatsappOutreachHandler *whatsappoutreachhttp.Handler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
@@ -302,6 +305,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		instagramWebhookHandler:        instagramWebhookHandler,
 		telegramHandler:                telegramHandler,
 		sipTrunkHandler:                sipTrunkHandler,
+		callRoutingHandler:             callRoutingHandler,
 		telegramWebhookHandler:         telegramWebhookHandler,
 		unofficialWhatsAppHandler:      unofficialWhatsAppHandler,
 		whatsappOutreachHandler:        whatsappOutreachHandler,
@@ -465,6 +469,7 @@ func (r *router) setupRoutes() {
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
 	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
+	callroutinghttp.RegisterProtectedRoutes(protected, r.callRoutingHandler, r.ac)
 	r.setupUnofficialWhatsAppRoutes(protected)
 	r.setupWhatsAppOutreachRoutes(protected)
 	r.setupWABARoutes(protected)

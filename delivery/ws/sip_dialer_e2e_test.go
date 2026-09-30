@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/emiago/diago"
-	"github.com/emiago/sipgo/sip"
 	"github.com/gorilla/websocket"
 	"github.com/pion/rtp"
 
@@ -36,6 +35,8 @@ const (
 	otherWorkspace  = "ws-other"
 	dialerUser      = "agent-1"
 	otherUser       = "agent-2"
+	colleagueUser   = "agent-3"
+	listenerUser    = "agent-4"
 )
 
 type dialerGrants map[string]bool
@@ -72,6 +73,22 @@ type dialerStack struct {
 	billing   *liveCallBillingFakePub
 	admission *sipAdmission
 	sipPort   int
+	routing   *routingParts
+	executor  *CallSessionInboundExecutor
+	sessions  callsession.CallSessionRegistry
+}
+
+type dialerStackConfig struct {
+	mediaTimeout time.Duration
+	routing      func(stackServices) *routingParts
+}
+
+type stackServices struct {
+	sessions  callsession.CallSessionRegistry
+	broker    *callsession_usecase.InboundOfferBroker
+	lifecycle *callsession_usecase.OutboundCallLifecycleRunner
+	end       callsession.EndOutboundCallUseCase
+	grants    dialerGrants
 }
 
 func startDialerStack(t *testing.T) *dialerStack {
@@ -79,7 +96,12 @@ func startDialerStack(t *testing.T) *dialerStack {
 }
 
 func startDialerStackWithMediaTimeout(t *testing.T, mediaTimeout time.Duration) *dialerStack {
+	return startStack(t, dialerStackConfig{mediaTimeout: mediaTimeout})
+}
+
+func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 	t.Helper()
+	mediaTimeout := cfg.mediaTimeout
 	provider := voiptest.StartProvider(t)
 	bindPort := voiptest.FreeUDPPort(t)
 	trunk := &sip_trunk.SIPTrunk{
@@ -99,11 +121,15 @@ func startDialerStackWithMediaTimeout(t *testing.T, mediaTimeout time.Duration) 
 		t.Fatal(err)
 	}
 	grants := dialerGrants{
-		dialerUser + "|" + dialerWorkspace + "|sip_trunks|call":    true,
-		dialerUser + "|" + dialerWorkspace + "|call_session|use":   true,
-		otherUser + "|" + otherWorkspace + "|sip_trunks|call":      true,
-		otherUser + "|" + otherWorkspace + "|call_session|use":     true,
-		dialerUser + "|" + dialerWorkspace + "|conversations|read": true,
+		dialerUser + "|" + dialerWorkspace + "|sip_trunks|call":       true,
+		dialerUser + "|" + dialerWorkspace + "|call_session|use":      true,
+		otherUser + "|" + otherWorkspace + "|sip_trunks|call":         true,
+		otherUser + "|" + otherWorkspace + "|call_session|use":        true,
+		dialerUser + "|" + dialerWorkspace + "|conversations|read":    true,
+		colleagueUser + "|" + dialerWorkspace + "|sip_trunks|call":    true,
+		colleagueUser + "|" + dialerWorkspace + "|call_session|use":   true,
+		colleagueUser + "|" + dialerWorkspace + "|conversations|read": true,
+		listenerUser + "|" + dialerWorkspace + "|call_session|use":    true,
 	}
 
 	admission := &sipAdmission{}
@@ -119,10 +145,17 @@ func startDialerStackWithMediaTimeout(t *testing.T, mediaTimeout time.Duration) 
 	calls := infra_callsession.NewInProcCallRegistry()
 	broker := callsession_usecase.NewInboundOfferBroker()
 	executor := NewCallSessionInboundExecutor(calls, end, lifecycle, nil, log.Default())
-	manager.SetInboundInviteHandler(sip_trunk_usecase.NewInboundCallUseCase(sip_trunk_usecase.InboundCallConfig{
+	inbound := sip_trunk_usecase.InboundCallConfig{
 		Sessions: sessions, Admission: admission, Ringer: callsession_usecase.NewInboundRinger(broker),
 		Executor: executor, Permissions: grants, Engine: manager,
-	}))
+	}
+	var routing *routingParts
+	if cfg.routing != nil {
+		routing = cfg.routing(stackServices{sessions: sessions, broker: broker, lifecycle: lifecycle, end: end, grants: grants})
+		executor.WithChannels(routing.channels)
+		inbound.Parking, inbound.Queues, inbound.VoiceFlows = routing.channels, routing.transfers, routing.flows
+	}
+	manager.SetInboundInviteHandler(sip_trunk_usecase.NewInboundCallUseCase(inbound))
 	if err := manager.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +175,9 @@ func startDialerStackWithMediaTimeout(t *testing.T, mediaTimeout time.Duration) 
 	handler := NewCallSessionWSHandler(start, end, lifecycle, authorizer, log.Default(), noopWSMetricsRecorder{}).
 		WithRegistries(sessions, calls).
 		WithInboundCalls(broker)
+	if routing != nil {
+		handler.WithChannels(routing.channels).WithTransfers(routing.transfers).WithReconnects(routing.transfers)
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.URL.Query().Get("user")
 		ctx := context.WithValue(r.Context(), middleware.ClaimsContextKey, &auth.Claims{UserID: userID, Role: "user"})
@@ -149,7 +185,7 @@ func startDialerStackWithMediaTimeout(t *testing.T, mediaTimeout time.Duration) 
 		handler.HandleWebSocket(w, r.WithContext(ctx))
 	}))
 	t.Cleanup(server.Close)
-	return &dialerStack{server: server, provider: provider, manager: manager, trunk: trunk, billing: pub, admission: admission, sipPort: bindPort}
+	return &dialerStack{server: server, provider: provider, manager: manager, trunk: trunk, billing: pub, admission: admission, sipPort: bindPort, routing: routing, executor: executor, sessions: sessions}
 }
 
 type dialerClient struct {
@@ -322,16 +358,7 @@ func TestDialerRejectsJoiningAWorkspaceWithoutCallingPermission(t *testing.T) {
 func TestDialerRingsTheMemberForAnInboundTrunkCallAndConnectsAudio(t *testing.T) {
 	stack := startDialerStack(t)
 	client := stack.connect(t, dialerUser, dialerWorkspace)
-
-	dialed := make(chan *diago.DialogClientSession, 1)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		d, err := stack.provider.Dialer.Invite(ctx, sip.Uri{User: "4000", Host: "127.0.0.1", Port: stack.sipPort}, diago.InviteOptions{})
-		if err == nil {
-			dialed <- d
-		}
-	}()
+	dialed := stack.dialIn(t)
 
 	offerRaw := client.waitFor(WSEventInboundCall, nil)
 	var offer callsession.InboundCallOffer

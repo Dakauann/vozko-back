@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"vozko/domain/calls/recordings"
+	"vozko/domain/voip"
 )
 
 func validWAV() []byte {
-	return buildWAVBuffer(make([]byte, 16000), recorderSampleRate, recorderChannels, recorderBitDepth)
+	return voip.WAV(make([]byte, 16000), recorderSampleRate, recorderChannels, recorderBitDepth)
 }
 
 func countStaged(dir string) int {
