@@ -12,10 +12,11 @@ import (
 type updateAgentTool struct {
 	get    agent.GetAgentUseCase
 	update agent.UpdateAgentUseCase
+	card   AgentDeps
 }
 
-func NewUpdateAgentTool(get agent.GetAgentUseCase, update agent.UpdateAgentUseCase) copilot.Tool {
-	return &updateAgentTool{get: get, update: update}
+func NewUpdateAgentTool(get agent.GetAgentUseCase, update agent.UpdateAgentUseCase, card AgentDeps) copilot.Tool {
+	return &updateAgentTool{get: get, update: update, card: card}
 }
 
 func (t *updateAgentTool) Meta() copilot.Meta {
@@ -56,7 +57,7 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 
 	in.InternalTools = mergeToolBindings(
 		a.InternalTools,
-		argToolBindings(args, "addTools"),
+		t.card.secrets().reveal(argToolBindings(args, "addTools"), args),
 		argStringList(args, "removeTools"),
 	)
 	in.KnowledgeBaseIDs = mergeStrings(
@@ -82,7 +83,33 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	return copilot.Result{Status: copilot.StatusOK, Data: out}
 }
 
-func (t *updateAgentTool) Validate(_ context.Context, cc copilot.Context, args map[string]interface{}) error {
-	_, err := ownedAgent(t.get, cc, argString(args, "id"))
-	return err
+func (t *updateAgentTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
+	if _, err := ownedAgent(t.get, cc, argString(args, "id")); err != nil {
+		return err
+	}
+	if err := t.card.secrets().validate(argToolBindings(args, "addTools")); err != nil {
+		return err
+	}
+	return t.card.requireLinks(ctx, cc.WorkspaceID, argStringList(args, "addKnowledgeBaseIds"), argStringList(args, "addMcpCollectionIds"))
+}
+
+func (t *updateAgentTool) Secrets(args map[string]interface{}) []copilot.SecretField {
+	return t.card.secrets().fields(argToolBindings(args, "addTools"))
+}
+
+func (t *updateAgentTool) Conceal(args map[string]interface{}) map[string]interface{} {
+	return t.card.secrets().conceal(args, "addTools")
+}
+
+func (t *updateAgentTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
+	var fields agentFields
+	bindArgs(args, &fields)
+	card := []copilot.Field{describeAgent(t.get, cc, argString(args, "id"))}
+	card = append(card, agentFieldCard(fields)...)
+	card = append(card, toolBindingField("addTools", argToolBindings(args, "addTools"))...)
+	card = append(card, namesField("removeTools", argStringList(args, "removeTools"))...)
+	card = append(card, t.card.knowledgeBaseField(ctx, cc, "addKnowledgeBases", argStringList(args, "addKnowledgeBaseIds"))...)
+	card = append(card, t.card.knowledgeBaseField(ctx, cc, "removeKnowledgeBases", argStringList(args, "removeKnowledgeBaseIds"))...)
+	card = append(card, t.card.collectionField(ctx, cc, "addMcpCollections", argStringList(args, "addMcpCollectionIds"))...)
+	return append(card, t.card.collectionField(ctx, cc, "removeMcpCollections", argStringList(args, "removeMcpCollectionIds"))...)
 }

@@ -9,10 +9,13 @@ import (
 	"vozko/domain/workspace"
 )
 
-type createAgentTool struct{ create agent.CreateAgentUseCase }
+type createAgentTool struct {
+	create agent.CreateAgentUseCase
+	card   AgentDeps
+}
 
-func NewCreateAgentTool(create agent.CreateAgentUseCase) copilot.Tool {
-	return &createAgentTool{create: create}
+func NewCreateAgentTool(create agent.CreateAgentUseCase, card AgentDeps) copilot.Tool {
+	return &createAgentTool{create: create, card: card}
 }
 
 func (t *createAgentTool) Meta() copilot.Meta {
@@ -42,7 +45,7 @@ func (t *createAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	in.WorkspaceID = cc.WorkspaceID
 
 	in.InternalTools = []agent.ToolBinding{}
-	for _, a := range argToolBindings(args, "internalTools") {
+	for _, a := range t.card.secrets().reveal(argToolBindings(args, "internalTools"), args) {
 		in.InternalTools = append(in.InternalTools, a.toBinding())
 	}
 	in.KnowledgeBaseIDs = argStringList(args, "knowledgeBaseIds")
@@ -60,7 +63,30 @@ func (t *createAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	return copilot.Result{Status: copilot.StatusOK, Data: out}
 }
 
-func (t *createAgentTool) Validate(_ context.Context, _ copilot.Context, args map[string]interface{}) error {
+func (t *createAgentTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
 	var fields agentFields
-	return decodeArgs(args, &fields)
+	if err := decodeArgs(args, &fields); err != nil {
+		return err
+	}
+	if err := t.card.secrets().validate(argToolBindings(args, "internalTools")); err != nil {
+		return err
+	}
+	return t.card.requireLinks(ctx, cc.WorkspaceID, argStringList(args, "knowledgeBaseIds"), argStringList(args, "mcpCollectionIds"))
+}
+
+func (t *createAgentTool) Secrets(args map[string]interface{}) []copilot.SecretField {
+	return t.card.secrets().fields(argToolBindings(args, "internalTools"))
+}
+
+func (t *createAgentTool) Conceal(args map[string]interface{}) map[string]interface{} {
+	return t.card.secrets().conceal(args, "internalTools")
+}
+
+func (t *createAgentTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
+	var fields agentFields
+	bindArgs(args, &fields)
+	card := agentFieldCard(fields)
+	card = append(card, toolBindingField("tools", argToolBindings(args, "internalTools"))...)
+	card = append(card, t.card.knowledgeBaseField(ctx, cc, "knowledgeBases", argStringList(args, "knowledgeBaseIds"))...)
+	return append(card, t.card.collectionField(ctx, cc, "mcpCollections", argStringList(args, "mcpCollectionIds"))...)
 }

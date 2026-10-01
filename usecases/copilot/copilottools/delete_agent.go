@@ -47,3 +47,10 @@ func (t *deleteAgentTool) Validate(_ context.Context, cc copilot.Context, args m
 	_, err := ownedAgent(t.get, cc, argString(args, "id"))
 	return err
 }
+
+func (t *deleteAgentTool) Describe(_ context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
+	return []copilot.Field{
+		describeAgent(t.get, cc, argString(args, "id")),
+		{Key: "risks", Value: "O agente é excluído para sempre e para de responder em todos os canais."},
+	}
+}

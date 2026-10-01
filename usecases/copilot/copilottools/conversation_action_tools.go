@@ -3,6 +3,7 @@ package copilottools
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -216,9 +217,43 @@ func (t *scheduleMessageTool) Validate(_ context.Context, cc copilot.Context, ar
 	return err
 }
 
-func (t *cancelScheduledTool) Validate(_ context.Context, cc copilot.Context, args map[string]interface{}) error {
-	_, err := validateArgs[cancelScheduledArgs](t.deps.Entries, cc, args)
+func (t *cancelScheduledTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
+	_, err := t.scheduled(ctx, cc, args)
 	return err
+}
+
+func (t *cancelScheduledTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
+	message, err := t.scheduled(ctx, cc, args)
+	if err != nil {
+		return []copilot.Field{{Key: "scheduledMessage", Value: "mensagem agendada desconhecida"}}
+	}
+	fields := []copilot.Field{
+		{Key: "conversation", Value: describeConversation(t.deps.Entries, cc, message.EntryID, string(message.EntryType))},
+		{Key: "scheduledAt", Value: message.ScheduledAt.Format(time.RFC3339)},
+	}
+	if text := strings.TrimSpace(message.Text); text != "" {
+		fields = append(fields, copilot.Field{Key: "text", Value: text})
+	}
+	if message.Template != nil {
+		fields = append(fields, copilot.Field{Key: "template", Value: message.Template.Name})
+	}
+	return fields
+}
+
+func (t *cancelScheduledTool) scheduled(ctx context.Context, cc copilot.Context, args map[string]interface{}) (*sm.ScheduledMessage, error) {
+	a, err := validateArgs[cancelScheduledArgs](t.deps.Entries, cc, args)
+	if err != nil {
+		return nil, err
+	}
+	id, err := knownID(a.ScheduledMessageID, "scheduled_message_id", "schedule_message")
+	if err != nil {
+		return nil, err
+	}
+	message, err := t.deps.Scheduler.Get(ctx, personOf(cc), cc.WorkspaceID, id)
+	if err != nil {
+		return nil, fmt.Errorf("%w: mensagem agendada desconhecida ou fora do seu alcance", errInvalidArgs)
+	}
+	return message, nil
 }
 
 func messagePreview(text, channel, scheduledAt string) *copilot.Preview {

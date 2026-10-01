@@ -11,7 +11,6 @@ import (
 
 	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
-	"vozko/domain/media"
 	mm "vozko/domain/metamessaging"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
@@ -66,8 +65,8 @@ type HandleWebhookDeps struct {
 
 	History      conversation.MessageHistoryManager
 	Messages     conversation.MessageRepository
-	ConvMedia    conversation.ConversationMediaRepository
-	FileStorage  media.FileStorage
+	Attachments  conversation.MediaStore
+	AdOrigins    conversation.AdOriginRecorder
 	Broadcaster  conversation.EventBroadcaster
 	Assignments  AssignmentService
 	AIReply      conversation_usecase.AgentReplier
@@ -79,17 +78,15 @@ type HandleWebhookDeps struct {
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 	transcript := &metachannel.Transcript{
-		EntryType:   shared.EntryTypeInstagram,
-		Channel:     conversation.MessageChannelInstagram,
-		Prefix:      metadataPrefix,
-		History:     d.History,
-		FileStorage: d.FileStorage,
+		EntryType: shared.EntryTypeInstagram,
+		Channel:   conversation.MessageChannelInstagram,
+		Prefix:    metadataPrefix,
+		History:   d.History,
+		Media:     d.Attachments,
+		Ads:       d.AdOrigins,
 	}
 	if d.Messages != nil {
 		transcript.Messages = d.Messages
-	}
-	if d.ConvMedia != nil {
-		transcript.Media = d.ConvMedia
 	}
 	if d.Broadcaster != nil {
 		transcript.Broadcaster = d.Broadcaster
@@ -306,8 +303,7 @@ func (uc *HandleWebhookUseCase) handleReferral(ctx context.Context, account *igd
 	if err != nil {
 		return err
 	}
-	log.Printf("[instagram] referral account=%s conversation=%s ref=%s source=%s ad=%s",
-		account.IGUserID, conv.ID, ev.Referral.Ref, ev.Referral.Source, ev.Referral.AdID)
+	uc.transcript.RecordReferral(ctx, conv.ID, ev.Referral)
 	return nil
 }
 

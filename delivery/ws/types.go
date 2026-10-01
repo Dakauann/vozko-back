@@ -60,6 +60,7 @@ const (
 	WSEventAnalysisUpdate                 WSEventType = "conversation:analysis_update"
 	WSEventConversationStatusUpdate       WSEventType = "conversation:conversation_status_update"
 	WSEventConversationStatusCountsUpdate WSEventType = "conversation:conversation_status_counts_update"
+	WSEventAdOrigin                       WSEventType = "conversation:ad_origin"
 
 	WSEventAudienceAnalyzed WSEventType = "audience:analyzed"
 
@@ -352,6 +353,13 @@ type SubscribedPayload struct {
 	WindowExpiresAt    *time.Time             `json:"window_expires_at,omitempty"`
 	WindowClosedReason string                 `json:"window_closed_reason,omitempty"`
 	WindowTier         string                 `json:"window_tier,omitempty"`
+	AdOrigin           *conversation.AdOrigin `json:"ad_origin,omitempty"`
+}
+
+type AdOriginPayload struct {
+	EntryID   string                 `json:"entry_id"`
+	EntryType string                 `json:"entry_type"`
+	AdOrigin  *conversation.AdOrigin `json:"ad_origin"`
 }
 
 type ErrorPayload struct {

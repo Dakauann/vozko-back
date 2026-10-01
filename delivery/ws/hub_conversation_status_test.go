@@ -65,7 +65,7 @@ type statusTestHistoryProvider struct {
 	resolvedName string
 }
 
-func (p *statusTestHistoryProvider) ResolveSenderIdentity(_, _ string, m *conversation.Message) {
+func (p *statusTestHistoryProvider) PresentMessage(_, _ string, m *conversation.Message) {
 	if m == nil || m.SenderName != "" {
 		return
 	}

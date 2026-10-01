@@ -64,8 +64,7 @@ type HandleWebhookUseCase struct {
 
 	history            conversation.MessageHistoryManager
 	messages           conversation.MessageRepository
-	convMedia          conversation.ConversationMediaRepository
-	fileStorage        media.FileStorage
+	media              conversation.MediaStore
 	broadcaster        conversation.EventBroadcaster
 	campaignStatus     CampaignDeliverySink
 	campaignAutomation CampaignAutomationSource
@@ -94,7 +93,7 @@ type HandleWebhookDeps struct {
 
 	History     conversation.MessageHistoryManager
 	Messages    conversation.MessageRepository
-	ConvMedia   conversation.ConversationMediaRepository
+	Media       conversation.MediaStore
 	FileStorage media.FileStorage
 	Broadcaster conversation.EventBroadcaster
 	Assignments AssignmentService
@@ -114,8 +113,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		messaging:     d.Messaging,
 		history:       d.History,
 		messages:      d.Messages,
-		convMedia:     d.ConvMedia,
-		fileStorage:   d.FileStorage,
+		media:         d.Media,
 		broadcaster:   d.Broadcaster,
 		assignments:   d.Assignments,
 		aiReply:       d.AIReply,
@@ -441,11 +439,12 @@ func (uc *HandleWebhookUseCase) recordMessage(
 	if ev.QuotedProviderMessageID != "" {
 		record.ReplyToWAMessageID = ev.QuotedProviderMessageID
 	}
+	record.AdReferral = adReferralOf(ev.AdReply)
 
 	if attachment := uc.storeAttachment(ctx, instance, conv, ev); attachment != nil {
-		record.MediaID = attachment.mediaID
-		record.MediaType = attachment.mediaType
-		record.MediaURL = attachment.url
+		record.MediaID = attachment.ID
+		record.MediaType = attachment.Type
+		record.MediaURL = attachment.URL
 	}
 
 	if strings.TrimSpace(record.Text) == "" && record.MediaID == "" {
@@ -473,19 +472,13 @@ func placeholderForEmptyMessage(ev *uw.Event) string {
 	return "[mensagem sem conteúdo]"
 }
 
-type storedAttachment struct {
-	mediaID   string
-	mediaType conversation.MediaType
-	url       string
-}
-
 func (uc *HandleWebhookUseCase) storeAttachment(
 	ctx context.Context,
 	instance *uw.Instance,
 	conv *uw.Conversation,
 	ev *uw.Event,
-) *storedAttachment {
-	if ev.Media == uw.MediaNone || uc.messaging == nil || uc.fileStorage == nil {
+) *conversation.ConversationMedia {
+	if ev.Media == uw.MediaNone || uc.messaging == nil || uc.media == nil {
 		return nil
 	}
 
@@ -505,30 +498,19 @@ func (uc *HandleWebhookUseCase) storeAttachment(
 	objectKey := path.Join("conversations", "unofficial_whatsapp", conv.ID,
 		ev.ProviderMessageID+extensionFor(mimeType, ev.FileName))
 
-	if err := uc.fileStorage.UploadFile(objectKey, remote.Data, mimeType); err != nil {
-		log.Printf("[unofficial-whatsapp] media upload failed for message %s: %v", ev.ProviderMessageID, err)
+	stored, err := uc.media.Store(conversation.StoreMediaInput{
+		ID:               uuid.NewString(),
+		Key:              objectKey,
+		EntryID:          conv.ID,
+		EntryType:        shared.EntryTypeUnofficialWhatsApp,
+		Type:             conversationMediaType(ev.Media),
+		MimeType:         mimeType,
+		Data:             remote.Data,
+		OriginalFilename: firstNonEmpty(ev.FileName, path.Base(objectKey)),
+	})
+	if err != nil {
+		log.Printf("[unofficial-whatsapp] media not stored for message %s: %v", ev.ProviderMessageID, err)
 		return nil
-	}
-	url := uc.fileStorage.GetFileURL(objectKey)
-
-	mediaType := conversationMediaType(ev.Media)
-	stored := &storedAttachment{mediaType: mediaType, url: url}
-	if uc.convMedia != nil {
-		row := &conversation.ConversationMedia{
-			ID:               uuid.NewString(),
-			EntryID:          conv.ID,
-			EntryType:        shared.EntryTypeUnofficialWhatsApp,
-			Type:             mediaType,
-			MimeType:         mimeType,
-			OriginalFilename: firstNonEmpty(ev.FileName, path.Base(objectKey)),
-			SizeBytes:        int64(len(remote.Data)),
-			URL:              url,
-		}
-		if err := uc.convMedia.Create(row); err != nil {
-			log.Printf("[unofficial-whatsapp] media row failed for message %s: %v", ev.ProviderMessageID, err)
-		} else {
-			stored.mediaID = row.ID
-		}
 	}
 	return stored
 }
@@ -949,4 +931,23 @@ func truncateRaw(raw json.RawMessage, n int) string {
 		return string(raw)
 	}
 	return string(raw[:n]) + "…"
+}
+
+func adReferralOf(reply *uw.AdReply) *conversation.AdReferral {
+	if reply == nil {
+		return nil
+	}
+	ad := &conversation.AdReferral{
+		AdID:      reply.SourceID,
+		Platform:  conversation.AdPlatformFromURL(reply.SourceURL),
+		Title:     firstNonEmpty(reply.Title, reply.Body),
+		SourceURL: reply.SourceURL,
+		ImageURL:  reply.ThumbnailURL,
+		Image:     reply.Thumbnail,
+	}
+	if !ad.Usable() {
+		return nil
+	}
+	log.Printf("[unofficial-whatsapp] message came from an ad source=%s platform=%s", ad.AdID, ad.Platform)
+	return ad
 }

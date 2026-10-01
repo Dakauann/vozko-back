@@ -47,6 +47,7 @@ type PendingAction struct {
 	Summary  string                 `json:"summary"`
 	Fields   []Field                `json:"fields"`
 	Preview  *Preview               `json:"preview,omitempty"`
+	Secrets  []SecretField          `json:"secrets,omitempty"`
 }
 
 type Tool interface {

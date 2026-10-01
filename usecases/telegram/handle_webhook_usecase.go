@@ -43,7 +43,7 @@ type HandleWebhookUseCase struct {
 
 	history     conversation.MessageHistoryManager
 	messages    conversation.MessageRepository
-	convMedia   conversation.ConversationMediaRepository
+	media       conversation.MediaStore
 	fileStorage media.FileStorage
 	broadcaster conversation.EventBroadcaster
 	assignments AssignmentService
@@ -60,7 +60,7 @@ type HandleWebhookDeps struct {
 
 	History     conversation.MessageHistoryManager
 	Messages    conversation.MessageRepository
-	ConvMedia   conversation.ConversationMediaRepository
+	Media       conversation.MediaStore
 	FileStorage media.FileStorage
 	Broadcaster conversation.EventBroadcaster
 	Assignments AssignmentService
@@ -79,7 +79,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		api:           d.API,
 		history:       d.History,
 		messages:      d.Messages,
-		convMedia:     d.ConvMedia,
+		media:         d.Media,
 		fileStorage:   d.FileStorage,
 		broadcaster:   d.Broadcaster,
 		assignments:   d.Assignments,
@@ -272,14 +272,14 @@ func (uc *HandleWebhookUseCase) recordInboundMessage(
 			providerID = fmt.Sprintf("%s:att%d", providerID, i)
 		}
 		if err := uc.recordFromContact(ctx, conv, historyInput{
-			MessageType:       messageTypeForMedia(item.mediaType),
+			MessageType:       messageTypeForMedia(item.Type),
 			ProviderMessageID: providerID,
 			From:              from,
 			To:                to,
 			Timestamp:         ev.Timestamp,
-			MediaID:           item.mediaID,
-			MediaType:         item.mediaType,
-			MediaURL:          item.url,
+			MediaID:           item.ID,
+			MediaType:         item.Type,
+			MediaURL:          item.URL,
 			Metadata:          metadata,
 			SenderName:        senderName,
 			SenderAvatar:      senderAvatar,
@@ -660,23 +660,17 @@ func (uc *HandleWebhookUseCase) broadcastEntryUpdate(entryID string) {
 	uc.broadcaster.BroadcastEntryUpdate(entryID, string(shared.EntryTypeTelegram), nil)
 }
 
-type storedAttachment struct {
-	mediaID   string
-	mediaType conversation.MediaType
-	url       string
-}
-
 func (uc *HandleWebhookUseCase) storeAttachments(
 	ctx context.Context,
 	account *tgdomain.Account,
 	conv *tgdomain.Conversation,
 	ev *tgdomain.Event,
-) []storedAttachment {
-	if uc.fileStorage == nil || uc.api == nil || len(ev.Attachments) == 0 {
+) []*conversation.ConversationMedia {
+	if uc.media == nil || uc.api == nil || len(ev.Attachments) == 0 {
 		return nil
 	}
 
-	out := make([]storedAttachment, 0, len(ev.Attachments))
+	out := make([]*conversation.ConversationMedia, 0, len(ev.Attachments))
 	for _, att := range ev.Attachments {
 		if att.FileID == "" {
 			continue
@@ -708,35 +702,22 @@ func (uc *HandleWebhookUseCase) storeAttachments(
 		}
 
 		mediaID := uuid.NewString()
-		key := fmt.Sprintf("conversations/%s/%s/%s%s",
-			shared.EntryTypeTelegram, conv.ID, mediaID, extensionFor(contentType, att.FileName, file.Path))
-
-		if err := uc.fileStorage.UploadFile(key, data, contentType); err != nil {
-			log.Printf("[telegram] attachment upload failed key=%s: %v", key, err)
+		stored, err := uc.media.Store(conversation.StoreMediaInput{
+			ID: mediaID,
+			Key: fmt.Sprintf("conversations/%s/%s/%s%s",
+				shared.EntryTypeTelegram, conv.ID, mediaID, extensionFor(contentType, att.FileName, file.Path)),
+			EntryID:          conv.ID,
+			EntryType:        shared.EntryTypeTelegram,
+			Type:             conversationMediaType(att.Kind),
+			MimeType:         contentType,
+			Data:             data,
+			OriginalFilename: att.FileName,
+		})
+		if err != nil {
+			log.Printf("[telegram] attachment not stored kind=%s: %v", att.Kind, err)
 			continue
 		}
-		url := uc.fileStorage.GetFileURL(key)
-
-		mediaType := conversationMediaType(att.Kind)
-		if uc.convMedia != nil {
-			record := &conversation.ConversationMedia{
-				ID:        mediaID,
-				EntryID:   conv.ID,
-				EntryType: shared.EntryTypeTelegram,
-				Type:      mediaType,
-				MimeType:  contentType,
-				URL:       url,
-				SizeBytes: int64(len(data)),
-			}
-			record.Normalize()
-			if err := record.Validate(); err == nil {
-				if err := uc.convMedia.Create(record); err != nil {
-					log.Printf("[telegram] conversation media insert failed id=%s: %v", mediaID, err)
-				}
-			}
-		}
-
-		out = append(out, storedAttachment{mediaID: mediaID, mediaType: mediaType, url: url})
+		out = append(out, stored)
 	}
 	return out
 }

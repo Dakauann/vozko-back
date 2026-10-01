@@ -9,13 +9,12 @@ import (
 
 	"vozko/domain/conversation"
 	conv_event "vozko/domain/conversation_event"
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-type AISessionEnder interface {
-	EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string)
-}
+type AISessionEnder = aa.SessionEnder
 
 type ConversationStatusStore interface {
 	Status(ctx context.Context, entryID string) (string, error)
@@ -316,20 +315,27 @@ func (s *ConversationStatusService) applyStatusActor(
 			s.announcer.AnnounceStatus(entryID, entryType, status, record)
 		}
 		if status == conversation.ConversationStatusFinished {
-			s.endAISessionContained(entryID, entryType, wsID)
+			s.endAISessionContained(entryID, entryType, wsID, actorID)
 		}
 	}
 	return nil
 }
 
-func (s *ConversationStatusService) endAISessionContained(entryID, entryType, workspaceID string) {
+func (s *ConversationStatusService) endAISessionContained(entryID, entryType, workspaceID, closedBy string) {
 	if s == nil || s.aiSessions == nil {
 		return
 	}
 	if workspaceID == "" {
 		return
 	}
-	s.aiSessions.EndOpenRaw(workspaceID, entryID, entryType, "contained", "conversation_finished", "")
+	s.aiSessions.End(aa.EndRequest{
+		WorkspaceID: workspaceID,
+		EntryID:     entryID,
+		EntryType:   entryType,
+		Outcome:     aa.OutcomeContained,
+		Reason:      aa.EndReasonConversationFinished,
+		EndedBy:     closedBy,
+	})
 }
 
 func (s *ConversationStatusService) emitStatusChanged(entryID, entryType, from, to string, source conversation.CloseSource, reason conversation.CloseReason, outcome closedOutcome, workspaceID, actorID string) {

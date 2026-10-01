@@ -52,6 +52,7 @@ type OutboundCallLifecycleRunner struct {
 	billingPub           messaging.MessageQueuePub
 	cdrStart             cdr.StartCallUseCase
 	cdrAnswered          cdr.MarkCallAnsweredUseCase
+	cdrComplete          cdr.CompleteCallUseCase
 	billingMinute        time.Duration
 	reservationLead      time.Duration
 	reservationRetry     time.Duration
@@ -68,6 +69,12 @@ func (r *OutboundCallLifecycleRunner) SetCDRStart(uc cdr.StartCallUseCase) {
 func (r *OutboundCallLifecycleRunner) SetCDRAnswered(uc cdr.MarkCallAnsweredUseCase) {
 	if r != nil {
 		r.cdrAnswered = uc
+	}
+}
+
+func (r *OutboundCallLifecycleRunner) SetCDRComplete(uc cdr.CompleteCallUseCase) {
+	if r != nil {
+		r.cdrComplete = uc
 	}
 }
 
@@ -132,11 +139,13 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 	}
 	guard := r.newMinuteGuard(input.WorkspaceID, input.Call.ID(), perMinCost, admittedMicros)
 	var answeredAt time.Time
+	endReason := string(conversation.CallEventEnded)
 
 	defer func() {
 		guard.close()
 		r.releaseAdmission(input.Admission, guard.reservedMicros)
 		r.publishBilling(input, callRecordID, answeredAt)
+		r.completeCDR(input.Call.ID(), answeredAt, endReason)
 	}()
 
 	call := input.Call
@@ -149,6 +158,7 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 			return
 		}
 		sentEnded = true
+		endReason = reason
 		if input.OnEnded != nil {
 			var talk time.Duration
 			if !answeredAt.IsZero() {
@@ -199,6 +209,21 @@ func (r *OutboundCallLifecycleRunner) Run(ctx context.Context, input OutboundCal
 			go func() { _ = call.Hangup() }()
 			return
 		}
+	}
+}
+
+func (r *OutboundCallLifecycleRunner) completeCDR(callID string, answeredAt time.Time, reason string) {
+	if r.cdrComplete == nil {
+		return
+	}
+	err := r.cdrComplete.Execute(cdr.CompleteCallInput{
+		CallID:    callID,
+		Status:    cdr.CompletionStatus(!answeredAt.IsZero(), reason),
+		EndedAt:   r.nowFn(),
+		EndReason: &reason,
+	})
+	if err != nil {
+		r.logger.Printf("[CallCDR] failed to complete CDR for call %s: %v", callID, err)
 	}
 }
 

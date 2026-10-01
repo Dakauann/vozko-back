@@ -18,13 +18,17 @@ import (
 )
 
 type callRoutingBundle struct {
-	Broker     *callsession_usecase.InboundOfferBroker
-	Channels   *wsdelivery.CallChannels
-	Dispatcher *callrouting_usecase.Dispatcher
-	Transfers  *callrouting_usecase.TransferCall
-	Queues     *callrouting_repository.QueueRepository
-	VoiceAudio *media_infra.VoiceAudioLoader
-	Handler    *callroutinghttp.Handler
+	Broker      *callsession_usecase.InboundOfferBroker
+	Channels    *wsdelivery.CallChannels
+	Dispatcher  *callrouting_usecase.Dispatcher
+	Transfers   *callrouting_usecase.TransferCall
+	Queues      *callrouting_repository.QueueRepository
+	TransferLog *callrouting_repository.TransferLog
+	VoiceAudio  *media_infra.VoiceAudioLoader
+	Catalog     *callrouting_usecase.QueueCatalog
+	Monitor     *callrouting_usecase.QueueMonitor
+	Music       *holdmusic.Library
+	Handler     *callroutinghttp.Handler
 }
 
 type callAnswerPermission struct {
@@ -73,12 +77,28 @@ func (c *Container) initCallRouting() {
 		Music:      library,
 		Logger:     log.Default(),
 	})
-	c.callRouting = &callRoutingBundle{
-		Broker:     broker,
-		Channels:   channels,
-		Dispatcher: dispatcher,
+	catalog := callrouting_usecase.NewQueueCatalog(callrouting_usecase.QueueCatalogDeps{
+		Queues:      queues,
+		Departments: c.repositories.workspaceDepartment,
+		Members:     c.repositories.workspace,
+		Music:       library,
+	})
+	monitor := callrouting_usecase.NewQueueMonitor(callrouting_usecase.QueueMonitorDeps{
 		Queues:     queues,
-		VoiceAudio: voiceAudio,
+		Dispatcher: dispatcher,
+		Names:      c.services.callSessionUsernameResolver,
+		History:    transferLog,
+	})
+	c.callRouting = &callRoutingBundle{
+		Broker:      broker,
+		Channels:    channels,
+		Dispatcher:  dispatcher,
+		Queues:      queues,
+		TransferLog: transferLog,
+		VoiceAudio:  voiceAudio,
+		Catalog:     catalog,
+		Monitor:     monitor,
+		Music:       library,
 		Transfers: callrouting_usecase.NewTransferCall(callrouting_usecase.TransferDeps{
 			Calls:      channels,
 			Queues:     queues,
@@ -92,21 +112,11 @@ func (c *Container) initCallRouting() {
 			Logger:     log.Default(),
 		}),
 		Handler: callroutinghttp.NewHandler(callroutinghttp.HandlerDeps{
-			Queues: callrouting_usecase.NewQueueCatalog(callrouting_usecase.QueueCatalogDeps{
-				Queues:      queues,
-				Departments: c.repositories.workspaceDepartment,
-				Members:     c.repositories.workspace,
-				Music:       library,
-			}),
+			Queues:   catalog,
 			Settings: settings,
 			Targets:  callrouting_usecase.NewTransferTargets(queues, dispatcher),
-			Monitor: callrouting_usecase.NewQueueMonitor(callrouting_usecase.QueueMonitorDeps{
-				Queues:     queues,
-				Dispatcher: dispatcher,
-				Names:      c.services.callSessionUsernameResolver,
-				History:    transferLog,
-			}),
-			Music: library,
+			Monitor:  monitor,
+			Music:    library,
 		}),
 	}
 }

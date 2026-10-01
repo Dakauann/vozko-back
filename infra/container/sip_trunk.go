@@ -22,6 +22,7 @@ type sipTrunkBundle struct {
 	Engine      *voipinfra.SIPTrunkManager
 	Handler     *siptrunkhttp.Handler
 	Planner     sip_trunk.CallPlanner
+	Lines       siptrunkhttp.HandlerDeps
 	CallSource  *sip_trunk_usecase.CallSource
 	Permissions trunkCallPermissions
 }
@@ -53,21 +54,23 @@ func (c *Container) initSIPTrunks() {
 	}
 	permissions := trunkCallPermissions{access: workspace_usecase.NewCheckAccessUseCase(c.repositories.workspace)}
 	planner := sip_trunk_usecase.NewCallPlanner(repo, engine, permissions)
+	lines := siptrunkhttp.HandlerDeps{
+		Create:    sip_trunk_usecase.NewCreateTrunkUseCase(repo, engine),
+		Update:    sip_trunk_usecase.NewUpdateTrunkUseCase(repo, engine),
+		Delete:    sip_trunk_usecase.NewDeleteTrunkUseCase(repo, engine),
+		List:      sip_trunk_usecase.NewListTrunksUseCase(repo, engine),
+		Get:       sip_trunk_usecase.NewGetTrunkUseCase(repo, engine),
+		Hangup:    sip_trunk_usecase.NewHangupCallUseCase(repo, engine),
+		ListCalls: sip_trunk_usecase.NewListCallsUseCase(repo, engine),
+	}
 	c.sipTrunks = &sipTrunkBundle{
 		Permissions: permissions,
 		Repository:  repo,
 		Engine:      engine,
 		Planner:     planner,
+		Lines:       lines,
 		CallSource:  sip_trunk_usecase.NewCallSource(planner, engine),
-		Handler: siptrunkhttp.NewHandler(siptrunkhttp.HandlerDeps{
-			Create:    sip_trunk_usecase.NewCreateTrunkUseCase(repo, engine),
-			Update:    sip_trunk_usecase.NewUpdateTrunkUseCase(repo, engine),
-			Delete:    sip_trunk_usecase.NewDeleteTrunkUseCase(repo, engine),
-			List:      sip_trunk_usecase.NewListTrunksUseCase(repo, engine),
-			Get:       sip_trunk_usecase.NewGetTrunkUseCase(repo, engine),
-			Hangup:    sip_trunk_usecase.NewHangupCallUseCase(repo, engine),
-			ListCalls: sip_trunk_usecase.NewListCallsUseCase(repo, engine),
-		}),
+		Handler:     siptrunkhttp.NewHandler(lines),
 	}
 }
 

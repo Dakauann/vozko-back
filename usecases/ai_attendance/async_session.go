@@ -33,18 +33,20 @@ func (s *AsyncSessionService) RecordAIReply(in aa.StartInput, messageID string) 
 	})
 }
 
-func (s *AsyncSessionService) EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string) {
+func (s *AsyncSessionService) End(request aa.EndRequest) {
 	if s == nil || s.pub == nil {
 		return
 	}
 	_ = s.pub.Publish(crm_telemetry.KindAISession, crm_telemetry.AISessionPayload{
 		Op:                  crm_telemetry.AISessionOpEndOpen,
-		WorkspaceID:         workspaceID,
-		EntryID:             entryID,
-		EntryType:           entryType,
-		Outcome:             outcome,
-		Reason:              reason,
-		HandoffTargetUserID: handoffUserID,
+		WorkspaceID:         request.WorkspaceID,
+		EntryID:             request.EntryID,
+		EntryType:           request.EntryType,
+		CallID:              request.CallID,
+		Outcome:             string(request.Outcome),
+		Reason:              request.Reason,
+		HandoffTargetUserID: request.HandoffTo,
+		EndedBy:             request.EndedBy,
 	})
 }
 
@@ -65,8 +67,6 @@ func (s *AsyncSessionService) EnsureOpen(in aa.StartInput) *aa.Session {
 	return nil
 }
 
-func (s *AsyncSessionService) EndOpen(workspaceID, entryID, entryType string, outcome aa.Outcome, reason, handoffUserID string) {
-	s.EndOpenRaw(workspaceID, entryID, entryType, string(outcome), reason, handoffUserID)
-}
+var _ aa.SessionEnder = (*AsyncSessionService)(nil)
 
 var _ = time.Time{}

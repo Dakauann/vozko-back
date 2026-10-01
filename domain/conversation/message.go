@@ -248,6 +248,7 @@ type Message struct {
 	Video       []byte                  `json:"video,omitempty"`
 	MediaID     *string                 `json:"mediaId,omitempty"`
 	MediaType   MediaType               `json:"mediaType,omitempty"`
+	Media       *AttachedMedia          `json:"media,omitempty"`
 	Read        bool                    `json:"read"`
 	ReadAt      *time.Time              `json:"readAt,omitempty"`
 	ReadBy      *string                 `json:"readBy,omitempty"`

@@ -73,6 +73,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.WhatsAppCallPermission{},
 			&schema.LeadCampaignSend{},
 			&schema.ConversationMedia{},
+			&schema.ConversationAdOrigin{},
 			&schema.Stage{},
 			&schema.EntryStage{},
 			&schema.Pipeline{},

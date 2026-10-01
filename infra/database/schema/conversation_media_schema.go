@@ -18,6 +18,9 @@ type ConversationMedia struct {
 	SizeBytes        int64          `gorm:"type:bigint"`
 	DurationSeconds  *int           `gorm:"type:integer"`
 	WhatsAppMediaID  string         `gorm:"type:varchar(255);index"`
+	Width            int            `gorm:"type:integer;not null;default:0"`
+	Height           int            `gorm:"type:integer;not null;default:0"`
+	Thumbhash        string         `gorm:"type:varchar(64);not null;default:''"`
 	CreatedAt        time.Time      `gorm:"autoCreateTime"`
 	DeletedAt        gorm.DeletedAt `gorm:"index"`
 }

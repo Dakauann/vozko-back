@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	workflow_infra "vozko/infra/workflow"
+	"vozko/usecases/conversationad"
 	lead_usecase "vozko/usecases/lead"
 
 	"vozko/brand"
@@ -120,6 +121,9 @@ const (
 	loginFailureThreshold     = 10
 	loginFailureWindow        = 15 * time.Minute
 	voiceAudioDownloadTimeout = 30 * time.Second
+	staleCallMargin           = 30 * time.Minute
+	staleCallSweepInterval    = 15 * time.Minute
+	agentHTTPToolTimeout      = 2 * time.Minute
 )
 
 func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.ConsumeWhatsappTemplateUseCase) {
@@ -181,7 +185,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		optionsTool,
 		mediaTool,
 		tools_usecase.NewValidateCEPToolUseCase(searchCEPUC),
-		tools_usecase.NewHTTPRequestToolUseCase(),
+		tools_usecase.NewHTTPRequestToolUseCase(netguard.NewHTTPClient(agentHTTPToolTimeout)),
 		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, assignEntryStageUC, c.services.conversationHub),
 		tools_usecase.NewManageEntryLabelTool(label_usecase.NewListLabelsUseCase(c.repositories.label), automationLabeler),
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
@@ -298,7 +302,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	checkBalanceUC := balance_usecase.NewCheckBalanceUseCase(c.repositories.balance)
 
-	messageHistoryManager := conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub)
+	messageHistoryManager := conversationad.WithAdOrigins(
+		conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub),
+		c.adOriginRecorder(),
+	)
 	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), c.repositories.workspaceConfig, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
@@ -440,6 +447,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.services.callLifecycle.SetCDRAnswered(
 		calls_cdr_usecase.NewMarkCallAnsweredUseCase(c.repositories.callCDR),
 	)
+
 	c.initCallRouting()
 	publishDocProcessingUC := rag_usecase.NewPublishDocumentProcessingUseCase(c.services.ragQueuePub)
 
@@ -482,7 +490,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.redisProvider.SharedState(),
 		)
 	}
-	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.services.fileStorage, c.repositories.conversationMedia, c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
+	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.mediaStore(), c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
 		media_infra.NewDOCXParser(),
@@ -761,8 +769,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 		startCall:    calls_cdr_usecase.NewStartCallUseCase(c.repositories.callCDR),
 		completeCall: calls_cdr_usecase.NewCompleteCallUseCase(c.repositories.callCDR),
-		getCall:      calls_cdr_usecase.NewGetCallUseCase(c.repositories.callCDR),
-		listCalls:    calls_cdr_usecase.NewListCallsUseCase(c.repositories.callCDR),
 
 		billingQuery:       calls_query_usecase.NewBillingQueryUseCase(c.repositories.callBilling),
 		callRecordingQuery: calls_query_usecase.NewRecordingQueryUseCase(c.repositories.callRecording),
@@ -785,7 +791,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listPhoneAccess:          workspace_phone_access_usecase.NewListPhoneAccessUseCase(c.repositories.workspacePhoneAccess),
 		checkPhoneAccess:         workspace_phone_access_usecase.NewCheckAccessUseCase(c.repositories.workspacePhoneAccess),
 
-		uploadConversationMedia: conversation_usecase.NewUploadConversationMediaUseCase(c.repositories.conversationMedia, c.services.fileStorage),
+		uploadConversationMedia: conversation_usecase.NewUploadConversationMediaUseCase(c.mediaStore()),
 		getConversationMedia:    conversation_usecase.NewGetConversationMediaUseCase(c.repositories.conversationMedia),
 		listConversationEvents:  ce_usecase.NewListEventsUseCase(c.repositories.conversationEvent, c.repositories.user, c.repositories.agent, c.repositories.stage, c.repositories.label),
 
@@ -1090,6 +1096,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		if c.services.callLifecycle != nil {
 			c.services.callLifecycle.SetCDRStart(c.useCases.startCall)
 			c.services.callLifecycle.SetCDRAnswered(calls_cdr_usecase.NewMarkCallAnsweredUseCase(c.repositories.callCDR))
+			c.services.callLifecycle.SetCDRComplete(c.useCases.completeCall)
 		}
 	}
 
@@ -1489,7 +1496,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.repositories.callBilling,
 		c.repositories.balance,
 		pricer,
-		c.useCases.completeCall,
 		log.New(log.Writer(), "call-billing ", log.LstdFlags),
 	)
 	if err := billingConsumer.Start(); err != nil {
@@ -1511,6 +1517,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.New(log.Writer(), "billing-reconcile ", log.LstdFlags),
 	)
 	reconciler.RunPeriodic(5*time.Minute, 15*time.Minute)
+	calls_cdr_usecase.NewCloseStaleCallsUseCase(c.repositories.callCDR, c.cfg.SIP.MaxCallDuration+staleCallMargin, nil).
+		RunPeriodic(staleCallSweepInterval, log.New(log.Writer(), "call-cdr ", log.LstdFlags))
 
 	c.services.transactionsExporter = balance_usecase.NewTransactionsExporter(
 		c.useCases.listTransactions,

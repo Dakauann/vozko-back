@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,9 +42,9 @@ type threadDTO struct {
 }
 
 type toolActivityDTO struct {
-	Name    string                `json:"name"`
-	Summary string                `json:"summary"`
-	Ok      bool                  `json:"ok"`
+	Name    string                     `json:"name"`
+	Summary string                     `json:"summary"`
+	Ok      bool                       `json:"ok"`
 	Chart   *copilot_domain.Chart      `json:"chart,omitempty"`
 	Card    *copilot_domain.ActionCard `json:"card,omitempty"`
 }
@@ -61,11 +62,12 @@ type messageDTO struct {
 }
 
 type proposalDTO struct {
-	ID       string                  `json:"id"`
-	ToolName string                  `json:"toolName"`
-	Fields   []copilot_domain.Field  `json:"fields"`
-	Preview  *copilot_domain.Preview `json:"preview,omitempty"`
-	Status   string                  `json:"status"`
+	ID       string                       `json:"id"`
+	ToolName string                       `json:"toolName"`
+	Fields   []copilot_domain.Field       `json:"fields"`
+	Preview  *copilot_domain.Preview      `json:"preview,omitempty"`
+	Secrets  []copilot_domain.SecretField `json:"secrets,omitempty"`
+	Status   string                       `json:"status"`
 }
 
 func toProposalDTO(m *aichat.Message) *proposalDTO {
@@ -76,7 +78,7 @@ func toProposalDTO(m *aichat.Message) *proposalDTO {
 	if json.Unmarshal(m.Proposal, &pa) != nil {
 		return nil
 	}
-	return &proposalDTO{ID: pa.ID, ToolName: pa.ToolName, Fields: pa.Fields, Preview: pa.Preview, Status: string(m.ProposalStatus)}
+	return &proposalDTO{ID: pa.ID, ToolName: pa.ToolName, Fields: pa.Fields, Preview: pa.Preview, Secrets: pa.Secrets, Status: string(m.ProposalStatus)}
 }
 
 func (h *AIChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +215,10 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type approveActionRequest struct {
+	Secrets map[string]string `json:"secrets"`
+}
+
 func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
@@ -224,6 +230,11 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusInternalServerError, "streaming não suportado", nil)
 		return
 	}
+	var body approveActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
+		return
+	}
 	thread, err := h.svc.Precheck(workspaceID, claims.UserID, threadID)
 	if err != nil {
 		h.writeError(w, err)
@@ -231,7 +242,7 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	}
 	emit := startChatSSE(w, flusher)
 	r = withDepartmentCreationScope(r, "")
-	if err := h.copilot.Approve(r.Context(), thread, actionID, copilotCtx(r, claims.UserID, workspaceID), emit); err != nil {
+	if err := h.copilot.Approve(r.Context(), thread, actionID, body.Secrets, copilotCtx(r, claims.UserID, workspaceID), emit); err != nil {
 		emit("error", map[string]any{"error": err.Error()})
 	}
 }

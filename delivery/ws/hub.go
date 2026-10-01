@@ -39,10 +39,6 @@ type presenceRecorder interface {
 	Transition(workspaceID, userID string, state string, source string) error
 }
 
-type aiSessionEnder interface {
-	EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string)
-}
-
 type entrySubscription struct {
 	entryID   string
 	entryType string
@@ -83,7 +79,6 @@ type ConversationHub struct {
 	assignmentRepo       inbox_assignment.Repository
 	assignmentService    conversationAssigner
 	presence             presenceRecorder
-	aiSessions           aiSessionEnder
 	analysisProvider     conversation.AnalysisProvider
 	eventLogger          ce.Logger
 	workspaceConfigRepo  wsc.Repository
@@ -199,9 +194,6 @@ func (h *ConversationHub) SetPresenceRecorder(p presenceRecorder) {
 	h.presence = p
 }
 
-func (h *ConversationHub) SetAISessionEnder(e aiSessionEnder) {
-	h.aiSessions = e
-}
 
 func (h *ConversationHub) SetEventLogger(logger ce.Logger) {
 	h.eventLogger = logger
@@ -378,7 +370,7 @@ func (h *ConversationHub) BroadcastNewMessage(entryID, entryType string, message
 	h.ensureInitialTag(entryID, entryType)
 
 	if h.historyProvider != nil && message != nil {
-		h.historyProvider.ResolveSenderIdentity(entryID, entryType, message)
+		h.historyProvider.PresentMessage(entryID, entryType, message)
 	}
 
 	if h.statusUpdater != nil && message != nil {
@@ -941,6 +933,17 @@ func (h *ConversationHub) BroadcastMessageStatus(entryID, entryType, messageID s
 				MessageID: messageID,
 				Status:    string(status),
 			},
+		},
+	}
+}
+
+func (h *ConversationHub) BroadcastAdOrigin(entryID string, entryType shared.EntryType, origin *conversation.AdOrigin) {
+	h.broadcast <- &broadcastMessage{
+		entryID:   entryID,
+		entryType: string(entryType),
+		event: &WSOutgoingMessage{
+			Type:    WSEventAdOrigin,
+			Payload: AdOriginPayload{EntryID: entryID, EntryType: string(entryType), AdOrigin: origin},
 		},
 	}
 }
@@ -1722,6 +1725,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	var messages []*conversation.Message
 	var hasMore bool
 	var total int64
+	var adOrigin *conversation.AdOrigin
 
 	if h.historyProvider != nil {
 		leadName, leadNumber, leadPicture, leadMetadata, entryVariables, automationEnabled, _ = h.historyProvider.GetEntryInfo(p.EntryID, p.EntryType)
@@ -1739,7 +1743,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 		if histErr != nil {
 			log.Printf("[ConversationHub] Error loading history for %s:%s user %s: %v", p.EntryType, p.EntryID, conn.UserID, histErr)
 		}
-		messages, hasMore, total = page.Messages, page.HasMore, page.Total
+		messages, hasMore, total, adOrigin = page.Messages, page.HasMore, page.Total, page.AdOrigin
 	}
 
 	alreadySent := h.sentMessageIDs[conn.ID][sub]
@@ -1771,6 +1775,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 			WindowExpiresAt:    windowExpiresAt,
 			WindowClosedReason: windowClosedReason,
 			WindowTier:         windowTier,
+			AdOrigin:           adOrigin,
 		},
 	})
 
@@ -2844,7 +2849,7 @@ func (h *ConversationHub) handleSearchMessages(conn *WSConnection, payload json.
 
 		if h.historyProvider != nil {
 			for _, msg := range messages {
-				h.historyProvider.ResolveSenderIdentity(p.EntryID, p.EntryType, msg)
+				h.historyProvider.PresentMessage(p.EntryID, p.EntryType, msg)
 			}
 		}
 

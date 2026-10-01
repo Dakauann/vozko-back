@@ -14,6 +14,7 @@ type Repository interface {
 	MarkAnswered(callID string, answeredAt time.Time) error
 	Complete(input CompleteInput) error
 	List(filters ListFilters) (*shared.PaginatedResult[*Call], error)
+	ListStale(startedBefore time.Time, limit int) ([]*Call, error)
 }
 
 type CompleteInput struct {

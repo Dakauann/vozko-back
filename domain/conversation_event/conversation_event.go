@@ -113,7 +113,7 @@ func (e *ConversationEvent) DetailsMap() map[string]string {
 
 var (
 	FromActorIDKeys = []string{"from_user_id", "from_actor_id", "previous_user_id"}
-	ToActorIDKeys   = []string{"to_user_id", "assigned_user_id", "to_actor_id", "target"}
+	ToActorIDKeys   = []string{"to_user_id", "assigned_user_id", "to_actor_id", "target", "handoff_to"}
 )
 
 func LookupDetailID(details map[string]string, keys []string) string {

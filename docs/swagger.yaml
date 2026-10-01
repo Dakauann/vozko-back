@@ -2658,6 +2658,228 @@ definitions:
         example: ws_a1b2c3
         type: string
     type: object
+  callhistory.CallChargeResponse:
+    properties:
+      amountMicros:
+        example: 26666
+        type: integer
+      settled:
+        example: true
+        type: boolean
+    type: object
+  callhistory.CallContactResponse:
+    properties:
+      leadId:
+        example: 3f2b8c1e-5d4a-4b7e-9c1f-2a6d8e0b4c3a
+        type: string
+      name:
+        example: Maria Souza
+        type: string
+      number:
+        example: "5584994409684"
+        type: string
+    type: object
+  callhistory.CallDetailResponse:
+    properties:
+      answeredAt:
+        example: "2026-09-30T14:00:08Z"
+        type: string
+      answeredBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      callId:
+        example: sip-out-2f1c9a7e-8d3b-4e6f-a1c2-9b8d7e6f5a4c
+        type: string
+      channel:
+        enum:
+        - phone
+        - whatsapp
+        example: phone
+        type: string
+      charge:
+        $ref: '#/definitions/callhistory.CallChargeResponse'
+      contact:
+        $ref: '#/definitions/callhistory.CallContactResponse'
+      direction:
+        enum:
+        - inbound
+        - outbound
+        example: outbound
+        type: string
+      endReason:
+        example: ended
+        type: string
+      endedAt:
+        example: "2026-09-30T14:02:08Z"
+        type: string
+      handlers:
+        items:
+          $ref: '#/definitions/callhistory.CallPersonResponse'
+        type: array
+      outcome:
+        enum:
+        - in_progress
+        - answered
+        - missed
+        - no_answer
+        - busy
+        - declined
+        - cancelled
+        - failed
+        example: answered
+        type: string
+      placedBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      recording:
+        $ref: '#/definitions/callhistory.CallHistoryRecordingResponse'
+      ringSeconds:
+        example: 8
+        type: integer
+      startedAt:
+        example: "2026-09-30T14:00:00Z"
+        type: string
+      talkSeconds:
+        example: 120
+        type: integer
+      timeline:
+        items:
+          $ref: '#/definitions/callhistory.CallTimelineEntryResponse'
+        type: array
+      transfers:
+        example: 1
+        type: integer
+    type: object
+  callhistory.CallHistoryRecordingResponse:
+    properties:
+      durationSec:
+        example: 120
+        type: integer
+      url:
+        example: https://storage.vozko.com.br/recordings/sip-out-2f1c.wav
+        type: string
+    type: object
+  callhistory.CallListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/callhistory.CallSummaryResponse'
+        type: array
+      page:
+        example: 1
+        type: integer
+      pageSize:
+        example: 25
+        type: integer
+      totalItems:
+        example: 132
+        type: integer
+      totalPages:
+        example: 6
+        type: integer
+    type: object
+  callhistory.CallPersonResponse:
+    properties:
+      id:
+        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        type: string
+      name:
+        example: Ana
+        type: string
+    type: object
+  callhistory.CallSummaryResponse:
+    properties:
+      answeredAt:
+        example: "2026-09-30T14:00:08Z"
+        type: string
+      answeredBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      callId:
+        example: sip-out-2f1c9a7e-8d3b-4e6f-a1c2-9b8d7e6f5a4c
+        type: string
+      channel:
+        enum:
+        - phone
+        - whatsapp
+        example: phone
+        type: string
+      charge:
+        $ref: '#/definitions/callhistory.CallChargeResponse'
+      contact:
+        $ref: '#/definitions/callhistory.CallContactResponse'
+      direction:
+        enum:
+        - inbound
+        - outbound
+        example: outbound
+        type: string
+      endReason:
+        example: ended
+        type: string
+      endedAt:
+        example: "2026-09-30T14:02:08Z"
+        type: string
+      outcome:
+        enum:
+        - in_progress
+        - answered
+        - missed
+        - no_answer
+        - busy
+        - declined
+        - cancelled
+        - failed
+        example: answered
+        type: string
+      placedBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      ringSeconds:
+        example: 8
+        type: integer
+      startedAt:
+        example: "2026-09-30T14:00:00Z"
+        type: string
+      talkSeconds:
+        example: 120
+        type: integer
+      transfers:
+        example: 1
+        type: integer
+    type: object
+  callhistory.CallTimelineEntryResponse:
+    properties:
+      actor:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      at:
+        example: "2026-09-30T14:01:10Z"
+        type: string
+      kind:
+        enum:
+        - started
+        - answered
+        - transfer_requested
+        - transfer_connected
+        - transfer_returned
+        - transfer_unanswered
+        - transfer_cancelled
+        - caller_left
+        - ended
+        - recording_ready
+        example: transfer_connected
+        type: string
+      notes:
+        example: Quer cancelar o pedido
+        type: string
+      queueId:
+        example: q-suporte
+        type: string
+      queueName:
+        example: Suporte
+        type: string
+      reason:
+        example: ended
+        type: string
+      target:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+    type: object
   callrecording.CallRecordingCollectionResponse:
     properties:
       items:
@@ -3021,6 +3243,8 @@ definitions:
         $ref: '#/definitions/shared.EntryType'
       id:
         type: string
+      layout:
+        $ref: '#/definitions/conversation.MediaLayout'
       mimeType:
         type: string
       originalFilename:
@@ -3110,6 +3334,15 @@ definitions:
       text:
         type: string
       totalMatches:
+        type: integer
+    type: object
+  conversation.MediaLayout:
+    properties:
+      height:
+        type: integer
+      thumbhash:
+        type: string
+      width:
         type: integer
     type: object
   conversation.MediaType:
@@ -9528,6 +9761,120 @@ paths:
       summary: Definir música de espera do workspace
       tags:
       - Filas de atendimento
+  /calls:
+    get:
+      description: 'Lista as ligações do workspace, das mais recentes para as mais
+        antigas, por tronco SIP e WhatsApp: quem ligou, quem atendeu, quantas transferências
+        houve, o resultado, o tempo de conversa e o valor cobrado. Sem a permissão
+        `call_history:view_others`, a lista traz só as ligações de que você participou
+        (fez, atendeu, transferiu ou recebeu por transferência) e `memberId` é ignorado.
+        `amountMicros` é o valor debitado do saldo, em milionésimos de real.'
+      parameters:
+      - description: Página (começa em 1)
+        in: query
+        name: page
+        type: integer
+      - description: Itens por página (máximo 100)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Direção
+        enum:
+        - inbound
+        - outbound
+        in: query
+        name: direction
+        type: string
+      - description: Canal
+        enum:
+        - phone
+        - whatsapp
+        in: query
+        name: channel
+        type: string
+      - description: Atendida ou não
+        enum:
+        - answered
+        - unanswered
+        in: query
+        name: result
+        type: string
+      - description: Ligações de que este membro participou (exige call_history:view_others)
+        in: query
+        name: memberId
+        type: string
+      - description: Início do período (YYYY-MM-DD ou RFC 3339)
+        in: query
+        name: from
+        type: string
+      - description: Fim do período (YYYY-MM-DD inclui o dia todo, ou RFC 3339)
+        in: query
+        name: to
+        type: string
+      - description: Parte do número do contato
+        in: query
+        name: number
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/callhistory.CallListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar chamadas
+      tags:
+      - Histórico de chamadas
+  /calls/{callId}:
+    get:
+      description: Mostra uma ligação com quem participou, a linha do tempo (início,
+        atendimento, cada transferência e o que aconteceu com ela, fim) e a gravação.
+        A gravação só aparece para quem tem `call_recordings:read`. Uma ligação de
+        que você não participou, sem `call_history:view_others`, responde 404.
+      parameters:
+      - description: Identificador da ligação
+        in: path
+        name: callId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/callhistory.CallDetailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Detalhar chamada
+      tags:
+      - Histórico de chamadas
   /cep/search:
     get:
       description: Retorna o endereço (logradouro, bairro, cidade e UF) correspondente
@@ -19312,7 +19659,7 @@ paths:
         | type | payload |
         |---|---|
         | `conversation:connected` | `{"user_id": string, "connection_id": string}` |
-        | `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent"}` |
+        | `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent", "ad_origin"?: AdOrigin}` |
         | `conversation:unsubscribed` | `{"entry_id": string, "entry_type": string}` |
         | `conversation:history` | `{"entry_id", "entry_type", "messages": Message[], "has_more": boolean, "total": number, "page_size": number}` |
         | `conversation:inbox` | `{"entries": InboxEntry[], "page", "page_size", "total_items", "total_pages", "stage_counts"?: object, "conversation_status_counts"?: object, "available_labels"?: Label[]}` |
@@ -19337,6 +19684,7 @@ paths:
         | `conversation:typing` | `{"entry_id", "entry_type", "user_id"?, "is_typing": boolean}` | Um colega está digitando. |
         | `conversation:message_status` | `{"entry_id", "entry_type", "message_id", "status": "sent" \| "delivered" \| "read" \| "failed"}` | O canal confirmou a entrega. |
         | `conversation:analysis_update` | `{"entry_id", "entry_type", "analysis": Analysis \| null, "pending": boolean}` | A análise da conversa mudou. |
+        | `conversation:ad_origin` | `{"entry_id", "entry_type", "ad_origin": AdOrigin}` | O contato chegou por um anúncio (WhatsApp, Instagram ou Facebook). Só a primeira vez: o anúncio de origem não muda. |
         | `conversation:conversation_status_update` | `{"entry_id", "entry_type", "status", "close_source"?, "close_reason"?, "close_outcome"?, "closed_at"?}` | O status da conversa mudou. |
 
         Uma mesma mensagem chega uma vez só por conexão: como `conversation:message` ou como `conversation:message_sent`.
@@ -19367,6 +19715,8 @@ paths:
         **MatchedMessage**: `message_id`, `text`, `from`, `message_type`, `channel`, `created_at`, `position`, `page`.
 
         **AIHandler**: `kind`, `agent_id`?, `agent_name`?, `agent_avatar`?, `agent_active`, `workflow_id`?, `workflow_name`?, `workflow_run_id`?, `run_status`?, `current_node_id`?, `current_node_type`?.
+
+        **AdOrigin** (camelCase): o primeiro anúncio que trouxe o contato. `adId`?, `platform`?: `facebook | instagram`, `title`?, `sourceUrl`?, `image`?: `{"url", "mimeType"?, "layout": {"width"?, "height"?, "thumbhash"?}}` (cópia guardada pela Vozko), `arrivedAt`.
 
         **LiveRead** (camelCase): `interest`?, `disposition`?, `sentiment`?, `qualification`?, `nextAction`?, `language`?, `attendanceQuality`, `certainty`?: object, `decidedAt`.
 

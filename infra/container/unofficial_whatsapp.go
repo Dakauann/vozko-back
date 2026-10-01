@@ -170,7 +170,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Assets:        bundle.Assets,
 		History:       history,
 		Messages:      c.repositories.conversation,
-		ConvMedia:     c.repositories.conversationMedia,
+		Media:         c.mediaStore(),
 		FileStorage:   c.services.fileStorage,
 		Broadcaster:   c.services.conversationHub,
 		Assignments:   c.services.assignmentService,

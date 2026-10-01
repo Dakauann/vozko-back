@@ -131,7 +131,7 @@ func newImportHarness(t *testing.T) *importHarness {
 		GroupAPI:      &fakeGroupAPI{},
 		Assets:        &fakeAssets{},
 		FileStorage:   newFakeStorage(),
-		ConvMedia:     &fakeConvMedia{},
+		Media:         storeFor(newFakeStorage(), &fakeConvMedia{}),
 		History:       h.history,
 		Messages:      h.messages,
 		Broadcaster:   h.broadcasts,

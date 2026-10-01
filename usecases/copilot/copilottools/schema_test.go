@@ -85,8 +85,8 @@ func TestCreateInputRejectsScopeFromArgs(t *testing.T) {
 }
 
 func TestAgentSchemasExcludeScope(t *testing.T) {
-	create := NewCreateAgentTool(nil).Definition().Parameters
-	update := NewUpdateAgentTool(nil, nil).Definition().Parameters
+	create := NewCreateAgentTool(nil, AgentDeps{}).Definition().Parameters
+	update := NewUpdateAgentTool(nil, nil, AgentDeps{}).Definition().Parameters
 	for _, params := range []map[string]tools.Parameter{create, update} {
 		for _, k := range []string{"workspaceId", "workspaceID", "departmentId", "departmentID", "departmentIds"} {
 			if _, ok := params[k]; ok {

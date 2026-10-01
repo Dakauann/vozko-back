@@ -156,3 +156,46 @@ func TestQueueOutcomesAreReadForTheWindowWithTheirWait(t *testing.T) {
 		t.Fatal("a caller still waiting was left out of the offered calls")
 	}
 }
+
+func TestTransfersAreReadPerCallInsideTheirWorkspace(t *testing.T) {
+	db := repotest.IsolatedDB(t, "call_transfer", &schema.CallTransfer{})
+	log := NewTransferLog(db)
+	ctx := context.Background()
+	owner, stranger := uuid.NewString(), uuid.NewString()
+	at := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	record := func(id, workspaceID, callID string, created time.Time) {
+		if err := log.Record(ctx, callrouting.TransferRecord{
+			ID: id, WorkspaceID: workspaceID, CallID: callID, FromUserID: "ana",
+			Target: callrouting.TransferTarget{Kind: callrouting.TargetQueue, QueueID: "q1"}, Notes: "quer cancelar",
+			Outcome: callrouting.OutcomePending, CreatedAt: created,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	second, first := uuid.NewString(), uuid.NewString()
+	record(second, owner, "c1", at.Add(time.Minute))
+	record(first, owner, "c1", at)
+	record(uuid.NewString(), owner, "c2", at)
+	record(uuid.NewString(), stranger, "c1", at)
+	if err := log.Finish(ctx, owner, first, callrouting.OutcomeConnected, "bia", at.Add(20*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := log.ForCalls(ctx, owner, []string{"c1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 2 || found[0].ID != first || found[1].ID != second {
+		t.Fatalf("found = %+v, want c1's two transfers oldest first", found)
+	}
+	got := found[0]
+	if got.Outcome != callrouting.OutcomeConnected || got.AnsweredBy != "bia" || got.Target.QueueID != "q1" || got.Notes != "quer cancelar" || !got.FinishedAt.Equal(at.Add(20*time.Second)) {
+		t.Fatalf("transfer = %+v", got)
+	}
+	if !found[1].FinishedAt.IsZero() {
+		t.Fatal("a pending transfer has no finish time")
+	}
+	if none, err := log.ForCalls(ctx, owner, nil); err != nil || len(none) != 0 {
+		t.Fatalf("no calls = %+v, %v", none, err)
+	}
+}

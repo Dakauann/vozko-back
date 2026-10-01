@@ -67,8 +67,7 @@ type handleWhatsAppMessageUseCase struct {
 	wcEntryRepo             wce.Repository
 	businessPhoneRepo       businessphone.Repository
 	messageWindowRepo       lmw.Repository
-	fileStorage             media.FileStorage
-	conversationMediaRepo   conversation.ConversationMediaRepository
+	mediaStore              conversation.MediaStore
 	hub                     conversation.EventBroadcaster
 	assignmentService       *ia_usecase.AssignmentService
 	aiAttendance            AIAttendanceRecorder
@@ -483,7 +482,7 @@ const (
 	AnalysisDebounceRedisKey = "analysis:debounce:pending"
 )
 
-func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, fileStorage media.FileStorage, conversationMediaRepo conversation.ConversationMediaRepository, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase, serviceMessageBilling conversation.ServiceMessageBilling) (conversation.HandleWhatsAppMessageUseCase, error) {
+func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, mediaStore conversation.MediaStore, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase, serviceMessageBilling conversation.ServiceMessageBilling) (conversation.HandleWhatsAppMessageUseCase, error) {
 	if consumeWhatsappTemplate == nil {
 		return nil, fmt.Errorf("%w: whatsapp template billing", conversation.ErrRefundNotConfigured)
 	}
@@ -508,8 +507,7 @@ func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory
 		wcEntryRepo:             wcEntryRepo,
 		businessPhoneRepo:       businessPhoneRepo,
 		messageWindowRepo:       messageWindowRepo,
-		fileStorage:             fileStorage,
-		conversationMediaRepo:   conversationMediaRepo,
+		mediaStore:              mediaStore,
 		hub:                     hub,
 		stageRepo:               stageRepo,
 		textExtractor:           textExtractor,
@@ -730,6 +728,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 			To:             businessNumber,
 			Text:           strings.TrimSpace(message.Text.Body),
 			Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
+			AdReferral:     message.Referral.AdReferral(),
 		}
 		if leadRecord != nil {
 			record.SenderName = leadRecord.Name
@@ -2273,7 +2272,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 		}
 	}
 
-	if mediaClient != nil && uc.fileStorage != nil {
+	if mediaClient != nil && uc.mediaStore != nil {
 		var downloadedMimeType string
 		var err error
 		mediaBytes, downloadedMimeType, err = mediaClient.DownloadMedia(ctx, mediaID)
@@ -2286,63 +2285,16 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 				mimeType = downloadedMimeType
 			}
 
-			cdnMediaID = uuid.NewString()
-			extension := getExtensionFromMimeType(mimeType)
-			var cdnKey string
-			if entryID != "" {
-				cdnKey = fmt.Sprintf("conversations/%s/%s/%s%s", entryType, entryID, cdnMediaID, extension)
-			} else {
-				cdnKey = fmt.Sprintf("conversations/unknown/%s/%s%s", message.From, cdnMediaID, extension)
-			}
-
-			if err := uc.fileStorage.UploadFile(cdnKey, mediaBytes, mimeType); err != nil {
-				log.Printf("[whatsapp-media] Failed to upload media to CDN: %v", err)
-				cdnMediaID = ""
-			} else {
-				cdnURL = uc.fileStorage.GetFileURL(cdnKey)
-				log.Printf("[whatsapp-media] Media uploaded to CDN: %s", cdnURL)
-
-				if uc.conversationMediaRepo != nil && entryID != "" {
-					var domainType conversation.MediaType
-					switch mediaType {
-					case "image":
-						domainType = conversation.MediaTypeImage
-					case "video":
-						domainType = conversation.MediaTypeVideo
-					case "document":
-						domainType = conversation.MediaTypeDocument
-					case "sticker":
-						domainType = conversation.MediaTypeSticker
-					default:
-						domainType = conversation.MediaType(mediaType)
-					}
-
-					mediaRecord := &conversation.ConversationMedia{
-						ID:               cdnMediaID,
-						EntryID:          entryID,
-						EntryType:        entryType,
-						Type:             domainType,
-						MimeType:         mimeType,
-						URL:              cdnURL,
-						OriginalFilename: captionOrFilename,
-						SizeBytes:        int64(len(mediaBytes)),
-						WhatsAppMediaID:  mediaID,
-						CreatedAt:        time.Now().UTC(),
-					}
-					if err := uc.conversationMediaRepo.Create(mediaRecord); err != nil {
-						log.Printf("[whatsapp-media] Failed to save media to DB: %v", err)
-					} else {
-						log.Printf("[whatsapp-media] Media saved to conversation_media table: %s", cdnMediaID)
-					}
-				}
+			if stored := uc.storeInboundMedia(entryID, entryType, conversation.MediaType(mediaType), mimeType, mediaBytes, captionOrFilename, mediaID); stored != nil {
+				cdnMediaID, cdnURL = stored.ID, stored.URL
 			}
 		}
 	} else {
 		if mediaClient == nil {
 			log.Println("[whatsapp-media] WhatsApp client not resolved, skipping media download")
 		}
-		if uc.fileStorage == nil {
-			log.Println("[whatsapp-media] File storage not configured, skipping media upload")
+		if uc.mediaStore == nil {
+			log.Println("[whatsapp-media] Media storage not configured, skipping media upload")
 		}
 	}
 
@@ -2365,19 +2317,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 	}
 
 	if uc.historyManager != nil && (conversationID != "" || entryID != "") {
-		var domainMediaType conversation.MediaType
-		switch mediaType {
-		case "image":
-			domainMediaType = conversation.MediaTypeImage
-		case "video":
-			domainMediaType = conversation.MediaTypeVideo
-		case "document":
-			domainMediaType = conversation.MediaTypeDocument
-		case "sticker":
-			domainMediaType = conversation.MediaTypeSticker
-		default:
-			domainMediaType = conversation.MediaType(mediaType)
-		}
+		domainMediaType := conversation.MediaType(mediaType)
 
 		record := conversation.MessageHistoryRecord{
 			SentBy:         conversation.SentByContact(message.From),
@@ -2394,6 +2334,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 			MediaID:        cdnMediaID,
 			MediaType:      domainMediaType,
 			MediaURL:       cdnURL,
+			AdReferral:     message.Referral.AdReferral(),
 		}
 
 		if extractedText != "" {
@@ -2708,36 +2649,9 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 	businessNumber := metadataBusinessNumber(metadata)
 	audioEntryID, audioEntryType = agentCtx.getEntryInfo()
 
-	var inboundMediaID, inboundMediaURL string
-	if uc.fileStorage != nil && audioEntryID != "" {
-		inboundMediaID = uuid.NewString()
-		ext := getExtensionFromMimeType(mimeType)
-		key := fmt.Sprintf("conversations/%s/%s/%s%s", audioEntryType, audioEntryID, inboundMediaID, ext)
-		if err := uc.fileStorage.UploadFile(key, audioBytes, mimeType); err != nil {
-			log.Printf("[whatsapp-audio] Failed to upload incoming audio to CDN: %v", err)
-		} else {
-			inboundMediaURL = uc.fileStorage.GetFileURL(key)
-			log.Printf("[whatsapp-audio] Incoming audio saved to CDN: %s", inboundMediaURL)
-
-			if uc.conversationMediaRepo != nil {
-				mediaRecord := &conversation.ConversationMedia{
-					ID:              inboundMediaID,
-					EntryID:         audioEntryID,
-					EntryType:       audioEntryType,
-					Type:            conversation.MediaTypeAudio,
-					MimeType:        mimeType,
-					URL:             inboundMediaURL,
-					SizeBytes:       int64(len(audioBytes)),
-					WhatsAppMediaID: message.Audio.ID,
-					CreatedAt:       time.Now().UTC(),
-				}
-				if err := uc.conversationMediaRepo.Create(mediaRecord); err != nil {
-					log.Printf("[whatsapp-audio] Failed to save inbound audio to DB: %v", err)
-				} else {
-					log.Printf("[whatsapp-audio] Inbound audio saved to conversation_media table: %s", inboundMediaID)
-				}
-			}
-		}
+	var inboundMediaID string
+	if stored := uc.storeInboundMedia(audioEntryID, audioEntryType, conversation.MediaTypeAudio, mimeType, audioBytes, "", message.Audio.ID); stored != nil {
+		inboundMediaID = stored.ID
 	}
 
 	var savedMessageID string
@@ -3207,4 +3121,27 @@ func (uc *handleWhatsAppMessageUseCase) assembler() *agentturn.Assembler {
 
 func (uc *handleWhatsAppMessageUseCase) SetTurnAssembler(a *agentturn.Assembler) {
 	uc.turnAssembler = a
+}
+
+func (uc *handleWhatsAppMessageUseCase) storeInboundMedia(entryID string, entryType shared.EntryType, kind conversation.MediaType, mimeType string, data []byte, filename, whatsappMediaID string) *conversation.ConversationMedia {
+	if uc.mediaStore == nil || entryID == "" {
+		return nil
+	}
+	id := uuid.NewString()
+	stored, err := uc.mediaStore.Store(conversation.StoreMediaInput{
+		ID:               id,
+		Key:              fmt.Sprintf("conversations/%s/%s/%s%s", entryType, entryID, id, getExtensionFromMimeType(mimeType)),
+		EntryID:          entryID,
+		EntryType:        entryType,
+		Type:             kind,
+		MimeType:         mimeType,
+		Data:             data,
+		OriginalFilename: filename,
+		WhatsAppMediaID:  whatsappMediaID,
+	})
+	if err != nil {
+		log.Printf("[whatsapp-media] %s not stored for %s:%s: %v", kind, entryType, entryID, err)
+		return nil
+	}
+	return stored
 }

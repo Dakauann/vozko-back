@@ -79,6 +79,7 @@ var (
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
 	ResourceSIPTrunks                   = registerResource("sip_trunks")
 	ResourceCallQueues                  = registerResource("call_queues")
+	ResourceCallHistory                 = registerResource("call_history")
 )
 
 func (r Resource) IsValid() bool {
@@ -233,6 +234,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	ResourceCallRecordings: {
 		{ActionName: ActionRead, Description: "Ouvir e baixar gravações de chamadas", Risks: []RiskKind{RiskSensitiveData}},
 	},
+	ResourceCallHistory: {
+		{ActionName: ActionRead, Description: "Ver o histórico das chamadas de que participou: resultado, duração, transferências e custo"},
+		{ActionName: ActionViewOthers, Description: "Ver as chamadas de todos os membros do workspace", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
+			{Resource: ResourceCallHistory, Action: ActionRead},
+		}},
+	},
 	ResourceMembers: {
 		{ActionName: ActionCreate, Description: "Convidar novos membros ao workspace", Risks: []RiskKind{RiskManagesAccess}},
 		{ActionName: ActionRead, Description: "Visualizar membros e suas funções"},
@@ -305,11 +312,11 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		}},
 	},
 	ResourceSIPTrunks: {
-		{ActionName: ActionCreate, Description: "Cadastrar troncos SIP com as credenciais do provedor de telefonia", Risks: []RiskKind{RiskConnectsAccounts}},
-		{ActionName: ActionRead, Description: "Visualizar troncos SIP, o estado do registro e as chamadas em andamento"},
-		{ActionName: ActionUpdate, Description: "Editar troncos SIP e suas credenciais", Risks: []RiskKind{RiskConnectsAccounts}},
-		{ActionName: ActionDelete, Description: "Remover troncos SIP, encerrando as chamadas em andamento", Risks: []RiskKind{RiskConnectsAccounts}},
-		{ActionName: ActionCall, Description: "Fazer e atender ligações pelos troncos SIP no discador", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
+		{ActionName: ActionCreate, Description: "Conectar linhas telefônicas (SIP) com as credenciais da operadora", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Visualizar as linhas telefônicas, se estão conectadas e as ligações em andamento"},
+		{ActionName: ActionUpdate, Description: "Editar as linhas telefônicas e suas credenciais", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionDelete, Description: "Remover linhas telefônicas, encerrando as ligações em andamento", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionCall, Description: "Fazer e atender ligações pelas linhas telefônicas no discador", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
 			{Resource: ResourceSIPTrunks, Action: ActionRead},
 			{Resource: ResourceCallSession, Action: ActionUse},
 		}},

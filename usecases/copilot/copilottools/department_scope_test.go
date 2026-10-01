@@ -41,7 +41,7 @@ func TestStrandedMemberSeesNoDepartments(t *testing.T) {
 func TestStrandedMemberCannotReadAnAgent(t *testing.T) {
 	a := boundAgent()
 	a.DepartmentID = "d1"
-	res := NewGetAgentTool(fakeGetAgent{a: a}).Execute(context.Background(), strandedContext(), map[string]interface{}{"id": "ag-1"})
+	res := NewGetAgentTool(fakeGetAgent{a: a}, nil).Execute(context.Background(), strandedContext(), map[string]interface{}{"id": "ag-1"})
 	if res.Status != copilot.StatusDenied {
 		t.Fatalf("status = %v, want denied", res.Status)
 	}
@@ -65,7 +65,7 @@ func TestDepartmentMemberListsOnlyOwnAgents(t *testing.T) {
 }
 
 func TestMissingScopeDeniesInsteadOfWidening(t *testing.T) {
-	res := NewGetAgentTool(fakeGetAgent{a: boundAgent()}).Execute(context.Background(), copilot.Context{WorkspaceID: "ws-1"}, map[string]interface{}{"id": "ag-1"})
+	res := NewGetAgentTool(fakeGetAgent{a: boundAgent()}, nil).Execute(context.Background(), copilot.Context{WorkspaceID: "ws-1"}, map[string]interface{}{"id": "ag-1"})
 	if res.Status != copilot.StatusDenied {
 		t.Fatalf("status = %v, want denied when no department filter reached the tool", res.Status)
 	}

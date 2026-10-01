@@ -46,6 +46,20 @@ func NewCreateTrunkUseCase(repo sip_trunk.Repository, engine sip_trunk.Engine) *
 }
 
 func (uc *CreateTrunkUseCase) Execute(ctx context.Context, input CreateTrunkInput) (*sip_trunk.SIPTrunk, error) {
+	trunk := DraftTrunk(input)
+	if err := trunk.Validate(); err != nil {
+		return nil, err
+	}
+	if err := uc.repo.Create(ctx, trunk); err != nil {
+		return nil, err
+	}
+	if trunk.Enabled {
+		return withEngineOutcome(uc.engine, trunk, uc.engine.RegisterTrunk(trunk)), nil
+	}
+	return trunk, nil
+}
+
+func DraftTrunk(input CreateTrunkInput) *sip_trunk.SIPTrunk {
 	trunk := &sip_trunk.SIPTrunk{
 		WorkspaceID: input.WorkspaceID,
 		Name:        strings.TrimSpace(input.Name),
@@ -65,16 +79,7 @@ func (uc *CreateTrunkUseCase) Execute(ctx context.Context, input CreateTrunkInpu
 	if trunk.Transport == "" {
 		trunk.Transport = sip_trunk.TransportUDP
 	}
-	if err := trunk.Validate(); err != nil {
-		return nil, err
-	}
-	if err := uc.repo.Create(ctx, trunk); err != nil {
-		return nil, err
-	}
-	if trunk.Enabled {
-		return withEngineOutcome(uc.engine, trunk, uc.engine.RegisterTrunk(trunk)), nil
-	}
-	return trunk, nil
+	return trunk
 }
 
 type UpdateTrunkUseCase struct {
@@ -91,7 +96,7 @@ func (uc *UpdateTrunkUseCase) Execute(ctx context.Context, input UpdateTrunkInpu
 	if err != nil {
 		return nil, err
 	}
-	applyUpdate(trunk, input)
+	ApplyUpdate(trunk, input)
 	if err := trunk.Validate(); err != nil {
 		return nil, err
 	}
@@ -101,7 +106,7 @@ func (uc *UpdateTrunkUseCase) Execute(ctx context.Context, input UpdateTrunkInpu
 	return withEngineOutcome(uc.engine, trunk, uc.engine.RefreshTrunk(trunk)), nil
 }
 
-func applyUpdate(trunk *sip_trunk.SIPTrunk, input UpdateTrunkInput) {
+func ApplyUpdate(trunk *sip_trunk.SIPTrunk, input UpdateTrunkInput) {
 	if input.Name != nil {
 		trunk.Name = strings.TrimSpace(*input.Name)
 	}

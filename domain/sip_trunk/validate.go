@@ -6,6 +6,16 @@ import (
 )
 
 func (t *SIPTrunk) Validate() error {
+	if err := t.ValidateWithoutPassword(); err != nil {
+		return err
+	}
+	if t.registers() && t.Password == "" {
+		return ErrCredentialsRequired
+	}
+	return nil
+}
+
+func (t *SIPTrunk) ValidateWithoutPassword() error {
 	if strings.TrimSpace(t.WorkspaceID) == "" {
 		return ErrWorkspaceRequired
 	}
@@ -28,10 +38,14 @@ func (t *SIPTrunk) Validate() error {
 	default:
 		return ErrUnsupportedTrunkType
 	}
-	if !t.Settings.SkipRegistration && (strings.TrimSpace(t.Username) == "" || t.Password == "") {
+	if t.registers() && strings.TrimSpace(t.Username) == "" {
 		return ErrCredentialsRequired
 	}
 	return t.Settings.Validate()
+}
+
+func (t *SIPTrunk) registers() bool {
+	return !t.Settings.SkipRegistration
 }
 
 func validateHost(host string) error {

@@ -17,6 +17,7 @@ import (
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
+	callhistoryhttp "vozko/delivery/http/callhistory"
 	callroutinghttp "vozko/delivery/http/callrouting"
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
@@ -144,7 +145,7 @@ type router struct {
 	invoiceHandler                 *invoicehttp.InvoiceHandler
 	callBillingHandler             *callbillinghttp.CallBillingHandler
 	campaignReportHandler          *campaignreporthttp.Handler
-	callsHandler                   *handlers.CallsHandler
+	callHistoryHandler             *callhistoryhttp.Handler
 	analyticsHandler               *analyticshttp.AnalyticsHandler
 	rolesMiddleware                *middleware.RolesMiddleware
 	rateLimiterMiddleware          *middleware.RateLimiterMiddleware
@@ -254,7 +255,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	invoiceHandler *invoicehttp.InvoiceHandler,
 	callBillingHandler *callbillinghttp.CallBillingHandler,
 	campaignReportHandler *campaignreporthttp.Handler,
-	callsHandler *handlers.CallsHandler,
+	callHistoryHandler *callhistoryhttp.Handler,
 	analyticsHandler *analyticshttp.AnalyticsHandler,
 	verifier auth.TokenVerifier,
 	roleFetcher middleware.RoleFetcher,
@@ -370,7 +371,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		invoiceHandler:                 invoiceHandler,
 		callBillingHandler:             callBillingHandler,
 		campaignReportHandler:          campaignReportHandler,
-		callsHandler:                   callsHandler,
+		callHistoryHandler:             callHistoryHandler,
 		analyticsHandler:               analyticsHandler,
 		systemConfigHandler:            systemConfigHandler,
 		workspaceConfigHandler:         workspaceConfigHandler,
@@ -458,7 +459,7 @@ func (r *router) setupRoutes() {
 	r.setupUserBalanceRoutes(protected)
 	r.setupUserInvoiceRoutes(protected)
 	r.setupCallBillingRoutes(protected)
-	r.setupCallsRoutes(protected)
+	callhistoryhttp.RegisterProtectedRoutes(protected, r.callHistoryHandler, r.ac)
 	r.setupWhatsAppCampaignRoutes(protected)
 	r.setupWhatsAppTemplateRoutes(protected)
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
@@ -861,12 +862,6 @@ func (r *router) setupWorkspaceAddonRoutes(protected *mux.Router) {
 
 func (r *router) setupCallBillingRoutes(protected *mux.Router) {
 	callbillinghttp.RegisterRoutes(protected, r.callBillingHandler, r.ac)
-}
-
-func (r *router) setupCallsRoutes(protected *mux.Router) {
-	cb := workspace_domain.ResourceCallRecordings
-	protected.HandleFunc("/calls", r.ac(cb, workspace_domain.ActionRead, r.callsHandler.List)).Methods(http.MethodGet)
-	protected.HandleFunc("/calls/{callId}", r.ac(cb, workspace_domain.ActionRead, r.callsHandler.Get)).Methods(http.MethodGet)
 }
 
 func (r *router) setupWhatsAppCampaignRoutes(protected *mux.Router) {

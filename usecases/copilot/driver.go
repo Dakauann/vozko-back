@@ -1,12 +1,12 @@
 package copilot_usecase
 
 import (
-	"vozko/domain/readiness"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+	"vozko/domain/readiness"
 
 	"vozko/domain/ai"
 	"vozko/domain/copilot"
@@ -60,7 +60,7 @@ func (d *Driver) Admit(context.Context) error {
 	return nil
 }
 
-func (d *Driver) Model() string             { return d.model }
+func (d *Driver) Model() string { return d.model }
 func (d *Driver) Tools() []tools.Definition {
 	if d.offered == nil {
 		d.offered = d.permittedDefinitions()
@@ -112,6 +112,8 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			m.Resource, m.Action)}
 	}
 	if m.Mutating {
+		secrets := secretsOf(tool, call.Arguments)
+		call.Arguments = copilot.Conceal(tool, call.Arguments, secrets)
 		if err := preflight(ctx, tool, d.cc, call.Arguments); err != nil {
 			emit("tool", toolEvent(call.Name, string(copilot.StatusError), false))
 			return agentloop.StepResult{Result: fmt.Sprintf(
@@ -124,6 +126,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			Summary:  summarizeCall(call),
 			Fields:   describe(ctx, tool, d.cc, call.Arguments),
 			Preview:  preview(ctx, tool, d.cc, call.Arguments),
+			Secrets:  secrets,
 		}
 		emit("tool_proposal", pa)
 		return agentloop.StepResult{
@@ -143,7 +146,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	return agentloop.StepResult{Result: renderResult(res)}
 }
 
-func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction) copilot.Result {
+func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, provided map[string]string) copilot.Result {
 	tool, ok := d.registry.Get(pa.ToolName)
 	if !ok {
 		return copilot.Result{Status: copilot.StatusError, Message: "ferramenta desconhecida: " + pa.ToolName}
@@ -152,7 +155,21 @@ func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction) 
 	if err := d.permit(m); err != nil {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "permissão negada"}
 	}
-	return tool.Execute(ctx, d.cc, pa.Args)
+	if err := preflight(ctx, tool, d.cc, pa.Args); err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: "a mudança não passou mais na verificação e nada foi alterado: " + err.Error()}
+	}
+	args, err := copilot.WithSecrets(pa.Args, secretsOf(tool, pa.Args), provided)
+	if err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: "o usuário aprovou sem preencher o campo protegido (" + err.Error() + "); nada foi alterado. Proponha de novo e peça que ele preencha o campo no cartão de aprovação, nunca no chat."}
+	}
+	return tool.Execute(ctx, d.cc, args)
+}
+
+func secretsOf(tool copilot.Tool, args map[string]interface{}) []copilot.SecretField {
+	if asker, ok := tool.(copilot.SecretAsker); ok {
+		return asker.Secrets(args)
+	}
+	return nil
 }
 
 func (d *Driver) mintID() string {

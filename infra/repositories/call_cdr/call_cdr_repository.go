@@ -150,6 +150,24 @@ func (r *repository) List(filters cdr.ListFilters) (*shared.PaginatedResult[*cdr
 	if filters.StartedTo != nil {
 		query = query.Where("started_at <= ?", *filters.StartedTo)
 	}
+	if filters.ParticipantID != nil {
+		participant := *filters.ParticipantID
+		query = query.Where(
+			"calls.agent_id::text = ? OR EXISTS (SELECT 1 FROM call_transfers t WHERE t.workspace_id::text = calls.workspace_id::text AND t.call_id = calls.call_id AND (t.from_user_id = ? OR t.target_user_id = ? OR t.answered_by = ?))",
+			participant, participant, participant, participant,
+		)
+	}
+	if filters.Answered != nil {
+		if *filters.Answered {
+			query = query.Where("answered_at IS NOT NULL")
+		} else {
+			query = query.Where("answered_at IS NULL")
+		}
+	}
+	if filters.NumberDigits != nil {
+		pattern := "%" + *filters.NumberDigits + "%"
+		query = query.Where("(phone_from LIKE ? OR phone_to LIKE ?)", pattern, pattern)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -170,6 +188,24 @@ func (r *repository) List(filters cdr.ListFilters) (*shared.PaginatedResult[*cdr
 		items[i] = toDomain(&rows[i])
 	}
 	return shared.NewPaginatedResult(items, pagination, total), nil
+}
+
+func (r *repository) ListStale(startedBefore time.Time, limit int) ([]*cdr.Call, error) {
+	var rows []schema.Call
+	err := r.db.
+		Where("status IN ?", []string{string(cdr.StatusInitiated), string(cdr.StatusRinging), string(cdr.StatusInProgress)}).
+		Where("started_at < ?", startedBefore).
+		Order("started_at ASC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	calls := make([]*cdr.Call, len(rows))
+	for i := range rows {
+		calls[i] = toDomain(&rows[i])
+	}
+	return calls, nil
 }
 
 func toSchema(d *cdr.Call) *schema.Call {

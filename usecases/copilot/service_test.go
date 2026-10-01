@@ -223,7 +223,7 @@ func TestService_Approve(t *testing.T) {
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "create_agent", Args: map[string]interface{}{"name": "Bot"}})
 
 	cp := &capture{}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", ownerCtx, cp.emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if wt.calls != 1 || wt.gotCC.WorkspaceID != "ws1" {
@@ -232,7 +232,7 @@ func TestService_Approve(t *testing.T) {
 	if ms.proposal("act-1").ProposalStatus != aichat.ProposalApproved {
 		t.Fatalf("the proposal must be marked approved, got %q", ms.proposal("act-1").ProposalStatus)
 	}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", ownerCtx, cp.emit); err != ErrActionNotFound || wt.calls != 1 {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != ErrActionNotFound || wt.calls != 1 {
 		t.Fatalf("a second approval must not run the tool again, got %v calls=%d", err, wt.calls)
 	}
 	if ms.last() == nil || !strings.Contains(ms.last().Content, "Criei") {
@@ -250,7 +250,7 @@ func TestService_Approve_DefaultModel(t *testing.T) {
 	prov := &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"ok"}}
 	svc := newService(prov, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "create_agent"})
-	if err := svc.Approve(context.Background(), th.thread, "act-1", ownerCtx, (&capture{}).emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if ms.last() == nil || ms.last().Model != defaultCopilotModel {
@@ -260,7 +260,7 @@ func TestService_Approve_DefaultModel(t *testing.T) {
 
 func TestService_Approve_NotFound(t *testing.T) {
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, &fakeMessages{})
-	if err := svc.Approve(context.Background(), testThread(), "nope", ownerCtx, (&capture{}).emit); err != ErrActionNotFound {
+	if err := svc.Approve(context.Background(), testThread(), "nope", nil, ownerCtx, (&capture{}).emit); err != ErrActionNotFound {
 		t.Fatalf("expected ErrActionNotFound, got %v", err)
 	}
 }
@@ -365,7 +365,7 @@ func TestService_Stream_PendingSaveError(t *testing.T) {
 
 func TestService_Approve_GetError(t *testing.T) {
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, &fakeMessages{claimErr: errors.New("db")})
-	if err := svc.Approve(context.Background(), testThread(), "a", ownerCtx, (&capture{}).emit); err == nil {
+	if err := svc.Approve(context.Background(), testThread(), "a", nil, ownerCtx, (&capture{}).emit); err == nil {
 		t.Fatal("expected approve get error")
 	}
 }
@@ -457,7 +457,7 @@ func TestService_NewMessageExpiresAnOpenProposal(t *testing.T) {
 	if ms.proposal("act-1").ProposalStatus != aichat.ProposalExpired {
 		t.Fatalf("an unanswered proposal must expire when the user moves on, got %q", ms.proposal("act-1").ProposalStatus)
 	}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", ownerCtx, (&capture{}).emit); err != ErrActionNotFound || wt.calls != 0 {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, (&capture{}).emit); err != ErrActionNotFound || wt.calls != 0 {
 		t.Fatalf("an expired proposal must not run, got %v calls=%d", err, wt.calls)
 	}
 }
@@ -507,5 +507,33 @@ func TestService_TheModelSeesTheWorkspaceStateEveryTurn(t *testing.T) {
 	}
 	if state.person.WorkspaceID != ownerCtx.WorkspaceID || state.person.UserID != ownerCtx.UserID {
 		t.Fatalf("state read for %+v", state.person)
+	}
+}
+
+func TestService_ApproveHandsTheSecretToTheToolAndNowhereElse(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{}
+	st := &secretTool{fakeTool{name: "create_line", meta: writeMeta}}
+	prov := &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Linha criada."}}
+	svc := newService(prov, th, ms, st)
+	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "create_line", Args: map[string]interface{}{"name": "Principal"}, Secrets: st.Secrets(nil)})
+
+	if err := svc.Approve(context.Background(), th.thread, "act-1", map[string]string{"password": "s3nh4-secreta"}, ownerCtx, (&capture{}).emit); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if st.gotArgs["password"] != "s3nh4-secreta" {
+		t.Fatalf("the tool never got the secret: %v", st.gotArgs)
+	}
+	for _, in := range prov.inputs {
+		for _, m := range in.Messages {
+			if strings.Contains(m.Content, "s3nh4-secreta") {
+				t.Fatal("the secret reached the model")
+			}
+		}
+	}
+	for _, m := range ms.created {
+		if strings.Contains(m.Content, "s3nh4-secreta") {
+			t.Fatal("the secret was persisted in the thread")
+		}
 	}
 }

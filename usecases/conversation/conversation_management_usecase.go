@@ -62,6 +62,7 @@ type HistoryProviderService struct {
 	workflowRepo      workflowLookup
 	contactIdentities map[shared.EntryType]ContactIdentityLookup
 	channelAdapters   conversation.AdapterRegistry
+	mediaRepo         conversation.ConversationMediaRepository
 }
 
 type ContactDisplay struct {
@@ -211,6 +212,60 @@ type EntryWorkspaces interface {
 
 func (s *HistoryProviderService) SetEntryWorkspaces(r EntryWorkspaces) { s.entryWorkspaces = r }
 
+func (s *HistoryProviderService) SetMediaRepo(repo conversation.ConversationMediaRepository) {
+	s.mediaRepo = repo
+}
+
+func (s *HistoryProviderService) present(entryID string, entryType shared.EntryType, messages []*conversation.Message) {
+	s.identifySenders(entryID, entryType, messages)
+	s.attachMedia(entryID, entryType, messages)
+}
+
+func (s *HistoryProviderService) attachMedia(entryID string, entryType shared.EntryType, messages []*conversation.Message) {
+	if s.mediaRepo == nil {
+		return
+	}
+	ids := mediaIDsOf(messages)
+	if len(ids) == 0 {
+		return
+	}
+	rows, err := s.mediaRepo.ListByIDs(ids)
+	if err != nil {
+		log.Printf("[HistoryProvider] media of %s:%s unavailable: %v", entryType, entryID, err)
+		return
+	}
+	owned := make(map[string]*conversation.ConversationMedia, len(rows))
+	for _, row := range rows {
+		if row.BelongsTo(entryID, entryType) {
+			owned[row.ID] = row
+		}
+	}
+	for _, message := range messages {
+		if message.MediaID == nil {
+			continue
+		}
+		if row, ok := owned[*message.MediaID]; ok {
+			message.Media = row.Attachment()
+		}
+	}
+}
+
+func mediaIDsOf(messages []*conversation.Message) []string {
+	seen := make(map[string]struct{}, len(messages))
+	ids := make([]string, 0, len(messages))
+	for _, message := range messages {
+		if message == nil || message.MediaID == nil || *message.MediaID == "" {
+			continue
+		}
+		if _, dup := seen[*message.MediaID]; dup {
+			continue
+		}
+		seen[*message.MediaID] = struct{}{}
+		ids = append(ids, *message.MediaID)
+	}
+	return ids
+}
+
 func (s *HistoryProviderService) SetAssignmentRepo(repo ia.Repository) {
 	s.assignmentRepo = repo
 }
@@ -338,7 +393,7 @@ func (s *HistoryProviderService) GetHistory(entryID string, entryType shared.Ent
 		total = int64(len(messages))
 	}
 
-	s.identifySenders(entryID, entryType, messages)
+	s.present(entryID, entryType, messages)
 
 	return messages, hasMore, total, nil
 }
@@ -420,7 +475,7 @@ func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shar
 
 	reverseMessages(messages)
 
-	s.identifySenders(entryID, entryType, messages)
+	s.present(entryID, entryType, messages)
 
 	return messages, hasMore, nil
 }
@@ -473,7 +528,7 @@ func (s *HistoryProviderService) GetHistoryAround(entryID string, entryType shar
 
 	total, _ := s.messageRepo.CountByEntry(entryID, entryType)
 
-	s.identifySenders(entryID, entryType, combined)
+	s.present(entryID, entryType, combined)
 
 	return combined, hasBefore, hasAfter, total, nil
 }
@@ -1081,12 +1136,15 @@ func (s *HistoryProviderService) getSenderInfo(from string, messageType conversa
 	}
 }
 
-func (s *HistoryProviderService) ResolveSenderIdentity(entryID, entryType string, message *conversation.Message) {
-	if s == nil || message == nil || message.SenderName != "" {
+func (s *HistoryProviderService) PresentMessage(entryID, entryType string, message *conversation.Message) {
+	if s == nil || message == nil {
 		return
 	}
-
-	s.identifySenders(entryID, shared.EntryType(entryType), []*conversation.Message{message})
+	batch := []*conversation.Message{message}
+	if message.SenderName == "" {
+		s.identifySenders(entryID, shared.EntryType(entryType), batch)
+	}
+	s.attachMedia(entryID, shared.EntryType(entryType), batch)
 }
 
 func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLastMessage) string {
@@ -2291,18 +2349,11 @@ type ChannelMessageSender interface {
 }
 
 type uploadConversationMediaUseCase struct {
-	mediaRepo   conversation.ConversationMediaRepository
-	fileStorage media.FileStorage
+	store conversation.MediaStore
 }
 
-func NewUploadConversationMediaUseCase(
-	mediaRepo conversation.ConversationMediaRepository,
-	fileStorage media.FileStorage,
-) conversation.UploadConversationMediaUseCase {
-	return &uploadConversationMediaUseCase{
-		mediaRepo:   mediaRepo,
-		fileStorage: fileStorage,
-	}
+func NewUploadConversationMediaUseCase(store conversation.MediaStore) conversation.UploadConversationMediaUseCase {
+	return &uploadConversationMediaUseCase{store: store}
 }
 
 func (uc *uploadConversationMediaUseCase) Execute(input conversation.UploadMediaInput) (*conversation.ConversationMedia, error) {
@@ -2313,44 +2364,28 @@ func (uc *uploadConversationMediaUseCase) Execute(input conversation.UploadMedia
 	if input.EntryID == "" || input.EntryType == "" {
 		return nil, conversation.ErrConversationNotFound
 	}
-
 	if len(input.Data) == 0 {
 		return nil, conversation.ErrMediaRequired
 	}
-
 	if !input.MediaType.Valid() {
 		return nil, conversation.ErrMediaTypeInvalid
 	}
-
-	mediaID := uuid.NewString()
-	key := fmt.Sprintf("conversations/%s/%s/%s%s",
-		input.EntryType, input.EntryID, mediaID,
-		storageExtensionFor(input.MimeType, input.Filename))
-
-	if err := uc.fileStorage.UploadFile(key, input.Data, input.MimeType); err != nil {
-		return nil, err
+	if uc.store == nil {
+		return nil, conversation.ErrMediaURLRequired
 	}
 
-	url := uc.fileStorage.GetFileURL(key)
-
-	mediaRecord := &conversation.ConversationMedia{
-		ID:               mediaID,
+	mediaID := uuid.NewString()
+	return uc.store.Store(conversation.StoreMediaInput{
+		ID: mediaID,
+		Key: fmt.Sprintf("conversations/%s/%s/%s%s",
+			input.EntryType, input.EntryID, mediaID, storageExtensionFor(input.MimeType, input.Filename)),
 		EntryID:          input.EntryID,
 		EntryType:        shared.EntryType(input.EntryType),
 		Type:             input.MediaType,
 		MimeType:         input.MimeType,
-		URL:              url,
+		Data:             input.Data,
 		OriginalFilename: input.Filename,
-		SizeBytes:        int64(len(input.Data)),
-		CreatedAt:        time.Now().UTC(),
-	}
-	mediaRecord.Normalize()
-
-	if err := uc.mediaRepo.Create(mediaRecord); err != nil {
-		return nil, err
-	}
-
-	return mediaRecord, nil
+	})
 }
 
 type getConversationMediaUseCase struct {

@@ -3,7 +3,6 @@ package facebook_repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -126,35 +125,6 @@ func (r *conversationRepository) SetThreadOwner(ctx context.Context, id, appID s
 	result := r.db.WithContext(ctx).Model(&schema.FacebookConversation{}).
 		Where("id = ?", id).
 		Updates(map[string]any{"thread_owner_app_id": appID, "thread_owner_seen_at": at})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return fbdomain.ErrConversationNotFound
-	}
-	return nil
-}
-
-func (r *conversationRepository) MergeMetadata(ctx context.Context, id string, values map[string]any) error {
-	return r.writeMetadata(ctx, id, values, "COALESCE(metadata, '{}'::jsonb) || ?::jsonb")
-}
-
-func (r *conversationRepository) SeedMetadata(ctx context.Context, id string, values map[string]any) error {
-	return r.writeMetadata(ctx, id, values, "?::jsonb || COALESCE(metadata, '{}'::jsonb)")
-}
-
-func (r *conversationRepository) writeMetadata(ctx context.Context, id string, values map[string]any, expr string) error {
-	if len(values) == 0 {
-		return nil
-	}
-	payload, err := json.Marshal(values)
-	if err != nil {
-		return err
-	}
-	result := r.db.WithContext(ctx).Model(&schema.FacebookConversation{}).
-		Where("id = ?", id).
-		Update("metadata", gorm.Expr(expr, string(payload)))
-
 	if result.Error != nil {
 		return result.Error
 	}

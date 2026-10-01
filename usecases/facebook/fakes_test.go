@@ -427,15 +427,6 @@ func (f *fakeConversations) SetThreadOwner(_ context.Context, id, appID string, 
 	f.byID[id].ThreadOwnerAppID, f.byID[id].ThreadOwnerSeenAt = appID, &at
 	return nil
 }
-func (f *fakeConversations) MergeMetadata(_ context.Context, id string, values map[string]any) error {
-	if f.metadata[id] == nil {
-		f.metadata[id] = map[string]any{}
-	}
-	for k, v := range values {
-		f.metadata[id][k] = v
-	}
-	return nil
-}
 func (f *fakeConversations) SetFBConversationID(context.Context, string, string) error { return nil }
 func (f *fakeConversations) SetStatus(context.Context, string, conversation.StatusWrite) error {
 	return nil
@@ -449,14 +440,3 @@ func (f *fakeConversations) CountByStatus(context.Context, string, string) (map[
 }
 func (f *fakeConversations) StatusForEntry(context.Context, string) (string, error) { return "", nil }
 
-func (f *fakeConversations) SeedMetadata(_ context.Context, id string, values map[string]any) error {
-	if f.metadata[id] == nil {
-		f.metadata[id] = map[string]any{}
-	}
-	for k, v := range values {
-		if _, exists := f.metadata[id][k]; !exists {
-			f.metadata[id][k] = v
-		}
-	}
-	return nil
-}

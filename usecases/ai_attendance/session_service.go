@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/actor"
 	aa "vozko/domain/ai_attendance"
 	ce "vozko/domain/conversation_event"
 )
@@ -96,30 +97,15 @@ func (s *SessionService) RecordAIReply(in aa.StartInput, messageID string) {
 	}
 }
 
-func (s *SessionService) EndOpen(workspaceID, entryID, entryType string, outcome aa.Outcome, reason, handoffUserID string) {
-	s.endOpen(workspaceID, entryID, entryType, "", outcome, reason, handoffUserID)
-}
-
-func (s *SessionService) EndOpenWithCallID(workspaceID, entryID, entryType, callID string, outcome aa.Outcome, reason, handoffUserID string) {
-	s.endOpen(workspaceID, entryID, entryType, callID, outcome, reason, handoffUserID)
-}
-
-func (s *SessionService) EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string) {
-	s.endOpen(workspaceID, entryID, entryType, "", aa.Outcome(outcome), reason, handoffUserID)
-}
-
-func (s *SessionService) EndOpenRawWithCall(workspaceID, entryID, entryType, callID, outcome, reason, handoffUserID string) {
-	s.endOpen(workspaceID, entryID, entryType, callID, aa.Outcome(outcome), reason, handoffUserID)
-}
-
-func (s *SessionService) endOpen(workspaceID, entryID, entryType, callID string, outcome aa.Outcome, reason, handoffUserID string) {
+func (s *SessionService) End(request aa.EndRequest) {
 	if s == nil || s.repo == nil {
 		return
 	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	entryID = strings.TrimSpace(entryID)
-	entryType = strings.TrimSpace(entryType)
-	callID = strings.TrimSpace(callID)
+	workspaceID := strings.TrimSpace(request.WorkspaceID)
+	entryID := strings.TrimSpace(request.EntryID)
+	entryType := strings.TrimSpace(request.EntryType)
+	callID := strings.TrimSpace(request.CallID)
+	outcome, reason, handoffUserID := request.Outcome, request.Reason, request.HandoffTo
 
 	var sess *aa.Session
 	var err error
@@ -163,16 +149,17 @@ func (s *SessionService) endOpen(workspaceID, entryID, entryType, callID string,
 		logEntryType = sess.EntryType
 	}
 	if s.events != nil {
-		s.events.Log(ce.New(workspaceID, logEntryID, logEntryType, ce.EventAISessionEnded).
-			WithActorAI(sess.AgentID).
+		s.events.Log(endedBy(ce.New(workspaceID, logEntryID, logEntryType, ce.EventAISessionEnded), request.EndedBy).
 			WithChannel(sess.Channel).
 			WithCorrelation(sess.ID).
 			WithDetails(map[string]string{
-				"session_id": sess.ID,
-				"outcome":    string(outcome),
-				"reason":     reason,
-				"handoff_to": handoffUserID,
-				"call_id":    callID,
+				"session_id":    sess.ID,
+				"agent_id":      sess.AgentID,
+				"from_actor_id": actor.AIPrefix + sess.AgentID,
+				"outcome":       string(sess.Outcome),
+				"reason":        reason,
+				"handoff_to":    handoffUserID,
+				"call_id":       callID,
 			}).
 			Build())
 	}
@@ -189,4 +176,11 @@ func (s *SessionService) TouchInbound(workspaceID, entryID, entryType string) {
 	sess.InboundMessageCount++
 	sess.UpdatedAt = time.Now().UTC()
 	_ = s.repo.Update(sess)
+}
+
+func endedBy(event *ce.Builder, actorID string) *ce.Builder {
+	if strings.TrimSpace(actorID) == "" {
+		return event.WithActorSystem()
+	}
+	return event.WithActor(actorID)
 }

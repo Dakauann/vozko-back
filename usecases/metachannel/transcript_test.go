@@ -10,6 +10,7 @@ import (
 	"vozko/domain/conversation"
 	mm "vozko/domain/metamessaging"
 	"vozko/domain/shared"
+	"vozko/usecases/conversationmedia"
 )
 
 type recordingHistory struct {
@@ -48,6 +49,33 @@ func (m *memoryStore) Delete(id string) error {
 	return nil
 }
 
+type memoryRows struct {
+	rows []*conversation.ConversationMedia
+}
+
+func (m *memoryRows) Create(media *conversation.ConversationMedia) error {
+	m.rows = append(m.rows, media)
+	return nil
+}
+func (m *memoryRows) GetByID(string) (*conversation.ConversationMedia, error) {
+	return nil, conversation.ErrMediaNotFound
+}
+func (m *memoryRows) ListByIDs([]string) ([]*conversation.ConversationMedia, error) { return nil, nil }
+func (m *memoryRows) GetByWhatsAppMediaID(string) (*conversation.ConversationMedia, error) {
+	return nil, conversation.ErrMediaNotFound
+}
+func (m *memoryRows) ListByEntry(string, shared.EntryType) ([]*conversation.ConversationMedia, error) {
+	return m.rows, nil
+}
+func (m *memoryRows) Delete(string) error                          { return nil }
+func (m *memoryRows) DeleteByEntry(string, shared.EntryType) error { return nil }
+
+type blindInspector struct{}
+
+func (blindInspector) Inspect([]byte, conversation.MediaType) conversation.MediaLayout {
+	return conversation.MediaLayout{}
+}
+
 type memoryFiles struct{ uploads []string }
 
 func (f *memoryFiles) UploadFile(key string, _ []byte, _ string) error {
@@ -66,7 +94,7 @@ func newTranscript() (*Transcript, *recordingHistory, *memoryStore, *memoryFiles
 	h, s, f, b := &recordingHistory{}, &memoryStore{byMID: map[string]*conversation.Message{}}, &memoryFiles{}, &recordingBroadcast{}
 	return &Transcript{
 		EntryType: shared.EntryTypeFacebook, Channel: conversation.MessageChannelFacebook, Prefix: "facebook",
-		History: h, Messages: s, FileStorage: f, Broadcaster: b,
+		History: h, Messages: s, Media: conversationmedia.NewStore(f, &memoryRows{}, blindInspector{}), Broadcaster: b,
 		Fetch: func(context.Context, string) ([]byte, string, error) { return []byte("x"), "image/jpeg", nil },
 	}, h, s, f, b
 }
@@ -217,5 +245,24 @@ func TestStoryEventsWithoutTextKeepNoPlaceholder(t *testing.T) {
 		if len(files.uploads) != 0 {
 			t.Errorf("%s: story media must never be stored, uploads = %v", name, files.uploads)
 		}
+	}
+}
+
+func TestTheAdTravelsOnTheFirstRowOfAMessageOnly(t *testing.T) {
+	tr, h, _, _, _ := newTranscript()
+	tr.EntryType = shared.EntryTypeInstagram
+	msg := &mm.Message{MID: "m3", Text: "quero saber", Referral: &mm.Referral{Source: "ADS", AdID: "9", AdsContextData: &mm.AdsContextData{AdTitle: "Coleção"}},
+		Attachments: []*mm.Attachment{{Type: "image", Payload: &mm.AttachmentPayload{URL: "https://a"}}}}
+	if _, err := tr.RecordMessage(context.Background(), "e1", conversation.SentByContact("igsid"), msg, time.Now(), Party{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.records) != 2 {
+		t.Fatalf("records = %d", len(h.records))
+	}
+	if ad := h.records[0].AdReferral; ad == nil || ad.AdID != "9" || ad.Platform != conversation.AdPlatformInstagram {
+		t.Fatalf("first row ad = %+v", ad)
+	}
+	if h.records[1].AdReferral != nil {
+		t.Fatal("the attachment row must not repeat the ad")
 	}
 }

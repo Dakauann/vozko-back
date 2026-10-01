@@ -18,7 +18,53 @@ type ConversationMedia struct {
 	SizeBytes        int64            `json:"sizeBytes,omitempty"`
 	DurationSeconds  *int             `json:"durationSeconds,omitempty"`
 	WhatsAppMediaID  string           `json:"whatsappMediaId,omitempty"`
+	Layout           MediaLayout      `json:"layout"`
 	CreatedAt        time.Time        `json:"createdAt"`
+}
+
+type MediaLayout struct {
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+	Thumbhash string `json:"thumbhash,omitempty"`
+}
+
+func (l MediaLayout) Known() bool {
+	return l.Width > 0 && l.Height > 0
+}
+
+type MediaInspector interface {
+	Inspect(data []byte, mediaType MediaType) MediaLayout
+}
+
+type StoreMediaInput struct {
+	ID               string
+	Key              string
+	EntryID          string
+	EntryType        shared.EntryType
+	Type             MediaType
+	MimeType         string
+	Data             []byte
+	OriginalFilename string
+	WhatsAppMediaID  string
+}
+
+type MediaStore interface {
+	Store(input StoreMediaInput) (*ConversationMedia, error)
+}
+
+type AttachedMedia struct {
+	URL      string      `json:"url"`
+	MimeType string      `json:"mimeType,omitempty"`
+	Filename string      `json:"filename,omitempty"`
+	Layout   MediaLayout `json:"layout"`
+}
+
+func (m *ConversationMedia) Attachment() *AttachedMedia {
+	return &AttachedMedia{URL: m.URL, MimeType: m.MimeType, Filename: m.OriginalFilename, Layout: m.Layout}
+}
+
+func (m *ConversationMedia) BelongsTo(entryID string, entryType shared.EntryType) bool {
+	return m != nil && m.EntryID == entryID && m.EntryType == entryType
 }
 
 func (m *ConversationMedia) Normalize() {
@@ -55,6 +101,7 @@ func (m *ConversationMedia) Validate() error {
 type ConversationMediaRepository interface {
 	Create(media *ConversationMedia) error
 	GetByID(id string) (*ConversationMedia, error)
+	ListByIDs(ids []string) ([]*ConversationMedia, error)
 	GetByWhatsAppMediaID(whatsappMediaID string) (*ConversationMedia, error)
 	ListByEntry(entryID string, entryType shared.EntryType) ([]*ConversationMedia, error)
 	Delete(id string) error

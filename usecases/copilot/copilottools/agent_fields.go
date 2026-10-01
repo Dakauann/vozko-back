@@ -32,10 +32,10 @@ var agentFieldDescriptions = map[string]string{
 	"businessPhoneId":   "id do número de WhatsApp Business vinculado ao agente",
 	"isActive":          "se o agente está ativo",
 
-	"internalTools":          "ferramentas internas do agente (lista COMPLETA; use list_agent_tools para nomes válidos e o config exigido por cada uma)",
+	"internalTools":          "ferramentas internas do agente (lista COMPLETA; use list_agent_tools para nomes válidos e o config exigido por cada uma). Cabeçalhos (headers) e outros valores protegidos: envie só os NOMES com valor vazio (ex.: {\"Authorization\": \"\"}); o usuário digita os valores no cartão de aprovação e você nunca os vê.",
 	"knowledgeBaseIds":       "ids das bases de conhecimento a vincular (devem ser deste workspace)",
 	"mcpCollectionIds":       "ids das coleções MCP a vincular (devem ser deste workspace)",
-	"addTools":               "ferramentas internas a ADICIONAR, preservando as atuais. Use list_agent_tools para o nome exato e o config exigido (ex.: http_request exige url e method)",
+	"addTools":               "ferramentas internas a ADICIONAR ou substituir, preservando as demais. Use list_agent_tools para o nome exato e o config exigido (ex.: http_request exige url e method). Ao substituir, a configuração inteira é trocada: repita os nomes dos cabeçalhos que devem continuar. Cabeçalhos (headers) e outros valores protegidos: envie só os NOMES com valor vazio (ex.: {\"Authorization\": \"\"}); o usuário digita os valores no cartão de aprovação e você nunca os vê.",
 	"removeTools":            "nomes das ferramentas internas a REMOVER do agente",
 	"addKnowledgeBaseIds":    "ids de bases de conhecimento a ADICIONAR, preservando as atuais",
 	"removeKnowledgeBaseIds": "ids de bases de conhecimento a REMOVER",

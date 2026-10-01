@@ -184,9 +184,13 @@ func SeedPricingItemsFromCatalog(planID string, catalog []CatalogEntry) []PlanPr
 
 func MergePricingItemsWithCatalog(planID string, stored []PlanPricingItem, catalog []CatalogEntry) []PlanPricingItem {
 
+	known := make(map[string]struct{}, len(catalog))
+	for _, c := range catalog {
+		known[catalogItemKey(c.Category, c.Service, c.Metric)] = struct{}{}
+	}
 	filtered := make([]PlanPricingItem, 0, len(stored))
 	for _, item := range stored {
-		if item.Category == "exchange_rate" {
+		if _, inCatalog := known[catalogItemKey(item.Category, item.Service, item.Metric)]; !inCatalog || item.Category == "exchange_rate" {
 			continue
 		}
 		filtered = append(filtered, item)

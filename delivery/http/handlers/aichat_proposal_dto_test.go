@@ -28,3 +28,12 @@ func TestMessageDTOWithoutProposal(t *testing.T) {
 		t.Fatalf("proposal = %+v", dto.Proposal)
 	}
 }
+
+func TestMessageDTOAsksForTheSecretFieldsTheToolNeeds(t *testing.T) {
+	raw, _ := json.Marshal(copilot_domain.PendingAction{ID: "act-1", ToolName: "create_phone_line",
+		Secrets: []copilot_domain.SecretField{{Key: "password", Label: "Senha"}}})
+	dto := toMessageDTO(&aichat.Message{ID: "m1", Role: aichat.RoleAssistant, ProposalID: "act-1", Proposal: raw, ProposalStatus: aichat.ProposalPending})
+	if dto.Proposal == nil || len(dto.Proposal.Secrets) != 1 || dto.Proposal.Secrets[0].Key != "password" {
+		t.Fatalf("proposal = %+v", dto.Proposal)
+	}
+}

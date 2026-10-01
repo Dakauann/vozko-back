@@ -151,7 +151,7 @@ func resolveConnectionDepartmentID(r *http.Request) string {
 // @Description	| type | payload |
 // @Description	|---|---|
 // @Description	| `conversation:connected` | `{"user_id": string, "connection_id": string}` |
-// @Description	| `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent"}` |
+// @Description	| `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent", "ad_origin"?: AdOrigin}` |
 // @Description	| `conversation:unsubscribed` | `{"entry_id": string, "entry_type": string}` |
 // @Description	| `conversation:history` | `{"entry_id", "entry_type", "messages": Message[], "has_more": boolean, "total": number, "page_size": number}` |
 // @Description	| `conversation:inbox` | `{"entries": InboxEntry[], "page", "page_size", "total_items", "total_pages", "stage_counts"?: object, "conversation_status_counts"?: object, "available_labels"?: Label[]}` |
@@ -176,6 +176,7 @@ func resolveConnectionDepartmentID(r *http.Request) string {
 // @Description	| `conversation:typing` | `{"entry_id", "entry_type", "user_id"?, "is_typing": boolean}` | Um colega está digitando. |
 // @Description	| `conversation:message_status` | `{"entry_id", "entry_type", "message_id", "status": "sent" \| "delivered" \| "read" \| "failed"}` | O canal confirmou a entrega. |
 // @Description	| `conversation:analysis_update` | `{"entry_id", "entry_type", "analysis": Analysis \| null, "pending": boolean}` | A análise da conversa mudou. |
+// @Description	| `conversation:ad_origin` | `{"entry_id", "entry_type", "ad_origin": AdOrigin}` | O contato chegou por um anúncio (WhatsApp, Instagram ou Facebook). Só a primeira vez: o anúncio de origem não muda. |
 // @Description	| `conversation:conversation_status_update` | `{"entry_id", "entry_type", "status", "close_source"?, "close_reason"?, "close_outcome"?, "closed_at"?}` | O status da conversa mudou. |
 // @Description
 // @Description	Uma mesma mensagem chega uma vez só por conexão: como `conversation:message` ou como `conversation:message_sent`.
@@ -206,6 +207,8 @@ func resolveConnectionDepartmentID(r *http.Request) string {
 // @Description	**MatchedMessage**: `message_id`, `text`, `from`, `message_type`, `channel`, `created_at`, `position`, `page`.
 // @Description
 // @Description	**AIHandler**: `kind`, `agent_id`?, `agent_name`?, `agent_avatar`?, `agent_active`, `workflow_id`?, `workflow_name`?, `workflow_run_id`?, `run_status`?, `current_node_id`?, `current_node_type`?.
+// @Description
+// @Description	**AdOrigin** (camelCase): o primeiro anúncio que trouxe o contato. `adId`?, `platform`?: `facebook | instagram`, `title`?, `sourceUrl`?, `image`?: `{"url", "mimeType"?, "layout": {"width"?, "height"?, "thumbhash"?}}` (cópia guardada pela Vozko), `arrivedAt`.
 // @Description
 // @Description	**LiveRead** (camelCase): `interest`?, `disposition`?, `sentiment`?, `qualification`?, `nextAction`?, `language`?, `attendanceQuality`, `certainty`?: object, `decidedAt`.
 // @Description

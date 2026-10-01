@@ -72,6 +72,7 @@ type AISessionPayload struct {
 	Outcome             string      `json:"outcome,omitempty"`
 	Reason              string      `json:"reason,omitempty"`
 	HandoffTargetUserID string      `json:"handoff_target_user_id,omitempty"`
+	EndedBy             string      `json:"ended_by,omitempty"`
 }
 
 type QueueEventPayload struct {

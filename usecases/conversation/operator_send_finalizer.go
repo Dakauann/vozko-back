@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/shared"
@@ -86,7 +87,15 @@ func (f *operatorSendFinalizer) FinalizeOperatorSend(_ context.Context, in conve
 		Build())
 
 	if workspaceID != "" {
-		f.aiSessions.EndOpenRaw(workspaceID, entryID, entryType, "handed_off", "human_reply", in.ActorUserID)
+		f.aiSessions.End(aa.EndRequest{
+			WorkspaceID: workspaceID,
+			EntryID:     entryID,
+			EntryType:   entryType,
+			Outcome:     aa.OutcomeHandedOff,
+			Reason:      aa.EndReasonHumanReply,
+			HandoffTo:   in.ActorUserID,
+			EndedBy:     in.ActorUserID,
+		})
 	}
 
 	f.ensureInitialStage(workspaceID, entryID, entryType)

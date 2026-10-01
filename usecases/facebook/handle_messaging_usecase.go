@@ -129,7 +129,6 @@ func (uc *HandleMessagingUseCase) inbound(ctx context.Context, page *fbdomain.Pa
 	}
 	uc.observeOwner(ctx, conv, ev)
 	uc.ensureAssignment(conv, page)
-	uc.keepReferral(ctx, conv, ev.Message.Referral)
 
 	text, err := uc.d.Transcript.RecordMessage(ctx, conv.ID, conversation.SentByContact(contact.PSID), ev.Message, ev.Timestamp, uc.party(page, contact))
 	if err != nil {
@@ -216,7 +215,7 @@ func (uc *HandleMessagingUseCase) postback(ctx context.Context, page *fbdomain.P
 	}
 	uc.observeOwner(ctx, conv, ev)
 	uc.ensureAssignment(conv, page)
-	uc.keepReferral(ctx, conv, ev.Postback.Referral)
+	uc.d.Transcript.RecordReferral(ctx, conv.ID, ev.Postback.Referral)
 
 	metadata := metachannel.MergeMetadata(nil, map[string]any{
 		MetadataPrefix + "_postback_payload": ev.Postback.Payload,
@@ -247,7 +246,7 @@ func (uc *HandleMessagingUseCase) referral(ctx context.Context, page *fbdomain.P
 	if err := uc.d.Conversations.RecordInbound(ctx, conv.ID, ev.Timestamp); err != nil {
 		return err
 	}
-	uc.keepReferral(ctx, conv, ev.Referral)
+	uc.d.Transcript.RecordReferral(ctx, conv.ID, ev.Referral)
 	return nil
 }
 
@@ -336,18 +335,6 @@ func (uc *HandleMessagingUseCase) setOwner(ctx context.Context, conv *fbdomain.C
 	}
 	conv.ThreadOwnerAppID = owner
 	uc.d.Transcript.BroadcastEntryUpdate(conv.ID)
-}
-
-func (uc *HandleMessagingUseCase) keepReferral(ctx context.Context, conv *fbdomain.Conversation, r *mm.Referral) {
-	if r == nil {
-		return
-	}
-	if err := uc.d.Conversations.SeedMetadata(ctx, conv.ID, metachannel.ReferralMetadata(MetadataPrefix+"_first", r)); err != nil {
-		log.Printf("[facebook] first referral not kept on conversation %s: %v", conv.ID, err)
-	}
-	if err := uc.d.Conversations.MergeMetadata(ctx, conv.ID, metachannel.ReferralMetadata(MetadataPrefix, r)); err != nil {
-		log.Printf("[facebook] referral not kept on conversation %s: %v", conv.ID, err)
-	}
 }
 
 func (uc *HandleMessagingUseCase) ensureAssignment(conv *fbdomain.Conversation, page *fbdomain.Page) {

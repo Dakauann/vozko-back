@@ -7,6 +7,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	callhistoryhttp "vozko/delivery/http/callhistory"
+	lead_repository "vozko/infra/repositories/lead"
+	callhistory_usecase "vozko/usecases/callhistory"
 
 	balance_usecase "vozko/usecases/balance"
 	ia_usecase "vozko/usecases/inbox_assignment"
@@ -531,11 +534,7 @@ func (c *Container) initHandlers() {
 			c.useCases.listBillingRecords,
 		),
 		campaignReport: campaignreporthttp.NewHandler(c.useCases.getWCDispatchReport),
-		calls: handlers.NewCallsHandler(
-			c.useCases.listCalls,
-			c.useCases.getCall,
-			c.useCases.billingQuery,
-		),
+		callHistory:    c.callHistoryHandler(),
 		analytics: analyticshttp.NewAnalyticsHandler(
 			c.useCases.getProfitReport,
 			c.useCases.getCallAnalytics,
@@ -823,4 +822,20 @@ func withLeadInboxSeeding(c *Container, h *leadhttp.LeadHandler) *leadhttp.LeadH
 	}
 	h.SetInboxSeeder(c.unofficialWhatsApp.SeedInboxPublisher)
 	return h
+}
+
+func (c *Container) callHistoryHandler() *callhistoryhttp.Handler {
+	return callhistoryhttp.NewHandler(c.callHistory(), c.useCases.checkWsAccess)
+}
+
+func (c *Container) callHistory() *callhistory_usecase.History {
+	return callhistory_usecase.NewHistory(callhistory_usecase.Deps{
+		Calls:      c.repositories.callCDR,
+		Transfers:  c.callRouting.TransferLog,
+		Charges:    c.useCases.billingQuery,
+		Recordings: c.repositories.callRecording,
+		Contacts:   lead_repository.NewNumberDirectory(c.db),
+		Names:      c.services.callSessionUsernameResolver,
+		Queues:     c.callRouting.Queues,
+	})
 }

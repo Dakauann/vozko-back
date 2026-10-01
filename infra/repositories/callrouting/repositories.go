@@ -169,6 +169,36 @@ func (l *TransferLog) Finish(ctx context.Context, workspaceID, id string, outcom
 		Updates(map[string]any{"outcome": string(outcome), "answered_by": answeredBy, "finished_at": at}).Error
 }
 
+var _ callrouting.TransferHistory = (*TransferLog)(nil)
+
+func (l *TransferLog) ForCalls(ctx context.Context, workspaceID string, callIDs []string) ([]callrouting.TransferRecord, error) {
+	if len(callIDs) == 0 {
+		return nil, nil
+	}
+	var rows []schema.CallTransfer
+	err := l.db.WithContext(ctx).
+		Where("workspace_id = ? AND call_id IN ?", workspaceID, callIDs).
+		Order("created_at ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	records := make([]callrouting.TransferRecord, 0, len(rows))
+	for _, row := range rows {
+		record := callrouting.TransferRecord{
+			ID: row.ID, WorkspaceID: row.WorkspaceID, CallID: row.CallID, FromUserID: row.FromUserID,
+			Target:  callrouting.TransferTarget{Kind: callrouting.TargetKind(row.TargetKind), QueueID: row.TargetQueueID, UserID: row.TargetUserID},
+			Notes:   row.Notes,
+			Outcome: callrouting.TransferOutcome(row.Outcome), AnsweredBy: row.AnsweredBy, CreatedAt: row.CreatedAt,
+		}
+		if row.FinishedAt != nil {
+			record.FinishedAt = *row.FinishedAt
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
 var _ callrouting.QueueHistory = (*TransferLog)(nil)
 
 func (l *TransferLog) QueueOutcomes(ctx context.Context, workspaceID string, from, to time.Time) ([]callrouting.QueueOutcome, error) {

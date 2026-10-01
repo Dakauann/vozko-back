@@ -1,9 +1,14 @@
 package tools_usecase
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"net/http"
+	"testing"
+)
 
 func TestHTTPRequestTool_DefinitionConfigSchemaMetadata(t *testing.T) {
-	tool := NewHTTPRequestToolUseCase()
+	tool := NewHTTPRequestToolUseCase(http.DefaultClient)
 	def := tool.Definition()
 
 	if !def.RequiresConfig {
@@ -37,3 +42,41 @@ func TestHTTPRequestTool_DefinitionConfigSchemaMetadata(t *testing.T) {
 		t.Fatalf("expected schema defaults to be valid config: %v", err)
 	}
 }
+
+type recordingTransport struct{ requested string }
+
+func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.requested = req.URL.String()
+	return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody, Header: http.Header{}, Request: req}, nil
+}
+
+func TestHTTPRequestTool_ValuesFromTheConversationCannotReshapeTheURL(t *testing.T) {
+	transport := &recordingTransport{}
+	tool := NewHTTPRequestToolUseCase(&http.Client{Transport: transport}).(*httpRequestTool)
+	_, err := tool.ExecuteWithConfig(context.Background(),
+		map[string]interface{}{"url": "https://api.example.com/leads/{lead_id}", "method": "GET"},
+		map[string]interface{}{
+			"path_values":  map[string]interface{}{"lead_id": "../admin?x=1"},
+			"query_values": map[string]interface{}{"q": "a&role=admin"},
+		})
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if transport.requested != "https://api.example.com/leads/..%2Fadmin%3Fx=1?q=a%26role%3Dadmin" {
+		t.Fatalf("requested %q", transport.requested)
+	}
+}
+
+func TestHTTPRequestTool_TheGuardedClientStopsInternalAddresses(t *testing.T) {
+	refused := errors.New("refused by the guard")
+	tool := NewHTTPRequestToolUseCase(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, refused })}).(*httpRequestTool)
+	res, err := tool.ExecuteWithConfig(context.Background(),
+		map[string]interface{}{"url": "http://169.254.169.254/latest/meta-data", "method": "GET"}, nil)
+	if !errors.Is(err, refused) || !res.IsError {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }

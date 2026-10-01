@@ -117,6 +117,12 @@ func (t *createLabelTool) Definition() tools.Definition {
 	return definition("create_label", "Cria uma etiqueta nova no workspace. Só depois da aprovação do usuário.", createLabelArgs{})
 }
 
+func (t *createLabelTool) Describe(_ context.Context, _ copilot.Context, args map[string]interface{}) []copilot.Field {
+	var a createLabelArgs
+	bindArgs(args, &a)
+	return []copilot.Field{{Key: "label", Value: strings.TrimSpace(a.Name)}}
+}
+
 func (t *createLabelTool) Execute(_ context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
 	var a createLabelArgs
 	if err := decodeArgs(args, &a); err != nil {

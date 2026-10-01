@@ -38,6 +38,21 @@ func (r *mediaRepository) GetByID(id string) (*conversation.ConversationMedia, e
 	return mapMediaSchemaToDomain(&dbMedia), nil
 }
 
+func (r *mediaRepository) ListByIDs(ids []string) ([]*conversation.ConversationMedia, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []schema.ConversationMedia
+	if err := r.db.Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]*conversation.ConversationMedia, 0, len(rows))
+	for i := range rows {
+		out = append(out, mapMediaSchemaToDomain(&rows[i]))
+	}
+	return out, nil
+}
+
 func (r *mediaRepository) GetByWhatsAppMediaID(whatsappMediaID string) (*conversation.ConversationMedia, error) {
 	var dbMedia schema.ConversationMedia
 	if err := r.db.Where("whatsapp_media_id = ?", whatsappMediaID).First(&dbMedia).Error; err != nil {
@@ -95,6 +110,9 @@ func mapMediaDomainToSchema(media *conversation.ConversationMedia) *schema.Conve
 		SizeBytes:        media.SizeBytes,
 		DurationSeconds:  media.DurationSeconds,
 		WhatsAppMediaID:  media.WhatsAppMediaID,
+		Width:            media.Layout.Width,
+		Height:           media.Layout.Height,
+		Thumbhash:        media.Layout.Thumbhash,
 		CreatedAt:        media.CreatedAt,
 	}
 }
@@ -114,6 +132,7 @@ func mapMediaSchemaToDomain(media *schema.ConversationMedia) *conversation.Conve
 		SizeBytes:        media.SizeBytes,
 		DurationSeconds:  media.DurationSeconds,
 		WhatsAppMediaID:  media.WhatsAppMediaID,
+		Layout:           conversation.MediaLayout{Width: media.Width, Height: media.Height, Thumbhash: media.Thumbhash},
 		CreatedAt:        media.CreatedAt,
 	}
 }

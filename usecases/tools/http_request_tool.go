@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -15,16 +16,17 @@ import (
 
 const httpRequestToolName = "http_request"
 
+const (
+	defaultRequestTimeout = 30 * time.Second
+	maxResponseBytes      = 1 << 20
+)
+
 type httpRequestTool struct {
 	httpClient *http.Client
 }
 
-func NewHTTPRequestToolUseCase() tools.Handler {
-	return &httpRequestTool{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-	}
+func NewHTTPRequestToolUseCase(client *http.Client) tools.Handler {
+	return &httpRequestTool{httpClient: client}
 }
 
 func (t *httpRequestTool) Definition() tools.Definition {
@@ -97,6 +99,7 @@ Use esta ferramenta para integrar com APIs externas, webhooks ou serviços.`,
 				DisplayDescription: "Headers enviados automaticamente em cada requisição.",
 				Default:            map[string]interface{}{},
 				Required:           false,
+				Sensitive:          true,
 			},
 			"timeout_seconds": {
 				Type:               "number",
@@ -160,7 +163,7 @@ func (t *httpRequestTool) ExecuteWithConfig(ctx context.Context, config map[stri
 	if pathValues, ok := params["path_values"].(map[string]interface{}); ok {
 		for key, val := range pathValues {
 			placeholder := "{" + key + "}"
-			url = strings.ReplaceAll(url, placeholder, fmt.Sprintf("%v", val))
+			url = strings.ReplaceAll(url, placeholder, neturl.PathEscape(fmt.Sprintf("%v", val)))
 		}
 	}
 
@@ -192,6 +195,13 @@ func (t *httpRequestTool) ExecuteWithConfig(ctx context.Context, config map[stri
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
+	timeout := defaultRequestTimeout
+	if timeoutSec, ok := config["timeout_seconds"].(float64); ok && timeoutSec > 0 {
+		timeout = time.Duration(timeoutSec) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return tools.ExecutionResult{
@@ -212,14 +222,7 @@ func (t *httpRequestTool) ExecuteWithConfig(ctx context.Context, config map[stri
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := t.httpClient
-	if timeoutSec, ok := config["timeout_seconds"].(float64); ok && timeoutSec > 0 {
-		client = &http.Client{
-			Timeout: time.Duration(timeoutSec) * time.Second,
-		}
-	}
-
-	resp, err := client.Do(req)
+	resp, err := t.httpClient.Do(req)
 	if err != nil {
 		return tools.ExecutionResult{
 			Result:            nil,
@@ -229,7 +232,7 @@ func (t *httpRequestTool) ExecuteWithConfig(ctx context.Context, config map[stri
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return tools.ExecutionResult{
 			Result:  nil,
@@ -262,11 +265,11 @@ func (t *httpRequestTool) ExecuteWithConfig(ctx context.Context, config map[stri
 }
 
 func buildQueryString(params map[string]interface{}) string {
-	var parts []string
+	values := neturl.Values{}
 	for key, val := range params {
-		parts = append(parts, fmt.Sprintf("%s=%v", key, val))
+		values.Set(key, fmt.Sprintf("%v", val))
 	}
-	return strings.Join(parts, "&")
+	return values.Encode()
 }
 
 var _ tools.Handler = (*httpRequestTool)(nil)

@@ -20,7 +20,6 @@ type ConsumeCallBillingUseCase struct {
 	billingRepo billing.Repository
 	balanceRepo balance.Repository
 	pricer      workspace_pricing.Pricer
-	cdrComplete cdr.CompleteCallUseCase
 	logger      *log.Logger
 	semaphore   chan struct{}
 }
@@ -30,7 +29,6 @@ func NewConsumeCallBillingUseCase(
 	billingRepo billing.Repository,
 	balanceRepo balance.Repository,
 	pricer workspace_pricing.Pricer,
-	cdrComplete cdr.CompleteCallUseCase,
 	logger *log.Logger,
 ) *ConsumeCallBillingUseCase {
 	return &ConsumeCallBillingUseCase{
@@ -38,7 +36,6 @@ func NewConsumeCallBillingUseCase(
 		billingRepo: billingRepo,
 		balanceRepo: balanceRepo,
 		pricer:      pricer,
-		cdrComplete: cdrComplete,
 		logger:      logger,
 		semaphore:   make(chan struct{}, 5),
 	}
@@ -195,16 +192,6 @@ func (c *ConsumeCallBillingUseCase) processEvent(event billing.CallCompletedEven
 	record.Status = billing.StatusCharged
 	if err := c.billingRepo.Update(record); err != nil {
 		c.logf("billing consumer: failed to update billing record for call %s: %v", event.CallID, err)
-	}
-
-	if c.cdrComplete != nil && event.CallRecordID != "" {
-		if err := c.cdrComplete.Execute(cdr.CompleteCallInput{
-			CallID:  event.CallID,
-			EndedAt: event.CallEnd,
-			Status:  cdr.StatusCompleted,
-		}); err != nil {
-			c.logf("billing consumer: failed to complete CDR for call %s: %v", event.CallID, err)
-		}
 	}
 
 	c.logf("billing consumer: call %s charged %d µ ($%.4f) successfully",

@@ -10,6 +10,13 @@ import (
 
 var errAgentNotFound = fmt.Errorf("%w: agente não encontrado neste workspace; use o id exato de list_agents", errInvalidArgs)
 
+func describeAgent(get agent.GetAgentUseCase, cc copilot.Context, raw string) copilot.Field {
+	if a, err := ownedAgent(get, cc, raw); err == nil {
+		return copilot.Field{Key: "agent", Value: a.Name}
+	}
+	return copilot.Field{Key: "agent", Value: "agente desconhecido"}
+}
+
 func ownedAgent(get agent.GetAgentUseCase, cc copilot.Context, raw string) (*agent.Agent, error) {
 	id := strings.TrimSpace(raw)
 	if id == "" {
