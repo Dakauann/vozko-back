@@ -27,6 +27,7 @@ import (
 	customfieldhttp "vozko/delivery/http/customfield"
 	dealautomationhttp "vozko/delivery/http/dealautomation"
 	exporthttp "vozko/delivery/http/export"
+	advertisinghttp "vozko/delivery/http/advertising"
 	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
 	instagramhttp "vozko/delivery/http/instagram"
@@ -466,6 +467,7 @@ func (r *router) setupRoutes() {
 	r.setupMetaEmbeddedSignupRoutes(protected)
 	r.setupInstagramRoutes(protected)
 	facebookhttp.RegisterProtectedRoutes(protected, r.metaChannels.Facebook, r.ac)
+	advertisinghttp.RegisterProtectedRoutes(protected, r.metaChannels.Ads, r.ac)
 
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
@@ -669,6 +671,8 @@ func (r *router) setupWebhookRoutes() {
 	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
 	metaplatformhttp.RegisterPublicRoutes(r.mux, r.metaChannels.Platform)
 	facebookhttp.RegisterPublicRoutes(r.mux, r.metaChannels.Facebook, r.metaChannels.FacebookWebhook)
+	advertisinghttp.RegisterPublicRoutes(r.mux, r.metaChannels.Ads)
+	advertisinghttp.RegisterWebhookRoute(r.mux, r.metaChannels.AdsWebhook)
 
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)

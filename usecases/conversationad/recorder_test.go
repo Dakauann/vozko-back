@@ -160,3 +160,14 @@ func TestSomethingThatIsNotAnAdIsIgnored(t *testing.T) {
 		t.Fatal("an empty referral must not create an origin")
 	}
 }
+
+func TestTheClickIDIsStoredWithTheAd(t *testing.T) {
+	book := &originBook{}
+	ad := adFrom("Promoção")
+	ad.ClickID, ad.SourceType = "clid-1", "ad"
+	recorderWith(book, &mediaShelf{}, &fetcher{data: pngBytes()}, &broadcasts{}).Record(context.Background(), "e1", shared.EntryTypeWhatsApp, ad)
+	origin, _ := book.Get("e1", shared.EntryTypeWhatsApp)
+	if origin == nil || origin.ClickID != "clid-1" || origin.SourceType != "ad" {
+		t.Fatalf("origin = %+v", origin)
+	}
+}

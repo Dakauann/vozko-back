@@ -14,6 +14,10 @@ const (
 )
 
 func ValidateRedirectURI(raw string) error {
+	return ValidateRedirectURIFor(raw, OAuthCallbackPath)
+}
+
+func ValidateRedirectURIFor(raw, callbackPath string) error {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return fmt.Errorf("facebook: redirect URI is required")
@@ -29,10 +33,10 @@ func ValidateRedirectURI(raw string) error {
 	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLocal) {
 		return fmt.Errorf("facebook: redirect URI %q must use https (http is only allowed on localhost)", raw)
 	}
-	if strings.TrimSuffix(parsed.Path, "/") != OAuthCallbackPath {
+	if strings.TrimSuffix(parsed.Path, "/") != callbackPath {
 		return fmt.Errorf("facebook: redirect URI path is %q but this build serves %q; only the host is configurable "+
 			"and the full URI must also be listed under Facebook Login for Business > Settings > Valid OAuth Redirect URIs",
-			parsed.Path, OAuthCallbackPath)
+			parsed.Path, callbackPath)
 	}
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("facebook: redirect URI %q must not carry a query string or fragment", raw)
@@ -52,6 +56,13 @@ type TokenDebug struct {
 	Scopes         []string
 	GranularScopes map[string][]string
 	ExpiresAt      *time.Time
+}
+
+func (d *TokenDebug) Kind() TokenKind {
+	if strings.EqualFold(d.Type, string(TokenSystemUser)) {
+		return TokenSystemUser
+	}
+	return TokenUser
 }
 
 type GrantIdentity struct {
@@ -77,7 +88,7 @@ type OAuthService interface {
 	BuildAuthorizeURL(state string) string
 	ExchangeCode(ctx context.Context, code string) (*TokenGrant, error)
 	DebugToken(ctx context.Context, token string) (*TokenDebug, error)
-	Identify(ctx context.Context, token string) (*GrantIdentity, error)
+	Identify(ctx context.Context, token string, kind TokenKind) (*GrantIdentity, error)
 	ListPages(ctx context.Context, token string) ([]*RemotePage, error)
 	GetPage(ctx context.Context, pageToken, fbPageID string) (*RemotePage, error)
 }

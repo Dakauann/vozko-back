@@ -1,11 +1,15 @@
 package oauthpopup
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"vozko/usecases/shared/oauthstate"
 )
 
 func TestPopupPostsToTheExactFrontendOrigin(t *testing.T) {
@@ -61,5 +65,21 @@ func TestRedirectAddsResultParamsAndBlocksOpenRedirects(t *testing.T) {
 		if loc.Host != "app.example" || loc.Path != tc.want || loc.Query().Get("facebook") != "connected" || loc.Query().Get("connected") != "2" {
 			t.Fatalf("location = %s", loc)
 		}
+	}
+}
+
+func TestStateErrorCodeNamesOnlyStateFailures(t *testing.T) {
+	cases := map[error]string{
+		oauthstate.ErrInvalidState:  "invalid_state",
+		oauthstate.ErrReplayedState: "invalid_state",
+		oauthstate.ErrExpiredState:  "expired_state",
+	}
+	for err, want := range cases {
+		if got, ok := StateErrorCode(fmt.Errorf("wrapped: %w", err)); !ok || got != want {
+			t.Errorf("%v: got %q %v", err, got, ok)
+		}
+	}
+	if _, ok := StateErrorCode(errors.New("other")); ok {
+		t.Error("unrelated error named as a state failure")
 	}
 }

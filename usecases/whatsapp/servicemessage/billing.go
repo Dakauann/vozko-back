@@ -105,23 +105,12 @@ func (b Billing) ChargeDelivered(
 		return nil
 	}
 
-	reference := Reference(providerMessageID)
-	charged, err := b.ledger.ExistsTransactionByReferenceID(reference)
-	if err != nil {
-		return fmt.Errorf("whatsapp service message idempotency check: %w", err)
-	}
-	if charged {
-		return nil
-	}
-
-	_, err = b.ledger.DebitBalance(balance.DebitBalanceInput{
+	_, err = balance_usecase.DebitOnce(b.ledger, balance_usecase.ReferenceCharge{
 		WorkspaceID:   workspaceID,
-		Amount:        result.PriceMicros,
+		ReferenceID:   Reference(providerMessageID),
 		ServiceType:   balance.ServiceWhatsAppConversation,
-		ReferenceID:   &reference,
+		Price:         result,
 		Description:   fmt.Sprintf("Mensagem de serviço WhatsApp (ref: %s)", providerMessageID),
-		CostMicros:    result.CostMicros,
-		ProfitMicros:  result.ProfitMicros,
 		AllowNegative: true,
 	})
 	return err

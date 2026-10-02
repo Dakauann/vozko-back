@@ -20,7 +20,6 @@ import (
 	"vozko/infra/http/middleware"
 	cauc "vozko/usecases/commentautomation"
 	iguc "vozko/usecases/instagram"
-	"vozko/usecases/shared/oauthstate"
 )
 
 type Handler struct {
@@ -197,11 +196,10 @@ func (h *Handler) redirectWithResult(w http.ResponseWriter, r *http.Request, pat
 }
 
 func connectErrorCode(err error) string {
+	if code, ok := oauthpopup.StateErrorCode(err); ok {
+		return code
+	}
 	switch {
-	case errors.Is(err, oauthstate.ErrInvalidState), errors.Is(err, oauthstate.ErrReplayedState):
-		return "invalid_state"
-	case errors.Is(err, oauthstate.ErrExpiredState):
-		return "expired_state"
 	case errors.Is(err, igdomain.ErrMissingMessagingScope):
 		return "missing_messaging_scope"
 	case errors.Is(err, igdomain.ErrAccountAlreadyLinked):

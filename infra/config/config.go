@@ -83,7 +83,15 @@ type Config struct {
 	FacebookWebhookVerifyToken string
 	FacebookGraphVersion       string
 	FacebookHumanAgentApproved bool
-	FrontendBaseURL            string
+
+	FacebookAdsLoginConfigID  string
+	MetaAdsAppID              string
+	MetaAdsAppSecret          string
+	FacebookAdsRedirectURI    string
+	MetaAdsGraphVersion       string
+	AdsImageModel             string
+	AdsImageCostCeilingMicros int
+	FrontendBaseURL           string
 
 	TelegramWebhookBaseURL string
 	TelegramBotAPIBaseURL  string
@@ -221,6 +229,14 @@ func LoadConfig() Config {
 		FacebookWebhookVerifyToken: mustGetEnvTrimmed("FACEBOOK_WEBHOOK_VERIFY_TOKEN"),
 		FacebookGraphVersion:       trimEnv("FACEBOOK_GRAPH_VERSION"),
 		FacebookHumanAgentApproved: getBoolEnv("FACEBOOK_HUMAN_AGENT_APPROVED", false),
+
+		FacebookAdsLoginConfigID:  mustGetEnvTrimmed("FACEBOOK_ADS_LOGIN_CONFIG_ID"),
+		MetaAdsAppID:              mustGetEnvTrimmed("META_ADS_APP_ID"),
+		MetaAdsAppSecret:          mustGetEnvTrimmed("META_ADS_APP_SECRET"),
+		FacebookAdsRedirectURI:    mustGetEnvTrimmed("FACEBOOK_ADS_REDIRECT_URI"),
+		MetaAdsGraphVersion:       trimEnv("META_ADS_GRAPH_VERSION"),
+		AdsImageModel:             trimEnv("ADS_IMAGE_MODEL"),
+		AdsImageCostCeilingMicros: getIntEnv("ADS_IMAGE_COST_CEILING_MICROS", 250_000),
 
 		FrontendBaseURL: strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
 

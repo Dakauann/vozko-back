@@ -133,8 +133,21 @@ func TestIdentifyReadsClientBusiness(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(`{"id":"asid-1","name":"Vozko Integration","client_business_id":"biz-9"}`))
 	})
-	id, err := svc.Identify(context.Background(), "bisu")
+	id, err := svc.Identify(context.Background(), "bisu", fbdomain.TokenSystemUser)
 	if err != nil || id.AppScopedUserID != "asid-1" || id.ClientBusinessID != "biz-9" {
+		t.Fatalf("identity = %+v, %v", id, err)
+	}
+}
+
+func TestIdentifyAsksAUserTokenOnlyForWhatItCanRead(t *testing.T) {
+	svc := newOAuth(t, func(w http.ResponseWriter, r *http.Request) {
+		if fields := r.URL.Query().Get("fields"); fields != "id,name" {
+			t.Errorf("fields = %s", fields)
+		}
+		_, _ = w.Write([]byte(`{"id":"asid-2","name":"Ana"}`))
+	})
+	id, err := svc.Identify(context.Background(), "user", fbdomain.TokenUser)
+	if err != nil || id.AppScopedUserID != "asid-2" || id.ClientBusinessID != "" {
 		t.Fatalf("identity = %+v, %v", id, err)
 	}
 }

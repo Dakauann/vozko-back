@@ -26,8 +26,10 @@ func (r *adOriginRepository) Claim(origin *conversation.AdOrigin) (bool, error) 
 		AdID:      origin.AdID,
 		Platform:  string(origin.Platform),
 		Title:     origin.Title,
-		SourceURL: origin.SourceURL,
-		ArrivedAt: origin.ArrivedAt,
+		SourceURL:  origin.SourceURL,
+		ClickID:    origin.ClickID,
+		SourceType: origin.SourceType,
+		ArrivedAt:  origin.ArrivedAt,
 	}
 	if origin.ImageMediaID != "" {
 		row.ImageMediaID = &origin.ImageMediaID
@@ -51,8 +53,10 @@ func (r *adOriginRepository) Get(entryID string, entryType shared.EntryType) (*c
 		AdID:      row.AdID,
 		Platform:  conversation.AdPlatform(row.Platform),
 		Title:     row.Title,
-		SourceURL: row.SourceURL,
-		ArrivedAt: row.ArrivedAt,
+		SourceURL:  row.SourceURL,
+		ClickID:    row.ClickID,
+		SourceType: row.SourceType,
+		ArrivedAt:  row.ArrivedAt,
 	}
 	if row.ImageMediaID != nil {
 		origin.ImageMediaID = *row.ImageMediaID

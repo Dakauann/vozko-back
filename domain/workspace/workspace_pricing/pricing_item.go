@@ -16,7 +16,10 @@ const (
 	CategoryTelephony    ServiceCategory = "telephony"
 	CategoryExchangeRate ServiceCategory = "exchange_rate"
 	CategoryMargin       ServiceCategory = "margin"
+	CategoryAdvertising  ServiceCategory = "advertising"
 )
+
+const AdvertisingServicePublishedAd = "published_ad"
 
 var ErrPricingItemNotFound = errors.New("pricing item not found")
 var ErrWhatsAppTemplateCategoryUnsupported = errors.New("unsupported whatsapp template category for pricing")
@@ -85,7 +88,8 @@ var ErrSuperAdminRequired = errors.New("only the super admin can modify exchange
 var configurableCategories = map[ServiceCategory]bool{
 	CategoryLLM:       true,
 	CategoryWhatsApp:  true,
-	CategoryTelephony: true,
+	CategoryTelephony:   true,
+	CategoryAdvertising: true,
 }
 
 func IsCategoryConfigurable(c ServiceCategory) bool {
@@ -104,6 +108,8 @@ var DefaultPricingCatalog = []PricingItem{
 	{Category: CategoryTelephony, Service: TelephonyServiceSIPCalls, Metric: "per_minute", CostMicros: 0, PriceMicros: 0, Currency: "USD"},
 
 	{Category: CategoryLLM, Service: "default_markup", Metric: "percentage", MarkupPct: 0.20, Currency: "USD"},
+
+	{Category: CategoryAdvertising, Service: AdvertisingServicePublishedAd, Metric: "per_ad", CostMicros: 0, PriceMicros: 1_000_000, Currency: "USD"},
 
 	{Category: CategoryExchangeRate, Service: "usd_to_brl", Metric: "per_unit", PriceMicros: 6_000_000, Currency: "BRL"},
 }

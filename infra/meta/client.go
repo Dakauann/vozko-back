@@ -283,10 +283,8 @@ func (c *Client) execute(httpReq *http.Request, label string, out any) error {
 		return decodeError(resp.StatusCode, raw)
 	}
 
-	if looksLikeError(raw) {
-		if apiErr := decodeError(resp.StatusCode, raw); apiErr != nil {
-			return apiErr
-		}
+	if apiErr := embeddedError(resp.StatusCode, raw); apiErr != nil {
+		return apiErr
 	}
 
 	if out == nil {
@@ -382,10 +380,17 @@ func decodeError(status int, raw []byte) error {
 	return &apiErr
 }
 
-func looksLikeError(raw []byte) bool {
-	trimmed := bytes.TrimSpace(raw)
-	return bytes.HasPrefix(trimmed, []byte(`{"error"`)) ||
-		bytes.Contains(trimmed[:min(len(trimmed), 64)], []byte(`"error"`))
+func embeddedError(status int, raw []byte) error {
+	if !bytes.Contains(raw, []byte(`"error"`)) {
+		return nil
+	}
+	var body errorBody
+	if err := json.Unmarshal(raw, &body); err != nil || (body.Error.Code == 0 && body.Error.Message == "") {
+		return nil
+	}
+	apiErr := body.Error
+	apiErr.HTTPStatus = status
+	return &apiErr
 }
 
 func backoff(attempt int) time.Duration {

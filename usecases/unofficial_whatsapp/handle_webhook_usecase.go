@@ -938,12 +938,14 @@ func adReferralOf(reply *uw.AdReply) *conversation.AdReferral {
 		return nil
 	}
 	ad := &conversation.AdReferral{
-		AdID:      reply.SourceID,
-		Platform:  conversation.AdPlatformFromURL(reply.SourceURL),
-		Title:     firstNonEmpty(reply.Title, reply.Body),
-		SourceURL: reply.SourceURL,
-		ImageURL:  reply.ThumbnailURL,
-		Image:     reply.Thumbnail,
+		AdID:       reply.SourceID,
+		Platform:   conversation.AdPlatformFromURL(reply.SourceURL),
+		Title:      firstNonEmpty(reply.Title, reply.Body),
+		SourceURL:  reply.SourceURL,
+		ImageURL:   reply.ThumbnailURL,
+		Image:      reply.Thumbnail,
+		ClickID:    reply.ClickID,
+		SourceType: reply.SourceType,
 	}
 	if !ad.Usable() {
 		return nil

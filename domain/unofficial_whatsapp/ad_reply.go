@@ -14,6 +14,8 @@ type AdReply struct {
 	SourceURL    string
 	ThumbnailURL string
 	Thumbnail    []byte
+	ClickID      string
+	SourceType   string
 }
 
 type externalAdReply struct {
@@ -23,6 +25,8 @@ type externalAdReply struct {
 	SourceURL    string `json:"sourceURL"`
 	ThumbnailURL string `json:"thumbnailURL"`
 	Thumbnail    string `json:"thumbnail"`
+	ClickID      string `json:"ctwaClid"`
+	SourceType   string `json:"sourceType"`
 }
 
 type adContext struct {
@@ -66,6 +70,8 @@ func directAdReply(raw []byte) *AdReply {
 		SourceID:     strings.TrimSpace(ext.SourceID),
 		SourceURL:    strings.TrimSpace(ext.SourceURL),
 		ThumbnailURL: strings.TrimSpace(ext.ThumbnailURL),
+		ClickID:      strings.TrimSpace(ext.ClickID),
+		SourceType:   strings.TrimSpace(ext.SourceType),
 	}
 	if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(ext.Thumbnail)); err == nil {
 		reply.Thumbnail = decoded

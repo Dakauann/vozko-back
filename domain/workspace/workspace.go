@@ -80,6 +80,7 @@ var (
 	ResourceSIPTrunks                   = registerResource("sip_trunks")
 	ResourceCallQueues                  = registerResource("call_queues")
 	ResourceCallHistory                 = registerResource("call_history")
+	ResourceAds                         = registerResource("ads")
 )
 
 func (r Resource) IsValid() bool {
@@ -295,6 +296,14 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar páginas, publicações e comentários do Facebook"},
 		{ActionName: ActionUpdate, Description: "Editar configurações, publicar e moderar comentários do Facebook", Risks: []RiskKind{RiskContactsCustomers}},
 		{ActionName: ActionDelete, Description: "Desconectar páginas do Facebook", Risks: []RiskKind{RiskConnectsAccounts}},
+	},
+	ResourceAds: {
+		{ActionName: ActionCreate, Description: "Conectar contas de anúncios da Meta, criar e duplicar anúncios, públicos, formulários, regras, testes A/B e pixels; anúncios gastam o orçamento da conta de anúncios", Risks: []RiskKind{RiskConnectsAccounts, RiskSpendsBalance}},
+		{ActionName: ActionRead, Description: "Ver campanhas, conjuntos, anúncios, resultados, públicos, formulários com os dados dos leads, regras e conversões", Risks: []RiskKind{RiskSensitiveData}},
+		{ActionName: ActionUpdate, Description: "Editar campanhas, conjuntos e anúncios, orçamentos, limite de gasto da conta, regras e o envio de conversões para a Meta, e arquivar"},
+		{ActionName: ActionStart, Description: "Ligar campanhas, conjuntos e anúncios, o que volta a gastar o orçamento da conta de anúncios"},
+		{ActionName: ActionStop, Description: "Desligar campanhas, conjuntos e anúncios"},
+		{ActionName: ActionDelete, Description: "Excluir campanhas, conjuntos, anúncios, públicos e regras, e desconectar contas de anúncios", Risks: []RiskKind{RiskConnectsAccounts, RiskDeletesData}},
 	},
 	ResourceInstagramAccounts: {
 

@@ -9,6 +9,8 @@ type ConversationAdOrigin struct {
 	Platform     string    `gorm:"type:varchar(16);not null;default:''"`
 	Title        string    `gorm:"type:text;not null;default:''"`
 	SourceURL    string    `gorm:"type:text;not null;default:''"`
+	ClickID      string    `gorm:"type:varchar(255);not null;default:''"`
+	SourceType   string    `gorm:"type:varchar(32);not null;default:''"`
 	ImageMediaID *string   `gorm:"type:uuid"`
 	ArrivedAt    time.Time `gorm:"not null"`
 	CreatedAt    time.Time `gorm:"autoCreateTime"`

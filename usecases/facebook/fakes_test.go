@@ -25,7 +25,7 @@ func (f *fakeOAuth) ExchangeCode(context.Context, string) (*fbdomain.TokenGrant,
 func (f *fakeOAuth) DebugToken(context.Context, string) (*fbdomain.TokenDebug, error) {
 	return f.debug, nil
 }
-func (f *fakeOAuth) Identify(context.Context, string) (*fbdomain.GrantIdentity, error) {
+func (f *fakeOAuth) Identify(context.Context, string, fbdomain.TokenKind) (*fbdomain.GrantIdentity, error) {
 	return f.identity, nil
 }
 func (f *fakeOAuth) ListPages(context.Context, string) ([]*fbdomain.RemotePage, error) {

@@ -60,3 +60,10 @@ func TestAnOrdinaryMessageHasNoAd(t *testing.T) {
 		}
 	}
 }
+
+func TestTheAdClickIDAndSourceTypeAreKept(t *testing.T) {
+	ev := adEvent(t, `{"text":"Olá","contextInfo":{"externalAdReply":`+adReplyJSON+`}}`)
+	if ev.AdReply == nil || ev.AdReply.ClickID != "x" || ev.AdReply.SourceType != "ad" {
+		t.Fatalf("ad = %+v", ev.AdReply)
+	}
+}

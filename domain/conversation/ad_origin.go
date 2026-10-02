@@ -37,8 +37,10 @@ type AdReferral struct {
 	Platform  AdPlatform
 	Title     string
 	SourceURL string
-	ImageURL  string
-	Image     []byte
+	ImageURL   string
+	Image      []byte
+	ClickID    string
+	SourceType string
 }
 
 func (r *AdReferral) Usable() bool {
@@ -54,7 +56,9 @@ func (r *WhatsAppReferral) AdReferral() *AdReferral {
 		Platform:  AdPlatformFromURL(r.SourceURL),
 		Title:     firstNonBlank(r.Headline, r.Body),
 		SourceURL: strings.TrimSpace(r.SourceURL),
-		ImageURL:  firstNonBlank(r.ImageURL, r.ThumbnailURL),
+		ImageURL:   firstNonBlank(r.ImageURL, r.ThumbnailURL),
+		ClickID:    strings.TrimSpace(r.CTWAClid),
+		SourceType: strings.TrimSpace(r.SourceType),
 	}
 	if !ad.Usable() {
 		return nil
@@ -78,6 +82,8 @@ type AdOrigin struct {
 	Platform     AdPlatform       `json:"platform,omitempty"`
 	Title        string           `json:"title,omitempty"`
 	SourceURL    string           `json:"sourceUrl,omitempty"`
+	ClickID      string           `json:"-"`
+	SourceType   string           `json:"-"`
 	ImageMediaID string           `json:"-"`
 	Image        *AttachedMedia   `json:"image,omitempty"`
 	ArrivedAt    time.Time        `json:"arrivedAt"`

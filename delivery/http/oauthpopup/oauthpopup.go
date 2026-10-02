@@ -2,6 +2,7 @@ package oauthpopup
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -66,4 +67,14 @@ func Redirect(w http.ResponseWriter, r *http.Request, frontendBaseURL, path, fal
 	}
 	parsed.RawQuery = q.Encode()
 	http.Redirect(w, r, parsed.String(), http.StatusFound)
+}
+
+func StateErrorCode(err error) (string, bool) {
+	switch {
+	case errors.Is(err, oauthstate.ErrInvalidState), errors.Is(err, oauthstate.ErrReplayedState):
+		return "invalid_state", true
+	case errors.Is(err, oauthstate.ErrExpiredState):
+		return "expired_state", true
+	}
+	return "", false
 }

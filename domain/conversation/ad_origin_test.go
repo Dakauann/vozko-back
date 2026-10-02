@@ -30,3 +30,10 @@ func TestAWhatsAppReferralBecomesAnAdWithItsPicture(t *testing.T) {
 		t.Fatal("no ad id and no title is not an ad")
 	}
 }
+
+func TestAWhatsAppReferralKeepsTheClickIDForTheConversionsAPI(t *testing.T) {
+	ad := (&WhatsAppReferral{SourceID: "ad-1", SourceType: "ad", CTWAClid: "ARAkLkA8rmlFeiCktEJQ"}).AdReferral()
+	if ad == nil || ad.ClickID != "ARAkLkA8rmlFeiCktEJQ" || ad.SourceType != "ad" {
+		t.Fatalf("ad = %+v", ad)
+	}
+}

@@ -196,6 +196,7 @@ type Container struct {
 	agentMCP                    *handlers.AgentMCPBundle
 	instagram                   *instagramBundle
 	facebook                    *facebookBundle
+	ads                         *adsBundle
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
@@ -324,6 +325,7 @@ type repositories struct {
 
 type services struct {
 	amqpPool                      *queue.ConnectionPool
+	workspacePricer               workspace_pricing_domain.Pricer
 	workflowWakePub               messaging.MessageQueuePub
 	workflowWakeSub               messaging.MessageQueueSub
 	crmTelemetryPub               messaging.MessageQueuePub

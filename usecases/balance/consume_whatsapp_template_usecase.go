@@ -80,19 +80,7 @@ func (uc *consumeWhatsappTemplateUseCase) Refund(workspaceID string, referenceID
 	if result.PriceMicros <= 0 {
 		return fmt.Errorf("%w: cannot refund whatsapp template %s", balance.ErrPriceUnavailable, strings.ToLower(templateCategory))
 	}
-	refRef := "refund:" + referenceID
-	description := fmt.Sprintf("Reembolso: template WhatsApp %s não enviado (ref: %s)", strings.ToLower(templateCategory), referenceID)
-	_, err = uc.balanceRepo.CreditBalance(balance.CreditBalanceInput{
-		WorkspaceID:  workspaceID,
-		Amount:       result.PriceMicros,
-		ServiceType:  balance.ServiceWhatsAppCampaign,
-		ReferenceID:  &refRef,
-		Description:  description,
-		CostMicros:   result.CostMicros,
-		ProfitMicros: -result.ProfitMicros,
-		IsRefund:     true,
-	})
-	if err != nil {
+	if err := RefundOnce(uc.balanceRepo, templateCharge(workspaceID, referenceID, templateCategory, result)); err != nil {
 		return err
 	}
 	uc.giveBackMonthlySendSlot(workspaceID, referenceID)
@@ -117,16 +105,7 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 		return nil, err
 	}
 
-	description := fmt.Sprintf("Template WhatsApp %s (ref: %s)", strings.ToLower(templateCategory), referenceID)
-	transaction, err := uc.balanceRepo.DebitBalance(balance.DebitBalanceInput{
-		WorkspaceID:  workspaceID,
-		Amount:       result.PriceMicros,
-		ServiceType:  balance.ServiceWhatsAppCampaign,
-		ReferenceID:  &referenceID,
-		Description:  description,
-		CostMicros:   result.CostMicros,
-		ProfitMicros: result.ProfitMicros,
-	})
+	transaction, err := DebitOnce(uc.balanceRepo, templateCharge(workspaceID, referenceID, templateCategory, result))
 	if err != nil {
 		if tookSlot {
 			uc.giveBackMonthlySendSlot(workspaceID, referenceID)
@@ -134,4 +113,16 @@ func (uc *consumeWhatsappTemplateUseCase) Execute(workspaceID string, referenceI
 		return nil, err
 	}
 	return transaction, nil
+}
+
+func templateCharge(workspaceID, referenceID, templateCategory string, price workspace_pricing.PriceResult) ReferenceCharge {
+	category := strings.ToLower(templateCategory)
+	return ReferenceCharge{
+		WorkspaceID:       workspaceID,
+		ReferenceID:       referenceID,
+		ServiceType:       balance.ServiceWhatsAppCampaign,
+		Price:             price,
+		Description:       fmt.Sprintf("Template WhatsApp %s (ref: %s)", category, referenceID),
+		RefundDescription: fmt.Sprintf("Reembolso: template WhatsApp %s não enviado (ref: %s)", category, referenceID),
+	}
 }

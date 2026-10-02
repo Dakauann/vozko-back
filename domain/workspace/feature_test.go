@@ -115,6 +115,7 @@ var formScreenCapabilities = map[CapabilityKey]bool{
 	"instagram.connect":           true,
 	"telegram.connect":            true,
 	"facebook.connect":            true,
+	"ads.create":                  true,
 	"links.create":                true,
 	"links.edit":                  true,
 	"issues.create":               true,

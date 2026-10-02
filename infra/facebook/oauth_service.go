@@ -25,6 +25,7 @@ type OAuthConfig struct {
 	ConfigID     string
 	RedirectURI  string
 	GraphVersion string
+	CallbackPath string
 	HTTPClient   *http.Client
 }
 
@@ -40,7 +41,10 @@ func NewOAuthService(cfg OAuthConfig) (fbdomain.OAuthService, error) {
 	if strings.TrimSpace(cfg.ConfigID) == "" {
 		return nil, fmt.Errorf("facebook: a Facebook Login for Business configuration id is required")
 	}
-	if err := fbdomain.ValidateRedirectURI(cfg.RedirectURI); err != nil {
+	if strings.TrimSpace(cfg.CallbackPath) == "" {
+		cfg.CallbackPath = fbdomain.OAuthCallbackPath
+	}
+	if err := fbdomain.ValidateRedirectURIFor(cfg.RedirectURI, cfg.CallbackPath); err != nil {
 		return nil, err
 	}
 	cfg.GraphVersion = meta.VersionOr(cfg.GraphVersion)
@@ -145,9 +149,13 @@ type identityResponse struct {
 	ClientBusinessID meta.GraphID `json:"client_business_id"`
 }
 
-func (s *oauthService) Identify(ctx context.Context, token string) (*fbdomain.GrantIdentity, error) {
+func (s *oauthService) Identify(ctx context.Context, token string, kind fbdomain.TokenKind) (*fbdomain.GrantIdentity, error) {
+	fields := "id,name"
+	if kind == fbdomain.TokenSystemUser {
+		fields += ",client_business_id"
+	}
 	q := url.Values{}
-	q.Set("fields", "id,name,client_business_id")
+	q.Set("fields", fields)
 	var out identityResponse
 	if err := s.client.Do(ctx, meta.Request{Method: http.MethodGet, Path: "/me", Token: token, Query: q}, &out); err != nil {
 		return nil, err

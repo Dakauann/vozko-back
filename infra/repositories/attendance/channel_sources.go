@@ -221,3 +221,16 @@ func emptyEntryProjection() string {
 				''::text AS container_id, ''::text AS container_name, ''::text AS lead_id
 			WHERE FALSE`
 }
+
+func EntryWorkspaceUnion() string {
+	selects := make([]string, 0, len(channelSources))
+	for _, src := range channelSources {
+		from := src.EntryTable
+		if !strings.HasPrefix(src.WorkspaceColumn, src.EntryAlias+".") {
+			from += " JOIN " + src.ContainerTable + " ON " + src.ContainerJoin
+		}
+		selects = append(selects, "SELECT "+src.EntryAlias+".id AS entry_id, '"+string(src.EntryType)+"'::text AS entry_type, "+
+			src.WorkspaceColumn+" AS workspace_id FROM "+from)
+	}
+	return strings.Join(selects, " UNION ALL ")
+}

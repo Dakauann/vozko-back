@@ -165,7 +165,7 @@ func (uc *ConnectPagesUseCase) complete(ctx context.Context, state *oauthstate.O
 	if err := debug.AdoptListedPages(pageIDsOf(remotePages)); err != nil {
 		return nil, err
 	}
-	identity, err := uc.oauth.Identify(ctx, token.AccessToken)
+	identity, err := uc.oauth.Identify(ctx, token.AccessToken, debug.Kind())
 	if err != nil {
 		return nil, fmt.Errorf("facebook: identify grant: %w", err)
 	}
@@ -174,7 +174,7 @@ func (uc *ConnectPagesUseCase) complete(ctx context.Context, state *oauthstate.O
 	grant := &fbdomain.Grant{
 		WorkspaceID:      state.WorkspaceID,
 		ConnectedBy:      state.UserID,
-		TokenKind:        tokenKind(debug.Type),
+		TokenKind:        debug.Kind(),
 		AccessToken:      token.AccessToken,
 		TokenExpiresAt:   token.ExpiresAt,
 		AppScopedUserID:  identity.AppScopedUserID,
@@ -314,13 +314,6 @@ func missingCapabilities(page *fbdomain.Page) []fbdomain.Capability {
 		}
 	}
 	return missing
-}
-
-func tokenKind(debugType string) fbdomain.TokenKind {
-	if strings.EqualFold(debugType, "SYSTEM_USER") {
-		return fbdomain.TokenSystemUser
-	}
-	return fbdomain.TokenUser
 }
 
 func pageIDsOf(pages []*fbdomain.RemotePage) []string {

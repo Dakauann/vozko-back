@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	webhook_repository "vozko/infra/repositories/webhook"
+	adsuc "vozko/usecases/advertising"
 	webhook_usecase "vozko/usecases/webhook"
 
 	"vozko/domain/shared"
@@ -142,6 +143,14 @@ func (c *Container) initJobRunner() {
 	if c.facebook != nil && c.facebook.Enabled {
 		c.jobRunner.SetFacebookJobs(c.facebook.Health, cronPackage.CtxJobFunc(c.facebook.Publisher.Reap))
 	}
+	sync := c.ads.Sync
+	c.jobRunner.SetAdsJobs(
+		cronPackage.CtxJobFunc(func(ctx context.Context) error { return sync.SyncAll(ctx, adsuc.RecentInsightDays) }),
+		cronPackage.CtxJobFunc(func(ctx context.Context) error { return sync.SyncAll(ctx, adsuc.SettledInsightDays) }),
+		cronPackage.CtxJobFunc(c.ads.Publish.Resume),
+		cronPackage.CtxJobFunc(c.ads.Forms.PollAll),
+		cronPackage.CtxJobFunc(c.ads.Conversions.DispatchAll),
+	)
 
 	if c.audience != nil && c.audience.Enabled {
 		b := c.audience

@@ -7,6 +7,7 @@ func TestFacebookFieldRouting(t *testing.T) {
 		"feed":                         TopicFacebookFeed,
 		"mention":                      TopicFacebookFeed,
 		"videos":                       TopicFacebookFeed,
+		"leadgen":                      TopicFacebookLeadgen,
 		"messaging_policy_enforcement": TopicFacebookPage,
 		"ratings":                      TopicFacebookPage,
 		"":                             TopicFacebookPage,

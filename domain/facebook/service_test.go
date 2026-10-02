@@ -30,6 +30,18 @@ func TestValidateRedirectURI(t *testing.T) {
 	}
 }
 
+func TestRedirectURIForAnotherCallbackKeepsTheSameRules(t *testing.T) {
+	if err := ValidateRedirectURIFor("https://api.example.com/oauth/meta-ads/callback", "/oauth/meta-ads/callback"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateRedirectURIFor("https://api.example.com/oauth/facebook/callback", "/oauth/meta-ads/callback"); err == nil {
+		t.Fatal("pages callback accepted for the ads flow")
+	}
+	if err := ValidateRedirectURIFor("http://api.example.com/oauth/meta-ads/callback", "/oauth/meta-ads/callback"); err == nil {
+		t.Fatal("plain http accepted")
+	}
+}
+
 func TestRequiredScopesCoverEveryCapability(t *testing.T) {
 	p := &Page{Status: StatusConnected, GrantedScopes: RequiredScopes(), Tasks: []Task{TaskManage}}
 	for _, c := range AllCapabilities() {
@@ -63,5 +75,13 @@ func TestAGrantWithoutThePageListPermissionIsRefused(t *testing.T) {
 	d := &TokenDebug{Scopes: []string{ScopeMessaging}}
 	if err := d.AdoptListedPages([]string{"111"}); !errors.Is(err, ErrGrantUnverifiable) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestTokenKindComesFromTheDebugType(t *testing.T) {
+	for raw, want := range map[string]TokenKind{"SYSTEM_USER": TokenSystemUser, "system_user": TokenSystemUser, "USER": TokenUser, "": TokenUser} {
+		if got := (&TokenDebug{Type: raw}).Kind(); got != want {
+			t.Errorf("%q -> %s, want %s", raw, got, want)
+		}
 	}
 }

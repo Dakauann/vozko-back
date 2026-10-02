@@ -49,8 +49,10 @@ func (r *Recorder) Record(ctx context.Context, entryID string, entryType shared.
 		AdID:      strings.TrimSpace(ad.AdID),
 		Platform:  ad.Platform,
 		Title:     strings.TrimSpace(ad.Title),
-		SourceURL: strings.TrimSpace(ad.SourceURL),
-		ArrivedAt: r.now().UTC(),
+		SourceURL:  strings.TrimSpace(ad.SourceURL),
+		ClickID:    strings.TrimSpace(ad.ClickID),
+		SourceType: strings.TrimSpace(ad.SourceType),
+		ArrivedAt:  r.now().UTC(),
 	}
 	if image := r.storeImage(ctx, entryID, entryType, ad); image != nil {
 		origin.ImageMediaID = image.ID

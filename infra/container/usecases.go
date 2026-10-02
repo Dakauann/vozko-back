@@ -291,6 +291,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	createSubscriptionInvoiceUC := workspace_plan_usecase.NewCreateSubscriptionInvoiceUseCase(c.repositories.workspacePlan, c.repositories.workspaceSubscription, createInvoiceUC, workspaceReferralReader)
 	planPricingAdapter := workspace_plan_usecase.NewPlanPricingAdapter(c.repositories.workspaceSubscription, c.repositories.workspacePlan)
 	pricer := workspace_pricing_domain.NewPricer(c.repositories.workspacePricing, workspace_pricing_domain.WithLLMPriceFetcher(llmPriceFetcher), workspace_pricing_domain.WithPlanPricingProvider(planPricingAdapter))
+	c.services.workspacePricer = pricer
 	listWCCampaignsUC := wc_usecase.NewListCampaignsUseCase(
 		c.repositories.wcCampaign,
 		c.repositories.wcEntry,
