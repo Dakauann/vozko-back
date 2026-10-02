@@ -75,6 +75,10 @@ func (a *AdAccount) CanManage() error {
 	if err := a.CanRead(); err != nil {
 		return err
 	}
+	return a.checkRole()
+}
+
+func (a *AdAccount) checkRole() error {
 	if a.Role() == RoleReadOnly {
 		return ErrAccountReadOnly
 	}

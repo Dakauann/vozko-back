@@ -61,7 +61,7 @@ type ConversationOriginResponse struct {
 }
 
 // @Summary		Validar rascunho de anúncio
-// @Description	Valida o rascunho, a conta, a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização, em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount below_minimum.
+// @Description	Valida o rascunho mesmo quando a conta ainda não está pronta para veicular (forma de pagamento, status, função); só a publicação exige a conta pronta, veja GET /ads/accounts/{id}/readiness. Valida a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização, em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount below_minimum.
 // @Tags			Anúncios
 // @Accept			json
 // @Produce		json
@@ -75,7 +75,7 @@ func (h *Handler) ValidateDraft(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	pre, err := h.d.Publish.Preflight(r.Context(), workspaceOf(r), req.Draft)
+	pre, err := h.d.Publish.Check(r.Context(), workspaceOf(r), req.Draft)
 	var invalid *advertising.ValidationError
 	if errors.As(err, &invalid) {
 		response.WriteSuccess(w, http.StatusOK, ValidateResponse{Issues: invalid.Issues, BudgetMinimum: presentBudgetMinimum(invalid.Minimum)})

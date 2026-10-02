@@ -30,6 +30,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 
 	route(get, "/accounts", read, h.ListAccounts)
 	route(post, "/accounts/{id}/sync", read, h.SyncAccount)
+	route(get, "/accounts/{id}/readiness", read, h.Readiness)
 	route(remove, "/accounts/{id}", del, h.DisconnectAccount)
 	route(put, "/accounts/{id}/spend-cap", update, h.SetSpendCap)
 

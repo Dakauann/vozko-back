@@ -63,6 +63,7 @@ var (
 	ScreenInstagramAccount          = registerScreen("instagram_account", "accountId")
 	ScreenFacebookPages             = registerScreen("facebook_pages")
 	ScreenFacebookConnect           = registerScreen("facebook_connect")
+	ScreenAdsOverview               = registerScreen("ads_overview")
 	ScreenAdsManager                = registerScreen("ads_manager")
 	ScreenAdsCreate                 = registerScreen("ads_create")
 	ScreenAdsAudiences              = registerScreen("ads_audiences")

@@ -726,6 +726,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/ads/accounts/{id}/readiness": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal (url da tela exata da Meta, quando a API não permite). Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Prontidão da conta para veicular anúncios",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.ReadinessResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ads/accounts/{id}/report": {
             "get": {
                 "security": [
@@ -1573,7 +1613,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Valida o rascunho, a conta, a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização, em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount below_minimum.",
+                "description": "Valida o rascunho mesmo quando a conta ainda não está pronta para veicular (forma de pagamento, status, função); só a publicação exige a conta pronta, veja GET /ads/accounts/{id}/readiness. Valida a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização, em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount below_minimum.",
                 "consumes": [
                     "application/json"
                 ],
@@ -21715,26 +21755,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG",
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT"
+                "CATALOG"
             ],
             "x-enum-varnames": [
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog",
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect"
+                "DestinationCatalog"
             ]
         },
         "advertising.FieldIssue": {
@@ -22072,6 +22112,7 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
+                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -22084,10 +22125,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS",
-                "CONVERSATIONS"
+                "APP_INSTALLS"
             ],
             "x-enum-varnames": [
+                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -22100,8 +22141,7 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls",
-                "GoalConversations"
+                "GoalAppInstalls"
             ]
         },
         "advertising.Pixel": {
@@ -22700,6 +22740,23 @@ const docTemplate = `{
                 },
                 "termsUrl": {
                     "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.BillingResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "paymentMethod": {
+                    "type": "string"
+                },
+                "portalUrl": {
+                    "type": "string"
+                },
+                "prepay": {
+                    "type": "boolean"
                 }
             }
         },
@@ -23368,6 +23425,89 @@ const docTemplate = `{
                 },
                 "upper": {
                     "type": "integer"
+                }
+            }
+        },
+        "advertisinghttp.ReadinessActionResponse": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "enum": [
+                        "reconnect",
+                        "sync",
+                        "create_pixel"
+                    ]
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "in_app",
+                        "portal"
+                    ]
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.ReadinessItemResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "$ref": "#/definitions/advertisinghttp.ReadinessActionResponse"
+                },
+                "key": {
+                    "type": "string",
+                    "enum": [
+                        "connection",
+                        "advertiser_role",
+                        "account_status",
+                        "account_details",
+                        "payment_method",
+                        "page",
+                        "phone_verification",
+                        "email_verification",
+                        "custom_audience_terms",
+                        "pixel"
+                    ]
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "ready",
+                        "missing",
+                        "unknown"
+                    ]
+                }
+            }
+        },
+        "advertisinghttp.ReadinessResponse": {
+            "type": "object",
+            "properties": {
+                "account": {
+                    "$ref": "#/definitions/advertisinghttp.AccountResponse"
+                },
+                "billing": {
+                    "$ref": "#/definitions/advertisinghttp.BillingResponse"
+                },
+                "blocking": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.ReadinessItemResponse"
+                    }
+                },
+                "ready": {
+                    "type": "boolean"
                 }
             }
         },

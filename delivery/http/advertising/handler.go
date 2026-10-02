@@ -27,6 +27,7 @@ type Deps struct {
 	Connect         *adsuc.ConnectUseCase
 	Accounts        *adsuc.AccountsUseCase
 	Sync            *adsuc.SyncUseCase
+	Readiness       *adsuc.ReadinessUseCase
 	Manage          *adsuc.ManageUseCase
 	Report          *adsuc.ReportUseCase
 	Live            *adsuc.LiveUseCase

@@ -300,6 +300,8 @@ type fakeGateway struct {
 	subscribed  []string
 	minimums    ads.MinimumBudgets
 	minimumBid  int64
+	billing     ads.RemoteBilling
+	billingWith []bool
 }
 
 func newFakeGateway() *fakeGateway {
@@ -324,6 +326,14 @@ func (g *fakeGateway) GetAdAccount(_ context.Context, _, id string) (*ads.Remote
 		}
 	}
 	return nil, fmt.Errorf("no account %s", id)
+}
+func (g *fakeGateway) GetBilling(_ context.Context, _, _ string, withPaymentMethod bool) (*ads.RemoteBilling, error) {
+	g.billingWith = append(g.billingWith, withPaymentMethod)
+	billing := g.billing
+	if !withPaymentMethod {
+		billing.PaymentMethod = ""
+	}
+	return &billing, g.step("billing")
 }
 func (g *fakeGateway) SubscribeAccount(_ context.Context, _, id string) error {
 	g.subscribed = append(g.subscribed, id)

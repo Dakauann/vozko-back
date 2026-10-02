@@ -52,8 +52,19 @@ type localFailure struct{ err error }
 func (f *localFailure) Error() string { return f.err.Error() }
 func (f *localFailure) Unwrap() error { return f.err }
 
-func (uc *PublishUseCase) Preflight(ctx context.Context, workspaceID string, draft ads.AdDraft) (*Preflight, error) {
+func (uc *PublishUseCase) Check(ctx context.Context, workspaceID string, draft ads.AdDraft) (*Preflight, error) {
 	return uc.preflight.run(ctx, workspaceID, draft)
+}
+
+func (uc *PublishUseCase) Preflight(ctx context.Context, workspaceID string, draft ads.AdDraft) (*Preflight, error) {
+	pre, err := uc.Check(ctx, workspaceID, draft)
+	if err != nil {
+		return nil, err
+	}
+	if err := pre.Account.CanSpend(); err != nil {
+		return nil, err
+	}
+	return pre, nil
 }
 
 type PublishInput struct {

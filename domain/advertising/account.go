@@ -100,19 +100,44 @@ func (a *AdAccount) Location() (*time.Location, error) {
 	return loc, nil
 }
 
+type spendCheck struct {
+	item  ReadinessKey
+	check func(*AdAccount) error
+}
+
+var spendChecks = []spendCheck{
+	{ReadyConnection, (*AdAccount).CanRead},
+	{ReadyRole, (*AdAccount).checkRole},
+	{ReadyAccountStatus, (*AdAccount).checkStatus},
+	{ReadyAccountDetails, (*AdAccount).checkDetails},
+	{ReadyPaymentMethod, (*AdAccount).checkFunding},
+}
+
 func (a *AdAccount) CanSpend() error {
-	if err := a.CanManage(); err != nil {
-		return err
+	for _, c := range spendChecks {
+		if err := c.check(a); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+func (a *AdAccount) checkStatus() error {
 	if !a.MetaStatus.Delivers() {
 		return fmt.Errorf("%w: %s", ErrAccountNotActive, a.MetaStatus.Key())
 	}
+	return nil
+}
+
+func (a *AdAccount) checkDetails() error {
 	if _, err := NormalizeCurrency(a.Currency); err != nil {
 		return err
 	}
-	if _, err := a.Location(); err != nil {
-		return err
-	}
+	_, err := a.Location()
+	return err
+}
+
+func (a *AdAccount) checkFunding() error {
 	if !a.HasFunding {
 		return ErrNoFundingSource
 	}

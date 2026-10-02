@@ -30,6 +30,7 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/ads/options", "ads:read"},
 	{http.MethodGet, "/ads/accounts", "ads:read"},
 	{http.MethodPost, "/ads/accounts/a-1/sync", "ads:read"},
+	{http.MethodGet, "/ads/accounts/a-1/readiness", "ads:read"},
 	{http.MethodDelete, "/ads/accounts/a-1", "ads:delete"},
 	{http.MethodPut, "/ads/accounts/a-1/spend-cap", "ads:update"},
 	{http.MethodGet, "/ads/accounts/a-1/report", "ads:read"},

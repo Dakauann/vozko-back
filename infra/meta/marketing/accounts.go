@@ -101,6 +101,43 @@ func (g *Gateway) GetAdAccount(ctx context.Context, token, metaAccountID string)
 	return &account, nil
 }
 
+const (
+	billingFields       = "balance,is_prepay_account"
+	paymentMethodFields = ",funding_source_details"
+)
+
+type graphBilling struct {
+	Balance       graphNumber `json:"balance"`
+	Prepay        bool        `json:"is_prepay_account"`
+	FundingSource *struct {
+		DisplayString string `json:"display_string"`
+	} `json:"funding_source_details"`
+}
+
+func (g *Gateway) GetBilling(ctx context.Context, token, metaAccountID string, withPaymentMethod bool) (*advertising.RemoteBilling, error) {
+	path, err := accountPath(metaAccountID)
+	if err != nil {
+		return nil, err
+	}
+	fields := billingFields
+	if withPaymentMethod {
+		fields += paymentMethodFields
+	}
+	var row graphBilling
+	if err := g.do(ctx, meta.Request{Method: http.MethodGet, Path: path, Token: token, Query: url.Values{"fields": {fields}}}, &row); err != nil {
+		return nil, err
+	}
+	balance, err := row.Balance.minorUnits("balance")
+	if err != nil {
+		return nil, err
+	}
+	out := &advertising.RemoteBilling{Balance: balance, Prepay: row.Prepay}
+	if row.FundingSource != nil {
+		out.PaymentMethod = row.FundingSource.DisplayString
+	}
+	return out, nil
+}
+
 type graphPageRow struct {
 	ID      meta.GraphID `json:"id"`
 	Name    string       `json:"name"`

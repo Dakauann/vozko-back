@@ -20,6 +20,12 @@ type RemoteAdAccount struct {
 	Tasks         []string
 }
 
+type RemoteBilling struct {
+	PaymentMethod string
+	Balance       int64
+	Prepay        bool
+}
+
 type RemotePage struct {
 	PageID            string
 	Name              string
@@ -42,6 +48,7 @@ type RemoteLocation struct {
 type StructureGateway interface {
 	ListAdAccounts(ctx context.Context, token string) ([]RemoteAdAccount, error)
 	GetAdAccount(ctx context.Context, token, metaAccountID string) (*RemoteAdAccount, error)
+	GetBilling(ctx context.Context, token, metaAccountID string, withPaymentMethod bool) (*RemoteBilling, error)
 	ListPages(ctx context.Context, token string) ([]RemotePage, error)
 	ListObjects(ctx context.Context, token, metaAccountID string, level Level) ([]*Object, error)
 	GetObject(ctx context.Context, token, metaID string, level Level) (*Object, error)

@@ -122,6 +122,7 @@ func (c *Container) adsManager() *adsBundle {
 		Connect:         adsuc.NewConnectUseCase(oauth, gateway, grants, accounts, c.mustOAuthStateIssuer("ads:oauth", c.cfg.MetaAdsAppSecret, "/dashboard/advertising")),
 		Accounts:        bundle.Accounts,
 		Sync:            sync,
+		Readiness:       adsuc.NewReadinessUseCase(sync, gateway),
 		Manage:          bundle.Manage,
 		Report:          bundle.Report,
 		Live:            bundle.Live,

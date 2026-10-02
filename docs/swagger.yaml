@@ -459,26 +459,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
   advertising.FieldIssue:
     properties:
       code:
@@ -712,6 +712,7 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
+    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -725,9 +726,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
-    - CONVERSATIONS
     type: string
     x-enum-varnames:
+    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -741,7 +742,6 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
-    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -1166,6 +1166,17 @@ definitions:
         type: boolean
       termsUrl:
         type: string
+    type: object
+  advertisinghttp.BillingResponse:
+    properties:
+      balance:
+        type: integer
+      paymentMethod:
+        type: string
+      portalUrl:
+        type: string
+      prepay:
+        type: boolean
     type: object
   advertisinghttp.BudgetMinimumResponse:
     properties:
@@ -1600,6 +1611,65 @@ definitions:
         type: boolean
       upper:
         type: integer
+    type: object
+  advertisinghttp.ReadinessActionResponse:
+    properties:
+      key:
+        enum:
+        - reconnect
+        - sync
+        - create_pixel
+        type: string
+      kind:
+        enum:
+        - in_app
+        - portal
+        type: string
+      url:
+        type: string
+    type: object
+  advertisinghttp.ReadinessItemResponse:
+    properties:
+      action:
+        $ref: '#/definitions/advertisinghttp.ReadinessActionResponse'
+      key:
+        enum:
+        - connection
+        - advertiser_role
+        - account_status
+        - account_details
+        - payment_method
+        - page
+        - phone_verification
+        - email_verification
+        - custom_audience_terms
+        - pixel
+        type: string
+      required:
+        type: boolean
+      state:
+        enum:
+        - ready
+        - missing
+        - unknown
+        type: string
+    type: object
+  advertisinghttp.ReadinessResponse:
+    properties:
+      account:
+        $ref: '#/definitions/advertisinghttp.AccountResponse'
+      billing:
+        $ref: '#/definitions/advertisinghttp.BillingResponse'
+      blocking:
+        items:
+          type: string
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReadinessItemResponse'
+        type: array
+      ready:
+        type: boolean
     type: object
   advertisinghttp.ReportResponse:
     properties:
@@ -9926,6 +9996,40 @@ paths:
       summary: Estimar alcance do público
       tags:
       - Anúncios
+  /ads/accounts/{id}/readiness:
+    get:
+      description: 'Lista ordenada do que a conta precisa para publicar, como na Meta:
+        conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página,
+        verificações de telefone e email, termos de públicos personalizados e pixel.
+        Cada item vem ready, missing ou unknown; unknown nunca conta como pronto.
+        Itens com required true bloqueiam a publicação e aparecem em blocking. A ação
+        de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal
+        (url da tela exata da Meta, quando a API não permite). Telefone e email não
+        têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo
+        devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento
+        só para administradores da conta.'
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReadinessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Prontidão da conta para veicular anúncios
+      tags:
+      - Anúncios
   /ads/accounts/{id}/report:
     get:
       description: Campanhas, conjuntos ou anúncios com resultados da Meta (gasto,
@@ -10476,12 +10580,14 @@ paths:
     post:
       consumes:
       - application/json
-      description: Valida o rascunho, a conta, a página, o número de WhatsApp e as
-        mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho
-        (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto
-        novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização,
-        em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount
-        below_minimum.
+      description: Valida o rascunho mesmo quando a conta ainda não está pronta para
+        veicular (forma de pagamento, status, função); só a publicação exige a conta
+        pronta, veja GET /ads/accounts/{id}/readiness. Valida a página, o número de
+        WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e
+        o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento
+        diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a
+        meta de otimização, em unidades menores da moeda da conta; abaixo dele volta
+        o problema adSet.budget.amount below_minimum.
       parameters:
       - description: rascunho
         in: body

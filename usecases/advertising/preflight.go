@@ -54,9 +54,6 @@ func (p preflighter) run(ctx context.Context, workspaceID string, draft ads.AdDr
 	if err != nil {
 		return nil, err
 	}
-	if err := account.CanSpend(); err != nil {
-		return nil, err
-	}
 	minimum, err := p.floor.check(ctx, budgetCheck{
 		account: account, token: token, field: "adSet.budget.amount",
 		budget: draft.NewAdSetBudget(), goal: draft.AdSet.Goal, bid: draft.AdSet.Bid,

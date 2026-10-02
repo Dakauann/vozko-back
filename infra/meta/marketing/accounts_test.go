@@ -182,3 +182,33 @@ func TestMinimumBudgetsWithoutBidOmitsTheBidAndIgnoresOtherCurrencies(t *testing
 		t.Fatalf("bid sent: %+v", (*calls)[1])
 	}
 }
+
+func TestGetBillingAsksForThePaymentMethodOnlyWhenAllowed(t *testing.T) {
+	g, calls := gatewayWith(t, ok(`{"balance":"1500","is_prepay_account":true,"funding_source_details":{"id":"9001","display_string":"Visa *1234","type":1}}`))
+
+	billing, err := g.GetBilling(context.Background(), "tok", "111", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := advertising.RemoteBilling{PaymentMethod: "Visa *1234", Balance: 1500, Prepay: true}
+	if *billing != want {
+		t.Fatalf("billing = %+v", *billing)
+	}
+	if call := (*calls)[0]; call.path != "/v26.0/act_111" || call.query.Get("fields") != "balance,is_prepay_account,funding_source_details" {
+		t.Fatalf("call = %+v", call)
+	}
+
+	if _, err := g.GetBilling(context.Background(), "tok", "111", false); err != nil {
+		t.Fatal(err)
+	}
+	if fields := (*calls)[1].query.Get("fields"); fields != "balance,is_prepay_account" {
+		t.Fatalf("fields without the MANAGE task = %s", fields)
+	}
+}
+
+func TestGetBillingRejectsABalanceThatIsNotAnAmount(t *testing.T) {
+	g, _ := gatewayWith(t, ok(`{"balance":"12.5"}`))
+	if _, err := g.GetBilling(context.Background(), "tok", "111", false); err == nil {
+		t.Fatal("expected an error")
+	}
+}

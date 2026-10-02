@@ -65,10 +65,6 @@ func NewAudienceUseCase(sync *SyncUseCase, gateway audienceGateway, customers Cu
 	}
 }
 
-func TermsURL(metaAccountID string) string {
-	return "https://business.facebook.com/ads/manage/customaudiences/tos/?act=" + ads.NormalizeAccountID(metaAccountID)
-}
-
 func (uc *AudienceUseCase) List(ctx context.Context, workspaceID, accountID string) (*AudienceList, error) {
 	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseRead)
 	if err != nil {
@@ -82,7 +78,7 @@ func (uc *AudienceUseCase) List(ctx context.Context, workspaceID, accountID stri
 	if err != nil {
 		return nil, uc.access.failed(ctx, account, err)
 	}
-	return &AudienceList{TermsAccepted: accepted, TermsURL: TermsURL(account.MetaAccountID), Audiences: audiences}, nil
+	return &AudienceList{TermsAccepted: accepted, TermsURL: ads.CustomAudienceTermsURL(account.MetaAccountID), Audiences: audiences}, nil
 }
 
 func (uc *AudienceUseCase) openForAudiences(ctx context.Context, workspaceID, accountID string) (*ads.AdAccount, string, error) {
