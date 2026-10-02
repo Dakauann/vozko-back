@@ -12,7 +12,8 @@ type FieldIssue struct {
 }
 
 type ValidationError struct {
-	Issues []FieldIssue
+	Issues  []FieldIssue
+	Minimum *BudgetMinimum
 }
 
 func (e *ValidationError) Error() string {

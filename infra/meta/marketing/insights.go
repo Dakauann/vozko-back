@@ -324,7 +324,20 @@ func (g *Gateway) LiveInsights(ctx context.Context, token, metaAccountID string,
 type graphReportRun struct {
 	Status       string `json:"async_status"`
 	ErrorCode    int    `json:"error_code"`
+	ErrorSubcode int    `json:"error_subcode"`
 	ErrorMessage string `json:"error_message"`
+	UserTitle    string `json:"error_user_title"`
+	UserMessage  string `json:"error_user_msg"`
+}
+
+func (run graphReportRun) failure(reportID meta.GraphID) error {
+	return remoteError(&meta.Error{
+		Code:      run.ErrorCode,
+		Subcode:   run.ErrorSubcode,
+		Message:   fmt.Sprintf("insights report %s: %s %s", reportID, run.Status, run.ErrorMessage),
+		UserTitle: run.UserTitle,
+		UserMsg:   run.UserMessage,
+	})
 }
 
 func (g *Gateway) asyncInsights(ctx context.Context, token, path string, params url.Values) ([]json.RawMessage, error) {
@@ -341,7 +354,7 @@ func (g *Gateway) asyncInsights(ctx context.Context, token, path string, params 
 	delay, waited := time.Second, time.Duration(0)
 	for {
 		var run graphReportRun
-		if err := g.get(ctx, runPath, token, "async_status,async_percent_completion,error_code,error_message", &run); err != nil {
+		if err := g.do(ctx, meta.Request{Method: http.MethodGet, Path: runPath, Token: token}, &run); err != nil {
 			return nil, err
 		}
 		switch {
@@ -351,7 +364,7 @@ func (g *Gateway) asyncInsights(ctx context.Context, token, path string, params 
 			return collect[json.RawMessage](ctx, g, runPath+"/insights", token, q)
 		case slices.Contains(reportPending, run.Status):
 		case strings.HasPrefix(run.Status, "Job "):
-			return nil, &advertising.RemoteError{Kind: advertising.FailureRejected, Code: run.ErrorCode, Message: fmt.Sprintf("insights report %s: %s %s", started.ReportRunID, run.Status, run.ErrorMessage)}
+			return nil, run.failure(started.ReportRunID)
 		default:
 			return nil, fmt.Errorf("marketing: insights report %s has unknown status %q", started.ReportRunID, run.Status)
 		}

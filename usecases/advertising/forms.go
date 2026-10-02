@@ -62,7 +62,7 @@ func (uc *FormsUseCase) page(ctx context.Context, token, pageID string) error {
 }
 
 func (uc *FormsUseCase) List(ctx context.Context, workspaceID, accountID, pageID string) ([]ads.LeadForm, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (uc *FormsUseCase) Create(ctx context.Context, workspaceID string, draft ad
 	if err := draft.Validate(); err != nil {
 		return nil, err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, draft.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, draft.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (uc *FormsUseCase) Archive(ctx context.Context, workspaceID, formID string)
 	if err != nil {
 		return err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, form.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, form.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,7 @@ func (uc *FormsUseCase) Sync(ctx context.Context, workspaceID, formID string) (i
 }
 
 func (uc *FormsUseCase) poll(ctx context.Context, form *ads.TrackedForm) (int, error) {
-	account, token, err := uc.access.open(ctx, form.WorkspaceID, form.AdAccountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, form.WorkspaceID, form.AdAccountID, ads.UseRead)
 	if err != nil {
 		return 0, err
 	}
@@ -240,7 +240,7 @@ func (uc *FormsUseCase) HandleLeadgen(ctx context.Context, event ads.LeadgenEven
 	if err != nil {
 		return err
 	}
-	account, token, err := uc.access.open(ctx, form.WorkspaceID, form.AdAccountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, form.WorkspaceID, form.AdAccountID, ads.UseRead)
 	if err != nil {
 		return err
 	}

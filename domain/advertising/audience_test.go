@@ -16,12 +16,30 @@ func TestCustomerFileNeedsAnIdentifyingColumn(t *testing.T) {
 }
 
 func TestLookalikeRules(t *testing.T) {
-	d := LookalikeDraft{AdAccountID: "a", Name: "Parecidos", OriginAudienceID: "123", Percent: 1}
-	if err := d.Validate(); err != nil || d.Ratio() != 0.01 {
-		t.Fatalf("lookalike refused: %v ratio %v", err, d.Ratio())
+	d := LookalikeDraft{AdAccountID: "a", Name: " Parecidos ", OriginAudienceID: "123", Percent: 1}
+	d.Normalize()
+	if err := d.Validate(); err != nil || d.Ratio() != 0.01 || d.Name != "Parecidos" {
+		t.Fatalf("lookalike refused: %v ratio %v name %q", err, d.Ratio(), d.Name)
 	}
 	d.Percent = 11
 	requireIssues(t, d.Validate(), FieldIssue{"percent", "invalid"})
+}
+
+func TestLookalikeTargetsACountryThatDefaultsToBrazil(t *testing.T) {
+	d := LookalikeDraft{AdAccountID: "a", Name: "Parecidos", OriginAudienceID: "123", Percent: 1}
+	d.Normalize()
+	if d.Country != "BR" {
+		t.Fatalf("country %q", d.Country)
+	}
+	d.Country = " pt "
+	d.Normalize()
+	if err := d.Validate(); err != nil || d.Country != "PT" {
+		t.Fatalf("country %q refused: %v", d.Country, err)
+	}
+	for _, bad := range []string{"BRA", "B1"} {
+		d.Country = bad
+		requireIssues(t, d.Validate(), FieldIssue{"country", "invalid"})
+	}
 }
 
 func TestSavedAudienceValidatesItsTargeting(t *testing.T) {

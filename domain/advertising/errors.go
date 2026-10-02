@@ -11,6 +11,8 @@ var (
 	ErrAuthorizationDenied    = errors.New("meta authorization was declined")
 	ErrMissingScopes          = errors.New("meta did not grant the permissions ads need")
 	ErrAccountNeedsReconnect  = errors.New("ad account must be reconnected")
+	ErrAccountReadOnly        = errors.New("the connected profile can only view this ad account")
+	ErrAccountAdminRequired   = errors.New("only an ad account admin can change billing settings")
 	ErrAccountNotActive       = errors.New("ad account is not active at meta")
 	ErrNoFundingSource        = errors.New("ad account has no payment method")
 	ErrUnknownTimezone        = errors.New("ad account timezone is unknown")
@@ -27,8 +29,8 @@ var (
 	ErrNumberNotOwned         = errors.New("whatsapp number is not connected to this workspace")
 	ErrJobNotFound            = errors.New("ad publish job not found")
 	ErrJobNotRunnable         = errors.New("ad publish job cannot run in its current state")
+	ErrJobNotActivatable      = errors.New("only a job published switched off and not yet switched on can be switched on")
 	ErrMediaNotImage          = errors.New("the creative media must be an image")
-	ErrImageGenerationFailed  = errors.New("image generation failed")
 )
 
 var (

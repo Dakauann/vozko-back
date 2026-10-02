@@ -38,6 +38,13 @@ func TestHashIsSHA256OfTheNormalizedValue(t *testing.T) {
 	}
 }
 
+func TestExternalIDsAreUploadedUnhashed(t *testing.T) {
+	out := HashCustomers([]MatchKey{MatchExternalID, MatchEmail}, []Customer{{MatchExternalID: " crm-42 ", MatchEmail: "a@b.co"}}, "")
+	if len(out.Rows) != 1 || out.Rows[0][0] != "crm-42" || out.Rows[0][1] != SHA256Hex("a@b.co") {
+		t.Fatalf("hashed %+v", out)
+	}
+}
+
 func TestCustomersWithoutAnIdentifyingFieldAreSkipped(t *testing.T) {
 	keys := []MatchKey{MatchPhone, MatchEmail, MatchCountry}
 	out := HashCustomers(keys, []Customer{

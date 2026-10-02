@@ -24,6 +24,7 @@ type IDGenerator func() string
 const (
 	EventChart     = "chart"
 	EventCard      = "action_card"
+	EventImage     = "image"
 	EventToolStart = "tool_start"
 )
 
@@ -106,7 +107,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	}
 	m := tool.Meta()
 	if err := d.permit(m); err != nil {
-		emit("tool", toolEvent(call.Name, string(copilot.StatusDenied), false))
+		emit("tool", toolStep{Name: call.Name, Summary: string(copilot.StatusDenied)}.payload())
 		return agentloop.StepResult{Result: fmt.Sprintf(
 			"PERMISSÃO NEGADA: o usuário não tem permissão para %s:%s neste workspace. Não tente contornar.",
 			m.Resource, m.Action)}
@@ -115,7 +116,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 		secrets := secretsOf(tool, call.Arguments)
 		call.Arguments = copilot.Conceal(tool, call.Arguments, secrets)
 		if err := preflight(ctx, tool, d.cc, call.Arguments); err != nil {
-			emit("tool", toolEvent(call.Name, string(copilot.StatusError), false))
+			emit("tool", toolStep{Name: call.Name, Summary: string(copilot.StatusError)}.payload())
 			return agentloop.StepResult{Result: fmt.Sprintf(
 				"PROPOSTA RECUSADA ANTES DE CHEGAR AO USUÁRIO: %v. Confira os dados com as ferramentas de leitura e proponha de novo; nunca invente ids.", err)}
 		}
@@ -134,19 +135,12 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			Pause:  &agentloop.Pause{Reason: "aguardando aprovação", Payload: pa},
 		}
 	}
-	emit(EventToolStart, map[string]interface{}{"name": call.Name})
-	res := tool.Execute(ctx, d.cc, call.Arguments)
-	emit("tool", toolEvent(call.Name, string(res.Status), res.Status == copilot.StatusOK))
-	if res.Chart != nil {
-		emit(EventChart, res.Chart)
-	}
-	if res.Card != nil {
-		emit(EventCard, res.Card)
-	}
+	res := d.run(ctx, tool, call.Name, call.Arguments, emit)
+	emitStep(emit, stepFromResult(call.Name, res))
 	return agentloop.StepResult{Result: renderResult(res)}
 }
 
-func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, provided map[string]string) copilot.Result {
+func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, provided map[string]string, emit agentloop.Emit) copilot.Result {
 	tool, ok := d.registry.Get(pa.ToolName)
 	if !ok {
 		return copilot.Result{Status: copilot.StatusError, Message: "ferramenta desconhecida: " + pa.ToolName}
@@ -162,6 +156,11 @@ func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, 
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: "o usuário aprovou sem preencher o campo protegido (" + err.Error() + "); nada foi alterado. Proponha de novo e peça que ele preencha o campo no cartão de aprovação, nunca no chat."}
 	}
+	return d.run(ctx, tool, pa.ToolName, args, emit)
+}
+
+func (d *Driver) run(ctx context.Context, tool copilot.Tool, name string, args map[string]interface{}, emit agentloop.Emit) copilot.Result {
+	emit(EventToolStart, map[string]interface{}{"name": name})
 	return tool.Execute(ctx, d.cc, args)
 }
 
@@ -189,10 +188,6 @@ func DefaultConfig(cc copilot.Context, tokenBudget int) agentloop.Config {
 		FinishToolName:     "finish",
 		LogPrefix:          "[copilot] ws=" + cc.WorkspaceID,
 	}
-}
-
-func toolEvent(name, summary string, ok bool) map[string]interface{} {
-	return map[string]interface{}{"name": name, "summary": summary, "ok": ok}
 }
 
 func summarizeCall(call ai.ToolCall) string {

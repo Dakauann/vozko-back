@@ -110,6 +110,7 @@ func (c *Container) initRouter() {
 		audienceHandler(c),
 		c.handlers.sendCap,
 		c.metaChannelRoutes(),
+		c.imageGeneration().Handler,
 	)
 
 }

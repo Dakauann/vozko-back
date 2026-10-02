@@ -7,21 +7,23 @@ import (
 )
 
 type AccountResponse struct {
-	ID            string     `json:"id"`
-	MetaAccountID string     `json:"metaAccountId"`
-	Name          string     `json:"name"`
-	BusinessName  string     `json:"businessName,omitempty"`
-	Currency      string     `json:"currency"`
-	Timezone      string     `json:"timezone"`
-	MetaStatus    string     `json:"metaStatus"`
-	Connection    string     `json:"connection"`
-	HasFunding    bool       `json:"hasFunding"`
-	CanCreate     bool       `json:"canCreate"`
-	CanSpend      bool       `json:"canSpend"`
-	SpendBlocker  string     `json:"spendBlocker,omitempty"`
-	SpendCap      *int64     `json:"spendCap"`
-	AmountSpent   int64      `json:"amountSpent"`
-	LastSyncedAt  *time.Time `json:"lastSyncedAt,omitempty"`
+	ID             string     `json:"id"`
+	MetaAccountID  string     `json:"metaAccountId"`
+	Name           string     `json:"name"`
+	BusinessName   string     `json:"businessName,omitempty"`
+	Currency       string     `json:"currency"`
+	Timezone       string     `json:"timezone"`
+	MetaStatus     string     `json:"metaStatus"`
+	Connection     string     `json:"connection"`
+	HasFunding     bool       `json:"hasFunding"`
+	CanSpend       bool       `json:"canSpend"`
+	CanManage      bool       `json:"canManage"`
+	CanSetSpendCap bool       `json:"canSetSpendCap"`
+	Role           string     `json:"role" enums:"admin,advertiser,read_only"`
+	SpendBlocker   string     `json:"spendBlocker,omitempty"`
+	SpendCap       *int64     `json:"spendCap"`
+	AmountSpent    int64      `json:"amountSpent"`
+	LastSyncedAt   *time.Time `json:"lastSyncedAt,omitempty"`
 }
 
 type MetricsResponse struct {

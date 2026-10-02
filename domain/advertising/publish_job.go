@@ -289,6 +289,17 @@ func (j *PublishJob) Review(code, message string) {
 	j.ErrorCode, j.ErrorMessage = code, message
 }
 
+func (j *PublishJob) CanSwitchOnLater() error {
+	if j.Status != JobPublished || !j.Draft.KeepPaused || j.Progress.Activated {
+		return ErrJobNotActivatable
+	}
+	return nil
+}
+
+func (j *PublishJob) SwitchedOn() {
+	j.Progress.Activated = true
+}
+
 func (j *PublishJob) RefundDue() bool {
 	return j.Status == JobFailed && j.Fee == FeeCharged && !j.Progress.Activated
 }

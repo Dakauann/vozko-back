@@ -9,6 +9,7 @@ import (
 
 type manageGateway interface {
 	mediaGateway
+	minimumGateway
 	SetStatus(ctx context.Context, token, metaID string, status ads.ConfiguredStatus) error
 	DeleteObject(ctx context.Context, token, metaID string) error
 	GetObjectDetail(ctx context.Context, token, metaID string, level ads.Level) (*ads.ObjectDetail, error)
@@ -25,10 +26,14 @@ type ManageUseCase struct {
 	objects ads.ObjectRepository
 	media   creativeMedia
 	sync    *SyncUseCase
+	floor   budgetFloor
 }
 
 func NewManageUseCase(sync *SyncUseCase, gateway manageGateway, source MediaSource) *ManageUseCase {
-	return &ManageUseCase{access: sync.access, gateway: gateway, objects: sync.objects, media: newCreativeMedia(source, gateway), sync: sync}
+	return &ManageUseCase{
+		access: sync.access, gateway: gateway, objects: sync.objects, media: newCreativeMedia(source, gateway), sync: sync,
+		floor: budgetFloor{access: sync.access, gateway: gateway},
+	}
 }
 
 type target struct {
@@ -38,11 +43,15 @@ type target struct {
 }
 
 func (uc *ManageUseCase) target(ctx context.Context, workspaceID, metaID string) (*target, error) {
+	return uc.targetFor(ctx, workspaceID, metaID, ads.UseWrite)
+}
+
+func (uc *ManageUseCase) targetFor(ctx context.Context, workspaceID, metaID string, use ads.AccountUse) (*target, error) {
 	object, err := uc.objects.Find(ctx, workspaceID, metaID)
 	if err != nil {
 		return nil, err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, object.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, object.AdAccountID, use)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +108,7 @@ func (uc *ManageUseCase) SetStatus(ctx context.Context, workspaceID, metaID stri
 }
 
 func (uc *ManageUseCase) Detail(ctx context.Context, workspaceID, metaID string) (*ads.ObjectDetail, error) {
-	t, err := uc.target(ctx, workspaceID, metaID)
+	t, err := uc.targetFor(ctx, workspaceID, metaID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +154,30 @@ func (uc *ManageUseCase) planEdit(ctx context.Context, workspaceID, metaID strin
 	return &editPlan{target: t, detail: detail, edit: edit}, nil
 }
 
-func (uc *ManageUseCase) CheckEdit(ctx context.Context, workspaceID, metaID string, edit ads.ObjectEdit) (*ads.ObjectDetail, error) {
+func (uc *ManageUseCase) planWithinMinimum(ctx context.Context, workspaceID, metaID string, edit ads.ObjectEdit) (*editPlan, error) {
 	plan, err := uc.planEdit(ctx, workspaceID, metaID, edit)
+	if err != nil {
+		return nil, err
+	}
+	if plan.target.object.Level != ads.LevelAdSet {
+		return plan, nil
+	}
+	bid := plan.detail.Bid
+	if plan.edit.Bid != nil {
+		bid = *plan.edit.Bid
+	}
+	_, err = uc.floor.check(ctx, budgetCheck{
+		account: plan.target.account, token: plan.target.token, field: "budget.amount",
+		budget: plan.edit.Budget, goal: ads.OptimizationGoal(plan.target.object.OptimizationGoal), bid: bid,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
+
+func (uc *ManageUseCase) CheckEdit(ctx context.Context, workspaceID, metaID string, edit ads.ObjectEdit) (*ads.ObjectDetail, error) {
+	plan, err := uc.planWithinMinimum(ctx, workspaceID, metaID, edit)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +185,7 @@ func (uc *ManageUseCase) CheckEdit(ctx context.Context, workspaceID, metaID stri
 }
 
 func (uc *ManageUseCase) Edit(ctx context.Context, workspaceID, metaID string, edit ads.ObjectEdit) (*ads.Object, error) {
-	plan, err := uc.planEdit(ctx, workspaceID, metaID, edit)
+	plan, err := uc.planWithinMinimum(ctx, workspaceID, metaID, edit)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +346,7 @@ func (uc *ManageUseCase) Lifecycle(ctx context.Context, workspaceID, metaID stri
 }
 
 func (uc *ManageUseCase) SetSpendCap(ctx context.Context, workspaceID, accountID string, cap *int64) (*ads.AdAccount, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseBilling)
 	if err != nil {
 		return nil, err
 	}

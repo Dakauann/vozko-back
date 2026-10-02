@@ -2,6 +2,7 @@ package marketing
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -62,8 +63,7 @@ func TestCreateCreativeImageByDestination(t *testing.T) {
 			},
 			story: `{"page_id":"P1","link_data":{"image_hash":"h1","message":"Oferta","name":"Fale","link":"https://api.whatsapp.com/send",
 				"call_to_action":{"type":"WHATSAPP_MESSAGE","value":{"app_destination":"WHATSAPP"}},
-				"page_welcome_message":{"type":"VISUAL_EDITOR","version":2,"landing_screen_type":"welcome_message","media_type":"text",
-				"text_format":{"customer_action_type":"autofill_message","message":{"text":"Olá!","autofill_message":{"content":"Olá!"}}}}}}`,
+				"page_welcome_message":"{\"type\":\"VISUAL_EDITOR\",\"version\":2,\"landing_screen_type\":\"welcome_message\",\"media_type\":\"text\",\"text_format\":{\"customer_action_type\":\"autofill_message\",\"message\":{\"text\":\"Olá!\",\"autofill_message\":{\"content\":\"Olá!\"}}}}"}}`,
 		},
 		{
 			name: "instagram direct with ice breakers",
@@ -75,8 +75,7 @@ func TestCreateCreativeImageByDestination(t *testing.T) {
 			},
 			story: `{"page_id":"P1","instagram_user_id":"IG1","link_data":{"image_hash":"h1","message":"Oferta","name":"Fale","link":"https://www.instagram.com/",
 				"call_to_action":{"type":"INSTAGRAM_MESSAGE","value":{"app_destination":"INSTAGRAM_DIRECT"}},
-				"page_welcome_message":{"type":"VISUAL_EDITOR","version":2,"landing_screen_type":"welcome_message","media_type":"text",
-				"text_format":{"customer_action_type":"ice_breakers","message":{"text":"Preço?","ice_breakers":[{"title":"Preço?"},{"title":"Horário?"}]}}}}}`,
+				"page_welcome_message":"{\"type\":\"VISUAL_EDITOR\",\"version\":2,\"landing_screen_type\":\"welcome_message\",\"media_type\":\"text\",\"text_format\":{\"customer_action_type\":\"ice_breakers\",\"message\":{\"text\":\"Preço?\",\"ice_breakers\":[{\"title\":\"Preço?\"},{\"title\":\"Horário?\"}]}}}"}}`,
 		},
 		{
 			name: "website",
@@ -250,7 +249,7 @@ func TestCreateCreativeCollection(t *testing.T) {
 	canvas := `{"body_elements":[{"id":"E0","element_type":"BUTTON"},{"id":"E1","element_type":"PHOTO"},{"id":"E2","element_type":"PHOTO"},
 		{"id":"E3","element_type":"PHOTO"},{"id":"E4","element_type":"PHOTO"},{"id":"E5","element_type":"PHOTO"}]}`
 	call, calls := createCreative(t, collectionSpec(), map[string]string{"GET /v26.0/CV1": canvas})
-	if calls[0].query.Get("fields") != "body_elements" {
+	if calls[0].query.Get("fields") != "body_elements{id,element_type}" {
 		t.Fatalf("canvas call = %+v", calls[0])
 	}
 	crop := `"element_crops":{"100x100":[[0,0],[100,100]]}`
@@ -259,8 +258,31 @@ func TestCreateCreativeCollection(t *testing.T) {
 		"collection_thumbnails":[{"element_id":"E1",`+crop+`},{"element_id":"E2",`+crop+`},{"element_id":"E3",`+crop+`},{"element_id":"E4",`+crop+`}]}}`)
 }
 
+func TestCreateCreativeCollectionSkipsTheHeroPhoto(t *testing.T) {
+	canvas := `{"body_elements":[{"id":"H0","element_type":"PHOTO"},{"id":"E1","element_type":"PHOTO"},{"id":"E2","element_type":"PHOTO"},
+		{"id":"E3","element_type":"PHOTO"},{"id":"E4","element_type":"PHOTO"}]}`
+	call, _ := createCreative(t, collectionSpec(), map[string]string{"GET /v26.0/CV1": canvas})
+	var story struct {
+		LinkData struct {
+			Thumbnails []struct {
+				ElementID string `json:"element_id"`
+			} `json:"collection_thumbnails"`
+		} `json:"link_data"`
+	}
+	if err := json.Unmarshal([]byte(call.form.Get("object_story_spec")), &story); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, thumb := range story.LinkData.Thumbnails {
+		ids = append(ids, thumb.ElementID)
+	}
+	if strings.Join(ids, ",") != "E1,E2,E3,E4" {
+		t.Fatalf("thumbnails %v", ids)
+	}
+}
+
 func TestCreateCreativeCollectionNeedsFourPhotos(t *testing.T) {
-	g, calls := gatewayWith(t, routes(t, map[string]string{"GET /v26.0/CV1": `{"body_elements":{"data":[{"id":"E1","element_type":"PHOTO"}]}}`}))
+	g, calls := gatewayWith(t, routes(t, map[string]string{"GET /v26.0/CV1": `{"body_elements":{"data":[{"id":"E0","element_type":"BUTTON"},{"id":"E1","element_type":"PHOTO"}]}}`}))
 	_, err := g.CreateCreative(context.Background(), "tok", "9", collectionSpec())
 	if err == nil || !strings.Contains(err.Error(), "1 photos") || len(*calls) != 1 {
 		t.Fatalf("err %v calls %d", err, len(*calls))

@@ -37,3 +37,11 @@ func TestMessageDTOAsksForTheSecretFieldsTheToolNeeds(t *testing.T) {
 		t.Fatalf("proposal = %+v", dto.Proposal)
 	}
 }
+
+func TestMessageDTOKeepsAGeneratedImageForTheReloadedThread(t *testing.T) {
+	raw := []byte(`[{"name":"generate_image","summary":"ok","ok":true,"image":{"url":"https://cdn/x.jpg","mediaId":"m-1","alt":"um card"}}]`)
+	dto := toMessageDTO(&aichat.Message{ID: "m1", Role: aichat.RoleAssistant, ToolCalls: raw})
+	if len(dto.Tools) != 1 || dto.Tools[0].Image == nil || dto.Tools[0].Image.URL != "https://cdn/x.jpg" || dto.Tools[0].Image.MediaID != "m-1" {
+		t.Fatalf("tools = %+v", dto.Tools)
+	}
+}

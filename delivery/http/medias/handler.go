@@ -17,13 +17,15 @@ type MediasHandler struct {
 	uploadMediaUsecase mediadomain.UploadMediaUseCase
 	listMediaUseCase   mediadomain.ListMediaUseCase
 	getMediaUseCase    mediadomain.GetMediaUseCase
+	readMediaUseCase   mediadomain.ReadMediaUseCase
 }
 
-func NewMediasHandler(uploadMediaUsecase mediadomain.UploadMediaUseCase, listMediaUseCase mediadomain.ListMediaUseCase, getMediaUseCase mediadomain.GetMediaUseCase) *MediasHandler {
+func NewMediasHandler(uploadMediaUsecase mediadomain.UploadMediaUseCase, listMediaUseCase mediadomain.ListMediaUseCase, getMediaUseCase mediadomain.GetMediaUseCase, readMediaUseCase mediadomain.ReadMediaUseCase) *MediasHandler {
 	return &MediasHandler{
 		uploadMediaUsecase: uploadMediaUsecase,
 		listMediaUseCase:   listMediaUseCase,
 		getMediaUseCase:    getMediaUseCase,
+		readMediaUseCase:   readMediaUseCase,
 	}
 }
 

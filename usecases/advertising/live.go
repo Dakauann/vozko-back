@@ -28,7 +28,7 @@ func NewLiveUseCase(sync *SyncUseCase, gateway insightsGateway) *LiveUseCase {
 
 func (uc *LiveUseCase) Insights(ctx context.Context, q ads.LiveQuery) (*LiveReport, error) {
 	q.Level = q.Level.OrCampaign()
-	account, token, err := uc.access.open(ctx, q.WorkspaceID, q.AccountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, q.WorkspaceID, q.AccountID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}

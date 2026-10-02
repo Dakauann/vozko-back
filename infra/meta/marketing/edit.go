@@ -165,11 +165,15 @@ func applyCallToAction(d *advertising.CreativeDraft, cta *graphCallToAction) {
 	d.LeadFormID = cta.Value.LeadGenFormID
 }
 
-func applyWelcome(d *advertising.CreativeDraft, w *graphWelcomeMessage) {
+func applyWelcome(d *advertising.CreativeDraft, w *pageWelcome) {
 	if w == nil {
 		return
 	}
-	message := w.TextFormat.Message
+	if w.Spec == nil {
+		d.Greeting = w.Text
+		return
+	}
+	message := w.Spec.TextFormat.Message
 	for _, b := range message.IceBreakers {
 		d.IceBreakers = append(d.IceBreakers, b.Title)
 	}
@@ -345,7 +349,11 @@ func editForm(level advertising.Level, spec advertising.EditSpec) (url.Values, e
 		if err := onlyAt("bid", level, advertising.LevelCampaign, advertising.LevelAdSet); err != nil {
 			return nil, err
 		}
-		if err := setBid(form, *spec.Bid); err != nil {
+		set := setBid
+		if level == advertising.LevelCampaign {
+			set = setCampaignBid
+		}
+		if err := set(form, *spec.Bid); err != nil {
 			return nil, err
 		}
 	}

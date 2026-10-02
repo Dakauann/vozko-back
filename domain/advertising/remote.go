@@ -61,3 +61,34 @@ func FailureCode(err error) string {
 	}
 	return string(Classify(err))
 }
+
+type RemoteReason string
+
+const (
+	ReasonNone            RemoteReason = ""
+	ReasonBudgetTooLow    RemoteReason = "budget_too_low"
+	ReasonAccountReadOnly RemoteReason = "account_read_only"
+	ReasonNoPaymentMethod RemoteReason = "no_payment_method"
+)
+
+const (
+	subcodeBudgetTooLow         = 1885272
+	subcodeNoAdAccountWriteRole = 2490585
+	subcodeNoPaymentMethod      = 1359188
+)
+
+func ReasonOf(err error) RemoteReason {
+	var re *RemoteError
+	if !errors.As(err, &re) {
+		return ReasonNone
+	}
+	switch re.Subcode {
+	case subcodeBudgetTooLow:
+		return ReasonBudgetTooLow
+	case subcodeNoAdAccountWriteRole:
+		return ReasonAccountReadOnly
+	case subcodeNoPaymentMethod:
+		return ReasonNoPaymentMethod
+	}
+	return ReasonNone
+}

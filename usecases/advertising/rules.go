@@ -28,7 +28,7 @@ func NewRulesUseCase(sync *SyncUseCase, gateway ruleGateway) *RulesUseCase {
 var ruleLevels = map[ads.RuleEntity]ads.Level{ads.RuleCampaign: ads.LevelCampaign, ads.RuleAdSet: ads.LevelAdSet, ads.RuleAd: ads.LevelAd}
 
 func (uc *RulesUseCase) List(ctx context.Context, workspaceID, accountID string) ([]ads.AutomatedRule, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (uc *RulesUseCase) Create(ctx context.Context, workspaceID string, rule ads
 	if err := rule.Validate(); err != nil {
 		return "", err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, rule.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, rule.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return "", err
 	}
@@ -64,8 +64,8 @@ func (uc *RulesUseCase) Create(ctx context.Context, workspaceID string, rule ads
 	return id, nil
 }
 
-func (uc *RulesUseCase) owned(ctx context.Context, workspaceID, accountID, ruleID string) (*ads.AdAccount, string, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsManagement)
+func (uc *RulesUseCase) owned(ctx context.Context, workspaceID, accountID, ruleID string, use ads.AccountUse) (*ads.AdAccount, string, error) {
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, use)
 	if err != nil {
 		return nil, "", err
 	}
@@ -80,7 +80,7 @@ func (uc *RulesUseCase) owned(ctx context.Context, workspaceID, accountID, ruleI
 }
 
 func (uc *RulesUseCase) SetEnabled(ctx context.Context, workspaceID, accountID, ruleID string, enabled bool) error {
-	account, token, err := uc.owned(ctx, workspaceID, accountID, ruleID)
+	account, token, err := uc.owned(ctx, workspaceID, accountID, ruleID, ads.UseWrite)
 	if err != nil {
 		return err
 	}
@@ -92,7 +92,7 @@ func (uc *RulesUseCase) SetEnabled(ctx context.Context, workspaceID, accountID, 
 }
 
 func (uc *RulesUseCase) Delete(ctx context.Context, workspaceID, accountID, ruleID string) error {
-	account, token, err := uc.owned(ctx, workspaceID, accountID, ruleID)
+	account, token, err := uc.owned(ctx, workspaceID, accountID, ruleID, ads.UseWrite)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (uc *RulesUseCase) Delete(ctx context.Context, workspaceID, accountID, rule
 }
 
 func (uc *RulesUseCase) History(ctx context.Context, workspaceID, accountID, ruleID string) ([]ads.RuleRun, error) {
-	account, token, err := uc.owned(ctx, workspaceID, accountID, ruleID)
+	account, token, err := uc.owned(ctx, workspaceID, accountID, ruleID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}

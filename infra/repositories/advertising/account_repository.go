@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 
 	"vozko/domain/advertising"
@@ -21,8 +22,8 @@ func NewAccountRepository(db *gorm.DB) advertising.AccountRepository {
 }
 
 const upsertAccountSQL = `INSERT INTO ad_accounts (id, workspace_id, grant_id, meta_account_id, name, business_id, business_name, currency, timezone,
-	meta_status, disable_reason, has_funding, amount_spent, spend_cap, connection, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+	meta_status, disable_reason, has_funding, amount_spent, spend_cap, user_tasks, connection, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
 ON CONFLICT (meta_account_id) DO UPDATE SET
 	grant_id = EXCLUDED.grant_id,
 	name = EXCLUDED.name,
@@ -36,6 +37,7 @@ ON CONFLICT (meta_account_id) DO UPDATE SET
 	spend_cap = EXCLUDED.spend_cap,
 	connection = EXCLUDED.connection,
 	business_id = EXCLUDED.business_id,
+	user_tasks = EXCLUDED.user_tasks,
 	updated_at = NOW()
 WHERE ad_accounts.workspace_id = EXCLUDED.workspace_id
 RETURNING id, created_at, updated_at`
@@ -56,7 +58,7 @@ func (r *accountRepository) Upsert(ctx context.Context, a *advertising.AdAccount
 	var rows []upserted
 	err := r.db.WithContext(ctx).Raw(upsertAccountSQL,
 		uuid.New().String(), a.WorkspaceID, a.GrantID, metaAccountID, a.Name, a.BusinessID, a.BusinessName, a.Currency, a.Timezone,
-		int(a.MetaStatus), a.DisableReason, a.HasFunding, a.AmountSpent, a.SpendCap, string(a.Connection),
+		int(a.MetaStatus), a.DisableReason, a.HasFunding, a.AmountSpent, a.SpendCap, pq.StringArray(storedTasks(a.Tasks)), string(a.Connection),
 	).Scan(&rows).Error
 	if err != nil {
 		return err
@@ -166,9 +168,17 @@ func toAccount(record *schema.AdAccount) *advertising.AdAccount {
 		HasFunding:    record.HasFunding,
 		AmountSpent:   record.AmountSpent,
 		SpendCap:      record.SpendCap,
+		Tasks:         []string(record.UserTasks),
 		Connection:    advertising.Connection(record.Connection),
 		LastSyncedAt:  record.LastSyncedAt,
 		CreatedAt:     record.CreatedAt,
 		UpdatedAt:     record.UpdatedAt,
 	}
+}
+
+func storedTasks(tasks []string) []string {
+	if tasks == nil {
+		return []string{}
+	}
+	return tasks
 }

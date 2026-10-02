@@ -23,21 +23,22 @@ type PromotedObject struct {
 }
 
 type AdSetSpec struct {
-	Name            string
-	DynamicCreative bool
-	CampaignID      string
-	Budget          *Budget
-	Bid             Bid
-	BillingEvent    string
-	Goal            OptimizationGoal
-	Destination     Destination
-	PromotedObject  PromotedObject
-	Targeting       Targeting
-	Placements      Placements
-	StartTime       *time.Time
-	EndTime         *time.Time
-	Schedule        []DayPart
-	Status          ConfiguredStatus
+	Name              string
+	DynamicCreative   bool
+	CampaignID        string
+	Budget            *Budget
+	Bid               Bid
+	CampaignBidAmount int64
+	BillingEvent      string
+	Goal              OptimizationGoal
+	Destination       Destination
+	PromotedObject    PromotedObject
+	Targeting         Targeting
+	Placements        Placements
+	StartTime         *time.Time
+	EndTime           *time.Time
+	Schedule          []DayPart
+	Status            ConfiguredStatus
 }
 
 type UploadedMedia struct {
@@ -80,7 +81,7 @@ type AdSpec struct {
 func CampaignSpecOf(d AdDraft) CampaignSpec {
 	spec := CampaignSpec{Name: d.Campaign.Name, Objective: d.Campaign.Objective, Budget: d.Campaign.Budget, Status: StatusPaused}
 	if d.Campaign.Budget != nil {
-		spec.Bid = d.Campaign.Bid
+		spec.Bid = Bid{Strategy: d.Campaign.Bid.Strategy}
 	}
 	if d.AdSet.Destination == DestinationCatalog {
 		spec.ProductCatalogID = d.AdSet.CatalogID
@@ -111,6 +112,8 @@ func AdSetSpecOf(d AdDraft, campaignID string) AdSetSpec {
 	if !d.CampaignBudget() {
 		spec.Budget = s.Budget
 		spec.Bid = s.Bid
+	} else if d.Campaign.Bid.NeedsAmount() {
+		spec.CampaignBidAmount = d.Campaign.Bid.Amount
 	}
 	return spec
 }

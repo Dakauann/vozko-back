@@ -41,7 +41,7 @@ func NewSyncUseCase(accounts ads.AccountRepository, grants ads.GrantRepository, 
 }
 
 func (uc *SyncUseCase) Sync(ctx context.Context, workspaceID, accountID string) (*ads.AdAccount, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (uc *SyncUseCase) SyncAll(ctx context.Context, insightDays int) error {
 }
 
 func (uc *SyncUseCase) syncConnected(ctx context.Context, account *ads.AdAccount, insightDays int) error {
-	token, err := uc.access.tokenFor(ctx, account, ads.ScopeAdsRead)
+	token, err := uc.access.tokenFor(ctx, account, ads.UseRead)
 	if err != nil {
 		return err
 	}

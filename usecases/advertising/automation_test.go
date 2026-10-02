@@ -71,7 +71,10 @@ func (f *fakeCRM) FindOrCreate(_, number string, _ lead.LeadUpdate) (*lead.Lead,
 func (f *fakeCRM) FindByIDs(string, []string) ([]*lead.Lead, error) { return nil, nil }
 
 func formsWorld() (*world, *FormsUseCase, *fakeTrackedForms, *fakeFormLeads, *fakeCRM) {
-	w := newWorld()
+	return formsWorldFrom(newWorld())
+}
+
+func formsWorldFrom(w *world) (*world, *FormsUseCase, *fakeTrackedForms, *fakeFormLeads, *fakeCRM) {
 	forms := &fakeTrackedForms{byID: map[string]*ads.TrackedForm{}}
 	leads := &fakeFormLeads{saved: map[string]*ads.FormLead{}, linked: map[string]string{}}
 	crm := &fakeCRM{}
@@ -80,7 +83,7 @@ func formsWorld() (*world, *FormsUseCase, *fakeTrackedForms, *fakeFormLeads, *fa
 
 func TestCreatingAFormTracksItAndSubscribesThePage(t *testing.T) {
 	w, uc, forms, _, _ := formsWorld()
-	draft := ads.LeadFormDraft{AdAccountID: "acc-1", PageID: "page-1", Name: "Orçamento", PrivacyURL: "https://x.example.com/p", Questions: []ads.FormQuestion{{Type: ads.QuestionPhone}}}
+	draft := ads.LeadFormDraft{AdAccountID: "acc-1", PageID: "page-1", Name: "Orçamento", PrivacyURL: "https://x.example.com/p", Questions: []ads.FormQuestion{{Type: ads.QuestionPhone}}, ThankYouTitle: "Obrigado", ThankYouURL: "https://x.example.com", ThankYouButtonText: "Visitar site"}
 	if _, err := uc.Create(context.Background(), "ws-1", draft); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +209,10 @@ type fakeWABAs struct{}
 func (fakeWABAs) WABAOf(context.Context, string, string) (string, error) { return "waba-1", nil }
 
 func conversionsWorld(pending []ads.PendingSignal) (*world, *ConversionsUseCase, *fakeOutbox) {
-	w := newWorld()
+	return conversionsWorldFrom(newWorld(), pending)
+}
+
+func conversionsWorldFrom(w *world, pending []ads.PendingSignal) (*world, *ConversionsUseCase, *fakeOutbox) {
 	settings := &fakeSettings{s: &ads.ConversionSettings{WorkspaceID: "ws-1", AdAccountID: "acc-1", DatasetID: "ds-1", SendLeads: true, SendPurchases: true, Enabled: true}}
 	outbox := &fakeOutbox{pending: pending}
 	return w, NewConversionsUseCase(w.sync, w.gateway, settings, outbox, fakeWABAs{}), outbox

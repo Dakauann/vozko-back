@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"vozko/domain/advertising"
+	"vozko/domain/imagegen"
 )
 
 func pngBytes(t *testing.T, width, height int) []byte {
@@ -64,20 +64,20 @@ func generatorWith(t *testing.T, s *stub) *Generator {
 	return g
 }
 
-func request(aspect advertising.Aspect) advertising.ImageRequest {
-	return advertising.ImageRequest{WorkspaceID: "ws", Prompt: "Pizza artesanal na mesa", Aspect: aspect}
+func request(aspect imagegen.Aspect) imagegen.Request {
+	return imagegen.Request{WorkspaceID: "ws", Prompt: "Pizza artesanal na mesa", Aspect: aspect}
 }
 
 func TestGenerateNormalisesToTheExactAspectSize(t *testing.T) {
 	tests := []struct {
-		aspect advertising.Aspect
+		aspect imagegen.Aspect
 		ratio  string
 		width  int
 		height int
 	}{
-		{aspect: advertising.AspectSquare, ratio: "1:1", width: 1080, height: 1080},
-		{aspect: advertising.AspectPortrait, ratio: "3:4", width: 1080, height: 1350},
-		{aspect: advertising.AspectStory, ratio: "9:16", width: 1080, height: 1920},
+		{aspect: imagegen.AspectSquare, ratio: "1:1", width: 1080, height: 1080},
+		{aspect: imagegen.AspectPortrait, ratio: "3:4", width: 1080, height: 1350},
+		{aspect: imagegen.AspectStory, ratio: "9:16", width: 1080, height: 1920},
 	}
 	encoded := base64.StdEncoding.EncodeToString(pngBytes(t, 300, 400))
 	for _, tt := range tests {
@@ -85,7 +85,7 @@ func TestGenerateNormalisesToTheExactAspectSize(t *testing.T) {
 			s := &stub{respond: `{"created":1,"data":[{"b64_json":"` + encoded + `","media_type":"image/png"}],"usage":{"cost":0.04}}`}
 			g := generatorWith(t, s)
 
-			out, err := g.Generate(context.Background(), request(tt.aspect))
+			out, err := g.Generate(context.Background(), request(tt.aspect), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,7 +112,7 @@ func TestGenerateNormalisesToTheExactAspectSize(t *testing.T) {
 func TestGenerateAcceptsDataURLAndReportedModel(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString(pngBytes(t, 64, 64))
 	s := &stub{respond: `{"model":"openai/gpt-image-2.5-flare-20260901","data":[{"url":"data:image/png;base64,` + encoded + `"}],"usage":{"cost":0.0000011}}`}
-	out, err := generatorWith(t, s).Generate(context.Background(), request(advertising.AspectSquare))
+	out, err := generatorWith(t, s).Generate(context.Background(), request(imagegen.AspectSquare), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestGenerateDownloadsHTTPSImages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := g.Generate(context.Background(), request(advertising.AspectStory))
+	out, err := g.Generate(context.Background(), request(imagegen.AspectStory), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,11 +162,11 @@ func TestGenerateFailures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &stub{status: tt.status, respond: tt.respond}
-			_, err := generatorWith(t, s).Generate(context.Background(), request(advertising.AspectSquare))
+			_, err := generatorWith(t, s).Generate(context.Background(), request(imagegen.AspectSquare), nil)
 			if err == nil {
 				t.Fatal("expected an error")
 			}
-			if tt.sentinel && !errors.Is(err, advertising.ErrImageGenerationFailed) {
+			if tt.sentinel && !errors.Is(err, imagegen.ErrGenerationFailed) {
 				t.Fatalf("err = %v", err)
 			}
 			if tt.substring != "" && !strings.Contains(err.Error(), tt.substring) {
@@ -179,7 +179,7 @@ func TestGenerateFailures(t *testing.T) {
 func TestGenerateValidatesBeforeCalling(t *testing.T) {
 	s := &stub{respond: `{}`}
 	g := generatorWith(t, s)
-	if _, err := g.Generate(context.Background(), advertising.ImageRequest{WorkspaceID: "ws", Prompt: " ", Aspect: advertising.AspectSquare}); err == nil || s.path != "" {
+	if _, err := g.Generate(context.Background(), imagegen.Request{WorkspaceID: "ws", Prompt: " ", Aspect: imagegen.AspectSquare}, nil); err == nil || s.path != "" {
 		t.Fatalf("err %v path %q", err, s.path)
 	}
 }
@@ -193,8 +193,53 @@ func TestNewRequiresAnAPIKey(t *testing.T) {
 func TestUnreportedCostComesBackAsUnknownSoThePaidImageIsKept(t *testing.T) {
 	encoded := base64.StdEncoding.EncodeToString(pngBytes(t, 10, 10))
 	s := &stub{respond: `{"data":[{"b64_json":"` + encoded + `"}]}`}
-	out, err := generatorWith(t, s).Generate(context.Background(), request(advertising.AspectSquare))
+	out, err := generatorWith(t, s).Generate(context.Background(), request(imagegen.AspectSquare), nil)
 	if err != nil || out.ProviderCostMicros != 0 || len(out.Bytes) == 0 {
 		t.Fatalf("out %+v err %v", out, err)
+	}
+}
+
+func referencedRequest(ids ...string) imagegen.Request {
+	req := request(imagegen.AspectSquare)
+	req.ReferenceMediaIDs = ids
+	return req
+}
+
+func TestReferenceImagesAreSentAsInputReferencesInOrder(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString(pngBytes(t, 10, 10))
+	s := &stub{respond: `{"data":[{"b64_json":"` + encoded + `"}],"usage":{"cost":0.04}}`}
+	refs := []imagegen.ReferenceImage{{MediaID: "m-2", URL: "https://cdn/m-2.jpg"}, {MediaID: "m-1", URL: "https://cdn/m-1.png"}}
+	if _, err := generatorWith(t, s).Generate(context.Background(), referencedRequest("m-2", "m-1"), refs); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := json.Marshal(s.body["input_references"])
+	want := `[{"image_url":{"url":"https://cdn/m-2.jpg"},"type":"image_url"},{"image_url":{"url":"https://cdn/m-1.png"},"type":"image_url"}]`
+	if string(got) != want {
+		t.Fatalf("input_references = %s", got)
+	}
+}
+
+func TestARequestWithoutReferencesSendsNone(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString(pngBytes(t, 10, 10))
+	s := &stub{respond: `{"data":[{"b64_json":"` + encoded + `"}],"usage":{"cost":0.04}}`}
+	if _, err := generatorWith(t, s).Generate(context.Background(), request(imagegen.AspectSquare), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := s.body["input_references"]; present {
+		t.Fatalf("body = %v", s.body)
+	}
+}
+
+func TestReferencesMustBeTheResolvedRequestReferencesOverHTTPS(t *testing.T) {
+	cases := map[string][]imagegen.ReferenceImage{
+		"missing":    {{MediaID: "m-1", URL: "https://cdn/m-1.png"}},
+		"reordered":  {{MediaID: "m-2", URL: "https://cdn/m-2.png"}, {MediaID: "m-1", URL: "https://cdn/m-1.png"}},
+		"plain http": {{MediaID: "m-1", URL: "http://cdn/m-1.png"}, {MediaID: "m-2", URL: "https://cdn/m-2.png"}},
+	}
+	for name, refs := range cases {
+		s := &stub{respond: `{}`}
+		if _, err := generatorWith(t, s).Generate(context.Background(), referencedRequest("m-1", "m-2"), refs); err == nil || s.path != "" {
+			t.Fatalf("%s: err %v path %q", name, err, s.path)
+		}
 	}
 }

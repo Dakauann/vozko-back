@@ -2,6 +2,7 @@ package advertisinghttp
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -25,6 +26,7 @@ type PageResponse struct {
 	InstagramUserID   string           `json:"instagramUserId,omitempty"`
 	InstagramUsername string           `json:"instagramUsername,omitempty"`
 	CanAdvertise      bool             `json:"canAdvertise"`
+	LeadTermsAccepted bool             `json:"leadTermsAccepted"`
 	Numbers           []NumberResponse `json:"numbers"`
 }
 
@@ -306,8 +308,39 @@ func presentPage(p adsuc.PromotablePage) PageResponse {
 	return PageResponse{
 		PageID: p.Page.PageID, Name: p.Page.Name, PictureURL: p.Page.PictureURL, WhatsAppNumber: p.Page.WhatsAppNumber,
 		InstagramUserID: p.Page.InstagramUserID, InstagramUsername: p.Page.InstagramUsername, CanAdvertise: p.Page.CanAdvertise,
+		LeadTermsAccepted: p.Page.LeadTermsAccepted,
 		Numbers: presentAll(p.Numbers, func(n advertising.WorkspaceNumber) NumberResponse {
 			return NumberResponse{Kind: string(n.Kind), Label: n.Label, Number: n.Number}
 		}),
 	}
+}
+
+// @Summary		Orçamento diário mínimo
+// @Description	Mínimo diário que a Meta aceita para um conjunto de anúncios desta conta com a meta de otimização informada, em unidades menores da moeda da conta. Com lance manual, informe bidAmount. Contas só de leitura recebem 409 account_read_only.
+// @Tags			Anúncios
+// @Produce		json
+// @Param			id			path		string	true	"ID da conta de anúncios"
+// @Param			goal		query		string	true	"meta de otimização, como LINK_CLICKS"
+// @Param			bidAmount	query		int		false	"lance manual em unidades menores da moeda da conta"
+// @Success		200			{object}	BudgetMinimumResponse
+// @Failure		409			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/ads/accounts/{id}/budget-minimum [get]
+func (h *Handler) BudgetMinimum(w http.ResponseWriter, r *http.Request) {
+	bid, err := intQuery(r, "bidAmount")
+	if err != nil {
+		writeError(w, err, "Failed to read the minimum budget")
+		return
+	}
+	goal := advertising.OptimizationGoal(strings.TrimSpace(r.URL.Query().Get("goal")))
+	if goal == "" {
+		writeError(w, advertising.FieldError("goal", "required"), "Failed to read the minimum budget")
+		return
+	}
+	minimum, err := h.d.Assets.BudgetMinimum(r.Context(), workspaceOf(r), mux.Vars(r)["id"], goal, int64(bid))
+	if err != nil {
+		writeError(w, err, "Failed to read the minimum budget")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, presentBudgetMinimum(&minimum))
 }

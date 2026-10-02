@@ -43,7 +43,7 @@ func NewPublishUseCase(sync *SyncUseCase, gateway publishGateway, jobs ads.Publi
 	media := newCreativeMedia(source, gateway)
 	return &PublishUseCase{
 		access: sync.access, gateway: gateway, jobs: jobs, fees: fees, media: media, sync: sync,
-		preflight: preflighter{access: sync.access, gateway: gateway, objects: sync.objects, numbers: numbers, media: media, fees: fees},
+		preflight: preflighter{access: sync.access, gateway: gateway, objects: sync.objects, numbers: numbers, media: media, fees: fees, floor: budgetFloor{access: sync.access, gateway: gateway}},
 	}
 }
 
@@ -104,9 +104,9 @@ func (uc *PublishUseCase) Run(ctx context.Context, job *ads.PublishJob) (*ads.Pu
 		return uc.jobs.Find(ctx, job.WorkspaceID, job.ID)
 	}
 	job.Status = ads.JobRunning
-	account, token, err := uc.access.open(ctx, job.WorkspaceID, job.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, job.WorkspaceID, job.AdAccountID, ads.UseWrite)
 	if err == nil {
-		err = account.CanPublish(job.Draft)
+		err = account.CanSpend()
 	}
 	if err != nil {
 		return uc.settle(ctx, job, nil, "", ads.Step{}, &localFailure{err: err})
@@ -157,12 +157,7 @@ func (uc *PublishUseCase) perform(ctx context.Context, job *ads.PublishJob, acco
 	case ads.StepAd:
 		return uc.gateway.CreateAd(ctx, token, act, ads.AdSpecOf(d, step.Index, job.AdSetID(), job.Progress.Creatives[step.Index], job.UploadedMedia()))
 	case ads.StepActivate:
-		for _, id := range job.ToActivate() {
-			if err := uc.gateway.SetStatus(ctx, token, id, ads.StatusActive); err != nil {
-				return "", err
-			}
-		}
-		return "", nil
+		return "", uc.switchOn(ctx, token, job)
 	}
 	return "", &localFailure{err: fmt.Errorf("ads: unknown publish step %q", step.Kind)}
 }
@@ -252,6 +247,43 @@ func (uc *PublishUseCase) resume(ctx context.Context, job *ads.PublishJob, now t
 
 func (uc *PublishUseCase) Jobs(ctx context.Context, workspaceID string, limit int) ([]*ads.PublishJob, error) {
 	return uc.jobs.ListByWorkspace(ctx, workspaceID, limit)
+}
+
+func (uc *PublishUseCase) switchOn(ctx context.Context, token string, job *ads.PublishJob) error {
+	for _, id := range job.ToActivate() {
+		if err := uc.gateway.SetStatus(ctx, token, id, ads.StatusActive); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (uc *PublishUseCase) SwitchOn(ctx context.Context, workspaceID, id string) (*ads.PublishJob, error) {
+	job, err := uc.jobs.Find(ctx, workspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := job.CanSwitchOnLater(); err != nil {
+		return nil, err
+	}
+	account, token, err := uc.access.open(ctx, workspaceID, job.AdAccountID, ads.UseWrite)
+	if err != nil {
+		return nil, err
+	}
+	if err := account.CanSpend(); err != nil {
+		return nil, err
+	}
+	if err := uc.switchOn(ctx, token, job); err != nil {
+		return nil, uc.access.failed(ctx, account, err)
+	}
+	job.SwitchedOn()
+	if err := uc.jobs.Save(ctx, job); err != nil {
+		return nil, err
+	}
+	if err := uc.sync.SyncStructure(ctx, account, token); err != nil {
+		log.Printf("[ads] job %s switched on but the refresh failed: %v", job.ID, err)
+	}
+	return job, nil
 }
 
 func (uc *PublishUseCase) Job(ctx context.Context, workspaceID, id string) (*ads.PublishJob, error) {

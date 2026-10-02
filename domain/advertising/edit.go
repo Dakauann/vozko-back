@@ -79,6 +79,9 @@ func (e ObjectEdit) Validate(current ObjectDetail, restricted bool, now time.Tim
 	}
 	if e.Bid != nil && levelOnly("bid", o.Level != LevelAd) {
 		e.Bid.validate(v.at("bid"), OptimizationGoal(o.OptimizationGoal))
+		if o.Level == LevelCampaign {
+			e.Bid.validateCampaignEdit(v.at("bid"))
+		}
 	}
 	if e.EndAt != nil && levelOnly("endAt", o.Level != LevelAd) && !e.EndAt.After(now) {
 		v.add("endAt", "in_the_past")

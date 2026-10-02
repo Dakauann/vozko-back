@@ -113,6 +113,27 @@ func TestGetAdDetailMapsCreativeFormats(t *testing.T) {
 			identity: advertising.Identity{PageID: "P1"},
 		},
 		{
+			name: "whatsapp greeting stored as a json string",
+			creative: `{"id":"CR1","object_story_spec":{"page_id":"P1","link_data":{"link":"https://api.whatsapp.com/send","image_hash":"h1",
+				"call_to_action":{"type":"WHATSAPP_MESSAGE","value":{"app_destination":"WHATSAPP"}},
+				"page_welcome_message":"{\"type\":\"VISUAL_EDITOR\",\"text_format\":{\"customer_action_type\":\"autofill_message\",\"message\":{\"text\":\"Olá!\",\"autofill_message\":{\"content\":\"Olá!\"}}}}"}}}`,
+			want: advertising.CreativeDraft{
+				Format: advertising.FormatImage, CallToAction: advertising.CTAWhatsAppMessage, Greeting: "Olá!",
+				Media: advertising.MediaRef{Kind: advertising.MediaImage, MediaID: "meta:h1"},
+			},
+			identity: advertising.Identity{PageID: "P1"},
+		},
+		{
+			name: "messenger greeting stored as plain text",
+			creative: `{"id":"CR1","object_story_spec":{"page_id":"P1","link_data":{"link":"https://fb.com/messenger_doc/","image_hash":"h1",
+				"call_to_action":{"type":"MESSAGE_PAGE","value":{"app_destination":"MESSENGER"}},"page_welcome_message":"Oi, tudo bem?"}}}`,
+			want: advertising.CreativeDraft{
+				Format: advertising.FormatImage, CallToAction: advertising.CTAMessagePage, Greeting: "Oi, tudo bem?",
+				Media: advertising.MediaRef{Kind: advertising.MediaImage, MediaID: "meta:h1"},
+			},
+			identity: advertising.Identity{PageID: "P1"},
+		},
+		{
 			name: "carousel",
 			creative: `{"id":"CR1","object_story_spec":{"page_id":"P1","link_data":{"link":"https://api.whatsapp.com/send","message":"Oferta",
 				"child_attachments":[{"link":"https://loja.com/a","name":"A","image_hash":"h1"},{"link":"https://loja.com/b","name":"B","video_id":"V2","picture":"https://t"}]}}}`,
@@ -257,6 +278,13 @@ func TestUpdateObjectSendsOnlyChangedFields(t *testing.T) {
 			absent: []string{"end_time"},
 		},
 		{
+			name:   "campaign bid sends only the strategy",
+			level:  advertising.LevelCampaign,
+			spec:   advertising.EditSpec{Bid: &advertising.Bid{Strategy: advertising.BidLowestCost}},
+			want:   map[string]string{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"},
+			absent: []string{"bid_amount", "bid_constraints"},
+		},
+		{
 			name:  "schedule",
 			level: advertising.LevelAdSet,
 			spec:  advertising.EditSpec{Schedule: []advertising.DayPart{{Days: []int{0}, StartMinute: 60, EndMinute: 120}}},
@@ -347,12 +375,13 @@ func TestUpdateObjectRejectsBeforeCallingMeta(t *testing.T) {
 		{name: "targeting on campaign", level: advertising.LevelCampaign, spec: advertising.EditSpec{Targeting: &target}, want: advertising.ErrEditNotForLevel},
 		{name: "creative on ad set", level: advertising.LevelAdSet, spec: advertising.EditSpec{CreativeID: "CR"}, want: advertising.ErrEditNotForLevel},
 		{name: "schedule on campaign", level: advertising.LevelCampaign, spec: advertising.EditSpec{Schedule: []advertising.DayPart{}}, want: advertising.ErrEditNotForLevel},
+		{name: "bid amount on campaign", level: advertising.LevelCampaign, spec: advertising.EditSpec{Bid: &advertising.Bid{Strategy: advertising.BidCap, Amount: 300}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g, calls := gatewayWith(t, ok(`{"success":true}`))
 			err := g.UpdateObject(context.Background(), "tok", "X1", tt.level, tt.spec)
-			if !errors.Is(err, tt.want) || len(*calls) != 0 {
+			if err == nil || (tt.want != nil && !errors.Is(err, tt.want)) || len(*calls) != 0 {
 				t.Fatalf("err %v calls %d", err, len(*calls))
 			}
 		})

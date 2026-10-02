@@ -25,7 +25,7 @@ func NewSplitTestUseCase(sync *SyncUseCase, gateway testGateway) *SplitTestUseCa
 var testLevels = map[ads.TestLevel]ads.Level{ads.TestCampaigns: ads.LevelCampaign, ads.TestAdSets: ads.LevelAdSet}
 
 func (uc *SplitTestUseCase) List(ctx context.Context, workspaceID, accountID string) ([]ads.SplitTest, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (uc *SplitTestUseCase) Create(ctx context.Context, workspaceID string, test
 	if err := test.Validate(uc.access.now()); err != nil {
 		return "", err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, test.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, test.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return "", err
 	}

@@ -2,6 +2,7 @@ package marketing
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,19 +14,21 @@ import (
 )
 
 const (
-	instantFormLink   = "http://fb.me/"
-	canvasLinkPrefix  = "https://fb.com/canvas_doc/"
-	pageLinkPrefix    = "https://www.facebook.com/"
-	collectionPhotos  = 4
-	photoElement      = "PHOTO"
-	enrollStatusOn    = "OPT_IN"
-	enrollStatusOff   = "OPT_OUT"
-	textPrimary       = "primary_text"
-	textHeadline      = "headline"
-	textDescription   = "description"
-	formatSingleImage = "SINGLE_IMAGE"
-	formatSingleVideo = "SINGLE_VIDEO"
-	formatAutomatic   = "AUTOMATIC_FORMAT"
+	instantFormLink     = "http://fb.me/"
+	canvasLinkPrefix    = "https://fb.com/canvas_doc/"
+	pageLinkPrefix      = "https://www.facebook.com/"
+	collectionPhotos    = 4
+	photoElement        = "PHOTO"
+	heroElementIndex    = 0
+	canvasElementFields = "body_elements{id,element_type}"
+	enrollStatusOn      = "OPT_IN"
+	enrollStatusOff     = "OPT_OUT"
+	textPrimary         = "primary_text"
+	textHeadline        = "headline"
+	textDescription     = "description"
+	formatSingleImage   = "SINGLE_IMAGE"
+	formatSingleVideo   = "SINGLE_VIDEO"
+	formatAutomatic     = "AUTOMATIC_FORMAT"
 )
 
 var messagingLinks = map[advertising.Destination]string{
@@ -80,6 +83,49 @@ type graphWelcomeMessage struct {
 	} `json:"text_format"`
 }
 
+type pageWelcome struct {
+	Spec *graphWelcomeMessage
+	Text string
+}
+
+func (w pageWelcome) MarshalJSON() ([]byte, error) {
+	if w.Spec == nil {
+		return json.Marshal(w.Text)
+	}
+	encoded, err := json.Marshal(w.Spec)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(string(encoded))
+}
+
+func (w *pageWelcome) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*w = pageWelcome{}
+		return nil
+	}
+	raw := []byte(trimmed)
+	if trimmed[0] == '"' {
+		var text string
+		if err := json.Unmarshal(data, &text); err != nil {
+			return err
+		}
+		inner := strings.TrimSpace(text)
+		if !strings.HasPrefix(inner, "{") {
+			*w = pageWelcome{Text: text}
+			return nil
+		}
+		raw = []byte(inner)
+	}
+	var spec graphWelcomeMessage
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return err
+	}
+	*w = pageWelcome{Spec: &spec}
+	return nil
+}
+
 type graphCollectionThumbnail struct {
 	ElementID    string              `json:"element_id"`
 	ElementCrops map[string][][2]int `json:"element_crops"`
@@ -95,7 +141,7 @@ type graphLinkData struct {
 	VideoID              string                     `json:"video_id,omitempty"`
 	Picture              string                     `json:"picture,omitempty"`
 	CallToAction         *graphCallToAction         `json:"call_to_action,omitempty"`
-	PageWelcomeMessage   *graphWelcomeMessage       `json:"page_welcome_message,omitempty"`
+	PageWelcomeMessage   *pageWelcome               `json:"page_welcome_message,omitempty"`
 	ChildAttachments     []graphLinkData            `json:"child_attachments,omitempty"`
 	MultiShareOptimized  *bool                      `json:"multi_share_optimized,omitempty"`
 	MultiShareEndCard    *bool                      `json:"multi_share_end_card,omitempty"`
@@ -103,14 +149,14 @@ type graphLinkData struct {
 }
 
 type graphVideoData struct {
-	VideoID            string               `json:"video_id"`
-	ImageURL           string               `json:"image_url,omitempty"`
-	ImageHash          string               `json:"image_hash,omitempty"`
-	Message            string               `json:"message,omitempty"`
-	Title              string               `json:"title,omitempty"`
-	LinkDescription    string               `json:"link_description,omitempty"`
-	CallToAction       *graphCallToAction   `json:"call_to_action,omitempty"`
-	PageWelcomeMessage *graphWelcomeMessage `json:"page_welcome_message,omitempty"`
+	VideoID            string             `json:"video_id"`
+	ImageURL           string             `json:"image_url,omitempty"`
+	ImageHash          string             `json:"image_hash,omitempty"`
+	Message            string             `json:"message,omitempty"`
+	Title              string             `json:"title,omitempty"`
+	LinkDescription    string             `json:"link_description,omitempty"`
+	CallToAction       *graphCallToAction `json:"call_to_action,omitempty"`
+	PageWelcomeMessage *pageWelcome       `json:"page_welcome_message,omitempty"`
 }
 
 type graphObjectStorySpec struct {
@@ -319,11 +365,15 @@ func linkAndCallToAction(spec advertising.CreativeSpec) (string, *graphCallToAct
 	return link, cta, nil
 }
 
-func welcomeOf(spec advertising.CreativeSpec) *graphWelcomeMessage {
+func welcomeOf(spec advertising.CreativeSpec) *pageWelcome {
 	if !spec.Destination.Messaging() {
 		return nil
 	}
-	return welcomeMessageOf(spec.Creative.Greeting, spec.Creative.IceBreakers)
+	message := welcomeMessageOf(spec.Creative.Greeting, spec.Creative.IceBreakers)
+	if message == nil {
+		return nil
+	}
+	return &pageWelcome{Spec: message}
 }
 
 func checkAssetMode(spec advertising.CreativeSpec) error {
@@ -580,12 +630,13 @@ func (r *creativeRequest) collection(ctx context.Context) error {
 		return err
 	}
 	var canvas graphCanvas
-	if err := r.g.get(ctx, path, r.token, "body_elements", &canvas); err != nil {
+	if err := r.g.get(ctx, path, r.token, canvasElementFields, &canvas); err != nil {
 		return err
 	}
 	var thumbnails []graphCollectionThumbnail
-	for _, element := range canvas.BodyElements {
-		if element.ElementType != photoElement || len(thumbnails) == collectionPhotos {
+	for i, element := range canvas.BodyElements {
+		heroPhoto := i == heroElementIndex
+		if element.ElementType != photoElement || heroPhoto || len(thumbnails) == collectionPhotos {
 			continue
 		}
 		if element.ID == "" {

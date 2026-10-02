@@ -37,7 +37,6 @@ type Deps struct {
 	SplitTests      *adsuc.SplitTestUseCase
 	Conversions     *adsuc.ConversionsUseCase
 	Publish         *adsuc.PublishUseCase
-	Images          *adsuc.ImageUseCase
 	Origins         *adsuc.OriginUseCase
 	FrontendBaseURL string
 }

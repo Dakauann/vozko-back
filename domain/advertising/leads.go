@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrLeadFormNotFound = errors.New("lead form not found")
@@ -54,32 +55,94 @@ type LeadForm struct {
 }
 
 type LeadFormDraft struct {
-	AdAccountID   string         `json:"adAccountId"`
-	PageID        string         `json:"pageId"`
-	Name          string         `json:"name"`
-	Locale        string         `json:"locale,omitempty"`
-	Headline      string         `json:"headline,omitempty"`
-	Questions     []FormQuestion `json:"questions"`
-	PrivacyURL    string         `json:"privacyUrl"`
-	PrivacyText   string         `json:"privacyText,omitempty"`
-	ThankYouTitle string         `json:"thankYouTitle,omitempty"`
-	ThankYouBody  string         `json:"thankYouBody,omitempty"`
-	ThankYouURL   string         `json:"thankYouUrl,omitempty"`
-	HigherIntent  bool           `json:"higherIntent,omitempty"`
+	AdAccountID        string         `json:"adAccountId"`
+	PageID             string         `json:"pageId"`
+	Name               string         `json:"name"`
+	Locale             string         `json:"locale,omitempty"`
+	Intro              *FormIntro     `json:"intro,omitempty"`
+	Questions          []FormQuestion `json:"questions"`
+	PrivacyURL         string         `json:"privacyUrl"`
+	PrivacyText        string         `json:"privacyText,omitempty"`
+	ThankYouTitle      string         `json:"thankYouTitle"`
+	ThankYouBody       string         `json:"thankYouBody,omitempty"`
+	ThankYouURL        string         `json:"thankYouUrl"`
+	ThankYouButtonText string         `json:"thankYouButtonText"`
+	HigherIntent       bool           `json:"higherIntent,omitempty"`
+}
+
+type IntroStyle string
+
+const (
+	IntroParagraph IntroStyle = "PARAGRAPH"
+	IntroList      IntroStyle = "LIST"
+)
+
+type FormIntro struct {
+	Title   string     `json:"title"`
+	Style   IntroStyle `json:"style"`
+	Content []string   `json:"content"`
 }
 
 const (
-	maxQuestions      = 15
-	maxQuestionOption = 10
-	maxLabelRunes     = 80
-	maxFormTextRunes  = 300
-	defaultFormLocale = "pt_BR"
+	maxQuestions        = 15
+	maxQuestionOption   = 10
+	maxLabelRunes       = 80
+	maxPrivacyTextRunes = 70
+	maxFormTextRunes    = 300
+	maxIntroTitleRunes  = 60
+	maxIntroItems       = 5
+	paragraphSeparator  = "\n"
+	maxButtonTextRunes  = 60
+	defaultFormLocale   = "PT_BR"
 )
+
+var formLocales = []string{
+	"AR_AR", "CS_CZ", "DA_DK", "DE_DE", "EL_GR", "EN_GB", "EN_US", "ES_ES", "ES_LA", "FI_FI", "FR_FR",
+	"HE_IL", "HI_IN", "HU_HU", "ID_ID", "IT_IT", "JA_JP", "KO_KR", "NB_NO", "NL_NL", "PL_PL", "PT_BR",
+	"PT_PT", "RO_RO", "RU_RU", "SV_SE", "TH_TH", "TR_TR", "VI_VN", "ZH_CN", "ZH_HK", "ZH_TW",
+}
+
+func (i FormIntro) Lines() []string {
+	if i.Style == IntroParagraph {
+		return []string{strings.Join(i.Content, paragraphSeparator)}
+	}
+	return i.Content
+}
+
+func (i FormIntro) validate(v issues) {
+	v.text("title", i.Title, true, maxIntroTitleRunes)
+	lineLimit := maxLabelRunes
+	switch i.Style {
+	case IntroList:
+	case IntroParagraph:
+		lineLimit = maxFormTextRunes
+	default:
+		v.add("style", "invalid")
+	}
+	switch n := len(i.Content); {
+	case n == 0:
+		v.add("content", "required")
+		return
+	case n > maxIntroItems:
+		v.add("content", "too_many")
+	}
+	for _, line := range i.Lines() {
+		if utf8.RuneCountInString(line) > lineLimit {
+			v.add("content", "too_long")
+			return
+		}
+	}
+}
 
 func (d *LeadFormDraft) Normalize() {
 	d.Name = strings.TrimSpace(d.Name)
+	d.Locale = strings.ToUpper(strings.TrimSpace(d.Locale))
 	if d.Locale == "" {
 		d.Locale = defaultFormLocale
+	}
+	if d.Intro != nil {
+		d.Intro.Title = strings.TrimSpace(d.Intro.Title)
+		d.Intro.Content = nonBlank(d.Intro.Content)
 	}
 	for i := range d.Questions {
 		q := &d.Questions[i]
@@ -119,12 +182,18 @@ func (d LeadFormDraft) Validate() error {
 		v.add("pageId", "required")
 	}
 	v.text("name", d.Name, true, maxNameRunes)
-	v.text("headline", d.Headline, false, maxLabelRunes)
+	if !slices.Contains(formLocales, d.Locale) {
+		v.add("locale", "invalid")
+	}
+	if d.Intro != nil {
+		d.Intro.validate(v.at("intro"))
+	}
 	v.url("privacyUrl", d.PrivacyURL, true)
-	v.text("privacyText", d.PrivacyText, false, maxLabelRunes)
-	v.text("thankYouTitle", d.ThankYouTitle, false, maxLabelRunes)
+	v.text("privacyText", d.PrivacyText, false, maxPrivacyTextRunes)
+	v.text("thankYouTitle", d.ThankYouTitle, true, maxLabelRunes)
 	v.text("thankYouBody", d.ThankYouBody, false, maxFormTextRunes)
-	v.url("thankYouUrl", d.ThankYouURL, false)
+	v.url("thankYouUrl", d.ThankYouURL, true)
+	v.text("thankYouButtonText", d.ThankYouButtonText, true, maxButtonTextRunes)
 	switch n := len(d.Questions); {
 	case n == 0:
 		v.add("questions", "required")

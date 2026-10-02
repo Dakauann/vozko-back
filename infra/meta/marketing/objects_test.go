@@ -167,6 +167,8 @@ func TestCampaignSpecialCategory(t *testing.T) {
 		{name: "housing", body: `{"id":"C1","special_ad_categories":["HOUSING"]}`, want: advertising.CategoryHousing},
 		{name: "none", body: `{"id":"C1","special_ad_categories":["NONE"]}`, want: advertising.CategoryNone},
 		{name: "empty", body: `{"id":"C1","special_ad_categories":[]}`, want: advertising.CategoryNone},
+		{name: "legacy credit is financial", body: `{"id":"C1","special_ad_categories":["CREDIT"]}`, want: advertising.CategoryFinancial},
+		{name: "gambling", body: `{"id":"C1","special_ad_categories":["ONLINE_GAMBLING_AND_GAMING"]}`, want: advertising.CategoryGambling},
 		{name: "unknown", body: `{"id":"C1","special_ad_categories":["GAMBLING"]}`, wantErr: true},
 	}
 	for _, tt := range tests {

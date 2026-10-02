@@ -3,6 +3,7 @@ package marketing
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,10 +15,10 @@ func TestListAdAccountsFollowsPagingAndMapsFunding(t *testing.T) {
 		if call.query.Get("after") == "" {
 			return http.StatusOK, `{"data":[{"account_id":"111","name":"Loja","currency":"BRL","timezone_name":"America/Sao_Paulo",
 				"account_status":1,"disable_reason":0,"funding_source":"9001","amount_spent":"123456","spend_cap":"",
-				"business":{"id":"B1","name":"Loja SA"}}],"paging":{"cursors":{"after":"C1"},"next":"https://graph.facebook.com/next"}}`
+				"business":{"id":"B1","name":"Loja SA"},"user_tasks":["ANALYZE","ADVERTISE"]}],"paging":{"cursors":{"after":"C1"},"next":"https://graph.facebook.com/next"}}`
 		}
 		return http.StatusOK, `{"data":[{"account_id":"222","name":"Outra","currency":"USD","account_status":2,"disable_reason":3,
-			"amount_spent":"0","spend_cap":"50000"}],"paging":{"cursors":{"after":"C2"}}}`
+			"amount_spent":"0","spend_cap":"50000","user_tasks":["ANALYZE"]}],"paging":{"cursors":{"after":"C2"}}}`
 	})
 
 	accounts, err := g.ListAdAccounts(context.Background(), "tok")
@@ -28,18 +29,18 @@ func TestListAdAccountsFollowsPagingAndMapsFunding(t *testing.T) {
 		t.Fatalf("calls = %+v", *calls)
 	}
 	first := (*calls)[0]
-	if first.path != "/v26.0/me/adaccounts" || first.query.Get("limit") != "100" || !strings.Contains(first.query.Get("fields"), "funding_source") || !strings.Contains(first.query.Get("fields"), "business{id,name}") || first.query.Get("appsecret_proof") == "" {
+	if first.path != "/v26.0/me/adaccounts" || first.query.Get("limit") != "100" || !strings.Contains(first.query.Get("fields"), "funding_source") || !strings.Contains(first.query.Get("fields"), "business{id,name}") || !strings.Contains(first.query.Get("fields"), "user_tasks") || first.query.Get("appsecret_proof") == "" {
 		t.Fatalf("first call = %+v", first)
 	}
 	want := []advertising.RemoteAdAccount{
-		{MetaAccountID: "111", Name: "Loja", BusinessID: "B1", BusinessName: "Loja SA", Currency: "BRL", Timezone: "America/Sao_Paulo", Status: advertising.MetaAccountActive, HasFunding: true, AmountSpent: 123456},
-		{MetaAccountID: "222", Name: "Outra", Currency: "USD", Status: advertising.MetaAccountDisabled, DisableReason: 3, SpendCap: 50000},
+		{MetaAccountID: "111", Name: "Loja", BusinessID: "B1", BusinessName: "Loja SA", Currency: "BRL", Timezone: "America/Sao_Paulo", Status: advertising.MetaAccountActive, HasFunding: true, AmountSpent: 123456, Tasks: []string{"ANALYZE", "ADVERTISE"}},
+		{MetaAccountID: "222", Name: "Outra", Currency: "USD", Status: advertising.MetaAccountDisabled, DisableReason: 3, SpendCap: 50000, Tasks: []string{"ANALYZE"}},
 	}
 	if len(accounts) != len(want) {
 		t.Fatalf("accounts = %+v", accounts)
 	}
 	for i := range want {
-		if accounts[i] != want[i] {
+		if !reflect.DeepEqual(accounts[i], want[i]) {
 			t.Fatalf("account %d = %+v, want %+v", i, accounts[i], want[i])
 		}
 	}
@@ -59,7 +60,7 @@ func TestGetAdAccountStripsActPrefixAndRejectsBadAmounts(t *testing.T) {
 
 func TestListPagesMapsAdvertisingTasksAndInstagram(t *testing.T) {
 	g, calls := gatewayWith(t, ok(`{"data":[
-		{"id":"P1","name":"Loja","tasks":["advertise","ANALYZE"],"picture":{"data":{"url":"https://pic"}},"whatsapp_number":"+55 11 99999-0000",
+		{"id":"P1","name":"Loja","tasks":["advertise","ANALYZE"],"picture":{"data":{"url":"https://pic"}},"whatsapp_number":"+55 11 99999-0000","leadgen_tos_accepted":true,
 		 "instagram_business_account":{"id":"IG1","username":"loja"}},
 		{"id":"P2","name":"Blog","tasks":["ANALYZE","CREATE_CONTENT"]},
 		{"id":"P3","name":"Dono","tasks":["MANAGE"]}]}`))
@@ -68,11 +69,12 @@ func TestListPagesMapsAdvertisingTasksAndInstagram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if (*calls)[0].path != "/v26.0/me/accounts" || !strings.Contains((*calls)[0].query.Get("fields"), "whatsapp_number") {
+	if (*calls)[0].path != "/v26.0/me/accounts" || !strings.Contains((*calls)[0].query.Get("fields"), "whatsapp_number") ||
+		!strings.Contains((*calls)[0].query.Get("fields"), "leadgen_tos_accepted") {
 		t.Fatalf("call = %+v", (*calls)[0])
 	}
 	want := []advertising.RemotePage{
-		{PageID: "P1", Name: "Loja", PictureURL: "https://pic", WhatsAppNumber: "+55 11 99999-0000", InstagramUserID: "IG1", InstagramUsername: "loja", CanAdvertise: true},
+		{PageID: "P1", Name: "Loja", PictureURL: "https://pic", WhatsAppNumber: "+55 11 99999-0000", InstagramUserID: "IG1", InstagramUsername: "loja", CanAdvertise: true, LeadTermsAccepted: true},
 		{PageID: "P2", Name: "Blog"},
 		{PageID: "P3", Name: "Dono", CanAdvertise: true},
 	}
@@ -128,5 +130,55 @@ func TestGraphVersionOverride(t *testing.T) {
 	}
 	if !strings.HasSuffix(g.client.BaseURL(), "/v27.0") {
 		t.Fatalf("base = %s", g.client.BaseURL())
+	}
+}
+
+func TestMinimumBudgetsReadsTheAccountFloorAndTheGoalBuckets(t *testing.T) {
+	g, calls := gatewayWith(t, func(call recordedCall) (int, string) {
+		if strings.HasSuffix(call.path, "/minimum_budgets") {
+			return http.StatusOK, `{"data":[
+				{"currency":"USD","min_daily_budget_imp":100,"min_daily_budget_video_views":100,"min_daily_budget_high_freq":100,"min_daily_budget_low_freq":4000},
+				{"currency":"BRL","min_daily_budget_imp":519,"min_daily_budget_video_views":600,"min_daily_budget_high_freq":519,"min_daily_budget_low_freq":20760}]}`
+		}
+		return http.StatusOK, `{"currency":"BRL","min_daily_budget":105}`
+	})
+
+	got, err := g.MinimumBudgets(context.Background(), "tok", "act_111", 250)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := advertising.MinimumBudgets{Currency: "BRL", Account: 105, Impressions: 519, VideoViews: 600, HighFrequency: 519, LowFrequency: 20760}
+	if got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	if len(*calls) != 2 {
+		t.Fatalf("calls %+v", *calls)
+	}
+	account, edge := (*calls)[0], (*calls)[1]
+	if account.path != "/v26.0/act_111" || !strings.Contains(account.query.Get("fields"), "min_daily_budget") {
+		t.Fatalf("account call %+v", account)
+	}
+	if edge.path != "/v26.0/act_111/minimum_budgets" || edge.query.Get("bid_amount") != "250" {
+		t.Fatalf("edge call %+v", edge)
+	}
+}
+
+func TestMinimumBudgetsWithoutBidOmitsTheBidAndIgnoresOtherCurrencies(t *testing.T) {
+	g, calls := gatewayWith(t, func(call recordedCall) (int, string) {
+		if strings.HasSuffix(call.path, "/minimum_budgets") {
+			return http.StatusOK, `{"data":[{"currency":"USD","min_daily_budget_high_freq":100}]}`
+		}
+		return http.StatusOK, `{"currency":"BRL","min_daily_budget":105}`
+	})
+
+	got, err := g.MinimumBudgets(context.Background(), "tok", "111", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != (advertising.MinimumBudgets{Currency: "BRL", Account: 105}) {
+		t.Fatalf("got %+v", got)
+	}
+	if (*calls)[1].query.Has("bid_amount") {
+		t.Fatalf("bid sent: %+v", (*calls)[1])
 	}
 }

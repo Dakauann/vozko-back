@@ -258,14 +258,19 @@ func (g *Gateway) GetObject(ctx context.Context, token, metaID string, level adv
 
 var knownCategories = []advertising.SpecialCategory{
 	advertising.CategoryNone, advertising.CategoryHousing, advertising.CategoryEmployment,
-	advertising.CategoryFinancial, advertising.CategoryPolitics,
+	advertising.CategoryFinancial, advertising.CategoryPolitics, advertising.CategoryGambling,
 }
+
+const legacyCreditCategory = "CREDIT"
 
 func specialCategoryOf(categories []string) (advertising.SpecialCategory, error) {
 	if len(categories) == 0 {
 		return advertising.CategoryNone, nil
 	}
 	category := advertising.SpecialCategory(categories[0])
+	if categories[0] == legacyCreditCategory {
+		category = advertising.CategoryFinancial
+	}
 	if !slices.Contains(knownCategories, category) {
 		return "", fmt.Errorf("marketing: unknown special ad category %q", categories[0])
 	}

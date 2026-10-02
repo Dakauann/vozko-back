@@ -17,6 +17,7 @@ type RemoteAdAccount struct {
 	HasFunding    bool
 	AmountSpent   int64
 	SpendCap      int64
+	Tasks         []string
 }
 
 type RemotePage struct {
@@ -27,6 +28,7 @@ type RemotePage struct {
 	InstagramUserID   string
 	InstagramUsername string
 	CanAdvertise      bool
+	LeadTermsAccepted bool
 }
 
 type RemoteLocation struct {
@@ -91,6 +93,7 @@ type CustomerSession struct {
 	BatchSeq  int
 	LastBatch bool
 	TotalRows int
+	SentRows  int
 }
 
 type LeadGateway interface {
@@ -142,10 +145,6 @@ type MarketingGateway interface {
 	SignalGateway
 	InsightsGateway
 	TestGateway
-}
-
-type ImageGenerator interface {
-	Generate(ctx context.Context, req ImageRequest) (*GeneratedImage, error)
 }
 
 type GrantRepository interface {

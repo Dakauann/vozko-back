@@ -101,14 +101,36 @@ type LookalikeDraft struct {
 	Name             string `json:"name"`
 	OriginAudienceID string `json:"originAudienceId"`
 	Percent          int    `json:"percent"`
+	Country          string `json:"country,omitempty"`
 }
 
 const (
-	minLookalikePercent = 1
-	maxLookalikePercent = 10
+	minLookalikePercent     = 1
+	maxLookalikePercent     = 10
+	defaultLookalikeCountry = "BR"
 )
 
 func (d LookalikeDraft) Ratio() float64 { return float64(d.Percent) / 100 }
+
+func (d *LookalikeDraft) Normalize() {
+	d.Name = strings.TrimSpace(d.Name)
+	d.Country = strings.ToUpper(strings.TrimSpace(d.Country))
+	if d.Country == "" {
+		d.Country = defaultLookalikeCountry
+	}
+}
+
+func countryCode(code string) bool {
+	if len(code) != 2 {
+		return false
+	}
+	for _, r := range code {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
 
 func (d LookalikeDraft) Validate() error {
 	v := newIssues()
@@ -118,6 +140,9 @@ func (d LookalikeDraft) Validate() error {
 	v.text("name", d.Name, true, maxNameRunes)
 	if strings.TrimSpace(d.OriginAudienceID) == "" {
 		v.add("originAudienceId", "required")
+	}
+	if !countryCode(d.Country) {
+		v.add("country", "invalid")
 	}
 	if d.Percent < minLookalikePercent || d.Percent > maxLookalikePercent {
 		v.add("percent", "invalid")

@@ -10,7 +10,6 @@ import (
 	"vozko/domain/balance"
 	"vozko/domain/media"
 	adsuc "vozko/usecases/advertising"
-	aichat_usecase "vozko/usecases/aichat"
 )
 
 type errorMapping struct {
@@ -32,6 +31,8 @@ var domainErrors = []errorMapping{
 	{advertising.ErrBusinessPhoneNotFound, http.StatusNotFound, "business_phone_not_found", "Número oficial de WhatsApp não encontrado neste workspace"},
 	{advertising.ErrGrantNotFound, http.StatusConflict, "reconnect_required", "A conta de anúncios precisa ser reconectada"},
 	{advertising.ErrAccountNeedsReconnect, http.StatusConflict, "reconnect_required", "A conta de anúncios precisa ser reconectada"},
+	{advertising.ErrAccountReadOnly, http.StatusConflict, "account_read_only", "Seu perfil só tem acesso de leitura a esta conta de anúncios; peça a um administrador acesso de anunciante nas configurações do negócio na Meta"},
+	{advertising.ErrAccountAdminRequired, http.StatusConflict, "account_admin_required", "Só um administrador da conta de anúncios pode mudar o limite de gastos"},
 	{advertising.ErrMissingScopes, http.StatusConflict, "missing_permissions", "A Meta não concedeu as permissões de anúncios; conecte de novo e aceite todas"},
 	{advertising.ErrAccountLinkedElsewhere, http.StatusConflict, "account_linked_elsewhere", "Esta conta de anúncios já está conectada a outro workspace"},
 	{advertising.ErrAccountNotActive, http.StatusConflict, "account_not_active", "A conta de anúncios não está ativa na Meta"},
@@ -43,6 +44,7 @@ var domainErrors = []errorMapping{
 	{advertising.ErrNumberNotLinked, http.StatusConflict, "number_not_linked", "O número de WhatsApp não está vinculado à página"},
 	{advertising.ErrNumberNotOwned, http.StatusConflict, "number_not_owned", "O número de WhatsApp não está conectado a este workspace"},
 	{advertising.ErrJobNotRunnable, http.StatusConflict, "job_not_runnable", "A publicação não pode rodar no estado atual"},
+	{advertising.ErrJobNotActivatable, http.StatusConflict, "job_not_activatable", "Só dá para ligar uma publicação feita desligada que ainda não foi ligada"},
 	{advertising.ErrVideoNotReady, http.StatusConflict, "video_not_ready", "A Meta ainda está processando o vídeo; tente de novo em instantes"},
 	{advertising.ErrObjectLocked, http.StatusConflict, "object_locked", "Itens excluídos ou arquivados não podem ser alterados"},
 	{advertising.ErrNoBudget, http.StatusConflict, "no_daily_budget", "Este item não tem orçamento próprio"},
@@ -56,13 +58,10 @@ var domainErrors = []errorMapping{
 	{advertising.ErrBreakdownCombination, http.StatusUnprocessableEntity, "invalid_breakdown", "A Meta não aceita esta combinação de quebras"},
 	{advertising.ErrNoCustomersMatched, http.StatusUnprocessableEntity, "no_customers_matched", "Nenhum cliente tem e-mail ou telefone que a Meta consiga encontrar"},
 	{advertising.ErrMediaNotImage, http.StatusBadRequest, "not_an_image", "A mídia escolhida não é uma imagem"},
-	{advertising.ErrImageGenerationFailed, http.StatusBadGateway, "image_generation_failed", "Não foi possível gerar a imagem"},
 	{media.ErrMediaNotFound, http.StatusNotFound, "not_found", "Mídia não encontrada"},
 	{adsuc.ErrCustomerFileUnreadable, http.StatusUnprocessableEntity, "customer_file_unreadable", "O arquivo de clientes não é um CSV legível"},
 	{adsuc.ErrConversationNotVisible, http.StatusForbidden, "forbidden", "Você não tem acesso a esta conversa"},
 	{adsuc.ErrFeeNotCharged, http.StatusPaymentRequired, "fee_not_charged", "Não foi possível cobrar a taxa do anúncio; verifique o saldo"},
-	{aichat_usecase.ErrInsufficientBalance, http.StatusPaymentRequired, "insufficient_balance", "Saldo insuficiente"},
-	{aichat_usecase.ErrNoSubscription, http.StatusPaymentRequired, "no_subscription", "O workspace não tem uma assinatura ativa"},
 	{balance.ErrInsufficientBalance, http.StatusPaymentRequired, "insufficient_balance", "Saldo insuficiente"},
 	{balance.ErrPriceUnavailable, http.StatusServiceUnavailable, "price_unavailable", "O preço do anúncio não está configurado"},
 }
@@ -82,6 +81,17 @@ func writeError(w http.ResponseWriter, err error, fallback string) {
 			response.WriteErrorWithCode(w, m.status, m.code, m.message, nil)
 			return
 		}
+	}
+	switch advertising.ReasonOf(err) {
+	case advertising.ReasonBudgetTooLow:
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "budget_below_minimum", advertising.Explain(err), nil)
+		return
+	case advertising.ReasonNoPaymentMethod:
+		response.WriteErrorWithCode(w, http.StatusConflict, "no_payment_method", advertising.Explain(err), nil)
+		return
+	case advertising.ReasonAccountReadOnly:
+		response.WriteErrorWithCode(w, http.StatusConflict, "account_read_only", "A Meta recusou: seu perfil só tem acesso de leitura a esta conta de anúncios", nil)
+		return
 	}
 	switch advertising.Classify(err) {
 	case advertising.FailureReauth:

@@ -197,6 +197,9 @@ func (uc *ConnectUseCase) connectAccount(ctx context.Context, grant *ads.Grant, 
 	}
 	outcome.AccountID = account.ID
 	outcome.Outcome = OutcomeConnected
+	if account.CanManage() != nil {
+		return outcome, nil
+	}
 	if err := uc.gateway.SubscribeAccount(ctx, grant.AccessToken, account.MetaAccountID); err != nil {
 		log.Printf("[ads] account %s connected without review webhooks (the sync still refreshes it): %v", account.MetaAccountID, err)
 	}
@@ -215,4 +218,5 @@ func applyRemote(account *ads.AdAccount, remote ads.RemoteAdAccount) {
 	account.HasFunding = remote.HasFunding
 	account.AmountSpent = remote.AmountSpent
 	account.SpendCap = remote.SpendCap
+	account.Tasks = remote.Tasks
 }

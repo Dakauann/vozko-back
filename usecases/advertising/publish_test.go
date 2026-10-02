@@ -18,7 +18,7 @@ func metaWrites(calls []string) []string {
 	var out []string
 	for _, c := range calls {
 		switch c {
-		case "list_pages", "list_campaign", "list_adset", "list_ad":
+		case "list_pages", "list_campaign", "list_adset", "list_ad", "minimum_budgets":
 			continue
 		}
 		out = append(out, c)
@@ -243,5 +243,82 @@ func TestPreflightReturnsTheLibraryURLOfEachCreativeMedia(t *testing.T) {
 	}
 	if pre.MediaURLs["media-1"] != "https://cdn/media-1" {
 		t.Fatalf("media urls %+v", pre.MediaURLs)
+	}
+}
+
+func TestAnAccountWithoutPaymentMethodCannotPublishEvenPaused(t *testing.T) {
+	w := newWorld()
+	w.accounts.byID["acc-1"].HasFunding = false
+	d := publishableDraft()
+	d.KeepPaused = true
+	if _, err := publish(t, w, d); !errors.Is(err, ads.ErrNoFundingSource) {
+		t.Fatalf("published without a payment method: %v", err)
+	}
+	if len(w.fees.charged) != 0 || len(metaWrites(w.gateway.calls)) != 0 {
+		t.Fatalf("charged %v calls %v", w.fees.charged, w.gateway.calls)
+	}
+}
+
+func pausedPublishedJob(t *testing.T, w *world) *ads.PublishJob {
+	t.Helper()
+	d := publishableDraft()
+	d.KeepPaused = true
+	job, err := publish(t, w, d)
+	if err != nil || job.Status != ads.JobPublished {
+		t.Fatalf("job %+v err %v", job, err)
+	}
+	return job
+}
+
+func TestAPausedPublishSwitchesOnOnceWithOneAction(t *testing.T) {
+	w := newWorld()
+	job := pausedPublishedJob(t, w)
+	w.gateway.calls = nil
+	on, err := w.publisher().SwitchOn(context.Background(), "ws-1", job.ID)
+	if err != nil || !on.Progress.Activated {
+		t.Fatalf("job %+v err %v", on, err)
+	}
+	if got := metaWrites(w.gateway.calls); !slices.Equal(got, []string{"status:c-1", "status:s-1", "status:a-1"}) {
+		t.Fatalf("calls %v", got)
+	}
+	if _, err := w.publisher().SwitchOn(context.Background(), "ws-1", job.ID); !errors.Is(err, ads.ErrJobNotActivatable) {
+		t.Fatalf("switched on twice: %v", err)
+	}
+}
+
+func TestSwitchOnNeedsAPaymentMethodAndAPausedPublish(t *testing.T) {
+	w := newWorld()
+	job := pausedPublishedJob(t, w)
+	w.accounts.byID["acc-1"].HasFunding = false
+	w.gateway.calls = nil
+	if _, err := w.publisher().SwitchOn(context.Background(), "ws-1", job.ID); !errors.Is(err, ads.ErrNoFundingSource) || len(metaWrites(w.gateway.calls)) != 0 {
+		t.Fatalf("err %v calls %v", err, w.gateway.calls)
+	}
+	live, err := publish(t, newWorld(), publishableDraft())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := live.CanSwitchOnLater(); !errors.Is(err, ads.ErrJobNotActivatable) {
+		t.Fatalf("a job published switched on can be switched on again: %v", err)
+	}
+}
+
+func instantFormDraft() ads.AdDraft {
+	d := publishableDraft()
+	d.Campaign.Objective = ads.ObjectiveLeads
+	d.AdSet.Destination, d.AdSet.Goal, d.AdSet.WhatsAppNumber = ads.DestinationInstantForm, ads.GoalLeadGeneration, ""
+	creative := imageAd()
+	creative.LeadFormID = "form-1"
+	d.Ads = []ads.AdItem{{Creative: creative}}
+	return d
+}
+
+func TestInstantFormAdsWaitForThePageToAcceptTheLeadTerms(t *testing.T) {
+	w := newWorld()
+	w.gateway.pages[0].LeadTermsAccepted = false
+	_, err := w.publisher().Preflight(context.Background(), "ws-1", instantFormDraft())
+	requireIssue(t, err, "identity.pageId", "lead_terms_not_accepted")
+	if _, err := publish(t, w, instantFormDraft()); err == nil || len(w.fees.charged) != 0 || len(metaWrites(w.gateway.calls)) != 0 {
+		t.Fatalf("err %v charged %v calls %v", err, w.fees.charged, w.gateway.calls)
 	}
 }

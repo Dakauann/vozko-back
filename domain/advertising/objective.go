@@ -88,7 +88,7 @@ var objectiveRoutes = map[Objective][]Route{
 		{Destination: DestinationMessenger, Goals: []OptimizationGoal{GoalLinkClicks, GoalReach, GoalImpressions}},
 	},
 	ObjectiveEngagement: append([]Route{
-		{Destination: DestinationOnPost, Goals: []OptimizationGoal{GoalPostEngagement, GoalReach, GoalImpressions}},
+		{Destination: DestinationOnPost, Goals: []OptimizationGoal{GoalPostEngagement, GoalReach}},
 		{Destination: DestinationWebsite, Goals: []OptimizationGoal{GoalOffsiteConversion, GoalLandingPageViews, GoalLinkClicks}},
 	}, messagingRoutes(GoalMessaging, GoalLinkClicks)...),
 	ObjectiveLeads: {
@@ -127,10 +127,24 @@ func (d Destination) Messaging() bool { return slices.Contains(messagingDestinat
 
 func (d Destination) MetaDestinationType() string {
 	switch d {
-	case DestinationNone, DestinationCatalog, DestinationOnPost:
+	case DestinationNone, DestinationCatalog, DestinationApp:
 		return ""
 	}
 	return string(d)
+}
+
+const undefinedDestination = "UNDEFINED"
+
+func (o Objective) DestinationOf(metaType string, goal OptimizationGoal) Destination {
+	if metaType != "" && metaType != undefinedDestination {
+		return Destination(metaType)
+	}
+	for _, r := range objectiveRoutes[o] {
+		if r.Destination.MetaDestinationType() == "" && slices.Contains(r.Goals, goal) {
+			return r.Destination
+		}
+	}
+	return DestinationNone
 }
 
 func (g OptimizationGoal) NeedsPixel() bool { return g == GoalOffsiteConversion || g == GoalValue }

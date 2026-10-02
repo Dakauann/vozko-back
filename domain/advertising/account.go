@@ -68,6 +68,7 @@ type AdAccount struct {
 	HasFunding    bool
 	AmountSpent   int64
 	SpendCap      int64
+	Tasks         []string
 	Connection    Connection
 	LastSyncedAt  *time.Time
 	CreatedAt     time.Time
@@ -99,17 +100,7 @@ func (a *AdAccount) Location() (*time.Location, error) {
 	return loc, nil
 }
 
-func (a *AdAccount) CanManage() error {
-	if a == nil {
-		return ErrAccountNotFound
-	}
-	if a.Connection != ConnectionConnected {
-		return ErrAccountNeedsReconnect
-	}
-	return nil
-}
-
-func (a *AdAccount) CanCreate() error {
+func (a *AdAccount) CanSpend() error {
 	if err := a.CanManage(); err != nil {
 		return err
 	}
@@ -122,22 +113,8 @@ func (a *AdAccount) CanCreate() error {
 	if _, err := a.Location(); err != nil {
 		return err
 	}
-	return nil
-}
-
-func (a *AdAccount) CanSpend() error {
-	if err := a.CanCreate(); err != nil {
-		return err
-	}
 	if !a.HasFunding {
 		return ErrNoFundingSource
 	}
 	return nil
-}
-
-func (a *AdAccount) CanPublish(d AdDraft) error {
-	if d.KeepPaused {
-		return a.CanCreate()
-	}
-	return a.CanSpend()
 }

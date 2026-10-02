@@ -136,10 +136,10 @@ func TestCreateCampaignForm(t *testing.T) {
 				Name: "Verão", Objective: advertising.ObjectiveEngagement, Status: advertising.StatusPaused,
 				SpecialCategories: []advertising.SpecialCategory{advertising.CategoryHousing},
 				Budget:            &advertising.Budget{Kind: advertising.BudgetDaily, Amount: 9000},
-				Bid:               advertising.Bid{Strategy: advertising.BidCostCap, Amount: 1500},
+				Bid:               advertising.Bid{Strategy: advertising.BidCostCap},
 			},
-			want:   map[string]string{"special_ad_categories": `["HOUSING"]`, "daily_budget": "9000", "bid_strategy": "COST_CAP", "bid_amount": "1500"},
-			absent: []string{"is_adset_budget_sharing_enabled", "lifetime_budget"},
+			want:   map[string]string{"special_ad_categories": `["HOUSING"]`, "daily_budget": "9000", "bid_strategy": "COST_CAP"},
+			absent: []string{"is_adset_budget_sharing_enabled", "lifetime_budget", "bid_amount"},
 		},
 		{
 			name: "lifetime catalog campaign",
@@ -172,6 +172,14 @@ func TestCreateCampaignForm(t *testing.T) {
 func TestCreateCampaignRejectsUnknownBudgetKind(t *testing.T) {
 	g, calls := gatewayWith(t, ok(`{"id":"C1"}`))
 	spec := advertising.CampaignSpec{Name: "x", Budget: &advertising.Budget{Kind: "WEEKLY", Amount: 1}, Bid: advertising.Bid{Strategy: advertising.BidLowestCost}}
+	if _, err := g.CreateCampaign(context.Background(), "tok", "9", spec); err == nil || len(*calls) != 0 {
+		t.Fatalf("err %v calls %d", err, len(*calls))
+	}
+}
+
+func TestCreateCampaignRefusesABidAmountBecauseMetaSetsItPerAdSet(t *testing.T) {
+	g, calls := gatewayWith(t, ok(`{"id":"C1"}`))
+	spec := advertising.CampaignSpec{Name: "x", Budget: &advertising.Budget{Kind: advertising.BudgetDaily, Amount: 9000}, Bid: advertising.Bid{Strategy: advertising.BidCap, Amount: 500}}
 	if _, err := g.CreateCampaign(context.Background(), "tok", "9", spec); err == nil || len(*calls) != 0 {
 		t.Fatalf("err %v calls %d", err, len(*calls))
 	}
@@ -270,7 +278,32 @@ func TestCreateAdSetVariants(t *testing.T) {
 				s.Destination, s.Goal = advertising.DestinationApp, advertising.GoalAppInstalls
 				s.PromotedObject = advertising.PromotedObject{AppID: "APP1", AppStoreURL: "https://play.google.com/store/apps/details?id=x"}
 			},
-			want: map[string]string{"destination_type": "APP", "promoted_object": `{"application_id":"APP1","object_store_url":"https://play.google.com/store/apps/details?id=x"}`},
+			want:   map[string]string{"promoted_object": `{"application_id":"APP1","object_store_url":"https://play.google.com/store/apps/details?id=x"}`},
+			absent: []string{"destination_type"},
+		},
+		{
+			name: "post engagement names its destination",
+			edit: func(s *advertising.AdSetSpec) {
+				s.Destination, s.Goal = advertising.DestinationOnPost, advertising.GoalPostEngagement
+				s.PromotedObject = advertising.PromotedObject{PageID: "P1"}
+			},
+			want: map[string]string{"destination_type": "ON_POST", "optimization_goal": "POST_ENGAGEMENT"},
+		},
+		{
+			name: "checkout pixel event uses the meta event name",
+			edit: func(s *advertising.AdSetSpec) {
+				s.Destination, s.Goal = advertising.DestinationWebsite, advertising.GoalOffsiteConversion
+				s.PromotedObject = advertising.PromotedObject{PixelID: "PX1", PixelEvent: advertising.EventInitiateCheckout}
+			},
+			want: map[string]string{"promoted_object": `{"pixel_id":"PX1","custom_event_type":"INITIATED_CHECKOUT"}`},
+		},
+		{
+			name: "campaign bid cap amount lands on the ad set without a strategy",
+			edit: func(s *advertising.AdSetSpec) {
+				s.Budget, s.Bid, s.CampaignBidAmount = nil, advertising.Bid{}, 700
+			},
+			want:   map[string]string{"bid_amount": "700"},
+			absent: []string{"daily_budget", "lifetime_budget", "bid_strategy"},
 		},
 		{
 			name: "awareness without promoted object or destination",
@@ -373,6 +406,16 @@ func TestCreateAdWithAssetGroupsMissingMediaNeverCallsMeta(t *testing.T) {
 	groups.Media = advertising.UploadedMedia{ImageHashes: map[string]string{"m1": "h1"}}
 	_, err := g.CreateAd(context.Background(), "tok", "9", advertising.AdSpec{Name: "A", AdSetID: "S1", CreativeID: "CR1", Status: advertising.StatusPaused, AssetGroups: &groups})
 	if err == nil || !strings.Contains(err.Error(), "m2") || len(*calls) != 0 {
+		t.Fatalf("err %v calls %d", err, len(*calls))
+	}
+}
+
+func TestCreateAdSetRefusesAPixelEventMetaDoesNotKnow(t *testing.T) {
+	spec := adSetSpec(advertising.DestinationWebsite, "")
+	spec.Goal = advertising.GoalOffsiteConversion
+	spec.PromotedObject = advertising.PromotedObject{PixelID: "PX1", PixelEvent: "VISIT"}
+	g, calls := gatewayWith(t, ok(`{"id":"S1"}`))
+	if _, err := g.CreateAdSet(context.Background(), "tok", "9", spec); err == nil || len(*calls) != 0 {
 		t.Fatalf("err %v calls %d", err, len(*calls))
 	}
 }

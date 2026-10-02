@@ -30,6 +30,7 @@ import (
 	advertisinghttp "vozko/delivery/http/advertising"
 	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
+	imagegenhttp "vozko/delivery/http/imagegen"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
@@ -164,6 +165,7 @@ type router struct {
 	instagramHandler               *instagramhttp.Handler
 	instagramWebhookHandler        *instagramhttp.WebhookHandler
 	metaChannels                   MetaChannelRoutes
+	imageGenerationHandler         *imagegenhttp.Handler
 	audienceHandler                *audiencehttp.Handler
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
@@ -298,9 +300,11 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	audienceHandler *audiencehttp.Handler,
 	sendCapHandler *balancehttp.SendCapHandler,
 	metaChannels MetaChannelRoutes,
+	imageGenerationHandler *imagegenhttp.Handler,
 ) Router {
 	r := &router{
 		metaChannels:                   metaChannels,
+		imageGenerationHandler:         imageGenerationHandler,
 		instagramHandler:               instagramHandler,
 		audienceHandler:                audienceHandler,
 		sendCapHandler:                 sendCapHandler,
@@ -468,6 +472,7 @@ func (r *router) setupRoutes() {
 	r.setupInstagramRoutes(protected)
 	facebookhttp.RegisterProtectedRoutes(protected, r.metaChannels.Facebook, r.ac)
 	advertisinghttp.RegisterProtectedRoutes(protected, r.metaChannels.Ads, r.ac)
+	imagegenhttp.RegisterProtectedRoutes(protected, r.imageGenerationHandler, r.ac)
 
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)

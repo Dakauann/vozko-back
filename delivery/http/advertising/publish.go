@@ -22,9 +22,16 @@ type FeeResponse struct {
 	Currency string `json:"currency"`
 }
 
+type BudgetMinimumResponse struct {
+	Field    string `json:"field,omitempty"`
+	Daily    int64  `json:"daily"`
+	Currency string `json:"currency"`
+}
+
 type ValidateResponse struct {
-	Issues []advertising.FieldIssue `json:"issues"`
-	Fee    *FeeResponse             `json:"fee,omitempty"`
+	Issues        []advertising.FieldIssue `json:"issues"`
+	Fee           *FeeResponse             `json:"fee,omitempty"`
+	BudgetMinimum *BudgetMinimumResponse   `json:"budgetMinimum,omitempty"`
 }
 
 type JobResponse struct {
@@ -38,17 +45,6 @@ type JobResponse struct {
 	ErrorMessage string               `json:"errorMessage,omitempty"`
 	CreatedAt    time.Time            `json:"createdAt"`
 	UpdatedAt    time.Time            `json:"updatedAt"`
-}
-
-type GenerateImageRequest struct {
-	Prompt string `json:"prompt"`
-	Aspect string `json:"aspect"`
-}
-
-type GeneratedImageResponse struct {
-	MediaID string `json:"mediaId"`
-	URL     string `json:"url"`
-	Model   string `json:"model"`
 }
 
 type ConversationOriginResponse struct {
@@ -65,7 +61,7 @@ type ConversationOriginResponse struct {
 }
 
 // @Summary		Validar rascunho de anúncio
-// @Description	Valida o rascunho, a conta, a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues.
+// @Description	Valida o rascunho, a conta, a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização, em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount below_minimum.
 // @Tags			Anúncios
 // @Accept			json
 // @Produce		json
@@ -82,14 +78,14 @@ func (h *Handler) ValidateDraft(w http.ResponseWriter, r *http.Request) {
 	pre, err := h.d.Publish.Preflight(r.Context(), workspaceOf(r), req.Draft)
 	var invalid *advertising.ValidationError
 	if errors.As(err, &invalid) {
-		response.WriteSuccess(w, http.StatusOK, ValidateResponse{Issues: invalid.Issues})
+		response.WriteSuccess(w, http.StatusOK, ValidateResponse{Issues: invalid.Issues, BudgetMinimum: presentBudgetMinimum(invalid.Minimum)})
 		return
 	}
 	if err != nil {
 		writeError(w, err, "Failed to validate the ad")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, ValidateResponse{Issues: []advertising.FieldIssue{}, Fee: presentFee(pre)})
+	response.WriteSuccess(w, http.StatusOK, ValidateResponse{Issues: []advertising.FieldIssue{}, Fee: presentFee(pre), BudgetMinimum: presentBudgetMinimum(pre.BudgetMinimum)})
 }
 
 // @Summary		Publicar anúncio
@@ -150,29 +146,23 @@ func (h *Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, presentJob(job))
 }
 
-// @Summary		Gerar imagem para anúncio com IA
-// @Description	Gera a imagem no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920), salva na biblioteca de mídia e cobra como uso de IA.
+// @Summary		Ligar publicação feita desligada
+// @Description	Liga de uma vez a campanha, o conjunto e os anúncios criados por uma publicação feita com "Publicar desligado". Exige meio de pagamento na conta.
 // @Tags			Anúncios
-// @Accept			json
 // @Produce		json
-// @Param			body	body		GenerateImageRequest	true	"descrição da imagem"
-// @Success		201		{object}	GeneratedImageResponse
-// @Failure		402		{object}	response.ErrorResponse
+// @Param			id	path		string	true	"ID da publicação"
+// @Success		200	{object}	JobResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Failure		409	{object}	response.ErrorResponse
 // @Security		BearerAuth
-// @Router			/ads/images [post]
-func (h *Handler) GenerateImage(w http.ResponseWriter, r *http.Request) {
-	var req GenerateImageRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	image, err := h.d.Images.Generate(r.Context(), advertising.ImageRequest{
-		WorkspaceID: workspaceOf(r), Prompt: req.Prompt, Aspect: advertising.Aspect(req.Aspect),
-	})
+// @Router			/ads/publish-jobs/{id}/activate [post]
+func (h *Handler) SwitchOnJob(w http.ResponseWriter, r *http.Request) {
+	job, err := h.d.Publish.SwitchOn(r.Context(), workspaceOf(r), mux.Vars(r)["id"])
 	if err != nil {
-		writeError(w, err, "Failed to generate the image")
+		writeError(w, err, "Failed to switch on the publish job")
 		return
 	}
-	response.WriteSuccess(w, http.StatusCreated, GeneratedImageResponse{MediaID: image.Media.ID, URL: image.Media.URL, Model: image.Model})
+	response.WriteSuccess(w, http.StatusOK, presentJob(job))
 }
 
 // @Summary		Anúncio de origem de uma conversa

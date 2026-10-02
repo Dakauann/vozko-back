@@ -54,6 +54,8 @@ func TestNewAdsErrorsHaveStableCodes(t *testing.T) {
 		{advertising.ErrNoCustomersMatched, http.StatusUnprocessableEntity, "no_customers_matched"},
 		{fmt.Errorf("%w: line 3", adsuc.ErrCustomerFileUnreadable), http.StatusUnprocessableEntity, "customer_file_unreadable"},
 		{fmt.Errorf("%w: spend cap must be above what was already spent", advertising.ErrInvalidBudget), http.StatusBadRequest, "invalid_budget"},
+		{advertising.ErrAccountReadOnly, http.StatusConflict, "account_read_only"},
+		{advertising.ErrAccountAdminRequired, http.StatusConflict, "account_admin_required"},
 	}
 	for _, c := range cases {
 		status, payload := written(t, c.err)
@@ -84,5 +86,28 @@ func TestBudgetMessagesNoLongerAssumeADailyBudget(t *testing.T) {
 func TestUnknownErrorsAreServerErrors(t *testing.T) {
 	if status, _ := written(t, fmt.Errorf("boom")); status != http.StatusInternalServerError {
 		t.Fatalf("got %d", status)
+	}
+}
+
+func TestMetaBudgetTooLowKeepsMetasExplanation(t *testing.T) {
+	err := &advertising.RemoteError{Kind: advertising.FailureRejected, Code: 100, Subcode: 1885272, UserMessage: "Seu orçamento do conjunto de anúncios deve ser superior a R$5,19"}
+	status, payload := written(t, err)
+	if status != http.StatusUnprocessableEntity || payload.Code != "budget_below_minimum" || payload.Message != err.UserMessage {
+		t.Fatalf("got %d %+v", status, payload)
+	}
+}
+
+func TestMetaWritePermissionRefusalIsReadOnly(t *testing.T) {
+	status, payload := written(t, &advertising.RemoteError{Kind: advertising.FailurePermission, Code: 200, Subcode: 2490585})
+	if status != http.StatusConflict || payload.Code != "account_read_only" {
+		t.Fatalf("got %d %+v", status, payload)
+	}
+}
+
+func TestMetaMissingPaymentMethodKeepsMetasExplanation(t *testing.T) {
+	err := &advertising.RemoteError{Kind: advertising.FailureRejected, Code: 100, Subcode: 1359188, UserMessage: "Atualize a forma de pagamento"}
+	status, payload := written(t, err)
+	if status != http.StatusConflict || payload.Code != "no_payment_method" || payload.Message != err.UserMessage {
+		t.Fatalf("got %d %+v", status, payload)
 	}
 }

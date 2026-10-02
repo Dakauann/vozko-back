@@ -10,6 +10,7 @@ import (
 	recordings_domain "vozko/domain/calls/recordings"
 	crm_telemetry_domain "vozko/domain/crm_telemetry"
 	facebook_domain "vozko/domain/facebook"
+	imagegen_domain "vozko/domain/imagegen"
 	notification_domain "vozko/domain/notification"
 	rag_domain "vozko/domain/rag"
 	report_domain "vozko/domain/report"
@@ -79,6 +80,7 @@ func (c *Container) initServices() {
 	audienceAlertExchange := audience_domain.AlertExchange
 	reportExchange := report_domain.Exchange
 	facebookPublishExchange := facebook_domain.PublishExchange
+	imageGenerationExchange := imagegen_domain.Exchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -128,6 +130,8 @@ func (c *Container) initServices() {
 		reportQueueSub:             queue.NewRabbitMQQueueSub(amqpPool, reportExchange),
 		facebookPublishPub:         queue.NewRabbitMQQueuePub(amqpPool, facebookPublishExchange),
 		facebookPublishSub:         queue.NewRabbitMQQueueSub(amqpPool, facebookPublishExchange),
+		imageGenerationPub:         queue.NewRabbitMQQueuePub(amqpPool, imageGenerationExchange),
+		imageGenerationSub:         queue.NewRabbitMQQueueSub(amqpPool, imageGenerationExchange),
 		shortlinkQueuePub:          queue.NewRabbitMQQueuePub(amqpPool, shortlinkClickExchange),
 		shortlinkQueueSub:          queue.NewRabbitMQQueueSub(amqpPool, shortlinkClickExchange),
 		webhookQueuePub:            queue.NewRabbitMQQueuePub(amqpPool, webhookExchange),

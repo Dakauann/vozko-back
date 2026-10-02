@@ -52,7 +52,7 @@ func (uc *ConversionsUseCase) Save(ctx context.Context, workspaceID string, s ad
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, s.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, s.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (uc *ConversionsUseCase) ConnectDataset(ctx context.Context, workspaceID, b
 	if err != nil {
 		return nil, err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, current.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, current.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func (uc *ConversionsUseCase) dispatch(ctx context.Context, s ads.ConversionSett
 	if err != nil || len(pending) == 0 {
 		return err
 	}
-	account, token, err := uc.access.open(ctx, s.WorkspaceID, s.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, s.WorkspaceID, s.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return err
 	}

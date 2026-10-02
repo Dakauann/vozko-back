@@ -169,6 +169,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.FacebookConversation{},
 			&schema.FacebookPost{},
 			&schema.FacebookPublishJob{},
+			&schema.ImageGenerationJob{},
 			&schema.FacebookComment{},
 			&schema.AdGrant{},
 			&schema.AdAccount{},

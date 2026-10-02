@@ -151,6 +151,18 @@ func setBid(form url.Values, b advertising.Bid) error {
 	return fmt.Errorf("marketing: unknown bid strategy %q", b.Strategy)
 }
 
+func setCampaignBid(form url.Values, b advertising.Bid) error {
+	if b.Amount != 0 || b.ROASFloor != 0 {
+		return fmt.Errorf("marketing: campaign bids carry only the strategy, amounts go on each ad set")
+	}
+	switch b.Strategy {
+	case advertising.BidLowestCost, advertising.BidCap, advertising.BidCostCap:
+		form.Set("bid_strategy", string(b.Strategy))
+		return nil
+	}
+	return fmt.Errorf("marketing: bid strategy %q is not set on campaigns", b.Strategy)
+}
+
 func (g *Gateway) CreateCampaign(ctx context.Context, token, metaAccountID string, spec advertising.CampaignSpec) (string, error) {
 	path, err := accountPath(metaAccountID)
 	if err != nil {
@@ -176,7 +188,7 @@ func (g *Gateway) CreateCampaign(ctx context.Context, token, metaAccountID strin
 		if err := setBudget(form, *spec.Budget); err != nil {
 			return "", err
 		}
-		if err := setBid(form, spec.Bid); err != nil {
+		if err := setCampaignBid(form, spec.Bid); err != nil {
 			return "", err
 		}
 	}
@@ -200,16 +212,42 @@ type graphPromotedObject struct {
 	ProductSetID        string `json:"product_set_id,omitempty"`
 }
 
-func promotedObjectOf(p advertising.PromotedObject) graphPromotedObject {
+var customEventTypes = map[advertising.PixelEvent]string{
+	advertising.EventPurchase:             "PURCHASE",
+	advertising.EventLead:                 "LEAD",
+	advertising.EventCompleteRegistration: "COMPLETE_REGISTRATION",
+	advertising.EventAddToCart:            "ADD_TO_CART",
+	advertising.EventInitiateCheckout:     "INITIATED_CHECKOUT",
+	advertising.EventContact:              "CONTACT",
+	advertising.EventSchedule:             "SCHEDULE",
+	advertising.EventSubscribe:            "SUBSCRIBE",
+}
+
+func customEventTypeOf(e advertising.PixelEvent) (string, error) {
+	if e == "" {
+		return "", nil
+	}
+	eventType, ok := customEventTypes[e]
+	if !ok {
+		return "", fmt.Errorf("marketing: pixel event %q has no meta custom_event_type", e)
+	}
+	return eventType, nil
+}
+
+func promotedObjectOf(p advertising.PromotedObject) (graphPromotedObject, error) {
+	eventType, err := customEventTypeOf(p.PixelEvent)
+	if err != nil {
+		return graphPromotedObject{}, err
+	}
 	return graphPromotedObject{
 		PageID:              p.PageID,
 		WhatsAppPhoneNumber: p.WhatsAppPhoneNumber,
 		PixelID:             p.PixelID,
-		CustomEventType:     string(p.PixelEvent),
+		CustomEventType:     eventType,
 		ApplicationID:       p.AppID,
 		ObjectStoreURL:      p.AppStoreURL,
 		ProductSetID:        p.ProductSetID,
-	}
+	}, nil
 }
 
 type graphDayPart struct {
@@ -262,11 +300,17 @@ func (g *Gateway) CreateAdSet(ctx context.Context, token, metaAccountID string, 
 		if err := setBid(form, spec.Bid); err != nil {
 			return "", err
 		}
+	} else if spec.CampaignBidAmount > 0 {
+		form.Set("bid_amount", strconv.FormatInt(spec.CampaignBidAmount, 10))
 	}
 	if destination := spec.Destination.MetaDestinationType(); destination != "" {
 		form.Set("destination_type", destination)
 	}
-	if promoted := promotedObjectOf(spec.PromotedObject); promoted != (graphPromotedObject{}) {
+	promoted, err := promotedObjectOf(spec.PromotedObject)
+	if err != nil {
+		return "", err
+	}
+	if promoted != (graphPromotedObject{}) {
 		encoded, err := jsonValue(promoted)
 		if err != nil {
 			return "", err

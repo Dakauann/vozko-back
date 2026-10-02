@@ -2,6 +2,7 @@ package marketing
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"reflect"
 	"testing"
@@ -93,7 +94,7 @@ func TestLiveInsightsAsyncWithBreakdowns(t *testing.T) {
 	if start.form.Get("breakdowns") != `["age","gender"]` || start.form.Get("level") != "ad" || start.form.Get("fields") != liveFields+",ad_id,"+uniqueFields {
 		t.Fatalf("start = %+v", start)
 	}
-	if (*calls)[1].query.Get("fields") != "async_status,async_percent_completion,error_code,error_message" || (*calls)[len(*calls)-1].query.Get("limit") != "500" {
+	if (*calls)[1].query.Has("fields") || (*calls)[len(*calls)-1].query.Get("limit") != "500" {
 		t.Fatalf("calls = %+v", *calls)
 	}
 	if len(waits) != 2 || waits[0] != time.Second || waits[1] != 2*time.Second {
@@ -176,5 +177,16 @@ func TestLiveInsightsReportStillRunningIsRetryable(t *testing.T) {
 	_, err := g.LiveInsights(context.Background(), "tok", "9", liveQuery(t, advertising.LevelAd, advertising.BreakdownAge))
 	if advertising.Classify(err) != advertising.FailureRetryable {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLiveInsightsFailedReportCarriesMetaUserMessage(t *testing.T) {
+	g, _ := gatewayWith(t, reportStatus(`{"async_status":"Job Failed","error_code":2601,"error_subcode":1487534,"error_message":"too much data",
+		"error_user_title":"Relatório grande demais","error_user_msg":"Reduza o período."}`))
+	_, err := g.LiveInsights(context.Background(), "tok", "9", liveQuery(t, advertising.LevelAd, advertising.BreakdownAge))
+	var remote *advertising.RemoteError
+	if !errors.As(err, &remote) || remote.Kind != advertising.FailureRejected || remote.Code != 2601 || remote.Subcode != 1487534 ||
+		remote.UserTitle != "Relatório grande demais" || remote.UserMessage != "Reduza o período." {
+		t.Fatalf("err = %#v", err)
 	}
 }

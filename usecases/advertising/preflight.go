@@ -11,12 +11,13 @@ import (
 )
 
 type Preflight struct {
-	Draft     ads.AdDraft
-	Account   *ads.AdAccount
-	Page      ads.RemotePage
-	MediaURLs map[string]string
-	Fee       Fee
-	FeeTotal  Fee
+	Draft         ads.AdDraft
+	Account       *ads.AdAccount
+	Page          ads.RemotePage
+	MediaURLs     map[string]string
+	Fee           Fee
+	FeeTotal      Fee
+	BudgetMinimum *ads.BudgetMinimum
 }
 
 type preflightGateway interface {
@@ -28,6 +29,7 @@ type preflightGateway interface {
 	ListPagePosts(ctx context.Context, token, pageID string) ([]ads.RemotePost, error)
 	ListInstagramMedia(ctx context.Context, token, instagramUserID string) ([]ads.RemotePost, error)
 	ListInstantExperiences(ctx context.Context, token, pageID string) ([]ads.RemoteInstantExperience, error)
+	minimumGateway
 }
 
 type preflighter struct {
@@ -37,6 +39,7 @@ type preflighter struct {
 	numbers ads.NumberDirectory
 	media   creativeMedia
 	fees    FeeCharger
+	floor   budgetFloor
 }
 
 func (p preflighter) run(ctx context.Context, workspaceID string, draft ads.AdDraft) (*Preflight, error) {
@@ -47,11 +50,18 @@ func (p preflighter) run(ctx context.Context, workspaceID string, draft ads.AdDr
 	if err := draft.Validate(p.access.now()); err != nil {
 		return nil, err
 	}
-	account, token, err := p.access.open(ctx, workspaceID, draft.AdAccountID, ads.ScopeAdsManagement)
+	account, token, err := p.access.open(ctx, workspaceID, draft.AdAccountID, ads.UseWrite)
 	if err != nil {
 		return nil, err
 	}
-	if err := account.CanPublish(draft); err != nil {
+	if err := account.CanSpend(); err != nil {
+		return nil, err
+	}
+	minimum, err := p.floor.check(ctx, budgetCheck{
+		account: account, token: token, field: "adSet.budget.amount",
+		budget: draft.NewAdSetBudget(), goal: draft.AdSet.Goal, bid: draft.AdSet.Bid,
+	})
+	if err != nil {
 		return nil, err
 	}
 	page, err := p.page(ctx, token, account, draft.Identity.PageID)
@@ -74,7 +84,7 @@ func (p preflighter) run(ctx context.Context, workspaceID string, draft ads.AdDr
 	if err != nil {
 		return nil, err
 	}
-	return &Preflight{Draft: draft, Account: account, Page: page, MediaURLs: mediaURLs, Fee: fee, FeeTotal: fee.Times(draft.AdsToPublish())}, nil
+	return &Preflight{Draft: draft, Account: account, Page: page, MediaURLs: mediaURLs, Fee: fee, FeeTotal: fee.Times(draft.AdsToPublish()), BudgetMinimum: minimum}, nil
 }
 
 func (p preflighter) adoptParents(ctx context.Context, workspaceID string, draft *ads.AdDraft) error {
@@ -135,6 +145,9 @@ func (p preflighter) page(ctx context.Context, token string, account *ads.AdAcco
 func (p preflighter) checkIdentity(ctx context.Context, workspaceID string, draft ads.AdDraft, page ads.RemotePage) error {
 	if id := draft.Identity.InstagramUserID; id != "" && id != page.InstagramUserID {
 		return ads.FieldError("identity.instagramUserId", "not_linked_to_page")
+	}
+	if draft.NeedsLeadTerms() && !page.LeadTermsAccepted {
+		return ads.FieldError("identity.pageId", "lead_terms_not_accepted")
 	}
 	if draft.AdSet.Destination != ads.DestinationWhatsApp || !draft.NewAdSet() {
 		return nil

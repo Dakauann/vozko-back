@@ -40,6 +40,16 @@ func TestEachFieldOnlyAtItsLevel(t *testing.T) {
 	}
 }
 
+func TestCampaignBidEditsCannotCarryAnAmount(t *testing.T) {
+	campaign := &Object{MetaID: "c-1", Level: LevelCampaign, Status: StatusActive, DailyBudget: 9000}
+	d := ObjectDetail{Object: campaign, Budget: campaign.Budget()}
+	requireIssues(t, (ObjectEdit{Bid: &Bid{Strategy: BidCostCap, Amount: 500}}).Validate(d, false, draftNow), FieldIssue{"bid.amount", "set_on_ad_sets"})
+	requireIssues(t, (ObjectEdit{Bid: &Bid{Strategy: BidMinROAS, ROASFloor: 2}}).Validate(d, false, draftNow), FieldIssue{"bid.strategy", "roas_on_ad_set_only"})
+	if err := (ObjectEdit{Bid: &Bid{Strategy: BidLowestCost}}).Validate(d, false, draftNow); err != nil {
+		t.Fatalf("lowest cost refused: %v", err)
+	}
+}
+
 func TestEditingAnArchivedObjectIsRefused(t *testing.T) {
 	name := "x"
 	d := adSetDetail()

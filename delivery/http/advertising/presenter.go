@@ -14,7 +14,9 @@ func presentAccount(a *advertising.AdAccount) AccountResponse {
 		Connection: string(a.Connection), HasFunding: a.HasFunding, AmountSpent: a.AmountSpent, SpendCap: a.SpendCapLimit(),
 		LastSyncedAt: a.LastSyncedAt,
 	}
-	out.CanCreate = a.CanCreate() == nil
+	out.Role = string(a.Role())
+	out.CanManage = a.CanManage() == nil
+	out.CanSetSpendCap = a.CanChangeBilling() == nil
 	if err := a.CanSpend(); err != nil {
 		out.SpendBlocker = spendBlocker(err)
 	} else {
@@ -70,4 +72,11 @@ func presentObject(o *advertising.Object, now time.Time) RowResponse {
 
 func presentRange(r advertising.DateRange) RangeResponse {
 	return RangeResponse{Since: r.Since.Format(advertising.DayLayout), Until: r.Until.Format(advertising.DayLayout)}
+}
+
+func presentBudgetMinimum(m *advertising.BudgetMinimum) *BudgetMinimumResponse {
+	if m == nil {
+		return nil
+	}
+	return &BudgetMinimumResponse{Field: m.Field, Daily: m.Daily, Currency: m.Currency}
 }

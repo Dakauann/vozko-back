@@ -163,6 +163,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/ads/accounts/{id}/budget-minimum": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mínimo diário que a Meta aceita para um conjunto de anúncios desta conta com a meta de otimização informada, em unidades menores da moeda da conta. Com lance manual, informe bidAmount. Contas só de leitura recebem 409 account_read_only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Orçamento diário mínimo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "meta de otimização, como LINK_CLICKS",
+                        "name": "goal",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "lance manual em unidades menores da moeda da conta",
+                        "name": "bidAmount",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BudgetMinimumResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ads/accounts/{id}/catalogs": {
             "get": {
                 "security": [
@@ -1520,7 +1573,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Valida o rascunho, a conta, a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues.",
+                "description": "Valida o rascunho, a conta, a página, o número de WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a meta de otimização, em unidades menores da moeda da conta; abaixo dele volta o problema adSet.budget.amount below_minimum.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1728,51 +1781,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/ads/images": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Gera a imagem no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920), salva na biblioteca de mídia e cobra como uso de IA.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Anúncios"
-                ],
-                "summary": "Gerar imagem para anúncio com IA",
-                "parameters": [
-                    {
-                        "description": "descrição da imagem",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/advertisinghttp.GenerateImageRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/advertisinghttp.GeneratedImageResponse"
-                        }
-                    },
-                    "402": {
-                        "description": "Payment Required",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -2294,6 +2302,52 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/publish-jobs/{id}/activate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Liga de uma vez a campanha, o conjunto e os anúncios criados por uma publicação feita com \"Publicar desligado\". Exige meio de pagamento na conta.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Ligar publicação feita desligada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da publicação",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.JobResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -8802,6 +8856,109 @@ const docTemplate = `{
                 }
             }
         },
+        "/images/generations": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca na fila a geração de uma imagem no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo; uma referência inválida responde 422 com o código no campo referenceMediaIds (required, too_many, duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento, devolve o mesmo job sem nova cobrança.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Imagens"
+                ],
+                "summary": "Gerar imagem com IA",
+                "parameters": [
+                    {
+                        "description": "descrição e formato da imagem",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/imagegenhttp.GenerateImageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/imagegenhttp.JobResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "402": {
+                        "description": "Payment Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/images/generations/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Estado de uma geração de imagem do workspace: queued, running, done (com mediaId, mediaUrl e model) ou failed (com failureCode: generation_failed, storage_failed, timed_out, enqueue_failed, insufficient_funds ou reference_unavailable).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Imagens"
+                ],
+                "summary": "Consultar geração de imagem",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do job",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/imagegenhttp.JobResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/instagram/accounts": {
             "get": {
                 "security": [
@@ -11595,6 +11752,58 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/medias/{id}/file": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Devolve o conteúdo de uma mídia do workspace como anexo (Content-Disposition attachment), com o Content-Type original. Serve para baixar imagens geradas com IA e outros arquivos da biblioteca sem depender do domínio público do armazenamento.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Mídias"
+                ],
+                "summary": "Baixar o arquivo de uma mídia",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mídia",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -21506,26 +21715,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG"
+                "CATALOG",
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT"
             ],
             "x-enum-varnames": [
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog"
+                "DestinationCatalog",
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect"
             ]
         },
         "advertising.FieldIssue": {
@@ -21535,6 +21744,23 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "field": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertising.FormIntro": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "style": {
+                    "$ref": "#/definitions/advertising.IntroStyle"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -21598,6 +21824,17 @@ const docTemplate = `{
                 }
             }
         },
+        "advertising.IntroStyle": {
+            "type": "string",
+            "enum": [
+                "PARAGRAPH",
+                "LIST"
+            ],
+            "x-enum-varnames": [
+                "IntroParagraph",
+                "IntroList"
+            ]
+        },
         "advertising.Issue": {
             "type": "object",
             "properties": {
@@ -21656,11 +21893,11 @@ const docTemplate = `{
                 "adAccountId": {
                     "type": "string"
                 },
-                "headline": {
-                    "type": "string"
-                },
                 "higherIntent": {
                     "type": "boolean"
+                },
+                "intro": {
+                    "$ref": "#/definitions/advertising.FormIntro"
                 },
                 "locale": {
                     "type": "string"
@@ -21684,6 +21921,9 @@ const docTemplate = `{
                     }
                 },
                 "thankYouBody": {
+                    "type": "string"
+                },
+                "thankYouButtonText": {
                     "type": "string"
                 },
                 "thankYouTitle": {
@@ -21711,6 +21951,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "adAccountId": {
+                    "type": "string"
+                },
+                "country": {
                     "type": "string"
                 },
                 "name": {
@@ -21829,7 +22072,6 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
-                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -21842,10 +22084,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS"
+                "APP_INSTALLS",
+                "CONVERSATIONS"
             ],
             "x-enum-varnames": [
-                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -21858,7 +22100,8 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls"
+                "GoalAppInstalls",
+                "GoalConversations"
             ]
         },
         "advertising.Pixel": {
@@ -22185,14 +22428,16 @@ const docTemplate = `{
                 "HOUSING",
                 "EMPLOYMENT",
                 "FINANCIAL_PRODUCTS_SERVICES",
-                "ISSUES_ELECTIONS_POLITICS"
+                "ISSUES_ELECTIONS_POLITICS",
+                "ONLINE_GAMBLING_AND_GAMING"
             ],
             "x-enum-varnames": [
                 "CategoryNone",
                 "CategoryHousing",
                 "CategoryEmployment",
                 "CategoryFinancial",
-                "CategoryPolitics"
+                "CategoryPolitics",
+                "CategoryGambling"
             ]
         },
         "advertising.SplitTest": {
@@ -22369,6 +22614,12 @@ const docTemplate = `{
                 "businessName": {
                     "type": "string"
                 },
+                "canManage": {
+                    "type": "boolean"
+                },
+                "canSetSpendCap": {
+                    "type": "boolean"
+                },
                 "canSpend": {
                     "type": "boolean"
                 },
@@ -22395,6 +22646,14 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "advertiser",
+                        "read_only"
+                    ]
                 },
                 "spendBlocker": {
                     "type": "string"
@@ -22440,6 +22699,20 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "termsUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.BudgetMinimumResponse": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string"
+                },
+                "daily": {
+                    "type": "integer"
+                },
+                "field": {
                     "type": "string"
                 }
             }
@@ -22632,31 +22905,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "type": "integer"
-                }
-            }
-        },
-        "advertisinghttp.GenerateImageRequest": {
-            "type": "object",
-            "properties": {
-                "aspect": {
-                    "type": "string"
-                },
-                "prompt": {
-                    "type": "string"
-                }
-            }
-        },
-        "advertisinghttp.GeneratedImageResponse": {
-            "type": "object",
-            "properties": {
-                "mediaId": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
                 }
             }
         },
@@ -23010,6 +23258,9 @@ const docTemplate = `{
                 "instagramUsername": {
                     "type": "string"
                 },
+                "leadTermsAccepted": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -23331,6 +23582,9 @@ const docTemplate = `{
         "advertisinghttp.ValidateResponse": {
             "type": "object",
             "properties": {
+                "budgetMinimum": {
+                    "$ref": "#/definitions/advertisinghttp.BudgetMinimumResponse"
+                },
                 "fee": {
                     "$ref": "#/definitions/advertisinghttp.FeeResponse"
                 },
@@ -29048,6 +29302,90 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "imagegenhttp.GenerateImageRequest": {
+            "type": "object",
+            "properties": {
+                "aspect": {
+                    "type": "string",
+                    "enum": [
+                        "square",
+                        "portrait",
+                        "story"
+                    ],
+                    "example": "square"
+                },
+                "prompt": {
+                    "type": "string",
+                    "example": "Pizza artesanal sobre mesa de madeira, luz natural"
+                },
+                "referenceMediaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "imagegenhttp.JobResponse": {
+            "type": "object",
+            "properties": {
+                "aspect": {
+                    "type": "string",
+                    "enum": [
+                        "square",
+                        "portrait",
+                        "story"
+                    ]
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "failureCode": {
+                    "type": "string",
+                    "enum": [
+                        "generation_failed",
+                        "storage_failed",
+                        "timed_out",
+                        "enqueue_failed",
+                        "insufficient_funds",
+                        "reference_unavailable"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "mediaUrl": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "referenceMediaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "failed"
+                    ]
+                },
+                "updatedAt": {
+                    "type": "string"
                 }
             }
         },

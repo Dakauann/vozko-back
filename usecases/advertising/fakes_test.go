@@ -292,10 +292,14 @@ type fakeGateway struct {
 	audiences   []ads.Audience
 	termsOK     bool
 	batches     []ads.HashedCustomers
+	sessions    []ads.CustomerSession
+	lookalike   ads.LookalikeDraft
 	sent        []ads.ConversionEvent
 	rules       []ads.AutomatedRule
 	tests       []ads.SplitTest
 	subscribed  []string
+	minimums    ads.MinimumBudgets
+	minimumBid  int64
 }
 
 func newFakeGateway() *fakeGateway {
@@ -471,14 +475,16 @@ func (g *fakeGateway) ListAudiences(context.Context, string, string) ([]ads.Audi
 func (g *fakeGateway) CreateCustomerList(context.Context, string, string, string, string) (string, error) {
 	return "aud-new", g.step("create_audience")
 }
-func (g *fakeGateway) AddCustomers(_ context.Context, _, _ string, batch ads.HashedCustomers, _ ads.CustomerSession) error {
+func (g *fakeGateway) AddCustomers(_ context.Context, _, _ string, batch ads.HashedCustomers, session ads.CustomerSession) error {
 	if err := g.step("add_customers"); err != nil {
 		return err
 	}
 	g.batches = append(g.batches, batch)
+	g.sessions = append(g.sessions, session)
 	return nil
 }
-func (g *fakeGateway) CreateLookalike(context.Context, string, string, ads.LookalikeDraft) (string, error) {
+func (g *fakeGateway) CreateLookalike(_ context.Context, _, _ string, draft ads.LookalikeDraft) (string, error) {
+	g.lookalike = draft
 	return "lal-new", g.step("create_lookalike")
 }
 func (g *fakeGateway) DeleteAudience(_ context.Context, _, id string) error {
@@ -540,10 +546,10 @@ func newWorld() *world {
 	w.accounts.byID["acc-1"] = &ads.AdAccount{
 		ID: "acc-1", WorkspaceID: "ws-1", GrantID: "grant-1", MetaAccountID: "111", Name: "Loja", BusinessID: "biz-1",
 		Currency: "BRL", Timezone: "America/Sao_Paulo", MetaStatus: ads.MetaAccountActive, HasFunding: true,
-		Connection: ads.ConnectionConnected,
+		Tasks: adminTasks(), Connection: ads.ConnectionConnected,
 	}
-	w.gateway.accounts = []ads.RemoteAdAccount{{MetaAccountID: "111", Name: "Loja", BusinessID: "biz-1", Currency: "BRL", Timezone: "America/Sao_Paulo", Status: ads.MetaAccountActive, HasFunding: true}}
-	w.gateway.pages = []ads.RemotePage{{PageID: "page-1", Name: "Loja", WhatsAppNumber: "+55 11 98888-7777", InstagramUserID: "ig-1", CanAdvertise: true}}
+	w.gateway.accounts = []ads.RemoteAdAccount{{MetaAccountID: "111", Name: "Loja", BusinessID: "biz-1", Currency: "BRL", Timezone: "America/Sao_Paulo", Status: ads.MetaAccountActive, HasFunding: true, Tasks: adminTasks()}}
+	w.gateway.pages = []ads.RemotePage{{PageID: "page-1", Name: "Loja", WhatsAppNumber: "+55 11 98888-7777", InstagramUserID: "ig-1", CanAdvertise: true, LeadTermsAccepted: true}}
 	w.sync = NewSyncUseCase(w.accounts, w.grants, w.gateway, w.objects, w.insights)
 	w.sync.access.now = func() time.Time { return testNow }
 	return w
@@ -580,4 +586,11 @@ func publishableDraft() ads.AdDraft {
 		},
 		Ads: []ads.AdItem{{Creative: imageAd()}},
 	}
+}
+
+func adminTasks() []string { return []string{"MANAGE", "ADVERTISE", "ANALYZE"} }
+
+func (g *fakeGateway) MinimumBudgets(_ context.Context, _, _ string, bidAmount int64) (ads.MinimumBudgets, error) {
+	g.minimumBid = bidAmount
+	return g.minimums, g.step("minimum_budgets")
 }

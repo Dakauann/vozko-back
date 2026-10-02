@@ -122,7 +122,7 @@ var Features = []Feature{
 		Description: "Imagens, áudios e documentos enviados pelo workspace.",
 		Capabilities: []Capability{
 			{Key: "media.view", Description: "Ver e baixar arquivos de mídia", Requires: []PermissionEntry{need(ResourceMedia, ActionRead)}},
-			{Key: "media.upload", Description: "Enviar arquivos de mídia", Requires: []PermissionEntry{need(ResourceMedia, ActionCreate)}},
+			{Key: "media.upload", Description: "Enviar arquivos de mídia e gerar imagens com IA", Requires: []PermissionEntry{need(ResourceMedia, ActionCreate)}},
 		},
 	},
 	{

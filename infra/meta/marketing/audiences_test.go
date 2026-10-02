@@ -219,6 +219,18 @@ func TestAddCustomersFailsWhenMetaReceivedFewerRows(t *testing.T) {
 	}
 }
 
+func TestAddCustomersExpectsTheSessionTotalSoFar(t *testing.T) {
+	g, _ := wireGateway(t, reply(`{"num_received":5}`))
+	session := advertising.CustomerSession{ID: 1, BatchSeq: 2, LastBatch: true, TotalRows: 5, SentRows: 3}
+	if err := g.AddCustomers(context.Background(), "tok", "900", hashedBatch(2), session); err != nil {
+		t.Fatal(err)
+	}
+	short, _ := wireGateway(t, reply(`{"num_received":2}`))
+	if err := short.AddCustomers(context.Background(), "tok", "900", hashedBatch(2), session); err == nil || !strings.Contains(err.Error(), "2 of 5") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestAddCustomersFailsWithoutAReceivedCount(t *testing.T) {
 	g, _ := wireGateway(t, reply(`{}`))
 	if err := g.AddCustomers(context.Background(), "tok", "900", hashedBatch(1), advertising.CustomerSession{ID: 1, BatchSeq: 1}); err == nil {
@@ -257,9 +269,9 @@ func jsonInt(n int) string {
 	return string(raw)
 }
 
-func TestCreateLookalikeSendsSimilaritySpec(t *testing.T) {
+func TestCreateLookalikeSendsRatioAndCountry(t *testing.T) {
 	g, log := wireGateway(t, reply(`{"id":"901"}`))
-	id, err := g.CreateLookalike(context.Background(), "tok", "77", advertising.LookalikeDraft{AdAccountID: "77", Name: "LAL 2%", OriginAudienceID: "900", Percent: 2})
+	id, err := g.CreateLookalike(context.Background(), "tok", "77", advertising.LookalikeDraft{AdAccountID: "77", Name: "LAL 2%", OriginAudienceID: "900", Percent: 2, Country: "BR"})
 	if err != nil || id != "901" {
 		t.Fatalf("id = %q err = %v", id, err)
 	}
@@ -267,7 +279,7 @@ func TestCreateLookalikeSendsSimilaritySpec(t *testing.T) {
 	if call.path != "/act_77/customaudiences" || call.form.Get("subtype") != "LOOKALIKE" || call.form.Get("origin_audience_id") != "900" || call.form.Get("name") != "LAL 2%" {
 		t.Fatalf("call = %+v", call)
 	}
-	sameJSON(t, []byte(call.form.Get("lookalike_spec")), `{"type":"similarity","ratio":0.02,"starting_ratio":0}`)
+	sameJSON(t, []byte(call.form.Get("lookalike_spec")), `{"ratio":0.02,"country":"BR"}`)
 }
 
 func TestDeleteAudienceRequiresSuccess(t *testing.T) {

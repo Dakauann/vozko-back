@@ -26,7 +26,7 @@ func (uc *SyncUseCase) HandleAccountChanges(ctx context.Context, changes []ads.A
 			failures = append(failures, err)
 			continue
 		}
-		token, err := uc.access.tokenFor(ctx, account, ads.ScopeAdsRead)
+		token, err := uc.access.tokenFor(ctx, account, ads.UseRead)
 		if err != nil {
 			failures = append(failures, err)
 			continue

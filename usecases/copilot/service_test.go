@@ -537,3 +537,123 @@ func TestService_ApproveHandsTheSecretToTheToolAndNowhereElse(t *testing.T) {
 		}
 	}
 }
+
+func TestService_ApprovedToolKeepsItsImageInTheChat(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{}
+	image := &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-1", Alt: "um card"}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Image: image}}
+	prov := &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Aqui está a imagem."}}
+	svc := newService(prov, th, ms, wt)
+	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image", Args: map[string]interface{}{"prompt": "um card"}})
+
+	cp := &capture{}
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if !cp.has(EventImage) {
+		t.Fatal("the image must be streamed to the chat")
+	}
+	var steps []toolStep
+	if json.Unmarshal(ms.last().ToolCalls, &steps) != nil || len(steps) != 1 || steps[0].Image == nil || steps[0].Image.URL != "https://cdn/x.jpg" {
+		t.Fatalf("the image must be stored with the message, got %s", ms.last().ToolCalls)
+	}
+}
+
+type startWatchingTool struct {
+	fakeTool
+	events       *capture
+	startedFirst bool
+}
+
+func (w *startWatchingTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
+	w.startedFirst = w.events.has(EventToolStart) && !w.events.has("tool")
+	return w.fakeTool.Execute(ctx, cc, args)
+}
+
+func TestService_ApprovedToolSaysItIsRunningBeforeItRuns(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{}
+	cp := &capture{}
+	wt := &startWatchingTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, events: cp}
+	svc := newService(&scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Pronto."}}, th, ms, wt)
+	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if !wt.startedFirst {
+		t.Fatalf("tool_start must reach the chat before the approved tool runs, got %v", cp.types)
+	}
+}
+
+func TestService_ADeniedApprovalNeverSaysTheToolIsRunning(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta}
+	svc := NewService(agentloop.Engine{AI: &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Sem permissão."}}}, NewRegistry(wt), &fakeAccess{err: errors.New("denied")}, openFunds{}, th, ms, nil, nil, func() string { return "act-1" })
+	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
+	cp := &capture{}
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if cp.has(EventToolStart) || wt.calls != 0 {
+		t.Fatalf("a denied tool must not announce a run, got %v calls=%d", cp.types, wt.calls)
+	}
+}
+
+func TestService_ApprovedImageIsKeptWhenTheModelAddsNoText(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{list: []*aichat.Message{
+		{ThreadID: "t1", Role: aichat.RoleUser, Content: "gere um card"},
+		{ThreadID: "t1", Role: aichat.RoleAssistant, Content: "Vou gerar o card, aprove por favor."},
+	}}
+	image := &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-1", Alt: "um card"}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Image: image}}
+	svc := newService(&scriptAI{}, th, ms, wt)
+	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
+	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, (&capture{}).emit); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	last := ms.last()
+	var steps []toolStep
+	if last.ProposalID != "" || json.Unmarshal(last.ToolCalls, &steps) != nil || len(steps) != 1 || steps[0].Image == nil {
+		t.Fatalf("the executed image must be stored even without a follow-up text, got %+v", last)
+	}
+	if last.Content != "" {
+		t.Fatalf("an earlier assistant message must not be repeated as the reply, got %q", last.Content)
+	}
+}
+
+func TestService_AnEmptyTurnWithoutToolsStoresNothing(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{list: []*aichat.Message{{ThreadID: "t1", Role: aichat.RoleAssistant, Content: "Resposta anterior."}}}
+	svc := newService(&scriptAI{}, th, ms)
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "oi"}, ownerCtx, (&capture{}).emit); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	if len(ms.created) != 1 || ms.created[0].Role != aichat.RoleUser {
+		t.Fatalf("only the user message may be stored, got %+v", ms.created)
+	}
+}
+
+func TestService_ASilentToolTurnStillTellsTheModelWhatHappened(t *testing.T) {
+	steps, _ := json.Marshal([]toolStep{{Name: "generate_image", Summary: "ok", Ok: true, Image: &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-1"}}})
+	ms := &fakeMessages{list: []*aichat.Message{
+		{Role: aichat.RoleUser, Content: "gere um card"},
+		{Role: aichat.RoleAssistant, ToolCalls: steps},
+		{Role: aichat.RoleAssistant, Content: "  "},
+	}}
+	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
+	h, err := svc.buildHistory("t1")
+	if err != nil {
+		t.Fatalf("buildHistory: %v", err)
+	}
+	if len(h) != 2 || h[1].Role != ai.RoleAssistant {
+		t.Fatalf("an assistant turn with nothing to say must be left out, got %+v", h)
+	}
+	for _, want := range []string{"generate_image", "ok", "m-1"} {
+		if !strings.Contains(h[1].Content, want) {
+			t.Fatalf("the silent tool turn must name %q, got %q", want, h[1].Content)
+		}
+	}
+}

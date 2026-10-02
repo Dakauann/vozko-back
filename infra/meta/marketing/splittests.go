@@ -18,23 +18,27 @@ var _ advertising.TestGateway = (*Gateway)(nil)
 type graphTestCell struct {
 	Name                string              `json:"name"`
 	TreatmentPercentage int                 `json:"treatment_percentage"`
-	AdSets              graphList[graphRef] `json:"adsets,omitempty"`
-	Campaigns           graphList[graphRef] `json:"campaigns,omitempty"`
+	AdSets              graphList[graphRef] `json:"adsets"`
+	Campaigns           graphList[graphRef] `json:"campaigns"`
 }
 
-func cellsOf(test advertising.SplitTest) ([]graphTestCell, error) {
-	cells := make([]graphTestCell, 0, len(test.Cells))
+type graphNewTestCell struct {
+	Name                string   `json:"name"`
+	TreatmentPercentage int      `json:"treatment_percentage"`
+	AdSets              []string `json:"adsets,omitempty"`
+	Campaigns           []string `json:"campaigns,omitempty"`
+}
+
+func cellsOf(test advertising.SplitTest) ([]graphNewTestCell, error) {
+	cells := make([]graphNewTestCell, 0, len(test.Cells))
 	for _, c := range test.Cells {
-		refs := make([]graphRef, 0, len(c.ObjectIDs))
-		for _, id := range c.ObjectIDs {
-			refs = append(refs, graphRef{ID: meta.GraphID(id)})
-		}
-		cell := graphTestCell{Name: c.Name, TreatmentPercentage: c.Share}
+		ids := append([]string(nil), c.ObjectIDs...)
+		cell := graphNewTestCell{Name: c.Name, TreatmentPercentage: c.Share}
 		switch test.Level {
 		case advertising.TestAdSets:
-			cell.AdSets = refs
+			cell.AdSets = ids
 		case advertising.TestCampaigns:
-			cell.Campaigns = refs
+			cell.Campaigns = ids
 		default:
 			return nil, fmt.Errorf("marketing: unknown split test level %q", test.Level)
 		}
@@ -66,6 +70,7 @@ func (g *Gateway) CreateSplitTest(ctx context.Context, token, metaAccountID stri
 	form.Set("start_time", strconv.FormatInt(test.StartAt.Unix(), 10))
 	form.Set("end_time", strconv.FormatInt(test.EndAt.Unix(), 10))
 	form.Set("cells", encoded)
+	form.Set("confidence_level", strconv.Itoa(test.Confidence))
 	if test.Description != "" {
 		form.Set("description", test.Description)
 	}
@@ -126,7 +131,7 @@ func (g *Gateway) ListSplitTests(ctx context.Context, token, metaAccountID strin
 	q := url.Values{}
 	q.Set("fields", "id,name,description,type,start_time,end_time,cells{name,treatment_percentage,adsets,campaigns}")
 	q.Set("limit", "100")
-	rows, err := collect[graphStudy](ctx, g, path+"/ad_studies", token, q)
+	rows, err := collect[graphStudy](ctx, g, path+"/impacting_ad_studies", token, q)
 	if err != nil {
 		return nil, err
 	}

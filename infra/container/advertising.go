@@ -8,11 +8,9 @@ import (
 	"vozko/delivery/http/metawebhook"
 	"vozko/domain/advertising"
 	"vozko/domain/copilot"
-	"vozko/infra/ai/aibilling"
 	fbinfra "vozko/infra/facebook"
 	"vozko/infra/meta/marketing"
 	"vozko/infra/netguard"
-	"vozko/infra/openaiimage"
 	"vozko/infra/remotefile"
 	advertising_repository "vozko/infra/repositories/advertising"
 	adsuc "vozko/usecases/advertising"
@@ -29,7 +27,6 @@ type adsBundle struct {
 	Publish        *adsuc.PublishUseCase
 	Report         *adsuc.ReportUseCase
 	Manage         *adsuc.ManageUseCase
-	Images         *adsuc.ImageUseCase
 	Accounts       *adsuc.AccountsUseCase
 	Assets         *adsuc.AssetsUseCase
 	Live           *adsuc.LiveUseCase
@@ -53,9 +50,6 @@ func (c *Container) adsManager() *adsBundle {
 	if c.ads != nil {
 		return c.ads
 	}
-	if c.cfg.AdsImageCostCeilingMicros <= 0 {
-		log.Fatalf("[ads] ADS_IMAGE_COST_CEILING_MICROS must be positive")
-	}
 	oauth, err := fbinfra.NewOAuthService(fbinfra.OAuthConfig{
 		AppID:        c.cfg.MetaAdsAppID,
 		AppSecret:    c.cfg.MetaAdsAppSecret,
@@ -71,12 +65,8 @@ func (c *Container) adsManager() *adsBundle {
 	if err != nil {
 		log.Fatalf("[ads] marketing gateway: %v", err)
 	}
-	generator, err := openaiimage.New(openaiimage.Config{APIKey: c.cfg.OpenRouterAPIKey, Model: c.cfg.AdsImageModel})
-	if err != nil {
-		log.Fatalf("[ads] image generator: %v", err)
-	}
-	if c.services.workspacePricer == nil || c.useCases.chatFunds == nil || c.services.conversationAuth == nil || c.repositories.lead == nil {
-		log.Fatalf("[ads] pricing, funds gate, conversation access and leads must exist before the ads manager")
+	if c.services.workspacePricer == nil || c.services.conversationAuth == nil || c.repositories.lead == nil {
+		log.Fatalf("[ads] pricing, conversation access and leads must exist before the ads manager")
 	}
 
 	grants := advertising_repository.NewGrantRepository(c.db)
@@ -98,7 +88,6 @@ func (c *Container) adsManager() *adsBundle {
 		Publish:  adsuc.NewPublishUseCase(sync, gateway, jobs, numbers, media, fees),
 		Report:   adsuc.NewReportUseCase(accounts, objects, insights, attribution),
 		Manage:   adsuc.NewManageUseCase(sync, gateway, media),
-		Images:   adsuc.NewImageUseCase(generator, c.useCases.chatFunds, aibilling.NewPublisher(c.services.billingQueuePub), c.useCases.uploadMedia, int64(c.cfg.AdsImageCostCeilingMicros)),
 		Assets:   adsuc.NewAssetsUseCase(sync, gateway, numbers),
 		Live:     adsuc.NewLiveUseCase(sync, gateway),
 		Audience: adsuc.NewAudienceUseCase(sync, gateway,
@@ -143,7 +132,6 @@ func (c *Container) adsManager() *adsBundle {
 		SplitTests:      bundle.SplitTests,
 		Conversions:     bundle.Conversions,
 		Publish:         bundle.Publish,
-		Images:          bundle.Images,
 		Origins:         adsuc.NewOriginUseCase(c.services.conversationAuth, c.adOriginReader(), accounts, objects, insights, attribution),
 		FrontendBaseURL: c.cfg.FrontendBaseURL,
 	})
@@ -159,7 +147,6 @@ func (c *Container) adsTools() []copilot.Tool {
 		Manage:   bundle.Manage,
 		Assets:   bundle.Assets,
 		Publish:  bundle.Publish,
-		Images:   bundle.Images,
 		Live:     bundle.Live,
 	})
 }

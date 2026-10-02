@@ -50,18 +50,12 @@ type AdPublisher interface {
 	Publish(ctx context.Context, in adsuc.PublishInput) (*advertising.PublishJob, error)
 }
 
-type AdImages interface {
-	Check(req advertising.ImageRequest) error
-	Generate(ctx context.Context, req advertising.ImageRequest) (*adsuc.GeneratedCreative, error)
-}
-
 type AdsDeps struct {
 	Accounts AdAccountLister
 	Reports  AdReporter
 	Manage   AdManager
 	Assets   AdAssets
 	Publish  AdPublisher
-	Images   AdImages
 	Live     AdLive
 }
 
@@ -336,62 +330,6 @@ func (t *searchAdLocationsTool) Execute(ctx context.Context, cc copilot.Context,
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"locations": out}}
 }
 
-type generateAdImageArgs struct {
-	Prompt string `json:"prompt" req:"true" desc:"descrição da imagem do anúncio: produto, cena, estilo; evite texto na imagem"`
-	Aspect string `json:"aspect" req:"true" enum:"square,portrait,story" desc:"square (feed 1:1), portrait (feed 4:5) ou story (9:16)"`
-}
-
-func (a generateAdImageArgs) request(cc copilot.Context) advertising.ImageRequest {
-	return advertising.ImageRequest{WorkspaceID: cc.WorkspaceID, Prompt: a.Prompt, Aspect: advertising.Aspect(a.Aspect)}
-}
-
-type generateAdImageTool struct{ deps AdsDeps }
-
-func NewGenerateAdImageTool(deps AdsDeps) copilot.Tool { return &generateAdImageTool{deps: deps} }
-
-func (t *generateAdImageTool) Meta() copilot.Meta { return adsMeta(workspace.ActionCreate, true) }
-
-func (t *generateAdImageTool) Definition() tools.Definition {
-	return definition("generate_ad_image",
-		"Gera uma imagem para anúncio com IA, salva na biblioteca de mídia e devolve o media_id para create_ad. "+
-			"É cobrada como uso de IA, por isso só depois da aprovação do usuário.",
-		generateAdImageArgs{})
-}
-
-func (t *generateAdImageTool) Validate(_ context.Context, cc copilot.Context, args map[string]interface{}) error {
-	a, err := validateArgs[generateAdImageArgs](nil, cc, args)
-	if err != nil {
-		return err
-	}
-	if err := t.deps.Images.Check(a.request(cc)); err != nil {
-		return fmt.Errorf("%w: %v", errInvalidArgs, err)
-	}
-	return nil
-}
-
-func (t *generateAdImageTool) Describe(_ context.Context, _ copilot.Context, args map[string]interface{}) []copilot.Field {
-	var a generateAdImageArgs
-	bindArgs(args, &a)
-	return []copilot.Field{
-		{Key: "image", Value: a.Prompt},
-		{Key: "format", Value: a.Aspect},
-		{Key: "cost", Value: "cobrado do saldo como uso de IA"},
-	}
-}
-
-func (t *generateAdImageTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	var a generateAdImageArgs
-	if err := decodeArgs(args, &a); err != nil {
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
-	}
-	image, err := t.deps.Images.Generate(ctx, a.request(cc))
-	if err != nil {
-		log.Printf("[copilot] generate_ad_image failed: %v", err)
-		return copilot.Result{Status: copilot.StatusError, Message: "não foi possível gerar a imagem; tente outra descrição"}
-	}
-	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"media_id": image.Media.ID, "model": image.Model}}
-}
-
 type createAdArgs struct {
 	AdAccountID     string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
 	CampaignName    string   `json:"campaign_name" req:"true" desc:"nome da campanha"`
@@ -409,7 +347,7 @@ type createAdArgs struct {
 	Headline        string   `json:"headline" desc:"título curto (até 40 caracteres é o ideal)"`
 	Description     string   `json:"description" desc:"descrição curta opcional"`
 	Format          string   `json:"format" req:"true" enum:"IMAGE,VIDEO" desc:"IMAGE para uma imagem, VIDEO para um vídeo"`
-	MediaID         string   `json:"media_id" req:"true" id:"true" desc:"media_id de generate_ad_image ou de uma imagem ou vídeo anexado, do mesmo tipo de format"`
+	MediaID         string   `json:"media_id" req:"true" id:"true" desc:"media_id de generate_image ou de uma imagem ou vídeo anexado, do mesmo tipo de format"`
 	Greeting        string   `json:"greeting" desc:"mensagem que já vem escrita para o cliente enviar"`
 	IceBreakers     []string `json:"ice_breakers" desc:"até 3 perguntas prontas para o cliente tocar"`
 }
@@ -784,7 +722,7 @@ func (t *updateAdBudgetTool) Execute(ctx context.Context, cc copilot.Context, ar
 func AdsTools(deps AdsDeps) []copilot.Tool {
 	return []copilot.Tool{
 		NewListAdAccountsTool(deps), NewAdsResultsTool(deps), NewListAdPagesTool(deps), NewSearchAdLocationsTool(deps),
-		NewGenerateAdImageTool(deps), NewCreateAdTool(deps), NewTurnOnAdTool(deps), NewTurnOffAdTool(deps), NewUpdateAdBudgetTool(deps),
+		NewCreateAdTool(deps), NewTurnOnAdTool(deps), NewTurnOffAdTool(deps), NewUpdateAdBudgetTool(deps),
 		NewDuplicateAdTool(deps), NewArchiveAdTool(deps), NewDeleteAdTool(deps), NewAdsBreakdownTool(deps),
 	}
 }

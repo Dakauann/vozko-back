@@ -258,16 +258,15 @@ func (g *Gateway) AddCustomers(ctx context.Context, token, audienceID string, ba
 	if err != nil {
 		return err
 	}
-	if received != int64(len(batch.Rows)) {
-		return fmt.Errorf("marketing: meta received %d of %d customer rows", received, len(batch.Rows))
+	if expected := int64(session.SentRows + len(batch.Rows)); received != expected {
+		return fmt.Errorf("marketing: meta received %d of %d customer rows", received, expected)
 	}
 	return nil
 }
 
 type graphLookalikeSpec struct {
-	Type          string  `json:"type"`
-	Ratio         float64 `json:"ratio"`
-	StartingRatio float64 `json:"starting_ratio"`
+	Ratio   float64 `json:"ratio"`
+	Country string  `json:"country"`
 }
 
 func (g *Gateway) CreateLookalike(ctx context.Context, token, metaAccountID string, draft advertising.LookalikeDraft) (string, error) {
@@ -275,7 +274,7 @@ func (g *Gateway) CreateLookalike(ctx context.Context, token, metaAccountID stri
 	if err != nil {
 		return "", err
 	}
-	spec, err := jsonValue(graphLookalikeSpec{Type: "similarity", Ratio: draft.Ratio(), StartingRatio: 0})
+	spec, err := jsonValue(graphLookalikeSpec{Ratio: draft.Ratio(), Country: draft.Country})
 	if err != nil {
 		return "", err
 	}

@@ -35,8 +35,21 @@ func TestCampaignBudgetMovesBudgetAndBidOffTheAdSet(t *testing.T) {
 	if spec := AdSetSpecOf(d, "c"); spec.Budget != nil || spec.Bid.Strategy != "" {
 		t.Fatalf("ad set kept budget %+v", spec)
 	}
-	if spec := CampaignSpecOf(d); spec.Budget.Amount != 9000 || spec.Bid.Strategy != BidCostCap {
+	if spec := CampaignSpecOf(d); spec.Budget.Amount != 9000 || spec.Bid != (Bid{Strategy: BidCostCap}) {
 		t.Fatalf("campaign spec %+v", spec)
+	}
+}
+
+func TestCampaignCapAmountIsSetOnEachAdSetBecauseCampaignsHaveNoBidAmount(t *testing.T) {
+	d := validDraft()
+	d.Campaign.Budget, d.Campaign.Bid = &Budget{Kind: BudgetDaily, Amount: 9000}, Bid{Strategy: BidCap, Amount: 700}
+	d.AdSet.Budget = nil
+	if got := AdSetSpecOf(d, "c").CampaignBidAmount; got != 700 {
+		t.Fatalf("ad set bid amount %d", got)
+	}
+	d.Campaign.Bid = Bid{Strategy: BidLowestCost}
+	if got := AdSetSpecOf(d, "c").CampaignBidAmount; got != 0 {
+		t.Fatalf("lowest cost carried an amount %d", got)
 	}
 }
 

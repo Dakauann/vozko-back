@@ -14,20 +14,20 @@ type accountAccess struct {
 	now      func() time.Time
 }
 
-func (a accountAccess) open(ctx context.Context, workspaceID, accountID, scope string) (*ads.AdAccount, string, error) {
+func (a accountAccess) open(ctx context.Context, workspaceID, accountID string, use ads.AccountUse) (*ads.AdAccount, string, error) {
 	account, err := a.accounts.FindByID(ctx, workspaceID, accountID)
 	if err != nil {
 		return nil, "", err
 	}
-	token, err := a.tokenFor(ctx, account, scope)
+	token, err := a.tokenFor(ctx, account, use)
 	if err != nil {
 		return nil, "", err
 	}
 	return account, token, nil
 }
 
-func (a accountAccess) tokenFor(ctx context.Context, account *ads.AdAccount, scope string) (string, error) {
-	if err := account.CanManage(); err != nil {
+func (a accountAccess) tokenFor(ctx context.Context, account *ads.AdAccount, use ads.AccountUse) (string, error) {
+	if err := account.Allows(use); err != nil {
 		return "", err
 	}
 	grant, err := a.grants.FindByID(ctx, account.GrantID)
@@ -41,7 +41,7 @@ func (a accountAccess) tokenFor(ctx context.Context, account *ads.AdAccount, sco
 		a.markNeedsReconnect(ctx, account)
 		return "", err
 	}
-	if !grant.Allows(scope, account.MetaAccountID) {
+	if !grant.Allows(use.Scope(), account.MetaAccountID) {
 		a.markNeedsReconnect(ctx, account)
 		return "", ads.ErrAccountNeedsReconnect
 	}

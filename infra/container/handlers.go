@@ -144,7 +144,7 @@ func (c *Container) initHandlers() {
 		aichat:             handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
 		auth:               c.newAuthHandler(),
 		user:               userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
-		media:              mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia),
+		media:              mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia, c.useCases.readMedia),
 		cart:               handlers.NewCartHandler(c.useCases.addToCart, c.useCases.removeFromCart, c.useCases.updateCartItem, c.useCases.decrementCartItem, c.useCases.getCart, c.useCases.clearCart),
 		address:            handlers.NewAddressHandler(c.useCases.createAddress, c.useCases.getAddresses, c.useCases.updateAddress, c.useCases.deleteAddress),
 		order:              handlers.NewOrderHandler(c.useCases.checkout, c.useCases.getOrder, c.useCases.listOrders),

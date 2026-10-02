@@ -3,6 +3,7 @@ package advertising
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -101,8 +102,26 @@ func TestLookalikeNeedsAnOriginFromTheSameAccount(t *testing.T) {
 	_, err := uc.CreateLookalike(context.Background(), "ws-1", ads.LookalikeDraft{AdAccountID: "acc-1", Name: "Parecidos", OriginAudienceID: "other", Percent: 1})
 	requireIssue(t, err, "originAudienceId", "not_available")
 	w.gateway.audiences = []ads.Audience{{MetaID: "aud-1"}}
-	if got, err := uc.CreateLookalike(context.Background(), "ws-1", ads.LookalikeDraft{AdAccountID: "acc-1", Name: "Parecidos", OriginAudienceID: "aud-1", Percent: 2}); err != nil || got.MetaID != "lal-new" {
+	if got, err := uc.CreateLookalike(context.Background(), "ws-1", ads.LookalikeDraft{AdAccountID: "acc-1", Name: " Parecidos ", OriginAudienceID: "aud-1", Percent: 2}); err != nil || got.MetaID != "lal-new" {
 		t.Fatalf("got %+v err %v", got, err)
+	}
+	if sent := w.gateway.lookalike; sent.Country != "BR" || sent.Name != "Parecidos" {
+		t.Fatalf("lookalike sent %+v", sent)
+	}
+}
+
+func TestCustomerUploadSessionCountsRowsAlreadySent(t *testing.T) {
+	w := newWorld()
+	customers := make([]ads.Customer, ads.CustomerBatchSize()+3)
+	for i := range customers {
+		customers[i] = ads.Customer{ads.MatchPhone: fmt.Sprintf("5511%09d", i)}
+	}
+	if _, err := audienceUseCase(w, customers, nil).CreateCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM}); err != nil {
+		t.Fatal(err)
+	}
+	s := w.gateway.sessions
+	if len(s) != 2 || s[0].SentRows != 0 || s[0].BatchSeq != 1 || s[0].LastBatch || s[1].SentRows != ads.CustomerBatchSize() || s[1].BatchSeq != 2 || !s[1].LastBatch || s[1].TotalRows != len(customers) {
+		t.Fatalf("sessions %+v", s)
 	}
 }
 

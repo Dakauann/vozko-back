@@ -86,7 +86,7 @@ func TestListFormsMapsQuestionsAndCounts(t *testing.T) {
 	g, log := wireGateway(t, pageAware(reply(`{"data":[{"id":"700","name":"Out/26","status":"ACTIVE","locale":"pt_BR",
 		"questions":[{"key":"full_name","label":"Nome completo","type":"FULL_NAME","id":"q1"},
 			{"key":"interesse","label":"Qual plano?","type":"CUSTOM","options":[{"key":"basic","value":"Basico"},{"key":"pro","value":"Pro"}]}],
-		"privacy_policy":{"url":"https://x.com/p","link_text":"Privacidade"},"leads_count":12,"created_time":"2026-10-01T12:00:00+0000"}]}`)))
+		"privacy_policy_url":"https://x.com/p","leads_count":12,"created_time":"2026-10-01T12:00:00+0000"}]}`)))
 
 	forms, err := g.ListForms(context.Background(), "sys-tok", "55")
 	if err != nil {
@@ -113,14 +113,15 @@ func TestListFormsMapsQuestionsAndCounts(t *testing.T) {
 func TestCreateFormSerializesTheDraft(t *testing.T) {
 	g, log := wireGateway(t, pageAware(reply(`{"id":"701"}`)))
 	draft := advertising.LeadFormDraft{
-		AdAccountID: "77", PageID: "55", Name: "Out/26", Locale: "pt_BR", Headline: "Fale com a gente",
+		AdAccountID: "77", PageID: "55", Name: "Out/26", Locale: "PT_BR",
+		Intro: &advertising.FormIntro{Title: "Fale com a gente", Style: advertising.IntroList, Content: []string{"Rápido", "Sem custo"}},
 		Questions: []advertising.FormQuestion{
 			{Type: advertising.QuestionFullName},
 			{Type: advertising.QuestionPhone},
 			{Type: advertising.QuestionCustom, Key: "plano_c", Label: "Qual plano?", Options: []string{"Basico", "Pro"}},
 		},
 		PrivacyURL: "https://x.com/p", PrivacyText: "Privacidade",
-		ThankYouTitle: "Obrigado", ThankYouBody: "Entraremos em contato", ThankYouURL: "https://x.com",
+		ThankYouTitle: "Obrigado", ThankYouBody: "Entraremos em contato", ThankYouURL: "https://x.com", ThankYouButtonText: "Ver site",
 		HigherIntent: true,
 	}
 	id, err := g.CreateForm(context.Background(), "sys-tok", draft)
@@ -128,19 +129,34 @@ func TestCreateFormSerializesTheDraft(t *testing.T) {
 		t.Fatalf("id = %q err = %v", id, err)
 	}
 	call := afterPageToken(t, log)[0]
-	if call.method != http.MethodPost || call.path != "/55/leadgen_forms" || call.form.Get("name") != "Out/26" || call.form.Get("locale") != "pt_BR" || call.form.Get("is_optimized_for_quality") != "true" {
+	if call.method != http.MethodPost || call.path != "/55/leadgen_forms" || call.form.Get("name") != "Out/26" || call.form.Get("locale") != "PT_BR" || call.form.Get("is_optimized_for_quality") != "true" ||
+		call.form.Get("follow_up_action_url") != "https://x.com" {
 		t.Fatalf("call = %+v", call)
 	}
 	sameJSON(t, []byte(call.form.Get("questions")), `[{"type":"FULL_NAME"},{"type":"PHONE"},
 		{"type":"CUSTOM","key":"plano_c","label":"Qual plano?","options":[{"value":"Basico","key":"Basico"},{"value":"Pro","key":"Pro"}]}]`)
 	sameJSON(t, []byte(call.form.Get("privacy_policy")), `{"url":"https://x.com/p","link_text":"Privacidade"}`)
-	sameJSON(t, []byte(call.form.Get("thank_you_page")), `{"title":"Obrigado","body":"Entraremos em contato","button_type":"VIEW_WEBSITE","website_url":"https://x.com"}`)
-	sameJSON(t, []byte(call.form.Get("context_card")), `{"title":"Fale com a gente","style":"PARAGRAPH_STYLE"}`)
+	sameJSON(t, []byte(call.form.Get("thank_you_page")), `{"title":"Obrigado","body":"Entraremos em contato","button_type":"VIEW_WEBSITE","button_text":"Ver site","website_url":"https://x.com"}`)
+	sameJSON(t, []byte(call.form.Get("context_card")), `{"title":"Fale com a gente","style":"LIST_STYLE","content":["Rápido","Sem custo"]}`)
+}
+
+func TestCreateFormSendsAParagraphIntroAsOneLine(t *testing.T) {
+	g, log := wireGateway(t, pageAware(reply(`{"id":"703"}`)))
+	draft := advertising.LeadFormDraft{
+		PageID: "55", Name: "Simples", Locale: "PT_BR", Questions: []advertising.FormQuestion{{Type: advertising.QuestionEmail}}, PrivacyURL: "https://x.com/p",
+		Intro:         &advertising.FormIntro{Title: "Sobre", Style: advertising.IntroParagraph, Content: []string{"Um", "Dois"}},
+		ThankYouTitle: "Valeu", ThankYouURL: "https://x.com", ThankYouButtonText: "Ver site",
+	}
+	if _, err := g.CreateForm(context.Background(), "sys-tok", draft); err != nil {
+		t.Fatal(err)
+	}
+	call := afterPageToken(t, log)[0]
+	sameJSON(t, []byte(call.form.Get("context_card")), `{"title":"Sobre","style":"PARAGRAPH_STYLE","content":["Um\nDois"]}`)
 }
 
 func TestCreateFormOmitsOptionalParts(t *testing.T) {
 	g, log := wireGateway(t, pageAware(reply(`{"id":"702"}`)))
-	draft := advertising.LeadFormDraft{PageID: "55", Name: "Simples", Locale: "pt_BR", Questions: []advertising.FormQuestion{{Type: advertising.QuestionEmail}}, PrivacyURL: "https://x.com/p", ThankYouTitle: "Valeu"}
+	draft := advertising.LeadFormDraft{PageID: "55", Name: "Simples", Locale: "PT_BR", Questions: []advertising.FormQuestion{{Type: advertising.QuestionEmail}}, PrivacyURL: "https://x.com/p", ThankYouTitle: "Valeu", ThankYouURL: "https://x.com", ThankYouButtonText: "Ver site"}
 	if _, err := g.CreateForm(context.Background(), "sys-tok", draft); err != nil {
 		t.Fatal(err)
 	}
@@ -148,8 +164,19 @@ func TestCreateFormOmitsOptionalParts(t *testing.T) {
 	if call.form.Has("context_card") || call.form.Has("is_optimized_for_quality") {
 		t.Fatalf("form = %v", call.form)
 	}
-	sameJSON(t, []byte(call.form.Get("thank_you_page")), `{"title":"Valeu"}`)
+	sameJSON(t, []byte(call.form.Get("thank_you_page")), `{"title":"Valeu","button_type":"VIEW_WEBSITE","button_text":"Ver site","website_url":"https://x.com"}`)
 	sameJSON(t, []byte(call.form.Get("privacy_policy")), `{"url":"https://x.com/p"}`)
+}
+
+func TestCreateFormSurfacesMetasExplanation(t *testing.T) {
+	g, _ := wireGateway(t, pageAware(func(wireCall) (int, string) {
+		return http.StatusBadRequest, `{"error":{"message":"Invalid parameter","type":"OAuthException","code":100,"error_subcode":1892085,"error_user_title":"Campos ausentes","error_user_msg":"Campos ausentes: FollowUpActionURL"}}`
+	}))
+	draft := advertising.LeadFormDraft{PageID: "55", Name: "Simples", Locale: "PT_BR", Questions: []advertising.FormQuestion{{Type: advertising.QuestionEmail}}, PrivacyURL: "https://x.com/p", ThankYouTitle: "Valeu", ThankYouURL: "https://x.com", ThankYouButtonText: "Ver site"}
+	_, err := g.CreateForm(context.Background(), "sys-tok", draft)
+	if advertising.Classify(err) != advertising.FailureRejected || advertising.Explain(err) != "Campos ausentes: FollowUpActionURL" {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func TestArchiveFormPostsArchivedStatus(t *testing.T) {

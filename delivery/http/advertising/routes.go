@@ -48,6 +48,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 	route(get, "/accounts/{id}/pages/{pageId}/instant-experiences", create, h.InstantExperiences)
 	route(get, "/accounts/{id}/pixels", read, h.Pixels)
 	route(post, "/accounts/{id}/pixels", create, h.CreatePixel)
+	route(get, "/accounts/{id}/budget-minimum", read, h.BudgetMinimum)
 
 	route(post, "/objects/{metaId}/activate", workspace_domain.ActionStart, h.Activate)
 	route(post, "/objects/{metaId}/pause", workspace_domain.ActionStop, h.Pause)
@@ -91,7 +92,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 	route(post, "/publish", create, h.Publish)
 	route(get, "/publish-jobs", read, h.ListJobs)
 	route(get, "/publish-jobs/{id}", read, h.GetJob)
-	route(post, "/images", create, h.GenerateImage)
+	route(post, "/publish-jobs/{id}/activate", workspace_domain.ActionStart, h.SwitchOnJob)
 	route(get, "/conversations/{entryType}/{entryId}/origin", read, h.ConversationOrigin)
 }
 

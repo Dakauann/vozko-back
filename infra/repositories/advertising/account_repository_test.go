@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/lib/pq"
 
 	"vozko/domain/advertising"
 )
 
 const accountUpsertPattern = `INSERT INTO ad_accounts .* ON CONFLICT \(meta_account_id\) DO UPDATE SET .*` +
-	`business_id = EXCLUDED\.business_id, .*WHERE ad_accounts\.workspace_id = EXCLUDED\.workspace_id RETURNING id, created_at, updated_at`
+	`business_id = EXCLUDED\.business_id, .*user_tasks = EXCLUDED\.user_tasks, .*WHERE ad_accounts\.workspace_id = EXCLUDED\.workspace_id RETURNING id, created_at, updated_at`
 
 func connectedAccount() *advertising.AdAccount {
 	return &advertising.AdAccount{
@@ -26,6 +27,7 @@ func connectedAccount() *advertising.AdAccount {
 		Timezone:      "America/Sao_Paulo",
 		MetaStatus:    advertising.MetaAccountActive,
 		HasFunding:    true,
+		Tasks:         []string{"ADVERTISE", "ANALYZE"},
 		Connection:    advertising.ConnectionConnected,
 	}
 }
@@ -34,7 +36,7 @@ func TestAccountUpsertInsertsOrRefreshesWithinTheSameWorkspace(t *testing.T) {
 	db, mock := newMockDB(t)
 	now := time.Now()
 	mock.ExpectQuery(accountUpsertPattern).
-		WithArgs(sqlmock.AnyArg(), "ws", "g-1", "123", "Loja", "bm-1", "", "BRL", "America/Sao_Paulo", 1, 0, true, int64(0), int64(0), "CONNECTED").
+		WithArgs(sqlmock.AnyArg(), "ws", "g-1", "123", "Loja", "bm-1", "", "BRL", "America/Sao_Paulo", 1, 0, true, int64(0), int64(0), pq.StringArray{"ADVERTISE", "ANALYZE"}, "CONNECTED").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow("a-1", now, now))
 
 	a := connectedAccount()
@@ -84,14 +86,14 @@ func TestAccountFindByIDIsScopedToTheWorkspace(t *testing.T) {
 func TestAccountFindByIDMapsTheRow(t *testing.T) {
 	db, mock := newMockDB(t)
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "ad_accounts"`)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "workspace_id", "meta_account_id", "business_id", "meta_status", "has_funding", "connection", "amount_spent"}).
-			AddRow("a-1", "ws", "123", "bm-1", 9, true, "NEEDS_RECONNECT", int64(500)))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "workspace_id", "meta_account_id", "business_id", "meta_status", "has_funding", "connection", "amount_spent", "user_tasks"}).
+			AddRow("a-1", "ws", "123", "bm-1", 9, true, "NEEDS_RECONNECT", int64(500), "{ANALYZE}"))
 	a, err := NewAccountRepository(db).FindByID(context.Background(), "ws", "a-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if a.MetaStatus != advertising.MetaAccountInGracePeriod || a.Connection != advertising.ConnectionNeedsReconnect ||
-		!a.HasFunding || a.AmountSpent != 500 || a.MetaAccountID != "123" || a.BusinessID != "bm-1" {
+		!a.HasFunding || a.AmountSpent != 500 || a.MetaAccountID != "123" || a.BusinessID != "bm-1" || a.Role() != advertising.RoleReadOnly || len(a.Tasks) != 1 {
 		t.Fatalf("got %+v", a)
 	}
 }

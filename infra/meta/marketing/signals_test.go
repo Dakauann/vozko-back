@@ -123,7 +123,7 @@ func TestSendEventsSerializesEachIdentity(t *testing.T) {
 		 "user_data":{"page_id":"55","page_scoped_user_id":"psid"}}]}`)
 	sameJSON(t, calls[1].body, `{"data":[{"event_name":"LeadSubmitted","event_time":`+unix+`,"event_id":"opp4:LeadSubmitted","action_source":"system_generated","user_data":{"em":["emhash"]}}]}`)
 	sameJSON(t, calls[2].body, `{"data":[{"event_name":"LeadSubmitted","event_time":`+unix+`,"event_id":"opp3:LeadSubmitted","action_source":"business_messaging","messaging_channel":"instagram",
-		"user_data":{"ig_account_id":"ig1","ig_sid":"igsid"}}]}`)
+		"user_data":{"instagram_business_account_id":"ig1","ig_sid":"igsid"}}]}`)
 }
 
 func TestMajorUnitsKeepsExactDecimals(t *testing.T) {

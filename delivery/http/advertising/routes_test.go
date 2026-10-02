@@ -46,6 +46,7 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/ads/accounts/a-1/pages/p-1/instant-experiences", "ads:create"},
 	{http.MethodGet, "/ads/accounts/a-1/pixels", "ads:read"},
 	{http.MethodPost, "/ads/accounts/a-1/pixels", "ads:create"},
+	{http.MethodGet, "/ads/accounts/a-1/budget-minimum", "ads:read"},
 	{http.MethodPost, "/ads/objects/o-1/activate", "ads:start"},
 	{http.MethodPost, "/ads/objects/o-1/pause", "ads:stop"},
 	{http.MethodPatch, "/ads/objects/o-1/budget", "ads:update"},
@@ -82,7 +83,7 @@ var protectedRoutes = []struct {
 	{http.MethodPost, "/ads/publish", "ads:create"},
 	{http.MethodGet, "/ads/publish-jobs", "ads:read"},
 	{http.MethodGet, "/ads/publish-jobs/j-1", "ads:read"},
-	{http.MethodPost, "/ads/images", "ads:create"},
+	{http.MethodPost, "/ads/publish-jobs/j-1/activate", "ads:start"},
 	{http.MethodGet, "/ads/conversations/whatsapp/c-1/origin", "ads:read"},
 }
 

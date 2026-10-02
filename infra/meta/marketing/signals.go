@@ -129,7 +129,7 @@ func messagingUserData(identity advertising.MessagingIdentity) (map[string]any, 
 	case advertising.ChannelMessenger:
 		return map[string]any{"page_id": identity.PageID, "page_scoped_user_id": identity.PageScopedUserID}, nil
 	case advertising.ChannelInstagram:
-		return map[string]any{"ig_account_id": identity.InstagramUserID, "ig_sid": identity.InstagramScoped}, nil
+		return map[string]any{"instagram_business_account_id": identity.InstagramUserID, "ig_sid": identity.InstagramScoped}, nil
 	}
 	return nil, fmt.Errorf("marketing: messaging channel %q is not supported", identity.Channel)
 }

@@ -17,11 +17,10 @@ var _ advertising.LeadGateway = (*Gateway)(nil)
 
 const (
 	leadgenField         = "leadgen"
-	leadFormFields       = "id,name,status,locale,questions,privacy_policy,leads_count,created_time"
+	leadFormFields       = "id,name,status,locale,questions,privacy_policy_url,leads_count,created_time"
 	leadFields           = "id,created_time,ad_id,form_id,field_data"
 	answerSeparator      = ", "
 	thankYouButton       = "VIEW_WEBSITE"
-	contextCardStyle     = "PARAGRAPH_STYLE"
 	leadCreatedFilterKey = "time_created"
 )
 
@@ -50,16 +49,14 @@ type graphFormQuestion struct {
 }
 
 type graphLeadForm struct {
-	ID            meta.GraphID        `json:"id"`
-	Name          string              `json:"name"`
-	Status        string              `json:"status"`
-	Locale        string              `json:"locale"`
-	Questions     []graphFormQuestion `json:"questions"`
-	PrivacyPolicy struct {
-		URL string `json:"url"`
-	} `json:"privacy_policy"`
-	LeadsCount  graphNumber `json:"leads_count"`
-	CreatedTime string      `json:"created_time"`
+	ID          meta.GraphID        `json:"id"`
+	Name        string              `json:"name"`
+	Status      string              `json:"status"`
+	Locale      string              `json:"locale"`
+	Questions   []graphFormQuestion `json:"questions"`
+	PrivacyURL  string              `json:"privacy_policy_url"`
+	LeadsCount  graphNumber         `json:"leads_count"`
+	CreatedTime string              `json:"created_time"`
 }
 
 func (g *Gateway) ListForms(ctx context.Context, token, pageID string) ([]advertising.LeadForm, error) {
@@ -112,7 +109,7 @@ func (r graphLeadForm) toDomain(pageID string) (advertising.LeadForm, error) {
 		Status:      advertising.FormStatus(r.Status),
 		Locale:      r.Locale,
 		Questions:   questions,
-		PrivacyURL:  r.PrivacyPolicy.URL,
+		PrivacyURL:  r.PrivacyURL,
 		LeadsCount:  count,
 		CreatedTime: created,
 	}, nil
@@ -127,12 +124,27 @@ type graphThankYouPage struct {
 	Title      string `json:"title,omitempty"`
 	Body       string `json:"body,omitempty"`
 	ButtonType string `json:"button_type,omitempty"`
+	ButtonText string `json:"button_text,omitempty"`
 	WebsiteURL string `json:"website_url,omitempty"`
 }
 
 type graphContextCard struct {
-	Title string `json:"title"`
-	Style string `json:"style"`
+	Title   string   `json:"title"`
+	Style   string   `json:"style"`
+	Content []string `json:"content"`
+}
+
+var contextCardStyles = map[advertising.IntroStyle]string{
+	advertising.IntroParagraph: "PARAGRAPH_STYLE",
+	advertising.IntroList:      "LIST_STYLE",
+}
+
+func contextCard(intro advertising.FormIntro) (string, error) {
+	style, ok := contextCardStyles[intro.Style]
+	if !ok {
+		return "", fmt.Errorf("marketing: intro style %q has no meta context card style", intro.Style)
+	}
+	return jsonValue(graphContextCard{Title: intro.Title, Style: style, Content: intro.Lines()})
 }
 
 func formQuestions(questions []advertising.FormQuestion) []graphFormQuestion {
@@ -164,29 +176,24 @@ func (g *Gateway) CreateForm(ctx context.Context, token string, draft advertisin
 	if err != nil {
 		return "", err
 	}
+	thanks, err := jsonValue(graphThankYouPage{Title: draft.ThankYouTitle, Body: draft.ThankYouBody, ButtonType: thankYouButton, ButtonText: draft.ThankYouButtonText, WebsiteURL: draft.ThankYouURL})
+	if err != nil {
+		return "", err
+	}
 	form := url.Values{
-		"name":           {draft.Name},
-		"locale":         {draft.Locale},
-		"questions":      {questions},
-		"privacy_policy": {privacy},
+		"name":                 {draft.Name},
+		"locale":               {draft.Locale},
+		"questions":            {questions},
+		"privacy_policy":       {privacy},
+		"thank_you_page":       {thanks},
+		"follow_up_action_url": {draft.ThankYouURL},
 	}
-	thanks := graphThankYouPage{Title: draft.ThankYouTitle, Body: draft.ThankYouBody}
-	if draft.ThankYouURL != "" {
-		thanks.ButtonType, thanks.WebsiteURL = thankYouButton, draft.ThankYouURL
-	}
-	if thanks != (graphThankYouPage{}) {
-		encoded, err := jsonValue(thanks)
+	if draft.Intro != nil {
+		card, err := contextCard(*draft.Intro)
 		if err != nil {
 			return "", err
 		}
-		form.Set("thank_you_page", encoded)
-	}
-	if draft.Headline != "" {
-		encoded, err := jsonValue(graphContextCard{Title: draft.Headline, Style: contextCardStyle})
-		if err != nil {
-			return "", err
-		}
-		form.Set("context_card", encoded)
+		form.Set("context_card", card)
 	}
 	if draft.HigherIntent {
 		form.Set("is_optimized_for_quality", "true")

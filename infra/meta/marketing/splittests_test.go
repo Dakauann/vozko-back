@@ -36,10 +36,10 @@ func TestCreateSplitTestOnTheBusiness(t *testing.T) {
 	}
 	call := (*calls)[1]
 	expectForm(t, call, map[string]string{
-		"name": "Criativos", "description": "A contra B", "type": "SPLIT_TEST", "start_time": "1790985600", "end_time": "1791590400",
-	}, "confidence_level")
-	jsonEqual(t, "cells", call.form.Get("cells"), `[{"name":"A","treatment_percentage":50,"adsets":[{"id":"S1"}]},
-		{"name":"B","treatment_percentage":50,"adsets":[{"id":"S2"},{"id":"S3"}]}]`)
+		"name": "Criativos", "description": "A contra B", "type": "SPLIT_TEST", "start_time": "1790985600", "end_time": "1791590400", "confidence_level": "90",
+	})
+	jsonEqual(t, "cells", call.form.Get("cells"), `[{"name":"A","treatment_percentage":50,"adsets":["S1"]},
+		{"name":"B","treatment_percentage":50,"adsets":["S2","S3"]}]`)
 }
 
 func TestCreateCampaignSplitTestCells(t *testing.T) {
@@ -50,8 +50,8 @@ func TestCreateCampaignSplitTestCells(t *testing.T) {
 	if _, err := g.CreateSplitTest(context.Background(), "tok", "9", splitTest(advertising.TestCampaigns)); err != nil {
 		t.Fatal(err)
 	}
-	jsonEqual(t, "cells", (*calls)[1].form.Get("cells"), `[{"name":"A","treatment_percentage":50,"campaigns":[{"id":"S1"}]},
-		{"name":"B","treatment_percentage":50,"campaigns":[{"id":"S2"},{"id":"S3"}]}]`)
+	jsonEqual(t, "cells", (*calls)[1].form.Get("cells"), `[{"name":"A","treatment_percentage":50,"campaigns":["S1"]},
+		{"name":"B","treatment_percentage":50,"campaigns":["S2","S3"]}]`)
 }
 
 func TestCreateSplitTestFailures(t *testing.T) {
@@ -75,7 +75,7 @@ func TestListSplitTests(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := (*calls)[0]
-	if call.method != http.MethodGet || call.path != "/v26.0/act_9/ad_studies" || call.query.Get("fields") != "id,name,description,type,start_time,end_time,cells{name,treatment_percentage,adsets,campaigns}" {
+	if call.method != http.MethodGet || call.path != "/v26.0/act_9/impacting_ad_studies" || call.query.Get("fields") != "id,name,description,type,start_time,end_time,cells{name,treatment_percentage,adsets,campaigns}" {
 		t.Fatalf("call = %+v", call)
 	}
 	want := splitTest(advertising.TestAdSets)

@@ -70,7 +70,7 @@ func TermsURL(metaAccountID string) string {
 }
 
 func (uc *AudienceUseCase) List(ctx context.Context, workspaceID, accountID string) (*AudienceList, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsRead)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseRead)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (uc *AudienceUseCase) List(ctx context.Context, workspaceID, accountID stri
 }
 
 func (uc *AudienceUseCase) openForAudiences(ctx context.Context, workspaceID, accountID string) (*ads.AdAccount, string, error) {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseWrite)
 	if err != nil {
 		return nil, "", err
 	}
@@ -142,6 +142,7 @@ func (uc *AudienceUseCase) upload(ctx context.Context, token, audienceID string,
 		if err := uc.gateway.AddCustomers(ctx, token, audienceID, ads.HashedCustomers{Keys: hashed.Keys, Rows: rows}, session); err != nil {
 			return err
 		}
+		session.SentRows += len(rows)
 	}
 	return nil
 }
@@ -224,7 +225,7 @@ func (uc *AudienceUseCase) owned(ctx context.Context, token, metaAccountID, audi
 }
 
 func (uc *AudienceUseCase) CreateLookalike(ctx context.Context, workspaceID string, draft ads.LookalikeDraft) (*ads.Audience, error) {
-	draft.Name = strings.TrimSpace(draft.Name)
+	draft.Normalize()
 	if err := draft.Validate(); err != nil {
 		return nil, err
 	}
@@ -242,11 +243,11 @@ func (uc *AudienceUseCase) CreateLookalike(ctx context.Context, workspaceID stri
 	if err != nil {
 		return nil, uc.access.failed(ctx, account, err)
 	}
-	return &ads.Audience{MetaID: id, Name: draft.Name, Kind: ads.AudienceLookalike, OriginAudienceID: draft.OriginAudienceID, LookalikeRatio: draft.Ratio(), ApproxLower: -1, ApproxUpper: -1}, nil
+	return &ads.Audience{MetaID: id, Name: draft.Name, Kind: ads.AudienceLookalike, OriginAudienceID: draft.OriginAudienceID, LookalikeCountry: draft.Country, LookalikeRatio: draft.Ratio(), ApproxLower: -1, ApproxUpper: -1}, nil
 }
 
 func (uc *AudienceUseCase) Delete(ctx context.Context, workspaceID, accountID, audienceID string) error {
-	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsManagement)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseWrite)
 	if err != nil {
 		return err
 	}

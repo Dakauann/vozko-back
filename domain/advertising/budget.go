@@ -71,6 +71,21 @@ func (b Bid) validate(v issues, goal OptimizationGoal) {
 	}
 }
 
+func (b Bid) NeedsAmount() bool { return b.Strategy == BidCap || b.Strategy == BidCostCap }
+
+func (b Bid) validateOnCampaign(v issues) {
+	if b.Strategy == BidMinROAS {
+		v.add("strategy", "roas_on_ad_set_only")
+	}
+}
+
+func (b Bid) validateCampaignEdit(v issues) {
+	b.validateOnCampaign(v)
+	if b.NeedsAmount() {
+		v.add("amount", "set_on_ad_sets")
+	}
+}
+
 func (b Bid) ROASFloorParam() int64 { return int64(b.ROASFloor * 10_000) }
 
 type DayPart struct {
@@ -121,4 +136,59 @@ func ValidateSpendCap(cap, amountSpent int64) error {
 		return fmt.Errorf("%w: spend cap must be above what was already spent", ErrInvalidBudget)
 	}
 	return nil
+}
+
+type MinimumBudgets struct {
+	Currency      string
+	Account       int64
+	Impressions   int64
+	VideoViews    int64
+	HighFrequency int64
+	LowFrequency  int64
+}
+
+type BudgetMinimum struct {
+	Field    string
+	Daily    int64
+	Currency string
+}
+
+const CodeBelowMinimum = "below_minimum"
+
+func (m MinimumBudgets) DailyFor(goal OptimizationGoal) int64 {
+	return max(m.Account, m.goalMinimum(goal))
+}
+
+func (m MinimumBudgets) goalMinimum(goal OptimizationGoal) int64 {
+	switch goal {
+	case GoalImpressions:
+		return m.Impressions
+	case GoalThruPlay:
+		return m.VideoViews
+	case GoalLinkClicks:
+		return m.HighFrequency
+	case GoalAppInstalls:
+		return m.LowFrequency
+	}
+	return 0
+}
+
+func (m MinimumBudgets) For(goal OptimizationGoal) BudgetMinimum {
+	return BudgetMinimum{Daily: m.DailyFor(goal), Currency: m.Currency}
+}
+
+func (m MinimumBudgets) Check(field string, b Budget, goal OptimizationGoal) (BudgetMinimum, error) {
+	minimum := m.For(goal)
+	minimum.Field = field
+	if b.Kind != BudgetDaily || minimum.Daily <= 0 || b.Amount >= minimum.Daily {
+		return minimum, nil
+	}
+	return minimum, &ValidationError{Issues: []FieldIssue{{Field: field, Code: CodeBelowMinimum}}, Minimum: &minimum}
+}
+
+func (b Bid) ManualAmount() int64 {
+	if b.NeedsAmount() {
+		return b.Amount
+	}
+	return 0
 }

@@ -122,6 +122,13 @@ func HashMatch(key MatchKey, raw, defaultCountryCode string) string {
 	return SHA256Hex(normalized)
 }
 
+func customerCell(key MatchKey, raw, defaultCountryCode string) string {
+	if key == MatchExternalID {
+		return NormalizeMatch(key, raw, defaultCountryCode)
+	}
+	return HashMatch(key, raw, defaultCountryCode)
+}
+
 type Customer map[MatchKey]string
 
 type HashedCustomers struct {
@@ -136,7 +143,7 @@ func HashCustomers(keys []MatchKey, customers []Customer, defaultCountryCode str
 		row := make([]string, len(keys))
 		matched := false
 		for i, k := range keys {
-			row[i] = HashMatch(k, c[k], defaultCountryCode)
+			row[i] = customerCell(k, c[k], defaultCountryCode)
 			matched = matched || (row[i] != "" && k != MatchCountry && k != MatchGender && k != MatchBirthYear)
 		}
 		if !matched {

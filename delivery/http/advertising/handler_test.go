@@ -158,6 +158,8 @@ func TestHandlersRejectIncompleteRequestsBeforeCallingMeta(t *testing.T) {
 		{"rule history without account", h.RuleHistory, http.MethodGet, "/ads/rules/r/history?accountId=%20", ``, "accountId", "required"},
 		{"audience delete without account", h.DeleteAudience, http.MethodDelete, "/ads/audiences/x", ``, "accountId", "required"},
 		{"csv with unknown compare", h.ReportCSV, http.MethodGet, "/ads/accounts/a/report.csv?compare=maybe", ``, "compare", "invalid"},
+		{"budget minimum without goal", h.BudgetMinimum, http.MethodGet, "/ads/accounts/a/budget-minimum", ``, "goal", "required"},
+		{"budget minimum with a bad bid", h.BudgetMinimum, http.MethodGet, "/ads/accounts/a/budget-minimum?goal=LINK_CLICKS&bidAmount=x", ``, "bidAmount", "invalid"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

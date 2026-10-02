@@ -237,6 +237,17 @@ func TestAddingAdsToAnExistingAdSetSkipsItsFields(t *testing.T) {
 	}
 }
 
+func TestAddingAdsToAnAppAdSetReadsTheAppDestination(t *testing.T) {
+	d := AdDraft{AdAccountID: "acc-1", Identity: Identity{PageID: "page-1"}, AdSet: AdSetDraft{ExistingID: "s-1"}}
+	d.Adopt(ExistingParents{
+		AdSet:    &Object{MetaID: "s-1", CampaignMetaID: "c-1", OptimizationGoal: string(GoalAppInstalls)},
+		Campaign: &Object{MetaID: "c-1", Objective: string(ObjectiveAppPromotion), Name: "App"},
+	})
+	if d.AdSet.Destination != DestinationApp || d.AdSet.Goal != GoalAppInstalls {
+		t.Fatalf("ad set %+v", d.AdSet)
+	}
+}
+
 func TestTooManyAdsAndLongNamesAreRefused(t *testing.T) {
 	d := validDraft()
 	for len(d.Ads) <= maxAdsPerDraft {

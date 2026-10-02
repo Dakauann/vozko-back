@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -39,24 +40,25 @@ func (g *AdGrant) BeforeCreate(tx *gorm.DB) error {
 }
 
 type AdAccount struct {
-	ID            string     `gorm:"primaryKey;type:uuid"`
-	WorkspaceID   string     `gorm:"type:uuid;not null;index"`
-	GrantID       string     `gorm:"type:uuid;not null;index"`
-	MetaAccountID string     `gorm:"size:64;not null;uniqueIndex"`
-	Name          string     `gorm:"size:255;not null;default:''"`
-	BusinessID    string     `gorm:"size:64;not null;default:''"`
-	BusinessName  string     `gorm:"size:255;not null;default:''"`
-	Currency      string     `gorm:"type:varchar(3);not null;default:''"`
-	Timezone      string     `gorm:"size:64;not null;default:''"`
-	MetaStatus    int        `gorm:"not null;default:0"`
-	DisableReason int        `gorm:"not null;default:0"`
-	HasFunding    bool       `gorm:"not null;default:false"`
-	AmountSpent   int64      `gorm:"type:bigint;not null;default:0"`
-	SpendCap      int64      `gorm:"type:bigint;not null;default:0"`
-	Connection    string     `gorm:"type:varchar(24);not null;index"`
-	LastSyncedAt  *time.Time `gorm:"type:timestamptz"`
-	CreatedAt     time.Time  `gorm:"autoCreateTime"`
-	UpdatedAt     time.Time  `gorm:"autoUpdateTime"`
+	ID            string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID   string         `gorm:"type:uuid;not null;index"`
+	GrantID       string         `gorm:"type:uuid;not null;index"`
+	MetaAccountID string         `gorm:"size:64;not null;uniqueIndex"`
+	Name          string         `gorm:"size:255;not null;default:''"`
+	BusinessID    string         `gorm:"size:64;not null;default:''"`
+	BusinessName  string         `gorm:"size:255;not null;default:''"`
+	Currency      string         `gorm:"type:varchar(3);not null;default:''"`
+	Timezone      string         `gorm:"size:64;not null;default:''"`
+	MetaStatus    int            `gorm:"not null;default:0"`
+	DisableReason int            `gorm:"not null;default:0"`
+	HasFunding    bool           `gorm:"not null;default:false"`
+	AmountSpent   int64          `gorm:"type:bigint;not null;default:0"`
+	SpendCap      int64          `gorm:"type:bigint;not null;default:0"`
+	UserTasks     pq.StringArray `gorm:"type:text[];not null;default:'{}'"`
+	Connection    string         `gorm:"type:varchar(24);not null;index"`
+	LastSyncedAt  *time.Time     `gorm:"type:timestamptz"`
+	CreatedAt     time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt     time.Time      `gorm:"autoUpdateTime"`
 }
 
 func (AdAccount) TableName() string { return "ad_accounts" }

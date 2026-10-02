@@ -18,7 +18,7 @@ import (
 	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
 
-	"vozko/domain/advertising"
+	"vozko/domain/imagegen"
 )
 
 const (
@@ -32,12 +32,12 @@ const (
 	maxResponseSize = 64 << 20
 )
 
-var _ advertising.ImageGenerator = (*Generator)(nil)
+var _ imagegen.Generator = (*Generator)(nil)
 
-var aspectRatios = map[advertising.Aspect]string{
-	advertising.AspectSquare:   "1:1",
-	advertising.AspectPortrait: "3:4",
-	advertising.AspectStory:    "9:16",
+var aspectRatios = map[imagegen.Aspect]string{
+	imagegen.AspectSquare:   "1:1",
+	imagegen.AspectPortrait: "3:4",
+	imagegen.AspectStory:    "9:16",
 }
 
 type Config struct {
@@ -75,11 +75,21 @@ func New(cfg Config) (*Generator, error) {
 }
 
 type generationRequest struct {
-	Model        string `json:"model"`
-	Prompt       string `json:"prompt"`
-	AspectRatio  string `json:"aspect_ratio"`
-	OutputFormat string `json:"output_format"`
-	N            int    `json:"n"`
+	Model           string           `json:"model"`
+	Prompt          string           `json:"prompt"`
+	AspectRatio     string           `json:"aspect_ratio"`
+	OutputFormat    string           `json:"output_format"`
+	N               int              `json:"n"`
+	InputReferences []inputReference `json:"input_references,omitempty"`
+}
+
+type inputReference struct {
+	Type     string        `json:"type"`
+	ImageURL referenceLink `json:"image_url"`
+}
+
+type referenceLink struct {
+	URL string `json:"url"`
 }
 
 type generatedItem struct {
@@ -96,8 +106,12 @@ type generationResponse struct {
 	} `json:"usage"`
 }
 
-func (g *Generator) Generate(ctx context.Context, req advertising.ImageRequest) (*advertising.GeneratedImage, error) {
+func (g *Generator) Generate(ctx context.Context, req imagegen.Request, references []imagegen.ReferenceImage) (*imagegen.GeneratedImage, error) {
 	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	inputs, err := inputReferences(req.ReferenceMediaIDs, references)
+	if err != nil {
 		return nil, err
 	}
 	size, err := req.Aspect.Size()
@@ -109,17 +123,18 @@ func (g *Generator) Generate(ctx context.Context, req advertising.ImageRequest) 
 		return nil, fmt.Errorf("openaiimage: no aspect ratio for %q", req.Aspect)
 	}
 	out, err := g.request(ctx, generationRequest{
-		Model:        g.model,
-		Prompt:       promptFor(req.Prompt, ratio),
-		AspectRatio:  ratio,
-		OutputFormat: "png",
-		N:            1,
+		Model:           g.model,
+		Prompt:          promptFor(req.Prompt, ratio),
+		AspectRatio:     ratio,
+		OutputFormat:    "png",
+		N:               1,
+		InputReferences: inputs,
 	})
 	if err != nil {
 		return nil, err
 	}
 	if len(out.Data) == 0 {
-		return nil, fmt.Errorf("%w: the provider returned no image", advertising.ErrImageGenerationFailed)
+		return nil, fmt.Errorf("%w: the provider returned no image", imagegen.ErrGenerationFailed)
 	}
 	raw, err := g.imageBytes(ctx, out.Data[0])
 	if err != nil {
@@ -137,11 +152,28 @@ func (g *Generator) Generate(ctx context.Context, req advertising.ImageRequest) 
 	if model == "" {
 		model = g.model
 	}
-	return &advertising.GeneratedImage{Bytes: normalized, MIMEType: outputMIMEType, Model: model, ProviderCostMicros: cost}, nil
+	return &imagegen.GeneratedImage{Bytes: normalized, MIMEType: outputMIMEType, Model: model, ProviderCostMicros: cost}, nil
+}
+
+func inputReferences(ids []string, references []imagegen.ReferenceImage) ([]inputReference, error) {
+	if len(references) != len(ids) {
+		return nil, fmt.Errorf("openaiimage: %d reference images resolved for %d requested", len(references), len(ids))
+	}
+	inputs := make([]inputReference, 0, len(references))
+	for i, ref := range references {
+		if ref.MediaID != strings.TrimSpace(ids[i]) {
+			return nil, fmt.Errorf("openaiimage: reference %d is %q, want %q", i, ref.MediaID, ids[i])
+		}
+		if !strings.HasPrefix(ref.URL, "https://") {
+			return nil, fmt.Errorf("openaiimage: reference %s is not served over https", ref.MediaID)
+		}
+		inputs = append(inputs, inputReference{Type: "image_url", ImageURL: referenceLink{URL: ref.URL}})
+	}
+	return inputs, nil
 }
 
 func promptFor(prompt, ratio string) string {
-	return strings.TrimSpace(prompt) + "\n\nCreate a high quality advertising photo in " + ratio +
+	return strings.TrimSpace(prompt) + "\n\nCreate a high quality image in " + ratio +
 		" aspect ratio. Do not add any text, captions, logos or watermarks unless the request above asks for them."
 }
 
@@ -166,7 +198,7 @@ func (g *Generator) request(ctx context.Context, body generationRequest) (*gener
 		return nil, fmt.Errorf("openaiimage: read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w: status %d: %s", advertising.ErrImageGenerationFailed, resp.StatusCode, truncate(raw))
+		return nil, fmt.Errorf("%w: status %d: %s", imagegen.ErrGenerationFailed, resp.StatusCode, truncate(raw))
 	}
 	var out generationResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -182,22 +214,22 @@ func (g *Generator) imageBytes(ctx context.Context, item generatedItem) ([]byte,
 	case strings.HasPrefix(item.URL, "data:"):
 		_, encoded, found := strings.Cut(item.URL, ";base64,")
 		if !found {
-			return nil, fmt.Errorf("%w: image data url is not base64", advertising.ErrImageGenerationFailed)
+			return nil, fmt.Errorf("%w: image data url is not base64", imagegen.ErrGenerationFailed)
 		}
 		return decodeBase64(encoded)
 	case strings.HasPrefix(item.URL, "https://"):
 		return g.download(ctx, item.URL)
 	}
-	return nil, fmt.Errorf("%w: the provider returned no image", advertising.ErrImageGenerationFailed)
+	return nil, fmt.Errorf("%w: the provider returned no image", imagegen.ErrGenerationFailed)
 }
 
 func decodeBase64(encoded string) ([]byte, error) {
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid base64 image: %w", advertising.ErrImageGenerationFailed, err)
+		return nil, fmt.Errorf("%w: invalid base64 image: %w", imagegen.ErrGenerationFailed, err)
 	}
 	if len(raw) > maxImageBytes {
-		return nil, fmt.Errorf("%w: image exceeds %d bytes", advertising.ErrImageGenerationFailed, maxImageBytes)
+		return nil, fmt.Errorf("%w: image exceeds %d bytes", imagegen.ErrGenerationFailed, maxImageBytes)
 	}
 	return raw, nil
 }
@@ -213,22 +245,22 @@ func (g *Generator) download(ctx context.Context, rawURL string) ([]byte, error)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w: image download status %d", advertising.ErrImageGenerationFailed, resp.StatusCode)
+		return nil, fmt.Errorf("%w: image download status %d", imagegen.ErrGenerationFailed, resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxImageBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("openaiimage: download image: %w", err)
 	}
 	if len(raw) > maxImageBytes {
-		return nil, fmt.Errorf("%w: image exceeds %d bytes", advertising.ErrImageGenerationFailed, maxImageBytes)
+		return nil, fmt.Errorf("%w: image exceeds %d bytes", imagegen.ErrGenerationFailed, maxImageBytes)
 	}
 	return raw, nil
 }
 
-func normalize(raw []byte, size advertising.Size) ([]byte, error) {
+func normalize(raw []byte, size imagegen.Size) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return nil, fmt.Errorf("%w: unreadable image: %w", advertising.ErrImageGenerationFailed, err)
+		return nil, fmt.Errorf("%w: unreadable image: %w", imagegen.ErrGenerationFailed, err)
 	}
 	cropped := imaging.Fill(img, size.Width, size.Height, imaging.Center, imaging.Lanczos)
 	var buf bytes.Buffer

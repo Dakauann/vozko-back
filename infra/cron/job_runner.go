@@ -92,6 +92,10 @@ func (r *JobRunner) SetAdsJobs(recentSync, settledSync, publishReaper, formLeadP
 	r.addChannelJob("ads_conversion_dispatch", 5*time.Minute, conversionDispatch)
 }
 
+func (r *JobRunner) SetImageGenerationJobs(reaper ctxJob) {
+	r.addChannelJob("image_generation_reaper", time.Minute, reaper)
+}
+
 func (r *JobRunner) SetWebhookEventPurgeJob(purge ctxJob) {
 
 	r.addChannelJob("webhook_event_purge", 24*time.Hour, purge)

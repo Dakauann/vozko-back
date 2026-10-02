@@ -22,6 +22,7 @@ const (
 	CategoryEmployment SpecialCategory = "EMPLOYMENT"
 	CategoryFinancial  SpecialCategory = "FINANCIAL_PRODUCTS_SERVICES"
 	CategoryPolitics   SpecialCategory = "ISSUES_ELECTIONS_POLITICS"
+	CategoryGambling   SpecialCategory = "ONLINE_GAMBLING_AND_GAMING"
 )
 
 func (c SpecialCategory) Restricted() bool {
@@ -137,14 +138,6 @@ func defaultAdName(campaign, adSet string, index, total int) string {
 }
 
 func (d *AdDraft) Adopt(parents ExistingParents) {
-	if parents.AdSet != nil {
-		d.AdSet.Destination = Destination(parents.AdSet.DestinationType)
-		if d.AdSet.Destination == "" {
-			d.AdSet.Destination = DestinationNone
-		}
-		d.AdSet.Goal = OptimizationGoal(parents.AdSet.OptimizationGoal)
-		d.Campaign.ExistingID = parents.AdSet.CampaignMetaID
-	}
 	if parents.Campaign != nil {
 		d.Campaign.Objective = Objective(parents.Campaign.Objective)
 		d.Campaign.Name = parents.Campaign.Name
@@ -157,13 +150,27 @@ func (d *AdDraft) Adopt(parents ExistingParents) {
 			d.Campaign.Budget = &Budget{Kind: BudgetLifetime, Amount: parents.Campaign.LifetimeBudget}
 		}
 	}
+	if parents.AdSet != nil {
+		d.AdSet.Goal = OptimizationGoal(parents.AdSet.OptimizationGoal)
+		d.AdSet.Destination = d.Campaign.Objective.DestinationOf(parents.AdSet.DestinationType, d.AdSet.Goal)
+		d.Campaign.ExistingID = parents.AdSet.CampaignMetaID
+	}
 }
 
 func (d AdDraft) AdsToPublish() int { return len(d.Ads) }
 
+func (d AdDraft) NeedsLeadTerms() bool { return d.AdSet.Destination == DestinationInstantForm }
+
 func (d AdDraft) NewCampaign() bool { return d.Campaign.ExistingID == "" }
 
 func (d AdDraft) NewAdSet() bool { return d.AdSet.ExistingID == "" }
+
+func (d AdDraft) NewAdSetBudget() *Budget {
+	if !d.NewAdSet() {
+		return nil
+	}
+	return d.AdSet.Budget
+}
 
 func (d AdDraft) CampaignBudget() bool { return d.Campaign.Budget != nil }
 
@@ -212,9 +219,7 @@ func (d AdDraft) validateCampaign(v issues) {
 	if c.Budget != nil {
 		c.Budget.validate(v.at("budget"))
 		c.Bid.validate(v.at("bid"), d.AdSet.Goal)
-		if c.Bid.Strategy == BidMinROAS {
-			v.at("bid").add("strategy", "roas_on_ad_set_only")
-		}
+		c.Bid.validateOnCampaign(v.at("bid"))
 	} else if c.Bid.Strategy != BidLowestCost {
 		v.at("bid").add("strategy", "needs_campaign_budget")
 	}

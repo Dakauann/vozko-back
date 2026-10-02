@@ -13,6 +13,7 @@ type PromotablePage struct {
 }
 
 type assetsGateway interface {
+	minimumGateway
 	ListPages(ctx context.Context, token string) ([]ads.RemotePage, error)
 	SearchLocations(ctx context.Context, token, query string) ([]ads.RemoteLocation, error)
 	SearchTargeting(ctx context.Context, token, metaAccountID string, kind ads.TargetingSearchKind, query string) ([]ads.TargetingOption, error)
@@ -36,13 +37,9 @@ func NewAssetsUseCase(sync *SyncUseCase, gateway assetsGateway, numbers ads.Numb
 	return &AssetsUseCase{access: sync.access, gateway: gateway, numbers: numbers}
 }
 
-func (uc *AssetsUseCase) open(ctx context.Context, workspaceID, accountID string) (*ads.AdAccount, string, error) {
-	return uc.access.open(ctx, workspaceID, accountID, ads.ScopeAdsManagement)
-}
-
-func remote[T any](uc *AssetsUseCase, ctx context.Context, workspaceID, accountID string, call func(*ads.AdAccount, string) (T, error)) (T, error) {
+func remote[T any](uc *AssetsUseCase, ctx context.Context, workspaceID, accountID string, use ads.AccountUse, call func(*ads.AdAccount, string) (T, error)) (T, error) {
 	var zero T
-	account, token, err := uc.open(ctx, workspaceID, accountID)
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, use)
 	if err != nil {
 		return zero, err
 	}
@@ -54,7 +51,7 @@ func remote[T any](uc *AssetsUseCase, ctx context.Context, workspaceID, accountI
 }
 
 func (uc *AssetsUseCase) Pages(ctx context.Context, workspaceID, accountID string) ([]PromotablePage, error) {
-	pages, err := remote(uc, ctx, workspaceID, accountID, func(_ *ads.AdAccount, token string) ([]ads.RemotePage, error) {
+	pages, err := remote(uc, ctx, workspaceID, accountID, ads.UseRead, func(_ *ads.AdAccount, token string) ([]ads.RemotePage, error) {
 		return uc.gateway.ListPages(ctx, token)
 	})
 	if err != nil {
@@ -79,7 +76,7 @@ func (uc *AssetsUseCase) Locations(ctx context.Context, workspaceID, accountID, 
 	if !searchable(query) {
 		return []ads.RemoteLocation{}, nil
 	}
-	return remote(uc, ctx, workspaceID, accountID, func(_ *ads.AdAccount, token string) ([]ads.RemoteLocation, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(_ *ads.AdAccount, token string) ([]ads.RemoteLocation, error) {
 		return uc.gateway.SearchLocations(ctx, token, strings.TrimSpace(query))
 	})
 }
@@ -93,7 +90,7 @@ func (uc *AssetsUseCase) Targeting(ctx context.Context, workspaceID, accountID s
 	if kind != ads.SearchBehaviors && !searchable(query) {
 		return []ads.TargetingOption{}, nil
 	}
-	return remote(uc, ctx, workspaceID, accountID, func(account *ads.AdAccount, token string) ([]ads.TargetingOption, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(account *ads.AdAccount, token string) ([]ads.TargetingOption, error) {
 		return uc.gateway.SearchTargeting(ctx, token, account.MetaAccountID, kind, strings.TrimSpace(query))
 	})
 }
@@ -103,13 +100,13 @@ func (uc *AssetsUseCase) Reach(ctx context.Context, workspaceID, accountID strin
 	if len(t.Locations) == 0 {
 		return &ads.ReachEstimate{}, nil
 	}
-	return remote(uc, ctx, workspaceID, accountID, func(account *ads.AdAccount, token string) (*ads.ReachEstimate, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(account *ads.AdAccount, token string) (*ads.ReachEstimate, error) {
 		return uc.gateway.EstimateReach(ctx, token, account.MetaAccountID, t, p, goal)
 	})
 }
 
 func (uc *AssetsUseCase) Catalogs(ctx context.Context, workspaceID, accountID string) ([]ads.RemoteCatalog, error) {
-	return remote(uc, ctx, workspaceID, accountID, func(account *ads.AdAccount, token string) ([]ads.RemoteCatalog, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(account *ads.AdAccount, token string) ([]ads.RemoteCatalog, error) {
 		if account.BusinessID == "" {
 			return []ads.RemoteCatalog{}, nil
 		}
@@ -118,7 +115,7 @@ func (uc *AssetsUseCase) Catalogs(ctx context.Context, workspaceID, accountID st
 }
 
 func (uc *AssetsUseCase) Apps(ctx context.Context, workspaceID, accountID string) ([]ads.RemoteApp, error) {
-	return remote(uc, ctx, workspaceID, accountID, func(account *ads.AdAccount, token string) ([]ads.RemoteApp, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(account *ads.AdAccount, token string) ([]ads.RemoteApp, error) {
 		return uc.gateway.ListApps(ctx, token, account.MetaAccountID)
 	})
 }
@@ -140,7 +137,7 @@ func (uc *AssetsUseCase) Posts(ctx context.Context, workspaceID, accountID, page
 	if !ads.ValidPostPlatform(platform) {
 		return nil, ads.FieldError("platform", "invalid")
 	}
-	return remote(uc, ctx, workspaceID, accountID, func(_ *ads.AdAccount, token string) ([]ads.RemotePost, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(_ *ads.AdAccount, token string) ([]ads.RemotePost, error) {
 		page, err := uc.pageOfAccount(ctx, token, pageID)
 		if err != nil {
 			return nil, err
@@ -156,7 +153,7 @@ func (uc *AssetsUseCase) Posts(ctx context.Context, workspaceID, accountID, page
 }
 
 func (uc *AssetsUseCase) InstantExperiences(ctx context.Context, workspaceID, accountID, pageID string) ([]ads.RemoteInstantExperience, error) {
-	return remote(uc, ctx, workspaceID, accountID, func(_ *ads.AdAccount, token string) ([]ads.RemoteInstantExperience, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(_ *ads.AdAccount, token string) ([]ads.RemoteInstantExperience, error) {
 		if _, err := uc.pageOfAccount(ctx, token, pageID); err != nil {
 			return nil, err
 		}
@@ -165,7 +162,7 @@ func (uc *AssetsUseCase) InstantExperiences(ctx context.Context, workspaceID, ac
 }
 
 func (uc *AssetsUseCase) Pixels(ctx context.Context, workspaceID, accountID string) ([]ads.Pixel, error) {
-	return remote(uc, ctx, workspaceID, accountID, func(account *ads.AdAccount, token string) ([]ads.Pixel, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseRead, func(account *ads.AdAccount, token string) ([]ads.Pixel, error) {
 		return uc.gateway.ListPixels(ctx, token, account.MetaAccountID)
 	})
 }
@@ -177,11 +174,21 @@ func (uc *AssetsUseCase) CreatePixel(ctx context.Context, workspaceID, accountID
 	if name == "" || len([]rune(name)) > maxPixelNameRunes {
 		return nil, ads.FieldError("name", "invalid")
 	}
-	return remote(uc, ctx, workspaceID, accountID, func(account *ads.AdAccount, token string) (*ads.Pixel, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(account *ads.AdAccount, token string) (*ads.Pixel, error) {
 		id, err := uc.gateway.CreatePixel(ctx, token, account.MetaAccountID, name)
 		if err != nil {
 			return nil, err
 		}
 		return &ads.Pixel{MetaID: id, Name: name}, nil
+	})
+}
+
+func (uc *AssetsUseCase) BudgetMinimum(ctx context.Context, workspaceID, accountID string, goal ads.OptimizationGoal, bidAmount int64) (ads.BudgetMinimum, error) {
+	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(account *ads.AdAccount, token string) (ads.BudgetMinimum, error) {
+		minimums, err := uc.gateway.MinimumBudgets(ctx, token, account.MetaAccountID, bidAmount)
+		if err != nil {
+			return ads.BudgetMinimum{}, err
+		}
+		return minimums.For(goal), nil
 	})
 }
