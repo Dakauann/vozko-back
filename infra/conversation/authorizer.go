@@ -95,6 +95,16 @@ func (a *Authorizer) CanAccessEntry(userID, workspaceID, entryID, entryType stri
 	if !resolved {
 		return false
 	}
+	return a.canAccessEntryWith(userID, workspaceID, entryID, entryType, assignment)
+}
+
+// canAccessEntryWith carries on from CanAccessEntry once the assignment is in
+// hand. It never reads the assignment from the database, so a caller that
+// already resolved it for this entry can reuse it.
+func (a *Authorizer) canAccessEntryWith(
+	userID, workspaceID, entryID, entryType string,
+	assignment *inbox_assignment.InboxAssignment,
+) bool {
 	if !assignment.VisibleTo(userID) && !a.canViewOthers(userID, workspaceID) {
 		return false
 	}
@@ -416,4 +426,30 @@ func uniqueStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
+}
+
+// ResolveEntryAccess reads the entry's assignment once and returns a predicate
+// that answers for any user. Broadcasts fan one event out to every connected
+// operator; without this each connection repeats the same assignment query,
+// which is pure duplication because the answer cannot change inside the loop.
+// The gate itself is unchanged: the assignment is still consulted before the
+// per-user cache, so a cached decision still cannot bypass it.
+func (a *Authorizer) ResolveEntryAccess(workspaceID, entryID, entryType string) func(userID string, isAdmin bool) bool {
+	assignment, resolved := a.entryAssignment(workspaceID, entryID, entryType)
+
+	return func(userID string, isAdmin bool) bool {
+		if userID == "" || entryID == "" || entryType == "" {
+			return false
+		}
+		if isAdmin {
+			return a.CanAccessEntry(userID, workspaceID, entryID, entryType, true)
+		}
+		if workspaceID == "" {
+			return false
+		}
+		if !resolved {
+			return false
+		}
+		return a.canAccessEntryWith(userID, workspaceID, entryID, entryType, assignment)
+	}
 }

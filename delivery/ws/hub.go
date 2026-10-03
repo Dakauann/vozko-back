@@ -501,6 +501,40 @@ func (h *ConversationHub) BroadcastStageUpdate(workspaceID, entryID, entryType s
 	h.RefreshEntry(entryID, entryType)
 }
 
+// entryAccessResolver is served by the real authorizer. Broadcasts use it to
+// read the entry's assignment once instead of once per connected operator.
+type entryAccessResolver interface {
+	ResolveEntryAccess(workspaceID, entryID, entryType string) func(userID string, isAdmin bool) bool
+}
+
+// entryAccessMemo returns a per-connection predicate for one entry. A broadcast
+// walks every connection, and the assignment behind the decision cannot change
+// while it does, so the lookup is made once per workspace seen rather than once
+// per connection. Connections are keyed by their own workspace, which keeps the
+// decision identical to calling CanAccessEntry for each one.
+func (h *ConversationHub) entryAccessMemo(entryID, entryType string) func(conn *WSConnection) bool {
+	resolved := make(map[string]func(string, bool) bool, 1)
+
+	return func(conn *WSConnection) bool {
+		if conn == nil || h.authorizer == nil {
+			return false
+		}
+		allow, ok := resolved[conn.WorkspaceID]
+		if !ok {
+			if resolver, isResolver := h.authorizer.(entryAccessResolver); isResolver {
+				allow = resolver.ResolveEntryAccess(conn.WorkspaceID, entryID, entryType)
+			} else {
+				workspaceID := conn.WorkspaceID
+				allow = func(userID string, isAdmin bool) bool {
+					return h.authorizer.CanAccessEntry(userID, workspaceID, entryID, entryType, isAdmin)
+				}
+			}
+			resolved[conn.WorkspaceID] = allow
+		}
+		return allow(conn.UserID, conn.IsAdmin)
+	}
+}
+
 func (h *ConversationHub) broadcastStageUpdateLocal(workspaceID, entryID, entryType string) {
 	if h.StageProvider == nil || h.authorizer == nil {
 		return
@@ -530,10 +564,12 @@ func (h *ConversationHub) broadcastStageUpdateLocal(workspaceID, entryID, entryT
 	h.connMu.RLock()
 	defer h.connMu.RUnlock()
 
+	allowEntry := h.entryAccessMemo(entryID, entryType)
+
 	for _, connIDs := range h.userConnections {
 		for connID := range connIDs {
 			if conn, exists := h.connections[connID]; exists {
-				if !h.authorizer.CanAccessEntry(conn.UserID, conn.WorkspaceID, entryID, entryType, conn.IsAdmin) {
+				if !allowEntry(conn) {
 					continue
 				}
 				select {
@@ -580,10 +616,12 @@ func (h *ConversationHub) broadcastLabelUpdateLocal(workspaceID, entryID, entryT
 	h.connMu.RLock()
 	defer h.connMu.RUnlock()
 
+	allowEntry := h.entryAccessMemo(entryID, entryType)
+
 	for _, connIDs := range h.userConnections {
 		for connID := range connIDs {
 			if conn, exists := h.connections[connID]; exists {
-				if !h.authorizer.CanAccessEntry(conn.UserID, conn.WorkspaceID, entryID, entryType, conn.IsAdmin) {
+				if !allowEntry(conn) {
 					continue
 				}
 				select {
@@ -680,10 +718,12 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 
 	h.connMu.RLock()
 
+	allowEntry := h.entryAccessMemo(entryID, entryType)
+
 	for _, connIDs := range h.userConnections {
 		for connID := range connIDs {
 			if conn, exists := h.connections[connID]; exists {
-				if !h.authorizer.CanAccessEntry(conn.UserID, conn.WorkspaceID, entryID, entryType, conn.IsAdmin) {
+				if !allowEntry(conn) {
 					continue
 				}
 
