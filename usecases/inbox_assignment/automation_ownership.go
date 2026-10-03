@@ -26,14 +26,7 @@ type AutomationPauser interface {
 	SetAutomation(ctx context.Context, entryID string, entryType shared.EntryType, enabled *bool) error
 }
 
-type AISessionEnder interface {
-	EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string)
-}
-
-const (
-	sessionEndHandoff = "automation_handoff"
-	sessionEndPaused  = "automation_paused"
-)
+type AISessionEnder = aa.SessionEnder
 
 type EntryAnnouncer interface {
 	BroadcastEntryUpdate(entryID, entryType string, message *conversation.Message)
@@ -133,7 +126,7 @@ func (s *AssignmentService) HandOffToHuman(workspaceID, entryID, entryType, toUs
 	if err != nil {
 		return fmt.Errorf("hand-off %s (%s) to %s: %w", entryID, entryType, toUserID, err)
 	}
-	stepErr := s.stepOut(workspaceID, entryID, entryType, toUserID)
+	stepErr := s.stepOut(workspaceID, entryID, entryType, toUserID, handOffActor(existing), aa.EndReasonAutomationHandoff)
 	s.announceAfterStepOut(workspaceID, entryID, entryType, moved)
 	return stepErr
 }
@@ -148,8 +141,12 @@ func (s *AssignmentService) HandOffToRoulette(in ia.RouletteHandOff) (string, er
 	if err != nil {
 		return "", fmt.Errorf("hand-off %s (%s): %w", in.EntryID, in.EntryType, err)
 	}
+	by := strings.TrimSpace(in.ByActorID)
+	if by == "" {
+		by = handOffActor(existing)
+	}
 	if existing != nil && !existing.HeldByAutomation() && in.DepartmentID == "" {
-		stepErr := s.stepOut(in.WorkspaceID, in.EntryID, in.EntryType, existing.AssignedUserID)
+		stepErr := s.stepOut(in.WorkspaceID, in.EntryID, in.EntryType, existing.AssignedUserID, by, aa.EndReasonAutomationHandoff)
 		s.announceAfterStepOut(in.WorkspaceID, in.EntryID, in.EntryType, ownerMove{})
 		return existing.AssignedUserID, stepErr
 	}
@@ -162,7 +159,7 @@ func (s *AssignmentService) HandOffToRoulette(in ia.RouletteHandOff) (string, er
 		if err != nil {
 			return "", fmt.Errorf("hand-off %s (%s): release: %w", in.EntryID, in.EntryType, err)
 		}
-		stepErr := s.stepOut(in.WorkspaceID, in.EntryID, in.EntryType, "")
+		stepErr := s.stepOut(in.WorkspaceID, in.EntryID, in.EntryType, "", by, aa.EndReasonAutomationHandoff)
 		s.announceAfterStepOut(in.WorkspaceID, in.EntryID, in.EntryType, moved)
 		return "", stepErr
 	}
@@ -171,15 +168,11 @@ func (s *AssignmentService) HandOffToRoulette(in ia.RouletteHandOff) (string, er
 	if err != nil {
 		return "", fmt.Errorf("hand-off %s (%s): ring: %w", in.EntryID, in.EntryType, err)
 	}
-	by := strings.TrimSpace(in.ByActorID)
-	if by == "" {
-		by = handOffActor(existing)
-	}
 	moved, err := s.reassign(in.EntryID, in.EntryType, businessPhoneID, in.WorkspaceID, userID, by, ia.TriggerAutomationHandoffRoulette)
 	if err != nil {
 		return "", fmt.Errorf("hand-off %s (%s) to %s: %w", in.EntryID, in.EntryType, userID, err)
 	}
-	stepErr := s.stepOut(in.WorkspaceID, in.EntryID, in.EntryType, userID)
+	stepErr := s.stepOut(in.WorkspaceID, in.EntryID, in.EntryType, userID, by, aa.EndReasonAutomationHandoff)
 	s.announceAfterStepOut(in.WorkspaceID, in.EntryID, in.EntryType, moved)
 	return userID, stepErr
 }
@@ -306,14 +299,14 @@ func (s *AssignmentService) ReturnToAutomation(entryID, entryType, actorUserID s
 }
 
 func handOffActor(existing *ia.InboxAssignment) string {
-	if existing.HeldByAutomation() {
+	if existing != nil && existing.HeldByAutomation() {
 		return existing.AssignedUserID
 	}
 	return actor.SystemID
 }
 
-func (s *AssignmentService) stepOut(workspaceID, entryID, entryType, toUserID string) error {
-	s.endAISession(workspaceID, entryID, entryType, toUserID, sessionEndHandoff)
+func (s *AssignmentService) stepOut(workspaceID, entryID, entryType, toUserID, by, reason string) error {
+	s.endAISession(workspaceID, entryID, entryType, toUserID, by, reason)
 	if s.pauser == nil {
 		return nil
 	}
@@ -325,11 +318,19 @@ func (s *AssignmentService) stepOut(workspaceID, entryID, entryType, toUserID st
 	return nil
 }
 
-func (s *AssignmentService) endAISession(workspaceID, entryID, entryType, toUserID, reason string) {
+func (s *AssignmentService) endAISession(workspaceID, entryID, entryType, toUserID, by, reason string) {
 	if s.aiSessions == nil || workspaceID == "" {
 		return
 	}
-	s.aiSessions.EndOpenRaw(workspaceID, entryID, entryType, string(aa.OutcomeHandedOff), reason, toUserID)
+	s.aiSessions.End(aa.EndRequest{
+		WorkspaceID: workspaceID,
+		EntryID:     entryID,
+		EntryType:   entryType,
+		Outcome:     aa.OutcomeHandedOff,
+		Reason:      reason,
+		HandoffTo:   toUserID,
+		EndedBy:     by,
+	})
 }
 
 func (s *AssignmentService) announceAfterStepOut(workspaceID, entryID, entryType string, moved ownerMove) {

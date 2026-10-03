@@ -17,6 +17,9 @@ const (
 	TopicFacebookMessage = "webhook.facebook.message"
 	TopicFacebookFeed    = "webhook.facebook.feed"
 	TopicFacebookPage    = "webhook.facebook.page"
+	TopicFacebookLeadgen = "webhook.facebook.leadgen"
+
+	TopicMetaAdAccount = "webhook.meta.adaccount"
 
 	TopicTelegramMessage = "webhook.telegram.message"
 	TopicTelegramAccount = "webhook.telegram.account"
@@ -53,6 +56,8 @@ func TopicForFacebookField(field string) string {
 	switch field {
 	case "feed", "mention", "videos":
 		return TopicFacebookFeed
+	case "leadgen":
+		return TopicFacebookLeadgen
 	default:
 		return TopicFacebookPage
 	}

@@ -38,8 +38,8 @@ func (c *Container) initFacebookRuntime(history conversation_domain.MessageHisto
 		Prefix:      fbuc.MetadataPrefix,
 		History:     history,
 		Messages:    c.repositories.conversation,
-		Media:       c.repositories.conversationMedia,
-		FileStorage: c.services.fileStorage,
+		Media:       c.mediaStore(),
+		Ads:         c.adOriginRecorder(),
 		Fetch:       bundle.Messaging.FetchBytes,
 		Broadcaster: c.services.conversationHub,
 	}

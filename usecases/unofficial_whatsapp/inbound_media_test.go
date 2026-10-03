@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/media"
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
+	"vozko/usecases/conversationmedia"
 )
 
 type fakeConvMedia struct {
@@ -35,6 +37,26 @@ func (f *fakeConvMedia) GetByID(id string) (*conversation.ConversationMedia, err
 		}
 	}
 	return nil, conversation.ErrMediaNotFound
+}
+
+func (f *fakeConvMedia) ListByIDs(ids []string) ([]*conversation.ConversationMedia, error) {
+	var out []*conversation.ConversationMedia
+	for _, id := range ids {
+		if row, err := f.GetByID(id); err == nil {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+type blindInspector struct{}
+
+func (blindInspector) Inspect([]byte, conversation.MediaType) conversation.MediaLayout {
+	return conversation.MediaLayout{}
+}
+
+func storeFor(storage media.FileStorage, rows conversation.ConversationMediaRepository) conversation.MediaStore {
+	return conversationmedia.NewStore(storage, rows, blindInspector{})
 }
 
 func (f *fakeConvMedia) GetByWhatsAppMediaID(string) (*conversation.ConversationMedia, error) {
@@ -85,7 +107,7 @@ func newMediaHarness(t *testing.T) *mediaHarness {
 		GroupAPI:      &fakeGroupAPI{},
 		Assets:        &fakeAssets{},
 		FileStorage:   h.storage,
-		ConvMedia:     h.media,
+		Media:         storeFor(h.storage, h.media),
 		History:       h.history,
 	})
 	return h

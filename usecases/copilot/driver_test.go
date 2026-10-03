@@ -15,8 +15,8 @@ import (
 )
 
 type scriptAI struct {
-	turns [][]ai.ToolCall
-	texts []string
+	turns  [][]ai.ToolCall
+	texts  []string
 	usage  *ai.Usage
 	idx    int
 	inputs []ai.GenerateInput
@@ -72,8 +72,9 @@ type fakeTool struct {
 	invalid error
 }
 
-func (f *fakeTool) Validate(context.Context, copilot.Context, map[string]interface{}) error { return f.invalid }
-
+func (f *fakeTool) Validate(context.Context, copilot.Context, map[string]interface{}) error {
+	return f.invalid
+}
 
 func (f *fakeTool) Definition() tools.Definition {
 	return tools.Definition{Name: f.name, Description: "x"}
@@ -181,7 +182,7 @@ func TestDriver_RBACDeniedDoesNotExecuteOrPause(t *testing.T) {
 func TestDriver_ExecuteApprovedRunsToolScoped(t *testing.T) {
 	wt := &fakeTool{name: "write_x", meta: writeMeta}
 	drv := driverWith(&fakeAccess{}, wt)
-	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x", Args: map[string]interface{}{"a": 1}})
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x", Args: map[string]interface{}{"a": 1}}, nil, (&capture{}).emit)
 	if res.Status != copilot.StatusOK || wt.calls != 1 || wt.gotCC.WorkspaceID != "ws1" {
 		t.Fatalf("approval must run the tool scoped to the session, got %+v calls=%d", res, wt.calls)
 	}
@@ -190,7 +191,7 @@ func TestDriver_ExecuteApprovedRunsToolScoped(t *testing.T) {
 func TestDriver_ExecuteApprovedSurfacesError(t *testing.T) {
 	wt := &fakeTool{name: "write_x", meta: writeMeta, result: copilot.Result{Status: copilot.StatusError, Message: "inválido"}}
 	drv := driverWith(&fakeAccess{}, wt)
-	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}).Status != copilot.StatusError {
+	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}, nil, (&capture{}).emit).Status != copilot.StatusError {
 		t.Fatal("tool errors must surface from approval")
 	}
 }
@@ -198,7 +199,7 @@ func TestDriver_ExecuteApprovedSurfacesError(t *testing.T) {
 func TestDriver_ExecuteApprovedReChecksRBAC(t *testing.T) {
 	wt := &fakeTool{name: "write_x", meta: writeMeta}
 	drv := driverWith(&fakeAccess{err: workspace.ErrInsufficientPermissions}, wt)
-	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"})
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}, nil, (&capture{}).emit)
 	if res.Status != copilot.StatusDenied || wt.calls != 0 {
 		t.Fatalf("approval must re-check RBAC and not execute when denied, got %+v calls=%d", res, wt.calls)
 	}
@@ -210,7 +211,7 @@ func TestDriver_UnknownTool(t *testing.T) {
 	if step.Pause != nil || !strings.Contains(step.Result, "desconhecida") {
 		t.Fatalf("unknown tool should be reported, not paused, got %+v", step)
 	}
-	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "nope"}).Status != copilot.StatusError {
+	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "nope"}, nil, (&capture{}).emit).Status != copilot.StatusError {
 		t.Fatal("approving an unknown tool must error")
 	}
 }
@@ -296,7 +297,7 @@ func TestSummarizeAndToolEvent(t *testing.T) {
 	if summarizeCall(call("t", map[string]interface{}{"bad": make(chan int)})) != "t" {
 		t.Fatal("unmarshalable args → name only")
 	}
-	ev := toolEvent("t", "s", true)
+	ev := toolStep{Name: "t", Summary: "s", Ok: true}.payload()
 	if ev["name"] != "t" || ev["ok"] != true {
 		t.Fatalf("tool event fields, got %+v", ev)
 	}
@@ -351,5 +352,121 @@ func TestDriver_AnAccessErrorHidesTheTool(t *testing.T) {
 	drv := driverWith(&fakeAccess{err: errors.New("db down")}, &fakeTool{name: "a", meta: readMeta})
 	if len(drv.Tools()) != 0 {
 		t.Fatal("a tool whose permission could not be checked was offered")
+	}
+}
+
+type secretTool struct {
+	fakeTool
+}
+
+func (s *secretTool) Secrets(map[string]interface{}) []copilot.SecretField {
+	return []copilot.SecretField{{Key: "password", Label: "Senha da linha"}}
+}
+
+func TestDriver_AProposalAsksForSecretsWithoutCarryingThem(t *testing.T) {
+	st := &secretTool{fakeTool{name: "create_line", meta: writeMeta}}
+	drv := driverWith(&fakeAccess{}, st)
+	step := drv.Dispatch(context.Background(), call("create_line", map[string]interface{}{"name": "Principal", "password": "typed-in-chat"}), (&capture{}).emit)
+	pa, ok := step.Pause.Payload.(copilot.PendingAction)
+	if !ok {
+		t.Fatalf("expected a proposal, got %+v", step)
+	}
+	if _, leaked := pa.Args["password"]; leaked {
+		t.Fatal("the proposal stored a secret the model sent")
+	}
+	if len(pa.Secrets) != 1 || pa.Secrets[0].Key != "password" {
+		t.Fatalf("secrets = %+v, want the password field", pa.Secrets)
+	}
+	for _, field := range pa.Fields {
+		if field.Key == "password" {
+			t.Fatal("the approval card shows the secret")
+		}
+	}
+}
+
+func TestDriver_ApprovalSuppliesTheSecretOnlyToTheTool(t *testing.T) {
+	st := &secretTool{fakeTool{name: "create_line", meta: writeMeta}}
+	drv := driverWith(&fakeAccess{}, st)
+	pa := copilot.PendingAction{ToolName: "create_line", Args: map[string]interface{}{"name": "Principal"}, Secrets: st.Secrets(nil)}
+
+	res := drv.ExecuteApproved(context.Background(), pa, map[string]string{"password": "s3nh4"}, (&capture{}).emit)
+
+	if res.Status != copilot.StatusOK || st.gotArgs["password"] != "s3nh4" {
+		t.Fatalf("res=%+v args=%v", res, st.gotArgs)
+	}
+	if _, leaked := pa.Args["password"]; leaked {
+		t.Fatal("the stored proposal gained the secret")
+	}
+}
+
+func TestDriver_ApprovalWithoutTheSecretChangesNothing(t *testing.T) {
+	st := &secretTool{fakeTool{name: "create_line", meta: writeMeta}}
+	drv := driverWith(&fakeAccess{}, st)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "create_line", Secrets: st.Secrets(nil)}, nil, (&capture{}).emit)
+	if res.Status != copilot.StatusError || st.calls != 0 {
+		t.Fatalf("res=%+v calls=%d: a missing secret must stop the change", res, st.calls)
+	}
+}
+
+func TestDriver_ApprovalChecksTheChangeAgainBeforeRunningIt(t *testing.T) {
+	wt := &fakeTool{name: "assign", meta: writeMeta}
+	drv := driverWith(&fakeAccess{}, wt)
+	wt.invalid = errors.New("a conversa saiu do seu alcance")
+
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "assign", Args: map[string]interface{}{"entry_id": "e1"}}, nil, (&capture{}).emit)
+
+	if res.Status != copilot.StatusError || wt.calls != 0 || !strings.Contains(res.Message, "saiu do seu alcance") {
+		t.Fatalf("res=%+v calls=%d: a change that no longer passes its check must not run", res, wt.calls)
+	}
+}
+
+type headerSecretTool struct {
+	fakeTool
+}
+
+func (h *headerSecretTool) Secrets(args map[string]interface{}) []copilot.SecretField {
+	headers, _ := args["headers"].(map[string]interface{})
+	var out []copilot.SecretField
+	for name := range headers {
+		out = append(out, copilot.SecretField{Key: "header:" + name, Label: name})
+	}
+	return out
+}
+
+func (h *headerSecretTool) Conceal(args map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{}
+	for k, v := range args {
+		out[k] = v
+	}
+	if headers, ok := args["headers"].(map[string]interface{}); ok {
+		blank := map[string]interface{}{}
+		for name := range headers {
+			blank[name] = ""
+		}
+		out["headers"] = blank
+	}
+	return out
+}
+
+func TestDriver_SecretsNestedInAProposalAreAskedForAndNeverStored(t *testing.T) {
+	ht := &headerSecretTool{fakeTool{name: "configure", meta: writeMeta}}
+	drv := driverWith(&fakeAccess{}, ht)
+	step := drv.Dispatch(context.Background(), call("configure", map[string]interface{}{
+		"headers": map[string]interface{}{"Authorization": "Bearer from-the-model"},
+	}), (&capture{}).emit)
+	pa, ok := step.Pause.Payload.(copilot.PendingAction)
+	if !ok {
+		t.Fatalf("expected a proposal, got %+v", step)
+	}
+	if headers := pa.Args["headers"].(map[string]interface{}); headers["Authorization"] != "" {
+		t.Fatalf("the stored proposal kept a nested secret: %v", headers)
+	}
+	if len(pa.Secrets) != 1 || pa.Secrets[0].Key != "header:Authorization" {
+		t.Fatalf("secrets = %+v", pa.Secrets)
+	}
+
+	res := drv.ExecuteApproved(context.Background(), pa, map[string]string{"header:Authorization": "Bearer typed"}, (&capture{}).emit)
+	if res.Status != copilot.StatusOK || ht.gotArgs["header:Authorization"] != "Bearer typed" {
+		t.Fatalf("res=%+v args=%v", res, ht.gotArgs)
 	}
 }

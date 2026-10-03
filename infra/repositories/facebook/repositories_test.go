@@ -126,17 +126,6 @@ func TestWatermarkUpdateIsMonotonic(t *testing.T) {
 	}
 }
 
-func TestMergeMetadataAppendsJSON(t *testing.T) {
-	db, mock, sqlDB := newMockDB(t)
-	defer sqlDB.Close()
-	mock.ExpectExec(`UPDATE "facebook_conversations" SET "metadata"=COALESCE\(metadata, '\{\}'::jsonb\) \|\| \$1::jsonb`).
-		WithArgs(`{"referral_ref":"promo"}`, sqlmock.AnyArg(), "c-1").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	if err := NewConversationRepository(db).MergeMetadata(context.Background(), "c-1", map[string]any{"referral_ref": "promo"}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestContactProfileDeniedKeepsTheExistingName(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
@@ -147,16 +136,6 @@ func TestContactProfileDeniedKeepsTheExistingName(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestSeedMetadataLetsExistingKeysWin(t *testing.T) {
-	db, mock, sqlDB := newMockDB(t)
-	defer sqlDB.Close()
-	mock.ExpectExec(`UPDATE "facebook_conversations" SET "metadata"=\$1::jsonb \|\| COALESCE\(metadata, '\{\}'::jsonb\)`).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	if err := NewConversationRepository(db).SeedMetadata(context.Background(), "c-1", map[string]any{"facebook_first_referral_ref": "promo"}); err != nil {
 		t.Fatal(err)
 	}
 }

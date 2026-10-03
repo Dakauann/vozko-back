@@ -326,7 +326,16 @@ func (c *consumer) applyAISession(p crm_telemetry.AISessionPayload) error {
 			Model:       p.Model,
 		}, p.MessageID)
 	case crm_telemetry.AISessionOpEndOpen:
-		c.aiSess.EndOpenWithCallID(p.WorkspaceID, p.EntryID, p.EntryType, p.CallID, aa.Outcome(p.Outcome), p.Reason, p.HandoffTargetUserID)
+		c.aiSess.End(aa.EndRequest{
+			WorkspaceID: p.WorkspaceID,
+			EntryID:     p.EntryID,
+			EntryType:   p.EntryType,
+			CallID:      p.CallID,
+			Outcome:     aa.Outcome(p.Outcome),
+			Reason:      p.Reason,
+			HandoffTo:   p.HandoffTargetUserID,
+			EndedBy:     p.EndedBy,
+		})
 	case crm_telemetry.AISessionOpTouchInbound:
 		c.aiSess.TouchInbound(p.WorkspaceID, p.EntryID, p.EntryType)
 	}

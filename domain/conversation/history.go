@@ -53,6 +53,8 @@ type MessageHistoryRecord struct {
 
 	Read   bool
 	Silent bool
+
+	AdReferral *AdReferral
 }
 
 func (r MessageHistoryRecord) GetEntryID() string {

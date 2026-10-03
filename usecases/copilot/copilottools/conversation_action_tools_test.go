@@ -48,6 +48,13 @@ func (f *fakeScheduler) Reschedule(context.Context, shared.Person, sm.Reschedule
 	return nil, nil
 }
 
+func (f *fakeScheduler) Get(_ context.Context, _ shared.Person, workspaceID, id string) (*sm.ScheduledMessage, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &sm.ScheduledMessage{ID: id, WorkspaceID: workspaceID, EntryID: "e-1", EntryType: shared.EntryTypeWhatsApp, Text: "Oi, passando para lembrar do boleto"}, nil
+}
+
 func (f *fakeScheduler) Cancel(_ context.Context, by shared.Person, workspaceID, id string) error {
 	f.by = by
 	f.cancelled = append(f.cancelled, workspaceID+"|"+id)
@@ -160,5 +167,17 @@ func TestCancelScheduledMessageCancelsAsTheUser(t *testing.T) {
 	})
 	if res.Status != copilot.StatusOK || scheduler.by.UserID != "u-1" || scheduler.cancelled[0] != "ws-1|7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2f1e" {
 		t.Fatalf("status %s cancelled %v", res.Status, scheduler.cancelled)
+	}
+}
+
+func TestCancellingAScheduledMessageShowsWhichOne(t *testing.T) {
+	tool := NewCancelScheduledMessageTool(actionDeps(&fakePersonSend{}, &fakeScheduler{}, &fakeMessageBroadcast{}))
+	fields := tool.(copilot.Describer).Describe(context.Background(), member(), map[string]interface{}{"scheduled_message_id": "7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2f1e"})
+	if !hasField(fields, "text", "Oi, passando para lembrar do boleto") {
+		t.Fatalf("fields = %+v", fields)
+	}
+	refused := NewCancelScheduledMessageTool(actionDeps(&fakePersonSend{}, &fakeScheduler{err: sm.ErrEntryAccess}, &fakeMessageBroadcast{}))
+	if err := refused.(copilot.Validator).Validate(context.Background(), member(), map[string]interface{}{"scheduled_message_id": "7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2f1e"}); err == nil {
+		t.Fatal("a message outside the user's reach must be refused before the card")
 	}
 }

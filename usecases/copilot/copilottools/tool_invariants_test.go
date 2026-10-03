@@ -32,14 +32,18 @@ func operationToolset() []copilot.Tool {
 		NewListBusinessPhonesTool(TemplateCreateDeps{}), NewCreateTemplateTool(TemplateCreateDeps{}),
 		NewPreviewCampaignImportTool(CampaignDeps{}), NewCreateCampaignTool(CampaignDeps{}), NewStartCampaignTool(CampaignDeps{}),
 		NewCreateKnowledgeBaseTool(KnowledgeWriteDeps{}), NewAddKnowledgeDocumentTool(KnowledgeWriteDeps{}),
-		NewCreateAgentTool(nil), NewUpdateAgentTool(nil, nil), NewDeleteAgentTool(nil, nil),
+		NewCreateAgentTool(nil, AgentDeps{}), NewUpdateAgentTool(nil, nil, AgentDeps{}), NewDeleteAgentTool(nil, nil),
 		NewListUnofficialNumbersTool(UnofficialCampaignDeps{}), NewPreviewUnofficialImportTool(UnofficialCampaignDeps{}),
 		NewCreateUnofficialCampaignTool(UnofficialCampaignDeps{}), NewStartUnofficialCampaignTool(UnofficialCampaignDeps{}),
+		NewGenerateImageTool(nil),
 	}
 }
 
 func allTools() []copilot.Tool {
-	return append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...)
+	tools := append(append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...), AdsTools(AdsDeps{})...)
+	tools = append(tools, AdManageTools(AdManageDeps{}, AdsDeps{})...)
+	tools = append(tools, AdGrowthTools(AdGrowthDeps{}, AdsDeps{})...)
+	return append(tools, NewConnectAdAccountTool())
 }
 
 func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {
@@ -104,5 +108,40 @@ func TestToolNamesAreUnique(t *testing.T) {
 			t.Errorf("duplicate tool %s", name)
 		}
 		seen[name] = true
+	}
+}
+
+func TestSecretsNeverTravelThroughTheModel(t *testing.T) {
+	for _, tool := range allTools() {
+		def := tool.Definition()
+		for name := range def.Parameters {
+			lower := strings.ToLower(name)
+			if strings.Contains(lower, "password") || strings.Contains(lower, "secret") {
+				t.Errorf("%s offers the model a %q parameter; ask for it as a protected field instead", def.Name, name)
+			}
+		}
+		asker, ok := tool.(copilot.SecretAsker)
+		if !ok {
+			continue
+		}
+		if !tool.Meta().Mutating {
+			t.Errorf("%s asks for a secret without an approval card to type it in", def.Name)
+		}
+		for _, secret := range asker.Secrets(nil) {
+			if _, offered := def.Parameters[secret.Key]; offered {
+				t.Errorf("%s offers its secret %q to the model", def.Name, secret.Key)
+			}
+		}
+	}
+}
+
+func TestEveryChangeNamesWhatItTouchesOnTheCard(t *testing.T) {
+	for _, tool := range allTools() {
+		if !tool.Meta().Mutating {
+			continue
+		}
+		if _, ok := tool.(copilot.Describer); !ok {
+			t.Errorf("%s proposes a change whose approval card falls back to the raw arguments", tool.Definition().Name)
+		}
 	}
 }

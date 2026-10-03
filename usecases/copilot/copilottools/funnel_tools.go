@@ -69,6 +69,16 @@ type createPipelineTool struct{ deps FunnelDeps }
 
 func NewCreatePipelineTool(deps FunnelDeps) copilot.Tool { return &createPipelineTool{deps: deps} }
 
+func (t *createPipelineTool) Describe(_ context.Context, _ copilot.Context, args map[string]interface{}) []copilot.Field {
+	var a createPipelineArgs
+	bindArgs(args, &a)
+	fields := []copilot.Field{{Key: "pipeline", Value: strings.TrimSpace(a.Name)}}
+	if len(a.Stages) > 0 {
+		fields = append(fields, copilot.Field{Key: "stages", Value: strings.Join(a.Stages, "\n")})
+	}
+	return fields
+}
+
 func (t *createPipelineTool) Meta() copilot.Meta { return stagesMeta(workspace.ActionCreate) }
 
 func (t *createPipelineTool) Definition() tools.Definition {

@@ -26,7 +26,15 @@ func (s *plannerStub) Plan(_ context.Context, in sip_trunk.CallPlanInput) (*sip_
 }
 
 func callTools(deps CallDeps) []copilot.Tool {
-	return []copilot.Tool{NewPlaceCallTool(deps)}
+	history, lines, queues := CallHistoryDeps{}, PhoneLineDeps{}, CallQueueDeps{}
+	return []copilot.Tool{
+		NewPlaceCallTool(deps),
+		NewListCallsTool(history), NewGetCallTool(history),
+		NewListPhoneLinesTool(lines), NewCreatePhoneLineTool(lines), NewUpdatePhoneLineTool(lines),
+		NewChangePhoneLinePasswordTool(lines), NewDeletePhoneLineTool(lines),
+		NewListCallQueuesTool(queues), NewCreateCallQueueTool(queues), NewUpdateCallQueueTool(queues), NewDeleteCallQueueTool(queues),
+		NewListTelegramBotsTool(TelegramDeps{}), NewConnectTelegramBotTool(TelegramDeps{}),
+	}
 }
 
 func TestPlaceCallShowsACardAndNeverDials(t *testing.T) {

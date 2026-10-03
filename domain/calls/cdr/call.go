@@ -41,15 +41,9 @@ const (
 	StatusAbandoned  Status = "abandoned"
 )
 
-type EndReason string
-
 const (
-	EndReasonHangupCaller EndReason = "hangup_caller"
-	EndReasonHangupCallee EndReason = "hangup_callee"
-	EndReasonEndCallTool  EndReason = "end_call_tool"
-	EndReasonError        EndReason = "error"
-	EndReasonTimeout      EndReason = "timeout"
-	EndReasonSurrendered  EndReason = "surrendered"
+	EndReasonCancelled   = "cancelled"
+	EndReasonInterrupted = "interrupted"
 )
 
 var (
@@ -123,5 +117,19 @@ type ListFilters struct {
 	LeadID      *string
 	StartedFrom *time.Time
 	StartedTo   *time.Time
+
+	ParticipantID *string
+	Answered      *bool
+	NumberDigits  *string
 	shared.QueryOptions
+}
+
+func CompletionStatus(answered bool, reason string) Status {
+	switch {
+	case answered:
+		return StatusCompleted
+	case reason == EndReasonCancelled || reason == EndReasonInterrupted:
+		return StatusAbandoned
+	}
+	return StatusFailed
 }

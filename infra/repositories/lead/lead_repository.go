@@ -82,14 +82,9 @@ func (r *repository) FindByNumber(workspaceID, number string) (*lead.Lead, error
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
-	normalized := lead.NormalizeNumber(number)
-	if normalized == "" {
+	phoneFormats := lead.NumberFormats(number)
+	if len(phoneFormats) == 0 {
 		return nil, lead.ErrLeadInvalid
-	}
-
-	phoneFormats := []string{normalized}
-	if alternate := lead.GetAlternatePhoneFormat(normalized); alternate != "" {
-		phoneFormats = append(phoneFormats, alternate)
 	}
 
 	var schemaLead schema.Lead
@@ -101,6 +96,29 @@ func (r *repository) FindByNumber(workspaceID, number string) (*lead.Lead, error
 	}
 
 	return toDomain(&schemaLead), nil
+}
+
+func (r *repository) FindByNumbers(workspaceID string, numbers []string) ([]*lead.Lead, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, lead.ErrLeadWorkspaceRequired
+	}
+	var formats []string
+	for _, number := range numbers {
+		formats = append(formats, lead.NumberFormats(number)...)
+	}
+	if len(formats) == 0 {
+		return nil, nil
+	}
+	var rows []schema.Lead
+	if err := r.scope(workspaceID).Where("number IN ?", formats).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	leads := make([]*lead.Lead, len(rows))
+	for i := range rows {
+		leads[i] = toDomain(&rows[i])
+	}
+	return leads, nil
 }
 
 func (r *repository) FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, error) {

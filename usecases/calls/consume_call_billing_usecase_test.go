@@ -83,7 +83,7 @@ func (planWithSIPMinutes) ListForWorkspace(string) ([]workspace_pricing.PricingI
 func newBillingConsumer() (*ConsumeCallBillingUseCase, *recordingLedger) {
 	ledger := &recordingLedger{}
 	pricer := workspace_pricing.NewPricer(catalogDefaults{}, workspace_pricing.WithPlanPricingProvider(planWithSIPMinutes{}))
-	return NewConsumeCallBillingUseCase(nil, &memoryBillingRecords{records: map[string]*billing.CallBillingRecord{}}, ledger, pricer, nil, nil), ledger
+	return NewConsumeCallBillingUseCase(nil, &memoryBillingRecords{records: map[string]*billing.CallBillingRecord{}}, ledger, pricer, nil), ledger
 }
 
 func completedCall(callID, channel string, talk time.Duration) billing.CallCompletedEvent {

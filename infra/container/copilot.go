@@ -27,12 +27,13 @@ func (c *Container) buildCopilot(
 		Departments: c.useCases.listWorkspaceDepartments,
 		Now:         now,
 	}
+	agentDeps := copilottools.AgentDeps{KnowledgeBases: c.useCases.listKnowledgeBases, Collections: c.mcpCollection, Catalog: c.services.toolRegistry}
 	toolset := append([]copilot.Tool{
 		copilottools.NewListAgentsTool(listAgents),
 		copilottools.NewCountAgentsTool(listAgents),
-		copilottools.NewGetAgentTool(getAgent),
-		copilottools.NewCreateAgentTool(createAgent),
-		copilottools.NewUpdateAgentTool(getAgent, updateAgent),
+		copilottools.NewGetAgentTool(getAgent, c.services.toolRegistry),
+		copilottools.NewCreateAgentTool(createAgent, agentDeps),
+		copilottools.NewUpdateAgentTool(getAgent, updateAgent, agentDeps),
 		copilottools.NewDeleteAgentTool(getAgent, deleteAgent),
 		copilottools.NewListDepartmentsTool(c.useCases.listWorkspaceDepartments),
 		copilottools.NewOfferActionTool(state),
@@ -84,6 +85,9 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.workspaceAdminTools(),
 		c.accessTools(),
 		c.callTools(),
+		c.telegramTools(),
+		c.adsTools(),
+		{copilottools.NewGenerateImageTool(c.imageGeneration().Service)},
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
@@ -177,10 +181,50 @@ func (c *Container) accessTools() []copilot.Tool {
 }
 
 func (c *Container) callTools() []copilot.Tool {
-	if c.sipTrunks == nil {
+	if c.sipTrunks == nil || c.callRouting == nil {
 		return nil
 	}
-	return []copilot.Tool{copilottools.NewPlaceCallTool(copilottools.CallDeps{Planner: c.sipTrunks.Planner})}
+	history := copilottools.CallHistoryDeps{History: c.callHistory(), Permissions: c.useCases.checkWsAccess}
+	lines := copilottools.PhoneLineDeps{
+		List:   c.sipTrunks.Lines.List,
+		Get:    c.sipTrunks.Lines.Get,
+		Create: c.sipTrunks.Lines.Create,
+		Update: c.sipTrunks.Lines.Update,
+		Delete: c.sipTrunks.Lines.Delete,
+	}
+	queues := copilottools.CallQueueDeps{
+		Queues:      c.callRouting.Catalog,
+		Monitor:     c.callRouting.Monitor,
+		Music:       c.callRouting.Music,
+		Names:       c.services.callSessionUsernameResolver,
+		Departments: c.useCases.scopedDepartments,
+		Now:         time.Now,
+	}
+	return []copilot.Tool{
+		copilottools.NewPlaceCallTool(copilottools.CallDeps{Planner: c.sipTrunks.Planner}),
+		copilottools.NewListCallsTool(history),
+		copilottools.NewGetCallTool(history),
+		copilottools.NewListPhoneLinesTool(lines),
+		copilottools.NewCreatePhoneLineTool(lines),
+		copilottools.NewUpdatePhoneLineTool(lines),
+		copilottools.NewChangePhoneLinePasswordTool(lines),
+		copilottools.NewDeletePhoneLineTool(lines),
+		copilottools.NewListCallQueuesTool(queues),
+		copilottools.NewCreateCallQueueTool(queues),
+		copilottools.NewUpdateCallQueueTool(queues),
+		copilottools.NewDeleteCallQueueTool(queues),
+	}
+}
+
+func (c *Container) telegramTools() []copilot.Tool {
+	if c.telegram == nil || c.telegram.Connect == nil {
+		return nil
+	}
+	deps := copilottools.TelegramDeps{Connect: c.telegram.Connect, List: c.telegram.List, Departments: c.useCases.scopedDepartments}
+	return []copilot.Tool{
+		copilottools.NewListTelegramBotsTool(deps),
+		copilottools.NewConnectTelegramBotTool(deps),
+	}
 }
 
 func (c *Container) unofficialCampaignTools() []copilot.Tool {

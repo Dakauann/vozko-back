@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"vozko/domain/actor"
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	ia "vozko/domain/inbox_assignment"
@@ -61,10 +62,12 @@ func (p *recordingPauser) SetAutomation(_ context.Context, entryID string, entry
 
 type recordingSessions struct {
 	ended []string
+	by    []string
 }
 
-func (s *recordingSessions) EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string) {
-	s.ended = append(s.ended, workspaceID+"|"+entryID+"|"+outcome+"|"+reason+"|"+handoffUserID)
+func (s *recordingSessions) End(r aa.EndRequest) {
+	s.ended = append(s.ended, r.WorkspaceID+"|"+r.EntryID+"|"+string(r.Outcome)+"|"+r.Reason+"|"+r.HandoffTo)
+	s.by = append(s.by, r.EndedBy)
 }
 
 var agentGoverned = conversation.AutomationProfile{AgentID: "agent-1", AgentResponsesEnabled: true}
@@ -756,4 +759,42 @@ func TestAnUnchangedOwnerIsNotAnnounced(t *testing.T) {
 	require.NoError(t, f.svc.UnassignSystem("entry-2", "whatsapp", "ws-1", ia.TriggerManual))
 
 	assert.Empty(t, f.broadcast.owners)
+}
+
+func TestTheSessionEndNamesWhoCausedIt(t *testing.T) {
+	t.Run("the agent's own hand-off", func(t *testing.T) {
+		f := newAIFixture(agentGoverned)
+		f.seed("entry-1", "ai:agent-1")
+		require.NoError(t, f.svc.HandOffToHuman("ws-1", "entry-1", "whatsapp", "bob"))
+		assert.Equal(t, []string{"ai:agent-1"}, f.sessions.by)
+	})
+	t.Run("an operator handing it to a department", func(t *testing.T) {
+		f := newAIFixture(agentGoverned, "ana")
+		f.seed("entry-1", "ai:agent-1")
+		_, err := f.svc.HandOffToRoulette(ia.RouletteHandOff{WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: "whatsapp", ByActorID: "carla"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"carla"}, f.sessions.by)
+	})
+}
+
+func TestManuallyAssigningTheAgentsConversationHandsItOff(t *testing.T) {
+	f := newAIFixture(agentGoverned)
+	f.seed("entry-1", "ai:agent-1")
+
+	require.NoError(t, f.svc.AssignManual("entry-1", "whatsapp", "", "ws-1", "victor", "jose", ia.TriggerManual))
+
+	assert.Equal(t, "victor", f.owner("entry-1"))
+	assert.Equal(t, []string{"ws-1|entry-1|handed_off|manual_assignment|victor"}, f.sessions.ended)
+	assert.Equal(t, []string{"jose"}, f.sessions.by, "the timeline must say Jose ended the AI's turn")
+	assert.Equal(t, []string{"whatsapp:entry-1"}, f.pauser.paused, "the agent must stop answering")
+}
+
+func TestReassigningBetweenPeopleLeavesTheAutomationAlone(t *testing.T) {
+	f := newAIFixture(agentGoverned)
+	f.seed("entry-1", "bob")
+
+	require.NoError(t, f.svc.AssignManual("entry-1", "whatsapp", "", "ws-1", "victor", "jose", ia.TriggerManual))
+
+	assert.Empty(t, f.sessions.ended)
+	assert.Empty(t, f.pauser.paused)
 }

@@ -51,7 +51,7 @@ func okContext() copilot.Context {
 
 func TestUpdateAgentAddsAToolAndKeepsTheExistingOnes(t *testing.T) {
 	upd := &fakeUpdateAgent{}
-	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd)
+	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd, AgentDeps{})
 
 	if _, ok := tool.Definition().Parameters["addTools"]; !ok {
 		t.Fatal("update_agent must expose a parameter for tools")
@@ -84,7 +84,7 @@ func TestUpdateAgentAddsAToolAndKeepsTheExistingOnes(t *testing.T) {
 
 func TestUpdateAgentRemovesOnlyWhatWasAsked(t *testing.T) {
 	upd := &fakeUpdateAgent{}
-	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd)
+	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd, AgentDeps{})
 
 	res := tool.Execute(context.Background(), okContext(), map[string]interface{}{
 		"id":          "ag-1",
@@ -100,7 +100,7 @@ func TestUpdateAgentRemovesOnlyWhatWasAsked(t *testing.T) {
 
 func TestUpdateAgentLeavesMembershipUntouchedWhenNotMentioned(t *testing.T) {
 	upd := &fakeUpdateAgent{}
-	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd)
+	tool := NewUpdateAgentTool(fakeGetAgent{a: boundAgent()}, upd, AgentDeps{})
 
 	tool.Execute(context.Background(), okContext(), map[string]interface{}{
 		"id":              "ag-1",
@@ -120,7 +120,7 @@ func TestUpdateAgentReAddReplacesConfig(t *testing.T) {
 		Name: "http_request", Config: map[string]interface{}{"method": "POST"},
 	})
 	upd := &fakeUpdateAgent{}
-	tool := NewUpdateAgentTool(fakeGetAgent{a: current}, upd)
+	tool := NewUpdateAgentTool(fakeGetAgent{a: current}, upd, AgentDeps{})
 
 	tool.Execute(context.Background(), okContext(), map[string]interface{}{
 		"id": "ag-1",
@@ -147,7 +147,7 @@ func TestUpdateAgentDeniesForeignWorkspace(t *testing.T) {
 	foreign := boundAgent()
 	foreign.WorkspaceID = "ws-OTHER"
 	upd := &fakeUpdateAgent{}
-	tool := NewUpdateAgentTool(fakeGetAgent{a: foreign}, upd)
+	tool := NewUpdateAgentTool(fakeGetAgent{a: foreign}, upd, AgentDeps{})
 
 	res := tool.Execute(context.Background(), okContext(), map[string]interface{}{
 		"id":          "ag-1",
@@ -166,7 +166,7 @@ func TestUpdateAgentDeniesOutOfScopeDepartment(t *testing.T) {
 	a := boundAgent()
 	a.DepartmentID = "dept-b"
 	upd := &fakeUpdateAgent{}
-	tool := NewUpdateAgentTool(fakeGetAgent{a: a}, upd)
+	tool := NewUpdateAgentTool(fakeGetAgent{a: a}, upd, AgentDeps{})
 
 	res := tool.Execute(context.Background(), copilot.Context{WorkspaceID: "ws-1", Departments: &wd.DepartmentFilter{DepartmentIDs: []string{"dept-a"}, WorkspaceHasDepartments: true}},
 		map[string]interface{}{"id": "ag-1", "removeTools": []interface{}{"search_knowledge_base"}})
@@ -177,7 +177,7 @@ func TestUpdateAgentDeniesOutOfScopeDepartment(t *testing.T) {
 
 func TestCreateAgentCarriesToolsAndAttachments(t *testing.T) {
 	crt := &fakeCreateAgent{}
-	tool := NewCreateAgentTool(crt)
+	tool := NewCreateAgentTool(crt, AgentDeps{})
 
 	res := tool.Execute(context.Background(), okContext(), map[string]interface{}{
 		"name":             "Bia",
@@ -208,7 +208,7 @@ func TestCreateAgentCarriesToolsAndAttachments(t *testing.T) {
 
 func TestCreateAgentWithoutToolsSendsEmptyNotNil(t *testing.T) {
 	crt := &fakeCreateAgent{}
-	NewCreateAgentTool(crt).Execute(context.Background(), okContext(), map[string]interface{}{
+	NewCreateAgentTool(crt, AgentDeps{}).Execute(context.Background(), okContext(), map[string]interface{}{
 		"name": "Bia", "messagingPrompt": "p", "messagingModel": "m", "provider": "platform",
 	})
 	if crt.got.InternalTools == nil {
@@ -217,7 +217,7 @@ func TestCreateAgentWithoutToolsSendsEmptyNotNil(t *testing.T) {
 }
 
 func TestToolListParamDeclaresItsItemShape(t *testing.T) {
-	p := NewUpdateAgentTool(nil, nil).Definition().Parameters["addTools"]
+	p := NewUpdateAgentTool(nil, nil, AgentDeps{}).Definition().Parameters["addTools"]
 	if p.Type != "array" || p.Items == nil || p.Items.Type != "object" {
 		t.Fatalf("addTools schema = %+v", p)
 	}

@@ -3,6 +3,7 @@ package conversation_usecase
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"vozko/domain/conversation"
@@ -19,10 +20,11 @@ var errHistoryUnavailable = errors.New("conversation: history source not configu
 type historyReader struct {
 	authorizer conversation.ConversationAuthorizer
 	history    HistorySource
+	ads        conversation.AdOriginReader
 }
 
-func NewHistoryReader(authorizer conversation.ConversationAuthorizer, history HistorySource) conversation.HistoryReader {
-	return &historyReader{authorizer: authorizer, history: history}
+func NewHistoryReader(authorizer conversation.ConversationAuthorizer, history HistorySource, ads conversation.AdOriginReader) conversation.HistoryReader {
+	return &historyReader{authorizer: authorizer, history: history, ads: ads}
 }
 
 func (r *historyReader) ReadHistory(q conversation.HistoryQuery) (conversation.HistoryPage, error) {
@@ -50,5 +52,17 @@ func (r *historyReader) ReadHistory(q conversation.HistoryQuery) (conversation.H
 	if err != nil {
 		return conversation.HistoryPage{}, fmt.Errorf("history of %s: %w", q.EntryID, err)
 	}
-	return conversation.HistoryPage{Messages: messages, HasMore: hasMore, Total: total}, nil
+	return conversation.HistoryPage{Messages: messages, HasMore: hasMore, Total: total, AdOrigin: r.adOrigin(q)}, nil
+}
+
+func (r *historyReader) adOrigin(q conversation.HistoryQuery) *conversation.AdOrigin {
+	if r.ads == nil {
+		return nil
+	}
+	origin, err := r.ads.AdOrigin(q.EntryID, q.EntryType)
+	if err != nil {
+		log.Printf("[history] ad origin of %s:%s unavailable: %v", q.EntryType, q.EntryID, err)
+		return nil
+	}
+	return origin
 }

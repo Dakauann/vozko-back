@@ -166,3 +166,18 @@ func TestPersonSchedulerDoesNotTreatAnUnreadablePermissionAsGranted(t *testing.T
 		t.Fatal("scheduled without a readable permission")
 	}
 }
+
+func TestPersonSchedulerShowsAMessageOnlyToWhoMayActOnIt(t *testing.T) {
+	allowed, _, _, _ := schedulerFixture(true)
+	someone := shared.Person{UserID: "u1"}
+	if message, err := allowed.Get(context.Background(), someone, "ws1", "m1"); err != nil || message.ID != "m1" {
+		t.Fatalf("message=%+v err=%v", message, err)
+	}
+	if _, err := allowed.Get(context.Background(), someone, "ws1", "m2"); !errors.Is(err, sm.ErrNotFound) {
+		t.Fatalf("another workspace's message must not exist, got %v", err)
+	}
+	refused, _, _, _ := schedulerFixture(false)
+	if _, err := refused.Get(context.Background(), someone, "ws1", "m1"); !errors.Is(err, sm.ErrEntryAccess) {
+		t.Fatalf("a conversation the person cannot see must be refused, got %v", err)
+	}
+}

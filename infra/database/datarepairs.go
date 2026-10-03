@@ -45,6 +45,7 @@ func dataRepairs() []dataRepair {
 		{"rag_size_documents_and_bases", sizeKnowledgeBaseDocuments},
 		{"ca_copy_instagram_comment_rules", copyInstagramCommentRules},
 		{"ca_copy_instagram_private_replies", copyInstagramPrivateReplies},
+		{"pp_drop_retired_sip_trunk_prices", dropRetiredSIPTrunkPrices},
 	}
 }
 

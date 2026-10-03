@@ -428,9 +428,9 @@ func (h *WorkflowHandler) handleDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, workflow.ErrNodeInvalidToolParamType):
 		response.WriteError(w, http.StatusUnprocessableEntity, "Um parâmetro de ferramenta (custom_tools) tem um tipo inválido. Use um tipo suportado (string, number, integer, boolean, array, object, date, time, datetime, email, phone, enum).", map[string]string{"detail": err.Error()})
 	case errors.Is(err, workflow.ErrVoiceTrunkRequired), errors.Is(err, workflow.ErrVoiceTrunkInvalid):
-		response.WriteError(w, http.StatusUnprocessableEntity, "Escolha um tronco SIP deste workspace que receba ligações", nil)
+		response.WriteError(w, http.StatusUnprocessableEntity, "Escolha uma linha telefônica deste workspace que receba ligações", nil)
 	case errors.Is(err, workflow.ErrVoiceTrunkTaken):
-		response.WriteError(w, http.StatusConflict, "Este tronco SIP já atende ligações com outro fluxo de voz ativo. Pause o outro fluxo antes de ativar este.", nil)
+		response.WriteError(w, http.StatusConflict, "Esta linha telefônica já atende ligações com outro fluxo de voz ativo. Pause o outro fluxo antes de ativar este.", nil)
 	case errors.Is(err, workflow.ErrNodeInvalidDTMFConfig):
 		response.WriteError(w, http.StatusUnprocessableEntity, "Em Aguardar Tecla, escolha ao menos uma tecla (0-9, * ou #), sem repetir", map[string]string{"detail": err.Error()})
 	case errors.Is(err, workflow.ErrNodeInvalidQueueID):

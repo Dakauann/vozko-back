@@ -26,6 +26,20 @@ func NewCreateCalendarEventTool(create calendar.CreateEventUseCase) copilot.Tool
 	return &createCalendarEventTool{create: create}
 }
 
+func (t *createCalendarEventTool) Describe(_ context.Context, _ copilot.Context, args map[string]interface{}) []copilot.Field {
+	var a createCalendarEventArgs
+	bindArgs(args, &a)
+	fields := []copilot.Field{
+		{Key: "title", Value: strings.TrimSpace(a.Title)},
+		{Key: "start", Value: strings.TrimSpace(a.Start)},
+		{Key: "end", Value: strings.TrimSpace(a.End)},
+	}
+	if description := strings.TrimSpace(a.Description); description != "" {
+		fields = append(fields, copilot.Field{Key: "description", Value: description})
+	}
+	return fields
+}
+
 func (t *createCalendarEventTool) Meta() copilot.Meta {
 	return copilot.Meta{Mutating: true, Resource: workspace.ResourceCalendar, Action: workspace.ActionCreate}
 }

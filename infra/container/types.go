@@ -2,6 +2,8 @@ package container
 
 import (
 	"context"
+	callhistoryhttp "vozko/delivery/http/callhistory"
+	"vozko/usecases/conversationad"
 	mpuc "vozko/usecases/metaplatform"
 
 	"gorm.io/gorm"
@@ -194,6 +196,8 @@ type Container struct {
 	agentMCP                    *handlers.AgentMCPBundle
 	instagram                   *instagramBundle
 	facebook                    *facebookBundle
+	ads                         *adsBundle
+	imageGenerationBundle       *imageGenerationBundle
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
@@ -322,6 +326,7 @@ type repositories struct {
 
 type services struct {
 	amqpPool                      *queue.ConnectionPool
+	workspacePricer               workspace_pricing_domain.Pricer
 	workflowWakePub               messaging.MessageQueuePub
 	workflowWakeSub               messaging.MessageQueueSub
 	crmTelemetryPub               messaging.MessageQueuePub
@@ -346,6 +351,9 @@ type services struct {
 	tokenService                  *security.JWTTokenService
 	readMeTokenService            *security.JWTTokenService
 	fileStorage                   media.FileStorage
+	conversationMediaStore        conversation_domain.MediaStore
+	adOrigins                     conversation_domain.AdOriginRepository
+	adOriginRecorder              *conversationad.Recorder
 	fileReader                    media.FileReader
 	ticketFileStorage             ticket.FileStorage
 	asaasService                  asaas_service.AsaasServiceUseCases
@@ -438,6 +446,8 @@ type services struct {
 	reportQueueSub       messaging.MessageQueueSub
 	facebookPublishPub   messaging.MessageQueuePub
 	facebookPublishSub   messaging.MessageQueueSub
+	imageGenerationPub   messaging.MessageQueuePub
+	imageGenerationSub   messaging.MessageQueueSub
 	reportService        *report_usecase.Service
 	transactionsExporter *balance_usecase.TransactionsExporter
 	opportunityIO        *opportunityio.Service
@@ -861,8 +871,6 @@ type useCases struct {
 
 	startCall          call_cdr_domain.StartCallUseCase
 	completeCall       call_cdr_domain.CompleteCallUseCase
-	getCall            call_cdr_domain.GetCallUseCase
-	listCalls          call_cdr_domain.ListCallsUseCase
 	billingQuery       call_billing_domain.QueryUseCase
 	callRecordingQuery call_recordings.QueryUseCase
 
@@ -1006,7 +1014,7 @@ type handlers_ struct {
 	invoice                 *invoicehttp.InvoiceHandler
 	callBilling             *callbillinghttp.CallBillingHandler
 	campaignReport          *campaignreporthttp.Handler
-	calls                   *handlers.CallsHandler
+	callHistory             *callhistoryhttp.Handler
 	analytics               *analyticshttp.AnalyticsHandler
 	workspaceConfig         *workspaceconfighttp.WorkspaceConfigHandler
 	issue                   *issuehttp.IssueHandler

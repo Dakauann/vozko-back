@@ -13,4 +13,5 @@ type PersonSchedulerUseCase interface {
 	Schedule(ctx context.Context, by shared.Person, in ScheduleInput) (*ScheduleResult, error)
 	Reschedule(ctx context.Context, by shared.Person, in RescheduleInput) (*ScheduleResult, error)
 	Cancel(ctx context.Context, by shared.Person, workspaceID, id string) error
+	Get(ctx context.Context, by shared.Person, workspaceID, id string) (*ScheduledMessage, error)
 }

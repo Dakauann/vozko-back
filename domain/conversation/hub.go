@@ -276,7 +276,7 @@ type HistoryProvider interface {
 	GetHistoryAround(entryID string, entryType shared.EntryType, around time.Time, limit int) ([]*Message, bool, bool, int64, error)
 	GetUnreadCount(entryID string, entryType shared.EntryType) (int64, error)
 	GetEntryInfo(entryID, entryType string) (leadName, leadNumber, leadPicture string, leadMetadata map[string]interface{}, entryVariables []string, automationEnabled bool, err error)
-	ResolveSenderIdentity(entryID, entryType string, message *Message)
+	PresentMessage(entryID, entryType string, message *Message)
 	GetWindowStatusForEntry(entryID, entryType string) WindowState
 	GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]InboxEntry, int64, error)
 	GetInboxEntry(entryID, entryType string) (*InboxEntry, error)

@@ -14,6 +14,2279 @@ definitions:
     - KindWorkflow
     - KindSystem
     - KindCampaign
+  advertising.AdDraft:
+    properties:
+      adAccountId:
+        type: string
+      adSet:
+        $ref: '#/definitions/advertising.AdSetDraft'
+      ads:
+        items:
+          $ref: '#/definitions/advertising.AdItem'
+        type: array
+      campaign:
+        $ref: '#/definitions/advertising.CampaignDraft'
+      identity:
+        $ref: '#/definitions/advertising.Identity'
+      keepPaused:
+        type: boolean
+    type: object
+  advertising.AdItem:
+    properties:
+      creative:
+        $ref: '#/definitions/advertising.CreativeDraft'
+      name:
+        type: string
+    type: object
+  advertising.AdSetDraft:
+    properties:
+      appId:
+        type: string
+      appStoreUrl:
+        type: string
+      bid:
+        $ref: '#/definitions/advertising.Bid'
+      budget:
+        $ref: '#/definitions/advertising.Budget'
+      catalogId:
+        type: string
+      destination:
+        $ref: '#/definitions/advertising.Destination'
+      endAt:
+        type: string
+      existingId:
+        type: string
+      goal:
+        $ref: '#/definitions/advertising.OptimizationGoal'
+      name:
+        type: string
+      pixelEvent:
+        $ref: '#/definitions/advertising.PixelEvent'
+      pixelId:
+        type: string
+      placements:
+        $ref: '#/definitions/advertising.Placements'
+      productSetId:
+        type: string
+      schedule:
+        items:
+          $ref: '#/definitions/advertising.DayPart'
+        type: array
+      startAt:
+        type: string
+      targeting:
+        $ref: '#/definitions/advertising.Targeting'
+      whatsAppNumber:
+        type: string
+    type: object
+  advertising.AttributionWindow:
+    enum:
+    - 1d_view
+    - 1d_click
+    - 7d_click
+    - 28d_click
+    type: string
+    x-enum-varnames:
+    - Window1DayView
+    - Window1DayClick
+    - Window7DayClick
+    - Window28DayClick
+  advertising.Audience:
+    properties:
+      approxLower:
+        type: integer
+      approxUpper:
+        type: integer
+      createdTime:
+        type: string
+      deliveryCode:
+        type: integer
+      deliveryDescription:
+        type: string
+      description:
+        type: string
+      kind:
+        $ref: '#/definitions/advertising.AudienceKind'
+      lookalikeCountry:
+        type: string
+      lookalikeRatio:
+        type: number
+      metaId:
+        type: string
+      name:
+        type: string
+      operationCode:
+        type: integer
+      operationDescription:
+        type: string
+      originAudienceId:
+        type: string
+      retentionDays:
+        type: integer
+      updatedTime:
+        type: string
+    type: object
+  advertising.AudienceKind:
+    enum:
+    - CUSTOMER_LIST
+    - LOOKALIKE
+    - WEBSITE
+    - ENGAGEMENT
+    - OTHER
+    type: string
+    x-enum-varnames:
+    - AudienceCustomerList
+    - AudienceLookalike
+    - AudienceWebsite
+    - AudienceEngagement
+    - AudienceOther
+  advertising.AutomatedRule:
+    properties:
+      action:
+        $ref: '#/definitions/advertising.RuleAction'
+      adAccountId:
+        type: string
+      conditions:
+        items:
+          $ref: '#/definitions/advertising.RuleCondition'
+        type: array
+      createdTime:
+        type: string
+      entity:
+        $ref: '#/definitions/advertising.RuleEntity'
+      frequency:
+        $ref: '#/definitions/advertising.RuleFrequency'
+      metaId:
+        type: string
+      name:
+        type: string
+      objectIds:
+        items:
+          type: string
+        type: array
+      status:
+        $ref: '#/definitions/advertising.RuleStatus'
+      window:
+        $ref: '#/definitions/advertising.RuleWindow'
+    type: object
+  advertising.Bid:
+    properties:
+      amount:
+        type: integer
+      roasFloor:
+        type: number
+      strategy:
+        $ref: '#/definitions/advertising.BidStrategy'
+    type: object
+  advertising.BidStrategy:
+    enum:
+    - LOWEST_COST_WITHOUT_CAP
+    - LOWEST_COST_WITH_BID_CAP
+    - COST_CAP
+    - LOWEST_COST_WITH_MIN_ROAS
+    type: string
+    x-enum-varnames:
+    - BidLowestCost
+    - BidCap
+    - BidCostCap
+    - BidMinROAS
+  advertising.Breakdown:
+    enum:
+    - age
+    - gender
+    - country
+    - region
+    - publisher_platform
+    - platform_position
+    - device_platform
+    - hourly_stats_aggregated_by_advertiser_time_zone
+    type: string
+    x-enum-varnames:
+    - BreakdownAge
+    - BreakdownGender
+    - BreakdownCountry
+    - BreakdownRegion
+    - BreakdownPlatform
+    - BreakdownPosition
+    - BreakdownDeviceOS
+    - BreakdownHourOfDay
+  advertising.Budget:
+    properties:
+      amount:
+        type: integer
+      kind:
+        $ref: '#/definitions/advertising.BudgetKind'
+    type: object
+  advertising.BudgetKind:
+    enum:
+    - DAILY
+    - LIFETIME
+    type: string
+    x-enum-varnames:
+    - BudgetDaily
+    - BudgetLifetime
+  advertising.BulkChange:
+    properties:
+      field:
+        $ref: '#/definitions/advertising.BulkField'
+      find:
+        type: string
+      matchCase:
+        type: boolean
+      mode:
+        $ref: '#/definitions/advertising.BulkMode'
+      replace:
+        type: string
+      value:
+        type: string
+    type: object
+  advertising.BulkField:
+    enum:
+    - name
+    - primaryText
+    - headline
+    - description
+    - link
+    type: string
+    x-enum-varnames:
+    - BulkName
+    - BulkPrimaryText
+    - BulkHeadline
+    - BulkDescription
+    - BulkLink
+  advertising.BulkMode:
+    enum:
+    - set
+    - replace
+    type: string
+    x-enum-varnames:
+    - BulkSet
+    - BulkReplace
+  advertising.CallToAction:
+    enum:
+    - LEARN_MORE
+    - SHOP_NOW
+    - SIGN_UP
+    - CONTACT_US
+    - DOWNLOAD
+    - BOOK_NOW
+    - GET_OFFER
+    - SUBSCRIBE
+    - APPLY_NOW
+    - ORDER_NOW
+    - GET_QUOTE
+    - INSTALL_MOBILE_APP
+    - WATCH_MORE
+    - WHATSAPP_MESSAGE
+    - MESSAGE_PAGE
+    - INSTAGRAM_MESSAGE
+    - NO_BUTTON
+    type: string
+    x-enum-varnames:
+    - CTALearnMore
+    - CTAShopNow
+    - CTASignUp
+    - CTAContactUs
+    - CTADownload
+    - CTABookNow
+    - CTAGetOffer
+    - CTASubscribe
+    - CTAApplyNow
+    - CTAOrderNow
+    - CTAGetQuote
+    - CTAInstallApp
+    - CTAWatchMore
+    - CTAWhatsAppMessage
+    - CTAMessagePage
+    - CTAInstagramDirect
+    - CTANoButton
+  advertising.CampaignDraft:
+    properties:
+      bid:
+        $ref: '#/definitions/advertising.Bid'
+      budget:
+        $ref: '#/definitions/advertising.Budget'
+      existingId:
+        type: string
+      name:
+        type: string
+      objective:
+        $ref: '#/definitions/advertising.Objective'
+      specialCategory:
+        $ref: '#/definitions/advertising.SpecialCategory'
+    type: object
+  advertising.CarouselCard:
+    properties:
+      description:
+        type: string
+      headline:
+        type: string
+      link:
+        type: string
+      media:
+        $ref: '#/definitions/advertising.MediaRef'
+    type: object
+  advertising.ConversionRecord:
+    properties:
+      attempts:
+        type: integer
+      eventName:
+        type: string
+      opportunityId:
+        type: string
+      reason:
+        type: string
+      sentAt:
+        type: string
+      status:
+        $ref: '#/definitions/advertising.ConversionStatus'
+      updatedAt:
+        type: string
+    type: object
+  advertising.ConversionSettings:
+    properties:
+      adAccountId:
+        type: string
+      datasetId:
+        type: string
+      enabled:
+        type: boolean
+      pixelId:
+        type: string
+      sendLeads:
+        type: boolean
+      sendPurchases:
+        type: boolean
+      updatedAt:
+        type: string
+    type: object
+  advertising.ConversionStatus:
+    enum:
+    - sending
+    - sent
+    - skipped
+    - failed
+    type: string
+    x-enum-varnames:
+    - ConversionSending
+    - ConversionSent
+    - ConversionSkipped
+    - ConversionFailed
+  advertising.CopyRequest:
+    properties:
+      deepCopy:
+        type: boolean
+      nameSuffix:
+        type: string
+      parentId:
+        type: string
+    type: object
+  advertising.CreativeDraft:
+    properties:
+      callToAction:
+        $ref: '#/definitions/advertising.CallToAction'
+      cards:
+        items:
+          $ref: '#/definitions/advertising.CarouselCard'
+        type: array
+      description:
+        type: string
+      descriptions:
+        items:
+          type: string
+        type: array
+      displayLink:
+        type: string
+      enhancements:
+        type: boolean
+      format:
+        $ref: '#/definitions/advertising.CreativeFormat'
+      greeting:
+        type: string
+      headline:
+        type: string
+      headlines:
+        items:
+          type: string
+        type: array
+      iceBreakers:
+        items:
+          type: string
+        type: array
+      instagramMediaId:
+        type: string
+      instantExperienceId:
+        type: string
+      leadFormId:
+        type: string
+      link:
+        type: string
+      media:
+        $ref: '#/definitions/advertising.MediaRef'
+      medias:
+        items:
+          $ref: '#/definitions/advertising.MediaRef'
+        type: array
+      postId:
+        type: string
+      primaryText:
+        type: string
+      texts:
+        items:
+          type: string
+        type: array
+    type: object
+  advertising.CreativeFormat:
+    enum:
+    - IMAGE
+    - VIDEO
+    - CAROUSEL
+    - EXISTING_POST
+    - FLEXIBLE
+    - CATALOG
+    - COLLECTION
+    type: string
+    x-enum-varnames:
+    - FormatImage
+    - FormatVideo
+    - FormatCarousel
+    - FormatExistingPost
+    - FormatFlexible
+    - FormatCatalog
+    - FormatCollection
+  advertising.CustomerListDraft:
+    properties:
+      adAccountId:
+        type: string
+      columns:
+        items:
+          $ref: '#/definitions/advertising.MatchKey'
+        type: array
+      crmFilter:
+        $ref: '#/definitions/crmfilter.Filter'
+      description:
+        type: string
+      fileMediaId:
+        type: string
+      name:
+        type: string
+      skipHeader:
+        type: boolean
+      source:
+        $ref: '#/definitions/advertising.CustomerSource'
+    type: object
+  advertising.CustomerSource:
+    enum:
+    - crm
+    - file
+    type: string
+    x-enum-varnames:
+    - SourceCRM
+    - SourceFile
+  advertising.DayPart:
+    properties:
+      days:
+        items:
+          type: integer
+        type: array
+      endMinute:
+        type: integer
+      startMinute:
+        type: integer
+    type: object
+  advertising.Destination:
+    enum:
+    - WEBSITE
+    - ON_AD
+    - APP
+    - ON_POST
+    - NONE
+    - CATALOG
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
+    type: string
+    x-enum-varnames:
+    - DestinationWebsite
+    - DestinationInstantForm
+    - DestinationApp
+    - DestinationOnPost
+    - DestinationNone
+    - DestinationCatalog
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
+  advertising.ExportLabels:
+    properties:
+      breakdowns:
+        additionalProperties:
+          type: string
+        type: object
+      day:
+        type: string
+      metrics:
+        additionalProperties:
+          type: string
+        type: object
+      object:
+        type: string
+      total:
+        type: string
+      values:
+        additionalProperties:
+          additionalProperties:
+            type: string
+          type: object
+        type: object
+    type: object
+  advertising.FieldIssue:
+    properties:
+      code:
+        type: string
+      field:
+        type: string
+    type: object
+  advertising.FormIntro:
+    properties:
+      content:
+        items:
+          type: string
+        type: array
+      style:
+        $ref: '#/definitions/advertising.IntroStyle'
+      title:
+        type: string
+    type: object
+  advertising.FormQuestion:
+    properties:
+      key:
+        type: string
+      label:
+        type: string
+      options:
+        items:
+          type: string
+        type: array
+      type:
+        $ref: '#/definitions/advertising.QuestionType'
+    type: object
+  advertising.FormStatus:
+    enum:
+    - ACTIVE
+    - ARCHIVED
+    type: string
+    x-enum-varnames:
+    - FormActive
+    - FormArchived
+  advertising.GeoLocation:
+    properties:
+      key:
+        type: string
+      kind:
+        $ref: '#/definitions/advertising.LocationKind'
+      name:
+        type: string
+      radiusKm:
+        type: integer
+    type: object
+  advertising.Identity:
+    properties:
+      instagramUserId:
+        type: string
+      pageId:
+        type: string
+    type: object
+  advertising.IntroStyle:
+    enum:
+    - PARAGRAPH
+    - LIST
+    type: string
+    x-enum-varnames:
+    - IntroParagraph
+    - IntroList
+  advertising.Issue:
+    properties:
+      code:
+        type: integer
+      level:
+        type: string
+      message:
+        type: string
+      summary:
+        type: string
+    type: object
+  advertising.LeadForm:
+    properties:
+      createdTime:
+        type: string
+      leadsCount:
+        type: integer
+      locale:
+        type: string
+      metaId:
+        type: string
+      name:
+        type: string
+      pageId:
+        type: string
+      privacyUrl:
+        type: string
+      questions:
+        items:
+          $ref: '#/definitions/advertising.FormQuestion'
+        type: array
+      status:
+        $ref: '#/definitions/advertising.FormStatus'
+    type: object
+  advertising.LeadFormDraft:
+    properties:
+      adAccountId:
+        type: string
+      higherIntent:
+        type: boolean
+      intro:
+        $ref: '#/definitions/advertising.FormIntro'
+      locale:
+        type: string
+      name:
+        type: string
+      pageId:
+        type: string
+      privacyText:
+        type: string
+      privacyUrl:
+        type: string
+      questions:
+        items:
+          $ref: '#/definitions/advertising.FormQuestion'
+        type: array
+      thankYouBody:
+        type: string
+      thankYouButtonText:
+        type: string
+      thankYouTitle:
+        type: string
+      thankYouUrl:
+        type: string
+    type: object
+  advertising.Level:
+    enum:
+    - campaign
+    - adset
+    - ad
+    type: string
+    x-enum-varnames:
+    - LevelCampaign
+    - LevelAdSet
+    - LevelAd
+  advertising.LocationKind:
+    enum:
+    - country
+    - region
+    - city
+    type: string
+    x-enum-varnames:
+    - LocationCountry
+    - LocationRegion
+    - LocationCity
+  advertising.LookalikeDraft:
+    properties:
+      adAccountId:
+        type: string
+      country:
+        type: string
+      name:
+        type: string
+      originAudienceId:
+        type: string
+      percent:
+        type: integer
+    type: object
+  advertising.MatchKey:
+    enum:
+    - EMAIL
+    - PHONE
+    - FN
+    - LN
+    - CT
+    - ST
+    - ZIP
+    - COUNTRY
+    - EXTERN_ID
+    - GEN
+    - DOBY
+    type: string
+    x-enum-varnames:
+    - MatchEmail
+    - MatchPhone
+    - MatchFirstName
+    - MatchLastName
+    - MatchCity
+    - MatchState
+    - MatchZip
+    - MatchCountry
+    - MatchExternalID
+    - MatchGender
+    - MatchBirthYear
+  advertising.MediaKind:
+    enum:
+    - image
+    - video
+    type: string
+    x-enum-varnames:
+    - MediaImage
+    - MediaVideo
+  advertising.MediaRef:
+    properties:
+      kind:
+        $ref: '#/definitions/advertising.MediaKind'
+      mediaId:
+        type: string
+    type: object
+  advertising.MetricKind:
+    enum:
+    - money
+    - count
+    - percent
+    - decimal
+    type: string
+    x-enum-varnames:
+    - KindMoney
+    - KindCount
+    - KindPercent
+    - KindDecimal
+  advertising.ObjectEdit:
+    properties:
+      bid:
+        $ref: '#/definitions/advertising.Bid'
+      budget:
+        $ref: '#/definitions/advertising.Budget'
+      creative:
+        $ref: '#/definitions/advertising.CreativeDraft'
+      endAt:
+        type: string
+      name:
+        type: string
+      placements:
+        $ref: '#/definitions/advertising.Placements'
+      schedule:
+        items:
+          $ref: '#/definitions/advertising.DayPart'
+        type: array
+      targeting:
+        $ref: '#/definitions/advertising.Targeting'
+    type: object
+  advertising.Objective:
+    enum:
+    - OUTCOME_AWARENESS
+    - OUTCOME_TRAFFIC
+    - OUTCOME_ENGAGEMENT
+    - OUTCOME_LEADS
+    - OUTCOME_SALES
+    - OUTCOME_APP_PROMOTION
+    type: string
+    x-enum-varnames:
+    - ObjectiveAwareness
+    - ObjectiveTraffic
+    - ObjectiveEngagement
+    - ObjectiveLeads
+    - ObjectiveSales
+    - ObjectiveAppPromotion
+  advertising.OptimizationGoal:
+    enum:
+    - REACH
+    - IMPRESSIONS
+    - AD_RECALL_LIFT
+    - THRUPLAY
+    - LINK_CLICKS
+    - LANDING_PAGE_VIEWS
+    - POST_ENGAGEMENT
+    - CONVERSATIONS
+    - LEAD_GENERATION
+    - QUALITY_LEAD
+    - OFFSITE_CONVERSIONS
+    - VALUE
+    - APP_INSTALLS
+    - CONVERSATIONS
+    type: string
+    x-enum-varnames:
+    - GoalReach
+    - GoalImpressions
+    - GoalAdRecallLift
+    - GoalThruPlay
+    - GoalLinkClicks
+    - GoalLandingPageViews
+    - GoalPostEngagement
+    - GoalMessaging
+    - GoalLeadGeneration
+    - GoalQualityLead
+    - GoalOffsiteConversion
+    - GoalValue
+    - GoalAppInstalls
+    - GoalConversations
+  advertising.Pixel:
+    properties:
+      creationTime:
+        type: string
+      lastFiredTime:
+        type: string
+      metaId:
+        type: string
+      name:
+        type: string
+      unavailable:
+        type: boolean
+    type: object
+  advertising.PixelEvent:
+    enum:
+    - PURCHASE
+    - LEAD
+    - COMPLETE_REGISTRATION
+    - ADD_TO_CART
+    - INITIATE_CHECKOUT
+    - CONTACT
+    - SCHEDULE
+    - SUBSCRIBE
+    type: string
+    x-enum-varnames:
+    - EventPurchase
+    - EventLead
+    - EventCompleteRegistration
+    - EventAddToCart
+    - EventInitiateCheckout
+    - EventContact
+    - EventSchedule
+    - EventSubscribe
+  advertising.Placements:
+    properties:
+      automatic:
+        type: boolean
+      devices:
+        items:
+          type: string
+        type: array
+      platforms:
+        items:
+          type: string
+        type: array
+      positions:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+    type: object
+  advertising.Progress:
+    properties:
+      activated:
+        type: boolean
+      adSetId:
+        type: string
+      ads:
+        additionalProperties:
+          type: string
+        type: object
+      campaignId:
+        type: string
+      creatives:
+        additionalProperties:
+          type: string
+        type: object
+      inFlight:
+        type: string
+      media:
+        additionalProperties:
+          type: string
+        type: object
+      readyVideo:
+        additionalProperties:
+          type: boolean
+        type: object
+    type: object
+  advertising.QuestionType:
+    enum:
+    - FULL_NAME
+    - FIRST_NAME
+    - LAST_NAME
+    - EMAIL
+    - PHONE
+    - CITY
+    - STATE
+    - ZIP
+    - COMPANY_NAME
+    - JOB_TITLE
+    - CUSTOM
+    type: string
+    x-enum-varnames:
+    - QuestionFullName
+    - QuestionFirstName
+    - QuestionLastName
+    - QuestionEmail
+    - QuestionPhone
+    - QuestionCity
+    - QuestionState
+    - QuestionZip
+    - QuestionCompany
+    - QuestionJobTitle
+    - QuestionCustom
+  advertising.ReportCells:
+    additionalProperties:
+      format: float64
+      type: number
+    type: object
+  advertising.ReportDefinition:
+    properties:
+      breakdowns:
+        items:
+          $ref: '#/definitions/advertising.Breakdown'
+        type: array
+      datePreset:
+        $ref: '#/definitions/advertising.ReportPreset'
+      level:
+        $ref: '#/definitions/advertising.Level'
+      metrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      since:
+        type: string
+      until:
+        type: string
+      view:
+        $ref: '#/definitions/advertising.ReportView'
+    type: object
+  advertising.ReportMetric:
+    enum:
+    - spend
+    - impressions
+    - reach
+    - frequency
+    - clicks
+    - linkClicks
+    - ctr
+    - cpc
+    - cpm
+    - results
+    - costPerResult
+    - conversations
+    - costPerConversation
+    - thruPlays
+    - costPerThruPlay
+    type: string
+    x-enum-varnames:
+    - ReportSpend
+    - ReportImpressions
+    - ReportReach
+    - ReportFrequency
+    - ReportClicks
+    - ReportLinkClicks
+    - ReportCTR
+    - ReportCPC
+    - ReportCPM
+    - ReportResults
+    - ReportCostPerResult
+    - ReportConversations
+    - ReportCostPerConversation
+    - ReportThruPlays
+    - ReportCostPerThruPlay
+  advertising.ReportPreset:
+    enum:
+    - custom
+    type: string
+    x-enum-varnames:
+    - PresetCustom
+  advertising.ReportView:
+    enum:
+    - pivot
+    - trend
+    - bars
+    type: string
+    x-enum-varnames:
+    - ViewPivot
+    - ViewTrend
+    - ViewBars
+  advertising.RuleAction:
+    properties:
+      budgetCap:
+        type: integer
+      budgetPercent:
+        type: integer
+      type:
+        $ref: '#/definitions/advertising.RuleActionType'
+    type: object
+  advertising.RuleActionType:
+    enum:
+    - PAUSE
+    - UNPAUSE
+    - CHANGE_BUDGET
+    type: string
+    x-enum-varnames:
+    - RuleActionPause
+    - RuleActionUnpause
+    - RuleActionChangeBudget
+  advertising.RuleCondition:
+    properties:
+      metric:
+        $ref: '#/definitions/advertising.RuleMetric'
+      operator:
+        $ref: '#/definitions/advertising.RuleOperator'
+      value:
+        type: number
+    type: object
+  advertising.RuleEntity:
+    enum:
+    - CAMPAIGN
+    - ADSET
+    - AD
+    type: string
+    x-enum-varnames:
+    - RuleCampaign
+    - RuleAdSet
+    - RuleAd
+  advertising.RuleFrequency:
+    enum:
+    - SEMI_HOURLY
+    - HOURLY
+    - DAILY
+    type: string
+    x-enum-varnames:
+    - RuleEvery30Minutes
+    - RuleHourly
+    - RuleDaily
+  advertising.RuleMetric:
+    enum:
+    - spent
+    - results
+    - cost_per_result
+    - impressions
+    - reach
+    - frequency
+    - cpc
+    - cpm
+    - ctr
+    type: string
+    x-enum-varnames:
+    - MetricSpent
+    - MetricResults
+    - MetricCostPerResult
+    - MetricImpressions
+    - MetricReach
+    - MetricFrequency
+    - MetricCPC
+    - MetricCPM
+    - MetricCTR
+  advertising.RuleOperator:
+    enum:
+    - GREATER_THAN
+    - LESS_THAN
+    type: string
+    x-enum-varnames:
+    - OperatorGreaterThan
+    - OperatorLessThan
+  advertising.RuleRun:
+    properties:
+      at:
+        type: string
+      objects:
+        items:
+          type: string
+        type: array
+      result:
+        type: string
+    type: object
+  advertising.RuleStatus:
+    enum:
+    - ENABLED
+    - DISABLED
+    type: string
+    x-enum-varnames:
+    - RuleEnabled
+    - RuleDisabled
+  advertising.RuleWindow:
+    enum:
+    - TODAY
+    - YESTERDAY
+    - LAST_3_DAYS
+    - LAST_7_DAYS
+    - LAST_14_DAYS
+    - LAST_30_DAYS
+    - LIFETIME
+    type: string
+    x-enum-varnames:
+    - WindowToday
+    - WindowYesterday
+    - WindowLast3Days
+    - WindowLast7Days
+    - WindowLast14Days
+    - WindowLast30Days
+    - WindowLifetime
+  advertising.SavedAudience:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      placements:
+        $ref: '#/definitions/advertising.Placements'
+      targeting:
+        $ref: '#/definitions/advertising.Targeting'
+      updatedAt:
+        type: string
+    type: object
+  advertising.SpecialCategory:
+    enum:
+    - NONE
+    - HOUSING
+    - EMPLOYMENT
+    - FINANCIAL_PRODUCTS_SERVICES
+    - ISSUES_ELECTIONS_POLITICS
+    - ONLINE_GAMBLING_AND_GAMING
+    type: string
+    x-enum-varnames:
+    - CategoryNone
+    - CategoryHousing
+    - CategoryEmployment
+    - CategoryFinancial
+    - CategoryPolitics
+    - CategoryGambling
+  advertising.SplitTest:
+    properties:
+      adAccountId:
+        type: string
+      cells:
+        items:
+          $ref: '#/definitions/advertising.TestCell'
+        type: array
+      confidence:
+        type: integer
+      description:
+        type: string
+      endAt:
+        type: string
+      level:
+        $ref: '#/definitions/advertising.TestLevel'
+      metaId:
+        type: string
+      name:
+        type: string
+      startAt:
+        type: string
+    type: object
+  advertising.TargetRef:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  advertising.Targeting:
+    properties:
+      advantageAudience:
+        type: boolean
+      ageMax:
+        type: integer
+      ageMin:
+        type: integer
+      behaviors:
+        items:
+          $ref: '#/definitions/advertising.TargetRef'
+        type: array
+      customAudiences:
+        items:
+          $ref: '#/definitions/advertising.TargetRef'
+        type: array
+      excludedCustomAudiences:
+        items:
+          $ref: '#/definitions/advertising.TargetRef'
+        type: array
+      excludedLocations:
+        items:
+          $ref: '#/definitions/advertising.GeoLocation'
+        type: array
+      genders:
+        items:
+          type: integer
+        type: array
+      interests:
+        items:
+          $ref: '#/definitions/advertising.TargetRef'
+        type: array
+      languages:
+        items:
+          $ref: '#/definitions/advertising.TargetRef'
+        type: array
+      locations:
+        items:
+          $ref: '#/definitions/advertising.GeoLocation'
+        type: array
+    type: object
+  advertising.TestCell:
+    properties:
+      name:
+        type: string
+      objectIds:
+        items:
+          type: string
+        type: array
+      share:
+        type: integer
+    type: object
+  advertising.TestLevel:
+    enum:
+    - campaign
+    - adset
+    type: string
+    x-enum-varnames:
+    - TestCampaigns
+    - TestAdSets
+  advertising.VideoMetrics:
+    properties:
+      avgWatchSeconds:
+        type: number
+      p25:
+        type: integer
+      p50:
+        type: integer
+      p75:
+        type: integer
+      p95:
+        type: integer
+      p100:
+        type: integer
+      plays:
+        type: integer
+      thruPlays:
+        type: integer
+    type: object
+  advertisinghttp.AccountResponse:
+    properties:
+      amountSpent:
+        type: integer
+      businessName:
+        type: string
+      canManage:
+        type: boolean
+      canSetSpendCap:
+        type: boolean
+      canSpend:
+        type: boolean
+      connection:
+        type: string
+      currency:
+        type: string
+      hasFunding:
+        type: boolean
+      id:
+        type: string
+      lastSyncedAt:
+        type: string
+      metaAccountId:
+        type: string
+      metaStatus:
+        type: string
+      name:
+        type: string
+      role:
+        enum:
+        - admin
+        - advertiser
+        - read_only
+        type: string
+      spendBlocker:
+        type: string
+      spendCap:
+        type: integer
+      timezone:
+        type: string
+    type: object
+  advertisinghttp.AppResponse:
+    properties:
+      iconUrl:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      storeUrls:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.AudienceListResponse:
+    properties:
+      audiences:
+        items:
+          $ref: '#/definitions/advertising.Audience'
+        type: array
+      termsAccepted:
+        type: boolean
+      termsUrl:
+        type: string
+    type: object
+  advertisinghttp.BillingResponse:
+    properties:
+      balance:
+        type: integer
+      paymentMethod:
+        type: string
+      portalUrl:
+        type: string
+      prepay:
+        type: boolean
+    type: object
+  advertisinghttp.BudgetMinimumResponse:
+    properties:
+      currency:
+        type: string
+      daily:
+        type: integer
+      field:
+        type: string
+    type: object
+  advertisinghttp.BulkApplyRequest:
+    properties:
+      edit:
+        $ref: '#/definitions/advertising.ObjectEdit'
+      metaIds:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.BulkEditRequest:
+    properties:
+      change:
+        $ref: '#/definitions/advertising.BulkChange'
+      metaIds:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.BulkErrorResponse:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  advertisinghttp.BulkResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/advertisinghttp.BulkResultResponse'
+        type: array
+    type: object
+  advertisinghttp.BulkResultResponse:
+    properties:
+      error:
+        $ref: '#/definitions/advertisinghttp.BulkErrorResponse'
+      metaId:
+        type: string
+      object:
+        $ref: '#/definitions/advertisinghttp.RowResponse'
+      ok:
+        type: boolean
+    type: object
+  advertisinghttp.BulkTargetsRequest:
+    properties:
+      metaIds:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.CatalogResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      productSets:
+        items:
+          $ref: '#/definitions/advertisinghttp.ProductSetResponse'
+        type: array
+    type: object
+  advertisinghttp.ConnectDatasetRequest:
+    properties:
+      businessPhoneId:
+        type: string
+    type: object
+  advertisinghttp.ConnectStartResponse:
+    properties:
+      authorizeUrl:
+        type: string
+    type: object
+  advertisinghttp.ConversationOriginResponse:
+    properties:
+      accountName:
+        type: string
+      adId:
+        type: string
+      adName:
+        type: string
+      adSetName:
+        type: string
+      campaignName:
+        type: string
+      currency:
+        type: string
+      day:
+        type: string
+      dayConversations:
+        type: integer
+      daySpend:
+        type: integer
+      estimatedLeadCost:
+        type: integer
+    type: object
+  advertisinghttp.CreatePixelRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  advertisinghttp.CreativeResponse:
+    properties:
+      body:
+        type: string
+      imageUrl:
+        type: string
+      thumbnailUrl:
+        type: string
+      title:
+        type: string
+    type: object
+  advertisinghttp.CustomerListResponse:
+    properties:
+      audience:
+        $ref: '#/definitions/advertising.Audience'
+      matched:
+        type: integer
+      skipped:
+        type: integer
+    type: object
+  advertisinghttp.DatasetResponse:
+    properties:
+      datasetId:
+        type: string
+    type: object
+  advertisinghttp.DiscardResponse:
+    properties:
+      discarded:
+        type: integer
+    type: object
+  advertisinghttp.DraftCopyRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  advertisinghttp.DraftListResponse:
+    properties:
+      drafts:
+        items:
+          $ref: '#/definitions/advertisinghttp.DraftResponse'
+        type: array
+      objectCount:
+        type: integer
+    type: object
+  advertisinghttp.DraftPublishRequest:
+    properties:
+      version:
+        type: integer
+    type: object
+  advertisinghttp.DraftRequest:
+    properties:
+      draft:
+        $ref: '#/definitions/advertising.AdDraft'
+    type: object
+  advertisinghttp.DraftResponse:
+    properties:
+      adAccountId:
+        type: string
+      createdAt:
+        type: string
+      draft:
+        $ref: '#/definitions/advertising.AdDraft'
+      id:
+        type: string
+      job:
+        $ref: '#/definitions/advertisinghttp.JobResponse'
+      rows:
+        items:
+          $ref: '#/definitions/advertisinghttp.DraftRowResponse'
+        type: array
+      state:
+        type: string
+      updatedAt:
+        type: string
+      version:
+        type: integer
+    type: object
+  advertisinghttp.DraftRowResponse:
+    properties:
+      budget:
+        $ref: '#/definitions/advertising.Budget'
+      destination:
+        $ref: '#/definitions/advertising.Destination'
+      goal:
+        $ref: '#/definitions/advertising.OptimizationGoal'
+      key:
+        type: string
+      level:
+        type: string
+      name:
+        type: string
+      objective:
+        $ref: '#/definitions/advertising.Objective'
+      parentKey:
+        type: string
+      parentMetaId:
+        type: string
+    type: object
+  advertisinghttp.DraftUpdateRequest:
+    properties:
+      draft:
+        $ref: '#/definitions/advertising.AdDraft'
+      version:
+        type: integer
+    type: object
+  advertisinghttp.EditObjectRequest:
+    properties:
+      edit:
+        $ref: '#/definitions/advertising.ObjectEdit'
+    type: object
+  advertisinghttp.FeeResponse:
+    properties:
+      currency:
+        type: string
+      price:
+        type: integer
+      total:
+        type: integer
+    type: object
+  advertisinghttp.FormLeadResponse:
+    properties:
+      adMetaId:
+        type: string
+      answers:
+        additionalProperties:
+          type: string
+        type: object
+      createdTime:
+        type: string
+      formMetaId:
+        type: string
+      leadId:
+        type: string
+      leadName:
+        type: string
+      metaId:
+        type: string
+      pageId:
+        type: string
+    type: object
+  advertisinghttp.FormLeadsResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/advertisinghttp.FormLeadResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  advertisinghttp.ImportedResponse:
+    properties:
+      imported:
+        type: integer
+    type: object
+  advertisinghttp.InstantExperienceResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+    type: object
+  advertisinghttp.JobResponse:
+    properties:
+      adAccountId:
+        type: string
+      campaignName:
+        type: string
+      createdAt:
+        type: string
+      errorCode:
+        type: string
+      errorMessage:
+        type: string
+      fee:
+        type: string
+      id:
+        type: string
+      progress:
+        $ref: '#/definitions/advertising.Progress'
+      status:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  advertisinghttp.LiveReportResponse:
+    properties:
+      currency:
+        type: string
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      rows:
+        items:
+          $ref: '#/definitions/advertisinghttp.LiveRowResponse'
+        type: array
+    type: object
+  advertisinghttp.LiveRowResponse:
+    properties:
+      costPerThruPlay:
+        type: integer
+      dimensions:
+        additionalProperties:
+          type: string
+        type: object
+      frequency:
+        type: number
+      metrics:
+        $ref: '#/definitions/advertisinghttp.MetricsResponse'
+      objectId:
+        type: string
+      reach:
+        type: integer
+      video:
+        $ref: '#/definitions/advertising.VideoMetrics'
+    type: object
+  advertisinghttp.LocationResponse:
+    properties:
+      country:
+        type: string
+      key:
+        type: string
+      kind:
+        type: string
+      name:
+        type: string
+      region:
+        type: string
+    type: object
+  advertisinghttp.MetaIDResponse:
+    properties:
+      metaId:
+        type: string
+    type: object
+  advertisinghttp.MetricsResponse:
+    properties:
+      clicks:
+        type: integer
+      conversations:
+        type: integer
+      costPerConversation:
+        type: integer
+      costPerResult:
+        type: integer
+      cpc:
+        type: integer
+      cpm:
+        type: integer
+      ctr:
+        type: number
+      currency:
+        type: string
+      impressions:
+        type: integer
+      linkClicks:
+        type: integer
+      mixedResults:
+        type: boolean
+      resultAction:
+        type: string
+      results:
+        type: integer
+      spend:
+        type: integer
+    type: object
+  advertisinghttp.NumberResponse:
+    properties:
+      kind:
+        type: string
+      label:
+        type: string
+      number:
+        type: string
+    type: object
+  advertisinghttp.ObjectDetailResponse:
+    properties:
+      bid:
+        $ref: '#/definitions/advertising.Bid'
+      budget:
+        $ref: '#/definitions/advertising.Budget'
+      creative:
+        $ref: '#/definitions/advertising.CreativeDraft'
+      identity:
+        $ref: '#/definitions/advertising.Identity'
+      placements:
+        $ref: '#/definitions/advertising.Placements'
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      row:
+        $ref: '#/definitions/advertisinghttp.RowResponse'
+      schedule:
+        items:
+          $ref: '#/definitions/advertising.DayPart'
+        type: array
+      targeting:
+        $ref: '#/definitions/advertising.Targeting'
+    type: object
+  advertisinghttp.ObjectiveOptionResponse:
+    properties:
+      objective:
+        $ref: '#/definitions/advertising.Objective'
+      routes:
+        items:
+          $ref: '#/definitions/advertisinghttp.RouteResponse'
+        type: array
+    type: object
+  advertisinghttp.OptionsResponse:
+    properties:
+      attributionWindows:
+        items:
+          $ref: '#/definitions/advertising.AttributionWindow'
+        type: array
+      breakdownGroups:
+        items:
+          items:
+            $ref: '#/definitions/advertising.Breakdown'
+          type: array
+        type: array
+      callsToAction:
+        items:
+          $ref: '#/definitions/advertising.CallToAction'
+        type: array
+      destinationCallsToAction:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/advertising.CallToAction'
+          type: array
+        type: object
+      formats:
+        items:
+          $ref: '#/definitions/advertising.CreativeFormat'
+        type: array
+      matchKeys:
+        items:
+          $ref: '#/definitions/advertising.MatchKey'
+        type: array
+      objectives:
+        items:
+          $ref: '#/definitions/advertisinghttp.ObjectiveOptionResponse'
+        type: array
+      pixelEvents:
+        items:
+          $ref: '#/definitions/advertising.PixelEvent'
+        type: array
+      placements:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+      ruleMetrics:
+        items:
+          $ref: '#/definitions/advertising.RuleMetric'
+        type: array
+    type: object
+  advertisinghttp.OutcomeResponse:
+    properties:
+      conversations:
+        type: integer
+      costPerConversation:
+        type: integer
+      costPerLead:
+        type: integer
+      leads:
+        type: integer
+      revenue:
+        type: integer
+      roas:
+        type: number
+      wonDeals:
+        type: integer
+    type: object
+  advertisinghttp.PageResponse:
+    properties:
+      canAdvertise:
+        type: boolean
+      instagramUserId:
+        type: string
+      instagramUsername:
+        type: string
+      leadTermsAccepted:
+        type: boolean
+      name:
+        type: string
+      numbers:
+        items:
+          $ref: '#/definitions/advertisinghttp.NumberResponse'
+        type: array
+      pageId:
+        type: string
+      pictureUrl:
+        type: string
+      whatsAppNumber:
+        type: string
+    type: object
+  advertisinghttp.PeriodResponse:
+    properties:
+      outcome:
+        $ref: '#/definitions/advertisinghttp.OutcomeResponse'
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      totals:
+        $ref: '#/definitions/advertisinghttp.MetricsResponse'
+    type: object
+  advertisinghttp.PostResponse:
+    properties:
+      createdTime:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      permalink:
+        type: string
+      pictureUrl:
+        type: string
+      platform:
+        type: string
+    type: object
+  advertisinghttp.ProductSetResponse:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      productCount:
+        type: integer
+    type: object
+  advertisinghttp.RangeResponse:
+    properties:
+      since:
+        type: string
+      until:
+        type: string
+    type: object
+  advertisinghttp.ReachRequest:
+    properties:
+      goal:
+        $ref: '#/definitions/advertising.OptimizationGoal'
+      placements:
+        $ref: '#/definitions/advertising.Placements'
+      targeting:
+        $ref: '#/definitions/advertising.Targeting'
+    type: object
+  advertisinghttp.ReachResponse:
+    properties:
+      lower:
+        type: integer
+      ready:
+        type: boolean
+      upper:
+        type: integer
+    type: object
+  advertisinghttp.ReadinessActionResponse:
+    properties:
+      key:
+        enum:
+        - reconnect
+        - sync
+        - create_pixel
+        type: string
+      kind:
+        enum:
+        - in_app
+        - portal
+        type: string
+      url:
+        type: string
+    type: object
+  advertisinghttp.ReadinessItemResponse:
+    properties:
+      action:
+        $ref: '#/definitions/advertisinghttp.ReadinessActionResponse'
+      key:
+        enum:
+        - connection
+        - advertiser_role
+        - account_status
+        - account_details
+        - payment_method
+        - page
+        - phone_verification
+        - email_verification
+        - custom_audience_terms
+        - pixel
+        type: string
+      required:
+        type: boolean
+      state:
+        enum:
+        - ready
+        - missing
+        - unknown
+        type: string
+    type: object
+  advertisinghttp.ReadinessResponse:
+    properties:
+      account:
+        $ref: '#/definitions/advertisinghttp.AccountResponse'
+      billing:
+        $ref: '#/definitions/advertisinghttp.BillingResponse'
+      blocking:
+        items:
+          type: string
+        type: array
+      items:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReadinessItemResponse'
+        type: array
+      ready:
+        type: boolean
+    type: object
+  advertisinghttp.ReportExportRequest:
+    properties:
+      adAccountId:
+        type: string
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      labels:
+        $ref: '#/definitions/advertising.ExportLabels'
+      name:
+        type: string
+      objectIds:
+        items:
+          type: string
+        type: array
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      reportId:
+        type: string
+      windows:
+        items:
+          $ref: '#/definitions/advertising.AttributionWindow'
+        type: array
+    type: object
+  advertisinghttp.ReportExportResponse:
+    properties:
+      adAccountId:
+        type: string
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      reportId:
+        type: string
+      rows:
+        type: integer
+      since:
+        type: string
+      sizeBytes:
+        type: integer
+      until:
+        type: string
+    type: object
+  advertisinghttp.ReportOptionsResponse:
+    properties:
+      breakdownGroups:
+        items:
+          items:
+            $ref: '#/definitions/advertising.Breakdown'
+          type: array
+        type: array
+      breakdowns:
+        items:
+          $ref: '#/definitions/advertising.Breakdown'
+        type: array
+      levels:
+        items:
+          $ref: '#/definitions/advertising.Level'
+        type: array
+      metricKinds:
+        additionalProperties:
+          $ref: '#/definitions/advertising.MetricKind'
+        type: object
+      metrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      templates:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReportTemplateResponse'
+        type: array
+      trendMetrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      views:
+        items:
+          $ref: '#/definitions/advertising.ReportView'
+        type: array
+    type: object
+  advertisinghttp.ReportResponse:
+    properties:
+      account:
+        $ref: '#/definitions/advertisinghttp.AccountResponse'
+      level:
+        type: string
+      outcome:
+        $ref: '#/definitions/advertisinghttp.OutcomeResponse'
+      previous:
+        $ref: '#/definitions/advertisinghttp.PeriodResponse'
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      rows:
+        items:
+          $ref: '#/definitions/advertisinghttp.RowResponse'
+        type: array
+      totals:
+        $ref: '#/definitions/advertisinghttp.MetricsResponse'
+    type: object
+  advertisinghttp.ReportRunDayResponse:
+    properties:
+      day:
+        type: string
+      values:
+        $ref: '#/definitions/advertising.ReportCells'
+    type: object
+  advertisinghttp.ReportRunRequest:
+    properties:
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      objectIds:
+        items:
+          type: string
+        type: array
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      windows:
+        items:
+          $ref: '#/definitions/advertising.AttributionWindow'
+        type: array
+    type: object
+  advertisinghttp.ReportRunResponse:
+    properties:
+      breakdowns:
+        items:
+          $ref: '#/definitions/advertising.Breakdown'
+        type: array
+      currency:
+        type: string
+      metricKinds:
+        additionalProperties:
+          $ref: '#/definitions/advertising.MetricKind'
+        type: object
+      metrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      rows:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReportRunRowResponse'
+        type: array
+      series:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReportRunDayResponse'
+        type: array
+      totals:
+        $ref: '#/definitions/advertising.ReportCells'
+      view:
+        $ref: '#/definitions/advertising.ReportView'
+    type: object
+  advertisinghttp.ReportRunRowResponse:
+    properties:
+      dimensions:
+        items:
+          type: string
+        type: array
+      key:
+        type: string
+      name:
+        type: string
+      objectId:
+        type: string
+      share:
+        type: number
+      values:
+        $ref: '#/definitions/advertising.ReportCells'
+    type: object
+  advertisinghttp.ReportTemplateResponse:
+    properties:
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      key:
+        type: string
+    type: object
+  advertisinghttp.RouteResponse:
+    properties:
+      destination:
+        $ref: '#/definitions/advertising.Destination'
+      goals:
+        items:
+          $ref: '#/definitions/advertising.OptimizationGoal'
+        type: array
+    type: object
+  advertisinghttp.RowResponse:
+    properties:
+      adSetId:
+        type: string
+      campaignId:
+        type: string
+      canToggle:
+        type: boolean
+      creative:
+        $ref: '#/definitions/advertisinghttp.CreativeResponse'
+      dailyBudget:
+        type: integer
+      delivery:
+        type: string
+      destinationType:
+        type: string
+      effectiveStatus:
+        type: string
+      endTime:
+        type: string
+      isOn:
+        type: boolean
+      issues:
+        items:
+          $ref: '#/definitions/advertising.Issue'
+        type: array
+      level:
+        type: string
+      lifetimeBudget:
+        type: integer
+      metaId:
+        type: string
+      metrics:
+        $ref: '#/definitions/advertisinghttp.MetricsResponse'
+      name:
+        type: string
+      objective:
+        type: string
+      optimizationGoal:
+        type: string
+      outcome:
+        $ref: '#/definitions/advertisinghttp.OutcomeResponse'
+      reviewFeedback:
+        additionalProperties:
+          type: string
+        type: object
+      startTime:
+        type: string
+      status:
+        type: string
+    type: object
+  advertisinghttp.RuleStatusRequest:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  advertisinghttp.SavedReportRequest:
+    properties:
+      adAccountId:
+        type: string
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      name:
+        type: string
+    type: object
+  advertisinghttp.SavedReportResponse:
+    properties:
+      adAccountId:
+        type: string
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      id:
+        type: string
+      lastOpenedAt:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  advertisinghttp.SetBudgetRequest:
+    properties:
+      amount:
+        type: integer
+    type: object
+  advertisinghttp.SpendCapRequest:
+    properties:
+      amount:
+        type: integer
+        x-nullable: true
+    type: object
+  advertisinghttp.TargetingOptionResponse:
+    properties:
+      audienceMax:
+        type: integer
+      audienceMin:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      path:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.TrendPointResponse:
+    properties:
+      conversations:
+        type: integer
+      day:
+        type: string
+      impressions:
+        type: integer
+      linkClicks:
+        type: integer
+      results:
+        type: integer
+      spend:
+        type: integer
+    type: object
+  advertisinghttp.TrendResponse:
+    properties:
+      currency:
+        type: string
+      points:
+        items:
+          $ref: '#/definitions/advertisinghttp.TrendPointResponse'
+        type: array
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+    type: object
+  advertisinghttp.ValidateResponse:
+    properties:
+      budgetMinimum:
+        $ref: '#/definitions/advertisinghttp.BudgetMinimumResponse'
+      fee:
+        $ref: '#/definitions/advertisinghttp.FeeResponse'
+      issues:
+        items:
+          $ref: '#/definitions/advertising.FieldIssue'
+        type: array
+    type: object
   affiliate.AffiliateProfileResponse:
     properties:
       affiliate:
@@ -2658,6 +4931,228 @@ definitions:
         example: ws_a1b2c3
         type: string
     type: object
+  callhistory.CallChargeResponse:
+    properties:
+      amountMicros:
+        example: 26666
+        type: integer
+      settled:
+        example: true
+        type: boolean
+    type: object
+  callhistory.CallContactResponse:
+    properties:
+      leadId:
+        example: 3f2b8c1e-5d4a-4b7e-9c1f-2a6d8e0b4c3a
+        type: string
+      name:
+        example: Maria Souza
+        type: string
+      number:
+        example: "5584994409684"
+        type: string
+    type: object
+  callhistory.CallDetailResponse:
+    properties:
+      answeredAt:
+        example: "2026-09-30T14:00:08Z"
+        type: string
+      answeredBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      callId:
+        example: sip-out-2f1c9a7e-8d3b-4e6f-a1c2-9b8d7e6f5a4c
+        type: string
+      channel:
+        enum:
+        - phone
+        - whatsapp
+        example: phone
+        type: string
+      charge:
+        $ref: '#/definitions/callhistory.CallChargeResponse'
+      contact:
+        $ref: '#/definitions/callhistory.CallContactResponse'
+      direction:
+        enum:
+        - inbound
+        - outbound
+        example: outbound
+        type: string
+      endReason:
+        example: ended
+        type: string
+      endedAt:
+        example: "2026-09-30T14:02:08Z"
+        type: string
+      handlers:
+        items:
+          $ref: '#/definitions/callhistory.CallPersonResponse'
+        type: array
+      outcome:
+        enum:
+        - in_progress
+        - answered
+        - missed
+        - no_answer
+        - busy
+        - declined
+        - cancelled
+        - failed
+        example: answered
+        type: string
+      placedBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      recording:
+        $ref: '#/definitions/callhistory.CallHistoryRecordingResponse'
+      ringSeconds:
+        example: 8
+        type: integer
+      startedAt:
+        example: "2026-09-30T14:00:00Z"
+        type: string
+      talkSeconds:
+        example: 120
+        type: integer
+      timeline:
+        items:
+          $ref: '#/definitions/callhistory.CallTimelineEntryResponse'
+        type: array
+      transfers:
+        example: 1
+        type: integer
+    type: object
+  callhistory.CallHistoryRecordingResponse:
+    properties:
+      durationSec:
+        example: 120
+        type: integer
+      url:
+        example: https://storage.vozko.com.br/recordings/sip-out-2f1c.wav
+        type: string
+    type: object
+  callhistory.CallListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/callhistory.CallSummaryResponse'
+        type: array
+      page:
+        example: 1
+        type: integer
+      pageSize:
+        example: 25
+        type: integer
+      totalItems:
+        example: 132
+        type: integer
+      totalPages:
+        example: 6
+        type: integer
+    type: object
+  callhistory.CallPersonResponse:
+    properties:
+      id:
+        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        type: string
+      name:
+        example: Ana
+        type: string
+    type: object
+  callhistory.CallSummaryResponse:
+    properties:
+      answeredAt:
+        example: "2026-09-30T14:00:08Z"
+        type: string
+      answeredBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      callId:
+        example: sip-out-2f1c9a7e-8d3b-4e6f-a1c2-9b8d7e6f5a4c
+        type: string
+      channel:
+        enum:
+        - phone
+        - whatsapp
+        example: phone
+        type: string
+      charge:
+        $ref: '#/definitions/callhistory.CallChargeResponse'
+      contact:
+        $ref: '#/definitions/callhistory.CallContactResponse'
+      direction:
+        enum:
+        - inbound
+        - outbound
+        example: outbound
+        type: string
+      endReason:
+        example: ended
+        type: string
+      endedAt:
+        example: "2026-09-30T14:02:08Z"
+        type: string
+      outcome:
+        enum:
+        - in_progress
+        - answered
+        - missed
+        - no_answer
+        - busy
+        - declined
+        - cancelled
+        - failed
+        example: answered
+        type: string
+      placedBy:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      ringSeconds:
+        example: 8
+        type: integer
+      startedAt:
+        example: "2026-09-30T14:00:00Z"
+        type: string
+      talkSeconds:
+        example: 120
+        type: integer
+      transfers:
+        example: 1
+        type: integer
+    type: object
+  callhistory.CallTimelineEntryResponse:
+    properties:
+      actor:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+      at:
+        example: "2026-09-30T14:01:10Z"
+        type: string
+      kind:
+        enum:
+        - started
+        - answered
+        - transfer_requested
+        - transfer_connected
+        - transfer_returned
+        - transfer_unanswered
+        - transfer_cancelled
+        - caller_left
+        - ended
+        - recording_ready
+        example: transfer_connected
+        type: string
+      notes:
+        example: Quer cancelar o pedido
+        type: string
+      queueId:
+        example: q-suporte
+        type: string
+      queueName:
+        example: Suporte
+        type: string
+      reason:
+        example: ended
+        type: string
+      target:
+        $ref: '#/definitions/callhistory.CallPersonResponse'
+    type: object
   callrecording.CallRecordingCollectionResponse:
     properties:
       items:
@@ -3021,6 +5516,8 @@ definitions:
         $ref: '#/definitions/shared.EntryType'
       id:
         type: string
+      layout:
+        $ref: '#/definitions/conversation.MediaLayout'
       mimeType:
         type: string
       originalFilename:
@@ -3110,6 +5607,15 @@ definitions:
       text:
         type: string
       totalMatches:
+        type: integer
+    type: object
+  conversation.MediaLayout:
+    properties:
+      height:
+        type: integer
+      thumbhash:
+        type: string
+      width:
         type: integer
     type: object
   conversation.MediaType:
@@ -3771,6 +6277,66 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  imagegenhttp.GenerateImageRequest:
+    properties:
+      aspect:
+        enum:
+        - square
+        - portrait
+        - story
+        example: square
+        type: string
+      prompt:
+        example: Pizza artesanal sobre mesa de madeira, luz natural
+        type: string
+      referenceMediaIds:
+        items:
+          type: string
+        type: array
+    type: object
+  imagegenhttp.JobResponse:
+    properties:
+      aspect:
+        enum:
+        - square
+        - portrait
+        - story
+        type: string
+      createdAt:
+        type: string
+      failureCode:
+        enum:
+        - generation_failed
+        - storage_failed
+        - timed_out
+        - enqueue_failed
+        - insufficient_funds
+        - reference_unavailable
+        type: string
+      id:
+        type: string
+      mediaId:
+        type: string
+      mediaUrl:
+        type: string
+      model:
+        type: string
+      prompt:
+        type: string
+      referenceMediaIds:
+        items:
+          type: string
+        type: array
+      status:
+        enum:
+        - queued
+        - running
+        - done
+        - failed
+        type: string
+      updatedAt:
+        type: string
     type: object
   instagram.AccountResponse:
     properties:
@@ -7439,6 +10005,2541 @@ info:
   title: API
   version: "1.0"
 paths:
+  /ads/accounts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.AccountResponse'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar contas de anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}:
+    delete:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Desconectar conta de anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/apps:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.AppResponse'
+            type: array
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Aplicativos da conta de anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/audiences:
+    get:
+      description: Públicos da conta na Meta e se os termos de públicos personalizados
+        foram aceitos (sem eles, não dá para criar listas nem semelhantes).
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.AudienceListResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Públicos personalizados da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/budget-minimum:
+    get:
+      description: Mínimo diário que a Meta aceita para um conjunto de anúncios desta
+        conta com a meta de otimização informada, em unidades menores da moeda da
+        conta. Com lance manual, informe bidAmount. Contas só de leitura recebem 409
+        account_read_only.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: meta de otimização, como LINK_CLICKS
+        in: query
+        name: goal
+        required: true
+        type: string
+      - description: lance manual em unidades menores da moeda da conta
+        in: query
+        name: bidAmount
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BudgetMinimumResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Orçamento diário mínimo
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/catalogs:
+    get:
+      description: Catálogos do portfólio empresarial da conta, com os conjuntos de
+        produtos.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.CatalogResponse'
+            type: array
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Catálogos de produtos
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/drafts:
+    get:
+      description: Rascunhos guardados no Vozko (a Meta não expõe os rascunhos dela
+        pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows
+        traz as linhas que entram na tabela como "Em rascunho" e objectCount soma
+        essas linhas, o número de "Conferir e publicar". Rascunhos já publicados saem
+        da lista.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftListResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar rascunhos da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/drafts/discard:
+    post:
+      description: Exclui todos os rascunhos da conta, menos os que estão sendo publicados.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DiscardResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Descartar rascunhos da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/insights:
+    get:
+      description: Consulta a Meta na hora, com quebras (idade, gênero, país, região,
+        plataforma, posicionamento, dispositivo, hora do dia), janelas de atribuição,
+        alcance, frequência e métricas de vídeo. Sem período, os últimos 30 dias.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: campaign, adset ou ad
+        in: query
+        name: level
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: since
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: until
+        type: string
+      - description: IDs na Meta separados por vírgula
+        in: query
+        name: objectIds
+        type: string
+      - description: quebras separadas por vírgula, por exemplo age,gender
+        in: query
+        name: breakdowns
+        type: string
+      - description: janelas de atribuição separadas por vírgula, por exemplo 7d_click,1d_view
+        in: query
+        name: windows
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.LiveReportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Resultados ao vivo da Meta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/locations:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: texto da busca (mínimo 2 letras)
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.LocationResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Buscar locais para segmentação
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages:
+    get:
+      description: Páginas da conexão de anúncios, o número de WhatsApp vinculado
+        a cada uma e os números do workspace iguais a ele.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.PageResponse'
+            type: array
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Páginas que podem anunciar
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/forms:
+    get:
+      description: Formulários de cadastro da página. Listar também passa a acompanhar
+        os leads de cada formulário.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página
+        in: path
+        name: pageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.LeadForm'
+            type: array
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Formulários instantâneos da página
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/instant-experiences:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página
+        in: path
+        name: pageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.InstantExperienceResponse'
+            type: array
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Experiências instantâneas da página
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/posts:
+    get:
+      description: Publicações da página no Facebook ou mídias do Instagram vinculado,
+        para usar como anúncio.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página
+        in: path
+        name: pageId
+        required: true
+        type: string
+      - description: facebook ou instagram
+        in: query
+        name: platform
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.PostResponse'
+            type: array
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicações da página para anunciar
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/posts/{postId}:
+    get:
+      description: Uma publicação do Facebook ou do Instagram da página, para a prévia
+        de um rascunho que usa publicação existente. Só lê; recusa publicações de
+        outra página.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página
+        in: path
+        name: pageId
+        required: true
+        type: string
+      - description: ID da publicação ou da mídia do Instagram
+        in: path
+        name: postId
+        required: true
+        type: string
+      - description: facebook ou instagram
+        in: query
+        name: platform
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.PostResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicação da página
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pixels:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.Pixel'
+            type: array
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Pixels da conta de anúncios
+      tags:
+      - Anúncios
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: nome do pixel
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.CreatePixelRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertising.Pixel'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar pixel
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/reach-estimate:
+    post:
+      consumes:
+      - application/json
+      description: Estimativa da Meta para o público e os posicionamentos. Sem locais,
+        volta vazia com ready false.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: público, posicionamentos e meta de otimização
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.ReachRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReachResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Estimar alcance do público
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/readiness:
+    get:
+      description: 'Lista ordenada do que a conta precisa para publicar, como na Meta:
+        conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página,
+        verificações de telefone e email, termos de públicos personalizados e pixel.
+        Cada item vem ready, missing ou unknown; unknown nunca conta como pronto.
+        Itens com required true bloqueiam a publicação e aparecem em blocking. A ação
+        de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal
+        (url da tela exata da Meta, quando a API não permite), sempre com o negócio
+        dono da conta (business_id) e a própria conta; quando não dá para apontar
+        a tela daquela conta, o item vem sem ação. Telefone e email não têm leitura
+        na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o
+        tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para
+        administradores da conta.'
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReadinessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Prontidão da conta para veicular anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/report:
+    get:
+      description: Campanhas, conjuntos ou anúncios com resultados da Meta (gasto,
+        resultados, custo por resultado, CTR, CPM) e do CRM (conversas, leads, vendas,
+        ROAS). Dias no fuso da conta de anúncios; sem período, os últimos 30 dias.
+        Com compare=1, inclui o período anterior de mesmo tamanho.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: campaign, adset ou ad
+        in: query
+        name: level
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: since
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: until
+        type: string
+      - description: IDs de campanha separados por vírgula
+        in: query
+        name: campaignIds
+        type: string
+      - description: IDs de conjunto separados por vírgula
+        in: query
+        name: adSetIds
+        type: string
+      - description: busca por nome
+        in: query
+        name: search
+        type: string
+      - description: 1 para comparar com o período anterior
+        in: query
+        name: compare
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Relatório da conta de anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/report-runs:
+    post:
+      consumes:
+      - application/json
+      description: 'Monta a tabela de Relatórios de Anúncios no servidor, com as mesmas
+        fórmulas do gerenciador: tabela dinâmica (por item e quebras), barras (por
+        quebras, ou por item sem quebras, do maior para o menor na primeira métrica)
+        ou tendência (por dia). metricKinds diz o tipo de cada métrica (money em micros
+        da moeda da conta, count, percent, decimal); alcance e frequência só valem
+        para uma linha da Meta. Até 100 objectIds.'
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: definição e período
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.ReportRunRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportRunResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rodar relatório
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/report.csv:
+    get:
+      description: As mesmas linhas do relatório, em CSV (UTF-8). Valores em dinheiro
+        em unidades da moeda da conta.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: campaign, adset ou ad
+        in: query
+        name: level
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: since
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: until
+        type: string
+      - description: IDs de campanha separados por vírgula
+        in: query
+        name: campaignIds
+        type: string
+      - description: IDs de conjunto separados por vírgula
+        in: query
+        name: adSetIds
+        type: string
+      - description: busca por nome
+        in: query
+        name: search
+        type: string
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: arquivo CSV
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Exportar relatório da conta de anúncios em CSV
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/rules:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.AutomatedRule'
+            type: array
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Regras automáticas da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/spend-cap:
+    put:
+      consumes:
+      - application/json
+      description: Valor em unidades mínimas da moeda da conta (centavos para BRL),
+        acima do que a conta já gastou. amount null remove o limite; o campo é obrigatório.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: novo limite ou null
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.SpendCapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.AccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Definir limite de gastos da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/sync:
+    post:
+      description: Atualiza a conta, as campanhas, os conjuntos, os anúncios e os
+        resultados dos últimos dias a partir da Meta.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.AccountResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Sincronizar conta de anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/targeting:
+    get:
+      description: Opções de segmentação detalhada da Meta, com o tamanho estimado
+        do público. Comportamentos podem ser listados sem busca.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: interests, behaviors ou languages
+        in: query
+        name: kind
+        required: true
+        type: string
+      - description: texto da busca (mínimo 2 letras)
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.TargetingOptionResponse'
+            type: array
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Buscar interesses, comportamentos ou idiomas
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/tests:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.SplitTest'
+            type: array
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Testes A/B da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/trend:
+    get:
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: since
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: until
+        type: string
+      - description: IDs de campanha separados por vírgula
+        in: query
+        name: campaignIds
+        type: string
+      - description: IDs de conjunto separados por vírgula
+        in: query
+        name: adSetIds
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.TrendResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Evolução diária da conta de anúncios
+      tags:
+      - Anúncios
+  /ads/audiences/{metaId}:
+    delete:
+      parameters:
+      - description: ID do público na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: ID da conta de anúncios
+        in: query
+        name: accountId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir público personalizado
+      tags:
+      - Anúncios
+  /ads/audiences/customer-list:
+    post:
+      consumes:
+      - application/json
+      description: Cria um público com clientes do CRM (por filtro) ou de um arquivo
+        CSV da biblioteca de mídia. Os dados são normalizados e enviados com hash
+        SHA-256.
+      parameters:
+      - description: lista de clientes
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.CustomerListDraft'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.CustomerListResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar lista de clientes
+      tags:
+      - Anúncios
+  /ads/audiences/lookalike:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: público semelhante (1 a 10 por cento)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.LookalikeDraft'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertising.Audience'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar público semelhante
+      tags:
+      - Anúncios
+  /ads/conversations/{entryType}/{entryId}/origin:
+    get:
+      description: Campanha, conjunto e anúncio de onde a conversa veio, com o custo
+        estimado do lead (gasto do anúncio no dia dividido pelas conversas do dia).
+        404 quando o anúncio não é de uma conta conectada.
+      parameters:
+      - description: canal da conversa
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: ID da conversa
+        in: path
+        name: entryId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ConversationOriginResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Anúncio de origem de uma conversa
+      tags:
+      - Anúncios
+  /ads/conversions/dataset:
+    post:
+      consumes:
+      - application/json
+      description: Usa o conjunto de dados da conta do WhatsApp Business do número
+        oficial escolhido para enviar as conversões. Precisa de uma conta de anúncios
+        na configuração.
+      parameters:
+      - description: número oficial do WhatsApp
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.ConnectDatasetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DatasetResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Conectar conjunto de dados do WhatsApp
+      tags:
+      - Anúncios
+  /ads/conversions/recent:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.ConversionRecord'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Conversões enviadas recentemente
+      tags:
+      - Anúncios
+  /ads/conversions/settings:
+    get:
+      description: 'Para onde o Vozko envia os eventos do CRM (negócio criado vira
+        LeadSubmitted, negócio ganho vira Purchase): conjunto de dados do WhatsApp
+        ou pixel.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertising.ConversionSettings'
+      security:
+      - BearerAuth: []
+      summary: Configuração de conversões
+      tags:
+      - Anúncios
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: configuração
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.ConversionSettings'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertising.ConversionSettings'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar configuração de conversões
+      tags:
+      - Anúncios
+  /ads/drafts:
+    post:
+      consumes:
+      - application/json
+      description: Guarda a árvore como está, mesmo incompleta; só confere a conta
+        do workspace e os limites de tamanho. A validação completa fica em POST /ads/drafts/validate
+        e na publicação.
+      parameters:
+      - description: rascunho
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/{id}:
+    delete:
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir rascunho
+      tags:
+      - Anúncios
+    get:
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Detalhe de rascunho
+      tags:
+      - Anúncios
+    put:
+      consumes:
+      - application/json
+      description: Substitui a árvore. version é a versão lida; se outra pessoa salvou
+        antes, volta 409 draft_changed. Um rascunho sendo publicado volta 409 draft_publishing.
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: rascunho e versão
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/{id}/copies:
+    post:
+      consumes:
+      - application/json
+      description: Cria outro rascunho com a mesma árvore. name renomeia o nível mais
+        alto que o rascunho cria (campanha, conjunto ou o anúncio único); vazio mantém
+        os nomes.
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: nome da cópia
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftCopyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Duplicar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/{id}/publish:
+    post:
+      consumes:
+      - application/json
+      description: Publica a versão conferida (version; outra versão volta 409 draft_changed)
+        pelo mesmo caminho de POST /ads/publish (taxa por anúncio, conta pronta, criação
+        pausada e ligação no fim). Enquanto publica, o rascunho não muda nem é publicado
+        de novo; publicado, ele sai da lista; com falha, volta a ser editável.
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: versão conferida
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftPublishRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.JobResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/validate:
+    post:
+      consumes:
+      - application/json
+      description: Valida o rascunho mesmo quando a conta ainda não está pronta para
+        veicular (forma de pagamento, status, função); só a publicação exige a conta
+        pronta, veja GET /ads/accounts/{id}/readiness. Valida a página, o número de
+        WhatsApp e as mídias, e informa a taxa por anúncio publicado (fee.price) e
+        o total do rascunho (fee.total). Problemas voltam em issues. Com orçamento
+        diário no conjunto novo, budgetMinimum traz o mínimo diário da Meta para a
+        meta de otimização, em unidades menores da moeda da conta; abaixo dele volta
+        o problema adSet.budget.amount below_minimum.
+      parameters:
+      - description: rascunho
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ValidateResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Validar rascunho de anúncio
+      tags:
+      - Anúncios
+  /ads/forms:
+    post:
+      consumes:
+      - application/json
+      description: Cria o formulário na página e passa a importar os leads para o
+        CRM.
+      parameters:
+      - description: formulário
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.LeadFormDraft'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertising.LeadForm'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar formulário instantâneo
+      tags:
+      - Anúncios
+  /ads/forms/{formId}/archive:
+    post:
+      description: A conta de anúncios vem do formulário acompanhado pelo workspace.
+      parameters:
+      - description: ID do formulário na Meta
+        in: path
+        name: formId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Arquivar formulário instantâneo
+      tags:
+      - Anúncios
+  /ads/forms/{formId}/leads:
+    get:
+      description: Leads importados do formulário, mais recentes primeiro, com o nome
+        do lead no CRM.
+      parameters:
+      - description: ID do formulário na Meta
+        in: path
+        name: formId
+        required: true
+        type: string
+      - description: itens por página (1 a 200, padrão 50)
+        in: query
+        name: limit
+        type: integer
+      - description: itens a pular
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.FormLeadsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Leads do formulário
+      tags:
+      - Anúncios
+  /ads/forms/{formId}/sync:
+    post:
+      description: Busca na Meta os leads novos do formulário e cria os contatos no
+        CRM. A conta de anúncios vem do formulário acompanhado pelo workspace.
+      parameters:
+      - description: ID do formulário na Meta
+        in: path
+        name: formId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ImportedResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Importar leads do formulário agora
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}:
+    delete:
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+    get:
+      description: 'A linha do gerenciador com os resultados do período (sem período,
+        os últimos 30 dias) e a configuração atual na Meta: orçamento, lance, público,
+        posicionamentos, programação, criativo e identidade.'
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: since
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: until
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ObjectDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Detalhe de campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+    patch:
+      consumes:
+      - application/json
+      description: Envia só os campos que mudam. Cada nível aceita campos próprios;
+        o tipo de orçamento não muda depois de criado.
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: alterações
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.EditObjectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.RowResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Editar campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/activate:
+    post:
+      description: Liga o item na Meta. Recusa contas sem meio de pagamento ou inativas.
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.RowResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ligar campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/archive:
+    post:
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.RowResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Arquivar campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/budget:
+    patch:
+      consumes:
+      - application/json
+      description: Altera o valor do orçamento atual (diário ou total), sem trocar
+        o tipo. Valor em unidades mínimas da moeda da conta (centavos para BRL). A
+        Meta permite 4 mudanças por hora.
+      parameters:
+      - description: ID da campanha ou do conjunto na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: novo valor do orçamento
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.SetBudgetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.RowResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Alterar orçamento
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/copies:
+    post:
+      consumes:
+      - application/json
+      description: Cria uma cópia na Meta, opcionalmente dentro de outra campanha
+        ou conjunto da mesma conta, com ou sem os itens filhos.
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: opções da cópia
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.CopyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.MetaIDResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Duplicar campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/pause:
+    post:
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.RowResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Desligar campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+  /ads/objects/bulk/activate:
+    post:
+      consumes:
+      - application/json
+      description: Liga até 50 campanhas, conjuntos ou anúncios, um por vez, com as
+        mesmas regras de POST /ads/objects/{metaId}/activate. Cada item volta com
+        o próprio resultado.
+      parameters:
+      - description: itens
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkTargetsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ligar vários itens
+      tags:
+      - Anúncios
+  /ads/objects/bulk/apply:
+    post:
+      consumes:
+      - application/json
+      description: 'Edição em massa do editor ("Valores mistos"): aplica o mesmo ObjectEdit
+        em até 50 itens, um por vez, com as regras de PATCH /ads/objects/{metaId}.
+        Só os campos enviados mudam. Um orçamento sem kind mantém o tipo atual de
+        cada item (diário ou total). Cada item volta com o próprio resultado.'
+      parameters:
+      - description: itens e edição
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkApplyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Aplicar a mesma edição em vários itens
+      tags:
+      - Anúncios
+  /ads/objects/bulk/edit:
+    post:
+      consumes:
+      - application/json
+      description: 'Como o menu Editar do Gerenciador de Anúncios: muda um campo (name,
+        primaryText, headline, description, link) em até 50 itens, definindo um valor
+        (mode set) ou localizando e substituindo (mode replace, com matchCase). Textos
+        do criativo só valem para anúncios que não usam publicação existente. Itens
+        sem mudança voltam com nothing_to_change.'
+      parameters:
+      - description: itens e mudança
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkEditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Editar um campo em vários itens
+      tags:
+      - Anúncios
+  /ads/objects/bulk/pause:
+    post:
+      consumes:
+      - application/json
+      description: Desliga até 50 campanhas, conjuntos ou anúncios, um por vez. Cada
+        item volta com o próprio resultado.
+      parameters:
+      - description: itens
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkTargetsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Desligar vários itens
+      tags:
+      - Anúncios
+  /ads/options:
+    get:
+      description: 'Listas que a Meta aceita: objetivos com destinos e metas de otimização
+        permitidos, chamadas para ação, posicionamentos por plataforma, combinações
+        de quebras, janelas de atribuição, chaves de correspondência, métricas de
+        regras, eventos de pixel e formatos de criativo.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.OptionsResponse'
+      security:
+      - BearerAuth: []
+      summary: Opções para criar anúncios
+      tags:
+      - Anúncios
+  /ads/publish:
+    post:
+      consumes:
+      - application/json
+      description: Cobra a taxa por anúncio, cria campanha, conjunto, criativos e
+        anúncios pausados na Meta e só então liga tudo. Uma resposta sem confirmação
+        da Meta fica em NEEDS_REVIEW e nunca é recriada sozinha.
+      parameters:
+      - description: rascunho
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.JobResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicar anúncio
+      tags:
+      - Anúncios
+  /ads/publish-jobs:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.JobResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Listar publicações de anúncios
+      tags:
+      - Anúncios
+  /ads/publish-jobs/{id}:
+    get:
+      parameters:
+      - description: ID da publicação
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.JobResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Detalhe de publicação de anúncio
+      tags:
+      - Anúncios
+  /ads/publish-jobs/{id}/activate:
+    post:
+      description: Liga de uma vez a campanha, o conjunto e os anúncios criados por
+        uma publicação feita com "Publicar desligado". Exige meio de pagamento na
+        conta.
+      parameters:
+      - description: ID da publicação
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.JobResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ligar publicação feita desligada
+      tags:
+      - Anúncios
+  /ads/report-exports:
+    get:
+      description: Histórico de exportações do workspace, da mais recente para a mais
+        antiga.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.ReportExportResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Listar exportações
+      tags:
+      - Anúncios
+    post:
+      consumes:
+      - application/json
+      description: Roda o relatório, grava o CSV (separado por ponto e vírgula, com
+        BOM, dinheiro em unidades da moeda) com os rótulos enviados no idioma da pessoa
+        e guarda em Exportações. Ficam as 100 exportações mais recentes do workspace;
+        até 10 MB por arquivo.
+      parameters:
+      - description: relatório, período e rótulos
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.ReportExportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportExportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Exportar relatório
+      tags:
+      - Anúncios
+  /ads/report-exports/{id}:
+    delete:
+      parameters:
+      - description: ID da exportação
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir exportação
+      tags:
+      - Anúncios
+  /ads/report-exports/{id}/file:
+    get:
+      parameters:
+      - description: ID da exportação
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Baixar exportação
+      tags:
+      - Anúncios
+  /ads/report-options:
+    get:
+      description: 'Tudo o que o editor de relatórios pode oferecer, vindo das mesmas
+        regras que validam o relatório salvo: modelos sugeridos (roi_snapshot, reach_frequency,
+        overall_performance, signups_summary, age_gender, engagement) com a definição
+        pronta, visualizações, níveis, quebras aceitas pela Meta, métricas, as métricas
+        diárias que a tendência mostra e as combinações de quebras que a Meta aceita.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportOptionsResponse'
+      security:
+      - BearerAuth: []
+      summary: Opções de Relatórios de Anúncios
+      tags:
+      - Anúncios
+  /ads/reports:
+    get:
+      description: Relatórios do workspace, abertos por último primeiro. Os dados
+        vêm de POST /ads/accounts/{id}/report-runs.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Listar relatórios salvos
+      tags:
+      - Anúncios
+    post:
+      consumes:
+      - application/json
+      description: Guarda nome, conta e definição (view pivot, trend ou bars; nível;
+        quebras aceitas pela Meta; métricas; período). A tendência aceita só métricas
+        diárias e nenhuma quebra.
+      parameters:
+      - description: relatório
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.SavedReportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar novo relatório
+      tags:
+      - Anúncios
+  /ads/reports/{id}:
+    delete:
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir relatório salvo
+      tags:
+      - Anúncios
+    get:
+      description: Devolve o relatório e marca o último acesso.
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Abrir relatório salvo
+      tags:
+      - Anúncios
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: relatório
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.SavedReportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar relatório salvo
+      tags:
+      - Anúncios
+  /ads/rules:
+    post:
+      consumes:
+      - application/json
+      description: Regra da Meta que verifica condições (métrica, operador, valor)
+        numa janela e pausa, liga, muda o orçamento por porcentagem ou avisa.
+      parameters:
+      - description: regra
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.AutomatedRule'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.MetaIDResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar regra automática
+      tags:
+      - Anúncios
+  /ads/rules/{ruleId}:
+    delete:
+      parameters:
+      - description: ID da regra na Meta
+        in: path
+        name: ruleId
+        required: true
+        type: string
+      - description: ID da conta de anúncios
+        in: query
+        name: accountId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir regra automática
+      tags:
+      - Anúncios
+  /ads/rules/{ruleId}/history:
+    get:
+      parameters:
+      - description: ID da regra na Meta
+        in: path
+        name: ruleId
+        required: true
+        type: string
+      - description: ID da conta de anúncios
+        in: query
+        name: accountId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.RuleRun'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Histórico da regra automática
+      tags:
+      - Anúncios
+  /ads/rules/{ruleId}/status:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID da regra na Meta
+        in: path
+        name: ruleId
+        required: true
+        type: string
+      - description: ID da conta de anúncios
+        in: query
+        name: accountId
+        required: true
+        type: string
+      - description: enabled obrigatório
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.RuleStatusRequest'
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ligar ou desligar regra automática
+      tags:
+      - Anúncios
+  /ads/saved-audiences:
+    get:
+      description: Combinações de público e posicionamentos salvas no Vozko para reaproveitar
+        ao criar anúncios.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertising.SavedAudience'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Públicos salvos
+      tags:
+      - Anúncios
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: público salvo
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.SavedAudience'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertising.SavedAudience'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar público
+      tags:
+      - Anúncios
+  /ads/saved-audiences/{id}:
+    delete:
+      parameters:
+      - description: ID do público salvo
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir público salvo
+      tags:
+      - Anúncios
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID do público salvo
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: público salvo
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.SavedAudience'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertising.SavedAudience'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar público salvo
+      tags:
+      - Anúncios
+  /ads/tests:
+    post:
+      consumes:
+      - application/json
+      description: Divide o público entre 2 a 5 campanhas ou conjuntos da mesma conta,
+        de 1 a 30 dias, com confiança de 65, 80, 90 ou 95 por cento.
+      parameters:
+      - description: teste
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertising.SplitTest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.MetaIDResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar teste A/B
+      tags:
+      - Anúncios
   /affiliate/earnings:
     get:
       description: Retorna a lista paginada de comissões registradas para o afiliado
@@ -9528,6 +14629,120 @@ paths:
       summary: Definir música de espera do workspace
       tags:
       - Filas de atendimento
+  /calls:
+    get:
+      description: 'Lista as ligações do workspace, das mais recentes para as mais
+        antigas, por tronco SIP e WhatsApp: quem ligou, quem atendeu, quantas transferências
+        houve, o resultado, o tempo de conversa e o valor cobrado. Sem a permissão
+        `call_history:view_others`, a lista traz só as ligações de que você participou
+        (fez, atendeu, transferiu ou recebeu por transferência) e `memberId` é ignorado.
+        `amountMicros` é o valor debitado do saldo, em milionésimos de real.'
+      parameters:
+      - description: Página (começa em 1)
+        in: query
+        name: page
+        type: integer
+      - description: Itens por página (máximo 100)
+        in: query
+        name: pageSize
+        type: integer
+      - description: Direção
+        enum:
+        - inbound
+        - outbound
+        in: query
+        name: direction
+        type: string
+      - description: Canal
+        enum:
+        - phone
+        - whatsapp
+        in: query
+        name: channel
+        type: string
+      - description: Atendida ou não
+        enum:
+        - answered
+        - unanswered
+        in: query
+        name: result
+        type: string
+      - description: Ligações de que este membro participou (exige call_history:view_others)
+        in: query
+        name: memberId
+        type: string
+      - description: Início do período (YYYY-MM-DD ou RFC 3339)
+        in: query
+        name: from
+        type: string
+      - description: Fim do período (YYYY-MM-DD inclui o dia todo, ou RFC 3339)
+        in: query
+        name: to
+        type: string
+      - description: Parte do número do contato
+        in: query
+        name: number
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/callhistory.CallListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar chamadas
+      tags:
+      - Histórico de chamadas
+  /calls/{callId}:
+    get:
+      description: Mostra uma ligação com quem participou, a linha do tempo (início,
+        atendimento, cada transferência e o que aconteceu com ela, fim) e a gravação.
+        A gravação só aparece para quem tem `call_recordings:read`. Uma ligação de
+        que você não participou, sem `call_history:view_others`, responde 404.
+      parameters:
+      - description: Identificador da ligação
+        in: path
+        name: callId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/callhistory.CallDetailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Detalhar chamada
+      tags:
+      - Histórico de chamadas
   /cep/search:
     get:
       description: Retorna o endereço (logradouro, bairro, cidade e UF) correspondente
@@ -11349,6 +16564,82 @@ paths:
       summary: Ouvir música de espera pronta
       tags:
       - Filas de atendimento
+  /images/generations:
+    post:
+      consumes:
+      - application/json
+      description: Coloca na fila a geração de uma imagem no formato pedido (square
+        1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até
+        16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds,
+        sem repetição, só imagens) para edição ou estilo; uma referência inválida
+        responde 422 com o código no campo referenceMediaIds (required, too_many,
+        duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por
+        GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca
+        de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de
+        IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento,
+        devolve o mesmo job sem nova cobrança.
+      parameters:
+      - description: descrição e formato da imagem
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/imagegenhttp.GenerateImageRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/imagegenhttp.JobResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Gerar imagem com IA
+      tags:
+      - Imagens
+  /images/generations/{id}:
+    get:
+      description: 'Estado de uma geração de imagem do workspace: queued, running,
+        done (com mediaId, mediaUrl e model) ou failed (com failureCode: generation_failed,
+        storage_failed, timed_out, enqueue_failed, insufficient_funds ou reference_unavailable).'
+      parameters:
+      - description: id do job
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/imagegenhttp.JobResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar geração de imagem
+      tags:
+      - Imagens
   /instagram/accounts:
     get:
       produces:
@@ -13181,6 +18472,42 @@ paths:
       summary: Obter uma mídia
       tags:
       - Mídias
+  /medias/{id}/file:
+    get:
+      description: Devolve o conteúdo de uma mídia do workspace como anexo (Content-Disposition
+        attachment), com o Content-Type original. Serve para baixar imagens geradas
+        com IA e outros arquivos da biblioteca sem depender do domínio público do
+        armazenamento.
+      parameters:
+      - description: ID da mídia
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Baixar o arquivo de uma mídia
+      tags:
+      - Mídias
   /message-shortcuts:
     get:
       description: Retorna todos os atalhos de mensagem do workspace.
@@ -13350,6 +18677,45 @@ paths:
       summary: Callback de conexão do Instagram
       tags:
       - Instagram
+  /oauth/meta-ads/callback:
+    get:
+      description: 'Finaliza o OAuth da Meta: devolve o resultado ao popup ou redireciona
+        ao gerenciador de anúncios.'
+      responses:
+        "302":
+          description: Found
+      summary: Callback de conexão de contas de anúncios
+      tags:
+      - Anúncios
+  /oauth/meta-ads/start:
+    get:
+      description: Retorna a URL de autorização da Meta (Login for Business) para
+        conectar contas de anúncios. Com redirect=1, redireciona direto.
+      parameters:
+      - description: 1 para devolver o resultado ao popup
+        in: query
+        name: popup
+        type: string
+      - description: caminho do painel para voltar
+        in: query
+        name: returnPath
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ConnectStartResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Iniciar conexão de contas de anúncios
+      tags:
+      - Anúncios
   /oauth/meta/embedded:
     get:
       description: Renderiza a página de cadastro incorporado (Embedded Signup) da
@@ -16312,6 +21678,47 @@ paths:
       summary: Webhook de notificações do Google Agenda
       tags:
       - Agenda
+  /webhooks/meta-ads:
+    get:
+      description: Endpoint público da Meta para o objeto ad_account. GET responde
+        à verificação (hub.challenge); POST recebe as mudanças, valida a assinatura
+        X-Hub-Signature-256 e agenda a sincronização da conta.
+      responses:
+        "200":
+          description: recebido
+          schema:
+            type: string
+        "401":
+          description: assinatura inválida
+          schema:
+            type: string
+        "403":
+          description: token de verificação inválido
+          schema:
+            type: string
+      summary: Webhook de contas de anúncios da Meta
+      tags:
+      - Anúncios
+    post:
+      description: Endpoint público da Meta para o objeto ad_account. GET responde
+        à verificação (hub.challenge); POST recebe as mudanças, valida a assinatura
+        X-Hub-Signature-256 e agenda a sincronização da conta.
+      responses:
+        "200":
+          description: recebido
+          schema:
+            type: string
+        "401":
+          description: assinatura inválida
+          schema:
+            type: string
+        "403":
+          description: token de verificação inválido
+          schema:
+            type: string
+      summary: Webhook de contas de anúncios da Meta
+      tags:
+      - Anúncios
   /webhooks/workflow/{token}:
     post:
       consumes:
@@ -19312,7 +24719,7 @@ paths:
         | type | payload |
         |---|---|
         | `conversation:connected` | `{"user_id": string, "connection_id": string}` |
-        | `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent"}` |
+        | `conversation:subscribed` | `{"entry_id", "entry_type", "lead_name"?, "lead_number"?, "lead_picture"?, "lead_metadata"?: object, "entry_variables"?: string[], "unread_count": number, "automation_enabled": boolean, "window_open": boolean, "window_expires_at"?: string, "window_closed_reason"?: string, "window_tier"?: "standard" \| "human_agent", "ad_origin"?: AdOrigin}` |
         | `conversation:unsubscribed` | `{"entry_id": string, "entry_type": string}` |
         | `conversation:history` | `{"entry_id", "entry_type", "messages": Message[], "has_more": boolean, "total": number, "page_size": number}` |
         | `conversation:inbox` | `{"entries": InboxEntry[], "page", "page_size", "total_items", "total_pages", "stage_counts"?: object, "conversation_status_counts"?: object, "available_labels"?: Label[]}` |
@@ -19337,6 +24744,7 @@ paths:
         | `conversation:typing` | `{"entry_id", "entry_type", "user_id"?, "is_typing": boolean}` | Um colega está digitando. |
         | `conversation:message_status` | `{"entry_id", "entry_type", "message_id", "status": "sent" \| "delivered" \| "read" \| "failed"}` | O canal confirmou a entrega. |
         | `conversation:analysis_update` | `{"entry_id", "entry_type", "analysis": Analysis \| null, "pending": boolean}` | A análise da conversa mudou. |
+        | `conversation:ad_origin` | `{"entry_id", "entry_type", "ad_origin": AdOrigin}` | O contato chegou por um anúncio (WhatsApp, Instagram ou Facebook). Só a primeira vez: o anúncio de origem não muda. |
         | `conversation:conversation_status_update` | `{"entry_id", "entry_type", "status", "close_source"?, "close_reason"?, "close_outcome"?, "closed_at"?}` | O status da conversa mudou. |
 
         Uma mesma mensagem chega uma vez só por conexão: como `conversation:message` ou como `conversation:message_sent`.
@@ -19367,6 +24775,8 @@ paths:
         **MatchedMessage**: `message_id`, `text`, `from`, `message_type`, `channel`, `created_at`, `position`, `page`.
 
         **AIHandler**: `kind`, `agent_id`?, `agent_name`?, `agent_avatar`?, `agent_active`, `workflow_id`?, `workflow_name`?, `workflow_run_id`?, `run_status`?, `current_node_id`?, `current_node_type`?.
+
+        **AdOrigin** (camelCase): o primeiro anúncio que trouxe o contato. `adId`?, `platform`?: `facebook | instagram`, `title`?, `sourceUrl`?, `image`?: `{"url", "mimeType"?, "layout": {"width"?, "height"?, "thumbhash"?}}` (cópia guardada pela Vozko), `arrivedAt`.
 
         **LiveRead** (camelCase): `interest`?, `disposition`?, `sentiment`?, `qualification`?, `nextAction`?, `language`?, `attendanceQuality`, `certainty`?: object, `decidedAt`.
 

@@ -122,7 +122,7 @@ var Features = []Feature{
 		Description: "Imagens, áudios e documentos enviados pelo workspace.",
 		Capabilities: []Capability{
 			{Key: "media.view", Description: "Ver e baixar arquivos de mídia", Requires: []PermissionEntry{need(ResourceMedia, ActionRead)}},
-			{Key: "media.upload", Description: "Enviar arquivos de mídia", Requires: []PermissionEntry{need(ResourceMedia, ActionCreate)}},
+			{Key: "media.upload", Description: "Enviar arquivos de mídia e gerar imagens com IA", Requires: []PermissionEntry{need(ResourceMedia, ActionCreate)}},
 		},
 	},
 	{
@@ -152,10 +152,12 @@ var Features = []Feature{
 	{
 		Key:         "call_history",
 		Name:        "Histórico de chamadas",
-		Location:    "Menu lateral › Chat › histórico de chamadas da conversa",
-		Description: "Registro, gravações e custos das chamadas.",
+		Location:    "Menu lateral › Telefonia › Histórico",
+		Description: "Registro das ligações pela linha telefônica e pelo WhatsApp: quem ligou, quem atendeu, transferências, resultado, duração, custo e gravação.",
 		Capabilities: []Capability{
-			{Key: "call_history.view", Description: "Ver o histórico, ouvir as gravações e consultar os custos das chamadas", Requires: []PermissionEntry{need(ResourceCallRecordings, ActionRead)}},
+			{Key: "call_history.view", Description: "Ver as chamadas de que participou, com a linha do tempo de cada uma", Requires: []PermissionEntry{need(ResourceCallHistory, ActionRead)}, Screens: []Screen{ScreenCallHistory}},
+			{Key: "call_history.view_team", Description: "Ver as chamadas de todos os membros do workspace", Requires: []PermissionEntry{need(ResourceCallHistory, ActionRead), need(ResourceCallHistory, ActionViewOthers)}},
+			{Key: "call_history.listen", Description: "Ouvir e baixar as gravações das chamadas", Requires: []PermissionEntry{need(ResourceCallHistory, ActionRead), need(ResourceCallRecordings, ActionRead)}},
 		},
 	},
 	{
@@ -348,15 +350,28 @@ var Features = []Feature{
 		},
 	},
 	{
-		Key:         "sip_trunks",
-		Name:        "Troncos SIP",
-		Location:    "Menu lateral › Telefonia › Troncos SIP, e o discador na borda direita",
-		Description: "Troncos SIP do provedor de telefonia e o discador que faz e atende ligações por eles.",
+		Key:         "ads",
+		Name:        "Anúncios da Meta",
+		Location:    "Menu lateral › Meta",
+		Description: "Gerenciador de anúncios da Meta (Facebook e Instagram): campanhas, conjuntos e anúncios com resultados, detalhamentos e custo por lead; criação e edição de anúncios de todos os objetivos; públicos, formulários de cadastro e seus leads, regras automáticas, testes A/B, pixels e envio de conversões do CRM.",
 		Capabilities: []Capability{
-			{Key: "sip_trunks.view", Description: "Ver os troncos, o estado do registro e as chamadas em andamento", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead)}, Screens: []Screen{ScreenSIPTrunks}},
-			{Key: "sip_trunks.connect", Description: "Cadastrar troncos", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionCreate)}},
-			{Key: "sip_trunks.edit", Description: "Editar troncos e suas credenciais", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionUpdate)}},
-			{Key: "sip_trunks.remove", Description: "Remover troncos, encerrando as chamadas em andamento", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionDelete)}},
+			{Key: "ads.view", Description: "Ver a visão geral da conta com o que falta para veicular, as campanhas, os resultados, os públicos, os formulários com seus leads, as regras e as conversões", Requires: []PermissionEntry{need(ResourceAds, ActionRead)}, Screens: []Screen{ScreenAdsOverview, ScreenAdsManager, ScreenAdsEditor, ScreenAdsReports, ScreenAdsAudiences, ScreenAdsForms, ScreenAdsRules, ScreenAdsConversions}},
+			{Key: "ads.create", Description: "Conectar contas de anúncios e criar anúncios", Requires: []PermissionEntry{need(ResourceAds, ActionRead), need(ResourceAds, ActionCreate)}, Screens: []Screen{ScreenAdsCreate}},
+			{Key: "ads.toggle", Description: "Ligar e desligar campanhas, conjuntos e anúncios", Requires: []PermissionEntry{need(ResourceAds, ActionRead), need(ResourceAds, ActionStart), need(ResourceAds, ActionStop)}},
+			{Key: "ads.edit", Description: "Editar campanhas, conjuntos e anúncios, orçamentos, limite de gasto da conta, regras e envio de conversões, e arquivar", Requires: []PermissionEntry{need(ResourceAds, ActionRead), need(ResourceAds, ActionUpdate)}},
+			{Key: "ads.disconnect", Description: "Desconectar contas de anúncios", Requires: []PermissionEntry{need(ResourceAds, ActionRead), need(ResourceAds, ActionDelete)}},
+		},
+	},
+	{
+		Key:         "sip_trunks",
+		Name:        "Linhas telefônicas",
+		Location:    "Menu lateral › Telefonia › Linhas telefônicas, e o discador na borda direita",
+		Description: "Linhas telefônicas da operadora, conectadas por SIP, e o discador que faz e atende ligações por elas.",
+		Capabilities: []Capability{
+			{Key: "sip_trunks.view", Description: "Ver as linhas, se estão conectadas à operadora e as ligações em andamento", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead)}, Screens: []Screen{ScreenSIPTrunks}},
+			{Key: "sip_trunks.connect", Description: "Conectar linhas", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionCreate)}},
+			{Key: "sip_trunks.edit", Description: "Editar linhas e suas credenciais", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionUpdate)}},
+			{Key: "sip_trunks.remove", Description: "Remover linhas, encerrando as ligações em andamento", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionDelete)}},
 			{Key: "sip_trunks.call", Description: "Fazer e atender ligações pelo discador", Requires: []PermissionEntry{need(ResourceSIPTrunks, ActionRead), need(ResourceSIPTrunks, ActionCall), need(ResourceCallSession, ActionUse)}},
 		},
 	},
@@ -370,7 +385,7 @@ var Features = []Feature{
 			{Key: "call_queues.create", Description: "Criar filas", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionCreate)}},
 			{Key: "call_queues.edit", Description: "Editar filas e a música de espera do workspace", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionUpdate)}},
 			{Key: "call_queues.remove", Description: "Remover filas", Requires: []PermissionEntry{need(ResourceCallQueues, ActionRead), need(ResourceCallQueues, ActionDelete)}},
-			{Key: "call_queues.transfer", Description: "Transferir uma ligação em andamento (tronco SIP ou WhatsApp) para um colega ou uma fila; quem recebe precisa poder atender aquele tipo de ligação", Requires: []PermissionEntry{need(ResourceCallSession, ActionUse), need(ResourceCallSession, ActionListMembers), need(ResourceCallSession, ActionTransfer)}},
+			{Key: "call_queues.transfer", Description: "Transferir uma ligação em andamento (linha telefônica ou WhatsApp) para um colega ou uma fila; quem recebe precisa poder atender aquele tipo de ligação", Requires: []PermissionEntry{need(ResourceCallSession, ActionUse), need(ResourceCallSession, ActionListMembers), need(ResourceCallSession, ActionTransfer)}},
 		},
 	},
 	{

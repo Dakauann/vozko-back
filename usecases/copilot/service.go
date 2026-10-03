@@ -116,7 +116,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 
 	rec := &turnRecorder{emit: emit}
 	for _, ts := range prelude {
-		rec.emitFn("tool", ts.payload())
+		emitStep(rec.emitFn, ts)
 	}
 	cc.Datasets = copilot.NewDatasetStore()
 
@@ -142,7 +142,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 		emit("awaiting_approval", map[string]interface{}{"actionId": pa.ID, "tool": pa.ToolName, "summary": pa.Summary})
 	default:
 		reply := lastAssistantContent(sess.History)
-		if reply != "" {
+		if reply != "" || len(rec.tools) > 0 {
 			_ = s.messages.Create(rec.message(thread.ID, reply, model))
 		}
 		if msg := haltMessage(out.Halt); msg != "" {
@@ -194,7 +194,7 @@ func (s *Service) claim(threadID, actionID string, outcome aichat.ProposalStatus
 	return pa, nil
 }
 
-func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, cc copilot.Context, emit agentloop.Emit) error {
+func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, secrets map[string]string, cc copilot.Context, emit agentloop.Emit) error {
 	pa, err := s.claim(thread.ID, actionID, aichat.ProposalApproved)
 	if err != nil {
 		return err
@@ -204,8 +204,8 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 		model = defaultCopilotModel
 	}
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
-	res := driver.ExecuteApproved(ctx, pa)
-	executed := toolStep{Name: pa.ToolName, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK}
+	res := driver.ExecuteApproved(ctx, pa, secrets, emit)
+	executed := stepFromResult(pa.ToolName, res)
 	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, nil, false, executed)
 }
 
@@ -237,7 +237,9 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 	for _, m := range msgs {
 		switch m.Role {
 		case aichat.RoleAssistant:
-			out = append(out, ai.Message{Role: ai.RoleAssistant, Content: m.Content})
+			if content := assistantHistoryContent(m); content != "" {
+				out = append(out, ai.Message{Role: ai.RoleAssistant, Content: content})
+			}
 		case aichat.RoleSystem:
 			out = append(out, ai.Message{Role: ai.RoleSystem, Content: m.Content})
 		case aichat.RoleUser:
@@ -245,6 +247,25 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 		}
 	}
 	return out, nil
+}
+
+func assistantHistoryContent(m *aichat.Message) string {
+	if strings.TrimSpace(m.Content) != "" {
+		return m.Content
+	}
+	var steps []toolStep
+	if len(m.ToolCalls) == 0 || json.Unmarshal(m.ToolCalls, &steps) != nil || len(steps) == 0 {
+		return ""
+	}
+	notes := make([]string, 0, len(steps))
+	for _, step := range steps {
+		note := step.Name + ": " + step.Summary
+		if step.Image != nil {
+			note += " (imagem media_id " + step.Image.MediaID + ")"
+		}
+		notes = append(notes, note)
+	}
+	return "[Ferramentas executadas] " + strings.Join(notes, "; ")
 }
 
 func storedAttachments(raw []byte) []copilot.Attachment {
@@ -266,7 +287,7 @@ func titleSource(content string, attachments []copilot.Attachment) string {
 }
 
 func lastAssistantContent(h []ai.Message) string {
-	for i := len(h) - 1; i >= 0; i-- {
+	for i := len(h) - 1; i >= 0 && h[i].Role != ai.RoleUser; i-- {
 		if h[i].Role == ai.RoleAssistant && strings.TrimSpace(h[i].Content) != "" {
 			return h[i].Content
 		}
@@ -325,6 +346,24 @@ type toolStep struct {
 	Ok      bool                `json:"ok"`
 	Chart   *copilot.Chart      `json:"chart,omitempty"`
 	Card    *copilot.ActionCard `json:"card,omitempty"`
+	Image   *copilot.Image      `json:"image,omitempty"`
+}
+
+func stepFromResult(name string, res copilot.Result) toolStep {
+	return toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Image: res.Image}
+}
+
+func emitStep(emit agentloop.Emit, ts toolStep) {
+	emit("tool", ts.payload())
+	if ts.Chart != nil {
+		emit(EventChart, ts.Chart)
+	}
+	if ts.Card != nil {
+		emit(EventCard, ts.Card)
+	}
+	if ts.Image != nil {
+		emit(EventImage, ts.Image)
+	}
 }
 
 func (t toolStep) payload() map[string]interface{} {
@@ -350,6 +389,10 @@ func (r *turnRecorder) emitFn(eventType string, payload interface{}) {
 	case EventCard:
 		if card, ok := payload.(*copilot.ActionCard); ok && len(r.tools) > 0 {
 			r.tools[len(r.tools)-1].Card = card
+		}
+	case EventImage:
+		if image, ok := payload.(*copilot.Image); ok && len(r.tools) > 0 {
+			r.tools[len(r.tools)-1].Image = image
 		}
 	}
 	r.emit(eventType, payload)

@@ -29,6 +29,9 @@ type telegramBundle struct {
 
 	API tgdomain.BotAPI
 
+	Connect *tguc.ConnectAccountUseCase
+	List    *tguc.ListAccountsUseCase
+
 	Handler        *telegramhttp.Handler
 	WebhookHandler *telegramhttp.WebhookHandler
 
@@ -57,10 +60,12 @@ func (c *Container) initTelegram() {
 	bundle.Files = telegram_repository.NewFileCacheRepository(c.db)
 	bundle.ProcessedEvts = webhook_repository.NewProcessedEventRepository(c.db)
 
+	bundle.Connect = tguc.NewConnectAccountUseCase(bundle.Accounts, api, c.cfg.TelegramWebhookBaseURL)
+	bundle.List = tguc.NewListAccountsUseCase(bundle.Accounts)
 	bundle.Handler = telegramhttp.NewHandler(telegramhttp.HandlerDeps{
-		Connect:    tguc.NewConnectAccountUseCase(bundle.Accounts, api, c.cfg.TelegramWebhookBaseURL),
+		Connect:    bundle.Connect,
 		Reregister: tguc.NewReregisterWebhookUseCase(bundle.Accounts, api, c.cfg.TelegramWebhookBaseURL),
-		List:       tguc.NewListAccountsUseCase(bundle.Accounts),
+		List:       bundle.List,
 		Get:        tguc.NewGetAccountUseCase(bundle.Accounts),
 		UpdateCfg:  tguc.NewUpdateAccountConfigUseCase(bundle.Accounts),
 		Disconnect: tguc.NewDisconnectAccountUseCase(bundle.Accounts, api),
@@ -97,7 +102,7 @@ func (c *Container) initTelegramRuntime(history conversation_domain.MessageHisto
 		API:           bundle.API,
 		History:       history,
 		Messages:      c.repositories.conversation,
-		ConvMedia:     c.repositories.conversationMedia,
+		Media:         c.mediaStore(),
 		FileStorage:   c.services.fileStorage,
 		Broadcaster:   c.services.conversationHub,
 		Assignments:   c.services.assignmentService,

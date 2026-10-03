@@ -1,10 +1,6 @@
 package cdr
 
-import (
-	"time"
-
-	"vozko/domain/shared"
-)
+import "time"
 
 type StartCallInput struct {
 	CallID         string
@@ -39,12 +35,4 @@ type MarkCallAnsweredUseCase interface {
 
 type CompleteCallUseCase interface {
 	Execute(input CompleteCallInput) error
-}
-
-type GetCallUseCase interface {
-	Execute(callID string) (*Call, error)
-}
-
-type ListCallsUseCase interface {
-	Execute(filters ListFilters) (*shared.PaginatedResult[*Call], error)
 }

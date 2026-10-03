@@ -215,3 +215,14 @@ func ValidateName(name string) error {
 func NormalizeName(name string) string {
 	return strings.Join(strings.Fields(name), " ")
 }
+
+func NumberFormats(number string) []string {
+	normalized := NormalizeNumber(number)
+	if normalized == "" {
+		return nil
+	}
+	if alternate := GetAlternatePhoneFormat(normalized); alternate != "" {
+		return []string{normalized, alternate}
+	}
+	return []string{normalized}
+}

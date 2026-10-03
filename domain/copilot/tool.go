@@ -38,6 +38,13 @@ type Result struct {
 	Message string
 	Chart   *Chart
 	Card    *ActionCard
+	Image   *Image
+}
+
+type Image struct {
+	URL     string `json:"url"`
+	MediaID string `json:"mediaId"`
+	Alt     string `json:"alt"`
 }
 
 type PendingAction struct {
@@ -47,6 +54,7 @@ type PendingAction struct {
 	Summary  string                 `json:"summary"`
 	Fields   []Field                `json:"fields"`
 	Preview  *Preview               `json:"preview,omitempty"`
+	Secrets  []SecretField          `json:"secrets,omitempty"`
 }
 
 type Tool interface {

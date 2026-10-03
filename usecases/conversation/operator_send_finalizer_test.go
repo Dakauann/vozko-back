@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/shared"
@@ -63,13 +64,13 @@ type fakeEventLogger struct{ events []*ce.ConversationEvent }
 func (f *fakeEventLogger) Log(e *ce.ConversationEvent) { f.events = append(f.events, e) }
 
 type endedSession struct {
-	workspaceID, entryID, entryType, outcome, reason, handoffUserID string
+	workspaceID, entryID, entryType, outcome, reason, handoffUserID, endedBy string
 }
 
 type fakeAISessionEnder struct{ ended []endedSession }
 
-func (f *fakeAISessionEnder) EndOpenRaw(workspaceID, entryID, entryType, outcome, reason, handoffUserID string) {
-	f.ended = append(f.ended, endedSession{workspaceID, entryID, entryType, outcome, reason, handoffUserID})
+func (f *fakeAISessionEnder) End(r aa.EndRequest) {
+	f.ended = append(f.ended, endedSession{r.WorkspaceID, r.EntryID, r.EntryType, string(r.Outcome), r.Reason, r.HandoffTo, r.EndedBy})
 }
 
 type assignedStage struct {

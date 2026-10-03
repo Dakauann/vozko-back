@@ -62,16 +62,27 @@ func (uc *personScheduler) Cancel(ctx context.Context, by shared.Person, workspa
 	return uc.cancel.Execute(ctx, workspaceID, id)
 }
 
+func (uc *personScheduler) Get(_ context.Context, by shared.Person, workspaceID, id string) (*sm.ScheduledMessage, error) {
+	return uc.authorized(by, workspaceID, id)
+}
+
 func (uc *personScheduler) authorize(by shared.Person, workspaceID, id string) error {
+	_, err := uc.authorized(by, workspaceID, id)
+	return err
+}
+
+func (uc *personScheduler) authorized(by shared.Person, workspaceID, id string) (*sm.ScheduledMessage, error) {
 	message, err := loadOwned(uc.repo, workspaceID, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !by.MayActOn(uc.access, workspaceID, message.EntryID, string(message.EntryType)) {
-		return sm.ErrEntryAccess
+		return nil, sm.ErrEntryAccess
 	}
 	if message.Kind == sm.KindTemplate {
-		return uc.permission.require(by, workspaceID)
+		if err := uc.permission.require(by, workspaceID); err != nil {
+			return nil, err
+		}
 	}
-	return nil
+	return message, nil
 }

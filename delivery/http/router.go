@@ -17,6 +17,7 @@ import (
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
+	callhistoryhttp "vozko/delivery/http/callhistory"
 	callroutinghttp "vozko/delivery/http/callrouting"
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
@@ -26,8 +27,10 @@ import (
 	customfieldhttp "vozko/delivery/http/customfield"
 	dealautomationhttp "vozko/delivery/http/dealautomation"
 	exporthttp "vozko/delivery/http/export"
+	advertisinghttp "vozko/delivery/http/advertising"
 	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
+	imagegenhttp "vozko/delivery/http/imagegen"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
@@ -144,7 +147,7 @@ type router struct {
 	invoiceHandler                 *invoicehttp.InvoiceHandler
 	callBillingHandler             *callbillinghttp.CallBillingHandler
 	campaignReportHandler          *campaignreporthttp.Handler
-	callsHandler                   *handlers.CallsHandler
+	callHistoryHandler             *callhistoryhttp.Handler
 	analyticsHandler               *analyticshttp.AnalyticsHandler
 	rolesMiddleware                *middleware.RolesMiddleware
 	rateLimiterMiddleware          *middleware.RateLimiterMiddleware
@@ -162,6 +165,7 @@ type router struct {
 	instagramHandler               *instagramhttp.Handler
 	instagramWebhookHandler        *instagramhttp.WebhookHandler
 	metaChannels                   MetaChannelRoutes
+	imageGenerationHandler         *imagegenhttp.Handler
 	audienceHandler                *audiencehttp.Handler
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
@@ -254,7 +258,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	invoiceHandler *invoicehttp.InvoiceHandler,
 	callBillingHandler *callbillinghttp.CallBillingHandler,
 	campaignReportHandler *campaignreporthttp.Handler,
-	callsHandler *handlers.CallsHandler,
+	callHistoryHandler *callhistoryhttp.Handler,
 	analyticsHandler *analyticshttp.AnalyticsHandler,
 	verifier auth.TokenVerifier,
 	roleFetcher middleware.RoleFetcher,
@@ -296,9 +300,11 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	audienceHandler *audiencehttp.Handler,
 	sendCapHandler *balancehttp.SendCapHandler,
 	metaChannels MetaChannelRoutes,
+	imageGenerationHandler *imagegenhttp.Handler,
 ) Router {
 	r := &router{
 		metaChannels:                   metaChannels,
+		imageGenerationHandler:         imageGenerationHandler,
 		instagramHandler:               instagramHandler,
 		audienceHandler:                audienceHandler,
 		sendCapHandler:                 sendCapHandler,
@@ -370,7 +376,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		invoiceHandler:                 invoiceHandler,
 		callBillingHandler:             callBillingHandler,
 		campaignReportHandler:          campaignReportHandler,
-		callsHandler:                   callsHandler,
+		callHistoryHandler:             callHistoryHandler,
 		analyticsHandler:               analyticsHandler,
 		systemConfigHandler:            systemConfigHandler,
 		workspaceConfigHandler:         workspaceConfigHandler,
@@ -458,13 +464,15 @@ func (r *router) setupRoutes() {
 	r.setupUserBalanceRoutes(protected)
 	r.setupUserInvoiceRoutes(protected)
 	r.setupCallBillingRoutes(protected)
-	r.setupCallsRoutes(protected)
+	callhistoryhttp.RegisterProtectedRoutes(protected, r.callHistoryHandler, r.ac)
 	r.setupWhatsAppCampaignRoutes(protected)
 	r.setupWhatsAppTemplateRoutes(protected)
 	r.setupWhatsAppBusinessPhoneRoutes(protected)
 	r.setupMetaEmbeddedSignupRoutes(protected)
 	r.setupInstagramRoutes(protected)
 	facebookhttp.RegisterProtectedRoutes(protected, r.metaChannels.Facebook, r.ac)
+	advertisinghttp.RegisterProtectedRoutes(protected, r.metaChannels.Ads, r.ac)
+	imagegenhttp.RegisterProtectedRoutes(protected, r.imageGenerationHandler, r.ac)
 
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
@@ -668,6 +676,8 @@ func (r *router) setupWebhookRoutes() {
 	instagramhttp.RegisterPublicRoutes(r.mux, r.instagramHandler, r.instagramWebhookHandler)
 	metaplatformhttp.RegisterPublicRoutes(r.mux, r.metaChannels.Platform)
 	facebookhttp.RegisterPublicRoutes(r.mux, r.metaChannels.Facebook, r.metaChannels.FacebookWebhook)
+	advertisinghttp.RegisterPublicRoutes(r.mux, r.metaChannels.Ads)
+	advertisinghttp.RegisterWebhookRoute(r.mux, r.metaChannels.AdsWebhook)
 
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)
@@ -861,12 +871,6 @@ func (r *router) setupWorkspaceAddonRoutes(protected *mux.Router) {
 
 func (r *router) setupCallBillingRoutes(protected *mux.Router) {
 	callbillinghttp.RegisterRoutes(protected, r.callBillingHandler, r.ac)
-}
-
-func (r *router) setupCallsRoutes(protected *mux.Router) {
-	cb := workspace_domain.ResourceCallRecordings
-	protected.HandleFunc("/calls", r.ac(cb, workspace_domain.ActionRead, r.callsHandler.List)).Methods(http.MethodGet)
-	protected.HandleFunc("/calls/{callId}", r.ac(cb, workspace_domain.ActionRead, r.callsHandler.Get)).Methods(http.MethodGet)
 }
 
 func (r *router) setupWhatsAppCampaignRoutes(protected *mux.Router) {

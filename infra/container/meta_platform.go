@@ -35,5 +35,7 @@ func (c *Container) metaChannelRoutes() httpdelivery.MetaChannelRoutes {
 		routes.Facebook = c.facebook.Handler
 		routes.FacebookWebhook = c.facebook.WebhookHandler
 	}
+	routes.Ads = c.ads.Handler
+	routes.AdsWebhook = c.ads.WebhookHandler
 	return routes
 }

@@ -45,6 +45,8 @@ type Pricer interface {
 	PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error)
 
 	PriceWhatsAppCategory(workspaceID string, metaCategory string) (PriceResult, error)
+
+	PriceAdvertising(workspaceID string, service string) (PriceResult, error)
 }
 
 type pricer struct {
@@ -233,6 +235,22 @@ func (p *pricer) PriceWhatsAppCategory(workspaceID string, metaCategory string) 
 	item := findResolvedItem(resolved, CategoryWhatsApp, metaCategory, "per_message")
 	if item == nil || item.PriceMicros <= 0 {
 		return PriceResult{}, nil
+	}
+	return PriceResult{
+		CostMicros:   item.CostMicros,
+		PriceMicros:  item.PriceMicros,
+		ProfitMicros: item.PriceMicros - item.CostMicros,
+	}, nil
+}
+
+func (p *pricer) PriceAdvertising(workspaceID string, service string) (PriceResult, error) {
+	resolved, err := p.ResolveForWorkspace(workspaceID)
+	if err != nil {
+		return PriceResult{}, err
+	}
+	item := findResolvedItem(resolved, CategoryAdvertising, service, "per_ad")
+	if item == nil || item.PriceMicros <= 0 {
+		return PriceResult{}, fmt.Errorf("%w: advertising/%s/per_ad (workspace %s)", ErrPricingItemNotFound, service, workspaceID)
 	}
 	return PriceResult{
 		CostMicros:   item.CostMicros,

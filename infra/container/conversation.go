@@ -71,8 +71,9 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	)
 	c.services.conversationHistory = historyProvider
 	historyProvider.SetEntryWorkspaces(workspaceResolver)
+	historyProvider.SetMediaRepo(c.repositories.conversationMedia)
 	c.services.conversationHub.SetHistoryProvider(historyProvider)
-	c.services.conversationHistoryReader = conversation_usecase.NewHistoryReader(conversationAuthorizer, historyProvider)
+	c.services.conversationHistoryReader = conversation_usecase.NewHistoryReader(conversationAuthorizer, historyProvider, c.adOriginReader())
 	c.services.conversationHub.SetHistoryReader(c.services.conversationHistoryReader)
 
 	if runs, ok := c.repositories.workflowRun.(interface {
@@ -210,7 +211,6 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.conversationHub.SetWACampaignRepo(c.repositories.wcCampaign)
 	c.services.conversationHub.SetAssignmentRepo(assignmentRepo)
 	c.services.conversationHub.SetAssignmentService(c.services.assignmentService)
-	c.services.conversationHub.SetAISessionEnder(c.services.aiAttendanceService)
 	operatorSendFinalizer, err := conversation_usecase.NewOperatorSendFinalizer(
 		conversationStatusUpdater,
 		workspaceResolver,

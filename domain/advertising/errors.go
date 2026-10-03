@@ -1,0 +1,40 @@
+package advertising
+
+import "errors"
+
+var (
+	ErrWorkspaceRequired      = errors.New("workspace id is required")
+	ErrGrantNotFound          = errors.New("ads grant not found")
+	ErrAccountNotFound        = errors.New("ad account not found")
+	ErrAccountLinkedElsewhere = errors.New("ad account is already connected to another workspace")
+	ErrNoAccountsGranted      = errors.New("no ad account was granted")
+	ErrAuthorizationDenied    = errors.New("meta authorization was declined")
+	ErrMissingScopes          = errors.New("meta did not grant the permissions ads need")
+	ErrAccountNeedsReconnect  = errors.New("ad account must be reconnected")
+	ErrAccountReadOnly        = errors.New("the connected profile can only view this ad account")
+	ErrAccountAdminRequired   = errors.New("only an ad account admin can change billing settings")
+	ErrAccountNotActive       = errors.New("ad account is not active at meta")
+	ErrNoFundingSource        = errors.New("ad account has no payment method")
+	ErrUnknownTimezone        = errors.New("ad account timezone is unknown")
+	ErrUnknownCurrency        = errors.New("ad account currency is unknown")
+	ErrObjectNotFound         = errors.New("ad object not found")
+	ErrObjectLocked           = errors.New("deleted or archived ads cannot change")
+	ErrNoBudget               = errors.New("this object has no daily budget to change")
+	ErrBudgetChangeTooSoon    = errors.New("meta allows only 4 budget changes per hour")
+	ErrInvalidBudget          = errors.New("daily budget must be positive")
+	ErrMixedCurrencies        = errors.New("cannot add amounts in different currencies")
+	ErrInvalidRange           = errors.New("invalid date range")
+	ErrPageNotGranted         = errors.New("facebook page is not available to this ads connection")
+	ErrNumberNotLinked        = errors.New("whatsapp number is not linked to the facebook page")
+	ErrNumberNotOwned         = errors.New("whatsapp number is not connected to this workspace")
+	ErrJobNotFound            = errors.New("ad publish job not found")
+	ErrJobNotRunnable         = errors.New("ad publish job cannot run in its current state")
+	ErrJobNotActivatable      = errors.New("only a job published switched off and not yet switched on can be switched on")
+	ErrMediaNotImage          = errors.New("the creative media must be an image")
+)
+
+var (
+	ErrSavedAudienceNotFound = errors.New("saved audience not found")
+	ErrSettingsNotFound      = errors.New("conversion settings not found")
+	ErrBusinessPhoneNotFound = errors.New("official whatsapp number not found in this workspace")
+)

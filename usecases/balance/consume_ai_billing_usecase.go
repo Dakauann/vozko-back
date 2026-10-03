@@ -94,15 +94,6 @@ func (c *ConsumeAIBillingUseCase) handle(message []byte, ack messaging.MessageAc
 }
 
 func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error {
-
-	exists, err := c.balanceRepo.ExistsTransactionByReferenceID(event.RequestID)
-	if err != nil {
-		return fmt.Errorf("idempotency check failed for %s: %w", event.RequestID, err)
-	}
-	if exists {
-		return nil
-	}
-
 	result, err := c.pricer.PriceLLM(event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens, event.ProviderCostMicros)
 	if err != nil {
 		return fmt.Errorf("LLM pricing failed for model %s: %w", event.Model, err)
@@ -115,15 +106,12 @@ func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error 
 		return nil
 	}
 
-	requestID := event.RequestID
-	_, err = c.balanceRepo.DebitBalance(balance.DebitBalanceInput{
+	_, err = DebitOnce(c.balanceRepo, ReferenceCharge{
 		WorkspaceID:   event.WorkspaceID,
-		Amount:        result.PriceMicros,
+		ReferenceID:   event.RequestID,
 		ServiceType:   balance.ServiceAI,
-		ReferenceID:   &requestID,
+		Price:         result,
 		Description:   fmt.Sprintf("IA %s: %d entrada + %d saída tokens = %d µ ($%.4f)", event.Model, event.PromptTokens, event.CompletionTokens, result.PriceMicros, float64(result.PriceMicros)/1_000_000),
-		CostMicros:    result.CostMicros,
-		ProfitMicros:  result.ProfitMicros,
 		AllowNegative: true,
 	})
 	if err != nil {

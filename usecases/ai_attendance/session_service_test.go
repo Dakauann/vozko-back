@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/actor"
 	aa "vozko/domain/ai_attendance"
 	ce "vozko/domain/conversation_event"
 )
@@ -125,7 +126,7 @@ func TestEnsureOpenAndHandoff(t *testing.T) {
 		t.Fatalf("ai count=%v", open)
 	}
 
-	svc.EndOpen("ws", "e1", "whatsapp", aa.OutcomeHandedOff, "human_reply", "user-9")
+	svc.End(aa.EndRequest{WorkspaceID: "ws", EntryID: "e1", EntryType: "whatsapp", Outcome: aa.OutcomeHandedOff, Reason: aa.EndReasonHumanReply, HandoffTo: "user-9", EndedBy: "user-9"})
 	open, _ = repo.FindOpenByEntry("ws", "e1", "whatsapp")
 	if open != nil {
 		t.Fatal("expected closed")
@@ -135,7 +136,7 @@ func TestEnsureOpenAndHandoff(t *testing.T) {
 		t.Fatalf("ended=%+v", ended)
 	}
 
-	svc.EndOpen("ws", "e1", "whatsapp", aa.OutcomeContained, "x", "")
+	svc.End(aa.EndRequest{WorkspaceID: "ws", EntryID: "e1", EntryType: "whatsapp", Outcome: aa.OutcomeContained, Reason: "x"})
 
 	var hasStart, hasReply, hasEnd bool
 	for _, e := range fl.events {
@@ -164,7 +165,7 @@ func TestEndOpenByCallIDFallback(t *testing.T) {
 	if s == nil {
 		t.Fatal("expected session")
 	}
-	svc.EndOpenWithCallID("ws", "", "voice", "sip-call-xyz", aa.OutcomeHandedOff, "transfer_completed", "user-1")
+	svc.End(aa.EndRequest{WorkspaceID: "ws", EntryType: "voice", CallID: "sip-call-xyz", Outcome: aa.OutcomeHandedOff, Reason: "transfer_completed", HandoffTo: "user-1"})
 	open, _ := repo.FindOpenByEntry("ws", "entry-uuid", "voice")
 	if open != nil {
 		t.Fatal("expected closed via call_id fallback")
@@ -182,9 +183,58 @@ func TestContainedFinishWhatsApp(t *testing.T) {
 		WorkspaceID: "ws", EntryID: "e2", EntryType: "whatsapp",
 		AgentID: "ag1", Channel: "whatsapp",
 	})
-	svc.EndOpen("ws", "e2", "whatsapp", aa.OutcomeContained, "conversation_finished", "")
+	svc.End(aa.EndRequest{WorkspaceID: "ws", EntryID: "e2", EntryType: "whatsapp", Outcome: aa.OutcomeContained, Reason: aa.EndReasonConversationFinished})
 	open, _ := repo.FindOpenByEntry("ws", "e2", "whatsapp")
 	if open != nil {
 		t.Fatal("expected contained close")
+	}
+}
+
+func endedEvent(t *testing.T, fl *fakeLog) *ce.ConversationEvent {
+	t.Helper()
+	for _, e := range fl.events {
+		if e.EventType == ce.EventAISessionEnded {
+			return e
+		}
+	}
+	t.Fatal("no ai_session_ended event")
+	return nil
+}
+
+func TestTheSessionEndIsCreditedToWhoeverEndedIt(t *testing.T) {
+	cases := map[string]struct {
+		endedBy string
+		kind    actor.Kind
+		id      string
+	}{
+		"a person":        {"user-9", actor.KindHuman, "user-9"},
+		"the agent":       {"ai:ag1", actor.KindAI, "ag1"},
+		"a workflow":      {"workflow:wf1", actor.KindWorkflow, "wf1"},
+		"nobody in doubt": {"", actor.KindSystem, ""},
+	}
+	for name, tc := range cases {
+		repo := newMem()
+		fl := &fakeLog{}
+		svc := NewSessionService(repo, fl)
+		svc.EnsureOpen(aa.StartInput{WorkspaceID: "ws", EntryID: "e1", EntryType: "whatsapp", AgentID: "ag1", Channel: "whatsapp"})
+		svc.End(aa.EndRequest{WorkspaceID: "ws", EntryID: "e1", EntryType: "whatsapp", Outcome: aa.OutcomeHandedOff, Reason: aa.EndReasonManualAssignment, HandoffTo: "user-2", EndedBy: tc.endedBy})
+
+		ev := endedEvent(t, fl)
+		if ev.ActorKind != tc.kind || (tc.id != "" && ev.ActorID != tc.id && ev.ActorID != tc.endedBy) {
+			t.Errorf("%s: actor = %s/%s, want %s", name, ev.ActorKind, ev.ActorID, tc.kind)
+		}
+		details := ev.DetailsMap()
+		if details["agent_id"] != "ag1" || details["from_actor_id"] != "ai:ag1" || details["handoff_to"] != "user-2" || details["reason"] != aa.EndReasonManualAssignment {
+			t.Errorf("%s: details = %v", name, details)
+		}
+	}
+}
+
+func TestTheHandOffTargetIsResolvedLikeAnyRecipient(t *testing.T) {
+	if got := ce.LookupDetailID(map[string]string{"handoff_to": "user-2"}, ce.ToActorIDKeys); got != "user-2" {
+		t.Fatalf("to id = %q", got)
+	}
+	if got := ce.LookupDetailID(map[string]string{"from_actor_id": "ai:ag1"}, ce.FromActorIDKeys); got != "ai:ag1" {
+		t.Fatalf("from id = %q", got)
 	}
 }

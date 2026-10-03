@@ -42,6 +42,10 @@ type QueueRepository interface {
 	ListByWorkspace(ctx context.Context, workspaceID string) ([]*Queue, error)
 }
 
+type TransferHistory interface {
+	ForCalls(ctx context.Context, workspaceID string, callIDs []string) ([]TransferRecord, error)
+}
+
 type TransferLog interface {
 	Record(ctx context.Context, record TransferRecord) error
 	Finish(ctx context.Context, workspaceID, id string, outcome TransferOutcome, answeredBy string, at time.Time) error

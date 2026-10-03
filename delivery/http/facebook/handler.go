@@ -20,7 +20,6 @@ import (
 	"vozko/infra/http/middleware"
 	cauc "vozko/usecases/commentautomation"
 	fbuc "vozko/usecases/facebook"
-	"vozko/usecases/shared/oauthstate"
 )
 
 const (
@@ -155,11 +154,10 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func connectErrorCode(err error) string {
+	if code, ok := oauthpopup.StateErrorCode(err); ok {
+		return code
+	}
 	switch {
-	case errors.Is(err, oauthstate.ErrInvalidState), errors.Is(err, oauthstate.ErrReplayedState):
-		return "invalid_state"
-	case errors.Is(err, oauthstate.ErrExpiredState):
-		return "expired_state"
 	case errors.Is(err, fbdomain.ErrAuthorizationDenied):
 		return "declined"
 	case errors.Is(err, fbdomain.ErrNoPagesGranted):

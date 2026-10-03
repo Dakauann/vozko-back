@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -53,6 +54,17 @@ type Definition struct {
 	RequiredConfig     []string
 	RequiresConfig     bool
 	AdminOnly          bool
+}
+
+func (d Definition) SensitiveConfig() []string {
+	var names []string
+	for name, param := range d.ConfigSchema {
+		if param.Sensitive {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (d Definition) IsVisibleIn(v ToolVisibility) bool {
@@ -282,6 +294,7 @@ type ConfigParameter struct {
 	Options            []ConfigParameterOption
 	OptionsSource      string
 	Required           bool
+	Sensitive          bool
 }
 
 type ConfigParameterOption struct {

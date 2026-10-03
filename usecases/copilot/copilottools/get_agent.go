@@ -9,10 +9,13 @@ import (
 	"vozko/domain/workspace"
 )
 
-type getAgentTool struct{ get agent.GetAgentUseCase }
+type getAgentTool struct {
+	get     agent.GetAgentUseCase
+	secrets toolSecrets
+}
 
-func NewGetAgentTool(get agent.GetAgentUseCase) copilot.Tool {
-	return &getAgentTool{get: get}
+func NewGetAgentTool(get agent.GetAgentUseCase, catalog ToolCatalog) copilot.Tool {
+	return &getAgentTool{get: get, secrets: toolSecrets{catalog: catalog}}
 }
 
 func (t *getAgentTool) Meta() copilot.Meta {
@@ -40,5 +43,7 @@ func (t *getAgentTool) Execute(ctx context.Context, cc copilot.Context, args map
 	if a == nil || a.WorkspaceID != cc.WorkspaceID || !cc.Departments.Allows(a.DepartmentID) {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "agente não encontrado neste workspace"}
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: a}
+	visible := *a
+	visible.InternalTools = t.secrets.hide(a.InternalTools)
+	return copilot.Result{Status: copilot.StatusOK, Data: visible}
 }

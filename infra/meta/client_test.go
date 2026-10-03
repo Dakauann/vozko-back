@@ -195,3 +195,29 @@ func TestMultipartRequestCarriesFieldsAndFile(t *testing.T) {
 		t.Fatalf("field=%q name=%q type=%q body=%q", gotField, gotName, gotType, gotBody)
 	}
 }
+
+func TestOnlyATopLevelGraphErrorFailsASuccessfulResponse(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{"status value named error", `{"id":"9","status":{"video_status":"error"}}`, false},
+		{"error key without code or message", `{"error":null,"id":"9"}`, false},
+		{"graph error inside a 200", `{"error":{"code":100,"message":"Invalid parameter"}}`, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			c := newTestClient(t, srv.Client(), srv.Listener.Addr().String())
+			var out map[string]any
+			err := c.Do(context.Background(), Request{Method: http.MethodGet, Path: "/9"}, &out)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}

@@ -24,6 +24,7 @@ type HistoryPage struct {
 	Messages []*Message
 	HasMore  bool
 	Total    int64
+	AdOrigin *AdOrigin
 }
 
 type HistoryReader interface {

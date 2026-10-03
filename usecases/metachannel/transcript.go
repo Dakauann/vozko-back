@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/conversation"
-	"vozko/domain/media"
 	mm "vozko/domain/metamessaging"
 	"vozko/domain/shared"
 )
@@ -28,10 +27,6 @@ type EntryUpdateBroadcaster interface {
 	BroadcastEntryUpdate(entryID, entryType string, message *conversation.Message)
 }
 
-type MediaRecorder interface {
-	Create(media *conversation.ConversationMedia) error
-}
-
 type FetchFunc func(ctx context.Context, url string) ([]byte, string, error)
 
 type Transcript struct {
@@ -40,8 +35,8 @@ type Transcript struct {
 	Prefix      string
 	History     conversation.MessageHistoryManager
 	Messages    MessageStore
-	Media       MediaRecorder
-	FileStorage media.FileStorage
+	Media       conversation.MediaStore
+	Ads         conversation.AdOriginRecorder
 	Fetch       FetchFunc
 	Broadcaster EntryUpdateBroadcaster
 }
@@ -62,6 +57,7 @@ type HistoryInput struct {
 	MediaType         conversation.MediaType
 	MediaURL          string
 	Metadata          json.RawMessage
+	AdReferral        *conversation.AdReferral
 }
 
 func (t *Transcript) Record(ctx context.Context, entryID string, sentBy conversation.SentBy, party Party, in HistoryInput) error {
@@ -85,7 +81,37 @@ func (t *Transcript) Record(ctx context.Context, entryID string, sentBy conversa
 		Metadata:          in.Metadata,
 		SenderName:        party.SenderName,
 		SenderAvatar:      party.SenderAvatar,
+		AdReferral:        in.AdReferral,
 	})
+}
+
+func (t *Transcript) adPlatform() conversation.AdPlatform {
+	if t.EntryType == shared.EntryTypeInstagram {
+		return conversation.AdPlatformInstagram
+	}
+	return conversation.AdPlatformFacebook
+}
+
+func (t *Transcript) RecordReferral(ctx context.Context, entryID string, r *mm.Referral) {
+	if t.Ads == nil {
+		return
+	}
+	t.Ads.Record(ctx, entryID, t.EntryType, AdReferralOf(r, t.adPlatform()))
+}
+
+func AdReferralOf(r *mm.Referral, platform conversation.AdPlatform) *conversation.AdReferral {
+	if r == nil || !strings.EqualFold(strings.TrimSpace(r.Source), "ADS") {
+		return nil
+	}
+	ad := &conversation.AdReferral{AdID: strings.TrimSpace(r.AdID), Platform: platform, SourceURL: strings.TrimSpace(r.RefererURI)}
+	if r.AdsContextData != nil {
+		ad.Title = strings.TrimSpace(r.AdsContextData.AdTitle)
+		ad.ImageURL = strings.TrimSpace(r.AdsContextData.PhotoURL)
+	}
+	if !ad.Usable() {
+		return nil
+	}
+	return ad
 }
 
 type RecordOption func(*recordOptions)
@@ -116,6 +142,12 @@ func (t *Transcript) RecordMessage(ctx context.Context, entryID string, sentBy c
 		metadata = MergeMetadata(metadata, o.metadata)
 	}
 	text := strings.TrimSpace(msg.Text)
+	ad := AdReferralOf(msg.Referral, t.adPlatform())
+	firstAd := func() *conversation.AdReferral {
+		current := ad
+		ad = nil
+		return current
+	}
 
 	stored := t.storeAttachments(ctx, entryID, msg)
 
@@ -128,13 +160,13 @@ func (t *Transcript) RecordMessage(ctx context.Context, entryID string, sentBy c
 			placeholder = UnsupportedPlaceholder(msg)
 		}
 		return text, t.Record(ctx, entryID, sentBy, party, HistoryInput{
-			MessageType: msgType, ProviderMessageID: msg.MID, Text: placeholder, Timestamp: at, Metadata: metadata,
+			MessageType: msgType, ProviderMessageID: msg.MID, Text: placeholder, Timestamp: at, Metadata: metadata, AdReferral: firstAd(),
 		})
 	}
 
 	if text != "" || len(stored) == 0 {
 		if err := t.Record(ctx, entryID, sentBy, party, HistoryInput{
-			MessageType: msgType, ProviderMessageID: msg.MID, Text: text, Timestamp: at, Metadata: metadata,
+			MessageType: msgType, ProviderMessageID: msg.MID, Text: text, Timestamp: at, Metadata: metadata, AdReferral: firstAd(),
 		}); err != nil {
 			return text, err
 		}
@@ -146,13 +178,14 @@ func (t *Transcript) RecordMessage(ctx context.Context, entryID string, sentBy c
 			providerID = fmt.Sprintf("%s:att%d", msg.MID, i)
 		}
 		if err := t.Record(ctx, entryID, sentBy, party, HistoryInput{
-			MessageType:       MediaMessageType(msgType, item.mediaType),
+			MessageType:       MediaMessageType(msgType, item.Type),
 			ProviderMessageID: providerID,
 			Timestamp:         at,
-			MediaID:           item.mediaID,
-			MediaType:         item.mediaType,
-			MediaURL:          item.url,
+			MediaID:           item.ID,
+			MediaType:         item.Type,
+			MediaURL:          item.URL,
 			Metadata:          metadata,
+			AdReferral:        firstAd(),
 		}); err != nil {
 			return text, err
 		}
@@ -160,17 +193,11 @@ func (t *Transcript) RecordMessage(ctx context.Context, entryID string, sentBy c
 	return text, nil
 }
 
-type storedAttachment struct {
-	mediaID   string
-	mediaType conversation.MediaType
-	url       string
-}
-
-func (t *Transcript) storeAttachments(ctx context.Context, entryID string, msg *mm.Message) []storedAttachment {
-	if t.FileStorage == nil || t.Fetch == nil || len(msg.Attachments) == 0 {
+func (t *Transcript) storeAttachments(ctx context.Context, entryID string, msg *mm.Message) []*conversation.ConversationMedia {
+	if t.Media == nil || t.Fetch == nil || len(msg.Attachments) == 0 {
 		return nil
 	}
-	out := make([]storedAttachment, 0, len(msg.Attachments))
+	out := make([]*conversation.ConversationMedia, 0, len(msg.Attachments))
 	for _, att := range msg.Attachments {
 		kind := StorableKind(att)
 		if kind == "" || att.Payload == nil || att.Payload.URL == "" {
@@ -182,26 +209,20 @@ func (t *Transcript) storeAttachments(ctx context.Context, entryID string, msg *
 			continue
 		}
 		mediaID := uuid.NewString()
-		key := fmt.Sprintf("conversations/%s/%s/%s%s", t.EntryType, entryID, mediaID, ExtensionFor(contentType, att.Payload.URL))
-		if err := t.FileStorage.UploadFile(key, data, contentType); err != nil {
-			log.Printf("[%s] attachment upload failed key=%s: %v", t.EntryType, key, err)
+		stored, err := t.Media.Store(conversation.StoreMediaInput{
+			ID:        mediaID,
+			Key:       fmt.Sprintf("conversations/%s/%s/%s%s", t.EntryType, entryID, mediaID, ExtensionFor(contentType, att.Payload.URL)),
+			EntryID:   entryID,
+			EntryType: t.EntryType,
+			Type:      ConversationMediaType(kind),
+			MimeType:  contentType,
+			Data:      data,
+		})
+		if err != nil {
+			log.Printf("[%s] attachment not stored type=%s: %v", t.EntryType, att.Type, err)
 			continue
 		}
-		url := t.FileStorage.GetFileURL(key)
-		mediaType := ConversationMediaType(kind)
-		if t.Media != nil {
-			record := &conversation.ConversationMedia{
-				ID: mediaID, EntryID: entryID, EntryType: t.EntryType, Type: mediaType,
-				MimeType: contentType, URL: url, SizeBytes: int64(len(data)),
-			}
-			record.Normalize()
-			if err := record.Validate(); err == nil {
-				if err := t.Media.Create(record); err != nil {
-					log.Printf("[%s] conversation media insert failed id=%s: %v", t.EntryType, mediaID, err)
-				}
-			}
-		}
-		out = append(out, storedAttachment{mediaID: mediaID, mediaType: mediaType, url: url})
+		out = append(out, stored)
 	}
 	return out
 }

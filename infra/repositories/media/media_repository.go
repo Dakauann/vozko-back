@@ -1,6 +1,7 @@
 package media_repository
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,8 +24,15 @@ func (r *MediaRepository) GetMediaByID(mediaID string) (*media.Media, error) {
 		return nil, nil
 	}
 
+	if _, err := uuid.Parse(mediaID); err != nil {
+		return nil, media.ErrMediaNotFound
+	}
+
 	var mediaSchema schema.Media
 	if err := r.db.First(&mediaSchema, "id = ?", mediaID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, media.ErrMediaNotFound
+		}
 		return nil, err
 	}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/shared"
 )
 
@@ -52,7 +53,7 @@ func (t *OperatorAutomationToggle) SetAutomation(ctx context.Context, in Operato
 		if err != nil {
 			return OperatorAutomationResult{}, fmt.Errorf("automation paused for %s (%s) but it still holds the conversation: %w", in.EntryID, in.EntryType, err)
 		}
-		t.ownership.endAISession(in.WorkspaceID, in.EntryID, entryType, owner, sessionEndPaused)
+		t.ownership.endAISession(in.WorkspaceID, in.EntryID, entryType, owner, in.ActorUserID, aa.EndReasonAutomationPaused)
 		return OperatorAutomationResult{Owner: owner}, nil
 	}
 

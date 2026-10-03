@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/actor"
+	aa "vozko/domain/ai_attendance"
 	conversation "vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	"vozko/domain/crm_telemetry"
@@ -223,10 +224,19 @@ func (s *AssignmentService) AssignManual(entryID, entryType, businessPhoneID, wo
 	if err != nil {
 		return err
 	}
+	if takesOverFromAutomation(trigger, moved, toUserID) {
+		stepErr := s.stepOut(workspaceID, entryID, entryType, toUserID, assignedBy, aa.EndReasonManualAssignment)
+		s.announceAfterStepOut(workspaceID, entryID, entryType, moved)
+		return stepErr
+	}
 	if moved.changed {
 		s.announceOwner(workspaceID, entryID, entryType, moved.previous)
 	}
 	return nil
+}
+
+func takesOverFromAutomation(trigger string, moved ownerMove, toUserID string) bool {
+	return trigger == ia.TriggerManual && moved.changed && actor.IsAutomation(moved.previous) && !actor.IsAutomation(toUserID)
 }
 
 func (s *AssignmentService) announceOwner(workspaceID, entryID, entryType, previousOwner string) {

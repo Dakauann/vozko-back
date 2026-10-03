@@ -141,6 +141,8 @@ type Event struct {
 
 	Backfill bool
 
+	AdReply *AdReply
+
 	Raw json.RawMessage
 }
 
@@ -378,7 +380,8 @@ func NormalizeEnvelope(instanceID string, env *Envelope) []*Event {
 }
 
 type contentField struct {
-	Text string
+	Text    string
+	AdReply *AdReply
 }
 
 func (c *contentField) UnmarshalJSON(b []byte) error {
@@ -391,6 +394,9 @@ func (c *contentField) UnmarshalJSON(b []byte) error {
 		var s string
 		if err := json.Unmarshal(b, &s); err == nil {
 			c.Text = s
+			if c.AdReply = adReplyIn([]byte(s)); c.AdReply != nil {
+				return c.UnmarshalJSON([]byte(s))
+			}
 		}
 	case '{':
 		var obj struct {
@@ -401,6 +407,7 @@ func (c *contentField) UnmarshalJSON(b []byte) error {
 		if err := json.Unmarshal(b, &obj); err == nil {
 			c.Text = firstNonEmptyString(obj.Text, obj.Caption, obj.Title)
 		}
+		c.AdReply = adReplyIn(b)
 	}
 	return nil
 }
@@ -459,6 +466,7 @@ func normalizeMessage(instanceID string, env *Envelope, msg *providerMessage) *E
 	if strings.TrimSpace(ev.Text) == "" {
 		ev.Text = msg.Content.Text
 	}
+	ev.AdReply = msg.Content.AdReply
 
 	ev.Media = mediaKindFor(msg.MessageType)
 	resolveSenderIdentity(ev, msg)

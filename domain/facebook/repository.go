@@ -72,8 +72,6 @@ type ConversationRepository interface {
 	RecordOutbound(ctx context.Context, id string, at time.Time) error
 	AdvanceWatermark(ctx context.Context, id string, kind WatermarkKind, at time.Time) error
 	SetThreadOwner(ctx context.Context, id, appID string, at time.Time) error
-	MergeMetadata(ctx context.Context, id string, values map[string]any) error
-	SeedMetadata(ctx context.Context, id string, values map[string]any) error
 	SetFBConversationID(ctx context.Context, id, fbConversationID string) error
 	SetStatus(ctx context.Context, id string, write conversation.StatusWrite) error
 	SetAutomationEnabled(ctx context.Context, id string, enabled *bool) error

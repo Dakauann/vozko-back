@@ -74,6 +74,13 @@ type messagingFixture struct {
 	workflows  *recordingEvaluator
 	agents     *recordingReplier
 	profiles   *fakeProfiles
+	ads        *recordingAds
+}
+
+type recordingAds struct{ recorded []*conversation.AdReferral }
+
+func (r *recordingAds) Record(_ context.Context, _ string, _ shared.EntryType, ad *conversation.AdReferral) {
+	r.recorded = append(r.recorded, ad)
 }
 
 func newMessagingFixture() *messagingFixture {
@@ -86,9 +93,10 @@ func newMessagingFixture() *messagingFixture {
 		history: &recordingHistory{}, watermarks: &recordingWatermarks{}, assigns: &recordingAssignments{},
 		workflows: &recordingEvaluator{}, agents: &recordingReplier{},
 		profiles: &fakeProfiles{profile: &fbdomain.ProfileResult{Name: "Maria Silva"}},
+		ads:      &recordingAds{},
 	}
 	transcript := &metachannel.Transcript{
-		EntryType: shared.EntryTypeFacebook, Channel: conversation.MessageChannelFacebook, Prefix: "facebook", History: f.history,
+		EntryType: shared.EntryTypeFacebook, Channel: conversation.MessageChannelFacebook, Prefix: "facebook", History: f.history, Ads: f.ads,
 	}
 	f.uc = NewHandleMessagingUseCase(HandleMessagingDeps{
 		Pages: f.pages, Contacts: f.contacts, Conversations: f.convs, Profiles: f.profiles,
@@ -294,16 +302,40 @@ func TestPostbackRecordsAndDispatchesTheSelection(t *testing.T) {
 	}
 }
 
-func TestReferralIsKeptOnTheConversation(t *testing.T) {
+func TestAMessageFromAnAdCarriesTheAd(t *testing.T) {
 	f := newMessagingFixture()
 	msg := inbound("m1", "oi")
-	msg.Message.Referral = &mm.Referral{Ref: "promo", Source: "ADS", AdID: "42"}
+	msg.Message.Referral = &mm.Referral{Ref: "promo", Source: "ADS", AdID: "42", AdsContextData: &mm.AdsContextData{AdTitle: "Promoção", PhotoURL: "https://scontent/ad.jpg"}}
 	if err := f.uc.Execute(context.Background(), entry(msg)); err != nil {
 		t.Fatal(err)
 	}
-	meta := f.convs.metadata["conv-contact-PSID"]
-	if meta["facebook_referral_ad_id"] != "42" || meta["facebook_first_referral_ad_id"] != "42" {
-		t.Fatalf("metadata = %v", meta)
+	ad := f.history.records[0].AdReferral
+	if ad == nil || ad.AdID != "42" || ad.Title != "Promoção" || ad.ImageURL != "https://scontent/ad.jpg" || ad.Platform != conversation.AdPlatformFacebook {
+		t.Fatalf("ad = %+v", ad)
+	}
+}
+
+func TestAnAdClickInAnExistingThreadIsRecordedToo(t *testing.T) {
+	f := newMessagingFixture()
+	err := f.uc.Execute(context.Background(), entry(&mm.MessagingEvent{Sender: mm.Participant{ID: "PSID"}, Recipient: mm.Participant{ID: "PAGE"}, Timestamp: 1,
+		Referral: &mm.Referral{Source: "ADS", AdID: "77", AdsContextData: &mm.AdsContextData{AdTitle: "Black Friday"}}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ads.recorded) != 1 || f.ads.recorded[0].AdID != "77" {
+		t.Fatalf("recorded = %+v", f.ads.recorded)
+	}
+}
+
+func TestAShortLinkReferralIsNotAnAd(t *testing.T) {
+	f := newMessagingFixture()
+	msg := inbound("m1", "oi")
+	msg.Message.Referral = &mm.Referral{Ref: "bio", Source: "SHORTLINK"}
+	if err := f.uc.Execute(context.Background(), entry(msg)); err != nil {
+		t.Fatal(err)
+	}
+	if f.history.records[0].AdReferral != nil {
+		t.Fatalf("ad = %+v", f.history.records[0].AdReferral)
 	}
 }
 

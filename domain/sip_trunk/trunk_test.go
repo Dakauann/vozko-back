@@ -172,6 +172,26 @@ func TestSIPTrunkValidate(t *testing.T) {
 	}
 }
 
+func TestATrunkCanBeCheckedBeforeItsPasswordIsKnown(t *testing.T) {
+	trunk := validTrunk()
+	trunk.Password = ""
+	if err := trunk.ValidateWithoutPassword(); err != nil {
+		t.Fatalf("ValidateWithoutPassword() = %v, want nil", err)
+	}
+	if err := trunk.Validate(); !errors.Is(err, ErrCredentialsRequired) {
+		t.Fatalf("Validate() = %v, want the password to be required", err)
+	}
+	trunk.Username = ""
+	if err := trunk.ValidateWithoutPassword(); !errors.Is(err, ErrCredentialsRequired) {
+		t.Fatalf("ValidateWithoutPassword() = %v, a registering trunk still needs its username", err)
+	}
+	trunk = validTrunk()
+	trunk.Host = "sip:provider.com"
+	if err := trunk.ValidateWithoutPassword(); !errors.Is(err, ErrInvalidHost) {
+		t.Fatalf("ValidateWithoutPassword() = %v, want the rest still checked", err)
+	}
+}
+
 func TestSettingsValidateInboundSources(t *testing.T) {
 	if err := (Settings{InboundAllowedSources: []string{"203.0.113.0/24", "198.51.100.7"}}).Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil", err)
