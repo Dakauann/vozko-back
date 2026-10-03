@@ -35,6 +35,7 @@ type AssignmentService struct {
 	departments        DepartmentLookup
 	accounts           EntryAccountReader
 	receivers          ConversationReceivers
+	outreach           ia.EntryOutreachReader
 }
 
 func NewAssignmentService(
@@ -74,6 +75,8 @@ func (s *AssignmentService) SetHistory(h ia.HistoryRepository) { s.history = h }
 func (s *AssignmentService) SetTelemetry(p crm_telemetry.Publisher) { s.telemetry = p }
 
 func (s *AssignmentService) SetEventLogger(l ce.Logger) { s.events = l }
+
+func (s *AssignmentService) SetOutreach(r ia.EntryOutreachReader) { s.outreach = r }
 
 func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID string) string {
 
@@ -117,10 +120,15 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return ""
 	}
 
-	assignedUserID, nextIndex, err := s.claimNextInRing(workspaceID, businessPhoneID, departmentID, pool)
-	if err != nil {
-		log.Printf("[InboxAssignment] error getting round-robin state: %v", err)
-		return ""
+	assignedUserID, nextIndex, trigger := s.outreachOwner(entryID, entryType, pool), 0, ia.TriggerOutreach
+	if assignedUserID == "" {
+		var err error
+		trigger = ia.TriggerInboundRR
+		assignedUserID, nextIndex, err = s.claimNextInRing(workspaceID, businessPhoneID, departmentID, pool)
+		if err != nil {
+			log.Printf("[InboxAssignment] error getting round-robin state: %v", err)
+			return ""
+		}
 	}
 
 	assignment := &ia.InboxAssignment{
@@ -135,8 +143,8 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return ""
 	}
 
-	log.Printf("[InboxAssignment] assigned entry %s (%s) → user %s (index %d/%d, mode=%s reason=%s, phone %s)",
-		entryID, entryType, assignedUserID, nextIndex, len(pool.Ring), pool.Mode, pool.Reason, businessPhoneID)
+	log.Printf("[InboxAssignment] assigned entry %s (%s) → user %s (trigger=%s, index %d/%d, mode=%s reason=%s, phone %s)",
+		entryID, entryType, assignedUserID, trigger, nextIndex, len(pool.Ring), pool.Mode, pool.Reason, businessPhoneID)
 
 	s.recordHistoryAndEvent(recordInput{
 		WorkspaceID:       workspaceID,
@@ -144,7 +152,7 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		EntryType:         entryType,
 		AssignedUserID:    assignedUserID,
 		PreviousUserID:    "",
-		Trigger:           ia.TriggerInboundRR,
+		Trigger:           trigger,
 		AssignedByActorID: actor.SystemID,
 		BusinessPhoneID:   businessPhoneID,
 		DepartmentID:      departmentID,
@@ -153,6 +161,26 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 	})
 
 	return assignedUserID
+}
+
+func (s *AssignmentService) outreachOwner(entryID, entryType string, pool Pool) string {
+	if s.outreach == nil {
+		return ""
+	}
+	userID, err := s.outreach.LastOutreachBy(entryID, entryType)
+	if err != nil {
+		log.Printf("[InboxAssignment] cannot read the outreach owner of entry %s (%s), falling back to round-robin: %v", entryID, entryType, err)
+		return ""
+	}
+	if userID == "" {
+		return ""
+	}
+	for _, candidate := range pool.Ring {
+		if candidate == userID {
+			return userID
+		}
+	}
+	return ""
 }
 
 func (s *AssignmentService) humanPool(workspaceID, departmentID string) Pool {

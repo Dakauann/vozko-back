@@ -162,6 +162,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.assignmentService = ia_usecase.NewAssignmentService(assignmentRepo, c.services.conversationHub, workspaceResolver, c.repositories.workspaceConfig)
 	c.services.assignmentService.SetTelemetry(telemetryPub)
 	c.services.assignmentService.SetEventLogger(eventLoggerEarly)
+	c.services.assignmentService.SetOutreach(ia_repo.NewOutreachRepository(c.db))
 	c.services.assignmentService.SetRoster(ia_usecase.NewRosterService(
 		c.repositories.workspace,
 		c.repositories.workspaceDepartment,

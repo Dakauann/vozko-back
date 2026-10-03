@@ -9,6 +9,7 @@ const (
 	TriggerBulk      = "bulk"
 	TriggerSystem    = "system"
 	TriggerRescue    = "rescue"
+	TriggerOutreach  = "inbound_outreach"
 
 	TriggerAutomationGoverned        = "automation_governed"
 	TriggerAutomationHandoff         = "automation_handoff"

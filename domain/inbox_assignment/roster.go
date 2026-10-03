@@ -13,3 +13,7 @@ type LastSeenReader interface {
 type EntryAttentionReader interface {
 	AttendedSince(entryID, entryType, assignedUserID string, since time.Time) (bool, error)
 }
+
+type EntryOutreachReader interface {
+	LastOutreachBy(entryID, entryType string) (string, error)
+}
