@@ -81,17 +81,32 @@ func (uc *FormsUseCase) List(ctx context.Context, workspaceID, accountID, pageID
 	return forms, nil
 }
 
-func (uc *FormsUseCase) Create(ctx context.Context, workspaceID string, draft ads.LeadFormDraft) (*ads.LeadForm, error) {
+func (uc *FormsUseCase) prepare(ctx context.Context, workspaceID string, draft *ads.LeadFormDraft) (*ads.AdAccount, string, error) {
 	draft.Normalize()
 	if err := draft.Validate(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	account, token, err := uc.access.open(ctx, workspaceID, draft.AdAccountID, ads.UseWrite)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := uc.page(ctx, token, draft.PageID); err != nil {
-		return nil, uc.access.failed(ctx, account, err)
+		return nil, "", uc.access.failed(ctx, account, err)
+	}
+	return account, token, nil
+}
+
+func (uc *FormsUseCase) Check(ctx context.Context, workspaceID string, draft ads.LeadFormDraft) (ads.LeadFormDraft, error) {
+	if _, _, err := uc.prepare(ctx, workspaceID, &draft); err != nil {
+		return ads.LeadFormDraft{}, err
+	}
+	return draft, nil
+}
+
+func (uc *FormsUseCase) Create(ctx context.Context, workspaceID string, draft ads.LeadFormDraft) (*ads.LeadForm, error) {
+	account, token, err := uc.prepare(ctx, workspaceID, &draft)
+	if err != nil {
+		return nil, err
 	}
 	id, err := uc.gateway.CreateForm(ctx, token, draft)
 	if err != nil {

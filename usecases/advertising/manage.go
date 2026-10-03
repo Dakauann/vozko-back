@@ -234,28 +234,32 @@ func (uc *ManageUseCase) createCreative(ctx context.Context, workspaceID string,
 	return id, nil
 }
 
-func (uc *ManageUseCase) SetBudget(ctx context.Context, workspaceID, metaID string, amount int64) (*ads.Object, error) {
+func (uc *ManageUseCase) budgetEdit(ctx context.Context, workspaceID, metaID string, amount int64) (ads.ObjectEdit, error) {
 	object, err := uc.objects.Find(ctx, workspaceID, metaID)
+	if err != nil {
+		return ads.ObjectEdit{}, err
+	}
+	current := object.Budget()
+	if current == nil {
+		return ads.ObjectEdit{}, ads.ErrNoBudget
+	}
+	return ads.ObjectEdit{Budget: &ads.Budget{Kind: current.Kind, Amount: amount}}, nil
+}
+
+func (uc *ManageUseCase) SetBudget(ctx context.Context, workspaceID, metaID string, amount int64) (*ads.Object, error) {
+	edit, err := uc.budgetEdit(ctx, workspaceID, metaID, amount)
 	if err != nil {
 		return nil, err
 	}
-	current := object.Budget()
-	if current == nil {
-		return nil, ads.ErrNoBudget
-	}
-	return uc.Edit(ctx, workspaceID, metaID, ads.ObjectEdit{Budget: &ads.Budget{Kind: current.Kind, Amount: amount}})
+	return uc.Edit(ctx, workspaceID, metaID, edit)
 }
 
 func (uc *ManageUseCase) CheckBudget(ctx context.Context, workspaceID, metaID string, amount int64) (*ads.Object, *ads.AdAccount, error) {
-	object, err := uc.objects.Find(ctx, workspaceID, metaID)
+	edit, err := uc.budgetEdit(ctx, workspaceID, metaID, amount)
 	if err != nil {
 		return nil, nil, err
 	}
-	current := object.Budget()
-	if current == nil {
-		return nil, nil, ads.ErrNoBudget
-	}
-	plan, err := uc.planEdit(ctx, workspaceID, metaID, ads.ObjectEdit{Budget: &ads.Budget{Kind: current.Kind, Amount: amount}})
+	plan, err := uc.planWithinMinimum(ctx, workspaceID, metaID, edit)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -345,14 +349,32 @@ func (uc *ManageUseCase) Lifecycle(ctx context.Context, workspaceID, metaID stri
 	return refreshed, nil
 }
 
-func (uc *ManageUseCase) SetSpendCap(ctx context.Context, workspaceID, accountID string, cap *int64) (*ads.AdAccount, error) {
+func (uc *ManageUseCase) spendCapTarget(ctx context.Context, workspaceID, accountID string, cap *int64) (*ads.AdAccount, string, error) {
 	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseBilling)
+	if err != nil {
+		return nil, "", err
+	}
+	if cap != nil {
+		if err := ads.ValidateSpendCap(*cap, account.AmountSpent); err != nil {
+			return nil, "", err
+		}
+	}
+	return account, token, nil
+}
+
+func (uc *ManageUseCase) CheckSpendCap(ctx context.Context, workspaceID, accountID string, cap *int64) (*ads.AdAccount, error) {
+	account, _, err := uc.spendCapTarget(ctx, workspaceID, accountID, cap)
+	return account, err
+}
+
+func (uc *ManageUseCase) SetSpendCap(ctx context.Context, workspaceID, accountID string, cap *int64) (*ads.AdAccount, error) {
+	account, token, err := uc.spendCapTarget(ctx, workspaceID, accountID, cap)
 	if err != nil {
 		return nil, err
 	}
 	if cap == nil {
 		err = uc.gateway.RemoveSpendCap(ctx, token, account.MetaAccountID)
-	} else if err = ads.ValidateSpendCap(*cap, account.AmountSpent); err == nil {
+	} else {
 		err = uc.gateway.SetSpendCap(ctx, token, account.MetaAccountID, *cap)
 	}
 	if err != nil {

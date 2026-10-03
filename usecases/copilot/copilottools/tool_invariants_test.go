@@ -40,7 +40,10 @@ func operationToolset() []copilot.Tool {
 }
 
 func allTools() []copilot.Tool {
-	return append(append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...), AdsTools(AdsDeps{})...)
+	tools := append(append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...), AdsTools(AdsDeps{})...)
+	tools = append(tools, AdManageTools(AdManageDeps{}, AdsDeps{})...)
+	tools = append(tools, AdGrowthTools(AdGrowthDeps{}, AdsDeps{})...)
+	return append(tools, NewConnectAdAccountTool())
 }
 
 func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {

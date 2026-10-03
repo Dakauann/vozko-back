@@ -68,6 +68,7 @@ func (uc *PublishUseCase) Preflight(ctx context.Context, workspaceID string, dra
 }
 
 type PublishInput struct {
+	JobID       string
 	WorkspaceID string
 	UserID      string
 	Actor       ads.Actor
@@ -80,6 +81,7 @@ func (uc *PublishUseCase) Publish(ctx context.Context, in PublishInput) (*ads.Pu
 		return nil, err
 	}
 	job := &ads.PublishJob{
+		ID:          in.JobID,
 		WorkspaceID: in.WorkspaceID,
 		AdAccountID: pre.Account.ID,
 		CreatedBy:   in.UserID,

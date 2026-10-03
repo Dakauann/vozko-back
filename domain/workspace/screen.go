@@ -66,6 +66,8 @@ var (
 	ScreenAdsOverview               = registerScreen("ads_overview")
 	ScreenAdsManager                = registerScreen("ads_manager")
 	ScreenAdsCreate                 = registerScreen("ads_create")
+	ScreenAdsEditor                 = registerScreen("ads_editor")
+	ScreenAdsReports                = registerScreen("ads_reports")
 	ScreenAdsAudiences              = registerScreen("ads_audiences")
 	ScreenAdsForms                  = registerScreen("ads_forms")
 	ScreenAdsRules                  = registerScreen("ads_rules")

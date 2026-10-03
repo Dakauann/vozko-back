@@ -158,6 +158,73 @@ type AdSavedAudience struct {
 
 func (AdSavedAudience) TableName() string { return "ad_saved_audiences" }
 
+type AdDraft struct {
+	ID          string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string         `gorm:"type:uuid;not null;index:idx_ad_draft_account,priority:1"`
+	AdAccountID string         `gorm:"type:uuid;not null;index:idx_ad_draft_account,priority:2"`
+	CreatedBy   string         `gorm:"type:uuid;not null"`
+	UpdatedBy   string         `gorm:"type:uuid;not null"`
+	Content     datatypes.JSON `gorm:"type:jsonb;not null"`
+	JobID       *string        `gorm:"type:uuid"`
+	Version     int            `gorm:"not null;default:1"`
+	CreatedAt   time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt   time.Time      `gorm:"autoUpdateTime"`
+}
+
+func (AdDraft) TableName() string { return "ad_drafts" }
+
+func (d *AdDraft) BeforeCreate(tx *gorm.DB) error {
+	if d.ID == "" {
+		d.ID = uuid.New().String()
+	}
+	return nil
+}
+
+type AdSavedReport struct {
+	ID           string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID  string         `gorm:"type:uuid;not null;index"`
+	AdAccountID  string         `gorm:"type:uuid;not null"`
+	Name         string         `gorm:"size:400;not null"`
+	Definition   datatypes.JSON `gorm:"type:jsonb;not null"`
+	CreatedBy    string         `gorm:"type:uuid;not null"`
+	LastOpenedAt *time.Time
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
+}
+
+func (AdSavedReport) TableName() string { return "ad_saved_reports" }
+
+type AdReportExport struct {
+	ID          string    `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string    `gorm:"type:uuid;not null;index:idx_ad_report_export_created,priority:1"`
+	AdAccountID string    `gorm:"type:uuid;not null"`
+	ReportID    *string   `gorm:"type:uuid"`
+	Name        string    `gorm:"size:400;not null"`
+	Since       time.Time `gorm:"type:date;not null"`
+	Until       time.Time `gorm:"type:date;not null"`
+	Rows        int       `gorm:"not null"`
+	SizeBytes   int       `gorm:"not null"`
+	Content     []byte    `gorm:"type:bytea;not null"`
+	CreatedBy   string    `gorm:"type:uuid;not null"`
+	CreatedAt   time.Time `gorm:"autoCreateTime;index:idx_ad_report_export_created,priority:2"`
+}
+
+func (AdReportExport) TableName() string { return "ad_report_exports" }
+
+func (e *AdReportExport) BeforeCreate(tx *gorm.DB) error {
+	if e.ID == "" {
+		e.ID = uuid.New().String()
+	}
+	return nil
+}
+
+func (r *AdSavedReport) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == "" {
+		r.ID = uuid.New().String()
+	}
+	return nil
+}
+
 func (s *AdSavedAudience) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == "" {
 		s.ID = uuid.New().String()

@@ -42,20 +42,43 @@ func (uc *RulesUseCase) List(ctx context.Context, workspaceID, accountID string)
 	return rules, nil
 }
 
-func (uc *RulesUseCase) Create(ctx context.Context, workspaceID string, rule ads.AutomatedRule) (string, error) {
+func (uc *RulesUseCase) prepare(ctx context.Context, workspaceID string, rule *ads.AutomatedRule) (*ads.AdAccount, string, []*ads.Object, error) {
 	rule.Normalize()
 	if err := rule.Validate(); err != nil {
-		return "", err
+		return nil, "", nil, err
 	}
 	account, token, err := uc.access.open(ctx, workspaceID, rule.AdAccountID, ads.UseWrite)
 	if err != nil {
-		return "", err
+		return nil, "", nil, err
 	}
+	objects := make([]*ads.Object, 0, len(rule.ObjectIDs))
 	for _, id := range rule.ObjectIDs {
 		o, err := uc.objects.Find(ctx, workspaceID, id)
 		if err != nil || o.AdAccountID != account.ID || o.Level != ruleLevels[rule.Entity] {
-			return "", ads.FieldError("objectIds", "not_available")
+			return nil, "", nil, ads.FieldError("objectIds", "not_available")
 		}
+		objects = append(objects, o)
+	}
+	return account, token, objects, nil
+}
+
+type RuleCheck struct {
+	Rule    ads.AutomatedRule
+	Objects []*ads.Object
+}
+
+func (uc *RulesUseCase) Check(ctx context.Context, workspaceID string, rule ads.AutomatedRule) (*RuleCheck, error) {
+	_, _, objects, err := uc.prepare(ctx, workspaceID, &rule)
+	if err != nil {
+		return nil, err
+	}
+	return &RuleCheck{Rule: rule, Objects: objects}, nil
+}
+
+func (uc *RulesUseCase) Create(ctx context.Context, workspaceID string, rule ads.AutomatedRule) (string, error) {
+	account, token, _, err := uc.prepare(ctx, workspaceID, &rule)
+	if err != nil {
+		return "", err
 	}
 	id, err := uc.gateway.CreateRule(ctx, token, account.MetaAccountID, account.Currency, rule)
 	if err != nil {

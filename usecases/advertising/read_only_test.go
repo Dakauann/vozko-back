@@ -166,3 +166,24 @@ func TestConnectSubscribesWebhooksOnlyForAccountsTheProfileCanManage(t *testing.
 		t.Fatalf("subscribed %v", w.gateway.subscribed)
 	}
 }
+
+func TestAReadOnlyAccountPreviewsOnlyPostsOfItsOwnPage(t *testing.T) {
+	ctx := context.Background()
+	w := readOnlyWorld()
+	assets := NewAssetsUseCase(w.sync, w.gateway, w.numbers)
+	post, err := assets.Post(ctx, "ws-1", "acc-1", "page-1", ads.PlatformFacebook, "page-1_42")
+	if err != nil || post.Message != "Promo" {
+		t.Fatalf("got %+v %v", post, err)
+	}
+	if _, err := assets.Post(ctx, "ws-1", "acc-1", "page-1", ads.PlatformFacebook, "page-2_42"); !errors.Is(err, ads.ErrPostNotFound) {
+		t.Fatalf("another page's post must be refused, got %v", err)
+	}
+	w.gateway.mediaOwner = "ig-1"
+	if _, err := assets.Post(ctx, "ws-1", "acc-1", "page-1", ads.PlatformInstagram, "m-1"); err != nil {
+		t.Fatalf("own media refused: %v", err)
+	}
+	w.gateway.mediaOwner = ""
+	if _, err := assets.Post(ctx, "ws-1", "acc-1", "page-1", ads.PlatformInstagram, "m-1"); !errors.Is(err, ads.ErrPostNotFound) {
+		t.Fatalf("media without a known owner must be refused, got %v", err)
+	}
+}

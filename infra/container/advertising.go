@@ -25,6 +25,8 @@ const (
 type adsBundle struct {
 	Sync           *adsuc.SyncUseCase
 	Publish        *adsuc.PublishUseCase
+	Drafts         *adsuc.DraftsUseCase
+	Readiness      *adsuc.ReadinessUseCase
 	Report         *adsuc.ReportUseCase
 	Manage         *adsuc.ManageUseCase
 	Accounts       *adsuc.AccountsUseCase
@@ -35,6 +37,9 @@ type adsBundle struct {
 	Rules          *adsuc.RulesUseCase
 	SplitTests     *adsuc.SplitTestUseCase
 	Conversions    *adsuc.ConversionsUseCase
+	Bulk           *adsuc.BulkUseCase
+	SavedReports   *adsuc.SavedReportsUseCase
+	Runs           *adsuc.ReportRunsUseCase
 	Webhooks       *adsuc.WebhookConsumer
 	Handler        *advertisinghttp.Handler
 	WebhookHandler *metawebhook.Handler
@@ -105,6 +110,12 @@ func (c *Container) adsManager() *adsBundle {
 			advertising_repository.NewConversionOutbox(c.db),
 			advertising_repository.NewWABADirectory(c.db)),
 	}
+	savedReports := advertising_repository.NewSavedReportRepository(c.db)
+	bundle.Readiness = adsuc.NewReadinessUseCase(sync, gateway)
+	bundle.Drafts = adsuc.NewDraftsUseCase(advertising_repository.NewDraftRepository(c.db), accounts, jobs, bundle.Publish)
+	bundle.Bulk = adsuc.NewBulkUseCase(bundle.Manage)
+	bundle.SavedReports = adsuc.NewSavedReportsUseCase(savedReports, accounts)
+	bundle.Runs = adsuc.NewReportRunsUseCase(bundle.Live, bundle.Report, objects, savedReports, advertising_repository.NewReportExportRepository(c.db))
 	bundle.Webhooks = adsuc.NewWebhookConsumer(adsuc.WebhookConsumerDeps{
 		QueueSub:    c.services.webhookQueueSub,
 		QueuePub:    c.services.webhookQueuePub,
@@ -122,7 +133,7 @@ func (c *Container) adsManager() *adsBundle {
 		Connect:         adsuc.NewConnectUseCase(oauth, gateway, grants, accounts, c.mustOAuthStateIssuer("ads:oauth", c.cfg.MetaAdsAppSecret, "/dashboard/advertising")),
 		Accounts:        bundle.Accounts,
 		Sync:            sync,
-		Readiness:       adsuc.NewReadinessUseCase(sync, gateway),
+		Readiness:       bundle.Readiness,
 		Manage:          bundle.Manage,
 		Report:          bundle.Report,
 		Live:            bundle.Live,
@@ -133,6 +144,10 @@ func (c *Container) adsManager() *adsBundle {
 		SplitTests:      bundle.SplitTests,
 		Conversions:     bundle.Conversions,
 		Publish:         bundle.Publish,
+		Drafts:          bundle.Drafts,
+		Bulk:            bundle.Bulk,
+		Reports:         bundle.SavedReports,
+		Runs:            bundle.Runs,
 		Origins:         adsuc.NewOriginUseCase(c.services.conversationAuth, c.adOriginReader(), accounts, objects, insights, attribution),
 		FrontendBaseURL: c.cfg.FrontendBaseURL,
 	})
@@ -142,12 +157,27 @@ func (c *Container) adsManager() *adsBundle {
 
 func (c *Container) adsTools() []copilot.Tool {
 	bundle := c.adsManager()
-	return copilottools.AdsTools(copilottools.AdsDeps{
-		Accounts: bundle.Accounts,
-		Reports:  bundle.Report,
-		Manage:   bundle.Manage,
-		Assets:   bundle.Assets,
-		Publish:  bundle.Publish,
-		Live:     bundle.Live,
-	})
+	ads := copilottools.AdsDeps{
+		Accounts:  bundle.Accounts,
+		Reports:   bundle.Report,
+		Manage:    bundle.Manage,
+		Assets:    bundle.Assets,
+		Publish:   bundle.Publish,
+		Live:      bundle.Live,
+		Drafts:    bundle.Drafts,
+		Readiness: bundle.Readiness,
+		Targeting: bundle.Assets,
+		Forms:     bundle.Forms,
+		Editor:    bundle.Manage,
+		Bulk:      bundle.Bulk,
+		Sources:   bundle.Assets,
+	}
+	tools := copilottools.AdsTools(ads)
+	tools = append(tools, copilottools.AdManageTools(copilottools.AdManageDeps{
+		Bulk: bundle.Bulk, SpendCap: bundle.Manage, Runs: bundle.Runs, Reports: bundle.SavedReports, Now: time.Now,
+	}, ads)...)
+	tools = append(tools, copilottools.AdGrowthTools(copilottools.AdGrowthDeps{
+		Audiences: bundle.Audience, Rules: bundle.Rules, Tests: bundle.SplitTests, Conversions: bundle.Conversions, Pixels: bundle.Assets, Now: time.Now,
+	}, ads)...)
+	return append(tools, copilottools.NewConnectAdAccountTool())
 }

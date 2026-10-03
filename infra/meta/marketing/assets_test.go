@@ -216,3 +216,28 @@ func TestPageWithoutTokenFails(t *testing.T) {
 		t.Fatalf("err %v calls %d", err, len(*calls))
 	}
 }
+
+func TestGetPagePostUsesThePageToken(t *testing.T) {
+	g, calls := gatewayWith(t, routes(t, map[string]string{
+		"GET /v26.0/P1":   `{"access_token":"page-tok","id":"P1"}`,
+		"GET /v26.0/P1_7": `{"id":"P1_7","message":"Promo","created_time":"2026-09-01T10:00:00+0000","full_picture":"https://pic","permalink_url":"https://fb/7"}`,
+	}))
+	post, err := g.GetPagePost(context.Background(), "sys", "P1", "P1_7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post.ID != "P1_7" || post.Platform != "facebook" || post.PictureURL != "https://pic" || (*calls)[1].query.Get("fields") != pagePostFields {
+		t.Fatalf("post = %+v calls = %+v", post, *calls)
+	}
+}
+
+func TestGetInstagramMediaReadsTheOwner(t *testing.T) {
+	g, calls := gatewayWith(t, ok(`{"id":"M1","caption":"Reel","media_url":"https://v","thumbnail_url":"https://th","permalink":"https://ig/1","timestamp":"2026-09-02T10:00:00+0000","owner":{"id":"IG1"}}`))
+	post, err := g.GetInstagramMedia(context.Background(), "tok", "M1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post.OwnerID != "IG1" || post.PictureURL != "https://th" || (*calls)[0].path != "/v26.0/M1" {
+		t.Fatalf("post = %+v", post)
+	}
+}

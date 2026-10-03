@@ -2,16 +2,17 @@ package advertisinghttp
 
 import (
 	"bytes"
-	"encoding/csv"
 	"strings"
 	"testing"
+
+	"vozko/domain/report"
 )
 
 func int64Ptr(v int64) *int64       { return &v }
 func float64Ptr(v float64) *float64 { return &v }
 
 func TestReportCSVHasOneRowPerReportRowWithMoneyInMajorUnits(t *testing.T) {
-	report := ReportResponse{Rows: []RowResponse{
+	rep := ReportResponse{Rows: []RowResponse{
 		{
 			MetaID: "c-1", Name: "Campanha, com vírgula", Level: "campaign", Status: "ACTIVE", Delivery: "active",
 			Metrics: MetricsResponse{
@@ -25,15 +26,15 @@ func TestReportCSVHasOneRowPerReportRowWithMoneyInMajorUnits(t *testing.T) {
 	}}
 
 	var out bytes.Buffer
-	if err := writeReportCSV(&out, report); err != nil {
+	if err := writeReportCSV(&out, rep); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.String(), utf8BOM) {
+	if !strings.HasPrefix(out.String(), report.UTF8BOM) {
 		t.Fatal("missing the UTF-8 byte order mark spreadsheets need for accents")
 	}
-	records, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(out.String(), utf8BOM))).ReadAll()
-	if err != nil {
-		t.Fatal(err)
+	var records [][]string
+	for _, line := range strings.Split(strings.TrimSuffix(strings.TrimPrefix(out.String(), report.UTF8BOM), report.CSVNewline), report.CSVNewline) {
+		records = append(records, strings.Split(line, report.CSVDelimiter))
 	}
 	if len(records) != 3 {
 		t.Fatalf("got %d records, want header plus 2 rows", len(records))
@@ -49,8 +50,8 @@ func TestReportCSVHasOneRowPerReportRowWithMoneyInMajorUnits(t *testing.T) {
 		return ""
 	}
 	want := map[string]string{
-		"Nome": "Campanha, com vírgula", "Moeda": "BRL", "Gasto": "12.35", "Impressões": "1000", "Resultados": "4",
-		"Custo por resultado": "3.09", "CTR (%)": "4.00", "CPC": "0.31", "Receita": "100.00", "ROAS": "8.10", "Custo por lead": "4.12",
+		"Nome": "Campanha, com vírgula", "Moeda": "BRL", "Gasto": "12,35", "Impressões": "1000", "Resultados": "4",
+		"Custo por resultado": "3,09", "CTR (%)": "4", "CPC": "0,31", "Receita": "100", "ROAS": "8,1", "Custo por lead": "4,12",
 	}
 	for name, value := range want {
 		if got := column(first, name); got != value {
@@ -62,7 +63,7 @@ func TestReportCSVHasOneRowPerReportRowWithMoneyInMajorUnits(t *testing.T) {
 			t.Errorf("%s without data = %q, want blank", name, got)
 		}
 	}
-	if got := column(empty, "Gasto"); got != "0.00" {
+	if got := column(empty, "Gasto"); got != "0" {
 		t.Errorf("zero spend = %q", got)
 	}
 }

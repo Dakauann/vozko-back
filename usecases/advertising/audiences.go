@@ -96,21 +96,41 @@ func (uc *AudienceUseCase) openForAudiences(ctx context.Context, workspaceID, ac
 	return account, token, nil
 }
 
-func (uc *AudienceUseCase) CreateCustomerList(ctx context.Context, workspaceID string, draft ads.CustomerListDraft) (*CustomerListResult, error) {
+func (uc *AudienceUseCase) prepareCustomerList(ctx context.Context, workspaceID string, draft *ads.CustomerListDraft) (*ads.AdAccount, string, ads.HashedCustomers, error) {
 	draft.Name = strings.TrimSpace(draft.Name)
 	if err := draft.Validate(); err != nil {
-		return nil, err
+		return nil, "", ads.HashedCustomers{}, err
 	}
 	account, token, err := uc.openForAudiences(ctx, workspaceID, draft.AdAccountID)
 	if err != nil {
-		return nil, err
+		return nil, "", ads.HashedCustomers{}, err
 	}
-	hashed, err := uc.hashedCustomers(ctx, workspaceID, draft)
+	hashed, err := uc.hashedCustomers(ctx, workspaceID, *draft)
+	if err != nil {
+		return nil, "", ads.HashedCustomers{}, err
+	}
+	if len(hashed.Rows) == 0 {
+		return nil, "", ads.HashedCustomers{}, ads.ErrNoCustomersMatched
+	}
+	return account, token, hashed, nil
+}
+
+func (uc *AudienceUseCase) CheckCustomerList(ctx context.Context, workspaceID string, draft ads.CustomerListDraft) (*CustomerListResult, error) {
+	_, _, hashed, err := uc.prepareCustomerList(ctx, workspaceID, &draft)
 	if err != nil {
 		return nil, err
 	}
-	if len(hashed.Rows) == 0 {
-		return nil, ads.ErrNoCustomersMatched
+	return &CustomerListResult{
+		Audience: ads.Audience{Name: draft.Name, Description: draft.Description, Kind: ads.AudienceCustomerList},
+		Matched:  len(hashed.Rows),
+		Skipped:  hashed.Skipped,
+	}, nil
+}
+
+func (uc *AudienceUseCase) CreateCustomerList(ctx context.Context, workspaceID string, draft ads.CustomerListDraft) (*CustomerListResult, error) {
+	account, token, hashed, err := uc.prepareCustomerList(ctx, workspaceID, &draft)
+	if err != nil {
+		return nil, err
 	}
 	id, err := uc.gateway.CreateCustomerList(ctx, token, account.MetaAccountID, draft.Name, draft.Description)
 	if err != nil {
@@ -220,20 +240,37 @@ func (uc *AudienceUseCase) owned(ctx context.Context, token, metaAccountID, audi
 	return nil, ads.ErrAudienceNotFound
 }
 
-func (uc *AudienceUseCase) CreateLookalike(ctx context.Context, workspaceID string, draft ads.LookalikeDraft) (*ads.Audience, error) {
+func (uc *AudienceUseCase) prepareLookalike(ctx context.Context, workspaceID string, draft *ads.LookalikeDraft) (*ads.AdAccount, string, *ads.Audience, error) {
 	draft.Normalize()
 	if err := draft.Validate(); err != nil {
-		return nil, err
+		return nil, "", nil, err
 	}
 	account, token, err := uc.openForAudiences(ctx, workspaceID, draft.AdAccountID)
 	if err != nil {
-		return nil, err
+		return nil, "", nil, err
 	}
-	if _, err := uc.owned(ctx, token, account.MetaAccountID, draft.OriginAudienceID); err != nil {
-		if errors.Is(err, ads.ErrAudienceNotFound) {
-			return nil, ads.FieldError("originAudienceId", "not_available")
-		}
-		return nil, uc.access.failed(ctx, account, err)
+	source, err := uc.owned(ctx, token, account.MetaAccountID, draft.OriginAudienceID)
+	if errors.Is(err, ads.ErrAudienceNotFound) {
+		return nil, "", nil, ads.FieldError("originAudienceId", "not_available")
+	}
+	if err != nil {
+		return nil, "", nil, uc.access.failed(ctx, account, err)
+	}
+	return account, token, source, nil
+}
+
+func (uc *AudienceUseCase) CheckLookalike(ctx context.Context, workspaceID string, draft ads.LookalikeDraft) (ads.LookalikeDraft, *ads.Audience, error) {
+	_, _, source, err := uc.prepareLookalike(ctx, workspaceID, &draft)
+	if err != nil {
+		return ads.LookalikeDraft{}, nil, err
+	}
+	return draft, source, nil
+}
+
+func (uc *AudienceUseCase) CreateLookalike(ctx context.Context, workspaceID string, draft ads.LookalikeDraft) (*ads.Audience, error) {
+	account, token, _, err := uc.prepareLookalike(ctx, workspaceID, &draft)
+	if err != nil {
+		return nil, err
 	}
 	id, err := uc.gateway.CreateLookalike(ctx, token, account.MetaAccountID, draft)
 	if err != nil {

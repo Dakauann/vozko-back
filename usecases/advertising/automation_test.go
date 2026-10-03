@@ -206,7 +206,12 @@ func (f *fakeOutbox) Recent(context.Context, string, int) ([]ads.ConversionRecor
 
 type fakeWABAs struct{}
 
-func (fakeWABAs) WABAOf(context.Context, string, string) (string, error) { return "waba-1", nil }
+func (fakeWABAs) WABAOf(_ context.Context, _, phoneID string) (string, error) {
+	if phoneID != "phone-1" {
+		return "", ads.ErrBusinessPhoneNotFound
+	}
+	return "waba-1", nil
+}
 
 func conversionsWorld(pending []ads.PendingSignal) (*world, *ConversionsUseCase, *fakeOutbox) {
 	return conversionsWorldFrom(newWorld(), pending)
@@ -274,6 +279,92 @@ func TestAccountWebhookRefreshesOnlyConnectedAccounts(t *testing.T) {
 		}
 	}
 	if refreshes != 1 {
+		t.Fatalf("calls %v", w.gateway.calls)
+	}
+}
+
+func TestSplitTestCheckNamesEachVersionAfterItsItemWithoutCreating(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	w.objects.byID["s-1"].Name, w.objects.byID["s-2"].Name = "Conjunto A", "Conjunto B"
+	uc := NewSplitTestUseCase(w.sync, w.gateway)
+	test := ads.SplitTest{AdAccountID: "acc-1", Name: "A x B", Level: ads.TestAdSets,
+		Cells:   []ads.TestCell{{ObjectIDs: []string{"s-1"}}, {ObjectIDs: []string{"s-2"}}},
+		StartAt: testNow.Add(time.Hour), EndAt: testNow.Add(8 * 24 * time.Hour)}
+	checked, err := uc.Check(context.Background(), "ws-1", test)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked.Cells[0].Name != "Conjunto A" || checked.Cells[1].Name != "Conjunto B" || checked.Cells[0].Share+checked.Cells[1].Share != 100 {
+		t.Fatalf("checked %+v", checked)
+	}
+	w.objects.byID["s-2"].Status = ads.StatusArchived
+	_, err = uc.Check(context.Background(), "ws-1", test)
+	requireIssue(t, err, "cells[1].objectIds", "not_available")
+	if slices.Contains(w.gateway.calls, "create_test") {
+		t.Fatalf("calls %v", w.gateway.calls)
+	}
+}
+
+func TestRuleCheckReturnsTheTargetedItemsWithoutCreating(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	uc := NewRulesUseCase(w.sync, w.gateway)
+	rule := ads.AutomatedRule{AdAccountID: "acc-1", Name: "Pausar", Entity: ads.RuleAdSet, ObjectIDs: []string{"s-1"},
+		Conditions: []ads.RuleCondition{{Metric: ads.MetricSpent, Operator: ads.OperatorGreaterThan, Value: 50}}, Action: ads.RuleAction{Type: ads.RuleActionPause}}
+	checked, err := uc.Check(context.Background(), "ws-1", rule)
+	if err != nil || len(checked.Objects) != 1 || checked.Objects[0].MetaID != "s-1" || checked.Rule.Window != ads.WindowToday {
+		t.Fatalf("checked %+v err %v", checked, err)
+	}
+	rule.ObjectIDs = []string{"c-1"}
+	_, err = uc.Check(context.Background(), "ws-1", rule)
+	requireIssue(t, err, "objectIds", "not_available")
+	if slices.Contains(w.gateway.calls, "create_rule") {
+		t.Fatalf("calls %v", w.gateway.calls)
+	}
+}
+
+func TestFormCheckRefusesAPageOutsideTheAccountWithoutCreating(t *testing.T) {
+	w, uc, _, _, _ := formsWorld()
+	draft := ads.LeadFormDraft{AdAccountID: "acc-1", PageID: "page-1", Name: " Orçamento ", PrivacyURL: "https://x.example.com/p", Questions: []ads.FormQuestion{{Type: ads.QuestionPhone}}, ThankYouTitle: "Obrigado", ThankYouURL: "https://x.example.com", ThankYouButtonText: "Visitar site"}
+	checked, err := uc.Check(context.Background(), "ws-1", draft)
+	if err != nil || checked.Name != "Orçamento" {
+		t.Fatalf("checked %+v err %v", checked, err)
+	}
+	draft.PageID = "page-x"
+	_, err = uc.Check(context.Background(), "ws-1", draft)
+	requireIssue(t, err, "pageId", "not_available")
+	if slices.Contains(w.gateway.calls, "create_form") {
+		t.Fatalf("calls %v", w.gateway.calls)
+	}
+}
+
+func TestConversionCheckFindsThePixelWithoutSaving(t *testing.T) {
+	w, uc, _ := conversionsWorld(nil)
+	w.gateway.pixels = []ads.Pixel{{MetaID: "px-1", Name: "Site"}, {MetaID: "px-2", Name: "Antigo", Unavailable: true}}
+	s := ads.ConversionSettings{AdAccountID: "acc-1", PixelID: "px-1", Enabled: true, SendLeads: true}
+	pixel, err := uc.CheckSave(context.Background(), "ws-1", s)
+	if err != nil || pixel == nil || pixel.Name != "Site" {
+		t.Fatalf("pixel %+v err %v", pixel, err)
+	}
+	s.PixelID = "px-2"
+	_, err = uc.CheckSave(context.Background(), "ws-1", s)
+	requireIssue(t, err, "pixelId", "not_available")
+	current, _ := uc.Settings(context.Background(), "ws-1")
+	if current.PixelID != "" {
+		t.Fatalf("the check saved %+v", current)
+	}
+}
+
+func TestConnectCheckRefusesAnUnknownNumberBeforeMeta(t *testing.T) {
+	w, uc, _ := conversionsWorld(nil)
+	if account, err := uc.CheckConnectDataset(context.Background(), "ws-1", "phone-1"); err != nil || account.ID != "acc-1" {
+		t.Fatalf("account %+v err %v", account, err)
+	}
+	if _, err := uc.CheckConnectDataset(context.Background(), "ws-1", "phone-x"); !errors.Is(err, ads.ErrBusinessPhoneNotFound) {
+		t.Fatalf("an unknown number must be refused, got %v", err)
+	}
+	if slices.Contains(w.gateway.calls, "dataset") {
 		t.Fatalf("calls %v", w.gateway.calls)
 	}
 }

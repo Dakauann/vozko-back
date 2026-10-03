@@ -64,3 +64,27 @@ func TestOnlyImageAndVideoFormatsCarryOneMedia(t *testing.T) {
 		t.Fatal("carousel has cards, not one media")
 	}
 }
+
+func TestAPostBelongsOnlyToItsOwnPage(t *testing.T) {
+	page := RemotePage{PageID: "P1", InstagramUserID: "IG1"}
+	cases := []struct {
+		post RemotePost
+		want bool
+	}{
+		{RemotePost{ID: "P1_9", Platform: PlatformFacebook}, true},
+		{RemotePost{ID: "P2_9", Platform: PlatformFacebook}, false},
+		{RemotePost{ID: "P19_9", Platform: PlatformFacebook}, false},
+		{RemotePost{ID: "M1", Platform: PlatformInstagram, OwnerID: "IG1"}, true},
+		{RemotePost{ID: "M1", Platform: PlatformInstagram, OwnerID: "IG2"}, false},
+		{RemotePost{ID: "M1", Platform: PlatformInstagram}, false},
+		{RemotePost{ID: "P1_9", Platform: "threads"}, false},
+	}
+	for _, c := range cases {
+		if got := c.post.BelongsTo(page); got != c.want {
+			t.Errorf("%+v: got %v", c.post, got)
+		}
+	}
+	if (RemotePost{ID: "M1", Platform: PlatformInstagram, OwnerID: ""}).BelongsTo(RemotePage{PageID: "P1"}) {
+		t.Fatal("a page without Instagram owns no media")
+	}
+}

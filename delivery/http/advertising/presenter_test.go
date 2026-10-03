@@ -1,9 +1,12 @@
 package advertisinghttp
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"vozko/domain/advertising"
+	adsuc "vozko/usecases/advertising"
 )
 
 func presentableAccount(tasks ...string) *advertising.AdAccount {
@@ -43,5 +46,28 @@ func TestBudgetMinimumIsPresentedWithItsField(t *testing.T) {
 	}
 	if presentBudgetMinimum(nil) != nil {
 		t.Fatal("absent minimum presented")
+	}
+}
+
+func TestReportDefinitionsAlwaysSendLists(t *testing.T) {
+	raw, err := json.Marshal(presentDefinition(advertising.ReportDefinition{View: advertising.ViewPivot}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"breakdowns":[]`) || !strings.Contains(string(raw), `"metrics":[]`) {
+		t.Fatalf("got %s", raw)
+	}
+}
+
+func TestARunTellsTheKindOfEveryMetricAndNeverSendsNull(t *testing.T) {
+	run := presentRun(&adsuc.ReportRun{Currency: "BRL", Table: advertising.ReportTable{View: advertising.ViewTrend, Metrics: []advertising.ReportMetric{advertising.ReportSpend, advertising.ReportCTR}}})
+	raw, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"metricKinds":{"ctr":"percent","spend":"money"}`, `"rows":[]`, `"series":[]`, `"totals":{}`, `"breakdowns":[]`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("missing %s in %s", want, raw)
+		}
 	}
 }

@@ -104,7 +104,7 @@ func BuildReadiness(a *AdAccount, facts ReadinessFacts) AccountReadiness {
 	}
 	items = append(items,
 		item(ReadyPage, facts.Page.state(), true, ReadinessAction{Portal: PageCreatePortalURL}),
-		checkedAtMeta(ReadyPhone, PhoneVerificationPortalURL),
+		checkedAtMeta(ReadyPhone, a.PortalURL(PortalPhoneVerification)),
 		checkedAtMeta(ReadyEmail, EmailVerificationPortalURL),
 		item(ReadyAudienceTerms, facts.AudienceTerms.state(), false, ReadinessAction{Portal: CustomAudienceTermsURL(a.MetaAccountID)}),
 		item(ReadyPixel, facts.Pixel.state(), false, ReadinessAction{InApp: ActionCreatePixel}),
@@ -129,13 +129,13 @@ func accountAction(a *AdAccount, key ReadinessKey) ReadinessAction {
 	case ReadyConnection:
 		return ReadinessAction{InApp: ActionReconnect}
 	case ReadyRole:
-		return ReadinessAction{Portal: BusinessSettingsPortalURL}
+		return ReadinessAction{Portal: a.PortalURL(PortalAccountRoles)}
 	case ReadyAccountStatus:
 		return ReadinessAction{Portal: statusPortalURL(a)}
 	case ReadyAccountDetails:
 		return ReadinessAction{InApp: ActionSync}
 	case ReadyPaymentMethod:
-		return ReadinessAction{Portal: BillingPortalURL}
+		return ReadinessAction{Portal: a.PortalURL(PortalBilling)}
 	}
 	return ReadinessAction{}
 }
@@ -146,17 +146,14 @@ func (s MetaAccountStatus) owesPayment() bool {
 
 func statusPortalURL(a *AdAccount) string {
 	if a.MetaStatus.owesPayment() {
-		return BillingPortalURL
+		return a.PortalURL(PortalBilling)
 	}
 	return AccountReviewPortalURL
 }
 
 const (
-	BillingPortalURL           = "https://business.facebook.com/latest/billing_hub"
-	BusinessSettingsPortalURL  = "https://business.facebook.com/latest/settings"
 	PageCreatePortalURL        = "https://www.facebook.com/pages/creation/"
 	AccountReviewPortalURL     = "https://www.facebook.com/business/help/530209463124901"
-	PhoneVerificationPortalURL = "https://business.facebook.com/latest/settings/authorizations_verifications"
 	EmailVerificationPortalURL = "https://www.facebook.com/help/162801153783275"
 	customAudienceTermsURL     = "https://business.facebook.com/ads/manage/customaudiences/tos/"
 )

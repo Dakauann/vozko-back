@@ -18,14 +18,15 @@ var adTestClock = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 type stubAdAccounts struct{}
 
 func (stubAdAccounts) List(context.Context, string) ([]*advertising.AdAccount, error) {
-	return []*advertising.AdAccount{{ID: adAccountUUID, Name: "Loja", Currency: "BRL"}}, nil
+	return []*advertising.AdAccount{{ID: adAccountUUID, Name: "Loja", Currency: "BRL", Timezone: "America/Sao_Paulo"}}, nil
 }
 
 type stubAdManager struct {
-	statusCalls int
-	budgetSet   int64
-	copied      []advertising.CopyRequest
-	lifecycles  []advertising.Lifecycle
+	statusCalls   int
+	budgetChecked int64
+	budgetSet     int64
+	copied        []advertising.CopyRequest
+	lifecycles    []advertising.Lifecycle
 }
 
 func (m *stubAdManager) CheckStatus(_ context.Context, _, id string, _ bool) (*advertising.Object, error) {
@@ -38,7 +39,11 @@ func (m *stubAdManager) SetStatus(ctx context.Context, ws, id string, on bool) (
 	m.statusCalls++
 	return m.CheckStatus(ctx, ws, id, on)
 }
-func (m *stubAdManager) CheckBudget(_ context.Context, _, id string, _ int64) (*advertising.Object, *advertising.AdAccount, error) {
+func (m *stubAdManager) CheckBudget(_ context.Context, _, id string, amount int64) (*advertising.Object, *advertising.AdAccount, error) {
+	m.budgetChecked = amount
+	if amount < 519 {
+		return nil, nil, advertising.FieldError("budget.amount", advertising.CodeBelowMinimum)
+	}
 	return &advertising.Object{MetaID: id, Name: "Conjunto", Level: advertising.LevelAdSet, LifetimeBudget: 2000}, &advertising.AdAccount{Currency: "BRL"}, nil
 }
 func (m *stubAdManager) SetBudget(_ context.Context, _, id string, amount int64) (*advertising.Object, error) {
@@ -48,14 +53,21 @@ func (m *stubAdManager) SetBudget(_ context.Context, _, id string, amount int64)
 
 type stubAdPublisher struct {
 	published *adsuc.PublishInput
+	unfunded  bool
 }
 
-func (p *stubAdPublisher) Preflight(_ context.Context, _ string, d advertising.AdDraft) (*adsuc.Preflight, error) {
+func (p *stubAdPublisher) Preflight(ctx context.Context, ws string, d advertising.AdDraft) (*adsuc.Preflight, error) {
+	if p.unfunded {
+		return nil, advertising.ErrNoFundingSource
+	}
+	return p.Check(ctx, ws, d)
+}
+func (p *stubAdPublisher) Check(_ context.Context, _ string, d advertising.AdDraft) (*adsuc.Preflight, error) {
 	if err := d.Validate(adTestClock); err != nil {
 		return nil, err
 	}
 	return &adsuc.Preflight{
-		Draft: d, Account: &advertising.AdAccount{Name: "Loja", Currency: "BRL"},
+		Draft: d, Account: &advertising.AdAccount{Name: "Loja", Currency: "BRL", Timezone: "America/Sao_Paulo"},
 		Page: advertising.RemotePage{Name: "Loja Centro"}, MediaURLs: map[string]string{d.Ads[0].Creative.Media.MediaID: "https://cdn/x.jpg"},
 		Fee: adsuc.Fee{PriceMicros: 1_000_000, Currency: "USD"},
 	}, nil
@@ -67,14 +79,14 @@ func (p *stubAdPublisher) Publish(_ context.Context, in adsuc.PublishInput) (*ad
 
 func adDeps() (AdsDeps, *stubAdManager, *stubAdPublisher) {
 	manager, publisher := &stubAdManager{}, &stubAdPublisher{}
-	return AdsDeps{Accounts: stubAdAccounts{}, Manage: manager, Publish: publisher}, manager, publisher
+	return AdsDeps{Accounts: stubAdAccounts{}, Manage: manager, Publish: publisher, Editor: &stubAdEditor{}}, manager, publisher
 }
 
 var adContext = copilot.Context{WorkspaceID: "ws-1", UserID: "u-1"}
 
 func createAdArgsMap() map[string]interface{} {
 	return map[string]interface{}{
-		"ad_account_id": adAccountUUID, "campaign_name": "Leads outubro", "destination": "WHATSAPP",
+		"ad_account_id": adAccountUUID, "campaign_name": "Leads outubro", "objective": "OUTCOME_ENGAGEMENT", "destination": "WHATSAPP",
 		"page_id": "1001", "whatsapp_number": "5511988887777", "daily_budget": 30.0,
 		"locations": []interface{}{"country:BR"}, "primary_text": "Fale com a gente",
 		"format": "IMAGE", "media_id": "0b7c6a1e-1d2f-4c3b-9a8e-7f6d5c4b3a21",
@@ -93,10 +105,10 @@ func TestCreateAdTurnsTheBudgetIntoMinorUnitsOfTheAccountCurrency(t *testing.T) 
 	}
 }
 
-func TestCreateAdCardNamesAccountPageBudgetAndFee(t *testing.T) {
+func TestCreateAdCardNamesAccountPageObjectiveAndBudget(t *testing.T) {
 	deps, _, _ := adDeps()
 	fields := NewCreateAdTool(deps).(copilot.Describer).Describe(context.Background(), adContext, createAdArgsMap())
-	want := map[string]string{"account": "Loja", "page": "Loja Centro", "budget": "BRL 30,00 por dia", "fee": "USD 1,00 por anúncio publicado, cobrado do saldo"}
+	want := map[string]string{"account": "Loja", "page": "Loja Centro", "budget": "BRL 30,00 por dia", "objective": "Engajamento", "destination": "WhatsApp 5511988887777"}
 	got := map[string]string{}
 	for _, f := range fields {
 		got[f.Key] = f.Value
@@ -105,6 +117,9 @@ func TestCreateAdCardNamesAccountPageBudgetAndFee(t *testing.T) {
 		if got[k] != v {
 			t.Fatalf("%s = %q, want %q (fields %+v)", k, got[k], v, fields)
 		}
+	}
+	if _, ok := got["fee"]; ok {
+		t.Fatal("the fee is shown in reais by the preview, never as raw dollars in the card")
 	}
 	preview := NewCreateAdTool(deps).(copilot.Previewer).Preview(context.Background(), adContext, createAdArgsMap())
 	if preview == nil || preview.Kind != PreviewAdCreative {
@@ -156,8 +171,16 @@ func TestBudgetToolKeepsTheBudgetKindAndSendsMinorUnits(t *testing.T) {
 	if fields[1].Value != "BRL 20,00 no total" || fields[2].Value != "BRL 55,50 no total" {
 		t.Fatalf("fields %+v", fields)
 	}
-	if result := tool.Execute(context.Background(), adContext, args); result.Status != copilot.StatusOK || manager.budgetSet != 5550 {
-		t.Fatalf("result %+v budget %d", result, manager.budgetSet)
+	if result := tool.Execute(context.Background(), adContext, args); result.Status != copilot.StatusOK || manager.budgetSet != 5550 || manager.budgetChecked != 5550 {
+		t.Fatalf("result %+v budget %d checked %d", result, manager.budgetSet, manager.budgetChecked)
+	}
+}
+
+func TestBudgetToolChecksTheRealAmountAgainstTheMinimumBeforeApproval(t *testing.T) {
+	deps, manager, _ := adDeps()
+	err := NewUpdateAdBudgetTool(deps).(copilot.Validator).Validate(context.Background(), adContext, map[string]interface{}{"meta_id": "120201", "amount": 3.0})
+	if !errors.Is(err, errInvalidArgs) || manager.budgetChecked != 300 || manager.budgetSet != 0 {
+		t.Fatalf("err %v checked %d set %d", err, manager.budgetChecked, manager.budgetSet)
 	}
 }
 
@@ -174,7 +197,7 @@ func TestCreateAdPublishesAVideoAsAVideoCreative(t *testing.T) {
 	}
 }
 
-func TestCreateAdRefusesAFormatWithoutOneMedia(t *testing.T) {
+func TestCreateAdRefusesACarouselWithoutCards(t *testing.T) {
 	deps, _, _ := adDeps()
 	args := createAdArgsMap()
 	args["format"] = "CAROUSEL"

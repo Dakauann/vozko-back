@@ -23,6 +23,13 @@ var domainErrors = []errorMapping{
 	{advertising.ErrAccountNotFound, http.StatusNotFound, "not_found", "Conta de anúncios não encontrada"},
 	{advertising.ErrObjectNotFound, http.StatusNotFound, "not_found", "Anúncio não encontrado"},
 	{advertising.ErrJobNotFound, http.StatusNotFound, "not_found", "Publicação não encontrada"},
+	{advertising.ErrDraftNotFound, http.StatusNotFound, "not_found", "Rascunho não encontrado"},
+	{advertising.ErrPostNotFound, http.StatusNotFound, "not_found", "Publicação não encontrada nesta página"},
+	{advertising.ErrReportExportNotFound, http.StatusNotFound, "not_found", "Exportação não encontrada"},
+	{advertising.ErrReportExportTooLarge, http.StatusUnprocessableEntity, "export_too_large", "O relatório passou de 10 MB; escolha um período menor ou menos quebras"},
+	{advertising.ErrReportNotFound, http.StatusNotFound, "not_found", "Relatório não encontrado"},
+	{advertising.ErrDraftChanged, http.StatusConflict, "draft_changed", "Outra pessoa alterou este rascunho; carregue a versão mais recente"},
+	{advertising.ErrDraftPublishing, http.StatusConflict, "draft_publishing", "Este rascunho está sendo publicado"},
 	{advertising.ErrRuleNotFound, http.StatusNotFound, "not_found", "Regra automática não encontrada"},
 	{advertising.ErrAudienceNotFound, http.StatusNotFound, "not_found", "Público não encontrado"},
 	{advertising.ErrSavedAudienceNotFound, http.StatusNotFound, "not_found", "Público salvo não encontrado"},
@@ -66,45 +73,51 @@ var domainErrors = []errorMapping{
 	{balance.ErrPriceUnavailable, http.StatusServiceUnavailable, "price_unavailable", "O preço do anúncio não está configurado"},
 }
 
-func writeError(w http.ResponseWriter, err error, fallback string) {
+type describedError struct {
+	status   int
+	code     string
+	message  string
+	expected map[string]string
+}
+
+func describeError(err error) (describedError, bool) {
 	var invalid *advertising.ValidationError
 	if errors.As(err, &invalid) {
 		expected := make(map[string]string, len(invalid.Issues))
 		for _, issue := range invalid.Issues {
 			expected[issue.Field] = issue.Code
 		}
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "invalid_draft", "Há campos a corrigir", expected)
-		return
+		return describedError{http.StatusUnprocessableEntity, "invalid_draft", "Há campos a corrigir", expected}, true
 	}
 	for _, m := range domainErrors {
 		if errors.Is(err, m.target) {
-			response.WriteErrorWithCode(w, m.status, m.code, m.message, nil)
-			return
+			return describedError{m.status, m.code, m.message, nil}, true
 		}
 	}
 	switch advertising.ReasonOf(err) {
 	case advertising.ReasonBudgetTooLow:
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "budget_below_minimum", advertising.Explain(err), nil)
-		return
+		return describedError{http.StatusUnprocessableEntity, "budget_below_minimum", advertising.Explain(err), nil}, true
 	case advertising.ReasonNoPaymentMethod:
-		response.WriteErrorWithCode(w, http.StatusConflict, "no_payment_method", advertising.Explain(err), nil)
-		return
+		return describedError{http.StatusConflict, "no_payment_method", advertising.Explain(err), nil}, true
 	case advertising.ReasonAccountReadOnly:
-		response.WriteErrorWithCode(w, http.StatusConflict, "account_read_only", "A Meta recusou: seu perfil só tem acesso de leitura a esta conta de anúncios", nil)
-		return
+		return describedError{http.StatusConflict, "account_read_only", "A Meta recusou: seu perfil só tem acesso de leitura a esta conta de anúncios", nil}, true
 	}
 	switch advertising.Classify(err) {
 	case advertising.FailureReauth:
-		response.WriteErrorWithCode(w, http.StatusConflict, "reconnect_required", "A conta de anúncios precisa ser reconectada", nil)
-		return
+		return describedError{http.StatusConflict, "reconnect_required", "A conta de anúncios precisa ser reconectada", nil}, true
 	case advertising.FailureRetryable:
-		response.WriteErrorWithCode(w, http.StatusServiceUnavailable, "meta_busy", "A Meta está limitando as chamadas; tente de novo em instantes", nil)
-		return
+		return describedError{http.StatusServiceUnavailable, "meta_busy", "A Meta está limitando as chamadas; tente de novo em instantes", nil}, true
 	case advertising.FailurePermission:
-		response.WriteErrorWithCode(w, http.StatusForbidden, "meta_permission", "A Meta recusou: falta permissão nesta conta ou página", nil)
-		return
+		return describedError{http.StatusForbidden, "meta_permission", "A Meta recusou: falta permissão nesta conta ou página", nil}, true
 	case advertising.FailureRejected:
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "meta_rejected", advertising.Explain(err), nil)
+		return describedError{http.StatusUnprocessableEntity, "meta_rejected", advertising.Explain(err), nil}, true
+	}
+	return describedError{}, false
+}
+
+func writeError(w http.ResponseWriter, err error, fallback string) {
+	if described, ok := describeError(err); ok {
+		response.WriteErrorWithCode(w, described.status, described.code, described.message, described.expected)
 		return
 	}
 	log.Printf("[ads] %s: %v", fallback, err)

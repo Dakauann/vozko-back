@@ -2,6 +2,7 @@ package advertisinghttp
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"vozko/domain/advertising"
@@ -10,6 +11,7 @@ import (
 
 func TestReadinessResponseListsBlockersAndHowToFixThem(t *testing.T) {
 	account := presentableAccount("ADVERTISE")
+	account.BusinessID = "777"
 	account.HasFunding = false
 	checklist := advertising.BuildReadiness(account, advertising.ReadinessFacts{Page: advertising.Observed(true), Pixel: advertising.Observed(false)})
 	got := presentReadiness(&adsuc.Readiness{Account: account, Checklist: checklist, Billing: &advertising.RemoteBilling{Balance: 900}})
@@ -21,7 +23,7 @@ func TestReadinessResponseListsBlockersAndHowToFixThem(t *testing.T) {
 	for _, item := range got.Items {
 		actions[item.Key] = item.Action
 	}
-	if a := actions["payment_method"]; a == nil || a.Kind != "portal" || a.URL != advertising.BillingPortalURL {
+	if a := actions["payment_method"]; a == nil || a.Kind != "portal" || a.URL != account.PortalURL(advertising.PortalBilling) || !strings.Contains(a.URL, "business_id=777") {
 		t.Fatalf("payment action %+v", a)
 	}
 	if a := actions["pixel"]; a == nil || a.Kind != "in_app" || a.Key != "create_pixel" {
@@ -30,7 +32,7 @@ func TestReadinessResponseListsBlockersAndHowToFixThem(t *testing.T) {
 	if actions["page"] != nil {
 		t.Fatal("a ready item offered an action")
 	}
-	if got.Billing == nil || got.Billing.Balance != 900 || got.Billing.PortalURL != advertising.BillingPortalURL || got.Billing.PaymentMethod != "" {
+	if got.Billing == nil || got.Billing.Balance != 900 || got.Billing.PortalURL != account.PortalURL(advertising.PortalBilling) || got.Billing.PaymentMethod != "" {
 		t.Fatalf("billing %+v", got.Billing)
 	}
 }

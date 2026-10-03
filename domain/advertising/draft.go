@@ -117,6 +117,9 @@ func (d *AdDraft) Normalize() {
 	if !s.Placements.Automatic && len(s.Placements.Platforms) == 0 {
 		s.Placements = Placements{Automatic: true}
 	}
+	if d.Ads == nil {
+		d.Ads = []AdItem{}
+	}
 	for i := range d.Ads {
 		d.Ads[i].Name = strings.TrimSpace(d.Ads[i].Name)
 		if d.Ads[i].Name == "" {

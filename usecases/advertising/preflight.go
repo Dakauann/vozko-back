@@ -29,6 +29,7 @@ type preflightGateway interface {
 	ListPagePosts(ctx context.Context, token, pageID string) ([]ads.RemotePost, error)
 	ListInstagramMedia(ctx context.Context, token, instagramUserID string) ([]ads.RemotePost, error)
 	ListInstantExperiences(ctx context.Context, token, pageID string) ([]ads.RemoteInstantExperience, error)
+	ListAudiences(ctx context.Context, token, metaAccountID string) ([]ads.Audience, error)
 	minimumGateway
 }
 
@@ -69,6 +70,9 @@ func (p preflighter) run(ctx context.Context, workspaceID string, draft ads.AdDr
 		return nil, err
 	}
 	if err := p.checkPromotion(ctx, token, account, draft); err != nil {
+		return nil, err
+	}
+	if err := p.checkAudiences(ctx, token, account, draft); err != nil {
 		return nil, err
 	}
 	mediaURLs := map[string]string{}
@@ -158,6 +162,27 @@ func (p preflighter) checkIdentity(ctx context.Context, workspaceID string, draf
 	}
 	if len(ads.NumbersLinkedTo(page, numbers)) == 0 {
 		return ads.FieldError("adSet.whatsAppNumber", "not_in_workspace")
+	}
+	return nil
+}
+
+func (p preflighter) checkAudiences(ctx context.Context, token string, account *ads.AdAccount, draft ads.AdDraft) error {
+	t := draft.AdSet.Targeting
+	if !draft.NewAdSet() || len(t.CustomAudiences)+len(t.ExcludedCustomAudiences) == 0 {
+		return nil
+	}
+	audiences, err := p.gateway.ListAudiences(ctx, token, account.MetaAccountID)
+	if err != nil {
+		return p.access.failed(ctx, account, err)
+	}
+	foreign := func(ref ads.TargetRef) bool {
+		return !slices.ContainsFunc(audiences, func(a ads.Audience) bool { return a.MetaID == ref.ID })
+	}
+	if slices.ContainsFunc(t.CustomAudiences, foreign) {
+		return ads.FieldError("adSet.targeting.customAudiences", "not_available")
+	}
+	if slices.ContainsFunc(t.ExcludedCustomAudiences, foreign) {
+		return ads.FieldError("adSet.targeting.excludedCustomAudiences", "not_available")
 	}
 	return nil
 }

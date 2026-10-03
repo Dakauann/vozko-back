@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"vozko/domain/advertising"
 	"vozko/domain/copilot"
@@ -46,17 +47,25 @@ type AdAssets interface {
 }
 
 type AdPublisher interface {
+	Check(ctx context.Context, workspaceID string, draft advertising.AdDraft) (*adsuc.Preflight, error)
 	Preflight(ctx context.Context, workspaceID string, draft advertising.AdDraft) (*adsuc.Preflight, error)
 	Publish(ctx context.Context, in adsuc.PublishInput) (*advertising.PublishJob, error)
 }
 
 type AdsDeps struct {
-	Accounts AdAccountLister
-	Reports  AdReporter
-	Manage   AdManager
-	Assets   AdAssets
-	Publish  AdPublisher
-	Live     AdLive
+	Accounts  AdAccountLister
+	Reports   AdReporter
+	Manage    AdManager
+	Assets    AdAssets
+	Publish   AdPublisher
+	Live      AdLive
+	Drafts    AdDrafts
+	Readiness AdReadiness
+	Targeting AdTargeting
+	Forms     AdForms
+	Editor    AdEditor
+	Bulk      AdBulk
+	Sources   AdCreativeSources
 }
 
 func adsMeta(action workspace.Action, mutating bool) copilot.Meta {
@@ -113,26 +122,94 @@ func budgetText(currency string, b *advertising.Budget) string {
 	return moneyText(currency, micros) + " por dia"
 }
 
+func metaIDs(raw []string) ([]string, error) {
+	ids := make([]string, 0, len(raw))
+	for _, item := range raw {
+		id, err := metaID(item)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 func adsFailure(tool string, err error) copilot.Result {
-	var invalid *advertising.ValidationError
-	switch {
-	case errors.Is(err, errInvalidArgs):
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
-	case errors.As(err, &invalid):
-		return copilot.Result{Status: copilot.StatusError, Message: "o anúncio tem campos a corrigir: " + invalid.Error()}
-	case errors.Is(err, advertising.ErrNoFundingSource):
-		return copilot.Result{Status: copilot.StatusError, Message: "a conta de anúncios não tem meio de pagamento; o usuário precisa configurar no Gerenciador de Anúncios da Meta"}
-	case errors.Is(err, advertising.ErrAccountNeedsReconnect), errors.Is(err, advertising.ErrMissingScopes), advertising.Classify(err) == advertising.FailureReauth:
-		return copilot.Result{Status: copilot.StatusError, Message: "a conta de anúncios precisa ser reconectada na tela Anúncios"}
-	case errors.Is(err, advertising.ErrBudgetChangeTooSoon):
-		return copilot.Result{Status: copilot.StatusError, Message: "a Meta só permite 4 mudanças de orçamento por hora neste item; tente mais tarde"}
-	case errors.Is(err, advertising.ErrObjectNotFound), errors.Is(err, advertising.ErrAccountNotFound):
-		return copilot.Result{Status: copilot.StatusError, Message: "item não encontrado; use os ids exatos de list_ad_accounts e ads_results"}
-	case advertising.Classify(err) == advertising.FailureRejected:
-		return copilot.Result{Status: copilot.StatusError, Message: "a Meta recusou: " + advertising.Explain(err)}
+	if message := adsMessage(err); message != "" {
+		return copilot.Result{Status: copilot.StatusError, Message: message}
 	}
 	log.Printf("[copilot] %s failed: %v", tool, err)
 	return copilot.Result{Status: copilot.StatusError, Message: "falha ao falar com a Meta; tente de novo em instantes"}
+}
+
+func adsValidation(tool string, err error) error {
+	if err == nil || errors.Is(err, errInvalidArgs) {
+		return err
+	}
+	return fmt.Errorf("%w: %s", errInvalidArgs, adsFailure(tool, err).Message)
+}
+
+func adsMessage(err error) string {
+	var invalid *advertising.ValidationError
+	switch {
+	case errors.Is(err, errInvalidArgs):
+		return err.Error()
+	case errors.As(err, &invalid):
+		return "campos a corrigir: " + issuesText(invalid)
+	case errors.Is(err, advertising.ErrNoFundingSource), errors.Is(err, advertising.ErrAccountNotActive), errors.Is(err, advertising.ErrAccountReadOnly):
+		return "a conta de anúncios ainda não pode publicar (" + err.Error() + "); ofereça save_ad_draft para deixar o anúncio pronto e chame ad_account_readiness para mandar o link exato da Meta que resolve"
+	case errors.Is(err, advertising.ErrDraftPublishing):
+		return "esse rascunho já está sendo publicado"
+	case errors.Is(err, advertising.ErrDraftChanged):
+		return "o rascunho mudou depois da leitura; leia de novo com get_ad_draft e use a version nova"
+	case errors.Is(err, advertising.ErrDraftNotFound):
+		return "rascunho não encontrado; use o draft_id exato de list_ad_drafts"
+	case errors.Is(err, advertising.ErrAccountNeedsReconnect), errors.Is(err, advertising.ErrMissingScopes), advertising.Classify(err) == advertising.FailureReauth:
+		return "a conta de anúncios precisa ser reconectada na tela Anúncios"
+	case errors.Is(err, advertising.ErrBudgetChangeTooSoon):
+		return "a Meta só permite 4 mudanças de orçamento por hora neste item; tente mais tarde"
+	case errors.Is(err, advertising.ErrObjectNotFound), errors.Is(err, advertising.ErrAccountNotFound):
+		return "item não encontrado; use os ids exatos de list_ad_accounts e ads_results"
+	case errors.Is(err, advertising.ErrAccountAdminRequired):
+		return "só quem é administrador da conta de anúncios na Meta pode mudar o limite de gasto"
+	case errors.Is(err, advertising.ErrNothingToChange):
+		return "nada muda com esse pedido; o item já está assim"
+	case errors.Is(err, advertising.ErrEditNotForLevel):
+		return "essa mudança não vale para esse nível; textos mudam só em anúncios"
+	case errors.Is(err, advertising.ErrObjectLocked):
+		return "itens arquivados ou excluídos não mudam mais"
+	case errors.Is(err, advertising.ErrNoBudget):
+		return "esse item não tem orçamento próprio; o orçamento fica na campanha ou nos conjuntos"
+	case errors.Is(err, advertising.ErrReportNotFound):
+		return "relatório não encontrado; use o report_id exato de list_ad_reports"
+	case errors.Is(err, advertising.ErrInvalidRange):
+		return "período inválido; use YYYY-MM-DD em since e until, com no máximo 37 meses"
+	case errors.Is(err, advertising.ErrReportExportTooLarge):
+		return "a exportação passou de 10 MB; diminua o período ou os detalhamentos"
+	case errors.Is(err, advertising.ErrAudienceTermsNotAccepted):
+		return "a conta de anúncios ainda não aceitou os termos de públicos personalizados da Meta, e só o usuário pode aceitar, na Meta; chame ad_account_readiness para mostrar o cartão que leva até lá"
+	case errors.Is(err, advertising.ErrAudienceNotFound):
+		return "público não encontrado; use o audience_id exato de list_ad_audiences"
+	case errors.Is(err, advertising.ErrSavedAudienceNotFound):
+		return "público salvo não encontrado; use o saved_audience_id exato de list_ad_audiences"
+	case errors.Is(err, advertising.ErrNoCustomersMatched):
+		return "nenhum contato do filtro tem telefone que a Meta consiga reconhecer"
+	case errors.Is(err, advertising.ErrRuleNotFound):
+		return "regra não encontrada; use o rule_id exato de list_ad_rules"
+	case errors.Is(err, advertising.ErrBusinessPhoneNotFound):
+		return "número oficial não encontrado; use o business_phone_id exato de list_business_phones"
+	case advertising.Classify(err) == advertising.FailureRejected:
+		return "a Meta recusou: " + advertising.Explain(err)
+	}
+	return ""
+}
+
+func issuesText(invalid *advertising.ValidationError) string {
+	parts := make([]string, 0, len(invalid.Issues))
+	for _, issue := range invalid.Issues {
+		parts = append(parts, issue.Field+" ("+issue.Code+")")
+	}
+	return strings.Join(parts, ", ")
 }
 
 type listAdAccountsTool struct{ deps AdsDeps }
@@ -260,8 +337,9 @@ func (t *listAdPagesTool) Meta() copilot.Meta { return adsMeta(workspace.ActionC
 
 func (t *listAdPagesTool) Definition() tools.Definition {
 	return definition("list_ad_pages",
-		"Lista as páginas do Facebook que podem anunciar por uma conta, o Instagram de cada uma e os números de WhatsApp do workspace "+
-			"vinculados a cada página. Um anúncio para WhatsApp só pode usar um desses números.",
+		"Lista as páginas do Facebook que podem anunciar por uma conta, o Instagram de cada uma, os números de WhatsApp do workspace "+
+			"vinculados a cada página e se a página aceitou os termos de cadastros da Meta (lead_terms_accepted, exigido para formulários). "+
+			"Um anúncio para WhatsApp só pode usar um desses números.",
 		adAccountArgs{})
 }
 
@@ -285,7 +363,7 @@ func (t *listAdPagesTool) Execute(ctx context.Context, cc copilot.Context, args 
 			numbers = append(numbers, map[string]string{"whatsapp_number": n.Number, "label": n.Label, "kind": string(n.Kind)})
 		}
 		out = append(out, map[string]interface{}{
-			"page_id": p.Page.PageID, "name": p.Page.Name, "can_advertise": p.Page.CanAdvertise,
+			"page_id": p.Page.PageID, "name": p.Page.Name, "can_advertise": p.Page.CanAdvertise, "lead_terms_accepted": p.Page.LeadTermsAccepted,
 			"instagram_user_id": p.Page.InstagramUserID, "instagram_username": p.Page.InstagramUsername,
 			"whatsapp_numbers": numbers,
 		})
@@ -330,62 +408,87 @@ func (t *searchAdLocationsTool) Execute(ctx context.Context, cc copilot.Context,
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"locations": out}}
 }
 
-type createAdArgs struct {
-	AdAccountID     string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
-	CampaignName    string   `json:"campaign_name" req:"true" desc:"nome da campanha"`
-	Destination     string   `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT" desc:"para onde a pessoa vai ao clicar"`
-	PageID          string   `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages"`
-	WhatsAppNumber  string   `json:"whatsapp_number" desc:"whatsapp_number exato de list_ad_pages (obrigatório para WHATSAPP)"`
-	InstagramUserID string   `json:"instagram_user_id" desc:"instagram_user_id da página (obrigatório para INSTAGRAM_DIRECT)"`
-	DailyBudget     float64  `json:"daily_budget" req:"true" desc:"orçamento diário na moeda da conta; 30 significa 30 reais em uma conta BRL"`
-	Locations       []string `json:"locations" req:"true" desc:"location de search_ad_locations, ex.: country:BR"`
-	AgeMin          int      `json:"age_min" desc:"idade mínima, 13 a 65 (padrão 18)"`
-	AgeMax          int      `json:"age_max" desc:"idade máxima, 13 a 65, 65 significa 65+ (padrão 65)"`
-	Genders         []string `json:"genders" desc:"male e ou female; vazio para todos"`
-	SpecialCategory string   `json:"special_category" enum:"NONE,HOUSING,EMPLOYMENT,FINANCIAL_PRODUCTS_SERVICES" desc:"categoria especial obrigatória para imóveis, vagas de emprego e crédito; NONE nos demais"`
-	PrimaryText     string   `json:"primary_text" req:"true" desc:"texto principal do anúncio"`
-	Headline        string   `json:"headline" desc:"título curto (até 40 caracteres é o ideal)"`
-	Description     string   `json:"description" desc:"descrição curta opcional"`
-	Format          string   `json:"format" req:"true" enum:"IMAGE,VIDEO" desc:"IMAGE para uma imagem, VIDEO para um vídeo"`
-	MediaID         string   `json:"media_id" req:"true" id:"true" desc:"media_id de generate_image ou de uma imagem ou vídeo anexado, do mesmo tipo de format"`
-	Greeting        string   `json:"greeting" desc:"mensagem que já vem escrita para o cliente enviar"`
-	IceBreakers     []string `json:"ice_breakers" desc:"até 3 perguntas prontas para o cliente tocar"`
+type adDraftArgs struct {
+	AdAccountID             string       `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	CampaignName            string       `json:"campaign_name" req:"true" desc:"nome da campanha"`
+	Objective               string       `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES,OUTCOME_APP_PROMOTION" desc:"objetivo da campanha: OUTCOME_AWARENESS (reconhecimento), OUTCOME_TRAFFIC (tráfego para site ou conversa), OUTCOME_ENGAGEMENT (conversas e engajamento com uma publicação), OUTCOME_LEADS (cadastros), OUTCOME_SALES (vendas, inclusive pelo catálogo), OUTCOME_APP_PROMOTION (instalações de app)"`
+	Destination             string       `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE,APP,CATALOG,ON_POST" desc:"para onde a pessoa vai: WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, WEBSITE (site em link), ON_AD (formulário instantâneo, só com OUTCOME_LEADS), NONE (só alcance, com OUTCOME_AWARENESS), APP (loja do app, com OUTCOME_APP_PROMOTION), CATALOG (produtos do catálogo, com OUTCOME_SALES) ou ON_POST (engajamento com uma publicação, com OUTCOME_ENGAGEMENT e format EXISTING_POST)"`
+	Goal                    string       `json:"goal" desc:"meta de desempenho; vazio usa a recomendada para o objetivo e o destino"`
+	PageID                  string       `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages"`
+	WhatsAppNumber          string       `json:"whatsapp_number" desc:"whatsapp_number exato de list_ad_pages (obrigatório para WHATSAPP)"`
+	InstagramUserID         string       `json:"instagram_user_id" desc:"instagram_user_id da página (obrigatório para INSTAGRAM_DIRECT e para publicações do Instagram)"`
+	AppID                   string       `json:"app_id" desc:"app_id exato de list_ad_apps (obrigatório para APP)"`
+	AppStoreURL             string       `json:"app_store_url" desc:"um dos store_urls do app em list_ad_apps (obrigatório para APP)"`
+	CatalogID               string       `json:"catalog_id" desc:"catalog_id exato de list_ad_catalogs (obrigatório para CATALOG)"`
+	ProductSetID            string       `json:"product_set_id" desc:"product_set_id exato do mesmo catálogo em list_ad_catalogs (obrigatório para CATALOG)"`
+	Link                    string       `json:"link" desc:"endereço https do site (obrigatório para WEBSITE e CATALOG), ex.: https://vozkoia.com"`
+	DisplayLink             string       `json:"display_link" desc:"link curto mostrado no anúncio, opcional, ex.: vozkoia.com"`
+	CallToAction            string       `json:"call_to_action" desc:"botão para WEBSITE, ON_AD, APP ou CATALOG, ex.: LEARN_MORE, SIGN_UP, CONTACT_US, SHOP_NOW, BOOK_NOW, INSTALL_MOBILE_APP; vazio usa o padrão"`
+	LeadFormID              string       `json:"lead_form_id" desc:"lead_form_id de list_lead_forms (obrigatório para ON_AD)"`
+	PixelID                 string       `json:"pixel_id" desc:"pixel da conta, só quando a meta for conversões no site"`
+	PixelEvent              string       `json:"pixel_event" desc:"evento do pixel, ex.: LEAD, PURCHASE, COMPLETE_REGISTRATION"`
+	Budget                  float64      `json:"budget" desc:"valor do orçamento na moeda da conta, diário ou total conforme budget_kind; 30 significa 30 reais em uma conta BRL"`
+	DailyBudget             float64      `json:"daily_budget" desc:"o mesmo que budget com budget_kind daily; use um dos dois"`
+	BudgetKind              string       `json:"budget_kind" enum:"daily,lifetime" desc:"daily (padrão) gasta até o valor por dia; lifetime gasta o valor no total e exige end_date"`
+	BudgetLevel             string       `json:"budget_level" enum:"adset,campaign" desc:"adset (padrão) põe o orçamento no conjunto; campaign usa o orçamento Advantage da campanha, que a Meta distribui sozinha"`
+	BidStrategy             string       `json:"bid_strategy" enum:"LOWEST_COST_WITHOUT_CAP,LOWEST_COST_WITH_BID_CAP,COST_CAP,LOWEST_COST_WITH_MIN_ROAS" desc:"estratégia de lance; vazio usa o menor custo (recomendado para iniciantes)"`
+	BidAmount               float64      `json:"bid_amount" desc:"valor do lance ou do custo máximo na moeda da conta, para LOWEST_COST_WITH_BID_CAP e COST_CAP"`
+	ROAS                    float64      `json:"roas" desc:"retorno mínimo sobre o gasto para LOWEST_COST_WITH_MIN_ROAS, ex.: 2 significa 2 vezes o gasto (só com a meta VALUE)"`
+	StartDate               string       `json:"start_date" desc:"primeiro dia de veiculação YYYY-MM-DD no fuso da conta; vazio começa ao publicar"`
+	EndDate                 string       `json:"end_date" desc:"último dia de veiculação YYYY-MM-DD no fuso da conta; vazio roda até ser desligado"`
+	Locations               []string     `json:"locations" req:"true" desc:"location de search_ad_locations, ex.: country:BR"`
+	AgeMin                  int          `json:"age_min" desc:"idade mínima, 13 a 65 (padrão 18)"`
+	AgeMax                  int          `json:"age_max" desc:"idade máxima, 13 a 65, 65 significa 65+ (padrão 65)"`
+	Genders                 []string     `json:"genders" desc:"male e ou female; vazio para todos"`
+	Interests               []string     `json:"interests" desc:"interest de search_ad_interests; vazio deixa a Meta encontrar o público"`
+	CustomAudiences         []string     `json:"custom_audiences" desc:"ids exatos de públicos personalizados ou semelhantes da conta para incluir"`
+	ExcludedCustomAudiences []string     `json:"excluded_custom_audiences" desc:"ids exatos de públicos personalizados da conta para excluir"`
+	Placements              []string     `json:"placements" desc:"vazio ou automatic deixa a Meta escolher (recomendado); ou uma lista entre facebook, instagram, messenger e audience_network"`
+	SpecialCategory         string       `json:"special_category" enum:"NONE,HOUSING,EMPLOYMENT,FINANCIAL_PRODUCTS_SERVICES" desc:"categoria especial obrigatória para imóveis, vagas de emprego e crédito; NONE nos demais"`
+	Format                  string       `json:"format" req:"true" enum:"IMAGE,VIDEO,CAROUSEL,FLEXIBLE,EXISTING_POST,CATALOG" desc:"IMAGE (uma imagem), VIDEO (um vídeo), CAROUSEL (2 a 10 cartões em cards), FLEXIBLE (várias mídias e variações de texto que a Meta combina), EXISTING_POST (uma publicação da página, de list_page_posts) ou CATALOG (produtos do catálogo, com CATALOG)"`
+	PrimaryText             string       `json:"primary_text" desc:"texto principal do anúncio (obrigatório, exceto em FLEXIBLE e EXISTING_POST)"`
+	Headline                string       `json:"headline" desc:"título curto (até 40 caracteres é o ideal)"`
+	Description             string       `json:"description" desc:"descrição curta opcional"`
+	MediaID                 string       `json:"media_id" id:"true" desc:"media_id de generate_image ou de uma imagem ou vídeo anexado, do mesmo tipo de format (IMAGE e VIDEO)"`
+	Cards                   []adCardArgs `json:"cards" desc:"cartões do CAROUSEL, de 2 a 10, na ordem"`
+	MediaIDs                []string     `json:"media_ids" id:"true" desc:"imagens do FLEXIBLE: media_id de generate_image ou de imagens anexadas"`
+	VideoIDs                []string     `json:"video_ids" id:"true" desc:"vídeos do FLEXIBLE: media_id de vídeos anexados"`
+	Texts                   []string     `json:"texts" desc:"FLEXIBLE: de 1 a 5 variações do texto principal"`
+	Headlines               []string     `json:"headlines" desc:"FLEXIBLE: até 5 variações do título"`
+	Descriptions            []string     `json:"descriptions" desc:"FLEXIBLE: até 5 variações da descrição"`
+	PostID                  string       `json:"post_id" desc:"post_id exato de list_page_posts (EXISTING_POST)"`
+	PostPlatform            string       `json:"post_platform" enum:"facebook,instagram" desc:"de onde vem a publicação de EXISTING_POST: facebook (padrão) ou instagram"`
+	Greeting                string       `json:"greeting" desc:"mensagem que já vem escrita para o cliente enviar (WhatsApp, Messenger, Instagram)"`
+	IceBreakers             []string     `json:"ice_breakers" desc:"até 3 perguntas prontas para o cliente tocar (WhatsApp, Messenger, Instagram)"`
+	KeepPaused              bool         `json:"keep_paused" desc:"true publica desligado, para o usuário ligar depois"`
 }
 
-func (a createAdArgs) draft(account *advertising.AdAccount) (advertising.AdDraft, error) {
-	format := advertising.CreativeFormat(a.Format)
-	kind, single := format.SingleMediaKind()
-	if !single {
-		return advertising.AdDraft{}, fmt.Errorf("%w: format deve ser IMAGE ou VIDEO", errInvalidArgs)
+func (a adDraftArgs) route() (advertising.Objective, advertising.Destination, advertising.OptimizationGoal, error) {
+	objective, destination := advertising.Objective(a.Objective), advertising.Destination(a.Destination)
+	goal := advertising.OptimizationGoal(strings.TrimSpace(a.Goal))
+	if goal == "" {
+		recommended, ok := objective.DefaultGoal(destination)
+		if !ok {
+			return "", "", "", fmt.Errorf("%w: o objetivo %s não leva para %s", errInvalidArgs, a.Objective, a.Destination)
+		}
+		goal = recommended
 	}
-	budget, err := advertising.AmountToMinor(account.Currency, a.DailyBudget)
-	if err != nil {
-		return advertising.AdDraft{}, fmt.Errorf("%w: daily_budget deve ser maior que zero", errInvalidArgs)
+	if !objective.Allows(destination, goal) {
+		return "", "", "", fmt.Errorf("%w: o objetivo %s com destino %s não aceita a meta %s", errInvalidArgs, a.Objective, a.Destination, goal)
 	}
-	locations, err := parseLocations(a.Locations)
-	if err != nil {
-		return advertising.AdDraft{}, err
+	return objective, destination, goal, nil
+}
+
+func parseTargetRefs(raw []string) ([]advertising.TargetRef, error) {
+	out := make([]advertising.TargetRef, 0, len(raw))
+	for _, item := range raw {
+		id, name, ok := strings.Cut(strings.TrimSpace(item), ":")
+		if !ok || id == "" {
+			return nil, fmt.Errorf("%w: interest %q inválido; use o campo interest de search_ad_interests", errInvalidArgs, item)
+		}
+		out = append(out, advertising.TargetRef{ID: id, Name: name})
 	}
-	d := advertising.AdDraft{
-		AdAccountID: account.ID,
-		Identity:    advertising.Identity{PageID: strings.TrimSpace(a.PageID), InstagramUserID: a.InstagramUserID},
-		Campaign: advertising.CampaignDraft{
-			Name: a.CampaignName, Objective: advertising.ObjectiveEngagement,
-			SpecialCategory: advertising.SpecialCategory(a.SpecialCategory),
-		},
-		AdSet: advertising.AdSetDraft{
-			Destination: advertising.Destination(a.Destination), Goal: advertising.GoalConversations,
-			WhatsAppNumber: a.WhatsAppNumber, Budget: &advertising.Budget{Kind: advertising.BudgetDaily, Amount: budget},
-			Targeting: advertising.Targeting{Locations: locations, AgeMin: a.AgeMin, AgeMax: a.AgeMax, Genders: genders(a.Genders)},
-		},
-		Ads: []advertising.AdItem{{Name: a.CampaignName, Creative: advertising.CreativeDraft{
-			Format: format, PrimaryText: a.PrimaryText, Headline: a.Headline, Description: a.Description,
-			Media:    advertising.MediaRef{Kind: kind, MediaID: a.MediaID},
-			Greeting: a.Greeting, IceBreakers: a.IceBreakers,
-		}}},
-	}
-	d.Normalize()
-	return d, nil
+	return out, nil
 }
 
 func parseLocations(raw []string) ([]advertising.GeoLocation, error) {
@@ -422,15 +525,18 @@ func NewCreateAdTool(deps AdsDeps) copilot.Tool { return &createAdTool{deps: dep
 func (t *createAdTool) Meta() copilot.Meta { return adsMeta(workspace.ActionCreate, true) }
 
 func (t *createAdTool) Definition() tools.Definition {
-	return definition("create_ad",
-		"Cria e publica um anúncio na Meta que leva a pessoa para o WhatsApp, Messenger ou Instagram Direct: campanha, conjunto e anúncio. "+
-			"Tudo é criado desligado e só é ligado no fim; depois a Meta revisa o anúncio antes de veicular. "+
+	return adDraftDefinition("create_ad",
+		"Cria e publica um anúncio na Meta (campanha, conjunto e anúncio) com qualquer destino: WhatsApp, Messenger, Instagram Direct, um site, "+
+			"um formulário instantâneo, só alcance, a loja de um app (list_ad_apps), os produtos de um catálogo (list_ad_catalogs) ou engajamento com "+
+			"uma publicação. Formatos: imagem, vídeo, carrossel, flexível, publicação existente (list_page_posts) e catálogo. Orçamento diário ou total, "+
+			"no conjunto ou na campanha, posicionamentos automáticos ou escolhidos, lance e públicos personalizados são opcionais. Tudo é criado desligado e só é ligado no fim, a menos que keep_paused seja true; depois a Meta "+
+			"revisa o anúncio antes de veicular. Exige a conta pronta para gastar: se não estiver, use save_ad_draft. "+
 			"Cobra a taxa por anúncio publicado do saldo; o gasto com a Meta sai da conta de anúncios. Só depois da aprovação do usuário.",
-		createAdArgs{})
+		adDraftArgs{})
 }
 
 func (t *createAdTool) preflight(ctx context.Context, cc copilot.Context, args map[string]interface{}) (*adsuc.Preflight, error) {
-	a, err := validateArgs[createAdArgs](nil, cc, args)
+	a, err := validateArgs[adDraftArgs](nil, cc, args)
 	if err != nil {
 		return nil, err
 	}
@@ -446,13 +552,8 @@ func (t *createAdTool) preflight(ctx context.Context, cc copilot.Context, args m
 }
 
 func (t *createAdTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
-	if _, err := t.preflight(ctx, cc, args); err != nil {
-		if errors.Is(err, errInvalidArgs) {
-			return err
-		}
-		return fmt.Errorf("%w: %s", errInvalidArgs, adsFailure("create_ad", err).Message)
-	}
-	return nil
+	_, err := t.preflight(ctx, cc, args)
+	return adsValidation("create_ad", err)
 }
 
 func (t *createAdTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
@@ -460,20 +561,128 @@ func (t *createAdTool) Describe(ctx context.Context, cc copilot.Context, args ma
 	if err != nil {
 		return []copilot.Field{{Key: "ad", Value: "anúncio com campos a corrigir"}}
 	}
+	return draftFields(pre)
+}
+
+var objectiveNames = map[advertising.Objective]string{
+	advertising.ObjectiveAwareness:    "Reconhecimento",
+	advertising.ObjectiveTraffic:      "Tráfego",
+	advertising.ObjectiveEngagement:   "Engajamento",
+	advertising.ObjectiveLeads:        "Leads",
+	advertising.ObjectiveSales:        "Vendas",
+	advertising.ObjectiveAppPromotion: "Promoção do app",
+}
+
+func destinationText(pre *adsuc.Preflight) string {
 	d := pre.Draft
-	destination := map[advertising.Destination]string{
-		advertising.DestinationWhatsApp:        "WhatsApp " + d.AdSet.WhatsAppNumber,
-		advertising.DestinationMessenger:       "Messenger da página",
-		advertising.DestinationInstagramDirect: "Instagram Direct @" + pre.Page.InstagramUsername,
-	}[d.AdSet.Destination]
-	return []copilot.Field{
+	switch d.AdSet.Destination {
+	case advertising.DestinationWhatsApp:
+		return "WhatsApp " + d.AdSet.WhatsAppNumber
+	case advertising.DestinationMessenger:
+		return "Messenger da página"
+	case advertising.DestinationInstagramDirect:
+		return "Instagram Direct @" + pre.Page.InstagramUsername
+	case advertising.DestinationWebsite:
+		return "Site " + d.Ads[0].Creative.Link
+	case advertising.DestinationInstantForm:
+		return "Formulário instantâneo"
+	case advertising.DestinationApp:
+		return "App na loja " + d.AdSet.AppStoreURL
+	case advertising.DestinationCatalog:
+		return "Produtos do catálogo " + d.AdSet.CatalogID + ", conjunto " + d.AdSet.ProductSetID
+	case advertising.DestinationOnPost:
+		return "Engajamento com a publicação"
+	}
+	return "Mostrar para o maior número de pessoas"
+}
+
+var formatNames = map[advertising.CreativeFormat]string{
+	advertising.FormatImage:        "Imagem",
+	advertising.FormatVideo:        "Vídeo",
+	advertising.FormatCarousel:     "Carrossel",
+	advertising.FormatFlexible:     "Flexível",
+	advertising.FormatExistingPost: "Publicação existente",
+	advertising.FormatCatalog:      "Catálogo de produtos",
+	advertising.FormatCollection:   "Coleção",
+}
+
+func formatText(d advertising.AdDraft) string {
+	if len(d.Ads) != 1 {
+		return strconv.Itoa(len(d.Ads)) + " anúncios"
+	}
+	c := d.Ads[0].Creative
+	name := formatNames[c.Format]
+	switch c.Format {
+	case advertising.FormatCarousel:
+		return name + " com " + strconv.Itoa(len(c.Cards)) + " cartões"
+	case advertising.FormatFlexible:
+		return name + " com " + strconv.Itoa(len(c.Medias)) + " mídias e " + strconv.Itoa(len(c.Texts)) + " textos"
+	case advertising.FormatExistingPost:
+		if c.InstagramMediaID != "" {
+			return name + " do Instagram"
+		}
+		return name + " do Facebook"
+	}
+	return name
+}
+
+func draftBudget(d advertising.AdDraft) (*advertising.Budget, advertising.Bid, string) {
+	if d.CampaignBudget() {
+		return d.Campaign.Budget, d.Campaign.Bid, "na campanha (orçamento Advantage, a Meta distribui entre os conjuntos)"
+	}
+	return d.AdSet.Budget, d.AdSet.Bid, "no conjunto de anúncios"
+}
+
+func scheduleFields(s advertising.AdSetDraft, loc *time.Location) []copilot.Field {
+	var fields []copilot.Field
+	if s.StartAt != nil {
+		fields = append(fields, copilot.Field{Key: "starts", Value: "a partir de " + s.StartAt.In(loc).Format("02/01/2006")})
+	}
+	if s.EndAt != nil {
+		fields = append(fields, copilot.Field{Key: "ends", Value: "até " + lastDay(*s.EndAt, loc).Format("02/01/2006")})
+	}
+	return fields
+}
+
+func audienceText(t advertising.Targeting) string {
+	parts := []string{}
+	if n := len(t.CustomAudiences); n > 0 {
+		parts = append(parts, "públicos incluídos: "+strconv.Itoa(n))
+	}
+	if n := len(t.ExcludedCustomAudiences); n > 0 {
+		parts = append(parts, "públicos excluídos: "+strconv.Itoa(n))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func draftFields(pre *adsuc.Preflight) []copilot.Field {
+	d := pre.Draft
+	currency := pre.Account.Currency
+	budget, bid, level := draftBudget(d)
+	fields := []copilot.Field{
 		{Key: "account", Value: pre.Account.Name},
 		{Key: "campaign", Value: d.Campaign.Name},
+		{Key: "objective", Value: objectiveNames[d.Campaign.Objective]},
 		{Key: "page", Value: pre.Page.Name},
-		{Key: "destination", Value: destination},
-		{Key: "budget", Value: budgetText(pre.Account.Currency, d.AdSet.Budget)},
-		{Key: "fee", Value: moneyText(pre.Fee.Currency, pre.Fee.PriceMicros) + " por anúncio publicado, cobrado do saldo"},
+		{Key: "destination", Value: destinationText(pre)},
+		{Key: "format", Value: formatText(d)},
+		{Key: "budget", Value: budgetText(currency, budget)},
+		{Key: "budget_level", Value: level},
 	}
+	if bid.Normalized().Strategy != advertising.BidLowestCost {
+		fields = append(fields, copilot.Field{Key: "bid", Value: bidText(currency, bid)})
+	}
+	fields = append(fields, copilot.Field{Key: "placements", Value: placementsText(&d.AdSet.Placements)})
+	if audiences := audienceText(d.AdSet.Targeting); audiences != "" {
+		fields = append(fields, copilot.Field{Key: "audiences", Value: audiences})
+	}
+	if loc, err := pre.Account.Location(); err == nil {
+		fields = append(fields, scheduleFields(d.AdSet, loc)...)
+	}
+	if d.KeepPaused {
+		fields = append(fields, copilot.Field{Key: "status", Value: "publicado desligado"})
+	}
+	return fields
 }
 
 type PreviewMedia struct {
@@ -529,7 +738,7 @@ func creativePreview(pre *adsuc.Preflight, c advertising.CreativeDraft) AdCreati
 	for _, card := range c.Cards {
 		out.Cards = append(out.Cards, PreviewCard{URL: pre.MediaURLs[card.Media.MediaID], Kind: card.Media.Kind, Headline: card.Headline, Description: card.Description})
 	}
-	if budget := d.AdSet.Budget; budget != nil && budget.Kind == advertising.BudgetDaily {
+	if budget, _, _ := draftBudget(d); budget != nil && budget.Kind == advertising.BudgetDaily {
 		out.DailyBudget = budget.Amount
 	}
 	return out
@@ -554,15 +763,7 @@ func (t *createAdTool) Execute(ctx context.Context, cc copilot.Context, args map
 	if err != nil {
 		return adsFailure("create_ad", err)
 	}
-	data := map[string]interface{}{"publish_status": string(job.Status), "ad_meta_id": job.Progress.Ads[0], "campaign_meta_id": job.CampaignID()}
-	if job.ErrorMessage != "" {
-		data["message"] = job.ErrorMessage
-	}
-	status := copilot.StatusOK
-	if job.Status == advertising.JobFailed {
-		status = copilot.StatusError
-	}
-	return copilot.Result{Status: status, Data: data}
+	return publishResult(job)
 }
 
 type adStatusArgs struct {
@@ -604,13 +805,8 @@ func (t *adStatusTool) check(ctx context.Context, cc copilot.Context, args map[s
 }
 
 func (t *adStatusTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
-	if _, err := t.check(ctx, cc, args); err != nil {
-		if errors.Is(err, errInvalidArgs) {
-			return err
-		}
-		return fmt.Errorf("%w: %s", errInvalidArgs, adsFailure(t.Definition().Name, err).Message)
-	}
-	return nil
+	_, err := t.check(ctx, cc, args)
+	return adsValidation(t.Definition().Name, err)
 }
 
 func (t *adStatusTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
@@ -654,7 +850,8 @@ func (t *updateAdBudgetTool) Meta() copilot.Meta { return adsMeta(workspace.Acti
 
 func (t *updateAdBudgetTool) Definition() tools.Definition {
 	return definition("update_ad_budget",
-		"Muda o valor do orçamento diário ou total de uma campanha ou conjunto na Meta, mantendo o tipo (até 4 mudanças por hora por item). Só depois da aprovação do usuário.",
+		"Muda o valor do orçamento diário ou total de uma campanha ou conjunto na Meta, mantendo o tipo (até 4 mudanças por hora por item). "+
+			"Um orçamento diário abaixo do mínimo da Meta é recusado antes da aprovação. Só depois da aprovação do usuário.",
 		adBudgetArgs{})
 }
 
@@ -673,25 +870,28 @@ func (t *updateAdBudgetTool) plan(ctx context.Context, cc copilot.Context, args 
 	if err != nil {
 		return nil, err
 	}
-	object, account, err := t.deps.Manage.CheckBudget(ctx, cc.WorkspaceID, id, 1)
+	detail, err := t.deps.Editor.Detail(ctx, cc.WorkspaceID, id)
 	if err != nil {
 		return nil, err
 	}
-	amount, err := advertising.AmountToMinor(account.Currency, a.Amount)
+	owner, err := t.deps.account(ctx, cc, detail.Object.AdAccountID)
+	if err != nil {
+		return nil, err
+	}
+	amount, err := advertising.AmountToMinor(owner.Currency, a.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("%w: amount deve ser maior que zero", errInvalidArgs)
+	}
+	object, account, err := t.deps.Manage.CheckBudget(ctx, cc.WorkspaceID, id, amount)
+	if err != nil {
+		return nil, err
 	}
 	return &budgetPlan{object: object, account: account, amount: amount}, nil
 }
 
 func (t *updateAdBudgetTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
-	if _, err := t.plan(ctx, cc, args); err != nil {
-		if errors.Is(err, errInvalidArgs) {
-			return err
-		}
-		return fmt.Errorf("%w: %s", errInvalidArgs, adsFailure("update_ad_budget", err).Message)
-	}
-	return nil
+	_, err := t.plan(ctx, cc, args)
+	return adsValidation("update_ad_budget", err)
 }
 
 func (t *updateAdBudgetTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
@@ -724,5 +924,8 @@ func AdsTools(deps AdsDeps) []copilot.Tool {
 		NewListAdAccountsTool(deps), NewAdsResultsTool(deps), NewListAdPagesTool(deps), NewSearchAdLocationsTool(deps),
 		NewCreateAdTool(deps), NewTurnOnAdTool(deps), NewTurnOffAdTool(deps), NewUpdateAdBudgetTool(deps),
 		NewDuplicateAdTool(deps), NewArchiveAdTool(deps), NewDeleteAdTool(deps), NewAdsBreakdownTool(deps),
+		NewAdAccountReadinessTool(deps), NewSearchAdInterestsTool(deps), NewEstimateAdAudienceTool(deps), NewListLeadFormsTool(deps), NewCreateLeadFormTool(deps),
+		NewSaveAdDraftTool(deps), NewListAdDraftsTool(deps), NewPublishAdDraftTool(deps), NewEditAdTextTool(deps),
+		NewListPagePostsTool(deps), NewListAdAppsTool(deps), NewListAdCatalogsTool(deps), NewGetAdDraftTool(deps), NewUpdateAdDraftTool(deps),
 	}
 }

@@ -238,9 +238,34 @@ func (h *Handler) Posts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err, "Failed to list posts")
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, presentAll(posts, func(p advertising.RemotePost) PostResponse {
-		return PostResponse{ID: p.ID, Platform: p.Platform, Message: p.Message, PictureURL: p.PictureURL, Permalink: p.Permalink, CreatedTime: p.CreatedTime}
-	}))
+	response.WriteSuccess(w, http.StatusOK, presentAll(posts, presentPost))
+}
+
+// @Summary		Publicação da página
+// @Description	Uma publicação do Facebook ou do Instagram da página, para a prévia de um rascunho que usa publicação existente. Só lê; recusa publicações de outra página.
+// @Tags			Anúncios
+// @Produce		json
+// @Param			id			path		string	true	"ID da conta de anúncios"
+// @Param			pageId		path		string	true	"ID da página"
+// @Param			postId		path		string	true	"ID da publicação ou da mídia do Instagram"
+// @Param			platform	query		string	true	"facebook ou instagram"
+// @Success		200			{object}	PostResponse
+// @Failure		404			{object}	response.ErrorResponse
+// @Failure		422			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/ads/accounts/{id}/pages/{pageId}/posts/{postId} [get]
+func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	post, err := h.d.Assets.Post(r.Context(), workspaceOf(r), vars["id"], vars["pageId"], r.URL.Query().Get("platform"), vars["postId"])
+	if err != nil {
+		writeError(w, err, "Failed to load the post")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, presentPost(*post))
+}
+
+func presentPost(p advertising.RemotePost) PostResponse {
+	return PostResponse{ID: p.ID, Platform: p.Platform, Message: p.Message, PictureURL: p.PictureURL, Permalink: p.Permalink, CreatedTime: p.CreatedTime}
 }
 
 // @Summary		Experiências instantâneas da página

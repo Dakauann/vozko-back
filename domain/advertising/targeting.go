@@ -103,6 +103,9 @@ func (t *Targeting) Normalize() {
 	if t.AgeMax == 0 {
 		t.AgeMax = maxAge
 	}
+	if t.Locations == nil {
+		t.Locations = []GeoLocation{}
+	}
 }
 
 func (t Targeting) validate(v issues, restricted bool) {

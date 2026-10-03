@@ -310,7 +310,7 @@ func (g *Gateway) ListPagePosts(ctx context.Context, token, pageID string) ([]ad
 		return nil, err
 	}
 	q := url.Values{}
-	q.Set("fields", "id,message,created_time,full_picture,permalink_url,is_eligible_for_promotion")
+	q.Set("fields", pagePostFields+",is_eligible_for_promotion")
 	q.Set("limit", recentPostsLimit)
 	var page graphPage[graphPost]
 	if err := g.do(ctx, meta.Request{Method: http.MethodGet, Path: path + "/published_posts", Token: pageToken, Query: q}, &page); err != nil {
@@ -328,6 +328,55 @@ func (g *Gateway) ListPagePosts(ctx context.Context, token, pageID string) ([]ad
 		posts = append(posts, post)
 	}
 	return posts, nil
+}
+
+const (
+	pagePostFields       = "id,message,created_time,full_picture,permalink_url"
+	instagramMediaFields = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp"
+)
+
+func (g *Gateway) GetPagePost(ctx context.Context, token, pageID, postID string) (advertising.RemotePost, error) {
+	_, pageToken, err := g.pageToken(ctx, token, pageID)
+	if err != nil {
+		return advertising.RemotePost{}, err
+	}
+	path, err := objectPath(postID)
+	if err != nil {
+		return advertising.RemotePost{}, err
+	}
+	q := url.Values{}
+	q.Set("fields", pagePostFields)
+	var row graphPost
+	if err := g.do(ctx, meta.Request{Method: http.MethodGet, Path: path, Token: pageToken, Query: q}, &row); err != nil {
+		return advertising.RemotePost{}, err
+	}
+	return remotePost(row.ID, platformFacebook, row.Message, row.FullPicture, row.Permalink, row.CreatedTime)
+}
+
+func (g *Gateway) GetInstagramMedia(ctx context.Context, token, mediaID string) (advertising.RemotePost, error) {
+	path, err := objectPath(mediaID)
+	if err != nil {
+		return advertising.RemotePost{}, err
+	}
+	q := url.Values{}
+	q.Set("fields", instagramMediaFields+",owner{id}")
+	var row struct {
+		graphMedia
+		Owner *struct {
+			ID meta.GraphID `json:"id"`
+		} `json:"owner"`
+	}
+	if err := g.do(ctx, meta.Request{Method: http.MethodGet, Path: path, Token: token, Query: q}, &row); err != nil {
+		return advertising.RemotePost{}, err
+	}
+	post, err := row.graphMedia.post()
+	if err != nil {
+		return advertising.RemotePost{}, err
+	}
+	if row.Owner != nil {
+		post.OwnerID = row.Owner.ID.String()
+	}
+	return post, nil
 }
 
 func remotePost(id meta.GraphID, platform, message, picture, permalink, created string) (advertising.RemotePost, error) {
@@ -354,13 +403,21 @@ type graphMedia struct {
 	} `json:"boost_eligibility_info"`
 }
 
+func (m graphMedia) post() (advertising.RemotePost, error) {
+	picture := m.MediaURL
+	if m.ThumbnailURL != "" {
+		picture = m.ThumbnailURL
+	}
+	return remotePost(m.ID, platformIG, m.Caption, picture, m.Permalink, m.Timestamp)
+}
+
 func (g *Gateway) ListInstagramMedia(ctx context.Context, token, instagramUserID string) ([]advertising.RemotePost, error) {
 	path, err := objectPath(instagramUserID)
 	if err != nil {
 		return nil, err
 	}
 	q := url.Values{}
-	q.Set("fields", "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,boost_eligibility_info")
+	q.Set("fields", instagramMediaFields+",boost_eligibility_info")
 	q.Set("limit", recentPostsLimit)
 	var page graphPage[graphMedia]
 	if err := g.do(ctx, meta.Request{Method: http.MethodGet, Path: path + "/media", Token: token, Query: q}, &page); err != nil {
@@ -371,11 +428,7 @@ func (g *Gateway) ListInstagramMedia(ctx context.Context, token, instagramUserID
 		if row.Boost == nil || row.Boost.Eligible == nil || !*row.Boost.Eligible {
 			continue
 		}
-		picture := row.MediaURL
-		if row.ThumbnailURL != "" {
-			picture = row.ThumbnailURL
-		}
-		post, err := remotePost(row.ID, platformIG, row.Caption, picture, row.Permalink, row.Timestamp)
+		post, err := row.post()
 		if err != nil {
 			return nil, err
 		}

@@ -87,6 +87,12 @@ func TestBudgetEditBelowTheMinimumNeverReachesMeta(t *testing.T) {
 	if _, err := w.manager().CheckEdit(context.Background(), "ws-1", "s-1", ads.ObjectEdit{Budget: &ads.Budget{Kind: ads.BudgetDaily, Amount: 500}}); err == nil {
 		t.Fatal("check passed a budget below the minimum")
 	}
+	if _, _, err := w.manager().CheckBudget(context.Background(), "ws-1", "s-1", 500); err == nil {
+		t.Fatal("the budget check passed an amount below the minimum")
+	}
+	if _, _, err := w.manager().CheckBudget(context.Background(), "ws-1", "s-1", 519); err != nil {
+		t.Fatalf("budget check at the minimum refused: %v", err)
+	}
 	if _, err := w.manager().SetBudget(context.Background(), "ws-1", "s-1", 519); err != nil {
 		t.Fatalf("budget at the minimum refused: %v", err)
 	}

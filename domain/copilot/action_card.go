@@ -14,6 +14,8 @@ const (
 	ActionManageSubscription        ActionKind = "manage_subscription"
 	ActionOpenScreen                ActionKind = "open_screen"
 	ActionPlaceCall                 ActionKind = "place_call"
+	ActionAdReadiness               ActionKind = "ad_readiness"
+	ActionConnectAdAccount          ActionKind = "connect_ad_account"
 )
 
 var actionCapabilities = map[ActionKind]readiness.Capability{
@@ -52,6 +54,15 @@ type ActionCard struct {
 	SubscriptionActive bool              `json:"subscriptionActive"`
 	Destination        *Destination      `json:"destination,omitempty"`
 	Call               *CallIntent       `json:"call,omitempty"`
+	AdAccountID        string            `json:"adAccountId,omitempty"`
+}
+
+func NewConnectAdAccountCard() *ActionCard {
+	return &ActionCard{Kind: ActionConnectAdAccount}
+}
+
+func NewAdReadinessCard(adAccountID string) *ActionCard {
+	return &ActionCard{Kind: ActionAdReadiness, AdAccountID: adAccountID}
 }
 
 func NewActionCard(kind ActionKind, snap *readiness.Snapshot) (*ActionCard, bool) {

@@ -123,6 +123,15 @@ func (o Objective) Allows(d Destination, g OptimizationGoal) bool {
 	return false
 }
 
+func (o Objective) DefaultGoal(d Destination) (OptimizationGoal, bool) {
+	for _, r := range objectiveRoutes[o] {
+		if r.Destination == d && len(r.Goals) > 0 {
+			return r.Goals[0], true
+		}
+	}
+	return "", false
+}
+
 func (d Destination) Messaging() bool { return slices.Contains(messagingDestinations, d) }
 
 func (d Destination) MetaDestinationType() string {

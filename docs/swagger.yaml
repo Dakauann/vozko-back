@@ -225,6 +225,43 @@ definitions:
     x-enum-varnames:
     - BudgetDaily
     - BudgetLifetime
+  advertising.BulkChange:
+    properties:
+      field:
+        $ref: '#/definitions/advertising.BulkField'
+      find:
+        type: string
+      matchCase:
+        type: boolean
+      mode:
+        $ref: '#/definitions/advertising.BulkMode'
+      replace:
+        type: string
+      value:
+        type: string
+    type: object
+  advertising.BulkField:
+    enum:
+    - name
+    - primaryText
+    - headline
+    - description
+    - link
+    type: string
+    x-enum-varnames:
+    - BulkName
+    - BulkPrimaryText
+    - BulkHeadline
+    - BulkDescription
+    - BulkLink
+  advertising.BulkMode:
+    enum:
+    - set
+    - replace
+    type: string
+    x-enum-varnames:
+    - BulkSet
+    - BulkReplace
   advertising.CallToAction:
     enum:
     - LEARN_MORE
@@ -459,26 +496,49 @@ definitions:
     type: object
   advertising.Destination:
     enum:
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
+  advertising.ExportLabels:
+    properties:
+      breakdowns:
+        additionalProperties:
+          type: string
+        type: object
+      day:
+        type: string
+      metrics:
+        additionalProperties:
+          type: string
+        type: object
+      object:
+        type: string
+      total:
+        type: string
+      values:
+        additionalProperties:
+          additionalProperties:
+            type: string
+          type: object
+        type: object
+    type: object
   advertising.FieldIssue:
     properties:
       code:
@@ -609,6 +669,16 @@ definitions:
       thankYouUrl:
         type: string
     type: object
+  advertising.Level:
+    enum:
+    - campaign
+    - adset
+    - ad
+    type: string
+    x-enum-varnames:
+    - LevelCampaign
+    - LevelAdSet
+    - LevelAd
   advertising.LocationKind:
     enum:
     - country
@@ -673,6 +743,18 @@ definitions:
       mediaId:
         type: string
     type: object
+  advertising.MetricKind:
+    enum:
+    - money
+    - count
+    - percent
+    - decimal
+    type: string
+    x-enum-varnames:
+    - KindMoney
+    - KindCount
+    - KindPercent
+    - KindDecimal
   advertising.ObjectEdit:
     properties:
       bid:
@@ -712,7 +794,6 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
-    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -726,9 +807,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
+    - CONVERSATIONS
     type: string
     x-enum-varnames:
-    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -742,6 +823,7 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
+    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -847,6 +929,82 @@ definitions:
     - QuestionCompany
     - QuestionJobTitle
     - QuestionCustom
+  advertising.ReportCells:
+    additionalProperties:
+      format: float64
+      type: number
+    type: object
+  advertising.ReportDefinition:
+    properties:
+      breakdowns:
+        items:
+          $ref: '#/definitions/advertising.Breakdown'
+        type: array
+      datePreset:
+        $ref: '#/definitions/advertising.ReportPreset'
+      level:
+        $ref: '#/definitions/advertising.Level'
+      metrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      since:
+        type: string
+      until:
+        type: string
+      view:
+        $ref: '#/definitions/advertising.ReportView'
+    type: object
+  advertising.ReportMetric:
+    enum:
+    - spend
+    - impressions
+    - reach
+    - frequency
+    - clicks
+    - linkClicks
+    - ctr
+    - cpc
+    - cpm
+    - results
+    - costPerResult
+    - conversations
+    - costPerConversation
+    - thruPlays
+    - costPerThruPlay
+    type: string
+    x-enum-varnames:
+    - ReportSpend
+    - ReportImpressions
+    - ReportReach
+    - ReportFrequency
+    - ReportClicks
+    - ReportLinkClicks
+    - ReportCTR
+    - ReportCPC
+    - ReportCPM
+    - ReportResults
+    - ReportCostPerResult
+    - ReportConversations
+    - ReportCostPerConversation
+    - ReportThruPlays
+    - ReportCostPerThruPlay
+  advertising.ReportPreset:
+    enum:
+    - custom
+    type: string
+    x-enum-varnames:
+    - PresetCustom
+  advertising.ReportView:
+    enum:
+    - pivot
+    - trend
+    - bars
+    type: string
+    x-enum-varnames:
+    - ViewPivot
+    - ViewTrend
+    - ViewBars
   advertising.RuleAction:
     properties:
       budgetCap:
@@ -1187,6 +1345,56 @@ definitions:
       field:
         type: string
     type: object
+  advertisinghttp.BulkApplyRequest:
+    properties:
+      edit:
+        $ref: '#/definitions/advertising.ObjectEdit'
+      metaIds:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.BulkEditRequest:
+    properties:
+      change:
+        $ref: '#/definitions/advertising.BulkChange'
+      metaIds:
+        items:
+          type: string
+        type: array
+    type: object
+  advertisinghttp.BulkErrorResponse:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  advertisinghttp.BulkResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/advertisinghttp.BulkResultResponse'
+        type: array
+    type: object
+  advertisinghttp.BulkResultResponse:
+    properties:
+      error:
+        $ref: '#/definitions/advertisinghttp.BulkErrorResponse'
+      metaId:
+        type: string
+      object:
+        $ref: '#/definitions/advertisinghttp.RowResponse'
+      ok:
+        type: boolean
+    type: object
+  advertisinghttp.BulkTargetsRequest:
+    properties:
+      metaIds:
+        items:
+          type: string
+        type: array
+    type: object
   advertisinghttp.CatalogResponse:
     properties:
       id:
@@ -1261,10 +1469,85 @@ definitions:
       datasetId:
         type: string
     type: object
+  advertisinghttp.DiscardResponse:
+    properties:
+      discarded:
+        type: integer
+    type: object
+  advertisinghttp.DraftCopyRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  advertisinghttp.DraftListResponse:
+    properties:
+      drafts:
+        items:
+          $ref: '#/definitions/advertisinghttp.DraftResponse'
+        type: array
+      objectCount:
+        type: integer
+    type: object
+  advertisinghttp.DraftPublishRequest:
+    properties:
+      version:
+        type: integer
+    type: object
   advertisinghttp.DraftRequest:
     properties:
       draft:
         $ref: '#/definitions/advertising.AdDraft'
+    type: object
+  advertisinghttp.DraftResponse:
+    properties:
+      adAccountId:
+        type: string
+      createdAt:
+        type: string
+      draft:
+        $ref: '#/definitions/advertising.AdDraft'
+      id:
+        type: string
+      job:
+        $ref: '#/definitions/advertisinghttp.JobResponse'
+      rows:
+        items:
+          $ref: '#/definitions/advertisinghttp.DraftRowResponse'
+        type: array
+      state:
+        type: string
+      updatedAt:
+        type: string
+      version:
+        type: integer
+    type: object
+  advertisinghttp.DraftRowResponse:
+    properties:
+      budget:
+        $ref: '#/definitions/advertising.Budget'
+      destination:
+        $ref: '#/definitions/advertising.Destination'
+      goal:
+        $ref: '#/definitions/advertising.OptimizationGoal'
+      key:
+        type: string
+      level:
+        type: string
+      name:
+        type: string
+      objective:
+        $ref: '#/definitions/advertising.Objective'
+      parentKey:
+        type: string
+      parentMetaId:
+        type: string
+    type: object
+  advertisinghttp.DraftUpdateRequest:
+    properties:
+      draft:
+        $ref: '#/definitions/advertising.AdDraft'
+      version:
+        type: integer
     type: object
   advertisinghttp.EditObjectRequest:
     properties:
@@ -1671,6 +1954,89 @@ definitions:
       ready:
         type: boolean
     type: object
+  advertisinghttp.ReportExportRequest:
+    properties:
+      adAccountId:
+        type: string
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      labels:
+        $ref: '#/definitions/advertising.ExportLabels'
+      name:
+        type: string
+      objectIds:
+        items:
+          type: string
+        type: array
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      reportId:
+        type: string
+      windows:
+        items:
+          $ref: '#/definitions/advertising.AttributionWindow'
+        type: array
+    type: object
+  advertisinghttp.ReportExportResponse:
+    properties:
+      adAccountId:
+        type: string
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      reportId:
+        type: string
+      rows:
+        type: integer
+      since:
+        type: string
+      sizeBytes:
+        type: integer
+      until:
+        type: string
+    type: object
+  advertisinghttp.ReportOptionsResponse:
+    properties:
+      breakdownGroups:
+        items:
+          items:
+            $ref: '#/definitions/advertising.Breakdown'
+          type: array
+        type: array
+      breakdowns:
+        items:
+          $ref: '#/definitions/advertising.Breakdown'
+        type: array
+      levels:
+        items:
+          $ref: '#/definitions/advertising.Level'
+        type: array
+      metricKinds:
+        additionalProperties:
+          $ref: '#/definitions/advertising.MetricKind'
+        type: object
+      metrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      templates:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReportTemplateResponse'
+        type: array
+      trendMetrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      views:
+        items:
+          $ref: '#/definitions/advertising.ReportView'
+        type: array
+    type: object
   advertisinghttp.ReportResponse:
     properties:
       account:
@@ -1689,6 +2055,81 @@ definitions:
         type: array
       totals:
         $ref: '#/definitions/advertisinghttp.MetricsResponse'
+    type: object
+  advertisinghttp.ReportRunDayResponse:
+    properties:
+      day:
+        type: string
+      values:
+        $ref: '#/definitions/advertising.ReportCells'
+    type: object
+  advertisinghttp.ReportRunRequest:
+    properties:
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      objectIds:
+        items:
+          type: string
+        type: array
+      range:
+        $ref: '#/definitions/advertisinghttp.RangeResponse'
+      windows:
+        items:
+          $ref: '#/definitions/advertising.AttributionWindow'
+        type: array
+    type: object
+  advertisinghttp.ReportRunResponse:
+    properties:
+      breakdowns:
+        items:
+          $ref: '#/definitions/advertising.Breakdown'
+        type: array
+      currency:
+        type: string
+      metricKinds:
+        additionalProperties:
+          $ref: '#/definitions/advertising.MetricKind'
+        type: object
+      metrics:
+        items:
+          $ref: '#/definitions/advertising.ReportMetric'
+        type: array
+      rows:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReportRunRowResponse'
+        type: array
+      series:
+        items:
+          $ref: '#/definitions/advertisinghttp.ReportRunDayResponse'
+        type: array
+      totals:
+        $ref: '#/definitions/advertising.ReportCells'
+      view:
+        $ref: '#/definitions/advertising.ReportView'
+    type: object
+  advertisinghttp.ReportRunRowResponse:
+    properties:
+      dimensions:
+        items:
+          type: string
+        type: array
+      key:
+        type: string
+      name:
+        type: string
+      objectId:
+        type: string
+      share:
+        type: number
+      values:
+        $ref: '#/definitions/advertising.ReportCells'
+    type: object
+  advertisinghttp.ReportTemplateResponse:
+    properties:
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      key:
+        type: string
     type: object
   advertisinghttp.RouteResponse:
     properties:
@@ -1754,6 +2195,34 @@ definitions:
     properties:
       enabled:
         type: boolean
+    type: object
+  advertisinghttp.SavedReportRequest:
+    properties:
+      adAccountId:
+        type: string
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      name:
+        type: string
+    type: object
+  advertisinghttp.SavedReportResponse:
+    properties:
+      adAccountId:
+        type: string
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      definition:
+        $ref: '#/definitions/advertising.ReportDefinition'
+      id:
+        type: string
+      lastOpenedAt:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
     type: object
   advertisinghttp.SetBudgetRequest:
     properties:
@@ -9693,6 +10162,60 @@ paths:
       summary: Catálogos de produtos
       tags:
       - Anúncios
+  /ads/accounts/{id}/drafts:
+    get:
+      description: Rascunhos guardados no Vozko (a Meta não expõe os rascunhos dela
+        pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows
+        traz as linhas que entram na tabela como "Em rascunho" e objectCount soma
+        essas linhas, o número de "Conferir e publicar". Rascunhos já publicados saem
+        da lista.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftListResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar rascunhos da conta
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/drafts/discard:
+    post:
+      description: Exclui todos os rascunhos da conta, menos os que estão sendo publicados.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DiscardResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Descartar rascunhos da conta
+      tags:
+      - Anúncios
   /ads/accounts/{id}/insights:
     get:
       description: Consulta a Meta na hora, com quebras (idade, gênero, país, região,
@@ -9905,6 +10428,52 @@ paths:
       summary: Publicações da página para anunciar
       tags:
       - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/posts/{postId}:
+    get:
+      description: Uma publicação do Facebook ou do Instagram da página, para a prévia
+        de um rascunho que usa publicação existente. Só lê; recusa publicações de
+        outra página.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página
+        in: path
+        name: pageId
+        required: true
+        type: string
+      - description: ID da publicação ou da mídia do Instagram
+        in: path
+        name: postId
+        required: true
+        type: string
+      - description: facebook ou instagram
+        in: query
+        name: platform
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.PostResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicação da página
+      tags:
+      - Anúncios
   /ads/accounts/{id}/pixels:
     get:
       parameters:
@@ -10004,10 +10573,12 @@ paths:
         Cada item vem ready, missing ou unknown; unknown nunca conta como pronto.
         Itens com required true bloqueiam a publicação e aparecem em blocking. A ação
         de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal
-        (url da tela exata da Meta, quando a API não permite). Telefone e email não
-        têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo
-        devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento
-        só para administradores da conta.'
+        (url da tela exata da Meta, quando a API não permite), sempre com o negócio
+        dono da conta (business_id) e a própria conta; quando não dá para apontar
+        a tela daquela conta, o item vem sem ação. Telefone e email não têm leitura
+        na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o
+        tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para
+        administradores da conta.'
       parameters:
       - description: ID da conta de anúncios
         in: path
@@ -10092,6 +10663,48 @@ paths:
       security:
       - BearerAuth: []
       summary: Relatório da conta de anúncios
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/report-runs:
+    post:
+      consumes:
+      - application/json
+      description: 'Monta a tabela de Relatórios de Anúncios no servidor, com as mesmas
+        fórmulas do gerenciador: tabela dinâmica (por item e quebras), barras (por
+        quebras, ou por item sem quebras, do maior para o menor na primeira métrica)
+        ou tendência (por dia). metricKinds diz o tipo de cada métrica (money em micros
+        da moeda da conta, count, percent, decimal); alcance e frequência só valem
+        para uma linha da Meta. Até 100 objectIds.'
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: definição e período
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.ReportRunRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportRunResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rodar relatório
       tags:
       - Anúncios
   /ads/accounts/{id}/report.csv:
@@ -10576,6 +11189,211 @@ paths:
       summary: Salvar configuração de conversões
       tags:
       - Anúncios
+  /ads/drafts:
+    post:
+      consumes:
+      - application/json
+      description: Guarda a árvore como está, mesmo incompleta; só confere a conta
+        do workspace e os limites de tamanho. A validação completa fica em POST /ads/drafts/validate
+        e na publicação.
+      parameters:
+      - description: rascunho
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/{id}:
+    delete:
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir rascunho
+      tags:
+      - Anúncios
+    get:
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Detalhe de rascunho
+      tags:
+      - Anúncios
+    put:
+      consumes:
+      - application/json
+      description: Substitui a árvore. version é a versão lida; se outra pessoa salvou
+        antes, volta 409 draft_changed. Um rascunho sendo publicado volta 409 draft_publishing.
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: rascunho e versão
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/{id}/copies:
+    post:
+      consumes:
+      - application/json
+      description: Cria outro rascunho com a mesma árvore. name renomeia o nível mais
+        alto que o rascunho cria (campanha, conjunto ou o anúncio único); vazio mantém
+        os nomes.
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: nome da cópia
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftCopyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.DraftResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Duplicar rascunho
+      tags:
+      - Anúncios
+  /ads/drafts/{id}/publish:
+    post:
+      consumes:
+      - application/json
+      description: Publica a versão conferida (version; outra versão volta 409 draft_changed)
+        pelo mesmo caminho de POST /ads/publish (taxa por anúncio, conta pronta, criação
+        pausada e ligação no fim). Enquanto publica, o rascunho não muda nem é publicado
+        de novo; publicado, ele sai da lista; com falha, volta a ser editável.
+      parameters:
+      - description: ID do rascunho
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: versão conferida
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.DraftPublishRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.JobResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publicar rascunho
+      tags:
+      - Anúncios
   /ads/drafts/validate:
     post:
       consumes:
@@ -10970,6 +11788,132 @@ paths:
       summary: Desligar campanha, conjunto ou anúncio
       tags:
       - Anúncios
+  /ads/objects/bulk/activate:
+    post:
+      consumes:
+      - application/json
+      description: Liga até 50 campanhas, conjuntos ou anúncios, um por vez, com as
+        mesmas regras de POST /ads/objects/{metaId}/activate. Cada item volta com
+        o próprio resultado.
+      parameters:
+      - description: itens
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkTargetsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ligar vários itens
+      tags:
+      - Anúncios
+  /ads/objects/bulk/apply:
+    post:
+      consumes:
+      - application/json
+      description: 'Edição em massa do editor ("Valores mistos"): aplica o mesmo ObjectEdit
+        em até 50 itens, um por vez, com as regras de PATCH /ads/objects/{metaId}.
+        Só os campos enviados mudam. Um orçamento sem kind mantém o tipo atual de
+        cada item (diário ou total). Cada item volta com o próprio resultado.'
+      parameters:
+      - description: itens e edição
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkApplyRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Aplicar a mesma edição em vários itens
+      tags:
+      - Anúncios
+  /ads/objects/bulk/edit:
+    post:
+      consumes:
+      - application/json
+      description: 'Como o menu Editar do Gerenciador de Anúncios: muda um campo (name,
+        primaryText, headline, description, link) em até 50 itens, definindo um valor
+        (mode set) ou localizando e substituindo (mode replace, com matchCase). Textos
+        do criativo só valem para anúncios que não usam publicação existente. Itens
+        sem mudança voltam com nothing_to_change.'
+      parameters:
+      - description: itens e mudança
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkEditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Editar um campo em vários itens
+      tags:
+      - Anúncios
+  /ads/objects/bulk/pause:
+    post:
+      consumes:
+      - application/json
+      description: Desliga até 50 campanhas, conjuntos ou anúncios, um por vez. Cada
+        item volta com o próprio resultado.
+      parameters:
+      - description: itens
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.BulkTargetsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.BulkResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Desligar vários itens
+      tags:
+      - Anúncios
   /ads/options:
     get:
       description: 'Listas que a Meta aceita: objetivos com destinos e metas de otimização
@@ -11091,6 +12035,251 @@ paths:
       security:
       - BearerAuth: []
       summary: Ligar publicação feita desligada
+      tags:
+      - Anúncios
+  /ads/report-exports:
+    get:
+      description: Histórico de exportações do workspace, da mais recente para a mais
+        antiga.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.ReportExportResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Listar exportações
+      tags:
+      - Anúncios
+    post:
+      consumes:
+      - application/json
+      description: Roda o relatório, grava o CSV (separado por ponto e vírgula, com
+        BOM, dinheiro em unidades da moeda) com os rótulos enviados no idioma da pessoa
+        e guarda em Exportações. Ficam as 100 exportações mais recentes do workspace;
+        até 10 MB por arquivo.
+      parameters:
+      - description: relatório, período e rótulos
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.ReportExportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportExportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Exportar relatório
+      tags:
+      - Anúncios
+  /ads/report-exports/{id}:
+    delete:
+      parameters:
+      - description: ID da exportação
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir exportação
+      tags:
+      - Anúncios
+  /ads/report-exports/{id}/file:
+    get:
+      parameters:
+      - description: ID da exportação
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Baixar exportação
+      tags:
+      - Anúncios
+  /ads/report-options:
+    get:
+      description: 'Tudo o que o editor de relatórios pode oferecer, vindo das mesmas
+        regras que validam o relatório salvo: modelos sugeridos (roi_snapshot, reach_frequency,
+        overall_performance, signups_summary, age_gender, engagement) com a definição
+        pronta, visualizações, níveis, quebras aceitas pela Meta, métricas, as métricas
+        diárias que a tendência mostra e as combinações de quebras que a Meta aceita.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.ReportOptionsResponse'
+      security:
+      - BearerAuth: []
+      summary: Opções de Relatórios de Anúncios
+      tags:
+      - Anúncios
+  /ads/reports:
+    get:
+      description: Relatórios do workspace, abertos por último primeiro. Os dados
+        vêm de POST /ads/accounts/{id}/report-runs.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: Listar relatórios salvos
+      tags:
+      - Anúncios
+    post:
+      consumes:
+      - application/json
+      description: Guarda nome, conta e definição (view pivot, trend ou bars; nível;
+        quebras aceitas pela Meta; métricas; período). A tendência aceita só métricas
+        diárias e nenhuma quebra.
+      parameters:
+      - description: relatório
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.SavedReportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar novo relatório
+      tags:
+      - Anúncios
+  /ads/reports/{id}:
+    delete:
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Excluir relatório salvo
+      tags:
+      - Anúncios
+    get:
+      description: Devolve o relatório e marca o último acesso.
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Abrir relatório salvo
+      tags:
+      - Anúncios
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: ID do relatório
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: relatório
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.SavedReportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.SavedReportResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atualizar relatório salvo
       tags:
       - Anúncios
   /ads/rules:

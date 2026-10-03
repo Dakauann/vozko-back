@@ -137,3 +137,38 @@ func TestSavedAudiencesAreWorkspaceScoped(t *testing.T) {
 		t.Fatalf("cross workspace update: %v", err)
 	}
 }
+
+func TestCheckingACustomerListCountsWithoutSendingAnything(t *testing.T) {
+	w := newWorld()
+	uc := audienceUseCase(w, []ads.Customer{{ads.MatchPhone: "5511988887777", ads.MatchFirstName: "Ana"}, {ads.MatchPhone: "12"}}, nil)
+	got, err := uc.CheckCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "Clientes", Source: ads.SourceCRM})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Matched != 1 || got.Skipped != 1 || len(w.gateway.batches) != 0 || slices.Contains(w.gateway.calls, "create_audience") {
+		t.Fatalf("result %+v calls %v", got, w.gateway.calls)
+	}
+	w.gateway.termsOK = false
+	if _, err := uc.CheckCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM}); !errors.Is(err, ads.ErrAudienceTermsNotAccepted) {
+		t.Fatalf("the check must refuse what the creation refuses, got %v", err)
+	}
+}
+
+func TestLookalikeCheckFindsTheSourceWithoutCreating(t *testing.T) {
+	w := newWorld()
+	uc := audienceUseCase(w, nil, nil)
+	w.gateway.audiences = []ads.Audience{{MetaID: "aud-1", Name: "Clientes"}}
+	checked, source, err := uc.CheckLookalike(context.Background(), "ws-1", ads.LookalikeDraft{AdAccountID: "acc-1", Name: " Parecidos ", OriginAudienceID: "aud-1", Percent: 2})
+	if err != nil || source.Name != "Clientes" || checked.Name != "Parecidos" || checked.Country != "BR" {
+		t.Fatalf("checked %+v source %+v err %v", checked, source, err)
+	}
+	_, _, err = uc.CheckLookalike(context.Background(), "ws-1", ads.LookalikeDraft{AdAccountID: "acc-1", Name: "Parecidos", OriginAudienceID: "other", Percent: 2})
+	requireIssue(t, err, "originAudienceId", "not_available")
+	w.gateway.termsOK = false
+	if _, _, err := uc.CheckLookalike(context.Background(), "ws-1", ads.LookalikeDraft{AdAccountID: "acc-1", Name: "Parecidos", OriginAudienceID: "aud-1", Percent: 2}); !errors.Is(err, ads.ErrAudienceTermsNotAccepted) {
+		t.Fatalf("the check must refuse what the creation refuses, got %v", err)
+	}
+	if slices.Contains(w.gateway.calls, "create_lookalike") {
+		t.Fatalf("calls %v", w.gateway.calls)
+	}
+}

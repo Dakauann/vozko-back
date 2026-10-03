@@ -24,7 +24,7 @@ type ReadinessItemResponse struct {
 }
 
 type BillingResponse struct {
-	PortalURL     string `json:"portalUrl"`
+	PortalURL     string `json:"portalUrl,omitempty"`
 	PaymentMethod string `json:"paymentMethod,omitempty"`
 	Balance       int64  `json:"balance"`
 	Prepay        bool   `json:"prepay"`
@@ -52,7 +52,7 @@ func presentReadiness(r *adsuc.Readiness) ReadinessResponse {
 		out.Items = append(out.Items, ReadinessItemResponse{Key: string(item.Key), State: string(item.State), Required: item.Required, Action: presentReadinessAction(item.Action)})
 	}
 	if r.Billing != nil {
-		out.Billing = &BillingResponse{PortalURL: advertising.BillingPortalURL, PaymentMethod: r.Billing.PaymentMethod, Balance: r.Billing.Balance, Prepay: r.Billing.Prepay}
+		out.Billing = &BillingResponse{PortalURL: r.Account.PortalURL(advertising.PortalBilling), PaymentMethod: r.Billing.PaymentMethod, Balance: r.Billing.Balance, Prepay: r.Billing.Prepay}
 	}
 	return out
 }
@@ -68,7 +68,7 @@ func presentReadinessAction(a advertising.ReadinessAction) *ReadinessActionRespo
 }
 
 // @Summary		Prontidão da conta para veicular anúncios
-// @Description	Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal (url da tela exata da Meta, quando a API não permite). Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.
+// @Description	Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal (url da tela exata da Meta, quando a API não permite), sempre com o negócio dono da conta (business_id) e a própria conta; quando não dá para apontar a tela daquela conta, o item vem sem ação. Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.
 // @Tags			Anúncios
 // @Produce		json
 // @Param			id	path		string	true	"ID da conta de anúncios"

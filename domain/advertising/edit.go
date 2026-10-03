@@ -39,6 +39,18 @@ func (e ObjectEdit) Empty() bool {
 		e.Placements == nil && e.Schedule == nil && e.Creative == nil
 }
 
+func (e ObjectEdit) NeedsCurrentBudget() bool {
+	return e.Budget != nil && e.Budget.Kind == ""
+}
+
+func (e ObjectEdit) For(current ObjectDetail) ObjectEdit {
+	if !e.NeedsCurrentBudget() || current.Budget == nil {
+		return e
+	}
+	e.Budget = &Budget{Kind: current.Budget.Kind, Amount: e.Budget.Amount}
+	return e
+}
+
 func (e *ObjectEdit) Normalize() {
 	if e.Name != nil {
 		trimmed := strings.TrimSpace(*e.Name)

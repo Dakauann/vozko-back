@@ -1,14 +1,11 @@
 package advertisinghttp
 
 import (
-	"encoding/csv"
 	"io"
-	"strconv"
 
 	"vozko/domain/advertising"
+	"vozko/domain/report"
 )
-
-const utf8BOM = "\xef\xbb\xbf"
 
 var reportCSVHeader = []string{
 	"ID na Meta", "Nome", "Nível", "Status", "Veiculação", "Moeda",
@@ -17,49 +14,23 @@ var reportCSVHeader = []string{
 	"Leads", "Custo por lead", "Vendas", "Receita", "ROAS",
 }
 
-func writeReportCSV(w io.Writer, report ReportResponse) error {
-	if _, err := io.WriteString(w, utf8BOM); err != nil {
-		return err
+func writeReportCSV(w io.Writer, rep ReportResponse) error {
+	rows := make([][]report.CSVCell, 0, len(rep.Rows))
+	for _, row := range rep.Rows {
+		rows = append(rows, reportCSVRecord(row))
 	}
-	out := csv.NewWriter(w)
-	if err := out.Write(reportCSVHeader); err != nil {
-		return err
-	}
-	for _, row := range report.Rows {
-		if err := out.Write(reportCSVRecord(row)); err != nil {
-			return err
-		}
-	}
-	out.Flush()
-	return out.Error()
+	_, err := io.WriteString(w, report.BuildCSVDocument([]report.CSVSection{{Header: reportCSVHeader, Rows: rows}}, true))
+	return err
 }
 
-func reportCSVRecord(row RowResponse) []string {
+func reportCSVRecord(row RowResponse) []report.CSVCell {
 	m, o := row.Metrics, row.Outcome
-	return []string{
-		row.MetaID, row.Name, row.Level, row.Status, row.Delivery, m.Currency,
-		money(m.Spend), count(m.Impressions), count(m.Clicks), count(m.LinkClicks), count(m.Results), m.ResultAction, optionalMoney(m.CostPerResult),
-		optionalDecimal(m.CTR), optionalMoney(m.CPC), optionalMoney(m.CPM), count(m.Conversations), optionalMoney(m.CostPerConversation),
-		count(o.Leads), optionalMoney(o.CostPerLead), count(o.WonDeals), money(o.Revenue), optionalDecimal(o.ROAS),
+	money := func(micros int64) report.CSVCell { return advertising.MoneyCSVCell(&micros) }
+	return []report.CSVCell{
+		report.Text(row.MetaID), report.Text(row.Name), report.Text(row.Level), report.Text(row.Status), report.Text(row.Delivery), report.Text(m.Currency),
+		money(m.Spend), report.Int(m.Impressions), report.Int(m.Clicks), report.Int(m.LinkClicks), report.Int(m.Results), report.Text(m.ResultAction),
+		advertising.MoneyCSVCell(m.CostPerResult), report.NumberPtr(m.CTR), advertising.MoneyCSVCell(m.CPC), advertising.MoneyCSVCell(m.CPM),
+		report.Int(m.Conversations), advertising.MoneyCSVCell(m.CostPerConversation),
+		report.Int(o.Leads), advertising.MoneyCSVCell(o.CostPerLead), report.Int(o.WonDeals), money(o.Revenue), report.NumberPtr(o.ROAS),
 	}
-}
-
-func count(n int64) string { return strconv.FormatInt(n, 10) }
-
-func money(micros int64) string {
-	return strconv.FormatFloat(advertising.MicrosToAmount(micros), 'f', 2, 64)
-}
-
-func optionalMoney(micros *int64) string {
-	if micros == nil {
-		return ""
-	}
-	return money(*micros)
-}
-
-func optionalDecimal(value *float64) string {
-	if value == nil {
-		return ""
-	}
-	return strconv.FormatFloat(*value, 'f', 2, 64)
 }

@@ -1,6 +1,7 @@
 package advertisinghttp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"vozko/domain/advertising"
+	adsuc "vozko/usecases/advertising"
 )
 
 func requestWithAccount(target string) *http.Request {
@@ -182,5 +184,39 @@ func TestMalformedBodiesAreBadRequests(t *testing.T) {
 		if rec := serve(handler, http.MethodPost, "/x", `{"amount":"lots","enabled":"yes","edit":1,"name":7}`); rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status %d", name, rec.Code)
 		}
+	}
+}
+
+type oneDraft struct {
+	advertising.SavedDraftRepository
+	draft *advertising.SavedDraft
+}
+
+func (o oneDraft) Find(context.Context, string, string) (*advertising.SavedDraft, error) {
+	return o.draft, nil
+}
+
+func (o oneDraft) ClaimForPublish(_ context.Context, d *advertising.SavedDraft, jobID string) error {
+	d.JobID = jobID
+	d.Version++
+	return nil
+}
+
+type actorPublisher struct{ actor advertising.Actor }
+
+func (p *actorPublisher) Publish(_ context.Context, in adsuc.PublishInput) (*advertising.PublishJob, error) {
+	p.actor = in.Actor
+	return &advertising.PublishJob{ID: in.JobID, Status: advertising.JobRunning}, nil
+}
+
+func TestPublishingADraftOnTheScreenIsRecordedAsThePerson(t *testing.T) {
+	publisher := &actorPublisher{}
+	drafts := oneDraft{draft: &advertising.SavedDraft{ID: "d-1", Version: 3}}
+	h := NewHandler(Deps{Drafts: adsuc.NewDraftsUseCase(drafts, nil, nil, publisher)})
+	req := mux.SetURLVars(httptest.NewRequest(http.MethodPost, "/ads/drafts/d-1/publish", strings.NewReader(`{"version":3}`)), map[string]string{"id": "d-1"})
+	rec := httptest.NewRecorder()
+	h.PublishDraft(rec, req)
+	if rec.Code != http.StatusCreated || publisher.actor != advertising.ActorPerson {
+		t.Fatalf("status %d actor %q: %s", rec.Code, publisher.actor, rec.Body.String())
 	}
 }

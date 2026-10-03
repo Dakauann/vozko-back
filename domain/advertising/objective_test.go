@@ -58,3 +58,24 @@ func TestDestinationReadBackFromMeta(t *testing.T) {
 		}
 	}
 }
+
+func TestTheDefaultGoalIsTheFirstGoalOfTheRoute(t *testing.T) {
+	cases := []struct {
+		objective   Objective
+		destination Destination
+		want        OptimizationGoal
+	}{
+		{ObjectiveTraffic, DestinationWebsite, GoalLandingPageViews},
+		{ObjectiveEngagement, DestinationWhatsApp, GoalConversations},
+		{ObjectiveLeads, DestinationInstantForm, GoalLeadGeneration},
+		{ObjectiveAwareness, DestinationNone, GoalReach},
+	}
+	for _, c := range cases {
+		if got, ok := c.objective.DefaultGoal(c.destination); !ok || got != c.want {
+			t.Errorf("%s %s: got %s", c.objective, c.destination, got)
+		}
+	}
+	if _, ok := ObjectiveAwareness.DefaultGoal(DestinationWhatsApp); ok {
+		t.Fatal("a destination the objective does not allow has no goal")
+	}
+}

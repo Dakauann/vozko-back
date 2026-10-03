@@ -2,7 +2,6 @@ package copilottools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 
@@ -32,13 +31,6 @@ func adsRange(since, until string) (advertising.DateRange, error) {
 		return advertising.DateRange{}, fmt.Errorf("%w: período inválido; use YYYY-MM-DD em since e until", errInvalidArgs)
 	}
 	return r, nil
-}
-
-func checkedChange(tool string, err error) error {
-	if err == nil || errors.Is(err, errInvalidArgs) {
-		return err
-	}
-	return fmt.Errorf("%w: %s", errInvalidArgs, adsFailure(tool, err).Message)
 }
 
 type duplicateAdArgs struct {
@@ -90,7 +82,7 @@ func (t *duplicateAdTool) check(ctx context.Context, cc copilot.Context, args ma
 
 func (t *duplicateAdTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
 	_, _, _, err := t.check(ctx, cc, args)
-	return checkedChange("duplicate_ad", err)
+	return adsValidation("duplicate_ad", err)
 }
 
 func (t *duplicateAdTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
@@ -174,7 +166,7 @@ func (t *adLifecycleTool) check(ctx context.Context, cc copilot.Context, args ma
 
 func (t *adLifecycleTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
 	_, err := t.check(ctx, cc, args)
-	return checkedChange(t.Definition().Name, err)
+	return adsValidation(t.Definition().Name, err)
 }
 
 func (t *adLifecycleTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {

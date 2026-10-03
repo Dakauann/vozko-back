@@ -41,3 +41,20 @@ func TestBoundsCoverWholeLocalDays(t *testing.T) {
 		t.Fatalf("bounds %s to %s", start, end)
 	}
 }
+
+func TestRangesReachBackThirtySevenMonthsLikeMeta(t *testing.T) {
+	until := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+	if got := MonthsBefore(until, 1); !got.Equal(time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("month end must clamp, got %s", got.Format(DayLayout))
+	}
+	oldest := MonthsBefore(until, MaxRangeMonths)
+	if !oldest.Equal(time.Date(2023, 2, 28, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("got %s", oldest.Format(DayLayout))
+	}
+	if err := (DateRange{Since: oldest, Until: until}).Validate(); err != nil {
+		t.Fatalf("the oldest day Meta keeps must be accepted: %v", err)
+	}
+	if err := (DateRange{Since: oldest.AddDate(0, 0, -1), Until: until}).Validate(); err == nil {
+		t.Fatal("a day older than 37 months must be refused")
+	}
+}

@@ -38,6 +38,10 @@ type Deps struct {
 	SplitTests      *adsuc.SplitTestUseCase
 	Conversions     *adsuc.ConversionsUseCase
 	Publish         *adsuc.PublishUseCase
+	Drafts          *adsuc.DraftsUseCase
+	Bulk            *adsuc.BulkUseCase
+	Reports         *adsuc.SavedReportsUseCase
+	Runs            *adsuc.ReportRunsUseCase
 	Origins         *adsuc.OriginUseCase
 	FrontendBaseURL string
 }

@@ -123,9 +123,14 @@ func Typed[T ~string](raw []string) []T {
 	return out
 }
 
+const MaxLiveObjects = 100
+
 func (q LiveQuery) Validate() error {
 	if !q.Level.Valid() {
 		return FieldError("level", "invalid")
+	}
+	if len(q.ObjectIDs) > MaxLiveObjects {
+		return FieldError("objectIds", "too_many")
 	}
 	if err := q.Range.Validate(); err != nil {
 		return err

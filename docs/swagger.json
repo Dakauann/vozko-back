@@ -252,6 +252,86 @@
                 }
             }
         },
+        "/ads/accounts/{id}/drafts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Rascunhos guardados no Vozko (a Meta não expõe os rascunhos dela pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows traz as linhas que entram na tabela como \"Em rascunho\" e objectCount soma essas linhas, o número de \"Conferir e publicar\". Rascunhos já publicados saem da lista.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Listar rascunhos da conta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftListResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/accounts/{id}/drafts/discard": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Exclui todos os rascunhos da conta, menos os que estão sendo publicados.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Descartar rascunhos da conta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DiscardResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ads/accounts/{id}/insights": {
             "get": {
                 "security": [
@@ -576,6 +656,73 @@
                 }
             }
         },
+        "/ads/accounts/{id}/pages/{pageId}/posts/{postId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uma publicação do Facebook ou do Instagram da página, para a prévia de um rascunho que usa publicação existente. Só lê; recusa publicações de outra página.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Publicação da página",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da página",
+                        "name": "pageId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação ou da mídia do Instagram",
+                        "name": "postId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "facebook ou instagram",
+                        "name": "platform",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.PostResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ads/accounts/{id}/pixels": {
             "get": {
                 "security": [
@@ -726,7 +873,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal (url da tela exata da Meta, quando a API não permite). Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.",
+                "description": "Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal (url da tela exata da Meta, quando a API não permite), sempre com o negócio dono da conta (business_id) e a própria conta; quando não dá para apontar a tela daquela conta, o item vem sem ação. Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.",
                 "produces": [
                     "application/json"
                 ],
@@ -840,6 +987,64 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/accounts/{id}/report-runs": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Monta a tabela de Relatórios de Anúncios no servidor, com as mesmas fórmulas do gerenciador: tabela dinâmica (por item e quebras), barras (por quebras, ou por item sem quebras, do maior para o menor na primeira métrica) ou tendência (por dia). metricKinds diz o tipo de cada métrica (money em micros da moeda da conta, count, percent, decimal); alcance e frequência só valem para uma linha da Meta. Até 100 objectIds.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Rodar relatório",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "definição e período",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.ReportRunRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.ReportRunResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1599,6 +1804,57 @@
                 }
             }
         },
+        "/ads/drafts": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Guarda a árvore como está, mesmo incompleta; só confere a conta do workspace e os limites de tamanho. A validação completa fica em POST /ads/drafts/validate e na publicação.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Criar rascunho",
+                "parameters": [
+                    {
+                        "description": "rascunho",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ads/drafts/validate": {
             "post": {
                 "security": [
@@ -1637,6 +1893,266 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/drafts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Detalhe de rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do rascunho",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Substitui a árvore. version é a versão lida; se outra pessoa salvou antes, volta 409 draft_changed. Um rascunho sendo publicado volta 409 draft_publishing.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Salvar rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do rascunho",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "rascunho e versão",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Excluir rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do rascunho",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/drafts/{id}/copies": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria outro rascunho com a mesma árvore. name renomeia o nível mais alto que o rascunho cria (campanha, conjunto ou o anúncio único); vazio mantém os nomes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Duplicar rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do rascunho",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "nome da cópia",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftCopyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/drafts/{id}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Publica a versão conferida (version; outra versão volta 409 draft_changed) pelo mesmo caminho de POST /ads/publish (taxa por anúncio, conta pronta, criação pausada e ligação no fim). Enquanto publica, o rascunho não muda nem é publicado de novo; publicado, ele sai da lista; com falha, volta a ser editável.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Publicar rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do rascunho",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "versão conferida",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.DraftPublishRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.JobResponse"
+                        }
+                    },
+                    "402": {
+                        "description": "Payment Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -1814,6 +2330,192 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/objects/bulk/activate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Liga até 50 campanhas, conjuntos ou anúncios, um por vez, com as mesmas regras de POST /ads/objects/{metaId}/activate. Cada item volta com o próprio resultado.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Ligar vários itens",
+                "parameters": [
+                    {
+                        "description": "itens",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkTargetsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/objects/bulk/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Edição em massa do editor (\"Valores mistos\"): aplica o mesmo ObjectEdit em até 50 itens, um por vez, com as regras de PATCH /ads/objects/{metaId}. Só os campos enviados mudam. Um orçamento sem kind mantém o tipo atual de cada item (diário ou total). Cada item volta com o próprio resultado.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Aplicar a mesma edição em vários itens",
+                "parameters": [
+                    {
+                        "description": "itens e edição",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkApplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/objects/bulk/edit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Como o menu Editar do Gerenciador de Anúncios: muda um campo (name, primaryText, headline, description, link) em até 50 itens, definindo um valor (mode set) ou localizando e substituindo (mode replace, com matchCase). Textos do criativo só valem para anúncios que não usam publicação existente. Itens sem mudança voltam com nothing_to_change.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Editar um campo em vários itens",
+                "parameters": [
+                    {
+                        "description": "itens e mudança",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkEditRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/objects/bulk/pause": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Desliga até 50 campanhas, conjuntos ou anúncios, um por vez. Cada item volta com o próprio resultado.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Desligar vários itens",
+                "parameters": [
+                    {
+                        "description": "itens",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkTargetsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.BulkResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -2381,6 +3083,383 @@
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/report-exports": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Histórico de exportações do workspace, da mais recente para a mais antiga.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Listar exportações",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/advertisinghttp.ReportExportResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Roda o relatório, grava o CSV (separado por ponto e vírgula, com BOM, dinheiro em unidades da moeda) com os rótulos enviados no idioma da pessoa e guarda em Exportações. Ficam as 100 exportações mais recentes do workspace; até 10 MB por arquivo.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Exportar relatório",
+                "parameters": [
+                    {
+                        "description": "relatório, período e rótulos",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.ReportExportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.ReportExportResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/report-exports/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Excluir exportação",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da exportação",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/report-exports/{id}/file": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Baixar exportação",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da exportação",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/report-options": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Tudo o que o editor de relatórios pode oferecer, vindo das mesmas regras que validam o relatório salvo: modelos sugeridos (roi_snapshot, reach_frequency, overall_performance, signups_summary, age_gender, engagement) com a definição pronta, visualizações, níveis, quebras aceitas pela Meta, métricas, as métricas diárias que a tendência mostra e as combinações de quebras que a Meta aceita.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Opções de Relatórios de Anúncios",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.ReportOptionsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/reports": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Relatórios do workspace, abertos por último primeiro. Os dados vêm de POST /ads/accounts/{id}/report-runs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Listar relatórios salvos",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/advertisinghttp.SavedReportResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Guarda nome, conta e definição (view pivot, trend ou bars; nível; quebras aceitas pela Meta; métricas; período). A tendência aceita só métricas diárias e nenhuma quebra.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Salvar novo relatório",
+                "parameters": [
+                    {
+                        "description": "relatório",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.SavedReportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.SavedReportResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/reports/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Devolve o relatório e marca o último acesso.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Abrir relatório salvo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do relatório",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.SavedReportResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Atualizar relatório salvo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do relatório",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "relatório",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.SavedReportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.SavedReportResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Excluir relatório salvo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do relatório",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -21419,6 +22498,57 @@
                 "BudgetLifetime"
             ]
         },
+        "advertising.BulkChange": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "$ref": "#/definitions/advertising.BulkField"
+                },
+                "find": {
+                    "type": "string"
+                },
+                "matchCase": {
+                    "type": "boolean"
+                },
+                "mode": {
+                    "$ref": "#/definitions/advertising.BulkMode"
+                },
+                "replace": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertising.BulkField": {
+            "type": "string",
+            "enum": [
+                "name",
+                "primaryText",
+                "headline",
+                "description",
+                "link"
+            ],
+            "x-enum-varnames": [
+                "BulkName",
+                "BulkPrimaryText",
+                "BulkHeadline",
+                "BulkDescription",
+                "BulkLink"
+            ]
+        },
+        "advertising.BulkMode": {
+            "type": "string",
+            "enum": [
+                "set",
+                "replace"
+            ],
+            "x-enum-varnames": [
+                "BulkSet",
+                "BulkReplace"
+            ]
+        },
         "advertising.CallToAction": {
             "type": "string",
             "enum": [
@@ -21748,27 +22878,62 @@
         "advertising.Destination": {
             "type": "string",
             "enum": [
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG"
+                "CATALOG",
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT"
             ],
             "x-enum-varnames": [
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog"
+                "DestinationCatalog",
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect"
             ]
+        },
+        "advertising.ExportLabels": {
+            "type": "object",
+            "properties": {
+                "breakdowns": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "day": {
+                    "type": "string"
+                },
+                "metrics": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "object": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "string"
+                },
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         },
         "advertising.FieldIssue": {
             "type": "object",
@@ -21967,6 +23132,19 @@
                 }
             }
         },
+        "advertising.Level": {
+            "type": "string",
+            "enum": [
+                "campaign",
+                "adset",
+                "ad"
+            ],
+            "x-enum-varnames": [
+                "LevelCampaign",
+                "LevelAdSet",
+                "LevelAd"
+            ]
+        },
         "advertising.LocationKind": {
             "type": "string",
             "enum": [
@@ -22051,6 +23229,21 @@
                 }
             }
         },
+        "advertising.MetricKind": {
+            "type": "string",
+            "enum": [
+                "money",
+                "count",
+                "percent",
+                "decimal"
+            ],
+            "x-enum-varnames": [
+                "KindMoney",
+                "KindCount",
+                "KindPercent",
+                "KindDecimal"
+            ]
+        },
         "advertising.ObjectEdit": {
             "type": "object",
             "properties": {
@@ -22105,7 +23298,6 @@
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
-                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -22118,10 +23310,10 @@
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS"
+                "APP_INSTALLS",
+                "CONVERSATIONS"
             ],
             "x-enum-varnames": [
-                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -22134,7 +23326,8 @@
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls"
+                "GoalAppInstalls",
+                "GoalConversations"
             ]
         },
         "advertising.Pixel": {
@@ -22277,6 +23470,104 @@
                 "QuestionCompany",
                 "QuestionJobTitle",
                 "QuestionCustom"
+            ]
+        },
+        "advertising.ReportCells": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "number",
+                "format": "float64"
+            }
+        },
+        "advertising.ReportDefinition": {
+            "type": "object",
+            "properties": {
+                "breakdowns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.Breakdown"
+                    }
+                },
+                "datePreset": {
+                    "$ref": "#/definitions/advertising.ReportPreset"
+                },
+                "level": {
+                    "$ref": "#/definitions/advertising.Level"
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.ReportMetric"
+                    }
+                },
+                "since": {
+                    "type": "string"
+                },
+                "until": {
+                    "type": "string"
+                },
+                "view": {
+                    "$ref": "#/definitions/advertising.ReportView"
+                }
+            }
+        },
+        "advertising.ReportMetric": {
+            "type": "string",
+            "enum": [
+                "spend",
+                "impressions",
+                "reach",
+                "frequency",
+                "clicks",
+                "linkClicks",
+                "ctr",
+                "cpc",
+                "cpm",
+                "results",
+                "costPerResult",
+                "conversations",
+                "costPerConversation",
+                "thruPlays",
+                "costPerThruPlay"
+            ],
+            "x-enum-varnames": [
+                "ReportSpend",
+                "ReportImpressions",
+                "ReportReach",
+                "ReportFrequency",
+                "ReportClicks",
+                "ReportLinkClicks",
+                "ReportCTR",
+                "ReportCPC",
+                "ReportCPM",
+                "ReportResults",
+                "ReportCostPerResult",
+                "ReportConversations",
+                "ReportCostPerConversation",
+                "ReportThruPlays",
+                "ReportCostPerThruPlay"
+            ]
+        },
+        "advertising.ReportPreset": {
+            "type": "string",
+            "enum": [
+                "custom"
+            ],
+            "x-enum-varnames": [
+                "PresetCustom"
+            ]
+        },
+        "advertising.ReportView": {
+            "type": "string",
+            "enum": [
+                "pivot",
+                "trend",
+                "bars"
+            ],
+            "x-enum-varnames": [
+                "ViewPivot",
+                "ViewTrend",
+                "ViewBars"
             ]
         },
         "advertising.RuleAction": {
@@ -22767,6 +24058,84 @@
                 }
             }
         },
+        "advertisinghttp.BulkApplyRequest": {
+            "type": "object",
+            "properties": {
+                "edit": {
+                    "$ref": "#/definitions/advertising.ObjectEdit"
+                },
+                "metaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "advertisinghttp.BulkEditRequest": {
+            "type": "object",
+            "properties": {
+                "change": {
+                    "$ref": "#/definitions/advertising.BulkChange"
+                },
+                "metaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "advertisinghttp.BulkErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.BulkResponse": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.BulkResultResponse"
+                    }
+                }
+            }
+        },
+        "advertisinghttp.BulkResultResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/advertisinghttp.BulkErrorResponse"
+                },
+                "metaId": {
+                    "type": "string"
+                },
+                "object": {
+                    "$ref": "#/definitions/advertisinghttp.RowResponse"
+                },
+                "ok": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "advertisinghttp.BulkTargetsRequest": {
+            "type": "object",
+            "properties": {
+                "metaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "advertisinghttp.CatalogResponse": {
             "type": "object",
             "properties": {
@@ -22882,11 +24251,127 @@
                 }
             }
         },
+        "advertisinghttp.DiscardResponse": {
+            "type": "object",
+            "properties": {
+                "discarded": {
+                    "type": "integer"
+                }
+            }
+        },
+        "advertisinghttp.DraftCopyRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.DraftListResponse": {
+            "type": "object",
+            "properties": {
+                "drafts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.DraftResponse"
+                    }
+                },
+                "objectCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "advertisinghttp.DraftPublishRequest": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "advertisinghttp.DraftRequest": {
             "type": "object",
             "properties": {
                 "draft": {
                     "$ref": "#/definitions/advertising.AdDraft"
+                }
+            }
+        },
+        "advertisinghttp.DraftResponse": {
+            "type": "object",
+            "properties": {
+                "adAccountId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "draft": {
+                    "$ref": "#/definitions/advertising.AdDraft"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "job": {
+                    "$ref": "#/definitions/advertisinghttp.JobResponse"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.DraftRowResponse"
+                    }
+                },
+                "state": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "advertisinghttp.DraftRowResponse": {
+            "type": "object",
+            "properties": {
+                "budget": {
+                    "$ref": "#/definitions/advertising.Budget"
+                },
+                "destination": {
+                    "$ref": "#/definitions/advertising.Destination"
+                },
+                "goal": {
+                    "$ref": "#/definitions/advertising.OptimizationGoal"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "objective": {
+                    "$ref": "#/definitions/advertising.Objective"
+                },
+                "parentKey": {
+                    "type": "string"
+                },
+                "parentMetaId": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.DraftUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "draft": {
+                    "$ref": "#/definitions/advertising.AdDraft"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
@@ -23504,6 +24989,132 @@
                 }
             }
         },
+        "advertisinghttp.ReportExportRequest": {
+            "type": "object",
+            "properties": {
+                "adAccountId": {
+                    "type": "string"
+                },
+                "definition": {
+                    "$ref": "#/definitions/advertising.ReportDefinition"
+                },
+                "labels": {
+                    "$ref": "#/definitions/advertising.ExportLabels"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "objectIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "range": {
+                    "$ref": "#/definitions/advertisinghttp.RangeResponse"
+                },
+                "reportId": {
+                    "type": "string"
+                },
+                "windows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.AttributionWindow"
+                    }
+                }
+            }
+        },
+        "advertisinghttp.ReportExportResponse": {
+            "type": "object",
+            "properties": {
+                "adAccountId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "reportId": {
+                    "type": "string"
+                },
+                "rows": {
+                    "type": "integer"
+                },
+                "since": {
+                    "type": "string"
+                },
+                "sizeBytes": {
+                    "type": "integer"
+                },
+                "until": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.ReportOptionsResponse": {
+            "type": "object",
+            "properties": {
+                "breakdownGroups": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/advertising.Breakdown"
+                        }
+                    }
+                },
+                "breakdowns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.Breakdown"
+                    }
+                },
+                "levels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.Level"
+                    }
+                },
+                "metricKinds": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/advertising.MetricKind"
+                    }
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.ReportMetric"
+                    }
+                },
+                "templates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.ReportTemplateResponse"
+                    }
+                },
+                "trendMetrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.ReportMetric"
+                    }
+                },
+                "views": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.ReportView"
+                    }
+                }
+            }
+        },
         "advertisinghttp.ReportResponse": {
             "type": "object",
             "properties": {
@@ -23530,6 +25141,121 @@
                 },
                 "totals": {
                     "$ref": "#/definitions/advertisinghttp.MetricsResponse"
+                }
+            }
+        },
+        "advertisinghttp.ReportRunDayResponse": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "string"
+                },
+                "values": {
+                    "$ref": "#/definitions/advertising.ReportCells"
+                }
+            }
+        },
+        "advertisinghttp.ReportRunRequest": {
+            "type": "object",
+            "properties": {
+                "definition": {
+                    "$ref": "#/definitions/advertising.ReportDefinition"
+                },
+                "objectIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "range": {
+                    "$ref": "#/definitions/advertisinghttp.RangeResponse"
+                },
+                "windows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.AttributionWindow"
+                    }
+                }
+            }
+        },
+        "advertisinghttp.ReportRunResponse": {
+            "type": "object",
+            "properties": {
+                "breakdowns": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.Breakdown"
+                    }
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "metricKinds": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/advertising.MetricKind"
+                    }
+                },
+                "metrics": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertising.ReportMetric"
+                    }
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.ReportRunRowResponse"
+                    }
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.ReportRunDayResponse"
+                    }
+                },
+                "totals": {
+                    "$ref": "#/definitions/advertising.ReportCells"
+                },
+                "view": {
+                    "$ref": "#/definitions/advertising.ReportView"
+                }
+            }
+        },
+        "advertisinghttp.ReportRunRowResponse": {
+            "type": "object",
+            "properties": {
+                "dimensions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "objectId": {
+                    "type": "string"
+                },
+                "share": {
+                    "type": "number"
+                },
+                "values": {
+                    "$ref": "#/definitions/advertising.ReportCells"
+                }
+            }
+        },
+        "advertisinghttp.ReportTemplateResponse": {
+            "type": "object",
+            "properties": {
+                "definition": {
+                    "$ref": "#/definitions/advertising.ReportDefinition"
+                },
+                "key": {
+                    "type": "string"
                 }
             }
         },
@@ -23629,6 +25355,49 @@
             "properties": {
                 "enabled": {
                     "type": "boolean"
+                }
+            }
+        },
+        "advertisinghttp.SavedReportRequest": {
+            "type": "object",
+            "properties": {
+                "adAccountId": {
+                    "type": "string"
+                },
+                "definition": {
+                    "$ref": "#/definitions/advertising.ReportDefinition"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.SavedReportResponse": {
+            "type": "object",
+            "properties": {
+                "adAccountId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "definition": {
+                    "$ref": "#/definitions/advertising.ReportDefinition"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastOpenedAt": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
                 }
             }
         },

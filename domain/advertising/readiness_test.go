@@ -141,16 +141,16 @@ func TestOptionalItemsNeverBlockPublishing(t *testing.T) {
 }
 
 func TestMissingItemsOfferTheRightAction(t *testing.T) {
-	a := spendableAccount()
+	a := businessAccount()
 	a.HasFunding = false
 	a.Currency = ""
 	a.Tasks = []string{"ANALYZE"}
 	r := BuildReadiness(a, ReadinessFacts{Page: Observed(false), AudienceTerms: Observed(false), Pixel: Observed(false)})
 	cases := map[ReadinessKey]ReadinessAction{
-		ReadyRole:           {Portal: BusinessSettingsPortalURL},
+		ReadyRole:           {Portal: a.PortalURL(PortalAccountRoles)},
 		ReadyAccountDetails: {InApp: ActionSync},
-		ReadyPaymentMethod:  {Portal: BillingPortalURL},
-		ReadyPhone:          {Portal: PhoneVerificationPortalURL},
+		ReadyPaymentMethod:  {Portal: a.PortalURL(PortalBilling)},
+		ReadyPhone:          {Portal: a.PortalURL(PortalPhoneVerification)},
 		ReadyEmail:          {Portal: EmailVerificationPortalURL},
 		ReadyPage:           {Portal: PageCreatePortalURL},
 		ReadyAudienceTerms:  {Portal: CustomAudienceTermsURL(a.MetaAccountID)},
@@ -170,7 +170,7 @@ func TestTermsLinkIsScopedToTheAccount(t *testing.T) {
 }
 
 func TestPhoneAndEmailAreNeverReadSoTheyStayUnknownWithoutBlocking(t *testing.T) {
-	r := BuildReadiness(spendableAccount(), allObserved())
+	r := BuildReadiness(businessAccount(), allObserved())
 	for _, key := range []ReadinessKey{ReadyPhone, ReadyEmail} {
 		if got := itemOf(t, r, key); got.State != StateUnknown || got.Required || got.Action.Portal == "" {
 			t.Fatalf("%s: %+v", key, got)
@@ -178,10 +178,22 @@ func TestPhoneAndEmailAreNeverReadSoTheyStayUnknownWithoutBlocking(t *testing.T)
 	}
 }
 
+func TestAnItemWhosePortalCannotBeScopedOffersNoLink(t *testing.T) {
+	a := personalAccount()
+	a.Tasks = []string{"ANALYZE"}
+	r := BuildReadiness(a, allObserved())
+	if got := itemOf(t, r, ReadyPhone); got.Action != (ReadinessAction{}) || got.State != StateUnknown {
+		t.Fatalf("personal phone item %+v", got)
+	}
+	if got := itemOf(t, r, ReadyRole).Action.Portal; got != a.PortalURL(PortalAccountRoles) || got == "" {
+		t.Fatalf("personal role portal %q", got)
+	}
+}
+
 func TestStatusActionFollowsTheReason(t *testing.T) {
 	a := spendableAccount()
 	a.MetaStatus = MetaAccountUnsettled
-	if got := itemOf(t, BuildReadiness(a, allObserved()), ReadyAccountStatus).Action; got.Portal != BillingPortalURL {
+	if got := itemOf(t, BuildReadiness(a, allObserved()), ReadyAccountStatus).Action; got.Portal != a.PortalURL(PortalBilling) {
 		t.Fatalf("unsettled action %+v", got)
 	}
 	a.MetaStatus = MetaAccountDisabled

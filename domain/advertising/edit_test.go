@@ -80,3 +80,26 @@ func TestCopyAndLifecycleRules(t *testing.T) {
 		t.Fatalf("archived object cannot be deleted: %v", err)
 	}
 }
+
+func TestABudgetWithoutKindKeepsTheKindOfEachItem(t *testing.T) {
+	end := time.Date(2026, 11, 1, 3, 0, 0, 0, time.UTC)
+	edit := ObjectEdit{Budget: &Budget{Amount: 4000}, EndAt: &end}
+	lifetime := edit.For(ObjectDetail{Budget: &Budget{Kind: BudgetLifetime, Amount: 9000}})
+	daily := edit.For(ObjectDetail{Budget: &Budget{Kind: BudgetDaily, Amount: 3000}})
+	if *lifetime.Budget != (Budget{Kind: BudgetLifetime, Amount: 4000}) || *daily.Budget != (Budget{Kind: BudgetDaily, Amount: 4000}) || lifetime.EndAt != &end {
+		t.Fatalf("lifetime %+v daily %+v", lifetime.Budget, daily.Budget)
+	}
+	if edit.Budget.Kind != "" {
+		t.Fatal("the shared edit must stay untouched")
+	}
+	if none := edit.For(ObjectDetail{}); none.Budget.Kind != "" {
+		t.Fatalf("an item without a budget keeps no kind and is refused by Validate, got %+v", none.Budget)
+	}
+	chosen := ObjectEdit{Budget: &Budget{Kind: BudgetDaily, Amount: 4000}}
+	if got := chosen.For(ObjectDetail{Budget: &Budget{Kind: BudgetLifetime}}); got.Budget.Kind != BudgetDaily {
+		t.Fatalf("a chosen kind is kept for Validate to judge, got %+v", got.Budget)
+	}
+	if !edit.NeedsCurrentBudget() || chosen.NeedsCurrentBudget() || (ObjectEdit{EndAt: &end}).NeedsCurrentBudget() {
+		t.Fatal("only a budget without kind needs the current budget")
+	}
+}

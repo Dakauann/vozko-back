@@ -2,10 +2,14 @@ package advertising
 
 import (
 	"errors"
+	"strings"
 	"time"
 )
 
-var ErrVideoNotReady = errors.New("meta is still processing the video")
+var (
+	ErrVideoNotReady = errors.New("meta is still processing the video")
+	ErrPostNotFound  = errors.New("post not found on this page")
+)
 
 type RemoteCatalog struct {
 	ID          string
@@ -33,6 +37,17 @@ type RemotePost struct {
 	PictureURL  string
 	Permalink   string
 	CreatedTime *time.Time
+	OwnerID     string
+}
+
+func (p RemotePost) BelongsTo(page RemotePage) bool {
+	switch p.Platform {
+	case PlatformFacebook:
+		return page.PageID != "" && strings.HasPrefix(p.ID, page.PageID+"_")
+	case PlatformInstagram:
+		return p.OwnerID != "" && p.OwnerID == page.InstagramUserID
+	}
+	return false
 }
 
 type RemoteInstantExperience struct {

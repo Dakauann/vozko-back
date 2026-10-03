@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"time"
 
 	ads "vozko/domain/advertising"
@@ -47,7 +46,7 @@ func (uc *ConversionsUseCase) Settings(ctx context.Context, workspaceID string) 
 	return s, err
 }
 
-func (uc *ConversionsUseCase) Save(ctx context.Context, workspaceID string, s ads.ConversionSettings) (*ads.ConversionSettings, error) {
+func (uc *ConversionsUseCase) prepareSave(ctx context.Context, workspaceID string, s *ads.ConversionSettings) (*ads.Pixel, error) {
 	s.WorkspaceID = workspaceID
 	if err := s.Validate(); err != nil {
 		return nil, err
@@ -56,14 +55,28 @@ func (uc *ConversionsUseCase) Save(ctx context.Context, workspaceID string, s ad
 	if err != nil {
 		return nil, err
 	}
-	if s.PixelID != "" {
-		pixels, err := uc.gateway.ListPixels(ctx, token, account.MetaAccountID)
-		if err != nil {
-			return nil, uc.access.failed(ctx, account, err)
+	if s.PixelID == "" {
+		return nil, nil
+	}
+	pixels, err := uc.gateway.ListPixels(ctx, token, account.MetaAccountID)
+	if err != nil {
+		return nil, uc.access.failed(ctx, account, err)
+	}
+	for i := range pixels {
+		if pixels[i].MetaID == s.PixelID && !pixels[i].Unavailable {
+			return &pixels[i], nil
 		}
-		if !slices.ContainsFunc(pixels, func(p ads.Pixel) bool { return p.MetaID == s.PixelID && !p.Unavailable }) {
-			return nil, ads.FieldError("pixelId", "not_available")
-		}
+	}
+	return nil, ads.FieldError("pixelId", "not_available")
+}
+
+func (uc *ConversionsUseCase) CheckSave(ctx context.Context, workspaceID string, s ads.ConversionSettings) (*ads.Pixel, error) {
+	return uc.prepareSave(ctx, workspaceID, &s)
+}
+
+func (uc *ConversionsUseCase) Save(ctx context.Context, workspaceID string, s ads.ConversionSettings) (*ads.ConversionSettings, error) {
+	if _, err := uc.prepareSave(ctx, workspaceID, &s); err != nil {
+		return nil, err
 	}
 	s.UpdatedAt = uc.access.now()
 	if err := uc.settings.Save(ctx, &s); err != nil {
@@ -72,7 +85,14 @@ func (uc *ConversionsUseCase) Save(ctx context.Context, workspaceID string, s ad
 	return &s, nil
 }
 
-func (uc *ConversionsUseCase) ConnectDataset(ctx context.Context, workspaceID, businessPhoneID string) (*ads.ConversionSettings, error) {
+type datasetConnection struct {
+	settings *ads.ConversionSettings
+	account  *ads.AdAccount
+	token    string
+	waba     string
+}
+
+func (uc *ConversionsUseCase) prepareConnect(ctx context.Context, workspaceID, businessPhoneID string) (*datasetConnection, error) {
 	current, err := uc.Settings(ctx, workspaceID)
 	if err != nil {
 		return nil, err
@@ -88,10 +108,27 @@ func (uc *ConversionsUseCase) ConnectDataset(ctx context.Context, workspaceID, b
 	if err != nil {
 		return nil, err
 	}
-	dataset, err := uc.gateway.DatasetForWABA(ctx, token, waba)
+	return &datasetConnection{settings: current, account: account, token: token, waba: waba}, nil
+}
+
+func (uc *ConversionsUseCase) CheckConnectDataset(ctx context.Context, workspaceID, businessPhoneID string) (*ads.AdAccount, error) {
+	c, err := uc.prepareConnect(ctx, workspaceID, businessPhoneID)
 	if err != nil {
-		return nil, uc.access.failed(ctx, account, err)
+		return nil, err
 	}
+	return c.account, nil
+}
+
+func (uc *ConversionsUseCase) ConnectDataset(ctx context.Context, workspaceID, businessPhoneID string) (*ads.ConversionSettings, error) {
+	c, err := uc.prepareConnect(ctx, workspaceID, businessPhoneID)
+	if err != nil {
+		return nil, err
+	}
+	dataset, err := uc.gateway.DatasetForWABA(ctx, c.token, c.waba)
+	if err != nil {
+		return nil, uc.access.failed(ctx, c.account, err)
+	}
+	current := c.settings
 	current.DatasetID = dataset
 	current.UpdatedAt = uc.access.now()
 	if err := uc.settings.Save(ctx, current); err != nil {

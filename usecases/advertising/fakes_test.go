@@ -181,7 +181,9 @@ type fakeJobs struct {
 }
 
 func (f *fakeJobs) Create(_ context.Context, j *ads.PublishJob) error {
-	j.ID = fmt.Sprintf("job-%d", len(f.byID)+1)
+	if j.ID == "" {
+		j.ID = fmt.Sprintf("job-%d", len(f.byID)+1)
+	}
 	j.CreatedAt = testNow
 	f.byID[j.ID] = j
 	return nil
@@ -275,6 +277,7 @@ type fakeGateway struct {
 	failOn      string
 	failWith    error
 	pages       []ads.RemotePage
+	mediaOwner  string
 	accounts    []ads.RemoteAdAccount
 	objects     map[ads.Level][]*ads.Object
 	insights    []ads.DailyInsight
@@ -433,6 +436,12 @@ func (g *fakeGateway) ListPagePosts(context.Context, string, string) ([]ads.Remo
 }
 func (g *fakeGateway) ListInstagramMedia(context.Context, string, string) ([]ads.RemotePost, error) {
 	return []ads.RemotePost{{ID: "ig-media-1"}}, g.step("ig_media")
+}
+func (g *fakeGateway) GetPagePost(_ context.Context, _, _, postID string) (ads.RemotePost, error) {
+	return ads.RemotePost{ID: postID, Platform: ads.PlatformFacebook, Message: "Promo"}, g.step("get_post")
+}
+func (g *fakeGateway) GetInstagramMedia(_ context.Context, _, mediaID string) (ads.RemotePost, error) {
+	return ads.RemotePost{ID: mediaID, Platform: ads.PlatformInstagram, OwnerID: g.mediaOwner}, g.step("get_ig_media")
 }
 func (g *fakeGateway) ListInstantExperiences(context.Context, string, string) ([]ads.RemoteInstantExperience, error) {
 	return []ads.RemoteInstantExperience{{ID: "canvas-1"}}, g.step("canvases")

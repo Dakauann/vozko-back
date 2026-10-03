@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	DayLayout    = "2006-01-02"
-	MaxRangeDays = 731
+	DayLayout      = "2006-01-02"
+	MaxRangeMonths = 37
 )
 
 type DateRange struct {
@@ -43,10 +43,16 @@ func (r DateRange) Validate() error {
 	if r.Since.IsZero() || r.Until.IsZero() || r.Until.Before(r.Since) {
 		return fmt.Errorf("%w: %s to %s", ErrInvalidRange, r.Since.Format(DayLayout), r.Until.Format(DayLayout))
 	}
-	if r.Days() > MaxRangeDays {
-		return fmt.Errorf("%w: longer than %d days", ErrInvalidRange, MaxRangeDays)
+	if r.Since.Before(MonthsBefore(r.Until, MaxRangeMonths)) {
+		return fmt.Errorf("%w: longer than %d months", ErrInvalidRange, MaxRangeMonths)
 	}
 	return nil
+}
+
+func MonthsBefore(day time.Time, months int) time.Time {
+	first := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, day.Location()).AddDate(0, -months, 0)
+	last := first.AddDate(0, 1, -1).Day()
+	return first.AddDate(0, 0, min(day.Day(), last)-1)
 }
 
 func (r DateRange) Days() int {

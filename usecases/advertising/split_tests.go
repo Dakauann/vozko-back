@@ -39,22 +39,44 @@ func (uc *SplitTestUseCase) List(ctx context.Context, workspaceID, accountID str
 	return tests, nil
 }
 
-func (uc *SplitTestUseCase) Create(ctx context.Context, workspaceID string, test ads.SplitTest) (string, error) {
+func (uc *SplitTestUseCase) prepare(ctx context.Context, workspaceID string, test *ads.SplitTest) (*ads.AdAccount, string, error) {
 	test.Normalize()
-	if err := test.Validate(uc.access.now()); err != nil {
-		return "", err
+	for i := range test.Cells {
+		if err := uc.cellObjects(ctx, workspaceID, test, i); err != nil {
+			return nil, "", err
+		}
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, test.AdAccountID, ads.UseWrite)
+	if err := test.Validate(uc.access.now()); err != nil {
+		return nil, "", err
+	}
+	return uc.access.open(ctx, workspaceID, test.AdAccountID, ads.UseWrite)
+}
+
+func (uc *SplitTestUseCase) cellObjects(ctx context.Context, workspaceID string, test *ads.SplitTest, i int) error {
+	cell := &test.Cells[i]
+	for _, id := range cell.ObjectIDs {
+		o, err := uc.objects.Find(ctx, workspaceID, id)
+		if err != nil || o.AdAccountID != test.AdAccountID || o.Level != testLevels[test.Level] || o.Locked() {
+			return ads.FieldError("cells["+strconv.Itoa(i)+"].objectIds", "not_available")
+		}
+		if cell.Name == "" {
+			cell.Name = o.Name
+		}
+	}
+	return nil
+}
+
+func (uc *SplitTestUseCase) Check(ctx context.Context, workspaceID string, test ads.SplitTest) (ads.SplitTest, error) {
+	if _, _, err := uc.prepare(ctx, workspaceID, &test); err != nil {
+		return ads.SplitTest{}, err
+	}
+	return test, nil
+}
+
+func (uc *SplitTestUseCase) Create(ctx context.Context, workspaceID string, test ads.SplitTest) (string, error) {
+	account, token, err := uc.prepare(ctx, workspaceID, &test)
 	if err != nil {
 		return "", err
-	}
-	for i, cell := range test.Cells {
-		for _, id := range cell.ObjectIDs {
-			o, err := uc.objects.Find(ctx, workspaceID, id)
-			if err != nil || o.AdAccountID != account.ID || o.Level != testLevels[test.Level] || o.Locked() {
-				return "", ads.FieldError("cells["+strconv.Itoa(i)+"].objectIds", "not_available")
-			}
-		}
 	}
 	id, err := uc.gateway.CreateSplitTest(ctx, token, account.MetaAccountID, test)
 	if err != nil {

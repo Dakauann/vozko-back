@@ -22,6 +22,8 @@ type assetsGateway interface {
 	ListApps(ctx context.Context, token, metaAccountID string) ([]ads.RemoteApp, error)
 	ListPagePosts(ctx context.Context, token, pageID string) ([]ads.RemotePost, error)
 	ListInstagramMedia(ctx context.Context, token, instagramUserID string) ([]ads.RemotePost, error)
+	GetPagePost(ctx context.Context, token, pageID, postID string) (ads.RemotePost, error)
+	GetInstagramMedia(ctx context.Context, token, mediaID string) (ads.RemotePost, error)
 	ListInstantExperiences(ctx context.Context, token, pageID string) ([]ads.RemoteInstantExperience, error)
 	ListPixels(ctx context.Context, token, metaAccountID string) ([]ads.Pixel, error)
 	CreatePixel(ctx context.Context, token, metaAccountID, name string) (string, error)
@@ -149,6 +151,31 @@ func (uc *AssetsUseCase) Posts(ctx context.Context, workspaceID, accountID, page
 			return uc.gateway.ListInstagramMedia(ctx, token, page.InstagramUserID)
 		}
 		return uc.gateway.ListPagePosts(ctx, token, page.PageID)
+	})
+}
+
+func (uc *AssetsUseCase) Post(ctx context.Context, workspaceID, accountID, pageID, platform, postID string) (*ads.RemotePost, error) {
+	if !ads.ValidPostPlatform(platform) {
+		return nil, ads.FieldError("platform", "invalid")
+	}
+	return remote(uc, ctx, workspaceID, accountID, ads.UseRead, func(_ *ads.AdAccount, token string) (*ads.RemotePost, error) {
+		page, err := uc.pageOfAccount(ctx, token, pageID)
+		if err != nil {
+			return nil, err
+		}
+		var post ads.RemotePost
+		if platform == ads.PlatformInstagram {
+			post, err = uc.gateway.GetInstagramMedia(ctx, token, postID)
+		} else {
+			post, err = uc.gateway.GetPagePost(ctx, token, page.PageID, postID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !post.BelongsTo(*page) {
+			return nil, ads.ErrPostNotFound
+		}
+		return &post, nil
 	})
 }
 

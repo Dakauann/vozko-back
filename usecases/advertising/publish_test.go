@@ -322,3 +322,19 @@ func TestInstantFormAdsWaitForThePageToAcceptTheLeadTerms(t *testing.T) {
 		t.Fatalf("err %v charged %v calls %v", err, w.fees.charged, w.gateway.calls)
 	}
 }
+
+func TestAnAudienceFromAnotherAccountIsRefusedBeforeAnyCharge(t *testing.T) {
+	w := newWorld()
+	w.gateway.audiences = []ads.Audience{{MetaID: "aud-1"}}
+	draft := publishableDraft()
+	draft.AdSet.Targeting.CustomAudiences = []ads.TargetRef{{ID: "aud-1"}}
+	if _, err := w.publisher().Check(context.Background(), "ws-1", draft); err != nil {
+		t.Fatalf("an audience of the account must pass: %v", err)
+	}
+	draft.AdSet.Targeting.ExcludedCustomAudiences = []ads.TargetRef{{ID: "aud-other"}}
+	_, err := w.publisher().Check(context.Background(), "ws-1", draft)
+	var invalid *ads.ValidationError
+	if !errors.As(err, &invalid) || invalid.Issues[0].Field != "adSet.targeting.excludedCustomAudiences" {
+		t.Fatalf("got %v", err)
+	}
+}
