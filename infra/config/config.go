@@ -84,12 +84,12 @@ type Config struct {
 	FacebookGraphVersion       string
 	FacebookHumanAgentApproved bool
 
-	FacebookAdsLoginConfigID string
-	MetaAdsAppID             string
-	MetaAdsAppSecret         string
-	FacebookAdsRedirectURI   string
-	MetaAdsGraphVersion      string
-	FrontendBaseURL          string
+	MetaAdsLoginConfigID string
+	MetaAdsAppID         string
+	MetaAdsAppSecret     string
+	MetaAdsRedirectURI   string
+	MetaAdsGraphVersion  string
+	FrontendBaseURL      string
 
 	ImageGenerationModel             string
 	ImageGenerationCostCeilingMicros int
@@ -231,11 +231,11 @@ func LoadConfig() Config {
 		FacebookGraphVersion:       trimEnv("FACEBOOK_GRAPH_VERSION"),
 		FacebookHumanAgentApproved: getBoolEnv("FACEBOOK_HUMAN_AGENT_APPROVED", false),
 
-		FacebookAdsLoginConfigID: mustGetEnvTrimmed("FACEBOOK_ADS_LOGIN_CONFIG_ID"),
-		MetaAdsAppID:             mustGetEnvTrimmed("META_ADS_APP_ID"),
-		MetaAdsAppSecret:         mustGetEnvTrimmed("META_ADS_APP_SECRET"),
-		FacebookAdsRedirectURI:   mustGetEnvTrimmed("FACEBOOK_ADS_REDIRECT_URI"),
-		MetaAdsGraphVersion:      trimEnv("META_ADS_GRAPH_VERSION"),
+		MetaAdsLoginConfigID: mustGetEnvTrimmed("META_ADS_LOGIN_CONFIG_ID"),
+		MetaAdsAppID:         mustGetEnvTrimmed("META_ADS_APP_ID"),
+		MetaAdsAppSecret:     mustGetEnvTrimmed("META_ADS_APP_SECRET"),
+		MetaAdsRedirectURI:   mustGetEnvTrimmed("META_ADS_REDIRECT_URI"),
+		MetaAdsGraphVersion:  trimEnv("META_ADS_GRAPH_VERSION"),
 
 		ImageGenerationModel:             trimEnv("IMAGE_GENERATION_MODEL"),
 		ImageGenerationCostCeilingMicros: getIntEnv("IMAGE_GENERATION_COST_CEILING_MICROS", 250_000),

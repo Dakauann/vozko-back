@@ -58,8 +58,8 @@ func (c *Container) adsManager() *adsBundle {
 	oauth, err := fbinfra.NewOAuthService(fbinfra.OAuthConfig{
 		AppID:        c.cfg.MetaAdsAppID,
 		AppSecret:    c.cfg.MetaAdsAppSecret,
-		ConfigID:     c.cfg.FacebookAdsLoginConfigID,
-		RedirectURI:  c.cfg.FacebookAdsRedirectURI,
+		ConfigID:     c.cfg.MetaAdsLoginConfigID,
+		RedirectURI:  c.cfg.MetaAdsRedirectURI,
 		GraphVersion: c.cfg.MetaAdsGraphVersion,
 		CallbackPath: advertising.OAuthCallbackPath,
 	})
