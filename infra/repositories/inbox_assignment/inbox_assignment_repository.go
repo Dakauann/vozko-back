@@ -21,15 +21,18 @@ func New(db *gorm.DB) ia.Repository {
 }
 
 func (r *repository) FindByEntry(workspaceID, entryID, entryType string) (*ia.InboxAssignment, error) {
-	var rec schema.InboxAssignment
-	err := r.db.Where("workspace_id = ? AND entry_id = ? AND entry_type = ?", workspaceID, entryID, entryType).First(&rec).Error
+	// Find, not First: an unassigned conversation is the normal case, and First
+	// raises ErrRecordNotFound for it, which GORM logs before this swallows it.
+	var recs []schema.InboxAssignment
+	err := r.db.Where("workspace_id = ? AND entry_id = ? AND entry_type = ?", workspaceID, entryID, entryType).
+		Limit(1).Find(&recs).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	return toDomain(&rec), nil
+	if len(recs) == 0 {
+		return nil, nil
+	}
+	return toDomain(&recs[0]), nil
 }
 
 func (r *repository) FindByEntries(workspaceID string, entryIDs []string) ([]*ia.InboxAssignment, error) {
