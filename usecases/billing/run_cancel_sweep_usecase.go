@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	billing "vozko/domain/billing"
 	"vozko/domain/invoice"
@@ -76,8 +77,24 @@ func (uc *cancelSweepUseCase) Execute() (int, error) {
 	return swept, nil
 }
 
+// supersedes reports whether the workspace has already paid for a period that
+// starts at or after the unpaid invoice fell due. The invoice belongs to an
+// earlier period, so it must not cancel the plan the workspace bought since.
+func supersedes(sub *workspace_plan.WorkspaceSubscription, inv *invoice.Invoice) bool {
+	if sub == nil || inv == nil || inv.DueDate == nil {
+		return false
+	}
+	return !sub.CurrentPeriodStart.Before(*inv.DueDate)
+}
+
 func (uc *cancelSweepUseCase) sweepWorkspace(inv *invoice.Invoice) error {
 	ws := inv.WorkspaceID
+
+	if sub, err := uc.subs.GetLatestByWorkspaceID(ws); err == nil && supersedes(sub, inv) {
+		log.Printf("[billing-sweep] workspace %s keeps subscription %s (period starts %s, invoice %s was due %s); marking only the invoice",
+			ws, sub.ID, sub.CurrentPeriodStart.Format(time.DateOnly), inv.ID, inv.DueDate.Format(time.DateOnly))
+		return uc.invoices.UpdateStatus(inv.ID, invoice.StatusExpired)
+	}
 
 	addons, err := uc.addons.ListActiveByWorkspace(ws)
 	if err != nil {
