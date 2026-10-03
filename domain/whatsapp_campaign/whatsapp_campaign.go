@@ -112,7 +112,7 @@ type Campaign struct {
 	EnableAgentResponses bool                        `json:"enableAgentResponses"`
 	EnableWorkflow       bool                        `json:"enableWorkflow"`
 	EnableAnalysis       bool                        `json:"enableAnalysis"`
-	EnableAutoStaging    bool                        `json:"EnableAutoStaging"`
+	EnableAutoStaging    bool                        `json:"enableAutoStaging"`
 	EnableAutoMemory     bool                        `json:"enableAutoMemory"`
 	PreferAudio          bool                        `json:"preferAudio"`
 	ShowTemplateInCrm    bool                        `json:"showTemplateInCrm"`
