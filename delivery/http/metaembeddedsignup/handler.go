@@ -208,18 +208,19 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             /* Mirrors vozko-front/src/app/globals.css. This page is served by
                the API rather than the app, so it carries its own copy of the
                tokens; keep the two in step when either changes. */
-            --primary: #d63d00;             /* Brand. Hue 17, 4.6:1 on white */
-            --primary-hover: #b83300;
-            --primary-active: #9e2c00;
-            --foreground: #1a2038;          /* Ink, never pure black */
-            --canvas: #f7f9fc;              /* Cool near-white, not grey */
-            --slate-100: #f2f5f9;           /* Quiet fill */
-            --slate-200: #e1e7ef;           /* Hairline */
-            --slate-300: #c6cfdb;           /* Field edge */
+            --primary: #00c28e;             /* Brand. hsl(164 100%% 38%%) */
+            --primary-foreground: #0e1011; /* Dark ink on brand: white is 2.3:1 and fails */
+            --primary-hover: #00a87b;
+            --primary-active: #00946c;
+            --foreground: #14171a;          /* Ink, never pure black */
+            --canvas: #f6f8f9;              /* Cool near-white, not grey */
+            --slate-100: #eaeef0;           /* Quiet fill */
+            --slate-200: #dce1e5;           /* Hairline */
+            --slate-300: #bac3c9;           /* Field edge */
             --slate-400: #94a3b8;
-            --slate-500: #616b80;           /* Secondary ink, 5.5:1 on white */
+            --slate-500: #58626a;           /* Secondary ink */
             --success-ink: #076c4c;
-            --danger-ink: #b3123c;
+            --danger-ink: #ac1529;
             --whatsapp: #25D366;
             --radius: 6px;                  /* Controls */
             --radius-lg: 8px;               /* Surfaces */
@@ -321,7 +322,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             height: 24px;
             border-radius: var(--radius);
             background: var(--primary);
-            color: #fff;
+            color: var(--primary-foreground);
             font-size: 12px;
             font-weight: 600;
             display: flex;
@@ -341,7 +342,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
             border: none;
             border-radius: var(--radius);
             background: var(--primary);
-            color: #fff;
+            color: var(--primary-foreground);
             font-family: inherit;
             font-size: 14px;
             font-weight: 500;
@@ -353,7 +354,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
         .btn-primary:hover { background: var(--primary-hover); box-shadow: var(--elev-button-hover); transform: translateY(-1px); }
         .btn-primary:active { background: var(--primary-active); box-shadow: var(--elev-button); transform: translateY(0); }
         .btn-primary:disabled { background: var(--slate-100); color: var(--slate-500); border: 1px solid var(--slate-200); cursor: default; box-shadow: none; transform: none; }
-        .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(214,61,0,0.4); }
+        .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0,194,142,0.4); }
         .btn-primary svg { width: 18px; height: 18px; }
 
         .divider {
@@ -419,7 +420,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
         }
 
         /* Spinner */
-        .spinner { display: inline-block; width: 17px; height: 17px; border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff; border-radius: 50%%; animation: spin 0.6s linear infinite; }
+        .spinner { display: inline-block; width: 17px; height: 17px; border: 2px solid rgba(14,16,17,0.30); border-top-color: var(--primary-foreground); border-radius: 50%%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
         @media (max-width: 480px) {
@@ -768,15 +769,6 @@ func writePhoneLimitReached(w http.ResponseWriter) {
 		"WhatsApp number capacity reached for this workspace.", nil)
 }
 
-func writeProvisioningRefusal(w http.ResponseWriter, err error) {
-	if errors.Is(err, businessphone.ErrPhoneLimitReached) {
-		writePhoneLimitReached(w)
-		return
-	}
-	log.Printf("[meta-embedded-signup] provisioning refused, quota could not be evaluated: %v", err)
-	response.WriteError(w, http.StatusBadGateway, "whatsapp onboarding failed: "+err.Error(), nil)
-}
-
 func (h *MetaEmbeddedSignupHandler) handleMetaOnboarding(w http.ResponseWriter, r *http.Request, req EmbeddedSignupCallbackRequest, ownerWorkspaceID, ownerAssignedBy string) {
 	_ = r
 	code := req.Code
@@ -895,13 +887,6 @@ func (h *MetaEmbeddedSignupHandler) processWithToken(w http.ResponseWriter, acce
 		}
 	}
 
-	if h.onboardUseCase != nil && phoneNumberID != "" {
-		if err := h.onboardUseCase.Authorize(ownerWorkspaceID, phoneNumberID); err != nil {
-			writeProvisioningRefusal(w, err)
-			return
-		}
-	}
-
 	if wabaID != "" {
 		subscribeResult := h.subscribeToWebhooks(wabaID, accessToken)
 		results["webhook_subscription"] = subscribeResult
@@ -989,6 +974,11 @@ func (h *MetaEmbeddedSignupHandler) processWithToken(w http.ResponseWriter, acce
 			MessagingLimitTier:         messagingLimitTier,
 			IsCoexistence:              isCoexistence,
 		})
+		if errors.Is(err, businessphone.ErrPhoneHeldByAnotherWorkspace) {
+			response.WriteErrorWithCode(w, http.StatusConflict, "phone_held_by_another_workspace",
+				"This WhatsApp number is already connected to another workspace.", nil)
+			return
+		}
 		if errors.Is(err, businessphone.ErrPhoneLimitReached) {
 			writePhoneLimitReached(w)
 			return

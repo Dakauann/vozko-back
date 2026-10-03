@@ -28,6 +28,7 @@ var (
 	ErrInvalidWABAId                = errors.New("invalid WABA ID")
 	ErrUnsupportedForProvider       = errors.New("operation is not supported for this number's provider")
 	ErrPhoneLimitReached            = errors.New("whatsapp business phone limit reached for this workspace")
+	ErrPhoneHeldByAnotherWorkspace  = errors.New("whatsapp business phone number is already connected to another workspace")
 	ErrInvalidAccessToken           = errors.New("invalid access token")
 	ErrInvalidPhoneNumber           = errors.New("invalid phone number")
 	ErrInvalidVerificationCode      = errors.New("invalid verification code")

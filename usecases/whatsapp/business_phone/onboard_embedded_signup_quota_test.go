@@ -44,46 +44,28 @@ func ownedPhone(id, metaPhoneID, workspaceID string, status businessphone.Status
 	}
 }
 
-func TestOnboardEmbeddedSignup_RefusesNewPhoneOverQuota(t *testing.T) {
+func TestOnboardEmbeddedSignup_NewPhoneNeedsNoSlot(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
 	gate := &stubProvisioningGate{ok: false}
 	uc := NewOnboardEmbeddedSignupUseCase(repo, wabaRepo, newMockMetaAPI(), gate)
 
-	_, err := uc.Execute(quotaInput("ws-1", "meta-new"))
-	if !errors.Is(err, businessphone.ErrPhoneLimitReached) {
-		t.Fatalf("expected ErrPhoneLimitReached, got %v", err)
-	}
-	if len(repo.phoneNumbers) != 0 {
-		t.Fatalf("no phone record may be created over quota, got %d", len(repo.phoneNumbers))
-	}
-	if len(wabaRepo.accounts) != 0 {
-		t.Fatalf("no WABA record may be created over quota, got %d", len(wabaRepo.accounts))
-	}
-}
-
-func TestOnboardEmbeddedSignup_AllowsNewPhoneUnderQuota(t *testing.T) {
-	repo := newMockRepo()
-	gate := &stubProvisioningGate{ok: true}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
-
 	res, err := uc.Execute(quotaInput("ws-1", "meta-new"))
 	if err != nil {
-		t.Fatalf("expected success, got %v", err)
+		t.Fatalf("a client-direct number consumes no provisioning slot, got %v", err)
 	}
 	if !res.IsNew || len(repo.phoneNumbers) != 1 {
 		t.Fatalf("expected one new phone, got isNew=%v count=%d", res.IsNew, len(repo.phoneNumbers))
 	}
-	if gate.calls != 1 {
-		t.Fatalf("expected the gate to be consulted once, got %d", gate.calls)
+	if gate.calls != 0 {
+		t.Fatalf("the 360dialog entitlement must not be consulted here, got %d calls", gate.calls)
 	}
 }
 
-func TestOnboardEmbeddedSignup_ReconnectOfOwnedActivePhoneSkipsQuota(t *testing.T) {
+func TestOnboardEmbeddedSignup_ReconnectOfOwnedActivePhoneIsAllowed(t *testing.T) {
 	repo := newMockRepo()
 	repo.phoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-1", businessphone.StatusConnected)
-	gate := &stubProvisioningGate{ok: false}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
+	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), &stubProvisioningGate{ok: false})
 
 	res, err := uc.Execute(quotaInput("ws-1", "meta-1"))
 	if err != nil {
@@ -92,92 +74,45 @@ func TestOnboardEmbeddedSignup_ReconnectOfOwnedActivePhoneSkipsQuota(t *testing.
 	if res.IsNew || res.Phone.ID != "p1" {
 		t.Fatalf("expected the existing phone to be updated, got %+v", res)
 	}
-	if gate.calls != 0 {
-		t.Fatalf("an owned active phone must not consult the gate, got %d calls", gate.calls)
-	}
 }
 
-func TestOnboardEmbeddedSignup_ReconnectOfOwnedDisconnectedPhoneSkipsQuota(t *testing.T) {
+func TestOnboardEmbeddedSignup_OwnedSuspendedPhoneMayBeRevived(t *testing.T) {
 	repo := newMockRepo()
-	repo.phoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-1", businessphone.StatusDisconnected)
-	gate := &stubProvisioningGate{ok: false}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
+	repo.phoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-1", businessphone.StatusSuspended)
+	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), &stubProvisioningGate{ok: false})
 
 	if _, err := uc.Execute(quotaInput("ws-1", "meta-1")); err != nil {
-		t.Fatalf("a phone that already counts toward the quota must reconnect, got %v", err)
+		t.Fatalf("a workspace may reconnect its own suspended number, got %v", err)
 	}
 }
 
-func TestOnboardEmbeddedSignup_PhoneOwnedByAnotherWorkspaceIsGated(t *testing.T) {
+func TestOnboardEmbeddedSignup_PhoneOwnedByAnotherWorkspaceIsRefused(t *testing.T) {
 	repo := newMockRepo()
 	repo.phoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-other", businessphone.StatusConnected)
-	gate := &stubProvisioningGate{ok: false}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
+	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), &stubProvisioningGate{ok: true})
 
 	_, err := uc.Execute(quotaInput("ws-1", "meta-1"))
-	if !errors.Is(err, businessphone.ErrPhoneLimitReached) {
-		t.Fatalf("expected ErrPhoneLimitReached, got %v", err)
+	if !errors.Is(err, businessphone.ErrPhoneHeldByAnotherWorkspace) {
+		t.Fatalf("expected ErrPhoneHeldByAnotherWorkspace, got %v", err)
 	}
 	if repo.phoneNumbers["p1"].OwnerWorkspaceID != "ws-other" {
 		t.Fatalf("a refused onboarding must not move ownership")
 	}
 }
 
-func TestOnboardEmbeddedSignup_OwnedSuspendedPhoneIsGated(t *testing.T) {
-	repo := newMockRepo()
-	repo.phoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-1", businessphone.StatusSuspended)
-	gate := &stubProvisioningGate{ok: false}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
-
-	_, err := uc.Execute(quotaInput("ws-1", "meta-1"))
-	if !errors.Is(err, businessphone.ErrPhoneLimitReached) {
-		t.Fatalf("a suspended phone does not count toward the quota, so reviving it must be gated; got %v", err)
-	}
-	if repo.phoneNumbers["p1"].Status != businessphone.StatusSuspended {
-		t.Fatalf("a refused onboarding must not change the phone status")
-	}
-}
-
-func TestOnboardEmbeddedSignup_SoftDeletedPhoneIsGated(t *testing.T) {
-	repo := newMockRepo()
-	repo.deletedPhoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-1", businessphone.StatusConnected)
-	gate := &stubProvisioningGate{ok: false}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
-
-	_, err := uc.Execute(quotaInput("ws-1", "meta-1"))
-	if !errors.Is(err, businessphone.ErrPhoneLimitReached) {
-		t.Fatalf("expected ErrPhoneLimitReached, got %v", err)
-	}
-	if _, restored := repo.phoneNumbers["p1"]; restored {
-		t.Fatalf("a refused onboarding must not restore a deleted phone")
-	}
-}
-
-func TestOnboardEmbeddedSignup_GateErrorFailsClosed(t *testing.T) {
-	repo := newMockRepo()
-	boom := errors.New("no subscription")
-	gate := &stubProvisioningGate{ok: true, err: boom}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
-
-	_, err := uc.Execute(quotaInput("ws-1", "meta-new"))
-	if !errors.Is(err, boom) {
-		t.Fatalf("expected the gate error to propagate, got %v", err)
-	}
-	if len(repo.phoneNumbers) != 0 {
-		t.Fatalf("no phone may be created when the gate cannot be evaluated")
-	}
-}
-
 func TestOnboardEmbeddedSignup_AuthorizeMatchesExecuteRule(t *testing.T) {
 	repo := newMockRepo()
 	repo.phoneNumbers["p1"] = ownedPhone("p1", "meta-1", "ws-1", businessphone.StatusConnected)
-	gate := &stubProvisioningGate{ok: false}
-	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), gate)
+	repo.phoneNumbers["p2"] = ownedPhone("p2", "meta-2", "ws-other", businessphone.StatusConnected)
+	uc := NewOnboardEmbeddedSignupUseCase(repo, newMockWABARepo(), newMockMetaAPI(), &stubProvisioningGate{ok: false})
 
 	if err := uc.Authorize("ws-1", "meta-1"); err != nil {
-		t.Fatalf("owned active phone must be authorized, got %v", err)
+		t.Fatalf("owned phone must be authorized, got %v", err)
 	}
-	if err := uc.Authorize("ws-1", "meta-new"); !errors.Is(err, businessphone.ErrPhoneLimitReached) {
-		t.Fatalf("new phone over quota must be refused, got %v", err)
+	if err := uc.Authorize("ws-1", "meta-new"); err != nil {
+		t.Fatalf("an unknown number must be authorized without a slot, got %v", err)
+	}
+	if err := uc.Authorize("ws-1", "meta-2"); !errors.Is(err, businessphone.ErrPhoneHeldByAnotherWorkspace) {
+		t.Fatalf("another workspace's number must be refused, got %v", err)
 	}
 }

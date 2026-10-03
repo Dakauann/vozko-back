@@ -1,6 +1,7 @@
 package businessphone_usecase
 
 import (
+	"errors"
 	"log"
 	"time"
 
@@ -31,20 +32,21 @@ func NewOnboardEmbeddedSignupUseCase(
 	}
 }
 
+// Authorize guards the Meta client-direct flow. The number belongs to the
+// client's own WABA, so it consumes no provisioning slot; the workspace phone
+// entitlement covers numbers we provision through 360dialog. What must still
+// hold is tenancy: a workspace may only onboard a number no one else holds.
 func (uc *onboardEmbeddedSignupUseCase) Authorize(workspaceID, metaPhoneNumberID string) error {
-	if existing, err := uc.repo.FindByMetaPhoneNumberID(metaPhoneNumberID); err == nil && existing != nil && existing.IsHeldBy(workspaceID) {
+	existing, err := uc.repo.FindByMetaPhoneNumberID(metaPhoneNumberID)
+	if errors.Is(err, businessphone.ErrPhoneNumberNotFound) || (err == nil && existing == nil) {
 		return nil
 	}
-	if uc.gate == nil {
-		return businessphone.ErrPhoneLimitReached
-	}
-	ok, err := uc.gate.CanProvisionPhone(workspaceID)
 	if err != nil {
-		log.Printf("[onboard-embedded-signup] provisioning gate error for workspace %s: %v (denying, fail-closed)", workspaceID, err)
+		log.Printf("[onboard-embedded-signup] ownership lookup failed for %s: %v (denying, fail-closed)", metaPhoneNumberID, err)
 		return err
 	}
-	if !ok {
-		return businessphone.ErrPhoneLimitReached
+	if !existing.BelongsToWorkspace(workspaceID) {
+		return businessphone.ErrPhoneHeldByAnotherWorkspace
 	}
 	return nil
 }

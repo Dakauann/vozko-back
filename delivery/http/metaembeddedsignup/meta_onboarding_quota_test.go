@@ -1,8 +1,6 @@
 package metaembeddedsignup
 
 import (
-	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -81,50 +79,6 @@ func runMetaOnboarding(h *MetaEmbeddedSignupHandler) *httptest.ResponseRecorder 
 		WABAID:        "waba-1",
 	}, "ws-1", "user-1")
 	return rec
-}
-
-func TestMetaOnboarding_OverQuotaRefusedBeforeMetaSideEffects(t *testing.T) {
-	uc := &fakeOnboardUC{authorizeErr: businessphone.ErrPhoneLimitReached}
-	h, transport := newQuotaHandler(uc)
-
-	rec := runMetaOnboarding(h)
-
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Error bool   `json:"error"`
-		Code  string `json:"code"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("invalid body: %v", err)
-	}
-	if !body.Error || body.Code != "phone_limit_reached" {
-		t.Fatalf("expected phone_limit_reached, got %+v", body)
-	}
-	if uc.executed != 0 {
-		t.Fatalf("no phone may be saved over quota")
-	}
-	if transport.hit("subscribed_apps") || transport.hit("/register") {
-		t.Fatalf("Meta side effects must not run over quota, got %v", transport.urls)
-	}
-	if len(uc.authorized) != 1 || uc.authorized[0] != "ws-1/meta-1" {
-		t.Fatalf("expected the quota to be checked for ws-1/meta-1, got %v", uc.authorized)
-	}
-}
-
-func TestMetaOnboarding_GateFailureRefuses(t *testing.T) {
-	uc := &fakeOnboardUC{authorizeErr: errors.New("no subscription")}
-	h, transport := newQuotaHandler(uc)
-
-	rec := runMetaOnboarding(h)
-
-	if rec.Code == http.StatusOK {
-		t.Fatalf("a gate that cannot be evaluated must refuse, got 200: %s", rec.Body.String())
-	}
-	if uc.executed != 0 || transport.hit("subscribed_apps") || transport.hit("/register") {
-		t.Fatalf("nothing may happen when the gate fails")
-	}
 }
 
 func TestMetaOnboarding_UnderQuotaProceeds(t *testing.T) {
