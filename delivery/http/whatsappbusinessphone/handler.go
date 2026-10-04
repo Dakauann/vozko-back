@@ -46,6 +46,7 @@ type WhatsAppBusinessPhoneHandler struct {
 	workspacePhoneAccessRepo     workspace_phone_access.Repository
 	metaAPIService               businessphonedomain.MetaAPIService
 	whatsappClientFactory        conversation.WhatsAppClientFactory
+	receptive                    ReceptiveUseCase
 }
 
 func NewWhatsAppBusinessPhoneHandler(

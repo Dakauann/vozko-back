@@ -31,6 +31,8 @@ func RegisterProtectedRoutes(
 	protected.HandleFunc("/whatsapp/business-phones/{id}/upload-profile-picture", ac(bp, workspace_domain.ActionUpdate, h.UploadProfilePictureForWorkspace)).Methods(http.MethodPost)
 	protected.HandleFunc("/whatsapp/business-phones/{id}/calling", ac(bp, workspace_domain.ActionRead, h.GetCallingStatusForWorkspace)).Methods(http.MethodGet)
 	protected.HandleFunc("/whatsapp/business-phones/{id}/calling", ac(bp, workspace_domain.ActionUpdate, h.SetCallingStatusForWorkspace)).Methods(http.MethodPut)
+	protected.HandleFunc("/whatsapp/business-phones/{id}/automation", ac(bp, workspace_domain.ActionRead, h.GetNumberAutomation)).Methods(http.MethodGet)
+	protected.HandleFunc("/whatsapp/business-phones/{id}/automation", ac(bp, workspace_domain.ActionUpdate, h.UpdateNumberAutomation)).Methods(http.MethodPut)
 
 	verifySubrouter := protected.PathPrefix("/whatsapp/business-phones/{id}").Subrouter()
 	verifySubrouter.Use(phoneVerificationRateLimiter.Validate)

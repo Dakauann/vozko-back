@@ -37,12 +37,12 @@ type MetaEmbeddedSignupHandler struct {
 
 	templateWebhook template.HandleTemplateWebhookUseCase
 
-	dialog360OnboardingEnabled   bool
-	appSecret                    string
-	httpClient                   *http.Client
-	onboardUseCase               businessphone.OnboardEmbeddedSignupUseCase
-	coexistenceService           coexistence.MetaCoexistenceService
-	ensureOrganicCampaignUseCase whatsappcampaign.EnsureOrganicCoexistenceCampaignUseCase
+	dialog360OnboardingEnabled bool
+	appSecret                  string
+	httpClient                 *http.Client
+	onboardUseCase             businessphone.OnboardEmbeddedSignupUseCase
+	coexistenceService         coexistence.MetaCoexistenceService
+	ensureReceptiveContainer   whatsappcampaign.EnsureReceptiveContainerUseCase
 }
 
 func (h *MetaEmbeddedSignupHandler) WithDialog360(onboarder businessphone.Dialog360Onboarder, webhookSecret string) *MetaEmbeddedSignupHandler {
@@ -84,13 +84,13 @@ func (h *MetaEmbeddedSignupHandler) WithMeta(
 	appSecret string,
 	onboardUC businessphone.OnboardEmbeddedSignupUseCase,
 	coexSvc coexistence.MetaCoexistenceService,
-	ensureOrganicCampaignUC whatsappcampaign.EnsureOrganicCoexistenceCampaignUseCase,
+	ensureReceptiveContainerUC whatsappcampaign.EnsureReceptiveContainerUseCase,
 	onboardingVia360dialog bool,
 ) *MetaEmbeddedSignupHandler {
 	h.appSecret = strings.TrimSpace(appSecret)
 	h.onboardUseCase = onboardUC
 	h.coexistenceService = coexSvc
-	h.ensureOrganicCampaignUseCase = ensureOrganicCampaignUC
+	h.ensureReceptiveContainer = ensureReceptiveContainerUC
 	h.dialog360OnboardingEnabled = onboardingVia360dialog
 	if h.httpClient == nil {
 		h.httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -998,7 +998,7 @@ func (h *MetaEmbeddedSignupHandler) processWithToken(w http.ResponseWriter, acce
 				"status":   string(onboardResult.Phone.Status),
 			}
 
-			if isCoexistence && h.ensureOrganicCampaignUseCase != nil && h.coexistenceService != nil {
+			if isCoexistence && h.ensureReceptiveContainer != nil && h.coexistenceService != nil {
 				h.handleCoexistenceSync(onboardResult.Phone, ownerWorkspaceID, phoneNumberID, accessToken, results)
 			}
 		}
@@ -1017,7 +1017,7 @@ func (h *MetaEmbeddedSignupHandler) handleCoexistenceSync(
 ) {
 	coexResults := map[string]interface{}{}
 
-	campaign, created, err := h.ensureOrganicCampaignUseCase.Execute(workspaceID, phone.ID, phone.DisplayPhoneNumber)
+	campaign, created, err := h.ensureReceptiveContainer.Execute(workspaceID, phone.ID, phone.DisplayPhoneNumber)
 	if err != nil {
 		log.Printf("[meta-embedded-signup] ❌ Failed to create organic campaign: %v", err)
 		coexResults["organic_campaign"] = map[string]interface{}{"error": err.Error()}

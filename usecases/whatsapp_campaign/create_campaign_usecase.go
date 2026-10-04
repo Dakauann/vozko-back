@@ -71,6 +71,9 @@ func (uc *createCampaignUseCase) Execute(ctx context.Context, input *wc.Campaign
 	if input == nil {
 		return nil, wc.ErrCampaignNameRequired
 	}
+	if input.IsOrganic() {
+		return nil, wc.ErrReceptiveManagedByNumber
+	}
 
 	input.Normalize()
 	if err := input.Validate(); err != nil {
@@ -105,21 +108,6 @@ func (uc *createCampaignUseCase) Execute(ctx context.Context, input *wc.Campaign
 		if !allowed {
 			return nil, wc.ErrCampaignBusinessPhoneNoAccess
 		}
-	}
-
-	if input.IsOrganic() {
-		if input.ID == "" {
-			input.ID = uuid.New().String()
-		}
-		if err := uc.campaignRepo.Create(input); err != nil {
-			return nil, err
-		}
-		saved, err := uc.campaignRepo.FindByID(input.ID)
-		if err != nil {
-			return nil, err
-		}
-		saved.Metrics = wc.NewCampaignMetrics(nil)
-		return saved, nil
 	}
 
 	if uc.templateGrants == nil {

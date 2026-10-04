@@ -41,18 +41,18 @@ type Deps struct {
 	Templates     template.Repository
 	TemplateGrant workspace_template_access.CheckAccessUseCase
 
-	Leads         lead.Repository
-	Entries       wce.Repository
-	Campaigns     wc.Repository
-	EnsureOrganic wc.EnsureOrganicCoexistenceCampaignUseCase
-	Windows       WindowReader
-	CampaignSends lcs.Repository
-	SpamPolicy    SpamPolicyReader
-	History       conversation.MessageHistoryManager
-	Sender        template.BilledTemplateSendUseCase
-	Limiter       RateLimiter
-	HourlySendCap int
-	Now           func() time.Time
+	Leads           lead.Repository
+	Entries         wce.Repository
+	Campaigns       wc.Repository
+	EnsureReceptive wc.EnsureReceptiveContainerUseCase
+	Windows         WindowReader
+	CampaignSends   lcs.Repository
+	SpamPolicy      SpamPolicyReader
+	History         conversation.MessageHistoryManager
+	Sender          template.BilledTemplateSendUseCase
+	Limiter         RateLimiter
+	HourlySendCap   int
+	Now             func() time.Time
 }
 
 type startConversationUseCase struct {
@@ -61,7 +61,7 @@ type startConversationUseCase struct {
 
 func NewStartConversationUseCase(deps Deps) (wo.StartOfficialConversationUseCase, error) {
 	rules, err := newSendRules(deps, map[string]bool{
-		"organic campaign use case": deps.EnsureOrganic != nil,
+		"organic campaign use case": deps.EnsureReceptive != nil,
 	})
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, err
 	}
 
-	campaign, _, err := uc.deps.EnsureOrganic.Execute(in.WorkspaceID, phone.ID, phone.DisplayPhoneNumber)
+	campaign, _, err := uc.deps.EnsureReceptive.Execute(in.WorkspaceID, phone.ID, phone.DisplayPhoneNumber)
 	if err != nil || campaign == nil {
 		return nil, fmt.Errorf("whatsapp outreach: could not resolve the conversation container: %w", err)
 	}
@@ -238,4 +238,3 @@ func (uc *startConversationUseCase) refuseIfTooFast(ctx context.Context, workspa
 	}
 	return nil
 }
-

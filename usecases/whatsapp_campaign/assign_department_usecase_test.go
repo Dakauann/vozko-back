@@ -41,6 +41,10 @@ func (m *wcAssignRepoMock) FindByID(campaignID string) (*wc.Campaign, error) {
 	return &copyValue, nil
 }
 
+func (*wcAssignRepoMock) UpdateReceptive(string, string, wc.ReceptiveSettings) ([]string, error) {
+	return nil, nil
+}
+
 func (m *wcAssignRepoMock) FindLatestOrganicByBusinessPhone(string, string) (*wc.Campaign, error) {
 	return nil, wc.ErrCampaignNotFound
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"vozko/domain/shared"
 	wc "vozko/domain/whatsapp_campaign"
@@ -288,11 +289,41 @@ func (r *repository) UpdateClearCode(campaignID string, clearCode string) error 
 	return nil
 }
 
+func (r *repository) UpdateReceptive(workspaceID, businessPhoneID string, settings wc.ReceptiveSettings) ([]string, error) {
+	var changed []schema.WhatsAppCampaign
+	err := r.db.Model(&changed).
+		Clauses(clause.Returning{Columns: []clause.Column{{Name: "id"}}}).
+		Where("type = ? AND archived = ? AND workspace_id = ? AND business_phone_id = ?", string(wc.CampaignTypeOrganic), false, workspaceID, businessPhoneID).
+		Updates(map[string]interface{}{
+			"agent_id":               blankToNil(settings.AgentID),
+			"workflow_id":            blankToNil(settings.WorkflowID),
+			"pipeline_id":            blankToNil(settings.PipelineID),
+			"enable_agent_responses": settings.EnableAgentResponses,
+			"enable_workflow":        settings.EnableWorkflow,
+			"enable_analysis":        settings.EnableAnalysis,
+			"enable_auto_staging":    settings.EnableAutoStaging,
+			"enable_auto_memory":     settings.EnableAutoMemory,
+			"updated_at":             time.Now().UTC(),
+		}).Error
+	ids := make([]string, 0, len(changed))
+	for _, row := range changed {
+		ids = append(ids, row.ID)
+	}
+	return ids, err
+}
+
+func blankToNil(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 func (r *repository) FindLatestOrganicByBusinessPhone(workspaceID string, businessPhoneID string) (*wc.Campaign, error) {
 	var record schema.WhatsAppCampaign
 	query := r.db.Where("type = ?", string(wc.CampaignTypeOrganic)).
 		Where("archived = ?", false).
-		Order("created_at DESC")
+		Order("created_at DESC, id DESC")
 
 	if workspaceID != "" {
 		query = query.Where("workspace_id = ?", workspaceID)

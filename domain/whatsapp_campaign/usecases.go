@@ -38,7 +38,7 @@ type GetSummaryUseCase interface {
 	Execute(filter wce.WorkspaceSummaryFilter) (*CampaignMetrics, error)
 }
 
-type EnsureOrganicCoexistenceCampaignUseCase interface {
+type EnsureReceptiveContainerUseCase interface {
 	Execute(workspaceID, businessPhoneID, displayPhoneNumber string) (*Campaign, bool, error)
 }
 

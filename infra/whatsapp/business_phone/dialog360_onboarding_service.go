@@ -22,7 +22,7 @@ type Dialog360OnboardingService struct {
 	partner         businessphone.Dialog360PartnerService
 	phoneRepo       businessphone.Repository
 	wabaRepo        waba.Repository
-	organicCampaign wc.EnsureOrganicCoexistenceCampaignUseCase
+	organicCampaign wc.EnsureReceptiveContainerUseCase
 
 	messagingWebhookURL string
 	httpClient          *http.Client
@@ -106,7 +106,7 @@ func NewDialog360OnboardingService(
 	partner businessphone.Dialog360PartnerService,
 	phoneRepo businessphone.Repository,
 	wabaRepo waba.Repository,
-	organicCampaign wc.EnsureOrganicCoexistenceCampaignUseCase,
+	organicCampaign wc.EnsureReceptiveContainerUseCase,
 ) *Dialog360OnboardingService {
 	return &Dialog360OnboardingService{
 		partner:         partner,

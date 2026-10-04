@@ -121,7 +121,7 @@ func (c *Container) initHandlers() {
 		).WithRateLimit(c.redisProvider.SharedState()),
 		c.repositories.businessPhone,
 		c.repositories.waba,
-		c.useCases.ensureOrganicCoexistenceCampaign,
+		c.useCases.ensureReceptiveContainer,
 	)
 	c.services.dialog360Onboarding.WithProvisioningGate(c.useCases.phoneProvisioningGate)
 	c.services.dialog360Onboarding.WithNotifier(c.useCases.notifier, c.useCases.dashboardURL)
@@ -290,7 +290,7 @@ func (c *Container) initHandlers() {
 			c.cfg.MetaAppSecret,
 			c.useCases.onboardEmbeddedSignup,
 			c.services.coexistenceMetaAPI,
-			c.useCases.ensureOrganicCoexistenceCampaign,
+			c.useCases.ensureReceptiveContainer,
 			c.cfg.Dialog360OnboardingEnabled,
 		),
 		balance: balancehttp.NewBalanceHandler(

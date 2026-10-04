@@ -44,6 +44,9 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 	if err != nil {
 		return nil, err
 	}
+	if existing.IsOrganic() || input.IsOrganic() {
+		return nil, wc.ErrReceptiveManagedByNumber
+	}
 
 	existing.Name = input.Name
 	if input.Type.IsValid() {

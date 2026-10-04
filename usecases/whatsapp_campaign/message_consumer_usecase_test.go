@@ -349,6 +349,10 @@ func (r *mockCampaignRepo) FindByID(id string) (*wc.Campaign, error) {
 	return c, nil
 }
 
+func (*mockCampaignRepo) UpdateReceptive(string, string, wc.ReceptiveSettings) ([]string, error) {
+	return nil, nil
+}
+
 func (r *mockCampaignRepo) FindLatestOrganicByBusinessPhone(_, _ string) (*wc.Campaign, error) {
 	return nil, nil
 }

@@ -37,8 +37,6 @@ var (
 	ScreenWhatsAppCampaigns         = registerScreen("whatsapp_campaigns")
 	ScreenWhatsAppCampaignsArchived = registerScreen("whatsapp_campaigns_archived")
 	ScreenWhatsAppCampaignNew       = registerScreen("whatsapp_campaign_new")
-	ScreenOrganicCampaigns          = registerScreen("organic_campaigns")
-	ScreenOrganicCampaignNew        = registerScreen("organic_campaign_new")
 	ScreenWhatsAppCampaignDetail    = registerScreen("whatsapp_campaign_detail", "campaignId")
 	ScreenWhatsAppCampaignEdit      = registerScreen("whatsapp_campaign_edit", "campaignId")
 	ScreenWhatsAppCampaignCRM       = registerScreen("whatsapp_campaign_crm", "campaignId")

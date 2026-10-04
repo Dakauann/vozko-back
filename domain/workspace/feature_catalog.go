@@ -266,9 +266,9 @@ var Features = []Feature{
 		Description: "Campanhas de envio pelo WhatsApp oficial, ativas e receptivas.",
 		Scopes:      []ScopeRule{ScopeDepartments},
 		Capabilities: []Capability{
-			{Key: "whatsapp_campaigns.view", Description: "Ver as campanhas, os contatos e os resultados", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead)}, Screens: []Screen{ScreenWhatsAppCampaigns, ScreenWhatsAppCampaignsArchived, ScreenOrganicCampaigns, ScreenWhatsAppCampaignDetail}},
+			{Key: "whatsapp_campaigns.view", Description: "Ver as campanhas, os contatos e os resultados", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead)}, Screens: []Screen{ScreenWhatsAppCampaigns, ScreenWhatsAppCampaignsArchived, ScreenWhatsAppCampaignDetail}},
 			{Key: "whatsapp_campaigns.crm", Description: "Abrir as conversas de uma campanha", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead), conversationsRead}, Screens: []Screen{ScreenWhatsAppCampaignCRM}},
-			{Key: "whatsapp_campaigns.create", Description: "Criar campanhas e importar contatos", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead), need(ResourceWhatsAppCampaigns, ActionCreate)}, Screens: []Screen{ScreenWhatsAppCampaignNew, ScreenOrganicCampaignNew}},
+			{Key: "whatsapp_campaigns.create", Description: "Criar campanhas e importar contatos", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead), need(ResourceWhatsAppCampaigns, ActionCreate)}, Screens: []Screen{ScreenWhatsAppCampaignNew}},
 			{Key: "whatsapp_campaigns.edit", Description: "Editar campanhas e contatos, reiniciar, limpar o histórico e arquivar", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead), need(ResourceWhatsAppCampaigns, ActionUpdate)}, Screens: []Screen{ScreenWhatsAppCampaignEdit}},
 			{Key: "whatsapp_campaigns.delete", Description: "Excluir campanhas e contatos", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead), need(ResourceWhatsAppCampaigns, ActionDelete)}},
 			{Key: "whatsapp_campaigns.start", Description: "Iniciar envios e envios rápidos", Requires: []PermissionEntry{need(ResourceWhatsAppCampaigns, ActionRead), need(ResourceWhatsAppCampaigns, ActionStart)}},

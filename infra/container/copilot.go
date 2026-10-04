@@ -51,7 +51,7 @@ func (c *Container) buildCopilot(
 		copilottools.NewCalculateTool(),
 		copilottools.NewQueryDatasetTool(),
 		copilottools.NewRenderChartTool(),
-	}, c.operationTools()...)
+	}, append(c.operationTools(), c.numberAutomationTools(getAgent)...)...)
 	return copilot_usecase.NewService(
 		agentloop.Engine{AI: c.services.ai},
 		copilot_usecase.NewRegistry(toolset...),
@@ -109,6 +109,23 @@ func (c *Container) templateCreateTools() []copilot.Tool {
 	return []copilot.Tool{
 		copilottools.NewListBusinessPhonesTool(deps),
 		copilottools.NewCreateTemplateTool(deps),
+	}
+}
+
+func (c *Container) numberAutomationTools(getAgent agent.GetAgentUseCase) []copilot.Tool {
+	funnels := c.funnelStages()
+	if funnels == nil {
+		return nil
+	}
+	deps := copilottools.NumberAutomationDeps{
+		Numbers:   c.numberReceptive(),
+		Agents:    getAgent,
+		Workflows: c.useCases.scopedWorkflows,
+		Funnels:   funnels,
+	}
+	return []copilot.Tool{
+		copilottools.NewNumberAutomationTool(deps),
+		copilottools.NewConfigureNumberAutomationTool(deps),
 	}
 }
 

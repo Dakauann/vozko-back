@@ -89,6 +89,10 @@ type mockCampaignRepo struct {
 	created   []*whatsappcampaign.Campaign
 }
 
+func (*mockCampaignRepo) UpdateReceptive(string, string, whatsappcampaign.ReceptiveSettings) ([]string, error) {
+	return nil, nil
+}
+
 func (r *mockCampaignRepo) FindLatestOrganicByBusinessPhone(workspaceID, phoneID string) (*whatsappcampaign.Campaign, error) {
 	if c, ok := r.campaigns[workspaceID+":"+phoneID]; ok {
 		return c, nil

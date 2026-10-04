@@ -12,6 +12,7 @@ type Repository interface {
 	Delete(campaignID string) error
 	FindByID(campaignID string) (*Campaign, error)
 	FindLatestOrganicByBusinessPhone(workspaceID string, businessPhoneID string) (*Campaign, error)
+	UpdateReceptive(workspaceID, businessPhoneID string, settings ReceptiveSettings) ([]string, error)
 	List(input ListCampaignsInput) (*shared.PaginatedResult[*Campaign], error)
 	ListByStatus(status Status) ([]*Campaign, error)
 	ListScheduledToStart(at time.Time, limit int) ([]*Campaign, error)

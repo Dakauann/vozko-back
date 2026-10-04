@@ -141,15 +141,15 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 			ID: "tpl-1", Name: "aviso", Language: "pt_BR",
 			Category: template.TemplateCategoryUtility, Status: template.TemplateStatusApproved,
 		}},
-		Leads:         &fakeLeads{rec: &lead.Lead{ID: "lead-1", Number: "5511999999999"}},
-		Entries:       entries,
-		EnsureOrganic: &fakeOrganic{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", Type: wc.CampaignTypeOrganic}},
-		Windows:       nil,
-		TemplateGrant: &fakeGrant{granted: true},
-		CampaignSends: &fakeCampaignSends{},
-		SpamPolicy:    &fakeSpamPolicy{},
-		History:       history,
-		Sender:        sender,
+		Leads:           &fakeLeads{rec: &lead.Lead{ID: "lead-1", Number: "5511999999999"}},
+		Entries:         entries,
+		EnsureReceptive: &fakeOrganic{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", Type: wc.CampaignTypeOrganic}},
+		Windows:         nil,
+		TemplateGrant:   &fakeGrant{granted: true},
+		CampaignSends:   &fakeCampaignSends{},
+		SpamPolicy:      &fakeSpamPolicy{},
+		History:         history,
+		Sender:          sender,
 	}
 	_ = windows
 	for _, m := range mutate {
@@ -372,11 +372,11 @@ func TestStartConversation_UnknownOutcome_LeavesEntryPending(t *testing.T) {
 
 func TestNewStartConversationUseCase_RefusesWithoutSender(t *testing.T) {
 	_, err := NewStartConversationUseCase(Deps{
-		Phones:        &fakePhones{},
-		Templates:     &fakeTemplates{},
-		Leads:         &fakeLeads{},
-		Entries:       &fakeEntries{},
-		EnsureOrganic: &fakeOrganic{},
+		Phones:          &fakePhones{},
+		Templates:       &fakeTemplates{},
+		Leads:           &fakeLeads{},
+		Entries:         &fakeEntries{},
+		EnsureReceptive: &fakeOrganic{},
 	})
 	if err == nil {
 		t.Fatal("a use case with no sender would create conversations nobody receives a message in")

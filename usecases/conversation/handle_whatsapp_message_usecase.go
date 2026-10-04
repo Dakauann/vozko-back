@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +90,7 @@ type handleWhatsAppMessageUseCase struct {
 	delegations conversation.DelegationRepository
 	live        LiveMode
 	analysis    *AnalysisScheduler
+	receptive   wc.EnsureReceptiveContainerUseCase
 }
 
 const failedStatusRefundTTL = 30 * 24 * time.Hour
@@ -119,6 +119,10 @@ func (uc *handleWhatsAppMessageUseCase) SetBillingPub(pub messaging.MessageQueue
 
 func (uc *handleWhatsAppMessageUseCase) SetDelegations(delegations conversation.DelegationRepository) {
 	uc.delegations = delegations
+}
+
+func (uc *handleWhatsAppMessageUseCase) SetReceptiveContainers(receptive wc.EnsureReceptiveContainerUseCase) {
+	uc.receptive = receptive
 }
 
 func (uc *handleWhatsAppMessageUseCase) SetLoopGuard(g loopguard.Guard) {
@@ -1905,143 +1909,98 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 	if normalized == "" {
 		return nil, nil
 	}
+	phone := uc.receivingPhone(metadata)
+	if actx, leadRecord, found := uc.existingConversation(normalized, phone); found {
+		return actx, leadRecord
+	}
+	return uc.openReceptiveConversation(normalized, phone)
+}
 
-	var receivingBusinessPhoneID string
-	var receivingWorkspaceID string
-	if metadata != nil && metadata.PhoneNumberID != "" && uc.businessPhoneRepo != nil {
-		if bp, err := uc.businessPhoneRepo.FindByMetaPhoneNumberID(metadata.PhoneNumberID); err == nil && bp != nil {
-			receivingBusinessPhoneID = bp.ID
-			receivingWorkspaceID = strings.TrimSpace(bp.OwnerWorkspaceID)
-		}
+func (uc *handleWhatsAppMessageUseCase) receivingPhone(metadata *conversation.WhatsAppMetadata) *businessphone.WhatsAppBusinessPhoneNumber {
+	if metadata == nil || metadata.PhoneNumberID == "" || uc.businessPhoneRepo == nil {
+		return nil
+	}
+	phone, err := uc.businessPhoneRepo.FindByMetaPhoneNumberID(metadata.PhoneNumberID)
+	if err != nil {
+		return nil
+	}
+	return phone
+}
+
+func (uc *handleWhatsAppMessageUseCase) existingConversation(normalized string, phone *businessphone.WhatsAppBusinessPhoneNumber) (*agentContext, *lead.Lead, bool) {
+	if uc.wcEntryRepo == nil || uc.wcCampaignRepo == nil || uc.agentRepo == nil {
+		return nil, nil, false
+	}
+	var phoneID, ownerID string
+	if phone != nil {
+		phoneID, ownerID = phone.ID, strings.TrimSpace(phone.OwnerWorkspaceID)
+	}
+	entry, err := uc.wcEntryRepo.FindByNumberAndBusinessPhone(normalized, phoneID)
+	if err != nil || entry == nil {
+		return nil, nil, false
+	}
+	campaign, err := uc.wcCampaignRepo.FindByID(entry.CampaignID)
+	if err != nil || campaign == nil {
+		return nil, nil, false
 	}
 
-	type candidate struct {
-		ctx              *agentContext
-		lead             *lead.Lead
-		createdAt        time.Time
-		responsesEnabled bool
-		source           string
+	var leadRecord *lead.Lead
+	if uc.leadRepo != nil && campaign.WorkspaceID != "" {
+		leadRecord, _ = uc.leadRepo.FindByNumber(campaign.WorkspaceID, normalized)
+	}
+	actx := &agentContext{wcCampaign: campaign, wcEntry: entry, wcLeadRecord: leadRecord}
+
+	if !campaign.RunsAutomationOn(ownerID) {
+		actx.skipResponse = true
+		log.Printf("[whatsapp-usecase] entry %s is receptive in workspace %s, which does not own business phone %s: recording without automation",
+			entry.ID, campaign.WorkspaceID, phoneID)
+		return actx, leadRecord, true
 	}
 
-	var candidates []candidate
+	responsesEnabled := campaign.EnableAgentResponses
+	if entry.AutomationEnabled != nil {
+		responsesEnabled = *entry.AutomationEnabled
+	}
+	uc.prepareAutomation(actx, responsesEnabled)
+	return actx, leadRecord, true
+}
 
-	if uc.wcEntryRepo != nil && uc.wcCampaignRepo != nil && uc.agentRepo != nil {
-		if wcEntry, err := uc.wcEntryRepo.FindByNumberAndBusinessPhone(normalized, receivingBusinessPhoneID); err == nil && wcEntry != nil {
-			if wcCampaign, err := uc.wcCampaignRepo.FindByID(wcEntry.CampaignID); err == nil && wcCampaign != nil {
-
-				if receivingWorkspaceID == "" && wcCampaign.WorkspaceID != "" {
-					receivingWorkspaceID = wcCampaign.WorkspaceID
-					log.Printf("[whatsapp-usecase] derived workspace %s from whatsapp campaign %s for business phone %s (phone has no owner_workspace_id)",
-						receivingWorkspaceID, wcCampaign.ID, receivingBusinessPhoneID)
-				}
-
-				responsesEnabled := wcCampaign.EnableAgentResponses
-				if wcEntry.AutomationEnabled != nil {
-					responsesEnabled = *wcEntry.AutomationEnabled
-				}
-
-				var wcLead *lead.Lead
-				if receivingWorkspaceID != "" {
-					wcLead, _ = uc.leadRepo.FindByNumber(receivingWorkspaceID, normalized)
-				}
-
-				wcCtx := &agentContext{
-					wcCampaign:   wcCampaign,
-					wcEntry:      wcEntry,
-					wcLeadRecord: wcLead,
-				}
-
-				responsesEnabled = uc.prepareAutomation(wcCtx, responsesEnabled)
-
-				candidates = append(candidates, candidate{
-					ctx:              wcCtx,
-					lead:             wcLead,
-					createdAt:        wcEntry.CreatedAt,
-					responsesEnabled: responsesEnabled,
-					source:           "whatsapp",
-				})
-			}
-		}
+func (uc *handleWhatsAppMessageUseCase) openReceptiveConversation(normalized string, phone *businessphone.WhatsAppBusinessPhoneNumber) (*agentContext, *lead.Lead) {
+	if phone == nil || uc.receptive == nil || uc.leadRepo == nil || uc.wcEntryRepo == nil {
+		log.Printf("[whatsapp-usecase] no conversation for number %s and no receptive to open one", normalized)
+		return nil, nil
+	}
+	ownerID := strings.TrimSpace(phone.OwnerWorkspaceID)
+	if ownerID == "" {
+		log.Printf("[whatsapp-usecase] business phone %s has no owner workspace, new contact %s not routed", phone.ID, normalized)
+		return nil, nil
+	}
+	container, _, err := uc.receptive.Execute(ownerID, phone.ID, phone.DisplayPhoneNumber)
+	if err != nil || container == nil {
+		log.Printf("[whatsapp-usecase] receptive of business phone %s unavailable, message from %s not routed: %v", phone.ID, normalized, err)
+		return nil, nil
 	}
 
-	if len(candidates) > 0 {
-		sort.Slice(candidates, func(i, j int) bool {
-			return candidates[i].createdAt.After(candidates[j].createdAt)
-		})
-		winner := candidates[0]
-
-		if !winner.responsesEnabled {
-			log.Printf("[whatsapp-usecase] most recent entry is %s campaign (created: %s) but agent responses are disabled - will record message but not respond",
-				winner.source, winner.createdAt.Format(time.RFC3339))
-			winner.ctx.skipResponse = true
-		} else if len(candidates) > 1 {
-			log.Printf("[whatsapp-usecase] using %s campaign (more recent entry: %s > %s)",
-				winner.source, winner.createdAt.Format(time.RFC3339), candidates[1].createdAt.Format(time.RFC3339))
-		} else {
-			log.Printf("[whatsapp-usecase] using %s campaign (no other campaign found)", winner.source)
-		}
-
-		return winner.ctx, winner.lead
+	leadRecord, _, err := uc.leadRepo.FindOrCreate(ownerID, normalized, lead.LeadUpdate{})
+	if err != nil {
+		log.Printf("[whatsapp-usecase] failed to find/create lead for receptive entry: %v", err)
+		return nil, nil
 	}
-
-	log.Printf("[whatsapp-usecase] no campaign found for number %s, checking organic campaigns", normalized)
-
-	if metadata != nil && metadata.PhoneNumberID != "" && uc.businessPhoneRepo != nil && uc.wcCampaignRepo != nil && uc.wcEntryRepo != nil && uc.leadRepo != nil {
-		businessPhone, err := uc.businessPhoneRepo.FindByMetaPhoneNumberID(metadata.PhoneNumberID)
-		if err != nil || businessPhone == nil {
-			log.Printf("[whatsapp-usecase] no campaign found for number %s (including organic)", normalized)
-			return nil, nil
-		}
-
-		organicWorkspaceID := strings.TrimSpace(businessPhone.OwnerWorkspaceID)
-
-		if organicWorkspaceID == "" {
-			organicWorkspaceID = receivingWorkspaceID
-		}
-
-		organicCampaign, err := uc.wcCampaignRepo.FindLatestOrganicByBusinessPhone(organicWorkspaceID, businessPhone.ID)
-		if err != nil || organicCampaign == nil {
-			log.Printf("[whatsapp-usecase] no campaign found for number %s (including organic)", normalized)
-			return nil, nil
-		}
-
-		if organicWorkspaceID == "" {
-			organicWorkspaceID = organicCampaign.WorkspaceID
-			log.Printf("[whatsapp-usecase] derived workspace %s from organic campaign %s for business phone %s (phone has no owner_workspace_id)", organicWorkspaceID, organicCampaign.ID, businessPhone.ID)
-		}
-
-		log.Printf("[whatsapp-usecase] found organic campaign %s for business phone %s", organicCampaign.ID, businessPhone.ID)
-
-		leadRecord, _, err := uc.leadRepo.FindOrCreate(organicWorkspaceID, normalized, lead.LeadUpdate{})
-		if err != nil {
-			log.Printf("[whatsapp-usecase] failed to find/create lead for organic entry: %v", err)
-			return nil, nil
-		}
-
-		newEntry := &wce.WhatsAppCampaignEntry{
-			ID:         uuid.New().String(),
-			CampaignID: organicCampaign.ID,
-			LeadID:     leadRecord.ID,
-			Status:     wce.SendStatusDelivered,
-		}
-		if err := uc.wcEntryRepo.Create(newEntry); err != nil {
-			log.Printf("[whatsapp-usecase] failed to create organic entry: %v", err)
-			return nil, nil
-		}
-		log.Printf("[whatsapp-usecase] created organic entry %s for lead %s in campaign %s", newEntry.ID, leadRecord.ID, organicCampaign.ID)
-
-		organicCtx := &agentContext{
-			wcCampaign:   organicCampaign,
-			wcEntry:      newEntry,
-			wcLeadRecord: leadRecord,
-		}
-
-		uc.prepareAutomation(organicCtx, organicCampaign.EnableAgentResponses)
-		return organicCtx, leadRecord
+	entry := &wce.WhatsAppCampaignEntry{
+		ID:         uuid.New().String(),
+		CampaignID: container.ID,
+		LeadID:     leadRecord.ID,
+		Status:     wce.SendStatusDelivered,
 	}
+	if err := uc.wcEntryRepo.Create(entry); err != nil {
+		log.Printf("[whatsapp-usecase] failed to create receptive entry: %v", err)
+		return nil, nil
+	}
+	log.Printf("[whatsapp-usecase] created receptive entry %s for lead %s in %s", entry.ID, leadRecord.ID, container.ID)
 
-	log.Printf("[whatsapp-usecase] no campaign found for number %s (including organic)", normalized)
-	return nil, nil
+	actx := &agentContext{wcCampaign: container, wcEntry: entry, wcLeadRecord: leadRecord}
+	uc.prepareAutomation(actx, container.EnableAgentResponses)
+	return actx, leadRecord
 }
 
 func (uc *handleWhatsAppMessageUseCase) resolveAgentTools(agentRecord *agent.Agent, campaignID, campaignType string) []ResolvedTool {

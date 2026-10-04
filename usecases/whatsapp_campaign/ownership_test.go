@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
+	"vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	"vozko/domain/workspace_phone_access"
 )
@@ -184,28 +185,6 @@ func TestUpdateCampaignUseCase_RejectsBusinessPhoneOutsideWorkspace(t *testing.T
 	}
 }
 
-func TestCreateCampaignUseCase_RejectsOrganicCampaignWhenPhoneOwnedByAnotherWorkspace(t *testing.T) {
-	businessPhones := newOwnershipBusinessPhoneRepo()
-	businessPhones.phones["phone-1"] = &businessphone.WhatsAppBusinessPhoneNumber{ID: "phone-1", OwnerWorkspaceID: "ws-2"}
-	phoneAccess := &ownershipWorkspacePhoneAccessRepo{hasAccess: true}
-
-	uc := NewCreateCampaignUseCase(nil, nil, nil, nil, businessPhones, phoneAccess, nil, nil)
-
-	_, err := uc.Execute(context.Background(), &wc.Campaign{
-		WorkspaceID:     "ws-1",
-		Name:            "Organic Campaign",
-		Type:            wc.CampaignTypeOrganic,
-		BusinessPhoneID: "phone-1",
-		Status:          wc.CampaignStatusStopped,
-	})
-	if err != wc.ErrCampaignBusinessPhoneNoAccess {
-		t.Fatalf("expected ErrCampaignBusinessPhoneNoAccess, got %v", err)
-	}
-	if phoneAccess.lastWS != "" || phoneAccess.lastPhone != "" {
-		t.Fatalf("expected legacy access fallback to be skipped for owned phone, got ws=%s phone=%s", phoneAccess.lastWS, phoneAccess.lastPhone)
-	}
-}
-
 func TestCreateCampaignUseCase_AllowsGrantedBusinessPhoneAccessForOwnerlessPhone(t *testing.T) {
 	businessPhones := newOwnershipBusinessPhoneRepo()
 	businessPhones.phones["phone-1"] = &businessphone.WhatsAppBusinessPhoneNumber{ID: "phone-1"}
@@ -265,66 +244,13 @@ func TestUpdateCampaignUseCase_AllowsGrantedBusinessPhoneAccessForOwnerlessPhone
 	}
 }
 
-func TestUpdateCampaignUseCase_AllowsOrganicCampaignWithoutTemplate(t *testing.T) {
-	campaignRepo := newMockCampaignRepo()
-	campaignRepo.campaigns["camp-1"] = &wc.Campaign{
-		ID:              "camp-1",
-		WorkspaceID:     "ws-1",
-		Name:            "Organic Campaign",
-		Type:            wc.CampaignTypeOrganic,
-		TemplateID:      "",
-		BusinessPhoneID: "phone-1",
-		Status:          wc.CampaignStatusPaused,
-		Archived:        true,
-	}
-
-	businessPhones := newOwnershipBusinessPhoneRepo()
-	businessPhones.phones["phone-1"] = &businessphone.WhatsAppBusinessPhoneNumber{
-		ID:               "phone-1",
-		OwnerWorkspaceID: "ws-1",
-	}
-
-	uc := NewUpdateCampaignUseCase(campaignRepo, newMockEntryRepo(), nil, businessPhones, nil)
-
-	updated, err := uc.Execute("camp-1", &wc.Campaign{
-		Name:                 "Updated Organic Campaign",
-		Type:                 wc.CampaignTypeOrganic,
-		BusinessPhoneID:      "phone-1",
-		AgentID:              "agent-1",
-		EnableAgentResponses: true,
-		PreferAudio:          true,
-		Archived:             true,
-	})
-	if err != nil {
-		t.Fatalf("expected organic update to succeed without template, got %v", err)
-	}
-	if updated.Type != wc.CampaignTypeOrganic {
-		t.Fatalf("expected organic type to be preserved, got %s", updated.Type)
-	}
-	if updated.TemplateID != "" {
-		t.Fatalf("expected template id to remain empty for organic campaign, got %s", updated.TemplateID)
-	}
-	if updated.Status != wc.CampaignStatusPaused {
-		t.Fatalf("expected status to be preserved, got %s", updated.Status)
-	}
-	if !updated.Archived {
-		t.Fatal("expected archived flag from input to be applied")
-	}
-	if updated.AgentID != "agent-1" {
-		t.Fatalf("expected agent id to be updated, got %s", updated.AgentID)
-	}
-	if !updated.PreferAudio {
-		t.Fatal("expected preferAudio to be updated")
-	}
-}
-
 func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {
 	campaignRepo := newMockCampaignRepo()
 	campaignRepo.campaigns["camp-1"] = &wc.Campaign{
 		ID:              "camp-1",
 		WorkspaceID:     "ws-1",
-		Name:            "Organic Campaign",
-		Type:            wc.CampaignTypeOrganic,
+		Name:            "Campaign",
+		TemplateID:      "tmpl-1",
 		BusinessPhoneID: "phone-1",
 		Status:          wc.CampaignStatusStopped,
 		Archived:        false,
@@ -334,14 +260,17 @@ func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {
 	businessPhones.phones["phone-1"] = &businessphone.WhatsAppBusinessPhoneNumber{
 		ID:               "phone-1",
 		OwnerWorkspaceID: "ws-1",
+		WABAId:           "waba-1",
 	}
 
-	uc := NewUpdateCampaignUseCase(campaignRepo, newMockEntryRepo(), nil, businessPhones, nil)
+	templates := newMockTemplateRepo()
+	templates.templates["tmpl-1"] = &template.Template{ID: "tmpl-1", Status: template.TemplateStatusApproved, WABAId: "waba-1"}
+
+	uc := NewUpdateCampaignUseCase(campaignRepo, newMockEntryRepo(), templates, businessPhones, nil)
 
 	archiveInput := func(archived bool) *wc.Campaign {
 		return &wc.Campaign{
-			Name:            "Organic Campaign",
-			Type:            wc.CampaignTypeOrganic,
+			Name:            "Campaign",
 			BusinessPhoneID: "phone-1",
 			Archived:        archived,
 		}

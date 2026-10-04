@@ -33,6 +33,7 @@ import (
 	shortlink_domain "vozko/domain/shortlink"
 	businessphone_domain "vozko/domain/whatsapp/business_phone"
 	template_domain "vozko/domain/whatsapp/template"
+	wc_domain "vozko/domain/whatsapp_campaign"
 	wc_entry_domain "vozko/domain/whatsapp_campaign_entry"
 	workspace_department_domain "vozko/domain/workspace/workspace_department"
 	openrouter_service "vozko/infra/ai/openrouter"
@@ -509,6 +510,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}); ok {
 		setter.SetAnalysisScheduler(c.services.analysisScheduler)
 	}
+	if setter, ok := handleWhatsAppMessageUC.(interface {
+		SetReceptiveContainers(wc_domain.EnsureReceptiveContainerUseCase)
+	}); ok {
+		setter.SetReceptiveContainers(wc_usecase.NewEnsureReceptiveContainerUseCase(c.repositories.wcCampaign))
+	}
 	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate)
 	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.services.fileReader)
 	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba).WithNotifier(notifierUC, dashboardURL)
@@ -528,12 +534,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	customFieldSvc := customfield_usecase.NewService(c.repositories.customField)
 
 	whatsAppOutreach := c.buildWhatsAppOutreach(whatsAppOutreachDeps{
-		consume:       consumeWhatsappTemplateUC,
-		inflight:      inflightReserver,
-		history:       messageHistoryManager,
-		alerter:       opsAlerter,
-		ensureOrganic: wc_usecase.NewEnsureOrganicCoexistenceCampaignUseCase(c.repositories.wcCampaign),
-		templateGrant: workspace_template_access_usecase.NewCheckAccessUseCase(c.repositories.workspaceTemplateAccess),
+		consume:         consumeWhatsappTemplateUC,
+		inflight:        inflightReserver,
+		history:         messageHistoryManager,
+		alerter:         opsAlerter,
+		ensureReceptive: wc_usecase.NewEnsureReceptiveContainerUseCase(c.repositories.wcCampaign),
+		templateGrant:   workspace_template_access_usecase.NewCheckAccessUseCase(c.repositories.workspaceTemplateAccess),
 	})
 
 	scheduledMessages := c.buildScheduledMessages(whatsAppOutreach.conversationTemplate)
@@ -598,24 +604,24 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getAgent:              getAgentUC,
 		listAgents:            listAgentsUC,
 
-		createWCCampaign:                 createWCCampaignUC,
-		updateWCCampaign:                 updateWCCampaignUC,
-		assignWCCampaignDepartment:       assignWCCampaignDepartmentUC,
-		deleteWCCampaign:                 deleteWCCampaignUC,
-		getWCCampaign:                    getWCCampaignUC,
-		listWCCampaigns:                  listWCCampaignsUC,
-		getWCCampaignsSummary:            getWCCampaignsSummaryUC,
-		getWCDispatchReport:              getWCDispatchReportUC,
-		ensureOrganicCoexistenceCampaign: wc_usecase.NewEnsureOrganicCoexistenceCampaignUseCase(c.repositories.wcCampaign),
-		listWCEntries:                    listWCEntriesUC,
-		resetWCCampaign:                  resetWCCampaignUC,
-		clearHistoryWCCampaign:           clearHistoryWCCampaignUC,
-		dispatchWCCampaign:               dispatchWCCampaignUC,
-		messageConsumerWCCampaign:        messageConsumerWCCampaignUC,
-		deleteEntryWCCampaign:            deleteEntryWCCampaignUC,
-		updateEntryWCCampaign:            updateEntryWCCampaignUC,
-		addEntriesWCCampaign:             addEntriesWCCampaignUC,
-		quickSendWCCampaign:              quickSendWCCampaignUC,
+		createWCCampaign:           createWCCampaignUC,
+		updateWCCampaign:           updateWCCampaignUC,
+		assignWCCampaignDepartment: assignWCCampaignDepartmentUC,
+		deleteWCCampaign:           deleteWCCampaignUC,
+		getWCCampaign:              getWCCampaignUC,
+		listWCCampaigns:            listWCCampaignsUC,
+		getWCCampaignsSummary:      getWCCampaignsSummaryUC,
+		getWCDispatchReport:        getWCDispatchReportUC,
+		ensureReceptiveContainer:   wc_usecase.NewEnsureReceptiveContainerUseCase(c.repositories.wcCampaign),
+		listWCEntries:              listWCEntriesUC,
+		resetWCCampaign:            resetWCCampaignUC,
+		clearHistoryWCCampaign:     clearHistoryWCCampaignUC,
+		dispatchWCCampaign:         dispatchWCCampaignUC,
+		messageConsumerWCCampaign:  messageConsumerWCCampaignUC,
+		deleteEntryWCCampaign:      deleteEntryWCCampaignUC,
+		updateEntryWCCampaign:      updateEntryWCCampaignUC,
+		addEntriesWCCampaign:       addEntriesWCCampaignUC,
+		quickSendWCCampaign:        quickSendWCCampaignUC,
 
 		findUserByID:             user_usecase.NewFindUserByIDUseCase(c.repositories.user),
 		updateUser:               user_usecase.NewUpdateUserUseCase(c.repositories.user),

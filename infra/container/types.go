@@ -599,27 +599,27 @@ type useCases struct {
 	getShop    shop.GetShopUseCase
 	listShops  shop.ListShopsUseCase
 
-	createWCCampaign                 wc_domain.CreateCampaignUseCase
-	updateWCCampaign                 wc_domain.UpdateCampaignUseCase
-	assignWCCampaignDepartment       wc_domain.AssignDepartmentUseCase
-	deleteWCCampaign                 wc_domain.DeleteCampaignUseCase
-	getWCCampaign                    wc_domain.GetCampaignUseCase
-	listWCCampaigns                  wc_domain.ListCampaignsUseCase
-	getWCCampaignsSummary            wc_domain.GetSummaryUseCase
-	getWCDispatchReport              wc_domain.GetDispatchReportUseCase
-	ensureOrganicCoexistenceCampaign wc_domain.EnsureOrganicCoexistenceCampaignUseCase
-	listWCEntries                    wc_domain.ListEntriesUseCase
-	resetWCCampaign                  wc_domain.ResetCampaignUseCase
-	clearHistoryWCCampaign           wc_domain.ClearHistoryUseCase
-	deleteEntryWCCampaign            wc_domain.DeleteEntryUseCase
-	updateEntryWCCampaign            wc_domain.UpdateEntryUseCase
-	addEntriesWCCampaign             wc_domain.AddEntriesUseCase
-	quickSendWCCampaign              wc_domain.QuickSendUseCase
-	dispatchWCCampaign               wc_domain.DispatchCampaignUseCase
-	wcCampaignAccess                 wc_domain.CampaignAccessUseCase
-	startWCCampaign                  wc_domain.StartCampaignUseCase
-	wcImportPreview                  wc_domain.ImportPreviewUseCase
-	messageConsumerWCCampaign        wc_domain.MessageConsumerUseCase
+	createWCCampaign           wc_domain.CreateCampaignUseCase
+	updateWCCampaign           wc_domain.UpdateCampaignUseCase
+	assignWCCampaignDepartment wc_domain.AssignDepartmentUseCase
+	deleteWCCampaign           wc_domain.DeleteCampaignUseCase
+	getWCCampaign              wc_domain.GetCampaignUseCase
+	listWCCampaigns            wc_domain.ListCampaignsUseCase
+	getWCCampaignsSummary      wc_domain.GetSummaryUseCase
+	getWCDispatchReport        wc_domain.GetDispatchReportUseCase
+	ensureReceptiveContainer   wc_domain.EnsureReceptiveContainerUseCase
+	listWCEntries              wc_domain.ListEntriesUseCase
+	resetWCCampaign            wc_domain.ResetCampaignUseCase
+	clearHistoryWCCampaign     wc_domain.ClearHistoryUseCase
+	deleteEntryWCCampaign      wc_domain.DeleteEntryUseCase
+	updateEntryWCCampaign      wc_domain.UpdateEntryUseCase
+	addEntriesWCCampaign       wc_domain.AddEntriesUseCase
+	quickSendWCCampaign        wc_domain.QuickSendUseCase
+	dispatchWCCampaign         wc_domain.DispatchCampaignUseCase
+	wcCampaignAccess           wc_domain.CampaignAccessUseCase
+	startWCCampaign            wc_domain.StartCampaignUseCase
+	wcImportPreview            wc_domain.ImportPreviewUseCase
+	messageConsumerWCCampaign  wc_domain.MessageConsumerUseCase
 
 	listBusinessPhones         businessphone.ListUseCase
 	workspacePhones            businessphone.WorkspacePhonesUseCase

@@ -9603,6 +9603,49 @@ definitions:
         example: WhatsApp Business phone number synchronized successfully
         type: string
     type: object
+  whatsappbusinessphone.NumberAutomationRequest:
+    properties:
+      agentId:
+        example: 6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f
+        type: string
+      enableAgentResponses:
+        example: true
+        type: boolean
+      enableAnalysis:
+        type: boolean
+      enableAutoMemory:
+        type: boolean
+      enableAutoStaging:
+        type: boolean
+      enableWorkflow:
+        type: boolean
+      pipelineId:
+        type: string
+      workflowId:
+        type: string
+    type: object
+  whatsappbusinessphone.NumberAutomationResponse:
+    properties:
+      agentId:
+        type: string
+      enableAgentResponses:
+        type: boolean
+      enableAnalysis:
+        type: boolean
+      enableAutoMemory:
+        type: boolean
+      enableAutoStaging:
+        type: boolean
+      enableWorkflow:
+        type: boolean
+      id:
+        example: 7a8b9c0d-1e2f-4a3b-9c4d-5e6f7a8b9c0d
+        type: string
+      pipelineId:
+        type: string
+      workflowId:
+        type: string
+    type: object
   whatsappbusinessphone.RequestVerificationRequest:
     properties:
       language:
@@ -23251,6 +23294,105 @@ paths:
       security:
       - BearerAuth: []
       summary: Consultar telefone comercial do WhatsApp
+      tags:
+      - Telefones do WhatsApp Business
+  /whatsapp/business-phones/{id}/automation:
+    get:
+      description: Retorna a automação de atendimento receptivo do número (agente
+        ou fluxo, funil e análises), no mesmo formato dos outros canais. Só o workspace
+        dono do número pode consultar e configurar; workspaces com acesso concedido
+        recebem 403.
+      parameters:
+      - description: ID do telefone
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/whatsappbusinessphone.NumberAutomationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar a automação do número
+      tags:
+      - Telefones do WhatsApp Business
+    put:
+      consumes:
+      - application/json
+      description: Define quem atende as conversas receptivas do número (agente ou
+        fluxo), o funil e as análises. Vale para todas as conversas receptivas do
+        número; conversas de campanhas seguem a própria campanha. Só o workspace dono
+        do número pode configurar.
+      parameters:
+      - description: ID do telefone
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Automação do número
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/whatsappbusinessphone.NumberAutomationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/whatsappbusinessphone.NumberAutomationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Configurar a automação do número
       tags:
       - Telefones do WhatsApp Business
   /whatsapp/business-phones/{id}/business-profile:

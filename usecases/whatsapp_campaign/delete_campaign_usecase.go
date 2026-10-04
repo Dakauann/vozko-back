@@ -19,8 +19,12 @@ func (uc *deleteCampaignUseCase) Execute(campaignID string) error {
 		return wc.ErrCampaignNotFound
 	}
 
-	if _, err := uc.campaignRepo.FindByID(campaignID); err != nil {
+	existing, err := uc.campaignRepo.FindByID(campaignID)
+	if err != nil {
 		return err
+	}
+	if existing.IsOrganic() {
+		return wc.ErrReceptiveManagedByNumber
 	}
 
 	if err := uc.entryRepo.DeleteByCampaignID(campaignID); err != nil {

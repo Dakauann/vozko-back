@@ -119,6 +119,18 @@ func (f *fakeRepo) UpdateClearCode(string, string) error { return nil }
 func (f *fakeRepo) FindLatestOrganicByBusinessPhone(string, string) (*wc.Campaign, error) {
 	return nil, nil
 }
+func (f *fakeRepo) UpdateReceptive(workspaceID, businessPhoneID string, settings wc.ReceptiveSettings) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []string
+	for id, c := range f.campaigns {
+		if c.IsOrganic() && c.WorkspaceID == workspaceID && c.BusinessPhoneID == businessPhoneID {
+			c.AgentID, c.EnableAgentResponses = settings.AgentID, settings.EnableAgentResponses
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
 func (f *fakeRepo) List(wc.ListCampaignsInput) (*shared.PaginatedResult[*wc.Campaign], error) {
 	return nil, nil
 }
@@ -169,6 +181,29 @@ func TestCachedRepo_Update_InvalidatesCache(t *testing.T) {
 
 	if calls := atomic.LoadInt64(&inner.findCalls); calls != 2 {
 		t.Fatalf("expected 2 inner reads, got %d", calls)
+	}
+}
+
+func TestCachedRepo_UpdateReceptive_InvalidatesEveryContainerOfTheNumber(t *testing.T) {
+	inner := newFakeRepo()
+	inner.put(&wc.Campaign{ID: "newest", Type: wc.CampaignTypeOrganic, WorkspaceID: "ws1", BusinessPhoneID: "p1"})
+	inner.put(&wc.Campaign{ID: "older", Type: wc.CampaignTypeOrganic, WorkspaceID: "ws1", BusinessPhoneID: "p1"})
+	r := NewCachedRepository(inner, newFakeSharedState())
+	for _, id := range []string{"newest", "older"} {
+		if _, err := r.FindByID(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := r.UpdateReceptive("ws1", "p1", wc.ReceptiveSettings{AgentID: "agent-1", EnableAgentResponses: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{"newest", "older"} {
+		got, _ := r.FindByID(id)
+		if got == nil || got.AgentID != "agent-1" || !got.EnableAgentResponses {
+			t.Fatalf("%s still served stale settings: %#v", id, got)
+		}
 	}
 }
 

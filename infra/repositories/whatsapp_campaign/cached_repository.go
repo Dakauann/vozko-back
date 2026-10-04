@@ -111,6 +111,14 @@ func (r *CachedRepository) FindLatestOrganicByBusinessPhone(workspaceID string, 
 	return r.inner.FindLatestOrganicByBusinessPhone(workspaceID, businessPhoneID)
 }
 
+func (r *CachedRepository) UpdateReceptive(workspaceID, businessPhoneID string, settings wc.ReceptiveSettings) ([]string, error) {
+	ids, err := r.inner.UpdateReceptive(workspaceID, businessPhoneID, settings)
+	for _, id := range ids {
+		r.invalidate(id)
+	}
+	return ids, err
+}
+
 func (r *CachedRepository) List(input wc.ListCampaignsInput) (*shared.PaginatedResult[*wc.Campaign], error) {
 	return r.inner.List(input)
 }

@@ -23,12 +23,12 @@ type whatsAppOutreachUseCases struct {
 }
 
 type whatsAppOutreachDeps struct {
-	consume       balance_domain.ConsumeWhatsappTemplateUseCase
-	inflight      balance_domain.InflightReserver
-	history       conversation_domain.MessageHistoryManager
-	alerter       billing_domain.OpsAlerter
-	ensureOrganic wc_domain.EnsureOrganicCoexistenceCampaignUseCase
-	templateGrant workspace_template_access_domain.CheckAccessUseCase
+	consume         balance_domain.ConsumeWhatsappTemplateUseCase
+	inflight        balance_domain.InflightReserver
+	history         conversation_domain.MessageHistoryManager
+	alerter         billing_domain.OpsAlerter
+	ensureReceptive wc_domain.EnsureReceptiveContainerUseCase
+	templateGrant   workspace_template_access_domain.CheckAccessUseCase
 }
 
 func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutreachUseCases {
@@ -56,20 +56,20 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		c.repositories.whatsappTemplate, d.consume, c.services.cachedBalanceChecker)
 
 	deps := whatsapp_outreach_usecase.Deps{
-		Phones:        c.repositories.businessPhone,
-		PhoneGrants:   c.repositories.workspacePhoneAccess,
-		Templates:     c.repositories.whatsappTemplate,
-		TemplateGrant: d.templateGrant,
-		Leads:         c.repositories.lead,
-		Entries:       c.repositories.wcEntry,
-		Campaigns:     c.repositories.wcCampaign,
-		EnsureOrganic: d.ensureOrganic,
-		Windows:       c.repositories.leadMessageWindow,
-		CampaignSends: c.repositories.leadCampaignSend,
-		SpamPolicy:    whatsapp_outreach_usecase.NewConfigSpamPolicy(c.repositories.workspaceConfig),
-		History:       d.history,
-		Sender:        sender,
-		Limiter:       whatsapp_outreach_usecase.NewSharedStateLimiter(c.redisProvider.SharedState()),
+		Phones:          c.repositories.businessPhone,
+		PhoneGrants:     c.repositories.workspacePhoneAccess,
+		Templates:       c.repositories.whatsappTemplate,
+		TemplateGrant:   d.templateGrant,
+		Leads:           c.repositories.lead,
+		Entries:         c.repositories.wcEntry,
+		Campaigns:       c.repositories.wcCampaign,
+		EnsureReceptive: d.ensureReceptive,
+		Windows:         c.repositories.leadMessageWindow,
+		CampaignSends:   c.repositories.leadCampaignSend,
+		SpamPolicy:      whatsapp_outreach_usecase.NewConfigSpamPolicy(c.repositories.workspaceConfig),
+		History:         d.history,
+		Sender:          sender,
+		Limiter:         whatsapp_outreach_usecase.NewSharedStateLimiter(c.redisProvider.SharedState()),
 	}
 
 	if built.startOfficialConversation, err = whatsapp_outreach_usecase.NewStartConversationUseCase(deps); err != nil {

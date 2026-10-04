@@ -39,6 +39,10 @@ func (r *qsCampaignRepo) put(c *wc.Campaign) {
 func (r *qsCampaignRepo) Create(_ *wc.Campaign) error           { return nil }
 func (r *qsCampaignRepo) Update(_ string, _ *wc.Campaign) error { return nil }
 func (r *qsCampaignRepo) Delete(_ string) error                 { return nil }
+func (*qsCampaignRepo) UpdateReceptive(string, string, wc.ReceptiveSettings) ([]string, error) {
+	return nil, nil
+}
+
 func (r *qsCampaignRepo) FindLatestOrganicByBusinessPhone(_, _ string) (*wc.Campaign, error) {
 	return nil, nil
 }

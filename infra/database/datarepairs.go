@@ -47,6 +47,7 @@ func dataRepairs() []dataRepair {
 		{"ca_copy_instagram_private_replies", copyInstagramPrivateReplies},
 		{"pp_drop_retired_sip_trunk_prices", dropRetiredSIPTrunkPrices},
 		{"support_drop_legacy_tables", dropLegacySupportTables},
+		{"wc_move_receptive_to_the_number", moveReceptiveToTheNumber},
 	}
 }
 
