@@ -19,16 +19,23 @@ type NumberResponse struct {
 }
 
 type PageResponse struct {
-	PageID            string           `json:"pageId"`
-	Name              string           `json:"name"`
-	PictureURL        string           `json:"pictureUrl,omitempty"`
-	WhatsAppNumber    string           `json:"whatsAppNumber,omitempty"`
-	InstagramUserID   string           `json:"instagramUserId,omitempty"`
-	InstagramUsername string           `json:"instagramUsername,omitempty"`
-	CanAdvertise      bool             `json:"canAdvertise"`
-	LeadTermsAccepted bool             `json:"leadTermsAccepted"`
-	Numbers           []NumberResponse `json:"numbers"`
-	Linkable          []NumberResponse `json:"linkable"`
+	PageID            string                   `json:"pageId"`
+	Name              string                   `json:"name"`
+	PictureURL        string                   `json:"pictureUrl,omitempty"`
+	WhatsAppNumber    string                   `json:"whatsAppNumber,omitempty"`
+	InstagramUserID   string                   `json:"instagramUserId,omitempty"`
+	InstagramUsername string                   `json:"instagramUsername,omitempty"`
+	CanAdvertise      bool                     `json:"canAdvertise"`
+	LeadTermsAccepted bool                     `json:"leadTermsAccepted"`
+	Numbers           []NumberResponse         `json:"numbers"`
+	Linkable          []NumberResponse         `json:"linkable"`
+	Capabilities      []PageCapabilityResponse `json:"capabilities"`
+}
+
+type PageCapabilityResponse struct {
+	Channel string                   `json:"channel" enums:"advertise,whatsapp,instagram,messenger,lead_forms"`
+	State   string                   `json:"state" enums:"ready,missing"`
+	Action  *ReadinessActionResponse `json:"action,omitempty"`
 }
 
 type NumberLinkRequest struct {
@@ -111,7 +118,7 @@ type CreatePixelRequest struct {
 }
 
 // @Summary		Páginas que podem anunciar
-// @Description	Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma, os números do workspace iguais a ele (numbers) e os números do workspace que a página pode receber (linkable: oficiais do mesmo portfólio da página, ou não oficiais).
+// @Description	Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma, os números do workspace iguais a ele (numbers), os números do workspace que a página pode receber (linkable: oficiais do mesmo portfólio da página, ou não oficiais) e capabilities: para cada canal da Meta (advertise, whatsapp, instagram, messenger, lead_forms) se a página está pronta e, quando não, a ação in_app (link_whatsapp, connect_whatsapp) ou a url da tela da Meta.
 // @Tags			Anúncios
 // @Produce		json
 // @Param			id	path		string	true	"ID da conta de anúncios"
@@ -351,7 +358,12 @@ func presentPage(p adsuc.PromotablePage) PageResponse {
 		LeadTermsAccepted: p.Page.LeadTermsAccepted,
 		Numbers:           presentAll(p.Numbers, presentNumber),
 		Linkable:          presentAll(p.Linkable, presentNumber),
+		Capabilities:      presentAll(p.Capabilities, presentPageCapability),
 	}
+}
+
+func presentPageCapability(c advertising.PageCapability) PageCapabilityResponse {
+	return PageCapabilityResponse{Channel: string(c.Channel), State: string(c.State), Action: presentReadinessAction(c.Action)}
 }
 
 func presentNumber(n advertising.WorkspaceNumber) NumberResponse {

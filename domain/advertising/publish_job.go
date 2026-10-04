@@ -319,3 +319,17 @@ func (j *PublishJob) CreatedObjects() []string {
 	}
 	return ids
 }
+
+const (
+	PublishJobsTopic = "job.ads.publish"
+	PublishExchange  = "ads_publish_exchange"
+)
+
+type PublishJobMessage struct {
+	WorkspaceID string `json:"workspaceId"`
+	JobID       string `json:"jobId"`
+}
+
+type PublishQueue interface {
+	Enqueue(workspaceID, jobID string) error
+}

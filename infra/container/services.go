@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	advertising_domain "vozko/domain/advertising"
 	audience_domain "vozko/domain/audience"
 	billing_domain "vozko/domain/calls/billing"
 	recordings_domain "vozko/domain/calls/recordings"
@@ -81,6 +82,7 @@ func (c *Container) initServices() {
 	reportExchange := report_domain.Exchange
 	facebookPublishExchange := facebook_domain.PublishExchange
 	imageGenerationExchange := imagegen_domain.Exchange
+	adsPublishExchange := advertising_domain.PublishExchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
 
@@ -132,6 +134,8 @@ func (c *Container) initServices() {
 		facebookPublishSub:         queue.NewRabbitMQQueueSub(amqpPool, facebookPublishExchange),
 		imageGenerationPub:         queue.NewRabbitMQQueuePub(amqpPool, imageGenerationExchange),
 		imageGenerationSub:         queue.NewRabbitMQQueueSub(amqpPool, imageGenerationExchange),
+		adsPublishPub:              queue.NewRabbitMQQueuePub(amqpPool, adsPublishExchange),
+		adsPublishSub:              queue.NewRabbitMQQueueSub(amqpPool, adsPublishExchange),
 		shortlinkQueuePub:          queue.NewRabbitMQQueuePub(amqpPool, shortlinkClickExchange),
 		shortlinkQueueSub:          queue.NewRabbitMQQueueSub(amqpPool, shortlinkClickExchange),
 		webhookQueuePub:            queue.NewRabbitMQQueuePub(amqpPool, webhookExchange),

@@ -450,6 +450,8 @@ type services struct {
 	facebookPublishSub   messaging.MessageQueueSub
 	imageGenerationPub   messaging.MessageQueuePub
 	imageGenerationSub   messaging.MessageQueueSub
+	adsPublishPub        messaging.MessageQueuePub
+	adsPublishSub        messaging.MessageQueueSub
 	reportService        *report_usecase.Service
 	transactionsExporter *balance_usecase.TransactionsExporter
 	opportunityIO        *opportunityio.Service

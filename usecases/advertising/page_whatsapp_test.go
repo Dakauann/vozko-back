@@ -30,6 +30,9 @@ func TestPagesOfferTheNumbersEachPageCanTake(t *testing.T) {
 	if len(pages) != 1 || len(pages[0].Numbers) != 0 || len(pages[0].Linkable) != 1 || pages[0].Linkable[0].Number != "5511965467700" {
 		t.Fatalf("pages %+v", pages)
 	}
+	if len(pages[0].Capabilities) == 0 || pages[0].Capabilities[1].Channel != ads.PageWhatsApp || pages[0].Capabilities[1].Action.InApp != ads.ActionLinkWhatsApp {
+		t.Fatalf("capabilities %+v", pages[0].Capabilities)
+	}
 }
 
 func TestAskingForTheLinkCodeGoesToMetaOnlyForANumberThePageCanTake(t *testing.T) {

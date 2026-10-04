@@ -10,13 +10,19 @@ import (
 )
 
 type PromotablePage struct {
-	Page     ads.RemotePage
-	Numbers  []ads.WorkspaceNumber
-	Linkable []ads.WorkspaceNumber
+	Page         ads.RemotePage
+	Numbers      []ads.WorkspaceNumber
+	Linkable     []ads.WorkspaceNumber
+	Capabilities []ads.PageCapability
 }
 
 func promotable(page ads.RemotePage, numbers []ads.WorkspaceNumber) PromotablePage {
-	return PromotablePage{Page: page, Numbers: ads.NumbersLinkedTo(page, numbers), Linkable: ads.NumbersLinkableTo(page, numbers)}
+	return PromotablePage{
+		Page:         page,
+		Numbers:      ads.NumbersLinkedTo(page, numbers),
+		Linkable:     ads.NumbersLinkableTo(page, numbers),
+		Capabilities: ads.PageCapabilities(page, numbers),
+	}
 }
 
 type assetsGateway interface {

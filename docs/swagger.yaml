@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -794,7 +794,6 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
-    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -808,9 +807,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
+    - CONVERSATIONS
     type: string
     x-enum-varnames:
-    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -824,6 +823,7 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
+    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -1839,10 +1839,32 @@ definitions:
       wonDeals:
         type: integer
     type: object
+  advertisinghttp.PageCapabilityResponse:
+    properties:
+      action:
+        $ref: '#/definitions/advertisinghttp.ReadinessActionResponse'
+      channel:
+        enum:
+        - advertise
+        - whatsapp
+        - instagram
+        - messenger
+        - lead_forms
+        type: string
+      state:
+        enum:
+        - ready
+        - missing
+        type: string
+    type: object
   advertisinghttp.PageResponse:
     properties:
       canAdvertise:
         type: boolean
+      capabilities:
+        items:
+          $ref: '#/definitions/advertisinghttp.PageCapabilityResponse'
+        type: array
       instagramUserId:
         type: string
       instagramUsername:
@@ -1931,6 +1953,8 @@ definitions:
         - reconnect
         - sync
         - create_pixel
+        - link_whatsapp
+        - connect_whatsapp
         type: string
       kind:
         enum:
@@ -10772,9 +10796,11 @@ paths:
   /ads/accounts/{id}/pages:
     get:
       description: 'Páginas da conexão de anúncios, o número de WhatsApp vinculado
-        a cada uma, os números do workspace iguais a ele (numbers) e os números do
+        a cada uma, os números do workspace iguais a ele (numbers), os números do
         workspace que a página pode receber (linkable: oficiais do mesmo portfólio
-        da página, ou não oficiais).'
+        da página, ou não oficiais) e capabilities: para cada canal da Meta (advertise,
+        whatsapp, instagram, messenger, lead_forms) se a página está pronta e, quando
+        não, a ação in_app (link_whatsapp, connect_whatsapp) ou a url da tela da Meta.'
       parameters:
       - description: ID da conta de anúncios
         in: path

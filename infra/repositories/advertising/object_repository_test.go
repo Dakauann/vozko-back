@@ -159,9 +159,10 @@ func TestObjectListRequiresWorkspaceAndAccount(t *testing.T) {
 func TestObjectListFiltersAndEscapesSearch(t *testing.T) {
 	db, mock := newMockDB(t)
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "ad_objects" WHERE (workspace_id = $1 AND ad_account_id = $2) AND level = $3 `+
-		`AND campaign_meta_id IN ($4,$5) AND adset_meta_id IN ($6) AND name ILIKE $7 ESCAPE '\' AND removed = $8 `+
+		`AND ((campaign_meta_id IN ($4,$5) OR (level = $6 AND meta_id IN ($7,$8)))) AND ((adset_meta_id IN ($9) OR (level = $10 AND meta_id IN ($11)))) `+
+		`AND name ILIKE $12 ESCAPE '\' AND removed = $13 `+
 		`ORDER BY created_time DESC NULLS LAST, meta_id`)).
-		WithArgs("ws", "a-1", "ad", "c-1", "c-2", "s-1", `%50\%\_off\\%`, false).
+		WithArgs("ws", "a-1", "ad", "c-1", "c-2", "campaign", "c-1", "c-2", "s-1", "adset", "s-1", `%50\%\_off\\%`, false).
 		WillReturnRows(sqlmock.NewRows([]string{"meta_id"}).AddRow("ad-1"))
 	objects, err := NewObjectRepository(db).List(context.Background(), advertising.ObjectQuery{
 		WorkspaceID: "ws", AdAccountID: "a-1", Level: advertising.LevelAd,

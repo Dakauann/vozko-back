@@ -673,10 +673,18 @@ func newWorld() *world {
 
 func noSleep(context.Context, time.Duration) error { return nil }
 
+type inlineQueue struct{ worker *PublishUseCase }
+
+func (q *inlineQueue) Enqueue(workspaceID, jobID string) error {
+	return q.worker.Process(context.Background(), &ads.PublishJobMessage{WorkspaceID: workspaceID, JobID: jobID})
+}
+
 func (w *world) publisher() *PublishUseCase {
-	uc := NewPublishUseCase(w.sync, w.gateway, w.jobs, w.numbers, w.media, w.fees)
+	queue := &inlineQueue{}
+	uc := NewPublishUseCase(w.sync, w.gateway, w.jobs, w.numbers, w.media, w.fees, queue)
 	uc.media.sleep = noSleep
 	uc.preflight.media.sleep = noSleep
+	queue.worker = uc
 	return uc
 }
 

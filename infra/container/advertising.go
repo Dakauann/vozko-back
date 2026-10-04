@@ -42,6 +42,7 @@ type adsBundle struct {
 	Runs           *adsuc.ReportRunsUseCase
 	Webhooks       *adsuc.WebhookConsumer
 	GrantHealth    *adsuc.GrantHealthUseCase
+	PublishWorker  interface{ Start() error }
 	Handler        *advertisinghttp.Handler
 	WebhookHandler *metawebhook.Handler
 }
@@ -49,6 +50,9 @@ type adsBundle struct {
 func (c *Container) initAds() {
 	if err := c.adsManager().Webhooks.Start(); err != nil {
 		log.Printf("[ads] failed to start webhook consumers: %v", err)
+	}
+	if err := c.ads.PublishWorker.Start(); err != nil {
+		log.Fatalf("[ads] failed to start the publish worker: %v", err)
 	}
 }
 
@@ -91,7 +95,7 @@ func (c *Container) adsManager() *adsBundle {
 	bundle := &adsBundle{
 		Sync:     sync,
 		Accounts: adsuc.NewAccountsUseCase(accounts),
-		Publish:  adsuc.NewPublishUseCase(sync, gateway, jobs, numbers, media, fees),
+		Publish:  adsuc.NewPublishUseCase(sync, gateway, jobs, numbers, media, fees, adsuc.NewPublishQueue(c.services.adsPublishPub)),
 		Report:   adsuc.NewReportUseCase(accounts, objects, insights, attribution),
 		Manage:   adsuc.NewManageUseCase(sync, gateway, media),
 		Assets:   adsuc.NewAssetsUseCase(sync, gateway, numbers),
@@ -153,6 +157,7 @@ func (c *Container) adsManager() *adsBundle {
 		FrontendBaseURL: c.cfg.FrontendBaseURL,
 	})
 	bundle.GrantHealth = adsuc.NewGrantHealthUseCase(grants, accounts, oauth)
+	bundle.PublishWorker = adsuc.NewPublishConsumer(c.services.adsPublishSub, c.services.adsPublishPub, c.redisProvider.SharedState(), bundle.Publish)
 	c.ads = bundle
 	return bundle
 }

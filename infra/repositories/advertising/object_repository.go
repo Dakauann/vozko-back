@@ -116,10 +116,10 @@ func (r *objectRepository) List(ctx context.Context, q advertising.ObjectQuery) 
 		query = query.Where("level = ?", string(q.Level))
 	}
 	if len(q.CampaignIDs) > 0 {
-		query = query.Where("campaign_meta_id IN ?", q.CampaignIDs)
+		query = query.Where("(campaign_meta_id IN ? OR (level = ? AND meta_id IN ?))", q.CampaignIDs, string(advertising.LevelCampaign), q.CampaignIDs)
 	}
 	if len(q.AdSetIDs) > 0 {
-		query = query.Where("adset_meta_id IN ?", q.AdSetIDs)
+		query = query.Where("(adset_meta_id IN ? OR (level = ? AND meta_id IN ?))", q.AdSetIDs, string(advertising.LevelAdSet), q.AdSetIDs)
 	}
 	if len(q.MetaIDs) > 0 {
 		query = query.Where("meta_id IN ?", q.MetaIDs)

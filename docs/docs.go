@@ -471,7 +471,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma, os números do workspace iguais a ele (numbers) e os números do workspace que a página pode receber (linkable: oficiais do mesmo portfólio da página, ou não oficiais).",
+                "description": "Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma, os números do workspace iguais a ele (numbers), os números do workspace que a página pode receber (linkable: oficiais do mesmo portfólio da página, ou não oficiais) e capabilities: para cada canal da Meta (advertise, whatsapp, instagram, messenger, lead_forms) se a página está pronta e, quando não, a ação in_app (link_whatsapp, connect_whatsapp) ou a url da tela da Meta.",
                 "produces": [
                     "application/json"
                 ],
@@ -23920,26 +23920,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG"
+                "CATALOG",
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT"
             ],
             "x-enum-varnames": [
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog"
+                "DestinationCatalog",
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect"
             ]
         },
         "advertising.ExportLabels": {
@@ -24340,7 +24340,6 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
-                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -24353,10 +24352,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS"
+                "APP_INSTALLS",
+                "CONVERSATIONS"
             ],
             "x-enum-varnames": [
-                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -24369,7 +24368,8 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls"
+                "GoalAppInstalls",
+                "GoalConversations"
             ]
         },
         "advertising.Pixel": {
@@ -25860,11 +25860,42 @@ const docTemplate = `{
                 }
             }
         },
+        "advertisinghttp.PageCapabilityResponse": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "$ref": "#/definitions/advertisinghttp.ReadinessActionResponse"
+                },
+                "channel": {
+                    "type": "string",
+                    "enum": [
+                        "advertise",
+                        "whatsapp",
+                        "instagram",
+                        "messenger",
+                        "lead_forms"
+                    ]
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "ready",
+                        "missing"
+                    ]
+                }
+            }
+        },
         "advertisinghttp.PageResponse": {
             "type": "object",
             "properties": {
                 "canAdvertise": {
                     "type": "boolean"
+                },
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.PageCapabilityResponse"
+                    }
                 },
                 "instagramUserId": {
                     "type": "string"
@@ -25999,7 +26030,9 @@ const docTemplate = `{
                     "enum": [
                         "reconnect",
                         "sync",
-                        "create_pixel"
+                        "create_pixel",
+                        "link_whatsapp",
+                        "connect_whatsapp"
                     ]
                 },
                 "kind": {

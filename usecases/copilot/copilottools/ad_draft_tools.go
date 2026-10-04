@@ -798,6 +798,8 @@ func (t *updateAdDraftTool) Execute(ctx context.Context, cc copilot.Context, arg
 	}}
 }
 
+const publishInProgress = "a publicação foi aceita, cobrada uma vez e continua em segundo plano; diga ao usuário que ela aparece em Anúncios em instantes e nunca proponha publicar de novo"
+
 func publishResult(job *advertising.PublishJob) copilot.Result {
 	data := map[string]interface{}{"publish_status": string(job.Status), "campaign_meta_id": job.CampaignID()}
 	if id, ok := job.Progress.Ads[0]; ok {
@@ -805,6 +807,8 @@ func publishResult(job *advertising.PublishJob) copilot.Result {
 	}
 	if job.ErrorMessage != "" {
 		data["message"] = job.ErrorMessage
+	} else if !job.Status.Terminal() {
+		data["message"] = publishInProgress
 	}
 	status := copilot.StatusOK
 	if job.Status == advertising.JobFailed {

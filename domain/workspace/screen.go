@@ -72,7 +72,7 @@ var (
 	ScreenAdsForms                  = registerScreen("ads_forms")
 	ScreenAdsRules                  = registerScreen("ads_rules")
 	ScreenAdsConversions            = registerScreen("ads_conversions")
-	ScreenAdsWhatsApp               = registerScreen("ads_whatsapp")
+	ScreenAdsPages                  = registerScreen("ads_pages")
 	ScreenTelegramAccounts          = registerScreen("telegram_accounts")
 	ScreenTelegramConnect           = registerScreen("telegram_connect")
 	ScreenSIPTrunks                 = registerScreen("sip_trunks")

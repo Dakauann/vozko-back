@@ -289,3 +289,15 @@ func TestALeadFormIsCheckedBeforeItIsCreated(t *testing.T) {
 		t.Fatalf("a privacy link that is not https must be refused, got %v", err)
 	}
 }
+
+func TestAQueuedPublishTellsEloItContinuesInTheBackground(t *testing.T) {
+	res := publishResult(&advertising.PublishJob{Status: advertising.JobQueued})
+	data := res.Data.(map[string]interface{})
+	if res.Status != copilot.StatusOK || data["publish_status"] != string(advertising.JobQueued) || data["message"] != publishInProgress {
+		t.Fatalf("result %+v", res)
+	}
+	done := publishResult(&advertising.PublishJob{Status: advertising.JobPublished}).Data.(map[string]interface{})
+	if _, said := done["message"]; said {
+		t.Fatalf("a finished publish carried the in progress note: %v", done)
+	}
+}

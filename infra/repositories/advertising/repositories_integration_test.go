@@ -274,3 +274,49 @@ func TestNumberDirectoryReturnsTheRecordedPageLinksAgainstPostgres(t *testing.T)
 		t.Fatalf("numbers %+v", numbers)
 	}
 }
+
+func TestACampaignScopeIncludesTheCampaignAndItsAdSetScopeTheAdSetAgainstPostgres(t *testing.T) {
+	db := repotest.IsolatedDB(t, "ads_object_scope_test", &schema.AdObject{})
+	repo := NewObjectRepository(db)
+	ctx := context.Background()
+	ws, account := uuid.NewString(), uuid.NewString()
+	objects := []*advertising.Object{
+		{MetaID: "c-1", Level: advertising.LevelCampaign, Name: "Campanha"},
+		{MetaID: "c-2", Level: advertising.LevelCampaign, Name: "Outra"},
+		{MetaID: "s-1", Level: advertising.LevelAdSet, CampaignMetaID: "c-1", Name: "Conjunto"},
+		{MetaID: "a-1", Level: advertising.LevelAd, CampaignMetaID: "c-1", AdSetMetaID: "s-1", Name: "Anúncio"},
+	}
+	for _, o := range objects {
+		o.WorkspaceID, o.AdAccountID = ws, account
+		if err := repo.Upsert(ctx, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	scoped := func(level advertising.Level, q advertising.ObjectQuery) []string {
+		q.WorkspaceID, q.AdAccountID, q.Level = ws, account, level
+		found, err := repo.List(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids := make([]string, 0, len(found))
+		for _, o := range found {
+			ids = append(ids, o.MetaID)
+		}
+		return ids
+	}
+	if got := scoped(advertising.LevelCampaign, advertising.ObjectQuery{CampaignIDs: []string{"c-1"}}); strings.Join(got, ",") != "c-1" {
+		t.Fatalf("campaign scope listed %v", got)
+	}
+	if got := scoped(advertising.LevelAdSet, advertising.ObjectQuery{CampaignIDs: []string{"c-1"}}); strings.Join(got, ",") != "s-1" {
+		t.Fatalf("ad sets of the campaign %v", got)
+	}
+	if got := scoped(advertising.LevelAdSet, advertising.ObjectQuery{AdSetIDs: []string{"s-1"}}); strings.Join(got, ",") != "s-1" {
+		t.Fatalf("ad set scope listed %v", got)
+	}
+	if got := scoped(advertising.LevelAd, advertising.ObjectQuery{CampaignIDs: []string{"c-1"}, AdSetIDs: []string{"s-1"}}); strings.Join(got, ",") != "a-1" {
+		t.Fatalf("ads of the ad set %v", got)
+	}
+	if got := scoped(advertising.LevelCampaign, advertising.ObjectQuery{CampaignIDs: []string{"c-2"}}); strings.Join(got, ",") != "c-2" {
+		t.Fatalf("other campaign %v", got)
+	}
+}

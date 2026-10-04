@@ -37,12 +37,13 @@ type PublishUseCase struct {
 	media     creativeMedia
 	preflight preflighter
 	sync      *SyncUseCase
+	queue     ads.PublishQueue
 }
 
-func NewPublishUseCase(sync *SyncUseCase, gateway publishGateway, jobs ads.PublishJobRepository, numbers ads.NumberDirectory, source MediaSource, fees FeeCharger) *PublishUseCase {
+func NewPublishUseCase(sync *SyncUseCase, gateway publishGateway, jobs ads.PublishJobRepository, numbers ads.NumberDirectory, source MediaSource, fees FeeCharger, queue ads.PublishQueue) *PublishUseCase {
 	media := newCreativeMedia(source, gateway)
 	return &PublishUseCase{
-		access: sync.access, gateway: gateway, jobs: jobs, fees: fees, media: media, sync: sync,
+		access: sync.access, gateway: gateway, jobs: jobs, fees: fees, media: media, sync: sync, queue: queue,
 		preflight: preflighter{access: sync.access, gateway: gateway, objects: sync.objects, numbers: numbers, media: media, fees: fees, floor: budgetFloor{access: sync.access, gateway: gateway}},
 	}
 }
@@ -105,7 +106,22 @@ func (uc *PublishUseCase) Publish(ctx context.Context, in PublishInput) (*ads.Pu
 	if err := uc.jobs.Save(ctx, job); err != nil {
 		return nil, err
 	}
-	return uc.Run(ctx, job)
+	if err := uc.queue.Enqueue(job.WorkspaceID, job.ID); err != nil {
+		log.Printf("[ads] job %s is charged and queued but could not be handed to the worker; the resumer will run it: %v", job.ID, err)
+	}
+	return uc.jobs.Find(ctx, job.WorkspaceID, job.ID)
+}
+
+func (uc *PublishUseCase) Process(ctx context.Context, msg *ads.PublishJobMessage) error {
+	job, err := uc.jobs.Find(ctx, msg.WorkspaceID, msg.JobID)
+	if err != nil {
+		return err
+	}
+	if job.Status != ads.JobQueued {
+		return nil
+	}
+	_, err = uc.Run(ctx, job)
+	return err
 }
 
 func (uc *PublishUseCase) Run(ctx context.Context, job *ads.PublishJob) (*ads.PublishJob, error) {

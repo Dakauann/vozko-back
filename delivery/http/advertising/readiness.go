@@ -12,7 +12,7 @@ import (
 
 type ReadinessActionResponse struct {
 	Kind string `json:"kind" enums:"in_app,portal"`
-	Key  string `json:"key,omitempty" enums:"reconnect,sync,create_pixel"`
+	Key  string `json:"key,omitempty" enums:"reconnect,sync,create_pixel,link_whatsapp,connect_whatsapp"`
 	URL  string `json:"url,omitempty"`
 }
 
