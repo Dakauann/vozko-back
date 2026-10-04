@@ -48,6 +48,7 @@ type Driver struct {
 }
 
 func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, funds FundsChecker, newID IDGenerator) *Driver {
+	cc.Model = model
 	return &Driver{cc: cc, model: model, registry: reg, access: access, funds: funds, newID: newID}
 }
 
@@ -113,6 +114,13 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			m.Resource, m.Action)}
 	}
 	if m.Mutating {
+		choices, err := choicesOf(ctx, tool, d.cc, call.Arguments)
+		if err != nil {
+			emit("tool", toolStep{Name: call.Name, Summary: string(copilot.StatusError)}.payload())
+			return agentloop.StepResult{Result: fmt.Sprintf(
+				"PROPOSTA RECUSADA ANTES DE CHEGAR AO USUÁRIO: as opções do cartão de aprovação não puderam ser carregadas (%v). Avise o usuário e tente de novo em instantes.", err)}
+		}
+		call.Arguments = copilot.StripChoices(call.Arguments, choices)
 		secrets := secretsOf(tool, call.Arguments)
 		call.Arguments = copilot.Conceal(tool, call.Arguments, secrets)
 		if err := preflight(ctx, tool, d.cc, call.Arguments); err != nil {
@@ -128,6 +136,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 			Fields:   describe(ctx, tool, d.cc, call.Arguments),
 			Preview:  preview(ctx, tool, d.cc, call.Arguments),
 			Secrets:  secrets,
+			Choices:  choices,
 		}
 		emit("tool_proposal", pa)
 		return agentloop.StepResult{
@@ -140,7 +149,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 	return agentloop.StepResult{Result: renderResult(res)}
 }
 
-func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, provided map[string]string, emit agentloop.Emit) copilot.Result {
+func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, approval copilot.Approval, emit agentloop.Emit) copilot.Result {
 	tool, ok := d.registry.Get(pa.ToolName)
 	if !ok {
 		return copilot.Result{Status: copilot.StatusError, Message: "ferramenta desconhecida: " + pa.ToolName}
@@ -149,10 +158,18 @@ func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, 
 	if err := d.permit(m); err != nil {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "permissão negada"}
 	}
-	if err := preflight(ctx, tool, d.cc, pa.Args); err != nil {
+	choices, err := choicesOf(ctx, tool, d.cc, pa.Args)
+	if err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: "as opções do cartão de aprovação não puderam ser carregadas e nada foi alterado: " + err.Error()}
+	}
+	chosen, err := copilot.WithChoices(pa.Args, choices, approval.Choices)
+	if err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: "o usuário aprovou sem fazer a escolha do cartão (" + err.Error() + "); nada foi alterado. Proponha de novo e peça que ele escolha no cartão de aprovação."}
+	}
+	if err := preflight(ctx, tool, d.cc, chosen); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: "a mudança não passou mais na verificação e nada foi alterado: " + err.Error()}
 	}
-	args, err := copilot.WithSecrets(pa.Args, secretsOf(tool, pa.Args), provided)
+	args, err := copilot.WithSecrets(chosen, secretsOf(tool, chosen), approval.Secrets)
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: "o usuário aprovou sem preencher o campo protegido (" + err.Error() + "); nada foi alterado. Proponha de novo e peça que ele preencha o campo no cartão de aprovação, nunca no chat."}
 	}
@@ -162,6 +179,13 @@ func (d *Driver) ExecuteApproved(ctx context.Context, pa copilot.PendingAction, 
 func (d *Driver) run(ctx context.Context, tool copilot.Tool, name string, args map[string]interface{}, emit agentloop.Emit) copilot.Result {
 	emit(EventToolStart, map[string]interface{}{"name": name})
 	return tool.Execute(ctx, d.cc, args)
+}
+
+func choicesOf(ctx context.Context, tool copilot.Tool, cc copilot.Context, args map[string]interface{}) ([]copilot.ChoiceField, error) {
+	if asker, ok := tool.(copilot.ChoiceAsker); ok {
+		return asker.Choices(ctx, cc, args)
+	}
+	return nil, nil
 }
 
 func secretsOf(tool copilot.Tool, args map[string]interface{}) []copilot.SecretField {

@@ -43,6 +43,7 @@ type ReferenceLibrary interface {
 
 type Deps struct {
 	Generator         imagegen.Generator
+	Models            imagegen.ModelCatalog
 	Jobs              imagegen.Repository
 	Queue             imagegen.Queue
 	Funds             FundsGate
@@ -59,7 +60,7 @@ type Service struct {
 }
 
 func NewService(d Deps) (*Service, error) {
-	if d.Generator == nil || d.Jobs == nil || d.Queue == nil || d.Funds == nil || d.Billing == nil || d.Uploader == nil || d.References == nil {
+	if d.Generator == nil || d.Models == nil || d.Jobs == nil || d.Queue == nil || d.Funds == nil || d.Billing == nil || d.Uploader == nil || d.References == nil {
 		return nil, ErrMissingDependency
 	}
 	if d.CostCeilingMicros <= 0 {
@@ -68,10 +69,54 @@ func NewService(d Deps) (*Service, error) {
 	return &Service{d: d, now: func() time.Time { return time.Now().UTC() }, poll: defaultPoll}, nil
 }
 
-func (s *Service) Check(req imagegen.Request) error {
+func (s *Service) Models(ctx context.Context) ([]imagegen.Model, error) {
+	models, err := s.d.Models.ImageModels(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", imagegen.ErrModelsUnavailable, err)
+	}
+	if len(models) == 0 {
+		return nil, imagegen.ErrNoImageModels
+	}
+	return models, nil
+}
+
+func (s *Service) GeneratesImages(ctx context.Context, model string) (bool, error) {
+	if strings.TrimSpace(model) == "" {
+		return false, nil
+	}
+	models, err := s.Models(ctx)
+	if err != nil {
+		return false, err
+	}
+	return imagegen.Supported(models, model) == nil, nil
+}
+
+func (s *Service) supports(ctx context.Context, model string) error {
+	models, err := s.Models(ctx)
+	if err != nil {
+		return err
+	}
+	return imagegen.Supported(models, model)
+}
+
+func (s *Service) Check(ctx context.Context, req imagegen.Request) error {
 	if err := req.Validate(); err != nil {
 		return err
 	}
+	if err := s.supports(ctx, req.Model); err != nil {
+		return err
+	}
+	return s.checkSources(req)
+}
+
+func (s *Service) CheckContent(req imagegen.Request) error {
+	if err := req.ValidateContent(); err != nil {
+		return err
+	}
+	return s.checkSources(req)
+}
+
+func (s *Service) checkSources(req imagegen.Request) error {
 	if _, err := s.References(req.WorkspaceID, req.ReferenceMediaIDs); err != nil {
 		return err
 	}
@@ -109,10 +154,10 @@ func (s *Service) Request(ctx context.Context, req imagegen.Request, requestedBy
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.References(job.WorkspaceID, job.ReferenceMediaIDs); err != nil {
+	if err := s.supports(ctx, job.Model); err != nil {
 		return nil, err
 	}
-	if err := s.d.Funds.Check(job.WorkspaceID); err != nil {
+	if err := s.checkSources(job.Request()); err != nil {
 		return nil, err
 	}
 	active, err := s.d.Jobs.FindActive(ctx, job.WorkspaceID, job.RequestedBy, job.Fingerprint, imagegen.ActiveSince(s.now()))

@@ -125,6 +125,23 @@ const (
 	SkipValueMissing SkipReason = "value_missing"
 )
 
+func (r SkipReason) Final() bool { return r != SkipEventOff && r != SkipNotEnabled }
+
+func NonFinalSkips() []SkipReason { return []SkipReason{SkipEventOff} }
+
+const ConversionClaimTimeout = 15 * time.Minute
+
+func (s ConversionSettings) Events() []DealEvent {
+	var events []DealEvent
+	if s.SendLeads {
+		events = append(events, DealCreated)
+	}
+	if s.SendPurchases {
+		events = append(events, DealWon)
+	}
+	return events
+}
+
 func ConversionFor(settings ConversionSettings, signal DealSignal, now time.Time) (*ConversionEvent, SkipReason) {
 	if !settings.Enabled {
 		return nil, SkipNotEnabled

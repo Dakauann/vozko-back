@@ -223,7 +223,7 @@ func TestService_Approve(t *testing.T) {
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "create_agent", Args: map[string]interface{}{"name": "Bot"}})
 
 	cp := &capture{}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, cp.emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if wt.calls != 1 || wt.gotCC.WorkspaceID != "ws1" {
@@ -232,7 +232,7 @@ func TestService_Approve(t *testing.T) {
 	if ms.proposal("act-1").ProposalStatus != aichat.ProposalApproved {
 		t.Fatalf("the proposal must be marked approved, got %q", ms.proposal("act-1").ProposalStatus)
 	}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != ErrActionNotFound || wt.calls != 1 {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, cp.emit); err != ErrActionNotFound || wt.calls != 1 {
 		t.Fatalf("a second approval must not run the tool again, got %v calls=%d", err, wt.calls)
 	}
 	if ms.last() == nil || !strings.Contains(ms.last().Content, "Criei") {
@@ -250,7 +250,7 @@ func TestService_Approve_DefaultModel(t *testing.T) {
 	prov := &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"ok"}}
 	svc := newService(prov, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "create_agent"})
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, (&capture{}).emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if ms.last() == nil || ms.last().Model != defaultCopilotModel {
@@ -260,7 +260,7 @@ func TestService_Approve_DefaultModel(t *testing.T) {
 
 func TestService_Approve_NotFound(t *testing.T) {
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, &fakeMessages{})
-	if err := svc.Approve(context.Background(), testThread(), "nope", nil, ownerCtx, (&capture{}).emit); err != ErrActionNotFound {
+	if err := svc.Approve(context.Background(), testThread(), "nope", copilot.Approval{}, ownerCtx, (&capture{}).emit); err != ErrActionNotFound {
 		t.Fatalf("expected ErrActionNotFound, got %v", err)
 	}
 }
@@ -365,7 +365,7 @@ func TestService_Stream_PendingSaveError(t *testing.T) {
 
 func TestService_Approve_GetError(t *testing.T) {
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, &fakeMessages{claimErr: errors.New("db")})
-	if err := svc.Approve(context.Background(), testThread(), "a", nil, ownerCtx, (&capture{}).emit); err == nil {
+	if err := svc.Approve(context.Background(), testThread(), "a", copilot.Approval{}, ownerCtx, (&capture{}).emit); err == nil {
 		t.Fatal("expected approve get error")
 	}
 }
@@ -457,7 +457,7 @@ func TestService_NewMessageExpiresAnOpenProposal(t *testing.T) {
 	if ms.proposal("act-1").ProposalStatus != aichat.ProposalExpired {
 		t.Fatalf("an unanswered proposal must expire when the user moves on, got %q", ms.proposal("act-1").ProposalStatus)
 	}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, (&capture{}).emit); err != ErrActionNotFound || wt.calls != 0 {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, (&capture{}).emit); err != ErrActionNotFound || wt.calls != 0 {
 		t.Fatalf("an expired proposal must not run, got %v calls=%d", err, wt.calls)
 	}
 }
@@ -518,7 +518,7 @@ func TestService_ApproveHandsTheSecretToTheToolAndNowhereElse(t *testing.T) {
 	svc := newService(prov, th, ms, st)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "create_line", Args: map[string]interface{}{"name": "Principal"}, Secrets: st.Secrets(nil)})
 
-	if err := svc.Approve(context.Background(), th.thread, "act-1", map[string]string{"password": "s3nh4-secreta"}, ownerCtx, (&capture{}).emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{Secrets: map[string]string{"password": "s3nh4-secreta"}}, ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if st.gotArgs["password"] != "s3nh4-secreta" {
@@ -548,7 +548,7 @@ func TestService_ApprovedToolKeepsItsImageInTheChat(t *testing.T) {
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image", Args: map[string]interface{}{"prompt": "um card"}})
 
 	cp := &capture{}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, cp.emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if !cp.has(EventImage) {
@@ -578,7 +578,7 @@ func TestService_ApprovedToolSaysItIsRunningBeforeItRuns(t *testing.T) {
 	wt := &startWatchingTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, events: cp}
 	svc := newService(&scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Pronto."}}, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, cp.emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if !wt.startedFirst {
@@ -593,7 +593,7 @@ func TestService_ADeniedApprovalNeverSaysTheToolIsRunning(t *testing.T) {
 	svc := NewService(agentloop.Engine{AI: &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Sem permissão."}}}, NewRegistry(wt), &fakeAccess{err: errors.New("denied")}, openFunds{}, th, ms, nil, nil, func() string { return "act-1" })
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
 	cp := &capture{}
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, cp.emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, cp.emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	if cp.has(EventToolStart) || wt.calls != 0 {
@@ -611,7 +611,7 @@ func TestService_ApprovedImageIsKeptWhenTheModelAddsNoText(t *testing.T) {
 	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Image: image}}
 	svc := newService(&scriptAI{}, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
-	if err := svc.Approve(context.Background(), th.thread, "act-1", nil, ownerCtx, (&capture{}).emit); err != nil {
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
 	last := ms.last()

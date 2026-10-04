@@ -31,6 +31,7 @@ import (
 	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
 	imagegenhttp "vozko/delivery/http/imagegen"
+	webchathttp "vozko/delivery/http/webchat"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
@@ -194,6 +195,7 @@ type router struct {
 	agentMCP                       *handlers.AgentMCPBundle
 	workspaceMiddleware            *middleware.WorkspaceMiddleware
 	departmentMiddleware           *middleware.DepartmentMiddleware
+	webchat                        WebchatRoutes
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -301,8 +303,10 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	sendCapHandler *balancehttp.SendCapHandler,
 	metaChannels MetaChannelRoutes,
 	imageGenerationHandler *imagegenhttp.Handler,
+	webchat WebchatRoutes,
 ) Router {
 	r := &router{
+		webchat:                        webchat,
 		metaChannels:                   metaChannels,
 		imageGenerationHandler:         imageGenerationHandler,
 		instagramHandler:               instagramHandler,
@@ -473,6 +477,7 @@ func (r *router) setupRoutes() {
 	facebookhttp.RegisterProtectedRoutes(protected, r.metaChannels.Facebook, r.ac)
 	advertisinghttp.RegisterProtectedRoutes(protected, r.metaChannels.Ads, r.ac)
 	imagegenhttp.RegisterProtectedRoutes(protected, r.imageGenerationHandler, r.ac)
+	webchathttp.RegisterProtectedRoutes(protected, r.webchat.Management, r.ac)
 
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
@@ -681,6 +686,7 @@ func (r *router) setupWebhookRoutes() {
 
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)
+	webchathttp.RegisterPublicRoutes(r.mux, r.webchat.Public)
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)
 	workflowwebhookhttp.RegisterPublicRoutes(r.mux, r.workflowWebhookHandler, r.workflowWebhookRateLimiter)
 }

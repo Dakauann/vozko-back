@@ -10,6 +10,7 @@ const (
 	ActionConnectInstagram          ActionKind = "connect_instagram"
 	ActionConnectTelegram           ActionKind = "connect_telegram"
 	ActionConnectFacebook           ActionKind = "connect_facebook"
+	ActionCreateWebchat             ActionKind = "create_webchat"
 	ActionTopUpBalance              ActionKind = "top_up_balance"
 	ActionManageSubscription        ActionKind = "manage_subscription"
 	ActionOpenScreen                ActionKind = "open_screen"
@@ -24,12 +25,13 @@ var actionCapabilities = map[ActionKind]readiness.Capability{
 	ActionConnectInstagram:          readiness.Instagram,
 	ActionConnectTelegram:           readiness.Telegram,
 	ActionConnectFacebook:           readiness.Facebook,
+	ActionCreateWebchat:             readiness.Webchat,
 }
 
 func ActionKinds() []ActionKind {
 	return []ActionKind{
 		ActionConnectWhatsAppBusiness, ActionConnectUnofficialWhatsApp, ActionConnectInstagram,
-		ActionConnectTelegram, ActionConnectFacebook, ActionTopUpBalance, ActionManageSubscription,
+		ActionConnectTelegram, ActionConnectFacebook, ActionCreateWebchat, ActionTopUpBalance, ActionManageSubscription,
 	}
 }
 

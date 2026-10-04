@@ -68,6 +68,7 @@ type proposalDTO struct {
 	Fields   []copilot_domain.Field       `json:"fields"`
 	Preview  *copilot_domain.Preview      `json:"preview,omitempty"`
 	Secrets  []copilot_domain.SecretField `json:"secrets,omitempty"`
+	Choices  []copilot_domain.ChoiceField `json:"choices,omitempty"`
 	Status   string                       `json:"status"`
 }
 
@@ -79,7 +80,7 @@ func toProposalDTO(m *aichat.Message) *proposalDTO {
 	if json.Unmarshal(m.Proposal, &pa) != nil {
 		return nil
 	}
-	return &proposalDTO{ID: pa.ID, ToolName: pa.ToolName, Fields: pa.Fields, Preview: pa.Preview, Secrets: pa.Secrets, Status: string(m.ProposalStatus)}
+	return &proposalDTO{ID: pa.ID, ToolName: pa.ToolName, Fields: pa.Fields, Preview: pa.Preview, Secrets: pa.Secrets, Choices: pa.Choices, Status: string(m.ProposalStatus)}
 }
 
 func (h *AIChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
@@ -218,6 +219,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 
 type approveActionRequest struct {
 	Secrets map[string]string `json:"secrets"`
+	Choices map[string]string `json:"choices"`
 }
 
 func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +245,7 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	}
 	emit := startChatSSE(w, flusher)
 	r = withDepartmentCreationScope(r, "")
-	if err := h.copilot.Approve(r.Context(), thread, actionID, body.Secrets, copilotCtx(r, claims.UserID, workspaceID), emit); err != nil {
+	if err := h.copilot.Approve(r.Context(), thread, actionID, copilot_domain.Approval{Secrets: body.Secrets, Choices: body.Choices}, copilotCtx(r, claims.UserID, workspaceID), emit); err != nil {
 		emit("error", map[string]any{"error": err.Error()})
 	}
 }

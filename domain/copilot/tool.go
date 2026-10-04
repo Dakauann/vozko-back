@@ -10,6 +10,7 @@ import (
 
 type Context struct {
 	WorkspaceID string
+	Model       string
 	UserID      string
 	Role        workspace.Role
 	SystemAdmin bool
@@ -55,6 +56,7 @@ type PendingAction struct {
 	Fields   []Field                `json:"fields"`
 	Preview  *Preview               `json:"preview,omitempty"`
 	Secrets  []SecretField          `json:"secrets,omitempty"`
+	Choices  []ChoiceField          `json:"choices,omitempty"`
 }
 
 type Tool interface {

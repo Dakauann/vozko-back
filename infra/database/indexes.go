@@ -616,6 +616,24 @@ func createSchemaConstraints(tx *gorm.DB) error {
 		},
 
 		{
+			name: "ux_wc_widget_public_key",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_widget_public_key
+				ON webchat_widgets (public_key)`,
+		},
+		{
+			name: "ux_wc_visitor_widget_external",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_visitor_widget_external
+				ON webchat_visitors (widget_id, external_id)
+				WHERE external_id IS NOT NULL AND deleted_at IS NULL`,
+		},
+		{
+			name: "ux_wc_conversation_widget_visitor",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_conversation_widget_visitor
+				ON webchat_conversations (widget_id, visitor_id)
+				WHERE deleted_at IS NULL`,
+		},
+
+		{
 			name: "ux_uw_instance_jid (superseded)",
 			sql:  `DROP INDEX IF EXISTS ux_uw_instance_jid`,
 		},

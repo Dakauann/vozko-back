@@ -46,6 +46,7 @@ func dataRepairs() []dataRepair {
 		{"ca_copy_instagram_comment_rules", copyInstagramCommentRules},
 		{"ca_copy_instagram_private_replies", copyInstagramPrivateReplies},
 		{"pp_drop_retired_sip_trunk_prices", dropRetiredSIPTrunkPrices},
+		{"support_drop_legacy_tables", dropLegacySupportTables},
 	}
 }
 
@@ -348,6 +349,7 @@ func correctUnofficialDeviceSentDirection(tx *gorm.DB) error {
 
 var retiredPermissionResources = []string{
 	"branches",
+	"support_inboxes",
 	"campaigns",
 	"affiliate",
 	"usage",
@@ -599,4 +601,8 @@ func copyInstagramPrivateReplies(tx *gorm.DB) error {
 		FROM instagram_private_replies p
 		ON CONFLICT (source, comment_id) DO NOTHING
 	`).Error
+}
+
+func dropLegacySupportTables(tx *gorm.DB) error {
+	return tx.Exec("DROP TABLE IF EXISTS support_sessions, support_entries, support_inboxes").Error
 }

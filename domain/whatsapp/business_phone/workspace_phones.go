@@ -10,4 +10,5 @@ var ErrWorkspaceRequired = errors.New("whatsapp business phone: workspace is req
 
 type WorkspacePhonesUseCase interface {
 	List(workspaceID string, input ListInput) (*shared.PaginatedResult[*WhatsAppBusinessPhoneNumber], error)
+	ListOwned(workspaceID string, input ListInput) (*shared.PaginatedResult[*WhatsAppBusinessPhoneNumber], error)
 }

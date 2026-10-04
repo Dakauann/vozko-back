@@ -42,6 +42,10 @@ func (p phones) List(string, businessphone.ListInput) (*shared.PaginatedResult[*
 	return &shared.PaginatedResult[*businessphone.WhatsAppBusinessPhoneNumber]{TotalItems: int64(p.count)}, nil
 }
 
+func (p phones) ListOwned(workspaceID string, input businessphone.ListInput) (*shared.PaginatedResult[*businessphone.WhatsAppBusinessPhoneNumber], error) {
+	return p.List(workspaceID, input)
+}
+
 type entitlements struct{ phones int }
 
 func (e entitlements) Execute(string) ([]workspace_addon.WorkspaceEntitlement, error) {

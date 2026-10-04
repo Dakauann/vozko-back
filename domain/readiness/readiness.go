@@ -11,6 +11,7 @@ const (
 	Instagram          Capability = "instagram"
 	Telegram           Capability = "telegram"
 	Facebook           Capability = "facebook"
+	Webchat            Capability = "webchat"
 	KnowledgeBases     Capability = "knowledge_bases"
 )
 

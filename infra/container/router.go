@@ -111,6 +111,7 @@ func (c *Container) initRouter() {
 		c.handlers.sendCap,
 		c.metaChannelRoutes(),
 		c.imageGeneration().Handler,
+		webchatRoutes(c),
 	)
 
 }
@@ -121,7 +122,7 @@ func (c *Container) initServer() {
 	handler := c.router.GetHandler()
 	if c.services.metrics != nil {
 		metricsMW := middleware.NewHTTPMetrics(c.services.metrics, middleware.HTTPMetricsConfig{
-			SkipPrefixes:   []string{"/health", "/metrics", "/ws/"},
+			SkipPrefixes:   []string{"/health", "/metrics", "/ws/", "/public/webchat/session/stream"},
 			NormalizePaths: true,
 		})
 		handler = metricsMW.Record(handler)

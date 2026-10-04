@@ -95,6 +95,27 @@ var channelSources = []channelSource{
 		LeadIDExpr: "COALESCE(tgct.lead_id::text, '')",
 	},
 	{
+		EntryType:      shared.EntryTypeWebchat,
+		EntryTable:     "webchat_conversations wcc",
+		EntryAlias:     "wcc",
+		ContainerTable: "webchat_widgets wcw",
+		ContainerAlias: "wcw",
+		ContainerJoin:  "wcw.id = wcc.widget_id",
+
+		StatusColumn:       "wcc.conversation_status",
+		CloseSourceColumn:  "wcc.close_source",
+		CloseOutcomeColumn: "wcc.close_outcome",
+		ClosedAtColumn:     "wcc.closed_at",
+		DepartmentColumn:   "wcw.department_id",
+		ContainerIDColumn:  "wcc.widget_id",
+		ContainerNameExpr:  "NULLIF(wcw.name, '')",
+		WorkspaceColumn:    "wcc.workspace_id",
+		LastMessageColumn:  "wcc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN webchat_visitors wcvt ON wcvt.id = wcc.visitor_id",
+		LeadIDExpr: "COALESCE(wcvt.lead_id::text, '')",
+	},
+	{
 		EntryType:      shared.EntryTypeUnofficialWhatsApp,
 		EntryTable:     "unofficial_whatsapp_conversations uwc",
 		EntryAlias:     "uwc",

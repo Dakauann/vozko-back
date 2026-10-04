@@ -19,6 +19,8 @@ type errorMapping struct {
 }
 
 var domainErrors = []errorMapping{
+	{imagegen.ErrModelsUnavailable, http.StatusServiceUnavailable, "models_unavailable", "A lista de modelos de imagem não está disponível agora; tente de novo em instantes"},
+	{imagegen.ErrNoImageModels, http.StatusServiceUnavailable, "models_unavailable", "A lista de modelos de imagem não está disponível agora; tente de novo em instantes"},
 	{imagegen.ErrJobNotFound, http.StatusNotFound, "not_found", "Geração de imagem não encontrada"},
 	{imagegen.ErrDuplicateActiveJob, http.StatusConflict, "already_generating", "Esta imagem acabou de ser pedida; tente de novo em instantes"},
 	{imagegen.ErrRequesterRequired, http.StatusUnauthorized, "unauthenticated", "Usuário não identificado"},

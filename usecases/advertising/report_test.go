@@ -27,8 +27,8 @@ func seedStructure(w *world) {
 		{AdMetaID: "a-3", Day: day, Currency: "BRL", SpendMicros: 20_000_000, Impressions: 4000, LinkClicks: 40, Actions: map[string]int64{ads.ActionLinkClick: 40}},
 	}
 	w.attrib.rows = []ads.Attribution{
-		{AdMetaID: "a-1", Conversations: 4, Leads: 2, WonDeals: 1, Revenue: 20_000, RevenueCurrency: "BRL"},
-		{AdMetaID: "a-3", Conversations: 1},
+		{Key: "a-1", Conversations: 4, Leads: 2, WonDeals: 1, Revenue: 20_000, RevenueCurrency: "BRL"},
+		{Key: "a-3", Conversations: 1},
 	}
 }
 
@@ -146,5 +146,37 @@ func TestObjectRowOfAnotherWorkspaceIsNotFound(t *testing.T) {
 	seedStructure(w)
 	if _, err := reporter(w).ObjectRow(context.Background(), "ws-2", "s-1", septemberLast()); err == nil {
 		t.Fatal("foreign object reported")
+	}
+}
+
+func TestADealReachedThroughTwoCampaignsCountsOnceInTheTotal(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	w.attrib.byGroup = func(groups []ads.AdGroup) []ads.Attribution {
+		keys := map[string]bool{}
+		for _, g := range groups {
+			keys[g.Key] = true
+		}
+		var out []ads.Attribution
+		for key := range keys {
+			out = append(out, ads.Attribution{Key: key, Conversations: 1, Leads: 1, WonDeals: 1, Revenue: 20_000, RevenueCurrency: "BRL"})
+		}
+		return out
+	}
+	report, err := reporter(w).Report(context.Background(), ReportQuery{WorkspaceID: "ws-1", AccountID: "acc-1", Level: ads.LevelCampaign, Range: septemberLast()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Rows) != 2 || report.Rows[0].Outcome.WonDeals != 1 || report.Rows[1].Outcome.WonDeals != 1 {
+		t.Fatalf("rows %+v", report.Rows)
+	}
+	if report.Outcome.WonDeals != 1 || report.Outcome.RevenueMicros != 20_000*10_000 {
+		t.Fatalf("the shared deal was counted %d times in the total", report.Outcome.WonDeals)
+	}
+	last := w.attrib.calls[len(w.attrib.calls)-1]
+	for _, g := range last {
+		if g.Key != last[0].Key {
+			t.Fatalf("the total grouped ads apart: %+v", last)
+		}
 	}
 }

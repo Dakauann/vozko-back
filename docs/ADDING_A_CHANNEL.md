@@ -27,6 +27,15 @@ are worth copying rather than re-deriving:
   live on hosts that refuse past a ceiling. If your channel is self-hosted
   rather than SaaS, start there.
 
+`webchat` is the fourth, and the model for a channel where **we are the provider**:
+there is no third-party API and no webhook, only our own public, unauthenticated
+visitor API. Copy its security posture rather than re-deriving it (see
+[WEBCHAT_CHANNEL_PLAN.md](../../WEBCHAT_CHANNEL_PLAN.md) §7): the browser enforces the
+site allow-list through the frame's `frame-ancestors`, visitor endpoints refuse
+anything that is not same-origin, every limiter fails closed, and the visitor only
+ever sees a projection of the transcript (`webchat.ProjectMessage`). It replaced the
+old "support inbox", whose tables are dropped at boot.
+
 **Read §0.5 first.** Registering a channel in the sets below gets it into the
 inbox and onto the board. It does NOT get it analysis, analytics, export, the AI
 finish/stage tools or webhook-triggered workflows — those used to fail closed and
@@ -103,16 +112,17 @@ Then add it to the sets that apply:
 - `inboxScopableEntryTypes` — valid values of the websocket's `campaignType` and
   of `SearchInboxInput.CampaignType`. Missing here is a 400 on connect.
 - `containerScopedInboxEntryTypes` — channels whose inbox can be narrowed to one
-  container (a campaign, or an account). Narrower than the previous set: voice and
-  support are selectable but have no container query behind them.
+  container (a campaign, an account, a widget). Today it equals the previous set;
+  keep them separate, because a channel with no container query (voice, if it
+  ever reaches the inbox) must be scopable without being container-scoped.
 - `knownEntryTypes` — the union of every set above. Gates `IsKnown()`, which nine
   HTTP conversation endpoints use. `channel_parity_test.go` asserts it stays the
   union, so you cannot add to one set and forget this one.
 
-These are six independent questions (voice is viewable and taggable but is not a
-messaging channel; support is a messaging channel and taggable but is not opened
-through the conversation view, and has no container query), so decide each on its
-own. Answering by copying another channel's memberships is how a hole gets in.
+These are six independent questions (a call channel could be viewable and
+taggable without being a messaging channel; a channel could be messaging and
+taggable without a container query), so decide each on its own. Answering by
+copying another channel's memberships is how a hole gets in.
 
 `TestEveryBoardChannelCanCarryStagesAndLabels` pins the board registry and the
 tagging set together, and

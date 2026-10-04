@@ -26,6 +26,7 @@ var (
 	ErrInvalidRange           = errors.New("invalid date range")
 	ErrPageNotGranted         = errors.New("facebook page is not available to this ads connection")
 	ErrNumberNotLinked        = errors.New("whatsapp number is not linked to the facebook page")
+	ErrPageLinkRefused        = errors.New("meta refused to link the whatsapp number to the facebook page")
 	ErrNumberNotOwned         = errors.New("whatsapp number is not connected to this workspace")
 	ErrJobNotFound            = errors.New("ad publish job not found")
 	ErrJobNotRunnable         = errors.New("ad publish job cannot run in its current state")

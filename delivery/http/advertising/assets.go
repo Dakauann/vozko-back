@@ -28,6 +28,16 @@ type PageResponse struct {
 	CanAdvertise      bool             `json:"canAdvertise"`
 	LeadTermsAccepted bool             `json:"leadTermsAccepted"`
 	Numbers           []NumberResponse `json:"numbers"`
+	Linkable          []NumberResponse `json:"linkable"`
+}
+
+type NumberLinkRequest struct {
+	Number string `json:"number" example:"5511965467700"`
+}
+
+type NumberLinkConfirmRequest struct {
+	Number string `json:"number" example:"5511965467700"`
+	Code   string `json:"code" example:"83569"`
 }
 
 type LocationResponse struct {
@@ -96,7 +106,7 @@ type CreatePixelRequest struct {
 }
 
 // @Summary		Páginas que podem anunciar
-// @Description	Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma e os números do workspace iguais a ele.
+// @Description	Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma, os números do workspace iguais a ele (numbers) e os números do workspace que a página pode receber (linkable: oficiais do mesmo portfólio da página, ou não oficiais).
 // @Tags			Anúncios
 // @Produce		json
 // @Param			id	path		string	true	"ID da conta de anúncios"
@@ -334,10 +344,66 @@ func presentPage(p adsuc.PromotablePage) PageResponse {
 		PageID: p.Page.PageID, Name: p.Page.Name, PictureURL: p.Page.PictureURL, WhatsAppNumber: p.Page.WhatsAppNumber,
 		InstagramUserID: p.Page.InstagramUserID, InstagramUsername: p.Page.InstagramUsername, CanAdvertise: p.Page.CanAdvertise,
 		LeadTermsAccepted: p.Page.LeadTermsAccepted,
-		Numbers: presentAll(p.Numbers, func(n advertising.WorkspaceNumber) NumberResponse {
-			return NumberResponse{Kind: string(n.Kind), Label: n.Label, Number: n.Number}
-		}),
+		Numbers:           presentAll(p.Numbers, presentNumber),
+		Linkable:          presentAll(p.Linkable, presentNumber),
 	}
+}
+
+func presentNumber(n advertising.WorkspaceNumber) NumberResponse {
+	return NumberResponse{Kind: string(n.Kind), Label: n.Label, Number: n.Number}
+}
+
+// @Summary		Pedir código para vincular WhatsApp à página
+// @Description	Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). O código chega no app do WhatsApp do número; números em coexistência recebem no app do celular, não na caixa de entrada do Vozko. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused se a Meta não enviar o código.
+// @Tags			Anúncios
+// @Accept			json
+// @Produce		json
+// @Param			id		path	string				true	"ID da conta de anúncios"
+// @Param			pageId	path	string				true	"ID da página na Meta"
+// @Param			body	body	NumberLinkRequest	true	"número a vincular"
+// @Success		204
+// @Failure		409	{object}	response.ErrorResponse
+// @Failure		422	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/ads/accounts/{id}/pages/{pageId}/whatsapp-link/code [post]
+func (h *Handler) RequestNumberLink(w http.ResponseWriter, r *http.Request) {
+	var req NumberLinkRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	vars := mux.Vars(r)
+	if err := h.d.Assets.RequestNumberLink(r.Context(), workspaceOf(r), vars["id"], vars["pageId"], req.Number); err != nil {
+		writeError(w, err, "Failed to request the WhatsApp link code")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// @Summary		Confirmar vínculo de WhatsApp com a página
+// @Description	Envia à Meta o código recebido no WhatsApp e devolve a página atualizada. 422 com code invalid para um código fora do formato (4 a 8 dígitos); 409 page_link_refused quando a Meta não confirma o vínculo. A Meta pode levar alguns instantes para mostrar o número em whatsAppNumber; a publicação só libera quando ele aparece.
+// @Tags			Anúncios
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string						true	"ID da conta de anúncios"
+// @Param			pageId	path		string						true	"ID da página na Meta"
+// @Param			body	body		NumberLinkConfirmRequest	true	"número e código"
+// @Success		200		{object}	PageResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/ads/accounts/{id}/pages/{pageId}/whatsapp-link [post]
+func (h *Handler) ConfirmNumberLink(w http.ResponseWriter, r *http.Request) {
+	var req NumberLinkConfirmRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	vars := mux.Vars(r)
+	page, err := h.d.Assets.ConfirmNumberLink(r.Context(), workspaceOf(r), vars["id"], vars["pageId"], req.Number, req.Code)
+	if err != nil {
+		writeError(w, err, "Failed to confirm the WhatsApp link")
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, presentPage(*page))
 }
 
 // @Summary		Orçamento diário mínimo

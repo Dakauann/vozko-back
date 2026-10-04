@@ -23,7 +23,7 @@ func TestPersonMayActOnlyOnConversationsTheyCanSee(t *testing.T) {
 }
 
 func TestPersonMayNotActOnAnUnknownEntryType(t *testing.T) {
-	if (Person{UserID: "u1"}).MayActOn(entryAccessStub(true), "ws1", "e1", "support") {
+	if (Person{UserID: "u1"}).MayActOn(entryAccessStub(true), "ws1", "e1", "sms") {
 		t.Fatal("an entry type without conversation visibility must be refused")
 	}
 }

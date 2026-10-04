@@ -16,13 +16,14 @@ const (
 	MessageChannelTelegram           MessageChannel = "telegram"
 	MessageChannelUnofficialWhatsApp MessageChannel = "unofficial_whatsapp"
 	MessageChannelFacebook           MessageChannel = "facebook"
+	MessageChannelWebchat            MessageChannel = "webchat"
 )
 
 func (c MessageChannel) Valid() bool {
 	switch c {
 	case MessageChannelWhatsApp,
 		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp,
-		MessageChannelFacebook:
+		MessageChannelFacebook, MessageChannelWebchat:
 		return true
 	}
 	return false

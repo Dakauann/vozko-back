@@ -8,13 +8,20 @@ import (
 )
 
 type PromotablePage struct {
-	Page    ads.RemotePage
-	Numbers []ads.WorkspaceNumber
+	Page     ads.RemotePage
+	Numbers  []ads.WorkspaceNumber
+	Linkable []ads.WorkspaceNumber
+}
+
+func promotable(page ads.RemotePage, numbers []ads.WorkspaceNumber) PromotablePage {
+	return PromotablePage{Page: page, Numbers: ads.NumbersLinkedTo(page, numbers), Linkable: ads.NumbersLinkableTo(page, numbers)}
 }
 
 type assetsGateway interface {
 	minimumGateway
 	ListPages(ctx context.Context, token string) ([]ads.RemotePage, error)
+	RequestPageNumberCode(ctx context.Context, token, pageID, number string) (string, error)
+	VerifyPageNumber(ctx context.Context, token, pageID, number, code string) (string, error)
 	SearchLocations(ctx context.Context, token, query string) ([]ads.RemoteLocation, error)
 	SearchTargeting(ctx context.Context, token, metaAccountID string, kind ads.TargetingSearchKind, query string) ([]ads.TargetingOption, error)
 	EstimateReach(ctx context.Context, token, metaAccountID string, t ads.Targeting, p ads.Placements, goal ads.OptimizationGoal) (*ads.ReachEstimate, error)
@@ -65,9 +72,90 @@ func (uc *AssetsUseCase) Pages(ctx context.Context, workspaceID, accountID strin
 	}
 	out := make([]PromotablePage, 0, len(pages))
 	for _, p := range pages {
-		out = append(out, PromotablePage{Page: p, Numbers: ads.NumbersLinkedTo(p, numbers)})
+		out = append(out, promotable(p, numbers))
 	}
 	return out, nil
+}
+
+type numberLink struct {
+	account *ads.AdAccount
+	token   string
+	page    ads.RemotePage
+	number  string
+}
+
+func (uc *AssetsUseCase) numberLink(ctx context.Context, workspaceID, accountID, pageID, number string) (*numberLink, error) {
+	account, token, err := uc.access.open(ctx, workspaceID, accountID, ads.UseWrite)
+	if err != nil {
+		return nil, err
+	}
+	pages, err := uc.gateway.ListPages(ctx, token)
+	if err != nil {
+		return nil, uc.access.failed(ctx, account, err)
+	}
+	page, ok := findPage(pages, pageID)
+	if !ok {
+		return nil, ads.ErrPageNotGranted
+	}
+	numbers, err := uc.numbers.List(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	linkable, err := ads.LinkableNumber(page, numbers, number)
+	if err != nil {
+		return nil, err
+	}
+	return &numberLink{account: account, token: token, page: page, number: linkable}, nil
+}
+
+func findPage(pages []ads.RemotePage, pageID string) (ads.RemotePage, bool) {
+	wanted := strings.TrimSpace(pageID)
+	for _, p := range pages {
+		if wanted != "" && p.PageID == wanted {
+			return p, true
+		}
+	}
+	return ads.RemotePage{}, false
+}
+
+func (uc *AssetsUseCase) RequestNumberLink(ctx context.Context, workspaceID, accountID, pageID, number string) error {
+	link, err := uc.numberLink(ctx, workspaceID, accountID, pageID, number)
+	if err != nil {
+		return err
+	}
+	status, err := uc.gateway.RequestPageNumberCode(ctx, link.token, link.page.PageID, link.number)
+	if err != nil {
+		return uc.access.failed(ctx, link.account, err)
+	}
+	return ads.CodeSent(status)
+}
+
+func (uc *AssetsUseCase) ConfirmNumberLink(ctx context.Context, workspaceID, accountID, pageID, number, code string) (*PromotablePage, error) {
+	digits, err := ads.LinkCode(code)
+	if err != nil {
+		return nil, err
+	}
+	link, err := uc.numberLink(ctx, workspaceID, accountID, pageID, number)
+	if err != nil {
+		return nil, err
+	}
+	status, err := uc.gateway.VerifyPageNumber(ctx, link.token, link.page.PageID, link.number, digits)
+	if err != nil {
+		return nil, uc.access.failed(ctx, link.account, err)
+	}
+	if err := ads.LinkVerified(status); err != nil {
+		return nil, err
+	}
+	pages, err := uc.Pages(ctx, workspaceID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range pages {
+		if pages[i].Page.PageID == link.page.PageID {
+			return &pages[i], nil
+		}
+	}
+	return nil, ads.ErrPageNotGranted
 }
 
 const minSearchRunes = 2

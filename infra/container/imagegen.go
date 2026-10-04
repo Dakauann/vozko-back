@@ -6,6 +6,7 @@ import (
 	imagegenhttp "vozko/delivery/http/imagegen"
 	"vozko/domain/imagegen"
 	"vozko/infra/ai/aibilling"
+	"vozko/infra/ai/openrouter"
 	"vozko/infra/imagegenqueue"
 	"vozko/infra/openaiimage"
 	imagegen_repository "vozko/infra/repositories/imagegen"
@@ -33,12 +34,13 @@ func (c *Container) imageGeneration() *imageGenerationBundle {
 	if c.useCases.chatFunds == nil || c.useCases.uploadMedia == nil || c.useCases.getMedia == nil || c.services.imageGenerationPub == nil || c.services.imageGenerationSub == nil {
 		log.Fatalf("[image-generation] the funds gate, media upload, media lookup and image queue must exist before image generation")
 	}
-	generator, err := openaiimage.New(openaiimage.Config{APIKey: c.cfg.OpenRouterAPIKey, Model: c.cfg.ImageGenerationModel})
+	generator, err := openaiimage.New(openaiimage.Config{APIKey: c.cfg.OpenRouterAPIKey})
 	if err != nil {
 		log.Fatalf("[image-generation] generator: %v", err)
 	}
 	service, err := imagegen_usecase.NewService(imagegen_usecase.Deps{
 		Generator:         generator,
+		Models:            openrouter.NewImageModelCatalog(c.cfg.OpenRouterAPIKey),
 		Jobs:              imagegen_repository.NewJobRepository(c.db),
 		Queue:             imagegenqueue.NewPublisher(c.services.imageGenerationPub),
 		Funds:             c.useCases.chatFunds,

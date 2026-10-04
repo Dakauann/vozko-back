@@ -58,8 +58,16 @@ func (t *OperatorAutomationToggle) SetAutomation(ctx context.Context, in Operato
 	}
 
 	owner, err := t.ownership.ReturnToAutomation(in.EntryID, entryType, in.ActorUserID)
-	if err != nil && !errors.Is(err, ErrNothingToReturnTo) {
-		return OperatorAutomationResult{}, fmt.Errorf("automation resumed for %s (%s) but the conversation was not handed back: %w", in.EntryID, in.EntryType, err)
+	if err != nil {
+		return OperatorAutomationResult{Owner: owner}, t.pauseAgain(ctx, in, err)
 	}
 	return OperatorAutomationResult{Owner: owner}, nil
+}
+
+func (t *OperatorAutomationToggle) pauseAgain(ctx context.Context, in OperatorAutomationInput, cause error) error {
+	off := false
+	if err := t.automation.SetAutomation(ctx, in.EntryID, in.EntryType, &off); err != nil {
+		return fmt.Errorf("%w: %s (%s) could not be handed back (%v) nor paused again: %v", ErrAutomationStillActive, in.EntryID, in.EntryType, cause, err)
+	}
+	return fmt.Errorf("automation stays paused for %s (%s): %w", in.EntryID, in.EntryType, cause)
 }

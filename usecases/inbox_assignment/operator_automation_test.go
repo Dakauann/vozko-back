@@ -157,17 +157,22 @@ func TestOperatorResume_HandsAPersonsConversationBackToTheAutomation(t *testing.
 	}
 }
 
-func TestOperatorResume_WithNothingToAnswerOnlyFlipsTheSwitch(t *testing.T) {
-	f := newAIFixture(noAutomation)
-	f.seed("entry-1", "bob")
-	toggle, _ := newToggle(f)
+func TestOperatorResume_WithNothingToAnswerIsRefusedAndStaysPaused(t *testing.T) {
+	for name, enabled := range map[string]*bool{"switch on": pauseOn(), "follow the channel": nil} {
+		t.Run(name, func(t *testing.T) {
+			f := newAIFixture(noAutomation)
+			f.seed("entry-1", "bob")
+			toggle, _ := newToggle(f)
 
-	res, err := toggle.SetAutomation(context.Background(), toggleInput(pauseOn()))
+			res, err := toggle.SetAutomation(context.Background(), toggleInput(enabled))
 
-	require.NoError(t, err)
-	assert.Equal(t, []string{"resume:entry-1"}, f.pauser.paused)
-	assert.Equal(t, "bob", f.owner("entry-1"))
-	assert.Equal(t, "bob", res.Owner)
+			assert.ErrorIs(t, err, ErrNothingToReturnTo)
+			assert.Equal(t, []string{"resume:entry-1", "whatsapp:entry-1"}, f.pauser.paused,
+				"a switch left on while bob holds the conversation lets an agent enabled later answer over him")
+			assert.Equal(t, "bob", f.owner("entry-1"))
+			assert.Equal(t, "bob", res.Owner)
+		})
+	}
 }
 
 func TestOperatorResume_AFailedHandBackSurfaces(t *testing.T) {
@@ -178,7 +183,10 @@ func TestOperatorResume_AFailedHandBackSurfaces(t *testing.T) {
 
 	_, err := toggle.SetAutomation(context.Background(), toggleInput(pauseOn()))
 
-	require.Error(t, err, "the automation is on while a person still holds it: the caller must retry")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNothingToReturnTo)
+	assert.Equal(t, []string{"resume:entry-1", "whatsapp:entry-1"}, f.pauser.paused,
+		"a failed hand-back must not leave the automation live under a person")
 	assert.Equal(t, "bob", f.owner("entry-1"))
 }
 

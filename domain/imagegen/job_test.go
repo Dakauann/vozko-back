@@ -33,15 +33,15 @@ func TestFailureCodesAreAClosedSet(t *testing.T) {
 }
 
 func TestFingerprintIgnoresSpacingButNotTheRequester(t *testing.T) {
-	a := Fingerprint("ws", "u1", "  pizza   artesanal\n", AspectSquare)
-	if a != Fingerprint("ws", "u1", "pizza artesanal", AspectSquare) {
+	a := Fingerprint("ws", "u1", testModel, "  pizza   artesanal\n", AspectSquare)
+	if a != Fingerprint("ws", "u1", testModel, "pizza artesanal", AspectSquare) {
 		t.Fatal("whitespace changed the fingerprint")
 	}
 	for _, other := range []string{
-		Fingerprint("ws", "u2", "pizza artesanal", AspectSquare),
-		Fingerprint("ws2", "u1", "pizza artesanal", AspectSquare),
-		Fingerprint("ws", "u1", "pizza artesanal", AspectStory),
-		Fingerprint("ws", "u1", "Pizza artesanal", AspectSquare),
+		Fingerprint("ws", "u2", testModel, "pizza artesanal", AspectSquare),
+		Fingerprint("ws2", "u1", testModel, "pizza artesanal", AspectSquare),
+		Fingerprint("ws", "u1", testModel, "pizza artesanal", AspectStory),
+		Fingerprint("ws", "u1", testModel, "Pizza artesanal", AspectSquare),
 	} {
 		if other == a {
 			t.Fatal("different request shares a fingerprint")
@@ -53,29 +53,29 @@ func TestFingerprintIgnoresSpacingButNotTheRequester(t *testing.T) {
 }
 
 func TestFieldBoundariesDoNotCollide(t *testing.T) {
-	if Fingerprint("ab", "c", "x", AspectSquare) == Fingerprint("a", "bc", "x", AspectSquare) {
+	if Fingerprint("ab", "c", testModel, "x", AspectSquare) == Fingerprint("a", "bc", testModel, "x", AspectSquare) {
 		t.Fatal("concatenation collision")
 	}
 }
 
 func TestNewJobIsQueuedWithTheNormalizedPrompt(t *testing.T) {
-	job, err := NewJob(Request{WorkspaceID: "ws", Prompt: "  pizza  ", Aspect: AspectPortrait}, "u1")
+	job, err := NewJob(Request{WorkspaceID: "ws", Model: testModel, Prompt: "  pizza  ", Aspect: AspectPortrait}, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Status != StatusQueued || job.Prompt != "pizza" || job.RequestedBy != "u1" || job.Fingerprint != Fingerprint("ws", "u1", "pizza", AspectPortrait) {
+	if job.Status != StatusQueued || job.Prompt != "pizza" || job.RequestedBy != "u1" || job.Fingerprint != Fingerprint("ws", "u1", testModel, "pizza", AspectPortrait) {
 		t.Fatalf("job %+v", job)
 	}
-	if !reflect.DeepEqual(job.Request(), Request{WorkspaceID: "ws", Prompt: "pizza", Aspect: AspectPortrait}) {
+	if !reflect.DeepEqual(job.Request(), Request{WorkspaceID: "ws", Model: testModel, Prompt: "pizza", Aspect: AspectPortrait}) {
 		t.Fatalf("request %+v", job.Request())
 	}
 }
 
 func TestNewJobRejectsInvalidInput(t *testing.T) {
-	if _, err := NewJob(Request{WorkspaceID: "ws", Prompt: "pizza", Aspect: AspectSquare}, " "); !errors.Is(err, ErrRequesterRequired) {
+	if _, err := NewJob(Request{WorkspaceID: "ws", Model: testModel, Prompt: "pizza", Aspect: AspectSquare}, " "); !errors.Is(err, ErrRequesterRequired) {
 		t.Fatalf("missing requester: %v", err)
 	}
-	if _, err := NewJob(Request{WorkspaceID: "ws", Aspect: AspectSquare}, "u1"); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := NewJob(Request{WorkspaceID: "ws", Model: testModel, Aspect: AspectSquare}, "u1"); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("missing prompt: %v", err)
 	}
 }
@@ -87,10 +87,10 @@ func TestStaleCutoffIsTheActiveWindow(t *testing.T) {
 }
 
 func TestReferencesAreAPartOfTheFingerprintInOrder(t *testing.T) {
-	plain := Fingerprint("ws", "u1", "pizza", AspectSquare)
-	one := Fingerprint("ws", "u1", "pizza", AspectSquare, "m-1")
-	two := Fingerprint("ws", "u1", "pizza", AspectSquare, "m-1", "m-2")
-	swapped := Fingerprint("ws", "u1", "pizza", AspectSquare, "m-2", "m-1")
+	plain := Fingerprint("ws", "u1", testModel, "pizza", AspectSquare)
+	one := Fingerprint("ws", "u1", testModel, "pizza", AspectSquare, "m-1")
+	two := Fingerprint("ws", "u1", testModel, "pizza", AspectSquare, "m-1", "m-2")
+	swapped := Fingerprint("ws", "u1", testModel, "pizza", AspectSquare, "m-2", "m-1")
 	seen := map[string]bool{}
 	for _, fp := range []string{plain, one, two, swapped} {
 		if seen[fp] {
@@ -98,13 +98,13 @@ func TestReferencesAreAPartOfTheFingerprintInOrder(t *testing.T) {
 		}
 		seen[fp] = true
 	}
-	if Fingerprint("ws", "u1", "pizza", AspectSquare, "m-1\x00m-2") == two {
+	if Fingerprint("ws", "u1", testModel, "pizza", AspectSquare, "m-1\x00m-2") == two {
 		t.Fatal("reference boundary collision")
 	}
 }
 
 func TestNewJobKeepsTheTrimmedReferences(t *testing.T) {
-	job, err := NewJob(Request{WorkspaceID: "ws", Prompt: "pizza", Aspect: AspectSquare, ReferenceMediaIDs: []string{" m-1 ", "m-2"}}, "u1")
+	job, err := NewJob(Request{WorkspaceID: "ws", Model: testModel, Prompt: "pizza", Aspect: AspectSquare, ReferenceMediaIDs: []string{" m-1 ", "m-2"}}, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,20 @@ func TestNewJobKeepsTheTrimmedReferences(t *testing.T) {
 	if !reflect.DeepEqual(job.ReferenceMediaIDs, want) || !reflect.DeepEqual(job.Request().ReferenceMediaIDs, want) {
 		t.Fatalf("job %+v", job)
 	}
-	if job.Fingerprint != Fingerprint("ws", "u1", "pizza", AspectSquare, want...) {
+	if job.Fingerprint != Fingerprint("ws", "u1", testModel, "pizza", AspectSquare, want...) {
 		t.Fatal("references left out of the fingerprint")
+	}
+}
+
+func TestTheModelIsPartOfTheJobAndItsFingerprint(t *testing.T) {
+	job, err := NewJob(Request{WorkspaceID: "ws", Model: " " + testModel + " ", Prompt: "pizza", Aspect: AspectSquare}, "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Model != testModel || job.Request().Model != testModel {
+		t.Fatalf("job %+v", job)
+	}
+	if Fingerprint("ws", "u1", testModel, "pizza", AspectSquare) == Fingerprint("ws", "u1", "openai/gpt-image-2", "pizza", AspectSquare) {
+		t.Fatal("different models share a fingerprint")
 	}
 }

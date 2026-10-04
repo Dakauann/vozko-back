@@ -14,6 +14,7 @@ import (
 )
 
 type Service interface {
+	Models(ctx context.Context) ([]imagegen.Model, error)
 	Request(ctx context.Context, req imagegen.Request, requestedBy string) (*imagegen.Job, error)
 	Get(ctx context.Context, workspaceID, id string) (*imagegen.Job, error)
 }
@@ -27,9 +28,15 @@ func NewHandler(svc Service) *Handler {
 }
 
 type GenerateImageRequest struct {
+	Model             string   `json:"model" example:"openai/gpt-image-2"`
 	Prompt            string   `json:"prompt" example:"Pizza artesanal sobre mesa de madeira, luz natural"`
 	Aspect            string   `json:"aspect" enums:"square,portrait,story" example:"square"`
 	ReferenceMediaIDs []string `json:"referenceMediaIds,omitempty" maxItems:"16"`
+}
+
+type ModelResponse struct {
+	ID   string `json:"id" example:"openai/gpt-image-2"`
+	Name string `json:"name" example:"GPT Image 2"`
 }
 
 type JobResponse struct {
@@ -62,8 +69,32 @@ func presentJob(job *imagegen.Job) JobResponse {
 	}
 }
 
+// @Summary		Modelos de imagem
+// @Description	Modelos que geram imagens, do mais usado para o menos usado, segundo o ranking de popularidade do provedor. O id escolhido vai no campo model de POST /images/generations. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nenhuma imagem pode ser pedida.
+// @Tags			Imagens
+// @Produce		json
+// @Success		200	{array}		ModelResponse
+// @Failure		503	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/images/models [get]
+func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
+	if _, ok := httpx.RequireWorkspace(w, r); !ok {
+		return
+	}
+	models, err := h.svc.Models(r.Context())
+	if err != nil {
+		writeError(w, err, "Failed to list the image models")
+		return
+	}
+	out := make([]ModelResponse, 0, len(models))
+	for _, model := range models {
+		out = append(out, ModelResponse{ID: model.ID, Name: model.Name})
+	}
+	response.WriteSuccess(w, http.StatusOK, out)
+}
+
 // @Summary		Gerar imagem com IA
-// @Description	Coloca na fila a geração de uma imagem no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo; uma referência inválida responde 422 com o código no campo referenceMediaIds (required, too_many, duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento, devolve o mesmo job sem nova cobrança.
+// @Description	Coloca na fila a geração de uma imagem com o modelo escolhido (model, um id de GET /images/models; fora da lista responde 422 com model unknown) no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo; uma referência inválida responde 422 com o código no campo referenceMediaIds (required, too_many, duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento, devolve o mesmo job sem nova cobrança.
 // @Tags			Imagens
 // @Accept			json
 // @Produce		json
@@ -85,7 +116,7 @@ func (h *Handler) Generate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := h.svc.Request(r.Context(), imagegen.Request{
-		WorkspaceID: workspaceID, Prompt: body.Prompt, Aspect: imagegen.Aspect(body.Aspect), ReferenceMediaIDs: body.ReferenceMediaIDs,
+		WorkspaceID: workspaceID, Model: body.Model, Prompt: body.Prompt, Aspect: imagegen.Aspect(body.Aspect), ReferenceMediaIDs: body.ReferenceMediaIDs,
 	}, requesterOf(r))
 	if err != nil {
 		writeError(w, err, "Failed to queue the image generation")

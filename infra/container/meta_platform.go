@@ -20,6 +20,7 @@ func (c *Container) metaPlatformService() *mpuc.Service {
 	if c.facebook != nil && c.facebook.Enabled {
 		svc.Register(mp.AppMeta, c.facebook.AppUsers)
 	}
+	svc.Register(mp.AppMeta, c.ads.GrantHealth)
 	c.metaPlatform = svc
 	return svc
 }

@@ -36,3 +36,17 @@ func TestWorkspacePhonesNeverListsEveryPhone(t *testing.T) {
 		t.Fatalf("err %v lists %d", err, len(list.inputs))
 	}
 }
+
+func TestOwnedPhonesLeaveOutPhonesOnlyGrantedToTheWorkspace(t *testing.T) {
+	list := &phoneListStub{}
+	if _, err := NewWorkspacePhonesUseCase(list, phoneGrantsStub{"p-shared"}).ListOwned("ws1", businessphone.ListInput{OwnerWorkspaceID: "ws9", AccessPhoneIDs: []string{"p-x"}}); err != nil {
+		t.Fatal(err)
+	}
+	in := list.inputs[0]
+	if in.OwnerWorkspaceID != "ws1" || len(in.AccessPhoneIDs) != 0 {
+		t.Fatalf("input = %+v", in)
+	}
+	if _, err := NewWorkspacePhonesUseCase(list, nil).ListOwned(" ", businessphone.ListInput{}); !errors.Is(err, businessphone.ErrWorkspaceRequired) || len(list.inputs) != 1 {
+		t.Fatalf("err %v lists %d", err, len(list.inputs))
+	}
+}

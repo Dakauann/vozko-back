@@ -29,6 +29,10 @@ var ownershipQueries = map[shared.EntryType]string{
 		SELECT 1 FROM facebook_conversations c
 		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
 	)`,
+	shared.EntryTypeWebchat: `SELECT EXISTS (
+		SELECT 1 FROM webchat_conversations c
+		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
+	)`,
 }
 
 type entryOwnershipRepository struct {

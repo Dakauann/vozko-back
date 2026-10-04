@@ -49,6 +49,7 @@ var domainErrors = []errorMapping{
 	{advertising.ErrMixedCurrencies, http.StatusConflict, "mixed_currencies", "A Meta informou valores em outra moeda; nada foi somado"},
 	{advertising.ErrPageNotGranted, http.StatusConflict, "page_not_granted", "A página não está disponível nesta conexão de anúncios"},
 	{advertising.ErrNumberNotLinked, http.StatusConflict, "number_not_linked", "O número de WhatsApp não está vinculado à página"},
+	{advertising.ErrPageLinkRefused, http.StatusConflict, "page_link_refused", "A Meta não confirmou o vínculo do número com a página; confira o código ou peça um novo"},
 	{advertising.ErrNumberNotOwned, http.StatusConflict, "number_not_owned", "O número de WhatsApp não está conectado a este workspace"},
 	{advertising.ErrJobNotRunnable, http.StatusConflict, "job_not_runnable", "A publicação não pode rodar no estado atual"},
 	{advertising.ErrJobNotActivatable, http.StatusConflict, "job_not_activatable", "Só dá para ligar uma publicação feita desligada que ainda não foi ligada"},

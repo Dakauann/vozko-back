@@ -182,7 +182,7 @@ func TestDriver_RBACDeniedDoesNotExecuteOrPause(t *testing.T) {
 func TestDriver_ExecuteApprovedRunsToolScoped(t *testing.T) {
 	wt := &fakeTool{name: "write_x", meta: writeMeta}
 	drv := driverWith(&fakeAccess{}, wt)
-	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x", Args: map[string]interface{}{"a": 1}}, nil, (&capture{}).emit)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x", Args: map[string]interface{}{"a": 1}}, copilot.Approval{}, (&capture{}).emit)
 	if res.Status != copilot.StatusOK || wt.calls != 1 || wt.gotCC.WorkspaceID != "ws1" {
 		t.Fatalf("approval must run the tool scoped to the session, got %+v calls=%d", res, wt.calls)
 	}
@@ -191,7 +191,7 @@ func TestDriver_ExecuteApprovedRunsToolScoped(t *testing.T) {
 func TestDriver_ExecuteApprovedSurfacesError(t *testing.T) {
 	wt := &fakeTool{name: "write_x", meta: writeMeta, result: copilot.Result{Status: copilot.StatusError, Message: "inválido"}}
 	drv := driverWith(&fakeAccess{}, wt)
-	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}, nil, (&capture{}).emit).Status != copilot.StatusError {
+	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}, copilot.Approval{}, (&capture{}).emit).Status != copilot.StatusError {
 		t.Fatal("tool errors must surface from approval")
 	}
 }
@@ -199,7 +199,7 @@ func TestDriver_ExecuteApprovedSurfacesError(t *testing.T) {
 func TestDriver_ExecuteApprovedReChecksRBAC(t *testing.T) {
 	wt := &fakeTool{name: "write_x", meta: writeMeta}
 	drv := driverWith(&fakeAccess{err: workspace.ErrInsufficientPermissions}, wt)
-	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}, nil, (&capture{}).emit)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "write_x"}, copilot.Approval{}, (&capture{}).emit)
 	if res.Status != copilot.StatusDenied || wt.calls != 0 {
 		t.Fatalf("approval must re-check RBAC and not execute when denied, got %+v calls=%d", res, wt.calls)
 	}
@@ -211,7 +211,7 @@ func TestDriver_UnknownTool(t *testing.T) {
 	if step.Pause != nil || !strings.Contains(step.Result, "desconhecida") {
 		t.Fatalf("unknown tool should be reported, not paused, got %+v", step)
 	}
-	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "nope"}, nil, (&capture{}).emit).Status != copilot.StatusError {
+	if drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "nope"}, copilot.Approval{}, (&capture{}).emit).Status != copilot.StatusError {
 		t.Fatal("approving an unknown tool must error")
 	}
 }
@@ -389,7 +389,7 @@ func TestDriver_ApprovalSuppliesTheSecretOnlyToTheTool(t *testing.T) {
 	drv := driverWith(&fakeAccess{}, st)
 	pa := copilot.PendingAction{ToolName: "create_line", Args: map[string]interface{}{"name": "Principal"}, Secrets: st.Secrets(nil)}
 
-	res := drv.ExecuteApproved(context.Background(), pa, map[string]string{"password": "s3nh4"}, (&capture{}).emit)
+	res := drv.ExecuteApproved(context.Background(), pa, copilot.Approval{Secrets: map[string]string{"password": "s3nh4"}}, (&capture{}).emit)
 
 	if res.Status != copilot.StatusOK || st.gotArgs["password"] != "s3nh4" {
 		t.Fatalf("res=%+v args=%v", res, st.gotArgs)
@@ -402,7 +402,7 @@ func TestDriver_ApprovalSuppliesTheSecretOnlyToTheTool(t *testing.T) {
 func TestDriver_ApprovalWithoutTheSecretChangesNothing(t *testing.T) {
 	st := &secretTool{fakeTool{name: "create_line", meta: writeMeta}}
 	drv := driverWith(&fakeAccess{}, st)
-	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "create_line", Secrets: st.Secrets(nil)}, nil, (&capture{}).emit)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "create_line", Secrets: st.Secrets(nil)}, copilot.Approval{}, (&capture{}).emit)
 	if res.Status != copilot.StatusError || st.calls != 0 {
 		t.Fatalf("res=%+v calls=%d: a missing secret must stop the change", res, st.calls)
 	}
@@ -413,7 +413,7 @@ func TestDriver_ApprovalChecksTheChangeAgainBeforeRunningIt(t *testing.T) {
 	drv := driverWith(&fakeAccess{}, wt)
 	wt.invalid = errors.New("a conversa saiu do seu alcance")
 
-	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "assign", Args: map[string]interface{}{"entry_id": "e1"}}, nil, (&capture{}).emit)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "assign", Args: map[string]interface{}{"entry_id": "e1"}}, copilot.Approval{}, (&capture{}).emit)
 
 	if res.Status != copilot.StatusError || wt.calls != 0 || !strings.Contains(res.Message, "saiu do seu alcance") {
 		t.Fatalf("res=%+v calls=%d: a change that no longer passes its check must not run", res, wt.calls)
@@ -465,8 +465,96 @@ func TestDriver_SecretsNestedInAProposalAreAskedForAndNeverStored(t *testing.T) 
 		t.Fatalf("secrets = %+v", pa.Secrets)
 	}
 
-	res := drv.ExecuteApproved(context.Background(), pa, map[string]string{"header:Authorization": "Bearer typed"}, (&capture{}).emit)
+	res := drv.ExecuteApproved(context.Background(), pa, copilot.Approval{Secrets: map[string]string{"header:Authorization": "Bearer typed"}}, (&capture{}).emit)
 	if res.Status != copilot.StatusOK || ht.gotArgs["header:Authorization"] != "Bearer typed" {
 		t.Fatalf("res=%+v args=%v", res, ht.gotArgs)
+	}
+}
+
+type choiceTool struct {
+	fakeTool
+	asked   []copilot.Context
+	choices []copilot.ChoiceField
+	err     error
+}
+
+func (c *choiceTool) Choices(_ context.Context, cc copilot.Context, _ map[string]interface{}) ([]copilot.ChoiceField, error) {
+	c.asked = append(c.asked, cc)
+	return c.choices, c.err
+}
+
+func imageModelChoice() []copilot.ChoiceField {
+	return []copilot.ChoiceField{{Key: "image_model", Kind: copilot.ChoiceImageModel}}
+}
+
+func TestDriver_TheToolSeesTheChatModel(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}}
+	drv := driverWith(&fakeAccess{}, ct)
+	drv.Dispatch(context.Background(), ai.ToolCall{Name: "generate_image", Arguments: map[string]interface{}{}}, (&capture{}).emit)
+	if len(ct.asked) != 1 || ct.asked[0].Model != "m" {
+		t.Fatalf("asked %+v", ct.asked)
+	}
+}
+
+func TestDriver_AProposalAsksForChoicesAndDropsTheModelGuess(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, choices: imageModelChoice()}
+	drv := driverWith(&fakeAccess{}, ct)
+	step := drv.Dispatch(context.Background(), ai.ToolCall{Name: "generate_image", Arguments: map[string]interface{}{"prompt": "pizza", "image_model": "x/invented"}}, (&capture{}).emit)
+	pa, ok := step.Pause.Payload.(copilot.PendingAction)
+	if !ok {
+		t.Fatalf("expected a proposal, got %+v", step)
+	}
+	if _, kept := pa.Args["image_model"]; kept {
+		t.Fatal("the proposal kept the choice the model made")
+	}
+	if len(pa.Choices) != 1 || pa.Choices[0].Kind != copilot.ChoiceImageModel {
+		t.Fatalf("choices %+v", pa.Choices)
+	}
+}
+
+func TestDriver_AProposalWhoseChoicesCannotBeLoadedIsRefused(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, err: errors.New("catalog down")}
+	drv := driverWith(&fakeAccess{}, ct)
+	step := drv.Dispatch(context.Background(), ai.ToolCall{Name: "generate_image", Arguments: map[string]interface{}{}}, (&capture{}).emit)
+	if step.Pause != nil || !strings.Contains(step.Result, "catalog down") {
+		t.Fatalf("step %+v", step)
+	}
+}
+
+func TestDriver_ApprovalHandsTheChoiceToTheTool(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, choices: imageModelChoice()}
+	drv := driverWith(&fakeAccess{}, ct)
+	pa := copilot.PendingAction{ToolName: "generate_image", Args: map[string]interface{}{"prompt": "pizza"}, Choices: imageModelChoice()}
+	res := drv.ExecuteApproved(context.Background(), pa, copilot.Approval{Choices: map[string]string{"image_model": "openai/gpt-image-2"}}, (&capture{}).emit)
+	if res.Status != copilot.StatusOK || ct.gotArgs["image_model"] != "openai/gpt-image-2" {
+		t.Fatalf("res=%+v args=%v", res, ct.gotArgs)
+	}
+}
+
+func TestDriver_ApprovalWithoutTheChoiceChangesNothing(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, choices: imageModelChoice()}
+	drv := driverWith(&fakeAccess{}, ct)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "generate_image", Choices: imageModelChoice()}, copilot.Approval{}, (&capture{}).emit)
+	if res.Status != copilot.StatusError || ct.calls != 0 {
+		t.Fatalf("res=%+v calls=%d", res, ct.calls)
+	}
+}
+
+func TestDriver_ApprovalAsksTheToolAgainForItsChoices(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, err: errors.New("catalog down")}
+	drv := driverWith(&fakeAccess{}, ct)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "generate_image", Choices: imageModelChoice()}, copilot.Approval{Choices: map[string]string{"image_model": "openai/gpt-image-2"}}, (&capture{}).emit)
+	if res.Status != copilot.StatusError || ct.calls != 0 {
+		t.Fatalf("res=%+v calls=%d", res, ct.calls)
+	}
+}
+
+func TestDriver_TheChoiceIsCheckedByTheToolBeforeRunning(t *testing.T) {
+	ct := &choiceTool{fakeTool: fakeTool{name: "generate_image", meta: writeMeta}, choices: imageModelChoice()}
+	ct.invalid = errors.New("model unknown")
+	drv := driverWith(&fakeAccess{}, ct)
+	res := drv.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: "generate_image", Choices: imageModelChoice()}, copilot.Approval{Choices: map[string]string{"image_model": "x/invented"}}, (&capture{}).emit)
+	if res.Status != copilot.StatusError || ct.calls != 0 {
+		t.Fatalf("res=%+v calls=%d", res, ct.calls)
 	}
 }

@@ -114,6 +114,7 @@ var formScreenCapabilities = map[CapabilityKey]bool{
 	"unofficial_campaigns.edit":   true,
 	"instagram.connect":           true,
 	"telegram.connect":            true,
+	"webchat.create":              true,
 	"facebook.connect":            true,
 	"ads.create":                  true,
 	"links.create":                true,

@@ -36,3 +36,12 @@ func (uc *workspacePhones) List(workspaceID string, input businessphone.ListInpu
 	}
 	return uc.list.Execute(input)
 }
+
+func (uc *workspacePhones) ListOwned(workspaceID string, input businessphone.ListInput) (*shared.PaginatedResult[*businessphone.WhatsAppBusinessPhoneNumber], error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, businessphone.ErrWorkspaceRequired
+	}
+	input.OwnerWorkspaceID = workspaceID
+	input.AccessPhoneIDs = nil
+	return uc.list.Execute(input)
+}

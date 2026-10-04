@@ -1468,6 +1468,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 
 	c.initTelegramRuntime(messageHistoryManager)
+	c.initWebchatRuntime(messageHistoryManager)
 
 	if c.telegram != nil && c.telegram.Enabled && c.telegram.Consume != nil {
 		if err := c.telegram.Consume.Start(); err != nil {

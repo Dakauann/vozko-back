@@ -15,6 +15,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 		return
 	}
 	media := workspace_domain.ResourceMedia
+	protected.HandleFunc("/images/models", ac(media, workspace_domain.ActionRead, h.Models)).Methods(http.MethodGet)
 	protected.HandleFunc("/images/generations", ac(media, workspace_domain.ActionCreate, h.Generate)).Methods(http.MethodPost)
 	protected.HandleFunc("/images/generations/{id}", ac(media, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
 }

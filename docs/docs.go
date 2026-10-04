@@ -471,7 +471,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma e os números do workspace iguais a ele.",
+                "description": "Páginas da conexão de anúncios, o número de WhatsApp vinculado a cada uma, os números do workspace iguais a ele (numbers) e os números do workspace que a página pode receber (linkable: oficiais do mesmo portfólio da página, ou não oficiais).",
                 "produces": [
                     "application/json"
                 ],
@@ -717,6 +717,133 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/accounts/{id}/pages/{pageId}/whatsapp-link": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Envia à Meta o código recebido no WhatsApp e devolve a página atualizada. 422 com code invalid para um código fora do formato (4 a 8 dígitos); 409 page_link_refused quando a Meta não confirma o vínculo. A Meta pode levar alguns instantes para mostrar o número em whatsAppNumber; a publicação só libera quando ele aparece.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Confirmar vínculo de WhatsApp com a página",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da página na Meta",
+                        "name": "pageId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "número e código",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.NumberLinkConfirmRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.PageResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/accounts/{id}/pages/{pageId}/whatsapp-link/code": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). O código chega no app do WhatsApp do número; números em coexistência recebem no app do celular, não na caixa de entrada do Vozko. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused se a Meta não enviar o código.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Pedir código para vincular WhatsApp à página",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta de anúncios",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da página na Meta",
+                        "name": "pageId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "número a vincular",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.NumberLinkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -8199,7 +8326,7 @@ const docTemplate = `{
         },
         "/conversations/{entryType}/{entryId}/automation": {
             "patch": {
-                "description": "Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar devolve a conversa para a IA ou o fluxo que atende o canal. A resposta traz o responsável resultante em assigned_user_id.",
+                "description": "Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar (ou null) devolve a conversa para a IA ou o fluxo que atende o canal. Se o canal não tiver agente ou fluxo ativo, a automação continua pausada e a resposta é 409 com code nothing_to_return_to, para que a IA nunca responda uma conversa que está com uma pessoa. A resposta traz o responsável resultante em assigned_user_id.",
                 "consumes": [
                     "application/json"
                 ],
@@ -9982,7 +10109,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Coloca na fila a geração de uma imagem no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo; uma referência inválida responde 422 com o código no campo referenceMediaIds (required, too_many, duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento, devolve o mesmo job sem nova cobrança.",
+                "description": "Coloca na fila a geração de uma imagem com o modelo escolhido (model, um id de GET /images/models; fora da lista responde 422 com model unknown) no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo; uma referência inválida responde 422 com o código no campo referenceMediaIds (required, too_many, duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento, devolve o mesmo job sem nova cobrança.",
                 "consumes": [
                     "application/json"
                 ],
@@ -10071,6 +10198,40 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/images/models": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modelos que geram imagens, do mais usado para o menos usado, segundo o ranking de popularidade do provedor. O id escolhido vai no campo model de POST /images/generations. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nenhuma imagem pode ser pedida.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Imagens"
+                ],
+                "summary": "Modelos de imagem",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/imagegenhttp.ModelResponse"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -14741,6 +14902,495 @@ const docTemplate = `{
                 }
             }
         },
+        "/public/webchat/assets/{file}": {
+            "get": {
+                "description": "JavaScript e CSS da janela do chat.",
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Arquivos do WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "frame.js ou frame.css",
+                        "name": "file",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/public/webchat/loader.js": {
+            "get": {
+                "description": "Script que o site inclui com \u003cscript async src=\".../public/webchat/loader.js\" data-key=\"CHAVE_PUBLICA\"\u003e. Desenha o botão e abre o chat num iframe servido por esta API. Para identificar um cliente logado, defina antes window.VozkoChat = { identity: \"\u003cJWT HS256 gerado no seu servidor\u003e\" }.",
+                "produces": [
+                    "application/javascript"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Script do WebChat",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/public/webchat/session/handoff": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Disponível quando o chat oferece falar com uma pessoa: pausa o agente ou fluxo e passa a conversa para a fila do departamento do chat.",
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Pedir atendimento humano",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/webchat/session/intake": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Nome, e-mail, telefone e aceite da política de privacidade, conforme o chat pede. Um telefone liga o visitante ao lead com o mesmo número. O campo website precisa ficar vazio.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Enviar formulário inicial",
+                "parameters": [
+                    {
+                        "description": "respostas",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.IntakeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.VisitorStateResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/webchat/session/media": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "multipart/form-data com file, clientMessageId e pageUrl. Só quando o chat aceita anexos: JPEG, PNG, WebP, GIF ou PDF, até 10 MB. O tipo é conferido pelo conteúdo, não pelo nome.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Enviar arquivo do visitante",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "arquivo",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "id do envio",
+                        "name": "clientMessageId",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.MessageResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "415": {
+                        "description": "Unsupported Media Type",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/webchat/session/messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mensagens da conversa do visitante, da mais antiga à mais nova, só com o que o cliente pode ver (sem notas internas, ferramentas ou dados de atendentes). before e after (RFC 3339) paginam; options são os botões ainda em aberto.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Histórico do visitante",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "mensagens antes deste instante",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "mensagens depois deste instante",
+                        "name": "after",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.HistoryResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Texto (até 2.000 caracteres) ou a escolha de um botão oferecido (selectionId). clientMessageId (8 a 64 caracteres) torna o envio idempotente: repetir o mesmo id não duplica a mensagem nem a resposta automática. O agente ou fluxo do chat responde pela sessão em tempo real. Limites por visitante e por IP (429 rate_limited).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Enviar mensagem do visitante",
+                "parameters": [
+                    {
+                        "description": "mensagem",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.MessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.MessageResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/webchat/session/stream": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Server-Sent Events lidos com fetch (o token vai no cabeçalho Authorization, nunca na URL).\n\n| evento | dados |\n|---|---|\n| message | { kind: \"message\", message: { id, author: visitor, team ou assistant, text, media, options, createdAt } } |\n| typing | { kind: \"typing\", typing } |\n| status | { kind: \"status\", state: human ou blocked } |\n| ping | a cada 20 s |\n\nA conexão fecha depois de 30 minutos; o chat reconecta e busca o que perdeu com GET .../messages?after=. No máximo 3 conexões por visitante (429).",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Eventos em tempo real do visitante",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/webchat/session/typing": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mostra aos atendentes que o visitante está digitando.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Visitante digitando",
+                "parameters": [
+                    {
+                        "description": "digitando ou não",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.TypingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/public/webchat/{publicKey}/challenge": {
+            "post": {
+                "description": "Devolve um desafio de prova de trabalho (SHA-256 com bits zerados no início) que o chat resolve antes de abrir uma sessão anônima. Vale 2 minutos e uma única vez. Só responde à janela do chat (mesma origem).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Desafio anti-robô do WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "chave pública do chat",
+                        "name": "publicKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "origem do site onde o chat está",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.ChallengeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.ChallengeResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/public/webchat/{publicKey}/frame": {
+            "get": {
+                "description": "Página do chat carregada pelo script dentro de um iframe. Só pode ser exibida nos sites permitidos do chat (Content-Security-Policy frame-ancestors). Chat pausado ou removido responde 404.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Janela do WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "chave pública do chat",
+                        "name": "publicKey",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    }
+                }
+            }
+        },
+        "/public/webchat/{publicKey}/session": {
+            "post": {
+                "description": "Abre ou retoma a sessão de um visitante. Com token válido retoma o mesmo visitante; sem ele exige o desafio resolvido (challengeToken e nonce). Com identity (JWT assinado pelo site) o visitante é o cliente identificado, em qualquer aparelho. Devolve o token da sessão (30 dias, enviado como Authorization: Bearer), a aparência do chat e o que falta no formulário inicial. Limites: novas sessões por IP e por chat (429 rate_limited).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Abrir sessão do visitante",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "chave pública do chat",
+                        "name": "publicKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "token, desafio ou identidade",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.SessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.SessionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/r/{code}": {
             "get": {
                 "description": "Resolve o código público e redireciona para a URL de destino, exibe a página de senha quando o link é protegido, ou retorna 404. O clique é contabilizado de forma assíncrona.",
@@ -17712,6 +18362,376 @@ const docTemplate = `{
                 }
             }
         },
+        "/webchat/conversations/{entryId}/block": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "blocked true bloqueia o visitante da conversa: o chat dele para de funcionar na hora e a resposta fica fechada no CRM. blocked false desbloqueia. Exige acesso à conversa.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Bloquear visitante do WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id da conversa",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "bloquear ou desbloquear",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.BlockRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webchat/widgets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "WebChats do workspace, do mais novo ao mais antigo, com o código de instalação de cada um (snippet). search filtra pelo nome.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Listar WebChats",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "parte do nome",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "página",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/webchat.WidgetResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria um chat para instalar em sites. allowedOrigins é obrigatório e aceita só origens exatas (https://www.exemplo.com) ou subdomínios (https://*.exemplo.com); http só para localhost. O chat só abre nesses sites. Agente, fluxo, funil e departamento precisam ser deste workspace (422 reference_not_in_workspace). Com identityMode optional ou required é gerado um segredo para assinar a identidade do visitante (GET .../identity-secret).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Criar WebChat",
+                "parameters": [
+                    {
+                        "description": "configuração do chat",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.WidgetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.WidgetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webchat/widgets/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Configuração de um WebChat do workspace e o código de instalação.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Consultar WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do chat",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.WidgetResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Altera só os campos enviados. As mesmas regras da criação valem para sites permitidos, formulário inicial e referências.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Editar WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do chat",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "campos a alterar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/webchat.WidgetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.WidgetResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove o chat; ele deixa de abrir em todos os sites. As conversas continuam no CRM.",
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Remover WebChat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do chat",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webchat/widgets/{id}/identity-secret": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Segredo com que o servidor do site assina, em HS256, o JWT de identidade do visitante (sub obrigatório, exp obrigatório e no máximo 24 h à frente; name, email e phone opcionais). Nunca coloque o segredo no navegador.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Ver segredo de identidade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do chat",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.SecretResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Gera um novo segredo; JWTs assinados com o anterior deixam de valer na hora.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WebChat"
+                ],
+                "summary": "Trocar segredo de identidade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do chat",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/webchat.SecretResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.CodedErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/webhooks/google-calendar": {
             "post": {
                 "description": "Endpoint público que recebe as notificações push do Google Agenda para sincronizar os eventos alterados.",
@@ -17860,84 +18880,6 @@ const docTemplate = `{
                     },
                     "429": {
                         "description": "Limite de execuções simultâneas atingido",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/whatsapp/business-phones": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna, de forma paginada, os telefones comerciais do WhatsApp Business aos quais o workspace tem acesso. Aceita filtros por status, avaliação de qualidade, WABA e termo de busca.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Telefones do WhatsApp Business"
-                ],
-                "summary": "Listar telefones comerciais do WhatsApp",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Status do telefone (ex.: CONNECTED, PENDING, DISCONNECTED)",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Avaliação de qualidade (ex.: GREEN, YELLOW, RED)",
-                        "name": "qualityRating",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "ID da conta do WhatsApp Business (WABA)",
-                        "name": "waba_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Termo de busca",
-                        "name": "search",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Número da página (inicia em 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Quantidade de itens por página",
-                        "name": "pageSize",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/businessphone.WhatsAppBusinessPhoneNumber"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -24625,6 +25567,28 @@ const docTemplate = `{
                 }
             }
         },
+        "advertisinghttp.NumberLinkConfirmRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "83569"
+                },
+                "number": {
+                    "type": "string",
+                    "example": "5511965467700"
+                }
+            }
+        },
+        "advertisinghttp.NumberLinkRequest": {
+            "type": "object",
+            "properties": {
+                "number": {
+                    "type": "string",
+                    "example": "5511965467700"
+                }
+            }
+        },
         "advertisinghttp.NumberResponse": {
             "type": "object",
             "properties": {
@@ -24802,6 +25766,12 @@ const docTemplate = `{
                 },
                 "leadTermsAccepted": {
                     "type": "boolean"
+                },
+                "linkable": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/advertisinghttp.NumberResponse"
+                    }
                 },
                 "name": {
                     "type": "string"
@@ -30355,14 +31325,16 @@ const docTemplate = `{
                 "instagram",
                 "telegram",
                 "unofficial_whatsapp",
-                "facebook"
+                "facebook",
+                "webchat"
             ],
             "x-enum-varnames": [
                 "MessageChannelWhatsApp",
                 "MessageChannelInstagram",
                 "MessageChannelTelegram",
                 "MessageChannelUnofficialWhatsApp",
-                "MessageChannelFacebook"
+                "MessageChannelFacebook",
+                "MessageChannelWebchat"
             ]
         },
         "conversation.MessageEnvelopeResponse": {
@@ -31226,6 +32198,10 @@ const docTemplate = `{
                     ],
                     "example": "square"
                 },
+                "model": {
+                    "type": "string",
+                    "example": "openai/gpt-image-2"
+                },
                 "prompt": {
                     "type": "string",
                     "example": "Pizza artesanal sobre mesa de madeira, luz natural"
@@ -31295,6 +32271,19 @@ const docTemplate = `{
                 },
                 "updatedAt": {
                     "type": "string"
+                }
+            }
+        },
+        "imagegenhttp.ModelResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "example": "openai/gpt-image-2"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "GPT Image 2"
                 }
             }
         },
@@ -33406,6 +34395,17 @@ const docTemplate = `{
                 }
             }
         },
+        "response.CodedErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "response.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -33873,14 +34873,16 @@ const docTemplate = `{
                 "instagram",
                 "telegram",
                 "unofficial_whatsapp",
-                "facebook"
+                "facebook",
+                "webchat"
             ],
             "x-enum-varnames": [
                 "EntryTypeWhatsApp",
                 "EntryTypeInstagram",
                 "EntryTypeTelegram",
                 "EntryTypeUnofficialWhatsApp",
-                "EntryTypeFacebook"
+                "EntryTypeFacebook",
+                "EntryTypeWebchat"
             ]
         },
         "shared.QualityLevel": {
@@ -35183,6 +36185,568 @@ const docTemplate = `{
                     "example": "America/Sao_Paulo"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.BlockRequest": {
+            "type": "object",
+            "properties": {
+                "blocked": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "webchat.ChallengeRequest": {
+            "type": "object",
+            "properties": {
+                "parentOrigin": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.ChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "bits": {
+                    "type": "integer"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.HistoryResponse": {
+            "type": "object",
+            "properties": {
+                "human": {
+                    "type": "boolean"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/webchat.MessageResponse"
+                    }
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/webchat.OptionResponse"
+                    }
+                }
+            }
+        },
+        "webchat.IntakeRequest": {
+            "type": "object",
+            "properties": {
+                "consent": {
+                    "type": "boolean"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "website": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.IntakeRulesResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "phone": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "privacyPolicyUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.MediaResponse": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.MessageRequest": {
+            "type": "object",
+            "properties": {
+                "clientMessageId": {
+                    "type": "string"
+                },
+                "pageUrl": {
+                    "type": "string"
+                },
+                "selectionId": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.MessageResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string",
+                    "enum": [
+                        "visitor",
+                        "team",
+                        "assistant"
+                    ]
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "media": {
+                    "$ref": "#/definitions/webchat.MediaResponse"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/webchat.OptionResponse"
+                    }
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.OptionResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.PublicWidgetResponse": {
+            "type": "object",
+            "properties": {
+                "accentColor": {
+                    "type": "string"
+                },
+                "allowAttachments": {
+                    "type": "boolean"
+                },
+                "allowHumanRequest": {
+                    "type": "boolean"
+                },
+                "assistantName": {
+                    "type": "string"
+                },
+                "identityMode": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intake": {
+                    "$ref": "#/definitions/webchat.IntakeRulesResponse"
+                },
+                "launcherLabel": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "string",
+                    "enum": [
+                        "right",
+                        "left"
+                    ]
+                },
+                "teamName": {
+                    "type": "string"
+                },
+                "welcomeMessage": {
+                    "type": "string"
+                },
+                "welcomeTitle": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.SecretResponse": {
+            "type": "object",
+            "properties": {
+                "identitySecret": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.SessionRequest": {
+            "type": "object",
+            "properties": {
+                "challengeToken": {
+                    "type": "string"
+                },
+                "identity": {
+                    "type": "string"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "nonce": {
+                    "type": "string"
+                },
+                "parentOrigin": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.SessionResponse": {
+            "type": "object",
+            "properties": {
+                "expiresAt": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "visitor": {
+                    "$ref": "#/definitions/webchat.VisitorStateResponse"
+                },
+                "widget": {
+                    "$ref": "#/definitions/webchat.PublicWidgetResponse"
+                }
+            }
+        },
+        "webchat.TypingRequest": {
+            "type": "object",
+            "properties": {
+                "typing": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "webchat.VisitorStateResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "intakePending": {
+                    "type": "boolean"
+                },
+                "intakeRequired": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "verified": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "webchat.WidgetRequest": {
+            "type": "object",
+            "properties": {
+                "accentColor": {
+                    "type": "string"
+                },
+                "agentId": {
+                    "type": "string"
+                },
+                "allowAttachments": {
+                    "type": "boolean"
+                },
+                "allowHumanRequest": {
+                    "type": "boolean"
+                },
+                "allowedOrigins": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "assistantName": {
+                    "type": "string"
+                },
+                "defaultCountryCode": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoMemory": {
+                    "type": "boolean"
+                },
+                "enableAutoStaging": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "identityMode": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intakeEmail": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intakeName": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intakePhone": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "launcherLabel": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "string",
+                    "enum": [
+                        "right",
+                        "left"
+                    ]
+                },
+                "privacyPolicyUrl": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "paused"
+                    ]
+                },
+                "teamName": {
+                    "type": "string"
+                },
+                "welcomeMessage": {
+                    "type": "string"
+                },
+                "welcomeTitle": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.WidgetResponse": {
+            "type": "object",
+            "properties": {
+                "accentColor": {
+                    "type": "string"
+                },
+                "agentId": {
+                    "type": "string"
+                },
+                "allowAttachments": {
+                    "type": "boolean"
+                },
+                "allowHumanRequest": {
+                    "type": "boolean"
+                },
+                "allowedOrigins": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "assistantName": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "defaultCountryCode": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoMemory": {
+                    "type": "boolean"
+                },
+                "enableAutoStaging": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "identityMode": {
+                    "type": "string",
+                    "enum": [
+                        "off",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intakeEmail": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intakeName": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "intakePhone": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "optional",
+                        "required"
+                    ]
+                },
+                "launcherLabel": {
+                    "type": "string"
+                },
+                "loaderUrl": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "string",
+                    "enum": [
+                        "right",
+                        "left"
+                    ]
+                },
+                "privacyPolicyUrl": {
+                    "type": "string"
+                },
+                "publicKey": {
+                    "type": "string"
+                },
+                "snippet": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "paused"
+                    ]
+                },
+                "teamName": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "welcomeMessage": {
+                    "type": "string"
+                },
+                "welcomeTitle": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
                     "type": "string"
                 }
             }

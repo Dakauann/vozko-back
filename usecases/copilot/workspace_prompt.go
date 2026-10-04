@@ -14,6 +14,7 @@ var capabilityLabels = map[readiness.Capability]string{
 	readiness.Instagram:          "Instagram",
 	readiness.Telegram:           "Telegram",
 	readiness.Facebook:           "Páginas do Facebook",
+	readiness.Webchat:            "WebChat",
 	readiness.KnowledgeBases:     "Bases de conhecimento",
 }
 

@@ -1,6 +1,7 @@
 package advertising
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -92,5 +93,37 @@ func TestAdClicksPreferTheMessagingDataset(t *testing.T) {
 	signal.Phone = "5511988887777"
 	if event, _ := ConversionFor(s, signal, draftNow); event.Target != TargetDataset || event.PhoneHash != "" {
 		t.Fatalf("event %+v", event)
+	}
+}
+
+func TestOnlyTheSwitchedOnEventsAreSent(t *testing.T) {
+	cases := []struct {
+		leads, purchases bool
+		want             []DealEvent
+	}{
+		{true, true, []DealEvent{DealCreated, DealWon}},
+		{true, false, []DealEvent{DealCreated}},
+		{false, true, []DealEvent{DealWon}},
+		{false, false, nil},
+	}
+	for _, c := range cases {
+		got := ConversionSettings{SendLeads: c.leads, SendPurchases: c.purchases}.Events()
+		if !slices.Equal(got, c.want) {
+			t.Fatalf("leads %v purchases %v: %v", c.leads, c.purchases, got)
+		}
+	}
+}
+
+func TestASwitchedOffEventIsSentOnceItIsOnAgain(t *testing.T) {
+	if SkipEventOff.Final() {
+		t.Fatal("an event skipped while its switch was off would never be sent")
+	}
+	for _, reason := range []SkipReason{SkipNoAdIdentity, SkipTooOld, SkipNoDataset} {
+		if !reason.Final() {
+			t.Fatalf("%s should stay skipped", reason)
+		}
+	}
+	if NonFinalSkips()[0] != SkipEventOff || len(NonFinalSkips()) != 1 {
+		t.Fatalf("non final %v", NonFinalSkips())
 	}
 }

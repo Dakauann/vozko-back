@@ -1136,6 +1136,13 @@ func (s *HistoryProviderService) getSenderInfo(from string, messageType conversa
 	}
 }
 
+func (s *HistoryProviderService) PresentMessages(entryID string, entryType shared.EntryType, messages []*conversation.Message) {
+	if s == nil || len(messages) == 0 {
+		return
+	}
+	s.present(entryID, entryType, messages)
+}
+
 func (s *HistoryProviderService) PresentMessage(entryID, entryType string, message *conversation.Message) {
 	if s == nil || message == nil {
 		return

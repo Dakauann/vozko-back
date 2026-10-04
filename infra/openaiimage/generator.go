@@ -23,7 +23,6 @@ import (
 
 const (
 	DefaultBaseURL  = "https://openrouter.ai/api/v1"
-	DefaultModel    = "openai/gpt-image-2.5-flare"
 	defaultTimeout  = 120 * time.Second
 	maxImageBytes   = 20 << 20
 	maxErrorBody    = 512
@@ -42,14 +41,12 @@ var aspectRatios = map[imagegen.Aspect]string{
 
 type Config struct {
 	APIKey     string
-	Model      string
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
 type Generator struct {
 	apiKey  string
-	model   string
 	baseURL string
 	http    *http.Client
 }
@@ -59,10 +56,6 @@ func New(cfg Config) (*Generator, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("openaiimage: api key is required")
 	}
-	model := strings.TrimSpace(cfg.Model)
-	if model == "" {
-		model = DefaultModel
-	}
 	baseURL := strings.TrimSuffix(strings.TrimSpace(cfg.BaseURL), "/")
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
@@ -71,7 +64,7 @@ func New(cfg Config) (*Generator, error) {
 	if client == nil {
 		client = &http.Client{Timeout: defaultTimeout}
 	}
-	return &Generator{apiKey: apiKey, model: model, baseURL: baseURL, http: client}, nil
+	return &Generator{apiKey: apiKey, baseURL: baseURL, http: client}, nil
 }
 
 type generationRequest struct {
@@ -122,8 +115,9 @@ func (g *Generator) Generate(ctx context.Context, req imagegen.Request, referenc
 	if !ok {
 		return nil, fmt.Errorf("openaiimage: no aspect ratio for %q", req.Aspect)
 	}
+	requested := strings.TrimSpace(req.Model)
 	out, err := g.request(ctx, generationRequest{
-		Model:           g.model,
+		Model:           requested,
 		Prompt:          promptFor(req.Prompt, ratio),
 		AspectRatio:     ratio,
 		OutputFormat:    "png",
@@ -150,7 +144,7 @@ func (g *Generator) Generate(ctx context.Context, req imagegen.Request, referenc
 	}
 	model := out.Model
 	if model == "" {
-		model = g.model
+		model = requested
 	}
 	return &imagegen.GeneratedImage{Bytes: normalized, MIMEType: outputMIMEType, Model: model, ProviderCostMicros: cost}, nil
 }

@@ -85,13 +85,15 @@ type contactChannel struct {
 	alias         string
 	conversations string
 	contacts      string
+	contactColumn string
 }
 
 var contactChannels = []contactChannel{
-	{shared.EntryTypeUnofficialWhatsApp, "uw", "unofficial_whatsapp_conversations", "unofficial_whatsapp_contacts"},
-	{shared.EntryTypeTelegram, "tg", "telegram_conversations", "telegram_contacts"},
-	{shared.EntryTypeInstagram, "ig", "instagram_conversations", "instagram_contacts"},
-	{shared.EntryTypeFacebook, "fb", "facebook_conversations", "facebook_contacts"},
+	{shared.EntryTypeUnofficialWhatsApp, "uw", "unofficial_whatsapp_conversations", "unofficial_whatsapp_contacts", "contact_id"},
+	{shared.EntryTypeTelegram, "tg", "telegram_conversations", "telegram_contacts", "contact_id"},
+	{shared.EntryTypeInstagram, "ig", "instagram_conversations", "instagram_contacts", "contact_id"},
+	{shared.EntryTypeFacebook, "fb", "facebook_conversations", "facebook_contacts", "contact_id"},
+	{shared.EntryTypeWebchat, "wc", "webchat_conversations", "webchat_visitors", "visitor_id"},
 }
 
 func (c contactChannel) conversationAlias(suffix string) string { return c.alias + "c_" + suffix }
@@ -100,7 +102,7 @@ func (c contactChannel) contactAlias(suffix string) string { return c.alias + "c
 
 func (c contactChannel) conversationsWithContacts(suffix string) string {
 	conv, contact := c.conversationAlias(suffix), c.contactAlias(suffix)
-	return c.conversations + " " + conv + " JOIN " + c.contacts + " " + contact + " ON " + contact + ".id = " + conv + ".contact_id"
+	return c.conversations + " " + conv + " JOIN " + c.contacts + " " + contact + " ON " + contact + ".id = " + conv + "." + c.contactColumn
 }
 
 func (c contactChannel) liveRows(suffix string) string {

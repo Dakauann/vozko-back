@@ -16,12 +16,15 @@ var (
 	ErrDuplicateActiveJob = errors.New("imagegen: the same image is already being generated")
 	ErrUnknownJobStatus   = errors.New("imagegen: image generation job has an unknown status")
 	ErrUnknownFailureCode = errors.New("imagegen: unknown failure code")
+	ErrNoImageModels      = errors.New("imagegen: no image model is available")
+	ErrModelsUnavailable  = errors.New("imagegen: the image model list is unavailable")
 )
 
 const (
 	FieldPrompt     = "prompt"
 	FieldAspect     = "aspect"
 	FieldReferences = "referenceMediaIds"
+	FieldModel      = "model"
 
 	CodeRequired  = "required"
 	CodeTooLong   = "too_long"

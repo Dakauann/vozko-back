@@ -13,7 +13,12 @@ import (
 
 var testNow = time.Date(2026, 10, 1, 15, 0, 0, 0, time.UTC)
 
-type fakeGrants struct{ byID map[string]*ads.Grant }
+type fakeGrants struct {
+	byID    map[string]*ads.Grant
+	checked map[string][]string
+	revoked map[string]bool
+	erased  map[string]bool
+}
 
 func (f *fakeGrants) Upsert(_ context.Context, g *ads.Grant) error {
 	if g.ID == "" {
@@ -29,10 +34,45 @@ func (f *fakeGrants) FindByID(_ context.Context, id string) (*ads.Grant, error) 
 	}
 	return g, nil
 }
-func (f *fakeGrants) MarkChecked(context.Context, string, []string, map[string][]string, time.Time) error {
+func (f *fakeGrants) MarkChecked(_ context.Context, id string, scopes []string, _ map[string][]string, _ time.Time) error {
+	if f.checked == nil {
+		f.checked = map[string][]string{}
+	}
+	f.checked[id] = scopes
 	return nil
 }
-func (f *fakeGrants) Revoke(context.Context, string, time.Time) error { return nil }
+func (f *fakeGrants) Revoke(_ context.Context, id string, _ time.Time) error {
+	if f.revoked == nil {
+		f.revoked = map[string]bool{}
+	}
+	f.revoked[id] = true
+	return nil
+}
+func (f *fakeGrants) ListActive(context.Context, int) ([]*ads.Grant, error) {
+	var out []*ads.Grant
+	for _, g := range f.byID {
+		if g.Status == ads.GrantActive {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+func (f *fakeGrants) ListByAppScopedUser(_ context.Context, asid string) ([]*ads.Grant, error) {
+	var out []*ads.Grant
+	for _, g := range f.byID {
+		if g.AppScopedUserID == asid {
+			out = append(out, g)
+		}
+	}
+	return out, nil
+}
+func (f *fakeGrants) EraseToken(_ context.Context, id string) error {
+	if f.erased == nil {
+		f.erased = map[string]bool{}
+	}
+	f.erased[id] = true
+	return nil
+}
 
 type fakeAccounts struct {
 	byID        map[string]*ads.AdAccount
@@ -77,6 +117,14 @@ func (f *fakeAccounts) SetConnection(_ context.Context, id string, c ads.Connect
 	return nil
 }
 func (f *fakeAccounts) MarkSynced(context.Context, string, time.Time) error { return nil }
+func (f *fakeAccounts) ReconnectByGrant(_ context.Context, grantID string) error {
+	for id, a := range f.byID {
+		if a.GrantID == grantID && a.Connection == ads.ConnectionConnected {
+			_ = f.SetConnection(context.Background(), id, ads.ConnectionNeedsReconnect)
+		}
+	}
+	return nil
+}
 func (f *fakeAccounts) FindByMetaAccountID(_ context.Context, metaID string) (*ads.AdAccount, error) {
 	for _, a := range f.byID {
 		if a.MetaAccountID == metaID && a.Connection != ads.ConnectionDisconnected {
@@ -159,14 +207,33 @@ func (f *fakeInsights) AdDay(_ context.Context, adID string, day time.Time) (*ad
 type fakeAttribution struct {
 	rows          []ads.Attribution
 	conversations int64
+	byGroup       func(groups []ads.AdGroup) []ads.Attribution
+	calls         [][]ads.AdGroup
 }
 
-func (f *fakeAttribution) ByAd(_ context.Context, _ string, ids []string, _, _ time.Time) ([]ads.Attribution, error) {
-	var out []ads.Attribution
-	for _, a := range f.rows {
-		if slices.Contains(ids, a.AdMetaID) {
-			out = append(out, a)
+func (f *fakeAttribution) ByGroup(_ context.Context, _ string, groups []ads.AdGroup, _, _ time.Time) ([]ads.Attribution, error) {
+	f.calls = append(f.calls, groups)
+	if f.byGroup != nil {
+		return f.byGroup(groups), nil
+	}
+	byKey := map[string][]ads.Attribution{}
+	var order []string
+	for _, g := range groups {
+		for _, a := range f.rows {
+			if a.Key != g.AdMetaID {
+				continue
+			}
+			if _, seen := byKey[g.Key]; !seen {
+				order = append(order, g.Key)
+			}
+			byKey[g.Key] = append(byKey[g.Key], a)
 		}
+	}
+	out := make([]ads.Attribution, 0, len(order))
+	for _, key := range order {
+		sum := ads.SumAttributions(byKey[key])
+		sum.Key = key
+		out = append(out, sum)
 	}
 	return out, nil
 }
@@ -272,7 +339,15 @@ func (f *fakeFees) Refund(_, ref string, _ int64) error {
 	return nil
 }
 
+type pageLinkCall struct {
+	page   string
+	number string
+	code   string
+}
+
 type fakeGateway struct {
+	linkStatus  string
+	linked      pageLinkCall
 	calls       []string
 	failOn      string
 	failWith    error
@@ -341,6 +416,14 @@ func (g *fakeGateway) GetBilling(_ context.Context, _, _ string, withPaymentMeth
 func (g *fakeGateway) SubscribeAccount(_ context.Context, _, id string) error {
 	g.subscribed = append(g.subscribed, id)
 	return g.step("subscribe_account")
+}
+func (g *fakeGateway) RequestPageNumberCode(_ context.Context, _, pageID, number string) (string, error) {
+	g.linked = pageLinkCall{page: pageID, number: number}
+	return g.linkStatus, g.step("request_page_number_code")
+}
+func (g *fakeGateway) VerifyPageNumber(_ context.Context, _, pageID, number, code string) (string, error) {
+	g.linked = pageLinkCall{page: pageID, number: number, code: code}
+	return g.linkStatus, g.step("verify_page_number")
 }
 func (g *fakeGateway) ListPages(context.Context, string) ([]ads.RemotePage, error) {
 	return g.pages, g.step("list_pages")

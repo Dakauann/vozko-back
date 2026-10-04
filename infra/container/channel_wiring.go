@@ -9,6 +9,7 @@ import (
 	instagram_repository "vozko/infra/repositories/instagram"
 	telegram_repository "vozko/infra/repositories/telegram"
 	unofficial_whatsapp_repository "vozko/infra/repositories/unofficial_whatsapp"
+	webchat_repository "vozko/infra/repositories/webchat"
 	wc_entry_repository "vozko/infra/repositories/whatsapp_campaign_entry"
 	conversation_usecase "vozko/usecases/conversation"
 	export_usecase "vozko/usecases/export"
@@ -95,6 +96,9 @@ func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCa
 	}
 	if c.facebook != nil && c.facebook.Enabled {
 		setter.SetChannelEntryLister(export_domain.EntryTypeFacebook, facebook_repository.NewExportRepository(c.db))
+	}
+	if c.webchat != nil {
+		setter.SetChannelEntryLister(export_domain.EntryTypeWebchat, webchat_repository.NewExportRepository(c.db))
 	}
 	return uc
 }

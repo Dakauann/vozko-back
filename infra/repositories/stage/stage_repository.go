@@ -30,6 +30,8 @@ var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 		WHERE uwc.workspace_id = ?::uuid AND uwc.deleted_at IS NULL`,
 	shared.EntryTypeFacebook: `SELECT fbc.id::text FROM facebook_conversations fbc
 		WHERE fbc.workspace_id = ?::uuid AND fbc.deleted_at IS NULL`,
+	shared.EntryTypeWebchat: `SELECT wcc.id::text FROM webchat_conversations wcc
+		WHERE wcc.workspace_id = ?::uuid AND wcc.deleted_at IS NULL`,
 }
 
 type repository struct {

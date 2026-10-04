@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,5 +68,22 @@ func TestSetAutomation_ACallerWithoutAccessIsForbidden(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", w.Code)
+	}
+}
+
+func TestSetAutomation_NothingToAnswerIsAConflictTheOperatorCanRead(t *testing.T) {
+	h := &ConversationHandler{}
+	h.SetAutomationService(&stubAutomationToggle{err: fmt.Errorf("wrapped: %w", ia_usecase.ErrNothingToReturnTo)})
+
+	w := httptest.NewRecorder()
+	h.SetAutomation(w, automationRequest(`{"automationEnabled":true}`))
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	var body map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &body)
+	if body["code"] != "nothing_to_return_to" {
+		t.Fatalf("code = %v, want nothing_to_return_to", body["code"])
 	}
 }

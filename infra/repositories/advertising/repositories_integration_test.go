@@ -21,6 +21,8 @@ var channelTablesDDL = []string{
 	`CREATE TABLE telegram_conversations (id uuid PRIMARY KEY, workspace_id uuid NOT NULL)`,
 	`CREATE TABLE unofficial_whatsapp_conversations (id uuid PRIMARY KEY, workspace_id uuid NOT NULL)`,
 	`CREATE TABLE facebook_conversations (id uuid PRIMARY KEY, workspace_id uuid NOT NULL)`,
+	`CREATE TABLE webchat_widgets (id uuid PRIMARY KEY, workspace_id uuid NOT NULL)`,
+	`CREATE TABLE webchat_conversations (id uuid PRIMARY KEY, widget_id uuid NOT NULL, workspace_id uuid)`,
 }
 
 func mustExec(t *testing.T, db *gorm.DB, sql string, args ...any) {
@@ -214,16 +216,25 @@ func TestAttributionCountsOnlyTheWorkspacesConversationsAndDealsAgainstPostgres(
 	opportunity(wsA, "won", "USD", 300, [2]string{telegram, "telegram"})
 
 	repo := NewAttributionRepository(db)
-	rows, err := repo.ByAd(ctx, wsA, []string{"ad-1", "ad-2", "ad-x"}, from, to)
+	perAd := []advertising.AdGroup{{AdMetaID: "ad-1", Key: "ad-1"}, {AdMetaID: "ad-2", Key: "ad-2"}, {AdMetaID: "ad-x", Key: "ad-x"}}
+	rows, err := repo.ByGroup(ctx, wsA, perAd, from, to)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []advertising.Attribution{
-		{AdMetaID: "ad-1", Conversations: 3, Leads: 2, WonDeals: 1, Revenue: 1000, RevenueCurrency: "BRL"},
-		{AdMetaID: "ad-2", Conversations: 1, Leads: 1, WonDeals: 2, Revenue: 0, RevenueCurrency: "MIXED"},
+		{Key: "ad-1", Conversations: 3, Leads: 2, WonDeals: 1, Revenue: 1000, RevenueCurrency: "BRL"},
+		{Key: "ad-2", Conversations: 1, Leads: 1, WonDeals: 2, Revenue: 0, RevenueCurrency: "MIXED"},
 	}
 	if len(rows) != len(want) || rows[0] != want[0] || rows[1] != want[1] {
 		t.Fatalf("got %+v", rows)
+	}
+	together := []advertising.AdGroup{{AdMetaID: "ad-1", Key: "all"}, {AdMetaID: "ad-2", Key: "all"}, {AdMetaID: "ad-x", Key: "all"}}
+	total, err := repo.ByGroup(ctx, wsA, together, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(total) != 1 || total[0].Conversations != rows[0].Conversations+rows[1].Conversations {
+		t.Fatalf("total %+v", total)
 	}
 	n, err := repo.Conversations(ctx, wsA, "ad-1", from, to)
 	if err != nil || n != 3 {

@@ -30,6 +30,10 @@ func (f *fakeWorkspacePhones) List(workspaceID string, _ businessphone.ListInput
 	return &shared.PaginatedResult[*businessphone.WhatsAppBusinessPhoneNumber]{Items: []*businessphone.WhatsAppBusinessPhoneNumber{{ID: knownPhone, DisplayPhoneNumber: "+55 84 99440-9624", VerifiedName: "Loja"}}}, nil
 }
 
+func (f *fakeWorkspacePhones) ListOwned(workspaceID string, input businessphone.ListInput) (*shared.PaginatedResult[*businessphone.WhatsAppBusinessPhoneNumber], error) {
+	return f.List(workspaceID, input)
+}
+
 type fakeTemplateCreator struct {
 	grantedBy string
 	workspace string

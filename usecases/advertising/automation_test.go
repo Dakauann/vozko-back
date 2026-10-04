@@ -185,13 +185,20 @@ func (f *fakeSettings) ListEnabled(context.Context) ([]*ads.ConversionSettings, 
 }
 
 type fakeOutbox struct {
-	pending []ads.PendingSignal
-	records []ads.ConversionRecord
-	failOn  ads.ConversionStatus
+	asked    ads.PendingQuery
+	released time.Time
+	pending  []ads.PendingSignal
+	records  []ads.ConversionRecord
+	failOn   ads.ConversionStatus
 }
 
-func (f *fakeOutbox) Pending(context.Context, string, time.Time, int) ([]ads.PendingSignal, error) {
+func (f *fakeOutbox) Pending(_ context.Context, q ads.PendingQuery) ([]ads.PendingSignal, error) {
+	f.asked = q
 	return f.pending, nil
+}
+func (f *fakeOutbox) ReleaseStale(_ context.Context, _ string, claimedBefore time.Time) (int, error) {
+	f.released = claimedBefore
+	return 0, nil
 }
 func (f *fakeOutbox) Record(_ context.Context, r ads.ConversionRecord) error {
 	if r.Status == f.failOn {
@@ -244,6 +251,48 @@ func TestConversionsAreClaimedSentAndRecorded(t *testing.T) {
 	}
 	if !slices.Equal(statuses["o-1"], []ads.ConversionStatus{ads.ConversionSending, ads.ConversionSent}) || !slices.Equal(statuses["o-2"], []ads.ConversionStatus{ads.ConversionSkipped}) {
 		t.Fatalf("statuses %v", statuses)
+	}
+}
+
+func TestOnlySwitchedOnEventsAreAskedForAndOthersAreNotMarkedSkipped(t *testing.T) {
+	w, uc, outbox := conversionsWorld([]ads.PendingSignal{clickSignal("o-1", ads.DealCreated), clickSignal("o-2", ads.DealWon)})
+	settings := uc.settings.(*fakeSettings)
+	settings.s.SendPurchases = false
+	if err := uc.DispatchAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(outbox.asked.Events, []ads.DealEvent{ads.DealCreated}) || outbox.asked.WorkspaceID != "ws-1" {
+		t.Fatalf("asked %+v", outbox.asked)
+	}
+	for _, r := range outbox.records {
+		if r.OpportunityID == "o-2" {
+			t.Fatalf("a purchase with its switch off was recorded as %s and would never be sent", r.Status)
+		}
+	}
+	if len(w.gateway.sent) != 1 || w.gateway.sent[0].OpportunityID != "o-1" {
+		t.Fatalf("sent %+v", w.gateway.sent)
+	}
+}
+
+func TestNothingIsAskedForWhenEveryEventIsOff(t *testing.T) {
+	_, uc, outbox := conversionsWorld([]ads.PendingSignal{clickSignal("o-1", ads.DealCreated)})
+	settings := uc.settings.(*fakeSettings)
+	settings.s.SendLeads, settings.s.SendPurchases = false, false
+	if err := uc.DispatchAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if outbox.asked.WorkspaceID != "" || len(outbox.records) != 0 {
+		t.Fatalf("asked %+v records %+v", outbox.asked, outbox.records)
+	}
+}
+
+func TestClaimsLeftBehindByACrashAreReleasedBeforeTheNextSend(t *testing.T) {
+	_, uc, outbox := conversionsWorld(nil)
+	if err := uc.DispatchAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !outbox.released.Equal(testNow.Add(-ads.ConversionClaimTimeout)) {
+		t.Fatalf("released claims before %s", outbox.released)
 	}
 }
 

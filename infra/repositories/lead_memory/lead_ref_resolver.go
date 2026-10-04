@@ -42,9 +42,11 @@ func (r *LeadRefResolver) ResolveLeadRef(workspaceID, ref string) string {
 			SELECT c.lead_id FROM telegram_contacts c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
 			UNION ALL
 			SELECT c.lead_id FROM instagram_contacts c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
+			UNION ALL
+			SELECT c.lead_id FROM webchat_visitors c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
 		)
 		LIMIT 1`,
-		workspaceID, ref, workspaceID, ref, workspaceID, ref, workspaceID,
+		workspaceID, ref, workspaceID, ref, workspaceID, ref, workspaceID, ref, workspaceID,
 	).Scan(&leadID)
 	return leadID
 }

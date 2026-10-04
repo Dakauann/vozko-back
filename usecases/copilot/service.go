@@ -194,7 +194,7 @@ func (s *Service) claim(threadID, actionID string, outcome aichat.ProposalStatus
 	return pa, nil
 }
 
-func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, secrets map[string]string, cc copilot.Context, emit agentloop.Emit) error {
+func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID string, approval copilot.Approval, cc copilot.Context, emit agentloop.Emit) error {
 	pa, err := s.claim(thread.ID, actionID, aichat.ProposalApproved)
 	if err != nil {
 		return err
@@ -204,7 +204,7 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 		model = defaultCopilotModel
 	}
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
-	res := driver.ExecuteApproved(ctx, pa, secrets, emit)
+	res := driver.ExecuteApproved(ctx, pa, approval, emit)
 	executed := stepFromResult(pa.ToolName, res)
 	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, nil, false, executed)
 }

@@ -41,6 +41,7 @@ type adsBundle struct {
 	SavedReports   *adsuc.SavedReportsUseCase
 	Runs           *adsuc.ReportRunsUseCase
 	Webhooks       *adsuc.WebhookConsumer
+	GrantHealth    *adsuc.GrantHealthUseCase
 	Handler        *advertisinghttp.Handler
 	WebhookHandler *metawebhook.Handler
 }
@@ -151,6 +152,7 @@ func (c *Container) adsManager() *adsBundle {
 		Origins:         adsuc.NewOriginUseCase(c.services.conversationAuth, c.adOriginReader(), accounts, objects, insights, attribution),
 		FrontendBaseURL: c.cfg.FrontendBaseURL,
 	})
+	bundle.GrantHealth = adsuc.NewGrantHealthUseCase(grants, accounts, oauth)
 	c.ads = bundle
 	return bundle
 }

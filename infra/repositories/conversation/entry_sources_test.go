@@ -27,6 +27,7 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		shared.EntryTypeFacebook,
 		shared.EntryTypeTelegram,
 		shared.EntryTypeUnofficialWhatsApp,
+		shared.EntryTypeWebchat,
 	}
 	if len(entrySources) != len(want) {
 		t.Fatalf("registry holds %d sources, want %d", len(entrySources), len(want))

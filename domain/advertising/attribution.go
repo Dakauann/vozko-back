@@ -2,8 +2,13 @@ package advertising
 
 import "time"
 
+type AdGroup struct {
+	AdMetaID string
+	Key      string
+}
+
 type Attribution struct {
-	AdMetaID        string
+	Key             string
 	Conversations   int64
 	Leads           int64
 	WonDeals        int64

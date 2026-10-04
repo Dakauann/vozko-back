@@ -101,6 +101,45 @@ func (r *grantRepository) Revoke(ctx context.Context, id string, at time.Time) e
 	return r.update(ctx, id, map[string]any{"status": string(advertising.GrantRevoked), "revoked_at": at})
 }
 
+func (r *grantRepository) ListActive(ctx context.Context, limit int) ([]*advertising.Grant, error) {
+	var records []schema.AdGrant
+	if err := r.db.WithContext(ctx).
+		Where("status = ?", string(advertising.GrantActive)).
+		Order("checked_at ASC NULLS FIRST").
+		Limit(limit).
+		Find(&records).Error; err != nil {
+		return nil, err
+	}
+	return toGrants(records)
+}
+
+func (r *grantRepository) ListByAppScopedUser(ctx context.Context, appScopedUserID string) ([]*advertising.Grant, error) {
+	if blank(appScopedUserID) {
+		return nil, nil
+	}
+	var records []schema.AdGrant
+	if err := r.db.WithContext(ctx).Find(&records, "app_scoped_user_id = ?", appScopedUserID).Error; err != nil {
+		return nil, err
+	}
+	return toGrants(records)
+}
+
+func (r *grantRepository) EraseToken(ctx context.Context, id string) error {
+	return r.update(ctx, id, map[string]any{"access_token": piigorm.NewEncrypted("")})
+}
+
+func toGrants(records []schema.AdGrant) ([]*advertising.Grant, error) {
+	out := make([]*advertising.Grant, 0, len(records))
+	for i := range records {
+		g, err := toGrant(&records[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, nil
+}
+
 func (r *grantRepository) update(ctx context.Context, id string, updates map[string]any) error {
 	result := r.db.WithContext(ctx).Model(&schema.AdGrant{}).Where("id = ?", id).Updates(updates)
 	if result.Error != nil {

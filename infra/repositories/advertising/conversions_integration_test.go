@@ -143,7 +143,7 @@ func TestConversionOutboxBuildsSignalsPerChannelAndHonoursRecordsAgainstPostgres
 		t.Fatalf("record of another workspace: %v", err)
 	}
 
-	pending, err := outbox.Pending(ctx, wsA, base, 100)
+	pending, err := outbox.Pending(ctx, advertising.PendingQuery{WorkspaceID: wsA, Events: []advertising.DealEvent{advertising.DealCreated, advertising.DealWon}, Since: base, Limit: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestConversionOutboxBuildsSignalsPerChannelAndHonoursRecordsAgainstPostgres
 		t.Fatal("resolved identities must be complete")
 	}
 
-	firstTwo, err := outbox.Pending(ctx, wsA, base, 2)
+	firstTwo, err := outbox.Pending(ctx, advertising.PendingQuery{WorkspaceID: wsA, Events: []advertising.DealEvent{advertising.DealCreated, advertising.DealWon}, Since: base, Limit: 2})
 	if err != nil || len(firstTwo) != 2 || firstTwo[1].Signal.OpportunityID != whatsapp {
 		t.Fatalf("limit: %+v, %v", firstTwo, err)
 	}
@@ -199,7 +199,7 @@ func TestConversionOutboxBuildsSignalsPerChannelAndHonoursRecordsAgainstPostgres
 
 	pendingOf := func() map[string]bool {
 		t.Helper()
-		signals, err := outbox.Pending(ctx, wsA, base, 100)
+		signals, err := outbox.Pending(ctx, advertising.PendingQuery{WorkspaceID: wsA, Events: []advertising.DealEvent{advertising.DealCreated, advertising.DealWon}, Since: base, Limit: 100})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -401,6 +401,18 @@ var Features = []Feature{
 		},
 	},
 	{
+		Key:         "webchat",
+		Name:        "WebChat",
+		Location:    "Menu lateral › WebChat",
+		Description: "WebChats instalados nos sites da empresa: sites permitidos, formulário inicial, aparência, verificação de identidade e o agente ou fluxo que atende.",
+		Capabilities: []Capability{
+			{Key: "webchat.view", Description: "Ver os WebChats e o código de instalação", Requires: []PermissionEntry{need(ResourceWebchatWidgets, ActionRead)}, Screens: []Screen{ScreenWebchatWidgets, ScreenWebchatWidget}},
+			{Key: "webchat.create", Description: "Criar WebChats", Requires: []PermissionEntry{need(ResourceWebchatWidgets, ActionRead), need(ResourceWebchatWidgets, ActionCreate)}, Screens: []Screen{ScreenWebchatNew}},
+			{Key: "webchat.edit", Description: "Editar sites permitidos, formulário, aparência, identidade e automação", Requires: []PermissionEntry{need(ResourceWebchatWidgets, ActionRead), need(ResourceWebchatWidgets, ActionUpdate)}},
+			{Key: "webchat.remove", Description: "Remover WebChats", Requires: []PermissionEntry{need(ResourceWebchatWidgets, ActionRead), need(ResourceWebchatWidgets, ActionDelete)}},
+		},
+	},
+	{
 		Key:         "links",
 		Name:        "Links",
 		Location:    "Menu lateral › Links",

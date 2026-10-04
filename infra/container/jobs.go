@@ -52,6 +52,9 @@ func (c *Container) initJobRunner() {
 	if c.facebook != nil && c.facebook.Enabled {
 		channels = append(channels, analysisChannel{shared.EntryTypeFacebook, facebookAnalysisResolver(c.facebook)})
 	}
+	if c.webchat != nil {
+		channels = append(channels, analysisChannel{shared.EntryTypeWebchat, webchatAnalysisResolver(c.webchat)})
+	}
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		resolver := campaignAwareResolver(
 			unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp),
@@ -150,6 +153,7 @@ func (c *Container) initJobRunner() {
 		cronPackage.CtxJobFunc(c.ads.Publish.Resume),
 		cronPackage.CtxJobFunc(c.ads.Forms.PollAll),
 		cronPackage.CtxJobFunc(c.ads.Conversions.DispatchAll),
+		cronPackage.CtxJobFunc(c.ads.GrantHealth.Execute),
 	)
 	c.jobRunner.SetImageGenerationJobs(cronPackage.CtxJobFunc(c.imageGeneration().Service.Reap))
 

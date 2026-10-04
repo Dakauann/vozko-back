@@ -91,8 +91,9 @@ type Config struct {
 	MetaAdsGraphVersion  string
 	FrontendBaseURL      string
 
-	ImageGenerationModel             string
 	ImageGenerationCostCeilingMicros int
+
+	APIBaseURL string
 
 	TelegramWebhookBaseURL string
 	TelegramBotAPIBaseURL  string
@@ -237,10 +238,11 @@ func LoadConfig() Config {
 		MetaAdsRedirectURI:   mustGetEnvTrimmed("META_ADS_REDIRECT_URI"),
 		MetaAdsGraphVersion:  trimEnv("META_ADS_GRAPH_VERSION"),
 
-		ImageGenerationModel:             trimEnv("IMAGE_GENERATION_MODEL"),
 		ImageGenerationCostCeilingMicros: getIntEnv("IMAGE_GENERATION_COST_CEILING_MICROS", 250_000),
 
 		FrontendBaseURL: strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
+
+		APIBaseURL: strings.TrimRight(trimEnv("API_BASE_URL"), "/"),
 
 		TelegramWebhookBaseURL: strings.TrimRight(mustGetEnvTrimmed("TELEGRAM_WEBHOOK_BASE_URL"), "/"),
 		TelegramBotAPIBaseURL:  strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),

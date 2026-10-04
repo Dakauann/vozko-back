@@ -1707,6 +1707,21 @@ definitions:
       spend:
         type: integer
     type: object
+  advertisinghttp.NumberLinkConfirmRequest:
+    properties:
+      code:
+        example: "83569"
+        type: string
+      number:
+        example: "5511965467700"
+        type: string
+    type: object
+  advertisinghttp.NumberLinkRequest:
+    properties:
+      number:
+        example: "5511965467700"
+        type: string
+    type: object
   advertisinghttp.NumberResponse:
     properties:
       kind:
@@ -1824,6 +1839,10 @@ definitions:
         type: string
       leadTermsAccepted:
         type: boolean
+      linkable:
+        items:
+          $ref: '#/definitions/advertisinghttp.NumberResponse'
+        type: array
       name:
         type: string
       numbers:
@@ -5639,6 +5658,7 @@ definitions:
     - telegram
     - unofficial_whatsapp
     - facebook
+    - webchat
     type: string
     x-enum-varnames:
     - MessageChannelWhatsApp
@@ -5646,6 +5666,7 @@ definitions:
     - MessageChannelTelegram
     - MessageChannelUnofficialWhatsApp
     - MessageChannelFacebook
+    - MessageChannelWebchat
   conversation.MessageEnvelopeResponse:
     properties:
       message:
@@ -6287,6 +6308,9 @@ definitions:
         - story
         example: square
         type: string
+      model:
+        example: openai/gpt-image-2
+        type: string
       prompt:
         example: Pizza artesanal sobre mesa de madeira, luz natural
         type: string
@@ -6336,6 +6360,15 @@ definitions:
         - failed
         type: string
       updatedAt:
+        type: string
+    type: object
+  imagegenhttp.ModelResponse:
+    properties:
+      id:
+        example: openai/gpt-image-2
+        type: string
+      name:
+        example: GPT Image 2
         type: string
     type: object
   instagram.AccountResponse:
@@ -7791,6 +7824,13 @@ definitions:
       job:
         $ref: '#/definitions/report.Job'
     type: object
+  response.CodedErrorResponse:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+    type: object
   response.ErrorResponse:
     properties:
       code:
@@ -8112,6 +8152,7 @@ definitions:
     - telegram
     - unofficial_whatsapp
     - facebook
+    - webchat
     type: string
     x-enum-varnames:
     - EntryTypeWhatsApp
@@ -8119,6 +8160,7 @@ definitions:
     - EntryTypeTelegram
     - EntryTypeUnofficialWhatsApp
     - EntryTypeFacebook
+    - EntryTypeWebchat
   shared.QualityLevel:
     enum:
     - none
@@ -9028,6 +9070,385 @@ definitions:
         example: America/Sao_Paulo
         type: string
       updatedAt:
+        type: string
+    type: object
+  webchat.BlockRequest:
+    properties:
+      blocked:
+        type: boolean
+    type: object
+  webchat.ChallengeRequest:
+    properties:
+      parentOrigin:
+        type: string
+    type: object
+  webchat.ChallengeResponse:
+    properties:
+      bits:
+        type: integer
+      expiresAt:
+        type: string
+      token:
+        type: string
+    type: object
+  webchat.HistoryResponse:
+    properties:
+      human:
+        type: boolean
+      messages:
+        items:
+          $ref: '#/definitions/webchat.MessageResponse'
+        type: array
+      options:
+        items:
+          $ref: '#/definitions/webchat.OptionResponse'
+        type: array
+    type: object
+  webchat.IntakeRequest:
+    properties:
+      consent:
+        type: boolean
+      email:
+        type: string
+      name:
+        type: string
+      phone:
+        type: string
+      website:
+        type: string
+    type: object
+  webchat.IntakeRulesResponse:
+    properties:
+      email:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      name:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      phone:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      privacyPolicyUrl:
+        type: string
+    type: object
+  webchat.MediaResponse:
+    properties:
+      filename:
+        type: string
+      kind:
+        type: string
+      mimeType:
+        type: string
+      url:
+        type: string
+    type: object
+  webchat.MessageRequest:
+    properties:
+      clientMessageId:
+        type: string
+      pageUrl:
+        type: string
+      selectionId:
+        type: string
+      text:
+        type: string
+    type: object
+  webchat.MessageResponse:
+    properties:
+      author:
+        enum:
+        - visitor
+        - team
+        - assistant
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      media:
+        $ref: '#/definitions/webchat.MediaResponse'
+      options:
+        items:
+          $ref: '#/definitions/webchat.OptionResponse'
+        type: array
+      text:
+        type: string
+    type: object
+  webchat.OptionResponse:
+    properties:
+      id:
+        type: string
+      title:
+        type: string
+    type: object
+  webchat.PublicWidgetResponse:
+    properties:
+      accentColor:
+        type: string
+      allowAttachments:
+        type: boolean
+      allowHumanRequest:
+        type: boolean
+      assistantName:
+        type: string
+      identityMode:
+        enum:
+        - "off"
+        - optional
+        - required
+        type: string
+      intake:
+        $ref: '#/definitions/webchat.IntakeRulesResponse'
+      launcherLabel:
+        type: string
+      name:
+        type: string
+      position:
+        enum:
+        - right
+        - left
+        type: string
+      teamName:
+        type: string
+      welcomeMessage:
+        type: string
+      welcomeTitle:
+        type: string
+    type: object
+  webchat.SecretResponse:
+    properties:
+      identitySecret:
+        type: string
+    type: object
+  webchat.SessionRequest:
+    properties:
+      challengeToken:
+        type: string
+      identity:
+        type: string
+      locale:
+        type: string
+      nonce:
+        type: string
+      parentOrigin:
+        type: string
+      token:
+        type: string
+    type: object
+  webchat.SessionResponse:
+    properties:
+      expiresAt:
+        type: string
+      token:
+        type: string
+      visitor:
+        $ref: '#/definitions/webchat.VisitorStateResponse'
+      widget:
+        $ref: '#/definitions/webchat.PublicWidgetResponse'
+    type: object
+  webchat.TypingRequest:
+    properties:
+      typing:
+        type: boolean
+    type: object
+  webchat.VisitorStateResponse:
+    properties:
+      email:
+        type: string
+      intakePending:
+        type: boolean
+      intakeRequired:
+        type: boolean
+      name:
+        type: string
+      phone:
+        type: string
+      verified:
+        type: boolean
+    type: object
+  webchat.WidgetRequest:
+    properties:
+      accentColor:
+        type: string
+      agentId:
+        type: string
+      allowAttachments:
+        type: boolean
+      allowHumanRequest:
+        type: boolean
+      allowedOrigins:
+        items:
+          type: string
+        type: array
+      assistantName:
+        type: string
+      defaultCountryCode:
+        type: string
+      departmentId:
+        type: string
+      enableAgentResponses:
+        type: boolean
+      enableAnalysis:
+        type: boolean
+      enableAutoMemory:
+        type: boolean
+      enableAutoStaging:
+        type: boolean
+      enableWorkflow:
+        type: boolean
+      identityMode:
+        enum:
+        - "off"
+        - optional
+        - required
+        type: string
+      intakeEmail:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      intakeName:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      intakePhone:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      launcherLabel:
+        type: string
+      name:
+        type: string
+      pipelineId:
+        type: string
+      position:
+        enum:
+        - right
+        - left
+        type: string
+      privacyPolicyUrl:
+        type: string
+      status:
+        enum:
+        - active
+        - paused
+        type: string
+      teamName:
+        type: string
+      welcomeMessage:
+        type: string
+      welcomeTitle:
+        type: string
+      workflowId:
+        type: string
+    type: object
+  webchat.WidgetResponse:
+    properties:
+      accentColor:
+        type: string
+      agentId:
+        type: string
+      allowAttachments:
+        type: boolean
+      allowHumanRequest:
+        type: boolean
+      allowedOrigins:
+        items:
+          type: string
+        type: array
+      assistantName:
+        type: string
+      createdAt:
+        type: string
+      defaultCountryCode:
+        type: string
+      departmentId:
+        type: string
+      enableAgentResponses:
+        type: boolean
+      enableAnalysis:
+        type: boolean
+      enableAutoMemory:
+        type: boolean
+      enableAutoStaging:
+        type: boolean
+      enableWorkflow:
+        type: boolean
+      id:
+        type: string
+      identityMode:
+        enum:
+        - "off"
+        - optional
+        - required
+        type: string
+      intakeEmail:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      intakeName:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      intakePhone:
+        enum:
+        - hidden
+        - optional
+        - required
+        type: string
+      launcherLabel:
+        type: string
+      loaderUrl:
+        type: string
+      name:
+        type: string
+      pipelineId:
+        type: string
+      position:
+        enum:
+        - right
+        - left
+        type: string
+      privacyPolicyUrl:
+        type: string
+      publicKey:
+        type: string
+      snippet:
+        type: string
+      status:
+        enum:
+        - active
+        - paused
+        type: string
+      teamName:
+        type: string
+      updatedAt:
+        type: string
+      welcomeMessage:
+        type: string
+      welcomeTitle:
+        type: string
+      workflowId:
+        type: string
+      workspaceId:
         type: string
     type: object
   whatsapp_campaign.ReportSummary:
@@ -10300,8 +10721,10 @@ paths:
       - Anúncios
   /ads/accounts/{id}/pages:
     get:
-      description: Páginas da conexão de anúncios, o número de WhatsApp vinculado
-        a cada uma e os números do workspace iguais a ele.
+      description: 'Páginas da conexão de anúncios, o número de WhatsApp vinculado
+        a cada uma, os números do workspace iguais a ele (numbers) e os números do
+        workspace que a página pode receber (linkable: oficiais do mesmo portfólio
+        da página, ou não oficiais).'
       parameters:
       - description: ID da conta de anúncios
         in: path
@@ -10472,6 +10895,96 @@ paths:
       security:
       - BearerAuth: []
       summary: Publicação da página
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/whatsapp-link:
+    post:
+      consumes:
+      - application/json
+      description: Envia à Meta o código recebido no WhatsApp e devolve a página atualizada.
+        422 com code invalid para um código fora do formato (4 a 8 dígitos); 409 page_link_refused
+        quando a Meta não confirma o vínculo. A Meta pode levar alguns instantes para
+        mostrar o número em whatsAppNumber; a publicação só libera quando ele aparece.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página na Meta
+        in: path
+        name: pageId
+        required: true
+        type: string
+      - description: número e código
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.NumberLinkConfirmRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.PageResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Confirmar vínculo de WhatsApp com a página
+      tags:
+      - Anúncios
+  /ads/accounts/{id}/pages/{pageId}/whatsapp-link/code:
+    post:
+      consumes:
+      - application/json
+      description: Pede à Meta que envie, por WhatsApp, o código que vincula o número
+        à página. O número precisa estar em linkable da página (oficial do mesmo portfólio,
+        ou não oficial). O código chega no app do WhatsApp do número; números em coexistência
+        recebem no app do celular, não na caixa de entrada do Vozko. 422 com number
+        not_linkable para um número que a página não pode receber; 409 page_link_refused
+        se a Meta não enviar o código.
+      parameters:
+      - description: ID da conta de anúncios
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ID da página na Meta
+        in: path
+        name: pageId
+        required: true
+        type: string
+      - description: número a vincular
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/advertisinghttp.NumberLinkRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Pedir código para vincular WhatsApp à página
       tags:
       - Anúncios
   /ads/accounts/{id}/pixels:
@@ -15378,9 +15891,11 @@ paths:
       - application/json
       description: Liga ou desliga o atendimento automático desta conversa. Envie
         null para voltar a herdar a configuração da conta/campanha. Desligar devolve
-        para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar devolve
-        a conversa para a IA ou o fluxo que atende o canal. A resposta traz o responsável
-        resultante em assigned_user_id.
+        para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar (ou
+        null) devolve a conversa para a IA ou o fluxo que atende o canal. Se o canal
+        não tiver agente ou fluxo ativo, a automação continua pausada e a resposta
+        é 409 com code nothing_to_return_to, para que a IA nunca responda uma conversa
+        que está com uma pessoa. A resposta traz o responsável resultante em assigned_user_id.
       parameters:
       - description: Tipo da entrada
         in: path
@@ -16568,16 +17083,17 @@ paths:
     post:
       consumes:
       - application/json
-      description: Coloca na fila a geração de uma imagem no formato pedido (square
-        1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até
-        16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds,
-        sem repetição, só imagens) para edição ou estilo; uma referência inválida
-        responde 422 com o código no campo referenceMediaIds (required, too_many,
-        duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por
-        GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca
-        de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de
-        IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento,
-        devolve o mesmo job sem nova cobrança.
+      description: Coloca na fila a geração de uma imagem com o modelo escolhido (model,
+        um id de GET /images/models; fora da lista responde 422 com model unknown)
+        no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920).
+        Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do
+        workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo;
+        uma referência inválida responde 422 com o código no campo referenceMediaIds
+        (required, too_many, duplicate, not_found ou not_image). Responde 202 com
+        o job; acompanhe por GET /images/generations/{id} até status done (mediaId
+        e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada
+        do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos,
+        ainda em andamento, devolve o mesmo job sem nova cobrança.
       parameters:
       - description: descrição e formato da imagem
         in: body
@@ -16638,6 +17154,30 @@ paths:
       security:
       - BearerAuth: []
       summary: Consultar geração de imagem
+      tags:
+      - Imagens
+  /images/models:
+    get:
+      description: Modelos que geram imagens, do mais usado para o menos usado, segundo
+        o ranking de popularidade do provedor. O id escolhido vai no campo model de
+        POST /images/generations. Responde 503 (models_unavailable) quando a lista
+        não pode ser carregada; nesse caso nenhuma imagem pode ser pedida.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/imagegenhttp.ModelResponse'
+            type: array
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Modelos de imagem
       tags:
       - Imagens
   /instagram/accounts:
@@ -19702,6 +20242,352 @@ paths:
       summary: Consultar a cotação do dólar
       tags:
       - Preços
+  /public/webchat/{publicKey}/challenge:
+    post:
+      consumes:
+      - application/json
+      description: Devolve um desafio de prova de trabalho (SHA-256 com bits zerados
+        no início) que o chat resolve antes de abrir uma sessão anônima. Vale 2 minutos
+        e uma única vez. Só responde à janela do chat (mesma origem).
+      parameters:
+      - description: chave pública do chat
+        in: path
+        name: publicKey
+        required: true
+        type: string
+      - description: origem do site onde o chat está
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.ChallengeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.ChallengeResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      summary: Desafio anti-robô do WebChat
+      tags:
+      - WebChat
+  /public/webchat/{publicKey}/frame:
+    get:
+      description: Página do chat carregada pelo script dentro de um iframe. Só pode
+        ser exibida nos sites permitidos do chat (Content-Security-Policy frame-ancestors).
+        Chat pausado ou removido responde 404.
+      parameters:
+      - description: chave pública do chat
+        in: path
+        name: publicKey
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+      summary: Janela do WebChat
+      tags:
+      - WebChat
+  /public/webchat/{publicKey}/session:
+    post:
+      consumes:
+      - application/json
+      description: 'Abre ou retoma a sessão de um visitante. Com token válido retoma
+        o mesmo visitante; sem ele exige o desafio resolvido (challengeToken e nonce).
+        Com identity (JWT assinado pelo site) o visitante é o cliente identificado,
+        em qualquer aparelho. Devolve o token da sessão (30 dias, enviado como Authorization:
+        Bearer), a aparência do chat e o que falta no formulário inicial. Limites:
+        novas sessões por IP e por chat (429 rate_limited).'
+      parameters:
+      - description: chave pública do chat
+        in: path
+        name: publicKey
+        required: true
+        type: string
+      - description: token, desafio ou identidade
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.SessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.SessionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      summary: Abrir sessão do visitante
+      tags:
+      - WebChat
+  /public/webchat/assets/{file}:
+    get:
+      description: JavaScript e CSS da janela do chat.
+      parameters:
+      - description: frame.js ou frame.css
+        in: path
+        name: file
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+      summary: Arquivos do WebChat
+      tags:
+      - WebChat
+  /public/webchat/loader.js:
+    get:
+      description: 'Script que o site inclui com <script async src=".../public/webchat/loader.js"
+        data-key="CHAVE_PUBLICA">. Desenha o botão e abre o chat num iframe servido
+        por esta API. Para identificar um cliente logado, defina antes window.VozkoChat
+        = { identity: "<JWT HS256 gerado no seu servidor>" }.'
+      produces:
+      - application/javascript
+      responses:
+        "200":
+          description: OK
+      summary: Script do WebChat
+      tags:
+      - WebChat
+  /public/webchat/session/handoff:
+    post:
+      description: 'Disponível quando o chat oferece falar com uma pessoa: pausa o
+        agente ou fluxo e passa a conversa para a fila do departamento do chat.'
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Pedir atendimento humano
+      tags:
+      - WebChat
+  /public/webchat/session/intake:
+    post:
+      consumes:
+      - application/json
+      description: Nome, e-mail, telefone e aceite da política de privacidade, conforme
+        o chat pede. Um telefone liga o visitante ao lead com o mesmo número. O campo
+        website precisa ficar vazio.
+      parameters:
+      - description: respostas
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.IntakeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.VisitorStateResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Enviar formulário inicial
+      tags:
+      - WebChat
+  /public/webchat/session/media:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'multipart/form-data com file, clientMessageId e pageUrl. Só quando
+        o chat aceita anexos: JPEG, PNG, WebP, GIF ou PDF, até 10 MB. O tipo é conferido
+        pelo conteúdo, não pelo nome.'
+      parameters:
+      - description: arquivo
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: id do envio
+        in: formData
+        name: clientMessageId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/webchat.MessageResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "415":
+          description: Unsupported Media Type
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Enviar arquivo do visitante
+      tags:
+      - WebChat
+  /public/webchat/session/messages:
+    get:
+      description: Mensagens da conversa do visitante, da mais antiga à mais nova,
+        só com o que o cliente pode ver (sem notas internas, ferramentas ou dados
+        de atendentes). before e after (RFC 3339) paginam; options são os botões ainda
+        em aberto.
+      parameters:
+      - description: mensagens antes deste instante
+        in: query
+        name: before
+        type: string
+      - description: mensagens depois deste instante
+        in: query
+        name: after
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.HistoryResponse'
+      security:
+      - BearerAuth: []
+      summary: Histórico do visitante
+      tags:
+      - WebChat
+    post:
+      consumes:
+      - application/json
+      description: 'Texto (até 2.000 caracteres) ou a escolha de um botão oferecido
+        (selectionId). clientMessageId (8 a 64 caracteres) torna o envio idempotente:
+        repetir o mesmo id não duplica a mensagem nem a resposta automática. O agente
+        ou fluxo do chat responde pela sessão em tempo real. Limites por visitante
+        e por IP (429 rate_limited).'
+      parameters:
+      - description: mensagem
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.MessageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/webchat.MessageResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Enviar mensagem do visitante
+      tags:
+      - WebChat
+  /public/webchat/session/stream:
+    get:
+      description: |-
+        Server-Sent Events lidos com fetch (o token vai no cabeçalho Authorization, nunca na URL).
+
+        | evento | dados |
+        |---|---|
+        | message | { kind: "message", message: { id, author: visitor, team ou assistant, text, media, options, createdAt } } |
+        | typing | { kind: "typing", typing } |
+        | status | { kind: "status", state: human ou blocked } |
+        | ping | a cada 20 s |
+
+        A conexão fecha depois de 30 minutos; o chat reconecta e busca o que perdeu com GET .../messages?after=. No máximo 3 conexões por visitante (429).
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: OK
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Eventos em tempo real do visitante
+      tags:
+      - WebChat
+  /public/webchat/session/typing:
+    post:
+      consumes:
+      - application/json
+      description: Mostra aos atendentes que o visitante está digitando.
+      parameters:
+      - description: digitando ou não
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.TypingRequest'
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: Visitante digitando
+      tags:
+      - WebChat
   /r/{code}:
     get:
       description: Resolve o código público e redireciona para a URL de destino, exibe
@@ -21662,6 +22548,250 @@ paths:
       summary: Atualizar o perfil do usuário autenticado
       tags:
       - Usuário
+  /webchat/conversations/{entryId}/block:
+    put:
+      consumes:
+      - application/json
+      description: 'blocked true bloqueia o visitante da conversa: o chat dele para
+        de funcionar na hora e a resposta fica fechada no CRM. blocked false desbloqueia.
+        Exige acesso à conversa.'
+      parameters:
+      - description: id da conversa
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: bloquear ou desbloquear
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.BlockRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Bloquear visitante do WebChat
+      tags:
+      - WebChat
+  /webchat/widgets:
+    get:
+      description: WebChats do workspace, do mais novo ao mais antigo, com o código
+        de instalação de cada um (snippet). search filtra pelo nome.
+      parameters:
+      - description: parte do nome
+        in: query
+        name: search
+        type: string
+      - description: página
+        in: query
+        name: page
+        type: integer
+      - description: itens por página
+        in: query
+        name: pageSize
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.PaginatedPayload'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/webchat.WidgetResponse'
+                  type: array
+              type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar WebChats
+      tags:
+      - WebChat
+    post:
+      consumes:
+      - application/json
+      description: Cria um chat para instalar em sites. allowedOrigins é obrigatório
+        e aceita só origens exatas (https://www.exemplo.com) ou subdomínios (https://*.exemplo.com);
+        http só para localhost. O chat só abre nesses sites. Agente, fluxo, funil
+        e departamento precisam ser deste workspace (422 reference_not_in_workspace).
+        Com identityMode optional ou required é gerado um segredo para assinar a identidade
+        do visitante (GET .../identity-secret).
+      parameters:
+      - description: configuração do chat
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.WidgetRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/webchat.WidgetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar WebChat
+      tags:
+      - WebChat
+  /webchat/widgets/{id}:
+    delete:
+      description: Remove o chat; ele deixa de abrir em todos os sites. As conversas
+        continuam no CRM.
+      parameters:
+      - description: id do chat
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remover WebChat
+      tags:
+      - WebChat
+    get:
+      description: Configuração de um WebChat do workspace e o código de instalação.
+      parameters:
+      - description: id do chat
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.WidgetResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar WebChat
+      tags:
+      - WebChat
+    put:
+      consumes:
+      - application/json
+      description: Altera só os campos enviados. As mesmas regras da criação valem
+        para sites permitidos, formulário inicial e referências.
+      parameters:
+      - description: id do chat
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: campos a alterar
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/webchat.WidgetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.WidgetResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Editar WebChat
+      tags:
+      - WebChat
+  /webchat/widgets/{id}/identity-secret:
+    get:
+      description: Segredo com que o servidor do site assina, em HS256, o JWT de identidade
+        do visitante (sub obrigatório, exp obrigatório e no máximo 24 h à frente;
+        name, email e phone opcionais). Nunca coloque o segredo no navegador.
+      parameters:
+      - description: id do chat
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.SecretResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ver segredo de identidade
+      tags:
+      - WebChat
+    post:
+      description: Gera um novo segredo; JWTs assinados com o anterior deixam de valer
+        na hora.
+      parameters:
+      - description: id do chat
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/webchat.SecretResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.CodedErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Trocar segredo de identidade
+      tags:
+      - WebChat
   /webhooks/google-calendar:
     post:
       description: Endpoint público que recebe as notificações push do Google Agenda
@@ -21776,58 +22906,6 @@ paths:
       summary: Receptor público de webhook que inicia uma execução de workflow
       tags:
       - webhooks
-  /whatsapp/business-phones:
-    get:
-      description: Retorna, de forma paginada, os telefones comerciais do WhatsApp
-        Business aos quais o workspace tem acesso. Aceita filtros por status, avaliação
-        de qualidade, WABA e termo de busca.
-      parameters:
-      - description: 'Status do telefone (ex.: CONNECTED, PENDING, DISCONNECTED)'
-        in: query
-        name: status
-        type: string
-      - description: 'Avaliação de qualidade (ex.: GREEN, YELLOW, RED)'
-        in: query
-        name: qualityRating
-        type: string
-      - description: ID da conta do WhatsApp Business (WABA)
-        in: query
-        name: waba_id
-        type: string
-      - description: Termo de busca
-        in: query
-        name: search
-        type: string
-      - description: Número da página (inicia em 1)
-        in: query
-        name: page
-        type: integer
-      - description: Quantidade de itens por página
-        in: query
-        name: pageSize
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/businessphone.WhatsAppBusinessPhoneNumber'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar telefones comerciais do WhatsApp
-      tags:
-      - Telefones do WhatsApp Business
   /whatsapp/business-phones/{id}:
     get:
       description: Retorna os detalhes de um telefone comercial do WhatsApp Business,

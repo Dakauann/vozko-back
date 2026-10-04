@@ -14,7 +14,7 @@ import (
 
 const (
 	adAccountFields = "account_id,name,currency,timezone_name,account_status,disable_reason,funding_source,amount_spent,spend_cap,business{id,name},user_tasks"
-	pageFields      = "id,name,tasks,picture{url},whatsapp_number,leadgen_tos_accepted,instagram_business_account{id,username}"
+	pageFields      = "id,name,business{id},tasks,picture{url},whatsapp_number,leadgen_tos_accepted,instagram_business_account{id,username}"
 )
 
 var _ advertising.StructureGateway = (*Gateway)(nil)
@@ -139,9 +139,12 @@ func (g *Gateway) GetBilling(ctx context.Context, token, metaAccountID string, w
 }
 
 type graphPageRow struct {
-	ID      meta.GraphID `json:"id"`
-	Name    string       `json:"name"`
-	Tasks   []string     `json:"tasks"`
+	ID       meta.GraphID `json:"id"`
+	Name     string       `json:"name"`
+	Business *struct {
+		ID meta.GraphID `json:"id"`
+	} `json:"business"`
+	Tasks   []string `json:"tasks"`
 	Picture *struct {
 		Data struct {
 			URL string `json:"url"`
@@ -162,6 +165,9 @@ func (p graphPageRow) toDomain() advertising.RemotePage {
 		WhatsAppNumber:    p.WhatsAppNumber,
 		CanAdvertise:      advertising.TasksAllowAdvertising(p.Tasks),
 		LeadTermsAccepted: p.LeadgenTOSAccepted,
+	}
+	if p.Business != nil {
+		out.BusinessID = p.Business.ID.String()
 	}
 	if p.Picture != nil {
 		out.PictureURL = p.Picture.Data.URL

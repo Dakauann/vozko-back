@@ -26,6 +26,7 @@ var pipelineBindings = []struct {
 	{"unofficial_whatsapp_campaigns", "campaign"},
 	{"instagram_accounts", "channel"},
 	{"telegram_accounts", "channel"},
+	{"webchat_widgets", "channel"},
 	{"unofficial_whatsapp_instances", "channel"},
 }
 

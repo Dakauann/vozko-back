@@ -9,6 +9,11 @@ var contactRefs = map[shared.EntryType]string{
 	shared.EntryTypeTelegram:  "tgc.contact_id",
 	shared.EntryTypeFacebook:  "fbc.contact_id",
 
+	shared.EntryTypeWebchat: `COALESCE(
+		(SELECT wcv.lead_id FROM webchat_visitors wcv
+		  WHERE wcv.id = wcc.visitor_id AND wcv.lead_id IS NOT NULL),
+		wcc.visitor_id)`,
+
 	shared.EntryTypeUnofficialWhatsApp: `COALESCE(
 		(SELECT uwct.lead_id FROM unofficial_whatsapp_contacts uwct
 		  WHERE uwct.id = uwc.contact_id AND uwct.lead_id IS NOT NULL),

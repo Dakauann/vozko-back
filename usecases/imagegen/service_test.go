@@ -17,18 +17,35 @@ var clock = time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 
 type fakeGenerator struct {
 	calls      int
+	model      string
 	cost       int64
 	err        error
 	references []imagegen.ReferenceImage
 }
 
-func (g *fakeGenerator) Generate(_ context.Context, _ imagegen.Request, references []imagegen.ReferenceImage) (*imagegen.GeneratedImage, error) {
+func (g *fakeGenerator) Generate(_ context.Context, req imagegen.Request, references []imagegen.ReferenceImage) (*imagegen.GeneratedImage, error) {
 	g.calls++
+	g.model = req.Model
 	g.references = references
 	if g.err != nil {
 		return nil, g.err
 	}
 	return &imagegen.GeneratedImage{Bytes: []byte("jpg"), MIMEType: "image/jpeg", Model: "openai/gpt-image-2.5-flare", ProviderCostMicros: g.cost}, nil
+}
+
+const imageModel = "openai/gpt-image-2.5-flare"
+
+type fakeCatalog struct {
+	models []imagegen.Model
+	err    error
+}
+
+func (c *fakeCatalog) ImageModels(context.Context) ([]imagegen.Model, error) {
+	return c.models, c.err
+}
+
+func newFakeCatalog() *fakeCatalog {
+	return &fakeCatalog{models: []imagegen.Model{{ID: imageModel, Name: "GPT Image 2.5 Flare"}, {ID: "google/gemini-3-pro-image", Name: "Gemini 3 Pro Image"}}}
 }
 
 type fakeFunds struct{ err error }
@@ -212,6 +229,7 @@ func (r *fakeJobs) job(id string) imagegen.Job {
 
 type fixture struct {
 	lib   *fakeLibrary
+	cat   *fakeCatalog
 	gen   *fakeGenerator
 	funds *fakeFunds
 	bill  *fakeAIBilling
@@ -223,9 +241,9 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{lib: newFakeLibrary(), gen: &fakeGenerator{}, funds: &fakeFunds{}, bill: &fakeAIBilling{}, up: &fakeUploader{}, queue: &fakeQueue{}, jobs: newFakeJobs()}
+	f := &fixture{lib: newFakeLibrary(), cat: newFakeCatalog(), gen: &fakeGenerator{}, funds: &fakeFunds{}, bill: &fakeAIBilling{}, up: &fakeUploader{}, queue: &fakeQueue{}, jobs: newFakeJobs()}
 	svc, err := NewService(Deps{
-		Generator: f.gen, Jobs: f.jobs, Queue: f.queue, Funds: f.funds, Billing: f.bill, Uploader: f.up, References: f.lib, CostCeilingMicros: 250_000,
+		Generator: f.gen, Models: f.cat, Jobs: f.jobs, Queue: f.queue, Funds: f.funds, Billing: f.bill, Uploader: f.up, References: f.lib, CostCeilingMicros: 250_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -237,7 +255,7 @@ func newFixture(t *testing.T) *fixture {
 }
 
 func imageRequest() imagegen.Request {
-	return imagegen.Request{WorkspaceID: "ws-1", Prompt: "pizza artesanal", Aspect: imagegen.AspectSquare}
+	return imagegen.Request{WorkspaceID: "ws-1", Model: imageModel, Prompt: "pizza artesanal", Aspect: imagegen.AspectSquare}
 }
 
 func (f *fixture) requestAndProcess(t *testing.T) imagegen.Job {
@@ -502,7 +520,7 @@ func TestPollingBacksOffByHalfUpToFiveSeconds(t *testing.T) {
 }
 
 func TestTheServiceRefusesAFreeCeilingOrMissingParts(t *testing.T) {
-	full := Deps{Generator: &fakeGenerator{}, Jobs: newFakeJobs(), Queue: &fakeQueue{}, Funds: &fakeFunds{}, Billing: &fakeAIBilling{}, Uploader: &fakeUploader{}, References: newFakeLibrary(), CostCeilingMicros: 1}
+	full := Deps{Generator: &fakeGenerator{}, Models: newFakeCatalog(), Jobs: newFakeJobs(), Queue: &fakeQueue{}, Funds: &fakeFunds{}, Billing: &fakeAIBilling{}, Uploader: &fakeUploader{}, References: newFakeLibrary(), CostCeilingMicros: 1}
 	if _, err := NewService(full); err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +529,7 @@ func TestTheServiceRefusesAFreeCeilingOrMissingParts(t *testing.T) {
 	if _, err := NewService(free); !errors.Is(err, ErrInvalidCostCeiling) {
 		t.Fatalf("got %v", err)
 	}
-	for _, drop := range []func(*Deps){func(d *Deps) { d.Queue = nil }, func(d *Deps) { d.References = nil }} {
+	for _, drop := range []func(*Deps){func(d *Deps) { d.Queue = nil }, func(d *Deps) { d.References = nil }, func(d *Deps) { d.Models = nil }} {
 		missing := full
 		drop(&missing)
 		if _, err := NewService(missing); !errors.Is(err, ErrMissingDependency) {
@@ -571,7 +589,7 @@ func TestOnlyImagesOfThisWorkspaceCanBeReferences(t *testing.T) {
 		if got := referenceCode(t, err); got != code {
 			t.Fatalf("%s: code %q, want %q", id, got, code)
 		}
-		if err := f.svc.Check(referencedRequest(id)); referenceCode(t, err) != code {
+		if err := f.svc.Check(context.Background(), referencedRequest(id)); referenceCode(t, err) != code {
 			t.Fatalf("%s: check let it through: %v", id, err)
 		}
 		if len(f.jobs.jobs) != 0 || len(f.queue.ids) != 0 {
@@ -627,5 +645,106 @@ func TestReferencesResolvesInTheGivenOrder(t *testing.T) {
 	}
 	if _, err := f.svc.References("ws-2", []string{"ref-1"}); referenceCode(t, err) != imagegen.CodeNotFound {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func modelCode(t *testing.T, err error) string {
+	t.Helper()
+	var invalid *imagegen.ValidationError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("expected a field issue, got %v", err)
+	}
+	return invalid.Codes()[imagegen.FieldModel]
+}
+
+func TestOnlyImageModelsFromTheCatalogCanGenerate(t *testing.T) {
+	f := newFixture(t)
+	req := imageRequest()
+	req.Model = "anthropic/claude-sonnet-4"
+	_, err := f.svc.Request(context.Background(), req, "u-1")
+	if modelCode(t, err) != imagegen.CodeUnknown {
+		t.Fatalf("got %v", err)
+	}
+	if modelCode(t, f.svc.Check(context.Background(), req)) != imagegen.CodeUnknown {
+		t.Fatal("check accepted a model outside the catalog")
+	}
+	req.Model = ""
+	if modelCode(t, f.svc.Check(context.Background(), req)) != imagegen.CodeRequired {
+		t.Fatal("check accepted a request without a model")
+	}
+	if len(f.jobs.jobs) != 0 || len(f.queue.ids) != 0 {
+		t.Fatal("a request with a wrong model was stored")
+	}
+}
+
+func TestACatalogOutageRefusesInsteadOfGuessing(t *testing.T) {
+	f := newFixture(t)
+	f.cat.err = errors.New("openrouter down")
+	if _, err := f.svc.Request(context.Background(), imageRequest(), "u-1"); !errors.Is(err, imagegen.ErrModelsUnavailable) {
+		t.Fatalf("request while the catalog was unavailable: %v", err)
+	}
+	if err := f.svc.Check(context.Background(), imageRequest()); err == nil {
+		t.Fatal("check passed while the catalog was unavailable")
+	}
+	if _, err := f.svc.GeneratesImages(context.Background(), imageModel); err == nil {
+		t.Fatal("generates images answered while the catalog was unavailable")
+	}
+	if len(f.jobs.jobs) != 0 {
+		t.Fatal("a job was stored")
+	}
+}
+
+func TestTheChosenModelGeneratesTheImage(t *testing.T) {
+	f := newFixture(t)
+	req := imageRequest()
+	req.Model = "google/gemini-3-pro-image"
+	job, err := f.svc.Request(context.Background(), req, "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Process(context.Background(), &imagegen.QueueMessage{JobID: job.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if f.gen.model != "google/gemini-3-pro-image" {
+		t.Fatalf("generated with %q", f.gen.model)
+	}
+}
+
+func TestContentIsCheckedWithoutAModel(t *testing.T) {
+	f := newFixture(t)
+	req := imageRequest()
+	req.Model = ""
+	if err := f.svc.CheckContent(req); err != nil {
+		t.Fatal(err)
+	}
+	req.Prompt = ""
+	if err := f.svc.CheckContent(req); !errors.Is(err, imagegen.ErrInvalidRequest) {
+		t.Fatalf("got %v", err)
+	}
+	f.funds.err = errors.New("no balance")
+	if err := f.svc.CheckContent(imageRequest()); err == nil {
+		t.Fatal("content check passed without funds")
+	}
+}
+
+func TestModelsKeepTheCatalogRanking(t *testing.T) {
+	f := newFixture(t)
+	models, err := f.svc.Models(context.Background())
+	if err != nil || len(models) != 2 || models[0].ID != imageModel {
+		t.Fatalf("models %+v err %v", models, err)
+	}
+	f.cat.models = nil
+	if _, err := f.svc.Models(context.Background()); !errors.Is(err, imagegen.ErrNoImageModels) {
+		t.Fatalf("an empty catalog returned %v", err)
+	}
+}
+
+func TestOnlyCatalogModelsGenerateImages(t *testing.T) {
+	f := newFixture(t)
+	for model, want := range map[string]bool{"google/gemini-3-pro-image": true, "anthropic/claude-sonnet-4": false, "": false} {
+		got, err := f.svc.GeneratesImages(context.Background(), model)
+		if err != nil || got != want {
+			t.Fatalf("%q: %v %v", model, got, err)
+		}
 	}
 }

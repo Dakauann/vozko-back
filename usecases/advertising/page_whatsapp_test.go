@@ -1,0 +1,102 @@
+package advertising
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	ads "vozko/domain/advertising"
+)
+
+func linkWorld() *world {
+	w := newWorld()
+	w.gateway.pages = []ads.RemotePage{{PageID: "page-1", BusinessID: "biz-1", Name: "Loja", CanAdvertise: true}}
+	w.numbers.numbers = []ads.WorkspaceNumber{
+		{Kind: ads.NumberOfficial, Label: "Loja", Number: "5511965467700", PortfolioID: "biz-1"},
+		{Kind: ads.NumberOfficial, Label: "Outra empresa", Number: "5511911112222", PortfolioID: "biz-9"},
+	}
+	w.gateway.linkStatus = "VERIFICATION_CODE_SEND_SUCCESS"
+	return w
+}
+
+func (w *world) assets() *AssetsUseCase { return NewAssetsUseCase(w.sync, w.gateway, w.numbers) }
+
+func TestPagesOfferTheNumbersEachPageCanTake(t *testing.T) {
+	w := linkWorld()
+	pages, err := w.assets().Pages(context.Background(), "ws-1", "acc-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 1 || len(pages[0].Numbers) != 0 || len(pages[0].Linkable) != 1 || pages[0].Linkable[0].Number != "5511965467700" {
+		t.Fatalf("pages %+v", pages)
+	}
+}
+
+func TestAskingForTheLinkCodeGoesToMetaOnlyForANumberThePageCanTake(t *testing.T) {
+	w := linkWorld()
+	if err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "+55 11 96546-7700"); err != nil {
+		t.Fatal(err)
+	}
+	if w.gateway.linked.number != "5511965467700" || w.gateway.linked.code != "" || w.gateway.linked.page != "page-1" {
+		t.Fatalf("linked %+v", w.gateway.linked)
+	}
+	w2 := linkWorld()
+	err := w2.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511911112222")
+	var invalid *ads.ValidationError
+	if !errors.As(err, &invalid) || w2.gateway.linked.number != "" {
+		t.Fatalf("a number from another portfolio reached Meta: %v", err)
+	}
+}
+
+func TestAPageOutsideTheConnectionCannotBeLinked(t *testing.T) {
+	w := linkWorld()
+	err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-9", "5511965467700")
+	if !errors.Is(err, ads.ErrPageNotGranted) || w.gateway.linked.number != "" {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestACodeMetaDidNotSendIsAnError(t *testing.T) {
+	w := linkWorld()
+	w.gateway.linkStatus = "UNKNOWN"
+	if err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700"); !errors.Is(err, ads.ErrPageLinkRefused) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestConfirmingTheLinkSendsTheCodeAndReturnsThePageAgain(t *testing.T) {
+	w := linkWorld()
+	w.gateway.linkStatus = "VERIFIED"
+	page, err := w.assets().ConfirmNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700", " 83569 ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.gateway.linked.code != "83569" || page.Page.PageID != "page-1" {
+		t.Fatalf("linked %+v page %+v", w.gateway.linked, page)
+	}
+}
+
+func TestAWrongLinkCodeNeverReachesMeta(t *testing.T) {
+	w := linkWorld()
+	_, err := w.assets().ConfirmNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700", "12")
+	var invalid *ads.ValidationError
+	if !errors.As(err, &invalid) || w.gateway.linked.number != "" {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestACodeMetaRejectsIsNotALink(t *testing.T) {
+	w := linkWorld()
+	w.gateway.linkStatus = "INVALID"
+	if _, err := w.assets().ConfirmNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700", "83569"); !errors.Is(err, ads.ErrPageLinkRefused) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLinkingNeedsAnAccountThatCanAdvertise(t *testing.T) {
+	w := linkWorld()
+	w.accounts.byID["acc-1"].Tasks = []string{"ANALYZE"}
+	if err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700"); err == nil || w.gateway.linked.number != "" {
+		t.Fatalf("a read-only account linked a number: %v", err)
+	}
+}

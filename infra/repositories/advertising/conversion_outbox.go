@@ -2,6 +2,7 @@ package advertising_repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,7 +24,7 @@ func NewConversionOutbox(db *gorm.DB) advertising.ConversionOutbox {
 const pendingSignalsSQL = `WITH events AS (
 	SELECT DISTINCT ON (ev.opportunity_id, ev.type) ev.opportunity_id, ev.type, ev.created_at
 	FROM opportunity_events ev
-	WHERE ev.workspace_id = ? AND ev.type IN (?, ?) AND ev.created_at >= ?
+	WHERE ev.workspace_id = ? AND ev.type IN ? AND ev.created_at >= ?
 	ORDER BY ev.opportunity_id, ev.type, ev.created_at
 ),
 signals AS (
@@ -64,18 +65,51 @@ LEFT JOIN leads l ON l.id = s.lead_id AND l.workspace_id = ? AND l.deleted_at IS
 WHERE NOT EXISTS (
 	SELECT 1 FROM ad_conversion_records r
 	WHERE r.opportunity_id = s.opportunity_id AND r.event_name = s.event_name AND r.workspace_id = ?
-	AND (r.status IN (?, ?, ?) OR (r.status = ? AND r.attempts >= ?))
+	AND (r.status IN (?, ?) OR (r.status = ? AND r.reason NOT IN ?) OR (r.status = ? AND r.attempts >= ?))
 )
 ORDER BY s.at, s.opportunity_id, s.event
 LIMIT ?`
 
-func (o *conversionOutbox) Pending(ctx context.Context, workspaceID string, since time.Time, limit int) ([]advertising.PendingSignal, error) {
+var opportunityEventOf = map[advertising.DealEvent]opportunity.EventType{
+	advertising.DealCreated: opportunity.EventCreated,
+	advertising.DealWon:     opportunity.EventWon,
+}
+
+func opportunityEvents(events []advertising.DealEvent) ([]string, error) {
+	types := make([]string, 0, len(events))
+	for _, e := range events {
+		t, ok := opportunityEventOf[e]
+		if !ok {
+			return nil, fmt.Errorf("ads: no opportunity event for deal event %q", e)
+		}
+		types = append(types, string(t))
+	}
+	return types, nil
+}
+
+func nonFinalSkips() []string {
+	reasons := make([]string, 0, len(advertising.NonFinalSkips()))
+	for _, r := range advertising.NonFinalSkips() {
+		reasons = append(reasons, string(r))
+	}
+	return reasons
+}
+
+func (o *conversionOutbox) Pending(ctx context.Context, q advertising.PendingQuery) ([]advertising.PendingSignal, error) {
+	workspaceID := q.WorkspaceID
 	if blank(workspaceID) {
 		return nil, advertising.ErrWorkspaceRequired
 	}
+	if len(q.Events) == 0 {
+		return nil, nil
+	}
+	types, err := opportunityEvents(q.Events)
+	if err != nil {
+		return nil, err
+	}
 	created, won := string(opportunity.EventCreated), string(opportunity.EventWon)
 	args := []any{
-		workspaceID, created, won, since,
+		workspaceID, types, q.Since,
 		created, string(advertising.DealCreated), won, string(advertising.DealWon),
 		created, advertising.EventNameLead, won, advertising.EventNamePurchase,
 		workspaceID,
@@ -84,9 +118,10 @@ func (o *conversionOutbox) Pending(ctx context.Context, workspaceID string, sinc
 		string(shared.EntryTypeFacebook), workspaceID,
 		string(shared.EntryTypeInstagram), workspaceID,
 		workspaceID,
-		workspaceID, string(advertising.ConversionSent), string(advertising.ConversionSkipped), string(advertising.ConversionSending),
+		workspaceID, string(advertising.ConversionSent), string(advertising.ConversionSending),
+		string(advertising.ConversionSkipped), nonFinalSkips(),
 		string(advertising.ConversionFailed), exhaustedAttempts(),
-		limit,
+		q.Limit,
 	}
 	type pendingRow struct {
 		OpportunityID    string    `gorm:"column:opportunity_id"`
@@ -139,6 +174,20 @@ func exhaustedAttempts() int {
 		attempts++
 	}
 	return attempts
+}
+
+const releaseStaleSQL = `UPDATE ad_conversion_records SET status = ?, reason = ?, attempts = attempts + 1, updated_at = NOW()
+WHERE workspace_id = ? AND status = ? AND updated_at < ?`
+
+const interruptedReason = "interrupted"
+
+func (o *conversionOutbox) ReleaseStale(ctx context.Context, workspaceID string, claimedBefore time.Time) (int, error) {
+	if blank(workspaceID) {
+		return 0, advertising.ErrWorkspaceRequired
+	}
+	result := o.db.WithContext(ctx).Exec(releaseStaleSQL,
+		string(advertising.ConversionFailed), interruptedReason, workspaceID, string(advertising.ConversionSending), claimedBefore)
+	return int(result.RowsAffected), result.Error
 }
 
 const recordConversionSQL = `INSERT INTO ad_conversion_records (opportunity_id, event_name, workspace_id, status, reason, attempts, sent_at, updated_at)

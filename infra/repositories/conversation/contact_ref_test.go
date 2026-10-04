@@ -69,3 +69,10 @@ func TestContactRef_ChannelsWithoutLeadsProjectTheirContactID(t *testing.T) {
 		}
 	}
 }
+
+func TestContactRef_WebchatPrefersTheLinkedLead(t *testing.T) {
+	ref := contactRefUUID(shared.EntryTypeWebchat)
+	if !strings.Contains(ref, "wcv.lead_id") || !strings.Contains(ref, "wcc.visitor_id") {
+		t.Fatalf("webchat contact slot must prefer the lead and fall back to the visitor: %s", ref)
+	}
+}

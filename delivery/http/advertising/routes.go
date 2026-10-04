@@ -40,6 +40,8 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 	route(get, "/accounts/{id}/insights", read, h.Insights)
 
 	route(get, "/accounts/{id}/pages", read, h.Pages)
+	route(post, "/accounts/{id}/pages/{pageId}/whatsapp-link/code", update, h.RequestNumberLink)
+	route(post, "/accounts/{id}/pages/{pageId}/whatsapp-link", update, h.ConfirmNumberLink)
 	route(get, "/accounts/{id}/locations", create, h.Locations)
 	route(get, "/accounts/{id}/targeting", create, h.Targeting)
 	route(post, "/accounts/{id}/reach-estimate", create, h.Reach)

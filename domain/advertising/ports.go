@@ -28,6 +28,7 @@ type RemoteBilling struct {
 
 type RemotePage struct {
 	PageID            string
+	BusinessID        string
 	Name              string
 	PictureURL        string
 	WhatsAppNumber    string
@@ -159,10 +160,14 @@ type GrantRepository interface {
 	FindByID(ctx context.Context, id string) (*Grant, error)
 	MarkChecked(ctx context.Context, id string, scopes []string, granular map[string][]string, at time.Time) error
 	Revoke(ctx context.Context, id string, at time.Time) error
+	ListActive(ctx context.Context, limit int) ([]*Grant, error)
+	ListByAppScopedUser(ctx context.Context, appScopedUserID string) ([]*Grant, error)
+	EraseToken(ctx context.Context, id string) error
 }
 
 type AccountRepository interface {
 	Upsert(ctx context.Context, a *AdAccount) error
+	ReconnectByGrant(ctx context.Context, grantID string) error
 	FindByID(ctx context.Context, workspaceID, id string) (*AdAccount, error)
 	FindByMetaAccountID(ctx context.Context, metaAccountID string) (*AdAccount, error)
 	ListByWorkspace(ctx context.Context, workspaceID string) ([]*AdAccount, error)
@@ -196,7 +201,7 @@ type InsightRepository interface {
 }
 
 type AttributionRepository interface {
-	ByAd(ctx context.Context, workspaceID string, adMetaIDs []string, from, to time.Time) ([]Attribution, error)
+	ByGroup(ctx context.Context, workspaceID string, groups []AdGroup, from, to time.Time) ([]Attribution, error)
 	Conversations(ctx context.Context, workspaceID, adMetaID string, from, to time.Time) (int64, error)
 }
 
@@ -217,9 +222,10 @@ const (
 )
 
 type WorkspaceNumber struct {
-	Kind   NumberKind
-	Label  string
-	Number string
+	Kind        NumberKind
+	Label       string
+	Number      string
+	PortfolioID string
 }
 
 type NumberDirectory interface {
@@ -285,8 +291,16 @@ type PendingSignal struct {
 	Signal      DealSignal
 }
 
+type PendingQuery struct {
+	WorkspaceID string
+	Events      []DealEvent
+	Since       time.Time
+	Limit       int
+}
+
 type ConversionOutbox interface {
-	Pending(ctx context.Context, workspaceID string, since time.Time, limit int) ([]PendingSignal, error)
+	Pending(ctx context.Context, q PendingQuery) ([]PendingSignal, error)
+	ReleaseStale(ctx context.Context, workspaceID string, claimedBefore time.Time) (int, error)
 	Record(ctx context.Context, r ConversionRecord) error
 	Recent(ctx context.Context, workspaceID string, limit int) ([]ConversionRecord, error)
 }

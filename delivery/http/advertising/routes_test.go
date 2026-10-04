@@ -28,6 +28,8 @@ var protectedRoutes = []struct {
 }{
 	{http.MethodGet, "/oauth/meta-ads/start", "ads:create"},
 	{http.MethodGet, "/ads/options", "ads:read"},
+	{http.MethodPost, "/ads/accounts/acc-1/pages/page-1/whatsapp-link/code", "ads:update"},
+	{http.MethodPost, "/ads/accounts/acc-1/pages/page-1/whatsapp-link", "ads:update"},
 	{http.MethodGet, "/ads/accounts", "ads:read"},
 	{http.MethodPost, "/ads/accounts/a-1/sync", "ads:read"},
 	{http.MethodGet, "/ads/accounts/a-1/readiness", "ads:read"},

@@ -19,11 +19,21 @@ const (
 	defaultModelSort           = "most-popular"
 	catalogOutputModalities    = "text"
 	catalogSupportedParameters = "tools"
+	imageOutputModalities      = "image"
 )
+
+func chatModelsQuery() url.Values {
+	return url.Values{"output_modalities": {catalogOutputModalities}, "supported_parameters": {catalogSupportedParameters}}
+}
+
+func imageModelsQuery() url.Values {
+	return url.Values{"output_modalities": {imageOutputModalities}}
+}
 
 type modelCatalogFetcher struct {
 	apiKey  string
 	baseURL string
+	query   url.Values
 	client  *http.Client
 
 	mu       sync.Mutex
@@ -33,6 +43,10 @@ type modelCatalogFetcher struct {
 }
 
 func newModelCatalogFetcher(apiKey, baseURL string) *modelCatalogFetcher {
+	return newCatalogFetcher(apiKey, baseURL, chatModelsQuery())
+}
+
+func newCatalogFetcher(apiKey, baseURL string, query url.Values) *modelCatalogFetcher {
 	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if base == "" {
 		base = openRouterDefaultBaseURL
@@ -40,6 +54,7 @@ func newModelCatalogFetcher(apiKey, baseURL string) *modelCatalogFetcher {
 	return &modelCatalogFetcher{
 		apiKey:  strings.TrimSpace(apiKey),
 		baseURL: base,
+		query:   query,
 		client:  &http.Client{Timeout: modelsFetchTimeout},
 		now:     time.Now,
 	}
@@ -73,9 +88,10 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 	f.mu.Unlock()
 
 	params := url.Values{}
+	for key, values := range f.query {
+		params[key] = values
+	}
 	params.Set("sort", defaultModelSort)
-	params.Set("output_modalities", catalogOutputModalities)
-	params.Set("supported_parameters", catalogSupportedParameters)
 	endpoint := f.baseURL + "/models?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

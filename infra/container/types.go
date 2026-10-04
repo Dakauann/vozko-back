@@ -201,6 +201,7 @@ type Container struct {
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
+	webchat                     *webchatBundle
 	sipTrunks                   *sipTrunkBundle
 	callRouting                 *callRoutingBundle
 	unofficialWhatsApp          *unofficialWhatsAppBundle

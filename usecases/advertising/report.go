@@ -171,29 +171,30 @@ func (uc *ReportUseCase) Report(ctx context.Context, q ReportQuery) (*Report, er
 		key := keyFor(q.Level, row.AdMetaID, owner)
 		metrics[key] = append(metrics[key], ads.MetricsOf(row, data.goals[owner.adSetID]))
 	}
-	attributions, err := uc.attributionByKey(ctx, q, data)
+	shown := make(map[string]bool, len(listed))
+	for _, object := range listed {
+		shown[object.MetaID] = true
+	}
+	attributions, total, err := uc.attributionByKey(ctx, q, data, shown)
 	if err != nil {
 		return nil, err
 	}
 	report := &Report{Account: data.account, Range: data.dates, Level: q.Level}
 	var shownMetrics []ads.Metrics
-	var shownAttributions []ads.Attribution
 	for _, object := range listed {
 		sum, err := ads.SumMetrics(metrics[object.MetaID])
 		if err != nil {
 			return nil, err
 		}
-		attribution := ads.SumAttributions(attributions[object.MetaID])
-		report.Rows = append(report.Rows, ReportRow{Object: object, Metrics: sum, Outcome: ads.OutcomeOf(sum, attribution)})
+		report.Rows = append(report.Rows, ReportRow{Object: object, Metrics: sum, Outcome: ads.OutcomeOf(sum, attributions[object.MetaID])})
 		shownMetrics = append(shownMetrics, sum)
-		shownAttributions = append(shownAttributions, attribution)
 	}
 	totals, err := ads.SumMetrics(shownMetrics)
 	if err != nil {
 		return nil, err
 	}
 	report.Totals = totals
-	report.Outcome = ads.OutcomeOf(totals, ads.SumAttributions(shownAttributions))
+	report.Outcome = ads.OutcomeOf(totals, total)
 	if q.Compare {
 		previous := q
 		previous.Compare, previous.Range = false, ads.PreviousRange(report.Range)
@@ -229,29 +230,46 @@ func (uc *ReportUseCase) ObjectRow(ctx context.Context, workspaceID, metaID stri
 	return &ObjectReport{Account: report.Account, Range: report.Range, Row: report.Rows[0]}, nil
 }
 
-func (uc *ReportUseCase) attributionByKey(ctx context.Context, q ReportQuery, data *accountData) (map[string][]ads.Attribution, error) {
+const totalAttributionKey = "total"
+
+func (uc *ReportUseCase) attributionByKey(ctx context.Context, q ReportQuery, data *accountData, shown map[string]bool) (map[string]ads.Attribution, ads.Attribution, error) {
 	loc, err := data.account.Location()
 	if err != nil {
-		return nil, err
+		return nil, ads.Attribution{}, err
 	}
-	adIDs := make([]string, 0, len(data.owners))
+	var rowGroups, totalGroups []ads.AdGroup
 	for id, owner := range data.owners {
-		if inScope(owner, q.CampaignIDs, q.AdSetIDs) {
-			adIDs = append(adIDs, id)
+		if !inScope(owner, q.CampaignIDs, q.AdSetIDs) {
+			continue
+		}
+		key := keyFor(q.Level, id, owner)
+		rowGroups = append(rowGroups, ads.AdGroup{AdMetaID: id, Key: key})
+		if shown[key] {
+			totalGroups = append(totalGroups, ads.AdGroup{AdMetaID: id, Key: totalAttributionKey})
 		}
 	}
-	sort.Strings(adIDs)
+	sort.Slice(rowGroups, func(i, j int) bool { return rowGroups[i].AdMetaID < rowGroups[j].AdMetaID })
+	sort.Slice(totalGroups, func(i, j int) bool { return totalGroups[i].AdMetaID < totalGroups[j].AdMetaID })
 	from, to := data.dates.Bounds(loc)
-	rows, err := uc.attribution.ByAd(ctx, q.WorkspaceID, adIDs, from, to)
+	rows, err := uc.attribution.ByGroup(ctx, q.WorkspaceID, rowGroups, from, to)
 	if err != nil {
-		return nil, err
+		return nil, ads.Attribution{}, err
 	}
-	out := map[string][]ads.Attribution{}
+	out := make(map[string]ads.Attribution, len(rows))
 	for _, a := range rows {
-		key := keyFor(q.Level, a.AdMetaID, data.owners[a.AdMetaID])
-		out[key] = append(out[key], a)
+		out[a.Key] = a
 	}
-	return out, nil
+	totals, err := uc.attribution.ByGroup(ctx, q.WorkspaceID, totalGroups, from, to)
+	if err != nil {
+		return nil, ads.Attribution{}, err
+	}
+	var total ads.Attribution
+	for _, a := range totals {
+		if a.Key == totalAttributionKey {
+			total = a
+		}
+	}
+	return out, total, nil
 }
 
 func (uc *ReportUseCase) Trend(ctx context.Context, q ReportQuery) (*Trend, error) {

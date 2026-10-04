@@ -9,6 +9,7 @@ import (
 	"vozko/domain/readiness"
 	"vozko/domain/shared"
 	tgdomain "vozko/domain/telegram"
+	wcdomain "vozko/domain/webchat"
 	"vozko/domain/workspace"
 	readiness_usecase "vozko/usecases/readiness"
 )
@@ -58,6 +59,12 @@ func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 		probes = append(probes, readiness_usecase.NewCountProbe(readiness.Telegram, workspace.ResourceTelegramAccounts,
 			workspaceTotal(c.telegram.Accounts.ListByWorkspace, func(workspaceID string) tgdomain.ListAccountsInput {
 				return tgdomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly}
+			}), 0, access))
+	}
+	if c.webchat != nil {
+		probes = append(probes, readiness_usecase.NewCountProbe(readiness.Webchat, workspace.ResourceWebchatWidgets,
+			workspaceTotal(c.webchat.Widgets.ListByWorkspace, func(workspaceID string) wcdomain.ListWidgetsInput {
+				return wcdomain.ListWidgetsInput{WorkspaceID: workspaceID, Options: countOnly}
 			}), 0, access))
 	}
 	if c.facebook != nil && c.facebook.Pages != nil {

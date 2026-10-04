@@ -129,6 +129,15 @@ func (r *accountRepository) SetConnection(ctx context.Context, id string, c adve
 	return r.update(ctx, id, map[string]any{"connection": string(c)})
 }
 
+func (r *accountRepository) ReconnectByGrant(ctx context.Context, grantID string) error {
+	if blank(grantID) {
+		return advertising.ErrGrantNotFound
+	}
+	return r.db.WithContext(ctx).Model(&schema.AdAccount{}).
+		Where("grant_id = ? AND connection = ?", grantID, string(advertising.ConnectionConnected)).
+		Update("connection", string(advertising.ConnectionNeedsReconnect)).Error
+}
+
 func (r *accountRepository) MarkSynced(ctx context.Context, id string, at time.Time) error {
 	return r.update(ctx, id, map[string]any{"last_synced_at": at})
 }

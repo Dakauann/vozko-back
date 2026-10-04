@@ -89,25 +89,27 @@ func NewJob(req Request, requestedBy string) (*Job, error) {
 	if requester == "" {
 		return nil, ErrRequesterRequired
 	}
+	model := strings.TrimSpace(req.Model)
 	prompt := strings.TrimSpace(req.Prompt)
 	references := trimmedReferences(req.ReferenceMediaIDs)
 	return &Job{
 		WorkspaceID:       req.WorkspaceID,
 		RequestedBy:       requester,
+		Model:             model,
 		Prompt:            prompt,
 		Aspect:            req.Aspect,
 		ReferenceMediaIDs: references,
-		Fingerprint:       Fingerprint(req.WorkspaceID, requester, prompt, req.Aspect, references...),
+		Fingerprint:       Fingerprint(req.WorkspaceID, requester, model, prompt, req.Aspect, references...),
 		Status:            StatusQueued,
 	}, nil
 }
 
 func (j *Job) Request() Request {
-	return Request{WorkspaceID: j.WorkspaceID, Prompt: j.Prompt, Aspect: j.Aspect, ReferenceMediaIDs: j.ReferenceMediaIDs}
+	return Request{WorkspaceID: j.WorkspaceID, Model: j.Model, Prompt: j.Prompt, Aspect: j.Aspect, ReferenceMediaIDs: j.ReferenceMediaIDs}
 }
 
-func Fingerprint(workspaceID, requestedBy, prompt string, aspect Aspect, references ...string) string {
-	parts := []string{workspaceID, requestedBy, normalizePrompt(prompt), string(aspect)}
+func Fingerprint(workspaceID, requestedBy, model, prompt string, aspect Aspect, references ...string) string {
+	parts := []string{workspaceID, requestedBy, model, normalizePrompt(prompt), string(aspect)}
 	if len(references) > 0 {
 		parts = append(parts, strconv.Itoa(len(references)))
 		for _, id := range references {

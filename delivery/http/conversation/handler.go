@@ -364,7 +364,7 @@ type SetAutomationRequest struct {
 }
 
 // @Summary		Ativar/desativar automação de uma conversa
-// @Description	Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar devolve a conversa para a IA ou o fluxo que atende o canal. A resposta traz o responsável resultante em assigned_user_id.
+// @Description	Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar (ou null) devolve a conversa para a IA ou o fluxo que atende o canal. Se o canal não tiver agente ou fluxo ativo, a automação continua pausada e a resposta é 409 com code nothing_to_return_to, para que a IA nunca responda uma conversa que está com uma pessoa. A resposta traz o responsável resultante em assigned_user_id.
 // @Tags			Conversas
 // @Accept			json
 // @Produce		json
@@ -414,6 +414,11 @@ func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Reque
 	})
 	if errors.Is(err, ia_usecase.ErrAutomationForbidden) {
 		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
+		return
+	}
+	if errors.Is(err, ia_usecase.ErrNothingToReturnTo) {
+		response.WriteErrorWithCode(w, http.StatusConflict, "nothing_to_return_to",
+			"No agent or workflow is active on this channel, so the automation stays paused", nil)
 		return
 	}
 	if err != nil {

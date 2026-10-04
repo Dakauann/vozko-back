@@ -35,7 +35,8 @@ func TestConversionOutboxPendingPinsTheQueryAndItsScope(t *testing.T) {
 	db, mock := newMockDB(t)
 	since := time.Date(2026, 9, 25, 0, 0, 0, 0, time.UTC)
 	at := since.Add(time.Hour)
-	mock.ExpectQuery(regexp.QuoteMeta(numbered(pendingSignalsSQL))).
+	expanded := strings.Replace(strings.Replace(pendingSignalsSQL, "ev.type IN ?", "ev.type IN (?,?)", 1), "r.reason NOT IN ?", "r.reason NOT IN (?)", 1)
+	mock.ExpectQuery(regexp.QuoteMeta(numbered(expanded))).
 		WithArgs(
 			"ws", "created", "won", since,
 			"created", "created", "won", "won",
@@ -46,13 +47,13 @@ func TestConversionOutboxPendingPinsTheQueryAndItsScope(t *testing.T) {
 			"facebook", "ws",
 			"instagram", "ws",
 			"ws",
-			"ws", "sent", "skipped", "sending", "failed", 5,
+			"ws", "sent", "sending", "skipped", "event_off", "failed", 5,
 			100,
 		).
 		WillReturnRows(sqlmock.NewRows(pendingColumns).
 			AddRow("o-1", "won", at, int64(1500), "BRL", "whatsapp", "clid-1", "waba-1", "", "", "", "", "5511999990000").
 			AddRow("o-2", "created", at, int64(0), "BRL", "", "", "", "", "", "", "", ""))
-	pending, err := NewConversionOutbox(db).Pending(context.Background(), "ws", since, 100)
+	pending, err := NewConversionOutbox(db).Pending(context.Background(), advertising.PendingQuery{WorkspaceID: "ws", Events: []advertising.DealEvent{advertising.DealCreated, advertising.DealWon}, Since: since, Limit: 100})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func TestConversionOutboxPendingPinsTheQueryAndItsScope(t *testing.T) {
 
 func TestConversionOutboxPendingRequiresWorkspace(t *testing.T) {
 	db, mock := newMockDB(t)
-	if _, err := NewConversionOutbox(db).Pending(context.Background(), " ", time.Now(), 10); !errors.Is(err, advertising.ErrWorkspaceRequired) {
+	if _, err := NewConversionOutbox(db).Pending(context.Background(), advertising.PendingQuery{WorkspaceID: " ", Events: []advertising.DealEvent{advertising.DealCreated}, Since: time.Now(), Limit: 10}); !errors.Is(err, advertising.ErrWorkspaceRequired) {
 		t.Fatalf("got %v", err)
 	}
 	expectationsMet(t, mock)
@@ -140,4 +141,29 @@ func TestConversionOutboxRecentIsNewestFirst(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 	expectationsMet(t, mock)
+}
+
+func TestConversionOutboxAsksNothingWhenNoEventIsOn(t *testing.T) {
+	db, mock := newMockDB(t)
+	pending, err := NewConversionOutbox(db).Pending(context.Background(), advertising.PendingQuery{WorkspaceID: "ws", Since: time.Now(), Limit: 10})
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("pending %v err %v", pending, err)
+	}
+	expectationsMet(t, mock)
+}
+
+func TestConversionOutboxReleasesOnlyThisWorkspacesStaleClaims(t *testing.T) {
+	db, mock := newMockDB(t)
+	before := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
+	mock.ExpectExec(regexp.QuoteMeta(numbered(releaseStaleSQL))).
+		WithArgs("failed", "interrupted", "ws", "sending", before).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	released, err := NewConversionOutbox(db).ReleaseStale(context.Background(), "ws", before)
+	if err != nil || released != 2 {
+		t.Fatalf("released %d err %v", released, err)
+	}
+	expectationsMet(t, mock)
+	if _, err := NewConversionOutbox(db).ReleaseStale(context.Background(), " ", before); !errors.Is(err, advertising.ErrWorkspaceRequired) {
+		t.Fatalf("got %v", err)
+	}
 }

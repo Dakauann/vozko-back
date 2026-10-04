@@ -18,16 +18,17 @@ func NewNumberDirectory(db *gorm.DB) ads.NumberDirectory {
 	return &numberDirectory{db: db}
 }
 
-const workspaceNumbersQuery = `SELECT 'official' AS kind, COALESCE(NULLIF(verified_name, ''), display_phone_number) AS label, display_phone_number AS number
+const workspaceNumbersQuery = `SELECT 'official' AS kind, COALESCE(NULLIF(verified_name, ''), display_phone_number) AS label, display_phone_number AS number, COALESCE(business_portfolio_id, '') AS portfolio_id
 FROM whatsapp_business_phone_numbers WHERE owner_workspace_id = ? AND deleted_at IS NULL
 UNION ALL
-SELECT 'unofficial' AS kind, COALESCE(NULLIF(display_name, ''), NULLIF(profile_name, ''), phone_number) AS label, phone_number AS number
+SELECT 'unofficial' AS kind, COALESCE(NULLIF(display_name, ''), NULLIF(profile_name, ''), phone_number) AS label, phone_number AS number, '' AS portfolio_id
 FROM unofficial_whatsapp_instances WHERE workspace_id = ? AND deleted_at IS NULL AND phone_number <> ''`
 
 type numberRow struct {
-	Kind   string
-	Label  string
-	Number string
+	Kind        string
+	Label       string
+	Number      string
+	PortfolioID string
 }
 
 func (d *numberDirectory) List(ctx context.Context, workspaceID string) ([]ads.WorkspaceNumber, error) {
@@ -40,7 +41,7 @@ func (d *numberDirectory) List(ctx context.Context, workspaceID string) ([]ads.W
 	}
 	out := make([]ads.WorkspaceNumber, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, ads.WorkspaceNumber{Kind: ads.NumberKind(r.Kind), Label: r.Label, Number: r.Number})
+		out = append(out, ads.WorkspaceNumber{Kind: ads.NumberKind(r.Kind), Label: r.Label, Number: r.Number, PortfolioID: r.PortfolioID})
 	}
 	return out, nil
 }

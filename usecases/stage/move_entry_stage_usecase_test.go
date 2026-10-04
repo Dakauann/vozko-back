@@ -71,7 +71,7 @@ func TestMoveFailsClosedWithoutAMoverOrAnAccessCheck(t *testing.T) {
 
 func TestMoveRefusesAnUnknownEntryType(t *testing.T) {
 	access, assign := &entryAccessStub{allow: true}, &assignStub{}
-	if _, err := NewMoveEntryStageUseCase(access, assign).Execute("ws1", shared.Person{UserID: "u1"}, moveInput("support")); !errors.Is(err, stage.ErrEntryAccess) {
+	if _, err := NewMoveEntryStageUseCase(access, assign).Execute("ws1", shared.Person{UserID: "u1"}, moveInput("sms")); !errors.Is(err, stage.ErrEntryAccess) {
 		t.Fatalf("err = %v", err)
 	}
 	if len(assign.calls) != 0 {

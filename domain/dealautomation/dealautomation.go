@@ -23,6 +23,7 @@ var channelResources = map[Channel]workspace.Resource{
 	{EntryType: shared.EntryTypeInstagram, Kind: conversation.ContainerKindAccount}:           workspace.ResourceInstagramAccounts,
 	{EntryType: shared.EntryTypeFacebook, Kind: conversation.ContainerKindAccount}:            workspace.ResourceFacebookPages,
 	{EntryType: shared.EntryTypeTelegram, Kind: conversation.ContainerKindAccount}:            workspace.ResourceTelegramAccounts,
+	{EntryType: shared.EntryTypeWebchat, Kind: conversation.ContainerKindAccount}:             workspace.ResourceWebchatWidgets,
 }
 
 func (c Channel) Resource() (workspace.Resource, bool) {

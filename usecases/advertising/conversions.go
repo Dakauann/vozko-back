@@ -161,7 +161,16 @@ func (uc *ConversionsUseCase) DispatchAll(ctx context.Context) error {
 
 func (uc *ConversionsUseCase) dispatch(ctx context.Context, s ads.ConversionSettings) error {
 	now := uc.access.now()
-	pending, err := uc.outbox.Pending(ctx, s.WorkspaceID, now.Add(-conversionLookback), conversionBatch)
+	if released, err := uc.outbox.ReleaseStale(ctx, s.WorkspaceID, now.Add(-ads.ConversionClaimTimeout)); err != nil {
+		return err
+	} else if released > 0 {
+		log.Printf("[ads] released %d conversion claim(s) of workspace %s left behind by an interrupted send", released, s.WorkspaceID)
+	}
+	events := s.Events()
+	if len(events) == 0 {
+		return nil
+	}
+	pending, err := uc.outbox.Pending(ctx, ads.PendingQuery{WorkspaceID: s.WorkspaceID, Events: events, Since: now.Add(-conversionLookback), Limit: conversionBatch})
 	if err != nil || len(pending) == 0 {
 		return err
 	}
@@ -169,25 +178,27 @@ func (uc *ConversionsUseCase) dispatch(ctx context.Context, s ads.ConversionSett
 	if err != nil {
 		return err
 	}
-	var events []ads.ConversionEvent
+	var ready []ads.ConversionEvent
 	for _, p := range pending {
 		event, skip := ads.ConversionFor(s, p.Signal, now)
-		if event == nil {
-			uc.record(ctx, s.WorkspaceID, p.Signal.OpportunityID, eventNameOf(p.Signal.Event), ads.ConversionSkipped, string(skip), now)
+		if event != nil {
+			ready = append(ready, *event)
 			continue
 		}
-		events = append(events, *event)
+		if skip.Final() {
+			uc.record(ctx, s.WorkspaceID, p.Signal.OpportunityID, eventNameOf(p.Signal.Event), ads.ConversionSkipped, string(skip), now)
+		}
 	}
-	events = uc.claim(ctx, s.WorkspaceID, events, now)
-	if len(events) == 0 {
+	claimed := uc.claim(ctx, s.WorkspaceID, ready, now)
+	if len(claimed) == 0 {
 		return nil
 	}
-	sendErr := uc.gateway.SendEvents(ctx, token, events)
+	sendErr := uc.gateway.SendEvents(ctx, token, claimed)
 	status, reason := ads.ConversionSent, ""
 	if sendErr != nil {
 		status, reason = ads.ConversionFailed, ads.FailureCode(sendErr)
 	}
-	for _, e := range events {
+	for _, e := range claimed {
 		uc.record(ctx, s.WorkspaceID, e.OpportunityID, e.Name, status, reason, now)
 	}
 	return uc.access.failed(ctx, account, sendErr)

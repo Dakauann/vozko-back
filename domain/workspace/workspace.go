@@ -75,6 +75,7 @@ var (
 	ResourceFacebookPages               = registerResource("facebook_pages")
 	ResourceAudience                    = registerResource("audience")
 	ResourceTelegramAccounts            = registerResource("telegram_accounts")
+	ResourceWebchatWidgets              = registerResource("webchat_widgets")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
 	ResourceSIPTrunks                   = registerResource("sip_trunks")
@@ -341,6 +342,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar bots e links de atribuição do Telegram"},
 		{ActionName: ActionUpdate, Description: "Editar configurações e links do Telegram"},
 		{ActionName: ActionDelete, Description: "Desconectar bots do Telegram", Risks: []RiskKind{RiskConnectsAccounts}},
+	},
+	ResourceWebchatWidgets: {
+		{ActionName: ActionCreate, Description: "Criar WebChats", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Visualizar os WebChats, os sites permitidos e o código de instalação"},
+		{ActionName: ActionUpdate, Description: "Editar WebChats: sites permitidos, formulário inicial, aparência, verificação de identidade e automação", Risks: []RiskKind{RiskChangesAutomation}},
+		{ActionName: ActionDelete, Description: "Remover WebChats; o chat some dos sites onde foi instalado", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
 	ResourceUnofficialWhatsAppInstances: {
 		{ActionName: ActionCreate, Description: "Conectar números de WhatsApp por QR Code", Risks: []RiskKind{RiskConnectsAccounts}},

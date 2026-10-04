@@ -32,7 +32,7 @@ func TestEntryTypeSupportsConversationView(t *testing.T) {
 	}
 
 	notViewable := []EntryType{
-		"support",
+		"sms",
 		"", "messenger", "Instagram", "INSTAGRAM", " whatsapp",
 	}
 	for _, e := range notViewable {
@@ -57,6 +57,7 @@ func TestConversationViewableEntryTypesIsStableAndComplete(t *testing.T) {
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
+		EntryTypeWebchat,
 		EntryTypeWhatsApp,
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -110,7 +111,7 @@ func TestAddingAChannelTouchesOnlyTheDomainSets(t *testing.T) {
 	if !messenger.SupportsConversationView() {
 		t.Error("registering the type should make it viewable")
 	}
-	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'facebook', 'instagram', 'messenger', 'telegram', 'unofficial_whatsapp' or 'whatsapp'" {
+	if got := FormatEntryTypes(ConversationViewableEntryTypes()); got != "'facebook', 'instagram', 'messenger', 'telegram', 'unofficial_whatsapp', 'webchat' or 'whatsapp'" {
 		t.Errorf("error text did not follow the set: %q", got)
 	}
 	if messenger.Valid() {
@@ -165,6 +166,7 @@ func TestAnalysableEntryTypeListsMirrorPredicates(t *testing.T) {
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
+		EntryTypeWebchat,
 		EntryTypeWhatsApp,
 	}
 	if !reflect.DeepEqual(conversation, want) {

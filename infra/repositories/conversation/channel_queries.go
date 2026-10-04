@@ -201,6 +201,47 @@ var channelQueries = []channelQuery{
 				  AND tgc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
 	},
 	{
+		EntryType:  shared.EntryTypeWebchat,
+		EntryTable: "webchat_conversations",
+
+		EntryJoin: `JOIN webchat_conversations wcc ON wcc.id = %[1]s AND wcc.deleted_at IS NULL
+		             JOIN webchat_widgets wcw ON wcw.id = wcc.widget_id`,
+		ContactJoin: `JOIN (
+	SELECT id, COALESCE(NULLIF(name, ''), NULLIF(email, ''), '') AS name,
+	       COALESCE(NULLIF(phone, ''), COALESCE(email, '')) AS number,
+	       '' AS profile_picture_url, blocked, deleted_at
+	FROM webchat_visitors
+) l ON l.id = wcc.visitor_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(wcc.widget_id::text, '')",
+		ContainerIDField:   "wcw.id::text",
+		ContainerNameField: "wcw.name",
+		AutomationFields: "COALESCE(wcw.agent_id::text, '') AS agent_id, " +
+			"COALESCE(wcw.workflow_id::text, '') AS workflow_id, " +
+			"wcw.enable_agent_responses AS agent_responses_enabled, " +
+			"wcw.enable_workflow AS workflow_enabled",
+
+		AutomationColumn: "wcc.automation_enabled",
+		StatusColumn:     "wcc.conversation_status",
+		CloseTable:       "wcc",
+
+		ContainerCTE:         `SELECT wcc_f.id AS entry_id FROM webchat_conversations wcc_f WHERE wcc_f.widget_id = ? AND wcc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "wcc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT wcc_f.id FROM webchat_conversations wcc_f
+				JOIN webchat_widgets wcw_f ON wcw_f.id = wcc_f.widget_id
+				WHERE wcc_f.widget_id = ? AND wcc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "wcw_f.department_id",
+		DepartmentEntryCol: "wcc_f.id",
+
+		WindowSubquery: `SELECT wcc_w.id::text FROM webchat_conversations wcc_w
+				WHERE wcc_w.deleted_at IS NULL
+				  AND wcc_w.last_customer_message_at IS NOT NULL
+				  AND wcc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
+	},
+	{
 		EntryType:  shared.EntryTypeUnofficialWhatsApp,
 		EntryTable: "unofficial_whatsapp_conversations",
 

@@ -237,6 +237,7 @@ func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 		EntryTypeInstagram,
 		EntryTypeTelegram,
 		EntryTypeUnofficialWhatsApp,
+		EntryTypeWebchat,
 		EntryTypeWhatsApp,
 	}
 	got := messagingTypesSorted()
@@ -269,5 +270,32 @@ func TestFacebookIsFullyRegistered(t *testing.T) {
 	}
 	if fb.DisplayLabel() != "Messenger" {
 		t.Errorf("DisplayLabel() = %q", fb.DisplayLabel())
+	}
+}
+
+func TestWebchatIsFullyRegistered(t *testing.T) {
+	wc := EntryTypeWebchat
+
+	checks := map[string]bool{
+		"Valid (messaging pipeline)":   wc.Valid(),
+		"SupportsConversationView":     wc.SupportsConversationView(),
+		"SupportsCRMTagging":           wc.SupportsCRMTagging(),
+		"SupportsConversationClosing":  wc.SupportsConversationClosing(),
+		"SupportsInboxScope":           wc.SupportsInboxScope(),
+		"SupportsContainerScopedInbox": wc.SupportsContainerScopedInbox(),
+		"SupportsConversationAnalysis": wc.SupportsConversationAnalysis(),
+		"IsKnown":                      wc.IsKnown(),
+		"SignsWithPlainText":           wc.SignsWithPlainText(),
+	}
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("webchat fails %s", name)
+		}
+	}
+	if wc.SupportsTemplates() || wc.SupportsCommentAnalysis() {
+		t.Error("webchat has neither templates nor comments")
+	}
+	if wc.DisplayLabel() == string(wc) {
+		t.Error("webchat needs an operator-facing label")
 	}
 }

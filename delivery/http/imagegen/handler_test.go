@@ -25,6 +25,8 @@ import (
 var stamp = time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 
 type fakeService struct {
+	models      []imagegen.Model
+	modelsErr   error
 	requested   imagegen.Request
 	requestedBy string
 	requestErr  error
@@ -49,6 +51,10 @@ func (s *fakeService) Get(_ context.Context, workspaceID, _ string) (*imagegen.J
 	return s.job, nil
 }
 
+func (s *fakeService) Models(context.Context) ([]imagegen.Model, error) {
+	return s.models, s.modelsErr
+}
+
 func queuedJob() *imagegen.Job {
 	return &imagegen.Job{ID: "job-1", WorkspaceID: "ws-1", Prompt: "pizza", Aspect: imagegen.AspectSquare, Status: imagegen.StatusQueued, CreatedAt: stamp, UpdatedAt: stamp}
 }
@@ -70,11 +76,11 @@ func serve(t *testing.T, svc *fakeService, method, path, body string) *httptest.
 
 func TestRequestingAnImageAnswersAcceptedWithTheJob(t *testing.T) {
 	svc := &fakeService{job: queuedJob()}
-	rec := serve(t, svc, http.MethodPost, "/images/generations", `{"prompt":"pizza","aspect":"square"}`)
+	rec := serve(t, svc, http.MethodPost, "/images/generations", `{"model":"openai/gpt-image-2","prompt":"pizza","aspect":"square"}`)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body)
 	}
-	if !reflect.DeepEqual(svc.requested, imagegen.Request{WorkspaceID: "ws-1", Prompt: "pizza", Aspect: imagegen.AspectSquare}) || svc.requestedBy != "u-1" {
+	if !reflect.DeepEqual(svc.requested, imagegen.Request{WorkspaceID: "ws-1", Model: "openai/gpt-image-2", Prompt: "pizza", Aspect: imagegen.AspectSquare}) || svc.requestedBy != "u-1" {
 		t.Fatalf("requested %+v by %q", svc.requested, svc.requestedBy)
 	}
 	var got map[string]any
@@ -225,5 +231,29 @@ func TestNoRoutesWithoutAHandler(t *testing.T) {
 	var match mux.RouteMatch
 	if router.Match(httptest.NewRequest(http.MethodPost, "/images/generations", nil), &match) {
 		t.Fatal("route registered without a handler")
+	}
+}
+
+func TestImageModelsAreListedInCatalogOrder(t *testing.T) {
+	svc := &fakeService{models: []imagegen.Model{{ID: "openai/gpt-image-2.5-sunburst", Name: "GPT Image 2.5 Sunburst"}, {ID: "google/gemini-3-pro-image", Name: "Gemini 3 Pro Image"}}}
+	rec := serve(t, svc, http.MethodGet, "/images/models", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body)
+	}
+	var got []ModelResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "openai/gpt-image-2.5-sunburst" || got[1].Name != "Gemini 3 Pro Image" {
+		t.Fatalf("body %s", rec.Body)
+	}
+}
+
+func TestAnUnavailableModelListIsAServiceError(t *testing.T) {
+	for _, err := range []error{imagegen.ErrModelsUnavailable, imagegen.ErrNoImageModels} {
+		rec := serve(t, &fakeService{modelsErr: err}, http.MethodGet, "/images/models", "")
+		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "models_unavailable") {
+			t.Fatalf("%v: status %d body %s", err, rec.Code, rec.Body)
+		}
 	}
 }

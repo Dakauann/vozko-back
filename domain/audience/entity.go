@@ -43,6 +43,7 @@ const (
 	SourceTelegram           Source = Source(shared.EntryTypeTelegram)
 	SourceUnofficialWhatsApp Source = Source(shared.EntryTypeUnofficialWhatsApp)
 	SourceFacebook           Source = Source(shared.EntryTypeFacebook)
+	SourceWebchat            Source = Source(shared.EntryTypeWebchat)
 )
 
 func (s Source) EntryType() shared.EntryType { return shared.EntryType(s) }

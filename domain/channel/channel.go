@@ -21,6 +21,7 @@ const (
 	KindTelegram           Kind = "telegram"
 	KindUnofficialWhatsApp Kind = "unofficial_whatsapp"
 	KindFacebook           Kind = "facebook"
+	KindWebchat            Kind = "webchat"
 
 	KindWhatsApp Kind = "whatsapp"
 )

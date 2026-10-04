@@ -26,6 +26,7 @@ func ChannelPipelineResolvers(db *gorm.DB) map[shared.EntryType]stage.ContainerP
 		shared.EntryTypeInstagram: NewContainerPipelineResolver(db, func() any { return &schema.InstagramAccount{} }),
 		shared.EntryTypeTelegram:  NewContainerPipelineResolver(db, func() any { return &schema.TelegramAccount{} }),
 		shared.EntryTypeFacebook:  NewContainerPipelineResolver(db, func() any { return &schema.FacebookPage{} }),
+		shared.EntryTypeWebchat:   NewContainerPipelineResolver(db, func() any { return &schema.WebchatWidget{} }),
 		shared.EntryTypeUnofficialWhatsApp: NewContainerPipelineResolver(db,
 			func() any { return &schema.UnofficialWhatsAppCampaign{} },
 			func() any { return &schema.UnofficialWhatsAppInstance{} }),

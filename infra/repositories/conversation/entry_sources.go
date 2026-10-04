@@ -120,6 +120,26 @@ var entrySources = []entrySource{
 		Department: "tga.department_id",
 	},
 	{
+		EntryType: shared.EntryTypeWebchat,
+		From:      "webchat_conversations wcc",
+
+		WorkspaceJoin: "JOIN webchat_widgets wcw ON wcw.id = wcc.widget_id AND wcw.workspace_id = ?",
+
+		EntryID: "wcc.id",
+
+		Account: "COALESCE(wcc.widget_id::text, '')",
+
+		ConversationStatus: "wcc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "wcc.created_at",
+		UpdatedAt:     "wcc.updated_at",
+		LastMessageAt: "wcc.last_message_at",
+		Deleted:       "wcc.deleted_at IS NULL",
+
+		Department: "wcw.department_id",
+	},
+	{
 		EntryType:     shared.EntryTypeUnofficialWhatsApp,
 		From:          "unofficial_whatsapp_conversations uwc",
 		WorkspaceJoin: "JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id AND uwi.workspace_id = ?",

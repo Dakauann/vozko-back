@@ -40,6 +40,7 @@ const (
 
 type Request struct {
 	WorkspaceID       string
+	Model             string
 	Prompt            string
 	Aspect            Aspect
 	ReferenceMediaIDs []string
@@ -51,8 +52,34 @@ type ReferenceImage struct {
 }
 
 func (r Request) Validate() error {
+	issues, err := r.contentIssues()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.Model) == "" {
+		issues = append(issues, FieldIssue{Field: FieldModel, Code: CodeRequired})
+	}
+	return issuesError(issues)
+}
+
+func (r Request) ValidateContent() error {
+	issues, err := r.contentIssues()
+	if err != nil {
+		return err
+	}
+	return issuesError(issues)
+}
+
+func issuesError(issues []FieldIssue) error {
+	if len(issues) > 0 {
+		return &ValidationError{Issues: issues}
+	}
+	return nil
+}
+
+func (r Request) contentIssues() ([]FieldIssue, error) {
 	if strings.TrimSpace(r.WorkspaceID) == "" {
-		return ErrWorkspaceRequired
+		return nil, ErrWorkspaceRequired
 	}
 	var issues []FieldIssue
 	prompt := strings.TrimSpace(r.Prompt)
@@ -71,10 +98,7 @@ func (r Request) Validate() error {
 	if code := referencesIssue(r.ReferenceMediaIDs); code != "" {
 		issues = append(issues, FieldIssue{Field: FieldReferences, Code: code})
 	}
-	if len(issues) > 0 {
-		return &ValidationError{Issues: issues}
-	}
-	return nil
+	return issues, nil
 }
 
 func referencesIssue(ids []string) string {

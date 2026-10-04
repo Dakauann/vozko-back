@@ -65,7 +65,7 @@ func generatorWith(t *testing.T, s *stub) *Generator {
 }
 
 func request(aspect imagegen.Aspect) imagegen.Request {
-	return imagegen.Request{WorkspaceID: "ws", Prompt: "Pizza artesanal na mesa", Aspect: aspect}
+	return imagegen.Request{WorkspaceID: "ws", Model: chosenModel, Prompt: "Pizza artesanal na mesa", Aspect: aspect}
 }
 
 func TestGenerateNormalisesToTheExactAspectSize(t *testing.T) {
@@ -92,10 +92,10 @@ func TestGenerateNormalisesToTheExactAspectSize(t *testing.T) {
 			if s.path != "/api/v1/images" || s.auth != "Bearer key" {
 				t.Fatalf("path %s auth %s", s.path, s.auth)
 			}
-			if s.body["model"] != DefaultModel || s.body["aspect_ratio"] != tt.ratio || !strings.HasPrefix(s.body["prompt"].(string), "Pizza artesanal na mesa") {
+			if s.body["model"] != chosenModel || s.body["aspect_ratio"] != tt.ratio || !strings.HasPrefix(s.body["prompt"].(string), "Pizza artesanal na mesa") {
 				t.Fatalf("body = %v", s.body)
 			}
-			if out.MIMEType != "image/jpeg" || out.Model != DefaultModel || out.ProviderCostMicros != 40000 {
+			if out.MIMEType != "image/jpeg" || out.Model != chosenModel || out.ProviderCostMicros != 40000 {
 				t.Fatalf("out = %+v", out)
 			}
 			img, err := jpeg.Decode(bytes.NewReader(out.Bytes))
@@ -243,3 +243,5 @@ func TestReferencesMustBeTheResolvedRequestReferencesOverHTTPS(t *testing.T) {
 		}
 	}
 }
+
+const chosenModel = "google/gemini-3-pro-image"

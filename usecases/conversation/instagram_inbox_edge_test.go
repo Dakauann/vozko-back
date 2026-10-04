@@ -19,7 +19,7 @@ func TestHydrateInstagramSenders_WhatsAppOnlyWorkspaceUntouched(t *testing.T) {
 	before := []conversation.InboxEntry{
 		{EntryID: "wa-1", EntryType: "whatsapp", LeadID: "lead-1", LeadName: "Ana", LeadNumber: "+5511111111111", LeadPicture: "p1", LastMessageSender: "Ana"},
 		{EntryID: "wa-2", EntryType: "whatsapp", LeadID: "lead-2", LeadName: "Bruno", LeadNumber: "+5511222222222"},
-		{EntryID: "sup-1", EntryType: "support", LeadID: "lead-3", LeadName: "Carla"},
+		{EntryID: "sms-1", EntryType: "sms", LeadID: "lead-3", LeadName: "Carla"},
 		{EntryID: "voice-1", EntryType: "voice", LeadID: "lead-4", LeadName: "Diego"},
 	}
 	entries := append([]conversation.InboxEntry(nil), before...)
@@ -66,7 +66,7 @@ func TestHydrateInstagramSenders_MixedChannelPage(t *testing.T) {
 	entries := []conversation.InboxEntry{
 		{EntryID: "wa-1", EntryType: "whatsapp", LeadID: "lead-1", LeadName: "Ana", LeadNumber: "+5511111111111"},
 		{EntryID: "ig-1", EntryType: "instagram", LeadID: "contact-1"},
-		{EntryID: "sup-1", EntryType: "support", LeadID: "lead-3", LeadName: "Carla"},
+		{EntryID: "sms-1", EntryType: "sms", LeadID: "lead-3", LeadName: "Carla"},
 		{EntryID: "ig-2", EntryType: "instagram", LeadID: "contact-2"},
 	}
 	svc.hydrateContactSenders(entries)
@@ -173,7 +173,7 @@ func TestAdapterFor_InstagramAdapterNeverServesOtherChannels(t *testing.T) {
 	if a := svc.adapterFor("whatsapp"); a != nil {
 		t.Error("an Instagram adapter must never be resolved for WhatsApp")
 	}
-	for _, entryType := range []string{"voice", "support", "", "INSTAGRAM"} {
+	for _, entryType := range []string{"voice", "sms", "", "INSTAGRAM"} {
 		if a := svc.adapterFor(entryType); a != nil {
 			t.Errorf("entry type %q must not resolve to the Instagram adapter", entryType)
 		}
@@ -193,7 +193,7 @@ func TestGetWindowStatusForEntry_UnknownChannelFailsClosed(t *testing.T) {
 		entryType: shared.EntryTypeInstagram,
 		open:      true,
 	}))
-	for _, entryType := range []string{"support", "email", "", "INSTAGRAM"} {
+	for _, entryType := range []string{"sms", "email", "", "INSTAGRAM"} {
 		if svc.GetWindowStatusForEntry("x", entryType).Open {
 			t.Errorf("entry type %q must fail closed", entryType)
 		}
@@ -220,7 +220,7 @@ func TestGetEntryInfo_ChannelRouting(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
 
-	for _, entryType := range []string{"support", "email", "", "Instagram"} {
+	for _, entryType := range []string{"sms", "email", "", "Instagram"} {
 		if _, _, _, _, _, _, err := svc.GetEntryInfo("x", entryType); err == nil {
 			t.Errorf("entry type %q should be rejected", entryType)
 		}

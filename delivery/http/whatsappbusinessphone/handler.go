@@ -118,6 +118,7 @@ func (h *WhatsAppBusinessPhoneHandler) parsePhoneListInput(r *http.Request) busi
 // @Param			qualityRating	query	string	false	"Avaliação de qualidade (ex.: GREEN, YELLOW, RED)"
 // @Param			waba_id			query	string	false	"ID da conta do WhatsApp Business (WABA)"
 // @Param			search			query	string	false	"Termo de busca"
+// @Param			ownership		query	string	false	"owned lista só os números do próprio workspace, sem os compartilhados com ele"	Enums(owned)
 // @Param			page			query	int		false	"Número da página (inicia em 1)"
 // @Param			pageSize		query	int		false	"Quantidade de itens por página"
 // @Success		200	{array}		businessphone.WhatsAppBusinessPhoneNumber
@@ -125,6 +126,8 @@ func (h *WhatsAppBusinessPhoneHandler) parsePhoneListInput(r *http.Request) busi
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/whatsapp/business-phones [get]
+const ownershipOwned = "owned"
+
 func (h *WhatsAppBusinessPhoneHandler) List(w http.ResponseWriter, r *http.Request) {
 	if middleware.GetClaims(r) == nil {
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
@@ -135,7 +138,11 @@ func (h *WhatsAppBusinessPhoneHandler) List(w http.ResponseWriter, r *http.Reque
 		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
 		return
 	}
-	result, err := h.workspacePhones.List(middleware.GetWorkspaceID(r), h.parsePhoneListInput(r))
+	list := h.workspacePhones.List
+	if r.URL.Query().Get("ownership") == ownershipOwned {
+		list = h.workspacePhones.ListOwned
+	}
+	result, err := list(middleware.GetWorkspaceID(r), h.parsePhoneListInput(r))
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to list WhatsApp Business phone numbers", nil)
 		return
