@@ -72,6 +72,18 @@ type openRouterModel struct {
 	TopProvider struct {
 		ContextLength *int64 `json:"context_length"`
 	} `json:"top_provider"`
+	Architecture struct {
+		InputModalities []string `json:"input_modalities"`
+	} `json:"architecture"`
+}
+
+func (m openRouterModel) seesImages() bool {
+	for _, modality := range m.Architecture.InputModalities {
+		if modality == imageOutputModalities {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, bool) {
@@ -123,7 +135,8 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 		info := ai.ModelInfo{
 			ID:      m.ID,
 			Name:    m.Name,
-			Created: m.Created,
+			Created:    m.Created,
+			SeesImages: m.seesImages(),
 		}
 		if v := parseFloat64(m.Pricing.Prompt); v > 0 {
 			info.PromptPrice = v * 1_000_000

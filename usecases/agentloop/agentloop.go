@@ -109,8 +109,9 @@ func (c Config) withDefaults() Config {
 }
 
 type Session struct {
-	History    []ai.Message
-	TokensUsed int
+	History      []ai.Message
+	PromptImages []string
+	TokensUsed   int
 }
 
 type OutcomeKind int
@@ -191,7 +192,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	prevTurnSig := ""
 	repeatedTurns := 0
 
-	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: "PEDIDO DO USUÁRIO:\n" + prompt})
+	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: "PEDIDO DO USUÁRIO:\n" + prompt, Images: sess.PromptImages})
 	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
 
 	for iter := 1; iter <= cfg.MaxIterations; iter++ {

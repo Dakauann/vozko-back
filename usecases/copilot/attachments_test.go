@@ -25,6 +25,7 @@ func (w workspaceFiles) GetMedia(workspaceID, mediaID string) (*media.Media, err
 
 var chatFiles = workspaceFiles{
 	"m1": {ID: "m1", WorkspaceID: "ws1", URL: "https://files.test/ws1/clientes.csv", Type: media.MediaTypeDocument},
+	"m2": {ID: "m2", WorkspaceID: "ws1", URL: "https://files.test/ws1/logo.png", Type: media.MediaTypeProductImage},
 	"m9": {ID: "m9", WorkspaceID: "ws2", URL: "https://files.test/ws2/outros.csv", Type: media.MediaTypeDocument},
 }
 
@@ -75,5 +76,40 @@ func TestStreamCapsAttachments(t *testing.T) {
 	cc.WorkspaceID = "ws1"
 	if err := attachmentService(&scriptAI{}, th, ms).Stream(context.Background(), th.thread, copilot.UserMessage{AttachmentIDs: ids}, cc, func(string, interface{}) {}); !errors.Is(err, copilot.ErrTooManyAttachments) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func userImages(messages []ai.Message) []string {
+	var out []string
+	for _, m := range messages {
+		if m.Role == ai.RoleUser {
+			out = append(out, m.Images...)
+		}
+	}
+	return out
+}
+
+func TestStreamShowsTheModelTheAttachedImagesOnEveryTurn(t *testing.T) {
+	th, ms := &fakeThreads{thread: testThread()}, &fakeMessages{}
+	prov := &scriptAI{turns: [][]ai.ToolCall{{}, {}}, texts: []string{"ok", "ok"}}
+	cc := ownerCtx
+	cc.WorkspaceID = "ws1"
+	svc := attachmentService(prov, th, ms)
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "crie um anúncio com este logo", AttachmentIDs: []string{"m1", "m2"}}, cc, func(string, interface{}) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := userImages(prov.inputs[0].Messages); len(got) != 1 || got[0] != "https://files.test/ws1/logo.png" {
+		t.Fatalf("first turn images = %v, want only the logo", got)
+	}
+	var stored []copilot.Attachment
+	if json.Unmarshal(ms.created[0].Attachments, &stored) != nil || stored[1].URL != "https://files.test/ws1/logo.png" {
+		t.Fatalf("stored %s, want the image url kept for the thread", ms.created[0].Attachments)
+	}
+	ms.list = ms.created
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "agora em verde"}, cc, func(string, interface{}) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := userImages(prov.inputs[len(prov.inputs)-1].Messages); len(got) != 1 {
+		t.Fatalf("later turn images = %v, want the logo from the history", got)
 	}
 }

@@ -88,7 +88,7 @@ func (s *Service) resolveAttachments(workspaceID string, ids []string) ([]copilo
 		if err != nil || m == nil {
 			return nil, copilot.ErrAttachmentNotFound
 		}
-		out = append(out, copilot.Attachment{MediaID: m.ID, Name: m.DisplayName(), Kind: string(m.Type)})
+		out = append(out, copilot.Attachment{MediaID: m.ID, Name: m.DisplayName(), Kind: string(m.Type), URL: m.URL})
 	}
 	return out, nil
 }
@@ -122,7 +122,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	driver.state = s.workspaceState(ctx, cc)
-	sess := &agentloop.Session{History: history}
+	sess := &agentloop.Session{History: history, PromptImages: copilot.ImageURLs(attachments)}
 	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, AnswerTokenBudget), sess, prompt)
 
 	switch out.Kind {
@@ -247,7 +247,8 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 		case aichat.RoleSystem:
 			out = append(out, ai.Message{Role: ai.RoleSystem, Content: m.Content})
 		case aichat.RoleUser:
-			out = append(out, ai.Message{Role: ai.RoleUser, Content: copilot.PromptWithAttachments(m.Content, storedAttachments(m.Attachments))})
+			attachments := storedAttachments(m.Attachments)
+			out = append(out, ai.Message{Role: ai.RoleUser, Content: copilot.PromptWithAttachments(m.Content, attachments), Images: copilot.ImageURLs(attachments)})
 		}
 	}
 	return out, nil

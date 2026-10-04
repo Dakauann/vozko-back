@@ -20,6 +20,7 @@ type ReportQuery struct {
 	ObjectIDs   []string
 	Search      string
 	Compare     bool
+	Granularity ads.Granularity
 }
 
 type ReportRow struct {
@@ -291,12 +292,26 @@ func (uc *ReportUseCase) Trend(ctx context.Context, q ReportQuery) (*Trend, erro
 		byDay[row.Day.Format(ads.DayLayout)] = append(byDay[row.Day.Format(ads.DayLayout)], ads.MetricsOf(row, data.goals[owner.adSetID]))
 	}
 	trend := &Trend{Account: data.account, Range: data.dates}
+	byBucket := map[string][]ads.Metrics{}
+	var buckets []time.Time
 	for day := data.dates.Since; !day.After(data.dates.Until); day = day.AddDate(0, 0, 1) {
-		sum, err := ads.SumMetrics(byDay[day.Format(ads.DayLayout)])
+		bucket := q.Granularity.BucketOf(day)
+		if bucket.Before(data.dates.Since) {
+			bucket = data.dates.Since
+		}
+		key := bucket.Format(ads.DayLayout)
+		if _, seen := byBucket[key]; !seen {
+			buckets = append(buckets, bucket)
+			byBucket[key] = []ads.Metrics{}
+		}
+		byBucket[key] = append(byBucket[key], byDay[day.Format(ads.DayLayout)]...)
+	}
+	for _, bucket := range buckets {
+		sum, err := ads.SumMetrics(byBucket[bucket.Format(ads.DayLayout)])
 		if err != nil {
 			return nil, err
 		}
-		trend.Points = append(trend.Points, TrendPoint{Day: day, Metrics: sum})
+		trend.Points = append(trend.Points, TrendPoint{Day: bucket, Metrics: sum})
 	}
 	return trend, nil
 }

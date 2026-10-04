@@ -17,7 +17,8 @@ const modelsListBody = `{
       "name": "Claude Sonnet 4.5",
       "created": 1750000000,
       "context_length": 200000,
-      "pricing": { "prompt": "0.000003", "completion": "0.000015" }
+      "pricing": { "prompt": "0.000003", "completion": "0.000015" },
+      "architecture": { "input_modalities": ["text", "image"] }
     },
     {
       "id": "google/gemini-3-flash",
@@ -73,6 +74,10 @@ func TestModelCatalogFetcher_SortAndParse(t *testing.T) {
 	}
 	if models[0].Created != 1750000000 {
 		t.Errorf("models[0].Created = %d, want 1750000000", models[0].Created)
+	}
+
+	if !models[0].SeesImages || models[1].SeesImages {
+		t.Errorf("SeesImages = %v, %v, want true for the image input model only", models[0].SeesImages, models[1].SeesImages)
 	}
 
 	if got := models[1].ContextLength; got != 1000000 {

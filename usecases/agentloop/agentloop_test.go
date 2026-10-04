@@ -561,3 +561,12 @@ func TestRecordTurn(t *testing.T) {
 		t.Fatalf("tool-call ids must be preserved, got %+v", sess.History[1:])
 	}
 }
+
+func TestRun_PromptCarriesTheSessionImages(t *testing.T) {
+	prov := &fakeAI{turns: []aiTurn{{tcs: []ai.ToolCall{tcall("finish")}}}}
+	sess := &Session{PromptImages: []string{"https://cdn/logo.png"}}
+	(&Engine{AI: prov}).Run(context.Background(), (&capture{}).emit, &fakeDriver{}, Config{FinishToolName: "finish"}, sess, "use o logo")
+	if got := sess.History[0].Images; len(got) != 1 || got[0] != "https://cdn/logo.png" {
+		t.Fatalf("prompt images = %v", got)
+	}
+}

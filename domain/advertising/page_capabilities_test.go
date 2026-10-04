@@ -2,6 +2,7 @@ package advertising
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -75,8 +76,13 @@ func TestInstagramAndLeadTermsAreFixedAtMeta(t *testing.T) {
 	page := readyPage()
 	page.InstagramUserID, page.InstagramUsername, page.LeadTermsAccepted = "", "", false
 	caps := PageCapabilities(page, linkedNumbers())
-	if c := capabilityOf(caps, PageInstagram); c.State != StateMissing || c.Action.Portal != PageInstagramPortalURL {
+	c := capabilityOf(caps, PageInstagram)
+	if c.State != StateMissing || !hasQuery(c.Action.Portal, "asset_id", page.PageID) || !hasQuery(c.Action.Portal, "business_id", page.BusinessID) {
 		t.Fatalf("instagram %+v", c)
+	}
+	page.BusinessID = ""
+	if portal := capabilityOf(PageCapabilities(page, linkedNumbers()), PageInstagram).Action.Portal; !hasQuery(portal, "asset_id", page.PageID) || strings.Contains(portal, "business_id") {
+		t.Fatalf("instagram without business %q", portal)
 	}
 	if c := capabilityOf(caps, PageLeadForms); c.State != StateMissing || c.Action.Portal != LeadTermsPortalURL {
 		t.Fatalf("lead forms %+v", c)

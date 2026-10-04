@@ -32,12 +32,8 @@ type ReportResponse struct {
 }
 
 type TrendPointResponse struct {
-	Day           string `json:"day"`
-	Spend         int64  `json:"spend"`
-	Impressions   int64  `json:"impressions"`
-	LinkClicks    int64  `json:"linkClicks"`
-	Results       int64  `json:"results"`
-	Conversations int64  `json:"conversations"`
+	Day string `json:"day"`
+	MetricsResponse
 }
 
 type TrendResponse struct {
@@ -79,10 +75,14 @@ func reportQuery(r *http.Request) (adsuc.ReportQuery, error) {
 	if err != nil {
 		return adsuc.ReportQuery{}, err
 	}
+	granularity, err := advertising.GranularityOf(q.Get("granularity"))
+	if err != nil {
+		return adsuc.ReportQuery{}, err
+	}
 	return adsuc.ReportQuery{
 		WorkspaceID: workspaceOf(r), AccountID: mux.Vars(r)["id"], Level: advertising.Level(q.Get("level")), Range: dates,
 		CampaignIDs: listParam(q.Get("campaignIds")), AdSetIDs: listParam(q.Get("adSetIds")), AdIDs: listParam(q.Get("adIds")),
-		Search: strings.TrimSpace(q.Get("search")), Compare: compare,
+		ObjectIDs: listParam(q.Get("objectIds")), Search: strings.TrimSpace(q.Get("search")), Compare: compare, Granularity: granularity,
 	}, nil
 }
 
@@ -118,6 +118,7 @@ func (h *Handler) buildReport(r *http.Request) (*adsuc.Report, error) {
 // @Param			until		query		string	false	"YYYY-MM-DD"
 // @Param			campaignIds	query		string	false	"IDs de campanha separados por vírgula"
 // @Param			adSetIds	query		string	false	"IDs de conjunto separados por vírgula"
+// @Param			objectIds	query		string	false	"só estes itens (IDs na Meta separados por vírgula)"
 // @Param			search		query		string	false	"busca por nome"
 // @Param			compare		query		string	false	"1 para comparar com o período anterior"
 // @Success		200			{object}	ReportResponse
@@ -166,7 +167,7 @@ func (h *Handler) ReportCSV(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// @Summary		Evolução diária da conta de anúncios
+// @Summary		Evolução da conta de anúncios por dia, semana ou mês
 // @Tags			Anúncios
 // @Produce		json
 // @Param			id			path		string	true	"ID da conta de anúncios"
@@ -175,6 +176,7 @@ func (h *Handler) ReportCSV(w http.ResponseWriter, r *http.Request) {
 // @Param			campaignIds	query		string	false	"IDs de campanha separados por vírgula"
 // @Param			adSetIds	query		string	false	"IDs de conjunto separados por vírgula"
 // @Param			adIds		query		string	false	"IDs de anúncio separados por vírgula"
+// @Param			granularity	query		string	false	"day (padrão), week (semanas começando na segunda) ou month"
 // @Success		200			{object}	TrendResponse
 // @Failure		400			{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -250,10 +252,7 @@ func presentTrend(t *adsuc.Trend) TrendResponse {
 		Currency: t.Account.Currency,
 		Range:    presentRange(t.Range),
 		Points: presentAll(t.Points, func(p adsuc.TrendPoint) TrendPointResponse {
-			return TrendPointResponse{
-				Day: p.Day.Format(advertising.DayLayout), Spend: p.Metrics.SpendMicros, Impressions: p.Metrics.Impressions,
-				LinkClicks: p.Metrics.LinkClicks, Results: p.Metrics.Results, Conversations: p.Metrics.Conversations,
-			}
+			return TrendPointResponse{Day: p.Day.Format(advertising.DayLayout), MetricsResponse: presentMetrics(p.Metrics, t.Account.Currency)}
 		}),
 	}
 }

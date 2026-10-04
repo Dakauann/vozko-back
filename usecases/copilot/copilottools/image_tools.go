@@ -81,7 +81,7 @@ func (t *generateImageTool) Meta() copilot.Meta {
 
 func (t *generateImageTool) Definition() tools.Definition {
 	return definition("generate_image",
-		"Gera uma imagem com IA a partir de uma descrição, opcionalmente guiada por imagens de referência (reference_media_ids, por exemplo fotos anexadas pelo usuário), "+
+		"Gera uma imagem com IA a partir de uma descrição, opcionalmente guiada por imagens de referência (reference_media_ids: logo, print de tela ou foto anexados pelo usuário, ou uma imagem gerada antes para ajustá-la), "+
 			"salva na biblioteca de mídia e devolve media_id e media_url "+
 			"(o media_id serve para create_ad e para enviar a imagem). Se o modelo desta conversa gera imagens, ele mesmo gera; senão o usuário escolhe o modelo de imagem no cartão de aprovação, "+
 			"nunca nos argumentos. É cobrada do saldo como uso de IA, por isso só depois da aprovação do usuário.",

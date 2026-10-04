@@ -192,3 +192,18 @@ func TestADealReachedThroughTwoCampaignsCountsOnceInTheTotal(t *testing.T) {
 		}
 	}
 }
+
+func TestTrendGroupsDaysIntoWeeksLabelledInsideTheRange(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	trend, err := reporter(w).Trend(context.Background(), ReportQuery{WorkspaceID: "ws-1", AccountID: "acc-1", Range: septemberLast(), Granularity: ads.GranularityWeek})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trend.Points) != 2 || trend.Points[0].Day.Format(ads.DayLayout) != "2026-09-24" || trend.Points[1].Day.Format(ads.DayLayout) != "2026-09-28" {
+		t.Fatalf("points %+v", trend.Points)
+	}
+	if trend.Points[1].Metrics.SpendMicros != 60_000_000 || trend.Points[0].Metrics.SpendMicros != 0 {
+		t.Fatalf("spend %+v", trend.Points)
+	}
+}

@@ -14,4 +14,5 @@ type Message struct {
 	Content    string
 	ToolCallID string
 	ToolCalls  []ToolCall
+	Images     []string
 }

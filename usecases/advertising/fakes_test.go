@@ -397,6 +397,8 @@ type fakeGateway struct {
 	billingWith    []bool
 	posts          ads.AdPosts
 	knownLocations []ads.RemoteLocation
+	activities     []ads.AdActivity
+	activityQuery  ads.ActivityQuery
 	comments       []ads.AdComment
 }
 
@@ -538,6 +540,10 @@ func (g *fakeGateway) RemoveSpendCap(context.Context, string, string) error {
 }
 func (g *fakeGateway) SearchLocations(context.Context, string, string) ([]ads.RemoteLocation, error) {
 	return nil, g.step("locations")
+}
+func (g *fakeGateway) ListActivities(_ context.Context, _, _ string, q ads.ActivityQuery) ([]ads.AdActivity, error) {
+	g.activityQuery = q
+	return g.activities, g.step("activities")
 }
 func (g *fakeGateway) DescribeLocations(context.Context, string, []ads.GeoLocation) ([]ads.RemoteLocation, error) {
 	return g.knownLocations, g.step("describe_locations")

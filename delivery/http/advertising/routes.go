@@ -63,6 +63,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 	route(patch, "/objects/{metaId}/budget", update, h.SetBudget)
 	route(get, "/objects/{metaId}", read, h.ObjectDetail)
 	route(get, "/objects/{metaId}/comments", read, h.AdComments)
+	route(get, "/objects/{metaId}/history", read, h.ObjectHistory)
 	route(patch, "/objects/{metaId}", update, h.EditObject)
 	route(post, "/objects/{metaId}/copies", create, h.CopyObject)
 	route(post, "/objects/{metaId}/archive", update, h.ArchiveObject)

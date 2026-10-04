@@ -1098,6 +1098,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "só estes itens (IDs na Meta separados por vírgula)",
+                        "name": "objectIds",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "busca por nome",
                         "name": "search",
                         "in": "query"
@@ -1546,7 +1552,7 @@ const docTemplate = `{
                 "tags": [
                     "Anúncios"
                 ],
-                "summary": "Evolução diária da conta de anúncios",
+                "summary": "Evolução da conta de anúncios por dia, semana ou mês",
                 "parameters": [
                     {
                         "type": "string",
@@ -1583,6 +1589,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "IDs de anúncio separados por vírgula",
                         "name": "adIds",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "day (padrão), week (semanas começando na segunda) ou month",
+                        "name": "granularity",
                         "in": "query"
                     }
                 ],
@@ -3066,6 +3078,73 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/ads/objects/{metaId}/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "O que mudou na campanha, conjunto ou anúncio e nos itens dentro dele (status, orçamento, público, criativo, análise da Meta), quem mudou e quando, no texto da própria Meta no idioma pedido. Os 200 registros mais recentes do período; sem período, os últimos 30 dias.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Anúncios"
+                ],
+                "summary": "Histórico de atividade de um item",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do item na Meta",
+                        "name": "metaId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "YYYY-MM-DD",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "YYYY-MM-DD",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "pt (padrão), en, es ou de",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/advertisinghttp.AdActivityResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -23993,26 +24072,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG",
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT"
+                "CATALOG"
             ],
             "x-enum-varnames": [
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog",
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect"
+                "DestinationCatalog"
             ]
         },
         "advertising.ExportLabels": {
@@ -24413,6 +24492,7 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
+                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -24425,10 +24505,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS",
-                "CONVERSATIONS"
+                "APP_INSTALLS"
             ],
             "x-enum-varnames": [
+                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -24441,8 +24521,7 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls",
-                "GoalConversations"
+                "GoalAppInstalls"
             ]
         },
         "advertising.Pixel": {
@@ -25101,6 +25180,38 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "timezone": {
+                    "type": "string"
+                }
+            }
+        },
+        "advertisinghttp.AdActivityResponse": {
+            "type": "object",
+            "properties": {
+                "actorName": {
+                    "type": "string"
+                },
+                "at": {
+                    "type": "string"
+                },
+                "eventType": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "objectId": {
+                    "type": "string"
+                },
+                "objectName": {
+                    "type": "string"
+                },
+                "objectType": {
+                    "type": "string"
+                },
+                "to": {
                     "type": "string"
                 }
             }
@@ -26658,8 +26769,29 @@ const docTemplate = `{
         "advertisinghttp.TrendPointResponse": {
             "type": "object",
             "properties": {
+                "clicks": {
+                    "type": "integer"
+                },
                 "conversations": {
                     "type": "integer"
+                },
+                "costPerConversation": {
+                    "type": "integer"
+                },
+                "costPerResult": {
+                    "type": "integer"
+                },
+                "cpc": {
+                    "type": "integer"
+                },
+                "cpm": {
+                    "type": "integer"
+                },
+                "ctr": {
+                    "type": "number"
+                },
+                "currency": {
+                    "type": "string"
                 },
                 "day": {
                     "type": "string"
@@ -26669,6 +26801,12 @@ const docTemplate = `{
                 },
                 "linkClicks": {
                     "type": "integer"
+                },
+                "mixedResults": {
+                    "type": "boolean"
+                },
+                "resultAction": {
+                    "type": "string"
                 },
                 "results": {
                     "type": "integer"

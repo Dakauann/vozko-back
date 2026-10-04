@@ -73,7 +73,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 		return nil, ai.ErrNoMessages
 	}
 
-	req := s.buildRequest(input)
+	req := s.buildRequest(s.visibleInput(ctx, input))
 	if req.Model == "" {
 		return nil, ai.ErrProviderUnavailable
 	}
@@ -307,7 +307,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 		return nil, ai.ErrNoMessages
 	}
 
-	req := s.buildRequest(input)
+	req := s.buildRequest(s.visibleInput(ctx, input))
 	if req.Model == "" {
 		return nil, ai.ErrProviderUnavailable
 	}
@@ -483,7 +483,7 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 				messages = append(messages, openrouter.AssistantMessage(m.Content))
 			}
 		case ai.RoleUser:
-			messages = append(messages, openrouter.UserMessage(m.Content))
+			messages = append(messages, userMessage(m))
 		case ai.RoleTool:
 			messages = append(messages, openrouter.ToolMessage(m.ToolCallID, m.Content))
 		}
@@ -499,13 +499,8 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 		defs = s.toolService.Definitions()
 	}
 
-	model := strings.TrimSpace(input.Model)
-	if model == "" {
-		model = s.defaultModel
-	}
-
 	req := openrouter.ChatCompletionRequest{
-		Model:       model,
+		Model:       s.modelFor(input),
 		Messages:    messages,
 		Temperature: temp,
 		Tools:       convertTools(defs),
@@ -550,6 +545,63 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 	}
 	req.Usage = &openrouter.IncludeUsage{Include: true}
 	return req
+}
+
+func (s *Service) modelFor(input ai.GenerateInput) string {
+	if model := strings.TrimSpace(input.Model); model != "" {
+		return model
+	}
+	return s.defaultModel
+}
+
+func (s *Service) visibleInput(ctx context.Context, input ai.GenerateInput) ai.GenerateInput {
+	if !carriesImages(input.Messages) || s.seesImages(ctx, s.modelFor(input)) {
+		return input
+	}
+	messages := make([]ai.Message, len(input.Messages))
+	for i, m := range input.Messages {
+		m.Images = nil
+		messages[i] = m
+	}
+	input.Messages = messages
+	return input
+}
+
+func carriesImages(messages []ai.Message) bool {
+	for _, m := range messages {
+		if len(m.Images) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) seesImages(ctx context.Context, model string) bool {
+	models, ok := s.catalogFetcher.FetchModelsWithPricing(ctx)
+	if !ok {
+		return false
+	}
+	for _, m := range models {
+		if m.ID == model {
+			return m.SeesImages
+		}
+	}
+	return false
+}
+
+func userMessage(m ai.Message) openrouter.ChatCompletionMessage {
+	if len(m.Images) == 0 {
+		return openrouter.UserMessage(m.Content)
+	}
+	parts := make([]openrouter.ChatMessagePart, 0, len(m.Images)+1)
+	parts = append(parts, openrouter.ChatMessagePart{Type: openrouter.ChatMessagePartTypeText, Text: m.Content})
+	for _, url := range m.Images {
+		parts = append(parts, openrouter.ChatMessagePart{
+			Type:     openrouter.ChatMessagePartTypeImageURL,
+			ImageURL: &openrouter.ChatMessageImageURL{URL: url, Detail: openrouter.ImageURLDetailAuto},
+		})
+	}
+	return openrouter.ChatCompletionMessage{Role: openrouter.ChatMessageRoleUser, Content: openrouter.Content{Multi: parts}}
 }
 
 type openrouterJSONSchema map[string]any

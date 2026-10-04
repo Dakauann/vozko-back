@@ -18,10 +18,10 @@ const (
 )
 
 const (
-	PageInstagramPortalURL = "https://www.facebook.com/settings/?tab=linked_instagram"
-	PageAccessPortalURL    = "https://www.facebook.com/settings/?tab=profile_access"
-	LeadTermsPortalURL     = "https://www.facebook.com/ads/leadgen/tos"
-	pageRolesPortalBase    = "https://business.facebook.com/latest/settings/pages"
+	pageHomePortalBase  = "https://business.facebook.com/latest/home"
+	PageAccessPortalURL = "https://www.facebook.com/settings/?tab=profile_access"
+	LeadTermsPortalURL  = "https://www.facebook.com/ads/leadgen/tos"
+	pageRolesPortalBase = "https://business.facebook.com/latest/settings/pages"
 )
 
 type PageCapability struct {
@@ -34,7 +34,7 @@ func PageCapabilities(page RemotePage, numbers []WorkspaceNumber) []PageCapabili
 	return []PageCapability{
 		pageCapability(PageAdvertise, page.CanAdvertise, ReadinessAction{Portal: pageRolesPortalURL(page)}),
 		pageCapability(PageWhatsApp, len(NumbersLinkedTo(page, numbers)) > 0, whatsAppAction(page, numbers)),
-		pageCapability(PageInstagram, page.InstagramUserID != "", ReadinessAction{Portal: PageInstagramPortalURL}),
+		pageCapability(PageInstagram, page.InstagramUserID != "", ReadinessAction{Portal: pageHomePortalURL(page)}),
 		pageCapability(PageMessenger, true, ReadinessAction{}),
 		pageCapability(PageLeadForms, page.LeadTermsAccepted, ReadinessAction{Portal: LeadTermsPortalURL}),
 	}
@@ -53,6 +53,14 @@ func whatsAppAction(page RemotePage, numbers []WorkspaceNumber) ReadinessAction 
 		return ReadinessAction{InApp: ActionLinkWhatsApp}
 	}
 	return ReadinessAction{InApp: ActionConnectWhatsApp}
+}
+
+func pageHomePortalURL(page RemotePage) string {
+	query := url.Values{"asset_id": {page.PageID}}
+	if page.BusinessID != "" {
+		query.Set("business_id", page.BusinessID)
+	}
+	return pageHomePortalBase + "?" + query.Encode()
 }
 
 func pageRolesPortalURL(page RemotePage) string {

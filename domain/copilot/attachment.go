@@ -21,6 +21,19 @@ type Attachment struct {
 	MediaID string `json:"mediaId"`
 	Name    string `json:"name"`
 	Kind    string `json:"kind"`
+	URL     string `json:"url,omitempty"`
+}
+
+const imageKind = "image"
+
+func ImageURLs(attachments []Attachment) []string {
+	var out []string
+	for _, a := range attachments {
+		if a.Kind == imageKind && strings.TrimSpace(a.URL) != "" {
+			out = append(out, a.URL)
+		}
+	}
+	return out
 }
 
 func PromptWithAttachments(content string, attachments []Attachment) string {

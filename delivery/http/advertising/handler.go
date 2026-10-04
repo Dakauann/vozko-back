@@ -30,6 +30,7 @@ type Deps struct {
 	Readiness       *adsuc.ReadinessUseCase
 	Manage          *adsuc.ManageUseCase
 	Comments        *adsuc.CommentsUseCase
+	History         *adsuc.HistoryUseCase
 	Report          *adsuc.ReportUseCase
 	Live            *adsuc.LiveUseCase
 	Assets          *adsuc.AssetsUseCase

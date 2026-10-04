@@ -164,6 +164,7 @@ func (c *Container) adsManager() *adsBundle {
 		Readiness:       bundle.Readiness,
 		Manage:          bundle.Manage,
 		Comments:        adsuc.NewCommentsUseCase(sync, gateway),
+		History:         adsuc.NewHistoryUseCase(sync, gateway),
 		Report:          bundle.Report,
 		Live:            bundle.Live,
 		Assets:          bundle.Assets,

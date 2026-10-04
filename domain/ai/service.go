@@ -20,6 +20,7 @@ type ModelInfo struct {
 	CompletionPrice float64 `json:"completionPrice"`
 	Created         int64   `json:"created,omitempty"`
 	ContextLength   int64   `json:"contextLength,omitempty"`
+	SeesImages      bool    `json:"seesImages,omitempty"`
 }
 
 type StreamEventType int

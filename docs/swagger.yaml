@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -794,6 +794,7 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
+    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -807,9 +808,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
-    - CONVERSATIONS
     type: string
     x-enum-varnames:
+    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -823,7 +824,6 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
-    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -1299,6 +1299,27 @@ definitions:
       spendCap:
         type: integer
       timezone:
+        type: string
+    type: object
+  advertisinghttp.AdActivityResponse:
+    properties:
+      actorName:
+        type: string
+      at:
+        type: string
+      eventType:
+        type: string
+      from:
+        type: string
+      label:
+        type: string
+      objectId:
+        type: string
+      objectName:
+        type: string
+      objectType:
+        type: string
+      to:
         type: string
     type: object
   advertisinghttp.AdCommentResponse:
@@ -2320,14 +2341,32 @@ definitions:
     type: object
   advertisinghttp.TrendPointResponse:
     properties:
+      clicks:
+        type: integer
       conversations:
         type: integer
+      costPerConversation:
+        type: integer
+      costPerResult:
+        type: integer
+      cpc:
+        type: integer
+      cpm:
+        type: integer
+      ctr:
+        type: number
+      currency:
+        type: string
       day:
         type: string
       impressions:
         type: integer
       linkClicks:
         type: integer
+      mixedResults:
+        type: boolean
+      resultAction:
+        type: string
       results:
         type: integer
       spend:
@@ -11241,6 +11280,10 @@ paths:
         in: query
         name: adSetIds
         type: string
+      - description: só estes itens (IDs na Meta separados por vírgula)
+        in: query
+        name: objectIds
+        type: string
       - description: busca por nome
         in: query
         name: search
@@ -11562,6 +11605,10 @@ paths:
         in: query
         name: adIds
         type: string
+      - description: day (padrão), week (semanas começando na segunda) ou month
+        in: query
+        name: granularity
+        type: string
       produces:
       - application/json
       responses:
@@ -11575,7 +11622,7 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Evolução diária da conta de anúncios
+      summary: Evolução da conta de anúncios por dia, semana ou mês
       tags:
       - Anúncios
   /ads/audiences/{metaId}:
@@ -12420,6 +12467,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Duplicar campanha, conjunto ou anúncio
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/history:
+    get:
+      description: O que mudou na campanha, conjunto ou anúncio e nos itens dentro
+        dele (status, orçamento, público, criativo, análise da Meta), quem mudou e
+        quando, no texto da própria Meta no idioma pedido. Os 200 registros mais recentes
+        do período; sem período, os últimos 30 dias.
+      parameters:
+      - description: ID do item na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: since
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: until
+        type: string
+      - description: pt (padrão), en, es ou de
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.AdActivityResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Histórico de atividade de um item
       tags:
       - Anúncios
   /ads/objects/{metaId}/pause:
