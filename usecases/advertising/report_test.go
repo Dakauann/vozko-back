@@ -108,6 +108,18 @@ func TestTrendHasOnePointPerDayIncludingEmptyDays(t *testing.T) {
 	}
 }
 
+func TestTrendOfOneAdCountsOnlyThatAd(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	trend, err := reporter(w).Trend(context.Background(), ReportQuery{WorkspaceID: "ws-1", AccountID: "acc-1", Range: septemberLast(), AdIDs: []string{"a-2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trend.Points[6].Metrics.SpendMicros != 10_000_000 {
+		t.Fatalf("points %+v", trend.Points[6])
+	}
+}
+
 func TestComparingReadsTheSameLengthRightBefore(t *testing.T) {
 	w := newWorld()
 	seedStructure(w)

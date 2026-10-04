@@ -315,23 +315,6 @@ func TestConnectingADatasetUsesTheWABAOfTheChosenNumber(t *testing.T) {
 	}
 }
 
-func TestAccountWebhookRefreshesOnlyConnectedAccounts(t *testing.T) {
-	w := newWorld()
-	err := w.sync.HandleAccountChanges(context.Background(), []ads.AdAccountChange{{AccountMetaID: "act_111"}, {AccountMetaID: "111"}, {AccountMetaID: "999"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	refreshes := 0
-	for _, c := range w.gateway.calls {
-		if c == "list_campaign" {
-			refreshes++
-		}
-	}
-	if refreshes != 1 {
-		t.Fatalf("calls %v", w.gateway.calls)
-	}
-}
-
 func TestSplitTestCheckNamesEachVersionAfterItsItemWithoutCreating(t *testing.T) {
 	w := newWorld()
 	seedStructure(w)

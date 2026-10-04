@@ -24,7 +24,7 @@ func (r *recordedLeads) HandleLeadgen(_ context.Context, e ads.LeadgenEvent) err
 
 type recordedAccounts struct{ changes []ads.AdAccountChange }
 
-func (r *recordedAccounts) HandleAccountChanges(_ context.Context, c []ads.AdAccountChange) error {
+func (r *recordedAccounts) Handle(_ context.Context, c []ads.AdAccountChange) error {
 	r.changes = append(r.changes, c...)
 	return nil
 }
@@ -59,13 +59,29 @@ func TestAdAccountChangesCarryTheAccountAndObject(t *testing.T) {
 	accounts := &recordedAccounts{}
 	env := entry("ad_account", "1234",
 		&mm.Change{Field: "with_issues_ad_objects", Value: json.RawMessage(`{"id":"777","level":"AD","error_code":"567"}`)},
-		&mm.Change{Field: "creative_fatigue", Value: json.RawMessage(`{}`)},
+		&mm.Change{Field: "field_changed", Value: json.RawMessage(`{"object_id":"888","object_type":"adset","changed_fields":["effective_status"]}`)},
+		&mm.Change{Field: "in_process_ad_objects", Value: json.RawMessage(`{"id":"999","level":"CREATIVE","status_name":"Paused"}`)},
+		&mm.Change{Field: "creative_fatigue", Value: json.RawMessage(`{"adgroup_id":"777","creative_fatigue_level":"HIGH"}`)},
+		&mm.Change{Field: "ads_async_creation_request", Value: json.RawMessage(`{"id":"not-a-number","status":"DONE"}`)},
 	)
 	if err := accountEntryHandler(accounts)(context.Background(), env); err != nil {
 		t.Fatal(err)
 	}
-	if len(accounts.changes) != 2 || accounts.changes[0].AccountMetaID != "1234" || accounts.changes[0].ObjectIDs[0] != "777" || accounts.changes[1].ObjectIDs != nil {
-		t.Fatalf("changes %+v", accounts.changes)
+	c := accounts.changes
+	if len(c) != 5 || c[0].AccountMetaID != "1234" {
+		t.Fatalf("changes %+v", c)
+	}
+	if len(c[0].Objects) != 1 || c[0].Objects[0] != (ads.ObjectRef{MetaID: "777", Level: ads.LevelAd}) || c[0].Unresolved {
+		t.Fatalf("issue change %+v", c[0])
+	}
+	if len(c[1].Objects) != 1 || c[1].Objects[0] != (ads.ObjectRef{MetaID: "888", Level: ads.LevelAdSet}) {
+		t.Fatalf("status change %+v", c[1])
+	}
+	if len(c[2].Objects) != 0 || !c[2].Unresolved {
+		t.Fatalf("creative change %+v", c[2])
+	}
+	if c[3].Field != "creative_fatigue" || len(c[3].Objects) != 0 {
+		t.Fatalf("fatigue change %+v", c[3])
 	}
 }
 

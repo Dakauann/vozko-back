@@ -47,11 +47,15 @@ func (uc *ManageUseCase) target(ctx context.Context, workspaceID, metaID string)
 }
 
 func (uc *ManageUseCase) targetFor(ctx context.Context, workspaceID, metaID string, use ads.AccountUse) (*target, error) {
-	object, err := uc.objects.Find(ctx, workspaceID, metaID)
+	return openTarget(ctx, uc.access, uc.objects, workspaceID, metaID, use)
+}
+
+func openTarget(ctx context.Context, access accountAccess, objects ads.ObjectRepository, workspaceID, metaID string, use ads.AccountUse) (*target, error) {
+	object, err := objects.Find(ctx, workspaceID, metaID)
 	if err != nil {
 		return nil, err
 	}
-	account, token, err := uc.access.open(ctx, workspaceID, object.AdAccountID, use)
+	account, token, err := access.open(ctx, workspaceID, object.AdAccountID, use)
 	if err != nil {
 		return nil, err
 	}

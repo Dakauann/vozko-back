@@ -16,6 +16,7 @@ type ReportQuery struct {
 	Range       ads.DateRange
 	CampaignIDs []string
 	AdSetIDs    []string
+	AdIDs       []string
 	ObjectIDs   []string
 	Search      string
 	Compare     bool
@@ -134,6 +135,10 @@ func inScope(owner adOwner, campaignIDs, adSetIDs []string) bool {
 		return false
 	}
 	return true
+}
+
+func (q ReportQuery) covers(adID string, owner adOwner) bool {
+	return inScope(owner, q.CampaignIDs, q.AdSetIDs) && (len(q.AdIDs) == 0 || slices.Contains(q.AdIDs, adID))
 }
 
 func keyFor(level ads.Level, adID string, owner adOwner) string {
@@ -280,7 +285,7 @@ func (uc *ReportUseCase) Trend(ctx context.Context, q ReportQuery) (*Trend, erro
 	byDay := map[string][]ads.Metrics{}
 	for _, row := range data.rows {
 		owner := data.owners[row.AdMetaID]
-		if !inScope(owner, q.CampaignIDs, q.AdSetIDs) {
+		if !q.covers(row.AdMetaID, owner) {
 			continue
 		}
 		byDay[row.Day.Format(ads.DayLayout)] = append(byDay[row.Day.Format(ads.DayLayout)], ads.MetricsOf(row, data.goals[owner.adSetID]))

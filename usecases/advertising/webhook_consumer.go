@@ -27,7 +27,7 @@ type leadgenHandler interface {
 }
 
 type accountChangeHandler interface {
-	HandleAccountChanges(ctx context.Context, changes []ads.AdAccountChange) error
+	Handle(ctx context.Context, changes []ads.AdAccountChange) error
 }
 
 type WebhookConsumerDeps struct {
@@ -98,7 +98,7 @@ func accountEntryHandler(accounts accountChangeHandler) func(context.Context, *m
 		if len(changes) == 0 {
 			return nil
 		}
-		return accounts.HandleAccountChanges(ctx, changes)
+		return accounts.Handle(ctx, changes)
 	}
 }
 
@@ -139,7 +139,28 @@ func leadgenEvents(env *mm.EntryEnvelope) ([]ads.LeadgenEvent, error) {
 }
 
 type adObjectValue struct {
-	ID json.Number `json:"id"`
+	ID         json.Number `json:"id"`
+	Level      string      `json:"level"`
+	ObjectID   json.Number `json:"object_id"`
+	ObjectType string      `json:"object_type"`
+}
+
+func (v adObjectValue) change(accountMetaID, field string) ads.AdAccountChange {
+	change := ads.AdAccountChange{AccountMetaID: accountMetaID, Field: field}
+	id, level := v.ID.String(), v.Level
+	if v.ObjectID != "" {
+		id, level = v.ObjectID.String(), v.ObjectType
+	}
+	if id == "" {
+		return change
+	}
+	ref, ok := ads.ObjectRefOf(id, level)
+	if !ok {
+		change.Unresolved = true
+		return change
+	}
+	change.Objects = []ads.ObjectRef{ref}
+	return change
 }
 
 func accountChanges(env *mm.EntryEnvelope) ([]ads.AdAccountChange, error) {
@@ -151,13 +172,15 @@ func accountChanges(env *mm.EntryEnvelope) ([]ads.AdAccountChange, error) {
 		if change == nil || change.Field == "" {
 			continue
 		}
-		var v adObjectValue
-		_ = json.Unmarshal(change.Value, &v)
-		var objectIDs []string
-		if id := v.ID.String(); id != "" {
-			objectIDs = []string{id}
+		parsed := ads.AdAccountChange{AccountMetaID: env.Entry.ID, Field: change.Field}
+		if parsed.Kind() == ads.AccountObjectsChanged && len(change.Value) > 0 {
+			var v adObjectValue
+			if err := json.Unmarshal(change.Value, &v); err != nil {
+				return nil, mm.ErrInvalidWebhookPayload
+			}
+			parsed = v.change(env.Entry.ID, change.Field)
 		}
-		changes = append(changes, ads.AdAccountChange{AccountMetaID: env.Entry.ID, Field: change.Field, ObjectIDs: objectIDs})
+		changes = append(changes, parsed)
 	}
 	return changes, nil
 }

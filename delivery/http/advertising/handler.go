@@ -29,6 +29,7 @@ type Deps struct {
 	Sync            *adsuc.SyncUseCase
 	Readiness       *adsuc.ReadinessUseCase
 	Manage          *adsuc.ManageUseCase
+	Comments        *adsuc.CommentsUseCase
 	Report          *adsuc.ReportUseCase
 	Live            *adsuc.LiveUseCase
 	Assets          *adsuc.AssetsUseCase

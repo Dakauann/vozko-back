@@ -81,8 +81,8 @@ func reportQuery(r *http.Request) (adsuc.ReportQuery, error) {
 	}
 	return adsuc.ReportQuery{
 		WorkspaceID: workspaceOf(r), AccountID: mux.Vars(r)["id"], Level: advertising.Level(q.Get("level")), Range: dates,
-		CampaignIDs: listParam(q.Get("campaignIds")), AdSetIDs: listParam(q.Get("adSetIds")), Search: strings.TrimSpace(q.Get("search")),
-		Compare: compare,
+		CampaignIDs: listParam(q.Get("campaignIds")), AdSetIDs: listParam(q.Get("adSetIds")), AdIDs: listParam(q.Get("adIds")),
+		Search: strings.TrimSpace(q.Get("search")), Compare: compare,
 	}, nil
 }
 
@@ -174,6 +174,7 @@ func (h *Handler) ReportCSV(w http.ResponseWriter, r *http.Request) {
 // @Param			until		query		string	false	"YYYY-MM-DD"
 // @Param			campaignIds	query		string	false	"IDs de campanha separados por vírgula"
 // @Param			adSetIds	query		string	false	"IDs de conjunto separados por vírgula"
+// @Param			adIds		query		string	false	"IDs de anúncio separados por vírgula"
 // @Success		200			{object}	TrendResponse
 // @Failure		400			{object}	response.ErrorResponse
 // @Security		BearerAuth

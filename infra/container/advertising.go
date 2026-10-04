@@ -127,7 +127,7 @@ func (c *Container) adsManager() *adsBundle {
 		SharedState: c.redisProvider.SharedState(),
 		Durable:     c.processedWebhookEvents(),
 		Leads:       bundle.Forms,
-		Accounts:    sync,
+		Accounts:    adsuc.NewAccountEventsUseCase(sync, gateway, c.redisProvider.SharedState()),
 	})
 	bundle.WebhookHandler = advertisinghttp.NewAdAccountWebhookHandler(
 		c.useCases.publishWebhook,
@@ -140,6 +140,7 @@ func (c *Container) adsManager() *adsBundle {
 		Sync:            sync,
 		Readiness:       bundle.Readiness,
 		Manage:          bundle.Manage,
+		Comments:        adsuc.NewCommentsUseCase(sync, gateway),
 		Report:          bundle.Report,
 		Live:            bundle.Live,
 		Assets:          bundle.Assets,

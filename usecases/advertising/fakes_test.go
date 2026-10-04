@@ -360,6 +360,7 @@ type pageLinkCall struct {
 }
 
 type fakeGateway struct {
+	object      *ads.Object
 	linkStatus  string
 	linked      pageLinkCall
 	calls       []string
@@ -394,6 +395,8 @@ type fakeGateway struct {
 	minimumBid  int64
 	billing     ads.RemoteBilling
 	billingWith []bool
+	posts       ads.AdPosts
+	comments    []ads.AdComment
 }
 
 func newFakeGateway() *fakeGateway {
@@ -492,6 +495,25 @@ func (g *fakeGateway) CreateAd(context.Context, string, string, ads.AdSpec) (str
 func (g *fakeGateway) DeleteObject(_ context.Context, _, id string) error {
 	g.deleted = append(g.deleted, id)
 	return g.step("delete:" + id)
+}
+func (g *fakeGateway) GetObject(_ context.Context, _, metaID string, _ ads.Level) (*ads.Object, error) {
+	if err := g.step("get_object"); err != nil {
+		return nil, err
+	}
+	if g.object == nil {
+		return &ads.Object{MetaID: metaID}, nil
+	}
+	object := *g.object
+	return &object, nil
+}
+func (g *fakeGateway) GetAdPosts(context.Context, string, string) (ads.AdPosts, error) {
+	return g.posts, g.step("ad_posts")
+}
+func (g *fakeGateway) ListPostComments(_ context.Context, _, pageID, postID string) ([]ads.AdComment, error) {
+	return g.comments, g.step("facebook_comments:" + pageID + ":" + postID)
+}
+func (g *fakeGateway) ListInstagramComments(_ context.Context, _, mediaID string) ([]ads.AdComment, error) {
+	return g.comments, g.step("instagram_comments:" + mediaID)
 }
 func (g *fakeGateway) GetObjectDetail(context.Context, string, string, ads.Level) (*ads.ObjectDetail, error) {
 	if g.detail == nil {

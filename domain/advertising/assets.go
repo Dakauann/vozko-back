@@ -91,12 +91,6 @@ type ReachEstimate struct {
 	Ready bool
 }
 
-type AdAccountChange struct {
-	AccountMetaID string
-	Field         string
-	ObjectIDs     []string
-}
-
 type LeadgenEvent struct {
 	LeadgenID string
 	FormID    string
