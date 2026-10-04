@@ -181,3 +181,52 @@ func TestCopyAndLifecycleChecksRefuseWithoutTouchingMeta(t *testing.T) {
 		t.Fatalf("meta called %v", w.gateway.calls)
 	}
 }
+
+func TestDetailGivesTheAddressOfEachMediaOfAPublishedCreative(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	w.gateway.detail = &ads.ObjectDetail{Creative: &ads.CreativeDraft{
+		Format: ads.FormatCarousel,
+		Cards:  []ads.CarouselCard{{Media: ads.MetaMediaRef(ads.MediaImage, "h1")}, {Media: ads.MetaMediaRef(ads.MediaVideo, "v1")}},
+	}}
+	w.gateway.metaMedia = map[string]string{"meta:h1": "https://cdn.meta/h1.png", "meta:v1": "https://cdn.meta/v1.jpg"}
+	detail, err := w.manager().Detail(context.Background(), "ws-1", "a-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.MediaURLs["meta:h1"] != "https://cdn.meta/h1.png" || detail.MediaURLs["meta:v1"] != "https://cdn.meta/v1.jpg" {
+		t.Fatalf("media urls %+v", detail.MediaURLs)
+	}
+}
+
+func TestDetailWithoutMetaMediaDoesNotAskMetaForAddresses(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	w.gateway.detail = &ads.ObjectDetail{}
+	if _, err := w.manager().Detail(context.Background(), "ws-1", "a-1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range w.gateway.calls {
+		if call == "meta_media" {
+			t.Fatal("asked meta for media addresses with nothing to resolve")
+		}
+	}
+}
+
+func TestCheckingACreativeSwapGivesTheAddressOfEveryProposedMedia(t *testing.T) {
+	w := newWorld()
+	seedStructure(w)
+	w.gateway.detail = &ads.ObjectDetail{Identity: ads.Identity{PageID: "page-1"}}
+	w.gateway.metaMedia = map[string]string{"meta:h1": "https://cdn.meta/h1.png"}
+	creative := ads.CreativeDraft{Format: ads.FormatCarousel, PrimaryText: "Oi", Cards: []ads.CarouselCard{
+		{Media: ads.MetaMediaRef(ads.MediaImage, "h1")},
+		{Media: ads.MediaRef{Kind: ads.MediaImage, MediaID: "media-2"}},
+	}}
+	checked, err := w.manager().CheckEdit(context.Background(), "ws-1", "a-1", ads.ObjectEdit{Creative: &creative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked.MediaURLs["meta:h1"] != "https://cdn.meta/h1.png" || checked.MediaURLs["media-2"] != "https://cdn/media-2" {
+		t.Fatalf("media urls %+v", checked.MediaURLs)
+	}
+}

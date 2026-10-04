@@ -432,58 +432,40 @@ func (t *searchAdLocationsTool) Execute(ctx context.Context, cc copilot.Context,
 }
 
 type adDraftArgs struct {
-	AdAccountID             string       `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
-	CampaignName            string       `json:"campaign_name" req:"true" desc:"nome da campanha"`
-	Objective               string       `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES,OUTCOME_APP_PROMOTION" desc:"objetivo da campanha: OUTCOME_AWARENESS (reconhecimento), OUTCOME_TRAFFIC (tráfego para site ou conversa), OUTCOME_ENGAGEMENT (conversas e engajamento com uma publicação), OUTCOME_LEADS (cadastros), OUTCOME_SALES (vendas, inclusive pelo catálogo), OUTCOME_APP_PROMOTION (instalações de app)"`
-	Destination             string       `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE,APP,CATALOG,ON_POST" desc:"para onde a pessoa vai: WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, WEBSITE (site em link), ON_AD (formulário instantâneo, só com OUTCOME_LEADS), NONE (só alcance, com OUTCOME_AWARENESS), APP (loja do app, com OUTCOME_APP_PROMOTION), CATALOG (produtos do catálogo, com OUTCOME_SALES) ou ON_POST (engajamento com uma publicação, com OUTCOME_ENGAGEMENT e format EXISTING_POST)"`
-	Goal                    string       `json:"goal" desc:"meta de desempenho; vazio usa a recomendada para o objetivo e o destino"`
-	PageID                  string       `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages"`
-	WhatsAppNumber          string       `json:"whatsapp_number" desc:"whatsapp_number exato de list_ad_pages (obrigatório para WHATSAPP)"`
-	InstagramUserID         string       `json:"instagram_user_id" desc:"instagram_user_id da página (obrigatório para INSTAGRAM_DIRECT e para publicações do Instagram)"`
-	AppID                   string       `json:"app_id" desc:"app_id exato de list_ad_apps (obrigatório para APP)"`
-	AppStoreURL             string       `json:"app_store_url" desc:"um dos store_urls do app em list_ad_apps (obrigatório para APP)"`
-	CatalogID               string       `json:"catalog_id" desc:"catalog_id exato de list_ad_catalogs (obrigatório para CATALOG)"`
-	ProductSetID            string       `json:"product_set_id" desc:"product_set_id exato do mesmo catálogo em list_ad_catalogs (obrigatório para CATALOG)"`
-	Link                    string       `json:"link" desc:"endereço https do site (obrigatório para WEBSITE e CATALOG), ex.: https://vozkoia.com"`
-	DisplayLink             string       `json:"display_link" desc:"link curto mostrado no anúncio, opcional, ex.: vozkoia.com"`
-	CallToAction            string       `json:"call_to_action" desc:"botão para WEBSITE, ON_AD, APP ou CATALOG, ex.: LEARN_MORE, SIGN_UP, CONTACT_US, SHOP_NOW, BOOK_NOW, INSTALL_MOBILE_APP; vazio usa o padrão"`
-	LeadFormID              string       `json:"lead_form_id" desc:"lead_form_id de list_lead_forms (obrigatório para ON_AD)"`
-	PixelID                 string       `json:"pixel_id" desc:"pixel da conta, só quando a meta for conversões no site"`
-	PixelEvent              string       `json:"pixel_event" desc:"evento do pixel, ex.: LEAD, PURCHASE, COMPLETE_REGISTRATION"`
-	Budget                  float64      `json:"budget" desc:"valor do orçamento na moeda da conta, diário ou total conforme budget_kind; 30 significa 30 reais em uma conta BRL"`
-	DailyBudget             float64      `json:"daily_budget" desc:"o mesmo que budget com budget_kind daily; use um dos dois"`
-	BudgetKind              string       `json:"budget_kind" enum:"daily,lifetime" desc:"daily (padrão) gasta até o valor por dia; lifetime gasta o valor no total e exige end_date"`
-	BudgetLevel             string       `json:"budget_level" enum:"adset,campaign" desc:"adset (padrão) põe o orçamento no conjunto; campaign usa o orçamento Advantage da campanha, que a Meta distribui sozinha"`
-	BidStrategy             string       `json:"bid_strategy" enum:"LOWEST_COST_WITHOUT_CAP,LOWEST_COST_WITH_BID_CAP,COST_CAP,LOWEST_COST_WITH_MIN_ROAS" desc:"estratégia de lance; vazio usa o menor custo (recomendado para iniciantes)"`
-	BidAmount               float64      `json:"bid_amount" desc:"valor do lance ou do custo máximo na moeda da conta, para LOWEST_COST_WITH_BID_CAP e COST_CAP"`
-	ROAS                    float64      `json:"roas" desc:"retorno mínimo sobre o gasto para LOWEST_COST_WITH_MIN_ROAS, ex.: 2 significa 2 vezes o gasto (só com a meta VALUE)"`
-	StartDate               string       `json:"start_date" desc:"primeiro dia de veiculação YYYY-MM-DD no fuso da conta; vazio começa ao publicar"`
-	EndDate                 string       `json:"end_date" desc:"último dia de veiculação YYYY-MM-DD no fuso da conta; vazio roda até ser desligado"`
-	Locations               []string     `json:"locations" req:"true" desc:"location de search_ad_locations, ex.: country:BR"`
-	AgeMin                  int          `json:"age_min" desc:"idade mínima, 13 a 65 (padrão 18)"`
-	AgeMax                  int          `json:"age_max" desc:"idade máxima, 13 a 65, 65 significa 65+ (padrão 65)"`
-	Genders                 []string     `json:"genders" desc:"male e ou female; vazio para todos"`
-	Interests               []string     `json:"interests" desc:"interest de search_ad_interests; vazio deixa a Meta encontrar o público"`
-	CustomAudiences         []string     `json:"custom_audiences" desc:"ids exatos de públicos personalizados ou semelhantes da conta para incluir"`
-	ExcludedCustomAudiences []string     `json:"excluded_custom_audiences" desc:"ids exatos de públicos personalizados da conta para excluir"`
-	Placements              []string     `json:"placements" desc:"vazio ou automatic deixa a Meta escolher (recomendado); ou uma lista entre facebook, instagram, messenger e audience_network"`
-	SpecialCategory         string       `json:"special_category" enum:"NONE,HOUSING,EMPLOYMENT,FINANCIAL_PRODUCTS_SERVICES" desc:"categoria especial obrigatória para imóveis, vagas de emprego e crédito; NONE nos demais"`
-	Format                  string       `json:"format" req:"true" enum:"IMAGE,VIDEO,CAROUSEL,FLEXIBLE,EXISTING_POST,CATALOG" desc:"IMAGE (uma imagem), VIDEO (um vídeo), CAROUSEL (2 a 10 cartões em cards), FLEXIBLE (várias mídias e variações de texto que a Meta combina), EXISTING_POST (uma publicação da página, de list_page_posts) ou CATALOG (produtos do catálogo, com CATALOG)"`
-	PrimaryText             string       `json:"primary_text" desc:"texto principal do anúncio (obrigatório, exceto em FLEXIBLE e EXISTING_POST)"`
-	Headline                string       `json:"headline" desc:"título curto (até 40 caracteres é o ideal)"`
-	Description             string       `json:"description" desc:"descrição curta opcional"`
-	MediaID                 string       `json:"media_id" id:"true" desc:"media_id de generate_image ou de uma imagem ou vídeo anexado, do mesmo tipo de format (IMAGE e VIDEO)"`
-	Cards                   []adCardArgs `json:"cards" desc:"cartões do CAROUSEL, de 2 a 10, na ordem"`
-	MediaIDs                []string     `json:"media_ids" id:"true" desc:"imagens do FLEXIBLE: media_id de generate_image ou de imagens anexadas"`
-	VideoIDs                []string     `json:"video_ids" id:"true" desc:"vídeos do FLEXIBLE: media_id de vídeos anexados"`
-	Texts                   []string     `json:"texts" desc:"FLEXIBLE: de 1 a 5 variações do texto principal"`
-	Headlines               []string     `json:"headlines" desc:"FLEXIBLE: até 5 variações do título"`
-	Descriptions            []string     `json:"descriptions" desc:"FLEXIBLE: até 5 variações da descrição"`
-	PostID                  string       `json:"post_id" desc:"post_id exato de list_page_posts (EXISTING_POST)"`
-	PostPlatform            string       `json:"post_platform" enum:"facebook,instagram" desc:"de onde vem a publicação de EXISTING_POST: facebook (padrão) ou instagram"`
-	Greeting                string       `json:"greeting" desc:"mensagem que já vem escrita para o cliente enviar (WhatsApp, Messenger, Instagram)"`
-	IceBreakers             []string     `json:"ice_breakers" desc:"até 3 perguntas prontas para o cliente tocar (WhatsApp, Messenger, Instagram)"`
-	KeepPaused              bool         `json:"keep_paused" desc:"true publica desligado, para o usuário ligar depois"`
+	adCreativeArgs
+	AdAccountID             string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
+	CampaignName            string   `json:"campaign_name" req:"true" desc:"nome da campanha"`
+	Objective               string   `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES,OUTCOME_APP_PROMOTION" desc:"objetivo da campanha: OUTCOME_AWARENESS (reconhecimento), OUTCOME_TRAFFIC (tráfego para site ou conversa), OUTCOME_ENGAGEMENT (conversas e engajamento com uma publicação), OUTCOME_LEADS (cadastros), OUTCOME_SALES (vendas, inclusive pelo catálogo), OUTCOME_APP_PROMOTION (instalações de app)"`
+	Destination             string   `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE,APP,CATALOG,ON_POST" desc:"para onde a pessoa vai: WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, WEBSITE (site em link), ON_AD (formulário instantâneo, só com OUTCOME_LEADS), NONE (só alcance, com OUTCOME_AWARENESS), APP (loja do app, com OUTCOME_APP_PROMOTION), CATALOG (produtos do catálogo, com OUTCOME_SALES) ou ON_POST (engajamento com uma publicação, com OUTCOME_ENGAGEMENT e format EXISTING_POST)"`
+	Goal                    string   `json:"goal" desc:"meta de desempenho; vazio usa a recomendada para o objetivo e o destino"`
+	PageID                  string   `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages"`
+	WhatsAppNumber          string   `json:"whatsapp_number" desc:"whatsapp_number exato de list_ad_pages (obrigatório para WHATSAPP)"`
+	InstagramUserID         string   `json:"instagram_user_id" desc:"instagram_user_id da página (obrigatório para INSTAGRAM_DIRECT e para publicações do Instagram)"`
+	AppID                   string   `json:"app_id" desc:"app_id exato de list_ad_apps (obrigatório para APP)"`
+	AppStoreURL             string   `json:"app_store_url" desc:"um dos store_urls do app em list_ad_apps (obrigatório para APP)"`
+	CatalogID               string   `json:"catalog_id" desc:"catalog_id exato de list_ad_catalogs (obrigatório para CATALOG)"`
+	ProductSetID            string   `json:"product_set_id" desc:"product_set_id exato do mesmo catálogo em list_ad_catalogs (obrigatório para CATALOG)"`
+	PixelID                 string   `json:"pixel_id" desc:"pixel da conta, só quando a meta for conversões no site"`
+	PixelEvent              string   `json:"pixel_event" desc:"evento do pixel, ex.: LEAD, PURCHASE, COMPLETE_REGISTRATION"`
+	Budget                  float64  `json:"budget" desc:"valor do orçamento na moeda da conta, diário ou total conforme budget_kind; 30 significa 30 reais em uma conta BRL"`
+	DailyBudget             float64  `json:"daily_budget" desc:"o mesmo que budget com budget_kind daily; use um dos dois"`
+	BudgetKind              string   `json:"budget_kind" enum:"daily,lifetime" desc:"daily (padrão) gasta até o valor por dia; lifetime gasta o valor no total e exige end_date"`
+	BudgetLevel             string   `json:"budget_level" enum:"adset,campaign" desc:"adset (padrão) põe o orçamento no conjunto; campaign usa o orçamento Advantage da campanha, que a Meta distribui sozinha"`
+	BidStrategy             string   `json:"bid_strategy" enum:"LOWEST_COST_WITHOUT_CAP,LOWEST_COST_WITH_BID_CAP,COST_CAP,LOWEST_COST_WITH_MIN_ROAS" desc:"estratégia de lance; vazio usa o menor custo (recomendado para iniciantes)"`
+	BidAmount               float64  `json:"bid_amount" desc:"valor do lance ou do custo máximo na moeda da conta, para LOWEST_COST_WITH_BID_CAP e COST_CAP"`
+	ROAS                    float64  `json:"roas" desc:"retorno mínimo sobre o gasto para LOWEST_COST_WITH_MIN_ROAS, ex.: 2 significa 2 vezes o gasto (só com a meta VALUE)"`
+	StartDate               string   `json:"start_date" desc:"primeiro dia de veiculação YYYY-MM-DD no fuso da conta; vazio começa ao publicar"`
+	EndDate                 string   `json:"end_date" desc:"último dia de veiculação YYYY-MM-DD no fuso da conta; vazio roda até ser desligado"`
+	Locations               []string `json:"locations" req:"true" desc:"location de search_ad_locations, ex.: country:BR"`
+	AgeMin                  int      `json:"age_min" desc:"idade mínima, 13 a 65 (padrão 18)"`
+	AgeMax                  int      `json:"age_max" desc:"idade máxima, 13 a 65, 65 significa 65+ (padrão 65)"`
+	Genders                 []string `json:"genders" desc:"male e ou female; vazio para todos"`
+	Interests               []string `json:"interests" desc:"interest de search_ad_interests; vazio deixa a Meta encontrar o público"`
+	CustomAudiences         []string `json:"custom_audiences" desc:"ids exatos de públicos personalizados ou semelhantes da conta para incluir"`
+	ExcludedCustomAudiences []string `json:"excluded_custom_audiences" desc:"ids exatos de públicos personalizados da conta para excluir"`
+	Placements              []string `json:"placements" desc:"vazio ou automatic deixa a Meta escolher (recomendado); ou uma lista entre facebook, instagram, messenger e audience_network"`
+	SpecialCategory         string   `json:"special_category" enum:"NONE,HOUSING,EMPLOYMENT,FINANCIAL_PRODUCTS_SERVICES" desc:"categoria especial obrigatória para imóveis, vagas de emprego e crédito; NONE nos demais"`
+	KeepPaused              bool     `json:"keep_paused" desc:"true publica desligado, para o usuário ligar depois"`
 }
 
 func (a adDraftArgs) route() (advertising.Objective, advertising.Destination, advertising.OptimizationGoal, error) {
@@ -740,30 +722,36 @@ type AdCreativePreview struct {
 	DisplayLink    string                     `json:"displayLink,omitempty"`
 	Greeting       string                     `json:"greeting,omitempty"`
 	IceBreakers    []string                   `json:"iceBreakers,omitempty"`
+	Enhancements   bool                       `json:"enhancements"`
 	DailyBudget    int64                      `json:"dailyBudget"`
 	Currency       string                     `json:"currency"`
 	Fee            int64                      `json:"fee"`
 	FeeCurrency    string                     `json:"feeCurrency"`
 }
 
-func creativePreview(pre *adsuc.Preflight, c advertising.CreativeDraft) AdCreativePreview {
-	d := pre.Draft
+func creativeFields(c advertising.CreativeDraft, destination advertising.Destination, urls map[string]string) AdCreativePreview {
 	out := AdCreativePreview{
-		PageName: pre.Page.Name, PagePictureURL: pre.Page.PictureURL, AccountName: pre.Account.Name, Format: c.Format,
-		PrimaryText: c.PrimaryText, Headline: c.Headline, Description: c.Description,
-		Destination: string(d.AdSet.Destination), CallToAction: c.ResolvedCallToAction(d.AdSet.Destination), DisplayLink: c.DisplayLink,
-		Greeting: c.Greeting, IceBreakers: c.IceBreakers,
-		Currency: pre.Account.Currency, Fee: pre.Fee.PriceMicros, FeeCurrency: pre.Fee.Currency,
+		Format: c.Format, PrimaryText: c.PrimaryText, Headline: c.Headline, Description: c.Description,
+		Destination: string(destination), CallToAction: c.ResolvedCallToAction(destination), DisplayLink: c.DisplayLink,
+		Greeting: c.Greeting, IceBreakers: c.IceBreakers, Enhancements: c.Enhancements,
 	}
 	if c.Media.MediaID != "" {
-		out.MediaURL, out.MediaKind = pre.MediaURLs[c.Media.MediaID], c.Media.Kind
+		out.MediaURL, out.MediaKind = urls[c.Media.MediaID], c.Media.Kind
 	}
 	for _, m := range c.Medias {
-		out.Medias = append(out.Medias, PreviewMedia{URL: pre.MediaURLs[m.MediaID], Kind: m.Kind})
+		out.Medias = append(out.Medias, PreviewMedia{URL: urls[m.MediaID], Kind: m.Kind})
 	}
 	for _, card := range c.Cards {
-		out.Cards = append(out.Cards, PreviewCard{URL: pre.MediaURLs[card.Media.MediaID], Kind: card.Media.Kind, Headline: card.Headline, Description: card.Description})
+		out.Cards = append(out.Cards, PreviewCard{URL: urls[card.Media.MediaID], Kind: card.Media.Kind, Headline: card.Headline, Description: card.Description})
 	}
+	return out
+}
+
+func creativePreview(pre *adsuc.Preflight, c advertising.CreativeDraft) AdCreativePreview {
+	d := pre.Draft
+	out := creativeFields(c, d.AdSet.Destination, pre.MediaURLs)
+	out.PageName, out.PagePictureURL, out.AccountName = pre.Page.Name, pre.Page.PictureURL, pre.Account.Name
+	out.Currency, out.Fee, out.FeeCurrency = pre.Account.Currency, pre.Fee.PriceMicros, pre.Fee.Currency
 	if budget, _, _ := draftBudget(d); budget != nil && budget.Kind == advertising.BudgetDaily {
 		out.DailyBudget = budget.Amount
 	}

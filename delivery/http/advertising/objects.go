@@ -27,6 +27,7 @@ type ObjectDetailResponse struct {
 	Schedule   []advertising.DayPart      `json:"schedule"`
 	Creative   *advertising.CreativeDraft `json:"creative"`
 	Identity   advertising.Identity       `json:"identity"`
+	MediaURLs  map[string]string          `json:"mediaUrls,omitempty"`
 }
 
 func (h *Handler) writeObject(w http.ResponseWriter, object *advertising.Object, err error, fallback string) {
@@ -116,6 +117,7 @@ func (h *Handler) ObjectDetail(w http.ResponseWriter, r *http.Request) {
 		Row: presentRow(results.Row, results.Account.Currency, h.now()), Range: presentRange(results.Range),
 		Budget: detail.Budget, Bid: detail.Bid, Targeting: detail.Targeting,
 		Placements: detail.Placements, Schedule: detail.Schedule, Creative: detail.Creative, Identity: detail.Identity,
+		MediaURLs: detail.MediaURLs,
 	})
 }
 

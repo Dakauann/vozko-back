@@ -66,6 +66,18 @@ func (r *objectRepository) ReplaceLevel(ctx context.Context, accountID string, l
 	})
 }
 
+func (r *objectRepository) MarkDelivered(ctx context.Context, accountID string, metaIDs []string, at time.Time) error {
+	if blank(accountID) {
+		return errAccountRequired
+	}
+	if len(metaIDs) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&schema.AdObject{}).
+		Where("ad_account_id = ? AND meta_id IN ? AND first_delivered_at IS NULL", accountID, metaIDs).
+		Update("first_delivered_at", at).Error
+}
+
 func (r *objectRepository) Upsert(ctx context.Context, object *advertising.Object) error {
 	if blank(object.WorkspaceID) {
 		return advertising.ErrWorkspaceRequired
@@ -123,6 +135,13 @@ func (r *objectRepository) List(ctx context.Context, q advertising.ObjectQuery) 
 	}
 	if len(q.MetaIDs) > 0 {
 		query = query.Where("meta_id IN ?", q.MetaIDs)
+	}
+	if len(q.EffectiveStatuses) > 0 {
+		statuses := make([]string, 0, len(q.EffectiveStatuses))
+		for _, s := range q.EffectiveStatuses {
+			statuses = append(statuses, string(s))
+		}
+		query = query.Where("effective_status IN ?", statuses)
 	}
 	if search := strings.TrimSpace(q.Search); search != "" {
 		query = query.Where(`name ILIKE ? ESCAPE '\'`, "%"+escapeLike(search)+"%")
@@ -192,6 +211,7 @@ func toObjectRecord(o *advertising.Object) (*schema.AdObject, error) {
 		BudgetChanges:    changes,
 		CreatedTime:      o.CreatedTime,
 		UpdatedTime:      o.UpdatedTime,
+		FirstDeliveredAt: o.FirstDeliveredAt,
 		SyncedAt:         o.SyncedAt,
 	}, nil
 }
@@ -219,6 +239,7 @@ func toObject(r *schema.AdObject) (*advertising.Object, error) {
 		EndTime:          r.EndTime,
 		CreatedTime:      r.CreatedTime,
 		UpdatedTime:      r.UpdatedTime,
+		FirstDeliveredAt: r.FirstDeliveredAt,
 		SyncedAt:         r.SyncedAt,
 	}
 	if len(r.Creative) > 0 {

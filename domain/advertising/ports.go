@@ -71,6 +71,7 @@ type PublishGateway interface {
 
 type EditGateway interface {
 	GetObjectDetail(ctx context.Context, token, metaID string, level Level) (*ObjectDetail, error)
+	MetaMediaURLs(ctx context.Context, token, metaAccountID string, refs []MediaRef) (map[string]string, error)
 	UpdateObject(ctx context.Context, token, metaID string, level Level, spec EditSpec) error
 	CopyObject(ctx context.Context, token, metaID string, level Level, req CopyRequest) (string, error)
 	SetSpendCap(ctx context.Context, token, metaAccountID string, cap int64) error
@@ -184,8 +185,9 @@ type ObjectQuery struct {
 	CampaignIDs    []string
 	AdSetIDs       []string
 	MetaIDs        []string
-	Search         string
-	IncludeRemoved bool
+	Search            string
+	EffectiveStatuses []EffectiveStatus
+	IncludeRemoved    bool
 }
 
 type ObjectRepository interface {
@@ -193,6 +195,7 @@ type ObjectRepository interface {
 	Upsert(ctx context.Context, object *Object) error
 	Find(ctx context.Context, workspaceID, metaID string) (*Object, error)
 	List(ctx context.Context, q ObjectQuery) ([]*Object, error)
+	MarkDelivered(ctx context.Context, accountID string, metaIDs []string, at time.Time) error
 }
 
 type InsightRepository interface {

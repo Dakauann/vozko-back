@@ -28,6 +28,7 @@ func adminAdAccount() *advertising.AdAccount {
 }
 
 type manageEditor struct {
+	urls    map[string]string
 	details map[string]*advertising.ObjectDetail
 	checked []string
 	edited  map[string]advertising.ObjectEdit
@@ -51,7 +52,9 @@ func (e *manageEditor) CheckEdit(ctx context.Context, ws, id string, edit advert
 	if err := edit.Validate(*detail, false, adTestClock); err != nil {
 		return nil, err
 	}
-	return detail, nil
+	checked := *detail
+	checked.MediaURLs = e.urls
+	return &checked, nil
 }
 
 func (e *manageEditor) Edit(_ context.Context, _, id string, edit advertising.ObjectEdit) (*advertising.Object, error) {

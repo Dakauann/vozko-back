@@ -21,6 +21,7 @@ type ObjectDetail struct {
 	Schedule   []DayPart
 	Creative   *CreativeDraft
 	Identity   Identity
+	MediaURLs  map[string]string
 }
 
 type ObjectEdit struct {

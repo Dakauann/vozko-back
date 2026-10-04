@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	metaMediaPrefix   = "meta:"
 	roasFloorScale    = 10_000
 	adSetDetailFields = adSetFields + ",bid_amount,bid_constraints,targeting,adset_schedule,promoted_object"
 	adDetailFields    = "id,name,campaign_id,adset_id,status,effective_status,created_time,updated_time,issues_info,ad_review_feedback,adset{destination_type},creative_asset_groups_spec," +
@@ -124,7 +123,7 @@ func mediaOf(kind advertising.MediaKind, metaID string) (advertising.MediaRef, e
 	if metaID == "" {
 		return advertising.MediaRef{}, fmt.Errorf("creative %s without meta id", kind)
 	}
-	return advertising.MediaRef{Kind: kind, MediaID: metaMediaPrefix + metaID}, nil
+	return advertising.MetaMediaRef(kind, metaID), nil
 }
 
 func realLink(link string) string {

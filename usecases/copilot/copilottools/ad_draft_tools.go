@@ -659,7 +659,7 @@ func (t *getAdDraftTool) Execute(ctx context.Context, cc copilot.Context, args m
 	return copilot.Result{Status: copilot.StatusOK, Data: data}
 }
 
-func compactArgs(a adDraftArgs) map[string]interface{} {
+func compactArgs(a any) map[string]interface{} {
 	raw, err := json.Marshal(a)
 	if err != nil {
 		return map[string]interface{}{}

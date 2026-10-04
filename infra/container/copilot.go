@@ -88,6 +88,7 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.telegramTools(),
 		c.adsTools(),
 		{copilottools.NewGenerateImageTool(c.imageGeneration().Service)},
+		copilottools.CreativeTools(c.creativeComposer()),
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),

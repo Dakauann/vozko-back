@@ -31,7 +31,7 @@ func TestDeliveryReadsLikeMetaAdsManager(t *testing.T) {
 		{"SOMETHING_NEW", nil, nil, DeliveryUnknown},
 	}
 	for _, c := range cases {
-		o := &Object{EffectiveStatus: c.status, StartTime: c.start, EndTime: c.end}
+		o := &Object{EffectiveStatus: c.status, StartTime: c.start, EndTime: c.end, FirstDeliveredAt: &past}
 		if got := o.Delivery(now); got != c.want {
 			t.Fatalf("%s: got %s, want %s", c.status, got, c.want)
 		}

@@ -97,6 +97,7 @@ type AdObject struct {
 	Removed          bool           `gorm:"not null;default:false"`
 	CreatedTime      *time.Time     `gorm:"type:timestamptz"`
 	UpdatedTime      *time.Time     `gorm:"type:timestamptz"`
+	FirstDeliveredAt *time.Time     `gorm:"type:timestamptz"`
 	SyncedAt         time.Time      `gorm:"type:timestamptz;not null"`
 }
 

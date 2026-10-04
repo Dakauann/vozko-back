@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"vozko/domain/advertising"
 	"vozko/domain/tools"
 )
@@ -28,6 +30,29 @@ type adCardArgs struct {
 	Link        string `json:"link" desc:"endereço https do cartão; vazio usa o link do anúncio"`
 }
 
+type adCreativeArgs struct {
+	Link         string       `json:"link" desc:"endereço https do site (obrigatório para WEBSITE e CATALOG), ex.: https://vozkoia.com"`
+	DisplayLink  string       `json:"display_link" desc:"link curto mostrado no anúncio, opcional, ex.: vozkoia.com"`
+	CallToAction string       `json:"call_to_action" desc:"botão para WEBSITE, ON_AD, APP ou CATALOG, ex.: LEARN_MORE, SIGN_UP, CONTACT_US, SHOP_NOW, BOOK_NOW, INSTALL_MOBILE_APP; vazio usa o padrão"`
+	LeadFormID   string       `json:"lead_form_id" desc:"lead_form_id de list_lead_forms (obrigatório para ON_AD)"`
+	Format       string       `json:"format" enum:"IMAGE,VIDEO,CAROUSEL,FLEXIBLE,EXISTING_POST,CATALOG" desc:"IMAGE (uma imagem), VIDEO (um vídeo), CAROUSEL (2 a 10 cartões em cards), FLEXIBLE (várias mídias e variações de texto que a Meta combina), EXISTING_POST (uma publicação da página, de list_page_posts) ou CATALOG (produtos do catálogo, com CATALOG)"`
+	PrimaryText  string       `json:"primary_text" desc:"texto principal do anúncio (obrigatório, exceto em FLEXIBLE e EXISTING_POST)"`
+	Headline     string       `json:"headline" desc:"título curto (até 40 caracteres é o ideal)"`
+	Description  string       `json:"description" desc:"descrição curta opcional"`
+	MediaID      string       `json:"media_id" id:"true" desc:"media_id de generate_image ou de uma imagem ou vídeo anexado, do mesmo tipo de format (IMAGE e VIDEO)"`
+	Cards        []adCardArgs `json:"cards" desc:"cartões do CAROUSEL, de 2 a 10, na ordem"`
+	MediaIDs     []string     `json:"media_ids" id:"true" desc:"imagens do FLEXIBLE: media_id de generate_image ou de imagens anexadas"`
+	VideoIDs     []string     `json:"video_ids" id:"true" desc:"vídeos do FLEXIBLE: media_id de vídeos anexados"`
+	Texts        []string     `json:"texts" desc:"FLEXIBLE: de 1 a 5 variações do texto principal"`
+	Headlines    []string     `json:"headlines" desc:"FLEXIBLE: até 5 variações do título"`
+	Descriptions []string     `json:"descriptions" desc:"FLEXIBLE: até 5 variações da descrição"`
+	PostID       string       `json:"post_id" desc:"post_id exato de list_page_posts (EXISTING_POST)"`
+	PostPlatform string       `json:"post_platform" enum:"facebook,instagram" desc:"de onde vem a publicação de EXISTING_POST: facebook (padrão) ou instagram"`
+	Greeting     string       `json:"greeting" desc:"mensagem que já vem escrita para o cliente enviar (WhatsApp, Messenger, Instagram)"`
+	IceBreakers  []string     `json:"ice_breakers" desc:"até 3 perguntas prontas para o cliente tocar (WhatsApp, Messenger, Instagram)"`
+	Enhancements *bool        `json:"enhancements" desc:"melhorias de criativo Advantage+: true deixa a Meta cortar, expandir e ajustar a imagem e trocar a ordem dos textos; false mantém o anúncio exatamente como foi montado (use false em criativos com texto e telas, como os de compose_creative); vazio mantém o atual"`
+}
+
 func adDraftDefinition(name, description string, args any) tools.Definition {
 	def := definition(name, description, args)
 	cards := def.Parameters["cards"]
@@ -44,7 +69,7 @@ type draftPart struct {
 
 var creativeArgKeys = []string{
 	"format", "primary_text", "headline", "description", "media_id", "cards", "media_ids", "video_ids", "texts", "headlines", "descriptions",
-	"post_id", "post_platform", "link", "display_link", "call_to_action", "lead_form_id", "greeting", "ice_breakers",
+	"post_id", "post_platform", "link", "display_link", "call_to_action", "lead_form_id", "greeting", "ice_breakers", "enhancements",
 }
 
 var draftParts = []draftPart{
@@ -130,7 +155,7 @@ func (a adDraftArgs) applyCreative(_ *advertising.AdAccount, d *advertising.AdDr
 	return nil
 }
 
-func (a adDraftArgs) creative(kept advertising.CreativeDraft) (advertising.CreativeDraft, error) {
+func (a adCreativeArgs) creative(kept advertising.CreativeDraft) (advertising.CreativeDraft, error) {
 	format := advertising.CreativeFormat(a.Format)
 	c := advertising.CreativeDraft{
 		Format: format, PrimaryText: a.PrimaryText, Headline: a.Headline, Description: a.Description,
@@ -138,6 +163,9 @@ func (a adDraftArgs) creative(kept advertising.CreativeDraft) (advertising.Creat
 		CallToAction: advertising.CallToAction(a.CallToAction), LeadFormID: strings.TrimSpace(a.LeadFormID),
 		Greeting: a.Greeting, IceBreakers: a.IceBreakers,
 		InstantExperience: kept.InstantExperience, Enhancements: kept.Enhancements,
+	}
+	if a.Enhancements != nil {
+		c.Enhancements = *a.Enhancements
 	}
 	switch format {
 	case advertising.FormatImage, advertising.FormatVideo:
@@ -162,7 +190,23 @@ func (a adDraftArgs) creative(kept advertising.CreativeDraft) (advertising.Creat
 	default:
 		return advertising.CreativeDraft{}, fmt.Errorf("%w: format deve ser IMAGE, VIDEO, CAROUSEL, FLEXIBLE, EXISTING_POST ou CATALOG", errInvalidArgs)
 	}
-	return c, nil
+	return c, knownMedia(c, kept)
+}
+
+func knownMedia(c, kept advertising.CreativeDraft) error {
+	hosted := kept.MetaMediaRefs()
+	for _, ref := range c.MediaRefs() {
+		if _, onMeta := ref.MetaID(); onMeta {
+			if !slices.Contains(hosted, ref) {
+				return fmt.Errorf("%w: media_id %q não é do anúncio atual; use o media_id exato de generate_image, compose_creative ou de um anexo", errInvalidArgs, ref.MediaID)
+			}
+			continue
+		}
+		if _, err := uuid.Parse(ref.MediaID); err != nil {
+			return fmt.Errorf("%w: media_id %q não existe; use o media_id exato de generate_image, compose_creative ou de um anexo", errInvalidArgs, ref.MediaID)
+		}
+	}
+	return nil
 }
 
 func mediaRefs(kind advertising.MediaKind, ids []string) []advertising.MediaRef {
@@ -173,13 +217,10 @@ func mediaRefs(kind advertising.MediaKind, ids []string) []advertising.MediaRef 
 	return out
 }
 
-func (a adDraftArgs) cards() ([]advertising.CarouselCard, error) {
+func (a adCreativeArgs) cards() ([]advertising.CarouselCard, error) {
 	out := make([]advertising.CarouselCard, 0, len(a.Cards))
 	for _, card := range a.Cards {
-		id, err := knownID(card.MediaID, "cards.media_id", "generate_image ou de uma mídia anexada")
-		if err != nil {
-			return nil, err
-		}
+		id := strings.TrimSpace(card.MediaID)
 		kind := advertising.MediaImage
 		switch card.MediaKind {
 		case "", string(advertising.MediaImage):
@@ -494,7 +535,7 @@ func lastDay(endAt time.Time, loc *time.Location) time.Time {
 	return endAt.In(loc).Add(-time.Nanosecond)
 }
 
-func (a *adDraftArgs) setCreative(c advertising.CreativeDraft) {
+func (a *adCreativeArgs) setCreative(c advertising.CreativeDraft) {
 	a.Format, a.PrimaryText, a.Headline, a.Description = string(c.Format), c.PrimaryText, c.Headline, c.Description
 	a.Link, a.DisplayLink, a.CallToAction, a.LeadFormID = c.Link, c.DisplayLink, string(c.CallToAction), c.LeadFormID
 	a.Greeting, a.IceBreakers = c.Greeting, c.IceBreakers

@@ -201,3 +201,38 @@ func TestObjectListIncludingRemovedDropsTheFilter(t *testing.T) {
 	}
 	expectationsMet(t, mock)
 }
+
+func TestMarkDeliveredOnlyStampsObjectsThatNeverDelivered(t *testing.T) {
+	db, mock := newMockDB(t)
+	at := time.Date(2026, 10, 4, 17, 0, 0, 0, time.UTC)
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "ad_objects" SET "first_delivered_at"=$1 WHERE ad_account_id = $2 AND meta_id IN ($3,$4) AND first_delivered_at IS NULL`)).
+		WithArgs(at, "a-1", "ad-1", "s-1").
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	if err := NewObjectRepository(db).MarkDelivered(context.Background(), "a-1", []string{"ad-1", "s-1"}, at); err != nil {
+		t.Fatal(err)
+	}
+	expectationsMet(t, mock)
+}
+
+func TestMarkDeliveredWithNothingToStampSkipsTheDatabase(t *testing.T) {
+	db, mock := newMockDB(t)
+	if err := NewObjectRepository(db).MarkDelivered(context.Background(), "a-1", nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	expectationsMet(t, mock)
+}
+
+func TestObjectListFiltersByEffectiveStatus(t *testing.T) {
+	db, mock := newMockDB(t)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "ad_objects" WHERE (workspace_id = $1 AND ad_account_id = $2) AND level = $3 `+
+		`AND effective_status IN ($4,$5) AND removed = $6 ORDER BY`)).
+		WithArgs("ws", "a-1", "ad", "PENDING_REVIEW", "IN_PROCESS", false).
+		WillReturnRows(sqlmock.NewRows([]string{"meta_id"}))
+	if _, err := NewObjectRepository(db).List(context.Background(), advertising.ObjectQuery{
+		WorkspaceID: "ws", AdAccountID: "a-1", Level: advertising.LevelAd,
+		EffectiveStatuses: []advertising.EffectiveStatus{advertising.EffectivePendingReview, advertising.EffectiveInProcess},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	expectationsMet(t, mock)
+}

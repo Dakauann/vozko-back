@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	metaMediaPrefix   = "meta:"
 	videoPollInterval = 5 * time.Second
 	videoPollAttempts = 18
 )
@@ -114,7 +113,10 @@ func sleepFor(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func IsMetaMedia(ref ads.MediaRef) bool { return strings.HasPrefix(ref.MediaID, metaMediaPrefix) }
+func IsMetaMedia(ref ads.MediaRef) bool {
+	_, ok := ref.MetaID()
+	return ok
+}
 
 func (c creativeMedia) describe(ctx context.Context, workspaceID string, ref ads.MediaRef) (string, error) {
 	if IsMetaMedia(ref) {
@@ -128,8 +130,8 @@ func (c creativeMedia) describe(ctx context.Context, workspaceID string, ref ads
 }
 
 func (c creativeMedia) upload(ctx context.Context, workspaceID string, account *ads.AdAccount, token string, ref ads.MediaRef) (string, error) {
-	if IsMetaMedia(ref) {
-		return strings.TrimPrefix(ref.MediaID, metaMediaPrefix), nil
+	if metaID, ok := ref.MetaID(); ok {
+		return metaID, nil
 	}
 	file, err := c.source.Load(ctx, workspaceID, ref)
 	if err != nil {

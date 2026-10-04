@@ -429,3 +429,21 @@ func TestTheCardsArgumentDescribesEachCard(t *testing.T) {
 		t.Fatalf("update definition %+v", update)
 	}
 }
+
+func TestEnhancementsFollowTheArgumentAndOtherwiseKeepTheCurrentChoice(t *testing.T) {
+	account := &advertising.AdAccount{ID: adAccountUUID, Currency: "BRL", Timezone: "America/Sao_Paulo"}
+	args := websiteArgs()
+	args["enhancements"] = true
+	on := savedFrom(t, args)
+	if !on.Ads[0].Creative.Enhancements {
+		t.Fatal("enhancements true was not kept")
+	}
+	patched, err := patchDraft(on, account, map[string]interface{}{"headline": "Outro"})
+	if err != nil || !patched.Ads[0].Creative.Enhancements {
+		t.Fatalf("a headline change turned enhancements off: %v", err)
+	}
+	off, err := patchDraft(on, account, map[string]interface{}{"enhancements": false})
+	if err != nil || off.Ads[0].Creative.Enhancements {
+		t.Fatalf("enhancements false was ignored: %v", err)
+	}
+}

@@ -3,6 +3,7 @@ package advertising
 import (
 	"context"
 	"log"
+	"maps"
 
 	ads "vozko/domain/advertising"
 )
@@ -13,6 +14,7 @@ type manageGateway interface {
 	SetStatus(ctx context.Context, token, metaID string, status ads.ConfiguredStatus) error
 	DeleteObject(ctx context.Context, token, metaID string) error
 	GetObjectDetail(ctx context.Context, token, metaID string, level ads.Level) (*ads.ObjectDetail, error)
+	MetaMediaURLs(ctx context.Context, token, metaAccountID string, refs []ads.MediaRef) (map[string]string, error)
 	UpdateObject(ctx context.Context, token, metaID string, level ads.Level, spec ads.EditSpec) error
 	CopyObject(ctx context.Context, token, metaID string, level ads.Level, req ads.CopyRequest) (string, error)
 	CreateCreative(ctx context.Context, token, metaAccountID string, spec ads.CreativeSpec) (string, error)
@@ -121,7 +123,38 @@ func (uc *ManageUseCase) Detail(ctx context.Context, workspaceID, metaID string)
 		return nil, uc.access.failed(ctx, t.account, err)
 	}
 	detail.Object = t.object
+	if detail.MediaURLs, err = uc.creativeMediaURLs(ctx, workspaceID, t, detail.Creative); err != nil {
+		return nil, err
+	}
 	return detail, nil
+}
+
+func (uc *ManageUseCase) creativeMediaURLs(ctx context.Context, workspaceID string, t *target, creative *ads.CreativeDraft) (map[string]string, error) {
+	if creative == nil {
+		return nil, nil
+	}
+	urls := map[string]string{}
+	if refs := creative.MetaMediaRefs(); len(refs) > 0 {
+		hosted, err := uc.gateway.MetaMediaURLs(ctx, t.token, t.account.MetaAccountID, refs)
+		if err != nil {
+			return nil, uc.access.failed(ctx, t.account, err)
+		}
+		maps.Copy(urls, hosted)
+	}
+	for _, ref := range creative.MediaRefs() {
+		if IsMetaMedia(ref) {
+			continue
+		}
+		url, err := uc.media.describe(ctx, workspaceID, ref)
+		if err != nil {
+			return nil, ads.FieldError("creative.media", "not_found")
+		}
+		urls[ref.MediaID] = url
+	}
+	if len(urls) == 0 {
+		return nil, nil
+	}
+	return urls, nil
 }
 
 type editPlan struct {
@@ -184,6 +217,11 @@ func (uc *ManageUseCase) CheckEdit(ctx context.Context, workspaceID, metaID stri
 	plan, err := uc.planWithinMinimum(ctx, workspaceID, metaID, edit)
 	if err != nil {
 		return nil, err
+	}
+	if plan.edit.Creative != nil {
+		if plan.detail.MediaURLs, err = uc.creativeMediaURLs(ctx, workspaceID, plan.target, plan.edit.Creative); err != nil {
+			return nil, err
+		}
 	}
 	return plan.detail, nil
 }

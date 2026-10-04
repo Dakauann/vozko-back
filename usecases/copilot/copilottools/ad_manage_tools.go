@@ -60,7 +60,7 @@ func AdManageTools(deps AdManageDeps, ads AdsDeps) []copilot.Tool {
 		&editAdSetTool{deps: m},
 		&bulkStatusTool{deps: m, on: true}, &bulkStatusTool{deps: m, on: false},
 		&bulkEditTextTool{deps: m}, &bulkChangeTool{deps: m},
-		&setSpendCapTool{deps: m},
+		&setSpendCapTool{deps: m}, &swapAdCreativeTool{deps: m},
 		&runAdReportTool{deps: m}, &listAdReportsTool{deps: m}, &runSavedAdReportTool{deps: m}, &exportAdReportTool{deps: m},
 	}
 }

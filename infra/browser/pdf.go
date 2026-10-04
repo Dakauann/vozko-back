@@ -65,20 +65,11 @@ func locateChromium() string {
 	return ""
 }
 
-func (r *Renderer) Render(ctx context.Context, url string, options PDFOptions) ([]byte, error) {
+func (r *Renderer) session(ctx context.Context, width, height int64) (context.Context, func(), error) {
 	executable := locateChromium()
 	if executable == "" {
-		return nil, fmt.Errorf("browser: no chromium executable was found; set CHROMIUM_PATH")
+		return nil, nil, fmt.Errorf("browser: no chromium executable was found; set CHROMIUM_PATH")
 	}
-
-	width, height := options.ViewportWidth, options.ViewportHeight
-	if width <= 0 {
-		width = a4WidthPx
-	}
-	if height <= 0 {
-		height = a4HeightPx
-	}
-
 	allocatorOptions := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(executable),
 		chromedp.Flag("headless", "new"),
@@ -88,18 +79,32 @@ func (r *Renderer) Render(ctx context.Context, url string, options PDFOptions) (
 		chromedp.Flag("hide-scrollbars", true),
 		chromedp.WindowSize(int(width), int(height)),
 	)
-
 	allocatorCtx, cancelAllocator := chromedp.NewExecAllocator(ctx, allocatorOptions...)
-	defer cancelAllocator()
-
 	browserCtx, cancelBrowser := chromedp.NewContext(allocatorCtx)
-	defer cancelBrowser()
-
 	timeoutCtx, cancelTimeout := context.WithTimeout(browserCtx, r.timeout)
-	defer cancelTimeout()
+	return timeoutCtx, func() {
+		cancelTimeout()
+		cancelBrowser()
+		cancelAllocator()
+	}, nil
+}
+
+func (r *Renderer) Render(ctx context.Context, url string, options PDFOptions) ([]byte, error) {
+	width, height := options.ViewportWidth, options.ViewportHeight
+	if width <= 0 {
+		width = a4WidthPx
+	}
+	if height <= 0 {
+		height = a4HeightPx
+	}
+	timeoutCtx, done, err := r.session(ctx, width, height)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 
 	var pdf []byte
-	err := chromedp.Run(timeoutCtx,
+	err = chromedp.Run(timeoutCtx,
 		chromedp.EmulateViewport(width, height),
 		chromedp.Navigate(url),
 		chromedp.Poll(readyFlag, nil, chromedp.WithPollingInterval(readyPoll)),

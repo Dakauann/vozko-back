@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -106,8 +107,18 @@ func (f *fakeAccounts) FindByID(_ context.Context, ws, id string) (*ads.AdAccoun
 func (f *fakeAccounts) ListByWorkspace(context.Context, string) ([]*ads.AdAccount, error) {
 	return nil, nil
 }
-func (f *fakeAccounts) ListConnected(context.Context, int, int) ([]*ads.AdAccount, error) {
-	return nil, nil
+func (f *fakeAccounts) ListConnected(_ context.Context, limit, offset int) ([]*ads.AdAccount, error) {
+	var connected []*ads.AdAccount
+	for _, a := range f.byID {
+		if a.Connection == ads.ConnectionConnected {
+			connected = append(connected, a)
+		}
+	}
+	slices.SortFunc(connected, func(a, b *ads.AdAccount) int { return strings.Compare(a.ID, b.ID) })
+	if offset >= len(connected) {
+		return nil, nil
+	}
+	return connected[offset:min(offset+limit, len(connected))], nil
 }
 func (f *fakeAccounts) SetConnection(_ context.Context, id string, c ads.Connection) error {
 	f.connections[id] = c
@@ -135,7 +146,20 @@ func (f *fakeAccounts) FindByMetaAccountID(_ context.Context, metaID string) (*a
 	return nil, ads.ErrAccountNotFound
 }
 
-type fakeObjects struct{ byID map[string]*ads.Object }
+type fakeObjects struct {
+	byID      map[string]*ads.Object
+	delivered map[string]bool
+}
+
+func (f *fakeObjects) MarkDelivered(_ context.Context, _ string, metaIDs []string, _ time.Time) error {
+	if f.delivered == nil {
+		f.delivered = map[string]bool{}
+	}
+	for _, id := range metaIDs {
+		f.delivered[id] = true
+	}
+	return nil
+}
 
 func (f *fakeObjects) ReplaceLevel(_ context.Context, _ string, _ ads.Level, objects []*ads.Object, _ time.Time) error {
 	for _, o := range objects {
@@ -167,6 +191,9 @@ func (f *fakeObjects) List(_ context.Context, q ads.ObjectQuery) ([]*ads.Object,
 			continue
 		}
 		if len(q.MetaIDs) > 0 && !slices.Contains(q.MetaIDs, o.MetaID) {
+			continue
+		}
+		if len(q.EffectiveStatuses) > 0 && !slices.Contains(q.EffectiveStatuses, o.EffectiveStatus) {
 			continue
 		}
 		out = append(out, o)
@@ -360,6 +387,7 @@ type pageLinkCall struct {
 }
 
 type fakeGateway struct {
+	metaMedia      map[string]string
 	object         *ads.Object
 	linkStatus     string
 	linked         pageLinkCall
@@ -524,6 +552,13 @@ func (g *fakeGateway) GetObjectDetail(context.Context, string, string, ads.Level
 	}
 	detail := *g.detail
 	return &detail, g.step("detail")
+}
+func (g *fakeGateway) MetaMediaURLs(_ context.Context, _, _ string, refs []ads.MediaRef) (map[string]string, error) {
+	out := map[string]string{}
+	for _, ref := range refs {
+		out[ref.MediaID] = g.metaMedia[ref.MediaID]
+	}
+	return out, g.step("meta_media")
 }
 func (g *fakeGateway) UpdateObject(_ context.Context, _, id string, _ ads.Level, spec ads.EditSpec) error {
 	g.edits[id] = spec

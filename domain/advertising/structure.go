@@ -50,10 +50,13 @@ const (
 	EffectiveAdSetPaused    EffectiveStatus = "ADSET_PAUSED"
 )
 
+var ReviewStatuses = []EffectiveStatus{EffectivePendingReview, EffectiveInProcess, EffectivePreapproved}
+
 type Delivery string
 
 const (
 	DeliveryActive         Delivery = "active"
+	DeliveryPreparing      Delivery = "preparing"
 	DeliveryScheduled      Delivery = "scheduled"
 	DeliveryCompleted      Delivery = "completed"
 	DeliveryOff            Delivery = "off"
@@ -109,6 +112,7 @@ type Object struct {
 	BudgetChanges    []time.Time
 	CreatedTime      *time.Time
 	UpdatedTime      *time.Time
+	FirstDeliveredAt *time.Time
 	SyncedAt         time.Time
 }
 
@@ -130,6 +134,9 @@ func (o *Object) Delivery(now time.Time) Delivery {
 		}
 		if o.StartTime != nil && now.Before(*o.StartTime) {
 			return DeliveryScheduled
+		}
+		if o.FirstDeliveredAt == nil {
+			return DeliveryPreparing
 		}
 		return DeliveryActive
 	case EffectivePaused:
@@ -217,4 +224,21 @@ func ValidateDailyBudget(minor int64) error {
 		return fmt.Errorf("%w: %d", ErrInvalidBudget, minor)
 	}
 	return nil
+}
+
+func DeliveredObjects(rows []DailyInsight) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, row := range rows {
+		if row.Impressions <= 0 {
+			continue
+		}
+		for _, id := range []string{row.AdMetaID, row.AdSetMetaID, row.CampaignMetaID} {
+			if id != "" && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
 }

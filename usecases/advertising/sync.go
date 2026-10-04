@@ -74,6 +74,40 @@ func (uc *SyncUseCase) SyncAll(ctx context.Context, insightDays int) error {
 	return nil
 }
 
+func (uc *SyncUseCase) RefreshReviews(ctx context.Context) error {
+	var failures []error
+	for offset := 0; ; offset += syncBatchSize {
+		accounts, err := uc.access.accounts.ListConnected(ctx, syncBatchSize, offset)
+		if err != nil {
+			return err
+		}
+		for _, account := range accounts {
+			if err := uc.refreshReviewing(ctx, account); err != nil {
+				log.Printf("[ads] review refresh of ad account %s failed: %v", account.ID, err)
+				failures = append(failures, err)
+			}
+		}
+		if len(accounts) < syncBatchSize {
+			break
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func (uc *SyncUseCase) refreshReviewing(ctx context.Context, account *ads.AdAccount) error {
+	reviewing, err := uc.objects.List(ctx, ads.ObjectQuery{
+		WorkspaceID: account.WorkspaceID, AdAccountID: account.ID, Level: ads.LevelAd, EffectiveStatuses: ads.ReviewStatuses,
+	})
+	if err != nil || len(reviewing) == 0 {
+		return err
+	}
+	token, err := uc.access.tokenFor(ctx, account, ads.UseRead)
+	if err != nil {
+		return err
+	}
+	return uc.access.failed(ctx, account, uc.SyncStructure(ctx, account, token))
+}
+
 func (uc *SyncUseCase) syncConnected(ctx context.Context, account *ads.AdAccount, insightDays int) error {
 	token, err := uc.access.tokenFor(ctx, account, ads.UseRead)
 	if err != nil {
@@ -144,5 +178,8 @@ func (uc *SyncUseCase) syncInsights(ctx context.Context, account *ads.AdAccount,
 		rows[i].AdAccountID = account.ID
 		rows[i].FetchedAt = now
 	}
-	return uc.insights.ReplaceDays(ctx, account.ID, r, rows)
+	if err := uc.insights.ReplaceDays(ctx, account.ID, r, rows); err != nil {
+		return err
+	}
+	return uc.objects.MarkDelivered(ctx, account.ID, ads.DeliveredObjects(rows), now)
 }
