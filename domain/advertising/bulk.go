@@ -83,6 +83,29 @@ func (c BulkChange) Apply(current string) string {
 	return pattern.ReplaceAllLiteralString(current, c.Replace)
 }
 
+func (c BulkChange) Current(detail ObjectDetail) string {
+	if c.Field == BulkName {
+		if detail.Object == nil {
+			return ""
+		}
+		return detail.Object.Name
+	}
+	if detail.Creative == nil {
+		return ""
+	}
+	switch c.Field {
+	case BulkPrimaryText:
+		return detail.Creative.PrimaryText
+	case BulkHeadline:
+		return detail.Creative.Headline
+	case BulkDescription:
+		return detail.Creative.Description
+	case BulkLink:
+		return detail.Creative.Link
+	}
+	return ""
+}
+
 func (c BulkChange) EditFor(current ObjectDetail) (ObjectEdit, error) {
 	if c.Field == BulkName {
 		name := c.Apply(current.Object.Name)

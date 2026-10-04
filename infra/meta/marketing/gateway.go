@@ -24,6 +24,7 @@ const (
 )
 
 type Config struct {
+	AppID        string
 	AppSecret    string
 	GraphVersion string
 	HTTPClient   *http.Client
@@ -35,6 +36,8 @@ type Gateway struct {
 	wait       func(ctx context.Context, d time.Duration) error
 	mu         sync.Mutex
 	pageTokens map[string]pageToken
+	appID      string
+	appSecret  string
 }
 
 type pageToken struct {
@@ -61,7 +64,7 @@ func newGateway(cfg Config, maxRetries int) (*Gateway, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Gateway{client: client, now: time.Now, wait: sleep, pageTokens: map[string]pageToken{}}, nil
+	return &Gateway{client: client, now: time.Now, wait: sleep, pageTokens: map[string]pageToken{}, appID: cfg.AppID, appSecret: cfg.AppSecret}, nil
 }
 
 func sleep(ctx context.Context, d time.Duration) error {

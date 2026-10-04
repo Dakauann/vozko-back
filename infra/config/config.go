@@ -89,6 +89,7 @@ type Config struct {
 	MetaAdsAppSecret     string
 	MetaAdsRedirectURI   string
 	MetaAdsGraphVersion  string
+	MetaAdsWebhookURL    string
 	FrontendBaseURL      string
 
 	ImageGenerationCostCeilingMicros int
@@ -237,6 +238,7 @@ func LoadConfig() Config {
 		MetaAdsAppSecret:     mustGetEnvTrimmed("META_ADS_APP_SECRET"),
 		MetaAdsRedirectURI:   mustGetEnvTrimmed("META_ADS_REDIRECT_URI"),
 		MetaAdsGraphVersion:  trimEnv("META_ADS_GRAPH_VERSION"),
+		MetaAdsWebhookURL:    trimEnv("META_ADS_WEBHOOK_CALLBACK_URL"),
 
 		ImageGenerationCostCeilingMicros: getIntEnv("IMAGE_GENERATION_COST_CEILING_MICROS", 250_000),
 

@@ -14,6 +14,8 @@ func commentsWorld() (*world, *CommentsUseCase) {
 	w.objects.byID["ad-1"] = &ads.Object{MetaID: "ad-1", WorkspaceID: "ws-1", AdAccountID: "acc-1", Level: ads.LevelAd}
 	w.objects.byID["set-1"] = &ads.Object{MetaID: "set-1", WorkspaceID: "ws-1", AdAccountID: "acc-1", Level: ads.LevelAdSet}
 	w.gateway.posts = ads.AdPosts{FacebookPostID: "page-1_77", InstagramMediaID: "media-9"}
+	grant := w.grants.byID["grant-1"]
+	grant.Scopes = append(grant.Scopes, ads.ScopePagesReadUserContent, ads.ScopeInstagramBasic, ads.ScopeInstagramManageComments)
 	return w, NewCommentsUseCase(w.sync, w.gateway)
 }
 
@@ -83,5 +85,16 @@ func TestAMissingCommentPermissionIsExplainedWithoutAskingToReconnect(t *testing
 	}
 	if w.accounts.byID["acc-1"].Connection != ads.ConnectionConnected {
 		t.Fatal("a missing comment permission asked to reconnect the account")
+	}
+}
+
+func TestAConnectionWithoutTheCommentPermissionAsksToReconnectWithoutCallingMeta(t *testing.T) {
+	w, uc := commentsWorld()
+	w.grants.byID["grant-1"].Scopes = ads.RequiredScopes()
+	if _, err := uc.List(context.Background(), "ws-1", "ad-1", "facebook"); !errors.Is(err, ads.ErrCommentsNeedReconnect) {
+		t.Fatalf("err %v", err)
+	}
+	if len(w.gateway.calls) != 0 {
+		t.Fatalf("calls %v", w.gateway.calls)
 	}
 }

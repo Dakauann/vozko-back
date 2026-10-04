@@ -147,7 +147,7 @@ func (t *listAdRulesTool) Execute(ctx context.Context, cc copilot.Context, args 
 }
 
 type createAdRuleArgs struct {
-	AdAccountID   string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID   string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Name          string   `json:"name" req:"true" desc:"nome da regra"`
 	Level         string   `json:"level" req:"true" enum:"campaign,adset,ad" desc:"em que nível a regra age: campaign, adset ou ad"`
 	ObjectIDs     []string `json:"object_ids" desc:"meta_id de ads_results, do mesmo level; vazio vale para todos os itens ativos desse nível na conta"`
@@ -238,7 +238,7 @@ func (t *createAdRuleTool) Execute(ctx context.Context, cc copilot.Context, args
 }
 
 type adRuleArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	RuleID      string `json:"rule_id" req:"true" desc:"rule_id exato de list_ad_rules"`
 }
 
@@ -266,7 +266,7 @@ func (g adGrowth) existingRule(ctx context.Context, cc copilot.Context, accountI
 }
 
 type setAdRuleStatusArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	RuleID      string `json:"rule_id" req:"true" desc:"rule_id exato de list_ad_rules"`
 	Status      string `json:"status" req:"true" enum:"ENABLED,DISABLED" desc:"ENABLED liga a regra, DISABLED desliga"`
 }

@@ -2,6 +2,7 @@ package advertising
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 )
@@ -11,7 +12,28 @@ var (
 	ErrUnknownCommentChannel = errors.New("comments are read from facebook or instagram")
 	ErrAdHasNoPost           = errors.New("meta has not created the ad's post on this platform yet")
 	ErrCommentsNotAllowed    = errors.New("this meta connection is not allowed to read the comments")
+	ErrCommentsNeedReconnect = errors.New("the ads connection lacks the permission to read comments; reconnect it")
 )
+
+const (
+	ScopePagesReadUserContent    = "pages_read_user_content"
+	ScopeInstagramBasic          = "instagram_basic"
+	ScopeInstagramManageComments = "instagram_manage_comments"
+)
+
+var commentScopes = map[string][]string{
+	PlatformFacebook:  {ScopePagesReadEngage, ScopePagesReadUserContent},
+	PlatformInstagram: {ScopeInstagramBasic, ScopeInstagramManageComments},
+}
+
+func (g *Grant) CanReadComments(platform string) error {
+	for _, scope := range commentScopes[platform] {
+		if g == nil || !slices.Contains(g.Scopes, scope) {
+			return ErrCommentsNeedReconnect
+		}
+	}
+	return nil
+}
 
 const MaxAdComments = 100
 

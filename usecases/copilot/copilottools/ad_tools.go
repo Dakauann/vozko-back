@@ -72,21 +72,27 @@ func adsMeta(action workspace.Action, mutating bool) copilot.Meta {
 	return copilot.Meta{Mutating: mutating, Resource: workspace.ResourceAds, Action: action}
 }
 
-func (d AdsDeps) account(ctx context.Context, cc copilot.Context, id string) (*advertising.AdAccount, error) {
-	accountID, err := knownID(id, "ad_account_id", "list_ad_accounts")
-	if err != nil {
-		return nil, err
-	}
+func (d AdsDeps) account(ctx context.Context, cc copilot.Context, ref string) (*advertising.AdAccount, error) {
 	accounts, err := d.Accounts.List(ctx, cc.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
-	for _, a := range accounts {
-		if a.ID == accountID {
-			return a, nil
-		}
+	account, err := advertising.ResolveAccount(accounts, ref)
+	if errors.Is(err, advertising.ErrAccountNotFound) || errors.Is(err, advertising.ErrAmbiguousAccount) {
+		return nil, fmt.Errorf("%w: ad_account_id %q não identifica uma conta; contas conectadas: %s", errInvalidArgs, ref, accountChoices(accounts))
 	}
-	return nil, fmt.Errorf("%w: ad_account_id desconhecido; use o id exato de list_ad_accounts", errInvalidArgs)
+	return account, err
+}
+
+func accountChoices(accounts []*advertising.AdAccount) string {
+	if len(accounts) == 0 {
+		return "nenhuma; conecte uma conta de anúncios primeiro"
+	}
+	choices := make([]string, 0, len(accounts))
+	for _, a := range accounts {
+		choices = append(choices, fmt.Sprintf("%s (ad_account_id %s, %s)", a.Name, a.ID, a.Currency))
+	}
+	return strings.Join(choices, "; ")
 }
 
 func metaID(raw string) (string, error) {
@@ -247,7 +253,7 @@ func (t *listAdAccountsTool) Execute(ctx context.Context, cc copilot.Context, _ 
 }
 
 type adsResultsArgs struct {
-	AdAccountID string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Level       string   `json:"level" enum:"campaign,adset,ad" desc:"campaign (padrão), adset ou ad"`
 	Since       string   `json:"since" desc:"primeiro dia YYYY-MM-DD; sem período, os últimos 30 dias"`
 	Until       string   `json:"until" desc:"último dia YYYY-MM-DD"`
@@ -314,6 +320,9 @@ func reportData(r *adsuc.Report) map[string]interface{} {
 		if len(o.Issues) > 0 {
 			item["issues"] = o.Issues
 		}
+		if o.Level == advertising.LevelAd && o.Creative != nil {
+			item["headline"], item["primary_text"] = o.Creative.Title, o.Creative.Body
+		}
 		items = append(items, item)
 	}
 	return map[string]interface{}{
@@ -326,7 +335,7 @@ func reportData(r *adsuc.Report) map[string]interface{} {
 }
 
 type adAccountArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 }
 
 type listAdPagesTool struct{ deps AdsDeps }
@@ -372,7 +381,7 @@ func (t *listAdPagesTool) Execute(ctx context.Context, cc copilot.Context, args 
 }
 
 type searchAdLocationsArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Query       string `json:"query" req:"true" desc:"nome do país, estado ou cidade"`
 }
 
@@ -403,13 +412,13 @@ func (t *searchAdLocationsTool) Execute(ctx context.Context, cc copilot.Context,
 	}
 	out := make([]map[string]string, 0, len(found))
 	for _, l := range found {
-		out = append(out, map[string]string{"location": string(l.Kind) + ":" + l.Key, "name": l.Name, "region": l.Region, "country": l.Country})
+		out = append(out, map[string]string{"location": string(l.Kind) + ":" + l.Key + locationNameSeparator + l.Name, "name": l.Name, "region": l.Region, "country": l.Country})
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"locations": out}}
 }
 
 type adDraftArgs struct {
-	AdAccountID             string       `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID             string       `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	CampaignName            string       `json:"campaign_name" req:"true" desc:"nome da campanha"`
 	Objective               string       `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES,OUTCOME_APP_PROMOTION" desc:"objetivo da campanha: OUTCOME_AWARENESS (reconhecimento), OUTCOME_TRAFFIC (tráfego para site ou conversa), OUTCOME_ENGAGEMENT (conversas e engajamento com uma publicação), OUTCOME_LEADS (cadastros), OUTCOME_SALES (vendas, inclusive pelo catálogo), OUTCOME_APP_PROMOTION (instalações de app)"`
 	Destination             string       `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE,APP,CATALOG,ON_POST" desc:"para onde a pessoa vai: WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, WEBSITE (site em link), ON_AD (formulário instantâneo, só com OUTCOME_LEADS), NONE (só alcance, com OUTCOME_AWARENESS), APP (loja do app, com OUTCOME_APP_PROMOTION), CATALOG (produtos do catálogo, com OUTCOME_SALES) ou ON_POST (engajamento com uma publicação, com OUTCOME_ENGAGEMENT e format EXISTING_POST)"`
@@ -491,14 +500,17 @@ func parseTargetRefs(raw []string) ([]advertising.TargetRef, error) {
 	return out, nil
 }
 
+const locationNameSeparator = "|"
+
 func parseLocations(raw []string) ([]advertising.GeoLocation, error) {
 	out := make([]advertising.GeoLocation, 0, len(raw))
 	for _, item := range raw {
-		kind, key, ok := strings.Cut(strings.TrimSpace(item), ":")
+		ref, name, _ := strings.Cut(strings.TrimSpace(item), locationNameSeparator)
+		kind, key, ok := strings.Cut(ref, ":")
 		if !ok || key == "" {
 			return nil, fmt.Errorf("%w: location %q inválida; use o campo location de search_ad_locations", errInvalidArgs, item)
 		}
-		out = append(out, advertising.GeoLocation{Kind: advertising.LocationKind(kind), Key: key})
+		out = append(out, advertising.GeoLocation{Kind: advertising.LocationKind(kind), Key: key, Name: strings.TrimSpace(name)})
 	}
 	return out, nil
 }

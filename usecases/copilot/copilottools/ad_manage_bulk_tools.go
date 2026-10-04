@@ -254,7 +254,7 @@ func (t *bulkEditTextTool) Execute(ctx context.Context, cc copilot.Context, args
 }
 
 type bulkChangeArgs struct {
-	AdAccountID string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts, a conta de todos os itens"`
+	AdAccountID string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta), a conta de todos os itens"`
 	MetaIDs     []string `json:"meta_ids" req:"true" desc:"até 50 meta_id exatos de ads_results, de campanhas ou conjuntos dessa conta"`
 	EndDate     string   `json:"end_date" desc:"novo último dia de veiculação YYYY-MM-DD no fuso da conta"`
 	Budget      float64  `json:"budget" desc:"novo valor de orçamento de cada item na moeda da conta, no tipo atual de cada um (diário ou total); 50 significa 50 reais em uma conta BRL"`

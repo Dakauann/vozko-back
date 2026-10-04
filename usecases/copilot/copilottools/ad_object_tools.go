@@ -198,7 +198,7 @@ func (t *adLifecycleTool) Execute(ctx context.Context, cc copilot.Context, args 
 }
 
 type adsBreakdownArgs struct {
-	AdAccountID string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Level       string   `json:"level" enum:"campaign,adset,ad" desc:"campaign (padrão), adset ou ad"`
 	Breakdowns  []string `json:"breakdowns" desc:"age, gender, country, region, publisher_platform, platform_position, device_platform ou hourly_stats_aggregated_by_advertiser_time_zone; só combinações aceitas pela Meta, como age+gender ou publisher_platform+platform_position"`
 	ObjectIDs   []string `json:"object_ids" desc:"meta_id de ads_results para limitar a itens específicos"`

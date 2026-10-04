@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -794,6 +794,7 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
+    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -807,9 +808,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
-    - CONVERSATIONS
     type: string
     x-enum-varnames:
+    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -823,7 +824,6 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
-    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -1300,6 +1300,21 @@ definitions:
         type: integer
       timezone:
         type: string
+    type: object
+  advertisinghttp.AdCommentResponse:
+    properties:
+      authorName:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      likeCount:
+        type: integer
+      message:
+        type: string
+      replyCount:
+        type: integer
     type: object
   advertisinghttp.AppResponse:
     properties:
@@ -11543,6 +11558,10 @@ paths:
         in: query
         name: adSetIds
         type: string
+      - description: IDs de anúncio separados por vírgula
+        in: query
+        name: adIds
+        type: string
       produces:
       - application/json
       responses:
@@ -12317,6 +12336,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Alterar orçamento
+      tags:
+      - Anúncios
+  /ads/objects/{metaId}/comments:
+    get:
+      description: Os 100 comentários mais recentes da publicação que a Meta criou
+        para o anúncio, no Facebook (com o token da Página) ou no Instagram. Só anúncios
+        têm comentários; um anúncio ainda sem publicação na plataforma pedida volta
+        404 ad_post_missing.
+      parameters:
+      - description: ID do anúncio na Meta
+        in: path
+        name: metaId
+        required: true
+        type: string
+      - description: facebook (padrão) ou instagram
+        in: query
+        name: platform
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/advertisinghttp.AdCommentResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Comentários de um anúncio
       tags:
       - Anúncios
   /ads/objects/{metaId}/copies:

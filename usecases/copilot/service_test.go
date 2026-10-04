@@ -694,3 +694,13 @@ func TestService_AnApprovedActionKeepsWhatItReturnedInTheHistory(t *testing.T) {
 		t.Fatalf("the approved action's result must survive a reload, got %+v", h)
 	}
 }
+
+func TestAToolStepTellsTheScreenWhatAnApprovedChangeTouched(t *testing.T) {
+	changed := toolStep{Name: "update_ad_budget", Summary: "ok", Ok: true, Changed: "ads"}.payload()
+	if changed["changed"] != "ads" {
+		t.Fatalf("payload %v", changed)
+	}
+	if _, found := (toolStep{Name: "ads_results", Summary: "ok", Ok: true}).payload()["changed"]; found {
+		t.Fatal("a read reported a change")
+	}
+}

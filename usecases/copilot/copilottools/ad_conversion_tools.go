@@ -65,7 +65,7 @@ func (t *getAdConversionSettingsTool) Execute(ctx context.Context, cc copilot.Co
 }
 
 type saveAdConversionSettingsArgs struct {
-	AdAccountID   string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts que recebe as conversões"`
+	AdAccountID   string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta) que recebe as conversões"`
 	Enabled       *bool  `json:"enabled" desc:"true liga o envio, false desliga; omita para manter"`
 	SendLeads     *bool  `json:"send_leads" desc:"oportunidade criada no CRM envia LeadSubmitted; omita para manter"`
 	SendPurchases *bool  `json:"send_purchases" desc:"oportunidade ganha no CRM envia Purchase com o valor; omita para manter"`
@@ -262,7 +262,7 @@ func (t *listAdPixelsTool) Execute(ctx context.Context, cc copilot.Context, args
 }
 
 type createAdPixelArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Name        string `json:"name" req:"true" desc:"nome do pixel, até 100 caracteres"`
 }
 

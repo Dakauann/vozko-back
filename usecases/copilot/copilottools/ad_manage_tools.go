@@ -408,7 +408,7 @@ func bidText(currency string, b advertising.Bid) string {
 }
 
 type spendCapArgs struct {
-	AdAccountID string  `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string  `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Amount      float64 `json:"amount" desc:"novo limite de gasto total da conta na moeda da conta; precisa ser maior que o valor que a conta já gastou"`
 	Remove      bool    `json:"remove" desc:"true tira o limite de gasto da conta (sem amount)"`
 }

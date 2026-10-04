@@ -106,7 +106,7 @@ func (t *adReadinessTool) Execute(ctx context.Context, cc copilot.Context, args 
 }
 
 type searchAdInterestsArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Query       string `json:"query" req:"true" desc:"assunto em poucas palavras, ex.: marketing digital, academia, CRM"`
 }
 
@@ -144,7 +144,7 @@ func (t *searchAdInterestsTool) Execute(ctx context.Context, cc copilot.Context,
 }
 
 type estimateAdAudienceArgs struct {
-	AdAccountID string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Objective   string   `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES" desc:"o mesmo objetivo do anúncio"`
 	Destination string   `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE" desc:"o mesmo destino do anúncio"`
 	Locations   []string `json:"locations" req:"true" desc:"location de search_ad_locations"`
@@ -199,7 +199,7 @@ func (t *estimateAdAudienceTool) Execute(ctx context.Context, cc copilot.Context
 }
 
 type listLeadFormsArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	PageID      string `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages"`
 }
 
@@ -240,7 +240,7 @@ func (t *listLeadFormsTool) Execute(ctx context.Context, cc copilot.Context, arg
 }
 
 type createLeadFormArgs struct {
-	AdAccountID        string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID        string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	PageID             string   `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages, com lead_terms_accepted true"`
 	Name               string   `json:"name" req:"true" desc:"nome interno do formulário"`
 	Questions          []string `json:"questions" req:"true" desc:"campos pedidos à pessoa, na ordem: FULL_NAME, EMAIL, PHONE, CITY, STATE, COMPANY_NAME, JOB_TITLE"`
@@ -541,9 +541,10 @@ func (t *editAdTextTool) Definition() tools.Definition {
 }
 
 type adTextPlan struct {
-	id     string
-	change advertising.BulkChange
-	object *advertising.Object
+	id      string
+	change  advertising.BulkChange
+	object  *advertising.Object
+	current string
 }
 
 func (t *editAdTextTool) plan(ctx context.Context, cc copilot.Context, args map[string]interface{}) (*adTextPlan, error) {
@@ -560,7 +561,18 @@ func (t *editAdTextTool) plan(ctx context.Context, cc copilot.Context, args map[
 	if err != nil {
 		return nil, err
 	}
-	return &adTextPlan{id: id, change: change, object: object}, nil
+	detail, err := t.deps.Editor.Detail(ctx, cc.WorkspaceID, id)
+	if err != nil {
+		return nil, err
+	}
+	return &adTextPlan{id: id, change: change, object: object, current: change.Current(*detail)}, nil
+}
+
+func quotedOrEmpty(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "vazio"
+	}
+	return "\"" + value + "\""
 }
 
 func single(results []adsuc.BulkResult, err error) (*advertising.Object, error) {
@@ -587,6 +599,7 @@ func (t *editAdTextTool) Describe(ctx context.Context, cc copilot.Context, args 
 		{Key: "item", Value: p.object.Name},
 		{Key: "level", Value: levelNames[p.object.Level]},
 		{Key: "field", Value: bulkFieldNames[p.change.Field]},
+		{Key: "from", Value: quotedOrEmpty(p.current)},
 		{Key: "change", Value: bulkChangeText(p.change)},
 	}
 }

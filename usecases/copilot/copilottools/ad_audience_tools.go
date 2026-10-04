@@ -167,7 +167,7 @@ func (t *listAdAudiencesTool) Execute(ctx context.Context, cc copilot.Context, a
 }
 
 type customerListArgs struct {
-	AdAccountID  string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID  string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Name         string   `json:"name" req:"true" desc:"nome do público na Meta"`
 	Description  string   `json:"description" desc:"descrição curta opcional, até 100 caracteres"`
 	StageIDs     []string `json:"stage_ids" id:"true" desc:"stage_id de list_pipelines: só contatos nessas etapas"`
@@ -279,7 +279,7 @@ func argAccount(args map[string]interface{}) string {
 }
 
 type lookalikeArgs struct {
-	AdAccountID      string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID      string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Name             string `json:"name" req:"true" desc:"nome do público semelhante"`
 	SourceAudienceID string `json:"source_audience_id" req:"true" desc:"audience_id exato de list_ad_audiences, o público de origem (de preferência com 1.000 pessoas ou mais)"`
 	Country          string `json:"country" desc:"país de duas letras, ex.: BR (padrão)"`
@@ -354,7 +354,7 @@ func (t *createLookalikeAudienceTool) Execute(ctx context.Context, cc copilot.Co
 }
 
 type savedAudienceArgs struct {
-	AdAccountID             string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID             string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Name                    string   `json:"name" req:"true" desc:"nome do público salvo"`
 	Locations               []string `json:"locations" req:"true" desc:"location de search_ad_locations, ex.: country:BR"`
 	AgeMin                  int      `json:"age_min" desc:"idade mínima, 13 a 65 (padrão 18)"`
@@ -463,7 +463,7 @@ func (t *createSavedAudienceTool) Execute(ctx context.Context, cc copilot.Contex
 }
 
 type deleteAdAudienceArgs struct {
-	AdAccountID     string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID     string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	AudienceID      string `json:"audience_id" desc:"audience_id de list_ad_audiences, para apagar um público da Meta"`
 	SavedAudienceID string `json:"saved_audience_id" id:"true" desc:"saved_audience_id de list_ad_audiences, para apagar um público salvo do Vozko"`
 }

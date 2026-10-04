@@ -48,3 +48,19 @@ func TestOnlyAdsHaveComments(t *testing.T) {
 		t.Fatalf("ad set: %v", err)
 	}
 }
+
+func TestReadingCommentsNeedsTheCommentPermissionsOfEachPlatform(t *testing.T) {
+	adsOnly := &Grant{Scopes: RequiredScopes()}
+	if err := adsOnly.CanReadComments(PlatformFacebook); !errors.Is(err, ErrCommentsNeedReconnect) {
+		t.Fatalf("facebook without pages_read_user_content: %v", err)
+	}
+	withComments := &Grant{Scopes: append(RequiredScopes(), ScopePagesReadUserContent, ScopeInstagramBasic, ScopeInstagramManageComments)}
+	for _, platform := range []string{PlatformFacebook, PlatformInstagram} {
+		if err := withComments.CanReadComments(platform); err != nil {
+			t.Fatalf("%s: %v", platform, err)
+		}
+	}
+	if err := (*Grant)(nil).CanReadComments(PlatformInstagram); !errors.Is(err, ErrCommentsNeedReconnect) {
+		t.Fatalf("no grant: %v", err)
+	}
+}

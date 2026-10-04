@@ -26,6 +26,7 @@ var domainErrors = []errorMapping{
 	{advertising.ErrDraftNotFound, http.StatusNotFound, "not_found", "Rascunho não encontrado"},
 	{advertising.ErrPostNotFound, http.StatusNotFound, "not_found", "Publicação não encontrada nesta página"},
 	{advertising.ErrAdHasNoPost, http.StatusNotFound, "ad_post_missing", "A Meta ainda não criou a publicação deste anúncio nesta plataforma"},
+	{advertising.ErrCommentsNeedReconnect, http.StatusConflict, "comments_need_reconnect", "Reconecte a conta de anúncios aceitando a leitura de comentários para ver os comentários dos anúncios"},
 	{advertising.ErrCommentsNotAllowed, http.StatusConflict, "comments_not_allowed", "Esta conexão com a Meta não tem permissão para ler estes comentários"},
 	{advertising.ErrCommentsOnlyForAds, http.StatusUnprocessableEntity, "not_for_level", "Só anúncios têm comentários"},
 	{advertising.ErrUnknownCommentChannel, http.StatusBadRequest, "invalid_platform", "Os comentários vêm do Facebook ou do Instagram"},

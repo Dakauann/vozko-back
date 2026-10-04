@@ -425,3 +425,16 @@ func TestSpendCapFollowsTheDomainRules(t *testing.T) {
 		t.Fatal("nothing must reach Meta before approval")
 	}
 }
+
+func TestTheTextCardShowsWhatTheAdSaysTodayNextToTheChange(t *testing.T) {
+	f := newManageFixture()
+	tool := NewEditAdTextTool(AdsDeps{Accounts: manageAccounts{account: f.account}, Editor: f.editor, Bulk: f.bulk})
+	args := map[string]interface{}{"meta_id": "120301", "field": "primaryText", "value": "Fale com a gente agora"}
+	if err := tool.(copilot.Validator).Validate(context.Background(), adContext, args); err != nil {
+		t.Fatal(err)
+	}
+	fields := fieldMap(tool.(copilot.Describer).Describe(context.Background(), adContext, args))
+	if fields["from"] != `"Fale com a gente hoje"` || fields["change"] != `passa a ser "Fale com a gente agora"` {
+		t.Fatalf("fields %+v", fields)
+	}
+}

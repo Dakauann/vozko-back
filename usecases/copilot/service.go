@@ -206,6 +206,9 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	res := driver.ExecuteApproved(ctx, pa, approval, emit)
 	executed := stepFromResult(pa.ToolName, res)
+	if tool, found := s.registry.Get(pa.ToolName); found && executed.Ok && tool.Meta().Mutating {
+		executed.Changed = string(tool.Meta().Resource)
+	}
 	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, nil, false, executed)
 }
 
@@ -360,6 +363,7 @@ type toolStep struct {
 	Card    *copilot.ActionCard `json:"card,omitempty"`
 	Image   *copilot.Image      `json:"image,omitempty"`
 	Result  string              `json:"result,omitempty"`
+	Changed string              `json:"changed,omitempty"`
 }
 
 func stepFromResult(name string, res copilot.Result) toolStep {
@@ -380,7 +384,11 @@ func emitStep(emit agentloop.Emit, ts toolStep) {
 }
 
 func (t toolStep) payload() map[string]interface{} {
-	return map[string]interface{}{"name": t.Name, "summary": t.Summary, "ok": t.Ok}
+	payload := map[string]interface{}{"name": t.Name, "summary": t.Summary, "ok": t.Ok}
+	if t.Changed != "" {
+		payload["changed"] = t.Changed
+	}
+	return payload
 }
 
 type turnRecorder struct {

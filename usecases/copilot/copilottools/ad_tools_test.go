@@ -3,6 +3,7 @@ package copilottools
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ var adTestClock = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 type stubAdAccounts struct{}
 
 func (stubAdAccounts) List(context.Context, string) ([]*advertising.AdAccount, error) {
-	return []*advertising.AdAccount{{ID: adAccountUUID, Name: "Loja", Currency: "BRL", Timezone: "America/Sao_Paulo"}}, nil
+	return []*advertising.AdAccount{{ID: adAccountUUID, MetaAccountID: "1762972444913096", Name: "Loja", Currency: "BRL", Timezone: "America/Sao_Paulo"}}, nil
 }
 
 type stubAdManager struct {
@@ -221,5 +222,39 @@ func TestPreviewCarriesCarouselCardsAndFlexibleMedias(t *testing.T) {
 	})
 	if len(data.Cards) != 2 || data.Cards[1].URL != "https://cdn/2.mp4" || data.Cards[1].Kind != advertising.MediaVideo || data.CallToAction != advertising.CTALearnMore || data.MediaURL != "" {
 		t.Fatalf("preview %+v", data)
+	}
+}
+
+func TestToolsFindTheAccountByMetasIdOrNameAndListTheChoicesOtherwise(t *testing.T) {
+	deps, _, _ := adDeps()
+	for _, ref := range []string{adAccountUUID, "act_1762972444913096", "loja"} {
+		account, err := deps.account(context.Background(), adContext, ref)
+		if err != nil || account.ID != adAccountUUID {
+			t.Fatalf("%q: %+v %v", ref, account, err)
+		}
+	}
+	_, err := deps.account(context.Background(), adContext, "Vozko CRM BRL")
+	if !errors.Is(err, errInvalidArgs) || !strings.Contains(err.Error(), "Loja (ad_account_id "+adAccountUUID+", BRL)") {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestLocationTokensCarryTheirNameForTheApprovalCard(t *testing.T) {
+	got, err := parseLocations([]string{"region:455|Rio Grande do Norte", "country:BR", "zip:BR:59000|Natal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []advertising.GeoLocation{
+		{Kind: advertising.LocationRegion, Key: "455", Name: "Rio Grande do Norte"},
+		{Kind: advertising.LocationCountry, Key: "BR"},
+		{Kind: "zip", Key: "BR:59000", Name: "Natal"},
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%d: %+v", i, got[i])
+		}
+	}
+	if locationsText(got[:1]) != "Rio Grande do Norte" {
+		t.Fatalf("card %q", locationsText(got[:1]))
 	}
 }

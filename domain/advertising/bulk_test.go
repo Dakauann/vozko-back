@@ -100,3 +100,19 @@ func TestBulkCreativeTextChangesEveryVariantWithoutTouchingTheOriginal(t *testin
 		t.Fatal("the current creative must not change")
 	}
 }
+
+func TestBulkChangeReadsTheCurrentValueOfItsField(t *testing.T) {
+	detail := ObjectDetail{
+		Object:   &Object{Name: "Anúncio v1", Level: LevelAd},
+		Creative: &CreativeDraft{PrimaryText: "Texto", Headline: "Título", Description: "Descrição", Link: "https://vozkoia.com"},
+	}
+	cases := map[BulkField]string{BulkName: "Anúncio v1", BulkPrimaryText: "Texto", BulkHeadline: "Título", BulkDescription: "Descrição", BulkLink: "https://vozkoia.com"}
+	for field, want := range cases {
+		if got := (BulkChange{Field: field}).Current(detail); got != want {
+			t.Fatalf("%s: %q", field, got)
+		}
+	}
+	if got := (BulkChange{Field: BulkHeadline}).Current(ObjectDetail{Object: &Object{Level: LevelAdSet}}); got != "" {
+		t.Fatalf("an ad set has no headline: %q", got)
+	}
+}

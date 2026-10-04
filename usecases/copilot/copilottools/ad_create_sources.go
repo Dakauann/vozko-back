@@ -19,7 +19,7 @@ type AdCreativeSources interface {
 }
 
 type listPagePostsArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	PageID      string `json:"page_id" req:"true" desc:"page_id exato de list_ad_pages"`
 	Platform    string `json:"platform" req:"true" enum:"facebook,instagram" desc:"facebook para publicações da página, instagram para as do Instagram ligado a ela"`
 }

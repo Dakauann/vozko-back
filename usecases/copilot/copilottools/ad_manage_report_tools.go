@@ -300,7 +300,7 @@ func reportResult(cc copilot.Context, account *advertising.AdAccount, in adsuc.R
 }
 
 type runAdReportArgs struct {
-	AdAccountID string `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	adReportShape
 }
 
@@ -334,7 +334,7 @@ func (t *runAdReportTool) Execute(ctx context.Context, cc copilot.Context, args 
 }
 
 type listAdReportsArgs struct {
-	AdAccountID string `json:"ad_account_id" id:"true" desc:"ad_account_id de list_ad_accounts para ver só os relatórios dessa conta"`
+	AdAccountID string `json:"ad_account_id" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta) para ver só os relatórios dessa conta"`
 }
 
 type listAdReportsTool struct{ deps adManage }
@@ -353,13 +353,21 @@ func (t *listAdReportsTool) Execute(ctx context.Context, cc copilot.Context, arg
 	if err := decodeArgs(args, &a); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
+	accountID := ""
+	if strings.TrimSpace(a.AdAccountID) != "" {
+		account, err := t.deps.ads.account(ctx, cc, a.AdAccountID)
+		if err != nil {
+			return adsFailure("list_ad_reports", err)
+		}
+		accountID = account.ID
+	}
 	reports, err := t.deps.Reports.List(ctx, cc.WorkspaceID)
 	if err != nil {
 		return adsFailure("list_ad_reports", err)
 	}
 	out := make([]map[string]interface{}, 0, len(reports))
 	for _, r := range reports {
-		if a.AdAccountID != "" && r.AdAccountID != a.AdAccountID {
+		if accountID != "" && r.AdAccountID != accountID {
 			continue
 		}
 		def := r.Definition
@@ -416,7 +424,7 @@ func (t *runSavedAdReportTool) Execute(ctx context.Context, cc copilot.Context, 
 
 type exportAdReportArgs struct {
 	ReportID    string `json:"report_id" id:"true" desc:"report_id de list_ad_reports para exportar um relatório salvo; vazio monta o relatório com os campos abaixo"`
-	AdAccountID string `json:"ad_account_id" id:"true" desc:"ad_account_id de list_ad_accounts (obrigatório sem report_id)"`
+	AdAccountID string `json:"ad_account_id" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta) (obrigatório sem report_id)"`
 	Name        string `json:"name" desc:"nome do arquivo em Exportações; vazio usa o nome do relatório salvo ou Relatório de anúncios"`
 	adReportShape
 }

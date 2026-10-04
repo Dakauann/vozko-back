@@ -63,7 +63,7 @@ func (t *listAdTestsTool) Execute(ctx context.Context, cc copilot.Context, args 
 }
 
 type createAdTestArgs struct {
-	AdAccountID string   `json:"ad_account_id" req:"true" id:"true" desc:"ad_account_id de list_ad_accounts"`
+	AdAccountID string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	Name        string   `json:"name" req:"true" desc:"nome do teste"`
 	Level       string   `json:"level" req:"true" enum:"campaign,adset" desc:"comparar campanhas (campaign) ou conjuntos (adset)"`
 	ObjectIDs   []string `json:"object_ids" req:"true" desc:"de 2 a 5 meta_id de ads_results, do mesmo level; cada um vira uma versão do teste, com o público dividido igualmente"`

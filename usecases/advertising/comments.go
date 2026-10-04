@@ -36,6 +36,13 @@ func (uc *CommentsUseCase) List(ctx context.Context, workspaceID, metaID, platfo
 	if err := t.object.CommentsAllowed(); err != nil {
 		return nil, err
 	}
+	grant, err := uc.access.grants.FindByID(ctx, t.account.GrantID)
+	if err != nil {
+		return nil, err
+	}
+	if err := grant.CanReadComments(channel); err != nil {
+		return nil, err
+	}
 	posts, err := uc.gateway.GetAdPosts(ctx, t.token, metaID)
 	if err != nil {
 		return nil, uc.access.failed(ctx, t.account, err)

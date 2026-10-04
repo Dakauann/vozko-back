@@ -1,6 +1,7 @@
 package container
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -20,31 +21,35 @@ import (
 const (
 	adCreativeDownloadTimeout = 30 * time.Second
 	adCreativeMaxBytes        = 30 << 20
+	adsWebhookAttempts        = 20
+	adsWebhookTimeout         = 30 * time.Second
+	adsWebhookRetryDelay      = 30 * time.Second
 )
 
 type adsBundle struct {
-	Sync           *adsuc.SyncUseCase
-	Publish        *adsuc.PublishUseCase
-	Drafts         *adsuc.DraftsUseCase
-	Readiness      *adsuc.ReadinessUseCase
-	Report         *adsuc.ReportUseCase
-	Manage         *adsuc.ManageUseCase
-	Accounts       *adsuc.AccountsUseCase
-	Assets         *adsuc.AssetsUseCase
-	Live           *adsuc.LiveUseCase
-	Audience       *adsuc.AudienceUseCase
-	Forms          *adsuc.FormsUseCase
-	Rules          *adsuc.RulesUseCase
-	SplitTests     *adsuc.SplitTestUseCase
-	Conversions    *adsuc.ConversionsUseCase
-	Bulk           *adsuc.BulkUseCase
-	SavedReports   *adsuc.SavedReportsUseCase
-	Runs           *adsuc.ReportRunsUseCase
-	Webhooks       *adsuc.WebhookConsumer
-	GrantHealth    *adsuc.GrantHealthUseCase
-	PublishWorker  interface{ Start() error }
-	Handler        *advertisinghttp.Handler
-	WebhookHandler *metawebhook.Handler
+	Sync                *adsuc.SyncUseCase
+	Publish             *adsuc.PublishUseCase
+	Drafts              *adsuc.DraftsUseCase
+	Readiness           *adsuc.ReadinessUseCase
+	Report              *adsuc.ReportUseCase
+	Manage              *adsuc.ManageUseCase
+	Accounts            *adsuc.AccountsUseCase
+	Assets              *adsuc.AssetsUseCase
+	Live                *adsuc.LiveUseCase
+	Audience            *adsuc.AudienceUseCase
+	Forms               *adsuc.FormsUseCase
+	Rules               *adsuc.RulesUseCase
+	SplitTests          *adsuc.SplitTestUseCase
+	Conversions         *adsuc.ConversionsUseCase
+	Bulk                *adsuc.BulkUseCase
+	SavedReports        *adsuc.SavedReportsUseCase
+	Runs                *adsuc.ReportRunsUseCase
+	Webhooks            *adsuc.WebhookConsumer
+	GrantHealth         *adsuc.GrantHealthUseCase
+	PublishWorker       interface{ Start() error }
+	WebhookSubscription *adsuc.WebhookSubscriptionUseCase
+	Handler             *advertisinghttp.Handler
+	WebhookHandler      *metawebhook.Handler
 }
 
 func (c *Container) initAds() {
@@ -54,6 +59,24 @@ func (c *Container) initAds() {
 	if err := c.ads.PublishWorker.Start(); err != nil {
 		log.Fatalf("[ads] failed to start the publish worker: %v", err)
 	}
+	if c.ads.WebhookSubscription != nil {
+		go keepAdsWebhookSubscribed(c.ads.WebhookSubscription)
+	}
+}
+
+func keepAdsWebhookSubscribed(subscription *adsuc.WebhookSubscriptionUseCase) {
+	for attempt := 1; attempt <= adsWebhookAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), adsWebhookTimeout)
+		changed, err := subscription.Ensure(ctx)
+		cancel()
+		if err == nil {
+			log.Printf("[ads] ad account webhook subscription checked (changed: %v)", changed)
+			return
+		}
+		log.Printf("[ads] ad account webhook subscription attempt %d/%d failed: %v", attempt, adsWebhookAttempts, err)
+		time.Sleep(adsWebhookRetryDelay)
+	}
+	log.Printf("[ads] ad account webhook subscription gave up; ad status changes rely on the periodic sync until the next restart")
 }
 
 func (c *Container) adsManager() *adsBundle {
@@ -71,7 +94,7 @@ func (c *Container) adsManager() *adsBundle {
 	if err != nil {
 		log.Fatalf("[ads] oauth: %v", err)
 	}
-	gateway, err := marketing.NewGateway(marketing.Config{AppSecret: c.cfg.MetaAdsAppSecret, GraphVersion: c.cfg.MetaAdsGraphVersion})
+	gateway, err := marketing.NewGateway(marketing.Config{AppID: c.cfg.MetaAdsAppID, AppSecret: c.cfg.MetaAdsAppSecret, GraphVersion: c.cfg.MetaAdsGraphVersion})
 	if err != nil {
 		log.Fatalf("[ads] marketing gateway: %v", err)
 	}
@@ -158,6 +181,9 @@ func (c *Container) adsManager() *adsBundle {
 		FrontendBaseURL: c.cfg.FrontendBaseURL,
 	})
 	bundle.GrantHealth = adsuc.NewGrantHealthUseCase(grants, accounts, oauth)
+	if c.cfg.MetaAdsWebhookURL != "" {
+		bundle.WebhookSubscription = adsuc.NewWebhookSubscriptionUseCase(gateway, c.cfg.MetaAdsWebhookURL, c.cfg.FacebookWebhookVerifyToken)
+	}
 	bundle.PublishWorker = adsuc.NewPublishConsumer(c.services.adsPublishSub, c.services.adsPublishPub, c.redisProvider.SharedState(), bundle.Publish)
 	c.ads = bundle
 	return bundle
