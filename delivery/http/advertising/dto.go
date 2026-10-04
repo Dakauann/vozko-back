@@ -7,23 +7,36 @@ import (
 )
 
 type AccountResponse struct {
-	ID             string     `json:"id"`
-	MetaAccountID  string     `json:"metaAccountId"`
-	Name           string     `json:"name"`
-	BusinessName   string     `json:"businessName,omitempty"`
-	Currency       string     `json:"currency"`
-	Timezone       string     `json:"timezone"`
-	MetaStatus     string     `json:"metaStatus"`
-	Connection     string     `json:"connection"`
-	HasFunding     bool       `json:"hasFunding"`
-	CanSpend       bool       `json:"canSpend"`
-	CanManage      bool       `json:"canManage"`
-	CanSetSpendCap bool       `json:"canSetSpendCap"`
-	Role           string     `json:"role" enums:"admin,advertiser,read_only"`
-	SpendBlocker   string     `json:"spendBlocker,omitempty"`
-	SpendCap       *int64     `json:"spendCap"`
-	AmountSpent    int64      `json:"amountSpent"`
-	LastSyncedAt   *time.Time `json:"lastSyncedAt,omitempty"`
+	ID             string        `json:"id"`
+	MetaAccountID  string        `json:"metaAccountId"`
+	Name           string        `json:"name"`
+	BusinessName   string        `json:"businessName,omitempty"`
+	Currency       string        `json:"currency"`
+	Timezone       string        `json:"timezone"`
+	MetaStatus     string        `json:"metaStatus"`
+	Connection     string        `json:"connection"`
+	HasFunding     bool          `json:"hasFunding"`
+	CanSpend       bool          `json:"canSpend"`
+	CanManage      bool          `json:"canManage"`
+	CanSetSpendCap bool          `json:"canSetSpendCap"`
+	Role           string        `json:"role" enums:"admin,advertiser,read_only"`
+	SpendBlocker   string        `json:"spendBlocker,omitempty"`
+	SpendCap       *int64        `json:"spendCap"`
+	AmountSpent    int64         `json:"amountSpent"`
+	LastSyncedAt   *time.Time    `json:"lastSyncedAt,omitempty"`
+	Funds          FundsResponse `json:"funds"`
+}
+
+type FundsResponse struct {
+	Kind       string   `json:"kind" enums:"prepaid,postpaid,unknown"`
+	Level      string   `json:"level" enums:"ok,low,out,payment_failed,unknown"`
+	Reason     string   `json:"reason,omitempty" enums:"funds_low,funds_out,spend_limit_low,spend_limit_reached,payment_failed,grace_period,billing_unreadable"`
+	Limit      *int64   `json:"limit"`
+	Spent      int64    `json:"spent"`
+	Room       *int64   `json:"room"`
+	DailySpend int64    `json:"dailySpend"`
+	DaysLeft   *float64 `json:"daysLeft"`
+	PortalURL  string   `json:"portalUrl"`
 }
 
 type MetricsResponse struct {

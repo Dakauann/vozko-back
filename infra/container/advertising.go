@@ -112,7 +112,11 @@ func (c *Container) adsManager() *adsBundle {
 
 	fetcher := remotefile.NewFetcher(netguard.NewHTTPClient(adCreativeDownloadTimeout), adCreativeMaxBytes)
 	media := adsuc.NewMediaSource(c.useCases.getMedia, fetcher)
-	sync := adsuc.NewSyncUseCase(accounts, grants, gateway, objects, insights)
+	if c.useCases.notifier == nil {
+		log.Fatalf("[ads] the notifier must exist before the ads manager, or funds alerts would never be sent")
+	}
+	fundsAlerts := adsuc.NewFundsAlerts(c.useCases.notifier, c.useCases.dashboardURL)
+	sync := adsuc.NewSyncUseCase(accounts, grants, gateway, objects, insights, fundsAlerts)
 	fees := adsuc.NewFeeCharger(c.services.workspacePricer, c.repositories.balance, c.useCases.ensureActiveWorkspaceSubscription)
 
 	bundle := &adsBundle{
@@ -140,7 +144,7 @@ func (c *Container) adsManager() *adsBundle {
 	}
 	savedReports := advertising_repository.NewSavedReportRepository(c.db)
 	bundle.Readiness = adsuc.NewReadinessUseCase(sync, gateway)
-	bundle.Drafts = adsuc.NewDraftsUseCase(advertising_repository.NewDraftRepository(c.db), accounts, jobs, bundle.Publish)
+	bundle.Drafts = adsuc.NewDraftsUseCase(advertising_repository.NewDraftRepository(c.db), accounts, jobs, objects, bundle.Publish)
 	bundle.Bulk = adsuc.NewBulkUseCase(bundle.Manage)
 	bundle.SavedReports = adsuc.NewSavedReportsUseCase(savedReports, accounts)
 	bundle.Runs = adsuc.NewReportRunsUseCase(bundle.Live, bundle.Report, objects, savedReports, advertising_repository.NewReportExportRepository(c.db))

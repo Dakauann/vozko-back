@@ -151,6 +151,7 @@ func (c *Container) initJobRunner() {
 		cronPackage.CtxJobFunc(func(ctx context.Context) error { return sync.SyncAll(ctx, adsuc.RecentInsightDays) }),
 		cronPackage.CtxJobFunc(func(ctx context.Context) error { return sync.SyncAll(ctx, adsuc.SettledInsightDays) }),
 		cronPackage.CtxJobFunc(sync.RefreshReviews),
+		cronPackage.CtxJobFunc(sync.WatchFunds),
 		cronPackage.CtxJobFunc(c.ads.Publish.Resume),
 		cronPackage.CtxJobFunc(c.ads.Forms.PollAll),
 		cronPackage.CtxJobFunc(c.ads.Conversions.DispatchAll),

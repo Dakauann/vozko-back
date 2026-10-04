@@ -84,9 +84,10 @@ func (r *JobRunner) SetFacebookJobs(health, publishReaper ctxJob) {
 	r.addChannelJob("facebook_publish_reaper", 5*time.Minute, publishReaper)
 }
 
-func (r *JobRunner) SetAdsJobs(recentSync, settledSync, reviewRefresh, publishReaper, formLeadPoll, conversionDispatch, grantHealth ctxJob) {
+func (r *JobRunner) SetAdsJobs(recentSync, settledSync, reviewRefresh, fundsWatch, publishReaper, formLeadPoll, conversionDispatch, grantHealth ctxJob) {
 	r.addChannelJob("ads_recent_sync", 30*time.Minute, recentSync)
 	r.addChannelJob("ads_review_refresh", 2*time.Minute, reviewRefresh)
+	r.addChannelJob("ads_funds_watch", 10*time.Minute, fundsWatch)
 	r.addChannelJob("ads_settled_sync", 24*time.Hour, settledSync)
 	r.addChannelJob("ads_publish_reaper", time.Minute, publishReaper)
 	r.addChannelJob("ads_form_lead_poll", 15*time.Minute, formLeadPoll)

@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -794,6 +794,7 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
+    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -807,9 +808,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
-    - CONVERSATIONS
     type: string
     x-enum-varnames:
+    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -823,7 +824,6 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
-    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -1276,6 +1276,8 @@ definitions:
         type: string
       currency:
         type: string
+      funds:
+        $ref: '#/definitions/advertisinghttp.FundsResponse'
       hasFunding:
         type: boolean
       id:
@@ -1629,6 +1631,45 @@ definitions:
       total:
         type: integer
     type: object
+  advertisinghttp.FundsResponse:
+    properties:
+      dailySpend:
+        type: integer
+      daysLeft:
+        type: number
+      kind:
+        enum:
+        - prepaid
+        - postpaid
+        - unknown
+        type: string
+      level:
+        enum:
+        - ok
+        - low
+        - out
+        - payment_failed
+        - unknown
+        type: string
+      limit:
+        type: integer
+      portalUrl:
+        type: string
+      reason:
+        enum:
+        - funds_low
+        - funds_out
+        - spend_limit_low
+        - spend_limit_reached
+        - payment_failed
+        - grace_period
+        - billing_unreadable
+        type: string
+      room:
+        type: integer
+      spent:
+        type: integer
+    type: object
   advertisinghttp.ImportedResponse:
     properties:
       imported:
@@ -1819,6 +1860,10 @@ definitions:
         items:
           $ref: '#/definitions/advertising.AttributionWindow'
         type: array
+      automaticPlatforms:
+        items:
+          type: string
+        type: array
       breakdownGroups:
         items:
           items:
@@ -1861,6 +1906,12 @@ definitions:
         items:
           $ref: '#/definitions/advertising.RuleMetric'
         type: array
+      videoOnlyPositions:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
     type: object
   advertisinghttp.OutcomeResponse:
     properties:
@@ -11495,8 +11546,11 @@ paths:
     put:
       consumes:
       - application/json
-      description: Valor em unidades mínimas da moeda da conta (centavos para BRL),
+      description: 'Valor em unidades mínimas da moeda da conta (centavos para BRL),
         acima do que a conta já gastou. amount null remove o limite; o campo é obrigatório.
+        Conta pré-paga não aceita limite manual (409 prepaid_spend_cap): a Meta usa
+        os fundos adicionados como limite. Conta cuja cobrança não foi lida também
+        recusa (409 billing_unknown) até a próxima sincronização.'
       parameters:
       - description: ID da conta de anúncios
         in: path
@@ -12719,7 +12773,9 @@ paths:
       description: 'Listas que a Meta aceita: objetivos com destinos e metas de otimização
         permitidos, chamadas para ação, posicionamentos por plataforma, combinações
         de quebras, janelas de atribuição, chaves de correspondência, métricas de
-        regras, eventos de pixel e formatos de criativo.'
+        regras, eventos de pixel, formatos de criativo, os posicionamentos que só
+        veiculam vídeo e as plataformas que os posicionamentos automáticos sempre
+        incluem.'
       produces:
       - application/json
       responses:

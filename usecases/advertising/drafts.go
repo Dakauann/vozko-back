@@ -19,20 +19,24 @@ type DraftsUseCase struct {
 	drafts    ads.SavedDraftRepository
 	accounts  ads.AccountRepository
 	jobs      ads.PublishJobRepository
+	objects   ads.ObjectRepository
 	publisher draftPublisher
 	newJobID  func() string
 	now       func() time.Time
 }
 
-func NewDraftsUseCase(drafts ads.SavedDraftRepository, accounts ads.AccountRepository, jobs ads.PublishJobRepository, publisher draftPublisher) *DraftsUseCase {
-	return &DraftsUseCase{drafts: drafts, accounts: accounts, jobs: jobs, publisher: publisher, newJobID: uuid.NewString, now: time.Now}
+func NewDraftsUseCase(drafts ads.SavedDraftRepository, accounts ads.AccountRepository, jobs ads.PublishJobRepository, objects ads.ObjectRepository, publisher draftPublisher) *DraftsUseCase {
+	return &DraftsUseCase{drafts: drafts, accounts: accounts, jobs: jobs, objects: objects, publisher: publisher, newJobID: uuid.NewString, now: time.Now}
 }
 
 type DraftView struct {
-	Draft *ads.SavedDraft
-	State ads.DraftState
-	Job   *ads.PublishJob
+	Draft   *ads.SavedDraft
+	State   ads.DraftState
+	Job     *ads.PublishJob
+	Parents ads.ExistingParents
 }
+
+func (v DraftView) Rows() []ads.DraftRow { return v.Draft.RowsUnder(v.Parents) }
 
 type DraftList struct {
 	Drafts      []DraftView
@@ -58,7 +62,7 @@ func (uc *DraftsUseCase) List(ctx context.Context, workspaceID, accountID string
 			continue
 		}
 		out.Drafts = append(out.Drafts, *view)
-		out.ObjectCount += len(d.Rows())
+		out.ObjectCount += len(view.Rows())
 	}
 	return out, nil
 }
@@ -83,7 +87,7 @@ func (uc *DraftsUseCase) Create(ctx context.Context, workspaceID, userID string,
 	if err := uc.drafts.Create(ctx, d); err != nil {
 		return nil, err
 	}
-	return &DraftView{Draft: d, State: ads.DraftEditing}, nil
+	return uc.view(ctx, d)
 }
 
 func (uc *DraftsUseCase) Update(ctx context.Context, workspaceID, userID, id string, version int, content ads.AdDraft) (*DraftView, error) {
@@ -102,7 +106,7 @@ func (uc *DraftsUseCase) Update(ctx context.Context, workspaceID, userID, id str
 	if err := uc.drafts.Save(ctx, d); err != nil {
 		return nil, err
 	}
-	return &DraftView{Draft: d, State: ads.DraftEditing}, nil
+	return uc.view(ctx, d)
 }
 
 func (uc *DraftsUseCase) Duplicate(ctx context.Context, workspaceID, userID, id, name string) (*DraftView, error) {
@@ -117,7 +121,7 @@ func (uc *DraftsUseCase) Duplicate(ctx context.Context, workspaceID, userID, id,
 	if err := uc.drafts.Create(ctx, copied); err != nil {
 		return nil, err
 	}
-	return &DraftView{Draft: copied, State: ads.DraftEditing}, nil
+	return uc.view(ctx, copied)
 }
 
 func (uc *DraftsUseCase) Delete(ctx context.Context, workspaceID, id string) error {
@@ -198,8 +202,12 @@ func (uc *DraftsUseCase) editable(ctx context.Context, workspaceID, id string) (
 }
 
 func (uc *DraftsUseCase) view(ctx context.Context, d *ads.SavedDraft) (*DraftView, error) {
+	parents, err := uc.parentsOf(ctx, d)
+	if err != nil {
+		return nil, err
+	}
 	if d.JobID == "" {
-		return &DraftView{Draft: d, State: d.State(nil, uc.now())}, nil
+		return &DraftView{Draft: d, State: d.State(nil, uc.now()), Parents: parents}, nil
 	}
 	job, err := uc.jobs.Find(ctx, d.WorkspaceID, d.JobID)
 	if errors.Is(err, ads.ErrJobNotFound) {
@@ -208,7 +216,44 @@ func (uc *DraftsUseCase) view(ctx context.Context, d *ads.SavedDraft) (*DraftVie
 	if err != nil {
 		return nil, err
 	}
-	return &DraftView{Draft: d, State: d.State(job, uc.now()), Job: job}, nil
+	return &DraftView{Draft: d, State: d.State(job, uc.now()), Job: job, Parents: parents}, nil
+}
+
+func (uc *DraftsUseCase) parentsOf(ctx context.Context, d *ads.SavedDraft) (ads.ExistingParents, error) {
+	var parents ads.ExistingParents
+	campaignID := d.Content.Campaign.ExistingID
+	if id := d.Content.AdSet.ExistingID; id != "" {
+		adSet, err := uc.parent(ctx, d, id)
+		if err != nil {
+			return parents, err
+		}
+		parents.AdSet = adSet
+		if adSet != nil {
+			campaignID = adSet.CampaignMetaID
+		}
+	}
+	if campaignID != "" {
+		campaign, err := uc.parent(ctx, d, campaignID)
+		if err != nil {
+			return parents, err
+		}
+		parents.Campaign = campaign
+	}
+	return parents, nil
+}
+
+func (uc *DraftsUseCase) parent(ctx context.Context, d *ads.SavedDraft, metaID string) (*ads.Object, error) {
+	o, err := uc.objects.Find(ctx, d.WorkspaceID, metaID)
+	if errors.Is(err, ads.ErrObjectNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if o.AdAccountID != d.AdAccountID {
+		return nil, nil
+	}
+	return o, nil
 }
 
 func (uc *DraftsUseCase) forget(ctx context.Context, d *ads.SavedDraft) {

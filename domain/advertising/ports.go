@@ -176,6 +176,8 @@ type AccountRepository interface {
 	ListConnected(ctx context.Context, limit, offset int) ([]*AdAccount, error)
 	SetConnection(ctx context.Context, id string, c Connection) error
 	MarkSynced(ctx context.Context, id string, at time.Time) error
+	SaveFunds(ctx context.Context, a *AdAccount) error
+	ListByFundsLevels(ctx context.Context, levels []FundsLevel, limit, offset int) ([]*AdAccount, error)
 }
 
 type ObjectQuery struct {

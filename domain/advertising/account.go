@@ -54,25 +54,29 @@ const (
 )
 
 type AdAccount struct {
-	ID            string
-	WorkspaceID   string
-	GrantID       string
-	MetaAccountID string
-	Name          string
-	BusinessID    string
-	BusinessName  string
-	Currency      string
-	Timezone      string
-	MetaStatus    MetaAccountStatus
-	DisableReason int
-	HasFunding    bool
-	AmountSpent   int64
-	SpendCap      int64
-	Tasks         []string
-	Connection    Connection
-	LastSyncedAt  *time.Time
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID               string
+	WorkspaceID      string
+	GrantID          string
+	MetaAccountID    string
+	Name             string
+	BusinessID       string
+	BusinessName     string
+	Currency         string
+	Timezone         string
+	MetaStatus       MetaAccountStatus
+	DisableReason    int
+	HasFunding       bool
+	AmountSpent      int64
+	SpendCap         int64
+	Billing          BillingKind
+	DailySpendMicros int64
+	FundsLevel       FundsLevel
+	FundsLevelSince  *time.Time
+	Tasks            []string
+	Connection       Connection
+	LastSyncedAt     *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 func (a *AdAccount) SpendCapLimit() *int64 {

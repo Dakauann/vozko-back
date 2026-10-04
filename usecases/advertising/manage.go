@@ -396,6 +396,9 @@ func (uc *ManageUseCase) spendCapTarget(ctx context.Context, workspaceID, accoun
 	if err != nil {
 		return nil, "", err
 	}
+	if err := account.CanSetSpendCap(); err != nil {
+		return nil, "", err
+	}
 	if cap != nil {
 		if err := ads.ValidateSpendCap(*cap, account.AmountSpent); err != nil {
 			return nil, "", err

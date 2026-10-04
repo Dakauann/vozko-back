@@ -133,6 +133,7 @@ func TestDeleteAndArchiveUseTheRightMetaCall(t *testing.T) {
 
 func TestSpendCapMustStayAboveWhatWasSpent(t *testing.T) {
 	w := newWorld()
+	w.accounts.byID["acc-1"].Billing = ads.BillingPostpaid
 	w.accounts.byID["acc-1"].AmountSpent = 50_000
 	low := int64(40_000)
 	if _, err := w.manager().SetSpendCap(context.Background(), "ws-1", "acc-1", &low); !errors.Is(err, ads.ErrInvalidBudget) {
@@ -228,5 +229,21 @@ func TestCheckingACreativeSwapGivesTheAddressOfEveryProposedMedia(t *testing.T) 
 	}
 	if checked.MediaURLs["meta:h1"] != "https://cdn.meta/h1.png" || checked.MediaURLs["media-2"] != "https://cdn/media-2" {
 		t.Fatalf("media urls %+v", checked.MediaURLs)
+	}
+}
+
+func TestAPrepaidAccountKeepsTheLimitMetaDerivesFromItsFunds(t *testing.T) {
+	for _, kind := range []ads.BillingKind{ads.BillingPrepaid, ads.BillingUnknown} {
+		w := newWorld()
+		w.accounts.byID["acc-1"].Billing = kind
+		cap := int64(90_000)
+		for _, amount := range []*int64{&cap, nil} {
+			if _, err := w.manager().SetSpendCap(context.Background(), "ws-1", "acc-1", amount); err == nil {
+				t.Fatalf("%s: the limit must not change", kind)
+			}
+		}
+		if slices.Contains(w.gateway.calls, "spend_cap") || slices.Contains(w.gateway.calls, "remove_spend_cap") {
+			t.Fatalf("%s: Meta was called: %v", kind, w.gateway.calls)
+		}
 	}
 }

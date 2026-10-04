@@ -49,6 +49,8 @@ var domainErrors = []errorMapping{
 	{advertising.ErrAccountLinkedElsewhere, http.StatusConflict, "account_linked_elsewhere", "Esta conta de anúncios já está conectada a outro workspace"},
 	{advertising.ErrAccountNotActive, http.StatusConflict, "account_not_active", "A conta de anúncios não está ativa na Meta"},
 	{advertising.ErrNoFundingSource, http.StatusConflict, "no_payment_method", "Configure um meio de pagamento no Gerenciador de Anúncios da Meta"},
+	{advertising.ErrPrepaidSpendCap, http.StatusConflict, "prepaid_spend_cap", "Em conta pré-paga, a Meta define o limite de gastos pelos fundos adicionados; adicione fundos na Meta para gastar mais"},
+	{advertising.ErrBillingUnknown, http.StatusConflict, "billing_unknown", "Não foi possível ler a cobrança desta conta na Meta; sincronize a conta e tente de novo"},
 	{advertising.ErrUnknownTimezone, http.StatusConflict, "account_unreadable", "Não foi possível ler o fuso horário da conta de anúncios; sincronize a conta"},
 	{advertising.ErrUnknownCurrency, http.StatusConflict, "account_unreadable", "Não foi possível ler a moeda da conta de anúncios; sincronize a conta"},
 	{advertising.ErrMixedCurrencies, http.StatusConflict, "mixed_currencies", "A Meta informou valores em outra moeda; nada foi somado"},

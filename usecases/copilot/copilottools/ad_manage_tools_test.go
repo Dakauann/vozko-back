@@ -441,3 +441,17 @@ func TestTheTextCardShowsWhatTheAdSaysTodayNextToTheChange(t *testing.T) {
 		t.Fatalf("fields %+v", fields)
 	}
 }
+
+func TestListAdAccountsTellsEloAboutTheFunds(t *testing.T) {
+	account := adminAdAccount()
+	account.Billing, account.SpendCap, account.AmountSpent, account.DailySpendMicros = advertising.BillingPrepaid, 2635, 2500, 200_000
+	result := NewListAdAccountsTool(AdsDeps{Accounts: manageAccounts{account: account}}).Execute(context.Background(), adContext, nil)
+	rows, _ := result.Data.(map[string]interface{})["accounts"].([]map[string]interface{})
+	if len(rows) != 1 {
+		t.Fatalf("result %+v", result)
+	}
+	funds, _ := rows[0]["funds"].(map[string]interface{})
+	if funds["kind"] != "prepaid" || funds["level"] != "low" || funds["reason"] != "funds_low" || funds["room"] != 1.35 || funds["days_left"] != 6.8 {
+		t.Fatalf("funds %+v", funds)
+	}
+}

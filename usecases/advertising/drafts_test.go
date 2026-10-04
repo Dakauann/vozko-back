@@ -110,6 +110,7 @@ func (p *scriptedPublisher) Publish(ctx context.Context, in PublishInput) (*ads.
 type draftsFixture struct {
 	uc        *DraftsUseCase
 	publisher *scriptedPublisher
+	objects   *fakeObjects
 }
 
 func newDraftsFixture() draftsFixture {
@@ -119,14 +120,15 @@ func newDraftsFixture() draftsFixture {
 	}, connections: map[string]ads.Connection{}}
 	jobs := &fakeJobs{byID: map[string]*ads.PublishJob{}}
 	publisher := &scriptedPublisher{jobs: jobs}
-	uc := NewDraftsUseCase(&memoryDrafts{byID: map[string]*ads.SavedDraft{}}, accounts, jobs, publisher)
+	objects := &fakeObjects{byID: map[string]*ads.Object{}}
+	uc := NewDraftsUseCase(&memoryDrafts{byID: map[string]*ads.SavedDraft{}}, accounts, jobs, objects, publisher)
 	uc.now = func() time.Time { return testNow }
 	ids := 0
 	uc.newJobID = func() string {
 		ids++
 		return "job-" + strconv.Itoa(ids)
 	}
-	return draftsFixture{uc: uc, publisher: publisher}
+	return draftsFixture{uc: uc, publisher: publisher, objects: objects}
 }
 
 func leadsTree(account string) ads.AdDraft {
@@ -335,5 +337,35 @@ func TestCheckEditRefusesAStaleVersionOrADraftBeingPublished(t *testing.T) {
 	}
 	if _, err := f.uc.CheckEdit(ctx, "ws", created.Draft.ID, 2); !errors.Is(err, ads.ErrDraftPublishing) {
 		t.Fatalf("a draft being published must be refused, got %v", err)
+	}
+}
+
+func TestAListedDraftUnderAnExistingAdSetShowsTheNameItWillPublishWith(t *testing.T) {
+	f := newDraftsFixture()
+	f.objects.byID["c-9"] = &ads.Object{MetaID: "c-9", WorkspaceID: "ws", AdAccountID: "acc-1", Level: ads.LevelCampaign, Name: "Vozko CRM | Mensagens WhatsApp"}
+	f.objects.byID["s-9"] = &ads.Object{MetaID: "s-9", WorkspaceID: "ws", AdAccountID: "acc-1", Level: ads.LevelAdSet, Name: "BR | 25+", CampaignMetaID: "c-9"}
+	content := ads.AdDraft{AdAccountID: "acc-1", AdSet: ads.AdSetDraft{ExistingID: "s-9"}, Ads: []ads.AdItem{{}}}
+	if _, err := f.uc.Create(context.Background(), "ws", "u-1", content); err != nil {
+		t.Fatal(err)
+	}
+	list, err := f.uc.List(context.Background(), "ws", "acc-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := list.Drafts[0].Rows()
+	if len(rows) != 1 || rows[0].Name != "Vozko CRM | Mensagens WhatsApp" {
+		t.Fatalf("rows %+v", rows)
+	}
+}
+
+func TestADraftWhoseParentIsGoneStillListsWithItsOwnNames(t *testing.T) {
+	f := newDraftsFixture()
+	content := ads.AdDraft{AdAccountID: "acc-1", AdSet: ads.AdSetDraft{ExistingID: "gone"}, Ads: []ads.AdItem{{Name: "Meu anúncio"}}}
+	if _, err := f.uc.Create(context.Background(), "ws", "u-1", content); err != nil {
+		t.Fatal(err)
+	}
+	list, err := f.uc.List(context.Background(), "ws", "acc-1")
+	if err != nil || list.Drafts[0].Rows()[0].Name != "Meu anúncio" {
+		t.Fatalf("list %+v err %v", list, err)
 	}
 }

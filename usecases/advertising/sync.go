@@ -22,6 +22,11 @@ type syncGateway interface {
 	GetAdAccount(ctx context.Context, token, metaAccountID string) (*ads.RemoteAdAccount, error)
 	ListObjects(ctx context.Context, token, metaAccountID string, level ads.Level) ([]*ads.Object, error)
 	DailyInsights(ctx context.Context, token, metaAccountID string, r ads.DateRange) ([]ads.DailyInsight, error)
+	GetBilling(ctx context.Context, token, metaAccountID string, withPaymentMethod bool) (*ads.RemoteBilling, error)
+}
+
+type FundsAlerter interface {
+	Alert(ctx context.Context, account *ads.AdAccount, funds ads.Funds) error
 }
 
 type SyncUseCase struct {
@@ -29,14 +34,16 @@ type SyncUseCase struct {
 	gateway  syncGateway
 	objects  ads.ObjectRepository
 	insights ads.InsightRepository
+	alerts   FundsAlerter
 }
 
-func NewSyncUseCase(accounts ads.AccountRepository, grants ads.GrantRepository, gateway syncGateway, objects ads.ObjectRepository, insights ads.InsightRepository) *SyncUseCase {
+func NewSyncUseCase(accounts ads.AccountRepository, grants ads.GrantRepository, gateway syncGateway, objects ads.ObjectRepository, insights ads.InsightRepository, alerts FundsAlerter) *SyncUseCase {
 	return &SyncUseCase{
 		access:   accountAccess{accounts: accounts, grants: grants, now: func() time.Time { return time.Now().UTC() }},
 		gateway:  gateway,
 		objects:  objects,
 		insights: insights,
+		alerts:   alerts,
 	}
 }
 
@@ -117,18 +124,16 @@ func (uc *SyncUseCase) syncConnected(ctx context.Context, account *ads.AdAccount
 }
 
 func (uc *SyncUseCase) syncAccount(ctx context.Context, account *ads.AdAccount, token string, insightDays int) error {
-	remote, err := uc.gateway.GetAdAccount(ctx, token, account.MetaAccountID)
-	if err != nil {
-		return err
-	}
-	applyRemote(account, *remote)
-	if err := uc.access.accounts.Upsert(ctx, account); err != nil {
+	if err := uc.refreshAccount(ctx, account, token); err != nil {
 		return err
 	}
 	if err := uc.SyncStructure(ctx, account, token); err != nil {
 		return err
 	}
 	if err := uc.syncInsights(ctx, account, token, insightDays); err != nil {
+		return err
+	}
+	if err := uc.recordFunds(ctx, account, token); err != nil {
 		return err
 	}
 	now := uc.access.now()

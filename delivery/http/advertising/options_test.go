@@ -40,6 +40,8 @@ func TestOptionsComeFromTheDomainLists(t *testing.T) {
 		"ruleMetrics":        {options.RuleMetrics, advertising.RuleMetrics()},
 		"pixelEvents":        {options.PixelEvents, advertising.PixelEvents()},
 		"formats":            {options.Formats, advertising.CreativeFormats()},
+		"videoOnlyPositions": {options.VideoOnlyPositions, advertising.VideoOnlyPositions()},
+		"automaticPlatforms": {options.AutomaticPlatforms, advertising.AutomaticPlatforms()},
 	}
 	for name, pair := range checks {
 		if !reflect.DeepEqual(pair[0], pair[1]) {

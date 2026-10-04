@@ -121,12 +121,16 @@ func (d *AdDraft) Normalize() {
 		d.Ads = []AdItem{}
 	}
 	for i := range d.Ads {
-		d.Ads[i].Name = strings.TrimSpace(d.Ads[i].Name)
-		if d.Ads[i].Name == "" {
-			d.Ads[i].Name = defaultAdName(c.Name, s.Name, i, len(d.Ads))
-		}
+		d.Ads[i].Name = d.AdName(i)
 		d.Ads[i].Creative.Normalize()
 	}
+}
+
+func (d AdDraft) AdName(index int) string {
+	if name := strings.TrimSpace(d.Ads[index].Name); name != "" {
+		return name
+	}
+	return defaultAdName(d.Campaign.Name, d.AdSet.Name, index, len(d.Ads))
 }
 
 func defaultAdName(campaign, adSet string, index, total int) string {

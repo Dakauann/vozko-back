@@ -141,3 +141,37 @@ func TestACopyRenamesTheTopNewLevelAndLeavesTheOriginal(t *testing.T) {
 		t.Fatalf("got %+v", copied.Content.Ads)
 	}
 }
+
+func TestAnUnnamedAdUnderAnExistingAdSetListsUnderTheNameItWillPublishWith(t *testing.T) {
+	content := AdDraft{AdSet: AdSetDraft{ExistingID: "s-9"}, Ads: []AdItem{{Name: "  "}}}
+	d, _ := NewSavedDraft("ws", "acc-1", "u-1", content)
+	d.ID = "d-4"
+	parents := ExistingParents{
+		Campaign: &Object{MetaID: "c-9", Name: "Vozko CRM | Mensagens WhatsApp"},
+		AdSet:    &Object{MetaID: "s-9", Name: "BR | 25+", CampaignMetaID: "c-9"},
+	}
+	rows := d.RowsUnder(parents)
+	if len(rows) != 1 || rows[0].Name != "Vozko CRM | Mensagens WhatsApp" {
+		t.Fatalf("rows %+v", rows)
+	}
+
+	published := d.Content
+	published.Adopt(parents)
+	published.Normalize()
+	if published.Ads[0].Name != rows[0].Name {
+		t.Fatalf("listed %q but publishes %q", rows[0].Name, published.Ads[0].Name)
+	}
+	if d.Content.Campaign.Name != "" {
+		t.Fatal("listing must not change the saved draft")
+	}
+}
+
+func TestUnnamedAdsInANewTreeAreNumberedAfterTheCampaign(t *testing.T) {
+	content := newTreeDraft()
+	content.Ads = []AdItem{{}, {Name: "Anúncio B"}}
+	d, _ := NewSavedDraft("ws", "acc-1", "u-1", content)
+	rows := d.Rows()
+	if rows[2].Name != "Nova campanha de Leads 1" || rows[3].Name != "Anúncio B" {
+		t.Fatalf("rows %+v", rows)
+	}
+}

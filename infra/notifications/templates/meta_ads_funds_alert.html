@@ -1,0 +1,23 @@
+{{define "title"}}{{.Headline}} - {{.Brand.Name}}{{end}}
+{{define "preheader"}}{{.Subtitle}}.{{end}}
+{{define "content"}}
+<tr>
+    <td class="vx-pad" style="padding:12px 40px 0;">
+        {{template "symbol" dict "tone" .Tone "glyph" "alert"}}
+        {{template "heading" dict "title" .Headline "subtitle" .Subtitle}}
+    </td>
+</tr>
+<tr>
+    <td class="vx-pad" style="padding:24px 40px 12px;">
+        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
+            {{.Message}}
+        </p>
+        {{template "details" dict "title" "Conta de anúncios na Meta" "k1" "Conta" "v1" .AccountName "k2" "Situação" "v2" .Situation}}
+        <div style="height:24px; line-height:24px;">&nbsp;</div>
+        {{template "cta" dict "url" .ActionURL "label" .ActionLabel}}
+        <p style="margin:18px 0 0; font-family:Inter,Arial,sans-serif; font-size:13px; color:#65758b; line-height:1.6;">
+            <a href="{{.ManagerURL}}" style="color:#2463eb; text-decoration:underline;">Ver os anúncios no {{.Brand.Name}}</a>
+        </p>
+    </td>
+</tr>
+{{end}}

@@ -63,6 +63,23 @@ var platformPositions = map[string][]string{
 	PlatformThreads:         {"threads_stream"},
 }
 
+var videoOnlyPositions = map[string][]string{
+	PlatformFacebook:        {"instream_video"},
+	PlatformAudienceNetwork: {"rewarded_video"},
+}
+
+var automaticPlatforms = []string{PlatformFacebook, PlatformInstagram}
+
+func VideoOnlyPositions() map[string][]string {
+	out := make(map[string][]string, len(videoOnlyPositions))
+	for k, v := range videoOnlyPositions {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+func AutomaticPlatforms() []string { return append([]string(nil), automaticPlatforms...) }
+
 var positionsNeedingFeed = []string{"marketplace", "search", "profile_feed", "notification"}
 
 func PlatformPositions() map[string][]string {

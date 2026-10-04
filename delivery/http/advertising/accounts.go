@@ -89,7 +89,7 @@ func (h *Handler) DisconnectAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Definir limite de gastos da conta
-// @Description	Valor em unidades mínimas da moeda da conta (centavos para BRL), acima do que a conta já gastou. amount null remove o limite; o campo é obrigatório.
+// @Description	Valor em unidades mínimas da moeda da conta (centavos para BRL), acima do que a conta já gastou. amount null remove o limite; o campo é obrigatório. Conta pré-paga não aceita limite manual (409 prepaid_spend_cap): a Meta usa os fundos adicionados como limite. Conta cuja cobrança não foi lida também recusa (409 billing_unknown) até a próxima sincronização.
 // @Tags			Anúncios
 // @Accept			json
 // @Produce		json

@@ -128,6 +128,28 @@ func (f *fakeAccounts) SetConnection(_ context.Context, id string, c ads.Connect
 	return nil
 }
 func (f *fakeAccounts) MarkSynced(context.Context, string, time.Time) error { return nil }
+func (f *fakeAccounts) SaveFunds(_ context.Context, a *ads.AdAccount) error {
+	stored, ok := f.byID[a.ID]
+	if !ok {
+		return ads.ErrAccountNotFound
+	}
+	stored.Billing, stored.DailySpendMicros, stored.FundsLevel, stored.FundsLevelSince = a.Billing, a.DailySpendMicros, a.FundsLevel, a.FundsLevelSince
+	return nil
+}
+func (f *fakeAccounts) ListByFundsLevels(_ context.Context, levels []ads.FundsLevel, limit, offset int) ([]*ads.AdAccount, error) {
+	var matching []*ads.AdAccount
+	for _, a := range f.byID {
+		if a.Connection == ads.ConnectionConnected && slices.Contains(levels, a.FundsLevel) {
+			clone := *a
+			matching = append(matching, &clone)
+		}
+	}
+	slices.SortFunc(matching, func(a, b *ads.AdAccount) int { return strings.Compare(a.ID, b.ID) })
+	if offset >= len(matching) {
+		return nil, nil
+	}
+	return matching[offset:min(offset+limit, len(matching))], nil
+}
 func (f *fakeAccounts) ReconnectByGrant(_ context.Context, grantID string) error {
 	for id, a := range f.byID {
 		if a.GrantID == grantID && a.Connection == ads.ConnectionConnected {
@@ -733,7 +755,7 @@ func newWorld() *world {
 	}
 	w.gateway.accounts = []ads.RemoteAdAccount{{MetaAccountID: "111", Name: "Loja", BusinessID: "biz-1", Currency: "BRL", Timezone: "America/Sao_Paulo", Status: ads.MetaAccountActive, HasFunding: true, Tasks: adminTasks()}}
 	w.gateway.pages = []ads.RemotePage{{PageID: "page-1", Name: "Loja", WhatsAppNumber: "+55 11 98888-7777", InstagramUserID: "ig-1", CanAdvertise: true, LeadTermsAccepted: true}}
-	w.sync = NewSyncUseCase(w.accounts, w.grants, w.gateway, w.objects, w.insights)
+	w.sync = NewSyncUseCase(w.accounts, w.grants, w.gateway, w.objects, w.insights, &recordedAlerts{})
 	w.sync.access.now = func() time.Time { return testNow }
 	return w
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -261,6 +262,7 @@ func (t *listAdAccountsTool) Execute(ctx context.Context, cc copilot.Context, _ 
 		if a.LastSyncedAt != nil {
 			row["last_synced_at"] = a.LastSyncedAt.Format("2006-01-02 15:04")
 		}
+		row["funds"] = fundsRow(a)
 		out = append(out, row)
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"accounts": out}}
@@ -942,4 +944,19 @@ func AdsTools(deps AdsDeps) []copilot.Tool {
 		NewSaveAdDraftTool(deps), NewListAdDraftsTool(deps), NewPublishAdDraftTool(deps), NewEditAdTextTool(deps),
 		NewListPagePostsTool(deps), NewListAdAppsTool(deps), NewListAdCatalogsTool(deps), NewGetAdDraftTool(deps), NewUpdateAdDraftTool(deps),
 	}
+}
+
+func fundsRow(a *advertising.AdAccount) map[string]interface{} {
+	f := advertising.FundsOf(a)
+	row := map[string]interface{}{"kind": string(f.Kind), "level": string(f.Level)}
+	if f.Reason != "" {
+		row["reason"] = string(f.Reason)
+	}
+	if f.RoomMinor != nil {
+		row["room"] = minorAmount(a.Currency, *f.RoomMinor)
+	}
+	if f.DaysLeft != nil {
+		row["days_left"] = math.Round(*f.DaysLeft*10) / 10
+	}
+	return row
 }

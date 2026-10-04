@@ -160,3 +160,23 @@ func TestLoadTemplate_LegacyStandaloneStillRenders(t *testing.T) {
 		t.Fatal("expected legacy template to render its placeholder")
 	}
 }
+
+func TestMetaAdsFundsAlertRendersEverySituationInTheDesign(t *testing.T) {
+	out, err := loaderForTests().LoadTemplate("meta_ads_funds_alert.html", map[string]interface{}{
+		"Headline": "Os anúncios pararam: os fundos acabaram", "Subtitle": "Adicione fundos na Meta para voltar a veicular",
+		"Message": "Os fundos da conta de anúncios Loja na Meta acabaram.", "Situation": "Sem fundos", "Tone": "danger",
+		"AccountName": "Loja", "ActionURL": "https://business.facebook.com/billing_hub/payment_settings", "ActionLabel": "Adicionar fundos na Meta",
+		"ManagerURL": "https://app.vozkoglobal.com/dashboard/advertising?account=a-1",
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{"<!DOCTYPE html>", "#2463eb", "Adicionar fundos na Meta", "Sem fundos", "advertising?account=a-1"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+	if strings.Contains(out, "<no value>") || strings.ContainsRune(out, '—') || strings.ContainsRune(out, '–') {
+		t.Fatal("unfilled placeholder or dash in the funds alert")
+	}
+}

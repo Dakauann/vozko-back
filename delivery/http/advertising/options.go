@@ -28,6 +28,8 @@ type OptionsResponse struct {
 	RuleMetrics        []advertising.RuleMetric                               `json:"ruleMetrics"`
 	PixelEvents        []advertising.PixelEvent                               `json:"pixelEvents"`
 	Formats            []advertising.CreativeFormat                           `json:"formats"`
+	VideoOnlyPositions map[string][]string                                    `json:"videoOnlyPositions"`
+	AutomaticPlatforms []string                                               `json:"automaticPlatforms"`
 }
 
 func buildOptions() OptionsResponse {
@@ -46,11 +48,13 @@ func buildOptions() OptionsResponse {
 		RuleMetrics:        advertising.RuleMetrics(),
 		PixelEvents:        advertising.PixelEvents(),
 		Formats:            advertising.CreativeFormats(),
+		VideoOnlyPositions: advertising.VideoOnlyPositions(),
+		AutomaticPlatforms: advertising.AutomaticPlatforms(),
 	}
 }
 
 // @Summary		Opções para criar anúncios
-// @Description	Listas que a Meta aceita: objetivos com destinos e metas de otimização permitidos, chamadas para ação, posicionamentos por plataforma, combinações de quebras, janelas de atribuição, chaves de correspondência, métricas de regras, eventos de pixel e formatos de criativo.
+// @Description	Listas que a Meta aceita: objetivos com destinos e metas de otimização permitidos, chamadas para ação, posicionamentos por plataforma, combinações de quebras, janelas de atribuição, chaves de correspondência, métricas de regras, eventos de pixel, formatos de criativo, os posicionamentos que só veiculam vídeo e as plataformas que os posicionamentos automáticos sempre incluem.
 // @Tags			Anúncios
 // @Produce		json
 // @Success		200	{object}	OptionsResponse

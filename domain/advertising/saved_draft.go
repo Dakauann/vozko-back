@@ -129,7 +129,13 @@ type DraftRow struct {
 }
 
 func (d *SavedDraft) Rows() []DraftRow {
-	c, s := d.Content.Campaign, d.Content.AdSet
+	return d.RowsUnder(ExistingParents{})
+}
+
+func (d *SavedDraft) RowsUnder(parents ExistingParents) []DraftRow {
+	content := d.Content
+	content.Adopt(parents)
+	c, s := content.Campaign, content.AdSet
 	rows := make([]DraftRow, 0, len(d.Content.Ads)+2)
 	campaign := DraftRow{ParentMetaID: c.ExistingID}
 	if c.ExistingID == "" && s.ExistingID == "" {
@@ -144,9 +150,9 @@ func (d *SavedDraft) Rows() []DraftRow {
 			Budget: s.Budget, Objective: c.Objective, Destination: s.Destination, Goal: s.Goal,
 		})
 	}
-	for i, ad := range d.Content.Ads {
+	for i := range content.Ads {
 		rows = append(rows, DraftRow{
-			Key: d.ID + ":ad:" + strconv.Itoa(i), Level: LevelAd, Name: ad.Name, ParentKey: adSet.Key, ParentMetaID: adSet.ParentMetaID,
+			Key: d.ID + ":ad:" + strconv.Itoa(i), Level: LevelAd, Name: content.AdName(i), ParentKey: adSet.Key, ParentMetaID: adSet.ParentMetaID,
 			Objective: c.Objective, Destination: s.Destination, Goal: s.Goal,
 		})
 	}

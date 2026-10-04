@@ -12,7 +12,7 @@ import (
 func presentableAccount(tasks ...string) *advertising.AdAccount {
 	return &advertising.AdAccount{
 		MetaAccountID: "111", Currency: "BRL", Timezone: "America/Sao_Paulo", MetaStatus: advertising.MetaAccountActive,
-		HasFunding: true, Connection: advertising.ConnectionConnected, Tasks: tasks,
+		HasFunding: true, Connection: advertising.ConnectionConnected, Tasks: tasks, Billing: advertising.BillingPostpaid,
 	}
 }
 
@@ -69,5 +69,25 @@ func TestARunTellsTheKindOfEveryMetricAndNeverSendsNull(t *testing.T) {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("missing %s in %s", want, raw)
 		}
+	}
+}
+
+func TestAccountResponseCarriesItsFundsAndHidesTheLimitControlOnPrepaid(t *testing.T) {
+	account := presentableAccount("MANAGE", "ADVERTISE")
+	account.ID, account.BusinessID, account.Billing, account.SpendCap, account.AmountSpent, account.DailySpendMicros = "acc-1", "biz-1", advertising.BillingPrepaid, 2635, 2635, 130_000
+	out := presentAccount(account)
+	if out.CanSetSpendCap {
+		t.Fatal("a prepaid account takes its limit from its funds, so the control must be read only")
+	}
+	f := out.Funds
+	if f.Kind != "prepaid" || f.Level != "out" || f.Reason != "funds_out" || f.Limit == nil || *f.Limit != 2635 || f.Room == nil || *f.Room != 0 || f.DailySpend != 130_000 {
+		t.Fatalf("funds %+v", f)
+	}
+	if !strings.HasPrefix(f.PortalURL, "https://business.facebook.com/") {
+		t.Fatalf("portal %q", f.PortalURL)
+	}
+	raw, _ := json.Marshal(out)
+	if !strings.Contains(string(raw), `"funds":{"kind":"prepaid","level":"out"`) {
+		t.Fatalf("json %s", raw)
 	}
 }

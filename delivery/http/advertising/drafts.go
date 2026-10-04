@@ -231,7 +231,7 @@ func presentDraft(v adsuc.DraftView) DraftResponse {
 	d := v.Draft
 	out := DraftResponse{
 		ID: d.ID, AdAccountID: d.AdAccountID, Draft: d.Content, Version: d.Version, State: string(v.State),
-		Rows: presentAll(d.Rows(), presentDraftRow), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
+		Rows: presentAll(v.Rows(), presentDraftRow), CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt,
 	}
 	if v.Job != nil {
 		job := presentJob(v.Job)

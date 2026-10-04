@@ -142,6 +142,30 @@ func (r *accountRepository) MarkSynced(ctx context.Context, id string, at time.T
 	return r.update(ctx, id, map[string]any{"last_synced_at": at})
 }
 
+func (r *accountRepository) SaveFunds(ctx context.Context, a *advertising.AdAccount) error {
+	return r.update(ctx, a.ID, map[string]any{
+		"billing_kind":       string(a.Billing),
+		"daily_spend_micros": a.DailySpendMicros,
+		"funds_level":        string(a.FundsLevel),
+		"funds_level_since":  a.FundsLevelSince,
+	})
+}
+
+func (r *accountRepository) ListByFundsLevels(ctx context.Context, levels []advertising.FundsLevel, limit, offset int) ([]*advertising.AdAccount, error) {
+	stored := make([]string, 0, len(levels))
+	for _, level := range levels {
+		stored = append(stored, string(level))
+	}
+	var records []schema.AdAccount
+	if err := r.db.WithContext(ctx).
+		Where("connection = ? AND funds_level IN ?", string(advertising.ConnectionConnected), stored).
+		Order("id").Limit(limit).Offset(offset).
+		Find(&records).Error; err != nil {
+		return nil, err
+	}
+	return toAccounts(records), nil
+}
+
 func (r *accountRepository) update(ctx context.Context, id string, updates map[string]any) error {
 	result := r.db.WithContext(ctx).Model(&schema.AdAccount{}).Where("id = ?", id).Updates(updates)
 	if result.Error != nil {
@@ -163,25 +187,29 @@ func toAccounts(records []schema.AdAccount) []*advertising.AdAccount {
 
 func toAccount(record *schema.AdAccount) *advertising.AdAccount {
 	return &advertising.AdAccount{
-		ID:            record.ID,
-		WorkspaceID:   record.WorkspaceID,
-		GrantID:       record.GrantID,
-		MetaAccountID: record.MetaAccountID,
-		Name:          record.Name,
-		BusinessID:    record.BusinessID,
-		BusinessName:  record.BusinessName,
-		Currency:      record.Currency,
-		Timezone:      record.Timezone,
-		MetaStatus:    advertising.MetaAccountStatus(record.MetaStatus),
-		DisableReason: record.DisableReason,
-		HasFunding:    record.HasFunding,
-		AmountSpent:   record.AmountSpent,
-		SpendCap:      record.SpendCap,
-		Tasks:         []string(record.UserTasks),
-		Connection:    advertising.Connection(record.Connection),
-		LastSyncedAt:  record.LastSyncedAt,
-		CreatedAt:     record.CreatedAt,
-		UpdatedAt:     record.UpdatedAt,
+		ID:               record.ID,
+		WorkspaceID:      record.WorkspaceID,
+		GrantID:          record.GrantID,
+		MetaAccountID:    record.MetaAccountID,
+		Name:             record.Name,
+		BusinessID:       record.BusinessID,
+		BusinessName:     record.BusinessName,
+		Currency:         record.Currency,
+		Timezone:         record.Timezone,
+		MetaStatus:       advertising.MetaAccountStatus(record.MetaStatus),
+		DisableReason:    record.DisableReason,
+		HasFunding:       record.HasFunding,
+		AmountSpent:      record.AmountSpent,
+		SpendCap:         record.SpendCap,
+		Billing:          advertising.BillingKind(record.BillingKind),
+		DailySpendMicros: record.DailySpendMicros,
+		FundsLevel:       advertising.FundsLevel(record.FundsLevel),
+		FundsLevelSince:  record.FundsLevelSince,
+		Tasks:            []string(record.UserTasks),
+		Connection:       advertising.Connection(record.Connection),
+		LastSyncedAt:     record.LastSyncedAt,
+		CreatedAt:        record.CreatedAt,
+		UpdatedAt:        record.UpdatedAt,
 	}
 }
 

@@ -15,6 +15,8 @@ var (
 	ErrAccountAdminRequired   = errors.New("only an ad account admin can change billing settings")
 	ErrAccountNotActive       = errors.New("ad account is not active at meta")
 	ErrNoFundingSource        = errors.New("ad account has no payment method")
+	ErrPrepaidSpendCap        = errors.New("a prepaid ad account takes its spending limit from its funds at Meta")
+	ErrBillingUnknown         = errors.New("the ad account billing could not be read from Meta")
 	ErrUnknownTimezone        = errors.New("ad account timezone is unknown")
 	ErrUnknownCurrency        = errors.New("ad account currency is unknown")
 	ErrObjectNotFound         = errors.New("ad object not found")

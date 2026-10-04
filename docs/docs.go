@@ -1338,7 +1338,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Valor em unidades mínimas da moeda da conta (centavos para BRL), acima do que a conta já gastou. amount null remove o limite; o campo é obrigatório.",
+                "description": "Valor em unidades mínimas da moeda da conta (centavos para BRL), acima do que a conta já gastou. amount null remove o limite; o campo é obrigatório. Conta pré-paga não aceita limite manual (409 prepaid_spend_cap): a Meta usa os fundos adicionados como limite. Conta cuja cobrança não foi lida também recusa (409 billing_unknown) até a próxima sincronização.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3198,7 +3198,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Listas que a Meta aceita: objetivos com destinos e metas de otimização permitidos, chamadas para ação, posicionamentos por plataforma, combinações de quebras, janelas de atribuição, chaves de correspondência, métricas de regras, eventos de pixel e formatos de criativo.",
+                "description": "Listas que a Meta aceita: objetivos com destinos e metas de otimização permitidos, chamadas para ação, posicionamentos por plataforma, combinações de quebras, janelas de atribuição, chaves de correspondência, métricas de regras, eventos de pixel, formatos de criativo, os posicionamentos que só veiculam vídeo e as plataformas que os posicionamentos automáticos sempre incluem.",
                 "produces": [
                     "application/json"
                 ],
@@ -24216,26 +24216,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG",
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT"
+                "CATALOG"
             ],
             "x-enum-varnames": [
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog",
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect"
+                "DestinationCatalog"
             ]
         },
         "advertising.ExportLabels": {
@@ -24636,6 +24636,7 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
+                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -24648,10 +24649,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS",
-                "CONVERSATIONS"
+                "APP_INSTALLS"
             ],
             "x-enum-varnames": [
+                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -24664,8 +24665,7 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls",
-                "GoalConversations"
+                "GoalAppInstalls"
             ]
         },
         "advertising.Pixel": {
@@ -25291,6 +25291,9 @@ const docTemplate = `{
                 "currency": {
                     "type": "string"
                 },
+                "funds": {
+                    "$ref": "#/definitions/advertisinghttp.FundsResponse"
+                },
                 "hasFunding": {
                     "type": "boolean"
                 },
@@ -25836,6 +25839,59 @@ const docTemplate = `{
                 }
             }
         },
+        "advertisinghttp.FundsResponse": {
+            "type": "object",
+            "properties": {
+                "dailySpend": {
+                    "type": "integer"
+                },
+                "daysLeft": {
+                    "type": "number"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "prepaid",
+                        "postpaid",
+                        "unknown"
+                    ]
+                },
+                "level": {
+                    "type": "string",
+                    "enum": [
+                        "ok",
+                        "low",
+                        "out",
+                        "payment_failed",
+                        "unknown"
+                    ]
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "portalUrl": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string",
+                    "enum": [
+                        "funds_low",
+                        "funds_out",
+                        "spend_limit_low",
+                        "spend_limit_reached",
+                        "payment_failed",
+                        "grace_period",
+                        "billing_unreadable"
+                    ]
+                },
+                "room": {
+                    "type": "integer"
+                },
+                "spent": {
+                    "type": "integer"
+                }
+            }
+        },
         "advertisinghttp.ImportedResponse": {
             "type": "object",
             "properties": {
@@ -26126,6 +26182,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/advertising.AttributionWindow"
                     }
                 },
+                "automaticPlatforms": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "breakdownGroups": {
                     "type": "array",
                     "items": {
@@ -26187,6 +26249,15 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/advertising.RuleMetric"
+                    }
+                },
+                "videoOnlyPositions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
                     }
                 }
             }

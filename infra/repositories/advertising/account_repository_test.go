@@ -178,3 +178,31 @@ func TestAccountFindByMetaAccountIDBlankRunsNoQuery(t *testing.T) {
 	}
 	expectationsMet(t, mock)
 }
+
+func TestAccountSaveFundsWritesOnlyTheFundsColumns(t *testing.T) {
+	db, mock := newMockDB(t)
+	since := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	mock.ExpectExec(`UPDATE "ad_accounts" SET "billing_kind"=\$1,"daily_spend_micros"=\$2,"funds_level"=\$3,"funds_level_since"=\$4,"updated_at"=\$5 WHERE id = \$6`).
+		WithArgs("prepaid", int64(130_000), "low", &since, sqlmock.AnyArg(), "a-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	account := &advertising.AdAccount{ID: "a-1", Billing: advertising.BillingPrepaid, DailySpendMicros: 130_000, FundsLevel: advertising.FundsLow, FundsLevelSince: &since}
+	if err := NewAccountRepository(db).SaveFunds(context.Background(), account); err != nil {
+		t.Fatal(err)
+	}
+	expectationsMet(t, mock)
+}
+
+func TestAccountListByFundsLevelsReadsConnectedAccountsAtThoseLevels(t *testing.T) {
+	db, mock := newMockDB(t)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "ad_accounts" WHERE connection = $1 AND funds_level IN ($2,$3) ORDER BY id LIMIT $4`)).
+		WithArgs("CONNECTED", "low", "out", 50).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "workspace_id", "billing_kind", "daily_spend_micros", "funds_level"}).AddRow("a-1", "ws", "prepaid", 130000, "low"))
+	accounts, err := NewAccountRepository(db).ListByFundsLevels(context.Background(), []advertising.FundsLevel{advertising.FundsLow, advertising.FundsOut}, 50, 0)
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts %v err %v", accounts, err)
+	}
+	if a := accounts[0]; a.Billing != advertising.BillingPrepaid || a.DailySpendMicros != 130000 || a.FundsLevel != advertising.FundsLow {
+		t.Fatalf("account %+v", a)
+	}
+	expectationsMet(t, mock)
+}

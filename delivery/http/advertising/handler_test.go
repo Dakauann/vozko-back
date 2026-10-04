@@ -212,7 +212,7 @@ func (p *actorPublisher) Publish(_ context.Context, in adsuc.PublishInput) (*adv
 func TestPublishingADraftOnTheScreenIsRecordedAsThePerson(t *testing.T) {
 	publisher := &actorPublisher{}
 	drafts := oneDraft{draft: &advertising.SavedDraft{ID: "d-1", Version: 3}}
-	h := NewHandler(Deps{Drafts: adsuc.NewDraftsUseCase(drafts, nil, nil, publisher)})
+	h := NewHandler(Deps{Drafts: adsuc.NewDraftsUseCase(drafts, nil, nil, nil, publisher)})
 	req := mux.SetURLVars(httptest.NewRequest(http.MethodPost, "/ads/drafts/d-1/publish", strings.NewReader(`{"version":3}`)), map[string]string{"id": "d-1"})
 	rec := httptest.NewRecorder()
 	h.PublishDraft(rec, req)

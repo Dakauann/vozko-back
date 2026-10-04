@@ -16,13 +16,22 @@ func presentAccount(a *advertising.AdAccount) AccountResponse {
 	}
 	out.Role = string(a.Role())
 	out.CanManage = a.CanManage() == nil
-	out.CanSetSpendCap = a.CanChangeBilling() == nil
+	out.CanSetSpendCap = a.CanChangeBilling() == nil && a.CanSetSpendCap() == nil
+	out.Funds = presentFunds(a)
 	if err := a.CanSpend(); err != nil {
 		out.SpendBlocker = spendBlocker(err)
 	} else {
 		out.CanSpend = true
 	}
 	return out
+}
+
+func presentFunds(a *advertising.AdAccount) FundsResponse {
+	f := advertising.FundsOf(a)
+	return FundsResponse{
+		Kind: string(f.Kind), Level: string(f.Level), Reason: string(f.Reason), Limit: f.LimitMinor, Spent: f.SpentMinor,
+		Room: f.RoomMinor, DailySpend: f.DailySpendMicros, DaysLeft: f.DaysLeft, PortalURL: a.PortalURL(advertising.PortalBilling),
+	}
 }
 
 func spendBlocker(err error) string {
