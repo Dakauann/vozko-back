@@ -12,5 +12,5 @@ func (c *Container) creativeComposer() *composeuc.Service {
 	if c.useCases.uploadMedia == nil || c.useCases.getMedia == nil {
 		log.Fatalf("[creative-compose] media upload and media lookup must exist before the creative composer")
 	}
-	return composeuc.NewService(composeinfra.NewLibrary(), composeinfra.NewRenderer(browser.NewRenderer()), c.useCases.getMedia, c.useCases.uploadMedia)
+	return composeuc.NewService(composeinfra.NewRenderer(browser.NewRenderer()), c.useCases.getMedia, c.useCases.uploadMedia)
 }
