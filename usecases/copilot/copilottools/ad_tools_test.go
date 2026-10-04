@@ -22,6 +22,26 @@ func (stubAdAccounts) List(context.Context, string) ([]*advertising.AdAccount, e
 	return []*advertising.AdAccount{{ID: adAccountUUID, MetaAccountID: "1762972444913096", Name: "Loja", Currency: "BRL", Timezone: "America/Sao_Paulo"}}, nil
 }
 
+type stubAdAssets struct{}
+
+func (stubAdAssets) Pages(context.Context, string, string) ([]adsuc.PromotablePage, error) {
+	return nil, nil
+}
+func (stubAdAssets) Locations(context.Context, string, string, string) ([]advertising.RemoteLocation, error) {
+	return nil, nil
+}
+func (stubAdAssets) NameLocations(_ context.Context, _, _ string, locations []advertising.GeoLocation) ([]advertising.GeoLocation, error) {
+	out := make([]advertising.GeoLocation, 0, len(locations))
+	for _, l := range locations {
+		if strings.Contains(l.Key, "-") {
+			return nil, advertising.FieldError("locations", advertising.CodeUnknownLocation)
+		}
+		l.Name = "Meta " + l.Key
+		out = append(out, l)
+	}
+	return out, nil
+}
+
 type stubAdManager struct {
 	statusCalls   int
 	budgetChecked int64
@@ -80,7 +100,7 @@ func (p *stubAdPublisher) Publish(_ context.Context, in adsuc.PublishInput) (*ad
 
 func adDeps() (AdsDeps, *stubAdManager, *stubAdPublisher) {
 	manager, publisher := &stubAdManager{}, &stubAdPublisher{}
-	return AdsDeps{Accounts: stubAdAccounts{}, Manage: manager, Publish: publisher, Editor: &stubAdEditor{}}, manager, publisher
+	return AdsDeps{Accounts: stubAdAccounts{}, Assets: stubAdAssets{}, Manage: manager, Publish: publisher, Editor: &stubAdEditor{}}, manager, publisher
 }
 
 var adContext = copilot.Context{WorkspaceID: "ws-1", UserID: "u-1"}
@@ -239,22 +259,15 @@ func TestToolsFindTheAccountByMetasIdOrNameAndListTheChoicesOtherwise(t *testing
 	}
 }
 
-func TestLocationTokensCarryTheirNameForTheApprovalCard(t *testing.T) {
-	got, err := parseLocations([]string{"region:455|Rio Grande do Norte", "country:BR", "zip:BR:59000|Natal"})
-	if err != nil {
-		t.Fatal(err)
+func TestTheLocationCardShowsMetasNamesAndRefusesInventedKeys(t *testing.T) {
+	f := newManageFixture()
+	tool := f.tool(t, "edit_ad_set")
+	fields := fieldMap(tool.(copilot.Describer).Describe(context.Background(), adContext, map[string]interface{}{"meta_id": "120201", "locations": []interface{}{"region:455"}}))
+	if !strings.HasSuffix(fields["locations"], "→ Meta 455") {
+		t.Fatalf("fields %+v", fields)
 	}
-	want := []advertising.GeoLocation{
-		{Kind: advertising.LocationRegion, Key: "455", Name: "Rio Grande do Norte"},
-		{Kind: advertising.LocationCountry, Key: "BR"},
-		{Kind: "zip", Key: "BR:59000", Name: "Natal"},
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("%d: %+v", i, got[i])
-		}
-	}
-	if locationsText(got[:1]) != "Rio Grande do Norte" {
-		t.Fatalf("card %q", locationsText(got[:1]))
+	err := tool.(copilot.Validator).Validate(context.Background(), adContext, map[string]interface{}{"meta_id": "120201", "locations": []interface{}{"region:BR-RN"}})
+	if !errors.Is(err, errInvalidArgs) || !strings.Contains(err.Error(), "search_ad_locations") {
+		t.Fatalf("an invented location reached the card: %v", err)
 	}
 }

@@ -116,7 +116,7 @@ func growthTools() (map[string]copilot.Tool, growthStubs) {
 		conversions: &stubConversions{pixels: pixels, settings: advertising.ConversionSettings{SendLeads: true, SendPurchases: true}},
 		pixels:      pixels,
 	}
-	ads := AdsDeps{Accounts: stubAdAccounts{}}
+	ads := AdsDeps{Accounts: stubAdAccounts{}, Assets: stubAdAssets{}}
 	deps := AdGrowthDeps{
 		Audiences: s.audiences, Rules: s.rules, Tests: s.tests,
 		Conversions: s.conversions, Pixels: s.pixels, Now: func() time.Time { return adTestClock },

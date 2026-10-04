@@ -360,43 +360,44 @@ type pageLinkCall struct {
 }
 
 type fakeGateway struct {
-	object      *ads.Object
-	linkStatus  string
-	linked      pageLinkCall
-	calls       []string
-	failOn      string
-	failWith    error
-	pages       []ads.RemotePage
-	mediaOwner  string
-	accounts    []ads.RemoteAdAccount
-	objects     map[ads.Level][]*ads.Object
-	insights    []ads.DailyInsight
-	statuses    map[string]ads.ConfiguredStatus
-	edits       map[string]ads.EditSpec
-	deleted     []string
-	campaigns   []ads.CampaignSpec
-	adSets      []ads.AdSetSpec
-	creatives   []ads.CreativeSpec
-	videoStates []ads.VideoState
-	detail      *ads.ObjectDetail
-	forms       []ads.LeadForm
-	leads       []ads.FormLead
-	pixels      []ads.Pixel
-	audiences   []ads.Audience
-	termsOK     bool
-	batches     []ads.HashedCustomers
-	sessions    []ads.CustomerSession
-	lookalike   ads.LookalikeDraft
-	sent        []ads.ConversionEvent
-	rules       []ads.AutomatedRule
-	tests       []ads.SplitTest
-	subscribed  []string
-	minimums    ads.MinimumBudgets
-	minimumBid  int64
-	billing     ads.RemoteBilling
-	billingWith []bool
-	posts       ads.AdPosts
-	comments    []ads.AdComment
+	object         *ads.Object
+	linkStatus     string
+	linked         pageLinkCall
+	calls          []string
+	failOn         string
+	failWith       error
+	pages          []ads.RemotePage
+	mediaOwner     string
+	accounts       []ads.RemoteAdAccount
+	objects        map[ads.Level][]*ads.Object
+	insights       []ads.DailyInsight
+	statuses       map[string]ads.ConfiguredStatus
+	edits          map[string]ads.EditSpec
+	deleted        []string
+	campaigns      []ads.CampaignSpec
+	adSets         []ads.AdSetSpec
+	creatives      []ads.CreativeSpec
+	videoStates    []ads.VideoState
+	detail         *ads.ObjectDetail
+	forms          []ads.LeadForm
+	leads          []ads.FormLead
+	pixels         []ads.Pixel
+	audiences      []ads.Audience
+	termsOK        bool
+	batches        []ads.HashedCustomers
+	sessions       []ads.CustomerSession
+	lookalike      ads.LookalikeDraft
+	sent           []ads.ConversionEvent
+	rules          []ads.AutomatedRule
+	tests          []ads.SplitTest
+	subscribed     []string
+	minimums       ads.MinimumBudgets
+	minimumBid     int64
+	billing        ads.RemoteBilling
+	billingWith    []bool
+	posts          ads.AdPosts
+	knownLocations []ads.RemoteLocation
+	comments       []ads.AdComment
 }
 
 func newFakeGateway() *fakeGateway {
@@ -537,6 +538,9 @@ func (g *fakeGateway) RemoveSpendCap(context.Context, string, string) error {
 }
 func (g *fakeGateway) SearchLocations(context.Context, string, string) ([]ads.RemoteLocation, error) {
 	return nil, g.step("locations")
+}
+func (g *fakeGateway) DescribeLocations(context.Context, string, []ads.GeoLocation) ([]ads.RemoteLocation, error) {
+	return g.knownLocations, g.step("describe_locations")
 }
 func (g *fakeGateway) SearchTargeting(context.Context, string, string, ads.TargetingSearchKind, string) ([]ads.TargetingOption, error) {
 	return nil, g.step("targeting")

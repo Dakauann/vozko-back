@@ -212,12 +212,13 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, nil, false, executed)
 }
 
+const rejectedActionMessage = "Ação cancelada. Nada foi alterado."
+
 func (s *Service) Reject(ctx context.Context, thread *aichat.Thread, actionID string, emit agentloop.Emit) error {
-	pa, err := s.claim(thread.ID, actionID, aichat.ProposalRejected)
-	if err != nil {
+	if _, err := s.claim(thread.ID, actionID, aichat.ProposalRejected); err != nil {
 		return err
 	}
-	content := "Ação cancelada pelo usuário: " + pa.ToolName
+	content := rejectedActionMessage
 	_ = s.messages.Create(&aichat.Message{ThreadID: thread.ID, Role: aichat.RoleAssistant, Content: content, Model: thread.Model})
 	emit("done", map[string]interface{}{"content": content, "status": "rejected"})
 	return nil

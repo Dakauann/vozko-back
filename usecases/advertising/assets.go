@@ -31,6 +31,7 @@ type assetsGateway interface {
 	RequestPageNumberCode(ctx context.Context, token, pageID, number string) (string, error)
 	VerifyPageNumber(ctx context.Context, token, pageID, number, code string) (string, error)
 	SearchLocations(ctx context.Context, token, query string) ([]ads.RemoteLocation, error)
+	DescribeLocations(ctx context.Context, token string, locations []ads.GeoLocation) ([]ads.RemoteLocation, error)
 	SearchTargeting(ctx context.Context, token, metaAccountID string, kind ads.TargetingSearchKind, query string) ([]ads.TargetingOption, error)
 	EstimateReach(ctx context.Context, token, metaAccountID string, t ads.Targeting, p ads.Placements, goal ads.OptimizationGoal) (*ads.ReachEstimate, error)
 	ListCatalogs(ctx context.Context, token, businessID string) ([]ads.RemoteCatalog, error)
@@ -202,6 +203,19 @@ func (uc *AssetsUseCase) Locations(ctx context.Context, workspaceID, accountID, 
 	return remote(uc, ctx, workspaceID, accountID, ads.UseWrite, func(_ *ads.AdAccount, token string) ([]ads.RemoteLocation, error) {
 		return uc.gateway.SearchLocations(ctx, token, strings.TrimSpace(query))
 	})
+}
+
+func (uc *AssetsUseCase) NameLocations(ctx context.Context, workspaceID, accountID string, locations []ads.GeoLocation) ([]ads.GeoLocation, error) {
+	if len(locations) == 0 {
+		return locations, nil
+	}
+	known, err := remote(uc, ctx, workspaceID, accountID, ads.UseRead, func(_ *ads.AdAccount, token string) ([]ads.RemoteLocation, error) {
+		return uc.gateway.DescribeLocations(ctx, token, locations)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ads.NameLocations(locations, known)
 }
 
 func (uc *AssetsUseCase) Targeting(ctx context.Context, workspaceID, accountID string, kind ads.TargetingSearchKind, query string) ([]ads.TargetingOption, error) {

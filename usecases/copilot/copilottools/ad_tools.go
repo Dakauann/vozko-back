@@ -44,6 +44,7 @@ type AdManager interface {
 type AdAssets interface {
 	Pages(ctx context.Context, workspaceID, accountID string) ([]adsuc.PromotablePage, error)
 	Locations(ctx context.Context, workspaceID, accountID, query string) ([]advertising.RemoteLocation, error)
+	NameLocations(ctx context.Context, workspaceID, accountID string, locations []advertising.GeoLocation) ([]advertising.GeoLocation, error)
 }
 
 type AdPublisher interface {
@@ -82,6 +83,15 @@ func (d AdsDeps) account(ctx context.Context, cc copilot.Context, ref string) (*
 		return nil, fmt.Errorf("%w: ad_account_id %q não identifica uma conta; contas conectadas: %s", errInvalidArgs, ref, accountChoices(accounts))
 	}
 	return account, err
+}
+
+func (d AdsDeps) namedDraft(ctx context.Context, cc copilot.Context, draft advertising.AdDraft) (advertising.AdDraft, error) {
+	named, err := d.Assets.NameLocations(ctx, cc.WorkspaceID, draft.AdAccountID, draft.AdSet.Targeting.Locations)
+	if err != nil {
+		return draft, err
+	}
+	draft.AdSet.Targeting.Locations = named
+	return draft, nil
 }
 
 func accountChoices(accounts []*advertising.AdAccount) string {
@@ -213,6 +223,10 @@ func adsMessage(err error) string {
 func issuesText(invalid *advertising.ValidationError) string {
 	parts := make([]string, 0, len(invalid.Issues))
 	for _, issue := range invalid.Issues {
+		if issue.Code == advertising.CodeUnknownLocation {
+			parts = append(parts, "locations (a Meta não conhece esse local; use o campo location exato de search_ad_locations, nunca monte um)")
+			continue
+		}
 		parts = append(parts, issue.Field+" ("+issue.Code+")")
 	}
 	return strings.Join(parts, ", ")
@@ -412,7 +426,7 @@ func (t *searchAdLocationsTool) Execute(ctx context.Context, cc copilot.Context,
 	}
 	out := make([]map[string]string, 0, len(found))
 	for _, l := range found {
-		out = append(out, map[string]string{"location": string(l.Kind) + ":" + l.Key + locationNameSeparator + l.Name, "name": l.Name, "region": l.Region, "country": l.Country})
+		out = append(out, map[string]string{"location": string(l.Kind) + ":" + l.Key, "name": l.Name, "region": l.Region, "country": l.Country})
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"locations": out}}
 }
@@ -500,17 +514,14 @@ func parseTargetRefs(raw []string) ([]advertising.TargetRef, error) {
 	return out, nil
 }
 
-const locationNameSeparator = "|"
-
 func parseLocations(raw []string) ([]advertising.GeoLocation, error) {
 	out := make([]advertising.GeoLocation, 0, len(raw))
 	for _, item := range raw {
-		ref, name, _ := strings.Cut(strings.TrimSpace(item), locationNameSeparator)
-		kind, key, ok := strings.Cut(ref, ":")
+		kind, key, ok := strings.Cut(strings.TrimSpace(item), ":")
 		if !ok || key == "" {
 			return nil, fmt.Errorf("%w: location %q inválida; use o campo location de search_ad_locations", errInvalidArgs, item)
 		}
-		out = append(out, advertising.GeoLocation{Kind: advertising.LocationKind(kind), Key: key, Name: strings.TrimSpace(name)})
+		out = append(out, advertising.GeoLocation{Kind: advertising.LocationKind(kind), Key: key})
 	}
 	return out, nil
 }
@@ -558,6 +569,9 @@ func (t *createAdTool) preflight(ctx context.Context, cc copilot.Context, args m
 	}
 	draft, err := a.draft(account)
 	if err != nil {
+		return nil, err
+	}
+	if draft, err = t.deps.namedDraft(ctx, cc, draft); err != nil {
 		return nil, err
 	}
 	return t.deps.Publish.Preflight(ctx, cc.WorkspaceID, draft)

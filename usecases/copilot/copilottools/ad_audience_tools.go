@@ -398,6 +398,9 @@ func (t *createSavedAudienceTool) plan(ctx context.Context, cc copilot.Context, 
 	if err != nil {
 		return nil, err
 	}
+	if locations, err = t.ads.Assets.NameLocations(ctx, cc.WorkspaceID, account.ID, locations); err != nil {
+		return nil, err
+	}
 	included, err := audienceRefs(list, a.CustomAudiences)
 	if err != nil {
 		return nil, err

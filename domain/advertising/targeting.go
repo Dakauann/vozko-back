@@ -246,3 +246,22 @@ func ValidHTTPSURL(raw string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	return err == nil && parsed.Scheme == "https" && parsed.Host != "" && strings.Contains(parsed.Host, ".")
 }
+
+const CodeUnknownLocation = "unknown_location"
+
+func NameLocations(wanted []GeoLocation, known []RemoteLocation) ([]GeoLocation, error) {
+	names := make(map[GeoLocation]string, len(known))
+	for _, k := range known {
+		names[GeoLocation{Kind: k.Kind, Key: k.Key}] = k.Name
+	}
+	out := make([]GeoLocation, 0, len(wanted))
+	for _, w := range wanted {
+		name, found := names[GeoLocation{Kind: w.Kind, Key: w.Key}]
+		if !found {
+			return nil, FieldError("locations", CodeUnknownLocation)
+		}
+		w.Name = name
+		out = append(out, w)
+	}
+	return out, nil
+}

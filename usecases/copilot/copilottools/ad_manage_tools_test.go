@@ -233,7 +233,7 @@ func newManageFixture() *manageFixture {
 		"120201": {MetaID: "120201", Name: "Conjunto SP", Level: advertising.LevelAdSet},
 	}}
 	f.bulk.backend, f.spendCap.account = bulkBackend{manageEditor: f.editor, status: manager}, f.account
-	ads := AdsDeps{Accounts: manageAccounts{account: f.account}, Manage: manager, Editor: f.editor}
+	ads := AdsDeps{Accounts: manageAccounts{account: f.account}, Assets: stubAdAssets{}, Manage: manager, Editor: f.editor}
 	f.tools = AdManageTools(AdManageDeps{
 		Bulk: f.bulk, SpendCap: f.spendCap, Runs: f.runs, Reports: f.reports, Now: func() time.Time { return adTestClock },
 	}, ads)

@@ -253,6 +253,11 @@ func (t *editAdSetTool) plan(ctx context.Context, cc copilot.Context, args map[s
 	if err != nil {
 		return nil, err
 	}
+	if len(a.Locations) > 0 && edit.Targeting != nil {
+		if edit.Targeting.Locations, err = t.deps.ads.Assets.NameLocations(ctx, cc.WorkspaceID, account.ID, edit.Targeting.Locations); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := t.deps.ads.Editor.CheckEdit(ctx, cc.WorkspaceID, id, edit); err != nil {
 		return nil, err
 	}

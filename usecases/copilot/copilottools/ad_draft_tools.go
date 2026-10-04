@@ -367,6 +367,9 @@ func (t *saveAdDraftTool) check(ctx context.Context, cc copilot.Context, args ma
 	if err != nil {
 		return nil, err
 	}
+	if draft, err = t.deps.namedDraft(ctx, cc, draft); err != nil {
+		return nil, err
+	}
 	return t.deps.Publish.Check(ctx, cc.WorkspaceID, draft)
 }
 
@@ -739,6 +742,11 @@ func (t *updateAdDraftTool) plan(ctx context.Context, cc copilot.Context, args m
 	content, err := patchDraft(view.Draft.Content, account, changes)
 	if err != nil {
 		return nil, err
+	}
+	if _, touched := changes["locations"]; touched {
+		if content, err = t.deps.namedDraft(ctx, cc, content); err != nil {
+			return nil, err
+		}
 	}
 	pre, err := t.deps.Publish.Check(ctx, cc.WorkspaceID, content)
 	if err != nil {
