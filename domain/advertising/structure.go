@@ -56,7 +56,6 @@ type Delivery string
 
 const (
 	DeliveryActive         Delivery = "active"
-	DeliveryPreparing      Delivery = "preparing"
 	DeliveryScheduled      Delivery = "scheduled"
 	DeliveryCompleted      Delivery = "completed"
 	DeliveryOff            Delivery = "off"
@@ -135,9 +134,6 @@ func (o *Object) Delivery(now time.Time) Delivery {
 		if o.StartTime != nil && now.Before(*o.StartTime) {
 			return DeliveryScheduled
 		}
-		if o.FirstDeliveredAt == nil {
-			return DeliveryPreparing
-		}
 		return DeliveryActive
 	case EffectivePaused:
 		return DeliveryOff
@@ -160,6 +156,8 @@ func (o *Object) Delivery(now time.Time) Delivery {
 	}
 	return DeliveryUnknown
 }
+
+func (o *Object) Delivered() bool { return o.FirstDeliveredAt != nil }
 
 func (o *Object) Locked() bool {
 	return o.Status == StatusDeleted || o.Status == StatusArchived ||

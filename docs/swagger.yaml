@@ -2245,6 +2245,8 @@ definitions:
         $ref: '#/definitions/advertisinghttp.CreativeResponse'
       dailyBudget:
         type: integer
+      delivered:
+        type: boolean
       delivery:
         type: string
       destinationType:

@@ -56,7 +56,7 @@ func presentOutcome(o advertising.Outcome) OutcomeResponse {
 func presentObject(o *advertising.Object, now time.Time) RowResponse {
 	row := RowResponse{
 		MetaID: o.MetaID, Level: string(o.Level), Name: o.Name, CampaignID: o.CampaignMetaID, AdSetID: o.AdSetMetaID,
-		Status: string(o.Status), EffectiveStatus: string(o.EffectiveStatus), Delivery: string(o.Delivery(now)),
+		Status: string(o.Status), EffectiveStatus: string(o.EffectiveStatus), Delivery: string(o.Delivery(now)), Delivered: o.Delivered(),
 		IsOn: o.IsOn(), CanToggle: o.CanToggle() == nil, Objective: o.Objective, OptimizationGoal: o.OptimizationGoal,
 		DestinationType: o.DestinationType, DailyBudget: o.DailyBudget, LifetimeBudget: o.LifetimeBudget,
 		StartTime: o.StartTime, EndTime: o.EndTime, Issues: o.Issues, ReviewFeedback: o.ReviewFeedback,

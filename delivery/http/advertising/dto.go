@@ -69,6 +69,7 @@ type RowResponse struct {
 	Status           string              `json:"status"`
 	EffectiveStatus  string              `json:"effectiveStatus"`
 	Delivery         string              `json:"delivery"`
+	Delivered        bool                `json:"delivered"`
 	IsOn             bool                `json:"isOn"`
 	CanToggle        bool                `json:"canToggle"`
 	Objective        string              `json:"objective,omitempty"`

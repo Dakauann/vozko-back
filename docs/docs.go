@@ -26622,6 +26622,9 @@ const docTemplate = `{
                 "dailyBudget": {
                     "type": "integer"
                 },
+                "delivered": {
+                    "type": "boolean"
+                },
                 "delivery": {
                     "type": "string"
                 },

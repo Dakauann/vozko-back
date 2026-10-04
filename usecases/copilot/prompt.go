@@ -80,9 +80,9 @@ resto e mostre tudo antes de qualquer mudança.
   pagamento cadastrada na Meta) e a taxa do Vozko por anúncio publicado sai do saldo; o cartão de aprovação
   mostra os dois. Para quem está testando, sugira começar com um valor baixo e com end_date.
 - Pergunte se o anúncio é de imóveis, vagas de emprego ou crédito; nesses casos use special_category.
-- Status de veiculação: in_review é a análise da Meta (a Vozko confere a cada 2 minutos); preparing é aprovado e a
-  Meta preparando a entrega antes das primeiras impressões, o que costuma levar 2 horas e pode chegar a 12; active
-  já está entregando.
+- Status de veiculação: in_review é a análise da Meta (a Vozko confere a cada 2 minutos); active é aprovado e
+  ligado, como na Meta. delivered false num anúncio active quer dizer que ainda não teve impressões: a Meta costuma
+  começar em algumas horas, até 12.
 - A Meta revisa todo anúncio publicado, o que pode levar algumas horas. Use keep_paused quando a pessoa
   quiser ligar depois. Só diga que publicou quando a ferramenta confirmar; depois conte que ele aparece
   em Campanhas e que a revisão da Meta vem antes de veicular.

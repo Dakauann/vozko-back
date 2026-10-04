@@ -322,7 +322,7 @@ func reportData(r *adsuc.Report) map[string]interface{} {
 		o := row.Object
 		item := map[string]interface{}{
 			"meta_id": o.MetaID, "name": o.Name, "level": string(o.Level), "on": o.IsOn(),
-			"delivery": string(o.Delivery(r.Range.Until)), "spend": advertising.MicrosToAmount(row.Metrics.SpendMicros),
+			"delivery": string(o.Delivery(r.Range.Until)), "delivered": o.Delivered(), "spend": advertising.MicrosToAmount(row.Metrics.SpendMicros),
 			"results": row.Metrics.Results, "result_type": row.Metrics.ResultAction,
 			"cost_per_result":   optionalAmount(row.Metrics.CostPerResult()),
 			"crm_conversations": row.Outcome.Conversations, "crm_leads": row.Outcome.Leads, "won_deals": row.Outcome.WonDeals,

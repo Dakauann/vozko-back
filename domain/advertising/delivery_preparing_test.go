@@ -5,19 +5,15 @@ import (
 	"time"
 )
 
-func TestAnActiveObjectThatNeverDeliveredIsPreparingLikeMeta(t *testing.T) {
+func TestAnApprovedObjectReadsActiveLikeMetaAndTellsWhetherItEverDelivered(t *testing.T) {
 	now := time.Date(2026, 10, 4, 17, 0, 0, 0, time.UTC)
 	fresh := &Object{EffectiveStatus: EffectiveActive}
-	if got := fresh.Delivery(now); got != DeliveryPreparing {
-		t.Fatalf("fresh active: %s", got)
+	if fresh.Delivery(now) != DeliveryActive || fresh.Delivered() {
+		t.Fatalf("fresh: %s delivered %v", fresh.Delivery(now), fresh.Delivered())
 	}
 	delivered := now.Add(-time.Hour)
 	running := &Object{EffectiveStatus: EffectiveActive, FirstDeliveredAt: &delivered}
-	if got := running.Delivery(now); got != DeliveryActive {
-		t.Fatalf("delivering: %s", got)
-	}
-	paused := &Object{EffectiveStatus: EffectivePaused}
-	if got := paused.Delivery(now); got != DeliveryOff {
-		t.Fatalf("paused: %s", got)
+	if running.Delivery(now) != DeliveryActive || !running.Delivered() {
+		t.Fatalf("running: %s delivered %v", running.Delivery(now), running.Delivered())
 	}
 }
