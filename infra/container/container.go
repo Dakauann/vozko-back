@@ -82,6 +82,7 @@ func New() *Container {
 	c.wireTelegramConversationStack()
 	c.wireWebchatConversationStack()
 	c.wireUnofficialWhatsAppConversationStack()
+	c.wireDelegations()
 	c.initHandlers()
 	c.initRouter()
 	c.initServer()

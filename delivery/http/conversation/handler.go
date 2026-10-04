@@ -25,14 +25,23 @@ type ConversationHandler struct {
 	listEventsUC          ce.ListEventsUseCase
 	requestCallPermission conversationdomain.RequestCallPermissionUseCase
 	automationService     ConversationAutomationService
+	delegationService     ConversationDelegationService
 }
 
 type ConversationAutomationService interface {
 	SetAutomation(ctx context.Context, in ia_usecase.OperatorAutomationInput) (ia_usecase.OperatorAutomationResult, error)
 }
 
+type ConversationDelegationService interface {
+	Delegate(ctx context.Context, in ia_usecase.DelegateInput) (ia_usecase.OperatorAutomationResult, error)
+}
+
 func (h *ConversationHandler) SetAutomationService(s ConversationAutomationService) {
 	h.automationService = s
+}
+
+func (h *ConversationHandler) SetDelegationService(s ConversationDelegationService) {
+	h.delegationService = s
 }
 
 func (h *ConversationHandler) SetRequestCallPermission(uc conversationdomain.RequestCallPermissionUseCase) {
@@ -413,17 +422,8 @@ func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Reque
 		EntryType:   shared.EntryType(entryType),
 		Enabled:     req.AutomationEnabled,
 	})
-	if errors.Is(err, ia_usecase.ErrAutomationForbidden) {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
-		return
-	}
-	if errors.Is(err, ia_usecase.ErrNothingToReturnTo) {
-		response.WriteErrorWithCode(w, http.StatusConflict, "nothing_to_return_to",
-			"No agent or workflow is active on this channel, so the automation stays paused", nil)
-		return
-	}
 	if err != nil {
-		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		writeAutomationError(w, err)
 		return
 	}
 
@@ -432,5 +432,82 @@ func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Reque
 		"entry_type":         entryType,
 		"automation_enabled": req.AutomationEnabled,
 		"assigned_user_id":   result.Owner,
+	})
+}
+
+func writeAutomationError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ia_usecase.ErrAutomationForbidden):
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this conversation", nil)
+	case errors.Is(err, conversationdomain.ErrAutomationInvalid):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "automation_invalid", err.Error(), nil)
+	case errors.Is(err, conversationdomain.ErrAutomationUnusable):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "automation_unusable", err.Error(), nil)
+	case errors.Is(err, ia_usecase.ErrNothingToReturnTo):
+		response.WriteErrorWithCode(w, http.StatusConflict, "nothing_to_return_to",
+			"No agent or workflow is active on this channel, so the automation stays paused", nil)
+	default:
+		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+	}
+}
+
+type DelegateRequest struct {
+	Kind string `json:"kind" enums:"agent,workflow"`
+	ID   string `json:"id"`
+}
+
+// @Summary		Delegar conversa a um agente ou fluxo
+// @Description	Passa a conversa para um agente de IA ou um fluxo específico, como se passa para um colega, mesmo que o canal não tenha automação ativa. O escolhido passa a responder só esta conversa e a ser o responsável (assigned_user_id ai:<id> ou workflow:<id>). Pausar a automação devolve a conversa a uma pessoa; ligar de novo devolve ao escolhido. A delegação termina quando a conversa é finalizada. Exige a permissão conversations:delegate e acesso à conversa; o agente ou fluxo precisa ser deste workspace e estar ativo (422 automation_unusable).
+// @Tags			Conversas
+// @Accept			json
+// @Produce		json
+// @Param			entryType	path		string			true	"Tipo da entrada"
+// @Param			entryId		path		string			true	"ID da entrada"
+// @Param			request		body		DelegateRequest	true	"Agente ou fluxo"
+// @Success		200			{object}	map[string]interface{}
+// @Failure		400			{object}	response.ErrorResponse
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		422			{object}	response.ErrorResponse
+// @Failure		409			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/conversations/{entryType}/{entryId}/delegation [put]
+func (h *ConversationHandler) Delegate(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+	if h.delegationService == nil {
+		response.WriteError(w, http.StatusInternalServerError, "Delegation service not configured", nil)
+		return
+	}
+	var req DelegateRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
+		return
+	}
+	automation, err := conversationdomain.NewAutomation(req.Kind, req.ID)
+	if err != nil {
+		writeAutomationError(w, err)
+		return
+	}
+
+	vars := mux.Vars(r)
+	result, err := h.delegationService.Delegate(r.Context(), ia_usecase.DelegateInput{
+		ActorUserID: claims.UserID,
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		IsAdmin:     claims.Role == string(user.RoleAdmin),
+		EntryID:     vars["entryId"],
+		EntryType:   shared.EntryType(vars["entryType"]),
+		Automation:  automation,
+	})
+	if err != nil {
+		writeAutomationError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
+		"entry_id":         vars["entryId"],
+		"entry_type":       vars["entryType"],
+		"assigned_user_id": result.Owner,
 	})
 }

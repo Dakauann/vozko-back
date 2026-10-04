@@ -49,6 +49,7 @@ type workflowLookup interface {
 
 type HistoryProviderService struct {
 	automationReaders map[shared.EntryType]func(ctx context.Context, entryID string) (*bool, error)
+	delegations       conversation.DelegationRepository
 
 	messageRepo       conversation.MessageRepository
 	whatsappRepo      wce.Repository
@@ -877,15 +878,15 @@ func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEn
 	agentIDs := map[string]struct{}{}
 	workflowIDs := map[string]struct{}{}
 	entryIDs := make([]string, 0, len(results))
-	resultByEntry := make(map[string]conversation.EntryWithLastMessage, len(results))
+	profileByEntry := s.automationProfiles(results)
 	for _, r := range results {
-		resultByEntry[r.EntryID] = r
 		entryIDs = append(entryIDs, r.EntryID)
-		if r.AgentResponsesEnabled && r.AgentID != "" {
-			agentIDs[r.AgentID] = struct{}{}
-		}
-		if r.WorkflowEnabled && r.WorkflowID != "" {
-			workflowIDs[r.WorkflowID] = struct{}{}
+		if governor, ok := profileByEntry[r.EntryID].Configured(); ok {
+			if governor.Kind == conversation.AutomationWorkflow {
+				workflowIDs[governor.ID] = struct{}{}
+			} else {
+				agentIDs[governor.ID] = struct{}{}
+			}
 		}
 	}
 
@@ -920,20 +921,19 @@ func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEn
 	}
 
 	for i := range entries {
-		r := resultByEntry[entries[i].EntryID]
 		var run *workflow.WorkflowRun
 		if runByEntry != nil {
 			run = runByEntry[entries[i].EntryID]
 		}
-		entries[i].AIHandler = buildAIHandler(r, run, agentMap, workflowMap)
+		entries[i].AIHandler = buildAIHandler(profileByEntry[entries[i].EntryID], run, agentMap, workflowMap)
 	}
 }
 
-func buildAIHandler(r conversation.EntryWithLastMessage, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow) *conversation.AIHandler {
-	governor, configured := r.AutomationProfile().Configured()
+func buildAIHandler(profile conversation.AutomationProfile, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow) *conversation.AIHandler {
+	governor, configured := profile.Configured()
 
 	if run != nil || (configured && governor.Kind == conversation.AutomationWorkflow) {
-		h := &conversation.AIHandler{Kind: string(conversation.AutomationWorkflow), WorkflowID: r.WorkflowID}
+		h := &conversation.AIHandler{Kind: string(conversation.AutomationWorkflow), WorkflowID: governor.ID}
 		if run != nil {
 			h.WorkflowID = run.WorkflowID
 			h.WorkflowRunID = run.ID
@@ -953,7 +953,7 @@ func buildAIHandler(r conversation.EntryWithLastMessage, run *workflow.WorkflowR
 
 	if configured && governor.Kind == conversation.AutomationAgent {
 		h := &conversation.AIHandler{Kind: string(conversation.AutomationAgent), AgentID: governor.ID}
-		if a, ok := agentMap[r.AgentID]; ok {
+		if a, ok := agentMap[governor.ID]; ok {
 			h.AgentName = a.Name
 			h.AgentAvatar = a.AvatarURL
 			h.AgentActive = a.IsActive
@@ -2658,4 +2658,32 @@ func storageExtensionFor(mimeType, filename string) string {
 		}
 	}
 	return ""
+}
+
+func (s *HistoryProviderService) SetDelegations(d conversation.DelegationRepository) {
+	s.delegations = d
+}
+
+func (s *HistoryProviderService) automationProfiles(results []conversation.EntryWithLastMessage) map[string]conversation.AutomationProfile {
+	profiles := make(map[string]conversation.AutomationProfile, len(results))
+	refs := make([]shared.EntryRef, 0, len(results))
+	for _, r := range results {
+		profiles[r.EntryID] = r.AutomationProfile()
+		refs = append(refs, shared.EntryRef{EntryID: r.EntryID, EntryType: shared.EntryType(r.EntryType)})
+	}
+	if s.delegations == nil || len(refs) == 0 {
+		return profiles
+	}
+	delegates, err := s.delegations.FindMany(context.Background(), refs)
+	if err != nil {
+		log.Printf("[HistoryProvider] delegations unreadable, chips show the channel automation: %v", err)
+		return profiles
+	}
+	for ref, automation := range delegates {
+		profile := profiles[ref.EntryID]
+		delegate := automation
+		profile.Delegate = &delegate
+		profiles[ref.EntryID] = profile
+	}
+	return profiles
 }

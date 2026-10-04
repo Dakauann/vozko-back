@@ -87,9 +87,10 @@ type handleWhatsAppMessageUseCase struct {
 
 	billingPub messaging.MessageQueuePub
 
-	loopGuard loopguard.Guard
-	live      LiveMode
-	analysis  *AnalysisScheduler
+	loopGuard   loopguard.Guard
+	delegations conversation.DelegationRepository
+	live        LiveMode
+	analysis    *AnalysisScheduler
 }
 
 const failedStatusRefundTTL = 30 * 24 * time.Hour
@@ -114,6 +115,10 @@ func (uc *handleWhatsAppMessageUseCase) SetTriggerEvaluator(eval workflow_domain
 
 func (uc *handleWhatsAppMessageUseCase) SetBillingPub(pub messaging.MessageQueuePub) {
 	uc.billingPub = pub
+}
+
+func (uc *handleWhatsAppMessageUseCase) SetDelegations(delegations conversation.DelegationRepository) {
+	uc.delegations = delegations
 }
 
 func (uc *handleWhatsAppMessageUseCase) SetLoopGuard(g loopguard.Guard) {
@@ -201,7 +206,7 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		return
 	}
 
-	if agentCtx != nil && agentCtx.wcCampaign != nil && !agentCtx.wcCampaign.EnableWorkflow {
+	if agentCtx != nil && agentCtx.wcCampaign != nil && !agentCtx.automation.RunsWorkflows() {
 		return
 	}
 
@@ -247,8 +252,8 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 			data["campaign_id"] = cID
 		}
 
-		if agentCtx.wcCampaign != nil && agentCtx.wcCampaign.WorkflowID != "" {
-			data["campaign_workflow_id"] = agentCtx.wcCampaign.WorkflowID
+		if ref := agentCtx.automation.WorkflowRef(); agentCtx.wcCampaign != nil && ref != "" {
+			data["campaign_workflow_id"] = ref
 		}
 
 		if agentCtx.wcEntry != nil {
@@ -395,6 +400,11 @@ type agentContext struct {
 	wcLeadRecord    *lead.Lead
 	agent           *agent.Agent
 	skipResponse    bool
+	automation      conversation.ChannelAutomation
+}
+
+func (a *agentContext) firesWorkflow() bool {
+	return a != nil && a.wcCampaign != nil && a.automation.RunsWorkflows() && a.automation.WorkflowRef() != ""
 }
 
 func (a *agentContext) sentBy() conversation.SentBy {
@@ -749,8 +759,8 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 			go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
 		}
 
-		if agentCtx.wcCampaign != nil && agentCtx.wcCampaign.EnableWorkflow && strings.TrimSpace(agentCtx.wcCampaign.WorkflowID) != "" {
-			log.Printf("[whatsapp-usecase] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.wcCampaign.WorkflowID)
+		if agentCtx.firesWorkflow() {
+			log.Printf("[whatsapp-usecase] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.automation.WorkflowRef())
 			go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.Text.Body, "text", "", history, selectedOptionFromMessage(message))
 		}
 		return nil
@@ -1941,31 +1951,7 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 					wcLeadRecord: wcLead,
 				}
 
-				hasWorkflow := wcCampaign.EnableWorkflow && strings.TrimSpace(wcCampaign.WorkflowID) != ""
-				hasAgent := responsesEnabled && strings.TrimSpace(wcCampaign.AgentID) != ""
-
-				if hasWorkflow {
-
-					wcCtx.skipResponse = true
-					responsesEnabled = false
-					log.Printf("[whatsapp-usecase] campaign %s has workflow %s, agent responses will be skipped", wcCampaign.ID, wcCampaign.WorkflowID)
-				} else if hasAgent {
-					agentRecord, prompt, tools := uc.resolveAgentPromptAndTools(wcCampaign.AgentID, wcCampaign.ID, "whatsapp")
-					if agentRecord != nil {
-						wcCtx.agent = agentRecord
-						wcCtx.messagingPrompt = prompt
-						wcCtx.tools = tools
-					} else {
-						wcCtx.skipResponse = true
-						responsesEnabled = false
-						log.Printf("[whatsapp-usecase] campaign %s could not resolve agent %s, skipping responses", wcCampaign.ID, wcCampaign.AgentID)
-					}
-				} else {
-
-					wcCtx.skipResponse = true
-					responsesEnabled = false
-					log.Printf("[whatsapp-usecase] campaign %s has no workflow and no agent configured, skipping responses", wcCampaign.ID)
-				}
+				responsesEnabled = uc.prepareAutomation(wcCtx, responsesEnabled)
 
 				candidates = append(candidates, candidate{
 					ctx:              wcCtx,
@@ -2050,27 +2036,7 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentContext(from string, metadat
 			wcLeadRecord: leadRecord,
 		}
 
-		hasWorkflow := organicCampaign.EnableWorkflow && strings.TrimSpace(organicCampaign.WorkflowID) != ""
-		hasAgent := organicCampaign.EnableAgentResponses && strings.TrimSpace(organicCampaign.AgentID) != ""
-
-		if hasWorkflow {
-			organicCtx.skipResponse = true
-			log.Printf("[whatsapp-usecase] organic campaign %s has workflow %s, agent responses will be skipped", organicCampaign.ID, organicCampaign.WorkflowID)
-		} else if hasAgent {
-			agentRecord, prompt, tools := uc.resolveAgentPromptAndTools(organicCampaign.AgentID, organicCampaign.ID, "whatsapp")
-			if agentRecord != nil {
-				organicCtx.agent = agentRecord
-				organicCtx.messagingPrompt = prompt
-				organicCtx.tools = tools
-			} else {
-				organicCtx.skipResponse = true
-				log.Printf("[whatsapp-usecase] organic campaign %s could not resolve agent %s, skipping responses", organicCampaign.ID, organicCampaign.AgentID)
-			}
-		} else {
-			organicCtx.skipResponse = true
-			log.Printf("[whatsapp-usecase] organic campaign %s has no workflow and no agent configured, skipping responses", organicCampaign.ID)
-		}
-
+		uc.prepareAutomation(organicCtx, organicCampaign.EnableAgentResponses)
 		return organicCtx, leadRecord
 	}
 
@@ -2802,8 +2768,8 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 			go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
 		}
 
-		if agentCtx.wcCampaign != nil && agentCtx.wcCampaign.EnableWorkflow && strings.TrimSpace(agentCtx.wcCampaign.WorkflowID) != "" {
-			log.Printf("[whatsapp-audio] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.wcCampaign.WorkflowID)
+		if agentCtx.firesWorkflow() {
+			log.Printf("[whatsapp-audio] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.automation.WorkflowRef())
 			go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, transcribedText, "audio", "audio", history, nil)
 		}
 		return nil
@@ -3144,4 +3110,42 @@ func (uc *handleWhatsAppMessageUseCase) storeInboundMedia(entryID string, entryT
 		return nil
 	}
 	return stored
+}
+
+func (uc *handleWhatsAppMessageUseCase) prepareAutomation(actx *agentContext, responsesEnabled bool) bool {
+	campaign := actx.wcCampaign
+	agentID, workflowID := campaign.AgentID, campaign.WorkflowID
+	automation, err := EffectiveAutomation(context.Background(), uc.delegations, actx.wcEntry.ID, shared.EntryTypeWhatsApp,
+		conversation.ChannelAutomation{
+			AgentID:              &agentID,
+			EnableAgentResponses: responsesEnabled,
+			WorkflowID:           &workflowID,
+			EnableWorkflow:       campaign.EnableWorkflow,
+		})
+	if err != nil {
+		log.Printf("[whatsapp-usecase] delegation of entry %s unreadable, no automation runs: %v", actx.wcEntry.ID, err)
+		actx.skipResponse = true
+		return false
+	}
+	actx.automation = automation
+
+	switch {
+	case actx.firesWorkflow():
+		actx.skipResponse = true
+		log.Printf("[whatsapp-usecase] campaign %s runs workflow %s, agent responses will be skipped", campaign.ID, automation.WorkflowRef())
+		return false
+	case automation.EnableAgentResponses && automation.HasAgent():
+		agentRecord, prompt, tools := uc.resolveAgentPromptAndTools(*automation.AgentID, campaign.ID, "whatsapp")
+		if agentRecord == nil {
+			actx.skipResponse = true
+			log.Printf("[whatsapp-usecase] campaign %s could not resolve agent %s, skipping responses", campaign.ID, *automation.AgentID)
+			return false
+		}
+		actx.agent, actx.messagingPrompt, actx.tools = agentRecord, prompt, tools
+		return true
+	default:
+		actx.skipResponse = true
+		log.Printf("[whatsapp-usecase] campaign %s has no workflow and no agent configured, skipping responses", campaign.ID)
+		return false
+	}
 }

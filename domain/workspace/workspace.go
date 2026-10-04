@@ -125,6 +125,7 @@ var (
 	ActionTransfer = registerAction("transfer")
 
 	ActionListMembers = registerAction("list_members")
+	ActionDelegate    = registerAction("delegate")
 )
 
 func (a Action) IsValid() bool {
@@ -212,6 +213,9 @@ var ResourceActions = map[Resource][]ActionDefinition{
 			{Resource: ResourceMembers, Action: ActionRead},
 		}},
 		{ActionName: ActionViewOthers, Description: "Visualizar conversas atribuídas a outros membros da equipe", Risks: []RiskKind{RiskSensitiveData}},
+		{ActionName: ActionDelegate, Description: "Delegar conversas a um agente de IA ou a um fluxo, mesmo em canais sem automação ativa", Risks: []RiskKind{RiskSpendsBalance, RiskChangesAutomation}, Requires: []PermissionEntry{
+			{Resource: ResourceConversations, Action: ActionRead},
+		}},
 		{ActionName: ActionCall, Description: "Solicitar ao cliente permissão para receber ligações pelo WhatsApp. A ligação em si usa a permissão de chamadas.", Requires: []PermissionEntry{
 			{Resource: ResourceConversations, Action: ActionRead},
 			{Resource: ResourceCallSession, Action: ActionUse},

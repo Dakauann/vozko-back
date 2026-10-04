@@ -194,6 +194,16 @@ type AdSavedReport struct {
 
 func (AdSavedReport) TableName() string { return "ad_saved_reports" }
 
+type AdPageWhatsAppLink struct {
+	ID          string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	WorkspaceID string    `gorm:"type:uuid;not null;uniqueIndex:idx_ad_page_whatsapp_link,priority:1"`
+	PageID      string    `gorm:"size:64;not null;uniqueIndex:idx_ad_page_whatsapp_link,priority:2"`
+	Number      string    `gorm:"size:32;not null;uniqueIndex:idx_ad_page_whatsapp_link,priority:3"`
+	LinkedAt    time.Time `gorm:"not null"`
+}
+
+func (AdPageWhatsAppLink) TableName() string { return "ad_page_whatsapp_links" }
+
 type AdReportExport struct {
 	ID          string    `gorm:"primaryKey;type:uuid"`
 	WorkspaceID string    `gorm:"type:uuid;not null;index:idx_ad_report_export_created,priority:1"`

@@ -17,6 +17,7 @@ import (
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/domain/workflow"
+	conversation_usecase "vozko/usecases/conversation"
 )
 
 type AssignmentService interface {
@@ -73,6 +74,7 @@ type HandleWebhookUseCase struct {
 	workflows          WorkflowTrigger
 	leads              LeadLinker
 	analysis           AnalysisScheduler
+	delegations        conversation.DelegationRepository
 	sessionHost
 	profiles      subjectProfile
 	groups        groupMetadata
@@ -101,6 +103,7 @@ type HandleWebhookDeps struct {
 	Workflows   WorkflowTrigger
 	Leads       LeadLinker
 	Analysis    AnalysisScheduler
+	Delegations conversation.DelegationRepository
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -120,6 +123,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		workflows:     d.Workflows,
 		leads:         d.Leads,
 		analysis:      d.Analysis,
+		delegations:   d.Delegations,
 		sessionHost:   sessionHost{sync: sessionSync{instances: d.Instances}},
 		profiles:      profiles,
 		groups:        newGroupMetadata(d, profiles),
@@ -213,8 +217,14 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 	auto := uc.automationFor(sub.conversation.ID)
 
 	uc.ensureAssignment(sub.conversation, instance)
-	uc.fireWorkflowTriggers(instance, sub.conversation, ev, auto)
-	uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, auto)
+	automation, err := conversation_usecase.EffectiveAutomation(ctx, uc.delegations, sub.conversation.ID,
+		shared.EntryTypeUnofficialWhatsApp, channelAutomation(instance, sub.conversation, auto))
+	if err != nil {
+		log.Printf("[unofficial-whatsapp] delegation of %s unreadable, no automation runs: %v", sub.conversation.ID, err)
+	} else {
+		uc.fireWorkflowTriggers(instance, sub.conversation, ev, auto, automation)
+		uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, automation)
+	}
 	uc.scheduleAnalysis(instance, sub.conversation, auto)
 	uc.broadcastEntryUpdate(sub.conversation.ID)
 	return nil
@@ -710,29 +720,13 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	conv *uw.Conversation,
 	ev *uw.Event,
 	auto *CampaignAutomation,
+	automation conversation.ChannelAutomation,
 ) {
-	if uc.workflows == nil {
-		return
-	}
-	if !conv.RunsAutomation(instance.HandleGroups) {
+	if uc.workflows == nil || !conv.RunsAutomation(instance.HandleGroups) || !automation.RunsWorkflows() {
 		return
 	}
 
-	scopedWorkflowID := ""
-	if auto != nil {
-		if !auto.Automation.RunsWorkflow(conv.AutomationEnabled) {
-			return
-		}
-		scopedWorkflowID = auto.Automation.WorkflowID
-	} else {
-		if !instance.EnableWorkflow {
-			return
-		}
-		if instance.WorkflowID != nil {
-			scopedWorkflowID = strings.TrimSpace(*instance.WorkflowID)
-		}
-	}
-
+	scopedWorkflowID := automation.WorkflowRef()
 	data := map[string]any{"text": ev.Text}
 
 	if scopedWorkflowID != "" {
@@ -764,27 +758,10 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 	contact *uw.Contact,
 	conv *uw.Conversation,
 	ev *uw.Event,
-	auto *CampaignAutomation,
+	automation conversation.ChannelAutomation,
 ) {
-	if uc.aiReply == nil {
+	if uc.aiReply == nil || !conv.RunsAutomation(instance.HandleGroups) || !automation.HasAgent() || !automation.EnableAgentResponses {
 		return
-	}
-	if !conv.RunsAutomation(instance.HandleGroups) {
-		return
-	}
-
-	agentID := ""
-	agentEnabled := false
-	if auto != nil {
-		if !auto.Automation.RunsAgent(conv.AutomationEnabled) {
-			return
-		}
-		agentID, agentEnabled = auto.Automation.AgentID, true
-	} else {
-		if instance.AgentID == nil {
-			return
-		}
-		agentID, agentEnabled = *instance.AgentID, instance.EnableAgentResponses
 	}
 
 	var leadID *string
@@ -795,8 +772,8 @@ func (uc *HandleWebhookUseCase) maybeReplyWithAgent(
 		WorkspaceID:           instance.WorkspaceID,
 		EntryID:               conv.ID,
 		EntryType:             shared.EntryTypeUnofficialWhatsApp,
-		AgentID:               agentID,
-		AgentResponsesEnabled: agentEnabled,
+		AgentID:               *automation.AgentID,
+		AgentResponsesEnabled: automation.EnableAgentResponses,
 		AutomationEnabled:     conv.AutomationEnabled,
 		Text:                  ev.Text,
 		LeadID:                leadID,
@@ -952,4 +929,22 @@ func adReferralOf(reply *uw.AdReply) *conversation.AdReferral {
 	}
 	log.Printf("[unofficial-whatsapp] message came from an ad source=%s platform=%s", ad.AdID, ad.Platform)
 	return ad
+}
+
+func channelAutomation(instance *uw.Instance, conv *uw.Conversation, auto *CampaignAutomation) conversation.ChannelAutomation {
+	if auto == nil {
+		return conversation.ChannelAutomation{
+			AgentID:              instance.AgentID,
+			EnableAgentResponses: instance.EnableAgentResponses,
+			WorkflowID:           instance.WorkflowID,
+			EnableWorkflow:       instance.EnableWorkflow,
+		}
+	}
+	agentID, workflowID := auto.Automation.AgentID, auto.Automation.WorkflowID
+	return conversation.ChannelAutomation{
+		AgentID:              &agentID,
+		EnableAgentResponses: auto.Automation.RunsAgent(conv.AutomationEnabled),
+		WorkflowID:           &workflowID,
+		EnableWorkflow:       auto.Automation.RunsWorkflow(conv.AutomationEnabled),
+	}
 }

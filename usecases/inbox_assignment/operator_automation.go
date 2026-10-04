@@ -40,7 +40,7 @@ func NewOperatorAutomationToggle(automation AutomationPauser, ownership *Assignm
 
 func (t *OperatorAutomationToggle) SetAutomation(ctx context.Context, in OperatorAutomationInput) (OperatorAutomationResult, error) {
 	entryType := string(in.EntryType)
-	if t.access == nil || !t.access.CanAccessEntry(in.ActorUserID, in.WorkspaceID, in.EntryID, entryType, in.IsAdmin) {
+	if !t.allows(in) {
 		return OperatorAutomationResult{}, ErrAutomationForbidden
 	}
 
@@ -70,4 +70,8 @@ func (t *OperatorAutomationToggle) pauseAgain(ctx context.Context, in OperatorAu
 		return fmt.Errorf("%w: %s (%s) could not be handed back (%v) nor paused again: %v", ErrAutomationStillActive, in.EntryID, in.EntryType, cause, err)
 	}
 	return fmt.Errorf("automation stays paused for %s (%s): %w", in.EntryID, in.EntryType, cause)
+}
+
+func (t *OperatorAutomationToggle) allows(in OperatorAutomationInput) bool {
+	return t.access != nil && t.access.CanAccessEntry(in.ActorUserID, in.WorkspaceID, in.EntryID, string(in.EntryType), in.IsAdmin)
 }

@@ -24,6 +24,8 @@ type entryInfoRow struct {
 	AgentEnabled    bool   `gorm:"column:agent_responses_enabled"`
 	WorkflowEnabled bool   `gorm:"column:workflow_enabled"`
 	AutomationOn    *bool  `gorm:"column:automation_enabled"`
+	DelegateKind    string `gorm:"column:delegate_kind"`
+	DelegateID      string `gorm:"column:delegate_id"`
 }
 
 func (r *EntryInfoReader) entryInfo(entryID, entryType string) (entryInfoRow, error) {
@@ -32,7 +34,8 @@ func (r *EntryInfoReader) entryInfo(entryID, entryType string) (entryInfoRow, er
 	if !ok {
 		return row, fmt.Errorf("entry info for %q: %w", entryType, conversation.ErrEntryTypeInvalid)
 	}
-	res := r.db.Raw(ch.entryInfoSQL(), entryID).Scan(&row)
+	query, args := ch.entryInfoQuery(entryID)
+	res := r.db.Raw(query, args...).Scan(&row)
 	if res.Error != nil {
 		return row, fmt.Errorf("entry info %s (%s): %w", entryID, entryType, res.Error)
 	}
@@ -62,7 +65,16 @@ func (r *EntryInfoReader) EntryAutomation(entryID, entryType string) (conversati
 		WorkflowID:            row.WorkflowID,
 		WorkflowEnabled:       row.WorkflowEnabled,
 		AutomationEnabled:     row.AutomationOn,
+		Delegate:              row.delegate(),
 	}, nil
 }
 
 var _ conversation.EntryAutomationReader = (*EntryInfoReader)(nil)
+
+func (r entryInfoRow) delegate() *conversation.Automation {
+	a, err := conversation.NewAutomation(r.DelegateKind, r.DelegateID)
+	if err != nil {
+		return nil
+	}
+	return &a
+}

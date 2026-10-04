@@ -110,6 +110,7 @@ func (c *Container) initTelegramRuntime(history conversation_domain.MessageHisto
 		Workflows:     c.useCases.triggerEvaluator,
 		Leads:         telegram_repository.NewLeadLinker(c.repositories.lead),
 		Analysis:      c.services.analysisScheduler,
+		Delegations:   c.services.delegations,
 	})
 
 	bundle.Consume = tguc.NewConsumeWebhookUseCase(

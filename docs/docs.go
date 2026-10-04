@@ -8520,6 +8520,84 @@ const docTemplate = `{
                 }
             }
         },
+        "/conversations/{entryType}/{entryId}/delegation": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Passa a conversa para um agente de IA ou um fluxo específico, como se passa para um colega, mesmo que o canal não tenha automação ativa. O escolhido passa a responder só esta conversa e a ser o responsável (assigned_user_id ai:\u003cid\u003e ou workflow:\u003cid\u003e). Pausar a automação devolve a conversa a uma pessoa; ligar de novo devolve ao escolhido. A delegação termina quando a conversa é finalizada. Exige a permissão conversations:delegate e acesso à conversa; o agente ou fluxo precisa ser deste workspace e estar ativo (422 automation_unusable).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Conversas"
+                ],
+                "summary": "Delegar conversa a um agente ou fluxo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo da entrada",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da entrada",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Agente ou fluxo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/conversation.DelegateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations/{entryType}/{entryId}/events": {
             "get": {
                 "security": [
@@ -31173,6 +31251,21 @@ const docTemplate = `{
                 },
                 "whatsappMediaId": {
                     "type": "string"
+                }
+            }
+        },
+        "conversation.DelegateRequest": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "agent",
+                        "workflow"
+                    ]
                 }
             }
         },

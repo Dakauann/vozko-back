@@ -42,6 +42,8 @@ type InboundAutomation struct {
 	agents    AgentReplier
 	analysis  AnalysisRequester
 	inbound   InboundCounter
+
+	delegations conversation.DelegationRepository
 }
 
 func NewInboundAutomation(
@@ -53,13 +55,36 @@ func NewInboundAutomation(
 	return &InboundAutomation{workflows: workflows, agents: agents, analysis: analysis, inbound: inbound}
 }
 
+func (a *InboundAutomation) WithDelegations(delegations conversation.DelegationRepository) *InboundAutomation {
+	a.delegations = delegations
+	return a
+}
+
+func (a *InboundAutomation) effective(ctx context.Context, in InboundAutomationInput) (InboundAutomationInput, bool) {
+	config, err := EffectiveAutomation(ctx, a.delegations, in.EntryID, in.EntryType, in.Config)
+	if err != nil {
+		log.Printf("[inbound-automation] delegation of %s %s unreadable, no automation runs: %v", in.EntryType, in.EntryID, err)
+		return in, false
+	}
+	in.Config = config
+	return in, true
+}
+
 func (a *InboundAutomation) Dispatch(ctx context.Context, in InboundAutomationInput) {
-	a.FireWorkflows(ctx, in)
-	a.ReplyWithAgent(ctx, in)
+	if effective, ok := a.effective(ctx, in); ok {
+		a.fireWorkflows(effective)
+		a.replyWithAgent(ctx, effective)
+	}
 	a.ScheduleAnalysis(in)
 }
 
 func (a *InboundAutomation) FireWorkflows(ctx context.Context, in InboundAutomationInput) {
+	if effective, ok := a.effective(ctx, in); ok {
+		a.fireWorkflows(effective)
+	}
+}
+
+func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput) {
 	if a.workflows == nil || !in.Config.RunsWorkflows() {
 		return
 	}
@@ -99,6 +124,12 @@ func (a *InboundAutomation) FireWorkflows(ctx context.Context, in InboundAutomat
 }
 
 func (a *InboundAutomation) ReplyWithAgent(ctx context.Context, in InboundAutomationInput) {
+	if effective, ok := a.effective(ctx, in); ok {
+		a.replyWithAgent(ctx, effective)
+	}
+}
+
+func (a *InboundAutomation) replyWithAgent(ctx context.Context, in InboundAutomationInput) {
 	if a.agents == nil || !in.Config.HasAgent() {
 		return
 	}

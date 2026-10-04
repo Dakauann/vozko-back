@@ -23,7 +23,7 @@ func TestEntryAIProfile_ReadsEveryChannelThroughItsEntryInfoQuery(t *testing.T) 
 			defer sqlDB.Close()
 
 			mock.ExpectQuery(`AS automation_enabled`).
-				WithArgs("entry-1").
+				WithArgs("entry-1", "entry-1", sqlmock.AnyArg()).
 				WillReturnRows(sqlmock.NewRows(aiProfileColumns()).
 					AddRow("", "", "", "", "agent-1", "", true, false, nil, ""))
 
@@ -98,7 +98,7 @@ func TestEntryAccountID_ReadsTheChannelAccountFromTheSameQuery(t *testing.T) {
 	defer sqlDB.Close()
 
 	mock.ExpectQuery(`AS business_phone_id`).
-		WithArgs("entry-1").
+		WithArgs("entry-1", "entry-1", sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows(aiProfileColumns()).
 			AddRow("", "account-7", "", "", "", "", false, false, nil, ""))
 
@@ -119,5 +119,44 @@ func TestEntryAccountID_FailsForAnUnknownConversation(t *testing.T) {
 	_, err := NewEntryAutomationReader(db).EntryAccountID("entry-1", "whatsapp")
 	if !errors.Is(err, conversation.ErrConversationNotFound) {
 		t.Fatalf("err = %v, want ErrConversationNotFound", err)
+	}
+}
+
+func TestEntryAIProfile_CarriesTheDelegateOnEveryChannel(t *testing.T) {
+	for _, ch := range channelQueries {
+		t.Run(string(ch.EntryType), func(t *testing.T) {
+			db, mock, sqlDB := newStatusDB(t)
+			defer sqlDB.Close()
+
+			mock.ExpectQuery(`LEFT JOIN conversation_delegations`).
+				WithArgs("entry-1", "entry-1", string(ch.EntryType)).
+				WillReturnRows(sqlmock.NewRows(append(aiProfileColumns(), "delegate_kind", "delegate_id")).
+					AddRow("", "", "", "", "", "", false, false, true, "", "workflow", "wf-9"))
+
+			got, err := NewEntryAutomationReader(db).EntryAutomation("entry-1", string(ch.EntryType))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Delegate == nil || *got.Delegate != (conversation.Automation{Kind: conversation.AutomationWorkflow, ID: "wf-9"}) {
+				t.Fatalf("delegate = %+v", got.Delegate)
+			}
+		})
+	}
+}
+
+func TestEntryAIProfile_WithoutADelegateHasNone(t *testing.T) {
+	db, mock, sqlDB := newStatusDB(t)
+	defer sqlDB.Close()
+
+	mock.ExpectQuery(`LEFT JOIN conversation_delegations`).
+		WillReturnRows(sqlmock.NewRows(append(aiProfileColumns(), "delegate_kind", "delegate_id")).
+			AddRow("", "", "", "", "agent-1", "", true, false, nil, "", "", ""))
+
+	got, err := NewEntryAutomationReader(db).EntryAutomation("entry-1", string(shared.EntryTypeTelegram))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Delegate != nil {
+		t.Fatalf("delegate = %+v, want none", got.Delegate)
 	}
 }

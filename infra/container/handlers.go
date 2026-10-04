@@ -330,11 +330,13 @@ func (c *Container) initHandlers() {
 				c.useCases.listConversationEvents,
 			)
 			if c.services.conversationAutomation != nil {
-				h.SetAutomationService(ia_usecase.NewOperatorAutomationToggle(
+				toggle := ia_usecase.NewOperatorAutomationToggle(
 					c.services.conversationAutomation,
 					c.services.assignmentService,
 					c.services.conversationAuth,
-				))
+				)
+				h.SetAutomationService(toggle)
+				h.SetDelegationService(c.automationDelegation(toggle))
 			}
 			return h
 		}(),

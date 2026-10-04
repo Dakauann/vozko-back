@@ -1492,7 +1492,8 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 	var info entryInfo
 
 	if ch, ok := channelQueryFor(shared.EntryType(entryType)); ok {
-		r.db.Raw(ch.entryInfoSQL(), entryID).Scan(&info)
+		query, args := ch.entryInfoQuery(entryID)
+		r.db.Raw(query, args...).Scan(&info)
 	}
 	leadID = info.LeadID
 	businessPhoneID = info.BusinessPhoneID

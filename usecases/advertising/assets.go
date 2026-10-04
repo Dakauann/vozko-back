@@ -2,6 +2,7 @@ package advertising
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	ads "vozko/domain/advertising"
@@ -145,6 +146,9 @@ func (uc *AssetsUseCase) ConfirmNumberLink(ctx context.Context, workspaceID, acc
 	}
 	if err := ads.LinkVerified(status); err != nil {
 		return nil, err
+	}
+	if err := uc.numbers.RecordPageLink(ctx, workspaceID, link.page.PageID, link.number); err != nil {
+		return nil, fmt.Errorf("ads: Meta linked %s to page %s but Vozko could not record it: %w", link.number, link.page.PageID, err)
 	}
 	pages, err := uc.Pages(ctx, workspaceID, accountID)
 	if err != nil {

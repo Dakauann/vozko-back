@@ -350,6 +350,10 @@ func (q channelQuery) entryJoinOn(entryIDColumn string) string {
 	return fmt.Sprintf(q.EntryJoin, entryIDColumn)
 }
 
+func (q channelQuery) entryInfoQuery(entryID string) (string, []any) {
+	return q.entryInfoSQL(), []any{entryID, entryID, string(q.EntryType)}
+}
+
 func (q channelQuery) entryInfoSQL() string {
 	return fmt.Sprintf(`
 		SELECT %s AS lead_id,
@@ -359,9 +363,12 @@ func (q channelQuery) entryInfoSQL() string {
 		       %s,
 		       %s AS automation_enabled,
 		       %s AS conversation_status,
-		       %s
+		       %s,
+		       COALESCE(cd.automation_kind, '') AS delegate_kind,
+		       COALESCE(cd.automation_id, '') AS delegate_id
 		FROM (SELECT 1) AS entry_anchor
 		%s
+		LEFT JOIN conversation_delegations cd ON cd.entry_id = ? AND cd.entry_type = ?
 		LIMIT 1
 	`,
 		contactRefText(q.EntryType),

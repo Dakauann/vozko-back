@@ -190,6 +190,7 @@ func (c *Container) initInstagramRuntime(history conversation_domain.MessageHist
 		Workflows:     c.useCases.triggerEvaluator,
 		CommentRules:  bundle.CommentRuleEval,
 		Analysis:      c.services.analysisScheduler,
+		Delegations:   c.services.delegations,
 		Audience:      audienceEnqueuer(c),
 	})
 

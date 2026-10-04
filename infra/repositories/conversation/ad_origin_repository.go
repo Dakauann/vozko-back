@@ -21,11 +21,11 @@ func NewAdOriginRepository(db *gorm.DB) conversation.AdOriginRepository {
 
 func (r *adOriginRepository) Claim(origin *conversation.AdOrigin) (bool, error) {
 	row := schema.ConversationAdOrigin{
-		EntryID:   origin.EntryID,
-		EntryType: string(origin.EntryType),
-		AdID:      origin.AdID,
-		Platform:  string(origin.Platform),
-		Title:     origin.Title,
+		EntryID:    origin.EntryID,
+		EntryType:  string(origin.EntryType),
+		AdID:       origin.AdID,
+		Platform:   string(origin.Platform),
+		Title:      origin.Title,
 		SourceURL:  origin.SourceURL,
 		ClickID:    origin.ClickID,
 		SourceType: origin.SourceType,
@@ -48,11 +48,11 @@ func (r *adOriginRepository) Get(entryID string, entryType shared.EntryType) (*c
 		return nil, err
 	}
 	origin := &conversation.AdOrigin{
-		EntryID:   row.EntryID,
-		EntryType: shared.EntryType(row.EntryType),
-		AdID:      row.AdID,
-		Platform:  conversation.AdPlatform(row.Platform),
-		Title:     row.Title,
+		EntryID:    row.EntryID,
+		EntryType:  shared.EntryType(row.EntryType),
+		AdID:       row.AdID,
+		Platform:   conversation.AdPlatform(row.Platform),
+		Title:      row.Title,
 		SourceURL:  row.SourceURL,
 		ClickID:    row.ClickID,
 		SourceType: row.SourceType,

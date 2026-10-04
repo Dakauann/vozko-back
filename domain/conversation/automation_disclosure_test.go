@@ -20,8 +20,8 @@ func TestAutomationDisclosure(t *testing.T) {
 	}{
 		{"first bot reply", []*Message{msg(MessageTypeUserMessage, time.Minute)}, disclosure, true},
 		{"bot replied an hour ago", []*Message{msg(MessageTypeUserMessage, time.Minute), msg(MessageTypeAIResponse, time.Hour)}, disclosure, false},
-		{"bot replied two days ago", []*Message{msg(MessageTypeUserMessage, time.Minute), msg(MessageTypeAIResponse, 48 * time.Hour)}, disclosure, true},
-		{"human spoke after the bot", []*Message{msg(MessageTypeUserMessage, time.Minute), msg(MessageTypeOperator, 10 * time.Minute), msg(MessageTypeAIResponse, time.Hour)}, disclosure, true},
+		{"bot replied two days ago", []*Message{msg(MessageTypeUserMessage, time.Minute), msg(MessageTypeAIResponse, 48*time.Hour)}, disclosure, true},
+		{"human spoke after the bot", []*Message{msg(MessageTypeUserMessage, time.Minute), msg(MessageTypeOperator, 10*time.Minute), msg(MessageTypeAIResponse, time.Hour)}, disclosure, true},
 		{"channel needs no disclosure", []*Message{msg(MessageTypeUserMessage, time.Minute)}, "", false},
 	}
 	for _, tc := range cases {

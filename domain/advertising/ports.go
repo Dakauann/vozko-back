@@ -2,6 +2,7 @@ package advertising
 
 import (
 	"context"
+	"slices"
 	"time"
 )
 
@@ -222,24 +223,43 @@ const (
 )
 
 type WorkspaceNumber struct {
-	Kind        NumberKind
-	Label       string
-	Number      string
-	PortfolioID string
+	Kind          NumberKind
+	Label         string
+	Number        string
+	PortfolioID   string
+	LinkedPageIDs []string
+}
+
+func (n WorkspaceNumber) LinkedTo(page RemotePage) bool {
+	return SameWhatsAppNumber(n.Number, page.WhatsAppNumber) || slices.Contains(n.LinkedPageIDs, page.PageID)
 }
 
 type NumberDirectory interface {
 	List(ctx context.Context, workspaceID string) ([]WorkspaceNumber, error)
+	RecordPageLink(ctx context.Context, workspaceID, pageID, number string) error
 }
 
 func NumbersLinkedTo(page RemotePage, numbers []WorkspaceNumber) []WorkspaceNumber {
 	var linked []WorkspaceNumber
 	for _, n := range numbers {
-		if SameWhatsAppNumber(n.Number, page.WhatsAppNumber) {
+		if n.LinkedTo(page) {
 			linked = append(linked, n)
 		}
 	}
 	return linked
+}
+
+func WhatsAppDestination(page RemotePage, numbers []WorkspaceNumber, number string) error {
+	for _, n := range numbers {
+		if !SameWhatsAppNumber(n.Number, number) {
+			continue
+		}
+		if n.LinkedTo(page) {
+			return nil
+		}
+		return FieldError("adSet.whatsAppNumber", "not_linked_to_page")
+	}
+	return FieldError("adSet.whatsAppNumber", "not_in_workspace")
 }
 
 type SavedAudienceRepository interface {

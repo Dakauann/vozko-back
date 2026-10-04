@@ -30,9 +30,9 @@ func TestEntryInfoSQLIsComposedFromTheDescriptor(t *testing.T) {
 			t.Errorf("%s: entryInfoSQL does not reuse EntryJoin", q.EntryType)
 		}
 
-		if got := strings.Count(sql, "?"); got != 1 {
-			t.Errorf("%s: entryInfoSQL has %d bind parameters, want exactly 1",
-				q.EntryType, got)
+		if _, args := q.entryInfoQuery("entry-1"); strings.Count(sql, "?") != len(args) {
+			t.Errorf("%s: entryInfoSQL has %d bind parameters but entryInfoQuery binds %d",
+				q.EntryType, strings.Count(sql, "?"), len(args))
 		}
 
 		for _, alias := range []string{

@@ -408,6 +408,7 @@ type services struct {
 	inboxService                  conversation_domain.InboxService
 	conversationAuth              conversation_domain.ConversationAuthorizer
 	assignmentService             *ia_usecase.AssignmentService
+	delegations                   conversation_domain.DelegationRepository
 	messageMarker                 *conversation_usecase.MessageMarkerService
 	aiAttendanceService           *aa_usecase.AsyncSessionService
 	ragEmbedding                  rag_domain.EmbeddingService

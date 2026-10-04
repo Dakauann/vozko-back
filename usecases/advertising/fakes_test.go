@@ -290,10 +290,24 @@ func (f *fakeJobs) ListStale(context.Context, time.Time, int) ([]*ads.PublishJob
 	return out, nil
 }
 
-type fakeNumbers struct{ numbers []ads.WorkspaceNumber }
+type fakeNumbers struct {
+	numbers   []ads.WorkspaceNumber
+	recordErr error
+}
 
 func (f *fakeNumbers) List(context.Context, string) ([]ads.WorkspaceNumber, error) {
 	return f.numbers, nil
+}
+func (f *fakeNumbers) RecordPageLink(_ context.Context, _, pageID, number string) error {
+	if f.recordErr != nil {
+		return f.recordErr
+	}
+	for i := range f.numbers {
+		if ads.SameWhatsAppNumber(f.numbers[i].Number, number) {
+			f.numbers[i].LinkedPageIDs = append(f.numbers[i].LinkedPageIDs, pageID)
+		}
+	}
+	return nil
 }
 
 type fakeMedia struct{ err error }

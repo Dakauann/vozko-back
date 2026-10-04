@@ -153,17 +153,11 @@ func (p preflighter) checkIdentity(ctx context.Context, workspaceID string, draf
 	if draft.AdSet.Destination != ads.DestinationWhatsApp || !draft.NewAdSet() {
 		return nil
 	}
-	if !ads.SameWhatsAppNumber(page.WhatsAppNumber, draft.AdSet.WhatsAppNumber) {
-		return ads.FieldError("adSet.whatsAppNumber", "not_linked_to_page")
-	}
 	numbers, err := p.numbers.List(ctx, workspaceID)
 	if err != nil {
 		return err
 	}
-	if len(ads.NumbersLinkedTo(page, numbers)) == 0 {
-		return ads.FieldError("adSet.whatsAppNumber", "not_in_workspace")
-	}
-	return nil
+	return ads.WhatsAppDestination(page, numbers, draft.AdSet.WhatsAppNumber)
 }
 
 func (p preflighter) checkAudiences(ctx context.Context, token string, account *ads.AdAccount, draft ads.AdDraft) error {

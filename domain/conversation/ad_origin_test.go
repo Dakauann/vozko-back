@@ -4,12 +4,12 @@ import "testing"
 
 func TestTheAdPlatformComesFromTheAdLink(t *testing.T) {
 	for url, want := range map[string]AdPlatform{
-		"https://www.instagram.com/p/abc":   AdPlatformInstagram,
-		"https://fb.me/2xyz":                AdPlatformFacebook,
-		"https://www.facebook.com/ads/123":  AdPlatformFacebook,
+		"https://www.instagram.com/p/abc":  AdPlatformInstagram,
+		"https://fb.me/2xyz":               AdPlatformFacebook,
+		"https://www.facebook.com/ads/123": AdPlatformFacebook,
 		"https://m.facebook.com/story.php": AdPlatformFacebook,
-		"https://example.com/promo":         AdPlatformUnknown,
-		"":                                  AdPlatformUnknown,
+		"https://example.com/promo":        AdPlatformUnknown,
+		"":                                 AdPlatformUnknown,
 	} {
 		if got := AdPlatformFromURL(url); got != want {
 			t.Errorf("%q: platform = %q, want %q", url, got, want)

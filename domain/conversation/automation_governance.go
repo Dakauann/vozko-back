@@ -12,6 +12,7 @@ type AutomationProfile struct {
 	WorkflowID            string
 	WorkflowEnabled       bool
 	AutomationEnabled     *bool
+	Delegate              *Automation
 }
 
 type AutomationKind string
@@ -34,6 +35,9 @@ func (g Automation) ActorID() string {
 }
 
 func (p AutomationProfile) Configured() (Automation, bool) {
+	if p.Delegate != nil && p.Delegate.Valid() {
+		return *p.Delegate, true
+	}
 	if id := strings.TrimSpace(p.WorkflowID); p.WorkflowEnabled && id != "" {
 		return Automation{Kind: AutomationWorkflow, ID: id}, true
 	}

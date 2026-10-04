@@ -25,4 +25,5 @@ func RegisterProtectedRoutes(
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/events", ac(cv, workspace_domain.ActionRead, h.ListConversationEvents)).Methods(http.MethodGet)
 
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/automation", ac(cv, workspace_domain.ActionUpdate, h.SetAutomation)).Methods(http.MethodPatch)
+	protected.HandleFunc("/conversations/{entryType}/{entryId}/delegation", ac(cv, workspace_domain.ActionDelegate, h.Delegate)).Methods(http.MethodPut)
 }

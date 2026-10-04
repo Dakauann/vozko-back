@@ -178,6 +178,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Workflows:     c.useCases.triggerEvaluator,
 		Leads:         uwrepo.NewLeadLinker(c.repositories.lead),
 		Analysis:      c.services.analysisScheduler,
+		Delegations:   c.services.delegations,
 	})
 
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {

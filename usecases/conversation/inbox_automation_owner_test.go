@@ -142,7 +142,7 @@ func TestTheHandlerChipFollowsTheSharedGovernanceRule(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := buildAIHandler(tc.row, tc.run, map[string]*agent.Agent{}, map[string]*workflow.Workflow{})
+			h := buildAIHandler(tc.row.AutomationProfile(), tc.run, map[string]*agent.Agent{}, map[string]*workflow.Workflow{})
 			if tc.wantKind == "" {
 				if h != nil {
 					t.Fatalf("handler = %+v, want none", h)
@@ -156,5 +156,17 @@ func TestTheHandlerChipFollowsTheSharedGovernanceRule(t *testing.T) {
 				t.Fatalf("handler id = %q, want %q", id, tc.wantID)
 			}
 		})
+	}
+}
+
+func TestTheHandlerChipNamesTheDelegatedAutomation(t *testing.T) {
+	delegate := conversation.Automation{Kind: conversation.AutomationAgent, ID: "picked"}
+	profile := conversation.EntryWithLastMessage{WorkflowID: "wf-1", WorkflowEnabled: true}.AutomationProfile()
+	profile.Delegate = &delegate
+
+	h := buildAIHandler(profile, nil, map[string]*agent.Agent{"picked": {ID: "picked", Name: "Ana IA"}}, map[string]*workflow.Workflow{})
+
+	if h == nil || h.Kind != "agent" || h.AgentID != "picked" || h.AgentName != "Ana IA" {
+		t.Fatalf("handler = %+v, want the delegated agent by name", h)
 	}
 }

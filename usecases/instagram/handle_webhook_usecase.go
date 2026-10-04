@@ -73,6 +73,7 @@ type HandleWebhookDeps struct {
 	Workflows    conversation_usecase.WorkflowEvaluator
 	CommentRules CommentRuleEvaluator
 	Analysis     conversation_usecase.AnalysisRequester
+	Delegations  conversation.DelegationRepository
 	Audience     AudienceEnqueuer
 }
 
@@ -103,7 +104,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		messaging:     d.Messaging,
 		transcript:    transcript,
 		assignments:   d.Assignments,
-		automation:    conversation_usecase.NewInboundAutomation(d.Workflows, d.AIReply, d.Analysis, d.Messages),
+		automation:    conversation_usecase.NewInboundAutomation(d.Workflows, d.AIReply, d.Analysis, d.Messages).WithDelegations(d.Delegations),
 		commentRules:  d.CommentRules,
 		audience:      d.Audience,
 	}

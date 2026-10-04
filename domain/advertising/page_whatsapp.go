@@ -15,7 +15,7 @@ const (
 func NumbersLinkableTo(page RemotePage, numbers []WorkspaceNumber) []WorkspaceNumber {
 	var linkable []WorkspaceNumber
 	for _, n := range numbers {
-		if SameWhatsAppNumber(n.Number, page.WhatsAppNumber) {
+		if n.LinkedTo(page) {
 			continue
 		}
 		if n.Kind == NumberOfficial && (page.BusinessID == "" || n.PortfolioID != page.BusinessID) {

@@ -3,6 +3,7 @@ package advertising_repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,5 +243,34 @@ func TestAttributionCountsOnlyTheWorkspacesConversationsAndDealsAgainstPostgres(
 	}
 	if n, err := repo.Conversations(ctx, wsB, "ad-1", from, to); err != nil || n != 0 {
 		t.Fatalf("ad of another workspace counted: %d, %v", n, err)
+	}
+}
+
+func TestNumberDirectoryReturnsTheRecordedPageLinksAgainstPostgres(t *testing.T) {
+	db := repotest.IsolatedDB(t, "ads_number_links_test", &schema.AdPageWhatsAppLink{})
+	mustExec(t, db, `CREATE TABLE whatsapp_business_phone_numbers (id uuid PRIMARY KEY, owner_workspace_id uuid, verified_name text, display_phone_number text, business_portfolio_id text, deleted_at timestamptz)`)
+	mustExec(t, db, `CREATE TABLE unofficial_whatsapp_instances (id uuid PRIMARY KEY, workspace_id uuid, display_name text, profile_name text, phone_number text, deleted_at timestamptz)`)
+	ctx := context.Background()
+	wsA, wsB := uuid.NewString(), uuid.NewString()
+	mustExec(t, db, `INSERT INTO whatsapp_business_phone_numbers VALUES (?, ?, 'Vozkoia Dev', '+55 11 96546-7700', 'biz-1', NULL)`, uuid.NewString(), wsA)
+	mustExec(t, db, `INSERT INTO unofficial_whatsapp_instances VALUES (?, ?, 'Vendas', '', '5511977776666', NULL)`, uuid.NewString(), wsA)
+	directory := NewNumberDirectory(db)
+	for _, page := range []string{"page-2", "page-1"} {
+		if err := directory.RecordPageLink(ctx, wsA, page, "+55 (11) 96546-7700"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := directory.RecordPageLink(ctx, wsA, "page-1", "5511965467700"); err != nil {
+		t.Fatal(err)
+	}
+	if err := directory.RecordPageLink(ctx, wsB, "page-9", "5511977776666"); err != nil {
+		t.Fatal(err)
+	}
+	numbers, err := directory.List(ctx, wsA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(numbers) != 2 || numbers[0].PortfolioID != "biz-1" || strings.Join(numbers[0].LinkedPageIDs, ",") != "page-1,page-2" || len(numbers[1].LinkedPageIDs) != 0 {
+		t.Fatalf("numbers %+v", numbers)
 	}
 }

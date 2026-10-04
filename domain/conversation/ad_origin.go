@@ -33,10 +33,10 @@ func AdPlatformFromURL(raw string) AdPlatform {
 }
 
 type AdReferral struct {
-	AdID      string
-	Platform  AdPlatform
-	Title     string
-	SourceURL string
+	AdID       string
+	Platform   AdPlatform
+	Title      string
+	SourceURL  string
 	ImageURL   string
 	Image      []byte
 	ClickID    string
@@ -52,10 +52,10 @@ func (r *WhatsAppReferral) AdReferral() *AdReferral {
 		return nil
 	}
 	ad := &AdReferral{
-		AdID:      strings.TrimSpace(r.SourceID),
-		Platform:  AdPlatformFromURL(r.SourceURL),
-		Title:     firstNonBlank(r.Headline, r.Body),
-		SourceURL: strings.TrimSpace(r.SourceURL),
+		AdID:       strings.TrimSpace(r.SourceID),
+		Platform:   AdPlatformFromURL(r.SourceURL),
+		Title:      firstNonBlank(r.Headline, r.Body),
+		SourceURL:  strings.TrimSpace(r.SourceURL),
 		ImageURL:   firstNonBlank(r.ImageURL, r.ThumbnailURL),
 		ClickID:    strings.TrimSpace(r.CTWAClid),
 		SourceType: strings.TrimSpace(r.SourceType),

@@ -68,6 +68,7 @@ type HandleWebhookDeps struct {
 	Workflows   conversation_usecase.WorkflowEvaluator
 	Leads       LeadLinker
 	Analysis    conversation_usecase.AnalysisRequester
+	Delegations conversation.DelegationRepository
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -83,7 +84,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		fileStorage:   d.FileStorage,
 		broadcaster:   d.Broadcaster,
 		assignments:   d.Assignments,
-		automation:    conversation_usecase.NewInboundAutomation(d.Workflows, d.AIReply, d.Analysis, d.Messages),
+		automation:    conversation_usecase.NewInboundAutomation(d.Workflows, d.AIReply, d.Analysis, d.Messages).WithDelegations(d.Delegations),
 		leads:         d.Leads,
 	}
 }

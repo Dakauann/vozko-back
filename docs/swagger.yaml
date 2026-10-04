@@ -5550,6 +5550,16 @@ definitions:
       whatsappMediaId:
         type: string
     type: object
+  conversation.DelegateRequest:
+    properties:
+      id:
+        type: string
+      kind:
+        enum:
+        - agent
+        - workflow
+        type: string
+    type: object
   conversation.EntryWithLastMessage:
     properties:
       agentID:
@@ -16022,6 +16032,63 @@ paths:
       security:
       - BearerAuth: []
       summary: Solicitar permissão para ligar
+      tags:
+      - Conversas
+  /conversations/{entryType}/{entryId}/delegation:
+    put:
+      consumes:
+      - application/json
+      description: Passa a conversa para um agente de IA ou um fluxo específico, como
+        se passa para um colega, mesmo que o canal não tenha automação ativa. O escolhido
+        passa a responder só esta conversa e a ser o responsável (assigned_user_id
+        ai:<id> ou workflow:<id>). Pausar a automação devolve a conversa a uma pessoa;
+        ligar de novo devolve ao escolhido. A delegação termina quando a conversa
+        é finalizada. Exige a permissão conversations:delegate e acesso à conversa;
+        o agente ou fluxo precisa ser deste workspace e estar ativo (422 automation_unusable).
+      parameters:
+      - description: Tipo da entrada
+        in: path
+        name: entryType
+        required: true
+        type: string
+      - description: ID da entrada
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Agente ou fluxo
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/conversation.DelegateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delegar conversa a um agente ou fluxo
       tags:
       - Conversas
   /conversations/{entryType}/{entryId}/events:

@@ -90,3 +90,43 @@ func fieldCode(err error, field string) string {
 	}
 	return ""
 }
+
+func TestALinkVozkoRecordedCountsEvenWhenMetaHidesTheNumber(t *testing.T) {
+	page := RemotePage{PageID: "p-1", BusinessID: "biz-1"}
+	numbers := []WorkspaceNumber{
+		{Kind: NumberOfficial, Number: "+55 11 96546-7700", PortfolioID: "biz-1", LinkedPageIDs: []string{"p-1"}},
+		{Kind: NumberOfficial, Number: "5511911112222", PortfolioID: "biz-1", LinkedPageIDs: []string{"p-other"}},
+	}
+	linked := NumbersLinkedTo(page, numbers)
+	if len(linked) != 1 || linked[0].Number != "+55 11 96546-7700" {
+		t.Fatalf("linked %+v", linked)
+	}
+	linkable := NumbersLinkableTo(page, numbers)
+	if len(linkable) != 1 || linkable[0].Number != "5511911112222" {
+		t.Fatalf("linkable %+v", linkable)
+	}
+}
+
+func TestAWhatsAppAdNeedsANumberOfTheWorkspaceLinkedToItsPage(t *testing.T) {
+	page := RemotePage{PageID: "p-1", WhatsAppNumber: "+55 11 90000-0000"}
+	numbers := []WorkspaceNumber{
+		{Kind: NumberOfficial, Number: "5511965467700", LinkedPageIDs: []string{"p-1"}},
+		{Kind: NumberOfficial, Number: "5511900000000"},
+		{Kind: NumberOfficial, Number: "5511911112222"},
+	}
+	for _, ok := range []string{"5511965467700", "+55 (11) 90000-0000"} {
+		if err := WhatsAppDestination(page, numbers, ok); err != nil {
+			t.Fatalf("%s: %v", ok, err)
+		}
+	}
+	if fieldCode(WhatsAppDestination(page, numbers, "5511911112222"), "adSet.whatsAppNumber") != "not_linked_to_page" {
+		t.Fatal("an unlinked number was accepted")
+	}
+	if fieldCode(WhatsAppDestination(page, numbers, "5511977778888"), "adSet.whatsAppNumber") != "not_in_workspace" {
+		t.Fatal("a number outside the workspace was accepted")
+	}
+	outside := RemotePage{PageID: "p-1", WhatsAppNumber: "5511977778888"}
+	if fieldCode(WhatsAppDestination(outside, numbers, "5511977778888"), "adSet.whatsAppNumber") != "not_in_workspace" {
+		t.Fatal("a number linked on Meta but not connected to Vozko was accepted")
+	}
+}

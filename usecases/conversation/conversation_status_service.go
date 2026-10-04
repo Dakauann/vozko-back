@@ -7,9 +7,9 @@ import (
 	"log"
 	"time"
 
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/conversation"
 	conv_event "vozko/domain/conversation_event"
-	aa "vozko/domain/ai_attendance"
 	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
@@ -31,6 +31,7 @@ type EntryDepartmentResolver interface {
 
 type ConversationStatusService struct {
 	whatsappRepo     wce.Repository
+	delegations      conversation.DelegationRepository
 	stores           map[shared.EntryType]ConversationStatusStore
 	counters         map[shared.EntryType]ConversationStatusCounter
 	events           conv_event.Logger
@@ -94,6 +95,12 @@ func (s *ConversationStatusService) SetAISessionEnder(e AISessionEnder) {
 
 type StatusAnnouncer interface {
 	AnnounceStatus(entryID, entryType string, status conversation.ConversationStatus, close conversation.CloseRecord)
+}
+
+func (s *ConversationStatusService) SetDelegations(d conversation.DelegationRepository) {
+	if s != nil {
+		s.delegations = d
+	}
 }
 
 func (s *ConversationStatusService) SetStatusAnnouncer(a StatusAnnouncer) {
@@ -233,7 +240,20 @@ func (s *ConversationStatusService) Finish(entryID, entryType string, opts conve
 	if err != nil {
 		return err
 	}
-	return s.applyStatusActor(entryID, entryType, conversation.ConversationStatusFinished, true, source, reason, outcome, false, opts.ActorID)
+	if err := s.applyStatusActor(entryID, entryType, conversation.ConversationStatusFinished, true, source, reason, outcome, false, opts.ActorID); err != nil {
+		return err
+	}
+	s.endDelegation(entryID, entryType)
+	return nil
+}
+
+func (s *ConversationStatusService) endDelegation(entryID, entryType string) {
+	if s.delegations == nil {
+		return
+	}
+	if err := s.delegations.Delete(context.Background(), entryID, shared.EntryType(entryType)); err != nil {
+		log.Printf("[conversation-status] %s %s finished but its delegation could not be ended: %v", entryType, entryID, err)
+	}
 }
 
 func (s *ConversationStatusService) applyStatus(

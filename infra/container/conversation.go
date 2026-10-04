@@ -171,6 +171,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 		c.redisProvider.SharedState(),
 	))
 	c.services.assignmentService.SetPresence(c.repositories.agentPresence)
+	c.services.delegations = conversation_repository.NewDelegationRepository(c.db)
 	entryInfo := conversation_repository.NewEntryAutomationReader(c.db)
 	c.services.assignmentService.SetAutomationGovernance(entryInfo)
 	c.services.assignmentService.SetEntryAccountReader(entryInfo)
