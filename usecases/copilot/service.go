@@ -250,11 +250,20 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 }
 
 func assistantHistoryContent(m *aichat.Message) string {
-	if strings.TrimSpace(m.Content) != "" {
-		return m.Content
+	notes := toolNotes(m.ToolCalls)
+	content := strings.TrimSpace(m.Content)
+	switch {
+	case notes == "":
+		return content
+	case content == "":
+		return notes
 	}
+	return content + "\n\n" + notes
+}
+
+func toolNotes(raw []byte) string {
 	var steps []toolStep
-	if len(m.ToolCalls) == 0 || json.Unmarshal(m.ToolCalls, &steps) != nil || len(steps) == 0 {
+	if len(raw) == 0 || json.Unmarshal(raw, &steps) != nil || len(steps) == 0 {
 		return ""
 	}
 	notes := make([]string, 0, len(steps))
@@ -262,6 +271,9 @@ func assistantHistoryContent(m *aichat.Message) string {
 		note := step.Name + ": " + step.Summary
 		if step.Image != nil {
 			note += " (imagem media_id " + step.Image.MediaID + ")"
+		}
+		if step.Result != "" {
+			note += ", retornou " + step.Result
 		}
 		notes = append(notes, note)
 	}
@@ -347,10 +359,11 @@ type toolStep struct {
 	Chart   *copilot.Chart      `json:"chart,omitempty"`
 	Card    *copilot.ActionCard `json:"card,omitempty"`
 	Image   *copilot.Image      `json:"image,omitempty"`
+	Result  string              `json:"result,omitempty"`
 }
 
 func stepFromResult(name string, res copilot.Result) toolStep {
-	return toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Image: res.Image}
+	return toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Image: res.Image, Result: renderData(res.Data)}
 }
 
 func emitStep(emit agentloop.Emit, ts toolStep) {

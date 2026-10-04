@@ -96,6 +96,7 @@ func (s *stubCustomRoleRepo) DeleteRole(id string) error                  { retu
 func (s *stubCustomRoleRepo) ListMembersByRoleID(roleID string) ([]*workspace.Member, error) {
 	return nil, nil
 }
+func (s *stubCustomRoleRepo) ListLinkedRoles() ([]*workspace.CustomRole, error) { return nil, nil }
 
 type stubDeptRepo struct {
 	wd.Repository

@@ -1722,6 +1722,16 @@ definitions:
         example: "5511965467700"
         type: string
     type: object
+  advertisinghttp.NumberLinkStartResponse:
+    properties:
+      page:
+        $ref: '#/definitions/advertisinghttp.PageResponse'
+      status:
+        enum:
+        - code_sent
+        - linked
+        type: string
+    type: object
   advertisinghttp.NumberResponse:
     properties:
       kind:
@@ -9897,12 +9907,16 @@ definitions:
     properties:
       description:
         type: string
+      linked:
+        type: boolean
       name:
         type: string
       permissions:
         items:
           $ref: '#/definitions/workspace.PermissionEntry'
         type: array
+      presetKey:
+        $ref: '#/definitions/workspace.RolePresetKey'
     type: object
   workspace.CreateWorkspaceRequest:
     properties:
@@ -9921,12 +9935,16 @@ definitions:
         type: string
       id:
         type: string
+      linked:
+        type: boolean
       name:
         type: string
       permissions:
         items:
           $ref: '#/definitions/workspace.PermissionEntry'
         type: array
+      presetKey:
+        $ref: '#/definitions/workspace.RolePresetKey'
       updatedAt:
         type: string
       workspaceId:
@@ -10077,6 +10095,26 @@ definitions:
     - RoleOwner
     - RoleAdmin
     - RoleMember
+  workspace.RolePresetKey:
+    enum:
+    - operator
+    - supervisor
+    - manager
+    - sales
+    - analyst
+    - marketing
+    - automation
+    - finance
+    type: string
+    x-enum-varnames:
+    - PresetOperator
+    - PresetSupervisor
+    - PresetManager
+    - PresetSales
+    - PresetAnalyst
+    - PresetMarketing
+    - PresetAutomation
+    - PresetFinance
   workspace.SetPermissionsInput:
     properties:
       permissions:
@@ -10088,6 +10126,8 @@ definitions:
     properties:
       description:
         type: string
+      linked:
+        type: boolean
       name:
         type: string
       permissions:
@@ -10958,10 +10998,12 @@ paths:
       - application/json
       description: Pede à Meta que envie, por WhatsApp, o código que vincula o número
         à página. O número precisa estar em linkable da página (oficial do mesmo portfólio,
-        ou não oficial). O código chega no app do WhatsApp do número; números em coexistência
-        recebem no app do celular, não na caixa de entrada do Vozko. 422 com number
-        not_linkable para um número que a página não pode receber; 409 page_link_refused
-        se a Meta não enviar o código.
+        ou não oficial). Responde status code_sent quando o código foi enviado (ele
+        chega no app do WhatsApp do número, não na caixa de entrada do Vozko) ou linked
+        quando a Meta informa que o número já está vinculado; nesse caso o vínculo
+        é registrado e a página atualizada vem em page. 422 com number not_linkable
+        para um número que a página não pode receber; 409 page_link_refused para qualquer
+        outra resposta da Meta.
       parameters:
       - description: ID da conta de anúncios
         in: path
@@ -10982,8 +11024,10 @@ paths:
       produces:
       - application/json
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/advertisinghttp.NumberLinkStartResponse'
         "409":
           description: Conflict
           schema:
@@ -25309,8 +25353,13 @@ paths:
     post:
       consumes:
       - application/json
-      description: Cria um cargo personalizado no workspace com um conjunto próprio
-        de permissões.
+      description: 'Cria um cargo personalizado no workspace com um conjunto próprio
+        de permissões. O nome precisa ser único no workspace, sem diferenciar maiúsculas
+        e espaços (409 role_name_taken). Para começar de um modelo, envie presetKey
+        com um item de rolePresets em GET /workspaces/permissions: com linked=true
+        o cargo segue o modelo e recebe as permissões que o modelo ganhar (as permissões
+        enviadas são ignoradas); com linked=false as permissões enviadas são uma cópia
+        independente. Um modelo desconhecido devolve 400 unknown_role_preset.'
       parameters:
       - description: ID do workspace
         in: path
@@ -25399,8 +25448,10 @@ paths:
     put:
       consumes:
       - application/json
-      description: Atualiza o nome, a descrição e/ou as permissões de um cargo personalizado
-        do workspace.
+      description: 'Atualiza o nome, a descrição e/ou as permissões de um cargo personalizado
+        do workspace. Um cargo vinculado a um modelo não aceita permissões (409 role_linked):
+        envie linked=false junto com as permissões para desvincular e editar, ou linked=true
+        para voltar a seguir o modelo. Nomes repetidos devolvem 409 role_name_taken.'
       parameters:
       - description: ID do workspace
         in: path
@@ -25439,6 +25490,10 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
           schema:
             $ref: '#/definitions/response.ErrorResponse'
       security:
@@ -25551,9 +25606,12 @@ paths:
       - Workspaces
   /workspaces/permissions:
     get:
-      description: Retorna o catálogo de recursos e ações que podem ser concedidos
-        a membros e cargos do workspace e o catálogo de funcionalidades com as permissões
-        e telas de cada uma.
+      description: 'Retorna o catálogo de recursos e ações que podem ser concedidos
+        a membros e cargos do workspace, o catálogo de funcionalidades com as permissões
+        e telas de cada uma e os modelos de cargo (rolePresets: operador, supervisor,
+        gerente, vendedor, analista, marketing, IA e automações, financeiro), cada
+        um com as funcionalidades que inclui e as permissões já resolvidas para criar
+        o cargo.'
       produces:
       - application/json
       responses:

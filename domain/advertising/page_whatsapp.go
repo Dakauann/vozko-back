@@ -44,17 +44,40 @@ func LinkCode(raw string) (string, error) {
 	return digits, nil
 }
 
-func CodeSent(status string) error {
-	return expectLinkStatus(status, linkCodeSentStatus)
+type LinkRequestOutcome string
+
+const (
+	LinkCodeSent      LinkRequestOutcome = "code_sent"
+	LinkAlreadyLinked LinkRequestOutcome = "linked"
+)
+
+func LinkRequested(status string) (LinkRequestOutcome, error) {
+	switch status {
+	case linkCodeSentStatus:
+		return LinkCodeSent, nil
+	case linkVerifiedStatus:
+		return LinkAlreadyLinked, nil
+	}
+	return "", &PageLinkRefusal{Answer: status}
 }
 
 func LinkVerified(status string) error {
 	return expectLinkStatus(status, linkVerifiedStatus)
 }
 
+type PageLinkRefusal struct {
+	Answer string
+}
+
+func (r *PageLinkRefusal) Error() string {
+	return fmt.Sprintf("%v: Meta answered %q", ErrPageLinkRefused, r.Answer)
+}
+
+func (r *PageLinkRefusal) Unwrap() error { return ErrPageLinkRefused }
+
 func expectLinkStatus(status, want string) error {
 	if status != want {
-		return fmt.Errorf("%w: Meta answered %q", ErrPageLinkRefused, status)
+		return &PageLinkRefusal{Answer: status}
 	}
 	return nil
 }

@@ -36,6 +36,7 @@ type WorkspaceHandler struct {
 	getMemberPermissions    workspacedomain.GetMemberPermissionsUseCase
 	listResourcePermissions workspacedomain.ListResourcePermissionsUseCase
 	listFeatures            workspacedomain.ListFeaturesUseCase
+	listRolePresets         workspacedomain.ListRolePresetsUseCase
 	checkAccess             workspacedomain.CheckAccessUseCase
 	ensureDefault           workspacedomain.EnsureDefaultWorkspaceUseCase
 	assignResource          workspacedomain.AssignResourceUseCase
@@ -734,7 +735,7 @@ func (h *WorkspaceHandler) GetMemberPermissions(w http.ResponseWriter, r *http.R
 }
 
 // @Summary		Listar permissões disponíveis
-// @Description	Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace e o catálogo de funcionalidades com as permissões e telas de cada uma.
+// @Description	Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace, o catálogo de funcionalidades com as permissões e telas de cada uma e os modelos de cargo (rolePresets: operador, supervisor, gerente, vendedor, analista, marketing, IA e automações, financeiro), cada um com as funcionalidades que inclui e as permissões já resolvidas para criar o cargo.
 // @Tags			Workspaces
 // @Produce		json
 // @Success		200	{object}	map[string]interface{}
@@ -748,9 +749,15 @@ func (h *WorkspaceHandler) ListResourcePermissions(w http.ResponseWriter, r *htt
 		return
 	}
 
+	presets, err := h.rolePresets()
+	if err != nil {
+		response.WriteError(w, http.StatusInternalServerError, "role presets unavailable", nil)
+		return
+	}
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"permissions": h.listResourcePermissions.Execute(),
 		"features":    h.listFeatures.Execute(),
+		"rolePresets": presets,
 	})
 }
 
@@ -866,7 +873,7 @@ func (h *WorkspaceHandler) ListResourceAssignments(w http.ResponseWriter, r *htt
 }
 
 // @Summary		Criar cargo personalizado
-// @Description	Cria um cargo personalizado no workspace com um conjunto próprio de permissões.
+// @Description	Cria um cargo personalizado no workspace com um conjunto próprio de permissões. O nome precisa ser único no workspace, sem diferenciar maiúsculas e espaços (409 role_name_taken). Para começar de um modelo, envie presetKey com um item de rolePresets em GET /workspaces/permissions: com linked=true o cargo segue o modelo e recebe as permissões que o modelo ganhar (as permissões enviadas são ignoradas); com linked=false as permissões enviadas são uma cópia independente. Um modelo desconhecido devolve 400 unknown_role_preset.
 // @Tags			Workspaces
 // @Accept			json
 // @Produce		json
@@ -936,7 +943,7 @@ func (h *WorkspaceHandler) ListCustomRoles(w http.ResponseWriter, r *http.Reques
 }
 
 // @Summary		Atualizar cargo personalizado
-// @Description	Atualiza o nome, a descrição e/ou as permissões de um cargo personalizado do workspace.
+// @Description	Atualiza o nome, a descrição e/ou as permissões de um cargo personalizado do workspace. Um cargo vinculado a um modelo não aceita permissões (409 role_linked): envie linked=false junto com as permissões para desvincular e editar, ou linked=true para voltar a seguir o modelo. Nomes repetidos devolvem 409 role_name_taken.
 // @Tags			Workspaces
 // @Accept			json
 // @Produce		json
@@ -948,6 +955,7 @@ func (h *WorkspaceHandler) ListCustomRoles(w http.ResponseWriter, r *http.Reques
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
+// @Failure		409	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/workspaces/{workspaceId}/roles/{roleId} [put]
 func (h *WorkspaceHandler) UpdateCustomRole(w http.ResponseWriter, r *http.Request) {
@@ -1097,6 +1105,12 @@ func (h *WorkspaceHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusNotFound, err.Error(), nil)
 	case errors.Is(err, workspacedomain.ErrRoleNameRequired):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+	case errors.Is(err, workspacedomain.ErrRoleNameTaken):
+		response.WriteErrorWithCode(w, http.StatusConflict, "role_name_taken", err.Error(), nil)
+	case errors.Is(err, workspacedomain.ErrUnknownRolePreset):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "unknown_role_preset", err.Error(), nil)
+	case errors.Is(err, workspacedomain.ErrLinkedRoleLocked):
+		response.WriteErrorWithCode(w, http.StatusConflict, "role_linked", err.Error(), nil)
 	case errors.Is(err, workspacedomain.ErrRoleInUse):
 		response.WriteError(w, http.StatusConflict, err.Error(), nil)
 	case errors.Is(err, workspacedomain.ErrInvalidDepartment):
@@ -1108,4 +1122,15 @@ func (h *WorkspaceHandler) handleDomainError(w http.ResponseWriter, err error) {
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}
+}
+
+func (h *WorkspaceHandler) SetRolePresets(uc workspacedomain.ListRolePresetsUseCase) {
+	h.listRolePresets = uc
+}
+
+func (h *WorkspaceHandler) rolePresets() ([]workspacedomain.ResolvedRolePreset, error) {
+	if h.listRolePresets == nil {
+		return []workspacedomain.ResolvedRolePreset{}, nil
+	}
+	return h.listRolePresets.Execute()
 }

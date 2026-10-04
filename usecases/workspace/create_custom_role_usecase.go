@@ -1,7 +1,6 @@
 package workspace_usecase
 
 import (
-	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,38 +26,35 @@ func (uc *createCustomRoleUseCase) Execute(actorID, workspaceID, callerRole stri
 	if err := requireManager(uc.repo, workspaceID, actorID, callerRole); err != nil {
 		return nil, err
 	}
-
-	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
-		log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
-			"create role in workspace "+workspaceID, len(input.Permissions)-len(kept), dropped)
-		input.Permissions = kept
+	if err := uniqueRoleName(uc.roleRepo, workspaceID, name, ""); err != nil {
+		return nil, err
 	}
-
-	for _, pe := range input.Permissions {
-		if !pe.Resource.IsValid() {
-			return nil, workspace.ErrInvalidResource
-		}
-		if !pe.Action.IsValid() {
-			return nil, workspace.ErrInvalidAction
-		}
-		if !workspace.ValidActionForResource(pe.Resource, pe.Action) {
-			return nil, workspace.ErrInvalidAction
-		}
-	}
-
-	input.Permissions = workspace.EnforceDependencies(input.Permissions)
 
 	role := &workspace.CustomRole{
 		ID:          uuid.New().String(),
 		WorkspaceID: workspaceID,
 		Name:        name,
 		Description: strings.TrimSpace(input.Description),
-		Permissions: input.Permissions,
+		PresetKey:   input.PresetKey,
+		Linked:      input.Linked,
+	}
+	if err := role.ValidatePreset(); err != nil {
+		return nil, err
+	}
+	if role.Linked {
+		if _, err := role.SyncWithPreset(); err != nil {
+			return nil, err
+		}
+	} else {
+		permissions, err := validatedPermissions("create role in workspace "+workspaceID, input.Permissions)
+		if err != nil {
+			return nil, err
+		}
+		role.Permissions = permissions
 	}
 
 	if err := uc.roleRepo.CreateRole(role); err != nil {
 		return nil, err
 	}
-
 	return role, nil
 }

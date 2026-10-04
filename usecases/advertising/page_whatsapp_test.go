@@ -34,14 +34,15 @@ func TestPagesOfferTheNumbersEachPageCanTake(t *testing.T) {
 
 func TestAskingForTheLinkCodeGoesToMetaOnlyForANumberThePageCanTake(t *testing.T) {
 	w := linkWorld()
-	if err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "+55 11 96546-7700"); err != nil {
-		t.Fatal(err)
+	outcome, err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "+55 11 96546-7700")
+	if err != nil || outcome.Outcome != ads.LinkCodeSent || outcome.Page != nil {
+		t.Fatalf("outcome %+v err %v", outcome, err)
 	}
 	if w.gateway.linked.number != "5511965467700" || w.gateway.linked.code != "" || w.gateway.linked.page != "page-1" {
 		t.Fatalf("linked %+v", w.gateway.linked)
 	}
 	w2 := linkWorld()
-	err := w2.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511911112222")
+	_, err = w2.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511911112222")
 	var invalid *ads.ValidationError
 	if !errors.As(err, &invalid) || w2.gateway.linked.number != "" {
 		t.Fatalf("a number from another portfolio reached Meta: %v", err)
@@ -50,7 +51,7 @@ func TestAskingForTheLinkCodeGoesToMetaOnlyForANumberThePageCanTake(t *testing.T
 
 func TestAPageOutsideTheConnectionCannotBeLinked(t *testing.T) {
 	w := linkWorld()
-	err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-9", "5511965467700")
+	_, err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-9", "5511965467700")
 	if !errors.Is(err, ads.ErrPageNotGranted) || w.gateway.linked.number != "" {
 		t.Fatalf("got %v", err)
 	}
@@ -59,7 +60,7 @@ func TestAPageOutsideTheConnectionCannotBeLinked(t *testing.T) {
 func TestACodeMetaDidNotSendIsAnError(t *testing.T) {
 	w := linkWorld()
 	w.gateway.linkStatus = "UNKNOWN"
-	if err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700"); !errors.Is(err, ads.ErrPageLinkRefused) {
+	if _, err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700"); !errors.Is(err, ads.ErrPageLinkRefused) {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -121,7 +122,7 @@ func TestACodeMetaRejectsIsNotALink(t *testing.T) {
 func TestLinkingNeedsAnAccountThatCanAdvertise(t *testing.T) {
 	w := linkWorld()
 	w.accounts.byID["acc-1"].Tasks = []string{"ANALYZE"}
-	if err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700"); err == nil || w.gateway.linked.number != "" {
+	if _, err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700"); err == nil || w.gateway.linked.number != "" {
 		t.Fatalf("a read-only account linked a number: %v", err)
 	}
 }
@@ -137,4 +138,16 @@ func fieldIssue(err error, field string) string {
 		}
 	}
 	return ""
+}
+
+func TestANumberMetaAlreadyLinkedIsRecordedWithoutACode(t *testing.T) {
+	w := linkWorld()
+	w.gateway.linkStatus = "VERIFIED"
+	outcome, err := w.assets().RequestNumberLink(context.Background(), "ws-1", "acc-1", "page-1", "5511965467700")
+	if err != nil || outcome.Outcome != ads.LinkAlreadyLinked || outcome.Page == nil {
+		t.Fatalf("outcome %+v err %v", outcome, err)
+	}
+	if len(outcome.Page.Numbers) != 1 || outcome.Page.Numbers[0].Number != "5511965467700" {
+		t.Fatalf("page %+v", outcome.Page)
+	}
 }

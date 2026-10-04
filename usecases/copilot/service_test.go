@@ -657,3 +657,40 @@ func TestService_ASilentToolTurnStillTellsTheModelWhatHappened(t *testing.T) {
 		}
 	}
 }
+
+func TestService_AGeneratedImageStaysKnownToTheModelOnLaterTurns(t *testing.T) {
+	th := &fakeThreads{thread: testThread()}
+	ms := &fakeMessages{}
+	image := &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-gerada", Alt: "um card"}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: map[string]string{"media_id": "m-gerada"}, Image: image}}
+	prov := &scriptAI{texts: []string{"Imagem gerada! Quer usar no anúncio?", "Vou trocar a imagem do rascunho."}}
+	svc := newService(prov, th, ms, wt)
+	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
+	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, (&capture{}).emit); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+
+	ms.list = append([]*aichat.Message{}, ms.created...)
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "use no rascunho"}, ownerCtx, (&capture{}).emit); err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	later := prov.inputs[len(prov.inputs)-1]
+	for _, m := range later.Messages {
+		if m.Role == ai.RoleAssistant && strings.Contains(m.Content, "Imagem gerada!") && strings.Contains(m.Content, "m-gerada") {
+			return
+		}
+	}
+	t.Fatalf("the reloaded history must keep the reply and the generated media_id, got %+v", later.Messages)
+}
+
+func TestService_AnApprovedActionKeepsWhatItReturnedInTheHistory(t *testing.T) {
+	steps, _ := json.Marshal([]toolStep{stepFromResult("create_ad", copilot.Result{Status: copilot.StatusOK, Data: map[string]string{"draft_id": "d-9"}})})
+	ms := &fakeMessages{list: []*aichat.Message{{Role: aichat.RoleAssistant, Content: "Rascunho criado.", ToolCalls: steps}}}
+	h, err := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms).buildHistory("t1")
+	if err != nil {
+		t.Fatalf("buildHistory: %v", err)
+	}
+	if len(h) != 1 || !strings.Contains(h[0].Content, "Rascunho criado.") || !strings.Contains(h[0].Content, "d-9") {
+		t.Fatalf("the approved action's result must survive a reload, got %+v", h)
+	}
+}

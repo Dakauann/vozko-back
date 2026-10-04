@@ -49,7 +49,7 @@ var domainErrors = []errorMapping{
 	{advertising.ErrMixedCurrencies, http.StatusConflict, "mixed_currencies", "A Meta informou valores em outra moeda; nada foi somado"},
 	{advertising.ErrPageNotGranted, http.StatusConflict, "page_not_granted", "A página não está disponível nesta conexão de anúncios"},
 	{advertising.ErrNumberNotLinked, http.StatusConflict, "number_not_linked", "O número de WhatsApp não está vinculado à página"},
-	{advertising.ErrPageLinkRefused, http.StatusConflict, "page_link_refused", "A Meta não confirmou o vínculo do número com a página; confira o código ou peça um novo"},
+	{advertising.ErrPageLinkRefused, http.StatusConflict, "page_link_refused", pageLinkRefusedMessage},
 	{advertising.ErrNumberNotOwned, http.StatusConflict, "number_not_owned", "O número de WhatsApp não está conectado a este workspace"},
 	{advertising.ErrJobNotRunnable, http.StatusConflict, "job_not_runnable", "A publicação não pode rodar no estado atual"},
 	{advertising.ErrJobNotActivatable, http.StatusConflict, "job_not_activatable", "Só dá para ligar uma publicação feita desligada que ainda não foi ligada"},
@@ -74,6 +74,8 @@ var domainErrors = []errorMapping{
 	{balance.ErrPriceUnavailable, http.StatusServiceUnavailable, "price_unavailable", "O preço do anúncio não está configurado"},
 }
 
+const pageLinkRefusedMessage = "A Meta não confirmou o vínculo do número com a página; confira o código ou peça um novo"
+
 type describedError struct {
 	status   int
 	code     string
@@ -89,6 +91,10 @@ func describeError(err error) (describedError, bool) {
 			expected[issue.Field] = issue.Code
 		}
 		return describedError{http.StatusUnprocessableEntity, "invalid_draft", "Há campos a corrigir", expected}, true
+	}
+	var refusal *advertising.PageLinkRefusal
+	if errors.As(err, &refusal) && refusal.Answer != "" {
+		return describedError{http.StatusConflict, "page_link_refused", pageLinkRefusedMessage + " (Meta: " + refusal.Answer + ")", map[string]string{"meta": refusal.Answer}}, true
 	}
 	for _, m := range domainErrors {
 		if errors.Is(err, m.target) {

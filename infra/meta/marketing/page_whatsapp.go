@@ -2,7 +2,6 @@ package marketing
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -36,7 +35,7 @@ func (g *Gateway) verifyPageNumber(ctx context.Context, token, pageID string, fo
 		return "", err
 	}
 	if message := strings.TrimSpace(out.ErrorMessage); message != "" {
-		return "", fmt.Errorf("%w: %s", advertising.ErrPageLinkRefused, message)
+		return "", &advertising.PageLinkRefusal{Answer: message}
 	}
 	return out.Status, nil
 }

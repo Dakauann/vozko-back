@@ -1,10 +1,7 @@
 package workspace_usecase
 
 import (
-	"log"
 	"strings"
-
-	"github.com/google/uuid"
 
 	"vozko/domain/workspace"
 )
@@ -36,58 +33,43 @@ func (uc *updateCustomRoleUseCase) Execute(actorID, workspaceID, callerRole, rol
 		if name == "" {
 			return nil, workspace.ErrRoleNameRequired
 		}
+		if err := uniqueRoleName(uc.roleRepo, workspaceID, name, role.ID); err != nil {
+			return nil, err
+		}
 		role.Name = name
 	}
 	if input.Description != nil {
 		role.Description = strings.TrimSpace(*input.Description)
 	}
 
+	if input.Linked != nil {
+		role.Linked = *input.Linked
+	}
+	if role.Linked && input.Permissions != nil {
+		return nil, workspace.ErrLinkedRoleLocked
+	}
+
 	permissionsChanged := false
-	if input.Permissions != nil {
-
-		if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
-			log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
-				"update role "+roleID, len(input.Permissions)-len(kept), dropped)
-			input.Permissions = kept
+	if role.Linked {
+		if permissionsChanged, err = role.SyncWithPreset(); err != nil {
+			return nil, err
 		}
-
-		for _, pe := range input.Permissions {
-			if !pe.Resource.IsValid() {
-				return nil, workspace.ErrInvalidResource
-			}
-			if !pe.Action.IsValid() {
-				return nil, workspace.ErrInvalidAction
-			}
-			if !workspace.ValidActionForResource(pe.Resource, pe.Action) {
-				return nil, workspace.ErrInvalidAction
-			}
+	} else if input.Permissions != nil {
+		permissions, err := validatedPermissions("update role "+roleID, input.Permissions)
+		if err != nil {
+			return nil, err
 		}
-		role.Permissions = workspace.EnforceDependencies(input.Permissions)
+		role.Permissions = permissions
 		permissionsChanged = true
 	}
 
 	if err := uc.roleRepo.UpdateRole(role); err != nil {
 		return nil, err
 	}
-
 	if permissionsChanged {
-		members, err := uc.roleRepo.ListMembersByRoleID(roleID)
-		if err != nil {
-			return role, nil
-		}
-		for _, m := range members {
-			perms := make([]*workspace.Permission, len(role.Permissions))
-			for i, pe := range role.Permissions {
-				perms[i] = &workspace.Permission{
-					ID:       uuid.New().String(),
-					MemberID: m.ID,
-					Resource: pe.Resource,
-					Action:   pe.Action,
-				}
-			}
-			_ = uc.repo.SetPermissions(m.ID, perms)
+		if err := propagateRolePermissions(uc.repo, uc.roleRepo, role); err != nil {
+			return role, err
 		}
 	}
-
 	return role, nil
 }

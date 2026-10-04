@@ -29,6 +29,8 @@ func (r *customRoleRepository) CreateRole(role *workspace.CustomRole) error {
 		Name:        role.Name,
 		Description: role.Description,
 		Permissions: string(permJSON),
+		PresetKey:   string(role.PresetKey),
+		Linked:      role.Linked,
 	}
 	if err := r.db.Create(&dbRole).Error; err != nil {
 		return err
@@ -65,6 +67,8 @@ func (r *customRoleRepository) UpdateRole(role *workspace.CustomRole) error {
 	updates := map[string]interface{}{
 		"name":        role.Name,
 		"description": role.Description,
+		"preset_key":  string(role.PresetKey),
+		"linked":      role.Linked,
 	}
 	if role.Permissions != nil {
 		permJSON, err := json.Marshal(role.Permissions)
@@ -105,6 +109,8 @@ func mapRoleToDomain(dbRole *schema.WorkspaceCustomRole) *workspace.CustomRole {
 		WorkspaceID: dbRole.WorkspaceID,
 		Name:        dbRole.Name,
 		Description: dbRole.Description,
+		PresetKey:   workspace.RolePresetKey(dbRole.PresetKey),
+		Linked:      dbRole.Linked,
 		CreatedAt:   dbRole.CreatedAt,
 		UpdatedAt:   dbRole.UpdatedAt,
 	}
@@ -115,4 +121,16 @@ func mapRoleToDomain(dbRole *schema.WorkspaceCustomRole) *workspace.CustomRole {
 		cr.Permissions = []workspace.PermissionEntry{}
 	}
 	return cr
+}
+
+func (r *customRoleRepository) ListLinkedRoles() ([]*workspace.CustomRole, error) {
+	var dbRoles []schema.WorkspaceCustomRole
+	if err := r.db.Where("linked = ?", true).Find(&dbRoles).Error; err != nil {
+		return nil, err
+	}
+	result := make([]*workspace.CustomRole, len(dbRoles))
+	for i := range dbRoles {
+		result[i] = mapRoleToDomain(&dbRoles[i])
+	}
+	return result, nil
 }

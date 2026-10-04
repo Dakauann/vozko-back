@@ -39,7 +39,6 @@ type Pricer interface {
 
 	PriceLLM(workspaceID string, model string, promptTokens, completionTokens int, providerCostMicros int64) (PriceResult, error)
 
-
 	PriceTelephonyChannel(workspaceID string, durationSeconds float64, channel string) (PriceResult, error)
 
 	PriceWhatsApp(workspaceID string, templateCategory string) (PriceResult, error)

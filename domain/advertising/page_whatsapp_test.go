@@ -59,17 +59,34 @@ func TestTheLinkCodeIsTheDigitsMetaSent(t *testing.T) {
 	}
 }
 
-func TestMetaMustConfirmEachStepOfTheLink(t *testing.T) {
-	if err := CodeSent("VERIFICATION_CODE_SEND_SUCCESS"); err != nil {
-		t.Fatal(err)
+func TestAskingForACodeEitherSendsItOrFindsTheNumberAlreadyLinked(t *testing.T) {
+	for status, want := range map[string]LinkRequestOutcome{"VERIFICATION_CODE_SEND_SUCCESS": LinkCodeSent, "VERIFIED": LinkAlreadyLinked} {
+		got, err := LinkRequested(status)
+		if err != nil || got != want {
+			t.Fatalf("%s: %s %v", status, got, err)
+		}
 	}
+	for _, status := range []string{"", "UNKNOWN"} {
+		if _, err := LinkRequested(status); !errors.Is(err, ErrPageLinkRefused) {
+			t.Fatalf("%q: %v", status, err)
+		}
+	}
+}
+
+func TestARefusedLinkKeepsMetasAnswer(t *testing.T) {
+	_, err := LinkRequested("NUMBER_ALREADY_IN_USE")
+	var refusal *PageLinkRefusal
+	if !errors.As(err, &refusal) || refusal.Answer != "NUMBER_ALREADY_IN_USE" || !errors.Is(err, ErrPageLinkRefused) {
+		t.Fatalf("got %v", err)
+	}
+	if err := LinkVerified(""); !errors.As(err, &refusal) || refusal.Answer != "" {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestMetaMustConfirmEachStepOfTheLink(t *testing.T) {
 	if err := LinkVerified("VERIFIED"); err != nil {
 		t.Fatal(err)
-	}
-	for _, status := range []string{"", "VERIFIED", "UNKNOWN"} {
-		if err := CodeSent(status); !errors.Is(err, ErrPageLinkRefused) {
-			t.Fatalf("code sent with %q: %v", status, err)
-		}
 	}
 	for _, status := range []string{"", "VERIFICATION_CODE_SEND_SUCCESS", "INVALID_CODE"} {
 		if err := LinkVerified(status); !errors.Is(err, ErrPageLinkRefused) {

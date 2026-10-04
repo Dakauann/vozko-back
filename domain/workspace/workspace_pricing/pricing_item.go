@@ -86,8 +86,8 @@ var ErrCategoryNotConfigurable = errors.New("this pricing category is not admin-
 var ErrSuperAdminRequired = errors.New("only the super admin can modify exchange rate")
 
 var configurableCategories = map[ServiceCategory]bool{
-	CategoryLLM:       true,
-	CategoryWhatsApp:  true,
+	CategoryLLM:         true,
+	CategoryWhatsApp:    true,
 	CategoryTelephony:   true,
 	CategoryAdvertising: true,
 }

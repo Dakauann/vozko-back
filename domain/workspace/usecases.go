@@ -93,6 +93,15 @@ type ListResourcePermissionsUseCase interface {
 	Execute() []ResourcePermissionInfo
 }
 
+type ResolvedRolePreset struct {
+	RolePreset
+	Permissions []PermissionEntry `json:"permissions"`
+}
+
+type ListRolePresetsUseCase interface {
+	Execute() ([]ResolvedRolePreset, error)
+}
+
 type ListFeaturesUseCase interface {
 	Execute() []Feature
 }

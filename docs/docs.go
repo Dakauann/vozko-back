@@ -802,7 +802,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). O código chega no app do WhatsApp do número; números em coexistência recebem no app do celular, não na caixa de entrada do Vozko. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused se a Meta não enviar o código.",
+                "description": "Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). Responde status code_sent quando o código foi enviado (ele chega no app do WhatsApp do número, não na caixa de entrada do Vozko) ou linked quando a Meta informa que o número já está vinculado; nesse caso o vínculo é registrado e a página atualizada vem em page. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused para qualquer outra resposta da Meta.",
                 "consumes": [
                     "application/json"
                 ],
@@ -839,8 +839,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/advertisinghttp.NumberLinkStartResponse"
+                        }
                     },
                     "409": {
                         "description": "Conflict",
@@ -21166,7 +21169,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace e o catálogo de funcionalidades com as permissões e telas de cada uma.",
+                "description": "Retorna o catálogo de recursos e ações que podem ser concedidos a membros e cargos do workspace, o catálogo de funcionalidades com as permissões e telas de cada uma e os modelos de cargo (rolePresets: operador, supervisor, gerente, vendedor, analista, marketing, IA e automações, financeiro), cada um com as funcionalidades que inclui e as permissões já resolvidas para criar o cargo.",
                 "produces": [
                     "application/json"
                 ],
@@ -22677,7 +22680,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cria um cargo personalizado no workspace com um conjunto próprio de permissões.",
+                "description": "Cria um cargo personalizado no workspace com um conjunto próprio de permissões. O nome precisa ser único no workspace, sem diferenciar maiúsculas e espaços (409 role_name_taken). Para começar de um modelo, envie presetKey com um item de rolePresets em GET /workspaces/permissions: com linked=true o cargo segue o modelo e recebe as permissões que o modelo ganhar (as permissões enviadas são ignoradas); com linked=false as permissões enviadas são uma cópia independente. Um modelo desconhecido devolve 400 unknown_role_preset.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22747,7 +22750,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza o nome, a descrição e/ou as permissões de um cargo personalizado do workspace.",
+                "description": "Atualiza o nome, a descrição e/ou as permissões de um cargo personalizado do workspace. Um cargo vinculado a um modelo não aceita permissões (409 role_linked): envie linked=false junto com as permissões para desvincular e editar, ou linked=true para voltar a seguir o modelo. Nomes repetidos devolvem 409 role_name_taken.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22810,6 +22813,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -25670,6 +25679,21 @@ const docTemplate = `{
                 "number": {
                     "type": "string",
                     "example": "5511965467700"
+                }
+            }
+        },
+        "advertisinghttp.NumberLinkStartResponse": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "$ref": "#/definitions/advertisinghttp.PageResponse"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "code_sent",
+                        "linked"
+                    ]
                 }
             }
         },
@@ -37489,6 +37513,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "linked": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -37497,6 +37524,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/workspace.PermissionEntry"
                     }
+                },
+                "presetKey": {
+                    "$ref": "#/definitions/workspace.RolePresetKey"
                 }
             }
         },
@@ -37525,6 +37555,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "linked": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -37533,6 +37566,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/workspace.PermissionEntry"
                     }
+                },
+                "presetKey": {
+                    "$ref": "#/definitions/workspace.RolePresetKey"
                 },
                 "updatedAt": {
                     "type": "string"
@@ -37757,6 +37793,29 @@ const docTemplate = `{
                 "RoleMember"
             ]
         },
+        "workspace.RolePresetKey": {
+            "type": "string",
+            "enum": [
+                "operator",
+                "supervisor",
+                "manager",
+                "sales",
+                "analyst",
+                "marketing",
+                "automation",
+                "finance"
+            ],
+            "x-enum-varnames": [
+                "PresetOperator",
+                "PresetSupervisor",
+                "PresetManager",
+                "PresetSales",
+                "PresetAnalyst",
+                "PresetMarketing",
+                "PresetAutomation",
+                "PresetFinance"
+            ]
+        },
         "workspace.SetPermissionsInput": {
             "type": "object",
             "properties": {
@@ -37773,6 +37832,9 @@ const docTemplate = `{
             "properties": {
                 "description": {
                     "type": "string"
+                },
+                "linked": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"

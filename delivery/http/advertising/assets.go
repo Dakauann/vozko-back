@@ -35,6 +35,11 @@ type NumberLinkRequest struct {
 	Number string `json:"number" example:"5511965467700"`
 }
 
+type NumberLinkStartResponse struct {
+	Status string        `json:"status" enums:"code_sent,linked"`
+	Page   *PageResponse `json:"page,omitempty"`
+}
+
 type NumberLinkConfirmRequest struct {
 	Number string `json:"number" example:"5511965467700"`
 	Code   string `json:"code" example:"83569"`
@@ -354,14 +359,14 @@ func presentNumber(n advertising.WorkspaceNumber) NumberResponse {
 }
 
 // @Summary		Pedir código para vincular WhatsApp à página
-// @Description	Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). O código chega no app do WhatsApp do número; números em coexistência recebem no app do celular, não na caixa de entrada do Vozko. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused se a Meta não enviar o código.
+// @Description	Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). Responde status code_sent quando o código foi enviado (ele chega no app do WhatsApp do número, não na caixa de entrada do Vozko) ou linked quando a Meta informa que o número já está vinculado; nesse caso o vínculo é registrado e a página atualizada vem em page. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused para qualquer outra resposta da Meta.
 // @Tags			Anúncios
 // @Accept			json
 // @Produce		json
 // @Param			id		path	string				true	"ID da conta de anúncios"
 // @Param			pageId	path	string				true	"ID da página na Meta"
 // @Param			body	body	NumberLinkRequest	true	"número a vincular"
-// @Success		204
+// @Success		200	{object}	NumberLinkStartResponse
 // @Failure		409	{object}	response.ErrorResponse
 // @Failure		422	{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -372,11 +377,17 @@ func (h *Handler) RequestNumberLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vars := mux.Vars(r)
-	if err := h.d.Assets.RequestNumberLink(r.Context(), workspaceOf(r), vars["id"], vars["pageId"], req.Number); err != nil {
+	started, err := h.d.Assets.RequestNumberLink(r.Context(), workspaceOf(r), vars["id"], vars["pageId"], req.Number)
+	if err != nil {
 		writeError(w, err, "Failed to request the WhatsApp link code")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	out := NumberLinkStartResponse{Status: string(started.Outcome)}
+	if started.Page != nil {
+		page := presentPage(*started.Page)
+		out.Page = &page
+	}
+	response.WriteSuccess(w, http.StatusOK, out)
 }
 
 // @Summary		Confirmar vínculo de WhatsApp com a página

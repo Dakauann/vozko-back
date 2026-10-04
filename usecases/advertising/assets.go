@@ -3,6 +3,7 @@ package advertising
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	ads "vozko/domain/advertising"
@@ -119,16 +120,49 @@ func findPage(pages []ads.RemotePage, pageID string) (ads.RemotePage, bool) {
 	return ads.RemotePage{}, false
 }
 
-func (uc *AssetsUseCase) RequestNumberLink(ctx context.Context, workspaceID, accountID, pageID, number string) error {
+type NumberLinkRequest struct {
+	Outcome ads.LinkRequestOutcome
+	Page    *PromotablePage
+}
+
+func (uc *AssetsUseCase) RequestNumberLink(ctx context.Context, workspaceID, accountID, pageID, number string) (*NumberLinkRequest, error) {
 	link, err := uc.numberLink(ctx, workspaceID, accountID, pageID, number)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	status, err := uc.gateway.RequestPageNumberCode(ctx, link.token, link.page.PageID, link.number)
 	if err != nil {
-		return uc.access.failed(ctx, link.account, err)
+		return nil, uc.access.failed(ctx, link.account, err)
 	}
-	return ads.CodeSent(status)
+	outcome, err := ads.LinkRequested(status)
+	if err != nil {
+		log.Printf("[ads] page %s did not send a WhatsApp link code for %s: %v", link.page.PageID, link.number, err)
+		return nil, err
+	}
+	if outcome == ads.LinkCodeSent {
+		return &NumberLinkRequest{Outcome: outcome}, nil
+	}
+	page, err := uc.recordLink(ctx, workspaceID, accountID, link)
+	if err != nil {
+		return nil, err
+	}
+	return &NumberLinkRequest{Outcome: outcome, Page: page}, nil
+}
+
+func (uc *AssetsUseCase) recordLink(ctx context.Context, workspaceID, accountID string, link *numberLink) (*PromotablePage, error) {
+	if err := uc.numbers.RecordPageLink(ctx, workspaceID, link.page.PageID, link.number); err != nil {
+		return nil, fmt.Errorf("ads: Meta linked %s to page %s but Vozko could not record it: %w", link.number, link.page.PageID, err)
+	}
+	pages, err := uc.Pages(ctx, workspaceID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range pages {
+		if pages[i].Page.PageID == link.page.PageID {
+			return &pages[i], nil
+		}
+	}
+	return nil, ads.ErrPageNotGranted
 }
 
 func (uc *AssetsUseCase) ConfirmNumberLink(ctx context.Context, workspaceID, accountID, pageID, number, code string) (*PromotablePage, error) {
@@ -145,21 +179,10 @@ func (uc *AssetsUseCase) ConfirmNumberLink(ctx context.Context, workspaceID, acc
 		return nil, uc.access.failed(ctx, link.account, err)
 	}
 	if err := ads.LinkVerified(status); err != nil {
+		log.Printf("[ads] page %s did not confirm the WhatsApp link of %s: %v", link.page.PageID, link.number, err)
 		return nil, err
 	}
-	if err := uc.numbers.RecordPageLink(ctx, workspaceID, link.page.PageID, link.number); err != nil {
-		return nil, fmt.Errorf("ads: Meta linked %s to page %s but Vozko could not record it: %w", link.number, link.page.PageID, err)
-	}
-	pages, err := uc.Pages(ctx, workspaceID, accountID)
-	if err != nil {
-		return nil, err
-	}
-	for i := range pages {
-		if pages[i].Page.PageID == link.page.PageID {
-			return &pages[i], nil
-		}
-	}
-	return nil, ads.ErrPageNotGranted
+	return uc.recordLink(ctx, workspaceID, accountID, link)
 }
 
 const minSearchRunes = 2

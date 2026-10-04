@@ -10,6 +10,7 @@ import (
 	callhistoryhttp "vozko/delivery/http/callhistory"
 	lead_repository "vozko/infra/repositories/lead"
 	callhistory_usecase "vozko/usecases/callhistory"
+	workspace_usecase "vozko/usecases/workspace"
 
 	balance_usecase "vozko/usecases/balance"
 	ia_usecase "vozko/usecases/inbox_assignment"
@@ -602,6 +603,8 @@ func (c *Container) initHandlers() {
 			c.useCases.scopedDepartments,
 		),
 	}
+
+	c.handlers.workspace.SetRolePresets(workspace_usecase.NewListRolePresetsUseCase())
 
 	if c.services.requestCallPermission != nil {
 		c.handlers.conversation.SetRequestCallPermission(c.services.requestCallPermission)

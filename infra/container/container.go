@@ -73,6 +73,7 @@ func New() *Container {
 	c.initWebchat()
 	c.initUnofficialWhatsApp()
 	c.initUseCases(consumeWhatsappTemplateUC)
+	c.syncLinkedRoles()
 	c.initAds()
 	c.initImageGeneration()
 	c.initLiveDecisions()

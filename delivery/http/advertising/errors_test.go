@@ -65,6 +65,17 @@ func TestNewAdsErrorsHaveStableCodes(t *testing.T) {
 	}
 }
 
+func TestARefusedPageLinkShowsMetasAnswer(t *testing.T) {
+	status, payload := written(t, &advertising.PageLinkRefusal{Answer: "INVALID_CODE"})
+	if status != http.StatusConflict || payload.Code != "page_link_refused" || payload.Expected["meta"] != "INVALID_CODE" || !strings.Contains(payload.Message, "INVALID_CODE") {
+		t.Fatalf("got %d %+v", status, payload)
+	}
+	status, payload = written(t, &advertising.PageLinkRefusal{})
+	if status != http.StatusConflict || payload.Expected["meta"] != "" || strings.Contains(payload.Message, "Meta:") {
+		t.Fatalf("empty answer: %d %+v", status, payload)
+	}
+}
+
 func TestValidationErrorsListEveryField(t *testing.T) {
 	status, payload := written(t, &advertising.ValidationError{Issues: []advertising.FieldIssue{
 		{Field: "cells[0].share", Code: "invalid"}, {Field: "name", Code: "required"},

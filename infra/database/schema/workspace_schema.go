@@ -105,6 +105,8 @@ type WorkspaceCustomRole struct {
 	Name        string    `gorm:"not null;size:100"`
 	Description string    `gorm:"size:500"`
 	Permissions string    `gorm:"type:text"`
+	PresetKey   string    `gorm:"size:32;not null;default:''"`
+	Linked      bool      `gorm:"not null;default:false;index"`
 	CreatedAt   time.Time `gorm:"autoCreateTime"`
 	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
 
