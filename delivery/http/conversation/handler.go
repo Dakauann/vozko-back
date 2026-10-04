@@ -372,6 +372,7 @@ type SetAutomationRequest struct {
 // @Param			entryId		path		string					true	"ID da entrada"
 // @Param			request		body		SetAutomationRequest	true	"Novo estado"
 // @Success		200			{object}	map[string]interface{}
+// @Failure		409			{object}	response.ErrorResponse
 // @Router			/conversations/{entryType}/{entryId}/automation [patch]
 func (h *ConversationHandler) SetAutomation(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
