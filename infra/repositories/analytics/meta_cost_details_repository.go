@@ -28,31 +28,41 @@ func (r *repository) MetaCostNumbers(input analytics_domain.MetaServiceMessageCo
 	}
 	providerMatch, providerNeedsArg := providerFilterClause(input.Provider)
 	args := make([]interface{}, 0, 4)
+	args = append(args, input.StartDate, input.EndDate)
 	if providerNeedsArg {
 		args = append(args, string(input.Provider))
 	}
-	args = append(args, input.StartDate, input.EndDate, metaCostDetailLimit)
+	args = append(args, metaCostDetailLimit)
 
 	query := `
+		WITH per_phone AS MATERIALIZED (
+			SELECT
+				wc.business_phone_id AS phone_id,
+				COUNT(*) AS service_messages,
+				COUNT(*) FILTER (WHERE cm.meta_pricing_billable IS NOT NULL) AS answered,
+				COUNT(*) FILTER (WHERE ` + metaConfirmedPredicate + `) AS charged,
+				MIN(cm.created_at) FILTER (WHERE ` + metaConfirmedPredicate + `) AS first_charged_at
+			FROM conversation_messages cm
+			JOIN whatsapp_campaign_entries wce ON wce.id = cm.entry_id AND wce.deleted_at IS NULL
+			JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.deleted_at IS NULL
+			WHERE ` + serviceMessagePredicate + `
+			  AND cm.created_at >= ? AND cm.created_at < ?
+			GROUP BY wc.business_phone_id
+		)
 		SELECT
 			p.id AS phone_id,
 			p.display_phone_number,
 			p.provider,
 			COALESCE(w.name, '') AS workspace_name,
-			COUNT(*) AS service_messages,
-			COUNT(*) FILTER (WHERE cm.meta_pricing_billable IS NOT NULL) AS answered,
-			COUNT(*) FILTER (WHERE ` + metaConfirmedPredicate + `) AS charged,
-			MIN(cm.created_at) FILTER (WHERE ` + metaConfirmedPredicate + `) AS first_charged_at
-		FROM conversation_messages cm
-		JOIN whatsapp_campaign_entries wce ON wce.id = cm.entry_id AND wce.deleted_at IS NULL
-		JOIN whatsapp_campaigns wc ON wc.id = wce.campaign_id AND wc.deleted_at IS NULL
-		JOIN whatsapp_business_phone_numbers p ON p.id = wc.business_phone_id
+			pp.service_messages,
+			pp.answered,
+			pp.charged,
+			pp.first_charged_at
+		FROM per_phone pp
+		JOIN whatsapp_business_phone_numbers p ON p.id = pp.phone_id
 		LEFT JOIN workspaces w ON w.id = p.owner_workspace_id
 		WHERE ` + providerMatch + `
-		  AND ` + serviceMessagePredicate + `
-		  AND cm.created_at >= ? AND cm.created_at < ?
-		GROUP BY p.id, p.display_phone_number, p.provider, w.name
-		ORDER BY charged DESC, service_messages DESC
+		ORDER BY pp.charged DESC, pp.service_messages DESC
 		LIMIT ?`
 
 	var rows []metaCostNumberRow

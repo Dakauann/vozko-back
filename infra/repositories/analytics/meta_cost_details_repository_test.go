@@ -9,7 +9,7 @@ import (
 	analytics_domain "vozko/domain/analytics"
 )
 
-func TestNumbersAreCountedPerPhoneWithTheirFirstChargeInThePeriod(t *testing.T) {
+func TestNumbersCountMessagesFirstThenJoinTheirPhone(t *testing.T) {
 	db, mock, sqlDB := newMetaCostDB(t)
 	defer sqlDB.Close()
 	input := metaCostInput()
@@ -18,8 +18,8 @@ func TestNumbersAreCountedPerPhoneWithTheirFirstChargeInThePeriod(t *testing.T) 
 	mock.ExpectBegin()
 	mock.ExpectExec(`SET LOCAL jit = off`).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`SET LOCAL statement_timeout`).WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectQuery(`MIN\(cm\.created_at\) FILTER[\s\S]*JOIN whatsapp_business_phone_numbers p ON p\.id = wc\.business_phone_id[\s\S]*GROUP BY p\.id`).
-		WithArgs(string(analytics_domain.ServiceMessageProviderMeta), input.StartDate, input.EndDate, metaCostDetailLimit).
+	mock.ExpectQuery(`WITH per_phone AS MATERIALIZED \([\s\S]*MIN\(cm\.created_at\) FILTER[\s\S]*FROM conversation_messages cm[\s\S]*GROUP BY wc\.business_phone_id\s*\)[\s\S]*FROM per_phone pp\s+JOIN whatsapp_business_phone_numbers p ON p\.id = pp\.phone_id`).
+		WithArgs(input.StartDate, input.EndDate, string(analytics_domain.ServiceMessageProviderMeta), metaCostDetailLimit).
 		WillReturnRows(sqlmock.NewRows([]string{"phone_id", "display_phone_number", "provider", "workspace_name", "service_messages", "answered", "charged", "first_charged_at"}).
 			AddRow("p-1", "+55 11 96546-7700", "meta", "Vozko", 120, 90, 60, first))
 	mock.ExpectCommit()
