@@ -171,3 +171,11 @@ func TestChargedWorkspacesAreListedOnce(t *testing.T) {
 		t.Fatalf("ids %v", got)
 	}
 }
+
+func TestNoServiceChargedNeverBlamesService(t *testing.T) {
+	none := int64(0)
+	e := NewWorkspaceEconomics(wsc.MetaPayerVozko, 50_000, 900_000, &none, rates)
+	if e.ServiceExceedsPrice {
+		t.Fatalf("templates alone lose money here, service is not the cause: %+v", e)
+	}
+}

@@ -9,7 +9,7 @@ import (
 	analytics_domain "vozko/domain/analytics"
 )
 
-const uuidReference = `'^(refund:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`
+const uuidReference = `'^(refund:){0,1}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`
 
 type invoiceAccountRow struct {
 	WABAID          string `gorm:"column:waba_id"`

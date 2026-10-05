@@ -98,7 +98,7 @@ func NewWorkspaceEconomics(payer wsc.MetaPayer, paidMicros, templateCostMicros i
 	e.MetaPayer = string(wsc.MetaPayerVozko)
 	e.VozkoMetaCost = rates.optionalMoney(vozkoCost, serviceKnown)
 	e.RealMargin = rates.optionalMoney(paidMicros-vozkoCost, serviceKnown)
-	e.ServiceExceedsPrice = serviceKnown && serviceCost > paidMicros-templateCostMicros
+	e.ServiceExceedsPrice = serviceKnown && serviceCost > 0 && paidMicros-vozkoCost < 0
 	return e
 }
 

@@ -1,6 +1,7 @@
 package analytics_repository
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -29,5 +30,11 @@ func TestInvoiceAccountsCountTemplateSendsNetOfRefundsPerWhatsAppAccount(t *test
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInvoiceAccountsQueryHasOnePlaceholderPerArgument(t *testing.T) {
+	if got := strings.Count(invoiceAccountsQuery, "?"); got != 4 {
+		t.Fatalf("gorm binds every ? in the text, string literals included: found %d, want the 4 dates", got)
 	}
 }
