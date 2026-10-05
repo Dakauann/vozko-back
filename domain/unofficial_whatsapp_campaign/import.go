@@ -4,15 +4,12 @@ import (
 	"context"
 
 	"vozko/domain/campaign"
+	"vozko/domain/lead"
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
 func NormalizeTarget(raw string) string {
-	number := uw.NormalizePhone(raw)
-	if !ValidTargetNumber(number) {
-		return ""
-	}
-	return number
+	return lead.NormalizeNumber(lead.NormalizeRawNumber(raw))
 }
 
 type ImportRequest struct {

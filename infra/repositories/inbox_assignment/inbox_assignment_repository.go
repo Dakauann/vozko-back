@@ -73,6 +73,18 @@ func (r *repository) Assign(assignment *ia.InboxAssignment) error {
 	}).Create(&rec).Error
 }
 
+func (r *repository) AssignIfUnassigned(assignment *ia.InboxAssignment) (bool, error) {
+	rec := toSchema(assignment)
+	result := r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "entry_id"}, {Name: "entry_type"}},
+		DoNothing: true,
+	}).Create(&rec)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
 func (r *repository) Unassign(workspaceID, entryID, entryType string) error {
 	return r.db.Where("workspace_id = ? AND entry_id = ? AND entry_type = ?", workspaceID, entryID, entryType).
 		Delete(&schema.InboxAssignment{}).Error

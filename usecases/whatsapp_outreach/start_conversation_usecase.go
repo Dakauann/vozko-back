@@ -35,6 +35,10 @@ type RateLimiter interface {
 	Allow(ctx context.Context, workspaceID string, limit int, window time.Duration) (bool, error)
 }
 
+type ConversationClaimer interface {
+	ClaimIfUnassigned(entryID, entryType, businessPhoneID, workspaceID, userID, trigger string) (bool, error)
+}
+
 type Deps struct {
 	Phones        businessphone.Repository
 	PhoneGrants   workspace_phone_access.Repository
@@ -49,6 +53,7 @@ type Deps struct {
 	CampaignSends   lcs.Repository
 	SpamPolicy      SpamPolicyReader
 	History         conversation.MessageHistoryManager
+	Assignments     ConversationClaimer
 	Sender          template.BilledTemplateSendUseCase
 	Limiter         RateLimiter
 	HourlySendCap   int
@@ -157,14 +162,15 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 	}
 
 	d := delivery{
-		entry:      entry,
-		tmpl:       tmpl,
-		bodyParams: in.BodyParams,
-		userID:     in.UserID,
-		to:         leadRecord.Number,
-		leadID:     leadRecord.ID,
-		phoneID:    phone.ID,
-		campaignID: campaign.ID,
+		entry:       entry,
+		tmpl:        tmpl,
+		bodyParams:  in.BodyParams,
+		workspaceID: in.WorkspaceID,
+		userID:      in.UserID,
+		to:          leadRecord.Number,
+		leadID:      leadRecord.ID,
+		phoneID:     phone.ID,
+		campaignID:  campaign.ID,
 	}
 	sendResult, err := uc.charge(ctx, d, template.BilledSendInput{
 		WorkspaceID:     in.WorkspaceID,

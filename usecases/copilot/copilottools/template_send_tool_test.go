@@ -8,6 +8,7 @@ import (
 	"vozko/domain/copilot"
 	"vozko/domain/shared"
 	tmpl "vozko/domain/whatsapp/template"
+	wo "vozko/domain/whatsapp_outreach"
 )
 
 const knownTemplate = "2b3c4d5e-6f70-4812-9a3b-4c5d6e7f8091"
@@ -93,7 +94,7 @@ func TestSendTemplateRefusesATemplateTheWorkspaceCannotUse(t *testing.T) {
 }
 
 func TestSendTemplateExplainsRefusals(t *testing.T) {
-	for _, err := range []error{conversation.ErrTemplateNotGranted, tmpl.ErrTemplatePhoneMismatch, conversation.ErrUnauthorized} {
+	for _, err := range []error{wo.ErrTemplateForbidden, tmpl.ErrTemplatePhoneMismatch, conversation.ErrUnauthorized} {
 		res := NewSendTemplateTool(templateSendDeps(&fakePersonTemplates{err: err}, false)).Execute(context.Background(), member(), templateArgs("Maria", "123"))
 		if res.Status == copilot.StatusOK || res.Message == "falha ao enviar o modelo" {
 			t.Fatalf("%v: %+v", err, res)

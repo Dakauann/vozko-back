@@ -50,6 +50,16 @@ func (r *mockRepo) Assign(a *ia.InboxAssignment) error {
 	r.assignCalls = append(r.assignCalls, &cp)
 	return nil
 }
+func (r *mockRepo) AssignIfUnassigned(a *ia.InboxAssignment) (bool, error) {
+	if r.findByEntryResult != nil || r.assigned != nil {
+		return false, nil
+	}
+	if err := r.Assign(a); err != nil {
+		return false, err
+	}
+	r.findByEntryResult = r.assigned
+	return true, nil
+}
 func (r *mockRepo) Unassign(string, string, string) error { return nil }
 func (r *mockRepo) ListByUser(string, string, string) ([]string, error) {
 	return nil, nil
@@ -113,6 +123,12 @@ func (r *statefulRepo) Assign(a *ia.InboxAssignment) error {
 	cp := *a
 	r.assignments[assignmentKey(a.WorkspaceID, a.EntryID, a.EntryType)] = &cp
 	return nil
+}
+func (r *statefulRepo) AssignIfUnassigned(a *ia.InboxAssignment) (bool, error) {
+	if r.assignments[assignmentKey(a.WorkspaceID, a.EntryID, a.EntryType)] != nil {
+		return false, nil
+	}
+	return true, r.Assign(a)
 }
 func (r *statefulRepo) Unassign(wsID, entryID, entryType string) error {
 	delete(r.assignments, assignmentKey(wsID, entryID, entryType))

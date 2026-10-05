@@ -19,12 +19,31 @@ func (l *referenceLedgerStub) ExistsTransactionByReferenceID(ref string) (bool, 
 	return l.existing[ref], l.lookErr
 }
 
+func (l *referenceLedgerStub) recordOnce(once bool, ref *string) error {
+	if !once {
+		return nil
+	}
+	if l.lookErr != nil {
+		return l.lookErr
+	}
+	if l.existing[*ref] {
+		return balance.ErrReferenceAlreadyRecorded
+	}
+	return nil
+}
+
 func (l *referenceLedgerStub) DebitBalance(in balance.DebitBalanceInput) (*balance.Transaction, error) {
+	if err := l.recordOnce(in.OncePerReference, in.ReferenceID); err != nil {
+		return nil, err
+	}
 	l.debits = append(l.debits, in)
 	return &balance.Transaction{}, nil
 }
 
 func (l *referenceLedgerStub) CreditBalance(in balance.CreditBalanceInput) (*balance.Transaction, error) {
+	if err := l.recordOnce(in.OncePerReference, in.ReferenceID); err != nil {
+		return nil, err
+	}
 	l.credits = append(l.credits, in)
 	return &balance.Transaction{}, nil
 }

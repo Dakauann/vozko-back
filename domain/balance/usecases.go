@@ -20,6 +20,8 @@ type CreditBalanceInput struct {
 	IsRefund     bool
 
 	ExchangeRateMicros int64
+
+	OncePerReference bool
 }
 
 type DebitBalanceInput struct {
@@ -36,6 +38,8 @@ type DebitBalanceInput struct {
 	AllowNegative bool
 
 	ExchangeRateMicros int64
+
+	OncePerReference bool
 }
 
 type CreateBalanceUseCase interface {

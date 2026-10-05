@@ -264,8 +264,13 @@ func (s *AssignmentService) reassign(entryID, entryType, businessPhoneID, worksp
 		return ownerMove{}, err
 	}
 
+	s.recordOwnerChange(entryID, entryType, businessPhoneID, workspaceID, toUserID, prev, assignedBy, trigger)
+	return ownerMove{changed: true, previous: prev}, nil
+}
+
+func (s *AssignmentService) recordOwnerChange(entryID, entryType, businessPhoneID, workspaceID, toUserID, previous, assignedBy, trigger string) {
 	evType := ce.EventAssigned
-	if trigger == ia.TriggerOpen || trigger == ia.TriggerInboundRR {
+	if trigger == ia.TriggerOpen || trigger == ia.TriggerInboundRR || trigger == ia.TriggerOutreachSent {
 		evType = ce.EventAutoAssigned
 	}
 
@@ -281,7 +286,7 @@ func (s *AssignmentService) reassign(entryID, entryType, businessPhoneID, worksp
 		EntryID:           entryID,
 		EntryType:         entryType,
 		AssignedUserID:    toUserID,
-		PreviousUserID:    prev,
+		PreviousUserID:    previous,
 		Trigger:           trigger,
 		AssignedByActorID: assignedBy,
 		BusinessPhoneID:   businessPhoneID,
@@ -289,21 +294,26 @@ func (s *AssignmentService) reassign(entryID, entryType, businessPhoneID, worksp
 		EventType:         evType,
 		Channel:           channelForEntryType(entryType),
 	})
-	return ownerMove{changed: true, previous: prev}, nil
+}
+
+func (s *AssignmentService) ClaimIfUnassigned(entryID, entryType, businessPhoneID, workspaceID, userID, trigger string) (bool, error) {
+	claimed, err := s.repo.AssignIfUnassigned(&ia.InboxAssignment{
+		WorkspaceID:     workspaceID,
+		BusinessPhoneID: businessPhoneID,
+		EntryID:         entryID,
+		EntryType:       entryType,
+		AssignedUserID:  userID,
+	})
+	if err != nil || !claimed {
+		return false, err
+	}
+	s.recordOwnerChange(entryID, entryType, businessPhoneID, workspaceID, userID, "", userID, trigger)
+	s.announceOwner(workspaceID, entryID, entryType, "")
+	return true, nil
 }
 
 func (s *AssignmentService) AssignOnOpen(entryID, entryType, businessPhoneID, workspaceID, userID string) (bool, error) {
-	existing, err := s.repo.FindByEntry(workspaceID, entryID, entryType)
-	if err != nil {
-		return false, err
-	}
-	if existing != nil {
-		return false, nil
-	}
-	if err := s.AssignManual(entryID, entryType, businessPhoneID, workspaceID, userID, userID, ia.TriggerOpen); err != nil {
-		return false, err
-	}
-	return true, nil
+	return s.ClaimIfUnassigned(entryID, entryType, businessPhoneID, workspaceID, userID, ia.TriggerOpen)
 }
 
 func (s *AssignmentService) UnassignSystem(entryID, entryType, workspaceID, reason string) error {

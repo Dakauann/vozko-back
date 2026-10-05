@@ -52,6 +52,14 @@ func (f *fakeLedger) DebitBalance(params balance.DebitBalanceInput) (*balance.Tr
 	if f.debitErr != nil {
 		return nil, f.debitErr
 	}
+	if params.OncePerReference {
+		if f.existsErr != nil {
+			return nil, f.existsErr
+		}
+		if f.existing[*params.ReferenceID] {
+			return nil, balance.ErrReferenceAlreadyRecorded
+		}
+	}
 	f.debits = append(f.debits, params)
 	if params.ReferenceID != nil {
 		f.existing[*params.ReferenceID] = true

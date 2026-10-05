@@ -64,7 +64,7 @@ func New() *Container {
 	c.services.serviceMessageBilling = serviceMessageBilling
 
 	c.initSIPTrunks()
-	c.wireConversationHub(consumeWhatsappTemplateUC)
+	c.wireConversationHub()
 	c.initCallSessionRegistries()
 	c.agentMCP = c.initAgentMCP()
 	c.initInstagram()

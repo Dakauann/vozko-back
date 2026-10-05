@@ -105,6 +105,10 @@ func (r *BalanceRepositoryImpl) CreditBalance(params balance.CreditBalanceInput)
 			return err
 		}
 
+		if err := ensureReferenceUnrecorded(tx, params.OncePerReference, params.ReferenceID); err != nil {
+			return err
+		}
+
 		balanceBefore := dbBalance.Amount
 		balanceAfter := balanceBefore + params.Amount
 
@@ -161,6 +165,10 @@ func (r *BalanceRepositoryImpl) DebitBalance(params balance.DebitBalanceInput) (
 			return err
 		}
 
+		if err := ensureReferenceUnrecorded(tx, params.OncePerReference, params.ReferenceID); err != nil {
+			return err
+		}
+
 		balanceBefore := dbBalance.Amount
 		if !params.AllowNegative && balanceBefore < params.Amount {
 			return balance.ErrInsufficientBalance
@@ -201,6 +209,23 @@ func (r *BalanceRepositoryImpl) DebitBalance(params balance.DebitBalanceInput) (
 		return nil, err
 	}
 	return transaction, nil
+}
+
+func ensureReferenceUnrecorded(tx *gorm.DB, once bool, referenceID *string) error {
+	if !once {
+		return nil
+	}
+	if referenceID == nil || strings.TrimSpace(*referenceID) == "" {
+		return balance.ErrReferenceRequired
+	}
+	recorded, err := referenceRecorded(tx, *referenceID)
+	if err != nil {
+		return err
+	}
+	if recorded {
+		return balance.ErrReferenceAlreadyRecorded
+	}
+	return nil
 }
 
 func (r *BalanceRepositoryImpl) HasSufficientBalance(workspaceID string, amount int64) (bool, error) {
@@ -321,8 +346,12 @@ func (r *BalanceRepositoryImpl) ListTransactions(input balance.ListTransactionsI
 }
 
 func (r *BalanceRepositoryImpl) ExistsTransactionByReferenceID(referenceID string) (bool, error) {
+	return referenceRecorded(r.db, referenceID)
+}
+
+func referenceRecorded(db *gorm.DB, referenceID string) (bool, error) {
 	var exists bool
-	err := r.db.Model(&schema.BalanceTransaction{}).
+	err := db.Model(&schema.BalanceTransaction{}).
 		Select("1").
 		Where("reference_id = ?", referenceID).
 		Limit(1).
@@ -375,53 +404,19 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		}
 		whereCamp := strings.Join(campConds, ` AND `)
 		sql += `
-		  AND (
-		    EXISTS (
-		      SELECT 1 FROM whatsapp_campaigns c
-		      -- c.id is uuid, bt.reference_id is varchar: compare as text or
-		      -- Postgres raises 42883 (operator does not exist: uuid = varchar).
-		      WHERE c.id::text = bt.reference_id AND ` + whereCamp + `
-		    )
-		    OR EXISTS (
-		      SELECT 1 FROM whatsapp_campaigns c
-		      WHERE bt.reference_id = ('refund:' || c.id) AND ` + whereCamp + `
-		    )
-		    -- Single-target sends reference their send ATTEMPT, not a campaign, so
-		    -- the two branches above cannot see them and a department-filtered
-		    -- report would silently omit money the workspace actually spent. The
-		    -- attempt carries the campaign it was sent into, which is what puts it
-		    -- back under the right department.
-		    OR EXISTS (
-		      SELECT 1 FROM whatsapp_template_sends s
-		      JOIN whatsapp_campaigns c ON c.id = s.campaign_id
-		      WHERE bt.reference_id = ('waba:' || s.id) AND s.deleted_at IS NULL AND ` + whereCamp + `
-		    )
-		    OR EXISTS (
-		      SELECT 1 FROM whatsapp_template_sends s
-		      JOIN whatsapp_campaigns c ON c.id = s.campaign_id
-		      WHERE bt.reference_id = ('refund:waba:' || s.id) AND s.deleted_at IS NULL AND ` + whereCamp + `
-		    )
-		    -- Campaign sends now reference their ENTRY, so a charge reaches its
-		    -- campaign through the entry row. Without these two branches a
-		    -- department- or type-filtered report would silently omit every
-		    -- campaign charge and show a workspace spending nothing.
-		    --
-		    -- The campaign-id branches above are KEPT rather than replaced: rows
-		    -- written before the reference changed still carry a campaign id, and
-		    -- dropping them would erase historical spend from every report.
-		    OR EXISTS (
-		      SELECT 1 FROM whatsapp_campaign_entries e
-		      JOIN whatsapp_campaigns c ON c.id = e.campaign_id
-		      WHERE e.id::text = bt.reference_id AND e.deleted_at IS NULL AND ` + whereCamp + `
-		    )
-		    OR EXISTS (
-		      SELECT 1 FROM whatsapp_campaign_entries e
-		      JOIN whatsapp_campaigns c ON c.id = e.campaign_id
-		      WHERE bt.reference_id = ('refund:' || e.id) AND e.deleted_at IS NULL AND ` + whereCamp + `
-		    )
+		  AND ` + chargeOwnerKey + ` IN (
+		    SELECT c.id::text FROM whatsapp_campaigns c WHERE ` + whereCamp + `
+		    UNION ALL
+		    SELECT e.id::text FROM whatsapp_campaign_entries e
+		    JOIN whatsapp_campaigns c ON c.id = e.campaign_id
+		    WHERE e.deleted_at IS NULL AND ` + whereCamp + `
+		    UNION ALL
+		    SELECT 'waba:' || s.id FROM whatsapp_template_sends s
+		    JOIN whatsapp_campaigns c ON c.id = s.campaign_id
+		    WHERE s.deleted_at IS NULL AND ` + whereCamp + `
 		  )
 		`
-		for i := 0; i < 6; i++ {
+		for i := 0; i < 3; i++ {
 			args = append(args, campArgs...)
 		}
 	}

@@ -391,6 +391,7 @@ type services struct {
 	conversationEntryLookup       conversation_domain.EntryLookup
 	personSend                    conversation_domain.PersonSendUseCase
 	personTemplateSend            conversation_domain.PersonTemplateSendUseCase
+	templateSender                *conversation_usecase.TemplateSenderService
 	personAssign                  ia_domain.PersonAssignUseCase
 	channelAdapters               []conversation_domain.ChannelAdapter
 	liveChannelAdapters           *conversation_domain.LiveAdapterRegistry

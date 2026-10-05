@@ -11,6 +11,8 @@ const (
 	TriggerRescue    = "rescue"
 	TriggerOutreach  = "inbound_outreach"
 
+	TriggerOutreachSent = "outreach_sent"
+
 	TriggerAutomationGoverned        = "automation_governed"
 	TriggerAutomationHandoff         = "automation_handoff"
 	TriggerAutomationHandoffRoulette = "automation_handoff_rr"

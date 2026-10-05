@@ -11,6 +11,7 @@ import (
 	"vozko/domain/copilot"
 	"vozko/domain/tools"
 	tmpl "vozko/domain/whatsapp/template"
+	wo "vozko/domain/whatsapp_outreach"
 	"vozko/domain/workspace"
 )
 
@@ -109,9 +110,9 @@ func templateSendFailure(err error) copilot.Result {
 	switch {
 	case errors.Is(err, conversation.ErrUnauthorized):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "o usuário não tem acesso a esta conversa"}
-	case errors.Is(err, tmpl.ErrTemplateAccessDenied), errors.Is(err, conversation.ErrTemplateNotGranted):
+	case errors.Is(err, tmpl.ErrTemplateAccessDenied), errors.Is(err, wo.ErrTemplateForbidden):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "este workspace não tem acesso a esse modelo"}
-	case errors.Is(err, tmpl.ErrTemplateNotFound), errors.Is(err, errInvalidArgs):
+	case errors.Is(err, tmpl.ErrTemplateNotFound), errors.Is(err, wo.ErrTemplateNotFound), errors.Is(err, errInvalidArgs):
 		return copilot.Result{Status: copilot.StatusError, Message: "modelo desconhecido; use os ids de list_templates"}
 	case errors.Is(err, tmpl.ErrTemplatePhoneMismatch):
 		return copilot.Result{Status: copilot.StatusError, Message: "esse modelo é de outra conta do WhatsApp, diferente do número desta conversa"}
@@ -119,6 +120,12 @@ func templateSendFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "saldo insuficiente para enviar o modelo; o usuário precisa recarregar"}
 	case errors.Is(err, balance.ErrMonthlySendCapReached):
 		return copilot.Result{Status: copilot.StatusError, Message: "o limite mensal de envios de modelos deste workspace foi atingido; o usuário precisa falar com a administração"}
+	case errors.Is(err, wo.ErrWithinSpamWindow):
+		return copilot.Result{Status: copilot.StatusError, Message: "este contato recebeu uma mensagem deste número há pouco tempo; a proteção contra spam do workspace bloqueia um novo modelo agora"}
+	case errors.Is(err, wo.ErrLeadBlocked):
+		return copilot.Result{Status: copilot.StatusError, Message: "este contato está bloqueado"}
+	case errors.Is(err, wo.ErrSendOutcomeUnknown):
+		return copilot.Result{Status: copilot.StatusError, Message: "o WhatsApp pode ter entregue o modelo, mas a resposta se perdeu; confira a conversa antes de enviar de novo"}
 	case errors.Is(err, conversation.ErrEntryTypeInvalid):
 		return copilot.Result{Status: copilot.StatusError, Message: "modelos só podem ser enviados em conversas do WhatsApp oficial"}
 	}

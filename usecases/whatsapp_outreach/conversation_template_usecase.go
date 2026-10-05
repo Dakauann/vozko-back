@@ -59,14 +59,15 @@ func (uc *conversationTemplateUseCase) Send(ctx context.Context, in wo.Conversat
 	}
 
 	d := delivery{
-		entry:      target.entry,
-		tmpl:       target.tmpl,
-		bodyParams: in.BodyParams,
-		userID:     in.UserID,
-		to:         target.contact.Number,
-		leadID:     target.contact.ID,
-		phoneID:    target.phone.ID,
-		campaignID: target.campaign.ID,
+		entry:       target.entry,
+		tmpl:        target.tmpl,
+		bodyParams:  in.BodyParams,
+		workspaceID: in.WorkspaceID,
+		userID:      in.UserID,
+		to:          target.contact.Number,
+		leadID:      target.contact.ID,
+		phoneID:     target.phone.ID,
+		campaignID:  target.campaign.ID,
 	}
 	result, err := uc.charge(ctx, d, template.BilledSendInput{
 		WorkspaceID:     in.WorkspaceID,
@@ -184,6 +185,7 @@ func newSendRules(deps Deps, specific map[string]bool) (sendRules, error) {
 		"campaign send history":     deps.CampaignSends != nil,
 		"spam protection policy":    deps.SpamPolicy != nil,
 		"message history":           deps.History != nil,
+		"conversation assignments":  deps.Assignments != nil,
 		"billed template sender":    deps.Sender != nil,
 	}
 	for name, present := range specific {

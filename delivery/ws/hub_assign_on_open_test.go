@@ -90,6 +90,12 @@ func (r *assignOnOpenRepo) Assign(a *ia.InboxAssignment) error {
 	r.assignments[r.key(a.EntryID, a.EntryType)] = a
 	return nil
 }
+func (r *assignOnOpenRepo) AssignIfUnassigned(a *ia.InboxAssignment) (bool, error) {
+	if r.assignments[r.key(a.EntryID, a.EntryType)] != nil {
+		return false, nil
+	}
+	return true, r.Assign(a)
+}
 func (r *assignOnOpenRepo) Unassign(string, string, string) error { return nil }
 func (r *assignOnOpenRepo) ListByUser(string, string, string) ([]string, error) {
 	return nil, nil

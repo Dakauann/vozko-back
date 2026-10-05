@@ -2,6 +2,7 @@ package unofficial_whatsapp_campaign
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -113,7 +114,7 @@ func (uc *createCampaignUseCase) materializeTargets(
 	for _, t := range in.Targets {
 		l, found := leadsByNumber[t.Number]
 		if !found || l == nil {
-			continue
+			return fmt.Errorf("%w: %q", uwc.ErrCampaignTargetInvalid, t.Number)
 		}
 		if _, dup := seen[l.ID]; dup {
 			continue

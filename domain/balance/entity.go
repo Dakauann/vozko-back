@@ -13,6 +13,8 @@ var (
 	ErrTransactionNotFound        = errors.New("transaction not found")
 	ErrWorkspaceAlreadyHasBalance = errors.New("workspace already has a balance record")
 	ErrInvalidResourceType        = errors.New("invalid resource type")
+	ErrReferenceAlreadyRecorded   = errors.New("a transaction with this reference is already recorded")
+	ErrReferenceRequired          = errors.New("a once-per-reference transaction needs a reference")
 )
 
 type ServiceType string

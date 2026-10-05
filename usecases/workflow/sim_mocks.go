@@ -10,30 +10,30 @@ import (
 
 	"github.com/google/uuid"
 
-	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	lead_domain "vozko/domain/lead"
 	lead_message_window_domain "vozko/domain/lead_message_window"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
+	template_domain "vozko/domain/whatsapp/template"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/domain/workflow"
 	"vozko/usecases/workflow/node_executors"
 )
 
 var (
-	_ conversation.WhatsAppClient            = (*simWhatsAppClient)(nil)
-	_ conversation.WhatsAppClientFactory     = (*simWhatsAppClientFactory)(nil)
-	_ conversation.MessageHistoryManager     = (*simHistoryManager)(nil)
-	_ lead_domain.Repository                 = (*simLeadRepo)(nil)
-	_ wce.Repository                         = (*simWhatsAppEntryRepo)(nil)
-	_ businessphone.Repository               = (*simBusinessPhoneRepo)(nil)
-	_ lead_message_window_domain.Repository  = (*simMessageWindowRepo)(nil)
-	_ conversation.MessageRepository         = (*simMessageRepo)(nil)
-	_ balance.ConsumeWhatsappTemplateUseCase = (*simBalanceConsumer)(nil)
-	_ node_executors.SubWorkflowRunner       = (*simSubWorkflowRunner)(nil)
-	_ workflow.WorkflowRunRepository         = (*simRunRepo)(nil)
-	_ workflow.WorkflowRunLogRepository      = (*simLogRepo)(nil)
+	_ conversation.WhatsAppClient               = (*simWhatsAppClient)(nil)
+	_ conversation.WhatsAppClientFactory        = (*simWhatsAppClientFactory)(nil)
+	_ conversation.MessageHistoryManager        = (*simHistoryManager)(nil)
+	_ lead_domain.Repository                    = (*simLeadRepo)(nil)
+	_ wce.Repository                            = (*simWhatsAppEntryRepo)(nil)
+	_ businessphone.Repository                  = (*simBusinessPhoneRepo)(nil)
+	_ lead_message_window_domain.Repository     = (*simMessageWindowRepo)(nil)
+	_ conversation.MessageRepository            = (*simMessageRepo)(nil)
+	_ template_domain.BilledTemplateSendUseCase = (*simTemplateSends)(nil)
+	_ node_executors.SubWorkflowRunner          = (*simSubWorkflowRunner)(nil)
+	_ workflow.WorkflowRunRepository            = (*simRunRepo)(nil)
+	_ workflow.WorkflowRunLogRepository         = (*simLogRepo)(nil)
 )
 
 type SimOutboundMessage struct {
@@ -438,13 +438,22 @@ func (m *simHistoryManager) Record(_ context.Context, record conversation.Messag
 	return nil
 }
 
-type simBalanceConsumer struct{}
-
-func (b *simBalanceConsumer) Execute(_, _, _ string) (*balance.Transaction, error) {
-	return &balance.Transaction{}, nil
+type simTemplateSends struct {
+	client    *simWhatsAppClient
+	templates template_domain.Repository
 }
-func (b *simBalanceConsumer) Refund(_, _, _ string) error                      { return nil }
-func (b *simBalanceConsumer) GetTemplateCostMicros(_, _ string) (int64, error) { return 0, nil }
+
+func (s *simTemplateSends) Execute(ctx context.Context, in template_domain.BilledSendInput) (*template_domain.BilledSendResult, error) {
+	name := in.TemplateID
+	if tmpl, err := s.templates.FindByID(in.TemplateID); err == nil && tmpl != nil {
+		name = tmpl.Name
+	}
+	out, err := s.client.SendTemplateMessage(ctx, conversation.SendTemplateMessageInput{To: in.ToNumber, TemplateName: name})
+	if err != nil {
+		return nil, err
+	}
+	return &template_domain.BilledSendResult{MessageID: out.MessageID, Outcome: template_domain.OutcomeAccepted, Status: template_domain.SendAttemptSent}, nil
+}
 
 type simMessageRepo struct {
 	mu       sync.Mutex

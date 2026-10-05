@@ -1,6 +1,7 @@
 package balance_usecase
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,17 +19,11 @@ type ReferenceCharge struct {
 	AllowNegative     bool
 }
 
-type referenceLookup interface {
-	ExistsTransactionByReferenceID(referenceID string) (bool, error)
-}
-
 type ReferenceDebitLedger interface {
-	referenceLookup
 	DebitBalance(params balance.DebitBalanceInput) (*balance.Transaction, error)
 }
 
 type ReferenceCreditLedger interface {
-	referenceLookup
 	CreditBalance(params balance.CreditBalanceInput) (*balance.Transaction, error)
 }
 
@@ -41,24 +36,22 @@ func DebitOnce(ledger ReferenceDebitLedger, c ReferenceCharge) (*balance.Transac
 	if c.Price.PriceMicros <= 0 {
 		return nil, fmt.Errorf("%w: %s", balance.ErrPriceUnavailable, c.ServiceType)
 	}
-	charged, err := ledger.ExistsTransactionByReferenceID(c.ReferenceID)
-	if err != nil {
-		return nil, fmt.Errorf("balance: idempotency check for %s: %w", c.ReferenceID, err)
-	}
-	if charged {
+	reference := c.ReferenceID
+	transaction, err := ledger.DebitBalance(balance.DebitBalanceInput{
+		WorkspaceID:      c.WorkspaceID,
+		Amount:           c.Price.PriceMicros,
+		ServiceType:      c.ServiceType,
+		ReferenceID:      &reference,
+		Description:      c.Description,
+		CostMicros:       c.Price.CostMicros,
+		ProfitMicros:     c.Price.ProfitMicros,
+		AllowNegative:    c.AllowNegative,
+		OncePerReference: true,
+	})
+	if errors.Is(err, balance.ErrReferenceAlreadyRecorded) {
 		return nil, nil
 	}
-	reference := c.ReferenceID
-	return ledger.DebitBalance(balance.DebitBalanceInput{
-		WorkspaceID:   c.WorkspaceID,
-		Amount:        c.Price.PriceMicros,
-		ServiceType:   c.ServiceType,
-		ReferenceID:   &reference,
-		Description:   c.Description,
-		CostMicros:    c.Price.CostMicros,
-		ProfitMicros:  c.Price.ProfitMicros,
-		AllowNegative: c.AllowNegative,
-	})
+	return transaction, err
 }
 
 func RefundOnce(ledger ReferenceCreditLedger, c ReferenceCharge) error {
@@ -66,26 +59,23 @@ func RefundOnce(ledger ReferenceCreditLedger, c ReferenceCharge) error {
 		return fmt.Errorf("%w: cannot refund %s", balance.ErrPriceUnavailable, c.ServiceType)
 	}
 	reference := RefundReference(c.ReferenceID)
-	refunded, err := ledger.ExistsTransactionByReferenceID(reference)
-	if err != nil {
-		return fmt.Errorf("balance: idempotency check for %s: %w", reference, err)
-	}
-	if refunded {
-		return nil
-	}
 	description := c.RefundDescription
 	if description == "" {
 		description = "Reembolso: " + c.Description
 	}
-	_, err = ledger.CreditBalance(balance.CreditBalanceInput{
-		WorkspaceID:  c.WorkspaceID,
-		Amount:       c.Price.PriceMicros,
-		ServiceType:  c.ServiceType,
-		ReferenceID:  &reference,
-		Description:  description,
-		CostMicros:   c.Price.CostMicros,
-		ProfitMicros: -c.Price.ProfitMicros,
-		IsRefund:     true,
+	_, err := ledger.CreditBalance(balance.CreditBalanceInput{
+		WorkspaceID:      c.WorkspaceID,
+		Amount:           c.Price.PriceMicros,
+		ServiceType:      c.ServiceType,
+		ReferenceID:      &reference,
+		Description:      description,
+		CostMicros:       c.Price.CostMicros,
+		ProfitMicros:     -c.Price.ProfitMicros,
+		IsRefund:         true,
+		OncePerReference: true,
 	})
+	if errors.Is(err, balance.ErrReferenceAlreadyRecorded) {
+		return nil
+	}
 	return err
 }

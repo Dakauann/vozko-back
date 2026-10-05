@@ -27,41 +27,41 @@ import (
 )
 
 type ExecutorDeps struct {
-	AIService               ai.Service
-	AgentRepo               agent.Repository
-	CalendarRepo            calendar_domain.Repository
-	GoogleCalendar          calendar_domain.GoogleOAuthService
-	RescheduleEventUC       calendar_domain.RescheduleEventUseCase
-	MessageRepo             conversation.MessageRepository
-	HistoryManager          conversation.MessageHistoryManager
-	LeadRepo                lead_domain.Repository
-	WhatsAppEntryRepo       wce.Repository
-	BusinessPhoneRepo       businessphone.Repository
-	MessageWindowRepo       lead_message_window_domain.Repository
-	WhatsAppClientFactory   conversation.WhatsAppClientFactory
-	ToolRegistry            tools.Service
-	TemplateRepo            template_domain.Repository
-	MediaRepo               media_domain.MediaRepository
-	ConsumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
-	WorkspacePhoneAccess    workspace_phone_access_domain.Repository
-	SubWorkflowRunner       node_executors.SubWorkflowRunner
-	SharedState             cache.SharedState
-	LabelRepo               label_domain.Repository
-	Labeler                 label_domain.AutomationLabeler
-	StageRepo               node_executors.StageReader
-	AssignStage             stage_domain.AssignEntryStageUseCase
-	StageBroadcaster        node_executors.StageBroadcaster
-	Deals                   node_executors.DealDesk
-	DepartmentRepo          dept_domain.Repository
-	ConversationHandOff     node_executors.ConversationHandOff
-	WorkspaceRepo           workspace_domain.Repository
-	CachedBalanceChecker    balance.CachedBalanceChecker
-	BillingPub              messaging.MessageQueuePub
-	RAGService              rag.RAGService
-	EmailSender             email_usecase.SMTPSender
-	FileStorage             media_domain.FileStorage
-	ConversationMediaRepo   conversation.ConversationMediaRepository
-	VoiceAudio              workflow.VoiceAudio
+	AIService             ai.Service
+	AgentRepo             agent.Repository
+	CalendarRepo          calendar_domain.Repository
+	GoogleCalendar        calendar_domain.GoogleOAuthService
+	RescheduleEventUC     calendar_domain.RescheduleEventUseCase
+	MessageRepo           conversation.MessageRepository
+	HistoryManager        conversation.MessageHistoryManager
+	LeadRepo              lead_domain.Repository
+	WhatsAppEntryRepo     wce.Repository
+	BusinessPhoneRepo     businessphone.Repository
+	MessageWindowRepo     lead_message_window_domain.Repository
+	WhatsAppClientFactory conversation.WhatsAppClientFactory
+	ToolRegistry          tools.Service
+	TemplateRepo          template_domain.Repository
+	MediaRepo             media_domain.MediaRepository
+	TemplateSends         template_domain.BilledTemplateSendUseCase
+	WorkspacePhoneAccess  workspace_phone_access_domain.Repository
+	SubWorkflowRunner     node_executors.SubWorkflowRunner
+	SharedState           cache.SharedState
+	LabelRepo             label_domain.Repository
+	Labeler               label_domain.AutomationLabeler
+	StageRepo             node_executors.StageReader
+	AssignStage           stage_domain.AssignEntryStageUseCase
+	StageBroadcaster      node_executors.StageBroadcaster
+	Deals                 node_executors.DealDesk
+	DepartmentRepo        dept_domain.Repository
+	ConversationHandOff   node_executors.ConversationHandOff
+	WorkspaceRepo         workspace_domain.Repository
+	CachedBalanceChecker  balance.CachedBalanceChecker
+	BillingPub            messaging.MessageQueuePub
+	RAGService            rag.RAGService
+	EmailSender           email_usecase.SMTPSender
+	FileStorage           media_domain.FileStorage
+	ConversationMediaRepo conversation.ConversationMediaRepository
+	VoiceAudio            workflow.VoiceAudio
 
 	AIAttendance       node_executors.WorkflowAIAttendance
 	ConversationStatus conversation.ConversationStatusUpdater
@@ -70,20 +70,20 @@ type ExecutorDeps struct {
 
 func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) {
 	waDeps := node_executors.SenderDeps{
-		ClientFactory:           deps.WhatsAppClientFactory,
-		LeadRepo:                deps.LeadRepo,
-		WhatsAppEntryRepo:       deps.WhatsAppEntryRepo,
-		BusinessPhoneRepo:       deps.BusinessPhoneRepo,
-		MessageWindowRepo:       deps.MessageWindowRepo,
-		HistoryManager:          deps.HistoryManager,
-		TemplateRepo:            deps.TemplateRepo,
-		MediaRepo:               deps.MediaRepo,
-		ConsumeWhatsappTemplate: deps.ConsumeWhatsappTemplate,
-		WorkspacePhoneAccess:    deps.WorkspacePhoneAccess,
-		BillingPub:              deps.BillingPub,
-		FileStorage:             deps.FileStorage,
-		ConversationMediaRepo:   deps.ConversationMediaRepo,
-		Adapters:                deps.Adapters,
+		ClientFactory:         deps.WhatsAppClientFactory,
+		LeadRepo:              deps.LeadRepo,
+		WhatsAppEntryRepo:     deps.WhatsAppEntryRepo,
+		BusinessPhoneRepo:     deps.BusinessPhoneRepo,
+		MessageWindowRepo:     deps.MessageWindowRepo,
+		HistoryManager:        deps.HistoryManager,
+		TemplateRepo:          deps.TemplateRepo,
+		MediaRepo:             deps.MediaRepo,
+		TemplateSends:         deps.TemplateSends,
+		WorkspacePhoneAccess:  deps.WorkspacePhoneAccess,
+		BillingPub:            deps.BillingPub,
+		FileStorage:           deps.FileStorage,
+		ConversationMediaRepo: deps.ConversationMediaRepo,
+		Adapters:              deps.Adapters,
 	}
 
 	emailSender := deps.EmailSender

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	wsdelivery "vozko/delivery/ws"
-	balance_domain "vozko/domain/balance"
 	conversation_domain "vozko/domain/conversation"
 	"vozko/domain/shared"
 	workflow_domain "vozko/domain/workflow"
@@ -26,10 +25,9 @@ import (
 	ia_usecase "vozko/usecases/inbox_assignment"
 	label_usecase "vozko/usecases/label"
 	stage_usecase "vozko/usecases/stage"
-	workspace_template_access_usecase "vozko/usecases/workspace_template_access"
 )
 
-func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase) {
+func (c *Container) wireConversationHub() {
 	workspaceResolver := conversation_usecase.NewCampaignWorkspaceResolver(
 		c.repositories.wcCampaign,
 		c.repositories.wcEntry,
@@ -187,17 +185,8 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 	c.services.assignmentService.SetAISessionEnder(c.services.aiAttendanceService)
 	conversationStatusUpdater.SetAISessionEnder(c.services.aiAttendanceService)
 
-	templateSender := conversation_usecase.NewTemplateSenderService(
-		c.services.whatsappClientFactory,
-		c.repositories.whatsappTemplate,
-		c.repositories.conversation,
-		c.repositories.lead,
-		c.repositories.wcEntry,
-		c.services.conversationHub,
-		consumeWhatsappTemplate,
-		eventLoggerEarly,
-		workspace_template_access_usecase.NewCheckAccessUseCase(c.repositories.workspaceTemplateAccess),
-	)
+	templateSender := conversation_usecase.NewTemplateSenderService(eventLoggerEarly)
+	c.services.templateSender = templateSender
 	c.services.conversationHub.SetTemplateSender(templateSender)
 	c.services.personTemplateSend = conversation_usecase.NewPersonTemplateSend(c.services.conversationAuth, templateSender)
 

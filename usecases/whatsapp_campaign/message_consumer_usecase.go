@@ -250,6 +250,20 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		return campaignqueue.Requeue
 	}
 
+	entry, err := c.EntryRepo.FindByID(msg.EntryID)
+	if errors.Is(err, wce.ErrEntryNotFound) {
+		fmt.Printf("whatsapp campaign consumer: entry %s no longer exists, nothing to send\n", msg.EntryID)
+		return campaignqueue.Drop
+	}
+	if err != nil || entry == nil {
+		fmt.Printf("whatsapp campaign consumer: could not read entry %s to bill it: %v, requeuing (fail-closed)\n", msg.EntryID, err)
+		return campaignqueue.Requeue
+	}
+	if entry.Status != wce.SendStatusPending {
+		fmt.Printf("whatsapp campaign consumer: entry %s is %s, this round was already handled\n", entry.ID, entry.Status)
+		return campaignqueue.Drop
+	}
+
 	if templateCostMicros <= 0 {
 		fmt.Printf("whatsapp campaign consumer: refusing to send unbilled for workspace %s (campaign %s): price is zero\n", campaignItem.WorkspaceID, msg.CampaignID)
 		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
@@ -280,7 +294,11 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		_ = c.InflightReserver.Release(campaignItem.WorkspaceID, templateCostMicros)
 	}()
 
-	_, consumeErr := c.ConsumeWhatsappTemplate.Execute(campaignItem.WorkspaceID, msg.EntryID, templateCategory)
+	charge, consumeErr := c.ConsumeWhatsappTemplate.Execute(campaignItem.WorkspaceID, entry.ChargeReference(), templateCategory)
+	if consumeErr == nil && charge == nil {
+		fmt.Printf("whatsapp campaign consumer: %s was already charged by another delivery, not sending it again\n", entry.ChargeReference())
+		return campaignqueue.Drop
+	}
 	if consumeErr != nil {
 		if errors.Is(consumeErr, balance.ErrInsufficientBalance) || errors.Is(consumeErr, balance.ErrBalanceNotFound) {
 			fmt.Printf("whatsapp campaign consumer: debit failed (insufficient balance) for workspace %s (campaign %s), requeuing with delay\n", campaignItem.WorkspaceID, msg.CampaignID)
@@ -307,10 +325,10 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 
 	fmt.Printf("whatsapp campaign consumer: debited balance for workspace %s (campaign %s, category %s), now sending\n", campaignItem.WorkspaceID, msg.CampaignID, templateCategory)
 
-	sendResult := c.sendTemplateMessage(campaignItem, currentTemplate, msg.EntryID, msg.PhoneNumber)
+	sendResult := c.sendTemplateMessage(campaignItem, currentTemplate, entry, msg.PhoneNumber)
 
 	if sendResult == sendResultConfigError || sendResult == sendResultAPIError {
-		if refundErr := c.ConsumeWhatsappTemplate.Refund(campaignItem.WorkspaceID, msg.EntryID, templateCategory); refundErr != nil {
+		if refundErr := c.ConsumeWhatsappTemplate.Refund(campaignItem.WorkspaceID, entry.ChargeReference(), templateCategory); refundErr != nil {
 			fmt.Printf("whatsapp campaign consumer: WARNING: failed to refund balance for workspace %s after send failure: %v\n", campaignItem.WorkspaceID, refundErr)
 		} else {
 			fmt.Printf("whatsapp campaign consumer: refunded balance for workspace %s (campaign %s), send failed, message not delivered\n", campaignItem.WorkspaceID, msg.CampaignID)
@@ -329,19 +347,14 @@ const (
 	sendResultUnknown
 )
 
-func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl *template.Template, entryID, phoneNumber string) sendTemplateMessageResult {
+func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl *template.Template, entry *wce.WhatsAppCampaignEntry, phoneNumber string) sendTemplateMessageResult {
+	entryID := entry.ID
 	campaignID := campaign.ID
 
 	if campaign.BusinessPhoneID == "" {
 		fmt.Printf("whatsapp campaign consumer: campaign %s has no business phone configured\n", campaignID)
 		c.updateEntryStatusWithError(entryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrNoBusinessPhoneConfigured, "No business phone configured")
 		return sendResultConfigError
-	}
-
-	entry, entryErr := c.EntryRepo.FindByID(entryID)
-	if entryErr != nil {
-		fmt.Printf("whatsapp campaign consumer: failed to find entry %s: %v\n", entryID, entryErr)
-		entry = nil
 	}
 
 	if c.isEntrySpam(entry, campaign.BusinessPhoneID, campaign.WorkspaceID) {

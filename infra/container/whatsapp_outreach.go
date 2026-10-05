@@ -68,6 +68,7 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		CampaignSends:   c.repositories.leadCampaignSend,
 		SpamPolicy:      whatsapp_outreach_usecase.NewConfigSpamPolicy(c.repositories.workspaceConfig),
 		History:         d.history,
+		Assignments:     c.services.assignmentService,
 		Sender:          sender,
 		Limiter:         whatsapp_outreach_usecase.NewSharedStateLimiter(c.redisProvider.SharedState()),
 	}

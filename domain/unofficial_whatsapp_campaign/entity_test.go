@@ -58,11 +58,11 @@ func TestNormalizeDedupsByNormalizedNumber(t *testing.T) {
 	}
 }
 
-func TestTargetNumbersAreNotCountryPinned(t *testing.T) {
+func TestTargetNumbersMustBecomeLeads(t *testing.T) {
 	cases := map[string]bool{
 		"5584999990001":    true,
-		"351912345678":     true,
-		"12025550123":      true,
+		"84999990001":      true,
+		"351912345678":     false,
 		"123":              false,
 		"1234567890123456": false,
 		"":                 false,

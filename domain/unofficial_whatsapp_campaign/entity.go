@@ -139,7 +139,7 @@ func (c *Campaign) Normalize() {
 	seen := make(map[string]struct{}, len(c.Targets))
 	clean := make([]TargetInput, 0, len(c.Targets))
 	for _, t := range c.Targets {
-		normalized := uw.NormalizePhone(t.Number)
+		normalized := NormalizeTarget(t.Number)
 		if normalized != "" {
 			if _, dup := seen[normalized]; dup {
 				continue
@@ -153,13 +153,8 @@ func (c *Campaign) Normalize() {
 	c.Targets = clean
 }
 
-const MinTargetDigits = 8
-
-const MaxTargetDigits = 15
-
 func ValidTargetNumber(raw string) bool {
-	digits := uw.NormalizePhone(raw)
-	return len(digits) >= MinTargetDigits && len(digits) <= MaxTargetDigits
+	return NormalizeTarget(raw) != ""
 }
 
 func (c *Campaign) SendDelayRange() (minMS, maxMS int) {

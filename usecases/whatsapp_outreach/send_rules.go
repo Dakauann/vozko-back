@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"vozko/domain/conversation"
+	ia "vozko/domain/inbox_assignment"
 	lcs "vozko/domain/lead_campaign_send"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
@@ -20,14 +21,15 @@ type sendRules struct {
 }
 
 type delivery struct {
-	entry      *wce.WhatsAppCampaignEntry
-	tmpl       *template.Template
-	bodyParams []string
-	userID     string
-	to         string
-	leadID     string
-	phoneID    string
-	campaignID string
+	entry       *wce.WhatsAppCampaignEntry
+	tmpl        *template.Template
+	bodyParams  []string
+	workspaceID string
+	userID      string
+	to          string
+	leadID      string
+	phoneID     string
+	campaignID  string
 }
 
 func (r sendRules) sendablePhone(workspaceID, phoneID string) (*businessphone.WhatsAppBusinessPhoneNumber, error) {
@@ -103,7 +105,17 @@ func (r sendRules) settle(ctx context.Context, d delivery, result *template.Bill
 	if err := r.deps.CampaignSends.Record(d.leadID, d.phoneID, d.campaignID); err != nil {
 		log.Printf("[whatsapp-outreach] could not record the send against lead %s: %v", d.leadID, err)
 	}
+	r.claimForSender(d)
 	return recorded
+}
+
+func (r sendRules) claimForSender(d delivery) {
+	if d.userID == "" {
+		return
+	}
+	if _, err := r.deps.Assignments.ClaimIfUnassigned(d.entry.ID, string(shared.EntryTypeWhatsApp), d.phoneID, d.workspaceID, d.userID, ia.TriggerOutreachSent); err != nil {
+		log.Printf("[whatsapp-outreach] sent from entry %s but could not assign it to %s: %v", d.entry.ID, d.userID, err)
+	}
 }
 
 func (r sendRules) markEntryFailed(entryID string, result *template.BilledSendResult, sendErr error) {

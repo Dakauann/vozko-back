@@ -79,6 +79,7 @@ type conversationFixture struct {
 	sender  *fakeSender
 	history *fakeHistory
 	sends   *fakeCampaignSends
+	claims  *fakeClaimer
 }
 
 var conversationNow = time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
@@ -91,6 +92,7 @@ func newConversationUC(t *testing.T, mutate ...func(*Deps)) *conversationFixture
 	}}
 	history := &fakeHistory{}
 	sends := &fakeCampaignSends{}
+	claims := &fakeClaimer{}
 
 	deps := Deps{
 		Phones: &fakePhones{phone: &businessphone.WhatsAppBusinessPhoneNumber{
@@ -108,6 +110,7 @@ func newConversationUC(t *testing.T, mutate ...func(*Deps)) *conversationFixture
 		CampaignSends: sends,
 		SpamPolicy:    &fakeSpamPolicy{days: 3},
 		History:       history,
+		Assignments:   claims,
 		Sender:        sender,
 		Now:           func() time.Time { return conversationNow },
 	}
@@ -118,7 +121,7 @@ func newConversationUC(t *testing.T, mutate ...func(*Deps)) *conversationFixture
 	if err != nil {
 		t.Fatalf("constructor: %v", err)
 	}
-	return &conversationFixture{uc: uc, entries: entries, sender: sender, history: history, sends: sends}
+	return &conversationFixture{uc: uc, entries: entries, sender: sender, history: history, sends: sends, claims: claims}
 }
 
 func conversationInput() wo.ConversationTemplateInput {
@@ -198,8 +201,10 @@ func TestConversationTemplate_RefusesBeforeCharging(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name:    "another workspace's conversation",
-			mutate:  func(d *Deps) { d.Campaigns = &fakeCampaigns{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-2", BusinessPhoneID: "bp-1"}} },
+			name: "another workspace's conversation",
+			mutate: func(d *Deps) {
+				d.Campaigns = &fakeCampaigns{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-2", BusinessPhoneID: "bp-1"}}
+			},
 			wantErr: wo.ErrConversationNotFound,
 		},
 		{
@@ -253,8 +258,10 @@ func TestConversationTemplate_RefusesBeforeCharging(t *testing.T) {
 			wantErr: template.ErrTemplateParamsMismatch,
 		},
 		{
-			name:    "a blocked contact",
-			mutate:  func(d *Deps) { d.Leads = &fakeLeads{rec: &lead.Lead{ID: "lead-1", Number: "5511999999999", Blocked: true}} },
+			name: "a blocked contact",
+			mutate: func(d *Deps) {
+				d.Leads = &fakeLeads{rec: &lead.Lead{ID: "lead-1", Number: "5511999999999", Blocked: true}}
+			},
 			wantErr: wo.ErrLeadBlocked,
 		},
 		{
@@ -291,7 +298,7 @@ func TestConversationTemplate_RefusesBeforeCharging(t *testing.T) {
 
 func TestConversationTemplate_UnreadableSpamHistoryFailsClosed(t *testing.T) {
 	cases := map[string]func(*Deps){
-		"the policy":   func(d *Deps) { d.SpamPolicy = &fakeSpamPolicy{err: errors.New("db down")} },
+		"the policy":    func(d *Deps) { d.SpamPolicy = &fakeSpamPolicy{err: errors.New("db down")} },
 		"the last send": func(d *Deps) { d.CampaignSends = &fakeCampaignSends{err: errors.New("db down")} },
 	}
 	for name, mutate := range cases {
@@ -328,6 +335,7 @@ func TestNewConversationTemplateUseCase_RefusesMissingGuards(t *testing.T) {
 		"campaign sends": func(d *Deps) { d.CampaignSends = nil },
 		"campaigns":      func(d *Deps) { d.Campaigns = nil },
 		"sender":         func(d *Deps) { d.Sender = nil },
+		"assignments":    func(d *Deps) { d.Assignments = nil },
 	}
 	for name, drop := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -335,7 +343,7 @@ func TestNewConversationTemplateUseCase_RefusesMissingGuards(t *testing.T) {
 				Phones: &fakePhones{}, Templates: &fakeTemplates{}, TemplateGrant: &fakeGrant{},
 				Leads: &fakeLeads{}, Entries: &fakeEntries{}, Campaigns: &fakeCampaigns{},
 				CampaignSends: &fakeCampaignSends{}, SpamPolicy: &fakeSpamPolicy{},
-				History: &fakeHistory{}, Sender: &fakeSender{},
+				History: &fakeHistory{}, Assignments: &fakeClaimer{}, Sender: &fakeSender{},
 			}
 			drop(&deps)
 			if _, err := NewConversationTemplateUseCase(deps); err == nil {

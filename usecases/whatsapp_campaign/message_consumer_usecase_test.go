@@ -397,6 +397,8 @@ type mockEntryRepo struct {
 	errorCodes    map[string]int
 	errorMessages map[string]string
 	findByIDCalls int64
+	dispatched    bool
+	findErr       error
 }
 
 func newMockEntryRepo() *mockEntryRepo {
@@ -410,9 +412,17 @@ func newMockEntryRepo() *mockEntryRepo {
 
 func (r *mockEntryRepo) FindByID(id string) (*wce.WhatsAppCampaignEntry, error) {
 	atomic.AddInt64(&r.findByIDCalls, 1)
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	e, ok := r.entries[id]
+	if !ok && r.dispatched {
+		e = &wce.WhatsAppCampaignEntry{ID: id, Status: wce.SendStatusPending}
+		r.entries[id] = e
+		ok = true
+	}
 	if !ok {
 		return nil, wce.ErrEntryNotFound
 	}
@@ -755,21 +765,25 @@ type mockConsumeWhatsappTemplate struct {
 	consumed       atomic.Int32
 	refunded       atomic.Int32
 	failDebit      bool
+	alreadyCharged bool
 	panicOnExecute bool
 	cost           int64
 	zeroCost       bool
 	costErr        error
 	executeErr     error
 	executeCalls   []string
+	executeRefs    []string
+	refundRefs     []string
 	costCalls      []string
 }
 
-func (m *mockConsumeWhatsappTemplate) Execute(_, _, templateCategory string) (*balance.Transaction, error) {
+func (m *mockConsumeWhatsappTemplate) Execute(_, reference, templateCategory string) (*balance.Transaction, error) {
 	if m.panicOnExecute {
 		panic("simulated panic in Execute")
 	}
 	m.mu.Lock()
 	m.executeCalls = append(m.executeCalls, templateCategory)
+	m.executeRefs = append(m.executeRefs, reference)
 	m.mu.Unlock()
 	if m.executeErr != nil {
 		return nil, m.executeErr
@@ -777,11 +791,17 @@ func (m *mockConsumeWhatsappTemplate) Execute(_, _, templateCategory string) (*b
 	if m.failDebit {
 		return nil, balance.ErrInsufficientBalance
 	}
+	if m.alreadyCharged {
+		return nil, nil
+	}
 	m.consumed.Add(1)
 	return &balance.Transaction{}, nil
 }
 
-func (m *mockConsumeWhatsappTemplate) Refund(_, _, _ string) error {
+func (m *mockConsumeWhatsappTemplate) Refund(_, reference, _ string) error {
+	m.mu.Lock()
+	m.refundRefs = append(m.refundRefs, reference)
+	m.mu.Unlock()
 	m.refunded.Add(1)
 	return nil
 }
@@ -929,6 +949,7 @@ func newTestHarness() *testHarness {
 	sharedState := newMockSharedState()
 	campaignRepo := newMockCampaignRepo()
 	entryRepo := newMockEntryRepo()
+	entryRepo.dispatched = true
 	templateRepo := newMockTemplateRepo()
 	templateRepo.templates["tmpl-1"] = approvedMarketingTemplate("tmpl-1")
 	checkBal := &mockCheckBalance{}

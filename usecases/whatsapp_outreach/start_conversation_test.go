@@ -115,8 +115,23 @@ func (f *fakeHistory) Record(_ context.Context, r conversation.MessageHistoryRec
 	return nil
 }
 
+type claimCall struct {
+	entryID, entryType, phoneID, workspaceID, userID, trigger string
+}
+
+type fakeClaimer struct {
+	calls []claimCall
+	err   error
+}
+
+func (f *fakeClaimer) ClaimIfUnassigned(entryID, entryType, phoneID, workspaceID, userID, trigger string) (bool, error) {
+	f.calls = append(f.calls, claimCall{entryID, entryType, phoneID, workspaceID, userID, trigger})
+	return f.err == nil, f.err
+}
+
 type h struct {
 	uc      wo.StartOfficialConversationUseCase
+	claims  *fakeClaimer
 	entries *fakeEntries
 	sender  *fakeSender
 	history *fakeHistory
@@ -131,6 +146,7 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 	}}
 	history := &fakeHistory{}
 	windows := &fakeWindows{}
+	claims := &fakeClaimer{}
 
 	deps := Deps{
 		Phones: &fakePhones{phone: &businessphone.WhatsAppBusinessPhoneNumber{
@@ -149,6 +165,7 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 		CampaignSends:   &fakeCampaignSends{},
 		SpamPolicy:      &fakeSpamPolicy{},
 		History:         history,
+		Assignments:     claims,
 		Sender:          sender,
 	}
 	_ = windows
@@ -159,7 +176,7 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 	if err != nil {
 		t.Fatalf("constructor: %v", err)
 	}
-	return &h{uc: uc, entries: entries, sender: sender, history: history, windows: windows}
+	return &h{uc: uc, claims: claims, entries: entries, sender: sender, history: history, windows: windows}
 }
 
 func input() wo.StartConversationInput {

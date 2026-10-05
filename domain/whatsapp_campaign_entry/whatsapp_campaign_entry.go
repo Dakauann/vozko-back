@@ -2,6 +2,7 @@ package whatsapp_campaign_entry
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ type WhatsAppCampaignEntry struct {
 	Lead                    *lead.Lead             `json:"lead,omitempty"`
 	Status                  SendStatus             `json:"status"`
 	MessageID               string                 `json:"messageId,omitempty"`
+	SendRound               int                    `json:"sendRound,omitempty"`
 	ErrorCode               int                    `json:"errorCode,omitempty"`
 	ErrorMessage            string                 `json:"errorMessage,omitempty"`
 	ReceivedBusinessPhoneID string                 `json:"receivedBusinessPhoneId,omitempty"`
@@ -80,6 +82,13 @@ type WhatsAppCampaignEntry struct {
 	LastMessageAt           *time.Time             `json:"lastMessageAt,omitempty"`
 	CreatedAt               time.Time              `json:"createdAt"`
 	UpdatedAt               time.Time              `json:"updatedAt"`
+}
+
+func (e *WhatsAppCampaignEntry) ChargeReference() string {
+	if e.SendRound == 0 {
+		return e.ID
+	}
+	return e.ID + ":" + strconv.Itoa(e.SendRound)
 }
 
 func (e *WhatsAppCampaignEntry) IsAutomationEnabled() bool {

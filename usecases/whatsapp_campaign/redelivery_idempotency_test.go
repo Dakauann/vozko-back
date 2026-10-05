@@ -65,8 +65,8 @@ func TestWhatsAppRedelivery_ChargesEachRecipientExactlyOnce(t *testing.T) {
 		ID: campID, Status: wc.CampaignStatusRunning, WorkspaceID: "ws-1", BusinessPhoneID: "bp-1", TemplateID: "tmpl-1",
 	})
 	h.templateRepo.templates["tmpl-1"] = approvedMarketingTemplate("tmpl-1")
-	h.entryRepo.entries["entry-1"] = &wce.WhatsAppCampaignEntry{ID: "entry-1", LeadID: "lead-1"}
-	h.entryRepo.entries["entry-2"] = &wce.WhatsAppCampaignEntry{ID: "entry-2", LeadID: "lead-2"}
+	h.entryRepo.entries["entry-1"] = &wce.WhatsAppCampaignEntry{ID: "entry-1", LeadID: "lead-1", Status: wce.SendStatusPending}
+	h.entryRepo.entries["entry-2"] = &wce.WhatsAppCampaignEntry{ID: "entry-2", LeadID: "lead-2", Status: wce.SendStatusPending}
 	_ = h.consumer.SubscribeToCampaign(campID)
 
 	p1 := makePayload(campID, "entry-1", "5584999990001")
@@ -94,8 +94,8 @@ func TestWhatsAppDebit_UsesPerEntryReference(t *testing.T) {
 		ID: campID, Status: wc.CampaignStatusRunning, WorkspaceID: "ws-1", BusinessPhoneID: "bp-1", TemplateID: "tmpl-1",
 	})
 	h.templateRepo.templates["tmpl-1"] = approvedMarketingTemplate("tmpl-1")
-	h.entryRepo.entries["entry-1"] = &wce.WhatsAppCampaignEntry{ID: "entry-1", LeadID: "lead-1"}
-	h.entryRepo.entries["entry-2"] = &wce.WhatsAppCampaignEntry{ID: "entry-2", LeadID: "lead-2"}
+	h.entryRepo.entries["entry-1"] = &wce.WhatsAppCampaignEntry{ID: "entry-1", LeadID: "lead-1", Status: wce.SendStatusPending}
+	h.entryRepo.entries["entry-2"] = &wce.WhatsAppCampaignEntry{ID: "entry-2", LeadID: "lead-2", Status: wce.SendStatusPending}
 	_ = h.consumer.SubscribeToCampaign(campID)
 
 	h.queueSub.deliver(topic, makePayload(campID, "entry-1", "5584999990001"))

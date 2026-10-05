@@ -246,3 +246,34 @@ func TestCreateRefusesAnOversubscribedSeedOutcome(t *testing.T) {
 		t.Fatalf("create = %v, want ErrSeededOutcomeOverflow", err)
 	}
 }
+
+func TestCreateStoresNationalNumbersWithTheCountryCode(t *testing.T) {
+	uc, _, entries, _, _ := newCreateHarness(t)
+	in := draft()
+	in.Targets = []uwc.TargetInput{{Number: "(84) 99999-0001"}}
+
+	created, err := uc.Execute(context.Background(), in, uw.Unrestricted())
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	pending, _ := entries.ListByStatus(created.ID, campaign.SendStatusPending, 10)
+	if len(pending) != 1 || pending[0].Number != "5584999990001" {
+		t.Fatalf("entries = %+v, want one entry for 5584999990001", pending)
+	}
+}
+
+type droppingLeadRepo struct{}
+
+func (droppingLeadRepo) FindOrCreateMany(string, []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
+	return map[string]*lead.Lead{}, nil
+}
+
+func TestCreateFailsWhenATargetCannotBecomeALead(t *testing.T) {
+	gateway := &fakeGateway{instance: &uw.Instance{ID: "inst-1", WorkspaceID: "ws-1", Status: uw.StatusConnected}}
+	uc := NewCreateCampaignUseCase(newFakeCampaignRepo(), newFakeEntryRepo(), droppingLeadRepo{}, gateway,
+		&fakeSpam{skip: map[string]bool{}}, fakeDepartments{id: "dept-1"})
+
+	if _, err := uc.Execute(context.Background(), draft(), uw.Unrestricted()); !errors.Is(err, uwc.ErrCampaignTargetInvalid) {
+		t.Fatalf("err = %v, a campaign must never be created with its contacts silently dropped", err)
+	}
+}

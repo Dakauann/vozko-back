@@ -8,7 +8,6 @@ import (
 
 	"vozko/domain/campaign"
 	"vozko/domain/lead"
-	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
@@ -66,8 +65,8 @@ func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInpu
 	valid := make([]uwc.EntryInput, 0, len(in.Numbers))
 
 	for _, item := range in.Numbers {
-		number := uw.NormalizePhone(item.Number)
-		if !uwc.ValidTargetNumber(number) {
+		number := uwc.NormalizeTarget(item.Number)
+		if number == "" {
 			out.InvalidSkipped++
 			continue
 		}
@@ -158,8 +157,8 @@ func (uc *entryManagementUseCase) updateEntry(ctx context.Context, in uwc.Update
 	}
 
 	if in.Number != nil {
-		number := uw.NormalizePhone(*in.Number)
-		if !uwc.ValidTargetNumber(number) {
+		number := uwc.NormalizeTarget(*in.Number)
+		if number == "" {
 			return nil, uwc.ErrCampaignTargetInvalid
 		}
 		leads, err := uc.leads.FindOrCreateMany(camp.WorkspaceID, []lead.BulkLeadInput{{Number: number}})

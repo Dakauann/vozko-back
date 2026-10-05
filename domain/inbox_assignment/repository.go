@@ -9,6 +9,8 @@ type Repository interface {
 
 	Assign(assignment *InboxAssignment) error
 
+	AssignIfUnassigned(assignment *InboxAssignment) (bool, error)
+
 	Unassign(workspaceID, entryID, entryType string) error
 
 	ListByUser(workspaceID, userID, entryType string) ([]string, error)

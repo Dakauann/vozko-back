@@ -6,10 +6,12 @@ import (
 	"vozko/domain/campaign"
 )
 
-func TestNormalizeTargetKeepsOnlyUsableInternationalNumbers(t *testing.T) {
+func TestNormalizeTargetFollowsTheLeadNumberRule(t *testing.T) {
 	cases := map[string]string{
 		"+55 (84) 99440-9624": "5584994409624",
-		"1 415 555 0100":      "14155550100",
+		"(84) 99440-9624":     "5584994409624",
+		"84 9944-0962":        "558499440962",
+		"351912345678":        "",
 		"123":                 "",
 		"":                    "",
 		"1234567890123456":    "",

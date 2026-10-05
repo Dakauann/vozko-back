@@ -1649,7 +1649,7 @@ func (uc *handleWhatsAppMessageUseCase) refundFailedWhatsAppCampaignEntry(status
 		return fmt.Errorf("determine refund category for message %s: %w", messageID, err)
 	}
 
-	if err := uc.retryFailedWhatsAppCampaignRefund(campaign.WorkspaceID, campaign.ID, templateCategory); err != nil {
+	if err := uc.retryFailedWhatsAppCampaignRefund(campaign.WorkspaceID, entry.ChargeReference(), templateCategory); err != nil {
 		return fmt.Errorf("refund workspace %s for failed message %s: %w", campaign.WorkspaceID, messageID, err)
 	}
 
@@ -1669,10 +1669,10 @@ func (uc *handleWhatsAppMessageUseCase) refundFailedWhatsAppCampaignEntry(status
 	return nil
 }
 
-func (uc *handleWhatsAppMessageUseCase) retryFailedWhatsAppCampaignRefund(workspaceID, campaignID, templateCategory string) error {
+func (uc *handleWhatsAppMessageUseCase) retryFailedWhatsAppCampaignRefund(workspaceID, chargeReference, templateCategory string) error {
 	var lastErr error
 	for attempt := 1; attempt <= failedStatusRefundAttempts; attempt++ {
-		lastErr = uc.consumeWhatsappTemplate.Refund(workspaceID, campaignID, templateCategory)
+		lastErr = uc.consumeWhatsappTemplate.Refund(workspaceID, chargeReference, templateCategory)
 		if lastErr == nil {
 			return nil
 		}

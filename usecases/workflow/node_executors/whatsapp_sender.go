@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"vozko/domain/balance"
+	"github.com/google/uuid"
+
 	"vozko/domain/conversation"
 	lead_domain "vozko/domain/lead"
 	media_domain "vozko/domain/media"
@@ -54,16 +55,16 @@ type mediaLookup interface {
 }
 
 type SenderDeps struct {
-	ClientFactory           conversation.WhatsAppClientFactory
-	LeadRepo                leadLookup
-	WhatsAppEntryRepo       whatsappEntryLookup
-	BusinessPhoneRepo       businessPhoneLookup
-	MessageWindowRepo       messageWindowLookup
-	HistoryManager          conversation.MessageHistoryManager
-	TemplateRepo            templateLookup
-	MediaRepo               mediaLookup
-	ConsumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
-	WorkspacePhoneAccess    workspacePhoneAccessLookup
+	ClientFactory        conversation.WhatsAppClientFactory
+	LeadRepo             leadLookup
+	WhatsAppEntryRepo    whatsappEntryLookup
+	BusinessPhoneRepo    businessPhoneLookup
+	MessageWindowRepo    messageWindowLookup
+	HistoryManager       conversation.MessageHistoryManager
+	TemplateRepo         templateLookup
+	MediaRepo            mediaLookup
+	TemplateSends        template_domain.BilledTemplateSendUseCase
+	WorkspacePhoneAccess workspacePhoneAccessLookup
 
 	BillingPub messaging.MessageQueuePub
 
@@ -472,14 +473,9 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		return nil, "", err
 	}
 
-	client, usedBusinessPhoneID, err := s.resolveTemplateClient(run.WorkspaceID, strings.TrimSpace(preferredBusinessPhoneID), target, tmpl.WABAId)
+	usedBusinessPhoneID, err := s.resolveTemplatePhone(run.WorkspaceID, strings.TrimSpace(preferredBusinessPhoneID), target, tmpl.WABAId)
 	if err != nil {
 		return nil, usedBusinessPhoneID, err
-	}
-
-	language := tmpl.Language
-	if language == "" {
-		language = "pt_BR"
 	}
 
 	bodyParamNames, headerParamNames := tmpl.GetBodyAndHeaderParameterNames()
@@ -497,46 +493,32 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		}
 	}
 
-	apiInput, err := tmpl.BuildSendInput(template_domain.SendInputParams{
-		To:           target.leadNumber,
-		BodyParams:   params,
-		HeaderParams: headerParams,
-	})
-	if err != nil {
-		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: %w", err)
-	}
-	if strings.TrimSpace(apiInput.Language) == "" {
-		apiInput.Language = language
-	}
-
-	log.Printf("[workflow][whatsapp_sender] sending template %s (lang=%s, named=%v, bodyParams=%d, headerParams=%d) to %s",
-		tmpl.Name, apiInput.Language, apiInput.IsNamedParameterFormat,
-		len(apiInput.Parameters), len(apiInput.HeaderTextParams), target.leadNumber)
-
-	templateCategory, err := tmpl.BillingCategory()
-	if err != nil {
-		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: template billing category unavailable: %w", err)
-	}
-	billingRefID := fmt.Sprintf("wf:%s:%s", run.ID, run.CurrentNodeID)
-	if s.deps.ConsumeWhatsappTemplate == nil {
+	if s.deps.TemplateSends == nil {
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: billing dependency not configured, refusing to send a paid template")
 	}
-	if _, consumeErr := s.deps.ConsumeWhatsappTemplate.Execute(run.WorkspaceID, billingRefID, templateCategory); consumeErr != nil {
-		return nil, usedBusinessPhoneID, fmt.Errorf("could not charge the WhatsApp template: %w", consumeErr)
+
+	entryID := ""
+	if shared.EntryType(run.EntryType) == shared.EntryTypeWhatsApp {
+		entryID = run.EntryID
 	}
 
-	output, err := client.SendTemplateMessage(ctx, apiInput)
-	if err != nil && errors.Is(err, conversation.ErrSendOutcomeUnknown) {
-		log.Printf("[workflow][whatsapp_sender] send outcome unknown for run=%s (Meta accepted), keeping the charge: %v", run.ID, err)
-		err = nil
-	}
+	log.Printf("[workflow][whatsapp_sender] sending template %s (bodyParams=%d, headerParams=%d) to %s",
+		tmpl.Name, len(params), len(headerParams), target.leadNumber)
+
+	sent, err := s.deps.TemplateSends.Execute(ctx, template_domain.BilledSendInput{
+		WorkspaceID:     run.WorkspaceID,
+		IdempotencyKey:  uuid.New().String(),
+		BusinessPhoneID: usedBusinessPhoneID,
+		TemplateID:      tmpl.ID,
+		ToNumber:        target.leadNumber,
+		BodyParams:      params,
+		HeaderParams:    headerParams,
+		EntryID:         entryID,
+	})
 	if err != nil {
-
-		if refundErr := s.deps.ConsumeWhatsappTemplate.Refund(run.WorkspaceID, billingRefID, templateCategory); refundErr != nil {
-			log.Printf("[workflow][whatsapp_sender] WARNING: failed to refund balance for template %s run=%s: %v", tmpl.Name, run.ID, refundErr)
-		}
 		return nil, usedBusinessPhoneID, err
 	}
+	output := &conversation.SendTextMessageOutput{MessageID: sent.MessageID}
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
@@ -596,16 +578,15 @@ func (s *whatsappSender) resolveTargetForRun(run *workflow.WorkflowRun, state *w
 	}, nil
 }
 
-func (s *whatsappSender) resolveTemplateClient(workspaceID, preferredBusinessPhoneID string, target *whatsappSendTarget, templateWABAID string) (conversation.WhatsAppClient, string, error) {
+func (s *whatsappSender) resolveTemplatePhone(workspaceID, preferredBusinessPhoneID string, target *whatsappSendTarget, templateWABAID string) (string, error) {
 	if preferredBusinessPhoneID != "" {
 		if err := s.ensureWorkspaceOwnsPhone(workspaceID, preferredBusinessPhoneID); err != nil {
-			return nil, preferredBusinessPhoneID, err
+			return preferredBusinessPhoneID, err
 		}
-		client, err := s.resolveTemplateClientForPhone(preferredBusinessPhoneID, templateWABAID)
-		if err != nil {
-			return nil, preferredBusinessPhoneID, err
+		if err := s.ensureTemplatePhone(preferredBusinessPhoneID, templateWABAID); err != nil {
+			return preferredBusinessPhoneID, err
 		}
-		return client, preferredBusinessPhoneID, nil
+		return preferredBusinessPhoneID, nil
 	}
 
 	candidates := []string{target.receivedBusinessPhoneID, target.campaignBusinessPhoneID}
@@ -621,41 +602,37 @@ func (s *whatsappSender) resolveTemplateClient(workspaceID, preferredBusinessPho
 		}
 		seen[candidate] = struct{}{}
 
-		client, err := s.resolveTemplateClientForPhone(candidate, templateWABAID)
+		err := s.ensureTemplatePhone(candidate, templateWABAID)
 		if err == nil {
-			return client, candidate, nil
+			return candidate, nil
 		}
 		lastErr = err
 		log.Printf("[workflow][whatsapp_sender] template phone candidate %s rejected: %v", candidate, err)
 	}
 
 	if lastErr != nil {
-		return nil, "", lastErr
+		return "", lastErr
 	}
 
-	return nil, "", fmt.Errorf("workflow whatsapp sender: no business phone available for template %s", templateWABAID)
+	return "", fmt.Errorf("workflow whatsapp sender: no business phone available for template %s", templateWABAID)
 }
 
-func (s *whatsappSender) resolveTemplateClientForPhone(businessPhoneID, templateWABAID string) (conversation.WhatsAppClient, error) {
+func (s *whatsappSender) ensureTemplatePhone(businessPhoneID, templateWABAID string) error {
 	businessPhoneID = strings.TrimSpace(businessPhoneID)
 	if businessPhoneID == "" {
-		return nil, fmt.Errorf("workflow whatsapp sender: business phone is required")
+		return fmt.Errorf("workflow whatsapp sender: business phone is required")
 	}
-	if templateWABAID != "" {
-		phoneWABAID, err := s.deps.ClientFactory.WABAIdForPhone(businessPhoneID)
-		if err != nil {
-			return nil, fmt.Errorf("workflow whatsapp sender: failed to resolve WABA for phone %s: %w", businessPhoneID, err)
-		}
-		if phoneWABAID != "" && phoneWABAID != templateWABAID {
-			return nil, fmt.Errorf("workflow whatsapp sender: phone %s belongs to WABA %s, but template belongs to WABA %s", businessPhoneID, phoneWABAID, templateWABAID)
-		}
+	if templateWABAID == "" {
+		return nil
 	}
-
-	client, err := s.deps.ClientFactory.ClientForPhone(businessPhoneID)
+	phoneWABAID, err := s.deps.ClientFactory.WABAIdForPhone(businessPhoneID)
 	if err != nil {
-		return nil, fmt.Errorf("workflow whatsapp sender: failed to create client for phone %s: %w", businessPhoneID, err)
+		return fmt.Errorf("workflow whatsapp sender: failed to resolve WABA for phone %s: %w", businessPhoneID, err)
 	}
-	return client, nil
+	if phoneWABAID != "" && phoneWABAID != templateWABAID {
+		return fmt.Errorf("workflow whatsapp sender: phone %s belongs to WABA %s, but template belongs to WABA %s", businessPhoneID, phoneWABAID, templateWABAID)
+	}
+	return nil
 }
 
 const maxMediaDownloadBytes = 25 * 1024 * 1024

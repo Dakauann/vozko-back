@@ -50,6 +50,14 @@ func (m *mockBalanceRepo) DebitBalance(params balance.DebitBalanceInput) (*balan
 	if m.debitErr != nil {
 		return nil, m.debitErr
 	}
+	if params.OncePerReference {
+		if m.existsErr != nil {
+			return nil, m.existsErr
+		}
+		if m.existingRefIDs[*params.ReferenceID] {
+			return nil, balance.ErrReferenceAlreadyRecorded
+		}
+	}
 	m.debits = append(m.debits, aiDebitCall{workspaceID: params.WorkspaceID, amount: params.Amount, serviceType: params.ServiceType, referenceID: params.ReferenceID, allowNegative: params.AllowNegative})
 	m.balance -= params.Amount
 	if params.ReferenceID != nil {

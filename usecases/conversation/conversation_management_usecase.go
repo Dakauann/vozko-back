@@ -2,7 +2,6 @@ package conversation_usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,10 +32,9 @@ import (
 	whatsappTemplate "vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	wo "vozko/domain/whatsapp_outreach"
 	"vozko/domain/workflow"
 	media_infra "vozko/infra/media"
-
-	balance_domain "vozko/domain/balance"
 )
 
 type workflowRunLookup interface {
@@ -2428,178 +2426,36 @@ func (uc *getConversationMediaUseCase) Execute(mediaID string) (*conversation.Co
 var convertAudioToOGGOpusFn = media_infra.ConvertToOGGOpus
 
 type TemplateSenderService struct {
-	whatsappClientFactory   conversation.WhatsAppClientFactory
-	templateRepo            whatsappTemplate.Repository
-	messageRepo             conversation.MessageRepository
-	leadRepo                lead.Repository
-	whatsappRepo            wce.Repository
-	hub                     conversation.EventBroadcaster
-	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase
-	events                  ce.Logger
-	grants                  TemplateGrants
+	templates wo.ConversationTemplateUseCase
+	events    ce.Logger
 }
 
-type TemplateGrants interface {
-	Execute(workspaceID, templateID string) (bool, error)
+func NewTemplateSenderService(events ce.Logger) *TemplateSenderService {
+	return &TemplateSenderService{events: events}
 }
 
-func NewTemplateSenderService(
-	whatsappClientFactory conversation.WhatsAppClientFactory,
-	templateRepo whatsappTemplate.Repository,
-	messageRepo conversation.MessageRepository,
-	leadRepo lead.Repository,
-	whatsappRepo wce.Repository,
-	hub conversation.EventBroadcaster,
-	consumeWhatsappTemplate balance_domain.ConsumeWhatsappTemplateUseCase,
-	events ce.Logger,
-	grants TemplateGrants,
-) *TemplateSenderService {
-	return &TemplateSenderService{
-		whatsappClientFactory:   whatsappClientFactory,
-		templateRepo:            templateRepo,
-		messageRepo:             messageRepo,
-		leadRepo:                leadRepo,
-		whatsappRepo:            whatsappRepo,
-		hub:                     hub,
-		consumeWhatsappTemplate: consumeWhatsappTemplate,
-		events:                  events,
-		grants:                  grants,
-	}
+func (s *TemplateSenderService) UseConversationTemplates(templates wo.ConversationTemplateUseCase) {
+	s.templates = templates
 }
 
 func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID string, parameters []string, userID string, workspaceID string) (string, error) {
-	tmpl, err := s.templateRepo.FindByID(templateID)
-	if err != nil {
-		return "", fmt.Errorf("error finding template: %w", err)
+	if shared.EntryType(entryType) != shared.EntryTypeWhatsApp {
+		return "", conversation.ErrEntryTypeInvalid
 	}
-	if tmpl == nil {
-		return "", fmt.Errorf("template not found: %s", templateID)
-	}
-	if tmpl.Status != "APPROVED" {
-		return "", fmt.Errorf("template %s is not approved (status: %s)", tmpl.Name, tmpl.Status)
-	}
-	if s.grants == nil {
-		return "", conversation.ErrTemplateNotGranted
-	}
-	granted, err := s.grants.Execute(workspaceID, tmpl.ID)
-	if err != nil {
-		return "", fmt.Errorf("check template access: %w", err)
-	}
-	if !granted {
-		return "", conversation.ErrTemplateNotGranted
+	if s.templates == nil {
+		return "", whatsappTemplate.ErrBillingNotConfigured
 	}
 
-	var leadID, businessPhoneID string
-	switch shared.EntryType(entryType) {
-	case shared.EntryTypeWhatsApp:
-		entry, err := s.whatsappRepo.FindByID(entryID)
-		if err != nil {
-			return "", fmt.Errorf("error finding whatsapp entry: %w", err)
-		}
-		if entry == nil {
-			return "", fmt.Errorf("whatsapp entry not found: %s", entryID)
-		}
-		leadID = entry.LeadID
-		campaign, err := s.whatsappRepo.GetCampaignForEntry(entryID)
-		if err == nil && campaign != nil {
-			businessPhoneID = campaign.BusinessPhoneID
-		}
-	default:
-		return "", fmt.Errorf("invalid entry type: %s", entryType)
-	}
-
-	leadRecord, err := s.leadRepo.FindByID(workspaceID, leadID)
-	if err != nil || leadRecord == nil {
-		return "", fmt.Errorf("lead not found for entry %s", entryID)
-	}
-
-	phoneNumber := leadRecord.Number
-	if phoneNumber == "" {
-		return "", fmt.Errorf("lead %s has no phone number", leadID)
-	}
-
-	if businessPhoneID == "" {
-		return "", fmt.Errorf("no business phone associated with entry %s", entryID)
-	}
-	wabaID, err := s.whatsappClientFactory.WABAIdForPhone(businessPhoneID)
-	if err != nil || strings.TrimSpace(wabaID) == "" {
-		return "", fmt.Errorf("resolve the WhatsApp account of %s: %w", businessPhoneID, whatsappTemplate.ErrTemplatePhoneMismatch)
-	}
-	if strings.TrimSpace(tmpl.WABAId) != "" && !strings.EqualFold(strings.TrimSpace(tmpl.WABAId), strings.TrimSpace(wabaID)) {
-		return "", whatsappTemplate.ErrTemplatePhoneMismatch
-	}
-
-	client, err := s.whatsappClientFactory.ClientForPhone(businessPhoneID)
-	if err != nil {
-		return "", fmt.Errorf("error creating WhatsApp client: %w", err)
-	}
-
-	sendInput, err := tmpl.BuildSendInput(whatsappTemplate.SendInputParams{
-		To:         phoneNumber,
-		BodyParams: parameters,
+	sent, err := s.templates.Send(context.Background(), wo.ConversationTemplateInput{
+		WorkspaceID:    workspaceID,
+		UserID:         userID,
+		EntryID:        entryID,
+		TemplateID:     templateID,
+		BodyParams:     parameters,
+		IdempotencyKey: uuid.New().String(),
 	})
 	if err != nil {
-		return "", fmt.Errorf("error building template send: %w", err)
-	}
-
-	templateCategory, err := tmpl.BillingCategory()
-	if err != nil {
-		return "", fmt.Errorf("template billing category unavailable: %w", err)
-	}
-	_, consumeErr := s.consumeWhatsappTemplate.Execute(workspaceID, entryID, templateCategory)
-	if consumeErr != nil {
-		return "", fmt.Errorf("could not charge the WhatsApp template: %w", consumeErr)
-	}
-
-	result, err := client.SendTemplateMessage(context.Background(), sendInput)
-	if err != nil && errors.Is(err, conversation.ErrSendOutcomeUnknown) {
-		log.Printf("[TemplateSender] send outcome unknown for entry %s (Meta accepted, response unreadable), keeping the charge: %v", entryID, err)
-		err = nil
-	}
-	if err != nil {
-
-		if refundErr := s.consumeWhatsappTemplate.Refund(workspaceID, entryID, templateCategory); refundErr != nil {
-			log.Printf("[TemplateSender] WARNING: failed to refund balance for workspace %s after send error: %v", workspaceID, refundErr)
-		}
-		return "", fmt.Errorf("error sending template: %w", err)
-	}
-
-	log.Printf("[TemplateSender] Sent template '%s' to %s for entry %s (%s), messageID=%s",
-		tmpl.Name, phoneNumber, entryID, entryType, result.MessageID)
-
-	templateInfo := tmpl.RenderInfo(parameters)
-	bodyText, _ := templateInfo["body_text"].(string)
-
-	var metadataJSON json.RawMessage
-	if metaBytes, jsonErr := json.Marshal(templateInfo); jsonErr == nil {
-		metadataJSON = metaBytes
-	}
-
-	msgID := uuid.New().String()
-	if result.MessageID != "" {
-		msgID = result.MessageID
-	}
-
-	msg := &conversation.Message{
-		SentBy:            conversation.SentByPerson(userID),
-		ID:                msgID,
-		EntryID:           entryID,
-		EntryType:         shared.EntryType(entryType),
-		Channel:           "whatsapp",
-		MessageType:       conversation.MessageTypeTemplate,
-		From:              userID,
-		To:                phoneNumber,
-		Text:              bodyText,
-		WhatsAppMessageID: &result.MessageID,
-		Metadata:          metadataJSON,
-		CreatedAt:         time.Now().UTC(),
-	}
-	if err := s.messageRepo.Create(msg); err != nil {
-		log.Printf("[TemplateSender] WARNING: template delivered but could not be recorded for entry %s: %v", entryID, err)
-	}
-
-	if s.hub != nil {
-		s.hub.BroadcastNewMessage(entryID, entryType, msg)
+		return "", err
 	}
 
 	if s.events != nil {
@@ -2607,14 +2463,12 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 			WithActor(userID).
 			WithChannel(shared.EntryType(entryType).EventChannel()).
 			WithDetails(map[string]string{
-				"template_id":   templateID,
-				"template_name": tmpl.Name,
-				"message_id":    result.MessageID,
+				"template_id": templateID,
+				"message_id":  sent.MessageID,
 			}).
 			Build())
 	}
-
-	return result.MessageID, nil
+	return sent.MessageID, nil
 }
 
 func (s *HistoryProviderService) automationFor(entryID string, entryType shared.EntryType) bool {
