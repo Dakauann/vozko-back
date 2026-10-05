@@ -183,6 +183,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 		Attachments []string            `json:"attachments"`
 		Model       string              `json:"model"`
 		View        copilot_domain.View `json:"view"`
+		Timezone    string              `json:"timezone"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
@@ -212,6 +213,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	r = withDepartmentCreationScope(r, "")
 	cc := copilotCtx(r, claims.UserID, workspaceID)
 	cc.View = body.View
+	cc.Timezone = body.Timezone
 	if err := h.copilot.Stream(r.Context(), thread, copilot_domain.UserMessage{Content: body.Content, AttachmentIDs: body.Attachments}, cc, emit); err != nil {
 		emit("error", map[string]any{"error": err.Error()})
 	}

@@ -23,13 +23,8 @@ func (a *affiliateExchangeRateAdapter) CurrentRateMicros(_ context.Context) (int
 	if err != nil {
 		return 0, err
 	}
-	for i := range items {
-		it := &items[i]
-		if it.Category == workspace_pricing.CategoryExchangeRate &&
-			it.Service == "usd_to_brl" &&
-			it.PriceMicros > 0 {
-			return it.PriceMicros, nil
-		}
+	if rate, ok := workspace_pricing.USDToBRLMicros(items); ok {
+		return rate, nil
 	}
 	return 0, affiliate.ErrExchangeRateUnavailable
 }

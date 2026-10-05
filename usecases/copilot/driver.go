@@ -202,16 +202,22 @@ func (d *Driver) mintID() string {
 	return "act"
 }
 
-func DefaultConfig(cc copilot.Context, tokenBudget int) agentloop.Config {
-	return agentloop.Config{
-		WorkspaceID:        cc.WorkspaceID,
-		Temperature:        0.2,
-		MaxTokensPerGen:    4000,
-		MaxIterations:      12,
-		SessionTokenBudget: tokenBudget,
-		FinishToolName:     "finish",
-		LogPrefix:          "[copilot] ws=" + cc.WorkspaceID,
+func DefaultConfig(cc copilot.Context, model ai.ModelInfo, costCeilingMicros int64) agentloop.Config {
+	cfg := agentloop.Config{
+		WorkspaceID:      cc.WorkspaceID,
+		Temperature:      0.2,
+		MaxTokensPerGen:  4000,
+		MaxIterations:    answerMaxIterations,
+		FinishToolName:   "finish",
+		LogPrefix:        "[copilot] ws=" + cc.WorkspaceID,
+		GraceInstruction: answerGraceInstruction,
 	}
+	if model.HasKnownLimits() && costCeilingMicros > 0 {
+		cfg.ModelLimits, cfg.CostCeilingMicros = model, costCeilingMicros
+		return cfg
+	}
+	cfg.SessionTokenBudget = AnswerTokenBudget
+	return cfg
 }
 
 func summarizeCall(call ai.ToolCall) string {

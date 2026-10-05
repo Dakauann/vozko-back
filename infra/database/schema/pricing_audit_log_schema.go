@@ -15,6 +15,8 @@ type PricingAuditLog struct {
 	Metric         string    `gorm:"type:varchar(100);not null"`
 	OldPriceMicros int64     `gorm:"not null"`
 	NewPriceMicros int64     `gorm:"not null"`
+	OldCostMicros  int64     `gorm:"not null;default:0"`
+	NewCostMicros  int64     `gorm:"not null;default:0"`
 	Currency       string    `gorm:"type:varchar(3);not null"`
 	ChangedBy      string    `gorm:"type:uuid;not null"`
 	ChangedAt      time.Time `gorm:"autoCreateTime"`

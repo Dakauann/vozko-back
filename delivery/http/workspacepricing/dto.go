@@ -49,6 +49,8 @@ type PricingAuditEntryResponse struct {
 	Metric         string                        `json:"metric"`
 	OldPriceMicros int64                         `json:"oldPriceMicros"`
 	NewPriceMicros int64                         `json:"newPriceMicros"`
+	OldCostMicros  int64                         `json:"oldCostMicros"`
+	NewCostMicros  int64                         `json:"newCostMicros"`
 	Currency       string                        `json:"currency"`
 	ChangedBy      string                        `json:"changedBy"`
 	ChangedAt      time.Time                     `json:"changedAt"`
@@ -138,6 +140,8 @@ func toPricingAuditEntryResponse(entry *pricingdomain.PricingAuditEntry) *Pricin
 		Metric:         entry.Metric,
 		OldPriceMicros: entry.OldPriceMicros,
 		NewPriceMicros: entry.NewPriceMicros,
+		OldCostMicros:  entry.OldCostMicros,
+		NewCostMicros:  entry.NewCostMicros,
 		Currency:       entry.Currency,
 		ChangedBy:      entry.ChangedBy,
 		ChangedAt:      entry.ChangedAt,

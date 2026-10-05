@@ -30,6 +30,8 @@ type WorkspaceConfig struct {
 	AudienceDailyCap        int `gorm:"not null;default:0"`
 	AudienceDebounceMinutes int `gorm:"not null;default:0"`
 
+	MetaPayer string `gorm:"column:meta_payer;type:varchar(16);not null;default:'vozko'"`
+
 	UpdatedBy string    `gorm:"type:uuid"`
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`

@@ -18,6 +18,7 @@ type AnalyticsHandler struct {
 	adminOverview          analyticsdomain.GetAdminOverviewUseCase
 	planContractions       analyticsdomain.GetPlanContractionsUseCase
 	metaServiceMessageCost analyticsdomain.GetMetaServiceMessageCostUseCase
+	metaInvoiceCheck       analyticsdomain.GetMetaInvoiceCheckUseCase
 }
 
 func NewAnalyticsHandler(
@@ -26,6 +27,7 @@ func NewAnalyticsHandler(
 	adminOverview analyticsdomain.GetAdminOverviewUseCase,
 	planContractions analyticsdomain.GetPlanContractionsUseCase,
 	metaServiceMessageCost analyticsdomain.GetMetaServiceMessageCostUseCase,
+	metaInvoiceCheck analyticsdomain.GetMetaInvoiceCheckUseCase,
 ) *AnalyticsHandler {
 	return &AnalyticsHandler{
 		profitReport:           profitReport,
@@ -33,6 +35,7 @@ func NewAnalyticsHandler(
 		adminOverview:          adminOverview,
 		planContractions:       planContractions,
 		metaServiceMessageCost: metaServiceMessageCost,
+		metaInvoiceCheck:       metaInvoiceCheck,
 	}
 }
 
@@ -300,4 +303,18 @@ func parseGranularity(v string) analyticsdomain.Granularity {
 	default:
 		return analyticsdomain.GranularityDay
 	}
+}
+
+func (h *AnalyticsHandler) GetMetaInvoiceCheck(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	startDate, endDate, ok := parseOptionalDateRange(w, q.Get("startDate"), q.Get("endDate"))
+	if !ok {
+		return
+	}
+	report, err := h.metaInvoiceCheck.Execute(r.Context(), startDate, endDate)
+	if err != nil {
+		response.WriteError(w, http.StatusInternalServerError, "Failed to compare costs with the Meta invoice", nil)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, report)
 }

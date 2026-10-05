@@ -51,4 +51,5 @@ type HistoryRepository interface {
 	GetOpen(workspaceID, entryID, entryType string) (*AssignmentHistory, error)
 	ListOpenOlderThan(workspaceIDs []string, triggers []string, olderThan time.Time, limit int) ([]*AssignmentHistory, error)
 	CountRescuesSinceHandout(workspaceID, entryID, entryType string) (int, error)
+	ListByActor(workspaceID, actorID string, from, to time.Time) ([]*AssignmentHistory, error)
 }

@@ -51,7 +51,7 @@ func NewWebhookHandler(
 	}
 	secrets := normalizeAppSecrets(whatsappAppSecrets)
 	if len(secrets) == 0 {
-		log.Println("[WARN] META_APP_SECRET is empty, WhatsApp webhook signature verification disabled")
+		log.Println("[WARN] META_APP_SECRET is empty, every WhatsApp webhook event will be refused")
 	} else {
 		log.Printf("[webhook] WhatsApp signature verification enabled (%d app secret(s))", len(secrets))
 	}
@@ -155,13 +155,15 @@ func (h *WebhookHandler) handleWhatsAppEvent(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if len(h.whatsappAppSecrets) > 0 {
-		sigHeader := r.Header.Get("X-Hub-Signature-256")
-		if !verifyHubSignatureAny(h.whatsappAppSecrets, body, sigHeader) {
-			log.Printf("[whatsapp-webhook] invalid X-Hub-Signature-256 from %s", r.RemoteAddr)
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
+	if len(h.whatsappAppSecrets) == 0 {
+		log.Printf("[whatsapp-webhook] refused an event from %s: no META_APP_SECRET to verify its signature", r.RemoteAddr)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if !verifyHubSignatureAny(h.whatsappAppSecrets, body, r.Header.Get("X-Hub-Signature-256")) {
+		log.Printf("[whatsapp-webhook] invalid X-Hub-Signature-256 from %s", r.RemoteAddr)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
 	}
 
 	h.routeWhatsAppEnvelope(w, body)

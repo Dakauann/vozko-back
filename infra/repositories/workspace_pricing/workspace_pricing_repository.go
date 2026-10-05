@@ -113,6 +113,8 @@ func (r *WorkspacePricingRepositoryImpl) CreateAuditEntry(entry *workspace_prici
 		Metric:         entry.Metric,
 		OldPriceMicros: entry.OldPriceMicros,
 		NewPriceMicros: entry.NewPriceMicros,
+		OldCostMicros:  entry.OldCostMicros,
+		NewCostMicros:  entry.NewCostMicros,
 		Currency:       entry.Currency,
 		ChangedBy:      entry.ChangedBy,
 	}
@@ -144,6 +146,8 @@ func (r *WorkspacePricingRepositoryImpl) ListAuditEntries(workspaceID *string, l
 			Metric:         row.Metric,
 			OldPriceMicros: row.OldPriceMicros,
 			NewPriceMicros: row.NewPriceMicros,
+			OldCostMicros:  row.OldCostMicros,
+			NewCostMicros:  row.NewCostMicros,
 			Currency:       row.Currency,
 			ChangedBy:      row.ChangedBy,
 			ChangedAt:      row.ChangedAt,

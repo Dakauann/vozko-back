@@ -75,6 +75,8 @@ type WorkspaceConfig struct {
 	AudienceDailyCap        int `json:"audienceDailyCap"`
 	AudienceDebounceMinutes int `json:"audienceDebounceMinutes"`
 
+	MetaPayer MetaPayer `json:"metaPayer"`
+
 	UpdatedBy string    `json:"updatedBy,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -187,8 +189,9 @@ type RoulettePolicy struct {
 }
 
 type UpdateWorkspaceConfigInput struct {
-	CampaignSpamProtectionDays          *int `json:"campaignSpamProtectionDays,omitempty"`
-	IncludedUnofficialWhatsAppInstances *int `json:"includedUnofficialWhatsAppInstances,omitempty"`
+	CampaignSpamProtectionDays          *int    `json:"campaignSpamProtectionDays,omitempty"`
+	IncludedUnofficialWhatsAppInstances *int    `json:"includedUnofficialWhatsAppInstances,omitempty"`
+	MetaPayer                           *string `json:"metaPayer,omitempty"`
 }
 
 type UpdateWorkspaceConfigOwnerInput struct {

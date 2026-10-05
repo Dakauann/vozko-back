@@ -1,6 +1,7 @@
 package container
 
 import (
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,6 +11,7 @@ import (
 	"vozko/usecases/agentloop"
 	copilot_usecase "vozko/usecases/copilot"
 	copilottools "vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/skills"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
@@ -27,6 +29,10 @@ func (c *Container) buildCopilot(
 		Departments: c.useCases.listWorkspaceDepartments,
 		Now:         now,
 	}
+	skillLibrary, err := skills.Load()
+	if err != nil {
+		log.Fatalf("[container] copilot skills: %v", err)
+	}
 	agentDeps := copilottools.AgentDeps{KnowledgeBases: c.useCases.listKnowledgeBases, Collections: c.mcpCollection, Catalog: c.services.toolRegistry}
 	toolset := append([]copilot.Tool{
 		copilottools.NewListAgentsTool(listAgents),
@@ -42,6 +48,7 @@ func (c *Container) buildCopilot(
 		copilottools.NewAttendanceMetricsTool(attendanceDeps),
 		copilottools.NewAttendanceTrendTool(attendanceDeps),
 		copilottools.NewAttendanceTeamTool(attendanceDeps),
+		copilottools.NewMemberActivityTool(c.memberActivityUseCase()),
 		copilottools.NewAttendanceBacklogTool(attendanceDeps),
 		copilottools.NewAttendanceStagesTool(attendanceDeps),
 		copilottools.NewAttendanceReworkTool(attendanceDeps),
@@ -51,8 +58,9 @@ func (c *Container) buildCopilot(
 		copilottools.NewCalculateTool(),
 		copilottools.NewQueryDatasetTool(),
 		copilottools.NewRenderChartTool(),
+		copilottools.NewLoadSkillTool(skillLibrary),
 	}, append(c.operationTools(), c.numberAutomationTools(getAgent)...)...)
-	return copilot_usecase.NewService(
+	svc := copilot_usecase.NewService(
 		agentloop.Engine{AI: c.services.ai},
 		copilot_usecase.NewRegistry(toolset...),
 		c.useCases.checkWsAccess,
@@ -63,6 +71,8 @@ func (c *Container) buildCopilot(
 		state,
 		func() string { return uuid.New().String() },
 	)
+	svc.SetAnswerCostCeiling(int64(c.cfg.CopilotAnswerCostLimitUSD * 1_000_000))
+	return svc
 }
 
 func (c *Container) operationTools() []copilot.Tool {
@@ -88,7 +98,6 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.telegramTools(),
 		c.adsTools(),
 		{copilottools.NewGenerateImageTool(c.imageGeneration().Service)},
-		{copilottools.NewComposeCreativeTool(c.creativeComposer())},
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),

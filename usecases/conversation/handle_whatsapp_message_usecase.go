@@ -1335,7 +1335,7 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 						statusErrors = append(statusErrors, fmt.Errorf("update delivery status for wamid %s: %w", status.ID, err))
 					}
 
-					uc.chargeServiceMessage(status, receipt)
+					uc.chargeServiceMessage(status, receipt, change.Value.Metadata.PhoneNumberID)
 
 					if uc.hub != nil {
 						msg, err := uc.messageRepo.GetByWhatsAppMessageID(status.ID)
@@ -1479,6 +1479,7 @@ func (uc *handleWhatsAppMessageUseCase) resolveSendAttempt(
 func (uc *handleWhatsAppMessageUseCase) chargeServiceMessage(
 	status conversation.WhatsAppStatus,
 	receipt conversation.DeliveryReceipt,
+	phoneNumberID string,
 ) {
 	if uc.serviceMessageBilling == nil {
 		return
@@ -1490,7 +1491,10 @@ func (uc *handleWhatsAppMessageUseCase) chargeServiceMessage(
 	messageID := strings.TrimSpace(status.ID)
 	workspaceID := uc.resolveWorkspaceForProviderMessage(messageID)
 	if workspaceID == "" {
-		log.Printf("[whatsapp-status] service message %s is billable but its workspace could not be resolved; not charged", messageID)
+		log.Printf("[whatsapp-status] service message %s is billable but its workspace could not be resolved; not charged, recorded for the Meta cost report", messageID)
+		if err := uc.serviceMessageBilling.RecordUnattributed(messageID, phoneNumberID, receipt); err != nil {
+			log.Printf("[whatsapp-status] could not record unattributed service message %s: %v", messageID, err)
+		}
 		return
 	}
 
@@ -1693,11 +1697,7 @@ func buildDeliveryReceipt(
 	}
 
 	if status.Pricing != nil {
-		receipt.Pricing = conversation.MetaPricing{
-			Category: status.Pricing.Category,
-			Billable: status.Pricing.Billable,
-			Model:    status.Pricing.PricingModel,
-		}
+		receipt.Pricing = status.Pricing.MetaPricing()
 	}
 
 	if status.Conversation != nil {

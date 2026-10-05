@@ -24,6 +24,14 @@ func (uc *updateWorkspaceConfigUseCase) Execute(ctx context.Context, workspaceID
 		return nil, err
 	}
 
+	if input.MetaPayer != nil {
+		payer, err := wsc.ParseMetaPayer(*input.MetaPayer)
+		if err != nil {
+			return nil, err
+		}
+		existing.MetaPayer = payer
+	}
+
 	if input.CampaignSpamProtectionDays != nil && *input.CampaignSpamProtectionDays >= 0 {
 		existing.CampaignSpamProtectionDays = *input.CampaignSpamProtectionDays
 	}

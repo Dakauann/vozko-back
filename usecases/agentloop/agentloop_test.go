@@ -32,6 +32,7 @@ type fakeAI struct {
 	mu       sync.Mutex
 	idx      int
 	models   []string
+	inputs   []ai.GenerateInput
 }
 
 func (f *fakeAI) Generate(ctx context.Context, in ai.GenerateInput) (*ai.GenerateOutput, error) {
@@ -41,6 +42,7 @@ func (f *fakeAI) Generate(ctx context.Context, in ai.GenerateInput) (*ai.Generat
 func (f *fakeAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-chan ai.StreamEvent, error) {
 	f.mu.Lock()
 	f.models = append(f.models, in.Model)
+	f.inputs = append(f.inputs, in)
 	i := f.idx
 	f.idx++
 	f.mu.Unlock()
@@ -502,12 +504,12 @@ func TestWithDefaults(t *testing.T) {
 	if d.MaxIterations != 30 || d.NoProgressStop != 5 || d.RepairBudget != 3 ||
 		d.EmptyTurnRetries != 2 || d.MaxHistoryMsgs != 80 || d.MaxTokensPerGen != 24000 ||
 		d.ReasoningMaxTokens != 10000 || d.FinishToolName != "finish" ||
-		d.RepeatedTurnStop != 3 {
+		d.RepeatedTurnStop != 3 || d.CompactAt != 0.5 || d.KeepRecent != 8 {
 		t.Fatalf("defaults wrong: %+v", d)
 	}
 	in := Config{MaxIterations: 1, NoProgressStop: 1, RepairBudget: 1, EmptyTurnRetries: 1,
 		MaxHistoryMsgs: 1, MaxTokensPerGen: 1, ReasoningMaxTokens: 1, FinishToolName: "fim",
-		RepeatedTurnStop: 1}
+		RepeatedTurnStop: 1, CompactAt: 0.7, KeepRecent: 1}
 	if out := in.withDefaults(); out != in {
 		t.Fatalf("populated config must be unchanged, got %+v", out)
 	}

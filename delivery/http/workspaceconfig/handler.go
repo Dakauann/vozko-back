@@ -42,19 +42,30 @@ func NewWorkspaceConfigHandler(getConfig workspaceconfigdomain.GetWorkspaceConfi
 // @Security		BearerAuth
 // @Router			/workspaces/{workspaceId}/config [get]
 func (h *WorkspaceConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
+	if cfg, ok := h.load(w, r); ok {
+		response.WriteSuccess(w, http.StatusOK, toWorkspaceConfigResponse(cfg))
+	}
+}
+
+func (h *WorkspaceConfigHandler) GetForAdmin(w http.ResponseWriter, r *http.Request) {
+	if cfg, ok := h.load(w, r); ok {
+		response.WriteSuccess(w, http.StatusOK, toAdminWorkspaceConfigResponse(cfg))
+	}
+}
+
+func (h *WorkspaceConfigHandler) load(w http.ResponseWriter, r *http.Request) (*workspaceconfigdomain.WorkspaceConfig, bool) {
 	workspaceID := mux.Vars(r)["workspaceId"]
 	if workspaceID == "" {
 		response.WriteError(w, http.StatusBadRequest, "Missing workspaceId", nil)
-		return
+		return nil, false
 	}
 
 	cfg, err := h.getConfig.Execute(r.Context(), workspaceID)
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to get workspace configuration", nil)
-		return
+		return nil, false
 	}
-
-	response.WriteSuccess(w, http.StatusOK, toWorkspaceConfigResponse(cfg))
+	return cfg, true
 }
 
 // @Summary		Atualizar configuração do workspace
@@ -164,9 +175,13 @@ func (h *WorkspaceConfigHandler) UpdateSensitive(w http.ResponseWriter, r *http.
 			response.WriteError(w, http.StatusForbidden, "Only administrators can modify workspace configuration", nil)
 			return
 		}
+		if errors.Is(err, workspaceconfigdomain.ErrInvalidMetaPayer) {
+			response.WriteErrorWithCode(w, http.StatusBadRequest, "invalid_meta_payer", "Quem paga a Meta deve ser vozko ou client", nil)
+			return
+		}
 		response.WriteError(w, http.StatusInternalServerError, "Failed to update workspace configuration", nil)
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusOK, toWorkspaceConfigResponse(cfg))
+	response.WriteSuccess(w, http.StatusOK, toAdminWorkspaceConfigResponse(cfg))
 }

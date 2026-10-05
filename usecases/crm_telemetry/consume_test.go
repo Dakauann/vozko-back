@@ -248,3 +248,11 @@ func (m *memHistory) ListOpenOlderThan([]string, []string, time.Time, int) ([]*i
 func (m *memHistory) CountRescuesSinceHandout(string, string, string) (int, error) { return 0, nil }
 
 func (m *memPresence) LastSeen(string, []string) (map[string]time.Time, error) { return nil, nil }
+
+func (*memPresence) Spans(string, string, time.Time, time.Time) ([]ap.Interval, error) {
+	return nil, nil
+}
+
+func (*memHistory) ListByActor(string, string, time.Time, time.Time) ([]*ia.AssignmentHistory, error) {
+	return nil, nil
+}

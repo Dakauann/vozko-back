@@ -7,7 +7,10 @@ import (
 )
 
 const (
-	AnswerTokenBudget = 200_000
+	AnswerTokenBudget              = 200_000
+	DefaultAnswerCostCeilingMicros = int64(1_000_000)
+	answerMaxIterations            = 60
+	answerGraceInstruction         = "Você chegou ao limite desta resposta. Sem chamar ferramentas, responda agora ao pedido com o que já descobriu e diga em uma frase o que ficou faltando verificar."
 
 	msgFundsExhausted  = "Saldo ou plano insuficiente: a resposta foi interrompida antes de gerar mais custo."
 	msgBudgetExhausted = "A análise ficou longa demais e foi interrompida. Peça uma parte de cada vez."

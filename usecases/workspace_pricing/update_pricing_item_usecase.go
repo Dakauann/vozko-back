@@ -65,6 +65,8 @@ func (uc *updatePricingItemUseCase) Execute(input workspace_pricing.UpdatePricin
 		Metric:         input.Metric,
 		OldPriceMicros: oldPrice,
 		NewPriceMicros: input.PriceMicros,
+		OldCostMicros:  existing.CostMicros,
+		NewCostMicros:  existing.CostMicros,
 		Currency:       input.Currency,
 		ChangedBy:      changedBy,
 	})

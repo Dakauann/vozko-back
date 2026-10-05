@@ -28,12 +28,13 @@ type Config struct {
 	RabbitMQUsername string
 	RabbitMQPassword string
 
-	OpenRouterAPIKey       string
-	OpenRouterDefaultModel string
-	DecisionModel          string
-	AudienceSummaryModel   string
-	OpenRouterHTTPReferer  string
-	OpenRouterXTitle       string
+	OpenRouterAPIKey          string
+	OpenRouterDefaultModel    string
+	CopilotAnswerCostLimitUSD float64
+	DecisionModel             string
+	AudienceSummaryModel      string
+	OpenRouterHTTPReferer     string
+	OpenRouterXTitle          string
 
 	OllamaURL string
 
@@ -177,12 +178,13 @@ func LoadConfig() Config {
 		RabbitMQUsername: os.Getenv("RABBITMQ_USERNAME"),
 		RabbitMQPassword: os.Getenv("RABBITMQ_PASSWORD"),
 
-		OpenRouterAPIKey:       mustGetEnvTrimmed("OPENROUTER_API_KEY"),
-		OpenRouterDefaultModel: getEnvTrimmed("OPENROUTER_DEFAULT_MODEL", "openai/gpt-4o"),
-		DecisionModel:          getEnvTrimmed("DECISION_MODEL", "typesafe/jev-1.13"),
-		AudienceSummaryModel:   getEnvTrimmed("AUDIENCE_SUMMARY_MODEL", "openai/gpt-4o-mini"),
-		OpenRouterHTTPReferer:  trimEnv("OPENROUTER_HTTP_REFERER"),
-		OpenRouterXTitle:       trimEnv("OPENROUTER_X_TITLE"),
+		OpenRouterAPIKey:          mustGetEnvTrimmed("OPENROUTER_API_KEY"),
+		OpenRouterDefaultModel:    getEnvTrimmed("OPENROUTER_DEFAULT_MODEL", "openai/gpt-4o"),
+		CopilotAnswerCostLimitUSD: getFloatEnv("COPILOT_ANSWER_COST_LIMIT_USD", 1),
+		DecisionModel:             getEnvTrimmed("DECISION_MODEL", "typesafe/jev-1.13"),
+		AudienceSummaryModel:      getEnvTrimmed("AUDIENCE_SUMMARY_MODEL", "openai/gpt-4o-mini"),
+		OpenRouterHTTPReferer:     trimEnv("OPENROUTER_HTTP_REFERER"),
+		OpenRouterXTitle:          trimEnv("OPENROUTER_X_TITLE"),
 
 		OllamaURL: getEnvTrimmed("OLLAMA_URL", "http://localhost:11434"),
 

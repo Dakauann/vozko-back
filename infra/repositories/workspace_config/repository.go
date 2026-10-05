@@ -77,6 +77,7 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 
 		AudienceDailyCap:        row.AudienceDailyCap,
 		AudienceDebounceMinutes: row.AudienceDebounceMinutes,
+		MetaPayer:               wsc.MetaPayer(row.MetaPayer),
 
 		UpdatedBy: row.UpdatedBy,
 		CreatedAt: row.CreatedAt,
@@ -105,6 +106,7 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 
 		AudienceDailyCap:        cfg.AudienceDailyCap,
 		AudienceDebounceMinutes: cfg.AudienceDebounceMinutes,
+		MetaPayer:               string(cfg.EffectiveMetaPayer()),
 
 		UpdatedBy: cfg.UpdatedBy,
 	}

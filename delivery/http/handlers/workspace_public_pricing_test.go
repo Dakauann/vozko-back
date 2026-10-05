@@ -223,6 +223,7 @@ func TestWorkspacePricingHandler_GetPublicExchangeRate_HidesInternalPricingField
 		nil,
 		nil,
 		nil,
+		nil,
 		stubGetExchangeRateUseCase{item: &workspace_pricing.PricingItem{
 			ID:          "rate-1",
 			Category:    workspace_pricing.CategoryExchangeRate,

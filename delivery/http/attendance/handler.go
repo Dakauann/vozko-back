@@ -29,6 +29,7 @@ type AttendanceHandler struct {
 	presenceRepo                agent_presence.Repository
 	targets                     *attendance_usecase.TargetsService
 	targetScoper                targetScoper
+	memberActivity              memberActivityReader
 }
 
 func NewAttendanceHandler(

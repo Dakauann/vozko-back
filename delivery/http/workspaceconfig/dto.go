@@ -51,3 +51,15 @@ func toWorkspaceConfigResponse(c *workspaceconfigdomain.WorkspaceConfig) Workspa
 		UpdatedAt:                           c.UpdatedAt,
 	}
 }
+
+type AdminWorkspaceConfigResponse struct {
+	WorkspaceConfigResponse
+	MetaPayer string `json:"metaPayer" example:"vozko"`
+}
+
+func toAdminWorkspaceConfigResponse(c *workspaceconfigdomain.WorkspaceConfig) AdminWorkspaceConfigResponse {
+	return AdminWorkspaceConfigResponse{
+		WorkspaceConfigResponse: toWorkspaceConfigResponse(c),
+		MetaPayer:               string(c.EffectiveMetaPayer()),
+	}
+}

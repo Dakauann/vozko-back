@@ -314,3 +314,7 @@ func TestRescueChain_HopsAreAttributedToTheSystem(t *testing.T) {
 	assert.Equal(t, "ana", hop.PreviousActorID)
 	assert.Equal(t, "bob", hop.AssignedActorID)
 }
+
+func (*intervalStore) ListByActor(string, string, time.Time, time.Time) ([]*ia.AssignmentHistory, error) {
+	return nil, nil
+}

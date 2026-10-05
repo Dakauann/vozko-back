@@ -61,10 +61,7 @@ func TestService_BalanceIsCheckedBeforeEveryModelCall(t *testing.T) {
 	}
 }
 
-func TestService_AnAnswerHasATokenBudget(t *testing.T) {
-	if cfg := DefaultConfig(ownerCtx, AnswerTokenBudget); cfg.SessionTokenBudget != AnswerTokenBudget || AnswerTokenBudget <= 0 {
-		t.Fatalf("budget = %d", cfg.SessionTokenBudget)
-	}
+func TestService_ABudgetEndsWithAnAnswerFromWhatWasFound(t *testing.T) {
 	th, ms := &fakeThreads{thread: testThread()}, &fakeMessages{}
 	prov := &scriptAI{turns: [][]ai.ToolCall{{call("read_x", nil)}, {}}, texts: []string{"", "fim"}, usage: &ai.Usage{TotalTokens: AnswerTokenBudget}}
 	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(&fakeTool{name: "read_x", meta: readMeta}), &fakeAccess{}, openFunds{}, th, ms, nil, nil, func() string { return "a" })
@@ -72,9 +69,27 @@ func TestService_AnAnswerHasATokenBudget(t *testing.T) {
 	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, ev.emit); err != nil {
 		t.Fatal(err)
 	}
-	errs := ev.byType["error"]
-	if prov.idx != 1 || len(errs) != 1 || errs[0].(map[string]interface{})["error"] != msgBudgetExhausted {
-		t.Fatalf("model calls = %d errors = %v, want a visible stop after the budget", prov.idx, errs)
+	if prov.idx != 2 || len(ev.byType["error"]) != 0 || ms.last().Content != "fim" {
+		t.Fatalf("model calls = %d errors = %v reply = %q, want a grace answer after the budget", prov.idx, ev.byType["error"], ms.last().Content)
+	}
+	if grace := prov.inputs[1]; len(grace.Tools) != 0 {
+		t.Fatal("the grace call must not offer tools")
+	}
+}
+
+func TestService_ACatalogedModelGetsItsOwnLimits(t *testing.T) {
+	th, ms := &fakeThreads{thread: testThread()}, &fakeMessages{}
+	prov := &scriptAI{
+		turns: [][]ai.ToolCall{{call("read_x", nil)}, {}}, texts: []string{"", "fim"},
+		usage:  &ai.Usage{PromptTokens: AnswerTokenBudget, TotalTokens: AnswerTokenBudget},
+		models: []ai.ModelInfo{{ID: testThread().Model, ContextLength: 1_000_000, PromptPrice: 0.1, CompletionPrice: 0.4}},
+	}
+	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(&fakeTool{name: "read_x", meta: readMeta}), &fakeAccess{}, openFunds{}, th, ms, nil, nil, func() string { return "a" })
+	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, (&events{}).emit); err != nil {
+		t.Fatal(err)
+	}
+	if prov.idx != 2 || len(prov.inputs[1].Tools) == 0 || ms.last().Content != "fim" {
+		t.Fatalf("calls = %d reply = %q: a 200k token turn on a 1M window model must keep its tools", prov.idx, ms.last().Content)
 	}
 }
 

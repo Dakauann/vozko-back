@@ -31,8 +31,16 @@ func (m *mockPublishWebhook) Publish(topic string, payload []byte) error {
 	return nil
 }
 
+const testAppSecret = "test-app-secret"
+
 func newHandler(pub *mockPublishWebhook, asaasToken, waVerifyToken string) *WebhookHandler {
-	return NewWebhookHandler(pub, asaasToken, waVerifyToken, "")
+	return NewWebhookHandler(pub, asaasToken, waVerifyToken, testAppSecret)
+}
+
+func signedWhatsAppPost(body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(body))
+	req.Header.Set("X-Hub-Signature-256", hubSig256ForTest(testAppSecret, []byte(body)))
+	return req
 }
 
 func TestHandleAsaasWebhook_ValidPayload(t *testing.T) {
@@ -251,7 +259,7 @@ func TestHandleWhatsAppWebhook_MessageEvent(t *testing.T) {
 	}
 	body, _ := json.Marshal(payload)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(string(body)))
+	req := signedWhatsAppPost(string(body))
 	rec := httptest.NewRecorder()
 
 	h.HandleWhatsAppWebhook(rec, req)
@@ -291,7 +299,7 @@ func TestHandleWhatsAppWebhook_StatusEvent(t *testing.T) {
 	}
 	body, _ := json.Marshal(payload)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(string(body)))
+	req := signedWhatsAppPost(string(body))
 	rec := httptest.NewRecorder()
 
 	h.HandleWhatsAppWebhook(rec, req)
@@ -340,7 +348,7 @@ func TestHandleWhatsAppWebhook_PhoneEvent(t *testing.T) {
 		}
 		body, _ := json.Marshal(payload)
 
-		req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(string(body)))
+		req := signedWhatsAppPost(string(body))
 		rec := httptest.NewRecorder()
 
 		h.HandleWhatsAppWebhook(rec, req)
@@ -388,7 +396,7 @@ func TestHandleWhatsAppWebhook_TemplateEvent(t *testing.T) {
 		}
 		body, _ := json.Marshal(payload)
 
-		req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(string(body)))
+		req := signedWhatsAppPost(string(body))
 		rec := httptest.NewRecorder()
 
 		h.HandleWhatsAppWebhook(rec, req)
@@ -425,7 +433,7 @@ func TestHandleWhatsAppWebhook_UnknownFieldRoutesToMessage(t *testing.T) {
 	}
 	body, _ := json.Marshal(payload)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(string(body)))
+	req := signedWhatsAppPost(string(body))
 	rec := httptest.NewRecorder()
 
 	h.HandleWhatsAppWebhook(rec, req)
@@ -453,7 +461,7 @@ func TestHandleWhatsAppWebhook_PublishError(t *testing.T) {
 	}
 	body, _ := json.Marshal(payload)
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(string(body)))
+	req := signedWhatsAppPost(string(body))
 	rec := httptest.NewRecorder()
 
 	h.HandleWhatsAppWebhook(rec, req)
@@ -481,7 +489,7 @@ func TestHandleWhatsAppWebhook_EmptyBody(t *testing.T) {
 	pub := &mockPublishWebhook{}
 	h := newHandler(pub, "", "")
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(""))
+	req := signedWhatsAppPost("")
 	rec := httptest.NewRecorder()
 
 	h.HandleWhatsAppWebhook(rec, req)
@@ -497,7 +505,7 @@ func TestHandleWhatsAppWebhook_PreservesPayload(t *testing.T) {
 
 	original := `{"object":"whatsapp_business_account","entry":[{"id":"123","changes":[{"field":"messages","value":{"messages":[{"id":"wamid.999"}]}}]}]}`
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(original))
+	req := signedWhatsAppPost(original)
 	rec := httptest.NewRecorder()
 
 	h.HandleWhatsAppWebhook(rec, req)
@@ -677,5 +685,22 @@ func TestDialog360MessageWebhook_GetProbeReturns200(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET probe should return 200, got %d", rec.Code)
+	}
+}
+
+func TestHandleWhatsAppWebhook_WithoutAnAppSecretRefusesEveryEvent(t *testing.T) {
+	pub := &mockPublishWebhook{}
+	h := NewWebhookHandler(pub, "", "verify")
+	body := `{"object":"whatsapp_business_account","entry":[{"changes":[{"field":"messages","value":{"statuses":[{"id":"wamid.X","status":"sent"}]}}]}]}`
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/whatsapp", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.HandleWhatsAppWebhook(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("an unverifiable webhook must be refused, got %d", rec.Code)
+	}
+	if len(pub.calls) != 0 {
+		t.Fatalf("nothing may be published without a verified signature, got %+v", pub.calls)
 	}
 }

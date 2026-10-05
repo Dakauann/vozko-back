@@ -1,6 +1,10 @@
 package conversation
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+	"time"
+)
 
 func TestServiceCategoryIsRecognisedWhateverTheCase(t *testing.T) {
 	for _, raw := range []string{"service", "SERVICE", " Service "} {
@@ -97,5 +101,30 @@ func TestNormalizedCategoryIsStable(t *testing.T) {
 		if got != want {
 			t.Errorf("NormalizedCategory(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+func TestThePricingObjectIsKeptWholeWithMetasType(t *testing.T) {
+	raw := `{"billable":true,"pricing_model":"PMP","category":"service","type":"free_customer_service","new_field":7}`
+	var status WhatsAppStatus
+	if err := json.Unmarshal([]byte(`{"id":"wamid.1","status":"sent","pricing":`+raw+`}`), &status); err != nil {
+		t.Fatal(err)
+	}
+	pricing := status.Pricing.MetaPricing()
+	if pricing.Type != "free_customer_service" || pricing.Category != "service" || !pricing.Billable || pricing.Model != "PMP" {
+		t.Fatalf("pricing %+v", pricing)
+	}
+	if string(pricing.Raw) != raw {
+		t.Fatalf("the object Meta sent must be kept as sent, got %s", pricing.Raw)
+	}
+}
+
+func TestUnattributedServiceMessageCarriesWhatMetaSaid(t *testing.T) {
+	at := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	receipt := DeliveryReceipt{Status: DeliveryStatusSent, Pricing: MetaPricing{Category: " Service ", Type: "regular"}}
+	got := NewUnattributedServiceMessage(" wamid.9 ", " 885813321280568 ", receipt, at)
+	want := UnattributedServiceMessage{WhatsAppMessageID: "wamid.9", PhoneNumberID: "885813321280568", Status: DeliveryStatusSent, Category: "service", PricingType: "regular", SeenAt: at}
+	if got != want {
+		t.Fatalf("got %+v", got)
 	}
 }

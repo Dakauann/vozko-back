@@ -1,6 +1,7 @@
 package analytics_repository
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,24 +11,31 @@ import (
 	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
+	wsc "vozko/domain/workspace_config"
 	"vozko/infra/database"
 )
 
 type metaServiceMessageCostRow struct {
-	WorkspaceID      string  `gorm:"column:workspace_id"`
-	WorkspaceName    string  `gorm:"column:workspace_name"`
-	Providers        string  `gorm:"column:providers"`
-	ServiceMessages  int64   `gorm:"column:service_messages"`
-	MetaConfirmed    int64   `gorm:"column:meta_confirmed"`
-	MetaAnswered     int64   `gorm:"column:meta_answered"`
-	NetBillableSends int64   `gorm:"column:net_billable_sends"`
-	TotalItems       int64   `gorm:"column:total_items"`
-	TotalServiceMsgs int64   `gorm:"column:total_service_messages"`
-	TotalMetaConfirm int64   `gorm:"column:total_meta_confirmed"`
-	TotalMetaAnswer  int64   `gorm:"column:total_meta_answered"`
-	TotalNetSends    int64   `gorm:"column:total_net_billable_sends"`
-	TotalUnattrib    int64   `gorm:"column:total_unattributed"`
-	RatioSort        float64 `gorm:"column:ratio_sort"`
+	WorkspaceID        string  `gorm:"column:workspace_id"`
+	WorkspaceName      string  `gorm:"column:workspace_name"`
+	Providers          string  `gorm:"column:providers"`
+	ServiceMessages    int64   `gorm:"column:service_messages"`
+	MetaConfirmed      int64   `gorm:"column:meta_confirmed"`
+	MetaAnswered       int64   `gorm:"column:meta_answered"`
+	NetBillableSends   int64   `gorm:"column:net_billable_sends"`
+	MetaPayer          string  `gorm:"column:meta_payer"`
+	PaidMicros         int64   `gorm:"column:paid_micros"`
+	TemplateCostMicros int64   `gorm:"column:template_cost_micros"`
+	TotalItems         int64   `gorm:"column:total_items"`
+	TotalServiceMsgs   int64   `gorm:"column:total_service_messages"`
+	TotalMetaConfirm   int64   `gorm:"column:total_meta_confirmed"`
+	TotalMetaAnswer    int64   `gorm:"column:total_meta_answered"`
+	TotalNetSends      int64   `gorm:"column:total_net_billable_sends"`
+	TotalUnattrib      int64   `gorm:"column:total_unattributed"`
+	TotalPaid          int64   `gorm:"column:total_paid"`
+	TotalVozkoTemplate int64   `gorm:"column:total_vozko_template_cost"`
+	ServiceCharges     string  `gorm:"column:service_charges"`
+	RatioSort          float64 `gorm:"column:ratio_sort"`
 }
 
 const providerExpr = `COALESCE(p.provider, '` + string(analytics_domain.ServiceMessageProviderUnattributed) + `')`
@@ -37,6 +45,18 @@ var serviceMessagePredicate = database.ServiceMessagePredicateSQL("cm")
 var metaConfirmedPredicate = `cm.meta_pricing_billable IS TRUE
 			      AND cm.meta_pricing_category = ` + database.SQLStringLiteral(conversation.MetaPricingCategoryService) + `
 			      AND COALESCE(cm.meta_conversation_origin, '') <> ` + database.SQLStringLiteral(conversation.MetaOriginFreeEntryPoint)
+
+var (
+	campaignService = database.SQLStringLiteral(string(balance.ServiceWhatsAppCampaign))
+	billedServices  = campaignService + `, ` + database.SQLStringLiteral(string(balance.ServiceWhatsAppConversation))
+	vozkoPaysMeta   = `meta_payer <> ` + database.SQLStringLiteral(string(wsc.MetaPayerClient))
+	defaultPayer    = database.SQLStringLiteral(string(wsc.MetaPayerVozko))
+)
+
+const (
+	chargedEntry  = `type = 'debit' AND is_refund = false`
+	refundedEntry = `type = 'credit' AND is_refund = true`
+)
 
 func metaCostOrderExpr(field analytics_domain.MetaServiceMessageCostSortField) string {
 	switch field {
@@ -69,15 +89,11 @@ func providerFilterClause(provider analytics_domain.ServiceMessageProvider) (cla
 	}
 }
 
-func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServiceMessageCostInput) (*analytics_domain.MetaServiceMessageCostReport, error) {
+func metaServiceMessageCostQuery(input analytics_domain.MetaServiceMessageCostInput) (string, []interface{}) {
 	pagination := shared.NormalizePagination(shared.Pagination{Page: input.Page, PageSize: input.PageSize})
-
 	providerMatch, providerNeedsArg := providerFilterClause(input.Provider)
-	orderExpr := metaCostOrderExpr(input.SortBy)
-	orderDirection := metaCostOrderDirection(input.SortOrder)
 
-	args := make([]interface{}, 0, 8)
-
+	args := make([]interface{}, 0, 10)
 	query := `
 		WITH svc AS (
 			SELECT
@@ -97,11 +113,17 @@ func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServic
 		), bill AS (
 			SELECT
 				workspace_id,
-				COALESCE(SUM(CASE WHEN type = 'debit'  AND is_refund = false THEN 1
-				                  WHEN type = 'credit' AND is_refund = true  THEN -1
-				                  ELSE 0 END), 0) AS net_billable_sends
+				COALESCE(SUM(CASE WHEN service_type = ` + campaignService + ` AND ` + chargedEntry + ` THEN 1
+				                  WHEN service_type = ` + campaignService + ` AND ` + refundedEntry + ` THEN -1
+				                  ELSE 0 END), 0) AS net_billable_sends,
+				COALESCE(SUM(CASE WHEN ` + chargedEntry + ` THEN amount
+				                  WHEN ` + refundedEntry + ` THEN -amount
+				                  ELSE 0 END), 0) AS paid_micros,
+				COALESCE(SUM(CASE WHEN service_type = ` + campaignService + ` AND ` + chargedEntry + ` THEN cost_micros
+				                  WHEN service_type = ` + campaignService + ` AND ` + refundedEntry + ` THEN -cost_micros
+				                  ELSE 0 END), 0) AS template_cost_micros
 			FROM balance_transactions
-			WHERE service_type = ?
+			WHERE service_type IN (` + billedServices + `)
 			  AND created_at >= ? AND created_at < ?
 			GROUP BY workspace_id
 		), unattributed AS (
@@ -114,22 +136,22 @@ func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServic
 				COALESCE(svc.meta_confirmed, 0) AS meta_confirmed,
 				COALESCE(svc.meta_answered, 0) AS meta_answered,
 				COALESCE(svc.service_messages, 0) AS service_messages,
-				COALESCE(bill.net_billable_sends, 0) AS net_billable_sends
+				COALESCE(bill.net_billable_sends, 0) AS net_billable_sends,
+				COALESCE(bill.paid_micros, 0) AS paid_micros,
+				COALESCE(bill.template_cost_micros, 0) AS template_cost_micros,
+				COALESCE(NULLIF(cfg.meta_payer, ''), ` + defaultPayer + `) AS meta_payer
 			FROM workspaces w
 			LEFT JOIN svc  ON svc.workspace_id  = w.id
 			LEFT JOIN bill ON bill.workspace_id = w.id
+			LEFT JOIN workspace_configs cfg ON cfg.workspace_id = w.id
 			WHERE w.deleted_at IS NULL
-			  AND (COALESCE(svc.service_messages, 0) > 0 OR COALESCE(bill.net_billable_sends, 0) <> 0)`
+			  AND (COALESCE(svc.service_messages, 0) > 0 OR COALESCE(bill.net_billable_sends, 0) <> 0 OR COALESCE(bill.paid_micros, 0) <> 0)`
 
 	if providerNeedsArg {
 		provider := string(input.Provider)
 		args = append(args, provider, provider, provider, provider)
 	}
-	args = append(args,
-		input.StartDate, input.EndDate,
-		string(balance.ServiceWhatsAppCampaign),
-		input.StartDate, input.EndDate,
-	)
+	args = append(args, input.StartDate, input.EndDate, input.StartDate, input.EndDate)
 
 	if search := strings.TrimSpace(input.Search); search != "" {
 		query += `
@@ -147,6 +169,9 @@ func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServic
 			meta_confirmed,
 			meta_answered,
 			net_billable_sends,
+			meta_payer,
+			paid_micros,
+			template_cost_micros,
 			CASE
 				WHEN net_billable_sends > 0 THEN service_messages::double precision / net_billable_sends
 				WHEN service_messages   > 0 THEN 'Infinity'::double precision
@@ -157,54 +182,79 @@ func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServic
 			SUM(meta_confirmed) OVER () AS total_meta_confirmed,
 			SUM(meta_answered) OVER () AS total_meta_answered,
 			SUM(net_billable_sends) OVER () AS total_net_billable_sends,
-			(SELECT total FROM unattributed) AS total_unattributed
+			SUM(paid_micros) OVER () AS total_paid,
+			COALESCE(SUM(template_cost_micros) FILTER (WHERE ` + vozkoPaysMeta + `) OVER (), 0) AS total_vozko_template_cost,
+			(SELECT total FROM unattributed) AS total_unattributed,
+			(SELECT COALESCE(json_agg(json_build_object('w', workspace_id, 'p', meta_payer, 'c', meta_confirmed)), '[]'::json)
+			   FROM exposure_rows WHERE meta_confirmed > 0) AS service_charges
 		FROM exposure_rows
 	`
-	query += fmt.Sprintf(` ORDER BY %s %s, workspace_name ASC LIMIT ? OFFSET ?`, orderExpr, orderDirection)
+	query += fmt.Sprintf(` ORDER BY %s %s, workspace_name ASC LIMIT ? OFFSET ?`, metaCostOrderExpr(input.SortBy), metaCostOrderDirection(input.SortOrder))
 	args = append(args, pagination.PageSize, pagination.Offset())
+	return query, args
+}
+
+func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServiceMessageCostInput) (*analytics_domain.MetaServiceMessageCostReport, error) {
+	pagination := shared.NormalizePagination(shared.Pagination{Page: input.Page, PageSize: input.PageSize})
+	query, args := metaServiceMessageCostQuery(input)
 
 	var rows []metaServiceMessageCostRow
-	if err := r.db.Transaction(func(tx *gorm.DB) error {
+	if err := r.boundedRead(func(tx *gorm.DB) error {
+		return tx.Raw(query, args...).Scan(&rows).Error
+	}); err != nil {
+		return nil, fmt.Errorf("analytics service exposure: %w", err)
+	}
+
+	return buildMetaServiceMessageCost(input, pagination, rows)
+}
+
+func (r *repository) boundedRead(read func(tx *gorm.DB) error) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
 			return err
 		}
 		if err := tx.Exec("SET LOCAL statement_timeout = '15s'").Error; err != nil {
 			return err
 		}
-		return tx.Raw(query, args...).Scan(&rows).Error
-	}); err != nil {
-		return nil, fmt.Errorf("analytics service exposure: %w", err)
-	}
-
-	return buildMetaServiceMessageCost(input, pagination, rows), nil
+		return read(tx)
+	})
 }
 
 func buildMetaServiceMessageCost(
 	input analytics_domain.MetaServiceMessageCostInput,
 	pagination shared.Pagination,
 	rows []metaServiceMessageCostRow,
-) *analytics_domain.MetaServiceMessageCostReport {
+) (*analytics_domain.MetaServiceMessageCostReport, error) {
 	items := make([]*analytics_domain.WorkspaceMetaServiceMessageCost, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, &analytics_domain.WorkspaceMetaServiceMessageCost{
-			WorkspaceID:      row.WorkspaceID,
-			WorkspaceName:    row.WorkspaceName,
-			Providers:        splitProviders(row.Providers),
-			ServiceMessages:  row.ServiceMessages,
-			MetaConfirmed:    row.MetaConfirmed,
-			NetBillableSends: row.NetBillableSends,
-			Ratio:            analytics_domain.ComputeRatio(row.ServiceMessages, row.NetBillableSends),
+			WorkspaceID:        row.WorkspaceID,
+			WorkspaceName:      row.WorkspaceName,
+			Providers:          splitProviders(row.Providers),
+			ServiceMessages:    row.ServiceMessages,
+			MetaConfirmed:      row.MetaConfirmed,
+			NetBillableSends:   row.NetBillableSends,
+			Ratio:              analytics_domain.ComputeRatio(row.ServiceMessages, row.NetBillableSends),
+			MetaPayer:          row.MetaPayer,
+			PaidMicros:         row.PaidMicros,
+			TemplateCostMicros: row.TemplateCostMicros,
 		})
 	}
 
 	totals := analytics_domain.MetaServiceMessageCostTotals{}
 	if len(rows) > 0 {
-		totals.ServiceMessages = rows[0].TotalServiceMsgs
-		totals.MetaConfirmed = rows[0].TotalMetaConfirm
-		totals.MetaAnswered = rows[0].TotalMetaAnswer
-		totals.NetBillableSends = rows[0].TotalNetSends
-		totals.WorkspacesCovered = rows[0].TotalItems
-		totals.UnattributedServiceMessages = rows[0].TotalUnattrib
+		first := rows[0]
+		totals.ServiceMessages = first.TotalServiceMsgs
+		totals.MetaConfirmed = first.TotalMetaConfirm
+		totals.MetaAnswered = first.TotalMetaAnswer
+		totals.NetBillableSends = first.TotalNetSends
+		totals.WorkspacesCovered = first.TotalItems
+		totals.UnattributedServiceMessages = first.TotalUnattrib
+		totals.PaidMicros = first.TotalPaid
+		totals.VozkoTemplateCostMicros = first.TotalVozkoTemplate
+		if err := json.Unmarshal([]byte(first.ServiceCharges), &totals.ServiceCharges); err != nil {
+			return nil, fmt.Errorf("analytics service charges: %w", err)
+		}
 	}
 	totals.Ratio = analytics_domain.ComputeRatio(totals.ServiceMessages, totals.NetBillableSends)
 
@@ -217,7 +267,9 @@ func buildMetaServiceMessageCost(
 		Provider:   input.Provider,
 		Totals:     totals,
 		Workspaces: shared.NewPaginatedResult(items, pagination, totals.WorkspacesCovered),
-	}
+		Numbers:    []*analytics_domain.NumberMetaCost{},
+		Unlinked:   []*analytics_domain.UnlinkedNumber{},
+	}, nil
 }
 
 func splitProviders(raw string) []string {

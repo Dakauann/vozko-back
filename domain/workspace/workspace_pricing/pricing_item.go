@@ -24,6 +24,7 @@ const AdvertisingServicePublishedAd = "published_ad"
 var ErrPricingItemNotFound = errors.New("pricing item not found")
 var ErrWhatsAppTemplateCategoryUnsupported = errors.New("unsupported whatsapp template category for pricing")
 var ErrPriceMicrosNotPositive = errors.New("priceMicros must be greater than zero")
+var ErrCostMicrosNotPositive = errors.New("costMicros must be greater than zero")
 
 const (
 	WhatsAppServiceUtility        = "utility"

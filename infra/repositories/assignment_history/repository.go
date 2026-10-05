@@ -168,3 +168,19 @@ func (r *repository) CountRescuesSinceHandout(workspaceID, entryID, entryType st
 }
 
 const rescueChainScanLimit = 50
+
+func (r *repository) ListByActor(workspaceID, actorID string, from, to time.Time) ([]*ia.AssignmentHistory, error) {
+	var rows []schema.AssignmentHistory
+	err := r.db.
+		Where("workspace_id = ? AND assigned_actor_id = ? AND started_at >= ? AND started_at <= ?", workspaceID, actorID, from, to).
+		Order("started_at").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*ia.AssignmentHistory, 0, len(rows))
+	for i := range rows {
+		out = append(out, toDomain(&rows[i]))
+	}
+	return out, nil
+}

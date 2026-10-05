@@ -41,6 +41,7 @@ func metaCostRows() *sqlmock.Rows {
 		"workspace_id", "workspace_name", "providers",
 		"service_messages", "meta_confirmed", "meta_answered", "net_billable_sends", "ratio_sort",
 		"total_items", "total_service_messages", "total_meta_confirmed", "total_meta_answered", "total_net_billable_sends", "total_unattributed",
+		"meta_payer", "paid_micros", "template_cost_micros", "total_paid", "total_vozko_template_cost", "service_charges",
 	})
 }
 
@@ -72,7 +73,6 @@ func TestMetaServiceMessageCostBindsOnlyWhatVaries(t *testing.T) {
 			string(analytics_domain.ServiceMessageProviderMeta),
 			string(analytics_domain.ServiceMessageProviderMeta),
 			input.StartDate, input.EndDate,
-			"whatsapp_campaign",
 			input.StartDate, input.EndDate,
 			20, 0,
 		).
@@ -174,7 +174,7 @@ func TestTotalsComeFromTheWindowNotThePage(t *testing.T) {
 		{WorkspaceID: "b", ServiceMessages: 1, NetBillableSends: 100, TotalItems: 69, TotalServiceMsgs: 319134, TotalNetSends: 690608, TotalUnattrib: 7},
 	}
 
-	report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows)
+	report := buildReport(t, rows)
 
 	if report.Totals.ServiceMessages != 319134 || report.Totals.NetBillableSends != 690608 {
 		t.Errorf("totals = %d/%d, want the period totals, not the page's",
@@ -194,7 +194,7 @@ func TestTotalsComeFromTheWindowNotThePage(t *testing.T) {
 func TestNoBillableSendsProducesNoRatioRatherThanZero(t *testing.T) {
 	rows := []metaServiceMessageCostRow{{WorkspaceID: "a", ServiceMessages: 900, NetBillableSends: 0, TotalItems: 1}}
 
-	report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows)
+	report := buildReport(t, rows)
 
 	if report.Workspaces.Items[0].Ratio != nil {
 		t.Errorf("Ratio = %v, want nil when nothing was bought", *report.Workspaces.Items[0].Ratio)
@@ -207,7 +207,7 @@ func TestNoBillableSendsProducesNoRatioRatherThanZero(t *testing.T) {
 func TestRatioIsComputedFromTheCountedRows(t *testing.T) {
 	rows := []metaServiceMessageCostRow{{WorkspaceID: "a", ServiceMessages: 13288, NetBillableSends: 8414, TotalItems: 1, TotalServiceMsgs: 13288, TotalNetSends: 8414}}
 
-	report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows)
+	report := buildReport(t, rows)
 
 	got := report.Workspaces.Items[0].Ratio
 	if got == nil {
@@ -219,7 +219,7 @@ func TestRatioIsComputedFromTheCountedRows(t *testing.T) {
 }
 
 func TestEmptyResultReportsZeroTotals(t *testing.T) {
-	report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, nil)
+	report := buildReport(t, nil)
 
 	if report.Totals.ServiceMessages != 0 || report.Totals.WorkspacesCovered != 0 {
 		t.Error("an empty result must report zero, not leftover totals")
@@ -271,7 +271,7 @@ func TestConfirmedCountIsCarriedThrough(t *testing.T) {
 			TotalItems: 1, TotalServiceMsgs: 100, TotalMetaConfirm: 40, TotalNetSends: 50},
 	}
 
-	report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows)
+	report := buildReport(t, rows)
 
 	if report.Workspaces.Items[0].MetaConfirmed != 40 {
 		t.Errorf("row MetaConfirmed = %d, want 40", report.Workspaces.Items[0].MetaConfirmed)
@@ -306,7 +306,7 @@ func TestInferredFlagFollowsMetaCoverage(t *testing.T) {
 				TotalServiceMsgs: tc.serviceMsgs,
 				TotalMetaAnswer:  tc.metaAnswered,
 			}}
-			report := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows)
+			report := buildReport(t, rows)
 			if report.InferredOnly != tc.wantInferred {
 				t.Errorf("InferredOnly = %v, want %v", report.InferredOnly, tc.wantInferred)
 			}
@@ -317,5 +317,73 @@ func TestInferredFlagFollowsMetaCoverage(t *testing.T) {
 func TestAnsweredPredicateIsNotTheConfirmedPredicate(t *testing.T) {
 	if strings.Contains(metaConfirmedPredicate, "IS NOT NULL") {
 		t.Error("the confirmed predicate must test the verdict, not merely its presence")
+	}
+}
+
+func TestTheLedgerGivesWhatClientsPaidAndWhatTemplatesCost(t *testing.T) {
+	query, _ := metaServiceMessageCostQuery(metaCostInput())
+	for _, want := range []string{
+		"service_type IN ('whatsapp_campaign', 'whatsapp_conversation')",
+		"THEN amount",
+		"THEN cost_micros",
+		"LEFT JOIN workspace_configs cfg ON cfg.workspace_id = w.id",
+		"COALESCE(NULLIF(cfg.meta_payer, ''), 'vozko') AS meta_payer",
+		"FILTER (WHERE meta_payer <> 'client')",
+	} {
+		if !strings.Contains(query, want) {
+			t.Errorf("query lacks %q", want)
+		}
+	}
+}
+
+func TestPaymentsCostsAndPayerAreCarriedThrough(t *testing.T) {
+	db, mock, sqlDB := newMetaCostDB(t)
+	defer sqlDB.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`SET LOCAL jit = off`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`SET LOCAL statement_timeout`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`FROM exposure_rows`).WillReturnRows(metaCostRows().AddRow(
+		"ws-1", "Clínica", "meta", 200, 150, 180, 100, 2.0,
+		1, 200, 150, 180, 100, 0,
+		"client", 1_000_000, 600_000, 3_000_000, 1_000_000, `[{"w":"ws-1","p":"client","c":150}]`,
+	))
+	mock.ExpectCommit()
+
+	report, err := (&repository{db: db}).GetMetaServiceMessageCost(metaCostInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := report.Workspaces.Items[0]
+	if row.MetaPayer != "client" || row.PaidMicros != 1_000_000 || row.TemplateCostMicros != 600_000 {
+		t.Fatalf("row %+v", row)
+	}
+	totals := report.Totals
+	if totals.PaidMicros != 3_000_000 || totals.VozkoTemplateCostMicros != 1_000_000 {
+		t.Fatalf("totals %+v", totals)
+	}
+	if len(totals.ServiceCharges) != 1 || totals.ServiceCharges[0] != (analytics_domain.ServiceCharge{WorkspaceID: "ws-1", MetaPayer: "client", Charged: 150}) {
+		t.Fatalf("charges %+v", totals.ServiceCharges)
+	}
+}
+
+func buildReport(t *testing.T, rows []metaServiceMessageCostRow) *analytics_domain.MetaServiceMessageCostReport {
+	t.Helper()
+	for i := range rows {
+		if rows[i].ServiceCharges == "" {
+			rows[i].ServiceCharges = "[]"
+		}
+	}
+	report, err := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return report
+}
+
+func TestUnreadableServiceChargesAreAnErrorNotAnEmptyList(t *testing.T) {
+	rows := []metaServiceMessageCostRow{{WorkspaceID: "a", TotalItems: 1, ServiceCharges: "not json"}}
+	if _, err := buildMetaServiceMessageCost(metaCostInput(), shared.Pagination{Page: 1, PageSize: 20}, rows); err == nil {
+		t.Fatal("unreadable charges would hide service costs")
 	}
 }

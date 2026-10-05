@@ -12,6 +12,7 @@ type Context struct {
 	WorkspaceID string
 	Model       string
 	UserID      string
+	Timezone    string
 	Role        workspace.Role
 	SystemAdmin bool
 	Departments *wd.DepartmentFilter

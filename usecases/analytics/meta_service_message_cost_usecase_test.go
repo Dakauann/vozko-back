@@ -8,12 +8,15 @@ import (
 	analytics_domain "vozko/domain/analytics"
 	"vozko/domain/billing"
 	"vozko/domain/shared"
+	"vozko/domain/workspace/workspace_pricing"
 )
 
 type metaCostRepo struct {
 	captured *analytics_domain.MetaServiceMessageCostInput
 	result   *analytics_domain.MetaServiceMessageCostReport
 	err      error
+	numbers  []*analytics_domain.NumberMetaCost
+	unlinked []*analytics_domain.UnlinkedNumber
 }
 
 func (m *metaCostRepo) GetProfitReport(analytics_domain.ProfitReportInput) (*analytics_domain.ProfitReport, error) {
@@ -42,7 +45,7 @@ func (m *metaCostRepo) GetMetaServiceMessageCost(input analytics_domain.MetaServ
 
 func newMetaCostUseCase() (*metaCostRepo, analytics_domain.GetMetaServiceMessageCostUseCase) {
 	repo := &metaCostRepo{}
-	return repo, NewGetMetaServiceMessageCostUseCase(repo)
+	return repo, NewGetMetaServiceMessageCostUseCase(repo, &fakeCatalog{}, &fakePricing{})
 }
 
 func TestEmptyPeriodDefaultsToTheCurrentBillingMonth(t *testing.T) {
@@ -232,7 +235,7 @@ func TestRepositoryErrorPropagates(t *testing.T) {
 
 func TestNilReportWithNoErrorDoesNotPanic(t *testing.T) {
 	repo := &metaCostRepo{result: nil, err: nil}
-	uc := NewGetMetaServiceMessageCostUseCase(repo)
+	uc := NewGetMetaServiceMessageCostUseCase(repo, &fakeCatalog{}, &fakePricing{})
 	repo.result = nil
 
 	report, err := uc.Execute(analytics_domain.MetaServiceMessageCostInput{})
@@ -241,5 +244,100 @@ func TestNilReportWithNoErrorDoesNotPanic(t *testing.T) {
 	}
 	if report == nil {
 		t.Fatal("report = nil, want the empty report the repository returned")
+	}
+}
+
+func (m *metaCostRepo) MetaCostNumbers(analytics_domain.MetaServiceMessageCostInput) ([]*analytics_domain.NumberMetaCost, error) {
+	return m.numbers, nil
+}
+
+func (m *metaCostRepo) UnlinkedServiceMessages(analytics_domain.MetaServiceMessageCostInput) ([]*analytics_domain.UnlinkedNumber, error) {
+	return m.unlinked, nil
+}
+
+func (m *metaCostRepo) InvoiceAccounts(time.Time, time.Time) ([]analytics_domain.InvoiceAccount, error) {
+	return nil, nil
+}
+
+type fakeCatalog struct {
+	items []workspace_pricing.PricingItem
+	err   error
+}
+
+func (f *fakeCatalog) ListDefaultPricingItems() ([]workspace_pricing.PricingItem, error) {
+	return f.items, f.err
+}
+
+func TestTheReportIsConvertedWithTheCatalogExchangeRateAndCarriesItsDetails(t *testing.T) {
+	repo := &metaCostRepo{
+		result: &analytics_domain.MetaServiceMessageCostReport{Totals: analytics_domain.MetaServiceMessageCostTotals{ServiceMessages: 10, MetaConfirmed: 4, PaidMicros: 200_000, ServiceCharges: []analytics_domain.ServiceCharge{{WorkspaceID: "ws-1", MetaPayer: "vozko", Charged: 4}}}},
+		numbers:  []*analytics_domain.NumberMetaCost{{PhoneID: "p-1", Answered: 4, Charged: 4}},
+		unlinked: []*analytics_domain.UnlinkedNumber{{PhoneNumberID: "885", Messages: 2}},
+	}
+	catalog := &fakeCatalog{items: []workspace_pricing.PricingItem{
+		{Category: workspace_pricing.CategoryExchangeRate, Service: "usd_to_brl", Metric: "per_unit", PriceMicros: 5_000_000},
+	}}
+	pricing := &fakePricing{costs: map[string]int64{"ws-1": 5_000}}
+	report, err := NewGetMetaServiceMessageCostUseCase(repo, catalog, pricing).Execute(analytics_domain.MetaServiceMessageCostInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Rates != (analytics_domain.CostRates{USDToBRLMicros: 5_000_000}) {
+		t.Fatalf("rates %+v", report.Rates)
+	}
+	if report.Totals.PaidByClients.BRLMicros == nil || *report.Totals.PaidByClients.BRLMicros != 1_000_000 {
+		t.Fatalf("paid %+v", report.Totals.PaidByClients)
+	}
+	if c := report.Totals.ConfirmedServiceCost; c == nil || c.BRLMicros == nil || *c.BRLMicros != 100_000 {
+		t.Fatalf("service %+v", c)
+	}
+	if report.Numbers[0].State != analytics_domain.NumberCharging || report.Totals.UnlinkedServiceMessages != 2 {
+		t.Fatalf("details %+v %+v", report.Numbers[0], report.Totals)
+	}
+}
+
+func TestAnUnreadableCatalogIsAnErrorNotAZeroCost(t *testing.T) {
+	repo := &metaCostRepo{}
+	_, err := NewGetMetaServiceMessageCostUseCase(repo, &fakeCatalog{err: errors.New("db down")}, &fakePricing{}).Execute(analytics_domain.MetaServiceMessageCostInput{})
+	if err == nil {
+		t.Fatal("amounts must not be shown when the exchange rate could not be read")
+	}
+}
+
+type fakePricing struct {
+	costs map[string]int64
+	err   error
+	calls []string
+}
+
+func (f *fakePricing) ResolveForWorkspace(workspaceID string) ([]workspace_pricing.ResolvedPricingItem, error) {
+	f.calls = append(f.calls, workspaceID)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []workspace_pricing.ResolvedPricingItem{{Category: workspace_pricing.CategoryWhatsApp, Service: workspace_pricing.WhatsAppServiceServiceMessage, Metric: "per_message", CostMicros: f.costs[workspaceID]}}, nil
+}
+
+func TestServiceCostIsResolvedPerChargedWorkspaceLikeBilling(t *testing.T) {
+	repo := &metaCostRepo{result: &analytics_domain.MetaServiceMessageCostReport{Totals: analytics_domain.MetaServiceMessageCostTotals{
+		ServiceCharges: []analytics_domain.ServiceCharge{{WorkspaceID: "ws-1", MetaPayer: "vozko", Charged: 4}, {WorkspaceID: "ws-2", MetaPayer: "vozko", Charged: 2}},
+	}}}
+	pricing := &fakePricing{costs: map[string]int64{"ws-1": 5_000}}
+	report, err := NewGetMetaServiceMessageCostUseCase(repo, &fakeCatalog{}, pricing).Execute(analytics_domain.MetaServiceMessageCostInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pricing.calls) != 2 || report.Totals.ServiceCostMissing != 1 || report.Totals.ConfirmedServiceCost != nil {
+		t.Fatalf("calls %v totals %+v", pricing.calls, report.Totals)
+	}
+}
+
+func TestAnUnresolvablePriceIsAnErrorNotAZeroCost(t *testing.T) {
+	repo := &metaCostRepo{result: &analytics_domain.MetaServiceMessageCostReport{Totals: analytics_domain.MetaServiceMessageCostTotals{
+		ServiceCharges: []analytics_domain.ServiceCharge{{WorkspaceID: "ws-1", Charged: 4}},
+	}}}
+	_, err := NewGetMetaServiceMessageCostUseCase(repo, &fakeCatalog{}, &fakePricing{err: errors.New("db down")}).Execute(analytics_domain.MetaServiceMessageCostInput{})
+	if err == nil {
+		t.Fatal("a price that could not be read must not become zero")
 	}
 }

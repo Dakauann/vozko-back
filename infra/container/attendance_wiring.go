@@ -108,3 +108,13 @@ func (c *Container) wireOutcomeCapture() {
 		service.SetEntryDepartmentResolver(entryDepartmentResolver{lookup: lookup})
 	}
 }
+
+func (c *Container) memberActivityUseCase() *attendance_usecase.MemberActivityUseCase {
+	return attendance_usecase.NewMemberActivityUseCase(attendance_usecase.MemberActivityDeps{
+		Presence:    c.repositories.agentPresence,
+		History:     c.repositories.assignmentHistory,
+		Departments: c.repositories.workspaceDepartment,
+		Team:        c.useCases.getOverview,
+		Schedules:   c.attendanceScheduleResolver(),
+	})
+}

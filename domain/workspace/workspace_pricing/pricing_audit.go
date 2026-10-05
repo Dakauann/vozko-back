@@ -10,6 +10,8 @@ type PricingAuditEntry struct {
 	Metric         string          `json:"metric"`
 	OldPriceMicros int64           `json:"oldPriceMicros"`
 	NewPriceMicros int64           `json:"newPriceMicros"`
+	OldCostMicros  int64           `json:"oldCostMicros"`
+	NewCostMicros  int64           `json:"newCostMicros"`
 	Currency       string          `json:"currency"`
 	ChangedBy      string          `json:"changedBy"`
 	ChangedAt      time.Time       `json:"changedAt"`

@@ -476,6 +476,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getDefaultPricingItems,
 			c.useCases.getResolvedPricing,
 			c.useCases.updatePricingItem,
+			c.useCases.updatePricingItemCost,
 			c.useCases.getPricingAuditLog,
 			c.useCases.getExchangeRate,
 			c.useCases.updateExchangeRate,
@@ -491,6 +492,7 @@ func (c *Container) initHandlers() {
 			h.SetOverview(c.useCases.getOverview)
 			h.SetQueueRepo(c.repositories.queueEvent)
 			h.SetPresenceRepo(c.repositories.agentPresence)
+			h.SetMemberActivity(c.memberActivityUseCase())
 			h.SetTargets(c.attendanceTargetsService(), c.services.conversationAuthImpl)
 			return h
 		}(),
@@ -544,6 +546,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getAdminOverview,
 			c.useCases.getPlanContractions,
 			c.useCases.getMetaServiceMessageCost,
+			c.useCases.getMetaInvoiceCheck,
 		),
 		issue: issuehttp.NewIssueHandler(
 			c.useCases.createIssue,

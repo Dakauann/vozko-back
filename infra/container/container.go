@@ -18,6 +18,8 @@ import (
 	conversation_usecase "vozko/usecases/conversation"
 	livedecisions_usecase "vozko/usecases/livedecisions"
 	"vozko/usecases/whatsapp/servicemessage"
+
+	conversation_repository "vozko/infra/repositories/conversation"
 	workspace_plan_usecase "vozko/usecases/workspace_plan"
 )
 
@@ -56,6 +58,7 @@ func New() *Container {
 		Pricer:         whatsappPricer,
 		Ledger:         c.repositories.balance,
 		BalanceChecker: c.services.cachedBalanceChecker,
+		Unattributed:   conversation_repository.NewUnattributedServiceMessageRepository(c.db),
 	})
 	if err != nil {
 		log.Fatalf("Failed to build the WhatsApp service message billing: %v", err)

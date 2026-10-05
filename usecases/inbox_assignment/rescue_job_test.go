@@ -504,3 +504,11 @@ func TestRescue_MemoIsScopedPerWorkspaceAndDepartment(t *testing.T) {
 	assert.Equal(t, 1, f.cfg.cfgReads, "both entries share one workspace")
 	assert.Equal(t, 2, f.svcLastSeen.calls, "two departments are two different rings")
 }
+
+func (*stubRescueHistory) ListByActor(string, string, time.Time, time.Time) ([]*ia.AssignmentHistory, error) {
+	return nil, nil
+}
+
+func (*recordingHistory) ListByActor(string, string, time.Time, time.Time) ([]*ia.AssignmentHistory, error) {
+	return nil, nil
+}

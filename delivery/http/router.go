@@ -1128,7 +1128,7 @@ func (r *router) setupWorkspaceConfigRoutes(protected *mux.Router) {
 
 func (r *router) setupAttendanceRoutes(protected *mux.Router) {
 	campaignreporthttp.RegisterRoutes(protected, r.campaignReportHandler, r.ac)
-	attendancehttp.RegisterProtectedRoutes(protected, r.attendanceHandler, r.ac)
+	attendancehttp.RegisterProtectedRoutes(protected, r.attendanceHandler, r.ac, r.workspaceMiddleware.CheckMembership)
 }
 
 func (r *router) GetHandler() http.Handler {

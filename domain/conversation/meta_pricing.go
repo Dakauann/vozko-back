@@ -1,6 +1,10 @@
 package conversation
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+	"time"
+)
 
 const MetaPricingCategoryService = "service"
 
@@ -10,6 +14,8 @@ type MetaPricing struct {
 	Category string
 	Billable bool
 	Model    string
+	Type     string
+	Raw      json.RawMessage
 }
 
 func (p MetaPricing) NormalizedCategory() string {
@@ -52,4 +58,30 @@ type ServiceMessageBilling interface {
 	ShouldCharge(receipt DeliveryReceipt) bool
 
 	ChargeDelivered(workspaceID string, receipt DeliveryReceipt, providerMessageID string) error
+
+	RecordUnattributed(providerMessageID, phoneNumberID string, receipt DeliveryReceipt) error
+}
+
+type UnattributedServiceMessage struct {
+	WhatsAppMessageID string
+	PhoneNumberID     string
+	Status            DeliveryStatus
+	Category          string
+	PricingType       string
+	SeenAt            time.Time
+}
+
+func NewUnattributedServiceMessage(providerMessageID, phoneNumberID string, receipt DeliveryReceipt, at time.Time) UnattributedServiceMessage {
+	return UnattributedServiceMessage{
+		WhatsAppMessageID: strings.TrimSpace(providerMessageID),
+		PhoneNumberID:     strings.TrimSpace(phoneNumberID),
+		Status:            receipt.Status,
+		Category:          receipt.Pricing.NormalizedCategory(),
+		PricingType:       strings.ToLower(strings.TrimSpace(receipt.Pricing.Type)),
+		SeenAt:            at,
+	}
+}
+
+type UnattributedServiceMessageRepository interface {
+	Record(m UnattributedServiceMessage) error
 }

@@ -20,6 +20,7 @@ type scriptAI struct {
 	usage  *ai.Usage
 	idx    int
 	inputs []ai.GenerateInput
+	models []ai.ModelInfo
 }
 
 func (s *scriptAI) Generate(ctx context.Context, in ai.GenerateInput) (*ai.GenerateOutput, error) {
@@ -47,8 +48,10 @@ func (s *scriptAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-c
 	}()
 	return ch, nil
 }
-func (s *scriptAI) GetAvaibleModels(ctx context.Context) ([]string, error)           { return nil, nil }
-func (s *scriptAI) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, error) { return nil, nil }
+func (s *scriptAI) GetAvaibleModels(ctx context.Context) ([]string, error) { return nil, nil }
+func (s *scriptAI) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, error) {
+	return s.models, nil
+}
 
 type fakeAccess struct {
 	err     error
@@ -133,7 +136,7 @@ func TestDriver_ReadExecutesAndScopes(t *testing.T) {
 		turns: [][]ai.ToolCall{{call("read_x", map[string]interface{}{"q": "hi"})}, {}},
 		texts: []string{"", "pronto"},
 	}}
-	out := e.Run(context.Background(), (&capture{}).emit, drv, DefaultConfig(ownerCtx, 0), &agentloop.Session{}, "leia")
+	out := e.Run(context.Background(), (&capture{}).emit, drv, DefaultConfig(ownerCtx, ai.ModelInfo{}, 0), &agentloop.Session{}, "leia")
 	if out.Kind != agentloop.OutcomeIdle {
 		t.Fatalf("expected idle after a read + reply, got %+v", out)
 	}
@@ -150,7 +153,7 @@ func TestDriver_MutationPausesForApproval(t *testing.T) {
 	drv := driverWith(&fakeAccess{}, wt)
 	e := agentloop.Engine{AI: &scriptAI{turns: [][]ai.ToolCall{{call("write_x", map[string]interface{}{"a": 1})}}}}
 	cp := &capture{}
-	out := e.Run(context.Background(), cp.emit, drv, DefaultConfig(ownerCtx, 0), &agentloop.Session{}, "crie")
+	out := e.Run(context.Background(), cp.emit, drv, DefaultConfig(ownerCtx, ai.ModelInfo{}, 0), &agentloop.Session{}, "crie")
 	if out.Kind != agentloop.OutcomePaused {
 		t.Fatalf("expected paused for approval, got %+v", out)
 	}
@@ -252,10 +255,21 @@ func TestDriver_MintID(t *testing.T) {
 	}
 }
 
-func TestDefaultConfig(t *testing.T) {
-	c := DefaultConfig(ownerCtx, 1234)
-	if c.WorkspaceID != "ws1" || c.SessionTokenBudget != 1234 || c.FinishToolName != "finish" || c.MaxIterations != 12 {
+func TestAKnownModelIsLimitedByItsOwnWindowAndByMoney(t *testing.T) {
+	model := ai.ModelInfo{ID: "m", ContextLength: 400_000, PromptPrice: 1.25, CompletionPrice: 10}
+	c := DefaultConfig(ownerCtx, model, 2_000_000)
+	if c.WorkspaceID != "ws1" || c.FinishToolName != "finish" || c.MaxIterations != answerMaxIterations {
 		t.Fatalf("unexpected config: %+v", c)
+	}
+	if c.ModelLimits != model || c.CostCeilingMicros != 2_000_000 || c.SessionTokenBudget != 0 || c.GraceInstruction == "" {
+		t.Fatalf("a known model must be bounded by its window and the cost ceiling: %+v", c)
+	}
+}
+
+func TestAnUnknownModelKeepsTheTokenBudget(t *testing.T) {
+	c := DefaultConfig(ownerCtx, ai.ModelInfo{ID: "m"}, 2_000_000)
+	if c.SessionTokenBudget != AnswerTokenBudget || c.CostCeilingMicros != 0 || c.GraceInstruction == "" {
+		t.Fatalf("without a cataloged window and price the token budget must stay: %+v", c)
 	}
 }
 

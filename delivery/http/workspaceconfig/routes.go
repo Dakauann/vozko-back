@@ -12,6 +12,6 @@ func RegisterProtectedRoutes(protected *mux.Router, h *WorkspaceConfigHandler) {
 }
 
 func RegisterAdminRoutes(admin *mux.Router, h *WorkspaceConfigHandler) {
-	admin.HandleFunc("/admin/workspaces/{workspaceId}/config", h.Get).Methods(http.MethodGet)
+	admin.HandleFunc("/admin/workspaces/{workspaceId}/config", h.GetForAdmin).Methods(http.MethodGet)
 	admin.HandleFunc("/admin/workspaces/{workspaceId}/config", h.UpdateSensitive).Methods(http.MethodPut)
 }

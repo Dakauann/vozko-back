@@ -11,6 +11,8 @@ const (
 	StateWrapUp  State = "wrap_up"
 )
 
+var ConnectedStates = []State{StateOnline, StateOnCall, StateWrapUp}
+
 func (s State) Valid() bool {
 	switch s {
 	case StateOnline, StateOffline, StateOnCall, StateWrapUp:
@@ -34,6 +36,7 @@ type Repository interface {
 	Transition(workspaceID, userID string, state State, source string, at time.Time) error
 	Occupancy(workspaceID string, from, to *time.Time) ([]OccupancyRow, error)
 	LastSeen(workspaceID string, userIDs []string) (map[string]time.Time, error)
+	Spans(workspaceID, userID string, from, to time.Time) ([]Interval, error)
 }
 
 type OccupancyRow struct {

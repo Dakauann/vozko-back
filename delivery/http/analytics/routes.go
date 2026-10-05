@@ -13,4 +13,5 @@ func RegisterAdminRoutes(admin *mux.Router, h *AnalyticsHandler) {
 	analyticsRoutes.HandleFunc("/profit/calls", h.GetCallAnalytics).Methods(http.MethodGet)
 	analyticsRoutes.HandleFunc("/contractions", h.GetPlanContractions).Methods(http.MethodGet)
 	analyticsRoutes.HandleFunc("/meta-service-message-cost", h.GetMetaServiceMessageCost).Methods(http.MethodGet)
+	analyticsRoutes.HandleFunc("/meta-invoice-check", h.GetMetaInvoiceCheck).Methods(http.MethodGet)
 }

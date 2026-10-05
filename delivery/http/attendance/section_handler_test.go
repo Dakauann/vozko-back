@@ -141,7 +141,7 @@ func TestOnlyTheSectionRoutesServeTheOverview(t *testing.T) {
 	allow := func(_ workspace_domain.Resource, _ workspace_domain.Action, next http.HandlerFunc) http.HandlerFunc {
 		return next
 	}
-	RegisterProtectedRoutes(router, &AttendanceHandler{sections: &stubSections{}}, allow)
+	RegisterProtectedRoutes(router, &AttendanceHandler{sections: &stubSections{}}, allow, func(next http.HandlerFunc) http.HandlerFunc { return next })
 
 	for path, want := range map[string]int{
 		"/attendance/overview":         http.StatusNotFound,

@@ -50,7 +50,7 @@ type adCreativeArgs struct {
 	PostPlatform string       `json:"post_platform" enum:"facebook,instagram" desc:"de onde vem a publicação de EXISTING_POST: facebook (padrão) ou instagram"`
 	Greeting     string       `json:"greeting" desc:"mensagem que já vem escrita para o cliente enviar (WhatsApp, Messenger, Instagram)"`
 	IceBreakers  []string     `json:"ice_breakers" desc:"até 3 perguntas prontas para o cliente tocar (WhatsApp, Messenger, Instagram)"`
-	Enhancements *bool        `json:"enhancements" desc:"melhorias de criativo Advantage+: true deixa a Meta cortar, expandir e ajustar a imagem e trocar a ordem dos textos; false mantém o anúncio exatamente como foi montado (use false em criativos com texto e telas, como os de compose_creative); vazio mantém o atual"`
+	Enhancements *bool        `json:"enhancements" desc:"melhorias de criativo Advantage+: true deixa a Meta cortar, expandir e ajustar a imagem e trocar a ordem dos textos; false mantém o anúncio exatamente como foi montado (use false em criativos com texto ou telas na imagem); vazio mantém o atual"`
 }
 
 func adDraftDefinition(name, description string, args any) tools.Definition {
@@ -198,12 +198,12 @@ func knownMedia(c, kept advertising.CreativeDraft) error {
 	for _, ref := range c.MediaRefs() {
 		if _, onMeta := ref.MetaID(); onMeta {
 			if !slices.Contains(hosted, ref) {
-				return fmt.Errorf("%w: media_id %q não é do anúncio atual; use o media_id exato de generate_image, compose_creative ou de um anexo", errInvalidArgs, ref.MediaID)
+				return fmt.Errorf("%w: media_id %q não é do anúncio atual; use o media_id exato de generate_image ou de um anexo", errInvalidArgs, ref.MediaID)
 			}
 			continue
 		}
 		if _, err := uuid.Parse(ref.MediaID); err != nil {
-			return fmt.Errorf("%w: media_id %q não existe; use o media_id exato de generate_image, compose_creative ou de um anexo", errInvalidArgs, ref.MediaID)
+			return fmt.Errorf("%w: media_id %q não existe; use o media_id exato de generate_image ou de um anexo", errInvalidArgs, ref.MediaID)
 		}
 	}
 	return nil

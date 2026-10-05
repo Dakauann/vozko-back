@@ -1,5 +1,7 @@
 package conversation
 
+import "encoding/json"
+
 type WhatsAppWebhookPayload struct {
 	Object string          `json:"object"`
 	Entry  []WhatsAppEntry `json:"entry"`
@@ -210,9 +212,26 @@ type WhatsAppOrigin struct {
 }
 
 type WhatsAppPricing struct {
-	Billable     bool   `json:"billable"`
-	PricingModel string `json:"pricing_model"`
-	Category     string `json:"category"`
+	Billable     bool            `json:"billable"`
+	PricingModel string          `json:"pricing_model"`
+	Category     string          `json:"category"`
+	Type         string          `json:"type"`
+	Raw          json.RawMessage `json:"-"`
+}
+
+func (p *WhatsAppPricing) UnmarshalJSON(data []byte) error {
+	type fields WhatsAppPricing
+	var decoded fields
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = WhatsAppPricing(decoded)
+	p.Raw = append(json.RawMessage(nil), data...)
+	return nil
+}
+
+func (p WhatsAppPricing) MetaPricing() MetaPricing {
+	return MetaPricing{Category: p.Category, Billable: p.Billable, Model: p.PricingModel, Type: p.Type, Raw: p.Raw}
 }
 
 type WhatsAppError struct {

@@ -3,6 +3,7 @@ package servicemessage
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"vozko/domain/balance"
 	"vozko/domain/conversation"
@@ -311,7 +312,7 @@ func (f *fakeChecker) InvalidateDebounced(string) {}
 
 func mustBilling(t *testing.T, pricer Pricer, ledger Ledger, checker balance.CachedBalanceChecker) Billing {
 	t.Helper()
-	b, err := NewBilling(Deps{Pricer: pricer, Ledger: ledger, BalanceChecker: checker})
+	b, err := NewBilling(Deps{Pricer: pricer, Ledger: ledger, BalanceChecker: checker, Unattributed: &fakeUnattributed{}})
 	if err != nil {
 		t.Fatalf("NewBilling() = %v", err)
 	}
@@ -319,7 +320,7 @@ func mustBilling(t *testing.T, pricer Pricer, ledger Ledger, checker balance.Cac
 }
 
 func TestNewBillingRefusesToBuildWithoutWhatItNeeds(t *testing.T) {
-	full := Deps{Pricer: &fakePricer{}, Ledger: newFakeLedger(), BalanceChecker: &fakeChecker{}}
+	full := Deps{Pricer: &fakePricer{}, Ledger: newFakeLedger(), BalanceChecker: &fakeChecker{}, Unattributed: &fakeUnattributed{}}
 	if _, err := NewBilling(full); err != nil {
 		t.Fatalf("a fully wired billing failed to build: %v", err)
 	}
@@ -328,6 +329,7 @@ func TestNewBillingRefusesToBuildWithoutWhatItNeeds(t *testing.T) {
 		"no pricer":          func(d *Deps) { d.Pricer = nil },
 		"no ledger":          func(d *Deps) { d.Ledger = nil },
 		"no balance checker": func(d *Deps) { d.BalanceChecker = nil },
+		"no unattributed log": func(d *Deps) { d.Unattributed = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			deps := full
@@ -372,5 +374,39 @@ func TestShouldChargeAgreesWithChargeDelivered(t *testing.T) {
 				t.Errorf("ChargeDelivered charged = %v but ShouldCharge said %v", charged, tc.want)
 			}
 		})
+	}
+}
+
+type fakeUnattributed struct {
+	recorded []conversation.UnattributedServiceMessage
+	err      error
+}
+
+func (f *fakeUnattributed) Record(m conversation.UnattributedServiceMessage) error {
+	f.recorded = append(f.recorded, m)
+	return f.err
+}
+
+func TestABillableServiceMessageWithoutAWorkspaceIsRecordedNotDropped(t *testing.T) {
+	log := &fakeUnattributed{}
+	at := time.Date(2026, 10, 5, 3, 0, 0, 0, time.UTC)
+	b, err := NewBilling(Deps{Pricer: &fakePricer{}, Ledger: newFakeLedger(), BalanceChecker: &fakeChecker{}, Unattributed: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.now = func() time.Time { return at }
+	if err := b.RecordUnattributed("wamid.9", "885813321280568", billedReceipt()); err != nil {
+		t.Fatal(err)
+	}
+	want := conversation.NewUnattributedServiceMessage("wamid.9", "885813321280568", billedReceipt(), at)
+	if len(log.recorded) != 1 || log.recorded[0] != want {
+		t.Fatalf("recorded %+v", log.recorded)
+	}
+}
+
+func TestAFailedUnattributedRecordIsReported(t *testing.T) {
+	b, _ := NewBilling(Deps{Pricer: &fakePricer{}, Ledger: newFakeLedger(), BalanceChecker: &fakeChecker{}, Unattributed: &fakeUnattributed{err: errors.New("db down")}})
+	if err := b.RecordUnattributed("wamid.9", "", billedReceipt()); err == nil {
+		t.Fatal("a record that could not be saved must not look saved")
 	}
 }

@@ -36,6 +36,8 @@ type ConversationMessage struct {
 	MetaPricingBillable    *bool  `gorm:"column:meta_pricing_billable"`
 	MetaPricingModel       string `gorm:"column:meta_pricing_model;type:varchar(32);default:''"`
 	MetaConversationOrigin string `gorm:"column:meta_conversation_origin;type:varchar(32);default:''"`
+	MetaPricingType        string `gorm:"column:meta_pricing_type;type:varchar(32);default:''"`
+	MetaPricing            []byte `gorm:"column:meta_pricing;type:jsonb"`
 
 	Metadata  []byte         `gorm:"type:jsonb"`
 	CreatedAt time.Time      `gorm:"autoCreateTime;index:idx_cm_entry_composite,priority:3;index:idx_cm_type_entry_created,priority:3;index:idx_cm_entry_del_created,priority:4"`

@@ -39,6 +39,21 @@ func (f *DepartmentFilter) ReadScope(requested string) (string, error) {
 	return "", ErrDepartmentRequired
 }
 
+func (f *DepartmentFilter) AllowsMember(memberDepartmentIDs []string) bool {
+	if f == nil || f.BlockedByMissingDepartment() {
+		return false
+	}
+	if !f.ShouldFilter() {
+		return true
+	}
+	for _, id := range memberDepartmentIDs {
+		if f.isOwn(id) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *DepartmentFilter) SeesWholeWorkspace() bool {
 	return f != nil && !f.ShouldFilter()
 }

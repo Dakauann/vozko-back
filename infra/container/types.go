@@ -768,6 +768,7 @@ type useCases struct {
 	getDefaultPricingItems             workspace_pricing_domain.GetDefaultPricingItemsUseCase
 	getResolvedPricing                 workspace_pricing_domain.GetResolvedPricingUseCase
 	updatePricingItem                  workspace_pricing_domain.UpdatePricingItemUseCase
+	updatePricingItemCost              workspace_pricing_domain.UpdatePricingItemCostUseCase
 	getPricingAuditLog                 workspace_pricing_domain.GetPricingAuditLogUseCase
 	getExchangeRate                    workspace_pricing_domain.GetExchangeRateUseCase
 	updateExchangeRate                 workspace_pricing_domain.UpdateExchangeRateUseCase
@@ -884,6 +885,7 @@ type useCases struct {
 	getAdminOverview          analytics_domain.GetAdminOverviewUseCase
 	getPlanContractions       analytics_domain.GetPlanContractionsUseCase
 	getMetaServiceMessageCost analytics_domain.GetMetaServiceMessageCostUseCase
+	getMetaInvoiceCheck       analytics_domain.GetMetaInvoiceCheckUseCase
 
 	createIssue       issues_domain.CreateIssueUseCase
 	listIssues        issues_domain.ListIssuesUseCase

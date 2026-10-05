@@ -102,3 +102,28 @@ func TestOwnerInputCannotCarryAnAllowance(t *testing.T) {
 	require.NotNil(t, admin.IncludedUnofficialWhatsAppInstances,
 		"the admin input must be the one that carries the grant")
 }
+
+func strPtr(v string) *string { return &v }
+
+func TestPlatformAdminSetsWhoPaysMeta(t *testing.T) {
+	repo := &memWscRepo{}
+	uc := NewUpdateWorkspaceConfigUseCase(repo)
+
+	cfg, err := uc.Execute(context.Background(), "ws-1", "user-1", string(user.RoleAdmin),
+		wsc.UpdateWorkspaceConfigInput{MetaPayer: strPtr("client")})
+
+	require.NoError(t, err)
+	require.Equal(t, wsc.MetaPayerClient, cfg.MetaPayer)
+	require.Equal(t, wsc.MetaPayerClient, repo.cfg.MetaPayer)
+}
+
+func TestAnUnknownMetaPayerChangesNothing(t *testing.T) {
+	repo := &memWscRepo{}
+	uc := NewUpdateWorkspaceConfigUseCase(repo)
+
+	_, err := uc.Execute(context.Background(), "ws-1", "user-1", string(user.RoleAdmin),
+		wsc.UpdateWorkspaceConfigInput{MetaPayer: strPtr("ninguem"), IncludedUnofficialWhatsAppInstances: intPtr(3)})
+
+	require.ErrorIs(t, err, wsc.ErrInvalidMetaPayer)
+	require.Nil(t, repo.cfg, "a refused request must not write anything")
+}

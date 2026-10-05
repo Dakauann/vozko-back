@@ -4751,6 +4751,163 @@ const docTemplate = `{
                 }
             }
         },
+        "/attendance/members/me/activity": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A mesma atividade de membro, sempre do próprio usuário. Qualquer membro do workspace pode ver a sua.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Atendimento"
+                ],
+                "summary": "Minha atividade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Primeiro dia (YYYY-MM-DD)",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Último dia (YYYY-MM-DD)",
+                        "name": "date_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fuso IANA do navegador",
+                        "name": "timezone",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/attendance_usecase.MemberActivityReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/attendance/members/{id}/activity": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mostra quando um membro esteve conectado ao painel (sessões por dia no fuso local, tempo conectado, em ligação, horário habitual de início, sinais de entrada tarde, dia sem presença e possível aba esquecida aberta), um mapa de calor por dia da semana e hora, as conversas recebidas por gatilho, as recebidas estando offline e os números de atendimento do período. Exige acesso a Atendimento e que o membro seja de um departamento do usuário (donos e administradores veem todos). O fuso é o do horário de atendimento do workspace; sem ele, o enviado em timezone; sem os dois, UTC.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Atendimento"
+                ],
+                "summary": "Atividade de um membro",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do usuário membro",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Primeiro dia (YYYY-MM-DD); padrão: 6 dias antes do último",
+                        "name": "date_from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Último dia (YYYY-MM-DD); padrão: hoje",
+                        "name": "date_to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fuso IANA do navegador, ex.: America/Sao_Paulo",
+                        "name": "timezone",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/attendance_usecase.MemberActivityReport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/attendance/metrics": {
             "get": {
                 "security": [
@@ -24216,26 +24373,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG"
+                "CATALOG",
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT"
             ],
             "x-enum-varnames": [
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog"
+                "DestinationCatalog",
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect"
             ]
         },
         "advertising.ExportLabels": {
@@ -24636,7 +24793,6 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
-                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -24649,10 +24805,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS"
+                "APP_INSTALLS",
+                "CONVERSATIONS"
             ],
             "x-enum-varnames": [
-                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -24665,7 +24821,8 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls"
+                "GoalAppInstalls",
+                "GoalConversations"
             ]
         },
         "advertising.Pixel": {
@@ -27342,6 +27499,52 @@ const docTemplate = `{
                 }
             }
         },
+        "attendance.ActivityDay": {
+            "type": "object",
+            "properties": {
+                "connected_ms": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "flags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "on_call_ms": {
+                    "type": "integer"
+                },
+                "sessions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.ActivitySession"
+                    }
+                },
+                "weekday": {
+                    "type": "integer"
+                }
+            }
+        },
+        "attendance.ActivitySession": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "string"
+                },
+                "on_call_ms": {
+                    "type": "integer"
+                },
+                "open": {
+                    "type": "boolean"
+                },
+                "start": {
+                    "type": "string"
+                }
+            }
+        },
         "attendance.AttendantStats": {
             "type": "object",
             "properties": {
@@ -27421,6 +27624,62 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "hour": {
+                    "type": "integer"
+                }
+            }
+        },
+        "attendance.MemberRow": {
+            "type": "object",
+            "properties": {
+                "actor_id": {
+                    "type": "string"
+                },
+                "actor_kind": {
+                    "type": "string"
+                },
+                "avg_messages": {
+                    "type": "number"
+                },
+                "avg_response_mins": {
+                    "type": "number"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "finished_ai": {
+                    "type": "integer"
+                },
+                "finished_human": {
+                    "type": "integer"
+                },
+                "finished_system": {
+                    "type": "integer"
+                },
+                "inbound_messages": {
+                    "type": "integer"
+                },
+                "open": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "presence": {
+                    "type": "string"
+                },
+                "rating": {
+                    "type": "number"
+                },
+                "resolution_pct": {
+                    "type": "number"
+                },
+                "resolved": {
+                    "type": "integer"
+                },
+                "total_messages": {
                     "type": "integer"
                 }
             }
@@ -28332,6 +28591,50 @@ const docTemplate = `{
                 },
                 "workspaceId": {
                     "type": "string"
+                }
+            }
+        },
+        "attendance_usecase.MemberActivityReport": {
+            "type": "object",
+            "properties": {
+                "connected_ms": {
+                    "type": "integer"
+                },
+                "days": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/attendance.ActivityDay"
+                    }
+                },
+                "heatmap_minutes": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "on_call_ms": {
+                    "type": "integer"
+                },
+                "received": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "received_while_offline": {
+                    "type": "integer"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "usual_start": {
+                    "type": "string"
+                },
+                "work": {
+                    "$ref": "#/definitions/attendance.MemberRow"
                 }
             }
         },

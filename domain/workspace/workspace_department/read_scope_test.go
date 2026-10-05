@@ -112,3 +112,26 @@ func TestSeesWholeWorkspace(t *testing.T) {
 		})
 	}
 }
+
+func TestAViewerSeesAMemberOnlyThroughASharedDepartment(t *testing.T) {
+	restricted := &DepartmentFilter{DepartmentIDs: []string{"vendas"}, WorkspaceHasDepartments: true}
+	cases := []struct {
+		name   string
+		filter *DepartmentFilter
+		member []string
+		want   bool
+	}{
+		{"shares a department", restricted, []string{"suporte", "vendas"}, true},
+		{"different department", restricted, []string{"suporte"}, false},
+		{"member without department", restricted, nil, false},
+		{"owner or admin", &DepartmentFilter{IsOwnerOrAdmin: true, WorkspaceHasDepartments: true}, []string{"suporte"}, true},
+		{"workspace without departments", &DepartmentFilter{}, nil, true},
+		{"viewer blocked without department", &DepartmentFilter{WorkspaceHasDepartments: true}, []string{"vendas"}, false},
+		{"no filter", nil, []string{"vendas"}, false},
+	}
+	for _, tc := range cases {
+		if got := tc.filter.AllowsMember(tc.member); got != tc.want {
+			t.Errorf("%s: got %v", tc.name, got)
+		}
+	}
+}

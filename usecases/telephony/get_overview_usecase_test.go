@@ -102,3 +102,7 @@ func TestDefaultDefinitions(t *testing.T) {
 }
 
 func (s *stubPresence) LastSeen(string, []string) (map[string]time.Time, error) { return nil, nil }
+
+func (*stubPresence) Spans(string, string, time.Time, time.Time) ([]agent_presence.Interval, error) {
+	return nil, nil
+}

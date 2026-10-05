@@ -75,6 +75,11 @@ type Config struct {
 	MaxHistoryMsgs     int
 	FinishToolName     string
 	LogPrefix          string
+	ModelLimits        ai.ModelInfo
+	CompactAt          float64
+	KeepRecent         int
+	CostCeilingMicros  int64
+	GraceInstruction   string
 }
 
 func (c Config) withDefaults() Config {
@@ -105,13 +110,35 @@ func (c Config) withDefaults() Config {
 	if c.FinishToolName == "" {
 		c.FinishToolName = "finish"
 	}
+	if c.CompactAt <= 0 || c.CompactAt >= 1 {
+		c.CompactAt = 0.5
+	}
+	if c.KeepRecent <= 0 {
+		c.KeepRecent = 8
+	}
 	return c
+}
+
+func (c Config) costOf(u ai.Usage) int64 {
+	return c.ModelLimits.CostMicros(u)
+}
+
+func (c Config) budgetSpent(sess *Session) bool {
+	tokens := c.SessionTokenBudget > 0 && sess.TokensUsed >= c.SessionTokenBudget
+	money := c.CostCeilingMicros > 0 && sess.CostMicros >= c.CostCeilingMicros
+	return tokens || money
+}
+
+func (c Config) contextFull(promptTokens int) bool {
+	window := c.ModelLimits.ContextLength
+	return window > 0 && float64(promptTokens) >= c.CompactAt*float64(window)
 }
 
 type Session struct {
 	History      []ai.Message
 	PromptImages []string
 	TokensUsed   int
+	CostMicros   int64
 }
 
 type OutcomeKind int
@@ -153,6 +180,8 @@ const (
 	reasonCancelled       = "cancelado"
 	reasonHalted          = "interrompido antes da próxima chamada ao modelo"
 	reasonTimeout         = "tempo limite da sessão atingido, o modelo demorou demais para responder (tente novamente ou troque para um modelo mais rápido)"
+	clearedToolResult     = "[resultado antigo removido para liberar espaço; consulte de novo se precisar]"
+	clearableResultChars  = 200
 )
 
 func sessionEndReason(err error) string {
@@ -191,6 +220,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	truncStreak := 0
 	prevTurnSig := ""
 	repeatedTurns := 0
+	lastPromptTokens := 0
 
 	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: "PEDIDO DO USUÁRIO:\n" + prompt, Images: sess.PromptImages})
 	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
@@ -199,8 +229,8 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		if ctx.Err() != nil {
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: sessionEndReason(ctx.Err())}
 		}
-		if cfg.SessionTokenBudget > 0 && sess.TokensUsed >= cfg.SessionTokenBudget {
-			return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonTokenBudget, Halt: ErrSessionBudget}
+		if cfg.budgetSpent(sess) {
+			return e.graceAnswer(ctx, emit, drv, cfg, sess, Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonTokenBudget, Halt: ErrSessionBudget})
 		}
 		if guard, guarded := drv.(Guard); guarded {
 			if err := guard.Admit(ctx); err != nil {
@@ -209,6 +239,9 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		}
 
 		emit(EventIteration, iterationPayload{N: iter, Max: cfg.MaxIterations, TokensUsed: sess.TokensUsed, TokenBudget: cfg.SessionTokenBudget})
+		if cfg.contextFull(lastPromptTokens) {
+			sess.History = clearOldToolResults(sess.History, cfg.KeepRecent)
+		}
 
 		msgs := append(append([]ai.Message(nil), sess.History...),
 			ai.Message{Role: ai.RoleUser, Content: drv.Reground(iter, cfg.MaxIterations, noMutationStreak)})
@@ -231,6 +264,8 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: providerErrPrefix + err.Error()}
 		}
 		sess.TokensUsed += out.Usage.TotalTokens
+		sess.CostMicros += cfg.costOf(out.Usage)
+		lastPromptTokens = out.Usage.PromptTokens
 
 		calls := make([]ai.ToolCall, len(out.ToolCalls))
 		for i, tc := range out.ToolCalls {
@@ -367,7 +402,48 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		prevTurnSig = turnSig
 	}
 
-	return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonMaxIterations}
+	return e.graceAnswer(ctx, emit, drv, cfg, sess, Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonMaxIterations})
+}
+
+func (e *Engine) graceAnswer(ctx context.Context, emit Emit, drv Driver, cfg Config, sess *Session, stop Outcome) Outcome {
+	if strings.TrimSpace(cfg.GraceInstruction) == "" || ctx.Err() != nil {
+		return stop
+	}
+	msgs := append(append([]ai.Message(nil), sess.History...), ai.Message{Role: ai.RoleUser, Content: cfg.GraceInstruction})
+	out, err := e.streamGenerate(ctx, emit, ai.GenerateInput{
+		Model:              drv.Model(),
+		Temperature:        cfg.Temperature,
+		MaxTokens:          cfg.MaxTokensPerGen,
+		ReasoningMaxTokens: cfg.ReasoningMaxTokens,
+		SystemPrompt:       drv.SystemPrompt(),
+		Messages:           msgs,
+		WorkspaceID:        cfg.WorkspaceID,
+	})
+	if err != nil {
+		return stop
+	}
+	sess.TokensUsed += out.Usage.TotalTokens
+	sess.CostMicros += cfg.costOf(out.Usage)
+	content := strings.TrimSpace(out.Message.Content)
+	emit(EventAssistantDone, map[string]int{"tools": 0})
+	if content == "" {
+		return stop
+	}
+	sess.History = append(sess.History, ai.Message{Role: ai.RoleAssistant, Content: content})
+	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
+	return Outcome{Kind: OutcomeIdle, Valid: stop.Valid, Summary: stop.Summary}
+}
+
+func clearOldToolResults(h []ai.Message, keepRecent int) []ai.Message {
+	protectedFrom := len(h) - keepRecent
+	out := make([]ai.Message, len(h))
+	copy(out, h)
+	for i := 0; i < protectedFrom; i++ {
+		if out[i].Role == ai.RoleTool && len(out[i].Content) > clearableResultChars {
+			out[i].Content = clearedToolResult
+		}
+	}
+	return out
 }
 
 func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.GenerateInput) (*ai.GenerateOutput, error) {

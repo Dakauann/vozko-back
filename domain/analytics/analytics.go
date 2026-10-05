@@ -129,6 +129,9 @@ type Repository interface {
 	GetAdminOverview(input AdminOverviewInput) (*AdminOverview, error)
 	GetPlanContractions(input PlanContractionsInput) (*PlanContractionsReport, error)
 	GetMetaServiceMessageCost(input MetaServiceMessageCostInput) (*MetaServiceMessageCostReport, error)
+	MetaCostNumbers(input MetaServiceMessageCostInput) ([]*NumberMetaCost, error)
+	UnlinkedServiceMessages(input MetaServiceMessageCostInput) ([]*UnlinkedNumber, error)
+	MetaInvoiceCheckRepository
 }
 
 type GetProfitReportUseCase interface {

@@ -12,6 +12,7 @@ func RegisterProtectedRoutes(
 	protected *mux.Router,
 	h *AttendanceHandler,
 	ac func(workspace_domain.Resource, workspace_domain.Action, http.HandlerFunc) http.HandlerFunc,
+	member func(http.HandlerFunc) http.HandlerFunc,
 ) {
 	att := workspace_domain.ResourceAttendance
 	attRoutes := protected.PathPrefix("/attendance").Subrouter()
@@ -23,6 +24,8 @@ func RegisterProtectedRoutes(
 	attRoutes.HandleFunc("/frt", ac(att, workspace_domain.ActionRead, h.GetFRTStats)).Methods(http.MethodGet)
 	attRoutes.HandleFunc("/queue-stats", ac(att, workspace_domain.ActionRead, h.GetQueueStats)).Methods(http.MethodGet)
 	attRoutes.HandleFunc("/occupancy", ac(att, workspace_domain.ActionRead, h.GetOccupancy)).Methods(http.MethodGet)
+	attRoutes.HandleFunc("/members/me/activity", member(h.GetMyActivity)).Methods(http.MethodGet)
+	attRoutes.HandleFunc("/members/{id}/activity", ac(att, workspace_domain.ActionRead, h.GetMemberActivity)).Methods(http.MethodGet)
 
 	targets := workspace_domain.ResourceAttendanceTargets
 	attRoutes.HandleFunc("/metrics", ac(att, workspace_domain.ActionRead, h.GetTargetableMetrics)).Methods(http.MethodGet)

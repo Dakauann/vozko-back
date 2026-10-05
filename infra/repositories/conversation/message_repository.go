@@ -1725,6 +1725,12 @@ func (r *repository) UpdateDeliveryReceipt(wamid string, receipt conversation.De
 			if model := strings.TrimSpace(receipt.Pricing.Model); model != "" {
 				updates["meta_pricing_model"] = model
 			}
+			if pricingType := strings.ToLower(strings.TrimSpace(receipt.Pricing.Type)); pricingType != "" {
+				updates["meta_pricing_type"] = pricingType
+			}
+			if raw := receipt.Pricing.Raw; len(raw) > 0 && json.Valid(raw) {
+				updates["meta_pricing"] = gorm.Expr("?::jsonb", string(raw))
+			}
 		}
 		if origin := receipt.NormalizedOrigin(); origin != "" {
 			updates["meta_conversation_origin"] = origin

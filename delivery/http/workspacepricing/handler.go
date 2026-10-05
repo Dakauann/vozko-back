@@ -18,6 +18,7 @@ type WorkspacePricingHandler struct {
 	getDefaults        pricingdomain.GetDefaultPricingItemsUseCase
 	getResolved        pricingdomain.GetResolvedPricingUseCase
 	updateItem         pricingdomain.UpdatePricingItemUseCase
+	updateItemCost     pricingdomain.UpdatePricingItemCostUseCase
 	getAuditLog        pricingdomain.GetPricingAuditLogUseCase
 	getExchangeRate    pricingdomain.GetExchangeRateUseCase
 	updateExchangeRate pricingdomain.UpdateExchangeRateUseCase
@@ -27,6 +28,7 @@ func NewWorkspacePricingHandler(
 	getDefaults pricingdomain.GetDefaultPricingItemsUseCase,
 	getResolved pricingdomain.GetResolvedPricingUseCase,
 	updateItem pricingdomain.UpdatePricingItemUseCase,
+	updateItemCost pricingdomain.UpdatePricingItemCostUseCase,
 	getAuditLog pricingdomain.GetPricingAuditLogUseCase,
 	getExchangeRate pricingdomain.GetExchangeRateUseCase,
 	updateExchangeRate pricingdomain.UpdateExchangeRateUseCase,
@@ -35,6 +37,7 @@ func NewWorkspacePricingHandler(
 		getDefaults:        getDefaults,
 		getResolved:        getResolved,
 		updateItem:         updateItem,
+		updateItemCost:     updateItemCost,
 		getAuditLog:        getAuditLog,
 		getExchangeRate:    getExchangeRate,
 		updateExchangeRate: updateExchangeRate,
@@ -80,6 +83,34 @@ func (h *WorkspacePricingHandler) UpdateDefaultItem(w http.ResponseWriter, r *ht
 			return
 		}
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toPricingItemResponse(item))
+}
+
+func (h *WorkspacePricingHandler) UpdateDefaultItemCost(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return
+	}
+
+	var input pricingdomain.UpdatePricingItemCostInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
+		return
+	}
+
+	item, err := h.updateItemCost.Execute(input, claims.UserID)
+	if err != nil {
+		switch {
+		case errors.Is(err, pricingdomain.ErrCategoryNotConfigurable), errors.Is(err, pricingdomain.ErrCostMicrosNotPositive):
+			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+		case errors.Is(err, pricingdomain.ErrPricingItemNotFound):
+			response.WriteError(w, http.StatusNotFound, err.Error(), nil)
+		default:
+			response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
+		}
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, toPricingItemResponse(item))

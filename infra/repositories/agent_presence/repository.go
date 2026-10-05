@@ -113,8 +113,7 @@ func (r *repository) LastSeen(workspaceID string, userIDs []string) (map[string]
 	var rows []row
 	err := r.db.Model(&schema.AgentPresenceInterval{}).
 		Select("user_id, MAX(COALESCE(ended_at, started_at)) AS last_seen").
-		Where("workspace_id = ? AND user_id IN ? AND state IN ?",
-			workspaceID, userIDs, []string{string(ap.StateOnline), string(ap.StateOnCall), string(ap.StateWrapUp)}).
+		Where("workspace_id = ? AND user_id IN ? AND state IN ?", workspaceID, userIDs, ap.ConnectedStates).
 		Group("user_id").
 		Scan(&rows).Error
 	if err != nil {
@@ -125,6 +124,26 @@ func (r *repository) LastSeen(workspaceID string, userIDs []string) (map[string]
 			continue
 		}
 		out[item.UserID] = item.LastSeen.UTC()
+	}
+	return out, nil
+}
+
+func (r *repository) Spans(workspaceID, userID string, from, to time.Time) ([]ap.Interval, error) {
+	var rows []schema.AgentPresenceInterval
+	err := r.db.
+		Where("workspace_id = ? AND user_id = ? AND state IN ?", workspaceID, userID, ap.ConnectedStates).
+		Where("started_at < ? AND (ended_at IS NULL OR ended_at > ?)", to, from).
+		Order("started_at").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ap.Interval, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ap.Interval{
+			ID: row.ID, WorkspaceID: row.WorkspaceID, UserID: row.UserID, State: ap.State(row.State),
+			Source: row.Source, StartedAt: row.StartedAt.UTC(), EndedAt: row.EndedAt, CreatedAt: row.CreatedAt,
+		})
 	}
 	return out, nil
 }

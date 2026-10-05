@@ -13,6 +13,7 @@ func RegisterRoutes(protected *mux.Router, h *WorkspacePricingHandler) {
 func RegisterAdminRoutes(adminRoutes *mux.Router, h *WorkspacePricingHandler) {
 	adminRoutes.HandleFunc("/admin/pricing/defaults", h.GetDefaults).Methods(http.MethodGet)
 	adminRoutes.HandleFunc("/admin/pricing/defaults", h.UpdateDefaultItem).Methods(http.MethodPut)
+	adminRoutes.HandleFunc("/admin/pricing/defaults/cost", h.UpdateDefaultItemCost).Methods(http.MethodPut)
 	adminRoutes.HandleFunc("/admin/pricing/audit", h.GetAuditLog).Methods(http.MethodGet)
 
 	adminRoutes.HandleFunc("/admin/workspaces/{workspaceId}/pricing/resolved", h.GetResolved).Methods(http.MethodGet)

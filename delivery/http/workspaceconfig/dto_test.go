@@ -2,6 +2,7 @@ package workspaceconfig
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,5 +89,28 @@ func TestDecodeOutcomeCapturePatch(t *testing.T) {
 				t.Fatalf("DecodeOutcomeCapturePatch() clear = %v, want %v", clear, tc.wantClear)
 			}
 		})
+	}
+}
+
+func TestOnlyThePlatformAdminSeesWhoPaysMeta(t *testing.T) {
+	cfg := &workspaceconfigdomain.WorkspaceConfig{ID: "cfg-1", WorkspaceID: "ws-1", MetaPayer: workspaceconfigdomain.MetaPayerClient}
+
+	owner, _ := json.Marshal(toWorkspaceConfigResponse(cfg))
+	if strings.Contains(string(owner), "metaPayer") {
+		t.Fatalf("the workspace's own config must not reveal who pays Meta: %s", owner)
+	}
+
+	admin, _ := json.Marshal(toAdminWorkspaceConfigResponse(cfg))
+	var decoded struct {
+		MetaPayer   string `json:"metaPayer"`
+		WorkspaceID string `json:"workspaceId"`
+	}
+	if err := json.Unmarshal(admin, &decoded); err != nil || decoded.MetaPayer != "client" || decoded.WorkspaceID != "ws-1" {
+		t.Fatalf("admin response %s (%v)", admin, err)
+	}
+
+	unset, _ := json.Marshal(toAdminWorkspaceConfigResponse(&workspaceconfigdomain.WorkspaceConfig{}))
+	if !strings.Contains(string(unset), `"metaPayer":"vozko"`) {
+		t.Fatalf("an unset payer is shown as the effective one: %s", unset)
 	}
 }

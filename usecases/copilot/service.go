@@ -37,6 +37,8 @@ type Service struct {
 	files    AttachmentResolver
 	state    readiness.SnapshotUseCase
 	newID    IDGenerator
+
+	answerCostCeiling int64
 }
 
 type AttachmentResolver interface {
@@ -123,7 +125,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	driver.state = s.workspaceState(ctx, cc)
 	sess := &agentloop.Session{History: history, PromptImages: copilot.ImageURLs(attachments)}
-	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, AnswerTokenBudget), sess, prompt)
+	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, s.modelLimits(ctx, model), s.costCeiling()), sess, prompt)
 
 	switch out.Kind {
 	case agentloop.OutcomePaused:
@@ -222,6 +224,34 @@ func (s *Service) Reject(ctx context.Context, thread *aichat.Thread, actionID st
 	_ = s.messages.Create(&aichat.Message{ThreadID: thread.ID, Role: aichat.RoleAssistant, Content: content, Model: thread.Model})
 	emit("done", map[string]interface{}{"content": content, "status": "rejected"})
 	return nil
+}
+
+func (s *Service) SetAnswerCostCeiling(micros int64) {
+	s.answerCostCeiling = micros
+}
+
+func (s *Service) costCeiling() int64 {
+	if s.answerCostCeiling > 0 {
+		return s.answerCostCeiling
+	}
+	return DefaultAnswerCostCeilingMicros
+}
+
+func (s *Service) modelLimits(ctx context.Context, model string) ai.ModelInfo {
+	if s.engine.AI == nil {
+		return ai.ModelInfo{ID: model}
+	}
+	models, err := s.engine.AI.GetModelsWithPricing(ctx)
+	if err != nil {
+		log.Printf("[copilot] model catalog unavailable, answering with the token budget: %v", err)
+		return ai.ModelInfo{ID: model}
+	}
+	for _, m := range models {
+		if m.ID == model {
+			return m
+		}
+	}
+	return ai.ModelInfo{ID: model}
 }
 
 func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {

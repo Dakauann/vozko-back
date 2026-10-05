@@ -77,6 +77,12 @@ type WorkspaceMetaServiceMessageCost struct {
 	MetaConfirmed int64 `json:"metaConfirmed"`
 
 	Ratio *float64 `json:"ratio,omitempty"`
+
+	MetaPayer          string `json:"-"`
+	PaidMicros         int64  `json:"-"`
+	TemplateCostMicros int64  `json:"-"`
+
+	Economics WorkspaceEconomics `json:"economics"`
 }
 
 func (t MetaServiceMessageCostTotals) FullyAnsweredByMeta() bool {
@@ -102,6 +108,19 @@ type MetaServiceMessageCostTotals struct {
 	MetaAnswered int64 `json:"metaAnswered"`
 
 	UnattributedServiceMessages int64 `json:"unattributedServiceMessages"`
+
+	UnlinkedServiceMessages int64 `json:"unlinkedServiceMessages"`
+
+	PaidMicros              int64 `json:"-"`
+	VozkoTemplateCostMicros int64           `json:"-"`
+	ServiceCharges          []ServiceCharge `json:"-"`
+
+	Answers              MetaAnswers `json:"answers"`
+	ConfirmedServiceCost *Money      `json:"confirmedServiceCost"`
+	ServiceCostMissing   int64       `json:"serviceCostMissing"`
+	PaidByClients        Money       `json:"paidByClients"`
+	VozkoMetaCost        *Money      `json:"vozkoMetaCost"`
+	RealMargin           *Money      `json:"realMargin"`
 }
 
 type MetaServiceMessageCostReport struct {
@@ -112,6 +131,10 @@ type MetaServiceMessageCostReport struct {
 	Workspaces *shared.PaginatedResult[*WorkspaceMetaServiceMessageCost] `json:"workspaces"`
 
 	InferredOnly bool `json:"inferredOnly"`
+
+	Rates    CostRates         `json:"rates"`
+	Numbers  []*NumberMetaCost `json:"numbers"`
+	Unlinked []*UnlinkedNumber `json:"unlinked"`
 }
 
 type MetaServiceMessageCostInput struct {

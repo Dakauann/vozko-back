@@ -90,3 +90,34 @@ func TestUpdateDeliveryStatusWithReasonUsesTheSamePredicate(t *testing.T) {
 		t.Fatalf("the reason path must use the widened predicate: %v", err)
 	}
 }
+
+func TestDeliveryReceiptStoresMetasPricingTypeAndTheWholeObject(t *testing.T) {
+	db, mock, sqlDB := newStatusDB(t)
+	defer sqlDB.Close()
+
+	raw := `{"billable":true,"pricing_model":"PMP","category":"service","type":"regular","new_field":7}`
+	mock.ExpectExec(`UPDATE .*conversation_messages.* SET .*"meta_pricing"=\$2::jsonb.*"meta_pricing_type"=`).
+		WithArgs(
+			string(conversation.DeliveryStatusDelivered),
+			raw,
+			sqlmock.AnyArg(),
+			"service",
+			"PMP",
+			"regular",
+			sqlmock.AnyArg(),
+			"wamid.1",
+			"wamid.1",
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	receipt := conversation.DeliveryReceipt{
+		Status:  conversation.DeliveryStatusDelivered,
+		Pricing: conversation.MetaPricing{Category: "service", Billable: true, Model: "PMP", Type: " Regular ", Raw: []byte(raw)},
+	}
+	if err := NewRepository(db).UpdateDeliveryReceipt("wamid.1", receipt); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the pricing object must be stored whole with its type: %v", err)
+	}
+}

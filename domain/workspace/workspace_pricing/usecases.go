@@ -31,3 +31,14 @@ type UpdatePricingItemInput struct {
 	PriceMicros int64           `json:"priceMicros"`
 	Currency    string          `json:"currency"`
 }
+
+type UpdatePricingItemCostUseCase interface {
+	Execute(input UpdatePricingItemCostInput, changedBy string) (*PricingItem, error)
+}
+
+type UpdatePricingItemCostInput struct {
+	Category   ServiceCategory `json:"category"`
+	Service    string          `json:"service"`
+	Metric     string          `json:"metric"`
+	CostMicros int64           `json:"costMicros"`
+}

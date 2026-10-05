@@ -1,19 +1,31 @@
 package analytics_usecase
 
 import (
+	"fmt"
 	"time"
 
 	analytics_domain "vozko/domain/analytics"
 	"vozko/domain/billing"
 	"vozko/domain/shared"
+	"vozko/domain/workspace/workspace_pricing"
 )
 
-type getMetaServiceMessageCostUseCase struct {
-	repo analytics_domain.Repository
+type DefaultPricingCatalog interface {
+	ListDefaultPricingItems() ([]workspace_pricing.PricingItem, error)
 }
 
-func NewGetMetaServiceMessageCostUseCase(repo analytics_domain.Repository) analytics_domain.GetMetaServiceMessageCostUseCase {
-	return &getMetaServiceMessageCostUseCase{repo: repo}
+type WorkspacePricingResolver interface {
+	ResolveForWorkspace(workspaceID string) ([]workspace_pricing.ResolvedPricingItem, error)
+}
+
+type getMetaServiceMessageCostUseCase struct {
+	repo    analytics_domain.Repository
+	catalog DefaultPricingCatalog
+	pricing WorkspacePricingResolver
+}
+
+func NewGetMetaServiceMessageCostUseCase(repo analytics_domain.Repository, catalog DefaultPricingCatalog, pricing WorkspacePricingResolver) analytics_domain.GetMetaServiceMessageCostUseCase {
+	return &getMetaServiceMessageCostUseCase{repo: repo, catalog: catalog, pricing: pricing}
 }
 
 func (uc *getMetaServiceMessageCostUseCase) Execute(input analytics_domain.MetaServiceMessageCostInput) (*analytics_domain.MetaServiceMessageCostReport, error) {
@@ -29,7 +41,50 @@ func (uc *getMetaServiceMessageCostUseCase) Execute(input analytics_domain.MetaS
 	input.Page = pagination.Page
 	input.PageSize = pagination.PageSize
 
-	return uc.repo.GetMetaServiceMessageCost(input)
+	rates, err := costRates(uc.catalog)
+	if err != nil {
+		return nil, err
+	}
+	report, err := uc.repo.GetMetaServiceMessageCost(input)
+	if err != nil {
+		return nil, err
+	}
+	numbers, err := uc.repo.MetaCostNumbers(input)
+	if err != nil {
+		return nil, err
+	}
+	unlinked, err := uc.repo.UnlinkedServiceMessages(input)
+	if err != nil {
+		return nil, err
+	}
+	costs, err := uc.serviceMessageCosts(report.Totals.ChargedWorkspaceIDs())
+	if err != nil {
+		return nil, err
+	}
+	report.AttachDetails(numbers, unlinked)
+	report.ApplyRates(rates, costs)
+	return report, nil
+}
+
+func (uc *getMetaServiceMessageCostUseCase) serviceMessageCosts(workspaceIDs []string) (analytics_domain.ServiceMessageCosts, error) {
+	costs := make(analytics_domain.ServiceMessageCosts, len(workspaceIDs))
+	for _, id := range workspaceIDs {
+		resolved, err := uc.pricing.ResolveForWorkspace(id)
+		if err != nil {
+			return nil, fmt.Errorf("meta cost service price of workspace %s: %w", id, err)
+		}
+		costs[id] = workspace_pricing.ServiceMessageCostMicros(resolved)
+	}
+	return costs, nil
+}
+
+func costRates(catalog DefaultPricingCatalog) (analytics_domain.CostRates, error) {
+	items, err := catalog.ListDefaultPricingItems()
+	if err != nil {
+		return analytics_domain.CostRates{}, fmt.Errorf("meta cost rates: %w", err)
+	}
+	usdToBRL, _ := workspace_pricing.USDToBRLMicros(items)
+	return analytics_domain.CostRates{USDToBRLMicros: usdToBRL}, nil
 }
 
 func normalizeCostPeriod(start, end time.Time) (time.Time, time.Time) {

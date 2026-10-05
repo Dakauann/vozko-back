@@ -26,6 +26,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.Category{},
 			&schema.Agent{},
 			&schema.ConversationMessage{},
+			&schema.UnattributedServiceMessage{},
 			&schema.AIChatThread{},
 			&schema.AIChatMessage{},
 			&schema.Product{},

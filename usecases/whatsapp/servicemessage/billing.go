@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"vozko/domain/balance"
 	"vozko/domain/conversation"
@@ -26,12 +27,15 @@ type Deps struct {
 	Pricer         Pricer
 	Ledger         Ledger
 	BalanceChecker balance.CachedBalanceChecker
+	Unattributed   conversation.UnattributedServiceMessageRepository
 }
 
 type Billing struct {
-	pricer Pricer
-	ledger Ledger
-	guard  balance_usecase.SpendGuard
+	pricer       Pricer
+	ledger       Ledger
+	guard        balance_usecase.SpendGuard
+	unattributed conversation.UnattributedServiceMessageRepository
+	now          func() time.Time
 }
 
 func NewBilling(deps Deps) (Billing, error) {
@@ -45,14 +49,23 @@ func NewBilling(deps Deps) (Billing, error) {
 	if deps.BalanceChecker == nil {
 		missing = append(missing, "cached balance checker")
 	}
+	if deps.Unattributed == nil {
+		missing = append(missing, "unattributed service message log")
+	}
 	if len(missing) > 0 {
 		return Billing{}, fmt.Errorf("%w: %s", ErrBillingNotConfigured, strings.Join(missing, ", "))
 	}
 	return Billing{
-		pricer: deps.Pricer,
-		ledger: deps.Ledger,
-		guard:  balance_usecase.NewRequiredSpendGuard(deps.BalanceChecker, "whatsapp service message"),
+		pricer:       deps.Pricer,
+		ledger:       deps.Ledger,
+		guard:        balance_usecase.NewRequiredSpendGuard(deps.BalanceChecker, "whatsapp service message"),
+		unattributed: deps.Unattributed,
+		now:          time.Now,
 	}, nil
+}
+
+func (b Billing) RecordUnattributed(providerMessageID, phoneNumberID string, receipt conversation.DeliveryReceipt) error {
+	return b.unattributed.Record(conversation.NewUnattributedServiceMessage(providerMessageID, phoneNumberID, receipt, b.now().UTC()))
 }
 
 func (b Billing) price(workspaceID string) (workspace_pricing.PriceResult, error) {

@@ -785,7 +785,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getCallAnalytics:          analytics_usecase.NewGetCallAnalyticsUseCase(c.repositories.analytics),
 		getAdminOverview:          analytics_usecase.NewGetAdminOverviewUseCase(c.repositories.analytics),
 		getPlanContractions:       analytics_usecase.NewGetPlanContractionsUseCase(c.repositories.analytics),
-		getMetaServiceMessageCost: analytics_usecase.NewGetMetaServiceMessageCostUseCase(c.repositories.analytics),
+		getMetaServiceMessageCost: analytics_usecase.NewGetMetaServiceMessageCostUseCase(c.repositories.analytics, c.repositories.workspacePricing, c.services.workspacePricer),
+		getMetaInvoiceCheck:       analytics_usecase.NewGetMetaInvoiceCheckUseCase(c.repositories.analytics, c.newPricingAnalyticsGateway()),
 
 		grantTemplateAccess:  workspace_template_access_usecase.NewGrantAccessUseCase(c.repositories.workspaceTemplateAccess),
 		revokeTemplateAccess: workspace_template_access_usecase.NewRevokeAccessUseCase(c.repositories.workspaceTemplateAccess),
@@ -890,6 +891,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getDefaultPricingItems:             workspace_pricing_usecase.NewGetDefaultPricingItemsUseCase(c.repositories.workspacePricing),
 		getResolvedPricing:                 workspace_pricing_usecase.NewGetResolvedPricingUseCase(pricer),
 		updatePricingItem:                  workspace_pricing_usecase.NewUpdatePricingItemUseCase(c.repositories.workspacePricing),
+		updatePricingItemCost:              workspace_pricing_usecase.NewUpdatePricingItemCostUseCase(c.repositories.workspacePricing),
 		getPricingAuditLog:                 workspace_pricing_usecase.NewGetPricingAuditLogUseCase(c.repositories.workspacePricing),
 		getExchangeRate:                    workspace_pricing_usecase.NewGetExchangeRateUseCase(c.repositories.workspacePricing),
 		updateExchangeRate:                 workspace_pricing_usecase.NewUpdateExchangeRateUseCase(c.repositories.workspacePricing),

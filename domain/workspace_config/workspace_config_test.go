@@ -1,6 +1,7 @@
 package workspace_config
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -150,6 +151,29 @@ func TestRouletteRescueActive(t *testing.T) {
 		cfg := &WorkspaceConfig{RouletteMode: tc.mode, RouletteRescueEnabled: tc.enabled}
 		if got := cfg.RouletteRescueActive(); got != tc.want {
 			t.Fatalf("mode=%q enabled=%v: got %v want %v", tc.mode, tc.enabled, got, tc.want)
+		}
+	}
+}
+
+func TestWhoPaysMetaIsVozkoUntilSaidOtherwise(t *testing.T) {
+	if got := (&WorkspaceConfig{}).EffectiveMetaPayer(); got != MetaPayerVozko {
+		t.Fatalf("an unset payer must keep the current assumption, got %q", got)
+	}
+	if got := (&WorkspaceConfig{MetaPayer: MetaPayerClient}).EffectiveMetaPayer(); got != MetaPayerClient {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestOnlyKnownMetaPayersAreAccepted(t *testing.T) {
+	for raw, want := range map[string]MetaPayer{"vozko": MetaPayerVozko, " Client ": MetaPayerClient} {
+		got, err := ParseMetaPayer(raw)
+		if err != nil || got != want {
+			t.Errorf("%q: %q %v", raw, got, err)
+		}
+	}
+	for _, raw := range []string{"", "meta", "cliente"} {
+		if _, err := ParseMetaPayer(raw); !errors.Is(err, ErrInvalidMetaPayer) {
+			t.Errorf("%q must be refused, got %v", raw, err)
 		}
 	}
 }

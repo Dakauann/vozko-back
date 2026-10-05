@@ -43,6 +43,18 @@ func (m *mockAnalyticsRepo) GetMetaServiceMessageCost(input analytics_domain.Met
 	return nil, nil
 }
 
+func (m *mockAnalyticsRepo) MetaCostNumbers(analytics_domain.MetaServiceMessageCostInput) ([]*analytics_domain.NumberMetaCost, error) {
+	return nil, nil
+}
+
+func (m *mockAnalyticsRepo) UnlinkedServiceMessages(analytics_domain.MetaServiceMessageCostInput) ([]*analytics_domain.UnlinkedNumber, error) {
+	return nil, nil
+}
+
+func (m *mockAnalyticsRepo) InvoiceAccounts(time.Time, time.Time) ([]analytics_domain.InvoiceAccount, error) {
+	return nil, nil
+}
+
 func TestGetProfitReportUseCase_Execute_Success(t *testing.T) {
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 31, 23, 59, 59, 0, time.UTC)
@@ -353,5 +365,17 @@ func (m *mockAnalyticsOverviewRepo) GetPlanContractions(input analytics_domain.P
 }
 
 func (m *mockAnalyticsOverviewRepo) GetMetaServiceMessageCost(input analytics_domain.MetaServiceMessageCostInput) (*analytics_domain.MetaServiceMessageCostReport, error) {
+	return nil, nil
+}
+
+func (m *mockAnalyticsOverviewRepo) MetaCostNumbers(analytics_domain.MetaServiceMessageCostInput) ([]*analytics_domain.NumberMetaCost, error) {
+	return nil, nil
+}
+
+func (m *mockAnalyticsOverviewRepo) UnlinkedServiceMessages(analytics_domain.MetaServiceMessageCostInput) ([]*analytics_domain.UnlinkedNumber, error) {
+	return nil, nil
+}
+
+func (m *mockAnalyticsOverviewRepo) InvoiceAccounts(time.Time, time.Time) ([]analytics_domain.InvoiceAccount, error) {
 	return nil, nil
 }
