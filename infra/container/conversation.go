@@ -181,7 +181,7 @@ func (c *Container) wireConversationHub(consumeWhatsappTemplate balance_domain.C
 
 	c.services.conversationAutomation = conversation_usecase.NewConversationAutomationService(
 		c.services.conversationHub,
-	)
+	).WithDelegations(c.services.delegations)
 	c.services.assignmentService.SetAutomationPauser(c.services.conversationAutomation)
 	c.services.aiAttendanceService = aa_usecase.NewAsyncSessionService(telemetryPub)
 	c.services.assignmentService.SetAISessionEnder(c.services.aiAttendanceService)

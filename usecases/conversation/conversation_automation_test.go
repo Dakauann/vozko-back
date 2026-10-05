@@ -112,3 +112,56 @@ func TestAMissingEntryIDIsRejected(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+type failingDelegationStore struct {
+	stubDelegations
+}
+
+func (failingDelegationStore) Delete(context.Context, string, shared.EntryType) error {
+	return errors.New("db down")
+}
+
+func delegatedService(store conversation.DelegationRepository, setterErr error) *ConversationAutomationService {
+	svc := NewConversationAutomationService(nil).WithDelegations(store)
+	svc.Register(shared.EntryTypeWhatsApp, func(context.Context, string, *bool) error { return setterErr })
+	return svc
+}
+
+func TestPausingAutomationEndsTheDelegation(t *testing.T) {
+	store := &recordingDelegationStore{}
+	if err := delegatedService(store, nil).SetAutomation(context.Background(), "entry-1", shared.EntryTypeWhatsApp, boolPtr(false)); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.deleted) != 1 || store.deleted[0] != "whatsapp:entry-1" {
+		t.Fatalf("deleted = %v, a paused conversation must not stay delegated", store.deleted)
+	}
+}
+
+func TestResumingOrClearingKeepsTheDelegation(t *testing.T) {
+	for name, enabled := range map[string]*bool{"resume": boolPtr(true), "clear": nil} {
+		store := &recordingDelegationStore{}
+		if err := delegatedService(store, nil).SetAutomation(context.Background(), "entry-1", shared.EntryTypeWhatsApp, enabled); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if len(store.deleted) != 0 {
+			t.Fatalf("%s: deleted = %v, only a pause ends the delegation", name, store.deleted)
+		}
+	}
+}
+
+func TestAFailedPauseKeepsTheDelegation(t *testing.T) {
+	store := &recordingDelegationStore{}
+	if err := delegatedService(store, errors.New("write failed")).SetAutomation(context.Background(), "entry-1", shared.EntryTypeWhatsApp, boolPtr(false)); err == nil {
+		t.Fatal("expected the setter error")
+	}
+	if len(store.deleted) != 0 {
+		t.Fatalf("deleted = %v, the delegation must survive a pause that never happened", store.deleted)
+	}
+}
+
+func TestAPauseThatCannotEndTheDelegationFails(t *testing.T) {
+	err := delegatedService(failingDelegationStore{}, nil).SetAutomation(context.Background(), "entry-1", shared.EntryTypeWhatsApp, boolPtr(false))
+	if err == nil {
+		t.Fatal("a surviving delegation keeps the automation running, the pause must report failure")
+	}
+}

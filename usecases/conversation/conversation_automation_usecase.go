@@ -2,6 +2,7 @@ package conversation_usecase
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"vozko/domain/conversation"
@@ -9,8 +10,9 @@ import (
 )
 
 type ConversationAutomationService struct {
-	setters map[shared.EntryType]AutomationSetter
-	hub     conversation.EventBroadcaster
+	setters     map[shared.EntryType]AutomationSetter
+	hub         conversation.EventBroadcaster
+	delegations conversation.DelegationRepository
 }
 
 type AutomationSetter func(ctx context.Context, entryID string, enabled *bool) error
@@ -20,6 +22,11 @@ func NewConversationAutomationService(hub conversation.EventBroadcaster) *Conver
 		setters: make(map[shared.EntryType]AutomationSetter),
 		hub:     hub,
 	}
+}
+
+func (s *ConversationAutomationService) WithDelegations(delegations conversation.DelegationRepository) *ConversationAutomationService {
+	s.delegations = delegations
+	return s
 }
 
 func (s *ConversationAutomationService) Register(entryType shared.EntryType, setter AutomationSetter) {
@@ -52,8 +59,18 @@ func (s *ConversationAutomationService) SetAutomation(
 		return err
 	}
 
+	if pauses(enabled) && s.delegations != nil {
+		if err := s.delegations.Delete(ctx, entryID, entryType); err != nil {
+			return fmt.Errorf("automation paused for %s (%s) but its delegation still overrides it: %w", entryID, entryType, err)
+		}
+	}
+
 	if s.hub != nil {
 		go s.hub.BroadcastEntryUpdate(entryID, string(entryType), nil)
 	}
 	return nil
+}
+
+func pauses(enabled *bool) bool {
+	return enabled != nil && !*enabled
 }
