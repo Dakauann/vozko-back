@@ -10491,143 +10491,6 @@
                 }
             }
         },
-        "/images/generations": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Coloca na fila a geração de uma imagem com o modelo escolhido (model, um id de GET /images/models; fora da lista responde 422 com model unknown) no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920). Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo; uma referência inválida responde 422 com o código no campo referenceMediaIds (required, too_many, duplicate, not_found ou not_image). Responde 202 com o job; acompanhe por GET /images/generations/{id} até status done (mediaId e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos, ainda em andamento, devolve o mesmo job sem nova cobrança.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Imagens"
-                ],
-                "summary": "Gerar imagem com IA",
-                "parameters": [
-                    {
-                        "description": "descrição e formato da imagem",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/imagegenhttp.GenerateImageRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "202": {
-                        "description": "Accepted",
-                        "schema": {
-                            "$ref": "#/definitions/imagegenhttp.JobResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "402": {
-                        "description": "Payment Required",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "422": {
-                        "description": "Unprocessable Entity",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/images/generations/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Estado de uma geração de imagem do workspace: queued, running, done (com mediaId, mediaUrl e model) ou failed (com failureCode: generation_failed, storage_failed, timed_out, enqueue_failed, insufficient_funds ou reference_unavailable).",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Imagens"
-                ],
-                "summary": "Consultar geração de imagem",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "id do job",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/imagegenhttp.JobResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/images/models": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Modelos que geram imagens, do mais usado para o menos usado, segundo o ranking de popularidade do provedor. O id escolhido vai no campo model de POST /images/generations. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nenhuma imagem pode ser pedida.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Imagens"
-                ],
-                "summary": "Modelos de imagem",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/imagegenhttp.ModelResponse"
-                            }
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/instagram/accounts": {
             "get": {
                 "security": [
@@ -13268,6 +13131,163 @@
                     },
                     "422": {
                         "description": "Limite de memórias do lead atingido, ou conversa sem lead vinculado (lead_not_linked)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/media/generations": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo) e denoise (áudio limpo de um áudio ou vídeo): sourceMediaId da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música e locução são cobradas do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mídia gerada"
+                ],
+                "summary": "Gerar mídia com IA",
+                "parameters": [
+                    {
+                        "description": "o que gerar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mediagenhttp.GenerateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/mediagenhttp.JobResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "402": {
+                        "description": "Payment Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/media/generations/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Estado de uma geração do workspace: queued, running, settling (pronta, aguardando o provedor informar o custo), done (com mediaId, mediaUrl e model) ou failed (com failureCode). mediaId e mediaUrl só aparecem em done.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mídia gerada"
+                ],
+                "summary": "Consultar geração de mídia",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do job",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mediagenhttp.JobResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/media/models": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Modelos que geram o tipo pedido (kind: image, music ou voice), do mais usado para o menos usado segundo o provedor; default marca o recomendado. O id escolhido vai no campo model de POST /media/generations. Vídeos são montados pelo Vozko e não têm modelo. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nada desse tipo pode ser pedido.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mídia gerada"
+                ],
+                "summary": "Modelos de geração de mídia",
+                "parameters": [
+                    {
+                        "enum": [
+                            "image",
+                            "music",
+                            "voice"
+                        ],
+                        "type": "string",
+                        "description": "tipo de mídia",
+                        "name": "kind",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/mediagenhttp.ModelResponse"
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -18056,6 +18076,302 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/studio/projects": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Projetos de imagem e vídeo do workspace, do editado mais recentemente para o mais antigo, sem o documento. kind filtra por tipo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Listar projetos do Estúdio",
+                "parameters": [
+                    {
+                        "enum": [
+                            "image",
+                            "video"
+                        ],
+                        "type": "string",
+                        "description": "tipo",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "até 100, padrão 30",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "deslocamento",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ListResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria um projeto de imagem (documento studio.image) ou de vídeo (documento studio.video). O documento é validado inteiro: campos desconhecidos, fontes fora da lista, clipes sobrepostos na mesma faixa ou valores fora dos limites respondem 422 com o código por campo. Até 512 KB.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Criar projeto do Estúdio",
+                "parameters": [
+                    {
+                        "description": "projeto",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.CreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ProjectResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/studio/projects/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "O projeto com o documento e a versão atual, que vai no If-Match ao salvar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Abrir projeto do Estúdio",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do projeto",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ProjectResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Arquivar projeto do Estúdio",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do projeto",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Salva o nome e ou o documento a partir da versão informada no cabeçalho If-Match. Se o projeto foi salvo em outro lugar depois dessa versão, responde 409 version_conflict com o projeto atual em current, sem sobrescrever.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Salvar projeto do Estúdio",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do projeto",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "versão carregada",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "mudanças",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.SaveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ProjectResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ConflictResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "428": {
+                        "description": "Precondition Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/studio/projects/{id}/export": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Renderiza a versão salva informada (version) como MP4 na fila de processamento. Cada clipe de sobreposição precisa da imagem PNG já gerada pelo editor em rasters (id do clipe para media_id da biblioteca); faltando uma, responde 422 not_rasterized. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Uma exportação igual em andamento devolve o mesmo job.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Exportar vídeo do Estúdio",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id do projeto",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "versão e sobreposições",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ExportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/mediagenhttp.JobResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.ConflictResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -24544,6 +24860,12 @@
                 "createdTime": {
                     "type": "string"
                 },
+                "higherIntent": {
+                    "type": "boolean"
+                },
+                "intro": {
+                    "$ref": "#/definitions/advertising.FormIntro"
+                },
                 "leadsCount": {
                     "type": "integer"
                 },
@@ -24570,6 +24892,18 @@
                 },
                 "status": {
                     "$ref": "#/definitions/advertising.FormStatus"
+                },
+                "thankYouBody": {
+                    "type": "string"
+                },
+                "thankYouButtonText": {
+                    "type": "string"
+                },
+                "thankYouTitle": {
+                    "type": "string"
+                },
+                "thankYouUrl": {
+                    "type": "string"
                 }
             }
         },
@@ -33096,107 +33430,6 @@
                 }
             }
         },
-        "imagegenhttp.GenerateImageRequest": {
-            "type": "object",
-            "properties": {
-                "aspect": {
-                    "type": "string",
-                    "enum": [
-                        "square",
-                        "portrait",
-                        "story"
-                    ],
-                    "example": "square"
-                },
-                "model": {
-                    "type": "string",
-                    "example": "openai/gpt-image-2"
-                },
-                "prompt": {
-                    "type": "string",
-                    "example": "Pizza artesanal sobre mesa de madeira, luz natural"
-                },
-                "referenceMediaIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "imagegenhttp.JobResponse": {
-            "type": "object",
-            "properties": {
-                "aspect": {
-                    "type": "string",
-                    "enum": [
-                        "square",
-                        "portrait",
-                        "story"
-                    ]
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "failureCode": {
-                    "type": "string",
-                    "enum": [
-                        "generation_failed",
-                        "storage_failed",
-                        "timed_out",
-                        "enqueue_failed",
-                        "insufficient_funds",
-                        "reference_unavailable"
-                    ]
-                },
-                "id": {
-                    "type": "string"
-                },
-                "mediaId": {
-                    "type": "string"
-                },
-                "mediaUrl": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "prompt": {
-                    "type": "string"
-                },
-                "referenceMediaIds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "status": {
-                    "type": "string",
-                    "enum": [
-                        "queued",
-                        "running",
-                        "done",
-                        "failed"
-                    ]
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "imagegenhttp.ModelResponse": {
-            "type": "object",
-            "properties": {
-                "id": {
-                    "type": "string",
-                    "example": "openai/gpt-image-2"
-                },
-                "name": {
-                    "type": "string",
-                    "example": "GPT Image 2"
-                }
-            }
-        },
         "instagram.AccountResponse": {
             "type": "object",
             "properties": {
@@ -34322,6 +34555,287 @@
                 "content": {
                     "type": "string",
                     "example": "Prefere PIX desde ago/2026"
+                }
+            }
+        },
+        "mediagen.Clip": {
+            "type": "object",
+            "properties": {
+                "durationMs": {
+                    "type": "integer"
+                },
+                "fadeInMs": {
+                    "type": "integer"
+                },
+                "fadeOutMs": {
+                    "type": "integer"
+                },
+                "fit": {
+                    "$ref": "#/definitions/mediagen.Fit"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "motionIn": {
+                    "$ref": "#/definitions/mediagen.Motion"
+                },
+                "motionOut": {
+                    "$ref": "#/definitions/mediagen.Motion"
+                },
+                "startMs": {
+                    "type": "integer"
+                },
+                "transform": {
+                    "$ref": "#/definitions/mediagen.Transform"
+                },
+                "trimInMs": {
+                    "type": "integer"
+                },
+                "volume": {
+                    "type": "number"
+                }
+            }
+        },
+        "mediagen.Fit": {
+            "type": "string",
+            "enum": [
+                "cover",
+                "contain"
+            ],
+            "x-enum-varnames": [
+                "FitCover",
+                "FitContain"
+            ]
+        },
+        "mediagen.Motion": {
+            "type": "object",
+            "properties": {
+                "durationMs": {
+                    "type": "integer"
+                },
+                "edge": {
+                    "$ref": "#/definitions/mediagen.MotionEdge"
+                }
+            }
+        },
+        "mediagen.MotionEdge": {
+            "type": "string",
+            "enum": [
+                "left",
+                "right",
+                "top",
+                "bottom"
+            ],
+            "x-enum-varnames": [
+                "EdgeLeft",
+                "EdgeRight",
+                "EdgeTop",
+                "EdgeBottom"
+            ]
+        },
+        "mediagen.Timeline": {
+            "type": "object",
+            "properties": {
+                "audio": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mediagen.Track"
+                    }
+                },
+                "background": {
+                    "type": "string"
+                },
+                "durationMs": {
+                    "type": "integer"
+                },
+                "visual": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mediagen.Track"
+                    }
+                }
+            }
+        },
+        "mediagen.Track": {
+            "type": "object",
+            "properties": {
+                "clips": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mediagen.Clip"
+                    }
+                }
+            }
+        },
+        "mediagen.Transform": {
+            "type": "object",
+            "properties": {
+                "h": {
+                    "type": "number"
+                },
+                "opacity": {
+                    "type": "number"
+                },
+                "rotation": {
+                    "type": "number"
+                },
+                "w": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            }
+        },
+        "mediagenhttp.GenerateRequest": {
+            "type": "object",
+            "properties": {
+                "aspect": {
+                    "type": "string",
+                    "enum": [
+                        "square",
+                        "portrait",
+                        "story"
+                    ]
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "image",
+                        "music",
+                        "voice",
+                        "video",
+                        "cutout",
+                        "captions",
+                        "denoise"
+                    ],
+                    "example": "music"
+                },
+                "model": {
+                    "type": "string",
+                    "example": "google/lyria-3-clip-preview"
+                },
+                "prompt": {
+                    "type": "string",
+                    "example": "Samba leve e acústico para o anúncio de uma cafeteria"
+                },
+                "referenceMediaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sourceMediaId": {
+                    "type": "string"
+                },
+                "video": {
+                    "$ref": "#/definitions/mediagen.Timeline"
+                },
+                "voice": {
+                    "type": "string",
+                    "example": "alloy"
+                }
+            }
+        },
+        "mediagenhttp.JobResponse": {
+            "type": "object",
+            "properties": {
+                "aspect": {
+                    "type": "string",
+                    "enum": [
+                        "square",
+                        "portrait",
+                        "story"
+                    ]
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "failureCode": {
+                    "type": "string",
+                    "enum": [
+                        "generation_failed",
+                        "storage_failed",
+                        "timed_out",
+                        "enqueue_failed",
+                        "insufficient_funds",
+                        "reference_unavailable",
+                        "cost_unreported"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "image",
+                        "music",
+                        "voice",
+                        "video",
+                        "cutout",
+                        "captions",
+                        "denoise"
+                    ]
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "mediaUrl": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "referenceMediaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sourceMediaId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "queued",
+                        "running",
+                        "settling",
+                        "done",
+                        "failed"
+                    ]
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "video": {
+                    "$ref": "#/definitions/mediagen.Timeline"
+                },
+                "voice": {
+                    "type": "string"
+                }
+            }
+        },
+        "mediagenhttp.ModelResponse": {
+            "type": "object",
+            "properties": {
+                "default": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "google/lyria-3-clip-preview"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Google: Lyria 3 Clip Preview"
                 }
             }
         },
@@ -36602,6 +37116,133 @@
                 "name": {
                     "type": "string",
                     "example": "Em atendimento"
+                }
+            }
+        },
+        "studiohttp.ConflictResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "version_conflict"
+                },
+                "current": {
+                    "$ref": "#/definitions/studiohttp.ProjectResponse"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "studiohttp.CreateRequest": {
+            "type": "object",
+            "properties": {
+                "document": {
+                    "type": "object"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "image",
+                        "video"
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Post de segunda"
+                }
+            }
+        },
+        "studiohttp.ExportRequest": {
+            "type": "object",
+            "properties": {
+                "rasters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "studiohttp.ListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/studiohttp.SummaryResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "studiohttp.ProjectResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "document": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "image",
+                        "video"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "studiohttp.SaveRequest": {
+            "type": "object",
+            "properties": {
+                "document": {
+                    "type": "object"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "studiohttp.SummaryResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "image",
+                        "video"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },

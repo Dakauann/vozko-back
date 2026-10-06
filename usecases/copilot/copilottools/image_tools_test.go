@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"vozko/domain/copilot"
-	"vozko/domain/imagegen"
+	"vozko/domain/mediagen"
 	"vozko/domain/workspace"
 )
 
@@ -17,68 +17,87 @@ type stubImages struct {
 	checkErr    error
 	requestErr  error
 	waitErr     error
-	final       *imagegen.Job
-	requested   imagegen.Request
+	final       *mediagen.Job
+	requested   mediagen.Request
 	requestedBy string
 	waitedFor   string
 	hadDeadline bool
 	library     map[string]string
 }
 
-var stubImageModels = []imagegen.Model{{ID: pickedImageModel, Name: "GPT Image 2"}, {ID: imageChatModel, Name: "Gemini 3 Pro Image"}}
+var (
+	stubImageModels = []mediagen.Model{{ID: pickedImageModel, Name: "GPT Image 2"}, {ID: imageChatModel, Name: "Gemini 3 Pro Image"}}
+	stubAudioModels = []mediagen.Model{{ID: "google/lyria-3-pro-preview"}, {ID: "google/lyria-3-clip-preview"}, {ID: "openai/gpt-audio-mini"}}
+)
 
-func (s *stubImages) Check(_ context.Context, req imagegen.Request) error {
+func (s *stubImages) Check(_ context.Context, req mediagen.Request) error {
 	if err := req.Validate(); err != nil {
 		return err
 	}
 	if s.catalogErr != nil {
 		return s.catalogErr
 	}
-	if err := imagegen.Supported(stubImageModels, req.Model); err != nil {
+	if err := mediagen.Supported(s.models(req.Kind), req.Model); req.Kind.UsesModel() && err != nil {
 		return err
 	}
 	return s.CheckContent(req)
 }
 
-func (s *stubImages) CheckContent(req imagegen.Request) error {
+func (s *stubImages) CheckContent(req mediagen.Request) error {
 	if s.checkErr != nil {
 		return s.checkErr
 	}
 	if err := req.ValidateContent(); err != nil {
 		return err
 	}
-	_, err := s.References(req.WorkspaceID, req.ReferenceMediaIDs)
+	_, err := s.Sources(req)
 	return err
 }
 
-func (s *stubImages) GeneratesImages(_ context.Context, model string) (bool, error) {
+func (s *stubImages) Generates(_ context.Context, kind mediagen.Kind, model string) (bool, error) {
 	if s.catalogErr != nil {
 		return false, s.catalogErr
 	}
-	return imagegen.Supported(stubImageModels, model) == nil, nil
+	return mediagen.Supported(s.models(kind), model) == nil, nil
 }
 
-func (s *stubImages) References(_ string, ids []string) ([]imagegen.ReferenceImage, error) {
-	refs := make([]imagegen.ReferenceImage, 0, len(ids))
-	for _, id := range ids {
-		url, ok := s.library[id]
+func (s *stubImages) models(kind mediagen.Kind) []mediagen.Model {
+	if kind == mediagen.KindImage {
+		return stubImageModels
+	}
+	return stubAudioModels
+}
+
+func (s *stubImages) DefaultModel(_ context.Context, kind mediagen.Kind) (mediagen.Model, error) {
+	if s.catalogErr != nil {
+		return mediagen.Model{}, s.catalogErr
+	}
+	model, _ := mediagen.DefaultModel(kind, s.models(kind))
+	return model, nil
+}
+
+func (s *stubImages) Sources(req mediagen.Request) ([]mediagen.Source, error) {
+	roles := req.SourceRoles()
+	refs := make([]mediagen.Source, 0, len(roles))
+	for _, role := range roles {
+		url, ok := s.library[role.MediaID]
 		if !ok {
-			return nil, &imagegen.ValidationError{Issues: []imagegen.FieldIssue{{Field: imagegen.FieldReferences, Code: imagegen.CodeNotFound}}}
+			return nil, &mediagen.ValidationError{Issues: []mediagen.FieldIssue{{Field: role.Field, Code: mediagen.CodeNotFound}}}
 		}
-		refs = append(refs, imagegen.ReferenceImage{MediaID: id, URL: url})
+		refs = append(refs, mediagen.Source{MediaID: role.MediaID, URL: url})
 	}
 	return refs, nil
 }
 
-func (s *stubImages) Request(_ context.Context, req imagegen.Request, requestedBy string) (*imagegen.Job, error) {
+func (s *stubImages) Request(_ context.Context, req mediagen.Request, requestedBy string) (*mediagen.Job, error) {
 	s.requested, s.requestedBy = req, requestedBy
 	if s.requestErr != nil {
 		return nil, s.requestErr
 	}
-	return &imagegen.Job{ID: "job-1", WorkspaceID: req.WorkspaceID, Status: imagegen.StatusQueued}, nil
+	return &mediagen.Job{ID: "job-1", WorkspaceID: req.WorkspaceID, Status: mediagen.StatusQueued}, nil
 }
 
-func (s *stubImages) Wait(ctx context.Context, _, id string) (*imagegen.Job, error) {
+func (s *stubImages) Wait(ctx context.Context, _, id string) (*mediagen.Job, error) {
 	s.waitedFor = id
 	_, s.hadDeadline = ctx.Deadline()
 	return s.final, s.waitErr
@@ -135,7 +154,7 @@ func TestGenerateImageCardNamesThePromptFormatAndCost(t *testing.T) {
 	for _, f := range fields {
 		text += f.Key + "=" + f.Value + ";"
 	}
-	for _, want := range []string{"pizza artesanal", "portrait", "cobrado do saldo como uso de IA"} {
+	for _, want := range []string{"pizza artesanal", "portrait", "cobrado do saldo pelo custo do provedor"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("card %s misses %q", text, want)
 		}
@@ -143,7 +162,7 @@ func TestGenerateImageCardNamesThePromptFormatAndCost(t *testing.T) {
 }
 
 func TestGenerateImageWaitsForTheQueuedJob(t *testing.T) {
-	images := &stubImages{final: &imagegen.Job{ID: "job-1", Status: imagegen.StatusDone, MediaID: "m-1", MediaURL: "https://cdn/x.jpg", Model: "model-x"}}
+	images := &stubImages{final: &mediagen.Job{ID: "job-1", Kind: mediagen.KindImage, Status: mediagen.StatusDone, MediaID: "m-1", MediaURL: "https://cdn/x.jpg", Model: "model-x"}}
 	res := NewGenerateImageTool(images).Execute(context.Background(), imageSession, imageArgs())
 	if res.Status != copilot.StatusOK {
 		t.Fatalf("result %+v", res)
@@ -152,7 +171,7 @@ func TestGenerateImageWaitsForTheQueuedJob(t *testing.T) {
 	if data["media_id"] != "m-1" || data["media_url"] != "https://cdn/x.jpg" || data["model"] != "model-x" {
 		t.Fatalf("data %v", data)
 	}
-	if !reflect.DeepEqual(images.requested, imagegen.Request{WorkspaceID: "ws-1", Model: pickedImageModel, Prompt: "pizza artesanal", Aspect: imagegen.AspectPortrait}) || images.requestedBy != "u-1" {
+	if !reflect.DeepEqual(images.requested, mediagen.Request{Kind: mediagen.KindImage, WorkspaceID: "ws-1", Model: pickedImageModel, Prompt: "pizza artesanal", Aspect: mediagen.AspectPortrait}) || images.requestedBy != "u-1" {
 		t.Fatalf("requested %+v by %q", images.requested, images.requestedBy)
 	}
 	if images.waitedFor != "job-1" || !images.hadDeadline {
@@ -161,10 +180,10 @@ func TestGenerateImageWaitsForTheQueuedJob(t *testing.T) {
 }
 
 func TestGenerateImageExplainsEveryFailure(t *testing.T) {
-	codes := []imagegen.FailureCode{imagegen.FailureGeneration, imagegen.FailureStorage, imagegen.FailureTimedOut, imagegen.FailureEnqueue, imagegen.FailureInsufficientFunds, imagegen.FailureReferenceUnavailable}
+	codes := []mediagen.FailureCode{mediagen.FailureGeneration, mediagen.FailureStorage, mediagen.FailureTimedOut, mediagen.FailureEnqueue, mediagen.FailureInsufficientFunds, mediagen.FailureReferenceUnavailable}
 	seen := map[string]bool{}
 	for _, code := range codes {
-		images := &stubImages{final: &imagegen.Job{ID: "job-1", Status: imagegen.StatusFailed, FailureCode: code}}
+		images := &stubImages{final: &mediagen.Job{ID: "job-1", Status: mediagen.StatusFailed, FailureCode: code}}
 		res := NewGenerateImageTool(images).Execute(context.Background(), imageSession, imageArgs())
 		if res.Status != copilot.StatusError || res.Message == "" {
 			t.Fatalf("%s: %+v", code, res)
@@ -177,9 +196,9 @@ func TestGenerateImageExplainsEveryFailure(t *testing.T) {
 }
 
 func TestGenerateImageThatOutlivesTheWaitSaysItIsStillRunning(t *testing.T) {
-	images := &stubImages{final: &imagegen.Job{ID: "job-1", Status: imagegen.StatusRunning}, waitErr: context.DeadlineExceeded}
+	images := &stubImages{final: &mediagen.Job{ID: "job-1", Status: mediagen.StatusRunning}, waitErr: context.DeadlineExceeded}
 	res := NewGenerateImageTool(images).Execute(context.Background(), imageSession, imageArgs())
-	if res.Status != copilot.StatusError || !strings.Contains(res.Message, "mesma descrição") {
+	if res.Status != copilot.StatusError || !strings.Contains(res.Message, "mesmos dados") {
 		t.Fatalf("result %+v", res)
 	}
 }
@@ -216,7 +235,7 @@ func TestGenerateImageOffersReferenceImages(t *testing.T) {
 
 func TestGenerateImageSendsTheReferencesInOrder(t *testing.T) {
 	images := referenceLibrary()
-	images.final = &imagegen.Job{ID: "job-1", Status: imagegen.StatusDone, MediaID: "m-1", MediaURL: "https://cdn/x.jpg"}
+	images.final = &mediagen.Job{ID: "job-1", Status: mediagen.StatusDone, MediaID: "m-1", MediaURL: "https://cdn/x.jpg"}
 	res := NewGenerateImageTool(images).Execute(context.Background(), imageSession, referencedImageArgs(secondReference, firstReference))
 	if res.Status != copilot.StatusOK || !reflect.DeepEqual(images.requested.ReferenceMediaIDs, []string{secondReference, firstReference}) {
 		t.Fatalf("result %+v requested %+v", res, images.requested)
@@ -261,7 +280,7 @@ func TestATextOnlyChatModelAsksForAnImageModelOnTheCard(t *testing.T) {
 }
 
 func TestAnImageCapableChatModelGeneratesTheImageItself(t *testing.T) {
-	images := &stubImages{final: &imagegen.Job{ID: "job-1", Status: imagegen.StatusDone, MediaID: "m-1", MediaURL: "https://cdn/x.jpg"}}
+	images := &stubImages{final: &mediagen.Job{ID: "job-1", Status: mediagen.StatusDone, MediaID: "m-1", MediaURL: "https://cdn/x.jpg"}}
 	tool := NewGenerateImageTool(images)
 	choices, err := tool.(copilot.ChoiceAsker).Choices(context.Background(), imageChatSession, proposedImageArgs())
 	if err != nil || len(choices) != 0 {

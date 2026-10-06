@@ -304,8 +304,8 @@ func toolNotes(raw []byte) string {
 	notes := make([]string, 0, len(steps))
 	for _, step := range steps {
 		note := step.Name + ": " + step.Summary
-		if step.Image != nil {
-			note += " (imagem media_id " + step.Image.MediaID + ")"
+		if step.Media != nil {
+			note += " (" + string(step.Media.Kind) + " media_id " + step.Media.MediaID + ")"
 		}
 		if step.Result != "" {
 			note += ", retornou " + step.Result
@@ -393,13 +393,13 @@ type toolStep struct {
 	Ok      bool                `json:"ok"`
 	Chart   *copilot.Chart      `json:"chart,omitempty"`
 	Card    *copilot.ActionCard `json:"card,omitempty"`
-	Image   *copilot.Image      `json:"image,omitempty"`
+	Media   *copilot.Media      `json:"image,omitempty"`
 	Result  string              `json:"result,omitempty"`
 	Changed string              `json:"changed,omitempty"`
 }
 
 func stepFromResult(name string, res copilot.Result) toolStep {
-	return toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Image: res.Image, Result: renderData(res.Data)}
+	return toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Media: res.Media, Result: renderData(res.Data)}
 }
 
 func emitStep(emit agentloop.Emit, ts toolStep) {
@@ -410,8 +410,8 @@ func emitStep(emit agentloop.Emit, ts toolStep) {
 	if ts.Card != nil {
 		emit(EventCard, ts.Card)
 	}
-	if ts.Image != nil {
-		emit(EventImage, ts.Image)
+	if ts.Media != nil {
+		emit(EventImage, ts.Media)
 	}
 }
 
@@ -444,8 +444,8 @@ func (r *turnRecorder) emitFn(eventType string, payload interface{}) {
 			r.tools[len(r.tools)-1].Card = card
 		}
 	case EventImage:
-		if image, ok := payload.(*copilot.Image); ok && len(r.tools) > 0 {
-			r.tools[len(r.tools)-1].Image = image
+		if media, ok := payload.(*copilot.Media); ok && len(r.tools) > 0 {
+			r.tools[len(r.tools)-1].Media = media
 		}
 	}
 	r.emit(eventType, payload)

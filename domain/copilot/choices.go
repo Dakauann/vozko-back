@@ -11,11 +11,16 @@ var ErrChoiceMissing = errors.New("a choice on the approval card was not made")
 
 type ChoiceKind string
 
-const ChoiceImageModel ChoiceKind = "image_model"
+const (
+	ChoiceImageModel ChoiceKind = "image_model"
+	ChoiceMusicModel ChoiceKind = "music_model"
+	ChoiceVoiceModel ChoiceKind = "voice_model"
+)
 
 type ChoiceField struct {
-	Key  string     `json:"key"`
-	Kind ChoiceKind `json:"kind"`
+	Key     string     `json:"key"`
+	Kind    ChoiceKind `json:"kind"`
+	Default string     `json:"default,omitempty"`
 }
 
 type ChoiceAsker interface {

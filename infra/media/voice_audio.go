@@ -3,7 +3,6 @@ package media_infra
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -71,24 +70,9 @@ func (l *VoiceAudioLoader) playable(workspaceID, mediaID string) (*media_domain.
 }
 
 func (l *VoiceAudioLoader) download(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	body, err := downloadBounded(ctx, l.client, url, maxVoiceAudioBytes)
 	if err != nil {
-		return nil, err
-	}
-	res, err := l.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: download status %d", workflow.ErrAudioNotPlayable, res.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(res.Body, maxVoiceAudioBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(body) > maxVoiceAudioBytes {
-		return nil, fmt.Errorf("%w: file larger than %d bytes", workflow.ErrAudioNotPlayable, maxVoiceAudioBytes)
+		return nil, fmt.Errorf("%w: %v", workflow.ErrAudioNotPlayable, err)
 	}
 	return body, nil
 }

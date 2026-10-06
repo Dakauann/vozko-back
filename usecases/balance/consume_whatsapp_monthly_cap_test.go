@@ -61,7 +61,7 @@ func TestConsumeWhatsappTemplate_TakesTheSlotOfThisMonthBeforeCharging(t *testin
 	if _, err := consumeWithSlots(repo, slots, now).Execute("ws-1", "entry-1", "MARKETING"); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if len(slots.takenFor) != 1 || slots.takenFor[0] != "ws-1/entry-1" || !slots.periods[0].Equal(balance.SendCapMonthStart(now)) {
+	if len(slots.takenFor) != 1 || slots.takenFor[0] != "ws-1/entry-1" || !slots.periods[0].Equal(now) {
 		t.Fatalf("unexpected take %v %v", slots.takenFor, slots.periods)
 	}
 	if len(repo.debits) != 1 || len(slots.givenBack) != 0 {

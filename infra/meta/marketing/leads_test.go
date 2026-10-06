@@ -304,3 +304,32 @@ func TestSubscribeLeadgenRefusesAmbiguousOrUnacknowledgedSubscriptions(t *testin
 		t.Fatal("expected an error when meta does not acknowledge")
 	}
 }
+
+func TestListFormsReadsTheIntroAndTheThankYouScreen(t *testing.T) {
+	g, _ := wireGateway(t, pageAware(reply(`{"data":[{"id":"701","name":"Vozko","status":"ACTIVE","leads_count":0,
+		"context_card":{"id":"9","title":"Conheça a plataforma","style":"LIST_STYLE","content":["Todos os canais","IA que responde"]},
+		"thank_you_page":{"id":"8","title":"Recebemos seu contato","body":"Em breve falamos com você","button_text":"Falar no WhatsApp","website_url":"https://wa.me/5511900000000"},
+		"is_optimized_for_quality":true}]}`)))
+
+	forms, err := g.ListForms(context.Background(), "sys-tok", "55")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := forms[0]
+	if f.Intro == nil || f.Intro.Title != "Conheça a plataforma" || f.Intro.Style != advertising.IntroList || strings.Join(f.Intro.Content, "|") != "Todos os canais|IA que responde" {
+		t.Fatalf("intro = %+v", f.Intro)
+	}
+	if f.ThankYouTitle != "Recebemos seu contato" || f.ThankYouBody != "Em breve falamos com você" || f.ThankYouButtonText != "Falar no WhatsApp" ||
+		f.ThankYouURL != "https://wa.me/5511900000000" || !f.HigherIntent {
+		t.Fatalf("form = %+v", f)
+	}
+}
+
+func TestListFormsLeavesAnUnknownIntroStyleOut(t *testing.T) {
+	g, _ := wireGateway(t, pageAware(reply(`{"data":[{"id":"702","name":"Sem intro","status":"ACTIVE","leads_count":0,
+		"context_card":{"title":"Algo","style":"NEW_STYLE","content":["x"]}}]}`)))
+	forms, err := g.ListForms(context.Background(), "sys-tok", "55")
+	if err != nil || forms[0].Intro != nil {
+		t.Fatalf("forms %+v err %v", forms, err)
+	}
+}

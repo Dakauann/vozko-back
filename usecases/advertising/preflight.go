@@ -30,6 +30,7 @@ type preflightGateway interface {
 	ListInstagramMedia(ctx context.Context, token, instagramUserID string) ([]ads.RemotePost, error)
 	ListInstantExperiences(ctx context.Context, token, pageID string) ([]ads.RemoteInstantExperience, error)
 	ListAudiences(ctx context.Context, token, metaAccountID string) ([]ads.Audience, error)
+	MetaMediaURLs(ctx context.Context, token, metaAccountID string, refs []ads.MediaRef) (map[string]string, error)
 	minimumGateway
 }
 
@@ -77,7 +78,7 @@ func (p preflighter) run(ctx context.Context, workspaceID string, draft ads.AdDr
 	}
 	mediaURLs := map[string]string{}
 	for i, ad := range draft.Ads {
-		if err := p.checkCreative(ctx, workspaceID, token, draft, i, ad.Creative, mediaURLs); err != nil {
+		if err := p.checkCreative(ctx, workspaceID, token, account, draft, i, ad.Creative, mediaURLs); err != nil {
 			return nil, err
 		}
 	}
@@ -228,7 +229,7 @@ func catalogHasSet(catalogs []ads.RemoteCatalog, catalogID, setID string) bool {
 	return false
 }
 
-func (p preflighter) checkCreative(ctx context.Context, workspaceID, token string, draft ads.AdDraft, index int, c ads.CreativeDraft, mediaURLs map[string]string) error {
+func (p preflighter) checkCreative(ctx context.Context, workspaceID, token string, account *ads.AdAccount, draft ads.AdDraft, index int, c ads.CreativeDraft, mediaURLs map[string]string) error {
 	prefix := "ads[" + strconv.Itoa(index) + "].creative."
 	for _, ref := range c.MediaRefs() {
 		url, err := p.media.describe(ctx, workspaceID, ref)
@@ -241,6 +242,9 @@ func (p preflighter) checkCreative(ctx context.Context, workspaceID, token strin
 		if url != "" {
 			mediaURLs[ref.MediaID] = url
 		}
+	}
+	if err := p.checkMetaMedia(ctx, token, account, c, prefix, mediaURLs); err != nil {
+		return err
 	}
 	pageID := draft.Identity.PageID
 	if c.LeadFormID != "" && draft.AdSet.Destination == ads.DestinationInstantForm {
@@ -285,4 +289,23 @@ func (p preflighter) posts(ctx context.Context, token string, draft ads.AdDraft,
 		return p.gateway.ListInstagramMedia(ctx, token, draft.Identity.InstagramUserID)
 	}
 	return p.gateway.ListPagePosts(ctx, token, draft.Identity.PageID)
+}
+
+func (p preflighter) checkMetaMedia(ctx context.Context, token string, account *ads.AdAccount, c ads.CreativeDraft, prefix string, mediaURLs map[string]string) error {
+	refs := c.MetaMediaRefs()
+	if len(refs) == 0 {
+		return nil
+	}
+	hosted, err := p.gateway.MetaMediaURLs(ctx, token, account.MetaAccountID, refs)
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		url := hosted[ref.MediaID]
+		if url == "" {
+			return ads.FieldError(prefix+"media", "not_found")
+		}
+		mediaURLs[ref.MediaID] = url
+	}
+	return nil
 }

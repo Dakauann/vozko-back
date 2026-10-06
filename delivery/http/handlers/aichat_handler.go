@@ -47,7 +47,7 @@ type toolActivityDTO struct {
 	Ok      bool                       `json:"ok"`
 	Chart   *copilot_domain.Chart      `json:"chart,omitempty"`
 	Card    *copilot_domain.ActionCard `json:"card,omitempty"`
-	Image   *copilot_domain.Image      `json:"image,omitempty"`
+	Media   *copilot_domain.Media      `json:"image,omitempty"`
 }
 
 type messageDTO struct {

@@ -157,7 +157,7 @@ func (c *Container) initJobRunner() {
 		cronPackage.CtxJobFunc(c.ads.Conversions.DispatchAll),
 		cronPackage.CtxJobFunc(c.ads.GrantHealth.Execute),
 	)
-	c.jobRunner.SetImageGenerationJobs(cronPackage.CtxJobFunc(c.imageGeneration().Service.Reap))
+	c.jobRunner.SetMediaGenerationJobs(cronPackage.CtxJobFunc(c.mediaGeneration().Service.Reap))
 
 	if c.audience != nil && c.audience.Enabled {
 		b := c.audience

@@ -43,6 +43,7 @@ func TestCORS_PreflightAllowsEveryHeaderTheClientSends(t *testing.T) {
 		"X-Department-ID",
 		"X-Auth-Mode",
 		"Idempotency-Key",
+		"If-Match",
 	}
 
 	cors := NewCORSMiddleware([]string{"http://localhost:3000"})

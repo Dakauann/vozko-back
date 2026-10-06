@@ -123,7 +123,18 @@ var Features = []Feature{
 		Description: "Imagens, áudios e documentos enviados pelo workspace.",
 		Capabilities: []Capability{
 			{Key: "media.view", Description: "Ver e baixar arquivos de mídia", Requires: []PermissionEntry{need(ResourceMedia, ActionRead)}},
-			{Key: "media.upload", Description: "Enviar arquivos de mídia e gerar imagens com IA", Requires: []PermissionEntry{need(ResourceMedia, ActionCreate)}},
+			{Key: "media.upload", Description: "Enviar arquivos de mídia e gerar imagens, músicas, locuções e vídeos com IA", Requires: []PermissionEntry{need(ResourceMedia, ActionCreate)}},
+		},
+	},
+	{
+		Key:         "studio",
+		Name:        "Estúdio",
+		Location:    "Menu lateral, Estúdio",
+		Description: "Editor de imagens e de vídeos para criativos: tamanhos, camadas, textos, formas, ícones, IA, remoção de fundo, linha do tempo, legendas e exportação.",
+		Capabilities: []Capability{
+			{Key: "studio.view", Description: "Ver os projetos do Estúdio", Requires: []PermissionEntry{need(ResourceMedia, ActionRead)}, Screens: []Screen{ScreenStudio}},
+			{Key: "studio.edit", Description: "Criar, editar e exportar imagens e vídeos no Estúdio", Requires: []PermissionEntry{need(ResourceMedia, ActionRead), need(ResourceMedia, ActionCreate)}, Screens: []Screen{ScreenStudioImage, ScreenStudioVideo}},
+			{Key: "studio.archive", Description: "Arquivar projetos do Estúdio", Requires: []PermissionEntry{need(ResourceMedia, ActionRead), need(ResourceMedia, ActionDelete)}},
 		},
 	},
 	{

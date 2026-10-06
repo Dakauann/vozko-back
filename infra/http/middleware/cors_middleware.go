@@ -20,7 +20,7 @@ func NewCORSMiddleware(trustedOrigins []string) *CORSMiddleware {
 }
 
 const (
-	corsAllowHeaders = "Authorization, Content-Type, X-Workspace-ID, X-Department-ID, X-Auth-Mode, Idempotency-Key"
+	corsAllowHeaders = "Authorization, Content-Type, X-Workspace-ID, X-Department-ID, X-Auth-Mode, Idempotency-Key, If-Match"
 	corsAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 	corsMaxAge       = "86400"
 )

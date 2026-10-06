@@ -441,3 +441,46 @@ func (uc *ManageUseCase) restrictedCategory(ctx context.Context, workspaceID str
 	}
 	return campaign.SpecialCategory.Restricted(), nil
 }
+
+func (uc *ManageUseCase) OffBelow(ctx context.Context, workspaceID, metaID string) ([]*ads.Object, error) {
+	t, err := uc.targetFor(ctx, workspaceID, metaID, ads.UseRead)
+	if err != nil {
+		return nil, err
+	}
+	return uc.offBelow(ctx, t.object)
+}
+
+func (uc *ManageUseCase) offBelow(ctx context.Context, object *ads.Object) ([]*ads.Object, error) {
+	var below []*ads.Object
+	for _, q := range object.BelowQueries() {
+		objects, err := uc.objects.List(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		below = append(below, objects...)
+	}
+	return ads.OffBelow(below, object.MetaID), nil
+}
+
+func (uc *ManageUseCase) TurnOn(ctx context.Context, workspaceID, metaID string, withBelow bool) (*ads.Object, []*ads.Object, error) {
+	off, err := uc.OffBelow(ctx, workspaceID, metaID)
+	if err != nil {
+		return nil, nil, err
+	}
+	object, err := uc.SetStatus(ctx, workspaceID, metaID, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	if withBelow {
+		for _, child := range off {
+			if _, err := uc.SetStatus(ctx, workspaceID, child.MetaID, true); err != nil {
+				return object, nil, err
+			}
+		}
+	}
+	stillOff, err := uc.offBelow(ctx, object)
+	if err != nil {
+		return object, nil, err
+	}
+	return object, stillOff, nil
+}

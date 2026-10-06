@@ -541,8 +541,8 @@ func TestService_ApproveHandsTheSecretToTheToolAndNowhereElse(t *testing.T) {
 func TestService_ApprovedToolKeepsItsImageInTheChat(t *testing.T) {
 	th := &fakeThreads{thread: testThread()}
 	ms := &fakeMessages{}
-	image := &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-1", Alt: "um card"}
-	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Image: image}}
+	image := &copilot.Media{Kind: copilot.MediaImage, URL: "https://cdn/x.jpg", MediaID: "m-1", Alt: "um card"}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Media: image}}
 	prov := &scriptAI{turns: [][]ai.ToolCall{{}}, texts: []string{"Aqui está a imagem."}}
 	svc := newService(prov, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image", Args: map[string]interface{}{"prompt": "um card"}})
@@ -555,7 +555,7 @@ func TestService_ApprovedToolKeepsItsImageInTheChat(t *testing.T) {
 		t.Fatal("the image must be streamed to the chat")
 	}
 	var steps []toolStep
-	if json.Unmarshal(ms.last().ToolCalls, &steps) != nil || len(steps) != 1 || steps[0].Image == nil || steps[0].Image.URL != "https://cdn/x.jpg" {
+	if json.Unmarshal(ms.last().ToolCalls, &steps) != nil || len(steps) != 1 || steps[0].Media == nil || steps[0].Media.URL != "https://cdn/x.jpg" {
 		t.Fatalf("the image must be stored with the message, got %s", ms.last().ToolCalls)
 	}
 }
@@ -607,8 +607,8 @@ func TestService_ApprovedImageIsKeptWhenTheModelAddsNoText(t *testing.T) {
 		{ThreadID: "t1", Role: aichat.RoleUser, Content: "gere um card"},
 		{ThreadID: "t1", Role: aichat.RoleAssistant, Content: "Vou gerar o card, aprove por favor."},
 	}}
-	image := &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-1", Alt: "um card"}
-	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Image: image}}
+	image := &copilot.Media{Kind: copilot.MediaImage, URL: "https://cdn/x.jpg", MediaID: "m-1", Alt: "um card"}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: "ok", Media: image}}
 	svc := newService(&scriptAI{}, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})
 	if err := svc.Approve(context.Background(), th.thread, "act-1", copilot.Approval{}, ownerCtx, (&capture{}).emit); err != nil {
@@ -616,7 +616,7 @@ func TestService_ApprovedImageIsKeptWhenTheModelAddsNoText(t *testing.T) {
 	}
 	last := ms.last()
 	var steps []toolStep
-	if last.ProposalID != "" || json.Unmarshal(last.ToolCalls, &steps) != nil || len(steps) != 1 || steps[0].Image == nil {
+	if last.ProposalID != "" || json.Unmarshal(last.ToolCalls, &steps) != nil || len(steps) != 1 || steps[0].Media == nil {
 		t.Fatalf("the executed image must be stored even without a follow-up text, got %+v", last)
 	}
 	if last.Content != "" {
@@ -637,7 +637,7 @@ func TestService_AnEmptyTurnWithoutToolsStoresNothing(t *testing.T) {
 }
 
 func TestService_ASilentToolTurnStillTellsTheModelWhatHappened(t *testing.T) {
-	steps, _ := json.Marshal([]toolStep{{Name: "generate_image", Summary: "ok", Ok: true, Image: &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-1"}}})
+	steps, _ := json.Marshal([]toolStep{{Name: "generate_image", Summary: "ok", Ok: true, Media: &copilot.Media{Kind: copilot.MediaImage, URL: "https://cdn/x.jpg", MediaID: "m-1"}}})
 	ms := &fakeMessages{list: []*aichat.Message{
 		{Role: aichat.RoleUser, Content: "gere um card"},
 		{Role: aichat.RoleAssistant, ToolCalls: steps},
@@ -661,8 +661,8 @@ func TestService_ASilentToolTurnStillTellsTheModelWhatHappened(t *testing.T) {
 func TestService_AGeneratedImageStaysKnownToTheModelOnLaterTurns(t *testing.T) {
 	th := &fakeThreads{thread: testThread()}
 	ms := &fakeMessages{}
-	image := &copilot.Image{URL: "https://cdn/x.jpg", MediaID: "m-gerada", Alt: "um card"}
-	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: map[string]string{"media_id": "m-gerada"}, Image: image}}
+	image := &copilot.Media{Kind: copilot.MediaImage, URL: "https://cdn/x.jpg", MediaID: "m-gerada", Alt: "um card"}
+	wt := &fakeTool{name: "generate_image", meta: writeMeta, result: copilot.Result{Status: copilot.StatusOK, Data: map[string]string{"media_id": "m-gerada"}, Media: image}}
 	prov := &scriptAI{texts: []string{"Imagem gerada! Quer usar no anúncio?", "Vou trocar a imagem do rascunho."}}
 	svc := newService(prov, th, ms, wt)
 	ms.propose(copilot.PendingAction{ID: "act-1", ToolName: "generate_image"})

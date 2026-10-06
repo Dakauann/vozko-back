@@ -97,7 +97,12 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.callTools(),
 		c.telegramTools(),
 		c.adsTools(),
-		{copilottools.NewGenerateImageTool(c.imageGeneration().Service)},
+		{
+			copilottools.NewGenerateImageTool(c.mediaGeneration().Service),
+			copilottools.NewGenerateMusicTool(c.mediaGeneration().Service),
+			copilottools.NewGenerateVoiceoverTool(c.mediaGeneration().Service),
+			copilottools.NewRenderVideoTool(c.mediaGeneration().Service),
+		},
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),

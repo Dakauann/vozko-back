@@ -100,23 +100,53 @@ func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage
 }
 
 func (s *Service) recoverStreamUsage(workspaceID, model, generationID string) {
-	delays := s.usageRetryDelays
+	pt, ct, costMicros, ok := fetchWithRetry(context.Background(), s.usageFetcher, s.usageRetryDelays, generationID)
+	if !ok {
+		logUnbilled(workspaceID, model, generationID)
+		return
+	}
+	log.Printf("[ai-billing] recovered usage via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
+		generationID, model, workspaceID, pt, ct, costMicros)
+	s.publishBillingEvent(workspaceID, model, pt, ct, costMicros)
+}
+
+func fetchWithRetry(ctx context.Context, fetcher generationUsageFetcher, delays []time.Duration, generationID string) (int, int, int64, bool) {
 	if len(delays) == 0 {
 		delays = []time.Duration{0}
 	}
 	for _, delay := range delays {
-		time.Sleep(delay)
-		fctx, cancel := context.WithTimeout(context.Background(), generationFetchTimeout)
-		pt, ct, costMicros, ok := s.usageFetcher.FetchUsage(fctx, generationID)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return 0, 0, 0, false
+		case <-timer.C:
+		}
+		fctx, cancel := context.WithTimeout(ctx, generationFetchTimeout)
+		pt, ct, costMicros, ok := fetcher.FetchUsage(fctx, generationID)
 		cancel()
 		if ok && (pt > 0 || ct > 0 || costMicros > 0) {
-			log.Printf("[ai-billing] recovered usage via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
-				generationID, model, workspaceID, pt, ct, costMicros)
-			s.publishBillingEvent(workspaceID, model, pt, ct, costMicros)
-			return
+			return pt, ct, costMicros, true
 		}
 	}
-	logUnbilled(workspaceID, model, generationID)
+	return 0, 0, 0, false
+}
+
+type GenerationCostLookup struct {
+	fetcher generationUsageFetcher
+	delays  []time.Duration
+}
+
+func NewGenerationCostLookup(apiKey string, delays []time.Duration) *GenerationCostLookup {
+	return &GenerationCostLookup{fetcher: newHTTPGenerationFetcher(apiKey, openRouterDefaultBaseURL), delays: delays}
+}
+
+func (l *GenerationCostLookup) CostMicros(ctx context.Context, generationID string) (int64, bool) {
+	if strings.TrimSpace(generationID) == "" {
+		return 0, false
+	}
+	_, _, costMicros, ok := fetchWithRetry(ctx, l.fetcher, l.delays, generationID)
+	return costMicros, ok
 }
 
 func logUnbilled(workspaceID, model, generationID string) {

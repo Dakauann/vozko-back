@@ -22,6 +22,10 @@ func RunMigrations(db *gorm.DB) error {
 			return err
 		}
 
+		if err := renameImageGenerationToMedia(tx); err != nil {
+			return err
+		}
+
 		if err := tx.AutoMigrate(
 			&schema.Category{},
 			&schema.Agent{},
@@ -170,7 +174,8 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.FacebookConversation{},
 			&schema.FacebookPost{},
 			&schema.FacebookPublishJob{},
-			&schema.ImageGenerationJob{},
+			&schema.MediaGenerationJob{},
+			&schema.StudioProject{},
 			&schema.FacebookComment{},
 			&schema.AdGrant{},
 			&schema.AdAccount{},

@@ -11,7 +11,7 @@ import (
 	recordings_domain "vozko/domain/calls/recordings"
 	crm_telemetry_domain "vozko/domain/crm_telemetry"
 	facebook_domain "vozko/domain/facebook"
-	imagegen_domain "vozko/domain/imagegen"
+	mediagen_domain "vozko/domain/mediagen"
 	notification_domain "vozko/domain/notification"
 	rag_domain "vozko/domain/rag"
 	report_domain "vozko/domain/report"
@@ -81,7 +81,7 @@ func (c *Container) initServices() {
 	audienceAlertExchange := audience_domain.AlertExchange
 	reportExchange := report_domain.Exchange
 	facebookPublishExchange := facebook_domain.PublishExchange
-	imageGenerationExchange := imagegen_domain.Exchange
+	mediaGenerationExchange := mediagen_domain.Exchange
 	adsPublishExchange := advertising_domain.PublishExchange
 
 	amqpPool := queue.NewConnectionPool(c.cfg.RabbitMQUsername, c.cfg.RabbitMQPassword, 0)
@@ -132,8 +132,8 @@ func (c *Container) initServices() {
 		reportQueueSub:             queue.NewRabbitMQQueueSub(amqpPool, reportExchange),
 		facebookPublishPub:         queue.NewRabbitMQQueuePub(amqpPool, facebookPublishExchange),
 		facebookPublishSub:         queue.NewRabbitMQQueueSub(amqpPool, facebookPublishExchange),
-		imageGenerationPub:         queue.NewRabbitMQQueuePub(amqpPool, imageGenerationExchange),
-		imageGenerationSub:         queue.NewRabbitMQQueueSub(amqpPool, imageGenerationExchange),
+		mediaGenerationPub:         queue.NewRabbitMQQueuePub(amqpPool, mediaGenerationExchange),
+		mediaGenerationSub:         queue.NewRabbitMQQueueSub(amqpPool, mediaGenerationExchange),
 		adsPublishPub:              queue.NewRabbitMQQueuePub(amqpPool, adsPublishExchange),
 		adsPublishSub:              queue.NewRabbitMQQueueSub(amqpPool, adsPublishExchange),
 		shortlinkQueuePub:          queue.NewRabbitMQQueuePub(amqpPool, shortlinkClickExchange),

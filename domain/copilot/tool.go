@@ -40,13 +40,22 @@ type Result struct {
 	Message string
 	Chart   *Chart
 	Card    *ActionCard
-	Image   *Image
+	Media   *Media
 }
 
-type Image struct {
-	URL     string `json:"url"`
-	MediaID string `json:"mediaId"`
-	Alt     string `json:"alt"`
+type MediaKind string
+
+const (
+	MediaImage MediaKind = "image"
+	MediaAudio MediaKind = "audio"
+	MediaVideo MediaKind = "video"
+)
+
+type Media struct {
+	Kind    MediaKind `json:"kind"`
+	URL     string    `json:"url"`
+	MediaID string    `json:"mediaId"`
+	Alt     string    `json:"alt"`
 }
 
 type PendingAction struct {

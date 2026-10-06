@@ -21,6 +21,7 @@ type ModelInfo struct {
 	Created         int64   `json:"created,omitempty"`
 	ContextLength   int64   `json:"contextLength,omitempty"`
 	SeesImages      bool    `json:"seesImages,omitempty"`
+	HearsAudio      bool    `json:"hearsAudio,omitempty"`
 }
 
 type StreamEventType int

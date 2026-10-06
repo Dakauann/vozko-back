@@ -34,6 +34,8 @@ type AdReporter interface {
 type AdManager interface {
 	CheckStatus(ctx context.Context, workspaceID, metaID string, on bool) (*advertising.Object, error)
 	SetStatus(ctx context.Context, workspaceID, metaID string, on bool) (*advertising.Object, error)
+	OffBelow(ctx context.Context, workspaceID, metaID string) ([]*advertising.Object, error)
+	TurnOn(ctx context.Context, workspaceID, metaID string, withBelow bool) (*advertising.Object, []*advertising.Object, error)
 	CheckBudget(ctx context.Context, workspaceID, metaID string, amount int64) (*advertising.Object, *advertising.AdAccount, error)
 	SetBudget(ctx context.Context, workspaceID, metaID string, amount int64) (*advertising.Object, error)
 	CheckCopy(ctx context.Context, workspaceID, metaID string, req advertising.CopyRequest) (*advertising.Object, error)
@@ -66,12 +68,20 @@ type AdsDeps struct {
 	Targeting AdTargeting
 	Forms     AdForms
 	Editor    AdEditor
+	Now       func() time.Time
 	Bulk      AdBulk
 	Sources   AdCreativeSources
 }
 
 func adsMeta(action workspace.Action, mutating bool) copilot.Meta {
 	return copilot.Meta{Mutating: mutating, Resource: workspace.ResourceAds, Action: action}
+}
+
+func (d AdsDeps) now() time.Time {
+	if d.Now == nil {
+		return time.Now()
+	}
+	return d.Now()
 }
 
 func (d AdsDeps) account(ctx context.Context, cc copilot.Context, ref string) (*advertising.AdAccount, error) {
@@ -351,10 +361,10 @@ func (t *adsResultsTool) Execute(ctx context.Context, cc copilot.Context, args m
 	if err != nil {
 		return adsFailure("ads_results", err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: reportData(report)}
+	return copilot.Result{Status: copilot.StatusOK, Data: reportData(report, t.deps.now())}
 }
 
-func reportData(r *adsuc.Report) map[string]interface{} {
+func reportData(r *adsuc.Report, now time.Time) map[string]interface{} {
 	rows := append([]adsuc.ReportRow(nil), r.Rows...)
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Metrics.SpendMicros > rows[j].Metrics.SpendMicros })
 	shown := rows
@@ -367,7 +377,7 @@ func reportData(r *adsuc.Report) map[string]interface{} {
 		o := row.Object
 		item := map[string]interface{}{
 			"meta_id": o.MetaID, "name": o.Name, "level": string(o.Level), "on": o.IsOn(),
-			"delivery": string(o.Delivery(r.Range.Until)), "delivered": o.Delivered(), "spend": advertising.MicrosToAmount(row.Metrics.SpendMicros),
+			"delivery": string(o.Delivery(now)), "delivered": o.Delivered(), "spend": advertising.MicrosToAmount(row.Metrics.SpendMicros),
 			"results": row.Metrics.Results, "result_type": row.Metrics.ResultAction,
 			"cost_per_result":   optionalAmount(row.Metrics.CostPerResult()),
 			"crm_conversations": row.Outcome.Conversations, "crm_leads": row.Outcome.Leads, "won_deals": row.Outcome.WonDeals,
@@ -820,7 +830,8 @@ func (t *createAdTool) Execute(ctx context.Context, cc copilot.Context, args map
 }
 
 type adStatusArgs struct {
-	MetaID string `json:"meta_id" req:"true" desc:"meta_id exato de ads_results (campanha, conjunto ou anúncio)"`
+	MetaID       string `json:"meta_id" req:"true" desc:"meta_id exato de ads_results (campanha, conjunto ou anúncio)"`
+	IncludeBelow bool   `json:"include_below" desc:"só para ligar: liga também os conjuntos e anúncios desligados abaixo da campanha ou do conjunto"`
 }
 
 type adStatusTool struct {
@@ -840,7 +851,9 @@ func (t *adStatusTool) Meta() copilot.Meta {
 
 func (t *adStatusTool) Definition() tools.Definition {
 	if t.on {
-		return definition("turn_on_ad", "Liga uma campanha, conjunto ou anúncio na Meta, o que volta a gastar o orçamento. Só depois da aprovação do usuário.", adStatusArgs{})
+		return definition("turn_on_ad", "Liga uma campanha, conjunto ou anúncio na Meta, o que volta a gastar o orçamento. Ligar uma campanha não liga o que está "+
+			"abaixo dela: o resultado traz still_off com os conjuntos e anúncios que continuam desligados, e nada veicula enquanto estiverem. Para ligar tudo "+
+			"de uma vez, passe include_below. Só depois da aprovação do usuário.", adStatusArgs{})
 	}
 	return definition("turn_off_ad", "Desliga uma campanha, conjunto ou anúncio na Meta. Só depois da aprovação do usuário.", adStatusArgs{})
 }
@@ -867,11 +880,21 @@ func (t *adStatusTool) Describe(ctx context.Context, cc copilot.Context, args ma
 	if err != nil {
 		return []copilot.Field{{Key: "item", Value: "item desconhecido"}}
 	}
-	change := "desligar"
-	if t.on {
-		change = "ligar"
+	fields := []copilot.Field{{Key: "item", Value: object.Name}, {Key: "level", Value: levelNames[object.Level]}, {Key: "change", Value: "desligar"}}
+	if !t.on {
+		return fields
 	}
-	return []copilot.Field{{Key: "item", Value: object.Name}, {Key: "level", Value: levelNames[object.Level]}, {Key: "change", Value: change}}
+	fields[2].Value = "ligar"
+	off, err := t.deps.Manage.OffBelow(ctx, cc.WorkspaceID, object.MetaID)
+	if err != nil || len(off) == 0 {
+		return fields
+	}
+	var a adStatusArgs
+	verb := "continuam desligados: "
+	if decodeArgs(args, &a) == nil && a.IncludeBelow {
+		verb = "também liga: "
+	}
+	return append(fields, copilot.Field{Key: "below", Value: verb + objectNames(off)})
 }
 
 func (t *adStatusTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
@@ -883,11 +906,24 @@ func (t *adStatusTool) Execute(ctx context.Context, cc copilot.Context, args map
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
-	object, err := t.deps.Manage.SetStatus(ctx, cc.WorkspaceID, id, t.on)
+	if !t.on {
+		object, err := t.deps.Manage.SetStatus(ctx, cc.WorkspaceID, id, false)
+		if err != nil {
+			return adsFailure(t.Definition().Name, err)
+		}
+		return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"meta_id": object.MetaID, "on": object.IsOn(), "status": string(object.EffectiveStatus)}}
+	}
+	object, stillOff, err := t.deps.Manage.TurnOn(ctx, cc.WorkspaceID, id, a.IncludeBelow)
 	if err != nil {
 		return adsFailure(t.Definition().Name, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"meta_id": object.MetaID, "on": object.IsOn(), "status": string(object.EffectiveStatus)}}
+	off := make([]map[string]string, 0, len(stillOff))
+	for _, o := range stillOff {
+		off = append(off, map[string]string{"meta_id": o.MetaID, "name": o.Name, "level": string(o.Level)})
+	}
+	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{
+		"meta_id": object.MetaID, "on": object.IsOn(), "status": string(object.EffectiveStatus), "still_off": off,
+	}}
 }
 
 type adBudgetArgs struct {

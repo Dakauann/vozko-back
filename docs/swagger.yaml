@@ -619,6 +619,10 @@ definitions:
     properties:
       createdTime:
         type: string
+      higherIntent:
+        type: boolean
+      intro:
+        $ref: '#/definitions/advertising.FormIntro'
       leadsCount:
         type: integer
       locale:
@@ -637,6 +641,14 @@ definitions:
         type: array
       status:
         $ref: '#/definitions/advertising.FormStatus'
+      thankYouBody:
+        type: string
+      thankYouButtonText:
+        type: string
+      thankYouTitle:
+        type: string
+      thankYouUrl:
+        type: string
     type: object
   advertising.LeadFormDraft:
     properties:
@@ -6550,78 +6562,6 @@ definitions:
           type: string
         type: array
     type: object
-  imagegenhttp.GenerateImageRequest:
-    properties:
-      aspect:
-        enum:
-        - square
-        - portrait
-        - story
-        example: square
-        type: string
-      model:
-        example: openai/gpt-image-2
-        type: string
-      prompt:
-        example: Pizza artesanal sobre mesa de madeira, luz natural
-        type: string
-      referenceMediaIds:
-        items:
-          type: string
-        type: array
-    type: object
-  imagegenhttp.JobResponse:
-    properties:
-      aspect:
-        enum:
-        - square
-        - portrait
-        - story
-        type: string
-      createdAt:
-        type: string
-      failureCode:
-        enum:
-        - generation_failed
-        - storage_failed
-        - timed_out
-        - enqueue_failed
-        - insufficient_funds
-        - reference_unavailable
-        type: string
-      id:
-        type: string
-      mediaId:
-        type: string
-      mediaUrl:
-        type: string
-      model:
-        type: string
-      prompt:
-        type: string
-      referenceMediaIds:
-        items:
-          type: string
-        type: array
-      status:
-        enum:
-        - queued
-        - running
-        - done
-        - failed
-        type: string
-      updatedAt:
-        type: string
-    type: object
-  imagegenhttp.ModelResponse:
-    properties:
-      id:
-        example: openai/gpt-image-2
-        type: string
-      name:
-        example: GPT Image 2
-        type: string
-    type: object
   instagram.AccountResponse:
     properties:
       accountType:
@@ -7386,6 +7326,204 @@ definitions:
         type: string
       content:
         example: Prefere PIX desde ago/2026
+        type: string
+    type: object
+  mediagen.Clip:
+    properties:
+      durationMs:
+        type: integer
+      fadeInMs:
+        type: integer
+      fadeOutMs:
+        type: integer
+      fit:
+        $ref: '#/definitions/mediagen.Fit'
+      mediaId:
+        type: string
+      motionIn:
+        $ref: '#/definitions/mediagen.Motion'
+      motionOut:
+        $ref: '#/definitions/mediagen.Motion'
+      startMs:
+        type: integer
+      transform:
+        $ref: '#/definitions/mediagen.Transform'
+      trimInMs:
+        type: integer
+      volume:
+        type: number
+    type: object
+  mediagen.Fit:
+    enum:
+    - cover
+    - contain
+    type: string
+    x-enum-varnames:
+    - FitCover
+    - FitContain
+  mediagen.Motion:
+    properties:
+      durationMs:
+        type: integer
+      edge:
+        $ref: '#/definitions/mediagen.MotionEdge'
+    type: object
+  mediagen.MotionEdge:
+    enum:
+    - left
+    - right
+    - top
+    - bottom
+    type: string
+    x-enum-varnames:
+    - EdgeLeft
+    - EdgeRight
+    - EdgeTop
+    - EdgeBottom
+  mediagen.Timeline:
+    properties:
+      audio:
+        items:
+          $ref: '#/definitions/mediagen.Track'
+        type: array
+      background:
+        type: string
+      durationMs:
+        type: integer
+      visual:
+        items:
+          $ref: '#/definitions/mediagen.Track'
+        type: array
+    type: object
+  mediagen.Track:
+    properties:
+      clips:
+        items:
+          $ref: '#/definitions/mediagen.Clip'
+        type: array
+    type: object
+  mediagen.Transform:
+    properties:
+      h:
+        type: number
+      opacity:
+        type: number
+      rotation:
+        type: number
+      w:
+        type: number
+      x:
+        type: number
+      "y":
+        type: number
+    type: object
+  mediagenhttp.GenerateRequest:
+    properties:
+      aspect:
+        enum:
+        - square
+        - portrait
+        - story
+        type: string
+      kind:
+        enum:
+        - image
+        - music
+        - voice
+        - video
+        - cutout
+        - captions
+        - denoise
+        example: music
+        type: string
+      model:
+        example: google/lyria-3-clip-preview
+        type: string
+      prompt:
+        example: Samba leve e acústico para o anúncio de uma cafeteria
+        type: string
+      referenceMediaIds:
+        items:
+          type: string
+        type: array
+      sourceMediaId:
+        type: string
+      video:
+        $ref: '#/definitions/mediagen.Timeline'
+      voice:
+        example: alloy
+        type: string
+    type: object
+  mediagenhttp.JobResponse:
+    properties:
+      aspect:
+        enum:
+        - square
+        - portrait
+        - story
+        type: string
+      createdAt:
+        type: string
+      failureCode:
+        enum:
+        - generation_failed
+        - storage_failed
+        - timed_out
+        - enqueue_failed
+        - insufficient_funds
+        - reference_unavailable
+        - cost_unreported
+        type: string
+      id:
+        type: string
+      kind:
+        enum:
+        - image
+        - music
+        - voice
+        - video
+        - cutout
+        - captions
+        - denoise
+        type: string
+      mediaId:
+        type: string
+      mediaUrl:
+        type: string
+      model:
+        type: string
+      prompt:
+        type: string
+      referenceMediaIds:
+        items:
+          type: string
+        type: array
+      sourceMediaId:
+        type: string
+      status:
+        enum:
+        - queued
+        - running
+        - settling
+        - done
+        - failed
+        type: string
+      updatedAt:
+        type: string
+      video:
+        $ref: '#/definitions/mediagen.Timeline'
+      voice:
+        type: string
+    type: object
+  mediagenhttp.ModelResponse:
+    properties:
+      default:
+        type: boolean
+      id:
+        example: google/lyria-3-clip-preview
+        type: string
+      name:
+        example: 'Google: Lyria 3 Clip Preview'
         type: string
     type: object
   medias.MediaResponse:
@@ -8978,6 +9116,90 @@ definitions:
       name:
         example: Em atendimento
         type: string
+    type: object
+  studiohttp.ConflictResponse:
+    properties:
+      code:
+        example: version_conflict
+        type: string
+      current:
+        $ref: '#/definitions/studiohttp.ProjectResponse'
+      message:
+        type: string
+    type: object
+  studiohttp.CreateRequest:
+    properties:
+      document:
+        type: object
+      kind:
+        enum:
+        - image
+        - video
+        type: string
+      name:
+        example: Post de segunda
+        type: string
+    type: object
+  studiohttp.ExportRequest:
+    properties:
+      rasters:
+        additionalProperties:
+          type: string
+        type: object
+      version:
+        type: integer
+    type: object
+  studiohttp.ListResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/studiohttp.SummaryResponse'
+        type: array
+      total:
+        type: integer
+    type: object
+  studiohttp.ProjectResponse:
+    properties:
+      createdAt:
+        type: string
+      document:
+        type: object
+      id:
+        type: string
+      kind:
+        enum:
+        - image
+        - video
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+      version:
+        type: integer
+    type: object
+  studiohttp.SaveRequest:
+    properties:
+      document:
+        type: object
+      name:
+        type: string
+    type: object
+  studiohttp.SummaryResponse:
+    properties:
+      id:
+        type: string
+      kind:
+        enum:
+        - image
+        - video
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+      version:
+        type: integer
     type: object
   template.NamedParamExample:
     properties:
@@ -17688,107 +17910,6 @@ paths:
       summary: Ouvir música de espera pronta
       tags:
       - Filas de atendimento
-  /images/generations:
-    post:
-      consumes:
-      - application/json
-      description: Coloca na fila a geração de uma imagem com o modelo escolhido (model,
-        um id de GET /images/models; fora da lista responde 422 com model unknown)
-        no formato pedido (square 1080x1080, portrait 1080x1350, story 1080x1920).
-        Opcionalmente recebe até 16 imagens de referência da biblioteca de mídia do
-        workspace (referenceMediaIds, sem repetição, só imagens) para edição ou estilo;
-        uma referência inválida responde 422 com o código no campo referenceMediaIds
-        (required, too_many, duplicate, not_found ou not_image). Responde 202 com
-        o job; acompanhe por GET /images/generations/{id} até status done (mediaId
-        e mediaUrl da biblioteca de mídia) ou failed (failureCode). A imagem é cobrada
-        do saldo como uso de IA. Um pedido igual do mesmo usuário nos últimos 10 minutos,
-        ainda em andamento, devolve o mesmo job sem nova cobrança.
-      parameters:
-      - description: descrição e formato da imagem
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/imagegenhttp.GenerateImageRequest'
-      produces:
-      - application/json
-      responses:
-        "202":
-          description: Accepted
-          schema:
-            $ref: '#/definitions/imagegenhttp.JobResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "402":
-          description: Payment Required
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "422":
-          description: Unprocessable Entity
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Gerar imagem com IA
-      tags:
-      - Imagens
-  /images/generations/{id}:
-    get:
-      description: 'Estado de uma geração de imagem do workspace: queued, running,
-        done (com mediaId, mediaUrl e model) ou failed (com failureCode: generation_failed,
-        storage_failed, timed_out, enqueue_failed, insufficient_funds ou reference_unavailable).'
-      parameters:
-      - description: id do job
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/imagegenhttp.JobResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Consultar geração de imagem
-      tags:
-      - Imagens
-  /images/models:
-    get:
-      description: Modelos que geram imagens, do mais usado para o menos usado, segundo
-        o ranking de popularidade do provedor. O id escolhido vai no campo model de
-        POST /images/generations. Responde 503 (models_unavailable) quando a lista
-        não pode ser carregada; nesse caso nenhuma imagem pode ser pedida.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/imagegenhttp.ModelResponse'
-            type: array
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Modelos de imagem
-      tags:
-      - Imagens
   /instagram/accounts:
     get:
       produces:
@@ -19522,6 +19643,128 @@ paths:
       summary: Buscar lead por número
       tags:
       - Leads
+  /media/generations:
+    post:
+      consumes:
+      - application/json
+      description: 'Coloca na fila uma geração. kind image: prompt, aspect (square
+        1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds
+        de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice:
+        prompt com o roteiro exato, model e voice opcional. kind video: aspect e video,
+        uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual
+        de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs,
+        durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1
+        com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem);
+        sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions
+        (legendas WebVTT da fala de um áudio ou vídeo) e denoise (áudio limpo de um
+        áudio ou vídeo): sourceMediaId da biblioteca, sem model; processados no Vozko,
+        no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos
+        respondem 422 com o código por campo. Responde 202 com o job; acompanhe por
+        GET /media/generations/{id}. Imagem, música e locução são cobradas do saldo
+        pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado
+        (status settling enquanto o provedor não informa o custo). Um pedido igual
+        do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.'
+      parameters:
+      - description: o que gerar
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/mediagenhttp.GenerateRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/mediagenhttp.JobResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "402":
+          description: Payment Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Gerar mídia com IA
+      tags:
+      - Mídia gerada
+  /media/generations/{id}:
+    get:
+      description: 'Estado de uma geração do workspace: queued, running, settling
+        (pronta, aguardando o provedor informar o custo), done (com mediaId, mediaUrl
+        e model) ou failed (com failureCode). mediaId e mediaUrl só aparecem em done.'
+      parameters:
+      - description: id do job
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mediagenhttp.JobResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Consultar geração de mídia
+      tags:
+      - Mídia gerada
+  /media/models:
+    get:
+      description: 'Modelos que geram o tipo pedido (kind: image, music ou voice),
+        do mais usado para o menos usado segundo o provedor; default marca o recomendado.
+        O id escolhido vai no campo model de POST /media/generations. Vídeos são montados
+        pelo Vozko e não têm modelo. Responde 503 (models_unavailable) quando a lista
+        não pode ser carregada; nesse caso nada desse tipo pode ser pedido.'
+      parameters:
+      - description: tipo de mídia
+        enum:
+        - image
+        - music
+        - voice
+        in: query
+        name: kind
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/mediagenhttp.ModelResponse'
+            type: array
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Modelos de geração de mídia
+      tags:
+      - Mídia gerada
   /medias:
     get:
       description: Retorna as mídias do workspace (imagens, vídeos, documentos e áudios)
@@ -22705,6 +22948,206 @@ paths:
       summary: Reordenar etapas
       tags:
       - Etapas
+  /studio/projects:
+    get:
+      description: Projetos de imagem e vídeo do workspace, do editado mais recentemente
+        para o mais antigo, sem o documento. kind filtra por tipo.
+      parameters:
+      - description: tipo
+        enum:
+        - image
+        - video
+        in: query
+        name: kind
+        type: string
+      - description: até 100, padrão 30
+        in: query
+        name: limit
+        type: integer
+      - description: deslocamento
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/studiohttp.ListResponse'
+      security:
+      - BearerAuth: []
+      summary: Listar projetos do Estúdio
+      tags:
+      - Estúdio
+    post:
+      consumes:
+      - application/json
+      description: 'Cria um projeto de imagem (documento studio.image) ou de vídeo
+        (documento studio.video). O documento é validado inteiro: campos desconhecidos,
+        fontes fora da lista, clipes sobrepostos na mesma faixa ou valores fora dos
+        limites respondem 422 com o código por campo. Até 512 KB.'
+      parameters:
+      - description: projeto
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/studiohttp.CreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/studiohttp.ProjectResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Criar projeto do Estúdio
+      tags:
+      - Estúdio
+  /studio/projects/{id}:
+    delete:
+      parameters:
+      - description: id do projeto
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Arquivar projeto do Estúdio
+      tags:
+      - Estúdio
+    get:
+      description: O projeto com o documento e a versão atual, que vai no If-Match
+        ao salvar.
+      parameters:
+      - description: id do projeto
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/studiohttp.ProjectResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Abrir projeto do Estúdio
+      tags:
+      - Estúdio
+    patch:
+      consumes:
+      - application/json
+      description: Salva o nome e ou o documento a partir da versão informada no cabeçalho
+        If-Match. Se o projeto foi salvo em outro lugar depois dessa versão, responde
+        409 version_conflict com o projeto atual em current, sem sobrescrever.
+      parameters:
+      - description: id do projeto
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: versão carregada
+        in: header
+        name: If-Match
+        required: true
+        type: string
+      - description: mudanças
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/studiohttp.SaveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/studiohttp.ProjectResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/studiohttp.ConflictResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "428":
+          description: Precondition Required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Salvar projeto do Estúdio
+      tags:
+      - Estúdio
+  /studio/projects/{id}/export:
+    post:
+      consumes:
+      - application/json
+      description: Renderiza a versão salva informada (version) como MP4 na fila de
+        processamento. Cada clipe de sobreposição precisa da imagem PNG já gerada
+        pelo editor em rasters (id do clipe para media_id da biblioteca); faltando
+        uma, responde 422 not_rasterized. Responde 202 com o job; acompanhe por GET
+        /media/generations/{id}. Uma exportação igual em andamento devolve o mesmo
+        job.
+      parameters:
+      - description: id do projeto
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: versão e sobreposições
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/studiohttp.ExportRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/mediagenhttp.JobResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/studiohttp.ConflictResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Exportar vídeo do Estúdio
+      tags:
+      - Estúdio
   /tickets:
     get:
       description: Retorna a lista paginada dos tickets de envio do usuário autenticado,

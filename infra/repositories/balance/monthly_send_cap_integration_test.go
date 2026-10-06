@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"vozko/domain/balance"
+	"vozko/domain/billing"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/database/schema"
@@ -21,8 +22,8 @@ import (
 )
 
 var (
-	september = balance.SendCapMonthStart(time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC))
-	october   = balance.SendCapMonthStart(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC))
+	september = balance.SendCapCycleStart(time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC), 1)
+	october   = balance.SendCapCycleStart(time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC), 1)
 )
 
 func sendCapIntegrationDSN() string {
@@ -82,7 +83,7 @@ func seedWorkspace(t *testing.T, db *gorm.DB, name string, amount int64) string 
 
 func capWorkspace(t *testing.T, caps *MonthlySendCapRepository, workspaceID string, limit int64) {
 	t.Helper()
-	cap, err := balance.NewMonthlySendCap(workspaceID, limit, uuid.New().String(), time.Now())
+	cap, err := balance.NewMonthlySendCap(workspaceID, limit, 1, uuid.New().String(), time.Now())
 	if err != nil {
 		t.Fatalf("cap: %v", err)
 	}
@@ -673,5 +674,123 @@ func TestSendCapIntegration_AdminEditsDuringTakesNeverDeadlockOrOvershoot(t *tes
 	row, slots := capState(t, db, ws)
 	if row.Used != slots || row.Used > 10 {
 		t.Fatalf("used %d, slots %d; the count must match the slots and never pass the highest limit", row.Used, slots)
+	}
+}
+
+func capWorkspaceOnDay(t *testing.T, caps *MonthlySendCapRepository, workspaceID string, limit int64, day int) {
+	t.Helper()
+	cap, err := balance.NewMonthlySendCap(workspaceID, limit, day, uuid.New().String(), time.Now())
+	if err != nil {
+		t.Fatalf("cap: %v", err)
+	}
+	if err := caps.UpsertMonthlySendCap(cap); err != nil {
+		t.Fatalf("upsert cap: %v", err)
+	}
+}
+
+func brtDay(y int, m time.Month, d, h int) time.Time {
+	return time.Date(y, m, d, h, 0, 0, 0, billing.LocationBRT())
+}
+
+func TestSendCapIntegration_CycleRunsFromTheChosenDay(t *testing.T) {
+	db := sendCapIntegrationDB(t)
+	caps := NewMonthlySendCapRepository(db)
+	ws := seedWorkspace(t, db, "Acme", 1_000_000)
+	capWorkspaceOnDay(t, caps, ws, 2, 15)
+
+	for i, at := range []time.Time{brtDay(2026, 9, 20, 10), brtDay(2026, 10, 14, 23)} {
+		if took, err := caps.TakeMonthlySendSlot(ws, fmt.Sprintf("sep-cycle-%d", i), at); err != nil || !took {
+			t.Fatalf("September 15 to October 14 is one cycle, send %d: %v, %v", i, took, err)
+		}
+	}
+	if _, err := caps.TakeMonthlySendSlot(ws, "sep-cycle-full", brtDay(2026, 10, 14, 23)); !errors.Is(err, balance.ErrMonthlySendCapReached) {
+		t.Fatalf("the cycle is full until the 15th, got %v", err)
+	}
+	if took, err := caps.TakeMonthlySendSlot(ws, "oct-cycle-1", brtDay(2026, 10, 15, 0)); err != nil || !took {
+		t.Fatalf("a new cycle opens on the 15th, got %v, %v", took, err)
+	}
+	row, slots := capState(t, db, ws)
+	if row.Used != 1 || !row.CountedFrom.Equal(brtDay(2026, 10, 15, 0)) || slots != 1 {
+		t.Fatalf("used %d from %v with %d slots; want 1 from October 15 with 1 slot", row.Used, row.CountedFrom, slots)
+	}
+}
+
+func TestSendCapIntegration_UsageListsEachCapInItsOwnCycle(t *testing.T) {
+	db := sendCapIntegrationDB(t)
+	caps := NewMonthlySendCapRepository(db)
+	first := seedWorkspace(t, db, "First", 1_000_000)
+	fifteenth := seedWorkspace(t, db, "Fifteenth", 1_000_000)
+	capWorkspaceOnDay(t, caps, first, 10, 1)
+	capWorkspaceOnDay(t, caps, fifteenth, 10, 15)
+	for _, ws := range []string{first, fifteenth} {
+		if _, err := caps.TakeMonthlySendSlot(ws, ws+"-a", brtDay(2026, 10, 10, 9)); err != nil {
+			t.Fatalf("take: %v", err)
+		}
+	}
+
+	usages, err := caps.ListMonthlySendCapUsage(brtDay(2026, 10, 20, 9))
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	got := map[string]balance.SendCapUsage{}
+	for _, u := range usages {
+		got[u.WorkspaceName] = u
+	}
+	if u := got["First"]; u.Used != 1 || !u.CycleStart.Equal(brtDay(2026, 10, 1, 0)) || u.Cap.CycleDay != 1 {
+		t.Fatalf("a day 1 cap on October 20 still counts October 10: %+v", u)
+	}
+	if u := got["Fifteenth"]; u.Used != 0 || !u.CycleStart.Equal(brtDay(2026, 10, 15, 0)) || u.Cap.CycleDay != 15 {
+		t.Fatalf("a day 15 cap on October 20 has a fresh cycle: %+v", u)
+	}
+}
+
+func TestSendCapIntegration_ChangingTheCycleDayResyncsFromTheLedger(t *testing.T) {
+	db := sendCapIntegrationDB(t)
+	caps := NewMonthlySendCapRepository(db)
+	ledger := NewRepository(db)
+	ws := seedWorkspace(t, db, "Acme", 1_000_000)
+	capWorkspaceOnDay(t, caps, ws, 10, 1)
+	chargeTemplate(t, ledger, ws, brtDay(2026, 9, 20, 10), db)
+	chargeTemplate(t, ledger, ws, brtDay(2026, 10, 3, 10), db)
+	if _, err := caps.TakeMonthlySendSlot(ws, "oct-a", brtDay(2026, 10, 5, 10)); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+
+	current, _ := caps.GetMonthlySendCap(ws)
+	moved, err := current.Recycled(15)
+	if err != nil {
+		t.Fatalf("recycle: %v", err)
+	}
+	if err := caps.UpsertMonthlySendCap(moved); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if row, _ := capState(t, db, ws); row.CycleDay != 15 || row.CountedFrom != nil {
+		t.Fatalf("a new cycle day must clear the saved count: day %d, counted from %v", row.CycleDay, row.CountedFrom)
+	}
+
+	if _, err := caps.TakeMonthlySendSlot(ws, "oct-b", brtDay(2026, 10, 6, 10)); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+	if row, _ := capState(t, db, ws); row.Used != 3 || !row.CountedFrom.Equal(brtDay(2026, 9, 15, 0)) {
+		t.Fatalf("the September 15 cycle counts both ledger charges plus this send: used %d from %v", row.Used, row.CountedFrom)
+	}
+
+	relimited, _ := moved.Relimited(5, uuid.New().String(), time.Now())
+	if err := caps.UpsertMonthlySendCap(relimited); err != nil {
+		t.Fatalf("relimit: %v", err)
+	}
+	if row, _ := capState(t, db, ws); row.Used != 3 || row.CountedFrom == nil {
+		t.Fatalf("changing only the limit keeps the count: used %d from %v", row.Used, row.CountedFrom)
+	}
+}
+
+func TestSendCapIntegration_DatabaseRefusesACycleDayOutsideTheMonth(t *testing.T) {
+	db := sendCapIntegrationDB(t)
+	caps := NewMonthlySendCapRepository(db)
+	ws := seedWorkspace(t, db, "Acme", 1_000_000)
+
+	err := caps.UpsertMonthlySendCap(balance.MonthlySendCap{WorkspaceID: ws, Limit: 10, CycleDay: 32, UpdatedBy: uuid.New().String(), UpdatedAt: time.Now()})
+	if err == nil {
+		t.Fatal("the database must refuse a cycle day of 32")
 	}
 }

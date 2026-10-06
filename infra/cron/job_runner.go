@@ -95,8 +95,8 @@ func (r *JobRunner) SetAdsJobs(recentSync, settledSync, reviewRefresh, fundsWatc
 	r.addChannelJob("ads_grant_health", 6*time.Hour, grantHealth)
 }
 
-func (r *JobRunner) SetImageGenerationJobs(reaper ctxJob) {
-	r.addChannelJob("image_generation_reaper", time.Minute, reaper)
+func (r *JobRunner) SetMediaGenerationJobs(reaper ctxJob) {
+	r.addChannelJob("media_generation_reaper", time.Minute, reaper)
 }
 
 func (r *JobRunner) SetWebhookEventPurgeJob(purge ctxJob) {

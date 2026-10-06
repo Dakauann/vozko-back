@@ -25,8 +25,7 @@ func (uc *listMonthlySendCapsUseCase) Execute(actor balance.SendCapActor, level 
 	if !actor.CanManage() {
 		return nil, balance.ErrSendCapForbidden
 	}
-	monthStart := balance.SendCapMonthStart(uc.now())
-	usages, err := uc.caps.ListMonthlySendCapUsage(monthStart)
+	usages, err := uc.caps.ListMonthlySendCapUsage(uc.now())
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +36,7 @@ func (uc *listMonthlySendCapsUseCase) Execute(actor balance.SendCapActor, level 
 		}
 	}
 	balance.SortSendCapUsageByPressure(items)
-	return &balance.SendCapListing{MonthStart: monthStart, Items: items, CanUnlock: actor.CanUnlock()}, nil
+	return &balance.SendCapListing{Items: items, CanUnlock: actor.CanUnlock()}, nil
 }
 
 type setMonthlySendCapUseCase struct {
@@ -50,35 +49,44 @@ func NewSetMonthlySendCapUseCase(caps balance.MonthlySendCapRepository, workspac
 	return &setMonthlySendCapUseCase{caps: caps, workspaces: workspaces, now: now}
 }
 
-func (uc *setMonthlySendCapUseCase) Execute(actor balance.SendCapActor, workspaceID string, limit int64) (*balance.MonthlySendCap, error) {
+func (uc *setMonthlySendCapUseCase) Execute(actor balance.SendCapActor, input balance.SetMonthlySendCapInput) (*balance.MonthlySendCap, error) {
 	if !actor.CanManage() {
 		return nil, balance.ErrSendCapForbidden
 	}
-	if _, err := uc.workspaces.GetWorkspaceByID(workspaceID); err != nil {
+	if _, err := uc.workspaces.GetWorkspaceByID(input.WorkspaceID); err != nil {
 		return nil, err
 	}
-	current, err := uc.caps.GetMonthlySendCap(workspaceID)
+	current, err := uc.caps.GetMonthlySendCap(input.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
-	if balance.SendCapChangeRequiresUnlock(current, &limit) {
+	next, err := uc.candidate(actor, current, input)
+	if err != nil {
+		return nil, err
+	}
+	if balance.SendCapChangeRequiresUnlock(current, &next) {
 		return nil, balance.ErrSendCapUnlockRequired
-	}
-
-	var next balance.MonthlySendCap
-	if current == nil {
-		next, err = balance.NewMonthlySendCap(workspaceID, limit, actor.UserID, uc.now())
-	} else {
-		next, err = current.Relimited(limit, actor.UserID, uc.now())
-	}
-	if err != nil {
-		return nil, err
 	}
 	if err := uc.caps.UpsertMonthlySendCap(next); err != nil {
 		return nil, err
 	}
-	log.Printf("[monthly-send-cap] workspace %s capped at %d by %s", workspaceID, limit, actor.UserID)
+	log.Printf("[monthly-send-cap] workspace %s capped at %d from day %d by %s", input.WorkspaceID, next.Limit, next.CycleDay, actor.UserID)
 	return &next, nil
+}
+
+func (uc *setMonthlySendCapUseCase) candidate(actor balance.SendCapActor, current *balance.MonthlySendCap, input balance.SetMonthlySendCapInput) (balance.MonthlySendCap, error) {
+	if current == nil {
+		cycleDay := 1
+		if input.CycleDay != nil {
+			cycleDay = *input.CycleDay
+		}
+		return balance.NewMonthlySendCap(input.WorkspaceID, input.Limit, cycleDay, actor.UserID, uc.now())
+	}
+	relimited, err := current.Relimited(input.Limit, actor.UserID, uc.now())
+	if err != nil {
+		return balance.MonthlySendCap{}, err
+	}
+	return relimited.RecycledIfAsked(input.CycleDay)
 }
 
 type unlockMonthlySendCapUseCase struct {
@@ -118,9 +126,12 @@ func (uc *unlockMonthlySendCapUseCase) Execute(actor balance.SendCapActor, input
 	if err != nil {
 		return nil, err
 	}
+	if unlocked, err = unlocked.RecycledIfAsked(input.CycleDay); err != nil {
+		return nil, err
+	}
 	if err := uc.caps.UpsertMonthlySendCap(unlocked); err != nil {
 		return nil, err
 	}
-	log.Printf("[monthly-send-cap] workspace %s cap changed from %d to %d by %s", input.WorkspaceID, current.Limit, unlocked.Limit, actor.UserID)
+	log.Printf("[monthly-send-cap] workspace %s cap changed from %d (day %d) to %d (day %d) by %s", input.WorkspaceID, current.Limit, current.CycleDay, unlocked.Limit, unlocked.CycleDay, actor.UserID)
 	return &unlocked, nil
 }

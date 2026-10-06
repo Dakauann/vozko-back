@@ -43,15 +43,21 @@ const (
 )
 
 type LeadForm struct {
-	MetaID      string         `json:"metaId"`
-	PageID      string         `json:"pageId"`
-	Name        string         `json:"name"`
-	Status      FormStatus     `json:"status"`
-	Locale      string         `json:"locale,omitempty"`
-	Questions   []FormQuestion `json:"questions"`
-	PrivacyURL  string         `json:"privacyUrl,omitempty"`
-	LeadsCount  int64          `json:"leadsCount"`
-	CreatedTime *time.Time     `json:"createdTime,omitempty"`
+	MetaID             string         `json:"metaId"`
+	PageID             string         `json:"pageId"`
+	Name               string         `json:"name"`
+	Status             FormStatus     `json:"status"`
+	Locale             string         `json:"locale,omitempty"`
+	Intro              *FormIntro     `json:"intro,omitempty"`
+	Questions          []FormQuestion `json:"questions"`
+	PrivacyURL         string         `json:"privacyUrl,omitempty"`
+	ThankYouTitle      string         `json:"thankYouTitle,omitempty"`
+	ThankYouBody       string         `json:"thankYouBody,omitempty"`
+	ThankYouURL        string         `json:"thankYouUrl,omitempty"`
+	ThankYouButtonText string         `json:"thankYouButtonText,omitempty"`
+	HigherIntent       bool           `json:"higherIntent,omitempty"`
+	LeadsCount         int64          `json:"leadsCount"`
+	CreatedTime        *time.Time     `json:"createdTime,omitempty"`
 }
 
 type LeadFormDraft struct {

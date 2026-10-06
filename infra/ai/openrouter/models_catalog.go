@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,14 +21,15 @@ const (
 	catalogOutputModalities    = "text"
 	catalogSupportedParameters = "tools"
 	imageOutputModalities      = "image"
+	audioOutputModalities      = "audio"
 )
 
 func chatModelsQuery() url.Values {
 	return url.Values{"output_modalities": {catalogOutputModalities}, "supported_parameters": {catalogSupportedParameters}}
 }
 
-func imageModelsQuery() url.Values {
-	return url.Values{"output_modalities": {imageOutputModalities}}
+func outputModelsQuery(modality string) url.Values {
+	return url.Values{"output_modalities": {modality}}
 }
 
 type modelCatalogFetcher struct {
@@ -77,13 +79,8 @@ type openRouterModel struct {
 	} `json:"architecture"`
 }
 
-func (m openRouterModel) seesImages() bool {
-	for _, modality := range m.Architecture.InputModalities {
-		if modality == imageOutputModalities {
-			return true
-		}
-	}
-	return false
+func (m openRouterModel) accepts(modality string) bool {
+	return slices.Contains(m.Architecture.InputModalities, modality)
 }
 
 func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, bool) {
@@ -136,7 +133,8 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 			ID:      m.ID,
 			Name:    m.Name,
 			Created:    m.Created,
-			SeesImages: m.seesImages(),
+			SeesImages: m.accepts(imageOutputModalities),
+			HearsAudio: m.accepts(audioOutputModalities),
 		}
 		if v := parseFloat64(m.Pricing.Prompt); v > 0 {
 			info.PromptPrice = v * 1_000_000

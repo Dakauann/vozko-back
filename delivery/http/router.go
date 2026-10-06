@@ -30,7 +30,8 @@ import (
 	advertisinghttp "vozko/delivery/http/advertising"
 	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
-	imagegenhttp "vozko/delivery/http/imagegen"
+	mediagenhttp "vozko/delivery/http/mediagen"
+	studiohttp "vozko/delivery/http/studio"
 	webchathttp "vozko/delivery/http/webchat"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
@@ -166,7 +167,8 @@ type router struct {
 	instagramHandler               *instagramhttp.Handler
 	instagramWebhookHandler        *instagramhttp.WebhookHandler
 	metaChannels                   MetaChannelRoutes
-	imageGenerationHandler         *imagegenhttp.Handler
+	mediaGenerationHandler         *mediagenhttp.Handler
+	studioHandler                  *studiohttp.Handler
 	audienceHandler                *audiencehttp.Handler
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
@@ -302,13 +304,15 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	audienceHandler *audiencehttp.Handler,
 	sendCapHandler *balancehttp.SendCapHandler,
 	metaChannels MetaChannelRoutes,
-	imageGenerationHandler *imagegenhttp.Handler,
+	mediaGenerationHandler *mediagenhttp.Handler,
+	studioHandler *studiohttp.Handler,
 	webchat WebchatRoutes,
 ) Router {
 	r := &router{
 		webchat:                        webchat,
 		metaChannels:                   metaChannels,
-		imageGenerationHandler:         imageGenerationHandler,
+		mediaGenerationHandler:         mediaGenerationHandler,
+		studioHandler:                  studioHandler,
 		instagramHandler:               instagramHandler,
 		audienceHandler:                audienceHandler,
 		sendCapHandler:                 sendCapHandler,
@@ -476,7 +480,8 @@ func (r *router) setupRoutes() {
 	r.setupInstagramRoutes(protected)
 	facebookhttp.RegisterProtectedRoutes(protected, r.metaChannels.Facebook, r.ac)
 	advertisinghttp.RegisterProtectedRoutes(protected, r.metaChannels.Ads, r.ac)
-	imagegenhttp.RegisterProtectedRoutes(protected, r.imageGenerationHandler, r.ac)
+	mediagenhttp.RegisterProtectedRoutes(protected, r.mediaGenerationHandler, r.ac)
+	studiohttp.RegisterProtectedRoutes(protected, r.studioHandler, r.ac)
 	webchathttp.RegisterProtectedRoutes(protected, r.webchat.Management, r.ac)
 
 	r.setupAudienceRoutes(protected)

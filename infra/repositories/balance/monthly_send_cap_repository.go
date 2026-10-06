@@ -36,14 +36,18 @@ func (r *MonthlySendCapRepository) UpsertMonthlySendCap(cap balance.MonthlySendC
 	row := schema.WorkspaceMonthlySendCap{
 		WorkspaceID:  cap.WorkspaceID,
 		MonthlyLimit: cap.Limit,
+		CycleDay:     cap.CycleDay,
 		UpdatedBy:    cap.UpdatedBy,
 		UpdatedAt:    cap.UpdatedAt,
 		UnlockedBy:   cap.UnlockedBy,
 		UnlockedAt:   cap.UnlockedAt,
 	}
 	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "workspace_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"monthly_limit", "updated_by", "updated_at", "unlocked_by", "unlocked_at"}),
+		Columns: []clause.Column{{Name: "workspace_id"}},
+		DoUpdates: append(
+			clause.AssignmentColumns([]string{"monthly_limit", "cycle_day", "updated_by", "updated_at", "unlocked_by", "unlocked_at"}),
+			clause.Assignment{Column: clause.Column{Name: "counted_from"}, Value: gorm.Expr("CASE WHEN workspace_monthly_send_caps.cycle_day = excluded.cycle_day THEN workspace_monthly_send_caps.counted_from END")},
+		),
 	}).Create(&row).Error
 }
 
@@ -56,7 +60,7 @@ func (r *MonthlySendCapRepository) DeleteMonthlySendCap(workspaceID string) erro
 	})
 }
 
-func (r *MonthlySendCapRepository) TakeMonthlySendSlot(workspaceID, referenceID string, period time.Time) (bool, error) {
+func (r *MonthlySendCapRepository) TakeMonthlySendSlot(workspaceID, referenceID string, at time.Time) (bool, error) {
 	took := false
 	var refusal error
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -68,7 +72,7 @@ func (r *MonthlySendCapRepository) TakeMonthlySendSlot(workspaceID, referenceID 
 		if err != nil || taken {
 			return err
 		}
-		counted, used, err := usedInOpenPeriod(tx, cap, period)
+		counted, used, err := usedInOpenPeriod(tx, cap, toDomainMonthlySendCap(*cap).CycleStart(at))
 		if err != nil {
 			return err
 		}
@@ -114,28 +118,39 @@ func (r *MonthlySendCapRepository) GiveBackMonthlySendSlot(workspaceID, referenc
 	})
 }
 
-func (r *MonthlySendCapRepository) ListMonthlySendCapUsage(since time.Time) ([]balance.SendCapUsage, error) {
-	type usageRow struct {
+func (r *MonthlySendCapRepository) ListMonthlySendCapUsage(at time.Time) ([]balance.SendCapUsage, error) {
+	type capRow struct {
 		schema.WorkspaceMonthlySendCap
 		WorkspaceName string
-		MonthUsed     int64
 	}
-	var rows []usageRow
-	sql := `SELECT c.workspace_id, c.monthly_limit, c.updated_by, c.updated_at, c.unlocked_by, c.unlocked_at, w.name AS workspace_name,
-		CASE WHEN c.counted_from >= ? THEN c.used WHEN c.counted_from IS NULL THEN (` + netTemplateSendsSinceSQL("c.workspace_id") + `) ELSE 0 END AS month_used
-		FROM workspace_monthly_send_caps c JOIN workspaces w ON w.id = c.workspace_id AND w.deleted_at IS NULL`
-	if err := r.db.Raw(sql, since, since).Scan(&rows).Error; err != nil {
+	var rows []capRow
+	if err := r.db.Raw(`SELECT c.*, w.name AS workspace_name FROM workspace_monthly_send_caps c JOIN workspaces w ON w.id = c.workspace_id AND w.deleted_at IS NULL`).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	usages := make([]balance.SendCapUsage, 0, len(rows))
 	for _, row := range rows {
-		usages = append(usages, balance.SendCapUsage{
-			Cap:           toDomainMonthlySendCap(row.WorkspaceMonthlySendCap),
-			WorkspaceName: row.WorkspaceName,
-			Used:          row.MonthUsed,
-		})
+		cap := toDomainMonthlySendCap(row.WorkspaceMonthlySendCap)
+		cycleStart := cap.CycleStart(at)
+		used, err := usedInCycle(r.db, &row.WorkspaceMonthlySendCap, cycleStart)
+		if err != nil {
+			return nil, err
+		}
+		usages = append(usages, balance.SendCapUsage{Cap: cap, WorkspaceName: row.WorkspaceName, Used: used, CycleStart: cycleStart})
 	}
 	return usages, nil
+}
+
+func usedInCycle(db *gorm.DB, cap *schema.WorkspaceMonthlySendCap, cycleStart time.Time) (int64, error) {
+	switch {
+	case cap.CountedFrom == nil:
+		var used int64
+		err := db.Raw(netTemplateSendsSinceSQL("?"), cap.WorkspaceID, cycleStart).Scan(&used).Error
+		return used, err
+	case cycleStart.After(*cap.CountedFrom):
+		return 0, nil
+	default:
+		return cap.Used, nil
+	}
 }
 
 func lockMonthlySendCap(tx *gorm.DB, workspaceID string) (*schema.WorkspaceMonthlySendCap, error) {
@@ -186,6 +201,7 @@ func toDomainMonthlySendCap(row schema.WorkspaceMonthlySendCap) balance.MonthlyS
 	return balance.MonthlySendCap{
 		WorkspaceID: row.WorkspaceID,
 		Limit:       row.MonthlyLimit,
+		CycleDay:    row.CycleDay,
 		UpdatedBy:   row.UpdatedBy,
 		UpdatedAt:   row.UpdatedAt,
 		UnlockedBy:  row.UnlockedBy,

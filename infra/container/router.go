@@ -110,7 +110,8 @@ func (c *Container) initRouter() {
 		audienceHandler(c),
 		c.handlers.sendCap,
 		c.metaChannelRoutes(),
-		c.imageGeneration().Handler,
+		c.mediaGeneration().Handler,
+		c.studioHandler(),
 		webchatRoutes(c),
 	)
 

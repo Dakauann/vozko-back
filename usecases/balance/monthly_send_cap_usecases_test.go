@@ -56,8 +56,8 @@ func (m *memoryCaps) DeleteMonthlySendCap(workspaceID string) error {
 	return nil
 }
 
-func (m *memoryCaps) ListMonthlySendCapUsage(since time.Time) ([]balance.SendCapUsage, error) {
-	m.since = since
+func (m *memoryCaps) ListMonthlySendCapUsage(at time.Time) ([]balance.SendCapUsage, error) {
+	m.since = at
 	return m.usages, nil
 }
 
@@ -103,8 +103,8 @@ func TestListMonthlySendCaps_FiltersSortsAndTellsWhoCanUnlock(t *testing.T) {
 	if all.CanUnlock {
 		t.Fatal("a system admin off the allowlist cannot unlock")
 	}
-	if !caps.since.Equal(balance.SendCapMonthStart(capNow)) || !all.MonthStart.Equal(caps.since) {
-		t.Fatalf("usage must be counted from the start of the month, got %v", caps.since)
+	if !caps.since.Equal(capNow) {
+		t.Fatalf("usage must be read at the current time, got %v", caps.since)
 	}
 
 	near, err := uc.Execute(superAdmin, balance.SendCapLevelNear)
@@ -120,7 +120,7 @@ func TestSetMonthlySendCap_CreatesAndLowers(t *testing.T) {
 	caps := newMemoryCaps()
 	uc := NewSetMonthlySendCapUseCase(caps, knownWorkspaces{"ws-1": true}, fixedClock)
 
-	created, err := uc.Execute(systemAdmin, "ws-1", 1000)
+	created, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 1000})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestSetMonthlySendCap_CreatesAndLowers(t *testing.T) {
 		t.Fatalf("unexpected cap %+v", created)
 	}
 
-	lowered, err := uc.Execute(systemAdmin, "ws-1", 400)
+	lowered, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 400})
 	if err != nil || lowered.Limit != 400 || caps.caps["ws-1"].Limit != 400 {
 		t.Fatalf("lowering must be allowed, got %+v, %v", lowered, err)
 	}
@@ -139,7 +139,7 @@ func TestSetMonthlySendCap_RaisingRequiresAnUnlock(t *testing.T) {
 	uc := NewSetMonthlySendCapUseCase(caps, knownWorkspaces{"ws-1": true}, fixedClock)
 
 	for _, actor := range []balance.SendCapActor{systemAdmin, superAdmin} {
-		if _, err := uc.Execute(actor, "ws-1", 101); !errors.Is(err, balance.ErrSendCapUnlockRequired) {
+		if _, err := uc.Execute(actor, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 101}); !errors.Is(err, balance.ErrSendCapUnlockRequired) {
 			t.Fatalf("raising through set must require an unlock even for %s, got %v", actor.Email, err)
 		}
 	}
@@ -165,7 +165,7 @@ func TestSetMonthlySendCap_Refusals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			uc := NewSetMonthlySendCapUseCase(tc.caps, knownWorkspaces{"ws-1": true}, fixedClock)
-			if _, err := uc.Execute(tc.actor, tc.ws, tc.limit); !errors.Is(err, tc.want) {
+			if _, err := uc.Execute(tc.actor, balance.SetMonthlySendCapInput{WorkspaceID: tc.ws, Limit: tc.limit}); !errors.Is(err, tc.want) {
 				t.Fatalf("want %v, got %v", tc.want, err)
 			}
 		})
@@ -177,7 +177,7 @@ func TestSetMonthlySendCap_ReadFailureChangesNothing(t *testing.T) {
 	caps.getErr = errors.New("db down")
 	uc := NewSetMonthlySendCapUseCase(caps, knownWorkspaces{"ws-1": true}, fixedClock)
 
-	if _, err := uc.Execute(systemAdmin, "ws-1", 10); !errors.Is(err, caps.getErr) {
+	if _, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 10}); !errors.Is(err, caps.getErr) {
 		t.Fatalf("want the read error, got %v", err)
 	}
 	if len(caps.caps) != 0 {
@@ -277,5 +277,68 @@ func TestUnlockMonthlySendCap_EachAdminUnlocksWithTheirOwnCode(t *testing.T) {
 				t.Fatal("a refused unlock leaves the limit alone")
 			}
 		})
+	}
+}
+
+func intPtr(v int) *int { return &v }
+
+func TestSetMonthlySendCap_CreatesOnTheChosenCycleDay(t *testing.T) {
+	caps := newMemoryCaps()
+	uc := NewSetMonthlySendCapUseCase(caps, knownWorkspaces{"ws-1": true, "ws-2": true}, fixedClock)
+
+	created, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 1000, CycleDay: intPtr(15)})
+	if err != nil || created.CycleDay != 15 || caps.caps["ws-1"].CycleDay != 15 {
+		t.Fatalf("want a day 15 cap, got %+v, %v", created, err)
+	}
+	defaulted, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-2", Limit: 1000})
+	if err != nil || defaulted.CycleDay != 1 {
+		t.Fatalf("no day means the first of the month, got %+v, %v", defaulted, err)
+	}
+	if _, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 900, CycleDay: intPtr(15)}); err != nil {
+		t.Fatalf("lowering while repeating the same day is fine, got %v", err)
+	}
+}
+
+func TestSetMonthlySendCap_MovingTheCycleDayNeedsAnUnlock(t *testing.T) {
+	caps := newMemoryCaps(balance.MonthlySendCap{WorkspaceID: "ws-1", Limit: 100, CycleDay: 1})
+	uc := NewSetMonthlySendCapUseCase(caps, knownWorkspaces{"ws-1": true}, fixedClock)
+
+	for _, actor := range []balance.SendCapActor{systemAdmin, superAdmin} {
+		if _, err := uc.Execute(actor, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 50, CycleDay: intPtr(15)}); !errors.Is(err, balance.ErrSendCapUnlockRequired) {
+			t.Fatalf("moving the day can restart the count, so it needs an unlock, got %v", err)
+		}
+	}
+	if c := caps.caps["ws-1"]; c.Limit != 100 || c.CycleDay != 1 {
+		t.Fatalf("the cap must stay untouched, got %+v", c)
+	}
+}
+
+func TestSetMonthlySendCap_RefusesADayOutsideTheMonth(t *testing.T) {
+	uc := NewSetMonthlySendCapUseCase(newMemoryCaps(), knownWorkspaces{"ws-1": true}, fixedClock)
+	for _, day := range []int{0, 32} {
+		if _, err := uc.Execute(systemAdmin, balance.SetMonthlySendCapInput{WorkspaceID: "ws-1", Limit: 10, CycleDay: intPtr(day)}); !errors.Is(err, balance.ErrInvalidSendCapCycleDay) {
+			t.Fatalf("day %d: want ErrInvalidSendCapCycleDay, got %v", day, err)
+		}
+	}
+}
+
+func TestUnlockMonthlySendCap_MovesTheCycleDayWithTheCode(t *testing.T) {
+	caps := newMemoryCaps(balance.MonthlySendCap{WorkspaceID: "ws-1", Limit: 100, CycleDay: 1})
+	uc := NewUnlockMonthlySendCapUseCase(caps, fixedClock)
+	limit := int64(100)
+
+	moved, err := uc.Execute(superAdmin, balance.UnlockMonthlySendCapInput{WorkspaceID: "ws-1", Limit: &limit, CycleDay: intPtr(15), Code: validUnlockCode(t)})
+	if err != nil || moved.CycleDay != 15 || caps.caps["ws-1"].CycleDay != 15 || moved.UnlockedBy == nil {
+		t.Fatalf("want the day moved to 15 and recorded as an unlock, got %+v, %v", moved, err)
+	}
+	kept, err := uc.Execute(superAdmin, balance.UnlockMonthlySendCapInput{WorkspaceID: "ws-1", Limit: &limit, Code: validUnlockCode(t)})
+	if err != nil || kept.CycleDay != 15 {
+		t.Fatalf("an unlock without a day keeps the current one, got %+v, %v", kept, err)
+	}
+	if _, err := uc.Execute(superAdmin, balance.UnlockMonthlySendCapInput{WorkspaceID: "ws-1", Limit: &limit, CycleDay: intPtr(40), Code: validUnlockCode(t)}); !errors.Is(err, balance.ErrInvalidSendCapCycleDay) {
+		t.Fatalf("want ErrInvalidSendCapCycleDay, got %v", err)
+	}
+	if caps.caps["ws-1"].CycleDay != 15 {
+		t.Fatal("a refused day leaves the cap alone")
 	}
 }

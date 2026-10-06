@@ -136,13 +136,25 @@ func (p *Pool) getNextClient() (*Client, int) {
 }
 
 func (p *Pool) Transcribe(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
+	return p.route(len(audioData), func(client *Client) (*stt.Transcription, error) {
+		return client.Transcribe(ctx, audioData, language)
+	})
+}
+
+func (p *Pool) TranscribeSegments(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
+	return p.route(len(audioData), func(client *Client) (*stt.Transcription, error) {
+		return client.TranscribeSegments(ctx, audioData, language)
+	})
+}
+
+func (p *Pool) route(size int, call func(*Client) (*stt.Transcription, error)) (*stt.Transcription, error) {
 	client, idx := p.getNextClient()
 
 	if p.logger != nil && len(p.clients) > 1 {
-		p.logger.Printf("whisper pool: routing transcription to server %d (audio size: %d bytes)", idx, len(audioData))
+		p.logger.Printf("whisper pool: routing transcription to server %d (audio size: %d bytes)", idx, size)
 	}
 
-	result, err := client.Transcribe(ctx, audioData, language)
+	result, err := call(client)
 	if err != nil {
 		if p.logger != nil {
 			p.logger.Printf("whisper pool: server %d failed: %v", idx, err)

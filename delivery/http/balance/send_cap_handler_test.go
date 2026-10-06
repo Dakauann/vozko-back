@@ -31,18 +31,19 @@ func (s *listSendCapsStub) Execute(actor balancedomain.SendCapActor, level balan
 }
 
 type setSendCapStub struct {
-	gotActor balancedomain.SendCapActor
-	gotWS    string
-	gotLimit int64
-	err      error
+	gotActor    balancedomain.SendCapActor
+	gotWS       string
+	gotLimit    int64
+	gotCycleDay *int
+	err         error
 }
 
-func (s *setSendCapStub) Execute(actor balancedomain.SendCapActor, workspaceID string, limit int64) (*balancedomain.MonthlySendCap, error) {
-	s.gotActor, s.gotWS, s.gotLimit = actor, workspaceID, limit
+func (s *setSendCapStub) Execute(actor balancedomain.SendCapActor, input balancedomain.SetMonthlySendCapInput) (*balancedomain.MonthlySendCap, error) {
+	s.gotActor, s.gotWS, s.gotLimit, s.gotCycleDay = actor, input.WorkspaceID, input.Limit, input.CycleDay
 	if s.err != nil {
 		return nil, s.err
 	}
-	return &balancedomain.MonthlySendCap{WorkspaceID: workspaceID, Limit: limit}, nil
+	return &balancedomain.MonthlySendCap{WorkspaceID: input.WorkspaceID, Limit: input.Limit, CycleDay: 15}, nil
 }
 
 type unlockSendCapStub struct {
@@ -80,12 +81,12 @@ var adminClaims = &auth.Claims{UserID: "root-1", Email: "dakauannc@gmail.com", R
 func TestSendCapHandler_ListBuildsActorFromClaimsAndRendersUsage(t *testing.T) {
 	updatedAt := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
 	list := &listSendCapsStub{listing: &balancedomain.SendCapListing{
-		MonthStart: time.Date(2026, 9, 1, 3, 0, 0, 0, time.UTC),
-		CanUnlock:  true,
+		CanUnlock: true,
 		Items: []balancedomain.SendCapUsage{{
 			WorkspaceName: "Acme",
 			Used:          85,
-			Cap:           balancedomain.MonthlySendCap{WorkspaceID: "ws-1", Limit: 100, UpdatedBy: "admin-1", UpdatedAt: updatedAt},
+			CycleStart:    time.Date(2026, 9, 15, 3, 0, 0, 0, time.UTC),
+			Cap:           balancedomain.MonthlySendCap{WorkspaceID: "ws-1", Limit: 100, CycleDay: 15, UpdatedBy: "admin-1", UpdatedAt: updatedAt},
 		}},
 	}}
 	h := NewSendCapHandler(list, &setSendCapStub{}, &unlockSendCapStub{})
@@ -108,6 +109,9 @@ func TestSendCapHandler_ListBuildsActorFromClaimsAndRendersUsage(t *testing.T) {
 	item := body.Items[0]
 	if item.WorkspaceID != "ws-1" || item.WorkspaceName != "Acme" || item.Limit != 100 || item.Used != 85 || item.Remaining != 15 || item.Level != "near" {
 		t.Fatalf("unexpected item %+v", item)
+	}
+	if item.CycleDay != 15 || item.CycleStart == "" || item.RenewsAt == "" {
+		t.Fatalf("each item carries its own cycle: %+v", item)
 	}
 }
 
@@ -182,6 +186,7 @@ func TestSendCapHandler_ErrorMapping(t *testing.T) {
 		{balancedomain.ErrSendCapUnlockRequired, http.StatusForbidden, "unlock_required"},
 		{balancedomain.ErrInvalidUnlockCode, http.StatusForbidden, "invalid_unlock_code"},
 		{balancedomain.ErrInvalidSendCapLimit, http.StatusBadRequest, "invalid_limit"},
+		{balancedomain.ErrInvalidSendCapCycleDay, http.StatusBadRequest, "invalid_cycle_day"},
 		{balancedomain.ErrMonthlySendCapNotFound, http.StatusNotFound, "send_cap_not_found"},
 		{workspace.ErrWorkspaceNotFound, http.StatusNotFound, "workspace_not_found"},
 		{errors.New("db down"), http.StatusInternalServerError, "internal_error"},
@@ -211,5 +216,30 @@ func TestSendCapHandler_UnlockNeedsExactlyOneOfLimitOrRemoval(t *testing.T) {
 	}
 	if unlock.gotInput.WorkspaceID != "" {
 		t.Fatal("an ambiguous unlock never reaches the use case")
+	}
+}
+
+func TestSendCapHandler_PassesTheCycleDay(t *testing.T) {
+	set := &setSendCapStub{}
+	unlock := &unlockSendCapStub{}
+	h := NewSendCapHandler(&listSendCapsStub{}, set, unlock)
+
+	rec := serveSendCaps(h, sendCapRequest(http.MethodPut, "/admin/send-caps/ws-1", `{"limit":1000,"cycleDay":15}`, adminClaims))
+	if rec.Code != http.StatusOK || set.gotCycleDay == nil || *set.gotCycleDay != 15 {
+		t.Fatalf("status %d, cycle day %v", rec.Code, set.gotCycleDay)
+	}
+	var body SendCapChangeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.CycleDay == nil || *body.CycleDay != 15 {
+		t.Fatalf("the response names the cycle day, got %s", rec.Body.String())
+	}
+
+	rec = serveSendCaps(h, sendCapRequest(http.MethodPut, "/admin/send-caps/ws-1", `{"limit":1000}`, adminClaims))
+	if rec.Code != http.StatusOK || set.gotCycleDay != nil {
+		t.Fatalf("no day in the request means none is asked for, got %v", set.gotCycleDay)
+	}
+
+	rec = serveSendCaps(h, sendCapRequest(http.MethodPost, "/admin/send-caps/ws-1/unlock", `{"limit":10,"cycleDay":20,"code":"1601"}`, adminClaims))
+	if rec.Code != http.StatusOK || unlock.gotInput.CycleDay == nil || *unlock.gotInput.CycleDay != 20 {
+		t.Fatalf("status %d, unlock cycle day %v", rec.Code, unlock.gotInput.CycleDay)
 	}
 }

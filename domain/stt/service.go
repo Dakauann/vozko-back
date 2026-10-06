@@ -9,3 +9,7 @@ type STTService interface {
 type STTTranscriber interface {
 	TranscribeWithPreviousText(ctx context.Context, audioData []byte, language, previousText string) (*Transcription, error)
 }
+
+type SegmentTranscriber interface {
+	TranscribeSegments(ctx context.Context, audioData []byte, language string) (*Transcription, error)
+}

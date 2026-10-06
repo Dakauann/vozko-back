@@ -5,6 +5,7 @@ import "time"
 type WorkspaceMonthlySendCap struct {
 	WorkspaceID  string    `gorm:"primaryKey;type:uuid"`
 	MonthlyLimit int64     `gorm:"not null;check:chk_wmsc_monthly_limit_positive,monthly_limit > 0"`
+	CycleDay     int       `gorm:"not null;default:1;check:chk_wmsc_cycle_day,cycle_day BETWEEN 1 AND 31"`
 	UpdatedBy    string    `gorm:"type:uuid;not null"`
 	UpdatedAt    time.Time `gorm:"not null"`
 	UnlockedBy   *string   `gorm:"type:uuid"`

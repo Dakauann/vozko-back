@@ -62,6 +62,7 @@ type Config struct {
 	RecordingsDir string
 
 	WhisperModel string
+	RembgURL     string
 
 	WhatsAppPhoneNumberID      string
 	WhatsAppAccessToken        string
@@ -92,8 +93,6 @@ type Config struct {
 	MetaAdsGraphVersion  string
 	MetaAdsWebhookURL    string
 	FrontendBaseURL      string
-
-	ImageGenerationCostCeilingMicros int
 
 	APIBaseURL string
 
@@ -212,6 +211,7 @@ func LoadConfig() Config {
 		RecordingsDir: getEnv("RECORDINGS_DIR", "/recordings"),
 
 		WhisperModel: getEnv("WHISPER_MODEL", "ggml-large-v3-turbo"),
+		RembgURL:     getEnv("REMBG_URL", "http://localhost:17072"),
 
 		WhatsAppPhoneNumberID:      trimEnv("WHATSAPP_BUSINESS_PHONE_NUMBER_ID"),
 		WhatsAppAccessToken:        trimEnv("WHATSAPP_ACCESS_TOKEN"),
@@ -241,8 +241,6 @@ func LoadConfig() Config {
 		MetaAdsRedirectURI:   mustGetEnvTrimmed("META_ADS_REDIRECT_URI"),
 		MetaAdsGraphVersion:  trimEnv("META_ADS_GRAPH_VERSION"),
 		MetaAdsWebhookURL:    trimEnv("META_ADS_WEBHOOK_CALLBACK_URL"),
-
-		ImageGenerationCostCeilingMicros: getIntEnv("IMAGE_GENERATION_COST_CEILING_MICROS", 250_000),
 
 		FrontendBaseURL: strings.TrimRight(trimEnv("FRONTEND_URL"), "/"),
 

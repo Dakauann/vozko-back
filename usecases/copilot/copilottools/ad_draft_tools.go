@@ -144,10 +144,11 @@ func (t *searchAdInterestsTool) Execute(ctx context.Context, cc copilot.Context,
 }
 
 type estimateAdAudienceArgs struct {
-	AdAccountID string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
-	Objective   string   `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES" desc:"o mesmo objetivo do anúncio"`
-	Destination string   `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE" desc:"o mesmo destino do anúncio"`
-	Locations   []string `json:"locations" req:"true" desc:"location de search_ad_locations"`
+	MetaID      string   `json:"meta_id" desc:"meta_id de um conjunto ou anúncio publicado (ads_results): estima o público real dele, com exclusões, públicos e posicionamentos, e dispensa os outros campos"`
+	AdAccountID string   `json:"ad_account_id" desc:"sem meta_id: ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
+	Objective   string   `json:"objective" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES" desc:"sem meta_id: o mesmo objetivo do anúncio"`
+	Destination string   `json:"destination" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE" desc:"sem meta_id: o mesmo destino do anúncio"`
+	Locations   []string `json:"locations" desc:"sem meta_id: location de search_ad_locations"`
 	AgeMin      int      `json:"age_min" desc:"idade mínima (padrão 18)"`
 	AgeMax      int      `json:"age_max" desc:"idade máxima (padrão 65)"`
 	Genders     []string `json:"genders" desc:"male e ou female; vazio para todos"`
@@ -162,33 +163,34 @@ func (t *estimateAdAudienceTool) Meta() copilot.Meta { return adsMeta(workspace.
 
 func (t *estimateAdAudienceTool) Definition() tools.Definition {
 	return definition("estimate_ad_audience",
-		"Estima com a Meta quantas pessoas o público alcança antes de criar o anúncio. Use para avisar quando o público é pequeno demais ou amplo demais.",
+		"Estima com a Meta quantas pessoas o público alcança. Para um conjunto ou anúncio já criado, passe só meta_id: usa o público salvo, "+
+			"com exclusões de local, públicos personalizados e posicionamentos. Antes de criar, passe os campos do público. Use para avisar quando o "+
+			"público é pequeno demais ou amplo demais.",
 		estimateAdAudienceArgs{})
 }
+
+type audienceQuery struct {
+	accountID  string
+	targeting  advertising.Targeting
+	placements advertising.Placements
+	goal       advertising.OptimizationGoal
+}
+
+var (
+	errAudienceFields  = fmt.Errorf("%w: sem meta_id, passe ad_account_id, objective, destination e locations", errInvalidArgs)
+	errNoSavedAudience = fmt.Errorf("%w: meta_id precisa ser de um conjunto ou de um anúncio; campanhas não têm público próprio", errInvalidArgs)
+)
 
 func (t *estimateAdAudienceTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
 	var a estimateAdAudienceArgs
 	if err := decodeArgs(args, &a); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
-	account, err := t.deps.account(ctx, cc, a.AdAccountID)
+	q, err := t.query(ctx, cc, a)
 	if err != nil {
 		return adsFailure("estimate_ad_audience", err)
 	}
-	goal, ok := advertising.Objective(a.Objective).DefaultGoal(advertising.Destination(a.Destination))
-	if !ok {
-		return copilot.Result{Status: copilot.StatusError, Message: fmt.Sprintf("o objetivo %s não leva para %s", a.Objective, a.Destination)}
-	}
-	locations, err := parseLocations(a.Locations)
-	if err != nil {
-		return adsFailure("estimate_ad_audience", err)
-	}
-	interests, err := parseTargetRefs(a.Interests)
-	if err != nil {
-		return adsFailure("estimate_ad_audience", err)
-	}
-	targeting := advertising.Targeting{Locations: locations, AgeMin: a.AgeMin, AgeMax: a.AgeMax, Genders: genders(a.Genders), Interests: interests}
-	estimate, err := t.deps.Targeting.Reach(ctx, cc.WorkspaceID, account.ID, targeting, advertising.Placements{Automatic: true}, goal)
+	estimate, err := t.deps.Targeting.Reach(ctx, cc.WorkspaceID, q.accountID, q.targeting, q.placements, q.goal)
 	if err != nil {
 		return adsFailure("estimate_ad_audience", err)
 	}
@@ -196,6 +198,61 @@ func (t *estimateAdAudienceTool) Execute(ctx context.Context, cc copilot.Context
 		return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"estimate_ready": false, "message": "a Meta ainda não tem estimativa para esse público"}}
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"estimate_ready": true, "people_min": estimate.Lower, "people_max": estimate.Upper}}
+}
+
+func (t *estimateAdAudienceTool) query(ctx context.Context, cc copilot.Context, a estimateAdAudienceArgs) (audienceQuery, error) {
+	if strings.TrimSpace(a.MetaID) != "" {
+		return t.savedAudience(ctx, cc, a.MetaID)
+	}
+	if a.AdAccountID == "" || a.Objective == "" || a.Destination == "" || len(a.Locations) == 0 {
+		return audienceQuery{}, errAudienceFields
+	}
+	account, err := t.deps.account(ctx, cc, a.AdAccountID)
+	if err != nil {
+		return audienceQuery{}, err
+	}
+	goal, ok := advertising.Objective(a.Objective).DefaultGoal(advertising.Destination(a.Destination))
+	if !ok {
+		return audienceQuery{}, fmt.Errorf("%w: o objetivo %s não leva para %s", errInvalidArgs, a.Objective, a.Destination)
+	}
+	locations, err := parseLocations(a.Locations)
+	if err != nil {
+		return audienceQuery{}, err
+	}
+	interests, err := parseTargetRefs(a.Interests)
+	if err != nil {
+		return audienceQuery{}, err
+	}
+	targeting := advertising.Targeting{Locations: locations, AgeMin: a.AgeMin, AgeMax: a.AgeMax, Genders: genders(a.Genders), Interests: interests}
+	return audienceQuery{accountID: account.ID, targeting: targeting, placements: advertising.Placements{Automatic: true}, goal: goal}, nil
+}
+
+func (t *estimateAdAudienceTool) savedAudience(ctx context.Context, cc copilot.Context, raw string) (audienceQuery, error) {
+	id, err := metaID(raw)
+	if err != nil {
+		return audienceQuery{}, err
+	}
+	detail, err := t.deps.Editor.Detail(ctx, cc.WorkspaceID, id)
+	if err != nil {
+		return audienceQuery{}, err
+	}
+	if detail.Object.Level == advertising.LevelAd && detail.Object.AdSetMetaID != "" {
+		if detail, err = t.deps.Editor.Detail(ctx, cc.WorkspaceID, detail.Object.AdSetMetaID); err != nil {
+			return audienceQuery{}, err
+		}
+	}
+	if detail.Object.Level != advertising.LevelAdSet || detail.Targeting == nil {
+		return audienceQuery{}, errNoSavedAudience
+	}
+	account, err := t.deps.account(ctx, cc, detail.Object.AdAccountID)
+	if err != nil {
+		return audienceQuery{}, err
+	}
+	placements := advertising.Placements{Automatic: true}
+	if detail.Placements != nil {
+		placements = *detail.Placements
+	}
+	return audienceQuery{accountID: account.ID, targeting: *detail.Targeting, placements: placements, goal: advertising.OptimizationGoal(detail.Object.OptimizationGoal)}, nil
 }
 
 type listLeadFormsArgs struct {

@@ -13,23 +13,23 @@ func int64Ptr(v int64) *int64 { return &v }
 func TestNewMonthlySendCap_RejectsNonPositiveLimits(t *testing.T) {
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	for _, limit := range []int64{0, -1} {
-		if _, err := NewMonthlySendCap("ws-1", limit, "admin-1", now); !errors.Is(err, ErrInvalidSendCapLimit) {
+		if _, err := NewMonthlySendCap("ws-1", limit, 1, "admin-1", now); !errors.Is(err, ErrInvalidSendCapLimit) {
 			t.Errorf("limit %d: want ErrInvalidSendCapLimit, got %v", limit, err)
 		}
 	}
-	if _, err := NewMonthlySendCap(" ", 10, "admin-1", now); !errors.Is(err, ErrSendCapWorkspaceRequired) {
+	if _, err := NewMonthlySendCap(" ", 10, 1, "admin-1", now); !errors.Is(err, ErrSendCapWorkspaceRequired) {
 		t.Errorf("blank workspace: want ErrSendCapWorkspaceRequired, got %v", err)
 	}
-	cap, err := NewMonthlySendCap("ws-1", 10, "admin-1", now)
+	cap, err := NewMonthlySendCap("ws-1", 10, 15, "admin-1", now)
 	if err != nil {
 		t.Fatalf("valid cap: %v", err)
 	}
-	if cap.WorkspaceID != "ws-1" || cap.Limit != 10 || cap.UpdatedBy != "admin-1" || !cap.UpdatedAt.Equal(now) {
+	if cap.WorkspaceID != "ws-1" || cap.Limit != 10 || cap.CycleDay != 15 || cap.UpdatedBy != "admin-1" || !cap.UpdatedAt.Equal(now) {
 		t.Errorf("unexpected cap %+v", cap)
 	}
 }
 
-func TestSendCapMonthStart_UsesSaoPauloCalendarMonth(t *testing.T) {
+func TestSendCapCycleStart_FromDayOneIsTheSaoPauloCalendarMonth(t *testing.T) {
 	brt := billing.LocationBRT()
 	cases := []struct {
 		name string
@@ -44,7 +44,7 @@ func TestSendCapMonthStart_UsesSaoPauloCalendarMonth(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := SendCapMonthStart(tc.now); !got.Equal(tc.want) {
+			if got := SendCapCycleStart(tc.now, 1); !got.Equal(tc.want) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
@@ -75,23 +75,26 @@ func TestMonthlySendCap_CheckRoom(t *testing.T) {
 }
 
 func TestSendCapChangeRequiresUnlock(t *testing.T) {
-	existing := &MonthlySendCap{WorkspaceID: "ws-1", Limit: 100}
+	existing := &MonthlySendCap{WorkspaceID: "ws-1", Limit: 100, CycleDay: 1}
+	with := func(limit int64, day int) *MonthlySendCap { return &MonthlySendCap{WorkspaceID: "ws-1", Limit: limit, CycleDay: day} }
 	cases := []struct {
-		name     string
-		current  *MonthlySendCap
-		newLimit *int64
-		want     bool
+		name    string
+		current *MonthlySendCap
+		next    *MonthlySendCap
+		want    bool
 	}{
-		{"creating a cap locks, never unlocks", nil, int64Ptr(100), false},
-		{"lowering tightens the lock", existing, int64Ptr(50), false},
-		{"keeping the same limit changes nothing", existing, int64Ptr(100), false},
-		{"raising loosens the lock", existing, int64Ptr(101), true},
+		{"creating a cap locks, never unlocks", nil, with(100, 15), false},
+		{"lowering tightens the lock", existing, with(50, 1), false},
+		{"keeping the same limit changes nothing", existing, with(100, 1), false},
+		{"raising loosens the lock", existing, with(101, 1), true},
+		{"moving the cycle day can restart the count", existing, with(100, 15), true},
+		{"moving the cycle day while lowering still can restart the count", existing, with(10, 15), true},
 		{"removing the cap loosens the lock", existing, nil, true},
 		{"removing a missing cap loosens nothing", nil, nil, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := SendCapChangeRequiresUnlock(tc.current, tc.newLimit); got != tc.want {
+			if got := SendCapChangeRequiresUnlock(tc.current, tc.next); got != tc.want {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
@@ -274,5 +277,82 @@ func TestSortSendCapUsageByPressure(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("order = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestNewMonthlySendCap_RejectsADayOutsideTheMonth(t *testing.T) {
+	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
+	for _, day := range []int{0, -1, 32} {
+		if _, err := NewMonthlySendCap("ws-1", 10, day, "admin-1", now); !errors.Is(err, ErrInvalidSendCapCycleDay) {
+			t.Errorf("day %d: want ErrInvalidSendCapCycleDay, got %v", day, err)
+		}
+	}
+	for _, day := range []int{1, 15, 28, 31} {
+		if _, err := NewMonthlySendCap("ws-1", 10, day, "admin-1", now); err != nil {
+			t.Errorf("day %d is valid, got %v", day, err)
+		}
+	}
+}
+
+func TestSendCapCycleStart_RunsFromTheChosenDayToTheSameDayNextMonth(t *testing.T) {
+	brt := billing.LocationBRT()
+	at := func(y int, m time.Month, d, h int) time.Time { return time.Date(y, m, d, h, 0, 0, 0, brt) }
+	cases := []struct {
+		name string
+		now  time.Time
+		day  int
+		want time.Time
+	}{
+		{"on the day itself", at(2026, 10, 15, 9), 15, at(2026, 10, 15, 0)},
+		{"after the day", at(2026, 10, 20, 9), 15, at(2026, 10, 15, 0)},
+		{"before the day belongs to last month's cycle", at(2026, 10, 14, 23), 15, at(2026, 9, 15, 0)},
+		{"before the day in january goes back a year", at(2027, 1, 10, 9), 15, at(2026, 12, 15, 0)},
+		{"day 31 in a 30 day month starts on the 30th", at(2026, 9, 30, 9), 31, at(2026, 9, 30, 0)},
+		{"day 31 in february starts on the last day", at(2026, 2, 28, 9), 31, at(2026, 2, 28, 0)},
+		{"day 31 early in march still belongs to february's cycle", at(2026, 3, 20, 9), 31, at(2026, 2, 28, 0)},
+		{"day 31 at the end of march", at(2026, 3, 31, 1), 31, at(2026, 3, 31, 0)},
+		{"day 29 in a leap february", at(2028, 2, 29, 9), 29, at(2028, 2, 29, 0)},
+		{"already the 15th in UTC but still the 14th in BRT", time.Date(2026, 10, 15, 2, 0, 0, 0, time.UTC), 15, at(2026, 9, 15, 0)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := SendCapCycleStart(tc.now, tc.day); !got.Equal(tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMonthlySendCap_NextCycleStart(t *testing.T) {
+	brt := billing.LocationBRT()
+	at := func(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, brt) }
+	cases := []struct {
+		name string
+		day  int
+		now  time.Time
+		want time.Time
+	}{
+		{"day 15 renews next month", 15, at(2026, 10, 20), at(2026, 11, 15)},
+		{"day 15 before the day renews this month", 15, at(2026, 10, 3), at(2026, 10, 15)},
+		{"day 31 in january renews on the last day of february", 31, at(2026, 1, 31), at(2026, 2, 28)},
+		{"day 1 in december renews in january", 1, at(2026, 12, 9), at(2027, 1, 1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cap := MonthlySendCap{Limit: 10, CycleDay: tc.day}
+			if got := cap.NextCycleStart(tc.now); !got.Equal(tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+			if !cap.CycleStart(tc.now).Before(cap.NextCycleStart(tc.now)) {
+				t.Error("a cycle must end after it starts")
+			}
+		})
+	}
+}
+
+func TestMonthlySendCap_ACapWithoutADayCountsFromTheFirst(t *testing.T) {
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, billing.LocationBRT())
+	if got := (MonthlySendCap{Limit: 10}).CycleStart(now); !got.Equal(SendCapCycleStart(now, 1)) {
+		t.Errorf("got %v, want the first of the month", got)
 	}
 }

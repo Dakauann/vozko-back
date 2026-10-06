@@ -197,7 +197,7 @@ type Container struct {
 	instagram                   *instagramBundle
 	facebook                    *facebookBundle
 	ads                         *adsBundle
-	imageGenerationBundle       *imageGenerationBundle
+	mediaGenerationBundle       *mediaGenerationBundle
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
@@ -449,8 +449,8 @@ type services struct {
 	reportQueueSub       messaging.MessageQueueSub
 	facebookPublishPub   messaging.MessageQueuePub
 	facebookPublishSub   messaging.MessageQueueSub
-	imageGenerationPub   messaging.MessageQueuePub
-	imageGenerationSub   messaging.MessageQueueSub
+	mediaGenerationPub   messaging.MessageQueuePub
+	mediaGenerationSub   messaging.MessageQueueSub
 	adsPublishPub        messaging.MessageQueuePub
 	adsPublishSub        messaging.MessageQueueSub
 	reportService        *report_usecase.Service

@@ -48,6 +48,20 @@ type stubAdManager struct {
 	budgetSet     int64
 	copied        []advertising.CopyRequest
 	lifecycles    []advertising.Lifecycle
+	offBelow      []*advertising.Object
+	withBelow     *bool
+}
+
+func (m *stubAdManager) OffBelow(context.Context, string, string) ([]*advertising.Object, error) {
+	return m.offBelow, nil
+}
+func (m *stubAdManager) TurnOn(ctx context.Context, ws, id string, withBelow bool) (*advertising.Object, []*advertising.Object, error) {
+	m.withBelow = &withBelow
+	object, err := m.SetStatus(ctx, ws, id, true)
+	if err != nil || withBelow {
+		return object, nil, err
+	}
+	return object, m.offBelow, nil
 }
 
 func (m *stubAdManager) CheckStatus(_ context.Context, _, id string, _ bool) (*advertising.Object, error) {

@@ -17,7 +17,7 @@ var _ advertising.LeadGateway = (*Gateway)(nil)
 
 const (
 	leadgenField         = "leadgen"
-	leadFormFields       = "id,name,status,locale,questions,privacy_policy_url,leads_count,created_time"
+	leadFormFields       = "id,name,status,locale,questions,privacy_policy_url,leads_count,created_time,context_card{title,style,content},thank_you_page{title,body,button_text,website_url},is_optimized_for_quality"
 	leadFields           = "id,created_time,ad_id,form_id,field_data"
 	answerSeparator      = ", "
 	thankYouButton       = "VIEW_WEBSITE"
@@ -49,14 +49,17 @@ type graphFormQuestion struct {
 }
 
 type graphLeadForm struct {
-	ID          meta.GraphID        `json:"id"`
-	Name        string              `json:"name"`
-	Status      string              `json:"status"`
-	Locale      string              `json:"locale"`
-	Questions   []graphFormQuestion `json:"questions"`
-	PrivacyURL  string              `json:"privacy_policy_url"`
-	LeadsCount  graphNumber         `json:"leads_count"`
-	CreatedTime string              `json:"created_time"`
+	ID           meta.GraphID        `json:"id"`
+	Name         string              `json:"name"`
+	Status       string              `json:"status"`
+	Locale       string              `json:"locale"`
+	Questions    []graphFormQuestion `json:"questions"`
+	PrivacyURL   string              `json:"privacy_policy_url"`
+	ContextCard  *graphContextCard   `json:"context_card"`
+	ThankYouPage *graphThankYouPage  `json:"thank_you_page"`
+	HigherIntent bool                `json:"is_optimized_for_quality"`
+	LeadsCount   graphNumber         `json:"leads_count"`
+	CreatedTime  string              `json:"created_time"`
 }
 
 func (g *Gateway) ListForms(ctx context.Context, token, pageID string) ([]advertising.LeadForm, error) {
@@ -102,17 +105,35 @@ func (r graphLeadForm) toDomain(pageID string) (advertising.LeadForm, error) {
 		}
 		questions = append(questions, question)
 	}
-	return advertising.LeadForm{
-		MetaID:      r.ID.String(),
-		PageID:      pageID,
-		Name:        r.Name,
-		Status:      advertising.FormStatus(r.Status),
-		Locale:      r.Locale,
-		Questions:   questions,
-		PrivacyURL:  r.PrivacyURL,
-		LeadsCount:  count,
-		CreatedTime: created,
-	}, nil
+	form := advertising.LeadForm{
+		MetaID:       r.ID.String(),
+		PageID:       pageID,
+		Name:         r.Name,
+		Status:       advertising.FormStatus(r.Status),
+		Locale:       r.Locale,
+		Intro:        r.ContextCard.intro(),
+		Questions:    questions,
+		PrivacyURL:   r.PrivacyURL,
+		HigherIntent: r.HigherIntent,
+		LeadsCount:   count,
+		CreatedTime:  created,
+	}
+	if page := r.ThankYouPage; page != nil {
+		form.ThankYouTitle, form.ThankYouBody, form.ThankYouButtonText, form.ThankYouURL = page.Title, page.Body, page.ButtonText, page.WebsiteURL
+	}
+	return form, nil
+}
+
+func (c *graphContextCard) intro() *advertising.FormIntro {
+	if c == nil {
+		return nil
+	}
+	for style, metaStyle := range contextCardStyles {
+		if metaStyle == c.Style {
+			return &advertising.FormIntro{Title: c.Title, Style: style, Content: c.Content}
+		}
+	}
+	return nil
 }
 
 type graphPrivacyPolicy struct {

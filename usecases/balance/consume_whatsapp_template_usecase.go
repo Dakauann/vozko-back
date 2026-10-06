@@ -30,7 +30,7 @@ func (uc *consumeWhatsappTemplateUseCase) takeMonthlySendSlot(workspaceID, refer
 	if uc.slots == nil {
 		return false, errMonthlySendSlotsMissing
 	}
-	took, err := uc.slots.TakeMonthlySendSlot(workspaceID, referenceID, balance.SendCapMonthStart(uc.now()))
+	took, err := uc.slots.TakeMonthlySendSlot(workspaceID, referenceID, uc.now())
 	if err != nil {
 		if errors.Is(err, balance.ErrMonthlySendCapReached) {
 			return false, err

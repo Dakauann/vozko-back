@@ -19,6 +19,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       WHISPER_URLS: ${WHISPER_URLS:-http://localhost:17071}
       WHISPER_MODEL: ${WHISPER_MODEL:-ggml-large-v3-turbo}
+      REMBG_URL: ${REMBG_URL:-http://localhost:17072}
       OLLAMA_URL: ${OLLAMA_URL:-http://localhost:11434}
       VOZKO_PII_KEK_V1: ${VOZKO_PII_KEK_V1}
       VOZKO_PII_BLIND_INDEX_KEY: ${VOZKO_PII_BLIND_INDEX_KEY}
@@ -307,6 +308,22 @@ services:
       # Generous: the first boot downloads the model before the server binds.
       start_period: 300s
 
+  rembg:
+    image: danielgatis/rembg:2.0.85
+    container_name: vozko-rembg
+    command: ["s", "--host", "0.0.0.0", "--port", "7000", "--log_level", "warning"]
+    ports:
+      - "127.0.0.1:${HOST_REMBG_PORT:-17072}:7000"
+    volumes:
+      - rembg_models:/root/.u2net
+    environment:
+      U2NET_HOME: /root/.u2net
+      OMP_NUM_THREADS: ${REMBG_THREADS:-2}
+    cpuset: "${REMBG_CPUSET:-10-11}"
+    cpu_shares: 256
+    mem_limit: 3g
+    restart: unless-stopped
+
   x-stt-common: &stt-common
     profiles: ["gpu"]
     build:
@@ -353,6 +370,8 @@ services:
 volumes:
   whisper_models:
     name: vozko_whisper_models
+  rembg_models:
+    name: vozko_rembg_models
   rabbitmq_data:
     name: vozko_rabbitmq_data
   prometheus_data:

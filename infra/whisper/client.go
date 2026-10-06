@@ -107,6 +107,26 @@ type whisperCppResponse struct {
 	Text string `json:"text"`
 }
 
+func (c *Client) TranscribeSegments(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
+	if c.serverType != ServerTypeWhisperCpp {
+		return c.transcribeSpeaches(ctx, audioData, language)
+	}
+	resp, _, err := c.whisperCppRequest(ctx, audioData, language, "verbose_json")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var verbose verboseResponse
+	if err := json.NewDecoder(resp.Body).Decode(&verbose); err != nil {
+		return nil, fmt.Errorf("whisper.cpp: decode segments: %w", err)
+	}
+	result := &stt.Transcription{Text: strings.TrimSpace(verbose.Text), Language: verbose.Language, Duration: verbose.Duration}
+	for _, seg := range verbose.Segments {
+		result.Segments = append(result.Segments, stt.Segment{ID: seg.ID, Start: seg.Start, End: seg.End, Text: strings.TrimSpace(seg.Text)})
+	}
+	return result, nil
+}
+
 func (c *Client) Transcribe(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
 	switch c.serverType {
 	case ServerTypeWhisperCpp:
@@ -117,85 +137,11 @@ func (c *Client) Transcribe(ctx context.Context, audioData []byte, language stri
 }
 
 func (c *Client) transcribeWhisperCpp(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	filename := "audio.wav"
-	isCompressedFormat := false
-	if len(audioData) >= 4 {
-		if string(audioData[:4]) == "OggS" {
-			filename = "audio.ogg"
-			isCompressedFormat = true
-		} else if audioData[0] == 0x1A && audioData[1] == 0x45 && audioData[2] == 0xDF && audioData[3] == 0xA3 {
-			filename = "audio.webm"
-			isCompressedFormat = true
-		} else if string(audioData[:4]) == "fLaC" {
-			filename = "audio.flac"
-			isCompressedFormat = true
-		} else if len(audioData) >= 12 && string(audioData[8:12]) == "WAVE" {
-			filename = "audio.wav"
-		} else if (audioData[0] == 0xFF && (audioData[1]&0xE0) == 0xE0) || string(audioData[:3]) == "ID3" {
-			filename = "audio.mp3"
-			isCompressedFormat = true
-		}
-	}
-
-	part, err := writer.CreateFormFile("file", filename)
+	resp, isCompressedFormat, err := c.whisperCppRequest(ctx, audioData, language, "json")
 	if err != nil {
-		return nil, fmt.Errorf("whisper.cpp: create form file: %w", err)
-	}
-	if _, err := part.Write(audioData); err != nil {
-		return nil, fmt.Errorf("whisper.cpp: write audio data: %w", err)
-	}
-
-	if err := writer.WriteField("response_format", "json"); err != nil {
-		return nil, fmt.Errorf("whisper.cpp: write response_format: %w", err)
-	}
-
-	lang := c.language
-	if language != "" {
-		lang = language
-	}
-	if lang != "" {
-		if err := writer.WriteField("language", lang); err != nil {
-			return nil, fmt.Errorf("whisper.cpp: write language: %w", err)
-		}
-	}
-
-	if err := writer.WriteField("temperature", "0.0"); err != nil {
-		return nil, fmt.Errorf("whisper.cpp: write temperature: %w", err)
-	}
-	if err := writer.WriteField("temperature_inc", "0.2"); err != nil {
-		return nil, fmt.Errorf("whisper.cpp: write temperature_inc: %w", err)
-	}
-
-	if c.initialPrompt != "" {
-		if err := writer.WriteField("prompt", c.initialPrompt); err != nil {
-			return nil, fmt.Errorf("whisper.cpp: write prompt: %w", err)
-		}
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("whisper.cpp: close writer: %w", err)
-	}
-
-	url := c.baseURL + "/inference"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
-	if err != nil {
-		return nil, fmt.Errorf("whisper.cpp: create request: %w", err)
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("whisper.cpp: request failed: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("whisper.cpp: server returned %d: %s", resp.StatusCode, string(body))
-	}
 
 	var cppResp whisperCppResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cppResp); err != nil {
@@ -224,6 +170,88 @@ func (c *Client) transcribeWhisperCpp(ctx context.Context, audioData []byte, lan
 	}
 
 	return result, nil
+}
+
+func (c *Client) whisperCppRequest(ctx context.Context, audioData []byte, language, format string) (*http.Response, bool, error) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	filename := "audio.wav"
+	isCompressedFormat := false
+	if len(audioData) >= 4 {
+		if string(audioData[:4]) == "OggS" {
+			filename = "audio.ogg"
+			isCompressedFormat = true
+		} else if audioData[0] == 0x1A && audioData[1] == 0x45 && audioData[2] == 0xDF && audioData[3] == 0xA3 {
+			filename = "audio.webm"
+			isCompressedFormat = true
+		} else if string(audioData[:4]) == "fLaC" {
+			filename = "audio.flac"
+			isCompressedFormat = true
+		} else if len(audioData) >= 12 && string(audioData[8:12]) == "WAVE" {
+			filename = "audio.wav"
+		} else if (audioData[0] == 0xFF && (audioData[1]&0xE0) == 0xE0) || string(audioData[:3]) == "ID3" {
+			filename = "audio.mp3"
+			isCompressedFormat = true
+		}
+	}
+
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: create form file: %w", err)
+	}
+	if _, err := part.Write(audioData); err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: write audio data: %w", err)
+	}
+
+	if err := writer.WriteField("response_format", format); err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: write response_format: %w", err)
+	}
+
+	lang := c.language
+	if language != "" {
+		lang = language
+	}
+	if lang != "" {
+		if err := writer.WriteField("language", lang); err != nil {
+			return nil, false, fmt.Errorf("whisper.cpp: write language: %w", err)
+		}
+	}
+
+	if err := writer.WriteField("temperature", "0.0"); err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: write temperature: %w", err)
+	}
+	if err := writer.WriteField("temperature_inc", "0.2"); err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: write temperature_inc: %w", err)
+	}
+
+	if c.initialPrompt != "" {
+		if err := writer.WriteField("prompt", c.initialPrompt); err != nil {
+			return nil, false, fmt.Errorf("whisper.cpp: write prompt: %w", err)
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: close writer: %w", err)
+	}
+
+	url := c.baseURL + "/inference"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: create request: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, false, fmt.Errorf("whisper.cpp: request failed: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, false, fmt.Errorf("whisper.cpp: server returned %d: %s", resp.StatusCode, string(body))
+	}
+	return resp, isCompressedFormat, nil
 }
 
 func (c *Client) transcribeSpeaches(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {

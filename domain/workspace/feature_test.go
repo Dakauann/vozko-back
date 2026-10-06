@@ -7,7 +7,6 @@ import (
 
 var inertPermissions = map[string]bool{
 	"workflows:read_details": true,
-	"media:delete":           true,
 	"leads:delete":           true,
 }
 
@@ -100,6 +99,7 @@ func TestEveryScreenIsOpenedByExactlyOneCapability(t *testing.T) {
 
 var formScreenCapabilities = map[CapabilityKey]bool{
 	"agents.create":               true,
+	"studio.edit":                 true,
 	"agents.edit":                 true,
 	"knowledge_bases.create":      true,
 	"knowledge_bases.edit":        true,

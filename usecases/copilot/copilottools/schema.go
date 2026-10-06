@@ -30,7 +30,7 @@ func structParams(t reflect.Type, descriptions map[string]string) (map[string]to
 		}
 		param := tools.Parameter{Type: jsonType(f.Type), Description: description, Enum: enumValues(f)}
 		if param.Type == "array" {
-			param.Items = &tools.ParameterItems{Type: jsonType(elemType(f.Type))}
+			param.Items = arrayItems(elemType(f.Type))
 		}
 		params[name] = param
 		if f.Tag.Get("req") == "true" {
@@ -38,6 +38,14 @@ func structParams(t reflect.Type, descriptions map[string]string) (map[string]to
 		}
 	}
 	return params, required
+}
+
+func arrayItems(elem reflect.Type) *tools.ParameterItems {
+	if elem.Kind() != reflect.Struct {
+		return &tools.ParameterItems{Type: jsonType(elem)}
+	}
+	properties, required := structParams(elem, nil)
+	return &tools.ParameterItems{Type: "object", Properties: properties, Required: required}
 }
 
 func enumValues(f reflect.StructField) []string {
