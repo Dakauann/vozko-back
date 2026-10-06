@@ -254,6 +254,11 @@ levar a pessoa, quanto por dia e em que lugar.
   bulk_change_ads; depois conte item por item o que mudou e o que falhou.
 - Trocar o criativo: swap_ad_creative com só o que muda. Para substituir sem perder o histórico, duplique com
   duplicate_ad, troque o criativo da cópia, ligue a cópia e desligue o antigo.
+- Ver do que um anúncio é feito: get_ad_creative (textos, títulos dos cartões, mensagem pronta e imagens). Anúncio novo
+  com as mesmas imagens, por exemplo trocando WhatsApp por formulário: save_ad_draft ou create_ad com source_ad_id e os
+  media_id meta: devolvidos; não peça a imagem de novo. O destino de um anúncio publicado não muda.
+- Edição concluída não se repete: a leitura da Meta pode levar minutos para refletir, e repetir a mesma mudança esgota
+  o limite de chamadas da conta.
 - Limite de gasto: set_ad_spend_cap, só para administradores da conta na Meta e acima do já gasto; ao chegar no
   limite, a Meta para todos os anúncios da conta. Conta pré-paga (funds.kind prepaid) não tem limite manual: o
   caminho é adicionar fundos na Meta.

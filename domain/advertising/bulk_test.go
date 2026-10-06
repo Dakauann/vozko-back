@@ -116,3 +116,43 @@ func TestBulkChangeReadsTheCurrentValueOfItsField(t *testing.T) {
 		t.Fatalf("an ad set has no headline: %q", got)
 	}
 }
+
+func TestBulkCarouselTitleAndDescriptionChangeEveryCard(t *testing.T) {
+	original := &CreativeDraft{Format: FormatCarousel, Cards: []CarouselCard{
+		{Headline: "Vozko Technology LTDA", Description: "Fale conosco"},
+		{Headline: "Vozko Technology LTDA", Description: "Fale conosco"},
+	}}
+	detail := ObjectDetail{Object: &Object{Level: LevelAd}, Creative: original}
+	title := BulkChange{Field: BulkHeadline, Mode: BulkSet, Value: "Todos os canais num só lugar"}
+	if got := title.Current(detail); got != "Vozko Technology LTDA" {
+		t.Fatalf("the current title of a carousel is its cards' title, got %q", got)
+	}
+	edit, err := title.EditFor(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, card := range edit.Creative.Cards {
+		if card.Headline != "Todos os canais num só lugar" || card.Description != "Fale conosco" {
+			t.Fatalf("cards %+v", edit.Creative.Cards)
+		}
+	}
+	if original.Cards[0].Headline != "Vozko Technology LTDA" {
+		t.Fatal("the current creative must not change")
+	}
+	description, err := BulkChange{Field: BulkDescription, Mode: BulkReplace, Find: "conosco", Replace: "agora"}.EditFor(detail)
+	if err != nil || description.Creative.Cards[1].Description != "Fale agora" {
+		t.Fatalf("got %+v %v", description.Creative, err)
+	}
+	if _, err := (BulkChange{Field: BulkHeadline, Mode: BulkSet, Value: "Vozko Technology LTDA"}).EditFor(detail); !errors.Is(err, ErrNothingToChange) {
+		t.Fatalf("an unchanged carousel title is nothing to change, got %v", err)
+	}
+}
+
+func TestBulkCarouselWithDifferentCardTitlesShowsEachOnce(t *testing.T) {
+	detail := ObjectDetail{Object: &Object{Level: LevelAd}, Creative: &CreativeDraft{Format: FormatCarousel, Cards: []CarouselCard{
+		{Headline: "A"}, {Headline: "B"}, {Headline: "A"},
+	}}}
+	if got := (BulkChange{Field: BulkHeadline}).Current(detail); got != "A | B" {
+		t.Fatalf("got %q", got)
+	}
+}

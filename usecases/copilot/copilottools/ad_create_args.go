@@ -105,7 +105,11 @@ func (a adDraftArgs) apply(account *advertising.AdAccount, d *advertising.AdDraf
 }
 
 func (a adDraftArgs) draft(account *advertising.AdAccount) (advertising.AdDraft, error) {
-	d := advertising.AdDraft{AdAccountID: account.ID}
+	return a.draftFrom(account, advertising.CreativeDraft{})
+}
+
+func (a adDraftArgs) draftFrom(account *advertising.AdAccount, source advertising.CreativeDraft) (advertising.AdDraft, error) {
+	d := advertising.AdDraft{AdAccountID: account.ID, Ads: []advertising.AdItem{{Creative: source}}}
 	err := a.apply(account, &d, func(string) bool { return true })
 	return d, err
 }

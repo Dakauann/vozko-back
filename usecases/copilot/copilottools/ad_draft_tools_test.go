@@ -61,9 +61,13 @@ func (stubAdReadiness) Readiness(context.Context, string, string) (*adsuc.Readin
 type stubAdEditor struct {
 	checked bool
 	edited  *advertising.ObjectEdit
+	details map[string]*advertising.ObjectDetail
 }
 
 func (e *stubAdEditor) Detail(_ context.Context, _, id string) (*advertising.ObjectDetail, error) {
+	if detail, ok := e.details[id]; ok {
+		return detail, nil
+	}
 	level := advertising.LevelAd
 	if id == "120200" {
 		level = advertising.LevelCampaign

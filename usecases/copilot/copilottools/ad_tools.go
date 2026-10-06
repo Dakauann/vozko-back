@@ -86,6 +86,49 @@ func (d AdsDeps) account(ctx context.Context, cc copilot.Context, ref string) (*
 	return account, err
 }
 
+var errSourceAd = fmt.Errorf("%w: source_ad_id precisa ser o meta_id de um anúncio da mesma conta de anúncios", errInvalidArgs)
+
+func (d AdsDeps) newDraft(ctx context.Context, cc copilot.Context, a adDraftArgs) (advertising.AdDraft, error) {
+	account, err := d.account(ctx, cc, a.AdAccountID)
+	if err != nil {
+		return advertising.AdDraft{}, err
+	}
+	source, err := d.sourceCreative(ctx, cc, a.SourceAdID, account)
+	if err != nil {
+		return advertising.AdDraft{}, err
+	}
+	draft, err := a.draftFrom(account, source)
+	if err != nil {
+		return advertising.AdDraft{}, err
+	}
+	return d.namedDraft(ctx, cc, draft)
+}
+
+func (d AdsDeps) sourceCreative(ctx context.Context, cc copilot.Context, sourceAdID string, account *advertising.AdAccount) (advertising.CreativeDraft, error) {
+	if strings.TrimSpace(sourceAdID) == "" {
+		return advertising.CreativeDraft{}, nil
+	}
+	id, err := metaID(sourceAdID)
+	if err != nil {
+		return advertising.CreativeDraft{}, err
+	}
+	detail, err := d.Editor.Detail(ctx, cc.WorkspaceID, id)
+	if err != nil {
+		return advertising.CreativeDraft{}, err
+	}
+	if detail.Object.Level != advertising.LevelAd || detail.Creative == nil {
+		return advertising.CreativeDraft{}, errSourceAd
+	}
+	owner, err := d.account(ctx, cc, detail.Object.AdAccountID)
+	if err != nil {
+		return advertising.CreativeDraft{}, err
+	}
+	if owner.ID != account.ID {
+		return advertising.CreativeDraft{}, errSourceAd
+	}
+	return *detail.Creative, nil
+}
+
 func (d AdsDeps) namedDraft(ctx context.Context, cc copilot.Context, draft advertising.AdDraft) (advertising.AdDraft, error) {
 	named, err := d.Assets.NameLocations(ctx, cc.WorkspaceID, draft.AdAccountID, draft.AdSet.Targeting.Locations)
 	if err != nil {
@@ -436,6 +479,7 @@ func (t *searchAdLocationsTool) Execute(ctx context.Context, cc copilot.Context,
 type adDraftArgs struct {
 	adCreativeArgs
 	AdAccountID             string   `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
+	SourceAdID              string   `json:"source_ad_id" desc:"meta_id de um anúncio publicado da mesma conta cujas imagens e vídeos este anúncio reaproveita; os media_id meta: dele vêm de get_ad_creative"`
 	CampaignName            string   `json:"campaign_name" req:"true" desc:"nome da campanha"`
 	Objective               string   `json:"objective" req:"true" enum:"OUTCOME_AWARENESS,OUTCOME_TRAFFIC,OUTCOME_ENGAGEMENT,OUTCOME_LEADS,OUTCOME_SALES,OUTCOME_APP_PROMOTION" desc:"objetivo da campanha: OUTCOME_AWARENESS (reconhecimento), OUTCOME_TRAFFIC (tráfego para site ou conversa), OUTCOME_ENGAGEMENT (conversas e engajamento com uma publicação), OUTCOME_LEADS (cadastros), OUTCOME_SALES (vendas, inclusive pelo catálogo), OUTCOME_APP_PROMOTION (instalações de app)"`
 	Destination             string   `json:"destination" req:"true" enum:"WHATSAPP,MESSENGER,INSTAGRAM_DIRECT,WEBSITE,ON_AD,NONE,APP,CATALOG,ON_POST" desc:"para onde a pessoa vai: WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, WEBSITE (site em link), ON_AD (formulário instantâneo, só com OUTCOME_LEADS), NONE (só alcance, com OUTCOME_AWARENESS), APP (loja do app, com OUTCOME_APP_PROMOTION), CATALOG (produtos do catálogo, com OUTCOME_SALES) ou ON_POST (engajamento com uma publicação, com OUTCOME_ENGAGEMENT e format EXISTING_POST)"`
@@ -547,15 +591,8 @@ func (t *createAdTool) preflight(ctx context.Context, cc copilot.Context, args m
 	if err != nil {
 		return nil, err
 	}
-	account, err := t.deps.account(ctx, cc, a.AdAccountID)
+	draft, err := t.deps.newDraft(ctx, cc, a)
 	if err != nil {
-		return nil, err
-	}
-	draft, err := a.draft(account)
-	if err != nil {
-		return nil, err
-	}
-	if draft, err = t.deps.namedDraft(ctx, cc, draft); err != nil {
 		return nil, err
 	}
 	return t.deps.Publish.Preflight(ctx, cc.WorkspaceID, draft)
@@ -941,7 +978,7 @@ func AdsTools(deps AdsDeps) []copilot.Tool {
 		NewCreateAdTool(deps), NewTurnOnAdTool(deps), NewTurnOffAdTool(deps), NewUpdateAdBudgetTool(deps),
 		NewDuplicateAdTool(deps), NewArchiveAdTool(deps), NewDeleteAdTool(deps), NewAdsBreakdownTool(deps),
 		NewAdAccountReadinessTool(deps), NewSearchAdInterestsTool(deps), NewEstimateAdAudienceTool(deps), NewListLeadFormsTool(deps), NewCreateLeadFormTool(deps),
-		NewSaveAdDraftTool(deps), NewListAdDraftsTool(deps), NewPublishAdDraftTool(deps), NewEditAdTextTool(deps),
+		NewSaveAdDraftTool(deps), NewListAdDraftsTool(deps), NewPublishAdDraftTool(deps), NewEditAdTextTool(deps), NewGetAdCreativeTool(deps),
 		NewListPagePostsTool(deps), NewListAdAppsTool(deps), NewListAdCatalogsTool(deps), NewGetAdDraftTool(deps), NewUpdateAdDraftTool(deps),
 	}
 }

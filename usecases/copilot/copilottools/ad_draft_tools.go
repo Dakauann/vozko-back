@@ -359,15 +359,8 @@ func (t *saveAdDraftTool) check(ctx context.Context, cc copilot.Context, args ma
 	if err != nil {
 		return nil, err
 	}
-	account, err := t.deps.account(ctx, cc, a.AdAccountID)
+	draft, err := t.deps.newDraft(ctx, cc, a)
 	if err != nil {
-		return nil, err
-	}
-	draft, err := a.draft(account)
-	if err != nil {
-		return nil, err
-	}
-	if draft, err = t.deps.namedDraft(ctx, cc, draft); err != nil {
 		return nil, err
 	}
 	return t.deps.Publish.Check(ctx, cc.WorkspaceID, draft)

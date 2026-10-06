@@ -93,6 +93,9 @@ func (c BulkChange) Current(detail ObjectDetail) string {
 	if detail.Creative == nil {
 		return ""
 	}
+	if detail.Creative.Format == FormatCarousel && c.onCards() {
+		return strings.Join(distinct(c.cardValues(detail.Creative.Cards)), cardValueSeparator)
+	}
 	switch c.Field {
 	case BulkPrimaryText:
 		return detail.Creative.PrimaryText
@@ -121,23 +124,64 @@ func (c BulkChange) EditFor(current ObjectDetail) (ObjectEdit, error) {
 		return ObjectEdit{}, FieldError("change.field", "not_for_existing_post")
 	}
 	creative := current.Creative.clone()
-	switch c.Field {
-	case BulkPrimaryText:
+	switch {
+	case creative.Format == FormatCarousel && c.onCards():
+		creative.Cards = c.applyToCards(creative.Cards)
+	case c.Field == BulkPrimaryText:
 		creative.PrimaryText = c.Apply(creative.PrimaryText)
 		creative.Texts = c.applyAll(creative.Texts)
-	case BulkHeadline:
+	case c.Field == BulkHeadline:
 		creative.Headline = c.Apply(creative.Headline)
 		creative.Headlines = c.applyAll(creative.Headlines)
-	case BulkDescription:
+	case c.Field == BulkDescription:
 		creative.Description = c.Apply(creative.Description)
 		creative.Descriptions = c.applyAll(creative.Descriptions)
-	case BulkLink:
+	case c.Field == BulkLink:
 		creative.Link = c.Apply(creative.Link)
 	}
 	if creative.equalText(*current.Creative) {
 		return ObjectEdit{}, ErrNothingToChange
 	}
 	return ObjectEdit{Creative: &creative}, nil
+}
+
+const cardValueSeparator = " | "
+
+func (c BulkChange) onCards() bool {
+	return c.Field == BulkHeadline || c.Field == BulkDescription
+}
+
+func (c BulkChange) cardValues(cards []CarouselCard) []string {
+	out := make([]string, 0, len(cards))
+	for _, card := range cards {
+		if c.Field == BulkHeadline {
+			out = append(out, card.Headline)
+		} else {
+			out = append(out, card.Description)
+		}
+	}
+	return out
+}
+
+func (c BulkChange) applyToCards(cards []CarouselCard) []CarouselCard {
+	for i := range cards {
+		if c.Field == BulkHeadline {
+			cards[i].Headline = c.Apply(cards[i].Headline)
+		} else {
+			cards[i].Description = c.Apply(cards[i].Description)
+		}
+	}
+	return cards
+}
+
+func distinct(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != "" && !slices.Contains(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func (c BulkChange) applyAll(values []string) []string {
@@ -165,5 +209,5 @@ func (d CreativeDraft) clone() CreativeDraft {
 func (d CreativeDraft) equalText(other CreativeDraft) bool {
 	return d.PrimaryText == other.PrimaryText && d.Headline == other.Headline && d.Description == other.Description &&
 		d.Link == other.Link && slices.Equal(d.Texts, other.Texts) && slices.Equal(d.Headlines, other.Headlines) &&
-		slices.Equal(d.Descriptions, other.Descriptions)
+		slices.Equal(d.Descriptions, other.Descriptions) && slices.Equal(d.Cards, other.Cards)
 }
