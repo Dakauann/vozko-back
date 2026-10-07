@@ -186,6 +186,8 @@ func (t *cancelScheduledTool) Execute(ctx context.Context, cc copilot.Context, a
 
 func scheduleFailure(tool string, err error) copilot.Result {
 	switch {
+	case errors.Is(err, sm.ErrTemplatePermission):
+		return copilot.Result{Status: copilot.StatusDenied, Message: "o usuário não tem permissão para enviar modelos"}
 	case errors.Is(err, sm.ErrEntryAccess):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "o usuário não tem acesso a esta conversa"}
 	case errors.Is(err, sm.ErrWindowClosed):

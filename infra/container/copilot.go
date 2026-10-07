@@ -351,6 +351,7 @@ func (c *Container) conversationActionTools() []copilot.Tool {
 		Broadcast: c.services.conversationHub,
 	}
 	templates := copilottools.TemplateSendDeps{
+		Scheduler: c.useCases.personScheduler,
 		Send:      c.services.personTemplateSend,
 		Templates: c.useCases.workspaceTemplates,
 		Costs:     c.useCases.consumeWhatsappTemplate,

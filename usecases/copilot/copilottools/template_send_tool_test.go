@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/copilot"
+	sm "vozko/domain/scheduled_message"
 	"vozko/domain/shared"
 	tmpl "vozko/domain/whatsapp/template"
 	wo "vozko/domain/whatsapp_outreach"
@@ -104,4 +105,53 @@ func TestSendTemplateExplainsRefusals(t *testing.T) {
 
 func (g grantedTemplates) Create(string, string, tmpl.CreateTemplateInput) (*tmpl.CreateTemplateOutput, error) {
 	return nil, nil
+}
+
+func TestSendTemplateSchedulesAsTheUser(t *testing.T) {
+	send := &fakePersonTemplates{}
+	scheduler := &fakeScheduler{}
+	deps := templateSendDeps(send, false)
+	deps.Scheduler = scheduler
+	args := templateArgs("Maria", "123")
+	args["scheduled_at"] = "2026-10-10T09:00:00-03:00"
+	tool := NewSendTemplateTool(deps)
+	res := tool.Execute(context.Background(), member(), args)
+	if res.Status != copilot.StatusOK || send.calls != 0 || len(scheduler.scheduled) != 1 {
+		t.Fatalf("result %+v, sends %d, schedules %+v", res, send.calls, scheduler.scheduled)
+	}
+	in := scheduler.scheduled[0]
+	if scheduler.by.UserID != "u-1" || in.WorkspaceID != member().WorkspaceID || in.Template.ID != knownTemplate || len(in.Template.BodyParams) != 2 || in.Text != "" {
+		t.Fatalf("by %+v input %+v", scheduler.by, in)
+	}
+	fields := tool.(copilot.Describer).Describe(context.Background(), member(), args)
+	for _, field := range fields {
+		if field.Key == "scheduledAt" && field.Value == args["scheduled_at"] {
+			return
+		}
+	}
+	t.Fatal("approval omits scheduled time")
+}
+
+func TestScheduledTemplateNeverFallsBackToImmediateSend(t *testing.T) {
+	for _, at := range []string{"invalid", "2026-10-10T09:00:00", " ", "2026-10-10T09:00:00-03:00"} {
+		send := &fakePersonTemplates{}
+		args := templateArgs("Maria", "123")
+		args["scheduled_at"] = at
+		res := NewSendTemplateTool(templateSendDeps(send, false)).Execute(context.Background(), member(), args)
+		if res.Status != copilot.StatusError || send.calls != 0 {
+			t.Fatalf("time %q result %+v sends %d", at, res, send.calls)
+		}
+	}
+}
+
+func TestScheduledTemplateRefusesPermissionFailureWithoutSending(t *testing.T) {
+	send := &fakePersonTemplates{}
+	deps := templateSendDeps(send, false)
+	deps.Scheduler = &fakeScheduler{err: sm.ErrTemplatePermission}
+	args := templateArgs("Maria", "123")
+	args["scheduled_at"] = "2026-10-10T09:00:00-03:00"
+	res := NewSendTemplateTool(deps).Execute(context.Background(), member(), args)
+	if res.Status != copilot.StatusDenied || send.calls != 0 {
+		t.Fatalf("result %+v sends %d", res, send.calls)
+	}
 }

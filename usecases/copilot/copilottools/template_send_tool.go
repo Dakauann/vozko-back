@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	"vozko/domain/copilot"
+	sm "vozko/domain/scheduled_message"
 	"vozko/domain/tools"
 	tmpl "vozko/domain/whatsapp/template"
 	wo "vozko/domain/whatsapp_outreach"
@@ -16,6 +19,7 @@ import (
 )
 
 type TemplateSendDeps struct {
+	Scheduler sm.PersonSchedulerUseCase
 	Send      conversation.PersonTemplateSendUseCase
 	Templates tmpl.WorkspaceTemplatesUseCase
 	Costs     tmpl.TemplateCostReader
@@ -23,10 +27,11 @@ type TemplateSendDeps struct {
 }
 
 type sendTemplateArgs struct {
-	EntryID    string   `json:"entry_id" req:"true" desc:"entry_id exato de search_conversations"`
-	EntryType  string   `json:"entry_type" req:"true" desc:"entry_type exato de search_conversations"`
-	TemplateID string   `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
-	Variables  []string `json:"variables" desc:"valores de {{1}}, {{2}}..., na ordem; exatamente quantos o modelo pede"`
+	ScheduledAt string   `json:"scheduled_at" desc:"opcional: agenda em vez de enviar agora; data e hora RFC3339 com fuso"`
+	EntryID     string   `json:"entry_id" req:"true" desc:"entry_id exato de search_conversations"`
+	EntryType   string   `json:"entry_type" req:"true" desc:"entry_type exato de search_conversations"`
+	TemplateID  string   `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
+	Variables   []string `json:"variables" desc:"valores de {{1}}, {{2}}..., na ordem; exatamente quantos o modelo pede"`
 }
 
 type sendTemplateTool struct{ deps TemplateSendDeps }
@@ -39,7 +44,7 @@ func (t *sendTemplateTool) Meta() copilot.Meta {
 
 func (t *sendTemplateTool) Definition() tools.Definition {
 	return definition("send_template",
-		"Envia um modelo aprovado do WhatsApp numa conversa (reabre a janela de 24h). É cobrado do saldo: a aprovação mostra o "+
+		"Envia um modelo aprovado do WhatsApp agora ou agenda com scheduled_at, inclusive fora da janela de 24h. É cobrado do saldo no envio: a aprovação mostra o "+
 			"custo. Só depois da aprovação do usuário.", sendTemplateArgs{})
 }
 
@@ -47,6 +52,9 @@ func (t *sendTemplateTool) Describe(_ context.Context, cc copilot.Context, args 
 	var a sendTemplateArgs
 	bindArgs(args, &a)
 	fields := []copilot.Field{{Key: "conversation", Value: describeConversation(t.deps.Entries, cc, a.EntryID, a.EntryType)}}
+	if a.ScheduledAt != "" {
+		fields = append(fields, copilot.Field{Key: "scheduledAt", Value: strings.TrimSpace(a.ScheduledAt)})
+	}
 	template, err := t.template(cc, a.TemplateID)
 	if err != nil {
 		return append(fields, copilot.Field{Key: "template", Value: "modelo desconhecido ou sem acesso"})
@@ -78,7 +86,7 @@ func (t *sendTemplateTool) cost(cc copilot.Context, template *tmpl.Template) str
 	return fmt.Sprintf("US$ %.4f", float64(micros)/1_000_000)
 }
 
-func (t *sendTemplateTool) Execute(_ context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
+func (t *sendTemplateTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
 	var a sendTemplateArgs
 	if err := decodeArgs(args, &a); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
@@ -96,6 +104,28 @@ func (t *sendTemplateTool) Execute(_ context.Context, cc copilot.Context, args m
 	}
 	if want := template.ParameterCount(); len(a.Variables) != want {
 		return copilot.Result{Status: copilot.StatusError, Message: fmt.Sprintf("o modelo pede %d variáveis e vieram %d", want, len(a.Variables))}
+	}
+	if a.ScheduledAt != "" {
+		at, err := time.Parse(time.RFC3339, strings.TrimSpace(a.ScheduledAt))
+		if err != nil {
+			return copilot.Result{Status: copilot.StatusError, Message: "scheduled_at deve ter data, hora e fuso RFC3339"}
+		}
+		if t.deps.Scheduler == nil {
+			return copilot.Result{Status: copilot.StatusError, Message: "agendamento de modelos indisponível"}
+		}
+		out, err := t.deps.Scheduler.Schedule(ctx, personOf(cc), sm.ScheduleInput{
+			WorkspaceID: cc.WorkspaceID, EntryID: target.EntryID, EntryType: string(target.EntryType), ScheduledAt: at,
+			Template: &sm.TemplateContent{ID: template.ID, BodyParams: a.Variables},
+		})
+		if err != nil {
+			if errors.Is(err, sm.ErrEntryAccess) || errors.Is(err, sm.ErrTemplatePermission) || errors.Is(err, sm.ErrScheduledAtTooSoon) || errors.Is(err, sm.ErrScheduledAtTooFar) {
+				return scheduleFailure("send_template", err)
+			}
+			return templateSendFailure(err)
+		}
+		return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{
+			"scheduled_message_id": out.Message.ID, "scheduled_at": out.Message.ScheduledAt.UTC().Format(time.RFC3339), "template": template.Name,
+		}}
 	}
 	if _, err := t.deps.Send.Execute(personOf(cc), conversation.TemplateSendRequest{
 		WorkspaceID: cc.WorkspaceID, EntryID: target.EntryID, EntryType: string(target.EntryType),
