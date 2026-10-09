@@ -65,52 +65,6 @@ type GeoDistrictPoint struct {
 
 func (GeoDistrictPoint) TableName() string { return "geo_district_points" }
 
-type GeocodingSettings struct {
-	WorkspaceID       string     `gorm:"primaryKey;type:uuid"`
-	Provider          *string    `gorm:"type:varchar(32)"`
-	ProviderChangedBy *string    `gorm:"type:uuid"`
-	ProviderChangedAt *time.Time `gorm:"type:timestamptz"`
-	MonthlyCeiling    *int64
-	CeilingChangedBy  *string    `gorm:"type:uuid"`
-	CeilingChangedAt  *time.Time `gorm:"type:timestamptz"`
-	UpdatedAt         time.Time  `gorm:"type:timestamptz;not null"`
-}
-
-func (GeocodingSettings) TableName() string { return "geocoding_settings" }
-
-type GeocodingUsage struct {
-	WorkspaceID string    `gorm:"primaryKey;type:uuid"`
-	CycleStart  time.Time `gorm:"type:timestamptz;not null"`
-	Requests    int64     `gorm:"not null;default:0"`
-	Day         time.Time `gorm:"type:timestamptz;not null"`
-	DayRequests int64     `gorm:"not null;default:0"`
-	UpdatedAt   time.Time `gorm:"type:timestamptz;not null"`
-}
-
-func (GeocodingUsage) TableName() string { return "geocoding_usage" }
-
-type GeocodingUsageMonth struct {
-	WorkspaceID string    `gorm:"primaryKey;type:uuid"`
-	CycleStart  time.Time `gorm:"primaryKey;type:timestamptz"`
-	Requests    int64     `gorm:"not null;default:0"`
-	UpdatedAt   time.Time `gorm:"type:timestamptz;not null"`
-}
-
-func (GeocodingUsageMonth) TableName() string { return "geocoding_usage_months" }
-
-type GeocodeCache struct {
-	WorkspaceID  string    `gorm:"primaryKey;type:uuid"`
-	Fingerprint  string    `gorm:"primaryKey;type:varchar(32)"`
-	Outcome      string    `gorm:"type:varchar(16);not null"`
-	Latitude     *float64  `gorm:"type:double precision"`
-	Longitude    *float64  `gorm:"type:double precision"`
-	GeoPrecision *string   `gorm:"type:varchar(16)"`
-	Provider     string    `gorm:"type:varchar(32);not null"`
-	ResolvedAt   time.Time `gorm:"type:timestamptz;not null"`
-}
-
-func (GeocodeCache) TableName() string { return "geocode_cache" }
-
 type GeoReferenceLoad struct {
 	State      string    `gorm:"primaryKey;type:varchar(2)"`
 	Rows       int64     `gorm:"not null"`

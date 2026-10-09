@@ -17,8 +17,8 @@ func TestLeadAddressSummaryCountsLeadsAndThoseWithAPrimaryAddress(t *testing.T) 
 }
 
 func TestLeadAddressSummaryRowDerivesTheLeadsWithoutAnAddress(t *testing.T) {
-	row := LeadAddressSummaryRow{Total: 10, WithAddress: 6, OnMap: 3, Approximate: 2, NotFound: 1, QuotaExceeded: 4, Refused: 5, Pending: 7}
-	want := leadmap.Summary{Total: 10, OnMap: 3, Approximate: 2, WithoutAddress: 4, NotFound: 1, QuotaExceeded: 4, Refused: 5, Pending: 7}
+	row := LeadAddressSummaryRow{Total: 10, WithAddress: 6, OnMap: 3, Approximate: 2, NotFound: 1, Pending: 7}
+	want := leadmap.Summary{Total: 10, OnMap: 3, Approximate: 2, WithoutAddress: 4, NotFound: 1, Pending: 7}
 	if got := row.Summary(); got != want {
 		t.Fatalf("Summary() = %+v, want %+v", got, want)
 	}

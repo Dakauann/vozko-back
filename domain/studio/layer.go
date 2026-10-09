@@ -142,51 +142,52 @@ type Shadow struct {
 }
 
 type Layer struct {
-	ID          string     `json:"id"`
-	Type        LayerType  `json:"type"`
-	Name        string     `json:"name,omitempty"`
-	Transform   Transform  `json:"transform"`
-	Hidden      bool       `json:"hidden,omitempty"`
-	Locked      bool       `json:"locked,omitempty"`
-	GroupID     string     `json:"groupId,omitempty"`
-	AssetID     string     `json:"assetId,omitempty"`
-	Crop        *Crop      `json:"crop,omitempty"`
-	FlipX       bool       `json:"flipX,omitempty"`
-	FlipY       bool       `json:"flipY,omitempty"`
-	Radius      float64    `json:"radius,omitempty"`
-	Filters     *Filters   `json:"filters,omitempty"`
-	Text        string     `json:"text,omitempty"`
-	FontID      string     `json:"fontId,omitempty"`
-	FontSize    float64    `json:"fontSize,omitempty"`
-	FontWeight  int        `json:"fontWeight,omitempty"`
-	Italic      bool       `json:"italic,omitempty"`
-	Align       string     `json:"align,omitempty"`
-	LineHeight  float64    `json:"lineHeight,omitempty"`
-	Letter      float64    `json:"letterSpacing,omitempty"`
-	Fill        string     `json:"fill,omitempty"`
-	Stroke      string     `json:"stroke,omitempty"`
-	StrokeWidth float64    `json:"strokeWidth,omitempty"`
-	Dash        bool       `json:"dash,omitempty"`
-	Shadow      *Shadow    `json:"shadow,omitempty"`
-	Shape       ShapeKind  `json:"shape,omitempty"`
-	ArrowStart  bool       `json:"arrowStart,omitempty"`
-	ArrowEnd    bool       `json:"arrowEnd,omitempty"`
-	IconID      string     `json:"iconId,omitempty"`
-	BlendMode   string     `json:"blendMode,omitempty"`
-	Clip        bool       `json:"clip,omitempty"`
-	Gradient    *Gradient  `json:"gradient,omitempty"`
-	Highlight   *Highlight `json:"highlight,omitempty"`
-	Curve       float64    `json:"curve,omitempty"`
-	Frame       ShapeKind  `json:"frame,omitempty"`
-	Path        string     `json:"path,omitempty"`
-	FillRule    string     `json:"fillRule,omitempty"`
-	LineCap     string     `json:"lineCap,omitempty"`
-	LineJoin    string     `json:"lineJoin,omitempty"`
-	MiterLimit  float64    `json:"miterLimit,omitempty"`
-	DashArray   []float64  `json:"dashArray,omitempty"`
-	DashOffset  float64    `json:"dashOffset,omitempty"`
-	Points      int        `json:"points,omitempty"`
-	Inner       float64    `json:"inner,omitempty"`
+	ID          string      `json:"id"`
+	Type        LayerType   `json:"type"`
+	Name        string      `json:"name,omitempty"`
+	Transform   Transform   `json:"transform"`
+	Hidden      bool        `json:"hidden,omitempty"`
+	Locked      bool        `json:"locked,omitempty"`
+	GroupID     string      `json:"groupId,omitempty"`
+	AssetID     string      `json:"assetId,omitempty"`
+	Crop        *Crop       `json:"crop,omitempty"`
+	FlipX       bool        `json:"flipX,omitempty"`
+	FlipY       bool        `json:"flipY,omitempty"`
+	Radius      float64     `json:"radius,omitempty"`
+	Filters     *Filters    `json:"filters,omitempty"`
+	Color       *ColorGrade `json:"color,omitempty"`
+	Text        string      `json:"text,omitempty"`
+	FontID      string      `json:"fontId,omitempty"`
+	FontSize    float64     `json:"fontSize,omitempty"`
+	FontWeight  int         `json:"fontWeight,omitempty"`
+	Italic      bool        `json:"italic,omitempty"`
+	Align       string      `json:"align,omitempty"`
+	LineHeight  float64     `json:"lineHeight,omitempty"`
+	Letter      float64     `json:"letterSpacing,omitempty"`
+	Fill        string      `json:"fill,omitempty"`
+	Stroke      string      `json:"stroke,omitempty"`
+	StrokeWidth float64     `json:"strokeWidth,omitempty"`
+	Dash        bool        `json:"dash,omitempty"`
+	Shadow      *Shadow     `json:"shadow,omitempty"`
+	Shape       ShapeKind   `json:"shape,omitempty"`
+	ArrowStart  bool        `json:"arrowStart,omitempty"`
+	ArrowEnd    bool        `json:"arrowEnd,omitempty"`
+	IconID      string      `json:"iconId,omitempty"`
+	BlendMode   string      `json:"blendMode,omitempty"`
+	Clip        bool        `json:"clip,omitempty"`
+	Gradient    *Gradient   `json:"gradient,omitempty"`
+	Highlight   *Highlight  `json:"highlight,omitempty"`
+	Curve       float64     `json:"curve,omitempty"`
+	Frame       ShapeKind   `json:"frame,omitempty"`
+	Path        string      `json:"path,omitempty"`
+	FillRule    string      `json:"fillRule,omitempty"`
+	LineCap     string      `json:"lineCap,omitempty"`
+	LineJoin    string      `json:"lineJoin,omitempty"`
+	MiterLimit  float64     `json:"miterLimit,omitempty"`
+	DashArray   []float64   `json:"dashArray,omitempty"`
+	DashOffset  float64     `json:"dashOffset,omitempty"`
+	Points      int         `json:"points,omitempty"`
+	Inner       float64     `json:"inner,omitempty"`
 }
 
 func finite(values ...float64) bool {
@@ -199,6 +200,18 @@ func finite(values ...float64) bool {
 }
 
 func within(v, lo, hi float64) bool { return finite(v) && v >= lo && v <= hi }
+
+func (l Layer) strokedShape() bool {
+	return l.Type == LayerShape && (l.Shape == ShapeLine || l.Shape == ShapeArrow)
+}
+
+func (l Layer) paintsFill() bool {
+	return (l.Type == LayerText || l.Type == LayerIcon || l.Type == LayerShape) && !l.strokedShape() && l.Gradient == nil
+}
+
+func (l Layer) paintsStroke() bool {
+	return l.strokedShape() || ((l.Type == LayerText || l.Type == LayerShape) && l.StrokeWidth > 0)
+}
 
 func validColor(c string, required bool) bool {
 	if c == "" {
@@ -250,6 +263,9 @@ func (l Layer) issue() string {
 	}
 	if !within(l.Curve, -1, 1) {
 		return CodeOutOfRange
+	}
+	if l.Color != nil && l.Type != LayerImage {
+		return CodeInvalid
 	}
 	switch l.Type {
 	case LayerImage:
@@ -325,7 +341,7 @@ func (l Layer) imageIssue() string {
 	if f := l.Filters; f != nil && (!within(f.Brightness, -1, 1) || !within(f.Contrast, -100, 100) || !within(f.Saturation, -2, 10) || !within(f.Blur, 0, 40)) {
 		return CodeOutOfRange
 	}
-	return ""
+	return l.Color.issue()
 }
 
 func (l Layer) textIssue() string {

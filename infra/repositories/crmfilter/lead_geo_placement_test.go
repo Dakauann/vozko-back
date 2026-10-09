@@ -14,8 +14,7 @@ import (
 
 var (
 	pinningArray  = pq.StringArray{"exact", "address", "street"}
-	unlocatedArgs = pq.StringArray{"not_found", "ambiguous"}
-	settledArgs   = pq.StringArray{"not_found", "ambiguous", "quota_exceeded", "refused"}
+	unlocatedArgs = pq.StringArray{"not_found"}
 )
 
 func TestEveryGeoPlacementHasTheSummaryBucketCondition(t *testing.T) {
@@ -29,9 +28,7 @@ func TestEveryGeoPlacementHasTheSummaryBucketCondition(t *testing.T) {
 		{crmfilter.PlacementApproximate, "la.latitude IS NOT NULL AND NOT COALESCE(la.geo_precision = ANY(?), false)", []interface{}{pinningArray}},
 		{crmfilter.PlacementWithoutAddress, "la.lead_id IS NULL", nil},
 		{crmfilter.PlacementNotFound, unlocated + "la.geo_status = ANY(?)", []interface{}{unlocatedArgs}},
-		{crmfilter.PlacementQuotaExceeded, unlocated + "la.geo_status = ?", []interface{}{"quota_exceeded"}},
-		{crmfilter.PlacementRefused, unlocated + "la.geo_status = ?", []interface{}{"refused"}},
-		{crmfilter.PlacementPending, unlocated + "NOT COALESCE(la.geo_status = ANY(?), false)", []interface{}{settledArgs}},
+		{crmfilter.PlacementPending, unlocated + "NOT COALESCE(la.geo_status = ANY(?), false)", []interface{}{unlocatedArgs}},
 	}
 	if len(cases) != len(crmfilter.GeoPlacements()) {
 		t.Fatalf("every placement needs its pinned condition, %d of %d pinned", len(cases), len(crmfilter.GeoPlacements()))
@@ -80,7 +77,6 @@ func TestGeoStatusArrayKeepsTheStatusesInOrder(t *testing.T) {
 	}{
 		{"none", nil, pq.StringArray{}},
 		{"unlocated", lead.UnlocatedGeoStatuses(), unlocatedArgs},
-		{"settled", lead.SettledGeoStatuses(), settledArgs},
 	}
 	for _, tc := range cases {
 		if got := GeoStatusArray(tc.statuses); !reflect.DeepEqual(got, tc.want) {
@@ -103,7 +99,7 @@ func TestGeoPlacementCompilesAsMembershipOverThePrimaryAddress(t *testing.T) {
 		{"on the map", pred(crmfilter.FieldGeoPlacement, crmfilter.OpIn, "on_map"),
 			primaryAddress + " AND ((" + onMap + ")))", []interface{}{testWorkspace, pinningArray}},
 		{"buckets in the summary order once", pred(crmfilter.FieldGeoPlacement, crmfilter.OpIn, "pending", "approximate", "pending"),
-			primaryAddress + " AND ((" + approximate + ") OR (" + pending + ")))", []interface{}{testWorkspace, pinningArray, settledArgs}},
+			primaryAddress + " AND ((" + approximate + ") OR (" + pending + ")))", []interface{}{testWorkspace, pinningArray, unlocatedArgs}},
 		{"equals one bucket", pred(crmfilter.FieldGeoPlacement, crmfilter.OpEquals, "approximate"),
 			primaryAddress + " AND ((" + approximate + ")))", []interface{}{testWorkspace, pinningArray}},
 		{"without an address", pred(crmfilter.FieldGeoPlacement, crmfilter.OpIn, "without_address"),

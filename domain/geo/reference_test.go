@@ -8,40 +8,6 @@ import (
 	"vozko/domain/address"
 )
 
-func TestOutcomeConstructors(t *testing.T) {
-	fix := Fix{Point: Point{Lat: -23.5, Lng: -46.6}, Precision: PrecisionStreet, Source: SourceReference}
-	tests := []struct {
-		name    string
-		outcome Outcome
-		kind    OutcomeKind
-	}{
-		{"located carries the fix", Located(fix), OutcomeLocated},
-		{"not found", NotFound(), OutcomeNotFound},
-		{"ambiguous", Ambiguous(), OutcomeAmbiguous},
-		{"unavailable", Unavailable(ReasonProviderDown, time.Minute), OutcomeUnavailable},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.outcome.Kind != tt.kind {
-				t.Fatalf("kind = %q, expected %q", tt.outcome.Kind, tt.kind)
-			}
-		})
-	}
-	if got := Located(fix); got.Fix != fix {
-		t.Fatalf("Located() lost the fix: %+v", got)
-	}
-	if got := Unavailable(ReasonRateLimited, -time.Second); got.RetryAfter != 0 || got.Reason != ReasonRateLimited {
-		t.Fatalf("Unavailable() = %+v, expected a reason and no negative wait", got)
-	}
-}
-
-func TestOutcomeLocatedWithAnInvalidFixIsUnavailable(t *testing.T) {
-	got := Located(Fix{Precision: PrecisionExact, Source: SourceProvider})
-	if got.Kind != OutcomeUnavailable || got.Reason != ReasonInvalidAnswer {
-		t.Fatalf("Located(invalid) = %+v, expected unavailable with %q so nothing guessed is stored", got, ReasonInvalidAnswer)
-	}
-}
-
 func TestReferenceKeysFor(t *testing.T) {
 	postals := []address.Postal{
 		{ZipCode: "01310-100", District: "Jd. Paulista", City: "São Paulo", State: "SP", CityCode: "3550308"},
@@ -196,37 +162,5 @@ func TestCoverageCovers(t *testing.T) {
 	}
 	if !all.Full() || partial.Full() {
 		t.Fatal("Full() must be true only when every state is loaded")
-	}
-}
-
-func TestOutcomeOfAnswers(t *testing.T) {
-	house := func(lat, lng float64, precision Precision) Fix {
-		return Fix{Point: Point{Lat: lat, Lng: lng}, Precision: precision, Source: SourceProvider, Provider: "opencage"}
-	}
-	paulista := house(-23.5613, -46.6565, PrecisionAddress)
-	nearby := house(-23.5650, -46.6600, PrecisionAddress)
-	campinas := house(-22.9056, -47.0608, PrecisionAddress)
-	streetFar := house(-22.9056, -47.0608, PrecisionStreet)
-	cityA := house(-23.5505, -46.6333, PrecisionCity)
-	cityB := house(-22.9056, -47.0608, PrecisionCity)
-	tests := []struct {
-		name  string
-		fixes []Fix
-		want  Outcome
-	}{
-		{"no answer", nil, NotFound()},
-		{"one answer", []Fix{paulista}, Located(paulista)},
-		{"two houses close together", []Fix{paulista, nearby}, Located(paulista)},
-		{"two houses far apart", []Fix{paulista, campinas}, Ambiguous()},
-		{"a far answer of another precision", []Fix{paulista, streetFar}, Located(paulista)},
-		{"two far cities do not pin a house", []Fix{cityA, cityB}, Located(cityA)},
-		{"an invalid first answer", []Fix{{Precision: PrecisionAddress, Source: SourceProvider}}, Unavailable(ReasonInvalidAnswer, 0)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := OutcomeOfAnswers(tt.fixes); !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("OutcomeOfAnswers() = %+v, expected %+v", got, tt.want)
-			}
-		})
 	}
 }

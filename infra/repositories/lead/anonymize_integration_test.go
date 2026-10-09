@@ -11,7 +11,6 @@ import (
 	"github.com/lib/pq"
 	"gorm.io/gorm"
 
-	"vozko/domain/address"
 	"vozko/domain/lead"
 	"vozko/domain/recordevent"
 	"vozko/infra/database/schema"
@@ -34,7 +33,7 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 	db, repo := collectionsDB(t)
 	db.Config.DisableForeignKeyConstraintWhenMigrating = true
 	if err := db.AutoMigrate(&schema.LeadMemory{}, &schema.WhatsAppCampaignEntry{}, &schema.UnofficialWhatsAppCampaignEntry{},
-		&schema.Call{}, &schema.WhatsAppTemplateSend{}, &schema.CallListItem{}, &schema.GeocodeCache{}); err != nil {
+		&schema.Call{}, &schema.WhatsAppTemplateSend{}, &schema.CallListItem{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	ws := uuid.NewString()
@@ -245,159 +244,5 @@ func TestAnonymizeRemovesARelationLinkedAfterItsFirstReadAgainstPostgres(t *test
 	}
 	if _, ok := run.erasure.Counterparts[late.ID]; !ok || run.erasure.Rows[lead.ErasureRelations] != 2 {
 		t.Fatalf("erasure = %+v", run.erasure)
-	}
-}
-
-func TestAnonymizeErasesStoredAnswersNoOtherLiveLeadHoldsAgainstPostgres(t *testing.T) {
-	w := newAnonymizationWorld(t)
-	ctx := context.Background()
-	shared, own := lead.Address{Postal: paulista}, lead.Address{Postal: bahia}
-	carla := newLead(t, w.repo, w.ws, lead.Draft{Name: "Carla Souza", Addresses: []lead.AddressInput{
-		{Label: lead.AddressHome, Primary: true, Postal: paulista}, {Label: lead.AddressWork, Postal: bahia},
-	}})
-	elsewhere := uuid.NewString()
-	newLead(t, w.repo, elsewhere, lead.Draft{Name: "Outra Pessoa", Addresses: []lead.AddressInput{{Label: lead.AddressHome, Postal: bahia}}})
-	store, cached := w.storeAnswer(t), w.cachedAnswer(t)
-	store(w.ws, shared.Fingerprint())
-	store(w.ws, own.Fingerprint())
-	store(elsewhere, own.Fingerprint())
-
-	erasure, err := w.repo.Anonymize(ctx, w.ws, carla.ID, uuid.NewString(), time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if erasure.Rows[lead.ErasureGeocodeCache] != 1 || cached(w.ws, own.Fingerprint()) {
-		t.Fatalf("erasure = %+v, want the answer for the address only Carla held erased", erasure.Rows)
-	}
-	if !cached(w.ws, shared.Fingerprint()) {
-		t.Fatal("Maria still lives at the shared address, so its answer stays")
-	}
-	if !cached(elsewhere, own.Fingerprint()) {
-		t.Fatal("another workspace's answer is never touched")
-	}
-
-	if _, err := w.repo.Anonymize(ctx, w.ws, w.maria.ID, uuid.NewString(), time.Now().UTC()); err != nil {
-		t.Fatal(err)
-	}
-	if cached(w.ws, shared.Fingerprint()) {
-		t.Fatal("once no live lead holds the address, its stored answer is erased")
-	}
-}
-
-func (w anonymizationWorld) storeAnswer(t *testing.T) func(ws, fingerprint string) {
-	return func(ws, fingerprint string) {
-		t.Helper()
-		if err := w.db.Exec("INSERT INTO geocode_cache (workspace_id, fingerprint, outcome, provider, resolved_at) VALUES (?, ?, 'not_found', 'opencage', now())", ws, fingerprint).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func (w anonymizationWorld) cachedAnswer(t *testing.T) func(ws, fingerprint string) bool {
-	return func(ws, fingerprint string) bool {
-		t.Helper()
-		return w.count(t, "SELECT count(*) FROM geocode_cache WHERE workspace_id = ? AND fingerprint = ?", ws, fingerprint) == 1
-	}
-}
-
-func keepingAddresses(l *lead.Lead, replace map[string]address.Postal, drop map[string]bool) []lead.AddressInput {
-	var inputs []lead.AddressInput
-	for _, a := range l.Addresses {
-		if drop[a.ID] {
-			continue
-		}
-		postal := a.Postal
-		if next, ok := replace[a.ID]; ok {
-			postal = next
-		}
-		inputs = append(inputs, lead.AddressInput{ID: a.ID, Label: a.Label, Primary: a.Primary, Postal: postal})
-	}
-	return inputs
-}
-
-func saveAddresses(t *testing.T, w anonymizationWorld, id string, edit func(l *lead.Lead) []lead.AddressInput) {
-	t.Helper()
-	l := reload(t, w.repo, w.ws, id)
-	if err := l.SetAddresses(edit(l)); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.repo.Save(context.Background(), l, l.Version, nil); err != nil {
-		t.Fatalf("save addresses: %v", err)
-	}
-}
-
-func TestEditingOrRemovingAnAddressReleasesItsStoredAnswerAgainstPostgres(t *testing.T) {
-	w := newAnonymizationWorld(t)
-	store, cached := w.storeAnswer(t), w.cachedAnswer(t)
-	carla := newLead(t, w.repo, w.ws, lead.Draft{Name: "Carla Souza", Addresses: []lead.AddressInput{
-		{Label: lead.AddressHome, Primary: true, Postal: paulista}, {Label: lead.AddressWork, Postal: bahia},
-	}})
-	shared, own := lead.Address{Postal: paulista}.Fingerprint(), lead.Address{Postal: bahia}.Fingerprint()
-	elsewhere := uuid.NewString()
-	store(w.ws, shared)
-	store(w.ws, own)
-	store(elsewhere, own)
-	moved := bahia
-	moved.Number = "20"
-
-	saveAddresses(t, w, carla.ID, func(l *lead.Lead) []lead.AddressInput {
-		return keepingAddresses(l, map[string]address.Postal{l.Addresses[1].ID: moved}, nil)
-	})
-	if cached(w.ws, own) {
-		t.Fatal("once Carla's work address text changed, no lead holds the old text, so its answer must go")
-	}
-	if !cached(w.ws, shared) || !cached(elsewhere, own) {
-		t.Fatal("an answer another lead or another workspace still holds stays")
-	}
-
-	saveAddresses(t, w, carla.ID, func(l *lead.Lead) []lead.AddressInput {
-		return keepingAddresses(l, nil, map[string]bool{l.Addresses[0].ID: true})
-	})
-	if !cached(w.ws, shared) {
-		t.Fatal("Carla removed the shared address but Maria still lives there, so its answer stays")
-	}
-
-	saveAddresses(t, w, w.maria.ID, func(l *lead.Lead) []lead.AddressInput {
-		return keepingAddresses(l, map[string]address.Postal{l.Addresses[0].ID: moved}, nil)
-	})
-	if cached(w.ws, shared) {
-		t.Fatal("once the last holder edited the text away, its answer must go")
-	}
-}
-
-func TestTwoHoldersOfOneTextAnonymizedTogetherLeaveNoStoredAnswerAgainstPostgres(t *testing.T) {
-	w := newAnonymizationWorld(t)
-	store, cached := w.storeAnswer(t), w.cachedAnswer(t)
-	flatmate := newLead(t, w.repo, w.ws, lead.Draft{Name: "Rita Lima", Addresses: []lead.AddressInput{{Label: lead.AddressHome, Postal: paulista}}})
-	shared := lead.Address{Postal: paulista}.Fingerprint()
-	store(w.ws, shared)
-
-	first := w.db.Begin()
-	defer first.Rollback()
-	run := &anonymization{tx: first, actorID: uuid.NewString(), at: time.Now().UTC(), erasure: lead.Erasure{LeadID: w.maria.ID, Rows: map[lead.ErasureTarget]int64{}}}
-	if err := run.erase(w.ws, w.maria.ID); err != nil {
-		t.Fatalf("first anonymization: %v", err)
-	}
-	if run.erasure.Rows[lead.ErasureGeocodeCache] != 0 {
-		t.Fatalf("the first anonymization erased %d answers while Rita still lives there", run.erasure.Rows[lead.ErasureGeocodeCache])
-	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := w.repo.Anonymize(context.Background(), w.ws, flatmate.ID, uuid.NewString(), time.Now().UTC())
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		t.Fatalf("the second anonymization returned %v while the first was still open, want it to wait on the stored answer", err)
-	case <-time.After(300 * time.Millisecond):
-	}
-	if err := first.Commit().Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatalf("second anonymization: %v", err)
-	}
-	if cached(w.ws, shared) {
-		t.Fatal("both holders were anonymized, so the stored answer must be gone")
 	}
 }

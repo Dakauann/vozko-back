@@ -67,3 +67,31 @@ func IsolatedDBWith(t testing.TB, prefix string, opts Options, models ...interfa
 	}
 	return db
 }
+
+func KeptDB(t testing.TB, schemaName string) *gorm.DB {
+	t.Helper()
+	if os.Getenv("VOZKO_TEST_DB") != "1" {
+		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
+	}
+	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
+	admin, err := gorm.Open(postgres.Open(dsn()), silent)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := admin.Exec("CREATE SCHEMA IF NOT EXISTS " + schemaName).Error; err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	if sqlDB, err := admin.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+	db, err := gorm.Open(postgres.Open(dsn()+" search_path="+schemaName), silent)
+	if err != nil {
+		t.Fatalf("open schema: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	return db
+}

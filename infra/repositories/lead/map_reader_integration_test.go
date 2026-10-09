@@ -27,6 +27,12 @@ import (
 func mapDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := repotest.IsolatedDB(t, "lead_map")
+	mapTables(t, db)
+	return db
+}
+
+func mapTables(t *testing.T, db *gorm.DB) {
+	t.Helper()
 	migrateLeadTables(t, db)
 	if err := db.AutoMigrate(&schema.LeadArea{}, &schema.GeoCity{}, &schema.GeoDistrictPoint{}); err != nil {
 		t.Fatalf("migrate areas and reference points: %v", err)
@@ -40,7 +46,6 @@ func mapDB(t *testing.T) *gorm.DB {
 			t.Fatalf("index %s: %v", name, err)
 		}
 	}
-	return db
 }
 
 type seededPosition struct {
@@ -337,7 +342,7 @@ func TestAnExactOnlyAreaHoldsOnlyLeadsWhosePositionPinsAHouseAgainstPostgres(t *
 	if whole != want {
 		t.Fatalf("workspace summary = %+v, want %+v", whole, want)
 	}
-	if whole.OnMap+whole.Approximate+whole.WithoutAddress+whole.NotFound+whole.Pending+whole.QuotaExceeded+whole.Refused != whole.Total {
+	if whole.OnMap+whole.Approximate+whole.WithoutAddress+whole.NotFound+whole.Pending != whole.Total {
 		t.Fatalf("the buckets must partition the total: %+v", whole)
 	}
 
@@ -464,7 +469,12 @@ func seedWorkspace(t *testing.T, db *gorm.DB, ws string, leads int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = db.Exec(`INSERT INTO lead_addresses (id, workspace_id, lead_id, label, is_primary, position, city, city_key, city_code, district, district_key, state,
+	seedPositionsOf(t, db, ws)
+}
+
+func seedPositionsOf(t *testing.T, db *gorm.DB, ws string) {
+	t.Helper()
+	err := db.Exec(`INSERT INTO lead_addresses (id, workspace_id, lead_id, label, is_primary, position, city, city_key, city_code, district, district_key, state,
 			latitude, longitude, geo_precision, geo_status, fingerprint, created_at, updated_at)
 		SELECT gen_random_uuid(), s.workspace_id, s.id, 'home', true, 0,
 			c.city, c.city_key, CASE WHEN s.n % 5 = 0 THEN c.code END, 'Bairro ' || (s.n % 400), 'bairro ' || (s.n % 400), c.state,
@@ -801,7 +811,7 @@ func TestEverySummaryBucketIsTheGeoPlacementFilterOfTheSameNameAgainstPostgres(t
 	seedLead(t, db, ws, paulistaAddress("district"))
 	seedLead(t, db, ws, paulistaAddress("postal_code"))
 	seedLead(t, db, ws, nil)
-	for _, status := range []string{"not_found", "ambiguous", "quota_exceeded", "refused", "pending", "unavailable", "pending"} {
+	for _, status := range []string{"not_found", "not_found", "pending", "unavailable", "pending"} {
 		seedLead(t, db, ws, &seededPosition{status: status, city: "São Paulo", cityKey: "sp:sao paulo"})
 	}
 	seedLead(t, db, other, paulistaAddress("street"))
@@ -811,15 +821,14 @@ func TestEverySummaryBucketIsTheGeoPlacementFilterOfTheSameNameAgainstPostgres(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := leadmap.Summary{Total: 12, OnMap: 2, Approximate: 2, WithoutAddress: 1, NotFound: 2, QuotaExceeded: 1, Refused: 1, Pending: 3}
+	want := leadmap.Summary{Total: 10, OnMap: 2, Approximate: 2, WithoutAddress: 1, NotFound: 2, Pending: 3}
 	if summary != want {
 		t.Fatalf("summary = %+v, want %+v", summary, want)
 	}
 	buckets := map[crmfilter.GeoPlacement]int64{
 		crmfilter.PlacementOnMap: summary.OnMap, crmfilter.PlacementApproximate: summary.Approximate,
 		crmfilter.PlacementWithoutAddress: summary.WithoutAddress, crmfilter.PlacementNotFound: summary.NotFound,
-		crmfilter.PlacementPending: summary.Pending, crmfilter.PlacementQuotaExceeded: summary.QuotaExceeded,
-		crmfilter.PlacementRefused: summary.Refused,
+		crmfilter.PlacementPending: summary.Pending,
 	}
 	for placement, count := range buckets {
 		linked, err := reader.Summary(ctx, leadmap.Scope{WorkspaceID: ws, Filter: placementFilter(crmfilter.OpIn, placement)})

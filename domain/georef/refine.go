@@ -30,7 +30,7 @@ type LocatedAddress struct {
 }
 
 func RefiningSources() []geo.FixSource {
-	return []geo.FixSource{geo.SourceManual, geo.SourceLeadPin, geo.SourceImport, geo.SourceProvider}
+	return []geo.FixSource{geo.SourceManual, geo.SourceLeadPin, geo.SourceImport}
 }
 
 func RefiningPrecisions() []geo.Precision {

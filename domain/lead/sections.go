@@ -102,8 +102,6 @@ type SummarySection struct {
 	Approximate    int64 `json:"approximate"`
 	WithoutAddress int64 `json:"withoutAddress"`
 	NotFound       int64 `json:"notFound"`
-	QuotaExceeded  int64 `json:"quotaExceeded"`
-	Refused        int64 `json:"refused"`
 	Pending        int64 `json:"pending"`
 	BirthdaysToday int64 `json:"birthdaysToday"`
 	Blocked        int64 `json:"blocked"`

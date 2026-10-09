@@ -3,77 +3,27 @@ package geocoding
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
-	"time"
 
-	"vozko/domain/billing"
 	"vozko/domain/leadmap"
-	"vozko/domain/shared"
 )
 
 const (
-	HistoryCycles           = 12
 	PlatformDefaultPageSize = 20
 	PlatformMaxPageSize     = 50
 	PlatformSearchMax       = 100
 	PlatformMaxPage         = 1_000_000
 )
 
-var ErrPlatformForbidden = errors.New("geocoding: only a platform admin can read the geocoding of every workspace")
+var ErrPlatformForbidden = errors.New("geocoding: only a platform admin can read the address coverage of every workspace")
 
-type Period struct {
-	CycleStart time.Time
-	NextCycle  time.Time
-	Day        time.Time
-	NextDay    time.Time
+type Caller struct {
+	UserID        string
+	PlatformAdmin bool
 }
 
-func cycleQuota() shared.MonthlyQuota {
-	return shared.MonthlyQuota{CycleDay: cycleDay, Location: billing.LocationBRT()}
-}
-
-func PeriodAt(now time.Time) Period {
-	quota := cycleQuota()
-	local := now.In(billing.LocationBRT())
-	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
-	return Period{CycleStart: quota.CycleStart(now), NextCycle: quota.NextCycleStart(now), Day: day, NextDay: day.AddDate(0, 0, 1)}
-}
-
-func (p Period) HistoryCycles() []time.Time {
-	quota := cycleQuota()
-	cycles := make([]time.Time, 0, HistoryCycles)
-	start := p.CycleStart
-	for range HistoryCycles {
-		cycles = append(cycles, start)
-		start = quota.CycleStart(start.Add(-time.Nanosecond))
-	}
-	return cycles
-}
-
-func (p Period) HistorySince() time.Time {
-	cycles := p.HistoryCycles()
-	return cycles[len(cycles)-1]
-}
-
-type MonthUsage struct {
-	CycleStart time.Time
-	Requests   int64
-}
-
-func MonthsOf(p Period, rows []MonthUsage) []MonthUsage {
-	cycles := p.HistoryCycles()
-	months := make([]MonthUsage, len(cycles))
-	for i, c := range cycles {
-		months[i] = MonthUsage{CycleStart: c}
-	}
-	for _, row := range rows {
-		i := slices.IndexFunc(cycles, func(c time.Time) bool { return c.Equal(row.CycleStart) })
-		if i >= 0 {
-			months[i].Requests = max(months[i].Requests, row.Requests)
-		}
-	}
-	return months
+func (c Caller) CanReadEveryWorkspace() bool {
+	return strings.TrimSpace(c.UserID) != "" && c.PlatformAdmin
 }
 
 type PlatformQuery struct {
@@ -122,17 +72,13 @@ func (c Coverage) MapShare() float64 {
 	return float64(c.OnMap) / float64(c.Total)
 }
 
-type WorkspaceGeocoding struct {
+type WorkspaceCoverage struct {
 	Workspace PlatformWorkspace
-	Settings  Settings
-	Usage     Usage
-	Months    []MonthUsage
 	Coverage  Coverage
 }
 
 type PlatformPage struct {
-	Period     Period
-	Items      []WorkspaceGeocoding
+	Items      []WorkspaceCoverage
 	Page       int
 	PageSize   int
 	TotalItems int64
@@ -146,12 +92,7 @@ func (p PlatformPage) TotalPages() int {
 }
 
 type PlatformDirectory interface {
-	GeocodingWorkspaces(ctx context.Context, query PlatformQuery, cycleStart time.Time) ([]PlatformWorkspace, int64, error)
-}
-
-type UsageHistory interface {
-	UsageOf(ctx context.Context, workspaceIDs []string) (map[string]Usage, error)
-	History(ctx context.Context, workspaceIDs []string, since time.Time) (map[string][]MonthUsage, error)
+	GeocodingWorkspaces(ctx context.Context, query PlatformQuery) ([]PlatformWorkspace, int64, error)
 }
 
 type CoverageReader interface {

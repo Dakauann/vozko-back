@@ -80,8 +80,8 @@ func TestNightlyRefinementFillsBairrosFromLocatedLeadsAgainstPostgres(t *testing
 		seed(clinic, "Pintolândia", 2.803+float64(i)*0.001, "exact", "lead_pin", false)
 	}
 	for i := range 5 {
-		seed(school, "Centro", 2.81+float64(i)*0.001, "address", "provider", false)
-		seed(clinic, "Centro", 2.82+float64(i)*0.001, "address", "provider", false)
+		seed(school, "Centro", 2.81+float64(i)*0.001, "address", "import", false)
+		seed(clinic, "Centro", 2.82+float64(i)*0.001, "address", "import", false)
 	}
 	for i := range 10 {
 		seed(closed, "Pintolândia", 2.60+float64(i)*0.001, "exact", "manual", false)

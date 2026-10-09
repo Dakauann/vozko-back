@@ -90,34 +90,42 @@ const (
 )
 
 type Clip struct {
-	ID         string             `json:"id"`
-	Type       ClipType           `json:"type"`
-	AssetID    string             `json:"assetId,omitempty"`
-	StartMS    int64              `json:"startMs"`
-	DurationMS int64              `json:"durationMs"`
-	TrimInMS   int64              `json:"trimInMs"`
-	Volume     float64            `json:"volume"`
-	FadeInMS   int64              `json:"fadeInMs"`
-	FadeOutMS  int64              `json:"fadeOutMs"`
-	Fit        mediagen.Fit       `json:"fit,omitempty"`
-	Transform  mediagen.Transform `json:"transform"`
-	Layer      *Layer             `json:"layer,omitempty"`
-	LinkID     string             `json:"linkId,omitempty"`
-	MotionIn   *mediagen.Motion   `json:"motionIn,omitempty"`
-	MotionOut  *mediagen.Motion   `json:"motionOut,omitempty"`
-	Disabled   bool               `json:"disabled,omitempty"`
-	Keyframes  *ClipKeyframes     `json:"keyframes,omitempty"`
-	Blur       float64            `json:"blur,omitempty"`
+	ID            string             `json:"id"`
+	Type          ClipType           `json:"type"`
+	AssetID       string             `json:"assetId,omitempty"`
+	StartMS       int64              `json:"startMs"`
+	DurationMS    int64              `json:"durationMs"`
+	TrimInMS      int64              `json:"trimInMs"`
+	Volume        float64            `json:"volume"`
+	FadeInMS      int64              `json:"fadeInMs"`
+	FadeOutMS     int64              `json:"fadeOutMs"`
+	Fit           mediagen.Fit       `json:"fit,omitempty"`
+	Transform     mediagen.Transform `json:"transform"`
+	Layer         *Layer             `json:"layer,omitempty"`
+	LinkID        string             `json:"linkId,omitempty"`
+	MotionIn      *mediagen.Motion   `json:"motionIn,omitempty"`
+	MotionOut     *mediagen.Motion   `json:"motionOut,omitempty"`
+	Disabled      bool               `json:"disabled,omitempty"`
+	Keyframes     *ClipKeyframes     `json:"keyframes,omitempty"`
+	Blur          float64            `json:"blur,omitempty"`
+	TextIn        *TextAnimator      `json:"textIn,omitempty"`
+	TextOut       *TextAnimator      `json:"textOut,omitempty"`
+	Speed         *float64           `json:"speed,omitempty"`
+	Reverse       bool               `json:"reverse,omitempty"`
+	Freeze        bool               `json:"freeze,omitempty"`
+	PreservePitch *bool              `json:"preservePitch,omitempty"`
+	Color         *ColorGrade        `json:"color,omitempty"`
 }
 
 type Track struct {
-	ID     string    `json:"id"`
-	Kind   TrackKind `json:"kind"`
-	Name   string    `json:"name,omitempty"`
-	Hidden bool      `json:"hidden,omitempty"`
-	Locked bool      `json:"locked,omitempty"`
-	Muted  bool      `json:"muted,omitempty"`
-	Clips  []Clip    `json:"clips"`
+	ID          string       `json:"id"`
+	Kind        TrackKind    `json:"kind"`
+	Name        string       `json:"name,omitempty"`
+	Hidden      bool         `json:"hidden,omitempty"`
+	Locked      bool         `json:"locked,omitempty"`
+	Muted       bool         `json:"muted,omitempty"`
+	Clips       []Clip       `json:"clips"`
+	Transitions []Transition `json:"transitions,omitempty"`
 }
 
 type VideoCanvas struct {
@@ -326,6 +334,11 @@ func (d VideoDocument) validate() error {
 			return err
 		}
 	}
+	for _, track := range d.Tracks {
+		if code := track.transitionsIssue(ids); code != "" {
+			return issue(FieldTracks, code)
+		}
+	}
 	return markersIssue(d.Markers)
 }
 
@@ -380,10 +393,10 @@ func (c Clip) issue(kind TrackKind, durationMS int64) string {
 		return CodeInvalid
 	}
 	if kind == TrackAudio {
-		if c.Type != ClipAudio || strings.TrimSpace(c.AssetID) == "" || c.MotionIn != nil || c.MotionOut != nil || c.Keyframes != nil || c.Blur != 0 {
+		if c.Type != ClipAudio || strings.TrimSpace(c.AssetID) == "" || c.MotionIn != nil || c.MotionOut != nil || c.Keyframes != nil || c.Blur != 0 || c.TextIn != nil || c.TextOut != nil || c.Color != nil {
 			return CodeInvalid
 		}
-		return ""
+		return c.speedIssue()
 	}
 	switch c.Type {
 	case ClipVideo, ClipImage:
@@ -407,6 +420,18 @@ func (c Clip) issue(kind TrackKind, durationMS int64) string {
 		return CodeOutOfRange
 	}
 	if code := c.Keyframes.issue(c.Transform); code != "" {
+		return code
+	}
+	if code := c.Keyframes.paintIssue(c); code != "" {
+		return code
+	}
+	if code := c.textAnimationIssue(); code != "" {
+		return code
+	}
+	if code := c.speedIssue(); code != "" {
+		return code
+	}
+	if code := c.gradeIssue(); code != "" {
 		return code
 	}
 	return studioTransformIssue(c.Transform)

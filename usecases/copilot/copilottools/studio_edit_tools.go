@@ -101,17 +101,19 @@ type studioCropArgs struct {
 }
 
 type studioKeyArgs struct {
-	AtMS   int64   `json:"at_ms" req:"true" desc:"instante da chave em ms, contado do início do clipe: de 0 até a duração do clipe"`
-	Value  float64 `json:"value" req:"true" desc:"x e y de -1 a 2 (0.5 é o centro; fora de 0 a 1 sai da tela); scale de 0.05 a 5 (1 é o tamanho atual; o clipe animado, contando o quanto a curva passa da chave, não pode passar de 4 vezes o quadro); rotation de -3600 a 3600 graus; opacity de 0 a 1; blur de 0 a 100 px (0 é nítido)"`
-	Easing string  `json:"easing,omitempty" desc:"curva do trecho que sai desta chave, padrão easeInOut: linear, hold, easeIn, easeOut, easeInOut, backIn (recua antes de sair), backOut (passa do ponto e volta), backInOut, elastic (vibra), bounce (quica), spring (chega com impulso de mola) ou uma curva css cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2, como cubic-bezier(0.05,0.7,0.1,1) para uma entrada enfática"`
+	AtMS   int64    `json:"at_ms" req:"true" desc:"instante da chave em ms, contado do início do clipe: de 0 até a duração do clipe"`
+	Value  *float64 `json:"value,omitempty" desc:"para x, y, scale, rotation, opacity e blur: x e y de -1 a 2 (0.5 é o centro; fora de 0 a 1 sai da tela); scale de 0.05 a 5 (1 é o tamanho atual; o clipe animado, contando o quanto a curva passa da chave, não pode passar de 4 vezes o quadro); rotation de -3600 a 3600 graus; opacity de 0 a 1; blur de 0 a 100 px (0 é nítido)"`
+	Color  string   `json:"color,omitempty" desc:"para fill e stroke: a cor da chave em #rrggbb ou #rrggbbaa; as cores se misturam entre as chaves"`
+	Easing string   `json:"easing,omitempty" desc:"curva do trecho que sai desta chave, padrão easeInOut: linear, hold, easeIn, easeOut, easeInOut, backIn (recua antes de sair), backOut (passa do ponto e volta), backInOut, elastic (vibra), bounce (quica), spring (chega com impulso de mola) ou uma curva css cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2, como cubic-bezier(0.05,0.7,0.1,1) para uma entrada enfática"`
 }
 
 type studioVideoOperation struct {
-	Op         string          `json:"op" req:"true" enum:"add_media,add_text,add_shape,add_icon,add_captions,move_clip,trim_clip,slip_clip,split_clip,delete_clips,duplicate_clips,update_clip,animate,motion_preset,entrance,exit,add_track,move_track,update_track,remove_track,add_marker,set_canvas,seek,select" desc:"a operação"`
+	Op         string          `json:"op" req:"true" enum:"add_media,add_text,add_shape,add_icon,add_captions,move_clip,trim_clip,slip_clip,split_clip,delete_clips,duplicate_clips,update_clip,animate,motion_preset,entrance,exit,animate_text,set_speed,freeze_frame,speed_ramp,set_color,add_track,move_track,update_track,remove_track,add_marker,update_marker,remove_marker,link_clips,unlink_clips,set_canvas,seek,select,add_transition,update_transition,remove_transition" desc:"a operação"`
 	Ref        string          `json:"ref,omitempty" desc:"nome curto para o clipe ou faixa que esta operação cria; as operações seguintes usam @nome"`
 	ClipID     string          `json:"clip_id,omitempty" desc:"clipe alvo: id de studio_read ou @ref"`
 	ClipIDs    []string        `json:"clip_ids,omitempty" desc:"vários clipes (delete_clips, duplicate_clips, update_clip, motion_preset, entrance, exit, select)"`
 	TrackID    string          `json:"track_id,omitempty" desc:"faixa alvo ou de destino: id de studio_read ou @ref"`
+	MarkerID   string          `json:"marker_id,omitempty" desc:"marcador alvo (update_marker, remove_marker): id de studio_read ou @ref de add_marker"`
 	MediaID    string          `json:"media_id,omitempty" desc:"mídia da biblioteca (add_media) ou o arquivo de legendas pronto (add_captions)"`
 	IconID     string          `json:"icon_id,omitempty" desc:"ícone do catálogo (add_icon); studio_read full lista os ids"`
 	AtMS       *int64          `json:"at_ms,omitempty" desc:"instante na linha do tempo em ms: onde inserir, cortar, marcar ou posicionar o cursor de tempo"`
@@ -123,7 +125,7 @@ type studioVideoOperation struct {
 	Style      string          `json:"style,omitempty" enum:"headline,caption,cta,lowerThird,tag" desc:"estilo pronto de texto (add_text)"`
 	Preset     string          `json:"preset,omitempty" enum:"kenBurns,enterLeft,slideUp,fadeIn,fadeOut,pulse,spin,wobble,pop,drop,springIn" desc:"animação pronta por keyframes (motion_preset); pop cresce passando do tamanho, drop cai e quica, springIn entra com mola"`
 	Effect     string          `json:"effect,omitempty" enum:"none,fade,slideUp,slideDown,slideLeft,slideRight" desc:"efeito de entrada ou de saída (entrance, exit)"`
-	Property   string          `json:"property,omitempty" enum:"x,y,scale,rotation,opacity,blur" desc:"propriedade animada (animate); blur é o desfoque em pixels do quadro"`
+	Property   string          `json:"property,omitempty" enum:"x,y,scale,rotation,opacity,blur,fill,stroke" desc:"propriedade animada (animate); blur é o desfoque em pixels do quadro; fill e stroke animam a cor de textos, formas e ícones (chaves com color)"`
 	Keys       []studioKeyArgs `json:"keys,omitempty" desc:"chaves da animação (animate); substituem as chaves dessa propriedade; vazio remove a animação dela"`
 	Volume     *float64        `json:"volume,omitempty" desc:"volume de 0 a 2 (1 normal)"`
 	FadeInMS   *int64          `json:"fade_in_ms,omitempty" desc:"duração do fade de entrada em ms"`
@@ -136,16 +138,20 @@ type studioVideoOperation struct {
 	Muted      *bool           `json:"muted,omitempty" desc:"silenciar a faixa"`
 	Disabled   *bool           `json:"disabled,omitempty" desc:"desativar o clipe sem apagar"`
 	Blur       *float64        `json:"blur,omitempty" desc:"desfoque fixo do clipe em pixels do quadro, de 0 a 100 (update_clip); para animar use animate com property blur"`
-	Ripple     *bool           `json:"ripple,omitempty" desc:"delete_clips: puxar o que vem depois para fechar o buraco"`
+	Ripple     *bool           `json:"ripple,omitempty" desc:"delete_clips: puxar o que vem depois para fechar o buraco; set_speed: false não move os outros clipes (padrão true)"`
 	Aspect     string          `json:"aspect,omitempty" enum:"square,portrait,story,landscape" desc:"formato do vídeo (set_canvas)"`
 	Background string          `json:"background,omitempty" desc:"cor de fundo do vídeo #rrggbb (set_canvas)"`
 	Clear      []string        `json:"clear,omitempty" enum:"shadow,stroke,gradient,highlight,curve,blend_mode" desc:"efeitos a remover do texto ou da forma"`
+	studioTransitionArgs
+	studioTextAnimationArgs
+	studioSpeedArgs
+	studioColorArgs
 	studioBoxArgs
 	studioStyleArgs
 }
 
 type studioImageOperation struct {
-	Op           string             `json:"op" req:"true" enum:"add_text,add_shape,add_image,add_icon,update_layer,delete_layers,duplicate_layers,order_layers,align_layers,distribute_layers,group_layers,ungroup_layers,scaffold_layers,set_hidden,set_locked,replace_image,update_artboard,add_artboard,duplicate_artboard,delete_artboard,move_to_artboard,select,combine_shapes" desc:"a operação"`
+	Op           string             `json:"op" req:"true" enum:"add_text,add_shape,add_image,add_icon,update_layer,delete_layers,duplicate_layers,order_layers,align_layers,distribute_layers,group_layers,ungroup_layers,scaffold_layers,set_hidden,set_locked,replace_image,update_artboard,add_artboard,duplicate_artboard,delete_artboard,move_to_artboard,select,combine_shapes,set_color,import_svg" desc:"a operação"`
 	Ref          string             `json:"ref,omitempty" desc:"nome curto para o que esta operação cria (camada, grupo ou prancheta); as operações seguintes usam @nome; depois de duplicate_artboard, @nome/id_da_camada_original aponta para a cópia dessa camada"`
 	LayerID      string             `json:"layer_id,omitempty" desc:"camada alvo: id de studio_read ou @ref"`
 	ArtboardID   string             `json:"artboard_id,omitempty" desc:"prancheta: id de studio_read ou @ref; nas criações escolhe onde a camada nasce (sem ele, na prancheta ativa); obrigatório em delete_artboard e no destino de move_to_artboard"`
@@ -173,8 +179,65 @@ type studioImageOperation struct {
 	Background   string             `json:"background,omitempty" desc:"cor de fundo da prancheta #rrggbb ou transparent (add_artboard, update_artboard); remove o degradê do fundo"`
 	Name         string             `json:"name,omitempty" desc:"nome da camada ou da prancheta (add_artboard, duplicate_artboard, update_artboard)"`
 	Mode         string             `json:"mode,omitempty" enum:"union,subtract,intersect,exclude,flatten" desc:"combine_shapes: union une as formas, subtract tira as de cima da mais baixa, intersect deixa só a sobreposição, exclude tira a sobreposição, flatten junta tudo num caminho sem cortar"`
+	SVG          string             `json:"svg,omitempty" desc:"import_svg: o código completo de um <svg>; cada forma vira uma camada de vetor editável, agrupadas"`
+	studioColorArgs
 	studioBoxArgs
 	studioStyleArgs
+}
+
+type studioTransitionArgs struct {
+	ToClipID       string   `json:"to_clip_id,omitempty" desc:"add_transition: o clipe que entra; sem ele, o clipe que encosta logo depois de clip_id na mesma faixa"`
+	TransitionID   string   `json:"transition_id,omitempty" desc:"transição alvo (update_transition, remove_transition): id de studio_read ou @ref"`
+	TransitionKind string   `json:"transition_kind,omitempty" enum:"dissolve,dipToColor,push,slide,wipe,iris,clockWipe,split,zoom,whip,blurDissolve" desc:"tipo da transição: dissolve funde, dipToColor passa por uma cor, push empurra, slide desliza por cima, wipe varre, iris abre em forma, clockWipe varre como relógio, split abre do centro, zoom aproxima, whip passa rápido com desfoque, blurDissolve funde com desfoque"`
+	Alignment      string   `json:"alignment,omitempty" enum:"center,start,end" desc:"onde a transição fica em relação ao corte: center (padrão), start começa no corte, end termina no corte; dipToColor, zoom e whip só center"`
+	Easing         string   `json:"easing,omitempty" desc:"curva da transição, como nas chaves (linear, easeInOut, backOut, spring, cubic-bezier(x1,y1,x2,y2)...), menos hold"`
+	Direction      string   `json:"direction,omitempty" enum:"left,right,up,down" desc:"push, slide e whip: para onde a imagem anda"`
+	Moving         string   `json:"moving,omitempty" enum:"in,out" desc:"slide: in o clipe novo entra por cima, out o antigo sai por cima"`
+	Color          string   `json:"color,omitempty" desc:"dipToColor: a cor #rrggbb (preto padrão; branco faz um flash)"`
+	Angle          *float64 `json:"angle,omitempty" desc:"wipe: direção da borda em graus, 0 anda para a direita, 90 para baixo; clockWipe: onde começa, 0 é meio-dia"`
+	IrisShape      string   `json:"iris_shape,omitempty" enum:"circle,box,diamond" desc:"iris: forma da abertura"`
+	OriginX        *float64 `json:"origin_x,omitempty" desc:"iris, clockWipe e zoom: centro horizontal de 0 a 1"`
+	OriginY        *float64 `json:"origin_y,omitempty" desc:"iris, clockWipe e zoom: centro vertical de 0 a 1"`
+	Clockwise      *bool    `json:"clockwise,omitempty" desc:"clockWipe: sentido horário (padrão true)"`
+	Orientation    string   `json:"orientation,omitempty" enum:"horizontal,vertical" desc:"split: a abertura vertical abre para os lados, a horizontal para cima e para baixo"`
+	Reverse        *bool    `json:"reverse,omitempty" desc:"iris e split: true fecha o clipe que sai em vez de abrir o que entra; set_speed: true toca o clipe de trás para frente"`
+	Amount         *float64 `json:"amount,omitempty" desc:"zoom: quanto aproxima; whip e blurDissolve: quanto desfoca; de 0 a 1"`
+}
+
+type studioTextAnimationArgs struct {
+	Side      string `json:"side,omitempty" enum:"in,out" desc:"animate_text: in anima a chegada do texto, out a saída antes do fim do clipe"`
+	TextStyle string `json:"text_style,omitempty" enum:"fade,rise,slide,pop,blur,typewriter,none" desc:"animate_text: fade surge, rise sobe para o lugar, slide entra pela esquerda, pop cresce passando do tamanho, blur sai do desfoque, typewriter aparece de uma vez como digitação; none tira a animação desse lado"`
+	Unit      string `json:"unit,omitempty" enum:"char,word,line" desc:"animate_text: anima letra por letra, palavra por palavra (padrão) ou linha por linha; typewriter usa char por padrão"`
+	StaggerMS *int64 `json:"stagger_ms,omitempty" desc:"animate_text: atraso entre uma letra, palavra ou linha e a seguinte, de 0 a 2000 ms"`
+}
+
+type studioSpeedArgs struct {
+	Speed         *float64 `json:"speed,omitempty" desc:"set_speed: velocidade de 0.1 a 16 (1 normal, 0.5 câmera lenta, 2 o dobro); o vídeo e o áudio ligados mudam juntos"`
+	KeepDuration  *bool    `json:"keep_duration,omitempty" desc:"set_speed: true mantém a duração do clipe e toca mais ou menos da mídia; sem ele, a duração muda e a mesma parte da mídia toca"`
+	PreservePitch *bool    `json:"preserve_pitch,omitempty" desc:"set_speed: false deixa o som ficar agudo ou grave com a velocidade (padrão true, a voz não muda de tom)"`
+	StretchKeys   *bool    `json:"stretch_keys,omitempty" desc:"set_speed: false deixa as chaves de animação onde estão; padrão true, elas acompanham a nova duração"`
+	RampMS        *int64   `json:"ramp_ms,omitempty" desc:"speed_ramp: quanto tempo da linha do tempo a rampa leva, a partir de at_ms"`
+	RampSteps     *int     `json:"ramp_steps,omitempty" desc:"speed_ramp: em quantos degraus a velocidade muda (padrão 5); rampas curtas usam menos"`
+}
+
+type studioGradeArgs struct {
+	Exposure    *float64 `json:"exposure,omitempty" desc:"exposição em stops de luz, de -5 a 5 (1 dobra a luz)"`
+	Contrast    *float64 `json:"contrast,omitempty" desc:"contraste de -100 a 100"`
+	Highlights  *float64 `json:"highlights,omitempty" desc:"realces (tons claros) de -100 a 100"`
+	Shadows     *float64 `json:"shadows,omitempty" desc:"sombras (tons escuros) de -100 a 100"`
+	Whites      *float64 `json:"whites,omitempty" desc:"ponto de branco de -100 a 100"`
+	Blacks      *float64 `json:"blacks,omitempty" desc:"ponto de preto de -100 a 100 (positivo desbota os pretos)"`
+	Temperature *float64 `json:"temperature,omitempty" desc:"temperatura de -100 (frio, azul) a 100 (quente, âmbar)"`
+	Tint        *float64 `json:"tint,omitempty" desc:"matiz de -100 (verde) a 100 (magenta)"`
+	Saturation  *float64 `json:"saturation,omitempty" desc:"saturação de -100 (preto e branco) a 100 (o dobro)"`
+	Vibrance    *float64 `json:"vibrance,omitempty" desc:"vibração de -100 a 100: realça mais as cores apagadas e poupa a pele"`
+}
+
+type studioColorArgs struct {
+	ColorGrade    *studioGradeArgs `json:"color_grade,omitempty" desc:"set_color: os ajustes a mudar; 0 tira o ajuste; os outros ficam como estão"`
+	Look          string           `json:"look,omitempty" enum:"warm,cool,faded,mono,punchy,dramatic,soft,vintage" desc:"set_color: look pronto que substitui a correção atual antes de color_grade: warm quente, cool frio, faded desbotado, mono preto e branco, punchy vibrante, dramatic dramático, soft suave, vintage"`
+	LookIntensity *float64         `json:"look_intensity,omitempty" desc:"set_color: intensidade do look de 0 a 1 (padrão 1)"`
+	ResetColor    *bool            `json:"reset_color,omitempty" desc:"set_color: true tira toda a correção de cor antes de aplicar o resto"`
 }
 
 type studioVideoEditArgs struct {
@@ -193,8 +256,13 @@ const studioVideoEditGuide = "Edita o projeto de vídeo aberto como uma pessoa f
 	"move_clip(clip_id, start_ms, track_id?), trim_clip(clip_id, start_ms? e ou end_ms?), slip_clip(clip_id, trim_in_ms), split_clip(clip_id, at_ms), " +
 	"delete_clips(clip_ids, ripple?), duplicate_clips(clip_ids), update_clip(clip_id ou clip_ids, volume?, fade_in_ms?, fade_out_ms?, fit?, disabled?, blur?, x?, y?, w?, h?, rotation?, opacity?, text? e estilo: italic, line_height, letter_spacing, radius, dash, arrow_start, arrow_end, shadow, gradient, highlight, curve, blend_mode, clear), " +
 	"animate(clip_id, property, keys), motion_preset(clip_id ou clip_ids, preset), entrance(clip_id ou clip_ids, effect, duration_ms?), exit(clip_id ou clip_ids, effect, duration_ms?), " +
+	"set_speed(clip_id de vídeo ou áudio, speed? ou duration_ms? para caber nessa duração, keep_duration?, reverse?, preserve_pitch?, ripple? padrão true puxa ou empurra o resto da faixa, stretch_keys?), freeze_frame(clip_id de vídeo, at_ms? padrão o cursor de tempo, duration_ms? padrão 2000: congela o quadro desse instante num clipe novo e empurra o resto), " +
+	"speed_ramp(clip_id de vídeo ou áudio, speed de chegada, ramp_ms, at_ms? padrão o cursor de tempo, ramp_steps?, easing? padrão easeInOut: a velocidade atual vira speed aos poucos e o resto do clipe segue em speed; o clipe é dividido em degraus), " +
+	"set_color(clip_id ou clip_ids de vídeo ou imagem, color_grade? com exposure, contrast, highlights, shadows, whites, blacks, temperature, tint, saturation, vibrance, look?, look_intensity?, reset_color?), " +
+	"animate_text(clip_id ou clip_ids de textos, side, text_style, unit?, duration_ms? de cada letra, palavra ou linha, de 0 a 3000, stagger_ms?, easing?: o padrão do estilo vale quando omitidos), " +
 	"add_track(kind, to_index?, name?), move_track(track_id, to_index), update_track(track_id, name?, hidden?, locked?, muted?), remove_track(track_id), " +
-	"add_marker(at_ms, name?), set_canvas(aspect? e ou background?), seek(at_ms), select(clip_ids). " +
+	"add_marker(at_ms, name?), update_marker(marker_id, name? e ou at_ms?), remove_marker(marker_id), link_clips(clip_ids: dois ou mais clipes passam a se mover juntos), unlink_clips(clip_ids: separa o vídeo do seu áudio para editar cada um), set_canvas(aspect? e ou background?), seek(at_ms), select(clip_ids). " +
+	"Transições ficam no corte entre dois clipes que se encostam na mesma faixa visual, sem mover nenhum: add_transition(clip_id do clipe que sai, to_clip_id?, transition_kind, duration_ms?, alignment?, easing? e as opções do tipo), update_transition(transition_id, os mesmos campos), remove_transition(transition_id). " +
 	"Exemplo de título animado: [{\"op\":\"add_text\",\"ref\":\"titulo\",\"text\":\"Oferta de hoje\",\"style\":\"headline\",\"at_ms\":0,\"duration_ms\":3000,\"y\":0.3}," +
 	"{\"op\":\"entrance\",\"clip_id\":\"@titulo\",\"effect\":\"slideUp\",\"duration_ms\":400},{\"op\":\"animate\",\"clip_id\":\"@titulo\",\"property\":\"scale\"," +
 	"\"keys\":[{\"at_ms\":400,\"value\":1},{\"at_ms\":2600,\"value\":1.08}]}]. Em cada operação, mande só os campos que ela usa. " +
@@ -208,7 +276,9 @@ const studioImageEditGuide = "Edita o projeto de imagem aberto como uma pessoa f
 	"delete_layers(layer_ids), duplicate_layers(layer_ids), order_layers(layer_ids, direction ou above_id ou below_id), align_layers(layer_ids, alignment), distribute_layers(layer_ids, axis), " +
 	"group_layers(layer_ids), ungroup_layers(layer_ids), scaffold_layers(layer_ids: a camada de baixo vira o elemento pai das outras), " +
 	"set_hidden(layer_ids, hidden), set_locked(layer_ids, locked), replace_image(layer_id, media_id), select(layer_ids ou artboard_id), " +
-	"combine_shapes(layer_ids, mode: troca formas e caminhos por um caminho novo, como as operações booleanas do Figma; a ordem de baixo para cima decide o subtract). " +
+	"set_color(layer_id ou layer_ids de imagens, color_grade? com exposure, contrast, highlights, shadows, whites, blacks, temperature, tint, saturation, vibrance, look?, look_intensity?, reset_color?: correção de cor profissional, aplicada depois de filters), " +
+	"import_svg(svg, name?, x?, y?, w?, h?: transforma um desenho em svg em camadas de vetor dentro dessa caixa; texto, imagem e filtros do svg ficam de fora), " +
+	"combine_shapes(layer_ids, mode: troca formas e caminhos por um caminho novo, como as operações booleanas dos editores de vetor; a ordem de baixo para cima decide o subtract). " +
 	"Máscara: coloque a forma logo abaixo da imagem (order_layers com below_id) e ligue clip na imagem. " +
 	"Pranchetas: o projeto tem uma ou mais, lado a lado (studio_read lista; active_artboard é a que o usuário está vendo). x, y, w e h das camadas são frações da prancheta onde elas estão. " +
 	"As operações de camada acham a prancheta pelo id da camada, e uma operação mexe numa prancheta só; as de criação usam artboard_id ou a prancheta ativa. " +
@@ -306,6 +376,9 @@ func checkOperations[T any](ops []T, allowed []string) error {
 		}
 		if keys := value.FieldByName("Keys"); keys.IsValid() && keys.Len() > maxStudioKeys {
 			return fmt.Errorf("%w: operação %d: no máximo %d chaves por propriedade", errInvalidArgs, i+1, maxStudioKeys)
+		}
+		if easing := value.FieldByName("Easing"); easing.IsValid() && easing.String() != "" && !mediagen.Easing(easing.String()).Known() {
+			return fmt.Errorf("%w: operação %d: easing %q não existe; use %s ou cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2", errInvalidArgs, i+1, easing.String(), easingNames())
 		}
 		if easing, ok := unknownEasing(value.FieldByName("Keys")); ok {
 			return fmt.Errorf("%w: operação %d: easing %q não existe; use %s ou cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2", errInvalidArgs, i+1, easing, easingNames())

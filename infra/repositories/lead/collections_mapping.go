@@ -62,7 +62,6 @@ func addressRow(l *lead.Lead, position int, a lead.Address, now time.Time) schem
 		row.Latitude, row.Longitude, row.GeocodedAt = &lat, &lng, &fixedAt
 		row.GeoPrecision = schema.OptionalText(a.Fix.Precision)
 		row.GeoSource = schema.OptionalText(a.Fix.Source)
-		row.GeoProvider = schema.OptionalText(a.Fix.Provider)
 	}
 	if a.GeoStatus == lead.GeoPending {
 		row.GeoNextAt = &now
@@ -85,7 +84,6 @@ func addressOf(row schema.LeadAddress) lead.Address {
 			Point:     geo.Point{Lat: *row.Latitude, Lng: *row.Longitude},
 			Precision: geo.Precision(row.GeoPrecision),
 			Source:    geo.FixSource(row.GeoSource),
-			Provider:  string(row.GeoProvider),
 		}
 		if row.GeocodedAt != nil {
 			fix.FixedAt = *row.GeocodedAt
@@ -101,7 +99,7 @@ func sameAddress(stored, next schema.LeadAddress) bool {
 		stored.Complement == next.Complement && stored.District == next.District && stored.City == next.City &&
 		stored.CityCode == next.CityCode && stored.State == next.State && stored.Fingerprint == next.Fingerprint &&
 		stored.GeoStatus == next.GeoStatus && sameFloat(stored.Latitude, next.Latitude) && sameFloat(stored.Longitude, next.Longitude) &&
-		stored.GeoPrecision == next.GeoPrecision && stored.GeoSource == next.GeoSource && stored.GeoProvider == next.GeoProvider
+		stored.GeoPrecision == next.GeoPrecision && stored.GeoSource == next.GeoSource
 }
 
 func sameFloat(a, b *float64) bool {

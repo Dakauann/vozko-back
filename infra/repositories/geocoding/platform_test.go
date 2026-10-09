@@ -2,45 +2,31 @@ package geocoding_repository
 
 import (
 	"context"
+	"database/sql"
 	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/lib/pq"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"vozko/domain/geocoding"
 )
 
-func TestTakeSlotKeepsTheMonthInTheHistoryInTheSameStatement(t *testing.T) {
-	for _, want := range []string{
-		"WITH archived AS (INSERT INTO geocoding_usage_months AS m (workspace_id, cycle_start, requests, updated_at)" +
-			" SELECT p.workspace_id, p.cycle_start, p.requests, p.updated_at FROM geocoding_usage p WHERE p.workspace_id = ?::uuid AND p.cycle_start <> ?::timestamptz" +
-			" ON CONFLICT (workspace_id, cycle_start) DO UPDATE SET requests = GREATEST(m.requests, excluded.requests))",
-		"taken AS (INSERT INTO geocoding_usage AS u",
-		"RETURNING u.workspace_id, u.cycle_start, u.requests, u.day_requests, u.updated_at",
-		"INSERT INTO geocoding_usage_months AS m (workspace_id, cycle_start, requests, updated_at) SELECT workspace_id, cycle_start, requests, updated_at FROM taken",
-		"ON CONFLICT (workspace_id, cycle_start) DO UPDATE SET requests = GREATEST(m.requests, excluded.requests)",
-		"SELECT requests, day_requests FROM taken",
-	} {
-		if !strings.Contains(takeSlotSQL, want) {
-			t.Fatalf("take slot SQL misses %q: %s", want, takeSlotSQL)
-		}
-	}
-}
-
 func TestPlatformStatementsBindEveryPlaceholder(t *testing.T) {
 	for sql, want := range map[string]int{
-		readUsageOfSQL:           1,
-		readHistorySQL:           4,
 		coverageSQL:              strings.Count(coverageSQL, "?"),
-		directoryPageSQL(false):  3,
-		directoryPageSQL(true):   4,
+		directoryPageSQL(false):  2,
+		directoryPageSQL(true):   3,
 		directoryCountSQL(false): 0,
 		directoryCountSQL(true):  1,
 	} {
@@ -53,101 +39,11 @@ func TestPlatformStatementsBindEveryPlaceholder(t *testing.T) {
 	}
 }
 
-func TestUsageOfReadsEveryWorkspaceWithOneArray(t *testing.T) {
-	db, mock, sqlDB := newMockDB(t)
-	defer sqlDB.Close()
-	start := time.Date(2026, 10, 1, 3, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(exact(readUsageOfSQL)).WithArgs(pq.StringArray{"ws-1", "ws-2"}).
-		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "cycle_start", "requests", "day", "day_requests"}).AddRow("ws-1", start, 12, start, 3))
-	got, err := NewUsageStore(db).UsageOf(context.Background(), []string{"ws-1", "ws-2"})
-	if err != nil || len(got) != 1 || got["ws-1"].Requests != 12 || got["ws-1"].DayRequests != 3 || !got["ws-1"].CycleStart.Equal(start) {
-		t.Fatalf("UsageOf() = %+v, %v", got, err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestHistoryReadsKeptMonthsAndTheLiveCycleNotYetKept(t *testing.T) {
-	db, mock, sqlDB := newMockDB(t)
-	defer sqlDB.Close()
-	since := time.Date(2025, 11, 1, 3, 0, 0, 0, time.UTC)
-	oct, sep := time.Date(2026, 10, 1, 3, 0, 0, 0, time.UTC), time.Date(2026, 9, 1, 3, 0, 0, 0, time.UTC)
-	ids := pq.StringArray{"ws-1", "ws-2"}
-	mock.ExpectQuery(exact(readHistorySQL)).WithArgs(ids, since, ids, since).
-		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "cycle_start", "requests"}).
-			AddRow("ws-1", oct, 40).AddRow("ws-1", sep, 300).AddRow("ws-2", oct, 2))
-	got, err := NewUsageStore(db).History(context.Background(), []string{"ws-1", "ws-2"}, since)
-	if err != nil || len(got["ws-1"]) != 2 || got["ws-1"][1].Requests != 300 || len(got["ws-2"]) != 1 {
-		t.Fatalf("History() = %+v, %v", got, err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"FROM geocoding_usage_months WHERE workspace_id = ANY(?::uuid[]) AND cycle_start >= ?", "NOT EXISTS (SELECT 1 FROM geocoding_usage_months m WHERE m.workspace_id = u.workspace_id AND m.cycle_start = u.cycle_start)"} {
-		if !strings.Contains(readHistorySQL, want) {
-			t.Fatalf("history SQL misses %q", want)
-		}
-	}
-}
-
-func TestUsageReadsOfNoWorkspaceNeverQuery(t *testing.T) {
-	db, mock, sqlDB := newMockDB(t)
-	defer sqlDB.Close()
-	store := NewUsageStore(db)
-	if got, err := store.UsageOf(context.Background(), nil); err != nil || len(got) != 0 {
-		t.Fatalf("UsageOf(nil) = %+v, %v", got, err)
-	}
-	if got, err := store.History(context.Background(), nil, time.Now()); err != nil || len(got) != 0 {
-		t.Fatalf("History(nil) = %+v, %v", got, err)
-	}
-	if got, err := NewPlatformReader(db).Coverage(context.Background(), nil); err != nil || len(got) != 0 {
-		t.Fatalf("Coverage(nil) = %+v, %v", got, err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDirectoryListsWorkspacesWithLeadsOrGeocodingByUsageThisCycle(t *testing.T) {
-	db, mock, sqlDB := newMockDB(t)
-	defer sqlDB.Close()
-	cycle := time.Date(2026, 10, 1, 3, 0, 0, 0, time.UTC)
-	query := geocoding.PlatformQuery{Page: 2, PageSize: 20, Search: "50%_off"}
-	mock.ExpectQuery(exact(directoryCountSQL(true))).WithArgs(`%50\%\_off%`).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(23))
-	mock.ExpectQuery(exact(directoryPageSQL(true))).WithArgs(cycle, `%50\%\_off%`, 20, 20).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow("ws-21", "Escola").AddRow("ws-22", "Clínica"))
-	got, total, err := NewPlatformReader(db).GeocodingWorkspaces(context.Background(), query, cycle)
-	if err != nil || total != 23 || len(got) != 2 || got[0] != (geocoding.PlatformWorkspace{ID: "ws-21", Name: "Escola"}) {
-		t.Fatalf("GeocodingWorkspaces() = %+v, %d, %v", got, total, err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
-	}
-	page := directoryPageSQL(false)
-	for _, want := range []string{
-		"w.deleted_at IS NULL",
-		"EXISTS (SELECT 1 FROM leads l WHERE l.workspace_id = w.id AND l.deleted_at IS NULL)",
-		"EXISTS (SELECT 1 FROM geocoding_settings s WHERE s.workspace_id = w.id)",
-		"EXISTS (SELECT 1 FROM geocoding_usage_months m WHERE m.workspace_id = w.id)",
-		"LEFT JOIN geocoding_usage u ON u.workspace_id = w.id AND u.cycle_start = ?",
-		"ORDER BY COALESCE(u.requests, 0) DESC, lower(w.name), w.id LIMIT ? OFFSET ?",
-	} {
-		if !strings.Contains(page, want) {
-			t.Fatalf("directory SQL misses %q: %s", want, page)
-		}
-	}
-	if strings.Contains(page, "ILIKE") {
-		t.Fatal("a query without a search still filters by name")
-	}
-}
-
 func TestDirectorySkipsThePageReadWhenNothingMatches(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 	mock.ExpectQuery(exact(directoryCountSQL(false))).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-	got, total, err := NewPlatformReader(db).GeocodingWorkspaces(context.Background(), geocoding.PlatformQuery{Page: 1, PageSize: 20}, time.Now())
+	got, total, err := NewPlatformReader(db).GeocodingWorkspaces(context.Background(), geocoding.PlatformQuery{Page: 1, PageSize: 20})
 	if err != nil || total != 0 || len(got) != 0 {
 		t.Fatalf("GeocodingWorkspaces() = %+v, %d, %v", got, total, err)
 	}
@@ -167,8 +63,8 @@ func TestCoverageCountsPrimaryAddressesOfLiveLeadsPerWorkspace(t *testing.T) {
 	}
 	expectCoverageSession(mock)
 	mock.ExpectQuery(exact(coverageSQL)).WithArgs(values...).
-		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "total", "with_address", "on_map", "approximate", "not_found", "quota_exceeded", "refused", "pending"}).
-			AddRow("ws-1", 10, 6, 3, 2, 1, 0, 0, 0))
+		WillReturnRows(sqlmock.NewRows([]string{"workspace_id", "total", "with_address", "on_map", "approximate", "not_found", "pending"}).
+			AddRow("ws-1", 10, 6, 3, 2, 1, 0))
 	mock.ExpectCommit()
 	got, err := NewPlatformReader(db).Coverage(context.Background(), []string{"ws-1", "ws-2"})
 	if err != nil {
@@ -201,7 +97,7 @@ func TestDirectoryAnswersAnEmptyPageForTheLargestPage(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 	mock.ExpectQuery(exact(directoryCountSQL(false))).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(23))
-	got, total, err := NewPlatformReader(db).GeocodingWorkspaces(context.Background(), geocoding.PlatformQuery{Page: math.MaxInt, PageSize: geocoding.PlatformMaxPageSize}, time.Now())
+	got, total, err := NewPlatformReader(db).GeocodingWorkspaces(context.Background(), geocoding.PlatformQuery{Page: math.MaxInt, PageSize: geocoding.PlatformMaxPageSize})
 	if err != nil || total != 23 || len(got) != 0 {
 		t.Fatalf("GeocodingWorkspaces() of the largest page = %+v, %d, %v, want an empty page", got, total, err)
 	}
@@ -230,7 +126,7 @@ func TestCoverageRunsInABoundedReadSessionInChunksOfWorkspaces(t *testing.T) {
 		ids[i] = fmt.Sprintf("ws-%d", i)
 	}
 	rows := func() *sqlmock.Rows {
-		return sqlmock.NewRows([]string{"workspace_id", "total", "with_address", "on_map", "approximate", "not_found", "quota_exceeded", "refused", "pending"})
+		return sqlmock.NewRows([]string{"workspace_id", "total", "with_address", "on_map", "approximate", "not_found", "pending"})
 	}
 	chunkArgs := func(chunk []string) []driver.Value {
 		args := coverageArgs(pq.StringArray(chunk))
@@ -242,8 +138,8 @@ func TestCoverageRunsInABoundedReadSessionInChunksOfWorkspaces(t *testing.T) {
 		return values
 	}
 	expectCoverageSession(mock)
-	mock.ExpectQuery(exact(coverageSQL)).WithArgs(chunkArgs(ids[:coverageChunk])...).WillReturnRows(rows().AddRow("ws-0", 4, 4, 4, 0, 0, 0, 0, 0))
-	mock.ExpectQuery(exact(coverageSQL)).WithArgs(chunkArgs(ids[coverageChunk:])...).WillReturnRows(rows().AddRow(ids[coverageChunk+1], 2, 1, 1, 0, 0, 0, 0, 0))
+	mock.ExpectQuery(exact(coverageSQL)).WithArgs(chunkArgs(ids[:coverageChunk])...).WillReturnRows(rows().AddRow("ws-0", 4, 4, 4, 0, 0, 0))
+	mock.ExpectQuery(exact(coverageSQL)).WithArgs(chunkArgs(ids[coverageChunk:])...).WillReturnRows(rows().AddRow(ids[coverageChunk+1], 2, 1, 1, 0, 0, 0))
 	mock.ExpectCommit()
 	got, err := NewPlatformReader(db).Coverage(context.Background(), ids)
 	if err != nil || len(got) != 2 || got["ws-0"].OnMap != 4 || got[ids[coverageChunk+1]].WithoutAddress != 1 {
@@ -268,5 +164,79 @@ func TestCoverageFailsWholeWhenAChunkFails(t *testing.T) {
 	got, err := NewPlatformReader(db).Coverage(context.Background(), ids)
 	if !errors.Is(err, context.DeadlineExceeded) || got != nil {
 		t.Fatalf("Coverage() = %+v, %v, want no partial answer and a deadline", got, err)
+	}
+}
+
+func newMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, *sql.DB) {
+	t.Helper()
+	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB, PreferSimpleProtocol: true, WithoutReturning: true}),
+		&gorm.Config{SkipDefaultTransaction: true, Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db, mock, sqlDB
+}
+
+func exact(query string) string {
+	quoted := regexp.QuoteMeta(query)
+	var b strings.Builder
+	n := 0
+	for {
+		before, after, found := strings.Cut(quoted, `\?`)
+		b.WriteString(before)
+		if !found {
+			break
+		}
+		n++
+		b.WriteString(`\$` + strconv.Itoa(n))
+		quoted = after
+	}
+	return "^" + b.String() + "$"
+}
+
+func TestCoverageOfNoWorkspaceNeverQueries(t *testing.T) {
+	db, mock, sqlDB := newMockDB(t)
+	defer sqlDB.Close()
+	if got, err := NewPlatformReader(db).Coverage(context.Background(), nil); err != nil || len(got) != 0 {
+		t.Fatalf("Coverage(nil) = %+v, %v", got, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDirectoryListsLiveWorkspacesWithLiveLeadsByName(t *testing.T) {
+	db, mock, sqlDB := newMockDB(t)
+	defer sqlDB.Close()
+	query := geocoding.PlatformQuery{Page: 2, PageSize: 20, Search: "50%_off"}
+	mock.ExpectQuery(exact(directoryCountSQL(true))).WithArgs(`%50\%\_off%`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(23))
+	mock.ExpectQuery(exact(directoryPageSQL(true))).WithArgs(`%50\%\_off%`, 20, 20).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow("ws-21", "Escola").AddRow("ws-22", "Clínica"))
+	got, total, err := NewPlatformReader(db).GeocodingWorkspaces(context.Background(), query)
+	if err != nil || total != 23 || len(got) != 2 || got[0] != (geocoding.PlatformWorkspace{ID: "ws-21", Name: "Escola"}) {
+		t.Fatalf("GeocodingWorkspaces() = %+v, %d, %v", got, total, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	page := directoryPageSQL(false)
+	for _, want := range []string{
+		"w.deleted_at IS NULL",
+		"EXISTS (SELECT 1 FROM leads l WHERE l.workspace_id = w.id AND l.deleted_at IS NULL)",
+		"ORDER BY lower(w.name), w.id LIMIT ? OFFSET ?",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("directory SQL misses %q: %s", want, page)
+		}
+	}
+	for _, retired := range []string{"ILIKE", "geocoding_settings", "geocoding_usage"} {
+		if strings.Contains(page, retired) {
+			t.Fatalf("directory SQL without a search still reads %q: %s", retired, page)
+		}
 	}
 }

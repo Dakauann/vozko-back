@@ -21,7 +21,6 @@ type WorkspaceConfigHandler struct {
 	getConfig         workspaceconfigdomain.GetWorkspaceConfigUseCase
 	updateConfig      workspaceconfigdomain.UpdateWorkspaceConfigUseCase
 	updateOwnerConfig workspaceconfigdomain.UpdateWorkspaceConfigOwnerUseCase
-	geocoding         GeocodingSettingsService
 	geocodingPlatform GeocodingPlatformService
 }
 

@@ -92,6 +92,8 @@ func compilePredicate(p crmfilter.Predicate, desc ObjectDescriptor) (string, []i
 		return compileBool(m, p)
 	case StyleText:
 		return compileText(m, p)
+	case StyleCount:
+		return compileCount(m, p)
 	case StyleCompiled:
 		if m.Compile == nil {
 			return "", nil, fmt.Errorf("%w: %q has no compiler", ErrUnsupportedField, p.Field)
@@ -191,6 +193,31 @@ func compileMembership(m FieldMapping, p crmfilter.Predicate) (string, []interfa
 	default:
 		return "", nil, fmt.Errorf("%w: %q (membership)", ErrUnsupportedOperator, p.Operator)
 	}
+}
+
+func ComputedOnce(membership string) string {
+	return "(" + membership + ") IS TRUE"
+}
+
+func compileCount(m FieldMapping, p crmfilter.Predicate) (string, []interface{}, error) {
+	having, havingArgs, err := compileColumn(FieldMapping{Kind: crmfilter.KindNumber, Expr: "COUNT(*)"}, p)
+	if err != nil {
+		return "", nil, err
+	}
+	empty, err := p.MatchesAnEmptyCount()
+	if err != nil {
+		return "", nil, err
+	}
+	where := ""
+	if m.Extra != "" {
+		where = " WHERE " + m.Extra
+	}
+	op, condition := " IN (", having
+	if empty {
+		op, condition = " NOT IN (", "NOT ("+having+")"
+	}
+	sql := m.Subject + op + "SELECT " + m.Select + " FROM " + m.From + where + " GROUP BY " + m.Select + " HAVING " + condition + ")"
+	return ComputedOnce(sql), append(append([]interface{}{}, m.ExtraArgs...), havingArgs...), nil
 }
 
 func compileExists(m FieldMapping, p crmfilter.Predicate) (string, []interface{}, error) {

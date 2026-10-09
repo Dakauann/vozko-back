@@ -18,7 +18,7 @@ import (
 var errSweeperIncomplete = errors.New("geocoding sweeper: a required dependency is missing")
 
 type Resolver interface {
-	Resolve(ctx context.Context, claims []geocoding.Claim, deadline time.Time) BatchResult
+	Resolve(ctx context.Context, claims []geocoding.Claim) BatchResult
 }
 
 type SweeperDeps struct {
@@ -116,7 +116,7 @@ func (s *Sweeper) batch(ctx context.Context, run *sweep) (bool, error) {
 		return false, nil
 	}
 	s.cursor = geocoding.NextTurn(s.cursor, claims)
-	result := s.deps.Chain.Resolve(ctx, claims, run.deadline)
+	result := s.deps.Chain.Resolve(ctx, claims)
 	if len(result.Settlements) > 0 {
 		written, err := s.deps.Queue.Settle(ctx, token, s.deps.Now(), result.Settlements)
 		if err != nil {

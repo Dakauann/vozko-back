@@ -49,11 +49,11 @@ var (
 	geocodeLockLeadsSQL = "SELECT id::text FROM leads WHERE id = ANY(?::uuid[]) ORDER BY id FOR UPDATE"
 
 	geocodeSettleSQL = "UPDATE lead_addresses a SET latitude = NULLIF(v.latitude, '')::float8, longitude = NULLIF(v.longitude, '')::float8," +
-		" geo_precision = NULLIF(v.precision, ''), geo_source = NULLIF(v.source, ''), geo_provider = NULLIF(v.provider, '')," +
+		" geo_precision = NULLIF(v.precision, ''), geo_source = NULLIF(v.source, '')," +
 		" geocoded_at = NULLIF(v.geocoded_at, '')::timestamptz, geo_status = v.status, geo_next_at = NULLIF(v.next_at, '')::timestamptz," +
 		" geo_claim = NULL, updated_at = ?" +
-		" FROM unnest(?::uuid[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::bool[])" +
-		" AS v(id, fingerprint, latitude, longitude, precision, source, provider, geocoded_at, status, next_at, changed)" +
+		" FROM unnest(?::uuid[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::bool[])" +
+		" AS v(id, fingerprint, latitude, longitude, precision, source, geocoded_at, status, next_at, changed)" +
 		" WHERE a.id = v.id AND a.geo_claim = ?::uuid AND a.fingerprint = v.fingerprint" +
 		" RETURNING a.lead_id::text AS lead_id, a.workspace_id::text AS workspace_id, v.changed AS changed"
 
@@ -122,9 +122,9 @@ func (q *GeocodeQueue) Claim(ctx context.Context, req geocoding.ClaimRequest) ([
 }
 
 type settleColumns struct {
-	ids, fingerprints, latitudes, longitudes, precisions, sources, providers, fixedAt, statuses, nextAt pq.StringArray
-	changed                                                                                             pq.BoolArray
-	leads                                                                                               pq.StringArray
+	ids, fingerprints, latitudes, longitudes, precisions, sources, fixedAt, statuses, nextAt pq.StringArray
+	changed                                                                                  pq.BoolArray
+	leads                                                                                    pq.StringArray
 }
 
 func columnsOf(settlements []geocoding.Settlement) settleColumns {
@@ -132,11 +132,11 @@ func columnsOf(settlements []geocoding.Settlement) settleColumns {
 	seen := map[string]bool{}
 	for _, s := range settlements {
 		a := s.Resolution.Address
-		var lat, lng, precision, source, provider, fixedAt, next string
+		var lat, lng, precision, source, fixedAt, next string
 		if a.Fix != nil {
 			lat = strconv.FormatFloat(a.Fix.Point.Lat, 'f', -1, 64)
 			lng = strconv.FormatFloat(a.Fix.Point.Lng, 'f', -1, 64)
-			precision, source, provider = string(a.Fix.Precision), string(a.Fix.Source), a.Fix.Provider
+			precision, source = string(a.Fix.Precision), string(a.Fix.Source)
 			if !a.Fix.FixedAt.IsZero() {
 				fixedAt = a.Fix.FixedAt.UTC().Format(time.RFC3339Nano)
 			}
@@ -147,7 +147,7 @@ func columnsOf(settlements []geocoding.Settlement) settleColumns {
 		c.ids = append(c.ids, s.Claim.AddressID)
 		c.fingerprints = append(c.fingerprints, s.Claim.Fingerprint)
 		c.latitudes, c.longitudes = append(c.latitudes, lat), append(c.longitudes, lng)
-		c.precisions, c.sources, c.providers = append(c.precisions, precision), append(c.sources, source), append(c.providers, provider)
+		c.precisions, c.sources = append(c.precisions, precision), append(c.sources, source)
 		c.fixedAt, c.statuses, c.nextAt = append(c.fixedAt, fixedAt), append(c.statuses, string(a.GeoStatus)), append(c.nextAt, next)
 		c.changed = append(c.changed, s.Resolution.Changed)
 		if !seen[s.Claim.LeadID] {
@@ -186,7 +186,7 @@ func (q *GeocodeQueue) Settle(ctx context.Context, token string, now time.Time, 
 			return err
 		}
 		if err := tx.Raw(geocodeSettleSQL, now,
-			c.ids, c.fingerprints, c.latitudes, c.longitudes, c.precisions, c.sources, c.providers, c.fixedAt, c.statuses, c.nextAt, c.changed,
+			c.ids, c.fingerprints, c.latitudes, c.longitudes, c.precisions, c.sources, c.fixedAt, c.statuses, c.nextAt, c.changed,
 			token,
 		).Scan(&rows).Error; err != nil {
 			return err

@@ -19,7 +19,7 @@ func (t *leadGeoSummaryTool) Meta() copilot.Meta { return leadReadMeta() }
 func (t *leadGeoSummaryTool) Definition() tools.Definition {
 	return definition("lead_geo_summary",
 		"Conta os leads de um filtro pelo lugar: quantos têm endereço, estão no mapa, são aproximados, estão sem endereço, "+
-			"não foram encontrados, foram recusados ou aguardam localização, e as cidades e os bairros com mais leads (com city_key e pair; more_cities e more_districts dizem se há outros lugares além dos listados), "+
+			"não foram encontrados na base de referência do IBGE ou aguardam localização, e as cidades e os bairros com mais leads (com city_key e pair; more_cities e more_districts dizem se há outros lugares além dos listados), "+
 			"que search_leads e prepare_lead_action aceitam). Nunca traz endereços nem números.",
 		leadFilterArgs{})
 }
@@ -83,8 +83,6 @@ func geoSummaryData(s *lead.SummarySection, p *lead.PlacesSection) map[string]in
 		"without_address": s.WithoutAddress,
 		"not_found":       s.NotFound,
 		"pending":         s.Pending,
-		"quota_exceeded":  s.QuotaExceeded,
-		"refused":         s.Refused,
 		"blocked":         s.Blocked,
 		"cities":          cities,
 		"more_cities":     len(p.Cities) > len(cities),

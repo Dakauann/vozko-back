@@ -10,21 +10,8 @@ groups:
           summary: "Geocoding backlog ({{ $labels.status }}) has been rising for an hour"
           description: >-
             Addresses waiting for a position with status {{ $labels.status }} kept growing
-            for an hour, so the sweeper is not keeping up. Check the sweeper logs, the
-            provider latency (app_geocoding_provider_seconds) and the quota hits
-            (app_geocoding_quota_hits_total). A single large import drains on its own
+            for an hour, so the sweeper is not keeping up. Check the sweeper logs and
+            whether the IBGE reference is loaded for the states of those addresses
+            (geo_reference_loads, cmd/georef). A single large import drains on its own
             and does not fire this alert.
 
-      - alert: GeocodingProviderPaused
-        expr: max by (provider, reason) (app_geocoding_provider_paused_until_seconds) > time()
-        labels:
-          severity: critical
-        annotations:
-          summary: "Geocoding provider {{ $labels.provider }} paused every workspace ({{ $labels.reason }})"
-          description: >-
-            The provider refused the account ({{ $labels.reason }}) and external geocoding
-            is paused for every workspace until {{ $value | humanizeTimestamp }}. The alert
-            stays on while the pause lasts, and a key that is still refused opens a new pause
-            when this one ends. An operator must fix the key or the account. After the fix,
-            requeue the addresses with geo_status 'refused' and delete the cache rows with
-            outcome 'refused'.

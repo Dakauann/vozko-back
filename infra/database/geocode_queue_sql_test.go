@@ -6,10 +6,10 @@ import (
 )
 
 func TestGeocodeQueuedSQLListsEveryQueuedStatus(t *testing.T) {
-	if got, want := GeocodeQueuedSQL(""), "geo_status IN ('pending', 'unavailable', 'quota_exceeded')"; got != want {
+	if got, want := GeocodeQueuedSQL(""), "geo_status IN ('pending', 'unavailable')"; got != want {
 		t.Fatalf("GeocodeQueuedSQL() = %q, want %q", got, want)
 	}
-	if got, want := GeocodeQueuedSQL("a"), "a.geo_status IN ('pending', 'unavailable', 'quota_exceeded')"; got != want {
+	if got, want := GeocodeQueuedSQL("a"), "a.geo_status IN ('pending', 'unavailable')"; got != want {
 		t.Fatalf("GeocodeQueuedSQL(a) = %q, want %q", got, want)
 	}
 }

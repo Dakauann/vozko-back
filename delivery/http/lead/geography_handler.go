@@ -25,7 +25,6 @@ import (
 
 type MapSections interface {
 	Summary(ctx context.Context, a lead_usecase.Actor, f crmfilter.Filter) (leadmap.Summary, error)
-	Layer(ctx context.Context, a lead_usecase.Actor, f crmfilter.Filter, q lead_usecase.LayerQuery) (leadmap.Layer, error)
 	Tile(ctx context.Context, a lead_usecase.Actor, f crmfilter.Filter, q lead_usecase.TileQuery) (leadmap.Layer, error)
 	Districts(ctx context.Context, a lead_usecase.Actor, f crmfilter.Filter) ([]leadmap.District, error)
 	Viewport(ctx context.Context, a lead_usecase.Actor, f crmfilter.Filter) (leadmap.Viewport, error)
@@ -69,7 +68,6 @@ func RegisterGeographyRoutes(
 	}
 	ld, addresses := workspace_domain.ResourceLeads, workspace_domain.ActionReadAddresses
 	protected.HandleFunc("/leads/map/summary", ac(ld, addresses, h.MapSummary)).Methods(http.MethodGet)
-	protected.HandleFunc("/leads/map/layer", ac(ld, addresses, h.MapLayer)).Methods(http.MethodGet)
 	protected.HandleFunc("/leads/map/tiles/{z}/{x}/{y}", ac(ld, addresses, h.MapTile)).Methods(http.MethodGet)
 	protected.HandleFunc("/leads/map/districts", ac(ld, addresses, h.MapDistricts)).Methods(http.MethodGet)
 	protected.HandleFunc("/leads/map/viewport", ac(ld, addresses, h.MapViewport)).Methods(http.MethodGet)
@@ -116,28 +114,8 @@ func writeMapError(w http.ResponseWriter, err error) {
 	}
 }
 
-func writeWindowRefusal(w http.ResponseWriter, message string) {
-	response.WriteErrorWithCode(w, http.StatusBadRequest, "map_window_invalid", message, nil)
-}
-
-func parseCoordinates(raw string, n int) ([]float64, bool) {
-	parts := strings.Split(raw, ",")
-	if len(parts) != n {
-		return nil, false
-	}
-	out := make([]float64, n)
-	for i, part := range parts {
-		v, err := strconv.ParseFloat(strings.TrimSpace(part), 64)
-		if err != nil {
-			return nil, false
-		}
-		out[i] = v
-	}
-	return out, true
-}
-
 // @Summary		Resumo do mapa de leads
-// @Description	Conta, em uma única passada, os leads do filtro por situação de posição no endereço principal: `total`, `onMap` (posição que identifica a casa: exata, endereço ou rua), `approximate` (posição de CEP, bairro ou cidade), `withoutAddress`, `notFound` (não localizado ou ambíguo), `pending` (aguardando geocodificação), `quotaExceeded` e `refused` (texto recusado pelo provedor, sem posição). As categorias somam o total. Cada categoria é o filtro `geo_placement` de mesmo nome (`on_map`, `approximate`, `without_address`, `not_found`, `pending`, `quota_exceeded`, `refused`), com a mesma conta, para virar link em GET /leads. Aceita os mesmos filtros de GET /leads (inclusive `area`, resolvida antes de compilar o filtro). Resultado em cache por 60 s por workspace, geração dos leads e filtro; responde 503 com `Retry-After` quando o servidor está ocupado.
+// @Description	Conta, em uma única passada, os leads do filtro por situação de posição no endereço principal: `total`, `onMap` (posição que identifica a casa: exata, endereço ou rua), `approximate` (posição de CEP, bairro ou cidade), `withoutAddress`, `notFound` (a base de referência do IBGE não tem ponto para o endereço) e `pending` (aguardando geocodificação). As categorias somam o total. Cada categoria é o filtro `geo_placement` de mesmo nome (`on_map`, `approximate`, `without_address`, `not_found`, `pending`), com a mesma conta, para virar link em GET /leads. Aceita os mesmos filtros de GET /leads (inclusive `area`, resolvida antes de compilar o filtro). Resultado em cache por 60 s por workspace, geração dos leads e filtro; responde 503 com `Retry-After` quando o servidor está ocupado.
 // @Tags			Leads
 // @Produce		json
 // @Param			filter	query		string	false	"Filtro crmfilter em JSON (opcionalmente em base64)"
@@ -160,49 +138,6 @@ func (h *GeographyHandler) MapSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, mapSummaryResponse(summary))
-}
-
-// @Summary		Camada do mapa de leads
-// @Description	Devolve a camada da janela do mapa. A janela é ajustada aos tiles XYZ (zoom inteiro, no máximo 32 tiles por eixo). Até 5.000 posições distintas a resposta é `{"kind":"points","points":[...]}`: um ponto por posição e classe (`placement`), com `count` pessoas, até 5 `leadIds`, a melhor `precision` e o `tone` do valor mais comum do campo `colorBy` (`neutral` sem campo ou sem valor). Acima disso a resposta é `{"kind":"cells","cellSizeDegrees":s,"cells":[...]}`, com `ix = floor(lng / s)`, `iy = floor(lat / s)` e uma célula por classe. Entram os endereços principais com posição: `placement` `on_map` quando a posição identifica a casa (a contagem No mapa), `approximate` quando é o ponto de referência do CEP, bairro ou cidade (a contagem Aproximados). As duas classes nunca se juntam no mesmo ponto ou célula; uma área desenhada continua reunindo só `on_map`. `colorBy` precisa ser um campo de seleção de lead; um campo sensível exige `leads:read_sensitive`.
-// @Tags			Leads
-// @Produce		json
-// @Param			bbox	query		string	true	"Janela como oeste,sul,leste,norte (lng,lat,lng,lat)"
-// @Param			zoom	query		number	true	"Zoom do mapa (0 a 22)"
-// @Param			colorBy	query		string	false	"Chave do campo de seleção que colore os pontos"
-// @Param			filter	query		string	false	"Filtro crmfilter em JSON (opcionalmente em base64)"
-// @Success		200		{object}	lead.MapLayerResponse
-// @Failure		400		{object}	response.ErrorResponse	"map_window_invalid, map_window_too_wide, map_color_by_invalid, lead_filter_invalid, custom_field_filter_*, area_not_found, area_too_many, area_operator_unsupported"
-// @Failure		403		{object}	response.ErrorResponse	"forbidden, custom_field_filter_sensitive_forbidden, lead_filter_address_forbidden, lead_addresses_forbidden, map_color_by_forbidden"
-// @Failure		503		{object}	response.ErrorResponse	"lead_map_unavailable, ou consultas analíticas ocupadas (com Retry-After)"
-// @Failure		504		{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/map/layer [get]
-func (h *GeographyHandler) MapLayer(w http.ResponseWriter, r *http.Request) {
-	a, f, ok := h.mapRequest(w, r)
-	if !ok {
-		return
-	}
-	values := r.URL.Query()
-	box, ok := parseCoordinates(values.Get("bbox"), 4)
-	if !ok {
-		writeWindowRefusal(w, "bbox deve ser oeste,sul,leste,norte")
-		return
-	}
-	zoom, err := strconv.ParseFloat(strings.TrimSpace(values.Get("zoom")), 64)
-	if err != nil {
-		writeWindowRefusal(w, "zoom é obrigatório")
-		return
-	}
-	layer, err := h.maps.Layer(r.Context(), a, f, lead_usecase.LayerQuery{
-		BBox:    geo.BBox{West: box[0], South: box[1], East: box[2], North: box[3]},
-		Zoom:    zoom,
-		ColorBy: values.Get("colorBy"),
-	})
-	if err != nil {
-		writeMapError(w, err)
-		return
-	}
-	response.WriteSuccess(w, http.StatusOK, mapLayerResponse(layer))
 }
 
 // @Summary		Tile do mapa de leads

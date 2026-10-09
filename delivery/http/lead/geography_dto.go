@@ -15,8 +15,6 @@ type MapSummaryResponse struct {
 	WithoutAddress int64 `json:"withoutAddress" example:"150"`
 	NotFound       int64 `json:"notFound" example:"30"`
 	Pending        int64 `json:"pending" example:"15"`
-	QuotaExceeded  int64 `json:"quotaExceeded" example:"5"`
-	Refused        int64 `json:"refused" example:"2"`
 }
 
 type MapPointResponse struct {

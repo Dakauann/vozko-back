@@ -12,7 +12,7 @@ import (
 const statementTimedOut = "SQLSTATE 57014"
 
 func ReadSessionSettings(workMem, statementTimeout string) []string {
-	return []string{"SET LOCAL work_mem = '" + workMem + "'", "SET LOCAL jit = off", "SET LOCAL statement_timeout = '" + statementTimeout + "'"}
+	return []string{"SET LOCAL work_mem = '" + workMem + "'", "SET LOCAL jit = off", "SET LOCAL statement_timeout = '" + statementTimeout + "'", "SET LOCAL plan_cache_mode = force_custom_plan"}
 }
 
 func InReadSession(ctx context.Context, db *gorm.DB, settings []string, fn func(tx *gorm.DB) error) error {

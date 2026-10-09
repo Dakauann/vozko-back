@@ -35,6 +35,7 @@ const (
 	ScreenLook          ScreenCommandName = "look"
 	ScreenResolveSource ScreenCommandName = "resolve_source"
 	ScreenFollowJob     ScreenCommandName = "follow_job"
+	ScreenExport        ScreenCommandName = "export"
 )
 
 var screenTimeouts = map[ScreenCommandName]time.Duration{
@@ -43,10 +44,11 @@ var screenTimeouts = map[ScreenCommandName]time.Duration{
 	ScreenLook:          45 * time.Second,
 	ScreenResolveSource: 10 * time.Second,
 	ScreenFollowJob:     10 * time.Second,
+	ScreenExport:        60 * time.Second,
 }
 
 func ScreenCommandNames() []ScreenCommandName {
-	return []ScreenCommandName{ScreenRead, ScreenEdit, ScreenLook, ScreenResolveSource, ScreenFollowJob}
+	return []ScreenCommandName{ScreenRead, ScreenEdit, ScreenLook, ScreenResolveSource, ScreenFollowJob, ScreenExport}
 }
 
 func (n ScreenCommandName) Known() bool {

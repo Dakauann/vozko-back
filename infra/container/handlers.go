@@ -603,9 +603,8 @@ func (c *Container) initHandlers() {
 	}
 
 	c.handlers.workspace.SetRolePresets(workspace_usecase.NewListRolePresetsUseCase())
-	c.handlers.workspaceConfig.SetGeocodingSettings(c.geocodingSettingsService())
-	if platform := c.geocodingPlatformUsage(); platform != nil {
-		c.handlers.workspaceConfig.SetGeocodingPlatformUsage(platform)
+	if platform := c.geocodingPlatformCoverage(); platform != nil {
+		c.handlers.workspaceConfig.SetGeocodingPlatformCoverage(platform)
 	}
 
 	if c.services.requestCallPermission != nil {

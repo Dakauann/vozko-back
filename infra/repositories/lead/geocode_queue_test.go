@@ -71,9 +71,9 @@ func TestGeocodeClaimBindsTheLeaseAndToken(t *testing.T) {
 	now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	lat, lng := -23.56, -46.65
 	rows := sqlmock.NewRows([]string{"id", "workspace_id", "lead_id", "label", "is_primary", "zip_code", "street", "number", "district", "city", "state", "city_code",
-		"latitude", "longitude", "geo_precision", "geo_source", "geo_provider", "geo_status", "geo_attempts", "fingerprint", "created_at"}).
+		"latitude", "longitude", "geo_precision", "geo_source", "geo_status", "geo_attempts", "fingerprint", "created_at"}).
 		AddRow("a-1", "ws-1", "lead-1", "home", true, "01310100", "Avenida Paulista", "1000", "Bela Vista", "São Paulo", "SP", "",
-			lat, lng, "district", "reference", "", "unavailable", 2, "fp-1", now)
+			lat, lng, "district", "reference", "unavailable", 2, "fp-1", now)
 	mock.ExpectQuery(exact(geocodeClaimSQL)).
 		WithArgs(zeroUUID, now, 100, 500, now.Add(geocoding.Lease), "token-1").
 		WillReturnRows(rows)
@@ -133,7 +133,7 @@ func TestGeocodeSettleWritesUnderTheClaimAndBumpsChangedLeads(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("lead-1").AddRow("lead-2"))
 	mock.ExpectQuery(exact(geocodeSettleSQL)).
 		WithArgs(now, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
-			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "token-1").
+			sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), "token-1").
 		WillReturnRows(sqlmock.NewRows([]string{"lead_id", "workspace_id", "changed"}).AddRow("lead-1", "ws-1", true).AddRow("lead-2", "ws-1", false))
 	mock.ExpectQuery(exact(geocodeBumpLeadsSQL)).
 		WithArgs(sqlmock.AnyArg()).
@@ -164,8 +164,11 @@ func TestGeocodeSettleSQLGuardsTheClaimAndTheFingerprint(t *testing.T) {
 			t.Fatalf("settle SQL misses %q:\n%s", want, geocodeSettleSQL)
 		}
 	}
-	if got := strings.Count(geocodeSettleSQL, "?"); got != 13 {
-		t.Fatalf("settle SQL has %d placeholders, want 13 (arrays bound once each)", got)
+	if got := strings.Count(geocodeSettleSQL, "?"); got != 12 {
+		t.Fatalf("settle SQL has %d placeholders, want 12 (arrays bound once each)", got)
+	}
+	if strings.Contains(geocodeSettleSQL, "provider") {
+		t.Fatalf("settle SQL still writes the retired provider column: %s", geocodeSettleSQL)
 	}
 	if !strings.Contains(geocodeBumpLeadsSQL, "version = version + 1") || !strings.Contains(geocodeBumpLeadsSQL, "RETURNING") || strings.Count(geocodeBumpLeadsSQL, "?") != 1 {
 		t.Fatalf("bump SQL = %q, want one array and a version bump", geocodeBumpLeadsSQL)
@@ -251,9 +254,9 @@ func TestGeocodeBacklogCountsPerStatus(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 	mock.ExpectQuery(exact(geocodeBacklogSQL)).
-		WillReturnRows(sqlmock.NewRows([]string{"status", "n"}).AddRow("pending", 12).AddRow("quota_exceeded", 3))
+		WillReturnRows(sqlmock.NewRows([]string{"status", "n"}).AddRow("pending", 12).AddRow("unavailable", 3))
 	got, err := NewGeocodeQueue(db, nil).Backlog(context.Background())
-	if err != nil || got[lead.GeoPending] != 12 || got[lead.GeoQuotaExceeded] != 3 {
+	if err != nil || got[lead.GeoPending] != 12 || got[lead.GeoUnavailable] != 3 {
 		t.Fatalf("Backlog() = %+v, %v", got, err)
 	}
 }

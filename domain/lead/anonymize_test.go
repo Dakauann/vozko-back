@@ -16,9 +16,12 @@ func TestEveryErasureTargetIsNamedOnce(t *testing.T) {
 		}
 		seen[target] = true
 	}
+	if seen["geocode_cache"] {
+		t.Error("the provider answer cache is retired, so anonymization has nothing to erase there")
+	}
 	for _, required := range []ErasureTarget{
 		ErasureRecord, ErasurePhones, ErasureAddresses, ErasureRelations, ErasureEvents, ErasureMemories,
-		ErasureCampaignEntries, ErasureUnofficialCampaignEntries, ErasureCallNumbers, ErasureTemplateSendNumbers, ErasureCallListItems, ErasureGeocodeCache,
+		ErasureCampaignEntries, ErasureUnofficialCampaignEntries, ErasureCallNumbers, ErasureTemplateSendNumbers, ErasureCallListItems,
 	} {
 		if !seen[required] {
 			t.Errorf("%q is not erased", required)

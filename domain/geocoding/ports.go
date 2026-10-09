@@ -55,14 +55,3 @@ type Queue interface {
 	RefreshAggregates(workspaceIDs []string)
 	WakeUnavailable(ctx context.Context, now time.Time) (int64, error)
 }
-
-type SettingsStore interface {
-	Settings(ctx context.Context, workspaceID string) (Settings, error)
-	SettingsOf(ctx context.Context, workspaceIDs []string) (map[string]Settings, error)
-	ChangeSettings(ctx context.Context, workspaceID string, change func(Settings) (Settings, error)) (Settings, error)
-}
-
-type UsageStore interface {
-	TakeSlot(ctx context.Context, workspaceID string, slot Slot) (bool, Usage, error)
-	Usage(ctx context.Context, workspaceID string) (Usage, error)
-}

@@ -3,7 +3,6 @@ package geocoding_repository
 import (
 	"context"
 	"slices"
-	"time"
 
 	"github.com/lib/pq"
 	"gorm.io/gorm"
@@ -20,16 +19,13 @@ const (
 	coverageChunk            = 5
 	coverageStatementTimeout = "10s"
 
-	directoryEligibleSQL = "w.deleted_at IS NULL AND (EXISTS (SELECT 1 FROM leads l WHERE l.workspace_id = w.id AND l.deleted_at IS NULL)" +
-		" OR EXISTS (SELECT 1 FROM geocoding_settings s WHERE s.workspace_id = w.id)" +
-		" OR EXISTS (SELECT 1 FROM geocoding_usage_months m WHERE m.workspace_id = w.id))"
+	directoryEligibleSQL = "w.deleted_at IS NULL AND EXISTS (SELECT 1 FROM leads l WHERE l.workspace_id = w.id AND l.deleted_at IS NULL)"
 
 	directorySearchSQL = " AND w.name ILIKE ?"
 )
 
 var coveragePlacements = []crmfilter.GeoPlacement{
-	crmfilter.PlacementOnMap, crmfilter.PlacementApproximate, crmfilter.PlacementNotFound,
-	crmfilter.PlacementQuotaExceeded, crmfilter.PlacementRefused, crmfilter.PlacementPending,
+	crmfilter.PlacementOnMap, crmfilter.PlacementApproximate, crmfilter.PlacementNotFound, crmfilter.PlacementPending,
 }
 
 var coverageCounts, coverageCountArgs = infracrmfilter.GeoPlacementCountsSQL(coverageAddressAlias, coveragePlacements...)
@@ -56,10 +52,7 @@ func directoryCountSQL(search bool) string {
 }
 
 func directoryPageSQL(search bool) string {
-	return "SELECT w.id::text AS id, w.name FROM workspaces w" +
-		" LEFT JOIN geocoding_usage u ON u.workspace_id = w.id AND u.cycle_start = ?" +
-		" WHERE " + directoryWhere(search) +
-		" ORDER BY COALESCE(u.requests, 0) DESC, lower(w.name), w.id LIMIT ? OFFSET ?"
+	return "SELECT w.id::text AS id, w.name FROM workspaces w WHERE " + directoryWhere(search) + " ORDER BY lower(w.name), w.id LIMIT ? OFFSET ?"
 }
 
 type PlatformReader struct {
@@ -75,7 +68,7 @@ func NewPlatformReader(db *gorm.DB) *PlatformReader {
 	return &PlatformReader{db: db}
 }
 
-func (r *PlatformReader) GeocodingWorkspaces(ctx context.Context, query geocoding.PlatformQuery, cycleStart time.Time) ([]geocoding.PlatformWorkspace, int64, error) {
+func (r *PlatformReader) GeocodingWorkspaces(ctx context.Context, query geocoding.PlatformQuery) ([]geocoding.PlatformWorkspace, int64, error) {
 	query = query.Normalize()
 	search := query.Search != ""
 	var filter []interface{}
@@ -90,7 +83,7 @@ func (r *PlatformReader) GeocodingWorkspaces(ctx context.Context, query geocodin
 	if total == 0 || int64(query.Offset()) >= total {
 		return []geocoding.PlatformWorkspace{}, total, nil
 	}
-	args := append(append([]interface{}{cycleStart}, filter...), query.PageSize, query.Offset())
+	args := append(filter, query.PageSize, query.Offset())
 	var rows []geocoding.PlatformWorkspace
 	if err := db.Raw(directoryPageSQL(search), args...).Scan(&rows).Error; err != nil {
 		return nil, 0, err

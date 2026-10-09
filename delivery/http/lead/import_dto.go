@@ -106,12 +106,10 @@ type LeadImportSummaryResponse struct {
 }
 
 type LeadImportPlacementResponse struct {
-	OnMap         int `json:"onMap" example:"3088"`
-	Approximate   int `json:"approximate" example:"1920"`
-	Pending       int `json:"pending" example:"709"`
-	NotFound      int `json:"notFound" example:"12"`
-	QuotaExceeded int `json:"quotaExceeded" example:"0"`
-	Refused       int `json:"refused" example:"0"`
+	OnMap       int `json:"onMap" example:"3088"`
+	Approximate int `json:"approximate" example:"1920"`
+	Pending     int `json:"pending" example:"709"`
+	NotFound    int `json:"notFound" example:"12"`
 }
 
 type LeadImportResponse struct {
@@ -238,7 +236,7 @@ func toLeadImportResponse(detail lead_usecase.ImportDetail, catalog lead_usecase
 	}
 	if p := detail.Placement; p != nil {
 		out.Placement = &LeadImportPlacementResponse{OnMap: p.OnMap, Approximate: p.Approximate, Pending: p.Pending,
-			NotFound: p.NotFound, QuotaExceeded: p.QuotaExceeded, Refused: p.Refused}
+			NotFound: p.NotFound}
 	}
 	return out
 }

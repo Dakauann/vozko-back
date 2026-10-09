@@ -11,14 +11,14 @@ import (
 )
 
 type GeocodingPlatformService interface {
-	List(ctx context.Context, editor geocoding.Editor, query geocoding.PlatformQuery) (geocoding.PlatformPage, error)
+	List(ctx context.Context, caller geocoding.Caller, query geocoding.PlatformQuery) (geocoding.PlatformPage, error)
 }
 
-func (h *WorkspaceConfigHandler) SetGeocodingPlatformUsage(service GeocodingPlatformService) {
+func (h *WorkspaceConfigHandler) SetGeocodingPlatformCoverage(service GeocodingPlatformService) {
 	h.geocodingPlatform = service
 }
 
-func (h *WorkspaceConfigHandler) ListGeocodingPlatformUsage(w http.ResponseWriter, r *http.Request) {
+func (h *WorkspaceConfigHandler) ListGeocodingPlatformCoverage(w http.ResponseWriter, r *http.Request) {
 	caller, ok := sessionCaller(w, r)
 	if !ok {
 		return
@@ -30,7 +30,7 @@ func (h *WorkspaceConfigHandler) ListGeocodingPlatformUsage(w http.ResponseWrite
 	values := r.URL.Query()
 	pagination := httpx.ParsePagination(values)
 	query := geocoding.PlatformQuery{Page: pagination.Page, PageSize: pagination.PageSize, Search: values.Get("search")}
-	page, err := h.geocodingPlatform.List(r.Context(), geocoding.Editor{UserID: caller.UserID, PlatformAdmin: caller.PlatformAdmin}, query)
+	page, err := h.geocodingPlatform.List(r.Context(), geocoding.Caller{UserID: caller.UserID, PlatformAdmin: caller.PlatformAdmin}, query)
 	if err != nil {
 		writeGeocodingPlatformError(w, err)
 		return
@@ -46,5 +46,5 @@ func writeGeocodingPlatformError(w http.ResponseWriter, err error) {
 	if httpx.WriteAnalyticsLimit(w, err, "Geocoding") {
 		return
 	}
-	response.WriteErrorWithCode(w, http.StatusInternalServerError, "geocoding_usage_unreadable", "O consumo de geolocalização não pôde ser lido", nil)
+	response.WriteErrorWithCode(w, http.StatusInternalServerError, "geocoding_coverage_unreadable", "A cobertura de endereços não pôde ser lida", nil)
 }

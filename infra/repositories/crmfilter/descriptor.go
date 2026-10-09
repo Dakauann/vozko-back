@@ -16,6 +16,7 @@ const (
 	StyleBool
 	StyleText
 	StyleCompiled
+	StyleCount
 )
 
 type FieldMapping struct {

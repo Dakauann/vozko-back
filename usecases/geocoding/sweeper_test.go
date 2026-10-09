@@ -99,7 +99,7 @@ func (c *clock) now() time.Time { return c.at }
 func newSweeper(t *testing.T, q *fakeQueue, s *chainSetup, c *clock) *Sweeper {
 	t.Helper()
 	tokens := 0
-	chain, err := NewChain(ChainDeps{Reference: s.reference, Settings: s.settings, Usage: s.usage, Answers: s.answers, Pauses: s.pauses, Metrics: s.metrics, Now: c.now})
+	chain, err := NewChain(ChainDeps{Reference: s.reference, Now: c.now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func newSweeper(t *testing.T, q *fakeQueue, s *chainSetup, c *clock) *Sweeper {
 
 func TestNewSweeperRefusesMissingDependencies(t *testing.T) {
 	s := newSetup()
-	chain, _ := NewChain(ChainDeps{Reference: s.reference, Settings: s.settings, Usage: s.usage, Answers: s.answers, Pauses: s.pauses, Metrics: s.metrics})
+	chain, _ := NewChain(ChainDeps{Reference: s.reference})
 	for name, deps := range map[string]SweeperDeps{
 		"queue":    {Chain: chain, Metrics: s.metrics, Notifier: s.notifier},
 		"chain":    {Queue: &fakeQueue{}, Metrics: s.metrics, Notifier: s.notifier},
@@ -154,7 +154,7 @@ func TestSweepLoopsBatchesUntilTheQueueIsEmpty(t *testing.T) {
 	if s.metrics.outcomes["district"] != 3 || s.metrics.stale != 2 {
 		t.Fatalf("outcomes = %+v, stale = %d, want 3 bairro points and the stale writes counted", s.metrics.outcomes, s.metrics.stale)
 	}
-	if s.metrics.backlog["pending"] != 7 || s.metrics.backlog["unavailable"] != 2 || s.metrics.backlog["quota_exceeded"] != 0 {
+	if s.metrics.backlog["pending"] != 7 || s.metrics.backlog["unavailable"] != 2 || len(s.metrics.backlog) != len(lead.QueuedGeoStatuses()) {
 		t.Fatalf("backlog = %+v, want every queued status reported, zero included", s.metrics.backlog)
 	}
 }
@@ -215,7 +215,7 @@ func TestSweepReportsTheBacklogEvenWhenItFails(t *testing.T) {
 			if err := newSweeper(t, tt.queue, s, &clock{at: now}).Sweep(tt.ctx); !errors.Is(err, tt.want) {
 				t.Fatalf("Sweep() err = %v, want %v", err, tt.want)
 			}
-			if s.metrics.backlog["pending"] != 900 || s.metrics.backlog["unavailable"] != 40 || s.metrics.backlog["quota_exceeded"] != 0 {
+			if s.metrics.backlog["pending"] != 900 || s.metrics.backlog["unavailable"] != 40 || len(s.metrics.backlog) != len(lead.QueuedGeoStatuses()) {
 				t.Fatalf("backlog = %+v, want it reported after a failed sweep", s.metrics.backlog)
 			}
 		})
@@ -238,7 +238,7 @@ func TestSweepSettlesAStaleClaimWithABackoffInsteadOfReleasingIt(t *testing.T) {
 
 type handBack struct{ release []string }
 
-func (h handBack) Resolve(context.Context, []geocoding.Claim, time.Time) BatchResult {
+func (h handBack) Resolve(context.Context, []geocoding.Claim) BatchResult {
 	return BatchResult{Release: h.release}
 }
 

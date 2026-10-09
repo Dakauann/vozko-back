@@ -365,15 +365,14 @@ func (s *Imports) Mine(ctx context.Context, workspaceID, requestedBy string, now
 }
 
 var importPlacementSQL, importPlacementArgs = func() (string, []interface{}) {
-	counts, args := placementCountsSQL(crmfilter.PlacementOnMap, crmfilter.PlacementApproximate, crmfilter.PlacementNotFound,
-		crmfilter.PlacementQuotaExceeded, crmfilter.PlacementRefused, crmfilter.PlacementPending)
+	counts, args := placementCountsSQL(crmfilter.PlacementOnMap, crmfilter.PlacementApproximate, crmfilter.PlacementNotFound, crmfilter.PlacementPending)
 	return "SELECT " + strings.TrimPrefix(counts, ", ") + " FROM lead_addresses la" +
 		" JOIN leads ON leads.id = la.lead_id AND leads.workspace_id = la.workspace_id AND leads.deleted_at IS NULL" +
 		" WHERE la.workspace_id = ? AND la.import_id = ? AND la.is_primary", args
 }()
 
 type placementRow struct {
-	OnMap, Approximate, NotFound, QuotaExceeded, Refused, Pending int
+	OnMap, Approximate, NotFound, Pending int
 }
 
 func (s *Imports) Placement(ctx context.Context, workspaceID, importID string) (leadimport.Placement, error) {
@@ -386,6 +385,5 @@ func (s *Imports) Placement(ctx context.Context, workspaceID, importID string) (
 	if err := s.r.db.WithContext(ctx).Raw(importPlacementSQL, args...).Scan(&row).Error; err != nil {
 		return leadimport.Placement{}, err
 	}
-	return leadimport.Placement{OnMap: row.OnMap, Approximate: row.Approximate, Pending: row.Pending,
-		NotFound: row.NotFound, QuotaExceeded: row.QuotaExceeded, Refused: row.Refused}, nil
+	return leadimport.Placement{OnMap: row.OnMap, Approximate: row.Approximate, Pending: row.Pending, NotFound: row.NotFound}, nil
 }

@@ -35,7 +35,7 @@ const (
 		" RETURNING leads.id::text AS id, leads.version, leads.relatives_count, leads.referred_count"
 
 	addressColumnsSQL = "label = ?, is_primary = ?, position = ?, zip_code = ?, street = ?, number = ?, complement = ?, district = ?, district_key = ?," +
-		" city = ?, city_key = ?, city_code = ?, state = ?, latitude = ?, longitude = ?, geo_precision = ?, geo_source = ?, geo_provider = ?," +
+		" city = ?, city_key = ?, city_code = ?, state = ?, latitude = ?, longitude = ?, geo_precision = ?, geo_source = ?," +
 		" geo_status = ?, geocoded_at = ?, fingerprint = ?, updated_at = ?"
 
 	updateAddressSQL = "UPDATE lead_addresses SET " + addressColumnsSQL +
@@ -345,14 +345,13 @@ func writeAddresses(tx *gorm.DB, l *lead.Lead, now time.Time, replacing bool, ne
 		}
 	}
 	var inserts, updates []schema.LeadAddress
-	kept, holds := map[string]bool{}, map[string]bool{}
+	kept := map[string]bool{}
 	for i := range l.Addresses {
 		a := &l.Addresses[i]
 		if a.ID == "" {
 			a.ID = newID()
 			row := addressRow(l, i, *a, now)
 			a.CreatedAt = row.CreatedAt
-			holds[row.Fingerprint] = true
 			inserts = append(inserts, row)
 			continue
 		}
@@ -362,19 +361,14 @@ func writeAddresses(tx *gorm.DB, l *lead.Lead, now time.Time, replacing bool, ne
 		}
 		kept[a.ID] = true
 		row := addressRow(l, i, *a, now)
-		holds[row.Fingerprint] = true
 		if !sameAddress(previous, row) {
 			updates = append(updates, row)
 		}
 	}
 	var removed pq.StringArray
-	var left []string
-	for id, row := range stored {
+	for id := range stored {
 		if !kept[id] {
 			removed = append(removed, id)
-		}
-		if !holds[row.Fingerprint] {
-			left = append(left, row.Fingerprint)
 		}
 	}
 	if len(removed) > 0 {
@@ -400,14 +394,13 @@ func writeAddresses(tx *gorm.DB, l *lead.Lead, now time.Time, replacing bool, ne
 			}
 		}
 	}
-	_, err := releaseStoredAnswers(tx, l.WorkspaceID, left)
-	return err
+	return nil
 }
 
 func updateAddress(tx *gorm.DB, row, previous schema.LeadAddress) error {
 	args := []interface{}{
 		row.Label, row.IsPrimary, row.Position, row.ZipCode, row.Street, row.Number, row.Complement, row.District, row.DistrictKey,
-		row.City, row.CityKey, row.CityCode, row.State, row.Latitude, row.Longitude, row.GeoPrecision, row.GeoSource, row.GeoProvider,
+		row.City, row.CityKey, row.CityCode, row.State, row.Latitude, row.Longitude, row.GeoPrecision, row.GeoSource,
 		row.GeoStatus, row.GeocodedAt, row.Fingerprint, row.UpdatedAt,
 	}
 	sql := updateAddressSQL

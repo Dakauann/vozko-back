@@ -47,12 +47,6 @@ type MapSections struct {
 	now     func() time.Time
 }
 
-type LayerQuery struct {
-	BBox    geo.BBox
-	Zoom    float64
-	ColorBy string
-}
-
 type TileQuery struct {
 	Z, X, Y int
 	ColorBy string
@@ -108,22 +102,6 @@ func (s *MapSections) Summary(ctx context.Context, a Actor, f crmfilter.Filter) 
 	return remember(ctx, s, m, leadmap.SectionSummary, nil, func(ctx context.Context) (leadmap.Summary, error) {
 		return s.deps.Reader.Summary(ctx, m.scope)
 	})
-}
-
-func (s *MapSections) Layer(ctx context.Context, a Actor, f crmfilter.Filter, q LayerQuery) (leadmap.Layer, error) {
-	m, err := s.prepare(ctx, a, f)
-	if err != nil {
-		return leadmap.Layer{}, err
-	}
-	window, err := geo.SnapWindow(q.BBox, q.Zoom)
-	if err != nil {
-		return leadmap.Layer{}, err
-	}
-	colorBy, err := leadmap.ColorByFor(m.viewer.Definitions, q.ColorBy, m.viewer.Fields)
-	if err != nil {
-		return leadmap.Layer{}, err
-	}
-	return s.draw(ctx, m, leadmap.SectionLayer, window.Key(), colorBy, leadmap.NewLayerRequest(window, colorBy))
 }
 
 func (s *MapSections) Tile(ctx context.Context, a Actor, f crmfilter.Filter, q TileQuery) (leadmap.Layer, error) {

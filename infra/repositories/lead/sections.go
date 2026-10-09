@@ -27,7 +27,7 @@ func (q *listQuery) addressSummarySQL(extra string, extraArgs []interface{}) (st
 }
 
 func geoStatusCountsSQL() (string, []interface{}) {
-	return placementCountsSQL(crmfilter.PlacementNotFound, crmfilter.PlacementQuotaExceeded, crmfilter.PlacementRefused, crmfilter.PlacementPending)
+	return placementCountsSQL(crmfilter.PlacementNotFound, crmfilter.PlacementPending)
 }
 
 func (q *listQuery) summarySQL() (string, []interface{}, error) {
@@ -77,8 +77,6 @@ func (r *repository) ReadSummary(ctx context.Context, sq lead.SectionQuery) (*le
 		Approximate:    geo.Approximate,
 		WithoutAddress: geo.WithoutAddress,
 		NotFound:       geo.NotFound,
-		QuotaExceeded:  geo.QuotaExceeded,
-		Refused:        geo.Refused,
 		Pending:        geo.Pending,
 		BirthdaysToday: row.BirthdaysToday,
 		Blocked:        row.Blocked,
@@ -94,7 +92,7 @@ func (q *listQuery) distinctCountsSQL(source, keyCol, leadCol, conditions string
 
 func (q *listQuery) campaignStatusesSQL() (string, []interface{}) {
 	return q.distinctCountsSQL("whatsapp_campaign_entries wce_g", "wce_g.status", "wce_g.lead_id",
-		"wce_g.deleted_at IS NULL AND wce_g.campaign_id IN (SELECT wc_g.id FROM whatsapp_campaigns wc_g WHERE wc_g.workspace_id = ?) AND ",
+		"wce_g.deleted_at IS NULL AND "+infracrmfilter.CampaignEntriesInWorkspace("wce_g", "wc_g")+" AND ",
 		[]interface{}{q.desc.WorkspaceID})
 }
 

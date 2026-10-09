@@ -8,7 +8,7 @@ description: Como criar motion design profissional no Estúdio (como a animaçã
 Habilidades irmãs: principios-de-animacao (dar vida ao movimento e receitas como quicar, pulsar e partículas), slack-gif-creator (loops curtos como GIF, figurinha ou reação), tipografia-cinetica (texto animado, escalonamento, máquina de escrever, destaque e troca de palavra) e transicoes (quando cortar, catálogo de transições e como montar cada uma).
 
 ## Como a animação funciona aqui
-- animate grava keyframes de x, y (centro, de 0 a 1), scale (1 é o tamanho atual), rotation (graus), opacity e blur (desfoque em pixels do quadro, 0 é nítido). O at_ms conta do início do clipe. update_clip com blur deixa um desfoque fixo, como um fundo desfocado atrás de um texto.
+- animate grava keyframes de x, y (centro, de 0 a 1), scale (1 é o tamanho atual), rotation (graus), opacity, blur (desfoque em pixels do quadro, 0 é nítido) e as cores fill e stroke de textos, formas e ícones (cada chave com color em #rrggbb; as cores se misturam entre as chaves). O at_ms conta do início do clipe. update_clip com blur deixa um desfoque fixo, como um fundo desfocado atrás de um texto.
 - Desfoque animado: foco que entra (blur de 12 a 24 para 0 em 300 a 500 ms junto com a entrada), troca de assunto (o que sai desfoca) e ênfase de profundidade (fundo desfocado, texto nítido).
 - A easing de uma chave vale para o trecho que sai dela. entrance e exit dão entradas e saídas prontas; motion_preset aplica animações completas.
 - Crie e anime no mesmo lote com ref e @ref. Limites: 32 chaves por propriedade e 400 no vídeo.

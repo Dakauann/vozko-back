@@ -83,13 +83,11 @@ func expectAnonymization(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery(exact(heldByOthersSQL)).WithArgs(landlineForms, wsUUID, leadUUID, wsUUID, leadUUID).
 		WillReturnRows(sqlmock.NewRows([]string{"form"}).AddRow("551133334444"))
 
-	mock.ExpectQuery(exact(heldFingerprintsSQL)).WithArgs(wsUUID, leadUUID).WillReturnRows(sqlmock.NewRows([]string{"fingerprint"}).AddRow("f-home"))
 	mock.ExpectExec(exact(erasePhonesSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(exact(eraseAddressesSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec(exact(eraseMemoriesSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 3))
 	mock.ExpectExec(exact(redactLeadEventsSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 4))
 	mock.ExpectExec(exact(eraseCallListItemsSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 2))
-	expectRelease(mock, pq.StringArray{"f-home"}, "f-home")
 	mock.ExpectExec(exact(eraseCampaignEntriesSQL)).WithArgs(leadUUID).WillReturnResult(sqlmock.NewResult(0, 5))
 	mock.ExpectExec(exact(eraseUnofficialEntriesSQL)).
 		WithArgs(pq.StringArray{"5511987654321"}, pq.StringArray{"••••4321"}, wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 6))
@@ -131,7 +129,7 @@ func TestAnonymizeTouchesEveryErasureTargetInOneTransaction(t *testing.T) {
 	want := map[lead.ErasureTarget]int64{
 		lead.ErasureRecord: 1, lead.ErasurePhones: 1, lead.ErasureAddresses: 2, lead.ErasureRelations: 1, lead.ErasureEvents: 4,
 		lead.ErasureMemories: 3, lead.ErasureCampaignEntries: 5, lead.ErasureUnofficialCampaignEntries: 6,
-		lead.ErasureCallNumbers: 3, lead.ErasureTemplateSendNumbers: 7, lead.ErasureCallListItems: 2, lead.ErasureGeocodeCache: 1,
+		lead.ErasureCallNumbers: 3, lead.ErasureTemplateSendNumbers: 7, lead.ErasureCallListItems: 2,
 	}
 	for _, target := range lead.ErasureTargets() {
 		if got, touched := erasure.Rows[target]; !touched || got != want[target] {
@@ -168,7 +166,6 @@ func TestAnonymizeWithoutNumbersMasksNothing(t *testing.T) {
 	mock.ExpectQuery(exact(contactNumbersSQL)).WillReturnRows(sqlmock.NewRows([]string{"number"}))
 	mock.ExpectQuery(exact(unofficialEntryNumbersSQL)).WillReturnRows(sqlmock.NewRows([]string{"number"}))
 	mock.ExpectQuery(exact(unrelateAllSQL)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectQuery(exact(heldFingerprintsSQL)).WillReturnRows(sqlmock.NewRows([]string{"fingerprint"}))
 	for _, sql := range []string{erasePhonesSQL, eraseAddressesSQL, eraseMemoriesSQL, redactLeadEventsSQL, eraseCallListItemsSQL, eraseCampaignEntriesSQL} {
 		mock.ExpectExec(exact(sql)).WillReturnResult(sqlmock.NewResult(0, 0))
 	}
@@ -197,7 +194,6 @@ func TestAnonymizeRollsBackWhenAnyStepFails(t *testing.T) {
 	mock.ExpectQuery(exact(contactNumbersSQL)).WillReturnRows(sqlmock.NewRows([]string{"number"}))
 	mock.ExpectQuery(exact(unofficialEntryNumbersSQL)).WillReturnRows(sqlmock.NewRows([]string{"number"}))
 	mock.ExpectQuery(exact(unrelateAllSQL)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectQuery(exact(heldFingerprintsSQL)).WillReturnRows(sqlmock.NewRows([]string{"fingerprint"}))
 	mock.ExpectExec(exact(erasePhonesSQL)).WillReturnError(errors.New("db down"))
 	mock.ExpectRollback()
 
@@ -257,10 +253,4 @@ func countPlaceholders(sql string) int {
 		}
 	}
 	return count
-}
-
-func TestAnonymizeReadsThePersonsAddressTextsToReleaseTheirStoredAnswers(t *testing.T) {
-	if heldFingerprintsSQL != "SELECT DISTINCT fingerprint FROM lead_addresses WHERE workspace_id = ? AND lead_id = ?" {
-		t.Fatalf("held fingerprints SQL = %q", heldFingerprintsSQL)
-	}
 }

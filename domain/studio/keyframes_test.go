@@ -19,6 +19,63 @@ func slide() *ClipKeyframes {
 	})
 }
 
+func colorFade(from, to string) []ColorKeyframe {
+	return []ColorKeyframe{{AtMS: 0, Color: from, Easing: mediagen.EaseLinear}, {AtMS: 1000, Color: to, Easing: mediagen.EaseLinear}}
+}
+
+func TestColorKeysAnimateAPaintTheLayerHas(t *testing.T) {
+	doc := videoDoc()
+	doc.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Fill: colorFade("#ff0000", "#0000ff")}
+	if err := ValidateDocument(KindVideo, mustJSON(t, doc)); err != nil {
+		t.Fatalf("fill keys refused: %v", err)
+	}
+	var saved VideoDocument
+	if err := json.Unmarshal(mustJSON(t, doc), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if k := saved.Tracks[1].Clips[0].Keyframes; k == nil || len(k.Fill) != 2 || k.Fill[1].Color != "#0000ff" {
+		t.Fatalf("fill keys lost: %+v", k)
+	}
+	outlined := videoDoc()
+	layer := *outlined.Tracks[1].Clips[0].Layer
+	layer.Stroke, layer.StrokeWidth = "#000000", 4
+	outlined.Tracks[1].Clips[0].Layer = &layer
+	outlined.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Stroke: colorFade("#000000", "#ffffff")}
+	if err := ValidateDocument(KindVideo, mustJSON(t, outlined)); err != nil {
+		t.Fatalf("stroke keys on an outlined text refused: %v", err)
+	}
+	cases := map[string]func(*VideoDocument){
+		"color keys on a video": func(d *VideoDocument) {
+			d.Tracks[0].Clips[1].Keyframes = &ClipKeyframes{Fill: colorFade("#ff0000", "#0000ff")}
+		},
+		"fill keys on a gradient text": func(d *VideoDocument) {
+			layer := *d.Tracks[1].Clips[0].Layer
+			layer.Gradient = &Gradient{From: "#ffffff", To: "#000000"}
+			d.Tracks[1].Clips[0].Layer = &layer
+			d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Fill: colorFade("#ff0000", "#0000ff")}
+		},
+		"stroke keys on a text without outline": func(d *VideoDocument) {
+			d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Stroke: colorFade("#ff0000", "#0000ff")}
+		},
+		"a malformed color": func(d *VideoDocument) {
+			d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Fill: colorFade("red", "#0000ff")}
+		},
+		"color keys out of order": func(d *VideoDocument) {
+			d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Fill: []ColorKeyframe{{AtMS: 500, Color: "#ffffff", Easing: mediagen.EaseLinear}, {AtMS: 500, Color: "#000000", Easing: mediagen.EaseLinear}}}
+		},
+		"an unknown easing": func(d *VideoDocument) {
+			d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Fill: []ColorKeyframe{{AtMS: 0, Color: "#ffffff", Easing: "wiggle"}}}
+		},
+	}
+	for name, change := range cases {
+		d := videoDoc()
+		change(&d)
+		if codeOf(t, ValidateDocument(KindVideo, mustJSON(t, d)))[FieldTracks] == "" {
+			t.Errorf("%s accepted", name)
+		}
+	}
+}
+
 func TestClipsBlurStillOrAnimated(t *testing.T) {
 	doc := videoDoc()
 	doc.Tracks[0].Clips[0].Blur = 12

@@ -40,10 +40,8 @@ func (o SeedOutcome) Done(batches []unofficial_whatsapp.SeedRequest) bool {
 }
 
 type Placement struct {
-	OnMap         int
-	Approximate   int
-	Pending       int
-	NotFound      int
-	QuotaExceeded int
-	Refused       int
+	OnMap       int
+	Approximate int
+	Pending     int
+	NotFound    int
 }

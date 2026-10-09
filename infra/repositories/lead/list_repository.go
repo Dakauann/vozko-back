@@ -23,6 +23,7 @@ type listQuery struct {
 	desc       infracrmfilter.LeadDescriptor
 	where      string
 	args       []interface{}
+	filtered   bool
 	areas      bool
 	areaBounds []crmfilter.AreaBounds
 	rank       string
@@ -58,7 +59,7 @@ func (r *repository) compile(input lead.ListLeadsInput) (*listQuery, error) {
 	}
 
 	rank, rankArgs, _ := desc.SearchOrder(input.Filter)
-	return &listQuery{desc: desc, where: where, args: all, areas: leadarea.HasArea(input.Filter), areaBounds: input.Filter.BoundAreas(), rank: rank, rankArgs: rankArgs}, nil
+	return &listQuery{desc: desc, where: where, args: all, filtered: frag != "", areas: leadarea.HasArea(input.Filter), areaBounds: input.Filter.BoundAreas(), rank: rank, rankArgs: rankArgs}, nil
 }
 
 func (q *listQuery) filteredIDs() string {

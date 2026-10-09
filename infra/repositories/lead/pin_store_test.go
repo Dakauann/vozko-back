@@ -41,7 +41,7 @@ func TestSaveReleasesTheGeocodeClaimWhenAPositionChanges(t *testing.T) {
 			mock.ExpectQuery(`UPDATE leads SET number`).WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(5))
 			mock.ExpectQuery(`SELECT \* FROM "lead_phones"`).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 			mock.ExpectQuery(`SELECT \* FROM "lead_addresses"`).WillReturnRows(storedPinnedRow("reference", -23.56, -46.65))
-			args := append(anyArgs(22), addressUUID, leadUUID, wsUUID)
+			args := append(anyArgs(21), addressUUID, leadUUID, wsUUID)
 			args[0], args[13], args[14], args[15], args[16] = string(tc.label), tc.fix.Point.Lat, tc.fix.Point.Lng, string(tc.fix.Precision), string(tc.fix.Source)
 			mock.ExpectExec(exact(tc.sql)).WithArgs(args...).WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectCommit()

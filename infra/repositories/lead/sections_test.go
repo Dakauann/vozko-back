@@ -43,19 +43,17 @@ func TestReadSummary_CountsEveryTileInOnePass(t *testing.T) {
 		`COUNT\(\*\) FILTER \(WHERE la\.latitude IS NOT NULL AND la\.geo_precision = ANY\(\$1\)\) AS on_map, `+
 		`COUNT\(\*\) FILTER \(WHERE la\.latitude IS NOT NULL AND NOT COALESCE\(la\.geo_precision = ANY\(\$2\), false\)\) AS approximate, `+
 		`COUNT\(\*\) FILTER \(WHERE la\.lead_id IS NOT NULL AND la\.latitude IS NULL AND la\.geo_status = ANY\(\$3\)\) AS not_found, `+
-		`COUNT\(\*\) FILTER \(WHERE la\.lead_id IS NOT NULL AND la\.latitude IS NULL AND la\.geo_status = \$4\) AS quota_exceeded, `+
-		`COUNT\(\*\) FILTER \(WHERE la\.lead_id IS NOT NULL AND la\.latitude IS NULL AND la\.geo_status = \$5\) AS refused, `+
-		`COUNT\(\*\) FILTER \(WHERE la\.lead_id IS NOT NULL AND la\.latitude IS NULL AND NOT COALESCE\(la\.geo_status = ANY\(\$6\), false\)\) AS pending, `+
+		`COUNT\(\*\) FILTER \(WHERE la\.lead_id IS NOT NULL AND la\.latitude IS NULL AND NOT COALESCE\(la\.geo_status = ANY\(\$4\), false\)\) AS pending, `+
 		`COUNT\(\*\) FILTER \(WHERE leads\.birth_date IS NOT NULL AND .*\) AS birthdays_today, `+
 		`COUNT\(\*\) FILTER \(WHERE leads\.blocked\) AS blocked, `+
 		`COUNT\(\*\) FILTER \(WHERE leads\.id IN \(SELECT lmw_s\.lead_id FROM lead_message_windows lmw_s WHERE lmw_s\.last_message_at > NOW\(\) - INTERVAL '24 hours'\)\) AS window_open `+
 		`FROM leads LEFT JOIN lead_addresses la ON la\.lead_id = leads\.id AND la\.is_primary AND la\.workspace_id = leads\.workspace_id `+
-		`WHERE leads\.workspace_id = \$11 AND leads\.deleted_at IS NULL$`).
-		WithArgs(pinning, pinning, valueOf(t, infracrmfilter.GeoStatusArray(lead.UnlocatedGeoStatuses())), "quota_exceeded", "refused",
-			valueOf(t, infracrmfilter.GeoStatusArray(append(lead.UnlocatedGeoStatuses(), lead.GeoQuotaExceeded, lead.GeoRefused))),
+		`WHERE leads\.workspace_id = \$9 AND leads\.deleted_at IS NULL$`).
+		WithArgs(pinning, pinning, valueOf(t, infracrmfilter.GeoStatusArray(lead.UnlocatedGeoStatuses())),
+			valueOf(t, infracrmfilter.GeoStatusArray(lead.UnlocatedGeoStatuses())),
 			int64(10), int64(8), int64(10), int64(8), pageWorkspace).
-		WillReturnRows(sqlmock.NewRows([]string{"total", "with_address", "on_map", "approximate", "not_found", "quota_exceeded", "refused", "pending", "birthdays_today", "blocked", "window_open"}).
-			AddRow(100, 40, 10, 5, 4, 1, 9, 6, 2, 3, 7))
+		WillReturnRows(sqlmock.NewRows([]string{"total", "with_address", "on_map", "approximate", "not_found", "pending", "birthdays_today", "blocked", "window_open"}).
+			AddRow(100, 40, 10, 5, 4, 6, 2, 3, 7))
 	mock.ExpectCommit()
 
 	got, err := r.ReadSummary(context.Background(), sectionQuery())
@@ -65,7 +63,7 @@ func TestReadSummary_CountsEveryTileInOnePass(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
 	}
-	want := lead.SummarySection{Total: 100, WithAddress: 40, OnMap: 10, Approximate: 5, WithoutAddress: 60, NotFound: 4, QuotaExceeded: 1, Refused: 9, Pending: 6, BirthdaysToday: 2, Blocked: 3, WindowOpen: 7}
+	want := lead.SummarySection{Total: 100, WithAddress: 40, OnMap: 10, Approximate: 5, WithoutAddress: 60, NotFound: 4, Pending: 6, BirthdaysToday: 2, Blocked: 3, WindowOpen: 7}
 	if *got != want {
 		t.Fatalf("ReadSummary() = %+v, want %+v", *got, want)
 	}

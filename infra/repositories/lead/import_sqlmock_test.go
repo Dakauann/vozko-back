@@ -236,9 +236,9 @@ func TestPlacementCountsTheAddressesTheImportAdded(t *testing.T) {
 
 	mock.ExpectQuery(exact(importPlacementSQL)).
 		WithArgs(append(bound, wsUUID, importUUID)...).
-		WillReturnRows(sqlmock.NewRows([]string{"on_map", "approximate", "not_found", "quota_exceeded", "refused", "pending"}).AddRow(3088, 1920, 12, 4, 1, 709))
+		WillReturnRows(sqlmock.NewRows([]string{"on_map", "approximate", "not_found", "pending"}).AddRow(3088, 1920, 12, 709))
 	got, err := imports.Placement(context.Background(), wsUUID, importUUID)
-	if err != nil || got != (leadimport.Placement{OnMap: 3088, Approximate: 1920, NotFound: 12, QuotaExceeded: 4, Refused: 1, Pending: 709}) {
+	if err != nil || got != (leadimport.Placement{OnMap: 3088, Approximate: 1920, NotFound: 12, Pending: 709}) {
 		t.Fatalf("Placement = %+v, %v", got, err)
 	}
 	if _, err := imports.Placement(context.Background(), wsUUID, "not-a-uuid"); !errors.Is(err, leadimport.ErrNotFound) {

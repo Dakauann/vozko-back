@@ -91,8 +91,7 @@ func TestFixValidate(t *testing.T) {
 		expected error
 	}{
 		{"accepts a reference fix", Fix{Point: point, Precision: PrecisionStreet, Source: SourceReference}, nil},
-		{"accepts a provider fix that names the provider", Fix{Point: point, Precision: PrecisionAddress, Source: SourceProvider, Provider: "opencage"}, nil},
-		{"refuses a provider fix without the provider, so attribution is never lost", Fix{Point: point, Precision: PrecisionAddress, Source: SourceProvider}, ErrInvalidFix},
+		{"refuses the retired provider source, so positions come only from the reference, imports and pins", Fix{Point: point, Precision: PrecisionAddress, Source: "provider"}, ErrInvalidFix},
 		{"refuses an unknown precision", Fix{Point: point, Precision: "rooftop", Source: SourceReference}, ErrInvalidFix},
 		{"refuses an unknown source", Fix{Point: point, Precision: PrecisionCity, Source: "guess"}, ErrInvalidFix},
 		{"refuses an invalid point", Fix{Precision: PrecisionCity, Source: SourceReference}, ErrInvalidPoint},
@@ -113,14 +112,10 @@ func TestFixValidate(t *testing.T) {
 func TestChoose(t *testing.T) {
 	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	fix := func(precision Precision, source FixSource) Fix {
-		f := Fix{Point: Point{Lat: -23.55, Lng: -46.63}, Precision: precision, Source: source, FixedAt: at}
-		if source == SourceProvider {
-			f.Provider = "opencage"
-		}
-		return f
+		return Fix{Point: Point{Lat: -23.55, Lng: -46.63}, Precision: precision, Source: source, FixedAt: at}
 	}
 	ptr := func(f Fix) *Fix { return &f }
-	invalid := Fix{Precision: PrecisionExact, Source: SourceProvider, Provider: "opencage"}
+	invalid := Fix{Precision: PrecisionExact, Source: SourceImport}
 
 	tests := []struct {
 		name       string
@@ -130,16 +125,16 @@ func TestChoose(t *testing.T) {
 		changed    bool
 	}{
 		{"no current takes the best candidate", nil, []Fix{fix(PrecisionCity, SourceReference), fix(PrecisionStreet, SourceReference), fix(PrecisionDistrict, SourceReference)}, fix(PrecisionStreet, SourceReference), true},
-		{"ties keep the first candidate in chain order", nil, []Fix{fix(PrecisionStreet, SourceReference), fix(PrecisionStreet, SourceProvider)}, fix(PrecisionStreet, SourceReference), true},
+		{"ties keep the first candidate in chain order", nil, []Fix{fix(PrecisionStreet, SourceReference), fix(PrecisionStreet, SourceImport)}, fix(PrecisionStreet, SourceReference), true},
 		{"no current and no candidates changes nothing", nil, nil, Fix{}, false},
 		{"invalid candidates are never chosen", nil, []Fix{invalid}, Fix{}, false},
 		{"an invalid candidate does not hide a valid one", nil, []Fix{invalid, fix(PrecisionCity, SourceReference)}, fix(PrecisionCity, SourceReference), true},
-		{"a strictly better candidate replaces the current fix", ptr(fix(PrecisionDistrict, SourceReference)), []Fix{fix(PrecisionAddress, SourceProvider)}, fix(PrecisionAddress, SourceProvider), true},
-		{"an equal candidate keeps the current fix", ptr(fix(PrecisionStreet, SourceReference)), []Fix{fix(PrecisionStreet, SourceProvider)}, fix(PrecisionStreet, SourceReference), false},
+		{"a strictly better candidate replaces the current fix", ptr(fix(PrecisionDistrict, SourceReference)), []Fix{fix(PrecisionAddress, SourceImport)}, fix(PrecisionAddress, SourceImport), true},
+		{"an equal candidate keeps the current fix", ptr(fix(PrecisionStreet, SourceReference)), []Fix{fix(PrecisionStreet, SourceImport)}, fix(PrecisionStreet, SourceReference), false},
 		{"a worse candidate keeps the current fix", ptr(fix(PrecisionStreet, SourceReference)), []Fix{fix(PrecisionCity, SourceReference)}, fix(PrecisionStreet, SourceReference), false},
-		{"a manual pin is never replaced", ptr(fix(PrecisionCity, SourceManual)), []Fix{fix(PrecisionAddress, SourceProvider)}, fix(PrecisionCity, SourceManual), false},
+		{"a manual pin is never replaced", ptr(fix(PrecisionCity, SourceManual)), []Fix{fix(PrecisionAddress, SourceImport)}, fix(PrecisionCity, SourceManual), false},
 		{"a location the lead sent is never replaced", ptr(fix(PrecisionDistrict, SourceLeadPin)), []Fix{fix(PrecisionExact, SourceImport)}, fix(PrecisionDistrict, SourceLeadPin), false},
-		{"an imported exact fix is not replaced by a provider address", ptr(fix(PrecisionExact, SourceImport)), []Fix{fix(PrecisionAddress, SourceProvider)}, fix(PrecisionExact, SourceImport), false},
+		{"an imported exact fix is not replaced by an imported address", ptr(fix(PrecisionExact, SourceImport)), []Fix{fix(PrecisionAddress, SourceImport)}, fix(PrecisionExact, SourceImport), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

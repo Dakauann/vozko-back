@@ -33,6 +33,14 @@ Contraste mínimo e legibilidade estão em design-de-imagem. Aqui fica a identid
 - Sombras na direção do tom mais escuro da paleta, luzes na direção do mais claro (camadas de tratamento em profundidade-e-camadas).
 - A cor do assunto vira o acento ou é neutralizada; fundo menos saturado, assunto mais saturado.
 
+## Correção de cor de foto e vídeo
+- set_color corrige imagens (layer_id) e clipes de vídeo ou imagem (clip_id) como um colorista: primeiro a luz, depois a cor, por último o look.
+- Luz: exposure em stops (0,3 a 0,7 salva uma foto escura; acima de 1,5 estoura o céu). Contraste de 10 a 30 dá corpo; highlights negativo recupera céu e pele brilhante; shadows positivo abre rostos no contraluz; blacks positivo desbota os pretos para um ar de filme.
+- Cor: corrija a temperatura e o tint até o branco parecer branco antes de criar clima. Prefira vibrance a saturation para avivar sem queimar a pele; saturation entre -15 e 20 em quase tudo.
+- Looks (look e look_intensity) são pontos de partida: warm, cool, faded, mono, punchy, dramatic, soft e vintage. Use de 0,4 a 0,8 de intensidade e ajuste color_grade por cima. Um look para a peça ou o vídeo inteiro, igual em todos os clipes.
+- Combine os clipes de um vídeo: a mesma temperatura e a mesma exposição percebida entre cenas. Confira com studio_look lado a lado.
+- reset_color tira tudo; um valor 0 em color_grade tira só aquele ajuste.
+
 ## Tema escuro e claro
 - Escuro: quase preto tingido com a cor da peça (luminosidade 8 a 15, como #12101a), texto em branco tingido, acento de croma alto, brilho só no que emite luz.
 - Claro: papel tingido em vez de branco puro (o branco puro combina com suíço e tecnologia limpa), tinta quase preta da cor da peça, uma versão mais escura do acento para texto pequeno.

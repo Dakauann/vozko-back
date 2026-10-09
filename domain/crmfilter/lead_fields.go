@@ -257,13 +257,11 @@ const (
 	PlacementWithoutAddress GeoPlacement = "without_address"
 	PlacementNotFound       GeoPlacement = "not_found"
 	PlacementPending        GeoPlacement = "pending"
-	PlacementQuotaExceeded  GeoPlacement = "quota_exceeded"
-	PlacementRefused        GeoPlacement = "refused"
 )
 
 var geoPlacements = []GeoPlacement{
 	PlacementOnMap, PlacementApproximate, PlacementWithoutAddress, PlacementNotFound,
-	PlacementPending, PlacementQuotaExceeded, PlacementRefused,
+	PlacementPending,
 }
 
 func GeoPlacements() []GeoPlacement { return append([]GeoPlacement(nil), geoPlacements...) }

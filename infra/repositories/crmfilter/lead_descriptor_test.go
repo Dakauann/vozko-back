@@ -90,7 +90,7 @@ func TestLeadStageResolvesEntriesOnEveryChannel(t *testing.T) {
 			t.Errorf("stage predicate cannot see %s entries: %q", table, sql)
 		}
 	}
-	if !strings.Contains(sql, "es.stage_id = ANY(?)") {
+	if !strings.Contains(sql, "tg.stage_id = ANY(?)") {
 		t.Errorf("stage predicate does not match on stage_id: %q", sql)
 	}
 }
@@ -103,8 +103,13 @@ func TestLeadTagMembershipCarriesWorkspaceScope(t *testing.T) {
 		if !strings.Contains(sql, "workspace_id = ?") {
 			t.Errorf("%s membership is not workspace-scoped: %q", field, sql)
 		}
-		if len(args) != 2 || args[1] != "ws-1" {
-			t.Errorf("%s args = %v, want the id set followed by the workspace id", field, args)
+		if len(args) == 0 || len(args)%2 != 0 {
+			t.Errorf("%s args = %v, want the id set followed by the workspace id for every channel", field, args)
+		}
+		for i := 1; i < len(args); i += 2 {
+			if args[i] != "ws-1" {
+				t.Errorf("%s args = %v, want the id set followed by the workspace id for every channel", field, args)
+			}
 		}
 	}
 }

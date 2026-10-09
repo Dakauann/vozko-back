@@ -151,10 +151,6 @@ func (f *mapFixture) sections(t *testing.T, perms fakePermissions) *MapSections 
 	return s
 }
 
-func streetLayer() LayerQuery {
-	return LayerQuery{BBox: geo.BBox{South: -23.57, West: -46.67, North: -23.55, East: -46.64}, Zoom: 15}
-}
-
 func streetTile() TileQuery {
 	return TileQuery{Z: 15, X: 12136, Y: 18589}
 }
@@ -207,9 +203,6 @@ func TestEveryMapSectionNeedsLeadsAndFullAddresses(t *testing.T) {
 		if _, err := s.Summary(ctx, operator(), crmfilter.Filter{}); !errors.Is(err, lead.ErrLeadForbidden) {
 			t.Fatalf("%s: summary = %v", name, err)
 		}
-		if _, err := s.Layer(ctx, operator(), crmfilter.Filter{}, streetLayer()); !errors.Is(err, lead.ErrLeadForbidden) {
-			t.Fatalf("%s: layer = %v", name, err)
-		}
 		if _, err := s.Tile(ctx, operator(), crmfilter.Filter{}, streetTile()); !errors.Is(err, lead.ErrLeadForbidden) {
 			t.Fatalf("%s: tile = %v", name, err)
 		}
@@ -225,74 +218,6 @@ func TestEveryMapSectionNeedsLeadsAndFullAddresses(t *testing.T) {
 		if len(f.reader.scopes) != 0 {
 			t.Fatalf("%s: a refused section reads nothing", name)
 		}
-	}
-}
-
-func TestTheLayerDrawsPointsUpToFiveThousandPositionsWithTheirTones(t *testing.T) {
-	f := newMapFixture()
-	f.reader.points = []leadmap.Point{
-		{Position: geo.Point{Lat: -23.56, Lng: -46.65}, Precision: geo.PrecisionStreet, People: 3, LeadIDs: []string{"a", "b", "c"}, Value: "alto"},
-		{Position: geo.Point{Lat: -23.55, Lng: -46.64}, Precision: geo.PrecisionExact, People: 1, LeadIDs: []string{"d"}, Value: "baixo"},
-	}
-	q := streetLayer()
-	q.ColorBy = "interesse"
-	layer, err := f.sections(t, mapViewer).Layer(context.Background(), operator(), crmfilter.Filter{}, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if layer.Kind != leadmap.LayerPoints || len(layer.Points) != 2 {
-		t.Fatalf("layer = %+v", layer)
-	}
-	if layer.Points[0].Tone != customfield.ToneChart2 || layer.Points[1].Tone != customfield.ToneNeutral {
-		t.Fatalf("tones = %q %q, want the option tone and neutral for an option without one", layer.Points[0].Tone, layer.Points[1].Tone)
-	}
-	if q := f.reader.requests[0]; q.MaxPoints != leadmap.MaxPoints || q.ColorByKey != "interesse" || q.CellSize != snapped(t, streetLayer()).CellSize(geo.MaxCellsPerAxis) {
-		t.Fatalf("the reader is asked with the 5,000 switch, the colour-by and the zoom cell size: %+v", q)
-	}
-	if f.gate.acquired != 1 {
-		t.Fatalf("the layer runs behind the gate, acquired %d", f.gate.acquired)
-	}
-}
-
-func TestTheLayerBecomesCellsPastFiveThousandPositions(t *testing.T) {
-	f := newMapFixture()
-	f.reader.points = make([]leadmap.Point, leadmap.MaxPoints+1)
-	f.reader.cells = []leadmap.Cell{{IX: -1, IY: -2, People: 9000, Center: geo.Point{Lat: -23.5, Lng: -46.6}}}
-	q := LayerQuery{BBox: geo.BBox{South: -24, West: -47, North: -23, East: -46}, Zoom: 10}
-	layer, err := f.sections(t, mapViewer).Layer(context.Background(), operator(), crmfilter.Filter{}, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if layer.Kind != leadmap.LayerCells || len(layer.Cells) != 1 || len(layer.Points) != 0 {
-		t.Fatalf("layer = %+v", layer)
-	}
-	if layer.CellSize != snapped(t, q).CellSize(geo.MaxCellsPerAxis) || f.reader.requests[0].Claim != snapped(t, q).Claim() {
-		t.Fatalf("cell size = %v, want the window's bounded cell size", layer.CellSize)
-	}
-}
-
-func TestTheLayerRefusesWhatCannotBeDrawnBeforeReading(t *testing.T) {
-	cases := []struct {
-		name string
-		q    LayerQuery
-		want error
-	}{
-		{"an inverted box", LayerQuery{BBox: geo.BBox{South: -23, West: -46, North: -24, East: -45}, Zoom: 10}, geo.ErrInvalidBBox},
-		{"no zoom past the tiles", LayerQuery{BBox: geo.BBox{South: -24, West: -47, North: -23, East: -46}, Zoom: 30}, geo.ErrInvalidWindow},
-		{"the country at street zoom", LayerQuery{BBox: geo.BrazilBounds(), Zoom: 16}, geo.ErrWindowTooWide},
-		{"an unknown colour-by", LayerQuery{BBox: geo.BBox{South: -24, West: -47, North: -23, East: -46}, Zoom: 10, ColorBy: "partido"}, leadmap.ErrColorByInvalid},
-		{"a sensitive colour-by", LayerQuery{BBox: geo.BBox{South: -24, West: -47, North: -23, East: -46}, Zoom: 10, ColorBy: "classificacao"}, leadmap.ErrColorByForbidden},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newMapFixture()
-			if _, err := f.sections(t, mapViewer).Layer(context.Background(), operator(), crmfilter.Filter{}, tc.q); !errors.Is(err, tc.want) {
-				t.Fatalf("Layer() = %v, want %v", err, tc.want)
-			}
-			if len(f.reader.scopes) != 0 {
-				t.Fatal("a refused layer reads nothing")
-			}
-		})
 	}
 }
 
@@ -314,7 +239,6 @@ func TestAnAreaIsResolvedBeforeEverySectionAndADeletedOneRefuses(t *testing.T) {
 	calls := len(f.reader.scopes)
 	for name, run := range map[string]func() error{
 		"summary":   func() error { _, err := s.Summary(ctx, operator(), areaOnly()); return err },
-		"layer":     func() error { _, err := s.Layer(ctx, operator(), areaOnly(), streetLayer()); return err },
 		"tile":      func() error { _, err := s.Tile(ctx, operator(), areaOnly(), streetTile()); return err },
 		"districts": func() error { _, err := s.Districts(ctx, operator(), areaOnly()); return err },
 		"viewport":  func() error { _, err := s.Viewport(ctx, operator(), areaOnly()); return err },
@@ -329,38 +253,6 @@ func TestAnAreaIsResolvedBeforeEverySectionAndADeletedOneRefuses(t *testing.T) {
 	}
 	if len(f.reader.scopes) != calls {
 		t.Fatal("a deleted area reads nothing")
-	}
-}
-
-func TestTheCacheKeyFollowsTheGenerationTheAreaEditAndTheTiles(t *testing.T) {
-	ctx := context.Background()
-	f := newMapFixture()
-	s := f.sections(t, mapViewer)
-	run := func(q LayerQuery) {
-		t.Helper()
-		if _, err := s.Layer(ctx, operator(), areaOnly(), q); err != nil {
-			t.Fatal(err)
-		}
-	}
-	run(streetLayer())
-	run(streetLayer())
-	if len(f.reader.scopes) != 1 {
-		t.Fatalf("the same window twice reads once, read %d", len(f.reader.scopes))
-	}
-	moved := streetLayer()
-	moved.BBox.West, moved.BBox.East = -46.70, -46.68
-	run(moved)
-	f.areas.updated = time.Unix(200, 0)
-	run(streetLayer())
-	f.versions.generation++
-	run(streetLayer())
-	if len(f.reader.scopes) != 4 {
-		t.Fatalf("other tiles, a reshaped area and a new generation each read again: %d reads", len(f.reader.scopes))
-	}
-	for _, key := range f.memo.keys {
-		if !strings.HasPrefix(key, "leads:map:"+cmdWorkspace+":") {
-			t.Fatalf("key %q is not scoped to the workspace", key)
-		}
 	}
 }
 
@@ -450,15 +342,6 @@ func TestAnUnknownCustomFieldInTheMapFilterIsAnInvalidFilter(t *testing.T) {
 	if _, err := f.sections(t, mapViewer).Summary(context.Background(), operator(), bad); !errors.Is(err, lead.ErrLeadFilterInvalid) {
 		t.Fatalf("summary = %v, want ErrLeadFilterInvalid", err)
 	}
-}
-
-func snapped(t *testing.T, q LayerQuery) geo.Window {
-	t.Helper()
-	w, err := geo.SnapWindow(q.BBox, q.Zoom)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return w
 }
 
 func TestTheLeftOutSectionReadsEveryExactOnlyAreaThroughApproximatePositions(t *testing.T) {
@@ -641,13 +524,6 @@ func TestEachTileIsCachedByItsOwnKeyAndReadAgainWhenTheDataTheAreaTheTierOrTheCo
 	run(sensitive, streetTile())
 	if len(f.reader.scopes) != 6 {
 		t.Fatalf("a colour-by, a reshaped area, a new generation and another field tier each read again: %d reads", len(f.reader.scopes))
-	}
-	layerKeys := len(f.memo.keys)
-	if _, err := s.Layer(ctx, operator(), areaOnly(), streetLayer()); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.memo.keys) == layerKeys {
-		t.Fatal("a tile never shares a cache entry with a window")
 	}
 	for _, key := range f.memo.keys {
 		if !strings.HasPrefix(key, "leads:map:"+cmdWorkspace+":") {

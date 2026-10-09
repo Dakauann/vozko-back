@@ -19,14 +19,16 @@ Texto animado serve à leitura: o movimento leva o olho para a próxima ideia e 
 - A ordem segue a leitura: da esquerda para a direita e de cima para baixo.
 
 ## Palavra por palavra e linha por linha
-- Cada palavra ou linha é um add_text com at_ms escalonado, todas com a mesma fonte, tamanho e alinhamento, posicionadas como a frase montada.
-- Entrada típica: entrance slideUp curta, ou animate em y subindo 2% a 4% do quadro com cubic-bezier(0.05,0.7,0.1,1) e opacity de 0 para 1.
-- Saída: todas juntas com exit fade, ou escalonadas na mesma ordem e mais rápidas que a entrada.
-- Palavra de impacto: a palavra principal entra por último, maior, com motion_preset pop ou scale de 0,8 para 1 com backOut.
+- Um texto só, animado por partes: animate_text(clip_id, side in, text_style, unit, duration_ms?, stagger_ms?, easing?). unit char anima letra por letra, word palavra por palavra, line linha por linha; duration_ms é o tempo de cada parte e stagger_ms o atraso entre uma parte e a seguinte. Sem esses campos valem os tempos do estilo, que já seguem o escalonamento acima.
+- Estilos: rise sobe para o lugar (a entrada típica), fade surge, slide entra pela esquerda, pop cresce passando do tamanho, blur sai do desfoque, typewriter aparece de uma vez como digitação.
+- Saída: animate_text com side out; as partes saem na mesma ordem e a última termina junto com o fim do clipe. text_style none tira a animação daquele lado.
+- O texto todo continua um clipe: entrance, exit, animate e transições valem por cima das partes. Texto em curva anima como uma peça só.
+- Palavra de impacto: a palavra principal fica num add_text separado que entra por último, maior, com motion_preset pop ou animate_text pop.
+- Exemplo: [{"op":"add_text","ref":"t","text":"Oferta de hoje","style":"headline","at_ms":0,"duration_ms":3000},{"op":"animate_text","clip_id":"@t","side":"in","text_style":"rise","unit":"word"},{"op":"animate_text","clip_id":"@t","side":"out","text_style":"fade","unit":"line","stagger_ms":0}].
 
 ## Máquina de escrever
-- Revele o texto aumentando a frase, nunca piscando letra por letra: uma sequência de clipes de texto com a frase crescendo, cada um trocado no ponto exato, sem transição.
-- Cerca de 2 quadros por letra (15 letras por segundo) e uma pausa de cerca de 1 segundo nas quebras de frase.
+- animate_text com text_style typewriter e unit char revela a frase crescendo, uma letra de cada vez, sem piscar.
+- Cerca de 2 quadros por letra (stagger_ms 55 a 70, o padrão é 55); para uma pausa de cerca de 1 segundo numa quebra de frase, divida em dois textos.
 - Cursor opcional: um retângulo fino depois do texto com opacity indo de 1 a 0 e voltando a cada 16 quadros com easeInOut; um piscar seco parece defeito.
 
 ## Destaque de palavra

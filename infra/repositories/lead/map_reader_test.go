@@ -185,8 +185,6 @@ func TestSummaryBuildsOnTheListSummaryAndAddsTheGeocodingBuckets(t *testing.T) {
 	}
 	for _, fragment := range []string{
 		"COUNT(*) FILTER (WHERE la.lead_id IS NOT NULL AND la.latitude IS NULL AND la.geo_status = ANY(?)) AS not_found",
-		"COUNT(*) FILTER (WHERE la.lead_id IS NOT NULL AND la.latitude IS NULL AND la.geo_status = ?) AS quota_exceeded",
-		"COUNT(*) FILTER (WHERE la.lead_id IS NOT NULL AND la.latitude IS NULL AND la.geo_status = ?) AS refused",
 		"COUNT(*) FILTER (WHERE la.lead_id IS NOT NULL AND la.latitude IS NULL AND NOT COALESCE(la.geo_status = ANY(?), false)) AS pending",
 		" FROM leads LEFT JOIN lead_addresses la ON la.lead_id = leads.id AND la.is_primary AND la.workspace_id = leads.workspace_id WHERE " + m.leads.where,
 	} {
@@ -195,8 +193,8 @@ func TestSummaryBuildsOnTheListSummaryAndAddsTheGeocodingBuckets(t *testing.T) {
 		}
 	}
 	assertPlaceholders(t, "summary", sql, args)
-	wantHead := []interface{}{pinning, pinning, pq.StringArray{"not_found", "ambiguous"}, "quota_exceeded", "refused", pq.StringArray{"not_found", "ambiguous", "quota_exceeded", "refused"}}
-	if !reflect.DeepEqual(args[:6], wantHead) {
+	wantHead := []interface{}{pinning, pinning, pq.StringArray{"not_found"}, pq.StringArray{"not_found"}}
+	if !reflect.DeepEqual(args[:4], wantHead) {
 		t.Fatalf("summary args = %#v", args)
 	}
 }
@@ -406,6 +404,7 @@ func expectMapSession(mock sqlmock.Sqlmock) {
 	mock.ExpectExec(regexp.QuoteMeta("SET LOCAL work_mem = '32MB'")).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(regexp.QuoteMeta("SET LOCAL jit = off")).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(regexp.QuoteMeta("SET LOCAL statement_timeout = '5s'")).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(regexp.QuoteMeta("SET LOCAL plan_cache_mode = force_custom_plan")).WillReturnResult(sqlmock.NewResult(0, 0))
 }
 
 func TestMapReaderRunsTheSummaryAndScansEveryBucket(t *testing.T) {
@@ -413,14 +412,14 @@ func TestMapReaderRunsTheSummaryAndScansEveryBucket(t *testing.T) {
 	defer sqlDB.Close()
 	expectMapSession(mock)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) AS total,")).
-		WillReturnRows(sqlmock.NewRows([]string{"total", "with_address", "on_map", "approximate", "not_found", "pending", "quota_exceeded", "refused"}).
-			AddRow(100, 75, 40, 20, 5, 8, 2, 3))
+		WillReturnRows(sqlmock.NewRows([]string{"total", "with_address", "on_map", "approximate", "not_found", "pending"}).
+			AddRow(100, 75, 40, 20, 5, 8))
 	mock.ExpectCommit()
 	got, err := NewMapReader(db).Summary(context.Background(), leadmap.Scope{WorkspaceID: mapWorkspace, Filter: blockedFilter()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := leadmap.Summary{Total: 100, OnMap: 40, Approximate: 20, WithoutAddress: 25, NotFound: 5, Pending: 8, QuotaExceeded: 2, Refused: 3}
+	want := leadmap.Summary{Total: 100, OnMap: 40, Approximate: 20, WithoutAddress: 25, NotFound: 5, Pending: 8}
 	if got != want {
 		t.Fatalf("summary = %+v, want %+v", got, want)
 	}

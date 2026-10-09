@@ -44,7 +44,7 @@ func manyPlaces(n int) *lead.PlacesSection {
 
 func TestLeadGeoSummaryCountsTheFilterAndItsBusiestPlaces(t *testing.T) {
 	sections := &fakeLeadSections{
-		summary: &lead.SummarySection{Total: 188000, WithAddress: 120000, OnMap: 90000, Approximate: 20000, WithoutAddress: 68000, NotFound: 3000, Refused: 450, Pending: 7000},
+		summary: &lead.SummarySection{Total: 188000, WithAddress: 120000, OnMap: 90000, Approximate: 20000, WithoutAddress: 68000, NotFound: 3000, Pending: 7000},
 		places:  manyPlaces(lead.MaxPlaceCities),
 	}
 	deps, _ := filterDeps()
@@ -67,9 +67,14 @@ func TestLeadGeoSummaryCountsTheFilterAndItsBusiestPlaces(t *testing.T) {
 	}
 	b, _ := json.Marshal(res.Data)
 	data := string(b)
-	for _, want := range []string{`"total":188000`, `"on_map":90000`, `"without_address":68000`, `"city_key":"sp:cidade 0"`, `"pair":"sp:campinas/bairro 0"`, `"refused":450`, `"more_cities":true`, `"more_districts":true`} {
+	for _, want := range []string{`"total":188000`, `"on_map":90000`, `"without_address":68000`, `"city_key":"sp:cidade 0"`, `"pair":"sp:campinas/bairro 0"`, `"not_found":3000`, `"pending":7000`, `"more_cities":true`, `"more_districts":true`} {
 		if !strings.Contains(data, want) {
 			t.Fatalf("data misses %s: %s", want, data)
+		}
+	}
+	for _, retired := range []string{`"refused"`, `"quota_exceeded"`} {
+		if strings.Contains(data, retired) {
+			t.Fatalf("data still carries %s, a bucket only the retired external provider filled: %s", retired, data)
 		}
 	}
 	if strings.Contains(data, fmt.Sprintf(`"sp:cidade %d"`, geoPlacesShown)) {

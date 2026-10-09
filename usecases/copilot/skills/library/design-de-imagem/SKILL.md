@@ -69,4 +69,4 @@ Esta habilidade é a base: o que o editor faz e o que nenhuma peça pode errar. 
 - Peça certinha mas sem graça: falta conceito, não detalhe. Volte para direcao-de-arte.
 
 ## Conferir
-Corrija as linhas "erro" do campo checks de cada studio_edit_image, veja com studio_look e avalie com critica-de-design antes de entregar. No máximo duas rodadas de ajuste; se o conceito não funciona, refaça em vez de polir.
+Corrija as linhas "erro" do campo checks de cada studio_edit_image, veja com studio_look e avalie com critica-de-design antes de entregar. No máximo duas rodadas de ajuste; se o conceito não funciona, refaça em vez de polir. Quando o usuário pedir o arquivo pronto, studio_export salva PNG ou JPEG na biblioteca (artboards all para todas as pranchetas) e devolve o media_id.

@@ -201,7 +201,6 @@ type Container struct {
 	ads                         *adsBundle
 	mediaGenerationBundle       *mediaGenerationBundle
 	leadImportBundle            *leadImportBundle
-	geocodingBundle             *geocodingBundle
 	leadProfileBundle           *leadProfileBundle
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle

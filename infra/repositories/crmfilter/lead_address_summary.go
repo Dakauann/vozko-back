@@ -12,14 +12,12 @@ func LeadPrimaryAddressJoin(alias string) string {
 }
 
 type LeadAddressSummaryRow struct {
-	Total         int64
-	WithAddress   int64
-	OnMap         int64
-	Approximate   int64
-	NotFound      int64
-	QuotaExceeded int64
-	Refused       int64
-	Pending       int64
+	Total       int64
+	WithAddress int64
+	OnMap       int64
+	Approximate int64
+	NotFound    int64
+	Pending     int64
 }
 
 func (r LeadAddressSummaryRow) Summary() leadmap.Summary {
@@ -30,7 +28,5 @@ func (r LeadAddressSummaryRow) Summary() leadmap.Summary {
 		WithoutAddress: r.Total - r.WithAddress,
 		NotFound:       r.NotFound,
 		Pending:        r.Pending,
-		QuotaExceeded:  r.QuotaExceeded,
-		Refused:        r.Refused,
 	}
 }

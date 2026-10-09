@@ -158,7 +158,7 @@ func (c contactChannel) channelRowIn() string {
 
 var leadChannelsInWorkspace = unionOver(
 	"SELECT wce_c.lead_id AS lead_id, 'whatsapp' AS channel FROM whatsapp_campaign_entries wce_c WHERE wce_c.deleted_at IS NULL"+
-		" AND wce_c.campaign_id IN (SELECT wc_c.id FROM whatsapp_campaigns wc_c WHERE wc_c.workspace_id = ?)"+
+		" AND "+CampaignEntriesInWorkspace("wce_c", "wc_c")+
 		" UNION ALL SELECT lmw_c.lead_id, 'whatsapp' FROM lead_message_windows lmw_c",
 	contactChannel.channelRowIn, "lead_channels")
 
@@ -217,18 +217,29 @@ func (d LeadDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 		}, nil
 
 	case crmfilter.FieldCampaignStatus:
+		statusExtra, statusArgs := d.campaignEntryScope("wce_s", "wc_s")
 		return FieldMapping{
-			Style:   StyleMembership,
-			Kind:    crmfilter.KindEnum,
-			Subject: d.id(),
-			From:    "whatsapp_campaign_entries wce_s",
-			Select:  "wce_s.lead_id",
-			Match:   "wce_s.status",
-			Extra:   "wce_s.deleted_at IS NULL",
+			Style:     StyleMembership,
+			Kind:      crmfilter.KindEnum,
+			Subject:   d.id(),
+			From:      "whatsapp_campaign_entries wce_s",
+			Select:    "wce_s.lead_id",
+			Match:     "wce_s.status",
+			Extra:     statusExtra,
+			ExtraArgs: statusArgs,
 		}, nil
 
 	case crmfilter.FieldCampaignCount:
-		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindNumber, Expr: d.CampaignCountExpr()}, nil
+		countExtra, countArgs := d.campaignEntryScope("wce_n", "wc_n")
+		return FieldMapping{
+			Style:     StyleCount,
+			Kind:      crmfilter.KindNumber,
+			Subject:   d.id(),
+			From:      "whatsapp_campaign_entries wce_n",
+			Select:    "wce_n.lead_id",
+			Extra:     countExtra,
+			ExtraArgs: countArgs,
+		}, nil
 
 	case crmfilter.FieldWindowOpen:
 		open := d.WindowOpenExpr()
@@ -240,49 +251,33 @@ func (d LeadDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 		}, nil
 
 	case crmfilter.FieldStage:
-		return FieldMapping{
-			Style:     StyleMembership,
-			Kind:      crmfilter.KindIDSet,
-			Subject:   d.id(),
-			From:      "entry_stages es JOIN " + leadEntriesFrom + " ON lead_entries.entry_id = es.entry_id AND lead_entries.entry_type = es.entry_type",
-			Select:    "lead_entries.lead_id",
-			Match:     "es.stage_id",
-			Extra:     tagExtra("es"),
-			ExtraArgs: tagArgs,
-		}, nil
+		return d.taggedField("entry_stages", "stage_id"), nil
 
 	case crmfilter.FieldLabel:
-		return FieldMapping{
-			Style:     StyleMembership,
-			Kind:      crmfilter.KindIDSet,
-			Subject:   d.id(),
-			From:      "entry_labels el JOIN " + leadEntriesFrom + " ON lead_entries.entry_id = el.entry_id AND lead_entries.entry_type = el.entry_type",
-			Select:    "lead_entries.lead_id",
-			Match:     "el.label_id",
-			Extra:     tagExtra("el"),
-			ExtraArgs: tagArgs,
-		}, nil
+		return d.taggedField("entry_labels", "label_id"), nil
 
 	case crmfilter.FieldMemoryCategory:
 		return FieldMapping{
-			Style:   StyleMembership,
-			Kind:    crmfilter.KindEnum,
-			Subject: d.id(),
-			From:    "lead_memories lm_c",
-			Select:  "lm_c.lead_id",
-			Match:   "lm_c.category",
-			Extra:   "lm_c.deleted_at IS NULL",
+			Style:     StyleMembership,
+			Kind:      crmfilter.KindEnum,
+			Subject:   d.id(),
+			From:      "lead_memories lm_c",
+			Select:    "lm_c.lead_id",
+			Match:     "lm_c.category",
+			Extra:     tagExtra("lm_c"),
+			ExtraArgs: tagArgs,
 		}, nil
 
 	case crmfilter.FieldMemoryAuthor:
 		return FieldMapping{
-			Style:   StyleMembership,
-			Kind:    crmfilter.KindEnum,
-			Subject: d.id(),
-			From:    "lead_memories lm_a",
-			Select:  "lm_a.lead_id",
-			Match:   "lm_a.actor_kind",
-			Extra:   "lm_a.deleted_at IS NULL",
+			Style:     StyleMembership,
+			Kind:      crmfilter.KindEnum,
+			Subject:   d.id(),
+			From:      "lead_memories lm_a",
+			Select:    "lm_a.lead_id",
+			Match:     "lm_a.actor_kind",
+			Extra:     tagExtra("lm_a"),
+			ExtraArgs: tagArgs,
 		}, nil
 
 	case crmfilter.FieldMemoryText:
@@ -295,7 +290,15 @@ func (d LeadDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 		}, nil
 
 	case crmfilter.FieldMemoryCount:
-		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindNumber, Expr: d.MemoryCountExpr()}, nil
+		return FieldMapping{
+			Style:     StyleCount,
+			Kind:      crmfilter.KindNumber,
+			Subject:   d.id(),
+			From:      "lead_memories lm_n",
+			Select:    "lm_n.lead_id",
+			Extra:     tagExtra("lm_n"),
+			ExtraArgs: tagArgs,
+		}, nil
 
 	case crmfilter.FieldMemoryUpdatedAt:
 		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindDate, Expr: d.LastMemoryAtExpr()}, nil
@@ -318,4 +321,16 @@ func (d LeadDescriptor) tagScope() (func(alias string) string, []interface{}) {
 		}, []interface{}{d.WorkspaceID}
 	}
 	return func(alias string) string { return alias + ".deleted_at IS NULL" }, nil
+}
+
+func CampaignEntriesInWorkspace(entries, campaigns string) string {
+	return entries + ".campaign_id IN (SELECT " + campaigns + ".id FROM whatsapp_campaigns " + campaigns + " WHERE " + campaigns + ".workspace_id = ?)"
+}
+
+func (d LeadDescriptor) campaignEntryScope(entries, campaigns string) (string, []interface{}) {
+	live := entries + ".deleted_at IS NULL"
+	if d.WorkspaceID == "" {
+		return live, nil
+	}
+	return live + " AND " + CampaignEntriesInWorkspace(entries, campaigns), []interface{}{d.WorkspaceID}
 }

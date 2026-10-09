@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -220,6 +221,134 @@ func TestStudioEditVideoCarriesTheImageDesignVocabulary(t *testing.T) {
 		if !strings.Contains(sent, want) {
 			t.Fatalf("the batch lost %s: %s", want, sent)
 		}
+	}
+}
+
+func TestStudioEditPassesTransitions(t *testing.T) {
+	editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenEdit: {OK: true}}}
+	edit := NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil))
+	args := map[string]interface{}{"operations": []interface{}{
+		map[string]interface{}{"op": "add_transition", "ref": "t", "clip_id": "c-1", "transition_kind": "iris", "iris_shape": "diamond", "origin_x": 0.0, "duration_ms": 600.0, "alignment": "start", "easing": "cubic-bezier(0.2,0,0,1)"},
+		map[string]interface{}{"op": "update_transition", "transition_id": "@t", "reverse": true},
+		map[string]interface{}{"op": "remove_transition", "transition_id": "tr-9"},
+	}}
+	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, editor), args); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	cmd, _ := editor.sent(copilot.ScreenEdit)
+	sent := renderJSON(cmd.Args)
+	for _, want := range []string{"\"transition_kind\":\"iris\"", "\"iris_shape\":\"diamond\"", "\"origin_x\":0", "\"reverse\":true", "\"transition_id\":\"tr-9\""} {
+		if !strings.Contains(sent, want) {
+			t.Fatalf("the batch lost %s: %s", want, sent)
+		}
+	}
+	bad := map[string]interface{}{"operations": []interface{}{map[string]interface{}{"op": "add_transition", "clip_id": "c-1", "transition_kind": "dissolve", "easing": "wiggle"}}}
+	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, &fakeEditor{}), bad); res.Status != copilot.StatusError {
+		t.Fatalf("an unknown easing must be refused, got %+v", res)
+	}
+}
+
+func TestStudioEditPassesTextAnimation(t *testing.T) {
+	editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenEdit: {OK: true}}}
+	edit := NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil))
+	args := map[string]interface{}{"operations": []interface{}{
+		map[string]interface{}{"op": "animate_text", "clip_id": "c-1", "side": "in", "text_style": "rise", "unit": "word", "stagger_ms": 0.0, "easing": "backOut"},
+	}}
+	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, editor), args); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	cmd, _ := editor.sent(copilot.ScreenEdit)
+	sent := renderJSON(cmd.Args)
+	for _, want := range []string{`"op":"animate_text"`, `"side":"in"`, `"text_style":"rise"`, `"unit":"word"`, `"stagger_ms":0`} {
+		if !strings.Contains(sent, want) {
+			t.Fatalf("the batch lost %s: %s", want, sent)
+		}
+	}
+	fields := reflect.TypeOf(studioTextAnimationArgs{})
+	styles, _ := fields.FieldByName("TextStyle")
+	units, _ := fields.FieldByName("Unit")
+	wantStyles := []string{}
+	for _, style := range studio.TextStyles() {
+		wantStyles = append(wantStyles, string(style))
+	}
+	wantUnits := []string{}
+	for _, unit := range studio.TextUnits() {
+		wantUnits = append(wantUnits, string(unit))
+	}
+	if styles.Tag.Get("enum") != strings.Join(append(wantStyles, "none"), ",") || units.Tag.Get("enum") != strings.Join(wantUnits, ",") {
+		t.Fatalf("the schema drifted from the document: %q %q", styles.Tag.Get("enum"), units.Tag.Get("enum"))
+	}
+}
+
+func TestStudioEditPassesSpeed(t *testing.T) {
+	editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenEdit: {OK: true}}}
+	edit := NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil))
+	args := map[string]interface{}{"operations": []interface{}{
+		map[string]interface{}{"op": "set_speed", "clip_id": "c-1", "speed": 0.5, "keep_duration": true, "reverse": true, "preserve_pitch": false, "stretch_keys": false, "ripple": false},
+		map[string]interface{}{"op": "freeze_frame", "clip_id": "c-1", "at_ms": 1200.0, "duration_ms": 2000.0},
+	}}
+	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, editor), args); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	cmd, _ := editor.sent(copilot.ScreenEdit)
+	sent := renderJSON(cmd.Args)
+	for _, want := range []string{`"op":"set_speed"`, `"speed":0.5`, `"keep_duration":true`, `"reverse":true`, `"preserve_pitch":false`, `"stretch_keys":false`, `"ripple":false`, `"op":"freeze_frame"`} {
+		if !strings.Contains(sent, want) {
+			t.Fatalf("the batch lost %s: %s", want, sent)
+		}
+	}
+}
+
+func TestStudioEditPassesColorGrade(t *testing.T) {
+	grade := map[string]interface{}{"exposure": 0.5, "temperature": -20.0, "saturation": 0.0}
+	for _, tool := range []struct {
+		kind   studio.Kind
+		studio copilot.StudioKind
+		edit   func(StudioDeps) copilot.Tool
+		target map[string]interface{}
+	}{
+		{studio.KindVideo, copilot.StudioVideo, func(d StudioDeps) copilot.Tool { return NewStudioEditVideoTool(d) }, map[string]interface{}{"clip_id": "c-1"}},
+		{studio.KindImage, copilot.StudioImage, func(d StudioDeps) copilot.Tool { return NewStudioEditImageTool(d) }, map[string]interface{}{"layer_id": "l-1"}},
+	} {
+		editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenEdit: {OK: true}}}
+		op := map[string]interface{}{"op": "set_color", "color_grade": grade, "look": "warm", "look_intensity": 0.5, "reset_color": true}
+		for key, value := range tool.target {
+			op[key] = value
+		}
+		res := tool.edit(studioDeps(tool.kind, nil, nil)).Execute(context.Background(), studioSession(tool.studio, editor), map[string]interface{}{"operations": []interface{}{op}})
+		if res.Status != copilot.StatusOK {
+			t.Fatalf("%s: result = %+v", tool.kind, res)
+		}
+		cmd, _ := editor.sent(copilot.ScreenEdit)
+		sent := renderJSON(cmd.Args)
+		for _, want := range []string{`"op":"set_color"`, `"exposure":0.5`, `"temperature":-20`, `"saturation":0`, `"look":"warm"`, `"look_intensity":0.5`, `"reset_color":true`} {
+			if !strings.Contains(sent, want) {
+				t.Fatalf("%s: the batch lost %s: %s", tool.kind, want, sent)
+			}
+		}
+	}
+}
+
+func TestStudioEditPassesColorKeys(t *testing.T) {
+	editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenEdit: {OK: true}}}
+	edit := NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil))
+	keys := []interface{}{
+		map[string]interface{}{"at_ms": 0.0, "color": "#ff0000"},
+		map[string]interface{}{"at_ms": 800.0, "color": "#0000ff", "easing": "spring"},
+	}
+	args := map[string]interface{}{"operations": []interface{}{map[string]interface{}{"op": "animate", "clip_id": "c-1", "property": "fill", "keys": keys}}}
+	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, editor), args); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	cmd, _ := editor.sent(copilot.ScreenEdit)
+	sent := renderJSON(cmd.Args)
+	for _, want := range []string{"\"property\":\"fill\"", "\"color\":\"#0000ff\""} {
+		if !strings.Contains(sent, want) {
+			t.Fatalf("the batch lost %s: %s", want, sent)
+		}
+	}
+	if strings.Contains(sent, "\"value\"") {
+		t.Fatalf("a color key must not gain a value: %s", sent)
 	}
 }
 
@@ -506,5 +635,28 @@ func TestStudioLookPassesTheMarksChoiceToTheEditor(t *testing.T) {
 	}
 	if !strings.Contains(renderJSON(look.Definition()), "marks") {
 		t.Fatal("the tool must offer marks")
+	}
+}
+
+func TestStudioExportRunsOnTheEditor(t *testing.T) {
+	editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenExport: {OK: true, Data: json.RawMessage(`{"saved":[{"media_id":"m-1"}]}`)}}}
+	export := NewStudioExportTool(studioDeps(studio.KindImage, nil, nil))
+	res := export.Execute(context.Background(), studioSession(copilot.StudioImage, editor), map[string]interface{}{"format": "jpeg", "scale": 2.0, "artboards": "all", "quality": 0.8})
+	if res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	cmd, ok := editor.sent(copilot.ScreenExport)
+	if !ok {
+		t.Fatal("no export command reached the editor")
+	}
+	sent := renderJSON(cmd.Args)
+	for _, want := range []string{`"format":"jpeg"`, `"scale":2`, `"artboards":"all"`, `"quality":0.8`} {
+		if !strings.Contains(sent, want) {
+			t.Fatalf("the export lost %s: %s", want, sent)
+		}
+	}
+	bad := export.Execute(context.Background(), studioSession(copilot.StudioImage, &fakeEditor{}), map[string]interface{}{"scale": 5.0})
+	if bad.Status != copilot.StatusError {
+		t.Fatalf("a scale out of range must be refused, got %+v", bad)
 	}
 }

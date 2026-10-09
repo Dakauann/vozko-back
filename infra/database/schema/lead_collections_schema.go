@@ -39,7 +39,6 @@ type LeadAddress struct {
 	Longitude    *float64     `gorm:"type:double precision"`
 	GeoPrecision OptionalText `gorm:"type:varchar(16)"`
 	GeoSource    OptionalText `gorm:"type:varchar(16)"`
-	GeoProvider  OptionalText `gorm:"type:varchar(32)"`
 	GeoStatus    string       `gorm:"type:varchar(24);not null"`
 	GeoAttempts  int          `gorm:"not null;default:0"`
 	GeoNextAt    *time.Time   `gorm:"type:timestamptz"`

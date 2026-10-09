@@ -3,7 +3,6 @@ package geo
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"vozko/domain/cep"
@@ -73,7 +72,6 @@ const (
 	SourceLeadPin   FixSource = "lead_pin"
 	SourceImport    FixSource = "import"
 	SourceReference FixSource = "reference"
-	SourceProvider  FixSource = "provider"
 )
 
 var knownSources = map[FixSource]bool{
@@ -81,7 +79,6 @@ var knownSources = map[FixSource]bool{
 	SourceLeadPin:   true,
 	SourceImport:    true,
 	SourceReference: true,
-	SourceProvider:  true,
 }
 
 func (s FixSource) Confirmed() bool {
@@ -92,7 +89,6 @@ type Fix struct {
 	Point     Point
 	Precision Precision
 	Source    FixSource
-	Provider  string
 	FixedAt   time.Time
 }
 
@@ -105,9 +101,6 @@ func (f Fix) Validate() error {
 	}
 	if !knownSources[f.Source] {
 		return fmt.Errorf("%w: unknown source %q", ErrInvalidFix, f.Source)
-	}
-	if f.Source == SourceProvider && strings.TrimSpace(f.Provider) == "" {
-		return fmt.Errorf("%w: a provider fix names its provider", ErrInvalidFix)
 	}
 	return nil
 }

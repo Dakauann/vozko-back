@@ -32,7 +32,7 @@ func migrateLeadTables(t *testing.T, db *gorm.DB) {
 	if err := db.AutoMigrate(&schema.Lead{}, &schema.LeadEvent{}, &schema.LeadPhone{}, &schema.LeadAddress{}, &schema.LeadRelation{},
 		&schema.WhatsAppCampaignEntry{}, &schema.UnofficialWhatsAppContact{}, &schema.UnofficialWhatsAppConversation{},
 		&schema.TelegramContact{}, &schema.TelegramConversation{}, &schema.InstagramContact{}, &schema.InstagramConversation{},
-		&schema.FacebookContact{}, &schema.FacebookConversation{}, &schema.WebchatVisitor{}, &schema.WebchatConversation{}, &schema.CallList{}, &schema.CallListItem{}, &schema.GeocodeCache{}); err != nil {
+		&schema.FacebookContact{}, &schema.FacebookConversation{}, &schema.WebchatVisitor{}, &schema.WebchatConversation{}, &schema.CallList{}, &schema.CallListItem{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	if err := database.CreateLeadCollectionConstraints(db); err != nil {

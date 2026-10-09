@@ -10,83 +10,12 @@ import (
 	"vozko/domain/cep"
 )
 
-type OutcomeKind string
-
-const (
-	OutcomeLocated     OutcomeKind = "located"
-	OutcomeNotFound    OutcomeKind = "not_found"
-	OutcomeAmbiguous   OutcomeKind = "ambiguous"
-	OutcomeUnavailable OutcomeKind = "unavailable"
-)
-
 type UnavailableReason string
 
 const (
-	ReasonProviderNotConfigured UnavailableReason = "provider_not_configured"
-	ReasonProviderDown          UnavailableReason = "provider_down"
-	ReasonQueryRefused          UnavailableReason = "query_refused"
-	ReasonKeyRejected           UnavailableReason = "key_rejected"
-	ReasonAccountQuotaSpent     UnavailableReason = "account_quota_spent"
-	ReasonKeyDisabled           UnavailableReason = "key_disabled"
-	ReasonAccountRefused        UnavailableReason = "account_refused"
-	ReasonQueriesRefused        UnavailableReason = "queries_refused"
-	ReasonProviderPaused        UnavailableReason = "provider_paused"
-	ReasonPauseUnavailable      UnavailableReason = "provider_pause_unavailable"
-	ReasonAnswersUnavailable    UnavailableReason = "answer_cache_unavailable"
-	ReasonRateLimited           UnavailableReason = "rate_limited"
-	ReasonRateLimiterDown       UnavailableReason = "rate_limiter_unavailable"
-	ReasonReferenceNotLoaded    UnavailableReason = "reference_not_loaded"
-	ReasonReferenceDown         UnavailableReason = "reference_unavailable"
-	ReasonInvalidAnswer         UnavailableReason = "invalid_answer"
-	ReasonSettingsUnavailable   UnavailableReason = "settings_unavailable"
-	ReasonUsageUnavailable      UnavailableReason = "usage_unavailable"
+	ReasonReferenceNotLoaded UnavailableReason = "reference_not_loaded"
+	ReasonReferenceDown      UnavailableReason = "reference_unavailable"
 )
-
-type Outcome struct {
-	Kind       OutcomeKind
-	Fix        Fix
-	RetryAfter time.Duration
-	Reason     UnavailableReason
-}
-
-func Located(fix Fix) Outcome {
-	if fix.Validate() != nil {
-		return Unavailable(ReasonInvalidAnswer, 0)
-	}
-	return Outcome{Kind: OutcomeLocated, Fix: fix}
-}
-
-func NotFound() Outcome { return Outcome{Kind: OutcomeNotFound} }
-
-func Ambiguous() Outcome { return Outcome{Kind: OutcomeAmbiguous} }
-
-func Unavailable(reason UnavailableReason, retryAfter time.Duration) Outcome {
-	return Outcome{Kind: OutcomeUnavailable, Reason: reason, RetryAfter: max(retryAfter, 0)}
-}
-
-const AmbiguousAnswerDistanceM = 5000
-
-func OutcomeOfAnswers(fixes []Fix) Outcome {
-	if len(fixes) == 0 {
-		return NotFound()
-	}
-	best := fixes[0]
-	for _, other := range fixes[1:] {
-		if other.Precision == best.Precision && best.Precision.PinsAHouse() && DistanceMeters(best.Point, other.Point) > AmbiguousAnswerDistanceM {
-			return Ambiguous()
-		}
-	}
-	return Located(best)
-}
-
-type Query struct {
-	WorkspaceID string
-	Postal      address.Postal
-}
-
-type Geocoder interface {
-	Geocode(ctx context.Context, q Query) (Outcome, error)
-}
 
 type CityName struct {
 	State   string

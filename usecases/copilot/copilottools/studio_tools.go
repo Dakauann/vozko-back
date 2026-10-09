@@ -120,6 +120,7 @@ func StudioTools(deps StudioDeps) []copilot.Tool {
 		NewStudioEditVideoTool(deps), NewStudioEditImageTool(deps),
 		NewStudioStartJobTool(deps), NewStudioJobsTool(deps),
 		NewStudioGenerateMusicTool(deps), NewStudioGenerateVoiceoverTool(deps), NewStudioGenerateImageTool(deps),
+		NewStudioExportTool(deps),
 		NewStudioAskTool(),
 	}
 }

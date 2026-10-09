@@ -29,7 +29,6 @@ const geoAreaID = "11111111-1111-4111-8111-111111111111"
 type stubMap struct {
 	err       error
 	filters   []crmfilter.Filter
-	layerAsks []lead_usecase.LayerQuery
 	tileAsks  []lead_usecase.TileQuery
 	at        geo.Point
 	placement crmfilter.GeoPlacement
@@ -44,12 +43,6 @@ type stubMap struct {
 func (s *stubMap) Summary(_ context.Context, _ lead_usecase.Actor, f crmfilter.Filter) (leadmap.Summary, error) {
 	s.filters = append(s.filters, f)
 	return s.summary, s.err
-}
-
-func (s *stubMap) Layer(_ context.Context, _ lead_usecase.Actor, f crmfilter.Filter, q lead_usecase.LayerQuery) (leadmap.Layer, error) {
-	s.filters = append(s.filters, f)
-	s.layerAsks = append(s.layerAsks, q)
-	return s.layer, s.err
 }
 
 func (s *stubMap) Tile(_ context.Context, _ lead_usecase.Actor, f crmfilter.Filter, q lead_usecase.TileQuery) (leadmap.Layer, error) {
@@ -143,7 +136,6 @@ func TestEveryMapAndAreaRouteIsGatedByFullAddresses(t *testing.T) {
 	RegisterGeographyRoutes(router, NewGeographyHandler(&stubMap{}, &stubAreas{}, nil), record)
 	calls := []struct{ method, path string }{
 		{http.MethodGet, "/leads/map/summary"},
-		{http.MethodGet, "/leads/map/layer"},
 		{http.MethodGet, "/leads/map/tiles/12/1517/2323"},
 		{http.MethodGet, "/leads/map/districts"},
 		{http.MethodGet, "/leads/map/viewport"},
@@ -168,7 +160,7 @@ func TestEveryMapAndAreaRouteIsGatedByFullAddresses(t *testing.T) {
 	}
 }
 
-func TestTheLayerAnswersPointsInTheFrontContract(t *testing.T) {
+func TestATileAnswersItsPointsInTheLayerContract(t *testing.T) {
 	m := &stubMap{layer: leadmap.Layer{Kind: leadmap.LayerPoints, Points: []leadmap.Point{{
 		Position: geo.Point{Lat: -23.5614, Lng: -46.6559}, Precision: geo.PrecisionStreet, Placement: crmfilter.PlacementOnMap, People: 3,
 		LeadIDs: []string{"a", "b", "c"}, Tone: customfield.ToneChart2, Value: "alto",
@@ -177,68 +169,11 @@ func TestTheLayerAnswersPointsInTheFrontContract(t *testing.T) {
 		LeadIDs: []string{"d", "e"}, Tone: customfield.ToneNeutral,
 	}}}}
 	filter := url.QueryEscape(`{"groups":[{"conjunction":"and","predicates":[{"field":"area","operator":"in","values":["` + geoAreaID + `"]}]}]}`)
-	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/layer?bbox=-46.67,-23.57,-46.64,-23.55&zoom=15&colorBy=interesse&filter="+filter, nil, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]any{"kind": "points", "points": []any{map[string]any{
-		"id": "-23.5614,-46.6559", "lat": -23.5614, "lng": -46.6559, "precision": "street", "placement": "on_map", "tone": "chart-2", "count": float64(3),
-		"leadIds": []any{"a", "b", "c"},
-	}, map[string]any{
-		"id": "approximate:-23.5614,-46.6559", "lat": -23.5614, "lng": -46.6559, "precision": "district", "placement": "approximate", "tone": "neutral", "count": float64(2),
-		"leadIds": []any{"d", "e"},
-	}}}
-	if got, _ := json.Marshal(raw); string(got) != mustJSON(t, want) {
-		t.Fatalf("layer = %s\nwant    %s", got, mustJSON(t, want))
-	}
-	ask := m.layerAsks[0]
-	if ask.BBox != (geo.BBox{South: -23.57, West: -46.67, North: -23.55, East: -46.64}) || ask.Zoom != 15 || ask.ColorBy != "interesse" {
-		t.Fatalf("layer query = %+v, want bbox as west,south,east,north", ask)
-	}
-	if len(m.filters[0].Groups) != 1 || m.filters[0].Groups[0].Predicates[0].Field != crmfilter.FieldArea {
-		t.Fatalf("the shared lead filter reaches the map: %+v", m.filters[0])
-	}
-}
-
-func TestTheLayerAnswersCellsInTheFrontContract(t *testing.T) {
-	m := &stubMap{layer: leadmap.Layer{Kind: leadmap.LayerCells, CellSize: 0.01, Cells: []leadmap.Cell{
-		{IX: -4666, IY: -2356, Placement: crmfilter.PlacementOnMap, People: 12, Center: geo.Point{Lat: -23.555, Lng: -46.655}},
-		{IX: -4666, IY: -2356, Placement: crmfilter.PlacementApproximate, People: 4, Center: geo.Point{Lat: -23.556, Lng: -46.656}},
-	}}}
-	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/layer?bbox=-47,-24,-46,-23&zoom=9", nil, nil)
-	want := `{"cellSizeDegrees":0.01,"cells":[{"count":12,"ix":-4666,"iy":-2356,"lat":-23.555,"lng":-46.655,"placement":"on_map"},{"count":4,"ix":-4666,"iy":-2356,"lat":-23.556,"lng":-46.656,"placement":"approximate"}],"kind":"cells"}`
-	var raw map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &raw)
-	if got, _ := json.Marshal(raw); rec.Code != http.StatusOK || string(got) != want {
-		t.Fatalf("cells = %d %s\nwant %s", rec.Code, got, want)
-	}
-}
-
-func TestTheLayerRefusesAMalformedWindowBeforeTheUseCase(t *testing.T) {
-	for _, query := range []string{"", "bbox=-46.67,-23.57,-46.64&zoom=15", "bbox=a,b,c,d&zoom=15", "bbox=-46.67,-23.57,-46.64,-23.55", "bbox=-46.67,-23.57,-46.64,-23.55&zoom=x"} {
-		m := &stubMap{}
-		rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/layer?"+query, nil, nil)
-		if rec.Code != http.StatusBadRequest || errorCodeOf(t, rec.Body.Bytes()) != "map_window_invalid" || len(m.layerAsks) != 0 {
-			t.Fatalf("%q = %d %s", query, rec.Code, rec.Body.String())
-		}
-	}
-}
-
-func TestATileAnswersItsPointsInTheLayerContract(t *testing.T) {
-	m := &stubMap{layer: leadmap.Layer{Kind: leadmap.LayerPoints, Points: []leadmap.Point{{
-		Position: geo.Point{Lat: -23.5614, Lng: -46.6559}, Precision: geo.PrecisionStreet, Placement: crmfilter.PlacementOnMap, People: 3,
-		LeadIDs: []string{"a", "b", "c"}, Tone: customfield.ToneChart2, Value: "alto",
-	}}}}
-	filter := url.QueryEscape(`{"groups":[{"conjunction":"and","predicates":[{"field":"area","operator":"in","values":["` + geoAreaID + `"]}]}]}`)
 	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/tiles/15/12136/18589?colorBy=interesse&q=maria&filter="+filter, nil, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
-	want := `{"kind":"points","points":[{"count":3,"id":"-23.5614,-46.6559","lat":-23.5614,"leadIds":["a","b","c"],"lng":-46.6559,"placement":"on_map","precision":"street","tone":"chart-2"}]}`
+	want := `{"kind":"points","points":[{"count":3,"id":"-23.5614,-46.6559","lat":-23.5614,"leadIds":["a","b","c"],"lng":-46.6559,"placement":"on_map","precision":"street","tone":"chart-2"},{"count":2,"id":"approximate:-23.5614,-46.6559","lat":-23.5614,"leadIds":["d","e"],"lng":-46.6559,"placement":"approximate","precision":"district","tone":"neutral"}]}`
 	var raw map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &raw)
 	if got, _ := json.Marshal(raw); string(got) != want {
@@ -260,10 +195,11 @@ func TestATileAnswersItsPointsInTheLayerContract(t *testing.T) {
 
 func TestATileAnswersCellsInTheLayerContract(t *testing.T) {
 	m := &stubMap{layer: leadmap.Layer{Kind: leadmap.LayerCells, CellSize: 0.01, Cells: []leadmap.Cell{
+		{IX: -4666, IY: -2356, Placement: crmfilter.PlacementOnMap, People: 12, Center: geo.Point{Lat: -23.555, Lng: -46.655}},
 		{IX: -4666, IY: -2356, Placement: crmfilter.PlacementApproximate, People: 4, Center: geo.Point{Lat: -23.556, Lng: -46.656}},
 	}}}
 	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/tiles/9/189/290", nil, nil)
-	want := `{"cellSizeDegrees":0.01,"cells":[{"count":4,"ix":-4666,"iy":-2356,"lat":-23.556,"lng":-46.656,"placement":"approximate"}],"kind":"cells"}`
+	want := `{"cellSizeDegrees":0.01,"cells":[{"count":12,"ix":-4666,"iy":-2356,"lat":-23.555,"lng":-46.655,"placement":"on_map"},{"count":4,"ix":-4666,"iy":-2356,"lat":-23.556,"lng":-46.656,"placement":"approximate"}],"kind":"cells"}`
 	var raw map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &raw)
 	if got, _ := json.Marshal(raw); rec.Code != http.StatusOK || string(got) != want {
@@ -288,14 +224,14 @@ func TestATileThatIsNotThreeWholeNumbersIsRefusedBeforeTheUseCase(t *testing.T) 
 
 func TestSummaryDistrictsAndViewportAnswerTheContract(t *testing.T) {
 	m := &stubMap{
-		summary:   leadmap.Summary{Total: 1200, OnMap: 800, Approximate: 200, WithoutAddress: 150, NotFound: 30, Pending: 15, QuotaExceeded: 5, Refused: 4},
+		summary:   leadmap.Summary{Total: 1200, OnMap: 800, Approximate: 200, WithoutAddress: 150, NotFound: 30, Pending: 15},
 		districts: []leadmap.District{{CityKey: "3550308", DistrictKey: "jardim paulista", Name: "Jardim Paulista", Position: geo.Point{Lat: -23.57, Lng: -46.66}, People: 42}},
 		viewport: leadmap.Viewport{BBox: geo.BBox{South: -23.6, West: -46.7, North: -23.5, East: -46.6}, Basis: leadmap.BasisLocated, View: leadmap.ViewDistricts,
 			City: &leadmap.CityPlace{CityKey: "3550308", Name: "São Paulo", State: "SP", People: 70}},
 	}
 	router := geographyRouter(m, &stubAreas{})
 	cases := map[string]string{
-		"/leads/map/summary":   `{"approximate":200,"notFound":30,"onMap":800,"pending":15,"quotaExceeded":5,"refused":4,"total":1200,"withoutAddress":150}`,
+		"/leads/map/summary":   `{"approximate":200,"notFound":30,"onMap":800,"pending":15,"total":1200,"withoutAddress":150}`,
 		"/leads/map/districts": `[{"cityKey":"3550308","count":42,"districtKey":"jardim paulista","lat":-23.57,"lng":-46.66,"name":"Jardim Paulista","pair":"3550308/jardim paulista"}]`,
 		"/leads/map/viewport":  `{"basis":"located","bbox":{"east":-46.6,"north":-23.5,"south":-23.6,"west":-46.7},"city":{"cityKey":"3550308","count":70,"name":"São Paulo","state":"SP"},"view":"districts"}`,
 	}

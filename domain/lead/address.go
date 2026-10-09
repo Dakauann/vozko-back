@@ -41,30 +41,23 @@ func (l AddressLabel) Valid() bool {
 type GeoStatus string
 
 const (
-	GeoPending       GeoStatus = "pending"
-	GeoLocated       GeoStatus = "located"
-	GeoApproximate   GeoStatus = "approximate"
-	GeoNotFound      GeoStatus = "not_found"
-	GeoAmbiguous     GeoStatus = "ambiguous"
-	GeoRefused       GeoStatus = "refused"
-	GeoUnavailable   GeoStatus = "unavailable"
-	GeoQuotaExceeded GeoStatus = "quota_exceeded"
+	GeoPending     GeoStatus = "pending"
+	GeoLocated     GeoStatus = "located"
+	GeoApproximate GeoStatus = "approximate"
+	GeoNotFound    GeoStatus = "not_found"
+	GeoUnavailable GeoStatus = "unavailable"
 )
 
 func GeoStatuses() []GeoStatus {
-	return []GeoStatus{GeoPending, GeoLocated, GeoApproximate, GeoNotFound, GeoAmbiguous, GeoRefused, GeoUnavailable, GeoQuotaExceeded}
+	return []GeoStatus{GeoPending, GeoLocated, GeoApproximate, GeoNotFound, GeoUnavailable}
 }
 
 func QueuedGeoStatuses() []GeoStatus {
-	return []GeoStatus{GeoPending, GeoUnavailable, GeoQuotaExceeded}
+	return []GeoStatus{GeoPending, GeoUnavailable}
 }
 
 func UnlocatedGeoStatuses() []GeoStatus {
-	return []GeoStatus{GeoNotFound, GeoAmbiguous}
-}
-
-func SettledGeoStatuses() []GeoStatus {
-	return append(UnlocatedGeoStatuses(), GeoQuotaExceeded, GeoRefused)
+	return []GeoStatus{GeoNotFound}
 }
 
 func (s GeoStatus) Queued() bool {

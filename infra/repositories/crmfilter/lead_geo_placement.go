@@ -23,12 +23,8 @@ func GeoPlacementCondition(alias string, p crmfilter.GeoPlacement) (string, []in
 		return col("lead_id") + " IS NULL", nil, nil
 	case crmfilter.PlacementNotFound:
 		return unlocated + col("geo_status") + " = ANY(?)", []interface{}{GeoStatusArray(lead.UnlocatedGeoStatuses())}, nil
-	case crmfilter.PlacementQuotaExceeded:
-		return unlocated + col("geo_status") + " = ?", []interface{}{string(lead.GeoQuotaExceeded)}, nil
-	case crmfilter.PlacementRefused:
-		return unlocated + col("geo_status") + " = ?", []interface{}{string(lead.GeoRefused)}, nil
 	case crmfilter.PlacementPending:
-		return unlocated + "NOT COALESCE(" + col("geo_status") + " = ANY(?), false)", []interface{}{GeoStatusArray(lead.SettledGeoStatuses())}, nil
+		return unlocated + "NOT COALESCE(" + col("geo_status") + " = ANY(?), false)", []interface{}{GeoStatusArray(lead.UnlocatedGeoStatuses())}, nil
 	}
 	return "", nil, fmt.Errorf("%w: %q is not a geo placement", crmfilter.ErrInvalidValue, p)
 }

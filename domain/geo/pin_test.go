@@ -19,7 +19,6 @@ func TestPinned(t *testing.T) {
 		{"a person's pin", saoPaulo, SourceManual, nil},
 		{"a location the lead sent", saoPaulo, SourceLeadPin, nil},
 		{"a reference point is not a pin", saoPaulo, SourceReference, ErrInvalidFix},
-		{"a provider point is not a pin", saoPaulo, SourceProvider, ErrInvalidFix},
 		{"an import is not a pin", saoPaulo, SourceImport, ErrInvalidFix},
 		{"an unknown source", saoPaulo, FixSource("gps"), ErrInvalidFix},
 		{"the zero point", Point{}, SourceManual, ErrInvalidPoint},

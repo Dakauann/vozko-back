@@ -37,7 +37,6 @@ type Section string
 
 const (
 	SectionSummary   Section = "summary"
-	SectionLayer     Section = "layer"
 	SectionTile      Section = "tile"
 	SectionDistricts Section = "districts"
 	SectionViewport  Section = "viewport"
@@ -74,8 +73,6 @@ type Summary struct {
 	WithoutAddress int64
 	NotFound       int64
 	Pending        int64
-	QuotaExceeded  int64
-	Refused        int64
 }
 
 func (s Summary) DefaultView() View {

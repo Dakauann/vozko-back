@@ -40,26 +40,25 @@ type ContactPhoneResponse struct {
 }
 
 type AddressResponse struct {
-	ID               string   `json:"id"`
-	Label            string   `json:"label" example:"home"`
-	Primary          bool     `json:"primary"`
-	ZipCode          string   `json:"zipCode,omitempty" example:"01310100"`
-	Street           string   `json:"street,omitempty"`
-	Number           string   `json:"number,omitempty"`
-	Complement       string   `json:"complement,omitempty"`
-	District         string   `json:"district,omitempty"`
-	City             string   `json:"city,omitempty"`
-	State            string   `json:"state,omitempty" example:"SP"`
-	CityCode         string   `json:"cityCode,omitempty"`
-	GeoStatus        string   `json:"geoStatus" example:"pending" enums:"pending,located,approximate,not_found,ambiguous,refused,unavailable,quota_exceeded"`
-	GeoQueued        bool     `json:"geoQueued"`
-	Precision        string   `json:"precision,omitempty" example:"postal_code" enums:"exact,address,street,postal_code,district,city"`
-	PositionSource   string   `json:"positionSource,omitempty" example:"reference" enums:"manual,lead_pin,import,reference,provider"`
-	PositionProvider string   `json:"positionProvider,omitempty" example:"opencage"`
-	GeocodedAt       string   `json:"geocodedAt,omitempty" example:"2026-10-08T12:00:00Z"`
-	Latitude         *float64 `json:"latitude,omitempty"`
-	Longitude        *float64 `json:"longitude,omitempty"`
-	CreatedAt        string   `json:"createdAt,omitempty"`
+	ID             string   `json:"id"`
+	Label          string   `json:"label" example:"home"`
+	Primary        bool     `json:"primary"`
+	ZipCode        string   `json:"zipCode,omitempty" example:"01310100"`
+	Street         string   `json:"street,omitempty"`
+	Number         string   `json:"number,omitempty"`
+	Complement     string   `json:"complement,omitempty"`
+	District       string   `json:"district,omitempty"`
+	City           string   `json:"city,omitempty"`
+	State          string   `json:"state,omitempty" example:"SP"`
+	CityCode       string   `json:"cityCode,omitempty"`
+	GeoStatus      string   `json:"geoStatus" example:"pending" enums:"pending,located,approximate,not_found,unavailable"`
+	GeoQueued      bool     `json:"geoQueued"`
+	Precision      string   `json:"precision,omitempty" example:"postal_code" enums:"exact,address,street,postal_code,district,city"`
+	PositionSource string   `json:"positionSource,omitempty" example:"reference" enums:"manual,lead_pin,import,reference"`
+	GeocodedAt     string   `json:"geocodedAt,omitempty" example:"2026-10-08T12:00:00Z"`
+	Latitude       *float64 `json:"latitude,omitempty"`
+	Longitude      *float64 `json:"longitude,omitempty"`
+	CreatedAt      string   `json:"createdAt,omitempty"`
 }
 
 type LeadRelativeResponse struct {
@@ -201,7 +200,7 @@ func addressResponses(addresses []leaddomain.Address) []AddressResponse {
 			lat, lng := a.Fix.Point.Lat, a.Fix.Point.Lng
 			item.Latitude, item.Longitude = &lat, &lng
 			item.Precision, item.PositionSource = string(a.Fix.Precision), string(a.Fix.Source)
-			item.PositionProvider, item.GeocodedAt = a.Fix.Provider, fmtNonZero(a.Fix.FixedAt)
+			item.GeocodedAt = fmtNonZero(a.Fix.FixedAt)
 		}
 		out = append(out, item)
 	}

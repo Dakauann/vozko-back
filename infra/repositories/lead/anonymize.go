@@ -159,20 +159,11 @@ func (a *anonymization) erase(workspaceID, leadID string) error {
 		return err
 	}
 	ws, id := a.subject.WorkspaceID, a.subject.ID
-	addressTexts, err := a.numbers(heldFingerprintsSQL)
-	if err != nil {
-		return err
-	}
 	for _, step := range leadScopedErasures {
 		if err := a.exec(step.target, step.sql, ws, id); err != nil {
 			return err
 		}
 	}
-	released, err := releaseStoredAnswers(a.tx, ws, addressTexts)
-	if err != nil {
-		return err
-	}
-	a.erasure.Rows[lead.ErasureGeocodeCache] = released
 	if err := a.exec(lead.ErasureCampaignEntries, eraseCampaignEntriesSQL, a.subject.ID); err != nil {
 		return err
 	}

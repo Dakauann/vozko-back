@@ -319,60 +319,38 @@ func TestStatusOfFix(t *testing.T) {
 }
 
 func TestGeoStatusQueued(t *testing.T) {
-	queued := map[GeoStatus]bool{GeoPending: true, GeoUnavailable: true, GeoQuotaExceeded: true}
+	queued := map[GeoStatus]bool{GeoPending: true, GeoUnavailable: true}
 	for _, s := range GeoStatuses() {
 		if got := s.Queued(); got != queued[s] {
 			t.Fatalf("%q.Queued() = %v, want %v", s, got, queued[s])
 		}
 	}
-	if got := QueuedGeoStatuses(); len(got) != 3 || got[0] != GeoPending {
-		t.Fatalf("QueuedGeoStatuses() = %v, want pending, unavailable and quota_exceeded", got)
+	if got := QueuedGeoStatuses(); !slices.Equal(got, []GeoStatus{GeoPending, GeoUnavailable}) {
+		t.Fatalf("QueuedGeoStatuses() = %v, want pending and unavailable", got)
 	}
-	if got := UnlocatedGeoStatuses(); len(got) != 2 || got[0] != GeoNotFound || got[1] != GeoAmbiguous {
-		t.Fatalf("UnlocatedGeoStatuses() = %v, want not_found and ambiguous", got)
+	if got := UnlocatedGeoStatuses(); !slices.Equal(got, []GeoStatus{GeoNotFound}) {
+		t.Fatalf("UnlocatedGeoStatuses() = %v, want not_found", got)
+	}
+	got := UnlocatedGeoStatuses()
+	got[0] = GeoPending
+	if UnlocatedGeoStatuses()[0] == GeoPending {
+		t.Fatal("UnlocatedGeoStatuses must hand out a fresh list")
 	}
 }
 
 func TestGeoStatusesNameEveryStatusOnceAndOnlyThoseAreValid(t *testing.T) {
-	want := []GeoStatus{GeoPending, GeoLocated, GeoApproximate, GeoNotFound, GeoAmbiguous, GeoRefused, GeoUnavailable, GeoQuotaExceeded}
-	got := GeoStatuses()
-	if len(got) != len(want) {
+	want := []GeoStatus{GeoPending, GeoLocated, GeoApproximate, GeoNotFound, GeoUnavailable}
+	if got := GeoStatuses(); !slices.Equal(got, want) {
 		t.Fatalf("GeoStatuses() = %v, want %v", got, want)
 	}
-	for i, s := range want {
-		if got[i] != s || !s.Valid() {
-			t.Fatalf("GeoStatuses()[%d] = %q (valid %v), want %q", i, got[i], got[i].Valid(), s)
+	for _, s := range want {
+		if !s.Valid() {
+			t.Fatalf("%q must be valid", s)
 		}
 	}
-	if GeoStatus("provider_refused").Valid() || GeoStatus("").Valid() {
-		t.Fatal("an unknown status must not be valid")
-	}
-}
-
-func TestSettledGeoStatusesAreTheUnlocatedAnswersThatNoLongerWaitForAPosition(t *testing.T) {
-	settled := map[GeoStatus]bool{GeoNotFound: true, GeoAmbiguous: true, GeoQuotaExceeded: true, GeoRefused: true}
-	got := SettledGeoStatuses()
-	for _, s := range GeoStatuses() {
-		if slices.Contains(got, s) != settled[s] {
-			t.Fatalf("SettledGeoStatuses() = %v, %q settled must be %v", got, s, settled[s])
-		}
-	}
-	if len(got) != len(settled) {
-		t.Fatalf("SettledGeoStatuses() = %v, want each settled status once", got)
-	}
-	got[0] = GeoPending
-	if SettledGeoStatuses()[0] == GeoPending {
-		t.Fatal("SettledGeoStatuses must hand out a fresh list")
-	}
-}
-
-func TestARefusedAddressTextLeavesTheQueueAndIsNeverUnlocatedByTheProvider(t *testing.T) {
-	if GeoRefused.Queued() {
-		t.Fatal("a refused address text is not asked again until it changes")
-	}
-	for _, s := range UnlocatedGeoStatuses() {
-		if s == GeoRefused {
-			t.Fatal("a refused text was never searched, so it is not counted as not found")
+	for _, retired := range []GeoStatus{"refused", "quota_exceeded", "ambiguous", ""} {
+		if retired.Valid() {
+			t.Fatalf("%q only came from the retired external provider and must not be valid", retired)
 		}
 	}
 }

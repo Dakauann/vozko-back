@@ -252,10 +252,9 @@ func TestSaveRequeuesAnEditedAddressAndBindsTheQueueTimeBeforeTheKeys(t *testing
 	mock.ExpectQuery(`UPDATE leads SET number`).WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(5))
 	mock.ExpectQuery(`SELECT \* FROM "lead_phones"`).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectQuery(`SELECT \* FROM "lead_addresses"`).WillReturnRows(storedAddressRow("01310100"))
-	args := append(anyArgs(22), sqlmock.AnyArg(), addressUUID, leadUUID, wsUUID)
-	args[0], args[1], args[18] = "home", true, "pending"
+	args := append(anyArgs(21), sqlmock.AnyArg(), addressUUID, leadUUID, wsUUID)
+	args[0], args[1], args[17] = "home", true, "pending"
 	mock.ExpectExec(exact(requeueAddressSQL)).WithArgs(args...).WillReturnResult(sqlmock.NewResult(0, 1))
-	expectRelease(mock, pq.StringArray{"f-old"})
 	mock.ExpectCommit()
 
 	l := savedLead()
@@ -424,7 +423,7 @@ func TestEveryNewStatementBindsAsManyArgumentsAsItHasPlaceholders(t *testing.T) 
 		"entry":    strings.Count(leadOfEntrySQL, "?"),
 		"version":  strings.Count(currentVersionSQL, "?"),
 	}
-	want := map[string]int{"lock": 2, "shift": 5, "update": 25, "requeue": 26, "promote": 5, "save": 24, "withCols": 22, "holders": 7, "livingAt": 4, "find": 2, "delete": 2, "entry": 3, "version": 2}
+	want := map[string]int{"lock": 2, "shift": 5, "update": 24, "requeue": 25, "promote": 5, "save": 24, "withCols": 21, "holders": 7, "livingAt": 4, "find": 2, "delete": 2, "entry": 3, "version": 2}
 	for name, got := range statements {
 		if got != want[name] {
 			t.Errorf("%s has %d placeholders, want %d", name, got, want[name])

@@ -36,7 +36,7 @@ func TestLeadFields_AcceptTheirValues(t *testing.T) {
 		{"relatives count", pred(FieldRelativesCount, OpGreaterEq, "2")},
 		{"referred count", pred(FieldReferredCount, OpBetween, "1", "10")},
 		{"referred by", pred(FieldReferredBy, OpIn, "0b7c3f1e-2d4a-4c5b-9e8f-1a2b3c4d5e6f")},
-		{"every geo placement", pred(FieldGeoPlacement, OpIn, "on_map", "approximate", "without_address", "not_found", "pending", "quota_exceeded", "refused")},
+		{"every geo placement", pred(FieldGeoPlacement, OpIn, "on_map", "approximate", "without_address", "not_found", "pending")},
 		{"a geo placement left out", pred(FieldGeoPlacement, OpNotEquals, "on_map")},
 		{"approximate positions inside an area", pred(FieldAreaApproximate, OpIn, "0b7c3f1e-2d4a-4c5b-9e8f-1a2b3c4d5e6f")},
 	}
@@ -110,7 +110,7 @@ func manyAreaIDs(n int) []string {
 }
 
 func TestGeoPlacementsNameEverySummaryBucketOnce(t *testing.T) {
-	want := []GeoPlacement{PlacementOnMap, PlacementApproximate, PlacementWithoutAddress, PlacementNotFound, PlacementPending, PlacementQuotaExceeded, PlacementRefused}
+	want := []GeoPlacement{PlacementOnMap, PlacementApproximate, PlacementWithoutAddress, PlacementNotFound, PlacementPending}
 	if got := GeoPlacements(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("GeoPlacements() = %v, want %v", got, want)
 	}
@@ -119,7 +119,7 @@ func TestGeoPlacementsNameEverySummaryBucketOnce(t *testing.T) {
 			t.Fatalf("%q must be valid", p)
 		}
 	}
-	if GeoPlacement("located").Valid() || GeoPlacement("").Valid() {
+	if GeoPlacement("located").Valid() || GeoPlacement("").Valid() || GeoPlacement("refused").Valid() || GeoPlacement("quota_exceeded").Valid() {
 		t.Fatal("only the summary buckets are placements")
 	}
 }

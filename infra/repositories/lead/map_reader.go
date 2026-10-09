@@ -32,8 +32,11 @@ var (
 	inReadSession       = database.InReadSession
 )
 
+const manyWindowRows = 10000
+
 type mapQuery struct {
-	leads *listQuery
+	leads       *listQuery
+	membersOnce bool
 }
 
 func (m mapQuery) settings() []string {
@@ -45,7 +48,11 @@ func (m mapQuery) workspaceID() string {
 }
 
 func (m mapQuery) members() string {
-	return "a.lead_id IN (" + m.leads.filteredIDs() + ")"
+	in := "a.lead_id IN (" + m.leads.filteredIDs() + ")"
+	if m.membersOnce {
+		return infracrmfilter.ComputedOnce(in)
+	}
+	return in
 }
 
 func (r *mapReader) scope(s leadmap.Scope) (mapQuery, error) {
@@ -83,6 +90,17 @@ func (m mapQuery) locatedIn(c geo.Claim) (string, []interface{}) {
 		" AND " + m.members()
 	args := append([]interface{}{m.workspaceID(), c.South, c.North, c.West, c.East}, m.leads.args...)
 	return where, args
+}
+
+func (m mapQuery) windowRows(c geo.Claim) (string, []interface{}) {
+	where := "a.workspace_id = ? AND a.is_primary AND a.latitude IS NOT NULL" +
+		" AND a.latitude > ? AND a.latitude <= ? AND a.longitude >= ? AND a.longitude < ?"
+	return "SELECT count(*) AS window_rows FROM (SELECT 1 FROM lead_addresses a WHERE " + where + " LIMIT ?) w",
+		[]interface{}{m.workspaceID(), c.South, c.North, c.West, c.East, manyWindowRows + 1}
+}
+
+func (m mapQuery) readsMembersOnce(windowRows int64) bool {
+	return m.leads.rank != "" || windowRows > manyWindowRows
 }
 
 func placementClass(alias string) (string, []interface{}) {
@@ -235,6 +253,14 @@ func (r *mapReader) Layer(ctx context.Context, s leadmap.Scope, q leadmap.LayerR
 	}
 	var layer leadmap.Layer
 	err = inReadSession(ctx, r.db, m.settings(), func(tx *gorm.DB) error {
+		if m.leads.filtered && !m.leads.areas {
+			rowsSQL, rowsArgs := m.windowRows(q.Claim)
+			var window struct{ WindowRows int64 }
+			if err := tx.Raw(rowsSQL, rowsArgs...).Scan(&window).Error; err != nil {
+				return fmt.Errorf("lead map window rows: %w", err)
+			}
+			m.membersOnce = m.readsMembersOnce(window.WindowRows)
+		}
 		positionsSQL, positionsArgs := m.layerPositions(q)
 		var counted struct{ Positions int64 }
 		if err := tx.Raw(positionsSQL, positionsArgs...).Scan(&counted).Error; err != nil {

@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -806,6 +806,7 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
+    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -819,9 +820,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
-    - CONVERSATIONS
     type: string
     x-enum-varnames:
+    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -835,7 +836,6 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
-    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -7877,10 +7877,7 @@ definitions:
         - located
         - approximate
         - not_found
-        - ambiguous
-        - refused
         - unavailable
-        - quota_exceeded
         example: pending
         type: string
       geocodedAt:
@@ -7897,16 +7894,12 @@ definitions:
         type: number
       number:
         type: string
-      positionProvider:
-        example: opencage
-        type: string
       positionSource:
         enum:
         - manual
         - lead_pin
         - import
         - reference
-        - provider
         example: reference
         type: string
       precision:
@@ -8731,12 +8724,6 @@ definitions:
       pending:
         example: 709
         type: integer
-      quotaExceeded:
-        example: 0
-        type: integer
-      refused:
-        example: 0
-        type: integer
     type: object
   lead.LeadImportPreviewResponse:
     properties:
@@ -9402,12 +9389,6 @@ definitions:
       pending:
         example: 15
         type: integer
-      quotaExceeded:
-        example: 5
-        type: integer
-      refused:
-        example: 2
-        type: integer
       total:
         example: 1200
         type: integer
@@ -9684,10 +9665,6 @@ definitions:
       onMap:
         type: integer
       pending:
-        type: integer
-      quotaExceeded:
-        type: integer
-      refused:
         type: integer
       total:
         type: integer
@@ -10824,7 +10801,6 @@ definitions:
     type: object
   report.FailureCode:
     enum:
-    - forbidden
     - unknown_kind
     - unsupported_format
     - too_many_rows
@@ -10835,9 +10811,9 @@ definitions:
     - cancelled
     - workspace_required
     - empty_result
+    - forbidden
     type: string
     x-enum-varnames:
-    - FailureForbidden
     - FailureUnknownKind
     - FailureUnsupported
     - FailureTooManyRows
@@ -10848,6 +10824,7 @@ definitions:
     - FailureCancelled
     - FailureWorkspaceEmpty
     - FailureEmptyResult
+    - FailureForbidden
   report.Format:
     enum:
     - csv
@@ -10899,18 +10876,18 @@ definitions:
     type: object
   report.Kind:
     enum:
-    - leads
     - attendance_overview
     - conversation_entries
     - balance_transactions
     - opportunities
+    - leads
     type: string
     x-enum-varnames:
-    - KindLeads
     - KindAttendanceOverview
     - KindConversationEntries
     - KindBalanceTransactions
     - KindOpportunities
+    - KindLeads
   report.KindDescriptor:
     properties:
       formats:
@@ -13717,106 +13694,6 @@ definitions:
       unitsPerQuantity:
         type: integer
       updatedAt:
-        type: string
-    type: object
-  workspaceconfig.GeocodingProviderPauseResponse:
-    properties:
-      reason:
-        enum:
-        - key_rejected
-        - account_quota_spent
-        - key_disabled
-        - account_refused
-        - queries_refused
-        example: key_rejected
-        type: string
-      since:
-        example: "2026-10-08T15:00:00Z"
-        type: string
-      state:
-        enum:
-        - paused
-        - unknown
-        example: paused
-        type: string
-      until:
-        example: "2026-10-08T16:00:00Z"
-        type: string
-    type: object
-  workspaceconfig.GeocodingSettingsResponse:
-    properties:
-      attribution:
-        example: IBGE, CNEFE 2022
-        type: string
-      availableProviders:
-        items:
-          type: string
-        type: array
-      canChangeCeiling:
-        example: false
-        type: boolean
-      canChangeProvider:
-        example: true
-        type: boolean
-      ceilingChangedAt:
-        example: "2026-10-08T12:00:00Z"
-        type: string
-      ceilingChangedBy:
-        example: 5f0c2b1e-7a1d-4c2b-9e1f-0a1b2c3d4e5f
-        type: string
-      ceilingChangedByName:
-        example: Suporte Vozko
-        type: string
-      cycleStart:
-        example: "2026-10-01T03:00:00Z"
-        type: string
-      dailyShare:
-        example: 323
-        type: integer
-      enabled:
-        example: true
-        type: boolean
-      exhausted:
-        enum:
-        - ""
-        - monthly
-        - daily
-        example: ""
-        type: string
-      monthlyCeiling:
-        example: 5000
-        type: integer
-      nextCycleStart:
-        example: "2026-11-01T03:00:00Z"
-        type: string
-      provider:
-        example: opencage
-        type: string
-      providerChangedAt:
-        example: "2026-10-08T12:00:00Z"
-        type: string
-      providerChangedBy:
-        example: 5f0c2b1e-7a1d-4c2b-9e1f-0a1b2c3d4e5f
-        type: string
-      providerChangedByName:
-        example: Ana Souza
-        type: string
-      providerPause:
-        $ref: '#/definitions/workspaceconfig.GeocodingProviderPauseResponse'
-      usedThisCycle:
-        example: 120
-        type: integer
-      usedToday:
-        example: 12
-        type: integer
-    type: object
-  workspaceconfig.UpdateGeocodingSettingsRequest:
-    properties:
-      monthlyCeiling:
-        example: 5000
-        type: integer
-      provider:
-        example: opencage
         type: string
     type: object
   workspaceconfig.WorkspaceConfigResponse:
@@ -23138,11 +23015,11 @@ paths:
         só os endereços com posição aproximada, de CEP, bairro ou cidade, dentro da
         área: os leads que uma área `exact_only` deixou de fora; os testes de area
         e area_approximate somam no limite de 20) e geo_placement (in, not_in, eq
-        ou neq com on_map, approximate, without_address, not_found, pending, quota_exceeded
-        ou refused: as mesmas faixas e as mesmas contas de GET /leads/map/summary,
-        para cada contagem virar um link). Um filtro em campo sensível sem `leads:read_sensitive`
-        responde 403 (`custom_field_filter_sensitive_forbidden`); um filtro por zip,
-        geo_precision, geo_status, geo_placement, area ou area_approximate sem `leads:read_addresses`
+        ou neq com on_map, approximate, without_address, not_found ou pending: as
+        mesmas faixas e as mesmas contas de GET /leads/map/summary, para cada contagem
+        virar um link). Um filtro em campo sensível sem `leads:read_sensitive` responde
+        403 (`custom_field_filter_sensitive_forbidden`); um filtro por zip, geo_precision,
+        geo_status, geo_placement, area ou area_approximate sem `leads:read_addresses`
         responde 403 (`lead_filter_address_forbidden`); um filtro inválido responde
         400 (`lead_filter_invalid`); uma busca sem palavra de 2 caracteres ou mais
         responde 400 (`lead_search_too_short`). city e district aceitam a chave em
@@ -25238,12 +25115,12 @@ paths:
         termina (`done`), `placement` diz onde estão agora os endereços principais
         que ela trouxe ou completou, contando só leads que não foram apagados, com
         as mesmas regras do mapa: no mapa (posição de casa ou rua), aproximados (CEP
-        amplo, bairro ou cidade), aguardando posição, não encontrados, sem cota de
-        geocodificação no mês e recusados pelo provedor. Um endereço completado por
-        uma importação posterior passa a contar nela. Importações anteriores a essa
-        contagem não trazem `placement`. A importação continua no servidor mesmo com
-        a janela fechada; consulte esta rota para acompanhar. Outra pessoa recebe
-        404. Depois de 7 dias a importação, o arquivo e as linhas recusadas são apagados.'
+        amplo, bairro ou cidade), aguardando posição e não encontrados. Um endereço
+        completado por uma importação posterior passa a contar nela. Importações anteriores
+        a essa contagem não trazem `placement`. A importação continua no servidor
+        mesmo com a janela fechada; consulte esta rota para acompanhar. Outra pessoa
+        recebe 404. Depois de 7 dias a importação, o arquivo e as linhas recusadas
+        são apagados.'
       parameters:
       - description: ID da importação
         in: path
@@ -25500,72 +25377,6 @@ paths:
       summary: Leads por bairro
       tags:
       - Leads
-  /leads/map/layer:
-    get:
-      description: 'Devolve a camada da janela do mapa. A janela é ajustada aos tiles
-        XYZ (zoom inteiro, no máximo 32 tiles por eixo). Até 5.000 posições distintas
-        a resposta é `{"kind":"points","points":[...]}`: um ponto por posição e classe
-        (`placement`), com `count` pessoas, até 5 `leadIds`, a melhor `precision`
-        e o `tone` do valor mais comum do campo `colorBy` (`neutral` sem campo ou
-        sem valor). Acima disso a resposta é `{"kind":"cells","cellSizeDegrees":s,"cells":[...]}`,
-        com `ix = floor(lng / s)`, `iy = floor(lat / s)` e uma célula por classe.
-        Entram os endereços principais com posição: `placement` `on_map` quando a
-        posição identifica a casa (a contagem No mapa), `approximate` quando é o ponto
-        de referência do CEP, bairro ou cidade (a contagem Aproximados). As duas classes
-        nunca se juntam no mesmo ponto ou célula; uma área desenhada continua reunindo
-        só `on_map`. `colorBy` precisa ser um campo de seleção de lead; um campo sensível
-        exige `leads:read_sensitive`.'
-      parameters:
-      - description: Janela como oeste,sul,leste,norte (lng,lat,lng,lat)
-        in: query
-        name: bbox
-        required: true
-        type: string
-      - description: Zoom do mapa (0 a 22)
-        in: query
-        name: zoom
-        required: true
-        type: number
-      - description: Chave do campo de seleção que colore os pontos
-        in: query
-        name: colorBy
-        type: string
-      - description: Filtro crmfilter em JSON (opcionalmente em base64)
-        in: query
-        name: filter
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/lead.MapLayerResponse'
-        "400":
-          description: map_window_invalid, map_window_too_wide, map_color_by_invalid,
-            lead_filter_invalid, custom_field_filter_*, area_not_found, area_too_many,
-            area_operator_unsupported
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: forbidden, custom_field_filter_sensitive_forbidden, lead_filter_address_forbidden,
-            lead_addresses_forbidden, map_color_by_forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "503":
-          description: lead_map_unavailable, ou consultas analíticas ocupadas (com
-            Retry-After)
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "504":
-          description: Gateway Timeout
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Camada do mapa de leads
-      tags:
-      - Leads
   /leads/map/left-out:
     get:
       description: 'Uma área desenhada reúne, por padrão, os endereços principais
@@ -25764,15 +25575,14 @@ paths:
       description: 'Conta, em uma única passada, os leads do filtro por situação de
         posição no endereço principal: `total`, `onMap` (posição que identifica a
         casa: exata, endereço ou rua), `approximate` (posição de CEP, bairro ou cidade),
-        `withoutAddress`, `notFound` (não localizado ou ambíguo), `pending` (aguardando
-        geocodificação), `quotaExceeded` e `refused` (texto recusado pelo provedor,
-        sem posição). As categorias somam o total. Cada categoria é o filtro `geo_placement`
-        de mesmo nome (`on_map`, `approximate`, `without_address`, `not_found`, `pending`,
-        `quota_exceeded`, `refused`), com a mesma conta, para virar link em GET /leads.
-        Aceita os mesmos filtros de GET /leads (inclusive `area`, resolvida antes
-        de compilar o filtro). Resultado em cache por 60 s por workspace, geração
-        dos leads e filtro; responde 503 com `Retry-After` quando o servidor está
-        ocupado.'
+        `withoutAddress`, `notFound` (a base de referência do IBGE não tem ponto para
+        o endereço) e `pending` (aguardando geocodificação). As categorias somam o
+        total. Cada categoria é o filtro `geo_placement` de mesmo nome (`on_map`,
+        `approximate`, `without_address`, `not_found`, `pending`), com a mesma conta,
+        para virar link em GET /leads. Aceita os mesmos filtros de GET /leads (inclusive
+        `area`, resolvida antes de compilar o filtro). Resultado em cache por 60 s
+        por workspace, geração dos leads e filtro; responde 503 com `Retry-After`
+        quando o servidor está ocupado.'
       parameters:
       - description: Filtro crmfilter em JSON (opcionalmente em base64)
         in: query
@@ -26118,10 +25928,10 @@ paths:
         zero leads) e, só para quem pode ler o campo, por valor do campo de classificação
         (`classification`, ausente quando não há campo visível). Com `colorBy`, `classification`
         conta os valores desse campo de seleção de lead, o mesmo que colore o mapa
-        em GET /leads/map/layer: um campo que não é seleção de lead responde 400 (`map_color_by_invalid`)
-        e um campo sensível sem `leads:read_sensitive` responde 403 (`map_color_by_forbidden`).
-        Aceita os mesmos filtros de GET /leads. Cache, limites e recusas iguais aos
-        de GET /leads/sections/summary.'
+        em GET /leads/map/tiles/{z}/{x}/{y}: um campo que não é seleção de lead responde
+        400 (`map_color_by_invalid`) e um campo sensível sem `leads:read_sensitive`
+        responde 403 (`map_color_by_forbidden`). Aceita os mesmos filtros de GET /leads.
+        Cache, limites e recusas iguais aos de GET /leads/sections/summary.'
       parameters:
       - description: Filtro crmfilter em JSON (opcionalmente codificado em base64)
         in: query
@@ -33391,138 +33201,6 @@ paths:
       summary: Consultar direitos do workspace
       tags:
       - Addons
-  /workspaces/{workspaceId}/geocoding:
-    get:
-      description: 'Mostra como os endereços dos leads viram posições no mapa. A base
-        de referência local (IBGE, CNEFE 2022: ponto do CEP, do bairro e da cidade)
-        vale para todos os workspaces e não sai dos nossos servidores. Um provedor
-        externo (`opencage`) é opcional: só é chamado quando o workspace optou por
-        ele (registrado com quem e quando em `providerChangedBy`, `providerChangedByName`
-        e `providerChangedAt`), só quando a referência não chega ao nível da rua e
-        o endereço tem logradouro, e só dentro do teto mensal (`monthlyCeiling`, padrão
-        5.000 consultas por ciclo; 0 com o provedor desligado, o que significa nenhuma
-        consulta externa) e da cota diária (`dailyShare`, o dobro de uma divisão igual
-        do teto pelos dias do ciclo). `usedThisCycle` e `usedToday` contam as consultas
-        feitas no ciclo (`cycleStart` até `nextCycleStart`, horário de Brasília).
-        `availableProviders` lista os provedores que este servidor consegue usar;
-        `attribution` é a fonte a citar para as posições da referência. `canChangeProvider`
-        é verdadeiro para o dono do workspace e administradores da plataforma; `canChangeCeiling`
-        só para administradores da plataforma. `providerPause` diz se o provedor externo
-        está pausado para todos os workspaces (vem `null` quando não está, ou quando
-        o workspace não usa provedor): quando o provedor recusa a conta da plataforma
-        (chave rejeitada `key_rejected`, cota da conta esgotada `account_quota_spent`,
-        chave desativada `key_disabled`, outra recusa da conta `account_refused`;
-        ou `queries_refused` quando textos diferentes são recusados no mesmo lote,
-        sinal de que o problema é a requisição e não o endereço), nenhuma consulta
-        é feita e nenhuma cota é gasta até `until`, e os endereços esperam com a posição
-        da referência; `state` `paused` traz o motivo, desde quando (`since`) e até
-        quando (`until`); `state` `unknown` quer dizer que o estado da pausa não pôde
-        ser lido, e enquanto isso nenhuma consulta externa é feita. Um endereço cujo
-        texto o provedor recusa (consulta inválida ou longa demais) fica com `geoStatus`
-        `refused` e só volta a ser consultado quando o texto muda; respostas do provedor
-        são guardadas por workspace e texto de endereço, então o mesmo texto não é
-        pago duas vezes. Qualquer membro do workspace pode ler. Recusas: 401 sem sessão,
-        403 `geocoding_forbidden` para quem não é membro (ou um workspace inexistente,
-        ou um id que não é UUID), 500 `geocoding_settings_unreadable` quando a configuração
-        ou o consumo não podem ser lidos (nunca responde "zero consultas" no lugar
-        de um erro), 503 `geocoding_unavailable` quando a rota não está ligada.'
-      parameters:
-      - description: ID do workspace
-        in: path
-        name: workspaceId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/workspaceconfig.GeocodingSettingsResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Ler a geolocalização de endereços do workspace
-      tags:
-      - Configuração do workspace
-    put:
-      consumes:
-      - application/json
-      description: '`provider` liga (`"opencage"`) ou desliga (`""`) o provedor externo
-        para o workspace. Só o dono do workspace ou um administrador da plataforma
-        pode mudar (403 `geocoding_forbidden`), e quem mudou e quando ficam registrados.
-        Ligar envia endereços dos leads a um suboperador (OpenCage, que é instruído
-        a não guardar as consultas). Um provedor que este servidor não tem configurado
-        responde 409 `geocoding_provider_not_configured`; um nome desconhecido responde
-        400 `geocoding_provider_unknown`. `monthlyCeiling` muda o teto mensal de consultas
-        externas (0 a 1.000.000; 0 desliga as consultas) e só um administrador da
-        plataforma pode mudar (403 `geocoding_ceiling_forbidden`; fora da faixa, 400
-        `geocoding_ceiling_invalid`). Um campo ausente fica como está; ao menos um
-        é obrigatório (400 `geocoding_change_empty`). Uma chave desconhecida ou um
-        tipo errado responde 400 `invalid_body`. Responde a configuração como o GET.'
-      parameters:
-      - description: ID do workspace
-        in: path
-        name: workspaceId
-        required: true
-        type: string
-      - description: Campos a mudar
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/workspaceconfig.UpdateGeocodingSettingsRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/workspaceconfig.GeocodingSettingsResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Escolher o provedor externo de geolocalização e o teto mensal
-      tags:
-      - Configuração do workspace
   /workspaces/{workspaceId}/invites:
     get:
       description: Retorna os convites emitidos por um workspace. Requer permissão

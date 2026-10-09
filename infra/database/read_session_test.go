@@ -11,7 +11,7 @@ import (
 
 func TestReadSessionSettingsBoundTheStatement(t *testing.T) {
 	got := ReadSessionSettings("32MB", "5s")
-	want := []string{"SET LOCAL work_mem = '32MB'", "SET LOCAL jit = off", "SET LOCAL statement_timeout = '5s'"}
+	want := []string{"SET LOCAL work_mem = '32MB'", "SET LOCAL jit = off", "SET LOCAL statement_timeout = '5s'", "SET LOCAL plan_cache_mode = force_custom_plan"}
 	if len(got) != len(want) {
 		t.Fatalf("ReadSessionSettings() = %q, want %q", got, want)
 	}
@@ -29,6 +29,7 @@ func TestInReadSessionAppliesTheSettingsInsideOneReadOnlyTransaction(t *testing.
 	mock.ExpectExec(`SET LOCAL work_mem = '32MB'`).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`SET LOCAL jit = off`).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(`SET LOCAL statement_timeout = '5s'`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`SET LOCAL plan_cache_mode = force_custom_plan`).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(`SELECT 1`).WillReturnRows(sqlmock.NewRows([]string{"one"}).AddRow(1))
 	mock.ExpectCommit()
 	var one int

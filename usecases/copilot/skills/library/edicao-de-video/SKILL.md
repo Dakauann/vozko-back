@@ -35,6 +35,15 @@ Quando duas regras brigam, sacrifique de baixo para cima: emoção, história, r
 - Corte nas batidas da música (marque com add_marker) e mude o ritmo nas viradas da música; o ponto alto da emoção cai no ponto alto da música.
 - Cortes secos são o padrão. Transições só com motivo (veja motion-design).
 
+## Velocidade
+- Câmera lenta destaca um momento (o produto em uso, um detalhe, uma reação): set_speed de 0,5 a 0,7. Abaixo de 0,5 um vídeo comum fica travado, porque não tem quadros a mais.
+- Acelerado comprime processos longos (preparo, montagem, deslocamento): de 2 a 8, com música no lugar do som original.
+- Rampa dá impacto: speed_ramp no momento certo, caindo para 0,3 em 300 a 600 ms; outra rampa mais adiante volta para 1. Faça a queda cair numa batida da música.
+- freeze_frame segura um quadro por 1 a 2 s para um texto ou um destaque; combina com um aproximar ou um flash na batida.
+- reverse rebobina, como um efeito de desfazer ou de repetição; use pouco.
+- Fala fica natural até cerca de 1,25 com preserve_pitch. Fora de 0,5 a 2 o som esticado soa artificial: desligue preserve_pitch quando o efeito for de propósito, ou abaixe o volume desse clipe.
+- set_speed muda a duração para tocar a mesma parte da mídia e puxa o resto da faixa; keep_duration mantém o tempo do clipe e toca mais ou menos mídia. studio_read mostra speed, reverse e freeze em cada clipe.
+
 ## Som
 - Mixe para ouvir com som e confira se a história ainda funciona sem som: carregue legendas-e-texto e legende toda fala.
 - Voz sempre clara, volume 1; com ruído, studio_start_job com denoise.
@@ -54,7 +63,7 @@ Quando duas regras brigam, sacrifique de baixo para cima: emoção, história, r
 3. Edite em lotes de 8 a 12 operações com studio_edit_video.
 4. Comece cedo os trabalhos de fila (legendas, música, locução) e continue editando; acompanhe com studio_jobs.
 5. Corrija os erros do campo checks e confira com studio_look: texto ilegível, buraco preto, corte no meio de palavra.
-6. Resuma o que fez e ofereça o próximo passo com studio_ask.
+6. Resuma o que fez e ofereça o próximo passo com studio_ask. Se o usuário pedir o vídeo pronto, studio_export começa a gerar o MP4; studio_read mostra o andamento e o media_id em export.
 
 ## Erros comuns
 - Logo ou cumprimento antes do gancho. Sem legenda, ou legenda sob a interface da rede.
