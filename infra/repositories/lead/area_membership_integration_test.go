@@ -2,6 +2,7 @@ package lead
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -147,6 +148,71 @@ func TestAnAreaCountsTheSameLeadsInTheListTheSelectionTheSnapshotAndTheMapAgains
 			}
 			if int(summary.Approximate) != tc.approximate || int(summary.OnMap+summary.Approximate) != tc.total {
 				t.Fatalf("map summary = %+v, want %d approximate of %d", summary, tc.approximate, tc.total)
+			}
+		})
+	}
+}
+
+func storedArea(t *testing.T, areas leadarea.Repository, ws, owner, name string, shape geo.Shape) leadarea.Area {
+	t.Helper()
+	area, err := leadarea.New(ws, owner, leadarea.Draft{Name: name, Shape: shape}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	area.ID = uuid.NewString()
+	if err := areas.Create(context.Background(), area); err != nil {
+		t.Fatal(err)
+	}
+	return area
+}
+
+func kilometersNorthOfSaoPaulo(km float64) *seededPosition {
+	lat, lng := at(-23.55+km*1000/(6371008.8*math.Pi/180), -46.63)
+	return &seededPosition{lat: lat, lng: lng, precision: "street"}
+}
+
+func TestAStateSizedAreaAndA300KmRadiusHoldTheirLeadsAgainstPostgres(t *testing.T) {
+	db := mapDB(t)
+	ws, owner := uuid.NewString(), uuid.NewString()
+	seedLead(t, db, ws, paulistaAddress("street"))
+	seedLead(t, db, ws, kilometersNorthOfSaoPaulo(290))
+	seedLead(t, db, ws, kilometersNorthOfSaoPaulo(310))
+	rioLat, rioLng := at(-22.91, -43.17)
+	seedLead(t, db, ws, &seededPosition{lat: rioLat, lng: rioLng, precision: "street"})
+	curitibaLat, curitibaLng := at(-25.43, -49.27)
+	seedLead(t, db, ws, &seededPosition{lat: curitibaLat, lng: curitibaLng, precision: "street"})
+
+	areas := leadarea_repository.NewRepository(db)
+	state := storedArea(t, areas, ws, owner, "Estado de São Paulo", geo.Shape{Kind: geo.ShapePolygon, Ring: []geo.Point{
+		{Lat: -25.3, Lng: -53.1}, {Lat: -25.3, Lng: -44.2}, {Lat: -19.8, Lng: -44.2}, {Lat: -19.8, Lng: -53.1},
+	}})
+	radius := storedArea(t, areas, ws, owner, "Raio de 300 km", geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -23.55, Lng: -46.63}, RadiusM: 300000})
+	repo := &repository{db: db, agg: newAggregateCache(nil)}
+	reader := NewMapReader(db)
+	ctx := context.Background()
+	cases := []struct {
+		name  string
+		area  string
+		total int
+	}{
+		{"a state-sized polygon holds Paulista and both northern leads", state.ID, 3},
+		{"a 300 km radius holds Paulista and the lead 290 km north, not the one 310 km north", radius.ID, 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter := boundToAreas(t, ws, owner, areas, tc.area)
+			started := time.Now()
+			summary, err := reader.Summary(ctx, leadmap.Scope{WorkspaceID: ws, Filter: filter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			count, err := repo.CountSelection(ctx, lead.SelectionQuery{WorkspaceID: ws, Filter: filter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("map summary and selection count in %s", time.Since(started))
+			if int(summary.Total) != tc.total || count != tc.total {
+				t.Fatalf("map %d, selection %d; want %d", summary.Total, count, tc.total)
 			}
 		})
 	}

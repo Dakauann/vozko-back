@@ -22,19 +22,23 @@ const (
 )
 
 var (
-	ErrWorkspaceRequired   = errors.New("leadarea: workspace is required")
-	ErrOwnerRequired       = errors.New("leadarea: owner is required")
-	ErrNotFound            = errors.New("leadarea: area not found")
-	ErrForbidden           = errors.New("leadarea: only the owner changes an area")
-	ErrAddressesRequired   = lead.ErrAddressesForbidden
-	ErrNameRequired        = errors.New("leadarea: name is required")
-	ErrNameTooLong         = errors.New("leadarea: name is too long")
-	ErrVisibilityInvalid   = errors.New("leadarea: visibility must be private or shared")
-	ErrShapeInvalid        = errors.New("leadarea: invalid shape")
-	ErrTooManyAreas        = errors.New("leadarea: too many areas in one predicate")
-	ErrOperatorUnsupported = errors.New("leadarea: an area predicate only accepts the in operator")
-	ErrLimitReached        = errors.New("leadarea: the workspace holds as many areas as it can")
-	ErrLeftOutUnsupported  = errors.New("leadarea: the leads left out of an area are counted only when every group holding an area either joins its tests with and or tests nothing but areas")
+	ErrWorkspaceRequired    = errors.New("leadarea: workspace is required")
+	ErrOwnerRequired        = errors.New("leadarea: owner is required")
+	ErrNotFound             = errors.New("leadarea: area not found")
+	ErrForbidden            = errors.New("leadarea: only the owner changes an area")
+	ErrAddressesRequired    = lead.ErrAddressesForbidden
+	ErrNameRequired         = errors.New("leadarea: name is required")
+	ErrNameTooLong          = errors.New("leadarea: name is too long")
+	ErrVisibilityInvalid    = errors.New("leadarea: visibility must be private or shared")
+	ErrShapeInvalid         = errors.New("leadarea: invalid shape")
+	ErrShapeCrossing        = geo.ErrSelfCrossing
+	ErrShapeOutsideBounds   = geo.ErrShapeOutsideBounds
+	ErrShapeTooManyVertices = geo.ErrTooManyVertices
+	ErrShapeEmpty           = geo.ErrEmptyShape
+	ErrTooManyAreas         = errors.New("leadarea: too many areas in one predicate")
+	ErrOperatorUnsupported  = errors.New("leadarea: an area predicate only accepts the in operator")
+	ErrLimitReached         = errors.New("leadarea: the workspace holds as many areas as it can")
+	ErrLeftOutUnsupported   = errors.New("leadarea: the leads left out of an area are counted only when every group holding an area either joins its tests with and or tests nothing but areas")
 )
 
 type Area struct {
@@ -150,9 +154,11 @@ func (a Area) normalized() (Area, error) {
 	case !a.Visibility.Valid():
 		return Area{}, ErrVisibilityInvalid
 	}
-	if err := a.Shape.Validate(); err != nil {
+	shape, err := a.Shape.Normalized()
+	if err != nil {
 		return Area{}, fmt.Errorf("%w: %w", ErrShapeInvalid, err)
 	}
+	a.Shape = shape
 	return a, nil
 }
 
@@ -166,6 +172,10 @@ var errorCodes = []struct {
 	{ErrNameRequired, "area_name_required"},
 	{ErrNameTooLong, "area_name_too_long"},
 	{ErrVisibilityInvalid, "area_visibility_invalid"},
+	{ErrShapeCrossing, "area_shape_crossing"},
+	{ErrShapeOutsideBounds, "area_shape_outside_bounds"},
+	{ErrShapeTooManyVertices, "area_shape_too_many_vertices"},
+	{ErrShapeEmpty, "area_shape_empty"},
 	{ErrShapeInvalid, "area_shape_invalid"},
 	{ErrTooManyAreas, "area_too_many"},
 	{ErrOperatorUnsupported, "area_operator_unsupported"},

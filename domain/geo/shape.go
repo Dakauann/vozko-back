@@ -7,20 +7,20 @@ import (
 )
 
 var (
-	ErrUnknownShapeKind = errors.New("geo: unknown shape kind")
-	ErrInvalidShape     = errors.New("geo: invalid shape")
-	ErrTooManyVertices  = errors.New("geo: too many vertices")
-	ErrSelfCrossing     = errors.New("geo: ring crosses itself")
-	ErrShapeTooWide     = errors.New("geo: shape is wider than a state")
-	ErrInvalidRadius    = errors.New("geo: invalid radius")
+	ErrUnknownShapeKind   = errors.New("geo: unknown shape kind")
+	ErrInvalidShape       = errors.New("geo: invalid shape")
+	ErrTooManyVertices    = errors.New("geo: too many vertices")
+	ErrSelfCrossing       = errors.New("geo: ring crosses itself")
+	ErrEmptyShape         = errors.New("geo: the shape encloses no area")
+	ErrShapeOutsideBounds = errors.New("geo: the shape leaves the map of Brazil")
+	ErrInvalidRadius      = errors.New("geo: invalid radius")
 )
 
 const (
-	MaxRingVertices  = 200
-	CircleVertices   = 64
-	MaxCircleRadiusM = 50000
-	MaxShapeSpanM    = 1000000
-	minRingArea      = 1e-12
+	MaxRingVertices          = 200
+	CircleVertices           = 64
+	RectangleCornerTolerance = 1e-3
+	minRingArea              = 1e-12
 )
 
 type ShapeKind string
@@ -39,21 +39,27 @@ type Shape struct {
 }
 
 func (s Shape) Validate() error {
+	_, err := s.Normalized()
+	return err
+}
+
+func (s Shape) Normalized() (Shape, error) {
 	switch s.Kind {
 	case ShapePolygon:
-		return s.validateRing()
+		return s, s.validateRing()
 	case ShapeRectangle:
 		if err := s.validateRing(); err != nil {
-			return err
+			return Shape{}, err
 		}
-		if !axisAligned(openRing(s.Ring)) {
-			return fmt.Errorf("%w: a rectangle needs four axis-aligned corners", ErrInvalidShape)
+		corners, ok := boxCorners(openRing(s.Ring))
+		if !ok {
+			return Shape{}, fmt.Errorf("%w: a rectangle needs four axis-aligned corners", ErrInvalidShape)
 		}
-		return nil
+		return Shape{Kind: ShapeRectangle, Ring: corners}, nil
 	case ShapeCircle:
-		return s.validateCircle()
+		return s, s.validateCircle()
 	}
-	return ErrUnknownShapeKind
+	return Shape{}, ErrUnknownShapeKind
 }
 
 func (s Shape) Contains(p Point) bool {
@@ -68,13 +74,14 @@ func (s Shape) Contains(p Point) bool {
 }
 
 func (s Shape) Ring64() []Point {
-	if s.Validate() != nil {
+	normalized, err := s.Normalized()
+	if err != nil {
 		return nil
 	}
-	if s.Kind == ShapeCircle {
-		return circleRing(s.Center, s.RadiusM)
+	if normalized.Kind == ShapeCircle {
+		return circleRing(normalized.Center, normalized.RadiusM)
 	}
-	return append([]Point(nil), openRing(s.Ring)...)
+	return append([]Point(nil), openRing(normalized.Ring)...)
 }
 
 func (s Shape) validateRing() error {
@@ -92,15 +99,18 @@ func (s Shape) validateRing() error {
 		if err := vertex.Validate(); err != nil {
 			return fmt.Errorf("%w: vertex %d", err, i)
 		}
+		if !shapeBounds.contains(vertex) {
+			return fmt.Errorf("%w: vertex %d", ErrShapeOutsideBounds, i)
+		}
+	}
+	if collinear(ring) {
+		return ErrEmptyShape
 	}
 	if selfCrossing(ring) {
 		return ErrSelfCrossing
 	}
 	if math.Abs(signedArea(ring)) < minRingArea {
-		return fmt.Errorf("%w: the ring encloses no area", ErrInvalidShape)
-	}
-	if spanMeters(ring) > MaxShapeSpanM {
-		return ErrShapeTooWide
+		return ErrEmptyShape
 	}
 	return nil
 }
@@ -112,10 +122,29 @@ func (s Shape) validateCircle() error {
 	if err := s.Center.Validate(); err != nil {
 		return fmt.Errorf("%w: circle center", err)
 	}
-	if !finite(s.RadiusM) || s.RadiusM <= 0 || s.RadiusM > MaxCircleRadiusM {
+	if !finite(s.RadiusM) || s.RadiusM < 0 {
 		return ErrInvalidRadius
 	}
+	if s.RadiusM == 0 {
+		return ErrEmptyShape
+	}
+	if !circleWithin(s.Center, s.RadiusM, shapeBounds) {
+		return ErrShapeOutsideBounds
+	}
 	return nil
+}
+
+func circleWithin(center Point, radiusM float64, bounds BBox) bool {
+	reach := radiusM / metersPerDegreeLat
+	if !bounds.contains(Point{Lat: center.Lat - reach, Lng: center.Lng}) || !bounds.contains(Point{Lat: center.Lat + reach, Lng: center.Lng}) {
+		return false
+	}
+	for _, vertex := range circleRing(center, radiusM) {
+		if !finite(vertex.Lat) || !finite(vertex.Lng) || !bounds.contains(vertex) {
+			return false
+		}
+	}
+	return true
 }
 
 func openRing(ring []Point) []Point {
@@ -125,26 +154,79 @@ func openRing(ring []Point) []Point {
 	return ring
 }
 
-func axisAligned(ring []Point) bool {
+func boxCorners(ring []Point) ([]Point, bool) {
 	if len(ring) != 4 {
-		return false
+		return nil, false
 	}
-	for i := range ring {
-		a, b := ring[i], ring[(i+1)%len(ring)]
-		if (a.Lat == b.Lat) == (a.Lng == b.Lng) {
-			return false
+	box := boundsOf(ring)
+	tolerance := RectangleCornerTolerance * math.Min(box.North-box.South, box.East-box.West)
+	corners := make([]Point, len(ring))
+	seen := map[Point]bool{}
+	for i, corner := range ring {
+		lat, latOK := snapTo(corner.Lat, box.South, box.North, tolerance)
+		lng, lngOK := snapTo(corner.Lng, box.West, box.East, tolerance)
+		corners[i] = Point{Lat: lat, Lng: lng}
+		if !latOK || !lngOK || seen[corners[i]] {
+			return nil, false
 		}
+		seen[corners[i]] = true
+	}
+	for i := range corners {
+		a, b := corners[i], corners[(i+1)%len(corners)]
+		if (a.Lat == b.Lat) == (a.Lng == b.Lng) {
+			return nil, false
+		}
+	}
+	return corners, true
+}
+
+func snapTo(v, low, high, tolerance float64) (float64, bool) {
+	toLow, toHigh := math.Abs(v-low), math.Abs(v-high)
+	switch {
+	case toLow <= toHigh && toLow <= tolerance:
+		return low, true
+	case toHigh <= tolerance:
+		return high, true
+	}
+	return v, false
+}
+
+func boundsOf(ring []Point) BBox {
+	box := BBox{South: ring[0].Lat, West: ring[0].Lng, North: ring[0].Lat, East: ring[0].Lng}
+	for _, p := range ring[1:] {
+		box.South = math.Min(box.South, p.Lat)
+		box.North = math.Max(box.North, p.Lat)
+		box.West = math.Min(box.West, p.Lng)
+		box.East = math.Max(box.East, p.Lng)
+	}
+	return box
+}
+
+func collinear(ring []Point) bool {
+	origin := ring[0]
+	for _, toward := range ring[1:] {
+		if toward == origin {
+			continue
+		}
+		for _, p := range ring {
+			if math.Abs(orientation(origin, toward, p)) > minRingArea {
+				return false
+			}
+		}
+		return true
 	}
 	return true
 }
 
 func circleRing(center Point, radiusM float64) []Point {
 	ring := make([]Point, 0, CircleVertices)
+	fromLat := radians(center.Lat)
+	reach := radiusM / earthRadiusM
 	for i := 0; i < CircleVertices; i++ {
-		angle := 2 * math.Pi * float64(i) / CircleVertices
-		lat := center.Lat + radiusM*math.Cos(angle)/metersPerDegreeLat
-		lng := center.Lng + radiusM*math.Sin(angle)/(metersPerDegreeLat*math.Cos(radians(lat)))
-		ring = append(ring, Point{Lat: lat, Lng: lng})
+		bearing := 2 * math.Pi * float64(i) / CircleVertices
+		toLat := math.Asin(math.Sin(fromLat)*math.Cos(reach) + math.Cos(fromLat)*math.Sin(reach)*math.Cos(bearing))
+		turn := math.Atan2(math.Sin(bearing)*math.Sin(reach)*math.Cos(fromLat), math.Cos(reach)-math.Sin(fromLat)*math.Sin(toLat))
+		ring = append(ring, Point{Lat: degrees(toLat), Lng: center.Lng + degrees(turn)})
 	}
 	return ring
 }
@@ -212,21 +294,4 @@ func signedArea(ring []Point) float64 {
 		area += a.Lng*b.Lat - b.Lng*a.Lat
 	}
 	return area / 2
-}
-
-func spanMeters(ring []Point) float64 {
-	bounds := BBox{South: ring[0].Lat, West: ring[0].Lng, North: ring[0].Lat, East: ring[0].Lng}
-	for _, p := range ring[1:] {
-		bounds.South = math.Min(bounds.South, p.Lat)
-		bounds.North = math.Max(bounds.North, p.Lat)
-		bounds.West = math.Min(bounds.West, p.Lng)
-		bounds.East = math.Max(bounds.East, p.Lng)
-	}
-	northSouth := (bounds.North - bounds.South) * metersPerDegreeLat
-	widestLat := math.Min(math.Abs(bounds.South), math.Abs(bounds.North))
-	if bounds.South < 0 && bounds.North > 0 {
-		widestLat = 0
-	}
-	eastWest := (bounds.East - bounds.West) * metersPerDegreeLat * math.Cos(radians(widestLat))
-	return math.Max(northSouth, eastWest)
 }

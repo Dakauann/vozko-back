@@ -48,6 +48,8 @@ type mapBudgetFixture struct {
 	viewer    string
 	city      string
 	small     string
+	state     string
+	wide      string
 }
 
 func mapBudgetNoiseWorkspace(expr string) string {
@@ -138,7 +140,31 @@ func loadMapBudget(t *testing.T, db *gorm.DB) mapBudgetFixture {
 	if f.ws == "" || f.city == "" || f.small == "" || len(f.owners) == 0 || len(f.campaigns) < 2 || len(f.stages) == 0 || len(f.labels) == 0 {
 		t.Fatalf("the map budget fixture is incomplete: %+v", f)
 	}
+	f.state = f.areaNamed(t, "Estado de São Paulo", geo.Shape{Kind: geo.ShapePolygon, Ring: []geo.Point{
+		{Lat: -25.3, Lng: -53.1}, {Lat: -25.3, Lng: -44.2}, {Lat: -19.8, Lng: -44.2}, {Lat: -19.8, Lng: -53.1},
+	}})
+	f.wide = f.areaNamed(t, "Raio de 300 km", geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -23.55, Lng: -46.63}, RadiusM: 300000})
 	return f
+}
+
+func (f mapBudgetFixture) areaNamed(t *testing.T, name string, shape geo.Shape) string {
+	t.Helper()
+	var id string
+	if err := f.db.Raw(`SELECT id::text FROM lead_areas WHERE workspace_id = ? AND name = ?`, f.ws, name).Scan(&id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if id != "" {
+		return id
+	}
+	area, err := leadarea.New(f.ws, f.viewer, leadarea.Draft{Name: name, Visibility: shared.VisibilityShared, Shape: shape}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	area.ID = uuid.NewString()
+	if err := f.areas.Create(context.Background(), area); err != nil {
+		t.Fatal(err)
+	}
+	return area.ID
 }
 
 func seedMapBudget(t *testing.T, db *gorm.DB) {
@@ -278,6 +304,9 @@ func (f mapBudgetFixture) filters(t *testing.T) []mapBudgetFilter {
 		{"area city", f.inArea(t, "", f.city)},
 		{"area city exact_only", f.inArea(t, crmfilter.AreaExactOnly, f.city)},
 		{"area 1 km", f.inArea(t, "", f.small)},
+		{"area state of São Paulo", f.inArea(t, "", f.state)},
+		{"area state of São Paulo exact_only", f.inArea(t, crmfilter.AreaExactOnly, f.state)},
+		{"area 300 km radius", f.inArea(t, "", f.wide)},
 		{"area city + campaign status + stage", f.inArea(t, "", f.city, read, stage)},
 		{"area city exact_only + memory + q", f.inArea(t, crmfilter.AreaExactOnly, f.city,
 			crmfilter.Predicate{Field: crmfilter.FieldMemoryCategory, Operator: crmfilter.OpIn, Values: []string{"objection", "deal"}},

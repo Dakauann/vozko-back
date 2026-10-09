@@ -17,7 +17,12 @@ const (
 	cellsPerTile       = 32
 )
 
-var brazilBounds = BBox{South: -33.8, West: -74.1, North: 5.3, East: -28.8}
+const shapeBoundsMarginDegrees = 5
+
+var (
+	brazilBounds = BBox{South: -33.8, West: -74.1, North: 5.3, East: -28.8}
+	shapeBounds  = brazilBounds.widened(shapeBoundsMarginDegrees)
+)
 
 type Point struct{ Lat, Lng float64 }
 
@@ -65,6 +70,12 @@ func (b BBox) Validate() error {
 
 func BrazilBounds() BBox { return brazilBounds }
 
+func ShapeBounds() BBox { return shapeBounds }
+
+func (b BBox) widened(degrees float64) BBox {
+	return BBox{South: b.South - degrees, West: b.West - degrees, North: b.North + degrees, East: b.East + degrees}
+}
+
 func (b BBox) contains(p Point) bool {
 	return p.Lat >= b.South && p.Lat <= b.North && p.Lng >= b.West && p.Lng <= b.East
 }
@@ -80,4 +91,8 @@ func finite(v float64) bool {
 
 func radians(degrees float64) float64 {
 	return degrees * math.Pi / 180
+}
+
+func degrees(radians float64) float64 {
+	return radians * 180 / math.Pi
 }

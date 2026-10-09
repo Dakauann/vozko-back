@@ -379,13 +379,13 @@ func (h *GeographyHandler) ListAreas(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Criar área desenhada
-// @Description	Salva uma área desenhada no mapa (polígono de até 200 vértices sem cruzamentos, retângulo de quatro cantos alinhados, ou círculo de raio até 50 km), privada por padrão. O nome vem do cliente, proposto no idioma de quem desenhou. Use o `id` devolvido no filtro `{"field":"area","operator":"in","values":[id]}`; entram na área os endereços principais com posição que identifica a casa e também os com posição aproximada (CEP, bairro ou cidade) cujo ponto guardado fica dentro dela; com `"key":"exact_only"` no teste só entram os com posição de casa.
+// @Description	Salva uma área desenhada no mapa, privada por padrão. Não há limite de tamanho: vale qualquer polígono de 3 a 200 vértices sem cruzamentos, retângulo de quatro cantos alinhados aos eixos (cantos com diferença de até 0,1% do lado menor são encaixados na caixa) ou círculo de raio positivo, desde que a forma inteira fique dentro do mapa do Brasil com 5 graus de margem. Recusas da forma: `area_shape_crossing` (as linhas se cruzam), `area_shape_outside_bounds` (sai do mapa do Brasil), `area_shape_too_many_vertices` (mais de 200 vértices; o cliente simplifica antes de enviar), `area_shape_empty` (a forma não cerca área, inclusive raio zero) e `area_shape_invalid` (corpo malformado: tipo desconhecido, coordenada inválida, campos trocados, raio negativo ou retângulo torto). O nome vem do cliente, proposto no idioma de quem desenhou. Use o `id` devolvido no filtro `{"field":"area","operator":"in","values":[id]}`; entram na área os endereços principais com posição que identifica a casa e também os com posição aproximada (CEP, bairro ou cidade) cujo ponto guardado fica dentro dela; com `"key":"exact_only"` no teste só entram os com posição de casa.
 // @Tags			Leads
 // @Accept			json
 // @Produce		json
 // @Param			body	body		lead.CreateDrawnAreaRequest	true	"Área"
 // @Success		201		{object}	lead.DrawnAreaResponse
-// @Failure		400		{object}	response.ErrorResponse	"invalid_body (corpo acima de 64 KiB incluso), area_name_required, area_name_too_long, area_visibility_invalid, area_shape_invalid, area_limit_reached"
+// @Failure		400		{object}	response.ErrorResponse	"invalid_body (corpo acima de 64 KiB incluso), area_name_required, area_name_too_long, area_visibility_invalid, area_shape_crossing, area_shape_outside_bounds, area_shape_too_many_vertices, area_shape_empty, area_shape_invalid, area_limit_reached"
 // @Failure		403		{object}	response.ErrorResponse	"lead_addresses_forbidden"
 // @Security		BearerAuth
 // @Router			/lead-areas [post]
@@ -431,14 +431,14 @@ func (h *GeographyHandler) GetArea(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Alterar área desenhada
-// @Description	Renomeia, compartilha ou redesenha uma área; só quem a criou altera. As contagens em cache que usam a área passam a ser lidas de novo, porque a chave leva a hora da última alteração de cada área. O corpo aceita até 64 KiB.
+// @Description	Renomeia, compartilha ou redesenha uma área; só quem a criou altera. Uma forma nova segue as mesmas regras da criação, com os mesmos códigos de recusa. As contagens em cache que usam a área passam a ser lidas de novo, porque a chave leva a hora da última alteração de cada área. O corpo aceita até 64 KiB.
 // @Tags			Leads
 // @Accept			json
 // @Produce		json
 // @Param			id		path		string						true	"ID da área"
 // @Param			body	body		lead.UpdateDrawnAreaRequest	true	"Campos a alterar"
 // @Success		200		{object}	lead.DrawnAreaResponse
-// @Failure		400		{object}	response.ErrorResponse	"invalid_body (corpo acima de 64 KiB incluso), area_name_required, area_name_too_long, area_visibility_invalid, area_shape_invalid"
+// @Failure		400		{object}	response.ErrorResponse	"invalid_body (corpo acima de 64 KiB incluso), area_name_required, area_name_too_long, area_visibility_invalid, area_shape_crossing, area_shape_outside_bounds, area_shape_too_many_vertices, area_shape_empty, area_shape_invalid"
 // @Failure		403		{object}	response.ErrorResponse	"area_forbidden, lead_addresses_forbidden"
 // @Failure		404		{object}	response.ErrorResponse	"area_not_found"
 // @Security		BearerAuth

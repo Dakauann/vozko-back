@@ -349,6 +349,10 @@ func TestAreaRoutesMapTheirRefusals(t *testing.T) {
 		{leadarea.ErrAddressesRequired, http.StatusForbidden, "lead_addresses_forbidden"},
 		{leadarea.ErrNameRequired, http.StatusBadRequest, "area_name_required"},
 		{leadarea.ErrShapeInvalid, http.StatusBadRequest, "area_shape_invalid"},
+		{fmt.Errorf("%w: %w", leadarea.ErrShapeInvalid, geo.ErrSelfCrossing), http.StatusBadRequest, "area_shape_crossing"},
+		{fmt.Errorf("%w: %w", leadarea.ErrShapeInvalid, geo.ErrShapeOutsideBounds), http.StatusBadRequest, "area_shape_outside_bounds"},
+		{fmt.Errorf("%w: %w", leadarea.ErrShapeInvalid, geo.ErrTooManyVertices), http.StatusBadRequest, "area_shape_too_many_vertices"},
+		{fmt.Errorf("%w: %w", leadarea.ErrShapeInvalid, geo.ErrEmptyShape), http.StatusBadRequest, "area_shape_empty"},
 		{leadarea.ErrLimitReached, http.StatusBadRequest, "area_limit_reached"},
 		{errors.New("db down"), http.StatusInternalServerError, ""},
 	}

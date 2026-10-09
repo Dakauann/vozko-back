@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -806,7 +806,6 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
-    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -820,9 +819,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
+    - CONVERSATIONS
     type: string
     x-enum-varnames:
-    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -836,6 +835,7 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
+    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -6737,6 +6737,28 @@ definitions:
     - Or
   crmfilter.Field:
     enum:
+    - id
+    - phone_any
+    - email
+    - nickname
+    - birthday
+    - birth_date
+    - zip
+    - state
+    - city
+    - district
+    - geo_precision
+    - geo_status
+    - has_address
+    - has_identity
+    - opted_out
+    - whatsapp_opt_in
+    - relation_kind
+    - relatives_count
+    - referred_count
+    - referred_by
+    - geo_placement
+    - area_approximate
     - owner
     - carteira
     - pipeline
@@ -6768,30 +6790,30 @@ definitions:
     - memory_updated_at
     - custom
     - area
-    - id
-    - phone_any
-    - email
-    - nickname
-    - birthday
-    - birth_date
-    - zip
-    - state
-    - city
-    - district
-    - geo_precision
-    - geo_status
-    - has_address
-    - has_identity
-    - opted_out
-    - whatsapp_opt_in
-    - relation_kind
-    - relatives_count
-    - referred_count
-    - referred_by
-    - geo_placement
-    - area_approximate
     type: string
     x-enum-varnames:
+    - FieldID
+    - FieldPhoneAny
+    - FieldEmail
+    - FieldNickname
+    - FieldBirthday
+    - FieldBirthDate
+    - FieldZip
+    - FieldState
+    - FieldCity
+    - FieldDistrict
+    - FieldGeoPrecision
+    - FieldGeoStatus
+    - FieldHasAddress
+    - FieldHasIdentity
+    - FieldOptedOut
+    - FieldWhatsAppOptIn
+    - FieldRelationKind
+    - FieldRelativesCount
+    - FieldReferredCount
+    - FieldReferredBy
+    - FieldGeoPlacement
+    - FieldAreaApproximate
     - FieldOwner
     - FieldCarteira
     - FieldPipeline
@@ -6823,28 +6845,6 @@ definitions:
     - FieldMemoryUpdatedAt
     - FieldCustom
     - FieldArea
-    - FieldID
-    - FieldPhoneAny
-    - FieldEmail
-    - FieldNickname
-    - FieldBirthday
-    - FieldBirthDate
-    - FieldZip
-    - FieldState
-    - FieldCity
-    - FieldDistrict
-    - FieldGeoPrecision
-    - FieldGeoStatus
-    - FieldHasAddress
-    - FieldHasIdentity
-    - FieldOptedOut
-    - FieldWhatsAppOptIn
-    - FieldRelationKind
-    - FieldRelativesCount
-    - FieldReferredCount
-    - FieldReferredBy
-    - FieldGeoPlacement
-    - FieldAreaApproximate
   crmfilter.Filter:
     properties:
       groups:
@@ -10132,11 +10132,17 @@ definitions:
         - portrait
         - story
         type: string
+      durationMs:
+        example: 1500
+        maximum: 22000
+        minimum: 500
+        type: integer
       kind:
         enum:
         - image
         - music
         - voice
+        - sfx
         - video
         - cutout
         - captions
@@ -10172,6 +10178,8 @@ definitions:
         type: string
       createdAt:
         type: string
+      durationMs:
+        type: integer
       failureCode:
         enum:
         - generation_failed
@@ -10189,6 +10197,7 @@ definitions:
         - image
         - music
         - voice
+        - sfx
         - video
         - cutout
         - captions
@@ -10801,6 +10810,7 @@ definitions:
     type: object
   report.FailureCode:
     enum:
+    - forbidden
     - unknown_kind
     - unsupported_format
     - too_many_rows
@@ -10811,9 +10821,9 @@ definitions:
     - cancelled
     - workspace_required
     - empty_result
-    - forbidden
     type: string
     x-enum-varnames:
+    - FailureForbidden
     - FailureUnknownKind
     - FailureUnsupported
     - FailureTooManyRows
@@ -10824,7 +10834,6 @@ definitions:
     - FailureCancelled
     - FailureWorkspaceEmpty
     - FailureEmptyResult
-    - FailureForbidden
   report.Format:
     enum:
     - csv
@@ -10876,18 +10885,18 @@ definitions:
     type: object
   report.Kind:
     enum:
+    - leads
     - attendance_overview
     - conversation_entries
     - balance_transactions
     - opportunities
-    - leads
     type: string
     x-enum-varnames:
+    - KindLeads
     - KindAttendanceOverview
     - KindConversationEntries
     - KindBalanceTransactions
     - KindOpportunities
-    - KindLeads
   report.KindDescriptor:
     properties:
       formats:
@@ -22735,14 +22744,22 @@ paths:
     post:
       consumes:
       - application/json
-      description: Salva uma área desenhada no mapa (polígono de até 200 vértices
-        sem cruzamentos, retângulo de quatro cantos alinhados, ou círculo de raio
-        até 50 km), privada por padrão. O nome vem do cliente, proposto no idioma
-        de quem desenhou. Use o `id` devolvido no filtro `{"field":"area","operator":"in","values":[id]}`;
+      description: 'Salva uma área desenhada no mapa, privada por padrão. Não há limite
+        de tamanho: vale qualquer polígono de 3 a 200 vértices sem cruzamentos, retângulo
+        de quatro cantos alinhados aos eixos (cantos com diferença de até 0,1% do
+        lado menor são encaixados na caixa) ou círculo de raio positivo, desde que
+        a forma inteira fique dentro do mapa do Brasil com 5 graus de margem. Recusas
+        da forma: `area_shape_crossing` (as linhas se cruzam), `area_shape_outside_bounds`
+        (sai do mapa do Brasil), `area_shape_too_many_vertices` (mais de 200 vértices;
+        o cliente simplifica antes de enviar), `area_shape_empty` (a forma não cerca
+        área, inclusive raio zero) e `area_shape_invalid` (corpo malformado: tipo
+        desconhecido, coordenada inválida, campos trocados, raio negativo ou retângulo
+        torto). O nome vem do cliente, proposto no idioma de quem desenhou. Use o
+        `id` devolvido no filtro `{"field":"area","operator":"in","values":[id]}`;
         entram na área os endereços principais com posição que identifica a casa e
         também os com posição aproximada (CEP, bairro ou cidade) cujo ponto guardado
         fica dentro dela; com `"key":"exact_only"` no teste só entram os com posição
-        de casa.
+        de casa.'
       parameters:
       - description: Área
         in: body
@@ -22759,7 +22776,8 @@ paths:
             $ref: '#/definitions/lead.DrawnAreaResponse'
         "400":
           description: invalid_body (corpo acima de 64 KiB incluso), area_name_required,
-            area_name_too_long, area_visibility_invalid, area_shape_invalid, area_limit_reached
+            area_name_too_long, area_visibility_invalid, area_shape_crossing, area_shape_outside_bounds,
+            area_shape_too_many_vertices, area_shape_empty, area_shape_invalid, area_limit_reached
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "403":
@@ -22830,9 +22848,10 @@ paths:
       consumes:
       - application/json
       description: Renomeia, compartilha ou redesenha uma área; só quem a criou altera.
-        As contagens em cache que usam a área passam a ser lidas de novo, porque a
-        chave leva a hora da última alteração de cada área. O corpo aceita até 64
-        KiB.
+        Uma forma nova segue as mesmas regras da criação, com os mesmos códigos de
+        recusa. As contagens em cache que usam a área passam a ser lidas de novo,
+        porque a chave leva a hora da última alteração de cada área. O corpo aceita
+        até 64 KiB.
       parameters:
       - description: ID da área
         in: path
@@ -22854,7 +22873,8 @@ paths:
             $ref: '#/definitions/lead.DrawnAreaResponse'
         "400":
           description: invalid_body (corpo acima de 64 KiB incluso), area_name_required,
-            area_name_too_long, area_visibility_invalid, area_shape_invalid
+            area_name_too_long, area_visibility_invalid, area_shape_crossing, area_shape_outside_bounds,
+            area_shape_too_many_vertices, area_shape_empty, area_shape_invalid
           schema:
             $ref: '#/definitions/response.ErrorResponse'
         "403":
@@ -26096,23 +26116,25 @@ paths:
       description: 'Coloca na fila uma geração. kind image: prompt, aspect (square
         1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds
         de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice:
-        prompt com o roteiro exato, model e voice opcional. kind video: aspect e video,
-        uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual
-        de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs,
-        durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1
-        com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem);
-        sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions
-        (legendas WebVTT da fala de um áudio ou vídeo), denoise (áudio limpo de um
-        áudio ou vídeo) e proxy (cópia de edição de um vídeo em até 720p com um quadro
-        chave a cada meio segundo, fora da biblioteca; uma cópia pronta da mesma origem
-        é devolvida de novo sem reprocessar): sourceMediaId da biblioteca, sem model;
-        processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs).
-        Campos inválidos respondem 422 com o código por campo. Responde 202 com o
-        job; acompanhe por GET /media/generations/{id}. Imagem, música e locução são
-        cobradas do saldo pelo custo informado pelo provedor; o resultado só é entregue
-        depois de cobrado (status settling enquanto o provedor não informa o custo).
-        Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem
-        nova cobrança.'
+        prompt com o roteiro exato, model e voice opcional. kind sfx: prompt descrevendo
+        o efeito sonoro (whoosh, impacto, riser, clique, ambiente), model e durationMs
+        de 500 a 22000; o efeito chega sem silêncio nas pontas e nunca passa de durationMs.
+        kind video: aspect e video, uma linha do tempo (durationMs até 90000, background
+        #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId
+        da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform
+        normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa
+        não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG
+        transparente), captions (legendas WebVTT da fala de um áudio ou vídeo), denoise
+        (áudio limpo de um áudio ou vídeo) e proxy (cópia de edição de um vídeo em
+        até 720p com um quadro chave a cada meio segundo, fora da biblioteca; uma
+        cópia pronta da mesma origem é devolvida de novo sem reprocessar): sourceMediaId
+        da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo
+        por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código
+        por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}.
+        Imagem, música, locução e efeito sonoro são cobrados do saldo pelo custo informado
+        pelo provedor; o resultado só é entregue depois de cobrado (status settling
+        enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário
+        ainda em andamento devolve o mesmo job sem nova cobrança.'
       parameters:
       - description: o que gerar
         in: body
@@ -26181,17 +26203,19 @@ paths:
       - Mídia gerada
   /media/models:
     get:
-      description: 'Modelos que geram o tipo pedido (kind: image, music ou voice),
-        do mais usado para o menos usado segundo o provedor; default marca o recomendado.
-        O id escolhido vai no campo model de POST /media/generations. Vídeos são montados
-        pelo Vozko e não têm modelo. Responde 503 (models_unavailable) quando a lista
-        não pode ser carregada; nesse caso nada desse tipo pode ser pedido.'
+      description: 'Modelos que geram o tipo pedido (kind: image, music, voice ou
+        sfx), do mais usado para o menos usado segundo o provedor; default marca o
+        recomendado. O id escolhido vai no campo model de POST /media/generations.
+        Vídeos são montados pelo Vozko e não têm modelo. Responde 503 (models_unavailable)
+        quando a lista não pode ser carregada; nesse caso nada desse tipo pode ser
+        pedido.'
       parameters:
       - description: tipo de mídia
         enum:
         - image
         - music
         - voice
+        - sfx
         in: query
         name: kind
         required: true
@@ -29693,22 +29717,32 @@ paths:
     post:
       consumes:
       - multipart/form-data
-      description: O editor renderiza e codifica o vídeo no navegador; o servidor
-        não renderiza nada. Envie o MP4 no campo video (multipart). O servidor confere
-        que o arquivo é um MP4 e que tem até 95 MB enquanto recebe, e só então guarda
-        na pasta de exportações do projeto e coloca o vídeo na biblioteca de mídia
-        com o nome do projeto. Nada é guardado quando o arquivo é recusado. Só projetos
-        de vídeo exportam (422 not_video); um arquivo que não é MP4 responde 422 invalid_export;
-        acima do limite responde 422 export_too_large.
+      description: 'O editor renderiza e codifica no navegador; o servidor não renderiza
+        nada. Envie o arquivo no campo file (multipart) e, antes dele, um nome opcional
+        no campo description (até 255 caracteres; vazio usa o nome do projeto). O
+        servidor reconhece o formato pelos primeiros bytes, nunca pelo tipo declarado:
+        projetos de vídeo exportam MP4, GIF e WebP animado; projetos de imagem exportam
+        PDF e SVG. O SVG só é aceito com o vocabulário que o editor escreve (sem scripts,
+        eventos, links externos ou textos; imagens só como data URI PNG ou JPEG).
+        Tudo tem até 95 MB, conferidos enquanto o arquivo chega. O arquivo vai para
+        a pasta de exportações do projeto e entra na biblioteca de mídia: MP4 como
+        vídeo, GIF, WebP e SVG como imagem, PDF como documento. Nada é guardado quando
+        o arquivo é recusado. Um arquivo que o editor não gera responde 422 invalid_export;
+        um formato que o tipo do projeto não exporta responde 422 export_format; acima
+        do limite responde 422 export_too_large.'
       parameters:
       - description: id do projeto
         in: path
         name: id
         required: true
         type: string
-      - description: o vídeo exportado em MP4
+      - description: nome da mídia na biblioteca
         in: formData
-        name: video
+        name: description
+        type: string
+      - description: o arquivo exportado (MP4, GIF, WebP, PDF ou SVG)
+        in: formData
+        name: file
         required: true
         type: file
       produces:
@@ -29732,7 +29766,7 @@ paths:
             $ref: '#/definitions/response.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Guardar um vídeo exportado
+      summary: Guardar um arquivo exportado pelo editor
       tags:
       - Estúdio
   /tickets:

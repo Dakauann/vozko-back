@@ -73,7 +73,7 @@ func TestNewAreaRefusals(t *testing.T) {
 		{"a name past the limit", workspaceID, ownerID, Draft{Name: strings.Repeat("a", MaxNameLength+1), Shape: rectangle()}, ErrNameTooLong},
 		{"an unknown visibility", workspaceID, ownerID, Draft{Name: "A", Visibility: "public", Shape: rectangle()}, ErrVisibilityInvalid},
 		{"no shape", workspaceID, ownerID, Draft{Name: "A"}, ErrShapeInvalid},
-		{"a radius past 50 km", workspaceID, ownerID, Draft{Name: "A", Shape: geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -19.9, Lng: -43.9}, RadiusM: 50001}}, ErrShapeInvalid},
+		{"a radius that leaves the map of Brazil", workspaceID, ownerID, Draft{Name: "A", Shape: geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -19.9, Lng: -43.9}, RadiusM: 3000000}}, ErrShapeInvalid},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,10 +84,70 @@ func TestNewAreaRefusals(t *testing.T) {
 	}
 }
 
-func TestShapeRefusalsKeepTheGeoReason(t *testing.T) {
-	_, err := New(workspaceID, ownerID, Draft{Name: "A", Shape: geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -19.9, Lng: -43.9}, RadiusM: 50001}}, now)
-	if !errors.Is(err, geo.ErrInvalidRadius) {
-		t.Fatalf("err = %v, want the geo reason kept", err)
+func TestShapeRefusalsKeepTheGeoReasonAndItsOwnCode(t *testing.T) {
+	saoPaulo := geo.Point{Lat: -23.55, Lng: -46.63}
+	tests := []struct {
+		name   string
+		shape  geo.Shape
+		reason error
+		code   string
+	}{
+		{"a crossing ring", geo.Shape{Kind: geo.ShapePolygon, Ring: []geo.Point{{Lat: -23.57, Lng: -46.67}, {Lat: -23.55, Lng: -46.64}, {Lat: -23.57, Lng: -46.64}, {Lat: -23.55, Lng: -46.67}}}, ErrShapeCrossing, "area_shape_crossing"},
+		{"a circle that leaves the map", geo.Shape{Kind: geo.ShapeCircle, Center: saoPaulo, RadiusM: 3000000}, ErrShapeOutsideBounds, "area_shape_outside_bounds"},
+		{"a vertex outside the map", geo.Shape{Kind: geo.ShapePolygon, Ring: []geo.Point{saoPaulo, {Lat: 38.72, Lng: -9.14}, {Lat: -23.5, Lng: -46.6}}}, ErrShapeOutsideBounds, "area_shape_outside_bounds"},
+		{"too many vertices", geo.Shape{Kind: geo.ShapePolygon, Ring: zigzag(geo.MaxRingVertices + 1)}, ErrShapeTooManyVertices, "area_shape_too_many_vertices"},
+		{"collinear vertices", geo.Shape{Kind: geo.ShapePolygon, Ring: []geo.Point{{Lat: -23.5, Lng: -46.7}, {Lat: -23.5, Lng: -46.6}, {Lat: -23.5, Lng: -46.5}}}, ErrShapeEmpty, "area_shape_empty"},
+		{"a zero radius", geo.Shape{Kind: geo.ShapeCircle, Center: saoPaulo}, ErrShapeEmpty, "area_shape_empty"},
+		{"a negative radius", geo.Shape{Kind: geo.ShapeCircle, Center: saoPaulo, RadiusM: -1}, geo.ErrInvalidRadius, "area_shape_invalid"},
+		{"an unknown kind", geo.Shape{Kind: "hexagon"}, geo.ErrUnknownShapeKind, "area_shape_invalid"},
+		{"a missing vertex", geo.Shape{Kind: geo.ShapePolygon, Ring: []geo.Point{saoPaulo, {}, {Lat: -23.5, Lng: -46.6}}}, geo.ErrInvalidPoint, "area_shape_invalid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(workspaceID, ownerID, Draft{Name: "A", Shape: tt.shape}, now)
+			if !errors.Is(err, ErrShapeInvalid) || !errors.Is(err, tt.reason) {
+				t.Fatalf("err = %v, want a shape refusal keeping %v", err, tt.reason)
+			}
+			if got := ErrorCode(err); got != tt.code {
+				t.Fatalf("ErrorCode = %q, want %q", got, tt.code)
+			}
+			if !IsInputRefusal(err) {
+				t.Fatal("every shape refusal is an input refusal")
+			}
+		})
+	}
+}
+
+func TestAnAreaTakesAnyShapeInsideTheMapOfBrazil(t *testing.T) {
+	shapes := map[string]geo.Shape{
+		"a 300 km radius":        {Kind: geo.ShapeCircle, Center: geo.Point{Lat: -23.55, Lng: -46.63}, RadiusM: 300000},
+		"the state of São Paulo": {Kind: geo.ShapePolygon, Ring: []geo.Point{{Lat: -25.3, Lng: -53.1}, {Lat: -25.3, Lng: -44.2}, {Lat: -19.8, Lng: -44.2}, {Lat: -19.8, Lng: -53.1}}},
+	}
+	for name, shape := range shapes {
+		if _, err := New(workspaceID, ownerID, Draft{Name: "A", Shape: shape}, now); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestAnAreaStoresItsRectangleSnappedToTheBox(t *testing.T) {
+	noisy := geo.Shape{Kind: geo.ShapeRectangle, Ring: []geo.Point{
+		{Lat: -23.5700000001, Lng: -46.67}, {Lat: -23.57, Lng: -46.64}, {Lat: -23.55, Lng: -46.6399999999}, {Lat: -23.55, Lng: -46.67},
+	}}
+	a, err := New(workspaceID, ownerID, Draft{Name: "Caixa", Shape: noisy}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []geo.Point{{Lat: -23.5700000001, Lng: -46.67}, {Lat: -23.5700000001, Lng: -46.6399999999}, {Lat: -23.55, Lng: -46.6399999999}, {Lat: -23.55, Lng: -46.67}}
+	for i, corner := range want {
+		if a.Shape.Ring[i] != corner {
+			t.Fatalf("stored corner %d = %v, want %v", i, a.Shape.Ring[i], corner)
+		}
+	}
+	shape := noisy
+	patched, err := a.Apply(Patch{Shape: &shape}, ownerID, now)
+	if err != nil || patched.Shape.Ring[1] != want[1] {
+		t.Fatalf("a patched rectangle is snapped too: %+v, %v", patched.Shape.Ring, err)
 	}
 }
 
@@ -191,7 +251,7 @@ func TestBoundsHoldTheWholeRing(t *testing.T) {
 	if !b.UpdatedAt.Equal(a.UpdatedAt) {
 		t.Fatalf("bounds edit time = %v, want the area's %v", b.UpdatedAt, a.UpdatedAt)
 	}
-	if b.ID != "" ||b.South >= -19.92 || b.North <= -19.92 || b.West >= -43.94 || b.East <= -43.94 {
+	if b.ID != "" || b.South >= -19.92 || b.North <= -19.92 || b.West >= -43.94 || b.East <= -43.94 {
 		t.Fatalf("bounds = %+v, want the circle around its center", b)
 	}
 	for _, p := range a.Ring() {
@@ -199,4 +259,12 @@ func TestBoundsHoldTheWholeRing(t *testing.T) {
 			t.Fatalf("ring point %+v is outside the bounds %+v", p, b)
 		}
 	}
+}
+
+func zigzag(vertices int) []geo.Point {
+	ring := make([]geo.Point, vertices)
+	for i := range ring {
+		ring[i] = geo.Point{Lat: -23.5 - float64(i%2)*0.01, Lng: -46.7 + float64(i)*0.001}
+	}
+	return ring
 }
