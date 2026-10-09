@@ -112,7 +112,7 @@ func TestAFilterListsTheAreasBoundAcrossItsGroupsWithTheirEditTime(t *testing.T)
 	}
 }
 
-func TestAnAreaReadsHousePrecisionUnlessItsKeyAsksForTheApproximateLeadsToo(t *testing.T) {
+func TestAnAreaHoldsApproximatePositionsUnlessItsKeyAsksForExactPositionsOnly(t *testing.T) {
 	areaID := "4f1c2a8e-6b0d-4d55-9a57-2f3c8b1d0e11"
 	tests := []struct {
 		name  string
@@ -121,12 +121,13 @@ func TestAnAreaReadsHousePrecisionUnlessItsKeyAsksForTheApproximateLeadsToo(t *t
 		want  []GeoPlacement
 		err   error
 	}{
-		{"an area without a key holds only house positions", FieldArea, "", []GeoPlacement{PlacementOnMap}, nil},
-		{"an area keyed with_approximate also holds approximate positions", FieldArea, AreaWithApproximate, []GeoPlacement{PlacementOnMap, PlacementApproximate}, nil},
-		{"spaces around the key are read as the key", FieldArea, " " + AreaWithApproximate + " ", []GeoPlacement{PlacementOnMap, PlacementApproximate}, nil},
-		{"an unknown key refuses instead of reading house positions", FieldArea, "everyone", nil, ErrAreaMembershipInvalid},
+		{"an area without a key holds house and approximate positions", FieldArea, "", []GeoPlacement{PlacementOnMap, PlacementApproximate}, nil},
+		{"an area keyed exact_only holds only house positions", FieldArea, AreaExactOnly, []GeoPlacement{PlacementOnMap}, nil},
+		{"spaces around the key are read as the key", FieldArea, " " + AreaExactOnly + " ", []GeoPlacement{PlacementOnMap}, nil},
+		{"the retired with_approximate key refuses", FieldArea, "with_approximate", nil, ErrAreaMembershipInvalid},
+		{"an unknown key refuses instead of reading every position", FieldArea, "everyone", nil, ErrAreaMembershipInvalid},
 		{"the left out field holds only approximate positions", FieldAreaApproximate, "", []GeoPlacement{PlacementApproximate}, nil},
-		{"the left out field takes no key", FieldAreaApproximate, AreaWithApproximate, nil, ErrAreaMembershipInvalid},
+		{"the left out field takes no key", FieldAreaApproximate, AreaExactOnly, nil, ErrAreaMembershipInvalid},
 		{"a field that is not an area has no area membership", FieldCity, "", nil, ErrAreaMembershipInvalid},
 	}
 	for _, tt := range tests {
@@ -150,10 +151,10 @@ func TestAnAreaWithAnUnknownMembershipKeyFailsValidationAsAnInvalidFilter(t *tes
 		p    Predicate
 		want error
 	}{
-		{"house precision", Predicate{Field: FieldArea, Operator: OpIn, Values: []string{areaID}}, nil},
-		{"with approximate", Predicate{Field: FieldArea, Key: AreaWithApproximate, Operator: OpIn, Values: []string{areaID}}, nil},
+		{"every position", Predicate{Field: FieldArea, Operator: OpIn, Values: []string{areaID}}, nil},
+		{"exact only", Predicate{Field: FieldArea, Key: AreaExactOnly, Operator: OpIn, Values: []string{areaID}}, nil},
 		{"unknown key", Predicate{Field: FieldArea, Key: "all", Operator: OpIn, Values: []string{areaID}}, ErrInvalidValue},
-		{"keyed left out", Predicate{Field: FieldAreaApproximate, Key: AreaWithApproximate, Operator: OpIn, Values: []string{areaID}}, ErrInvalidValue},
+		{"keyed left out", Predicate{Field: FieldAreaApproximate, Key: AreaExactOnly, Operator: OpIn, Values: []string{areaID}}, ErrInvalidValue},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -165,7 +166,7 @@ func TestAnAreaWithAnUnknownMembershipKeyFailsValidationAsAnInvalidFilter(t *tes
 }
 
 func TestTheAreaMembershipKeyTravelsInTheFilterJSON(t *testing.T) {
-	f := Filter{Groups: []Group{{Conjunction: And, Predicates: []Predicate{{Field: FieldArea, Key: AreaWithApproximate, Operator: OpIn, Values: []string{"4f1c2a8e-6b0d-4d55-9a57-2f3c8b1d0e11"}}}}}}
+	f := Filter{Groups: []Group{{Conjunction: And, Predicates: []Predicate{{Field: FieldArea, Key: AreaExactOnly, Operator: OpIn, Values: []string{"4f1c2a8e-6b0d-4d55-9a57-2f3c8b1d0e11"}}}}}}
 	encoded, err := json.Marshal(f)
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +175,29 @@ func TestTheAreaMembershipKeyTravelsInTheFilterJSON(t *testing.T) {
 	if err := json.Unmarshal(encoded, &back); err != nil {
 		t.Fatal(err)
 	}
-	if back.Groups[0].Predicates[0].Key != AreaWithApproximate {
-		t.Fatalf("decoded key = %q from %s, want %q", back.Groups[0].Predicates[0].Key, encoded, AreaWithApproximate)
+	if back.Groups[0].Predicates[0].Key != AreaExactOnly {
+		t.Fatalf("decoded key = %q from %s, want %q", back.Groups[0].Predicates[0].Key, encoded, AreaExactOnly)
+	}
+}
+
+func TestOnlyAnAreaKeyedExactOnlyLeavesApproximatePositionsOut(t *testing.T) {
+	areaID := "4f1c2a8e-6b0d-4d55-9a57-2f3c8b1d0e11"
+	tests := []struct {
+		name string
+		p    Predicate
+		want bool
+	}{
+		{"an area without a key", Predicate{Field: FieldArea, Operator: OpIn, Values: []string{areaID}}, false},
+		{"an area keyed exact_only", Predicate{Field: FieldArea, Key: AreaExactOnly, Operator: OpIn, Values: []string{areaID}}, true},
+		{"spaces around the key", Predicate{Field: FieldArea, Key: " " + AreaExactOnly + " ", Operator: OpIn, Values: []string{areaID}}, true},
+		{"the left out field", Predicate{Field: FieldAreaApproximate, Operator: OpIn, Values: []string{areaID}}, false},
+		{"a field that is not an area", Predicate{Field: FieldCity, Key: AreaExactOnly, Operator: OpIn, Values: []string{"sp:sao paulo"}}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := AreaExactOnlyOf(tt.p); got != tt.want {
+				t.Fatalf("AreaExactOnlyOf() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

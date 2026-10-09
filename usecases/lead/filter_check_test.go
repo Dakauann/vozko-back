@@ -60,8 +60,11 @@ func TestFilterChecks_AnAreaMembershipKeyIsCheckedLikeAnyValue(t *testing.T) {
 			{Field: crmfilter.FieldArea, Key: key, Operator: crmfilter.OpIn, Values: []string{"4f1c2a8e-6b0d-4d55-9a57-2f3c8b1d0e11"}},
 		}}}}
 	}
-	if err := checks.CheckLeadFilter(operator(), area(crmfilter.AreaWithApproximate)); err != nil {
-		t.Fatalf("an area with approximate leads = %v, want accepted", err)
+	if err := checks.CheckLeadFilter(operator(), area(crmfilter.AreaExactOnly)); err != nil {
+		t.Fatalf("an area with exact positions only = %v, want accepted", err)
+	}
+	if err := checks.CheckLeadFilter(operator(), area("with_approximate")); !errors.Is(err, crmfilter.ErrAreaMembershipInvalid) {
+		t.Fatalf("the retired with_approximate key = %v, want ErrAreaMembershipInvalid", err)
 	}
 	if err := checks.CheckLeadFilter(operator(), area("everyone")); !errors.Is(err, lead.ErrLeadFilterInvalid) || !errors.Is(err, crmfilter.ErrAreaMembershipInvalid) {
 		t.Fatalf("an unknown area membership = %v, want ErrLeadFilterInvalid", err)

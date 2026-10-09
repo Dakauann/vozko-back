@@ -1,6 +1,6 @@
 ---
 name: legendas-e-texto
-description: Como legendar a fala e escrever textos na tela no Estúdio (gerar legendas pela fila, estilo para vídeos curtos, posição segura, regras de leitura da Netflix e da BBC, contraste e revisão); carregue antes de legendar ou pôr texto em vídeo ou imagem.
+description: Como legendar a fala e escrever textos na tela no Estúdio (gerar legendas pela fila, estilo para vídeos curtos, posição segura, regras de leitura profissionais, contraste e revisão); carregue antes de legendar ou pôr texto em vídeo ou imagem.
 ---
 
 # Legendas e texto na tela
@@ -21,7 +21,7 @@ description: Como legendar a fala e escrever textos na tela no Estúdio (gerar l
 - 4:5 e 1:1: y entre 0,78 e 0,84. 16:9: y 0,85.
 - A legenda nunca cobre rosto nem produto; se cobrir, suba ou desça a faixa inteira.
 
-## Regras de leitura (Netflix e BBC)
+## Regras de leitura
 - No máximo 42 caracteres por linha e 2 linhas; uma linha sempre que couber. Em vídeo vertical, linhas de 15 a 25 caracteres.
 - Até 17 a 20 caracteres por segundo, cerca de 3 palavras por segundo. Cada legenda fica de 0,8 a 7 s na tela.
 - Quebre depois da pontuação ou antes de conjunções e preposições. Nunca separe artigo do substantivo, adjetivo do substantivo, sujeito do verbo, nem o número da unidade. Em duas linhas, a de baixo é a mais longa.

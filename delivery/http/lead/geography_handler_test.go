@@ -498,7 +498,7 @@ func TestTheLeftOutSectionAnswersTheCountTheBairrosAndTheFilterThatListsThem(t *
 	m := &stubMap{leftOut: leadmap.LeftOut{Total: 9, Districts: []leaddomain.DistrictCount{
 		{Pair: "sp:sao paulo/centro", CityKey: "sp:sao paulo", DistrictKey: "centro", District: "Centro", City: "São Paulo", State: "SP", Count: 6},
 	}}}
-	structured := `{"groups":[{"conjunction":"and","predicates":[{"field":"blocked","operator":"is_false"},{"field":"area","operator":"in","values":["` + geoAreaID + `"]}]}]}`
+	structured := `{"groups":[{"conjunction":"and","predicates":[{"field":"blocked","operator":"is_false"},{"field":"area","key":"exact_only","operator":"in","values":["` + geoAreaID + `"]}]}]}`
 	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/left-out?q=ana&filter="+url.QueryEscape(structured), nil, nil)
 	var raw any
 	_ = json.Unmarshal(rec.Body.Bytes(), &raw)
@@ -515,7 +515,7 @@ func TestTheLeftOutSectionAnswersTheCountTheBairrosAndTheFilterThatListsThem(t *
 
 func TestTheLeftOutFilterCarriesEverySimpleParamTheCountReadButTheFreeSearch(t *testing.T) {
 	m := &stubMap{leftOut: leadmap.LeftOut{Total: 2, Districts: []leaddomain.DistrictCount{}}}
-	structured := `{"groups":[{"conjunction":"and","predicates":[{"field":"area","operator":"in","values":["` + geoAreaID + `"]}]}]}`
+	structured := `{"groups":[{"conjunction":"and","predicates":[{"field":"area","key":"exact_only","operator":"in","values":["` + geoAreaID + `"]}]}]}`
 	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/left-out?q=bia&name=ana&blocked=false&filter="+url.QueryEscape(structured), nil, nil)
 	var body struct {
 		Filter crmfilter.Filter `json:"filter"`
@@ -537,7 +537,7 @@ func TestTheLeftOutFilterCarriesEverySimpleParamTheCountReadButTheFreeSearch(t *
 
 func TestTheLeftOutSectionRefusesAnAreaInsideAnEitherGroupBeforeCounting(t *testing.T) {
 	m := &stubMap{}
-	structured := `{"groups":[{"predicates":[{"field":"area","operator":"in","values":["` + geoAreaID + `"]},{"field":"blocked","operator":"is_true"}]}]}`
+	structured := `{"groups":[{"predicates":[{"field":"area","key":"exact_only","operator":"in","values":["` + geoAreaID + `"]},{"field":"blocked","operator":"is_true"}]}]}`
 	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/left-out?filter="+url.QueryEscape(structured), nil, nil)
 	if rec.Code != http.StatusBadRequest || errorCodeOf(t, rec.Body.Bytes()) != "area_left_out_unsupported" {
 		t.Fatalf("left out of an area or blocked = %d %s, want 400 area_left_out_unsupported", rec.Code, rec.Body.String())
@@ -556,5 +556,14 @@ func TestTheLeftOutSectionWithoutAnAreaAnswersNothingAndNoFilter(t *testing.T) {
 	refused := send(t, geographyRouter(&stubMap{err: leadarea.ErrNotFound}, &stubAreas{}), http.MethodGet, "/leads/map/left-out", nil, nil)
 	if refused.Code != http.StatusBadRequest || errorCodeOf(t, refused.Body.Bytes()) != "area_not_found" {
 		t.Fatalf("left out of a deleted area = %d %s", refused.Code, refused.Body.String())
+	}
+}
+
+func TestTheLeftOutSectionOfAnAreaThatHoldsApproximatePositionsSendsNoListingFilter(t *testing.T) {
+	m := &stubMap{leftOut: leadmap.NoneLeftOut()}
+	structured := `{"groups":[{"conjunction":"or","predicates":[{"field":"area","operator":"in","values":["` + geoAreaID + `"]},{"field":"blocked","operator":"is_true"}]}]}`
+	rec := send(t, geographyRouter(m, &stubAreas{}), http.MethodGet, "/leads/map/left-out?filter="+url.QueryEscape(structured), nil, nil)
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"total":0,"districts":[]}`+"\n" {
+		t.Fatalf("left out of an inclusive area = %d %q, want nothing and no filter", rec.Code, rec.Body.String())
 	}
 }

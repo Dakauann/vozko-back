@@ -16,12 +16,12 @@ import (
 )
 
 type stubReferencePoints struct {
-	fix     geo.Fix
+	fix     geo.ReferenceSpot
 	err     error
 	queries []address.Postal
 }
 
-func (s *stubReferencePoints) Locate(_ context.Context, raw address.Postal) (geo.Fix, error) {
+func (s *stubReferencePoints) Locate(_ context.Context, raw address.Postal) (geo.ReferenceSpot, error) {
 	s.queries = append(s.queries, raw)
 	return s.fix, s.err
 }
@@ -46,9 +46,9 @@ func TestTheReferencePointRouteIsGatedByFullAddresses(t *testing.T) {
 }
 
 func TestTheReferencePointAnswersThePointWithItsPrecisionAndSource(t *testing.T) {
-	points := &stubReferencePoints{fix: geo.Fix{
+	points := &stubReferencePoints{fix: geo.ReferenceSpot{Fix: geo.Fix{
 		Point: geo.Point{Lat: -23.5614, Lng: -46.6559}, Precision: geo.PrecisionStreet, Source: geo.SourceReference, FixedAt: time.Unix(0, 0),
-	}}
+	}, City: "São Paulo", State: "SP"}}
 	rec := send(t, referencePointRouter(points), http.MethodGet,
 		"/leads/map/reference-point?zipCode=01310-100&district=Bela+Vista&city=S%C3%A3o+Paulo&state=SP", nil, nil)
 	if rec.Code != http.StatusOK {
@@ -58,13 +58,27 @@ func TestTheReferencePointAnswersThePointWithItsPrecisionAndSource(t *testing.T)
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
 	}
-	want := `{"attribution":"IBGE, CNEFE 2022","lat":-23.5614,"lng":-46.6559,"precision":"street"}`
+	want := `{"attribution":"IBGE, CNEFE 2022","city":"São Paulo","lat":-23.5614,"lng":-46.6559,"precision":"street","state":"SP","wholeCity":false}`
 	if got, _ := json.Marshal(raw); string(got) != want {
 		t.Fatalf("body = %s\nwant   %s", got, want)
 	}
 	asked := address.Postal{ZipCode: "01310-100", District: "Bela Vista", City: "São Paulo", State: "SP"}
 	if len(points.queries) != 1 || points.queries[0] != asked {
 		t.Fatalf("queries = %+v, want %+v", points.queries, asked)
+	}
+}
+
+func TestTheReferencePointSaysWhenItStartsAtTheCentreOfTheWholeCity(t *testing.T) {
+	points := &stubReferencePoints{fix: geo.ReferenceSpot{Fix: geo.Fix{
+		Point: geo.Point{Lat: -22.0087, Lng: -47.8909}, Precision: geo.PrecisionCity, Source: geo.SourceReference,
+	}, City: "São Carlos", State: "SP", WholeCity: true}}
+	rec := send(t, referencePointRouter(points), http.MethodGet, "/leads/map/reference-point?zipCode=13560-000", nil, nil)
+	var body ReferencePointResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("reference point = %d %s", rec.Code, rec.Body.String())
+	}
+	if !body.WholeCity || body.City != "São Carlos" || body.State != "SP" || body.Precision != "city" {
+		t.Fatalf("body = %+v, want the whole city of São Carlos", body)
 	}
 }
 

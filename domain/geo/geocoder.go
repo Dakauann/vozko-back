@@ -103,6 +103,8 @@ type ReferencePoint struct {
 	SpreadM  float64
 	Count    int64
 	CityCode string
+	Name     string
+	State    string
 }
 
 type ReferenceKeys struct {

@@ -144,20 +144,21 @@ func groupTestsAnArea(g crmfilter.Group) bool {
 	return slices.ContainsFunc(g.Predicates, func(p crmfilter.Predicate) bool { return IsAreaField(p.Field) })
 }
 
-func groupTestsOnlyAreas(g crmfilter.Group) bool {
-	return !slices.ContainsFunc(g.Predicates, func(p crmfilter.Predicate) bool { return !IsAreaField(p.Field) })
+func groupTestsOnlyExactOnlyAreas(g crmfilter.Group) bool {
+	return !slices.ContainsFunc(g.Predicates, func(p crmfilter.Predicate) bool { return !crmfilter.AreaExactOnlyOf(p) })
 }
 
 func LeftOut(f crmfilter.Filter) (crmfilter.Filter, bool, error) {
 	out := crmfilter.Filter{Groups: make([]crmfilter.Group, len(f.Groups))}
 	found := false
 	for gi, g := range f.Groups {
-		if groupTestsAnArea(g) && g.Conj() == crmfilter.Or && !groupTestsOnlyAreas(g) {
+		strict := slices.ContainsFunc(g.Predicates, crmfilter.AreaExactOnlyOf)
+		if strict && g.Conj() == crmfilter.Or && !groupTestsOnlyExactOnlyAreas(g) {
 			return crmfilter.Filter{}, false, fmt.Errorf("%w: group %d", ErrLeftOutUnsupported, gi)
 		}
 		preds := make([]crmfilter.Predicate, len(g.Predicates))
 		for pi, p := range g.Predicates {
-			if IsAreaField(p.Field) {
+			if crmfilter.AreaExactOnlyOf(p) {
 				found = true
 				p.Field = crmfilter.FieldAreaApproximate
 				p.Key = ""

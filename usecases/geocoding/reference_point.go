@@ -27,18 +27,18 @@ func NewReferencePoints(reference geo.Reference, now func() time.Time) (*Referen
 	return &ReferencePoints{reference: reference, now: now}, nil
 }
 
-func (s *ReferencePoints) Locate(ctx context.Context, raw address.Postal) (geo.Fix, error) {
+func (s *ReferencePoints) Locate(ctx context.Context, raw address.Postal) (geo.ReferenceSpot, error) {
 	query, err := geo.ReferenceQueryOf(raw)
 	if err != nil {
-		return geo.Fix{}, err
+		return geo.ReferenceSpot{}, err
 	}
 	coverage, err := s.reference.Coverage(ctx)
 	if err != nil {
-		return geo.Fix{}, fmt.Errorf("%w: coverage: %w", geo.ErrReferenceUnavailable, err)
+		return geo.ReferenceSpot{}, fmt.Errorf("%w: coverage: %w", geo.ErrReferenceUnavailable, err)
 	}
 	index, err := s.reference.Lookup(ctx, []address.Postal{query})
 	if err != nil {
-		return geo.Fix{}, fmt.Errorf("%w: lookup: %w", geo.ErrReferenceUnavailable, err)
+		return geo.ReferenceSpot{}, fmt.Errorf("%w: lookup: %w", geo.ErrReferenceUnavailable, err)
 	}
 	return geo.ReferencePointOf(coverage, index, query, s.now())
 }

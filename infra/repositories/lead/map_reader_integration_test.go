@@ -293,7 +293,7 @@ func boundToAreas(t *testing.T, ws, viewer string, areas leadarea.Repository, id
 	return bound
 }
 
-func TestAnAreaHoldsOnlyLeadsWhosePositionPinsAHouseAgainstPostgres(t *testing.T) {
+func TestAnExactOnlyAreaHoldsOnlyLeadsWhosePositionPinsAHouseAgainstPostgres(t *testing.T) {
 	db := mapDB(t)
 	ws, other := uuid.NewString(), uuid.NewString()
 	owner := uuid.NewString()
@@ -316,7 +316,7 @@ func TestAnAreaHoldsOnlyLeadsWhosePositionPinsAHouseAgainstPostgres(t *testing.T
 		t.Fatal(err)
 	}
 	reader := NewMapReader(db)
-	inArea := boundToAreas(t, ws, owner, areas, area.ID)
+	inArea := exactAreas(t, ws, owner, areas, area.ID)
 	summary, err := reader.Summary(context.Background(), leadmap.Scope{WorkspaceID: ws, Filter: inArea})
 	if err != nil {
 		t.Fatal(err)
@@ -872,7 +872,7 @@ func TestTheLeftOutCountListsTheApproximateLeadsInsideTheAreaAgainstPostgres(t *
 	if err := areas.Create(context.Background(), area); err != nil {
 		t.Fatal(err)
 	}
-	left, ok, err := leadarea.LeftOut(boundToAreas(t, ws, owner, areas, area.ID))
+	left, ok, err := leadarea.LeftOut(exactAreas(t, ws, owner, areas, area.ID))
 	if err != nil || !ok {
 		t.Fatal("the area filter must have something to leave out")
 	}

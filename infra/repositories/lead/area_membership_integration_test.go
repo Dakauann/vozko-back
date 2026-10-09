@@ -9,12 +9,35 @@ import (
 
 	"vozko/domain/crmfilter"
 	"vozko/domain/geo"
+	"vozko/domain/lead"
 	"vozko/domain/leadarea"
 	"vozko/domain/leadmap"
+	"vozko/domain/shared"
+	"vozko/infra/database/schema"
 	leadarea_repository "vozko/infra/repositories/leadarea"
 )
 
-func TestAnAreaWithApproximateLeadsAddsTheApproximatePositionsInsideItAgainstPostgres(t *testing.T) {
+func exactAreas(t *testing.T, ws, viewer string, areas leadarea.Repository, ids ...string) crmfilter.Filter {
+	t.Helper()
+	f := boundToAreas(t, ws, viewer, areas, ids...)
+	f.Groups[0].Predicates[0].Key = crmfilter.AreaExactOnly
+	return f
+}
+
+func paulistaArea(t *testing.T, areas leadarea.Repository, ws, owner string) leadarea.Area {
+	t.Helper()
+	area, err := leadarea.New(ws, owner, leadarea.Draft{Name: "Paulista", Shape: geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -23.5614, Lng: -46.6559}, RadiusM: 1000}}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	area.ID = uuid.NewString()
+	if err := areas.Create(context.Background(), area); err != nil {
+		t.Fatal(err)
+	}
+	return area
+}
+
+func TestAnAreaHoldsTheApproximatePositionsInsideItUnlessItAsksForExactOnesAgainstPostgres(t *testing.T) {
 	db := mapDB(t)
 	ws, other := uuid.NewString(), uuid.NewString()
 	owner := uuid.NewString()
@@ -28,41 +51,28 @@ func TestAnAreaWithApproximateLeadsAddsTheApproximatePositionsInsideItAgainstPos
 	seedLead(t, db, other, paulistaAddress("district"))
 
 	areas := leadarea_repository.NewRepository(db)
-	area, err := leadarea.New(ws, owner, leadarea.Draft{Name: "Paulista", Shape: geo.Shape{Kind: geo.ShapeCircle, Center: geo.Point{Lat: -23.5614, Lng: -46.6559}, RadiusM: 1000}}, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	area.ID = uuid.NewString()
-	if err := areas.Create(context.Background(), area); err != nil {
-		t.Fatal(err)
-	}
-	keyed := crmfilter.Filter{Groups: []crmfilter.Group{{Conjunction: crmfilter.And, Predicates: []crmfilter.Predicate{
-		{Field: crmfilter.FieldArea, Key: crmfilter.AreaWithApproximate, Operator: crmfilter.OpIn, Values: []string{area.ID}},
-	}}}}
-	found, err := areas.FindLive(context.Background(), ws, []string{area.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	withApproximate, _, err := leadarea.Bind(keyed, ws, owner, found)
-	if err != nil {
-		t.Fatal(err)
-	}
+	area := paulistaArea(t, areas, ws, owner)
+	inclusive := boundToAreas(t, ws, owner, areas, area.ID)
+	exact := exactAreas(t, ws, owner, areas, area.ID)
 	reader := NewMapReader(db)
-	houses, err := reader.Summary(context.Background(), leadmap.Scope{WorkspaceID: ws, Filter: boundToAreas(t, ws, owner, areas, area.ID)})
+	houses, err := reader.Summary(context.Background(), leadmap.Scope{WorkspaceID: ws, Filter: exact})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if houses.Total != 1 || houses.OnMap != 1 {
-		t.Fatalf("house precision area = %+v, want the street lead only", houses)
+		t.Fatalf("exact only area = %+v, want the street lead only", houses)
 	}
-	both, err := reader.Summary(context.Background(), leadmap.Scope{WorkspaceID: ws, Filter: withApproximate})
+	both, err := reader.Summary(context.Background(), leadmap.Scope{WorkspaceID: ws, Filter: inclusive})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if both.Total != 3 || both.OnMap != 1 || both.Approximate != 2 {
-		t.Fatalf("area with approximate leads = %+v, want the street lead plus the bairro and city positions inside the ring", both)
+		t.Fatalf("area = %+v, want the street lead plus the bairro and city positions inside the ring", both)
 	}
-	left, ok, err := leadarea.LeftOut(withApproximate)
+	if _, ok, err := leadarea.LeftOut(inclusive); ok || err != nil {
+		t.Fatalf("an area that holds approximate positions leaves nothing out, got %v %v", ok, err)
+	}
+	left, ok, err := leadarea.LeftOut(exact)
 	if err != nil || !ok {
 		t.Fatalf("LeftOut() = %v, %v", ok, err)
 	}
@@ -70,16 +80,74 @@ func TestAnAreaWithApproximateLeadsAddsTheApproximatePositionsInsideItAgainstPos
 	if err != nil {
 		t.Fatal(err)
 	}
-	if approximate.Total != both.Approximate {
-		t.Fatalf("approximate inside the area = %d, want the %d approximate leads the keyed area added", approximate.Total, both.Approximate)
+	if approximate.Total != both.Approximate || houses.Total+approximate.Total != both.Total {
+		t.Fatalf("left out of the exact area = %d, want the %d approximate leads the default area holds", approximate.Total, both.Approximate)
 	}
 	w, _ := geo.SnapWindow(geo.BBox{South: -23.6, West: -46.7, North: -23.5, East: -46.6}, 13)
-	layer := layerIn(t, db, ws, withApproximate, w)
 	people := 0
-	for _, p := range layer.Points {
+	for _, p := range layerIn(t, db, ws, inclusive, w).Points {
 		people += len(p.LeadIDs)
 	}
 	if people != 3 {
-		t.Fatalf("layer inside the keyed area = %+v, want the three leads drawn", layer.Points)
+		t.Fatalf("layer inside the area = %d people, want the three leads drawn", people)
+	}
+}
+
+func TestAnAreaCountsTheSameLeadsInTheListTheSelectionTheSnapshotAndTheMapAgainstPostgres(t *testing.T) {
+	db := mapDB(t)
+	if err := db.AutoMigrate(&schema.LeadSelectionSnapshot{}, &schema.LeadMemory{}, &schema.LeadMessageWindow{}, &schema.CallList{}); err != nil {
+		t.Fatal(err)
+	}
+	ws, other := uuid.NewString(), uuid.NewString()
+	owner := uuid.NewString()
+	for _, precision := range []string{"exact", "street", "street", "postal_code", "district", "district", "city"} {
+		seedLead(t, db, ws, paulistaAddress(precision))
+	}
+	farLat, farLng := at(-19.92, -43.94)
+	seedLead(t, db, ws, &seededPosition{lat: farLat, lng: farLng, precision: "street"})
+	seedLead(t, db, ws, &seededPosition{lat: farLat, lng: farLng, precision: "city"})
+	seedLead(t, db, ws, &seededPosition{status: "pending", city: "São Paulo", cityKey: "3550308"})
+	seedLead(t, db, ws, nil)
+	seedLead(t, db, other, paulistaAddress("district"))
+
+	areas := leadarea_repository.NewRepository(db)
+	area := paulistaArea(t, areas, ws, owner)
+	repo := &repository{db: db, agg: newAggregateCache(nil)}
+	reader := NewMapReader(db)
+	ctx := context.Background()
+	cases := []struct {
+		name        string
+		filter      crmfilter.Filter
+		total       int
+		approximate int
+	}{
+		{"default", boundToAreas(t, ws, owner, areas, area.ID), 7, 4},
+		{"exact only", exactAreas(t, ws, owner, areas, area.ID), 3, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			page, err := repo.List(lead.ListLeadsInput{WorkspaceID: ws, Filter: tc.filter, Options: shared.QueryOptions{Pagination: shared.Pagination{Page: 1, PageSize: 50}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			count, err := repo.CountSelection(ctx, lead.SelectionQuery{WorkspaceID: ws, Filter: tc.filter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			frozen, err := repo.FreezeSelection(ctx, lead.SelectionQuery{WorkspaceID: ws, Filter: tc.filter}, uuid.NewString())
+			if err != nil {
+				t.Fatal(err)
+			}
+			summary, err := reader.Summary(ctx, leadmap.Scope{WorkspaceID: ws, Filter: tc.filter})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if int(page.TotalItems) != tc.total || len(page.Items) != tc.total || count != tc.total || frozen.Size != tc.total || int(summary.Total) != tc.total {
+				t.Fatalf("list %d (%d rows), selection %d, snapshot %d, map %d; want %d everywhere", page.TotalItems, len(page.Items), count, frozen.Size, summary.Total, tc.total)
+			}
+			if int(summary.Approximate) != tc.approximate || int(summary.OnMap+summary.Approximate) != tc.total {
+				t.Fatalf("map summary = %+v, want %d approximate of %d", summary, tc.approximate, tc.total)
+			}
+		})
 	}
 }

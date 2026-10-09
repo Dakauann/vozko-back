@@ -90,23 +90,24 @@ const (
 )
 
 type Clip struct {
-	ID         string              `json:"id"`
-	Type       ClipType            `json:"type"`
-	AssetID    string              `json:"assetId,omitempty"`
-	StartMS    int64               `json:"startMs"`
-	DurationMS int64               `json:"durationMs"`
-	TrimInMS   int64               `json:"trimInMs"`
-	Volume     float64             `json:"volume"`
-	FadeInMS   int64               `json:"fadeInMs"`
-	FadeOutMS  int64               `json:"fadeOutMs"`
-	Fit        mediagen.Fit        `json:"fit,omitempty"`
-	Transform  mediagen.Transform  `json:"transform"`
-	Layer      *Layer              `json:"layer,omitempty"`
-	LinkID     string              `json:"linkId,omitempty"`
-	MotionIn   *mediagen.Motion    `json:"motionIn,omitempty"`
-	MotionOut  *mediagen.Motion    `json:"motionOut,omitempty"`
-	Disabled   bool                `json:"disabled,omitempty"`
-	Keyframes  *mediagen.Keyframes `json:"keyframes,omitempty"`
+	ID         string             `json:"id"`
+	Type       ClipType           `json:"type"`
+	AssetID    string             `json:"assetId,omitempty"`
+	StartMS    int64              `json:"startMs"`
+	DurationMS int64              `json:"durationMs"`
+	TrimInMS   int64              `json:"trimInMs"`
+	Volume     float64            `json:"volume"`
+	FadeInMS   int64              `json:"fadeInMs"`
+	FadeOutMS  int64              `json:"fadeOutMs"`
+	Fit        mediagen.Fit       `json:"fit,omitempty"`
+	Transform  mediagen.Transform `json:"transform"`
+	Layer      *Layer             `json:"layer,omitempty"`
+	LinkID     string             `json:"linkId,omitempty"`
+	MotionIn   *mediagen.Motion   `json:"motionIn,omitempty"`
+	MotionOut  *mediagen.Motion   `json:"motionOut,omitempty"`
+	Disabled   bool               `json:"disabled,omitempty"`
+	Keyframes  *ClipKeyframes     `json:"keyframes,omitempty"`
+	Blur       float64            `json:"blur,omitempty"`
 }
 
 type Track struct {
@@ -379,7 +380,7 @@ func (c Clip) issue(kind TrackKind, durationMS int64) string {
 		return CodeInvalid
 	}
 	if kind == TrackAudio {
-		if c.Type != ClipAudio || strings.TrimSpace(c.AssetID) == "" || c.MotionIn != nil || c.MotionOut != nil || c.Keyframes != nil {
+		if c.Type != ClipAudio || strings.TrimSpace(c.AssetID) == "" || c.MotionIn != nil || c.MotionOut != nil || c.Keyframes != nil || c.Blur != 0 {
 			return CodeInvalid
 		}
 		return ""
@@ -402,7 +403,10 @@ func (c Clip) issue(kind TrackKind, durationMS int64) string {
 	if code := mediagen.MotionIssue(c.MotionIn, c.MotionOut, c.DurationMS); code != "" {
 		return code
 	}
-	if code := mediagen.KeyframesIssue(c.Keyframes, c.Transform); code != "" {
+	if !within(c.Blur, 0, MaxClipBlur) {
+		return CodeOutOfRange
+	}
+	if code := c.Keyframes.issue(c.Transform); code != "" {
 		return code
 	}
 	return studioTransformIssue(c.Transform)

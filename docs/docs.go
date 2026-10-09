@@ -13186,7 +13186,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Salva uma área desenhada no mapa (polígono de até 200 vértices sem cruzamentos, retângulo de quatro cantos alinhados, ou círculo de raio até 50 km), privada por padrão. O nome vem do cliente, proposto no idioma de quem desenhou. Use o ` + "`" + `id` + "`" + ` devolvido no filtro ` + "`" + `{\"field\":\"area\",\"operator\":\"in\",\"values\":[id]}` + "`" + `; só endereços principais com posição que identifica a casa entram na área, a menos que o teste traga ` + "`" + `\"key\":\"with_approximate\"` + "`" + `, que também inclui as posições aproximadas (CEP, bairro ou cidade) dentro dela.",
+                "description": "Salva uma área desenhada no mapa (polígono de até 200 vértices sem cruzamentos, retângulo de quatro cantos alinhados, ou círculo de raio até 50 km), privada por padrão. O nome vem do cliente, proposto no idioma de quem desenhou. Use o ` + "`" + `id` + "`" + ` devolvido no filtro ` + "`" + `{\"field\":\"area\",\"operator\":\"in\",\"values\":[id]}` + "`" + `; entram na área os endereços principais com posição que identifica a casa e também os com posição aproximada (CEP, bairro ou cidade) cujo ponto guardado fica dentro dela; com ` + "`" + `\"key\":\"exact_only\"` + "`" + ` no teste só entram os com posição de casa.",
                 "consumes": [
                     "application/json"
                 ],
@@ -13558,7 +13558,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna a lista paginada de leads do workspace. Cada linha traz as colunas da página de leads: ` + "`" + `owner` + "`" + ` (responsável) e ` + "`" + `ownerName` + "`" + ` (o nome dele, resolvido por página), ` + "`" + `phones` + "`" + ` (telefones de contato), ` + "`" + `primaryAddress` + "`" + ` (o endereço principal; sem ` + "`" + `leads:read_addresses` + "`" + ` vêm só bairro, cidade, UF e código IBGE), ` + "`" + `customFields` + "`" + ` (campos sensíveis só com ` + "`" + `leads:read_sensitive` + "`" + `; valores de campos que não existem mais nunca saem do servidor), ` + "`" + `relativesCount` + "`" + ` e ` + "`" + `referredCount` + "`" + `. Aceita os filtros simples por querystring (nome, número, período, faixa etária, campanha, canal, bloqueio, janela, memórias) e/ou um filtro estruturado ` + "`" + `filter` + "`" + ` (crmfilter em JSON, opcionalmente em base64) com grupos AND/OR. Campos do filtro de leads: id, phone_any (identidade ou qualquer telefone de contato, nos dois formatos do nono dígito), number e q (também leem os telefones de contato), email, nickname, birthday (today, this_week de domingo a sábado ou this_month, no fuso do workspace), birth_date, owner, source, zip, state, city (chave da cidade), district (pares ` + "`" + `cityKey/districtKey` + "`" + `, nunca só o bairro), geo_precision, geo_status, has_address, has_identity, opted_out, whatsapp_opt_in, relation_kind, relatives_count, referred_count, referred_by, custom (validado contra a definição do campo) e area (` + "`" + `in` + "`" + ` com ids de áreas desenhadas, só com ` + "`" + `leads:read_addresses` + "`" + `; por padrão só endereços com posição que identifica a casa; com ` + "`" + `\"key\":\"with_approximate\"` + "`" + ` no teste entram também os endereços com posição aproximada, de CEP, bairro ou cidade, dentro da área, e qualquer outra ` + "`" + `key` + "`" + ` responde 400 ` + "`" + `lead_filter_invalid` + "`" + `; uma área apagada, de outro workspace ou privada de outra pessoa responde 400 ` + "`" + `area_not_found` + "`" + `, mais de 20 testes de área no filtro 400 ` + "`" + `area_too_many` + "`" + `), area_approximate (como area, mas lê os endereços com posição só aproximada, de CEP, bairro ou cidade, dentro da área: os leads que a área deixou de fora; os testes de area e area_approximate somam no limite de 20) e geo_placement (in, not_in, eq ou neq com on_map, approximate, without_address, not_found, pending, quota_exceeded ou refused: as mesmas faixas e as mesmas contas de GET /leads/map/summary, para cada contagem virar um link). Um filtro em campo sensível sem ` + "`" + `leads:read_sensitive` + "`" + ` responde 403 (` + "`" + `custom_field_filter_sensitive_forbidden` + "`" + `); um filtro por zip, geo_precision, geo_status, geo_placement, area ou area_approximate sem ` + "`" + `leads:read_addresses` + "`" + ` responde 403 (` + "`" + `lead_filter_address_forbidden` + "`" + `); um filtro inválido responde 400 (` + "`" + `lead_filter_invalid` + "`" + `); uma busca sem palavra de 2 caracteres ou mais responde 400 (` + "`" + `lead_search_too_short` + "`" + `). city e district aceitam a chave em qualquer grafia (` + "`" + `SP:São Paulo/Jd. Paulista` + "`" + `) e comparam pela chave guardada. A ordenação aceita múltiplas chaves. A página lê primeiro os ids da página e depois os resumos só dessas linhas, e aceita até 200 itens por página.",
+                "description": "Retorna a lista paginada de leads do workspace. Cada linha traz as colunas da página de leads: ` + "`" + `owner` + "`" + ` (responsável) e ` + "`" + `ownerName` + "`" + ` (o nome dele, resolvido por página), ` + "`" + `phones` + "`" + ` (telefones de contato), ` + "`" + `primaryAddress` + "`" + ` (o endereço principal; sem ` + "`" + `leads:read_addresses` + "`" + ` vêm só bairro, cidade, UF e código IBGE), ` + "`" + `customFields` + "`" + ` (campos sensíveis só com ` + "`" + `leads:read_sensitive` + "`" + `; valores de campos que não existem mais nunca saem do servidor), ` + "`" + `relativesCount` + "`" + ` e ` + "`" + `referredCount` + "`" + `. Aceita os filtros simples por querystring (nome, número, período, faixa etária, campanha, canal, bloqueio, janela, memórias) e/ou um filtro estruturado ` + "`" + `filter` + "`" + ` (crmfilter em JSON, opcionalmente em base64) com grupos AND/OR. Campos do filtro de leads: id, phone_any (identidade ou qualquer telefone de contato, nos dois formatos do nono dígito), number e q (também leem os telefones de contato), email, nickname, birthday (today, this_week de domingo a sábado ou this_month, no fuso do workspace), birth_date, owner, source, zip, state, city (chave da cidade), district (pares ` + "`" + `cityKey/districtKey` + "`" + `, nunca só o bairro), geo_precision, geo_status, has_address, has_identity, opted_out, whatsapp_opt_in, relation_kind, relatives_count, referred_count, referred_by, custom (validado contra a definição do campo) e area (` + "`" + `in` + "`" + ` com ids de áreas desenhadas, só com ` + "`" + `leads:read_addresses` + "`" + `; por padrão entram os endereços com posição que identifica a casa e também os com posição aproximada, de CEP, bairro ou cidade, cujo ponto guardado fica dentro da área; com ` + "`" + `\"key\":\"exact_only\"` + "`" + ` no teste só entram os com posição que identifica a casa, e qualquer outra ` + "`" + `key` + "`" + ` responde 400 ` + "`" + `lead_filter_invalid` + "`" + `; uma área apagada, de outro workspace ou privada de outra pessoa responde 400 ` + "`" + `area_not_found` + "`" + `, mais de 20 testes de área no filtro 400 ` + "`" + `area_too_many` + "`" + `), area_approximate (como area, mas lê só os endereços com posição aproximada, de CEP, bairro ou cidade, dentro da área: os leads que uma área ` + "`" + `exact_only` + "`" + ` deixou de fora; os testes de area e area_approximate somam no limite de 20) e geo_placement (in, not_in, eq ou neq com on_map, approximate, without_address, not_found, pending, quota_exceeded ou refused: as mesmas faixas e as mesmas contas de GET /leads/map/summary, para cada contagem virar um link). Um filtro em campo sensível sem ` + "`" + `leads:read_sensitive` + "`" + ` responde 403 (` + "`" + `custom_field_filter_sensitive_forbidden` + "`" + `); um filtro por zip, geo_precision, geo_status, geo_placement, area ou area_approximate sem ` + "`" + `leads:read_addresses` + "`" + ` responde 403 (` + "`" + `lead_filter_address_forbidden` + "`" + `); um filtro inválido responde 400 (` + "`" + `lead_filter_invalid` + "`" + `); uma busca sem palavra de 2 caracteres ou mais responde 400 (` + "`" + `lead_search_too_short` + "`" + `). city e district aceitam a chave em qualquer grafia (` + "`" + `SP:São Paulo/Jd. Paulista` + "`" + `) e comparam pela chave guardada. A ordenação aceita múltiplas chaves. A página lê primeiro os ids da página e depois os resumos só dessas linhas, e aceita até 200 itens por página.",
                 "produces": [
                     "application/json"
                 ],
@@ -14924,7 +14924,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Uma área desenhada só reúne endereços principais cuja posição identifica a casa. Esta seção conta os leads que ficaram de fora por terem só posição aproximada (CEP, bairro ou cidade) dentro da área: o mesmo filtro, com cada teste ` + "`" + `area` + "`" + ` lido como ` + "`" + `area_approximate` + "`" + ` (sem a ` + "`" + `key` + "`" + `; a contagem é a mesma com ou sem ` + "`" + `key: with_approximate` + "`" + ` na área). Devolve ` + "`" + `total` + "`" + `, os bairros desses leads (no máximo 100, do maior para o menor, com ` + "`" + `pair` + "`" + ` para o filtro ` + "`" + `district` + "`" + `) e ` + "`" + `filter` + "`" + `, o filtro completo que a contagem leu (o ` + "`" + `filter` + "`" + ` estruturado mais os grupos dos parâmetros simples, como ` + "`" + `name` + "`" + `, ` + "`" + `stageId` + "`" + `, ` + "`" + `labelId` + "`" + ` ou ` + "`" + `createdFrom` + "`" + `) com ` + "`" + `area` + "`" + ` trocado por ` + "`" + `area_approximate` + "`" + `, pronto para listar esses leads em GET /leads só com ` + "`" + `filter` + "`" + ` (some ` + "`" + `{\"field\":\"district\",\"operator\":\"in\",\"values\":[pair]}` + "`" + ` para listar um bairro). Só a busca livre ` + "`" + `q` + "`" + ` (ou ` + "`" + `search` + "`" + `) não entra em ` + "`" + `filter` + "`" + `; continue enviando-a à parte. Uma área num grupo ` + "`" + `or` + "`" + ` (o padrão de um grupo sem ` + "`" + `conjunction` + "`" + `) ao lado de um teste que não é área não tem leitura exata e é recusada com ` + "`" + `area_left_out_unsupported` + "`" + `; grupos ` + "`" + `and` + "`" + `, ou grupos ` + "`" + `or` + "`" + ` só de áreas, são aceitos. Sem área no filtro responde ` + "`" + `{\"total\":0,\"districts\":[]}` + "`" + ` sem consultar o banco. Em cache por 60 s por workspace, geração dos leads, filtro e hora da última alteração de cada área.",
+                "description": "Uma área desenhada reúne, por padrão, os endereços principais com posição de casa e também os com posição aproximada (CEP, bairro ou cidade) cujo ponto fica dentro dela; nada fica de fora. Só um teste ` + "`" + `area` + "`" + ` com ` + "`" + `\"key\":\"exact_only\"` + "`" + ` deixa de fora os aproximados. Esta seção conta esses leads: o mesmo filtro, com cada teste ` + "`" + `area` + "`" + ` ` + "`" + `exact_only` + "`" + ` lido como ` + "`" + `area_approximate` + "`" + ` (sem a ` + "`" + `key` + "`" + `) e os demais testes de área mantidos. Sem nenhum teste ` + "`" + `exact_only` + "`" + ` responde ` + "`" + `{\"total\":0,\"districts\":[]}` + "`" + ` sem ` + "`" + `filter` + "`" + ` e sem consultar o banco. Devolve ` + "`" + `total` + "`" + `, os bairros desses leads (no máximo 100, do maior para o menor, com ` + "`" + `pair` + "`" + ` para o filtro ` + "`" + `district` + "`" + `) e ` + "`" + `filter` + "`" + `, o filtro completo que a contagem leu (o ` + "`" + `filter` + "`" + ` estruturado mais os grupos dos parâmetros simples, como ` + "`" + `name` + "`" + `, ` + "`" + `stageId` + "`" + `, ` + "`" + `labelId` + "`" + ` ou ` + "`" + `createdFrom` + "`" + `) com cada ` + "`" + `area` + "`" + ` ` + "`" + `exact_only` + "`" + ` trocado por ` + "`" + `area_approximate` + "`" + `, pronto para listar esses leads em GET /leads só com ` + "`" + `filter` + "`" + ` (some ` + "`" + `{\"field\":\"district\",\"operator\":\"in\",\"values\":[pair]}` + "`" + ` para listar um bairro). Só a busca livre ` + "`" + `q` + "`" + ` (ou ` + "`" + `search` + "`" + `) não entra em ` + "`" + `filter` + "`" + `; continue enviando-a à parte. Uma área ` + "`" + `exact_only` + "`" + ` num grupo ` + "`" + `or` + "`" + ` (o padrão de um grupo sem ` + "`" + `conjunction` + "`" + `) ao lado de qualquer teste que não seja outra área ` + "`" + `exact_only` + "`" + ` não tem leitura exata e é recusada com ` + "`" + `area_left_out_unsupported` + "`" + `; grupos ` + "`" + `and` + "`" + `, ou grupos ` + "`" + `or` + "`" + ` só de áreas ` + "`" + `exact_only` + "`" + `, são aceitos. Sem área no filtro responde ` + "`" + `{\"total\":0,\"districts\":[]}` + "`" + ` sem consultar o banco. Em cache por 60 s por workspace, geração dos leads, filtro e hora da última alteração de cada área.",
                 "produces": [
                     "application/json"
                 ],
@@ -15068,7 +15068,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Acha o ponto de referência do IBGE (CNEFE 2022) para um CEP ou um endereço, sem gravar nada e sem chamar provedor externo. Escolhe o melhor ponto entre o do CEP (` + "`" + `street` + "`" + ` com dispersão abaixo de 300 m, ` + "`" + `postal_code` + "`" + ` até 1.500 m, ` + "`" + `city` + "`" + ` acima disso ou para CEP genérico terminado em 000), o do bairro (` + "`" + `district` + "`" + `, pelo par cidade e bairro) e o da cidade (` + "`" + `city` + "`" + `). Precisa de um ` + "`" + `zipCode` + "`" + ` válido ou de ` + "`" + `city` + "`" + ` com ` + "`" + `state` + "`" + `; ` + "`" + `district` + "`" + ` refina quando não há CEP. Serve de centro para o raio a partir de um endereço ou CEP no mapa e de início do pino no editor de endereço. ` + "`" + `attribution` + "`" + ` é a fonte a citar. Recusas: 400 ` + "`" + `reference_query_invalid` + "`" + ` (sem CEP válido nem cidade com UF, ou campo inválido), 422 ` + "`" + `reference_not_loaded` + "`" + ` (a base de referência não está carregada para a UF do lugar; com só parte das UFs carregadas, um CEP fora da base e sem UF também cai aqui), 404 ` + "`" + `reference_point_not_found` + "`" + ` (a UF está carregada, mas não há ponto para o lugar), 503 ` + "`" + `reference_unavailable` + "`" + ` (a base não pôde ser lida) e 503 ` + "`" + `reference_point_unavailable` + "`" + ` (a rota não está ligada).",
+                "description": "Acha o ponto de referência do IBGE (CNEFE 2022) para um CEP ou um endereço, sem gravar nada e sem chamar provedor externo. Escolhe o melhor ponto entre o do CEP (` + "`" + `street` + "`" + ` com dispersão abaixo de 300 m, ` + "`" + `postal_code` + "`" + ` até 1.500 m, ` + "`" + `city` + "`" + ` acima disso ou para CEP genérico terminado em 000), o do bairro (` + "`" + `district` + "`" + `, pelo par cidade e bairro) e o da cidade (` + "`" + `city` + "`" + `). Quando o melhor ponto só identifica a cidade (CEP genérico, CEP espalhado pela cidade ou só cidade com UF), ` + "`" + `wholeCity` + "`" + ` vem ` + "`" + `true` + "`" + ` e o ponto é o centro da cidade da base, para o raio partir dele. ` + "`" + `city` + "`" + ` e ` + "`" + `state` + "`" + ` nomeiam a cidade do ponto quando a base a conhece (vazios caso contrário). Precisa de um ` + "`" + `zipCode` + "`" + ` válido ou de ` + "`" + `city` + "`" + ` com ` + "`" + `state` + "`" + `; ` + "`" + `district` + "`" + ` refina quando não há CEP. Serve de centro para o raio a partir de um endereço ou CEP no mapa e de início do pino no editor de endereço. ` + "`" + `attribution` + "`" + ` é a fonte a citar. Recusas: 400 ` + "`" + `reference_query_invalid` + "`" + ` (sem CEP válido nem cidade com UF, ou campo inválido), 422 ` + "`" + `reference_not_loaded` + "`" + ` (a base de referência não está carregada para a UF do lugar; com só parte das UFs carregadas, um CEP fora da base e sem UF também cai aqui), 404 ` + "`" + `reference_point_not_found` + "`" + ` (a UF está carregada, mas não há ponto para o lugar), 503 ` + "`" + `reference_unavailable` + "`" + ` (a base não pôde ser lida) e 503 ` + "`" + `reference_point_unavailable` + "`" + ` (a rota não está ligada).",
                 "produces": [
                     "application/json"
                 ],
@@ -26079,8 +26079,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "429": {
+                        "description": "Too Many Requests",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -26090,13 +26090,19 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
                     }
                 }
             }
         },
         "/whatsapp/outreach/quote": {
             "get": {
-                "description": "Retorna o preço do modelo para o workspace e se o saldo atual cobre o envio. Só modelos liberados para o workspace são cotados: um modelo de outro workspace responde 403 (` + "`" + `forbidden` + "`" + `), um modelo inexistente responde 404 (` + "`" + `not_found` + "`" + `), um custo fora da faixa calculável responde 422 (` + "`" + `quote_out_of_range` + "`" + `), e uma falha ao ler as liberações ou o preço responde 503 (` + "`" + `quote_unavailable` + "`" + `), sem nada enviado.",
+                "description": "Retorna o preço do modelo para o workspace e se o saldo atual cobre o envio. Só modelos liberados para o workspace são cotados: um modelo de outro workspace responde 403 (` + "`" + `forbidden` + "`" + `), um modelo inexistente responde 404 (` + "`" + `not_found` + "`" + `),, um custo fora da faixa calculável responde 422 (` + "`" + `quote_out_of_range` + "`" + `), e uma falha ao ler as liberações ou o preço responde 503 (` + "`" + `quote_unavailable` + "`" + `), sem nada enviado.",
                 "produces": [
                     "application/json"
                 ],
@@ -26140,18 +26146,6 @@ const docTemplate = `{
                     },
                     "422": {
                         "description": "Unprocessable Entity",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -43202,6 +43196,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "IBGE, CNEFE 2022"
                 },
+                "city": {
+                    "type": "string",
+                    "example": "São Carlos"
+                },
                 "lat": {
                     "type": "number",
                     "example": -23.5614
@@ -43219,6 +43217,14 @@ const docTemplate = `{
                         "city"
                     ],
                     "example": "street"
+                },
+                "state": {
+                    "type": "string",
+                    "example": "SP"
+                },
+                "wholeCity": {
+                    "type": "boolean",
+                    "example": true
                 }
             }
         },
@@ -43835,14 +43841,26 @@ const docTemplate = `{
                 "hold",
                 "easeIn",
                 "easeOut",
-                "easeInOut"
+                "easeInOut",
+                "backIn",
+                "backOut",
+                "backInOut",
+                "elastic",
+                "bounce",
+                "spring"
             ],
             "x-enum-varnames": [
                 "EaseLinear",
                 "EaseHold",
                 "EaseIn",
                 "EaseOut",
-                "EaseInOut"
+                "EaseInOut",
+                "EaseBackIn",
+                "EaseBackOut",
+                "EaseBackInOut",
+                "EaseElastic",
+                "EaseBounce",
+                "EaseSpring"
             ]
         },
         "mediagen.Fit": {

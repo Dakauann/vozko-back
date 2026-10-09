@@ -102,7 +102,7 @@ type studioCropArgs struct {
 
 type studioKeyArgs struct {
 	AtMS   int64   `json:"at_ms" req:"true" desc:"instante da chave em ms, contado do início do clipe: de 0 até a duração do clipe"`
-	Value  float64 `json:"value" req:"true" desc:"x e y de -1 a 2 (0.5 é o centro; fora de 0 a 1 sai da tela); scale de 0.05 a 5 (1 é o tamanho atual; o clipe animado não pode passar de 4 vezes o quadro); rotation de -3600 a 3600 graus; opacity de 0 a 1"`
+	Value  float64 `json:"value" req:"true" desc:"x e y de -1 a 2 (0.5 é o centro; fora de 0 a 1 sai da tela); scale de 0.05 a 5 (1 é o tamanho atual; o clipe animado, contando o quanto a curva passa da chave, não pode passar de 4 vezes o quadro); rotation de -3600 a 3600 graus; opacity de 0 a 1; blur de 0 a 100 px (0 é nítido)"`
 	Easing string  `json:"easing,omitempty" desc:"curva do trecho que sai desta chave, padrão easeInOut: linear, hold, easeIn, easeOut, easeInOut, backIn (recua antes de sair), backOut (passa do ponto e volta), backInOut, elastic (vibra), bounce (quica), spring (chega com impulso de mola) ou uma curva css cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2, como cubic-bezier(0.05,0.7,0.1,1) para uma entrada enfática"`
 }
 
@@ -123,7 +123,7 @@ type studioVideoOperation struct {
 	Style      string          `json:"style,omitempty" enum:"headline,caption,cta,lowerThird,tag" desc:"estilo pronto de texto (add_text)"`
 	Preset     string          `json:"preset,omitempty" enum:"kenBurns,enterLeft,slideUp,fadeIn,fadeOut,pulse,spin,wobble,pop,drop,springIn" desc:"animação pronta por keyframes (motion_preset); pop cresce passando do tamanho, drop cai e quica, springIn entra com mola"`
 	Effect     string          `json:"effect,omitempty" enum:"none,fade,slideUp,slideDown,slideLeft,slideRight" desc:"efeito de entrada ou de saída (entrance, exit)"`
-	Property   string          `json:"property,omitempty" enum:"x,y,scale,rotation,opacity" desc:"propriedade animada (animate)"`
+	Property   string          `json:"property,omitempty" enum:"x,y,scale,rotation,opacity,blur" desc:"propriedade animada (animate); blur é o desfoque em pixels do quadro"`
 	Keys       []studioKeyArgs `json:"keys,omitempty" desc:"chaves da animação (animate); substituem as chaves dessa propriedade; vazio remove a animação dela"`
 	Volume     *float64        `json:"volume,omitempty" desc:"volume de 0 a 2 (1 normal)"`
 	FadeInMS   *int64          `json:"fade_in_ms,omitempty" desc:"duração do fade de entrada em ms"`
@@ -135,6 +135,7 @@ type studioVideoOperation struct {
 	Locked     *bool           `json:"locked,omitempty" desc:"travar a faixa"`
 	Muted      *bool           `json:"muted,omitempty" desc:"silenciar a faixa"`
 	Disabled   *bool           `json:"disabled,omitempty" desc:"desativar o clipe sem apagar"`
+	Blur       *float64        `json:"blur,omitempty" desc:"desfoque fixo do clipe em pixels do quadro, de 0 a 100 (update_clip); para animar use animate com property blur"`
 	Ripple     *bool           `json:"ripple,omitempty" desc:"delete_clips: puxar o que vem depois para fechar o buraco"`
 	Aspect     string          `json:"aspect,omitempty" enum:"square,portrait,story,landscape" desc:"formato do vídeo (set_canvas)"`
 	Background string          `json:"background,omitempty" desc:"cor de fundo do vídeo #rrggbb (set_canvas)"`
@@ -190,7 +191,7 @@ const studioVideoEditGuide = "Edita o projeto de vídeo aberto como uma pessoa f
 	"add_shape(shape ou path_preset, path? quando shape é path, points? e inner? na estrela, at_ms, duration_ms?, track_id?, x, y, w, h, fill? ou gradient?, stroke?, stroke_width?, radius?, dash?, shadow?, blend_mode?), " +
 	"add_icon(icon_id, at_ms, duration_ms?, track_id?, x?, y?, w?, h?, fill?), add_captions(media_id do arquivo .vtt, clip_id do clipe falado), " +
 	"move_clip(clip_id, start_ms, track_id?), trim_clip(clip_id, start_ms? e ou end_ms?), slip_clip(clip_id, trim_in_ms), split_clip(clip_id, at_ms), " +
-	"delete_clips(clip_ids, ripple?), duplicate_clips(clip_ids), update_clip(clip_id ou clip_ids, volume?, fade_in_ms?, fade_out_ms?, fit?, disabled?, x?, y?, w?, h?, rotation?, opacity?, text? e estilo: italic, line_height, letter_spacing, radius, dash, arrow_start, arrow_end, shadow, gradient, highlight, curve, blend_mode, clear), " +
+	"delete_clips(clip_ids, ripple?), duplicate_clips(clip_ids), update_clip(clip_id ou clip_ids, volume?, fade_in_ms?, fade_out_ms?, fit?, disabled?, blur?, x?, y?, w?, h?, rotation?, opacity?, text? e estilo: italic, line_height, letter_spacing, radius, dash, arrow_start, arrow_end, shadow, gradient, highlight, curve, blend_mode, clear), " +
 	"animate(clip_id, property, keys), motion_preset(clip_id ou clip_ids, preset), entrance(clip_id ou clip_ids, effect, duration_ms?), exit(clip_id ou clip_ids, effect, duration_ms?), " +
 	"add_track(kind, to_index?, name?), move_track(track_id, to_index), update_track(track_id, name?, hidden?, locked?, muted?), remove_track(track_id), " +
 	"add_marker(at_ms, name?), set_canvas(aspect? e ou background?), seek(at_ms), select(clip_ids). " +

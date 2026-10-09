@@ -83,10 +83,66 @@ func TestReferencePointOfPicksTheBestLoadedPoint(t *testing.T) {
 			if !errors.Is(err, tt.err) {
 				t.Fatalf("err = %v, want %v", err, tt.err)
 			}
-			if got != tt.want {
+			if got.Fix != tt.want {
 				t.Fatalf("fix = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestAReferencePointThatOnlyKnowsTheCityStartsAtTheCityCentreAndSaysSo(t *testing.T) {
+	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	genericPoint := Point{Lat: -22.02, Lng: -47.89}
+	widePoint := Point{Lat: -22.03, Lng: -47.88}
+	tightPoint := Point{Lat: -22.0175, Lng: -47.8908}
+	centre := Point{Lat: -22.0087, Lng: -47.8909}
+	index := ReferenceIndex{
+		CEPs: map[string]ReferencePoint{
+			"13560000": {Point: genericPoint, SpreadM: 4000, CityCode: "3548906"},
+			"13561000": {Point: widePoint, SpreadM: 5200, CityCode: "3548906"},
+			"13560250": {Point: tightPoint, SpreadM: 90, CityCode: "3548906"},
+		},
+		Cities:    map[string]ReferencePoint{"3548906": {Point: centre, CityCode: "3548906", Name: "São Carlos", State: "SP"}},
+		CityCodes: map[CityName]string{{State: "SP", NameKey: address.CityNameKey("São Carlos")}: "3548906"},
+	}
+	coverage := Coverage{States: map[string]bool{"SP": true}}
+	tests := []struct {
+		name      string
+		query     address.Postal
+		point     Point
+		precision Precision
+		wholeCity bool
+	}{
+		{"a generic CEP ending in 000 starts at the city centre", address.Postal{ZipCode: "13560-000"}, centre, PrecisionCity, true},
+		{"a CEP spread over the whole city starts at the city centre", address.Postal{ZipCode: "13561000"}, centre, PrecisionCity, true},
+		{"a city with its state is the whole city", address.Postal{City: "São Carlos", State: "SP"}, centre, PrecisionCity, true},
+		{"a tight CEP keeps its own point", address.Postal{ZipCode: "13560250"}, tightPoint, PrecisionStreet, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ReferencePointOf(coverage, index, tt.query.Normalize(), at)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Fix.Point != tt.point || got.Fix.Precision != tt.precision || got.WholeCity != tt.wholeCity {
+				t.Fatalf("spot = %+v, want %v at %s with whole city %v", got, tt.point, tt.precision, tt.wholeCity)
+			}
+			if got.City != "São Carlos" || got.State != "SP" {
+				t.Fatalf("city = %q %q, want the city the point belongs to", got.City, got.State)
+			}
+		})
+	}
+}
+
+func TestAWholeCityPointWithoutTheCityCentreKeepsTheCEPPointAndStaysUnnamed(t *testing.T) {
+	genericPoint := Point{Lat: -22.02, Lng: -47.89}
+	index := ReferenceIndex{CEPs: map[string]ReferencePoint{"13560000": {Point: genericPoint, SpreadM: 4000, CityCode: "3548906"}}}
+	got, err := ReferencePointOf(Coverage{States: map[string]bool{"SP": true}}, index, address.Postal{ZipCode: "13560000"}, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Fix.Point != genericPoint || !got.WholeCity || got.City != "" {
+		t.Fatalf("spot = %+v, want the CEP point, whole city, and no city name", got)
 	}
 }
 

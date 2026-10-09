@@ -22,13 +22,13 @@ func TestReferencePointsLocateACEP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fix, err := points.Locate(context.Background(), address.Postal{ZipCode: "01310-100"})
+	spot, err := points.Locate(context.Background(), address.Postal{ZipCode: "01310-100"})
 	if err != nil {
 		t.Fatalf("refused: %v", err)
 	}
 	want := geo.Fix{Point: cepPoint, Precision: geo.PrecisionStreet, Source: geo.SourceReference, FixedAt: now}
-	if fix != want {
-		t.Fatalf("fix = %+v, want %+v", fix, want)
+	if spot.Fix != want || spot.WholeCity {
+		t.Fatalf("spot = %+v, want %+v on a street", spot, want)
 	}
 	if len(reference.looked) != 1 || reference.looked[0].ZipCode != "01310100" {
 		t.Fatalf("looked up %+v, want the normalized CEP once", reference.looked)

@@ -2,11 +2,48 @@ package skills
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"testing/fstest"
 
 	"vozko/domain/copilot"
 )
+
+func TestWhatTheModelReadsNamesNoSkillSource(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sources := regexp.MustCompile(`(?i)\b(anthropic|claude|remotion)\b`)
+	for _, s := range lib.All() {
+		if found := sources.FindString(s.Name + "\n" + s.Description + "\n" + s.Body); found != "" {
+			t.Errorf("%s names %q to the model", s.Name, found)
+		}
+	}
+}
+
+func TestAnAdaptedSkillShipsWithItsLicenseAndNotice(t *testing.T) {
+	dirs, err := os.ReadDir("library")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range dirs {
+		folder := filepath.Join("library", dir.Name())
+		skill, err := os.ReadFile(filepath.Join(folder, "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, noticeErr := os.Stat(filepath.Join(folder, "NOTICE.md"))
+		_, licenseErr := os.Stat(filepath.Join(folder, "LICENSE.txt"))
+		licensed := strings.Contains(string(skill), "\nlicense:")
+		if (licensed || noticeErr == nil) && (licenseErr != nil || noticeErr != nil) {
+			t.Errorf("%s adapts an outside skill but lacks LICENSE.txt or NOTICE.md", dir.Name())
+		}
+	}
+}
 
 func TestTheShippedLibraryLoadsAndEverySkillIsValid(t *testing.T) {
 	lib, err := Load()

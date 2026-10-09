@@ -16,7 +16,7 @@ import (
 )
 
 type ReferencePointLocator interface {
-	Locate(ctx context.Context, raw address.Postal) (geo.Fix, error)
+	Locate(ctx context.Context, raw address.Postal) (geo.ReferenceSpot, error)
 }
 
 type ReferencePointHandler struct {
@@ -45,6 +45,9 @@ type ReferencePointResponse struct {
 	Lat         float64 `json:"lat" example:"-23.5614"`
 	Lng         float64 `json:"lng" example:"-46.6559"`
 	Precision   string  `json:"precision" example:"street" enums:"street,postal_code,district,city"`
+	City        string  `json:"city" example:"São Carlos"`
+	State       string  `json:"state" example:"SP"`
+	WholeCity   bool    `json:"wholeCity" example:"true"`
 	Attribution string  `json:"attribution" example:"IBGE, CNEFE 2022"`
 }
 
@@ -56,7 +59,7 @@ var referencePointStatus = map[string]int{
 }
 
 // @Summary		Ponto de referência de um CEP ou endereço
-// @Description	Acha o ponto de referência do IBGE (CNEFE 2022) para um CEP ou um endereço, sem gravar nada e sem chamar provedor externo. Escolhe o melhor ponto entre o do CEP (`street` com dispersão abaixo de 300 m, `postal_code` até 1.500 m, `city` acima disso ou para CEP genérico terminado em 000), o do bairro (`district`, pelo par cidade e bairro) e o da cidade (`city`). Precisa de um `zipCode` válido ou de `city` com `state`; `district` refina quando não há CEP. Serve de centro para o raio a partir de um endereço ou CEP no mapa e de início do pino no editor de endereço. `attribution` é a fonte a citar. Recusas: 400 `reference_query_invalid` (sem CEP válido nem cidade com UF, ou campo inválido), 422 `reference_not_loaded` (a base de referência não está carregada para a UF do lugar; com só parte das UFs carregadas, um CEP fora da base e sem UF também cai aqui), 404 `reference_point_not_found` (a UF está carregada, mas não há ponto para o lugar), 503 `reference_unavailable` (a base não pôde ser lida) e 503 `reference_point_unavailable` (a rota não está ligada).
+// @Description	Acha o ponto de referência do IBGE (CNEFE 2022) para um CEP ou um endereço, sem gravar nada e sem chamar provedor externo. Escolhe o melhor ponto entre o do CEP (`street` com dispersão abaixo de 300 m, `postal_code` até 1.500 m, `city` acima disso ou para CEP genérico terminado em 000), o do bairro (`district`, pelo par cidade e bairro) e o da cidade (`city`). Quando o melhor ponto só identifica a cidade (CEP genérico, CEP espalhado pela cidade ou só cidade com UF), `wholeCity` vem `true` e o ponto é o centro da cidade da base, para o raio partir dele. `city` e `state` nomeiam a cidade do ponto quando a base a conhece (vazios caso contrário). Precisa de um `zipCode` válido ou de `city` com `state`; `district` refina quando não há CEP. Serve de centro para o raio a partir de um endereço ou CEP no mapa e de início do pino no editor de endereço. `attribution` é a fonte a citar. Recusas: 400 `reference_query_invalid` (sem CEP válido nem cidade com UF, ou campo inválido), 422 `reference_not_loaded` (a base de referência não está carregada para a UF do lugar; com só parte das UFs carregadas, um CEP fora da base e sem UF também cai aqui), 404 `reference_point_not_found` (a UF está carregada, mas não há ponto para o lugar), 503 `reference_unavailable` (a base não pôde ser lida) e 503 `reference_point_unavailable` (a rota não está ligada).
 // @Tags			Leads
 // @Produce		json
 // @Param			zipCode		query		string	false	"CEP com ou sem máscara"
@@ -77,7 +80,7 @@ func (h *ReferencePointHandler) ReferencePoint(w http.ResponseWriter, r *http.Re
 		return
 	}
 	values := r.URL.Query()
-	fix, err := h.points.Locate(r.Context(), address.Postal{
+	spot, err := h.points.Locate(r.Context(), address.Postal{
 		ZipCode:  values.Get("zipCode"),
 		District: values.Get("district"),
 		City:     values.Get("city"),
@@ -88,7 +91,8 @@ func (h *ReferencePointHandler) ReferencePoint(w http.ResponseWriter, r *http.Re
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, ReferencePointResponse{
-		Lat: fix.Point.Lat, Lng: fix.Point.Lng, Precision: string(fix.Precision), Attribution: georef.Attribution,
+		Lat: spot.Fix.Point.Lat, Lng: spot.Fix.Point.Lng, Precision: string(spot.Fix.Precision),
+		City: spot.City, State: spot.State, WholeCity: spot.WholeCity, Attribution: georef.Attribution,
 	})
 }
 

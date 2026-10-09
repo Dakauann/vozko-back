@@ -284,17 +284,21 @@ func geoPlacementValue(v string) error {
 	return nil
 }
 
-const AreaWithApproximate = "with_approximate"
+const AreaExactOnly = "exact_only"
 
 var ErrAreaMembershipInvalid = fmt.Errorf("%w: unknown area membership", ErrInvalidValue)
+
+func AreaExactOnlyOf(p Predicate) bool {
+	return p.Field == FieldArea && strings.TrimSpace(p.Key) == AreaExactOnly
+}
 
 func AreaPlacements(p Predicate) ([]GeoPlacement, error) {
 	key := strings.TrimSpace(p.Key)
 	switch {
 	case p.Field == FieldArea && key == "":
-		return []GeoPlacement{PlacementOnMap}, nil
-	case p.Field == FieldArea && key == AreaWithApproximate:
 		return []GeoPlacement{PlacementOnMap, PlacementApproximate}, nil
+	case p.Field == FieldArea && key == AreaExactOnly:
+		return []GeoPlacement{PlacementOnMap}, nil
 	case p.Field == FieldAreaApproximate && key == "":
 		return []GeoPlacement{PlacementApproximate}, nil
 	}

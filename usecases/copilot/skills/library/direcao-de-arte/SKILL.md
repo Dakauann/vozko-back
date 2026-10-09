@@ -13,7 +13,11 @@ Esta habilidade decide o que a peça vai ser. As outras dizem como executar:
 - cor-e-tratamento: paleta tirada do assunto, estratégia de cor e degradês;
 - estilos-por-genero: eventos e automobilismo, noite, comida, imóveis, moda, tecnologia, saúde, varejo, corporativo e educação;
 - critica-de-design: checklist, nota de 0 a 32 e quando refazer em vez de polir;
-- design-de-imagem: o editor e a higiene (contraste, margens, marca).
+- design-de-imagem: o editor e a higiene (contraste, margens, marca);
+- frontend-design: ponto de vista visual, plano de design revisado contra o padrão de IA e ousadia num lugar só, para peças que pedem personalidade;
+- theme-factory: dez temas prontos de cor e fonte para quem não tem marca, e como criar um tema novo;
+- canvas-design: arte autoral, cartaz e capa a partir de uma filosofia de design;
+- algorithmic-art: arte generativa por regra e semente, calculada por você.
 
 ## Por que sai genérico
 Sem restrições, um modelo devolve a média do que já viu. Os sinais mais comuns e a troca de cada um:

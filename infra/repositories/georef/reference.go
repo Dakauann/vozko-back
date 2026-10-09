@@ -28,7 +28,7 @@ const (
 	districtPointsSQL = "SELECT d.city_code, d.district_key, d.latitude, d.longitude, d.spread_m, d.sample_count FROM geo_district_points d" +
 		" JOIN unnest(?::text[], ?::text[]) AS k(city_code, district_key) ON d.city_code = k.city_code AND d.district_key = k.district_key"
 
-	cityPointsSQL = "SELECT city_code, latitude, longitude FROM geo_cities WHERE city_code = ANY(?::text[])"
+	cityPointsSQL = "SELECT city_code, name, state, latitude, longitude FROM geo_cities WHERE city_code = ANY(?::text[])"
 
 	upsertCEPsSQL = "INSERT INTO geo_cep_points (zip_code, latitude, longitude, spread_m, address_count, sample_count, city_code, built_at)" +
 		" SELECT u.zip_code, u.latitude, u.longitude, u.spread_m, u.address_count, u.sample_count, u.city_code, ?::timestamptz" +
@@ -91,6 +91,7 @@ type pointRow struct {
 	CityCode     string
 	DistrictKey  string
 	State        string
+	Name         string
 	NameKey      string
 	Latitude     float64
 	Longitude    float64
@@ -104,7 +105,7 @@ func (row pointRow) point() geo.ReferencePoint {
 	if count == 0 {
 		count = row.SampleCount
 	}
-	return geo.ReferencePoint{Point: geo.Point{Lat: row.Latitude, Lng: row.Longitude}, SpreadM: row.SpreadM, Count: count, CityCode: row.CityCode}
+	return geo.ReferencePoint{Point: geo.Point{Lat: row.Latitude, Lng: row.Longitude}, SpreadM: row.SpreadM, Count: count, CityCode: row.CityCode, Name: row.Name, State: row.State}
 }
 
 var _ georef.CityCodes = (*Reference)(nil)

@@ -208,13 +208,15 @@ func TestStudioEditVideoCarriesTheImageDesignVocabulary(t *testing.T) {
 		map[string]interface{}{"op": "add_text", "text": "Oferta", "at_ms": 0.0, "gradient": map[string]interface{}{"kind": "linear", "from": "#ffffff", "to": "#ff8a00"}, "highlight": map[string]interface{}{"color": "#111111"}, "curve": 0.4},
 		map[string]interface{}{"op": "add_icon", "icon_id": "heart", "at_ms": 0.0, "blend_mode": "screen"},
 		map[string]interface{}{"op": "update_clip", "clip_id": "c-1", "clear": []interface{}{"gradient", "highlight", "curve", "blend_mode"}},
+		map[string]interface{}{"op": "update_clip", "clip_id": "c-2", "blur": 8.0},
+		map[string]interface{}{"op": "animate", "clip_id": "c-3", "property": "blur", "keys": []interface{}{map[string]interface{}{"at_ms": 0.0, "value": 20.0}, map[string]interface{}{"at_ms": 500.0, "value": 0.0}}},
 	}}
 	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, editor), args); res.Status != copilot.StatusOK {
 		t.Fatalf("result = %+v", res)
 	}
 	cmd, _ := editor.sent(copilot.ScreenEdit)
 	sent := renderJSON(cmd.Args)
-	for _, want := range []string{`"gradient":{`, `"highlight":{`, `"curve":0.4`, `"op":"add_icon"`, `"icon_id":"heart"`, `"blend_mode":"screen"`, `"clear":["gradient","highlight","curve","blend_mode"]`} {
+	for _, want := range []string{`"gradient":{`, `"highlight":{`, `"curve":0.4`, `"op":"add_icon"`, `"icon_id":"heart"`, `"blend_mode":"screen"`, `"clear":["gradient","highlight","curve","blend_mode"]`, `"blur":8`, `"property":"blur"`} {
 		if !strings.Contains(sent, want) {
 			t.Fatalf("the batch lost %s: %s", want, sent)
 		}

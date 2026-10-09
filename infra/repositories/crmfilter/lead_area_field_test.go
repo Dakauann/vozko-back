@@ -33,8 +33,10 @@ func boundArea(values ...string) crmfilter.Predicate {
 	return pred(crmfilter.FieldArea, crmfilter.OpIn, values...).BindAreas(bounds)
 }
 
-func TestAreaCompilesAsUncorrelatedMembershipOverPinnedPrimaryAddresses(t *testing.T) {
-	sql, args := compileLead(t, scopedLeadDesc(), boundArea(areaNorth, areaSouth))
+func TestAnExactOnlyAreaCompilesAsUncorrelatedMembershipOverPinnedPrimaryAddresses(t *testing.T) {
+	exact := boundArea(areaNorth, areaSouth)
+	exact.Key = crmfilter.AreaExactOnly
+	sql, args := compileLead(t, scopedLeadDesc(), exact)
 	ring := "(la_f.latitude BETWEEN ? AND ? AND la_f.longitude BETWEEN ? AND ?" +
 		" AND CASE WHEN point(la_f.longitude, la_f.latitude) <@ (SELECT ar.ring FROM lead_areas ar WHERE ar.id = ?::uuid AND ar.workspace_id = ? AND ar.deleted_at IS NULL) THEN true ELSE false END)"
 	want := "(leads.id IN (SELECT la_f.lead_id FROM lead_addresses la_f WHERE la_f.workspace_id = ? AND la_f.is_primary" +
@@ -118,10 +120,8 @@ func TestAnAreaHashedOnceUnderOrStaysUncorrelated(t *testing.T) {
 	}
 }
 
-func TestAnAreaWithApproximateLeadsReadsHouseAndApproximatePositionsInsideTheRing(t *testing.T) {
-	keyed := boundArea(areaNorth)
-	keyed.Key = crmfilter.AreaWithApproximate
-	sql, args := compileLead(t, scopedLeadDesc(), keyed)
+func TestAnAreaReadsHouseAndApproximatePositionsInsideTheRingByDefault(t *testing.T) {
+	sql, args := compileLead(t, scopedLeadDesc(), boundArea(areaNorth))
 	ring := "(la_f.latitude BETWEEN ? AND ? AND la_f.longitude BETWEEN ? AND ?" +
 		" AND CASE WHEN point(la_f.longitude, la_f.latitude) <@ (SELECT ar.ring FROM lead_areas ar WHERE ar.id = ?::uuid AND ar.workspace_id = ? AND ar.deleted_at IS NULL) THEN true ELSE false END)"
 	want := "(leads.id IN (SELECT la_f.lead_id FROM lead_addresses la_f WHERE la_f.workspace_id = ? AND la_f.is_primary" +

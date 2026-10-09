@@ -165,6 +165,12 @@ func areaOnly() crmfilter.Filter {
 	}}}}
 }
 
+func exactAreaOnly() crmfilter.Filter {
+	f := areaOnly()
+	f.Groups[0].Predicates[0].Key = crmfilter.AreaExactOnly
+	return f
+}
+
 func TestMapSectionsRefuseAMissingDependency(t *testing.T) {
 	f := newMapFixture()
 	full := MapDeps{
@@ -455,12 +461,12 @@ func snapped(t *testing.T, q LayerQuery) geo.Window {
 	return w
 }
 
-func TestTheLeftOutSectionReadsEveryAreaThroughApproximatePositions(t *testing.T) {
+func TestTheLeftOutSectionReadsEveryExactOnlyAreaThroughApproximatePositions(t *testing.T) {
 	f := newMapFixture()
 	f.reader.leftOut = leadmap.LeftOut{Total: 4, Districts: []lead.DistrictCount{{Pair: "sp:sao paulo/centro", CityKey: "sp:sao paulo", DistrictKey: "centro", Count: 3}}}
 	s := f.sections(t, mapViewer)
 	for range 2 {
-		got, err := s.LeftOut(context.Background(), operator(), areaOnly())
+		got, err := s.LeftOut(context.Background(), operator(), exactAreaOnly())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -475,11 +481,23 @@ func TestTheLeftOutSectionReadsEveryAreaThroughApproximatePositions(t *testing.T
 	if area.Field != crmfilter.FieldAreaApproximate || len(area.BoundAreas()) != 1 || area.BoundAreas()[0].ID != mapAreaID {
 		t.Fatalf("the reader must count the area through approximate positions with its bounds, got %+v", area)
 	}
-	if _, err := s.Summary(context.Background(), operator(), areaOnly()); err != nil {
+	if _, err := s.Summary(context.Background(), operator(), exactAreaOnly()); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.reader.scopes) != 2 || f.reader.scopes[1].Filter.Groups[0].Predicates[0].Field != crmfilter.FieldArea {
 		t.Fatal("the summary of the same filter keeps its own cache entry and reads the pinned positions")
+	}
+}
+
+func TestNothingIsLeftOutOfAnAreaThatHoldsApproximatePositions(t *testing.T) {
+	f := newMapFixture()
+	f.reader.leftOut = leadmap.LeftOut{Total: 99}
+	got, err := f.sections(t, mapViewer).LeftOut(context.Background(), operator(), areaOnly())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 0 || got.Districts == nil || len(got.Districts) != 0 || len(f.reader.scopes) != 0 {
+		t.Fatalf("left out of an inclusive area = %+v after %d reads, want nothing and no read", got, len(f.reader.scopes))
 	}
 }
 
@@ -512,7 +530,7 @@ func TestTheLeftOutSectionNeedsLeadsAndFullAddressesAndAReadableArea(t *testing.
 func TestTheLeftOutSectionRefusesAnAreaThatSharesAnEitherGroupWithAnotherTest(t *testing.T) {
 	f := newMapFixture()
 	either := crmfilter.Filter{Groups: []crmfilter.Group{{Predicates: []crmfilter.Predicate{
-		{Field: crmfilter.FieldArea, Operator: crmfilter.OpIn, Values: []string{mapAreaID}},
+		{Field: crmfilter.FieldArea, Key: crmfilter.AreaExactOnly, Operator: crmfilter.OpIn, Values: []string{mapAreaID}},
 		{Field: crmfilter.FieldBlocked, Operator: crmfilter.OpIsTrue},
 	}}}}
 	if _, err := f.sections(t, mapViewer).LeftOut(context.Background(), operator(), either); !errors.Is(err, leadarea.ErrLeftOutUnsupported) {

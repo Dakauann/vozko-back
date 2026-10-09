@@ -22,19 +22,35 @@ func ReferenceQueryOf(raw address.Postal) (address.Postal, error) {
 	return raw.Normalize(), nil
 }
 
-func ReferencePointOf(coverage Coverage, idx ReferenceIndex, query address.Postal, at time.Time) (Fix, error) {
+type ReferenceSpot struct {
+	Fix       Fix
+	City      string
+	State     string
+	WholeCity bool
+}
+
+func ReferencePointOf(coverage Coverage, idx ReferenceIndex, query address.Postal, at time.Time) (ReferenceSpot, error) {
 	placed := query
 	if placed.CityCode == "" {
 		placed.CityCode = idx.CityCodeOf(query)
 	}
 	if !coverage.Covers(placed) {
-		return Fix{}, ErrReferenceNotLoaded
+		return ReferenceSpot{}, ErrReferenceNotLoaded
 	}
 	fix, ok := Choose(nil, idx.Candidates(query, at))
 	if !ok {
-		return Fix{}, ErrReferencePointNotFound
+		return ReferenceSpot{}, ErrReferencePointNotFound
 	}
-	return fix, nil
+	spot := ReferenceSpot{Fix: fix, WholeCity: fix.Precision == PrecisionCity}
+	city, known := idx.Cities[placed.CityCode]
+	if !known {
+		return spot, nil
+	}
+	spot.City, spot.State = city.Name, city.State
+	if spot.WholeCity && city.Point.Validate() == nil {
+		spot.Fix.Point = city.Point
+	}
+	return spot, nil
 }
 
 func ReferenceErrorCode(err error) string {

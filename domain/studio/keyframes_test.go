@@ -8,17 +8,53 @@ import (
 	"vozko/domain/mediagen"
 )
 
-func slide() *mediagen.Keyframes {
-	return &mediagen.Keyframes{
+func keys(k mediagen.Keyframes) *ClipKeyframes {
+	return &ClipKeyframes{Keyframes: k}
+}
+
+func slide() *ClipKeyframes {
+	return keys(mediagen.Keyframes{
 		X:       []mediagen.Keyframe{{AtMS: 0, Value: -0.2, Easing: mediagen.EaseOut}, {AtMS: 600, Value: 0.5, Easing: mediagen.EaseLinear}},
 		Opacity: []mediagen.Keyframe{{AtMS: 0, Value: 0, Easing: mediagen.EaseLinear}, {AtMS: 300, Value: 1, Easing: mediagen.EaseLinear}},
+	})
+}
+
+func TestClipsBlurStillOrAnimated(t *testing.T) {
+	doc := videoDoc()
+	doc.Tracks[0].Clips[0].Blur = 12
+	doc.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Blur: []mediagen.Keyframe{{AtMS: 0, Value: 24, Easing: "cubic-bezier(0.05,0.7,0.1,1)"}, {AtMS: 600, Value: 0, Easing: mediagen.EaseLinear}}}
+	if err := ValidateDocument(KindVideo, mustJSON(t, doc)); err != nil {
+		t.Fatalf("blur refused: %v", err)
+	}
+	var saved VideoDocument
+	if err := json.Unmarshal(mustJSON(t, doc), &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Tracks[0].Clips[0].Blur != 12 || len(saved.Tracks[1].Clips[0].Keyframes.Blur) != 2 {
+		t.Fatalf("blur lost: %+v", saved.Tracks[1].Clips[0].Keyframes)
+	}
+	cases := map[string]func(*VideoDocument){
+		"blur past the limit": func(d *VideoDocument) { d.Tracks[0].Clips[0].Blur = MaxClipBlur + 1 },
+		"negative blur":       func(d *VideoDocument) { d.Tracks[0].Clips[0].Blur = -1 },
+		"blur on sound":       func(d *VideoDocument) { d.Tracks[2].Clips[0].Blur = 4 },
+		"blur key past the limit": func(d *VideoDocument) {
+			d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{Blur: []mediagen.Keyframe{{AtMS: 0, Value: 500, Easing: mediagen.EaseLinear}}}
+		},
+		"empty animation": func(d *VideoDocument) { d.Tracks[1].Clips[0].Keyframes = &ClipKeyframes{} },
+	}
+	for name, change := range cases {
+		d := videoDoc()
+		change(&d)
+		if codeOf(t, ValidateDocument(KindVideo, mustJSON(t, d)))[FieldTracks] == "" {
+			t.Errorf("%s accepted", name)
+		}
 	}
 }
 
 func TestKeyframesAreKeptInTheDocument(t *testing.T) {
 	doc := videoDoc()
 	doc.Tracks[0].Clips[0].Keyframes = slide()
-	doc.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Scale: []mediagen.Keyframe{{AtMS: 0, Value: 1, Easing: mediagen.EaseInOut}, {AtMS: 1000, Value: 1.4, Easing: mediagen.EaseLinear}}}
+	doc.Tracks[1].Clips[0].Keyframes = keys(mediagen.Keyframes{Scale: []mediagen.Keyframe{{AtMS: 0, Value: 1, Easing: mediagen.EaseInOut}, {AtMS: 1000, Value: 1.4, Easing: mediagen.EaseLinear}}})
 	p, err := NewProject("ws", "u-1", KindVideo, "Reels", mustJSON(t, doc))
 	if err != nil {
 		t.Fatal(err)
@@ -43,13 +79,13 @@ func TestKeyframesKeepTheirRules(t *testing.T) {
 			for i := range many {
 				many[i] = mediagen.Keyframe{AtMS: int64(i), Value: 0.5, Easing: mediagen.EaseLinear}
 			}
-			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{X: many}
+			d.Tracks[1].Clips[0].Keyframes = keys(mediagen.Keyframes{X: many})
 		},
 		"unknown easing": func(d *VideoDocument) {
-			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Y: []mediagen.Keyframe{{AtMS: 0, Value: 0.5, Easing: "wiggle"}}}
+			d.Tracks[1].Clips[0].Keyframes = keys(mediagen.Keyframes{Y: []mediagen.Keyframe{{AtMS: 0, Value: 0.5, Easing: "wiggle"}}})
 		},
 		"out of range": func(d *VideoDocument) {
-			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Opacity: []mediagen.Keyframe{{AtMS: 0, Value: 2, Easing: mediagen.EaseLinear}}}
+			d.Tracks[1].Clips[0].Keyframes = keys(mediagen.Keyframes{Opacity: []mediagen.Keyframe{{AtMS: 0, Value: 2, Easing: mediagen.EaseLinear}}})
 		},
 	}
 	for name, change := range cases {
@@ -66,7 +102,7 @@ func fillWithKeyframes(d *VideoDocument) {
 	for i := range many {
 		many[i] = mediagen.Keyframe{AtMS: int64(i), Value: 0.5, Easing: mediagen.EaseLinear}
 	}
-	full := &mediagen.Keyframes{X: many, Y: many, Scale: many, Rotation: many, Opacity: many}
+	full := keys(mediagen.Keyframes{X: many, Y: many, Scale: many, Rotation: many, Opacity: many})
 	for i := range many {
 		full.Scale[i].Value = 1
 	}

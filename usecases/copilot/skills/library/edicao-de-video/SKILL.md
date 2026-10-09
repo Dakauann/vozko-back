@@ -18,7 +18,7 @@ Quando duas regras brigam, sacrifique de baixo para cima: emoção, história, r
 ## Gancho
 - Os primeiros 3 segundos concentram a maior parte do valor de um vídeo nas redes (Meta e Nielsen). Abra com o resultado, a dor, o produto em uso ou um rosto no meio de uma expressão.
 - Texto na abertura com até 5 palavras dizendo o problema de quem assiste. Nada de logo de abertura nem cumprimentos.
-- Marca e produto aparecem nos primeiros 5 segundos, e com mais de dois planos nesse trecho (Google ABCD). A marca volta ao longo do vídeo.
+- Marca e produto aparecem nos primeiros 5 segundos, e com mais de dois planos nesse trecho. A marca volta ao longo do vídeo.
 
 ## Estruturas que funcionam
 - Gancho, corpo e fechamento. Num vídeo de 30 s: gancho de 0 a 3 s, produto e prova até cerca de 20 s, chamada nos últimos 3 a 5 s.

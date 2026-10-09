@@ -207,38 +207,86 @@ func TestTheAreaCapCountsApproximateAreaTestsToo(t *testing.T) {
 	}
 }
 
-func TestLeftOutReadsEveryAreaThroughApproximatePositions(t *testing.T) {
+func exactOnly(f crmfilter.Filter) crmfilter.Filter {
+	out := crmfilter.Filter{Groups: make([]crmfilter.Group, len(f.Groups))}
+	for gi, g := range f.Groups {
+		preds := make([]crmfilter.Predicate, len(g.Predicates))
+		for pi, p := range g.Predicates {
+			if p.Field == crmfilter.FieldArea {
+				p.Key = crmfilter.AreaExactOnly
+			}
+			preds[pi] = p
+		}
+		out.Groups[gi] = crmfilter.Group{Conjunction: g.Conjunction, Predicates: preds}
+	}
+	return out
+}
+
+func TestLeftOutReadsEveryExactOnlyAreaThroughApproximatePositions(t *testing.T) {
 	found := []Area{stored(northID, ownerID, shared.VisibilityShared, now)}
-	bound, _, err := Bind(areaFilter(crmfilter.And, northID), workspaceID, ownerID, found)
+	bound, _, err := Bind(exactOnly(areaFilter(crmfilter.And, northID)), workspaceID, ownerID, found)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if bound.Groups[0].Predicates[1].Key != crmfilter.AreaExactOnly {
+		t.Fatal("Bind keeps the membership key of the area")
+	}
 	left, ok, err := LeftOut(bound)
 	if err != nil || !ok {
-		t.Fatal("a filter with an area leaves approximate leads out")
+		t.Fatal("a filter with an exact only area leaves approximate leads out")
 	}
 	blocked, area := left.Groups[0].Predicates[0], left.Groups[0].Predicates[1]
-	if blocked.Field != crmfilter.FieldBlocked || area.Field != crmfilter.FieldAreaApproximate || strings.Join(area.Values, ",") != northID {
-		t.Fatalf("left out = %+v, want the same filter with the area read through approximate positions", left)
+	if blocked.Field != crmfilter.FieldBlocked || area.Field != crmfilter.FieldAreaApproximate || area.Key != "" || strings.Join(area.Values, ",") != northID {
+		t.Fatalf("left out = %+v, want the same filter with the area read through approximate positions and no key", left)
+	}
+	if err := area.Validate(); err != nil {
+		t.Fatalf("the rewritten predicate validates, got %v", err)
 	}
 	if len(area.BoundAreas()) != 1 || area.BoundAreas()[0].ID != northID {
 		t.Fatal("the rewritten predicate keeps the bounds of its areas")
 	}
-	if bound.Groups[0].Predicates[1].Field != crmfilter.FieldArea {
+	if p := bound.Groups[0].Predicates[1]; p.Field != crmfilter.FieldArea || p.Key != crmfilter.AreaExactOnly {
 		t.Fatal("LeftOut must not change the filter it reads")
 	}
 	if _, ok, err := LeftOut(crmfilter.Filter{Groups: []crmfilter.Group{{Predicates: []crmfilter.Predicate{{Field: crmfilter.FieldBlocked, Operator: crmfilter.OpIsTrue}}}}}); ok || err != nil {
 		t.Fatal("a filter without an area leaves nothing out")
 	}
-	if _, ok, err := LeftOut(approximateAreaFilter(northID, southID)); !ok || err != nil {
-		t.Fatal("a filter that already reads approximate positions still has an area")
+}
+
+func TestAnAreaThatHoldsApproximatePositionsLeavesNothingOut(t *testing.T) {
+	cases := map[string]crmfilter.Filter{
+		"an area without a key":              areaFilter(crmfilter.And, northID),
+		"an area or the owner":               areaFilter(crmfilter.Or, northID),
+		"an area beside an approximate area": approximateAreaFilter(northID, southID),
+	}
+	for name, f := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, ok, err := LeftOut(f); ok || err != nil {
+				t.Fatalf("LeftOut() ok %v err %v, want nothing left out and no error", ok, err)
+			}
+		})
 	}
 }
 
-func TestLeftOutRefusesAnAreaThatSharesAnEitherGroupWithAnotherTest(t *testing.T) {
-	area := func(ids ...string) crmfilter.Predicate {
-		return crmfilter.Predicate{Field: crmfilter.FieldArea, Operator: crmfilter.OpIn, Values: ids}
+func TestLeftOutKeepsAnInclusiveAreaBesideAnExactOnlyOne(t *testing.T) {
+	f := crmfilter.Filter{Groups: []crmfilter.Group{
+		{Conjunction: crmfilter.And, Predicates: []crmfilter.Predicate{{Field: crmfilter.FieldArea, Key: crmfilter.AreaExactOnly, Operator: crmfilter.OpIn, Values: []string{northID}}}},
+		{Conjunction: crmfilter.And, Predicates: []crmfilter.Predicate{{Field: crmfilter.FieldArea, Operator: crmfilter.OpIn, Values: []string{southID}}}},
+	}}
+	left, ok, err := LeftOut(f)
+	if err != nil || !ok {
+		t.Fatalf("LeftOut() ok %v err %v", ok, err)
 	}
+	if left.Groups[0].Predicates[0].Field != crmfilter.FieldAreaApproximate || left.Groups[1].Predicates[0].Field != crmfilter.FieldArea || left.Groups[1].Predicates[0].Key != "" {
+		t.Fatalf("left out = %+v, want only the exact only area read through approximate positions", left)
+	}
+}
+
+func TestLeftOutRefusesAnExactOnlyAreaThatSharesAnEitherGroupWithAnotherTest(t *testing.T) {
+	area := func(ids ...string) crmfilter.Predicate {
+		return crmfilter.Predicate{Field: crmfilter.FieldArea, Key: crmfilter.AreaExactOnly, Operator: crmfilter.OpIn, Values: ids}
+	}
+	inclusive := crmfilter.Predicate{Field: crmfilter.FieldArea, Operator: crmfilter.OpIn, Values: []string{southID}}
 	approximate := crmfilter.Predicate{Field: crmfilter.FieldAreaApproximate, Operator: crmfilter.OpIn, Values: []string{southID}}
 	owner := crmfilter.Predicate{Field: crmfilter.FieldOwner, Operator: crmfilter.OpIn, Values: []string{ownerID}}
 	city := crmfilter.Predicate{Field: crmfilter.FieldCity, Operator: crmfilter.OpIn, Values: []string{"sp:sao paulo"}}
@@ -251,9 +299,10 @@ func TestLeftOutRefusesAnAreaThatSharesAnEitherGroupWithAnotherTest(t *testing.T
 	}{
 		{"an area or the owner", []crmfilter.Group{{Conjunction: crmfilter.Or, Predicates: []crmfilter.Predicate{area(northID), owner}}}, true, false},
 		{"an area and a city with no conjunction", []crmfilter.Group{{Predicates: []crmfilter.Predicate{area(northID), city}}}, true, false},
-		{"an approximate area or blocked", []crmfilter.Group{{Conjunction: crmfilter.Or, Predicates: []crmfilter.Predicate{blocked, approximate}}}, true, false},
+		{"an area or an approximate area", []crmfilter.Group{{Predicates: []crmfilter.Predicate{area(northID), approximate}}}, true, false},
+		{"an area or an area with approximate positions", []crmfilter.Group{{Conjunction: crmfilter.Or, Predicates: []crmfilter.Predicate{area(northID), inclusive}}}, true, false},
+		{"an approximate area or blocked", []crmfilter.Group{{Conjunction: crmfilter.Or, Predicates: []crmfilter.Predicate{blocked, approximate}}}, false, false},
 		{"one area or another", []crmfilter.Group{{Conjunction: crmfilter.Or, Predicates: []crmfilter.Predicate{area(northID), area(southID)}}}, false, true},
-		{"an area or an approximate area", []crmfilter.Group{{Predicates: []crmfilter.Predicate{area(northID), approximate}}}, false, true},
 		{"an area alone with no conjunction", []crmfilter.Group{{Predicates: []crmfilter.Predicate{area(northID)}}}, false, true},
 		{"an area and the owner", []crmfilter.Group{{Conjunction: crmfilter.And, Predicates: []crmfilter.Predicate{area(northID), owner}}}, false, true},
 		{"either group with no area beside an area group", []crmfilter.Group{
@@ -302,32 +351,5 @@ func TestHasAreaAnswersWhetherAnyTestReadsAnArea(t *testing.T) {
 	}
 	if HasArea(crmfilter.Filter{}) {
 		t.Fatal("an empty filter tests no area")
-	}
-}
-
-func TestLeftOutCountsTheSameApproximateLeadsWhetherTheAreaIncludesThemOrNot(t *testing.T) {
-	found := []Area{stored(northID, ownerID, shared.VisibilityShared, now)}
-	keyed := areaFilter(crmfilter.And, northID)
-	keyed.Groups[0].Predicates[1].Key = crmfilter.AreaWithApproximate
-	bound, _, err := Bind(keyed, workspaceID, ownerID, found)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bound.Groups[0].Predicates[1].Key != crmfilter.AreaWithApproximate {
-		t.Fatal("Bind keeps the membership key of the area")
-	}
-	left, ok, err := LeftOut(bound)
-	if err != nil || !ok {
-		t.Fatalf("LeftOut() = %v, %v", ok, err)
-	}
-	area := left.Groups[0].Predicates[1]
-	if area.Field != crmfilter.FieldAreaApproximate || area.Key != "" {
-		t.Fatalf("left out area = %+v, want area_approximate without a membership key", area)
-	}
-	if err := area.Validate(); err != nil {
-		t.Fatalf("the rewritten predicate validates, got %v", err)
-	}
-	if bound.Groups[0].Predicates[1].Key != crmfilter.AreaWithApproximate {
-		t.Fatal("LeftOut must not change the filter it reads")
 	}
 }

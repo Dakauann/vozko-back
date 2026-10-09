@@ -93,8 +93,8 @@ func TestLookupReadsInTwoPhases(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"city_code", "district_key", "latitude", "longitude", "spread_m", "sample_count"}).
 			AddRow("3118601", "centro", -19.93, -44.05, 900.0, 3000))
 	mock.ExpectQuery(exact(cityPointsSQL)).WithArgs(sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"city_code", "latitude", "longitude"}).
-			AddRow("3550308", -23.55, -46.63).AddRow("3118601", -19.92, -44.06))
+		WillReturnRows(sqlmock.NewRows([]string{"city_code", "name", "state", "latitude", "longitude"}).
+			AddRow("3550308", "São Paulo", "SP", -23.55, -46.63).AddRow("3118601", "Contagem", "MG", -19.92, -44.06))
 
 	idx, err := NewReference(db).Lookup(context.Background(), postals)
 	if err != nil {
@@ -106,6 +106,9 @@ func TestLookupReadsInTwoPhases(t *testing.T) {
 	}
 	if first := idx.Candidates(postals[0], time.Time{}); len(first) != 2 || first[0].Precision != geo.PrecisionStreet {
 		t.Fatalf("Paulista candidates = %+v, want the tight CEP and the city", first)
+	}
+	if city := idx.Cities["3118601"]; city.Name != "Contagem" || city.State != "MG" {
+		t.Fatalf("city point = %+v, want it named with its state", city)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

@@ -309,7 +309,7 @@ func (k *Keyframes) MaxScale() float64 {
 	return high
 }
 
-func propertyIssue(frames []Keyframe, low, high float64) string {
+func PropertyIssue(frames []Keyframe, low, high float64) string {
 	if len(frames) > MaxKeyframesPerProperty {
 		return CodeTooMany
 	}
@@ -346,7 +346,7 @@ func KeyframesIssue(k *Keyframes, box Transform) string {
 		{k.Opacity, 0, 1},
 	}
 	for _, c := range checks {
-		if code := propertyIssue(c.frames, c.low, c.high); code != "" {
+		if code := PropertyIssue(c.frames, c.low, c.high); code != "" {
 			return code
 		}
 	}
