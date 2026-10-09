@@ -113,6 +113,9 @@ func (c *Container) initRouter() {
 		c.mediaGeneration().Handler,
 		c.studioHandler(),
 		webchatRoutes(c),
+		c.leadGeographyHandler(),
+		c.callListHandler(),
+		c.leadReferencePointHandler(),
 	)
 
 }

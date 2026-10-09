@@ -116,3 +116,16 @@ func TestImportPreviewHonoursAnExplicitMapping(t *testing.T) {
 		t.Fatalf("short mapping: %v", err)
 	}
 }
+
+type unpricedImport struct{}
+
+func (unpricedImport) GetTemplateCostMicros(string, string) (int64, error) { return 0, nil }
+
+func TestImportPreviewRefusesWithoutAPrice(t *testing.T) {
+	uc := NewImportPreviewUseCase(ImportPreviewDeps{
+		Files: importFiles{"ws1|m1": importFile}, Templates: importTemplates{granted: true}, Prices: unpricedImport{}, Balance: importBalance(1_000_000),
+	})
+	if _, err := uc.Preview(context.Background(), wc.ImportRequest{WorkspaceID: "ws1", MediaID: "m1", TemplateID: "t1"}); !errors.Is(err, tmpl.ErrPricingUnavailable) {
+		t.Fatalf("want ErrPricingUnavailable, got %v", err)
+	}
+}

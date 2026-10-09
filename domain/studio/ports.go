@@ -16,3 +16,7 @@ type Repository interface {
 	Save(ctx context.Context, p *Project, expectedVersion int64) error
 	Archive(ctx context.Context, workspaceID, id string) error
 }
+
+type CapabilityRepository interface {
+	Upsert(ctx context.Context, report CapabilityReport) error
+}

@@ -10,7 +10,7 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
-const MaxCampaignTargets = 150000
+const MaxCampaignTargets = campaign.MaxEntries
 
 var (
 	ErrCampaignNameRequired          = errors.New("unofficial whatsapp campaign name is required")
@@ -22,7 +22,7 @@ var (
 	ErrCampaignTargetInvalid         = errors.New("unofficial whatsapp campaign number is not a usable international number")
 	ErrCampaignVariablesMismatch     = errors.New("number variables count does not match the message placeholders - check the {{1}}, {{2}} markers and make sure every number carries enough values")
 	ErrCampaignVariableEmpty         = errors.New("a campaign variable cannot be empty - every value must be filled in")
-	ErrCampaignWorkflowVarsMissing   = errors.New("workflow requires campaign variables that are missing from a number's metadata")
+	ErrCampaignWorkflowVarsMissing   = campaign.ErrWorkflowVarsMissing
 	ErrCampaignScheduledStartTooSoon = errors.New("scheduled start must be at least 5 minutes in the future and no more than 1 year from now")
 	ErrCampaignScheduledStartInvalid = errors.New("scheduled start is in the past")
 
@@ -48,10 +48,13 @@ func NewInstanceUnusableError(label, reason string) *InstanceUnusableError {
 }
 
 type TargetInput struct {
-	Number    string                 `json:"number"`
-	Name      string                 `json:"name,omitempty"`
-	Variables []string               `json:"variables,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Number    string                     `json:"number"`
+	LeadID    string                     `json:"leadId,omitempty"`
+	Name      string                     `json:"name,omitempty"`
+	Variables []string                   `json:"variables,omitempty"`
+	Metadata  map[string]interface{}     `json:"metadata,omitempty"`
+	Skip      campaign.SkipReason        `json:"-"`
+	Missing   []campaign.MissingVariable `json:"-"`
 }
 
 type Campaign struct {
@@ -60,6 +63,9 @@ type Campaign struct {
 	DepartmentID string `json:"departmentId,omitempty"`
 	InstanceID   string `json:"instanceId"`
 	CreatedByID  string `json:"createdById,omitempty"`
+
+	Source         string `json:"source,omitempty"`
+	IdempotencyKey string `json:"idempotencyKey,omitempty"`
 
 	Name    string      `json:"name"`
 	Message MessageSpec `json:"message"`
@@ -137,8 +143,19 @@ func (c *Campaign) Normalize() {
 	}
 
 	seen := make(map[string]struct{}, len(c.Targets))
+	seenLeads := make(map[string]struct{})
 	clean := make([]TargetInput, 0, len(c.Targets))
 	for _, t := range c.Targets {
+		t.LeadID = strings.TrimSpace(t.LeadID)
+		if t.LeadID != "" {
+			if _, dup := seenLeads[t.LeadID]; dup {
+				continue
+			}
+			seenLeads[t.LeadID] = struct{}{}
+			t.Name = strings.TrimSpace(t.Name)
+			clean = append(clean, t)
+			continue
+		}
 		normalized := NormalizeTarget(t.Number)
 		if normalized != "" {
 			if _, dup := seen[normalized]; dup {
@@ -196,7 +213,7 @@ func (c *Campaign) Validate() error {
 		return ErrCampaignTargetsTooMany
 	}
 	for _, t := range c.Targets {
-		if !ValidTargetNumber(t.Number) {
+		if t.LeadID == "" && !ValidTargetNumber(t.Number) {
 			return fmt.Errorf("%w: %q", ErrCampaignTargetInvalid, t.Number)
 		}
 	}
@@ -237,6 +254,9 @@ func (c *Campaign) ValidateTargetVariables(required int) error {
 		return nil
 	}
 	for _, t := range c.Targets {
+		if t.Skip != "" {
+			continue
+		}
 		if len(t.Variables) < required {
 			return ErrCampaignVariablesMismatch
 		}
@@ -250,19 +270,24 @@ func (c *Campaign) ValidateTargetVariables(required int) error {
 }
 
 func (c *Campaign) ValidateWorkflowVars(requiredKeys []string) error {
-	if len(requiredKeys) == 0 {
-		return nil
+	return campaign.RequireWorkflowVars(requiredKeys, c.EntryMetadata())
+}
+
+func (c *Campaign) Automation() campaign.Automation {
+	return campaign.Automation{AgentID: c.AgentID, WorkflowID: c.WorkflowID, EnableAgentResponses: c.EnableAgentResponses, EnableWorkflow: c.EnableWorkflow}
+}
+
+func (c *Campaign) ChangesWhatIsSent(in *Campaign) bool {
+	if in.InstanceID != "" && in.InstanceID != c.InstanceID {
+		return true
 	}
+	return !c.Message.SameAs(in.Message)
+}
+
+func (c *Campaign) EntryMetadata() []campaign.EntryMetadata {
+	entries := make([]campaign.EntryMetadata, 0, len(c.Targets))
 	for _, t := range c.Targets {
-		for _, key := range requiredKeys {
-			val, exists := t.Metadata[key]
-			if !exists {
-				return fmt.Errorf("%w: key %q missing for number %s", ErrCampaignWorkflowVarsMissing, key, t.Number)
-			}
-			if s, ok := val.(string); ok && strings.TrimSpace(s) == "" {
-				return fmt.Errorf("%w: key %q is empty for number %s", ErrCampaignWorkflowVarsMissing, key, t.Number)
-			}
-		}
+		entries = append(entries, campaign.EntryMetadataOf(t.LeadID, t.Number, t.Metadata))
 	}
-	return nil
+	return entries
 }

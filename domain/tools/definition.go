@@ -360,6 +360,7 @@ type ParameterItems struct {
 	Properties  map[string]Parameter
 	Required    []string
 	Description string
+	Enum        []string
 }
 
 type SchemaParameter struct {

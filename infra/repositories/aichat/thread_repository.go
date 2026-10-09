@@ -93,6 +93,7 @@ func toThreadDomain(rec *schema.AIChatThread) *aichat.Thread {
 		Title:         rec.Title,
 		Model:         rec.Model,
 		LastMessageAt: rec.LastMessageAt,
+		CostTracked:   rec.CostTracked,
 		CreatedAt:     rec.CreatedAt,
 		UpdatedAt:     rec.UpdatedAt,
 	}
@@ -106,5 +107,6 @@ func toThreadSchema(t *aichat.Thread) *schema.AIChatThread {
 		Title:         t.Title,
 		Model:         t.Model,
 		LastMessageAt: t.LastMessageAt,
+		CostTracked:   t.CostTracked,
 	}
 }

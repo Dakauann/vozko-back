@@ -175,6 +175,7 @@ func classify(err error) sm.FailureReason {
 		errors.Is(err, wo.ErrPhoneNotConnected):
 		return sm.ReasonEntryUnavailable
 	case errors.Is(err, wo.ErrLeadBlocked),
+		errors.Is(err, wo.ErrLeadOptedOut),
 		errors.Is(err, wo.ErrWithinSpamWindow):
 		return sm.ReasonContactIneligible
 	case errors.Is(err, wo.ErrTemplateNotFound),

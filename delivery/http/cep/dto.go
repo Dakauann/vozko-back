@@ -5,11 +5,11 @@ type CEPSearchRequest struct {
 }
 
 type CEPResponse struct {
-	Cep        string `json:"cep" example:"01310-100"`
+	Cep        string `json:"cep" example:"01310100"`
 	Logradouro string `json:"logradouro" example:"Avenida Paulista"`
 	Complement string `json:"complemento" example:"lado ímpar"`
 	Bairro     string `json:"bairro" example:"Bela Vista"`
 	Localidade string `json:"localidade" example:"São Paulo"`
 	Uf         string `json:"uf" example:"SP"`
-	Erro       bool   `json:"erro,omitempty"`
+	IBGE       string `json:"ibge,omitempty" example:"3550308"`
 }

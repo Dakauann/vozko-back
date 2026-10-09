@@ -139,10 +139,11 @@ func TestGetEntryInfoInstagram(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(igContactsFixture())
 
-	name, handle, picture, _, _, automation, err := svc.GetEntryInfo("conv-1", string(shared.EntryTypeInstagram))
+	info, err := svc.GetEntryInfo("conv-1", string(shared.EntryTypeInstagram))
 	if err != nil {
 		t.Fatalf("GetEntryInfo returned error: %v", err)
 	}
+	name, handle, picture, automation := info.LeadName, info.LeadNumber, info.LeadPicture, info.AutomationEnabled
 	if name != "Maria Silva" || handle != "@mariasilva" || picture != "https://cdn/avatar1.jpg" {
 		t.Errorf("got (%q, %q, %q)", name, handle, picture)
 	}
@@ -150,7 +151,7 @@ func TestGetEntryInfoInstagram(t *testing.T) {
 		t.Error("automation should default to enabled")
 	}
 
-	if _, _, _, _, _, _, err := (&HistoryProviderService{}).GetEntryInfo("conv-1", string(shared.EntryTypeInstagram)); err == nil {
+	if _, err := (&HistoryProviderService{}).GetEntryInfo("conv-1", string(shared.EntryTypeInstagram)); err == nil {
 		t.Error("expected an error when the contact lookup is not configured")
 	}
 }

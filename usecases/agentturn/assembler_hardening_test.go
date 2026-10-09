@@ -252,25 +252,30 @@ func TestExplicitKnowledgeBasesGroundAnAgentWithRAGDisabled(t *testing.T) {
 		Agent:            &agent.Agent{MessagingPrompt: "hi"},
 		KnowledgeBaseIDs: []string{"kb-explicit"},
 		RAGQuery:         "pergunta",
+		UserMessage:      "pergunta",
 	})
 
-	if !strings.Contains(out.Input.SystemPrompt, "FROM KB") {
-		t.Errorf("explicit knowledge bases were ignored: %q", out.Input.SystemPrompt)
+	if note := out.Input.Messages[len(out.Input.Messages)-1]; !strings.Contains(note.Content, "FROM KB") {
+		t.Errorf("explicit knowledge bases were ignored: %q", note.Content)
 	}
 }
 
-func TestSuffixAlwaysFollowsGrounding(t *testing.T) {
+func TestSuffixClosesTheSystemPromptWhileGroundingStaysOut(t *testing.T) {
 	a := New(nil, fakeRAG{results: []rag.QueryResult{{DocumentName: "d", Content: "GROUNDING", Score: 0.9}}}, nil)
 
 	out := a.Assemble(context.Background(), Request{
 		Agent:        ragAgent("BASE"),
 		RAGQuery:     "q",
 		PromptSuffix: "\n\nTAIL",
+		UserMessage:  "q",
 	})
 
 	sp := out.Input.SystemPrompt
-	if i, j := strings.Index(sp, "GROUNDING"), strings.Index(sp, "TAIL"); i < 0 || j < 0 || i > j {
-		t.Errorf("ordering wrong (grounding=%d tail=%d): %q", i, j, sp)
+	if !strings.HasSuffix(sp, "TAIL") {
+		t.Errorf("the suffix must close the system prompt: %q", sp)
+	}
+	if strings.Contains(sp, "GROUNDING") {
+		t.Errorf("grounding leaked into the system prompt: %q", sp)
 	}
 }
 
@@ -288,8 +293,8 @@ func TestHistoryIsCopiedNotAliased(t *testing.T) {
 	if len(history) != 1 {
 		t.Errorf("the caller's history slice was extended: %+v", history)
 	}
-	if len(out.Input.Messages) != 2 {
-		t.Fatalf("messages = %d, want history + the user turn", len(out.Input.Messages))
+	if len(out.Input.Messages) != 3 {
+		t.Fatalf("messages = %d, want history + the user turn + the context note", len(out.Input.Messages))
 	}
 	out.Input.Messages[0].Content = "mutated"
 	if history[0].Content != "primeira" {
@@ -306,8 +311,9 @@ func TestAnEmptyUserMessageIsNotAppended(t *testing.T) {
 		UserMessage: "   ",
 	})
 
-	if len(out.Input.Messages) != 1 {
-		t.Errorf("messages = %+v, want only the history", out.Input.Messages)
+	messages := out.Input.Messages
+	if len(messages) != 2 || messages[0].Content != "oi" || messages[1].Content != ai.ContextNote().Content {
+		t.Errorf("messages = %+v, want only the history and the context note", messages)
 	}
 }
 
@@ -381,7 +387,7 @@ func TestConcurrentAssembliesDoNotInterfere(t *testing.T) {
 			if cfg["calendar_id"] != "cal-9" {
 				errs <- "binding config lost under concurrency"
 			}
-			if n := len(out.Input.Messages); n != 1 {
+			if n := len(out.Input.Messages); n != 2 {
 				errs <- "message list corrupted under concurrency"
 			}
 		}(i)

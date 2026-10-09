@@ -2,6 +2,7 @@ package advertisinghttp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -120,5 +121,15 @@ func TestMetaMissingPaymentMethodKeepsMetasExplanation(t *testing.T) {
 	status, payload := written(t, err)
 	if status != http.StatusConflict || payload.Code != "no_payment_method" || payload.Message != err.UserMessage {
 		t.Fatalf("got %d %+v", status, payload)
+	}
+}
+
+func TestRefusalExposesTheAdsErrorTable(t *testing.T) {
+	status, code, _, ok := Refusal(fmt.Errorf("wrapped: %w", advertising.ErrSensitiveAudience))
+	if !ok || status != http.StatusUnprocessableEntity || code != advertising.CodeSensitiveAudience {
+		t.Fatalf("refusal = %d %q %v", status, code, ok)
+	}
+	if _, _, _, ok := Refusal(errors.New("anything")); ok {
+		t.Fatal("an unknown error became a refusal")
 	}
 }

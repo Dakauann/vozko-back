@@ -66,12 +66,12 @@ func (s *HistoryProviderService) leadOf(entryID string, entryType shared.EntryTy
 	if entryID == "" || !anyFromCustomer(messages) {
 		return entryLead{}
 	}
-	name, number, picture, _, _, _, err := s.GetEntryInfo(entryID, string(entryType))
+	info, err := s.GetEntryInfo(entryID, string(entryType))
 	if err != nil {
 		log.Printf("[HistoryProvider] could not resolve the lead of %s:%s: %v", entryType, entryID, err)
 		return entryLead{}
 	}
-	return entryLead{Name: name, Number: number, Picture: picture}
+	return entryLead{Name: info.LeadName, Number: info.LeadNumber, Picture: info.LeadPicture}
 }
 
 func anyFromCustomer(messages []*conversation.Message) bool {

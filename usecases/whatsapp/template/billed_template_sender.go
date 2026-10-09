@@ -111,19 +111,13 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, err
 	}
 
-	category, err := tmpl.BillingCategory()
-	if err != nil {
-		return nil, fmt.Errorf("template metadata unavailable for billing: %w", err)
-	}
-
-	costMicros, err := uc.deps.Consume.GetTemplateCostMicros(in.WorkspaceID, category)
-	if err != nil {
-		return nil, err
-	}
-	if costMicros <= 0 {
+	category, costMicros, err := PriceOf(uc.deps.Consume, in.WorkspaceID, tmpl)
+	if errors.Is(err, template.ErrPricingUnavailable) {
 		uc.alert(ctx, "WhatsApp template send refused: no price configured",
 			fmt.Sprintf("workspace=%s category=%s template=%s", in.WorkspaceID, category, tmpl.Name))
-		return nil, template.ErrPricingUnavailable
+	}
+	if err != nil {
+		return nil, fmt.Errorf("template billing: %w", err)
 	}
 
 	attempt := &template.SendAttempt{
@@ -295,7 +289,7 @@ func (uc *billedTemplateSendUseCase) refund(ctx context.Context, attempt *templa
 }
 
 func (uc *billedTemplateSendUseCase) alert(ctx context.Context, subject, detail string) {
-	log.Printf("[billed-template-send] %s — %s", subject, detail)
+	log.Printf("[billed-template-send] %s: %s", subject, detail)
 	if uc.deps.Alerter == nil {
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"time"
 
 	"vozko/domain/ai"
 	"vozko/domain/tools"
@@ -40,6 +41,8 @@ type StepResult struct {
 	Mutated   bool
 	Pause     *Pause
 	Signature string
+	Images    []string
+	EndTurn   bool
 }
 
 type Pause struct {
@@ -63,6 +66,9 @@ type Progress struct {
 
 type Config struct {
 	WorkspaceID        string
+	BillingReference   string
+	SessionID          string
+	AsOf               time.Time
 	Temperature        float32
 	MaxTokensPerGen    int
 	ReasoningMaxTokens int
@@ -80,6 +86,7 @@ type Config struct {
 	KeepRecent         int
 	CostCeilingMicros  int64
 	GraceInstruction   string
+	KeepToolImages     int
 }
 
 func (c Config) withDefaults() Config {
@@ -116,7 +123,37 @@ func (c Config) withDefaults() Config {
 	if c.KeepRecent <= 0 {
 		c.KeepRecent = 8
 	}
+	if c.KeepToolImages <= 0 {
+		c.KeepToolImages = 2
+	}
 	return c
+}
+
+const (
+	regroundTail      = 1
+	userRequestPrefix = "PEDIDO DO USUÁRIO:\n"
+)
+
+func UserRequest(prompt string) string {
+	return userRequestPrefix + prompt
+}
+
+func (c Config) request(drv Driver, messages []ai.Message) ai.GenerateInput {
+	return ai.GenerateInput{
+		Model:              drv.Model(),
+		Temperature:        c.Temperature,
+		MaxTokens:          c.MaxTokensPerGen,
+		ReasoningMaxTokens: c.ReasoningMaxTokens,
+		SystemPrompt:       drv.SystemPrompt(),
+		Messages:           messages,
+		Tools:              drv.Tools(),
+		ToolExecutionMode:  ai.ToolExecutionModeNone,
+		WorkspaceID:        c.WorkspaceID,
+		BillingReference:   c.BillingReference,
+		SessionID:          c.SessionID,
+		AsOf:               c.AsOf,
+		VolatileTail:       regroundTail,
+	}
 }
 
 func (c Config) costOf(u ai.Usage) int64 {
@@ -157,7 +194,11 @@ type Outcome struct {
 	Halt    error
 }
 
-var ErrSessionBudget = errors.New("agentloop: session token budget exhausted")
+var (
+	ErrSessionBudget   = errors.New("agentloop: session token budget exhausted")
+	ErrOutputTruncated = errors.New("agentloop: the model output kept hitting its length limit")
+	ErrProviderFailed  = errors.New("agentloop: the AI provider refused or failed the call")
+)
 
 type Guard interface {
 	Admit(ctx context.Context) error
@@ -182,6 +223,10 @@ const (
 	reasonTimeout         = "tempo limite da sessão atingido, o modelo demorou demais para responder (tente novamente ou troque para um modelo mais rápido)"
 	clearedToolResult     = "[resultado antigo removido para liberar espaço; consulte de novo se precisar]"
 	clearableResultChars  = 200
+	truncatedReplyNudge   = "Sua resposta anterior foi cortada pelo limite de saída antes de você agir. Planeje menos e aja em passos menores: uma cena ou um lote de até 8 operações por vez."
+	truncatedCallResult   = "CHAMADA CORTADA: a resposta passou do limite de saída e os argumentos chegaram incompletos, então nada foi executado. Refaça em partes menores (por exemplo, lotes de até 12 operações)."
+	toolImagesNote        = "[Imagens devolvidas pelas ferramentas acima]"
+	toolImagesCleared     = toolImagesNote + " (removidas para liberar espaço; capture de novo se precisar)"
 )
 
 func sessionEndReason(err error) string {
@@ -206,6 +251,9 @@ type iterationPayload struct {
 
 func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, sess *Session, prompt string) Outcome {
 	cfg = cfg.withDefaults()
+	if cfg.AsOf.IsZero() {
+		cfg.AsOf = time.Now()
+	}
 
 	drv.Refresh()
 	prog := drv.Progress()
@@ -222,7 +270,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	repeatedTurns := 0
 	lastPromptTokens := 0
 
-	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: "PEDIDO DO USUÁRIO:\n" + prompt, Images: sess.PromptImages})
+	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: UserRequest(prompt), Images: sess.PromptImages})
 	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
 
 	for iter := 1; iter <= cfg.MaxIterations; iter++ {
@@ -246,22 +294,13 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		msgs := append(append([]ai.Message(nil), sess.History...),
 			ai.Message{Role: ai.RoleUser, Content: drv.Reground(iter, cfg.MaxIterations, noMutationStreak)})
 
-		out, err := e.streamGenerate(ctx, emit, ai.GenerateInput{
-			Model:              drv.Model(),
-			Temperature:        cfg.Temperature,
-			MaxTokens:          cfg.MaxTokensPerGen,
-			ReasoningMaxTokens: cfg.ReasoningMaxTokens,
-			SystemPrompt:       drv.SystemPrompt(),
-			Messages:           msgs,
-			Tools:              drv.Tools(),
-			ToolExecutionMode:  ai.ToolExecutionModeNone,
-			WorkspaceID:        cfg.WorkspaceID,
-		})
+		out, err := e.streamGenerate(ctx, emit, cfg.request(drv, msgs))
 		if err != nil {
 			if ctx.Err() != nil {
 				return Outcome{Kind: OutcomeDone, Valid: false, Summary: sessionEndReason(ctx.Err())}
 			}
-			return Outcome{Kind: OutcomeDone, Valid: false, Summary: providerErrPrefix + err.Error()}
+			log.Printf("%s %s%v", cfg.LogPrefix, providerErrPrefix, err)
+			return Outcome{Kind: OutcomeDone, Valid: false, Summary: providerErrPrefix + err.Error(), Halt: fmt.Errorf("%w: %w", ErrProviderFailed, err)}
 		}
 		sess.TokensUsed += out.Usage.TotalTokens
 		sess.CostMicros += cfg.costOf(out.Usage)
@@ -289,14 +328,25 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		if len(calls) == 0 {
 			if content == "" || out.FinishReason == "length" {
 				truncStreak++
-				if truncStreak <= cfg.EmptyTurnRetries {
-					continue
+				if truncStreak > cfg.EmptyTurnRetries {
+					return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonEmptyTurn, Halt: ErrOutputTruncated}
 				}
-				return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonEmptyTurn}
+				if out.FinishReason == "length" {
+					sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: truncatedReplyNudge})
+				}
+				continue
 			}
 			sess.History = append(sess.History, ai.Message{Role: ai.RoleAssistant, Content: content})
 			sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
 			return Outcome{Kind: OutcomeIdle, Valid: prog.Valid}
+		}
+		if out.FinishReason == "length" {
+			truncStreak++
+			recordTurn(sess, cfg.MaxHistoryMsgs, out.Message.Content, calls, truncatedResults(len(calls)))
+			if truncStreak > cfg.EmptyTurnRetries {
+				return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonEmptyTurn, Halt: ErrOutputTruncated}
+			}
+			continue
 		}
 		truncStreak = 0
 
@@ -304,6 +354,8 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		finishIdx := -1
 		var finishCall ai.ToolCall
 		mutated := false
+		endTurn := false
+		var images []string
 		turnSignature := make([]string, 0, len(calls))
 		for i := range calls {
 			tc := calls[i]
@@ -314,6 +366,8 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			}
 			step := drv.Dispatch(ctx, tc, emit)
 			results[i] = step.Result
+			images = append(images, step.Images...)
+			endTurn = endTurn || step.EndTurn
 			if step.Mutated {
 				mutated = true
 			}
@@ -359,10 +413,14 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		}
 
 		recordTurn(sess, cfg.MaxHistoryMsgs, out.Message.Content, calls, results)
+		attachToolImages(sess, cfg, images)
 
 		if finishHonored {
 			emit(EventTool, toolEvent{Name: cfg.FinishToolName, Summary: finishSummary, Ok: true})
 			return Outcome{Kind: OutcomeDone, Valid: true, Summary: finishSummary}
+		}
+		if endTurn {
+			return Outcome{Kind: OutcomeIdle, Valid: prog.Valid}
 		}
 		if repairExhausted {
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonRepairExhausted}
@@ -410,15 +468,9 @@ func (e *Engine) graceAnswer(ctx context.Context, emit Emit, drv Driver, cfg Con
 		return stop
 	}
 	msgs := append(append([]ai.Message(nil), sess.History...), ai.Message{Role: ai.RoleUser, Content: cfg.GraceInstruction})
-	out, err := e.streamGenerate(ctx, emit, ai.GenerateInput{
-		Model:              drv.Model(),
-		Temperature:        cfg.Temperature,
-		MaxTokens:          cfg.MaxTokensPerGen,
-		ReasoningMaxTokens: cfg.ReasoningMaxTokens,
-		SystemPrompt:       drv.SystemPrompt(),
-		Messages:           msgs,
-		WorkspaceID:        cfg.WorkspaceID,
-	})
+	request := cfg.request(drv, msgs)
+	request.ToolChoice = "none"
+	out, err := e.streamGenerate(ctx, emit, request)
 	if err != nil {
 		return stop
 	}
@@ -445,6 +497,8 @@ func clearOldToolResults(h []ai.Message, keepRecent int) []ai.Message {
 	}
 	return out
 }
+
+const reasoningChunkChars = 240
 
 func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.GenerateInput) (*ai.GenerateOutput, error) {
 	ch, err := e.AI.GenerateStream(ctx, input)
@@ -481,7 +535,7 @@ func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.Generat
 		case ai.StreamEventReasoning:
 			reasoningStreamed = true
 			reasoning.WriteString(ev.Token)
-			if reasoning.Len() >= 24 || strings.ContainsAny(ev.Token, ".\n!?") {
+			if reasoning.Len() >= reasoningChunkChars || strings.Contains(ev.Token, "\n\n") {
 				flushReasoning()
 			}
 		case ai.StreamEventToken:
@@ -527,11 +581,31 @@ func recordTurn(sess *Session, maxHistory int, content string, calls []ai.ToolCa
 	sess.History = trimHistory(sess.History, maxHistory)
 }
 
+func attachToolImages(sess *Session, cfg Config, images []string) {
+	if len(images) == 0 {
+		return
+	}
+	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: toolImagesNote, Images: images})
+	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
+	kept := 0
+	for i := len(sess.History) - 1; i >= 0; i-- {
+		m := sess.History[i]
+		if m.Role != ai.RoleUser || len(m.Images) == 0 || !strings.HasPrefix(m.Content, toolImagesNote) {
+			continue
+		}
+		if kept < cfg.KeepToolImages {
+			kept++
+			continue
+		}
+		sess.History[i] = ai.Message{Role: ai.RoleUser, Content: toolImagesCleared}
+	}
+}
+
 func trimHistory(h []ai.Message, max int) []ai.Message {
 	if len(h) <= max {
 		return h
 	}
-	start := len(h) - max
+	start := ai.HistoryWindowStart(len(h), max)
 	for start < len(h) && h[start].Role == ai.RoleTool {
 		start++
 	}
@@ -544,4 +618,12 @@ func trimHistory(h []ai.Message, max int) []ai.Message {
 	}
 	trimmed = append(trimmed, h[start:]...)
 	return trimmed
+}
+
+func truncatedResults(n int) []string {
+	results := make([]string, n)
+	for i := range results {
+		results[i] = truncatedCallResult
+	}
+	return results
 }

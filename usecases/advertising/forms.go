@@ -5,11 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
+	"vozko/domain/actor"
+	"vozko/domain/address"
 	ads "vozko/domain/advertising"
 	"vozko/domain/lead"
+	lead_usecase "vozko/usecases/lead"
 )
+
+var errFormAddressUnavailable = errors.New("ads: the lead profiles are not wired, so the form address cannot be stored")
+
+type leadProfiles interface {
+	Update(ctx context.Context, in lead_usecase.ProfileUpdate) (lead_usecase.ProfileResult, error)
+}
 
 const (
 	formPollBatch     = 100
@@ -37,15 +47,16 @@ type FormLeadView struct {
 }
 
 type FormsUseCase struct {
-	access  accountAccess
-	gateway leadGateway
-	forms   ads.LeadFormRepository
-	leads   ads.FormLeadRepository
-	crm     crmLeads
+	access   accountAccess
+	gateway  leadGateway
+	forms    ads.LeadFormRepository
+	leads    ads.FormLeadRepository
+	crm      crmLeads
+	profiles leadProfiles
 }
 
-func NewFormsUseCase(sync *SyncUseCase, gateway leadGateway, forms ads.LeadFormRepository, leads ads.FormLeadRepository, crm crmLeads) *FormsUseCase {
-	return &FormsUseCase{access: sync.access, gateway: gateway, forms: forms, leads: leads, crm: crm}
+func NewFormsUseCase(sync *SyncUseCase, gateway leadGateway, forms ads.LeadFormRepository, leads ads.FormLeadRepository, crm crmLeads, profiles leadProfiles) *FormsUseCase {
+	return &FormsUseCase{access: sync.access, gateway: gateway, forms: forms, leads: leads, crm: crm, profiles: profiles}
 }
 
 func (uc *FormsUseCase) page(ctx context.Context, token, pageID string) error {
@@ -183,7 +194,7 @@ func (uc *FormsUseCase) crmNames(workspaceID string, rows []*ads.FormLead) (map[
 		return nil, err
 	}
 	for _, l := range found {
-		names[l.ID] = l.Name
+		names[l.ID] = l.RealName()
 	}
 	return names, nil
 }
@@ -281,9 +292,44 @@ func (uc *FormsUseCase) importLead(ctx context.Context, form *ads.TrackedForm, l
 	if number == "" {
 		return true, nil
 	}
-	crmLead, _, err := uc.crm.FindOrCreate(form.WorkspaceID, number, lead.LeadUpdate{Name: contact.Name})
+	crmLead, _, err := uc.crm.FindOrCreate(form.WorkspaceID, number, lead.LeadUpdate{Source: lead.SourceChannel, Name: contact.Name})
 	if err != nil {
 		return true, fmt.Errorf("ads: lead %s saved but not added to the crm: %w", l.MetaID, err)
 	}
-	return true, uc.leads.LinkLead(ctx, l.MetaID, crmLead.ID)
+	if err := uc.leads.LinkLead(ctx, l.MetaID, crmLead.ID); err != nil {
+		return true, err
+	}
+	return true, uc.recordArea(ctx, form.WorkspaceID, crmLead.ID, contact)
+}
+
+func (uc *FormsUseCase) recordArea(ctx context.Context, workspaceID, leadID string, contact ads.LeadContact) error {
+	area := address.Postal{ZipCode: contact.Zip, City: contact.City, State: contact.State}
+	if strings.TrimSpace(area.ZipCode+area.City+area.State) == "" {
+		return nil
+	}
+	if uc.profiles == nil {
+		return errFormAddressUnavailable
+	}
+	err := uc.writeArea(ctx, workspaceID, leadID, area)
+	if errors.Is(err, lead.ErrProfileCEPUnchecked) && strings.TrimSpace(area.City+area.State) != "" {
+		log.Printf("[ads] the CEP of lead %s could not be checked, keeping its city and state: %v", leadID, err)
+		area.ZipCode = ""
+		err = uc.writeArea(ctx, workspaceID, leadID, area)
+	}
+	if lead.IsInputRefusal(err) {
+		log.Printf("[ads] the form address of lead %s was not stored: %v", leadID, err)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("ads: the form address of lead %s was not stored: %w", leadID, err)
+	}
+	return nil
+}
+
+func (uc *FormsUseCase) writeArea(ctx context.Context, workspaceID, leadID string, area address.Postal) error {
+	_, err := uc.profiles.Update(ctx, lead_usecase.ProfileUpdate{
+		WorkspaceID: workspaceID, LeadID: leadID, Actor: actor.SystemID,
+		Source: lead.ProfileFromForm, Profile: lead.Profile{Address: area},
+	})
+	return err
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/billing"
+	"vozko/domain/shared"
 	"vozko/domain/user"
 )
 
@@ -51,6 +52,10 @@ type SendCapUsage struct {
 
 type MonthlySendCapReader interface {
 	GetMonthlySendCap(workspaceID string) (*MonthlySendCap, error)
+}
+
+type MonthlySendCapUsageReader interface {
+	MonthlySendCapUsage(workspaceID string, at time.Time) (*SendCapUsage, error)
 }
 
 type MonthlySendSlots interface {
@@ -104,19 +109,8 @@ func (c MonthlySendCap) Unlocked(limit int64, unlockedBy string, now time.Time) 
 	return relimited, nil
 }
 
-func cycleDate(year int, month time.Month, cycleDay int) time.Time {
-	first := time.Date(year, month, 1, 0, 0, 0, 0, billing.LocationBRT())
-	lastDay := first.AddDate(0, 1, -1).Day()
-	return first.AddDate(0, 0, min(cycleDay, lastDay)-1)
-}
-
 func SendCapCycleStart(now time.Time, cycleDay int) time.Time {
-	local := now.In(billing.LocationBRT())
-	start := cycleDate(local.Year(), local.Month(), cycleDay)
-	if local.Before(start) {
-		return cycleDate(local.Year(), local.Month()-1, cycleDay)
-	}
-	return start
+	return shared.MonthlyCycleStart(now, cycleDay, billing.LocationBRT())
 }
 
 func (c MonthlySendCap) cycleDay() int {
@@ -126,17 +120,20 @@ func (c MonthlySendCap) cycleDay() int {
 	return c.CycleDay
 }
 
+func (c MonthlySendCap) Quota() shared.MonthlyQuota {
+	return shared.MonthlyQuota{Limit: c.Limit, CycleDay: c.cycleDay(), Location: billing.LocationBRT()}
+}
+
 func (c MonthlySendCap) CycleStart(now time.Time) time.Time {
-	return SendCapCycleStart(now, c.cycleDay())
+	return c.Quota().CycleStart(now)
 }
 
 func (c MonthlySendCap) NextCycleStart(now time.Time) time.Time {
-	start := c.CycleStart(now)
-	return cycleDate(start.Year(), start.Month()+1, c.cycleDay())
+	return c.Quota().NextCycleStart(now)
 }
 
 func (c MonthlySendCap) CheckRoom(used int64) error {
-	if used >= c.Limit {
+	if c.Quota().CheckRoom(used) != nil {
 		return ErrMonthlySendCapReached
 	}
 	return nil
@@ -153,10 +150,7 @@ func SendCapChangeRequiresUnlock(current *MonthlySendCap, next *MonthlySendCap) 
 }
 
 func (u SendCapUsage) Remaining() int64 {
-	if u.Used >= u.Cap.Limit {
-		return 0
-	}
-	return u.Cap.Limit - u.Used
+	return u.Cap.Quota().Remaining(u.Used)
 }
 
 func (u SendCapUsage) Level() SendCapLevel {

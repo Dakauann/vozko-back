@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	ads "vozko/domain/advertising"
-	"vozko/domain/crmfilter"
 )
 
 const maxCustomerRows = 500_000
@@ -30,7 +29,7 @@ type audienceGateway interface {
 }
 
 type CustomerDirectory interface {
-	Customers(ctx context.Context, workspaceID string, filter crmfilter.Filter, limit int) ([]ads.Customer, error)
+	Customers(ctx context.Context, a Requester, q CustomerQuery, limit int) ([]ads.Customer, error)
 }
 
 type RawFiles interface {
@@ -96,16 +95,16 @@ func (uc *AudienceUseCase) openForAudiences(ctx context.Context, workspaceID, ac
 	return account, token, nil
 }
 
-func (uc *AudienceUseCase) prepareCustomerList(ctx context.Context, workspaceID string, draft *ads.CustomerListDraft) (*ads.AdAccount, string, ads.HashedCustomers, error) {
+func (uc *AudienceUseCase) prepareCustomerList(ctx context.Context, a Requester, draft *ads.CustomerListDraft) (*ads.AdAccount, string, ads.HashedCustomers, error) {
 	draft.Name = strings.TrimSpace(draft.Name)
 	if err := draft.Validate(); err != nil {
 		return nil, "", ads.HashedCustomers{}, err
 	}
-	account, token, err := uc.openForAudiences(ctx, workspaceID, draft.AdAccountID)
+	account, token, err := uc.openForAudiences(ctx, a.WorkspaceID, draft.AdAccountID)
 	if err != nil {
 		return nil, "", ads.HashedCustomers{}, err
 	}
-	hashed, err := uc.hashedCustomers(ctx, workspaceID, *draft)
+	hashed, err := uc.hashedCustomers(ctx, a, *draft)
 	if err != nil {
 		return nil, "", ads.HashedCustomers{}, err
 	}
@@ -115,8 +114,8 @@ func (uc *AudienceUseCase) prepareCustomerList(ctx context.Context, workspaceID 
 	return account, token, hashed, nil
 }
 
-func (uc *AudienceUseCase) CheckCustomerList(ctx context.Context, workspaceID string, draft ads.CustomerListDraft) (*CustomerListResult, error) {
-	_, _, hashed, err := uc.prepareCustomerList(ctx, workspaceID, &draft)
+func (uc *AudienceUseCase) CheckCustomerList(ctx context.Context, a Requester, draft ads.CustomerListDraft) (*CustomerListResult, error) {
+	_, _, hashed, err := uc.prepareCustomerList(ctx, a, &draft)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +126,8 @@ func (uc *AudienceUseCase) CheckCustomerList(ctx context.Context, workspaceID st
 	}, nil
 }
 
-func (uc *AudienceUseCase) CreateCustomerList(ctx context.Context, workspaceID string, draft ads.CustomerListDraft) (*CustomerListResult, error) {
-	account, token, hashed, err := uc.prepareCustomerList(ctx, workspaceID, &draft)
+func (uc *AudienceUseCase) CreateCustomerList(ctx context.Context, a Requester, draft ads.CustomerListDraft) (*CustomerListResult, error) {
+	account, token, hashed, err := uc.prepareCustomerList(ctx, a, &draft)
 	if err != nil {
 		return nil, err
 	}
@@ -163,17 +162,20 @@ func (uc *AudienceUseCase) upload(ctx context.Context, token, audienceID string,
 	return nil
 }
 
-var crmKeys = []ads.MatchKey{ads.MatchPhone, ads.MatchFirstName, ads.MatchLastName}
+var crmKeys = []ads.MatchKey{ads.MatchPhone, ads.MatchFirstName, ads.MatchLastName, ads.MatchCity, ads.MatchState, ads.MatchZip}
 
-func (uc *AudienceUseCase) hashedCustomers(ctx context.Context, workspaceID string, draft ads.CustomerListDraft) (ads.HashedCustomers, error) {
+func (uc *AudienceUseCase) hashedCustomers(ctx context.Context, a Requester, draft ads.CustomerListDraft) (ads.HashedCustomers, error) {
 	if draft.Source == ads.SourceCRM {
-		customers, err := uc.customers.Customers(ctx, workspaceID, draft.CRMFilter, maxCustomerRows)
+		if uc.customers == nil {
+			return ads.HashedCustomers{}, errCRMCustomersIncomplete
+		}
+		customers, err := uc.customers.Customers(ctx, a, CustomerQuery{Filter: draft.CRMFilter, SnapshotID: draft.CRMSnapshotID}, maxCustomerRows)
 		if err != nil {
 			return ads.HashedCustomers{}, err
 		}
 		return ads.HashCustomers(crmKeys, customers, ""), nil
 	}
-	data, err := uc.files.Bytes(ctx, workspaceID, draft.FileMediaID)
+	data, err := uc.files.Bytes(ctx, a.WorkspaceID, draft.FileMediaID)
 	if err != nil {
 		return ads.HashedCustomers{}, err
 	}

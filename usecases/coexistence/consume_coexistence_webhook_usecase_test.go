@@ -190,7 +190,10 @@ func (r *mockEntryRepo) CanUserAccessEntry(string, string, bool) (bool, error)  
 func (r *mockEntryRepo) GetAccessibleEntryIDs(string, bool) ([]string, error)    { return nil, nil }
 func (r *mockEntryRepo) GetEntryIDsByCampaign(string) ([]string, error)          { return nil, nil }
 func (r *mockEntryRepo) FindByNumber(string) (*wce.WhatsAppCampaignEntry, error) { return nil, nil }
-func (r *mockEntryRepo) FindByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
+func (r *mockEntryRepo) FindInboundRouteByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
+	return nil, nil
+}
+func (r *mockEntryRepo) FindByNumberBusinessPhoneAndWorkspace(_, _, _ string) (*wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
 func (r *mockEntryRepo) GetCampaignForEntry(string) (*wce.EntryCampaignInfo, error) { return nil, nil }
@@ -226,7 +229,6 @@ func (r *mockMessageRepo) ListByEntry(string, shared.EntryType) ([]*conversation
 func (r *mockMessageRepo) ListByEntryPaginated(conversation.ListMessagesInput) ([]*conversation.Message, error) {
 	return nil, nil
 }
-func (r *mockMessageRepo) ListByLeadID(string) ([]*conversation.Message, error)       { return nil, nil }
 func (r *mockMessageRepo) MarkAsRead(conversation.MarkAsReadInput) (int64, error)     { return 0, nil }
 func (r *mockMessageRepo) CountUnreadByEntry(string, shared.EntryType) (int64, error) { return 0, nil }
 func (r *mockMessageRepo) CountUnreadByEntries([]string, shared.EntryType) ([]conversation.UnreadCount, error) {
@@ -243,6 +245,12 @@ func (r *mockMessageRepo) SearchEntriesWithMessages(conversation.SearchEntriesIn
 }
 func (r *mockMessageRepo) SearchEntriesByFilter(conversation.SearchByFilterInput) ([]conversation.EntryWithLastMessage, int64, error) {
 	return nil, 0, nil
+}
+func (r *mockMessageRepo) CountEntriesByFilter(conversation.SearchByFilterInput) (int64, error) {
+	return 0, nil
+}
+func (r *mockMessageRepo) ResolveEntryRefsByFilter(conversation.SearchByFilterInput, string, int) ([]shared.EntryRef, error) {
+	return nil, nil
 }
 func (r *mockMessageRepo) SearchMessagesByEntry(conversation.SearchMessagesByEntryInput) ([]*conversation.Message, int64, error) {
 	return nil, 0, nil
@@ -294,9 +302,6 @@ func (r *mockLeadRepo) FindByIDs(string, []string) ([]*lead.Lead, error) { retur
 func (r *mockLeadRepo) FindByNumber(string, string) (*lead.Lead, error)  { return nil, nil }
 func (r *mockLeadRepo) FindOrCreateMany(string, []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
 	return nil, nil
-}
-func (r *mockLeadRepo) ImportMany(string, []lead.BulkLeadInput, lead.ExistingPolicy) (*lead.ImportOutcome, error) {
-	return &lead.ImportOutcome{}, nil
 }
 func (r *mockLeadRepo) Update(string, string, lead.LeadUpdate) error { return nil }
 func (r *mockLeadRepo) Rename(string, string, string) error          { return nil }

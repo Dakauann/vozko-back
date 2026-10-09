@@ -46,8 +46,7 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scope, err := h.deals.Scope(personFrom(claims), wsID)
-	if err != nil {
+	if _, err := h.deals.Scope(personFrom(claims), wsID); err != nil {
 		response.WriteError(w, http.StatusForbidden, "Forbidden", nil)
 		return
 	}
@@ -64,11 +63,8 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params, err := json.Marshal(report_renderers.OpportunitiesParams{
-		PipelineID:             pipelineID,
-		DepartmentIDs:          scope.DepartmentIDs,
-		Restrict:               scope.Restrict,
-		AssigneeOverrideUserID: scope.AssigneeOverride,
-		Label:                  "oportunidades",
+		PipelineID: pipelineID,
+		Label:      "oportunidades",
 	})
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to prepare the export", nil)
@@ -76,12 +72,13 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := h.reports.Create(report_usecase.CreateInput{
-		WorkspaceID: wsID,
-		RequestedBy: claims.UserID,
-		Kind:        reportdomain.KindOpportunities,
-		Format:      format,
-		Locale:      httpx.RequestLocale(r),
-		Params:      params,
+		WorkspaceID:      wsID,
+		RequestedBy:      claims.UserID,
+		RequestedByAdmin: personFrom(claims).SystemAdmin,
+		Kind:             reportdomain.KindOpportunities,
+		Format:           format,
+		Locale:           httpx.RequestLocale(r),
+		Params:           params,
 	})
 	if err != nil {
 		switch {
@@ -91,6 +88,8 @@ func (h *OpportunityHandler) Export(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, reportdomain.ErrInvalidFormat),
 			errors.Is(err, reportdomain.ErrFormatUnsupported):
 			response.WriteValidationError(w, map[string]string{"format": "must be csv or pdf"})
+		case errors.Is(err, reportdomain.ErrNotAllowed):
+			response.WriteErrorWithCode(w, http.StatusForbidden, reportdomain.ErrorCode(err), err.Error(), nil)
 		default:
 			response.WriteError(w, http.StatusInternalServerError, "Failed to queue the export", nil)
 		}

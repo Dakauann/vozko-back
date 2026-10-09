@@ -44,7 +44,7 @@ func TestKnownErrorCodes_AreUniqueAndNonEmpty(t *testing.T) {
 	seen := map[string]bool{}
 	for _, code := range KnownErrorCodes() {
 		assert.NotEmpty(t, code)
-		assert.False(t, seen[code], "duplicate code %q — the UI would map two failures to one sentence", code)
+		assert.False(t, seen[code], "duplicate code %q: the UI would map two failures to one sentence", code)
 		seen[code] = true
 	}
 }
@@ -124,7 +124,7 @@ var codedSentinelNames = map[string]bool{
 	"ErrSendInProgress": true, "ErrTemplatePhoneMismatch": true,
 	"ErrPricingUnavailable": true, "ErrTemplateNotSendable": true,
 	"ErrBillingNotConfigured": true, "ErrSendAttemptConflict": true,
-	"ErrTemplateParamsMismatch": true,
+	"ErrTemplateParamsMismatch": true, "ErrQuoteOutOfRange": true,
 	"ErrOTPTypeRequired":        true, "ErrInvalidOTPType": true,
 	"ErrMultipleOTPButtons": true, "ErrOTPButtonNotAuthentication": true,
 	"ErrOTPTypeUnsupported":           true,

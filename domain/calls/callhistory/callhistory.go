@@ -92,6 +92,10 @@ func (p Participants) Includes(userID string) bool {
 	return userID != "" && slices.Contains(p.involved, userID)
 }
 
+func Visible(userID string, seesEveryone bool, call cdr.Call, transfers []callrouting.TransferRecord) bool {
+	return seesEveryone || ParticipantsOf(call, transfers).Includes(userID)
+}
+
 func ParticipantsOf(call cdr.Call, transfers []callrouting.TransferRecord) Participants {
 	var people Participants
 	agent := valueOf(call.AgentID)

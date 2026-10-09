@@ -37,6 +37,10 @@ func writeReportError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusServiceUnavailable, "Reports are not configured on this server", nil)
 	case errors.Is(err, reportdomain.ErrNotFound):
 		response.WriteError(w, http.StatusNotFound, "Report not found", nil)
+	case errors.Is(err, reportdomain.ErrKindNotOffered):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, reportdomain.ErrorCode(err), "This report is requested from its own page", nil)
+	case errors.Is(err, reportdomain.ErrNotAllowed):
+		response.WriteErrorWithCode(w, http.StatusForbidden, reportdomain.ErrorCode(err), "You do not have the permissions this report needs", nil)
 	case errors.Is(err, reportdomain.ErrForbidden):
 		response.WriteError(w, http.StatusForbidden, "This report belongs to another workspace", nil)
 	case errors.Is(err, reportdomain.ErrNotReady):
@@ -55,13 +59,14 @@ func writeReportError(w http.ResponseWriter, err error) {
 }
 
 // @Summary		Solicitar um relatório
-// @Description	Coloca a geração do relatório na fila e devolve o identificador do trabalho. O arquivo fica pronto de forma assíncrona; acompanhe pelo status.
+// @Description	Coloca a geração do relatório na fila e devolve o identificador do trabalho. O arquivo fica pronto de forma assíncrona; acompanhe pelo status. Cada tipo declara as permissões que exige (por exemplo `attendance:read` para a visão de atendimento), conferidas na criação e de novo na geração para quem pediu; sem elas responde 403 `report_forbidden`. O escopo de departamento e de responsável é calculado na geração a partir de quem pediu, nunca dos parâmetros enviados. O tipo `leads` só nasce em POST /leads/actions e aqui responde 400 `report_kind_not_offered`. A reutilização de um pedido igual considera quem pediu.
 // @Tags			Relatórios
 // @Accept			json
 // @Produce		json
 // @Param			request	body		CreateReportRequest	true	"Relatório a gerar"
 // @Success		202	{object}	report.Job
 // @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
 // @Failure		503	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/reports [post]
@@ -88,12 +93,14 @@ func (h *ReportHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := h.service.Create(report_usecase.CreateInput{
-		WorkspaceID: workspaceID,
-		RequestedBy: claims.UserID,
-		Kind:        reportdomain.Kind(strings.TrimSpace(req.Kind)),
-		Format:      reportdomain.Format(strings.TrimSpace(req.Format)),
-		Locale:      req.Locale,
-		Params:      req.Params,
+		WorkspaceID:      workspaceID,
+		RequestedBy:      claims.UserID,
+		RequestedByAdmin: claims.Role == "admin",
+		Kind:             reportdomain.Kind(strings.TrimSpace(req.Kind)),
+		Format:           reportdomain.Format(strings.TrimSpace(req.Format)),
+		Locale:           req.Locale,
+		Params:           req.Params,
+		FromClient:       true,
 	})
 	if err != nil {
 		writeReportError(w, err)
@@ -103,7 +110,7 @@ func (h *ReportHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Situação de um relatório
-// @Description	Devolve a situação do relatório solicitado: na fila, processando, pronto, com falha ou expirado.
+// @Description	Devolve a situação do relatório solicitado: na fila, processando, pronto, com falha ou expirado. Só quem pediu o relatório ou quem tem as mesmas permissões do tipo o enxerga; para os demais responde 404. Os tipos gerados com o escopo de quem pediu (`conversation_entries` e `opportunities`) só são lidos por quem pediu.
 // @Tags			Relatórios
 // @Produce		json
 // @Param			id	path	string	true	"ID do relatório"
@@ -117,7 +124,7 @@ func (h *ReportHandler) Get(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "workspace_id required", nil)
 		return
 	}
-	job, err := h.service.Get(workspaceID, mux.Vars(r)["id"])
+	job, err := h.service.Get(viewerOf(r), workspaceID, mux.Vars(r)["id"])
 	if err != nil {
 		writeReportError(w, err)
 		return
@@ -126,7 +133,7 @@ func (h *ReportHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Listar relatórios recentes
-// @Description	Lista os relatórios solicitados recentemente pelo workspace, do mais novo para o mais antigo.
+// @Description	Lista os relatórios solicitados recentemente pelo workspace, do mais novo para o mais antigo, deixando de fora, já na contagem e na paginação, os que quem pergunta não pode abrir (pedidos por outra pessoa e de um tipo cujas permissões ela não tem). Os tipos gerados com o escopo de quem pediu (`conversation_entries` e `opportunities`) só são lidos por quem pediu.
 // @Tags			Relatórios
 // @Produce		json
 // @Param			limit	query	int		false	"Quantidade máxima (padrão 25, teto 100)"
@@ -162,12 +169,20 @@ func (h *ReportHandler) List(w http.ResponseWriter, r *http.Request) {
 	query.CreatedFrom = httpx.ParseDateBound(values.Get("from"), false)
 	query.CreatedTo = httpx.ParseDateBound(values.Get("to"), true)
 
-	page, err := h.service.List(query)
+	page, err := h.service.List(viewerOf(r), query)
 	if err != nil {
 		writeReportError(w, err)
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, page)
+}
+
+func viewerOf(r *http.Request) report_usecase.Viewer {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return report_usecase.Viewer{}
+	}
+	return report_usecase.Viewer{UserID: claims.UserID, IsAdmin: claims.Role == "admin"}
 }
 
 func intParam(raw string, fallback int) int {
@@ -197,7 +212,7 @@ func splitList(values []string) []string {
 }
 
 // @Summary		Baixar o arquivo do relatório
-// @Description	Devolve o arquivo gerado. Responde 409 enquanto o relatório não está pronto e 410 quando já expirou.
+// @Description	Devolve o arquivo gerado. Responde 409 enquanto o relatório não está pronto e 410 quando já expirou. Só quem pediu o relatório ou quem tem as mesmas permissões do tipo baixa o arquivo; para os demais responde 404. Os tipos gerados com o escopo de quem pediu (`conversation_entries` e `opportunities`) só são lidos por quem pediu.
 // @Tags			Relatórios
 // @Produce		json
 // @Param			id	path	string	true	"ID do relatório"
@@ -212,7 +227,7 @@ func (h *ReportHandler) Download(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "workspace_id required", nil)
 		return
 	}
-	file, err := h.service.File(r.Context(), workspaceID, mux.Vars(r)["id"])
+	file, err := h.service.File(r.Context(), viewerOf(r), workspaceID, mux.Vars(r)["id"])
 	if err != nil {
 		writeReportError(w, err)
 		return

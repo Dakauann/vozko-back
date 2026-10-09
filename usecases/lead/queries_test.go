@@ -13,18 +13,12 @@ type repoStub struct {
 	listed   lead.ListLeadsInput
 	found    *lead.Lead
 	lookups  int
-	faceted  bool
 	numbered string
 }
 
 func (r *repoStub) ListWithSummary(in lead.ListLeadsInput) (*shared.PaginatedResult[*lead.LeadWithSummary], error) {
 	r.listed = in
 	return &shared.PaginatedResult[*lead.LeadWithSummary]{}, nil
-}
-
-func (r *repoStub) Facets(in lead.ListLeadsInput) (*lead.LeadFacets, error) {
-	r.listed, r.faceted = in, true
-	return &lead.LeadFacets{}, nil
 }
 
 func (r *repoStub) FindByID(workspaceID, id string) (*lead.Lead, error) {
@@ -44,16 +38,13 @@ func TestQueriesRefuseToRunWithoutAWorkspace(t *testing.T) {
 	if _, err := q.List(lead.ListLeadsInput{}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Fatalf("list err = %v", err)
 	}
-	if _, err := q.Facets(lead.ListLeadsInput{}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
-		t.Fatalf("facets err = %v", err)
-	}
 	if _, err := q.Get("", "l1"); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Fatalf("get err = %v", err)
 	}
 	if _, err := q.GetByNumber(" ", "5584"); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Fatalf("by number err = %v", err)
 	}
-	if repo.lookups != 0 || repo.faceted {
+	if repo.lookups != 0 {
 		t.Fatal("the repository was reached without a workspace")
 	}
 }

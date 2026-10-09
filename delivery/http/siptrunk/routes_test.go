@@ -32,6 +32,7 @@ func TestRegisterProtectedRoutesGuardsEveryRouteWithTheRightPermission(t *testin
 		{http.MethodDelete, "/sip-trunks/t1", "sip_trunks:delete"},
 		{http.MethodGet, "/sip-trunks/t1/calls", "sip_trunks:read"},
 		{http.MethodDelete, "/sip-trunks/t1/calls/c1", "sip_trunks:call"},
+		{http.MethodGet, "/dial-targets", "sip_trunks:read"},
 	}
 	for _, c := range cases {
 		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(c.method, c.path, nil))

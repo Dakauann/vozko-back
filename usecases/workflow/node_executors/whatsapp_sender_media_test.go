@@ -30,6 +30,10 @@ func (stubMediaLeadRepo) FindByID(workspaceID, id string) (*lead_domain.Lead, er
 	return &lead_domain.Lead{ID: id, WorkspaceID: workspaceID, Number: "5511999999999"}, nil
 }
 
+func (stubMediaLeadRepo) FindByNumber(workspaceID, number string) (*lead_domain.Lead, error) {
+	return &lead_domain.Lead{ID: "lead-1", WorkspaceID: workspaceID, Number: number}, nil
+}
+
 type mediaSendClient struct {
 	conversation.WhatsAppClient
 

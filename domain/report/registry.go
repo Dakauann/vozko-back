@@ -76,9 +76,9 @@ func (r *Registry) Descriptors() []KindDescriptor {
 	return out
 }
 
-func Fingerprint(workspaceID string, kind Kind, format Format, locale string, params json.RawMessage) string {
+func Fingerprint(workspaceID, requestedBy, tier string, kind Kind, format Format, locale string, params json.RawMessage) string {
 	canonical := canonicalJSON(params)
-	sum := sha256.Sum256([]byte(workspaceID + "|" + string(kind) + "|" + string(format) + "|" + locale + "|" + canonical))
+	sum := sha256.Sum256([]byte(workspaceID + "|" + requestedBy + "|" + tier + "|" + string(kind) + "|" + string(format) + "|" + locale + "|" + canonical))
 	return hex.EncodeToString(sum[:])
 }
 

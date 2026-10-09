@@ -16,10 +16,15 @@ var ErrQuickSendBusy = errors.New("unofficial whatsapp campaign quick send: busy
 const quickSendLockTTL = 30 * time.Second
 
 type quickSendUseCase struct {
-	repos    campaignRepos
-	leads    LeadResolver
-	dispatch uwc.DispatchCampaignUseCase
-	shared   cache.SharedState
+	repos      campaignRepos
+	leads      LeadResolver
+	dispatch   uwc.DispatchCampaignUseCase
+	shared     cache.SharedState
+	automation AutomationCheck
+}
+
+func (uc *quickSendUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
 }
 
 func NewQuickSendUseCase(
@@ -56,6 +61,9 @@ func (uc *quickSendUseCase) Execute(ctx context.Context, in uwc.QuickSendInput) 
 
 	camp, err := uc.repos.campaigns.FindByID(in.CampaignID)
 	if err != nil {
+		return nil, err
+	}
+	if err := campaign.RefuseSelectionChange(camp.Source, true); err != nil {
 		return nil, err
 	}
 
@@ -109,5 +117,6 @@ func (uc *quickSendUseCase) addNumbers(
 	numbers []uwc.EntryInput,
 ) (*uwc.AddEntriesOutput, error) {
 	adder := newEntryManagement(uc.repos.campaigns, uc.repos.entries, uc.leads)
+	adder.SetAutomation(uc.automation)
 	return adder.add(ctx, uwc.AddEntriesInput{CampaignID: camp.ID, Numbers: numbers}, true)
 }

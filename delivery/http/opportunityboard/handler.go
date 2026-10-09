@@ -8,6 +8,7 @@ import (
 	"vozko/delivery/http/response"
 	"vozko/domain/actor"
 	"vozko/domain/crmfilter"
+	"vozko/domain/customfield"
 	opportunitydomain "vozko/domain/opportunity"
 	"vozko/domain/savedview"
 	"vozko/infra/http/middleware"
@@ -148,9 +149,13 @@ func (h *OpportunityBoardHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *OpportunityBoardHandler) handleError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, oppboard_usecase.ErrUnauthorized):
+	case errors.Is(err, oppboard_usecase.ErrUnauthorized),
+		errors.Is(err, customfield.ErrFilterSensitive):
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
-	case errors.Is(err, oppboard_usecase.ErrUnsupportedGroupBy),
+	case errors.Is(err, customfield.ErrFilterUnknownKey),
+		errors.Is(err, customfield.ErrFilterOperator),
+		errors.Is(err, customfield.ErrFilterValue),
+		errors.Is(err, oppboard_usecase.ErrUnsupportedGroupBy),
 		errors.Is(err, oppboard_usecase.ErrGroupByKeyMissing),
 		errors.Is(err, crmfilter.ErrUnknownField),
 		errors.Is(err, crmfilter.ErrUnsupportedOp),

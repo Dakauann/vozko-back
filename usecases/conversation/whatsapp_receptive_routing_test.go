@@ -33,7 +33,7 @@ type routingEntries struct {
 	created  *wce.WhatsAppCampaignEntry
 }
 
-func (r *routingEntries) FindByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
+func (r *routingEntries) FindInboundRouteByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
 	if r.existing == nil {
 		return nil, wce.ErrEntryNotFound
 	}

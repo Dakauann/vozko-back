@@ -42,7 +42,6 @@ type CallRecorder struct {
 	mu          sync.Mutex
 	callID      string
 	workspaceID string
-	crmEntryID  string
 	leadID      string
 	startTime   time.Time
 	closed      bool
@@ -60,7 +59,7 @@ type CallRecorder struct {
 	remoteSamplePos      int64
 }
 
-func NewCallRecorder(callID string, workspaceID string, crmEntryID string, leadID string) *CallRecorder {
+func NewCallRecorder(callID string, workspaceID string, leadID string) *CallRecorder {
 	tmpFile, err := os.CreateTemp("", "rec-"+callID+"-*")
 	if err != nil {
 		log.Printf("CallRecorder: failed to create temp file, falling back to in-memory: %v", err)
@@ -70,7 +69,6 @@ func NewCallRecorder(callID string, workspaceID string, crmEntryID string, leadI
 	return &CallRecorder{
 		callID:      callID,
 		workspaceID: workspaceID,
-		crmEntryID:  crmEntryID,
 		leadID:      leadID,
 		startTime:   time.Now(),
 		tmpFile:     tmpFile,
@@ -186,7 +184,6 @@ func (r *CallRecorder) Finish(pool *RecordingUploadPool) {
 		Meta: recordings.RecordingUploadEvent{
 			CallID:      r.callID,
 			WorkspaceID: r.workspaceID,
-			EntryID:     r.crmEntryID,
 			LeadID:      r.leadID,
 			CallStart:   r.startTime,
 			CallEnd:     r.startTime.Add(duration),

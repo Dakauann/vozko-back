@@ -1,6 +1,8 @@
 package actornames
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"strings"
 
@@ -11,6 +13,8 @@ import (
 	"vozko/domain/user"
 	"vozko/domain/workflow"
 )
+
+var ErrNameSourceMissing = errors.New("actor names: no source for this kind of actor")
 
 type UserLookup interface {
 	FindByIDs(ids []string) ([]*user.User, error)
@@ -31,6 +35,70 @@ type Directory struct {
 }
 
 func (d Directory) Names(actorIDs ...string) map[string]string {
+	names, err := d.collect(actorIDs, false)
+	if err != nil {
+		log.Printf("[actor-names] could not resolve every name: %v", err)
+	}
+	return names
+}
+
+func (d Directory) ResolveNames(actorIDs ...string) (map[string]string, error) {
+	names, err := d.collect(actorIDs, true)
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
+type nameSource struct {
+	kind   actor.Kind
+	label  string
+	ready  bool
+	lookup func(ids []string, names map[string]string) error
+}
+
+func (d Directory) sources() []nameSource {
+	return []nameSource{
+		{kind: actor.KindHuman, label: "user", ready: d.Users != nil, lookup: func(ids []string, names map[string]string) error {
+			found, err := d.Users.FindByIDs(ids)
+			if err != nil {
+				return err
+			}
+			for _, u := range found {
+				if u != nil {
+					names[u.ID] = u.Username
+				}
+			}
+			return nil
+		}},
+		{kind: actor.KindAI, label: "agent", ready: d.Agents != nil, lookup: func(ids []string, names map[string]string) error {
+			found, err := d.Agents.FindByIDs(ids)
+			if err != nil {
+				return err
+			}
+			for _, a := range found {
+				if a != nil {
+					names[actor.FormatAI(a.ID)] = a.Name
+				}
+			}
+			return nil
+		}},
+		{kind: actor.KindWorkflow, label: "workflow", ready: d.Workflows != nil, lookup: func(ids []string, names map[string]string) error {
+			found, err := d.Workflows.FindByIDs(ids)
+			if err != nil {
+				return err
+			}
+			for _, w := range found {
+				if w != nil {
+					names[actor.FormatWorkflow(w.ID)] = w.Name
+				}
+			}
+			return nil
+		}},
+	}
+}
+
+func (d Directory) collect(actorIDs []string, strict bool) (map[string]string, error) {
 	wanted := map[actor.Kind]map[string]bool{actor.KindHuman: {}, actor.KindAI: {}, actor.KindWorkflow: {}}
 	for _, id := range actorIDs {
 		kind := actor.KindOf(id)
@@ -40,39 +108,24 @@ func (d Directory) Names(actorIDs ...string) map[string]string {
 			}
 		}
 	}
-
 	names := map[string]string{}
-	if d.Users != nil && len(wanted[actor.KindHuman]) > 0 {
-		found, err := d.Users.FindByIDs(keys(wanted[actor.KindHuman]))
-		if resolved(err, "user") {
-			for _, u := range found {
-				if u != nil {
-					names[u.ID] = u.Username
-				}
+	var failures []error
+	for _, source := range d.sources() {
+		ids := wanted[source.kind]
+		if len(ids) == 0 {
+			continue
+		}
+		if !source.ready {
+			if strict {
+				failures = append(failures, fmt.Errorf("%s names: %w", source.label, ErrNameSourceMissing))
 			}
+			continue
+		}
+		if err := source.lookup(keys(ids), names); err != nil {
+			failures = append(failures, fmt.Errorf("%s names: %w", source.label, err))
 		}
 	}
-	if d.Agents != nil && len(wanted[actor.KindAI]) > 0 {
-		found, err := d.Agents.FindByIDs(keys(wanted[actor.KindAI]))
-		if resolved(err, "agent") {
-			for _, a := range found {
-				if a != nil {
-					names[actor.FormatAI(a.ID)] = a.Name
-				}
-			}
-		}
-	}
-	if d.Workflows != nil && len(wanted[actor.KindWorkflow]) > 0 {
-		found, err := d.Workflows.FindByIDs(keys(wanted[actor.KindWorkflow]))
-		if resolved(err, "workflow") {
-			for _, w := range found {
-				if w != nil {
-					names[actor.FormatWorkflow(w.ID)] = w.Name
-				}
-			}
-		}
-	}
-	return names
+	return names, errors.Join(failures...)
 }
 
 func bareID(kind actor.Kind, id string) string {
@@ -83,14 +136,6 @@ func bareID(kind actor.Kind, id string) string {
 		return actor.ParseWorkflow(id)
 	}
 	return strings.TrimSpace(id)
-}
-
-func resolved(err error, kind string) bool {
-	if err != nil {
-		log.Printf("[actor-names] could not resolve %s names: %v", kind, err)
-		return false
-	}
-	return true
 }
 
 func isUUID(s string) bool {

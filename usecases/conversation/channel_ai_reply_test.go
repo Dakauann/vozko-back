@@ -1,6 +1,7 @@
 package conversation_usecase
 
 import (
+	"fmt"
 	"testing"
 
 	"vozko/domain/agent"
@@ -152,8 +153,46 @@ type stubMessageRepo struct {
 	newestFirst []*conversation.Message
 }
 
-func (r stubMessageRepo) ListByEntryPaginated(conversation.ListMessagesInput) ([]*conversation.Message, error) {
+func (r stubMessageRepo) ListByEntryPaginated(in conversation.ListMessagesInput) ([]*conversation.Message, error) {
+	if in.Limit > 0 && in.Limit < len(r.newestFirst) {
+		return r.newestFirst[:in.Limit], nil
+	}
 	return r.newestFirst, nil
+}
+
+func (r stubMessageRepo) CountByEntry(string, shared.EntryType) (int64, error) {
+	return int64(len(r.newestFirst)), nil
+}
+
+func conversationRows(total int) []*conversation.Message {
+	newestFirst := make([]*conversation.Message, 0, total)
+	for i := total - 1; i >= 0; i-- {
+		newestFirst = append(newestFirst, &conversation.Message{Text: fmt.Sprintf("m%03d", i), MessageType: conversation.MessageTypeUserMessage})
+	}
+	return newestFirst
+}
+
+func TestChannelHistoryWindowHoldsItsStartAcrossTurns(t *testing.T) {
+	oldest := map[string]bool{}
+	for total := 31; total <= 35; total++ {
+		svc := &ChannelAIReplyService{messages: stubMessageRepo{newestFirst: conversationRows(total)}}
+		latest := fmt.Sprintf("m%03d", total-1)
+
+		got, err := svc.buildPrompt(conversation.AIReplyRequest{EntryID: "conv-1", EntryType: shared.EntryTypeTelegram}, latest)
+		if err != nil {
+			t.Fatalf("buildPrompt: %v", err)
+		}
+		if len(got) > historyDepth {
+			t.Fatalf("total %d: window holds %d messages, want at most %d", total, len(got), historyDepth)
+		}
+		if got[len(got)-1].Content != latest {
+			t.Fatalf("total %d: window ends with %q, want the latest message", total, got[len(got)-1].Content)
+		}
+		oldest[got[0].Content] = true
+	}
+	if len(oldest) != 1 {
+		t.Fatalf("the window start moved between turns: %v", oldest)
+	}
 }
 
 func TestBuildPromptGivesTheCustomerRoleOnlyToTheContact(t *testing.T) {

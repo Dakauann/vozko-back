@@ -150,10 +150,18 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 }
 
 func (s *ChannelAIReplyService) recentHistory(req conversation.AIReplyRequest) ([]*conversation.Message, error) {
+	total, err := s.messages.CountByEntry(req.EntryID, req.EntryType)
+	if err != nil {
+		return nil, err
+	}
+	window := int(total) - ai.HistoryWindowStart(int(total), historyDepth)
+	if window <= 0 {
+		return nil, nil
+	}
 	return s.messages.ListByEntryPaginated(conversation.ListMessagesInput{
 		EntryID:   req.EntryID,
 		EntryType: req.EntryType,
-		Limit:     historyDepth,
+		Limit:     window,
 	})
 }
 
@@ -240,6 +248,8 @@ func (s *ChannelAIReplyService) generateInput(
 		RAGQuery: latest,
 
 		LeadID: leadID,
+
+		Session: agentturn.ReplySession(req.EntryID),
 
 		History: messages,
 

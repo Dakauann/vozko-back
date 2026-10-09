@@ -3,6 +3,7 @@ package unofficial_whatsapp_campaign
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"vozko/domain/shared"
@@ -98,6 +99,13 @@ func (m *MessageSpec) Normalize() {
 	if m.Kind == KindMenu && m.Style == "" {
 		m.Style = uw.InteractiveStyleButtons
 	}
+}
+
+func (m MessageSpec) SameAs(other MessageSpec) bool {
+	m.Normalize()
+	other.Normalize()
+	return m.Kind == other.Kind && slices.Equal(m.Bodies, other.Bodies) && m.MediaID == other.MediaID && m.FileName == other.FileName &&
+		m.Style == other.Style && m.Footer == other.Footer && m.Button == other.Button && slices.Equal(m.Options, other.Options)
 }
 
 func (m MessageSpec) ParameterCount() int {

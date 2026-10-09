@@ -111,3 +111,24 @@ func TestImportPreviewRefusesABadMessageOrAForeignFile(t *testing.T) {
 		t.Fatalf("foreign file: %v", err)
 	}
 }
+
+func TestOnlyTheReviewedStartTellsTheUnofficialDispatchTheSendWasReviewed(t *testing.T) {
+	dispatch := &dispatchRecorder{}
+	uc := NewCampaignActionUseCase(NewCampaignAccessUseCase(accessCampaigns), dispatch)
+	reviewed, ok := uc.(uwc.ReviewedStartUseCase)
+	if !ok {
+		t.Fatalf("the campaign actions cannot start a reviewed send")
+	}
+	if _, err := reviewed.StartReviewed(context.Background(), "ws1", salesScope, "c-team"); !errors.Is(err, uwc.ErrCampaignNotFound) {
+		t.Fatalf("other department: %v", err)
+	}
+	if _, err := uc.Act(context.Background(), "ws1", salesScope, "c-mine", campaign.ActionStart); err != nil {
+		t.Fatalf("Act = %v", err)
+	}
+	if _, err := reviewed.StartReviewed(context.Background(), "ws1", salesScope, "c-mine"); err != nil {
+		t.Fatalf("StartReviewed = %v", err)
+	}
+	if len(dispatch.inputs) != 2 || dispatch.inputs[0].Reviewed || !dispatch.inputs[1].Reviewed || dispatch.inputs[1].Action != campaign.ActionStart {
+		t.Fatalf("dispatched %+v", dispatch.inputs)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
 	"vozko/domain/tools"
@@ -40,6 +41,11 @@ func (s *Service) Definitions() []tools.Definition {
 	for _, handler := range s.handlers {
 		defs = append(defs, handler.Definition())
 	}
+	return byName(defs)
+}
+
+func byName(defs []tools.Definition) []tools.Definition {
+	slices.SortFunc(defs, func(a, b tools.Definition) int { return strings.Compare(a.Name, b.Name) })
 	return defs
 }
 
@@ -51,7 +57,7 @@ func (s *Service) DefinitionsFor(visibility tools.ToolVisibility) []tools.Defini
 			defs = append(defs, def)
 		}
 	}
-	return defs
+	return byName(defs)
 }
 
 func (s *Service) Execute(ctx context.Context, name string, params map[string]interface{}) (tools.ExecutionResult, error) {

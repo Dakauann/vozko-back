@@ -78,7 +78,7 @@ func formsWorldFrom(w *world) (*world, *FormsUseCase, *fakeTrackedForms, *fakeFo
 	forms := &fakeTrackedForms{byID: map[string]*ads.TrackedForm{}}
 	leads := &fakeFormLeads{saved: map[string]*ads.FormLead{}, linked: map[string]string{}}
 	crm := &fakeCRM{}
-	return w, NewFormsUseCase(w.sync, w.gateway, forms, leads, crm), forms, leads, crm
+	return w, NewFormsUseCase(w.sync, w.gateway, forms, leads, crm, &fakeLeadProfiles{}), forms, leads, crm
 }
 
 func TestCreatingAFormTracksItAndSubscribesThePage(t *testing.T) {

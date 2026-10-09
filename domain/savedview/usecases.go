@@ -1,21 +1,21 @@
 package savedview
 
 type CreateSavedViewUseCase interface {
-	Execute(workspaceID, ownerID string, v *SavedView) (*SavedView, error)
+	Execute(a Actor, v *SavedView) (*SavedView, error)
 }
 
 type UpdateSavedViewUseCase interface {
-	Execute(workspaceID, ownerID, id string, patch *SavedView) (*SavedView, error)
+	Execute(a Actor, id string, patch *SavedView) (*SavedView, error)
 }
 
 type DeleteSavedViewUseCase interface {
-	Execute(workspaceID, ownerID, id string) error
+	Execute(a Actor, id string) error
 }
 
 type ListSavedViewsUseCase interface {
-	Execute(workspaceID, ownerID string, objectType ObjectType) ([]*SavedView, error)
+	Execute(a Actor, objectType ObjectType) ([]*SavedView, error)
 }
 
 type SetDefaultSavedViewUseCase interface {
-	Execute(workspaceID, ownerID, id string) (*SavedView, error)
+	Execute(a Actor, id string) (*SavedView, error)
 }

@@ -1,6 +1,8 @@
 package opportunity_usecase
 
 import (
+	"strings"
+
 	"vozko/domain/conversation"
 	"vozko/domain/opportunity"
 	"vozko/domain/shared"
@@ -21,19 +23,28 @@ func NewPersonDeals(svc *Service, access shared.EntryAccessChecker, scoper Depar
 }
 
 func (uc *personDeals) Create(by shared.Person, workspaceID string, d opportunity.DealDraft) (*opportunity.Opportunity, error) {
+	if d.EntryID != "" && strings.TrimSpace(d.EntryType) == "" {
+		return nil, ErrEntryTypeRequired
+	}
 	if d.EntryID != "" && !by.MayActOn(uc.access, workspaceID, d.EntryID, d.EntryType) {
 		return nil, opportunity.ErrEntryAccess
 	}
 	return uc.svc.Create(workspaceID, CreateInput{
-		LeadID:        d.LeadID,
-		PipelineID:    d.PipelineID,
-		StageID:       d.StageID,
-		Title:         d.Title,
-		ValueCents:    d.ValueCents,
-		Currency:      d.Currency,
-		LinkEntryID:   d.EntryID,
-		LinkEntryType: d.EntryType,
-		Actor:         by.UserID,
+		LeadID:               d.LeadID,
+		PipelineID:           d.PipelineID,
+		StageID:              d.StageID,
+		OwnerID:              d.OwnerID,
+		CarteiraID:           d.CarteiraID,
+		Title:                d.Title,
+		ValueCents:           d.ValueCents,
+		Currency:             d.Currency,
+		Source:               d.Source,
+		CloseDate:            d.CloseDate,
+		CustomFields:         d.CustomFields,
+		LinkEntryID:          d.EntryID,
+		LinkEntryType:        d.EntryType,
+		Actor:                by.UserID,
+		ActorIsPlatformAdmin: by.SystemAdmin,
 	})
 }
 

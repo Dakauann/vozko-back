@@ -37,6 +37,8 @@ type Service struct {
 	files    AttachmentResolver
 	state    readiness.SnapshotUseCase
 	newID    IDGenerator
+	screens  copilot.ScreenMailbox
+	turns    *TurnRegistry
 
 	answerCostCeiling int64
 }
@@ -56,7 +58,7 @@ func NewService(
 	state readiness.SnapshotUseCase,
 	newID IDGenerator,
 ) *Service {
-	return &Service{engine: engine, registry: reg, access: access, funds: funds, threads: threads, messages: messages, files: files, state: state, newID: newID}
+	return &Service{engine: engine, registry: reg, access: access, funds: funds, threads: threads, messages: messages, files: files, state: state, newID: newID, turns: NewTurnRegistry(copilot.DefaultTurnLimits())}
 }
 
 func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, msg copilot.UserMessage, cc copilot.Context, emit agentloop.Emit) error {
@@ -121,11 +123,15 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 		emitStep(rec.emitFn, ts)
 	}
 	cc.Datasets = copilot.NewDatasetStore()
+	cc.ChargeReference = aichat.ChargeReference(thread.ID)
+	limits := s.modelLimits(ctx, model)
+	cc.SeesImages = limits.SeesImages
+	cc = s.attachScreen(cc, thread.ID, emit)
 
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	driver.state = s.workspaceState(ctx, cc)
 	sess := &agentloop.Session{History: history, PromptImages: copilot.ImageURLs(attachments)}
-	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, s.modelLimits(ctx, model), s.costCeiling()), sess, prompt)
+	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, limits, s.costCeiling()), sess, prompt)
 
 	switch out.Kind {
 	case agentloop.OutcomePaused:
@@ -161,7 +167,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 }
 
 func (s *Service) workspaceState(ctx context.Context, cc copilot.Context) *readiness.Snapshot {
-	if s.state == nil {
+	if s.state == nil || cc.View.Focused() {
 		return nil
 	}
 	snap, err := s.state.Snapshot(ctx, readiness.Person{WorkspaceID: cc.WorkspaceID, UserID: cc.UserID, SystemAdmin: cc.SystemAdmin})
@@ -205,7 +211,10 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	if strings.TrimSpace(model) == "" {
 		model = defaultCopilotModel
 	}
-	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
+	approvedCC := s.attachScreen(cc, thread.ID, emit)
+	approvedCC.SeesImages = s.modelLimits(ctx, model).SeesImages
+	approvedCC.ChargeReference = aichat.ChargeReference(thread.ID)
+	driver := NewDriver(approvedCC, model, s.registry, s.access, s.funds, s.newID)
 	res := driver.ExecuteApproved(ctx, pa, approval, emit)
 	executed := stepFromResult(pa.ToolName, res)
 	if tool, found := s.registry.Get(pa.ToolName); found && executed.Ok && tool.Meta().Mutating {
@@ -259,10 +268,7 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	offset := 0
-	if total > int64(maxHistoryMessages) {
-		offset = int(total) - maxHistoryMessages
-	}
+	offset := ai.HistoryWindowStart(int(total), maxHistoryMessages)
 	msgs, _, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: maxHistoryMessages, Offset: offset})
 	if err != nil {
 		return nil, err
@@ -278,7 +284,7 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 			out = append(out, ai.Message{Role: ai.RoleSystem, Content: m.Content})
 		case aichat.RoleUser:
 			attachments := storedAttachments(m.Attachments)
-			out = append(out, ai.Message{Role: ai.RoleUser, Content: copilot.PromptWithAttachments(m.Content, attachments), Images: copilot.ImageURLs(attachments)})
+			out = append(out, ai.Message{Role: ai.RoleUser, Content: agentloop.UserRequest(copilot.PromptWithAttachments(m.Content, attachments)), Images: copilot.ImageURLs(attachments)})
 		}
 	}
 	return out, nil
@@ -394,12 +400,46 @@ type toolStep struct {
 	Chart   *copilot.Chart      `json:"chart,omitempty"`
 	Card    *copilot.ActionCard `json:"card,omitempty"`
 	Media   *copilot.Media      `json:"image,omitempty"`
+	Subject *copilot.Subject    `json:"subject,omitempty"`
 	Result  string              `json:"result,omitempty"`
 	Changed string              `json:"changed,omitempty"`
+	Error   string              `json:"error,omitempty"`
 }
 
+const maxToolErrorRunes = 500
+
 func stepFromResult(name string, res copilot.Result) toolStep {
-	return toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Media: res.Media, Result: renderData(res.Data)}
+	step := toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Media: res.Media, Subject: res.Subject, Result: renderData(res.Data)}
+	if !step.Ok {
+		step.Error = clippedError(res.Message)
+	}
+	return step
+}
+
+const maxLoggedArgumentRunes = 1500
+
+func failedArguments(tool copilot.Tool, args map[string]interface{}) string {
+	logger, ok := tool.(copilot.ArgumentLogger)
+	if !ok || !logger.LogsArguments() {
+		return ""
+	}
+	raw, err := json.Marshal(args)
+	if err != nil {
+		return ""
+	}
+	runes := []rune(string(raw))
+	if len(runes) > maxLoggedArgumentRunes {
+		runes = runes[:maxLoggedArgumentRunes]
+	}
+	return string(runes)
+}
+
+func clippedError(message string) string {
+	runes := []rune(strings.TrimSpace(message))
+	if len(runes) > maxToolErrorRunes {
+		runes = runes[:maxToolErrorRunes]
+	}
+	return string(runes)
 }
 
 func emitStep(emit agentloop.Emit, ts toolStep) {
@@ -419,6 +459,12 @@ func (t toolStep) payload() map[string]interface{} {
 	payload := map[string]interface{}{"name": t.Name, "summary": t.Summary, "ok": t.Ok}
 	if t.Changed != "" {
 		payload["changed"] = t.Changed
+	}
+	if t.Subject != nil {
+		payload["subject"] = t.Subject
+	}
+	if t.Error != "" {
+		payload["error"] = t.Error
 	}
 	return payload
 }
@@ -483,5 +529,7 @@ func toolStepFromPayload(payload interface{}) toolStep {
 	name, _ := p["name"].(string)
 	summary, _ := p["summary"].(string)
 	ok, _ := p["ok"].(bool)
-	return toolStep{Name: name, Summary: summary, Ok: ok}
+	subject, _ := p["subject"].(*copilot.Subject)
+	failure, _ := p["error"].(string)
+	return toolStep{Name: name, Summary: summary, Ok: ok, Subject: subject, Error: failure}
 }

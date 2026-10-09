@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/actor"
 	ia "vozko/domain/inbox_assignment"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -36,11 +37,12 @@ func (r *repository) FindByEntry(workspaceID, entryID, entryType string) (*ia.In
 }
 
 func (r *repository) FindByEntries(workspaceID string, entryIDs []string) ([]*ia.InboxAssignment, error) {
-	if len(entryIDs) == 0 {
+	ids := database.UUIDArray(entryIDs)
+	if len(ids) == 0 {
 		return nil, nil
 	}
 	var recs []schema.InboxAssignment
-	err := r.db.Where("workspace_id = ? AND entry_id IN ?", workspaceID, entryIDs).Find(&recs).Error
+	err := r.db.Where("workspace_id = ? AND entry_id = ANY(?::uuid[])", workspaceID, ids).Find(&recs).Error
 	if err != nil {
 		return nil, err
 	}

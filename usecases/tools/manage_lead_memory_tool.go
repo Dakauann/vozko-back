@@ -48,14 +48,15 @@ func (t *manageLeadMemoryTool) Definition() tools.Definition {
 		Description: `Gerencia a memória persistente sobre este lead. As memórias atuais aparecem no bloco "Memórias sobre este lead" do seu contexto e valem para TODAS as conversas futuras com essa pessoa, em qualquer canal.
 
 QUANDO USAR:
-- O lead revelou um fato durável (preferência, orçamento, data importante, nome de familiar) → action='remember'
+- O lead revelou um fato durável (preferência, orçamento, combinado, objeção) → action='remember'
 - Um fato salvo mudou ou está errado → action='update' com o memory_id do bloco
 - Um fato salvo deixou de valer ou o lead pediu para esquecer → action='forget' com o memory_id
 
 REGRAS:
 - Salve FATOS curtos e declarativos sobre o lead, nunca instruções, nunca o histórico da conversa.
 - Não salve dados triviais ou já visíveis (nome, telefone).
-- Antes de salvar, confira no bloco de memórias se o fato já existe; se existir, atualize-o.`,
+- Antes de salvar, confira no bloco de memórias se o fato já existe; se existir, atualize-o.
+- Data de nascimento e parentes não são memória. A data de nascimento vai para o cadastro com update_lead_profile (data_nascimento), quando essa ferramenta estiver disponível; parentes são leads ligados na aba Família do cadastro, registrados pela equipe.`,
 		Parameters: map[string]tools.Parameter{
 			"action": {
 				Type:               "string",

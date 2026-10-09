@@ -50,20 +50,11 @@ func TestNormalizeName_TrimsAndCollapsesWhitespace(t *testing.T) {
 	}
 }
 
-func TestMerge_EmptyNameStillMeansLeaveItAlone(t *testing.T) {
+func TestMergeIncoming_EmptyNameStillMeansLeaveItAlone(t *testing.T) {
 	l := Lead{Name: "Ana Maria"}
-	l.Merge(LeadUpdate{Name: ""})
+	l.MergeIncoming(LeadUpdate{Source: SourceChannel, Name: ""})
 
 	if l.Name != "Ana Maria" {
-		t.Fatalf("Merge cleared the name on an empty update; a webhook with no "+
-			"pushname would erase operator-entered names. got %q", l.Name)
-	}
-}
-
-func TestMerge_NonEmptyNameStillOverwrites(t *testing.T) {
-	l := Lead{Name: "Old"}
-	l.Merge(LeadUpdate{Name: "New"})
-	if l.Name != "New" {
-		t.Fatalf("Name = %q, want New", l.Name)
+		t.Fatalf("an incoming update without a name cleared the stored one: got %q", l.Name)
 	}
 }

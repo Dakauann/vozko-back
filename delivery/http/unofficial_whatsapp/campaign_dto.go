@@ -8,7 +8,7 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 )
 
-type messageSpecDTO struct {
+type MessageSpecDTO struct {
 	Kind   string   `json:"kind"`
 	Bodies []string `json:"bodies"`
 
@@ -18,16 +18,16 @@ type messageSpecDTO struct {
 	Style   string          `json:"style,omitempty"`
 	Footer  string          `json:"footer,omitempty"`
 	Button  string          `json:"button,omitempty"`
-	Options []menuOptionDTO `json:"options,omitempty"`
+	Options []MenuOptionDTO `json:"options,omitempty"`
 }
 
-type menuOptionDTO struct {
+type MenuOptionDTO struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
 }
 
-func (d messageSpecDTO) toDomain() uwc.MessageSpec {
+func (d MessageSpecDTO) ToDomain() uwc.MessageSpec {
 	options := make([]uw.InteractiveOption, 0, len(d.Options))
 	for _, o := range d.Options {
 		options = append(options, uw.InteractiveOption{ID: o.ID, Title: o.Title, Description: o.Description})
@@ -44,12 +44,12 @@ func (d messageSpecDTO) toDomain() uwc.MessageSpec {
 	}
 }
 
-func messageSpecToDTO(m uwc.MessageSpec) messageSpecDTO {
-	options := make([]menuOptionDTO, 0, len(m.Options))
+func MessageSpecToDTO(m uwc.MessageSpec) MessageSpecDTO {
+	options := make([]MenuOptionDTO, 0, len(m.Options))
 	for _, o := range m.Options {
-		options = append(options, menuOptionDTO{ID: o.ID, Title: o.Title, Description: o.Description})
+		options = append(options, MenuOptionDTO{ID: o.ID, Title: o.Title, Description: o.Description})
 	}
-	return messageSpecDTO{
+	return MessageSpecDTO{
 		Kind:     string(m.Kind),
 		Bodies:   m.Bodies,
 		MediaID:  m.MediaID,
@@ -71,7 +71,7 @@ type campaignTargetDTO struct {
 type campaignPayload struct {
 	Name       string         `json:"name"`
 	InstanceID string         `json:"instanceId"`
-	Message    messageSpecDTO `json:"message"`
+	Message    MessageSpecDTO `json:"message"`
 
 	AgentID              string `json:"agentId,omitempty"`
 	WorkflowID           string `json:"workflowId,omitempty"`
@@ -122,7 +122,7 @@ func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
 		WorkspaceID:          workspaceID,
 		InstanceID:           p.InstanceID,
 		Name:                 p.Name,
-		Message:              p.Message.toDomain(),
+		Message:              p.Message.ToDomain(),
 		AgentID:              p.AgentID,
 		WorkflowID:           p.WorkflowID,
 		PipelineID:           p.PipelineID,
@@ -153,7 +153,7 @@ type campaignDTO struct {
 	InstanceID   string  `json:"instanceId"`
 
 	Name    string         `json:"name"`
-	Message messageSpecDTO `json:"message"`
+	Message MessageSpecDTO `json:"message"`
 
 	InstanceLabel       string `json:"instanceLabel,omitempty"`
 	InstanceStatus      string `json:"instanceStatus,omitempty"`
@@ -194,7 +194,7 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 		WorkspaceID:          c.WorkspaceID,
 		InstanceID:           c.InstanceID,
 		Name:                 c.Name,
-		Message:              messageSpecToDTO(c.Message),
+		Message:              MessageSpecToDTO(c.Message),
 		InstanceLabel:        c.InstanceLabel,
 		InstanceStatus:       c.InstanceStatus,
 		InstanceSessionLive:  c.InstanceSessionLive,

@@ -9,11 +9,25 @@ import (
 	"vozko/domain/campaign"
 	"vozko/domain/lead"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/usecases/campaignautomation"
 )
 
+func entriesMetadata(inputs []uwc.EntryInput) []campaign.EntryMetadata {
+	entries := make([]campaign.EntryMetadata, 0, len(inputs))
+	for _, in := range inputs {
+		entries = append(entries, campaign.EntryMetadataOf("", in.Number, in.Metadata))
+	}
+	return entries
+}
+
 type entryManagementUseCase struct {
-	repos campaignRepos
-	leads LeadResolver
+	repos      campaignRepos
+	leads      LeadResolver
+	automation AutomationCheck
+}
+
+func (uc *entryManagementUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
 }
 
 type addEntriesAdapter struct{ *entryManagementUseCase }
@@ -56,6 +70,12 @@ func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInpu
 	if !allowRunning && camp.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignRunning
 	}
+	if err := campaign.RefuseSelectionChange(camp.Source, true); err != nil {
+		return nil, err
+	}
+	if err := campaignautomation.Require(uc.automation, camp.WorkspaceID, camp.Automation(), entriesMetadata(in.Numbers)); err != nil {
+		return nil, err
+	}
 
 	out := &uwc.AddEntriesOutput{}
 	required := camp.Message.ParameterCount()
@@ -81,7 +101,7 @@ func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInpu
 		seen[number] = struct{}{}
 		item.Number = number
 		valid = append(valid, item)
-		bulk = append(bulk, lead.BulkLeadInput{Number: number, Name: item.Name})
+		bulk = append(bulk, lead.BulkLeadInput{Source: lead.SourceImport, Number: number, Name: item.Name})
 	}
 
 	if len(valid) == 0 {
@@ -155,13 +175,16 @@ func (uc *entryManagementUseCase) updateEntry(ctx context.Context, in uwc.Update
 	if camp.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignRunning
 	}
+	if err := campaign.RefuseSelectionChange(camp.Source, in.ChangesTheRecipient()); err != nil {
+		return nil, err
+	}
 
 	if in.Number != nil {
 		number := uwc.NormalizeTarget(*in.Number)
 		if number == "" {
 			return nil, uwc.ErrCampaignTargetInvalid
 		}
-		leads, err := uc.leads.FindOrCreateMany(camp.WorkspaceID, []lead.BulkLeadInput{{Number: number}})
+		leads, err := uc.leads.FindOrCreateMany(camp.WorkspaceID, []lead.BulkLeadInput{{Source: lead.SourceImport, Number: number}})
 		if err != nil {
 			return nil, err
 		}

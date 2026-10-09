@@ -9,9 +9,39 @@ import (
 
 	balancedomain "vozko/domain/balance"
 	"vozko/domain/export"
+	"vozko/domain/opportunity"
 	"vozko/domain/report"
+	"vozko/domain/shared"
+	"vozko/domain/workspace"
+	dept "vozko/domain/workspace/workspace_department"
 	balance_usecase "vozko/usecases/balance"
 )
+
+type DepartmentScopes interface {
+	For(ctx context.Context, workspaceID, userID string, isAdmin bool) (*dept.DepartmentFilter, error)
+}
+
+type DealScopes interface {
+	Scope(by shared.Person, workspaceID string) (opportunity.DealScope, error)
+}
+
+var entryResources = map[export.EntryType]workspace.Resource{
+	export.EntryTypeWhatsApp:           workspace.ResourceWhatsAppCampaigns,
+	export.EntryTypeInstagram:          workspace.ResourceInstagramAccounts,
+	export.EntryTypeTelegram:           workspace.ResourceTelegramAccounts,
+	export.EntryTypeFacebook:           workspace.ResourceFacebookPages,
+	export.EntryTypeUnofficialWhatsApp: workspace.ResourceUnofficialWhatsAppCampaigns,
+}
+
+func readPolicy(resource workspace.Resource) report.Policy {
+	return report.Policy{Required: []workspace.PermissionEntry{{Resource: resource, Action: workspace.ActionRead}}}
+}
+
+func requesterScopedPolicy(resource workspace.Resource) report.Policy {
+	policy := readPolicy(resource)
+	policy.RequesterOnly = true
+	return policy
+}
 
 type ConversationEntriesParams struct {
 	Filter export.ExportFilter `json:"filter"`
@@ -20,10 +50,23 @@ type ConversationEntriesParams struct {
 
 type ConversationEntriesRenderer struct {
 	exporter export.ExportEntriesUseCase
+	scopes   DepartmentScopes
 }
 
-func NewConversationEntriesRenderer(exporter export.ExportEntriesUseCase) *ConversationEntriesRenderer {
-	return &ConversationEntriesRenderer{exporter: exporter}
+func NewConversationEntriesRenderer(exporter export.ExportEntriesUseCase, scopes DepartmentScopes) *ConversationEntriesRenderer {
+	return &ConversationEntriesRenderer{exporter: exporter, scopes: scopes}
+}
+
+func (r *ConversationEntriesRenderer) Policy(job report.Job) (report.Policy, error) {
+	var params ConversationEntriesParams
+	if err := json.Unmarshal(job.Params, &params); err != nil {
+		return report.Policy{}, fmt.Errorf("%w: %v", report.ErrNoPolicy, err)
+	}
+	resource, ok := entryResources[params.Filter.EntryType]
+	if !ok {
+		return report.Policy{}, fmt.Errorf("%w: entries of %q", report.ErrNoPolicy, params.Filter.EntryType)
+	}
+	return requesterScopedPolicy(resource), nil
 }
 
 func (r *ConversationEntriesRenderer) Kind() report.Kind {
@@ -39,7 +82,7 @@ func (r *ConversationEntriesRenderer) Render(
 	job report.Job,
 	progress report.ProgressFunc,
 ) (report.Artifact, error) {
-	if r.exporter == nil {
+	if r.exporter == nil || r.scopes == nil {
 		return report.Artifact{}, report.ErrNoRenderer
 	}
 
@@ -48,8 +91,18 @@ func (r *ConversationEntriesRenderer) Render(
 		return report.Artifact{}, fmt.Errorf("entries report: reading parameters: %w", err)
 	}
 
+	scope, err := r.scopes.For(ctx, job.WorkspaceID, job.RequestedBy, job.RequestedByAdmin)
+	if err != nil {
+		return report.Artifact{}, fmt.Errorf("entries report: the department scope of the requester: %w", err)
+	}
+	departments, none := scope.Narrow(params.Filter.Scope.DepartmentIDs)
+	if none {
+		return report.Artifact{}, report.ErrEmptyResult
+	}
+
 	filter := params.Filter
 	filter.Scope.WorkspaceID = job.WorkspaceID
+	filter.Scope.DepartmentIDs = departments
 
 	progress(10)
 
@@ -76,11 +129,8 @@ func (r *ConversationEntriesRenderer) Render(
 }
 
 type OpportunitiesParams struct {
-	PipelineID             string   `json:"pipelineId"`
-	DepartmentIDs          []string `json:"departmentIds,omitempty"`
-	Restrict               bool     `json:"restrict,omitempty"`
-	AssigneeOverrideUserID string   `json:"assigneeOverrideUserId,omitempty"`
-	Label                  string   `json:"label,omitempty"`
+	PipelineID string `json:"pipelineId"`
+	Label      string `json:"label,omitempty"`
 }
 
 type OpportunityExporter interface {
@@ -89,10 +139,15 @@ type OpportunityExporter interface {
 
 type OpportunitiesRenderer struct {
 	exporter OpportunityExporter
+	scopes   DealScopes
 }
 
-func NewOpportunitiesRenderer(exporter OpportunityExporter) *OpportunitiesRenderer {
-	return &OpportunitiesRenderer{exporter: exporter}
+func NewOpportunitiesRenderer(exporter OpportunityExporter, scopes DealScopes) *OpportunitiesRenderer {
+	return &OpportunitiesRenderer{exporter: exporter, scopes: scopes}
+}
+
+func (r *OpportunitiesRenderer) Policy(report.Job) (report.Policy, error) {
+	return requesterScopedPolicy(workspace.ResourceConversations), nil
 }
 
 func (r *OpportunitiesRenderer) Kind() report.Kind { return report.KindOpportunities }
@@ -106,7 +161,7 @@ func (r *OpportunitiesRenderer) Render(
 	job report.Job,
 	progress report.ProgressFunc,
 ) (report.Artifact, error) {
-	if r.exporter == nil {
+	if r.exporter == nil || r.scopes == nil {
 		return report.Artifact{}, report.ErrNoRenderer
 	}
 	var params OpportunitiesParams
@@ -117,14 +172,19 @@ func (r *OpportunitiesRenderer) Render(
 		return report.Artifact{}, err
 	}
 
+	scope, err := r.scopes.Scope(shared.Person{UserID: job.RequestedBy, SystemAdmin: job.RequestedByAdmin}, job.WorkspaceID)
+	if err != nil {
+		return report.Artifact{}, fmt.Errorf("opportunities report: the scope of the requester: %w", err)
+	}
+
 	progress(10)
 	var buffer bytes.Buffer
 	rows, err := r.exporter.Export(
 		job.WorkspaceID,
 		params.PipelineID,
-		params.DepartmentIDs,
-		params.Restrict,
-		params.AssigneeOverrideUserID,
+		scope.DepartmentIDs,
+		scope.Restrict,
+		scope.AssigneeOverride,
 		&buffer,
 	)
 	if err != nil {
@@ -158,6 +218,10 @@ type BalanceTransactionsRenderer struct {
 
 func NewBalanceTransactionsRenderer(exporter BalanceTransactionsWriter) *BalanceTransactionsRenderer {
 	return &BalanceTransactionsRenderer{exporter: exporter}
+}
+
+func (r *BalanceTransactionsRenderer) Policy(report.Job) (report.Policy, error) {
+	return readPolicy(workspace.ResourceBalance), nil
 }
 
 func (r *BalanceTransactionsRenderer) Kind() report.Kind {

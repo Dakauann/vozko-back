@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"encoding/json"
 	"strconv"
 	"testing"
 
@@ -14,7 +15,7 @@ func slide() *mediagen.Keyframes {
 	}
 }
 
-func TestKeyframesAreKeptAndReachTheRenderTimeline(t *testing.T) {
+func TestKeyframesAreKeptInTheDocument(t *testing.T) {
 	doc := videoDoc()
 	doc.Tracks[0].Clips[0].Keyframes = slide()
 	doc.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Scale: []mediagen.Keyframe{{AtMS: 0, Value: 1, Easing: mediagen.EaseInOut}, {AtMS: 1000, Value: 1.4, Easing: mediagen.EaseLinear}}}
@@ -22,29 +23,28 @@ func TestKeyframesAreKeptAndReachTheRenderTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, err := p.VideoRequest(map[string]string{"o1": "raster-1"})
-	if err != nil {
+	var saved VideoDocument
+	if err := json.Unmarshal(p.Document, &saved); err != nil {
 		t.Fatal(err)
 	}
-	if k := req.Video.Visual[0].Clips[0].Keyframes; k == nil || len(k.X) != 2 || k.X[0].Easing != mediagen.EaseOut {
+	if k := saved.Tracks[0].Clips[0].Keyframes; k == nil || len(k.X) != 2 || k.X[0].Easing != mediagen.EaseOut {
 		t.Fatalf("visual keyframes %+v", k)
 	}
-	if k := req.Video.Visual[1].Clips[0].Keyframes; k == nil || len(k.Scale) != 2 {
+	if k := saved.Tracks[1].Clips[0].Keyframes; k == nil || len(k.Scale) != 2 {
 		t.Fatalf("overlay keyframes %+v", k)
-	}
-	if err := req.Validate(); err != nil {
-		t.Fatal(err)
 	}
 }
 
 func TestKeyframesKeepTheirRules(t *testing.T) {
-	tooMany := videoDoc()
-	fillWithKeyframes(&tooMany)
-	if got := codeOf(t, ValidateDocument(KindVideo, mustJSON(t, tooMany)))[FieldTracks]; got != CodeTooMany {
-		t.Fatalf("a document over the keyframe cap: %q", got)
-	}
 	cases := map[string]func(*VideoDocument){
 		"on audio": func(d *VideoDocument) { d.Tracks[2].Clips[0].Keyframes = slide() },
+		"more keys on one property than a clip holds": func(d *VideoDocument) {
+			many := make([]mediagen.Keyframe, mediagen.MaxKeyframesPerProperty+1)
+			for i := range many {
+				many[i] = mediagen.Keyframe{AtMS: int64(i), Value: 0.5, Easing: mediagen.EaseLinear}
+			}
+			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{X: many}
+		},
 		"unknown easing": func(d *VideoDocument) {
 			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Y: []mediagen.Keyframe{{AtMS: 0, Value: 0.5, Easing: "bounce"}}}
 		},
@@ -84,30 +84,40 @@ func fillWithKeyframes(d *VideoDocument) {
 	}
 }
 
-func TestAVideoDocumentStaysWithinWhatTheRendererAccepts(t *testing.T) {
-	visual, audio := videoDoc(), videoDoc()
-	for i := 0; i < mediagen.MaxVisualTracks; i++ {
-		visual.Tracks = append(visual.Tracks, Track{ID: "v" + string(rune('a'+i)), Kind: TrackVisual})
-	}
-	for i := 0; i < mediagen.MaxAudioTracks; i++ {
-		audio.Tracks = append(audio.Tracks, Track{ID: "a" + string(rune('a'+i)), Kind: TrackAudio})
-	}
-	for name, doc := range map[string]VideoDocument{"visual": visual, "audio": audio} {
-		if got := codeOf(t, ValidateDocument(KindVideo, mustJSON(t, doc)))[FieldTracks]; got != CodeTooMany {
-			t.Errorf("%s tracks past the renderer limit: %q", name, got)
-		}
-	}
-	clips := videoDoc()
-	clips.DurationMS = mediagen.MaxVideoMS
-	for i := 0; len(clips.Tracks[1].Clips)+4 <= mediagen.MaxTimelineClips; i++ {
-		extra := clips.Tracks[1].Clips[0]
+func TestAVideoDocumentTakesAnyNumberOfTracksClipsAndKeyframes(t *testing.T) {
+	doc := videoDoc()
+	doc.DurationMS = mediagen.MaxVideoMS
+	fillWithKeyframes(&doc)
+	for i := 0; i < 300; i++ {
+		extra := doc.Tracks[1].Clips[0]
 		extra.ID = "x" + strconv.Itoa(i)
 		extra.StartMS = 3_000 + int64(i)*200
-		extra.DurationMS = 100
+		extra.DurationMS = 200
 		extra.FadeInMS = 0
-		clips.Tracks[1].Clips = append(clips.Tracks[1].Clips, extra)
+		extra.Keyframes = nil
+		doc.Tracks[1].Clips = append(doc.Tracks[1].Clips, extra)
 	}
-	if got := codeOf(t, ValidateDocument(KindVideo, mustJSON(t, clips)))[FieldTracks]; got != CodeTooMany {
-		t.Errorf("clips past the renderer limit: %q", got)
+	for i := 0; i < 40; i++ {
+		kind := TrackVisual
+		if i%4 == 0 {
+			kind = TrackAudio
+		}
+		doc.Tracks = append(doc.Tracks, Track{ID: "t" + strconv.Itoa(i), Kind: kind})
+	}
+	if err := ValidateDocument(KindVideo, mustJSON(t, doc)); err != nil {
+		t.Fatalf("a large timeline was refused: %v", err)
+	}
+}
+
+func TestAnImageDocumentTakesAnyNumberOfLayersAndGroups(t *testing.T) {
+	doc := imageDoc()
+	for i := 0; i < 600; i++ {
+		doc.Layers = append(doc.Layers, Layer{ID: "l" + strconv.Itoa(i), Type: LayerShape, Shape: ShapeRect, Fill: "#222222", GroupID: "g" + strconv.Itoa(i/2), Transform: box()})
+	}
+	for i := 0; i < 300; i++ {
+		doc.Groups = append(doc.Groups, Group{ID: "g" + strconv.Itoa(i)})
+	}
+	if err := ValidateDocument(KindImage, mustJSON(t, doc)); err != nil {
+		t.Fatalf("a layered design was refused: %v", err)
 	}
 }

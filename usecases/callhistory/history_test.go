@@ -83,6 +83,18 @@ func (b contactBook) FindByNumbers(workspaceID string, numbers []string) ([]*lea
 	return out, nil
 }
 
+func (b contactBook) FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, error) {
+	var out []*lead.Lead
+	for _, contact := range b {
+		for _, id := range ids {
+			if contact.ID == id && contact.WorkspaceID == workspaceID {
+				out = append(out, contact)
+			}
+		}
+	}
+	return out, nil
+}
+
 type nameBook map[string]string
 
 func (b nameBook) ResolveUsernames(ids []string) map[string]string {
@@ -102,6 +114,10 @@ func (b queueBook) ListByWorkspace(_ context.Context, workspaceID string) ([]*ca
 }
 
 func fixture() (*History, *callBook) {
+	return fixtureWith(contactBook{{ID: "lead-1", WorkspaceID: "ws1", Number: "558494409684", Name: "Maria"}})
+}
+
+func fixtureWith(contacts contactBook) (*History, *callBook) {
 	answered := &cdr.Call{
 		CallID: "sip-out-1", WorkspaceID: "ws1", Direction: cdr.DirectionOutbound, Source: cdr.SourceSIPTrunk,
 		Status: cdr.StatusCompleted, PhoneTo: "5584994409684", AgentID: ptr("ana"),
@@ -121,7 +137,7 @@ func fixture() (*History, *callBook) {
 		}},
 		Charges:    chargeBook{"sip-out-1": {CallID: "sip-out-1", TotalRevenueMicros: 26_666, Status: billing.StatusCharged}},
 		Recordings: recordingBook{"sip-out-1": {CallID: "sip-out-1", WorkspaceID: "ws1", RecordingURL: "https://files/rec.wav", DurationSec: 120, CreatedAt: start.Add(130 * time.Second)}},
-		Contacts:   contactBook{{ID: "lead-1", WorkspaceID: "ws1", Number: "558494409684", Name: "Maria"}},
+		Contacts:   contacts,
 		Names:      nameBook{"ana": "Ana", "bia": "Bia"},
 		Queues:     queueBook{{ID: "q1", Name: "Suporte"}},
 	})
@@ -182,7 +198,7 @@ func TestTheListReadsLikeAPhoneLog(t *testing.T) {
 	if answered.Outcome != callhistory.OutcomeAnswered || answered.Channel != callhistory.ChannelPhone || answered.TalkSeconds != 120 || answered.RingSeconds != 8 {
 		t.Fatalf("answered = %+v", answered)
 	}
-	if answered.Contact != (callhistory.Contact{Number: "5584994409684", LeadID: "lead-1", Name: "Maria"}) {
+	if answered.Contact != (callhistory.Contact{Number: "5584994409684", LeadID: "lead-1", Name: "Maria", Holders: 1}) {
 		t.Fatalf("contact = %+v, want Maria matched through the other mobile format", answered.Contact)
 	}
 	if answered.PlacedBy == nil || *answered.PlacedBy != (callhistory.Person{ID: "ana", Name: "Ana"}) || answered.AnsweredBy == nil || answered.AnsweredBy.Name != "Bia" {
@@ -250,5 +266,61 @@ func TestACallYouDidNotTakePartInDoesNotExistForYou(t *testing.T) {
 	}
 	if _, err := history.Get(context.Background(), Viewer{WorkspaceID: "ws1", UserID: "bia"}, "sip-out-1"); err != nil {
 		t.Fatalf("bia answered the transfer and must see the call: %v", err)
+	}
+}
+
+func TestTheListFindsALeadThroughAContactPhoneAndNamesNobodyForASharedLine(t *testing.T) {
+	history, _ := fixtureWith(contactBook{
+		{ID: "lead-1", WorkspaceID: "ws1", Number: "558494409684", Name: "Maria"},
+		{ID: "filho", WorkspaceID: "ws1", Name: "Filho", Phones: []lead.ContactPhone{{Number: "5511999990000"}, {Number: "5584994409684"}}},
+		{ID: "vizinha", WorkspaceID: "ws1", Name: "Vizinha", Phones: []lead.ContactPhone{{Number: "5511999990000"}}},
+	})
+	page, err := history.List(context.Background(), ListInput{Viewer: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contacts := map[string]callhistory.Contact{}
+	for _, item := range page.Items {
+		contacts[item.CallID] = item.Contact
+	}
+	if got := contacts["sip-out-1"]; got.LeadID != "lead-1" || got.Holders != 2 {
+		t.Fatalf("the WhatsApp owner is named even when a relative lists the number, got %+v", got)
+	}
+	if got := contacts["wa-in-2"]; got.LeadID != "" || got.Holders != 2 {
+		t.Fatalf("a line two leads share names nobody, got %+v", got)
+	}
+}
+
+func TestTheListNarrowsToOneLead(t *testing.T) {
+	history, calls := fixture()
+	if _, err := history.List(context.Background(), ListInput{Viewer: manager, LeadID: " lead-1 "}); err != nil {
+		t.Fatal(err)
+	}
+	if calls.filters.LeadID == nil || *calls.filters.LeadID != "lead-1" {
+		t.Fatalf("lead filter = %v, want lead-1", calls.filters.LeadID)
+	}
+	_, _ = history.List(context.Background(), ListInput{Viewer: manager})
+	if calls.filters.LeadID != nil {
+		t.Fatal("no lead asked, no lead filter")
+	}
+}
+
+func TestACallLinkedToALeadNamesThatLeadAndOldCallsFallBackToTheNumber(t *testing.T) {
+	history, calls := fixtureWith(contactBook{
+		{ID: "lead-1", WorkspaceID: "ws1", Number: "558494409684", Name: "Maria"},
+		{ID: "filho", WorkspaceID: "ws1", Name: "Filho", Phones: []lead.ContactPhone{{Number: "5584994409684"}}},
+		{ID: "elsewhere", WorkspaceID: "ws2", Name: "Outro workspace"},
+	})
+	calls.calls[0].LeadID = ptr("filho")
+	calls.calls[1].LeadID = ptr("elsewhere")
+	page, err := history.List(context.Background(), ListInput{Viewer: manager})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := page.Items[0].Contact; got != (callhistory.Contact{Number: "5584994409684", LeadID: "filho", Name: "Filho", Holders: 2}) {
+		t.Fatalf("linked contact = %+v, want the lead the call was placed for", got)
+	}
+	if got := page.Items[1].Contact; got.LeadID != "" || got.Name != "" {
+		t.Fatalf("a link to a lead outside the workspace must name nobody, got %+v", got)
 	}
 }

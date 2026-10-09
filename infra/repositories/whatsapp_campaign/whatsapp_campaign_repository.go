@@ -1,15 +1,20 @@
 package whatsapp_campaign_repository
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"vozko/domain/campaign"
 	"vozko/domain/shared"
 	wc "vozko/domain/whatsapp_campaign"
+	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	whatsapp_campaign_entry_repository "vozko/infra/repositories/whatsapp_campaign_entry"
 )
 
 type repository struct {
@@ -21,6 +26,20 @@ func NewRepository(db *gorm.DB) wc.Repository {
 }
 
 func (r *repository) Create(c *wc.Campaign) error {
+	return createCampaignIn(r.db, c)
+}
+
+func (r *repository) CreateWithEntries(c *wc.Campaign, entries []wce.WhatsAppCampaignEntry) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := createCampaignIn(tx, c); err != nil {
+			return err
+		}
+		_, err := whatsapp_campaign_entry_repository.CreateManyIn(tx, entries)
+		return err
+	})
+}
+
+func createCampaignIn(db *gorm.DB, c *wc.Campaign) error {
 	var agentID *string
 	if c.AgentID != "" {
 		agentID = &c.AgentID
@@ -77,8 +96,29 @@ func (r *repository) Create(c *wc.Campaign) error {
 		AiModel:              c.AiModel,
 		Status:               string(c.Status),
 		ScheduledStart:       c.ScheduledStart,
+		Source:               schema.OptionalText(c.Source),
+		IdempotencyKey:       schema.OptionalText(c.IdempotencyKey),
 	}
-	return r.db.Create(&record).Error
+	err := db.Create(&record).Error
+	if c.IdempotencyKey != "" && database.IsUniqueViolation(err) {
+		return fmt.Errorf("%w: %w", campaign.ErrIdempotencyKeyTaken, err)
+	}
+	return err
+}
+
+func (r *repository) FindByIdempotencyKey(workspaceID, key string) (*wc.Campaign, error) {
+	key = strings.TrimSpace(key)
+	if strings.TrimSpace(workspaceID) == "" || key == "" {
+		return nil, wc.ErrCampaignNotFound
+	}
+	var rows []schema.WhatsAppCampaign
+	if err := r.db.Where("workspace_id = ? AND idempotency_key = ?", workspaceID, key).Order("created_at").Limit(1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, wc.ErrCampaignNotFound
+	}
+	return mapToDomain(&rows[0]), nil
 }
 
 func (r *repository) Update(campaignID string, c *wc.Campaign) error {
@@ -402,6 +442,8 @@ func mapToDomain(record *schema.WhatsAppCampaign) *wc.Campaign {
 		CreatedAt:            record.CreatedAt,
 		UpdatedAt:            record.UpdatedAt,
 		ScheduledStart:       record.ScheduledStart,
+		Source:               string(record.Source),
+		IdempotencyKey:       string(record.IdempotencyKey),
 	}
 }
 

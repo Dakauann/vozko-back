@@ -98,17 +98,33 @@ type fakeStartUseCase struct {
 	call      *fakeCallSessionCRMCall
 	admission *callsession_domain.CallAdmissionLease
 	err       error
+	linked    callsession_domain.StartOutboundCallResult
+
+	mu  sync.Mutex
+	got []callsession_domain.StartOutboundCallInput
 }
 
-func (f *fakeStartUseCase) Execute(_ context.Context, _ callsession_domain.StartOutboundCallInput) (*callsession_domain.StartOutboundCallResult, error) {
+func (f *fakeStartUseCase) Execute(_ context.Context, input callsession_domain.StartOutboundCallInput) (*callsession_domain.StartOutboundCallResult, error) {
+	f.mu.Lock()
+	f.got = append(f.got, input)
+	f.mu.Unlock()
 	if f.err != nil {
 		return nil, f.err
 	}
 	return &callsession_domain.StartOutboundCallResult{
-		Call:        f.call,
-		PhoneNumber: "+15555550100",
-		Admission:   f.admission,
+		Call:           f.call,
+		PhoneNumber:    "+15555550100",
+		Admission:      f.admission,
+		LeadID:         f.linked.LeadID,
+		TrunkID:        f.linked.TrunkID,
+		CallListItemID: f.linked.CallListItemID,
 	}, nil
+}
+
+func (f *fakeStartUseCase) inputs() []callsession_domain.StartOutboundCallInput {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]callsession_domain.StartOutboundCallInput(nil), f.got...)
 }
 
 type fakeEndUseCase struct {

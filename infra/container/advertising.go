@@ -128,13 +128,14 @@ func (c *Container) adsManager() *adsBundle {
 		Assets:   adsuc.NewAssetsUseCase(sync, gateway, numbers),
 		Live:     adsuc.NewLiveUseCase(sync, gateway),
 		Audience: adsuc.NewAudienceUseCase(sync, gateway,
-			adsuc.NewCRMCustomers(c.repositories.lead),
+			c.crmCustomers(),
 			adsuc.NewLibraryFiles(c.useCases.getMedia, fetcher),
 			advertising_repository.NewSavedAudienceRepository(c.db)),
 		Forms: adsuc.NewFormsUseCase(sync, gateway,
 			advertising_repository.NewLeadFormRepository(c.db),
 			advertising_repository.NewFormLeadRepository(c.db),
-			c.repositories.lead),
+			c.repositories.lead,
+			c.leadProfiles()),
 		Rules:      adsuc.NewRulesUseCase(sync, gateway),
 		SplitTests: adsuc.NewSplitTestUseCase(sync, gateway),
 		Conversions: adsuc.NewConversionsUseCase(sync, gateway,
@@ -192,6 +193,23 @@ func (c *Container) adsManager() *adsBundle {
 	bundle.PublishWorker = adsuc.NewPublishConsumer(c.services.adsPublishSub, c.services.adsPublishPub, c.redisProvider.SharedState(), bundle.Publish)
 	c.ads = bundle
 	return bundle
+}
+
+func (c *Container) crmCustomers() adsuc.CustomerDirectory {
+	if c.services.conversationAuthImpl == nil {
+		log.Fatalf("[ads] the authorizer must be wired before CRM audiences")
+	}
+	directory, err := adsuc.NewCRMCustomers(adsuc.CRMCustomerDeps{
+		Selection:   c.leadSelection(),
+		Leads:       c.repositories.lead,
+		Contacts:    c.repositories.lead,
+		Definitions: c.repositories.customField,
+		Permissions: c.services.conversationAuthImpl,
+	})
+	if err != nil {
+		log.Fatalf("[ads] %v", err)
+	}
+	return directory
 }
 
 func (c *Container) adsTools() []copilot.Tool {

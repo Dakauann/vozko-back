@@ -135,8 +135,16 @@ func TestFiltersAreReadFromTheQuery(t *testing.T) {
 	}
 }
 
+func TestTheListNarrowsToTheCallsOfOneLead(t *testing.T) {
+	spy := &historySpy{}
+	got := serve(t, spy, operator, "/calls?leadId=6f1c2f9e-5b1d-4c84-9d0a-2f3b8c7e1a01")
+	if got.Code != http.StatusOK || spy.listed.LeadID != "6f1c2f9e-5b1d-4c84-9d0a-2f3b8c7e1a01" {
+		t.Fatalf("status %d, input %+v", got.Code, spy.listed)
+	}
+}
+
 func TestUnknownFilterValuesAreRejected(t *testing.T) {
-	for _, query := range []string{"direction=sideways", "channel=fax", "result=maybe", "from=yesterday"} {
+	for _, query := range []string{"direction=sideways", "channel=fax", "result=maybe", "from=yesterday", "leadId=lead-1"} {
 		if got := serve(t, &historySpy{}, operator, "/calls?"+query); got.Code != http.StatusBadRequest {
 			t.Fatalf("%s = %d, want 400", query, got.Code)
 		}

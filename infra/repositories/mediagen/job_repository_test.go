@@ -263,3 +263,36 @@ func TestAStoredJobWithAnUnknownKindIsRefused(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestFindDeliveredLooksForTheLatestFinishedResultOfTheSameSource(t *testing.T) {
+	db, mock, _ := newMockDB(t)
+	mock.ExpectQuery(`SELECT \* FROM "media_generation_jobs" WHERE workspace_id = \$1 AND kind = \$2 AND source_media_id = \$3 AND status = \$4 AND media_id <> \$5 ORDER BY updated_at DESC,"media_generation_jobs"."id" LIMIT \$6`).
+		WithArgs(workspaceID, "proxy", "clip", "done", "", 1).
+		WillReturnRows(jobRow("done", ""))
+	job, err := NewJobRepository(db).FindDelivered(context.Background(), workspaceID, mediagen.KindProxy, "clip")
+	if err != nil || job.ID != jobID {
+		t.Fatalf("job %+v err %v", job, err)
+	}
+	mock.ExpectQuery(`SELECT \* FROM "media_generation_jobs"`).WillReturnRows(sqlmock.NewRows(jobColumns))
+	if _, err := NewJobRepository(db).FindDelivered(context.Background(), workspaceID, mediagen.KindProxy, "other"); !errors.Is(err, mediagen.ErrJobNotFound) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestAJobKeepsItsChargeReferenceInStorage(t *testing.T) {
+	job := &mediagen.Job{ID: jobID, WorkspaceID: workspaceID, RequestedBy: requesterID, Kind: mediagen.KindMusic, Status: mediagen.StatusQueued, BillingReference: "aichat:th-1"}
+	record, err := toRecord(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.BillingReference != "aichat:th-1" {
+		t.Fatalf("stored reference = %q", record.BillingReference)
+	}
+	loaded, err := toDomain(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.BillingReference != "aichat:th-1" {
+		t.Fatalf("loaded reference = %q", loaded.BillingReference)
+	}
+}

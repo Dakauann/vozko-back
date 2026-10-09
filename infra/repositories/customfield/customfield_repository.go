@@ -8,16 +8,17 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/customfield"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
-var ErrNotFound = errors.New("customfield: not found")
+var ErrNotFound = customfield.ErrNotFound
 
 type repository struct {
 	db *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) customfield.Repository {
+func NewRepository(db *gorm.DB) customfield.Store {
 	return &repository{db: db}
 }
 
@@ -27,6 +28,12 @@ func (r *repository) Create(d *customfield.Definition) error {
 		return err
 	}
 	if err := r.db.Create(row).Error; err != nil {
+		if database.IsUniqueViolationOf(err, schema.CustomFieldLiveRoleIndex) {
+			return customfield.ErrRoleTaken
+		}
+		if database.IsUniqueViolation(err) {
+			return customfield.ErrKeyExists
+		}
 		return err
 	}
 	d.ID = row.ID
@@ -36,20 +43,27 @@ func (r *repository) Create(d *customfield.Definition) error {
 }
 
 func (r *repository) Update(d *customfield.Definition) error {
-	optionsJSON, err := marshalOptions(d.Options)
+	row, err := mapToSchema(d)
 	if err != nil {
 		return err
 	}
 	update := map[string]interface{}{
-		"label":    d.Label,
-		"type":     string(d.Type),
-		"options":  optionsJSON,
-		"required": d.Required,
-		"position": d.Position,
+		"label":        row.Label,
+		"type":         row.Type,
+		"options":      row.Options,
+		"option_tones": row.OptionTones,
+		"required":     row.Required,
+		"sensitive":    row.Sensitive,
+		"legal_basis":  row.LegalBasis,
+		"role":         row.Role,
+		"position":     row.Position,
 	}
 	res := r.db.Model(&schema.CustomFieldDefinition{}).
 		Where("id = ? AND workspace_id = ?", d.ID, d.WorkspaceID).
 		Updates(update)
+	if database.IsUniqueViolationOf(res.Error, schema.CustomFieldLiveRoleIndex) {
+		return customfield.ErrRoleTaken
+	}
 	if res.Error != nil {
 		return res.Error
 	}
@@ -81,14 +95,29 @@ func (r *repository) GetByID(workspaceID, id string) (*customfield.Definition, e
 	return mapToDomain(&row)
 }
 
-func (r *repository) ListByObject(workspaceID, objectType string) ([]*customfield.Definition, error) {
+func (r *repository) RetiredByKey(workspaceID string, objectType customfield.ObjectType, key string) ([]*customfield.Definition, error) {
+	var rows []schema.CustomFieldDefinition
+	if err := r.db.Unscoped().
+		Where("workspace_id = ? AND object_type = ? AND key = ? AND deleted_at IS NOT NULL", workspaceID, string(objectType), key).
+		Order("deleted_at DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return mapAllToDomain(rows)
+}
+
+func (r *repository) ListByObject(workspaceID string, objectType customfield.ObjectType) ([]*customfield.Definition, error) {
 	var rows []schema.CustomFieldDefinition
 	if err := r.db.
-		Where("workspace_id = ? AND object_type = ?", workspaceID, objectType).
+		Where("workspace_id = ? AND object_type = ?", workspaceID, string(objectType)).
 		Order("position ASC, created_at ASC").
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
+	return mapAllToDomain(rows)
+}
+
+func mapAllToDomain(rows []schema.CustomFieldDefinition) ([]*customfield.Definition, error) {
 	out := make([]*customfield.Definition, 0, len(rows))
 	for i := range rows {
 		d, err := mapToDomain(&rows[i])
@@ -101,61 +130,73 @@ func (r *repository) ListByObject(workspaceID, objectType string) ([]*customfiel
 }
 
 func mapToSchema(d *customfield.Definition) (*schema.CustomFieldDefinition, error) {
-	optionsJSON, err := marshalOptions(d.Options)
+	optionsJSON, err := marshalJSON(d.Options, len(d.Options) == 0)
+	if err != nil {
+		return nil, err
+	}
+	tonesJSON, err := marshalJSON(d.OptionTones, len(d.OptionTones) == 0)
 	if err != nil {
 		return nil, err
 	}
 	return &schema.CustomFieldDefinition{
 		ID:          d.ID,
 		WorkspaceID: d.WorkspaceID,
-		ObjectType:  d.ObjectType,
+		ObjectType:  string(d.ObjectType),
 		Key:         d.Key,
 		Label:       d.Label,
 		Type:        string(d.Type),
 		Options:     optionsJSON,
+		OptionTones: tonesJSON,
 		Required:    d.Required,
+		Sensitive:   d.Sensitive,
+		LegalBasis:  d.LegalBasis,
+		Role:        string(d.Role),
 		Position:    d.Position,
 	}, nil
 }
 
 func mapToDomain(row *schema.CustomFieldDefinition) (*customfield.Definition, error) {
-	options, err := unmarshalOptions(row.Options)
-	if err != nil {
+	var options []string
+	if err := unmarshalJSON(row.Options, &options); err != nil {
+		return nil, err
+	}
+	var tones map[string]customfield.Tone
+	if err := unmarshalJSON(row.OptionTones, &tones); err != nil {
 		return nil, err
 	}
 	return &customfield.Definition{
 		ID:          row.ID,
 		WorkspaceID: row.WorkspaceID,
-		ObjectType:  row.ObjectType,
+		ObjectType:  customfield.ObjectType(row.ObjectType),
 		Key:         row.Key,
 		Label:       row.Label,
 		Type:        customfield.FieldType(row.Type),
 		Options:     options,
+		OptionTones: tones,
 		Required:    row.Required,
+		Sensitive:   row.Sensitive,
+		LegalBasis:  row.LegalBasis,
+		Role:        customfield.Role(row.Role),
 		Position:    row.Position,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}, nil
 }
 
-func marshalOptions(opts []string) (datatypes.JSON, error) {
-	if len(opts) == 0 {
+func marshalJSON(value any, empty bool) (datatypes.JSON, error) {
+	if empty {
 		return nil, nil
 	}
-	b, err := json.Marshal(opts)
+	b, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
 	return datatypes.JSON(b), nil
 }
 
-func unmarshalOptions(raw datatypes.JSON) ([]string, error) {
+func unmarshalJSON(raw datatypes.JSON, target any) error {
 	if len(raw) == 0 {
-		return nil, nil
+		return nil
 	}
-	var opts []string
-	if err := json.Unmarshal(raw, &opts); err != nil {
-		return nil, err
-	}
-	return opts, nil
+	return json.Unmarshal(raw, target)
 }

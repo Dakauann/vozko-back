@@ -31,7 +31,7 @@ func NewUploadMediaUseCase(
 }
 
 func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, mediaName string, mediaType media.MediaType, description string) (media.Media, error) {
-	if !uc.isValidMediaType(mediaType) {
+	if !validUploadType(mediaType) {
 		return media.Media{}, fmt.Errorf("invalid media type: %s", mediaType)
 	}
 
@@ -46,16 +46,11 @@ func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, 
 		}
 	}
 
-	totalUploads, err := uc.mediaRepository.CountByWorkspaceID(workspaceID)
-	if err != nil {
-		return media.Media{}, fmt.Errorf("failed to check workspace uploads: %w", err)
+	if err := withinUploadLimit(uc.mediaRepository, workspaceID); err != nil {
+		return media.Media{}, err
 	}
 
-	if totalUploads >= 10000 {
-		return media.Media{}, fmt.Errorf("upload limit reached: you cannot upload more than 10000 images")
-	}
-
-	err = uc.fileStorage.UploadFile(mediaName, mediaData, "")
+	err := uc.fileStorage.UploadFile(mediaName, mediaData, "")
 	if err != nil {
 		return media.Media{}, fmt.Errorf("failed to upload media: %w", err)
 	}
@@ -122,15 +117,4 @@ func (uc *UploadMediaUseCase) isImageFile(mediaName string) bool {
 	ext := strings.ToLower(filepath.Ext(mediaName))
 
 	return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp"
-}
-
-func (uc *UploadMediaUseCase) isValidMediaType(mediaType media.MediaType) bool {
-	switch mediaType {
-	case media.MediaTypeProductImage, media.MediaTypeProductVideo, media.MediaTypeVslVideo, media.MediaTypeHtml5,
-		media.MediaTypeDocumentPdf, media.MediaTypeDocumentDoc, media.MediaTypeDocument,
-		media.MediaTypeAudio, media.MediaTypeSticker:
-		return true
-	default:
-		return false
-	}
 }

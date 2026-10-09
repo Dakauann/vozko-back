@@ -1,6 +1,9 @@
 package opportunity
 
-import "vozko/domain/crmfilter"
+import (
+	"vozko/domain/actor"
+	"vozko/domain/crmfilter"
+)
 
 type SearchByFilterInput struct {
 	WorkspaceID string
@@ -54,6 +57,4 @@ type LinkRepository interface {
 	ListByEntry(workspaceID, entryID, entryType string) ([]ConversationLink, error)
 }
 
-type OwnerDirectory interface {
-	Belongs(workspaceID, actorID string) (bool, error)
-}
+type OwnerDirectory = actor.OwnerDirectory

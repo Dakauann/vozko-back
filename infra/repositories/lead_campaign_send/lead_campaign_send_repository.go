@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	domain "vozko/domain/lead_campaign_send"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -45,7 +46,8 @@ func (r *repository) GetLastSendTime(leadID, businessPhoneID string) (*time.Time
 }
 
 func (r *repository) GetLastSendTimesBatch(leadIDs []string, businessPhoneID string) (map[string]time.Time, error) {
-	if len(leadIDs) == 0 {
+	valid := database.UUIDArray(leadIDs)
+	if len(valid) == 0 {
 		return make(map[string]time.Time), nil
 	}
 
@@ -56,7 +58,7 @@ func (r *repository) GetLastSendTimesBatch(leadIDs []string, businessPhoneID str
 
 	err := r.db.Model(&schema.LeadCampaignSend{}).
 		Select("lead_id, MAX(sent_at) as last_sent_at").
-		Where("lead_id IN ? AND business_phone_id = ?", leadIDs, businessPhoneID).
+		Where("lead_id = ANY(?::uuid[]) AND business_phone_id = ?", valid, businessPhoneID).
 		Group("lead_id").
 		Scan(&results).Error
 	if err != nil {

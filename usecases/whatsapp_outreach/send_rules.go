@@ -3,21 +3,26 @@ package whatsapp_outreach
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
+	"vozko/domain/campaign"
 	"vozko/domain/conversation"
 	ia "vozko/domain/inbox_assignment"
-	lcs "vozko/domain/lead_campaign_send"
+	"vozko/domain/lead"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	"vozko/domain/whatsapp/template"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	wo "vozko/domain/whatsapp_outreach"
+	"vozko/domain/workspace_template_access"
+	"vozko/usecases/campaignguard"
 )
 
 type sendRules struct {
-	deps Deps
+	deps     Deps
+	cooldown *campaignguard.SpamGuard
 }
 
 type delivery struct {
@@ -51,11 +56,21 @@ func (r sendRules) sendablePhone(workspaceID, phoneID string) (*businessphone.Wh
 }
 
 func (r sendRules) grantedTemplate(workspaceID, templateID string) (*template.Template, error) {
-	tmpl, err := r.deps.Templates.FindByID(templateID)
+	return grantedTemplate(r.deps.Templates, r.deps.TemplateGrant, workspaceID, templateID)
+}
+
+func grantedTemplate(templates TemplateFinder, grant workspace_template_access.CheckAccessUseCase, workspaceID, templateID string) (*template.Template, error) {
+	if templates == nil {
+		return nil, wo.ErrTemplateNotFound
+	}
+	if grant == nil {
+		return nil, wo.ErrTemplateForbidden
+	}
+	tmpl, err := templates.FindByID(templateID)
 	if err != nil || tmpl == nil {
 		return nil, wo.ErrTemplateNotFound
 	}
-	granted, err := r.deps.TemplateGrant.Execute(workspaceID, tmpl.ID)
+	granted, err := grant.Execute(workspaceID, tmpl.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,19 +80,40 @@ func (r sendRules) grantedTemplate(workspaceID, templateID string) (*template.Te
 	return tmpl, nil
 }
 
-func (r sendRules) refuseIfSpam(ctx context.Context, workspaceID, leadID, phoneID string) error {
-	days, err := r.deps.SpamPolicy.SpamProtectionDays(ctx, workspaceID)
-	if err != nil {
-		return fmt.Errorf("whatsapp outreach: could not read the spam protection policy: %w", err)
-	}
-	if days <= 0 {
+func (r sendRules) refuseUnreachable(contact *lead.Lead) error {
+	switch campaign.LeadRefusal(campaign.LeadFactsOf(contact)) {
+	case "":
 		return nil
+	case campaign.SkipBlocked:
+		return wo.ErrLeadBlocked
+	case campaign.SkipOptedOut:
+		return wo.ErrLeadOptedOut
+	default:
+		return wo.ErrInvalidPhone
 	}
-	lastSent, err := r.deps.CampaignSends.GetLastSendTime(leadID, phoneID)
+}
+
+func (r sendRules) claimContact(ctx context.Context, workspaceID, leadID, phoneID string) (func(), error) {
+	release, err := r.cooldown.Claim(ctx, workspaceID, leadID, phoneID)
+	if errors.Is(err, campaignguard.ErrSendClaimed) {
+		return nil, wo.ErrWithinSpamWindow
+	}
 	if err != nil {
-		return fmt.Errorf("whatsapp outreach: could not read the last send to this contact: %w", err)
+		return nil, fmt.Errorf("whatsapp outreach: %w", err)
 	}
-	if lcs.WithinSpamWindow(lastSent, days, r.deps.Now()) {
+	return release, nil
+}
+
+func keepsClaim(sendErr error) bool {
+	return sendErr == nil || errors.Is(sendErr, wo.ErrSendOutcomeUnknown)
+}
+
+func (r sendRules) refuseIfSpam(ctx context.Context, workspaceID, leadID, phoneID string) error {
+	cooling, err := r.cooldown.InCooldown(ctx, workspaceID, leadID, phoneID)
+	if err != nil {
+		return fmt.Errorf("whatsapp outreach: %w", err)
+	}
+	if cooling {
 		return wo.ErrWithinSpamWindow
 	}
 	return nil

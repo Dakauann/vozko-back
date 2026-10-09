@@ -11,6 +11,7 @@ import (
 	"vozko/domain/advertising"
 	"vozko/domain/copilot"
 	"vozko/domain/crmfilter"
+	"vozko/domain/leadaction"
 	"vozko/domain/tools"
 	"vozko/domain/workspace"
 	adsuc "vozko/usecases/advertising"
@@ -18,8 +19,8 @@ import (
 
 type AdAudiences interface {
 	List(ctx context.Context, workspaceID, accountID string) (*adsuc.AudienceList, error)
-	CheckCustomerList(ctx context.Context, workspaceID string, draft advertising.CustomerListDraft) (*adsuc.CustomerListResult, error)
-	CreateCustomerList(ctx context.Context, workspaceID string, draft advertising.CustomerListDraft) (*adsuc.CustomerListResult, error)
+	CheckCustomerList(ctx context.Context, a adsuc.Requester, draft advertising.CustomerListDraft) (*adsuc.CustomerListResult, error)
+	CreateCustomerList(ctx context.Context, a adsuc.Requester, draft advertising.CustomerListDraft) (*adsuc.CustomerListResult, error)
 	CheckLookalike(ctx context.Context, workspaceID string, draft advertising.LookalikeDraft) (advertising.LookalikeDraft, *advertising.Audience, error)
 	CreateLookalike(ctx context.Context, workspaceID string, draft advertising.LookalikeDraft) (*advertising.Audience, error)
 	Delete(ctx context.Context, workspaceID, accountID, audienceID string) error
@@ -208,6 +209,14 @@ func (t *createCustomerListAudienceTool) Meta() copilot.Meta {
 	return adsMeta(workspace.ActionCreate, true)
 }
 
+func (t *createCustomerListAudienceTool) AlsoRequires() []workspace.PermissionEntry {
+	entries, ok := workspace.CapabilityRequires(leadaction.CapabilityMetaAudience)
+	if !ok {
+		return []workspace.PermissionEntry{{Resource: workspace.Resource(leadaction.CapabilityMetaAudience)}}
+	}
+	return entries
+}
+
 func (t *createCustomerListAudienceTool) Definition() tools.Definition {
 	return definition("create_customer_list_audience",
 		"Cria na Meta um público personalizado com os contatos do CRM, filtrados por etapa, etiqueta e datas. Os telefones e nomes saem do Vozko "+
@@ -234,7 +243,7 @@ func (t *createCustomerListAudienceTool) plan(ctx context.Context, cc copilot.Co
 		AdAccountID: account.ID, Name: a.Name, Description: strings.TrimSpace(a.Description),
 		Source: advertising.SourceCRM, CRMFilter: filter,
 	}
-	checked, err := t.deps.Audiences.CheckCustomerList(ctx, cc.WorkspaceID, draft)
+	checked, err := t.deps.Audiences.CheckCustomerList(ctx, audienceRequester(cc), draft)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +272,7 @@ func (t *createCustomerListAudienceTool) Execute(ctx context.Context, cc copilot
 	if err != nil {
 		return growthFailure("create_customer_list_audience", argAccount(args), err)
 	}
-	created, err := t.deps.Audiences.CreateCustomerList(ctx, cc.WorkspaceID, p.draft)
+	created, err := t.deps.Audiences.CreateCustomerList(ctx, audienceRequester(cc), p.draft)
 	if err != nil {
 		return growthFailure("create_customer_list_audience", p.account.ID, err)
 	}
@@ -271,6 +280,10 @@ func (t *createCustomerListAudienceTool) Execute(ctx context.Context, cc copilot
 		"audience_id": created.Audience.MetaID, "name": created.Audience.Name,
 		"contacts_sent": created.Matched, "contacts_without_phone": created.Skipped,
 	}}
+}
+
+func audienceRequester(cc copilot.Context) adsuc.Requester {
+	return adsuc.Requester{WorkspaceID: cc.WorkspaceID, UserID: cc.UserID, IsAdmin: cc.SystemAdmin}
 }
 
 func argAccount(args map[string]interface{}) string {

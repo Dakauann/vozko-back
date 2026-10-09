@@ -109,6 +109,7 @@ func TestDispatchClassifiesTemplateSendErrors(t *testing.T) {
 		want sm.FailureReason
 	}{
 		{"blocked contact", wo.ErrLeadBlocked, sm.ReasonContactIneligible},
+		{"opted out contact", wo.ErrLeadOptedOut, sm.ReasonContactIneligible},
 		{"inside the spam window", wo.ErrWithinSpamWindow, sm.ReasonContactIneligible},
 		{"template paused", template.ErrTemplateNotSendable, sm.ReasonTemplateUnavailable},
 		{"template of another account", template.ErrTemplatePhoneMismatch, sm.ReasonTemplateUnavailable},

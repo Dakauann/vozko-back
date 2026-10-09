@@ -35,8 +35,8 @@ func (p *inboxServiceTestHistoryProvider) GetUnreadCount(string, shared.EntryTyp
 	return 0, nil
 }
 
-func (p *inboxServiceTestHistoryProvider) GetEntryInfo(string, string) (string, string, string, map[string]interface{}, []string, bool, error) {
-	return "", "", "", nil, nil, true, nil
+func (p *inboxServiceTestHistoryProvider) GetEntryInfo(string, string) (conversation.EntryInfo, error) {
+	return conversation.EntryInfo{AutomationEnabled: true}, nil
 }
 
 func (p *inboxServiceTestHistoryProvider) PresentMessage(string, string, *conversation.Message) {

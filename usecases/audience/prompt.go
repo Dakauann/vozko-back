@@ -19,20 +19,6 @@ func BuildSystemPromptFor(kind ca.SubjectKind, topics ca.TopicSet, ctx ca.Contai
 	var b strings.Builder
 	b.WriteString("Você é um analista de audiência. Vai receber uma lista de comentários públicos feitos em UMA publicação de rede social e deve classificar CADA comentário, individualmente, seguindo a rubrica abaixo.\n\n")
 
-	if instructions = strings.TrimSpace(instructions); instructions != "" {
-		b.WriteString("CONTEXTO DO OPERADOR (sobre a conta e esta publicação; use para interpretar, não para mudar a rubrica):\n\"\"\"\n")
-		b.WriteString(truncateRunes(instructions, ca.MaxInstructionsRunes))
-		b.WriteString("\n\"\"\"\n\n")
-	}
-
-	if caption := strings.TrimSpace(ctx.Caption); caption != "" {
-		b.WriteString("PUBLICAÇÃO (legenda, para contexto do que está sendo comentado):\n\"\"\"\n")
-		b.WriteString(truncateRunes(caption, 1200))
-		b.WriteString("\n\"\"\"\n\n")
-	} else {
-		b.WriteString("PUBLICAÇÃO: legenda indisponível; classifique pelo próprio comentário.\n\n")
-	}
-
 	b.WriteString(ca.RubricPrompt(topics))
 
 	b.WriteString("\nFORMATO DA RESPOSTA:\n")
@@ -40,7 +26,27 @@ func BuildSystemPromptFor(kind ca.SubjectKind, topics ca.TopicSet, ctx ca.Contai
 	b.WriteString("- Cada comentário recebido tem um número \"ref\". Devolva UMA entrada por ref, com o mesmo número, e nunca repita nem invente refs.\n")
 	b.WriteString("- Não copie o texto do comentário na resposta.\n")
 	b.WriteString("- Use apenas os valores listados; se estiver em dúvida entre dois, escolha o mais neutro.\n")
+
+	writePostContext(&b, ctx, instructions)
 	return b.String()
+}
+
+func writePostContext(b *strings.Builder, ctx ca.ContainerContext, instructions string) {
+	if instructions = strings.TrimSpace(instructions); instructions != "" {
+		writeQuotedBlock(b, "CONTEXTO DO OPERADOR (sobre a conta e esta publicação; use para interpretar, não para mudar a rubrica):", truncateRunes(instructions, ca.MaxInstructionsRunes))
+	}
+
+	if caption := strings.TrimSpace(ctx.Caption); caption != "" {
+		writeQuotedBlock(b, "PUBLICAÇÃO (legenda, para contexto do que está sendo comentado):", truncateRunes(caption, 1200))
+	} else {
+		b.WriteString("\nPUBLICAÇÃO: legenda indisponível; classifique pelo próprio comentário.\n")
+	}
+}
+
+func writeQuotedBlock(b *strings.Builder, heading, body string) {
+	b.WriteString("\n" + heading + "\n\"\"\"\n")
+	b.WriteString(body)
+	b.WriteString("\n\"\"\"\n")
 }
 
 type batchItem struct {
@@ -75,36 +81,31 @@ func buildSystemPromptOf(req ca.ClassifyRequest) string {
 func buildConversationSummaryPrompt(ctx ca.ContainerContext, instructions string) string {
 	var b strings.Builder
 	b.WriteString("Você é um analista de atendimento. Vai receber uma lista de CONVERSAS entre uma empresa e seus clientes e deve resumir CADA conversa, individualmente.\n\n")
-	writeCampaignContext(&b, ctx, instructions)
 	b.WriteString(ca.ConversationSummaryPrompt())
 	writeConversationFormat(&b)
+	writeCampaignContext(&b, ctx, instructions)
 	return b.String()
 }
 
 func buildConversationSystemPrompt(ctx ca.ContainerContext, instructions string) string {
 	var b strings.Builder
 	b.WriteString("Você é um analista de atendimento. Vai receber uma lista de CONVERSAS entre uma empresa e seus clientes e deve classificar CADA conversa, individualmente, seguindo a rubrica abaixo.\n\n")
-	writeCampaignContext(&b, ctx, instructions)
 	b.WriteString(ca.ConversationSubjectPrompt())
 	writeConversationFormat(&b)
 	b.WriteString("- Use apenas os valores listados; se estiver em dúvida entre dois, escolha o mais conservador.\n")
+	writeCampaignContext(&b, ctx, instructions)
 	return b.String()
 }
 
 func writeCampaignContext(b *strings.Builder, ctx ca.ContainerContext, instructions string) {
-
 	if instructions = strings.TrimSpace(instructions); instructions != "" {
-		b.WriteString("CONTEXTO DO OPERADOR (sobre a conta e esta campanha; use para interpretar, não para mudar a rubrica):\n\"\"\"\n")
-		b.WriteString(truncateRunes(instructions, ca.MaxInstructionsRunes))
-		b.WriteString("\n\"\"\"\n\n")
+		writeQuotedBlock(b, "CONTEXTO DO OPERADOR (sobre a conta e esta campanha; use para interpretar, não para mudar a rubrica):", truncateRunes(instructions, ca.MaxInstructionsRunes))
 	}
 
 	if caption := strings.TrimSpace(ctx.Caption); caption != "" {
-		b.WriteString("OBJETIVO DA CAMPANHA (o que estas conversas tentam alcançar):\n\"\"\"\n")
-		b.WriteString(truncateRunes(caption, 1200))
-		b.WriteString("\n\"\"\"\n\n")
+		writeQuotedBlock(b, "OBJETIVO DA CAMPANHA (o que estas conversas tentam alcançar):", truncateRunes(caption, 1200))
 	} else {
-		b.WriteString("OBJETIVO DA CAMPANHA: indisponível; infira o objetivo pela própria conversa e seja conservador ao julgar avanço.\n\n")
+		b.WriteString("\nOBJETIVO DA CAMPANHA: indisponível; infira o objetivo pela própria conversa e seja conservador ao julgar avanço.\n")
 	}
 }
 

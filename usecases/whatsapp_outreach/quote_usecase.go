@@ -7,49 +7,46 @@ import (
 	"vozko/domain/balance"
 	"vozko/domain/whatsapp/template"
 	wo "vozko/domain/whatsapp_outreach"
+	"vozko/domain/workspace_template_access"
+	template_usecase "vozko/usecases/whatsapp/template"
 )
 
+type TemplateFinder interface {
+	FindByID(templateID string) (*template.Template, error)
+}
+
 type quoteUseCase struct {
-	templates template.Repository
+	templates TemplateFinder
+	grant     workspace_template_access.CheckAccessUseCase
 	cost      template.TemplateCostReader
-	balances  balance.CachedBalanceChecker
+	balances  balance.BalanceReader
 }
 
 func NewQuoteUseCase(
-	templates template.Repository,
+	templates TemplateFinder,
+	grant workspace_template_access.CheckAccessUseCase,
 	cost template.TemplateCostReader,
-	balances balance.CachedBalanceChecker,
+	balances balance.BalanceReader,
 ) wo.QuoteTemplateSendUseCase {
-	return &quoteUseCase{templates: templates, cost: cost, balances: balances}
+	return &quoteUseCase{templates: templates, grant: grant, cost: cost, balances: balances}
 }
 
 func (uc *quoteUseCase) Execute(ctx context.Context, workspaceID, templateID, businessPhoneID string) (*wo.SendQuote, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, template.ErrWorkspaceRequired
 	}
-	tmpl, err := uc.templates.FindByID(templateID)
-	if err != nil || tmpl == nil {
-		return nil, wo.ErrTemplateNotFound
-	}
-	category, err := tmpl.BillingCategory()
+	tmpl, err := grantedTemplate(uc.templates, uc.grant, workspaceID, templateID)
 	if err != nil {
 		return nil, err
 	}
-
-	priceMicros, err := uc.cost.GetTemplateCostMicros(workspaceID, category)
+	cost, err := template_usecase.QuoteSend(uc.cost, uc.balances, workspaceID, tmpl, 1)
 	if err != nil {
 		return nil, err
 	}
-	if priceMicros <= 0 {
-		return nil, template.ErrPricingUnavailable
-	}
-
-	quote := &wo.SendQuote{Category: category, PriceMicros: priceMicros}
-	if uc.balances != nil {
-		if current, balErr := uc.balances.GetBalance(workspaceID); balErr == nil {
-			quote.BalanceMicros = current
-			quote.Affordable = current >= priceMicros
-		}
-	}
-	return quote, nil
+	return &wo.SendQuote{
+		Category:      cost.Category,
+		PriceMicros:   cost.UnitPriceMicros,
+		BalanceMicros: cost.BalanceMicros,
+		Affordable:    cost.Affordable,
+	}, nil
 }

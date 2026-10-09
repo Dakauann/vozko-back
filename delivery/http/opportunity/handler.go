@@ -44,7 +44,7 @@ func personFrom(claims *auth.Claims) shared.Person {
 }
 
 // @Summary		Criar oportunidade
-// @Description	Cria uma nova oportunidade em um funil de oportunidades do workspace. O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há um lead associado.
+// @Description	Cria uma nova oportunidade em um funil de oportunidades do workspace. O pipeline e a etapa são obrigatórios; o título é obrigatório quando não há um lead associado. A conversa (`linkEntryId` e `linkEntryType`) é opcional: um atendimento criado na página do lead leva só `leadId`. Quando a conversa vem sem `leadId`, o lead do negócio passa a ser o lead dessa conversa (se ela tiver um). Um `leadId` diferente do lead da conversa é recusado com 400; com uma conversa sem lead, o `leadId` enviado é mantido. Os negócios de um lead são listados em GET /leads/{id}/deals. Vincular uma conversa exige acesso a ela (o mesmo critério de POST /opportunities/{id}/conversations): sem acesso, responde 403. Valores de campos personalizados recusados respondem 400 com o código do campo (`custom_field_unknown_key`, `custom_field_value_type`, `custom_field_value_not_in_options` ou `custom_field_value_required`).
 // @Tags			Oportunidades
 // @Accept			json
 // @Produce		json
@@ -52,6 +52,7 @@ func personFrom(claims *auth.Claims) shared.Person {
 // @Success		201	{object}	opportunity.Opportunity
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		401	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/opportunities [post]
 func (h *OpportunityHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -69,24 +70,26 @@ func (h *OpportunityHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
+	if h.deals == nil {
+		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
+		return
+	}
 	wsID := middleware.GetWorkspaceID(r)
 
-	created, err := h.svc.Create(wsID, opportunity_usecase.CreateInput{
-		LeadID:               strings.TrimSpace(req.LeadID),
-		PipelineID:           strings.TrimSpace(req.PipelineID),
-		StageID:              strings.TrimSpace(req.StageID),
-		OwnerID:              strings.TrimSpace(req.OwnerID),
-		CarteiraID:           strings.TrimSpace(req.CarteiraID),
-		Title:                req.Title,
-		ValueCents:           req.ValueCents,
-		Currency:             req.Currency,
-		Source:               strings.TrimSpace(req.Source),
-		CloseDate:            req.CloseDate,
-		CustomFields:         req.CustomFields,
-		LinkEntryID:          strings.TrimSpace(req.LinkEntryID),
-		LinkEntryType:        strings.TrimSpace(req.LinkEntryType),
-		Actor:                claims.UserID,
-		ActorIsPlatformAdmin: personFrom(claims).SystemAdmin,
+	created, err := h.deals.Create(personFrom(claims), wsID, opportunitydomain.DealDraft{
+		LeadID:       strings.TrimSpace(req.LeadID),
+		PipelineID:   strings.TrimSpace(req.PipelineID),
+		StageID:      strings.TrimSpace(req.StageID),
+		OwnerID:      strings.TrimSpace(req.OwnerID),
+		CarteiraID:   strings.TrimSpace(req.CarteiraID),
+		Title:        req.Title,
+		ValueCents:   req.ValueCents,
+		Currency:     req.Currency,
+		Source:       strings.TrimSpace(req.Source),
+		CloseDate:    req.CloseDate,
+		CustomFields: req.CustomFields,
+		EntryID:      strings.TrimSpace(req.LinkEntryID),
+		EntryType:    strings.TrimSpace(req.LinkEntryType),
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -441,15 +444,14 @@ func (h *OpportunityHandler) handleDomainError(w http.ResponseWriter, err error)
 		errors.Is(err, opportunity_usecase.ErrOwnerOutsideWorkspace),
 		errors.Is(err, opportunity_usecase.ErrLeadOutsideWorkspace),
 		errors.Is(err, opportunity_usecase.ErrEntryOutsideWorkspace),
+		errors.Is(err, opportunitydomain.ErrEntryLeadMismatch),
 		errors.Is(err, opportunity_usecase.ErrPipelineNotFound),
 		errors.Is(err, opportunity_usecase.ErrNotOpportunityPipeline),
 		errors.Is(err, opportunity_usecase.ErrStageNotFound),
-		errors.Is(err, opportunity_usecase.ErrUnknownCustomField),
-		errors.Is(err, opportunity_usecase.ErrEntryTypeRequired),
-		errors.Is(err, customfield.ErrValueType),
-		errors.Is(err, customfield.ErrValueNotInOptions),
-		errors.Is(err, customfield.ErrValueRequired):
+		errors.Is(err, opportunity_usecase.ErrEntryTypeRequired):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
+	case customfield.IsValueRefusal(err):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, customfield.ErrorCode(err), err.Error(), nil)
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}

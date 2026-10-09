@@ -14,6 +14,7 @@ import (
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/usecases/campaignguard"
 	"vozko/usecases/campaignqueue"
 	conversation_usecase "vozko/usecases/conversation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
@@ -42,6 +43,8 @@ type ConsumerDeps struct {
 	Sender    CampaignSender
 	Budget    *SendBudget
 	Spam      SpamGuard
+
+	Eligibility campaignguard.EntryGate
 
 	Assignments Assigner
 	Metrics     MetricRecorder
@@ -150,6 +153,17 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		return campaignqueue.Drop
 	}
 
+	admission := c.admit(ctx, camp, entry, instance.ID)
+	if !admission.Admitted {
+		return admission.Result
+	}
+	sent := false
+	defer func() {
+		if !sent {
+			admission.Release()
+		}
+	}()
+
 	if _, err := instance.CanSend(time.Now().UTC()); err != nil {
 		c.pauseInstanceCampaigns(ctx, instance.ID, err)
 		return campaignqueue.RetryLater(restrictionRequeueDelay)
@@ -166,11 +180,6 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 			c.deps.Budget.ReleaseDaily(instance.ID, effectiveCap)
 		}
 	}()
-
-	if c.deps.Spam != nil && c.deps.Spam.ShouldSkip(ctx, camp.WorkspaceID, entry.LeadID, instance.ID) {
-		c.setEntryStatus(entry.ID, campaign.SendStatusNotEligiblePossibleSpam)
-		return campaignqueue.Drop
-	}
 
 	ref, err := c.deps.Instances.Ref(ctx, instance)
 	if err != nil {
@@ -220,7 +229,7 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 	if err != nil {
 		return c.handleSendFailure(ctx, instance, camp, entry, err)
 	}
-	spent = true
+	spent, sent = true, true
 
 	c.recordSuccess(ctx, camp, instance, entry, resolved, message, variant)
 	return campaignqueue.Done
@@ -364,6 +373,17 @@ func (c *messageConsumerUseCase) setEntryStatus(entryID string, status campaign.
 	if err := c.deps.Entries.UpdateStatus(entryID, status, "", 0, ""); err != nil {
 		log.Printf("[unofficial-whatsapp-campaign] could not set status on entry %s: %v", entryID, err)
 	}
+}
+
+func (c *messageConsumerUseCase) admit(ctx context.Context, camp *uwc.Campaign, entry *uwc.Entry, senderID string) campaignguard.Admission {
+	admission := campaignguard.Admit(ctx, c.deps.Eligibility, camp.WorkspaceID, entry.LeadID, senderID,
+		func(status campaign.SendStatus, code int, message string) error {
+			return c.deps.Entries.UpdateStatus(entry.ID, status, "", code, message)
+		})
+	if !admission.Admitted && admission.Err != nil {
+		log.Printf("[unofficial-whatsapp-campaign] entry %s is held (fail-closed): %v", entry.ID, admission.Err)
+	}
+	return admission
 }
 
 func (c *messageConsumerUseCase) failEntry(entryID string, code int, message string) {

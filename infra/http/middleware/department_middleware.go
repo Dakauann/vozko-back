@@ -2,12 +2,12 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
 
 	"vozko/delivery/http/response"
-	"vozko/domain/workspace"
 	dept "vozko/domain/workspace/workspace_department"
 )
 
@@ -50,14 +50,13 @@ func (m *DepartmentMiddleware) ResolveDepartment() func(http.Handler) http.Handl
 
 			selected := strings.TrimSpace(r.Header.Get("X-Department-ID"))
 
-			isOwnerOrAdmin := claims.Role == "admin"
-			if !isOwnerOrAdmin && m.membershipChecker != nil {
-				member, err := m.membershipChecker.GetMember(wsID, claims.UserID)
-				if err != nil {
-					log.Printf("department-resolver: error fetching workspace member for user %s ws %s: %v", claims.UserID, wsID, err)
-				} else if member != nil && (member.Role == workspace.RoleOwner || member.Role == workspace.RoleAdmin) {
-					isOwnerOrAdmin = true
-				}
+			var members dept.Members
+			if m.membershipChecker != nil {
+				members = m.membershipChecker
+			}
+			isOwnerOrAdmin, err := dept.SeesEveryDepartment(members, wsID, claims.UserID, claims.Role == "admin")
+			if err != nil && !errors.Is(err, dept.ErrMembersUnavailable) {
+				log.Printf("department-resolver: error fetching workspace member for user %s ws %s: %v", claims.UserID, wsID, err)
 			}
 
 			if isOwnerOrAdmin {

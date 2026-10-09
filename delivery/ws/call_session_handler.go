@@ -13,9 +13,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/calls/calllist"
 	cdr "vozko/domain/calls/cdr"
 	callsession_domain "vozko/domain/callsession"
 	"vozko/domain/conversation"
+	"vozko/domain/lead"
 	"vozko/domain/metrics"
 	"vozko/domain/sip_trunk"
 	"vozko/domain/telephony"
@@ -133,7 +135,7 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 // @Description	wss://SUA_URL_BASE/ws/call-session?token=SEU_ACCESS_TOKEN&workspaceId=SEU_WORKSPACE_ID&workspace_id=SEU_WORKSPACE_ID
 // @Description	```
 // @Description
-// @Description	- Permissões: `conversations:update` e `call_session:use` no workspace.
+// @Description	- Permissão: `call_session:use` no workspace.
 // @Description
 // @Description	Ao conectar você recebe `conversation:connected` com `{"feature": "call-session", "workspace_id": string, "user_id": string}` e, em seguida, a presença da equipe em `call-session:presence`.
 // @Description
@@ -150,7 +152,7 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 // @Description
 // @Description	| type | payload | O que faz |
 // @Description	|---|---|---|
-// @Description	| `start_call` | `{"phone_number": string, "trunk_id"?: string, "whatsapp_phone_id"?: string, "request_id"?: string}` | Faz uma ligação. Com `trunk_id` sai pelo tronco SIP (exige `sip_trunks:call`); sem ele, pelo número de WhatsApp em `whatsapp_phone_id`. O andamento chega em `call:status`. |
+// @Description	| `start_call` | `{"phone_number": string, "trunk_id"?: string, "whatsapp_phone_id"?: string, "lead_id"?: string, "call_list_item_id"?: string, "request_id"?: string}` | Faz uma ligação. Com `trunk_id` sai pelo tronco SIP (exige `sip_trunks:call`); sem ele, pelo número de WhatsApp em `whatsapp_phone_id`. O andamento chega em `call:status`. Veja Ligar para um lead. |
 // @Description	| `end_call` | `{}` | Desliga a ligação atual. |
 // @Description	| `call_audio` | `{"audio": string, "sample_rate"?: number}` | Áudio do microfone. Sem resposta. |
 // @Description	| `call:incoming_accept` | `{"offer_id": string}` | Atende uma chamada oferecida em `call:incoming`. Precisa vir da mesma conexão que recebeu a oferta. |
@@ -159,6 +161,13 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 // @Description	| `call:transfer_cancel` | `{"call_id": string}` | Cancela uma transferência para colega ainda tocando; a ligação volta para você. |
 // @Description
 // @Description	Para transferir é preciso `call_session:transfer` e poder atender aquele tipo de ligação. Colegas e filas disponíveis vêm de `call-session:presence` e de `GET /call-queues/transfer-targets`.
+// @Description
+// @Description	### Ligar para um lead
+// @Description
+// @Description	- Com `lead_id`, o lead precisa ser deste workspace, não pode estar bloqueado (`lead_blocked`) e `phone_number` precisa ser o WhatsApp dele ou um dos telefones de contato, com ou sem o nono dígito (`lead_not_dialable`). Uma ligação direta para um lead que pediu para não receber mensagens é permitida; só as listas de ligação o deixam de fora. Se o número for o WhatsApp de outro lead, as regras desse lead também valem: bloqueado dá `lead_blocked`. A ligação fica registrada no lead: no histórico de chamadas, na gravação e na cobrança.
+// @Description	- Sem `lead_id`, o número é procurado entre os leads do workspace e, se for o WhatsApp de um lead, valem as mesmas regras: bloqueado dá `lead_blocked`. Se a ligação seguir, ela fica registrada nesse lead.
+// @Description	- `call_list_item_id` liga o item de uma lista de ligações que você está trabalhando e exige `lead_id`, o lead do item. A ligação fica registrada como a última do item e renova a reserva dele. O item precisa estar reservado por você (veja POST /call-lists/{listId}/next), ser desse lead e `phone_number` precisa ser o número do item, senão `call_list_item_unavailable`. As regras da lista também valem: quem pediu para não receber mensagens não é chamado.
+// @Description	- Os números e as linhas que podem ligar para um lead vêm de `GET /dial-targets?leadId=`.
 // @Description
 // @Description	## Mensagens que você recebe
 // @Description
@@ -251,14 +260,17 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 // @Description	| code | Significado |
 // @Description	|---|---|
 // @Description	| `invalid_payload` | Mensagem ou `payload` fora do formato. |
-// @Description	| `missing_fields` | Falta `phone_number`, `offer_id` ou `call_id`. |
+// @Description	| `missing_fields` | Falta `phone_number`, `offer_id` ou `call_id`, ou `lead_id` junto com `call_list_item_id`. |
 // @Description	| `unauthorized` | Falta permissão para ligar, para usar o tronco ou para transferir esse tipo de ligação. |
 // @Description	| `already_in_call` | Você já está em uma ligação ou atendendo uma chamada. |
 // @Description	| `no_active_call` | Não há ligação para desligar. |
 // @Description	| `dial_failed` | Não foi possível iniciar a ligação. |
 // @Description	| `no_call_slots` | Todas as linhas ocupadas; tente em instantes. |
 // @Description	| `insufficient_balance` | Saldo insuficiente para ligar. |
-// @Description	| `not_configured` | Origem de ligação não configurada. |
+// @Description	| `not_configured` | Origem de ligação, ligações para leads ou listas de ligação não configuradas neste servidor. |
+// @Description	| `lead_not_dialable` | O lead não existe neste workspace, o número não é dele, ou as regras do workspace ou da lista não permitem ligar para ele. |
+// @Description	| `lead_blocked` | O lead está bloqueado e não recebe ligações. |
+// @Description	| `call_list_item_unavailable` | O item da lista não está reservado por você, não é do lead ou do número enviados, ou a lista não está ativa ou você não liga nela. Peça o próximo em POST /call-lists/{listId}/next. |
 // @Description	| `whatsapp_permission_required` | O contato não autorizou receber ligações pelo WhatsApp. |
 // @Description	| `trunk_unavailable` | O tronco não existe, está desativado ou não faz ligações. |
 // @Description	| `trunk_not_registered` | O tronco não está registrado no provedor. |
@@ -434,6 +446,8 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 				TargetPhone:     p.PhoneNumber,
 				WhatsAppPhoneID: p.WhatsAppPhoneID,
 				TrunkID:         p.TrunkID,
+				LeadID:          p.LeadID,
+				CallListItemID:  p.CallListItemID,
 				OnWaitingForSlot: func() {
 					send(&WSOutgoingMessage{Type: WSEventWaitingCallSlot, Payload: WaitingCallSlotPayload{Reason: "All call slots in use, waiting for one to free up"}})
 				},
@@ -444,21 +458,24 @@ func (h *CallSessionWSHandler) HandleWebSocket(w http.ResponseWriter, r *http.Re
 			}
 
 			if _, err := attachCall(context.Background(), callAttachInput{
-				Session:       session,
-				Call:          started.Call,
-				Admission:     started.Admission,
-				Phone:         started.PhoneNumber,
-				RequestID:     p.RequestID,
-				WorkspaceID:   workspaceID,
-				OwnerUserID:   claims.UserID,
-				StartedAt:     time.Now(),
-				Direction:     cdr.DirectionOutbound,
-				CallRegistry:  h.callRegistry,
-				EndUseCase:    h.endUseCase,
-				Lifecycle:     h.lifecycle,
-				RecordingPool: h.recordingPool,
-				Channels:      h.channels,
-				Logger:        h.logger,
+				Session:        session,
+				Call:           started.Call,
+				Admission:      started.Admission,
+				Phone:          started.PhoneNumber,
+				LeadID:         started.LeadID,
+				TrunkID:        started.TrunkID,
+				CallListItemID: started.CallListItemID,
+				RequestID:      p.RequestID,
+				WorkspaceID:    workspaceID,
+				OwnerUserID:    claims.UserID,
+				StartedAt:      time.Now(),
+				Direction:      cdr.DirectionOutbound,
+				CallRegistry:   h.callRegistry,
+				EndUseCase:     h.endUseCase,
+				Lifecycle:      h.lifecycle,
+				RecordingPool:  h.recordingPool,
+				Channels:       h.channels,
+				Logger:         h.logger,
 			}); err != nil {
 				h.logger.Printf("[CallSessionWS] attach error: %v", err)
 				send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "dial_failed", Message: "Failed to initiate call"}})
@@ -531,6 +548,16 @@ func (h *CallSessionWSHandler) sendStartCallError(send func(*WSOutgoingMessage),
 		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "missing_fields", Message: "phone_number is required"}})
 	case strings.Contains(err.Error(), callsession_domain.ErrCallSourceNotConfigured.Error()):
 		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "not_configured", Message: "Call source not configured"}})
+	case errors.Is(err, callsession_domain.ErrLeadDialTargetsNotConfigured), errors.Is(err, callsession_domain.ErrCallListsNotConfigured):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "not_configured", Message: "Calls to leads are not configured on this server"}})
+	case calllist.ErrorCode(err) != "":
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "call_list_item_unavailable", Message: "This call list item is not reserved by you for this lead and number, or its list is not active"}})
+	case errors.Is(err, callsession_domain.ErrCallListItemNeedsLead):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "missing_fields", Message: "lead_id is required with call_list_item_id"}})
+	case errors.Is(err, lead.ErrLeadDialBlocked):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "lead_blocked", Message: "This lead is blocked and cannot be called"}})
+	case errors.Is(err, lead.ErrLeadNotDialable):
+		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "lead_not_dialable", Message: "This number cannot be called for this lead"}})
 	case errors.Is(err, conversation.ErrWhatsAppCallNoPermission):
 		send(&WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{Code: "whatsapp_permission_required", Message: "The customer hasn't granted permission to receive WhatsApp calls"}})
 	case errors.Is(err, sip_trunk.ErrCallNotPermitted):

@@ -120,3 +120,45 @@ func TestPlanNamesTheRequestedTrunk(t *testing.T) {
 		t.Fatalf("chosen = %+v", chosen)
 	}
 }
+
+func TestLinesOfferEveryTrunkThatCanDialBeforeANumberIsTyped(t *testing.T) {
+	engine := newFakeEngine()
+	engine.markRegistered("a")
+	engine.markRegistered("b")
+	inbound := trunkNamed("inbound", "Inbound")
+	inbound.TrunkType = sip_trunk.TrunkTypeInbound
+	engine.markRegistered("inbound")
+
+	lines, err := newPlanner(engine, trunkNamed("a", "A"), trunkNamed("b", "B"), trunkNamed("offline", "Offline"), inbound).Lines(context.Background(), planInput("", ""))
+	if err != nil {
+		t.Fatalf("lines: %v", err)
+	}
+	want := []sip_trunk.TrunkChoice{{ID: "a", Name: "A"}, {ID: "b", Name: "B"}}
+	if len(lines) != len(want) || lines[0] != want[0] || lines[1] != want[1] {
+		t.Fatalf("lines = %+v, want %+v", lines, want)
+	}
+}
+
+func TestLinesRefuseWhatThePlanWouldRefuse(t *testing.T) {
+	cases := []struct {
+		name  string
+		input sip_trunk.CallPlanInput
+		want  error
+	}{
+		{"caller without the call permission", func() sip_trunk.CallPlanInput { in := planInput("", ""); in.UserID = "other"; return in }(), sip_trunk.ErrCallNotPermitted},
+		{"another workspace", func() sip_trunk.CallPlanInput {
+			in := planInput("", "")
+			in.WorkspaceID = strangerWorkspace
+			return in
+		}(), sip_trunk.ErrCallNotPermitted},
+		{"no trunk can dial", planInput("", ""), sip_trunk.ErrNoDialableTrunk},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := newPlanner(newFakeEngine(), trunkNamed("offline", "Offline")).Lines(context.Background(), tc.input)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}

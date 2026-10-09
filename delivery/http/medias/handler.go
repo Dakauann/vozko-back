@@ -118,7 +118,7 @@ func (h *MediasHandler) UploadMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Obter uma mídia
-// @Description	Retorna os detalhes de uma mídia do workspace pelo seu identificador.
+// @Description	Retorna os detalhes de uma mídia do workspace pelo seu identificador. Planilhas enviadas para importação de leads não são servidas e respondem 404.
 // @Tags			Mídias
 // @Produce		json
 // @Param			id	path	string	true	"ID da mídia"

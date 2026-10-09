@@ -33,7 +33,7 @@ type inboundBusinessPhoneResolver interface {
 }
 
 type inboundEntryResolver interface {
-	FindByNumberAndBusinessPhone(number, businessPhoneID string) (*wce.WhatsAppCampaignEntry, error)
+	FindInboundRouteByNumberAndBusinessPhone(number, businessPhoneID string) (*wce.WhatsAppCampaignEntry, error)
 }
 
 type inboundAssignmentReader interface {
@@ -160,7 +160,7 @@ func (uc *WhatsAppInboundCallUseCase) handle(c conversation_domain.WhatsAppInbou
 	workspaceID := strings.TrimSpace(phone.OwnerWorkspaceID)
 
 	entryID, departmentID, assignedUserID := "", "", ""
-	if entry, eerr := uc.entries.FindByNumberAndBusinessPhone(c.FromNumber, businessPhoneID); eerr == nil && entry != nil {
+	if entry, eerr := uc.entries.FindInboundRouteByNumberAndBusinessPhone(c.FromNumber, businessPhoneID); eerr == nil && entry != nil {
 		entryID = entry.ID
 		if dep, derr := uc.departments.GetEntryDepartmentID(entryID, whatsappInboundEntryType); derr == nil {
 			departmentID = dep

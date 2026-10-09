@@ -130,3 +130,75 @@ func searchSubstring(s, sub string) bool {
 	}
 	return false
 }
+
+func TestConvertTools_ArraysInsideArrayItemsKeepTheirItems(t *testing.T) {
+	def := tools.Definition{
+		Name: "studio_edit",
+		Parameters: map[string]tools.Parameter{
+			"operations": {Type: "array", Description: "ops", Items: &tools.ParameterItems{
+				Type: "object",
+				Properties: map[string]tools.Parameter{
+					"op":       {Type: "string", Description: "operação", Enum: []string{"animate"}},
+					"clip_ids": {Type: "array", Description: "clipes", Items: &tools.ParameterItems{Type: "string"}},
+					"keys": {Type: "array", Description: "chaves", Items: &tools.ParameterItems{
+						Type:       "object",
+						Properties: map[string]tools.Parameter{"at_ms": {Type: "integer", Description: "tempo"}},
+						Required:   []string{"at_ms"},
+					}},
+				},
+				Required: []string{"op"},
+			}},
+		},
+	}
+	schema := convertTools([]tools.Definition{def})[0].Function.Parameters.(map[string]interface{})
+	item := schema["properties"].(map[string]interface{})["operations"].(map[string]interface{})["items"].(map[string]interface{})
+	props := item["properties"].(map[string]interface{})
+	op := props["op"].(map[string]interface{})
+	if len(op) != 3 || op["type"] != "string" || op["description"] != "operação" {
+		t.Fatalf("a flat item property must come out as before, got %+v", op)
+	}
+	ids := props["clip_ids"].(map[string]interface{})["items"].(map[string]interface{})
+	if ids["type"] != "string" {
+		t.Fatalf("clip_ids items = %+v", ids)
+	}
+	keys := props["keys"].(map[string]interface{})["items"].(map[string]interface{})
+	if keys["type"] != "object" || keys["required"].([]string)[0] != "at_ms" {
+		t.Fatalf("keys items = %+v", keys)
+	}
+	if _, ok := keys["properties"].(map[string]interface{})["at_ms"]; !ok {
+		t.Fatalf("keys properties = %+v", keys["properties"])
+	}
+}
+
+func TestConvertTools_ObjectsAndEnumListsInsideArrayItems(t *testing.T) {
+	def := tools.Definition{
+		Name: "studio_edit_image",
+		Parameters: map[string]tools.Parameter{
+			"operations": {Type: "array", Description: "ops", Items: &tools.ParameterItems{
+				Type: "object",
+				Properties: map[string]tools.Parameter{
+					"gradient": {Type: "object", Description: "degradê", Items: &tools.ParameterItems{
+						Type:       "object",
+						Properties: map[string]tools.Parameter{"kind": {Type: "string", Description: "tipo", Enum: []string{"linear", "radial"}}},
+						Required:   []string{"kind"},
+					}},
+					"clear": {Type: "array", Description: "limpar", Items: &tools.ParameterItems{Type: "string", Enum: []string{"shadow", "stroke"}}},
+				},
+			}},
+		},
+	}
+	schema := convertTools([]tools.Definition{def})[0].Function.Parameters.(map[string]interface{})
+	props := schema["properties"].(map[string]interface{})["operations"].(map[string]interface{})["items"].(map[string]interface{})["properties"].(map[string]interface{})
+	gradient := props["gradient"].(map[string]interface{})
+	if gradient["type"] != "object" || gradient["description"] != "degradê" || gradient["required"].([]string)[0] != "kind" {
+		t.Fatalf("gradient = %+v", gradient)
+	}
+	kind := gradient["properties"].(map[string]interface{})["kind"].(map[string]interface{})
+	if kind["enum"].([]string)[1] != "radial" {
+		t.Fatalf("gradient.kind = %+v", kind)
+	}
+	clearItems := props["clear"].(map[string]interface{})["items"].(map[string]interface{})
+	if clearItems["enum"].([]string)[0] != "shadow" {
+		t.Fatalf("clear items = %+v", clearItems)
+	}
+}

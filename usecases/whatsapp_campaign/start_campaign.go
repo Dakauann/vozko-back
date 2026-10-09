@@ -21,6 +21,14 @@ func NewStartCampaignUseCase(deps StartCampaignDeps) wc.StartCampaignUseCase {
 }
 
 func (uc *startCampaign) Start(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*wc.Campaign, error) {
+	return uc.start(workspaceID, departments, campaignID, false)
+}
+
+func (uc *startCampaign) StartReviewed(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*wc.Campaign, error) {
+	return uc.start(workspaceID, departments, campaignID, true)
+}
+
+func (uc *startCampaign) start(workspaceID string, departments *wd.DepartmentFilter, campaignID string, reviewed bool) (*wc.Campaign, error) {
 	campaign, err := uc.deps.Access.Owned(workspaceID, departments, campaignID)
 	if err != nil {
 		return nil, err
@@ -31,7 +39,7 @@ func (uc *startCampaign) Start(workspaceID string, departments *wd.DepartmentFil
 	if err := campaign.Startable(); err != nil {
 		return nil, err
 	}
-	if err := uc.deps.Dispatch.Dispatch(wc.DispatchCampaignInput{CampaignID: campaign.ID, Action: wc.CampaignActionStart}); err != nil {
+	if err := uc.deps.Dispatch.Dispatch(wc.DispatchCampaignInput{CampaignID: campaign.ID, Action: wc.CampaignActionStart, Reviewed: reviewed}); err != nil {
 		return nil, err
 	}
 	return campaign, nil

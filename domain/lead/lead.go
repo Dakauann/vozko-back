@@ -5,201 +5,196 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"vozko/domain/shared"
 )
 
 var (
-	ErrLeadRequired          = errors.New("lead: phone number is required")
-	ErrLeadInvalid           = errors.New("lead: phone number is invalid")
-	ErrLeadNotFound          = errors.New("lead: lead not found")
-	ErrLeadDuplicate         = errors.New("lead: phone number already exists")
-	ErrLeadWorkspaceRequired = errors.New("lead: workspace id is required")
-	ErrLeadFilterInvalid     = errors.New("lead: invalid filter")
-	ErrLeadNameTooLong       = errors.New("lead: name is too long")
+	ErrLeadRequired             = errors.New("lead: phone number is required")
+	ErrLeadInvalid              = errors.New("lead: phone number is invalid")
+	ErrLeadNotFound             = errors.New("lead: lead not found")
+	ErrLeadDuplicate            = errors.New("lead: phone number already exists")
+	ErrLeadWorkspaceRequired    = errors.New("lead: workspace id is required")
+	ErrLeadFilterInvalid        = errors.New("lead: invalid filter")
+	ErrLeadNameTooLong          = errors.New("lead: name is too long")
+	ErrLeadIdentityRequired     = errors.New("lead: a name or a phone number is required")
+	ErrLeadNicknameTooLong      = errors.New("lead: nickname is too long")
+	ErrLeadEmailInvalid         = errors.New("lead: e-mail is invalid")
+	ErrLeadBirthDateInvalid     = errors.New("lead: birth date is invalid")
+	ErrLeadOwnerInvalid         = errors.New("lead: owner must be a member, an agent or a workflow")
+	ErrLeadSourceInvalid        = errors.New("lead: the source of the incoming data is required")
+	ErrLeadConsentSourceInvalid = errors.New("lead: the consent source is not a known one")
+	ErrLeadOptOutSourceInvalid  = errors.New("lead: the opt-out source must be lead_request or operator")
+	ErrLeadAgeInvalid           = errors.New("lead: age is invalid")
 )
 
-type Lead struct {
-	ID                string    `json:"id"`
-	WorkspaceID       string    `json:"workspaceId"`
-	Number            string    `json:"number"`
-	Blocked           bool      `json:"blocked"`
-	BlockedAt         time.Time `json:"blockedAt"`
-	BlockedBy         *string   `json:"blockedBy"`
-	Name              string    `json:"name,omitempty"`
-	ProfilePictureURL string    `json:"profilePictureUrl,omitempty"`
-	Age               *int      `json:"age,omitempty"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+type OptOutSource string
+
+const (
+	OptOutLeadRequest OptOutSource = "lead_request"
+	OptOutOperator    OptOutSource = "operator"
+)
+
+func (s OptOutSource) Valid() bool {
+	return s == OptOutLeadRequest || s == OptOutOperator
 }
 
-func (l *Lead) Normalize() {
-	l.ID = strings.TrimSpace(l.ID)
-	l.WorkspaceID = strings.TrimSpace(l.WorkspaceID)
-	l.Number = NormalizeNumber(l.Number)
-	l.Name = strings.TrimSpace(l.Name)
-	if l.Age != nil && *l.Age <= 0 {
-		l.Age = nil
+type Source string
+
+const (
+	SourceManual  Source = "manual"
+	SourceImport  Source = "import"
+	SourceChannel Source = "channel"
+)
+
+func (s Source) Valid() bool {
+	switch s {
+	case SourceManual, SourceImport, SourceChannel:
+		return true
 	}
+	return false
+}
+
+type ConsentSource string
+
+const (
+	ConsentForm                ConsentSource = "form"
+	ConsentImport              ConsentSource = "import"
+	ConsentManual              ConsentSource = "manual"
+	ConsentConversationRequest ConsentSource = "conversation_request"
+)
+
+func (s ConsentSource) Valid() bool {
+	switch s {
+	case ConsentForm, ConsentImport, ConsentManual, ConsentConversationRequest:
+		return true
+	}
+	return false
+}
+
+type Consent struct {
+	GrantedAt time.Time     `json:"grantedAt"`
+	Source    ConsentSource `json:"source"`
+	Purpose   string        `json:"purpose,omitempty"`
+}
+
+type Lead struct {
+	ID                string         `json:"id"`
+	WorkspaceID       string         `json:"workspaceId"`
+	Number            string         `json:"number"`
+	Name              string         `json:"name,omitempty"`
+	NameSource        Source         `json:"nameSource,omitempty"`
+	Nickname          string         `json:"nickname,omitempty"`
+	Email             string         `json:"email,omitempty"`
+	BirthDate         *shared.Date   `json:"birthDate,omitempty"`
+	Source            Source         `json:"source,omitempty"`
+	Owner             string         `json:"owner,omitempty"`
+	CustomFields      map[string]any `json:"customFields,omitempty"`
+	WhatsAppOptIn     *Consent       `json:"whatsappOptIn,omitempty"`
+	OptedOutAt        *time.Time     `json:"optedOutAt,omitempty"`
+	OptOutSource      OptOutSource   `json:"optOutSource,omitempty"`
+	Blocked           bool           `json:"blocked"`
+	BlockedAt         time.Time      `json:"blockedAt"`
+	BlockedBy         *string        `json:"blockedBy"`
+	ProfilePictureURL string         `json:"profilePictureUrl,omitempty"`
+	StoredAge         *int           `json:"age,omitempty"`
+	Phones            []ContactPhone `json:"phones,omitempty"`
+	Addresses         []Address      `json:"addresses,omitempty"`
+	Relations         []Relation     `json:"relations,omitempty"`
+	RelativesCount    int            `json:"relativesCount"`
+	ReferredCount     int            `json:"referredCount"`
+	Version           int64          `json:"version"`
+	CreatedAt         time.Time      `json:"createdAt"`
+	UpdatedAt         time.Time      `json:"updatedAt"`
 }
 
 func (l *Lead) Validate() error {
-	if l.WorkspaceID == "" {
+	if strings.TrimSpace(l.WorkspaceID) == "" {
 		return ErrLeadWorkspaceRequired
 	}
-	if l.Number == "" {
-		return ErrLeadRequired
-	}
-	if NormalizeNumber(l.Number) == "" {
+	if l.Number != "" && NormalizeNumber(l.Number) == "" {
 		return ErrLeadInvalid
 	}
-	if l.Age != nil && *l.Age < 0 {
-		return ErrLeadInvalid
-	}
-	return nil
+	return l.ValidateRecord()
 }
 
-func (l *Lead) Merge(update LeadUpdate) {
-	if update.Name != "" {
-		l.Name = update.Name
+func (l *Lead) ValidateRecord() error {
+	if strings.TrimSpace(l.WorkspaceID) == "" {
+		return ErrLeadWorkspaceRequired
 	}
-	if update.ProfilePictureURL != "" {
-		l.ProfilePictureURL = update.ProfilePictureURL
+	if !l.HasIdentity() && l.RealName() == "" {
+		return ErrLeadIdentityRequired
 	}
-	if update.Age != nil {
-		l.Age = update.Age
+	if utf8.RuneCountInString(l.Nickname) > MaxLeadNameLength {
+		return ErrLeadNicknameTooLong
 	}
-	if update.Blocked != nil {
-		l.Blocked = *update.Blocked
-		if *update.Blocked {
-			if l.BlockedAt.IsZero() {
-				l.BlockedAt = time.Now()
-			}
-			if update.BlockedBy != nil {
-				l.BlockedBy = update.BlockedBy
-			}
-		} else {
-			l.BlockedAt = time.Time{}
-			l.BlockedBy = nil
+	if l.Email != "" {
+		if err := ValidateEmail(l.Email); err != nil {
+			return err
 		}
 	}
+	if l.StoredAge != nil && *l.StoredAge < 0 {
+		return ErrLeadAgeInvalid
+	}
+	if !validOwner(l.Owner) {
+		return ErrLeadOwnerInvalid
+	}
+	if l.WhatsAppOptIn != nil && !l.WhatsAppOptIn.Source.Valid() {
+		return ErrLeadConsentSourceInvalid
+	}
+	if err := l.validatePhones(); err != nil {
+		return err
+	}
+	return l.validateAddresses()
+}
+
+func (l *Lead) HasIdentity() bool {
+	return strings.TrimSpace(l.Number) != ""
+}
+
+func (l *Lead) Age(now time.Time) *int {
+	if l.BirthDate != nil {
+		years := l.BirthDate.YearsAt(now)
+		return &years
+	}
+	return l.StoredAge
 }
 
 type LeadUpdate struct {
+	Source            Source
 	Name              string
 	ProfilePictureURL string
-	Age               *int
-	Blocked           *bool
-	BlockedBy         *string
 }
 
 func NormalizeNumber(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.Grow(len(trimmed))
-
-	for _, r := range trimmed {
-		if r < '0' || r > '9' {
-			return ""
-		}
-		builder.WriteRune(r)
-	}
-
-	number := builder.String()
-	if number == "" {
-		return ""
-	}
-
-	if len(number) != 12 && len(number) != 13 {
-		return ""
-	}
-
-	if !strings.HasPrefix(number, "55") {
-		return ""
-	}
-
-	return number
+	return shared.CanonicalPhoneNumber(value)
 }
 
 func NormalizeWhatsAppNumber(number string) string {
 	normalized := NormalizeNumber(number)
 	if normalized == "" {
-		normalized = normalizeRawInput(number)
+		normalized = NormalizeRawNumber(number)
 		if normalized == "" {
 			return number
 		}
 	}
-
-	if len(normalized) == 13 {
-		return normalized
-	}
-
-	if len(normalized) == 12 && strings.HasPrefix(normalized, "55") {
-
-		if normalized[4] >= '6' {
-			return normalized[:4] + "9" + normalized[4:]
+	if len(normalized) == 12 {
+		if alternate := GetAlternatePhoneFormat(normalized); alternate != "" {
+			return alternate
 		}
-		return normalized
 	}
-
 	return normalized
 }
 
 func GetAlternatePhoneFormat(number string) string {
-	normalized := NormalizeNumber(number)
-	if normalized == "" {
-		return ""
+	if variants := shared.NinthDigitVariants(number); len(variants) == 2 {
+		return variants[1]
 	}
-
-	if len(normalized) == 13 && strings.HasPrefix(normalized, "55") {
-		if normalized[4] == '9' {
-			return normalized[:4] + normalized[5:]
-		}
-	}
-
-	if len(normalized) == 12 && strings.HasPrefix(normalized, "55") && normalized[4] >= '6' {
-		return normalized[:4] + "9" + normalized[4:]
-	}
-
 	return ""
 }
 
 func NormalizeRawNumber(value string) string {
-	return normalizeRawInput(value)
-}
-
-func normalizeRawInput(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	builder.Grow(len(trimmed))
-	for _, r := range trimmed {
-		if r >= '0' && r <= '9' {
-			builder.WriteRune(r)
-		}
-	}
-
-	number := builder.String()
-	if number == "" {
-		return ""
-	}
-
-	if !strings.HasPrefix(number, "55") {
-		if len(number) >= 10 && len(number) <= 11 {
-			number = "55" + number
-		}
-	}
-
-	if len(number) != 12 && len(number) != 13 {
-		return ""
-	}
-
-	return number
+	return shared.BrazilPhoneDigits(value)
 }
 
 const MaxLeadNameLength = 120
@@ -217,12 +212,5 @@ func NormalizeName(name string) string {
 }
 
 func NumberFormats(number string) []string {
-	normalized := NormalizeNumber(number)
-	if normalized == "" {
-		return nil
-	}
-	if alternate := GetAlternatePhoneFormat(normalized); alternate != "" {
-		return []string{normalized, alternate}
-	}
-	return []string{normalized}
+	return shared.NinthDigitVariants(number)
 }

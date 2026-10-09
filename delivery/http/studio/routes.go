@@ -20,5 +20,6 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 	protected.HandleFunc("/studio/projects/{id}", ac(media, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
 	protected.HandleFunc("/studio/projects/{id}", ac(media, workspace_domain.ActionCreate, h.Save)).Methods(http.MethodPatch)
 	protected.HandleFunc("/studio/projects/{id}", ac(media, workspace_domain.ActionDelete, h.Archive)).Methods(http.MethodDelete)
-	protected.HandleFunc("/studio/projects/{id}/export", ac(media, workspace_domain.ActionCreate, h.Export)).Methods(http.MethodPost)
+	protected.HandleFunc("/studio/projects/{id}/exports", ac(media, workspace_domain.ActionCreate, h.SaveExport)).Methods(http.MethodPost)
+	protected.HandleFunc("/studio/capabilities/{sessionId}", ac(media, workspace_domain.ActionRead, h.ReportCapabilities)).Methods(http.MethodPut)
 }

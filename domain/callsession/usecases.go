@@ -43,11 +43,11 @@ type StartOutboundCallInput struct {
 	WorkspaceID      string
 	UserID           string
 	IsAdmin          bool
-	EntryID          string
-	EntryType        string
 	TargetPhone      string
 	WhatsAppPhoneID  string
 	TrunkID          string
+	LeadID           string
+	CallListItemID   string
 	OnWaitingForSlot func()
 }
 
@@ -57,6 +57,9 @@ type StartOutboundCallResult struct {
 	PerMinuteCostMicros int64
 	ReservedMicros      int64
 	Admission           *CallAdmissionLease
+	LeadID              string
+	TrunkID             string
+	CallListItemID      string
 }
 
 type StartOutboundCallUseCase interface {

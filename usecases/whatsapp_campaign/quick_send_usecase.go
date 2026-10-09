@@ -32,6 +32,11 @@ type quickSendUseCase struct {
 	messageQueuePub   messaging.MessageQueuePub
 	messageConsumerUC wc.MessageConsumerUseCase
 	shared            cache.SharedState
+	automation        AutomationCheck
+}
+
+func (uc *quickSendUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
 }
 
 func NewQuickSendUseCase(
@@ -94,6 +99,9 @@ func (uc *quickSendUseCase) Execute(input wc.QuickSendInput) (*wc.QuickSendOutpu
 	}
 	if campaign == nil {
 		return nil, wc.ErrCampaignNotFound
+	}
+	if err := guardCampaignChange(campaign, uc.automation, true, entriesMetadata(input.PhoneNumbers)); err != nil {
+		return nil, err
 	}
 
 	for _, p := range input.PhoneNumbers {
@@ -243,7 +251,7 @@ func (uc *quickSendUseCase) insertEntries(workspaceID string, input wc.QuickSend
 			continue
 		}
 
-		l, _, err := uc.leadRepo.FindOrCreate(workspaceID, normalized, lead.LeadUpdate{Name: phoneInput.Name})
+		l, _, err := uc.leadRepo.FindOrCreate(workspaceID, normalized, lead.LeadUpdate{Source: lead.SourceImport, Name: phoneInput.Name})
 		if err != nil {
 			return nil, err
 		}

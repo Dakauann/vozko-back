@@ -286,12 +286,13 @@ func (h *ExportHandler) queueExport(
 	}
 
 	job, err := h.reports.Create(report_usecase.CreateInput{
-		WorkspaceID: filter.Scope.WorkspaceID,
-		RequestedBy: claims.UserID,
-		Kind:        reportdomain.KindConversationEntries,
-		Format:      reportdomain.FormatCSV,
-		Locale:      httpx.RequestLocale(r),
-		Params:      params,
+		WorkspaceID:      filter.Scope.WorkspaceID,
+		RequestedBy:      claims.UserID,
+		RequestedByAdmin: claims.Role == "admin",
+		Kind:             reportdomain.KindConversationEntries,
+		Format:           reportdomain.FormatCSV,
+		Locale:           httpx.RequestLocale(r),
+		Params:           params,
 	})
 	if err != nil {
 		h.writeExportError(w, err)
@@ -309,6 +310,8 @@ func (h *ExportHandler) writeExportError(w http.ResponseWriter, err error) {
 	case errors.Is(err, exportdomain.ErrTooManyRows):
 		response.WriteError(w, http.StatusRequestEntityTooLarge,
 			"This export is too large. Narrow the period or the filters and try again.", nil)
+	case errors.Is(err, reportdomain.ErrNotAllowed):
+		response.WriteErrorWithCode(w, http.StatusForbidden, reportdomain.ErrorCode(err), err.Error(), nil)
 	case errors.Is(err, reportdomain.ErrParamsTooLarge):
 		response.WriteError(w, http.StatusBadRequest,
 			"Too many filters for one export. Narrow them and try again.", nil)

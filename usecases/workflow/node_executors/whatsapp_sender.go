@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/campaign"
 	"vozko/domain/conversation"
 	lead_domain "vozko/domain/lead"
 	media_domain "vozko/domain/media"
@@ -27,7 +28,10 @@ import (
 
 type leadLookup interface {
 	FindByID(workspaceID, id string) (*lead_domain.Lead, error)
+	FindByNumber(workspaceID, number string) (*lead_domain.Lead, error)
 }
+
+var errTemplateRecipientRefused = errors.New("workflow whatsapp sender: this lead may not receive templates")
 
 type whatsappEntryLookup interface {
 	FindByID(id string) (*wce.WhatsAppCampaignEntry, error)
@@ -84,6 +88,7 @@ type whatsappSendTarget struct {
 	leadNumber              string
 	campaignBusinessPhoneID string
 	receivedBusinessPhoneID string
+	contact                 *lead_domain.Lead
 }
 
 func newWhatsAppSender(deps SenderDeps) *whatsappSender {
@@ -472,6 +477,9 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 	if err != nil {
 		return nil, "", err
 	}
+	if err := s.refuseUnreachableRecipient(run.WorkspaceID, target); err != nil {
+		return nil, "", err
+	}
 
 	usedBusinessPhoneID, err := s.resolveTemplatePhone(run.WorkspaceID, strings.TrimSpace(preferredBusinessPhoneID), target, tmpl.WABAId)
 	if err != nil {
@@ -576,6 +584,53 @@ func (s *whatsappSender) resolveTargetForRun(run *workflow.WorkflowRun, state *w
 		campaignBusinessPhoneID: "",
 		receivedBusinessPhoneID: "",
 	}, nil
+}
+
+func (s *whatsappSender) refuseUnreachableRecipient(workspaceID string, target *whatsappSendTarget) error {
+	contacts, err := s.recipientLeads(workspaceID, target)
+	if err != nil {
+		return err
+	}
+	for _, contact := range contacts {
+		if reason := campaign.LeadRefusal(campaign.LeadFactsOf(contact)); reason != "" {
+			return fmt.Errorf("%w: lead %s (%s)", errTemplateRecipientRefused, contact.ID, reason)
+		}
+	}
+	return nil
+}
+
+func (s *whatsappSender) recipientLeads(workspaceID string, target *whatsappSendTarget) ([]*lead_domain.Lead, error) {
+	if target.contact != nil {
+		return []*lead_domain.Lead{target.contact}, nil
+	}
+	if s.deps.LeadRepo == nil {
+		return nil, fmt.Errorf("%w: the lead cannot be checked", errTemplateRecipientRefused)
+	}
+	var contacts []*lead_domain.Lead
+	if target.leadID != "" {
+		named, err := s.deps.LeadRepo.FindByID(workspaceID, target.leadID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: lead %s could not be read: %w", errTemplateRecipientRefused, target.leadID, err)
+		}
+		if named == nil {
+			return nil, fmt.Errorf("%w: lead %s is not in this workspace", errTemplateRecipientRefused, target.leadID)
+		}
+		if lead_domain.SameNumber(named.Number, target.leadNumber) {
+			return []*lead_domain.Lead{named}, nil
+		}
+		contacts = append(contacts, named)
+	}
+	holder, err := s.deps.LeadRepo.FindByNumber(workspaceID, target.leadNumber)
+	if errors.Is(err, lead_domain.ErrLeadNotFound) {
+		return contacts, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: the lead of this number could not be read: %w", errTemplateRecipientRefused, err)
+	}
+	if holder != nil {
+		contacts = append(contacts, holder)
+	}
+	return contacts, nil
 }
 
 func (s *whatsappSender) resolveTemplatePhone(workspaceID, preferredBusinessPhoneID string, target *whatsappSendTarget, templateWABAID string) (string, error) {
@@ -760,6 +815,7 @@ func (s *whatsappSender) resolveTarget(entryID, fallbackWorkspaceID string) (*wh
 		leadNumber:              strings.TrimSpace(leadRecord.Number),
 		campaignBusinessPhoneID: campaignBusinessPhoneID,
 		receivedBusinessPhoneID: strings.TrimSpace(entry.ReceivedBusinessPhoneID),
+		contact:                 leadRecord,
 	}, nil
 }
 
@@ -814,8 +870,11 @@ func (s *whatsappSender) resolveBusinessPhoneNumber(businessPhoneID string) stri
 }
 
 func (s *whatsappSender) ensureWorkspaceOwnsPhone(workspaceID, businessPhoneID string) error {
-	if s.deps.BusinessPhoneRepo == nil || workspaceID == "" || businessPhoneID == "" {
-		return nil
+	if s.deps.BusinessPhoneRepo == nil {
+		return fmt.Errorf("workflow whatsapp sender: phone %s cannot be verified, the phone directory is not configured", businessPhoneID)
+	}
+	if strings.TrimSpace(workspaceID) == "" || strings.TrimSpace(businessPhoneID) == "" {
+		return fmt.Errorf("workflow whatsapp sender: phone %q cannot be verified without a workspace", businessPhoneID)
 	}
 	phone, err := s.deps.BusinessPhoneRepo.FindByID(businessPhoneID)
 	if err != nil {

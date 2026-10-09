@@ -7,7 +7,9 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/label"
+	"vozko/domain/selection"
 	"vozko/domain/stage"
+	"vozko/domain/workspace"
 )
 
 type mockStageAssigner struct {
@@ -69,10 +71,11 @@ func (m *mockEntryAssigner) Reassign(entryID, entryType, businessPhoneID, worksp
 }
 
 type mockAuthorizer struct {
-	allowPerm  map[string]bool
-	denyEntry  map[string]bool
-	permCalls  []string
-	entryCalls []string
+	allowPerm   map[string]bool
+	denyEntry   map[string]bool
+	permCalls   []string
+	entryCalls  []string
+	actorScopes int
 }
 
 func (m *mockAuthorizer) HasWorkspacePermission(userID, workspaceID, resource, action string, isSystemAdmin bool) bool {
@@ -83,12 +86,22 @@ func (m *mockAuthorizer) HasWorkspacePermission(userID, workspaceID, resource, a
 	return m.allowPerm[resource+":"+action]
 }
 
-func (m *mockAuthorizer) CanAccessEntry(userID, workspaceID, entryID, entryType string, isAdmin bool) bool {
-	m.entryCalls = append(m.entryCalls, entryID)
-	if isAdmin {
+type mockEntryAccess struct {
+	authz   *mockAuthorizer
+	isAdmin bool
+}
+
+func (m *mockAuthorizer) EntryAccessFor(_, _ string, isAdmin bool) conversation.EntryAccess {
+	m.actorScopes++
+	return mockEntryAccess{authz: m, isAdmin: isAdmin}
+}
+
+func (a mockEntryAccess) CanAccess(entryID, _ string) bool {
+	a.authz.entryCalls = append(a.authz.entryCalls, entryID)
+	if a.isAdmin {
 		return true
 	}
-	return !m.denyEntry[entryID]
+	return !a.authz.denyEntry[entryID]
 }
 
 func allowAll() *mockAuthorizer {
@@ -121,14 +134,40 @@ func targets(ids ...string) []EntryRef {
 	return out
 }
 
+var byIDs = selection.Selection{Mode: selection.ModeIDs}
+
+type outcome struct {
+	BulkResult
+	err       error
+	Forbidden bool
+}
+
+func run(svc *Service, in BulkInput) outcome {
+	res, err := svc.BulkApply(context.Background(), in)
+	return outcome{BulkResult: res, err: err, Forbidden: errors.Is(err, ErrForbidden)}
+}
+
+func TestActionRequirements_CoverEveryActionWithAKnownPermission(t *testing.T) {
+	for _, action := range []string{ActionMoveStage, ActionMoveFunnel, ActionAssign, ActionAddLabel, ActionRemoveLabel} {
+		required, ok := actionRequirements[action]
+		if !ok {
+			t.Errorf("%q has no requirement", action)
+			continue
+		}
+		if !workspace.ValidActionForResource(required.Resource, required.Action) {
+			t.Errorf("%q requires %s:%s, which is not a registered permission", action, required.Resource, required.Action)
+		}
+	}
+}
+
 func TestBulkApply_MoveStage_FansOutAndBroadcastsStage(t *testing.T) {
 	sa := &mockStageAssigner{}
 	bc := &mockBroadcaster{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), bc)
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws-1", ActorID: "actor-1", Action: ActionMoveStage,
-		Value: "stage-9", Targets: targets("e1", "e2", "e3"),
+		Value: "stage-9", Selection: byIDs, Targets: targets("e1", "e2", "e3"),
 	})
 
 	if res.Succeeded != 3 || len(res.Failed) != 0 || res.Forbidden {
@@ -152,9 +191,9 @@ func TestBulkApply_Assign_ForwardsUserAndLeavesTheAnnouncementToTheAssigner(t *t
 	bc := &mockBroadcaster{}
 	svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{}, ea, allowAll(), bc)
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws-7", ActorID: "a", Action: ActionAssign, Value: "user-42",
-		Targets: targets("e1", "e2"),
+		Selection: byIDs, Targets: targets("e1", "e2"),
 	})
 
 	if res.Succeeded != 2 || len(res.Failed) != 0 {
@@ -172,14 +211,14 @@ func TestBulkApply_Labels_RouteAndBroadcast(t *testing.T) {
 	la, lr, bc := &mockLabelAssigner{}, &mockLabelRemover{}, &mockBroadcaster{}
 	svc := NewService(&mockStageAssigner{}, la, lr, &mockEntryAssigner{}, allowAll(), bc)
 
-	add := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionAddLabel, Value: "lbl-1", Targets: targets("e1"),
+	add := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionAddLabel, Value: "lbl-1", Selection: byIDs, Targets: targets("e1"),
 	})
 	if add.Succeeded != 1 || len(la.calls) != 1 || la.calls[0].LabelID != "lbl-1" {
 		t.Fatalf("add_label routing wrong: %+v %+v", add, la.calls)
 	}
-	rem := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionRemoveLabel, Value: "lbl-2", Targets: targets("e2"),
+	rem := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionRemoveLabel, Value: "lbl-2", Selection: byIDs, Targets: targets("e2"),
 	})
 	if rem.Succeeded != 1 || len(lr.calls) != 1 || lr.calls[0].labelID != "lbl-2" {
 		t.Fatalf("remove_label routing wrong: %+v %+v", rem, lr.calls)
@@ -194,8 +233,8 @@ func TestBulkApply_RBAC_DeniedAction_TouchesNothing(t *testing.T) {
 	sa, bc := &mockStageAssigner{}, &mockBroadcaster{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, authz, bc)
 
-	res := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Targets: targets("e1", "e2"),
+	res := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Selection: byIDs, Targets: targets("e1", "e2"),
 	})
 
 	if !res.Forbidden || res.Succeeded != 0 || len(res.Failed) != 0 {
@@ -234,14 +273,14 @@ func TestBulkApply_ScopeGate_RejectsOutOfScopeEntries(t *testing.T) {
 	sa, bc := &mockStageAssigner{}, &mockBroadcaster{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, authz, bc)
 
-	res := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Targets: targets("e1", "e2", "e3"),
+	res := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Selection: byIDs, Targets: targets("e1", "e2", "e3"),
 	})
 
 	if res.Succeeded != 2 || len(res.Failed) != 1 {
 		t.Fatalf("expected 2 ok / 1 forbidden, got %+v", res)
 	}
-	if res.Failed[0].EntryID != "e2" || res.Failed[0].Error != ErrForbiddenEntry.Error() {
+	if res.Failed[0].ID != "e2" || res.Failed[0].Error != ErrForbiddenEntry.Error() {
 		t.Errorf("out-of-scope target not reported correctly: %+v", res.Failed[0])
 	}
 	for _, c := range sa.calls {
@@ -261,9 +300,9 @@ func TestBulkApply_Admin_BypassesPermissionAndScope(t *testing.T) {
 	sa := &mockStageAssigner{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, authz, &mockBroadcaster{})
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws-1", ActorID: "admin", IsAdmin: true, Action: ActionMoveStage,
-		Value: "s", Targets: targets("e1", "e2"),
+		Value: "s", Selection: byIDs, Targets: targets("e1", "e2"),
 	})
 
 	if res.Forbidden || res.Succeeded != 2 || len(res.Failed) != 0 {
@@ -280,11 +319,11 @@ func TestBulkApply_MutationFailure_NoBroadcastForThatTarget(t *testing.T) {
 	bc := &mockBroadcaster{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), bc)
 
-	res := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Targets: targets("e1", "e2", "e3"),
+	res := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Selection: byIDs, Targets: targets("e1", "e2", "e3"),
 	})
 
-	if res.Succeeded != 2 || len(res.Failed) != 1 || res.Failed[0].EntryID != "e2" {
+	if res.Succeeded != 2 || len(res.Failed) != 1 || res.Failed[0].ID != "e2" {
 		t.Fatalf("expected e2 failed, rest ok: %+v", res)
 	}
 	if len(sa.calls) != 3 {
@@ -300,16 +339,16 @@ func TestBulkApply_MutationFailure_NoBroadcastForThatTarget(t *testing.T) {
 	}
 }
 
-func TestBulkApply_UnknownAction_IsForbiddenAndTouchesNothing(t *testing.T) {
+func TestBulkApply_UnknownAction_IsRefusedAndTouchesNothing(t *testing.T) {
 	sa, la, lr, ea := &mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}
 	svc := NewService(sa, la, lr, ea, allowAll(), &mockBroadcaster{})
 
-	res := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: "detonate", Value: "x", Targets: targets("e1", "e2"),
+	res := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: "detonate", Value: "x", Selection: byIDs, Targets: targets("e1", "e2"),
 	})
 
-	if !res.Forbidden || res.Succeeded != 0 {
-		t.Fatalf("unknown action must be Forbidden, got %+v", res)
+	if !errors.Is(res.err, ErrUnknownAction) || res.Succeeded != 0 {
+		t.Fatalf("unknown action must be refused, got %+v", res)
 	}
 	if len(sa.calls)+len(la.calls)+len(lr.calls)+len(ea.calls) != 0 {
 		t.Error("unknown action must not touch any single-entry port")
@@ -320,8 +359,8 @@ func TestBulkApply_NilAuthorizer_FailsClosed(t *testing.T) {
 	sa := &mockStageAssigner{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, nil, &mockBroadcaster{})
 
-	res := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Targets: targets("e1"),
+	res := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Selection: byIDs, Targets: targets("e1"),
 	})
 
 	if !res.Forbidden || len(sa.calls) != 0 {
@@ -329,11 +368,24 @@ func TestBulkApply_NilAuthorizer_FailsClosed(t *testing.T) {
 	}
 }
 
-func TestBulkApply_NoTargets_IsNoOp(t *testing.T) {
-	svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
-	res := svc.BulkApply(context.Background(), BulkInput{WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s"})
-	if res.Forbidden || res.Succeeded != 0 || len(res.Failed) != 0 {
-		t.Fatalf("expected empty non-forbidden result, got %+v", res)
+func TestBulkApply_EmptyOrMissingSelection_IsRefused(t *testing.T) {
+	cases := []struct {
+		name string
+		in   BulkInput
+		want error
+	}{
+		{"no mode at all", BulkInput{WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s"}, selection.ErrUnknownMode},
+		{"ids mode without picks", BulkInput{WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Selection: byIDs}, selection.ErrEmptySelection},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sa := &mockStageAssigner{}
+			svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
+			res := run(svc, tc.in)
+			if !errors.Is(res.err, tc.want) || res.Succeeded != 0 || len(sa.calls) != 0 {
+				t.Fatalf("want %v with nothing touched, got %+v", tc.want, res)
+			}
+		})
 	}
 }
 
@@ -348,8 +400,8 @@ func TestApplyOne_UnknownAction_FailSafe(t *testing.T) {
 func TestBulkApply_NilBroadcaster_StillSucceeds(t *testing.T) {
 	sa := &mockStageAssigner{}
 	svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), nil)
-	res := svc.BulkApply(context.Background(), BulkInput{
-		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Targets: targets("e1"),
+	res := run(svc, BulkInput{
+		WorkspaceID: "ws-1", ActorID: "a", Action: ActionMoveStage, Value: "s", Selection: byIDs, Targets: targets("e1"),
 	})
 	if res.Succeeded != 1 || len(sa.calls) != 1 {
 		t.Fatalf("mutation must succeed even without a broadcaster, got %+v", res)
@@ -362,9 +414,9 @@ func TestBulkApply_PassesTheActorToEveryUseCase(t *testing.T) {
 	t.Run("move_stage", func(t *testing.T) {
 		sa := &mockStageAssigner{}
 		svc := NewService(sa, &mockLabelAssigner{}, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
-		svc.BulkApply(context.Background(), BulkInput{
+		run(svc, BulkInput{
 			WorkspaceID: "ws-1", ActorID: actorID, Action: ActionMoveStage,
-			Targets: targets("e1", "e2"), Value: "stage-1",
+			Selection: byIDs, Targets: targets("e1", "e2"), Value: "stage-1",
 		})
 		if len(sa.calls) != 2 {
 			t.Fatalf("calls = %d, want 2", len(sa.calls))
@@ -379,9 +431,9 @@ func TestBulkApply_PassesTheActorToEveryUseCase(t *testing.T) {
 	t.Run("add_label", func(t *testing.T) {
 		la := &mockLabelAssigner{}
 		svc := NewService(&mockStageAssigner{}, la, &mockLabelRemover{}, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
-		svc.BulkApply(context.Background(), BulkInput{
+		run(svc, BulkInput{
 			WorkspaceID: "ws-1", ActorID: actorID, Action: ActionAddLabel,
-			Targets: targets("e1"), Value: "label-1",
+			Selection: byIDs, Targets: targets("e1"), Value: "label-1",
 		})
 		if len(la.calls) != 1 || la.calls[0].ActorID != actorID {
 			t.Fatalf("calls = %+v, want one carrying %q", la.calls, actorID)
@@ -391,9 +443,9 @@ func TestBulkApply_PassesTheActorToEveryUseCase(t *testing.T) {
 	t.Run("remove_label", func(t *testing.T) {
 		lr := &mockLabelRemover{}
 		svc := NewService(&mockStageAssigner{}, &mockLabelAssigner{}, lr, &mockEntryAssigner{}, allowAll(), &mockBroadcaster{})
-		svc.BulkApply(context.Background(), BulkInput{
+		run(svc, BulkInput{
 			WorkspaceID: "ws-1", ActorID: actorID, Action: ActionRemoveLabel,
-			Targets: targets("e1"), Value: "label-1",
+			Selection: byIDs, Targets: targets("e1"), Value: "label-1",
 		})
 		if len(lr.actorIDs) != 1 || lr.actorIDs[0] != actorID {
 			t.Fatalf("actorIDs = %v, want [%q]", lr.actorIDs, actorID)

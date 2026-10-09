@@ -47,10 +47,13 @@ func (c *Container) initTelegram() {
 		log.Fatalf("[telegram] %v", err)
 	}
 
-	api := tginfra.NewThrottled(
+	api, err := tginfra.NewThrottled(
 		tginfra.NewClient(tginfra.Config{BaseURL: c.cfg.TelegramBotAPIBaseURL}),
 		c.redisProvider.RateLimiterFactory(),
 	)
+	if err != nil {
+		log.Fatalf("[telegram] %v", err)
+	}
 	bundle.API = api
 
 	bundle.Accounts = telegram_repository.NewAccountRepository(c.db)

@@ -72,8 +72,8 @@ func TestService_ABudgetEndsWithAnAnswerFromWhatWasFound(t *testing.T) {
 	if prov.idx != 2 || len(ev.byType["error"]) != 0 || ms.last().Content != "fim" {
 		t.Fatalf("model calls = %d errors = %v reply = %q, want a grace answer after the budget", prov.idx, ev.byType["error"], ms.last().Content)
 	}
-	if grace := prov.inputs[1]; len(grace.Tools) != 0 {
-		t.Fatal("the grace call must not offer tools")
+	if grace := prov.inputs[1]; grace.ToolChoice != "none" || len(grace.Tools) != len(prov.inputs[0].Tools) {
+		t.Fatal("the grace call keeps the same tools for the cache but must not call them")
 	}
 }
 

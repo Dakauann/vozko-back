@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"vozko/domain/address"
 )
 
 type Provider string
@@ -103,36 +105,38 @@ type GatewayCapabilities struct {
 	BoletoRequiresAddress bool
 }
 
-func (a *GatewayAddress) Complete() bool {
+var billingAddressLabels = map[address.Field]string{
+	address.FieldZipCode:  "CEP",
+	address.FieldStreet:   "logradouro",
+	address.FieldNumber:   "número",
+	address.FieldDistrict: "bairro",
+	address.FieldCity:     "cidade",
+	address.FieldState:    "estado",
+}
+
+func (a *GatewayAddress) Postal() address.Postal {
 	if a == nil {
-		return false
+		return address.Postal{}
 	}
-	for _, field := range []string{a.ZipCode, a.StreetName, a.StreetNumber, a.Neighborhood, a.City, a.FederalUnit} {
-		if strings.TrimSpace(field) == "" {
-			return false
-		}
+	return address.Postal{
+		ZipCode:  a.ZipCode,
+		Street:   a.StreetName,
+		Number:   a.StreetNumber,
+		District: a.Neighborhood,
+		City:     a.City,
+		State:    a.FederalUnit,
 	}
-	return true
+}
+
+func (a *GatewayAddress) Complete() bool {
+	return a != nil && len(a.Postal().Missing()) == 0
 }
 
 func MissingAddressFields(a *GatewayAddress) []string {
-	fields := []struct {
-		name  string
-		value string
-	}{
-		{"CEP", ""}, {"logradouro", ""}, {"número", ""},
-		{"bairro", ""}, {"cidade", ""}, {"estado", ""},
-	}
-	if a != nil {
-		fields[0].value, fields[1].value, fields[2].value = a.ZipCode, a.StreetName, a.StreetNumber
-		fields[3].value, fields[4].value, fields[5].value = a.Neighborhood, a.City, a.FederalUnit
-	}
-
+	fields := a.Postal().Missing()
 	missing := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if strings.TrimSpace(f.value) == "" {
-			missing = append(missing, f.name)
-		}
+	for _, field := range fields {
+		missing = append(missing, billingAddressLabels[field])
 	}
 	return missing
 }

@@ -95,14 +95,16 @@ var (
 )
 
 type Job struct {
-	ID          string          `json:"id"`
-	WorkspaceID string          `json:"workspaceId"`
-	RequestedBy string          `json:"requestedBy,omitempty"`
-	Kind        Kind            `json:"kind"`
-	Format      Format          `json:"format"`
-	Locale      string          `json:"locale,omitempty"`
-	Params      json.RawMessage `json:"params,omitempty" swaggertype:"object"`
-	Fingerprint string          `json:"-"`
+	ID               string          `json:"id"`
+	WorkspaceID      string          `json:"workspaceId"`
+	RequestedBy      string          `json:"requestedBy,omitempty"`
+	RequestedByAdmin bool            `json:"-"`
+	Kind             Kind            `json:"kind"`
+	Format           Format          `json:"format"`
+	Locale           string          `json:"locale,omitempty"`
+	Params           json.RawMessage `json:"params,omitempty" swaggertype:"object"`
+	Fingerprint      string          `json:"-"`
+	Readers          []string        `json:"-"`
 
 	Status      Status      `json:"status"`
 	Progress    int         `json:"progress"`
@@ -190,6 +192,8 @@ type Renderer interface {
 
 type ListQuery struct {
 	WorkspaceID string
+	Viewer      string
+	ViewerHolds []string
 	Kinds       []Kind
 	Statuses    []Status
 	RequestedBy string
@@ -206,6 +210,7 @@ const (
 
 func (q *ListQuery) Normalize() {
 	q.WorkspaceID = strings.TrimSpace(q.WorkspaceID)
+	q.Viewer = strings.TrimSpace(q.Viewer)
 	q.RequestedBy = strings.TrimSpace(q.RequestedBy)
 	if q.Limit <= 0 {
 		q.Limit = DefaultListLimit
@@ -228,6 +233,7 @@ type Repository interface {
 	GetByID(workspaceID, id string) (*Job, error)
 	FindReusable(workspaceID, fingerprint string, since time.Time) (*Job, error)
 	List(query ListQuery) (ListPage, error)
+	ReaderKeys(workspaceID string) ([]string, error)
 	MarkRunning(id string, at time.Time) error
 	MarkDone(id string, objectKey, filename string, size, rows int64, at time.Time, expiresAt *time.Time) error
 	MarkFailed(id string, failureCode FailureCode, at time.Time) error

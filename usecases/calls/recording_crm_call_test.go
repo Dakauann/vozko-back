@@ -95,7 +95,7 @@ func TestRecordingCRMCall_RecordsBothDirectionsAndUploads(t *testing.T) {
 	defer pool.Shutdown()
 
 	inner := newFakeCRMCall("wa-call-123")
-	rec := NewRecordingCRMCall(inner, pool, "ws-1", "entry-1", "lead-1")
+	rec := NewRecordingCRMCall(inner, pool, "ws-1", "lead-1")
 	if rec == nil {
 		t.Fatal("expected decorator, got nil")
 	}
@@ -160,7 +160,7 @@ drain:
 
 func TestRecordingCRMCall_NilWhenNoPool(t *testing.T) {
 	inner := newFakeCRMCall("wa-call-x")
-	if rec := NewRecordingCRMCall(inner, nil, "ws", "", ""); rec != nil {
+	if rec := NewRecordingCRMCall(inner, nil, "ws", ""); rec != nil {
 		t.Fatal("expected nil decorator when pool is nil")
 	}
 }

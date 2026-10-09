@@ -25,19 +25,25 @@ const (
 	ShapeArrow    ShapeKind = "arrow"
 	ShapeTriangle ShapeKind = "triangle"
 	ShapeStar     ShapeKind = "star"
+	ShapePath     ShapeKind = "path"
 )
 
 const (
 	MaxTextRunes  = 2000
 	maxTokenRunes = 64
+	MinStarPoints = 3
+	MaxStarPoints = 64
+	MinStarInner  = 0.05
+	MaxStarInner  = 1.0
 )
 
 var (
 	colorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`)
 	tokenPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
-	shapes       = map[ShapeKind]bool{ShapeRect: true, ShapeEllipse: true, ShapeLine: true, ShapeArrow: true, ShapeTriangle: true, ShapeStar: true}
+	shapes       = map[ShapeKind]bool{ShapeRect: true, ShapeEllipse: true, ShapeLine: true, ShapeArrow: true, ShapeTriangle: true, ShapeStar: true, ShapePath: true}
 	aligns       = map[string]bool{"": true, "left": true, "center": true, "right": true}
 	frames       = map[ShapeKind]bool{"": true, ShapeEllipse: true, ShapeTriangle: true, ShapeStar: true}
+	gradients    = map[string]bool{"": true, GradientLinear: true, GradientRadial: true}
 	blendModes   = map[string]bool{
 		"": true, "normal": true, "multiply": true, "screen": true, "overlay": true, "darken": true, "lighten": true,
 		"color-dodge": true, "color-burn": true, "hard-light": true, "soft-light": true, "difference": true, "exclusion": true,
@@ -45,14 +51,59 @@ var (
 	}
 )
 
+const (
+	GradientLinear = "linear"
+	GradientRadial = "radial"
+	FillNonZero    = "nonzero"
+	FillEvenOdd    = "evenodd"
+)
+
+var fillRules = map[string]bool{"": true, FillNonZero: true, FillEvenOdd: true}
+
+const (
+	CapButt       = "butt"
+	CapRound      = "round"
+	CapSquare     = "square"
+	JoinMiter     = "miter"
+	JoinRound     = "round"
+	JoinBevel     = "bevel"
+	MinMiterLimit = 1.0
+	MaxMiterLimit = 20.0
+	MaxDashValue  = 100.0
+	MaxDashValues = 8
+	MaxDashOffset = 1000.0
+)
+
+var (
+	lineCaps  = map[string]bool{"": true, CapButt: true, CapRound: true, CapSquare: true}
+	lineJoins = map[string]bool{"": true, JoinMiter: true, JoinRound: true, JoinBevel: true}
+)
+
 type Gradient struct {
-	From  string  `json:"from"`
-	To    string  `json:"to"`
-	Angle float64 `json:"angle"`
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Angle  float64 `json:"angle"`
+	Kind   string  `json:"kind,omitempty"`
+	Via    string  `json:"via,omitempty"`
+	CX     float64 `json:"cx,omitempty"`
+	CY     float64 `json:"cy,omitempty"`
+	Radius float64 `json:"radius,omitempty"`
 }
 
 func (g *Gradient) valid() bool {
-	return g == nil || (validColor(g.From, true) && validColor(g.To, true) && within(g.Angle, -360, 360))
+	if g == nil {
+		return true
+	}
+	if !gradients[g.Kind] || !validColor(g.From, true) || !validColor(g.To, true) || !validColor(g.Via, false) {
+		return false
+	}
+	if !within(g.Angle, -360, 360) || !within(g.CX, 0, 1) || !within(g.CY, 0, 1) {
+		return false
+	}
+	if g.Kind == GradientRadial {
+		return within(g.Radius, 0.05, 2)
+	}
+	return within(g.Radius, 0, 2)
 }
 
 type Highlight struct {
@@ -127,6 +178,15 @@ type Layer struct {
 	Highlight   *Highlight `json:"highlight,omitempty"`
 	Curve       float64    `json:"curve,omitempty"`
 	Frame       ShapeKind  `json:"frame,omitempty"`
+	Path        string     `json:"path,omitempty"`
+	FillRule    string     `json:"fillRule,omitempty"`
+	LineCap     string     `json:"lineCap,omitempty"`
+	LineJoin    string     `json:"lineJoin,omitempty"`
+	MiterLimit  float64    `json:"miterLimit,omitempty"`
+	DashArray   []float64  `json:"dashArray,omitempty"`
+	DashOffset  float64    `json:"dashOffset,omitempty"`
+	Points      int        `json:"points,omitempty"`
+	Inner       float64    `json:"inner,omitempty"`
 }
 
 func finite(values ...float64) bool {
@@ -176,8 +236,14 @@ func (l Layer) issue() string {
 	if l.Shadow != nil && (!validColor(l.Shadow.Color, true) || !within(l.Shadow.Blur, 0, 200) || !within(l.Shadow.X, -500, 500) || !within(l.Shadow.Y, -500, 500)) {
 		return CodeInvalid
 	}
-	if !blendModes[l.BlendMode] || !frames[l.Frame] {
+	if !blendModes[l.BlendMode] || !frames[l.Frame] || !fillRules[l.FillRule] {
 		return CodeUnknown
+	}
+	if l.FillRule != "" && (l.Type != LayerShape || l.Shape != ShapePath) {
+		return CodeInvalid
+	}
+	if code := l.strokeIssue(); code != "" {
+		return code
 	}
 	if !l.Gradient.valid() || (l.Highlight != nil && (!validColor(l.Highlight.Color, true) || !within(l.Highlight.Radius, 0, 1))) {
 		return CodeInvalid
@@ -191,10 +257,7 @@ func (l Layer) issue() string {
 	case LayerText:
 		return l.textIssue()
 	case LayerShape:
-		if !shapes[l.Shape] {
-			return CodeUnknown
-		}
-		return ""
+		return l.shapeIssue()
 	case LayerIcon:
 		if !validToken(l.IconID) {
 			return CodeInvalid
@@ -202,6 +265,54 @@ func (l Layer) issue() string {
 		return ""
 	}
 	return CodeUnknown
+}
+
+func (l Layer) strokeIssue() string {
+	if !lineCaps[l.LineCap] || !lineJoins[l.LineJoin] {
+		return CodeUnknown
+	}
+	styled := l.LineCap != "" || l.LineJoin != "" || l.MiterLimit != 0 || len(l.DashArray) > 0 || l.DashOffset != 0
+	if styled && l.Type == LayerIcon {
+		return CodeInvalid
+	}
+	if l.MiterLimit != 0 && !within(l.MiterLimit, MinMiterLimit, MaxMiterLimit) {
+		return CodeOutOfRange
+	}
+	if len(l.DashArray) > MaxDashValues {
+		return CodeInvalid
+	}
+	visible := false
+	for _, v := range l.DashArray {
+		if !within(v, 0, MaxDashValue) {
+			return CodeInvalid
+		}
+		if v > 0 {
+			visible = true
+		}
+	}
+	if len(l.DashArray) > 0 && !visible {
+		return CodeInvalid
+	}
+	if !within(l.DashOffset, -MaxDashOffset, MaxDashOffset) {
+		return CodeOutOfRange
+	}
+	return ""
+}
+
+func (l Layer) shapeIssue() string {
+	switch {
+	case !shapes[l.Shape]:
+		return CodeUnknown
+	case (l.Shape == ShapePath) != (l.Path != ""), l.Path != "" && !ValidPath(l.Path):
+		return CodeInvalid
+	case l.Shape != ShapeStar && (l.Points != 0 || l.Inner != 0):
+		return CodeInvalid
+	case l.Points != 0 && (l.Points < MinStarPoints || l.Points > MaxStarPoints):
+		return CodeOutOfRange
+	case l.Inner != 0 && !within(l.Inner, MinStarInner, MaxStarInner):
+		return CodeOutOfRange
+	}
+	return ""
 }
 
 func (l Layer) imageIssue() string {

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"vozko/domain/crmfilter"
 )
 
 type fakeState struct {
@@ -121,6 +123,25 @@ func TestAggregateKeyVariesWithTheFilter(t *testing.T) {
 	different := c.key("count", "ws-1", testQuery("leads.name ILIKE ?", true))
 	if base == different {
 		t.Fatal("filters differing in SQL share a cache key")
+	}
+}
+
+func TestAggregateKeyVariesWithTheEditTimeOfEveryBoundArea(t *testing.T) {
+	c := newAggregateCache(newFakeState())
+	drawn := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	at := func(edited time.Time) *listQuery {
+		q := testQuery("leads.id IN (area)", "area-1")
+		q.areaBounds = []crmfilter.AreaBounds{{ID: "area-1", South: -23.6, West: -46.7, North: -23.5, East: -46.6, UpdatedAt: edited}}
+		return q
+	}
+	if c.key("count", "ws-1", at(drawn)) != c.key("count", "ws-1", at(drawn)) {
+		t.Fatal("the same area at the same edit produced two keys")
+	}
+	if c.key("count", "ws-1", at(drawn)) == c.key("count", "ws-1", at(drawn.Add(time.Microsecond))) {
+		t.Fatal("an area reshaped inside the same bounds kept the cached aggregate")
+	}
+	if c.key("count", "ws-1", at(drawn)) == c.key("count", "ws-1", testQuery("leads.id IN (area)", "area-1")) {
+		t.Fatal("a bound area must reach the key")
 	}
 }
 

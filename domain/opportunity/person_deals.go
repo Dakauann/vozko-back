@@ -2,6 +2,7 @@ package opportunity
 
 import (
 	"errors"
+	"time"
 
 	"vozko/domain/shared"
 )
@@ -12,14 +13,19 @@ var (
 )
 
 type DealDraft struct {
-	PipelineID string
-	StageID    string
-	Title      string
-	ValueCents int64
-	Currency   string
-	LeadID     string
-	EntryID    string
-	EntryType  string
+	PipelineID   string
+	StageID      string
+	Title        string
+	ValueCents   int64
+	Currency     string
+	LeadID       string
+	EntryID      string
+	EntryType    string
+	OwnerID      string
+	CarteiraID   string
+	Source       string
+	CloseDate    *time.Time
+	CustomFields map[string]any
 }
 
 type DealScope struct {

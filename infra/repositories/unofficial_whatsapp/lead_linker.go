@@ -31,7 +31,7 @@ func (l *leadLinker) EnsureLeadForPhone(_ context.Context, workspaceID, phone, n
 		return existing.ID, nil
 	}
 
-	record, _, err := l.repo.FindOrCreate(workspaceID, normalized, lead_domain.LeadUpdate{Name: name})
+	record, _, err := l.repo.FindOrCreate(workspaceID, normalized, lead_domain.LeadUpdate{Source: lead_domain.SourceChannel, Name: name})
 	if err != nil || record == nil {
 		return "", err
 	}

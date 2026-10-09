@@ -84,6 +84,13 @@ func (w *Worker) process(payload report.QueueMessage) error {
 		return nil
 	}
 
+	policy, err := report.PolicyOf(renderer, *job)
+	if err != nil || !policy.Allows(w.service.holdsFor(job.WorkspaceID, job.RequestedBy, job.RequestedByAdmin)) {
+		w.service.logf("job %s is not rendered: its requester no longer holds the permissions it needs (%v)", job.ID, err)
+		_ = w.service.repo.MarkFailed(job.ID, report.FailureForbidden, w.service.now())
+		return nil
+	}
+
 	if err := w.service.repo.MarkRunning(job.ID, w.service.now()); err != nil {
 		if errors.Is(err, report.ErrNotFound) {
 			return nil

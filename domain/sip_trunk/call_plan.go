@@ -35,3 +35,7 @@ func (p CallPlan) Chosen() (TrunkChoice, bool) {
 type CallPlanner interface {
 	Plan(ctx context.Context, input CallPlanInput) (*CallPlan, error)
 }
+
+type CallLines interface {
+	Lines(ctx context.Context, input CallPlanInput) ([]TrunkChoice, error)
+}

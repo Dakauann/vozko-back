@@ -9,6 +9,7 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	leadmemory "vozko/domain/lead_memory"
+	"vozko/domain/rag"
 	"vozko/domain/shared"
 	"vozko/domain/tools"
 	"vozko/usecases/agentctx"
@@ -157,8 +158,11 @@ func TestSimulateAssemblesTheProductionTurn(t *testing.T) {
 	if !strings.Contains(in.SystemPrompt, "Prefere boleto.") {
 		t.Fatalf("lead memories missing: %q", in.SystemPrompt)
 	}
-	if len(in.Messages) != 3 || in.Messages[2].Content != "quanto custa?" || in.Messages[2].Role != ai.RoleUser {
+	if len(in.Messages) != 4 || in.Messages[2].Content != "quanto custa?" || in.Messages[2].Role != ai.RoleUser {
 		t.Fatalf("messages = %+v", in.Messages)
+	}
+	if in.Messages[3].Content != ai.ContextNote().Content || in.VolatileTail != 1 {
+		t.Fatalf("the turn must end with a volatile context note: %+v (tail %d)", in.Messages[3], in.VolatileTail)
 	}
 	if in.ToolExecutionMode != ai.ToolExecutionModeAuto {
 		t.Fatalf("execution mode = %q", in.ToolExecutionMode)
@@ -312,5 +316,63 @@ func TestSimulateSessionMemoriesCap(t *testing.T) {
 		WorkspaceID: "ws-1", AgentID: "agent-1", Message: "oi", SessionMemories: long,
 	}); !errors.Is(err, agent.ErrSimulationMemoriesTooLong) {
 		t.Fatalf("over cap = %v", err)
+	}
+}
+
+type simRAG struct{}
+
+func (simRAG) Query(context.Context, rag.QueryInput) (*rag.QueryOutput, error) {
+	return &rag.QueryOutput{Results: []rag.QueryResult{{DocumentName: "precos", Content: "TRECHO-DE-PRECO", Score: 0.9}}}, nil
+}
+
+func (simRAG) QueryForAgent(context.Context, rag.AgentQueryInput) (*rag.QueryOutput, error) {
+	return &rag.QueryOutput{Results: []rag.QueryResult{{DocumentName: "precos", Content: "TRECHO-DE-PRECO", Score: 0.9}}}, nil
+}
+
+func TestSimulateRoutesAndBillsUnderTheAgentsSimulationSession(t *testing.T) {
+	aiSvc := &simAI{output: simOutput()}
+	uc := newSimUC(t, simAgentRepo{agent: simAgent()}, aiSvc, nil)
+
+	if _, err := uc.Execute(context.Background(), agent.SimulateTurnInput{
+		WorkspaceID: "ws-1", AgentID: "agent-1", Message: "oi",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if aiSvc.lastInput.SessionID != "agent_simulation:agent-1" {
+		t.Errorf("SessionID = %q", aiSvc.lastInput.SessionID)
+	}
+	if aiSvc.lastInput.BillingReference != "agent_simulation:agent-1" {
+		t.Errorf("BillingReference = %q", aiSvc.lastInput.BillingReference)
+	}
+}
+
+func TestSimulateReportsGroundingCarriedByTheContextNote(t *testing.T) {
+	aiSvc := &simAI{output: simOutput()}
+	grounded := simAgent()
+	grounded.RAGEnabled = true
+	grounded.KnowledgeBaseIDs = []string{"kb-1"}
+	assembler := agentturn.New(simRegistry{defs: []tools.Definition{{Name: "manage_lead_memory"}}}, simRAG{}, nil)
+	uc, err := NewSimulateTurnUseCase(simAgentRepo{agent: grounded}, assembler, aiSvc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := uc.Execute(context.Background(), agent.SimulateTurnInput{
+		WorkspaceID: "ws-1", AgentID: "agent-1", Message: "quanto custa?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !out.Debug.RAGInjected {
+		t.Error("RAGInjected must reflect the grounding in the context note")
+	}
+	if strings.Contains(out.Debug.SystemPrompt, "TRECHO-DE-PRECO") {
+		t.Errorf("grounding leaked into the system prompt:\n%s", out.Debug.SystemPrompt)
+	}
+	messages := aiSvc.lastInput.Messages
+	if !strings.Contains(messages[len(messages)-1].Content, "TRECHO-DE-PRECO") {
+		t.Errorf("grounding missing from the context note: %+v", messages[len(messages)-1])
 	}
 }

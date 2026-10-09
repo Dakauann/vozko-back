@@ -1,6 +1,7 @@
 package container
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 
 	"vozko/domain/agent"
 	"vozko/domain/copilot"
+	"vozko/infra/copilotscreen"
 	"vozko/usecases/agentloop"
 	copilot_usecase "vozko/usecases/copilot"
 	copilottools "vozko/usecases/copilot/copilottools"
@@ -72,6 +74,9 @@ func (c *Container) buildCopilot(
 		func() string { return uuid.New().String() },
 	)
 	svc.SetAnswerCostCeiling(int64(c.cfg.CopilotAnswerCostLimitUSD * 1_000_000))
+	screens := copilotscreen.NewBroker(c.redisProvider.SharedState())
+	screens.Start(context.Background())
+	svc.SetScreenMailbox(screens)
 	return svc
 }
 
@@ -103,6 +108,7 @@ func (c *Container) operationTools() []copilot.Tool {
 			copilottools.NewGenerateVoiceoverTool(c.mediaGeneration().Service),
 			copilottools.NewRenderVideoTool(c.mediaGeneration().Service),
 		},
+		c.studioTools(),
 		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
 			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
@@ -355,6 +361,7 @@ func (c *Container) conversationActionTools() []copilot.Tool {
 		Send:      c.services.personTemplateSend,
 		Templates: c.useCases.workspaceTemplates,
 		Costs:     c.useCases.consumeWhatsappTemplate,
+		Balance:   c.services.cachedBalanceChecker,
 		Entries:   c.services.conversationEntryLookup,
 	}
 	return []copilot.Tool{
@@ -459,13 +466,32 @@ func (c *Container) conversationTools() []copilot.Tool {
 }
 
 func (c *Container) leadTools() []copilot.Tool {
-	deps := copilottools.LeadDeps{Leads: c.useCases.leadQueries, Memories: c.useCases.listLeadMemories}
+	deps := copilottools.LeadDeps{
+		Leads:       c.useCases.leadQueries,
+		Memories:    c.useCases.listLeadMemories,
+		Pages:       c.leadPages(),
+		Sections:    c.leadSections(),
+		Areas:       c.leadAreas(),
+		Definitions: c.repositories.customField,
+	}
 	memories := copilottools.LeadMemoryDeps{Leads: c.useCases.leadQueries, Create: c.useCases.createLeadMemory, Update: c.useCases.updateLeadMemory}
+	actions := copilottools.LeadActionDeps{
+		Leads:     deps,
+		Actions:   c.leadActions(),
+		Sends:     c.leadSends(),
+		Proposals: c.redisProvider.SharedState(),
+		Templates: c.useCases.workspaceTemplates,
+		Names:     c.actorNames(),
+	}
 	return []copilot.Tool{
 		copilottools.NewSearchLeadsTool(deps),
 		copilottools.NewGetLeadTool(deps),
+		copilottools.NewLeadGeoSummaryTool(deps),
 		copilottools.NewAddLeadMemoryTool(memories),
 		copilottools.NewUpdateLeadMemoryTool(memories),
+		copilottools.NewPrepareLeadActionTool(actions),
+		copilottools.NewStartLeadSendTool(actions),
+		copilottools.NewCancelLeadSendTool(actions),
 	}
 }
 

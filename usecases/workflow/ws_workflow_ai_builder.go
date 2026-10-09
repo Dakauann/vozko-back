@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"vozko/brand"
 	"vozko/domain/ai"
 	"vozko/domain/tools"
@@ -45,6 +47,16 @@ const (
 )
 
 var builderSessionSeq int64
+
+const workflowBuilderFeature = "workflow_builder"
+
+func builderCacheScope(workflowID string) string {
+	subject := workflowID
+	if subject == "" {
+		subject = uuid.NewString()
+	}
+	return workflowBuilderFeature + ":" + subject
+}
 
 var resourceKinds = []string{
 	"ai_models", "agents", "templates", "departments", "medias",
@@ -223,6 +235,7 @@ type builderState struct {
 	nextID         int
 	clientIDs      map[string]string
 	sessionID      int64
+	cacheScope     string
 	inspectedSpecs map[string]bool
 	searchCache    map[string]string
 }
@@ -389,6 +402,7 @@ func (uc *aiBuilderUC) initState(workflowID, workspaceID string) (*builderState,
 		inspectedSpecs: make(map[string]bool),
 		searchCache:    make(map[string]string),
 		sessionID:      atomic.AddInt64(&builderSessionSeq, 1),
+		cacheScope:     builderCacheScope(workflowID),
 		wfType:         workflow.WorkflowTypeMessages,
 	}
 	if workflowID == "" {
@@ -541,6 +555,8 @@ func (uc *aiBuilderUC) emitDone(ctx context.Context, emit agentloop.Emit, st *bu
 func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
 	return agentloop.Config{
 		WorkspaceID:        st.workspaceID,
+		BillingReference:   st.cacheScope,
+		SessionID:          st.cacheScope,
 		Temperature:        0,
 		MaxTokensPerGen:    builderMaxTokensPerGen,
 		ReasoningMaxTokens: builderReasoningMaxTokens,

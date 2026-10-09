@@ -37,13 +37,16 @@ func (r *aiRoleInferrer) InferRole(ctx context.Context, req ca.RoleInferRequest)
 		model = r.defaultModel
 	}
 
+	scope := workspaceScope(authorRoleFeature, req.WorkspaceID)
 	out, err := r.ai.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  req.WorkspaceID,
-		Model:        model,
-		SystemPrompt: buildRoleSystemPrompt(req.Instructions),
-		Messages:     []ai.Message{{Role: ai.RoleUser, Content: buildRoleUserMessage(req.Comments)}},
-		Temperature:  0,
-		MaxTokens:    300,
+		WorkspaceID:      req.WorkspaceID,
+		BillingReference: scope,
+		SessionID:        scope,
+		Model:            model,
+		SystemPrompt:     buildRoleSystemPrompt(req.Instructions),
+		Messages:         []ai.Message{{Role: ai.RoleUser, Content: buildRoleUserMessage(req.Comments)}},
+		Temperature:      0,
+		MaxTokens:        300,
 		ResponseFormat: &ai.ResponseFormat{
 			Type:                  ai.ResponseFormatJSONSchema,
 			JSONSchemaName:        roleSchemaName,

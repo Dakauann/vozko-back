@@ -598,56 +598,59 @@ func (s *HistoryProviderService) GetUnreadCount(entryID string, entryType shared
 	return s.messageRepo.CountUnreadByEntry(entryID, entryType)
 }
 
-func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (leadName, leadNumber, leadPicture string, leadMetadata map[string]interface{}, entryVariables []string, automationEnabled bool, err error) {
-	var leadID, workspaceID string
-	var entryMetadata map[string]interface{}
-	automationEnabled = true
+func (s *HistoryProviderService) GetEntryInfo(entryID, entryType string) (conversation.EntryInfo, error) {
+	et := shared.EntryType(entryType)
+	if et != shared.EntryTypeWhatsApp {
+		return s.contactEntryInfo(entryID, et)
+	}
 
-	switch shared.EntryType(entryType) {
-	case shared.EntryTypeWhatsApp:
-		entry, err := s.whatsappRepo.FindByID(entryID)
-		if err != nil {
-			return "", "", "", nil, nil, true, err
-		}
-		leadID = entry.LeadID
-		entryVariables = entry.Variables
-		entryMetadata = entry.Metadata
-		automationEnabled = entry.IsAutomationEnabled()
-		if info, infoErr := s.whatsappRepo.GetCampaignForEntry(entryID); infoErr == nil && info != nil {
-			workspaceID = info.WorkspaceID
-		}
+	entry, err := s.whatsappRepo.FindByID(entryID)
+	if err != nil {
+		return conversation.EntryInfo{AutomationEnabled: true}, err
+	}
+	info := conversation.EntryInfo{
+		LeadID:            entry.LeadID,
+		LeadMetadata:      entry.Metadata,
+		EntryVariables:    entry.Variables,
+		AutomationEnabled: entry.IsAutomationEnabled(),
+	}
+	var workspaceID string
+	if campaign, infoErr := s.whatsappRepo.GetCampaignForEntry(entryID); infoErr == nil && campaign != nil {
+		workspaceID = campaign.WorkspaceID
+	}
+	if workspaceID == "" {
+		return conversation.EntryInfo{AutomationEnabled: info.AutomationEnabled}, errors.New("unable to resolve workspace for entry")
+	}
+	leadRecord, err := s.leadRepo.FindByID(workspaceID, entry.LeadID)
+	if err != nil {
+		return conversation.EntryInfo{AutomationEnabled: info.AutomationEnabled}, err
+	}
+	info.LeadName, info.LeadNumber, info.LeadPicture, info.LeadVersion = leadRecord.RealName(), leadRecord.Number, leadRecord.ProfilePictureURL, leadRecord.Version
+	info.Blocked = leadRecord.Blocked
+	return info, nil
+}
 
-	default:
-		et := shared.EntryType(entryType)
-		lookup, ok := s.contactLookupFor(et)
-		if !ok {
-			return "", "", "", nil, nil, true, errors.New("invalid entry type")
-		}
-		contact, contactWorkspaceID, cErr := lookup.ContactForConversation(context.Background(), entryID)
-		if cErr != nil {
-			return "", "", "", nil, nil, true, cErr
-		}
-		name, handle := contactDisplayNames(et, contact)
-		if contact.LeadID != "" && contactWorkspaceID != "" && s.leadRepo != nil {
-			if l, lErr := s.leadRepo.FindByID(contactWorkspaceID, contact.LeadID); lErr == nil && l != nil {
-				if leadOwned := strings.TrimSpace(l.Name); leadOwned != "" {
-					name = leadOwned
-				}
+func (s *HistoryProviderService) contactEntryInfo(entryID string, et shared.EntryType) (conversation.EntryInfo, error) {
+	lookup, ok := s.contactLookupFor(et)
+	if !ok {
+		return conversation.EntryInfo{AutomationEnabled: true}, errors.New("invalid entry type")
+	}
+	contact, contactWorkspaceID, err := lookup.ContactForConversation(context.Background(), entryID)
+	if err != nil {
+		return conversation.EntryInfo{AutomationEnabled: true}, err
+	}
+	name, handle := contactDisplayNames(et, contact)
+	info := conversation.EntryInfo{LeadPicture: contact.PictureURL, LeadNumber: handle, AutomationEnabled: s.automationFor(entryID, et)}
+	if contact.LeadID != "" && contactWorkspaceID != "" && s.leadRepo != nil {
+		if l, lErr := s.leadRepo.FindByID(contactWorkspaceID, contact.LeadID); lErr == nil && l != nil {
+			info.LeadID, info.LeadVersion, info.Blocked = l.ID, l.Version, l.Blocked
+			if leadOwned := l.RealName(); leadOwned != "" {
+				name = leadOwned
 			}
 		}
-		return name, handle, contact.PictureURL, nil, nil, s.automationFor(entryID, et), nil
 	}
-
-	if workspaceID == "" {
-		return "", "", "", nil, nil, automationEnabled, errors.New("unable to resolve workspace for entry")
-	}
-
-	leadRecord, err := s.leadRepo.FindByID(workspaceID, leadID)
-	if err != nil {
-		return "", "", "", nil, nil, automationEnabled, err
-	}
-
-	return leadRecord.Name, leadRecord.Number, leadRecord.ProfilePictureURL, entryMetadata, entryVariables, automationEnabled, nil
+	info.LeadName = name
+	return info, nil
 }
 
 func (s *HistoryProviderService) buildInboxEntries(
@@ -697,9 +700,10 @@ func (s *HistoryProviderService) buildInboxEntries(
 	for _, e := range rows {
 		var leadName, leadNumber, leadPicture string
 		var leadBlocked bool
+		var leadVersion int64
 		if l, ok := leadMap[e.LeadID]; ok {
-			leadName, leadNumber, leadPicture = l.Name, l.Number, l.ProfilePictureURL
-			leadBlocked = l.Blocked
+			leadName, leadNumber, leadPicture = l.RealName(), l.Number, l.ProfilePictureURL
+			leadBlocked, leadVersion = l.Blocked, l.Version
 		}
 		senderName, senderAvatar := s.getSenderInfo(
 			e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
@@ -742,6 +746,7 @@ func (s *HistoryProviderService) buildInboxEntries(
 			LeadID:                  e.LeadID,
 			LeadName:                leadName,
 			LeadNumber:              leadNumber,
+			LeadVersion:             leadVersion,
 			LeadPicture:             leadPicture,
 			Blocked:                 leadBlocked,
 			EntryVariables:          entryVariables,

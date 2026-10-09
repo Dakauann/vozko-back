@@ -57,7 +57,10 @@ func TestConcurrentIndexReportsAFailedValidityCheck(t *testing.T) {
 
 func TestEveryConcurrentIndexIsBuiltConcurrently(t *testing.T) {
 	for _, idx := range concurrentIndexes() {
-		if !strings.Contains(strings.Join(strings.Fields(idx.sql), " "), "CREATE INDEX CONCURRENTLY IF NOT EXISTS "+idx.name+" ON ") {
+		sql := strings.Join(strings.Fields(idx.sql), " ")
+		plain := strings.Contains(sql, "CREATE INDEX CONCURRENTLY IF NOT EXISTS "+idx.name+" ON ")
+		unique := strings.Contains(sql, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "+idx.name+" ON ")
+		if !plain && !unique {
 			t.Fatalf("%s is not built concurrently under its own name: %s", idx.name, idx.sql)
 		}
 	}
@@ -105,4 +108,14 @@ func TestUnreadCountsHaveAnIndexOnTheContactsMessages(t *testing.T) {
 		}
 	}
 	t.Fatal("idx_cm_unread_contact is not built")
+}
+
+func TestLocatedLeadAddressesHaveAnIDIndexForTheNightlyRefinement(t *testing.T) {
+	sql, ok := ConcurrentIndexSQL(LeadAddressLocatedIndex)
+	if !ok {
+		t.Fatalf("%s is not built", LeadAddressLocatedIndex)
+	}
+	if got, want := strings.Join(strings.Fields(sql), " "), "ON lead_addresses (id) WHERE latitude IS NOT NULL"; !strings.HasSuffix(got, want) {
+		t.Fatalf("%s = %s, want it to end with %q", LeadAddressLocatedIndex, got, want)
+	}
 }

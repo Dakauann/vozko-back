@@ -47,6 +47,10 @@ func (r *repository) Create(entry *wce.WhatsAppCampaignEntry) error {
 }
 
 func (r *repository) CreateMany(entries []wce.WhatsAppCampaignEntry) ([]wce.WhatsAppCampaignEntry, error) {
+	return CreateManyIn(r.db, entries)
+}
+
+func CreateManyIn(db *gorm.DB, entries []wce.WhatsAppCampaignEntry) ([]wce.WhatsAppCampaignEntry, error) {
 	if len(entries) == 0 {
 		return nil, nil
 	}
@@ -65,7 +69,7 @@ func (r *repository) CreateMany(entries []wce.WhatsAppCampaignEntry) ([]wce.What
 	}
 
 	const batchSize = 500
-	if err := r.db.Clauses(clause.OnConflict{
+	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "campaign_id"}, {Name: "lead_id"}},
 		DoNothing: true,
 	}).CreateInBatches(&schemaEntries, batchSize).Error; err != nil {
@@ -777,10 +781,10 @@ func (r *repository) ListByStatus(campaignID string, status wce.SendStatus, limi
 			CampaignID: row.CampaignID,
 			LeadID:     row.LeadID,
 			Lead: &lead.Lead{
-				ID:     row.LeadID,
-				Number: row.LeadNumber,
-				Name:   row.LeadName,
-				Age:    row.LeadAge,
+				ID:        row.LeadID,
+				Number:    row.LeadNumber,
+				Name:      row.LeadName,
+				StoredAge: row.LeadAge,
 			},
 			Status:    wce.SendStatus(row.Status),
 			MessageID: row.MessageID,
@@ -935,38 +939,50 @@ func (r *repository) FindByNumber(number string) (*wce.WhatsAppCampaignEntry, er
 	return toDomain(&schemaEntry), nil
 }
 
-func (r *repository) FindByNumberAndBusinessPhone(number string, businessPhoneID string) (*wce.WhatsAppCampaignEntry, error) {
-	normalized := lead.NormalizeNumber(number)
-	if normalized == "" {
+func (r *repository) FindInboundRouteByNumberAndBusinessPhone(number string, businessPhoneID string) (*wce.WhatsAppCampaignEntry, error) {
+	query, ok := r.entriesByNumberOnPhone(number, businessPhoneID)
+	if !ok {
 		return nil, wce.ErrEntryNotFound
 	}
+	return firstEntry(query)
+}
 
+func (r *repository) FindByNumberBusinessPhoneAndWorkspace(number, businessPhoneID, workspaceID string) (*wce.WhatsAppCampaignEntry, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, wce.ErrEntryNotFound
+	}
+	query, ok := r.entriesByNumberOnPhone(number, businessPhoneID)
+	if !ok {
+		return nil, wce.ErrEntryNotFound
+	}
+	return firstEntry(query.
+		Where("leads.workspace_id = ?", workspaceID).
+		Where("whatsapp_campaigns.workspace_id = ?", workspaceID))
+}
+
+func (r *repository) entriesByNumberOnPhone(number, businessPhoneID string) (*gorm.DB, bool) {
+	formats := lead.NumberFormats(number)
 	businessPhoneID = strings.TrimSpace(businessPhoneID)
-	if businessPhoneID == "" {
-
-		return nil, wce.ErrEntryNotFound
+	if len(formats) == 0 || businessPhoneID == "" {
+		return nil, false
 	}
-
-	phoneFormats := []string{normalized}
-	if alternate := lead.GetAlternatePhoneFormat(normalized); alternate != "" {
-		phoneFormats = append(phoneFormats, alternate)
-	}
-
-	var schemaEntry schema.WhatsAppCampaignEntry
-	if err := r.db.
-		Joins("JOIN leads ON leads.id = whatsapp_campaign_entries.lead_id").
+	return r.db.
+		Joins("JOIN leads ON leads.id = whatsapp_campaign_entries.lead_id AND leads.deleted_at IS NULL").
 		Joins("JOIN whatsapp_campaigns ON whatsapp_campaigns.id = whatsapp_campaign_entries.campaign_id").
-		Where("leads.number IN ?", phoneFormats).
+		Where("leads.number IN ?", formats).
 		Where("whatsapp_campaigns.business_phone_id = ?", businessPhoneID).
-		Where("whatsapp_campaign_entries.status <> ?", string(wce.SendStatusNotEligiblePossibleSpam)).
-		Order("whatsapp_campaign_entries.created_at DESC").
-		First(&schemaEntry).Error; err != nil {
+		Where("whatsapp_campaign_entries.status <> ?", string(wce.SendStatusNotEligiblePossibleSpam)), true
+}
+
+func firstEntry(query *gorm.DB) (*wce.WhatsAppCampaignEntry, error) {
+	var schemaEntry schema.WhatsAppCampaignEntry
+	if err := query.Order("whatsapp_campaign_entries.created_at DESC").First(&schemaEntry).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, wce.ErrEntryNotFound
 		}
 		return nil, err
 	}
-
 	return toDomain(&schemaEntry), nil
 }
 

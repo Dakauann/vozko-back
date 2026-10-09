@@ -41,7 +41,7 @@ func (s *VisitorService) SubmitIntake(ctx context.Context, session *Session, ans
 
 	leadID := v.LeadID
 	if intake.Phone != "" && leadID == nil {
-		found, _, err := s.Leads.FindOrCreate(w.WorkspaceID, intake.Phone, lead.LeadUpdate{Name: intake.Name})
+		found, _, err := s.Leads.FindOrCreate(w.WorkspaceID, intake.Phone, lead.LeadUpdate{Source: lead.SourceChannel, Name: intake.Name})
 		if err != nil {
 			return VisitorState{}, err
 		}

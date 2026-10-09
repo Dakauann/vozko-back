@@ -30,6 +30,8 @@ type Handler struct {
 	get       *sip_trunk_usecase.GetTrunkUseCase
 	hangup    *sip_trunk_usecase.HangupCallUseCase
 	listCalls *sip_trunk_usecase.ListCallsUseCase
+
+	dialTargets DialTargetPlanner
 }
 
 func NewHandler(d HandlerDeps) *Handler {

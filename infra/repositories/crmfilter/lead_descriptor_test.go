@@ -35,24 +35,6 @@ func TestLeadNameEmptinessUsesNullif(t *testing.T) {
 	}
 }
 
-func TestLeadQuerySearchesNameNumberAndMemories(t *testing.T) {
-	sql, args := compileLead(t, leadDesc(), pred(crmfilter.FieldQuery, crmfilter.OpContains, "boleto"))
-
-	for _, fragment := range []string{"leads.name ILIKE ?", "leads.number LIKE ?", "lead_memories lm_q", "lm_q.content ILIKE ?"} {
-		if !strings.Contains(sql, fragment) {
-			t.Errorf("query predicate missing %q in %q", fragment, sql)
-		}
-	}
-	if len(args) != 3 {
-		t.Fatalf("query bound %d args, want 3", len(args))
-	}
-	for i, a := range args {
-		if a != "%boleto%" {
-			t.Errorf("arg %d = %v, want %%boleto%%", i, a)
-		}
-	}
-}
-
 func TestLeadMemoryPresence(t *testing.T) {
 	sql, args := compileLead(t, leadDesc(), pred(crmfilter.FieldMemoryCategory, crmfilter.OpIsSet))
 	want := "(leads.id IN (SELECT lm_c.lead_id FROM lead_memories lm_c WHERE lm_c.deleted_at IS NULL))"
@@ -128,7 +110,7 @@ func TestLeadTagMembershipCarriesWorkspaceScope(t *testing.T) {
 }
 
 func TestLeadChannelUnionExcludesNullLeadIDs(t *testing.T) {
-	source := LeadChannelsSource()
+	source := leadChannelsFrom
 	for _, table := range []string{"unofficial_whatsapp_contacts", "telegram_contacts", "instagram_contacts", "facebook_contacts"} {
 		idx := strings.Index(source, table)
 		if idx < 0 {
@@ -186,7 +168,6 @@ func TestLeadWindowExpressions(t *testing.T) {
 
 func TestLeadRejectsFieldsThatAreNotItsOwn(t *testing.T) {
 	for _, field := range []crmfilter.Field{
-		crmfilter.FieldOwner,
 		crmfilter.FieldCarteira,
 		crmfilter.FieldPipeline,
 		crmfilter.FieldValue,
@@ -194,7 +175,6 @@ func TestLeadRejectsFieldsThatAreNotItsOwn(t *testing.T) {
 		crmfilter.FieldLostReason,
 		crmfilter.FieldStatus,
 		crmfilter.FieldUnread,
-		crmfilter.FieldCustom,
 	} {
 		if _, err := leadDesc().Field(field); !errors.Is(err, ErrUnsupportedField) {
 			t.Errorf("Field(%q) error = %v, want ErrUnsupportedField", field, err)
@@ -212,6 +192,12 @@ func TestLeadSupportedFieldsAreRegisteredInTheDomain(t *testing.T) {
 		crmfilter.FieldMemoryCategory, crmfilter.FieldMemoryAuthor, crmfilter.FieldMemoryText,
 		crmfilter.FieldMemoryCount, crmfilter.FieldMemoryUpdatedAt,
 		crmfilter.FieldQuery,
+		crmfilter.FieldOwner, crmfilter.FieldSource, crmfilter.FieldID, crmfilter.FieldPhoneAny,
+		crmfilter.FieldEmail, crmfilter.FieldNickname, crmfilter.FieldBirthday, crmfilter.FieldBirthDate,
+		crmfilter.FieldZip, crmfilter.FieldState, crmfilter.FieldCity, crmfilter.FieldDistrict,
+		crmfilter.FieldGeoPrecision, crmfilter.FieldGeoStatus, crmfilter.FieldHasAddress, crmfilter.FieldHasIdentity,
+		crmfilter.FieldOptedOut, crmfilter.FieldWhatsAppOptIn, crmfilter.FieldRelationKind,
+		crmfilter.FieldRelativesCount, crmfilter.FieldReferredCount, crmfilter.FieldReferredBy,
 	}
 	for _, field := range supported {
 		if _, ok := crmfilter.SpecFor(field); !ok {
@@ -293,6 +279,40 @@ func TestPresenceAndCountExprsShareTheirScope(t *testing.T) {
 	for _, c := range cases {
 		if !strings.Contains(c.presence, c.table) || !strings.Contains(c.count, c.table) {
 			t.Errorf("%s: presence and count read different tables (%q vs %q)", c.name, c.presence, c.count)
+		}
+	}
+}
+
+func TestOpenWindowLeadIDsSharesTheWindowRule(t *testing.T) {
+	want := "SELECT lmw_s.lead_id FROM lead_message_windows lmw_s WHERE lmw_s.last_message_at > NOW() - INTERVAL '24 hours'"
+	if got := leadDesc().OpenWindowLeadIDs(); got != want {
+		t.Fatalf("OpenWindowLeadIDs() = %q, want %q", got, want)
+	}
+	if !strings.Contains(leadDesc().WindowOpenExpr(), "NOW() - INTERVAL '24 hours'") {
+		t.Fatalf("WindowOpenExpr() = %q", leadDesc().WindowOpenExpr())
+	}
+}
+
+func TestLeadChannelsInReadsOnlyTheWorkspaceRows(t *testing.T) {
+	source, args := LeadChannelsIn("ws-1")
+	if !strings.Contains(source, "wce_c.campaign_id IN (SELECT wc_c.id FROM whatsapp_campaigns wc_c WHERE wc_c.workspace_id = ?)") {
+		t.Fatalf("campaign entries must be read through the workspace campaigns: %s", source)
+	}
+	for _, table := range []string{"unofficial_whatsapp_contacts", "telegram_contacts", "instagram_contacts", "facebook_contacts", "webchat_visitors"} {
+		idx := strings.Index(source, table)
+		if idx < 0 {
+			t.Fatalf("channel union missing %s", table)
+		}
+		if !strings.Contains(source[idx:], "lead_id IS NOT NULL") || !strings.Contains(source[idx:], ".workspace_id = ?") {
+			t.Errorf("%s branch must exclude NULL lead ids and stay in the workspace", table)
+		}
+	}
+	if strings.Count(source, "?") != len(args) || len(args) != 1+len(contactChannels) {
+		t.Fatalf("%d placeholders for %d args", strings.Count(source, "?"), len(args))
+	}
+	for _, a := range args {
+		if a != "ws-1" {
+			t.Fatalf("args = %v, want only the workspace", args)
 		}
 	}
 }

@@ -4,22 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/httpx"
-	mediagenhttp "vozko/delivery/http/mediagen"
 	"vozko/delivery/http/response"
-	"vozko/domain/mediagen"
+	"vozko/domain/shared"
 	"vozko/domain/studio"
 	"vozko/infra/http/middleware"
 )
 
-const defaultPageSize = 30
+const (
+	defaultPageSize      = 30
+	projectEnvelopeBytes = 64 << 10
+)
 
 type Service interface {
 	Create(ctx context.Context, workspaceID, userID string, kind studio.Kind, name string, document json.RawMessage) (*studio.Project, error)
@@ -27,15 +29,16 @@ type Service interface {
 	Get(ctx context.Context, workspaceID, id string) (*studio.Project, error)
 	Save(ctx context.Context, workspaceID, id string, expectedVersion int64, change studio.Change) (*studio.Project, error)
 	Archive(ctx context.Context, workspaceID, id string) error
-	Export(ctx context.Context, workspaceID, userID, id string, version int64, rasters map[string]string) (*mediagen.Job, error)
 }
 
 type Handler struct {
-	svc Service
+	svc          Service
+	capabilities CapabilityReporter
+	exports      ExportSaver
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc Service, capabilities CapabilityReporter, exports ExportSaver) *Handler {
+	return &Handler{svc: svc, capabilities: capabilities, exports: exports}
 }
 
 type CreateRequest struct {
@@ -47,11 +50,6 @@ type CreateRequest struct {
 type SaveRequest struct {
 	Name     *string         `json:"name,omitempty"`
 	Document json.RawMessage `json:"document,omitempty" swaggertype:"object"`
-}
-
-type ExportRequest struct {
-	Version int64             `json:"version"`
-	Rasters map[string]string `json:"rasters"`
 }
 
 type ProjectResponse struct {
@@ -70,12 +68,6 @@ type SummaryResponse struct {
 	Name      string    `json:"name"`
 	Version   int64     `json:"version"`
 	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-type ConflictResponse struct {
-	Code    string          `json:"code" example:"version_conflict"`
-	Message string          `json:"message"`
-	Current ProjectResponse `json:"current"`
 }
 
 type ListResponse struct {
@@ -136,7 +128,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body CreateRequest
-	if !httpx.DecodeJSON(w, r, &body) {
+	if !decodeProject(w, r, &body) {
 		return
 	}
 	p, err := h.svc.Create(r.Context(), workspaceID, requesterOf(r), studio.Kind(body.Kind), body.Name, body.Document)
@@ -178,7 +170,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 // @Param			If-Match	header		string		true	"versão carregada"
 // @Param			body		body		SaveRequest	true	"mudanças"
 // @Success		200			{object}	ProjectResponse
-// @Failure		409			{object}	ConflictResponse
+// @Failure		409			{object}	httpx.VersionConflict{current=ProjectResponse}
 // @Failure		422			{object}	response.ErrorResponse
 // @Failure		428			{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -188,12 +180,12 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	version, ok := versionOf(w, r)
+	version, ok := httpx.IfMatchVersion(w, r)
 	if !ok {
 		return
 	}
 	var body SaveRequest
-	if !httpx.DecodeJSON(w, r, &body) {
+	if !decodeProject(w, r, &body) {
 		return
 	}
 	id := mux.Vars(r)["id"]
@@ -228,60 +220,18 @@ func (h *Handler) Archive(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// @Summary		Exportar vídeo do Estúdio
-// @Description	Renderiza a versão salva informada (version) como MP4 na fila de processamento. Cada clipe de sobreposição precisa da imagem PNG já gerada pelo editor em rasters (id do clipe para media_id da biblioteca); faltando uma, responde 422 not_rasterized. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Uma exportação igual em andamento devolve o mesmo job.
-// @Tags			Estúdio
-// @Accept			json
-// @Produce		json
-// @Param			id		path		string			true	"id do projeto"
-// @Param			body	body		ExportRequest	true	"versão e sobreposições"
-// @Success		202		{object}	mediagenhttp.JobResponse
-// @Failure		409		{object}	ConflictResponse
-// @Failure		422		{object}	response.ErrorResponse
-// @Failure		429		{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/studio/projects/{id}/export [post]
-func (h *Handler) Export(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := httpx.RequireWorkspace(w, r)
-	if !ok {
-		return
-	}
-	var body ExportRequest
-	if !httpx.DecodeJSON(w, r, &body) {
-		return
-	}
-	id := mux.Vars(r)["id"]
-	job, err := h.svc.Export(r.Context(), workspaceID, requesterOf(r), id, body.Version, body.Rasters)
-	if errors.Is(err, studio.ErrVersionConflict) {
-		h.writeConflict(w, r, workspaceID, id)
-		return
-	}
-	if err != nil {
-		writeError(w, err, "Failed to export the project")
-		return
-	}
-	response.WriteSuccess(w, http.StatusAccepted, mediagenhttp.PresentJob(job))
-}
-
 func (h *Handler) writeConflict(w http.ResponseWriter, r *http.Request, workspaceID, id string) {
 	current, err := h.svc.Get(r.Context(), workspaceID, id)
 	if err != nil {
 		writeError(w, err, "Failed to load the project")
 		return
 	}
-	response.WriteSuccess(w, http.StatusConflict, ConflictResponse{
-		Code: "version_conflict", Message: "O projeto foi salvo em outra aba ou por outra pessoa", Current: presentProject(current),
-	})
+	httpx.WriteVersionConflict(w, "O projeto foi salvo em outra aba ou por outra pessoa", presentProject(current))
 }
 
-func versionOf(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	raw := strings.Trim(strings.TrimSpace(r.Header.Get("If-Match")), "\"")
-	version, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || version < 1 {
-		response.WriteErrorWithCode(w, http.StatusPreconditionRequired, "version_required", "Informe a versão carregada no cabeçalho If-Match", nil)
-		return 0, false
-	}
-	return version, true
+func decodeProject(w http.ResponseWriter, r *http.Request, into any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, studio.MaxDocumentBytes+projectEnvelopeBytes)
+	return httpx.DecodeJSON(w, r, into)
 }
 
 func requesterOf(r *http.Request) string {
@@ -294,18 +244,28 @@ func requesterOf(r *http.Request) string {
 
 func writeError(w http.ResponseWriter, err error, fallback string) {
 	var invalid *studio.ValidationError
+	var tooBig *http.MaxBytesError
 	switch {
 	case errors.As(err, &invalid):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "invalid_request", "Há campos a corrigir", invalid.Codes())
+	case errors.Is(err, shared.ErrVersionRequired):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, httpx.CodeVersionRequired, "Informe a versão carregada", nil)
 	case errors.Is(err, studio.ErrProjectNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", "Projeto não encontrado", nil)
-	case errors.Is(err, studio.ErrNotRasterized):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "not_rasterized", "Uma sobreposição não foi preparada para a exportação", nil)
+	case errors.Is(err, studio.ErrExportTooLarge):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "export_too_large", "O vídeo exportado passa do tamanho máximo", nil)
+	case errors.Is(err, studio.ErrInvalidExport):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "invalid_export", "O arquivo enviado não é um MP4 válido", nil)
+	case errors.As(err, &tooBig):
+		response.WriteErrorWithCode(w, http.StatusRequestEntityTooLarge, "export_too_large", "O envio passa do tamanho máximo", nil)
 	case errors.Is(err, studio.ErrNotVideo):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "not_video", "Só projetos de vídeo são exportados como vídeo", nil)
-	case errors.Is(err, studio.ErrCreatorRequired):
+	case errors.Is(err, studio.ErrCreatorRequired), errors.Is(err, studio.ErrUserRequired):
 		response.WriteErrorWithCode(w, http.StatusUnauthorized, "unauthenticated", "Usuário não identificado", nil)
+	case errors.Is(err, studio.ErrSessionTaken):
+		response.WriteErrorWithCode(w, http.StatusConflict, "session_taken", "Essa sessão do editor pertence a outra pessoa", nil)
 	default:
-		mediagenhttp.WriteError(w, err, fallback)
+		log.Printf("[studio] %s: %v", fallback, err)
+		response.WriteError(w, http.StatusInternalServerError, fallback, nil)
 	}
 }

@@ -13,9 +13,11 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/agent"
 	"vozko/domain/auth"
+	campaigndomain "vozko/domain/campaign"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
 	wc "vozko/domain/whatsapp_campaign"
@@ -101,32 +103,6 @@ func NewWhatsAppCampaignHandler(
 	}
 }
 
-func (h *WhatsAppCampaignHandler) validateWhatsAppWorkflow(
-	w http.ResponseWriter,
-	workspaceID string,
-	workflowID string,
-) ([]string, bool) {
-	workflowID = strings.TrimSpace(workflowID)
-	if workflowID == "" {
-		return nil, true
-	}
-	if h.getWorkflowUseCase == nil {
-		response.WriteError(w, http.StatusInternalServerError, "Workflow validation unavailable", nil)
-		return nil, false
-	}
-	wf, err := h.getWorkflowUseCase.Execute(workflowID)
-	if err != nil {
-		response.WriteValidationError(w, map[string]string{"workflowId": "invalid or not found"})
-		return nil, false
-	}
-	if wf.WorkspaceID != workspaceID {
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
-		return nil, false
-	}
-	requiredVars := workflow_domain.ExtractCampaignVars(wf.Graph)
-	return requiredVars, true
-}
-
 type whatsappCampaignRequest struct {
 	Name                 string                             `json:"name"`
 	Type                 string                             `json:"type,omitempty"`
@@ -186,10 +162,6 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 	}
 
 	workspaceID := middleware.GetWorkspaceID(r)
-	requiredCampVars, ok := h.validateWhatsAppWorkflow(w, workspaceID, req.WorkflowID)
-	if !ok {
-		return
-	}
 
 	campaign := &wc.Campaign{
 		WorkspaceID:          workspaceID,
@@ -222,25 +194,6 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 
 	r = withDepartmentCreationScope(r, req.DepartmentID)
 
-	if len(requiredCampVars) > 0 {
-		if err := campaign.ValidateWorkflowVars(requiredCampVars); err != nil {
-			h.handleDomainError(w, err)
-			return
-		}
-	}
-
-	if req.AgentID != "" && h.getAgentUseCase != nil {
-		agentRecord, agentErr := h.getAgentUseCase.Execute(req.AgentID)
-		if agentErr == nil {
-			for _, p := range req.PhoneNumbers {
-				if err := agent.ValidateEntryMetadata(agentRecord, p.Metadata); err != nil {
-					response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), map[string]string{"phoneNumbers": err.Error()})
-					return
-				}
-			}
-		}
-	}
-
 	created, err := h.createUseCase.Execute(r.Context(), campaign)
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -256,6 +209,20 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 	response.WriteSuccess(w, http.StatusCreated, created)
 }
 
+// @Summary		Editar uma campanha oficial
+// @Description	Atualiza nome, modelo, número, fluxo e agente. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (`workflowId`, `agentId`), variável obrigatória ausente 400 (`AGENT_REQUIRED_VARIABLE_MISSING` ou `metadata`).
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id} [put]
 func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 
@@ -272,11 +239,6 @@ func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !h.verifyOwnership(w, id, claims, r) {
-		return
-	}
-
-	requiredCampVars, ok := h.validateWhatsAppWorkflow(w, middleware.GetWorkspaceID(r), req.WorkflowID)
-	if !ok {
 		return
 	}
 
@@ -306,25 +268,6 @@ func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		updateCampaign.ScheduledStart = parsed
-	}
-
-	if len(requiredCampVars) > 0 {
-		if err := updateCampaign.ValidateWorkflowVars(requiredCampVars); err != nil {
-			h.handleDomainError(w, err)
-			return
-		}
-	}
-
-	if req.AgentID != "" && h.getAgentUseCase != nil {
-		agentRecord, agentErr := h.getAgentUseCase.Execute(req.AgentID)
-		if agentErr == nil {
-			for _, p := range req.PhoneNumbers {
-				if err := agent.ValidateEntryMetadata(agentRecord, p.Metadata); err != nil {
-					response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), map[string]string{"phoneNumbers": err.Error()})
-					return
-				}
-			}
-		}
 	}
 
 	updated, err := h.updateUseCase.Execute(id, updateCampaign)
@@ -656,6 +599,21 @@ func parseWCConversationFilter(values url.Values) wce.ConversationFilter {
 	return filter
 }
 
+// @Summary		Iniciar uma campanha oficial
+// @Description	Uma campanha preparada a partir de leads (origem `lead_selection`), parada, só começa pela revisão (POST /leads/actions/sends/start), que pula quem entrou em outra campanha em andamento e confere saldo e limite mensal: por aqui responde 409 `send_start_from_leads`. Pausada, ela retoma por aqui. O mesmo vale para o início agendado e para as ferramentas do assistente.
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Success		202		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		402		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id}/start [post]
 func (h *WhatsAppCampaignHandler) StartCampaign(w http.ResponseWriter, r *http.Request) {
 	campaignID := mux.Vars(r)["id"]
 	if campaignID == "" {
@@ -720,6 +678,17 @@ func (h *WhatsAppCampaignHandler) dispatchCampaignAction(w http.ResponseWriter, 
 	response.WriteSuccess(w, http.StatusAccepted, map[string]string{"message": successMessage})
 }
 
+// @Summary		Preparar o reinício de uma campanha oficial
+// @Description	Gera o código que confirma o reinício. Uma campanha preparada a partir de leads (origem `lead_selection`) não reinicia: responde 409 `send_selection_locked`; prepare um novo envio a partir dos leads.
+// @Tags			WhatsApp Campaigns
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id}/reset/prepare [post]
 func (h *WhatsAppCampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Request) {
 	campaignID := mux.Vars(r)["id"]
 	if campaignID == "" {
@@ -751,6 +720,19 @@ func (h *WhatsAppCampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Re
 	response.WriteSuccess(w, http.StatusOK, output)
 }
 
+// @Summary		Reiniciar uma campanha oficial
+// @Description	Volta todos os números para PENDING com o código de `reset/prepare`. Uma campanha preparada a partir de leads (origem `lead_selection`) não reinicia: responde 409 `send_selection_locked`, porque os leads pulados na revisão (código 9200xx) seriam enviados.
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"{resetCode}"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id}/reset [post]
 func (h *WhatsAppCampaignHandler) ConfirmReset(w http.ResponseWriter, r *http.Request) {
 	campaignID := mux.Vars(r)["id"]
 	if campaignID == "" {
@@ -877,6 +859,9 @@ func (h *WhatsAppCampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *
 }
 
 func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err error) {
+	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, wc.ErrCampaignNotFound):
 		response.WriteError(w, http.StatusNotFound, "WhatsApp campaign not found", nil)
@@ -906,17 +891,38 @@ func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err e
 		response.WriteValidationError(w, map[string]string{"variables": "template variables cannot be empty"})
 	case errors.Is(err, wc.ErrCampaignTemplateNamedParameters):
 		response.WriteValidationError(w, map[string]string{"templateId": "WhatsApp campaigns only support templates with positional parameters {{1}}, {{2}}, etc. - templates with named parameters like {{name}} are not allowed"})
-	case errors.Is(err, wc.ErrCampaignWorkflowVarsMissing):
-		response.WriteValidationError(w, map[string]string{"metadata": err.Error()})
-	case errors.Is(err, agent.ErrAgentRequiredVariableMissing):
-		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), nil)
+	case errors.Is(err, campaigndomain.ErrIdempotencyUnavailable):
+		response.WriteError(w, http.StatusInternalServerError, "Workflow validation unavailable", nil)
 	default:
 		log.Printf("[WhatsAppCampaignHandler] Unhandled error: %v", err)
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}
 }
 
+func writeCampaignAutomationRefusal(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, wc.ErrCampaignWorkflowVarsMissing):
+		response.WriteValidationError(w, map[string]string{"metadata": err.Error()})
+	case errors.Is(err, agent.ErrAgentRequiredVariableMissing):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), map[string]string{"phoneNumbers": err.Error()})
+	case errors.Is(err, campaigndomain.ErrWorkflowNotFound):
+		response.WriteValidationError(w, map[string]string{"workflowId": "invalid or not found"})
+	case errors.Is(err, campaigndomain.ErrWorkflowForbidden):
+		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
+	case errors.Is(err, campaigndomain.ErrAgentNotFound):
+		response.WriteValidationError(w, map[string]string{"agentId": "invalid or not found"})
+	case errors.Is(err, campaigndomain.ErrAutomationUnavailable):
+		response.WriteError(w, http.StatusInternalServerError, "Workflow validation unavailable", nil)
+	default:
+		return false
+	}
+	return true
+}
+
 func (h *WhatsAppCampaignHandler) handleDispatchError(w http.ResponseWriter, err error) {
+	if httpx.WriteSelectionSendRefusal(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, wc.ErrDispatchCampaignIDRequired):
 		response.WriteValidationError(w, map[string]string{"id": "required"})
@@ -936,6 +942,9 @@ func (h *WhatsAppCampaignHandler) handleDispatchError(w http.ResponseWriter, err
 }
 
 func (h *WhatsAppCampaignHandler) handleResetError(w http.ResponseWriter, err error) {
+	if httpx.WriteSelectionSendRefusal(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, wc.ErrCampaignNotFound):
 		response.WriteError(w, http.StatusNotFound, "WhatsApp campaign not found", nil)
@@ -972,6 +981,9 @@ func (h *WhatsAppCampaignHandler) writeInvalidBodyError(w http.ResponseWriter) {
 }
 
 func (h *WhatsAppCampaignHandler) handleEntryError(w http.ResponseWriter, err error) {
+	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, wc.ErrCampaignNotFound):
 		response.WriteError(w, http.StatusNotFound, "WhatsApp campaign not found", nil)
@@ -1033,6 +1045,20 @@ func (h *WhatsAppCampaignHandler) DeleteEntry(w http.ResponseWriter, r *http.Req
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary		Editar um número de uma campanha oficial
+// @Description	Troca número, nome, variáveis, metadados ou a IA do número. Numa campanha preparada a partir de leads (origem `lead_selection`) só a IA (`automationEnabled`) muda: qualquer outro campo responde 409 `send_selection_locked`.
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			entryId	path		string	true	"Número da campanha"
+// @Param			body	body		object	true	"{number?, name?, variables?, metadata?, automationEnabled?}"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id}/entries/{entryId} [patch]
 func (h *WhatsAppCampaignHandler) UpdateEntry(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	campaignID := vars["id"]
@@ -1153,6 +1179,20 @@ func (h *WhatsAppCampaignHandler) ToggleEntryAI(w http.ResponseWriter, r *http.R
 	response.WriteSuccess(w, http.StatusOK, output)
 }
 
+// @Summary		Incluir números numa campanha oficial
+// @Description	Inclui números (`phoneNumbers`) numa campanha parada. Uma campanha preparada a partir de leads não recebe números: responde 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (`workflowId`, `agentId`), variável obrigatória ausente 400 (`AGENT_REQUIRED_VARIABLE_MISSING` ou `metadata`).
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Success		201		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id}/entries [post]
 func (h *WhatsAppCampaignHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 	campaignID := mux.Vars(r)["id"]
 	if campaignID == "" {
@@ -1166,7 +1206,7 @@ func (h *WhatsAppCampaignHandler) AddEntries(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if !h.verifyOwnership(w, campaignID, claims, r) {
+	if _, ok := h.ownedCampaign(w, campaignID, r); !ok {
 		return
 	}
 
@@ -1193,46 +1233,6 @@ func (h *WhatsAppCampaignHandler) AddEntries(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if h.getUseCase != nil && h.getWorkflowUseCase != nil {
-		campaign, campErr := h.getUseCase.Execute(campaignID)
-		if campErr == nil && campaign != nil && campaign.WorkflowID != "" {
-			requiredVars, wfOk := h.validateWhatsAppWorkflow(w, campaign.WorkspaceID, campaign.WorkflowID)
-			if !wfOk {
-				return
-			}
-			if len(requiredVars) > 0 {
-
-				tmpInputs := make([]wc.PhoneInput, 0, len(body.PhoneNumbers))
-				for _, p := range body.PhoneNumbers {
-					tmpInputs = append(tmpInputs, wc.PhoneInput{
-						Number:   p.Number,
-						Metadata: p.Metadata,
-					})
-				}
-				tmp := &wc.Campaign{PhoneInputs: tmpInputs}
-				if err := tmp.ValidateWorkflowVars(requiredVars); err != nil {
-					h.handleDomainError(w, err)
-					return
-				}
-			}
-		}
-	}
-
-	if len(body.PhoneNumbers) > 0 && h.getUseCase != nil && h.getAgentUseCase != nil {
-		campaignForAgent, campErr := h.getUseCase.Execute(campaignID)
-		if campErr == nil && campaignForAgent.AgentID != "" {
-			agentRecord, agentErr := h.getAgentUseCase.Execute(campaignForAgent.AgentID)
-			if agentErr == nil {
-				for _, p := range body.PhoneNumbers {
-					if err := agent.ValidateEntryMetadata(agentRecord, p.Metadata); err != nil {
-						response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), map[string]string{"phoneNumbers": err.Error()})
-						return
-					}
-				}
-			}
-		}
-	}
-
 	phoneInputs := make([]wc.EntryInput, 0, len(body.PhoneNumbers))
 	for _, p := range body.PhoneNumbers {
 		phoneInputs = append(phoneInputs, wc.EntryInput{
@@ -1255,6 +1255,21 @@ func (h *WhatsAppCampaignHandler) AddEntries(w http.ResponseWriter, r *http.Requ
 	response.WriteSuccess(w, http.StatusCreated, output)
 }
 
+// @Summary		Envio rápido de uma campanha oficial
+// @Description	Inclui os números enviados (opcional) e dispara os pendentes. Uma campanha preparada a partir de leads nunca passa pelo envio rápido: responde 409 `send_selection_locked`; use POST /leads/actions/sends/start. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (`workflowId`, `agentId`), variável obrigatória ausente 400 (`AGENT_REQUIRED_VARIABLE_MISSING` ou `metadata`).
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Success		202		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		402		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns/{id}/quick-send [post]
 func (h *WhatsAppCampaignHandler) QuickSend(w http.ResponseWriter, r *http.Request) {
 	campaignID := mux.Vars(r)["id"]
 	if campaignID == "" {
@@ -1305,39 +1320,6 @@ func (h *WhatsAppCampaignHandler) QuickSend(w http.ResponseWriter, r *http.Reque
 		if decErr != nil && !errors.Is(decErr, io.EOF) {
 			response.WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
 			return
-		}
-	}
-
-	if len(body.PhoneNumbers) > 0 && h.getWorkflowUseCase != nil && campaign.WorkflowID != "" {
-		requiredVars, wfOk := h.validateWhatsAppWorkflow(w, campaign.WorkspaceID, campaign.WorkflowID)
-		if !wfOk {
-			return
-		}
-		if len(requiredVars) > 0 {
-			tmpInputs := make([]wc.PhoneInput, 0, len(body.PhoneNumbers))
-			for _, p := range body.PhoneNumbers {
-				tmpInputs = append(tmpInputs, wc.PhoneInput{
-					Number:   p.Number,
-					Metadata: p.Metadata,
-				})
-			}
-			tmp := &wc.Campaign{PhoneInputs: tmpInputs}
-			if err := tmp.ValidateWorkflowVars(requiredVars); err != nil {
-				h.handleDomainError(w, err)
-				return
-			}
-		}
-	}
-
-	if len(body.PhoneNumbers) > 0 && campaign.AgentID != "" && h.getAgentUseCase != nil {
-		agentRecord, agentErr := h.getAgentUseCase.Execute(campaign.AgentID)
-		if agentErr == nil {
-			for _, p := range body.PhoneNumbers {
-				if err := agent.ValidateEntryMetadata(agentRecord, p.Metadata); err != nil {
-					response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), map[string]string{"phoneNumbers": err.Error()})
-					return
-				}
-			}
 		}
 	}
 

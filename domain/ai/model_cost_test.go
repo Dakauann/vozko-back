@@ -26,3 +26,11 @@ func TestOnlyACatalogedModelHasKnownLimits(t *testing.T) {
 		}
 	}
 }
+
+func TestTheCostOfACallIsWhatTheProviderChargedWhenItSaysSo(t *testing.T) {
+	m := ModelInfo{PromptPrice: 3, CompletionPrice: 15, ContextLength: 200_000}
+	cached := Usage{PromptTokens: 100_000, CompletionTokens: 1_000, CachedTokens: 95_000, ProviderCostMicros: 60_000}
+	if got := m.CostMicros(cached); got != 60_000 {
+		t.Fatalf("got %d micros, want the 60000 the provider charged with its cache discount", got)
+	}
+}

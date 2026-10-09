@@ -78,6 +78,7 @@ const (
 	CodeSendBillingNotConfigured = "template_send_billing_not_configured"
 	CodeSendAttemptConflict      = "template_send_attempt_conflict"
 	CodeSendParamsMismatch       = "template_send_params_mismatch"
+	CodeQuoteOutOfRange          = "template_quote_out_of_range"
 
 	CodeProviderRejected    = "template_provider_rejected"
 	CodeProviderUnavailable = "template_provider_unavailable"
@@ -154,6 +155,7 @@ var errorCodes = map[error]string{
 	ErrBillingNotConfigured:   CodeSendBillingNotConfigured,
 	ErrSendAttemptConflict:    CodeSendAttemptConflict,
 	ErrTemplateParamsMismatch: CodeSendParamsMismatch,
+	ErrQuoteOutOfRange:        CodeQuoteOutOfRange,
 }
 
 func ErrorCode(err error) string {

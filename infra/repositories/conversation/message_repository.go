@@ -13,7 +13,6 @@ import (
 	"vozko/domain/shared"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
-	crmfiltersql "vozko/infra/repositories/crmfilter"
 
 	"github.com/lib/pq"
 	"gorm.io/gorm"
@@ -268,27 +267,6 @@ func (r *repository) ListByEntryPaginated(input conversation.ListMessagesInput) 
 	}
 
 	if err := query.Order("created_at DESC").Find(&dbMessages).Error; err != nil {
-		return nil, err
-	}
-
-	messages := make([]*conversation.Message, 0, len(dbMessages))
-	for i := range dbMessages {
-		messages = append(messages, mapSchemaToDomain(&dbMessages[i]))
-	}
-
-	return messages, nil
-}
-
-func (r *repository) ListByLeadID(leadID string) ([]*conversation.Message, error) {
-	var dbMessages []schema.ConversationMessage
-
-	query := r.db.Where(`
-		entry_type = 'whatsapp' AND entry_id IN (
-			SELECT id FROM whatsapp_campaign_entries WHERE lead_id = ? AND deleted_at IS NULL
-		)
-	`, leadID).Order("created_at ASC")
-
-	if err := query.Find(&dbMessages).Error; err != nil {
 		return nil, err
 	}
 
@@ -1320,61 +1298,14 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 }
 
 func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInput) ([]conversation.EntryWithLastMessage, int64, error) {
-	wsID := input.WorkspaceID
-	if wsID == "" {
-		return nil, 0, fmt.Errorf("SearchEntriesByFilter: workspace id is required")
-	}
-
-	desc := crmfiltersql.NewConversationDescriptor()
-	desc.WorkspaceID = wsID
-	desc.LastActivityExpr = "ae.lm_created_at"
-	whereSQL, whereArgs, err := crmfiltersql.Compile(input.Filter, desc, 1)
+	baseCTE, baseArgs, err := filteredEntriesCTE(input)
 	if err != nil {
 		return nil, 0, fmt.Errorf("SearchEntriesByFilter: %w", err)
 	}
 
-	var entryParts []string
-	var entryArgs []interface{}
-
-	boardCTESQL, boardCTEArgs := buildEntryUnion(entrySourceScope{
-		WhatsAppCampaignType:   input.WhatsAppCampaignType,
-		DepartmentIDs:          input.DepartmentIDs,
-		RestrictDepartments:    input.RestrictDepartments,
-		AssigneeOverrideUserID: input.AssigneeOverrideUserID,
-		AssignedUserID:         input.AssignedUserID,
-	}, wsID, entrySource.boardSelect)
-	if boardCTESQL != "" {
-		entryParts = append(entryParts, boardCTESQL)
-		entryArgs = append(entryArgs, boardCTEArgs...)
-	}
-
-	entryCTE := strings.Join(entryParts, " UNION ALL ")
-
-	whereClause := ""
-	if strings.TrimSpace(whereSQL) != "" {
-		whereClause = "WHERE " + whereSQL
-	}
-
-	leadsJoin := "LEFT JOIN leads l ON l.id = ae.lead_id AND l.deleted_at IS NULL"
-
-	baseCTE := fmt.Sprintf(`
-		WITH all_entries AS (%s),
-		entries_with_msg AS (
-			SELECT ae.entry_id, ae.entry_type, ae.lead_id, ae.business_phone_id,
-			       ae.created_at AS created_at,
-			       COALESCE(l.name, '') AS lead_name, COALESCE(l.number, '') AS lead_number,
-			       ae.lm_created_at AS lm_created_at
-			FROM all_entries ae
-			%s
-			%s
-		)
-	`, entryCTE, leadsJoin, whereClause)
-
-	countSQL := baseCTE + " SELECT COUNT(*) FROM entries_with_msg"
-	allCountArgs := append(append([]interface{}{}, entryArgs...), whereArgs...)
-	var totalCount int64
-	if err := r.db.Raw(countSQL, allCountArgs...).Scan(&totalCount).Error; err != nil {
-		return nil, 0, fmt.Errorf("error counting filtered board results: %w", err)
+	totalCount, err := r.countFilteredEntries(baseCTE, baseArgs)
+	if err != nil {
+		return nil, 0, err
 	}
 	if totalCount == 0 {
 		return nil, 0, nil
@@ -1414,8 +1345,7 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 		LeadName   string `gorm:"column:lead_name"`
 		LeadNumber string `gorm:"column:lead_number"`
 	}
-	matchArgs := append(append([]interface{}{}, entryArgs...), whereArgs...)
-	matchArgs = append(matchArgs, pageSize, offset)
+	matchArgs := append(append([]interface{}{}, baseArgs...), pageSize, offset)
 	var matchedIDs []idResult
 	if err := r.db.Raw(matchSQL, matchArgs...).Scan(&matchedIDs).Error; err != nil {
 		return nil, 0, fmt.Errorf("error searching filtered board entries: %w", err)

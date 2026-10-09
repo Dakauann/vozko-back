@@ -8,12 +8,11 @@ import (
 	"testing"
 
 	ads "vozko/domain/advertising"
-	"vozko/domain/crmfilter"
 )
 
 type fakeCustomers struct{ customers []ads.Customer }
 
-func (f fakeCustomers) Customers(context.Context, string, crmfilter.Filter, int) ([]ads.Customer, error) {
+func (f fakeCustomers) Customers(context.Context, Requester, CustomerQuery, int) ([]ads.Customer, error) {
 	return f.customers, nil
 }
 
@@ -51,7 +50,7 @@ func audienceUseCase(w *world, customers []ads.Customer, file []byte) *AudienceU
 func TestCRMCustomerListIsHashedUploadedAndCounted(t *testing.T) {
 	w := newWorld()
 	uc := audienceUseCase(w, []ads.Customer{{ads.MatchPhone: "5511988887777", ads.MatchFirstName: "Ana"}, {ads.MatchPhone: "12"}}, nil)
-	got, err := uc.CreateCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "Clientes", Source: ads.SourceCRM})
+	got, err := uc.CreateCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "Clientes", Source: ads.SourceCRM})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +63,7 @@ func TestCSVCustomerListUsesTheMappedColumnsAndSkipsTheHeader(t *testing.T) {
 	w := newWorld()
 	csv := []byte("nome;email;telefone\nAna;ana@x.com;(11) 98888-7777\n")
 	uc := audienceUseCase(w, nil, csv)
-	got, err := uc.CreateCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{
+	got, err := uc.CreateCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{
 		AdAccountID: "acc-1", Name: "Arquivo", Source: ads.SourceFile, FileMediaID: "m", SkipHeader: true,
 		Columns: []ads.MatchKey{ads.MatchFirstName, ads.MatchEmail, ads.MatchPhone},
 	})
@@ -80,7 +79,7 @@ func TestNoCustomerListWithoutAcceptedTerms(t *testing.T) {
 	w := newWorld()
 	w.gateway.termsOK = false
 	_, err := audienceUseCase(w, []ads.Customer{{ads.MatchPhone: "5511988887777"}}, nil).
-		CreateCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM})
+		CreateCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM})
 	if !errors.Is(err, ads.ErrAudienceTermsNotAccepted) || slices.Contains(w.gateway.calls, "create_audience") {
 		t.Fatalf("err %v calls %v", err, w.gateway.calls)
 	}
@@ -90,7 +89,7 @@ func TestPartialUploadRemovesTheAudience(t *testing.T) {
 	w := newWorld()
 	w.gateway.failOn, w.gateway.failWith = "add_customers", &ads.RemoteError{Kind: ads.FailureRejected, Code: 2650}
 	_, err := audienceUseCase(w, []ads.Customer{{ads.MatchPhone: "5511988887777"}}, nil).
-		CreateCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM})
+		CreateCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM})
 	if err == nil || !slices.Contains(w.gateway.calls, "delete_audience:aud-new") {
 		t.Fatalf("err %v calls %v", err, w.gateway.calls)
 	}
@@ -116,7 +115,7 @@ func TestCustomerUploadSessionCountsRowsAlreadySent(t *testing.T) {
 	for i := range customers {
 		customers[i] = ads.Customer{ads.MatchPhone: fmt.Sprintf("5511%09d", i)}
 	}
-	if _, err := audienceUseCase(w, customers, nil).CreateCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM}); err != nil {
+	if _, err := audienceUseCase(w, customers, nil).CreateCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM}); err != nil {
 		t.Fatal(err)
 	}
 	s := w.gateway.sessions
@@ -141,7 +140,7 @@ func TestSavedAudiencesAreWorkspaceScoped(t *testing.T) {
 func TestCheckingACustomerListCountsWithoutSendingAnything(t *testing.T) {
 	w := newWorld()
 	uc := audienceUseCase(w, []ads.Customer{{ads.MatchPhone: "5511988887777", ads.MatchFirstName: "Ana"}, {ads.MatchPhone: "12"}}, nil)
-	got, err := uc.CheckCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "Clientes", Source: ads.SourceCRM})
+	got, err := uc.CheckCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "Clientes", Source: ads.SourceCRM})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +148,7 @@ func TestCheckingACustomerListCountsWithoutSendingAnything(t *testing.T) {
 		t.Fatalf("result %+v calls %v", got, w.gateway.calls)
 	}
 	w.gateway.termsOK = false
-	if _, err := uc.CheckCustomerList(context.Background(), "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM}); !errors.Is(err, ads.ErrAudienceTermsNotAccepted) {
+	if _, err := uc.CheckCustomerList(context.Background(), Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM}); !errors.Is(err, ads.ErrAudienceTermsNotAccepted) {
 		t.Fatalf("the check must refuse what the creation refuses, got %v", err)
 	}
 }

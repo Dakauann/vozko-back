@@ -560,12 +560,13 @@ func (h *BalanceHandler) ExportMyTransactions(w http.ResponseWriter, r *http.Req
 	}
 
 	job, err := h.reports.Create(report_usecase.CreateInput{
-		WorkspaceID: workspaceID,
-		RequestedBy: claims.UserID,
-		Kind:        reportdomain.KindBalanceTransactions,
-		Format:      format,
-		Locale:      httpx.RequestLocale(r),
-		Params:      params,
+		WorkspaceID:      workspaceID,
+		RequestedBy:      claims.UserID,
+		RequestedByAdmin: claims.Role == "admin",
+		Kind:             reportdomain.KindBalanceTransactions,
+		Format:           format,
+		Locale:           httpx.RequestLocale(r),
+		Params:           params,
 	})
 	if err != nil {
 		writeBalanceExportError(w, err)
@@ -582,6 +583,8 @@ func writeBalanceExportError(w http.ResponseWriter, err error) {
 	case errors.Is(err, reportdomain.ErrInvalidFormat),
 		errors.Is(err, reportdomain.ErrFormatUnsupported):
 		response.WriteValidationError(w, map[string]string{"format": "must be csv, xlsx or pdf"})
+	case errors.Is(err, reportdomain.ErrNotAllowed):
+		response.WriteErrorWithCode(w, http.StatusForbidden, reportdomain.ErrorCode(err), err.Error(), nil)
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Failed to queue the export", nil)
 	}

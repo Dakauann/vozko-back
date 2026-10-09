@@ -21,6 +21,10 @@ type entryRepository struct{ db *gorm.DB }
 func NewEntryRepository(db *gorm.DB) uwc.EntryRepository { return &entryRepository{db: db} }
 
 func (r *entryRepository) CreateMany(entries []uwc.Entry) ([]uwc.Entry, error) {
+	return createEntriesIn(r.db, entries)
+}
+
+func createEntriesIn(db *gorm.DB, entries []uwc.Entry) ([]uwc.Entry, error) {
 	if len(entries) == 0 {
 		return nil, nil
 	}
@@ -29,7 +33,7 @@ func (r *entryRepository) CreateMany(entries []uwc.Entry) ([]uwc.Entry, error) {
 		rows = append(rows, entryToRow(e))
 	}
 
-	if err := r.db.Clauses(clause.OnConflict{
+	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "campaign_id"}, {Name: "lead_id"}},
 		DoNothing: true,
 	}).CreateInBatches(&rows, 500).Error; err != nil {

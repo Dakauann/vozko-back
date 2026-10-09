@@ -21,9 +21,7 @@ const (
 	oppCloseAfterSQL = "o.close_date > ?"
 	oppOwnerEmptySQL = "o.owner_id IS NULL"
 	oppQuerySQL      = "o.title ILIKE ?"
-	oppCustomEqSQL   = "o.custom_fields->>? = ?"
-	oppCustomInSQL   = "o.custom_fields->>? = ANY(?)"
-	oppCustomGteSQL  = "(o.custom_fields->>?)::numeric >= ?"
+	oppCustomEqSQL   = "o.custom_fields @> jsonb_build_object(?::text, ?::text)"
 )
 
 func TestOpportunityDescriptor_StandardFields(t *testing.T) {
@@ -93,86 +91,21 @@ func TestOpportunityDescriptor_StandardFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			for _, entry := range []string{"Compile", "CompileOpportunity"} {
-				var gotSQL string
-				var gotArgs []interface{}
-				var err error
-				if entry == "Compile" {
-					gotSQL, gotArgs, err = Compile(tt.filter, desc, 1)
-				} else {
-					gotSQL, gotArgs, err = CompileOpportunity(tt.filter, desc, 1)
-				}
-				if err != nil {
-					t.Fatalf("%s: unexpected error: %v", entry, err)
-				}
-				if gotSQL != tt.wantSQL {
-					t.Errorf("%s SQL mismatch\n got: %s\nwant: %s", entry, gotSQL, tt.wantSQL)
-				}
-				if strings.Contains(gotSQL, "$1") {
-					t.Errorf("%s: expected '?' placeholders, found '$N': %s", entry, gotSQL)
-				}
-				if len(tt.wantArgs) == 0 {
-					if len(gotArgs) != 0 {
-						t.Errorf("%s: expected no args, got %#v", entry, gotArgs)
-					}
-				} else if !reflect.DeepEqual(gotArgs, tt.wantArgs) {
-					t.Errorf("%s args mismatch\n got: %#v\nwant: %#v", entry, gotArgs, tt.wantArgs)
-				}
-			}
-		})
-	}
-}
-
-func TestOpportunityDescriptor_CustomFields(t *testing.T) {
-	desc := NewOpportunityDescriptor()
-
-	custom := func(op crmfilter.Operator, key string, values ...string) crmfilter.Predicate {
-		return crmfilter.Predicate{Field: crmfilter.FieldCustom, Key: key, Operator: op, Values: values}
-	}
-
-	tests := []struct {
-		name     string
-		pred     crmfilter.Predicate
-		wantSQL  string
-		wantArgs []interface{}
-	}{
-		{
-			name:     "custom text EQ",
-			pred:     custom(crmfilter.OpEquals, "segmento", "enterprise"),
-			wantSQL:  "(" + oppCustomEqSQL + ")",
-			wantArgs: []interface{}{"segmento", "enterprise"},
-		},
-		{
-			name:     "custom IN",
-			pred:     custom(crmfilter.OpIn, "origem", "whatsapp", "instagram"),
-			wantSQL:  "(" + oppCustomInSQL + ")",
-			wantArgs: []interface{}{"origem", pq.Array([]string{"whatsapp", "instagram"})},
-		},
-		{
-			name:     "custom numeric GTE",
-			pred:     custom(crmfilter.OpGreaterEq, "score", "1000"),
-			wantSQL:  "(" + oppCustomGteSQL + ")",
-			wantArgs: []interface{}{"score", float64(1000)},
-		},
-		{
-			name:     "custom IS_SET",
-			pred:     custom(crmfilter.OpIsSet, "segmento"),
-			wantSQL:  "(o.custom_fields->>? IS NOT NULL)",
-			wantArgs: []interface{}{"segmento"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			f := crmfilter.Filter{Groups: []crmfilter.Group{group(crmfilter.Or, tt.pred)}}
-			gotSQL, gotArgs, err := CompileOpportunity(f, desc, 1)
+			gotSQL, gotArgs, err := Compile(tt.filter, desc, 1)
 			if err != nil {
-				t.Fatalf("CompileOpportunity: %v", err)
+				t.Fatalf("Compile: unexpected error: %v", err)
 			}
 			if gotSQL != tt.wantSQL {
 				t.Errorf("SQL mismatch\n got: %s\nwant: %s", gotSQL, tt.wantSQL)
 			}
-			if !reflect.DeepEqual(gotArgs, tt.wantArgs) {
+			if strings.Contains(gotSQL, "$1") {
+				t.Errorf("expected '?' placeholders, found '$N': %s", gotSQL)
+			}
+			if len(tt.wantArgs) == 0 {
+				if len(gotArgs) != 0 {
+					t.Errorf("expected no args, got %#v", gotArgs)
+				}
+			} else if !reflect.DeepEqual(gotArgs, tt.wantArgs) {
 				t.Errorf("args mismatch\n got: %#v\nwant: %#v", gotArgs, tt.wantArgs)
 			}
 		})
@@ -184,13 +117,13 @@ func TestOpportunityDescriptor_MixedGroups(t *testing.T) {
 	f := crmfilter.Filter{Groups: []crmfilter.Group{
 		group(crmfilter.And, pred(crmfilter.FieldValue, crmfilter.OpGreaterEq, "100000")),
 		group(crmfilter.Or,
-			crmfilter.Predicate{Field: crmfilter.FieldCustom, Key: "origem", Operator: crmfilter.OpEquals, Values: []string{"whatsapp"}},
+			boundCustom(crmfilter.KindEnum, "origem", crmfilter.OpEquals, "whatsapp"),
 			pred(crmfilter.FieldStatus, crmfilter.OpEquals, "won"),
 		),
 	}}
-	gotSQL, gotArgs, err := CompileOpportunity(f, desc, 1)
+	gotSQL, gotArgs, err := Compile(f, desc, 1)
 	if err != nil {
-		t.Fatalf("CompileOpportunity: %v", err)
+		t.Fatalf("Compile: %v", err)
 	}
 	wantSQL := "(" + oppValueGteSQL + ") AND ((" + oppCustomEqSQL + ") OR (" + oppStatusEqSQL + "))"
 	if gotSQL != wantSQL {
@@ -219,9 +152,18 @@ func TestOpportunityDescriptor_UnsupportedFields(t *testing.T) {
 	}
 }
 
+func TestOpportunityDescriptor_ExposesItsCustomFieldsColumn(t *testing.T) {
+	if got := NewOpportunityDescriptor().CustomFieldsColumn(); got != "o.custom_fields" {
+		t.Fatalf("CustomFieldsColumn() = %q", got)
+	}
+	if got := (OpportunityDescriptor{Alias: "opp"}).CustomFieldsColumn(); got != "opp.custom_fields" {
+		t.Fatalf("CustomFieldsColumn() = %q", got)
+	}
+}
+
 func TestOpportunityDescriptor_EmptyFilter(t *testing.T) {
 	desc := NewOpportunityDescriptor()
-	sql, args, err := CompileOpportunity(crmfilter.Filter{}, desc, 1)
+	sql, args, err := Compile(crmfilter.Filter{}, desc, 1)
 	if err != nil || sql != "" || len(args) != 0 {
 		t.Fatalf("expected empty result, got sql=%q args=%#v err=%v", sql, args, err)
 	}

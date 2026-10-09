@@ -33,6 +33,7 @@ var operatorCapabilities = []CapabilityKey{
 	"media.view", "media.upload",
 	"leads.view",
 	"calls.use", "call_history.view",
+	"call_lists.view", "call_lists.work",
 	"ai_chat.view", "ai_chat.chat",
 }
 
@@ -70,7 +71,9 @@ var RolePresets = []RolePreset{
 			"attendance.targets_edit", "attendance.campaign_report", "reports.view", "reports.create",
 			"funnels.create", "funnels.edit", "labels.create", "labels.edit",
 			"deals.view", "deals.create", "deals.edit", "deals.assign",
-			"leads.import", "leads.edit", "leads.block",
+			"leads.import", "leads.edit", "leads.block", "leads.assign", "leads.read_sensitive", "leads.read_addresses", "leads.configure",
+			"leads.bulk_edit", "leads.export", "leads.meta_audience", "leads.send_template", "leads.send_unofficial",
+			"call_lists.manage",
 			"whatsapp_campaigns.view", "whatsapp_campaigns.crm",
 			"team.invite", "departments.edit",
 		),
@@ -155,6 +158,14 @@ func CapabilityByKey(key CapabilityKey) (Capability, bool) {
 		}
 	}
 	return Capability{}, false
+}
+
+func CapabilityRequires(key CapabilityKey) ([]PermissionEntry, bool) {
+	c, ok := CapabilityByKey(key)
+	if !ok {
+		return nil, false
+	}
+	return append([]PermissionEntry{}, c.Requires...), true
 }
 
 func (p RolePreset) Permissions() ([]PermissionEntry, error) {

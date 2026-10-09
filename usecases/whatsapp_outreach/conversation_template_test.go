@@ -109,6 +109,7 @@ func newConversationUC(t *testing.T, mutate ...func(*Deps)) *conversationFixture
 		Campaigns:     &fakeCampaigns{campaign: &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", BusinessPhoneID: "bp-1"}},
 		CampaignSends: sends,
 		SpamPolicy:    &fakeSpamPolicy{days: 3},
+		SendClaims:    newFakeClaims(),
 		History:       history,
 		Assignments:   claims,
 		Sender:        sender,
@@ -332,6 +333,7 @@ func TestNewConversationTemplateUseCase_RefusesMissingGuards(t *testing.T) {
 	cases := map[string]func(*Deps){
 		"template grant": func(d *Deps) { d.TemplateGrant = nil },
 		"spam policy":    func(d *Deps) { d.SpamPolicy = nil },
+		"send claims":    func(d *Deps) { d.SendClaims = nil },
 		"campaign sends": func(d *Deps) { d.CampaignSends = nil },
 		"campaigns":      func(d *Deps) { d.Campaigns = nil },
 		"sender":         func(d *Deps) { d.Sender = nil },
@@ -342,7 +344,7 @@ func TestNewConversationTemplateUseCase_RefusesMissingGuards(t *testing.T) {
 			deps := Deps{
 				Phones: &fakePhones{}, Templates: &fakeTemplates{}, TemplateGrant: &fakeGrant{},
 				Leads: &fakeLeads{}, Entries: &fakeEntries{}, Campaigns: &fakeCampaigns{},
-				CampaignSends: &fakeCampaignSends{}, SpamPolicy: &fakeSpamPolicy{},
+				CampaignSends: &fakeCampaignSends{}, SpamPolicy: &fakeSpamPolicy{}, SendClaims: newFakeClaims(),
 				History: &fakeHistory{}, Assignments: &fakeClaimer{}, Sender: &fakeSender{},
 			}
 			drop(&deps)

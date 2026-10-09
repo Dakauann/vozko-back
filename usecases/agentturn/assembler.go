@@ -49,6 +49,8 @@ type Request struct {
 
 	PromptSuffix string
 
+	Session string
+
 	History     []ai.Message
 	UserMessage string
 
@@ -107,39 +109,7 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 		}
 	}
 
-	systemPrompt := basePrompt
-	if req.Identity != nil {
-		id := *req.Identity
-		id.AvailableTools = toolNames
-		systemPrompt = id.BuildContextPrompt() + basePrompt
-	}
-
-	if ragCtx := rag_usecase.BuildContext(ctx, a.rag, rag_usecase.ContextInput{
-		Agent:            req.Agent,
-		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
-		Query:            req.RAGQuery,
-	}); ragCtx != "" {
-		systemPrompt += ragCtx
-	}
-
-	if req.LeadID != "" && req.Agent != nil {
-		if memCtx := lead_memory_usecase.BuildContext(ctx, a.memories, lead_memory_usecase.ContextInput{
-			WorkspaceID:   req.Agent.WorkspaceID,
-			LeadID:        req.LeadID,
-			HasMemoryTool: containsToolName(toolNames, tools_usecase.ManageLeadMemoryToolName),
-		}); memCtx != "" {
-			systemPrompt += memCtx
-		}
-	}
-
-	if strings.TrimSpace(req.PromptSuffix) != "" {
-		systemPrompt += req.PromptSuffix
-	}
-
-	messages := append([]ai.Message(nil), req.History...)
-	if strings.TrimSpace(req.UserMessage) != "" {
-		messages = append(messages, ai.Message{Role: ai.RoleUser, Content: req.UserMessage})
-	}
+	messages, volatileTail := a.conversation(ctx, req)
 
 	workspaceID := ""
 	if req.Agent != nil {
@@ -150,15 +120,66 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 		Input: ai.GenerateInput{
 			WorkspaceID:       workspaceID,
 			Model:             req.Model,
-			SystemPrompt:      systemPrompt,
+			SystemPrompt:      a.systemPrompt(ctx, req, basePrompt, toolNames),
 			Messages:          messages,
 			Temperature:       req.Temperature,
 			Tools:             toolDefs,
 			ToolConfigs:       toolConfigs,
 			SegmentedResponse: req.Segmented,
+			BillingReference:  req.Session,
+			SessionID:         req.Session,
+			VolatileTail:      volatileTail,
 		},
 		ToolNames: toolNames,
 	}
+}
+
+const contextNoteTail = 1
+
+func (a *Assembler) systemPrompt(ctx context.Context, req Request, basePrompt string, toolNames []string) string {
+	var identity *shared_usecase.ConversationContext
+	if req.Identity != nil {
+		withTools := *req.Identity
+		withTools.AvailableTools = toolNames
+		identity = &withTools
+	}
+
+	var sb strings.Builder
+	if identity != nil {
+		sb.WriteString(identity.RulesPrompt())
+	}
+	sb.WriteString(basePrompt)
+	if identity != nil {
+		sb.WriteString(identity.LeadPrompt())
+	}
+	if req.LeadID != "" && req.Agent != nil {
+		sb.WriteString(lead_memory_usecase.BuildContext(ctx, a.memories, lead_memory_usecase.ContextInput{
+			WorkspaceID:   req.Agent.WorkspaceID,
+			LeadID:        req.LeadID,
+			HasMemoryTool: containsToolName(toolNames, tools_usecase.ManageLeadMemoryToolName),
+		}))
+	}
+	if strings.TrimSpace(req.PromptSuffix) != "" {
+		sb.WriteString(req.PromptSuffix)
+	}
+	return sb.String()
+}
+
+func (a *Assembler) conversation(ctx context.Context, req Request) ([]ai.Message, int) {
+	messages := append([]ai.Message(nil), req.History...)
+	if strings.TrimSpace(req.UserMessage) != "" {
+		messages = append(messages, ai.Message{Role: ai.RoleUser, Content: req.UserMessage})
+	}
+	if len(messages) == 0 {
+		return messages, 0
+	}
+
+	grounding := rag_usecase.BuildContext(ctx, a.rag, rag_usecase.ContextInput{
+		Agent:            req.Agent,
+		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
+		Query:            req.RAGQuery,
+	})
+	return append(messages, ai.ContextNote(grounding)), contextNoteTail
 }
 
 func containsToolName(names []string, want string) bool {

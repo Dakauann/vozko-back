@@ -25,7 +25,10 @@ type S3Service struct {
 	bucket string
 }
 
-var _ media.FileStorage = (*S3Service)(nil)
+var (
+	_ media.FileStorage   = (*S3Service)(nil)
+	_ media.StreamStorage = (*S3Service)(nil)
+)
 
 func NewS3Service() *S3Service {
 	accessKeyId := os.Getenv("CLOUDFLARE_R2_KEY_ID")
@@ -102,6 +105,42 @@ func (s *S3Service) DownloadFile(ctx context.Context, key string) ([]byte, strin
 		contentType = *output.ContentType
 	}
 	return data, contentType, nil
+}
+
+func (s *S3Service) DeleteFile(ctx context.Context, key string) error {
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	return err
+}
+
+func (s *S3Service) PutStream(ctx context.Context, key, contentType string, body io.Reader) error {
+	spool, err := os.CreateTemp("", "vozko-upload-*")
+	if err != nil {
+		return err
+	}
+	defer discardSpool(spool)
+	size, err := io.Copy(spool, body)
+	if err != nil {
+		return err
+	}
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          spool,
+		ContentLength: aws.Int64(size),
+		ContentType:   aws.String(contentType),
+	})
+	return err
+}
+
+func discardSpool(spool *os.File) {
+	_ = spool.Close()
+	_ = os.Remove(spool.Name())
 }
 
 func (s *S3Service) GetFileURL(key string) string {

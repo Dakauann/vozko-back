@@ -24,14 +24,6 @@ func (q *queries) List(in lead.ListLeadsInput) (*shared.PaginatedResult[*lead.Le
 	return q.repo.ListWithSummary(in)
 }
 
-func (q *queries) Facets(in lead.ListLeadsInput) (*lead.LeadFacets, error) {
-	in, err := scoped(in)
-	if err != nil {
-		return nil, err
-	}
-	return q.repo.Facets(in)
-}
-
 func (q *queries) Get(workspaceID, id string) (*lead.Lead, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, lead.ErrLeadWorkspaceRequired

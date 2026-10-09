@@ -12,9 +12,10 @@ type Person struct {
 }
 
 type Contact struct {
-	Number string
-	LeadID string
-	Name   string
+	Number  string
+	LeadID  string
+	Name    string
+	Holders int
 }
 
 type Charge struct {

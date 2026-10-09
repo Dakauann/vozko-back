@@ -215,6 +215,17 @@ func TestTheDefaultModelIsThePreferredOneWhenOffered(t *testing.T) {
 	}
 }
 
+func TestOnlyAnEditingProxyIsReusedOnceDone(t *testing.T) {
+	if !KindProxy.Reusable() {
+		t.Fatal("a finished proxy of the same source serves every later edit")
+	}
+	for _, kind := range []Kind{KindImage, KindMusic, KindVoice, KindVideo, KindCutout, KindCaptions, KindDenoise} {
+		if kind.Reusable() {
+			t.Fatalf("%s must run again when asked again", kind)
+		}
+	}
+}
+
 func TestProcessingKindsReadOneSourceWithoutAModel(t *testing.T) {
 	cases := map[Kind]struct {
 		accepts media.MediaType
@@ -224,6 +235,7 @@ func TestProcessingKindsReadOneSourceWithoutAModel(t *testing.T) {
 		KindCutout:   {media.MediaTypeProductImage, media.MediaTypeProductVideo, media.MediaTypeProductImage},
 		KindCaptions: {media.MediaTypeProductVideo, media.MediaTypeProductImage, media.MediaTypeDocument},
 		KindDenoise:  {media.MediaTypeAudio, media.MediaTypeProductImage, media.MediaTypeAudio},
+		KindProxy:    {media.MediaTypeProductVideo, media.MediaTypeAudio, media.MediaTypeStudioProxy},
 	}
 	for kind, c := range cases {
 		req := Request{WorkspaceID: "ws", Kind: kind, SourceMediaID: " m-1 "}

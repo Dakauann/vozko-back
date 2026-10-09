@@ -32,6 +32,7 @@ type InboxEntry struct {
 	LeadID                  string                     `json:"lead_id,omitempty"`
 	LeadName                string                     `json:"lead_name,omitempty"`
 	LeadNumber              string                     `json:"lead_number,omitempty"`
+	LeadVersion             int64                      `json:"lead_version,omitempty"`
 	Blocked                 bool                       `json:"blocked"`
 	LeadPicture             string                     `json:"lead_picture,omitempty"`
 	IsGroup                 bool                       `json:"is_group,omitempty"`
@@ -270,12 +271,24 @@ type MessageSender interface {
 	SendButtonMessage(entryID, entryType, userID, replyToMessageID string, input SendButtonInput) (*Message, error)
 }
 
+type EntryInfo struct {
+	LeadID            string
+	LeadName          string
+	LeadNumber        string
+	LeadPicture       string
+	LeadVersion       int64
+	Blocked           bool
+	LeadMetadata      map[string]interface{}
+	EntryVariables    []string
+	AutomationEnabled bool
+}
+
 type HistoryProvider interface {
 	GetHistory(entryID string, entryType shared.EntryType, limit int) ([]*Message, bool, int64, error)
 	GetHistoryBefore(entryID string, entryType shared.EntryType, before time.Time, limit int) ([]*Message, bool, error)
 	GetHistoryAround(entryID string, entryType shared.EntryType, around time.Time, limit int) ([]*Message, bool, bool, int64, error)
 	GetUnreadCount(entryID string, entryType shared.EntryType) (int64, error)
-	GetEntryInfo(entryID, entryType string) (leadName, leadNumber, leadPicture string, leadMetadata map[string]interface{}, entryVariables []string, automationEnabled bool, err error)
+	GetEntryInfo(entryID, entryType string) (EntryInfo, error)
 	PresentMessage(entryID, entryType string, message *Message)
 	GetWindowStatusForEntry(entryID, entryType string) WindowState
 	GetInboxEntries(userID, workspaceID, campaignID, campaignType string, page, pageSize int) ([]InboxEntry, int64, error)

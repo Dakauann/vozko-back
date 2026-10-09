@@ -60,3 +60,18 @@ func TestAnUnknownSkillListsTheRealOnes(t *testing.T) {
 		t.Fatalf("result %+v", result)
 	}
 }
+
+func TestSkillsStayAvailableInFocusedSurfaces(t *testing.T) {
+	studio := copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: copilot.StudioVideo}
+	if !studio.Offers(NewLoadSkillTool(nil)) {
+		t.Fatal("the studio needs its skills")
+	}
+}
+
+func TestLoadingASkillNamesItForThePerson(t *testing.T) {
+	library := skillShelf{{Name: "motion-design", Description: "Animar", Body: "# Motion design no Estúdio\nUse easeOut."}}
+	result := NewLoadSkillTool(library).Execute(context.Background(), adContext, map[string]interface{}{"name": "motion-design"})
+	if result.Subject == nil || *result.Subject != (copilot.Subject{Kind: copilot.SubjectSkill, Key: "motion-design", Label: "Motion design no Estúdio"}) {
+		t.Fatalf("subject %+v", result.Subject)
+	}
+}

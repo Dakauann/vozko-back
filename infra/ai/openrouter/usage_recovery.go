@@ -10,6 +10,8 @@ import (
 	"time"
 
 	openrouter "github.com/revrost/go-openrouter"
+
+	"vozko/domain/ai"
 )
 
 const (
@@ -79,13 +81,13 @@ func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID str
 	return payload.Data.TokensPrompt, payload.Data.TokensCompletion, costToMicros(payload.Data.TotalCost), true
 }
 
-func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage *openrouter.Usage) {
+func (s *Service) billStreamUsage(workspaceID, reference, model, generationID string, usage *openrouter.Usage) {
 	if workspaceID == "" {
 		log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", model)
 		return
 	}
 	if usage != nil {
-		s.publishBillingEvent(workspaceID, model, usage.PromptTokens, usage.CompletionTokens, costToMicros(usage.Cost))
+		s.publishBillingEvent(workspaceID, reference, model, callUsageOf(usage))
 		return
 	}
 	if s.usageFetcher == nil || strings.TrimSpace(generationID) == "" {
@@ -95,11 +97,11 @@ func (s *Service) billStreamUsage(workspaceID, model, generationID string, usage
 	s.recoveries.Add(1)
 	go func() {
 		defer s.recoveries.Done()
-		s.recoverStreamUsage(workspaceID, model, generationID)
+		s.recoverStreamUsage(workspaceID, reference, model, generationID)
 	}()
 }
 
-func (s *Service) recoverStreamUsage(workspaceID, model, generationID string) {
+func (s *Service) recoverStreamUsage(workspaceID, reference, model, generationID string) {
 	pt, ct, costMicros, ok := fetchWithRetry(context.Background(), s.usageFetcher, s.usageRetryDelays, generationID)
 	if !ok {
 		logUnbilled(workspaceID, model, generationID)
@@ -107,7 +109,7 @@ func (s *Service) recoverStreamUsage(workspaceID, model, generationID string) {
 	}
 	log.Printf("[ai-billing] recovered usage via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
 		generationID, model, workspaceID, pt, ct, costMicros)
-	s.publishBillingEvent(workspaceID, model, pt, ct, costMicros)
+	s.publishBillingEvent(workspaceID, reference, model, ai.CallUsage{PromptTokens: pt, CompletionTokens: ct, ProviderCostMicros: costMicros})
 }
 
 func fetchWithRetry(ctx context.Context, fetcher generationUsageFetcher, delays []time.Duration, generationID string) (int, int, int64, bool) {

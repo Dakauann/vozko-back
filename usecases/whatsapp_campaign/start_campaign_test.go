@@ -72,3 +72,35 @@ func TestStartCampaignRefusesWhatCannotBeSent(t *testing.T) {
 		})
 	}
 }
+
+type reviewedDispatch struct{ inputs []wc.DispatchCampaignInput }
+
+func (d *reviewedDispatch) Dispatch(in wc.DispatchCampaignInput) error {
+	d.inputs = append(d.inputs, in)
+	return nil
+}
+
+func TestOnlyTheReviewedStartTellsTheDispatchTheSendWasReviewed(t *testing.T) {
+	dispatch := &reviewedDispatch{}
+	uc := NewStartCampaignUseCase(StartCampaignDeps{
+		Access:       startAccess{"ready": {ID: "ready", WorkspaceID: "ws1", Metrics: &wc.CampaignMetrics{TotalNumbers: 3, Pending: 3}}},
+		Subscription: startSubscription{},
+		Dispatch:     dispatch,
+	})
+	reviewed, ok := uc.(wc.ReviewedStartUseCase)
+	if !ok {
+		t.Fatalf("the start use case cannot start a reviewed send")
+	}
+	if _, err := uc.Start("ws1", nil, "ready"); err != nil {
+		t.Fatalf("Start = %v", err)
+	}
+	if _, err := reviewed.StartReviewed("ws1", nil, "ready"); err != nil {
+		t.Fatalf("StartReviewed = %v", err)
+	}
+	if _, err := reviewed.StartReviewed("ws2", nil, "ready"); !errors.Is(err, wc.ErrCampaignNotFound) {
+		t.Fatalf("StartReviewed of a foreign campaign = %v", err)
+	}
+	if len(dispatch.inputs) != 2 || dispatch.inputs[0].Reviewed || !dispatch.inputs[1].Reviewed {
+		t.Fatalf("dispatched %+v", dispatch.inputs)
+	}
+}

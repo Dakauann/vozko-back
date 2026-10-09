@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
+	"strings"
 	"time"
 
+	"vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/audience"
 	"vozko/domain/balance"
@@ -50,6 +53,34 @@ type analysisDebounceJob struct {
 	dealSettings         DealAutomationSettings
 	dealDesk             tools_usecase.OpportunityManager
 	cascade              QuietCascade
+	profileAgents        ProfileAgents
+}
+
+type ProfileAgents interface {
+	FindByID(agentID string) (*agent.Agent, error)
+}
+
+func (j *analysisDebounceJob) SetProfileAgents(agents ProfileAgents) {
+	j.profileAgents = agents
+}
+
+func (j *analysisDebounceJob) profileHandler(subject *AnalysisSubject) toolsdomain.Handler {
+	if j.profileAgents == nil || strings.TrimSpace(subject.AgentID) == "" {
+		return nil
+	}
+	handler, ok := j.toolRegistry.Handler(tools_usecase.UpdateLeadProfileToolName)
+	if !ok || handler == nil {
+		return nil
+	}
+	owner, err := j.profileAgents.FindByID(subject.AgentID)
+	if err != nil {
+		log.Printf("[analysis-debounce] reading agent %s failed, offering no profile tool: %v", subject.AgentID, err)
+		return nil
+	}
+	if owner == nil || owner.WorkspaceID != subject.WorkspaceID || !owner.HasTool(tools_usecase.UpdateLeadProfileToolName) {
+		return nil
+	}
+	return handler
 }
 
 type QuietCascade interface {
@@ -339,10 +370,6 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 		return err
 	}
 
-	if len(history) > 100 {
-		history = history[len(history)-100:]
-	}
-
 	workspaceID := subject.WorkspaceID
 	entryTypeStr := string(entryType)
 
@@ -382,7 +409,7 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 
 	gate := j.quietGate(ctx, target, wantMemory, wantDeals, memoryBlock, dealsBlock)
 	if gate.NeedsMemory {
-		tasks = append(tasks, memoryTask(quiet, memoryHandler, memoryBlock))
+		tasks = append(tasks, memoryTask(quiet, memoryHandler, j.profileHandler(subject), memoryBlock))
 	}
 	if gate.NeedsDeals {
 		tasks = append(tasks, dealTask(quiet, dealHandler, dealsBlock, dealsPipeline))
@@ -410,15 +437,14 @@ func (j *analysisDebounceJob) runAnalysisForEntry(entryID string, entryType shar
 	}
 
 	for _, task := range tasks {
-		response, err := j.aiService.Generate(ctx, ai.GenerateInput{
-			WorkspaceID:  workspaceID,
-			Model:        aiModel,
-			Temperature:  0.2,
-			SystemPrompt: task.system,
-			Messages:     []ai.Message{{Role: "user", Content: task.instruction}},
-			Tools:        []toolsdomain.Definition{task.tool},
-			ToolConfigs:  map[string]map[string]interface{}{task.tool.Name: task.config},
-		})
+		defs, configs := task.tools()
+		response, err := j.aiService.Generate(ctx, task.prompt.ApplyTo(ai.GenerateInput{
+			WorkspaceID: workspaceID,
+			Model:       aiModel,
+			Temperature: 0.2,
+			Tools:       defs,
+			ToolConfigs: configs,
+		}))
 		if err != nil {
 			return err
 		}
@@ -442,10 +468,23 @@ type quietConversation struct {
 }
 
 type quietTask struct {
-	system      string
-	instruction string
-	tool        toolsdomain.Definition
-	config      map[string]interface{}
+	prompt    AutoTaskPrompt
+	tool      toolsdomain.Definition
+	alongside []toolsdomain.Definition
+	config    map[string]interface{}
+	configs   map[string]map[string]interface{}
+}
+
+func (t quietTask) tools() ([]toolsdomain.Definition, map[string]map[string]interface{}) {
+	defs := append([]toolsdomain.Definition{t.tool}, t.alongside...)
+	configs := make(map[string]map[string]interface{}, len(defs))
+	for _, def := range defs {
+		configs[def.Name] = t.config
+		if own, ok := t.configs[def.Name]; ok {
+			configs[def.Name] = own
+		}
+	}
+	return defs, configs
 }
 
 func (j *analysisDebounceJob) stageTask(c quietConversation) (quietTask, bool) {
@@ -470,14 +509,14 @@ func (j *analysisDebounceJob) stageTask(c quietConversation) (quietTask, bool) {
 		}
 	}
 	return quietTask{
-		system: BuildAutoTagPrompt(AutoTagPromptInput{
+		prompt: BuildAutoTagPrompt(AutoTagPromptInput{
+			EntryID:        c.entryID,
 			CampaignName:   c.subject.ContainerName,
 			MessageCount:   c.messageCount,
 			History:        c.history,
 			CurrentTagName: currentTagName,
 			Tags:           allTags,
 		}),
-		instruction: autoTagInstruction,
 		tool: toolDefinition(handler, toolsdomain.ToolContext{
 			WorkspaceID:  workspaceID,
 			CampaignID:   c.subject.ContainerID,
@@ -494,17 +533,18 @@ func (j *analysisDebounceJob) stageTask(c quietConversation) (quietTask, bool) {
 	}, true
 }
 
-func memoryTask(c quietConversation, handler toolsdomain.Handler, memoryBlock string) quietTask {
-	return quietTask{
-		system: BuildAutoMemoryPrompt(AutoMemoryPromptInput{
+func memoryTask(c quietConversation, handler, profile toolsdomain.Handler, memoryBlock string) quietTask {
+	task := quietTask{
+		prompt: BuildAutoMemoryPrompt(AutoMemoryPromptInput{
+			EntryID:         c.entryID,
 			ContainerName:   c.subject.ContainerName,
 			ContactLabel:    c.subject.ContactLabel,
 			MessageCount:    c.messageCount,
 			CurrentMemories: memoryBlock,
 			History:         c.history,
+			ProfileTool:     profile != nil,
 		}),
-		instruction: autoMemoryInstruction,
-		tool:        handler.Definition(),
+		tool: handler.Definition(),
 		config: map[string]interface{}{
 			"__workspace_id": c.subject.WorkspaceID,
 			"__lead_id":      c.subject.LeadID,
@@ -513,6 +553,13 @@ func memoryTask(c quietConversation, handler toolsdomain.Handler, memoryBlock st
 			"__entry_type":   c.entryType,
 		},
 	}
+	if profile != nil {
+		scoped := maps.Clone(task.config)
+		maps.Copy(scoped, tools_usecase.BirthDateOnlyProfileConfig())
+		task.alongside = append(task.alongside, tools_usecase.BirthDateOnlyProfileDefinition(profile.Definition()))
+		task.configs = map[string]map[string]interface{}{tools_usecase.UpdateLeadProfileToolName: scoped}
+	}
+	return task
 }
 
 func dealTask(c quietConversation, handler toolsdomain.Handler, dealsBlock, pipelineID string) quietTask {
@@ -525,15 +572,15 @@ func dealTask(c quietConversation, handler toolsdomain.Handler, dealsBlock, pipe
 		"pipeline_id":    pipelineID,
 	}
 	return quietTask{
-		system: BuildAutoDealPrompt(AutoDealPromptInput{
+		prompt: BuildAutoDealPrompt(AutoDealPromptInput{
+			EntryID:       c.entryID,
 			ContainerName: c.subject.ContainerName,
 			ContactLabel:  c.subject.ContactLabel,
 			MessageCount:  c.messageCount,
 			CurrentDeals:  dealsBlock,
 			History:       c.history,
 		}),
-		instruction: autoDealInstruction,
-		tool:        toolDefinition(handler, toolsdomain.ToolContext{WorkspaceID: c.subject.WorkspaceID, Config: config}),
-		config:      config,
+		tool:   toolDefinition(handler, toolsdomain.ToolContext{WorkspaceID: c.subject.WorkspaceID, Config: config}),
+		config: config,
 	}
 }

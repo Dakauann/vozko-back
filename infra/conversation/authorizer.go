@@ -37,10 +37,16 @@ type departmentMembershipRepository interface {
 
 type assignmentLookupRepository interface {
 	FindByEntry(workspaceID, entryID, entryType string) (*inbox_assignment.InboxAssignment, error)
+	FindByEntries(workspaceID string, entryIDs []string) ([]*inbox_assignment.InboxAssignment, error)
+}
+
+type entryPlacementRepository interface {
+	EntryPlacements(entryIDs []string) (map[string]conversation.EntryPlacement, error)
 }
 
 type Authorizer struct {
 	whatsappEntryRepo whatsappEntryAccessRepository
+	placements        entryPlacementRepository
 	entryRepos        map[shared.EntryType]entryAccessRepository
 	workspaceRepo     workspaceMembershipRepository
 	departmentRepo    departmentMembershipRepository
@@ -52,6 +58,7 @@ type Authorizer struct {
 
 func NewAuthorizer(
 	whatsappEntryRepo whatsappEntryAccessRepository,
+	placements entryPlacementRepository,
 	workspaceRepo workspaceMembershipRepository,
 	departmentRepo departmentMembershipRepository,
 	assignmentRepo assignmentLookupRepository,
@@ -60,6 +67,7 @@ func NewAuthorizer(
 ) conversation.ConversationAuthorizer {
 	return &Authorizer{
 		whatsappEntryRepo: whatsappEntryRepo,
+		placements:        placements,
 		workspaceRepo:     workspaceRepo,
 		departmentRepo:    departmentRepo,
 		assignmentRepo:    assignmentRepo,
@@ -69,43 +77,87 @@ func NewAuthorizer(
 	}
 }
 
-func (a *Authorizer) CanAccessEntry(userID, workspaceID, entryID, entryType string, isAdmin bool) bool {
-	if userID == "" || entryID == "" || entryType == "" {
+type actorAccess struct {
+	authorizer  *Authorizer
+	userID      string
+	workspaceID string
+	isAdmin     bool
+
+	viewOthersKnown bool
+	viewOthers      bool
+	scopeKnown      bool
+	scopeAllowed    bool
+	scope           conversation.DepartmentAccessScope
+}
+
+func (a *Authorizer) actor(userID, workspaceID string, isAdmin bool) *actorAccess {
+	return &actorAccess{authorizer: a, userID: userID, workspaceID: workspaceID, isAdmin: isAdmin}
+}
+
+func (x *actorAccess) canViewOthers() bool {
+	if !x.viewOthersKnown {
+		x.viewOthers = x.authorizer.canViewOthers(x.userID, x.workspaceID)
+		x.viewOthersKnown = true
+	}
+	return x.viewOthers
+}
+
+func (x *actorAccess) departmentScope() (conversation.DepartmentAccessScope, bool) {
+	if !x.scopeKnown {
+		x.scope, x.scopeAllowed = x.authorizer.GetDepartmentScope(x.userID, x.workspaceID, false)
+		x.scopeKnown = true
+	}
+	return x.scope, x.scopeAllowed
+}
+
+func (x *actorAccess) CanAccess(entryID, entryType string) bool {
+	a := x.authorizer
+	if x.userID == "" || entryID == "" || entryType == "" {
 		return false
 	}
 
-	if isAdmin {
-		cacheKey := userID + ":" + workspaceID
+	if x.isAdmin {
+		cacheKey := x.userID + ":" + x.workspaceID
 		if a.checkCache(cacheKey, entryID) {
 			return true
 		}
-		hasAccess := a.entryBelongsToWorkspace(workspaceID, entryID, entryType, true)
+		hasAccess := a.entryBelongsToWorkspace(x.workspaceID, entryID, entryType, true)
 		if hasAccess {
 			a.setCache(cacheKey, entryID)
 		}
 		return hasAccess
 	}
 
-	if workspaceID == "" {
-		log.Printf("[Authorizer] user %s has no workspace context, access denied", userID)
+	if x.workspaceID == "" {
+		log.Printf("[Authorizer] user %s has no workspace context, access denied", x.userID)
 		return false
 	}
 
-	assignment, resolved := a.entryAssignment(workspaceID, entryID, entryType)
+	assignment, resolved := a.entryAssignment(x.workspaceID, entryID, entryType)
 	if !resolved {
 		return false
 	}
-	return a.canAccessEntryWith(userID, workspaceID, entryID, entryType, assignment)
+	return a.canAccessEntryWith(x, entryID, entryType, assignment)
+}
+
+func (a *Authorizer) EntryAccessFor(userID, workspaceID string, isAdmin bool) conversation.EntryAccess {
+	return a.actor(userID, workspaceID, isAdmin)
+}
+
+func (a *Authorizer) CanAccessEntry(userID, workspaceID, entryID, entryType string, isAdmin bool) bool {
+	return a.EntryAccessFor(userID, workspaceID, isAdmin).CanAccess(entryID, entryType)
 }
 
 // canAccessEntryWith carries on from CanAccessEntry once the assignment is in
 // hand. It never reads the assignment from the database, so a caller that
 // already resolved it for this entry can reuse it.
 func (a *Authorizer) canAccessEntryWith(
-	userID, workspaceID, entryID, entryType string,
+	x *actorAccess,
+	entryID, entryType string,
 	assignment *inbox_assignment.InboxAssignment,
 ) bool {
-	if !assignment.VisibleTo(userID) && !a.canViewOthers(userID, workspaceID) {
+	userID, workspaceID := x.userID, x.workspaceID
+	if !assignment.VisibleTo(userID) && !x.canViewOthers() {
 		return false
 	}
 
@@ -114,7 +166,7 @@ func (a *Authorizer) canAccessEntryWith(
 		return true
 	}
 
-	scope, allowed := a.GetDepartmentScope(userID, workspaceID, false)
+	scope, allowed := x.departmentScope()
 	if !allowed {
 		return false
 	}
@@ -450,6 +502,6 @@ func (a *Authorizer) ResolveEntryAccess(workspaceID, entryID, entryType string) 
 		if !resolved {
 			return false
 		}
-		return a.canAccessEntryWith(userID, workspaceID, entryID, entryType, assignment)
+		return a.canAccessEntryWith(a.actor(userID, workspaceID, false), entryID, entryType, assignment)
 	}
 }

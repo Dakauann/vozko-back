@@ -11,7 +11,6 @@ import (
 	"vozko/domain/shared"
 )
 
-
 func sortKeyAliases() map[string]string {
 	keys := leaddomain.AllSortKeys()
 	allowed := make(map[string]string, len(keys)+2)

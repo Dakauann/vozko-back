@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/lead"
 	"vozko/domain/shared"
+	infracrmfilter "vozko/infra/repositories/crmfilter"
 )
 
 func TestOrderByAlwaysEndsWithAUniqueTiebreaker(t *testing.T) {
@@ -19,27 +20,27 @@ func TestOrderByAlwaysEndsWithAUniqueTiebreaker(t *testing.T) {
 		},
 	}
 	for _, sorts := range cases {
-		if got := orderBy(sorts); !strings.HasSuffix(got, ", leads.id DESC") {
+		if got := orderBy(testDescriptor, sorts); !strings.HasSuffix(got, ", leads.id DESC") {
 			t.Errorf("orderBy(%v) = %q, want a leads.id tiebreaker", sorts, got)
 		}
 	}
 }
 
 func TestOrderByPutsMissingValuesLast(t *testing.T) {
-	got := orderBy([]shared.Sort{{Field: string(lead.SortLastActivityAt), Direction: shared.SortDesc}})
-	if !strings.Contains(got, "last_activity_at DESC NULLS LAST") {
+	got := orderBy(testDescriptor, []shared.Sort{{Field: string(lead.SortLastActivityAt), Direction: shared.SortDesc}})
+	if !strings.HasPrefix(got, testDescriptor.LastActivityExpr()+" DESC NULLS LAST") {
 		t.Errorf("orderBy = %q, want NULLS LAST on the computed key", got)
 	}
 }
 
 func TestOrderByDefaultsToNewestFirst(t *testing.T) {
-	if got := orderBy(nil); !strings.HasPrefix(got, "leads.created_at DESC") {
-		t.Errorf("orderBy(nil) = %q, want newest leads first", got)
+	if got := orderBy(testDescriptor, nil); !strings.HasPrefix(got, "leads.created_at DESC") {
+		t.Errorf("orderBy(testDescriptor, nil) = %q, want newest leads first", got)
 	}
 }
 
 func TestOrderByIgnoresUnknownAndDuplicateKeys(t *testing.T) {
-	got := orderBy([]shared.Sort{
+	got := orderBy(testDescriptor, []shared.Sort{
 		{Field: "leads.id; DROP TABLE leads", Direction: shared.SortAsc},
 	})
 	if !strings.HasPrefix(got, "leads.created_at DESC") {
@@ -49,7 +50,7 @@ func TestOrderByIgnoresUnknownAndDuplicateKeys(t *testing.T) {
 		t.Fatalf("unknown sort key reached the SQL: %q", got)
 	}
 
-	dup := orderBy([]shared.Sort{
+	dup := orderBy(testDescriptor, []shared.Sort{
 		{Field: string(lead.SortName), Direction: shared.SortAsc},
 		{Field: string(lead.SortName), Direction: shared.SortDesc},
 	})
@@ -59,7 +60,7 @@ func TestOrderByIgnoresUnknownAndDuplicateKeys(t *testing.T) {
 }
 
 func TestEverySortKeyResolvesToAnExpression(t *testing.T) {
-	exprs := sortExpressions()
+	exprs := sortExpressions(testDescriptor)
 	for _, key := range lead.AllSortKeys() {
 		if exprs[key] == "" {
 			t.Errorf("sort key %q has no SQL expression", key)
@@ -86,5 +87,16 @@ func TestCompiledQueryScopesWorkspaceAndSoftDeletes(t *testing.T) {
 	}
 	if !strings.Contains(q.filteredIDs(), "SELECT leads.id FROM leads WHERE ") {
 		t.Errorf("filteredIDs = %q, want the same WHERE the page uses", q.filteredIDs())
+	}
+}
+
+var testDescriptor = infracrmfilter.LeadDescriptor{Alias: "leads", WorkspaceID: "ws-1"}
+
+func TestOrderBySortsTheDenormalisedCountsByColumn(t *testing.T) {
+	for key, column := range map[lead.SortKey]string{lead.SortRelatives: "leads.relatives_count", lead.SortReferred: "leads.referred_count"} {
+		got := orderBy(testDescriptor, []shared.Sort{{Field: string(key), Direction: shared.SortDesc}})
+		if !strings.HasPrefix(got, column+" DESC NULLS LAST") {
+			t.Errorf("orderBy(%s) = %q, want the stored column", key, got)
+		}
 	}
 }

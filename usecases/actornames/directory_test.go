@@ -80,3 +80,31 @@ func TestAMissingSourceIsSkipped(t *testing.T) {
 		t.Fatalf("names = %v", names)
 	}
 }
+
+func TestResolveNamesReportsAFailedLookupInsteadOfLeavingTheNameOut(t *testing.T) {
+	d := Directory{Users: &users{err: errors.New("db down")}, Agents: agents{}}
+
+	if _, err := d.ResolveNames(userID, actor.FormatAI(agentID)); err == nil {
+		t.Fatal("a failed user lookup must fail the resolution")
+	}
+}
+
+func TestResolveNamesReportsAMissingSourceForTheKindsAskedFor(t *testing.T) {
+	if _, err := (Directory{Agents: agents{}}).ResolveNames(userID); err == nil {
+		t.Fatal("a person cannot be named without the users source")
+	}
+	names, err := (Directory{Agents: agents{}}).ResolveNames(actor.FormatAI(agentID), "not-a-uuid")
+	if err != nil || names[actor.FormatAI(agentID)] != "Sofia" {
+		t.Fatalf("names = %v, %v: a source is only needed for the kinds asked for", names, err)
+	}
+}
+
+func TestResolveNamesNamesEveryKindLikeNames(t *testing.T) {
+	d := Directory{Users: &users{}, Agents: agents{}, Workflows: workflows{}}
+
+	names, err := d.ResolveNames(userID, actor.FormatAI(agentID), actor.FormatWorkflow(workflowID))
+
+	if err != nil || names[userID] != "Ana" || names[actor.FormatAI(agentID)] != "Sofia" || names[actor.FormatWorkflow(workflowID)] != "Boas-vindas" {
+		t.Fatalf("names = %v, %v", names, err)
+	}
+}

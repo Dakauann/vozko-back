@@ -15,9 +15,15 @@ func NewListMediaUseCase(mediaRepository media.MediaRepository) media.ListMediaU
 }
 
 func (uc *ListMediaUseCase) ListMedia(workspaceID string) ([]media.Media, error) {
-	images, err := uc.mediaRepository.ListMediasByWorkspace(workspaceID)
+	stored, err := uc.mediaRepository.ListMediasByWorkspace(workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	return images, nil
+	listed := make([]media.Media, 0, len(stored))
+	for _, m := range stored {
+		if m.Type.Listed() {
+			listed = append(listed, m)
+		}
+	}
+	return listed, nil
 }

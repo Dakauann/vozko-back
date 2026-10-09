@@ -1,6 +1,10 @@
 package callsession
 
-import "time"
+import (
+	"time"
+
+	"vozko/domain/shared"
+)
 
 const CallSessionReservationTTL = 60 * time.Second
 
@@ -13,11 +17,13 @@ func (r *ReservationState) Reserve(token string, activeAlready bool, now time.Ti
 	if token == "" || activeAlready {
 		return false
 	}
-	if r.reservedLive(now, ttl) {
-		return r.token == token
+	if !shared.ReserveFor(r.token, r.reservedAt, ttl).TakeableBy(token, now) {
+		return false
 	}
-	r.token = token
-	r.reservedAt = now
+	if !r.reservedLive(now, ttl) {
+		r.token = token
+		r.reservedAt = now
+	}
 	return true
 }
 
@@ -37,7 +43,7 @@ func (r *ReservationState) reservedLive(now time.Time, ttl time.Duration) bool {
 	if r.token == "" {
 		return false
 	}
-	if now.Sub(r.reservedAt) >= ttl {
+	if !shared.ReserveFor(r.token, r.reservedAt, ttl).Live(now) {
 		r.clear()
 		return false
 	}

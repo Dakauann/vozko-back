@@ -1,11 +1,13 @@
 package whatsapp_campaign_usecase
 
 import (
+	"vozko/domain/campaign"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	"vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/domain/workspace_phone_access"
+	"vozko/usecases/campaignautomation"
 )
 
 type updateCampaignUseCase struct {
@@ -14,6 +16,11 @@ type updateCampaignUseCase struct {
 	templateRepo      template.Repository
 	businessPhoneRepo businessphone.Repository
 	phoneAccessRepo   workspace_phone_access.Repository
+	automation        AutomationCheck
+}
+
+func (uc *updateCampaignUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
 }
 
 func NewUpdateCampaignUseCase(
@@ -47,6 +54,9 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 	if existing.IsOrganic() || input.IsOrganic() {
 		return nil, wc.ErrReceptiveManagedByNumber
 	}
+	if err := campaign.RefuseSelectionChange(existing.Source, existing.ChangesWhatIsSent(input)); err != nil {
+		return nil, err
+	}
 
 	existing.Name = input.Name
 	if input.Type.IsValid() {
@@ -75,6 +85,9 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 
 	existing.Normalize()
 	if err := existing.ValidateMetadata(); err != nil {
+		return nil, err
+	}
+	if err := campaignautomation.Require(uc.automation, existing.WorkspaceID, existing.Automation(), input.EntryMetadata()); err != nil {
 		return nil, err
 	}
 

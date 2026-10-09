@@ -204,9 +204,6 @@ func (r *simLeadRepo) FindOrCreate(_ string, _ string, _ lead_domain.LeadUpdate)
 func (r *simLeadRepo) FindOrCreateMany(_ string, _ []lead_domain.BulkLeadInput) (map[string]*lead_domain.Lead, error) {
 	return nil, nil
 }
-func (r *simLeadRepo) ImportMany(_ string, _ []lead_domain.BulkLeadInput, _ lead_domain.ExistingPolicy) (*lead_domain.ImportOutcome, error) {
-	return &lead_domain.ImportOutcome{}, nil
-}
 func (r *simLeadRepo) Update(_ string, _ string, _ lead_domain.LeadUpdate) error { return nil }
 func (r *simLeadRepo) Rename(_ string, _ string, _ string) error                 { return nil }
 func (r *simLeadRepo) Delete(_ string, _ string) error                           { return nil }
@@ -328,7 +325,10 @@ func (r *simWhatsAppEntryRepo) GetEntryIDsByCampaign(_ string) ([]string, error)
 func (r *simWhatsAppEntryRepo) FindByNumber(_ string) (*wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
-func (r *simWhatsAppEntryRepo) FindByNumberAndBusinessPhone(_, _ string) (*wce.WhatsAppCampaignEntry, error) {
+func (r *simWhatsAppEntryRepo) FindInboundRouteByNumberAndBusinessPhone(_, _ string) (*wce.WhatsAppCampaignEntry, error) {
+	return nil, nil
+}
+func (r *simWhatsAppEntryRepo) FindByNumberBusinessPhoneAndWorkspace(_, _, _ string) (*wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
 func (r *simWhatsAppEntryRepo) UpdateAutomationEnabled(_ string, _ *bool) error { return nil }
@@ -488,9 +488,6 @@ func (r *simMessageRepo) ListByEntry(entryID string, entryType shared.EntryType)
 func (r *simMessageRepo) ListByEntryPaginated(_ conversation.ListMessagesInput) ([]*conversation.Message, error) {
 	return nil, nil
 }
-func (r *simMessageRepo) ListByLeadID(_ string) ([]*conversation.Message, error) {
-	return nil, nil
-}
 func (r *simMessageRepo) MarkAsRead(_ conversation.MarkAsReadInput) (int64, error) { return 0, nil }
 func (r *simMessageRepo) CountUnreadByEntry(_ string, _ shared.EntryType) (int64, error) {
 	return 0, nil
@@ -513,6 +510,12 @@ func (r *simMessageRepo) SearchEntriesWithMessages(_ conversation.SearchEntriesI
 }
 func (r *simMessageRepo) SearchEntriesByFilter(_ conversation.SearchByFilterInput) ([]conversation.EntryWithLastMessage, int64, error) {
 	return nil, 0, nil
+}
+func (r *simMessageRepo) CountEntriesByFilter(_ conversation.SearchByFilterInput) (int64, error) {
+	return 0, nil
+}
+func (r *simMessageRepo) ResolveEntryRefsByFilter(_ conversation.SearchByFilterInput, _ string, _ int) ([]shared.EntryRef, error) {
+	return nil, nil
 }
 func (r *simMessageRepo) SearchMessagesByEntry(_ conversation.SearchMessagesByEntryInput) ([]*conversation.Message, int64, error) {
 	return nil, 0, nil

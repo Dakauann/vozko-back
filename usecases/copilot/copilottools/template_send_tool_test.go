@@ -46,7 +46,7 @@ type fakeCosts struct{}
 func (fakeCosts) GetTemplateCostMicros(string, string) (int64, error) { return 8500, nil }
 
 func templateSendDeps(send *fakePersonTemplates, denied bool) TemplateSendDeps {
-	return TemplateSendDeps{Send: send, Templates: grantedTemplates{denied: denied}, Costs: fakeCosts{}, Entries: &fakeEntries{}}
+	return TemplateSendDeps{Send: send, Templates: grantedTemplates{denied: denied}, Costs: fakeCosts{}, Balance: fakeBalance(2_000_000), Entries: &fakeEntries{}}
 }
 
 func templateArgs(variables ...interface{}) map[string]interface{} {
@@ -65,7 +65,7 @@ func TestSendTemplateShowsTheCostBeforeApproval(t *testing.T) {
 	for _, f := range fields {
 		got[f.Key] = f.Value
 	}
-	if got["template"] != "pedido_saiu" || got["cost"] != "US$ 0.0085" || got["conversation"] != "Maria (••••9624)" {
+	if got["template"] != "pedido_saiu" || got["cost"] != "US$ 0.0085" || got["balance"] != "US$ 2.00" || got["conversation"] != "Maria (••••9624)" {
 		t.Fatalf("fields = %v", fields)
 	}
 }
@@ -95,7 +95,7 @@ func TestSendTemplateRefusesATemplateTheWorkspaceCannotUse(t *testing.T) {
 }
 
 func TestSendTemplateExplainsRefusals(t *testing.T) {
-	for _, err := range []error{wo.ErrTemplateForbidden, tmpl.ErrTemplatePhoneMismatch, conversation.ErrUnauthorized} {
+	for _, err := range []error{wo.ErrTemplateForbidden, tmpl.ErrTemplatePhoneMismatch, conversation.ErrUnauthorized, wo.ErrLeadOptedOut} {
 		res := NewSendTemplateTool(templateSendDeps(&fakePersonTemplates{err: err}, false)).Execute(context.Background(), member(), templateArgs("Maria", "123"))
 		if res.Status == copilot.StatusOK || res.Message == "falha ao enviar o modelo" {
 			t.Fatalf("%v: %+v", err, res)

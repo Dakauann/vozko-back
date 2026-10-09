@@ -19,6 +19,10 @@ global:
     cluster: vozko-prod
     # Set per region/datacenter when running multiple Prometheus shards.
     # region: us-east-1
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/vozko_geocoding.yml
 
 scrape_configs:
   # ── Vozko application replicas ──────────────────────────────────────────
@@ -58,7 +62,7 @@ scrape_configs:
 
   # ── Node Exporter (optional) ───────────────────────────────────────────
   # Uncomment when host-level metrics (CPU/RAM/disk/network) are needed
-  # alongside app metrics. Node Exporter listens on :9100 — that's why
+  # alongside app metrics. Node Exporter listens on :9100, that's why
   # Vozko defaults to :9213 for its own /metrics, to avoid collision.
   # - job_name: node
   #   file_sd_configs:
@@ -82,7 +86,7 @@ scrape_configs:
 #       capacity: 20000
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Alertmanager wiring (optional in this template — uncomment when ready)
+# Alertmanager wiring (optional in this template, uncomment when ready)
 # ─────────────────────────────────────────────────────────────────────────────
 # alerting:
 #   alertmanagers:
@@ -90,6 +94,3 @@ scrape_configs:
 #         - targets:
 #             - alertmanager-1.internal:9093
 #             - alertmanager-2.internal:9093
-#
-# rule_files:
-#   - /etc/prometheus/rules/*.yml

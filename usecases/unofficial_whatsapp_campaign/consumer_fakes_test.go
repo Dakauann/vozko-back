@@ -12,6 +12,7 @@ import (
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/usecases/campaignguard"
 	conversation_usecase "vozko/usecases/conversation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
@@ -140,10 +141,11 @@ func (f *fakeCampaignRepo) UpdateClearCode(id, code string) error {
 }
 
 type fakeEntryRepo struct {
-	mu      sync.Mutex
-	entries map[string]*uwc.Entry
-	sends   []uwc.RecordSendInput
-	checks  int
+	mu        sync.Mutex
+	entries   map[string]*uwc.Entry
+	sends     []uwc.RecordSendInput
+	checks    int
+	updateErr error
 }
 
 func newFakeEntryRepo() *fakeEntryRepo {
@@ -272,6 +274,9 @@ func (f *fakeEntryRepo) CountByStatusForCampaigns([]string) (map[string]*campaig
 func (f *fakeEntryRepo) UpdateStatus(id string, status campaign.SendStatus, pid string, code int, msg string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.updateErr != nil {
+		return f.updateErr
+	}
 	if e, ok := f.entries[id]; ok {
 		e.Status = status
 		e.ErrorCode = code
@@ -445,22 +450,63 @@ func (f *fakeAssigner) EnsureAssignment(entryID, entryType, accountID string) st
 
 type fakeSpam struct {
 	skip     map[string]bool
+	reasons  map[string]campaign.SkipReason
+	days     int
+	err      error
+	checks   int
+	screens  [][]string
+	senders  []string
 	recorded []string
+	claimErr error
+	claims   int
+	released int
 }
 
-func (f *fakeSpam) ShouldSkip(_ context.Context, _, leadID, _ string) bool { return f.skip[leadID] }
+func (f *fakeSpam) Claim(context.Context, string, string, string) (func(), error) {
+	if f.claimErr != nil {
+		return nil, f.claimErr
+	}
+	f.claims++
+	return func() { f.released++ }, nil
+}
+
+func (f *fakeSpam) reasonOf(leadID string) campaign.SkipReason {
+	if reason, ok := f.reasons[leadID]; ok {
+		return reason
+	}
+	if f.skip[leadID] {
+		return campaign.SkipCooldown
+	}
+	return ""
+}
+
+func (f *fakeSpam) Check(_ context.Context, _, leadID, senderID string) (campaign.SkipReason, error) {
+	f.checks++
+	f.senders = append(f.senders, senderID)
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.reasonOf(leadID), nil
+}
+
+func (f *fakeSpam) Screen(_ context.Context, _ string, leadIDs []string, senderID string) (campaignguard.Screening, error) {
+	f.screens = append(f.screens, append([]string(nil), leadIDs...))
+	f.senders = append(f.senders, senderID)
+	if f.err != nil {
+		return campaignguard.Screening{}, f.err
+	}
+	out := map[string]campaign.SkipReason{}
+	for _, id := range leadIDs {
+		if reason := f.reasonOf(id); reason != "" {
+			out[id] = reason
+		}
+	}
+	return campaignguard.Screening{Skipped: out, CooldownDays: f.days}, nil
+}
+
 func (f *fakeSpam) Record(leadID, senderID, campaignID string) error {
 	f.recorded = append(f.recorded, leadID)
 	return nil
-}
-func (f *fakeSpam) SkipMany(_ context.Context, _ string, leadIDs []string, _ string) map[string]bool {
-	out := map[string]bool{}
-	for _, id := range leadIDs {
-		if f.skip[id] {
-			out[id] = true
-		}
-	}
-	return out
 }
 
 type fakeMetrics struct{ recorded []RecordSendMetric }

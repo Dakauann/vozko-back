@@ -18,6 +18,7 @@ import (
 	callbillinghttp "vozko/delivery/http/callbilling"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	callhistoryhttp "vozko/delivery/http/callhistory"
+	calllisthttp "vozko/delivery/http/calllist"
 	callroutinghttp "vozko/delivery/http/callrouting"
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
@@ -198,6 +199,9 @@ type router struct {
 	workspaceMiddleware            *middleware.WorkspaceMiddleware
 	departmentMiddleware           *middleware.DepartmentMiddleware
 	webchat                        WebchatRoutes
+	leadGeographyHandler           *leadhttp.GeographyHandler
+	callListHandler                *calllisthttp.Handler
+	leadReferencePointHandler      *leadhttp.ReferencePointHandler
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -307,9 +311,15 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	mediaGenerationHandler *mediagenhttp.Handler,
 	studioHandler *studiohttp.Handler,
 	webchat WebchatRoutes,
+	leadGeographyHandler *leadhttp.GeographyHandler,
+	callListHandler *calllisthttp.Handler,
+	leadReferencePointHandler *leadhttp.ReferencePointHandler,
 ) Router {
 	r := &router{
+		leadReferencePointHandler:      leadReferencePointHandler,
+		callListHandler:                callListHandler,
 		webchat:                        webchat,
+		leadGeographyHandler:           leadGeographyHandler,
 		metaChannels:                   metaChannels,
 		mediaGenerationHandler:         mediaGenerationHandler,
 		studioHandler:                  studioHandler,
@@ -488,6 +498,7 @@ func (r *router) setupRoutes() {
 	r.setupTelegramRoutes(protected)
 	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
 	callroutinghttp.RegisterProtectedRoutes(protected, r.callRoutingHandler, r.ac)
+	calllisthttp.RegisterProtectedRoutes(protected, r.callListHandler, r.ac)
 	r.setupUnofficialWhatsAppRoutes(protected)
 	r.setupWhatsAppOutreachRoutes(protected)
 	r.setupWABARoutes(protected)
@@ -824,7 +835,10 @@ func (r *router) setupAdminShippingRoutes(adminRoutes *mux.Router) {
 }
 
 func (r *router) setupLeadRoutes(protected *mux.Router) {
+	leadhttp.RegisterGeographyRoutes(protected, r.leadGeographyHandler, r.ac)
+	leadhttp.RegisterReferencePointRoutes(protected, r.leadReferencePointHandler, r.ac)
 	leadhttp.RegisterRoutes(protected, r.leadHandler, r.ac)
+	leadhttp.RegisterImportRoutes(protected, r.leadHandler, r.ac, r.mediaUploadRateLimiter)
 }
 func (r *router) setupAdminCallRecordingRoutes(adminRoutes *mux.Router) {
 	callrecordinghttp.RegisterAdminRoutes(adminRoutes, r.callRecordingHandler)
@@ -941,6 +955,10 @@ func (r *router) setupAIChatRoutes(protected *mux.Router) {
 	protected.HandleFunc("/chat/threads/{id}/messages", r.ac(ch, workspace_domain.ActionCreate, r.aiChatHandler.StreamMessage)).Methods(http.MethodPost)
 	protected.HandleFunc("/chat/threads/{id}/actions/{actionId}/approve", r.ac(ch, workspace_domain.ActionUpdate, r.aiChatHandler.ApproveAction)).Methods(http.MethodPost)
 	protected.HandleFunc("/chat/threads/{id}/actions/{actionId}/reject", r.ac(ch, workspace_domain.ActionUpdate, r.aiChatHandler.RejectAction)).Methods(http.MethodPost)
+	protected.HandleFunc("/chat/threads/{id}/screen/{commandId}", r.ac(ch, workspace_domain.ActionCreate, r.aiChatHandler.ScreenReply)).Methods(http.MethodPost)
+	protected.HandleFunc("/chat/threads/{id}/turn/events", r.ac(ch, workspace_domain.ActionRead, r.aiChatHandler.ObserveTurn)).Methods(http.MethodGet)
+	protected.HandleFunc("/chat/threads/{id}/turn/stop", r.ac(ch, workspace_domain.ActionCreate, r.aiChatHandler.StopTurn)).Methods(http.MethodPost)
+	protected.HandleFunc("/chat/threads/{id}/cost", r.ac(ch, workspace_domain.ActionRead, r.aiChatHandler.ThreadCost)).Methods(http.MethodGet)
 	protected.HandleFunc("/chat/threads/{id}", r.ac(ch, workspace_domain.ActionUpdate, r.aiChatHandler.RenameThread)).Methods(http.MethodPatch)
 	protected.HandleFunc("/chat/threads/{id}", r.ac(ch, workspace_domain.ActionDelete, r.aiChatHandler.DeleteThread)).Methods(http.MethodDelete)
 }
@@ -1017,7 +1035,7 @@ func (r *router) setupConversationRoutes(protected *mux.Router) {
 	conversationhttp.RegisterProtectedRoutes(protected, r.conversationHandler, r.ac)
 
 	protected.HandleFunc("/ws/conversations", r.ac(cv, workspace_domain.ActionRead, r.conversationWSHandler.HandleWebSocket))
-	protected.HandleFunc("/ws/call-session", r.ac(cv, workspace_domain.ActionUpdate, r.callSessionWSHandler.HandleWebSocket))
+	protected.HandleFunc("/ws/call-session", r.ac(workspace_domain.ResourceCallSession, workspace_domain.ActionUse, r.callSessionWSHandler.HandleWebSocket))
 }
 
 func (r *router) setupStageRoutes(protected *mux.Router) {
@@ -1039,7 +1057,7 @@ func (r *router) setupPipelineRoutes(protected *mux.Router) {
 }
 
 func (r *router) setupSavedViewRoutes(protected *mux.Router) {
-	savedviewhttp.RegisterRoutes(protected, r.savedViewHandler, r.ac)
+	savedviewhttp.RegisterRoutes(protected, r.savedViewHandler)
 	dealautomationhttp.RegisterRoutes(protected, r.dealAutomationHandler)
 }
 
@@ -1054,7 +1072,7 @@ func (r *router) setupCRMBoardRoutes(protected *mux.Router) {
 }
 
 func (r *router) setupCustomFieldRoutes(protected *mux.Router) {
-	customfieldhttp.RegisterRoutes(protected, r.customFieldHandler, r.ac)
+	customfieldhttp.RegisterRoutes(protected, r.customFieldHandler)
 }
 
 func (r *router) setupLabelRoutes(protected *mux.Router) {

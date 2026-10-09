@@ -49,6 +49,7 @@ type DispatchCampaignInput struct {
 	CampaignID string
 	Entries    []DispatchEntry
 	Action     campaign.Action
+	Reviewed   bool
 }
 
 type DispatchCampaignUseCase interface {

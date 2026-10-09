@@ -48,3 +48,24 @@ func TestViewCarriesTheCampaignFilterAndTheAIToggle(t *testing.T) {
 		}
 	}
 }
+
+func TestStudioViewNamesTheOpenProject(t *testing.T) {
+	ok := View{Surface: SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: StudioVideo}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("Validate() = %v", err)
+	}
+	if !ok.OnStudio() || (View{Surface: SurfaceAttendance}).OnStudio() {
+		t.Fatal("OnStudio must be true only on the studio surface")
+	}
+	for name, v := range map[string]View{
+		"no project":                  {Surface: SurfaceStudio, ProjectKind: StudioImage},
+		"project that is not an id":   {Surface: SurfaceStudio, ProjectID: "my project", ProjectKind: StudioImage},
+		"unknown project kind":        {Surface: SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: "audio"},
+		"attendance filter on studio": {Surface: SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: StudioImage, DateFrom: "2026-09-01"},
+		"project on attendance":       {Surface: SurfaceAttendance, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f"},
+	} {
+		if err := v.Validate(); !errors.Is(err, ErrInvalidView) {
+			t.Fatalf("%s: Validate() = %v, want ErrInvalidView", name, err)
+		}
+	}
+}

@@ -47,14 +47,24 @@ func (f *fakeLeads) FindOrCreate(string, string, lead.LeadUpdate) (*lead.Lead, b
 
 type fakeEntries struct {
 	wce.Repository
-	existing *wce.WhatsAppCampaignEntry
-	created  []*wce.WhatsAppCampaignEntry
-	statuses []string
-	codes    []int
+	existing          *wce.WhatsAppCampaignEntry
+	existingWorkspace string
+	inbound           *wce.WhatsAppCampaignEntry
+	asked             []string
+	created           []*wce.WhatsAppCampaignEntry
+	statuses          []string
+	codes             []int
 }
 
-func (f *fakeEntries) FindByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
-	if f.existing == nil {
+func (f *fakeEntries) FindInboundRouteByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
+	if f.inbound == nil {
+		return nil, wce.ErrEntryNotFound
+	}
+	return f.inbound, nil
+}
+func (f *fakeEntries) FindByNumberBusinessPhoneAndWorkspace(_, _, workspaceID string) (*wce.WhatsAppCampaignEntry, error) {
+	f.asked = append(f.asked, workspaceID)
+	if f.existing == nil || (f.existingWorkspace != "" && f.existingWorkspace != workspaceID) {
 		return nil, wce.ErrEntryNotFound
 	}
 	return f.existing, nil
@@ -164,6 +174,7 @@ func newUC(t *testing.T, mutate ...func(*Deps)) *h {
 		TemplateGrant:   &fakeGrant{granted: true},
 		CampaignSends:   &fakeCampaignSends{},
 		SpamPolicy:      &fakeSpamPolicy{},
+		SendClaims:      newFakeClaims(),
 		History:         history,
 		Assignments:     claims,
 		Sender:          sender,
@@ -324,6 +335,29 @@ func TestStartConversation_ExistingConversation_IsReused(t *testing.T) {
 	}
 	if result.EntryID != "entry-7" || !result.ConversationExisted {
 		t.Fatalf("existing conversation not reused: %+v", result)
+	}
+}
+
+func TestStartConversation_OnAGrantedPhoneNeverReusesAnotherWorkspaceEntry(t *testing.T) {
+	foreign := &wce.WhatsAppCampaignEntry{ID: "entry-of-ws-2", CampaignID: "camp-of-ws-2", LeadID: "lead-of-ws-2"}
+	entries := &fakeEntries{existing: foreign, existingWorkspace: "ws-2", inbound: foreign}
+	uc := newUC(t, func(d *Deps) { d.Entries = entries })
+
+	result, err := uc.uc.Execute(context.Background(), input())
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if result.EntryID == foreign.ID || result.ConversationExisted {
+		t.Fatalf("workspace ws-1 reused the entry of ws-2: %+v", result)
+	}
+	if len(entries.asked) != 1 || entries.asked[0] != "ws-1" {
+		t.Fatalf("the lookup must be scoped to the sending workspace, asked %v", entries.asked)
+	}
+	if len(entries.created) != 1 || entries.created[0].CampaignID != "camp-1" {
+		t.Fatalf("the send must land on a new entry in the workspace's own container, got %+v", entries.created)
+	}
+	if uc.sender.lastIn.EntryID == foreign.ID {
+		t.Fatal("the billed send was recorded on the other workspace's entry")
 	}
 }
 

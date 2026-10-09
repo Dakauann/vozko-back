@@ -8,6 +8,7 @@ import (
 	"vozko/delivery/http/response"
 	"vozko/domain/advertising"
 	"vozko/domain/balance"
+	"vozko/domain/lead"
 	"vozko/domain/media"
 	adsuc "vozko/usecases/advertising"
 )
@@ -41,8 +42,8 @@ var domainErrors = []errorMapping{
 	{advertising.ErrLeadFormNotFound, http.StatusNotFound, "not_found", "Formulário não encontrado"},
 	{advertising.ErrSettingsNotFound, http.StatusNotFound, "not_found", "Configuração de conversões não encontrada"},
 	{advertising.ErrBusinessPhoneNotFound, http.StatusNotFound, "business_phone_not_found", "Número oficial de WhatsApp não encontrado neste workspace"},
-	{advertising.ErrGrantNotFound, http.StatusConflict, "reconnect_required", "A conta de anúncios precisa ser reconectada"},
-	{advertising.ErrAccountNeedsReconnect, http.StatusConflict, "reconnect_required", "A conta de anúncios precisa ser reconectada"},
+	{advertising.ErrGrantNotFound, http.StatusConflict, advertising.CodeReconnectRequired, "A conta de anúncios precisa ser reconectada"},
+	{advertising.ErrAccountNeedsReconnect, http.StatusConflict, advertising.CodeReconnectRequired, "A conta de anúncios precisa ser reconectada"},
 	{advertising.ErrAccountReadOnly, http.StatusConflict, "account_read_only", "Seu perfil só tem acesso de leitura a esta conta de anúncios; peça a um administrador acesso de anunciante nas configurações do negócio na Meta"},
 	{advertising.ErrAccountAdminRequired, http.StatusConflict, "account_admin_required", "Só um administrador da conta de anúncios pode mudar o limite de gastos"},
 	{advertising.ErrMissingScopes, http.StatusConflict, "missing_permissions", "A Meta não concedeu as permissões de anúncios; conecte de novo e aceite todas"},
@@ -64,14 +65,16 @@ var domainErrors = []errorMapping{
 	{advertising.ErrObjectLocked, http.StatusConflict, "object_locked", "Itens excluídos ou arquivados não podem ser alterados"},
 	{advertising.ErrNoBudget, http.StatusConflict, "no_daily_budget", "Este item não tem orçamento próprio"},
 	{advertising.ErrBudgetKindLocked, http.StatusConflict, "budget_kind_locked", "A Meta não troca orçamento diário por total depois que o item é criado"},
-	{advertising.ErrAudienceTermsNotAccepted, http.StatusConflict, "audience_terms_not_accepted", "Aceite os termos de públicos personalizados da Meta nesta conta de anúncios"},
+	{advertising.ErrAudienceTermsNotAccepted, http.StatusConflict, advertising.CodeAudienceTerms, "Aceite os termos de públicos personalizados da Meta nesta conta de anúncios"},
 	{advertising.ErrBudgetChangeTooSoon, http.StatusTooManyRequests, "budget_change_limit", "A Meta permite 4 mudanças de orçamento por hora"},
 	{advertising.ErrInvalidBudget, http.StatusBadRequest, "invalid_budget", "Valor inválido: precisa ser maior que zero e, no limite de gastos, maior que o já gasto"},
 	{advertising.ErrInvalidRange, http.StatusBadRequest, "invalid_range", "Período inválido"},
 	{advertising.ErrNothingToChange, http.StatusBadRequest, "nothing_to_change", "Nenhuma alteração foi enviada"},
 	{advertising.ErrEditNotForLevel, http.StatusUnprocessableEntity, "not_for_level", "Esta alteração não vale para este nível"},
 	{advertising.ErrBreakdownCombination, http.StatusUnprocessableEntity, "invalid_breakdown", "A Meta não aceita esta combinação de quebras"},
-	{advertising.ErrNoCustomersMatched, http.StatusUnprocessableEntity, "no_customers_matched", "Nenhum cliente tem e-mail ou telefone que a Meta consiga encontrar"},
+	{advertising.ErrNoCustomersMatched, http.StatusUnprocessableEntity, advertising.CodeNoCustomersMatched, "Nenhum cliente tem e-mail ou telefone que a Meta consiga encontrar"},
+	{advertising.ErrSensitiveAudience, http.StatusUnprocessableEntity, advertising.CodeSensitiveAudience, "Um público da Meta não pode ser montado a partir de um campo sensível dos leads"},
+	{lead.ErrLeadForbidden, http.StatusForbidden, "forbidden", "Você não tem permissão para ler os leads deste público"},
 	{advertising.ErrMediaNotImage, http.StatusBadRequest, "not_an_image", "A mídia escolhida não é uma imagem"},
 	{media.ErrMediaNotFound, http.StatusNotFound, "not_found", "Mídia não encontrada"},
 	{adsuc.ErrCustomerFileUnreadable, http.StatusUnprocessableEntity, "customer_file_unreadable", "O arquivo de clientes não é um CSV legível"},
@@ -136,4 +139,9 @@ func writeError(w http.ResponseWriter, err error, fallback string) {
 	}
 	log.Printf("[ads] %s: %v", fallback, err)
 	response.WriteError(w, http.StatusInternalServerError, fallback, nil)
+}
+
+func Refusal(err error) (status int, code, message string, ok bool) {
+	described, ok := describeError(err)
+	return described.status, described.code, described.message, ok
 }

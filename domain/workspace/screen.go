@@ -79,6 +79,8 @@ var (
 	ScreenSIPTrunks                 = registerScreen("sip_trunks")
 	ScreenCallQueues                = registerScreen("call_queues")
 	ScreenCallHistory               = registerScreen("call_history")
+	ScreenCallLists                 = registerScreen("call_lists")
+	ScreenCallListDetail            = registerScreen("call_list_detail", "listId")
 	ScreenTelegramAccount           = registerScreen("telegram_account", "accountId")
 	ScreenWebchatWidgets            = registerScreen("webchat_widgets")
 	ScreenWebchatNew                = registerScreen("webchat_new")

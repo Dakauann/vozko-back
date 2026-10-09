@@ -1,7 +1,9 @@
 package opportunity_usecase
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,13 +11,14 @@ import (
 	"vozko/domain/customfield"
 	"vozko/domain/lead"
 	"vozko/domain/opportunity"
+	"vozko/domain/shared"
 	"vozko/domain/workspace"
 )
 
-const objectType = "opportunity"
+const objectType = customfield.ObjectOpportunity
 
 var (
-	ErrUnknownCustomField     = errors.New("opportunity: unknown custom field")
+	ErrUnknownCustomField     = customfield.ErrUnknownKey
 	ErrEntryTypeRequired      = errors.New("opportunity: entry id and type are required for a link")
 	ErrActorRequired          = errors.New("opportunity: the acting user, agent or workflow is required")
 	ErrOwnerOutsideWorkspace  = errors.New("opportunity: the owner does not belong to this workspace")
@@ -26,6 +29,7 @@ var (
 	ErrStageNotFound          = errors.New("opportunity: stage not found")
 	ErrLeadOutsideWorkspace   = errors.New("opportunity: the lead is not in this workspace")
 	ErrEntryOutsideWorkspace  = errors.New("opportunity: the conversation is not in this workspace")
+	ErrEntryLeadsMissing      = errors.New("opportunity: the lead of a conversation cannot be found")
 )
 
 type LeadDirectory interface {
@@ -36,6 +40,8 @@ type EntryDirectory interface {
 	GetEntryWorkspaceID(entryID, entryType string) (string, error)
 }
 
+type EntryLeads = lead.EntryLeads
+
 type Deps struct {
 	Repo          opportunity.Repository
 	Links         opportunity.LinkRepository
@@ -45,6 +51,7 @@ type Deps struct {
 	Owners        opportunity.OwnerDirectory
 	Leads         LeadDirectory
 	Entries       EntryDirectory
+	EntryLeads    EntryLeads
 	Conversations ConversationDirectory
 	Assign        AssignAccess
 	Clock         func() time.Time
@@ -63,6 +70,7 @@ type Service struct {
 	owners        opportunity.OwnerDirectory
 	leads         LeadDirectory
 	entries       EntryDirectory
+	entryLeads    EntryLeads
 	conversations ConversationDirectory
 	assign        AssignAccess
 	now           func() time.Time
@@ -82,6 +90,7 @@ func NewService(deps Deps) *Service {
 		owners:        deps.Owners,
 		leads:         deps.Leads,
 		entries:       deps.Entries,
+		entryLeads:    deps.EntryLeads,
 		conversations: deps.Conversations,
 		assign:        deps.Assign,
 		now:           clock,
@@ -136,13 +145,20 @@ func (s *Service) prepareCreate(workspaceID string, in CreateInput) (*opportunit
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if err := s.checkLead(workspaceID, in.LeadID); err != nil {
-		return nil, nil, nil, err
-	}
 	if in.LinkEntryID != "" {
 		if err := s.checkEntry(workspaceID, in.LinkEntryID, in.LinkEntryType); err != nil {
 			return nil, nil, nil, err
 		}
+		ofEntry, err := s.leadOfEntry(workspaceID, in.LinkEntryID, in.LinkEntryType)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if in.LeadID, err = opportunity.LeadForLinkedEntry(in.LeadID, ofEntry); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	if err := s.checkLead(workspaceID, in.LeadID); err != nil {
+		return nil, nil, nil, err
 	}
 	if err := s.mayChooseOwner(workspaceID, in.Actor, in.OwnerID, in.ActorIsPlatformAdmin); err != nil {
 		return nil, nil, nil, err
@@ -354,6 +370,20 @@ func (s *Service) checkLead(workspaceID, leadID string) error {
 	return nil
 }
 
+func (s *Service) leadOfEntry(workspaceID, entryID, entryType string) (string, error) {
+	if s.entryLeads == nil {
+		return "", ErrEntryLeadsMissing
+	}
+	leadID, err := s.entryLeads.LeadOfEntry(context.Background(), workspaceID, shared.EntryRef{EntryID: entryID, EntryType: shared.EntryType(entryType)})
+	if errors.Is(err, lead.ErrLeadNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("lead of conversation %s: %w", entryID, err)
+	}
+	return leadID, nil
+}
+
 func (s *Service) checkEntry(workspaceID, entryID, entryType string) error {
 	if s.entries == nil {
 		return ErrEntryOutsideWorkspace
@@ -390,36 +420,11 @@ func (s *Service) ListOpportunitiesForEntry(workspaceID, entryID, entryType stri
 
 func (s *Service) validateCustomFields(workspaceID string, values map[string]any) error {
 	if s.fields == nil {
-		return nil
+		return customfield.ErrDefinitionsUnavailable
 	}
 	defs, err := s.fields.ListByObject(workspaceID, objectType)
 	if err != nil {
 		return err
 	}
-	byKey := make(map[string]*customfield.Definition, len(defs))
-	for _, d := range defs {
-		byKey[d.Key] = d
-	}
-
-	for key, val := range values {
-		def, ok := byKey[key]
-		if !ok {
-			return ErrUnknownCustomField
-		}
-		if err := def.ValidateValue(val); err != nil {
-			return err
-		}
-	}
-
-	for _, def := range defs {
-		if !def.Required {
-			continue
-		}
-		if _, present := values[def.Key]; !present {
-			if err := def.ValidateValue(nil); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return customfield.ValidateValues(defs, values)
 }

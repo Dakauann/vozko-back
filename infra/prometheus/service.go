@@ -33,7 +33,11 @@ type PrometheusService struct {
 
 	WSConnections *prometheus.GaugeVec
 
-	audience *commentAnalysisMetrics
+	audience  *commentAnalysisMetrics
+	geocoding *geocodingMetrics
+
+	leadImport *leadImportMetrics
+	leadAction *leadActionMetrics
 
 	registry *prometheus.Registry
 }
@@ -166,6 +170,9 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 		WSConnections:         wsConnections,
 		RateLimited:           rateLimited,
 		audience:              newAudienceMetrics(reg),
+		geocoding:             newGeocodingMetrics(reg),
+		leadImport:            newLeadImportMetrics(reg),
+		leadAction:            newLeadActionMetrics(reg),
 		registry:              registry,
 	}
 }

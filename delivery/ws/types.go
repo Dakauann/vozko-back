@@ -342,9 +342,12 @@ type UnreadCountPayload struct {
 type SubscribedPayload struct {
 	EntryID            string                 `json:"entry_id"`
 	EntryType          string                 `json:"entry_type"`
-	LeadName           string                 `json:"lead_name,omitempty"`
-	LeadNumber         string                 `json:"lead_number,omitempty"`
-	LeadPicture        string                 `json:"lead_picture,omitempty"`
+	LeadID             string                 `json:"lead_id,omitempty"`
+	LeadName           string                 `json:"lead_name"`
+	LeadNumber         string                 `json:"lead_number"`
+	LeadVersion        int64                  `json:"lead_version"`
+	Blocked            bool                   `json:"blocked"`
+	LeadPicture        string                 `json:"lead_picture"`
 	LeadMetadata       map[string]interface{} `json:"lead_metadata,omitempty"`
 	EntryVariables     []string               `json:"entry_variables,omitempty"`
 	UnreadCount        int64                  `json:"unread_count"`
@@ -365,6 +368,7 @@ type AdOriginPayload struct {
 type ErrorPayload struct {
 	Code           string                 `json:"code"`
 	Message        string                 `json:"message"`
+	RequestID      string                 `json:"request_id,omitempty"`
 	EntryID        string                 `json:"entry_id,omitempty"`
 	EntryType      string                 `json:"entry_type,omitempty"`
 	Status         string                 `json:"status,omitempty"`
@@ -407,12 +411,12 @@ type LabelUpdatePayload struct {
 }
 
 type StartCallPayload struct {
-	EntryID     string `json:"entry_id"`
-	EntryType   string `json:"entry_type"`
 	PhoneNumber string `json:"phone_number,omitempty"`
 
 	WhatsAppPhoneID string `json:"whatsapp_phone_id,omitempty"`
 	TrunkID         string `json:"trunk_id,omitempty"`
+	LeadID          string `json:"lead_id,omitempty"`
+	CallListItemID  string `json:"call_list_item_id,omitempty"`
 	RequestID       string `json:"request_id,omitempty"`
 }
 

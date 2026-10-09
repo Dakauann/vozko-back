@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 
 	"vozko/delivery/http/httpx"
@@ -39,7 +40,7 @@ func NewHandler(history History, access Access) *Handler {
 }
 
 // @Summary		Listar chamadas
-// @Description	Lista as ligações do workspace, das mais recentes para as mais antigas, por tronco SIP e WhatsApp: quem ligou, quem atendeu, quantas transferências houve, o resultado, o tempo de conversa e o valor cobrado. Sem a permissão `call_history:view_others`, a lista traz só as ligações de que você participou (fez, atendeu, transferiu ou recebeu por transferência) e `memberId` é ignorado. `amountMicros` é o valor debitado do saldo, em milionésimos de real.
+// @Description	Lista as ligações do workspace, das mais recentes para as mais antigas, por tronco SIP e WhatsApp: quem ligou, quem atendeu, quantas transferências houve, o resultado, o tempo de conversa e o valor cobrado. Sem a permissão `call_history:view_others`, a lista traz só as ligações de que você participou (fez, atendeu, transferiu ou recebeu por transferência) e `memberId` é ignorado. `amountMicros` é o valor debitado do saldo, em milionésimos de real. Em `contact`, `leads` diz quantos leads guardam o número (o número de WhatsApp ou um telefone de contato). `leadId` e `name` trazem o lead para quem a ligação foi feita; em ligações sem esse vínculo, vêm quando o número é o WhatsApp de um lead ou quando só um lead o guarda, e ficam vazios numa linha que vários leads dividem.
 // @Tags			Histórico de chamadas
 // @Produce		json
 // @Param			page		query		int		false	"Página (começa em 1)"
@@ -51,6 +52,7 @@ func NewHandler(history History, access Access) *Handler {
 // @Param			from		query		string	false	"Início do período (YYYY-MM-DD ou RFC 3339)"
 // @Param			to			query		string	false	"Fim do período (YYYY-MM-DD inclui o dia todo, ou RFC 3339)"
 // @Param			number		query		string	false	"Parte do número do contato"
+// @Param			leadId		query		string	false	"Ligações feitas para este lead (identificador do lead); ligações antigas, feitas antes de a ligação guardar o lead, não aparecem neste filtro"
 // @Success		200			{object}	CallListResponse
 // @Failure		400			{object}	response.ErrorResponse
 // @Failure		401			{object}	response.ErrorResponse
@@ -143,6 +145,12 @@ func listInput(query url.Values, viewer callhistory_usecase.Viewer) (callhistory
 		input.Answered = ptr(false)
 	default:
 		return input, errInvalidFilter
+	}
+	if leadID := strings.TrimSpace(query.Get("leadId")); leadID != "" {
+		if _, err := uuid.Parse(leadID); err != nil {
+			return input, errInvalidFilter
+		}
+		input.LeadID = leadID
 	}
 	var err error
 	if input.From, err = dateBound(query.Get("from"), false); err != nil {

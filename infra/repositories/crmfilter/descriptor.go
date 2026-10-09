@@ -1,7 +1,6 @@
 package crmfilter
 
 import (
-	"errors"
 	"fmt"
 
 	"vozko/domain/crmfilter"
@@ -16,6 +15,7 @@ const (
 	StyleExists
 	StyleBool
 	StyleText
+	StyleCompiled
 )
 
 type FieldMapping struct {
@@ -38,6 +38,8 @@ type FieldMapping struct {
 	Params   int
 
 	ExtraArgs []interface{}
+
+	Compile func(crmfilter.Predicate) (string, []interface{}, error)
 }
 
 type ObjectDescriptor interface {
@@ -46,8 +48,8 @@ type ObjectDescriptor interface {
 }
 
 var (
-	ErrUnsupportedField    = errors.New("crmfilter: unsupported field for this object")
-	ErrUnsupportedOperator = errors.New("crmfilter: operator not supported by field mapping")
+	ErrUnsupportedField    = fmt.Errorf("%w: unsupported field for this object", crmfilter.ErrNotApplicable)
+	ErrUnsupportedOperator = fmt.Errorf("%w: operator not supported by field mapping", crmfilter.ErrNotApplicable)
 )
 
 const windowOpenSubquery = "(" +

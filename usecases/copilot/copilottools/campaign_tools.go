@@ -254,25 +254,12 @@ func (t *startCampaignTool) Describe(_ context.Context, cc copilot.Context, args
 		pending = campaign.Metrics.Pending
 	}
 	fields = append(fields, copilot.Field{Key: "contacts", Value: fmt.Sprintf("%d", pending)})
-	if template, err := t.deps.Templates.Get(cc.WorkspaceID, campaign.TemplateID); err == nil {
-		fields = append(fields, copilot.Field{Key: "template", Value: template.Name}, copilot.Field{Key: "finalCost", Value: t.cost(cc, template, pending)})
-	}
-	if balance, err := t.deps.Balance.GetBalance(cc.WorkspaceID); err == nil {
-		fields = append(fields, copilot.Field{Key: "balance", Value: formatUSD(balance)})
-	}
-	return fields
-}
-
-func (t *startCampaignTool) cost(cc copilot.Context, template *tmpl.Template, contacts int64) string {
-	category, err := template.BillingCategory()
+	template, err := t.deps.Templates.Get(cc.WorkspaceID, campaign.TemplateID)
 	if err != nil {
-		return "indisponível"
+		return append(fields, copilot.Field{Key: "finalCost", Value: costUnavailable})
 	}
-	unit, err := t.deps.Costs.GetTemplateCostMicros(cc.WorkspaceID, category)
-	if err != nil || unit <= 0 {
-		return "indisponível"
-	}
-	return formatUSD(unit * contacts)
+	fields = append(fields, copilot.Field{Key: "template", Value: template.Name})
+	return append(fields, templateCostFields(t.deps.Costs, t.deps.Balance, cc.WorkspaceID, template, pending, "finalCost", formatUSD)...)
 }
 
 func (t *startCampaignTool) owned(cc copilot.Context, raw string) (*wc.Campaign, error) {

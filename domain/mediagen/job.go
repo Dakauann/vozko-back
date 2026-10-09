@@ -29,7 +29,10 @@ const (
 
 const SettleWindow = 7 * 24 * time.Hour
 
-const MaxActiveProcessing = 2
+const (
+	MaxActiveProcessing  = 2
+	MaxActiveGenerations = 3
+)
 
 func (s Status) Terminal() bool { return s == StatusDone || s == StatusFailed }
 
@@ -72,6 +75,7 @@ type Job struct {
 	Voice             string
 	Video             Timeline
 	SourceMediaID     string
+	BillingReference  string
 	Fingerprint       string
 	Status            Status
 	MediaID           string
@@ -111,6 +115,7 @@ func NewJob(req Request, requestedBy string) (*Job, error) {
 		Voice:             n.Voice,
 		Video:             n.Video,
 		SourceMediaID:     n.SourceMediaID,
+		BillingReference:  n.BillingReference,
 		Fingerprint:       n.Fingerprint(requester),
 		Status:            StatusQueued,
 	}, nil
@@ -119,7 +124,7 @@ func NewJob(req Request, requestedBy string) (*Job, error) {
 func (j *Job) Request() Request {
 	return Request{
 		WorkspaceID: j.WorkspaceID, Kind: j.Kind, Model: j.Model, Prompt: j.Prompt, Aspect: j.Aspect,
-		ReferenceMediaIDs: j.ReferenceMediaIDs, Voice: j.Voice, Video: j.Video, SourceMediaID: j.SourceMediaID,
+		ReferenceMediaIDs: j.ReferenceMediaIDs, Voice: j.Voice, Video: j.Video, SourceMediaID: j.SourceMediaID, BillingReference: j.BillingReference,
 	}
 }
 

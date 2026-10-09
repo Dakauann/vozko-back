@@ -14,3 +14,5 @@ type Previewer interface {
 }
 
 const PreviewMessage = "message"
+
+const PreviewLeadAction = "lead_action"

@@ -9,8 +9,6 @@ import (
 )
 
 type Repository interface {
-	Create(lead *Lead) error
-
 	FindByID(workspaceID, id string) (*Lead, error)
 
 	FindByIDs(workspaceID string, ids []string) ([]*Lead, error)
@@ -20,12 +18,6 @@ type Repository interface {
 	FindOrCreate(workspaceID, number string, update LeadUpdate) (*Lead, bool, error)
 
 	FindOrCreateMany(workspaceID string, inputs []BulkLeadInput) (map[string]*Lead, error)
-
-	ImportMany(workspaceID string, inputs []BulkLeadInput, policy ExistingPolicy) (*ImportOutcome, error)
-
-	Update(workspaceID, id string, update LeadUpdate) error
-
-	Rename(workspaceID, id, name string) error
 
 	Delete(workspaceID, id string) error
 
@@ -39,15 +31,16 @@ type Repository interface {
 }
 
 type BulkLeadInput struct {
+	Source Source
 	Number string
 	Name   string
-	Age    *int
 }
 
 type ListLeadsInput struct {
 	WorkspaceID string
 	Filter      crmfilter.Filter
 	Options     shared.QueryOptions
+	Today       time.Time
 }
 
 type SortKey string
@@ -62,6 +55,8 @@ const (
 	SortCampaigns      SortKey = "campaigns"
 	SortMemories       SortKey = "memories"
 	SortLastMemoryAt   SortKey = "lastMemoryAt"
+	SortRelatives      SortKey = "relativesCount"
+	SortReferred       SortKey = "referredCount"
 )
 
 var DefaultSort = shared.Sort{Field: string(SortCreatedAt), Direction: shared.SortDesc}
@@ -71,6 +66,7 @@ func AllSortKeys() []SortKey {
 		SortCreatedAt, SortUpdatedAt, SortLastActivityAt,
 		SortName, SortNumber, SortAge,
 		SortCampaigns, SortMemories, SortLastMemoryAt,
+		SortRelatives, SortReferred,
 	}
 }
 
@@ -118,6 +114,7 @@ type LeadSummary struct {
 }
 
 type LeadWithSummary struct {
-	Lead    *Lead
-	Summary *LeadSummary
+	Lead      *Lead
+	Summary   *LeadSummary
+	OwnerName string
 }

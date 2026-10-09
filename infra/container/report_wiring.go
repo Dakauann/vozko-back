@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	report_domain "vozko/domain/report"
+	dept "vozko/domain/workspace/workspace_department"
 	"vozko/infra/browser"
 	report_usecase "vozko/usecases/report"
 	report_renderers "vozko/usecases/report/renderers"
@@ -30,6 +31,15 @@ func (s s3ReportStorage) Download(ctx context.Context, key string) ([]byte, stri
 
 var _ report_domain.Storage = s3ReportStorage{}
 
+type reportDepartmentScopes struct {
+	members     dept.Members
+	departments dept.MemberDepartments
+}
+
+func (s reportDepartmentScopes) For(_ context.Context, workspaceID, userID string, isAdmin bool) (*dept.DepartmentFilter, error) {
+	return dept.RequesterScope(s.members, s.departments, workspaceID, userID, isAdmin)
+}
+
 func (c *Container) buildReportRegistry() *report_domain.Registry {
 	registry := report_domain.NewRegistry()
 
@@ -50,12 +60,13 @@ func (c *Container) buildReportRegistry() *report_domain.Registry {
 	}
 	if c.useCases.exportEntries != nil {
 		withPDF(report_domain.KindConversationEntries, "conversas",
-			report_renderers.NewConversationEntriesRenderer(c.useCases.exportEntries))
+			report_renderers.NewConversationEntriesRenderer(c.useCases.exportEntries, reportDepartmentScopes{members: c.repositories.workspace, departments: c.repositories.workspaceDepartment}))
 	}
 	if c.services.opportunityIO != nil {
 		withPDF(report_domain.KindOpportunities, "oportunidades",
-			report_renderers.NewOpportunitiesRenderer(c.services.opportunityIO))
+			report_renderers.NewOpportunitiesRenderer(c.services.opportunityIO, c.useCases.personDeals))
 	}
+	registry.Register(c.leadExportRenderer())
 	if c.services.transactionsExporter != nil {
 		withPDF(report_domain.KindBalanceTransactions, "transacoes",
 			report_renderers.NewBalanceTransactionsRenderer(c.services.transactionsExporter))
@@ -104,6 +115,7 @@ func (c *Container) buildReportService() *report_usecase.Service {
 		s3ReportStorage{files: c.s3},
 	)
 	service.SetPrintSecret(c.cfg.AuthJWTSecret)
+	service.SetAccess(c.services.conversationAuth)
 	return service
 }
 

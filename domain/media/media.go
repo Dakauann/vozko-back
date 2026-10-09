@@ -19,6 +19,8 @@ const (
 	MediaTypeAudio        MediaType = "audio"
 	MediaTypeDocument     MediaType = "document"
 	MediaTypeSticker      MediaType = "sticker"
+	MediaTypeStudioProxy  MediaType = "studio_proxy"
+	MediaTypeLeadImport   MediaType = "lead_import"
 )
 
 type Media struct {
@@ -29,4 +31,12 @@ type Media struct {
 	PreviewURL  string    `json:"previewUrl,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	Type        MediaType `json:"type"`
+}
+
+func (t MediaType) Listed() bool {
+	return t != MediaTypeStudioProxy && t != MediaTypeLeadImport
+}
+
+func (t MediaType) Private() bool {
+	return t == MediaTypeLeadImport
 }

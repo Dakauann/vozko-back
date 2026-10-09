@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -23,16 +24,18 @@ func New(db *gorm.DB) report.Repository {
 
 func (r *repository) Create(job *report.Job) error {
 	record := schema.ReportJob{
-		ID:          job.ID,
-		WorkspaceID: job.WorkspaceID,
-		RequestedBy: job.RequestedBy,
-		Kind:        string(job.Kind),
-		Format:      string(job.Format),
-		Locale:      job.Locale,
-		Params:      datatypes.JSON(job.Params),
-		Fingerprint: job.Fingerprint,
-		Status:      string(job.Status),
-		ExpiresAt:   job.ExpiresAt,
+		ID:               job.ID,
+		WorkspaceID:      job.WorkspaceID,
+		RequestedBy:      job.RequestedBy,
+		RequestedByAdmin: job.RequestedByAdmin,
+		Kind:             string(job.Kind),
+		Format:           string(job.Format),
+		Locale:           job.Locale,
+		Params:           datatypes.JSON(job.Params),
+		Fingerprint:      job.Fingerprint,
+		Readers:          pq.StringArray(job.Readers),
+		Status:           string(job.Status),
+		ExpiresAt:        job.ExpiresAt,
 	}
 	if record.RequestedBy == "" {
 		if err := r.db.Omit("RequestedBy").Create(&record).Error; err != nil {
@@ -93,11 +96,13 @@ func (r *repository) FindReusable(workspaceID, fingerprint string, since time.Ti
 
 func (r *repository) List(query report.ListQuery) (report.ListPage, error) {
 	query.Normalize()
-	if query.WorkspaceID == "" {
+	if query.WorkspaceID == "" || query.Viewer == "" {
 		return report.ListPage{Jobs: []report.Job{}}, nil
 	}
 
-	scope := r.db.Model(&schema.ReportJob{}).Where("workspace_id = ?", query.WorkspaceID)
+	scope := r.db.Model(&schema.ReportJob{}).
+		Where("workspace_id = ?", query.WorkspaceID).
+		Where(visibleToViewerSQL, query.Viewer, pq.StringArray(query.ViewerHolds))
 
 	if len(query.Kinds) > 0 {
 		kinds := make([]string, 0, len(query.Kinds))
@@ -236,25 +241,44 @@ func toDomain(record schema.ReportJob) report.Job {
 		params = json.RawMessage("{}")
 	}
 	return report.Job{
-		ID:          record.ID,
-		WorkspaceID: record.WorkspaceID,
-		RequestedBy: record.RequestedBy,
-		Kind:        report.Kind(record.Kind),
-		Format:      report.Format(record.Format),
-		Locale:      record.Locale,
-		Params:      params,
-		Fingerprint: record.Fingerprint,
-		Status:      report.Status(record.Status),
-		Progress:    record.Progress,
-		FailureCode: report.FailureCode(record.FailureCode),
-		ObjectKey:   record.ObjectKey,
-		Filename:    record.Filename,
-		SizeBytes:   record.SizeBytes,
-		RowCount:    record.RowCount,
-		ExpiresAt:   record.ExpiresAt,
-		StartedAt:   record.StartedAt,
-		FinishedAt:  record.FinishedAt,
-		CreatedAt:   record.CreatedAt,
-		UpdatedAt:   record.UpdatedAt,
+		ID:               record.ID,
+		WorkspaceID:      record.WorkspaceID,
+		RequestedBy:      record.RequestedBy,
+		RequestedByAdmin: record.RequestedByAdmin,
+		Kind:             report.Kind(record.Kind),
+		Format:           report.Format(record.Format),
+		Locale:           record.Locale,
+		Params:           params,
+		Fingerprint:      record.Fingerprint,
+		Readers:          []string(record.Readers),
+		Status:           report.Status(record.Status),
+		Progress:         record.Progress,
+		FailureCode:      report.FailureCode(record.FailureCode),
+		ObjectKey:        record.ObjectKey,
+		Filename:         record.Filename,
+		SizeBytes:        record.SizeBytes,
+		RowCount:         record.RowCount,
+		ExpiresAt:        record.ExpiresAt,
+		StartedAt:        record.StartedAt,
+		FinishedAt:       record.FinishedAt,
+		CreatedAt:        record.CreatedAt,
+		UpdatedAt:        record.UpdatedAt,
 	}
+}
+
+const (
+	visibleToViewerSQL = "(requested_by = ? OR (readers IS NOT NULL AND cardinality(readers) > 0 AND readers <@ ?::text[]))"
+	readerKeysSQL      = "SELECT DISTINCT unnest(readers) AS reader FROM report_jobs WHERE workspace_id = ? AND readers IS NOT NULL"
+)
+
+func (r *repository) ReaderKeys(workspaceID string) ([]string, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, nil
+	}
+	keys := []string{}
+	if err := r.db.Raw(readerKeysSQL, workspaceID).Scan(&keys).Error; err != nil {
+		return nil, err
+	}
+	return keys, nil
 }

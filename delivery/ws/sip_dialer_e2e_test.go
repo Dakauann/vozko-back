@@ -140,7 +140,7 @@ func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 		t.Fatal(err)
 	}
 	source := sip_trunk_usecase.NewCallSource(sip_trunk_usecase.NewCallPlanner(repo, manager, grants), manager)
-	start := callsession_usecase.NewStartOutboundCallUseCase(conversation_usecase.NewDispatchingCallSource(nil, source), nil, admission)
+	start := callsession_usecase.NewStartOutboundCallUseCase(conversation_usecase.NewDispatchingCallSource(nil, source), admission, unknownLeads{}, nil)
 	end := callsession_usecase.NewEndOutboundCallUseCase(admission)
 	sessions := infra_callsession.NewInProcSessionRegistry()
 	calls := infra_callsession.NewInProcCallRegistry()

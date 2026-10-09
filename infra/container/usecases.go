@@ -15,6 +15,9 @@ import (
 	"vozko/brand"
 	balance_domain "vozko/domain/balance"
 	redisCache "vozko/infra/cache"
+	aiusage_repository "vozko/infra/repositories/aiusage"
+	balance_repository "vozko/infra/repositories/balance"
+	georef_repository "vozko/infra/repositories/georef"
 
 	"vozko/domain/messaging"
 	"vozko/domain/tools"
@@ -47,6 +50,7 @@ import (
 	telemetry_dedupe_repository "vozko/infra/repositories/telemetry_dedupe"
 	shortlink_infra "vozko/infra/shortlink"
 	telephony_infra "vozko/infra/telephony"
+	"vozko/infra/viacep"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	"vozko/infra/whisper"
 	address_usecase "vozko/usecases/address"
@@ -131,7 +135,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	timeline := ce_usecase.NewLogger(c.services.crmTelemetryPublisher)
 
-	searchCEPUC := cep_usecase.NewSearchCEPUseCase(c.repositories.cep, http.DefaultClient)
+	searchCEPUC := cep_usecase.NewSearchCEPUseCaseWithReference(c.repositories.cep, viacep.NewClient(viacep.Config{}), georef_repository.NewPlaces(c.db))
 
 	openrouterCfg := openrouter_service.Config{
 		APIKey:       c.cfg.OpenRouterAPIKey,
@@ -161,6 +165,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 
 	leadMemories := c.buildLeadMemories()
+	leadProfiles := c.initLeadProfiles(searchCEPUC)
 
 	assignEntryStageUC := stage_usecase.NewAssignEntryStageUseCase(c.repositories.stage, timeline)
 	assignEntryLabelUC := label_usecase.NewAssignEntryLabelUseCase(c.repositories.label, timeline)
@@ -177,6 +182,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Owners:        c.repositories.opportunityOwners,
 		Leads:         lead_usecase.NewQueries(c.repositories.lead),
 		Entries:       c.services.campaignWorkspaceResolver,
+		EntryLeads:    c.repositories.lead,
 		Conversations: c.services.inboxService,
 		Assign:        workspace_usecase.NewCheckAccessUseCase(c.repositories.workspace),
 	})
@@ -190,6 +196,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewManageEntryStageToolUseCase(c.repositories.stage, assignEntryStageUC, c.services.conversationHub),
 		tools_usecase.NewManageEntryLabelTool(label_usecase.NewListLabelsUseCase(c.repositories.label), automationLabeler),
 		tools_usecase.NewManageLeadMemoryToolUseCase(leadMemories.create, leadMemories.update, leadMemories.delete),
+		tools_usecase.NewUpdateLeadProfileTool(leadProfiles),
 		tools_usecase.NewFinishConversationToolUseCase(c.services.conversationStatusUpdater, outcomeCaptureReader{configs: c.repositories.workspaceConfig}),
 		tools_usecase.NewTransferToHumanToolUseCase(c.services.assignmentService),
 		tools_usecase.NewManageOpportunityTool(opportunitySvc),
@@ -253,13 +260,16 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	getAgentUC := agent_usecase.NewGetAgentUseCase(c.repositories.agent)
 	listAgentsUC := agent_usecase.NewListAgentsUseCase(c.repositories.agent)
 
-	createWCCampaignUC := wc_usecase.NewCreateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess, c.repositories.workspaceConfig, c.repositories.leadCampaignSend, resolveCreationDepartmentUC)
+	sendEligibility := c.campaignEligibility()
+	createWCCampaignUC := wc_usecase.NewCreateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess, sendEligibility, resolveCreationDepartmentUC)
 	if granting, ok := createWCCampaignUC.(interface {
 		SetTemplateGrants(wc_usecase.TemplateGrants)
 	}); ok {
 		granting.SetTemplateGrants(c.repositories.workspaceTemplateAccess)
 	}
+	c.wireOfficialCampaignCreate(createWCCampaignUC)
 	updateWCCampaignUC := wc_usecase.NewUpdateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess)
+	c.automateCampaignChanges("official update", updateWCCampaignUC)
 	assignWCCampaignDepartmentUC := wc_usecase.NewAssignDepartmentUseCase(c.repositories.wcCampaign, resolveCreationDepartmentUC)
 	deleteWCCampaignUC := wc_usecase.NewDeleteCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
 	getWCCampaignUC := wc_usecase.NewGetCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
@@ -276,11 +286,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	resetWCCampaignUC := wc_usecase.NewResetCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
 	clearHistoryWCCampaignUC := wc_usecase.NewClearHistoryUseCase(c.repositories.wcCampaign, c.repositories.conversation)
 	deleteEntryWCCampaignUC := wc_usecase.NewDeleteEntryUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
-	updateEntryWCCampaignUC := wc_usecase.NewUpdateEntryUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead)
+	updateEntryWCCampaignUC := wc_usecase.NewUpdateEntryUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.leadIncomingMerge())
 	if c.services.crmTelemetryEmitter != nil {
 		updateEntryWCCampaignUC.SetAIToggleTelemetry(c.services.crmTelemetryEmitter)
 	}
 	addEntriesWCCampaignUC := wc_usecase.NewAddEntriesUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead)
+	c.automateCampaignChanges("official add entries", addEntriesWCCampaignUC)
 	currentSubscriptionUC := workspace_plan_usecase.NewEnsureCurrentWorkspaceSubscriptionUseCase(c.repositories.workspaceSubscription)
 	activeSubscriptionUC := workspace_plan_usecase.NewEnsureActiveWorkspaceSubscriptionUseCase(currentSubscriptionUC)
 	getWorkspaceSubscriptionUC := workspace_plan_usecase.NewGetWorkspaceSubscriptionUseCase(c.repositories.workspacePlan, c.repositories.workspaceSubscription)
@@ -308,12 +319,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub),
 		c.adOriginRecorder(),
 	)
-	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), c.repositories.workspaceConfig, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
+	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), sendEligibility, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	if err != nil {
 		log.Fatalf("Failed to build the WhatsApp campaign quick send: %v", err)
 	}
+	c.automateCampaignChanges("official quick send", quickSendWCCampaignUC)
 
 	var whisperURLs []string
 	if envURLs := whisper.GetURLsFromEnv(whisper.EnvWhisperURLs); len(envURLs) > 0 {
@@ -424,10 +436,14 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Default(),
 	)
 	c.services.callAdmission = callAdmissionCoordinator
+	dialTargets := c.leadDialTargets()
+	c.sipTrunks.Handler.WithDialTargets(dialTargets)
+	callListItems := c.callListItems()
 	c.services.startOutboundCall = callsession_usecase.NewStartOutboundCallUseCase(
 		c.services.crmCallSource,
-		c.services.conversationHistory,
 		callAdmissionCoordinator,
+		dialTargets,
+		callListItems,
 	)
 	c.services.endOutboundCall = callsession_usecase.NewEndOutboundCallUseCase(callAdmissionCoordinator)
 
@@ -442,6 +458,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatalf("Failed to build the outbound call lifecycle: %v", err)
 	}
 	c.services.callLifecycle = callLifecycle
+	c.services.callLifecycle.SetCallListItems(callListItems)
 
 	c.services.callLifecycle.SetCDRStart(
 		calls_cdr_usecase.NewStartCallUseCase(c.repositories.callCDR),
@@ -531,7 +548,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	memberVisibilityUC := workspace_usecase.NewMemberVisibilityUseCase(c.repositories.workspace, c.repositories.workspaceDepartment, c.repositories.workspaceConfig)
 
-	customFieldSvc := customfield_usecase.NewService(c.repositories.customField)
+	customFieldSvc := customfield_usecase.NewService(c.repositories.customField, c.services.conversationAuth)
+	savedViewAccess := c.savedViewAccess()
 
 	whatsAppOutreach := c.buildWhatsAppOutreach(whatsAppOutreachDeps{
 		consume:         consumeWhatsappTemplateUC,
@@ -830,11 +848,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getPipeline:    pipeline_usecase.NewGetPipelineUseCase(c.repositories.pipeline),
 		pipelineUsage:  pipeline_usecase.NewGetPipelineUsageUseCase(c.repositories.pipeline, pipelineOccupancy),
 
-		createSavedView:     savedview_usecase.NewCreateSavedViewUseCase(c.repositories.savedView),
-		updateSavedView:     savedview_usecase.NewUpdateSavedViewUseCase(c.repositories.savedView),
-		deleteSavedView:     savedview_usecase.NewDeleteSavedViewUseCase(c.repositories.savedView),
-		listSavedViews:      savedview_usecase.NewListSavedViewsUseCase(c.repositories.savedView),
-		setDefaultSavedView: savedview_usecase.NewSetDefaultSavedViewUseCase(c.repositories.savedView),
+		createSavedView:     savedview_usecase.NewCreateSavedViewUseCase(c.repositories.savedView, savedViewAccess),
+		updateSavedView:     savedview_usecase.NewUpdateSavedViewUseCase(c.repositories.savedView, savedViewAccess),
+		deleteSavedView:     savedview_usecase.NewDeleteSavedViewUseCase(c.repositories.savedView, savedViewAccess),
+		listSavedViews:      savedview_usecase.NewListSavedViewsUseCase(c.repositories.savedView, savedViewAccess),
+		setDefaultSavedView: savedview_usecase.NewSetDefaultSavedViewUseCase(c.repositories.savedView, savedViewAccess),
 
 		createLabel:      label_usecase.NewCreateLabelUseCase(c.repositories.label),
 		updateLabel:      label_usecase.NewUpdateLabelUseCase(c.repositories.label),
@@ -1136,6 +1154,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		AssignStage:           assignEntryStageUC,
 		StageBroadcaster:      c.services.conversationHub,
 		Deals:                 opportunitySvc,
+		LeadProfiles:          leadProfiles,
 		DepartmentRepo:        c.repositories.workspaceDepartment,
 		ConversationHandOff:   c.services.assignmentService,
 		WorkspaceRepo:         c.repositories.workspace,
@@ -1162,6 +1181,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.services.ai,
 		c.useCases.chatFunds,
 	)
+	c.useCases.aichat.SetChargeLedger(balance_repository.NewReferenceTotals(c.db))
+	c.useCases.aichat.SetUsageLedger(aiusage_repository.NewUsageRepository(c.db))
 
 	c.useCases.workflowManager = workflow_usecase.NewWorkflowManager(c.repositories.workflow, c.repositories.workflowRun, wfEngine)
 	c.useCases.triggerEvaluator = workflow_usecase.NewTriggerEvaluator(c.repositories.workflow, c.repositories.workflowRun, wfEngine, c.redisProvider.SharedState())
@@ -1454,7 +1475,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.handCallConversationsOver()
 	c.initUnofficialWhatsAppCampaigns(
 		c.services.messageSender, resolveCreationDepartmentUC)
-	c.useCases.copilot = c.buildCopilot(listAgentsUC, getAgentUC, createAgentUC, updateAgentUC, deleteAgentUC)
 	c.initInstagramRuntime(messageHistoryManager)
 
 	if c.instagram != nil && c.instagram.Enabled && c.instagram.Consume != nil {
@@ -1519,6 +1539,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		pricer,
 		c.services.metrics,
 	)
+	aiBillingConsumer.SetUsageRecorder(aiusage_repository.NewUsageRepository(c.db))
 	if err := aiBillingConsumer.Start(); err != nil {
 		log.Fatal("Failed to start AI billing consumer:", err)
 	}
@@ -1538,4 +1559,5 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.services.opportunityIO = opportunityio.NewService(c.useCases.opportunity, c.repositories.customField)
 	c.services.reportService = c.buildReportService()
 	c.startReportWorker()
+	c.useCases.copilot = c.buildCopilot(listAgentsUC, getAgentUC, createAgentUC, updateAgentUC, deleteAgentUC)
 }

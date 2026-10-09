@@ -28,6 +28,7 @@ const pcmSampleRate = 16000
 type Client struct {
 	baseURL       string
 	httpClient    *http.Client
+	timeout       time.Duration
 	model         string
 	serverType    ServerType
 	language      string
@@ -75,7 +76,8 @@ func NewClient(cfg Config) *Client {
 
 	return &Client{
 		baseURL:       strings.TrimSuffix(cfg.BaseURL, "/"),
-		httpClient:    &http.Client{Timeout: cfg.Timeout},
+		httpClient:    &http.Client{},
+		timeout:       cfg.Timeout,
 		model:         cfg.Model,
 		serverType:    cfg.ServerType,
 		language:      cfg.Language,
@@ -107,7 +109,16 @@ type whisperCppResponse struct {
 	Text string `json:"text"`
 }
 
+func (c *Client) bounded(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, c.timeout)
+}
+
 func (c *Client) TranscribeSegments(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
+	ctx, cancel := c.bounded(ctx)
+	defer cancel()
 	if c.serverType != ServerTypeWhisperCpp {
 		return c.transcribeSpeaches(ctx, audioData, language)
 	}
@@ -128,6 +139,8 @@ func (c *Client) TranscribeSegments(ctx context.Context, audioData []byte, langu
 }
 
 func (c *Client) Transcribe(ctx context.Context, audioData []byte, language string) (*stt.Transcription, error) {
+	ctx, cancel := c.bounded(ctx)
+	defer cancel()
 	switch c.serverType {
 	case ServerTypeWhisperCpp:
 		return c.transcribeWhisperCpp(ctx, audioData, language)

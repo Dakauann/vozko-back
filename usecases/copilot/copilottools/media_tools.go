@@ -65,6 +65,15 @@ func modelChoice(ctx context.Context, media MediaGeneration, kind mediagen.Kind,
 	return []copilot.ChoiceField{{Key: key, Kind: choice, Default: preferred.ID}}, nil
 }
 
+type mediaRequester interface {
+	Request(ctx context.Context, req mediagen.Request, requestedBy string) (*mediagen.Job, error)
+}
+
+func requestForThread(ctx context.Context, media mediaRequester, cc copilot.Context, req mediagen.Request) (*mediagen.Job, error) {
+	req.BillingReference = cc.ChargeReference
+	return media.Request(ctx, req, cc.UserID)
+}
+
 func checkMedia(ctx context.Context, media MediaGeneration, req mediagen.Request) error {
 	var err error
 	if req.Kind.UsesModel() && strings.TrimSpace(req.Model) == "" {
@@ -84,7 +93,7 @@ func generateMedia(ctx context.Context, media MediaGeneration, cc copilot.Contex
 	}
 	ctx, cancel := context.WithTimeout(ctx, mediaWaitLimit)
 	defer cancel()
-	job, err := media.Request(ctx, req, cc.UserID)
+	job, err := requestForThread(ctx, media, cc, req)
 	if err != nil {
 		log.Printf("[copilot] %s could not queue: %v", tool, err)
 		return copilot.Result{Status: copilot.StatusError, Message: mediaFailedUnknown}

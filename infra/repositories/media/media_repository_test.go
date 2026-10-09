@@ -55,3 +55,17 @@ func TestADatabaseFailureIsNotMistakenForAMissingMedia(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestMediasByIDsAreReadInAStableOrder(t *testing.T) {
+	repo, mock := newMockRepository(t)
+	mock.ExpectQuery(`SELECT \* FROM "medias" WHERE id IN .* ORDER BY id`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("a-media").AddRow("b-media"))
+
+	medias, err := repo.GetMediasByIDs([]string{"b-media", "a-media"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(medias) != 2 || medias[0].ID != "a-media" || medias[1].ID != "b-media" {
+		t.Fatalf("medias = %+v", medias)
+	}
+}

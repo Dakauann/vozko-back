@@ -34,13 +34,16 @@ func (b *aiAlertBriefer) Brief(ctx context.Context, req ca.AlertBriefRequest) (*
 		model = b.defaultModel
 	}
 
+	scope := workspaceScope(alertBriefingFeature, req.WorkspaceID)
 	out, err := b.ai.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  req.WorkspaceID,
-		Model:        model,
-		SystemPrompt: buildBriefingSystemPrompt(req.Instructions),
-		Messages:     []ai.Message{{Role: ai.RoleUser, Content: buildBriefingUserMessage(req)}},
-		Temperature:  0.2,
-		MaxTokens:    220,
+		WorkspaceID:      req.WorkspaceID,
+		BillingReference: scope,
+		SessionID:        scope,
+		Model:            model,
+		SystemPrompt:     buildBriefingSystemPrompt(req.Instructions),
+		Messages:         []ai.Message{{Role: ai.RoleUser, Content: buildBriefingUserMessage(req)}},
+		Temperature:      0.2,
+		MaxTokens:        220,
 		ResponseFormat: &ai.ResponseFormat{
 			Type:                  ai.ResponseFormatJSONSchema,
 			JSONSchemaName:        briefingSchemaName,

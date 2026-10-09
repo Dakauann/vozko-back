@@ -49,11 +49,20 @@ func NewCampaignActionUseCase(access uwc.CampaignAccessUseCase, dispatch uwc.Dis
 }
 
 func (uc *campaignAction) Act(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string, action campaign.Action) (*uwc.Campaign, error) {
+	return uc.act(ctx, workspaceID, scope, campaignID, uwc.DispatchCampaignInput{Action: action})
+}
+
+func (uc *campaignAction) StartReviewed(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string) (*uwc.Campaign, error) {
+	return uc.act(ctx, workspaceID, scope, campaignID, uwc.DispatchCampaignInput{Action: campaign.ActionStart, Reviewed: true})
+}
+
+func (uc *campaignAction) act(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string, in uwc.DispatchCampaignInput) (*uwc.Campaign, error) {
 	owned, err := uc.access.Owned(ctx, workspaceID, scope, campaignID)
 	if err != nil {
 		return nil, err
 	}
-	if err := uc.dispatch.Dispatch(ctx, uwc.DispatchCampaignInput{CampaignID: owned.ID, Action: action}); err != nil {
+	in.CampaignID = owned.ID
+	if err := uc.dispatch.Dispatch(ctx, in); err != nil {
 		return nil, err
 	}
 	return owned, nil

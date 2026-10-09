@@ -11,7 +11,7 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
-const MaxCampaignPhoneNumbers = 150000
+const MaxCampaignPhoneNumbers = campaign.MaxEntries
 
 var (
 	ErrCampaignNameRequired              = errors.New("whatsapp campaign name is required")
@@ -37,7 +37,7 @@ var (
 	ErrCampaignTemplatePhoneMismatch     = errors.New("template does not belong to the same WABA as the selected business phone - choose a template owned by the same WhatsApp Business Account")
 	ErrEntryNotFound                     = errors.New("whatsapp campaign entry not found")
 	ErrEntryDuplicate                    = errors.New("phone number already exists in this whatsapp campaign")
-	ErrCampaignWorkflowVarsMissing       = errors.New("workflow requires campaign variables that are missing from phone number metadata")
+	ErrCampaignWorkflowVarsMissing       = campaign.ErrWorkflowVarsMissing
 )
 
 type TemplateNotReadyError struct {
@@ -90,15 +90,20 @@ func NewCampaignMetrics(counts *wce.StatusCounts) *CampaignMetrics {
 }
 
 type PhoneInput struct {
-	Number    string                 `json:"number"`
-	Name      string                 `json:"name,omitempty"`
-	Variables []string               `json:"variables,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Number    string                     `json:"number"`
+	LeadID    string                     `json:"leadId,omitempty"`
+	Name      string                     `json:"name,omitempty"`
+	Variables []string                   `json:"variables,omitempty"`
+	Metadata  map[string]interface{}     `json:"metadata,omitempty"`
+	Skip      campaign.SkipReason        `json:"-"`
+	Missing   []campaign.MissingVariable `json:"-"`
 }
 
 type Campaign struct {
 	ID                   string                      `json:"id"`
 	WorkspaceID          string                      `json:"workspaceId"`
+	Source               string                      `json:"source,omitempty"`
+	IdempotencyKey       string                      `json:"idempotencyKey,omitempty"`
 	DepartmentID         string                      `json:"departmentId,omitempty"`
 	BusinessPhoneID      string                      `json:"businessPhoneId,omitempty"`
 	Name                 string                      `json:"name"`
@@ -154,8 +159,18 @@ func (c *Campaign) Normalize() {
 	}
 
 	seen := make(map[string]struct{}, len(c.PhoneInputs))
+	seenLeads := make(map[string]struct{})
 	clean := make([]PhoneInput, 0, len(c.PhoneInputs))
 	for _, entry := range c.PhoneInputs {
+		entry.LeadID = strings.TrimSpace(entry.LeadID)
+		if entry.LeadID != "" {
+			if _, exists := seenLeads[entry.LeadID]; exists {
+				continue
+			}
+			seenLeads[entry.LeadID] = struct{}{}
+			clean = append(clean, entry)
+			continue
+		}
 		normalized := lead.NormalizeNumber(entry.Number)
 		if normalized != "" {
 			if _, exists := seen[normalized]; exists {
@@ -210,7 +225,7 @@ func (c *Campaign) Validate() error {
 		return ErrCampaignPhoneNumbersTooMany
 	}
 	for _, entry := range c.PhoneInputs {
-		if lead.NormalizeNumber(entry.Number) == "" {
+		if entry.LeadID == "" && lead.NormalizeNumber(entry.Number) == "" {
 			return ErrCampaignPhoneNumberInvalid
 		}
 	}
@@ -241,6 +256,9 @@ func (c *Campaign) ValidateTemplateVariables(requiredParamCount int) error {
 		return nil
 	}
 	for _, entry := range c.PhoneInputs {
+		if entry.Skip != "" {
+			continue
+		}
 		if len(entry.Variables) < requiredParamCount {
 			return ErrCampaignTemplateVariablesMismatch
 		}
@@ -254,21 +272,21 @@ func (c *Campaign) ValidateTemplateVariables(requiredParamCount int) error {
 }
 
 func (c *Campaign) ValidateWorkflowVars(requiredKeys []string) error {
-	if len(requiredKeys) == 0 {
-		return nil
-	}
+	return campaign.RequireWorkflowVars(requiredKeys, c.EntryMetadata())
+}
+
+func (c *Campaign) Automation() campaign.Automation {
+	return campaign.Automation{AgentID: c.AgentID, WorkflowID: c.WorkflowID, EnableAgentResponses: c.EnableAgentResponses, EnableWorkflow: c.EnableWorkflow}
+}
+
+func (c *Campaign) ChangesWhatIsSent(input *Campaign) bool {
+	return (input.TemplateID != "" && input.TemplateID != c.TemplateID) || (input.BusinessPhoneID != "" && input.BusinessPhoneID != c.BusinessPhoneID)
+}
+
+func (c *Campaign) EntryMetadata() []campaign.EntryMetadata {
+	entries := make([]campaign.EntryMetadata, 0, len(c.PhoneInputs))
 	for _, entry := range c.PhoneInputs {
-		for _, key := range requiredKeys {
-			val, exists := entry.Metadata[key]
-			if !exists {
-				return fmt.Errorf("%w: key %q missing for number %s",
-					ErrCampaignWorkflowVarsMissing, key, entry.Number)
-			}
-			if s, ok := val.(string); ok && strings.TrimSpace(s) == "" {
-				return fmt.Errorf("%w: key %q is empty for number %s",
-					ErrCampaignWorkflowVarsMissing, key, entry.Number)
-			}
-		}
+		entries = append(entries, campaign.EntryMetadataOf(entry.LeadID, entry.Number, entry.Metadata))
 	}
-	return nil
+	return entries
 }

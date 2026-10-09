@@ -40,12 +40,13 @@ func (h *Handler) Audiences(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Criar lista de clientes
-// @Description	Cria um público com clientes do CRM (por filtro) ou de um arquivo CSV da biblioteca de mídia. Os dados são normalizados e enviados com hash SHA-256.
+// @Description	Cria um público com clientes do CRM (por filtro) ou de um arquivo CSV da biblioteca de mídia. Os dados são normalizados e enviados com hash SHA-256. Exige `ads:create` e `leads:read`. Do CRM saem telefone, nome, sobrenome, cidade e UF do endereço principal e, para quem tem `leads:read_addresses`, o CEP; leads bloqueados ficam de fora e a leitura percorre toda a seleção (sem o antigo limite de 100). Um filtro em campo sensível dos leads é recusado com 422 `audience_sensitive_filter`.
 // @Tags			Anúncios
 // @Accept			json
 // @Produce		json
 // @Param			body	body		advertising.CustomerListDraft	true	"lista de clientes"
 // @Success		201		{object}	CustomerListResponse
+// @Failure		403		{object}	response.ErrorResponse
 // @Failure		409		{object}	response.ErrorResponse
 // @Failure		422		{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -55,7 +56,7 @@ func (h *Handler) CreateCustomerList(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &draft) {
 		return
 	}
-	result, err := h.d.Audience.CreateCustomerList(r.Context(), workspaceOf(r), draft)
+	result, err := h.d.Audience.CreateCustomerList(r.Context(), requesterOf(r), draft)
 	if err != nil {
 		writeError(w, err, "Failed to create the customer list")
 		return

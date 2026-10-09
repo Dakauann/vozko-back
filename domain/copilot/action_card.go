@@ -57,6 +57,7 @@ type ActionCard struct {
 	Destination        *Destination      `json:"destination,omitempty"`
 	Call               *CallIntent       `json:"call,omitempty"`
 	AdAccountID        string            `json:"adAccountId,omitempty"`
+	Question           *Question         `json:"question,omitempty"`
 }
 
 func NewConnectAdAccountCard() *ActionCard {

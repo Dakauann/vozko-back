@@ -2,18 +2,22 @@ package crmboard_usecase
 
 import (
 	"errors"
+	"fmt"
 
 	"vozko/domain/conversation"
 	"vozko/domain/crmfilter"
 	"vozko/domain/inbox_assignment"
 	"vozko/domain/label"
 	"vozko/domain/savedview"
+	"vozko/domain/shared"
 	"vozko/domain/stage"
 	"vozko/domain/workspace"
 )
 
 type EntrySearcher interface {
 	SearchEntriesByFilter(input conversation.SearchByFilterInput) ([]conversation.EntryWithLastMessage, int64, error)
+	CountEntriesByFilter(input conversation.SearchByFilterInput) (int64, error)
+	ResolveEntryRefsByFilter(input conversation.SearchByFilterInput, after string, limit int) ([]shared.EntryRef, error)
 }
 
 type StageLister interface {
@@ -95,6 +99,7 @@ type EntriesInput struct {
 	SelectedDepartmentID string
 
 	Filter               crmfilter.Filter
+	ExcludeEntryIDs      []string
 	WhatsAppCampaignType string
 	SortField            string
 	SortOrder            string
@@ -216,12 +221,12 @@ func (s *Service) GetBoard(in BoardInput) (*Board, error) {
 	return board, nil
 }
 
-func (s *Service) GetEntries(in EntriesInput) ([]conversation.EntryWithLastMessage, int64, error) {
+func (s *Service) scopedSearch(in EntriesInput) (conversation.SearchByFilterInput, error) {
 	deptIDs, restrict, assigneeOverride, assignedUserID, err := s.resolveScope(in.WorkspaceID, in.UserID, in.IsAdmin, in.SelectedDepartmentID)
 	if err != nil {
-		return nil, 0, err
+		return conversation.SearchByFilterInput{}, err
 	}
-	entries, total, err := s.searcher.SearchEntriesByFilter(conversation.SearchByFilterInput{
+	return conversation.SearchByFilterInput{
 		WorkspaceID:            in.WorkspaceID,
 		WhatsAppCampaignType:   in.WhatsAppCampaignType,
 		DepartmentIDs:          deptIDs,
@@ -229,11 +234,36 @@ func (s *Service) GetEntries(in EntriesInput) ([]conversation.EntryWithLastMessa
 		AssigneeOverrideUserID: assigneeOverride,
 		AssignedUserID:         assignedUserID,
 		Filter:                 in.Filter,
+		ExcludeEntryIDs:        in.ExcludeEntryIDs,
 		SortField:              in.SortField,
 		SortOrder:              in.SortOrder,
 		Page:                   in.Page,
 		PageSize:               in.PageSize,
-	})
+	}, nil
+}
+
+func (s *Service) CountEntries(in EntriesInput) (int64, error) {
+	search, err := s.scopedSearch(in)
+	if err != nil {
+		return 0, err
+	}
+	return s.searcher.CountEntriesByFilter(search)
+}
+
+func (s *Service) ResolveEntryRefs(in EntriesInput, after string, limit int) ([]shared.EntryRef, error) {
+	search, err := s.scopedSearch(in)
+	if err != nil {
+		return nil, err
+	}
+	return s.searcher.ResolveEntryRefsByFilter(search, after, limit)
+}
+
+func (s *Service) GetEntries(in EntriesInput) ([]conversation.EntryWithLastMessage, int64, error) {
+	search, err := s.scopedSearch(in)
+	if err != nil {
+		return nil, 0, err
+	}
+	entries, total, err := s.searcher.SearchEntriesByFilter(search)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -279,39 +309,22 @@ func (s *Service) pipelineStages(workspaceID, pipelineID string) ([]*stage.Stage
 
 func (s *Service) resolveScope(workspaceID, userID string, isAdmin bool, selectedDepartmentID string) (deptIDs []string, restrict bool, assigneeOverride string, assignedUserID string, err error) {
 	if s.authorizer == nil {
-		return nil, false, "", "", nil
+		return nil, false, "", "", ErrUnauthorized
 	}
 	scope, allowed := s.authorizer.GetDepartmentScope(userID, workspaceID, isAdmin)
 	if !allowed {
 		return nil, false, "", "", ErrUnauthorized
 	}
-	deptIDs = scope.DepartmentIDs
-	restrict = scope.Restrict
-	if selectedDepartmentID != "" && (scope.Restrict || scope.WorkspaceHasDepartments) {
-		if scope.Restrict {
-			found := false
-			for _, id := range scope.DepartmentIDs {
-				if id == selectedDepartmentID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return nil, false, "", "", ErrUnauthorized
-			}
-		}
-		deptIDs = []string{selectedDepartmentID}
-		restrict = true
-	}
-	if !isAdmin && restrict {
-		assigneeOverride = userID
+	read, err := scope.ReadScope(userID, isAdmin, selectedDepartmentID)
+	if err != nil {
+		return nil, false, "", "", fmt.Errorf("%w: %w", ErrUnauthorized, err)
 	}
 	if !isAdmin &&
 		!s.authorizer.IsWorkspaceOwnerOrAdmin(userID, workspaceID) &&
 		!s.authorizer.HasWorkspacePermission(userID, workspaceID, string(workspace.ResourceConversations), string(workspace.ActionViewOthers), false) {
 		assignedUserID = userID
 	}
-	return deptIDs, restrict, assigneeOverride, assignedUserID, nil
+	return read.DepartmentIDs, read.RestrictDepartments, read.AssigneeOverrideUserID, assignedUserID, nil
 }
 
 func withPredicate(base crmfilter.Filter, p crmfilter.Predicate) crmfilter.Filter {

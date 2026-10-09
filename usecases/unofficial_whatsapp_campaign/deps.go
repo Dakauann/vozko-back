@@ -20,9 +20,7 @@ type Assigner interface {
 }
 
 type SpamGuard interface {
-	ShouldSkip(ctx context.Context, workspaceID, leadID, senderID string) bool
 	Record(leadID, senderID, campaignID string) error
-	SkipMany(ctx context.Context, workspaceID string, leadIDs []string, senderID string) map[string]bool
 }
 
 type InstanceGateway interface {

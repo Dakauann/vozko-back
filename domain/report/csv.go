@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"strconv"
@@ -112,6 +113,11 @@ func renderRow(cells []CSVCell) string {
 		parts = append(parts, cell.render())
 	}
 	return strings.Join(parts, CSVDelimiter)
+}
+
+func WriteCSVRow(w io.Writer, cells []CSVCell) error {
+	_, err := io.WriteString(w, renderRow(cells)+CSVNewline)
+	return err
 }
 
 func renderHeader(header []string) string {

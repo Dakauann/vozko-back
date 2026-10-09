@@ -96,6 +96,7 @@ type DispatchCampaignInput struct {
 	CampaignID string
 	Entries    []DispatchEntry
 	Action     CampaignAction
+	Reviewed   bool
 }
 
 type DispatchQueueMessage struct {
@@ -223,4 +224,8 @@ type CampaignAccessUseCase interface {
 
 type StartCampaignUseCase interface {
 	Start(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*Campaign, error)
+}
+
+type ReviewedStartUseCase interface {
+	StartReviewed(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*Campaign, error)
 }

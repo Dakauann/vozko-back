@@ -2,6 +2,7 @@ package unofficial_whatsapp_campaign_repository
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"vozko/domain/campaign"
 	"vozko/domain/shared"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -18,7 +20,40 @@ type repository struct{ db *gorm.DB }
 func NewRepository(db *gorm.DB) uwc.Repository { return &repository{db: db} }
 
 func (r *repository) Create(c *uwc.Campaign) error {
-	return r.db.Create(toRow(c)).Error
+	return createCampaignIn(r.db, c)
+}
+
+func (r *repository) CreateWithEntries(c *uwc.Campaign, entries []uwc.Entry) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := createCampaignIn(tx, c); err != nil {
+			return err
+		}
+		_, err := createEntriesIn(tx, entries)
+		return err
+	})
+}
+
+func createCampaignIn(db *gorm.DB, c *uwc.Campaign) error {
+	err := db.Create(toRow(c)).Error
+	if c.IdempotencyKey != "" && database.IsUniqueViolation(err) {
+		return fmt.Errorf("%w: %w", campaign.ErrIdempotencyKeyTaken, err)
+	}
+	return err
+}
+
+func (r *repository) FindByIdempotencyKey(workspaceID, key string) (*uwc.Campaign, error) {
+	key = strings.TrimSpace(key)
+	if strings.TrimSpace(workspaceID) == "" || key == "" {
+		return nil, uwc.ErrCampaignNotFound
+	}
+	var rows []schema.UnofficialWhatsAppCampaign
+	if err := r.db.Where("workspace_id = ? AND idempotency_key = ?", workspaceID, key).Order("created_at").Limit(1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, uwc.ErrCampaignNotFound
+	}
+	return toDomain(&rows[0]), nil
 }
 
 func (r *repository) Update(campaignID string, c *uwc.Campaign) error {

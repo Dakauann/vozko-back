@@ -269,7 +269,7 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 				campvars[k] = v
 			}
 			if agentCtx.wcLeadRecord != nil {
-				campvars["lead_name"] = agentCtx.wcLeadRecord.Name
+				campvars["lead_name"] = agentCtx.wcLeadRecord.RealName()
 				campvars["lead_number"] = agentCtx.wcLeadRecord.Number
 			}
 			if agentCtx.wcCampaign != nil {
@@ -609,7 +609,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 		return conversation.ErrWhatsAppWebhookSkipped
 	}
-	log.Printf("[whatsapp-usecase] message received at %s\n%s", time.Now().UTC().Format(time.RFC3339), message.Text.Body)
+	log.Printf("[whatsapp-usecase] message %s of type %s received at %s", message.ID, message.Type, time.Now().UTC().Format(time.RFC3339))
 
 	if uc.aiService == nil {
 		return errors.New("ai service not configured")
@@ -643,7 +643,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		}
 	}
 	if leadRecord != nil {
-		whatsappCtx.UserName = leadRecord.Name
+		whatsappCtx.UserName = leadRecord.RealName()
 	}
 	if agentCtx != nil {
 		if agentCtx.wcEntry != nil {
@@ -730,31 +730,14 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	}
 
 	if uc.historyManager != nil && entryID != "" {
-		record := conversation.MessageHistoryRecord{
-			SentBy:         conversation.SentByContact(message.From),
-			EntryID:        entryID,
-			EntryType:      entryType,
-			Channel:        conversation.MessageChannelWhatsApp,
-			MessageType:    conversation.MessageTypeUserMessage,
-			ConversationID: conversationID,
-			MessageID:      strings.TrimSpace(message.ID),
-			From:           strings.TrimSpace(message.From),
-			To:             businessNumber,
-			Text:           strings.TrimSpace(message.Text.Body),
-			Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
-			AdReferral:     message.Referral.AdReferral(),
-		}
-		if leadRecord != nil {
-			record.SenderName = leadRecord.Name
-			record.SenderAvatar = leadRecord.ProfilePictureURL
-		}
+		record := uc.inboundTextRecord(message, inboundTarget{entryID: entryID, entryType: entryType, conversationID: conversationID, businessNumber: businessNumber}, leadRecord)
 		if err := uc.historyManager.Record(ctx, record); err != nil {
 			return err
 		}
 	}
 	recipientPhone := strings.TrimSpace(message.From)
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
-	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: message.Text.Body})
+	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: conversation.PromptContent(message.Text.Body, "")})
 
 	if agentCtx != nil && agentCtx.skipResponse {
 		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (agent responses disabled)")
@@ -976,10 +959,7 @@ func (uc *handleWhatsAppMessageUseCase) composeConversationHistory(history []*co
 		return nil
 	}
 
-	start := 0
-	if len(history) > conversationHistoryLimit {
-		start = len(history) - conversationHistoryLimit
-	}
+	start := ai.HistoryWindowStart(len(history), conversationHistoryLimit)
 
 	businessNorm := lead.NormalizeNumber(businessNumber)
 	userNorm := lead.NormalizeNumber(userNumber)
@@ -999,19 +979,10 @@ func (uc *handleWhatsAppMessageUseCase) composeConversationHistory(history []*co
 		if msg.MessageType.IsCallEvent() {
 			continue
 		}
-		content := strings.TrimSpace(msg.Text)
-		if content == "" {
+		if strings.TrimSpace(msg.Text) == "" {
 			continue
 		}
-
-		if len(msg.Metadata) > 0 {
-			var meta map[string]string
-			if err := json.Unmarshal(msg.Metadata, &meta); err == nil {
-				if et := strings.TrimSpace(meta["extracted_text"]); et != "" {
-					content = content + "\n\n" + et
-				}
-			}
-		}
+		content := msg.PromptContent()
 
 		senderNorm := lead.NormalizeNumber(msg.From)
 		role := ai.RoleUser
@@ -1112,7 +1083,6 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 	var entryType string
 	var campaignID string
 	var campaignName string
-	var agentInstructions string
 	var workspaceID string
 
 	entryID = agentCtx.wcEntry.ID
@@ -1129,34 +1099,12 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 
 	log.Printf("[whatsapp-usecase] triggering campaign tools (total messages: %d, analysis: %v, auto_tag: %v)", totalCount, campaignAnalysisEnabled, autoTagEnabled)
 
-	if len(history) > 100 {
-		history = history[len(history)-100:]
-	}
-
-	if agentCtx.messagingPrompt != "" {
-		agentInstructions = agentCtx.messagingPrompt
-	}
-	if agentCtx.agent != nil {
-		entryMetadata := func() map[string]interface{} {
-			if agentCtx.wcEntry != nil {
-				return agentCtx.wcEntry.Metadata
-			}
-			return nil
-		}()
-		interpolated := agent.InterpolateAgent(agentCtx.agent, agent.MetadataToVars(entryMetadata))
-		if interpolated.MessagingPrompt != "" {
-			agentInstructions = interpolated.MessagingPrompt
-		}
-	}
-
 	var aiTools []toolsdomain.Definition
 	toolConfigs := map[string]map[string]interface{}{}
 
 	if campaignAnalysisEnabled || liveStages {
 		uc.analysis.ScheduleAnalysis(entryID, shared.EntryType(entryType))
 	}
-
-	const wantAnalysis = false
 
 	if autoTagEnabled {
 		if h, ok := uc.toolRegistry.Handler(tools_usecase.ManageEntryStageToolName); ok {
@@ -1182,53 +1130,29 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		return
 	}
 
-	var systemPrompt string
-	if wantAnalysis {
-		systemPrompt = BuildAnalysisPrompt(AnalysisPromptInput{
-			AnalysisType:      AnalysisTypeOngoing,
-			CampaignName:      campaignName,
-			UserPhoneNumber:   userPhoneNumber,
-			MessageCount:      int(totalCount),
-			AgentInstructions: agentInstructions,
-			History:           history,
+	var currentTagName string
+	var allTags []*stage.Stage
+	if uc.stageRepo != nil {
+		current, err := stage_usecase.StagesForEntry(uc.stageRepo, workspaceID, stage_usecase.EntryRef{
+			EntryID: entryID, EntryType: entryType, CampaignID: campaignID, CampaignType: entryType,
 		})
-	} else {
-
-		var currentTagName string
-		var allTags []*stage.Stage
-		if uc.stageRepo != nil {
-			current, err := stage_usecase.StagesForEntry(uc.stageRepo, workspaceID, stage_usecase.EntryRef{
-				EntryID: entryID, EntryType: entryType, CampaignID: campaignID, CampaignType: entryType,
-			})
-			if err != nil {
-				log.Printf("[whatsapp-message] reading the funnel of entry %s failed, offering no stage: %v", entryID, err)
-			} else {
-				allTags = current.Stages
-				if current.Current != nil {
-					currentTagName = current.Current.StageName
-				}
+		if err != nil {
+			log.Printf("[whatsapp-message] reading the funnel of entry %s failed, offering no stage: %v", entryID, err)
+		} else {
+			allTags = current.Stages
+			if current.Current != nil {
+				currentTagName = current.Current.StageName
 			}
 		}
-		systemPrompt = BuildAutoTagPrompt(AutoTagPromptInput{
-			CampaignName:   campaignName,
-			MessageCount:   int(totalCount),
-			History:        history,
-			CurrentTagName: currentTagName,
-			Tags:           allTags,
-		})
 	}
-
-	wantAutoTag := autoTagEnabled
-
-	var userMessage string
-	switch {
-	case wantAnalysis && wantAutoTag:
-		userMessage = "Analise a conversa acima e: 1) chame a ferramenta conversation_analysis com sua avaliação; 2) chame a ferramenta manage_entry_stage para classificar o lead na etapa mais adequada baseado no estado atual da conversa."
-	case wantAnalysis:
-		userMessage = "Analise a conversa acima e chame a ferramenta conversation_analysis com sua avaliação."
-	case wantAutoTag:
-		userMessage = autoTagInstruction
-	}
+	prompt := BuildAutoTagPrompt(AutoTagPromptInput{
+		EntryID:        entryID,
+		CampaignName:   campaignName,
+		MessageCount:   int(totalCount),
+		History:        history,
+		CurrentTagName: currentTagName,
+		Tags:           allTags,
+	})
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -1243,20 +1167,13 @@ func (uc *handleWhatsAppMessageUseCase) maybeRunWhatsAppCampaignTools(ctx contex
 		return
 	}
 
-	response, err := uc.aiService.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  workspaceID,
-		Model:        aiModel,
-		Temperature:  0.2,
-		SystemPrompt: systemPrompt,
-		Messages: []ai.Message{
-			{
-				Role:    "user",
-				Content: userMessage,
-			},
-		},
+	response, err := uc.aiService.Generate(ctx, prompt.ApplyTo(ai.GenerateInput{
+		WorkspaceID: workspaceID,
+		Model:       aiModel,
+		Temperature: 0.2,
 		Tools:       aiTools,
 		ToolConfigs: toolConfigs,
-	})
+	}))
 	if err != nil {
 		log.Printf("[whatsapp-usecase] campaign tools AI call failed: %v", err)
 		return
@@ -1820,6 +1737,15 @@ func (uc *handleWhatsAppMessageUseCase) extractInboundMessage(payload *conversat
 					continue
 				}
 
+				if msgType == "location" {
+					if msg.Location == nil {
+						continue
+					}
+					msg.Text = &conversation.WhatsAppTextMessage{Body: msg.Location.Text()}
+					change.Value.Messages[k] = msg
+					return &change.Value.Messages[k], &metadata, contactName
+				}
+
 				if msgType != "" && msgType != "text" && msgType != "audio" && msgType != "image" && msgType != "video" && msgType != "document" && msgType != "sticker" {
 					continue
 				}
@@ -1935,7 +1861,7 @@ func (uc *handleWhatsAppMessageUseCase) existingConversation(normalized string, 
 	if phone != nil {
 		phoneID, ownerID = phone.ID, strings.TrimSpace(phone.OwnerWorkspaceID)
 	}
-	entry, err := uc.wcEntryRepo.FindByNumberAndBusinessPhone(normalized, phoneID)
+	entry, err := uc.wcEntryRepo.FindInboundRouteByNumberAndBusinessPhone(normalized, phoneID)
 	if err != nil || entry == nil {
 		return nil, nil, false
 	}
@@ -1981,7 +1907,7 @@ func (uc *handleWhatsAppMessageUseCase) openReceptiveConversation(normalized str
 		return nil, nil
 	}
 
-	leadRecord, _, err := uc.leadRepo.FindOrCreate(ownerID, normalized, lead.LeadUpdate{})
+	leadRecord, _, err := uc.leadRepo.FindOrCreate(ownerID, normalized, lead.LeadUpdate{Source: lead.SourceChannel})
 	if err != nil {
 		log.Printf("[whatsapp-usecase] failed to find/create lead for receptive entry: %v", err)
 		return nil, nil
@@ -2263,9 +2189,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 		}
 
 		if extractedText != "" {
-			if meta, err := json.Marshal(map[string]string{"extracted_text": extractedText}); err == nil {
-				record.Metadata = meta
-			}
+			record.Metadata = conversation.ExtractedTextMetadata(extractedText)
 		}
 		if err := uc.historyManager.Record(ctx, record); err != nil {
 			log.Printf("[whatsapp-media] Failed to record history: %v", err)
@@ -2275,13 +2199,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 	}
 
 	if extractedText != "" {
-		sourceLabel := strings.Title(mediaType)
-		var userMessage string
-		if captionOrFilename != "" {
-			userMessage = fmt.Sprintf("[%s: %s]\n\nConteúdo extraído:\n%s", sourceLabel, captionOrFilename, extractedText)
-		} else {
-			userMessage = fmt.Sprintf("[%s]\n\nConteúdo extraído:\n%s", sourceLabel, extractedText)
-		}
+		userMessage := conversation.PromptContent(displayText, extractedText)
 
 		if uc.aiService != nil && agentCtx != nil && !agentCtx.skipResponse && !IsFloodDetected(ctx) {
 			var mediaModel string
@@ -2357,13 +2275,13 @@ func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
 		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
 	}
 	if agentCtx.wcLeadRecord != nil {
-		whatsappCtx.UserName = agentCtx.wcLeadRecord.Name
+		whatsappCtx.UserName = agentCtx.wcLeadRecord.RealName()
 	}
 	if agentCtx.wcEntry != nil {
 		whatsappCtx.Metadata = agentCtx.wcEntry.Metadata
 	}
 	if leadRecord != nil {
-		whatsappCtx.UserName = leadRecord.Name
+		whatsappCtx.UserName = leadRecord.RealName()
 	}
 
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
@@ -2675,10 +2593,11 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 	log.Printf("[whatsapp-audio] STT: %q (latency=%dms, conf=%.2f, dur=%.2fs)",
 		transcribedText, sttLatency.Milliseconds(), transcription.Confidence, transcription.Duration)
+	audioText := "[Áudio] " + transcribedText
 
 	if savedMessageID != "" && uc.messageRepo != nil {
 		updatedMsg := &conversation.Message{
-			Text:      "[Áudio] " + transcribedText,
+			Text:      audioText,
 			UpdatedAt: time.Now().UTC(),
 		}
 		if err := uc.messageRepo.Update(savedMessageID, updatedMsg); err != nil {
@@ -2711,14 +2630,14 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 			whatsappCtx.AgentName = agentCtx.agent.Name
 		}
 		if agentCtx.wcLeadRecord != nil {
-			whatsappCtx.UserName = agentCtx.wcLeadRecord.Name
+			whatsappCtx.UserName = agentCtx.wcLeadRecord.RealName()
 		}
 		if agentCtx.wcEntry != nil {
 			whatsappCtx.Metadata = agentCtx.wcEntry.Metadata
 		}
 	}
 	if leadRecord != nil {
-		whatsappCtx.UserName = leadRecord.Name
+		whatsappCtx.UserName = leadRecord.RealName()
 	}
 
 	if agentCtx != nil && agentCtx.skipResponse {
@@ -2770,7 +2689,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 	}
 
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
-	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: transcribedText})
+	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: conversation.PromptContent(audioText, "")})
 
 	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
 		agentCtx:        agentCtx,
@@ -3025,6 +2944,7 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 		ToolSeed:           seed,
 		RAGQuery:           t.Query,
 		LeadID:             leadID,
+		Session:            agentturn.ReplySession(t.EntryID),
 		History:            t.Messages,
 		Model:              t.Model,
 		Temperature:        t.Temperature,

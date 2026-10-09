@@ -19,29 +19,38 @@ type ReopenWindowRequest struct {
 }
 
 type MessageResponse struct {
-	ID                string                 `json:"id"`
-	EntryID           string                 `json:"entryId"`
-	EntryType         string                 `json:"entryType"`
-	Channel           string                 `json:"channel"`
-	MessageType       string                 `json:"messageType"`
-	From              string                 `json:"from"`
-	To                string                 `json:"to"`
-	Text              string                 `json:"text"`
-	Image             []byte                 `json:"image,omitempty"`
-	Video             []byte                 `json:"video,omitempty"`
-	MediaID           *string                `json:"mediaId,omitempty"`
-	MediaType         string                 `json:"mediaType,omitempty"`
-	Read              bool                   `json:"read"`
-	ReadAt            *time.Time             `json:"readAt,omitempty"`
-	ReadBy            *string                `json:"readBy,omitempty"`
-	WhatsAppMessageID *string                `json:"whatsappMessageId,omitempty"`
-	ReplyToMessageID  *string                `json:"replyToMessageId,omitempty"`
-	DeliveryStatus    string                 `json:"deliveryStatus,omitempty"`
-	SenderName        string                 `json:"senderName,omitempty"`
-	SenderAvatar      string                 `json:"senderAvatar,omitempty"`
-	Metadata          map[string]interface{} `json:"metadata,omitempty"`
-	CreatedAt         time.Time              `json:"createdAt"`
-	UpdatedAt         time.Time              `json:"updatedAt"`
+	ID                string                   `json:"id"`
+	EntryID           string                   `json:"entryId"`
+	EntryType         string                   `json:"entryType"`
+	Channel           string                   `json:"channel"`
+	MessageType       string                   `json:"messageType"`
+	From              string                   `json:"from"`
+	To                string                   `json:"to"`
+	Text              string                   `json:"text"`
+	Image             []byte                   `json:"image,omitempty"`
+	Video             []byte                   `json:"video,omitempty"`
+	MediaID           *string                  `json:"mediaId,omitempty"`
+	MediaType         string                   `json:"mediaType,omitempty"`
+	Read              bool                     `json:"read"`
+	ReadAt            *time.Time               `json:"readAt,omitempty"`
+	ReadBy            *string                  `json:"readBy,omitempty"`
+	WhatsAppMessageID *string                  `json:"whatsappMessageId,omitempty"`
+	ReplyToMessageID  *string                  `json:"replyToMessageId,omitempty"`
+	DeliveryStatus    string                   `json:"deliveryStatus,omitempty"`
+	SenderName        string                   `json:"senderName,omitempty"`
+	SenderAvatar      string                   `json:"senderAvatar,omitempty"`
+	Metadata          map[string]interface{}   `json:"metadata,omitempty"`
+	Location          *MessageLocationResponse `json:"location,omitempty"`
+	CreatedAt         time.Time                `json:"createdAt"`
+	UpdatedAt         time.Time                `json:"updatedAt"`
+}
+
+type MessageLocationResponse struct {
+	Latitude  float64 `json:"latitude" example:"-23.55052"`
+	Longitude float64 `json:"longitude" example:"-46.633308"`
+	Name      string  `json:"name,omitempty" example:"Casa"`
+	Address   string  `json:"address,omitempty" example:"Rua Augusta, 100"`
+	Candidate bool    `json:"candidate"`
 }
 
 type MessageEnvelopeResponse struct {

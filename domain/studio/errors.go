@@ -4,26 +4,30 @@ import (
 	"errors"
 	"sort"
 	"strings"
+
+	"vozko/domain/shared"
 )
 
 var (
 	ErrInvalidDocument   = errors.New("studio: invalid project")
 	ErrProjectNotFound   = errors.New("studio: project not found")
-	ErrVersionConflict   = errors.New("studio: the project was saved elsewhere")
+	ErrVersionConflict   = shared.ErrVersionConflict
 	ErrWorkspaceRequired = errors.New("studio: workspace id is required")
 	ErrCreatorRequired   = errors.New("studio: the creator is required")
-	ErrNotRasterized     = errors.New("studio: an overlay was not rasterized before export")
+	ErrUserRequired      = errors.New("studio: the reporting user is required")
+	ErrSessionTaken      = errors.New("studio: the telemetry session belongs to someone else")
 	ErrNotVideo          = errors.New("studio: only video projects are exported as video")
 )
 
 const (
-	FieldKind     = "kind"
-	FieldName     = "name"
-	FieldDocument = "document"
-	FieldCanvas   = "document.canvas"
-	FieldLayers   = "document.layers"
-	FieldTracks   = "document.tracks"
-	FieldMarkers  = "document.markers"
+	FieldKind      = "kind"
+	FieldName      = "name"
+	FieldDocument  = "document"
+	FieldCanvas    = "document.canvas"
+	FieldArtboards = "document.artboards"
+	FieldLayers    = "document.layers"
+	FieldTracks    = "document.tracks"
+	FieldMarkers   = "document.markers"
 
 	CodeRequired   = "required"
 	CodeInvalid    = "invalid"

@@ -12,6 +12,7 @@ var (
 	ErrAudienceTermsNotAccepted = errors.New("the ad account has not accepted meta's custom audience terms")
 	ErrAudienceNotFound         = errors.New("audience not found")
 	ErrNoCustomersMatched       = errors.New("no customer had an email or phone that meta can match")
+	ErrSensitiveAudience        = errors.New("an audience cannot be built from a filter on a sensitive lead field")
 )
 
 type AudienceKind string
@@ -63,6 +64,8 @@ type CustomerListDraft struct {
 	SkipHeader  bool             `json:"skipHeader,omitempty"`
 	Columns     []MatchKey       `json:"columns,omitempty"`
 	CRMFilter   crmfilter.Filter `json:"crmFilter"`
+
+	CRMSnapshotID string `json:"-"`
 }
 
 const maxDescriptionRunes = 100

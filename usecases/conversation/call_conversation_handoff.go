@@ -17,7 +17,7 @@ type CallHandoffPhones interface {
 }
 
 type CallHandoffEntries interface {
-	FindByNumberAndBusinessPhone(number, businessPhoneID string) (*wce.WhatsAppCampaignEntry, error)
+	FindByNumberBusinessPhoneAndWorkspace(number, businessPhoneID, workspaceID string) (*wce.WhatsAppCampaignEntry, error)
 }
 
 type CallHandoffAssigner interface {
@@ -61,7 +61,7 @@ func (h *callConversationHandoff) conversationOf(handover callrouting.Handover) 
 	if err != nil || phone == nil || !phone.BelongsToWorkspace(handover.WorkspaceID) {
 		return "", ErrCallConversationNotFound
 	}
-	entry, err := h.deps.Entries.FindByNumberAndBusinessPhone(handover.Contact.ContactNumber, phone.ID)
+	entry, err := h.deps.Entries.FindByNumberBusinessPhoneAndWorkspace(handover.Contact.ContactNumber, phone.ID, handover.WorkspaceID)
 	if err != nil || entry == nil {
 		return "", ErrCallConversationNotFound
 	}

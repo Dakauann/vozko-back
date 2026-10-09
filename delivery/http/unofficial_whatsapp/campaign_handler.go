@@ -264,6 +264,22 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusCreated, campaignToDTO(created))
 }
 
+// @Summary		Editar uma campanha não oficial
+// @Description	Atualiza mensagem, número, ritmo, fluxo e agente de uma campanha que não está em andamento. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado: fluxo de outro workspace responde 403 `campaign_workflow_forbidden`, fluxo ou agente inexistente 422, variável do agente ausente 400 `AGENT_REQUIRED_VARIABLE_MISSING`, passo indisponível 503.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id} [put]
 func (h *CampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
 	workspaceID, scope, _, ok := h.ownedCampaign(w, r)
 	if !ok {
@@ -328,6 +344,20 @@ func (h *CampaignHandler) setArchived(w http.ResponseWriter, r *http.Request, ar
 	response.WriteSuccess(w, http.StatusOK, campaignToDTO(updated))
 }
 
+// @Summary		Iniciar uma campanha não oficial
+// @Description	Uma campanha preparada a partir de leads (origem `lead_selection`), parada, só começa pela revisão (POST /leads/actions/sends/start), que pula quem entrou em outra campanha em andamento e confere o limite diário: por aqui responde 409 `send_start_from_leads`. Pausada, ela retoma por aqui. O mesmo vale para o início agendado e para as ferramentas do assistente.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/start [post]
 func (h *CampaignHandler) Start(w http.ResponseWriter, r *http.Request) {
 	h.act(w, r, campaign.ActionStart)
 }
@@ -354,6 +384,22 @@ func (h *CampaignHandler) act(w http.ResponseWriter, r *http.Request, action cam
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"status": string(action)})
 }
 
+// @Summary		Envio rápido de uma campanha não oficial
+// @Description	Inclui os números enviados (opcional) e dispara os pendentes. Uma campanha preparada a partir de leads nunca passa pelo envio rápido, com ou sem números: responde 409 `send_selection_locked`; use POST /leads/actions/sends/start.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/quick-send [post]
 func (h *CampaignHandler) QuickSend(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
@@ -393,6 +439,16 @@ func (h *CampaignHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
+// @Summary		Preparar o reinício de uma campanha não oficial
+// @Description	Gera o código que confirma o reinício. Uma campanha preparada a partir de leads (origem `lead_selection`) não reinicia: responde 409 `send_selection_locked`; prepare um novo envio a partir dos leads.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/reset/prepare [post]
 func (h *CampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
@@ -405,6 +461,19 @@ func (h *CampaignHandler) PrepareReset(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
+// @Summary		Reiniciar uma campanha não oficial
+// @Description	Volta todos os números para PENDING com o código de `reset/prepare`. Uma campanha preparada a partir de leads (origem `lead_selection`) não reinicia: responde 409 `send_selection_locked`, porque os leads pulados na revisão (código 9200xx) seriam enviados.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"{resetCode}"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/reset [post]
 func (h *CampaignHandler) ConfirmReset(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
@@ -459,6 +528,22 @@ func (h *CampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *http.Req
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
+// @Summary		Incluir números numa campanha não oficial
+// @Description	Inclui números numa campanha que não está em andamento. Uma campanha preparada a partir de leads não recebe números: responde 409 `send_selection_locked`. O fluxo e o agente da campanha são conferidos pelo passo compartilhado.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Success		201		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/entries [post]
 func (h *CampaignHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
@@ -488,6 +573,20 @@ func (h *CampaignHandler) AddEntries(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
+// @Summary		Editar um número de uma campanha não oficial
+// @Description	Troca número, nome, variáveis ou metadados de um número numa campanha que não está em andamento. Uma campanha preparada a partir de leads (origem `lead_selection`) não aceita a edição: responde 409 `send_selection_locked`.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string	true	"Campanha"
+// @Param			entryId	path		string	true	"Número da campanha"
+// @Param			body	body		object	true	"{number?, name?, variables?, metadata?}"
+// @Success		200		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/entries/{entryId} [patch]
 func (h *CampaignHandler) UpdateEntry(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
@@ -531,6 +630,9 @@ func (h *CampaignHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeCampaignError(w http.ResponseWriter, err error) {
+	if httpx.WriteSelectionSendRefusal(w, err) {
+		return
+	}
 	var unusable *uwc.InstanceUnusableError
 	switch {
 	case errors.Is(err, uwc.ErrCampaignNotFound), errors.Is(err, uwc.ErrEntryNotFound):
@@ -578,6 +680,21 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrMenuOptionIDRequired),
 		errors.Is(err, campaign.ErrSeededOutcomeOverflow):
 		response.WriteError(w, http.StatusUnprocessableEntity, err.Error(), nil)
+
+	case errors.Is(err, campaign.ErrWorkflowForbidden):
+		response.WriteErrorWithCode(w, http.StatusForbidden, campaign.ErrorCode(err), err.Error(), nil)
+
+	case errors.Is(err, campaign.ErrAgentVarsMissing):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, campaign.ErrorCode(err), err.Error(), nil)
+
+	case errors.Is(err, campaign.ErrWorkflowNotFound),
+		errors.Is(err, campaign.ErrAgentNotFound):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, campaign.ErrorCode(err), err.Error(), nil)
+
+	case errors.Is(err, campaign.ErrAutomationUnavailable),
+		errors.Is(err, campaign.ErrIdempotencyUnavailable),
+		errors.Is(err, campaign.ErrLeadTargetsUnavailable):
+		response.WriteError(w, http.StatusServiceUnavailable, err.Error(), nil)
 
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "campaign request failed", nil)

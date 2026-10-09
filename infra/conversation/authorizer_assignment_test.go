@@ -75,6 +75,13 @@ func (s *stubAssignments) FindByEntry(string, string, string) (*inbox_assignment
 	return s.assignment, nil
 }
 
+func (s *stubAssignments) FindByEntries(string, []string) ([]*inbox_assignment.InboxAssignment, error) {
+	if s.assignment == nil {
+		return nil, nil
+	}
+	return []*inbox_assignment.InboxAssignment{s.assignment}, nil
+}
+
 type stubResolver struct{}
 
 func (stubResolver) GetCampaignWorkspaceID(string, string) (string, error) { return testWorkspace, nil }
@@ -92,6 +99,7 @@ func newTestAuthorizer(assignment *inbox_assignment.InboxAssignment, canViewOthe
 	}
 	return NewAuthorizer(
 		stubEntryAccess{},
+		&stubPlacements{},
 		stubMembership{permissions: perms},
 		stubDepartments{},
 		&stubAssignments{assignment: assignment},
@@ -137,6 +145,7 @@ func TestCanAccessEntry_CachedGrantDoesNotBypassAssignment(t *testing.T) {
 	assignments := &stubAssignments{}
 	a := NewAuthorizer(
 		stubEntryAccess{},
+		&stubPlacements{},
 		stubMembership{permissions: map[workspace.Action]bool{}},
 		stubDepartments{},
 		assignments,

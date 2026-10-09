@@ -18,6 +18,7 @@ type MediaGenerationJob struct {
 	Voice             string         `gorm:"size:32"`
 	Video             datatypes.JSON `gorm:"type:jsonb"`
 	SourceMediaID     string         `gorm:"size:64"`
+	BillingReference  string         `gorm:"size:128"`
 	Prompt            string         `gorm:"type:text;not null"`
 	Aspect            string         `gorm:"size:16;not null"`
 	ReferenceMediaIDs pq.StringArray `gorm:"type:text[]"`

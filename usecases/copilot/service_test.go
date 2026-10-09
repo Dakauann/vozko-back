@@ -502,8 +502,13 @@ func TestService_TheModelSeesTheWorkspaceStateEveryTurn(t *testing.T) {
 	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "crie um modelo"}, ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatalf("stream: %v", err)
 	}
-	if len(prov.inputs) == 0 || !strings.Contains(prov.inputs[0].SystemPrompt, "WhatsApp oficial: 0 (0 de 1 do plano); pode adicionar") {
-		t.Fatal("the system prompt must carry the live workspace state")
+	if len(prov.inputs) == 0 {
+		t.Fatal("the model was never called")
+	}
+	first := prov.inputs[0]
+	note := first.Messages[len(first.Messages)-1].Content
+	if !strings.Contains(note, "WhatsApp oficial: 0 (0 de 1 do plano); pode adicionar") || strings.Contains(first.SystemPrompt, "Estado do workspace") {
+		t.Fatal("the live workspace state rides in the trailing note, outside the cached system prompt")
 	}
 	if state.person.WorkspaceID != ownerCtx.WorkspaceID || state.person.UserID != ownerCtx.UserID {
 		t.Fatalf("state read for %+v", state.person)
@@ -702,5 +707,55 @@ func TestAToolStepTellsTheScreenWhatAnApprovedChangeTouched(t *testing.T) {
 	}
 	if _, found := (toolStep{Name: "ads_results", Summary: "ok", Ok: true}).payload()["changed"]; found {
 		t.Fatal("a read reported a change")
+	}
+}
+
+func TestAToolStepCarriesWhatItActedOnToTheScreenAndTheHistory(t *testing.T) {
+	subject := &copilot.Subject{Kind: copilot.SubjectSkill, Key: "motion-design", Label: "Motion design no Estúdio"}
+	step := stepFromResult("load_skill", copilot.Result{Status: copilot.StatusOK, Subject: subject})
+	if step.payload()["subject"] != subject {
+		t.Fatalf("payload %v", step.payload())
+	}
+	stored, _ := json.Marshal(step)
+	if !strings.Contains(string(stored), `"subject":{"kind":"skill","key":"motion-design","label":"Motion design no Estúdio"}`) {
+		t.Fatalf("stored %s", stored)
+	}
+}
+
+func TestTheHistoryKeepsWhatAToolActedOnAndWhyItFailed(t *testing.T) {
+	recorder := &turnRecorder{emit: func(string, interface{}) {}}
+	subject := &copilot.Subject{Kind: copilot.SubjectSkill, Key: "design-de-imagem", Label: "Design de imagem"}
+	emitStep(recorder.emitFn, stepFromResult("load_skill", copilot.Result{Status: copilot.StatusOK, Subject: subject}))
+	emitStep(recorder.emitFn, stepFromResult("studio_edit_image", copilot.Result{Status: copilot.StatusError, Message: "operação 2 (add_text): x vai de -1 a 2. Nada foi aplicado."}))
+	stored := string(recorder.message("t-1", "", "m").ToolCalls)
+	for _, want := range []string{`"subject":{"kind":"skill","key":"design-de-imagem","label":"Design de imagem"}`, `"error":"operação 2 (add_text): x vai de -1 a 2. Nada foi aplicado."`} {
+		if !strings.Contains(stored, want) {
+			t.Fatalf("history %s lost %s", stored, want)
+		}
+	}
+}
+
+func TestAFailedToolKeepsOnlyTheStartOfALongError(t *testing.T) {
+	step := stepFromResult("studio_edit_image", copilot.Result{Status: copilot.StatusError, Message: strings.Repeat("x", maxToolErrorRunes+100)})
+	if len([]rune(step.Error)) != maxToolErrorRunes {
+		t.Fatalf("error kept %d runes", len([]rune(step.Error)))
+	}
+	if ok := stepFromResult("studio_read", copilot.Result{Status: copilot.StatusOK, Message: "ignored"}); ok.Error != "" {
+		t.Fatalf("a success carries an error: %q", ok.Error)
+	}
+}
+
+type loggedTool struct{ copilot.Tool }
+
+func (loggedTool) LogsArguments() bool { return true }
+
+func TestOnlyToolsThatAllowItHaveTheirFailedArgumentsLogged(t *testing.T) {
+	args := map[string]interface{}{"operations": []interface{}{map[string]interface{}{"op": "add_text", "text": strings.Repeat("a", 5000)}}}
+	logged := failedArguments(loggedTool{}, args)
+	if logged == "" || len([]rune(logged)) > maxLoggedArgumentRunes {
+		t.Fatalf("logged %d runes", len([]rune(logged)))
+	}
+	if failedArguments(nil, args) != "" {
+		t.Fatal("a tool that does not opt in had its arguments logged")
 	}
 }

@@ -4,12 +4,12 @@ import (
 	"context"
 
 	"vozko/domain/campaign"
-	"vozko/domain/lead"
+	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
 func NormalizeTarget(raw string) string {
-	return lead.NormalizeNumber(lead.NormalizeRawNumber(raw))
+	return shared.NormalizePhone(raw)
 }
 
 type ImportRequest struct {
@@ -41,4 +41,8 @@ type CampaignInstanceUseCase interface {
 
 type CampaignActionUseCase interface {
 	Act(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string, action campaign.Action) (*Campaign, error)
+}
+
+type ReviewedStartUseCase interface {
+	StartReviewed(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string) (*Campaign, error)
 }

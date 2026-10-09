@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -21,18 +20,13 @@ import (
 	wo "vozko/domain/whatsapp_outreach"
 	"vozko/domain/workspace_phone_access"
 	"vozko/domain/workspace_template_access"
+	"vozko/usecases/campaignguard"
 )
 
-type SpamPolicyReader interface {
-	SpamProtectionDays(ctx context.Context, workspaceID string) (int, error)
-}
+type SpamPolicyReader = campaignguard.SpamPolicy
 
 type WindowReader interface {
 	IsWindowOpen(leadID, businessPhoneID string) (bool, error)
-}
-
-type RateLimiter interface {
-	Allow(ctx context.Context, workspaceID string, limit int, window time.Duration) (bool, error)
 }
 
 type ConversationClaimer interface {
@@ -52,11 +46,10 @@ type Deps struct {
 	Windows         WindowReader
 	CampaignSends   lcs.Repository
 	SpamPolicy      SpamPolicyReader
+	SendClaims      campaignguard.SendClaims
 	History         conversation.MessageHistoryManager
 	Assignments     ConversationClaimer
 	Sender          template.BilledTemplateSendUseCase
-	Limiter         RateLimiter
-	HourlySendCap   int
 	Now             func() time.Time
 }
 
@@ -105,15 +98,15 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		return nil, wo.ErrDepartmentForbidden
 	}
 
-	leadRecord, _, err := uc.deps.Leads.FindOrCreate(in.WorkspaceID, number, lead.LeadUpdate{Name: strings.TrimSpace(in.Name)})
+	leadRecord, _, err := uc.deps.Leads.FindOrCreate(in.WorkspaceID, number, lead.LeadUpdate{Source: lead.SourceImport, Name: strings.TrimSpace(in.Name)})
 	if err != nil {
 		return nil, err
 	}
-	if leadRecord.Blocked {
-		return nil, wo.ErrLeadBlocked
+	if err := uc.refuseUnreachable(leadRecord); err != nil {
+		return nil, err
 	}
 
-	entry, entryExisted := uc.findExistingEntry(number, phone.ID)
+	entry, entryExisted := uc.findExistingEntry(in.WorkspaceID, number, phone.ID)
 
 	if uc.deps.Windows != nil && !tmpl.IsAuthentication() {
 		open, windowErr := uc.deps.Windows.IsWindowOpen(leadRecord.ID, phone.ID)
@@ -136,9 +129,16 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 	if err := uc.refuseIfSpam(ctx, in.WorkspaceID, leadRecord.ID, phone.ID); err != nil {
 		return nil, err
 	}
-	if err := uc.refuseIfTooFast(ctx, in.WorkspaceID); err != nil {
+	release, err := uc.claimContact(ctx, in.WorkspaceID, leadRecord.ID, phone.ID)
+	if err != nil {
 		return nil, err
 	}
+	sent := false
+	defer func() {
+		if !sent {
+			release()
+		}
+	}()
 
 	if entry == nil {
 		entry = &wce.WhatsAppCampaignEntry{
@@ -184,6 +184,7 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		CampaignID:      campaign.ID,
 		EntryID:         entry.ID,
 	})
+	sent = keepsClaim(err)
 	if err != nil {
 		return nil, err
 	}
@@ -207,8 +208,8 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 	return result, nil
 }
 
-func (uc *startConversationUseCase) findExistingEntry(number, phoneID string) (*wce.WhatsAppCampaignEntry, bool) {
-	existing, err := uc.deps.Entries.FindByNumberAndBusinessPhone(number, phoneID)
+func (uc *startConversationUseCase) findExistingEntry(workspaceID, number, phoneID string) (*wce.WhatsAppCampaignEntry, bool) {
+	existing, err := uc.deps.Entries.FindByNumberBusinessPhoneAndWorkspace(number, phoneID, workspaceID)
 	if err != nil || existing == nil {
 		return nil, false
 	}
@@ -228,19 +229,4 @@ func (uc *startConversationUseCase) departmentAllows(in wo.StartConversationInpu
 		}
 	}
 	return false
-}
-
-func (uc *startConversationUseCase) refuseIfTooFast(ctx context.Context, workspaceID string) error {
-	if uc.deps.Limiter == nil || uc.deps.HourlySendCap <= 0 {
-		return nil
-	}
-	ok, err := uc.deps.Limiter.Allow(ctx, workspaceID, uc.deps.HourlySendCap, time.Hour)
-	if err != nil {
-		log.Printf("[whatsapp-outreach] rate limiter unavailable for workspace %s: %v", workspaceID, err)
-		return nil
-	}
-	if !ok {
-		return wo.ErrRateLimited
-	}
-	return nil
 }

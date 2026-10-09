@@ -158,7 +158,7 @@ func (h *headerContacts) AuthorsByHandle(context.Context, string, []string) (map
 
 func TestGetEntryInfo_HeaderPrefersTheLeadNameOverThePushname(t *testing.T) {
 	leads := &headerLeadRepo{byID: map[string]*lead.Lead{
-		"lead-1": {ID: "lead-1", Name: "DakauannT", Number: "558494409624"},
+		"lead-1": {ID: "lead-1", Name: "DakauannT", Number: "558494409624", Version: 6},
 	}}
 	svc := &HistoryProviderService{leadRepo: leads}
 	svc.SetContactIdentityLookup(shared.EntryTypeUnofficialWhatsApp, &headerContacts{
@@ -169,13 +169,17 @@ func TestGetEntryInfo_HeaderPrefersTheLeadNameOverThePushname(t *testing.T) {
 		},
 	})
 
-	name, handle, picture, _, _, _, err := svc.GetEntryInfo(
+	info, err := svc.GetEntryInfo(
 		"uw-conv-1", string(shared.EntryTypeUnofficialWhatsApp))
 	if err != nil {
 		t.Fatalf("GetEntryInfo: %v", err)
 	}
+	name, handle, picture := info.LeadName, info.LeadNumber, info.LeadPicture
 	if name != "DakauannT" {
 		t.Fatalf("header name = %q, want the CRM lead's name", name)
+	}
+	if info.LeadID != "lead-1" || info.LeadVersion != 6 {
+		t.Fatalf("the header must carry the lead id and version for If-Match, got %q v%d", info.LeadID, info.LeadVersion)
 	}
 	if leads.askedWS != "ws-1" || leads.askedLead != "lead-1" {
 		t.Errorf("looked up lead %q in workspace %q", leads.askedLead, leads.askedWS)
@@ -193,11 +197,12 @@ func TestGetEntryInfo_HeaderKeepsThePushnameWithoutALead(t *testing.T) {
 		contact: ContactDisplay{ContactID: "group-1", Name: "Teste grupos", IsGroup: true},
 	})
 
-	name, _, _, _, _, _, err := svc.GetEntryInfo(
+	info, err := svc.GetEntryInfo(
 		"uw-conv-2", string(shared.EntryTypeUnofficialWhatsApp))
 	if err != nil {
 		t.Fatalf("GetEntryInfo: %v", err)
 	}
+	name := info.LeadName
 	if name != "Teste grupos" {
 		t.Fatalf("header name = %q, want the group's own name", name)
 	}
@@ -218,11 +223,12 @@ func TestGetEntryInfo_HeaderFallsBackWhenTheLeadNameIsBlank(t *testing.T) {
 		},
 	})
 
-	name, _, _, _, _, _, err := svc.GetEntryInfo(
+	info, err := svc.GetEntryInfo(
 		"uw-conv-1", string(shared.EntryTypeUnofficialWhatsApp))
 	if err != nil {
 		t.Fatalf("GetEntryInfo: %v", err)
 	}
+	name := info.LeadName
 	if name != "Dakauann" {
 		t.Fatalf("header name = %q, want the pushname fallback", name)
 	}

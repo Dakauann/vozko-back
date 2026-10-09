@@ -46,7 +46,11 @@ func (t *loadSkillTool) Execute(_ context.Context, _ copilot.Context, args map[s
 	if !ok {
 		return copilot.Result{Status: copilot.StatusError, Message: fmt.Sprintf("habilidade desconhecida; use uma destas: %s", strings.Join(t.names(), ", "))}
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"skill": skill.Name, "instructions": skill.Body}}
+	return copilot.Result{
+		Status:  copilot.StatusOK,
+		Data:    map[string]interface{}{"skill": skill.Name, "instructions": skill.Body},
+		Subject: &copilot.Subject{Kind: copilot.SubjectSkill, Key: skill.Name, Label: skill.Title()},
+	}
 }
 
 func (t *loadSkillTool) names() []string {
@@ -57,3 +61,5 @@ func (t *loadSkillTool) names() []string {
 	}
 	return names
 }
+
+func (t *loadSkillTool) OfferedOn(copilot.View) bool { return true }

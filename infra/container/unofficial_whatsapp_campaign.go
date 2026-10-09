@@ -2,16 +2,13 @@ package container
 
 import (
 	"context"
-	"time"
 
 	uwhttp "vozko/delivery/http/unofficial_whatsapp"
 	wsdelivery "vozko/delivery/ws"
-	lcs "vozko/domain/lead_campaign_send"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	workflow_domain "vozko/domain/workflow"
 	workspace_department "vozko/domain/workspace/workspace_department"
-	wsc "vozko/domain/workspace_config"
 	uwrepo "vozko/infra/repositories/unofficial_whatsapp"
 	uwc_repo "vozko/infra/repositories/unofficial_whatsapp_campaign"
 	conversation_usecase "vozko/usecases/conversation"
@@ -66,10 +63,8 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		),
 	}
 
-	spam := &workspaceSpamGuard{
-		config: c.repositories.workspaceConfig,
-		sends:  c.repositories.leadCampaignSend,
-	}
+	spam := c.campaignSpamGuard()
+	eligibility := c.campaignEligibility()
 
 	budget := uwcuc.NewSendBudget(c.redisProvider.SharedState())
 
@@ -83,6 +78,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		Sender:      sender,
 		Budget:      budget,
 		Spam:        spam,
+		Eligibility: eligibility,
 		Assignments: c.services.assignmentService,
 		Broadcaster: &campaignEntryBroadcaster{hub: c.services.conversationHub},
 	})
@@ -101,7 +97,8 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	)
 	bundle.ScheduleJob = uwcuc.NewScheduleStartJob(bundle.Campaigns, bundle.Dispatch)
 	bundle.Create = uwcuc.NewCreateCampaignUseCase(
-		bundle.Campaigns, bundle.Entries, c.repositories.lead, gateway, spam, departments)
+		bundle.Campaigns, bundle.Entries, c.repositories.lead, gateway, eligibility, departments)
+	c.wireUnofficialCampaignCreate(bundle)
 	bundle.Access = uwcuc.NewCampaignAccessUseCase(uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway))
 	bundle.Actions = uwcuc.NewCampaignActionUseCase(bundle.Access, bundle.Dispatch)
 	bundle.Preview = uwcuc.NewImportPreviewUseCase(c.useCases.readMedia)
@@ -118,7 +115,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 
 	bundle.Handler = uwhttp.NewCampaignHandler(uwhttp.CampaignHandlerDeps{
 		Create:      bundle.Create,
-		Update:      uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
+		Update:      c.automateCampaignChanges("unofficial update", uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway)).(uwc.UpdateCampaignUseCase),
 		Get:         uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Access:      bundle.Access,
 		Actions:     bundle.Actions,
@@ -129,12 +126,12 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		Entries:     uwcuc.NewListEntriesUseCase(bundle.Entries),
 		Reset:       uwcuc.NewResetCampaignUseCase(bundle.Campaigns, bundle.Entries),
 		Clear:       uwcuc.NewClearHistoryUseCase(bundle.Campaigns, bundle.Entries, c.repositories.conversation),
-		AddEntry:    uwcuc.NewAddEntriesUseCase(bundle.Campaigns, bundle.Entries, c.repositories.lead),
+		AddEntry:    c.automateCampaignChanges("unofficial add entries", uwcuc.NewAddEntriesUseCase(bundle.Campaigns, bundle.Entries, c.repositories.lead)).(uwc.AddEntriesUseCase),
 		UpdateEntry: uwcuc.NewUpdateEntryUseCase(bundle.Campaigns, bundle.Entries, c.repositories.lead),
 		DeleteEntry: uwcuc.NewDeleteEntryUseCase(bundle.Campaigns, bundle.Entries),
-		QuickSend: uwcuc.NewQuickSendUseCase(
+		QuickSend: c.automateCampaignChanges("unofficial quick send", uwcuc.NewQuickSendUseCase(
 			bundle.Campaigns, bundle.Entries, c.repositories.lead,
-			bundle.Dispatch, c.redisProvider.SharedState()),
+			bundle.Dispatch, c.redisProvider.SharedState())).(uwc.QuickSendUseCase),
 		Validate:    uwcuc.NewValidateTargetsUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Departments: c.services.conversationAuthImpl,
 	})
@@ -174,65 +171,6 @@ func (g *unofficialCampaignGateway) CacheRestriction(ctx context.Context, instan
 
 func (g *unofficialCampaignGateway) Resolve(ctx context.Context, instance *uw.Instance, in uwuc.ResolveInput) (*uwuc.Resolved, error) {
 	return g.resolver.Resolve(ctx, instance, in)
-}
-
-type workspaceSpamGuard struct {
-	config workspaceConfigReader
-	sends  lcs.Repository
-}
-
-type workspaceConfigReader interface {
-	GetByWorkspaceID(ctx context.Context, workspaceID string) (*wsc.WorkspaceConfig, error)
-}
-
-func (g *workspaceSpamGuard) protectionDays(ctx context.Context, workspaceID string) int {
-	if g.config == nil {
-		return 0
-	}
-	cfg, err := g.config.GetByWorkspaceID(ctx, workspaceID)
-	if err != nil || cfg == nil {
-		return 0
-	}
-	return cfg.CampaignSpamProtectionDays
-}
-
-func (g *workspaceSpamGuard) ShouldSkip(ctx context.Context, workspaceID, leadID, senderID string) bool {
-	days := g.protectionDays(ctx, workspaceID)
-	if days <= 0 || g.sends == nil {
-		return false
-	}
-	lastSent, err := g.sends.GetLastSendTime(leadID, senderID)
-	if err != nil {
-		return false
-	}
-	return lcs.WithinSpamWindow(lastSent, days, time.Now())
-}
-
-func (g *workspaceSpamGuard) SkipMany(ctx context.Context, workspaceID string, leadIDs []string, senderID string) map[string]bool {
-	out := map[string]bool{}
-	days := g.protectionDays(ctx, workspaceID)
-	if days <= 0 || g.sends == nil || len(leadIDs) == 0 {
-		return out
-	}
-	lastSends, err := g.sends.GetLastSendTimesBatch(leadIDs, senderID)
-	if err != nil {
-		return out
-	}
-	now := time.Now()
-	for leadID, at := range lastSends {
-		stamp := at
-		if lcs.WithinSpamWindow(&stamp, days, now) {
-			out[leadID] = true
-		}
-	}
-	return out
-}
-
-func (g *workspaceSpamGuard) Record(leadID, senderID, campaignID string) error {
-	if g.sends == nil {
-		return nil
-	}
-	return g.sends.Record(leadID, senderID, campaignID)
 }
 
 type campaignWorkflowTrigger struct {

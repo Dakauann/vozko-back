@@ -6,7 +6,6 @@ import (
 
 	"vozko/domain/lead"
 	"vozko/domain/shared"
-	"vozko/infra/database/schema"
 )
 
 func newNilRepo() *repository {
@@ -15,10 +14,6 @@ func newNilRepo() *repository {
 
 func TestRepository_WorkspaceRequiredGuards(t *testing.T) {
 	r := newNilRepo()
-
-	if err := r.Create(nil); !errors.Is(err, lead.ErrLeadRequired) {
-		t.Errorf("Create(nil) = %v, want ErrLeadRequired", err)
-	}
 
 	if _, err := r.FindByID("", "id"); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Errorf("FindByID empty ws = %v", err)
@@ -41,28 +36,22 @@ func TestRepository_WorkspaceRequiredGuards(t *testing.T) {
 		t.Errorf("FindByIDs empty ids = %v, %v", got, err)
 	}
 
-	if _, _, err := r.FindOrCreate("", "5511987654321", lead.LeadUpdate{}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
+	channel := lead.LeadUpdate{Source: lead.SourceChannel}
+	if _, _, err := r.FindOrCreate("", "5511987654321", channel); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Errorf("FindOrCreate empty ws = %v", err)
 	}
-	if _, _, err := r.FindOrCreate("ws", "abc", lead.LeadUpdate{}); !errors.Is(err, lead.ErrLeadInvalid) {
+	if _, _, err := r.FindOrCreate("ws", "abc", channel); !errors.Is(err, lead.ErrLeadInvalid) {
 		t.Errorf("FindOrCreate invalid number = %v", err)
 	}
 
-	if _, err := r.FindOrCreateMany("", []lead.BulkLeadInput{{Number: "5511987654321"}}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
+	if _, err := r.FindOrCreateMany("", []lead.BulkLeadInput{{Source: lead.SourceImport, Number: "5511987654321"}}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Errorf("FindOrCreateMany empty ws = %v", err)
 	}
 	if got, err := r.FindOrCreateMany("ws", nil); err != nil || len(got) != 0 {
 		t.Errorf("FindOrCreateMany empty input = %v, %v", got, err)
 	}
-	if got, err := r.FindOrCreateMany("ws", []lead.BulkLeadInput{{Number: "abc"}}); err != nil || len(got) != 0 {
+	if got, err := r.FindOrCreateMany("ws", []lead.BulkLeadInput{{Source: lead.SourceImport, Number: "abc"}}); err != nil || len(got) != 0 {
 		t.Errorf("FindOrCreateMany invalid only = %v, %v", got, err)
-	}
-
-	if err := r.Update("", "id", lead.LeadUpdate{}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
-		t.Errorf("Update empty ws = %v", err)
-	}
-	if err := r.Update("ws", "", lead.LeadUpdate{}); !errors.Is(err, lead.ErrLeadRequired) {
-		t.Errorf("Update empty id = %v", err)
 	}
 
 	if err := r.Delete("", "id"); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
@@ -74,34 +63,6 @@ func TestRepository_WorkspaceRequiredGuards(t *testing.T) {
 
 	if _, err := r.List(lead.ListLeadsInput{}); !errors.Is(err, lead.ErrLeadWorkspaceRequired) {
 		t.Errorf("List empty ws = %v", err)
-	}
-}
-
-func TestSchemaMapping_PreservesWorkspaceID(t *testing.T) {
-	age := 30
-	src := &lead.Lead{
-		ID:                "id-1",
-		WorkspaceID:       "ws-1",
-		Number:            "5511987654321",
-		Name:              "Jane",
-		ProfilePictureURL: "pic.png",
-		Age:               &age,
-	}
-	s := toSchema(src)
-	if s.WorkspaceID != "ws-1" || s.ID != "id-1" || s.Number != "5511987654321" || s.Name != "Jane" || s.ProfilePictureURL != "pic.png" || s.Age == nil || *s.Age != 30 {
-		t.Errorf("toSchema lost data: %+v", s)
-	}
-
-	back := toDomain(&schema.Lead{
-		ID:                s.ID,
-		WorkspaceID:       s.WorkspaceID,
-		Number:            s.Number,
-		Name:              s.Name,
-		ProfilePictureURL: s.ProfilePictureURL,
-		Age:               s.Age,
-	})
-	if back.WorkspaceID != "ws-1" || back.Number != "5511987654321" {
-		t.Errorf("toDomain lost data: %+v", back)
 	}
 }
 

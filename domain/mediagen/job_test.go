@@ -133,3 +133,19 @@ func TestTheModelIsPartOfTheJobAndItsFingerprint(t *testing.T) {
 func imageFingerprint(workspaceID, requestedBy, model, prompt string, aspect Aspect, references ...string) string {
 	return Request{Kind: KindImage, WorkspaceID: workspaceID, Model: model, Prompt: prompt, Aspect: aspect, ReferenceMediaIDs: references}.Fingerprint(requestedBy)
 }
+
+func TestAJobKeepsTheReferenceItIsChargedTo(t *testing.T) {
+	req := Request{Kind: KindMusic, WorkspaceID: "ws-1", Model: "m", Prompt: "samba", BillingReference: "aichat:th-1"}
+	job, err := NewJob(req, "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.BillingReference != "aichat:th-1" {
+		t.Fatalf("the job must keep its charge reference, got %q", job.BillingReference)
+	}
+	plain := req
+	plain.BillingReference = ""
+	if req.Fingerprint("u-1") != plain.Fingerprint("u-1") {
+		t.Fatal("the charge reference must not change what counts as the same generation")
+	}
+}

@@ -572,3 +572,72 @@ func TestDriver_TheChoiceIsCheckedByTheToolBeforeRunning(t *testing.T) {
 		t.Fatalf("res=%+v calls=%d", res, ct.calls)
 	}
 }
+
+type prerequisiteTool struct {
+	fakeTool
+	also []workspace.PermissionEntry
+}
+
+func (p *prerequisiteTool) AlsoRequires() []workspace.PermissionEntry { return p.also }
+
+func TestDriver_AToolWithPrerequisitesIsOfferedOnlyToHoldersOfAll(t *testing.T) {
+	tool := &prerequisiteTool{
+		fakeTool: fakeTool{name: "create_customer_list_audience", meta: copilot.Meta{Mutating: true, Resource: workspace.ResourceAds, Action: workspace.ActionCreate}},
+		also:     []workspace.PermissionEntry{{Resource: workspace.ResourceLeads, Action: workspace.ActionRead}},
+	}
+	adsOnly := driverWith(resourceAccess{workspace.ResourceAds: true}, tool)
+	if len(adsOnly.Tools()) != 0 {
+		t.Fatal("a person without leads:read was offered a tool that reads leads")
+	}
+	if res := adsOnly.ExecuteApproved(context.Background(), copilot.PendingAction{ToolName: tool.name}, copilot.Approval{}, func(string, interface{}) {}); res.Status != copilot.StatusDenied || tool.calls != 0 {
+		t.Fatalf("an approval without the prerequisite = %+v, %d calls", res, tool.calls)
+	}
+	both := driverWith(resourceAccess{workspace.ResourceAds: true, workspace.ResourceLeads: true}, tool)
+	if len(both.Tools()) != 1 {
+		t.Fatal("a holder of every requirement lost the tool")
+	}
+}
+
+type proposalTool struct {
+	fakeTool
+	seen []string
+}
+
+func (p *proposalTool) Validate(_ context.Context, cc copilot.Context, _ map[string]interface{}) error {
+	p.seen = append(p.seen, "validate:"+cc.ProposalID)
+	return nil
+}
+
+func (p *proposalTool) Describe(_ context.Context, cc copilot.Context, _ map[string]interface{}) []copilot.Field {
+	p.seen = append(p.seen, "describe:"+cc.ProposalID)
+	return nil
+}
+
+func (p *proposalTool) Preview(_ context.Context, cc copilot.Context, _ map[string]interface{}) *copilot.Preview {
+	p.seen = append(p.seen, "preview:"+cc.ProposalID)
+	return nil
+}
+
+func TestDriver_EveryStepOfAProposalKnowsWhichProposalItIs(t *testing.T) {
+	wt := &proposalTool{fakeTool: fakeTool{name: "write_x", meta: writeMeta}}
+	drv := driverWith(&fakeAccess{}, wt)
+	step := drv.Dispatch(context.Background(), call("write_x", map[string]interface{}{"a": 1}), (&capture{}).emit)
+	pa, ok := step.Pause.Payload.(copilot.PendingAction)
+	if !ok || pa.ID != "act-1" {
+		t.Fatalf("step = %+v", step)
+	}
+	if strings.Join(wt.seen, ",") != "validate:act-1,describe:act-1,preview:act-1" {
+		t.Fatalf("the proposal steps saw %v", wt.seen)
+	}
+	if drv.cc.ProposalID != "" {
+		t.Fatal("the proposal id leaked into the session")
+	}
+	wt.seen = nil
+	approved := NewDriver(ownerCtx, "m", NewRegistry(wt), &fakeAccess{}, openFunds{}, func() string { return "act-2" })
+	if res := approved.ExecuteApproved(context.Background(), pa, copilot.Approval{}, (&capture{}).emit); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	if strings.Join(wt.seen, ",") != "validate:act-1" || wt.gotCC.ProposalID != "act-1" {
+		t.Fatalf("the approval saw %v and ran with %q", wt.seen, wt.gotCC.ProposalID)
+	}
+}

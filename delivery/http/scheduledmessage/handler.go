@@ -70,7 +70,7 @@ func (h *ScheduledMessageHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Agendar uma mensagem
-// @Description	Agenda uma mensagem para ser enviada em uma conversa. Uma mensagem de texto ou mídia precisa cair dentro da janela de atendimento aberta. Um template (campo `template`, só no WhatsApp oficial) pode ser agendado com a janela fechada, até 30 dias à frente; ele segue as mesmas regras de um envio de template (aprovação, acesso ao template, contato bloqueado, proteção contra spam) e é cobrado no momento do envio. Agendar, reagendar ou cancelar um template exige a permissão whatsapp_templates:send. O horário precisa estar a pelo menos um minuto de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não crie uma segunda mensagem.
+// @Description	Agenda uma mensagem para ser enviada em uma conversa. Uma mensagem de texto ou mídia precisa cair dentro da janela de atendimento aberta. Um template (campo `template`, só no WhatsApp oficial) pode ser agendado com a janela fechada, até 30 dias à frente; ele segue as mesmas regras de um envio de template (aprovação, acesso ao template, contato bloqueado, contato que pediu para não receber mensagens, proteção contra spam) e é cobrado no momento do envio; um contato que pediu para não receber mensagens responde 422 `contact_opted_out`. Agendar, reagendar ou cancelar um template exige a permissão whatsapp_templates:send. O horário precisa estar a pelo menos um minuto de distância. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não crie uma segunda mensagem.
 // @Tags			Mensagens Agendadas
 // @Accept			json
 // @Produce		json
@@ -317,6 +317,8 @@ func (h *ScheduledMessageHandler) writeDomainError(w http.ResponseWriter, err er
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "template_unavailable", err.Error(), nil)
 	case errors.Is(err, wo.ErrLeadBlocked):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "contact_blocked", err.Error(), nil)
+	case errors.Is(err, wo.ErrLeadOptedOut):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "contact_opted_out", err.Error(), nil)
 	case errors.Is(err, wo.ErrWithinSpamWindow):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "spam_window", err.Error(), nil)
 	case errors.Is(err, wo.ErrPhoneNotConnected),

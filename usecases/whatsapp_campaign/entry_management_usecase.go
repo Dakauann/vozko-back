@@ -1,10 +1,13 @@
 package whatsapp_campaign_usecase
 
 import (
+	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 
+	"vozko/domain/campaign"
 	"vozko/domain/lead"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
@@ -50,10 +53,17 @@ type AIToggleTelemetrySink interface {
 	AIToggle(workspaceID, entryID, entryType, actorUserID string, enabled bool)
 }
 
+var errLeadMergerMissing = errors.New("whatsapp campaign entry: the lead merge is not wired, a name edit cannot reach the lead")
+
+type LeadMerger interface {
+	MergeIncoming(ctx context.Context, workspaceID, leadID string, update lead.LeadUpdate) (*lead.Lead, error)
+}
+
 type updateEntryUseCase struct {
 	campaignRepo wc.Repository
 	entryRepo    wce.Repository
 	leadRepo     lead.Repository
+	leadMerger   LeadMerger
 	aiToggle     AIToggleTelemetrySink
 }
 
@@ -61,11 +71,13 @@ func NewUpdateEntryUseCase(
 	campaignRepo wc.Repository,
 	entryRepo wce.Repository,
 	leadRepo lead.Repository,
+	leadMerger LeadMerger,
 ) *updateEntryUseCase {
 	return &updateEntryUseCase{
 		campaignRepo: campaignRepo,
 		entryRepo:    entryRepo,
 		leadRepo:     leadRepo,
+		leadMerger:   leadMerger,
 	}
 }
 
@@ -81,9 +93,12 @@ func (uc *updateEntryUseCase) Execute(input wc.UpdateEntryInput) (*wc.EntryOutpu
 		return nil, wc.ErrCampaignNotFound
 	}
 
-	isOnlyAIToggle := input.AutomationEnabled != nil && input.Number == nil && input.Name == nil && input.Variables == nil && input.Metadata == nil
+	isOnlyAIToggle := input.AutomationEnabled != nil && !input.ChangesTheRecipient()
 	if c.Status == wc.CampaignStatusRunning && !isOnlyAIToggle {
 		return nil, wc.ErrCampaignRunning
+	}
+	if err := campaign.RefuseSelectionChange(c.Source, input.ChangesTheRecipient()); err != nil {
+		return nil, err
 	}
 
 	entry, err := uc.entryRepo.FindByID(input.EntryID)
@@ -115,11 +130,9 @@ func (uc *updateEntryUseCase) Execute(input wc.UpdateEntryInput) (*wc.EntryOutpu
 				return nil, wc.ErrEntryDuplicate
 			}
 
-			leadUpdate := lead.LeadUpdate{}
+			leadUpdate := lead.LeadUpdate{Source: lead.SourceImport, Name: currentLead.Name}
 			if input.Name != nil {
 				leadUpdate.Name = *input.Name
-			} else {
-				leadUpdate.Name = currentLead.Name
 			}
 
 			newLead, _, err := uc.leadRepo.FindOrCreate(c.WorkspaceID, normalizedNumber, leadUpdate)
@@ -168,13 +181,10 @@ func (uc *updateEntryUseCase) Execute(input wc.UpdateEntryInput) (*wc.EntryOutpu
 		}
 	}
 
-	leadUpdate := lead.LeadUpdate{}
 	if input.Name != nil {
-		leadUpdate.Name = *input.Name
-	}
-
-	if err := uc.leadRepo.Update(c.WorkspaceID, currentLead.ID, leadUpdate); err != nil {
-		return nil, err
+		if err := uc.mergeEntryName(c.WorkspaceID, currentLead, *input.Name); err != nil {
+			return nil, err
+		}
 	}
 
 	if input.Metadata != nil {
@@ -224,10 +234,23 @@ func (uc *updateEntryUseCase) Execute(input wc.UpdateEntryInput) (*wc.EntryOutpu
 	}, nil
 }
 
+func (uc *updateEntryUseCase) mergeEntryName(workspaceID string, current *lead.Lead, name string) error {
+	if uc.leadMerger == nil {
+		return errLeadMergerMissing
+	}
+	_, err := uc.leadMerger.MergeIncoming(context.Background(), workspaceID, current.ID, lead.LeadUpdate{Source: lead.SourceImport, Name: name})
+	return err
+}
+
 type addEntriesUseCase struct {
 	campaignRepo wc.Repository
 	entryRepo    wce.Repository
 	leadRepo     lead.Repository
+	automation   AutomationCheck
+}
+
+func (uc *addEntriesUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
 }
 
 func NewAddEntriesUseCase(
@@ -254,6 +277,10 @@ func (uc *addEntriesUseCase) Execute(input wc.AddEntriesInput) (*wc.AddEntriesOu
 
 	if len(input.PhoneNumbers) == 0 {
 		return nil, wc.ErrCampaignPhoneNumbersRequired
+	}
+
+	if err := guardCampaignChange(c, uc.automation, true, entriesMetadata(input.PhoneNumbers)); err != nil {
+		return nil, err
 	}
 
 	currentCount, err := uc.entryRepo.CountByCampaignID(input.CampaignID)
@@ -285,7 +312,8 @@ func (uc *addEntriesUseCase) Execute(input wc.AddEntriesInput) (*wc.AddEntriesOu
 		}
 
 		leadUpdate := lead.LeadUpdate{
-			Name: phoneInput.Name,
+			Source: lead.SourceImport,
+			Name:   phoneInput.Name,
 		}
 		l, _, err := uc.leadRepo.FindOrCreate(c.WorkspaceID, normalizedNumber, leadUpdate)
 		if err != nil {

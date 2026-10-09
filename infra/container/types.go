@@ -157,6 +157,7 @@ import (
 	cronPackage "vozko/infra/cron"
 	queue "vozko/infra/messaging"
 	prometheus_service "vozko/infra/prometheus"
+	lead_repository "vozko/infra/repositories/lead"
 	"vozko/infra/s3"
 	"vozko/infra/security"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
@@ -174,6 +175,7 @@ import (
 	customfield_usecase "vozko/usecases/customfield"
 	dealautomation_usecase "vozko/usecases/dealautomation"
 	ia_usecase "vozko/usecases/inbox_assignment"
+	leadarea_usecase "vozko/usecases/leadarea"
 	livedecisions_usecase "vozko/usecases/livedecisions"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
@@ -198,6 +200,9 @@ type Container struct {
 	facebook                    *facebookBundle
 	ads                         *adsBundle
 	mediaGenerationBundle       *mediaGenerationBundle
+	leadImportBundle            *leadImportBundle
+	geocodingBundle             *geocodingBundle
+	leadProfileBundle           *leadProfileBundle
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
@@ -221,6 +226,11 @@ type Container struct {
 	liveCoalescerCancel context.CancelFunc
 
 	analyticsGate cache.Gate
+
+	leadAreaService *leadarea_usecase.Service
+
+	leadActionBundle *leadActionBundle
+	callListBundle   *callListBundle
 }
 
 type repositories struct {
@@ -229,7 +239,7 @@ type repositories struct {
 	property                property.PropertyRepository
 	category                category.Repository
 	agent                   agent_domain.Repository
-	lead                    lead_domain.Repository
+	lead                    lead_repository.Repository
 	conversation            conversation_domain.MessageRepository
 	user                    user.UserRepository
 	media                   media.MediaRepository
@@ -274,7 +284,7 @@ type repositories struct {
 	opportunity             opportunity_domain.Repository
 	opportunityLink         opportunity_domain.LinkRepository
 	opportunityOwners       opportunity_domain.OwnerDirectory
-	customField             customfield_domain.Repository
+	customField             customfield_domain.Store
 	label                   label_domain.Repository
 	messageShortcut         msg_shortcut_domain.Repository
 	scheduledMessage        scheduled_message_domain.Repository

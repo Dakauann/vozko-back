@@ -28,3 +28,13 @@ func TestASkillNeedsAKebabNameADescriptionAndABody(t *testing.T) {
 		}
 	}
 }
+
+func TestASkillTitleIsItsFirstHeading(t *testing.T) {
+	skill := Skill{Name: "motion-design", Description: "x", Body: "intro\n# Motion design no Estúdio\n\n## Tempos\n"}
+	if got := skill.Title(); got != "Motion design no Estúdio" {
+		t.Fatalf("title %q", got)
+	}
+	if got := (Skill{Name: "sem-titulo", Body: "só texto"}).Title(); got != "sem-titulo" {
+		t.Fatalf("a skill without a heading falls back to its name, got %q", got)
+	}
+}

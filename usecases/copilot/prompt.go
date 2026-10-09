@@ -9,10 +9,20 @@ import (
 )
 
 func systemPrompt(view copilot.View, today time.Time) string {
-	return basePrompt() + areasPrompt + adsPrompt + "\n\n# Contexto\n- Hoje é " + today.UTC().Format("2006-01-02") + " (UTC)." + screenPrompt(view)
+	context := "\n\n# Contexto\n- Hoje é " + today.UTC().Format("2006-01-02") + " (UTC)."
+	if view.Focused() {
+		return basePrompt() + context + screenPrompt(view)
+	}
+	return basePrompt() + areasPrompt + adsPrompt + context + screenPrompt(view)
 }
 
 func screenPrompt(view copilot.View) string {
+	if view.OnStudio() {
+		return studioPrompt(view.ProjectKind)
+	}
+	if view.OnLeads() {
+		return leadsScreenPrompt(view)
+	}
 	if view.Surface != copilot.SurfaceAttendance {
 		return ""
 	}
@@ -136,8 +146,16 @@ const areasPrompt = `
 # Conversas, contatos e conhecimento
 - Conversas: search_conversations (contato, texto, status, etapa, responsável, não lidas, datas) e depois
   read_conversation com o entry_id e o entry_type exatos. Leia só o que a pergunta exige e resuma.
-- Contatos: search_leads encontra clientes por nome, número ou memórias; get_lead traz detalhes e memórias; para as
-  conversas de um contato, search_conversations com o lead_id.
+- Contatos: search_leads encontra clientes por nome, número, memórias, cidade, bairro, área desenhada e responsável;
+  get_lead traz detalhes e memórias; para as conversas de um contato, search_conversations com o lead_id.
+  lead_geo_summary conta os leads de um filtro (com endereço, no mapa, aproximados, sem endereço) e mostra as cidades
+  e os bairros com mais leads, com o city_key e o pair que search_leads e prepare_lead_action aceitam. Números de
+  telefone chegam mascarados e campos sensíveis nunca chegam a você.
+- Ações sobre um grupo de leads: prepare_lead_action recebe um filtro (os mesmos argumentos de search_leads) ou
+  lead_ids e mostra na aprovação quantos leads entram, quantos são pulados e por quê, e o custo. classify,
+  assign_owner, block e export acontecem na aprovação. send_template e send_unofficial só preparam o disparo
+  (campanhas paradas); para enviar, start_lead_send com os campaign_ids devolvidos, que mostra o custo final numa
+  segunda aprovação; cancel_lead_send descarta um disparo preparado. Toda a base só entra com everyone=true.
 - Bases de conhecimento: list_knowledge_bases e search_knowledge. Responda só com o que os trechos dizem e cite o
   documento; se nada vier, diga que a base não cobre o assunto. create_knowledge_base cria; add_knowledge_document
   adiciona um anexo (leva alguns minutos para processar).

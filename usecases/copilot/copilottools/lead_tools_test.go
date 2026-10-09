@@ -6,8 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	"vozko/domain/address"
+	"vozko/domain/cache"
+	"vozko/domain/conversation"
 	"vozko/domain/copilot"
 	"vozko/domain/crmfilter"
+	"vozko/domain/customfield"
 	"vozko/domain/lead"
 	lm "vozko/domain/lead_memory"
 	"vozko/domain/shared"
@@ -63,27 +67,87 @@ func TestLeadToolsNeedLeadRead(t *testing.T) {
 	}
 }
 
-func TestSearchLeadsListsTheWorkspaceByRecentActivity(t *testing.T) {
-	leads := &fakeLeads{}
-	res := NewSearchLeadsTool(leadDeps(leads, &fakeMemories{})).Execute(context.Background(), member(), map[string]interface{}{
-		"query": "maria", "has_memory": true, "page": 2,
+func listedMaria() []*lead.LeadWithSummary {
+	return []*lead.LeadWithSummary{{
+		Lead: &lead.Lead{ID: knownLead, Name: "Maria", Number: "5584994409624", Addresses: []lead.Address{
+			{Primary: true, Postal: address.Postal{Street: "Rua das Flores", Number: "123", District: "Centro", City: "Natal", State: "RN"}},
+		}},
+		Summary:   &lead.LeadSummary{Memories: 1},
+		OwnerName: "Ana",
+	}}
+}
+
+func TestSearchLeadsListsWhatTheUserMaySeeByRecentActivity(t *testing.T) {
+	pages := &fakePages{items: listedMaria()}
+	deps, _ := filterDeps()
+	deps.Pages = pages
+	res := NewSearchLeadsTool(deps).Execute(context.Background(), member(), map[string]interface{}{
+		"query": "maria", "has_memory": true, "page": 2, "cidade": "Natal/RN", "bairros": []interface{}{"Centro"}, "owner_id": someOwner,
 	})
 	if res.Status != copilot.StatusOK {
 		t.Fatalf("status = %s: %s", res.Status, res.Message)
 	}
-	in := leads.listed
+	in := pages.listed
+	if pages.viewer != (conversation.Viewer{UserID: "u-1", WorkspaceID: "ws-1"}) {
+		t.Fatalf("viewer = %+v", pages.viewer)
+	}
 	if in.WorkspaceID != "ws-1" || in.Options.Pagination.Page != 2 || in.Options.Pagination.PageSize != searchPageSize {
 		t.Fatalf("input = %+v", in)
 	}
 	if len(in.Options.Sorts) != 1 || in.Options.Sorts[0].Field != string(lead.SortLastActivityAt) || in.Options.Sorts[0].Direction != shared.SortDesc {
 		t.Fatalf("sorts = %+v", in.Options.Sorts)
 	}
-	if len(in.Filter.Groups) != 2 || in.Filter.Groups[0].Predicates[0].Field != crmfilter.FieldQuery || in.Filter.Groups[1].Predicates[0].Operator != crmfilter.OpIsSet {
+	fields := in.Filter.Fields()
+	if len(fields) != 4 || fields[0] != crmfilter.FieldQuery || fields[1] != crmfilter.FieldMemoryCategory || fields[2] != crmfilter.FieldDistrict || fields[3] != crmfilter.FieldOwner {
 		t.Fatalf("filter = %+v", in.Filter)
 	}
 	b, _ := json.Marshal(res.Data)
-	if strings.Contains(string(b), "994409624") || !strings.Contains(string(b), `"has_more":false`) {
-		t.Fatalf("data = %s", b)
+	for _, want := range []string{`"has_more":false`, `"district":"Centro"`, `"city":"Natal"`, `"owner":"Ana"`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("data misses %s: %s", want, b)
+		}
+	}
+	for _, leaked := range []string{"994409624", "Rua das Flores"} {
+		if strings.Contains(string(b), leaked) {
+			t.Fatalf("data leaks %q: %s", leaked, b)
+		}
+	}
+}
+
+func TestSearchLeadsExplainsWhyAListIsRefused(t *testing.T) {
+	cases := map[string]struct {
+		err  error
+		want string
+	}{
+		"area without addresses": {lead.ErrLeadFilterAddressForbidden, "endereços"},
+		"sensitive field":        {customfield.ErrFilterSensitive, "sensível"},
+		"busy analytics":         {cache.ErrGateBusy, "ocupad"},
+		"no lead read":           {lead.ErrLeadForbidden, "permissão"},
+	}
+	for name, tc := range cases {
+		deps, _ := filterDeps()
+		deps.Pages = &fakePages{err: tc.err}
+		res := NewSearchLeadsTool(deps).Execute(context.Background(), member(), map[string]interface{}{"query": "maria"})
+		if res.Status == copilot.StatusOK || !strings.Contains(res.Message, tc.want) {
+			t.Fatalf("%s: result = %+v", name, res)
+		}
+	}
+}
+
+func TestSearchLeadsRefusesWithoutTheLeadPages(t *testing.T) {
+	res := NewSearchLeadsTool(LeadDeps{}).Execute(context.Background(), member(), map[string]interface{}{"query": "maria"})
+	if res.Status != copilot.StatusError {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+func TestSearchLeadsNeverListsWhenTheFilterIsRefused(t *testing.T) {
+	pages := &fakePages{}
+	deps, _ := filterDeps()
+	deps.Pages = pages
+	res := NewSearchLeadsTool(deps).Execute(context.Background(), member(), map[string]interface{}{"bairros": []interface{}{"Centro"}})
+	if res.Status != copilot.StatusError || pages.listed != nil {
+		t.Fatalf("result = %+v, listed %+v", res, pages.listed)
 	}
 }
 

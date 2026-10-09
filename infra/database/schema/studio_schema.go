@@ -29,3 +29,33 @@ func (p *StudioProject) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+type StudioCapabilityReport struct {
+	SessionID       string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID     string         `gorm:"type:uuid;not null;index"`
+	UserID          string         `gorm:"type:uuid;not null"`
+	Kind            string         `gorm:"size:16;not null"`
+	Backend         string         `gorm:"size:16;not null;index"`
+	GPUVendor       string         `gorm:"column:gpu_vendor;size:200"`
+	GPURenderer     string         `gorm:"column:gpu_renderer;size:200"`
+	WebGPU          bool           `gorm:"column:webgpu;not null;default:false"`
+	Decode          bool           `gorm:"not null;default:false"`
+	EncodeVideo     bool           `gorm:"not null;default:false"`
+	EncodeAudio     bool           `gorm:"not null;default:false"`
+	PixelRatio      float64        `gorm:"not null;default:0"`
+	Cores           int            `gorm:"not null;default:0"`
+	MemoryGB        float64        `gorm:"column:memory_gb;not null;default:0"`
+	UserAgent       string         `gorm:"size:400"`
+	Frames          int64          `gorm:"not null;default:0"`
+	SlowFrames      int64          `gorm:"not null;default:0"`
+	Stalls          int64          `gorm:"not null;default:0"`
+	ContextLosses   int64          `gorm:"not null;default:0"`
+	DecodeFallbacks int64          `gorm:"not null;default:0"`
+	WorkerFailures  int64          `gorm:"not null;default:0"`
+	BrowserExports  int64          `gorm:"not null;default:0"`
+	ExportFailures  datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt       time.Time      `gorm:"autoCreateTime;index"`
+	UpdatedAt       time.Time      `gorm:"autoUpdateTime"`
+}
+
+func (StudioCapabilityReport) TableName() string { return "studio_capability_reports" }

@@ -101,11 +101,7 @@ func (r *repository) ListByLead(workspaceID, leadID string, q leadmemory.ListQue
 }
 
 func (r *repository) CountByLead(workspaceID, leadID string) (int64, error) {
-	var total int64
-	err := r.db.Model(&schema.LeadMemory{}).
-		Where("workspace_id = ? AND lead_id = ?", workspaceID, leadID).
-		Count(&total).Error
-	return total, err
+	return countByLead(r.db, workspaceID, leadID)
 }
 
 func (r *repository) FindByNormalizedContent(workspaceID, leadID, contentNorm string) (*leadmemory.LeadMemory, error) {

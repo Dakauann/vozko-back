@@ -3,6 +3,7 @@ package opportunity_usecase
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"vozko/domain/conversation"
 	"vozko/domain/opportunity"
@@ -63,5 +64,53 @@ func TestPersonDealsListFailsClosedWithoutAScope(t *testing.T) {
 	denied := NewPersonDeals(newService(newFakeOppRepo()), dealAccess(true), dealScoper{allowed: false})
 	if _, err := denied.ListByPipeline(shared.Person{UserID: "u1"}, "ws1", "pipe1"); !errors.Is(err, opportunity.ErrScopeDenied) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestPersonDealsCreateCarriesTheWholeDraft(t *testing.T) {
+	repo := newFakeOppRepo()
+	deals := NewPersonDeals(newService(repo), dealAccess(true), dealScoper{allowed: true})
+	closed := fixedNow.Add(-time.Hour)
+	o, err := deals.Create(shared.Person{UserID: "u3", SystemAdmin: true}, "ws1", opportunity.DealDraft{
+		PipelineID: "pipe1", StageID: "stage1", Title: "Plano anual", ValueCents: 490000,
+		OwnerID: "u2", CarteiraID: "cart-1", Source: "indicacao", CloseDate: &closed,
+		CustomFields: map[string]any{"segmento": "enterprise", "score": float64(87)},
+		EntryID:      "entry-1", EntryType: "whatsapp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.OwnerID != "u2" || o.CreatedBy != "u3" || o.CarteiraID != "cart-1" || o.Source != "indicacao" || o.CustomFields["segmento"] != "enterprise" || len(repo.links) != 1 {
+		t.Fatalf("created %+v links %v", o, repo.links)
+	}
+}
+
+func TestPersonDealsCreateKeepsTheOwnerChoiceRule(t *testing.T) {
+	deals := NewPersonDeals(newService(newFakeOppRepo()), dealAccess(true), dealScoper{allowed: true})
+	_, err := deals.Create(shared.Person{UserID: "u3"}, "ws1", opportunity.DealDraft{
+		PipelineID: "pipe1", StageID: "stage1", Title: "x", OwnerID: "u2",
+		CustomFields: map[string]any{"segmento": "enterprise", "score": float64(87)},
+	})
+	if !errors.Is(err, ErrOwnerChoiceDenied) {
+		t.Fatalf("err = %v, want ErrOwnerChoiceDenied", err)
+	}
+}
+
+func TestPersonDealsCreateRefusesALinkWithoutAnAccessChecker(t *testing.T) {
+	deals := NewPersonDeals(newService(newFakeOppRepo()), nil, dealScoper{allowed: true})
+	_, err := deals.Create(shared.Person{UserID: "u1"}, "ws1", opportunity.DealDraft{PipelineID: "pipe1", StageID: "stage1", Title: "x", EntryID: "entry-1", EntryType: "whatsapp"})
+	if !errors.Is(err, opportunity.ErrEntryAccess) {
+		t.Fatalf("err = %v, want ErrEntryAccess", err)
+	}
+}
+
+func TestPersonDealsCreateAnswersAMissingEntryTypeAsAShapeError(t *testing.T) {
+	repo := newFakeOppRepo()
+	deals := NewPersonDeals(newService(repo), dealAccess(true), dealScoper{allowed: true})
+	for _, entryType := range []string{"", "  "} {
+		_, err := deals.Create(shared.Person{UserID: "u1"}, "ws1", opportunity.DealDraft{PipelineID: "pipe1", StageID: "stage1", Title: "x", EntryID: "entry-1", EntryType: entryType})
+		if !errors.Is(err, ErrEntryTypeRequired) || len(repo.links) != 0 {
+			t.Fatalf("entry type %q: err %v links %v", entryType, err, repo.links)
+		}
 	}
 }

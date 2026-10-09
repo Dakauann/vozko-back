@@ -12,6 +12,7 @@ import (
 	"vozko/domain/export"
 	"vozko/domain/messaging"
 	"vozko/domain/report"
+	"vozko/domain/workspace"
 )
 
 type fakeRepo struct {
@@ -52,11 +53,19 @@ func (r *fakeRepo) GetByID(workspaceID, id string) (*report.Job, error) {
 	return &copied, nil
 }
 
-func (r *fakeRepo) FindReusable(string, string, time.Time) (*report.Job, error) {
-	if r.reusable == nil {
-		return nil, report.ErrNotFound
+func (r *fakeRepo) FindReusable(workspaceID, fingerprint string, _ time.Time) (*report.Job, error) {
+	if r.reusable != nil {
+		return r.reusable, nil
 	}
-	return r.reusable, nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, job := range r.created {
+		if job.WorkspaceID == workspaceID && job.Fingerprint == fingerprint {
+			copied := *job
+			return &copied, nil
+		}
+	}
+	return nil, report.ErrNotFound
 }
 
 func (r *fakeRepo) List(query report.ListQuery) (report.ListPage, error) {
@@ -75,6 +84,9 @@ func (r *fakeRepo) List(query report.ListQuery) (report.ListPage, error) {
 		if len(query.Statuses) > 0 && !containsStatus(query.Statuses, job.Status) {
 			continue
 		}
+		if query.Viewer == "" || (job.RequestedBy != query.Viewer && !report.ReadersHeld(job.Readers, query.ViewerHolds)) {
+			continue
+		}
 		out = append(out, *job)
 	}
 
@@ -88,6 +100,22 @@ func (r *fakeRepo) List(query report.ListQuery) (report.ListPage, error) {
 		out = out[:query.Limit]
 	}
 	return report.ListPage{Jobs: out, Total: total}, nil
+}
+
+func (r *fakeRepo) ReaderKeys(workspaceID string) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	seen := map[string]bool{}
+	keys := []string{}
+	for _, job := range r.jobs {
+		for _, key := range job.Readers {
+			if job.WorkspaceID == workspaceID && !seen[key] {
+				seen[key] = true
+				keys = append(keys, key)
+			}
+		}
+	}
+	return keys, nil
 }
 
 func containsKind(list []report.Kind, value report.Kind) bool {
@@ -204,16 +232,35 @@ func (s *fakeStorage) Download(_ context.Context, key string) ([]byte, string, e
 }
 
 type stubRenderer struct {
-	kind     report.Kind
-	formats  []report.Format
-	artifact report.Artifact
-	err      error
-	calls    int
-	progress []int
+	policy    report.Policy
+	internal  bool
+	unguarded bool
+	kind      report.Kind
+	formats   []report.Format
+	artifact  report.Artifact
+	err       error
+	calls     int
+	progress  []int
 }
 
-func (r *stubRenderer) Kind() report.Kind        { return r.kind }
-func (r *stubRenderer) Formats() []report.Format { return r.formats }
+func (r *stubRenderer) Kind() report.Kind { return r.kind }
+
+func (r *stubRenderer) Internal() bool { return r.internal }
+
+func (r *stubRenderer) Policy(report.Job) (report.Policy, error) {
+	if r.unguarded {
+		return report.Policy{}, report.ErrNoPolicy
+	}
+	if len(r.policy.Required) == 0 {
+		return report.Policy{Required: []workspace.PermissionEntry{{Resource: workspace.ResourceAttendance, Action: workspace.ActionRead}}}, nil
+	}
+	return r.policy, nil
+}
+
+type allowAll struct{}
+
+func (allowAll) HasWorkspacePermission(string, string, string, string, bool) bool { return true }
+func (r *stubRenderer) Formats() []report.Format                                  { return r.formats }
 
 func (r *stubRenderer) Render(_ context.Context, _ report.Job, progress report.ProgressFunc) (report.Artifact, error) {
 	r.calls++
@@ -250,6 +297,7 @@ func buildService(t *testing.T, renderer report.Renderer) (*Service, *fakeRepo, 
 		registry.Register(renderer)
 	}
 	service := NewService(repo, registry, publisher, storage)
+	service.SetAccess(allowAll{})
 	at, err := time.Parse(time.RFC3339, fixedNow)
 	if err != nil {
 		t.Fatalf("parse clock: %v", err)
@@ -374,6 +422,7 @@ func TestCreateFailsTheJobWhenPublishingFails(t *testing.T) {
 
 	if _, err := service.Create(CreateInput{
 		WorkspaceID: "ws-1",
+		RequestedBy: "user-1",
 		Kind:        report.KindAttendanceOverview,
 		Format:      report.FormatCSV,
 	}); err == nil {
@@ -393,7 +442,7 @@ func TestGetRefusesAnotherWorkspace(t *testing.T) {
 	service, _, _, _ := buildService(t, okRenderer())
 	job := createJob(t, service)
 
-	if _, err := service.Get("ws-2", job.ID); !errors.Is(err, report.ErrForbidden) {
+	if _, err := service.Get(Viewer{UserID: "user-1"}, "ws-2", job.ID); !errors.Is(err, report.ErrForbidden) {
 		t.Fatalf("err = %v, want ErrForbidden: a job id is not an authorisation", err)
 	}
 }
@@ -402,7 +451,7 @@ func TestFileIsNotServedWhileTheJobIsNotDone(t *testing.T) {
 	service, _, _, _ := buildService(t, okRenderer())
 	job := createJob(t, service)
 
-	if _, err := service.File(context.Background(), "ws-1", job.ID); !errors.Is(err, report.ErrNotReady) {
+	if _, err := service.File(context.Background(), Viewer{UserID: "user-1"}, "ws-1", job.ID); !errors.Is(err, report.ErrNotReady) {
 		t.Fatalf("err = %v, want ErrNotReady", err)
 	}
 }
@@ -420,7 +469,7 @@ func TestFileReportsAnExpiredJobAsExpired(t *testing.T) {
 		t.Fatalf("mark done: %v", err)
 	}
 
-	if _, err := service.File(context.Background(), "ws-1", job.ID); !errors.Is(err, report.ErrExpired) {
+	if _, err := service.File(context.Background(), Viewer{UserID: "user-1"}, "ws-1", job.ID); !errors.Is(err, report.ErrExpired) {
 		t.Fatalf("err = %v, want ErrExpired", err)
 	}
 }
@@ -452,7 +501,7 @@ func TestWorkerRendersUploadsAndCompletesTheJob(t *testing.T) {
 		t.Fatal("the file was never uploaded")
 	}
 
-	file, err := service.File(context.Background(), "ws-1", job.ID)
+	file, err := service.File(context.Background(), Viewer{UserID: "user-1"}, "ws-1", job.ID)
 	if err != nil {
 		t.Fatalf("file: %v", err)
 	}
@@ -547,11 +596,11 @@ func TestWorkerFailsAJobWithNoRenderer(t *testing.T) {
 }
 
 func TestFingerprintIgnoresKeyOrderButNotValues(t *testing.T) {
-	first := report.Fingerprint("ws-1", report.KindAttendanceOverview, report.FormatCSV, "pt",
+	first := report.Fingerprint("ws-1", "user-1", "", report.KindAttendanceOverview, report.FormatCSV, "pt",
 		json.RawMessage(`{"a":1,"b":2}`))
-	second := report.Fingerprint("ws-1", report.KindAttendanceOverview, report.FormatCSV, "pt",
+	second := report.Fingerprint("ws-1", "user-1", "", report.KindAttendanceOverview, report.FormatCSV, "pt",
 		json.RawMessage(`{"b":2,"a":1}`))
-	third := report.Fingerprint("ws-1", report.KindAttendanceOverview, report.FormatCSV, "pt",
+	third := report.Fingerprint("ws-1", "user-1", "", report.KindAttendanceOverview, report.FormatCSV, "pt",
 		json.RawMessage(`{"a":1,"b":3}`))
 
 	if first != second {
@@ -563,8 +612,8 @@ func TestFingerprintIgnoresKeyOrderButNotValues(t *testing.T) {
 }
 
 func TestFingerprintSeparatesWorkspaces(t *testing.T) {
-	mine := report.Fingerprint("ws-1", report.KindAttendanceOverview, report.FormatCSV, "pt", nil)
-	theirs := report.Fingerprint("ws-2", report.KindAttendanceOverview, report.FormatCSV, "pt", nil)
+	mine := report.Fingerprint("ws-1", "user-1", "", report.KindAttendanceOverview, report.FormatCSV, "pt", nil)
+	theirs := report.Fingerprint("ws-2", "user-1", "", report.KindAttendanceOverview, report.FormatCSV, "pt", nil)
 
 	if mine == theirs {
 		t.Fatal("two workspaces must never share a report file")
@@ -613,7 +662,10 @@ func TestWorkerRetriesATransientFailureOnce(t *testing.T) {
 func TestListFiltersByStatusAndScopesToTheWorkspace(t *testing.T) {
 	service, repo, _, _ := buildService(t, okRenderer())
 	first := createJob(t, service)
-	second := createJob(t, service)
+	second, err := service.Create(CreateInput{WorkspaceID: "ws-1", RequestedBy: "user-1", Kind: report.KindAttendanceOverview, Format: report.FormatCSV, Locale: "en"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
 	at, _ := time.Parse(time.RFC3339, fixedNow)
 	if err := repo.MarkFailed(second.ID, report.FailureRenderFailed, at); err != nil {
@@ -623,7 +675,7 @@ func TestListFiltersByStatusAndScopesToTheWorkspace(t *testing.T) {
 		ID: "intruder", WorkspaceID: "ws-2", Status: report.StatusQueued,
 	}
 
-	page, err := service.List(report.ListQuery{
+	page, err := service.List(Viewer{UserID: "user-1"}, report.ListQuery{
 		WorkspaceID: "ws-1",
 		Statuses:    []report.Status{report.StatusQueued},
 	})
@@ -641,7 +693,7 @@ func TestListFiltersByStatusAndScopesToTheWorkspace(t *testing.T) {
 func TestListCapsTheRequestedPageSize(t *testing.T) {
 	service, _, _, _ := buildService(t, okRenderer())
 
-	page, err := service.List(report.ListQuery{WorkspaceID: "ws-1", Limit: 5000})
+	page, err := service.List(Viewer{UserID: "user-1"}, report.ListQuery{WorkspaceID: "ws-1", Limit: 5000})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -660,7 +712,7 @@ func TestListReportsAnExpiredJobAsExpired(t *testing.T) {
 		t.Fatalf("mark done: %v", err)
 	}
 
-	page, err := service.List(report.ListQuery{WorkspaceID: "ws-1"})
+	page, err := service.List(Viewer{UserID: "user-1"}, report.ListQuery{WorkspaceID: "ws-1"})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -677,12 +729,12 @@ func TestHeavyFormatsGetTheirOwnQueue(t *testing.T) {
 	service, _, publisher, _ := buildService(t, renderer)
 
 	if _, err := service.Create(CreateInput{
-		WorkspaceID: "ws-1", Kind: report.KindAttendanceOverview, Format: report.FormatCSV,
+		WorkspaceID: "ws-1", RequestedBy: "user-1", Kind: report.KindAttendanceOverview, Format: report.FormatCSV,
 	}); err != nil {
 		t.Fatalf("csv: %v", err)
 	}
 	if _, err := service.Create(CreateInput{
-		WorkspaceID: "ws-1", Kind: report.KindAttendanceOverview, Format: report.FormatPDF,
+		WorkspaceID: "ws-1", RequestedBy: "user-1", Kind: report.KindAttendanceOverview, Format: report.FormatPDF,
 	}); err != nil {
 		t.Fatalf("pdf: %v", err)
 	}

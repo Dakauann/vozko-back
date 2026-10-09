@@ -62,6 +62,9 @@ func (c *aggregateCache) key(kind, workspaceID string, q *listQuery) string {
 	for _, arg := range q.args {
 		fmt.Fprintf(h, "\x00%#v", arg)
 	}
+	for _, area := range q.areaBounds {
+		fmt.Fprintf(h, "\x00area\x00%s\x00%d", area.ID, area.UpdatedAt.UnixNano())
+	}
 	digest := hex.EncodeToString(h.Sum(nil))[:32]
 
 	return "leads:agg:" + kind + ":" + workspaceID + ":" + c.generation(workspaceID) + ":" + digest

@@ -1753,10 +1753,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	h.entrySubscribers[sub][conn.ID] = true
 	h.subMu.Unlock()
 
-	var leadName, leadNumber, leadPicture string
-	var leadMetadata map[string]interface{}
-	var entryVariables []string
-	var automationEnabled = true
+	info := conversation.EntryInfo{AutomationEnabled: true}
 	var unreadCount int64
 	var windowOpen bool
 	var windowExpiresAt *time.Time
@@ -1768,7 +1765,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	var adOrigin *conversation.AdOrigin
 
 	if h.historyProvider != nil {
-		leadName, leadNumber, leadPicture, leadMetadata, entryVariables, automationEnabled, _ = h.historyProvider.GetEntryInfo(p.EntryID, p.EntryType)
+		info, _ = h.historyProvider.GetEntryInfo(p.EntryID, p.EntryType)
 		unreadCount, _ = h.historyProvider.GetUnreadCount(p.EntryID, shared.EntryType(p.EntryType))
 		window := h.historyProvider.GetWindowStatusForEntry(p.EntryID, p.EntryType)
 		windowOpen, windowExpiresAt, windowClosedReason, windowTier = window.Open, window.ExpiresAt, string(window.Reason), string(window.Tier)
@@ -1804,13 +1801,16 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 		Payload: SubscribedPayload{
 			EntryID:            p.EntryID,
 			EntryType:          p.EntryType,
-			LeadName:           leadName,
-			LeadNumber:         leadNumber,
-			LeadPicture:        leadPicture,
-			LeadMetadata:       leadMetadata,
-			EntryVariables:     entryVariables,
+			LeadID:             info.LeadID,
+			LeadName:           info.LeadName,
+			LeadNumber:         info.LeadNumber,
+			LeadVersion:        info.LeadVersion,
+			Blocked:            info.Blocked,
+			LeadPicture:        info.LeadPicture,
+			LeadMetadata:       info.LeadMetadata,
+			EntryVariables:     info.EntryVariables,
 			UnreadCount:        unreadCount,
-			AutomationEnabled:  automationEnabled,
+			AutomationEnabled:  info.AutomationEnabled,
 			WindowOpen:         windowOpen,
 			WindowExpiresAt:    windowExpiresAt,
 			WindowClosedReason: windowClosedReason,
@@ -3207,7 +3207,7 @@ func (h *ConversationHub) handleReopenWindow(conn *WSConnection, payload json.Ra
 		messageID, err := h.templateSender.SendTemplate(p.EntryID, p.EntryType, p.TemplateID, p.Parameters, conn.UserID, conn.WorkspaceID)
 		if err != nil {
 			log.Printf("[ConversationHub] Error sending template for reopen window: %v", err)
-			h.sendError(conn, "template_send_failed", "Failed to send template: "+err.Error())
+			h.sendToConnection(conn, &WSOutgoingMessage{Type: WSEventError, Payload: reopenWindowRefusal(p.RequestID, p.EntryID, p.EntryType, err)})
 			return
 		}
 
@@ -3529,21 +3529,27 @@ func (h *ConversationHub) runRedisWorkspaceBroadcastSubscriber() {
 		if p.ReplicaID == h.replicaID {
 			return
 		}
-		switch p.Type {
-		case "stage_update":
-			h.broadcastStageUpdateLocal(p.StageWorkspaceID, p.EntryID, p.EntryType)
-		case "label_update":
-			h.broadcastLabelUpdateLocal(p.StageWorkspaceID, p.EntryID, p.EntryType)
-		case "entry_update":
-			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil, false)
-		case "entry_refresh":
-			h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil, true)
-		case "entry_removed":
-			h.broadcastEntryRemovedLocal(p.EntryID, p.EntryType, p.WorkspaceID, p.ExcludeUserID)
-		case "audience_analyzed":
-			h.sendToWorkspaceWithPermission(p.WorkspaceID, "audience", "read", p.Payload)
-		}
+		h.deliverWorkspaceBroadcast(p)
 	})
+}
+
+func (h *ConversationHub) deliverWorkspaceBroadcast(p redisWorkspaceBroadcast) {
+	switch p.Type {
+	case "stage_update":
+		h.broadcastStageUpdateLocal(p.StageWorkspaceID, p.EntryID, p.EntryType)
+	case "label_update":
+		h.broadcastLabelUpdateLocal(p.StageWorkspaceID, p.EntryID, p.EntryType)
+	case "entry_update":
+		h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil, false)
+	case "entry_refresh":
+		h.broadcastEntryUpdateLocal(p.EntryID, p.EntryType, nil, true)
+	case "entry_removed":
+		h.broadcastEntryRemovedLocal(p.EntryID, p.EntryType, p.WorkspaceID, p.ExcludeUserID)
+	case "audience_analyzed":
+		h.sendToWorkspaceWithPermission(p.WorkspaceID, "audience", "read", p.Payload)
+	case leadUpdateBroadcastType:
+		h.deliverLeadUpdate(p.WorkspaceID, p.Payload)
+	}
 }
 
 func (h *ConversationHub) runReplicaHeartbeat() {

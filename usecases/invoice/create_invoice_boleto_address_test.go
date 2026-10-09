@@ -55,9 +55,9 @@ func boletoInput() invoice.CreateInvoiceInput {
 func TestCreateInvoice_BoletoAttachesDefaultAddress(t *testing.T) {
 	gw := newStubGateway()
 	addrRepo := &stubAddressRepo{addresses: []*address.Address{
-		{ID: "a1", Street: "Rua Antiga", Number: "1", ZipCode: "00000000", City: "Old", State: "RJ"},
-		{ID: "a2", Street: "Av. Paulista", Number: "1000", District: "Bela Vista",
-			City: "Sao Paulo", State: "SP", ZipCode: "01310100", IsDefault: true},
+		{ID: "a1", Postal: address.Postal{Street: "Rua Antiga", Number: "1", ZipCode: "00000000", City: "Old", State: "RJ"}},
+		{ID: "a2", Postal: address.Postal{Street: "Av. Paulista", Number: "1000", District: "Bela Vista",
+			City: "Sao Paulo", State: "SP", ZipCode: "01310100"}, IsDefault: true},
 	}}
 
 	if _, err := boletoUC(gw, addrRepo).Execute(boletoInput()); err != nil {
@@ -79,7 +79,7 @@ func TestCreateInvoice_BoletoAttachesDefaultAddress(t *testing.T) {
 func TestCreateInvoice_BoletoFallsBackToFirstAddress(t *testing.T) {
 	gw := newStubGateway()
 	addrRepo := &stubAddressRepo{addresses: []*address.Address{
-		{ID: "a1", Street: "Rua Unica", Number: "7", ZipCode: "22222222", City: "Rio", State: "RJ"},
+		{ID: "a1", Postal: address.Postal{Street: "Rua Unica", Number: "7", ZipCode: "22222222", City: "Rio", State: "RJ"}},
 	}}
 
 	if _, err := boletoUC(gw, addrRepo).Execute(boletoInput()); err != nil {
@@ -142,7 +142,7 @@ func TestCreateInvoice_BoletoWithoutAddressOnStrictProvider(t *testing.T) {
 		"no addresses":   &stubAddressRepo{},
 		"lookup failure": &stubAddressRepo{err: errStubAddress},
 		"incomplete address": &stubAddressRepo{addresses: []*address.Address{
-			{ID: "a1", Street: "Rua Sem Numero", ZipCode: "01310100"},
+			{ID: "a1", Postal: address.Postal{Street: "Rua Sem Numero", ZipCode: "01310100"}},
 		}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -173,8 +173,8 @@ func TestCreateInvoice_CompleteAddressPassesTheStrictCheck(t *testing.T) {
 	gw := newStubGateway()
 	gw.boletoNeedsAddress = true
 	addrRepo := &stubAddressRepo{addresses: []*address.Address{{
-		ID: "a1", Street: "Av. Paulista", Number: "1000", District: "Bela Vista",
-		City: "Sao Paulo", State: "SP", ZipCode: "01310100", IsDefault: true,
+		ID: "a1", Postal: address.Postal{Street: "Av. Paulista", Number: "1000", District: "Bela Vista",
+			City: "Sao Paulo", State: "SP", ZipCode: "01310100"}, IsDefault: true,
 	}}}
 
 	if _, err := boletoUC(gw, addrRepo).Execute(boletoInput()); err != nil {

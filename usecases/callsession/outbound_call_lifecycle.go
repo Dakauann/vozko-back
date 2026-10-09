@@ -3,6 +3,7 @@ package callsession_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -38,6 +39,10 @@ type OutboundCallLifecycleInput struct {
 	Direction cdr.Direction
 	PhoneTo   string
 
+	LeadID         string
+	TrunkID        string
+	CallListItemID string
+
 	OnStatus func(event conversation.CallEvent)
 
 	OnAudio func(pcm []byte)
@@ -53,6 +58,7 @@ type OutboundCallLifecycleRunner struct {
 	cdrStart             cdr.StartCallUseCase
 	cdrAnswered          cdr.MarkCallAnsweredUseCase
 	cdrComplete          cdr.CompleteCallUseCase
+	callListItems        callsession.CallListItems
 	billingMinute        time.Duration
 	reservationLead      time.Duration
 	reservationRetry     time.Duration
@@ -75,6 +81,12 @@ func (r *OutboundCallLifecycleRunner) SetCDRAnswered(uc cdr.MarkCallAnsweredUseC
 func (r *OutboundCallLifecycleRunner) SetCDRComplete(uc cdr.CompleteCallUseCase) {
 	if r != nil {
 		r.cdrComplete = uc
+	}
+}
+
+func (r *OutboundCallLifecycleRunner) SetCallListItems(items callsession.CallListItems) {
+	if r != nil {
+		r.callListItems = items
 	}
 }
 
@@ -272,6 +284,8 @@ func (r *OutboundCallLifecycleRunner) startCDR(input OutboundCallLifecycleInput)
 		AgentID:     agentIDPtr,
 		PhoneFrom:   phoneFrom,
 		PhoneTo:     phoneTo,
+		LeadID:      optionalID(input.LeadID),
+		TrunkID:     optionalID(input.TrunkID),
 		StartedAt:   input.StartedAt,
 	})
 	if err != nil {
@@ -281,7 +295,41 @@ func (r *OutboundCallLifecycleRunner) startCDR(input OutboundCallLifecycleInput)
 	if rec == nil {
 		return ""
 	}
+	r.stampCallListItem(input, rec.ID)
 	return rec.ID
+}
+
+const callListStampAttempts = 3
+
+func (r *OutboundCallLifecycleRunner) stampCallListItem(input OutboundCallLifecycleInput, callRecordID string) {
+	itemID := strings.TrimSpace(input.CallListItemID)
+	if itemID == "" {
+		return
+	}
+	if r.callListItems == nil {
+		r.logger.Printf("[CallCDR] call %s belongs to call list item %s but no call lists are wired, the item keeps its last call", input.Call.ID(), itemID)
+		return
+	}
+	stamp := callsession.CallListItemStamp{WorkspaceID: input.WorkspaceID, UserID: strings.TrimSpace(input.OwnerUserID), ItemID: itemID, CallRecordID: callRecordID}
+	var err error
+	for attempt := 1; attempt <= callListStampAttempts; attempt++ {
+		err = r.callListItems.StampLastCall(context.Background(), stamp)
+		if err == nil {
+			return
+		}
+		if errors.Is(err, callsession.ErrCallListStampRefused) {
+			r.logger.Printf("[CallCDR] call record %s (call %s) is not stamped on call list item %s (ws %s), the item no longer takes it: %v", callRecordID, input.Call.ID(), itemID, input.WorkspaceID, err)
+			return
+		}
+	}
+	r.logger.Printf("[CallCDR] CRITICAL call record %s (call %s) was never stamped on call list item %s (ws %s) after %d attempts: %v", callRecordID, input.Call.ID(), itemID, input.WorkspaceID, callListStampAttempts, err)
+}
+
+func optionalID(id string) *string {
+	if trimmed := strings.TrimSpace(id); trimmed != "" {
+		return &trimmed
+	}
+	return nil
 }
 
 func (r *OutboundCallLifecycleRunner) markAnswered(callID string) {
@@ -315,6 +363,7 @@ func (r *OutboundCallLifecycleRunner) publishBilling(input OutboundCallLifecycle
 		CallEnd:      callEnd,
 		DurationSec:  billing.BillableSeconds(answeredAt, callEnd),
 		CallRecordID: callRecordID,
+		LeadID:       optionalID(input.LeadID),
 	}
 	data, err := json.Marshal(event)
 	if err != nil {

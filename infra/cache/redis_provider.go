@@ -26,7 +26,7 @@ func NewRedisProvider(addr, password string) *RedisProvider {
 	ctx := context.Background()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		log.Printf("WARNING: Redis ping failed (%s): %v, rate limiting will fail-open", addr, err)
+		log.Printf("WARNING: Redis ping failed (%s): %v, rate-limited requests will be refused until Redis answers", addr, err)
 	} else {
 		log.Printf("[Redis] Connected to %s", addr)
 	}
@@ -57,14 +57,7 @@ func (p *RedisProvider) Cache() cache.Cache {
 
 func (p *RedisProvider) RateLimiterFactory() cache.RateLimiterFactory {
 	return func(prefix string, maxRequests int, window time.Duration) cache.RateLimiter {
-		return &redisRateLimiter{
-			client:      p.client,
-			ctx:         context.Background(),
-			prefix:      prefix,
-			maxRequests: maxRequests,
-			windowSecs:  int(window.Seconds()),
-			window:      window,
-		}
+		return NewRedisRateLimiter(p.client, prefix, maxRequests, window)
 	}
 }
 

@@ -40,8 +40,8 @@ func TestBuildRequest_NoDefaultToolsWhenExecutionDisabled(t *testing.T) {
 		Model: "test/model",
 		Tools: nil,
 	})
-	if len(reqAuto.Tools) == 0 {
-		t.Fatalf("execution-allowed + no tools: expected default tools to be injected, got 0")
+	if len(reqAuto.Tools) != 0 {
+		t.Fatalf("execution-allowed + no tools: a call gets only the tools it names, got %d", len(reqAuto.Tools))
 	}
 }
 

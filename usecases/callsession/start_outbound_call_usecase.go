@@ -8,25 +8,29 @@ import (
 
 	"vozko/domain/callsession"
 	"vozko/domain/conversation"
+	"vozko/domain/lead"
 	"vozko/domain/shared"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
 
 type startOutboundCallUseCase struct {
 	callSource conversation.CallSource
-	history    conversation.HistoryProvider
 	admission  callsession.CallAdmissionCoordinator
+	leads      callsession.LeadDialTargets
+	callLists  callsession.CallListItems
 }
 
 func NewStartOutboundCallUseCase(
 	callSource conversation.CallSource,
-	history conversation.HistoryProvider,
 	admission callsession.CallAdmissionCoordinator,
+	leads callsession.LeadDialTargets,
+	callLists callsession.CallListItems,
 ) callsession.StartOutboundCallUseCase {
 	return &startOutboundCallUseCase{
 		callSource: callSource,
-		history:    history,
 		admission:  admission,
+		leads:      leads,
+		callLists:  callLists,
 	}
 }
 
@@ -44,14 +48,22 @@ func (uc *startOutboundCallUseCase) Execute(ctx context.Context, input callsessi
 		return nil, callsession.ErrAdmissionDependenciesMissing
 	}
 
-	phoneNumber, err := uc.resolveTargetPhone(input)
+	target := strings.TrimSpace(input.TargetPhone)
+	if target == "" {
+		return nil, callsession.ErrTargetPhoneRequired
+	}
+	phoneNumber := shared.EnsureDialablePhoneNumber(target)
+	trunkID := strings.TrimSpace(input.TrunkID)
+	itemID := strings.TrimSpace(input.CallListItemID)
+
+	leadID, err := uc.dialedLead(ctx, input, phoneNumber)
 	if err != nil {
 		return nil, err
 	}
 
 	callChannel := ""
 	switch {
-	case strings.TrimSpace(input.TrunkID) != "":
+	case trunkID != "":
 		callChannel = workspace_pricing.TelephonyChannelSIP
 	case strings.TrimSpace(input.WhatsAppPhoneID) != "":
 		callChannel = workspace_pricing.TelephonyChannelWhatsApp
@@ -70,8 +82,6 @@ func (uc *startOutboundCallUseCase) Execute(ctx context.Context, input callsessi
 
 	call, err := uc.callSource.Dial(ctx, conversation.CallDialInput{
 		PhoneNumber:     phoneNumber,
-		EntryID:         input.EntryID,
-		EntryType:       uc.resolveDialEntryType(input),
 		UserID:          input.UserID,
 		WorkspaceID:     input.WorkspaceID,
 		IsAdmin:         input.IsAdmin,
@@ -83,53 +93,46 @@ func (uc *startOutboundCallUseCase) Execute(ctx context.Context, input callsessi
 		return nil, fmt.Errorf("dial failed: %w", err)
 	}
 
-	result := &callsession.StartOutboundCallResult{
+	return &callsession.StartOutboundCallResult{
 		Call:                call,
 		PhoneNumber:         phoneNumber,
 		PerMinuteCostMicros: lease.PerMinuteCostMicros,
 		ReservedMicros:      lease.ReservedMicros,
 		Admission:           lease,
-	}
-	return result, nil
+		LeadID:              leadID,
+		TrunkID:             trunkID,
+		CallListItemID:      itemID,
+	}, nil
 }
 
-func (uc *startOutboundCallUseCase) resolveDialEntryType(input callsession.StartOutboundCallInput) string {
-	entryType := strings.ToLower(strings.TrimSpace(input.EntryType))
-	if entryType != "" {
-		return entryType
+func (uc *startOutboundCallUseCase) dialedLead(ctx context.Context, input callsession.StartOutboundCallInput, phoneNumber string) (string, error) {
+	if uc.leads == nil {
+		return "", callsession.ErrLeadDialTargetsNotConfigured
+	}
+	leadID := strings.TrimSpace(input.LeadID)
+	itemID := strings.TrimSpace(input.CallListItemID)
+	if itemID != "" && leadID == "" {
+		return "", callsession.ErrCallListItemNeedsLead
+	}
+	if leadID == "" {
+		return uc.leads.IdentityLead(ctx, input.WorkspaceID, phoneNumber)
 	}
 
-	if strings.TrimSpace(input.WhatsAppPhoneID) != "" {
-		return "whatsapp"
+	dial := callsession.LeadDial{WorkspaceID: input.WorkspaceID, LeadID: leadID, Number: phoneNumber, Purpose: lead.DialDirect}
+	if itemID != "" {
+		if uc.callLists == nil {
+			return "", callsession.ErrCallListsNotConfigured
+		}
+		err := uc.callLists.CheckItemDial(ctx, callsession.CallListItemDial{
+			WorkspaceID: input.WorkspaceID, UserID: input.UserID, ItemID: itemID, LeadID: leadID, Number: phoneNumber,
+		})
+		if err != nil {
+			return "", err
+		}
+		dial.Purpose = lead.DialCallList
 	}
-
-	return ""
-}
-
-func (uc *startOutboundCallUseCase) resolveTargetPhone(input callsession.StartOutboundCallInput) (string, error) {
-	if strings.TrimSpace(input.TrunkID) != "" && strings.TrimSpace(input.TargetPhone) == "" {
-		return "", callsession.ErrTargetPhoneRequired
+	if err := uc.leads.CheckLead(ctx, dial); err != nil {
+		return "", err
 	}
-	if p := strings.TrimSpace(input.TargetPhone); p != "" {
-		return shared.EnsureDialablePhoneNumber(p), nil
-	}
-
-	entryID := strings.TrimSpace(input.EntryID)
-	entryType := strings.ToLower(strings.TrimSpace(input.EntryType))
-	if entryID == "" || entryType == "" {
-		return "", callsession.ErrEntryFieldsRequired
-	}
-	if uc.history == nil {
-		return "", callsession.ErrHistoryProviderNotConfigured
-	}
-
-	_, leadNumber, _, _, _, _, err := uc.history.GetEntryInfo(entryID, entryType)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", callsession.ErrEntryNotFound, err)
-	}
-	leadNumber = strings.TrimSpace(leadNumber)
-	if leadNumber == "" {
-		return "", callsession.ErrNoPhoneForEntry
-	}
-	return shared.EnsureDialablePhoneNumber(leadNumber), nil
+	return leadID, nil
 }

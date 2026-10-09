@@ -34,7 +34,7 @@ type stubAudiences struct {
 func (s *stubAudiences) List(context.Context, string, string) (*adsuc.AudienceList, error) {
 	return &adsuc.AudienceList{TermsAccepted: s.terms, Audiences: s.audiences}, nil
 }
-func (s *stubAudiences) CheckCustomerList(_ context.Context, _ string, d advertising.CustomerListDraft) (*adsuc.CustomerListResult, error) {
+func (s *stubAudiences) CheckCustomerList(_ context.Context, _ adsuc.Requester, d advertising.CustomerListDraft) (*adsuc.CustomerListResult, error) {
 	s.checked = &d
 	d.Name = strings.TrimSpace(d.Name)
 	if err := d.Validate(); err != nil {
@@ -63,7 +63,7 @@ func (s *stubAudiences) CheckLookalike(_ context.Context, _ string, d advertisin
 	}
 	return advertising.LookalikeDraft{}, nil, advertising.FieldError("originAudienceId", "not_available")
 }
-func (s *stubAudiences) CreateCustomerList(_ context.Context, _ string, d advertising.CustomerListDraft) (*adsuc.CustomerListResult, error) {
+func (s *stubAudiences) CreateCustomerList(_ context.Context, _ adsuc.Requester, d advertising.CustomerListDraft) (*adsuc.CustomerListResult, error) {
 	s.customerList = &d
 	return &adsuc.CustomerListResult{Audience: advertising.Audience{MetaID: "23850099", Name: d.Name}, Matched: 40, Skipped: 2}, nil
 }
@@ -290,5 +290,16 @@ func TestDeleteAudienceTakesExactlyOneKnownId(t *testing.T) {
 	tool.Execute(context.Background(), adContext, map[string]interface{}{"ad_account_id": adAccountUUID, "audience_id": sourceAudience})
 	if len(s.audiences.deleted) != 2 || s.audiences.deleted[0] != savedAudUUID || s.audiences.deleted[1] != sourceAudience {
 		t.Fatalf("deleted %+v", s.audiences.deleted)
+	}
+}
+
+func TestTheCustomerListToolAlsoNeedsToReadLeads(t *testing.T) {
+	tool := &createCustomerListAudienceTool{}
+	keys := map[string]bool{}
+	for _, p := range tool.AlsoRequires() {
+		keys[p.Key()] = true
+	}
+	if !keys["leads:read"] || !keys["ads:create"] {
+		t.Fatalf("the tool requires %v", keys)
 	}
 }

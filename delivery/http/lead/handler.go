@@ -1,151 +1,198 @@
 package lead
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
-	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	ca "vozko/domain/audience"
 	"vozko/domain/conversation"
 	leaddomain "vozko/domain/lead"
-	"vozko/domain/lead_message_window"
+
 	"vozko/domain/shared"
-	"vozko/domain/unofficial_whatsapp"
-	"vozko/domain/user"
-	businessphone "vozko/domain/whatsapp/business_phone"
 	wc_entry "vozko/domain/whatsapp_campaign_entry"
-	workspace_domain "vozko/domain/workspace"
-	"vozko/infra/http/middleware"
+	lead_usecase "vozko/usecases/lead"
 )
 
+type Commands interface {
+	Create(ctx context.Context, a lead_usecase.Actor, d leaddomain.Draft) (lead_usecase.CreateResult, error)
+	Update(ctx context.Context, a lead_usecase.Actor, id string, expected *int64, e leaddomain.Edit) (*leaddomain.Lead, error)
+	Rename(ctx context.Context, a lead_usecase.Actor, id string, expected *int64, name string) (*leaddomain.Lead, error)
+	Block(ctx context.Context, a lead_usecase.Actor, id string, in lead_usecase.BlockInput) (lead_usecase.BlockResult, error)
+	SetOwner(ctx context.Context, a lead_usecase.Actor, id, owner string) (*leaddomain.Lead, error)
+	OptOut(ctx context.Context, a lead_usecase.Actor, id string, source leaddomain.OptOutSource) (*leaddomain.Lead, error)
+	AddRelative(ctx context.Context, a lead_usecase.Actor, id string, in lead_usecase.AddRelativeInput) (lead_usecase.RelativeResult, error)
+	LinkRelation(ctx context.Context, a lead_usecase.Actor, id, otherID string, kind leaddomain.RelationKind) (lead_usecase.RelationResult, error)
+	RemoveRelation(ctx context.Context, a lead_usecase.Actor, relationID string) (leaddomain.Relation, error)
+	SetArea(ctx context.Context, a lead_usecase.Actor, id string, area leaddomain.Area) (*leaddomain.Lead, error)
+	Anonymize(ctx context.Context, a lead_usecase.Actor, id string) (leaddomain.Erasure, error)
+}
+
+type History interface {
+	Detail(ctx context.Context, v conversation.Viewer, leadID string) (lead_usecase.LeadDetail, error)
+	EntriesInCampaign(v conversation.Viewer, leadID, campaignID string, entryType shared.EntryType) ([]wc_entry.WhatsAppCampaignEntry, error)
+	Analyses(ctx context.Context, v conversation.Viewer, leadID, campaignID string, entryType shared.EntryType) (*leaddomain.Lead, []*ca.Analysis, error)
+	EntryConversation(v conversation.Viewer, entryID string, entryType shared.EntryType) (lead_usecase.EntryConversation, error)
+	Relatives(ctx context.Context, v conversation.Viewer, q leaddomain.RelativesQuery) (leaddomain.RelativesPage, error)
+	EntryLead(ctx context.Context, v conversation.Viewer, entryID string, entryType shared.EntryType) (leaddomain.Card, error)
+}
+
+type Summaries interface {
+	Summary(ctx context.Context, v conversation.Viewer, leadID string) (lead_usecase.LeadDetailSummary, error)
+}
+
+type Pages interface {
+	List(ctx context.Context, a lead_usecase.Actor, in leaddomain.ListLeadsInput) (*shared.PaginatedResult[*leaddomain.LeadWithSummary], error)
+}
+
+type HandlerDeps struct {
+	Leads     leaddomain.Queries
+	Repo      leaddomain.Repository
+	Commands  Commands
+	History   History
+	Summaries Summaries
+	Pages     Pages
+	Sections  Sections
+	Imports   Imports
+	Timeline  Timeline
+	Actions   Actions
+	Locations Locations
+	Sends     Sends
+	Now       func() time.Time
+}
+
 type LeadHandler struct {
-	leads        leaddomain.Queries
-	leadRepo     leaddomain.Repository
-	wcEntryRepo  wc_entry.Repository
-	messageRepo  conversation.MessageRepository
-	windowRepo   lead_message_window.Repository
-	analysisRepo ca.ConversationReader
-	phoneRepo    businessphone.Repository
-	metaAPI      businessphone.MetaAPIService
-
-	inboxSeeder InboxSeeder
-
-	authorizer conversation.ConversationAuthorizer
+	leads     leaddomain.Queries
+	leadRepo  leaddomain.Repository
+	commands  Commands
+	history   History
+	summaries Summaries
+	pages     Pages
+	sections  Sections
+	imports   Imports
+	timeline  Timeline
+	actions   Actions
+	locations Locations
+	sends     Sends
+	now       func() time.Time
 }
 
-type InboxSeeder interface {
-	Publish(in unofficial_whatsapp.SeedRequest) (unofficial_whatsapp.SeedQueued, error)
-}
-
-func (h *LeadHandler) SetInboxSeeder(seeder InboxSeeder) {
-	h.inboxSeeder = seeder
-}
-
-func NewLeadHandler(
-	leads leaddomain.Queries,
-	leadRepo leaddomain.Repository,
-	wcEntryRepo wc_entry.Repository,
-	messageRepo conversation.MessageRepository,
-	windowRepo lead_message_window.Repository,
-	analysisRepo ca.ConversationReader,
-	phoneRepo businessphone.Repository,
-	metaAPI businessphone.MetaAPIService,
-) *LeadHandler {
+func NewLeadHandler(deps HandlerDeps) *LeadHandler {
+	now := deps.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &LeadHandler{
-		leads:        leads,
-		leadRepo:     leadRepo,
-		wcEntryRepo:  wcEntryRepo,
-		messageRepo:  messageRepo,
-		windowRepo:   windowRepo,
-		analysisRepo: analysisRepo,
-		phoneRepo:    phoneRepo,
-		metaAPI:      metaAPI,
+		leads:     deps.Leads,
+		leadRepo:  deps.Repo,
+		commands:  deps.Commands,
+		history:   deps.History,
+		summaries: deps.Summaries,
+		pages:     deps.Pages,
+		sections:  deps.Sections,
+		imports:   deps.Imports,
+		timeline:  deps.Timeline,
+		actions:   deps.Actions,
+		locations: deps.Locations,
+		sends:     deps.Sends,
+		now:       now,
 	}
 }
 
-type entryAccumulator struct {
-	campaignID   string
-	campaignName string
-	entryType    string
-	entries      []CampaignEntryItem
-	latest       time.Time
-}
+var actorOf = httpx.LeadActor
 
-func fmtRFC3339(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
-}
-
-func fmtTimePtr(t *time.Time) *string {
-	if t == nil {
-		return nil
+func (h *LeadHandler) requestActor(w http.ResponseWriter, r *http.Request) (lead_usecase.Actor, bool) {
+	a, ok := actorOf(r)
+	if !ok {
+		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
 	}
-	s := fmtRFC3339(*t)
-	return &s
+	return a, ok
+}
+
+func (h *LeadHandler) historyReady(w http.ResponseWriter) bool {
+	if h.history == nil {
+		writeHistoryUnavailable(w)
+		return false
+	}
+	return true
+}
+
+func writeHistoryUnavailable(w http.ResponseWriter) {
+	response.WriteErrorWithCode(w, http.StatusServiceUnavailable, "lead_history_unavailable", "O histórico do lead não está disponível neste servidor", nil)
+}
+
+func writeLeadReadError(w http.ResponseWriter, err error) {
+	if errors.Is(err, leaddomain.ErrRelativesQueryInvalid) || errors.Is(err, leaddomain.ErrPageQueryInvalid) {
+		response.WriteErrorWithCode(w, http.StatusBadRequest, leaddomain.ErrorCode(err), err.Error(), nil)
+		return
+	}
+	if errors.Is(err, leaddomain.ErrLeadNotFound) || errors.Is(err, leaddomain.ErrLeadRequired) {
+		response.WriteErrorWithCode(w, http.StatusNotFound, leaddomain.ErrorCode(leaddomain.ErrLeadNotFound), "Lead not found", nil)
+		return
+	}
+	if errors.Is(err, leaddomain.ErrLeadForbidden) {
+		response.WriteErrorWithCode(w, http.StatusForbidden, leaddomain.ErrorCode(err), err.Error(), nil)
+		return
+	}
+	response.WriteError(w, http.StatusInternalServerError, "Failed to fetch lead", nil)
 }
 
 // @Summary		Obter lead por ID
-// @Description	Retorna os detalhes de um lead do workspace, incluindo o histórico de campanhas e o status da janela de atendimento do WhatsApp.
+// @Description	Retorna o registro completo do lead (identidade, apelido, e-mail, nascimento, responsável, consentimento, contagens e `version`) com o histórico de campanhas e o status da janela do WhatsApp. A lista de campanhas traz só as conversas que você pode abrir: conversas de outros departamentos, ou de outras pessoas quando você não pode ver as conversas dos colegas, não aparecem. Traz também os telefones de contato (`phones`), os endereços (`addresses`, com `geoStatus` e, quando já localizado, a posição e a precisão). A família vem só contada (`relativesCount`, parentes, e `referredCount`, pessoas que este lead indicou); a lista sai página por página em GET /leads/{id}/relatives, quando a aba Família é aberta. Os campos personalizados vêm em `customFields`: os marcados como sensíveis só aparecem para quem tem `leads:read_sensitive`, e valores de campos que não existem mais nunca saem do servidor. Sem `leads:read_addresses`, cada endereço traz só bairro, cidade, UF e o código IBGE da cidade (sem CEP, rua, número, complemento nem posição). O consentimento (`whatsappOptIn`) traz a data, a origem e a finalidade (`purpose`) registrada. `ownerName` é o nome do responsável (ausente quando o lead não tem responsável; se o nome não puder ser lido, a resposta é 500, nunca uma ficha sem o nome). As contagens das abas Negócios e Memórias e os outros leads que têm os mesmos números saem em GET /leads/{id}/summary, para que uma falha nelas não derrube a ficha. Envie a `version` recebida no cabeçalho `If-Match` ao editar.
 // @Tags			Leads
 // @Produce		json
-// @Param			id	path		string	true	"ID do lead"
+// @Param			id	path		string	true	"ID do lead (UUID)"
 // @Success		200	{object}	lead.LeadDetailResponse
 // @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
+// @Failure		503	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/leads/{id} [get]
 func (h *LeadHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-	leadID := mux.Vars(r)["id"]
-	if leadID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID is required", nil)
-		return
-	}
+	h.writeDetail(w, r, mux.Vars(r)["id"])
+}
 
-	leadRecord, err := h.leads.Get(workspaceID, leadID)
-	if err != nil {
-		if errors.Is(err, leaddomain.ErrLeadNotFound) {
-			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch lead", nil)
-		return
-	}
-	if leadRecord == nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-
-	resp := h.buildLeadDetailResponse(workspaceID, leadRecord)
-	response.WriteSuccess(w, http.StatusOK, resp)
+// @Summary		Histórico de campanhas do lead
+// @Description	Mesmo conteúdo de GET /leads/{id}: o lead com as campanhas e só as conversas que você pode abrir.
+// @Tags			Leads
+// @Produce		json
+// @Param			id	path		string	true	"ID do lead (UUID)"
+// @Success		200	{object}	lead.LeadDetailResponse
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Failure		500	{object}	response.ErrorResponse
+// @Failure		503	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/leads/{id}/campaigns [get]
+func (h *LeadHandler) GetCampaignHistory(w http.ResponseWriter, r *http.Request) {
+	h.writeDetail(w, r, mux.Vars(r)["id"])
 }
 
 // @Summary		Buscar lead por número
-// @Description	Retorna os detalhes de um lead do workspace a partir do número de telefone informado.
+// @Description	Retorna o lead do workspace com o número informado, no mesmo formato de GET /leads/{id}.
 // @Tags			Leads
 // @Produce		json
 // @Param			number	query		string	true	"Número de telefone do lead"
 // @Success		200	{object}	lead.LeadDetailResponse
 // @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
+// @Failure		503	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/leads/search [get]
 func (h *LeadHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
+	a, ok := h.requestActor(w, r)
+	if !ok {
 		return
 	}
 	number := strings.TrimSpace(r.URL.Query().Get("number"))
@@ -153,874 +200,62 @@ func (h *LeadHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "Phone number is required", nil)
 		return
 	}
-
-	leadRecord, err := h.leads.GetByNumber(workspaceID, number)
+	found, err := h.leads.GetByNumber(a.WorkspaceID, number)
 	if err != nil {
-		if errors.Is(err, leaddomain.ErrLeadNotFound) {
-			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-			return
-		}
 		if errors.Is(err, leaddomain.ErrLeadInvalid) {
 			response.WriteError(w, http.StatusBadRequest, "Invalid phone number format", nil)
 			return
 		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch lead", nil)
+		writeLeadReadError(w, err)
 		return
 	}
-	if leadRecord == nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-
-	resp := h.buildLeadDetailResponse(workspaceID, leadRecord)
-	response.WriteSuccess(w, http.StatusOK, resp)
+	h.writeDetail(w, r, found.ID)
 }
 
-// @Summary		Listar leads
-// @Description	Retorna a lista paginada de leads do workspace. Aceita os filtros simples por querystring (nome, número, período, faixa etária, campanha, canal, bloqueio, janela, memórias) e/ou um filtro estruturado `filter` (crmfilter em JSON, opcionalmente em base64) com grupos AND/OR. A ordenação aceita múltiplas chaves.
-// @Tags			Leads
-// @Produce		json
-// @Param			page				query	int		false	"Número da página (inicia em 1)"
-// @Param			pageSize			query	int		false	"Itens por página (máximo 200)"
-// @Param			sort				query	string	false	"Ordenação: createdAt, updatedAt, lastActivityAt, name, number, age, campaigns, memories, lastMemoryAt (ex.: lastActivityAt:desc,name:asc)"
-// @Param			order				query	string	false	"Direção padrão quando o sort não a informa ('asc' ou 'desc')"
-// @Param			filter				query	string	false	"Filtro crmfilter em JSON (opcionalmente codificado em base64)"
-// @Param			q					query	string	false	"Busca livre por nome, número ou conteúdo das memórias"
-// @Param			number				query	string	false	"Filtrar por número de telefone"
-// @Param			name				query	string	false	"Filtrar por nome"
-// @Param			hasName				query	bool	false	"Possui nome preenchido"
-// @Param			ageFrom				query	int		false	"Idade mínima"
-// @Param			ageTo				query	int		false	"Idade máxima"
-// @Param			blocked				query	bool	false	"Somente bloqueados / não bloqueados"
-// @Param			windowOpen			query	bool	false	"Janela de 24h aberta"
-// @Param			channel				query	[]string	false	"Canais (whatsapp, unofficial_whatsapp, telegram, instagram)"
-// @Param			hasWhatsAppCampaign	query	bool	false	"Possui campanha de WhatsApp"
-// @Param			campaignId			query	[]string	false	"IDs de campanha"
-// @Param			campaignStatus		query	[]string	false	"Status de envio na campanha"
-// @Param			campaignsFrom		query	int		false	"Mínimo de campanhas"
-// @Param			campaignsTo			query	int		false	"Máximo de campanhas"
-// @Param			stageId				query	[]string	false	"IDs de etapa do CRM"
-// @Param			labelId				query	[]string	false	"IDs de etiqueta do CRM"
-// @Param			hasMemory			query	bool	false	"Possui memórias registradas"
-// @Param			memoryCategory		query	[]string	false	"Categorias de memória"
-// @Param			memoryAuthor		query	[]string	false	"Autor da memória (human, ai, system)"
-// @Param			memoryText			query	string	false	"Busca no conteúdo das memórias"
-// @Param			memoriesFrom		query	int		false	"Mínimo de memórias"
-// @Param			memoriesTo			query	int		false	"Máximo de memórias"
-// @Param			memoryFrom			query	string	false	"Memória atualizada a partir de (RFC3339 ou YYYY-MM-DD)"
-// @Param			memoryTo			query	string	false	"Memória atualizada até (RFC3339 ou YYYY-MM-DD)"
-// @Param			createdFrom			query	string	false	"Criados a partir de (RFC3339 ou YYYY-MM-DD)"
-// @Param			createdTo			query	string	false	"Criados até (RFC3339 ou YYYY-MM-DD)"
-// @Param			updatedFrom			query	string	false	"Atualizados a partir de (RFC3339 ou YYYY-MM-DD)"
-// @Param			updatedTo			query	string	false	"Atualizados até (RFC3339 ou YYYY-MM-DD)"
-// @Param			activityFrom		query	string	false	"Última atividade a partir de (RFC3339 ou YYYY-MM-DD)"
-// @Param			activityTo			query	string	false	"Última atividade até (RFC3339 ou YYYY-MM-DD)"
-// @Success		200	{array}		lead.LeadListResponseItem
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads [get]
-func (h *LeadHandler) List(w http.ResponseWriter, r *http.Request) {
-	input, ok := h.listInput(w, r)
-	if !ok {
+func (h *LeadHandler) writeDetail(w http.ResponseWriter, r *http.Request, leadID string) {
+	a, ok := h.requestActor(w, r)
+	if !ok || !h.historyReady(w) {
 		return
 	}
-
-	result, err := h.leads.List(input)
+	detail, err := h.history.Detail(r.Context(), a, leadID)
 	if err != nil {
-		h.writeListError(w, err)
+		writeLeadReadError(w, err)
 		return
 	}
-
-	items := make([]LeadListResponseItem, 0, len(result.Items))
-	for _, lws := range result.Items {
-		items = append(items, toLeadListItem(lws))
-	}
-
-	response.WritePaginated(w, http.StatusOK, items, response.PaginationMeta{
-		Page:       result.Page,
-		PageSize:   result.PageSize,
-		TotalPages: result.TotalPages,
-		TotalItems: result.TotalItems,
-	})
+	response.WriteSuccess(w, http.StatusOK, toLeadDetail(detail, h.now()))
 }
 
-// @Summary		Contagens dos filtros de leads
-// @Description	Retorna as contagens agregadas do MESMO conjunto filtrado que a listagem devolve, por bloqueio, janela, campanha, memória, canal, categoria de memória e status de envio. Aceita exatamente os mesmos parâmetros de filtro de GET /leads.
-// @Tags			Leads
-// @Produce		json
-// @Param			filter	query		string	false	"Filtro crmfilter em JSON (opcionalmente codificado em base64)"
-// @Param			q		query		string	false	"Busca livre por nome, número ou conteúdo das memórias"
-// @Success		200	{object}	lead.LeadFacets
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/facets [get]
-func (h *LeadHandler) Facets(w http.ResponseWriter, r *http.Request) {
-	input, ok := h.listInput(w, r)
-	if !ok {
-		return
-	}
-
-	facets, err := h.leads.Facets(input)
-	if err != nil {
-		h.writeListError(w, err)
-		return
-	}
-
-	response.WriteSuccess(w, http.StatusOK, facets)
+func leadDetailSummaryResponse(s lead_usecase.LeadDetailSummary) LeadDetailSummaryResponse {
+	return LeadDetailSummaryResponse{DealsCount: s.DealsCount, MemoriesCount: s.MemoriesCount, SharedNumbers: sharedNumberResponses(s.SharedNumbers)}
 }
 
-func (h *LeadHandler) listInput(w http.ResponseWriter, r *http.Request) (leaddomain.ListLeadsInput, bool) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return leaddomain.ListLeadsInput{}, false
+func toLeadDetail(d lead_usecase.LeadDetail, now time.Time) LeadDetailResponse {
+	out := LeadDetailResponse{
+		LeadRecordResponse: toLeadRecord(d.Lead, now),
+		OwnerName:          d.OwnerName,
+		WhatsAppCampaigns:  d.Summary.WhatsAppCampaigns,
+		TotalCampaigns:     d.Summary.TotalCampaigns,
+		LastActivityAt:     fmtTimePtr(d.Summary.LastActivityAt),
+		WhatsAppWindowOpen: d.Summary.WhatsAppWindowOpen,
+		WindowExpiresAt:    fmtTimePtr(d.Summary.WindowExpiresAt),
+		Campaigns:          make([]CampaignHistoryItem, 0, len(d.Campaigns)),
 	}
-
-	input, err := listInputFromQuery(workspaceID, r.URL.Query())
-	if err != nil {
-		response.WriteError(w, http.StatusBadRequest, "Invalid filter parameter", nil)
-		return leaddomain.ListLeadsInput{}, false
-	}
-	return input, true
-}
-
-func (h *LeadHandler) writeListError(w http.ResponseWriter, err error) {
-	if errors.Is(err, leaddomain.ErrLeadFilterInvalid) {
-		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
-		return
-	}
-	response.WriteError(w, http.StatusInternalServerError, "Failed to fetch leads", nil)
-}
-
-// @Summary		Histórico de campanhas do lead
-// @Description	Retorna o histórico de campanhas de WhatsApp do lead junto com os detalhes do lead.
-// @Tags			Leads
-// @Produce		json
-// @Param			id	path		string	true	"ID do lead"
-// @Success		200	{object}	lead.LeadDetailResponse
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		404	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/{id}/campaigns [get]
-func (h *LeadHandler) GetCampaignHistory(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-	leadID := mux.Vars(r)["id"]
-	if leadID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID is required", nil)
-		return
-	}
-
-	leadRecord, err := h.leads.Get(workspaceID, leadID)
-	if err != nil {
-		if errors.Is(err, leaddomain.ErrLeadNotFound) {
-			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch lead", nil)
-		return
-	}
-	if leadRecord == nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-
-	resp := h.buildLeadDetailResponse(workspaceID, leadRecord)
-	response.WriteSuccess(w, http.StatusOK, resp)
-}
-
-func (h *LeadHandler) resolveCampaignNames(accMap map[string]*entryAccumulator) {
-	if len(accMap) == 0 {
-		return
-	}
-
-	var wcIDs []string
-	for _, acc := range accMap {
-		if acc.entryType == "whatsapp" {
-			wcIDs = append(wcIDs, acc.campaignID)
-		}
-	}
-
-	names := h.leadRepo.ResolveCampaignNames(wcIDs)
-	for _, acc := range accMap {
-		key := acc.entryType + ":" + acc.campaignID
-		if name, ok := names[key]; ok {
-			acc.campaignName = name
-		}
-	}
-}
-
-func (h *LeadHandler) buildLeadDetailResponse(workspaceID string, l *leaddomain.Lead) LeadDetailResponse {
-	resp := LeadDetailResponse{
-		ID:          l.ID,
-		WorkspaceID: l.WorkspaceID,
-		Number:      l.Number,
-		Name:        l.Name,
-		Age:         l.Age,
-		Blocked:     l.Blocked,
-		BlockedBy:   l.BlockedBy,
-		CreatedAt:   fmtRFC3339(l.CreatedAt),
-		UpdatedAt:   fmtRFC3339(l.UpdatedAt),
-		Campaigns:   make([]CampaignHistoryItem, 0),
-	}
-	if l.Blocked && !l.BlockedAt.IsZero() {
-		blockedAt := fmtRFC3339(l.BlockedAt)
-		resp.BlockedAt = &blockedAt
-	}
-
-	accMap := make(map[string]*entryAccumulator)
-
-	if wcEntries, err := h.wcEntryRepo.ListByLeadID(l.ID); err == nil {
-		for _, e := range wcEntries {
-			key := "whatsapp:" + e.CampaignID
-			acc, ok := accMap[key]
-			if !ok {
-				acc = &entryAccumulator{
-					campaignID: e.CampaignID,
-					entryType:  "whatsapp",
-					entries:    make([]CampaignEntryItem, 0),
-				}
-				accMap[key] = acc
-			}
-			acc.entries = append(acc.entries, CampaignEntryItem{
+	for _, c := range d.Campaigns {
+		entries := make([]CampaignEntryItem, 0, len(c.Entries))
+		for _, e := range c.Entries {
+			entries = append(entries, CampaignEntryItem{
 				ID:        e.ID,
 				Status:    string(e.Status),
 				CreatedAt: fmtRFC3339(e.CreatedAt),
 				UpdatedAt: fmtRFC3339(e.UpdatedAt),
 			})
-			if e.UpdatedAt.After(acc.latest) {
-				acc.latest = e.UpdatedAt
-			}
 		}
-	}
-
-	h.resolveCampaignNames(accMap)
-
-	summary := &leaddomain.LeadSummary{}
-
-	if windows, err := h.windowRepo.FindAllByLead(l.ID); err == nil {
-		for _, w := range windows {
-			if w.IsWindowOpen() {
-				summary.WhatsAppWindowOpen = true
-				exp := w.WindowExpiresAt()
-				summary.WindowExpiresAt = &exp
-			}
-			if summary.LastActivityAt == nil || w.LastMessageAt.After(*summary.LastActivityAt) {
-				summary.LastActivityAt = &w.LastMessageAt
-			}
-		}
-	}
-
-	for _, acc := range accMap {
-		if acc.entryType == "whatsapp" {
-			summary.WhatsAppCampaigns += len(acc.entries)
-		}
-		if summary.LastActivityAt == nil || acc.latest.After(*summary.LastActivityAt) {
-			summary.LastActivityAt = &acc.latest
-		}
-	}
-	summary.TotalCampaigns = summary.WhatsAppCampaigns
-
-	resp.WhatsAppCampaigns = summary.WhatsAppCampaigns
-	resp.TotalCampaigns = summary.TotalCampaigns
-	resp.LastActivityAt = fmtTimePtr(summary.LastActivityAt)
-	resp.WhatsAppWindowOpen = summary.WhatsAppWindowOpen
-	resp.WindowExpiresAt = fmtTimePtr(summary.WindowExpiresAt)
-
-	for _, acc := range accMap {
-		resp.Campaigns = append(resp.Campaigns, CampaignHistoryItem{
-			CampaignID:   acc.campaignID,
-			CampaignName: acc.campaignName,
-			Type:         acc.entryType,
-			Entries:      acc.entries,
+		out.Campaigns = append(out.Campaigns, CampaignHistoryItem{
+			CampaignID:   c.CampaignID,
+			CampaignName: c.CampaignName,
+			Type:         string(shared.EntryTypeWhatsApp),
+			Entries:      entries,
 		})
 	}
-
-	return resp
-}
-
-// @Summary		Histórico de conversas do lead
-// @Description	Retorna as mensagens trocadas com o lead em todos os canais, com filtro opcional por tipo de entrada.
-// @Tags			Leads
-// @Produce		json
-// @Param			id			path		string	true	"ID do lead"
-// @Param			entryType	query		string	false	"Filtrar por tipo de entrada ('whatsapp')"
-// @Success		200	{object}	map[string]interface{}
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		404	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/{id}/conversations [get]
-func (h *LeadHandler) GetConversationHistory(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-	leadID := mux.Vars(r)["id"]
-	if leadID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID is required", nil)
-		return
-	}
-
-	leadRecord, err := h.leads.Get(workspaceID, leadID)
-	if err != nil {
-		if errors.Is(err, leaddomain.ErrLeadNotFound) {
-			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch lead", nil)
-		return
-	}
-	if leadRecord == nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-
-	entryTypeFilter := shared.EntryType(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entryType"))))
-
-	messages, err := h.messageRepo.ListByLeadID(leadID)
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch conversation history", nil)
-		return
-	}
-
-	if entryTypeFilter.Valid() {
-		filtered := make([]*conversation.Message, 0)
-		for _, msg := range messages {
-			if msg.EntryType == entryTypeFilter {
-				filtered = append(filtered, msg)
-			}
-		}
-		messages = filtered
-	}
-
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"leadId":   leadID,
-		"number":   leadRecord.Number,
-		"name":     leadRecord.Name,
-		"messages": messages,
-	})
-}
-
-// @Summary		Bloquear ou desbloquear lead
-// @Description	Bloqueia ou desbloqueia um lead no workspace. Quando informado o telefone comercial, o contato também é bloqueado/desbloqueado no lado da Meta (melhor esforço).
-// @Tags			Leads
-// @Accept			json
-// @Produce		json
-// @Param			id		path		string				true	"ID do lead"
-// @Param			request	body		BlockLeadRequest	true	"Estado de bloqueio do lead"
-// @Success		200	{object}	map[string]interface{}
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		404	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/{id}/block [post]
-func (h *LeadHandler) BlockLead(w http.ResponseWriter, r *http.Request) {
-	leadId := mux.Vars(r)["id"]
-	workspaceID := middleware.GetWorkspaceID(r)
-
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-
-	if leadId == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID is required", nil)
-		return
-	}
-
-	leadRecord, err := h.leads.Get(workspaceID, leadId)
-	if err != nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-
-	var req BlockLeadRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.WriteInvalidBodyError(w, map[string]string{
-			"blocked": "boolean",
-		})
-		return
-	}
-
-	update := leaddomain.LeadUpdate{Blocked: &req.Blocked}
-	if req.Blocked {
-		if claims := middleware.GetClaims(r); claims != nil && strings.TrimSpace(claims.UserID) != "" {
-			actorID := strings.TrimSpace(claims.UserID)
-			update.BlockedBy = &actorID
-		}
-	}
-
-	if err := h.leadRepo.Update(workspaceID, leadRecord.ID, update); err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "An error has occured when trying to update the lead", nil)
-		return
-	}
-
-	metaApplied := h.applyWhatsAppBlock(workspaceID, req.BusinessPhoneID, leadRecord.Number, req.Blocked)
-
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"leadId":      leadRecord.ID,
-		"blocked":     req.Blocked,
-		"metaApplied": metaApplied,
-	})
-}
-
-func (h *LeadHandler) applyWhatsAppBlock(workspaceID, businessPhoneID, contactNumber string, block bool) bool {
-	businessPhoneID = strings.TrimSpace(businessPhoneID)
-	contactNumber = strings.TrimSpace(contactNumber)
-	if businessPhoneID == "" || contactNumber == "" || h.phoneRepo == nil || h.metaAPI == nil {
-		return false
-	}
-
-	phone, err := h.phoneRepo.FindByID(businessPhoneID)
-	if err != nil || phone == nil {
-		log.Printf("[lead-block] could not resolve business phone %s: %v", businessPhoneID, err)
-		return false
-	}
-	if !phone.BelongsToWorkspace(workspaceID) {
-		log.Printf("[lead-block] business phone %s does not belong to workspace %s", businessPhoneID, workspaceID)
-		return false
-	}
-	if strings.TrimSpace(phone.AccessToken) == "" || strings.TrimSpace(phone.MetaPhoneNumberID) == "" {
-		log.Printf("[lead-block] business phone %s missing access token or meta phone id, skipping Meta block", businessPhoneID)
-		return false
-	}
-
-	if block {
-		err = h.metaAPI.BlockUser(phone.MetaPhoneNumberID, contactNumber, phone.AccessToken)
-	} else {
-		err = h.metaAPI.UnblockUser(phone.MetaPhoneNumberID, contactNumber, phone.AccessToken)
-	}
-	if err != nil {
-		log.Printf("[lead-block] Meta block (block=%v) failed for %s on phone %s: %v", block, contactNumber, businessPhoneID, err)
-		return false
-	}
-	return true
-}
-
-// @Summary		Conversa por entrada
-// @Description	Retorna as mensagens de uma entrada específica (chamada ou conversa de campanha), identificada pelo tipo e ID da entrada.
-// @Tags			Leads
-// @Produce		json
-// @Param			entryId		path		string	true	"ID da entrada"
-// @Param			entryType	query		string	false	"Tipo da entrada ('whatsapp')"
-// @Success		200	{object}	map[string]interface{}
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/entries/{entryId}/conversation [get]
-func (h *LeadHandler) GetConversationByEntry(w http.ResponseWriter, r *http.Request) {
-	entryID := mux.Vars(r)["entryId"]
-	entryTypeStr := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entryType")))
-
-	if entryID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Entry ID is required", nil)
-		return
-	}
-
-	entryType := shared.EntryType(entryTypeStr)
-	if !entryType.Valid() {
-		entryType = shared.EntryTypeWhatsApp
-	}
-
-	messages, err := h.messageRepo.ListByEntry(entryID, entryType)
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch conversation", nil)
-		return
-	}
-
-	var leadID, campaignID, status string
-	if entryType == shared.EntryTypeWhatsApp {
-		entry, err := h.wcEntryRepo.FindByID(entryID)
-		if err == nil && entry != nil {
-			leadID = entry.LeadID
-			campaignID = entry.CampaignID
-			status = string(entry.Status)
-		}
-	}
-
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"entryId":      entryID,
-		"entryType":    entryType,
-		"leadId":       leadID,
-		"campaignId":   campaignID,
-		"status":       status,
-		"messages":     messages,
-		"messageCount": len(messages),
-	})
-}
-
-// @Summary		Entradas do lead por campanha
-// @Description	Retorna as entradas do lead em uma campanha específica, com filtro opcional por tipo de entrada.
-// @Tags			Leads
-// @Produce		json
-// @Param			id			path		string	true	"ID do lead"
-// @Param			campaignId	path		string	true	"ID da campanha"
-// @Param			entryType	query		string	false	"Tipo da entrada ('whatsapp')"
-// @Success		200	{object}	map[string]interface{}
-// @Failure		400	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/{id}/campaigns/{campaignId}/entries [get]
-func (h *LeadHandler) GetEntriesByCampaign(w http.ResponseWriter, r *http.Request) {
-	leadID := mux.Vars(r)["id"]
-	campaignID := mux.Vars(r)["campaignId"]
-
-	if leadID == "" || campaignID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID and Campaign ID are required", nil)
-		return
-	}
-
-	entryType := shared.EntryType(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entryType"))))
-
-	var entries []EntryResponse
-
-	if !entryType.Valid() || entryType == shared.EntryTypeWhatsApp {
-		wcEntries, err := h.wcEntryRepo.ListByLeadID(leadID)
-		if err == nil {
-			for _, e := range wcEntries {
-				if e.CampaignID == campaignID {
-					entries = append(entries, EntryResponse{
-						ID:         e.ID,
-						CampaignID: e.CampaignID,
-						EntryType:  shared.EntryTypeWhatsApp,
-						Status:     string(e.Status),
-						CreatedAt:  e.CreatedAt.Format("2006-01-02T15:04:05Z"),
-					})
-				}
-			}
-		}
-	}
-
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"leadId":     leadID,
-		"campaignId": campaignID,
-		"entries":    entries,
-	})
-}
-
-// @Summary		Análises do lead por campanha
-// @Description	Retorna as análises de IA das entradas do lead em uma campanha específica, com filtro opcional por tipo de entrada.
-// @Tags			Leads
-// @Produce		json
-// @Param			id			path		string	true	"ID do lead"
-// @Param			campaignId	path		string	true	"ID da campanha"
-// @Param			entryType	query		string	false	"Tipo da entrada ('whatsapp')"
-// @Success		200	{object}	map[string]interface{}
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		404	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/{id}/campaigns/{campaignId}/analysis [get]
-func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-	leadID := mux.Vars(r)["id"]
-	campaignID := mux.Vars(r)["campaignId"]
-
-	if leadID == "" || campaignID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID and Campaign ID are required", nil)
-		return
-	}
-
-	leadRecord, err := h.leads.Get(workspaceID, leadID)
-	if err != nil {
-		if errors.Is(err, leaddomain.ErrLeadNotFound) {
-			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to fetch lead", nil)
-		return
-	}
-	if leadRecord == nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-
-	entryTypeParam := shared.EntryType(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("entryType"))))
-
-	analyses := []*ca.Analysis{}
-
-	if !entryTypeParam.Valid() || entryTypeParam == shared.EntryTypeWhatsApp {
-		wcEntries, err := h.wcEntryRepo.ListByLeadID(leadID)
-		if err == nil {
-			entryIDs := make([]string, 0, len(wcEntries))
-			for _, entry := range wcEntries {
-				if entry.CampaignID == campaignID {
-					entryIDs = append(entryIDs, entry.ID)
-				}
-			}
-			found, err := h.analysisRepo.LatestByEntries(r.Context(), workspaceID, ca.SourceWhatsApp, entryIDs)
-			if err == nil {
-				for _, id := range entryIDs {
-					if a, ok := found[id]; ok && a != nil {
-						analyses = append(analyses, a)
-					}
-				}
-			}
-		}
-	}
-
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"leadId":     leadID,
-		"campaignId": campaignID,
-		"number":     leadRecord.Number,
-		"name":       leadRecord.Name,
-		"analyses":   analyses,
-	})
-}
-
-// @Summary		Renomear um lead
-// @Description	Define o nome de exibição de um lead. Enviar um nome vazio remove o nome, e o lead volta a ser exibido pelo número.
-// @Tags			Leads
-// @Accept			json
-// @Produce		json
-// @Param			id		path		string				true	"Identificador do lead"
-// @Param			request	body		RenameLeadRequest	true	"Novo nome"
-// @Success		200	{object}	lead.Lead
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		403	{object}	response.ErrorResponse
-// @Failure		404	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/{id} [patch]
-func (h *LeadHandler) RenameLead(w http.ResponseWriter, r *http.Request) {
-	leadID := mux.Vars(r)["id"]
-	workspaceID := middleware.GetWorkspaceID(r)
-
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-	if leadID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Lead ID is required", nil)
-		return
-	}
-
-	var req RenameLeadRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.WriteInvalidBodyError(w, map[string]string{
-			"name": "string (empty clears the name)",
-		})
-		return
-	}
-	if req.Name == nil {
-		response.WriteInvalidBodyError(w, map[string]string{
-			"name": "string (required; send \"\" to clear the name)",
-		})
-		return
-	}
-
-	if err := leaddomain.ValidateName(*req.Name); err != nil {
-		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
-		return
-	}
-
-	if err := h.leadRepo.Rename(workspaceID, leadID, *req.Name); err != nil {
-		if errors.Is(err, leaddomain.ErrLeadNotFound) {
-			response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-			return
-		}
-		if errors.Is(err, leaddomain.ErrLeadNameTooLong) {
-			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
-			return
-		}
-		response.WriteError(w, http.StatusInternalServerError, "Failed to rename lead", nil)
-		return
-	}
-
-	updated, err := h.leads.Get(workspaceID, leadID)
-	if err != nil {
-		response.WriteError(w, http.StatusNotFound, "Lead not found", nil)
-		return
-	}
-	response.WriteSuccess(w, http.StatusOK, updated)
-}
-
-// @Summary		Importar leads
-// @Description	Cria leads em massa a partir de uma lista de contatos já processada pelo cliente (por exemplo, um CSV lido no navegador). Números são normalizados para o formato brasileiro canônico e deduplicados; linhas inválidas ou repetidas são reportadas, nunca descartadas em silêncio. Leads já existentes no workspace são contabilizados como "matched" e nunca sobrescritos. Opcionalmente abre uma conversa no atendimento para cada número (seedInbox).
-// @Tags			Leads
-// @Accept			json
-// @Produce		json
-// @Param			request	body		lead.ImportLeadsRequest	true	"Linhas do arquivo"
-// @Success		200		{object}	lead.ImportLeadsResponse
-// @Failure		400		{object}	response.ErrorResponse
-// @Failure		413		{object}	response.ErrorResponse
-// @Failure		500		{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/leads/import [post]
-func (h *LeadHandler) ImportLeads(w http.ResponseWriter, r *http.Request) {
-	workspaceID := middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteError(w, http.StatusBadRequest, "Workspace context is required", nil)
-		return
-	}
-
-	var req ImportLeadsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.WriteInvalidBodyError(w, map[string]string{
-			"rows": "array of {line, number, name?, age?}",
-		})
-		return
-	}
-
-	if len(req.Rows) == 0 {
-		response.WriteError(w, http.StatusBadRequest, "Import has no rows", nil)
-		return
-	}
-
-	if len(req.Rows) > leaddomain.MaxImportRows {
-		response.WriteError(w, http.StatusRequestEntityTooLarge, "Too many rows for a single import", map[string]string{
-			"maxRows": strconv.Itoa(leaddomain.MaxImportRows),
-			"sent":    strconv.Itoa(len(req.Rows)),
-		})
-		return
-	}
-
-	policy, ok := leaddomain.ParseExistingPolicy(req.OnExisting)
-	if !ok {
-		response.WriteError(w, http.StatusBadRequest, "Invalid onExisting policy", map[string]string{
-			"onExisting": string(leaddomain.PolicyFillEmpty) + " | " + string(leaddomain.PolicySkip),
-		})
-		return
-	}
-
-	script := req.SeedConversations.toDomain()
-	if script != nil && !req.SeedInbox {
-		response.WriteError(w, http.StatusBadRequest,
-			"Seeding conversations requires opening them", map[string]string{
-				"seedInbox": "must be true when seedConversations is set",
-			})
-		return
-	}
-	script.Normalize()
-	if err := script.Validate(); err != nil {
-		response.WriteError(w, http.StatusBadRequest, "Invalid conversation seed script", map[string]string{
-			"seedConversations": err.Error(),
-		})
-		return
-	}
-
-	rows := make([]leaddomain.ImportRow, 0, len(req.Rows))
-	for i, row := range req.Rows {
-		line := row.Line
-		if line <= 0 {
-			line = i + 1
-		}
-		rows = append(rows, leaddomain.ImportRow{
-			Line:   line,
-			Number: row.Number,
-			Name:   row.Name,
-			Age:    row.Age,
-		})
-	}
-
-	prepared := leaddomain.PrepareImport(rows)
-
-	outcome, err := h.leadRepo.ImportMany(workspaceID, prepared.Inputs, policy)
-	if err != nil {
-		log.Printf("[leads] import failed for workspace %s: %v", workspaceID, err)
-		response.WriteError(w, http.StatusInternalServerError, "An error has occured when trying to import the leads", nil)
-		return
-	}
-
-	out := ImportLeadsResponse{
-		Created:  outcome.Created,
-		Matched:  outcome.Matched,
-		Blocked:  outcome.Blocked,
-		Rejected: []ImportRejection{},
-	}
-	for _, rejection := range prepared.Rejected {
-		switch rejection.Reason {
-		case leaddomain.ReasonInvalid:
-			out.Invalid++
-		case leaddomain.ReasonDuplicate:
-			out.Duplicate++
-		}
-	}
-	reported := prepared.Rejected
-	if len(reported) > MaxReportedRejections {
-		out.RejectedTruncated = len(reported) - MaxReportedRejections
-		reported = reported[:MaxReportedRejections]
-	}
-	for _, rejection := range reported {
-		out.Rejected = append(out.Rejected, ImportRejection{
-			Line:   rejection.Line,
-			Number: rejection.Number,
-			Reason: string(rejection.Reason),
-		})
-	}
-
-	if req.SeedInbox {
-		claims := middleware.GetClaims(r)
-		if claims == nil || !h.maySeedInbox(claims.UserID, workspaceID, claims.Role) {
-			out.InboxSeedError = "You don't have permission to start conversations on the unofficial WhatsApp channel"
-		} else {
-			if script != nil && claims.Role != string(user.RoleAdmin) {
-				out.ScriptedSeedError = "Only a platform administrator can seed example conversations"
-				script = nil
-			}
-			queued, err := h.queueInboxSeed(workspaceID, prepared.Inputs, script)
-			out.InboxSeedQueued = queued.Targets
-			out.ScriptedSeedQueued = queued.Scripted
-			if err != "" {
-				out.InboxSeedError = err
-			}
-		}
-	}
-
-	response.WriteSuccess(w, http.StatusOK, out)
-}
-
-func (h *LeadHandler) queueInboxSeed(
-	workspaceID string,
-	inputs []leaddomain.BulkLeadInput,
-	script *unofficial_whatsapp.SeedScript,
-) (unofficial_whatsapp.SeedQueued, string) {
-	if h.inboxSeeder == nil {
-		return unofficial_whatsapp.SeedQueued{}, "Inbox seeding is not available on this deployment"
-	}
-
-	targets := make([]unofficial_whatsapp.SeedTarget, 0, len(inputs))
-	for _, input := range inputs {
-		targets = append(targets, unofficial_whatsapp.SeedTarget{
-			Number: input.Number,
-			Name:   input.Name,
-		})
-	}
-
-	queued, err := h.inboxSeeder.Publish(unofficial_whatsapp.SeedRequest{
-		WorkspaceID: workspaceID,
-		Targets:     targets,
-		Script:      script,
-	})
-	if err != nil {
-		log.Printf("[leads] inbox seeding failed to queue for workspace %s: %v", workspaceID, err)
-		return queued, "The leads were imported, but their conversations could not be queued"
-	}
-	return queued, ""
-}
-
-func (h *LeadHandler) SetAuthorizer(a conversation.ConversationAuthorizer) {
-	h.authorizer = a
-}
-
-func (h *LeadHandler) maySeedInbox(userID, workspaceID, role string) bool {
-	if h.authorizer == nil {
-		return false
-	}
-	return h.authorizer.HasWorkspacePermission(
-		userID, workspaceID,
-		string(workspace_domain.ResourceUnofficialWhatsAppInstances),
-		string(workspace_domain.ActionSend),
-		role == "admin",
-	)
+	return out
 }

@@ -22,7 +22,7 @@ var domainErrors = []errorMapping{
 	{mediagen.ErrModelsUnavailable, http.StatusServiceUnavailable, "models_unavailable", "A lista de modelos não está disponível agora; tente de novo em instantes"},
 	{mediagen.ErrNoModels, http.StatusServiceUnavailable, "models_unavailable", "Não há modelos disponíveis para este tipo de mídia agora; tente de novo em instantes"},
 	{mediagen.ErrJobNotFound, http.StatusNotFound, "not_found", "Geração não encontrada"},
-	{mediagen.ErrTooManyActive, http.StatusTooManyRequests, "too_many_jobs", "Já há processamentos demais em andamento neste workspace; aguarde um terminar"},
+	{mediagen.ErrTooManyActive, http.StatusTooManyRequests, "too_many_jobs", "Já há gerações ou processamentos demais em andamento neste workspace; aguarde um terminar"},
 	{mediagen.ErrDuplicateActiveJob, http.StatusConflict, "already_generating", "Este pedido acabou de ser feito; tente de novo em instantes"},
 	{mediagen.ErrRequesterRequired, http.StatusUnauthorized, "unauthenticated", "Usuário não identificado"},
 	{mediagen.ErrWorkspaceRequired, http.StatusForbidden, "workspace_required", "Workspace não informado"},

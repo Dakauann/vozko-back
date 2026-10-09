@@ -12,6 +12,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/cache"
+	"vozko/domain/campaign"
 	"vozko/domain/conversation"
 	"vozko/domain/lead_campaign_send"
 	"vozko/domain/messaging"
@@ -399,6 +400,7 @@ type mockEntryRepo struct {
 	findByIDCalls int64
 	dispatched    bool
 	findErr       error
+	updateErr     error
 }
 
 func newMockEntryRepo() *mockEntryRepo {
@@ -445,6 +447,9 @@ func (r *mockEntryRepo) FindByMessageID(messageID string) (*wce.WhatsAppCampaign
 func (r *mockEntryRepo) UpdateStatus(entryID string, status wce.SendStatus, _ string, errorCode int, errorMessage string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.updateErr != nil {
+		return r.updateErr
+	}
 	r.statuses[entryID] = status
 	r.errorCodes[entryID] = errorCode
 	r.errorMessages[entryID] = errorMessage
@@ -536,7 +541,10 @@ func (r *mockEntryRepo) CanUserAccessEntry(_, _ string, _ bool) (bool, error)   
 func (r *mockEntryRepo) GetAccessibleEntryIDs(_ string, _ bool) ([]string, error)  { return nil, nil }
 func (r *mockEntryRepo) GetEntryIDsByCampaign(_ string) ([]string, error)          { return nil, nil }
 func (r *mockEntryRepo) FindByNumber(_ string) (*wce.WhatsAppCampaignEntry, error) { return nil, nil }
-func (r *mockEntryRepo) FindByNumberAndBusinessPhone(_, _ string) (*wce.WhatsAppCampaignEntry, error) {
+func (r *mockEntryRepo) FindInboundRouteByNumberAndBusinessPhone(_, _ string) (*wce.WhatsAppCampaignEntry, error) {
+	return nil, nil
+}
+func (r *mockEntryRepo) FindByNumberBusinessPhoneAndWorkspace(_, _, _ string) (*wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
 func (r *mockEntryRepo) GetCampaignForEntry(_ string) (*wce.EntryCampaignInfo, error) {
@@ -932,6 +940,7 @@ type testHarness struct {
 	waClient             *mockWhatsAppClient
 	inflightReserver     *mockInflightReserver
 	cachedBalanceChecker *mockCachedBalanceChecker
+	screener             *fakeScreener
 }
 
 func approvedMarketingTemplate(id string) *template.Template {
@@ -958,6 +967,7 @@ func newTestHarness() *testHarness {
 	waClient := &mockWhatsAppClient{}
 	inflightReserver := &mockInflightReserver{shared: sharedState}
 	cachedBal := &mockCachedBalanceChecker{balanceMicros: 1_000_000}
+	screener := &fakeScreener{skip: map[string]campaign.SkipReason{}}
 
 	uc := &messageConsumerUseCase{
 		MessageQueueSub:         queueSub,
@@ -971,7 +981,7 @@ func newTestHarness() *testHarness {
 		CheckBalance:            checkBal,
 		MessageHistoryManager:   &mockMessageHistoryManager{},
 		shared:                  sharedState,
-		WorkspaceConfigRepo:     &mockWorkspaceConfigRepo{},
+		Eligibility:             screener,
 		LeadCampaignSendRepo:    &mockLeadCampaignSendRepo{},
 		InflightReserver:        inflightReserver,
 		CachedBalanceChecker:    cachedBal,
@@ -991,6 +1001,7 @@ func newTestHarness() *testHarness {
 		waClient:             waClient,
 		inflightReserver:     inflightReserver,
 		cachedBalanceChecker: cachedBal,
+		screener:             screener,
 	}
 }
 

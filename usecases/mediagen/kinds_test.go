@@ -153,3 +153,33 @@ func TestAWorkspaceRunsAtMostTwoProcessingJobsAtOnce(t *testing.T) {
 		t.Fatalf("AI generations are not capped by processing: %v", err)
 	}
 }
+
+func TestTheServiceTellsWhetherAProcessingKindIsPriced(t *testing.T) {
+	charges := &fakeCharges{priced: map[mediagen.Kind]bool{mediagen.KindCaptions: true}}
+	svc := &Service{d: Deps{Charges: charges}}
+	if !svc.ProcessingPriced(mediagen.KindCaptions) || svc.ProcessingPriced(mediagen.KindCutout) {
+		t.Fatal("the answer must come from the charges port")
+	}
+	if !svc.ProcessingPriced(mediagen.KindMusic) {
+		t.Fatal("a kind that uses a model is always paid")
+	}
+}
+
+func TestAWorkspaceRunsAtMostThreeAIGenerationsAtOnce(t *testing.T) {
+	f := newFixture(t)
+	for i := 0; i < mediagen.MaxActiveGenerations; i++ {
+		req := musicRequest()
+		req.Prompt += strings.Repeat(" mais", i+1)
+		if _, err := f.svc.Request(context.Background(), req, "u-1"); err != nil {
+			t.Fatalf("generation %d: %v", i+1, err)
+		}
+	}
+	extra := musicRequest()
+	extra.Prompt += " outra"
+	if _, err := f.svc.Request(context.Background(), extra, "u-1"); !errors.Is(err, mediagen.ErrTooManyActive) {
+		t.Fatalf("a generation past the ceiling got %v", err)
+	}
+	if _, err := f.svc.Request(context.Background(), cutoutRequest("ref-1"), "u-1"); err != nil {
+		t.Fatalf("processing has its own ceiling: %v", err)
+	}
+}

@@ -219,6 +219,7 @@ func TestErrorMapping(t *testing.T) {
 		{"template not granted", wo.ErrTemplateForbidden, http.StatusUnprocessableEntity, "template_unavailable", false},
 		{"template deleted", wo.ErrTemplateNotFound, http.StatusUnprocessableEntity, "template_unavailable", false},
 		{"blocked contact", wo.ErrLeadBlocked, http.StatusUnprocessableEntity, "contact_blocked", false},
+		{"opted out contact", wo.ErrLeadOptedOut, http.StatusUnprocessableEntity, "contact_opted_out", false},
 		{"inside the spam window", wo.ErrWithinSpamWindow, http.StatusUnprocessableEntity, "spam_window", false},
 		{"number disconnected", wo.ErrPhoneNotConnected, http.StatusUnprocessableEntity, "number_unavailable", false},
 		{"number withdrawn", wo.ErrBusinessPhoneNotFound, http.StatusUnprocessableEntity, "number_unavailable", false},

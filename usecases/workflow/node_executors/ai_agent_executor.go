@@ -28,6 +28,15 @@ const aiAgentDefaultContextWindow = 50
 const aiAgentTimeout = 90 * time.Second
 
 const (
+	workflowAgentFeature = "workflow_agent"
+	contextNoteTail      = 1
+)
+
+func workflowAgentScope(entryID string) string {
+	return workflowAgentFeature + ":" + entryID
+}
+
+const (
 	segmentedTypingDelay   = 1500 * time.Millisecond
 	segmentedTypingMinShow = 1000 * time.Millisecond
 )
@@ -392,10 +401,11 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
+	var additionalContext, knowledge, executedActions string
+
 	if extra, ok := ctx.Node.Config["additional_context"].(string); ok && extra != "" {
-		interpolated := workflow.Interpolate(extra, ctx.State, nil)
-		prompt = prompt + "\n\n" + interpolated
-		log.Printf("%s appended additional_context (%d chars after interpolation)", logPrefix, len(interpolated))
+		additionalContext = workflow.Interpolate(extra, ctx.State, nil)
+		log.Printf("%s added additional_context to the context note (%d chars after interpolation)", logPrefix, len(additionalContext))
 	}
 
 	if e.ragService != nil {
@@ -432,16 +442,14 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 					}
 				}
 			}
-			if ragCtx != "" {
-				prompt += ragCtx
-			}
+			knowledge = ragCtx
 		}
 	}
 
 	if raw, ok := ctx.State.Get("_executed_actions"); ok {
 		if actions, ok := raw.([]interface{}); ok && len(actions) > 0 {
 			var sb strings.Builder
-			sb.WriteString("\n\n[AÇÕES JÁ EXECUTADAS NESTA CONVERSA, NÃO repita a menos que o usuário peça explicitamente]\n")
+			sb.WriteString("[AÇÕES JÁ EXECUTADAS NESTA CONVERSA, NÃO repita a menos que o usuário peça explicitamente]\n")
 			for _, a := range actions {
 				if s, ok := a.(string); ok {
 					sb.WriteString("• ")
@@ -449,10 +457,12 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 					sb.WriteString("\n")
 				}
 			}
-			prompt += sb.String()
+			executedActions = sb.String()
 			log.Printf("%s injected contextual update: %d previous actions", logPrefix, len(actions))
 		}
 	}
+
+	messages = append(messages, ai.ContextNote(additionalContext, knowledge, executedActions))
 
 	customTools := parseCustomToolsConfig(ctx.Node.Config)
 	hasCustomTools := len(customTools) > 0
@@ -520,6 +530,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		ToolChoice:        toolChoice,
 		MaxTokens:         2000,
 		SegmentedResponse: isSegmented,
+		VolatileTail:      contextNoteTail,
+		SessionID:         workflowAgentScope(entryID),
+		BillingReference:  workflowAgentScope(entryID),
 	})
 
 	elapsed := time.Since(callStart)
@@ -747,10 +760,7 @@ func composeHistory(history []*conversation.Message, limit int) []ai.Message {
 		limit = aiAgentDefaultContextWindow
 	}
 
-	start := 0
-	if len(history) > limit {
-		start = len(history) - limit
-	}
+	start := ai.HistoryWindowStart(len(history), limit)
 
 	messages := make([]ai.Message, 0, len(history[start:]))
 	for _, msg := range history[start:] {
@@ -766,19 +776,10 @@ func composeHistory(history []*conversation.Message, limit int) []ai.Message {
 		if msg.MessageType.IsCallEvent() {
 			continue
 		}
-		content := strings.TrimSpace(msg.Text)
-		if content == "" {
+		if strings.TrimSpace(msg.Text) == "" {
 			continue
 		}
-
-		if len(msg.Metadata) > 0 {
-			var meta map[string]string
-			if err := json.Unmarshal(msg.Metadata, &meta); err == nil {
-				if et := strings.TrimSpace(meta["extracted_text"]); et != "" {
-					content = content + "\n\n" + et
-				}
-			}
-		}
+		content := msg.PromptContent()
 
 		role := ai.RoleAssistant
 		if msg.FromCustomer() {

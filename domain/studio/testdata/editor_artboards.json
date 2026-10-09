@@ -1,0 +1,241 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "artboard-main",
+      "x": 0,
+      "y": 799,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "layer-1",
+          "type": "shape",
+          "shape": "ellipse",
+          "transform": {
+            "x": 0.5,
+            "y": 0.16666666666666666,
+            "w": 0.26666666666666666,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#f59e0b"
+        },
+        {
+          "id": "layer-2",
+          "type": "shape",
+          "shape": "star",
+          "transform": {
+            "x": 0.8333333333333333,
+            "y": 0.16666666666666666,
+            "w": 0.26666666666666666,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#10b981"
+        },
+        {
+          "id": "layer-3",
+          "type": "shape",
+          "shape": "triangle",
+          "transform": {
+            "x": 0.16666666666666666,
+            "y": 0.5,
+            "w": 0.26666666666666666,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6"
+        },
+        {
+          "id": "layer-4",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.26666666666666666,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#8b5cf6"
+        },
+        {
+          "id": "layer-5",
+          "type": "text",
+          "transform": {
+            "x": 0.8333333333333333,
+            "y": 0.5,
+            "w": 0.26666666666666666,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "text": "Texto 5",
+          "fontId": "inter",
+          "fontSize": 0.08333333333333333,
+          "fontWeight": 400,
+          "align": "center",
+          "lineHeight": 1.2,
+          "fill": "#111111"
+        }
+      ]
+    },
+    {
+      "id": "artboard-5cf3045b-6fbf-4174-9f6b-785d5399640f",
+      "name": "Versão larga",
+      "x": 1180,
+      "y": 0,
+      "canvas": {
+        "width": 1920,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "l-01129696-ae97-4875-b1ae-717a2be816ec",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.09375,
+            "y": 0.16666666666666666,
+            "w": 0.15,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#ef4444"
+        },
+        {
+          "id": "l-d02ac149-2a91-480f-bd64-8029224e61de",
+          "type": "shape",
+          "shape": "ellipse",
+          "transform": {
+            "x": 0.5,
+            "y": 0.16666666666666666,
+            "w": 0.15,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#f59e0b"
+        },
+        {
+          "id": "l-e0f7b1a5-d39c-49cc-bbfc-ff0584096088",
+          "type": "shape",
+          "shape": "star",
+          "transform": {
+            "x": 0.9062499999999999,
+            "y": 0.16666666666666666,
+            "w": 0.15,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#10b981"
+        },
+        {
+          "id": "l-6cb9d941-85e1-4895-88ff-0b968a33ff7e",
+          "type": "shape",
+          "shape": "triangle",
+          "transform": {
+            "x": 0.09375,
+            "y": 0.5,
+            "w": 0.15,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6"
+        },
+        {
+          "id": "l-4bcbfcfb-d18a-415e-8dee-8e1d691a9d42",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.15,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#8b5cf6"
+        },
+        {
+          "id": "l-a78c3011-5c58-4ab7-ad17-a28a61608ee1",
+          "type": "text",
+          "transform": {
+            "x": 0.9062499999999999,
+            "y": 0.5,
+            "w": 0.15,
+            "h": 0.26666666666666666,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "text": "Versão larga",
+          "fontId": "inter",
+          "fontSize": 0.08333333333333333,
+          "fontWeight": 400,
+          "align": "center",
+          "lineHeight": 1.2,
+          "fill": "#111111"
+        }
+      ]
+    },
+    {
+      "id": "artboard-28e617ca-baa2-443a-9c52-31d06589dc02",
+      "name": "Story",
+      "x": 3200,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1920,
+        "background": "#101820"
+      },
+      "layers": [
+        {
+          "id": "l-9e7f1e86-a45e-4a5f-afb3-fd81fde081cc",
+          "type": "text",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.8,
+            "h": 0.12,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "text": "Story",
+          "fontId": "inter",
+          "fontSize": 0.08,
+          "fontWeight": 700,
+          "align": "center",
+          "lineHeight": 1.2,
+          "fill": "#ffffff"
+        },
+        {
+          "id": "layer-0",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.49754698728579316,
+            "y": 0.5013215174129352,
+            "w": 0.26666666666666666,
+            "h": 0.15,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#ef4444"
+        }
+      ]
+    }
+  ]
+}

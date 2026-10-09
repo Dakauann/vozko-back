@@ -34,6 +34,8 @@ type WhatsAppCampaign struct {
 	UpdatedAt            time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt            gorm.DeletedAt `gorm:"index;index:idx_wa_campaign_ws_del,priority:2"`
 	ScheduledStart       time.Time      `gorm:"type:timestamptz;index"`
+	Source               OptionalText   `gorm:"column:source;type:varchar(32)"`
+	IdempotencyKey       OptionalText   `gorm:"column:idempotency_key;type:varchar(200)"`
 
 	Workspace     Workspace                   `gorm:"foreignKey:WorkspaceID;references:ID"`
 	BusinessPhone WhatsAppBusinessPhoneNumber `gorm:"foreignKey:BusinessPhoneID;references:ID"`

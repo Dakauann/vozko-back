@@ -33,6 +33,7 @@ type Recordings interface {
 
 type Contacts interface {
 	FindByNumbers(workspaceID string, numbers []string) ([]*lead.Lead, error)
+	FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, error)
 }
 
 type Queues interface {
@@ -67,6 +68,7 @@ type ListInput struct {
 	From      *time.Time
 	To        *time.Time
 	Number    string
+	LeadID    string
 }
 
 type History struct{ deps Deps }
@@ -115,10 +117,10 @@ func (h *History) Get(ctx context.Context, viewer Viewer, callID string) (*callh
 		return nil, err
 	}
 	transfers := facts.transfers[call.CallID]
-	people := callhistory.ParticipantsOf(call, transfers)
-	if !viewer.SeesEveryone && !people.Includes(viewer.UserID) {
+	if !viewer.Sees(call, transfers) {
 		return nil, cdr.ErrCallNotFound
 	}
+	people := callhistory.ParticipantsOf(call, transfers)
 	recording, err := h.recording(viewer, call)
 	if err != nil {
 		return nil, err
@@ -168,6 +170,9 @@ func listFilters(input ListInput) cdr.ListFilters {
 	}
 	if digits := digitsOf(input.Number); digits != "" {
 		filters.NumberDigits = &digits
+	}
+	if leadID := strings.TrimSpace(input.LeadID); leadID != "" {
+		filters.LeadID = &leadID
 	}
 	return filters
 }

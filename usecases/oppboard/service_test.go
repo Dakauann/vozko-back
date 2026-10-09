@@ -100,7 +100,7 @@ func TestGetBoard_StageAxis(t *testing.T) {
 		{ID: "s2", Name: "Ganho", Color: "#10b981", PipelineID: "pipe1"},
 		{ID: "s3", Name: "OutroPipeline", PipelineID: "pipeX"},
 	}}
-	svc := NewService(searcher, stages, nil)
+	svc := NewService(searcher, stages, denyingAuth{allowed: true}, opportunityFields())
 
 	board, err := svc.GetBoard(BoardInput{
 		WorkspaceID: "ws1",
@@ -147,7 +147,7 @@ func TestGetBoard_OwnerAxis(t *testing.T) {
 		countByCol: map[string]int64{"u1": 2, "__empty__": 5},
 		sumByCol:   map[string]int64{"u1": 999, "__empty__": 111},
 	}
-	svc := NewService(searcher, &fakeStages{}, nil)
+	svc := NewService(searcher, &fakeStages{}, denyingAuth{allowed: true}, opportunityFields())
 
 	base := crmfilter.Filter{Groups: []crmfilter.Group{
 		{Predicates: []crmfilter.Predicate{{Field: crmfilter.FieldStatus, Operator: crmfilter.OpEquals, Values: []string{"open"}}}},
@@ -195,7 +195,7 @@ func TestGetBoard_CustomAxis(t *testing.T) {
 		countByCol: map[string]int64{"enterprise": 4},
 		sumByCol:   map[string]int64{"enterprise": 700000},
 	}
-	svc := NewService(searcher, &fakeStages{}, nil)
+	svc := NewService(searcher, &fakeStages{}, denyingAuth{allowed: true}, opportunityFields())
 
 	if _, err := svc.GetBoard(BoardInput{WorkspaceID: "ws1", GroupBy: savedview.GroupByCustom}); err != ErrGroupByKeyMissing {
 		t.Fatalf("expected ErrGroupByKeyMissing, got %v", err)
@@ -224,14 +224,14 @@ func TestGetBoard_CustomAxis(t *testing.T) {
 }
 
 func TestGetBoard_UnsupportedGroupBy(t *testing.T) {
-	svc := NewService(&fakeSearcher{}, &fakeStages{}, nil)
+	svc := NewService(&fakeSearcher{}, &fakeStages{}, denyingAuth{allowed: true}, opportunityFields())
 	if _, err := svc.GetBoard(BoardInput{WorkspaceID: "ws1", GroupBy: savedview.GroupByLabel}); err != ErrUnsupportedGroupBy {
 		t.Fatalf("expected ErrUnsupportedGroupBy, got %v", err)
 	}
 }
 
 func TestGetBoard_AuthorizerDenies(t *testing.T) {
-	svc := NewService(&fakeSearcher{}, &fakeStages{}, denyingAuth{allowed: false})
+	svc := NewService(&fakeSearcher{}, &fakeStages{}, denyingAuth{allowed: false}, opportunityFields())
 	if _, err := svc.GetBoard(BoardInput{WorkspaceID: "ws1", GroupBy: savedview.GroupByStage}); err != ErrUnauthorized {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
@@ -244,7 +244,7 @@ func TestGetBoard_ThreadsDepartmentScope(t *testing.T) {
 		scope:   conversation.DepartmentAccessScope{DepartmentIDs: []string{"dept-1"}, Restrict: true},
 		allowed: true,
 	}
-	svc := NewService(searcher, stages, auth)
+	svc := NewService(searcher, stages, auth, opportunityFields())
 
 	if _, err := svc.GetBoard(BoardInput{
 		WorkspaceID: "ws1", UserID: "u1", IsAdmin: false,
@@ -274,7 +274,7 @@ func TestGetBoard_AdminNotRestricted(t *testing.T) {
 	searcher := &fakeSearcher{countByCol: map[string]int64{"s1": 1}}
 	stages := &fakeStages{stages: []*stage.Stage{{ID: "s1", PipelineID: "p1"}}}
 	auth := scopingAuth{scope: conversation.DepartmentAccessScope{Restrict: false}, allowed: true}
-	svc := NewService(searcher, stages, auth)
+	svc := NewService(searcher, stages, auth, opportunityFields())
 
 	if _, err := svc.GetBoard(BoardInput{
 		WorkspaceID: "ws1", UserID: "admin", IsAdmin: true,
@@ -291,7 +291,7 @@ func TestGetBoard_AdminNotRestricted(t *testing.T) {
 
 func TestGetList_PassesFilterThrough(t *testing.T) {
 	searcher := &fakeSearcher{countByCol: map[string]int64{"__all__": 7}}
-	svc := NewService(searcher, &fakeStages{}, nil)
+	svc := NewService(searcher, &fakeStages{}, denyingAuth{allowed: true}, opportunityFields())
 
 	_, total, err := svc.GetList(ListInput{WorkspaceID: "ws1", SortField: "value", SortOrder: "desc"})
 	if err != nil {

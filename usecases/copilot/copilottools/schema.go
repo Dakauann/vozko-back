@@ -29,7 +29,13 @@ func structParams(t reflect.Type, descriptions map[string]string) (map[string]to
 			description = f.Tag.Get("desc")
 		}
 		param := tools.Parameter{Type: jsonType(f.Type), Description: description, Enum: enumValues(f)}
-		if param.Type == "array" {
+		switch param.Type {
+		case "array":
+			param.Items = arrayItems(elemType(f.Type))
+			if param.Items.Type != "object" {
+				param.Items.Enum, param.Enum = param.Enum, nil
+			}
+		case "object":
 			param.Items = arrayItems(elemType(f.Type))
 		}
 		params[name] = param
@@ -90,6 +96,8 @@ func jsonType(t reflect.Type) string {
 		return "number"
 	case reflect.Slice:
 		return "array"
+	case reflect.Struct:
+		return "object"
 	default:
 		return "string"
 	}

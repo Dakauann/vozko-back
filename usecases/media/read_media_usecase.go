@@ -2,10 +2,13 @@ package media_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"vozko/domain/media"
 )
+
+var errReadMediaIncomplete = errors.New("read media: the media library and the file storage are required")
 
 type readMediaUseCase struct {
 	get   media.GetMediaUseCase
@@ -17,6 +20,9 @@ func NewReadMediaUseCase(get media.GetMediaUseCase, files media.FileReader) medi
 }
 
 func (uc *readMediaUseCase) Read(ctx context.Context, workspaceID, mediaID string) (*media.Content, error) {
+	if uc.get == nil || uc.files == nil {
+		return nil, errReadMediaIncomplete
+	}
 	found, err := uc.get.GetMedia(workspaceID, mediaID)
 	if err != nil {
 		return nil, err

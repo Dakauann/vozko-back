@@ -85,7 +85,7 @@ func TestGenerateStream_BillsReasoningTokensWithinCompletion(t *testing.T) {
 		`{"choices":[{"index":0,"delta":{"reasoning":"vou pensar bastante sobre o melhor fluxo a montar"}}]}`,
 		`{"choices":[{"index":0,"delta":{"content":"Pronto, criei o fluxo."}}]}`,
 		`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
-		`{"choices":[],"usage":{"prompt_tokens":1200,"completion_tokens":1000,"completion_token_details":{"reasoning_tokens":700},"total_tokens":2200,"cost":0.0123}}`,
+		`{"choices":[],"usage":{"prompt_tokens":1200,"completion_tokens":1000,"completion_tokens_details":{"reasoning_tokens":700},"total_tokens":2200,"cost":0.0123}}`,
 	})
 	defer srv.Close()
 
@@ -125,6 +125,36 @@ func TestGenerateStream_BillsReasoningTokensWithinCompletion(t *testing.T) {
 	}
 	if e.CompletionTokens != 1000 {
 		t.Errorf("billed completion_tokens = %d, want 1000 (incl. 700 reasoning), thinking must be charged", e.CompletionTokens)
+	}
+}
+
+func TestGenerateStream_PublishesCacheAndReasoningTokens(t *testing.T) {
+	srv := sseServer([]string{
+		`{"choices":[{"index":0,"delta":{"content":"Feito."}}]}`,
+		`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		`{"choices":[],"usage":{"prompt_tokens":90000,"completion_tokens":800,"prompt_tokens_details":{"cached_tokens":85000,"cache_write_tokens":4000},"completion_tokens_details":{"reasoning_tokens":300},"total_tokens":90800,"cost":0.05}}`,
+	})
+	defer srv.Close()
+
+	pub := &capturingPub{}
+	ch, err := newTestService(srv.URL, pub).GenerateStream(context.Background(), ai.GenerateInput{
+		Model:            "anthropic/claude-sonnet",
+		WorkspaceID:      "ws-1",
+		BillingReference: "aichat:th-1",
+		Messages:         []ai.Message{{Role: ai.RoleUser, Content: "edite"}},
+	})
+	if err != nil {
+		t.Fatalf("GenerateStream: %v", err)
+	}
+	drain(t, ch)
+
+	events := pub.events()
+	if len(events) != 1 {
+		t.Fatalf("expected exactly 1 billing event, got %d", len(events))
+	}
+	e := events[0]
+	if e.PromptTokens != 90000 || e.CachedTokens != 85000 || e.CacheWriteTokens != 4000 || e.ReasoningTokens != 300 || e.ProviderCostMicros != 50000 {
+		t.Fatalf("event = %+v", e)
 	}
 }
 

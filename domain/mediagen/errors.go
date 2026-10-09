@@ -18,7 +18,7 @@ var (
 	ErrUnknownFailureCode = errors.New("mediagen: unknown failure code")
 	ErrUnknownKind        = errors.New("mediagen: generation job has an unknown kind")
 	ErrCostUnreported     = errors.New("mediagen: the provider did not report the cost of the generation")
-	ErrTooManyActive      = errors.New("mediagen: the workspace already has the maximum of processing jobs running")
+	ErrTooManyActive      = errors.New("mediagen: the workspace already has the maximum of jobs of this kind running")
 	ErrNoModels           = errors.New("mediagen: no model is available for this kind")
 	ErrModelsUnavailable  = errors.New("mediagen: the model list is unavailable")
 )

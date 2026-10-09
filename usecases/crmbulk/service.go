@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	"vozko/domain/crmfilter"
 	"vozko/domain/label"
+	"vozko/domain/selection"
 	"vozko/domain/stage"
 	"vozko/domain/workspace"
 )
@@ -30,7 +32,7 @@ type EntryAssigner interface {
 
 type Authorizer interface {
 	HasWorkspacePermission(userID, workspaceID, resource, action string, isSystemAdmin bool) bool
-	CanAccessEntry(userID, workspaceID, entryID, entryType string, isAdmin bool) bool
+	EntryAccessFor(userID, workspaceID string, isAdmin bool) conversation.EntryAccess
 }
 
 type Broadcaster interface {
@@ -39,35 +41,7 @@ type Broadcaster interface {
 	BroadcastEntryUpdate(entryID, entryType string, message *conversation.Message)
 }
 
-type TargetResolver interface {
-	ResolveTargets(ctx context.Context, q TargetQuery) (refs []EntryRef, matched int64, err error)
-}
-
-type TargetQuery struct {
-	WorkspaceID          string
-	ActorID              string
-	IsAdmin              bool
-	SelectedDepartmentID string
-	Filter               crmfilter.Filter
-	Limit                int
-}
-
 const MaxFilterTargets = 2000
-
-func actionPermission(action string) (resource, act string, ok bool) {
-	switch action {
-	case ActionMoveStage:
-		return string(workspace.ResourceStages), string(workspace.ActionAssign), true
-	case ActionMoveFunnel:
-		return string(workspace.ResourceStages), string(workspace.ActionTransfer), true
-	case ActionAssign:
-		return string(workspace.ResourceConversations), string(workspace.ActionAssign), true
-	case ActionAddLabel, ActionRemoveLabel:
-		return string(workspace.ResourceLabels), string(workspace.ActionAssign), true
-	default:
-		return "", "", false
-	}
-}
 
 const (
 	ActionMoveStage   = "move_stage"
@@ -77,10 +51,26 @@ const (
 	ActionRemoveLabel = "remove_label"
 )
 
+var actionRequirements = map[string]workspace.PermissionEntry{
+	ActionMoveStage:   {Resource: workspace.ResourceStages, Action: workspace.ActionAssign},
+	ActionMoveFunnel:  {Resource: workspace.ResourceStages, Action: workspace.ActionTransfer},
+	ActionAssign:      {Resource: workspace.ResourceConversations, Action: workspace.ActionAssign},
+	ActionAddLabel:    {Resource: workspace.ResourceLabels, Action: workspace.ActionAssign},
+	ActionRemoveLabel: {Resource: workspace.ResourceLabels, Action: workspace.ActionAssign},
+}
+
+func actionPermission(action string) (resource, act string, ok bool) {
+	required, ok := actionRequirements[action]
+	if !ok {
+		return "", "", false
+	}
+	return string(required.Resource), string(required.Action), true
+}
+
 var (
-	ErrUnknownAction             = errors.New("crmbulk: unknown action")
-	ErrForbiddenEntry            = errors.New("crmbulk: entry is outside your workspace or department scope")
-	ErrTargetResolverUnavailable = errors.New("crmbulk: filter targeting is not available")
+	ErrUnknownAction  = errors.New("crmbulk: unknown action")
+	ErrForbidden      = errors.New("crmbulk: you don't have permission to perform this bulk action")
+	ErrForbiddenEntry = errors.New("crmbulk: entry is outside your workspace or department scope")
 )
 
 type EntryRef struct {
@@ -93,25 +83,16 @@ type BulkInput struct {
 	ActorID     string
 	IsAdmin     bool
 	Action      string
-	Targets     []EntryRef
 	Value       string
 
-	Filter               *crmfilter.Filter
+	Targets              []EntryRef
+	Selection            selection.Selection
 	SelectedDepartmentID string
 }
 
-type BulkFailure struct {
-	EntryID string `json:"entryId"`
-	Error   string `json:"error"`
-}
+type BulkFailure = selection.Failure
 
-type BulkResult struct {
-	Succeeded int           `json:"succeeded"`
-	Failed    []BulkFailure `json:"failed"`
-	Forbidden bool          `json:"forbidden,omitempty"`
-	Matched   int64         `json:"matched,omitempty"`
-	Truncated bool          `json:"truncated,omitempty"`
-}
+type BulkResult = selection.Result
 
 type Service struct {
 	stageAssigner StageAssigner
@@ -120,11 +101,13 @@ type Service struct {
 	entryAssigner EntryAssigner
 	authz         Authorizer
 	broadcaster   Broadcaster
-	targets       TargetResolver
+	targets       selection.Resolver
+	countGate     cache.Gate
 }
 
-func (s *Service) SetTargetResolver(r TargetResolver) {
-	s.targets = r
+func (s *Service) SetSelection(resolver selection.Resolver, countGate cache.Gate) {
+	s.targets = resolver
+	s.countGate = countGate
 }
 
 func NewService(
@@ -145,60 +128,147 @@ func NewService(
 	}
 }
 
-func (s *Service) BulkApply(ctx context.Context, in BulkInput) BulkResult {
+func (s *Service) BulkApply(ctx context.Context, in BulkInput) (BulkResult, error) {
 	result := BulkResult{}
 
-	resource, act, known := actionPermission(in.Action)
-	if !known || s.authz == nil ||
-		!s.authz.HasWorkspacePermission(in.ActorID, in.WorkspaceID, resource, act, in.IsAdmin) {
-		result.Forbidden = true
-		return result
+	if err := s.authorize(in); err != nil {
+		return result, err
 	}
 
 	targets, err := s.resolveTargets(ctx, in, &result)
 	if err != nil {
-		result.Failed = append(result.Failed, BulkFailure{Error: err.Error()})
-		return result
+		return result, err
 	}
 
+	result.Eligible = len(targets)
+	access := s.authz.EntryAccessFor(in.ActorID, in.WorkspaceID, in.IsAdmin)
+	if access == nil {
+		return result, ErrForbidden
+	}
 	for _, t := range targets {
-		if !s.authz.CanAccessEntry(in.ActorID, in.WorkspaceID, t.EntryID, t.EntryType, in.IsAdmin) {
-			result.Failed = append(result.Failed, BulkFailure{EntryID: t.EntryID, Error: ErrForbiddenEntry.Error()})
+		if !access.CanAccess(t.EntryID, t.EntryType) {
+			result.Fail(t.EntryID, ErrForbiddenEntry)
 			continue
 		}
 		if err := s.applyOne(ctx, in, t); err != nil {
-			result.Failed = append(result.Failed, BulkFailure{EntryID: t.EntryID, Error: err.Error()})
+			result.Fail(t.EntryID, err)
 			continue
 		}
 		s.broadcast(in, t)
 		result.Succeeded++
 	}
-	return result
+	return result, nil
+}
+
+func (s *Service) Count(ctx context.Context, scope selection.Scope, filter crmfilter.Filter) (int, string, error) {
+	if err := filter.ValidateForSelection(); err != nil {
+		return 0, "", err
+	}
+	counted := selection.ForFilter(filter)
+	matched, err := s.count(ctx, scope, counted)
+	if err != nil {
+		return 0, "", err
+	}
+	return matched, counted.Fingerprint, nil
+}
+
+func (s *Service) authorize(in BulkInput) error {
+	resource, act, known := actionPermission(in.Action)
+	if !known {
+		return fmt.Errorf("%w: %q", ErrUnknownAction, in.Action)
+	}
+	if s.authz == nil || !s.authz.HasWorkspacePermission(in.ActorID, in.WorkspaceID, resource, act, in.IsAdmin) {
+		return ErrForbidden
+	}
+	return nil
 }
 
 func (s *Service) resolveTargets(ctx context.Context, in BulkInput, result *BulkResult) ([]EntryRef, error) {
-	if len(in.Targets) > 0 || in.Filter == nil {
-		return in.Targets, nil
-	}
-	if s.targets == nil {
-		return nil, ErrTargetResolverUnavailable
+	picked := in.Selection
+	picked.IDs = entryIDs(in.Targets)
+	picked = picked.Inferred()
+	if err := picked.Validate(); err != nil {
+		return nil, err
 	}
 
-	refs, matched, err := s.targets.ResolveTargets(ctx, TargetQuery{
-		WorkspaceID:          in.WorkspaceID,
-		ActorID:              in.ActorID,
-		IsAdmin:              in.IsAdmin,
-		SelectedDepartmentID: in.SelectedDepartmentID,
-		Filter:               *in.Filter,
-		Limit:                MaxFilterTargets,
+	switch picked.Mode {
+	case selection.ModeIDs:
+		result.Matched = len(in.Targets)
+		return in.Targets, nil
+	case selection.ModeAllMatching, selection.ModeEveryone:
+		return s.resolveMatching(ctx, in, picked, result)
+	default:
+		return nil, fmt.Errorf("%w: %q", selection.ErrModeUnsupported, picked.Mode)
+	}
+}
+
+func (s *Service) gated(ctx context.Context, read func(context.Context) error) error {
+	if s.targets == nil || s.countGate == nil {
+		return selection.ErrResolverUnavailable
+	}
+	return cache.Gated(ctx, s.countGate, read)
+}
+
+func (s *Service) count(ctx context.Context, scope selection.Scope, picked selection.Selection) (int, error) {
+	matched := 0
+	err := s.gated(ctx, func(ctx context.Context) error {
+		n, err := s.countSelection(ctx, scope, picked)
+		matched = n
+		return err
+	})
+	return matched, err
+}
+
+func (s *Service) countSelection(ctx context.Context, scope selection.Scope, picked selection.Selection) (int, error) {
+	matched, err := s.targets.Count(ctx, scope, picked.BeforeExclusions())
+	if err != nil {
+		return 0, fmt.Errorf("crmbulk: count selection: %w", err)
+	}
+	return matched, nil
+}
+
+func (s *Service) resolveMatching(ctx context.Context, in BulkInput, picked selection.Selection, result *BulkResult) ([]EntryRef, error) {
+	scope := selection.Scope{
+		WorkspaceID:  in.WorkspaceID,
+		ActorID:      in.ActorID,
+		DepartmentID: in.SelectedDepartmentID,
+		IsAdmin:      in.IsAdmin,
+	}
+	var resolved []selection.Ref
+	err := s.gated(ctx, func(ctx context.Context) error {
+		matched, err := s.countSelection(ctx, scope, picked)
+		if err != nil {
+			return err
+		}
+		if err := picked.ConfirmCount(matched); err != nil {
+			return err
+		}
+		result.Matched = matched
+		resolved, err = s.targets.Resolve(ctx, scope, picked, "", MaxFilterTargets+1)
+		if err != nil {
+			return fmt.Errorf("crmbulk: resolve selection: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("crmbulk: resolve filter targets: %w", err)
+		return nil, err
 	}
 
-	result.Matched = matched
-	result.Truncated = matched > int64(len(refs))
+	result.Truncated = len(resolved) > MaxFilterTargets
+	resolved = resolved[:min(len(resolved), MaxFilterTargets)]
+	refs := make([]EntryRef, 0, len(resolved))
+	for _, ref := range resolved {
+		refs = append(refs, EntryRef{EntryID: ref.ID, EntryType: ref.Type})
+	}
 	return refs, nil
+}
+
+func entryIDs(targets []EntryRef) []string {
+	ids := make([]string, len(targets))
+	for i, t := range targets {
+		ids[i] = t.EntryID
+	}
+	return ids
 }
 
 func (s *Service) broadcast(in BulkInput, t EntryRef) {

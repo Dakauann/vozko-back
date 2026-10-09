@@ -56,6 +56,10 @@ type PaginatedResult[T any] struct {
 }
 
 func NormalizePagination(p Pagination) Pagination {
+	return NormalizePaginationWithin(p, MaxPageSize)
+}
+
+func NormalizePaginationWithin(p Pagination, max int) Pagination {
 	page := p.Page
 	if page < 1 {
 		page = 1
@@ -65,20 +69,28 @@ func NormalizePagination(p Pagination) Pagination {
 	if pageSize <= 0 {
 		pageSize = DefaultPageSize
 	}
-	if pageSize > MaxPageSize {
-		pageSize = MaxPageSize
+	if pageSize > max {
+		pageSize = max
 	}
 
 	return Pagination{Page: page, PageSize: pageSize}
 }
 
 func (p Pagination) Offset() int {
-	norm := NormalizePagination(p)
+	return p.OffsetWithin(MaxPageSize)
+}
+
+func (p Pagination) OffsetWithin(max int) int {
+	norm := NormalizePaginationWithin(p, max)
 	return (norm.Page - 1) * norm.PageSize
 }
 
 func NewPaginatedResult[T any](items []T, pagination Pagination, totalItems int64) *PaginatedResult[T] {
-	norm := NormalizePagination(pagination)
+	return NewPaginatedResultWithin(items, pagination, totalItems, MaxPageSize)
+}
+
+func NewPaginatedResultWithin[T any](items []T, pagination Pagination, totalItems int64, max int) *PaginatedResult[T] {
+	norm := NormalizePaginationWithin(pagination, max)
 	totalPages := 0
 	if totalItems > 0 {
 		totalPages = int(math.Ceil(float64(totalItems) / float64(norm.PageSize)))

@@ -92,8 +92,8 @@ func TestEachDecisionThatStillNeedsTheLLMGetsItsOwnCall(t *testing.T) {
 	if !strings.Contains(deals.SystemPrompt, "auto_manage_opportunity") || strings.Contains(deals.SystemPrompt, "TAGS DISPONÍVEIS") {
 		t.Fatal("the opportunity call must carry only the opportunity task")
 	}
-	if stage.Messages[0].Content != autoTagInstruction || deals.Messages[0].Content != autoDealInstruction {
-		t.Fatal("each call carries its own instruction")
+	if !strings.HasSuffix(lastMessage(stage.Messages).Content, autoTagInstruction) || !strings.HasSuffix(lastMessage(deals.Messages).Content, autoDealInstruction) {
+		t.Fatal("each call ends its note with its own instruction")
 	}
 }
 

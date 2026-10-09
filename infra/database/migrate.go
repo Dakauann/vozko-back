@@ -6,15 +6,31 @@ import (
 	"gorm.io/gorm"
 )
 
-const migrationLockID = 123456789
+const (
+	migrationLockID      = 123456789
+	migrationLockTimeout = "15s"
+)
+
+func prepareMigration(tx *gorm.DB) error {
+	if err := serializeMigration(tx, migrationLockTimeout); err != nil {
+		return err
+	}
+	if err := tx.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+		return err
+	}
+	return CreateSearchFold(tx)
+}
+
+func serializeMigration(tx *gorm.DB, lockTimeout string) error {
+	if err := tx.Exec("SELECT pg_advisory_xact_lock($1)", migrationLockID).Error; err != nil {
+		return err
+	}
+	return tx.Exec("SELECT set_config('lock_timeout', $1, true)", lockTimeout).Error
+}
 
 func RunMigrations(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SELECT pg_advisory_xact_lock($1)", migrationLockID).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+		if err := prepareMigration(tx); err != nil {
 			return err
 		}
 
@@ -33,6 +49,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.UnattributedServiceMessage{},
 			&schema.AIChatThread{},
 			&schema.AIChatMessage{},
+			&schema.AIUsageRecord{},
 			&schema.Product{},
 			&schema.Media{},
 			&schema.User{},
@@ -67,6 +84,27 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.CallRecording{},
 			&schema.Call{},
 			&schema.Lead{},
+			&schema.LeadEvent{},
+			&schema.LeadPhone{},
+			&schema.LeadAddress{},
+			&schema.LeadRelation{},
+			&schema.LeadArea{},
+			&schema.LeadImport{},
+			&schema.LeadImportIssue{},
+			&schema.LeadImportLink{},
+			&schema.GeoCEPPoint{},
+			&schema.GeoCity{},
+			&schema.GeoDistrictPoint{},
+			&schema.GeoCEPStreet{},
+			&schema.GeoReferenceLoad{},
+			&schema.GeocodingSettings{},
+			&schema.GeocodingUsage{},
+			&schema.GeocodingUsageMonth{},
+			&schema.GeocodeCache{},
+			&schema.LeadActionRun{},
+			&schema.LeadSelectionSnapshot{},
+			&schema.CallList{},
+			&schema.CallListItem{},
 			&schema.WhatsAppCampaignEntry{},
 			&schema.WhatsAppBusinessPhoneNumber{},
 			&schema.WhatsAppBusinessAccount{},
@@ -176,6 +214,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.FacebookPublishJob{},
 			&schema.MediaGenerationJob{},
 			&schema.StudioProject{},
+			&schema.StudioCapabilityReport{},
 			&schema.FacebookComment{},
 			&schema.AdGrant{},
 			&schema.AdAccount{},

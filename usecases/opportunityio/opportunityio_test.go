@@ -83,6 +83,7 @@ func (r *fakeOppRepo) SumValueByFilter(input opportunity.SearchByFilterInput) (i
 
 type fakeFieldRepo struct {
 	defs []*customfield.Definition
+	err  error
 }
 
 func (r *fakeFieldRepo) Create(d *customfield.Definition) error { return nil }
@@ -91,8 +92,8 @@ func (r *fakeFieldRepo) Delete(workspaceID, id string) error    { return nil }
 func (r *fakeFieldRepo) GetByID(workspaceID, id string) (*customfield.Definition, error) {
 	return nil, fmt.Errorf("not found")
 }
-func (r *fakeFieldRepo) ListByObject(workspaceID, objectType string) ([]*customfield.Definition, error) {
-	return r.defs, nil
+func (r *fakeFieldRepo) ListByObject(workspaceID string, objectType customfield.ObjectType) ([]*customfield.Definition, error) {
+	return r.defs, r.err
 }
 
 func newFields() *fakeFieldRepo {

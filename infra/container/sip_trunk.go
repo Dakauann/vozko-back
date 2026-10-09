@@ -22,6 +22,7 @@ type sipTrunkBundle struct {
 	Engine      *voipinfra.SIPTrunkManager
 	Handler     *siptrunkhttp.Handler
 	Planner     sip_trunk.CallPlanner
+	DialLines   sip_trunk.CallLines
 	Lines       siptrunkhttp.HandlerDeps
 	CallSource  *sip_trunk_usecase.CallSource
 	Permissions trunkCallPermissions
@@ -68,6 +69,7 @@ func (c *Container) initSIPTrunks() {
 		Repository:  repo,
 		Engine:      engine,
 		Planner:     planner,
+		DialLines:   planner,
 		Lines:       lines,
 		CallSource:  sip_trunk_usecase.NewCallSource(planner, engine),
 		Handler:     siptrunkhttp.NewHandler(lines),

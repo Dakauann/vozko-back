@@ -52,6 +52,7 @@ type ExecutorDeps struct {
 	AssignStage           stage_domain.AssignEntryStageUseCase
 	StageBroadcaster      node_executors.StageBroadcaster
 	Deals                 node_executors.DealDesk
+	LeadProfiles          node_executors.LeadProfileWriter
 	DepartmentRepo        dept_domain.Repository
 	ConversationHandOff   node_executors.ConversationHandOff
 	WorkspaceRepo         workspace_domain.Repository
@@ -110,6 +111,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionAssignLabel, node_executors.NewAssignLabelExecutor(deps.Labeler))
 	registry.Register(workflow.NodeTypeActionMoveStage, node_executors.NewMoveStageExecutor(deps.StageRepo, deps.AssignStage, deps.StageBroadcaster))
 	registry.Register(workflow.NodeTypeActionManageOpportunity, node_executors.NewManageOpportunityExecutor(deps.Deals))
+	registry.Register(workflow.NodeTypeActionUpdateLead, node_executors.NewUpdateLeadExecutor(deps.LeadProfiles))
 	registry.Register(workflow.NodeTypeActionTransferDepartment, node_executors.NewTransferDepartmentExecutor(deps.DepartmentRepo, deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionAssignMember, node_executors.NewAssignMemberExecutor(deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionFinishConversation, node_executors.NewFinishConversationExecutor(deps.ConversationStatus))

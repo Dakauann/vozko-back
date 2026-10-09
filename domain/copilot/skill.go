@@ -23,6 +23,15 @@ type Skill struct {
 	Body        string
 }
 
+func (s Skill) Title() string {
+	for _, line := range strings.Split(s.Body, "\n") {
+		if heading, ok := strings.CutPrefix(strings.TrimSpace(line), "# "); ok && strings.TrimSpace(heading) != "" {
+			return strings.TrimSpace(heading)
+		}
+	}
+	return s.Name
+}
+
 func (s Skill) Validate() error {
 	switch {
 	case !skillName.MatchString(s.Name):

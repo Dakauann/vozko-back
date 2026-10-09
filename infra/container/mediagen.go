@@ -79,6 +79,7 @@ func (c *Container) mediaGeneration() *mediaGenerationBundle {
 			mediagen.KindCutout:   cutout,
 			mediagen.KindCaptions: media_infra.NewCaptionsGenerator(mediaClient, c.services.whisperPool, captionsLanguage),
 			mediagen.KindDenoise:  media_infra.NewDenoiseGenerator(mediaClient),
+			mediagen.KindProxy:    media_infra.NewProxyGenerator(mediaClient),
 		},
 		Models:    openrouter.NewMediaModelCatalog(c.cfg.OpenRouterAPIKey),
 		Jobs:      mediagen_repository.NewJobRepository(c.db),

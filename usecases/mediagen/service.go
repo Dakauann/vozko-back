@@ -26,7 +26,7 @@ type FundsGate interface {
 }
 
 type AIBilling interface {
-	Publish(workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64)
+	PublishFor(reference, workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64)
 }
 
 type MediaUploader interface {
@@ -175,6 +175,9 @@ func (s *Service) Request(ctx context.Context, req mediagen.Request, requestedBy
 	if err := s.checkSources(job.Request()); err != nil {
 		return nil, err
 	}
+	if delivered, err := s.reused(ctx, job); delivered != nil || err != nil {
+		return delivered, err
+	}
 	active, err := s.d.Jobs.FindActive(ctx, job.WorkspaceID, job.RequestedBy, job.Fingerprint, mediagen.ActiveSince(s.now()))
 	if err == nil {
 		return active, nil
@@ -182,7 +185,7 @@ func (s *Service) Request(ctx context.Context, req mediagen.Request, requestedBy
 	if !errors.Is(err, mediagen.ErrJobNotFound) {
 		return nil, err
 	}
-	if err := s.withinProcessingCap(ctx, job); err != nil {
+	if err := s.withinActiveCap(ctx, job); err != nil {
 		return nil, err
 	}
 	if err := s.d.Jobs.Create(ctx, job); err != nil {
@@ -198,15 +201,27 @@ func (s *Service) Request(ctx context.Context, req mediagen.Request, requestedBy
 	return job, nil
 }
 
-func (s *Service) withinProcessingCap(ctx context.Context, job *mediagen.Job) error {
-	if !job.Kind.Processing() {
-		return nil
+func (s *Service) reused(ctx context.Context, job *mediagen.Job) (*mediagen.Job, error) {
+	if !job.Kind.Reusable() {
+		return nil, nil
 	}
-	active, err := s.d.Jobs.CountActive(ctx, job.WorkspaceID, mediagen.ProcessingKinds(), mediagen.ActiveSince(s.now()))
+	delivered, err := s.d.Jobs.FindDelivered(ctx, job.WorkspaceID, job.Kind, job.SourceMediaID)
+	if errors.Is(err, mediagen.ErrJobNotFound) {
+		return nil, nil
+	}
+	return delivered, err
+}
+
+func (s *Service) withinActiveCap(ctx context.Context, job *mediagen.Job) error {
+	kinds, ceiling := mediagen.ProcessingKinds(), mediagen.MaxActiveProcessing
+	if job.Kind.UsesModel() {
+		kinds, ceiling = mediagen.GenerationKinds(), mediagen.MaxActiveGenerations
+	}
+	active, err := s.d.Jobs.CountActive(ctx, job.WorkspaceID, kinds, mediagen.ActiveSince(s.now()))
 	if err != nil {
 		return err
 	}
-	if active >= mediagen.MaxActiveProcessing {
+	if active >= ceiling {
 		return mediagen.ErrTooManyActive
 	}
 	return nil
@@ -328,7 +343,7 @@ func (s *Service) generationFailed(ctx context.Context, job *mediagen.Job, err e
 	}
 	cost, ok := s.d.Costs.CostMicros(ctx, charged.GenerationID)
 	if ok {
-		s.d.Billing.Publish(job.WorkspaceID, job.Model, 0, 0, cost)
+		s.d.Billing.PublishFor(job.BillingReference, job.WorkspaceID, job.Model, 0, 0, cost)
 		s.fail(ctx, job, mediagen.FailureGeneration)
 		return
 	}
@@ -369,7 +384,7 @@ func (s *Service) Settle(ctx context.Context) error {
 			continue
 		}
 		if won {
-			s.d.Billing.Publish(settled.WorkspaceID, settled.Model, 0, 0, cost)
+			s.d.Billing.PublishFor(settled.BillingReference, settled.WorkspaceID, settled.Model, 0, 0, cost)
 		}
 	}
 	expired, err := s.d.Jobs.ExpireSettling(ctx, mediagen.SettleSince(s.now()), reapBatchSize)
@@ -394,7 +409,7 @@ func (s *Service) bill(job *mediagen.Job, output *mediagen.Output) {
 	if !job.Kind.UsesModel() {
 		return
 	}
-	s.d.Billing.Publish(job.WorkspaceID, output.Model, 0, 0, output.ProviderCostMicros)
+	s.d.Billing.PublishFor(job.BillingReference, job.WorkspaceID, output.Model, 0, 0, output.ProviderCostMicros)
 }
 
 func (s *Service) fail(ctx context.Context, job *mediagen.Job, code mediagen.FailureCode) {
@@ -461,4 +476,8 @@ func (s *Service) Wait(ctx context.Context, workspaceID, id string) (*mediagen.J
 
 func settling(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), settleTimeout)
+}
+
+func (s *Service) ProcessingPriced(kind mediagen.Kind) bool {
+	return !kind.Processing() || s.d.Charges.Priced(kind)
 }

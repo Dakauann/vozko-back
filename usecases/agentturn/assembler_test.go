@@ -62,13 +62,15 @@ func TestAssemble_PromptOrderingAndRAG(t *testing.T) {
 	sp := out.Input.SystemPrompt
 	ctxIdx := strings.Index(sp, "Conversation Context")
 	baseIdx := strings.Index(sp, "Você é o Bob.")
-	ragIdx := strings.Index(sp, "Admin: R$ 500")
 	sufIdx := strings.Index(sp, "[SUFFIX]")
-	if ctxIdx < 0 || baseIdx < 0 || ragIdx < 0 || sufIdx < 0 {
+	if ctxIdx < 0 || baseIdx < 0 || sufIdx < 0 {
 		t.Fatalf("a section is missing from system prompt: %q", sp)
 	}
-	if !(ctxIdx < baseIdx && baseIdx < ragIdx && ragIdx < sufIdx) {
-		t.Fatalf("wrong ordering ctx=%d base=%d rag=%d suffix=%d", ctxIdx, baseIdx, ragIdx, sufIdx)
+	if !(ctxIdx < baseIdx && baseIdx < sufIdx) {
+		t.Fatalf("wrong ordering ctx=%d base=%d suffix=%d", ctxIdx, baseIdx, sufIdx)
+	}
+	if strings.Contains(sp, "Admin: R$ 500") {
+		t.Fatalf("grounding belongs in the context note, not the system prompt: %q", sp)
 	}
 
 	if out.Input.Model != "gpt-x" || out.Input.WorkspaceID != "ws1" {
@@ -77,12 +79,15 @@ func TestAssemble_PromptOrderingAndRAG(t *testing.T) {
 	if !out.Input.SegmentedResponse || out.Input.Temperature != 0.2 {
 		t.Fatalf("generation knobs not propagated: %+v", out.Input)
 	}
-	if n := len(out.Input.Messages); n != 2 {
-		t.Fatalf("expected history + user turn = 2 messages, got %d", n)
+	if n := len(out.Input.Messages); n != 3 {
+		t.Fatalf("expected history + user turn + context note = 3 messages, got %d", n)
 	}
-	last := out.Input.Messages[1]
-	if last.Role != ai.RoleUser || last.Content != "preço admin?" {
-		t.Fatalf("last message should be the appended user turn, got %+v", last)
+	customer := out.Input.Messages[1]
+	if customer.Role != ai.RoleUser || customer.Content != "preço admin?" {
+		t.Fatalf("the customer's turn should follow the history, got %+v", customer)
+	}
+	if note := out.Input.Messages[2]; !strings.Contains(note.Content, "Admin: R$ 500") {
+		t.Fatalf("the context note should carry the grounding, got %+v", note)
 	}
 }
 
@@ -119,9 +124,14 @@ func TestAssemble_ResolvesToolsAndStampsSeeds(t *testing.T) {
 func TestAssemble_NoRAGWhenDisabled(t *testing.T) {
 	a := New(nil, fakeRAG{results: []rag.QueryResult{{Content: "SHOULD NOT APPEAR"}}}, nil)
 	ag := &agent.Agent{MessagingPrompt: "hi"}
-	out := a.Assemble(context.Background(), Request{Agent: ag, RAGQuery: "x"})
+	out := a.Assemble(context.Background(), Request{Agent: ag, RAGQuery: "x", UserMessage: "x"})
 	if strings.Contains(out.Input.SystemPrompt, "SHOULD NOT APPEAR") {
 		t.Fatalf("RAG injected despite disabled agent: %q", out.Input.SystemPrompt)
+	}
+	for _, m := range out.Input.Messages {
+		if strings.Contains(m.Content, "SHOULD NOT APPEAR") {
+			t.Fatalf("RAG injected despite disabled agent: %q", m.Content)
+		}
 	}
 }
 
@@ -141,7 +151,7 @@ func memoryItem(content string) leadmemory.MemoryView {
 	}}
 }
 
-func TestAssemble_MemoryBlockAfterRAGBeforeSuffix(t *testing.T) {
+func TestAssemble_MemoryBlockBeforeSuffixWithGroundingInTheNote(t *testing.T) {
 	a := New(nil,
 		fakeRAG{results: []rag.QueryResult{{DocumentName: "d", Content: "RAG-CHUNK", Score: 0.9}}},
 		stubMemoryList{items: []leadmemory.MemoryView{memoryItem("Prefere boleto.")}})
@@ -152,18 +162,24 @@ func TestAssemble_MemoryBlockAfterRAGBeforeSuffix(t *testing.T) {
 		LeadID:       "lead-1",
 		RAGQuery:     "q",
 		PromptSuffix: "\n\n[SUFFIX]",
+		UserMessage:  "q",
 	})
 
 	sp := out.Input.SystemPrompt
-	ragIdx := strings.Index(sp, "RAG-CHUNK")
 	memIdx := strings.Index(sp, "Memórias sobre este lead")
 	factIdx := strings.Index(sp, "Prefere boleto.")
 	sufIdx := strings.Index(sp, "[SUFFIX]")
-	if ragIdx < 0 || memIdx < 0 || factIdx < 0 || sufIdx < 0 {
+	if memIdx < 0 || factIdx < 0 || sufIdx < 0 {
 		t.Fatalf("a section is missing: %q", sp)
 	}
-	if !(ragIdx < memIdx && memIdx < sufIdx) {
-		t.Fatalf("wrong ordering rag=%d mem=%d suffix=%d", ragIdx, memIdx, sufIdx)
+	if memIdx > sufIdx {
+		t.Fatalf("wrong ordering mem=%d suffix=%d", memIdx, sufIdx)
+	}
+	if strings.Contains(sp, "RAG-CHUNK") {
+		t.Fatalf("grounding leaked into the system prompt: %q", sp)
+	}
+	if note := out.Input.Messages[len(out.Input.Messages)-1]; !strings.Contains(note.Content, "RAG-CHUNK") {
+		t.Fatalf("grounding missing from the context note: %+v", note)
 	}
 }
 

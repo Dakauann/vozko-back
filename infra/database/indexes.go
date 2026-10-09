@@ -23,11 +23,13 @@ func SQLStringLiteralList(values []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-func CreatePerformanceIndexes(db *gorm.DB) {
-	indexes := []struct {
-		name string
-		sql  string
-	}{
+type performanceIndex struct {
+	name string
+	sql  string
+}
+
+func performanceIndexes() []performanceIndex {
+	return []performanceIndex{
 
 		{
 			name: "idx_cm_inbox_whatsapp",
@@ -100,12 +102,6 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 			name: "idx_wce_campaign_updated",
 			sql: `CREATE INDEX IF NOT EXISTS idx_wce_campaign_updated
 				ON whatsapp_campaign_entries (campaign_id, updated_at DESC)
-				WHERE deleted_at IS NULL`,
-		},
-		{
-			name: "idx_wce_campaign_status_del",
-			sql: `CREATE INDEX IF NOT EXISTS idx_wce_campaign_status_del
-				ON whatsapp_campaign_entries (campaign_id, status)
 				WHERE deleted_at IS NULL`,
 		},
 		{
@@ -477,20 +473,29 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 				ON audience_rollups (workspace_id, scope, scope_id, bucket_date)`,
 		},
 	}
+}
 
-	for _, idx := range indexes {
+func PerformanceIndexSQL(name string) (string, bool) {
+	for _, idx := range append(performanceIndexes(), schemaConstraints()...) {
+		if idx.name == name {
+			return idx.sql, true
+		}
+	}
+	return "", false
+}
+
+func CreatePerformanceIndexes(db *gorm.DB) {
+	for _, idx := range performanceIndexes() {
 		if err := db.Exec(idx.sql).Error; err != nil {
 			log.Printf("[indexes] Warning: failed to create %s: %v", idx.name, err)
 		}
 	}
 	createConcurrentIndexes(db)
+	createCompositeLeadKeys(db)
 }
 
-func createSchemaConstraints(tx *gorm.DB) error {
-	constraints := []struct {
-		name string
-		sql  string
-	}{
+func schemaConstraints() []performanceIndex {
+	return []performanceIndex{
 		{
 			name: "idx_short_links_code_active",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_short_links_code_active
@@ -709,6 +714,12 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON unofficial_whatsapp_history_syncs (instance_id)
 				WHERE status IN ('QUEUED', 'RUNNING')`,
 		},
+		{
+			name: "ux_lead_imports_workspace_active",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_lead_imports_workspace_active
+				ON lead_imports (workspace_id)
+				WHERE status IN ('analyzing', 'importing')`,
+		},
 
 		{
 			name: "ux_cm_entry_type_external_msgid (superseded)",
@@ -731,6 +742,18 @@ func createSchemaConstraints(tx *gorm.DB) error {
 			name: "ux_wa_tpl_send_idem",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wa_tpl_send_idem
 				ON whatsapp_template_sends (workspace_id, idempotency_key)
+				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
+		},
+		{
+			name: "ux_wa_campaign_idem",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wa_campaign_idem
+				ON whatsapp_campaigns (workspace_id, idempotency_key)
+				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
+		},
+		{
+			name: "ux_uwc_campaign_idem",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uwc_campaign_idem
+				ON unofficial_whatsapp_campaigns (workspace_id, idempotency_key)
 				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
 		},
 		{
@@ -764,11 +787,16 @@ func createSchemaConstraints(tx *gorm.DB) error {
 				ON audience_authors (source, account_id, author_external_id)`,
 		},
 	}
+}
 
-	for _, c := range constraints {
+func createSchemaConstraints(tx *gorm.DB) error {
+	for _, c := range schemaConstraints() {
 		if err := tx.Exec(c.sql).Error; err != nil {
 			return fmt.Errorf("creating constraint %s: %w", c.name, err)
 		}
 	}
-	return nil
+	if err := CreateLeadCollectionConstraints(tx); err != nil {
+		return err
+	}
+	return CreateCallListConstraints(tx)
 }

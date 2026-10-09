@@ -151,6 +151,7 @@ func (l *fakeLinks) ListByEntry(string, string, string) ([]opportunity.Conversat
 
 type fakeFieldRepo struct {
 	defs []*customfield.Definition
+	err  error
 }
 
 func (r *fakeFieldRepo) Create(*customfield.Definition) error { return nil }
@@ -159,8 +160,8 @@ func (r *fakeFieldRepo) Delete(string, string) error          { return nil }
 func (r *fakeFieldRepo) GetByID(string, string) (*customfield.Definition, error) {
 	return nil, errFakeBoom
 }
-func (r *fakeFieldRepo) ListByObject(string, string) ([]*customfield.Definition, error) {
-	return r.defs, nil
+func (r *fakeFieldRepo) ListByObject(string, customfield.ObjectType) ([]*customfield.Definition, error) {
+	return r.defs, r.err
 }
 
 func fieldsWith() *fakeFieldRepo {
@@ -244,16 +245,17 @@ func newAutomationService(repo *fakeOppRepo) *Service {
 
 func serviceWithFields(repo *fakeOppRepo, fields *fakeFieldRepo) *Service {
 	return NewService(Deps{
-		Repo:      repo,
-		Links:     &fakeLinks{},
-		Fields:    fields,
-		Stages:    salesStages(),
-		Pipelines: fakePipelines{},
-		Owners:    fakeOwners{outsiders: map[string]bool{"stranger": true}},
-		Leads:     leadsIn{"ws1": true},
-		Entries:   entriesIn("ws1"),
-		Assign:    assignAccessStub{granted: map[string]bool{"u1": true}},
-		Clock:     func() time.Time { return fixedNow },
+		Repo:       repo,
+		Links:      &fakeLinks{},
+		Fields:     fields,
+		Stages:     salesStages(),
+		Pipelines:  fakePipelines{},
+		Owners:     fakeOwners{outsiders: map[string]bool{"stranger": true}},
+		Leads:      leadsIn{"ws1": true},
+		Entries:    entriesIn("ws1"),
+		EntryLeads: &entryLeads{},
+		Assign:     assignAccessStub{granted: map[string]bool{"u1": true}},
+		Clock:      func() time.Time { return fixedNow },
 	})
 }
 

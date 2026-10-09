@@ -3,6 +3,9 @@ package ai
 import "math"
 
 func (m ModelInfo) CostMicros(u Usage) int64 {
+	if u.ProviderCostMicros > 0 {
+		return u.ProviderCostMicros
+	}
 	return int64(math.Ceil(float64(u.PromptTokens)*m.PromptPrice + float64(u.CompletionTokens)*m.CompletionPrice))
 }
 

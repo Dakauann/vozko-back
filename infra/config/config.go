@@ -121,6 +121,10 @@ type Config struct {
 
 	MetricsListenAddr string
 
+	GeocodingSweeperDisabled bool
+	OpenCageAPIKey           string
+	OpenCageRatePerSecond    int
+
 	WhatsAppStunServers []string
 
 	WhatsAppMediaUDPMuxPort int
@@ -274,6 +278,10 @@ func LoadConfig() Config {
 
 		PrometheusURL:     getEnvTrimmed("PROMETHEUS_URL", "http://localhost:9090"),
 		MetricsListenAddr: getEnvTrimmed("METRICS_LISTEN_ADDR", ":9213"),
+
+		GeocodingSweeperDisabled: getBoolEnv("GEOCODING_SWEEPER_DISABLED", false),
+		OpenCageAPIKey:           trimEnv("OPENCAGE_API_KEY"),
+		OpenCageRatePerSecond:    envInt("OPENCAGE_RATE_PER_SECOND", 1),
 
 		WhatsAppStunServers:     parseCSVEnv("WHATSAPP_STUN_SERVERS"),
 		WhatsAppMediaUDPMuxPort: mustGetIntEnv("WHATSAPP_MEDIA_UDP_MUX_PORT"),

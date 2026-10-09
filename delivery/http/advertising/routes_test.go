@@ -171,3 +171,26 @@ func TestPublicRoutesAreOnlyTheCallbackAndTheWebhook(t *testing.T) {
 		t.Fatal("management routes must not be public")
 	}
 }
+
+func TestTheCustomerListAlsoNeedsToReadLeads(t *testing.T) {
+	var gates []string
+	chain := func(resource workspace_domain.Resource, action workspace_domain.Action, next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, req *http.Request) {
+			gates = append(gates, string(resource)+":"+string(action))
+			if resource != workspace_domain.ResourceLeads {
+				next(w, req)
+			}
+		}
+	}
+	router := mux.NewRouter()
+	RegisterProtectedRoutes(router, &Handler{}, chain)
+	req := httptest.NewRequest(http.MethodPost, "/ads/audiences/customer-list", nil)
+	var match mux.RouteMatch
+	if !router.Match(req, &match) {
+		t.Fatal("the customer list route is not registered")
+	}
+	match.Handler.ServeHTTP(httptest.NewRecorder(), req)
+	if len(gates) != 2 || gates[0] != "ads:create" || gates[1] != "leads:read" {
+		t.Fatalf("gates = %v", gates)
+	}
+}

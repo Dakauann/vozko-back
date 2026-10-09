@@ -17,6 +17,7 @@ import (
 	"vozko/infra/natdiscovery"
 	conversation_repository "vozko/infra/repositories/conversation"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
+	wc_entry_repository "vozko/infra/repositories/whatsapp_campaign_entry"
 	aa_usecase "vozko/usecases/ai_attendance"
 	cauc "vozko/usecases/audience"
 	conversation_usecase "vozko/usecases/conversation"
@@ -35,6 +36,7 @@ func (c *Container) wireConversationHub() {
 
 	conversationAuthorizer := conversation_infra.NewAuthorizer(
 		c.repositories.wcEntry,
+		wc_entry_repository.NewPlacementDirectory(c.db),
 		c.repositories.workspace,
 		c.repositories.workspaceDepartment,
 		c.repositories.inboxAssignment,

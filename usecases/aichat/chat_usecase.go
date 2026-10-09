@@ -8,6 +8,8 @@ import (
 
 	"vozko/domain/ai"
 	"vozko/domain/aichat"
+	"vozko/domain/aiusage"
+	"vozko/domain/balance"
 	"vozko/domain/workspace/workspace_plan"
 )
 
@@ -34,6 +36,8 @@ type Service struct {
 	messages aichat.MessageRepository
 	ai       ai.Service
 	funds    *FundsGate
+	charges  balance.ReferenceTotaler
+	usage    aiusage.Totaler
 }
 
 func NewService(
@@ -51,6 +55,7 @@ func (s *Service) CreateThread(workspaceID, userID, model, title string) (*aicha
 		UserID:      userID,
 		Model:       strings.TrimSpace(model),
 		Title:       strings.TrimSpace(title),
+		CostTracked: true,
 	}
 	if err := s.threads.Create(t); err != nil {
 		return nil, err
@@ -220,4 +225,47 @@ func deriveTitle(firstMessage string) string {
 		title = strings.TrimSpace(title[:maxTitleLen]) + "…"
 	}
 	return title
+}
+
+func (s *Service) Authorize(workspaceID, userID, threadID string) (*aichat.Thread, error) {
+	return s.authorizeThread(workspaceID, userID, threadID)
+}
+
+func (s *Service) SetChargeLedger(charges balance.ReferenceTotaler) {
+	s.charges = charges
+}
+
+func (s *Service) SetUsageLedger(usage aiusage.Totaler) {
+	s.usage = usage
+}
+
+func (s *Service) ThreadCost(workspaceID, userID, threadID string) (aichat.ThreadCost, error) {
+	thread, err := s.authorizeThread(workspaceID, userID, threadID)
+	if err != nil {
+		return aichat.ThreadCost{}, err
+	}
+	if s.charges == nil || !thread.CostTracked {
+		return aichat.CostOf(nil, balance.ReferenceTotals{}, nil), nil
+	}
+	prefix := ai.ReferencePrefix(aichat.ChargeReference(thread.ID))
+	totals, err := s.charges.TotalsUnder(thread.WorkspaceID, prefix)
+	if err != nil {
+		return aichat.ThreadCost{}, err
+	}
+	usage, err := s.usageUnder(thread.WorkspaceID, prefix)
+	if err != nil {
+		return aichat.ThreadCost{}, err
+	}
+	return aichat.CostOf(thread, totals, usage), nil
+}
+
+func (s *Service) usageUnder(workspaceID, prefix string) (*aiusage.Totals, error) {
+	if s.usage == nil {
+		return nil, nil
+	}
+	totals, err := s.usage.TotalsUnder(workspaceID, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &totals, nil
 }

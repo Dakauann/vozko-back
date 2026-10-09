@@ -34,14 +34,17 @@ func (d *aiReplyDrafter) Draft(ctx context.Context, req ca.ReplyDraftRequest) (*
 		maxLength = ca.MaxReplyLength
 	}
 
+	scope := workspaceScope(replyDraftFeature, req.WorkspaceID)
 	out, err := d.ai.Generate(ctx, ai.GenerateInput{
-		WorkspaceID:  req.WorkspaceID,
-		Model:        model,
-		SystemPrompt: buildReplySystemPrompt(req, maxLength),
-		Messages:     []ai.Message{{Role: ai.RoleUser, Content: buildReplyUserMessage(req)}},
-		Temperature:  0.4,
-		MaxTokens:    maxLength/3 + 64,
-		Tools:        nil,
+		WorkspaceID:      req.WorkspaceID,
+		BillingReference: scope,
+		SessionID:        scope,
+		Model:            model,
+		SystemPrompt:     buildReplySystemPrompt(req, maxLength),
+		Messages:         []ai.Message{{Role: ai.RoleUser, Content: buildReplyUserMessage(req)}},
+		Temperature:      0.4,
+		MaxTokens:        maxLength/3 + 64,
+		Tools:            nil,
 	})
 	if err != nil {
 		return nil, err

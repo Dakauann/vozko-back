@@ -15,6 +15,7 @@ type CEP struct {
 	Bairro     string         `gorm:"type:varchar(100)"`
 	Localidade string         `gorm:"type:varchar(100)"`
 	Uf         string         `gorm:"type:varchar(2)"`
+	IBGE       *string        `gorm:"column:ibge;type:varchar(7)"`
 	CreatedAt  time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt  time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt  gorm.DeletedAt `gorm:"index"`

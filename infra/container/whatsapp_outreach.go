@@ -53,7 +53,7 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		c.repositories.whatsappTemplateSend, d.consume, c.repositories.balance, d.alerter)
 
 	built.quoteTemplateSend = whatsapp_outreach_usecase.NewQuoteUseCase(
-		c.repositories.whatsappTemplate, d.consume, c.services.cachedBalanceChecker)
+		c.repositories.whatsappTemplate, d.templateGrant, d.consume, c.services.cachedBalanceChecker)
 
 	deps := whatsapp_outreach_usecase.Deps{
 		Phones:          c.repositories.businessPhone,
@@ -66,11 +66,11 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		EnsureReceptive: d.ensureReceptive,
 		Windows:         c.repositories.leadMessageWindow,
 		CampaignSends:   c.repositories.leadCampaignSend,
-		SpamPolicy:      whatsapp_outreach_usecase.NewConfigSpamPolicy(c.repositories.workspaceConfig),
+		SpamPolicy:      c.campaignSpamPolicy(),
+		SendClaims:      c.redisProvider.SharedState(),
 		History:         d.history,
 		Assignments:     c.services.assignmentService,
 		Sender:          sender,
-		Limiter:         whatsapp_outreach_usecase.NewSharedStateLimiter(c.redisProvider.SharedState()),
 	}
 
 	if built.startOfficialConversation, err = whatsapp_outreach_usecase.NewStartConversationUseCase(deps); err != nil {

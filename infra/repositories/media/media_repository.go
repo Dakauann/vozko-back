@@ -126,7 +126,7 @@ func (r *MediaRepository) GetMediasByIDs(mediaIDs []string) ([]media.Media, erro
 	}
 
 	var mediaSchemas []schema.Media
-	if err := r.db.Where("id IN ?", mediaIDs).Find(&mediaSchemas).Error; err != nil {
+	if err := r.db.Where("id IN ?", mediaIDs).Order("id").Find(&mediaSchemas).Error; err != nil {
 		return nil, err
 	}
 

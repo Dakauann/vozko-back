@@ -26,6 +26,10 @@ type liveCall struct {
 	startedAt   time.Time
 	direction   cdr.Direction
 
+	leadID         string
+	trunkID        string
+	callListItemID string
+
 	forwarder     atomic.Pointer[callSession]
 	lifecycleDone chan struct{}
 	started       atomic.Bool
@@ -151,13 +155,16 @@ func (lc *liveCall) start(
 			}
 		}
 		lifecycle.Run(ctx, callsession_usecase.OutboundCallLifecycleInput{
-			Call:        lc.call,
-			Admission:   lc.admission,
-			WorkspaceID: lc.workspaceID,
-			OwnerUserID: ownerUserID,
-			StartedAt:   lc.startedAt,
-			Direction:   lc.direction,
-			PhoneTo:     lc.phone,
+			Call:           lc.call,
+			Admission:      lc.admission,
+			WorkspaceID:    lc.workspaceID,
+			OwnerUserID:    ownerUserID,
+			StartedAt:      lc.startedAt,
+			Direction:      lc.direction,
+			PhoneTo:        lc.phone,
+			LeadID:         lc.leadID,
+			TrunkID:        lc.trunkID,
+			CallListItemID: lc.callListItemID,
 			OnStatus: func(event conversation.CallEvent) {
 				if event.Type == conversation.CallEventAnswered {
 					lc.answered.Store(true)

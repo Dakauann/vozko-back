@@ -15,7 +15,7 @@ import (
 
 func imageDocument(t *testing.T, background string) json.RawMessage {
 	t.Helper()
-	raw, err := json.Marshal(studio.ImageDocument{Schema: studio.SchemaImage, Version: studio.DocumentVersion,
+	raw, err := json.Marshal(studio.LegacyImageDocument{Schema: studio.SchemaImage, Version: studio.DocumentVersion,
 		Canvas: studio.Canvas{Width: 1080, Height: 1080, Background: background}, Layers: []studio.Layer{}})
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +46,7 @@ func TestAProjectIsSavedOnlyFromTheVersionItWasLoadedAt(t *testing.T) {
 		t.Fatalf("a stale tab overwrote the project: %v", err)
 	}
 	stored, _ := repo.Get(ctx, ws, p.ID)
-	var doc studio.ImageDocument
+	var doc studio.LegacyImageDocument
 	_ = json.Unmarshal(stored.Document, &doc)
 	if doc.Canvas.Background != "#000000" || stored.Version != 2 {
 		t.Fatalf("stored %+v", doc.Canvas)

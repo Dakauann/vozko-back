@@ -109,17 +109,40 @@ func TestTelegramTurnLetsTheAIServiceExecuteTools(t *testing.T) {
 	}
 }
 
+func contextNoteOf(in ai.GenerateInput) ai.Message {
+	return in.Messages[len(in.Messages)-1]
+}
+
 func TestTelegramTurnIsGroundedInTheKnowledgeBase(t *testing.T) {
 	s := newAssembledService(t)
 	req := telegramReplyRequest()
 
-	in := s.generateInput(context.Background(), req, agentWithTools(), nil, req.Text)
+	in := s.generateInput(context.Background(), req, agentWithTools(),
+		[]ai.Message{{Role: ai.RoleUser, Content: req.Text}}, req.Text)
 
-	if !strings.Contains(in.SystemPrompt, "Entregamos em todo o Nordeste") {
-		t.Errorf("the knowledge base was not injected: %q", in.SystemPrompt)
+	if !strings.Contains(contextNoteOf(in).Content, "Entregamos em todo o Nordeste") {
+		t.Errorf("the knowledge base was not injected into the context note: %q", contextNoteOf(in).Content)
+	}
+	if strings.Contains(in.SystemPrompt, "Entregamos em todo o Nordeste") {
+		t.Errorf("per-message grounding leaked into the system prompt: %q", in.SystemPrompt)
 	}
 	if !strings.Contains(in.SystemPrompt, "Você é a Bia.") {
 		t.Errorf("the agent prompt is missing: %q", in.SystemPrompt)
+	}
+}
+
+func TestChannelTurnRoutesAndBillsUnderTheConversation(t *testing.T) {
+	s := newAssembledService(t)
+	req := telegramReplyRequest()
+
+	in := s.generateInput(context.Background(), req, agentWithTools(),
+		[]ai.Message{{Role: ai.RoleUser, Content: req.Text}}, req.Text)
+
+	if in.SessionID != "agent_reply:conv-1" || in.BillingReference != "agent_reply:conv-1" {
+		t.Errorf("session = %q, billing = %q, want agent_reply:conv-1", in.SessionID, in.BillingReference)
+	}
+	if in.VolatileTail != 1 || contextNoteOf(in).Role != ai.RoleUser || !strings.HasPrefix(contextNoteOf(in).Content, ai.ContextNote().Content) {
+		t.Errorf("the turn must end with a volatile context note: %+v (tail %d)", contextNoteOf(in), in.VolatileTail)
 	}
 }
 
@@ -148,11 +171,11 @@ func TestTelegramTurnDoesNotDuplicateTheLastMessage(t *testing.T) {
 
 	in := s.generateInput(context.Background(), req, agentWithTools(), history, req.Text)
 
-	if len(in.Messages) != len(history) {
-		t.Fatalf("messages = %d, want %d, the last turn was duplicated", len(in.Messages), len(history))
+	if len(in.Messages) != len(history)+1 {
+		t.Fatalf("messages = %d, want %d plus the context note, the last turn was duplicated", len(in.Messages), len(history))
 	}
-	if in.Messages[len(in.Messages)-1].Content != req.Text {
-		t.Errorf("last message = %q", in.Messages[len(in.Messages)-1].Content)
+	if in.Messages[len(in.Messages)-2].Content != req.Text {
+		t.Errorf("customer message = %q", in.Messages[len(in.Messages)-2].Content)
 	}
 }
 
@@ -178,7 +201,8 @@ func TestInstagramGetsTheSameCapabilitiesAsTelegram(t *testing.T) {
 	req := telegramReplyRequest()
 	req.EntryType = shared.EntryTypeInstagram
 
-	in := s.generateInput(context.Background(), req, agentWithTools(), nil, req.Text)
+	in := s.generateInput(context.Background(), req, agentWithTools(),
+		[]ai.Message{{Role: ai.RoleUser, Content: req.Text}}, req.Text)
 
 	if len(in.Tools) != 1 {
 		t.Errorf("tools = %+v, want the same as Telegram", in.Tools)
@@ -186,7 +210,7 @@ func TestInstagramGetsTheSameCapabilitiesAsTelegram(t *testing.T) {
 	if in.ToolConfigs["finish_conversation"]["__entry_type"] != string(shared.EntryTypeInstagram) {
 		t.Error("the seed must carry the channel actually being answered")
 	}
-	if !strings.Contains(in.SystemPrompt, "Entregamos em todo o Nordeste") {
+	if !strings.Contains(contextNoteOf(in).Content, "Entregamos em todo o Nordeste") {
 		t.Error("Instagram must be grounded too")
 	}
 }

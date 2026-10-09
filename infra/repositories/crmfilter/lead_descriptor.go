@@ -1,8 +1,8 @@
 package crmfilter
 
 import (
-	"fmt"
 	"strings"
+	"time"
 
 	"vozko/domain/crmfilter"
 	"vozko/domain/shared"
@@ -11,6 +11,7 @@ import (
 type LeadDescriptor struct {
 	Alias       string
 	WorkspaceID string
+	Today       time.Time
 }
 
 func NewLeadDescriptor() LeadDescriptor { return LeadDescriptor{Alias: "leads"} }
@@ -56,10 +57,16 @@ func (d LeadDescriptor) WindowLastMessageExpr() string {
 		" WHERE lmw_t.lead_id = " + d.id() + ")"
 }
 
+const openWindowSince = "NOW() - INTERVAL '24 hours'"
+
 func (d LeadDescriptor) WindowOpenExpr() string {
 	return "EXISTS (SELECT 1 FROM lead_message_windows lmw_o" +
 		" WHERE lmw_o.lead_id = " + d.id() +
-		" AND lmw_o.last_message_at > NOW() - INTERVAL '24 hours')"
+		" AND lmw_o.last_message_at > " + openWindowSince + ")"
+}
+
+func (d LeadDescriptor) OpenWindowLeadIDs() string {
+	return "SELECT lmw_s.lead_id FROM lead_message_windows lmw_s WHERE lmw_s.last_message_at > " + openWindowSince
 }
 
 func (d LeadDescriptor) WindowExpiresAtExpr() string {
@@ -145,7 +152,25 @@ var leadEntriesFrom = unionOver(
 	"SELECT wce_e.lead_id AS lead_id, wce_e.id AS entry_id, 'whatsapp' AS entry_type FROM whatsapp_campaign_entries wce_e WHERE wce_e.deleted_at IS NULL",
 	contactChannel.entryRow, "lead_entries")
 
-func LeadChannelsSource() string { return leadChannelsFrom }
+func (c contactChannel) channelRowIn() string {
+	return c.channelRow() + " AND " + c.contactAlias("c") + ".workspace_id = ?"
+}
+
+var leadChannelsInWorkspace = unionOver(
+	"SELECT wce_c.lead_id AS lead_id, 'whatsapp' AS channel FROM whatsapp_campaign_entries wce_c WHERE wce_c.deleted_at IS NULL"+
+		" AND wce_c.campaign_id IN (SELECT wc_c.id FROM whatsapp_campaigns wc_c WHERE wc_c.workspace_id = ?)"+
+		" UNION ALL SELECT lmw_c.lead_id, 'whatsapp' FROM lead_message_windows lmw_c",
+	contactChannel.channelRowIn, "lead_channels")
+
+func LeadChannelsIn(workspaceID string) (string, []interface{}) {
+	args := make([]interface{}, 0, 1+len(contactChannels))
+	for range 1 + len(contactChannels) {
+		args = append(args, workspaceID)
+	}
+	return leadChannelsInWorkspace, args
+}
+
+func LeadEntriesSource() string { return leadEntriesFrom }
 
 func (d LeadDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 	a := d.alias()
@@ -156,7 +181,7 @@ func (d LeadDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 	case crmfilter.FieldName:
 		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindString, Expr: "NULLIF(" + col("name") + ", '')"}, nil
 	case crmfilter.FieldNumber:
-		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindString, Expr: col("number")}, nil
+		return FieldMapping{Style: StyleCompiled, Kind: crmfilter.KindString, Compile: d.compileNumber}, nil
 	case crmfilter.FieldAge:
 		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindNumber, Expr: col("age")}, nil
 
@@ -276,13 +301,13 @@ func (d LeadDescriptor) Field(field crmfilter.Field) (FieldMapping, error) {
 		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindDate, Expr: d.LastMemoryAtExpr()}, nil
 
 	case crmfilter.FieldQuery:
-		tmpl := "(" + col("name") + " ILIKE ? OR " + col("number") + " LIKE ?" +
-			" OR EXISTS (SELECT 1 FROM lead_memories lm_q WHERE lm_q.lead_id = " + d.id() +
-			" AND lm_q.deleted_at IS NULL AND lm_q.content ILIKE ?))"
-		return FieldMapping{Style: StyleText, Kind: crmfilter.KindText, Template: tmpl, Params: 3}, nil
+		return FieldMapping{Style: StyleCompiled, Kind: crmfilter.KindText, Compile: d.compileQuery}, nil
+
+	case crmfilter.FieldArea:
+		return d.areaField()
 
 	default:
-		return FieldMapping{}, fmt.Errorf("%w: %q on %s", ErrUnsupportedField, field, d.Object())
+		return d.recordField(field)
 	}
 }
 

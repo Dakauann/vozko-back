@@ -2,15 +2,15 @@ package whatsapp_campaign_usecase
 
 import (
 	"context"
-	"fmt"
 
 	"vozko/domain/balance"
 	"vozko/domain/campaign"
-	"vozko/domain/lead"
 	"vozko/domain/media"
+	"vozko/domain/shared"
 	"vozko/domain/sheet"
 	tmpl "vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
+	template_usecase "vozko/usecases/whatsapp/template"
 )
 
 type ImportPreviewDeps struct {
@@ -35,7 +35,7 @@ func (uc *importPreview) Preview(ctx context.Context, req wc.ImportRequest) (*wc
 	if err != nil {
 		return nil, err
 	}
-	result, err := campaign.ReadImport(sheet.Parse(file.Data), req.Mapping, template.ParameterCount(), officialNumber)
+	result, err := campaign.ReadImport(sheet.Parse(file.Data), req.Mapping, template.ParameterCount(), shared.NormalizePhone)
 	if err != nil {
 		return nil, err
 	}
@@ -46,26 +46,14 @@ func (uc *importPreview) Preview(ctx context.Context, req wc.ImportRequest) (*wc
 	return preview, uc.price(req.WorkspaceID, template, preview)
 }
 
-func officialNumber(raw string) string {
-	return lead.NormalizeNumber(lead.NormalizeRawNumber(raw))
-}
-
 func (uc *importPreview) price(workspaceID string, template *tmpl.Template, preview *wc.ImportPreview) error {
-	category, err := template.BillingCategory()
+	cost, err := template_usecase.QuoteSend(uc.deps.Prices, uc.deps.Balance, workspaceID, template, int64(preview.ValidRows))
 	if err != nil {
-		return fmt.Errorf("template category: %w", err)
+		return err
 	}
-	unit, err := uc.deps.Prices.GetTemplateCostMicros(workspaceID, category)
-	if err != nil {
-		return fmt.Errorf("template price: %w", err)
-	}
-	balance, err := uc.deps.Balance.GetBalance(workspaceID)
-	if err != nil {
-		return fmt.Errorf("balance: %w", err)
-	}
-	preview.UnitCostMicros = unit
-	preview.CostMicros = unit * int64(preview.ValidRows)
-	preview.BalanceMicros = balance
-	preview.Affordable = unit > 0 && balance >= preview.CostMicros
+	preview.UnitCostMicros = cost.UnitPriceMicros
+	preview.CostMicros = cost.CostMicros
+	preview.BalanceMicros = cost.BalanceMicros
+	preview.Affordable = cost.Affordable
 	return nil
 }

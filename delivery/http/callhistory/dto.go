@@ -16,6 +16,7 @@ type CallContactResponse struct {
 	Number string `json:"number" example:"5584994409684"`
 	LeadID string `json:"leadId,omitempty" example:"3f2b8c1e-5d4a-4b7e-9c1f-2a6d8e0b4c3a"`
 	Name   string `json:"name,omitempty" example:"Maria Souza"`
+	Leads  int    `json:"leads" example:"1"`
 }
 
 type CallChargeResponse struct {
@@ -91,7 +92,7 @@ func toSummary(summary callhistory.Summary) CallSummaryResponse {
 		EndedAt:     summary.EndedAt,
 		TalkSeconds: summary.TalkSeconds,
 		RingSeconds: summary.RingSeconds,
-		Contact:     CallContactResponse{Number: summary.Contact.Number, LeadID: summary.Contact.LeadID, Name: summary.Contact.Name},
+		Contact:     CallContactResponse{Number: summary.Contact.Number, LeadID: summary.Contact.LeadID, Name: summary.Contact.Name, Leads: summary.Contact.Holders},
 		PlacedBy:    toPerson(summary.PlacedBy),
 		AnsweredBy:  toPerson(summary.AnsweredBy),
 		Transfers:   summary.Transfers,

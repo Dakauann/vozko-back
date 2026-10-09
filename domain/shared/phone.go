@@ -1,6 +1,9 @@
 package shared
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 const brazilCountryCode = "55"
 
@@ -91,4 +94,75 @@ func onlyDigits(value string) bool {
 		}
 	}
 	return true
+}
+
+var ErrInvalidPhone = errors.New("phone: not a Brazilian number with area code")
+
+const (
+	shortBrazilNumberLength = 12
+	longBrazilNumberLength  = 13
+	ninthDigitPosition      = 4
+	firstMobileDigit        = '6'
+)
+
+func ParsePhone(raw string) (string, error) {
+	if number := NormalizePhone(raw); number != "" {
+		return number, nil
+	}
+	return "", ErrInvalidPhone
+}
+
+func NormalizePhone(raw string) string {
+	return CanonicalPhoneNumber(BrazilPhoneDigits(raw))
+}
+
+func CanonicalPhoneNumber(value string) string {
+	number := strings.TrimSpace(value)
+	if number == "" || !onlyDigits(number) || !brazilNumberLength(number) || !strings.HasPrefix(number, brazilCountryCode) {
+		return ""
+	}
+	return number
+}
+
+func BrazilPhoneDigits(value string) string {
+	var builder strings.Builder
+	builder.Grow(len(value))
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			builder.WriteRune(r)
+		}
+	}
+	number := builder.String()
+	if !strings.HasPrefix(number, brazilCountryCode) && len(number) >= 10 && len(number) <= 11 {
+		number = brazilCountryCode + number
+	}
+	if !brazilNumberLength(number) {
+		return ""
+	}
+	return number
+}
+
+func NinthDigitVariants(number string) []string {
+	canonical := CanonicalPhoneNumber(number)
+	if canonical == "" {
+		return nil
+	}
+	if alternate := ninthDigitAlternate(canonical); alternate != "" {
+		return []string{canonical, alternate}
+	}
+	return []string{canonical}
+}
+
+func ninthDigitAlternate(canonical string) string {
+	switch {
+	case len(canonical) == longBrazilNumberLength && canonical[ninthDigitPosition] == '9':
+		return canonical[:ninthDigitPosition] + canonical[ninthDigitPosition+1:]
+	case len(canonical) == shortBrazilNumberLength && canonical[ninthDigitPosition] >= firstMobileDigit:
+		return canonical[:ninthDigitPosition] + "9" + canonical[ninthDigitPosition:]
+	}
+	return ""
+}
+
+func brazilNumberLength(number string) bool {
+	return len(number) == shortBrazilNumberLength || len(number) == longBrazilNumberLength
 }

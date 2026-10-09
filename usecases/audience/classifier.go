@@ -40,8 +40,11 @@ func (c *aiClassifier) Classify(ctx context.Context, req ca.ClassifyRequest) (*c
 		return nil, err
 	}
 
+	scope := workspaceScope(classifyFeature, req.WorkspaceID)
 	out, err := c.ai.Generate(ctx, ai.GenerateInput{
 		WorkspaceID:        req.WorkspaceID,
+		BillingReference:   scope,
+		SessionID:          scope,
 		Model:              model,
 		SystemPrompt:       buildSystemPromptOf(req),
 		Messages:           []ai.Message{{Role: ai.RoleUser, Content: userMessage}},

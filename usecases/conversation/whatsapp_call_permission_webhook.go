@@ -96,7 +96,7 @@ func (c *WhatsAppCallPermissionConsumer) process(metaPhoneNumberID, userNumber s
 
 	var entryID, leadID string
 	if c.entries != nil {
-		if e, eErr := c.entries.FindByNumberAndBusinessPhone(userNumber, phone.ID); eErr == nil && e != nil {
+		if e, eErr := c.entries.FindInboundRouteByNumberAndBusinessPhone(userNumber, phone.ID); eErr == nil && e != nil {
 			entryID = e.ID
 			leadID = e.LeadID
 		}

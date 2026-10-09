@@ -29,8 +29,8 @@ func mustJSON(t *testing.T, v any) json.RawMessage {
 
 func box() Transform { return Transform{X: 0.5, Y: 0.5, W: 0.5, H: 0.2, Opacity: 1} }
 
-func imageDoc() ImageDocument {
-	return ImageDocument{
+func imageDoc() LegacyImageDocument {
+	return LegacyImageDocument{
 		Schema: SchemaImage, Version: DocumentVersion,
 		Canvas: Canvas{Width: 1080, Height: 1350, Background: "#ffffff"},
 		Layers: []Layer{
@@ -86,20 +86,20 @@ func TestUnknownFieldsAndOtherSchemasAreRefused(t *testing.T) {
 
 func TestImageLayersFollowTheirTypeRules(t *testing.T) {
 	cases := map[string]struct {
-		change func(*ImageDocument)
+		change func(*LegacyImageDocument)
 		code   string
 	}{
-		"unknown font":      {func(d *ImageDocument) { d.Layers[1].FontID = "comic-sans" }, CodeUnknown},
-		"empty text":        {func(d *ImageDocument) { d.Layers[1].Text = "  " }, CodeInvalid},
-		"bad weight":        {func(d *ImageDocument) { d.Layers[1].FontWeight = 450 }, CodeOutOfRange},
-		"image without one": {func(d *ImageDocument) { d.Layers[0].AssetID = "" }, CodeRequired},
-		"crop outside":      {func(d *ImageDocument) { d.Layers[0].Crop.W = 0.95 }, CodeOutOfRange},
-		"unknown shape":     {func(d *ImageDocument) { d.Layers[2].Shape = "blob" }, CodeUnknown},
-		"bad color":         {func(d *ImageDocument) { d.Layers[2].Stroke = "red" }, CodeInvalid},
-		"duplicate id":      {func(d *ImageDocument) { d.Layers[3].ID = "photo" }, CodeDuplicate},
-		"bad id":            {func(d *ImageDocument) { d.Layers[3].ID = "Star!" }, CodeInvalid},
-		"too transparent":   {func(d *ImageDocument) { d.Layers[3].Transform.Opacity = 1.5 }, CodeOutOfRange},
-		"no icon":           {func(d *ImageDocument) { d.Layers[3].IconID = "" }, CodeInvalid},
+		"unknown font":      {func(d *LegacyImageDocument) { d.Layers[1].FontID = "comic-sans" }, CodeUnknown},
+		"empty text":        {func(d *LegacyImageDocument) { d.Layers[1].Text = "  " }, CodeInvalid},
+		"bad weight":        {func(d *LegacyImageDocument) { d.Layers[1].FontWeight = 450 }, CodeOutOfRange},
+		"image without one": {func(d *LegacyImageDocument) { d.Layers[0].AssetID = "" }, CodeRequired},
+		"crop outside":      {func(d *LegacyImageDocument) { d.Layers[0].Crop.W = 0.95 }, CodeOutOfRange},
+		"unknown shape":     {func(d *LegacyImageDocument) { d.Layers[2].Shape = "blob" }, CodeUnknown},
+		"bad color":         {func(d *LegacyImageDocument) { d.Layers[2].Stroke = "red" }, CodeInvalid},
+		"duplicate id":      {func(d *LegacyImageDocument) { d.Layers[3].ID = "photo" }, CodeDuplicate},
+		"bad id":            {func(d *LegacyImageDocument) { d.Layers[3].ID = "Star!" }, CodeInvalid},
+		"too transparent":   {func(d *LegacyImageDocument) { d.Layers[3].Transform.Opacity = 1.5 }, CodeOutOfRange},
+		"no icon":           {func(d *LegacyImageDocument) { d.Layers[3].IconID = "" }, CodeInvalid},
 	}
 	for name, c := range cases {
 		doc := imageDoc()
@@ -126,22 +126,37 @@ func TestImageLayersCarryEffectsBlendingAndGroups(t *testing.T) {
 	doc.Layers[1].Curve = -0.5
 	doc.Layers[1].Gradient = &Gradient{From: "#111111", To: "#eeeeee"}
 	doc.Layers[1].GroupID = "inner"
+	doc.Layers[2].Gradient = &Gradient{Kind: "radial", From: "#ffffff", Via: "#ff8800", To: "#000000", CX: 0.5, CY: 0.4, Radius: 1}
 	doc.Groups = []Group{{ID: "outer", Name: "Cabeçalho"}, {ID: "inner", ParentID: "outer"}}
 	if err := ValidateDocument(KindImage, mustJSON(t, doc)); err != nil {
 		t.Fatal(err)
 	}
-	cases := map[string]func(d *ImageDocument){
-		"blend":           func(d *ImageDocument) { d.Layers[0].BlendMode = "dissolve" },
-		"frame":           func(d *ImageDocument) { d.Layers[0].Frame = ShapeArrow },
-		"curve":           func(d *ImageDocument) { d.Layers[1].Curve = 1.5 },
-		"highlight":       func(d *ImageDocument) { d.Layers[1].Highlight = &Highlight{Color: "yellow"} },
-		"gradient":        func(d *ImageDocument) { d.Layers[1].Gradient = &Gradient{From: "#111111"} },
-		"canvas gradient": func(d *ImageDocument) { d.Canvas.Gradient = &Gradient{From: "#111111", To: "#222222", Angle: 999} },
-		"unknown parent":  func(d *ImageDocument) { d.Groups = []Group{{ID: "inner", ParentID: "ghost"}} },
-		"cycle":           func(d *ImageDocument) { d.Groups = []Group{{ID: "a", ParentID: "b"}, {ID: "b", ParentID: "a"}} },
-		"self parent":     func(d *ImageDocument) { d.Groups = []Group{{ID: "a", ParentID: "a"}} },
-		"duplicate group": func(d *ImageDocument) { d.Groups = []Group{{ID: "a"}, {ID: "a"}} },
-		"group token":     func(d *ImageDocument) { d.Groups = []Group{{ID: "Not A Token"}} },
+	cases := map[string]func(d *LegacyImageDocument){
+		"blend":     func(d *LegacyImageDocument) { d.Layers[0].BlendMode = "dissolve" },
+		"frame":     func(d *LegacyImageDocument) { d.Layers[0].Frame = ShapeArrow },
+		"curve":     func(d *LegacyImageDocument) { d.Layers[1].Curve = 1.5 },
+		"highlight": func(d *LegacyImageDocument) { d.Layers[1].Highlight = &Highlight{Color: "yellow"} },
+		"gradient":  func(d *LegacyImageDocument) { d.Layers[1].Gradient = &Gradient{From: "#111111"} },
+		"canvas gradient": func(d *LegacyImageDocument) {
+			d.Canvas.Gradient = &Gradient{From: "#111111", To: "#222222", Angle: 999}
+		},
+		"gradient kind": func(d *LegacyImageDocument) {
+			d.Layers[2].Gradient = &Gradient{Kind: "conic", From: "#111111", To: "#222222"}
+		},
+		"radial radius": func(d *LegacyImageDocument) {
+			d.Layers[2].Gradient = &Gradient{Kind: "radial", From: "#111111", To: "#222222", CX: 0.5, CY: 0.5}
+		},
+		"radial center": func(d *LegacyImageDocument) {
+			d.Layers[2].Gradient = &Gradient{Kind: "radial", From: "#111111", To: "#222222", CX: 1.5, CY: 0.5, Radius: 1}
+		},
+		"via color": func(d *LegacyImageDocument) {
+			d.Layers[2].Gradient = &Gradient{From: "#111111", To: "#222222", Via: "orange"}
+		},
+		"unknown parent":  func(d *LegacyImageDocument) { d.Groups = []Group{{ID: "inner", ParentID: "ghost"}} },
+		"cycle":           func(d *LegacyImageDocument) { d.Groups = []Group{{ID: "a", ParentID: "b"}, {ID: "b", ParentID: "a"}} },
+		"self parent":     func(d *LegacyImageDocument) { d.Groups = []Group{{ID: "a", ParentID: "a"}} },
+		"duplicate group": func(d *LegacyImageDocument) { d.Groups = []Group{{ID: "a"}, {ID: "a"}} },
+		"group token":     func(d *LegacyImageDocument) { d.Groups = []Group{{ID: "Not A Token"}} },
 	}
 	for name, mutate := range cases {
 		bad := doc
@@ -150,6 +165,35 @@ func TestImageLayersCarryEffectsBlendingAndGroups(t *testing.T) {
 		mutate(&bad)
 		if err := ValidateDocument(KindImage, mustJSON(t, bad)); err == nil {
 			t.Errorf("%s: an invalid document was accepted", name)
+		}
+	}
+}
+
+func TestImageScaffoldsNameOneOfTheirOwnLayersAsTheBase(t *testing.T) {
+	doc := imageDoc()
+	doc.Layers[0].GroupID = "card"
+	doc.Layers[1].GroupID = "card"
+	doc.Groups = []Group{{ID: "card", BaseID: "photo"}}
+	if err := ValidateDocument(KindImage, mustJSON(t, doc)); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]func(d *LegacyImageDocument){
+		"missing base": func(d *LegacyImageDocument) { d.Groups[0].BaseID = "ghost" },
+		"base outside": func(d *LegacyImageDocument) { d.Groups[0].BaseID = "arrow" },
+		"base token":   func(d *LegacyImageDocument) { d.Groups[0].BaseID = "Not A Token" },
+		"base of two":  func(d *LegacyImageDocument) { d.Groups = append(d.Groups, Group{ID: "other", BaseID: "photo"}) },
+		"nested base only": func(d *LegacyImageDocument) {
+			d.Layers[0].GroupID = "inner"
+			d.Groups = append(d.Groups, Group{ID: "inner", ParentID: "card"})
+		},
+	}
+	for name, mutate := range cases {
+		bad := doc
+		bad.Layers = append([]Layer(nil), doc.Layers...)
+		bad.Groups = append([]Group(nil), doc.Groups...)
+		mutate(&bad)
+		if got := codeOf(t, ValidateDocument(KindImage, mustJSON(t, bad)))[FieldLayers]; got != CodeInvalid {
+			t.Errorf("%s: code %q", name, got)
 		}
 	}
 }
@@ -213,34 +257,5 @@ func TestAProjectIsCreatedAndChangedOnlyWithValidContent(t *testing.T) {
 	}
 	if err := p.Apply(Change{}); err == nil {
 		t.Fatal("an empty change was applied")
-	}
-}
-
-func TestAVideoProjectCompilesToTheRenderTimeline(t *testing.T) {
-	p, err := NewProject("ws", "u-1", KindVideo, "Reels", mustJSON(t, videoDoc()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.VideoRequest(nil); !errors.Is(err, ErrNotRasterized) {
-		t.Fatalf("an overlay without its raster exported: %v", err)
-	}
-	req, err := p.VideoRequest(map[string]string{"o1": "raster-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tl := req.Video
-	if req.Kind != mediagen.KindVideo || req.Aspect != mediagen.AspectStory || tl.DurationMS != 6_000 || len(tl.Visual) != 2 || len(tl.Audio) != 1 {
-		t.Fatalf("request %+v", req)
-	}
-	overlay := tl.Visual[1].Clips[0]
-	if overlay.MediaID != "raster-1" || overlay.Fit != mediagen.FitContain || overlay.FadeInMS != 200 || tl.Visual[0].Clips[1].TrimInMS != 1_200 {
-		t.Fatalf("clips %+v", tl.Visual)
-	}
-	if err := req.Validate(); err != nil {
-		t.Fatalf("the compiled request is a valid render: %v", err)
-	}
-	image, _ := NewProject("ws", "u-1", KindImage, "Post", mustJSON(t, imageDoc()))
-	if _, err := image.VideoRequest(nil); !errors.Is(err, ErrNotVideo) {
-		t.Fatalf("got %v", err)
 	}
 }

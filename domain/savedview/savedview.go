@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"vozko/domain/crmfilter"
+	"vozko/domain/shared"
 )
 
 type ObjectType string
@@ -20,16 +21,12 @@ func (o ObjectType) Valid() bool {
 	return o == ObjectConversation || o == ObjectOpportunity || o == ObjectLead
 }
 
-type Visibility string
+type Visibility = shared.Visibility
 
 const (
-	VisibilityPrivate Visibility = "private"
-	VisibilityShared  Visibility = "shared"
+	VisibilityPrivate = shared.VisibilityPrivate
+	VisibilityShared  = shared.VisibilityShared
 )
-
-func (v Visibility) Valid() bool {
-	return v == VisibilityPrivate || v == VisibilityShared
-}
 
 type GroupBy string
 
@@ -92,6 +89,10 @@ var (
 	ErrNotFound          = errors.New("savedview: not found")
 	ErrUnauthorized      = errors.New("savedview: unauthorized access to this view")
 )
+
+func (v *SavedView) Owned() shared.Owned {
+	return shared.Owned{OwnerID: v.OwnerID, Visibility: v.Visibility}
+}
 
 func (v *SavedView) Normalize() {
 	v.Name = strings.TrimSpace(v.Name)

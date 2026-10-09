@@ -213,3 +213,31 @@ func TestAListOfObjectsDescribesItsItemFields(t *testing.T) {
 		t.Fatalf("scalar %+v", ids)
 	}
 }
+
+type schemaGradientFake struct {
+	Kind string `json:"kind,omitempty" enum:"linear,radial" desc:"tipo"`
+	From string `json:"from" req:"true" desc:"cor inicial"`
+}
+
+type schemaNestedFake struct {
+	Gradient *schemaGradientFake `json:"gradient,omitempty" desc:"degradê"`
+	Clear    []string            `json:"clear,omitempty" enum:"shadow,stroke" desc:"efeitos a remover"`
+}
+
+func TestAnObjectFieldDescribesItsFieldsAndAListEnumConstrainsItsItems(t *testing.T) {
+	params, _ := structParams(reflect.TypeOf(schemaNestedFake{}), nil)
+	gradient := params["gradient"]
+	if gradient.Type != "object" || gradient.Items == nil || gradient.Description != "degradê" {
+		t.Fatalf("gradient %+v", gradient)
+	}
+	if kind := gradient.Items.Properties["kind"]; kind.Type != "string" || len(kind.Enum) != 2 || kind.Enum[1] != "radial" {
+		t.Fatalf("gradient.kind %+v", kind)
+	}
+	if len(gradient.Items.Required) != 1 || gradient.Items.Required[0] != "from" {
+		t.Fatalf("gradient required %v", gradient.Items.Required)
+	}
+	clear := params["clear"]
+	if clear.Type != "array" || len(clear.Enum) != 0 || clear.Items == nil || len(clear.Items.Enum) != 2 || clear.Items.Enum[0] != "shadow" {
+		t.Fatalf("an enum on a list must constrain its items, got %+v", clear)
+	}
+}

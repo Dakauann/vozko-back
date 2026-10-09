@@ -104,7 +104,8 @@ type SearchByFilterInput struct {
 
 	WhatsAppCampaignType string
 
-	Filter crmfilter.Filter
+	Filter          crmfilter.Filter
+	ExcludeEntryIDs []string
 
 	SortField string
 	SortOrder string
@@ -161,7 +162,6 @@ type MessageRepository interface {
 
 	ListByEntry(entryID string, entryType shared.EntryType) ([]*Message, error)
 	ListByEntryPaginated(input ListMessagesInput) ([]*Message, error)
-	ListByLeadID(leadID string) ([]*Message, error)
 
 	MarkAsRead(input MarkAsReadInput) (int64, error)
 	CountUnreadByEntry(entryID string, entryType shared.EntryType) (int64, error)
@@ -176,6 +176,8 @@ type MessageRepository interface {
 	SearchEntriesWithMessages(input SearchEntriesInput) ([]EntryWithLastMessage, int64, error)
 
 	SearchEntriesByFilter(input SearchByFilterInput) ([]EntryWithLastMessage, int64, error)
+	CountEntriesByFilter(input SearchByFilterInput) (int64, error)
+	ResolveEntryRefsByFilter(input SearchByFilterInput, after string, limit int) ([]shared.EntryRef, error)
 
 	SearchMessagesByEntry(input SearchMessagesByEntryInput) ([]*Message, int64, error)
 

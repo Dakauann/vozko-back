@@ -71,14 +71,15 @@ type fakeFunds struct{ err error }
 func (f *fakeFunds) Check(string) error { return f.err }
 
 type billedEvent struct {
-	model string
-	cost  int64
+	reference string
+	model     string
+	cost      int64
 }
 
 type fakeAIBilling struct{ events []billedEvent }
 
-func (b *fakeAIBilling) Publish(_, model string, _, _ int, cost int64) {
-	b.events = append(b.events, billedEvent{model: model, cost: cost})
+func (b *fakeAIBilling) PublishFor(reference, _, model string, _, _ int, cost int64) {
+	b.events = append(b.events, billedEvent{reference: reference, model: model, cost: cost})
 }
 
 type fakeUploader struct {
@@ -190,6 +191,18 @@ func (r *fakeJobs) FindActive(_ context.Context, workspaceID, requestedBy, finge
 	return nil, mediagen.ErrJobNotFound
 }
 
+func (r *fakeJobs) FindDelivered(_ context.Context, workspaceID string, kind mediagen.Kind, sourceMediaID string) (*mediagen.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, job := range r.jobs {
+		if job.WorkspaceID == workspaceID && job.Kind == kind && job.SourceMediaID == sourceMediaID && job.Status == mediagen.StatusDone && job.MediaID != "" {
+			copied := *job
+			return &copied, nil
+		}
+	}
+	return nil, mediagen.ErrJobNotFound
+}
+
 func (r *fakeJobs) Claim(_ context.Context, id string) (*mediagen.Job, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -290,7 +303,10 @@ func (r *fakeJobs) CountActive(_ context.Context, workspaceID string, kinds []me
 type fakeCharges struct {
 	charged []string
 	err     error
+	priced  map[mediagen.Kind]bool
 }
+
+func (c *fakeCharges) Priced(kind mediagen.Kind) bool { return c.priced[kind] }
 
 func (c *fakeCharges) Charge(_ context.Context, job *mediagen.Job) error {
 	c.charged = append(c.charged, string(job.Kind))
@@ -362,7 +378,7 @@ func newFixture(t *testing.T) *fixture {
 	svc, err := NewService(Deps{
 		Generators: map[mediagen.Kind]mediagen.Generator{
 			mediagen.KindImage: f.gen, mediagen.KindMusic: f.audio, mediagen.KindVoice: f.audio, mediagen.KindVideo: f.video,
-			mediagen.KindCutout: f.video, mediagen.KindCaptions: f.video, mediagen.KindDenoise: f.video,
+			mediagen.KindCutout: f.video, mediagen.KindCaptions: f.video, mediagen.KindDenoise: f.video, mediagen.KindProxy: f.video,
 		},
 		Models: f.cat, Jobs: f.jobs, Queue: f.queue, Funds: f.funds, Billing: f.bill, Uploader: f.up, Library: f.lib,
 		Costs: f.costs, LateCosts: f.late, Charges: f.charges,
@@ -451,6 +467,25 @@ func TestAnotherUserGetsTheirOwnJob(t *testing.T) {
 	second, err := f.svc.Request(context.Background(), imageRequest(), "u-2")
 	if err != nil || first.ID == second.ID || len(f.queue.ids) != 2 {
 		t.Fatalf("first %s second %+v err %v", first.ID, second, err)
+	}
+}
+
+func TestAFinishedProxyServesEveryLaterRequestOfTheWorkspace(t *testing.T) {
+	f := newFixture(t)
+	proxy := mediagen.Request{Kind: mediagen.KindProxy, WorkspaceID: "ws-1", SourceMediaID: "clip"}
+	first, err := f.svc.Request(context.Background(), proxy, "u-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Process(context.Background(), &mediagen.QueueMessage{JobID: first.ID}); err != nil {
+		t.Fatal(err)
+	}
+	again, err := f.svc.Request(context.Background(), proxy, "u-2")
+	if err != nil || again.ID != first.ID || again.Status != mediagen.StatusDone || len(f.queue.ids) != 1 {
+		t.Fatalf("again %+v err %v queued %v", again, err, f.queue.ids)
+	}
+	if _, err := f.svc.Request(context.Background(), mediagen.Request{Kind: mediagen.KindProxy, WorkspaceID: "ws-1", SourceMediaID: "song"}, "u-1"); err == nil {
+		t.Fatal("a proxy of an audio file was accepted")
 	}
 }
 
@@ -636,7 +671,7 @@ func TestPollingBacksOffByHalfUpToFiveSeconds(t *testing.T) {
 func fullDeps() Deps {
 	gen := &fakeGenerator{}
 	return Deps{
-		Generators: map[mediagen.Kind]mediagen.Generator{mediagen.KindImage: gen, mediagen.KindMusic: gen, mediagen.KindVoice: gen, mediagen.KindVideo: gen, mediagen.KindCutout: gen, mediagen.KindCaptions: gen, mediagen.KindDenoise: gen},
+		Generators: map[mediagen.Kind]mediagen.Generator{mediagen.KindImage: gen, mediagen.KindMusic: gen, mediagen.KindVoice: gen, mediagen.KindVideo: gen, mediagen.KindCutout: gen, mediagen.KindCaptions: gen, mediagen.KindDenoise: gen, mediagen.KindProxy: gen},
 		Models:     newFakeCatalog(), Jobs: newFakeJobs(), Queue: &fakeQueue{}, Funds: &fakeFunds{}, Billing: &fakeAIBilling{}, Uploader: &fakeUploader{}, Library: newFakeLibrary(),
 		Costs: &fakeCosts{}, LateCosts: &fakeCosts{}, Charges: &fakeCharges{},
 	}

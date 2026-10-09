@@ -12,7 +12,6 @@ import (
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
-	lcs "vozko/domain/lead_campaign_send"
 	lead_campaign_send "vozko/domain/lead_campaign_send"
 	"vozko/domain/messaging"
 	"vozko/domain/shared"
@@ -22,7 +21,7 @@ import (
 	wce "vozko/domain/whatsapp_campaign_entry"
 	workflow_domain "vozko/domain/workflow"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
-	wsc "vozko/domain/workspace_config"
+	"vozko/usecases/campaignguard"
 	"vozko/usecases/campaignqueue"
 )
 
@@ -54,7 +53,7 @@ type messageConsumerUseCase struct {
 	CheckBalance            balance.CheckBalanceUseCase
 	MessageHistoryManager   conversation.MessageHistoryManager
 	shared                  cache.SharedState
-	WorkspaceConfigRepo     wsc.Repository
+	Eligibility             campaignguard.EntryGate
 	LeadCampaignSendRepo    lead_campaign_send.Repository
 	InflightReserver        balance.InflightReserver
 	CachedBalanceChecker    balance.CachedBalanceChecker
@@ -75,7 +74,7 @@ func NewMessageConsumerUseCase(
 	checkBalance balance.CheckBalanceUseCase,
 	messageHistoryManager conversation.MessageHistoryManager,
 	sharedState cache.SharedState,
-	workspaceConfigRepo wsc.Repository,
+	eligibility campaignguard.EntryGate,
 	leadCampaignSendRepo lead_campaign_send.Repository,
 	inflightReserver balance.InflightReserver,
 	cachedBalanceChecker balance.CachedBalanceChecker,
@@ -93,7 +92,7 @@ func NewMessageConsumerUseCase(
 		CheckBalance:            checkBalance,
 		MessageHistoryManager:   messageHistoryManager,
 		shared:                  sharedState,
-		WorkspaceConfigRepo:     workspaceConfigRepo,
+		Eligibility:             eligibility,
 		LeadCampaignSendRepo:    leadCampaignSendRepo,
 		InflightReserver:        inflightReserver,
 		CachedBalanceChecker:    cachedBalanceChecker,
@@ -264,6 +263,17 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		return campaignqueue.Drop
 	}
 
+	admission := c.admit(campaignItem, entry)
+	if !admission.Admitted {
+		return admission.Result
+	}
+	sent := false
+	defer func() {
+		if !sent {
+			admission.Release()
+		}
+	}()
+
 	if templateCostMicros <= 0 {
 		fmt.Printf("whatsapp campaign consumer: refusing to send unbilled for workspace %s (campaign %s): price is zero\n", campaignItem.WorkspaceID, msg.CampaignID)
 		c.updateEntryStatusWithError(msg.EntryID, wce.SendStatusFailed, "", 0, "no price configured for this template category")
@@ -326,6 +336,7 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 	fmt.Printf("whatsapp campaign consumer: debited balance for workspace %s (campaign %s, category %s), now sending\n", campaignItem.WorkspaceID, msg.CampaignID, templateCategory)
 
 	sendResult := c.sendTemplateMessage(campaignItem, currentTemplate, entry, msg.PhoneNumber)
+	sent = sendResult == sendResultSuccess || sendResult == sendResultUnknown
 
 	if sendResult == sendResultConfigError || sendResult == sendResultAPIError {
 		if refundErr := c.ConsumeWhatsappTemplate.Refund(campaignItem.WorkspaceID, entry.ChargeReference(), templateCategory); refundErr != nil {
@@ -354,12 +365,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	if campaign.BusinessPhoneID == "" {
 		fmt.Printf("whatsapp campaign consumer: campaign %s has no business phone configured\n", campaignID)
 		c.updateEntryStatusWithError(entryID, wce.SendStatusFailed, "", internalWhatsAppCampaignErrNoBusinessPhoneConfigured, "No business phone configured")
-		return sendResultConfigError
-	}
-
-	if c.isEntrySpam(entry, campaign.BusinessPhoneID, campaign.WorkspaceID) {
-		fmt.Printf("whatsapp campaign consumer: entry %s marked as possible spam, skipping\n", entryID)
-		c.updateEntryStatus(entryID, wce.SendStatusNotEligiblePossibleSpam, "")
 		return sendResultConfigError
 	}
 
@@ -534,26 +539,19 @@ func SignalSendingsAvailable() {
 	}
 }
 
-func (c *messageConsumerUseCase) isEntrySpam(entry *wce.WhatsAppCampaignEntry, businessPhoneID, workspaceID string) bool {
-	if c.WorkspaceConfigRepo == nil || c.LeadCampaignSendRepo == nil {
-		return false
+func (c *messageConsumerUseCase) admit(campaignItem *wc.Campaign, entry *wce.WhatsAppCampaignEntry) campaignguard.Admission {
+	admission := campaignguard.Admit(context.Background(), c.Eligibility, campaignItem.WorkspaceID, entry.LeadID, campaignItem.BusinessPhoneID,
+		func(status wce.SendStatus, code int, message string) error {
+			return c.EntryRepo.UpdateStatus(entry.ID, status, "", code, message)
+		})
+	switch {
+	case admission.Admitted:
+	case admission.Err != nil:
+		fmt.Printf("whatsapp campaign consumer: entry %s is held (fail-closed): %v\n", entry.ID, admission.Err)
+	default:
+		fmt.Printf("whatsapp campaign consumer: entry %s is not sent (%s)\n", entry.ID, admission.Reason)
 	}
-
-	cfg, err := c.WorkspaceConfigRepo.GetByWorkspaceID(context.Background(), workspaceID)
-	if err != nil || cfg.CampaignSpamProtectionDays <= 0 {
-		return false
-	}
-
-	if entry == nil {
-		return false
-	}
-
-	lastSent, err := c.LeadCampaignSendRepo.GetLastSendTime(entry.LeadID, businessPhoneID)
-	if err != nil {
-		return false
-	}
-
-	return lcs.WithinSpamWindow(lastSent, cfg.CampaignSpamProtectionDays, time.Now())
+	return admission
 }
 
 func (c *messageConsumerUseCase) recordCampaignSend(entry *wce.WhatsAppCampaignEntry, businessPhoneID, campaignID string) {

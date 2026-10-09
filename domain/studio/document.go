@@ -10,17 +10,16 @@ import (
 )
 
 const (
-	SchemaImage         = "studio.image"
-	SchemaVideo         = "studio.video"
-	DocumentVersion     = 1
-	MaxDocumentBytes    = 512 << 10
-	MaxLayers           = 200
-	MaxTracks           = mediagen.MaxVisualTracks + mediagen.MaxAudioTracks
-	MaxClips            = mediagen.MaxTimelineClips
-	MinCanvasSide       = 100
-	MaxCanvasSide       = 4096
-	MaxMarkers          = 50
-	MaxMarkerLabelRunes = 64
+	SchemaImage           = "studio.image"
+	SchemaVideo           = "studio.video"
+	DocumentVersion       = 1
+	ImageDocumentVersion  = 2
+	MaxArtboardCoordinate = 100_000
+	MaxDocumentBytes      = 2 << 20
+	MinCanvasSide         = 100
+	MaxCanvasSide         = 4096
+	MaxMarkers            = 50
+	MaxMarkerLabelRunes   = 64
 )
 
 var fonts = map[string]bool{
@@ -47,14 +46,31 @@ type Group struct {
 	ID       string `json:"id"`
 	ParentID string `json:"parentId,omitempty"`
 	Name     string `json:"name,omitempty"`
+	BaseID   string `json:"baseId,omitempty"`
 }
 
-type ImageDocument struct {
+type LegacyImageDocument struct {
 	Schema  string  `json:"schema"`
 	Version int     `json:"version"`
 	Canvas  Canvas  `json:"canvas"`
 	Layers  []Layer `json:"layers"`
 	Groups  []Group `json:"groups,omitempty"`
+}
+
+type Artboard struct {
+	ID     string  `json:"id"`
+	Name   string  `json:"name,omitempty"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Canvas Canvas  `json:"canvas"`
+	Layers []Layer `json:"layers"`
+	Groups []Group `json:"groups,omitempty"`
+}
+
+type ImageDocument struct {
+	Schema    string     `json:"schema"`
+	Version   int        `json:"version"`
+	Artboards []Artboard `json:"artboards"`
 }
 
 type TrackKind string
@@ -141,11 +157,7 @@ func ValidateDocument(kind Kind, raw []byte) error {
 	}
 	switch kind {
 	case KindImage:
-		var doc ImageDocument
-		if err := decodeStrict(raw, &doc); err != nil {
-			return err
-		}
-		return doc.validate()
+		return validateImage(raw)
 	case KindVideo:
 		var doc VideoDocument
 		if err := decodeStrict(raw, &doc); err != nil {
@@ -156,32 +168,109 @@ func ValidateDocument(kind Kind, raw []byte) error {
 	return issue(FieldKind, CodeUnknown)
 }
 
-func (d ImageDocument) validate() error {
-	switch {
-	case d.Schema != SchemaImage || d.Version != DocumentVersion:
-		return issue(FieldDocument, CodeUnknown)
-	case d.Canvas.Width < MinCanvasSide || d.Canvas.Width > MaxCanvasSide || d.Canvas.Height < MinCanvasSide || d.Canvas.Height > MaxCanvasSide:
-		return issue(FieldCanvas, CodeOutOfRange)
-	case !validColor(d.Canvas.Background, false) || !d.Canvas.Gradient.valid():
-		return issue(FieldCanvas, CodeInvalid)
-	case len(d.Layers) > MaxLayers:
-		return issue(FieldLayers, CodeTooMany)
-	case len(d.Groups) > MaxLayers:
-		return issue(FieldLayers, CodeTooMany)
+type seenIDs struct {
+	layers map[string]bool
+	groups map[string]bool
+}
+
+func freshIDs() seenIDs {
+	return seenIDs{layers: map[string]bool{}, groups: map[string]bool{}}
+}
+
+func validateImage(raw []byte) error {
+	var head struct {
+		Version int `json:"version"`
 	}
-	if err := layersIssue(d.Layers); err != nil {
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return issue(FieldDocument, CodeInvalid)
+	}
+	if head.Version == DocumentVersion {
+		var legacy LegacyImageDocument
+		if err := decodeStrict(raw, &legacy); err != nil {
+			return err
+		}
+		return legacy.validate()
+	}
+	var doc ImageDocument
+	if err := decodeStrict(raw, &doc); err != nil {
 		return err
 	}
-	if code := groupsIssue(d.Groups); code != "" {
-		return issue(FieldLayers, code)
+	return doc.validate()
+}
+
+func (d LegacyImageDocument) validate() error {
+	if d.Schema != SchemaImage || d.Version != DocumentVersion {
+		return issue(FieldDocument, CodeUnknown)
+	}
+	return surfaceIssue(d.Canvas, d.Layers, d.Groups, freshIDs())
+}
+
+func (d ImageDocument) validate() error {
+	switch {
+	case d.Schema != SchemaImage || d.Version != ImageDocumentVersion:
+		return issue(FieldDocument, CodeUnknown)
+	case len(d.Artboards) == 0:
+		return issue(FieldArtboards, CodeRequired)
+	}
+	seen := freshIDs()
+	artboards := make(map[string]bool, len(d.Artboards))
+	for _, a := range d.Artboards {
+		if err := a.issue(artboards); err != nil {
+			return err
+		}
+		if err := surfaceIssue(a.Canvas, a.Layers, a.Groups, seen); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func groupsIssue(groups []Group) string {
+func (a Artboard) issue(seen map[string]bool) error {
+	switch {
+	case !validToken(a.ID) || utf8.RuneCountInString(a.Name) > maxTokenRunes*2:
+		return issue(FieldArtboards, CodeInvalid)
+	case seen[a.ID]:
+		return issue(FieldArtboards, CodeDuplicate)
+	case !within(a.X, -MaxArtboardCoordinate, MaxArtboardCoordinate) || !within(a.Y, -MaxArtboardCoordinate, MaxArtboardCoordinate):
+		return issue(FieldArtboards, CodeOutOfRange)
+	}
+	seen[a.ID] = true
+	return nil
+}
+
+func surfaceIssue(canvas Canvas, layers []Layer, groups []Group, seen seenIDs) error {
+	switch {
+	case canvas.Width < MinCanvasSide || canvas.Width > MaxCanvasSide || canvas.Height < MinCanvasSide || canvas.Height > MaxCanvasSide:
+		return issue(FieldCanvas, CodeOutOfRange)
+	case !validColor(canvas.Background, false) || !canvas.Gradient.valid():
+		return issue(FieldCanvas, CodeInvalid)
+	}
+	if err := layersIssue(layers, seen.layers); err != nil {
+		return err
+	}
+	if code := groupsIssue(groups, layers); code != "" {
+		return issue(FieldLayers, code)
+	}
+	for _, g := range groups {
+		if seen.groups[g.ID] {
+			return issue(FieldLayers, CodeDuplicate)
+		}
+		seen.groups[g.ID] = true
+	}
+	return nil
+}
+
+func groupsIssue(groups []Group, layers []Layer) string {
+	homes := make(map[string]string, len(layers))
+	for _, l := range layers {
+		homes[l.ID] = l.GroupID
+	}
 	parents := make(map[string]string, len(groups))
 	for _, g := range groups {
 		if !validToken(g.ID) || (g.ParentID != "" && !validToken(g.ParentID)) || utf8.RuneCountInString(g.Name) > maxTokenRunes*2 {
+			return CodeInvalid
+		}
+		if home, found := homes[g.BaseID]; g.BaseID != "" && (!found || home != g.ID) {
 			return CodeInvalid
 		}
 		if _, seen := parents[g.ID]; seen {
@@ -201,8 +290,7 @@ func groupsIssue(groups []Group) string {
 	return ""
 }
 
-func layersIssue(layers []Layer) error {
-	seen := make(map[string]bool, len(layers))
+func layersIssue(layers []Layer, seen map[string]bool) error {
 	for _, l := range layers {
 		if seen[l.ID] {
 			return issue(FieldLayers, CodeDuplicate)
@@ -221,8 +309,6 @@ func (d VideoDocument) validate() error {
 		return issue(FieldDocument, CodeUnknown)
 	case !validColor(d.Canvas.Background, true) || len(d.Canvas.Background) != 7:
 		return issue(FieldCanvas, CodeInvalid)
-	case len(d.Tracks) > MaxTracks:
-		return issue(FieldTracks, CodeTooMany)
 	case d.DurationMS < 0 || d.DurationMS > mediagen.MaxVideoMS:
 		return issue(FieldTracks, CodeOutOfRange)
 	}
@@ -230,27 +316,14 @@ func (d VideoDocument) validate() error {
 		return issue(FieldCanvas, CodeUnknown)
 	}
 	ids := map[string]bool{}
-	clips, keyframes := 0, 0
-	kinds := map[TrackKind]int{}
 	for _, track := range d.Tracks {
 		if !validToken(track.ID) || ids[track.ID] || (track.Kind != TrackVisual && track.Kind != TrackAudio) {
 			return issue(FieldTracks, CodeInvalid)
 		}
 		ids[track.ID] = true
-		kinds[track.Kind]++
-		clips += len(track.Clips)
-		for _, c := range track.Clips {
-			keyframes += c.Keyframes.Count()
-		}
 		if err := track.validate(d.DurationMS, ids); err != nil {
 			return err
 		}
-	}
-	if kinds[TrackVisual] > mediagen.MaxVisualTracks || kinds[TrackAudio] > mediagen.MaxAudioTracks {
-		return issue(FieldTracks, CodeTooMany)
-	}
-	if clips > MaxClips || keyframes > mediagen.MaxTimelineKeyframes {
-		return issue(FieldTracks, CodeTooMany)
 	}
 	return markersIssue(d.Markers)
 }

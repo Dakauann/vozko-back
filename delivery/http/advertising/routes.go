@@ -85,7 +85,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler, ac AccessControl
 	route(post, "/tests", create, h.CreateSplitTest)
 
 	route(get, "/accounts/{id}/audiences", read, h.Audiences)
-	route(post, "/audiences/customer-list", create, h.CreateCustomerList)
+	r.HandleFunc("/audiences/customer-list", ac(res, create, ac(workspace_domain.ResourceLeads, read, h.CreateCustomerList))).Methods(post)
 	route(post, "/audiences/lookalike", create, h.CreateLookalike)
 	route(remove, "/audiences/{metaId}", del, h.DeleteAudience)
 	route(get, "/saved-audiences", read, h.SavedAudiences)

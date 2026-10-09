@@ -12,7 +12,8 @@ func operationToolset() []copilot.Tool {
 	leads := LeadDeps{}
 	return []copilot.Tool{
 		NewSearchConversationsTool(conversations), NewReadConversationTool(conversations),
-		NewSearchLeadsTool(leads), NewGetLeadTool(leads),
+		NewSearchLeadsTool(leads), NewGetLeadTool(leads), NewLeadGeoSummaryTool(leads),
+		NewPrepareLeadActionTool(LeadActionDeps{}), NewStartLeadSendTool(LeadActionDeps{}), NewCancelLeadSendTool(LeadActionDeps{}),
 		NewAddLeadMemoryTool(LeadMemoryDeps{}), NewUpdateLeadMemoryTool(LeadMemoryDeps{}),
 		NewListKnowledgeBasesTool(KnowledgeDeps{}), NewSearchKnowledgeTool(KnowledgeDeps{}),
 		NewListTemplatesTool(CatalogDeps{}), NewListPipelinesTool(CatalogDeps{}), NewListLabelsTool(CatalogDeps{}),
@@ -43,6 +44,7 @@ func allTools() []copilot.Tool {
 	tools := append(append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...), AdsTools(AdsDeps{})...)
 	tools = append(tools, AdManageTools(AdManageDeps{}, AdsDeps{})...)
 	tools = append(tools, AdGrowthTools(AdGrowthDeps{}, AdsDeps{})...)
+	tools = append(tools, StudioTools(StudioDeps{})...)
 	return append(tools, NewConnectAdAccountTool())
 }
 
@@ -142,6 +144,51 @@ func TestEveryChangeNamesWhatItTouchesOnTheCard(t *testing.T) {
 		}
 		if _, ok := tool.(copilot.Describer); !ok {
 			t.Errorf("%s proposes a change whose approval card falls back to the raw arguments", tool.Definition().Name)
+		}
+	}
+}
+
+func TestStudioToolsLiveOnlyInsideTheStudio(t *testing.T) {
+	video := copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: copilot.StudioVideo}
+	image := video
+	image.ProjectKind = copilot.StudioImage
+	for _, tool := range StudioTools(StudioDeps{}) {
+		name := tool.Definition().Name
+		if _, scoped := tool.(copilot.Scoped); !scoped {
+			t.Fatalf("%s is not scoped to the studio", name)
+		}
+		for _, elsewhere := range []copilot.View{{}, {Surface: copilot.SurfaceAttendance}} {
+			if elsewhere.Offers(tool) {
+				t.Fatalf("%s leaks outside the studio", name)
+			}
+		}
+		if !strings.HasPrefix(name, "studio_") {
+			t.Fatalf("%s must be namespaced", name)
+		}
+		if !video.Offers(tool) && !image.Offers(tool) {
+			t.Fatalf("%s is offered in no project", name)
+		}
+	}
+	for name, view := range map[string]copilot.View{"studio_edit_video": video, "studio_edit_image": image, "studio_generate_music": video, "studio_generate_voiceover": video} {
+		for _, tool := range StudioTools(StudioDeps{}) {
+			if tool.Definition().Name == name && (!view.Offers(tool) || (view == video && image.Offers(tool)) || (view == image && video.Offers(tool))) {
+				t.Fatalf("%s must be offered only on its project kind", name)
+			}
+		}
+	}
+}
+
+func TestEveryModeGradedToolCanBeProposed(t *testing.T) {
+	for _, tool := range allTools() {
+		if _, graded := tool.(copilot.Graded); !graded {
+			continue
+		}
+		name := tool.Definition().Name
+		if _, ok := tool.(copilot.Validator); !ok {
+			t.Errorf("%s can be proposed in ask mode but has no preflight", name)
+		}
+		if _, ok := tool.(copilot.Describer); !ok {
+			t.Errorf("%s can be proposed in ask mode but its card would show raw arguments", name)
 		}
 	}
 }

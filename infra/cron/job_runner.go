@@ -139,6 +139,26 @@ func (r *JobRunner) SetWhatsAppTemplateSendJobs(reconcile ctxJob) {
 	r.addChannelJob("whatsapp_template_send_reconcile", time.Hour, reconcile)
 }
 
+func (r *JobRunner) SetLeadImportJobs(sweep ctxJob) {
+	r.addChannelJob("lead_import_sweep", time.Minute, sweep)
+}
+
+func (r *JobRunner) SetGeocodingJobs(sweep ctxJob) {
+	r.addChannelJob("geocoding_sweep", time.Minute, sweep)
+}
+
+func (r *JobRunner) SetGeocodingRefineJobs(refine ctxJob) {
+	r.addChannelJob("geocoding_district_refine", time.Hour, refine)
+}
+
+func (r *JobRunner) SetLeadActionJobs(sweep ctxJob) {
+	r.addChannelJob("lead_action_sweep", time.Minute, sweep)
+}
+
+func (r *JobRunner) SetCallListJobs(sweep ctxJob) {
+	r.addChannelJob("call_list_build_sweep", time.Minute, sweep)
+}
+
 func (r *JobRunner) SetReportRetentionJobs(expire ctxJob) {
 	r.addChannelJob("report_retention", time.Hour, expire)
 }

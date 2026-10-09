@@ -12,6 +12,7 @@ import (
 
 	"vozko/domain/coexistence"
 	"vozko/domain/conversation"
+	"vozko/domain/geo"
 	"vozko/domain/lead"
 	"vozko/domain/messaging"
 	"vozko/domain/shared"
@@ -143,7 +144,7 @@ func (uc *consumeCoexistenceWebhookUseCase) processHistoryThread(
 		return
 	}
 
-	leadRecord, _, err := uc.leadRepo.FindOrCreate(campaign.WorkspaceID, userPhone, lead.LeadUpdate{})
+	leadRecord, _, err := uc.leadRepo.FindOrCreate(campaign.WorkspaceID, userPhone, lead.LeadUpdate{Source: lead.SourceChannel})
 	if err != nil {
 		log.Printf("[coexistence-consumer] failed to find/create lead for %s: %v", userPhone, err)
 		return
@@ -266,7 +267,8 @@ func (uc *consumeCoexistenceWebhookUseCase) handleStateSync(raw []byte) {
 						continue
 					}
 					_, _, err := uc.leadRepo.FindOrCreate(workspaceID, phone, lead.LeadUpdate{
-						Name: name,
+						Source: lead.SourceChannel,
+						Name:   name,
 					})
 					if err != nil {
 						log.Printf("[coexistence-consumer] failed to upsert contact %s: %v", phone, err)
@@ -313,7 +315,7 @@ func (uc *consumeCoexistenceWebhookUseCase) handleMessageEchoes(raw []byte) {
 					continue
 				}
 
-				leadRecord, _, err := uc.leadRepo.FindOrCreate(businessPhone.OwnerWorkspaceID, userPhone, lead.LeadUpdate{})
+				leadRecord, _, err := uc.leadRepo.FindOrCreate(businessPhone.OwnerWorkspaceID, userPhone, lead.LeadUpdate{Source: lead.SourceChannel})
 				if err != nil {
 					continue
 				}
@@ -461,9 +463,8 @@ func classifyHistoryMessage(
 	case "location":
 		text := ""
 		if msg.Location != nil {
-			text = fmt.Sprintf("📍 %s, %s (%.6f, %.6f)",
-				msg.Location.Name, msg.Location.Address,
-				msg.Location.Latitude, msg.Location.Longitude)
+			text = conversation.LocationText(msg.Location.Name, msg.Location.Address,
+				geo.Point{Lat: msg.Location.Latitude, Lng: msg.Location.Longitude})
 		}
 		if outbound {
 			return conversation.MessageTypeOperator, "", text

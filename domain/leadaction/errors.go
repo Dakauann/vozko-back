@@ -1,0 +1,37 @@
+package leadaction
+
+import (
+	"errors"
+)
+
+var (
+	ErrUnknownAction          = errors.New("lead action: unknown action")
+	ErrParamsAmbiguous        = errors.New("lead action: parameters of another action were sent")
+	ErrKeyRequired            = errors.New("lead action: classify needs the key of a lead field")
+	ErrValueRequired          = errors.New("lead action: classify needs a value, send null to clear the field")
+	ErrOwnerRequired          = errors.New("lead action: assign needs ownerId, send an empty string to remove the owner")
+	ErrBlockedRequired        = errors.New("lead action: block needs blocked true or false")
+	ErrFormatUnsupported      = errors.New("lead action: the export format is not supported")
+	ErrAdAccountRequired      = errors.New("lead action: a Meta audience needs the ad account")
+	ErrNameRequired           = errors.New("lead action: a Meta audience needs a name")
+	ErrRequirementUnknown     = errors.New("lead action: a required capability is missing from the access catalog")
+	ErrForbidden              = errors.New("lead action: you do not have the permissions this action needs")
+	ErrWorkspaceRequired      = errors.New("lead action: workspace is required")
+	ErrActorRequired          = errors.New("lead action: the person acting is required")
+	ErrIdempotencyKeyRequired = errors.New("lead action: an Idempotency-Key header of at most 128 characters is required")
+	ErrIdempotencyKeyReused   = errors.New("lead action: this Idempotency-Key was already used for a different request")
+	ErrNotARun                = errors.New("lead action: this action does not run as a lead action run")
+	ErrRunNotFound            = errors.New("lead action: run not found")
+	ErrPreviewNotFound        = errors.New("lead action: preview not found or expired")
+	ErrRunExists              = errors.New("lead action: a run with this Idempotency-Key already exists")
+	ErrClaimLost              = errors.New("lead action: another worker took over this run")
+	ErrUnavailable            = errors.New("lead action: lead actions are not available on this server")
+	ErrSelectionTooLarge      = errors.New("lead action: the selection is larger than this action allows")
+	ErrSelectionEmpty         = errors.New("lead action: the selection holds no lead")
+	ErrInProgress             = errors.New("lead action: the same request is still running, try again in a moment")
+	ErrModeUnsupported        = errors.New("lead action: this action does not take this selection mode")
+	ErrPhoneUnavailable       = errors.New("lead action: this business phone cannot apply WhatsApp blocks for the workspace")
+	ErrSnapshotLost           = errors.New("lead action: the frozen selection of this run is gone")
+	ErrAudienceNotFound       = errors.New("lead action: audience job not found or expired")
+	ErrCallListRequired       = errors.New("lead action: a call list needs its name, members and phone choice in callList")
+)

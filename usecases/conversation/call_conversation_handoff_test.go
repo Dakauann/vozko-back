@@ -23,8 +23,8 @@ func (p handoffPhones) FindByID(id string) (*businessphone.WhatsAppBusinessPhone
 
 type handoffEntries map[string]string
 
-func (e handoffEntries) FindByNumberAndBusinessPhone(number, businessPhoneID string) (*wce.WhatsAppCampaignEntry, error) {
-	if id, ok := e[businessPhoneID+"|"+number]; ok {
+func (e handoffEntries) FindByNumberBusinessPhoneAndWorkspace(number, businessPhoneID, workspaceID string) (*wce.WhatsAppCampaignEntry, error) {
+	if id, ok := e[workspaceID+"|"+businessPhoneID+"|"+number]; ok {
 		return &wce.WhatsAppCampaignEntry{ID: id}, nil
 	}
 	return nil, wce.ErrEntryNotFound
@@ -54,7 +54,7 @@ func newHandoffFixture() (*personAssignSpy, callrouting.ConversationHandoff) {
 	spy := &personAssignSpy{}
 	handoff := NewCallConversationHandoff(CallConversationHandoffDeps{
 		Phones:  handoffPhones{"bp1": {ID: "bp1", OwnerWorkspaceID: "ws1"}},
-		Entries: handoffEntries{"bp1|5584994409684": "entry-1"},
+		Entries: handoffEntries{"ws1|bp1|5584994409684": "entry-1", "ws2|bp1|5584994409685": "entry-of-ws2"},
 		Assign:  spy,
 	})
 	return spy, handoff
@@ -127,5 +127,17 @@ func TestAnUnknownNumberCannotBeHandedOver(t *testing.T) {
 
 	if err := handoff.MayHandOver(context.Background(), missing); !errors.Is(err, ErrCallConversationNotFound) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestAHandOverNeverPicksAnotherWorkspaceConversationOnTheSameNumber(t *testing.T) {
+	spy, handoff := newHandoffFixture()
+	other := handover
+	other.Contact.ContactNumber = "5584994409685"
+	if err := handoff.HandOver(context.Background(), other); !errors.Is(err, ErrCallConversationNotFound) {
+		t.Fatalf("err = %v, want ErrCallConversationNotFound", err)
+	}
+	if len(spy.assigned) != 0 {
+		t.Fatal("a conversation of another workspace must not be assigned")
 	}
 }

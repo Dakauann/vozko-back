@@ -18,6 +18,7 @@ type Thread struct {
 	Title         string
 	Model         string
 	LastMessageAt *time.Time
+	CostTracked   bool
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }

@@ -28,7 +28,7 @@ func NewHandler(svc Service) *Handler {
 }
 
 type GenerateRequest struct {
-	Kind              string             `json:"kind" enums:"image,music,voice,video,cutout,captions,denoise" example:"music"`
+	Kind              string             `json:"kind" enums:"image,music,voice,video,cutout,captions,denoise,proxy" example:"music"`
 	Model             string             `json:"model,omitempty" example:"google/lyria-3-clip-preview"`
 	Prompt            string             `json:"prompt,omitempty" example:"Samba leve e acústico para o anúncio de uma cafeteria"`
 	Aspect            string             `json:"aspect,omitempty" enums:"square,portrait,story"`
@@ -57,7 +57,7 @@ type ModelResponse struct {
 
 type JobResponse struct {
 	ID                string             `json:"id"`
-	Kind              string             `json:"kind" enums:"image,music,voice,video,cutout,captions,denoise"`
+	Kind              string             `json:"kind" enums:"image,music,voice,video,cutout,captions,denoise,proxy"`
 	Status            string             `json:"status" enums:"queued,running,settling,done,failed"`
 	Prompt            string             `json:"prompt,omitempty"`
 	Aspect            string             `json:"aspect,omitempty" enums:"square,portrait,story"`
@@ -125,7 +125,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Gerar mídia com IA
-// @Description	Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo) e denoise (áudio limpo de um áudio ou vídeo): sourceMediaId da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música e locução são cobradas do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.
+// @Description	Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo), denoise (áudio limpo de um áudio ou vídeo) e proxy (cópia de edição de um vídeo em até 720p com um quadro chave a cada meio segundo, fora da biblioteca; uma cópia pronta da mesma origem é devolvida de novo sem reprocessar): sourceMediaId da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música e locução são cobradas do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.
 // @Tags			Mídia gerada
 // @Accept			json
 // @Produce		json

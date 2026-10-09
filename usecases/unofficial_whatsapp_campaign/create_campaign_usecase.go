@@ -2,6 +2,7 @@ package unofficial_whatsapp_campaign
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,14 +13,43 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	workspace_department "vozko/domain/workspace/workspace_department"
+	"vozko/usecases/campaignautomation"
+	"vozko/usecases/campaigncreate"
+	"vozko/usecases/campaignguard"
 )
 
 type createCampaignUseCase struct {
 	repos              campaignRepos
 	leads              LeadResolver
 	instances          InstanceGateway
-	spam               SpamGuard
+	eligibility        campaignguard.Screener
 	departmentResolver workspace_department.CreationDepartmentResolver
+	leadsByID          LeadsByID
+	automation         AutomationCheck
+	keyed              IdempotentCampaigns
+}
+
+type LeadsByID interface {
+	FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, error)
+}
+
+type AutomationCheck = campaignautomation.Checker
+
+type IdempotentCampaigns interface {
+	FindByIdempotencyKey(workspaceID, key string) (*uwc.Campaign, error)
+	CreateWithEntries(c *uwc.Campaign, entries []uwc.Entry) error
+}
+
+func (uc *createCampaignUseCase) SetLeadsByID(leads LeadsByID) {
+	uc.leadsByID = leads
+}
+
+func (uc *createCampaignUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
+}
+
+func (uc *createCampaignUseCase) SetIdempotentCampaigns(keyed IdempotentCampaigns) {
+	uc.keyed = keyed
 }
 
 func NewCreateCampaignUseCase(
@@ -27,14 +57,14 @@ func NewCreateCampaignUseCase(
 	entries uwc.EntryRepository,
 	leads LeadResolver,
 	instances InstanceGateway,
-	spam SpamGuard,
+	eligibility campaignguard.Screener,
 	departmentResolver workspace_department.CreationDepartmentResolver,
 ) uwc.CreateCampaignUseCase {
 	return &createCampaignUseCase{
 		repos:              campaignRepos{campaigns: campaigns, entries: entries},
 		leads:              leads,
 		instances:          instances,
-		spam:               spam,
+		eligibility:        eligibility,
 		departmentResolver: departmentResolver,
 	}
 }
@@ -73,37 +103,96 @@ func (uc *createCampaignUseCase) Execute(
 		in.Normalize()
 	}
 
+	existing, err := uc.existing(ctx, in)
+	if err != nil || existing != nil {
+		return existing, err
+	}
+
 	if err := in.ValidateTargetVariables(in.Message.ParameterCount()); err != nil {
 		return nil, err
+	}
+
+	if uc.automation == nil {
+		return nil, campaign.ErrAutomationUnavailable
+	}
+	if err := uc.automation.Check(in.WorkspaceID, in.Automation(), in.EntryMetadata()); err != nil {
+		return nil, err
+	}
+
+	if uc.eligibility == nil {
+		return nil, campaignguard.ErrUnavailable
 	}
 
 	if in.ID == "" {
 		in.ID = uuid.New().String()
 	}
-	if err := uc.repos.campaigns.Create(in); err != nil {
+	entries, err := uc.materializeTargets(ctx, in, instance)
+	if err != nil {
 		return nil, err
 	}
-
-	if err := uc.materializeTargets(ctx, in, instance); err != nil {
+	if err := uc.save(in, entries); err != nil {
+		if errors.Is(err, campaign.ErrIdempotencyKeyTaken) {
+			return uc.winnerOf(ctx, in)
+		}
 		return nil, err
 	}
 
 	return uc.hydrate(ctx, in.ID)
 }
 
+func (uc *createCampaignUseCase) save(in *uwc.Campaign, entries []uwc.Entry) error {
+	if in.IdempotencyKey != "" {
+		if uc.keyed == nil {
+			return campaign.ErrIdempotencyUnavailable
+		}
+		return uc.keyed.CreateWithEntries(in, entries)
+	}
+	if err := uc.repos.campaigns.Create(in); err != nil {
+		return err
+	}
+	_, err := uc.repos.entries.CreateMany(entries)
+	return err
+}
+
+func (uc *createCampaignUseCase) existing(ctx context.Context, in *uwc.Campaign) (*uwc.Campaign, error) {
+	found, ok, err := campaigncreate.FindKeyed[*uwc.Campaign](uc.keyed, in.WorkspaceID, in.IdempotencyKey, uwc.ErrCampaignNotFound)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return uc.hydrate(ctx, found.ID)
+}
+
+func (uc *createCampaignUseCase) winnerOf(ctx context.Context, in *uwc.Campaign) (*uwc.Campaign, error) {
+	winner, err := uc.existing(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	if winner == nil {
+		return nil, campaign.ErrIdempotencyKeyTaken
+	}
+	return winner, nil
+}
+
+func (uc *createCampaignUseCase) resolveTargets(in *uwc.Campaign) (campaigncreate.Resolved, error) {
+	targets := make([]campaigncreate.Target, 0, len(in.Targets))
+	for _, t := range in.Targets {
+		targets = append(targets, campaigncreate.Target{LeadID: t.LeadID, Number: t.Number, Name: t.Name})
+	}
+	return campaigncreate.Resolve(uc.leadsByID, uc.leads, in.WorkspaceID, targets)
+}
+
 func (uc *createCampaignUseCase) materializeTargets(
 	ctx context.Context,
 	in *uwc.Campaign,
 	instance *uw.Instance,
-) error {
-	bulk := make([]lead.BulkLeadInput, 0, len(in.Targets))
-	for _, t := range in.Targets {
-		bulk = append(bulk, lead.BulkLeadInput{Number: t.Number, Name: t.Name})
-	}
-
-	leadsByNumber, err := uc.leads.FindOrCreateMany(in.WorkspaceID, bulk)
+) ([]uwc.Entry, error) {
+	targets, err := uc.resolveTargets(in)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	screening, err := uc.eligibility.Screen(ctx, in.WorkspaceID, targets.LeadIDs(), instance.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	seeded := in.SeedOutcome.Statuses(len(in.Targets))
@@ -112,9 +201,16 @@ func (uc *createCampaignUseCase) materializeTargets(
 	entries := make([]uwc.Entry, 0, len(in.Targets))
 	seen := make(map[string]struct{}, len(in.Targets))
 	for _, t := range in.Targets {
-		l, found := leadsByNumber[t.Number]
-		if !found || l == nil {
-			return fmt.Errorf("%w: %q", uwc.ErrCampaignTargetInvalid, t.Number)
+		number := t.Number
+		l := targets.Of(campaigncreate.Target{LeadID: t.LeadID, Number: t.Number, Name: t.Name})
+		if t.LeadID != "" {
+			if l == nil {
+				continue
+			}
+			number = l.Number
+		}
+		if l == nil {
+			return nil, fmt.Errorf("%w: %q", uwc.ErrCampaignTargetInvalid, t.Number)
 		}
 		if _, dup := seen[l.ID]; dup {
 			continue
@@ -126,7 +222,7 @@ func (uc *createCampaignUseCase) materializeTargets(
 			CampaignID:  in.ID,
 			WorkspaceID: in.WorkspaceID,
 			LeadID:      l.ID,
-			Number:      t.Number,
+			Number:      number,
 			Name:        t.Name,
 			Status:      campaign.SendStatusPending,
 			Variables:   t.Variables,
@@ -138,39 +234,18 @@ func (uc *createCampaignUseCase) materializeTargets(
 				entry.SentAt = &now
 			}
 		}
+		markIneligible(&entry, campaign.FirstSkip(screening.Skipped[l.ID], t.Skip), screening.Detail(t.Missing))
 		entry.Normalize()
 		entries = append(entries, entry)
 	}
-
-	created, err := uc.repos.entries.CreateMany(entries)
-	if err != nil {
-		return err
-	}
-
-	uc.markSpamEntries(ctx, created, in.WorkspaceID, instance.ID)
-	return nil
+	return entries, nil
 }
 
-func (uc *createCampaignUseCase) markSpamEntries(
-	ctx context.Context,
-	entries []uwc.Entry,
-	workspaceID, instanceID string,
-) {
-	if uc.spam == nil || len(entries) == 0 {
+func markIneligible(entry *uwc.Entry, reason campaign.SkipReason, detail campaign.SkipDetail) {
+	if reason == "" || entry.Status != campaign.SendStatusPending {
 		return
 	}
-	leadIDs := make([]string, 0, len(entries))
-	for _, e := range entries {
-		leadIDs = append(leadIDs, e.LeadID)
-	}
-
-	skip := uc.spam.SkipMany(ctx, workspaceID, leadIDs, instanceID)
-	for _, e := range entries {
-		if skip[e.LeadID] {
-			_ = uc.repos.entries.UpdateStatus(
-				e.ID, campaign.SendStatusNotEligiblePossibleSpam, "", 0, "")
-		}
-	}
+	entry.Status, entry.ErrorCode, entry.ErrorMessage = reason.OutcomeWith(detail)
 }
 
 func (uc *createCampaignUseCase) hydrate(ctx context.Context, campaignID string) (*uwc.Campaign, error) {

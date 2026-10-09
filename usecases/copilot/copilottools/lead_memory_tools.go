@@ -57,7 +57,8 @@ func (t *leadMemoryTool) Definition() tools.Definition {
 	} else {
 		def = definition("add_lead_memory",
 			"Registra um fato novo sobre um contato (preferência, objeção, combinado...), que a equipe e os agentes passam a ver. "+
-				"Só depois da aprovação do usuário. Se já existir uma memória parecida, corrija-a com update_lead_memory.",
+				"Só depois da aprovação do usuário. Se já existir uma memória parecida, corrija-a com update_lead_memory. "+
+				"Data de nascimento, endereço e parentes não são memória: ficam no cadastro do lead (parentes na aba Família).",
 			addLeadMemoryArgs{})
 	}
 	param := def.Parameters["category"]
@@ -73,7 +74,7 @@ func (t *leadMemoryTool) Describe(_ context.Context, cc copilot.Context, args ma
 	bindArgs(args, &a)
 	contact := "contato desconhecido"
 	if l, err := resolveLead(t.deps.Leads, cc, a.LeadID); err == nil {
-		contact = strings.TrimSpace(l.Name + " (" + shared.MaskContact(l.Number) + ")")
+		contact = strings.TrimSpace(l.RealName() + " (" + shared.MaskContact(l.Number) + ")")
 	}
 	return []copilot.Field{
 		{Key: "contact", Value: contact},

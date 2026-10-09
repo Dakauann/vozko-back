@@ -6,18 +6,19 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"vozko/domain/mediagen"
+	"vozko/domain/shared"
 	"vozko/domain/studio"
 )
 
 type memoryProjects struct {
 	items map[string]*studio.Project
-	seq   int
 }
 
 func (m *memoryProjects) Create(_ context.Context, p *studio.Project) error {
-	m.seq++
-	p.ID = string(rune('a' + m.seq))
+	p.ID = uuid.NewString()
 	copied := *p
 	m.items[p.ID] = &copied
 	return nil
@@ -49,13 +50,6 @@ func (m *memoryProjects) Save(_ context.Context, p *studio.Project, expected int
 
 func (m *memoryProjects) Archive(context.Context, string, string) error { return nil }
 
-type recordingMedia struct{ requested []mediagen.Request }
-
-func (r *recordingMedia) Request(_ context.Context, req mediagen.Request, _ string) (*mediagen.Job, error) {
-	r.requested = append(r.requested, req)
-	return &mediagen.Job{ID: "job-1", Kind: req.Kind, Status: mediagen.StatusQueued}, nil
-}
-
 func videoJSON(t *testing.T, withOverlay bool) json.RawMessage {
 	t.Helper()
 	tracks := []studio.Track{{ID: "main", Kind: studio.TrackVisual, Clips: []studio.Clip{
@@ -75,18 +69,28 @@ func videoJSON(t *testing.T, withOverlay bool) json.RawMessage {
 	return raw
 }
 
-func service(t *testing.T) (*Service, *memoryProjects, *recordingMedia) {
+func imageJSON(t *testing.T) json.RawMessage {
 	t.Helper()
-	projects, media := &memoryProjects{items: map[string]*studio.Project{}}, &recordingMedia{}
-	svc, err := NewService(projects, media)
+	raw, err := json.Marshal(studio.LegacyImageDocument{Schema: studio.SchemaImage, Version: studio.DocumentVersion,
+		Canvas: studio.Canvas{Width: 1080, Height: 1080, Background: "#ffffff"}, Layers: []studio.Layer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return svc, projects, media
+	return raw
+}
+
+func service(t *testing.T) (*Service, *memoryProjects) {
+	t.Helper()
+	projects := &memoryProjects{items: map[string]*studio.Project{}}
+	svc, err := NewService(projects)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc, projects
 }
 
 func TestSavingFromAStaleVersionIsAConflict(t *testing.T) {
-	svc, _, _ := service(t)
+	svc, _ := service(t)
 	ctx := context.Background()
 	p, err := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false))
 	if err != nil {
@@ -104,18 +108,20 @@ func TestSavingFromAStaleVersionIsAConflict(t *testing.T) {
 	}
 }
 
-func TestExportRendersOnlyTheSavedVersionWithItsRasters(t *testing.T) {
-	svc, _, media := service(t)
+func TestSavingRefusesAMissingVersion(t *testing.T) {
+	svc, _ := service(t)
 	ctx := context.Background()
-	p, _ := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, true))
-	if _, err := svc.Export(ctx, "ws", "u", p.ID, 2, map[string]string{"o1": "r-1"}); !errors.Is(err, studio.ErrVersionConflict) {
-		t.Fatalf("exported an unsaved version: %v", err)
+	p, err := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := svc.Export(ctx, "ws", "u", p.ID, 1, nil); !errors.Is(err, studio.ErrNotRasterized) {
-		t.Fatalf("exported without rasters: %v", err)
+	if _, err := svc.Save(ctx, "ws", p.ID, 0, studio.Change{Document: videoJSON(t, true)}); !errors.Is(err, shared.ErrVersionRequired) {
+		t.Fatalf("save without a version: %v", err)
 	}
-	job, err := svc.Export(ctx, "ws", "u", p.ID, 1, map[string]string{"o1": "r-1"})
-	if err != nil || job.Kind != mediagen.KindVideo || len(media.requested) != 1 || media.requested[0].Video.Visual[1].Clips[0].MediaID != "r-1" {
-		t.Fatalf("job %+v requested %+v err %v", job, media.requested, err)
+}
+
+func TestStudioConflictIsTheSharedVersionConflict(t *testing.T) {
+	if !errors.Is(studio.ErrVersionConflict, shared.ErrVersionConflict) {
+		t.Fatal("studio must reuse the shared optimistic lock sentinel")
 	}
 }

@@ -22,4 +22,5 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler,
 	trunks.HandleFunc("/{id}", ac(res, workspace_domain.ActionDelete, h.DeleteTrunk)).Methods(http.MethodDelete)
 	trunks.HandleFunc("/{id}/calls", ac(res, workspace_domain.ActionRead, h.ListCalls)).Methods(http.MethodGet)
 	trunks.HandleFunc("/{id}/calls/{callId}", ac(res, workspace_domain.ActionCall, h.HangupCall)).Methods(http.MethodDelete)
+	protected.HandleFunc("/dial-targets", ac(res, workspace_domain.ActionRead, h.DialTargets)).Methods(http.MethodGet)
 }

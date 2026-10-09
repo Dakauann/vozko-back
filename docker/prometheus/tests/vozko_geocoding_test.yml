@@ -1,0 +1,90 @@
+rule_files:
+  - ../rules/vozko_geocoding.yml
+evaluation_interval: 1m
+tests:
+  - name: a backlog that keeps rising fires, one that drains does not
+    interval: 1m
+    input_series:
+      - series: 'app_geocoding_backlog{status="pending",replica_id="a"}'
+        values: '100+10x150'
+      - series: 'app_geocoding_backlog{status="pending",replica_id="b"}'
+        values: '100x150'
+      - series: 'app_geocoding_backlog{status="unavailable",replica_id="a"}'
+        values: '5000+0x30 5000-50x100'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: GeocodingBacklogRising
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: GeocodingBacklogRising
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              status: pending
+            exp_annotations:
+              summary: "Geocoding backlog (pending) has been rising for an hour"
+              description: "Addresses waiting for a position with status pending kept growing for an hour, so the sweeper is not keeping up. Check the sweeper logs, the provider latency (app_geocoding_provider_seconds) and the quota hits (app_geocoding_quota_hits_total). A single large import drains on its own and does not fire this alert."
+
+  - name: one large import that drains does not fire
+    interval: 1m
+    input_series:
+      - series: 'app_geocoding_backlog{status="pending",replica_id="a"}'
+        values: '100 50000 49900-100x150'
+    alert_rule_test:
+      - eval_time: 120m
+        alertname: GeocodingBacklogRising
+        exp_alerts: []
+
+  - name: the first pause of a process fires at once and stays on until the pause ends
+    interval: 1m
+    input_series:
+      - series: 'app_geocoding_provider_paused_until_seconds{provider="opencage",reason="key_rejected",replica_id="a"}'
+        values: '_x10 4200x80'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GeocodingProviderPaused
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: GeocodingProviderPaused
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              provider: opencage
+              reason: key_rejected
+            exp_annotations:
+              summary: "Geocoding provider opencage paused every workspace (key_rejected)"
+              description: "The provider refused the account (key_rejected) and external geocoding is paused for every workspace until 1970-01-01 01:10:00 +0000 UTC. The alert stays on while the pause lasts, and a key that is still refused opens a new pause when this one ends. An operator must fix the key or the account. After the fix, requeue the addresses with geo_status 'refused' and delete the cache rows with outcome 'refused'."
+      - eval_time: 65m
+        alertname: GeocodingProviderPaused
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              provider: opencage
+              reason: key_rejected
+            exp_annotations:
+              summary: "Geocoding provider opencage paused every workspace (key_rejected)"
+              description: "The provider refused the account (key_rejected) and external geocoding is paused for every workspace until 1970-01-01 01:10:00 +0000 UTC. The alert stays on while the pause lasts, and a key that is still refused opens a new pause when this one ends. An operator must fix the key or the account. After the fix, requeue the addresses with geo_status 'refused' and delete the cache rows with outcome 'refused'."
+      - eval_time: 75m
+        alertname: GeocodingProviderPaused
+        exp_alerts: []
+
+  - name: a pause another replica opened keeps firing after the opener restarts
+    interval: 1m
+    input_series:
+      - series: 'app_geocoding_provider_paused_until_seconds{provider="opencage",reason="key_disabled",replica_id="a"}'
+        values: '7200x20'
+      - series: 'app_geocoding_provider_paused_until_seconds{provider="opencage",reason="key_disabled",replica_id="b"}'
+        values: '_x25 7200x60'
+      - series: 'app_geocoding_provider_paused_until_seconds{provider="opencage",reason="key_rejected",replica_id="b"}'
+        values: '600x80'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: GeocodingProviderPaused
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              provider: opencage
+              reason: key_disabled
+            exp_annotations:
+              summary: "Geocoding provider opencage paused every workspace (key_disabled)"
+              description: "The provider refused the account (key_disabled) and external geocoding is paused for every workspace until 1970-01-01 02:00:00 +0000 UTC. The alert stays on while the pause lasts, and a key that is still refused opens a new pause when this one ends. An operator must fix the key or the account. After the fix, requeue the addresses with geo_status 'refused' and delete the cache rows with outcome 'refused'."

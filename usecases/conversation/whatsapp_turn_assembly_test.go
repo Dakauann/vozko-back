@@ -2,11 +2,13 @@ package conversation_usecase
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
+	"vozko/domain/conversation"
 	"vozko/domain/rag"
 	"vozko/domain/shared"
 	toolsdomain "vozko/domain/tools"
@@ -142,11 +144,79 @@ func TestWhatsAppTurnIsGroundedInTheKnowledgeBase(t *testing.T) {
 
 	in := uc.assembleWhatsAppTurn(context.Background(), waTurn())
 
-	if !strings.Contains(in.SystemPrompt, "Entregamos no Nordeste") {
-		t.Errorf("the knowledge base was not injected: %q", in.SystemPrompt)
+	if !strings.Contains(contextNoteOf(in).Content, "Entregamos no Nordeste") {
+		t.Errorf("the knowledge base was not injected into the context note: %q", contextNoteOf(in).Content)
 	}
-	if strings.Index(in.SystemPrompt, "Você é a Bia.") > strings.Index(in.SystemPrompt, "Entregamos no Nordeste") {
-		t.Error("grounding must follow the agent prompt")
+	if strings.Contains(in.SystemPrompt, "Entregamos no Nordeste") {
+		t.Errorf("per-message grounding leaked into the system prompt: %q", in.SystemPrompt)
+	}
+	if got := in.Messages[len(in.Messages)-2]; got.Content != "vocês entregam em Recife?" {
+		t.Errorf("the customer's message must precede the note untouched, got %+v", got)
+	}
+}
+
+func TestWhatsAppTurnRoutesAndBillsUnderTheEntry(t *testing.T) {
+	in := waTurnUseCase().assembleWhatsAppTurn(context.Background(), waTurn())
+
+	if in.SessionID != "agent_reply:entry-1" || in.BillingReference != "agent_reply:entry-1" {
+		t.Errorf("session = %q, billing = %q, want agent_reply:entry-1", in.SessionID, in.BillingReference)
+	}
+	if in.VolatileTail != 1 || !strings.HasPrefix(contextNoteOf(in).Content, ai.ContextNote().Content) {
+		t.Errorf("the turn must end with a volatile context note: %+v (tail %d)", contextNoteOf(in), in.VolatileTail)
+	}
+}
+
+func TestConsecutiveWhatsAppTurnsShareToolsAndSystemPrompt(t *testing.T) {
+	uc := waTurnUseCase(rag.QueryResult{DocumentName: "entregas", Content: "Entregamos no Nordeste.", Score: 0.9})
+	metadata := map[string]interface{}{
+		"cidade": "Recife", "plano": "ouro", "origem": "anuncio", "bairro": "Boa Viagem",
+		"cpf": "000", "estado": "PE", "zona": "sul", "idade": 31,
+	}
+
+	first := waTurn()
+	first.whatsappCtx.Metadata = metadata
+	second := waTurn()
+	second.whatsappCtx.Metadata = metadata
+	second.Query = "e o prazo?"
+	second.Messages = []ai.Message{
+		{Role: ai.RoleUser, Content: "vocês entregam em Recife?"},
+		{Role: ai.RoleAssistant, Content: "Entregamos sim!"},
+		{Role: ai.RoleUser, Content: "e o prazo?"},
+	}
+
+	for round := 0; round < 10; round++ {
+		a := uc.assembleWhatsAppTurn(context.Background(), first)
+		b := uc.assembleWhatsAppTurn(context.Background(), second)
+		if a.SystemPrompt != b.SystemPrompt {
+			t.Fatalf("round %d: system prompt changed between turns:\n%s\n---\n%s", round, a.SystemPrompt, b.SystemPrompt)
+		}
+		if len(a.Tools) != len(b.Tools) || a.Tools[0].Name != b.Tools[0].Name {
+			t.Fatalf("round %d: tools changed between turns: %+v vs %+v", round, a.Tools, b.Tools)
+		}
+	}
+}
+
+func TestWhatsAppHistoryWindowHoldsItsStartAcrossTurns(t *testing.T) {
+	uc := &handleWhatsAppMessageUseCase{}
+	oldest := map[string]bool{}
+	for total := 190; total <= 195; total++ {
+		history := make([]*conversation.Message, 0, total)
+		for i := 0; i < total; i++ {
+			history = append(history, &conversation.Message{Text: fmt.Sprintf("m%03d", i), From: "5511999999999", MessageType: conversation.MessageTypeUserMessage})
+		}
+
+		composed := uc.composeConversationHistory(history, "5511888888888", "5511999999999")
+
+		if len(composed) > conversationHistoryLimit {
+			t.Fatalf("total %d: window holds %d messages, want at most %d", total, len(composed), conversationHistoryLimit)
+		}
+		if composed[len(composed)-1].Content != fmt.Sprintf("m%03d", total-1) {
+			t.Fatalf("total %d: window ends with %q", total, composed[len(composed)-1].Content)
+		}
+		oldest[composed[0].Content] = true
+	}
+	if len(oldest) != 1 {
+		t.Fatalf("the window start moved between turns: %v", oldest)
 	}
 }
 
@@ -165,8 +235,8 @@ func TestWhatsAppTurnCarriesTheGenerationKnobs(t *testing.T) {
 	if in.WorkspaceID != "ws-1" {
 		t.Errorf("WorkspaceID = %q", in.WorkspaceID)
 	}
-	if len(in.Messages) != 1 {
-		t.Errorf("messages = %+v", in.Messages)
+	if len(in.Messages) != 2 {
+		t.Errorf("messages = %+v, want the customer and the context note", in.Messages)
 	}
 }
 
@@ -219,5 +289,14 @@ func TestWhatsAppTurnSurvivesWithoutAnAgent(t *testing.T) {
 	}
 	if !strings.Contains(in.SystemPrompt, "CANAL: WHATSAPP") {
 		t.Error("the identity preamble should still be built")
+	}
+}
+
+func TestAMediaMessageReplaysExactlyAsItWasSentLive(t *testing.T) {
+	uc := &handleWhatsAppMessageUseCase{}
+	stored := &conversation.Message{Text: "[Image] cardápio", From: "5511999999999", MessageType: conversation.MessageTypeMedia, Metadata: conversation.ExtractedTextMetadata("Pizza grande R$ 50")}
+	replayed := uc.composeConversationHistory([]*conversation.Message{stored}, "5511888888888", "5511999999999")
+	if len(replayed) != 1 || replayed[0].Content != conversation.PromptContent("[Image] cardápio", "Pizza grande R$ 50") {
+		t.Fatalf("the next turn must see the media message byte for byte as this turn sent it, got %+v", replayed)
 	}
 }

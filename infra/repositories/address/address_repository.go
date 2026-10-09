@@ -103,18 +103,20 @@ func (r *repository) UpdateDefaultStatus(userID string, addressID string, isDefa
 
 func (r *repository) mapToAddress(dbAddress *schema.Address) *address.Address {
 	return &address.Address{
-		ID:         dbAddress.ID,
-		UserID:     dbAddress.UserID,
-		Name:       dbAddress.Name,
-		Street:     dbAddress.Street,
-		Number:     dbAddress.Number,
-		Complement: dbAddress.Complement,
-		District:   dbAddress.District,
-		City:       dbAddress.City,
-		State:      dbAddress.State,
-		ZipCode:    dbAddress.ZipCode,
-		IsDefault:  dbAddress.IsDefault,
-		CreatedAt:  dbAddress.CreatedAt,
-		UpdatedAt:  dbAddress.UpdatedAt,
+		ID:     dbAddress.ID,
+		UserID: dbAddress.UserID,
+		Name:   dbAddress.Name,
+		Postal: address.Postal{
+			Street:     dbAddress.Street,
+			Number:     dbAddress.Number,
+			Complement: dbAddress.Complement,
+			District:   dbAddress.District,
+			City:       dbAddress.City,
+			State:      dbAddress.State,
+			ZipCode:    dbAddress.ZipCode,
+		},
+		IsDefault: dbAddress.IsDefault,
+		CreatedAt: dbAddress.CreatedAt,
+		UpdatedAt: dbAddress.UpdatedAt,
 	}
 }

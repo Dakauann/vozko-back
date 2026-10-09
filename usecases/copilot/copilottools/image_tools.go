@@ -2,6 +2,7 @@ package copilottools
 
 import (
 	"context"
+	"errors"
 	"log"
 
 	"vozko/domain/copilot"
@@ -111,15 +112,23 @@ func (t *generateImageTool) Preview(_ context.Context, cc copilot.Context, args 
 	return &copilot.Preview{Kind: PreviewImageReferences, Data: data}
 }
 
-func (t *generateImageTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
+func (t *generateImageTool) generationRequest(ctx context.Context, cc copilot.Context, args map[string]interface{}) (mediagen.Request, error) {
 	var a generateImageArgs
 	if err := decodeArgs(args, &a); err != nil {
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
+		return mediagen.Request{}, err
 	}
 	model, err := t.model(ctx, cc, args)
 	if err != nil {
 		log.Printf("[copilot] generate_image could not resolve the image model: %v", err)
-		return copilot.Result{Status: copilot.StatusError, Message: mediaFailedUnknown}
+		return mediagen.Request{}, errors.New(mediaFailedUnknown)
 	}
-	return generateMedia(ctx, t.media, cc, "generate_image", a.request(cc, model))
+	return a.request(cc, model), nil
+}
+
+func (t *generateImageTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
+	req, err := t.generationRequest(ctx, cc, args)
+	if err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
+	}
+	return generateMedia(ctx, t.media, cc, "generate_image", req)
 }

@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/attendance"
 	"vozko/domain/report"
+	"vozko/domain/workspace"
 )
 
 type AttendanceParams struct {
@@ -68,6 +69,10 @@ func NewAttendanceRenderer(source AttendanceOverviewSource, labels LabelResolver
 }
 
 func (r *AttendanceRenderer) Kind() report.Kind { return report.KindAttendanceOverview }
+
+func (r *AttendanceRenderer) Policy(report.Job) (report.Policy, error) {
+	return readPolicy(workspace.ResourceAttendance), nil
+}
 
 func (r *AttendanceRenderer) Formats() []report.Format {
 	return []report.Format{report.FormatCSV}

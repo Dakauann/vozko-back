@@ -63,6 +63,7 @@ func newCreateHarness(t *testing.T) (uwc.CreateCampaignUseCase, *fakeCampaignRep
 
 	uc := NewCreateCampaignUseCase(campaigns, entries, newFakeLeadRepo(), gateway, spam,
 		fakeDepartments{id: "dept-1"})
+	uc.(*createCampaignUseCase).SetAutomation(automationThatAllows{})
 	return uc, campaigns, entries, gateway, spam
 }
 
@@ -272,6 +273,7 @@ func TestCreateFailsWhenATargetCannotBecomeALead(t *testing.T) {
 	gateway := &fakeGateway{instance: &uw.Instance{ID: "inst-1", WorkspaceID: "ws-1", Status: uw.StatusConnected}}
 	uc := NewCreateCampaignUseCase(newFakeCampaignRepo(), newFakeEntryRepo(), droppingLeadRepo{}, gateway,
 		&fakeSpam{skip: map[string]bool{}}, fakeDepartments{id: "dept-1"})
+	uc.(*createCampaignUseCase).SetAutomation(automationThatAllows{})
 
 	if _, err := uc.Execute(context.Background(), draft(), uw.Unrestricted()); !errors.Is(err, uwc.ErrCampaignTargetInvalid) {
 		t.Fatalf("err = %v, a campaign must never be created with its contacts silently dropped", err)

@@ -1,14 +1,11 @@
 package attendance_repository
 
-import "vozko/domain/conversation"
+import "vozko/infra/database"
 
 func realMessageSQL(alias string) string {
-	return "NOT (" + alias + ".message_type = '" + string(conversation.MessageTypeSystem) +
-		"' AND COALESCE(" + alias + ".metadata->>'" + conversation.SeedMetadataKey + "', '') = '" +
-		conversation.SeedSourceLeadImport + "')" +
-		" AND " + liveMessageSQL(alias)
+	return database.RealMessageSQL(alias)
 }
 
 func liveMessageSQL(alias string) string {
-	return "COALESCE(" + alias + ".metadata->>'" + conversation.BackfillMetadataKey + "', '') <> 'true'"
+	return database.LiveMessageSQL(alias)
 }

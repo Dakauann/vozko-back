@@ -106,3 +106,7 @@ func (t *audioTool) Execute(ctx context.Context, cc copilot.Context, args map[st
 func secondsText(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64) + " s"
 }
+
+func (t *audioTool) generationRequest(_ context.Context, cc copilot.Context, args map[string]interface{}) (mediagen.Request, error) {
+	return t.request(cc, args)
+}

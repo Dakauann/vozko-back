@@ -120,3 +120,7 @@ func parsePrefixed(prefix, id string) string {
 type Namer interface {
 	Names(actorIDs ...string) map[string]string
 }
+
+type NameResolver interface {
+	ResolveNames(actorIDs ...string) (map[string]string, error)
+}

@@ -8,7 +8,6 @@ import (
 
 	ca "vozko/domain/audience"
 	conversation_domain "vozko/domain/conversation"
-	lead_domain "vozko/domain/lead"
 	"vozko/domain/shared"
 	template_domain "vozko/domain/whatsapp/template"
 	wo "vozko/domain/whatsapp_outreach"
@@ -24,7 +23,7 @@ type commentAlertDispatcher struct {
 }
 
 func (d commentAlertDispatcher) Dispatch(ctx context.Context, in ca.AlertDelivery) error {
-	recipient := normalizeAlertPhone(in.Recipient)
+	recipient := shared.NormalizePhone(in.Recipient)
 	if recipient == "" {
 		return fmt.Errorf("%w: the alert recipient is not a valid number", ca.ErrInvalidFilter)
 	}
@@ -127,12 +126,4 @@ func (d commentAlertDispatcher) bodyParamsFor(in ca.AlertDelivery) []string {
 	}
 	bodyNames, _ := tmpl.GetBodyAndHeaderParameterNames()
 	return ca.FillTemplateParams(in.Facts, bodyNames)
-}
-
-func normalizeAlertPhone(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if normalized := lead_domain.NormalizeNumber(trimmed); normalized != "" {
-		return normalized
-	}
-	return lead_domain.NormalizeNumber(lead_domain.NormalizeRawNumber(trimmed))
 }

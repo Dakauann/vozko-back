@@ -8,14 +8,20 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	workspace_department "vozko/domain/workspace/workspace_department"
+	"vozko/usecases/campaignautomation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
 const recentEntriesLimit = 20
 
 type updateCampaignUseCase struct {
-	repos     campaignRepos
-	instances InstanceGateway
+	repos      campaignRepos
+	instances  InstanceGateway
+	automation AutomationCheck
+}
+
+func (uc *updateCampaignUseCase) SetAutomation(automation AutomationCheck) {
+	uc.automation = automation
 }
 
 func NewUpdateCampaignUseCase(
@@ -49,6 +55,12 @@ func (uc *updateCampaignUseCase) Execute(
 
 	if existing.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignRunning
+	}
+	if err := campaign.RefuseSelectionChange(existing.Source, existing.ChangesWhatIsSent(in)); err != nil {
+		return nil, err
+	}
+	if err := campaignautomation.Require(uc.automation, existing.WorkspaceID, in.Automation(), in.EntryMetadata()); err != nil {
+		return nil, err
 	}
 
 	existing.Name = in.Name

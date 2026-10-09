@@ -104,6 +104,7 @@ const (
 	NodeTypeActionFinishConversation        NodeType = "action_finish_conversation"
 	NodeTypeActionMoveStage                 NodeType = "action_move_stage"
 	NodeTypeActionManageOpportunity         NodeType = "action_manage_opportunity"
+	NodeTypeActionUpdateLead                NodeType = "action_update_lead"
 
 	NodeTypeWaitDuration              NodeType = "wait_duration"
 	NodeTypeWaitForReply              NodeType = "wait_for_reply"
@@ -148,6 +149,7 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionFinishConversation,
 		NodeTypeActionMoveStage,
 		NodeTypeActionManageOpportunity,
+		NodeTypeActionUpdateLead,
 		NodeTypeConditionCheckLabel,
 		NodeTypeConditionCheckStage,
 		NodeTypeConditionCheckOpportunity,

@@ -3,11 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
-	"regexp"
 
 	"net/http"
 	"vozko/delivery/http/response"
 	"vozko/domain/address"
+	"vozko/domain/cep"
 
 	"github.com/gorilla/mux"
 )
@@ -55,32 +55,7 @@ func (h *AddressHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expected := make(map[string]string)
-	if addr.Name == "" {
-		expected["name"] = "required"
-	}
-	if addr.Street == "" {
-		expected["street"] = "required"
-	}
-	if addr.Number == "" {
-		expected["number"] = "required"
-	}
-	if addr.District == "" {
-		expected["district"] = "required"
-	}
-	if addr.City == "" {
-		expected["city"] = "required"
-	}
-	if addr.State == "" {
-		expected["state"] = "required"
-	}
-	if addr.ZipCode == "" {
-		expected["zipCode"] = "required"
-	} else if !h.isValidCEP(addr.ZipCode) {
-		expected["zipCode"] = "must be a valid CEP format (8 digits)"
-	}
-
-	if len(expected) > 0 {
+	if expected := addressFieldErrors(addr); len(expected) > 0 {
 		response.WriteValidationError(w, expected)
 		return
 	}
@@ -140,32 +115,7 @@ func (h *AddressHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expected := make(map[string]string)
-	if addr.Name == "" {
-		expected["name"] = "required"
-	}
-	if addr.Street == "" {
-		expected["street"] = "required"
-	}
-	if addr.Number == "" {
-		expected["number"] = "required"
-	}
-	if addr.District == "" {
-		expected["district"] = "required"
-	}
-	if addr.City == "" {
-		expected["city"] = "required"
-	}
-	if addr.State == "" {
-		expected["state"] = "required"
-	}
-	if addr.ZipCode == "" {
-		expected["zipCode"] = "required"
-	} else if !h.isValidCEP(addr.ZipCode) {
-		expected["zipCode"] = "must be a valid CEP format (8 digits)"
-	}
-
-	if len(expected) > 0 {
+	if expected := addressFieldErrors(addr); len(expected) > 0 {
 		response.WriteValidationError(w, expected)
 		return
 	}
@@ -208,13 +158,15 @@ func (h *AddressHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]string{"message": "Address deleted successfully"})
 }
 
-func (h *AddressHandler) isValidCEP(cep string) bool {
-	cleanedCEP := h.cleanCEP(cep)
-	validCEP := regexp.MustCompile(`^\d{8}$`)
-	return validCEP.MatchString(cleanedCEP)
-}
-
-func (h *AddressHandler) cleanCEP(cepCode string) string {
-	cleaned := regexp.MustCompile(`\D`).ReplaceAllString(cepCode, "")
-	return cleaned
+func addressFieldErrors(addr address.Address) map[string]string {
+	expected := make(map[string]string)
+	for _, field := range addr.Missing() {
+		expected[string(field)] = "required"
+	}
+	if _, missing := expected[string(address.FieldZipCode)]; !missing {
+		if _, err := cep.Parse(addr.ZipCode); err != nil {
+			expected[string(address.FieldZipCode)] = "must be a valid CEP format (8 digits)"
+		}
+	}
+	return expected
 }

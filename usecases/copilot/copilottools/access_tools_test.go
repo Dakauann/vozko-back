@@ -88,7 +88,7 @@ func TestExplainPermissionListsDependenciesAndRisks(t *testing.T) {
 }
 
 func TestExplainPermissionAdmitsWhenAPermissionDoesNothing(t *testing.T) {
-	res := NewExplainPermissionTool().Execute(context.Background(), accessCtx, map[string]interface{}{"permission": "leads:delete"})
+	res := NewExplainPermissionTool().Execute(context.Background(), accessCtx, map[string]interface{}{"permission": "workflows:read_details"})
 	if res.Status != copilot.StatusOK || len(dataOf(res)["used_by"].([]map[string]interface{})) != 0 || dataOf(res)["effect"] == nil {
 		t.Fatalf("an inert permission must be reported as having no effect, got %+v", res.Data)
 	}

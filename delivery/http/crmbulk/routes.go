@@ -15,4 +15,5 @@ func RegisterRoutes(
 ) {
 	cv := workspace_domain.ResourceConversations
 	protected.HandleFunc("/crm/bulk", ac(cv, workspace_domain.ActionUpdate, h.Bulk)).Methods(http.MethodPost)
+	protected.HandleFunc("/crm/bulk/count", ac(cv, workspace_domain.ActionRead, h.Count)).Methods(http.MethodPost)
 }

@@ -18,6 +18,13 @@ type Context struct {
 	Departments *wd.DepartmentFilter
 	View        View
 	Datasets    *DatasetStore
+	Screen      Screen
+	SeesImages  bool
+	Mode        Mode
+	Locale      string
+	ProposalID  string
+
+	ChargeReference string
 }
 
 type Meta struct {
@@ -34,6 +41,14 @@ const (
 	StatusError  Status = "error"
 )
 
+const SubjectSkill = "skill"
+
+type Subject struct {
+	Kind  string `json:"kind"`
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
 type Result struct {
 	Status  Status
 	Data    interface{}
@@ -41,6 +56,9 @@ type Result struct {
 	Chart   *Chart
 	Card    *ActionCard
 	Media   *Media
+	Images  []string
+	Subject *Subject
+	EndTurn bool
 }
 
 type MediaKind string

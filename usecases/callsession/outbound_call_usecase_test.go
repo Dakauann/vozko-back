@@ -69,7 +69,7 @@ func TestStartOutboundCallUseCaseSuccessWithTargetPhone(t *testing.T) {
 		SlotAcquired:        true,
 	}}
 	callSource := &stubCallSource{call: call}
-	uc := NewStartOutboundCallUseCase(callSource, nil, admission)
+	uc := NewStartOutboundCallUseCase(callSource, admission, &stubDialTargets{}, nil)
 
 	res, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
 		WorkspaceID: "ws-1",
@@ -88,13 +88,10 @@ func TestStartOutboundCallUseCaseSuccessWithTargetPhone(t *testing.T) {
 	if callSource.lastIn.PhoneNumber == "" {
 		t.Fatal("expected dial input to contain normalized phone")
 	}
-	if callSource.lastIn.EntryType != "" {
-		t.Fatalf("EntryType = %q, want %q", callSource.lastIn.EntryType, "")
-	}
 }
 
 func TestStartOutboundCallUseCaseRequiresAdmissionCoordinator(t *testing.T) {
-	uc := NewStartOutboundCallUseCase(&stubCallSource{call: &stubCRMCall{}}, nil, nil)
+	uc := NewStartOutboundCallUseCase(&stubCallSource{call: &stubCRMCall{}}, nil, &stubDialTargets{}, nil)
 	_, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
 		WorkspaceID: "ws-1",
 		UserID:      "user-1",
@@ -107,7 +104,7 @@ func TestStartOutboundCallUseCaseRequiresAdmissionCoordinator(t *testing.T) {
 
 func TestStartOutboundCallUseCaseReleasesAdmissionOnDialFailure(t *testing.T) {
 	admission := &stubAdmission{lease: &callsession.CallAdmissionLease{WorkspaceID: "ws-1"}}
-	uc := NewStartOutboundCallUseCase(&stubCallSource{err: errors.New("dial failed")}, nil, admission)
+	uc := NewStartOutboundCallUseCase(&stubCallSource{err: errors.New("dial failed")}, admission, &stubDialTargets{}, nil)
 
 	_, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
 		WorkspaceID: "ws-1",
@@ -157,7 +154,7 @@ func (s *channelRecordingAdmission) Acquire(ctx context.Context, input callsessi
 func TestTrunkCallsKeepTheTypedNumberAndArePricedAsSIP(t *testing.T) {
 	admission := &channelRecordingAdmission{stubAdmission: stubAdmission{lease: &callsession.CallAdmissionLease{WorkspaceID: "ws-1"}}}
 	source := &stubCallSource{call: &stubCRMCall{}}
-	uc := NewStartOutboundCallUseCase(source, nil, admission)
+	uc := NewStartOutboundCallUseCase(source, admission, &stubDialTargets{}, nil)
 
 	res, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
 		WorkspaceID: "ws-1",
@@ -178,7 +175,7 @@ func TestTrunkCallsKeepTheTypedNumberAndArePricedAsSIP(t *testing.T) {
 
 func TestTrunkCallsDialAndReportTheNumberAnatelDefines(t *testing.T) {
 	source := &stubCallSource{call: &stubCRMCall{}}
-	uc := NewStartOutboundCallUseCase(source, nil, &stubAdmission{lease: &callsession.CallAdmissionLease{WorkspaceID: "ws-1"}})
+	uc := NewStartOutboundCallUseCase(source, &stubAdmission{lease: &callsession.CallAdmissionLease{WorkspaceID: "ws-1"}}, &stubDialTargets{}, nil)
 
 	res, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{
 		WorkspaceID: "ws-1",
@@ -195,7 +192,7 @@ func TestTrunkCallsDialAndReportTheNumberAnatelDefines(t *testing.T) {
 }
 
 func TestTrunkCallsRequireANumber(t *testing.T) {
-	uc := NewStartOutboundCallUseCase(&stubCallSource{}, nil, &stubAdmission{lease: &callsession.CallAdmissionLease{}})
+	uc := NewStartOutboundCallUseCase(&stubCallSource{}, &stubAdmission{lease: &callsession.CallAdmissionLease{}}, &stubDialTargets{}, nil)
 	_, err := uc.Execute(context.Background(), callsession.StartOutboundCallInput{WorkspaceID: "ws-1", UserID: "u", TrunkID: "trunk-1"})
 	if !errors.Is(err, callsession.ErrTargetPhoneRequired) {
 		t.Fatalf("Execute() error = %v, want ErrTargetPhoneRequired", err)

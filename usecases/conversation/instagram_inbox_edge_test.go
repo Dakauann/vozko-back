@@ -221,12 +221,12 @@ func TestGetEntryInfo_ChannelRouting(t *testing.T) {
 	svc.SetInstagramContacts(igContactsFixture())
 
 	for _, entryType := range []string{"sms", "email", "", "Instagram"} {
-		if _, _, _, _, _, _, err := svc.GetEntryInfo("x", entryType); err == nil {
+		if _, err := svc.GetEntryInfo("x", entryType); err == nil {
 			t.Errorf("entry type %q should be rejected", entryType)
 		}
 	}
 
-	if _, _, _, _, _, _, err := svc.GetEntryInfo("unknown-conv", "instagram"); err == nil {
+	if _, err := svc.GetEntryInfo("unknown-conv", "instagram"); err == nil {
 		t.Error("an unresolvable conversation should return an error")
 	}
 }
@@ -234,7 +234,7 @@ func TestGetEntryInfo_ChannelRouting(t *testing.T) {
 func TestGetEntryInfo_InstagramLookupFailurePropagates(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetInstagramContacts(&fakeInstagramContacts{err: errors.New("meta down")})
-	if _, _, _, _, _, _, err := svc.GetEntryInfo("conv-1", "instagram"); err == nil {
+	if _, err := svc.GetEntryInfo("conv-1", "instagram"); err == nil {
 		t.Error("a lookup failure must propagate, not yield an empty header")
 	}
 }

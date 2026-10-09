@@ -3,9 +3,10 @@ package crmfilter
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
+
+	"vozko/domain/shared"
 )
 
 type Field string
@@ -44,6 +45,8 @@ const (
 	FieldMemoryUpdatedAt Field = "memory_updated_at"
 
 	FieldCustom Field = "custom"
+
+	FieldArea Field = "area"
 )
 
 type Operator string
@@ -75,6 +78,7 @@ const (
 	KindIDSet
 	KindEnum
 	KindText
+	KindMultiEnum
 )
 
 type Conjunction string
@@ -89,6 +93,46 @@ type Predicate struct {
 	Key      string   `json:"key,omitempty"`
 	Operator Operator `json:"operator"`
 	Values   []string `json:"values,omitempty"`
+
+	boundKind Kind
+	bound     bool
+	areas     []AreaBounds
+}
+
+type AreaBounds struct {
+	ID                       string
+	South, West, North, East float64
+	UpdatedAt                time.Time
+}
+
+func (p Predicate) BindKind(kind Kind) Predicate {
+	p.boundKind = kind
+	p.bound = true
+	return p
+}
+
+func (p Predicate) BoundKind() (Kind, bool) {
+	return p.boundKind, p.bound
+}
+
+func (p Predicate) BindAreas(areas []AreaBounds) Predicate {
+	p = p.BindKind(KindIDSet)
+	p.areas = append([]AreaBounds(nil), areas...)
+	return p
+}
+
+func (p Predicate) BoundAreas() []AreaBounds {
+	return append([]AreaBounds(nil), p.areas...)
+}
+
+func (f Filter) BoundAreas() []AreaBounds {
+	var out []AreaBounds
+	for _, g := range f.Groups {
+		for _, p := range g.Predicates {
+			out = append(out, p.areas...)
+		}
+	}
+	return out
 }
 
 type Group struct {
@@ -122,6 +166,7 @@ var (
 	ErrInvalidNumber    = errors.New("crmfilter: value is not a valid number")
 	ErrInvalidDate      = errors.New("crmfilter: value is not a valid date")
 	ErrMissingCustomKey = errors.New("crmfilter: custom field requires a key")
+	ErrNotApplicable    = errors.New("crmfilter: the filter cannot be applied to this object")
 )
 
 var (
@@ -132,7 +177,7 @@ var (
 	boolOps   = []Operator{OpIsTrue, OpIsFalse, OpEquals}
 	textOps   = []Operator{OpContains}
 	stringOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpIsSet, OpIsEmpty}
-	customOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpGreaterEq, OpLessEq, OpBetween, OpIsSet, OpIsEmpty}
+	customOps = []Operator{OpEquals, OpNotEquals, OpIn, OpNotIn, OpContains, OpGreaterEq, OpLessEq, OpBetween, OpBefore, OpAfter, OpIsTrue, OpIsFalse, OpIsSet, OpIsEmpty}
 )
 
 var registry = map[Field]FieldSpec{
@@ -218,6 +263,11 @@ func (p Predicate) Validate() error {
 	if p.Field == FieldCustom && strings.TrimSpace(p.Key) == "" {
 		return ErrMissingCustomKey
 	}
+	if p.Field == FieldArea || p.Field == FieldAreaApproximate {
+		if _, err := AreaPlacements(p); err != nil {
+			return err
+		}
+	}
 	if !opAllowed(spec.Ops, p.Operator) {
 		return fmt.Errorf("%w: %q on %q", ErrUnsupportedOp, p.Operator, p.Field)
 	}
@@ -244,7 +294,7 @@ func (p Predicate) Validate() error {
 			if strings.TrimSpace(v) == "" {
 				continue
 			}
-			if _, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err != nil {
+			if _, err := shared.ParseNumberText(v); err != nil {
 				return fmt.Errorf("%w: %q", ErrInvalidNumber, v)
 			}
 		}
@@ -258,7 +308,7 @@ func (p Predicate) Validate() error {
 			}
 		}
 	}
-	return nil
+	return checkValues(p.Field, p.Values)
 }
 
 func ParseDate(v string) (time.Time, error) {

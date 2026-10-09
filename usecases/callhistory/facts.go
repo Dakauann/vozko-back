@@ -13,12 +13,13 @@ import (
 type facts struct {
 	transfers map[string][]callrouting.TransferRecord
 	charges   map[string]*billing.CallBillingRecord
-	contacts  map[string]*lead.Lead
+	holders   map[string][]*lead.Lead
+	linked    map[string]*lead.Lead
 	names     map[string]string
 }
 
 func (h *History) gather(ctx context.Context, workspaceID string, calls []cdr.Call) (*facts, error) {
-	gathered := &facts{transfers: map[string][]callrouting.TransferRecord{}, contacts: map[string]*lead.Lead{}}
+	gathered := &facts{transfers: map[string][]callrouting.TransferRecord{}, holders: map[string][]*lead.Lead{}, linked: map[string]*lead.Lead{}}
 	if len(calls) == 0 {
 		return gathered, nil
 	}
@@ -44,12 +45,35 @@ func (h *History) gather(ctx context.Context, workspaceID string, calls []cdr.Ca
 		return nil, err
 	}
 	for _, contact := range contacts {
-		for _, format := range lead.NumberFormats(contact.Number) {
-			gathered.contacts[format] = contact
+		for _, number := range contact.Numbers() {
+			for _, format := range lead.NumberFormats(number) {
+				gathered.holders[format] = append(gathered.holders[format], contact)
+			}
+		}
+	}
+	linked, err := h.deps.Contacts.FindByIDs(workspaceID, linkedLeadIDs(calls))
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range linked {
+		if l != nil && l.WorkspaceID == workspaceID {
+			gathered.linked[l.ID] = l
 		}
 	}
 	gathered.names = h.deps.Names.ResolveUsernames(peopleIn(calls, transfers))
 	return gathered, nil
+}
+
+func linkedLeadIDs(calls []cdr.Call) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, call := range calls {
+		if call.LeadID != nil && *call.LeadID != "" && !seen[*call.LeadID] {
+			seen[*call.LeadID] = true
+			ids = append(ids, *call.LeadID)
+		}
+	}
+	return ids
 }
 
 func peopleIn(calls []cdr.Call, transfers []callrouting.TransferRecord) []string {
@@ -87,7 +111,7 @@ func (f *facts) summary(call cdr.Call) callhistory.Summary {
 		EndedAt:     call.EndedAt,
 		TalkSeconds: callhistory.TalkSeconds(call),
 		RingSeconds: callhistory.RingSeconds(call),
-		Contact:     f.contact(callhistory.CounterpartNumber(call)),
+		Contact:     f.contact(call),
 		PlacedBy:    f.personOrNil(people.PlacedBy),
 		AnsweredBy:  f.personOrNil(people.AnsweredBy),
 		Transfers:   len(transfers),
@@ -101,15 +125,23 @@ func (f *facts) summary(call cdr.Call) callhistory.Summary {
 	return summary
 }
 
-func (f *facts) contact(number string) callhistory.Contact {
-	contact := callhistory.Contact{Number: number}
+func (f *facts) contact(call cdr.Call) callhistory.Contact {
+	number := callhistory.CounterpartNumber(call)
+	var linked *lead.Lead
+	if call.LeadID != nil {
+		linked = f.linked[*call.LeadID]
+	}
+	seen := map[*lead.Lead]bool{}
+	var candidates []*lead.Lead
 	for _, format := range lead.NumberFormats(number) {
-		if found, ok := f.contacts[format]; ok {
-			contact.LeadID, contact.Name = found.ID, found.Name
-			break
+		for _, holder := range f.holders[format] {
+			if !seen[holder] {
+				seen[holder] = true
+				candidates = append(candidates, holder)
+			}
 		}
 	}
-	return contact
+	return callhistory.LinkedContact(number, linked, candidates)
 }
 
 func (f *facts) person(id string) callhistory.Person {

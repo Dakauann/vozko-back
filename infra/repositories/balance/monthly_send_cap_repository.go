@@ -32,6 +32,23 @@ func (r *MonthlySendCapRepository) GetMonthlySendCap(workspaceID string) (*balan
 	return &cap, nil
 }
 
+func (r *MonthlySendCapRepository) MonthlySendCapUsage(workspaceID string, at time.Time) (*balance.SendCapUsage, error) {
+	var rows []schema.WorkspaceMonthlySendCap
+	if err := r.db.Where("workspace_id = ?", workspaceID).Limit(1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	cap := toDomainMonthlySendCap(rows[0])
+	cycleStart := cap.CycleStart(at)
+	used, err := usedInCycle(r.db, &rows[0], cycleStart)
+	if err != nil {
+		return nil, err
+	}
+	return &balance.SendCapUsage{Cap: cap, Used: used, CycleStart: cycleStart}, nil
+}
+
 func (r *MonthlySendCapRepository) UpsertMonthlySendCap(cap balance.MonthlySendCap) error {
 	row := schema.WorkspaceMonthlySendCap{
 		WorkspaceID:  cap.WorkspaceID,

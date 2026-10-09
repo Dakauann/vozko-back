@@ -240,10 +240,12 @@ func TestLeadValidate(t *testing.T) {
 		want error
 	}{
 		{"missing workspace", Lead{Number: "5511987654321"}, ErrLeadWorkspaceRequired},
-		{"missing number", Lead{WorkspaceID: "ws-1"}, ErrLeadRequired},
+		{"neither a number nor a name", Lead{WorkspaceID: "ws-1"}, ErrLeadIdentityRequired},
+		{"a name without a number", Lead{WorkspaceID: "ws-1", Name: "Maria"}, nil},
 		{"invalid number", Lead{WorkspaceID: "ws-1", Number: "abc"}, ErrLeadInvalid},
-		{"negative age", Lead{WorkspaceID: "ws-1", Number: "5511987654321", Age: &negAge}, ErrLeadInvalid},
-		{"valid", Lead{WorkspaceID: "ws-1", Number: "5511987654321", Age: &age}, nil},
+		{"negative age", Lead{WorkspaceID: "ws-1", Number: "5511987654321", StoredAge: &negAge}, ErrLeadAgeInvalid},
+		{"an owner that is not a person, agent or workflow", Lead{WorkspaceID: "ws-1", Number: "5511987654321", Owner: "system"}, ErrLeadOwnerInvalid},
+		{"valid", Lead{WorkspaceID: "ws-1", Number: "5511987654321", StoredAge: &age}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,28 +256,30 @@ func TestLeadValidate(t *testing.T) {
 	}
 }
 
-func TestLeadNormalize(t *testing.T) {
-	zero := 0
-	l := Lead{ID: "  id-1 ", WorkspaceID: "  ws-1 ", Number: " 5511987654321 ", Name: "  Jane ", Age: &zero}
-	l.Normalize()
-	if l.ID != "id-1" || l.WorkspaceID != "ws-1" || l.Number != "5511987654321" || l.Name != "Jane" {
-		t.Errorf("Normalize result unexpected: %+v", l)
+func TestValidateRecordLeavesTheStoredIdentityAlone(t *testing.T) {
+	cases := []struct {
+		name string
+		l    Lead
+		want error
+	}{
+		{"a legacy number the parser no longer reads", Lead{WorkspaceID: "ws-1", Number: "abc", Name: "Ana"}, nil},
+		{"missing workspace", Lead{Number: "abc"}, ErrLeadWorkspaceRequired},
+		{"neither a number nor a name", Lead{WorkspaceID: "ws-1"}, ErrLeadIdentityRequired},
+		{"an unknown consent source", Lead{WorkspaceID: "ws-1", Number: "abc", WhatsAppOptIn: &Consent{Source: "rumour"}}, ErrLeadConsentSourceInvalid},
+		{"an owner that is not a person, agent or workflow", Lead{WorkspaceID: "ws-1", Number: "abc", Owner: "system"}, ErrLeadOwnerInvalid},
 	}
-	if l.Age != nil {
-		t.Error("expected Age cleared for non-positive value")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.l.ValidateRecord(); got != tc.want {
+				t.Errorf("ValidateRecord = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
-func TestLeadMerge(t *testing.T) {
-	age := 33
-	l := Lead{Name: "Old", ProfilePictureURL: "old.png"}
-	l.Merge(LeadUpdate{Name: "New", ProfilePictureURL: "new.png", Age: &age})
-	if l.Name != "New" || l.ProfilePictureURL != "new.png" || l.Age == nil || *l.Age != 33 {
-		t.Errorf("Merge result unexpected: %+v", l)
-	}
-
-	l.Merge(LeadUpdate{})
-	if l.Name != "New" || l.ProfilePictureURL != "new.png" || *l.Age != 33 {
-		t.Errorf("empty Merge mutated values: %+v", l)
+func TestValidateRefusesAnUnknownConsentSource(t *testing.T) {
+	l := Lead{WorkspaceID: "ws-1", Number: "5511987654321", WhatsAppOptIn: &Consent{Source: "rumour"}}
+	if got := l.Validate(); got != ErrLeadConsentSourceInvalid {
+		t.Fatalf("Validate = %v, want ErrLeadConsentSourceInvalid", got)
 	}
 }

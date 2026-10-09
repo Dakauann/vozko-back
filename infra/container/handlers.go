@@ -36,7 +36,6 @@ import (
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
 	labelhttp "vozko/delivery/http/label"
-	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	livedecisionhttp "vozko/delivery/http/livedecision"
 	mediashttp "vozko/delivery/http/medias"
@@ -101,15 +100,19 @@ func (c *Container) initHandlers() {
 		c.repositories.inboxAssignment,
 	)
 
+	var crmBulkAuthorizer crmbulk_usecase.Authorizer
+	if c.services.conversationAuthImpl != nil {
+		crmBulkAuthorizer = c.services.conversationAuthImpl
+	}
 	crmBulkService := crmbulk_usecase.NewService(
 		c.useCases.assignEntryStage,
 		c.useCases.assignEntryLabel,
 		c.useCases.removeEntryLabel,
 		c.services.assignmentService,
-		c.services.conversationAuth,
+		crmBulkAuthorizer,
 		c.services.conversationHub,
 	)
-	crmBulkService.SetTargetResolver(crmBoardTargetResolver{board: crmBoardService})
+	crmBulkService.SetSelection(crmboard_usecase.NewSelectionResolver(crmBoardService), c.sharedAnalyticsGate())
 
 	c.services.dialog360Onboarding = businessphone_infra.NewDialog360OnboardingService(
 		businessphone_infra.NewDialog360PartnerClient(
@@ -246,16 +249,7 @@ func (c *Container) initHandlers() {
 			c.useCases.getAgent,
 			c.useCases.getWCCampaignsSummary,
 		)),
-		lead: withLeadInboxSeeding(c, leadhttp.NewLeadHandler(
-			c.useCases.leadQueries,
-			c.repositories.lead,
-			c.repositories.wcEntry,
-			c.repositories.conversation,
-			c.repositories.leadMessageWindow,
-			c.repositories.conversationAnalyses,
-			c.repositories.businessPhone,
-			c.services.businessPhoneMetaAPI,
-		)),
+		lead:          c.leadHandler(),
 		callRecording: callrecordinghttp.NewCallRecordingHandler(c.useCases.callRecordingQuery),
 		whatsappBusinessPhone: withWorkspacePhones(c, whatsappbusinessphonehttp.NewWhatsAppBusinessPhoneHandler(
 			whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandlerConfig{
@@ -394,8 +388,9 @@ func (c *Container) initHandlers() {
 			c.repositories.opportunity,
 			c.repositories.stage,
 			c.services.conversationAuth,
+			c.repositories.customField,
 		), c.actorNames()),
-		customField: customfieldhttp.NewCustomFieldHandler(c.useCases.customField),
+		customField: customfieldhttp.NewCustomFieldHandler(c.useCases.customField, c.services.conversationAuth),
 		crmBoard:    crmboardhttp.NewCRMBoardHandler(crmBoardService),
 		crmBulk:     crmbulkhttp.NewCRMBulkHandler(crmBulkService),
 		label: labelhttp.NewLabelHandler(
@@ -608,6 +603,10 @@ func (c *Container) initHandlers() {
 	}
 
 	c.handlers.workspace.SetRolePresets(workspace_usecase.NewListRolePresetsUseCase())
+	c.handlers.workspaceConfig.SetGeocodingSettings(c.geocodingSettingsService())
+	if platform := c.geocodingPlatformUsage(); platform != nil {
+		c.handlers.workspaceConfig.SetGeocodingPlatformUsage(platform)
+	}
 
 	if c.services.requestCallPermission != nil {
 		c.handlers.conversation.SetRequestCallPermission(c.services.requestCallPermission)
@@ -818,18 +817,6 @@ func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHan
 		c.cfg.MercadoPagoWebhookSecret,
 		mercadopagohttp.WithSignatureTolerance(c.cfg.MercadoPagoSignatureTolerance),
 	)
-}
-
-func withLeadInboxSeeding(c *Container, h *leadhttp.LeadHandler) *leadhttp.LeadHandler {
-	h.SetAuthorizer(c.services.conversationAuth)
-	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled {
-		return h
-	}
-	if c.unofficialWhatsApp.SeedInboxPublisher == nil {
-		return h
-	}
-	h.SetInboxSeeder(c.unofficialWhatsApp.SeedInboxPublisher)
-	return h
 }
 
 func (c *Container) callHistoryHandler() *callhistoryhttp.Handler {

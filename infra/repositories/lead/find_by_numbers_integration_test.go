@@ -1,39 +1,42 @@
 package lead
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/uuid"
 
-	"vozko/infra/repositories/repotest"
+	"vozko/domain/lead"
 )
 
 func TestContactsAreFoundByAnyFormatOfTheirNumbersInsideTheWorkspace(t *testing.T) {
-	db := repotest.IsolatedDB(t, "leads")
-	if err := db.Exec(`CREATE TABLE leads (
-		id uuid PRIMARY KEY, workspace_id uuid NOT NULL, number varchar(20) NOT NULL, name varchar(255),
-		profile_picture_url varchar(1024), age int, blocked bool NOT NULL DEFAULT false, blocked_at timestamptz,
-		blocked_by uuid, created_at timestamptz, updated_at timestamptz, deleted_at timestamptz)`).Error; err != nil {
-		t.Fatal(err)
-	}
+	db := leadStoreDB(t)
+	repo := &repository{db: db}
+	ctx := context.Background()
 	ws, other := uuid.NewString(), uuid.NewString()
-	insert := func(workspaceID, number, name string) {
-		if err := db.Exec(`INSERT INTO leads (id, workspace_id, number, name, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())`,
-			uuid.NewString(), workspaceID, number, name).Error; err != nil {
+	insert := func(workspaceID, number, name string, phones ...lead.ContactPhone) *lead.Lead {
+		l := &lead.Lead{WorkspaceID: workspaceID, Number: number, Name: name, Source: lead.SourceManual, Phones: phones}
+		if err := repo.Insert(ctx, l, nil); err != nil {
 			t.Fatal(err)
 		}
+		return l
 	}
-	insert(ws, "558494409684", "Maria")
+	maria := insert(ws, "558494409684", "Maria")
 	insert(ws, "5511999990000", "João")
 	insert(other, "5511888880000", "Stranger")
+	home := insert(ws, "", "Dona Rosa", lead.ContactPhone{Number: "558494409684", Label: lead.PhoneLandline})
+	insert(other, "", "Elsewhere", lead.ContactPhone{Number: "558494409684", Label: lead.PhoneLandline})
 
-	repo := &repository{db: db}
-	found, err := repo.FindByNumbers(ws, []string{"5584994409684", "5511888880000", "100"})
+	found, err := NewNumberDirectory(db).FindByNumbers(ws, []string{"5584994409684", "5511888880000", "100"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 1 || found[0].Name != "Maria" {
-		t.Fatalf("found = %+v, want only Maria, matched through the other mobile format", found)
+	ids := map[string]bool{}
+	for _, l := range found {
+		ids[l.ID] = true
+	}
+	if len(found) != 2 || !ids[maria.ID] || !ids[home.ID] {
+		t.Fatalf("found = %+v, want Maria by her identity and Dona Rosa by her contact phone, inside the workspace only", found)
 	}
 	if none, err := repo.FindByNumbers(ws, []string{"100"}); err != nil || len(none) != 0 {
 		t.Fatalf("unmatchable numbers = %+v, %v", none, err)

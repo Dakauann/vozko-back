@@ -13,15 +13,18 @@ type CallPlanner struct {
 	permissions CallPermissions
 }
 
-var _ sip_trunk.CallPlanner = (*CallPlanner)(nil)
+var (
+	_ sip_trunk.CallPlanner = (*CallPlanner)(nil)
+	_ sip_trunk.CallLines   = (*CallPlanner)(nil)
+)
 
 func NewCallPlanner(repo sip_trunk.Repository, engine sip_trunk.Engine, permissions CallPermissions) *CallPlanner {
 	return &CallPlanner{repo: repo, engine: engine, permissions: permissions}
 }
 
 func (p *CallPlanner) Plan(ctx context.Context, input sip_trunk.CallPlanInput) (*sip_trunk.CallPlan, error) {
-	if p.permissions == nil || !p.permissions.MayCallThroughTrunks(input.UserID, input.WorkspaceID, input.IsAdmin) {
-		return nil, sip_trunk.ErrCallNotPermitted
+	if err := p.permit(input); err != nil {
+		return nil, err
 	}
 	dialString, err := sip_trunk.NormalizeDialString(input.PhoneNumber)
 	if err != nil {
@@ -33,6 +36,20 @@ func (p *CallPlanner) Plan(ctx context.Context, input sip_trunk.CallPlanInput) (
 		return nil, err
 	}
 	return &sip_trunk.CallPlan{PhoneNumber: number, Trunks: trunks}, nil
+}
+
+func (p *CallPlanner) Lines(ctx context.Context, input sip_trunk.CallPlanInput) ([]sip_trunk.TrunkChoice, error) {
+	if err := p.permit(input); err != nil {
+		return nil, err
+	}
+	return p.dialableTrunks(ctx, input)
+}
+
+func (p *CallPlanner) permit(input sip_trunk.CallPlanInput) error {
+	if p.permissions == nil || !p.permissions.MayCallThroughTrunks(input.UserID, input.WorkspaceID, input.IsAdmin) {
+		return sip_trunk.ErrCallNotPermitted
+	}
+	return nil
 }
 
 func (p *CallPlanner) dialableTrunks(ctx context.Context, input sip_trunk.CallPlanInput) ([]sip_trunk.TrunkChoice, error) {

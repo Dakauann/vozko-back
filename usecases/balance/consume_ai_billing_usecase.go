@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"vozko/domain/ai"
+	"vozko/domain/aiusage"
 	"vozko/domain/balance"
 	"vozko/domain/messaging"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
@@ -20,6 +21,7 @@ type ConsumeAIBillingUseCase struct {
 	balanceRepo balance.Repository
 	pricer      workspace_pricing.Pricer
 	metrics     BillingMetrics
+	usage       aiusage.Recorder
 	semaphore   chan struct{}
 }
 
@@ -36,6 +38,10 @@ func NewConsumeAIBillingUseCase(
 		metrics:     metrics,
 		semaphore:   make(chan struct{}, 10),
 	}
+}
+
+func (c *ConsumeAIBillingUseCase) SetUsageRecorder(usage aiusage.Recorder) {
+	c.usage = usage
 }
 
 func (c *ConsumeAIBillingUseCase) markSkipped(reason string) {
@@ -94,16 +100,50 @@ func (c *ConsumeAIBillingUseCase) handle(message []byte, ack messaging.MessageAc
 }
 
 func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error {
+	billed, err := c.charge(event)
+	if err != nil {
+		return err
+	}
+	return c.recordUsage(event, billed)
+}
+
+func usageRecordOf(event ai.AICompletedEvent, billed bool) aiusage.Record {
+	return aiusage.Record{
+		ReferenceID: event.RequestID,
+		WorkspaceID: event.WorkspaceID,
+		Model:       event.Model,
+		Tokens: aiusage.Tokens{
+			Input:      int64(event.PromptTokens),
+			Output:     int64(event.CompletionTokens),
+			CacheRead:  int64(event.CachedTokens),
+			CacheWrite: int64(event.CacheWriteTokens),
+			Reasoning:  int64(event.ReasoningTokens),
+		},
+		Billed: billed,
+	}
+}
+
+func (c *ConsumeAIBillingUseCase) recordUsage(event ai.AICompletedEvent, billed bool) error {
+	if c.usage == nil {
+		return nil
+	}
+	if err := c.usage.Record(usageRecordOf(event, billed)); err != nil {
+		return fmt.Errorf("usage record failed for %s: %w", event.RequestID, err)
+	}
+	return nil
+}
+
+func (c *ConsumeAIBillingUseCase) charge(event ai.AICompletedEvent) (bool, error) {
 	result, err := c.pricer.PriceLLM(event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens, event.ProviderCostMicros)
 	if err != nil {
-		return fmt.Errorf("LLM pricing failed for model %s: %w", event.Model, err)
+		return false, fmt.Errorf("LLM pricing failed for model %s: %w", event.Model, err)
 	}
 
 	if result.PriceMicros <= 0 {
 		c.markSkipped("zero_price")
 		log.Printf("CRITICAL: [ai-billing] priced at $0, NOT billing (ws=%s, model=%s, tokens=%d+%d, req=%s), model likely unpriced; REVENUE LEAK",
 			event.WorkspaceID, event.Model, event.PromptTokens, event.CompletionTokens, event.RequestID)
-		return nil
+		return false, nil
 	}
 
 	_, err = DebitOnce(c.balanceRepo, ReferenceCharge{
@@ -115,8 +155,7 @@ func (c *ConsumeAIBillingUseCase) processEvent(event ai.AICompletedEvent) error 
 		AllowNegative: true,
 	})
 	if err != nil {
-		return fmt.Errorf("debit failed for workspace %s: %w", event.WorkspaceID, err)
+		return false, fmt.Errorf("debit failed for workspace %s: %w", event.WorkspaceID, err)
 	}
-
-	return nil
+	return true, nil
 }

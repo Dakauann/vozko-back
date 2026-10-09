@@ -120,8 +120,8 @@ func TestAnalysisManagesDealsWhenTheChannelHasAFunnel(t *testing.T) {
 	if config["pipeline_id"] != "deals" || config["__entry_id"] != "entry-1" || config["__agent_id"] != "agent-1" || config["__workspace_id"] != "ws" {
 		t.Fatalf("config = %+v", config)
 	}
-	if !strings.Contains(input.SystemPrompt, "deal-1") || !strings.Contains(input.SystemPrompt, "auto_manage_opportunity") {
-		t.Fatalf("the prompt must list the current deals and the rules:\n%s", input.SystemPrompt)
+	if note := lastMessage(input.Messages).Content; !strings.Contains(note, "deal-1") || !strings.Contains(input.SystemPrompt, "auto_manage_opportunity") {
+		t.Fatalf("the system prompt must carry the rules and the note the current deals:\n%s\n%s", input.SystemPrompt, note)
 	}
 	want := dealautomation.Channel{EntryType: shared.EntryTypeInstagram, Kind: conversation.ContainerKindAccount}
 	if len(settings.asked) != 1 || settings.asked[0] != want {

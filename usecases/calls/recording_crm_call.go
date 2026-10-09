@@ -20,11 +20,11 @@ type RecordingCRMCall struct {
 	finishOnce sync.Once
 }
 
-func NewRecordingCRMCall(inner conversation.CRMCall, pool *RecordingUploadPool, workspaceID, entryID, leadID string) *RecordingCRMCall {
+func NewRecordingCRMCall(inner conversation.CRMCall, pool *RecordingUploadPool, workspaceID, leadID string) *RecordingCRMCall {
 	if inner == nil || pool == nil {
 		return nil
 	}
-	recorder := NewCallRecorder(inner.ID(), workspaceID, entryID, leadID)
+	recorder := NewCallRecorder(inner.ID(), workspaceID, leadID)
 	if recorder == nil {
 		return nil
 	}

@@ -21,6 +21,8 @@ const (
 	scriptTokenFloor = 512
 
 	scriptSchemaName = "seeded_conversation_threads"
+
+	scriptFeature = "inbox_seed_script"
 )
 
 var (
@@ -67,8 +69,11 @@ func (s *aiConversationScripter) Script(ctx context.Context, req uw.ScriptReques
 	}
 	replies := maxMessages - 1
 
+	scope := scriptFeature + ":" + req.WorkspaceID
 	out, err := s.ai.Generate(ctx, ai.GenerateInput{
 		WorkspaceID:        req.WorkspaceID,
+		BillingReference:   scope,
+		SessionID:          scope,
 		Model:              model,
 		SystemPrompt:       buildScriptSystemPrompt(req.Context, maxMessages),
 		Messages:           []ai.Message{{Role: ai.RoleUser, Content: userMessage}},

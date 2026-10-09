@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"time"
 
 	"vozko/domain/tools"
 )
@@ -80,6 +81,10 @@ type GenerateInput struct {
 	ToolChoice         string
 	MaxToolIterations  int
 	WorkspaceID        string
+	BillingReference   string
+	SessionID          string
+	AsOf               time.Time
+	VolatileTail       int
 }
 
 type GenerateOutput struct {
@@ -91,9 +96,12 @@ type GenerateOutput struct {
 }
 
 type Usage struct {
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
+	PromptTokens       int
+	CompletionTokens   int
+	TotalTokens        int
+	CachedTokens       int
+	CacheWriteTokens   int
+	ProviderCostMicros int64
 }
 
 func (in GenerateInput) ExecutionModeOrDefault() ToolExecutionMode {

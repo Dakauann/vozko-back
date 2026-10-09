@@ -5,26 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 
-	"vozko/domain/mediagen"
+	"vozko/domain/shared"
 	"vozko/domain/studio"
 )
 
 var ErrMissingDependency = errors.New("studio: the service is missing a dependency")
 
-type MediaJobs interface {
-	Request(ctx context.Context, req mediagen.Request, requestedBy string) (*mediagen.Job, error)
-}
-
 type Service struct {
 	projects studio.Repository
-	media    MediaJobs
 }
 
-func NewService(projects studio.Repository, media MediaJobs) (*Service, error) {
-	if projects == nil || media == nil {
+func NewService(projects studio.Repository) (*Service, error) {
+	if projects == nil {
 		return nil, ErrMissingDependency
 	}
-	return &Service{projects: projects, media: media}, nil
+	return &Service{projects: projects}, nil
 }
 
 func (s *Service) Create(ctx context.Context, workspaceID, userID string, kind studio.Kind, name string, document json.RawMessage) (*studio.Project, error) {
@@ -64,25 +59,13 @@ func (s *Service) Archive(ctx context.Context, workspaceID, id string) error {
 	return s.projects.Archive(ctx, workspaceID, id)
 }
 
-func (s *Service) Export(ctx context.Context, workspaceID, userID, id string, version int64, rasters map[string]string) (*mediagen.Job, error) {
-	p, err := s.loadAt(ctx, workspaceID, id, version)
-	if err != nil {
-		return nil, err
-	}
-	req, err := p.VideoRequest(rasters)
-	if err != nil {
-		return nil, err
-	}
-	return s.media.Request(ctx, req, userID)
-}
-
 func (s *Service) loadAt(ctx context.Context, workspaceID, id string, version int64) (*studio.Project, error) {
 	p, err := s.projects.Get(ctx, workspaceID, id)
 	if err != nil {
 		return nil, err
 	}
-	if p.Version != version {
-		return nil, studio.ErrVersionConflict
+	if err := shared.ExpectVersion(p.Version, &version); err != nil {
+		return nil, err
 	}
 	return p, nil
 }

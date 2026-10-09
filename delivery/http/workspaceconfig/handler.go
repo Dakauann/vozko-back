@@ -21,6 +21,8 @@ type WorkspaceConfigHandler struct {
 	getConfig         workspaceconfigdomain.GetWorkspaceConfigUseCase
 	updateConfig      workspaceconfigdomain.UpdateWorkspaceConfigUseCase
 	updateOwnerConfig workspaceconfigdomain.UpdateWorkspaceConfigOwnerUseCase
+	geocoding         GeocodingSettingsService
+	geocodingPlatform GeocodingPlatformService
 }
 
 func NewWorkspaceConfigHandler(getConfig workspaceconfigdomain.GetWorkspaceConfigUseCase, updateConfig workspaceconfigdomain.UpdateWorkspaceConfigUseCase, updateOwnerConfig workspaceconfigdomain.UpdateWorkspaceConfigOwnerUseCase) *WorkspaceConfigHandler {

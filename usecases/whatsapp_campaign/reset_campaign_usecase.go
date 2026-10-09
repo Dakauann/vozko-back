@@ -36,6 +36,9 @@ func (uc *resetCampaignUseCase) PrepareReset(campaignID string) (*wc.PrepareRese
 	if existing.Status == wc.CampaignStatusRunning {
 		return nil, wc.ErrCampaignResetNotAllowed
 	}
+	if err := campaign.RefuseSelectionChange(existing.Source, true); err != nil {
+		return nil, err
+	}
 
 	resetCode, err := campaign.NewConfirmationCode()
 	if err != nil {
@@ -69,6 +72,9 @@ func (uc *resetCampaignUseCase) ConfirmReset(input wc.ResetCampaignInput) (*wc.R
 
 	if existing.Status == wc.CampaignStatusRunning {
 		return nil, wc.ErrCampaignResetNotAllowed
+	}
+	if err := campaign.RefuseSelectionChange(existing.Source, true); err != nil {
+		return nil, err
 	}
 
 	if existing.ResetCode == "" || existing.ResetCode != input.ResetCode {

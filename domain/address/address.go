@@ -2,6 +2,7 @@ package address
 
 import (
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -16,17 +17,19 @@ const (
 )
 
 type Address struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"userId"`
-	Name       string    `json:"name"`
-	Street     string    `json:"street"`
-	Number     string    `json:"number"`
-	Complement string    `json:"complement,omitempty"`
-	District   string    `json:"district"`
-	City       string    `json:"city"`
-	State      string    `json:"state"`
-	ZipCode    string    `json:"zipCode"`
-	IsDefault  bool      `json:"isDefault"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID     string `json:"id"`
+	UserID string `json:"userId"`
+	Name   string `json:"name"`
+	Postal
+	IsDefault bool      `json:"isDefault"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func (a Address) Missing() []Field {
+	missing := a.Postal.Missing()
+	if strings.TrimSpace(a.Name) == "" {
+		missing = append([]Field{FieldName}, missing...)
+	}
+	return missing
 }

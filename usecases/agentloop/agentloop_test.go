@@ -477,6 +477,27 @@ func TestStreamGenerate_TokensReasoningUsage(t *testing.T) {
 	}
 }
 
+func TestStreamGenerate_ReasoningReachesWatchersInFewChunks(t *testing.T) {
+	tokens := make([]string, 0, 200)
+	for i := 0; i < 200; i++ {
+		tokens = append(tokens, "ab. ")
+	}
+	e := Engine{AI: &fakeAI{turns: []aiTurn{{reasoning: tokens, tokens: []string{"ok"}}}}}
+	cp := &capture{}
+	if _, err := e.streamGenerate(context.Background(), cp.emit, ai.GenerateInput{}); err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	deltas := 0
+	for _, kind := range cp.types {
+		if kind == "reasoning_delta" {
+			deltas++
+		}
+	}
+	if deltas == 0 || deltas > 6 {
+		t.Fatalf("800 characters of reasoning should stream in a handful of chunks, got %d", deltas)
+	}
+}
+
 func TestStreamGenerate_FullTextFallbackNoUsage(t *testing.T) {
 	e := Engine{AI: &fakeAI{turns: []aiTurn{{fullText: "fallback", noUsage: true}}}}
 	out, err := e.streamGenerate(context.Background(), (&capture{}).emit, ai.GenerateInput{})
@@ -504,12 +525,12 @@ func TestWithDefaults(t *testing.T) {
 	if d.MaxIterations != 30 || d.NoProgressStop != 5 || d.RepairBudget != 3 ||
 		d.EmptyTurnRetries != 2 || d.MaxHistoryMsgs != 80 || d.MaxTokensPerGen != 24000 ||
 		d.ReasoningMaxTokens != 10000 || d.FinishToolName != "finish" ||
-		d.RepeatedTurnStop != 3 || d.CompactAt != 0.5 || d.KeepRecent != 8 {
+		d.RepeatedTurnStop != 3 || d.CompactAt != 0.5 || d.KeepRecent != 8 || d.KeepToolImages != 2 {
 		t.Fatalf("defaults wrong: %+v", d)
 	}
 	in := Config{MaxIterations: 1, NoProgressStop: 1, RepairBudget: 1, EmptyTurnRetries: 1,
 		MaxHistoryMsgs: 1, MaxTokensPerGen: 1, ReasoningMaxTokens: 1, FinishToolName: "fim",
-		RepeatedTurnStop: 1, CompactAt: 0.7, KeepRecent: 1}
+		RepeatedTurnStop: 1, CompactAt: 0.7, KeepRecent: 1, KeepToolImages: 1}
 	if out := in.withDefaults(); out != in {
 		t.Fatalf("populated config must be unchanged, got %+v", out)
 	}

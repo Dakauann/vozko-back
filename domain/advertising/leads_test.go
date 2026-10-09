@@ -136,3 +136,21 @@ func TestFormLeadContactReadsMetaStandardFields(t *testing.T) {
 		t.Fatalf("contact %+v", c)
 	}
 }
+
+func TestFormLeadContactReadsTheAreaAnswers(t *testing.T) {
+	cases := []struct {
+		answers map[string]string
+		want    LeadContact
+	}{
+		{map[string]string{"city": " São Paulo ", "STATE": "SP", "zip_code": "01310-100"}, LeadContact{City: "São Paulo", State: "SP", Zip: "01310-100"}},
+		{map[string]string{"zip": "01310100"}, LeadContact{Zip: "01310100"}},
+		{map[string]string{"post_code": "01310100", "province": "São Paulo"}, LeadContact{State: "São Paulo", Zip: "01310100"}},
+		{map[string]string{"postal_code": "01310100"}, LeadContact{Zip: "01310100"}},
+	}
+	for _, tc := range cases {
+		c := FormLead{Answers: tc.answers}.Contact()
+		if c.City != tc.want.City || c.State != tc.want.State || c.Zip != tc.want.Zip {
+			t.Errorf("answers %v: contact %+v, want %+v", tc.answers, c, tc.want)
+		}
+	}
+}

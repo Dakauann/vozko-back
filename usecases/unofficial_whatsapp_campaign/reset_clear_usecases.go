@@ -26,6 +26,9 @@ func (uc *resetCampaignUseCase) PrepareReset(campaignID string) (*uwc.PrepareRes
 	if existing.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignResetNotAllowed
 	}
+	if err := campaign.RefuseSelectionChange(existing.Source, true); err != nil {
+		return nil, err
+	}
 
 	code, err := campaign.NewConfirmationCode()
 	if err != nil {
@@ -55,6 +58,9 @@ func (uc *resetCampaignUseCase) ConfirmReset(in uwc.ResetCampaignInput) (*uwc.Re
 	}
 	if existing.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignResetNotAllowed
+	}
+	if err := campaign.RefuseSelectionChange(existing.Source, true); err != nil {
+		return nil, err
 	}
 	if existing.ResetCode == "" || existing.ResetCode != in.ResetCode {
 		return nil, uwc.ErrCampaignResetCodeInvalid

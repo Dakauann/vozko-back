@@ -66,7 +66,9 @@ type Repository interface {
 
 	FindByNumber(number string) (*WhatsAppCampaignEntry, error)
 
-	FindByNumberAndBusinessPhone(number string, businessPhoneID string) (*WhatsAppCampaignEntry, error)
+	FindInboundRouteByNumberAndBusinessPhone(number string, businessPhoneID string) (*WhatsAppCampaignEntry, error)
+
+	FindByNumberBusinessPhoneAndWorkspace(number, businessPhoneID, workspaceID string) (*WhatsAppCampaignEntry, error)
 
 	GetCampaignForEntry(entryID string) (*EntryCampaignInfo, error)
 

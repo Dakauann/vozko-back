@@ -247,6 +247,9 @@ type LeadContact struct {
 	Phone string
 	Email string
 	Name  string
+	City  string
+	State string
+	Zip   string
 }
 
 func (l FormLead) Contact() LeadContact {
@@ -262,7 +265,19 @@ func (l FormLead) Contact() LeadContact {
 	if phone == "" {
 		phone = a["phone"]
 	}
-	return LeadContact{Phone: DigitsOnly(phone), Email: NormalizeEmail(a["email"]), Name: name}
+	return LeadContact{
+		Phone: DigitsOnly(phone), Email: NormalizeEmail(a["email"]), Name: name,
+		City: a["city"], State: firstAnswer(a, "state", "province"), Zip: firstAnswer(a, "zip_code", "zip", "post_code", "postal_code"),
+	}
+}
+
+func firstAnswer(answers map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := answers[key]; value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 var accentFolds = map[rune]rune{

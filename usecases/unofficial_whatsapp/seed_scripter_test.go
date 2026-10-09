@@ -111,6 +111,17 @@ func TestScripterSetsEveryProviderGuard(t *testing.T) {
 	}
 }
 
+func TestScripterIsScopedForCachingAndBilling(t *testing.T) {
+	svc := answering(twoThreads)
+	if _, err := NewConversationScripter(svc, "fallback/model").Script(context.Background(), sampleScriptRequest()); err != nil {
+		t.Fatalf("Script: %v", err)
+	}
+	in := svc.lastInput(t)
+	if in.SessionID != "inbox_seed_script:ws-1" || in.BillingReference != "inbox_seed_script:ws-1" {
+		t.Fatalf("session %q, billing %q", in.SessionID, in.BillingReference)
+	}
+}
+
 func TestScripterDerivesTheTokenCeilingFromTheAsk(t *testing.T) {
 	small := answering(twoThreads)
 	req := sampleScriptRequest()

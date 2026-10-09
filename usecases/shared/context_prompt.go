@@ -2,6 +2,8 @@ package shared
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,7 +27,7 @@ type ConversationContext struct {
 	AvailableTools  []string
 }
 
-func (c ConversationContext) BuildContextPrompt() string {
+func (c ConversationContext) RulesPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("\n--- Conversation Context ---\n")
 
@@ -81,7 +83,13 @@ func (c ConversationContext) BuildContextPrompt() string {
 		sb.WriteString("Só depois de esgotar as buscas responda com base nas suas próprias instruções; se a informação não estiver em lugar nenhum, diga que não a tem em vez de inventar.\n\n")
 	}
 
-	sb.WriteString("--- Lead/Contact Info (the person you are talking to) ---\n")
+	sb.WriteString("--- End Context ---\n\n")
+	return sb.String()
+}
+
+func (c ConversationContext) LeadPrompt() string {
+	var sb strings.Builder
+	sb.WriteString("\n\n--- Lead/Contact Info (the person you are talking to) ---\n")
 	switch c.Channel {
 	case ChannelWhatsApp:
 		sb.WriteString(fmt.Sprintf("Lead WhatsApp Number: %s\n", c.UserPhoneNumber))
@@ -103,12 +111,12 @@ func (c ConversationContext) BuildContextPrompt() string {
 
 	if len(c.Metadata) > 0 {
 		sb.WriteString("--- Lead Metadata ---\n")
-		for key, value := range c.Metadata {
-			sb.WriteString(fmt.Sprintf("%s: %v\n", key, value))
+		for _, key := range slices.Sorted(maps.Keys(c.Metadata)) {
+			sb.WriteString(fmt.Sprintf("%s: %v\n", key, c.Metadata[key]))
 		}
 	}
 
-	sb.WriteString("--- End Context ---\n\n")
+	sb.WriteString("--- End Context ---\n")
 	return sb.String()
 }
 

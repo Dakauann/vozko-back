@@ -66,6 +66,10 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 	if err != nil {
 		return err
 	}
+	attempt := campaign.StartAttempt{Source: campaignItem.Source, Action: action, From: currentStatus, Reviewed: input.Reviewed}
+	if err := attempt.RefuseUnreviewed(); err != nil {
+		return err
+	}
 	targetStatus, revertStatus := transition.Target, transition.Revert
 	if !transition.FansOutWork {
 		input.Entries = nil

@@ -15,6 +15,9 @@ type UnofficialWhatsAppCampaign struct {
 	InstanceID   string  `gorm:"type:uuid;not null;index:idx_uwc_instance"`
 	CreatedByID  *string `gorm:"type:uuid;index"`
 
+	Source         OptionalText `gorm:"column:source;type:varchar(32)"`
+	IdempotencyKey OptionalText `gorm:"column:idempotency_key;type:varchar(200)"`
+
 	Name string `gorm:"size:255;not null"`
 
 	MessageKind string       `gorm:"size:16;not null;default:'text'"`

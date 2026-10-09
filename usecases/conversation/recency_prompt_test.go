@@ -30,49 +30,54 @@ func reversal() []*conversation.Message {
 	)
 }
 
-func TestTheRecentMessagesAreSetApartFromTheEarlierHistory(t *testing.T) {
-	transcript := BuildRecencyTranscript(reversal())
+func wholePrompt(prompt AutoTaskPrompt) string {
+	parts := []string{prompt.System}
+	for _, message := range prompt.Messages {
+		parts = append(parts, message.Content)
+	}
+	return strings.Join(parts, "\n\n")
+}
 
-	earlier, recent, found := strings.Cut(transcript, recentMessagesHeading)
-	if !found {
-		t.Fatalf("no recent block:\n%s", transcript)
+func TestTheRecentMessagesAreSetApartFromTheEarlierHistory(t *testing.T) {
+	transcript := splitByRecency(reversal())
+
+	if !strings.HasPrefix(transcript.earlier, earlierHistoryHeading) || !strings.Contains(transcript.earlier, "User: quero agendar uma consulta") {
+		t.Fatalf("the opening belongs to the earlier history:\n%s", transcript.earlier)
 	}
-	if !strings.Contains(earlier, earlierHistoryHeading) || !strings.Contains(earlier, "User: quero agendar uma consulta") {
-		t.Fatalf("the opening belongs to the earlier history:\n%s", earlier)
+	if !strings.HasPrefix(transcript.recent, recentMessagesHeading) {
+		t.Fatalf("no recent block:\n%s", transcript.recent)
 	}
-	if strings.Count(recent, "\n") != recentMessageCount+1 || !strings.Contains(recent, "User: na verdade quero continuar") {
-		t.Fatalf("the last %d messages form the recent block:\n%s", recentMessageCount, recent)
+	if strings.Count(transcript.recent, "\n") != recentMessageCount+1 || !strings.Contains(transcript.recent, "User: na verdade quero continuar") {
+		t.Fatalf("the last %d messages form the recent block:\n%s", recentMessageCount, transcript.recent)
 	}
-	if strings.Contains(recent, "quero agendar uma consulta") {
+	if strings.Contains(transcript.recent, "quero agendar uma consulta") {
 		t.Fatal("an old message leaked into the recent block")
 	}
 }
 
 func TestAShortConversationIsAllRecent(t *testing.T) {
-	transcript := BuildRecencyTranscript([]*conversation.Message{customerSays("oi"), teamSays("olá")})
-	if strings.Contains(transcript, earlierHistoryHeading) || !strings.HasPrefix(transcript, recentMessagesHeading) {
-		t.Fatalf("transcript:\n%s", transcript)
+	transcript := splitByRecency([]*conversation.Message{customerSays("oi"), teamSays("olá")})
+	if transcript.earlier != "" || !strings.HasPrefix(transcript.recent, recentMessagesHeading) {
+		t.Fatalf("earlier:\n%s\nrecent:\n%s", transcript.earlier, transcript.recent)
 	}
 }
 
 func TestEveryPromptOfTheQuietRunFavoursTheLatestPosition(t *testing.T) {
 	history := reversal()
-	prompts := map[string]string{
+	prompts := map[string]AutoTaskPrompt{
 		"stage": BuildAutoTagPrompt(AutoTagPromptInput{CampaignName: "c", History: history,
 			Tags: []*stage.Stage{{Name: "agendado"}, {Name: "desistiu"}}}),
 		"memory": BuildAutoMemoryPrompt(AutoMemoryPromptInput{ContainerName: "c", History: history}),
 		"deals":  BuildAutoDealPrompt(AutoDealPromptInput{ContainerName: "c", History: history}),
 	}
 	for name, prompt := range prompts {
-		if !strings.Contains(prompt, latestPositionRule) {
+		if !strings.Contains(prompt.System, latestPositionRule) {
 			t.Errorf("%s prompt lacks the latest-position rule", name)
 		}
-		if strings.Contains(prompt, "%!") {
+		if strings.Contains(wholePrompt(prompt), "%!") {
 			t.Errorf("%s prompt has format errors", name)
 		}
-	}
-	for _, name := range []string{"stage", "memory", "deals"} {
-		if !strings.Contains(prompts[name], recentMessagesHeading) {
+		if !strings.Contains(lastMessage(prompt.Messages).Content, recentMessagesHeading) {
 			t.Errorf("%s prompt does not show which messages are recent", name)
 		}
 	}

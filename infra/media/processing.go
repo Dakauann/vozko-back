@@ -48,6 +48,8 @@ type CaptionsGenerator struct {
 
 var _ mediagen.Generator = (*CaptionsGenerator)(nil)
 
+const captionsTranscriptionBudget = 5 * time.Minute
+
 func NewCaptionsGenerator(client *http.Client, transcriber stt.SegmentTranscriber, language string) *CaptionsGenerator {
 	return &CaptionsGenerator{client: client, transcriber: transcriber, language: language}
 }
@@ -61,7 +63,9 @@ func (g *CaptionsGenerator) Generate(ctx context.Context, _ mediagen.Request, so
 	if err != nil {
 		return nil, err
 	}
-	transcription, err := g.transcriber.TranscribeSegments(ctx, speech, g.language)
+	transcribing, cancel := context.WithTimeout(ctx, captionsTranscriptionBudget)
+	defer cancel()
+	transcription, err := g.transcriber.TranscribeSegments(transcribing, speech, g.language)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", mediagen.ErrGenerationFailed, err)
 	}

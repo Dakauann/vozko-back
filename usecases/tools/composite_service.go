@@ -161,7 +161,7 @@ func (c *CompositeToolService) mcpDefinitionsForAgent(ctx context.Context) []too
 			Required:    it.required,
 		})
 	}
-	return defs
+	return byName(defs)
 }
 
 const mcpMaxResultChars = 10000

@@ -73,8 +73,8 @@ func (p *statusTestHistoryProvider) PresentMessage(_, _ string, m *conversation.
 	m.SenderName = p.resolvedName
 }
 
-func (p *statusTestHistoryProvider) GetEntryInfo(string, string) (string, string, string, map[string]interface{}, []string, bool, error) {
-	return "", "", "", nil, nil, false, nil
+func (p *statusTestHistoryProvider) GetEntryInfo(string, string) (conversation.EntryInfo, error) {
+	return conversation.EntryInfo{}, nil
 }
 func (p *statusTestHistoryProvider) GetHistory(string, shared.EntryType, int) ([]*conversation.Message, bool, int64, error) {
 	return nil, false, 0, nil

@@ -13,6 +13,7 @@ type Repository interface {
 	Create(ctx context.Context, job *Job) error
 	Get(ctx context.Context, workspaceID, id string) (*Job, error)
 	FindActive(ctx context.Context, workspaceID, requestedBy, fingerprint string, since time.Time) (*Job, error)
+	FindDelivered(ctx context.Context, workspaceID string, kind Kind, sourceMediaID string) (*Job, error)
 	Claim(ctx context.Context, id string) (*Job, bool, error)
 	MarkDone(ctx context.Context, id string, result Result, at time.Time) error
 	MarkFailed(ctx context.Context, id string, code FailureCode, at time.Time) error
@@ -26,6 +27,7 @@ type Repository interface {
 
 type ProcessingCharges interface {
 	Charge(ctx context.Context, job *Job) error
+	Priced(kind Kind) bool
 }
 
 type CostLookup interface {

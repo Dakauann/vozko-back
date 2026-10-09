@@ -3,6 +3,7 @@ package aibilling
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,5 +72,23 @@ func TestProviderCostIsRoundedUpToWholeMicros(t *testing.T) {
 		if got := CostToMicros(cost); got != want {
 			t.Fatalf("CostToMicros(%v) = %d, want %d", cost, got, want)
 		}
+	}
+}
+
+func TestAChargeForAThreadCarriesTheThreadInItsReference(t *testing.T) {
+	queue := &flakyQueue{}
+	instant(queue).PublishFor("aichat:th-1", "ws-1", "anthropic/claude", 100, 20, 300)
+	var event ai.AICompletedEvent
+	if err := json.Unmarshal(queue.bodies[0], &event); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(event.RequestID, "aichat:th-1:") || len(event.RequestID) <= len("aichat:th-1:") {
+		t.Fatalf("the request id must sit under the thread reference, got %q", event.RequestID)
+	}
+	instant(queue).PublishFor("aichat:th-1", "ws-1", "anthropic/claude", 100, 20, 300)
+	var second ai.AICompletedEvent
+	_ = json.Unmarshal(queue.bodies[1], &second)
+	if second.RequestID == event.RequestID {
+		t.Fatal("every call must keep its own reference")
 	}
 }

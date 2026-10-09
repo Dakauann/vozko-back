@@ -51,3 +51,23 @@ func TestReadMediaRefusesOversizedFiles(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestReadMediaNeverDownloadsALeadImportSheet(t *testing.T) {
+	files := &filesStub{data: []byte("numero,nome\n")}
+	sheet := NewGetMediaUseCase(mediaByID{stored: &media.Media{ID: "m1", WorkspaceID: "ws1", URL: "https://files.test/lead-imports/ws1/a.csv", Type: media.MediaTypeLeadImport}})
+	if _, err := NewReadMediaUseCase(sheet, files).Read(context.Background(), "ws1", "m1"); !errors.Is(err, media.ErrMediaNotFound) || files.downloads != 0 {
+		t.Fatalf("err %v downloads %d", err, files.downloads)
+	}
+}
+
+func TestReadMediaRefusesWithoutItsPieces(t *testing.T) {
+	get := mediaAt("ws1", "https://files.test/ws1/a.csv")
+	for name, uc := range map[string]media.ReadMediaUseCase{
+		"no library": NewReadMediaUseCase(nil, &filesStub{}),
+		"no storage": NewReadMediaUseCase(get, nil),
+	} {
+		if _, err := uc.Read(context.Background(), "ws1", "m1"); err == nil {
+			t.Fatalf("%s: a read went through", name)
+		}
+	}
+}

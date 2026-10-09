@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -110,7 +111,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 				case <-ctx.Done():
 					stream.Close()
 					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: ctx.Err()}
-					s.billStreamUsage(input.WorkspaceID, req.Model, genID, totalUsage)
+					s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 					return
 				default:
 				}
@@ -125,7 +126,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					}
 					stream.Close()
 					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: err}
-					s.billStreamUsage(input.WorkspaceID, req.Model, genID, totalUsage)
+					s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 					return
 				}
 
@@ -150,7 +151,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					case eventCh <- ai.StreamEvent{Type: ai.StreamEventReasoning, Token: reasoning}:
 					case <-ctx.Done():
 						stream.Close()
-						s.billStreamUsage(input.WorkspaceID, req.Model, genID, totalUsage)
+						s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 						return
 					}
 				}
@@ -162,7 +163,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					case eventCh <- ai.StreamEvent{Type: ai.StreamEventToken, Token: choice.Delta.Content}:
 					case <-ctx.Done():
 						stream.Close()
-						s.billStreamUsage(input.WorkspaceID, req.Model, genID, totalUsage)
+						s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 						return
 					}
 				}
@@ -195,17 +196,14 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			}
 			stream.Close()
 
-			s.billStreamUsage(input.WorkspaceID, req.Model, genID, totalUsage)
+			s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 
 			if streamUnfinished(finishReason, totalUsage) {
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: fmt.Errorf("%w: model=%s generation=%s finish=%q", ai.ErrStreamIncomplete, req.Model, genID, finishReason)}
 				return
 			}
 
-			pending := make([]openrouter.ToolCall, 0, len(toolAcc))
-			for _, tc := range toolAcc {
-				pending = append(pending, *tc)
-			}
+			pending := orderedToolCalls(toolAcc)
 
 			shouldReturn := len(pending) == 0 || !hasTools ||
 				execMode == ai.ToolExecutionModeNone ||
@@ -225,11 +223,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					FinishReason:     finishReason,
 				}
 				if totalUsage != nil {
-					doneEvt.Usage = &ai.Usage{
-						PromptTokens:     totalUsage.PromptTokens,
-						CompletionTokens: totalUsage.CompletionTokens,
-						TotalTokens:      totalUsage.TotalTokens,
-					}
+					doneEvt.Usage = usageOf(totalUsage)
 				}
 				eventCh <- doneEvt
 				return
@@ -243,17 +237,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 				}
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventToolCall, ToolCall: &toolCall}
 
-				var result tools.ExecutionResult
-				var err error
-				toolConfig := input.ToolConfigs[strings.ToLower(tc.Function.Name)]
-				if len(toolConfig) > 0 {
-					result, err = s.toolService.ExecuteWithConfig(ctx, tc.Function.Name, toolConfig, toolCall.Arguments)
-				} else {
-					result, err = s.toolService.Execute(ctx, tc.Function.Name, toolCall.Arguments)
-				}
-				if err != nil {
-					result = tools.ExecutionResult{Result: fmt.Sprintf("tool %s failed: %v", tc.Function.Name, err), IsError: true, ContextUpdateText: fmt.Sprintf("tool %s failed: %v", tc.Function.Name, err)}
-				}
+				result := s.executeTool(ctx, input.ToolConfigs, tc.Function.Name, toolCall.Arguments)
 				toolCall.Result = &result
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventToolResult, ToolCall: &toolCall, ToolResult: &result}
 
@@ -273,6 +257,9 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			for _, tc := range allToolCalls[len(allToolCalls)-len(pending):] {
 				req.Messages = append(req.Messages, openrouter.ToolMessage(tc.ID, serializeToolResult(tc.Result)))
 			}
+			if cachesExplicitly(req.Model) {
+				req.Messages = withMovedTailBreakpoints(req.Messages)
+			}
 
 			if finishReason != "tool_calls" && finishReason != "function_call" {
 				log.Printf("[openrouter] exiting tool loop: finishReason=%s (not tool_calls), totalToolCalls=%d", finishReason, len(allToolCalls))
@@ -284,11 +271,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					FinishReason:     finishReason,
 				}
 				if totalUsage != nil {
-					exitEvt.Usage = &ai.Usage{
-						PromptTokens:     totalUsage.PromptTokens,
-						CompletionTokens: totalUsage.CompletionTokens,
-						TotalTokens:      totalUsage.TotalTokens,
-					}
+					exitEvt.Usage = usageOf(totalUsage)
 				}
 				eventCh <- exitEvt
 				return
@@ -318,6 +301,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 
 	var totalUsage ai.Usage
 	var executedCalls []ai.ToolCall
+	forced := false
 
 	for iter := 0; ; iter++ {
 		resp, err := s.client.CreateChatCompletion(ctx, req)
@@ -333,7 +317,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 			if input.WorkspaceID == "" {
 				log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", req.Model)
 			} else {
-				s.publishBillingEvent(input.WorkspaceID, req.Model, resp.Usage.PromptTokens, resp.Usage.CompletionTokens, costToMicros(resp.Usage.Cost))
+				s.publishBillingEvent(input.WorkspaceID, input.BillingReference, req.Model, callUsageOf(resp.Usage))
 			}
 		}
 
@@ -351,7 +335,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 			s.toolService == nil
 		hitLimit := iter >= maxIter
 
-		if noToolCalls || cannotExecute {
+		if noToolCalls || cannotExecute || forced {
 			content := strings.TrimSpace(msg.Content.Text)
 
 			out := &ai.GenerateOutput{
@@ -364,51 +348,50 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 			return out, nil
 		}
 
-		if hitLimit {
-
-			req.Messages = append(req.Messages, msg)
-			for _, call := range msg.ToolCalls {
-				args := parseToolArguments(call.Function.Arguments)
-				var result tools.ExecutionResult
-				var execErr error
-				toolConfig := input.ToolConfigs[strings.ToLower(call.Function.Name)]
-				if len(toolConfig) > 0 {
-					result, execErr = s.toolService.ExecuteWithConfig(ctx, call.Function.Name, toolConfig, args)
-				} else {
-					result, execErr = s.toolService.Execute(ctx, call.Function.Name, args)
-				}
-				if execErr != nil {
-					result = tools.ExecutionResult{Result: fmt.Sprintf("tool %s failed: %v", call.Function.Name, execErr), IsError: true, ContextUpdateText: fmt.Sprintf("tool %s failed: %v", call.Function.Name, execErr)}
-				}
-				resultCopy := result
-				executedCalls = append(executedCalls, ai.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: args, Result: &resultCopy})
-				req.Messages = append(req.Messages, openrouter.ToolMessage(call.ID, serializeToolResult(&result)))
-			}
-			req.Tools = nil
-			log.Printf("[openrouter] tool iteration limit reached (%d); forcing text response", maxIter)
-			continue
-		}
-
 		req.Messages = append(req.Messages, msg)
 		for _, call := range msg.ToolCalls {
 			args := parseToolArguments(call.Function.Arguments)
-
-			var result tools.ExecutionResult
-			var err error
-			toolConfig := input.ToolConfigs[strings.ToLower(call.Function.Name)]
-			if len(toolConfig) > 0 {
-				result, err = s.toolService.ExecuteWithConfig(ctx, call.Function.Name, toolConfig, args)
-			} else {
-				result, err = s.toolService.Execute(ctx, call.Function.Name, args)
-			}
-			if err != nil {
-				result = tools.ExecutionResult{Result: fmt.Sprintf("tool %s failed: %v", call.Function.Name, err), IsError: true, ContextUpdateText: fmt.Sprintf("tool %s failed: %v", call.Function.Name, err)}
-			}
-			resultCopy := result
-			executedCalls = append(executedCalls, ai.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: args, Result: &resultCopy})
+			result := s.executeTool(ctx, input.ToolConfigs, call.Function.Name, args)
+			executedCalls = append(executedCalls, ai.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: args, Result: &result})
 			req.Messages = append(req.Messages, openrouter.ToolMessage(call.ID, serializeToolResult(&result)))
 		}
+		if cachesExplicitly(req.Model) {
+			req.Messages = withMovedTailBreakpoints(req.Messages)
+		}
+		if hitLimit {
+			req.ToolChoice = finalAnswerToolChoice
+			forced = true
+			log.Printf("[openrouter] tool iteration limit reached (%d); forcing text response", maxIter)
+		}
 	}
+}
+
+func (s *Service) executeTool(ctx context.Context, configs map[string]map[string]interface{}, name string, args map[string]interface{}) tools.ExecutionResult {
+	var result tools.ExecutionResult
+	var err error
+	if config := configs[strings.ToLower(name)]; len(config) > 0 {
+		result, err = s.toolService.ExecuteWithConfig(ctx, name, config, args)
+	} else {
+		result, err = s.toolService.Execute(ctx, name, args)
+	}
+	if err != nil {
+		failure := fmt.Sprintf("tool %s failed: %v", name, err)
+		return tools.ExecutionResult{Result: failure, IsError: true, ContextUpdateText: failure}
+	}
+	return result
+}
+
+func orderedToolCalls(accumulated map[int]*openrouter.ToolCall) []openrouter.ToolCall {
+	indexes := make([]int, 0, len(accumulated))
+	for index := range accumulated {
+		indexes = append(indexes, index)
+	}
+	sort.Ints(indexes)
+	calls := make([]openrouter.ToolCall, 0, len(indexes))
+	for _, index := range indexes {
+		calls = append(calls, *accumulated[index])
+	}
+	return calls
 }
 
 func (s *Service) GetAvaibleModels(ctx context.Context) ([]string, error) {
@@ -464,11 +447,17 @@ func (s *Service) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, err
 
 func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletionRequest {
 	messages := make([]openrouter.ChatCompletionMessage, 0, len(input.Messages)+1)
+	explicit := cachesExplicitly(s.modelFor(input))
 
-	if sys := strings.TrimSpace(input.SystemPrompt); sys != "" {
-		messages = append(messages, openrouter.SystemMessage(getBrazilTimePrefix()+sys))
+	clock := brazilClock(input.AsOf)
+	history := input.Messages
+	if input.VolatileTail > 0 && len(history) > 0 {
+		history, clock = withClockInTail(history, clock), ""
 	}
-	for _, m := range input.Messages {
+	if sys := strings.TrimSpace(input.SystemPrompt); sys != "" {
+		messages = append(messages, systemMessage(sys, clock, explicit))
+	}
+	for _, m := range history {
 		switch m.Role {
 		case ai.RoleSystem:
 			messages = append(messages, openrouter.SystemMessage(m.Content))
@@ -494,16 +483,16 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 		temp = s.defaultTemp
 	}
 
-	defs := input.Tools
-	if defs == nil && s.toolService != nil && input.ToolExecutionMode != ai.ToolExecutionModeNone {
-		defs = s.toolService.Definitions()
+	if explicit {
+		messages = withTailBreakpoints(messages, input.VolatileTail)
 	}
 
 	req := openrouter.ChatCompletionRequest{
 		Model:       s.modelFor(input),
 		Messages:    messages,
 		Temperature: temp,
-		Tools:       convertTools(defs),
+		Tools:       convertTools(input.Tools),
+		SessionId:   input.SessionID,
 	}
 
 	if input.MaxTokens > 0 {
@@ -666,16 +655,45 @@ func isStreamClosedError(err error) bool {
 		strings.Contains(s, "stream closed")
 }
 
-func getBrazilTimePrefix() string {
-	loc, err := time.LoadLocation("America/Sao_Paulo")
-	if err != nil {
-		loc = time.FixedZone("BRT", -3*60*60)
-	}
-	return fmt.Sprintf("[Current Date/Time in Brazil: %s]\n\n", time.Now().In(loc).Format("02/01/2006 15:04:05"))
-}
-
 func resolveParamType(raw string) (schemaType, formatHint string) {
 	return tools.ResolveParamType(raw)
+}
+
+func itemsSchema(items *tools.ParameterItems) map[string]interface{} {
+	schema := map[string]interface{}{"type": items.Type}
+	if items.Description != "" {
+		schema["description"] = items.Description
+	}
+	if len(items.Enum) > 0 {
+		schema["enum"] = items.Enum
+	}
+	if items.Type != "object" || len(items.Properties) == 0 {
+		return schema
+	}
+	props := make(map[string]interface{}, len(items.Properties))
+	for key, p := range items.Properties {
+		prop := map[string]interface{}{"type": p.Type, "description": p.Description}
+		if len(p.Enum) > 0 {
+			prop["enum"] = p.Enum
+		}
+		if p.Type == "array" && p.Items != nil {
+			prop["items"] = itemsSchema(p.Items)
+		}
+		if p.Type == "object" && p.Items != nil {
+			nested := itemsSchema(p.Items)
+			for _, key := range []string{"properties", "required"} {
+				if value, ok := nested[key]; ok {
+					prop[key] = value
+				}
+			}
+		}
+		props[key] = prop
+	}
+	schema["properties"] = props
+	if len(items.Required) > 0 {
+		schema["required"] = items.Required
+	}
+	return schema
 }
 
 func convertTools(defs []tools.Definition) []openrouter.Tool {
@@ -704,25 +722,7 @@ func convertTools(defs []tools.Definition) []openrouter.Tool {
 					prop["enum"] = p.Enum
 				}
 				if schemaType == "array" && p.Items != nil {
-					itemsSchema := map[string]interface{}{"type": p.Items.Type}
-					if p.Items.Description != "" {
-						itemsSchema["description"] = p.Items.Description
-					}
-					if p.Items.Type == "object" && len(p.Items.Properties) > 0 {
-						itemProps := make(map[string]interface{})
-						for ik, ip := range p.Items.Properties {
-							itemProp := map[string]interface{}{"type": ip.Type, "description": ip.Description}
-							if len(ip.Enum) > 0 {
-								itemProp["enum"] = ip.Enum
-							}
-							itemProps[ik] = itemProp
-						}
-						itemsSchema["properties"] = itemProps
-						if len(p.Items.Required) > 0 {
-							itemsSchema["required"] = p.Items.Required
-						}
-					}
-					prop["items"] = itemsSchema
+					prop["items"] = itemsSchema(p.Items)
 				}
 				if schemaType == "object" && p.Items != nil && len(p.Items.Properties) > 0 {
 					objProps := make(map[string]interface{})
@@ -823,6 +823,31 @@ func costToMicros(cost float64) int64 {
 	return aibilling.CostToMicros(cost)
 }
 
-func (s *Service) publishBillingEvent(workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64) {
-	aibilling.NewPublisher(s.billingPub).Publish(workspaceID, model, promptTokens, completionTokens, providerCostMicros)
+func usageOf(usage *openrouter.Usage) *ai.Usage {
+	return &ai.Usage{
+		PromptTokens:       usage.PromptTokens,
+		CompletionTokens:   usage.CompletionTokens,
+		TotalTokens:        usage.TotalTokens,
+		CachedTokens:       usage.PromptTokenDetails.CachedTokens,
+		CacheWriteTokens:   usage.PromptTokenDetails.CacheWriteTokens,
+		ProviderCostMicros: costToMicros(usage.Cost),
+	}
+}
+
+func callUsageOf(usage *openrouter.Usage) ai.CallUsage {
+	return ai.CallUsage{
+		PromptTokens:       usage.PromptTokens,
+		CompletionTokens:   usage.CompletionTokens,
+		CachedTokens:       usage.PromptTokenDetails.CachedTokens,
+		CacheWriteTokens:   usage.PromptTokenDetails.CacheWriteTokens,
+		ReasoningTokens:    usage.CompletionTokenDetails.ReasoningTokens,
+		ProviderCostMicros: costToMicros(usage.Cost),
+	}
+}
+
+func (s *Service) publishBillingEvent(workspaceID, reference, model string, usage ai.CallUsage) {
+	if usage.PromptTokens > 0 {
+		log.Printf("[ai-cache] ref=%s model=%s in=%d cached=%d written=%d hit=%d%%", reference, model, usage.PromptTokens, usage.CachedTokens, usage.CacheWriteTokens, usage.CachedTokens*100/usage.PromptTokens)
+	}
+	aibilling.NewPublisher(s.billingPub).PublishUsage(reference, workspaceID, model, usage)
 }

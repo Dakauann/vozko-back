@@ -115,3 +115,23 @@ func TestBuildInboxEntries_LeadFailureStillRendersTheRows(t *testing.T) {
 		t.Fatalf("a row vanished when its lead could not be loaded: %+v", got)
 	}
 }
+
+func TestBuildInboxEntries_ANameThatIsTheLeadsOwnNumberIsNoName(t *testing.T) {
+	leads := &builderLeadRepo{byID: map[string]*lead.Lead{
+		"lead-1": {ID: "lead-1", Name: "5511999999999", Number: "5511999999999"},
+		"lead-2": {ID: "lead-2", Name: "Ana", Number: "5511988888888"},
+	}}
+	svc := &HistoryProviderService{leadRepo: leads, whatsappRepo: &builderWARepo{}}
+
+	entries := svc.buildInboxEntries([]conversation.EntryWithLastMessage{
+		{EntryID: "a", EntryType: shared.EntryTypeWhatsApp, LeadID: "lead-1"},
+		{EntryID: "b", EntryType: shared.EntryTypeWhatsApp, LeadID: "lead-2"},
+	}, "ws-1")
+
+	if entries[0].LeadName != "" || entries[0].LeadNumber != "5511999999999" {
+		t.Fatalf("entry = %+v; the number is shown as the number, not as a name", entries[0])
+	}
+	if entries[1].LeadName != "Ana" {
+		t.Fatalf("a real name stays: %+v", entries[1])
+	}
+}

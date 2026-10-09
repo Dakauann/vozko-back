@@ -23,6 +23,7 @@ type TemplateSendDeps struct {
 	Send      conversation.PersonTemplateSendUseCase
 	Templates tmpl.WorkspaceTemplatesUseCase
 	Costs     tmpl.TemplateCostReader
+	Balance   balance.BalanceReader
 	Entries   conversation.EntryLookup
 }
 
@@ -59,11 +60,12 @@ func (t *sendTemplateTool) Describe(_ context.Context, cc copilot.Context, args 
 	if err != nil {
 		return append(fields, copilot.Field{Key: "template", Value: "modelo desconhecido ou sem acesso"})
 	}
-	fields = append(fields,
-		copilot.Field{Key: "template", Value: template.Name},
-		copilot.Field{Key: "cost", Value: t.cost(cc, template)},
-	)
-	return fields
+	fields = append(fields, copilot.Field{Key: "template", Value: template.Name})
+	return append(fields, templateCostFields(t.deps.Costs, t.deps.Balance, cc.WorkspaceID, template, 1, "cost", formatUnitUSD)...)
+}
+
+func formatUnitUSD(micros int64) string {
+	return fmt.Sprintf("US$ %.4f", float64(micros)/1_000_000)
 }
 
 func (t *sendTemplateTool) template(cc copilot.Context, raw string) (*tmpl.Template, error) {
@@ -72,18 +74,6 @@ func (t *sendTemplateTool) template(cc copilot.Context, raw string) (*tmpl.Templ
 		return nil, err
 	}
 	return t.deps.Templates.Get(cc.WorkspaceID, id)
-}
-
-func (t *sendTemplateTool) cost(cc copilot.Context, template *tmpl.Template) string {
-	category, err := template.BillingCategory()
-	if err != nil {
-		return "indisponível"
-	}
-	micros, err := t.deps.Costs.GetTemplateCostMicros(cc.WorkspaceID, category)
-	if err != nil || micros <= 0 {
-		return "indisponível"
-	}
-	return fmt.Sprintf("US$ %.4f", float64(micros)/1_000_000)
 }
 
 func (t *sendTemplateTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
@@ -154,6 +144,8 @@ func templateSendFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "este contato recebeu uma mensagem deste número há pouco tempo; a proteção contra spam do workspace bloqueia um novo modelo agora"}
 	case errors.Is(err, wo.ErrLeadBlocked):
 		return copilot.Result{Status: copilot.StatusError, Message: "este contato está bloqueado"}
+	case errors.Is(err, wo.ErrLeadOptedOut):
+		return copilot.Result{Status: copilot.StatusError, Message: "este contato pediu para não receber mensagens; nenhum modelo pode ser enviado a ele"}
 	case errors.Is(err, wo.ErrSendOutcomeUnknown):
 		return copilot.Result{Status: copilot.StatusError, Message: "o WhatsApp pode ter entregue o modelo, mas a resposta se perdeu; confira a conversa antes de enviar de novo"}
 	case errors.Is(err, conversation.ErrEntryTypeInvalid):

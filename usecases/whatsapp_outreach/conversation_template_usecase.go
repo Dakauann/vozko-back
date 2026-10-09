@@ -14,6 +14,7 @@ import (
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	wo "vozko/domain/whatsapp_outreach"
+	"vozko/usecases/campaignguard"
 )
 
 type conversationTemplateUseCase struct {
@@ -57,6 +58,10 @@ func (uc *conversationTemplateUseCase) Send(ctx context.Context, in wo.Conversat
 	if err != nil {
 		return nil, err
 	}
+	release, err := uc.claimContact(ctx, in.WorkspaceID, target.contact.ID, target.phone.ID)
+	if err != nil {
+		return nil, err
+	}
 
 	d := delivery{
 		entry:       target.entry,
@@ -81,6 +86,9 @@ func (uc *conversationTemplateUseCase) Send(ctx context.Context, in wo.Conversat
 		CampaignID:      target.campaign.ID,
 		EntryID:         target.entry.ID,
 	})
+	if !keepsClaim(err) {
+		release()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +139,8 @@ func (uc *conversationTemplateUseCase) resolve(ctx context.Context, in wo.Conver
 	if err != nil {
 		return nil, err
 	}
-	if contact.Blocked {
-		return nil, wo.ErrLeadBlocked
+	if err := uc.refuseUnreachable(contact); err != nil {
+		return nil, err
 	}
 
 	if err := uc.refuseIfSpam(ctx, in.WorkspaceID, contact.ID, phone.ID); err != nil {
@@ -184,6 +192,7 @@ func newSendRules(deps Deps, specific map[string]bool) (sendRules, error) {
 		"campaign entry repository": deps.Entries != nil,
 		"campaign send history":     deps.CampaignSends != nil,
 		"spam protection policy":    deps.SpamPolicy != nil,
+		"send claims":               deps.SendClaims != nil,
 		"message history":           deps.History != nil,
 		"conversation assignments":  deps.Assignments != nil,
 		"billed template sender":    deps.Sender != nil,
@@ -206,5 +215,9 @@ func newSendRules(deps Deps, specific map[string]bool) (sendRules, error) {
 	if deps.Now == nil {
 		deps.Now = func() time.Time { return time.Now().UTC() }
 	}
-	return sendRules{deps: deps}, nil
+	cooldown, err := campaignguard.NewSpamGuard(deps.SpamPolicy, deps.CampaignSends, deps.SendClaims, deps.Now)
+	if err != nil {
+		return sendRules{}, err
+	}
+	return sendRules{deps: deps, cooldown: cooldown}, nil
 }

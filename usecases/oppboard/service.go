@@ -2,10 +2,13 @@ package oppboard_usecase
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 
 	"vozko/domain/conversation"
 	"vozko/domain/crmfilter"
+	"vozko/domain/customfield"
 	"vozko/domain/opportunity"
 	"vozko/domain/savedview"
 	"vozko/domain/stage"
@@ -31,14 +34,19 @@ var (
 	ErrGroupByKeyMissing  = errors.New("oppboard: groupBy=custom requires a groupByKey")
 )
 
+type DefinitionLister interface {
+	ListByObject(workspaceID string, objectType customfield.ObjectType) ([]*customfield.Definition, error)
+}
+
 type Service struct {
 	searcher   OpportunitySearcher
 	stages     StageLister
 	authorizer Authorizer
+	fields     DefinitionLister
 }
 
-func NewService(searcher OpportunitySearcher, stages StageLister, authorizer Authorizer) *Service {
-	return &Service{searcher: searcher, stages: stages, authorizer: authorizer}
+func NewService(searcher OpportunitySearcher, stages StageLister, authorizer Authorizer, fields DefinitionLister) *Service {
+	return &Service{searcher: searcher, stages: stages, authorizer: authorizer, fields: fields}
 }
 
 type Owner struct {
@@ -79,6 +87,7 @@ type BoardInput struct {
 	WorkspaceID string
 	UserID      string
 	IsAdmin     bool
+	Viewer      customfield.Viewer
 
 	PipelineID string
 	GroupBy    savedview.GroupBy
@@ -97,6 +106,7 @@ type ListInput struct {
 	WorkspaceID string
 	UserID      string
 	IsAdmin     bool
+	Viewer      customfield.Viewer
 
 	Filter    crmfilter.Filter
 	SortField string
@@ -122,11 +132,16 @@ func (s *Service) GetBoard(in BoardInput) (*Board, error) {
 		return nil, err
 	}
 
+	binder := s.binderFor(in.WorkspaceID, in.Viewer)
 	board := &Board{GroupBy: string(in.GroupBy), Columns: make([]Column, 0, len(specs))}
 	for _, sp := range specs {
+		filter, err := binder.bind(withPredicate(in.Filter, sp.predicate))
+		if err != nil {
+			return nil, err
+		}
 		colInput := opportunity.SearchByFilterInput{
 			WorkspaceID:            in.WorkspaceID,
-			Filter:                 withPredicate(in.Filter, sp.predicate),
+			Filter:                 filter,
 			DepartmentIDs:          deptIDs,
 			RestrictDepartments:    restrict,
 			AssigneeOverrideUserID: assigneeOverride,
@@ -157,9 +172,13 @@ func (s *Service) GetList(in ListInput) ([]*opportunity.Opportunity, int64, erro
 	if err != nil {
 		return nil, 0, err
 	}
+	filter, err := s.binderFor(in.WorkspaceID, in.Viewer).bind(in.Filter)
+	if err != nil {
+		return nil, 0, err
+	}
 	return s.searcher.SearchByFilter(opportunity.SearchByFilterInput{
 		WorkspaceID:            in.WorkspaceID,
-		Filter:                 in.Filter,
+		Filter:                 filter,
 		DepartmentIDs:          deptIDs,
 		RestrictDepartments:    restrict,
 		AssigneeOverrideUserID: assigneeOverride,
@@ -241,18 +260,17 @@ func (s *Service) pipelineStages(workspaceID, pipelineID string) ([]*stage.Stage
 
 func (s *Service) resolveScope(userID, workspaceID string, isAdmin bool) (deptIDs []string, restrict bool, assigneeOverride string, err error) {
 	if s.authorizer == nil {
-		return nil, false, "", nil
+		return nil, false, "", ErrUnauthorized
 	}
 	scope, allowed := s.authorizer.GetDepartmentScope(userID, workspaceID, isAdmin)
 	if !allowed {
 		return nil, false, "", ErrUnauthorized
 	}
-	deptIDs = scope.DepartmentIDs
-	restrict = scope.Restrict
-	if !isAdmin && restrict {
-		assigneeOverride = userID
+	read, err := scope.ReadScope(userID, isAdmin, "")
+	if err != nil {
+		return nil, false, "", fmt.Errorf("%w: %w", ErrUnauthorized, err)
 	}
-	return deptIDs, restrict, assigneeOverride, nil
+	return read.DepartmentIDs, read.RestrictDepartments, read.AssigneeOverrideUserID, nil
 }
 
 func withPredicate(base crmfilter.Filter, p crmfilter.Predicate) crmfilter.Filter {
@@ -266,4 +284,33 @@ func withPredicate(base crmfilter.Filter, p crmfilter.Predicate) crmfilter.Filte
 		Predicates:  []crmfilter.Predicate{p},
 	})
 	return crmfilter.Filter{Groups: groups}
+}
+
+type customBinder struct {
+	fields      DefinitionLister
+	workspaceID string
+	viewer      customfield.Viewer
+	defs        []*customfield.Definition
+	loaded      bool
+}
+
+func (s *Service) binderFor(workspaceID string, viewer customfield.Viewer) *customBinder {
+	return &customBinder{fields: s.fields, workspaceID: workspaceID, viewer: viewer}
+}
+
+func (b *customBinder) bind(filter crmfilter.Filter) (crmfilter.Filter, error) {
+	if !slices.Contains(filter.Fields(), crmfilter.FieldCustom) {
+		return filter, nil
+	}
+	if !b.loaded {
+		if b.fields == nil {
+			return crmfilter.Filter{}, customfield.ErrDefinitionsUnavailable
+		}
+		defs, err := b.fields.ListByObject(b.workspaceID, customfield.ObjectOpportunity)
+		if err != nil {
+			return crmfilter.Filter{}, err
+		}
+		b.defs, b.loaded = defs, true
+	}
+	return customfield.BindFilter(filter, b.defs, b.viewer)
 }

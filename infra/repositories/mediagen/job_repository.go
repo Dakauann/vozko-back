@@ -63,6 +63,15 @@ func (r *jobRepository) FindActive(ctx context.Context, workspaceID, requestedBy
 	return found(&record, err)
 }
 
+func (r *jobRepository) FindDelivered(ctx context.Context, workspaceID string, kind mediagen.Kind, sourceMediaID string) (*mediagen.Job, error) {
+	var record schema.MediaGenerationJob
+	err := r.db.WithContext(ctx).
+		Where("workspace_id = ? AND kind = ? AND source_media_id = ? AND status = ? AND media_id <> ?",
+			workspaceID, string(kind), sourceMediaID, string(mediagen.StatusDone), "").
+		Order("updated_at DESC").First(&record).Error
+	return found(&record, err)
+}
+
 func (r *jobRepository) Claim(ctx context.Context, id string) (*mediagen.Job, bool, error) {
 	if !validID(id) {
 		return nil, false, mediagen.ErrJobNotFound
@@ -240,6 +249,7 @@ func toRecord(job *mediagen.Job) (*schema.MediaGenerationJob, error) {
 		Voice:             job.Voice,
 		Video:             video,
 		SourceMediaID:     job.SourceMediaID,
+		BillingReference:  job.BillingReference,
 		Status:            string(job.Status),
 		MediaID:           job.MediaID,
 		MediaURL:          job.MediaURL,
@@ -297,6 +307,7 @@ func toDomain(r *schema.MediaGenerationJob) (*mediagen.Job, error) {
 		Voice:             r.Voice,
 		Video:             video,
 		SourceMediaID:     r.SourceMediaID,
+		BillingReference:  r.BillingReference,
 		Fingerprint:       r.Fingerprint,
 		Status:            status,
 		MediaID:           r.MediaID,

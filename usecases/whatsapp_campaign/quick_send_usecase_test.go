@@ -265,7 +265,10 @@ func (r *qsEntryRepo) GetEntryIDsByCampaign(_ string) ([]string, error)         
 func (r *qsEntryRepo) FindByNumber(_ string) (*wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
-func (r *qsEntryRepo) FindByNumberAndBusinessPhone(_, _ string) (*wce.WhatsAppCampaignEntry, error) {
+func (r *qsEntryRepo) FindInboundRouteByNumberAndBusinessPhone(_, _ string) (*wce.WhatsAppCampaignEntry, error) {
+	return nil, nil
+}
+func (r *qsEntryRepo) FindByNumberBusinessPhoneAndWorkspace(_, _, _ string) (*wce.WhatsAppCampaignEntry, error) {
 	return nil, nil
 }
 func (r *qsEntryRepo) GetCampaignForEntry(_ string) (*wce.EntryCampaignInfo, error) {
@@ -314,9 +317,6 @@ func (r *qsLeadRepo) ResolveCampaignNames(_ []string) map[string]string {
 }
 func (r *qsLeadRepo) FindOrCreateMany(_ string, _ []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
 	return nil, nil
-}
-func (r *qsLeadRepo) ImportMany(_ string, _ []lead.BulkLeadInput, _ lead.ExistingPolicy) (*lead.ImportOutcome, error) {
-	return &lead.ImportOutcome{}, nil
 }
 func (r *qsLeadRepo) FindOrCreate(_ string, number string, update lead.LeadUpdate) (*lead.Lead, bool, error) {
 	r.mu.Lock()

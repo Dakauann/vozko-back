@@ -49,7 +49,7 @@ func newHarness(t *testing.T) *harness {
 	uc := &messageConsumerUseCase{deps: ConsumerDeps{
 		QueueSub: noopQueueSub{}, QueuePub: noopQueuePub{}, Shared: h.shared,
 		Campaigns: h.campaigns, Entries: h.entries, Instances: h.gateway,
-		Sender: h.sender, Budget: NewSendBudget(h.shared), Spam: h.spam,
+		Sender: h.sender, Budget: NewSendBudget(h.shared), Spam: h.spam, Eligibility: h.spam,
 		Assignments: h.assigner, Metrics: h.metrics, Workflows: h.workflows,
 		PauseAll: h.pauser,
 	}}

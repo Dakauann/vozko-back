@@ -60,6 +60,10 @@ func (uc *dispatchCampaignUseCase) Dispatch(ctx context.Context, input uwc.Dispa
 	if !transition.FansOutWork {
 		input.Entries = nil
 	}
+	attempt := campaign.StartAttempt{Source: camp.Source, Action: action, From: camp.Status, Reviewed: input.Reviewed}
+	if err := attempt.RefuseUnreviewed(); err != nil {
+		return err
+	}
 
 	if action == campaign.ActionStart {
 		if err := uc.ensureCanStart(ctx, camp); err != nil {

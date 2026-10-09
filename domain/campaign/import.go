@@ -83,21 +83,24 @@ func ReadImport(rows []sheet.Row, mapping ColumnMapping, variables int, normaliz
 	return result, nil
 }
 
+var importTargets = []sheet.Target{
+	{Field: "number", Aliases: []string{"number", "numero", "telefone", "phone", "celular", "whatsapp"}},
+	{Field: "name", Aliases: []string{"name", "nome"}},
+}
+
 func DefaultMapping(headers []string, variables int) ColumnMapping {
 	var m ColumnMapping
 	byVariable := map[int]string{}
+	for i, field := range sheet.Guess(headers, importTargets, nil) {
+		switch field {
+		case "number":
+			m.Number = headers[i]
+		case "name":
+			m.Name = headers[i]
+		}
+	}
 	for _, h := range headers {
 		key := strings.ToLower(strings.TrimSpace(h))
-		switch key {
-		case "number", "numero", "número", "telefone", "phone", "celular", "whatsapp":
-			if m.Number == "" {
-				m.Number = h
-			}
-		case "name", "nome":
-			if m.Name == "" {
-				m.Name = h
-			}
-		}
 		if strings.HasPrefix(key, "var") {
 			if n, err := strconv.Atoi(strings.TrimPrefix(key, "var")); err == nil && n >= 1 {
 				byVariable[n] = h
@@ -117,18 +120,7 @@ type importColumns struct {
 }
 
 func resolveColumns(headers []string, mapping ColumnMapping, variables int) (importColumns, error) {
-	index := func(name string) int {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			return -1
-		}
-		for i, h := range headers {
-			if strings.EqualFold(strings.TrimSpace(h), name) {
-				return i
-			}
-		}
-		return -1
-	}
+	index := func(name string) int { return sheet.ColumnIndex(headers, name) }
 	cols := importColumns{number: index(mapping.Number), name: index(mapping.Name)}
 	if cols.number < 0 {
 		return cols, ErrImportNumberColumn

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/lib/pq"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -93,7 +92,7 @@ func (r *repository) filteredQuery(input opportunity.SearchByFilterInput) (*gorm
 	if wsID == "" {
 		return nil, opportunity.ErrWorkspaceRequired
 	}
-	whereSQL, whereArgs, err := crmfiltersql.CompileOpportunity(input.Filter, crmfiltersql.NewOpportunityDescriptor(), 1)
+	whereSQL, whereArgs, err := crmfiltersql.Compile(input.Filter, crmfiltersql.NewOpportunityDescriptor(), 1)
 	if err != nil {
 		return nil, err
 	}
@@ -112,25 +111,11 @@ func applyDepartmentScope(q *gorm.DB, input opportunity.SearchByFilterInput) *go
 }
 
 func applyDepartmentScopeRaw(q *gorm.DB, departmentIDs []string, restrict bool, assigneeOverride string) *gorm.DB {
-	if !restrict {
+	cond, args := DealScopeCondition(oppAlias, opportunity.DealScope{DepartmentIDs: departmentIDs, Restrict: restrict, AssigneeOverride: assigneeOverride})
+	if cond == "" {
 		return q
 	}
-	var conds []string
-	var args []interface{}
-	if assigneeOverride != "" {
-		conds = append(conds, oppAlias+".owner_id = ?")
-		args = append(args, assigneeOverride)
-	}
-	if len(departmentIDs) > 0 {
-		conds = append(conds, "EXISTS (SELECT 1 FROM workspace_department_members wdm "+
-			"JOIN workspace_members wm ON wm.id = wdm.member_id "+
-			"WHERE wm.user_id = "+oppAlias+".owner_id AND wdm.department_id = ANY(?::uuid[]))")
-		args = append(args, pq.Array(departmentIDs))
-	}
-	if len(conds) == 0 {
-		return q.Where("1 = 0")
-	}
-	return q.Where("("+strings.Join(conds, " OR ")+")", args...)
+	return q.Where(cond, args...)
 }
 
 func orderClause(sortField, sortOrder string) string {

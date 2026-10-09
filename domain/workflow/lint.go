@@ -123,6 +123,11 @@ var PureGraphRules = []GraphRule{
 		Validate: ValidateInteractivePromptConfig,
 	},
 	{
+		Code:     LintMissingRequiredField,
+		Hint:     "O nó action_update_lead precisa de ao menos um dado para gravar: CEP, logradouro, número, complemento, bairro, cidade, UF, data de nascimento ou um campo personalizado em custom_fields (chave do campo e valor, que aceita variáveis).",
+		Validate: ValidateUpdateLeadConfig,
+	},
+	{
 		Code:     LintInvalidDTMFConfig,
 		Hint:     "No nó wait_dtmf, 'keys' precisa de ao menos uma tecla, só 0-9, * ou #, sem repetir. Cada tecla vira uma saída com o próprio dígito como rótulo.",
 		Validate: ValidateDTMFWaits,

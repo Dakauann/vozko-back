@@ -55,7 +55,7 @@ func TestEveryWriteToAReadOnlyAccountIsRefusedBeforeMeta(t *testing.T) {
 			return err
 		},
 		"customer list": func(w *world) error {
-			_, err := audienceUseCase(w, nil, nil).CreateCustomerList(ctx, "ws-1", ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM})
+			_, err := audienceUseCase(w, nil, nil).CreateCustomerList(ctx, Requester{WorkspaceID: "ws-1", UserID: "u-1"}, ads.CustomerListDraft{AdAccountID: "acc-1", Name: "x", Source: ads.SourceCRM})
 			return err
 		},
 		"lookalike": func(w *world) error {

@@ -13,23 +13,24 @@ import (
 )
 
 type callAttachInput struct {
-	Session       *callSession
-	Call          conversation.CRMCall
-	Admission     *callsession_domain.CallAdmissionLease
-	Phone         string
-	RequestID     string
-	WorkspaceID   string
-	OwnerUserID   string
-	EntryID       string
-	LeadID        string
-	StartedAt     time.Time
-	Direction     cdr.Direction
-	CallRegistry  callsession_domain.CallRegistry
-	EndUseCase    callsession_domain.EndOutboundCallUseCase
-	Lifecycle     *callsession_usecase.OutboundCallLifecycleRunner
-	RecordingPool *calls_usecase.RecordingUploadPool
-	Channels      *CallChannels
-	Logger        *log.Logger
+	Session        *callSession
+	Call           conversation.CRMCall
+	Admission      *callsession_domain.CallAdmissionLease
+	Phone          string
+	RequestID      string
+	WorkspaceID    string
+	OwnerUserID    string
+	LeadID         string
+	TrunkID        string
+	CallListItemID string
+	StartedAt      time.Time
+	Direction      cdr.Direction
+	CallRegistry   callsession_domain.CallRegistry
+	EndUseCase     callsession_domain.EndOutboundCallUseCase
+	Lifecycle      *callsession_usecase.OutboundCallLifecycleRunner
+	RecordingPool  *calls_usecase.RecordingUploadPool
+	Channels       *CallChannels
+	Logger         *log.Logger
 }
 
 func buildLiveCall(input callAttachInput) *liveCall {
@@ -37,7 +38,7 @@ func buildLiveCall(input callAttachInput) *liveCall {
 		input.StartedAt = time.Now()
 	}
 	if input.RecordingPool != nil && input.Call != nil && cdr.IsRecordedCallID(input.Call.ID()) {
-		if rec := calls_usecase.NewRecordingCRMCall(input.Call, input.RecordingPool, input.WorkspaceID, input.EntryID, input.LeadID); rec != nil {
+		if rec := calls_usecase.NewRecordingCRMCall(input.Call, input.RecordingPool, input.WorkspaceID, input.LeadID); rec != nil {
 			input.Call = rec
 		}
 	}
@@ -45,15 +46,18 @@ func buildLiveCall(input callAttachInput) *liveCall {
 		input.Call = calls_usecase.NewProgressToneCall(input.Call, calls_usecase.BrazilProgressTones)
 	}
 	return &liveCall{
-		call:          input.Call,
-		admission:     input.Admission,
-		phone:         input.Phone,
-		requestID:     input.RequestID,
-		workspaceID:   input.WorkspaceID,
-		ownerUserID:   input.OwnerUserID,
-		startedAt:     input.StartedAt,
-		direction:     input.Direction,
-		lifecycleDone: make(chan struct{}),
+		call:           input.Call,
+		admission:      input.Admission,
+		phone:          input.Phone,
+		requestID:      input.RequestID,
+		workspaceID:    input.WorkspaceID,
+		ownerUserID:    input.OwnerUserID,
+		startedAt:      input.StartedAt,
+		direction:      input.Direction,
+		leadID:         input.LeadID,
+		trunkID:        input.TrunkID,
+		callListItemID: input.CallListItemID,
+		lifecycleDone:  make(chan struct{}),
 	}
 }
 

@@ -93,6 +93,11 @@ func (c *Container) initJobRunner() {
 	}); ok {
 		q.SetQuietCascade(c.services.liveGate)
 	}
+	if p, ok := analysisDebounceJob.(interface {
+		SetProfileAgents(conversation_usecase.ProfileAgents)
+	}); ok {
+		p.SetProfileAgents(c.repositories.agent)
+	}
 
 	registerAnalysisChannels(channels, sinks...)
 
@@ -136,6 +141,18 @@ func (c *Container) initJobRunner() {
 			return nil
 		}))
 	}
+
+	if imports := c.leadImports(); imports != nil {
+		c.jobRunner.SetLeadImportJobs(cronPackage.CtxJobFunc(imports.Sweep))
+	}
+	if sweeper := c.geocodingSweeper(); sweeper != nil {
+		c.jobRunner.SetGeocodingJobs(cronPackage.CtxJobFunc(sweeper.Sweep))
+	}
+	if refine := c.geocodingDistrictRefine(); refine != nil {
+		c.jobRunner.SetGeocodingRefineJobs(cronPackage.CtxJobFunc(refine.Run))
+	}
+	c.jobRunner.SetLeadActionJobs(cronPackage.CtxJobFunc(c.leadActions().Sweep))
+	c.jobRunner.SetCallListJobs(cronPackage.CtxJobFunc(c.callLists().Sweep))
 
 	c.jobRunner.SetWebhookEventPurgeJob(webhook_usecase.NewPurgeProcessedEventsUseCase(
 		webhook_repository.NewProcessedEventRepository(c.db), 30*24*time.Hour))

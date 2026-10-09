@@ -1,19 +1,27 @@
 package customfield
 
 type CreateCustomFieldRequest struct {
-	ObjectType string   `json:"objectType" example:"opportunity"`
-	Key        string   `json:"key" example:"origem_lead"`
-	Label      string   `json:"label" example:"Origem do lead"`
-	Type       string   `json:"type" example:"select"`
-	Options    []string `json:"options,omitempty"`
-	Required   bool     `json:"required,omitempty"`
-	Position   int      `json:"position,omitempty"`
+	ObjectType  string            `json:"objectType" example:"lead" enums:"opportunity,lead"`
+	Key         string            `json:"key" example:"classificacao"`
+	Label       string            `json:"label" example:"Classificação"`
+	Type        string            `json:"type" example:"select" enums:"text,number,date,boolean,select,multiselect"`
+	Options     []string          `json:"options,omitempty"`
+	OptionTones map[string]string `json:"optionTones,omitempty" example:"Positivo:chart-1"`
+	Required    bool              `json:"required,omitempty"`
+	Sensitive   *bool             `json:"sensitive,omitempty" example:"true"`
+	LegalBasis  string            `json:"legalBasis,omitempty" example:"Consentimento do titular para comunicação política"`
+	Role        string            `json:"role,omitempty" example:"classification" enums:"classification"`
+	Position    int               `json:"position,omitempty"`
 }
 
 type UpdateCustomFieldRequest struct {
-	Label    *string  `json:"label,omitempty" example:"Origem do lead"`
-	Type     *string  `json:"type,omitempty" example:"select"`
-	Options  []string `json:"options,omitempty"`
-	Required *bool    `json:"required,omitempty"`
-	Position *int     `json:"position,omitempty"`
+	Label       *string           `json:"label,omitempty" example:"Classificação"`
+	Type        *string           `json:"type,omitempty" example:"select" enums:"text,number,date,boolean,select,multiselect"`
+	Options     []string          `json:"options,omitempty"`
+	OptionTones map[string]string `json:"optionTones,omitempty" example:"Positivo:chart-1"`
+	Required    *bool             `json:"required,omitempty"`
+	Sensitive   *bool             `json:"sensitive,omitempty" example:"true"`
+	LegalBasis  *string           `json:"legalBasis,omitempty" example:"Consentimento do titular para comunicação política"`
+	Role        *string           `json:"role,omitempty" example:"classification" enums:"classification"`
+	Position    *int              `json:"position,omitempty"`
 }

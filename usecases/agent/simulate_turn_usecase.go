@@ -108,6 +108,8 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 
 		PromptSuffix: uc.sessionMemoryBlock(agentRecord, in.SessionMemories),
 
+		Session: agentturn.SimulationSession(agentRecord.ID),
+
 		History:     history,
 		UserMessage: message,
 
@@ -151,12 +153,19 @@ func (uc *simulateTurnUseCase) Execute(ctx context.Context, in agent.SimulateTur
 			SystemPrompt:     input.SystemPrompt,
 			ToolNames:        assembled.ToolNames,
 			MemoryInjected:   strings.Contains(input.SystemPrompt, lead_memory_usecase.ContextHeader),
-			RAGInjected:      strings.Contains(input.SystemPrompt, rag_usecase.ContextHeader),
+			RAGInjected:      strings.Contains(trailingNote(input), rag_usecase.ContextHeader),
 			PromptTokens:     out.Usage.PromptTokens,
 			CompletionTokens: out.Usage.CompletionTokens,
 			FinishReason:     out.FinishReason,
 		},
 	}, nil
+}
+
+func trailingNote(in ai.GenerateInput) string {
+	if in.VolatileTail == 0 || len(in.Messages) == 0 {
+		return ""
+	}
+	return in.Messages[len(in.Messages)-1].Content
 }
 
 var sessionMemoryIDPattern = regexp.MustCompile(`^[a-z0-9-]{8,36}$`)

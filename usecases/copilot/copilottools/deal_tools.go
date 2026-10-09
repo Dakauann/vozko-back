@@ -295,6 +295,8 @@ func formatAmount(v float64) string {
 	return strings.Replace(strconv.FormatFloat(v, 'f', 2, 64), ".", ",", 1)
 }
 
+const dealLeadMismatch = "essa conversa é de outro contato; crie a oportunidade sem informar o contato ou informe o contato da conversa"
+
 func dealFailure(tool string, err error) copilot.Result {
 	switch {
 	case errors.Is(err, opportunity.ErrEntryAccess):
@@ -308,6 +310,8 @@ func dealFailure(tool string, err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "esse funil não é de vendas; use list_deal_pipelines"}
 	case errors.Is(err, opportunity_usecase.ErrLeadOutsideWorkspace), errors.Is(err, opportunity_usecase.ErrEntryOutsideWorkspace):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "o contato ou a conversa não é deste workspace"}
+	case errors.Is(err, opportunity.ErrEntryLeadMismatch):
+		return copilot.Result{Status: copilot.StatusError, Message: dealLeadMismatch}
 	case errors.Is(err, opportunity.ErrLostReasonMissing):
 		return copilot.Result{Status: copilot.StatusError, Message: "para marcar como perdido é preciso um motivo de perda; faça pela tela de vendas"}
 	case errors.Is(err, opportunity.ErrWonWithoutValue):

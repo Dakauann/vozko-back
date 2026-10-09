@@ -21,6 +21,7 @@ const (
 	KindCutout   Kind = "cutout"
 	KindCaptions Kind = "captions"
 	KindDenoise  Kind = "denoise"
+	KindProxy    Kind = "proxy"
 )
 
 type Storage struct {
@@ -31,8 +32,9 @@ type Storage struct {
 }
 
 type kindRules struct {
-	storage Storage
-	model   bool
+	storage  Storage
+	model    bool
+	reusable bool
 }
 
 var rules = map[Kind]kindRules{
@@ -43,11 +45,22 @@ var rules = map[Kind]kindRules{
 	KindCutout:   {storage: Storage{Type: media.MediaTypeProductImage, Folder: "images", Extension: ".png", Label: "Imagem sem fundo"}},
 	KindCaptions: {storage: Storage{Type: media.MediaTypeDocument, Folder: "captions", Extension: ".vtt", Label: "Legendas"}},
 	KindDenoise:  {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Áudio limpo"}},
+	KindProxy:    {storage: Storage{Type: media.MediaTypeStudioProxy, Folder: "proxies", Extension: ".mp4", Label: "Prévia de edição"}, reusable: true},
 }
 
-var kinds = []Kind{KindImage, KindMusic, KindVoice, KindVideo, KindCutout, KindCaptions, KindDenoise}
+var kinds = []Kind{KindImage, KindMusic, KindVoice, KindVideo, KindCutout, KindCaptions, KindDenoise, KindProxy}
 
 func Kinds() []Kind { return append([]Kind(nil), kinds...) }
+
+func GenerationKinds() []Kind {
+	var out []Kind
+	for _, k := range kinds {
+		if k.UsesModel() {
+			out = append(out, k)
+		}
+	}
+	return out
+}
 
 func ProcessingKinds() []Kind {
 	var out []Kind
@@ -67,6 +80,8 @@ func (k Kind) Known() bool {
 func (k Kind) UsesModel() bool { return rules[k].model }
 
 func (k Kind) Processing() bool { return k.Known() && !k.UsesModel() }
+
+func (k Kind) Reusable() bool { return rules[k].reusable }
 
 func (k Kind) Topic() string {
 	if k.Processing() {
@@ -90,6 +105,7 @@ type Request struct {
 	Voice             string
 	Video             Timeline
 	SourceMediaID     string
+	BillingReference  string
 }
 
 type Source struct {
@@ -157,7 +173,7 @@ func (r Request) contentIssues() ([]FieldIssue, error) {
 		return voiceIssues(r), nil
 	case KindVideo:
 		return videoIssues(r), nil
-	case KindCutout, KindCaptions, KindDenoise:
+	case KindCutout, KindCaptions, KindDenoise, KindProxy:
 		return sourceIssues(r.SourceMediaID), nil
 	case "":
 		return []FieldIssue{{Field: FieldKind, Code: CodeRequired}}, nil
@@ -184,7 +200,7 @@ func textIssues(field, text string, max int) []FieldIssue {
 }
 
 func (r Request) normalized() Request {
-	out := Request{WorkspaceID: strings.TrimSpace(r.WorkspaceID), Kind: r.Kind, Model: strings.TrimSpace(r.Model)}
+	out := Request{WorkspaceID: strings.TrimSpace(r.WorkspaceID), Kind: r.Kind, Model: strings.TrimSpace(r.Model), BillingReference: strings.TrimSpace(r.BillingReference)}
 	switch r.Kind {
 	case KindImage:
 		out.Prompt, out.Aspect, out.ReferenceMediaIDs = strings.TrimSpace(r.Prompt), r.Aspect, trimmedReferences(r.ReferenceMediaIDs)
@@ -194,7 +210,7 @@ func (r Request) normalized() Request {
 		out.Prompt, out.Voice = strings.TrimSpace(r.Prompt), strings.TrimSpace(r.Voice)
 	case KindVideo:
 		out.Aspect, out.Video = r.Aspect, r.Video.normalized()
-	case KindCutout, KindCaptions, KindDenoise:
+	case KindCutout, KindCaptions, KindDenoise, KindProxy:
 		out.SourceMediaID = strings.TrimSpace(r.SourceMediaID)
 	}
 	return out
@@ -215,6 +231,7 @@ var (
 	imagesOnly     = []media.MediaType{media.MediaTypeProductImage}
 	imagesOrVideos = []media.MediaType{media.MediaTypeProductImage, media.MediaTypeProductVideo}
 	soundSources   = []media.MediaType{media.MediaTypeAudio, media.MediaTypeProductVideo}
+	videosOnly     = []media.MediaType{media.MediaTypeProductVideo}
 )
 
 func (r Request) SourceRoles() []SourceRole {
@@ -236,6 +253,8 @@ func (r Request) SourceRoles() []SourceRole {
 		roles = append(roles, SourceRole{MediaID: n.SourceMediaID, Field: FieldSource, Accepts: imagesOnly, Mismatch: CodeNotImage})
 	case KindCaptions, KindDenoise:
 		roles = append(roles, SourceRole{MediaID: n.SourceMediaID, Field: FieldSource, Accepts: soundSources, Mismatch: CodeWrongType})
+	case KindProxy:
+		roles = append(roles, SourceRole{MediaID: n.SourceMediaID, Field: FieldSource, Accepts: videosOnly, Mismatch: CodeWrongType})
 	}
 	return roles
 }

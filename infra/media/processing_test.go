@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	media_domain "vozko/domain/media"
 	"vozko/domain/mediagen"
@@ -77,5 +78,30 @@ func TestDenoiseReturnsCleanedAudioFromAVideo(t *testing.T) {
 func TestAProcessingJobNeedsExactlyOneSource(t *testing.T) {
 	if _, err := NewDenoiseGenerator(http.DefaultClient).Generate(context.Background(), mediagen.Request{}, nil); err == nil {
 		t.Fatal("processed without a source")
+	}
+}
+
+type deadlineTranscriber struct {
+	fakeTranscriber
+	deadline time.Time
+	bounded  bool
+}
+
+func (d *deadlineTranscriber) TranscribeSegments(ctx context.Context, audio []byte, language string) (*stt.Transcription, error) {
+	d.deadline, d.bounded = ctx.Deadline()
+	return d.fakeTranscriber.TranscribeSegments(ctx, audio, language)
+}
+
+func TestCaptionsGiveTheTranscriptionFiveMinutes(t *testing.T) {
+	requireFFmpeg(t)
+	transcriber := &deadlineTranscriber{fakeTranscriber: fakeTranscriber{segments: []stt.Segment{{Start: 0, End: 1, Text: "Olá"}}}}
+	client, sources := talkSource(t)
+	started := time.Now()
+	if _, err := NewCaptionsGenerator(client, transcriber, "pt").Generate(context.Background(), mediagen.Request{}, sources); err != nil {
+		t.Fatal(err)
+	}
+	budget := transcriber.deadline.Sub(started)
+	if !transcriber.bounded || budget < 4*time.Minute+50*time.Second || budget > 5*time.Minute+time.Second {
+		t.Fatalf("the transcription must get a five minute budget, got %v (bounded %v)", budget, transcriber.bounded)
 	}
 }

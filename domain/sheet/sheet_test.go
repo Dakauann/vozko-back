@@ -41,3 +41,20 @@ func TestParseOfNothingIsEmpty(t *testing.T) {
 		t.Fatalf("rows = %+v", rows)
 	}
 }
+
+func TestDecodeLegacyText(t *testing.T) {
+	tests := []struct {
+		name, raw, want string
+	}{
+		{"UTF-8 stays as it is", "SÃO PAULO", "SÃO PAULO"},
+		{"Latin-1 bytes are decoded", "S\xc3O JO\xc3O", "SÃO JOÃO"},
+		{"plain ASCII", "CENTRO", "CENTRO"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecodeLegacyText(tt.raw); got != tt.want {
+				t.Fatalf("DecodeLegacyText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

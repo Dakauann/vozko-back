@@ -183,3 +183,33 @@ func TestSamePermissionsIgnoresOrder(t *testing.T) {
 		t.Fatal("SamePermissions must compare as sets")
 	}
 }
+
+func TestCallCapabilitiesNeverRequireConversationEdits(t *testing.T) {
+	edits := PermissionEntry{Resource: ResourceConversations, Action: ActionUpdate}
+	uses := CapabilitiesUsing(PermissionEntry{Resource: ResourceCallSession, Action: ActionUse})
+	if len(uses) == 0 {
+		t.Fatal("no capability opens the call socket")
+	}
+	for _, use := range uses {
+		if containsPermission(use.Capability.Requires, edits) {
+			t.Errorf("%s opens the call socket and also grants %s", use.Capability.Key, edits.Key())
+		}
+	}
+}
+
+func TestTheOperatorTakesCallsWithoutGainingConversationEdits(t *testing.T) {
+	preset, ok := RolePresetByKey(PresetOperator)
+	if !ok {
+		t.Fatal("operator preset is missing")
+	}
+	perms, err := preset.Permissions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsPermission(perms, PermissionEntry{Resource: ResourceCallSession, Action: ActionUse}) {
+		t.Fatal("the operator must reach the call socket")
+	}
+	if containsPermission(perms, PermissionEntry{Resource: ResourceConversations, Action: ActionUpdate}) {
+		t.Fatal("the operator must never hold conversations:update, which also edits CRM data in bulk, custom fields and saved views")
+	}
+}

@@ -1,7 +1,7 @@
 package crmbulk_usecase
 
 import (
-	"context"
+	"errors"
 	"testing"
 
 	"vozko/domain/workspace"
@@ -39,9 +39,9 @@ func TestBulkMoveStageNeedsOnlyAssignAndKeepsTheFunnelGuard(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permAssign))
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws", ActorID: "u1", IsAdmin: false,
-		Action: ActionMoveStage, Value: "stage-b", Targets: oneTarget(),
+		Action: ActionMoveStage, Value: "stage-b", Selection: byIDs, Targets: oneTarget(),
 	})
 
 	if res.Forbidden {
@@ -60,9 +60,9 @@ func TestBulkMoveFunnelIsRefusedWithoutTransfer(t *testing.T) {
 	authz := grant(permAssign)
 	svc := serviceWith(assigner, authz)
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws", ActorID: "u1", IsAdmin: false,
-		Action: ActionMoveFunnel, Value: "stage-b", Targets: oneTarget(),
+		Action: ActionMoveFunnel, Value: "stage-b", Selection: byIDs, Targets: oneTarget(),
 	})
 
 	if !res.Forbidden {
@@ -86,9 +86,9 @@ func TestBulkMoveFunnelWithTransferAuthorisesEveryTarget(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permAssign, permTransfer))
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws", ActorID: "u1", IsAdmin: false,
-		Action: ActionMoveFunnel, Value: "stage-b",
+		Action: ActionMoveFunnel, Value: "stage-b", Selection: byIDs,
 		Targets: []EntryRef{
 			{EntryID: "e1", EntryType: "whatsapp"},
 			{EntryID: "e2", EntryType: "whatsapp"},
@@ -112,9 +112,9 @@ func TestBulkMoveStageStillNeedsAssignEvenWithTransfer(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permTransfer))
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws", ActorID: "u1", IsAdmin: false,
-		Action: ActionMoveStage, Value: "stage-b", Targets: oneTarget(),
+		Action: ActionMoveStage, Value: "stage-b", Selection: byIDs, Targets: oneTarget(),
 	})
 
 	if !res.Forbidden {
@@ -129,12 +129,12 @@ func TestBulkUnknownFunnelishActionIsRefused(t *testing.T) {
 	assigner := &mockStageAssigner{}
 	svc := serviceWith(assigner, grant(permAssign, permTransfer))
 
-	res := svc.BulkApply(context.Background(), BulkInput{
+	res := run(svc, BulkInput{
 		WorkspaceID: "ws", ActorID: "u1", IsAdmin: false,
-		Action: "move_to_funnel", Value: "stage-b", Targets: oneTarget(),
+		Action: "move_to_funnel", Value: "stage-b", Selection: byIDs, Targets: oneTarget(),
 	})
 
-	if !res.Forbidden {
+	if !errors.Is(res.err, ErrUnknownAction) {
 		t.Fatal("an unknown action must be refused")
 	}
 	if len(assigner.calls) != 0 {

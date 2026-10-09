@@ -15,10 +15,24 @@ type Row struct {
 }
 
 func Parse(data []byte) []Row {
-	lines := strings.Split(decode(data), "\n")
-	delimiter := rune(0)
 	var rows []Row
-	for i, line := range lines {
+	_ = Each(data, func(r Row) error {
+		rows = append(rows, r)
+		return nil
+	})
+	return rows
+}
+
+func Each(data []byte, fn func(Row) error) error {
+	text := decode(data)
+	delimiter := rune(0)
+	for number := 1; text != ""; number++ {
+		line := text
+		if cut := strings.IndexByte(text, '\n'); cut >= 0 {
+			line, text = text[:cut], text[cut+1:]
+		} else {
+			text = ""
+		}
 		trimmed := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 		if trimmed == "" {
 			continue
@@ -26,9 +40,11 @@ func Parse(data []byte) []Row {
 		if delimiter == 0 {
 			delimiter = DetectDelimiter(trimmed)
 		}
-		rows = append(rows, Row{Line: i + 1, Cells: SplitCells(trimmed, delimiter)})
+		if err := fn(Row{Line: number, Cells: SplitCells(trimmed, delimiter)}); err != nil {
+			return err
+		}
 	}
-	return rows
+	return nil
 }
 
 func DetectDelimiter(line string) rune {
@@ -65,11 +81,15 @@ func SplitCells(line string, delimiter rune) []string {
 }
 
 func decode(data []byte) string {
-	text := string(data)
-	if !utf8.ValidString(text) {
-		if decoded, err := charmap.Windows1252.NewDecoder().String(text); err == nil {
-			text = decoded
-		}
+	return strings.TrimPrefix(DecodeLegacyText(string(data)), bom)
+}
+
+func DecodeLegacyText(text string) string {
+	if utf8.ValidString(text) {
+		return text
 	}
-	return strings.TrimPrefix(text, bom)
+	if decoded, err := charmap.Windows1252.NewDecoder().String(text); err == nil {
+		return decoded
+	}
+	return text
 }

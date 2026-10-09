@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"vozko/domain/callrouting"
+	"vozko/domain/calls/cdr"
 	"vozko/domain/workspace"
 )
 
@@ -23,9 +25,34 @@ func TestTheViewerSeesTheTeamAndHearsRecordingsOnlyWithThoseGrants(t *testing.T)
 	}
 	manager := ViewerFor(grants{
 		{Resource: workspace.ResourceCallHistory, Action: workspace.ActionViewOthers}: true,
-		{Resource: workspace.ResourceCallRecordings, Action: workspace.ActionRead}:     true,
+		{Resource: workspace.ResourceCallRecordings, Action: workspace.ActionRead}:    true,
 	}, "ws1", "u1")
 	if !manager.SeesEveryone || !manager.HearsRecordings {
 		t.Fatalf("viewer with grants = %+v", manager)
+	}
+}
+
+func TestAViewerSeesACallOnlyWhenTheyTookPartOrSeeTheTeam(t *testing.T) {
+	agent := "u-agent"
+	call := cdr.Call{CallID: "c1", Direction: cdr.DirectionOutbound, AgentID: &agent}
+	transferred := []callrouting.TransferRecord{{CallID: "c1", FromUserID: agent, Target: callrouting.TransferTarget{UserID: "u-target"}}}
+	cases := []struct {
+		name      string
+		viewer    Viewer
+		transfers []callrouting.TransferRecord
+		want      bool
+	}{
+		{"the agent who placed it", Viewer{UserID: agent}, nil, true},
+		{"the colleague it was passed to", Viewer{UserID: "u-target"}, transferred, true},
+		{"a colleague outside the call", Viewer{UserID: "u-other"}, transferred, false},
+		{"a manager who sees the team", Viewer{UserID: "u-other", SeesEveryone: true}, nil, true},
+		{"nobody signed in", Viewer{}, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.viewer.Sees(call, tc.transfers); got != tc.want {
+				t.Fatalf("Sees = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

@@ -1,14 +1,11 @@
 package whatsapp_campaign_usecase
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
-	wsc "vozko/domain/workspace_config"
 )
 
 func TestSendTemplateMessage_FetchesEntryOnce(t *testing.T) {
@@ -61,52 +58,4 @@ func TestSendTemplateMessage_WithVariables_SingleFetch(t *testing.T) {
 	if got := h.entryRepo.getStatus("e-2"); got != wce.SendStatusSent {
 		t.Errorf("expected status Sent, got %v", got)
 	}
-}
-
-func TestSendTemplateMessage_SpamSkip_Preserved(t *testing.T) {
-	h := newTestHarness()
-	h.consumer.WorkspaceConfigRepo = spamWorkspaceConfigRepo{days: 7}
-	h.consumer.LeadCampaignSendRepo = recentLeadSendRepo{last: time.Now().UTC()}
-
-	campaign := &wc.Campaign{ID: "camp-3", WorkspaceID: "ws-1", BusinessPhoneID: "bp-1", TemplateID: "tmpl-1"}
-	tmpl := approvedMarketingTemplate("tmpl-1")
-	h.entryRepo.entries["e-3"] = &wce.WhatsAppCampaignEntry{ID: "e-3", LeadID: "lead-3"}
-
-	res := h.consumer.sendTemplateMessage(campaign, tmpl, h.entryRepo.entries["e-3"], "+5511977776666")
-
-	if res != sendResultConfigError {
-		t.Fatalf("expected spam skip to return config error, got %v", res)
-	}
-	if got := h.entryRepo.getStatus("e-3"); got != wce.SendStatusNotEligiblePossibleSpam {
-		t.Errorf("expected status NotEligiblePossibleSpam, got %v", got)
-	}
-	if n := h.entryRepo.findByIDCount(); n > 1 {
-		t.Errorf("expected at most 1 entry fetch on the spam path, got %d", n)
-	}
-}
-
-type spamWorkspaceConfigRepo struct{ days int }
-
-func (m spamWorkspaceConfigRepo) GetByWorkspaceID(_ context.Context, _ string) (*wsc.WorkspaceConfig, error) {
-	return &wsc.WorkspaceConfig{CampaignSpamProtectionDays: m.days}, nil
-}
-func (m spamWorkspaceConfigRepo) Upsert(_ context.Context, _ *wsc.WorkspaceConfig) error { return nil }
-func (m spamWorkspaceConfigRepo) EnsureExists(_ context.Context, _ string) error         { return nil }
-
-type recentLeadSendRepo struct{ last time.Time }
-
-func (m recentLeadSendRepo) Record(_, _, _ string) error { return nil }
-func (m recentLeadSendRepo) GetLastSendTime(_, _ string) (*time.Time, error) {
-	return &m.last, nil
-}
-func (m recentLeadSendRepo) GetLastSendTimesBatch(_ []string, _ string) (map[string]time.Time, error) {
-	return nil, nil
-}
-
-func (m spamWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
-	return map[string]int{}, nil
-}
-
-func (spamWorkspaceConfigRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
-	return nil, nil
 }

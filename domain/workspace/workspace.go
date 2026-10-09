@@ -81,6 +81,7 @@ var (
 	ResourceSIPTrunks                   = registerResource("sip_trunks")
 	ResourceCallQueues                  = registerResource("call_queues")
 	ResourceCallHistory                 = registerResource("call_history")
+	ResourceCallLists                   = registerResource("call_lists")
 	ResourceAds                         = registerResource("ads")
 )
 
@@ -126,6 +127,14 @@ var (
 
 	ActionListMembers = registerAction("list_members")
 	ActionDelegate    = registerAction("delegate")
+
+	ActionReadSensitive = registerAction("read_sensitive")
+	ActionReadAddresses = registerAction("read_addresses")
+	ActionAnonymize     = registerAction("anonymize")
+	ActionConfigure     = registerAction("configure")
+	ActionExport        = registerAction("export")
+	ActionBulkUpdate    = registerAction("bulk_update")
+	ActionManage        = registerAction("manage")
 )
 
 func (a Action) IsValid() bool {
@@ -235,6 +244,28 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar leads e informações de contato"},
 		{ActionName: ActionBlock, Description: "Bloquear um lead"},
 		{ActionName: ActionUpdate, Description: "Editar dados de leads"},
+		{ActionName: ActionAssign, Description: "Definir o responsável por um lead", Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+		}},
+		{ActionName: ActionReadSensitive, Description: "Ver os campos personalizados marcados como dados sensíveis, como a classificação política", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+		}},
+		{ActionName: ActionReadAddresses, Description: "Ver os endereços completos e a posição dos leads no mapa; sem isso aparecem só o bairro e a cidade", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+		}},
+		{ActionName: ActionAnonymize, Description: "Anonimizar leads, apagando de forma definitiva os dados pessoais de cada um", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+		}},
+		{ActionName: ActionConfigure, Description: "Criar, editar e remover os campos personalizados dos leads", Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+		}},
+		{ActionName: ActionExport, Description: "Exportar leads selecionados para uma planilha", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+		}},
+		{ActionName: ActionBulkUpdate, Description: "Aplicar uma mesma alteração a muitos leads de uma vez, como classificar, atribuir ou bloquear uma seleção", Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+			{Resource: ResourceLeads, Action: ActionUpdate},
+		}},
 		{ActionName: ActionDelete, Description: "Excluir leads", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceCallRecordings: {
@@ -244,6 +275,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Ver o histórico das chamadas de que participou: resultado, duração, transferências e custo"},
 		{ActionName: ActionViewOthers, Description: "Ver as chamadas de todos os membros do workspace", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
 			{Resource: ResourceCallHistory, Action: ActionRead},
+		}},
+	},
+	ResourceCallLists: {
+		{ActionName: ActionRead, Description: "Ver as listas de ligação de que participa e trabalhar nelas: próximo contato, resultado e nota"},
+		{ActionName: ActionManage, Description: "Criar listas de ligação a partir de leads, escolher quem liga, pausar, arquivar e excluir listas e ver todas elas", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
+			{Resource: ResourceCallLists, Action: ActionRead},
 		}},
 	},
 	ResourceMembers: {

@@ -60,6 +60,11 @@ func NewHandler(d Deps) *Handler {
 
 func workspaceOf(r *http.Request) string { return middleware.GetWorkspaceID(r) }
 
+func requesterOf(r *http.Request) adsuc.Requester {
+	person := personOf(r)
+	return adsuc.Requester{WorkspaceID: workspaceOf(r), UserID: person.UserID, IsAdmin: person.SystemAdmin}
+}
+
 func personOf(r *http.Request) shared.Person {
 	claims := middleware.GetClaims(r)
 	if claims == nil {

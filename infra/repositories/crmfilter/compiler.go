@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"vozko/domain/crmfilter"
+	"vozko/domain/shared"
+	"vozko/infra/database"
 
 	"github.com/lib/pq"
 )
@@ -68,6 +70,13 @@ func Compile(filter crmfilter.Filter, desc ObjectDescriptor, argStart int) (wher
 }
 
 func compilePredicate(p crmfilter.Predicate, desc ObjectDescriptor) (string, []interface{}, error) {
+	if p.Field == crmfilter.FieldCustom {
+		custom, ok := desc.(CustomFieldsDescriptor)
+		if !ok {
+			return "", nil, fmt.Errorf("%w: %q on %s", ErrUnsupportedField, p.Field, desc.Object())
+		}
+		return compileJSONBCustom(p, custom.CustomFieldsColumn())
+	}
 	m, err := desc.Field(p.Field)
 	if err != nil {
 		return "", nil, err
@@ -83,6 +92,11 @@ func compilePredicate(p crmfilter.Predicate, desc ObjectDescriptor) (string, []i
 		return compileBool(m, p)
 	case StyleText:
 		return compileText(m, p)
+	case StyleCompiled:
+		if m.Compile == nil {
+			return "", nil, fmt.Errorf("%w: %q has no compiler", ErrUnsupportedField, p.Field)
+		}
+		return m.Compile(p)
 	default:
 		return "", nil, fmt.Errorf("%w: unknown mapping style", ErrUnsupportedOperator)
 	}
@@ -103,7 +117,7 @@ func compileColumn(m FieldMapping, p crmfilter.Predicate) (string, []interface{}
 	case crmfilter.OpNotIn:
 		return e + " <> ALL(?)", []interface{}{pq.Array(vals)}, nil
 	case crmfilter.OpContains:
-		return e + " ILIKE ?", []interface{}{"%" + vals[0] + "%"}, nil
+		return e + " ILIKE ?", []interface{}{database.LikeContains(vals[0])}, nil
 	case crmfilter.OpGreaterEq:
 		a, err := scalarArg(m.Kind, vals[0])
 		return e + " >= ?", []interface{}{a}, err
@@ -237,7 +251,7 @@ func compileText(m FieldMapping, p crmfilter.Predicate) (string, []interface{}, 
 	if p.Operator != crmfilter.OpContains {
 		return "", nil, fmt.Errorf("%w: %q (text)", ErrUnsupportedOperator, p.Operator)
 	}
-	pattern := "%" + trimmedValues(p.Values)[0] + "%"
+	pattern := database.LikeContains(trimmedValues(p.Values)[0])
 	args := make([]interface{}, m.Params)
 	for i := range args {
 		args[i] = pattern
@@ -249,7 +263,7 @@ func scalarArg(kind crmfilter.Kind, v string) (interface{}, error) {
 	s := strings.TrimSpace(v)
 	switch kind {
 	case crmfilter.KindNumber:
-		f, err := strconv.ParseFloat(s, 64)
+		f, err := shared.ParseNumberText(s)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %q", crmfilter.ErrInvalidNumber, v)
 		}

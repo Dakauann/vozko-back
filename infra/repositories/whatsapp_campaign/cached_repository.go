@@ -33,6 +33,10 @@ func (r *CachedRepository) invalidate(campaignID string) {
 	_ = r.shared.Del(cacheKey(campaignID))
 }
 
+func (r *CachedRepository) Forget(campaignID string) {
+	r.invalidate(strings.TrimSpace(campaignID))
+}
+
 func (r *CachedRepository) FindByID(campaignID string) (*wc.Campaign, error) {
 	id := strings.TrimSpace(campaignID)
 	if id == "" {

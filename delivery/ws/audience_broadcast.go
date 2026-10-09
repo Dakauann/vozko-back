@@ -25,17 +25,23 @@ func (h *ConversationHub) BroadcastCommentsAnalyzed(event ca.AnalysisBatchAnalyz
 }
 
 func (h *ConversationHub) sendToWorkspaceWithPermission(workspaceID, resource, action string, data []byte) {
-	if workspaceID == "" || len(data) == 0 || h.authorizer == nil {
+	if h.authorizer == nil {
+		return
+	}
+	h.sendToWorkspaceWhere(workspaceID, data, func(_ string, conn *WSConnection) bool {
+		return h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, resource, action, conn.IsAdmin)
+	})
+}
+
+func (h *ConversationHub) sendToWorkspaceWhere(workspaceID string, data []byte, allow func(connID string, conn *WSConnection) bool) {
+	if workspaceID == "" || len(data) == 0 {
 		return
 	}
 	h.connMu.RLock()
 	defer h.connMu.RUnlock()
 
 	for connID, conn := range h.connections {
-		if conn == nil || conn.WorkspaceID != workspaceID {
-			continue
-		}
-		if !h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, resource, action, conn.IsAdmin) {
+		if conn == nil || conn.WorkspaceID != workspaceID || !allow(connID, conn) {
 			continue
 		}
 		select {

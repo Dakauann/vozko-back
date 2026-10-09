@@ -2,14 +2,11 @@ package whatsappoutreach
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"vozko/delivery/http/response"
-	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	user_domain "vozko/domain/user"
-	"vozko/domain/whatsapp/template"
 	wo "vozko/domain/whatsapp_outreach"
 	"vozko/infra/http/middleware"
 )
@@ -69,7 +66,7 @@ func (h *Handler) scope(w http.ResponseWriter, r *http.Request) (workspaceID str
 }
 
 // @Summary		Iniciar conversa no WhatsApp oficial enviando um modelo
-// @Description	Envia um modelo aprovado para um número que nunca escreveu para a empresa e abre a conversa no CRM. Consome saldo. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não cobre nem envie duas vezes.
+// @Description	Envia um modelo aprovado para um número que nunca escreveu para a empresa e abre a conversa no CRM. Consome saldo. Envie o cabeçalho `Idempotency-Key` para que um reenvio da requisição não cobre nem envie duas vezes. Recusas antes de qualquer cobrança: 403 `lead_blocked` (contato bloqueado); 409 `lead_opted_out` (o contato pediu para não receber mensagens); 409 `within_spam_window` (o contato recebeu mensagem deste número dentro da proteção contra spam do workspace, ou outro envio para ele a partir deste número está em andamento); 409 `window_already_open`. Depois do envio: 409 `send_outcome_unknown` quando a resposta do WhatsApp se perdeu e o modelo pode ter sido entregue e cobrado (confira a conversa antes de enviar de novo; não repita automaticamente).
 // @Tags			whatsapp-outreach
 // @Accept			json
 // @Produce		json
@@ -85,6 +82,7 @@ func (h *Handler) scope(w http.ResponseWriter, r *http.Request) (workspaceID str
 // @Failure		422				{object}	response.ErrorResponse
 // @Failure		429				{object}	response.ErrorResponse
 // @Failure		502				{object}	response.ErrorResponse
+// @Failure		503				{object}	response.ErrorResponse
 // @Router			/whatsapp/outreach/conversations [post]
 func (h *Handler) StartConversation(w http.ResponseWriter, r *http.Request) {
 	workspaceID, departmentIDs, isAdmin, ok := h.scope(w, r)
@@ -141,7 +139,7 @@ func (h *Handler) StartConversation(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Consultar o custo de um envio de modelo
-// @Description	Retorna o preço do modelo para o workspace e se o saldo atual cobre o envio.
+// @Description	Retorna o preço do modelo para o workspace e se o saldo atual cobre o envio. Só modelos liberados para o workspace são cotados: um modelo de outro workspace responde 403 (`forbidden`), um modelo inexistente responde 404 (`not_found`),, um custo fora da faixa calculável responde 422 (`quote_out_of_range`), e uma falha ao ler as liberações ou o preço responde 503 (`quote_unavailable`), sem nada enviado.
 // @Tags			whatsapp-outreach
 // @Produce		json
 // @Param			templateId		query		string	true	"ID do modelo"
@@ -163,6 +161,10 @@ func (h *Handler) Quote(w http.ResponseWriter, r *http.Request) {
 
 	quote, err := h.quote.Execute(r.Context(), workspaceID,
 		r.URL.Query().Get("templateId"), r.URL.Query().Get("businessPhoneId"))
+	if err != nil && wo.ErrorCode(err) == "" {
+		response.WriteErrorWithCode(w, http.StatusServiceUnavailable, "quote_unavailable", "não foi possível calcular o custo agora, tente novamente em instantes", nil)
+		return
+	}
 	if err != nil {
 		h.writeDomainError(w, err, nil)
 		return
@@ -189,12 +191,38 @@ func toStartedResponse(r *wo.StartedConversation) StartedConversationResponse {
 	}
 }
 
+type refusalReply struct {
+	status  int
+	message string
+}
+
+var refusalReplies = map[string]refusalReply{
+	wo.CodeSendInProgress:         {http.StatusConflict, "este envio já está em andamento"},
+	wo.CodeWithinSpamWindow:       {http.StatusConflict, "este contato já recebeu uma mensagem deste número recentemente"},
+	wo.CodeLeadOptedOut:           {http.StatusConflict, "este contato pediu para não receber mensagens"},
+	wo.CodeInsufficientBalance:    {http.StatusPaymentRequired, "saldo insuficiente para enviar este modelo"},
+	wo.CodeMonthlySendCapReached:  {http.StatusForbidden, "o limite mensal de envios deste workspace foi atingido, fale com a administração"},
+	wo.CodePricingUnavailable:     {http.StatusUnprocessableEntity, "não há preço configurado para esta categoria de modelo"},
+	wo.CodeQuoteOutOfRange:        {http.StatusUnprocessableEntity, "não foi possível calcular o custo deste envio"},
+	wo.CodeTemplateNotSendable:    {http.StatusUnprocessableEntity, "este modelo não está pronto para envio"},
+	wo.CodeTemplatePhoneMismatch:  {http.StatusUnprocessableEntity, "este modelo não pertence à conta do número selecionado"},
+	wo.CodeInvalidPhone:           {http.StatusBadRequest, "número de destino inválido"},
+	wo.CodeLeadBlocked:            {http.StatusForbidden, "este contato está bloqueado"},
+	wo.CodeForbidden:              {http.StatusForbidden, "você não tem acesso a este número ou modelo"},
+	wo.CodePhoneNotConnected:      {http.StatusUnprocessableEntity, "este número não está conectado"},
+	wo.CodeNotFound:               {http.StatusNotFound, "número ou modelo não encontrado"},
+	wo.CodeIdempotencyKeyRequired: {http.StatusBadRequest, "envie o cabeçalho Idempotency-Key"},
+	wo.CodeBillingUnavailable:     {http.StatusInternalServerError, "cobrança indisponível, envio recusado"},
+	wo.CodeSendOutcomeUnknown:     {http.StatusConflict, "o WhatsApp pode ter entregue o modelo, confira a conversa antes de enviar de novo"},
+	wo.CodeConversationNotFound:   {http.StatusNotFound, "conversa não encontrada"},
+}
+
 func (h *Handler) writeDomainError(w http.ResponseWriter, err error, result *wo.StartedConversation) {
-	switch {
-	case errors.Is(err, wo.ErrWindowAlreadyOpen):
+	code := wo.ErrorCode(err)
+	if code == wo.CodeWindowAlreadyOpen {
 		payload := WindowOpenResponse{
 			Error:   true,
-			Code:    "window_already_open",
+			Code:    code,
 			Message: "esta conversa já está aberta, responda pelo chat sem custo",
 		}
 		if result != nil {
@@ -202,71 +230,14 @@ func (h *Handler) writeDomainError(w http.ResponseWriter, err error, result *wo.
 			payload.EntryType = result.EntryType
 		}
 		writeJSON(w, http.StatusConflict, payload)
-
-	case errors.Is(err, template.ErrSendInProgress):
-		response.WriteErrorWithCode(w, http.StatusConflict, "send_in_progress",
-			"este envio já está em andamento", nil)
-
-	case errors.Is(err, wo.ErrWithinSpamWindow):
-		response.WriteErrorWithCode(w, http.StatusConflict, "within_spam_window",
-			"este contato já recebeu uma mensagem deste número recentemente", nil)
-
-	case errors.Is(err, wo.ErrRateLimited):
-		response.WriteErrorWithCode(w, http.StatusTooManyRequests, "rate_limited",
-			"muitas conversas iniciadas em pouco tempo, tente novamente em instantes", nil)
-
-	case errors.Is(err, balance.ErrInsufficientBalance), errors.Is(err, balance.ErrBalanceNotFound):
-		response.WriteErrorWithCode(w, http.StatusPaymentRequired, "insufficient_balance",
-			"saldo insuficiente para enviar este modelo", nil)
-
-	case errors.Is(err, balance.ErrMonthlySendCapReached):
-		response.WriteErrorWithCode(w, http.StatusForbidden, "monthly_send_cap_reached",
-			"o limite mensal de envios deste workspace foi atingido, fale com a administração", nil)
-
-	case errors.Is(err, template.ErrPricingUnavailable):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "pricing_unavailable",
-			"não há preço configurado para esta categoria de modelo", nil)
-
-	case errors.Is(err, template.ErrTemplateNotSendable):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "template_not_sendable",
-			"este modelo não está pronto para envio", nil)
-
-	case errors.Is(err, template.ErrTemplatePhoneMismatch):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "template_phone_mismatch",
-			"este modelo não pertence à conta do número selecionado", nil)
-
-	case errors.Is(err, wo.ErrInvalidPhone):
-		response.WriteErrorWithCode(w, http.StatusBadRequest, "invalid_phone",
-			"número de destino inválido", nil)
-
-	case errors.Is(err, wo.ErrLeadBlocked):
-		response.WriteErrorWithCode(w, http.StatusForbidden, "lead_blocked",
-			"este contato está bloqueado", nil)
-
-	case errors.Is(err, wo.ErrDepartmentForbidden), errors.Is(err, wo.ErrTemplateForbidden):
-		response.WriteErrorWithCode(w, http.StatusForbidden, "forbidden",
-			"você não tem acesso a este número ou modelo", nil)
-
-	case errors.Is(err, wo.ErrPhoneNotConnected):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "phone_not_connected",
-			"este número não está conectado", nil)
-
-	case errors.Is(err, wo.ErrBusinessPhoneNotFound), errors.Is(err, wo.ErrTemplateNotFound):
-		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found",
-			"número ou modelo não encontrado", nil)
-
-	case errors.Is(err, template.ErrIdempotencyKeyRequired):
-		response.WriteErrorWithCode(w, http.StatusBadRequest, "idempotency_key_required",
-			"envie o cabeçalho Idempotency-Key", nil)
-
-	case errors.Is(err, template.ErrWorkspaceRequired), errors.Is(err, template.ErrBillingNotConfigured):
-		response.WriteErrorWithCode(w, http.StatusInternalServerError, "billing_unavailable",
-			"cobrança indisponível, envio recusado", nil)
-
-	default:
-		response.WriteErrorWithCode(w, http.StatusBadGateway, "send_failed",
-			"não foi possível enviar o modelo", nil)
+		return
 	}
+	reply, known := refusalReplies[code]
+	if !known {
+		response.WriteErrorWithCode(w, http.StatusBadGateway, "send_failed", "não foi possível enviar o modelo", nil)
+		return
+	}
+	response.WriteErrorWithCode(w, reply.status, code, reply.message, nil)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload interface{}) {

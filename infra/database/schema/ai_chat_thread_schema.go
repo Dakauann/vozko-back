@@ -14,6 +14,7 @@ type AIChatThread struct {
 	Title         string         `gorm:"type:text"`
 	Model         string         `gorm:"type:text"`
 	LastMessageAt *time.Time     `gorm:"type:timestamptz;index:idx_chat_thread_ws_user,priority:3,sort:desc"`
+	CostTracked   bool           `gorm:"not null;default:false"`
 	CreatedAt     time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt     time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt     gorm.DeletedAt `gorm:"index"`

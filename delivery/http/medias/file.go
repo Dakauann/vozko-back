@@ -26,7 +26,7 @@ var fileExtensions = map[string]string{
 }
 
 // @Summary		Baixar o arquivo de uma mídia
-// @Description	Devolve o conteúdo de uma mídia do workspace como anexo (Content-Disposition attachment), com o Content-Type original. Serve para baixar imagens geradas com IA e outros arquivos da biblioteca sem depender do domínio público do armazenamento.
+// @Description	Devolve o conteúdo de uma mídia do workspace como anexo (Content-Disposition attachment), com o Content-Type original. Serve para baixar imagens geradas com IA e outros arquivos da biblioteca sem depender do domínio público do armazenamento. Planilhas enviadas para importação de leads não são servidas e respondem 404.
 // @Tags			Mídias
 // @Produce		octet-stream
 // @Param			id	path	string	true	"ID da mídia"

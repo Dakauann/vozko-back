@@ -2,32 +2,51 @@ package lead
 
 import (
 	"errors"
-	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"vozko/domain/cache"
 	"vozko/domain/lead"
-	"vozko/domain/shared"
+	"vozko/domain/leadaction"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
-	infracrmfilter "vozko/infra/repositories/crmfilter"
 )
 
+const lookupBatchSize = 500
+
 type repository struct {
-	db  *gorm.DB
-	agg *aggregateCache
+	db    *gorm.DB
+	agg   *aggregateCache
+	newID func() string
 }
 
-func NewRepository(db *gorm.DB) lead.Repository {
+type Repository interface {
+	lead.Repository
+	lead.Store
+	lead.EntryDirectory
+	lead.EntryUsage
+	lead.RelationStore
+	lead.EntryLeads
+	lead.ContactDetails
+	lead.DuplicateFinder
+	lead.Anonymizer
+	lead.SectionReader
+	lead.TimelineSource
+	lead.SelectionReader
+	lead.SelectionSnapshots
+	leadaction.BulkWriter
+}
+
+func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db, agg: newAggregateCache(nil)}
 }
 
-func NewCachedRepository(db *gorm.DB, state cache.SharedState) lead.Repository {
+func NewCachedRepository(db *gorm.DB, state cache.SharedState) Repository {
 	return &repository{db: db, agg: newAggregateCache(state)}
 }
 
@@ -35,25 +54,19 @@ func (r *repository) scope(workspaceID string) *gorm.DB {
 	return r.db.Where("workspace_id = ?", workspaceID)
 }
 
-func (r *repository) Create(l *lead.Lead) (err error) {
-	if l == nil {
-		return lead.ErrLeadRequired
+func (r *repository) leadID() string {
+	if r.newID != nil {
+		return r.newID()
 	}
-	defer func() {
-		if err == nil {
-			r.agg.bump(l.WorkspaceID)
-		}
-	}()
+	return uuid.NewString()
+}
 
-	l.Normalize()
-	if err := l.Validate(); err != nil {
-		return err
+func onLiveIdentityConflictDoNothing() clause.OnConflict {
+	return clause.OnConflict{
+		Columns:     []clause.Column{{Name: "workspace_id"}, {Name: "number"}},
+		TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "deleted_at IS NULL"}}},
+		DoNothing:   true,
 	}
-	if l.ID == "" {
-		l.ID = uuid.New().String()
-	}
-	schemaLead := toSchema(l)
-	return r.db.Create(&schemaLead).Error
 }
 
 func (r *repository) FindByID(workspaceID, id string) (*lead.Lead, error) {
@@ -65,16 +78,18 @@ func (r *repository) FindByID(workspaceID, id string) (*lead.Lead, error) {
 	if id == "" {
 		return nil, lead.ErrLeadRequired
 	}
+	if len(database.UUIDArray([]string{id})) == 0 {
+		return nil, lead.ErrLeadNotFound
+	}
 
-	var schemaLead schema.Lead
-	if err := r.scope(workspaceID).Where("id = ?", id).First(&schemaLead).Error; err != nil {
+	var row schema.Lead
+	if err := r.scope(workspaceID).Where("id = ?", id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, lead.ErrLeadNotFound
 		}
 		return nil, err
 	}
-
-	return toDomain(&schemaLead), nil
+	return toDomain(&row)
 }
 
 func (r *repository) FindByNumber(workspaceID, number string) (*lead.Lead, error) {
@@ -82,20 +97,22 @@ func (r *repository) FindByNumber(workspaceID, number string) (*lead.Lead, error
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
-	phoneFormats := lead.NumberFormats(number)
-	if len(phoneFormats) == 0 {
+	formats := lead.NumberFormats(number)
+	if len(formats) == 0 {
 		return nil, lead.ErrLeadInvalid
 	}
+	return r.findByFormats(workspaceID, formats)
+}
 
-	var schemaLead schema.Lead
-	if err := r.scope(workspaceID).Where("number IN ?", phoneFormats).First(&schemaLead).Error; err != nil {
+func (r *repository) findByFormats(workspaceID string, formats []string) (*lead.Lead, error) {
+	var row schema.Lead
+	if err := r.scope(workspaceID).Where("number IN ?", formats).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, lead.ErrLeadNotFound
 		}
 		return nil, err
 	}
-
-	return toDomain(&schemaLead), nil
+	return toDomain(&row)
 }
 
 func (r *repository) FindByNumbers(workspaceID string, numbers []string) ([]*lead.Lead, error) {
@@ -103,20 +120,20 @@ func (r *repository) FindByNumbers(workspaceID string, numbers []string) ([]*lea
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
-	var formats []string
-	for _, number := range numbers {
-		formats = append(formats, lead.NumberFormats(number)...)
-	}
+	formats := numberFormats(numbers)
 	if len(formats) == 0 {
 		return nil, nil
 	}
-	var rows []schema.Lead
-	if err := r.scope(workspaceID).Where("number IN ?", formats).Find(&rows).Error; err != nil {
+	rows, err := r.numberHolders(r.db, workspaceID, formats, directoryLookupLimit)
+	if err != nil {
 		return nil, err
 	}
-	leads := make([]*lead.Lead, len(rows))
-	for i := range rows {
-		leads[i] = toDomain(&rows[i])
+	leads, err := toDomainAll(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := attachCollections(r.db, workspaceID, leads, phonesOnly); err != nil {
+		return nil, err
 	}
 	return leads, nil
 }
@@ -126,778 +143,290 @@ func (r *repository) FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, 
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
-	if len(ids) == 0 {
+	valid := database.UUIDArray(ids)
+	if len(valid) == 0 {
 		return []*lead.Lead{}, nil
 	}
 
-	var schemaLeads []schema.Lead
-	if err := r.scope(workspaceID).Where("id IN ?", ids).Find(&schemaLeads).Error; err != nil {
+	var rows []schema.Lead
+	if err := r.scope(workspaceID).Where("id = ANY(?::uuid[])", valid).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-
-	leads := make([]*lead.Lead, len(schemaLeads))
-	for i, sl := range schemaLeads {
-		leads[i] = toDomain(&sl)
-	}
-
-	return leads, nil
+	return toDomainAll(rows)
 }
 
-func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUpdate) (result *lead.Lead, created bool, err error) {
+func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUpdate) (*lead.Lead, bool, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, false, lead.ErrLeadWorkspaceRequired
 	}
-
-	defer func() {
-		if err == nil {
-			r.agg.bump(workspaceID)
-		}
-	}()
+	if !update.Source.Valid() {
+		return nil, false, lead.ErrLeadSourceInvalid
+	}
 	normalized := lead.NormalizeNumber(number)
 	if normalized == "" {
 		return nil, false, lead.ErrLeadInvalid
 	}
+	formats := lead.NumberFormats(normalized)
 
-	phoneFormats := []string{normalized}
-	if alternate := lead.GetAlternatePhoneFormat(normalized); alternate != "" {
-		phoneFormats = append(phoneFormats, alternate)
-	}
-
-	var schemaLead schema.Lead
-	err = r.scope(workspaceID).Where("number IN ?", phoneFormats).First(&schemaLead).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		newLead := &lead.Lead{
-			ID:          uuid.New().String(),
-			WorkspaceID: workspaceID,
-			Number:      normalized,
-			Name:        update.Name,
-			Age:         update.Age,
-		}
-
-		schemaLead = *toSchema(newLead)
-		if err := r.db.Create(&schemaLead).Error; err != nil {
+	existing, err := r.findByFormats(workspaceID, formats)
+	if errors.Is(err, lead.ErrLeadNotFound) {
+		existing, err = r.promoteIdentity(workspaceID, normalized, pq.StringArray(formats))
+		if err != nil {
 			return nil, false, err
 		}
-		return toDomain(&schemaLead), true, nil
 	}
-
+	if existing == nil && err == nil {
+		created, inserted, insertErr := r.insertIdentity(workspaceID, normalized, update)
+		if insertErr != nil {
+			return nil, false, insertErr
+		}
+		if inserted {
+			r.agg.bump(workspaceID)
+			return created, true, nil
+		}
+		existing, err = r.findByFormats(workspaceID, formats)
+	}
 	if err != nil {
 		return nil, false, err
 	}
 
-	domainLead := toDomain(&schemaLead)
-	domainLead.Merge(update)
-
-	updateData := map[string]interface{}{}
-	if update.Name != "" {
-		updateData["name"] = domainLead.Name
-	}
-	if update.Age != nil {
-		updateData["age"] = domainLead.Age
-	}
-
-	if len(updateData) > 0 {
-		if err := r.db.Model(&schemaLead).Updates(updateData).Error; err != nil {
-			return nil, false, err
-		}
-	}
-
-	return domainLead, false, nil
-}
-
-func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLeadInput) (result map[string]*lead.Lead, err error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return nil, lead.ErrLeadWorkspaceRequired
-	}
-
-	defer func() {
-		if err == nil {
-			r.agg.bump(workspaceID)
-		}
-	}()
-	if len(inputs) == 0 {
-		return make(map[string]*lead.Lead), nil
-	}
-
-	normalizedNumbers := make([]string, 0, len(inputs))
-	inputByNumber := make(map[string]lead.BulkLeadInput)
-	for _, input := range inputs {
-		normalized := lead.NormalizeNumber(input.Number)
-		if normalized == "" {
-			continue
-		}
-		if _, exists := inputByNumber[normalized]; !exists {
-			normalizedNumbers = append(normalizedNumbers, normalized)
-			inputByNumber[normalized] = input
-		}
-	}
-
-	if len(normalizedNumbers) == 0 {
-		return make(map[string]*lead.Lead), nil
-	}
-
-	result = make(map[string]*lead.Lead)
-
-	allSearchNumbers := make([]string, 0, len(normalizedNumbers)*2)
-	for _, number := range normalizedNumbers {
-		allSearchNumbers = append(allSearchNumbers, number)
-		if alternate := lead.GetAlternatePhoneFormat(number); alternate != "" {
-			allSearchNumbers = append(allSearchNumbers, alternate)
-		}
-	}
-
-	const batchSize = 500
-	var existingLeads []schema.Lead
-	for i := 0; i < len(allSearchNumbers); i += batchSize {
-		end := i + batchSize
-		if end > len(allSearchNumbers) {
-			end = len(allSearchNumbers)
-		}
-		batch := allSearchNumbers[i:end]
-
-		var batchLeads []schema.Lead
-		if err := r.scope(workspaceID).Where("number IN ?", batch).Find(&batchLeads).Error; err != nil {
-			return nil, err
-		}
-		existingLeads = append(existingLeads, batchLeads...)
-	}
-
-	existingByNumber := make(map[string]*schema.Lead)
-	for i := range existingLeads {
-		existingByNumber[existingLeads[i].Number] = &existingLeads[i]
-		if alt := lead.GetAlternatePhoneFormat(existingLeads[i].Number); alt != "" {
-			if _, alreadyMapped := existingByNumber[alt]; !alreadyMapped {
-				existingByNumber[alt] = &existingLeads[i]
-			}
-		}
-	}
-
-	var newLeadsToCreate []schema.Lead
-	for _, number := range normalizedNumbers {
-		if existing, found := existingByNumber[number]; found {
-			input := inputByNumber[number]
-			updates := map[string]interface{}{}
-
-			if existing.Name == "" && input.Name != "" {
-				updates["name"] = input.Name
-				existing.Name = input.Name
-			}
-
-			if input.Age != nil && existing.Age == nil {
-				updates["age"] = *input.Age
-				existing.Age = input.Age
-			}
-
-			if len(updates) > 0 {
-				r.db.Model(existing).Updates(updates)
-			}
-
-			result[number] = toDomain(existing)
-		} else {
-			input := inputByNumber[number]
-			newLead := schema.Lead{
-				ID:          uuid.New().String(),
-				WorkspaceID: workspaceID,
-				Number:      number,
-				Name:        input.Name,
-				Age:         input.Age,
-			}
-			newLeadsToCreate = append(newLeadsToCreate, newLead)
-		}
-	}
-
-	if len(newLeadsToCreate) > 0 {
-		if err := r.db.CreateInBatches(&newLeadsToCreate, batchSize).Error; err != nil {
-			return nil, err
-		}
-
-		for i := range newLeadsToCreate {
-			result[newLeadsToCreate[i].Number] = toDomain(&newLeadsToCreate[i])
-		}
-	}
-
-	return result, nil
-}
-
-func (r *repository) ImportMany(workspaceID string, inputs []lead.BulkLeadInput, policy lead.ExistingPolicy) (outcome *lead.ImportOutcome, err error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return nil, lead.ErrLeadWorkspaceRequired
-	}
-
-	defer func() {
-		if err == nil {
-			r.agg.bump(workspaceID)
-		}
-	}()
-	out := &lead.ImportOutcome{}
-	if len(inputs) == 0 {
-		return out, nil
-	}
-	if !policy.Valid() {
-		policy = lead.PolicyFillEmpty
-	}
-
-	normalizedNumbers := make([]string, 0, len(inputs))
-	inputByNumber := make(map[string]lead.BulkLeadInput, len(inputs))
-	for _, input := range inputs {
-		normalized := lead.NormalizeNumber(input.Number)
-		if normalized == "" {
-			continue
-		}
-		if _, exists := inputByNumber[normalized]; !exists {
-			normalizedNumbers = append(normalizedNumbers, normalized)
-			inputByNumber[normalized] = input
-		}
-	}
-	if len(normalizedNumbers) == 0 {
-		return out, nil
-	}
-
-	searchNumbers := make([]string, 0, len(normalizedNumbers)*2)
-	for _, number := range normalizedNumbers {
-		searchNumbers = append(searchNumbers, number)
-		if alternate := lead.GetAlternatePhoneFormat(number); alternate != "" {
-			searchNumbers = append(searchNumbers, alternate)
-		}
-	}
-
-	const batchSize = 500
-
-	var existing []schema.Lead
-	for i := 0; i < len(searchNumbers); i += batchSize {
-		end := i + batchSize
-		if end > len(searchNumbers) {
-			end = len(searchNumbers)
-		}
-		var batch []schema.Lead
-		if err := r.scope(workspaceID).Where("number IN ?", searchNumbers[i:end]).Find(&batch).Error; err != nil {
-			return nil, err
-		}
-		existing = append(existing, batch...)
-	}
-
-	existingByNumber := make(map[string]*schema.Lead, len(existing)*2)
-	for i := range existing {
-		existingByNumber[existing[i].Number] = &existing[i]
-		if alt := lead.GetAlternatePhoneFormat(existing[i].Number); alt != "" {
-			if _, mapped := existingByNumber[alt]; !mapped {
-				existingByNumber[alt] = &existing[i]
-			}
-		}
-	}
-
-	var toCreate []schema.Lead
-	for _, number := range normalizedNumbers {
-		found, isExisting := existingByNumber[number]
-		if !isExisting {
-			input := inputByNumber[number]
-			toCreate = append(toCreate, schema.Lead{
-				ID:          uuid.New().String(),
-				WorkspaceID: workspaceID,
-				Number:      number,
-				Name:        input.Name,
-				Age:         input.Age,
-			})
-			continue
-		}
-
-		out.Matched++
-		if found.Blocked {
-			out.Blocked++
-		}
-		if policy == lead.PolicySkip {
-			continue
-		}
-
-		input := inputByNumber[number]
-		updates := map[string]interface{}{}
-		if found.Name == "" && input.Name != "" {
-			updates["name"] = input.Name
-			found.Name = input.Name
-		}
-		if input.Age != nil && found.Age == nil {
-			updates["age"] = *input.Age
-			found.Age = input.Age
-		}
-		if len(updates) > 0 {
-			if err := r.db.Model(found).Updates(updates).Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if len(toCreate) > 0 {
-		tx := r.db.Clauses(clause.OnConflict{DoNothing: true}).
-			CreateInBatches(&toCreate, batchSize)
-		if tx.Error != nil {
-			return nil, tx.Error
-		}
-
-		out.Created = tx.RowsAffected
-		if raced := int64(len(toCreate)) - tx.RowsAffected; raced > 0 {
-			out.Matched += raced
-		}
-	}
-
-	return out, nil
-}
-
-func (r *repository) Update(workspaceID, id string, update lead.LeadUpdate) (err error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	id = strings.TrimSpace(id)
-	if workspaceID == "" {
-		return lead.ErrLeadWorkspaceRequired
-	}
-
-	defer func() {
-		if err == nil {
-			r.agg.bump(workspaceID)
-		}
-	}()
-	if id == "" {
-		return lead.ErrLeadRequired
-	}
-
-	existingLead, err := r.FindByID(workspaceID, id)
+	wrote, err := r.mergeIncoming(workspaceID, []incomingMerge{{lead: existing, apply: mergeOf(update)}})
 	if err != nil {
-		return err
+		return nil, false, err
 	}
-
-	existingLead.Merge(update)
-
-	updateData := map[string]interface{}{
-		"name":                existingLead.Name,
-		"age":                 existingLead.Age,
-		"profile_picture_url": existingLead.ProfilePictureURL,
-		"blocked":             existingLead.Blocked,
-		"blocked_by":          existingLead.BlockedBy,
+	if wrote {
+		r.agg.bump(workspaceID)
 	}
-	if existingLead.Blocked && !existingLead.BlockedAt.IsZero() {
-		blockedAt := existingLead.BlockedAt
-		updateData["blocked_at"] = blockedAt
-	} else {
-		updateData["blocked_at"] = nil
-	}
-
-	return r.scope(workspaceID).Model(&schema.Lead{}).Where("id = ?", id).Updates(updateData).Error
+	return existing, false, nil
 }
 
-func (r *repository) Delete(workspaceID, id string) (err error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	id = strings.TrimSpace(id)
-	if workspaceID == "" {
-		return lead.ErrLeadWorkspaceRequired
-	}
-
-	defer func() {
-		if err == nil {
-			r.agg.bump(workspaceID)
-		}
-	}()
-	if id == "" {
-		return lead.ErrLeadRequired
-	}
-	return r.scope(workspaceID).Where("id = ?", id).Delete(&schema.Lead{}).Error
-}
-
-type listQuery struct {
-	desc  infracrmfilter.LeadDescriptor
-	where string
-	args  []interface{}
-}
-
-func (r *repository) compile(input lead.ListLeadsInput) (*listQuery, error) {
-	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	if workspaceID == "" {
-		return nil, lead.ErrLeadWorkspaceRequired
-	}
-
-	desc := infracrmfilter.LeadDescriptor{Alias: "leads", WorkspaceID: workspaceID}
-	frag, args, err := infracrmfilter.Compile(input.Filter, desc, 0)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", lead.ErrLeadFilterInvalid, err)
-	}
-
-	where := "leads.workspace_id = ? AND leads.deleted_at IS NULL"
-	all := []interface{}{workspaceID}
-	if frag != "" {
-		where += " AND (" + frag + ")"
-		all = append(all, args...)
-	}
-
-	return &listQuery{desc: desc, where: where, args: all}, nil
-}
-
-func (q *listQuery) filteredIDs() string {
-	return "SELECT leads.id FROM leads WHERE " + q.where
-}
-
-func sortExpressions() map[lead.SortKey]string {
-	return map[lead.SortKey]string{
-		lead.SortCreatedAt:      "leads.created_at",
-		lead.SortUpdatedAt:      "leads.updated_at",
-		lead.SortName:           "NULLIF(leads.name, '')",
-		lead.SortNumber:         "leads.number",
-		lead.SortAge:            "leads.age",
-		lead.SortLastActivityAt: "last_activity_at",
-		lead.SortCampaigns:      "campaign_count",
-		lead.SortMemories:       "memory_count",
-		lead.SortLastMemoryAt:   "last_memory_at",
-	}
-}
-
-func orderBy(sorts []shared.Sort) string {
-	exprs := sortExpressions()
-	parts := make([]string, 0, len(sorts)+1)
-	seen := map[lead.SortKey]struct{}{}
-
-	for _, s := range sorts {
-		key, ok := lead.ParseSortKey(s.Field)
-		if !ok {
-			continue
-		}
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-
-		direction := "ASC"
-		if s.Direction == shared.SortDesc {
-			direction = "DESC"
-		}
-		parts = append(parts, exprs[key]+" "+direction+" NULLS LAST")
-	}
-
-	if len(parts) == 0 {
-		parts = append(parts, "leads.created_at DESC NULLS LAST")
-	}
-	return strings.Join(parts, ", ") + ", leads.id DESC"
-}
-
-type leadListRow struct {
-	ID                string
-	WorkspaceID       string
-	Number            string
-	Name              string
-	ProfilePictureURL string
-	Age               *int
-	Blocked           bool
-	BlockedAt         *time.Time
-	BlockedBy         *string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-
-	CampaignCount   int
-	MemoryCount     int
-	LastActivityAt  *time.Time
-	LastMemoryAt    *time.Time
-	WindowOpen      bool
-	WindowExpiresAt *time.Time
-}
-
-func (row *leadListRow) toDomain() *lead.Lead {
+func (r *repository) newIdentityLead(workspaceID, number string, update lead.LeadUpdate) *lead.Lead {
 	l := &lead.Lead{
-		ID:                row.ID,
-		WorkspaceID:       row.WorkspaceID,
-		Number:            row.Number,
-		Name:              row.Name,
-		ProfilePictureURL: row.ProfilePictureURL,
-		Age:               row.Age,
-		Blocked:           row.Blocked,
-		BlockedBy:         row.BlockedBy,
-		CreatedAt:         row.CreatedAt,
-		UpdatedAt:         row.UpdatedAt,
+		ID:          r.leadID(),
+		WorkspaceID: workspaceID,
+		Number:      number,
+		Source:      update.Source,
+		Version:     1,
 	}
-	if row.BlockedAt != nil {
-		l.BlockedAt = *row.BlockedAt
-	}
+	l.MergeIncoming(update)
 	return l
 }
 
-func (row *leadListRow) toSummary() *lead.LeadSummary {
-	summary := &lead.LeadSummary{
-		WhatsAppCampaigns:  row.CampaignCount,
-		TotalCampaigns:     row.CampaignCount,
-		LastActivityAt:     row.LastActivityAt,
-		WhatsAppWindowOpen: row.WindowOpen,
-		Memories:           row.MemoryCount,
-		LastMemoryAt:       row.LastMemoryAt,
+func (r *repository) insertIdentity(workspaceID, number string, update lead.LeadUpdate) (*lead.Lead, bool, error) {
+	row, err := toSchema(r.newIdentityLead(workspaceID, number, update))
+	if err != nil {
+		return nil, false, err
 	}
-	if row.WindowOpen {
-		summary.WindowExpiresAt = row.WindowExpiresAt
+	res := r.db.Clauses(onLiveIdentityConflictDoNothing()).Create(row)
+	if res.Error != nil {
+		return nil, false, res.Error
 	}
-	return summary
+	if res.RowsAffected == 0 {
+		return nil, false, nil
+	}
+	created, err := toDomain(row)
+	if err != nil {
+		return nil, false, err
+	}
+	return created, true, nil
 }
 
-func (q *listQuery) selectList() string {
-	d := q.desc
-	return "leads.id, leads.workspace_id, leads.number, leads.name, leads.profile_picture_url, " +
-		"leads.age, leads.blocked, leads.blocked_at, leads.blocked_by, leads.created_at, leads.updated_at, " +
-		d.CampaignCountExpr() + " AS campaign_count, " +
-		d.MemoryCountExpr() + " AS memory_count, " +
-		d.LastActivityExpr() + " AS last_activity_at, " +
-		d.LastMemoryAtExpr() + " AS last_memory_at, " +
-		d.WindowOpenExpr() + " AS window_open, " +
-		d.WindowExpiresAtExpr() + " AS window_expires_at"
+type incomingBatch struct {
+	numbers []string
+	inputs  map[string]lead.BulkLeadInput
 }
 
-func (r *repository) countLeads(workspaceID string, q *listQuery) (int64, error) {
-	if cached, ok := r.agg.getCount(workspaceID, q); ok {
-		return cached, nil
-	}
-
-	var total int64
-	if err := r.db.Raw("SELECT COUNT(*) FROM leads WHERE "+q.where, q.args...).Scan(&total).Error; err != nil {
-		return 0, err
-	}
-
-	r.agg.setCount(workspaceID, q, total)
-	return total, nil
-}
-
-func (r *repository) fetchPage(q *listQuery, opts shared.QueryOptions) ([]leadListRow, error) {
-	pagination := shared.NormalizePagination(opts.Pagination)
-
-	sql := "SELECT " + q.selectList() +
-		" FROM leads WHERE " + q.where +
-		" ORDER BY " + orderBy(opts.Sorts) +
-		" LIMIT ? OFFSET ?"
-
-	args := append(append([]interface{}{}, q.args...), pagination.PageSize, pagination.Offset())
-
-	var rows []leadListRow
-	if err := r.db.Raw(sql, args...).Scan(&rows).Error; err != nil {
-		return nil, err
-	}
-	return rows, nil
-}
-
-func (r *repository) List(input lead.ListLeadsInput) (*shared.PaginatedResult[*lead.Lead], error) {
-	q, err := r.compile(input)
-	if err != nil {
-		return nil, err
-	}
-
-	total, err := r.countLeads(input.WorkspaceID, q)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := r.fetchPage(q, input.Options)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]*lead.Lead, len(rows))
-	for i := range rows {
-		items[i] = rows[i].toDomain()
-	}
-
-	return shared.NewPaginatedResult(items, input.Options.Pagination, total), nil
-}
-
-func (r *repository) ListWithSummary(input lead.ListLeadsInput) (*shared.PaginatedResult[*lead.LeadWithSummary], error) {
-	q, err := r.compile(input)
-	if err != nil {
-		return nil, err
-	}
-
-	total, err := r.countLeads(input.WorkspaceID, q)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := r.fetchPage(q, input.Options)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]*lead.LeadWithSummary, len(rows))
-	for i := range rows {
-		items[i] = &lead.LeadWithSummary{
-			Lead:    rows[i].toDomain(),
-			Summary: rows[i].toSummary(),
+func prepareIncoming(inputs []lead.BulkLeadInput, source func(lead.BulkLeadInput) lead.Source) (incomingBatch, error) {
+	batch := incomingBatch{inputs: make(map[string]lead.BulkLeadInput, len(inputs))}
+	for _, input := range inputs {
+		input.Source = source(input)
+		if !input.Source.Valid() {
+			return incomingBatch{}, lead.ErrLeadSourceInvalid
 		}
-	}
-
-	return shared.NewPaginatedResult(items, input.Options.Pagination, total), nil
-}
-
-type facetRow struct {
-	Key   string
-	Count int64
-}
-
-func (r *repository) groupedFacet(q *listQuery, source, leadIDCol, bucketCol, extra string) map[string]int64 {
-	conditions := leadIDCol + " IN (" + q.filteredIDs() + ")"
-	if extra != "" {
-		conditions += " AND " + extra
-	}
-	sql := "SELECT " + bucketCol + " AS key, COUNT(DISTINCT " + leadIDCol + ") AS count" +
-		" FROM " + source + " WHERE " + conditions + " GROUP BY " + bucketCol
-
-	var rows []facetRow
-	if err := r.db.Raw(sql, q.args...).Scan(&rows).Error; err != nil {
-		log.Printf("[lead-facets] grouped facet on %s failed: %v", source, err)
-		return map[string]int64{}
-	}
-
-	out := make(map[string]int64, len(rows))
-	for _, row := range rows {
-		key := strings.TrimSpace(row.Key)
-		if key == "" {
+		normalized := lead.NormalizeNumber(input.Number)
+		if normalized == "" {
 			continue
 		}
-		out[key] = row.Count
+		if _, exists := batch.inputs[normalized]; !exists {
+			batch.numbers = append(batch.numbers, normalized)
+			batch.inputs[normalized] = input
+		}
 	}
-	return out
+	return batch, nil
 }
 
-func (r *repository) Facets(input lead.ListLeadsInput) (*lead.LeadFacets, error) {
-	q, err := r.compile(input)
+func (b incomingBatch) update(number string) lead.LeadUpdate {
+	input := b.inputs[number]
+	return lead.LeadUpdate{Source: input.Source, Name: input.Name}
+}
+
+func (r *repository) existingByNumber(workspaceID string, numbers []string) (map[string]*lead.Lead, error) {
+	search := make([]string, 0, len(numbers)*2)
+	for _, number := range numbers {
+		search = append(search, lead.NumberFormats(number)...)
+	}
+
+	found := make(map[string]*lead.Lead, len(search))
+	for start := 0; start < len(search); start += lookupBatchSize {
+		end := min(start+lookupBatchSize, len(search))
+		var rows []schema.Lead
+		if err := r.scope(workspaceID).Where("number IN ?", search[start:end]).Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		leads, err := toDomainAll(rows)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range leads {
+			for _, format := range lead.NumberFormats(l.Number) {
+				if _, mapped := found[format]; !mapped || format == l.Number {
+					found[format] = l
+				}
+			}
+		}
+	}
+	return found, nil
+}
+
+type insertedIdentities struct {
+	created map[string]*lead.Lead
+	raced   map[string]*lead.Lead
+}
+
+func (r *repository) insertMissing(workspaceID string, batch incomingBatch, missing []string) (insertedIdentities, error) {
+	out := insertedIdentities{created: make(map[string]*lead.Lead, len(missing)), raced: map[string]*lead.Lead{}}
+	rows := make([]schema.Lead, 0, len(missing))
+	generated := make(map[string]string, len(missing))
+	for _, number := range missing {
+		row, err := toSchema(r.newIdentityLead(workspaceID, number, batch.update(number)))
+		if err != nil {
+			return insertedIdentities{}, err
+		}
+		generated[number] = row.ID
+		rows = append(rows, *row)
+	}
+	res := r.db.Clauses(onLiveIdentityConflictDoNothing()).CreateInBatches(&rows, lookupBatchSize)
+	if res.Error != nil {
+		return insertedIdentities{}, res.Error
+	}
+
+	if res.RowsAffected == int64(len(rows)) {
+		created, err := toDomainAll(rows)
+		if err != nil {
+			return insertedIdentities{}, err
+		}
+		for _, l := range created {
+			out.created[l.Number] = l
+		}
+		return out, nil
+	}
+
+	stored, err := r.existingByNumber(workspaceID, missing)
 	if err != nil {
-		return nil, err
+		return insertedIdentities{}, err
 	}
-
-	if cached, ok := r.agg.getFacets(input.WorkspaceID, q); ok {
-		return cached, nil
+	for _, number := range missing {
+		l, ok := stored[number]
+		switch {
+		case !ok:
+		case l.ID == generated[number]:
+			out.created[number] = l
+		default:
+			out.raced[number] = l
+		}
 	}
-
-	d := q.desc
-
-	var agg struct {
-		Total        int64
-		Blocked      int64
-		WindowOpen   int64
-		WithCampaign int64
-		WithMemory   int64
-		Named        int64
-	}
-	sql := "SELECT COUNT(*) AS total," +
-		" COUNT(*) FILTER (WHERE leads.blocked) AS blocked," +
-		" COUNT(*) FILTER (WHERE " + d.WindowOpenExpr() + ") AS window_open," +
-		" COUNT(*) FILTER (WHERE " + d.HasCampaignExpr() + ") AS with_campaign," +
-		" COUNT(*) FILTER (WHERE " + d.HasMemoryExpr() + ") AS with_memory," +
-		" COUNT(*) FILTER (WHERE NULLIF(leads.name, '') IS NOT NULL) AS named" +
-		" FROM leads WHERE " + q.where
-	if err := r.db.Raw(sql, q.args...).Scan(&agg).Error; err != nil {
-		return nil, err
-	}
-
-	facets := &lead.LeadFacets{
-		Total:           agg.Total,
-		Blocked:         agg.Blocked,
-		Active:          agg.Total - agg.Blocked,
-		WindowOpen:      agg.WindowOpen,
-		WindowClosed:    agg.Total - agg.WindowOpen,
-		WithCampaign:    agg.WithCampaign,
-		WithoutCampaign: agg.Total - agg.WithCampaign,
-		WithMemory:      agg.WithMemory,
-		WithoutMemory:   agg.Total - agg.WithMemory,
-		Named:           agg.Named,
-		Unnamed:         agg.Total - agg.Named,
-	}
-
-	facets.MemoryCategories = r.groupedFacet(q, "lead_memories lm_g", "lm_g.lead_id", "lm_g.category", "lm_g.deleted_at IS NULL")
-	facets.CampaignStatuses = r.groupedFacet(q, "whatsapp_campaign_entries wce_g", "wce_g.lead_id", "wce_g.status", "wce_g.deleted_at IS NULL")
-	facets.Channels = r.groupedFacet(q, infracrmfilter.LeadChannelsSource(), "lead_id", "channel", "")
-
-	r.agg.setFacets(input.WorkspaceID, q, facets)
-	r.agg.setCount(input.WorkspaceID, q, facets.Total)
-
-	return facets, nil
+	return out, nil
 }
 
-func (r *repository) ResolveCampaignNames(wcIDs []string) map[string]string {
-	names := make(map[string]string)
+type incomingOutcome struct {
+	leads   map[string]*lead.Lead
+	matched []*lead.Lead
+	created int
+}
 
-	type nameRow struct {
-		ID   string
-		Name string
+func (r *repository) resolveIncoming(workspaceID string, batch incomingBatch, applyFor func(number string) func(*lead.Lead) []string) (incomingOutcome, error) {
+	out := incomingOutcome{leads: make(map[string]*lead.Lead, len(batch.numbers))}
+	if len(batch.numbers) == 0 {
+		return out, nil
+	}
+	existing, err := r.existingByNumber(workspaceID, batch.numbers)
+	if err != nil {
+		return incomingOutcome{}, err
 	}
 
-	if len(wcIDs) > 0 {
-		var rows []nameRow
-		r.db.Table("whatsapp_campaigns").Select("id, name").Where("id IN ?", wcIDs).Scan(&rows)
-		for _, row := range rows {
-			names["whatsapp:"+row.ID] = row.Name
+	var merges []incomingMerge
+	var missing []string
+	matched := func(number string, l *lead.Lead) {
+		out.leads[number] = l
+		out.matched = append(out.matched, l)
+		merges = append(merges, incomingMerge{lead: l, apply: applyFor(number)})
+	}
+	for _, number := range batch.numbers {
+		if found, ok := existing[number]; ok {
+			matched(number, found)
+			continue
+		}
+		missing = append(missing, number)
+	}
+
+	if len(missing) > 0 {
+		inserted, err := r.insertMissing(workspaceID, batch, missing)
+		if err != nil {
+			return incomingOutcome{}, err
+		}
+		for number, l := range inserted.created {
+			out.leads[number] = l
+		}
+		out.created = len(inserted.created)
+		for _, number := range missing {
+			if l, ok := inserted.raced[number]; ok {
+				matched(number, l)
+			}
 		}
 	}
 
-	return names
+	wrote, err := r.mergeIncoming(workspaceID, merges)
+	if err != nil {
+		return incomingOutcome{}, err
+	}
+	if wrote || out.created > 0 {
+		r.agg.bump(workspaceID)
+	}
+	return out, nil
 }
 
-func toSchema(l *lead.Lead) *schema.Lead {
-	s := &schema.Lead{
-		ID:                l.ID,
-		WorkspaceID:       l.WorkspaceID,
-		Number:            l.Number,
-		Name:              l.Name,
-		ProfilePictureURL: l.ProfilePictureURL,
-		Age:               l.Age,
-		Blocked:           l.Blocked,
-		BlockedBy:         l.BlockedBy,
+func (r *repository) FindOrCreateMany(workspaceID string, inputs []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, lead.ErrLeadWorkspaceRequired
 	}
-	if !l.BlockedAt.IsZero() {
-		blockedAt := l.BlockedAt
-		s.BlockedAt = &blockedAt
+	batch, err := prepareIncoming(inputs, func(in lead.BulkLeadInput) lead.Source { return in.Source })
+	if err != nil {
+		return nil, err
 	}
-	return s
+	out, err := r.resolveIncoming(workspaceID, batch, func(number string) func(*lead.Lead) []string {
+		return mergeOf(batch.update(number))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out.leads, nil
 }
 
-func toDomain(l *schema.Lead) *lead.Lead {
-	d := &lead.Lead{
-		ID:                l.ID,
-		WorkspaceID:       l.WorkspaceID,
-		Number:            l.Number,
-		Name:              l.Name,
-		ProfilePictureURL: l.ProfilePictureURL,
-		Age:               l.Age,
-		Blocked:           l.Blocked,
-		BlockedBy:         l.BlockedBy,
-		CreatedAt:         l.CreatedAt,
-		UpdatedAt:         l.UpdatedAt,
-	}
-	if l.BlockedAt != nil {
-		d.BlockedAt = *l.BlockedAt
-	}
-	return d
-}
-
-func (r *repository) Rename(workspaceID, id, name string) (err error) {
+func (r *repository) Delete(workspaceID, id string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	id = strings.TrimSpace(id)
 	if workspaceID == "" {
 		return lead.ErrLeadWorkspaceRequired
 	}
-
-	defer func() {
-		if err == nil {
-			r.agg.bump(workspaceID)
-		}
-	}()
 	if id == "" {
 		return lead.ErrLeadRequired
 	}
-	if err := lead.ValidateName(name); err != nil {
+	if err := r.db.Exec("UPDATE leads SET deleted_at = ?, version = version + 1 WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+		time.Now().UTC(), id, workspaceID).Error; err != nil {
 		return err
 	}
-
-	res := r.db.Model(&schema.Lead{}).
-		Where("id = ? AND workspace_id = ?", id, workspaceID).
-		Updates(map[string]interface{}{
-			"name":       lead.NormalizeName(name),
-			"updated_at": time.Now().UTC(),
-		})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return lead.ErrLeadNotFound
-	}
+	r.agg.bump(workspaceID)
 	return nil
 }

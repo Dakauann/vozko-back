@@ -9,8 +9,6 @@ type CallSource interface {
 
 type CallDialInput struct {
 	PhoneNumber string
-	EntryID     string
-	EntryType   string
 	UserID      string
 	WorkspaceID string
 	IsAdmin     bool

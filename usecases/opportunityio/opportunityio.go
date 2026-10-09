@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	objectType        = "opportunity"
+	objectType        = customfield.ObjectOpportunity
 	customFieldPrefix = "custom_field:"
-	multiSelectDelim  = "|"
 	MaxImportRows     = 5000
 )
 
@@ -35,7 +34,7 @@ type OpportunityService interface {
 }
 
 type FieldLister interface {
-	ListByObject(workspaceID, objectType string) ([]*customfield.Definition, error)
+	ListByObject(workspaceID string, objectType customfield.ObjectType) ([]*customfield.Definition, error)
 }
 
 type Service struct {
@@ -60,7 +59,10 @@ func (s *Service) Export(workspaceID, pipelineID string, departmentIDs []string,
 	if err != nil {
 		return 0, err
 	}
-	keys := s.customFieldKeys(workspaceID, opps)
+	keys, err := s.customFieldKeys(workspaceID, opps)
+	if err != nil {
+		return 0, err
+	}
 
 	writer := csv.NewWriter(w)
 
@@ -88,7 +90,7 @@ func (s *Service) Export(workspaceID, pipelineID string, departmentIDs []string,
 			o.CreatedAt.UTC().Format(time.RFC3339),
 		}
 		for _, k := range keys {
-			record = append(record, formatCustomValue(o.CustomFields[k]))
+			record = append(record, customfield.FormatValue(o.CustomFields[k]))
 		}
 		if err := writer.Write(record); err != nil {
 			return 0, err
@@ -102,26 +104,32 @@ func (s *Service) Export(workspaceID, pipelineID string, departmentIDs []string,
 	return len(opps), nil
 }
 
-func (s *Service) customFieldKeys(workspaceID string, opps []*opportunity.Opportunity) []string {
+func (s *Service) definitions(workspaceID string) ([]*customfield.Definition, error) {
+	if s.fields == nil {
+		return nil, customfield.ErrDefinitionsUnavailable
+	}
+	return s.fields.ListByObject(workspaceID, objectType)
+}
+
+func (s *Service) customFieldKeys(workspaceID string, opps []*opportunity.Opportunity) ([]string, error) {
+	defs, err := s.definitions(workspaceID)
+	if err != nil {
+		return nil, err
+	}
 	seen := map[string]struct{}{}
 	var keys []string
-
-	if s.fields != nil {
-		if defs, err := s.fields.ListByObject(workspaceID, objectType); err == nil {
-			sort.SliceStable(defs, func(i, j int) bool {
-				if defs[i].Position != defs[j].Position {
-					return defs[i].Position < defs[j].Position
-				}
-				return defs[i].Key < defs[j].Key
-			})
-			for _, d := range defs {
-				if _, ok := seen[d.Key]; ok {
-					continue
-				}
-				seen[d.Key] = struct{}{}
-				keys = append(keys, d.Key)
-			}
+	sort.SliceStable(defs, func(i, j int) bool {
+		if defs[i].Position != defs[j].Position {
+			return defs[i].Position < defs[j].Position
 		}
+		return defs[i].Key < defs[j].Key
+	})
+	for _, d := range defs {
+		if _, ok := seen[d.Key]; ok {
+			continue
+		}
+		seen[d.Key] = struct{}{}
+		keys = append(keys, d.Key)
 	}
 
 	var extra []string
@@ -135,7 +143,7 @@ func (s *Service) customFieldKeys(workspaceID string, opps []*opportunity.Opport
 		}
 	}
 	sort.Strings(extra)
-	return append(keys, extra...)
+	return append(keys, extra...), nil
 }
 
 type ImportOptions struct {
@@ -171,13 +179,13 @@ func (s *Service) Import(workspaceID string, r io.Reader, opts ImportOptions) (*
 	}
 	colIndex := indexHeader(header)
 
-	defsByKey := map[string]*customfield.Definition{}
-	if s.fields != nil {
-		if defs, e := s.fields.ListByObject(workspaceID, objectType); e == nil {
-			for _, d := range defs {
-				defsByKey[d.Key] = d
-			}
-		}
+	defs, err := s.definitions(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defsByKey := make(map[string]*customfield.Definition, len(defs))
+	for _, d := range defs {
+		defsByKey[d.Key] = d
 	}
 
 	report := &ImportReport{Errors: []ImportError{}}
@@ -283,7 +291,7 @@ func buildInput(idx map[string]int, record []string, defsByKey map[string]*custo
 			continue
 		}
 		key := strings.TrimPrefix(col, customFieldPrefix)
-		val, err := coerceCustomValue(raw, defsByKey[key])
+		val, err := defsByKey[key].Coerce(raw)
 		if err != nil {
 			return in, fmt.Errorf("custom field %q: %w", key, err)
 		}
@@ -293,37 +301,6 @@ func buildInput(idx map[string]int, record []string, defsByKey map[string]*custo
 		in.CustomFields = custom
 	}
 	return in, nil
-}
-
-func coerceCustomValue(raw string, def *customfield.Definition) (any, error) {
-	if def == nil {
-		return raw, nil
-	}
-	switch def.Type {
-	case customfield.TypeNumber:
-		f, err := strconv.ParseFloat(raw, 64)
-		if err != nil {
-			return nil, fmt.Errorf("not a number: %q", raw)
-		}
-		return f, nil
-	case customfield.TypeBoolean:
-		b, err := strconv.ParseBool(strings.ToLower(raw))
-		if err != nil {
-			return nil, fmt.Errorf("not a boolean: %q", raw)
-		}
-		return b, nil
-	case customfield.TypeMultiSelect:
-		parts := strings.Split(raw, multiSelectDelim)
-		out := make([]string, 0, len(parts))
-		for _, p := range parts {
-			if p = strings.TrimSpace(p); p != "" {
-				out = append(out, p)
-			}
-		}
-		return out, nil
-	default:
-		return raw, nil
-	}
 }
 
 func formatCentsToMajor(cents int64) string {
@@ -417,35 +394,6 @@ func formatTimePtr(t *time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
-}
-
-func formatCustomValue(v any) string {
-	switch val := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return val
-	case bool:
-		return strconv.FormatBool(val)
-	case float64:
-		return strconv.FormatFloat(val, 'f', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(val), 'f', -1, 32)
-	case int:
-		return strconv.Itoa(val)
-	case int64:
-		return strconv.FormatInt(val, 10)
-	case []string:
-		return strings.Join(val, multiSelectDelim)
-	case []any:
-		parts := make([]string, 0, len(val))
-		for _, it := range val {
-			parts = append(parts, fmt.Sprintf("%v", it))
-		}
-		return strings.Join(parts, multiSelectDelim)
-	default:
-		return fmt.Sprintf("%v", val)
-	}
 }
 
 func indexHeader(header []string) map[string]int {

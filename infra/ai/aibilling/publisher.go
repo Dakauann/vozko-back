@@ -25,16 +25,27 @@ func NewPublisher(queue messaging.MessageQueuePub) *Publisher {
 }
 
 func (p *Publisher) Publish(workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64) {
+	p.PublishFor("", workspaceID, model, promptTokens, completionTokens, providerCostMicros)
+}
+
+func (p *Publisher) PublishFor(reference, workspaceID, model string, promptTokens, completionTokens int, providerCostMicros int64) {
+	p.PublishUsage(reference, workspaceID, model, ai.CallUsage{PromptTokens: promptTokens, CompletionTokens: completionTokens, ProviderCostMicros: providerCostMicros})
+}
+
+func (p *Publisher) PublishUsage(reference, workspaceID, model string, usage ai.CallUsage) {
 	if p == nil || p.queue == nil {
 		return
 	}
 	data, err := json.Marshal(ai.AICompletedEvent{
-		RequestID:          uuid.New().String(),
+		RequestID:          ai.RequestIDUnder(reference, uuid.New().String()),
 		WorkspaceID:        workspaceID,
 		Model:              model,
-		PromptTokens:       promptTokens,
-		CompletionTokens:   completionTokens,
-		ProviderCostMicros: providerCostMicros,
+		PromptTokens:       usage.PromptTokens,
+		CompletionTokens:   usage.CompletionTokens,
+		CachedTokens:       usage.CachedTokens,
+		CacheWriteTokens:   usage.CacheWriteTokens,
+		ReasoningTokens:    usage.ReasoningTokens,
+		ProviderCostMicros: usage.ProviderCostMicros,
 	})
 	if err != nil {
 		log.Printf("[ai-billing] failed to marshal event: %v", err)
@@ -47,7 +58,7 @@ func (p *Publisher) Publish(workspaceID, model string, promptTokens, completionT
 		}
 		if attempt == len(p.delays)-1 {
 			log.Printf("[ai-billing] CRITICAL publish failed after %d attempts workspace=%s model=%s prompt=%d completion=%d: %v",
-				len(p.delays), workspaceID, model, promptTokens, completionTokens, err)
+				len(p.delays), workspaceID, model, usage.PromptTokens, usage.CompletionTokens, err)
 			return
 		}
 		log.Printf("[ai-billing] publish attempt %d failed, retrying in %v: %v", attempt+1, delay, err)
