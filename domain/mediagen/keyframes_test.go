@@ -28,6 +28,23 @@ func keyframeVectors() []keyframeVector {
 		{"ease in out is symmetric at the middle", ramp(EaseInOut), 2000, 50},
 		{"ease in out first quarter", ramp(EaseInOut), 1500, 6.25},
 		{"ease in out last quarter", ramp(EaseInOut), 2500, 93.75},
+		{"back in pulls back before leaving", ramp(EaseBackIn), 1500, -6.41365625},
+		{"back in last quarter", ramp(EaseBackIn), 2500, 18.25903125},
+		{"back out overshoots and settles", ramp(EaseBackOut), 2500, 106.41365625},
+		{"back in out pulls back and overshoots", ramp(EaseBackInOut), 2500, 109.968184375},
+		{"back in out first quarter", ramp(EaseBackInOut), 1500, -9.968184375},
+		{"elastic rings past the target", ramp(EaseElastic), 1500, 91.1611652352},
+		{"elastic last quarter", ramp(EaseElastic), 2500, 100.5524271728},
+		{"bounce first quarter", ramp(EaseBounce), 1500, 47.265625},
+		{"bounce last quarter", ramp(EaseBounce), 2500, 97.265625},
+		{"spring overshoots early", ramp(EaseSpring), 1500, 102.1143579132},
+		{"spring settles back", ramp(EaseSpring), 2500, 97.2042262475},
+		{"every easing lands on the next key", ramp(EaseSpring), 3000, 100},
+		{"an emphasized entrance curve rushes out", ramp("cubic-bezier(0.05,0.7,0.1,1)"), 1500, 83.1529746487},
+		{"an emphasized entrance curve at the middle", ramp("cubic-bezier(0.05,0.7,0.1,1)"), 2000, 95.0247475324},
+		{"a bezier with handles past 1 overshoots", ramp("cubic-bezier(0.34,1.56,0.64,1)"), 2000, 108.7400670219},
+		{"a bezier with handles past 1 settles back", ramp("cubic-bezier(0.34,1.56,0.64,1)"), 2500, 105.9646859964},
+		{"an emphasized exit curve starts slow", ramp("cubic-bezier(0.3, 0, 0.8, 0.15)"), 2500, 40.5585508922},
 		{"a single key is constant", []Keyframe{{AtMS: 500, Value: 7, Easing: EaseIn}}, 9000, 7},
 		{"the outgoing easing of each key shapes its segment", []Keyframe{
 			{AtMS: 0, Value: 0, Easing: EaseLinear}, {AtMS: 1000, Value: 10, Easing: EaseHold}, {AtMS: 2000, Value: 20, Easing: EaseLinear},
@@ -41,6 +58,48 @@ func TestKeyframeValuesMatchTheSharedVectors(t *testing.T) {
 		if got := ValueAt(v.frames, v.atMS); math.Abs(got-v.want) > 1e-9 {
 			t.Errorf("%s: got %v want %v", v.name, got, v.want)
 		}
+	}
+}
+
+func TestCustomCurvesAreCheckedAndMeasured(t *testing.T) {
+	for _, good := range []Easing{"cubic-bezier(0.05,0.7,0.1,1)", "cubic-bezier( 0.3 , 0 , 0.8 , 0.15 )"} {
+		if !good.Known() {
+			t.Errorf("%s refused", good)
+		}
+	}
+	for _, bad := range []Easing{"cubic-bezier(1.2,0,0.5,1)", "cubic-bezier(0.2,3,0.5,1)", "cubic-bezier(0.2,0,0.5)", "bezier(0,0,1,1)", "cubic-bezier(a,0,1,1)", "cubic-bezier(-0.1,0,1,1)"} {
+		if bad.Known() {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+	curve := Easing("cubic-bezier(0.34,1.56,0.64,1)")
+	low, high := curve.Reach()
+	if low != 0 || high <= 1.09 {
+		t.Fatalf("reach = %v %v", low, high)
+	}
+	for i := 0; i <= 100; i++ {
+		if v := curve.Apply(float64(i) / 100); v > high {
+			t.Fatalf("%v passes the reach %v", v, high)
+		}
+	}
+	if low, high := Easing("cubic-bezier(0.2,0,0,1)").Reach(); low != 0 || high != 1 {
+		t.Fatalf("a curve inside the box reaches %v %v", low, high)
+	}
+}
+
+func TestTheAnimatedBoxCoversTheOvershootOfTheEasing(t *testing.T) {
+	k := &Keyframes{Scale: []Keyframe{{AtMS: 0, Value: 1, Easing: EaseElastic}, {AtMS: 1000, Value: 2, Easing: EaseLinear}}}
+	peak := k.MaxScale()
+	if peak < 2.37 {
+		t.Fatalf("max scale = %v, want the elastic overshoot", peak)
+	}
+	for ms := 0.0; ms <= 1000; ms += 5 {
+		if v := ValueAt(k.Scale, ms); v > peak {
+			t.Fatalf("value %v at %vms passes the max scale %v", v, ms, peak)
+		}
+	}
+	if code := KeyframesIssue(k, Transform{X: 0.5, Y: 0.5, W: 1.8, H: 1.8, Opacity: 1}); code != CodeOutOfRange {
+		t.Fatalf("an overshoot past the box limit must be refused, got %q", code)
 	}
 }
 
@@ -60,7 +119,7 @@ func TestKeyframesAreValidated(t *testing.T) {
 	}
 	cases := map[string]*Keyframes{
 		"unsorted":        {Y: []Keyframe{{AtMS: 1000, Value: 0.1, Easing: EaseLinear}, {AtMS: 1000, Value: 0.2, Easing: EaseLinear}}},
-		"unknown easing":  {Y: []Keyframe{{AtMS: 0, Value: 0.1, Easing: "bounce"}}},
+		"unknown easing":  {Y: []Keyframe{{AtMS: 0, Value: 0.1, Easing: "wiggle"}}},
 		"opacity range":   {Opacity: []Keyframe{{AtMS: 0, Value: 1.5, Easing: EaseLinear}}},
 		"position range":  {X: []Keyframe{{AtMS: 0, Value: 3, Easing: EaseLinear}}},
 		"scale range":     {Scale: []Keyframe{{AtMS: 0, Value: 0, Easing: EaseLinear}}},

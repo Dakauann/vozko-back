@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"vozko/domain/copilot"
+	"vozko/domain/mediagen"
 	"vozko/domain/studio"
 	"vozko/domain/tools"
 )
@@ -102,7 +103,7 @@ type studioCropArgs struct {
 type studioKeyArgs struct {
 	AtMS   int64   `json:"at_ms" req:"true" desc:"instante da chave em ms, contado do início do clipe: de 0 até a duração do clipe"`
 	Value  float64 `json:"value" req:"true" desc:"x e y de -1 a 2 (0.5 é o centro; fora de 0 a 1 sai da tela); scale de 0.05 a 5 (1 é o tamanho atual; o clipe animado não pode passar de 4 vezes o quadro); rotation de -3600 a 3600 graus; opacity de 0 a 1"`
-	Easing string  `json:"easing,omitempty" enum:"linear,hold,easeIn,easeOut,easeInOut" desc:"curva do trecho que sai desta chave; padrão easeInOut"`
+	Easing string  `json:"easing,omitempty" desc:"curva do trecho que sai desta chave, padrão easeInOut: linear, hold, easeIn, easeOut, easeInOut, backIn (recua antes de sair), backOut (passa do ponto e volta), backInOut, elastic (vibra), bounce (quica), spring (chega com impulso de mola) ou uma curva css cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2, como cubic-bezier(0.05,0.7,0.1,1) para uma entrada enfática"`
 }
 
 type studioVideoOperation struct {
@@ -120,7 +121,7 @@ type studioVideoOperation struct {
 	TrimInMS   *int64          `json:"trim_in_ms,omitempty" desc:"de que ponto do arquivo de origem o clipe começa, em ms (slip_clip)"`
 	ToIndex    *int            `json:"to_index,omitempty" desc:"posição da faixa, 0 é a de baixo (move_track, add_track)"`
 	Style      string          `json:"style,omitempty" enum:"headline,caption,cta,lowerThird,tag" desc:"estilo pronto de texto (add_text)"`
-	Preset     string          `json:"preset,omitempty" enum:"kenBurns,enterLeft,slideUp,fadeIn,fadeOut,pulse,spin,wobble" desc:"animação pronta por keyframes (motion_preset)"`
+	Preset     string          `json:"preset,omitempty" enum:"kenBurns,enterLeft,slideUp,fadeIn,fadeOut,pulse,spin,wobble,pop,drop,springIn" desc:"animação pronta por keyframes (motion_preset); pop cresce passando do tamanho, drop cai e quica, springIn entra com mola"`
 	Effect     string          `json:"effect,omitempty" enum:"none,fade,slideUp,slideDown,slideLeft,slideRight" desc:"efeito de entrada ou de saída (entrance, exit)"`
 	Property   string          `json:"property,omitempty" enum:"x,y,scale,rotation,opacity" desc:"propriedade animada (animate)"`
 	Keys       []studioKeyArgs `json:"keys,omitempty" desc:"chaves da animação (animate); substituem as chaves dessa propriedade; vazio remove a animação dela"`
@@ -305,11 +306,35 @@ func checkOperations[T any](ops []T, allowed []string) error {
 		if keys := value.FieldByName("Keys"); keys.IsValid() && keys.Len() > maxStudioKeys {
 			return fmt.Errorf("%w: operação %d: no máximo %d chaves por propriedade", errInvalidArgs, i+1, maxStudioKeys)
 		}
+		if easing, ok := unknownEasing(value.FieldByName("Keys")); ok {
+			return fmt.Errorf("%w: operação %d: easing %q não existe; use %s ou cubic-bezier(x1,y1,x2,y2) com x de 0 a 1 e y de -1 a 2", errInvalidArgs, i+1, easing, easingNames())
+		}
 		if !finiteNumbers(value) {
 			return fmt.Errorf("%w: operação %d: número inválido", errInvalidArgs, i+1)
 		}
 	}
 	return nil
+}
+
+func unknownEasing(keys reflect.Value) (string, bool) {
+	if !keys.IsValid() || keys.Kind() != reflect.Slice {
+		return "", false
+	}
+	for i := 0; i < keys.Len(); i++ {
+		easing := keys.Index(i).FieldByName("Easing").String()
+		if easing != "" && !mediagen.Easing(easing).Known() {
+			return easing, true
+		}
+	}
+	return "", false
+}
+
+func easingNames() string {
+	names := make([]string, 0, len(mediagen.Easings()))
+	for _, e := range mediagen.Easings() {
+		names = append(names, string(e))
+	}
+	return strings.Join(names, ", ")
 }
 
 func finiteNumbers(v reflect.Value) bool {

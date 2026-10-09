@@ -221,6 +221,24 @@ func TestStudioEditVideoCarriesTheImageDesignVocabulary(t *testing.T) {
 	}
 }
 
+func TestStudioEditPassesNamedAndCustomCurves(t *testing.T) {
+	editor := &fakeEditor{replies: map[copilot.ScreenCommandName]copilot.ScreenReply{copilot.ScreenEdit: {OK: true}}}
+	edit := NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil))
+	keys := []interface{}{
+		map[string]interface{}{"at_ms": 0.0, "value": 0.2, "easing": "backOut"},
+		map[string]interface{}{"at_ms": 500.0, "value": 0.5, "easing": "cubic-bezier(0.05,0.7,0.1,1)"},
+		map[string]interface{}{"at_ms": 900.0, "value": 0.8},
+	}
+	args := map[string]interface{}{"operations": []interface{}{map[string]interface{}{"op": "animate", "clip_id": "c-1", "property": "x", "keys": keys}}}
+	if res := edit.Execute(context.Background(), studioSession(copilot.StudioVideo, editor), args); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	cmd, _ := editor.sent(copilot.ScreenEdit)
+	if sent := renderJSON(cmd.Args); !strings.Contains(sent, "cubic-bezier(0.05,0.7,0.1,1)") || !strings.Contains(sent, "backOut") {
+		t.Fatalf("the curves were lost: %s", sent)
+	}
+}
+
 func TestStudioEditRefusesMalformedBatchesBeforeTheEditor(t *testing.T) {
 	edit := NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil))
 	many := make([]interface{}, MaxStudioOperations+1)
@@ -232,6 +250,8 @@ func TestStudioEditRefusesMalformedBatchesBeforeTheEditor(t *testing.T) {
 		"too many operations":   {"operations": many},
 		"unknown operation":     {"operations": []interface{}{map[string]interface{}{"op": "export"}}},
 		"image op on the video": {"operations": []interface{}{map[string]interface{}{"op": "align_layers"}}},
+		"unknown easing":        {"operations": []interface{}{map[string]interface{}{"op": "animate", "clip_id": "c-1", "property": "x", "keys": []interface{}{map[string]interface{}{"at_ms": 0.0, "value": 0.5, "easing": "wiggle"}}}}},
+		"curve out of bounds":   {"operations": []interface{}{map[string]interface{}{"op": "animate", "clip_id": "c-1", "property": "x", "keys": []interface{}{map[string]interface{}{"at_ms": 0.0, "value": 0.5, "easing": "cubic-bezier(2,0,0,1)"}}}}},
 	}
 	for name, args := range cases {
 		editor := &fakeEditor{}

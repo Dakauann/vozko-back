@@ -23,6 +23,7 @@ type fakeImportStore struct {
 	saves      int
 	placements map[string]leadimport.Placement
 	placed     []string
+	issuesErr  error
 }
 
 func newFakeImportStore() *fakeImportStore {
@@ -167,6 +168,9 @@ func (s *fakeImportStore) Delete(_ context.Context, id string) error {
 func (s *fakeImportStore) Issues(_ context.Context, importID string, after int64, limit int) ([]leadimport.IssueRow, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.issuesErr != nil {
+		return nil, s.issuesErr
+	}
 	var out []leadimport.IssueRow
 	for _, row := range s.issues[importID] {
 		if row.Seq > after && len(out) < limit {

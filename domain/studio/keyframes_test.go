@@ -46,7 +46,7 @@ func TestKeyframesKeepTheirRules(t *testing.T) {
 			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{X: many}
 		},
 		"unknown easing": func(d *VideoDocument) {
-			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Y: []mediagen.Keyframe{{AtMS: 0, Value: 0.5, Easing: "bounce"}}}
+			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Y: []mediagen.Keyframe{{AtMS: 0, Value: 0.5, Easing: "wiggle"}}}
 		},
 		"out of range": func(d *VideoDocument) {
 			d.Tracks[1].Clips[0].Keyframes = &mediagen.Keyframes{Opacity: []mediagen.Keyframe{{AtMS: 0, Value: 2, Easing: mediagen.EaseLinear}}}

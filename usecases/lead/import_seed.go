@@ -22,7 +22,7 @@ func (i *Import) seed(ctx context.Context, job *leadimport.Job, src rowSource) e
 		job.Seed = &leadimport.SeedOutcome{Error: leadimport.SeedUnavailable}
 		return nil
 	}
-	targets, err := i.seedTargets(job, src)
+	targets, err := i.seedTargets(ctx, job, src)
 	if err != nil {
 		return err
 	}
@@ -58,12 +58,38 @@ func (i *Import) seed(ctx context.Context, job *leadimport.Job, src rowSource) e
 	return nil
 }
 
-func (i *Import) seedTargets(job *leadimport.Job, src rowSource) ([]unofficial_whatsapp.SeedTarget, error) {
+func (i *Import) rejectedLines(ctx context.Context, job *leadimport.Job) (map[int]bool, error) {
+	rejected := map[int]bool{}
+	var after int64
+	for {
+		rows, err := i.deps.Jobs.Issues(ctx, job.ID, after, seedIssuePage)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if row.Rejected {
+				rejected[row.Line] = true
+			}
+			after = row.Seq
+		}
+		if len(rows) < seedIssuePage {
+			return rejected, nil
+		}
+	}
+}
+
+const seedIssuePage = 1000
+
+func (i *Import) seedTargets(ctx context.Context, job *leadimport.Job, src rowSource) ([]unofficial_whatsapp.SeedTarget, error) {
+	rejected, err := i.rejectedLines(ctx, job)
+	if err != nil {
+		return nil, err
+	}
 	preparer := lead.NewImportPreparer(job.WorkspaceID, nil, i.now())
 	var targets []unofficial_whatsapp.SeedTarget
-	err := src(func(_ int, row lead.ImportRow) error {
+	err = src(func(_ int, row lead.ImportRow) error {
 		row.CustomFields = nil
-		if record, _, ok := preparer.Prepare(row); ok && record.Number != "" {
+		if record, _, ok := preparer.Prepare(row); ok && record.Number != "" && !rejected[row.Line] {
 			targets = append(targets, unofficial_whatsapp.SeedTarget{Number: record.Number, Name: record.Name})
 		}
 		return nil

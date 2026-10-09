@@ -1281,9 +1281,10 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	var allEntries []conversation.EntryWithLastMessage
 	for _, batch := range hydrationBatches(refs) {
 		entries, _, err := r.GetEntriesWithMessages("", batch.IDs, batch.EntryType, 1, len(batch.IDs), "")
-		if err == nil {
-			allEntries = append(allEntries, entries...)
+		if err != nil {
+			return nil, 0, fmt.Errorf("error hydrating workspace search results: %w", err)
 		}
+		allEntries = append(allEntries, entries...)
 	}
 
 	sortDesc := input.SortOrder != "asc"
@@ -1367,9 +1368,10 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 	var allEntries []conversation.EntryWithLastMessage
 	for _, batch := range hydrationBatches(refs) {
 		entries, _, err := r.GetEntriesWithMessages("", batch.IDs, batch.EntryType, 1, len(batch.IDs), "")
-		if err == nil {
-			allEntries = append(allEntries, entries...)
+		if err != nil {
+			return nil, 0, fmt.Errorf("error hydrating filtered board results: %w", err)
 		}
+		allEntries = append(allEntries, entries...)
 	}
 
 	for i := range allEntries {

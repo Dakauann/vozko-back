@@ -71,6 +71,27 @@ func TestPositionKeyframesMoveTheClipAcrossTheFrame(t *testing.T) {
 	}
 }
 
+func TestEveryEasingHasItsOwnRenderCurve(t *testing.T) {
+	for _, easing := range append(mediagen.Easings(), "cubic-bezier(0.05,0.7,0.1,1)") {
+		if easing != mediagen.EaseLinear && easingExpr(easing, "p") == "p" {
+			t.Errorf("%s renders as linear", easing)
+		}
+	}
+}
+
+func TestAnOvershootingEasingCarriesTheClipPastItsLastKey(t *testing.T) {
+	video := renderAnimated(t, &mediagen.Keyframes{X: []mediagen.Keyframe{
+		{AtMS: 0, Value: 0.2, Easing: mediagen.EaseBackOut}, {AtMS: 2_000, Value: 0.8, Easing: mediagen.EaseLinear},
+	}})
+	past := 990
+	if p := pixelAt(t, video, "1.5", past, 540); !isBlue(p) {
+		t.Fatalf("overshoots past the last key, got %v", p)
+	}
+	if p := pixelAt(t, video, "2.5", past, 540); !isBlack(p) {
+		t.Fatalf("settles on the last key, got %v", p)
+	}
+}
+
 func TestOpacityKeyframesFadeTheClipFrameByFrame(t *testing.T) {
 	video := renderAnimated(t, &mediagen.Keyframes{Opacity: []mediagen.Keyframe{
 		{AtMS: 0, Value: 0, Easing: mediagen.EaseHold}, {AtMS: 1_000, Value: 0.5, Easing: mediagen.EaseLinear}, {AtMS: 2_000, Value: 1, Easing: mediagen.EaseLinear},

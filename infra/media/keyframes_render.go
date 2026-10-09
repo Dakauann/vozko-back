@@ -13,6 +13,30 @@ func seconds(v int64) string {
 	return ms(v)
 }
 
+const (
+	backPull      = "1.70158"
+	backPullPlus  = "2.70158"
+	backInOut     = "2.5949095"
+	backInOutPlus = "3.5949095"
+)
+
+func bounceExpr(p string) string {
+	piece := func(shift, lift string) string {
+		return "(7.5625*pow(" + p + "-" + shift + ",2)+" + lift + ")"
+	}
+	return "if(lt(" + p + ",0.363636)," + "7.5625*pow(" + p + ",2)" +
+		",if(lt(" + p + ",0.727273)," + piece("0.545455", "0.75") +
+		",if(lt(" + p + ",0.909091)," + piece("0.818182", "0.9375") + "," + piece("0.954545", "0.984375") + ")))"
+}
+
+func springExpr(p string) string {
+	damped := mediagen.SpringFrequency * math.Sqrt(1-mediagen.SpringDamping*mediagen.SpringDamping)
+	decay := mediagen.SpringDamping * mediagen.SpringFrequency
+	settled := 1 - math.Exp(-decay)*(math.Cos(damped)+decay/damped*math.Sin(damped))
+	raw := "(1-exp(-" + fraction(decay) + "*" + p + ")*(cos(" + fraction(damped) + "*" + p + ")+" + fraction(decay/damped) + "*sin(" + fraction(damped) + "*" + p + ")))"
+	return "if(gte(" + p + ",1),1," + raw + "/" + fraction(settled) + ")"
+}
+
 func easingExpr(e mediagen.Easing, p string) string {
 	switch e {
 	case mediagen.EaseHold:
@@ -23,8 +47,36 @@ func easingExpr(e mediagen.Easing, p string) string {
 		return "(1-pow(1-" + p + ",3))"
 	case mediagen.EaseInOut:
 		return "if(lt(" + p + ",0.5),4*pow(" + p + ",3),1-pow(-2*" + p + "+2,3)/2)"
+	case mediagen.EaseBackIn:
+		return "(" + backPullPlus + "*pow(" + p + ",3)-" + backPull + "*pow(" + p + ",2))"
+	case mediagen.EaseBackOut:
+		return "(1+" + backPullPlus + "*pow(" + p + "-1,3)+" + backPull + "*pow(" + p + "-1,2))"
+	case mediagen.EaseBackInOut:
+		return "if(lt(" + p + ",0.5),pow(2*" + p + ",2)*(" + backInOutPlus + "*2*" + p + "-" + backInOut + ")/2,(pow(2*" + p + "-2,2)*(" + backInOutPlus + "*(2*" + p + "-2)+" + backInOut + ")+2)/2)"
+	case mediagen.EaseElastic:
+		return "if(lte(" + p + ",0),0,if(gte(" + p + ",1),1,pow(2,-10*" + p + ")*sin((10*" + p + "-0.75)*2.094395)+1))"
+	case mediagen.EaseBounce:
+		return bounceExpr(p)
+	case mediagen.EaseSpring:
+		return springExpr(p)
+	}
+	if b, ok := e.Bezier(); ok {
+		return bezierExpr(b, p)
 	}
 	return p
+}
+
+const bezierSegments = 32
+
+func bezierExpr(b mediagen.Bezier, p string) string {
+	expr := "1"
+	for i := bezierSegments - 1; i >= 0; i-- {
+		from, to := float64(i)/bezierSegments, float64(i+1)/bezierSegments
+		start, end := b.At(from), b.At(to)
+		segment := fraction(start) + "+(" + p + "-" + fraction(from) + ")*" + fraction((end-start)*bezierSegments)
+		expr = "if(lt(" + p + "," + fraction(to) + ")," + segment + "," + expr + ")"
+	}
+	return "if(lte(" + p + ",0),0," + expr + ")"
 }
 
 func keyframeExpr(frames []mediagen.Keyframe, at string) string {
@@ -67,7 +119,7 @@ func opacityCommands(frames []mediagen.Keyframe, durationMS int64, target string
 	count := int(math.Ceil(float64(durationMS) / 1000 * renderFPS))
 	for n := 0; n <= count; n++ {
 		at := float64(n) / renderFPS
-		value := math.Round(mediagen.ValueAt(frames, at*1000)*1e4) / 1e4
+		value := math.Round(math.Max(0, math.Min(1, mediagen.ValueAt(frames, at*1000)))*1e4) / 1e4
 		if value == last {
 			continue
 		}
