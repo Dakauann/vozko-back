@@ -22,6 +22,7 @@ func TestErrorCodeNamesEveryRefusalOfATemplateSend(t *testing.T) {
 		{balance.ErrInsufficientBalance, CodeInsufficientBalance},
 		{balance.ErrBalanceNotFound, CodeInsufficientBalance},
 		{balance.ErrMonthlySendCapReached, CodeMonthlySendCapReached},
+		{balance.ErrSendWindowClosed, CodeSendWindowClosed},
 		{template.ErrPricingUnavailable, CodePricingUnavailable},
 		{template.ErrQuoteOutOfRange, CodeQuoteOutOfRange},
 		{template.ErrTemplateNotSendable, CodeTemplateNotSendable},

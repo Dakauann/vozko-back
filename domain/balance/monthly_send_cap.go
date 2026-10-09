@@ -18,6 +18,8 @@ var (
 	ErrInvalidUnlockCode        = errors.New("invalid unlock code")
 	ErrInvalidSendCapLimit      = errors.New("monthly send cap limit must be positive")
 	ErrInvalidSendCapCycleDay   = errors.New("monthly send cap cycle day must be between 1 and 31")
+	ErrInvalidSendCapEndDay     = errors.New("monthly send cap end day must be between 0 and 31")
+	ErrSendWindowClosed         = errors.New("templates can only be sent inside the monthly send window")
 	ErrSendCapWorkspaceRequired = errors.New("monthly send cap requires a workspace")
 	ErrInvalidSendCapLevel      = errors.New("invalid monthly send cap level")
 	ErrSendCapForbidden         = errors.New("not allowed to manage monthly send caps")
@@ -29,6 +31,7 @@ type MonthlySendCap struct {
 	WorkspaceID string
 	Limit       int64
 	CycleDay    int
+	EndDay      int
 	UpdatedBy   string
 	UpdatedAt   time.Time
 	UnlockedBy  *string
@@ -89,6 +92,14 @@ func (c MonthlySendCap) Recycled(cycleDay int) (MonthlySendCap, error) {
 	return c, nil
 }
 
+func (c MonthlySendCap) Rewindowed(endDay int) (MonthlySendCap, error) {
+	if endDay < 0 || endDay > 31 {
+		return MonthlySendCap{}, ErrInvalidSendCapEndDay
+	}
+	c.EndDay = endDay
+	return c, nil
+}
+
 func (c MonthlySendCap) Relimited(limit int64, updatedBy string, now time.Time) (MonthlySendCap, error) {
 	if limit <= 0 {
 		return MonthlySendCap{}, ErrInvalidSendCapLimit
@@ -132,6 +143,39 @@ func (c MonthlySendCap) NextCycleStart(now time.Time) time.Time {
 	return c.Quota().NextCycleStart(now)
 }
 
+func (c MonthlySendCap) WindowEnd(now time.Time) time.Time {
+	next := c.NextCycleStart(now)
+	if c.EndDay == 0 {
+		return next
+	}
+	start := c.CycleStart(now)
+	month := start.Month()
+	if c.EndDay < c.cycleDay() {
+		month++
+	}
+	end := shared.MonthlyCycleDate(start.Year(), month, c.EndDay, billing.LocationBRT()).AddDate(0, 0, 1)
+	if end.After(next) {
+		return next
+	}
+	return end
+}
+
+func (c MonthlySendCap) CheckWindow(now time.Time) error {
+	if now.Before(c.WindowEnd(now)) {
+		return nil
+	}
+	return ErrSendWindowClosed
+}
+
+func SendCapRefusal(err error) error {
+	for _, refusal := range []error{ErrMonthlySendCapReached, ErrSendWindowClosed} {
+		if errors.Is(err, refusal) {
+			return refusal
+		}
+	}
+	return nil
+}
+
 func (c MonthlySendCap) CheckRoom(used int64) error {
 	if c.Quota().CheckRoom(used) != nil {
 		return ErrMonthlySendCapReached
@@ -146,7 +190,7 @@ func SendCapChangeRequiresUnlock(current *MonthlySendCap, next *MonthlySendCap) 
 	if next == nil {
 		return true
 	}
-	return next.Limit > current.Limit || next.cycleDay() != current.cycleDay()
+	return next.Limit > current.Limit || next.cycleDay() != current.cycleDay() || next.EndDay != current.EndDay
 }
 
 func (u SendCapUsage) Remaining() int64 {
@@ -219,12 +263,14 @@ type SetMonthlySendCapInput struct {
 	WorkspaceID string
 	Limit       int64
 	CycleDay    *int
+	EndDay      *int
 }
 
 type UnlockMonthlySendCapInput struct {
 	WorkspaceID string
 	Limit       *int64
 	CycleDay    *int
+	EndDay      *int
 	Code        string
 }
 
@@ -244,9 +290,20 @@ func (u SendCapUsage) Renews() time.Time {
 	return u.Cap.NextCycleStart(u.CycleStart)
 }
 
-func (c MonthlySendCap) RecycledIfAsked(cycleDay *int) (MonthlySendCap, error) {
-	if cycleDay == nil {
-		return c, nil
+func (u SendCapUsage) WindowEnd() time.Time {
+	return u.Cap.WindowEnd(u.CycleStart)
+}
+
+func (c MonthlySendCap) RecycledIfAsked(cycleDay, endDay *int) (MonthlySendCap, error) {
+	cycled := c
+	if cycleDay != nil {
+		var err error
+		if cycled, err = cycled.Recycled(*cycleDay); err != nil {
+			return MonthlySendCap{}, err
+		}
 	}
-	return c.Recycled(*cycleDay)
+	if endDay == nil {
+		return cycled, nil
+	}
+	return cycled.Rewindowed(*endDay)
 }

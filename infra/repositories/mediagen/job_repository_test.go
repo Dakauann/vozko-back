@@ -165,17 +165,17 @@ func TestMarkDoneOnlyFinishesARunningJob(t *testing.T) {
 
 func TestMarkFailedOnlyTouchesAnUnfinishedJob(t *testing.T) {
 	db, mock, _ := newMockDB(t)
-	mock.ExpectExec(`UPDATE "media_generation_jobs" SET "failure_code"=\$1,"finished_at"=\$2,"status"=\$3,"updated_at"=\$4 WHERE id = \$5 AND status IN \(\$6,\$7\)`).
-		WithArgs("storage_failed", at, "failed", sqlmock.AnyArg(), jobID, "queued", "running").
+	mock.ExpectExec(`UPDATE "media_generation_jobs" SET "failure_code"=\$1,"failure_detail"=\$2,"finished_at"=\$3,"status"=\$4,"updated_at"=\$5 WHERE id = \$6 AND status IN \(\$7,\$8\)`).
+		WithArgs("storage_failed", "disk full", at, "failed", sqlmock.AnyArg(), jobID, "queued", "running").
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	if err := NewJobRepository(db).MarkFailed(context.Background(), jobID, mediagen.FailureStorage, at); err != nil {
+	if err := NewJobRepository(db).MarkFailed(context.Background(), jobID, mediagen.FailureStorage, "disk full", at); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestMarkFailedRefusesAnUnknownCode(t *testing.T) {
 	db, _, _ := newMockDB(t)
-	if err := NewJobRepository(db).MarkFailed(context.Background(), jobID, "oops", at); !errors.Is(err, mediagen.ErrUnknownFailureCode) {
+	if err := NewJobRepository(db).MarkFailed(context.Background(), jobID, "oops", "", at); !errors.Is(err, mediagen.ErrUnknownFailureCode) {
 		t.Fatalf("got %v", err)
 	}
 }

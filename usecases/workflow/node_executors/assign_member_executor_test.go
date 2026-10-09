@@ -81,6 +81,9 @@ func (m *assignMemberWorkspaceMock) UpdateInviteStatus(string, workspace.InviteS
 func (m *assignMemberWorkspaceMock) PendingInviteExists(string, string) (bool, error) {
 	return false, nil
 }
+func (m *assignMemberWorkspaceMock) AcceptInvite(string, *workspace.Member, []*workspace.Permission, []string) error {
+	return nil
+}
 func (m *assignMemberWorkspaceMock) GetWorkspaceIDForResource(string, string) (string, error) {
 	return "", nil
 }

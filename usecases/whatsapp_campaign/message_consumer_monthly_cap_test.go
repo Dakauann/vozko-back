@@ -44,3 +44,31 @@ func TestMonthlyCap_ReachedDuringDrain_FailsEntryWithCapCodeAndCompletes(t *test
 		t.Fatalf("the campaign completes once every entry is settled, got %s", camp.Status)
 	}
 }
+
+func TestSendWindowClosed_FailsEntryWithWindowCode(t *testing.T) {
+	h := newTestHarness()
+	campID := "camp-send-window"
+	topic := setupCampaignWithCounter(h, campID, 1)
+
+	h.consumeTempl.executeErr = fmt.Errorf("debit: %w", balance.ErrSendWindowClosed)
+
+	ack := h.queueSub.deliver(topic, makePayload(campID, "entry-1", "5584999990001"))
+	if ack == nil || !ack.acked.Load() || ack.nacked.Load() {
+		t.Fatal("a send outside the window is a permanent failure: acked, never nacked")
+	}
+	if status := h.entryRepo.getStatus("entry-1"); status != wce.SendStatusFailed {
+		t.Fatalf("expected FAILED, got %s", status)
+	}
+	if code := h.entryRepo.getErrorCode("entry-1"); code != wce.ErrorCodeSendWindowClosed {
+		t.Fatalf("expected error code %d, got %d", wce.ErrorCodeSendWindowClosed, code)
+	}
+	if msg := h.entryRepo.getErrorMessage("entry-1"); msg != balance.ErrSendWindowClosed.Error() {
+		t.Fatalf("unexpected error message %q", msg)
+	}
+	if delayed := h.queuePub.delayedMessagesFor(topic); len(delayed) != 0 {
+		t.Fatalf("a send outside the window must not loop in retry, got %d delayed", len(delayed))
+	}
+	if h.consumeTempl.consumed.Load() != 0 || h.consumeTempl.refunded.Load() != 0 {
+		t.Fatal("nothing was charged, so nothing is refunded")
+	}
+}

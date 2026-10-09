@@ -72,7 +72,7 @@ func (s *stubImages) DefaultModel(_ context.Context, kind mediagen.Kind) (mediag
 	if s.catalogErr != nil {
 		return mediagen.Model{}, s.catalogErr
 	}
-	model, _ := mediagen.DefaultModel(kind, s.models(kind))
+	model, _ := mediagen.DefaultModel(s.models(kind))
 	return model, nil
 }
 

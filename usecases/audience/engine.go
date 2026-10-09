@@ -160,9 +160,12 @@ func (e *Engine) RegisterSource(source ca.Source, adapter ca.SourceAdapter) {
 type cycle struct {
 	tokens map[string]int
 	caps   map[string]int
+	halted map[string]bool
 }
 
-func newCycle() *cycle { return &cycle{tokens: map[string]int{}, caps: map[string]int{}} }
+func newCycle() *cycle {
+	return &cycle{tokens: map[string]int{}, caps: map[string]int{}, halted: map[string]bool{}}
+}
 
 func (c *cycle) remaining(workspaceID string, b ca.Budget) int {
 	return b.MaxTokensPerCycle - c.tokens[workspaceID]
@@ -202,6 +205,9 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 	}
 	if workspaceID == "" {
 		workspaceID = settings.WorkspaceID
+	}
+	if cyc.halted[workspaceID] {
+		return res, nil
 	}
 
 	adapter, err := e.readerFor(ref)
@@ -302,6 +308,7 @@ func (e *Engine) ProcessContainer(ctx context.Context, ref ca.ContainerRef, work
 	for _, plan := range plans {
 		if stop := e.guards(ctx, workspaceID, e.dailyCap(ctx, workspaceID, settings, cyc), len(plan.Items), now); stop != nil {
 			res.Stopped = stop
+			cyc.halted[workspaceID] = true
 			break
 		}
 

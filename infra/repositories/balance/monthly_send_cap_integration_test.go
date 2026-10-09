@@ -794,3 +794,30 @@ func TestSendCapIntegration_DatabaseRefusesACycleDayOutsideTheMonth(t *testing.T
 		t.Fatal("the database must refuse a cycle day of 32")
 	}
 }
+
+func TestSendCapIntegration_OutsideTheWindowNothingIsTaken(t *testing.T) {
+	db := sendCapIntegrationDB(t)
+	caps := NewMonthlySendCapRepository(db)
+	ws := seedWorkspace(t, db, "Acme", 1_000_000)
+	cap, err := balance.NewMonthlySendCap(ws, 10, 1, uuid.New().String(), time.Now())
+	if err != nil {
+		t.Fatalf("cap: %v", err)
+	}
+	if cap, err = cap.Rewindowed(5); err != nil {
+		t.Fatalf("window: %v", err)
+	}
+	if err := caps.UpsertMonthlySendCap(cap); err != nil {
+		t.Fatalf("upsert cap: %v", err)
+	}
+
+	if took, err := caps.TakeMonthlySendSlot(ws, "entry-1", september.AddDate(0, 0, 4)); err != nil || !took {
+		t.Fatalf("the fifth day is inside the window, got %v, %v", took, err)
+	}
+	if _, err := caps.TakeMonthlySendSlot(ws, "entry-2", september.AddDate(0, 0, 5)); !errors.Is(err, balance.ErrSendWindowClosed) {
+		t.Fatalf("the sixth day is outside the window, got %v", err)
+	}
+	row, slots := capState(t, db, ws)
+	if row.EndDay != 5 || row.Used != 1 || slots != 1 {
+		t.Fatalf("end day %d, used %d with %d slots; want 5, 1, 1", row.EndDay, row.Used, slots)
+	}
+}

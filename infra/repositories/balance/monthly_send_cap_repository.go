@@ -54,6 +54,7 @@ func (r *MonthlySendCapRepository) UpsertMonthlySendCap(cap balance.MonthlySendC
 		WorkspaceID:  cap.WorkspaceID,
 		MonthlyLimit: cap.Limit,
 		CycleDay:     cap.CycleDay,
+		EndDay:       cap.EndDay,
 		UpdatedBy:    cap.UpdatedBy,
 		UpdatedAt:    cap.UpdatedAt,
 		UnlockedBy:   cap.UnlockedBy,
@@ -62,7 +63,7 @@ func (r *MonthlySendCapRepository) UpsertMonthlySendCap(cap balance.MonthlySendC
 	return r.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "workspace_id"}},
 		DoUpdates: append(
-			clause.AssignmentColumns([]string{"monthly_limit", "cycle_day", "updated_by", "updated_at", "unlocked_by", "unlocked_at"}),
+			clause.AssignmentColumns([]string{"monthly_limit", "cycle_day", "end_day", "updated_by", "updated_at", "unlocked_by", "unlocked_at"}),
 			clause.Assignment{Column: clause.Column{Name: "counted_from"}, Value: gorm.Expr("CASE WHEN workspace_monthly_send_caps.cycle_day = excluded.cycle_day THEN workspace_monthly_send_caps.counted_from END")},
 		),
 	}).Create(&row).Error
@@ -89,11 +90,15 @@ func (r *MonthlySendCapRepository) TakeMonthlySendSlot(workspaceID, referenceID 
 		if err != nil || taken {
 			return err
 		}
-		counted, used, err := usedInOpenPeriod(tx, cap, toDomainMonthlySendCap(*cap).CycleStart(at))
+		current := toDomainMonthlySendCap(*cap)
+		if refusal = current.CheckWindow(at); refusal != nil {
+			return nil
+		}
+		counted, used, err := usedInOpenPeriod(tx, cap, current.CycleStart(at))
 		if err != nil {
 			return err
 		}
-		if refusal = toDomainMonthlySendCap(*cap).CheckRoom(used); refusal != nil {
+		if refusal = current.CheckRoom(used); refusal != nil {
 			return saveMonthlySendCount(tx, workspaceID, counted, used)
 		}
 		slot := schema.WorkspaceMonthlySendSlot{ReferenceID: referenceID, WorkspaceID: workspaceID, Period: counted}
@@ -219,6 +224,7 @@ func toDomainMonthlySendCap(row schema.WorkspaceMonthlySendCap) balance.MonthlyS
 		WorkspaceID: row.WorkspaceID,
 		Limit:       row.MonthlyLimit,
 		CycleDay:    row.CycleDay,
+		EndDay:      row.EndDay,
 		UpdatedBy:   row.UpdatedBy,
 		UpdatedAt:   row.UpdatedAt,
 		UnlockedBy:  row.UnlockedBy,

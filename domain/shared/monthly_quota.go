@@ -19,14 +19,14 @@ func MonthlyCycleStart(now time.Time, cycleDay int, loc *time.Location) time.Tim
 	}
 	day := max(cycleDay, 1)
 	local := now.In(loc)
-	start := monthlyCycleDate(local.Year(), local.Month(), day, loc)
+	start := MonthlyCycleDate(local.Year(), local.Month(), day, loc)
 	if local.Before(start) {
-		return monthlyCycleDate(local.Year(), local.Month()-1, day, loc)
+		return MonthlyCycleDate(local.Year(), local.Month()-1, day, loc)
 	}
 	return start
 }
 
-func monthlyCycleDate(year int, month time.Month, cycleDay int, loc *time.Location) time.Time {
+func MonthlyCycleDate(year int, month time.Month, cycleDay int, loc *time.Location) time.Time {
 	first := time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	lastDay := first.AddDate(0, 1, -1).Day()
 	return first.AddDate(0, 0, min(cycleDay, lastDay)-1)
@@ -38,7 +38,7 @@ func (q MonthlyQuota) CycleStart(now time.Time) time.Time {
 
 func (q MonthlyQuota) NextCycleStart(now time.Time) time.Time {
 	start := q.CycleStart(now)
-	return monthlyCycleDate(start.Year(), start.Month()+1, max(q.CycleDay, 1), start.Location())
+	return MonthlyCycleDate(start.Year(), start.Month()+1, max(q.CycleDay, 1), start.Location())
 }
 
 func (q MonthlyQuota) CheckRoom(used int64) error {

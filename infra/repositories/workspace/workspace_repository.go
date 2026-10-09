@@ -543,6 +543,40 @@ func (r *repository) UpdateInviteStatus(inviteID string, status workspace.Invite
 	return r.db.Model(&schema.WorkspaceInvite{}).Where("id = ?", inviteID).Update("status", string(status)).Error
 }
 
+func (r *repository) AcceptInvite(inviteID string, member *workspace.Member, permissions []*workspace.Permission, departmentIDs []string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		accepted := tx.Model(&schema.WorkspaceInvite{}).
+			Where("id = ? AND status = ?", inviteID, string(workspace.InviteStatusPending)).
+			Update("status", string(workspace.InviteStatusAccepted))
+		if accepted.Error != nil {
+			return accepted.Error
+		}
+		if accepted.RowsAffected == 0 {
+			return workspace.ErrInviteAlreadyProcessed
+		}
+		if err := r.WithTx(tx).AddMember(member); err != nil {
+			return err
+		}
+		for _, p := range permissions {
+			if err := tx.Create(&schema.WorkspaceMemberPermission{
+				ID: p.ID, MemberID: member.ID, Resource: string(p.Resource), Action: string(p.Action),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		if len(departmentIDs) == 0 {
+			return nil
+		}
+		return tx.Exec(`
+			INSERT INTO workspace_department_members (id, department_id, member_id, created_at)
+			SELECT gen_random_uuid(), d.id, ?, now()
+			FROM workspace_departments d
+			WHERE d.id IN ? AND d.workspace_id = ? AND d.deleted_at IS NULL
+			ON CONFLICT (department_id, member_id) DO NOTHING`,
+			member.ID, departmentIDs, member.WorkspaceID).Error
+	})
+}
+
 func (r *repository) PendingInviteExists(workspaceID, email string) (bool, error) {
 	var count int64
 	if err := r.db.Model(&schema.WorkspaceInvite{}).

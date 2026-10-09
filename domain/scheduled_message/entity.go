@@ -56,6 +56,7 @@ const (
 	ReasonContactIneligible     FailureReason = "contact_ineligible"
 	ReasonInsufficientBalance   FailureReason = "insufficient_balance"
 	ReasonMonthlySendCapReached FailureReason = "monthly_send_cap_reached"
+	ReasonSendWindowClosed      FailureReason = "send_window_closed"
 	ReasonBillingUnavailable    FailureReason = "billing_unavailable"
 	ReasonOutcomeUnknown        FailureReason = "outcome_unknown"
 )

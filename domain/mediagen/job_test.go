@@ -3,6 +3,7 @@ package mediagen
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -147,5 +148,32 @@ func TestAJobKeepsTheReferenceItIsChargedTo(t *testing.T) {
 	plain.BillingReference = ""
 	if req.Fingerprint("u-1") != plain.Fingerprint("u-1") {
 		t.Fatal("the charge reference must not change what counts as the same generation")
+	}
+}
+
+func TestOutcomeShowsAFailureThatIsStillReconcilingItsCost(t *testing.T) {
+	cases := []struct {
+		job  Job
+		want Status
+	}{
+		{Job{Status: StatusSettling, FailureCode: FailureGeneration}, StatusFailed},
+		{Job{Status: StatusSettling, MediaID: "m-1"}, StatusSettling},
+		{Job{Status: StatusRunning}, StatusRunning},
+		{Job{Status: StatusDone, MediaID: "m-1"}, StatusDone},
+	}
+	for _, c := range cases {
+		if got := c.job.Outcome(); got != c.want {
+			t.Fatalf("job %+v outcome %s, want %s", c.job, got, c.want)
+		}
+	}
+}
+
+func TestFailureDetailIsBounded(t *testing.T) {
+	if FailureDetail(nil) != "" {
+		t.Fatal("no cause, no detail")
+	}
+	long := errors.New(strings.Repeat("é", maxFailureDetail+50))
+	if got := []rune(FailureDetail(long)); len(got) != maxFailureDetail {
+		t.Fatalf("detail has %d runes", len(got))
 	}
 }

@@ -14,19 +14,9 @@ type ModelCatalog interface {
 	Models(ctx context.Context, kind Kind) ([]Model, error)
 }
 
-var preferredModels = map[Kind]string{
-	KindMusic: "google/lyria-3-clip-preview",
-	KindVoice: "openai/gpt-audio-mini",
-}
-
-func DefaultModel(kind Kind, models []Model) (Model, bool) {
+func DefaultModel(models []Model) (Model, bool) {
 	if len(models) == 0 {
 		return Model{}, false
-	}
-	for _, model := range models {
-		if model.ID == preferredModels[kind] {
-			return model, true
-		}
 	}
 	return models[0], true
 }

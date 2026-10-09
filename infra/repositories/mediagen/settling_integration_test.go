@@ -89,25 +89,41 @@ func TestOnlyOldSettlingJobsExpire(t *testing.T) {
 	repo := NewJobRepository(db)
 	ctx := context.Background()
 	now := time.Now().UTC()
-	old := runningJob(t, repo, mediagen.KindMusic, "fp-old")
-	if err := repo.MarkSettling(ctx, old.ID, mediagen.Settlement{GenerationID: "gen-old", Failure: mediagen.FailureGeneration}, now); err != nil {
+	age := func(id string) {
+		t.Helper()
+		if err := db.Model(&schema.MediaGenerationJob{}).Where("id = ?", id).Update("created_at", now.Add(-8*24*time.Hour)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	refused := runningJob(t, repo, mediagen.KindMusic, "fp-refused")
+	if err := repo.MarkSettling(ctx, refused.ID, mediagen.Settlement{GenerationID: "gen-refused", Failure: mediagen.FailureGeneration, Detail: "refused"}, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Model(&schema.MediaGenerationJob{}).Where("id = ?", old.ID).Update("created_at", now.Add(-8*24*time.Hour)).Error; err != nil {
+	age(refused.ID)
+	delivered := runningJob(t, repo, mediagen.KindMusic, "fp-delivered")
+	if err := repo.MarkSettling(ctx, delivered.ID, mediagen.Settlement{GenerationID: "gen-delivered", Result: &mediagen.Result{MediaID: "m-1", MediaURL: "https://cdn/x.m4a", Model: "lyria"}}, now); err != nil {
 		t.Fatal(err)
 	}
+	age(delivered.ID)
 	fresh := runningJob(t, repo, mediagen.KindMusic, "fp-fresh")
 	if err := repo.MarkSettling(ctx, fresh.ID, mediagen.Settlement{GenerationID: "gen-fresh", Failure: mediagen.FailureGeneration}, now); err != nil {
 		t.Fatal(err)
 	}
 	ids, err := repo.ExpireSettling(ctx, mediagen.SettleSince(now), 10)
-	if err != nil || len(ids) != 1 || ids[0] != old.ID {
+	if err != nil || len(ids) != 2 {
 		t.Fatalf("expired %v err %v", ids, err)
 	}
-	expired, _ := repo.Get(ctx, old.WorkspaceID, old.ID)
+	failed, _ := repo.Get(ctx, refused.WorkspaceID, refused.ID)
+	unbilled, _ := repo.Get(ctx, delivered.WorkspaceID, delivered.ID)
 	still, _ := repo.Get(ctx, fresh.WorkspaceID, fresh.ID)
-	if expired.Status != mediagen.StatusFailed || expired.FailureCode != mediagen.FailureCostUnreported || still.Status != mediagen.StatusSettling {
-		t.Fatalf("expired %+v still %+v", expired, still)
+	if failed.Status != mediagen.StatusFailed || failed.FailureCode != mediagen.FailureGeneration || failed.FailureDetail != "refused" {
+		t.Fatalf("an expired failure must keep its own reason: %+v", failed)
+	}
+	if unbilled.Status != mediagen.StatusFailed || unbilled.FailureCode != mediagen.FailureCostUnreported {
+		t.Fatalf("an expired result is never delivered unbilled: %+v", unbilled)
+	}
+	if still.Status != mediagen.StatusSettling {
+		t.Fatalf("still %+v", still)
 	}
 	stale, err := repo.FailStale(ctx, now.Add(time.Hour), 10)
 	if err != nil || len(stale) != 0 {

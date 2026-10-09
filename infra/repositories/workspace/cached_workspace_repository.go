@@ -247,6 +247,15 @@ func (r *CachedWorkspaceRepository) SetPermissions(memberID string, permissions 
 	return err
 }
 
+func (r *CachedWorkspaceRepository) AcceptInvite(inviteID string, member *workspace.Member, permissions []*workspace.Permission, departmentIDs []string) error {
+	err := r.inner.AcceptInvite(inviteID, member, permissions, departmentIDs)
+	if err == nil {
+		r.invalidateMember(member.WorkspaceID, member.UserID)
+		r.invalidatePermissions(member.ID)
+	}
+	return err
+}
+
 func (r *CachedWorkspaceRepository) CreateInvite(invite *workspace.Invite) error {
 	return r.inner.CreateInvite(invite)
 }

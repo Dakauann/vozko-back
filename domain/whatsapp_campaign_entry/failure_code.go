@@ -6,11 +6,17 @@ import (
 	"vozko/domain/balance"
 )
 
-const ErrorCodeMonthlySendCapReached = 900009
+const (
+	ErrorCodeMonthlySendCapReached = 900009
+	ErrorCodeSendWindowClosed      = 900010
+)
 
 func FailureCode(err error) int {
-	if errors.Is(err, balance.ErrMonthlySendCapReached) {
+	switch {
+	case errors.Is(err, balance.ErrMonthlySendCapReached):
 		return ErrorCodeMonthlySendCapReached
+	case errors.Is(err, balance.ErrSendWindowClosed):
+		return ErrorCodeSendWindowClosed
 	}
 	return 0
 }

@@ -7,16 +7,14 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/workspace"
-	wd "vozko/domain/workspace/workspace_department"
 )
 
 type acceptInviteUseCase struct {
-	repo     workspace.Repository
-	deptRepo wd.Repository
+	repo workspace.Repository
 }
 
-func NewAcceptInviteUseCase(repo workspace.Repository, deptRepo wd.Repository) workspace.AcceptInviteUseCase {
-	return &acceptInviteUseCase{repo: repo, deptRepo: deptRepo}
+func NewAcceptInviteUseCase(repo workspace.Repository) workspace.AcceptInviteUseCase {
+	return &acceptInviteUseCase{repo: repo}
 }
 
 func (uc *acceptInviteUseCase) Execute(userID, userEmail, token string) (*workspace.Member, error) {
@@ -54,35 +52,16 @@ func (uc *acceptInviteUseCase) Execute(userID, userEmail, token string) (*worksp
 		Role:        invite.Role,
 		RoleID:      invite.RoleID,
 	}
-	if err := uc.repo.AddMember(member); err != nil {
-		return nil, err
-	}
-
-	if len(invite.Permissions) > 0 {
-		permissions := make([]*workspace.Permission, len(invite.Permissions))
-		for i, pe := range invite.Permissions {
-			permissions[i] = &workspace.Permission{
-				ID:       uuid.New().String(),
-				MemberID: member.ID,
-				Resource: pe.Resource,
-				Action:   pe.Action,
-			}
-		}
-		_ = uc.repo.SetPermissions(member.ID, permissions)
-	}
-
-	if len(invite.DepartmentIDs) > 0 && uc.deptRepo != nil {
-		for _, deptID := range invite.DepartmentIDs {
-			dm := &wd.DepartmentMember{
-				ID:           uuid.New().String(),
-				DepartmentID: deptID,
-				MemberID:     member.ID,
-			}
-			_ = uc.deptRepo.AddMember(dm)
+	permissions := make([]*workspace.Permission, len(invite.Permissions))
+	for i, pe := range invite.Permissions {
+		permissions[i] = &workspace.Permission{
+			ID:       uuid.New().String(),
+			MemberID: member.ID,
+			Resource: pe.Resource,
+			Action:   pe.Action,
 		}
 	}
-
-	if err := uc.repo.UpdateInviteStatus(invite.ID, workspace.InviteStatusAccepted); err != nil {
+	if err := uc.repo.AcceptInvite(invite.ID, member, permissions, invite.DepartmentIDs); err != nil {
 		return nil, err
 	}
 

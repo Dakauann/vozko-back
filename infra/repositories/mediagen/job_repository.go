@@ -103,14 +103,15 @@ func (r *jobRepository) MarkDone(ctx context.Context, id string, result mediagen
 	})
 }
 
-func (r *jobRepository) MarkFailed(ctx context.Context, id string, code mediagen.FailureCode, at time.Time) error {
+func (r *jobRepository) MarkFailed(ctx context.Context, id string, code mediagen.FailureCode, detail string, at time.Time) error {
 	if !code.Known() {
 		return fmt.Errorf("%w: %q", mediagen.ErrUnknownFailureCode, code)
 	}
 	return r.finish(r.db.WithContext(ctx).Where("id = ? AND status IN ?", id, unfinished), map[string]any{
-		"status":       string(mediagen.StatusFailed),
-		"failure_code": string(code),
-		"finished_at":  at,
+		"status":         string(mediagen.StatusFailed),
+		"failure_code":   string(code),
+		"failure_detail": detail,
+		"finished_at":    at,
 	})
 }
 
@@ -147,7 +148,7 @@ func (r *jobRepository) MarkSettling(ctx context.Context, id string, settlement 
 	if settlement.Result != nil {
 		fields["media_id"], fields["media_url"], fields["model"] = settlement.Result.MediaID, settlement.Result.MediaURL, settlement.Result.Model
 	} else {
-		fields["failure_code"] = string(settlement.Failure)
+		fields["failure_code"], fields["failure_detail"] = string(settlement.Failure), settlement.Detail
 	}
 	return r.finish(r.db.WithContext(ctx).Where("id = ? AND status = ?", id, string(mediagen.StatusRunning)), fields)
 }
@@ -194,7 +195,8 @@ func (r *jobRepository) Settle(ctx context.Context, id string, at time.Time) (*m
 
 func (r *jobRepository) ExpireSettling(ctx context.Context, createdBefore time.Time, limit int) ([]string, error) {
 	var ids []string
-	err := r.db.WithContext(ctx).Raw(`UPDATE media_generation_jobs SET status = ?, failure_code = ?, finished_at = NOW(), updated_at = NOW()
+	err := r.db.WithContext(ctx).Raw(`UPDATE media_generation_jobs
+		SET status = ?, failure_code = CASE WHEN failure_code <> '' THEN failure_code ELSE ? END, finished_at = NOW(), updated_at = NOW()
 		WHERE id IN (SELECT id FROM media_generation_jobs
 			WHERE status = ? AND created_at < ?
 			ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED)
@@ -315,6 +317,7 @@ func toDomain(r *schema.MediaGenerationJob) (*mediagen.Job, error) {
 		Model:             r.Model,
 		GenerationID:      r.GenerationID,
 		FailureCode:       failure,
+		FailureDetail:     r.FailureDetail,
 		Attempts:          r.Attempts,
 		CreatedAt:         r.CreatedAt,
 		UpdatedAt:         r.UpdatedAt,

@@ -202,15 +202,11 @@ func TestAResultIsOnlyHandedOutOnceTheJobIsDone(t *testing.T) {
 	}
 }
 
-func TestTheDefaultModelIsThePreferredOneWhenOffered(t *testing.T) {
-	models := []Model{{ID: "google/lyria-3-pro-preview"}, {ID: audioModel}}
-	if got, ok := DefaultModel(KindMusic, models); !ok || got.ID != audioModel {
+func TestTheDefaultModelIsTheFirstTheCatalogRanks(t *testing.T) {
+	if got, ok := DefaultModel([]Model{{ID: "google/lyria-3-pro-preview"}, {ID: audioModel}}); !ok || got.ID != "google/lyria-3-pro-preview" {
 		t.Fatalf("default %+v", got)
 	}
-	if got, _ := DefaultModel(KindImage, []Model{{ID: "a"}, {ID: "b"}}); got.ID != "a" {
-		t.Fatalf("image default %+v", got)
-	}
-	if _, ok := DefaultModel(KindVoice, nil); ok {
+	if _, ok := DefaultModel(nil); ok {
 		t.Fatal("a default out of nothing")
 	}
 }

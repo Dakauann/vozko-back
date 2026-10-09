@@ -240,7 +240,7 @@ func (r *fakeJobs) MarkSettling(_ context.Context, id string, settlement mediage
 	if !ok || job.Status != mediagen.StatusRunning {
 		return mediagen.ErrJobNotActive
 	}
-	job.Status, job.GenerationID, job.FailureCode = mediagen.StatusSettling, settlement.GenerationID, settlement.Failure
+	job.Status, job.GenerationID, job.FailureCode, job.FailureDetail = mediagen.StatusSettling, settlement.GenerationID, settlement.Failure, settlement.Detail
 	if settlement.Result != nil {
 		job.MediaID, job.MediaURL, job.Model = settlement.Result.MediaID, settlement.Result.MediaURL, settlement.Result.Model
 	}
@@ -281,7 +281,10 @@ func (r *fakeJobs) ExpireSettling(_ context.Context, createdBefore time.Time, _ 
 	var ids []string
 	for id, job := range r.jobs {
 		if job.Status == mediagen.StatusSettling && job.CreatedAt.Before(createdBefore) {
-			job.Status, job.FailureCode = mediagen.StatusFailed, mediagen.FailureCostUnreported
+			job.Status = mediagen.StatusFailed
+			if job.FailureCode == "" {
+				job.FailureCode = mediagen.FailureCostUnreported
+			}
 			ids = append(ids, id)
 		}
 	}
@@ -324,14 +327,14 @@ func (c *fakeCosts) CostMicros(_ context.Context, generationID string) (int64, b
 	return cost, ok
 }
 
-func (r *fakeJobs) MarkFailed(_ context.Context, id string, code mediagen.FailureCode, at time.Time) error {
+func (r *fakeJobs) MarkFailed(_ context.Context, id string, code mediagen.FailureCode, detail string, at time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	job, ok := r.jobs[id]
 	if !ok || job.Status.Terminal() {
 		return mediagen.ErrJobNotActive
 	}
-	job.Status, job.FailureCode, job.FinishedAt = mediagen.StatusFailed, code, &at
+	job.Status, job.FailureCode, job.FailureDetail, job.FinishedAt = mediagen.StatusFailed, code, detail, &at
 	return nil
 }
 

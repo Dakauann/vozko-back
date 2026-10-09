@@ -202,6 +202,7 @@ var refusalReplies = map[string]refusalReply{
 	wo.CodeLeadOptedOut:           {http.StatusConflict, "este contato pediu para não receber mensagens"},
 	wo.CodeInsufficientBalance:    {http.StatusPaymentRequired, "saldo insuficiente para enviar este modelo"},
 	wo.CodeMonthlySendCapReached:  {http.StatusForbidden, "o limite mensal de envios deste workspace foi atingido, fale com a administração"},
+	wo.CodeSendWindowClosed:       {http.StatusForbidden, "fora da janela de envios deste workspace, fale com a administração"},
 	wo.CodePricingUnavailable:     {http.StatusUnprocessableEntity, "não há preço configurado para esta categoria de modelo"},
 	wo.CodeQuoteOutOfRange:        {http.StatusUnprocessableEntity, "não foi possível calcular o custo deste envio"},
 	wo.CodeTemplateNotSendable:    {http.StatusUnprocessableEntity, "este modelo não está pronto para envio"},

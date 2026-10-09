@@ -356,3 +356,69 @@ func TestMonthlySendCap_ACapWithoutADayCountsFromTheFirst(t *testing.T) {
 		t.Errorf("got %v, want the first of the month", got)
 	}
 }
+
+func TestMonthlySendCap_WindowEnd(t *testing.T) {
+	brt := billing.LocationBRT()
+	at := func(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, brt) }
+	cases := []struct {
+		name     string
+		cycleDay int
+		endDay   int
+		now      time.Time
+		want     time.Time
+	}{
+		{"no end day lasts the whole cycle", 15, 0, at(2026, 10, 20), at(2026, 11, 15)},
+		{"from day 15 to day 20 closes after the 20th", 15, 20, at(2026, 10, 16), at(2026, 10, 21)},
+		{"from day 25 to day 5 wraps into the next month", 25, 5, at(2026, 10, 30), at(2026, 11, 6)},
+		{"an end day past the month closes on its last day", 1, 31, at(2026, 2, 10), at(2026, 3, 1)},
+		{"an end day after the next cycle start is cut at the next cycle", 31, 30, at(2026, 1, 31), at(2026, 2, 28)},
+		{"the same start and end day is a single day", 10, 10, at(2026, 10, 10), at(2026, 10, 11)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cap := MonthlySendCap{Limit: 10, CycleDay: tc.cycleDay, EndDay: tc.endDay}
+			if got := cap.WindowEnd(tc.now); !got.Equal(tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMonthlySendCap_CheckWindow(t *testing.T) {
+	brt := billing.LocationBRT()
+	cap := MonthlySendCap{Limit: 10, CycleDay: 15, EndDay: 20}
+	open := []time.Time{
+		time.Date(2026, 10, 15, 0, 0, 0, 0, brt),
+		time.Date(2026, 10, 20, 23, 59, 59, 0, brt),
+	}
+	for _, now := range open {
+		if err := cap.CheckWindow(now); err != nil {
+			t.Errorf("%v: want open, got %v", now, err)
+		}
+	}
+	closed := []time.Time{
+		time.Date(2026, 10, 21, 0, 0, 0, 0, brt),
+		time.Date(2026, 11, 14, 23, 59, 59, 0, brt),
+	}
+	for _, now := range closed {
+		if err := cap.CheckWindow(now); !errors.Is(err, ErrSendWindowClosed) || SendCapRefusal(err) != ErrSendWindowClosed {
+			t.Errorf("%v: want ErrSendWindowClosed, got %v", now, err)
+		}
+	}
+}
+
+func TestMonthlySendCap_Rewindowed(t *testing.T) {
+	cap := MonthlySendCap{Limit: 10, CycleDay: 15}
+	for _, day := range []int{-1, 32} {
+		if _, err := cap.Rewindowed(day); !errors.Is(err, ErrInvalidSendCapEndDay) {
+			t.Errorf("end day %d: want ErrInvalidSendCapEndDay, got %v", day, err)
+		}
+	}
+	next, err := cap.Rewindowed(20)
+	if err != nil || next.EndDay != 20 {
+		t.Fatalf("got %+v, %v", next, err)
+	}
+	if !SendCapChangeRequiresUnlock(&cap, &next) {
+		t.Error("changing the window must require an unlock")
+	}
+}

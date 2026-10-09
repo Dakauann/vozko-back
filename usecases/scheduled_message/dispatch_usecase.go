@@ -189,6 +189,8 @@ func classify(err error) sm.FailureReason {
 		return sm.ReasonInsufficientBalance
 	case errors.Is(err, balance.ErrMonthlySendCapReached):
 		return sm.ReasonMonthlySendCapReached
+	case errors.Is(err, balance.ErrSendWindowClosed):
+		return sm.ReasonSendWindowClosed
 	case errors.Is(err, template.ErrPricingUnavailable),
 		errors.Is(err, balance.ErrPriceUnavailable),
 		errors.Is(err, workspace_plan.ErrSubscriptionNotCurrent),

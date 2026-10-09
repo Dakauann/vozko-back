@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -9,6 +10,12 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+var queryLogger = logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+	SlowThreshold:             200 * time.Millisecond,
+	LogLevel:                  logger.Warn,
+	IgnoreRecordNotFoundError: true,
+})
 
 func buildDSN() string {
 	return fmt.Sprintf(
@@ -24,7 +31,7 @@ func buildDSN() string {
 func NewGormDatabase() (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(buildDSN()), &gorm.Config{
 		PrepareStmt: true,
-		Logger:      logger.Default.LogMode(logger.Warn),
+		Logger:      queryLogger,
 	})
 	if err != nil {
 		return nil, err
@@ -48,7 +55,7 @@ func NewMigrationDatabase() (*gorm.DB, error) {
 		PreferSimpleProtocol: true,
 	}), &gorm.Config{
 		PrepareStmt: false,
-		Logger:      logger.Default.LogMode(logger.Warn),
+		Logger:      queryLogger,
 	})
 	if err != nil {
 		return nil, err

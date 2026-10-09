@@ -16,7 +16,7 @@ type Repository interface {
 	FindDelivered(ctx context.Context, workspaceID string, kind Kind, sourceMediaID string) (*Job, error)
 	Claim(ctx context.Context, id string) (*Job, bool, error)
 	MarkDone(ctx context.Context, id string, result Result, at time.Time) error
-	MarkFailed(ctx context.Context, id string, code FailureCode, at time.Time) error
+	MarkFailed(ctx context.Context, id string, code FailureCode, detail string, at time.Time) error
 	FailStale(ctx context.Context, createdBefore time.Time, limit int) ([]string, error)
 	MarkSettling(ctx context.Context, id string, settlement Settlement, at time.Time) error
 	ListSettling(ctx context.Context, createdAfter time.Time, limit int) ([]*Job, error)

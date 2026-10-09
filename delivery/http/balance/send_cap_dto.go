@@ -9,12 +9,14 @@ import (
 type SetSendCapRequest struct {
 	Limit    *int64 `json:"limit" example:"5000"`
 	CycleDay *int   `json:"cycleDay,omitempty" example:"15"`
+	EndDay   *int   `json:"endDay,omitempty" example:"20"`
 }
 
 type UnlockSendCapRequest struct {
 	Limit     *int64 `json:"limit,omitempty" example:"20000"`
 	RemoveCap bool   `json:"removeCap,omitempty" example:"false"`
 	CycleDay  *int   `json:"cycleDay,omitempty" example:"15"`
+	EndDay    *int   `json:"endDay,omitempty" example:"20"`
 	Code      string `json:"code" example:"0000"`
 }
 
@@ -26,7 +28,9 @@ type SendCapItemResponse struct {
 	Remaining     int64   `json:"remaining"`
 	Level         string  `json:"level" enums:"ok,near,reached"`
 	CycleDay      int     `json:"cycleDay"`
+	EndDay        int     `json:"endDay"`
 	CycleStart    string  `json:"cycleStart"`
+	WindowEnd     string  `json:"windowEnd"`
 	RenewsAt      string  `json:"renewsAt"`
 	UpdatedBy     string  `json:"updatedBy"`
 	UpdatedAt     string  `json:"updatedAt"`
@@ -43,6 +47,7 @@ type SendCapChangeResponse struct {
 	WorkspaceID string `json:"workspaceId"`
 	Limit       *int64 `json:"limit"`
 	CycleDay    *int   `json:"cycleDay"`
+	EndDay      *int   `json:"endDay"`
 }
 
 func toSendCapListResponse(listing *balancedomain.SendCapListing) SendCapListResponse {
@@ -56,7 +61,9 @@ func toSendCapListResponse(listing *balancedomain.SendCapListing) SendCapListRes
 			Remaining:     usage.Remaining(),
 			Level:         string(usage.Level()),
 			CycleDay:      usage.Cap.CycleDay,
+			EndDay:        usage.Cap.EndDay,
 			CycleStart:    usage.CycleStart.Format(time.RFC3339),
+			WindowEnd:     usage.WindowEnd().Format(time.RFC3339),
 			RenewsAt:      usage.Renews().Format(time.RFC3339),
 			UpdatedBy:     usage.Cap.UpdatedBy,
 			UpdatedAt:     usage.Cap.UpdatedAt.Format(time.RFC3339),
@@ -71,8 +78,8 @@ func toSendCapChangeResponse(workspaceID string, cap *balancedomain.MonthlySendC
 	if cap == nil {
 		return SendCapChangeResponse{WorkspaceID: workspaceID}
 	}
-	limit, cycleDay := cap.Limit, cap.CycleDay
-	return SendCapChangeResponse{WorkspaceID: workspaceID, Limit: &limit, CycleDay: &cycleDay}
+	limit, cycleDay, endDay := cap.Limit, cap.CycleDay, cap.EndDay
+	return SendCapChangeResponse{WorkspaceID: workspaceID, Limit: &limit, CycleDay: &cycleDay, EndDay: &endDay}
 }
 
 func formatOptionalTime(t *time.Time) *string {

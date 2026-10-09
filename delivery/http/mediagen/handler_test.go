@@ -287,7 +287,7 @@ func TestModelsAreListedForTheAskedKindWithTheDefaultMarked(t *testing.T) {
 	svc := &fakeService{models: []mediagen.Model{{ID: "google/lyria-3-pro-preview"}, {ID: "google/lyria-3-clip-preview"}}}
 	rec := serve(t, svc, http.MethodGet, "/media/models?kind=music", "")
 	var got []ModelResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || svc.modelsKind != mediagen.KindMusic || len(got) != 2 || got[0].Default || !got[1].Default {
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || svc.modelsKind != mediagen.KindMusic || len(got) != 2 || !got[0].Default || got[1].Default {
 		t.Fatalf("got %+v kind %s err %v", got, svc.modelsKind, err)
 	}
 }

@@ -31,6 +31,8 @@ const (
 	captionsLanguage      = "pt"
 )
 
+const captionsTranscriptionTimeout = mediagen.ActiveWindow / 2
+
 type mediaGenerationBundle struct {
 	Service   *mediagen_usecase.Service
 	Consumers []*webhook_usecase.ConsumerRunner[mediagen.QueueMessage]
@@ -67,7 +69,7 @@ func (c *Container) mediaGeneration() *mediaGenerationBundle {
 	if err != nil {
 		log.Fatalf("[media-generation] background removal: %v", err)
 	}
-	if c.services.whisperPool == nil {
+	if c.services.captionsWhisperPool == nil {
 		log.Fatalf("[media-generation] captions need the whisper pool")
 	}
 	service, err := mediagen_usecase.NewService(mediagen_usecase.Deps{
@@ -77,7 +79,7 @@ func (c *Container) mediaGeneration() *mediaGenerationBundle {
 			mediagen.KindVoice:    audio,
 			mediagen.KindVideo:    media_infra.NewVideoRenderer(mediaClient),
 			mediagen.KindCutout:   cutout,
-			mediagen.KindCaptions: media_infra.NewCaptionsGenerator(mediaClient, c.services.whisperPool, captionsLanguage),
+			mediagen.KindCaptions: media_infra.NewCaptionsGenerator(mediaClient, c.services.captionsWhisperPool, captionsLanguage),
 			mediagen.KindDenoise:  media_infra.NewDenoiseGenerator(mediaClient),
 			mediagen.KindProxy:    media_infra.NewProxyGenerator(mediaClient),
 		},

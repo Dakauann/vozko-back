@@ -80,7 +80,7 @@ func (h *SendCapHandler) Set(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workspaceID := mux.Vars(r)["workspaceId"]
-	cap, err := h.set.Execute(actor, balancedomain.SetMonthlySendCapInput{WorkspaceID: workspaceID, Limit: *req.Limit, CycleDay: req.CycleDay})
+	cap, err := h.set.Execute(actor, balancedomain.SetMonthlySendCapInput{WorkspaceID: workspaceID, Limit: *req.Limit, CycleDay: req.CycleDay, EndDay: req.EndDay})
 	if err != nil {
 		writeSendCapError(w, err)
 		return
@@ -102,7 +102,7 @@ func (h *SendCapHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	workspaceID := mux.Vars(r)["workspaceId"]
-	cap, err := h.unlock.Execute(actor, balancedomain.UnlockMonthlySendCapInput{WorkspaceID: workspaceID, Limit: req.Limit, CycleDay: req.CycleDay, Code: req.Code})
+	cap, err := h.unlock.Execute(actor, balancedomain.UnlockMonthlySendCapInput{WorkspaceID: workspaceID, Limit: req.Limit, CycleDay: req.CycleDay, EndDay: req.EndDay, Code: req.Code})
 	if err != nil {
 		writeSendCapError(w, err)
 		return
@@ -122,6 +122,8 @@ func writeSendCapError(w http.ResponseWriter, err error) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "invalid_limit", "the monthly limit must be a positive number", nil)
 	case errors.Is(err, balancedomain.ErrInvalidSendCapCycleDay):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "invalid_cycle_day", "the cycle day must be between 1 and 31", nil)
+	case errors.Is(err, balancedomain.ErrInvalidSendCapEndDay):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "invalid_end_day", "the end day must be between 0 and 31", nil)
 	case errors.Is(err, balancedomain.ErrMonthlySendCapNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "send_cap_not_found", "this workspace has no monthly send cap", nil)
 	case errors.Is(err, workspace.ErrWorkspaceNotFound):

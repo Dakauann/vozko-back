@@ -15,6 +15,7 @@ const (
 	CodeLeadBlocked            = "lead_blocked"
 	CodeInsufficientBalance    = "insufficient_balance"
 	CodeMonthlySendCapReached  = "monthly_send_cap_reached"
+	CodeSendWindowClosed       = "send_window_closed"
 	CodePricingUnavailable     = "pricing_unavailable"
 	CodeQuoteOutOfRange        = "quote_out_of_range"
 	CodeTemplateNotSendable    = "template_not_sendable"
@@ -41,6 +42,7 @@ var errorCodes = []struct {
 	{balance.ErrInsufficientBalance, CodeInsufficientBalance},
 	{balance.ErrBalanceNotFound, CodeInsufficientBalance},
 	{balance.ErrMonthlySendCapReached, CodeMonthlySendCapReached},
+	{balance.ErrSendWindowClosed, CodeSendWindowClosed},
 	{template.ErrPricingUnavailable, CodePricingUnavailable},
 	{template.ErrQuoteOutOfRange, CodeQuoteOutOfRange},
 	{template.ErrTemplateNotSendable, CodeTemplateNotSendable},

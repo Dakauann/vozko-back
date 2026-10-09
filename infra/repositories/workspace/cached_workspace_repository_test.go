@@ -252,9 +252,12 @@ func (f *fakeRepo) GetInviteByToken(string) (*workspace.Invite, error) { panic("
 func (f *fakeRepo) ListInvitesByWorkspace(string) ([]*workspace.Invite, error) {
 	panic("unused")
 }
-func (f *fakeRepo) ListInvitesByEmail(string) ([]*workspace.Invite, error)   { panic("unused") }
-func (f *fakeRepo) UpdateInviteStatus(string, workspace.InviteStatus) error  { panic("unused") }
-func (f *fakeRepo) PendingInviteExists(string, string) (bool, error)         { panic("unused") }
+func (f *fakeRepo) ListInvitesByEmail(string) ([]*workspace.Invite, error)  { panic("unused") }
+func (f *fakeRepo) UpdateInviteStatus(string, workspace.InviteStatus) error { panic("unused") }
+func (f *fakeRepo) PendingInviteExists(string, string) (bool, error)        { panic("unused") }
+func (f *fakeRepo) AcceptInvite(string, *workspace.Member, []*workspace.Permission, []string) error {
+	panic("unused")
+}
 func (f *fakeRepo) GetWorkspaceIDForResource(string, string) (string, error) { panic("unused") }
 func (f *fakeRepo) AssignResource(*workspace.ResourceAssignment) error       { panic("unused") }
 func (f *fakeRepo) UnassignResource(string, workspace.Resource, string, string) error {

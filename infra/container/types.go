@@ -381,6 +381,7 @@ type services struct {
 	toolRegistry                  tools.Service
 	insuranceProviders            []insurance.QuoteProvider
 	whisperPool                   *whisper.Pool
+	captionsWhisperPool           *whisper.Pool
 	businessPhoneMetaAPI          businessphone.MetaAPIService
 	coexistenceMetaAPI            coexistence_domain.MetaCoexistenceService
 	dialog360Onboarding           *businessphone_infra.Dialog360OnboardingService

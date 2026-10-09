@@ -37,6 +37,7 @@ type Repository interface {
 	ListInvitesByEmail(email string) ([]*Invite, error)
 	UpdateInviteStatus(inviteID string, status InviteStatus) error
 	PendingInviteExists(workspaceID, email string) (bool, error)
+	AcceptInvite(inviteID string, member *Member, permissions []*Permission, departmentIDs []string) error
 
 	GetWorkspaceIDForResource(resourceTable, resourceID string) (string, error)
 

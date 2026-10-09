@@ -55,7 +55,7 @@ func TestWriteDomainError_AnswersTheDomainCodeOfEveryRefusal(t *testing.T) {
 		wo.ErrLeadOptedOut, wo.ErrLeadBlocked, wo.ErrWithinSpamWindow,
 		wo.ErrInvalidPhone, wo.ErrDepartmentForbidden, wo.ErrTemplateForbidden, wo.ErrPhoneNotConnected,
 		wo.ErrBusinessPhoneNotFound, wo.ErrTemplateNotFound, balance.ErrInsufficientBalance, balance.ErrBalanceNotFound,
-		balance.ErrMonthlySendCapReached, template.ErrSendInProgress, template.ErrPricingUnavailable, template.ErrQuoteOutOfRange,
+		balance.ErrMonthlySendCapReached, balance.ErrSendWindowClosed, template.ErrSendInProgress, template.ErrPricingUnavailable, template.ErrQuoteOutOfRange,
 		template.ErrTemplateNotSendable, template.ErrTemplatePhoneMismatch, template.ErrIdempotencyKeyRequired,
 		template.ErrWorkspaceRequired, template.ErrBillingNotConfigured, wo.ErrSendOutcomeUnknown, wo.ErrConversationNotFound,
 	}

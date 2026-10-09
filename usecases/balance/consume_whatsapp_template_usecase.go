@@ -32,7 +32,7 @@ func (uc *consumeWhatsappTemplateUseCase) takeMonthlySendSlot(workspaceID, refer
 	}
 	took, err := uc.slots.TakeMonthlySendSlot(workspaceID, referenceID, uc.now())
 	if err != nil {
-		if errors.Is(err, balance.ErrMonthlySendCapReached) {
+		if balance.SendCapRefusal(err) != nil {
 			return false, err
 		}
 		return false, fmt.Errorf("failed to take a monthly send slot: %w", err)

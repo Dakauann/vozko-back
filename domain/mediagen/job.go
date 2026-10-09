@@ -34,6 +34,8 @@ const (
 	MaxActiveGenerations = 3
 )
 
+const maxFailureDetail = 500
+
 func (s Status) Terminal() bool { return s == StatusDone || s == StatusFailed }
 
 func (s Status) Known() bool {
@@ -83,6 +85,7 @@ type Job struct {
 	Model             string
 	GenerationID      string
 	FailureCode       FailureCode
+	FailureDetail     string
 	Attempts          int
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
@@ -132,6 +135,24 @@ func ActiveSince(now time.Time) time.Time { return now.Add(-ActiveWindow) }
 
 func SettleSince(now time.Time) time.Time { return now.Add(-SettleWindow) }
 
+func (j *Job) Outcome() Status {
+	if j.Status == StatusSettling && j.FailureCode != "" {
+		return StatusFailed
+	}
+	return j.Status
+}
+
+func FailureDetail(cause error) string {
+	if cause == nil {
+		return ""
+	}
+	detail := []rune(strings.TrimSpace(cause.Error()))
+	if len(detail) > maxFailureDetail {
+		detail = detail[:maxFailureDetail]
+	}
+	return string(detail)
+}
+
 func (j *Job) Delivered() (Result, bool) {
 	if j.Status != StatusDone || j.MediaID == "" {
 		return Result{}, false
@@ -143,6 +164,7 @@ type Settlement struct {
 	GenerationID string
 	Result       *Result
 	Failure      FailureCode
+	Detail       string
 }
 
 func (s Settlement) Validate() error {

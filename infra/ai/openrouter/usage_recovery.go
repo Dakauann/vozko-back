@@ -63,7 +63,9 @@ func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID str
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[ai-billing] generation usage fetch id=%s status=%d", generationID, resp.StatusCode)
+		if resp.StatusCode != http.StatusNotFound {
+			log.Printf("[ai-billing] generation usage fetch id=%s status=%d", generationID, resp.StatusCode)
+		}
 		return 0, 0, 0, false
 	}
 

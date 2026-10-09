@@ -581,3 +581,29 @@ func TestEngine_WorkspaceCeilingBeatsTheAccountCeiling(t *testing.T) {
 		t.Fatal("the hint must survive a cap stop")
 	}
 }
+
+func TestEngine_AWorkspaceRefusedOnceWaitsForTheNextCycle(t *testing.T) {
+	h := newHarness(t, smallBudget())
+	h.seed(5)
+	h.balance.micros = minBalanceFloor - 1
+	cyc := newCycle()
+
+	first, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", cyc)
+	if err != nil || !errors.Is(first.Stopped, ca.ErrBalanceBelowFloor) {
+		t.Fatalf("first = %+v err %v", first, err)
+	}
+	reads := h.balance.reads
+	again, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", cyc)
+	if err != nil || again != (containerResult{}) || h.balance.reads != reads {
+		t.Fatalf("again = %+v err %v reads %d→%d: the refusal already holds for this cycle", again, err, reads, h.balance.reads)
+	}
+	if h.repo.countStatus(ca.StatusPending) != 5 || len(h.classifier.Calls) != 0 {
+		t.Fatal("nothing may be analysed or dropped while the workspace waits")
+	}
+
+	h.balance.micros = 1_000_000
+	next, err := h.engine.ProcessContainer(context.Background(), ref(), "ws-1", newCycle())
+	if err != nil || next.Analyzed == 0 {
+		t.Fatalf("next cycle = %+v err %v: a topped-up workspace is analysed again", next, err)
+	}
+}

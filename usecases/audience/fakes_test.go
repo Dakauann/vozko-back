@@ -508,12 +508,18 @@ func (f *fakeScheduler) Clear(_ context.Context, ref ca.ContainerRef) error {
 	return nil
 }
 
-type fakeBalance struct{ micros int64 }
+type fakeBalance struct {
+	micros int64
+	reads  int
+}
 
 func (f *fakeBalance) HasSufficientBalance(string, int64) (bool, error) { return f.micros > 0, nil }
-func (f *fakeBalance) GetBalance(string) (int64, error)                 { return f.micros, nil }
-func (f *fakeBalance) Invalidate(string)                                {}
-func (f *fakeBalance) InvalidateDebounced(string)                       {}
+func (f *fakeBalance) GetBalance(string) (int64, error) {
+	f.reads++
+	return f.micros, nil
+}
+func (f *fakeBalance) Invalidate(string)          {}
+func (f *fakeBalance) InvalidateDebounced(string) {}
 
 type fakeState struct {
 	mu   sync.Mutex

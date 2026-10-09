@@ -62,7 +62,7 @@ func TestUpsertMonthlySendCap_OverwritesEveryMutableColumn(t *testing.T) {
 	db, mock, sqlDB := newMockDB(t)
 	defer sqlDB.Close()
 
-	mock.ExpectExec(`INSERT INTO "workspace_monthly_send_caps" .*ON CONFLICT \("workspace_id"\) DO UPDATE SET "monthly_limit"="excluded"."monthly_limit","cycle_day"="excluded"."cycle_day","updated_by"="excluded"."updated_by","updated_at"="excluded"."updated_at","unlocked_by"="excluded"."unlocked_by","unlocked_at"="excluded"."unlocked_at","counted_from"=CASE WHEN workspace_monthly_send_caps.cycle_day = excluded.cycle_day THEN workspace_monthly_send_caps.counted_from END`).
+	mock.ExpectExec(`INSERT INTO "workspace_monthly_send_caps" .*ON CONFLICT \("workspace_id"\) DO UPDATE SET "monthly_limit"="excluded"."monthly_limit","cycle_day"="excluded"."cycle_day","end_day"="excluded"."end_day","updated_by"="excluded"."updated_by","updated_at"="excluded"."updated_at","unlocked_by"="excluded"."unlocked_by","unlocked_at"="excluded"."unlocked_at","counted_from"=CASE WHEN workspace_monthly_send_caps.cycle_day = excluded.cycle_day THEN workspace_monthly_send_caps.counted_from END`).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	err := NewMonthlySendCapRepository(db).UpsertMonthlySendCap(balance.MonthlySendCap{

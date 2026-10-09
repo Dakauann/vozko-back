@@ -140,6 +140,8 @@ func templateSendFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "saldo insuficiente para enviar o modelo; o usuário precisa recarregar"}
 	case errors.Is(err, balance.ErrMonthlySendCapReached):
 		return copilot.Result{Status: copilot.StatusError, Message: "o limite mensal de envios de modelos deste workspace foi atingido; o usuário precisa falar com a administração"}
+	case errors.Is(err, balance.ErrSendWindowClosed):
+		return copilot.Result{Status: copilot.StatusError, Message: "hoje está fora da janela de envios de modelos deste workspace; o usuário precisa falar com a administração"}
 	case errors.Is(err, wo.ErrWithinSpamWindow):
 		return copilot.Result{Status: copilot.StatusError, Message: "este contato recebeu uma mensagem deste número há pouco tempo; a proteção contra spam do workspace bloqueia um novo modelo agora"}
 	case errors.Is(err, wo.ErrLeadBlocked):

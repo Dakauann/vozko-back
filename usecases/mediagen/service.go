@@ -88,7 +88,7 @@ func (s *Service) DefaultModel(ctx context.Context, kind mediagen.Kind) (mediage
 	if err != nil {
 		return mediagen.Model{}, err
 	}
-	model, _ := mediagen.DefaultModel(kind, models)
+	model, _ := mediagen.DefaultModel(models)
 	return model, nil
 }
 
@@ -179,10 +179,10 @@ func (s *Service) Request(ctx context.Context, req mediagen.Request, requestedBy
 		return delivered, err
 	}
 	active, err := s.d.Jobs.FindActive(ctx, job.WorkspaceID, job.RequestedBy, job.Fingerprint, mediagen.ActiveSince(s.now()))
-	if err == nil {
+	if err == nil && !active.Outcome().Terminal() {
 		return active, nil
 	}
-	if !errors.Is(err, mediagen.ErrJobNotFound) {
+	if err != nil && !errors.Is(err, mediagen.ErrJobNotFound) {
 		return nil, err
 	}
 	if err := s.withinActiveCap(ctx, job); err != nil {
@@ -195,7 +195,7 @@ func (s *Service) Request(ctx context.Context, req mediagen.Request, requestedBy
 		return nil, err
 	}
 	if err := s.d.Queue.Enqueue(job); err != nil {
-		s.fail(ctx, job, mediagen.FailureEnqueue)
+		s.fail(ctx, job, mediagen.FailureEnqueue, mediagen.FailureDetail(err))
 		return nil, fmt.Errorf("mediagen: queue job %s: %w", job.ID, err)
 	}
 	return job, nil
@@ -264,19 +264,20 @@ func (s *Service) run(ctx context.Context, job *mediagen.Job) {
 	storage, known := job.Kind.Storage()
 	generator := s.d.Generators[job.Kind]
 	if !known || generator == nil {
-		log.Printf("[media-generation] job %s has kind %q with no generator", job.ID, job.Kind)
-		s.fail(ctx, job, mediagen.FailureGeneration)
+		missing := fmt.Errorf("kind %q has no generator", job.Kind)
+		log.Printf("[media-generation] job %s: %v", job.ID, missing)
+		s.fail(ctx, job, mediagen.FailureGeneration, mediagen.FailureDetail(missing))
 		return
 	}
 	if err := s.d.Funds.Check(job.WorkspaceID); err != nil {
 		log.Printf("[media-generation] job %s stopped by the funds check: %v", job.ID, err)
-		s.fail(ctx, job, mediagen.FailureInsufficientFunds)
+		s.fail(ctx, job, mediagen.FailureInsufficientFunds, mediagen.FailureDetail(err))
 		return
 	}
 	sources, err := s.Sources(job.Request())
 	if err != nil {
 		log.Printf("[media-generation] job %s could not load its sources: %v", job.ID, err)
-		s.fail(ctx, job, sourceFailure(err))
+		s.fail(ctx, job, sourceFailure(err), mediagen.FailureDetail(err))
 		return
 	}
 	output, err := generator.Generate(ctx, job.Request(), sources)
@@ -287,13 +288,13 @@ func (s *Service) run(ctx context.Context, job *mediagen.Job) {
 	priced := s.price(ctx, job, output)
 	if !priced && output.GenerationID == "" {
 		log.Printf("CRITICAL: [media-generation] job %s for workspace %s: the provider reported neither a cost nor a generation id; nothing stored or billed", job.ID, job.WorkspaceID)
-		s.fail(ctx, job, mediagen.FailureCostUnreported)
+		s.fail(ctx, job, mediagen.FailureCostUnreported, mediagen.FailureDetail(mediagen.ErrCostUnreported))
 		return
 	}
 	if job.Kind.Processing() {
 		if err := s.d.Charges.Charge(ctx, job); err != nil {
 			log.Printf("[media-generation] job %s for workspace %s could not be charged: %v; nothing delivered", job.ID, job.WorkspaceID, err)
-			s.fail(ctx, job, mediagen.FailureInsufficientFunds)
+			s.fail(ctx, job, mediagen.FailureInsufficientFunds, mediagen.FailureDetail(err))
 			return
 		}
 	}
@@ -304,7 +305,7 @@ func (s *Service) run(ctx context.Context, job *mediagen.Job) {
 	stored, err := s.d.Uploader.UploadMedia(job.WorkspaceID, output.Bytes, name, storage.Type, storage.Label)
 	if err != nil {
 		log.Printf("[media-generation] job %s for workspace %s produced %s but it could not be stored: %v", job.ID, job.WorkspaceID, job.Kind, err)
-		s.closeUnpriced(ctx, job, priced, mediagen.Settlement{GenerationID: output.GenerationID, Failure: mediagen.FailureStorage})
+		s.closeUnpriced(ctx, job, priced, mediagen.Settlement{GenerationID: output.GenerationID, Failure: mediagen.FailureStorage, Detail: mediagen.FailureDetail(err)})
 		return
 	}
 	result := mediagen.Result{MediaID: stored.ID, MediaURL: stored.URL, Model: output.Model}
@@ -337,22 +338,23 @@ func (s *Service) price(ctx context.Context, job *mediagen.Job, output *mediagen
 func (s *Service) generationFailed(ctx context.Context, job *mediagen.Job, err error) {
 	log.Printf("[media-generation] job %s could not generate: %v", job.ID, err)
 	var charged *mediagen.ChargedFailure
+	detail := mediagen.FailureDetail(err)
 	if !job.Kind.UsesModel() || !errors.As(err, &charged) {
-		s.fail(ctx, job, mediagen.FailureGeneration)
+		s.fail(ctx, job, mediagen.FailureGeneration, detail)
 		return
 	}
 	cost, ok := s.d.Costs.CostMicros(ctx, charged.GenerationID)
 	if ok {
 		s.d.Billing.PublishFor(job.BillingReference, job.WorkspaceID, job.Model, 0, 0, cost)
-		s.fail(ctx, job, mediagen.FailureGeneration)
+		s.fail(ctx, job, mediagen.FailureGeneration, detail)
 		return
 	}
-	s.settleLater(ctx, job, mediagen.Settlement{GenerationID: charged.GenerationID, Failure: mediagen.FailureGeneration})
+	s.settleLater(ctx, job, mediagen.Settlement{GenerationID: charged.GenerationID, Failure: mediagen.FailureGeneration, Detail: detail})
 }
 
 func (s *Service) closeUnpriced(ctx context.Context, job *mediagen.Job, priced bool, settlement mediagen.Settlement) {
 	if priced {
-		s.fail(ctx, job, settlement.Failure)
+		s.fail(ctx, job, settlement.Failure, settlement.Detail)
 		return
 	}
 	s.settleLater(ctx, job, settlement)
@@ -412,15 +414,15 @@ func (s *Service) bill(job *mediagen.Job, output *mediagen.Output) {
 	s.d.Billing.PublishFor(job.BillingReference, job.WorkspaceID, output.Model, 0, 0, output.ProviderCostMicros)
 }
 
-func (s *Service) fail(ctx context.Context, job *mediagen.Job, code mediagen.FailureCode) {
+func (s *Service) fail(ctx context.Context, job *mediagen.Job, code mediagen.FailureCode, detail string) {
 	at := s.now()
 	settleCtx, cancel := settling(ctx)
 	defer cancel()
-	if err := s.d.Jobs.MarkFailed(settleCtx, job.ID, code, at); err != nil {
+	if err := s.d.Jobs.MarkFailed(settleCtx, job.ID, code, detail, at); err != nil {
 		log.Printf("[media-generation] job %s could not be marked %s: %v", job.ID, code, err)
 		return
 	}
-	job.Status, job.FailureCode, job.FinishedAt = mediagen.StatusFailed, code, &at
+	job.Status, job.FailureCode, job.FailureDetail, job.FinishedAt = mediagen.StatusFailed, code, detail, &at
 }
 
 func (s *Service) Reap(ctx context.Context) error {
@@ -460,7 +462,7 @@ func (s *Service) Wait(ctx context.Context, workspaceID, id string) (*mediagen.J
 		if !job.Status.Known() {
 			return nil, fmt.Errorf("%w: %q", mediagen.ErrUnknownJobStatus, job.Status)
 		}
-		if job.Status.Terminal() {
+		if job.Outcome().Terminal() {
 			return job, nil
 		}
 		timer := time.NewTimer(delay)

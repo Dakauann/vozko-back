@@ -77,7 +77,7 @@ func PresentJob(job *mediagen.Job) JobResponse {
 	out := JobResponse{
 		ID:                job.ID,
 		Kind:              string(job.Kind),
-		Status:            string(job.Status),
+		Status:            string(job.Outcome()),
 		Prompt:            job.Prompt,
 		Aspect:            string(job.Aspect),
 		ReferenceMediaIDs: append([]string{}, job.ReferenceMediaIDs...),
@@ -116,7 +116,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, err, "Failed to list the models")
 		return
 	}
-	preferred, _ := mediagen.DefaultModel(kind, models)
+	preferred, _ := mediagen.DefaultModel(models)
 	out := make([]ModelResponse, 0, len(models))
 	for _, model := range models {
 		out = append(out, ModelResponse{ID: model.ID, Name: model.Name, Default: model.ID == preferred.ID})

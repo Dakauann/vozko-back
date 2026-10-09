@@ -11,7 +11,7 @@ import (
 
 func TestMusicIsChosenOnTheCardWithTheRecommendedModelMarked(t *testing.T) {
 	choices, err := NewGenerateMusicTool(&stubImages{}).(copilot.ChoiceAsker).Choices(context.Background(), imageSession, nil)
-	if err != nil || len(choices) != 1 || choices[0].Kind != copilot.ChoiceMusicModel || choices[0].Default != "google/lyria-3-clip-preview" {
+	if err != nil || len(choices) != 1 || choices[0].Kind != copilot.ChoiceMusicModel || choices[0].Default != "google/lyria-3-pro-preview" {
 		t.Fatalf("choices %+v err %v", choices, err)
 	}
 	failing := &stubImages{catalogErr: errors.New("openrouter down")}

@@ -334,17 +334,22 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		whisperURLs = []string{"http://localhost:17071"}
 	}
 
-	whisperPool, err := whisper.NewPool(whisper.PoolConfig{
+	whisperConfig := whisper.PoolConfig{
 		BaseURLs:   whisperURLs,
 		Model:      c.cfg.WhisperModel,
 		ServerType: whisper.ServerTypeWhisperCpp,
 		Logger:     log.New(log.Writer(), "whisper-pool ", log.LstdFlags),
-	})
+	}
+	whisperPool, err := whisper.NewPool(whisperConfig)
 	if err != nil {
 		log.Printf("WARNING: Failed to create whisper pool: %v", err)
 	} else {
 		c.services.whisperPool = whisperPool
 		log.Printf("Whisper pool initialized with %d server(s): %v", len(whisperURLs), whisperURLs)
+	}
+	whisperConfig.Timeout = captionsTranscriptionTimeout
+	if c.services.captionsWhisperPool, err = whisper.NewPool(whisperConfig); err != nil {
+		log.Printf("WARNING: Failed to create the captions whisper pool: %v", err)
 	}
 
 	saveRecordingUC := calls_usecase.NewSaveCallRecordingUseCase(
@@ -879,7 +884,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listWorkspaces:                     workspace_usecase.NewListWorkspacesUseCase(c.repositories.workspace, c.repositories.user, c.repositories.workspaceSubscription),
 		updateWorkspace:                    workspace_usecase.NewUpdateWorkspaceUseCase(c.repositories.workspace),
 		inviteMember:                       workspace_usecase.NewInviteMemberUseCase(c.repositories.workspace, c.repositories.customRole, c.repositories.user, c.repositories.workspaceDepartment, queuedEmailSvc),
-		acceptInvite:                       workspace_usecase.NewAcceptInviteUseCase(c.repositories.workspace, c.repositories.workspaceDepartment),
+		acceptInvite:                       workspace_usecase.NewAcceptInviteUseCase(c.repositories.workspace),
 		declineInvite:                      workspace_usecase.NewDeclineInviteUseCase(c.repositories.workspace),
 		cancelInvite:                       workspace_usecase.NewCancelInviteUseCase(c.repositories.workspace),
 		listInvites:                        workspace_usecase.NewListInvitesUseCase(c.repositories.workspace),

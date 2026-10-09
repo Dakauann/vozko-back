@@ -2,6 +2,11 @@ services:
   app:
     build: .
     container_name: vozko-api
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "6"
     env_file:
       - .env
     environment:

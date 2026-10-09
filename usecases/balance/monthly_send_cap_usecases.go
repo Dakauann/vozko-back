@@ -70,7 +70,7 @@ func (uc *setMonthlySendCapUseCase) Execute(actor balance.SendCapActor, input ba
 	if err := uc.caps.UpsertMonthlySendCap(next); err != nil {
 		return nil, err
 	}
-	log.Printf("[monthly-send-cap] workspace %s capped at %d from day %d by %s", input.WorkspaceID, next.Limit, next.CycleDay, actor.UserID)
+	log.Printf("[monthly-send-cap] workspace %s capped at %d from day %d to day %d by %s", input.WorkspaceID, next.Limit, next.CycleDay, next.EndDay, actor.UserID)
 	return &next, nil
 }
 
@@ -80,13 +80,17 @@ func (uc *setMonthlySendCapUseCase) candidate(actor balance.SendCapActor, curren
 		if input.CycleDay != nil {
 			cycleDay = *input.CycleDay
 		}
-		return balance.NewMonthlySendCap(input.WorkspaceID, input.Limit, cycleDay, actor.UserID, uc.now())
+		created, err := balance.NewMonthlySendCap(input.WorkspaceID, input.Limit, cycleDay, actor.UserID, uc.now())
+		if err != nil {
+			return balance.MonthlySendCap{}, err
+		}
+		return created.RecycledIfAsked(nil, input.EndDay)
 	}
 	relimited, err := current.Relimited(input.Limit, actor.UserID, uc.now())
 	if err != nil {
 		return balance.MonthlySendCap{}, err
 	}
-	return relimited.RecycledIfAsked(input.CycleDay)
+	return relimited.RecycledIfAsked(input.CycleDay, input.EndDay)
 }
 
 type unlockMonthlySendCapUseCase struct {
@@ -126,7 +130,7 @@ func (uc *unlockMonthlySendCapUseCase) Execute(actor balance.SendCapActor, input
 	if err != nil {
 		return nil, err
 	}
-	if unlocked, err = unlocked.RecycledIfAsked(input.CycleDay); err != nil {
+	if unlocked, err = unlocked.RecycledIfAsked(input.CycleDay, input.EndDay); err != nil {
 		return nil, err
 	}
 	if err := uc.caps.UpsertMonthlySendCap(unlocked); err != nil {

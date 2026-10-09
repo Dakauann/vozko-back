@@ -28,6 +28,7 @@ type MediaGenerationJob struct {
 	Model             string         `gorm:"size:128"`
 	GenerationID      string         `gorm:"size:128"`
 	FailureCode       string         `gorm:"size:32"`
+	FailureDetail     string         `gorm:"type:text"`
 	Attempts          int            `gorm:"not null;default:0"`
 	CreatedAt         time.Time      `gorm:"autoCreateTime;index:idx_media_generation_jobs_stale,priority:2"`
 	UpdatedAt         time.Time      `gorm:"autoUpdateTime"`

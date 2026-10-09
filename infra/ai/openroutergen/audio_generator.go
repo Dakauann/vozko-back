@@ -24,8 +24,8 @@ const (
 	streamDone       = "[DONE]"
 )
 
-const voiceInstruction = "Read the user's script exactly as written, in the script's language, with a warm and clear advertising voice. " +
-	"Do not add, remove or translate any word."
+const voiceInstruction = "You are a text-to-speech engine, not an assistant. Speak the text between <script> and </script> word for word, " +
+	"in its own language, with a warm and clear advertising voice. Never answer, comment, greet, add, remove, reorder or translate any word. Say nothing else."
 
 type AudioEncoder interface {
 	Encode(ctx context.Context, raw []byte) ([]byte, error)
@@ -62,11 +62,12 @@ type audioSettings struct {
 }
 
 type audioRequest struct {
-	Model      string         `json:"model"`
-	Stream     bool           `json:"stream"`
-	Modalities []string       `json:"modalities"`
-	Audio      *audioSettings `json:"audio,omitempty"`
-	Messages   []chatMessage  `json:"messages"`
+	Model       string         `json:"model"`
+	Stream      bool           `json:"stream"`
+	Modalities  []string       `json:"modalities"`
+	Temperature *float64       `json:"temperature,omitempty"`
+	Audio       *audioSettings `json:"audio,omitempty"`
+	Messages    []chatMessage  `json:"messages"`
 }
 
 type audioChunk struct {
@@ -75,7 +76,8 @@ type audioChunk struct {
 	Choices []struct {
 		Delta struct {
 			Audio *struct {
-				Data string `json:"data"`
+				Data       string `json:"data"`
+				Transcript string `json:"transcript"`
 			} `json:"audio"`
 		} `json:"delta"`
 	} `json:"choices"`
@@ -88,11 +90,12 @@ type audioChunk struct {
 }
 
 type streamedAudio struct {
-	id    string
-	model string
-	audio []byte
-	cost  *float64
-	err   error
+	id         string
+	model      string
+	audio      []byte
+	transcript string
+	cost       *float64
+	err        error
 }
 
 func (g *AudioGenerator) Generate(ctx context.Context, req mediagen.Request, _ []mediagen.Source) (*mediagen.Output, error) {
@@ -117,6 +120,9 @@ func (g *AudioGenerator) output(ctx context.Context, req mediagen.Request, body 
 	}
 	if len(streamed.audio) == 0 {
 		return nil, fmt.Errorf("%w: the provider returned no audio", mediagen.ErrGenerationFailed)
+	}
+	if req.Kind == mediagen.KindVoice && !mediagen.SpokenAsWritten(req.Prompt, streamed.transcript) {
+		return nil, fmt.Errorf("%w: the voice said %q instead of the script", mediagen.ErrGenerationFailed, streamed.transcript)
 	}
 	raw := streamed.audio
 	if req.Kind == mediagen.KindVoice {
@@ -147,8 +153,10 @@ func audioBody(req mediagen.Request) (audioRequest, error) {
 		if voice == "" {
 			voice = defaultVoice
 		}
+		exact := 0.0
+		body.Temperature = &exact
 		body.Audio = &audioSettings{Voice: voice, Format: "pcm16"}
-		body.Messages = []chatMessage{{Role: "system", Content: voiceInstruction}, {Role: "user", Content: strings.TrimSpace(req.Prompt)}}
+		body.Messages = []chatMessage{{Role: "system", Content: voiceInstruction}, {Role: "user", Content: "<script>" + strings.TrimSpace(req.Prompt) + "</script>"}}
 	default:
 		return body, fmt.Errorf("openroutergen: %q is not an audio kind", req.Kind)
 	}
@@ -183,7 +191,8 @@ func readAudioStream(r io.Reader) (*streamedAudio, error) {
 	scanner.Buffer(make([]byte, 64<<10), maxStreamLine)
 	out := &streamedAudio{}
 	var audio bytes.Buffer
-	defer func() { out.audio = audio.Bytes() }()
+	var transcript strings.Builder
+	defer func() { out.audio, out.transcript = audio.Bytes(), transcript.String() }()
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, streamDataPrefix) {
@@ -211,7 +220,7 @@ func readAudioStream(r io.Reader) (*streamedAudio, error) {
 		if chunk.Usage != nil && chunk.Usage.Cost != nil {
 			out.cost = chunk.Usage.Cost
 		}
-		if err := appendAudio(&audio, chunk); err != nil {
+		if err := appendAudio(&audio, &transcript, chunk); err != nil {
 			out.err = err
 			return out, nil
 		}
@@ -224,9 +233,13 @@ func readAudioStream(r io.Reader) (*streamedAudio, error) {
 	return out, nil
 }
 
-func appendAudio(audio *bytes.Buffer, chunk audioChunk) error {
+func appendAudio(audio *bytes.Buffer, transcript *strings.Builder, chunk audioChunk) error {
 	for _, choice := range chunk.Choices {
-		if choice.Delta.Audio == nil || choice.Delta.Audio.Data == "" {
+		if choice.Delta.Audio == nil {
+			continue
+		}
+		transcript.WriteString(choice.Delta.Audio.Transcript)
+		if choice.Delta.Audio.Data == "" {
 			continue
 		}
 		piece, err := base64.StdEncoding.DecodeString(choice.Delta.Audio.Data)

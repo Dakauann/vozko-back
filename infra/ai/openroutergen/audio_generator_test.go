@@ -91,11 +91,19 @@ func TestMusicIsStreamedJoinedEncodedAndPriced(t *testing.T) {
 	}
 }
 
+func spokenEvent(data []byte, transcript string) string {
+	return fmt.Sprintf(`{"id":"gen-1","model":"openai/gpt-audio-mini","choices":[{"delta":{"audio":{"data":%q,"transcript":%q}}}]}`,
+		base64.StdEncoding.EncodeToString(data), transcript)
+}
+
+func voiceRequest() mediagen.Request {
+	return mediagen.Request{Kind: mediagen.KindVoice, WorkspaceID: "ws", Model: "openai/gpt-audio-mini", Prompt: "Conheça a Vozko, o CRM da sua empresa.", Voice: "verse"}
+}
+
 func TestAVoiceOverAsksForTheVoiceAndWrapsThePCMAsWav(t *testing.T) {
-	s := &sseServer{events: []string{audioEvent([]byte{1, 0, 2, 0}), usageEvent, "[DONE]"}}
+	s := &sseServer{events: []string{spokenEvent([]byte{1, 0}, "Conheça a Vozko, "), spokenEvent([]byte{2, 0}, "o CRM da sua empresa."), usageEvent, "[DONE]"}}
 	enc := &recordingEncoder{}
-	req := mediagen.Request{Kind: mediagen.KindVoice, WorkspaceID: "ws", Model: "openai/gpt-audio-mini", Prompt: "Conheça a Vozko.", Voice: "verse"}
-	if _, err := audioGenerator(t, s.start(t), enc).Generate(context.Background(), req, nil); err != nil {
+	if _, err := audioGenerator(t, s.start(t), enc).Generate(context.Background(), voiceRequest(), nil); err != nil {
 		t.Fatal(err)
 	}
 	audio, _ := s.body["audio"].(map[string]any)
@@ -105,6 +113,42 @@ func TestAVoiceOverAsksForTheVoiceAndWrapsThePCMAsWav(t *testing.T) {
 	messages, _ := s.body["messages"].([]any)
 	if len(messages) != 2 || !strings.HasPrefix(string(enc.raw), "RIFF") || len(enc.raw) != 44+4 {
 		t.Fatalf("messages %+v raw %d bytes", messages, len(enc.raw))
+	}
+}
+
+func TestAVoiceOverAsksTheModelToReadTheScriptAndNothingElse(t *testing.T) {
+	s := &sseServer{events: []string{spokenEvent([]byte{1, 0}, "Conheça a Vozko, o CRM da sua empresa."), usageEvent, "[DONE]"}}
+	if _, err := audioGenerator(t, s.start(t), &recordingEncoder{}).Generate(context.Background(), voiceRequest(), nil); err != nil {
+		t.Fatal(err)
+	}
+	messages, _ := s.body["messages"].([]any)
+	user, _ := messages[1].(map[string]any)
+	if s.body["temperature"] != 0.0 || user["content"] != "<script>Conheça a Vozko, o CRM da sua empresa.</script>" {
+		t.Fatalf("voice request %+v", s.body)
+	}
+}
+
+func TestAVoiceThatSaysSomethingElseIsAChargedFailure(t *testing.T) {
+	said := "Claro! Conheça a Vozko, o CRM da sua empresa, a melhor do mercado."
+	s := &sseServer{events: []string{spokenEvent([]byte{1, 0}, said), usageEvent, "[DONE]"}}
+	enc := &recordingEncoder{}
+	_, err := audioGenerator(t, s.start(t), enc).Generate(context.Background(), voiceRequest(), nil)
+	var charged *mediagen.ChargedFailure
+	if !errors.As(err, &charged) || charged.GenerationID != "gen-1" || !strings.Contains(err.Error(), said) {
+		t.Fatalf("got %v", err)
+	}
+	if enc.raw != nil {
+		t.Fatal("a voice that strayed from the script must never be delivered")
+	}
+}
+
+func TestMusicHasNoScriptToCheck(t *testing.T) {
+	s := &sseServer{events: []string{audioEvent([]byte("ID3")), usageEvent, "[DONE]"}}
+	if _, err := audioGenerator(t, s.start(t), &recordingEncoder{}).Generate(context.Background(), musicRequest(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, set := s.body["temperature"]; set {
+		t.Fatalf("music request %+v", s.body)
 	}
 }
 
