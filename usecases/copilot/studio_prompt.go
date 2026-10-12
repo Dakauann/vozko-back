@@ -25,6 +25,7 @@ Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigi
 - Comece com studio_read. Ids de faixas e clipes vêm dele ou do retorno de studio_edit_video; nunca invente.
 - Edite em lotes com studio_edit_video (até 40 operações, aplicadas juntas ou nenhuma). Dê "ref" ao que criar e use "@ref"
   nas operações seguintes do mesmo lote (ex.: criar um título e animá-lo em um passo).
+- Contas de posição, tamanho, ângulo, proporção e tempo: calculate, várias numa só chamada, nunca de cabeça.
 - Tempo em milissegundos. Posição e tamanho vão de 0 a 1 do quadro, com x e y no centro do elemento. Textos, formas e
   ícones são camadas sobre o vídeo (overlay). Formas vetoriais: shape path com path SVG de 0 a 1 dentro da caixa da
   camada, ou path_preset; estrelas aceitam points e inner.
@@ -69,6 +70,7 @@ Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigi
 - Comece com studio_read. Ids de camadas vêm dele ou do retorno de studio_edit_image; nunca invente.
 - Edite em lotes com studio_edit_image (até 40 operações, aplicadas juntas ou nenhuma). Dê "ref" ao que criar e use "@ref"
   nas operações seguintes do mesmo lote.
+- Contas de posição, tamanho, ângulo, proporção e tempo: calculate, várias numa só chamada, nunca de cabeça.
 - Posição e tamanho vão de 0 a 1 da arte, com x e y no centro da camada. As camadas vão de baixo para cima: a primeira
   fica atrás (studio_read mostra z). Para empilhar com precisão, use order_layers com above_id ou below_id.
 - Recursos de editor avançado: formas vetoriais (shape path com path SVG de 0 a 1 dentro da caixa da camada, ou

@@ -2,6 +2,7 @@ package attendancetools
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"vozko/domain/audience"
@@ -74,13 +75,35 @@ func TestConversationInsightsRefusesAnUnknownFilter(t *testing.T) {
 }
 
 func TestCalculate(t *testing.T) {
-	res := NewCalculateTool().Execute(context.Background(), copilot.Context{}, map[string]interface{}{"expression": "pct_change(80, 100)"})
-	if res.Status != copilot.StatusOK || res.Data.(map[string]interface{})["result"] != 25.0 {
+	res := NewCalculateTool().Execute(context.Background(), copilot.Context{}, map[string]interface{}{"expressions": []interface{}{"pct_change(80, 100)"}})
+	steps, _ := res.Data.(map[string]interface{})["steps"].([]calculatedStep)
+	if res.Status != copilot.StatusOK || len(steps) != 1 || steps[0].Result != 25.0 {
 		t.Fatalf("res = %+v", res)
 	}
-	res = NewCalculateTool().Execute(context.Background(), copilot.Context{}, map[string]interface{}{"expression": "1/0"})
-	if res.Status != copilot.StatusError {
-		t.Fatalf("res = %+v, want division by zero refused", res)
+	res = NewCalculateTool().Execute(context.Background(), copilot.Context{}, map[string]interface{}{"expressions": []interface{}{"a = 2", "1/0"}})
+	if res.Status != copilot.StatusError || !strings.Contains(res.Message, "step 2") {
+		t.Fatalf("res = %+v, want division by zero refused and the step named", res)
+	}
+}
+
+func TestCalculateNamesStepsForLayoutGeometry(t *testing.T) {
+	res := NewCalculateTool().Execute(context.Background(), copilot.Context{}, map[string]interface{}{"expressions": []interface{}{
+		"w = 640",
+		"x = round(w / 2 + 100 * cos(rad(60)), 2)",
+		"x / w",
+	}})
+	steps, _ := res.Data.(map[string]interface{})["steps"].([]calculatedStep)
+	if res.Status != copilot.StatusOK || len(steps) != 3 || steps[1] != (calculatedStep{Name: "x", Expression: "round(w / 2 + 100 * cos(rad(60)), 2)", Result: 370}) {
+		t.Fatalf("res = %+v", res)
+	}
+}
+
+func TestCalculateIsOfferedOnEveryScreen(t *testing.T) {
+	studio := copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "p1", ProjectKind: copilot.StudioImage}
+	for _, view := range []copilot.View{{}, studio} {
+		if !view.Offers(NewCalculateTool()) {
+			t.Fatalf("calculate must be offered on %+v", view)
+		}
 	}
 }
 

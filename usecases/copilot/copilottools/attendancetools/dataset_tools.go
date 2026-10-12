@@ -13,30 +13,42 @@ import (
 
 type calculateTool struct{}
 
+type calculateArgs struct {
+	Expressions []string `json:"expressions" req:"true" desc:"contas em ordem, uma por item; \"nome = conta\" guarda o resultado com esse nome para as contas seguintes. Ex.: [\"w = 640\", \"x = round(w / 2 + 180 * cos(rad(-35)), 2)\", \"pct(x, w)\"]"`
+}
+
+type calculatedStep struct {
+	Name       string  `json:"name,omitempty"`
+	Expression string  `json:"expression"`
+	Result     float64 `json:"result"`
+}
+
 func NewCalculateTool() copilot.Tool { return calculateTool{} }
 
 func (calculateTool) Meta() copilot.Meta { return copilottools.ChatReadMeta() }
 
+func (calculateTool) OfferedOn(copilot.View) bool { return true }
+
 func (calculateTool) Definition() tools.Definition {
-	return tools.Definition{
-		Name: "calculate",
-		Description: "Calcula uma expressão numérica com exatidão. Use SEMPRE que for somar, dividir, tirar média, percentual, " +
-			"variação ou projeção; nunca faça contas de cabeça. Operadores + - * / % ^ e parênteses; funções abs, sqrt, " +
-			"round(x, casas), min, max, sum, avg, median, pct(parte, todo) e pct_change(de, para). Só números, sem nomes de métricas.",
-		Parameters: map[string]tools.Parameter{
-			"expression": {Type: "string", Description: "ex.: round(pct_change(1702, 1895), 1)"},
-		},
-		Required: []string{"expression"},
-	}
+	return copilottools.Definition("calculate",
+		"Calcula com exatidão uma ou várias contas numa chamada. Use SEMPRE que for somar, dividir, tirar média, percentual, "+
+			"variação, projeção, medidas, proporções, ângulos ou coordenadas; nunca faça contas de cabeça. Operadores + - * / % ^ e parênteses; "+
+			"constantes pi e e; funções abs, sqrt, pow, exp, ln, log10, floor, ceil, round(x, casas), min, max, sum, avg, median, "+
+			"pct(parte, todo), pct_change(de, para), lerp(de, para, t), clamp(x, mínimo, máximo), hypot(x, y), "+
+			"sin, cos, tan, asin, acos, atan, atan2(y, x) em radianos, rad(graus) e deg(radianos). Só números e nomes criados nas contas anteriores.",
+		calculateArgs{})
 }
 
 func (calculateTool) Execute(_ context.Context, _ copilot.Context, args map[string]interface{}) copilot.Result {
-	expr := copilottools.ArgString(args, "expression")
-	v, err := mathexpr.Evaluate(expr)
+	steps, err := mathexpr.EvaluateSteps(copilottools.ArgStringList(args, "expressions"))
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"expression": expr, "result": v}}
+	out := make([]calculatedStep, len(steps))
+	for i, step := range steps {
+		out[i] = calculatedStep{Name: step.Name, Expression: step.Expression, Result: step.Value}
+	}
+	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"steps": out}}
 }
 
 type queryDatasetTool struct{}

@@ -9,6 +9,7 @@ description: Tipografia de cartaz e post no Estúdio (papel de cada fonte do edi
 A higiene (tamanho mínimo, contraste, linhas longas) está em design-de-imagem. Aqui fica a voz.
 
 ## O papel de cada fonte do editor
+- Quando o brief nomeia a voz (condensada, serifada, manuscrita, arredondada), escolha uma fonte dessa família: o brief vence o gosto.
 - Condensadas de impacto: bebas-neue (só caixa alta, um peso só), oswald (200 a 700, com minúsculas).
 - Geométricas: montserrat (o 900 é forte em cartaz, mas é a fonte mais usada de todas), poppins (simpática, muito usada em SaaS), raleway (pesos finos bonitos e caixa alta espaçada; números de estilo antigo).
 - De trabalho: inter, roboto, work-sans (a de mais personalidade em tamanho grande), open-sans, lato (quente), dm-sans, nunito (arredondada: infantil, saúde, educação).
@@ -70,6 +71,7 @@ Na letra, meça tudo pelo tamanho da letra em pixels, não pela altura da caixa.
 - Para ler sobre foto, quem resolve é o fundo: área calma, campo de cor, caixa (highlight) ou um véu só atrás do texto (escuro com opacity de 0.2 a 0.4, claro de 0.4 a 0.6, ou um degradê que escurece só a borda do texto). A sombra é apoio: a medida de contraste não a conta, e um contorno de pelo menos 5% da letra conta.
 - Sombra de leitura: cor escura translúcida (#00000059, ou o tom escuro da paleta com alfa de 0.25 a 0.5), blur perto de 20% do tamanho da letra (15% a 25%), y perto de 6% (3% a 8%), x 0 ou no sentido da luz da peça. Ela age como um halo colado à letra; se dá para ver a sombra como um objeto separado, está forte demais. A sombra padrão (#00000066, blur 12, y 6) serve para letras de uns 60 a 120 px; fora disso, calcule. Opaca com blur acima de 35% ou deslocamento acima de 12% da letra vira mancha, e a checagem avisa.
 - Sombra escura sobre fundo escuro não aparece e só suja a letra.
+- Texto escuro sobre fundo claro não precisa de sombra: o contraste de valor já separa, e uma sombra escura com blur engorda e borra a letra num halo da mesma cor. Se o título pede mais presença, suba tamanho ou peso, ou use sombra chapada retrô ou um contorno claro fino.
 - Letra pequena, fina ou manuscrita: sem sombra, ou só a de leitura bem leve; o que a segura é peso, tamanho e fundo.
 - Um tratamento por palavra. Contorno, sombra, brilho e degradê juntos na mesma palavra parecem efeito de editor antigo; em estilos de gênero (neon, adesivo, retrô), no máximo dois que conversam.
 - Sombra chapada retrô é estilo, não correção: blur 0, deslocamento de 4% a 8% do tamanho da letra, cor sólida da paleta, na mesma direção em todos os textos.

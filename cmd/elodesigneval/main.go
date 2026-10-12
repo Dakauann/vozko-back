@@ -22,6 +22,7 @@ import (
 	"vozko/usecases/agentloop"
 	copilotuc "vozko/usecases/copilot"
 	"vozko/usecases/copilot/copilottools/adtools"
+	"vozko/usecases/copilot/copilottools/attendancetools"
 	"vozko/usecases/copilot/copilottools/skilltools"
 	"vozko/usecases/copilot/copilottools/studiotools"
 	"vozko/usecases/copilot/skills"
@@ -153,7 +154,7 @@ func evalRegistry(kind studio.Kind) (*copilotuc.Registry, error) {
 	}
 	all := studiotools.StudioTools(studiotools.StudioDeps{Projects: evalProjects{kind: kind}})
 	all = append(all, adtools.AdsTools(adtools.AdsDeps{})...)
-	all = append(all, skilltools.NewLoadSkillTool(library))
+	all = append(all, skilltools.NewLoadSkillTool(library), attendancetools.NewCalculateTool())
 	return copilotuc.NewRegistry(all...), nil
 }
 

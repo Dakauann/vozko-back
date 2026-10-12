@@ -18,14 +18,95 @@ const (
 
 var ErrInvalidExpression = errors.New("mathexpr: invalid expression")
 
+type Step struct {
+	Name       string
+	Expression string
+	Value      float64
+}
+
+type StepError struct {
+	Index int
+	Err   error
+}
+
+func (e *StepError) Error() string { return fmt.Sprintf("step %d: %v", e.Index+1, e.Err) }
+
+func (e *StepError) Unwrap() error { return e.Err }
+
 func Evaluate(expr string) (float64, error) {
+	return evaluate(expr, nil)
+}
+
+func EvaluateSteps(lines []string) ([]Step, error) {
+	if len(lines) == 0 {
+		return nil, invalid("no steps")
+	}
+	names := map[string]float64{}
+	steps := make([]Step, 0, len(lines))
+	for i, line := range lines {
+		step, err := evaluateStep(line, names)
+		if err != nil {
+			return nil, &StepError{Index: i, Err: err}
+		}
+		if step.Name != "" {
+			names[step.Name] = step.Value
+		}
+		steps = append(steps, step)
+	}
+	return steps, nil
+}
+
+func evaluateStep(line string, names map[string]float64) (Step, error) {
+	name, expr := "", line
+	if at := strings.Index(line, "="); at >= 0 {
+		name, expr = strings.ToLower(strings.TrimSpace(line[:at])), line[at+1:]
+		if err := assignable(name, names); err != nil {
+			return Step{}, err
+		}
+	}
+	v, err := evaluate(expr, names)
+	if err != nil {
+		return Step{}, err
+	}
+	return Step{Name: name, Expression: strings.TrimSpace(expr), Value: v}, nil
+}
+
+func assignable(name string, names map[string]float64) error {
+	if !isIdentifier(name) {
+		return invalid("%q is not a valid name (letters, digits and _, starting with a letter)", name)
+	}
+	if _, taken := functions[name]; taken {
+		return invalid("%q is a function and cannot be a name", name)
+	}
+	if _, taken := constants[name]; taken {
+		return invalid("%q is a constant and cannot be a name", name)
+	}
+	if _, taken := names[name]; taken {
+		return invalid("%q was already set in an earlier step", name)
+	}
+	return nil
+}
+
+func isIdentifier(name string) bool {
+	if name == "" || !(unicode.IsLetter(rune(name[0])) || name[0] == '_') {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if !(unicode.IsLetter(rune(name[i])) || isDigit(name[i]) || name[i] == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+func evaluate(expr string, names map[string]float64) (float64, error) {
 	if len(expr) > MaxExpressionLength {
 		return 0, invalid("expression longer than %d characters", MaxExpressionLength)
 	}
 	if strings.TrimSpace(expr) == "" {
 		return 0, invalid("empty expression")
 	}
-	p := &parser{src: expr}
+	p := &parser{src: expr, names: names}
 	v, err := p.expression()
 	if err != nil {
 		return 0, err
@@ -52,6 +133,7 @@ type parser struct {
 	src   string
 	pos   int
 	depth int
+	names map[string]float64
 }
 
 func (p *parser) skipSpace() {
@@ -232,7 +314,7 @@ func (p *parser) call() (float64, error) {
 	name := strings.ToLower(p.src[start:p.pos])
 	fn, found := functions[name]
 	if !found {
-		return 0, invalid("unknown name %q (only numbers and functions %s are allowed)", name, functionNames())
+		return p.named(name)
 	}
 	if p.peek() != '(' {
 		return 0, invalid("%s must be called with parentheses", name)
@@ -250,6 +332,19 @@ func (p *parser) call() (float64, error) {
 		return 0, err
 	}
 	return finite(v)
+}
+
+func (p *parser) named(name string) (float64, error) {
+	if p.peek() == '(' {
+		return 0, invalid("unknown function %q (functions: %s)", name, functionNames())
+	}
+	if v, ok := constants[name]; ok {
+		return v, nil
+	}
+	if v, ok := p.names[name]; ok {
+		return v, nil
+	}
+	return 0, invalid("unknown name %q (only numbers, the constants pi and e, names set in earlier steps and functions %s are allowed)", name, functionNames())
 }
 
 func (p *parser) arguments() ([]float64, error) {
@@ -290,6 +385,30 @@ func (f function) arity() string {
 		return fmt.Sprintf("exactly %d argument(s)", f.minArgs)
 	}
 	return fmt.Sprintf("%d to %d arguments", f.minArgs, f.maxArgs)
+}
+
+var constants = map[string]float64{"pi": math.Pi, "e": math.E}
+
+func unary(apply func(float64) float64) function {
+	return function{1, 1, func(a []float64) (float64, error) { return apply(a[0]), nil }}
+}
+
+func inUnitRange(name string, apply func(float64) float64) function {
+	return function{1, 1, func(a []float64) (float64, error) {
+		if a[0] < -1 || a[0] > 1 {
+			return 0, invalid("%s takes a value from -1 to 1", name)
+		}
+		return apply(a[0]), nil
+	}}
+}
+
+func positive(name string, apply func(float64) float64) function {
+	return function{1, 1, func(a []float64) (float64, error) {
+		if a[0] <= 0 {
+			return 0, invalid("%s takes a positive number", name)
+		}
+		return apply(a[0]), nil
+	}}
 }
 
 var functions = map[string]function{
@@ -347,6 +466,29 @@ var functions = map[string]function{
 			return 0, invalid("pct_change from zero has no percentage")
 		}
 		return (a[1] - a[0]) / math.Abs(a[0]) * 100, nil
+	}},
+	"sin":   unary(math.Sin),
+	"cos":   unary(math.Cos),
+	"tan":   unary(math.Tan),
+	"asin":  inUnitRange("asin", math.Asin),
+	"acos":  inUnitRange("acos", math.Acos),
+	"atan":  unary(math.Atan),
+	"atan2": {2, 2, func(a []float64) (float64, error) { return math.Atan2(a[0], a[1]), nil }},
+	"hypot": {2, 2, func(a []float64) (float64, error) { return math.Hypot(a[0], a[1]), nil }},
+	"rad":   unary(func(x float64) float64 { return x * math.Pi / 180 }),
+	"deg":   unary(func(x float64) float64 { return x * 180 / math.Pi }),
+	"floor": unary(math.Floor),
+	"ceil":  unary(math.Ceil),
+	"pow":   {2, 2, func(a []float64) (float64, error) { return math.Pow(a[0], a[1]), nil }},
+	"exp":   unary(math.Exp),
+	"ln":    positive("ln", math.Log),
+	"log10": positive("log10", math.Log10),
+	"lerp":  {3, 3, func(a []float64) (float64, error) { return a[0] + (a[1]-a[0])*a[2], nil }},
+	"clamp": {3, 3, func(a []float64) (float64, error) {
+		if a[1] > a[2] {
+			return 0, invalid("clamp needs the low bound before the high bound")
+		}
+		return math.Min(math.Max(a[0], a[1]), a[2]), nil
 	}},
 }
 

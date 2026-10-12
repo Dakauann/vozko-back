@@ -62,6 +62,17 @@ Uma forma (rect, ellipse, path_preset arch ou um path), a foto logo acima com cl
 - O que está longe fica mais frio, mais desfocado (filters blur) e com menos contraste; o que está perto, quente, nítido e saturado. Um leve desfoque no fundo atrás de um recorte separa os planos.
 - Profundidade por escala: um elemento enorme cortado na borda e um pequeno ao longe.
 
+## Distância e perspectiva
+Paisagem, mar, estrada, campo e cidade precisam de chão que se afasta; faixas iguais empilhadas viram uma parede.
+- Horizonte: escolha a altura da linha (perto do terço de cima ou de baixo, raramente no meio). Tudo o que se afasta encolhe em direção a ela.
+- Escala e espaçamento: ondas, faixas de terra, árvores, prédios e listras de estrada são grandes e espaçados perto da borda de baixo e ficam menores e mais juntos até o horizonte. Cada faixa com cerca de 0.6 a 0.75 da altura da anterior, até virar quase uma linha; calcule a série com calculate.
+- Perspectiva atmosférica: quanto mais longe, mais clara, menos saturada, mais perto da cor do céu e com menos contraste e detalhe; o que está perto é mais escuro, saturado e detalhado. A cor de cada faixa caminha entre as duas.
+- Sobreposição: o plano de perto cobre a base do plano de trás, nunca o contrário.
+- Mar: junto ao horizonte, uma faixa fina e clara quase da cor do céu, com ondas que viram traços horizontais finos e curtos; perto da borda, ondas maiores, curvas mais altas e cor mais funda. O horizonte do mar é uma linha reta e firme.
+- Sol no horizonte: a linha corta o disco (meio sol aparecendo), ele não flutua na frente da água. O reflexo é uma coluna vertical de traços horizontais curtos, na cor do sol e mais clara que a água, estreita no horizonte e mais larga e partida perto de quem olha; nunca uma elipse inteira em pé.
+- Perspectiva linear: estrada, trilho, rio, calçada e fileiras afunilam para um ponto de fuga no horizonte, e as laterais apontam para o mesmo ponto.
+- Paisagem rica (mar com ondas de verdade, cidade, floresta) pode vir gerada com IA no estilo da peça, com o resto montado por cima (direcao-de-arte, Material da peça). Em estilo chapado, monte com formas seguindo estas regras.
+
 ## Profundidade dramática
 Quando o pedido fala em profundidade, sombras, camadas ou volume, uma sombra suave por elemento não basta: a peça precisa de três planos que se leem de longe (fundo, meio e frente). Combine duas ou três receitas:
 - Uma luz só: decida o ângulo antes da primeira sombra (de cima à esquerda é o mais comum) e repita a mesma proporção entre x e y em toda sombra projetada, no lado claro dos degradês e no brilho. A seta de cada sombra em view depth aponta para o mesmo lado.

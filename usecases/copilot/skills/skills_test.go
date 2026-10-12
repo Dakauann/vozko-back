@@ -196,3 +196,29 @@ func TestVignettesAndLightLeaksComeFromRealEffectsNotRadialShapes(t *testing.T) 
 		}
 	}
 }
+
+func TestDepthTeachesDistanceInLandscapes(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill, _ := lib.Find("profundidade-e-camadas")
+	for _, rule := range []string{"## Distância e perspectiva", "horizonte", "reflexo", "ponto de fuga"} {
+		if !strings.Contains(skill.Body, rule) {
+			t.Errorf("the depth skill must teach receding space, missing %q", rule)
+		}
+	}
+}
+
+func TestTypographyKeepsTheBriefVoiceAndCleanDarkLetters(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill, _ := lib.Find("tipografia-expressiva")
+	for _, rule := range []string{"o brief vence", "Texto escuro sobre fundo claro"} {
+		if !strings.Contains(skill.Body, rule) {
+			t.Errorf("the typography skill is missing %q", rule)
+		}
+	}
+}
