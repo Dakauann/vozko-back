@@ -33,7 +33,7 @@ Toda decoração aponta, agrupa, emoldura ou conta o assunto. Se não faz nada d
 - Detalhes de assinatura prontos: em graphics, molduras ornamentais (art déco, filete, linha dupla, botânica) com o topo aberto para o título e medidores (gastos, anel de progresso, radial); em textCombos, monogramas de 2 ou 3 letras num selo com texto curvo, trocados por texts no add_element.
 - Na mesma categoria há pessoas e ilustrações em domínio público (CC0), também vetoriais e recoloríveis com colors.
 - A categoria threeD traz ícones e emojis em 3D como imagens prontas; add_element os coloca como imagem da biblioteca de mídia do workspace. Eles não mudam de cor; escolha um que já combine.
-- Quando nada disso serve, crie o elemento sob medida: gere a imagem do objeto sozinho, centralizado, num fundo liso e sem texto, ponha no projeto e remova o fundo com studio_start_job kind cutout. A pessoa faz o mesmo no botão Gerar elemento com IA das categorias graphics e threeD.
+- Quando nada disso tem o estilo, o ângulo ou o assunto da peça, gere o elemento sob medida com studio_generate_image: o objeto sozinho, centralizado, num fundo liso e sem texto, depois remova o fundo com studio_start_job kind cutout (como pedir e manter um estilo só em direcao-de-arte, Material da peça). A pessoa faz o mesmo no botão Gerar elemento com IA das categorias graphics e threeD.
 - Um ou dois elementos de apoio por peça. Eles apontam, enfeitam a borda ou dão clima; nunca disputam com o produto ou com o título.
 
 ## Formas vetoriais
@@ -79,7 +79,7 @@ diagonalBand (faixa inclinada), diagonalSplit (campo diagonal), arch (arco de ja
 - Linha que conduz: um caminho aberto (swoosh, squiggle ou um C próprio) começa perto do título e termina apontando para o produto ou para o botão; traço fino, de uma cor só, com arrow_end_kind dot ou openArrow quando precisa dizer direção.
 - Ritmo: a mesma curva repetida em escala (três ondas paralelas com traços 1 : 2 : 4, a mesma bolha em três tamanhos) dá unidade. Curvas de famílias diferentes na mesma peça brigam.
 - Peça cheia de curvas ainda precisa de um eixo firme: formas orgânicas no fundo e nas bordas, texto alinhado numa margem reta por cima.
-- Desenho complexo (ilustração, mascote, ornamento, letra desenhada, um logo vetorial que o usuário colou): escreva ou cole o SVG e traga com import_svg; cada caminho vira uma camada de vetor editável dentro da caixa que você der. Texto, imagens e filtros do SVG ficam de fora: recrie o texto com add_text por cima.
+- Ilustração com volume ou detalhe (objeto, veículo, personagem, planta, cena) sai melhor gerada com IA e recortada; feita à mão em SVG ela fica tosca. Desenho que precisa ser vetor editável (ornamento, letra desenhada, ícone ou mascote chapado de poucas formas, um logo vetorial que o usuário colou): escreva ou cole o SVG e traga com import_svg; cada caminho vira uma camada de vetor editável dentro da caixa que você der. Texto, imagens e filtros do SVG ficam de fora: recrie o texto com add_text por cima.
 
 ## Detalhes de assinatura
 Um detalhe que só esta peça teria vale mais que três enfeites genéricos.

@@ -58,7 +58,8 @@ Teste de especificidade: se a peça continua igual trocando a foto e as palavras
    - linguagem de forma: quinas retas (radius 0 a 0.04), cantos suaves (0.1 a 0.3), pílula (1), orgânica (blob, wave, arco, caminho próprio) ou angular (chevron, paralelogramo, recorte); um sistema por peça, o mesmo em botões, selos, barras e janelas. radius é fração da metade do lado menor, então 0.5 em tudo fica no meio do caminho e costuma ler como indecisão;
    - tratamento da imagem: cor puxada para a paleta, duotone, preto e branco com um acento, recorte, foto dentro de forma, foto dentro do texto, sem foto;
    - estratégia de cor: contida, comprometida (uma cor dona de 30% a 60% da área), paleta cheia, encharcada;
-   - decoração: nenhuma, um motivo, motivo com textura.
+   - decoração: nenhuma, um motivo, motivo com textura;
+   - material: o que vem de foto do cliente, o que é gerado com IA, o que vem da biblioteca e o que é forma do editor (veja Material da peça).
 5. **Layout.** Margens de 0.06 a 0.08 e uma grade. Ponha o herói primeiro, já no tamanho final, depois o segundo nível, depois o resto.
 6. **Camadas.** De 3 a 6 planos de profundidade.
 7. **Detalhes.** Repetições do motivo, textura, dados pequenos com espaçamento, bordas compartilhadas entre elementos (veja Riqueza).
@@ -92,6 +93,17 @@ Correto e vazio é o defeito mais comum. Com o herói e a hierarquia resolvidos,
 - forma orgânica ou curva no lugar do retângulo: blob, wave, swoosh, arch, caminho próprio;
 - movimento tipográfico editorial: uma palavra em itálico ou em outra família, número gigante cortado na borda, texto em arco, rótulo vertical, palavra só de contorno.
 Cada detalhe se explica pelo conceito; o orçamento de decoração de formas-e-decoracao continua valendo.
+
+## Material da peça
+Um designer não desenha um avião com retângulos: ele encomenda a ilustração ou a foto e monta a peça em volta dela. Escolha a origem de cada elemento pelo que ele é.
+- Gere com IA o que é ilustração ou foto de verdade: objetos, veículos, personagens, plantas, comida, paisagens, cenários, texturas ricas (papel, tecido, céu pintado) e o herói ilustrado no estilo da peça. Montado à mão com formas ou SVG, esse tipo de elemento sai tosco e puxa a peça inteira para baixo.
+- Use as formas do editor para o que é gráfico: campos de cor, faixas, selos, molduras, padrões, divisórias, sol chapado, linhas que conduzem, e tudo o que precisa mudar de cor ou tamanho com a marca.
+- Procure na biblioteca antes de gerar quando um item pronto pode servir (ícones, emojis 3D, ilustrações CC0); gere quando ele não tem o estilo, o ângulo ou o assunto da peça.
+- A peça continua montada no editor: cada imagem gerada é uma camada, e título, preço, chamado e layout ficam editáveis por cima. Gerar a arte inteira como uma imagem só é outra coisa, para quando a pessoa pedir.
+- Como pedir um elemento: o objeto sozinho, inteiro, num fundo liso que contraste com ele, no estilo, na paleta, na luz e no ângulo do conceito. Exemplo: "avião retrô visto de baixo em diagonal, asas laranja e vermelhas, ilustração chapada de pôster dos anos 50, fundo liso creme". Quando ficar pronto, recorte com studio_start_job kind cutout e posicione. Cenário ou fundo inteiro: gere no formato da prancheta e ponha atrás de tudo.
+- Uma peça, um estilo: repita a mesma frase de estilo em todos os pedidos e passe o primeiro elemento gerado em reference_media_ids nos seguintes, para os elementos parecerem do mesmo ilustrador e não uma colagem.
+- Planeje no começo e gere cedo: com studio_generate_image (sem layer_id) os pedidos vão para a fila; monte fundo, tipografia e formas enquanto eles ficam prontos e acompanhe com studio_jobs. Cada geração é paga e, conforme o modo da pessoa, passa por aprovação: diga em uma linha o que vai gerar, e gere os elementos que carregam a peça, não um por enfeite.
+- Foto, produto, pessoa e logo do cliente nunca são trocados por imagem gerada; o que a IA pode retocar neles está em design-de-imagem (Quando a IA melhora a foto).
 
 O editor não tem limite de camadas: monte com quantos elementos o conceito pedir, agrupe o que anda junto com group_layers e dê nome às camadas importantes.
 

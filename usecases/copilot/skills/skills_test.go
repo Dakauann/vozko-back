@@ -164,3 +164,19 @@ func TestASkillOnlyPointsToSkillsOfferedWhereverItIsOffered(t *testing.T) {
 		}
 	}
 }
+
+func TestArtDirectionPlansWhichAssetsAreGeneratedWithAI(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill, ok := lib.Find("direcao-de-arte")
+	if !ok {
+		t.Fatal("direcao-de-arte must ship")
+	}
+	for _, step := range []string{"studio_generate_image", "kind cutout", "reference_media_ids"} {
+		if !strings.Contains(skill.Body, step) {
+			t.Errorf("art direction must teach generating illustrated assets with AI, missing %q", step)
+		}
+	}
+}
