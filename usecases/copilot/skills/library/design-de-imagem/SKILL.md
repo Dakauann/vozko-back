@@ -129,6 +129,7 @@ Comece pelo grátis, que não mexe no que a foto mostra, e gere só o que ele n�
 - Alinhamentos misturados: um eixo só por grupo.
 - Imagem esticada ou ampliada demais: mantenha a proporção.
 - Efeito de acabamento por todo lado (brilho, chanfro, sombra pesada): um sistema de profundidade só, e um efeito por palavra.
+- Mancha radial atrás de tudo (halo cinza atrás do produto, glow num fundo claro, sombra oval solta embaixo do que flutua): separe com a drop-shadow da elevação, um campo de cor ou contraste de valor; halo só no que emite luz sobre fundo escuro e mancha de contato só embaixo do que pousa (profundidade-e-camadas).
 - Letra deformada (esticada ou achatada para caber), negrito falso com contorno, frase longa em caixa alta ou centralizada, manuscrita pequena ou em caixa alta: troque tamanho, quebra, peso ou fonte.
 - Preço com números desnivelados: números alinhados (tipografia-expressiva).
 - Texto demais: título de até 7 palavras e pouco texto corrido. Em anúncio, imagem com menos texto costuma render mais; uns 20% da área é uma boa referência, mas não é mais limite de entrega.

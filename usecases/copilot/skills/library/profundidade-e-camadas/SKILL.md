@@ -42,10 +42,11 @@ Uma forma (rect, ellipse, path_preset arch ou um path), a foto logo acima com cl
 - Sombra com a cor da superfície: o matiz de onde ela cai, mais escuro e um pouco menos saturado, sem virar cinza (sobre laranja, um marrom avermelhado translúcido como #5a1e0066); cinza neutro sobre fundo colorido e preto puro costumam sujar a peça.
 - Sombra em camadas: effects com duas drop-shadow, uma curta e firme junto ao objeto e outra longa e suave, imita luz real melhor que uma só.
 - Sombra longa chapada (estilo flat): um path que sai do objeto até a borda a 45 graus, na cor do fundo um pouco mais escura, sem blur.
-- Sombra de contato de produto: ellipse com w de 0.8 a 1.0 e h de 0.06 a 0.10 do produto, logo abaixo dele, no tom mais escuro da paleta, opacity de 0.3 a 0.5; um degradê radial do escuro para transparente faz a borda macia.
-- Brilho, só no que emite luz sobre fundo escuro (neon, farol, tela): shadow com a mesma cor, mais saturada, x 0, y 0 e blur alto; ou uma ellipse com degradê radial da cor para transparente atrás do objeto, blend_mode screen, opacity de 0.4 a 0.7.
-- Vazamento de luz: ellipse grande (w de 0.6 a 1.0) saindo de um canto, degradê radial de laranja quente ou magenta para transparente, blend_mode screen, opacity de 0.3 a 0.6; um ou dois, do lado da luz da foto.
-- Vinheta: rect da arte inteira com degradê radial de transparente no centro para o tom mais escuro da paleta (não preto) nas bordas, radius de 1.2 a 1.5, blend_mode multiply, opacity de 0.3 a 0.6.
+- Sombra de contato: só embaixo do que pousa numa superfície (produto na mesa, pessoa em pé, objeto no chão), encostada na base dele: ellipse com w de 0.8 a 1.0 e h de 0.06 a 0.10 do objeto, no tom escuro da superfície, opacity de 0.3 a 0.5, com degradê radial do escuro para transparente na borda. O que flutua de propósito ganha a drop-shadow de flutuando, não uma mancha embaixo.
+- Brilho, só no que emite luz (neon, farol, tela, sol, vela, chama) e sobre fundo mais escuro que ele: outer-glow ou shadow com a mesma cor, mais saturada, x 0, y 0 e blur alto; ou uma ellipse com degradê radial da cor para transparente atrás dele, blend_mode screen, opacity de 0.4 a 0.7. Num fundo claro o halo não acende nada e só suja a cor.
+- Vazamento de luz: add_vfx lightLeak, do lado da luz da foto, com color e color2 da paleta; um por peça, quando o tema pede clima de filme ou nostalgia (doses em efeitos-visuais).
+- Vinheta: add_vfx vignette na prancheta, amount de 0.2 a 0.35 e softness alta; forte e preta deixa a peça com cara de barata (efeitos-visuais).
+- Mancha radial não é sombra nem luz por padrão. Uma ellipse com degradê radial só entra quando explica algo que se vê: o contato de quem pousa, a luz de quem brilha, o foco de um holofote do conceito. Halo atrás do produto num fundo claro, mancha escura atrás de um texto, sombra que não encosta em nada e vários halos na mesma peça denunciam montagem: tire, e separe com a drop-shadow da elevação, um campo de cor, um contorno ou contraste de valor.
 
 ## Tratamento de cor da foto
 - Ajustes na própria foto: filters (brightness, contrast, saturation) ou filter_preset.
@@ -71,5 +72,5 @@ Quando o pedido fala em profundidade, sombras, camadas ou volume, uma sombra sua
 - Desvanecer pela atmosfera: o plano de trás com opacity de 0.3 a 0.6, mais frio, com filters blur leve e menos contraste; um degradê da cor do fundo para transparente sobre a base de um plano faz ele sumir na distância.
 - Contraste de escala: um elemento de 2 a 4 vezes o tamanho do resto, cortado na borda, e outro pequeno ao longe; só a diferença de tamanho já cria distância.
 - Moldura de primeiro plano: uma forma escura ou desfocada na frente (folhagem, arco, borda de janela, uma faixa) sangrando um ou dois cantos, com opacity de 0.6 a 0.9, enquadra o assunto e empurra o resto para trás.
-- Brilho no escuro: o objeto de destaque ganha um halo atrás (ellipse com degradê radial da cor para transparente, blend_mode screen) e o fundo escurece nas bordas com a vinheta; a luz parece sair do objeto.
+- Brilho no escuro: num fundo escuro, o objeto que emite luz ganha um halo atrás (ellipse com degradê radial da cor para transparente, blend_mode screen) e o fundo escurece nas bordas com add_vfx vignette; a luz parece sair do objeto. Um halo por peça, no herói que brilha.
 - Antes de entregar, olhe com studio_look e view depth: a luz geral com concordância perto de 1, nenhuma sombra cortada pela borda e nenhuma camada coberta sem querer.

@@ -180,3 +180,19 @@ func TestArtDirectionPlansWhichAssetsAreGeneratedWithAI(t *testing.T) {
 		}
 	}
 }
+
+func TestVignettesAndLightLeaksComeFromRealEffectsNotRadialShapes(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill, ok := lib.Find("profundidade-e-camadas")
+	if !ok {
+		t.Fatal("profundidade-e-camadas must ship")
+	}
+	for _, effect := range []string{"add_vfx vignette", "add_vfx lightLeak"} {
+		if !strings.Contains(skill.Body, effect) {
+			t.Errorf("the depth skill must point to %q instead of a radial shape", effect)
+		}
+	}
+}
