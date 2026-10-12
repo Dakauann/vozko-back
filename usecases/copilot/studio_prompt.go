@@ -10,13 +10,13 @@ como uma pessoa: cada edição aparece na tela com o seu cursor, vira um passo q
 como qualquer edição. O usuário escolhe um modo: Perguntar (toda edição e geração pede aprovação), Editar sozinha
 (edições aplicam direto, gerações pagas pedem aprovação) ou Acesso total (tudo roda direto, com o modelo recomendado).
 Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigir.
-- Trabalhe uma etapa por vez, em lotes de 8 a 12 operações, e pense pouco antes de agir: respostas longas demais
-  são cortadas pelo limite de saída e nada é aplicado.
+- Edite em lotes de 8 a 12 operações por chamada: respostas longas demais são cortadas pelo limite de saída e nada
+  é aplicado.
 - Lote que falha não aplica nada; o erro lista todas as operações com problema: corrija essas e reenvie o lote inteiro.
   Campos que não valem para a camada voltam em "ignored" e não impedem o lote.
 - Todo studio_edit_video devolve "checks", a checagem automática de design. Corrija cada linha "erro" antes de seguir e
   avalie cada "aviso"; se algo apontado for intencional, siga em frente. Veja o resultado com studio_look a cada etapa
-  visual, com no máximo duas rodadas de ajuste por etapa.
+  visual, com até duas rodadas de ajuste por etapa antes de seguir para a próxima.
 - Anexos do usuário (logo, fotos, vídeos) são material do projeto: quando o pedido fala da marca ou do anexo, coloque o
   arquivo com o media_id dele. Nunca troque um logo por uma forma ou um texto.
 - As faixas visuais vão de baixo para cima. add_text sem track_id fica acima de tudo o que está na tela naquele momento;
@@ -58,13 +58,13 @@ como uma pessoa: cada edição aparece na tela com o seu cursor, vira um passo q
 como qualquer edição. O usuário escolhe um modo: Perguntar (toda edição e geração pede aprovação), Editar sozinha
 (edições aplicam direto, gerações pagas pedem aprovação) ou Acesso total (tudo roda direto, com o modelo recomendado).
 Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigir.
-- Trabalhe uma etapa por vez, em lotes de 8 a 12 operações, e pense pouco antes de agir: respostas longas demais
-  são cortadas pelo limite de saída e nada é aplicado.
+- Edite em lotes de 8 a 12 operações por chamada: respostas longas demais são cortadas pelo limite de saída e nada
+  é aplicado.
 - Lote que falha não aplica nada; o erro lista todas as operações com problema: corrija essas e reenvie o lote inteiro.
   Campos que não valem para a camada voltam em "ignored" e não impedem o lote.
 - Todo studio_edit_image devolve "checks", a checagem automática de design. Corrija cada linha "erro" antes de seguir e
   avalie cada "aviso"; se algo apontado for intencional, siga em frente. Veja o resultado com studio_look a cada etapa
-  visual, com no máximo duas rodadas de ajuste por etapa.
+  visual, com até duas rodadas de ajuste por etapa antes de seguir para a próxima.
 - Anexos do usuário (logo, fotos, vídeos) são material do projeto: quando o pedido fala da marca ou do anexo, coloque o
   arquivo com o media_id dele. Nunca troque um logo por uma forma ou um texto.
 - Comece com studio_read. Ids de camadas vêm dele ou do retorno de studio_edit_image; nunca invente.
@@ -100,9 +100,20 @@ const studioAdPrompt = `
   IMAGE ou VIDEO em create_ad, ou em save_ad_draft quando a conta não puder gastar. Antes, carregue com load_skill a
   habilidade criativos-que-performam, que traz o caminho completo.`
 
+const studioWorkingPrompt = `
+- Faça o pedido inteiro nesta resposta: siga de etapa em etapa sem pedir licença para o que o usuário já pediu e só
+  termine quando tudo estiver feito e conferido com studio_look. Pare antes só por uma decisão que é dele: material que
+  só ele tem, duas direções que mudam a peça ou um gasto que ele não pediu.
+- O que você consegue resolver não vira pendência: resolva. A resposta final lista só o que não deu para fazer e por quê.
+- Suposições que fazem o trabalho andar valem quando ficam dentro do pedido; diga-as em uma linha na resposta final.
+- Mensagem nova do usuário enquanto você trabalha ajusta a tarefa em andamento: incorpore e continue, a menos que ele
+  cancele ou peça outra coisa.
+- Planeje a peça uma vez no começo (etapas, materiais, o que gerar) e depois aja em lotes; não replaneje a cada passo.
+- A resposta final começa pelo resultado, em poucas linhas, sem narrar cada passo.`
+
 func studioPrompt(kind copilot.StudioKind) string {
 	if kind == copilot.StudioImage {
-		return studioImagePrompt + studioAdPrompt
+		return studioImagePrompt + studioWorkingPrompt + studioAdPrompt
 	}
-	return studioVideoPrompt + studioAdPrompt
+	return studioVideoPrompt + studioWorkingPrompt + studioAdPrompt
 }

@@ -16,6 +16,7 @@ import (
 
 type aiTurn struct {
 	reasoning []string
+	thinking  []ai.ReasoningBlock
 	tokens    []string
 	tcs       []ai.ToolCall
 	fullText  string
@@ -94,7 +95,7 @@ func (f *fakeAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-cha
 			ch <- ai.StreamEvent{Type: ai.StreamEventError, Error: t.errEvent}
 			return
 		}
-		done := ai.StreamEvent{Type: ai.StreamEventDone, FullText: t.fullText, AllToolCalls: t.tcs, FinishReason: t.finish}
+		done := ai.StreamEvent{Type: ai.StreamEventDone, FullText: t.fullText, AllToolCalls: t.tcs, FinishReason: t.finish, Reasoning: t.thinking}
 		if !t.noUsage {
 			u := t.usage
 			if u == nil {
@@ -590,7 +591,7 @@ func TestTrimHistory(t *testing.T) {
 func TestRecordTurn(t *testing.T) {
 	sess := &Session{}
 	calls := []ai.ToolCall{{ID: "c1", Name: "a"}, {ID: "c2", Name: "b"}}
-	recordTurn(sess, 80, "said", calls, []string{""})
+	recordTurn(sess, 80, ai.Message{Content: "said"}, calls, []string{""})
 	if len(sess.History) != 3 {
 		t.Fatalf("expected assistant + 2 tool results, got %d", len(sess.History))
 	}

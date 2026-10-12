@@ -200,6 +200,7 @@ func (c Config) contextFull(promptTokens int) bool {
 
 type Session struct {
 	History      []ai.Message
+	Turn         []ai.Message
 	PromptImages []string
 	Frame        func(string) string
 	TokensUsed   int
@@ -236,7 +237,7 @@ type Guard interface {
 }
 
 type Inbox interface {
-	Drain(ctx context.Context, history []ai.Message) []ai.Message
+	Drain(ctx context.Context, sess *Session) []ai.Message
 }
 
 type Engine struct {
@@ -325,7 +326,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			}
 		}
 		if inbox, ok := drv.(Inbox); ok {
-			if arrived := inbox.Drain(ctx, sess.History); len(arrived) > 0 {
+			if arrived := inbox.Drain(ctx, sess); len(arrived) > 0 {
 				sess.History = trimHistory(append(sess.History, arrived...), cfg.MaxHistoryMsgs)
 			}
 		}
@@ -380,13 +381,12 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 				}
 				continue
 			}
-			sess.History = append(sess.History, ai.Message{Role: ai.RoleAssistant, Content: content})
-			sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
+			sess.record(cfg.MaxHistoryMsgs, ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
 			return Outcome{Kind: OutcomeIdle, Valid: prog.Valid}
 		}
 		if out.FinishReason == "length" {
 			truncStreak++
-			recordTurn(sess, cfg.MaxHistoryMsgs, out.Message.Content, calls, truncatedResults(len(calls)))
+			recordTurn(sess, cfg.MaxHistoryMsgs, out.Message, calls, truncatedResults(len(calls)))
 			if truncStreak > cfg.EmptyTurnRetries {
 				return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonEmptyTurn, Halt: ErrOutputTruncated}
 			}
@@ -419,7 +419,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 				turnSignature = append(turnSignature, step.Signature)
 			}
 			if step.Pause != nil {
-				recordTurn(sess, cfg.MaxHistoryMsgs, out.Message.Content, calls[:i+1], results[:i+1])
+				recordTurn(sess, cfg.MaxHistoryMsgs, out.Message, calls[:i+1], results[:i+1])
 				return Outcome{Kind: OutcomePaused, Valid: prog.Valid, Summary: step.Pause.Reason, Pause: step.Pause}
 			}
 		}
@@ -456,7 +456,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			}
 		}
 
-		recordTurn(sess, cfg.MaxHistoryMsgs, out.Message.Content, calls, results)
+		recordTurn(sess, cfg.MaxHistoryMsgs, out.Message, calls, results)
 		attachToolImages(sess, cfg, images)
 
 		if finishHonored {
@@ -525,8 +525,7 @@ func (e *Engine) graceAnswer(ctx context.Context, emit Emit, drv Driver, cfg Con
 	if content == "" {
 		return stop
 	}
-	sess.History = append(sess.History, ai.Message{Role: ai.RoleAssistant, Content: content})
-	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
+	sess.record(cfg.MaxHistoryMsgs, ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
 	return Outcome{Kind: OutcomeIdle, Valid: stop.Valid, Summary: stop.Summary}
 }
 
@@ -655,6 +654,7 @@ func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.Generat
 		case ai.StreamEventDone:
 			out.ToolCalls = ev.AllToolCalls
 			out.FinishReason = ev.FinishReason
+			out.Message.Reasoning = ev.Reasoning
 			if ev.Usage != nil {
 				out.Usage = *ev.Usage
 			}
@@ -669,12 +669,12 @@ func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.Generat
 	}
 	flush()
 	endReasoning()
-	out.Message = ai.Message{Role: ai.RoleAssistant, Content: content.String()}
+	out.Message.Role, out.Message.Content = ai.RoleAssistant, content.String()
 	return out, nil
 }
 
-func recordTurn(sess *Session, maxHistory int, content string, calls []ai.ToolCall, results []string) {
-	sess.History = append(sess.History, ai.Message{Role: ai.RoleAssistant, Content: content, ToolCalls: calls})
+func recordTurn(sess *Session, maxHistory int, said ai.Message, calls []ai.ToolCall, results []string) {
+	step := []ai.Message{{Role: ai.RoleAssistant, Content: said.Content, ToolCalls: calls, Reasoning: said.Reasoning}}
 	for i, tc := range calls {
 		r := ""
 		if i < len(results) {
@@ -683,9 +683,20 @@ func recordTurn(sess *Session, maxHistory int, content string, calls []ai.ToolCa
 		if strings.TrimSpace(r) == "" {
 			r = "ok"
 		}
-		sess.History = append(sess.History, ai.Message{Role: ai.RoleTool, ToolCallID: tc.ID, Content: r})
+		step = append(step, ai.Message{Role: ai.RoleTool, ToolCallID: tc.ID, Content: r})
 	}
-	sess.History = trimHistory(sess.History, maxHistory)
+	sess.record(maxHistory, step...)
+}
+
+func (s *Session) TakeTurn() []ai.Message {
+	turn := s.Turn
+	s.Turn = nil
+	return turn
+}
+
+func (s *Session) record(maxHistory int, msgs ...ai.Message) {
+	s.History = trimHistory(append(s.History, msgs...), maxHistory)
+	s.Turn = append(s.Turn, msgs...)
 }
 
 func attachToolImages(sess *Session, cfg Config, images []string) {

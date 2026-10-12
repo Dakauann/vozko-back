@@ -25,9 +25,9 @@ func (d *inboxDriver) Admit(context.Context) error {
 	return nil
 }
 
-func (d *inboxDriver) Drain(_ context.Context, history []ai.Message) []ai.Message {
+func (d *inboxDriver) Drain(_ context.Context, sess *Session) []ai.Message {
 	d.drains++
-	d.seen = append(d.seen, append([]ai.Message(nil), history...))
+	d.seen = append(d.seen, append([]ai.Message(nil), sess.History...))
 	var out []ai.Message
 	for _, text := range d.arrivals[d.drains] {
 		out = append(out, ai.Message{Role: ai.RoleUser, Content: Interjection(text)})

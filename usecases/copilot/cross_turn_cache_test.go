@@ -40,7 +40,7 @@ func TestHistoryRebuildsTheLastRequestExactlyAndMovesItsWindowInBlocks(t *testin
 	messages.add(45)
 	svc := NewService(agentloop.Engine{}, NewRegistry(), &fakeAccess{}, openFunds{}, &fakeThreads{thread: testThread()}, messages, nil, nil, func() string { return "a" })
 
-	history, err := svc.buildHistory("th", true)
+	history, err := svc.buildHistory("th", "m", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestHistoryRebuildsTheLastRequestExactlyAndMovesItsWindowInBlocks(t *testin
 		t.Fatalf("history starts at %q with %d messages", history[0].Content, len(history))
 	}
 	messages.add(4)
-	later, err := svc.buildHistory("th", true)
+	later, err := svc.buildHistory("th", "m", true)
 	if err != nil {
 		t.Fatal(err)
 	}

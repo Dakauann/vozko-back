@@ -542,3 +542,19 @@ func TestWhenEveryTabDeclinesTheTurnHearsTheProjectIsNotOpen(t *testing.T) {
 		t.Fatalf("after waiting, a decline must be reported as the project not being open, got %+v %v", reply, err)
 	}
 }
+
+func TestStudioRepliesFinishTheWholeRequestBeforeStopping(t *testing.T) {
+	for _, kind := range []copilot.StudioKind{copilot.StudioVideo, copilot.StudioImage} {
+		prompt := studioPrompt(kind)
+		for _, rule := range []string{"Faça o pedido inteiro nesta resposta", "não vira pendência", "ajusta a tarefa em andamento", "Planeje a peça uma vez"} {
+			if !strings.Contains(prompt, rule) {
+				t.Errorf("the %s studio prompt is missing %q", kind, rule)
+			}
+		}
+		for _, stale := range []string{"pense pouco", "uma etapa por vez"} {
+			if strings.Contains(prompt, stale) {
+				t.Errorf("the %s studio prompt still says %q, which reads as stopping after each stage", kind, stale)
+			}
+		}
+	}
+}

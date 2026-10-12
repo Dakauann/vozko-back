@@ -124,6 +124,7 @@ type turnStart struct {
 	fromQueue   bool
 	notice      bool
 	prelude     []toolStep
+	approved    []ai.Message
 }
 
 func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turnStart, cc copilot.Context, emit agentloop.Emit) error {
@@ -141,7 +142,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 	}
 	sees := limits.SeesImages()
 
-	history, err := s.buildHistory(thread.ID, sees)
+	history, err := s.buildHistory(thread.ID, model, sees)
 	if err != nil {
 		return err
 	}
@@ -192,7 +193,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 	}
 	driver.adopt = func(projectID string) error { return s.adopt(thread, projectID) }
 	driver.inbox = s.withOpenings(thread.ID, rec, driver, s.inbox(thread.ID, model, sees, rec, emit))
-	sess := &agentloop.Session{History: history, PromptImages: copilot.ImageURLs(start.attachments)}
+	sess := &agentloop.Session{History: history, Turn: start.approved, PromptImages: copilot.ImageURLs(start.attachments)}
 	if start.notice {
 		sess.Frame = agentloop.AppNotice
 	}
@@ -208,7 +209,10 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 		if proposal == "" {
 			proposal = "Proponho uma ação que precisa da sua aprovação."
 		}
-		m := rec.message(thread.ID, proposal, model)
+		m, err := rec.message(thread.ID, proposal, model, sess.Turn)
+		if err != nil {
+			return err
+		}
 		if err := attachProposal(m, pa); err != nil {
 			return err
 		}
@@ -219,7 +223,11 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 	default:
 		reply := lastAssistantContent(sess.History)
 		if reply != "" || len(rec.tools) > 0 {
-			_ = s.messages.Create(rec.message(thread.ID, reply, model))
+			m, err := rec.message(thread.ID, reply, model, sess.Turn)
+			if err != nil {
+				return err
+			}
+			_ = s.messages.Create(m)
 		}
 		if failure := haltFailure(out.Halt); failure != nil {
 			emit("error", failure)
@@ -288,7 +296,14 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	if tool, found := s.registry.Get(pa.ToolName); found && executed.Ok && tool.Meta().Mutating {
 		executed.Changed = string(tool.Meta().Resource)
 	}
-	return s.runTurn(ctx, thread, turnStart{content: approvalContinuationPrompt(pa, res), prelude: []toolStep{executed}}, cc, emit)
+	return s.runTurn(ctx, thread, turnStart{content: approvalContinuationPrompt(pa, res), prelude: []toolStep{executed}, approved: approvedExchange(pa, res)}, cc, emit)
+}
+
+func approvedExchange(pa copilot.PendingAction, res copilot.Result) []ai.Message {
+	return []ai.Message{
+		{Role: ai.RoleAssistant, ToolCalls: []ai.ToolCall{{ID: pa.ID, Name: pa.ToolName, Arguments: pa.Args}}},
+		{Role: ai.RoleTool, ToolCallID: pa.ID, Content: renderResult(res)},
+	}
 }
 
 const rejectedActionMessage = "Ação cancelada. Nada foi alterado."
@@ -308,7 +323,7 @@ func (s *Service) modelLimits(ctx context.Context, model string) ai.ModelInfo {
 	return m
 }
 
-func (s *Service) buildHistory(threadID string, sees bool) ([]ai.Message, error) {
+func (s *Service) buildHistory(threadID, model string, sees bool) ([]ai.Message, error) {
 	_, total, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: 1})
 	if err != nil {
 		return nil, err
@@ -322,7 +337,13 @@ func (s *Service) buildHistory(threadID string, sees bool) ([]ai.Message, error)
 	for _, m := range msgs {
 		switch m.Role {
 		case aichat.RoleAssistant:
-			if content := assistantHistoryContent(m); content != "" {
+			turn, err := aichat.DecodeTranscript(m.Transcript)
+			if err != nil {
+				return nil, err
+			}
+			if len(turn) > 0 {
+				out = append(out, aichat.ReplayFor(turn, m.Model, model)...)
+			} else if content := assistantHistoryContent(m); content != "" {
 				out = append(out, ai.Message{Role: ai.RoleAssistant, Content: content})
 			}
 		case aichat.RoleSystem:
@@ -591,8 +612,12 @@ func (r *turnRecorder) opened(projectID string) {
 	}
 }
 
-func (r *turnRecorder) message(threadID, content, model string) *aichat.Message {
-	m := &aichat.Message{ThreadID: threadID, Role: aichat.RoleAssistant, Content: content, Model: model}
+func (r *turnRecorder) message(threadID, content, model string, turn []ai.Message) (*aichat.Message, error) {
+	transcript, err := aichat.EncodeTranscript(turn)
+	if err != nil {
+		return nil, err
+	}
+	m := &aichat.Message{ThreadID: threadID, Role: aichat.RoleAssistant, Content: content, Model: model, Transcript: transcript}
 	if r.reasoning.Len() > 0 {
 		if b, err := json.Marshal(r.reasoning.String()); err == nil {
 			m.Reasoning = b
@@ -603,7 +628,7 @@ func (r *turnRecorder) message(threadID, content, model string) *aichat.Message 
 			m.ToolCalls = b
 		}
 	}
-	return m
+	return m, nil
 }
 
 func eventText(payload interface{}) string {

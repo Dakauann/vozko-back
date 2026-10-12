@@ -152,7 +152,8 @@ func TestTheRecorderDropsTheReasoningOfAFailedAttempt(t *testing.T) {
 	rec.emitFn(agentloop.EventAssistantRetry, agentloop.RetryNotice{Attempt: 1, Of: 3, Reasoning: "rascunho"})
 	rec.emitFn("reasoning_delta", map[string]string{"text": "plano novo"})
 	var reasoning string
-	if json.Unmarshal(rec.message("t1", "x", "m").Reasoning, &reasoning) != nil || reasoning != "plano firme. plano novo" {
+	m, err := rec.message("t1", "x", "m", nil)
+	if err != nil || json.Unmarshal(m.Reasoning, &reasoning) != nil || reasoning != "plano firme. plano novo" {
 		t.Fatalf("reasoning = %q", reasoning)
 	}
 }

@@ -47,6 +47,7 @@ type StreamEvent struct {
 	ShouldEndSession bool
 	Usage            *Usage
 	FinishReason     string
+	Reasoning        []ReasoningBlock
 }
 
 type ResponseFormatType string

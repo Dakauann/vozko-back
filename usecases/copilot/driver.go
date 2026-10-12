@@ -47,7 +47,7 @@ type Driver struct {
 	newID    IDGenerator
 	state    *readiness.Snapshot
 	offered  []tools.Definition
-	inbox    func(context.Context, []ai.Message) []ai.Message
+	inbox    func(context.Context, *agentloop.Session) []ai.Message
 	reattach func(copilot.Context) copilot.Context
 	adopt    func(projectID string) error
 }
@@ -85,11 +85,11 @@ func (d *Driver) take(res copilot.Result) copilot.Result {
 	return res
 }
 
-func (d *Driver) Drain(ctx context.Context, history []ai.Message) []ai.Message {
+func (d *Driver) Drain(ctx context.Context, sess *agentloop.Session) []ai.Message {
 	if d.inbox == nil {
 		return nil
 	}
-	return d.inbox(ctx, history)
+	return d.inbox(ctx, sess)
 }
 
 func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, funds FundsChecker, newID IDGenerator) *Driver {

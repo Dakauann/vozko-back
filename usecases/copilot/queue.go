@@ -157,8 +157,8 @@ func (s *Service) deliverQueued(threadID string, emit agentloop.Emit) ([]*aichat
 	return delivered, nil
 }
 
-func (s *Service) inbox(threadID, model string, sees bool, rec *turnRecorder, emit agentloop.Emit) func(context.Context, []ai.Message) []ai.Message {
-	return func(_ context.Context, history []ai.Message) []ai.Message {
+func (s *Service) inbox(threadID, model string, sees bool, rec *turnRecorder, emit agentloop.Emit) func(context.Context, *agentloop.Session) []ai.Message {
+	return func(_ context.Context, sess *agentloop.Session) []ai.Message {
 		queued, err := s.hasQueued(threadID)
 		if err != nil {
 			log.Printf("[copilot] thread %s: queue unreadable mid-answer: %v", threadID, err)
@@ -167,7 +167,7 @@ func (s *Service) inbox(threadID, model string, sees bool, rec *turnRecorder, em
 		if !queued {
 			return nil
 		}
-		s.saveSegment(threadID, model, history, rec)
+		s.saveSegment(threadID, model, sess, rec)
 		delivered, err := s.deliverQueued(threadID, emit)
 		if err != nil {
 			log.Printf("[copilot] thread %s: queued messages not delivered mid-answer: %v", threadID, err)
@@ -181,14 +181,19 @@ func (s *Service) inbox(threadID, model string, sees bool, rec *turnRecorder, em
 	}
 }
 
-func (s *Service) saveSegment(threadID, model string, history []ai.Message, rec *turnRecorder) {
-	content := lastAssistantContent(history)
+func (s *Service) saveSegment(threadID, model string, sess *agentloop.Session, rec *turnRecorder) {
+	content := lastAssistantContent(sess.History)
 	if content == "" && len(rec.tools) == 0 {
 		return
 	}
-	if err := s.messages.Create(rec.message(threadID, content, model)); err != nil {
+	m, err := rec.message(threadID, content, model, sess.Turn)
+	if err == nil {
+		err = s.messages.Create(m)
+	}
+	if err != nil {
 		log.Printf("[copilot] thread %s: the reply so far was not saved before a delivered message: %v", threadID, err)
 		return
 	}
+	sess.TakeTurn()
 	rec.reset()
 }

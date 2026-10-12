@@ -124,8 +124,8 @@ func (s *Service) awaitedNote(threadID string, view copilot.View) (string, error
 	return note, nil
 }
 
-func (s *Service) withOpenings(threadID string, rec *turnRecorder, driver *Driver, inbox func(context.Context, []ai.Message) []ai.Message) func(context.Context, []ai.Message) []ai.Message {
-	return func(ctx context.Context, history []ai.Message) []ai.Message {
+func (s *Service) withOpenings(threadID string, rec *turnRecorder, driver *Driver, inbox func(context.Context, *agentloop.Session) []ai.Message) func(context.Context, *agentloop.Session) []ai.Message {
+	return func(ctx context.Context, sess *agentloop.Session) []ai.Message {
 		var notice []ai.Message
 		if view, ok := s.turns.TakeOpened(threadID); ok {
 			silent := rec.awaits(view.ProjectID)
@@ -137,7 +137,7 @@ func (s *Service) withOpenings(threadID string, rec *turnRecorder, driver *Drive
 				notice = append(notice, ai.Message{Role: ai.RoleUser, Content: agentloop.AppNotice(editorBackNote(view))})
 			}
 		}
-		return append(notice, inbox(ctx, history)...)
+		return append(notice, inbox(ctx, sess)...)
 	}
 }
 

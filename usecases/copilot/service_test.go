@@ -323,7 +323,7 @@ func TestService_BuildHistorySkipsToolTurns(t *testing.T) {
 		{Role: aichat.RoleTool, Content: "tool-result"},
 	}}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
-	h, err := svc.buildHistory("t1", true)
+	h, err := svc.buildHistory("t1", "m", true)
 	if err != nil {
 		t.Fatalf("buildHistory: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestService_Stream_HistoryError(t *testing.T) {
 func TestService_BuildHistory_SecondListError(t *testing.T) {
 	ms := &fakeMessages{listErr: errors.New("db"), listErrAfter: 1}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
-	if _, err := svc.buildHistory("t1", true); err == nil {
+	if _, err := svc.buildHistory("t1", "m", true); err == nil {
 		t.Fatal("expected the second list error")
 	}
 }
@@ -357,7 +357,7 @@ func TestService_BuildHistory_Offset(t *testing.T) {
 		list[i] = &aichat.Message{Role: aichat.RoleUser, Content: "m"}
 	}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, &fakeMessages{list: list})
-	if _, err := svc.buildHistory("t1", true); err != nil {
+	if _, err := svc.buildHistory("t1", "m", true); err != nil {
 		t.Fatalf("buildHistory with offset: %v", err)
 	}
 }
@@ -407,8 +407,8 @@ func TestTurnRecorder(t *testing.T) {
 		t.Fatalf("every event must pass through, got %v", seen)
 	}
 
-	m := rec.message("t1", "answer", "model")
-	if m.Content != "answer" || m.Role != aichat.RoleAssistant {
+	m, err := rec.message("t1", "answer", "model", nil)
+	if err != nil || m.Content != "answer" || m.Role != aichat.RoleAssistant {
 		t.Fatalf("message basics: %+v", m)
 	}
 	var reasoning string
@@ -420,9 +420,9 @@ func TestTurnRecorder(t *testing.T) {
 		t.Fatalf("tools accumulated: %+v", tools)
 	}
 
-	empty := (&turnRecorder{emit: func(string, interface{}) {}}).message("t1", "x", "m")
-	if empty.Reasoning != nil || empty.ToolCalls != nil {
-		t.Fatal("empty recorder leaves reasoning/tools nil")
+	empty, err := (&turnRecorder{emit: func(string, interface{}) {}}).message("t1", "x", "m", nil)
+	if err != nil || empty.Reasoning != nil || empty.ToolCalls != nil || empty.Transcript != nil {
+		t.Fatal("empty recorder leaves reasoning, tools and transcript nil")
 	}
 }
 
@@ -667,7 +667,7 @@ func TestService_ASilentToolTurnStillTellsTheModelWhatHappened(t *testing.T) {
 		{Role: aichat.RoleAssistant, Content: "  "},
 	}}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
-	h, err := svc.buildHistory("t1", true)
+	h, err := svc.buildHistory("t1", "m", true)
 	if err != nil {
 		t.Fatalf("buildHistory: %v", err)
 	}
@@ -698,18 +698,20 @@ func TestService_AGeneratedImageStaysKnownToTheModelOnLaterTurns(t *testing.T) {
 		t.Fatalf("stream: %v", err)
 	}
 	later := prov.inputs[len(prov.inputs)-1]
+	var result, reply bool
 	for _, m := range later.Messages {
-		if m.Role == ai.RoleAssistant && strings.Contains(m.Content, "Imagem gerada!") && strings.Contains(m.Content, "m-gerada") {
-			return
-		}
+		result = result || (m.Role == ai.RoleTool && strings.Contains(m.Content, "m-gerada"))
+		reply = reply || (m.Role == ai.RoleAssistant && strings.Contains(m.Content, "Imagem gerada!"))
 	}
-	t.Fatalf("the reloaded history must keep the reply and the generated media_id, got %+v", later.Messages)
+	if !result || !reply {
+		t.Fatalf("the reloaded history must keep the approved result with its media_id and the reply, got %+v", later.Messages)
+	}
 }
 
 func TestService_AnApprovedActionKeepsWhatItReturnedInTheHistory(t *testing.T) {
 	steps, _ := json.Marshal([]toolStep{stepFromResult("create_ad", copilot.Result{Status: copilot.StatusOK, Data: map[string]string{"draft_id": "d-9"}})})
 	ms := &fakeMessages{list: []*aichat.Message{{Role: aichat.RoleAssistant, Content: "Rascunho criado.", ToolCalls: steps}}}
-	h, err := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms).buildHistory("t1", true)
+	h, err := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms).buildHistory("t1", "m", true)
 	if err != nil {
 		t.Fatalf("buildHistory: %v", err)
 	}
@@ -745,7 +747,11 @@ func TestTheHistoryKeepsWhatAToolActedOnAndWhyItFailed(t *testing.T) {
 	subject := &copilot.Subject{Kind: copilot.SubjectSkill, Key: "design-de-imagem", Label: "Design de imagem"}
 	emitStep(recorder.emitFn, stepFromResult("load_skill", copilot.Result{Status: copilot.StatusOK, Subject: subject}))
 	emitStep(recorder.emitFn, stepFromResult("studio_edit_image", copilot.Result{Status: copilot.StatusError, Message: "operação 2 (add_text): x vai de -1 a 2. Nada foi aplicado."}))
-	stored := string(recorder.message("t-1", "", "m").ToolCalls)
+	saved, err := recorder.message("t-1", "", "m", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := string(saved.ToolCalls)
 	for _, want := range []string{`"subject":{"kind":"skill","key":"design-de-imagem","label":"Design de imagem"}`, `"error":"operação 2 (add_text): x vai de -1 a 2. Nada foi aplicado."`} {
 		if !strings.Contains(stored, want) {
 			t.Fatalf("history %s lost %s", stored, want)

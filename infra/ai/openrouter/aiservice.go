@@ -104,6 +104,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			}
 
 			toolAcc := make(map[int]*openrouter.ToolCall)
+			var thinking reasoningAccumulator
 			var iterText strings.Builder
 			finishReason := ""
 			var totalUsage *openrouter.Usage
@@ -148,6 +149,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 				}
 
 				choice := resp.Choices[0]
+				thinking.add(choice.Delta.ReasoningDetails)
 
 				if reasoning := streamReasoningDelta(choice.Delta); reasoning != "" {
 					select {
@@ -224,6 +226,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					AllToolCalls:     allToolCalls,
 					ShouldEndSession: shouldEnd,
 					FinishReason:     finishReason,
+					Reasoning:        thinking.blocks(),
 				}
 				if totalUsage != nil {
 					doneEvt.Usage = usageOf(totalUsage)
@@ -253,9 +256,10 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			log.Printf("[openrouter] iteration %d completed, finishReason=%s, pendingTools=%d, textLen=%d", iter, finishReason, len(pending), iterText.Len())
 
 			req.Messages = append(req.Messages, openrouter.ChatCompletionMessage{
-				Role:      openrouter.ChatMessageRoleAssistant,
-				Content:   openrouter.Content{Text: iterText.String()},
-				ToolCalls: pending,
+				Role:             openrouter.ChatMessageRoleAssistant,
+				Content:          openrouter.Content{Text: iterText.String()},
+				ToolCalls:        pending,
+				ReasoningDetails: reasoningDetailsOf(thinking.blocks()),
 			})
 			for _, tc := range allToolCalls[len(allToolCalls)-len(pending):] {
 				req.Messages = append(req.Messages, openrouter.ToolMessage(tc.ID, serializeToolResult(tc.Result)))
@@ -272,6 +276,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					AllToolCalls:     allToolCalls,
 					ShouldEndSession: shouldEnd,
 					FinishReason:     finishReason,
+					Reasoning:        thinking.blocks(),
 				}
 				if totalUsage != nil {
 					exitEvt.Usage = usageOf(totalUsage)
@@ -453,9 +458,10 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 		case ai.RoleAssistant:
 			if len(m.ToolCalls) > 0 {
 				messages = append(messages, openrouter.ChatCompletionMessage{
-					Role:      openrouter.ChatMessageRoleAssistant,
-					Content:   openrouter.Content{Text: m.Content},
-					ToolCalls: toOpenRouterToolCalls(m.ToolCalls),
+					Role:             openrouter.ChatMessageRoleAssistant,
+					Content:          openrouter.Content{Text: m.Content},
+					ToolCalls:        toOpenRouterToolCalls(m.ToolCalls),
+					ReasoningDetails: reasoningDetailsOf(m.Reasoning),
 				})
 			} else {
 				messages = append(messages, openrouter.AssistantMessage(m.Content))

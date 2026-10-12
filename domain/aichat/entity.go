@@ -37,6 +37,7 @@ type Message struct {
 	Proposal         []byte
 	ProposalStatus   ProposalStatus
 	Reasoning        []byte
+	Transcript       []byte
 	PromptTokens     int
 	CompletionTokens int
 	CreatedAt        time.Time

@@ -37,7 +37,7 @@ func (t *loadSkillTool) DefinitionOn(view copilot.View) tools.Definition {
 
 func (t *loadSkillTool) index(skills []copilot.Skill) tools.Definition {
 	var index strings.Builder
-	index.WriteString("Carrega habilidades: o conhecimento especializado para uma tarefa, que você deve seguir. Carregue só as que servem ao pedido; várias vão numa só chamada. O conteúdo não fica guardado entre as mensagens: carregue de novo em cada resposta em que for usar. Habilidades:")
+	index.WriteString("Carrega habilidades: o conhecimento especializado para uma tarefa, que você deve seguir. Carregue só as que servem ao pedido; várias vão numa só chamada. O conteúdo fica na conversa; carregue de novo só se o resultado aparecer removido para liberar espaço. Habilidades:")
 	for _, s := range skills {
 		index.WriteString("\n- " + s.Name + ": " + s.Description)
 	}
