@@ -17,6 +17,8 @@ type AIChatThread struct {
 	ProjectID      *string        `gorm:"type:uuid"`
 	LastMessageAt  *time.Time     `gorm:"type:timestamptz;index:idx_chat_thread_ws_user,priority:3,sort:desc"`
 	CostTracked    bool           `gorm:"not null;default:false"`
+	Checkpoint     string         `gorm:"type:text"`
+	CheckpointAt   *time.Time     `gorm:"type:timestamptz"`
 	CreatedAt      time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt      time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt      gorm.DeletedAt `gorm:"index"`

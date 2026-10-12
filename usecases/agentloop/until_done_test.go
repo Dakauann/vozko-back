@@ -33,7 +33,7 @@ func TestARepeatedTurnHaltsWithItsOwnError(t *testing.T) {
 	if out.Halt != ErrRepeatedTurn || out.Summary != reasonRepeatedTurn {
 		t.Fatalf("outcome %+v, want the repeated-turn halt", out)
 	}
-	if len(prov.inputs) != 4 {
-		t.Fatalf("%d model calls, want the stop right after the fourth identical turn and no grace call", len(prov.inputs))
+	if len(prov.inputs) != 3 {
+		t.Fatalf("%d model calls, want the stop on the third identical turn and no grace call", len(prov.inputs))
 	}
 }

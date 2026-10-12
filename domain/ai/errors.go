@@ -12,6 +12,7 @@ var (
 	ErrBillingNotConfigured = errors.New("ai: billing publisher is required")
 	ErrStreamIncomplete     = errors.New("ai: the provider stream ended before the model finished")
 	ErrProviderTransient    = errors.New("ai: the provider call failed on a passing fault and may succeed if tried again")
+	ErrContextOverflow      = errors.New("ai: the request is longer than the model's context window")
 	ErrProviderBusy         = errors.New("ai: the provider is momentarily at its spending limit and refused the call before starting it")
 )
 

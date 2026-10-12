@@ -116,6 +116,12 @@ func (r *threadRepository) Touch(id string, lastMessageAt time.Time, model, reas
 		Updates(updates).Error
 }
 
+func (r *threadRepository) SaveCheckpoint(id, text string, at time.Time) error {
+	return r.db.Model(&schema.AIChatThread{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"checkpoint": text, "checkpoint_at": at}).Error
+}
+
 func (r *threadRepository) Delete(id string) error {
 	return r.db.Where("id = ?", id).Delete(&schema.AIChatThread{}).Error
 }
@@ -131,6 +137,8 @@ func toThreadDomain(rec *schema.AIChatThread) *aichat.Thread {
 		ProjectID:      projectOf(rec.ProjectID),
 		LastMessageAt:  rec.LastMessageAt,
 		CostTracked:    rec.CostTracked,
+		Checkpoint:     rec.Checkpoint,
+		CheckpointAt:   rec.CheckpointAt,
 		CreatedAt:      rec.CreatedAt,
 		UpdatedAt:      rec.UpdatedAt,
 	}

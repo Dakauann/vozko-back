@@ -64,35 +64,3 @@ func TestWithoutAGraceInstructionTheLimitsStopAsBefore(t *testing.T) {
 		t.Fatalf("outcome %+v calls %d", out, len(prov.inputs))
 	}
 }
-
-func TestOldToolResultsAreClearedWhenTheContextFills(t *testing.T) {
-	prov := &fakeAI{turns: []aiTurn{toolTurn("a", 10), toolTurn("b", 10), toolTurn("c", 60), {fullText: "pronto"}}}
-	cfg := Config{FinishToolName: "finish", NoProgressStop: 20, ModelLimits: ai.ModelInfo{ContextLength: 100}, KeepRecent: 2}
-	run(t, prov, reading(), cfg)
-
-	before := prov.inputs[2].Messages
-	after := prov.inputs[3].Messages
-	if countCleared(before) != 0 {
-		t.Fatal("nothing is cleared while the context has room")
-	}
-	if countCleared(after) != 2 {
-		t.Fatalf("the two oldest tool results should be cleared, got %d", countCleared(after))
-	}
-	if !strings.Contains(after[0].Content, "faça X") {
-		t.Fatal("the user request must stay intact")
-	}
-	recent := after[len(after)-2]
-	if recent.Role != ai.RoleTool || strings.Contains(recent.Content, clearedToolResult) {
-		t.Fatalf("the newest tool result must stay intact: %+v", recent)
-	}
-}
-
-func countCleared(msgs []ai.Message) int {
-	n := 0
-	for _, m := range msgs {
-		if m.Role == ai.RoleTool && m.Content == clearedToolResult {
-			n++
-		}
-	}
-	return n
-}

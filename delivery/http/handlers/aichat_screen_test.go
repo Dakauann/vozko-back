@@ -36,6 +36,7 @@ func (s screenThreads) ListByUser(aichat.ListThreadsInput) ([]*aichat.Thread, in
 }
 func (s screenThreads) Rename(string, string) error            { return nil }
 func (s screenThreads) Touch(string, time.Time, string, string) error { return nil }
+func (s screenThreads) SaveCheckpoint(string, string, time.Time) error  { return nil }
 func (s screenThreads) Delete(string) error                    { return nil }
 
 type loopback struct{ handler func([]byte) }

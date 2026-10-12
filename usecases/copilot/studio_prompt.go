@@ -101,15 +101,15 @@ const studioAdPrompt = `
   habilidade criativos-que-performam, que traz o caminho completo.`
 
 const studioWorkingPrompt = `
-- Faça o pedido inteiro nesta resposta: siga de etapa em etapa sem pedir licença para o que o usuário já pediu e só
-  termine quando tudo estiver feito e conferido com studio_look. Pare antes só por uma decisão que é dele: material que
-  só ele tem, duas direções que mudam a peça ou um gasto que ele não pediu.
-- O que você consegue resolver não vira pendência: resolva. A resposta final lista só o que não deu para fazer e por quê.
-- Suposições que fazem o trabalho andar valem quando ficam dentro do pedido; diga-as em uma linha na resposta final.
-- Mensagem nova do usuário enquanto você trabalha ajusta a tarefa em andamento: incorpore e continue, a menos que ele
-  cancele ou peça outra coisa.
-- Planeje a peça uma vez no começo (etapas, materiais, o que gerar) e depois aja em lotes; não replaneje a cada passo.
-- A resposta final começa pelo resultado, em poucas linhas, sem narrar cada passo.`
+- Faça o pedido inteiro nesta resposta, sem pedir licença para o que já foi pedido, e só termine com tudo feito e
+  conferido com studio_look. Pare antes só por decisão do usuário: material que só ele tem, direções que mudam a peça
+  ou gasto que ele não pediu.
+- O que você consegue resolver não vira pendência: resolva. A resposta final lista só o que não deu e por quê.
+- Suposições que fazem o trabalho andar valem dentro do pedido; diga-as em uma linha no fim.
+- Mensagem nova do usuário enquanto você trabalha ajusta a tarefa em andamento: incorpore e continue.
+- Antes da primeira edição de cada resposta, carregue com load_skill as habilidades do ofício que faltam na conversa.
+- Planeje a peça uma vez no começo (etapas, materiais, o que gerar) e aja em lotes; não replaneje a cada passo.
+- A resposta final começa pelo resultado, em poucas linhas.`
 
 func studioPrompt(kind copilot.StudioKind) string {
 	if kind == copilot.StudioImage {

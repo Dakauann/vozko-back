@@ -35,7 +35,7 @@ func (p *pagedMessages) add(n int) {
 	}
 }
 
-func TestHistoryRebuildsTheLastRequestExactlyAndMovesItsWindowInBlocks(t *testing.T) {
+func TestHistoryKeepsAStablePrefixFromTheStartUntilTheNextCheckpoint(t *testing.T) {
 	messages := &pagedMessages{}
 	messages.add(45)
 	svc := NewService(agentloop.Engine{}, NewRegistry(), &fakeAccess{}, openFunds{}, &fakeThreads{thread: testThread()}, messages, nil, nil, func() string { return "a" })
@@ -44,7 +44,7 @@ func TestHistoryRebuildsTheLastRequestExactlyAndMovesItsWindowInBlocks(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 35 || history[0].Content != agentloop.UserRequest("m10") {
+	if len(history) != 45 || history[0].Content != agentloop.UserRequest("m0") {
 		t.Fatalf("history starts at %q with %d messages", history[0].Content, len(history))
 	}
 	messages.add(4)
@@ -53,7 +53,7 @@ func TestHistoryRebuildsTheLastRequestExactlyAndMovesItsWindowInBlocks(t *testin
 		t.Fatal(err)
 	}
 	if later[0].Content != history[0].Content {
-		t.Fatalf("two more turns must keep the window start, got %q", later[0].Content)
+		t.Fatalf("more turns must keep the same start, got %q", later[0].Content)
 	}
 }
 

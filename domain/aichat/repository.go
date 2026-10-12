@@ -29,6 +29,7 @@ type ThreadRepository interface {
 	ListByUser(input ListThreadsInput) ([]*Thread, int64, error)
 	Rename(id, title string) error
 	Touch(id string, lastMessageAt time.Time, model, reasoningLevel string) error
+	SaveCheckpoint(id, text string, at time.Time) error
 	Delete(id string) error
 }
 
@@ -36,6 +37,7 @@ type ListMessagesInput struct {
 	ThreadID string
 	Limit    int
 	Offset   int
+	After    *time.Time
 }
 
 type MessageRepository interface {

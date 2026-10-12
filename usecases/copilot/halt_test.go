@@ -20,6 +20,12 @@ func TestAProviderFailureTellsTheUserWithoutTheTechnicalCause(t *testing.T) {
 	}
 }
 
+func TestAFailedCompactionTellsTheUserWhatHappened(t *testing.T) {
+	if haltMessage(agentloop.ErrCompactionFailed) != msgCompactionFailed {
+		t.Fatal("a reply stopped because the context could not be summarized must say so")
+	}
+}
+
 func TestARepeatedActionStopTellsTheUserWhy(t *testing.T) {
 	if haltMessage(agentloop.ErrRepeatedTurn) != msgRepeatedTurn {
 		t.Fatal("a stop for repeating the same action must explain itself to the user")

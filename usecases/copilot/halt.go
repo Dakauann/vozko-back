@@ -19,6 +19,7 @@ const (
 	msgFundsExhausted      = "Saldo ou plano insuficiente: a resposta foi interrompida antes de gerar mais custo."
 	msgBudgetExhausted     = "A análise ficou longa demais e foi interrompida. Peça uma parte de cada vez."
 	msgOutputTruncated     = "A resposta foi cortada pelo limite de saída do modelo antes de terminar. Peça para continuar que eu sigo em partes menores."
+	msgCompactionFailed    = "A conversa ficou longa e a Elo não conseguiu resumir o que veio antes para continuar. O que ela já fez ficou salvo; tente de novo ou comece uma conversa nova."
 	msgRepeatedTurn        = "A Elo repetiu a mesma ação várias vezes seguidas sem avançar e parou para não gastar à toa. O que ela já fez ficou salvo; diga como seguir ou peça de outro jeito."
 	msgProviderFailed      = "A Elo não conseguiu terminar esta resposta por uma falha interna. Tente de novo em alguns minutos."
 	msgProviderUnreachable = "A conexão com o provedor de IA caiu e não voltou depois de algumas tentativas. O que a Elo já fez ficou salvo; tente de novo em instantes."
@@ -58,6 +59,8 @@ func haltMessage(halt error) string {
 		return msgOutputTruncated
 	case errors.Is(halt, agentloop.ErrRepeatedTurn):
 		return msgRepeatedTurn
+	case errors.Is(halt, agentloop.ErrCompactionFailed):
+		return msgCompactionFailed
 	case errors.Is(halt, ai.ErrProviderBusy):
 		return fmt.Sprintf(msgProviderBusy, busyWait(retryAfterSeconds(halt)))
 	case errors.Is(halt, agentloop.ErrProviderUnreachable):

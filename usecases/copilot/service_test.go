@@ -21,6 +21,8 @@ type fakeThreads struct {
 	touchedModel string
 	touchedLevel string
 	renamed      string
+	checkpoint   string
+	checkpointAt time.Time
 }
 
 func (f *fakeThreads) Create(*aichat.Thread) error               { return nil }
@@ -31,6 +33,10 @@ func (f *fakeThreads) ListByUser(aichat.ListThreadsInput) ([]*aichat.Thread, int
 func (f *fakeThreads) Rename(id, title string) error { f.renamed = title; return nil }
 func (f *fakeThreads) Touch(id string, t time.Time, m, level string) error {
 	f.touched, f.touchedModel, f.touchedLevel = true, m, level
+	return nil
+}
+func (f *fakeThreads) SaveCheckpoint(id, text string, at time.Time) error {
+	f.checkpoint, f.checkpointAt = text, at
 	return nil
 }
 func (f *fakeThreads) Delete(id string) error { return nil }
@@ -343,11 +349,11 @@ func TestService_Stream_HistoryError(t *testing.T) {
 	}
 }
 
-func TestService_BuildHistory_SecondListError(t *testing.T) {
-	ms := &fakeMessages{listErr: errors.New("db"), listErrAfter: 1}
+func TestService_BuildHistory_ListError(t *testing.T) {
+	ms := &fakeMessages{listErr: errors.New("db")}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
 	if _, err := svc.buildHistory("t1", "m", true); err == nil {
-		t.Fatal("expected the second list error")
+		t.Fatal("expected the list error")
 	}
 }
 

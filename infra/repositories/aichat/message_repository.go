@@ -28,6 +28,9 @@ func (r *messageRepository) Create(message *aichat.Message) error {
 
 func (r *messageRepository) ListByThread(input aichat.ListMessagesInput) ([]*aichat.Message, int64, error) {
 	q := r.db.Model(&schema.AIChatMessage{}).Where("thread_id = ?", input.ThreadID)
+	if input.After != nil {
+		q = q.Where("created_at > ?", *input.After)
+	}
 
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

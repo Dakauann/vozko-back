@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 
 	openrouter "github.com/revrost/go-openrouter"
@@ -15,14 +16,32 @@ import (
 	"vozko/infra/ai/openrouterlimit"
 )
 
+var contextOverflowSigns = []string{"maximum context length", "context length", "context_length_exceeded", "context limit", "context window", "prompt is too long", "input is too long", "too many tokens"}
+
 func classified(err error) error {
 	if busy := atSpendingLimit(err); busy != nil {
 		return busy
+	}
+	if overflowsContext(err) {
+		return fmt.Errorf("%w: %w", ai.ErrContextOverflow, err)
 	}
 	if err == nil || errors.Is(err, ai.ErrProviderTransient) || !passingFault(err) {
 		return err
 	}
 	return fmt.Errorf("%w: %w", ai.ErrProviderTransient, err)
+}
+
+func overflowsContext(err error) bool {
+	if err == nil || errors.Is(err, ai.ErrContextOverflow) {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, sign := range contextOverflowSigns {
+		if strings.Contains(message, sign) {
+			return true
+		}
+	}
+	return false
 }
 
 func atSpendingLimit(err error) error {

@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	maxHistoryMessages  = 40
 	maxTitleLen         = 60
 	defaultCopilotModel = "anthropic/claude-sonnet-4"
 )
@@ -192,6 +191,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 		return s.attachScreen(next, thread.ID, emit)
 	}
 	driver.adopt = func(projectID string) error { return s.adopt(thread, projectID) }
+	driver.checkpoint = s.checkpointer(thread.ID)
 	driver.inbox = s.withOpenings(thread.ID, rec, driver, s.inbox(thread.ID, model, sees, rec, emit))
 	sess := &agentloop.Session{History: history, Turn: start.approved, PromptImages: copilot.ImageURLs(start.attachments)}
 	if start.notice {
@@ -221,6 +221,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 		}
 		emit("awaiting_approval", map[string]interface{}{"actionId": pa.ID, "tool": pa.ToolName, "summary": pa.Summary})
 	default:
+		asked := s.askAfterRepeat(out.Halt, sess.History, rec)
 		reply := lastAssistantContent(sess.History)
 		if reply != "" || len(rec.tools) > 0 {
 			m, err := rec.message(thread.ID, reply, model, sess.Turn)
@@ -229,7 +230,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 			}
 			_ = s.messages.Create(m)
 		}
-		if failure := haltFailure(out.Halt); failure != nil {
+		if failure := haltFailure(out.Halt); failure != nil && !asked {
 			emit("error", failure)
 		}
 		emit("done", map[string]interface{}{"content": reply})
@@ -240,6 +241,12 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 		_ = s.threads.Rename(thread.ID, deriveTitle(titleSource(start.content, start.attachments)))
 	}
 	return nil
+}
+
+func (s *Service) checkpointer(threadID string) func(text string) error {
+	return func(text string) error {
+		return s.threads.SaveCheckpoint(threadID, text, time.Now().UTC())
+	}
 }
 
 func (s *Service) workspaceState(ctx context.Context, cc copilot.Context) *readiness.Snapshot {
@@ -324,16 +331,18 @@ func (s *Service) modelLimits(ctx context.Context, model string) ai.ModelInfo {
 }
 
 func (s *Service) buildHistory(threadID, model string, sees bool) ([]ai.Message, error) {
-	_, total, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: 1})
+	thread, err := s.threads.GetByID(threadID)
 	if err != nil {
 		return nil, err
 	}
-	offset := ai.HistoryWindowStart(int(total), maxHistoryMessages)
-	msgs, _, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: maxHistoryMessages, Offset: offset})
+	msgs, _, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, After: thread.CheckpointAt})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ai.Message, 0, len(msgs))
+	out := make([]ai.Message, 0, len(msgs)+1)
+	if thread.Checkpoint != "" {
+		out = append(out, ai.Message{Role: ai.RoleUser, Content: thread.Checkpoint})
+	}
 	for _, m := range msgs {
 		switch m.Role {
 		case aichat.RoleAssistant:

@@ -546,7 +546,7 @@ func TestWhenEveryTabDeclinesTheTurnHearsTheProjectIsNotOpen(t *testing.T) {
 func TestStudioRepliesFinishTheWholeRequestBeforeStopping(t *testing.T) {
 	for _, kind := range []copilot.StudioKind{copilot.StudioVideo, copilot.StudioImage} {
 		prompt := studioPrompt(kind)
-		for _, rule := range []string{"Faça o pedido inteiro nesta resposta", "não vira pendência", "ajusta a tarefa em andamento", "Planeje a peça uma vez"} {
+		for _, rule := range []string{"Faça o pedido inteiro nesta resposta", "não vira pendência", "ajusta a tarefa em andamento", "Planeje a peça uma vez", "Antes da primeira edição"} {
 			if !strings.Contains(prompt, rule) {
 				t.Errorf("the %s studio prompt is missing %q", kind, rule)
 			}

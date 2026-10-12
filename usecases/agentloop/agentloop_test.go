@@ -541,13 +541,13 @@ func TestWithDefaults(t *testing.T) {
 	if d.MaxIterations != 30 || d.NoProgressStop != 5 || d.RepairBudget != 3 ||
 		d.EmptyTurnRetries != 2 || d.MaxHistoryMsgs != 80 || d.MaxTokensPerGen != 24000 ||
 		d.ReasoningMaxTokens != 10000 || d.FinishToolName != "finish" ||
-		d.RepeatedTurnStop != 3 || d.CompactAt != 0.5 || d.KeepRecent != 8 || d.KeepToolImages != 2 ||
+		d.RepeatedTurnStop != 3 || d.CompactKeepTokens != 15_000 || d.KeepToolImages != 2 ||
 		d.ProviderRetries != 3 || d.ProviderRetryBase != time.Second {
 		t.Fatalf("defaults wrong: %+v", d)
 	}
 	in := Config{MaxIterations: 1, NoProgressStop: 1, RepairBudget: 1, EmptyTurnRetries: 1,
 		MaxHistoryMsgs: 1, MaxTokensPerGen: 1, ReasoningMaxTokens: 1, FinishToolName: "fim",
-		RepeatedTurnStop: 1, CompactAt: 0.7, KeepRecent: 1, KeepToolImages: 1,
+		RepeatedTurnStop: 1, CompactKeepTokens: 1, KeepToolImages: 1,
 		ProviderRetries: 1, ProviderRetryBase: time.Millisecond}
 	if out := in.withDefaults(); !reflect.DeepEqual(out, in) {
 		t.Fatalf("populated config must be unchanged, got %+v", out)

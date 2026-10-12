@@ -86,8 +86,7 @@ type Config struct {
 	FinishToolName     string
 	LogPrefix          string
 	ModelLimits        ai.ModelInfo
-	CompactAt          float64
-	KeepRecent         int
+	CompactKeepTokens  int
 	CostCeilingMicros  int64
 	GraceInstruction   string
 	KeepToolImages     int
@@ -123,11 +122,8 @@ func (c Config) withDefaults() Config {
 	if c.FinishToolName == "" {
 		c.FinishToolName = "finish"
 	}
-	if c.CompactAt <= 0 || c.CompactAt >= 1 {
-		c.CompactAt = 0.5
-	}
-	if c.KeepRecent <= 0 {
-		c.KeepRecent = 8
+	if c.CompactKeepTokens <= 0 {
+		c.CompactKeepTokens = defaultCompactKeepTokens
 	}
 	if c.KeepToolImages <= 0 {
 		c.KeepToolImages = 2
@@ -193,10 +189,6 @@ func (c Config) allows(iter int) bool {
 	return c.IterateUntilDone || iter <= c.MaxIterations
 }
 
-func (c Config) contextFull(promptTokens int) bool {
-	window := c.ModelLimits.ContextLength
-	return window > 0 && float64(promptTokens) >= c.CompactAt*float64(window)
-}
 
 type Session struct {
 	History      []ai.Message
@@ -257,8 +249,6 @@ const (
 	reasonCancelled       = "cancelado"
 	reasonHalted          = "interrompido antes da próxima chamada ao modelo"
 	reasonTimeout         = "tempo limite da sessão atingido, o modelo demorou demais para responder (tente novamente ou troque para um modelo mais rápido)"
-	clearedToolResult     = "[resultado antigo removido para liberar espaço; consulte de novo se precisar]"
-	clearableResultChars  = 200
 	truncatedReplyNudge   = "Sua resposta anterior foi cortada pelo limite de saída antes de você agir. Planeje menos e aja em passos menores: uma cena ou um lote de até 8 operações por vez."
 	truncatedCallResult   = "CHAMADA CORTADA: a resposta passou do limite de saída e os argumentos chegaram incompletos, então nada foi executado. Refaça em partes menores (por exemplo, lotes de até 12 operações)."
 	toolImagesNote        = "[Imagens devolvidas pelas ferramentas acima]"
@@ -303,15 +293,16 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	noMutationStreak := 0
 	truncStreak := 0
 	prevTurnSig := ""
-	repeatedTurns := 0
-	lastPromptTokens := 0
+	sameTurns := 0
+	var measured contextMeasure
+	overflows := 0
 
 	frame := sess.Frame
 	if frame == nil {
 		frame = UserRequest
 	}
 	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: frame(prompt), Images: sess.PromptImages})
-	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
+	sess.History = trimHistory(sess.History, cfg.historyCap())
 
 	for iter := 1; cfg.allows(iter); iter++ {
 		if ctx.Err() != nil {
@@ -327,13 +318,16 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		}
 		if inbox, ok := drv.(Inbox); ok {
 			if arrived := inbox.Drain(ctx, sess); len(arrived) > 0 {
-				sess.History = trimHistory(append(sess.History, arrived...), cfg.MaxHistoryMsgs)
+				sess.History = trimHistory(append(sess.History, arrived...), cfg.historyCap())
 			}
 		}
 
 		emit(EventIteration, iterationPayload{N: iter, Max: cfg.MaxIterations, TokensUsed: sess.TokensUsed, TokenBudget: cfg.SessionTokenBudget})
-		if cfg.contextFull(lastPromptTokens) {
-			sess.History = clearOldToolResults(sess.History, cfg.KeepRecent)
+		if ceiling, compacts := cfg.compactionCeiling(); compacts && measured.estimate(drv, sess.History) >= ceiling {
+			if err := e.compact(ctx, drv, cfg, sess); err != nil {
+				return compactionHalt(err)
+			}
+			measured = contextMeasure{}
 		}
 
 		msgs := append(append([]ai.Message(nil), sess.History...),
@@ -344,12 +338,20 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			if ctx.Err() != nil {
 				return Outcome{Kind: OutcomeDone, Valid: false, Summary: sessionEndReason(ctx.Err())}
 			}
+			if _, compacts := cfg.compactionCeiling(); compacts && errors.Is(err, ai.ErrContextOverflow) && overflows < maxOverflowCompactions {
+				overflows++
+				if err := e.compact(ctx, drv, cfg, sess); err != nil {
+					return compactionHalt(err)
+				}
+				measured = contextMeasure{}
+				continue
+			}
 			log.Printf("%s %s%v", cfg.LogPrefix, providerErrPrefix, err)
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: providerErrPrefix + err.Error(), Halt: fmt.Errorf("%w: %w", ErrProviderFailed, err)}
 		}
 		sess.TokensUsed += out.Usage.TotalTokens
 		sess.CostMicros += cfg.costOf(out.Usage)
-		lastPromptTokens = out.Usage.PromptTokens
+		measured = contextMeasure{tokens: out.Usage.PromptTokens + out.Usage.CompletionTokens, upTo: len(sess.History)}
 
 		calls := make([]ai.ToolCall, len(out.ToolCalls))
 		for i, tc := range out.ToolCalls {
@@ -381,12 +383,12 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 				}
 				continue
 			}
-			sess.record(cfg.MaxHistoryMsgs, ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
+			sess.record(cfg.historyCap(), ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
 			return Outcome{Kind: OutcomeIdle, Valid: prog.Valid}
 		}
 		if out.FinishReason == "length" {
 			truncStreak++
-			recordTurn(sess, cfg.MaxHistoryMsgs, out.Message, calls, truncatedResults(len(calls)))
+			recordTurn(sess, cfg.historyCap(), out.Message, calls, truncatedResults(len(calls)))
 			if truncStreak > cfg.EmptyTurnRetries {
 				return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonEmptyTurn, Halt: ErrOutputTruncated}
 			}
@@ -419,7 +421,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 				turnSignature = append(turnSignature, step.Signature)
 			}
 			if step.Pause != nil {
-				recordTurn(sess, cfg.MaxHistoryMsgs, out.Message, calls[:i+1], results[:i+1])
+				recordTurn(sess, cfg.historyCap(), out.Message, calls[:i+1], results[:i+1])
 				return Outcome{Kind: OutcomePaused, Valid: prog.Valid, Summary: step.Pause.Reason, Pause: step.Pause}
 			}
 		}
@@ -456,7 +458,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 			}
 		}
 
-		recordTurn(sess, cfg.MaxHistoryMsgs, out.Message, calls, results)
+		recordTurn(sess, cfg.historyCap(), out.Message, calls, results)
 		attachToolImages(sess, cfg, images)
 
 		if finishHonored {
@@ -494,12 +496,12 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		sort.Strings(turnSignature)
 		turnSig := strings.Join(turnSignature, ",")
 		if turnSig != "" && turnSig == prevTurnSig {
-			repeatedTurns++
-			if repeatedTurns >= cfg.RepeatedTurnStop {
-				return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonRepeatedTurn, Halt: ErrRepeatedTurn}
-			}
+			sameTurns++
 		} else {
-			repeatedTurns = 0
+			sameTurns = 1
+		}
+		if turnSig != "" && sameTurns >= cfg.RepeatedTurnStop {
+			return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonRepeatedTurn, Halt: ErrRepeatedTurn}
 		}
 		prevTurnSig = turnSig
 	}
@@ -525,20 +527,8 @@ func (e *Engine) graceAnswer(ctx context.Context, emit Emit, drv Driver, cfg Con
 	if content == "" {
 		return stop
 	}
-	sess.record(cfg.MaxHistoryMsgs, ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
+	sess.record(cfg.historyCap(), ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
 	return Outcome{Kind: OutcomeIdle, Valid: stop.Valid, Summary: stop.Summary}
-}
-
-func clearOldToolResults(h []ai.Message, keepRecent int) []ai.Message {
-	protectedFrom := len(h) - keepRecent
-	out := make([]ai.Message, len(h))
-	copy(out, h)
-	for i := 0; i < protectedFrom; i++ {
-		if out[i].Role == ai.RoleTool && len(out[i].Content) > clearableResultChars {
-			out[i].Content = clearedToolResult
-		}
-	}
-	return out
 }
 
 const (
@@ -704,7 +694,7 @@ func attachToolImages(sess *Session, cfg Config, images []string) {
 		return
 	}
 	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: toolImagesNote, Images: images})
-	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
+	sess.History = trimHistory(sess.History, cfg.historyCap())
 	kept := 0
 	for i := len(sess.History) - 1; i >= 0; i-- {
 		m := sess.History[i]
@@ -720,7 +710,7 @@ func attachToolImages(sess *Session, cfg Config, images []string) {
 }
 
 func trimHistory(h []ai.Message, max int) []ai.Message {
-	if len(h) <= max {
+	if max <= 0 || len(h) <= max {
 		return h
 	}
 	start := ai.HistoryWindowStart(len(h), max)

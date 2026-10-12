@@ -39,17 +39,18 @@ var ErrFundsExhausted = errors.New("copilot: funds exhausted")
 var ErrNoValidator = errors.New("esta ação não tem verificação prévia e não pode ser proposta")
 
 type Driver struct {
-	cc       copilot.Context
-	model    string
-	registry *Registry
-	access   AccessChecker
-	funds    FundsChecker
-	newID    IDGenerator
-	state    *readiness.Snapshot
-	offered  []tools.Definition
-	inbox    func(context.Context, *agentloop.Session) []ai.Message
-	reattach func(copilot.Context) copilot.Context
-	adopt    func(projectID string) error
+	cc         copilot.Context
+	model      string
+	registry   *Registry
+	access     AccessChecker
+	funds      FundsChecker
+	newID      IDGenerator
+	state      *readiness.Snapshot
+	offered    []tools.Definition
+	inbox      func(context.Context, *agentloop.Session) []ai.Message
+	reattach   func(copilot.Context) copilot.Context
+	adopt      func(projectID string) error
+	checkpoint func(text string) error
 }
 
 const msgProjectUnbound = "o projeto foi criado, mas esta conversa não pôde ser ligada a ele agora, então o editor não entrou nesta resposta. " +
@@ -83,6 +84,13 @@ func (d *Driver) take(res copilot.Result) copilot.Result {
 		d.show(res.Opening.View)
 	}
 	return res
+}
+
+func (d *Driver) SaveCheckpoint(_ string, text string) error {
+	if d.checkpoint == nil {
+		return nil
+	}
+	return d.checkpoint(text)
 }
 
 func (d *Driver) Drain(ctx context.Context, sess *agentloop.Session) []ai.Message {

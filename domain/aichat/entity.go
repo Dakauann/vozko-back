@@ -21,6 +21,8 @@ type Thread struct {
 	ProjectID      string
 	LastMessageAt  *time.Time
 	CostTracked    bool
+	Checkpoint     string
+	CheckpointAt   *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
