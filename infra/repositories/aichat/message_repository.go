@@ -37,11 +37,15 @@ func (r *messageRepository) ListByThread(input aichat.ListMessagesInput) ([]*aic
 		return nil, 0, err
 	}
 
+	page := q.Order("created_at ASC")
+	if input.Limit > 0 {
+		page = page.Limit(input.Limit)
+	}
+	if input.Offset > 0 {
+		page = page.Offset(input.Offset)
+	}
 	var recs []schema.AIChatMessage
-	err := q.Order("created_at ASC").
-		Limit(input.Limit).
-		Offset(input.Offset).
-		Find(&recs).Error
+	err := page.Find(&recs).Error
 	if err != nil {
 		return nil, 0, err
 	}
