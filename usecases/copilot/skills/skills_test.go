@@ -222,3 +222,16 @@ func TestTypographyKeepsTheBriefVoiceAndCleanDarkLetters(t *testing.T) {
 		}
 	}
 }
+
+func TestANewAdPieceOffersGeneratingOrBuildingInTheStudio(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skill, _ := lib.Find("criativo-com-a-marca")
+	for _, rule := range []string{"## Gerar ou montar no Estúdio", "Numa peça nova, antes da primeira geração", "new_studio_project", "ajusto depois"} {
+		if !strings.Contains(skill.Body, rule) {
+			t.Errorf("the brief skill is missing %q", rule)
+		}
+	}
+}
