@@ -50,15 +50,15 @@ func (k ActionKind) Capability() (readiness.Capability, bool) {
 }
 
 type ActionCard struct {
-	Kind               ActionKind        `json:"kind"`
-	Status             *readiness.Status `json:"status,omitempty"`
-	BalanceMicros      int64             `json:"balanceMicros"`
-	SubscriptionActive bool              `json:"subscriptionActive"`
-	Destination        *Destination      `json:"destination,omitempty"`
-	Call               *CallIntent       `json:"call,omitempty"`
-	AdAccountID        string            `json:"adAccountId,omitempty"`
-	Question           *Question         `json:"question,omitempty"`
-}
+	Kind               ActionKind          `json:"kind"`
+	Status             *readiness.Status   `json:"status,omitempty"`
+	BalanceMicros      int64               `json:"balanceMicros"`
+	SubscriptionActive bool                `json:"subscriptionActive"`
+	Destination        *Destination        `json:"destination,omitempty"`
+	Call               *CallIntent         `json:"call,omitempty"`
+	AdAccountID        string              `json:"adAccountId,omitempty"`
+	Questions          []Question          `json:"questions,omitempty"`
+	StudioProject      *StudioProjectOrder `json:"studioProject,omitempty"`}
 
 func NewConnectAdAccountCard() *ActionCard {
 	return &ActionCard{Kind: ActionConnectAdAccount}

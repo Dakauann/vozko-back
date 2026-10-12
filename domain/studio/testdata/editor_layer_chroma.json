@@ -1,0 +1,22 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "a1",
+      "x": 0,
+      "y": 0,
+      "canvas": { "width": 1080, "height": 1080, "background": "#ffffff" },
+      "layers": [
+        {
+          "id": "presenter",
+          "type": "image",
+          "assetId": "media-green-screen",
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.8, "h": 0.6, "rotation": 0, "opacity": 1 },
+          "chromaKey": { "color": "#2fbf4a", "similarity": 0.35, "smoothness": 0.12, "spill": 0.25 },
+          "color": { "exposure": 0.3 }
+        }
+      ]
+    }
+  ]
+}

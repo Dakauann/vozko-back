@@ -1,0 +1,122 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "a1",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "photo",
+          "type": "image",
+          "assetId": "asset-1",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.8,
+            "h": 0.6,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "crop": {
+            "x": 0.1,
+            "y": 0,
+            "w": 0.8,
+            "h": 1
+          },
+          "mask": {
+            "width": 1080,
+            "height": 648,
+            "ops": [
+              {
+                "kind": "stroke",
+                "id": "m1",
+                "mode": "hide",
+                "size": 80,
+                "hardness": 0.5,
+                "opacity": 1,
+                "points": [300, 400, 360.25, 420.5, 420, 455.75]
+              },
+              {
+                "kind": "area",
+                "id": "m2",
+                "mode": "reveal",
+                "opacity": 0.6,
+                "feather": 12,
+                "parts": [
+                  {
+                    "points": [100, 100, 400, 100, 400, 300, 100, 300]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "ink",
+          "type": "paint",
+          "name": "Pintura",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "blendMode": "multiply",
+          "surface": {
+            "width": 1080,
+            "height": 1080,
+            "ops": [
+              {
+                "kind": "stroke",
+                "id": "s1",
+                "mode": "paint",
+                "color": "#e4572e",
+                "size": 24,
+                "hardness": 0.8,
+                "opacity": 1,
+                "pressure": true,
+                "points": [100.25, 200.5, 0.42, 112, 204.75, 0.55, 140, 230, 1]
+              },
+              {
+                "kind": "stroke",
+                "id": "s2",
+                "mode": "erase",
+                "size": 40,
+                "hardness": 0,
+                "opacity": 0.5,
+                "points": [120, 210]
+              },
+              {
+                "kind": "area",
+                "id": "s3",
+                "mode": "paint",
+                "color": "#1d4ed8",
+                "opacity": 0.8,
+                "feather": 0,
+                "invert": true,
+                "parts": [
+                  {
+                    "points": [-20, -20, 600, -20, 600, 500, -20, 500]
+                  },
+                  {
+                    "mode": "subtract",
+                    "points": [200, 200, 300, 200, 250, 300]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

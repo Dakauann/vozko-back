@@ -28,12 +28,13 @@ func NewHandler(svc Service) *Handler {
 }
 
 type GenerateRequest struct {
-	Kind              string             `json:"kind" enums:"image,music,voice,video,cutout,captions,denoise,proxy" example:"music"`
+	Kind              string             `json:"kind" enums:"image,music,voice,sfx,video,cutout,captions,denoise,proxy" example:"music"`
 	Model             string             `json:"model,omitempty" example:"google/lyria-3-clip-preview"`
 	Prompt            string             `json:"prompt,omitempty" example:"Samba leve e acústico para o anúncio de uma cafeteria"`
 	Aspect            string             `json:"aspect,omitempty" enums:"square,portrait,story"`
 	ReferenceMediaIDs []string           `json:"referenceMediaIds,omitempty" maxItems:"16"`
 	Voice             string             `json:"voice,omitempty" example:"alloy"`
+	DurationMS        int                `json:"durationMs,omitempty" minimum:"500" maximum:"22000" example:"1500"`
 	Video             *mediagen.Timeline `json:"video,omitempty"`
 	SourceMediaID     string             `json:"sourceMediaId,omitempty"`
 }
@@ -41,7 +42,7 @@ type GenerateRequest struct {
 func (b GenerateRequest) request(workspaceID string) mediagen.Request {
 	req := mediagen.Request{
 		WorkspaceID: workspaceID, Kind: mediagen.Kind(b.Kind), Model: b.Model, Prompt: b.Prompt, Aspect: mediagen.Aspect(b.Aspect),
-		ReferenceMediaIDs: b.ReferenceMediaIDs, Voice: b.Voice, SourceMediaID: b.SourceMediaID,
+		ReferenceMediaIDs: b.ReferenceMediaIDs, Voice: b.Voice, DurationMS: b.DurationMS, SourceMediaID: b.SourceMediaID,
 	}
 	if b.Video != nil {
 		req.Video = *b.Video
@@ -57,18 +58,19 @@ type ModelResponse struct {
 
 type JobResponse struct {
 	ID                string             `json:"id"`
-	Kind              string             `json:"kind" enums:"image,music,voice,video,cutout,captions,denoise,proxy"`
+	Kind              string             `json:"kind" enums:"image,music,voice,sfx,video,cutout,captions,denoise,proxy"`
 	Status            string             `json:"status" enums:"queued,running,settling,done,failed"`
 	Prompt            string             `json:"prompt,omitempty"`
 	Aspect            string             `json:"aspect,omitempty" enums:"square,portrait,story"`
 	ReferenceMediaIDs []string           `json:"referenceMediaIds"`
 	Voice             string             `json:"voice,omitempty"`
+	DurationMS        int                `json:"durationMs,omitempty"`
 	Video             *mediagen.Timeline `json:"video,omitempty"`
 	SourceMediaID     string             `json:"sourceMediaId,omitempty"`
 	MediaID           string             `json:"mediaId,omitempty"`
 	MediaURL          string             `json:"mediaUrl,omitempty"`
 	Model             string             `json:"model,omitempty"`
-	FailureCode       string             `json:"failureCode,omitempty" enums:"generation_failed,storage_failed,timed_out,enqueue_failed,insufficient_funds,reference_unavailable,cost_unreported"`
+	FailureCode       string             `json:"failureCode,omitempty" enums:"generation_failed,storage_failed,timed_out,enqueue_failed,insufficient_funds,reference_unavailable,cost_unreported,provider_busy"`
 	CreatedAt         time.Time          `json:"createdAt"`
 	UpdatedAt         time.Time          `json:"updatedAt"`
 }
@@ -82,6 +84,7 @@ func PresentJob(job *mediagen.Job) JobResponse {
 		Aspect:            string(job.Aspect),
 		ReferenceMediaIDs: append([]string{}, job.ReferenceMediaIDs...),
 		Voice:             job.Voice,
+		DurationMS:        job.DurationMS,
 		SourceMediaID:     job.SourceMediaID,
 		FailureCode:       string(job.FailureCode),
 		CreatedAt:         job.CreatedAt,
@@ -98,10 +101,10 @@ func PresentJob(job *mediagen.Job) JobResponse {
 }
 
 // @Summary		Modelos de geração de mídia
-// @Description	Modelos que geram o tipo pedido (kind: image, music ou voice), do mais usado para o menos usado segundo o provedor; default marca o recomendado. O id escolhido vai no campo model de POST /media/generations. Vídeos são montados pelo Vozko e não têm modelo. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nada desse tipo pode ser pedido.
+// @Description	Modelos que geram o tipo pedido (kind: image, music, voice ou sfx), do mais usado para o menos usado segundo o provedor; default marca o recomendado. O id escolhido vai no campo model de POST /media/generations. Vídeos são montados pelo Vozko e não têm modelo. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nada desse tipo pode ser pedido.
 // @Tags			Mídia gerada
 // @Produce		json
-// @Param			kind	query		string	true	"tipo de mídia"	Enums(image, music, voice)
+// @Param			kind	query		string	true	"tipo de mídia"	Enums(image, music, voice, sfx)
 // @Success		200		{array}		ModelResponse
 // @Failure		503		{object}	response.ErrorResponse
 // @Security		BearerAuth
@@ -125,7 +128,7 @@ func (h *Handler) Models(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Gerar mídia com IA
-// @Description	Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo), denoise (áudio limpo de um áudio ou vídeo) e proxy (cópia de edição de um vídeo em até 720p com um quadro chave a cada meio segundo, fora da biblioteca; uma cópia pronta da mesma origem é devolvida de novo sem reprocessar): sourceMediaId da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música e locução são cobradas do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.
+// @Description	Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind sfx: prompt descrevendo o efeito sonoro (whoosh, impacto, riser, clique, ambiente), model e durationMs de 500 a 22000; o efeito chega sem silêncio nas pontas e nunca passa de durationMs. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo), denoise (áudio limpo de um áudio ou vídeo) e proxy (cópia de edição de um vídeo em até 720p com um quadro chave a cada meio segundo, fora da biblioteca; uma cópia pronta da mesma origem é devolvida de novo sem reprocessar): sourceMediaId da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música, locução e efeito sonoro são cobrados do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.
 // @Tags			Mídia gerada
 // @Accept			json
 // @Produce		json

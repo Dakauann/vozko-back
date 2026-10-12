@@ -1,0 +1,254 @@
+{
+  "fonts": [
+    {
+      "id": "inter",
+      "family": "Inter",
+      "category": "sans"
+    },
+    {
+      "id": "roboto",
+      "family": "Roboto",
+      "category": "sans"
+    },
+    {
+      "id": "open-sans",
+      "family": "Open Sans",
+      "category": "sans"
+    },
+    {
+      "id": "montserrat",
+      "family": "Montserrat",
+      "category": "sans"
+    },
+    {
+      "id": "poppins",
+      "family": "Poppins",
+      "category": "sans"
+    },
+    {
+      "id": "lato",
+      "family": "Lato",
+      "category": "sans"
+    },
+    {
+      "id": "nunito",
+      "family": "Nunito",
+      "category": "sans"
+    },
+    {
+      "id": "raleway",
+      "family": "Raleway",
+      "category": "sans"
+    },
+    {
+      "id": "oswald",
+      "family": "Oswald",
+      "category": "display"
+    },
+    {
+      "id": "playfair-display",
+      "family": "Playfair Display",
+      "category": "serif"
+    },
+    {
+      "id": "merriweather",
+      "family": "Merriweather",
+      "category": "serif"
+    },
+    {
+      "id": "bebas-neue",
+      "family": "Bebas Neue",
+      "category": "display"
+    },
+    {
+      "id": "dm-sans",
+      "family": "DM Sans",
+      "category": "sans"
+    },
+    {
+      "id": "work-sans",
+      "family": "Work Sans",
+      "category": "sans"
+    },
+    {
+      "id": "manrope",
+      "family": "Manrope",
+      "category": "sans"
+    },
+    {
+      "id": "rubik",
+      "family": "Rubik",
+      "category": "sans"
+    },
+    {
+      "id": "space-grotesk",
+      "family": "Space Grotesk",
+      "category": "sans"
+    },
+    {
+      "id": "outfit",
+      "family": "Outfit",
+      "category": "sans"
+    },
+    {
+      "id": "plus-jakarta-sans",
+      "family": "Plus Jakarta Sans",
+      "category": "sans"
+    },
+    {
+      "id": "josefin-sans",
+      "family": "Josefin Sans",
+      "category": "sans"
+    },
+    {
+      "id": "lora",
+      "family": "Lora",
+      "category": "serif"
+    },
+    {
+      "id": "eb-garamond",
+      "family": "EB Garamond",
+      "category": "serif"
+    },
+    {
+      "id": "libre-baskerville",
+      "family": "Libre Baskerville",
+      "category": "serif"
+    },
+    {
+      "id": "cormorant-garamond",
+      "family": "Cormorant Garamond",
+      "category": "serif"
+    },
+    {
+      "id": "fraunces",
+      "family": "Fraunces",
+      "category": "serif"
+    },
+    {
+      "id": "dm-serif-display",
+      "family": "DM Serif Display",
+      "category": "serif"
+    },
+    {
+      "id": "anton",
+      "family": "Anton",
+      "category": "display"
+    },
+    {
+      "id": "archivo-black",
+      "family": "Archivo Black",
+      "category": "display"
+    },
+    {
+      "id": "alfa-slab-one",
+      "family": "Alfa Slab One",
+      "category": "display"
+    },
+    {
+      "id": "bungee",
+      "family": "Bungee",
+      "category": "display"
+    },
+    {
+      "id": "righteous",
+      "family": "Righteous",
+      "category": "display"
+    },
+    {
+      "id": "lobster",
+      "family": "Lobster",
+      "category": "display"
+    },
+    {
+      "id": "titan-one",
+      "family": "Titan One",
+      "category": "display"
+    },
+    {
+      "id": "creepster",
+      "family": "Creepster",
+      "category": "display"
+    },
+    {
+      "id": "abril-fatface",
+      "family": "Abril Fatface",
+      "category": "display"
+    },
+    {
+      "id": "fredoka",
+      "family": "Fredoka",
+      "category": "display"
+    },
+    {
+      "id": "staatliches",
+      "family": "Staatliches",
+      "category": "display"
+    },
+    {
+      "id": "pacifico",
+      "family": "Pacifico",
+      "category": "handwriting"
+    },
+    {
+      "id": "dancing-script",
+      "family": "Dancing Script",
+      "category": "handwriting"
+    },
+    {
+      "id": "caveat",
+      "family": "Caveat",
+      "category": "handwriting"
+    },
+    {
+      "id": "great-vibes",
+      "family": "Great Vibes",
+      "category": "handwriting"
+    },
+    {
+      "id": "kaushan-script",
+      "family": "Kaushan Script",
+      "category": "handwriting"
+    },
+    {
+      "id": "sacramento",
+      "family": "Sacramento",
+      "category": "handwriting"
+    },
+    {
+      "id": "amatic-sc",
+      "family": "Amatic SC",
+      "category": "handwriting"
+    },
+    {
+      "id": "shadows-into-light",
+      "family": "Shadows Into Light",
+      "category": "handwriting"
+    },
+    {
+      "id": "jetbrains-mono",
+      "family": "JetBrains Mono",
+      "category": "mono"
+    },
+    {
+      "id": "space-mono",
+      "family": "Space Mono",
+      "category": "mono"
+    },
+    {
+      "id": "ibm-plex-mono",
+      "family": "IBM Plex Mono",
+      "category": "mono"
+    },
+    {
+      "id": "roboto-mono",
+      "family": "Roboto Mono",
+      "category": "mono"
+    },
+    {
+      "id": "dm-mono",
+      "family": "DM Mono",
+      "category": "mono"
+    }
+  ]
+}

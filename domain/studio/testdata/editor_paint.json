@@ -1,0 +1,261 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "a1",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "card",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.3,
+            "h": 0.3,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6",
+          "pattern": {
+            "source": "preset",
+            "presetId": "dots",
+            "color": "#111111",
+            "background": "",
+            "tile": "hex-row",
+            "size": 32,
+            "opacity": 1,
+            "spacing": {
+              "x": 4,
+              "y": 4
+            },
+            "origin": {
+              "x": 0.25,
+              "y": 0
+            },
+            "angle": 15,
+            "blendMode": "multiply"
+          }
+        },
+        {
+          "id": "photo",
+          "type": "image",
+          "assetId": "m-1",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.6,
+            "h": 0.6,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "gradientMap": {
+            "stops": [
+              {
+                "at": 0,
+                "color": "#1b1464"
+              },
+              {
+                "at": 0.5,
+                "color": "#e8505b"
+              },
+              {
+                "at": 1,
+                "color": "#ffd166ff"
+              }
+            ],
+            "intensity": 0.8,
+            "reverse": true,
+            "interpolation": "perceptual"
+          },
+          "strokes": [
+            {
+              "type": "solid",
+              "color": "#ffffff",
+              "opacity": 1,
+              "width": 12,
+              "align": "outside"
+            }
+          ],
+          "effects": [
+            {
+              "id": "fx-1",
+              "type": "drop-shadow",
+              "color": "#000000",
+              "opacity": 0.4,
+              "x": 0,
+              "y": 6,
+              "blur": 12,
+              "spread": 0
+            }
+          ]
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.8,
+            "h": 0.12,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "text": "Oferta",
+          "fontId": "inter",
+          "fontSize": 0.032,
+          "fontWeight": 400,
+          "align": "center",
+          "lineHeight": 1.2,
+          "fills": [
+            {
+              "type": "solid",
+              "color": "#ffffff",
+              "opacity": 1
+            },
+            {
+              "type": "gradient",
+              "gradient": {
+                "from": "#ffffff00",
+                "to": "#ffd16680",
+                "angle": 90
+              },
+              "opacity": 0.6,
+              "blendMode": "overlay"
+            },
+            {
+              "type": "pattern",
+              "pattern": {
+                "source": "asset",
+                "assetId": "m-2",
+                "size": 64,
+                "opacity": 1
+              },
+              "opacity": 1,
+              "hidden": true
+            }
+          ],
+          "strokes": [
+            {
+              "type": "solid",
+              "color": "#e4003a",
+              "opacity": 1,
+              "width": 6,
+              "align": "outside",
+              "dashArray": [
+                2,
+                1
+              ],
+              "lineJoin": "round"
+            },
+            {
+              "type": "gradient",
+              "gradient": {
+                "kind": "radial",
+                "from": "#000000",
+                "to": "#333333",
+                "angle": 0,
+                "cx": 0.5,
+                "cy": 0.5,
+                "radius": 1
+              },
+              "opacity": 1,
+              "width": 14,
+              "align": "inside"
+            }
+          ],
+          "effects": [
+            {
+              "id": "glow",
+              "type": "outer-glow",
+              "color": "#ffffff",
+              "opacity": 0.75,
+              "x": 0,
+              "y": 0,
+              "blur": 16,
+              "spread": 0
+            },
+            {
+              "id": "inner",
+              "type": "inner-glow",
+              "color": "#ffffff",
+              "opacity": 0.6,
+              "x": 0,
+              "y": 0,
+              "blur": 10,
+              "spread": 0,
+              "blendMode": "screen",
+              "source": "center"
+            },
+            {
+              "id": "drop",
+              "type": "drop-shadow",
+              "color": "#000000",
+              "opacity": 0.4,
+              "x": 0,
+              "y": 6,
+              "blur": 12,
+              "spread": -3,
+              "showBehind": true
+            },
+            {
+              "id": "carve",
+              "type": "inner-shadow",
+              "color": "#000000",
+              "opacity": 0.35,
+              "x": 0,
+              "y": 2,
+              "blur": 6,
+              "spread": 0
+            }
+          ]
+        },
+        {
+          "id": "star",
+          "type": "icon",
+          "iconId": "star",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.2,
+            "h": 0.2,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fills": [
+            {
+              "type": "pattern",
+              "pattern": {
+                "source": "preset",
+                "presetId": "dots",
+                "color": "#111111",
+                "background": "",
+                "tile": "grid",
+                "size": 32,
+                "opacity": 1
+              },
+              "opacity": 1
+            }
+          ],
+          "strokes": [
+            {
+              "type": "solid",
+              "color": "#000000",
+              "opacity": 0.5,
+              "width": 3,
+              "align": "outside"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

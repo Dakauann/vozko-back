@@ -19,6 +19,12 @@ func CleanAudio(ctx context.Context, raw []byte) ([]byte, error) {
 }
 
 func encodeAudio(ctx context.Context, raw []byte, filters string) ([]byte, error) {
+	return encodeVerifiedAudio(ctx, raw, filters, anyEncodedAudio)
+}
+
+func anyEncodedAudio(context.Context, string) error { return nil }
+
+func encodeVerifiedAudio(ctx context.Context, raw []byte, filters string, verify func(ctx context.Context, path string) error) ([]byte, error) {
 	dir, cleanup, err := workDir()
 	if err != nil {
 		return nil, err
@@ -40,6 +46,9 @@ func encodeAudio(ctx context.Context, raw []byte, filters string) ([]byte, error
 		"-movflags", "+faststart",
 		"-y", out,
 	); err != nil {
+		return nil, err
+	}
+	if err := verify(ctx, out); err != nil {
 		return nil, err
 	}
 	return readOutput(out)

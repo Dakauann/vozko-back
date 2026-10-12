@@ -1,0 +1,184 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "landscape",
+    "background": "#000000"
+  },
+  "durationMs": 6000,
+  "tracks": [
+    {
+      "id": "generated",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "price-table",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.6,
+            "h": 0.5,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "price-table-layer",
+            "type": "table",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "table": {
+              "columns": [
+                {
+                  "width": 2,
+                  "align": "left"
+                },
+                {
+                  "width": 1,
+                  "align": "right"
+                },
+                {
+                  "width": 1,
+                  "align": "center"
+                }
+              ],
+              "rows": [
+                [
+                  {
+                    "text": "Plano"
+                  },
+                  {
+                    "text": "Preço"
+                  },
+                  {
+                    "text": "Usuários"
+                  }
+                ],
+                [
+                  {
+                    "text": "Básico",
+                    "runs": [
+                      {
+                        "start": 0,
+                        "end": 6,
+                        "fontWeight": 700,
+                        "fill": "#2563eb"
+                      }
+                    ]
+                  },
+                  {
+                    "text": "R$ 49,90"
+                  },
+                  {
+                    "text": "3"
+                  }
+                ],
+                [
+                  {
+                    "text": "Pro\nmais vendido",
+                    "runs": [
+                      {
+                        "start": 4,
+                        "end": 16,
+                        "italic": true,
+                        "caps": true
+                      }
+                    ]
+                  },
+                  {
+                    "text": "R$ 99,90"
+                  },
+                  {
+                    "text": "10"
+                  }
+                ],
+                [
+                  {
+                    "text": "Empresa"
+                  },
+                  {
+                    "text": ""
+                  },
+                  {
+                    "text": "ilimitado"
+                  }
+                ]
+              ],
+              "header": true,
+              "style": {
+                "fontId": "inter",
+                "fontSize": 0.06,
+                "lineHeight": 1.25,
+                "weight": 400,
+                "textColor": "#ffffff",
+                "fill": "#00000000",
+                "headerFill": "#ffffff",
+                "headerText": "#111111",
+                "headerWeight": 700,
+                "banding": true,
+                "bandFill": "#ffffff14",
+                "borders": "all",
+                "borderColor": "#ffffff40",
+                "borderWidth": 0.004,
+                "padding": 0.6
+              }
+            }
+          }
+        },
+        {
+          "id": "scan-me",
+          "type": "overlay",
+          "startMs": 3000,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.6,
+            "h": 0.5,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "scan-me-layer",
+            "type": "qr",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "qr": {
+              "link": {
+                "kind": "shortLink",
+                "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+                "url": "https://vzk.to/aB3dE9"
+              },
+              "ecc": "M",
+              "quietZone": 4,
+              "dark": "#111111",
+              "light": "#ffffff"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

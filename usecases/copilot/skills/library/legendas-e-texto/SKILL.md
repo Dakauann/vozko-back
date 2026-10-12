@@ -1,5 +1,6 @@
 ---
 name: legendas-e-texto
+surface: studio
 description: Como legendar a fala e escrever textos na tela no Estúdio (gerar legendas pela fila, estilo para vídeos curtos, posição segura, regras de leitura profissionais, contraste e revisão); carregue antes de legendar ou pôr texto em vídeo ou imagem.
 ---
 
@@ -9,11 +10,12 @@ description: Como legendar a fala e escrever textos na tela no Estúdio (gerar l
 1. studio_start_job com kind captions e o clip_id do clipe com fala (vídeo ou áudio). Ele vai para a fila na hora; continue editando.
 2. Quando ficar pronto, o editor cria sozinho uma faixa de legendas. Confira com studio_read.
 3. Se o editor estava fechado, pegue o media_id do arquivo de legendas em studio_jobs e use add_captions com esse media_id e o clip_id da fala.
+4. As legendas geradas já seguem a fala: cada frase fecha a sua legenda, frases longas quebram na vírgula ou na pausa de quem fala, e cada legenda tem até 2 linhas de 22 caracteres com a quebra de linha já no lugar certo. Não refaça a divisão; só corrija o texto.
 
 ## Estilo para vídeos curtos (Reels, TikTok, Shorts)
 - De 1 a 4 palavras por legenda, em fonte sem serifa e forte (font_weight 700 ou 800).
 - Tamanho de 50 a 70 px numa largura de 1080. Como font_size é fração da altura: cerca de 0,03 no 9:16, 0,045 no 4:5 e 0,055 no 1:1.
-- Branco com contorno escuro (stroke #000000, stroke_width de 4 a 6), ou caixa atrás, ou sombra translúcida (#00000080, blur perto de 20% do tamanho da letra). Sombra preta opaca e grande vira mancha.
+- Branco com contorno escuro (stroke #000000, stroke_width de 4 a 6, pelo menos 5% da letra), ou caixa atrás, ou sombra translúcida (#00000080, blur perto de 20% e y perto de 6% do tamanho da letra). O contorno entra na medida de contraste, a sombra não. Sombra preta opaca e grande vira mancha.
 - Mude todas de uma vez com update_clip e clip_ids (os ids da faixa de legendas em studio_read).
 
 ## Posição
@@ -30,10 +32,12 @@ description: Como legendar a fala e escrever textos na tela no Estúdio (gerar l
 ## Texto na tela
 - Uma ideia por texto e títulos com até 7 palavras; frases com até 5 palavras na abertura do vídeo.
 - Tempo na tela: o tempo de leitura (cerca de 3 palavras por segundo) mais 0,5 a 1 s. A checagem automática avisa quando falta tempo.
-- Contraste de pelo menos 4,5:1 com o fundo real (3:1 em títulos grandes). Sobre vídeo: contorno, caixa ou sombra translúcida.
+- Contraste de pelo menos 4,5:1 com o fundo real (3:1 em texto grande: a partir de 4,5% da altura do quadro, ou 3,5% em peso 700 ou mais). Sobre vídeo, vale o pior quadro atrás do texto: contorno, caixa ou véu, e a sombra translúcida como apoio.
 - Estilos prontos: headline, caption, cta, lowerThird e tag. Nome e cargo em lowerThird ficam 3 s ou mais.
 - O texto da tela não repete palavra por palavra a legenda ao mesmo tempo; um complementa o outro.
 - Português é mais longo que o inglês: deixe 30% de folga na caixa.
+- Números que contam ("0 a 10.000 clientes") são um contador (set_counter) no clipe de texto, com o separador do idioma do público; o número final fica parado tempo bastante para ser lido.
+- Texto em curva ou em volta de um selo usa set_text_path; mantenha frases curtas, porque letras em curva se leem mais devagar.
 
 ## Conferir
 studio_look em 3 a 6 momentos com fala: o texto cabe, não cobre rostos nem o produto e fica fora das áreas da interface. Corrija os erros do campo checks de cada studio_edit_video.

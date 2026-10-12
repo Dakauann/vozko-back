@@ -1,0 +1,78 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "landscape", "background": "#101010" },
+  "durationMs": 4000,
+  "tracks": [
+    {
+      "id": "footage",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "shot",
+          "type": "video",
+          "assetId": "m-video",
+          "startMs": 0,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+        }
+      ]
+    },
+    {
+      "id": "adjust",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "grade",
+          "type": "effect",
+          "name": "Look e câmera",
+          "startMs": 0,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 300,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 0.9 },
+          "color": {
+            "contrast": 15,
+            "saturation": -10,
+            "curves": { "master": [{ "x": 0, "y": 0.05 }, { "x": 0.5, "y": 0.45 }, { "x": 1, "y": 0.95 }] },
+            "hsl": { "hue": 30, "width": 40, "softness": 30, "saturation": 20 },
+            "lut": { "assetId": "media-look", "intensity": 0.6 }
+          },
+          "gradientMap": { "stops": [{ "at": 0, "color": "#1b1464" }, { "at": 1, "color": "#ffd166" }], "intensity": 0.2 },
+          "blur": 2,
+          "camera": { "panX": 0.1, "panY": -0.05, "zoom": 1.2, "rotation": 3 },
+          "motionBlur": true,
+          "keyframes": {
+            "exposure": [
+              { "atMs": 0, "value": -0.5, "easing": "easeOut" },
+              { "atMs": 1500, "value": 0.3, "easing": "linear" }
+            ],
+            "blur": [
+              { "atMs": 0, "value": 6, "easing": "easeOut" },
+              { "atMs": 800, "value": 0, "easing": "linear" }
+            ],
+            "cameraZoom": [
+              { "atMs": 0, "value": 1, "easing": "easeInOut" },
+              { "atMs": 2000, "value": 1.6, "easing": "linear" }
+            ],
+            "cameraRotation": [
+              { "atMs": 0, "value": 0, "easing": "linear" },
+              { "atMs": 4000, "value": 8, "easing": "linear" }
+            ]
+          },
+          "masks": [
+            { "id": "focus", "shape": "ellipse", "mode": "add", "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "rotation": 0, "feather": 0.2, "expansion": 0, "opacity": 1 }
+          ],
+          "vfx": [{ "id": "edge", "kind": "vignette", "seed": 0 }]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,255 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "landscape",
+    "background": "#000000"
+  },
+  "durationMs": 2000,
+  "tracks": [
+    {
+      "id": "footage",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "shot",
+          "type": "video",
+          "assetId": "m-1",
+          "startMs": 0,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "trackers": [
+            {
+              "id": "pt-eye",
+              "name": "Olho",
+              "frameWidth": 1920,
+              "frameHeight": 1080,
+              "size": 0.06,
+              "referenceMs": 133,
+              "samples": [
+                {
+                  "atMs": 0,
+                  "x": 0.4,
+                  "y": 0.45,
+                  "confidence": 0.99
+                },
+                {
+                  "atMs": 33,
+                  "x": 0.403,
+                  "y": 0.45168,
+                  "confidence": 0.98
+                },
+                {
+                  "atMs": 67,
+                  "x": 0.406,
+                  "y": 0.45182,
+                  "confidence": 0.97
+                },
+                {
+                  "atMs": 100,
+                  "x": 0.409,
+                  "y": 0.45028,
+                  "confidence": 0.96
+                },
+                {
+                  "atMs": 133,
+                  "x": 0.412,
+                  "y": 0.44849,
+                  "confidence": 0.95
+                },
+                {
+                  "atMs": 167,
+                  "x": 0.415,
+                  "y": 0.44808,
+                  "confidence": 0.94
+                },
+                {
+                  "atMs": 200,
+                  "x": 0.418,
+                  "y": 0.44944,
+                  "confidence": 0.93
+                },
+                {
+                  "atMs": 233,
+                  "x": 0.421,
+                  "y": 0.45131,
+                  "confidence": 0.92
+                },
+                {
+                  "atMs": 267,
+                  "x": 0.424,
+                  "y": 0.45198,
+                  "confidence": 0.91
+                },
+                {
+                  "atMs": 300,
+                  "x": 0.427,
+                  "y": 0.45082,
+                  "confidence": 0.9
+                }
+              ]
+            },
+            {
+              "id": "pt-ear",
+              "frameWidth": 1920,
+              "frameHeight": 1080,
+              "size": 0.05,
+              "referenceMs": 0,
+              "samples": [
+                {
+                  "atMs": 0,
+                  "x": 0.6,
+                  "y": 0.47,
+                  "confidence": 0.99
+                },
+                {
+                  "atMs": 33,
+                  "x": 0.602,
+                  "y": 0.469,
+                  "confidence": 0.98
+                },
+                {
+                  "atMs": 67,
+                  "x": 0.604,
+                  "y": 0.468,
+                  "confidence": 0.97
+                },
+                {
+                  "atMs": 100,
+                  "x": 0.606,
+                  "y": 0.467,
+                  "confidence": 0.96
+                },
+                {
+                  "atMs": 133,
+                  "x": 0.608,
+                  "y": 0.466,
+                  "confidence": 0.95
+                },
+                {
+                  "atMs": 167,
+                  "x": 0.61,
+                  "y": 0.465,
+                  "confidence": 0.94
+                },
+                {
+                  "atMs": 200,
+                  "x": 0.612,
+                  "y": 0.464,
+                  "confidence": 0.93
+                },
+                {
+                  "atMs": 233,
+                  "x": 0.614,
+                  "y": 0.463,
+                  "confidence": 0.92
+                },
+                {
+                  "atMs": 267,
+                  "x": 0.616,
+                  "y": 0.462,
+                  "confidence": 0.91
+                },
+                {
+                  "atMs": 300,
+                  "x": 0.618,
+                  "y": 0.461,
+                  "confidence": 0.9
+                }
+              ]
+            }
+          ],
+          "stabilize": {
+            "trackerId": "pt-eye",
+            "secondTrackerId": "pt-ear",
+            "rotation": true,
+            "scale": true,
+            "smoothMs": 600,
+            "zoom": 1.18
+          }
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "tag",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.55,
+            "y": 0.4,
+            "w": 0.3,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "tag-text",
+            "type": "text",
+            "text": "Aqui",
+            "fontId": "inter",
+            "fontSize": 0.06,
+            "fill": "#ffffff",
+            "align": "center",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            }
+          },
+          "parentId": "shot",
+          "parentTracker": "pt-eye"
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "rig",
+          "type": "null",
+          "startMs": 0,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.1,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "parentId": "shot",
+          "parentTracker": "pt-ear"
+        }
+      ]
+    }
+  ]
+}

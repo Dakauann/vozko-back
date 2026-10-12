@@ -66,27 +66,38 @@ func (c *Client) download(ctx context.Context, url string) ([]byte, error) {
 	return bounded(res.Body)
 }
 
-func (c *Client) remove(ctx context.Context, image []byte) ([]byte, error) {
+func removalForm(model string, image []byte) (*bytes.Buffer, string, error) {
+	if model != Model {
+		return nil, "", fmt.Errorf("%w: rembg must be asked for %s, not %q", mediagen.ErrGenerationFailed, Model, model)
+	}
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	if err := form.WriteField("model", Model); err != nil {
-		return nil, err
+	if err := form.WriteField("model", model); err != nil {
+		return nil, "", err
 	}
 	part, err := form.CreateFormFile("file", "source")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if _, err := part.Write(image); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := form.Close(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/remove", &body)
+	return &body, form.FormDataContentType(), nil
+}
+
+func (c *Client) remove(ctx context.Context, image []byte) ([]byte, error) {
+	body, contentType, err := removalForm(Model, image)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", form.FormDataContentType())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/remove", body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
 	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: rembg unreachable: %v", mediagen.ErrGenerationFailed, err)

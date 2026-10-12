@@ -56,11 +56,15 @@ func (a *TextAnimator) issue() string {
 	return ""
 }
 
+func (c Clip) animatesText() bool {
+	return c.Type == ClipOverlay && c.Layer != nil && c.Layer.Type == LayerText
+}
+
 func (c Clip) textAnimationIssue() string {
 	if c.TextIn == nil && c.TextOut == nil {
 		return ""
 	}
-	if c.Type != ClipOverlay || c.Layer == nil || c.Layer.Type != LayerText {
+	if !c.animatesText() {
 		return CodeInvalid
 	}
 	if code := c.TextIn.issue(); code != "" {

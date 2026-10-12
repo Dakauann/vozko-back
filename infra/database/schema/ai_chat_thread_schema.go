@@ -8,16 +8,18 @@ import (
 )
 
 type AIChatThread struct {
-	ID            string         `gorm:"primaryKey;type:text"`
-	WorkspaceID   string         `gorm:"type:uuid;not null;index:idx_chat_thread_ws_user,priority:1"`
-	UserID        string         `gorm:"type:uuid;not null;index:idx_chat_thread_ws_user,priority:2"`
-	Title         string         `gorm:"type:text"`
-	Model         string         `gorm:"type:text"`
-	LastMessageAt *time.Time     `gorm:"type:timestamptz;index:idx_chat_thread_ws_user,priority:3,sort:desc"`
-	CostTracked   bool           `gorm:"not null;default:false"`
-	CreatedAt     time.Time      `gorm:"autoCreateTime"`
-	UpdatedAt     time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt     gorm.DeletedAt `gorm:"index"`
+	ID             string         `gorm:"primaryKey;type:text"`
+	WorkspaceID    string         `gorm:"type:uuid;not null;index:idx_chat_thread_ws_user,priority:1"`
+	UserID         string         `gorm:"type:uuid;not null;index:idx_chat_thread_ws_user,priority:2"`
+	Title          string         `gorm:"type:text"`
+	Model          string         `gorm:"type:text"`
+	ReasoningLevel string         `gorm:"type:text;not null;default:''"`
+	ProjectID      *string        `gorm:"type:uuid"`
+	LastMessageAt  *time.Time     `gorm:"type:timestamptz;index:idx_chat_thread_ws_user,priority:3,sort:desc"`
+	CostTracked    bool           `gorm:"not null;default:false"`
+	CreatedAt      time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt      time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
 }
 
 func (AIChatThread) TableName() string {

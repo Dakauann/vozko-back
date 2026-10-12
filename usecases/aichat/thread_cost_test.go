@@ -30,7 +30,7 @@ func (c *costThreads) ListByUser(aichat.ListThreadsInput) ([]*aichat.Thread, int
 	return nil, 0, nil
 }
 func (c *costThreads) Rename(string, string) error           { return nil }
-func (c *costThreads) Touch(string, time.Time, string) error { return nil }
+func (c *costThreads) Touch(string, time.Time, string, string) error { return nil }
 func (c *costThreads) Delete(string) error                   { return nil }
 
 type ledger struct {

@@ -1,5 +1,6 @@
 ---
 name: canvas-design
+surface: studio
 description: Create beautiful visual art on an artboard of the Estúdio image editor using design philosophy. You should use this skill when the user asks to create a poster, piece of art, design, or other static piece. Create original visual designs, never copying existing artists' work to avoid copyright violations.
 license: Apache 2.0, complete terms in LICENSE.txt. Modified by Vozko for the Estúdio editor and Elo's tools; every change is listed in NOTICE.md.
 ---

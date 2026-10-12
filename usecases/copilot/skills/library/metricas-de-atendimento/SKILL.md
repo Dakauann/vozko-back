@@ -1,5 +1,6 @@
 ---
 name: metricas-de-atendimento
+surface: panel
 description: Quais métricas de atendimento importam, referências de mercado para WhatsApp e como transformar os números em ações; carregue antes de analisar desempenho da equipe ou dos agentes.
 ---
 

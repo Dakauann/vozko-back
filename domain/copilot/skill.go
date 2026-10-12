@@ -13,14 +13,34 @@ var (
 	ErrSkillDescription = errors.New("copilot skill: description is required")
 	ErrSkillBody        = errors.New("copilot skill: body is required")
 	ErrSkillDash        = errors.New("copilot skill: em and en dashes are not allowed")
+	ErrSkillSurface     = errors.New("copilot skill: surface must be empty, studio or panel")
 )
 
 var skillName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+type SkillSurface string
+
+const (
+	SkillEverywhere SkillSurface = ""
+	SkillStudioOnly SkillSurface = "studio"
+	SkillPanelOnly  SkillSurface = "panel"
+)
 
 type Skill struct {
 	Name        string
 	Description string
 	Body        string
+	Surface     SkillSurface
+}
+
+func (s Skill) OfferedOn(view View) bool {
+	switch s.Surface {
+	case SkillStudioOnly:
+		return view.OnStudio()
+	case SkillPanelOnly:
+		return !view.OnStudio()
+	}
+	return true
 }
 
 func (s Skill) Title() string {
@@ -42,6 +62,8 @@ func (s Skill) Validate() error {
 		return ErrSkillBody
 	case shared.HasLongDash(s.Description + s.Body):
 		return ErrSkillDash
+	case s.Surface != SkillEverywhere && s.Surface != SkillStudioOnly && s.Surface != SkillPanelOnly:
+		return ErrSkillSurface
 	}
 	return nil
 }

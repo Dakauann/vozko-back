@@ -1,0 +1,79 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#000000" },
+  "durationMs": 4000,
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "photo",
+          "type": "image",
+          "assetId": "m-1",
+          "startMs": 0,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.2, "y": 0.9, "w": 0.6, "h": 0.4, "rotation": 0, "opacity": 1 },
+          "anchor": { "x": 0, "y": 1 },
+          "flipX": true,
+          "keyframes": {
+            "scaleX": [
+              { "atMs": 0, "value": 1, "easing": "easeOut" },
+              { "atMs": 1200, "value": 1.6, "easing": "linear" }
+            ],
+            "scaleY": [
+              { "atMs": 0, "value": 0.5, "easing": "backOut" },
+              { "atMs": 1200, "value": 1, "easing": "linear" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "plane",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.2, "y": 0.8, "w": 0.2, "h": 0.1, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "plane-icon",
+            "type": "icon",
+            "iconId": "paper-plane",
+            "fill": "#ffffff",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+          },
+          "anchor": { "x": 0.25, "y": 0.5 },
+          "autoOrient": true,
+          "flipY": true,
+          "keyframes": {
+            "position": [
+              { "atMs": 0, "x": 0.2, "y": 0.8, "easing": "easeInOut" },
+              { "atMs": 1000, "x": 0.5, "y": 0.3, "easing": "linear", "spatial": "smooth", "in": { "x": -0.12, "y": 0.05 }, "out": { "x": 0.12, "y": -0.05 } },
+              { "atMs": 2000, "x": 0.7, "y": 0.6, "easing": "spring", "spatial": "free", "in": { "x": 0, "y": -0.2 }, "out": { "x": 0.1, "y": 0.1 } },
+              { "atMs": 3000, "x": 0.8, "y": 0.7, "easing": "linear", "spatial": "linear" },
+              { "atMs": 4000, "x": 0.8, "y": 0.2, "easing": "linear", "spatial": "auto" }
+            ],
+            "rotation": [
+              { "atMs": 0, "value": 0, "easing": "linear" },
+              { "atMs": 4000, "value": 15, "easing": "linear" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

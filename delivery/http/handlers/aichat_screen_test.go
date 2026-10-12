@@ -35,7 +35,7 @@ func (s screenThreads) ListByUser(aichat.ListThreadsInput) ([]*aichat.Thread, in
 	return nil, 0, nil
 }
 func (s screenThreads) Rename(string, string) error            { return nil }
-func (s screenThreads) Touch(string, time.Time, string) error { return nil }
+func (s screenThreads) Touch(string, time.Time, string, string) error { return nil }
 func (s screenThreads) Delete(string) error                    { return nil }
 
 type loopback struct{ handler func([]byte) }
@@ -97,6 +97,57 @@ func TestScreenRepliesFailClosed(t *testing.T) {
 		ctx, stop := context.WithTimeout(context.Background(), 20*time.Millisecond)
 		if _, err := wait(ctx); err == nil {
 			t.Fatalf("%s: a refused reply must not reach the command", name)
+		}
+		stop()
+		cancel()
+	}
+}
+
+func postScreenClaim(h *AIChatHandler, userID, commandID, body string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodPost, "/chat/threads/th1/screen/"+commandID+"/claim", strings.NewReader(body))
+	r = mux.SetURLVars(r, map[string]string{"id": "th1", "commandId": commandID})
+	ctx := context.WithValue(r.Context(), middleware.ClaimsContextKey, &auth.Claims{UserID: userID})
+	ctx = context.WithValue(ctx, middleware.WorkspaceIDContextKey, "ws1")
+	w := httptest.NewRecorder()
+	h.ScreenClaim(w, r.WithContext(ctx))
+	return w
+}
+
+const screenClaimant = "5f1c1a9e-8f7a-4c1e-9d55-3c2b8f0e6a11"
+
+func TestAClaimReachesTheWaitingCommand(t *testing.T) {
+	h, broker := screenHandler("u1")
+	wait, cancel := broker.Expect(copilot_domain.ScreenKey("th1", screenCommandID))
+	defer cancel()
+	if w := postScreenClaim(h, "u1", screenCommandID, `{"claimant":"`+screenClaimant+`"}`); w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+	}
+	ctx, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	if reply, err := wait(ctx); err != nil || reply.Claim != screenClaimant {
+		t.Fatalf("reply = %+v, %v", reply, err)
+	}
+}
+
+func TestScreenClaimsFailClosed(t *testing.T) {
+	cases := map[string]struct {
+		user, command, body string
+		status              int
+	}{
+		"someone else's thread":      {"intruder", screenCommandID, `{"claimant":"` + screenClaimant + `"}`, http.StatusForbidden},
+		"command that is not an id":  {"u1", "../approve", `{"claimant":"` + screenClaimant + `"}`, http.StatusBadRequest},
+		"claimant that is not an id": {"u1", screenCommandID, `{"claimant":"tab-1"}`, http.StatusBadRequest},
+		"unknown field":              {"u1", screenCommandID, `{"claimant":"` + screenClaimant + `","ok":true}`, http.StatusBadRequest},
+	}
+	for name, tc := range cases {
+		h, broker := screenHandler("u1")
+		wait, cancel := broker.Expect(copilot_domain.ScreenKey("th1", screenCommandID))
+		if w := postScreenClaim(h, tc.user, tc.command, tc.body); w.Code != tc.status {
+			t.Fatalf("%s: status = %d, want %d", name, w.Code, tc.status)
+		}
+		ctx, stop := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		if _, err := wait(ctx); err == nil {
+			t.Fatalf("%s: a refused claim must not reach the command", name)
 		}
 		stop()
 		cancel()

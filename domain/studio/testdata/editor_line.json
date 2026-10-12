@@ -1,0 +1,51 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#000000" },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-shapes",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-line",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.8, "h": 0.05, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "l-line",
+            "type": "shape",
+            "shape": "line",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "stroke": "#ffcc00",
+            "strokeWidth": 8,
+            "arrowEnd": true,
+            "dashArray": [3, 2]
+          },
+          "line": {
+            "trim": { "start": 0, "end": 1, "offset": 0, "sequential": true },
+            "wave": { "mode": "bend", "amount": 0, "wavelength": 120, "speed": 0, "phase": 0, "travel": 0.375 },
+            "wiggle": { "size": 6, "detail": 2, "rate": 2, "seed": 0, "travel": 3.25 },
+            "taper": { "startLength": 0, "endLength": 0.25, "startWidth": 0, "endWidth": 0, "startEase": -0.5, "endEase": 1 }
+          },
+          "keyframes": {
+            "trimEnd": [
+              { "atMs": 0, "value": 0, "easing": "easeOut" },
+              { "atMs": 900, "value": 1, "easing": "linear" }
+            ],
+            "waveSpeed": [
+              { "atMs": 0, "value": 0, "easing": "cubic-bezier(0.2,0,0,1)" },
+              { "atMs": 1500, "value": 2.5, "easing": "linear" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

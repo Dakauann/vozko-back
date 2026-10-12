@@ -4448,6 +4448,43 @@
                 }
             }
         },
+        "/agents/options": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os modelos de conversa disponíveis, do mais popular para o menos popular, com preço por milhão de tokens, janela de contexto, capacidades e níveis de raciocínio. É a mesma lista dos seletores de modelo da Elo, do construtor de fluxos, dos nós de IA e dos agentes.\n\n`modelCapabilities` é o vocabulário de capacidades, na ordem de exibição. Cada item de `modelPricing` traz em `capabilities` só o que o catálogo do provedor confirma; o que o catálogo não informa fica de fora, nunca é presumido.\n\n| Capacidade | Quando o modelo tem |\n|---|---|\n| vision | aceita imagens na entrada |\n| tools | aceita ferramentas (a Elo e o construtor de fluxos precisam) |\n| reasoning | aceita o parâmetro de raciocínio |\n| long_context | janela de contexto de 1.000.000 de tokens ou mais |\n| image_output | gera imagens na saída |\n| audio_input | aceita áudio na entrada |\n| low_price | preço conhecido de até US$ 0,30 por milhão de tokens de entrada e US$ 1,50 de saída |\n| free | preço conhecido e zero na entrada e na saída |\n\n`reasoning` aparece só quando o catálogo lista os níveis do modelo e o padrão dele: `levels` em ordem crescente (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, só os que o modelo aceita; `none` some quando o raciocínio é obrigatório) e `default`. Sem `reasoning`, o modelo não oferece escolha de nível, e um nível enviado para ele é recusado.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Agentes"
+                ],
+                "summary": "Opções de modelos de IA",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.agentOptionsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/agents/{id}/simulate": {
             "post": {
                 "security": [
@@ -8163,6 +8200,52 @@
                 }
             }
         },
+        "/chat/threads": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as conversas do usuário neste espaço de trabalho, da atividade mais recente para a mais antiga, paginadas (`page`, `pageSize` até 100). `q` filtra pelo título, sem diferenciar maiúsculas. Cada item traz `id`, `title`, `model`, `reasoningLevel` (o nível de raciocínio guardado com o modelo; ausente quando é o padrão do modelo), `lastMessageAt`, `createdAt`, `projectId` (o projeto do Estúdio a que a conversa pertence, presente depois da primeira resposta no Estúdio) e `running` (true enquanto uma resposta da Elo roda na conversa).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Conversas com a Elo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "busca no título",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "itens por página, até 100",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/chat/threads/{id}/actions/{actionId}/approve": {
             "post": {
                 "security": [
@@ -8181,6 +8264,76 @@
                     "Elo"
                 ],
                 "summary": "Aprovar uma proposta da Elo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "id da proposta",
+                        "name": "actionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "campos na tabela acima",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "eventos SSE",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/threads/{id}/actions/{actionId}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marca a proposta como recusada, sem executar nada, e responde no stream (`text/event-stream`) com `done` e `status: rejected`. Se o usuário deixou mensagens na fila enquanto o cartão esperava, a Elo responde a elas no mesmo stream logo depois: chega um evento `delivered` com as mensagens e, em seguida, a nova resposta até `done`, `error` ou `awaiting_approval`.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| view | object | a tela aberta, no mesmo formato do envio de mensagem; usada só para responder à fila |\n| mode | string | `ask` (padrão), `edit` ou `full` |",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Recusar uma proposta da Elo",
                 "parameters": [
                     {
                         "type": "string",
@@ -8274,13 +8427,70 @@
             }
         },
         "/chat/threads/{id}/messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as mensagens da conversa em ordem cronológica, paginadas (`page`, `pageSize` até 100). A resposta traz `items`, `total`, `page`, `pageSize`, `running` (true enquanto uma resposta da Elo roda nesta conversa) e `queued`: as mensagens que o usuário deixou na fila e que a Elo ainda não recebeu, na ordem de envio (`{clientId, content, attachments, createdAt}`), para que outra aba ou um recarregamento mostre a mesma fila. `projectId` é o projeto do Estúdio a que a conversa pertence, vazio antes da primeira resposta no Estúdio. Uma resposta que recebeu uma mensagem no meio aparece dividida: a parte de antes, a mensagem do usuário e a parte de depois.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Histórico de uma conversa com a Elo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "itens por página, até 100",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Envia a mensagem e responde com o stream da resposta (`text/event-stream`): trechos de texto e de raciocínio, passos de ferramenta, cartões, `tool_proposal` com a proposta que espera aprovação e, no fim, `done`, `error` ou `awaiting_approval`.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| content | string | o texto do usuário; vazio só com anexos |\n| attachments | string[] | ids de mídia anexados |\n| model | string | modelo da conversa, opcional |\n| timezone | string | fuso horário do usuário |\n| mode | string | `ask` (padrão), `edit` ou `full` |\n| view | object | a tela aberta; vazio fora das telas abaixo |\n\n`view.surface` é `attendance` (com `dateFrom`, `dateTo` em YYYY-MM-DD, `departmentId`, `memberId`, `channel`, `campaignId`, `campaignType`, `includeAi`), `studio` (com `projectId` e `projectKind` `image` ou `video`) ou `leads`. Na página Leads, `view.leadFilter` é o filtro efetivo da lista, no mesmo formato do parâmetro `filter` de GET /leads (`{groups: [{conjunction, predicates: [{field, key, operator, values}]}]}`, com a busca incluída como predicado `query`), até 16 KiB e validado como os filtros de lead; `view.selectedLeads` é quantos leads estão marcados na tabela (0 a 10.000.000). A Elo recebe só os nomes dos campos filtrados, nunca os valores, e usa o filtro quando uma ferramenta pede `use_screen_filter`. Campos de outra tela, filtro inválido ou contagem fora do intervalo respondem 400.\n\nO idioma do pedido (parâmetro `locale` ou cabeçalho `Accept-Language`: pt, en, es ou de; pt quando ausente) é o idioma do que a Elo grava para o usuário, como a exportação de leads.\n\nPropostas de ações sobre leads (`prepare_lead_action`, `start_lead_send`, `cancel_lead_send`) trazem `preview.kind` `lead_action` com `data` `{stage: prepare|start|cancel, action, mode, previewId, matched, selected, eligible, partial, skipped: {motivo: n}, counted: {motivo: n}, quote, parts}`; `selected` é o tamanho confirmado da seleção (o que a aprovação executa), e com `partial` verdadeiro `eligible` e `skipped` ainda estão sendo contados: o resultado final sai de GET /leads/actions/previews/{previewId}; `quote` é a cotação do envio (`count`, `parts`, `splitRequired`, `unitPriceMicros`, `costMicros`, `balanceMicros`, `currency`, `affordable`, `capRemaining`, `fits`, `refusal`, `dailyCap`, `estimatedDays`) e `parts` são as campanhas preparadas (`campaignId`, `name`, `status`, `entries`, `eligible`).",
+                "description": "Envia a mensagem e responde com o stream da resposta (`text/event-stream`): trechos de texto e de raciocínio, passos de ferramenta, cartões, `tool_proposal` com a proposta que espera aprovação e, no fim, `done`, `error` ou `awaiting_approval`.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| content | string | o texto do usuário; vazio só com anexos ou quando há mensagens na fila (então só a fila é entregue) |\n| attachments | string[] | ids de mídia anexados |\n| model | string | modelo da conversa, opcional |\n| reasoning | string | nível de raciocínio, opcional: um dos `reasoning.levels` do modelo em GET /agents/options (`none`, `minimal`, `low`, `medium`, `high`, `xhigh` ou `max`); vazio usa o padrão do modelo. Fica guardado na conversa junto com o modelo e vale também para aprovações. Trocar de modelo sem enviar nível volta ao padrão do novo modelo |\n| timezone | string | fuso horário do usuário |\n| mode | string | `ask` (padrão), `edit` ou `full` |\n| view | object | a tela aberta; vazio fora das telas abaixo |\n\n`view.surface` é `attendance` (com `dateFrom`, `dateTo` em YYYY-MM-DD, `departmentId`, `memberId`, `channel`, `campaignId`, `campaignType`, `includeAi`), `studio` (com `projectId` e `projectKind` `image` ou `video`) ou `leads`. Na página Leads, `view.leadFilter` é o filtro efetivo da lista, no mesmo formato do parâmetro `filter` de GET /leads (`{groups: [{conjunction, predicates: [{field, key, operator, values}]}]}`, com a busca incluída como predicado `query`), até 16 KiB e validado como os filtros de lead; `view.selectedLeads` é quantos leads estão marcados na tabela (0 a 10.000.000). A Elo recebe só os nomes dos campos filtrados, nunca os valores, e usa o filtro quando uma ferramenta pede `use_screen_filter`. Campos de outra tela, filtro inválido ou contagem fora do intervalo respondem 400.\n\nNo Estúdio, a primeira resposta liga a conversa ao projeto aberto (`view.projectId`). Depois disso, um envio, uma aprovação ou uma recusa com outro projeto responde 409 com `code: thread_other_project` e nada roda: a Elo nunca edita um projeto com o histórico de outro. Fora do Estúdio a conversa continua normalmente.\n\nUma conversa tem uma resposta por vez: com outra resposta rodando, responde 409 com `code: turn_running`, e o cliente deixa a mensagem na fila (POST /chat/threads/{id}/queue). Mensagens que estavam na fila entram na conversa antes desta, com o evento `delivered`. Durante a resposta, mensagens da fila chegam à Elo entre um passo e outro (evento `delivered`, que divide a resposta em duas partes) e, se sobrar alguma no fim, a Elo responde a ela no mesmo stream, depois de `done`.\n\nO idioma do pedido (parâmetro `locale` ou cabeçalho `Accept-Language`: pt, en, es ou de; pt quando ausente) é o idioma do que a Elo grava para o usuário, como a exportação de leads.\n\nPropostas de ações sobre leads (`prepare_lead_action`, `start_lead_send`, `cancel_lead_send`) trazem `preview.kind` `lead_action` com `data` `{stage: prepare|start|cancel, action, mode, previewId, matched, selected, eligible, partial, skipped: {motivo: n}, counted: {motivo: n}, quote, parts}`; `selected` é o tamanho confirmado da seleção (o que a aprovação executa), e com `partial` verdadeiro `eligible` e `skipped` ainda estão sendo contados: o resultado final sai de GET /leads/actions/previews/{previewId}; `quote` é a cotação do envio (`count`, `parts`, `splitRequired`, `unitPriceMicros`, `costMicros`, `balanceMicros`, `currency`, `affordable`, `capRemaining`, `fits`, `refusal`, `dailyCap`, `estimatedDays`) e `parts` são as campanhas preparadas (`campaignId`, `name`, `status`, `entries`, `eligible`).",
                 "consumes": [
                     "application/json"
                 ],
@@ -8337,6 +8547,199 @@
                 }
             }
         },
+        "/chat/threads/{id}/project-opened": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A aba manda este aviso quando o editor do projeto do Estúdio ligado à conversa abre na tela (pelo cartão, pela lista do Estúdio ou por um link) e de novo sempre que a aba com o editor volta a ficar visível. Nunca vira mensagem do usuário na conversa.\n\nSe um comando da Elo ficou sem resposta porque a aba estava em segundo plano ou adormecida, o aviso de aba visível diz a ela que o editor responde de novo: no próximo ponto seguro da resposta que está rodando ou, se ela já respondeu, numa resposta retomada uma vez.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| view | object | a tela do editor, no formato do envio de mensagem, com `surface: studio` |\n| mode | string | `ask` (padrão), `edit` ou `full`; vale se a Elo retomar o trabalho |\n| timezone | string | fuso do navegador, como no envio de mensagem |\n\n`outcome` diz o que aconteceu:\n- `delivered`: uma resposta da Elo está rodando; ela recebe o aviso no próximo ponto seguro, depois do passo de ferramenta em andamento, e segue com as ferramentas do Estúdio, sem chamada extra ao modelo.\n- `resumed`: a última resposta dela criou este projeto e ficou esperando o editor abrir, ou ficou sem resposta deste editor; ela retoma o trabalho numa nova resposta, que a aba acompanha por `GET /chat/threads/{id}/turn/events`. Sem ninguém acompanhando, essa resposta é encerrada depois de um curto período, e parar a resposta vale como sempre. Retoma uma vez só.\n- `ignored`: nada a fazer, sem custo. Vale para um projeto que não é o da conversa, para uma conversa sem projeto e para quando a Elo não esperava este editor.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Avisar a Elo que o editor do projeto abriu",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "tela aberta (campos na tabela acima)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.projectOpenedRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/threads/{id}/queue": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Enquanto uma resposta da Elo está rodando nesta conversa, ou enquanto um cartão de aprovação espera, a mensagem não abre uma segunda resposta: ela entra na fila da conversa e é entregue à Elo no próximo ponto seguro, depois do passo de ferramenta em andamento e antes da próxima chamada ao modelo. Uma chamada ao modelo que já começou nunca é repetida nem cortada por causa dela.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| clientId | string | id gerado pelo cliente, 1 a 64 caracteres entre letras, números, `-` e `_`; repetir o mesmo id devolve a mesma mensagem, sem duplicar |\n| content | string | o texto; vazio só com anexos |\n| attachments | string[] | ids de mídia anexados, como no envio de mensagem |\n\nQuem acompanha o stream da resposta recebe `queued` (`{clientId, content, attachments, createdAt}`), `unqueued` (`{clientId}`) quando ela é retirada e `delivered` (`{messages: [{id, clientId, content, attachments, createdAt}]}`) quando ela entra na conversa; `id` é o da mensagem gravada. Se a resposta termina antes de entregar a fila, a Elo começa outra resposta com as mensagens da fila, no mesmo stream. Um cartão de aprovação segura a fila até ser aprovado ou recusado. Parar a resposta não entrega a fila: as mensagens ficam esperando e vão junto com o próximo envio (ou com um envio de conteúdo vazio, que entrega só a fila).\n\nA mensagem na fila conta como uma mensagem normal: exige plano ativo e saldo. Sem resposta em andamento e sem cartão esperando, responde 404 com `code: turn_not_running`, e o cliente envia a mensagem normalmente.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Deixar uma mensagem na fila enquanto a Elo trabalha",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "mensagem (campos na tabela acima)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.queueMessageRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/copilot_usecase.QueuedView"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "402": {
+                        "description": "Payment Required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/threads/{id}/queue/{clientId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retira da fila uma mensagem que a Elo ainda não recebeu. Quem acompanha o stream recebe `unqueued` com o `clientId`. Uma mensagem já entregue (ou já retirada) responde 404 com `code: queued_message_gone`.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Retirar uma mensagem da fila",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "id da mensagem gerado pelo cliente",
+                        "name": "clientId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/chat/threads/{id}/screen/{commandId}": {
             "post": {
                 "security": [
@@ -8344,7 +8747,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Quando a Elo trabalha no Estúdio, ela envia pelo stream da conversa um evento `screen_command` (`{id, name, projectId, args}`), com `name` em `read`, `edit`, `look`, `resolve_source` ou `follow_job`. O editor aberto executa o comando e devolve o resultado aqui, uma única vez, dentro do tempo do comando; depois disso a resposta é ignorada e a Elo é avisada de que o editor não respondeu.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| ok | boolean | true quando o comando foi aplicado |\n| data | object | resultado do comando (resumo do projeto, ids criados, estado dos trabalhos) |\n| error | object | `{code, message}` quando ok é false; code em snake_case, message com até 600 caracteres |\n| images | string[] | no máximo 1 imagem JPEG ou PNG em data URL, até 1,5 MB |\n\nSó o dono da conversa responde; campos desconhecidos e corpos acima de 2 MB são recusados.",
+                "description": "Quando a Elo trabalha no Estúdio, ela envia pelo stream da conversa um evento `screen_command` (`{id, name, projectId, args}`), com `name` em `read`, `edit`, `look`, `resolve_source`, `follow_job`, `export`, `listen` ou `save_preset`. O editor aberto executa o comando e devolve o resultado aqui, uma única vez, dentro do tempo do comando; depois disso a resposta é ignorada e a Elo é avisada de que o editor não respondeu.\n\n`create_project` chega também fora do Estúdio, com `projectId` vazio e o pedido do projeto em `args` (`kind`, `name`, `media`, `sizes`, `aspect`, `durationMs`). Quem responde é a aba da conversa: ela cria o projeto e, se o usuário escolheu abrir telas sozinho, abre o editor dele. `data` traz `{projectId, kind, opened}`, com `opened` true só quando o editor foi aberto. Uma aba que não pode criar responde `ok` false com `code: no_editor`, e outra aba pode responder no lugar dela.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| ok | boolean | true quando o comando foi aplicado |\n| data | object | resultado do comando (resumo do projeto, ids criados, estado dos trabalhos) |\n| error | object | `{code, message}` quando ok é false; code em snake_case, message com até 600 caracteres |\n| images | string[] | no máximo 1 imagem JPEG ou PNG em data URL, até 1,5 MB |\n\nComandos que mudam algo (`edit`, `save_preset`, `create_project`) só podem ser aplicados depois de `POST /chat/threads/{id}/screen/{commandId}/claim` e do evento `screen_go` com o mesmo `claimant`; assim, um comando que expirou nunca é aplicado mais tarde.\n\nSó o dono da conversa responde; campos desconhecidos e corpos acima de 2 MB são recusados.",
                 "consumes": [
                     "application/json"
                 ],
@@ -8411,6 +8814,80 @@
                 }
             }
         },
+        "/chat/threads/{id}/screen/{commandId}/claim": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "`edit`, `save_preset` e `create_project` mudam o projeto ou criam algo. Antes de mudar qualquer coisa, a aba que vai executar o comando pede aqui para aplicar, com um `claimant` novo (UUID) por tentativa, e espera no stream da conversa o evento `screen_go` (`{id, claimant}`) com o mesmo `claimant`. Sem esse evento, a aba não aplica nada e o comando termina sem mudança.\n\nA Elo só libera o primeiro pedido que chegar dentro do tempo do comando; depois de liberar, ela espera a resposta normal por mais um tempo do comando. Um pedido que chega depois de ela desistir nunca é liberado, então um comando que expirou nunca é aplicado mais tarde, por exemplo quando uma aba adormecida em segundo plano volta.\n\n| Campo | Tipo | Regra |\n|---|---|---|\n| claimant | string | UUID gerado pela aba para esta tentativa |",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Elo"
+                ],
+                "summary": "Pedir para aplicar um comando da Elo que muda algo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "id do comando recebido no evento screen_command",
+                        "name": "commandId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "quem pede para aplicar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.screenClaimRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/chat/threads/{id}/turn/events": {
             "get": {
                 "security": [
@@ -8418,7 +8895,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Reabre o stream de uma resposta que ainda está rodando nesta conversa, por exemplo depois de recarregar a página. O stream (`text/event-stream`) primeiro repete o que a resposta já produziu, com os trechos de texto e de raciocínio já agrupados, e os comandos `screen_command` ainda sem resposta; depois segue os eventos novos até `done`, `error` ou `awaiting_approval`, no mesmo formato do envio de mensagem.\n\nUma resposta que terminou continua visível aqui por alguns segundos e depois some; o histórico da conversa passa a ter a mensagem completa. O histórico (`GET /chat/threads/{id}/messages`) informa `running: true` enquanto há resposta em andamento.\n\nSó o dono da conversa acompanha. Sem resposta em andamento, responde 404 com `code: turn_not_running`.",
+                "description": "Reabre o stream de uma resposta que ainda está rodando nesta conversa, por exemplo depois de recarregar a página. O stream (`text/event-stream`) primeiro repete o que a resposta já produziu, com os trechos de texto e de raciocínio já agrupados, e os comandos `screen_command` ainda sem resposta; depois segue os eventos novos até `done`, `error` ou `awaiting_approval`, no mesmo formato do envio de mensagem. Depois de uma entrega da fila (`delivered`), a repetição começa nessa entrega, porque o que veio antes já está gravado no histórico. Se a Elo responder à fila em seguida, o stream continua depois de `done` até o fim dessa nova resposta.\n\nUma resposta que terminou continua visível aqui por alguns segundos e depois some; o histórico da conversa passa a ter a mensagem completa. O histórico (`GET /chat/threads/{id}/messages`) informa `running: true` enquanto há resposta em andamento.\n\nSó o dono da conversa acompanha. Sem resposta em andamento, responde 404 com `code: turn_not_running`.",
                 "produces": [
                     "text/event-stream"
                 ],
@@ -22263,6 +22740,188 @@
                 }
             }
         },
+        "/studio/animation-presets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "As predefinições prontas (builtIn true, somente leitura, com nomes e descrições em pt, en, es e de) seguidas das predefinições salvas no workspace, da mais nova para a mais antiga. animation guarda as partes da animação de um clipe; x, y, rotation e o x e y das chaves de position são deslocamentos a partir da posição do clipe.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Listar predefinições de animação",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.PresetListResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Salva a animação de um clipe como predefinição do workspace. name tem de 1 a 120 caracteres e description até 500. animation é validada inteira: scope visual ou text, durationMs de 100 a 600000, só as faixas x, y, position, scale, scaleX, scaleY, rotation, opacity e blur, comportamentos sem trackId, partes de texto só em scope text e ao menos uma parte; os erros respondem 422 com o código por campo. Até 1 MB.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Salvar predefinição de animação",
+                "parameters": [
+                    {
+                        "description": "predefinição",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.PresetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.PresetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/studio/animation-presets/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Apaga de vez uma predefinição do workspace. Os clipes que já usaram a predefinição não mudam. As predefinições prontas respondem 409 read_only.",
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Apagar predefinição de animação",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id da predefinição",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Troca o nome e ou a descrição de uma predefinição do workspace; a animação não muda. As predefinições prontas respondem 409 read_only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Renomear predefinição de animação",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "id da predefinição",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "mudanças",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.PresetChangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.PresetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/studio/capabilities/{sessionId}": {
             "put": {
                 "security": [
@@ -22314,6 +22973,80 @@
                     },
                     "422": {
                         "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/studio/library/items/{itemId}/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Figuras prontas da biblioteca de elementos (os itens de tipo asset, como os ícones e emojis em 3D) entram no projeto como imagens da biblioteca de mídia do workspace. O editor envia no corpo os bytes exatos do arquivo WebP do item, que o catálogo identifica pelo SHA-256; qualquer outro arquivo é recusado com 422 asset_mismatch e nada é guardado. O mesmo item no mesmo workspace devolve sempre a mesma mídia, sem duplicar; se ela foi apagada, uma nova é criada. locale escolhe o idioma do nome da mídia (pt, en, es ou de; padrão pt). Um item que não é figura responde 404 not_found; a biblioteca cheia responde 409 upload_limit.",
+                "consumes": [
+                    "image/webp"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estúdio"
+                ],
+                "summary": "Trazer uma figura da biblioteca de elementos para a biblioteca de mídia",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "example": "3d-icon-rocket",
+                        "description": "id do item na biblioteca de elementos",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "pt",
+                            "en",
+                            "es",
+                            "de"
+                        ],
+                        "type": "string",
+                        "description": "idioma do nome da mídia",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/studiohttp.LibraryAssetResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -22375,7 +23108,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Cria um projeto de imagem (documento studio.image) ou de vídeo (documento studio.video). O documento é validado inteiro: campos desconhecidos, fontes fora da lista, clipes sobrepostos na mesma faixa ou valores fora dos limites respondem 422 com o código por campo. Até 512 KB.",
+                "description": "Cria um projeto de imagem (documento studio.image) ou de vídeo (documento studio.video). O documento é validado inteiro: campos desconhecidos, fontes fora da lista, clipes sobrepostos na mesma faixa ou valores fora dos limites respondem 422 com o código por campo. Até 512 KB. Com origin (a conversa da Elo e o id do comando de tela), repetir o pedido devolve o mesmo projeto em vez de criar outro; se esse projeto for de outra pessoa ou de outro workspace, responde 409 origin_taken.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22402,6 +23135,12 @@
                         "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/studiohttp.ProjectResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "422": {
@@ -22572,7 +23311,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "O editor renderiza e codifica no navegador; o servidor não renderiza nada. Envie o arquivo no campo file (multipart) e, antes dele, um nome opcional no campo description (até 255 caracteres; vazio usa o nome do projeto). O servidor reconhece o formato pelos primeiros bytes, nunca pelo tipo declarado: projetos de vídeo exportam MP4, GIF e WebP animado; projetos de imagem exportam PDF e SVG. O SVG só é aceito com o vocabulário que o editor escreve (sem scripts, eventos, links externos ou textos; imagens só como data URI PNG ou JPEG). Tudo tem até 95 MB, conferidos enquanto o arquivo chega. O arquivo vai para a pasta de exportações do projeto e entra na biblioteca de mídia: MP4 como vídeo, GIF, WebP e SVG como imagem, PDF como documento. Nada é guardado quando o arquivo é recusado. Um arquivo que o editor não gera responde 422 invalid_export; um formato que o tipo do projeto não exporta responde 422 export_format; acima do limite responde 422 export_too_large.",
+                "description": "O editor renderiza e codifica no navegador; o servidor não renderiza nada. Envie o arquivo no campo file (multipart) e, antes dele, um nome opcional no campo description (até 255 caracteres; vazio usa o nome do projeto). O servidor reconhece o formato pelos primeiros bytes, nunca pelo tipo declarado: projetos de vídeo exportam MP4, GIF e WebP animado; projetos de imagem exportam PDF e SVG. O SVG só é aceito com o vocabulário que o editor escreve (sem scripts, eventos, links externos ou textos; imagens só como data URI PNG ou JPEG). Tudo tem até 512 MB, conferidos enquanto o arquivo chega. O arquivo vai para a pasta de exportações do projeto e entra na biblioteca de mídia: MP4 como vídeo, GIF, WebP e SVG como imagem, PDF como documento. Nada é guardado quando o arquivo é recusado. Um arquivo que o editor não gera responde 422 invalid_export; um formato que o tipo do projeto não exporta responde 422 export_format; acima do limite responde 422 export_too_large.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -29056,7 +29795,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Conversa com o assistente que monta e corrige fluxos. Você descreve o que quer; o assistente adiciona nós, liga as saídas e valida o fluxo, enviando cada passo em tempo real.\n\n## Conectar\n\n```text\nwss://SUA_URL_BASE/ws/workflows/{id}/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\nwss://SUA_URL_BASE/ws/workflows/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\n```\n\n- Com `id`: edita um fluxo existente. Permissão `workflows:update`.\n- Sem `id`: cria um fluxo novo, começando vazio e do tipo `messages`. Permissão `workflows:create`.\n\n## Limites\n\n| Limite | Valor | Ao atingir |\n|---|---|---|\n| Sessões simultâneas por workspace | 3 | `error` e a conexão é encerrada. |\n| Tempo por pedido | 10 minutos | `done` com o motivo em `summary`; a conexão continua aberta. |\n| Tokens por sessão | 1.000.000 | `done`; novos pedidos na mesma conexão recebem o mesmo `done`. |\n| Saldo | precisa ter saldo | `done` com `valid: false` e o motivo em `summary`. |\n\nO uso do assistente é cobrado do saldo do workspace.\n\n## Mensagens que você envia\n\nFormato: `{\"type\": \"...\", \"data\": {...}}`.\n\n| type | data | O que faz |\n|---|---|---|\n| `user_prompt` | `{\"text\": string, \"graph\"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |\n| `set_workflow_type` | `{\"type\": \"messages\" \\| \"voice\"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |\n| `set_model` | `{\"model\": string}` | Escolhe o modelo de IA dos próximos pedidos. |\n| `hydrate_graph` | `{\"graph\": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |\n| `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: \"cancelado\"`. |\n\n## Mensagens que você recebe\n\nFormato: `{\"type\": \"...\", \"payload\": {...}}`.\n\n| type | payload | Quando |\n|---|---|---|\n| `builder_ready` | `{\"workflowType\": \"messages\" \\| \"voice\", \"nodeCount\": number, \"mode\": \"create\" \\| \"edit\", \"model\": string}` | Logo após conectar. |\n| `graph_snapshot` | `{\"graph\": Graph, \"issues\": LintIssue[], \"valid\": boolean}` | Após conectar, após trocar o tipo ou o fluxo, e a cada passo do assistente. |\n| `iteration` | `{\"n\": number, \"max\": number, \"tokensUsed\": number, \"tokenBudget\": number}` | Início de cada passo do assistente. |\n| `reasoning_delta` | `{\"text\": string}` | Trecho do raciocínio do assistente. |\n| `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |\n| `assistant_delta` | `{\"text\": string}` | Trecho da resposta do assistente. |\n| `assistant_done` | `{\"tools\": number}` | Fim da resposta; `tools` é o número de ações do passo. |\n| `tool` | `{\"name\": string, \"summary\": string, \"ok\": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |\n| `resource_resolved` | `{\"kind\": string, \"query\": string, \"matches\": [{\"id\": string, \"name\": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |\n| `meta` | `{\"name\": string, \"description\": string, \"workflowType\": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |\n| `idle` | `{\"valid\": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |\n| `done` | `{\"valid\": boolean, \"summary\": string, \"residualIssues\"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. |\n| `error` | `{\"error\": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |\n\nValores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.\n\n## Tipos usados nas mensagens\n\n```json\n{\n\"Graph\": {\"nodes\": [\"Node\"], \"edges\": [\"Edge\"]},\n\"Node\": {\"id\": \"string\", \"type\": \"string\", \"position\": {\"x\": 0, \"y\": 0}, \"config\": {}},\n\"Edge\": {\"source\": \"string\", \"target\": \"string\", \"label\": \"string (opcional)\"},\n\"LintIssue\": {\n\"code\": \"string\",\n\"severity\": \"blocking | advisory\",\n\"nodeId\": \"string (opcional)\",\n\"field\": \"string (opcional)\",\n\"edgeRef\": \"string (opcional)\",\n\"message\": \"string\",\n\"hint\": \"string (opcional)\"\n}\n}\n```\n\nOs tipos de nó e os campos de `config` são os de `GET /workflows/node-types`. Problemas `blocking` impedem ativar o fluxo; `advisory` são sugestões.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
+                "description": "Conversa com o assistente que monta e corrige fluxos. Você descreve o que quer; o assistente adiciona nós, liga as saídas e valida o fluxo, enviando cada passo em tempo real.\n\n## Conectar\n\n```text\nwss://SUA_URL_BASE/ws/workflows/{id}/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\nwss://SUA_URL_BASE/ws/workflows/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\n```\n\n- Com `id`: edita um fluxo existente. Permissão `workflows:update`.\n- Sem `id`: cria um fluxo novo, começando vazio e do tipo `messages`. Permissão `workflows:create`.\n\n## Limites\n\n| Limite | Valor | Ao atingir |\n|---|---|---|\n| Sessões simultâneas por workspace | 3 | `error` e a conexão é encerrada. |\n| Tempo por pedido | 10 minutos | `done` com o motivo em `summary`; a conexão continua aberta. |\n| Tokens por sessão | 1.000.000 | `done`; novos pedidos na mesma conexão recebem o mesmo `done`. |\n| Saldo | precisa ter saldo | `done` com `valid: false` e o motivo em `summary`. |\n\nO uso do assistente é cobrado do saldo do workspace.\n\n## Mensagens que você envia\n\nFormato: `{\"type\": \"...\", \"data\": {...}}`.\n\n| type | data | O que faz |\n|---|---|---|\n| `user_prompt` | `{\"text\": string, \"graph\"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |\n| `set_workflow_type` | `{\"type\": \"messages\" \\| \"voice\"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |\n| `set_model` | `{\"model\": string, \"reasoning\"?: string}` | Escolhe o modelo de IA dos próximos pedidos e, opcionalmente, o nível de raciocínio: um dos `reasoning.levels` do modelo em `GET /agents/options`. Sem `reasoning`, vale o padrão do modelo. O assistente precisa de ferramentas, então o modelo é conferido no catálogo na escolha e antes de cada pedido: sem uso de ferramentas confirmado, com um nível que ele não oferece ou com o catálogo ilegível, nada vai ao provedor e a resposta é `done` com `valid: false`, o motivo em `summary` e o código em `code`. |\n| `hydrate_graph` | `{\"graph\": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |\n| `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: \"cancelado\"`. |\n\n## Mensagens que você recebe\n\nFormato: `{\"type\": \"...\", \"payload\": {...}}`.\n\n| type | payload | Quando |\n|---|---|---|\n| `builder_ready` | `{\"workflowType\": \"messages\" \\| \"voice\", \"nodeCount\": number, \"mode\": \"create\" \\| \"edit\", \"model\": string}` | Logo após conectar. |\n| `graph_snapshot` | `{\"graph\": Graph, \"issues\": LintIssue[], \"valid\": boolean}` | Após conectar, após trocar o tipo ou o fluxo, e a cada passo do assistente. |\n| `iteration` | `{\"n\": number, \"max\": number, \"tokensUsed\": number, \"tokenBudget\": number}` | Início de cada passo do assistente. |\n| `reasoning_delta` | `{\"text\": string}` | Trecho do raciocínio do assistente. |\n| `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |\n| `assistant_delta` | `{\"text\": string}` | Trecho da resposta do assistente. |\n| `assistant_done` | `{\"tools\": number}` | Fim da resposta; `tools` é o número de ações do passo. |\n| `assistant_retry` | `{\"attempt\": number, \"of\": number, \"text\"?: string, \"reasoning\"?: string}` | A conexão com o provedor de IA caiu e o mesmo passo vai ser repetido, sem refazer as ações já feitas. Apague do fim da resposta o `text` e do fim do raciocínio o `reasoning` que esse passo já tinha enviado. |\n| `tool` | `{\"name\": string, \"summary\": string, \"ok\": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |\n| `resource_resolved` | `{\"kind\": string, \"query\": string, \"matches\": [{\"id\": string, \"name\": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |\n| `meta` | `{\"name\": string, \"description\": string, \"workflowType\": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |\n| `idle` | `{\"valid\": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |\n| `done` | `{\"valid\": boolean, \"summary\": string, \"code\"?: string, \"residualIssues\"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. Quando o modelo é recusado, `code` traz `model_without_tools`, `model_catalog_unavailable` ou `reasoning_level_unsupported`. |\n| `error` | `{\"error\": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |\n\nValores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.\n\n## Tipos usados nas mensagens\n\n```json\n{\n\"Graph\": {\"nodes\": [\"Node\"], \"edges\": [\"Edge\"]},\n\"Node\": {\"id\": \"string\", \"type\": \"string\", \"position\": {\"x\": 0, \"y\": 0}, \"config\": {}},\n\"Edge\": {\"source\": \"string\", \"target\": \"string\", \"label\": \"string (opcional)\"},\n\"LintIssue\": {\n\"code\": \"string\",\n\"severity\": \"blocking | advisory\",\n\"nodeId\": \"string (opcional)\",\n\"field\": \"string (opcional)\",\n\"edgeRef\": \"string (opcional)\",\n\"message\": \"string\",\n\"hint\": \"string (opcional)\"\n}\n}\n```\n\nOs tipos de nó e os campos de `config` são os de `GET /workflows/node-types`. Problemas `blocking` impedem ativar o fluxo; `advisory` são sugestões.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
                 "tags": [
                     "WebSockets"
                 ],
@@ -29110,7 +29849,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Conversa com o assistente que monta e corrige fluxos. Você descreve o que quer; o assistente adiciona nós, liga as saídas e valida o fluxo, enviando cada passo em tempo real.\n\n## Conectar\n\n```text\nwss://SUA_URL_BASE/ws/workflows/{id}/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\nwss://SUA_URL_BASE/ws/workflows/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\n```\n\n- Com `id`: edita um fluxo existente. Permissão `workflows:update`.\n- Sem `id`: cria um fluxo novo, começando vazio e do tipo `messages`. Permissão `workflows:create`.\n\n## Limites\n\n| Limite | Valor | Ao atingir |\n|---|---|---|\n| Sessões simultâneas por workspace | 3 | `error` e a conexão é encerrada. |\n| Tempo por pedido | 10 minutos | `done` com o motivo em `summary`; a conexão continua aberta. |\n| Tokens por sessão | 1.000.000 | `done`; novos pedidos na mesma conexão recebem o mesmo `done`. |\n| Saldo | precisa ter saldo | `done` com `valid: false` e o motivo em `summary`. |\n\nO uso do assistente é cobrado do saldo do workspace.\n\n## Mensagens que você envia\n\nFormato: `{\"type\": \"...\", \"data\": {...}}`.\n\n| type | data | O que faz |\n|---|---|---|\n| `user_prompt` | `{\"text\": string, \"graph\"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |\n| `set_workflow_type` | `{\"type\": \"messages\" \\| \"voice\"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |\n| `set_model` | `{\"model\": string}` | Escolhe o modelo de IA dos próximos pedidos. |\n| `hydrate_graph` | `{\"graph\": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |\n| `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: \"cancelado\"`. |\n\n## Mensagens que você recebe\n\nFormato: `{\"type\": \"...\", \"payload\": {...}}`.\n\n| type | payload | Quando |\n|---|---|---|\n| `builder_ready` | `{\"workflowType\": \"messages\" \\| \"voice\", \"nodeCount\": number, \"mode\": \"create\" \\| \"edit\", \"model\": string}` | Logo após conectar. |\n| `graph_snapshot` | `{\"graph\": Graph, \"issues\": LintIssue[], \"valid\": boolean}` | Após conectar, após trocar o tipo ou o fluxo, e a cada passo do assistente. |\n| `iteration` | `{\"n\": number, \"max\": number, \"tokensUsed\": number, \"tokenBudget\": number}` | Início de cada passo do assistente. |\n| `reasoning_delta` | `{\"text\": string}` | Trecho do raciocínio do assistente. |\n| `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |\n| `assistant_delta` | `{\"text\": string}` | Trecho da resposta do assistente. |\n| `assistant_done` | `{\"tools\": number}` | Fim da resposta; `tools` é o número de ações do passo. |\n| `tool` | `{\"name\": string, \"summary\": string, \"ok\": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |\n| `resource_resolved` | `{\"kind\": string, \"query\": string, \"matches\": [{\"id\": string, \"name\": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |\n| `meta` | `{\"name\": string, \"description\": string, \"workflowType\": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |\n| `idle` | `{\"valid\": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |\n| `done` | `{\"valid\": boolean, \"summary\": string, \"residualIssues\"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. |\n| `error` | `{\"error\": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |\n\nValores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.\n\n## Tipos usados nas mensagens\n\n```json\n{\n\"Graph\": {\"nodes\": [\"Node\"], \"edges\": [\"Edge\"]},\n\"Node\": {\"id\": \"string\", \"type\": \"string\", \"position\": {\"x\": 0, \"y\": 0}, \"config\": {}},\n\"Edge\": {\"source\": \"string\", \"target\": \"string\", \"label\": \"string (opcional)\"},\n\"LintIssue\": {\n\"code\": \"string\",\n\"severity\": \"blocking | advisory\",\n\"nodeId\": \"string (opcional)\",\n\"field\": \"string (opcional)\",\n\"edgeRef\": \"string (opcional)\",\n\"message\": \"string\",\n\"hint\": \"string (opcional)\"\n}\n}\n```\n\nOs tipos de nó e os campos de `config` são os de `GET /workflows/node-types`. Problemas `blocking` impedem ativar o fluxo; `advisory` são sugestões.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
+                "description": "Conversa com o assistente que monta e corrige fluxos. Você descreve o que quer; o assistente adiciona nós, liga as saídas e valida o fluxo, enviando cada passo em tempo real.\n\n## Conectar\n\n```text\nwss://SUA_URL_BASE/ws/workflows/{id}/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\nwss://SUA_URL_BASE/ws/workflows/ai-builder?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\n```\n\n- Com `id`: edita um fluxo existente. Permissão `workflows:update`.\n- Sem `id`: cria um fluxo novo, começando vazio e do tipo `messages`. Permissão `workflows:create`.\n\n## Limites\n\n| Limite | Valor | Ao atingir |\n|---|---|---|\n| Sessões simultâneas por workspace | 3 | `error` e a conexão é encerrada. |\n| Tempo por pedido | 10 minutos | `done` com o motivo em `summary`; a conexão continua aberta. |\n| Tokens por sessão | 1.000.000 | `done`; novos pedidos na mesma conexão recebem o mesmo `done`. |\n| Saldo | precisa ter saldo | `done` com `valid: false` e o motivo em `summary`. |\n\nO uso do assistente é cobrado do saldo do workspace.\n\n## Mensagens que você envia\n\nFormato: `{\"type\": \"...\", \"data\": {...}}`.\n\n| type | data | O que faz |\n|---|---|---|\n| `user_prompt` | `{\"text\": string, \"graph\"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |\n| `set_workflow_type` | `{\"type\": \"messages\" \\| \"voice\"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |\n| `set_model` | `{\"model\": string, \"reasoning\"?: string}` | Escolhe o modelo de IA dos próximos pedidos e, opcionalmente, o nível de raciocínio: um dos `reasoning.levels` do modelo em `GET /agents/options`. Sem `reasoning`, vale o padrão do modelo. O assistente precisa de ferramentas, então o modelo é conferido no catálogo na escolha e antes de cada pedido: sem uso de ferramentas confirmado, com um nível que ele não oferece ou com o catálogo ilegível, nada vai ao provedor e a resposta é `done` com `valid: false`, o motivo em `summary` e o código em `code`. |\n| `hydrate_graph` | `{\"graph\": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |\n| `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: \"cancelado\"`. |\n\n## Mensagens que você recebe\n\nFormato: `{\"type\": \"...\", \"payload\": {...}}`.\n\n| type | payload | Quando |\n|---|---|---|\n| `builder_ready` | `{\"workflowType\": \"messages\" \\| \"voice\", \"nodeCount\": number, \"mode\": \"create\" \\| \"edit\", \"model\": string}` | Logo após conectar. |\n| `graph_snapshot` | `{\"graph\": Graph, \"issues\": LintIssue[], \"valid\": boolean}` | Após conectar, após trocar o tipo ou o fluxo, e a cada passo do assistente. |\n| `iteration` | `{\"n\": number, \"max\": number, \"tokensUsed\": number, \"tokenBudget\": number}` | Início de cada passo do assistente. |\n| `reasoning_delta` | `{\"text\": string}` | Trecho do raciocínio do assistente. |\n| `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |\n| `assistant_delta` | `{\"text\": string}` | Trecho da resposta do assistente. |\n| `assistant_done` | `{\"tools\": number}` | Fim da resposta; `tools` é o número de ações do passo. |\n| `assistant_retry` | `{\"attempt\": number, \"of\": number, \"text\"?: string, \"reasoning\"?: string}` | A conexão com o provedor de IA caiu e o mesmo passo vai ser repetido, sem refazer as ações já feitas. Apague do fim da resposta o `text` e do fim do raciocínio o `reasoning` que esse passo já tinha enviado. |\n| `tool` | `{\"name\": string, \"summary\": string, \"ok\": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |\n| `resource_resolved` | `{\"kind\": string, \"query\": string, \"matches\": [{\"id\": string, \"name\": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |\n| `meta` | `{\"name\": string, \"description\": string, \"workflowType\": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |\n| `idle` | `{\"valid\": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |\n| `done` | `{\"valid\": boolean, \"summary\": string, \"code\"?: string, \"residualIssues\"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. Quando o modelo é recusado, `code` traz `model_without_tools`, `model_catalog_unavailable` ou `reasoning_level_unsupported`. |\n| `error` | `{\"error\": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |\n\nValores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.\n\n## Tipos usados nas mensagens\n\n```json\n{\n\"Graph\": {\"nodes\": [\"Node\"], \"edges\": [\"Edge\"]},\n\"Node\": {\"id\": \"string\", \"type\": \"string\", \"position\": {\"x\": 0, \"y\": 0}, \"config\": {}},\n\"Edge\": {\"source\": \"string\", \"target\": \"string\", \"label\": \"string (opcional)\"},\n\"LintIssue\": {\n\"code\": \"string\",\n\"severity\": \"blocking | advisory\",\n\"nodeId\": \"string (opcional)\",\n\"field\": \"string (opcional)\",\n\"edgeRef\": \"string (opcional)\",\n\"message\": \"string\",\n\"hint\": \"string (opcional)\"\n}\n}\n```\n\nOs tipos de nó e os campos de `config` são os de `GET /workflows/node-types`. Problemas `blocking` impedem ativar o fluxo; `advisory` são sugestões.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho `Authorization: Bearer SEU_ACCESS_TOKEN` (clientes fora do navegador), no parâmetro `token` da URL ou no cookie `accessToken` do login em modo cookie. Com o cookie, a conexão só é aceita quando o `Origin` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em `workspace_id` e em `workspaceId`, com o mesmo valor (ou o cabeçalho `X-Workspace-ID` junto com `workspaceId`). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
                 "tags": [
                     "WebSockets"
                 ],
@@ -29926,26 +30665,26 @@
         "advertising.Destination": {
             "type": "string",
             "enum": [
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG",
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT"
+                "CATALOG"
             ],
             "x-enum-varnames": [
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog",
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect"
+                "DestinationCatalog"
             ]
         },
         "advertising.ExportLabels": {
@@ -30364,6 +31103,7 @@
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
+                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -30376,10 +31116,10 @@
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS",
-                "CONVERSATIONS"
+                "APP_INSTALLS"
             ],
             "x-enum-varnames": [
+                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -30392,8 +31132,7 @@
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls",
-                "GoalConversations"
+                "GoalAppInstalls"
             ]
         },
         "advertising.Pixel": {
@@ -33038,6 +33777,96 @@
                 },
                 "user_id": {
                     "type": "string"
+                }
+            }
+        },
+        "ai.ModelCapability": {
+            "type": "string",
+            "enum": [
+                "vision",
+                "tools",
+                "reasoning",
+                "long_context",
+                "image_output",
+                "audio_input",
+                "low_price",
+                "free"
+            ],
+            "x-enum-varnames": [
+                "CapabilityVision",
+                "CapabilityTools",
+                "CapabilityReasoning",
+                "CapabilityLongContext",
+                "CapabilityImageOutput",
+                "CapabilityAudioInput",
+                "CapabilityLowPrice",
+                "CapabilityFree"
+            ]
+        },
+        "ai.ModelInfo": {
+            "type": "object",
+            "properties": {
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ai.ModelCapability"
+                    }
+                },
+                "completionPrice": {
+                    "type": "number"
+                },
+                "contextLength": {
+                    "type": "integer"
+                },
+                "created": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "promptPrice": {
+                    "type": "number"
+                },
+                "reasoning": {
+                    "$ref": "#/definitions/ai.ReasoningOptions"
+                }
+            }
+        },
+        "ai.ReasoningLevel": {
+            "type": "string",
+            "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+            ],
+            "x-enum-varnames": [
+                "ReasoningNone",
+                "ReasoningMinimal",
+                "ReasoningLow",
+                "ReasoningMedium",
+                "ReasoningHigh",
+                "ReasoningXHigh",
+                "ReasoningMax"
+            ]
+        },
+        "ai.ReasoningOptions": {
+            "type": "object",
+            "properties": {
+                "default": {
+                    "$ref": "#/definitions/ai.ReasoningLevel"
+                },
+                "levels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ai.ReasoningLevel"
+                    }
                 }
             }
         },
@@ -38749,6 +39578,46 @@
                 "EventCallLinked"
             ]
         },
+        "copilot.Attachment": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "copilot_usecase.QueuedView": {
+            "type": "object",
+            "properties": {
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/copilot.Attachment"
+                    }
+                },
+                "clientId": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
         "crmboard_usecase.Board": {
             "type": "object",
             "properties": {
@@ -38943,28 +39812,6 @@
         "crmfilter.Field": {
             "type": "string",
             "enum": [
-                "id",
-                "phone_any",
-                "email",
-                "nickname",
-                "birthday",
-                "birth_date",
-                "zip",
-                "state",
-                "city",
-                "district",
-                "geo_precision",
-                "geo_status",
-                "has_address",
-                "has_identity",
-                "opted_out",
-                "whatsapp_opt_in",
-                "relation_kind",
-                "relatives_count",
-                "referred_count",
-                "referred_by",
-                "geo_placement",
-                "area_approximate",
                 "owner",
                 "carteira",
                 "pipeline",
@@ -38995,31 +39842,31 @@
                 "memory_count",
                 "memory_updated_at",
                 "custom",
-                "area"
+                "area",
+                "id",
+                "phone_any",
+                "email",
+                "nickname",
+                "birthday",
+                "birth_date",
+                "zip",
+                "state",
+                "city",
+                "district",
+                "geo_precision",
+                "geo_status",
+                "has_address",
+                "has_identity",
+                "opted_out",
+                "whatsapp_opt_in",
+                "relation_kind",
+                "relatives_count",
+                "referred_count",
+                "referred_by",
+                "geo_placement",
+                "area_approximate"
             ],
             "x-enum-varnames": [
-                "FieldID",
-                "FieldPhoneAny",
-                "FieldEmail",
-                "FieldNickname",
-                "FieldBirthday",
-                "FieldBirthDate",
-                "FieldZip",
-                "FieldState",
-                "FieldCity",
-                "FieldDistrict",
-                "FieldGeoPrecision",
-                "FieldGeoStatus",
-                "FieldHasAddress",
-                "FieldHasIdentity",
-                "FieldOptedOut",
-                "FieldWhatsAppOptIn",
-                "FieldRelationKind",
-                "FieldRelativesCount",
-                "FieldReferredCount",
-                "FieldReferredBy",
-                "FieldGeoPlacement",
-                "FieldAreaApproximate",
                 "FieldOwner",
                 "FieldCarteira",
                 "FieldPipeline",
@@ -39050,7 +39897,29 @@
                 "FieldMemoryCount",
                 "FieldMemoryUpdatedAt",
                 "FieldCustom",
-                "FieldArea"
+                "FieldArea",
+                "FieldID",
+                "FieldPhoneAny",
+                "FieldEmail",
+                "FieldNickname",
+                "FieldBirthday",
+                "FieldBirthDate",
+                "FieldZip",
+                "FieldState",
+                "FieldCity",
+                "FieldDistrict",
+                "FieldGeoPrecision",
+                "FieldGeoStatus",
+                "FieldHasAddress",
+                "FieldHasIdentity",
+                "FieldOptedOut",
+                "FieldWhatsAppOptIn",
+                "FieldRelationKind",
+                "FieldRelativesCount",
+                "FieldReferredCount",
+                "FieldReferredBy",
+                "FieldGeoPlacement",
+                "FieldAreaApproximate"
             ]
         },
         "crmfilter.Filter": {
@@ -39643,6 +40512,102 @@
                 "reasoningTokens": {
                     "type": "integer",
                     "example": 3100
+                }
+            }
+        },
+        "handlers.agentOptionsDefaults": {
+            "type": "object",
+            "properties": {
+                "messagingModel": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.agentOptionsResponse": {
+            "type": "object",
+            "properties": {
+                "defaults": {
+                    "$ref": "#/definitions/handlers.agentOptionsDefaults"
+                },
+                "messaging": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "modelCapabilities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ai.ModelCapability"
+                    }
+                },
+                "modelPricing": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/ai.ModelInfo"
+                    }
+                },
+                "models": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/handlers.agentProviderModels"
+                    }
+                },
+                "providers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.agentProviderOption"
+                    }
+                }
+            }
+        },
+        "handlers.agentProviderModels": {
+            "type": "object",
+            "properties": {
+                "llm": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "handlers.agentProviderOption": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.projectOpenedRequest": {
+            "type": "object"
+        },
+        "handlers.queueMessageRequest": {
+            "type": "object",
+            "properties": {
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "clientId": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.screenClaimRequest": {
+            "type": "object",
+            "properties": {
+                "claimant": {
+                    "type": "string"
                 }
             }
         },
@@ -43638,6 +44603,9 @@
                 "easing": {
                     "$ref": "#/definitions/mediagen.Easing"
                 },
+                "smooth": {
+                    "type": "boolean"
+                },
                 "value": {
                     "type": "number"
                 }
@@ -43845,7 +44813,8 @@
                         "enqueue_failed",
                         "insufficient_funds",
                         "reference_unavailable",
-                        "cost_unreported"
+                        "cost_unreported",
+                        "provider_busy"
                     ]
                 },
                 "id": {
@@ -44738,7 +45707,6 @@
         "report.FailureCode": {
             "type": "string",
             "enum": [
-                "forbidden",
                 "unknown_kind",
                 "unsupported_format",
                 "too_many_rows",
@@ -44748,10 +45716,10 @@
                 "source_unavailable",
                 "cancelled",
                 "workspace_required",
-                "empty_result"
+                "empty_result",
+                "forbidden"
             ],
             "x-enum-varnames": [
-                "FailureForbidden",
                 "FailureUnknownKind",
                 "FailureUnsupported",
                 "FailureTooManyRows",
@@ -44761,7 +45729,8 @@
                 "FailureSourceFailed",
                 "FailureCancelled",
                 "FailureWorkspaceEmpty",
-                "FailureEmptyResult"
+                "FailureEmptyResult",
+                "FailureForbidden"
             ]
         },
         "report.Format": {
@@ -44839,18 +45808,18 @@
         "report.Kind": {
             "type": "string",
             "enum": [
-                "leads",
                 "attendance_overview",
                 "conversation_entries",
                 "balance_transactions",
-                "opportunities"
+                "opportunities",
+                "leads"
             ],
             "x-enum-varnames": [
-                "KindLeads",
                 "KindAttendanceOverview",
                 "KindConversationEntries",
                 "KindBalanceTransactions",
-                "KindOpportunities"
+                "KindOpportunities",
+                "KindLeads"
             ]
         },
         "report.KindDescriptor": {
@@ -46364,6 +47333,20 @@
                 }
             }
         },
+        "studiohttp.CreateOrigin": {
+            "type": "object",
+            "properties": {
+                "commandId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "example": "0b9a5f9e-3c55-4c1e-9a43-6f0d2c7e8a11"
+                },
+                "threadId": {
+                    "type": "string",
+                    "example": "4b1f6c2e-8a3d-4f5e-9b7c-1d2e3f4a5b6c"
+                }
+            }
+        },
         "studiohttp.CreateRequest": {
             "type": "object",
             "properties": {
@@ -46380,10 +47363,24 @@
                 "name": {
                     "type": "string",
                     "example": "Post de segunda"
+                },
+                "origin": {
+                    "$ref": "#/definitions/studiohttp.CreateOrigin"
                 }
             }
         },
         "studiohttp.ExportedVideoResponse": {
+            "type": "object",
+            "properties": {
+                "mediaId": {
+                    "type": "string"
+                },
+                "mediaUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "studiohttp.LibraryAssetResponse": {
             "type": "object",
             "properties": {
                 "mediaId": {
@@ -46405,6 +47402,85 @@
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "studiohttp.PresetChangeRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Para títulos de abertura"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Entrada com giro"
+                }
+            }
+        },
+        "studiohttp.PresetListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/studiohttp.PresetResponse"
+                    }
+                }
+            }
+        },
+        "studiohttp.PresetRequest": {
+            "type": "object",
+            "properties": {
+                "animation": {
+                    "type": "object"
+                },
+                "description": {
+                    "type": "string",
+                    "example": "Para títulos de abertura"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Entrada com giro"
+                }
+            }
+        },
+        "studiohttp.PresetResponse": {
+            "type": "object",
+            "properties": {
+                "animation": {
+                    "type": "object"
+                },
+                "builtIn": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "descriptions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string",
+                    "example": "builtin.riseIn"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "names": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
                 }
             }
         },

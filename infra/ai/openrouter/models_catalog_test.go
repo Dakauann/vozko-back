@@ -76,8 +76,8 @@ func TestModelCatalogFetcher_SortAndParse(t *testing.T) {
 		t.Errorf("models[0].Created = %d, want 1750000000", models[0].Created)
 	}
 
-	if !models[0].SeesImages || models[1].SeesImages {
-		t.Errorf("SeesImages = %v, %v, want true for the image input model only", models[0].SeesImages, models[1].SeesImages)
+	if !models[0].SeesImages() || models[1].SeesImages() {
+		t.Errorf("SeesImages = %v, %v, want true for the image input model only", models[0].SeesImages(), models[1].SeesImages())
 	}
 
 	if got := models[1].ContextLength; got != 1000000 {

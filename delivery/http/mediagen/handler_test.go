@@ -303,3 +303,21 @@ func TestAProcessingJobTakesItsSourceAndTheCapIsTooManyRequests(t *testing.T) {
 		t.Fatalf("status %d body %s", capped.Code, capped.Body)
 	}
 }
+
+func TestASoundEffectIsRequestedWithItsLengthAndReturnsIt(t *testing.T) {
+	job := &mediagen.Job{ID: "job-2", WorkspaceID: "ws-1", Kind: mediagen.KindSoundEffect, Prompt: "whoosh", DurationMS: 1_500, Status: mediagen.StatusQueued, CreatedAt: stamp, UpdatedAt: stamp}
+	svc := &fakeService{job: job}
+	rec := serve(t, svc, http.MethodPost, "/media/generations", `{"kind":"sfx","model":"bytedance-seed/seed-audio-1-0","prompt":"whoosh","durationMs":1500}`)
+	want := mediagen.Request{WorkspaceID: "ws-1", Kind: mediagen.KindSoundEffect, Model: "bytedance-seed/seed-audio-1-0", Prompt: "whoosh", DurationMS: 1_500}
+	if rec.Code != http.StatusAccepted || !reflect.DeepEqual(svc.requested, want) {
+		t.Fatalf("status %d requested %+v", rec.Code, svc.requested)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["kind"] != "sfx" || got["durationMs"] != float64(1_500) {
+		t.Fatalf("body %v err %v", got, err)
+	}
+	music := serve(t, &fakeService{job: queuedJob()}, http.MethodPost, "/media/generations", `{"kind":"image","prompt":"pizza","aspect":"square"}`)
+	if strings.Contains(music.Body.String(), "durationMs") {
+		t.Fatalf("a kind without a length shows none: %s", music.Body)
+	}
+}

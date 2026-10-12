@@ -47,6 +47,49 @@ type Driver struct {
 	newID    IDGenerator
 	state    *readiness.Snapshot
 	offered  []tools.Definition
+	inbox    func(context.Context, []ai.Message) []ai.Message
+	reattach func(copilot.Context) copilot.Context
+	adopt    func(projectID string) error
+}
+
+const msgProjectUnbound = "o projeto foi criado, mas esta conversa não pôde ser ligada a ele agora, então o editor não entrou nesta resposta. " +
+	"Avise o usuário que o projeto está no cartão e que ele pode abrir a Elo de dentro do projeto"
+
+func (d *Driver) show(view copilot.View) bool {
+	if !view.OnStudio() || view.Validate() != nil || d.cc.View == view {
+		return false
+	}
+	d.cc.View = view
+	d.state = nil
+	if d.reattach != nil {
+		d.cc = d.reattach(d.cc)
+	}
+	d.offered = nil
+	return true
+}
+
+func (d *Driver) take(res copilot.Result) copilot.Result {
+	if res.Status != copilot.StatusOK || res.Opening == nil {
+		return res
+	}
+	if d.adopt == nil {
+		return copilot.Result{Status: copilot.StatusError, Message: msgProjectUnbound, Card: res.Card}
+	}
+	if err := d.adopt(res.Opening.View.ProjectID); err != nil {
+		log.Printf("[copilot] ws=%s project %s could not be tied to the conversation: %v", d.cc.WorkspaceID, res.Opening.View.ProjectID, err)
+		return copilot.Result{Status: copilot.StatusError, Message: msgProjectUnbound, Card: res.Card}
+	}
+	if res.Opening.Opened {
+		d.show(res.Opening.View)
+	}
+	return res
+}
+
+func (d *Driver) Drain(ctx context.Context, history []ai.Message) []ai.Message {
+	if d.inbox == nil {
+		return nil
+	}
+	return d.inbox(ctx, history)
 }
 
 func NewDriver(cc copilot.Context, model string, reg *Registry, access AccessChecker, funds FundsChecker, newID IDGenerator) *Driver {
@@ -76,7 +119,7 @@ func (d *Driver) permittedDefinitions() []tools.Definition {
 	defs := make([]tools.Definition, 0)
 	for _, t := range d.registry.Tools() {
 		if d.cc.View.Offers(t) && d.permitTool(t) == nil {
-			defs = append(defs, t.Definition())
+			defs = append(defs, copilot.DefinitionOn(t, d.cc.View))
 		}
 	}
 	return defs
@@ -104,6 +147,12 @@ func (d *Driver) FinishVerdict(call ai.ToolCall) agentloop.FinishResult {
 }
 
 func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.Emit) agentloop.StepResult {
+	step := d.dispatch(ctx, call, emit)
+	step.Signature = summarizeCall(call)
+	return step
+}
+
+func (d *Driver) dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.Emit) agentloop.StepResult {
 	tool, ok := d.registry.Get(call.Name)
 	if !ok {
 		return agentloop.StepResult{Result: "ferramenta desconhecida: " + call.Name}
@@ -134,7 +183,7 @@ func (d *Driver) Dispatch(ctx context.Context, call ai.ToolCall, emit agentloop.
 		}
 		args = auto
 	}
-	res := d.run(ctx, tool, call.Name, args, emit)
+	res := d.take(d.run(ctx, tool, call.Name, args, emit))
 	if res.Status != copilot.StatusOK {
 		log.Printf("[copilot] ws=%s tool=%s failed: %s", d.cc.WorkspaceID, call.Name, clippedError(res.Message))
 		if logged := failedArguments(tool, args); logged != "" {
@@ -273,14 +322,14 @@ func (d *Driver) mintID() string {
 	return "act"
 }
 
-func DefaultConfig(cc copilot.Context, model ai.ModelInfo, costCeilingMicros int64) agentloop.Config {
+func DefaultConfig(cc copilot.Context, model ai.ModelInfo) agentloop.Config {
 	cfg := agentloop.Config{
 		WorkspaceID:      cc.WorkspaceID,
 		BillingReference: cc.ChargeReference,
 		SessionID:        cc.ChargeReference,
 		Temperature:      0.2,
 		MaxTokensPerGen:  answerMaxTokensPerGen,
-		MaxIterations:    answerMaxIterations,
+		IterateUntilDone: true,
 		FinishToolName:   "finish",
 		LogPrefix:        "[copilot] ws=" + cc.WorkspaceID,
 		GraceInstruction: answerGraceInstruction,
@@ -289,8 +338,8 @@ func DefaultConfig(cc copilot.Context, model ai.ModelInfo, costCeilingMicros int
 		cfg.MaxTokensPerGen = studioMaxTokensPerGen
 		cfg.ReasoningMaxTokens = studioReasoningMaxTokens
 	}
-	if model.HasKnownLimits() && costCeilingMicros > 0 {
-		cfg.ModelLimits, cfg.CostCeilingMicros = model, costCeilingMicros
+	if model.HasKnownLimits() {
+		cfg.ModelLimits = model
 		return cfg
 	}
 	cfg.SessionTokenBudget = AnswerTokenBudget

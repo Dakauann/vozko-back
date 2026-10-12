@@ -83,3 +83,30 @@ func TestAudioModelsAreSplitIntoMusicAndVoiceByWhetherTheyHear(t *testing.T) {
 		t.Fatal("a render has no model catalog")
 	}
 }
+
+const speechModelsBody = `{
+  "data": [
+    {"id": "elevenlabs/eleven-v4", "name": "Eleven v4", "pricing": {"prompt": "0.00004", "completion": "0"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}},
+    {"id": "bytedance-seed/seed-audio-1-0", "name": "Seed Audio 1.0", "pricing": {"prompt": "0", "completion": "0.0025"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}},
+    {"id": "fish-audio/s2.1-pro-free:free", "name": "Free", "pricing": {"prompt": "0", "completion": "0"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}}
+  ]
+}`
+
+func TestSoundEffectModelsAreTheSpeechModelsBilledPerSecondOfGeneratedAudio(t *testing.T) {
+	var gotQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		_, _ = w.Write([]byte(speechModelsBody))
+	}))
+	defer srv.Close()
+	models, err := newMediaModelCatalog("test-key", srv.URL).Models(context.Background(), mediagen.KindSoundEffect)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotQuery.Get("output_modalities") != "speech" {
+		t.Fatalf("query %v", gotQuery)
+	}
+	if len(models) != 1 || models[0].ID != "bytedance-seed/seed-audio-1-0" {
+		t.Fatalf("models %+v", models)
+	}
+}

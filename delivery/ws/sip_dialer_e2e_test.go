@@ -76,6 +76,29 @@ type dialerStack struct {
 	routing   *routingParts
 	executor  *CallSessionInboundExecutor
 	sessions  callsession.CallSessionRegistry
+	released  releasedCalls
+}
+
+type releasedCalls chan struct{}
+
+func (releasedCalls) IncCallDialing() {}
+func (releasedCalls) DecCallDialing() {}
+func (releasedCalls) IncCallOngoing() {}
+func (releasedCalls) DecCallOngoing() {}
+func (r releasedCalls) IncCallFinished() {
+	select {
+	case r <- struct{}{}:
+	default:
+	}
+}
+
+func (s *dialerStack) waitForEngineRelease(t *testing.T) {
+	t.Helper()
+	select {
+	case <-s.released:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the engine never released the call")
+	}
 }
 
 type dialerStackConfig struct {
@@ -111,11 +134,12 @@ func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 		Settings: sip_trunk.Settings{BindHost: "127.0.0.1", BindPort: bindPort, PublicAddress: "127.0.0.1"},
 	}
 	repo := siptrunktest.NewMemoryRepository(trunk)
+	released := make(releasedCalls, 16)
 	manager, err := voipinfra.NewSIPTrunkManager(voipinfra.TrunkManagerConfig{
 		SIPBindHost: "127.0.0.1", SIPPortStart: voiptest.FreeUDPPort(t), SIPPortCount: 1,
 		RTPPortStart: 43000, RTPPortEnd: 43999, RegisterExpiry: time.Minute, DialTimeout: 5 * time.Second,
 		MediaTimeout: mediaTimeout, MaxCallDuration: time.Hour, WatchInterval: 100 * time.Millisecond,
-		PublicAddress: "127.0.0.1", UserAgent: "VozkoTest", AllowPrivateHosts: true,
+		PublicAddress: "127.0.0.1", UserAgent: "VozkoTest", AllowPrivateHosts: true, CallMetrics: released,
 	}, repo)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +210,7 @@ func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 		handler.HandleWebSocket(w, r.WithContext(ctx))
 	}))
 	t.Cleanup(server.Close)
-	return &dialerStack{server: server, provider: provider, manager: manager, trunk: trunk, billing: pub, admission: admission, sipPort: bindPort, routing: routing, executor: executor, sessions: sessions}
+	return &dialerStack{server: server, provider: provider, manager: manager, trunk: trunk, billing: pub, admission: admission, sipPort: bindPort, routing: routing, executor: executor, sessions: sessions, released: released}
 }
 
 type dialerClient struct {
@@ -324,6 +348,7 @@ func TestDialerCallsThroughATrunkWithAudioBothWaysAndBillsTheMinute(t *testing.T
 	if len(events) != 1 || events[0].Channel != "sip" || !strings.HasPrefix(events[0].CallID, "sip-out-") || events[0].DurationSec < 1 {
 		t.Fatalf("billing events = %+v, want one sip minute", events)
 	}
+	stack.waitForEngineRelease(t)
 	if len(stack.manager.ActiveCalls(stack.trunk.ID)) != 0 {
 		t.Fatal("the engine still tracks the call")
 	}

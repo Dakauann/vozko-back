@@ -1,0 +1,232 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "feed",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "prices",
+          "type": "table",
+          "name": "Planos",
+          "transform": {
+            "x": 0.5,
+            "y": 0.3,
+            "w": 0.84,
+            "h": 0.4,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "table": {
+            "columns": [
+              {
+                "width": 2,
+                "align": "left"
+              },
+              {
+                "width": 1,
+                "align": "right"
+              },
+              {
+                "width": 1,
+                "align": "center"
+              }
+            ],
+            "rows": [
+              [
+                {
+                  "text": "Plano"
+                },
+                {
+                  "text": "Preço"
+                },
+                {
+                  "text": "Usuários"
+                }
+              ],
+              [
+                {
+                  "text": "Básico",
+                  "runs": [
+                    {
+                      "start": 0,
+                      "end": 6,
+                      "fontWeight": 700,
+                      "fill": "#2563eb"
+                    }
+                  ]
+                },
+                {
+                  "text": "R$ 49,90"
+                },
+                {
+                  "text": "3"
+                }
+              ],
+              [
+                {
+                  "text": "Pro\nmais vendido",
+                  "runs": [
+                    {
+                      "start": 4,
+                      "end": 16,
+                      "italic": true,
+                      "caps": true
+                    }
+                  ]
+                },
+                {
+                  "text": "R$ 99,90"
+                },
+                {
+                  "text": "10"
+                }
+              ],
+              [
+                {
+                  "text": "Empresa"
+                },
+                {
+                  "text": ""
+                },
+                {
+                  "text": "ilimitado"
+                }
+              ]
+            ],
+            "header": true,
+            "style": {
+              "fontId": "inter",
+              "fontSize": 0.06,
+              "lineHeight": 1.25,
+              "weight": 400,
+              "textColor": "#111111",
+              "fill": "#00000000",
+              "headerFill": "#111111",
+              "headerText": "#ffffff",
+              "headerWeight": 700,
+              "banding": true,
+              "bandFill": "#1111110f",
+              "borders": "rows",
+              "borderColor": "#11111140",
+              "borderWidth": 0.004,
+              "padding": 0.6
+            }
+          }
+        },
+        {
+          "id": "scan-short",
+          "type": "qr",
+          "name": "QR Code",
+          "transform": {
+            "x": 0.25,
+            "y": 0.78,
+            "w": 0.3,
+            "h": 0.3,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "qr": {
+            "link": {
+              "kind": "shortLink",
+              "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+              "url": "https://vzk.to/aB3dE9"
+            },
+            "ecc": "M",
+            "quietZone": 4,
+            "dark": "#111111",
+            "light": "#ffffff"
+          }
+        },
+        {
+          "id": "scan-wa",
+          "type": "qr",
+          "transform": {
+            "x": 0.75,
+            "y": 0.78,
+            "w": 0.3,
+            "h": 0.3,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "qr": {
+            "link": {
+              "kind": "whatsapp",
+              "phone": "5511999998888",
+              "message": "Olá! Vi o anúncio\nquero saber mais"
+            },
+            "ecc": "H",
+            "quietZone": 4,
+            "dark": "#1e40af",
+            "light": "#fffbeb",
+            "logo": {
+              "assetId": "media-logo",
+              "scale": 0.28,
+              "aspect": 1.6
+            }
+          },
+          "locked": true
+        },
+        {
+          "id": "scan-url",
+          "type": "qr",
+          "transform": {
+            "x": 0.5,
+            "y": 0.78,
+            "w": 0.15,
+            "h": 0.15,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "qr": {
+            "link": {
+              "kind": "url",
+              "url": "https://vozko.com/ofertas?utm_source=qr"
+            },
+            "ecc": "Q",
+            "quietZone": 2,
+            "dark": "#000000",
+            "light": "#e5e7eb"
+          },
+          "groupId": "codes"
+        },
+        {
+          "id": "scan-text",
+          "type": "qr",
+          "transform": {
+            "x": 0.5,
+            "y": 0.95,
+            "w": 0.08,
+            "h": 0.08,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "qr": {
+            "link": {
+              "kind": "text",
+              "text": "WIFI:T:WPA;S:Loja;P:segredo;;"
+            },
+            "ecc": "L",
+            "quietZone": 6,
+            "dark": "#14532d",
+            "light": "#ffffff"
+          },
+          "hidden": true
+        }
+      ],
+      "groups": [
+        {
+          "id": "codes",
+          "name": "Códigos"
+        }
+      ]
+    }
+  ]
+}

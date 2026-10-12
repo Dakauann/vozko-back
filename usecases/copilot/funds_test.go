@@ -82,7 +82,7 @@ func TestService_ACatalogedModelGetsItsOwnLimits(t *testing.T) {
 	prov := &scriptAI{
 		turns: [][]ai.ToolCall{{call("read_x", nil)}, {}}, texts: []string{"", "fim"},
 		usage:  &ai.Usage{PromptTokens: AnswerTokenBudget, TotalTokens: AnswerTokenBudget},
-		models: []ai.ModelInfo{{ID: testThread().Model, ContextLength: 1_000_000, PromptPrice: 0.1, CompletionPrice: 0.4}},
+		models: []ai.ModelInfo{{ID: testThread().Model, ContextLength: 1_000_000, PromptPrice: 0.1, CompletionPrice: 0.4, Capabilities: []ai.ModelCapability{ai.CapabilityTools}}},
 	}
 	svc := NewService(agentloop.Engine{AI: prov}, NewRegistry(&fakeTool{name: "read_x", meta: readMeta}), &fakeAccess{}, openFunds{}, th, ms, nil, nil, func() string { return "a" })
 	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "x"}, ownerCtx, (&events{}).emit); err != nil {

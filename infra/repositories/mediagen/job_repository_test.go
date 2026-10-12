@@ -296,3 +296,15 @@ func TestAJobKeepsItsChargeReferenceInStorage(t *testing.T) {
 		t.Fatalf("loaded reference = %q", loaded.BillingReference)
 	}
 }
+
+func TestASoundEffectKeepsItsLengthInStorage(t *testing.T) {
+	job := &mediagen.Job{ID: jobID, WorkspaceID: workspaceID, RequestedBy: requesterID, Kind: mediagen.KindSoundEffect, Prompt: "whoosh", DurationMS: 1_500, Status: mediagen.StatusQueued}
+	record := mustRecord(t, job)
+	if record.DurationMS != 1_500 || record.Kind != "sfx" {
+		t.Fatalf("record %+v", record)
+	}
+	loaded, err := toDomain(record)
+	if err != nil || loaded.Kind != mediagen.KindSoundEffect || loaded.DurationMS != 1_500 {
+		t.Fatalf("loaded %+v err %v", loaded, err)
+	}
+}

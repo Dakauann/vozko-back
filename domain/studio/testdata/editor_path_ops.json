@@ -1,0 +1,74 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "square", "background": "#000000" },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-shapes",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-badge",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.4, "h": 0.4, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "l-badge",
+            "type": "shape",
+            "shape": "star",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "fill": "#ffcc00",
+            "stroke": "#111111",
+            "strokeWidth": 4,
+            "points": 8,
+            "inner": 0.6,
+            "pathOps": [
+              { "id": "op-round", "kind": "roundCorners", "radius": 12 },
+              { "id": "op-zig", "kind": "zigZag", "size": 6, "ridges": 3, "points": "smooth" },
+              {
+                "id": "op-grow",
+                "kind": "offset",
+                "amount": 0,
+                "copies": 2,
+                "copyOffset": 8,
+                "join": "round",
+                "miterLimit": 4,
+                "keyframes": {
+                  "amount": [
+                    { "atMs": 0, "value": 0, "easing": "easeOut" },
+                    { "atMs": 900, "value": 24, "easing": "linear" }
+                  ]
+                }
+              },
+              { "id": "op-twist", "kind": "twist", "angle": 0, "centerX": 0.5, "centerY": 0.5, "hidden": true },
+              { "id": "op-bloat", "kind": "puckerBloat", "amount": -20 },
+              {
+                "id": "op-hole",
+                "kind": "merge",
+                "mode": "subtract",
+                "path": "M0 0.5 A0.5 0.5 0 0 1 1 0.5 A0.5 0.5 0 0 1 0 0.5 Z",
+                "x": 0.5,
+                "y": 0.5,
+                "w": 0.3,
+                "h": 0.3,
+                "rotation": 0,
+                "keyframes": {
+                  "w": [
+                    { "atMs": 0, "value": 0.05, "easing": "backOut" },
+                    { "atMs": 1500, "value": 0.4, "easing": "linear" }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -16,18 +16,26 @@ var (
 	ErrCreatorRequired   = errors.New("studio: the creator is required")
 	ErrUserRequired      = errors.New("studio: the reporting user is required")
 	ErrSessionTaken      = errors.New("studio: the telemetry session belongs to someone else")
-	ErrNotVideo          = errors.New("studio: only video projects are exported as video")
+	ErrOriginTaken       = errors.New("studio: the project of this chat command belongs to someone else")
+	ErrExportFormat      = errors.New("studio: this project does not export that format")
+	ErrPresetNotFound    = errors.New("studio: animation preset not found")
+	ErrPresetReadOnly    = errors.New("studio: built-in animation presets are read only")
 )
 
 const (
 	FieldKind      = "kind"
 	FieldName      = "name"
 	FieldDocument  = "document"
+	FieldOrigin    = "origin"
 	FieldCanvas    = "document.canvas"
 	FieldArtboards = "document.artboards"
 	FieldLayers    = "document.layers"
 	FieldTracks    = "document.tracks"
 	FieldMarkers   = "document.markers"
+	FieldStyles    = "document.styles"
+
+	FieldAnimation   = "animation"
+	FieldDescription = "description"
 
 	CodeRequired   = "required"
 	CodeInvalid    = "invalid"

@@ -361,6 +361,7 @@ type ParameterItems struct {
 	Required    []string
 	Description string
 	Enum        []string
+	Items       *ParameterItems `json:"Items,omitempty"`
 }
 
 type SchemaParameter struct {

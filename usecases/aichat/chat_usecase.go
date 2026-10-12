@@ -25,6 +25,9 @@ var (
 	ErrNoSubscription      = errors.New("aichat: active subscription required")
 	ErrInsufficientBalance = errors.New("aichat: insufficient balance")
 	ErrEmptyMessage        = errors.New("aichat: empty message")
+
+	ErrOtherProject              = errors.New("aichat: thread belongs to another studio project")
+	ErrProjectBindingUnavailable = errors.New("aichat: studio project binding unavailable")
 )
 
 type subscriptionReader interface {
@@ -38,6 +41,7 @@ type Service struct {
 	funds    *FundsGate
 	charges  balance.ReferenceTotaler
 	usage    aiusage.Totaler
+	projects aichat.ThreadProjects
 }
 
 func NewService(
@@ -63,20 +67,51 @@ func (s *Service) CreateThread(workspaceID, userID, model, title string) (*aicha
 	return t, nil
 }
 
-func (s *Service) ListThreads(workspaceID, userID string, limit, offset int) ([]*aichat.Thread, int64, error) {
+func (s *Service) ListThreads(workspaceID, userID, query string, limit, offset int) ([]*aichat.Thread, int64, error) {
 	return s.threads.ListByUser(aichat.ListThreadsInput{
 		WorkspaceID: workspaceID,
 		UserID:      userID,
+		Query:       strings.TrimSpace(query),
 		Limit:       limit,
 		Offset:      offset,
 	})
 }
 
-func (s *Service) ListMessages(workspaceID, userID, threadID string, limit, offset int) ([]*aichat.Message, int64, error) {
-	if _, err := s.authorizeThread(workspaceID, userID, threadID); err != nil {
-		return nil, 0, err
+func (s *Service) ListMessages(workspaceID, userID, threadID string, limit, offset int) (*aichat.Thread, []*aichat.Message, int64, error) {
+	thread, err := s.authorizeThread(workspaceID, userID, threadID)
+	if err != nil {
+		return nil, nil, 0, err
 	}
-	return s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: limit, Offset: offset})
+	msgs, total, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: limit, Offset: offset})
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	return thread, msgs, total, nil
+}
+
+func (s *Service) SetThreadProjects(projects aichat.ThreadProjects) {
+	s.projects = projects
+}
+
+func (s *Service) ClaimProject(thread *aichat.Thread, projectID string) error {
+	if projectID == "" || thread.ProjectID == projectID {
+		return nil
+	}
+	if thread.ProjectID != "" {
+		return ErrOtherProject
+	}
+	if s.projects == nil {
+		return ErrProjectBindingUnavailable
+	}
+	bound, err := s.projects.BindProject(thread.ID, projectID)
+	if err != nil {
+		return err
+	}
+	if !bound {
+		return ErrOtherProject
+	}
+	thread.ProjectID = projectID
+	return nil
 }
 
 func (s *Service) RenameThread(workspaceID, userID, threadID, title string) error {
@@ -171,7 +206,7 @@ func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, content, mo
 		}
 	}
 
-	_ = s.threads.Touch(thread.ID, time.Now().UTC(), model)
+	_ = s.threads.Touch(thread.ID, time.Now().UTC(), model, thread.ReasoningLevelFor(model))
 	if strings.TrimSpace(thread.Title) == "" {
 		_ = s.threads.Rename(thread.ID, deriveTitle(content))
 	}

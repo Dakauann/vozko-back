@@ -17,6 +17,14 @@ type Repository interface {
 	Archive(ctx context.Context, workspaceID, id string) error
 }
 
+type PresetRepository interface {
+	CreatePreset(ctx context.Context, p *AnimationPreset) error
+	ListPresets(ctx context.Context, workspaceID string) ([]AnimationPreset, error)
+	GetPreset(ctx context.Context, workspaceID, id string) (*AnimationPreset, error)
+	SavePreset(ctx context.Context, p *AnimationPreset) error
+	DeletePreset(ctx context.Context, workspaceID, id string) error
+}
+
 type CapabilityRepository interface {
 	Upsert(ctx context.Context, report CapabilityReport) error
 }

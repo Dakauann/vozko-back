@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"vozko/domain/studio"
 	"vozko/infra/database/schema"
@@ -28,10 +29,42 @@ func (r *repository) Create(ctx context.Context, p *studio.Project) error {
 	record := &schema.StudioProject{
 		WorkspaceID: p.WorkspaceID, Kind: string(p.Kind), Name: p.Name, Document: []byte(p.Document), Version: p.Version, CreatedBy: p.CreatedBy,
 	}
-	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
+	if p.Origin.Empty() {
+		if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
+			return err
+		}
+		p.ID, p.CreatedAt, p.UpdatedAt = record.ID, record.CreatedAt, record.UpdatedAt
+		return nil
+	}
+	return r.createOnce(ctx, p, record)
+}
+
+func (r *repository) createOnce(ctx context.Context, p *studio.Project, record *schema.StudioProject) error {
+	record.ChatThreadID, record.ScreenCommandID = &p.Origin.ThreadID, &p.Origin.CommandID
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:     []clause.Column{{Name: "chat_thread_id"}, {Name: "screen_command_id"}},
+		TargetWhere: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: schema.StudioProjectOriginPredicate}}},
+		DoNothing:   true,
+	}).Create(record)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		p.ID, p.CreatedAt, p.UpdatedAt = record.ID, record.CreatedAt, record.UpdatedAt
+		return nil
+	}
+	var existing schema.StudioProject
+	err := r.db.WithContext(ctx).Where("chat_thread_id = ? AND screen_command_id = ?", p.Origin.ThreadID, p.Origin.CommandID).First(&existing).Error
+	if err != nil {
 		return err
 	}
-	p.ID, p.CreatedAt, p.UpdatedAt = record.ID, record.CreatedAt, record.UpdatedAt
+	if existing.WorkspaceID != p.WorkspaceID || existing.CreatedBy != p.CreatedBy {
+		return studio.ErrOriginTaken
+	}
+	if existing.ArchivedAt != nil {
+		return studio.ErrProjectNotFound
+	}
+	*p = *toDomain(&existing)
 	return nil
 }
 
@@ -117,8 +150,15 @@ func (r *repository) Archive(ctx context.Context, workspaceID, id string) error 
 func toDomain(r *schema.StudioProject) *studio.Project {
 	return &studio.Project{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, Kind: studio.Kind(r.Kind), Name: r.Name, Document: []byte(r.Document),
-		Version: r.Version, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Version: r.Version, CreatedBy: r.CreatedBy, Origin: originOf(r), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
+}
+
+func originOf(r *schema.StudioProject) studio.Origin {
+	if r.ChatThreadID == nil || r.ScreenCommandID == nil {
+		return studio.Origin{}
+	}
+	return studio.Origin{ThreadID: *r.ChatThreadID, CommandID: *r.ScreenCommandID}
 }
 
 func validID(id string) bool {

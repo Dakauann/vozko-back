@@ -1,0 +1,45 @@
+{
+  "prefix": "sound:",
+  "sounds": [
+    {
+      "id": "message",
+      "assetId": "sound:message",
+      "durationMs": 1500
+    },
+    {
+      "id": "call-connected",
+      "assetId": "sound:call-connected",
+      "durationMs": 660
+    },
+    {
+      "id": "call-ended",
+      "assetId": "sound:call-ended",
+      "durationMs": 880
+    },
+    {
+      "id": "incoming-call",
+      "assetId": "sound:incoming-call",
+      "durationMs": 8700
+    },
+    {
+      "id": "pop",
+      "assetId": "sound:pop",
+      "durationMs": 280
+    },
+    {
+      "id": "click",
+      "assetId": "sound:click",
+      "durationMs": 120
+    },
+    {
+      "id": "whoosh",
+      "assetId": "sound:whoosh",
+      "durationMs": 750
+    },
+    {
+      "id": "ding",
+      "assetId": "sound:ding",
+      "durationMs": 1400
+    }
+  ]
+}

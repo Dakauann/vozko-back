@@ -15,6 +15,7 @@ import (
 	"vozko/brand"
 	balance_domain "vozko/domain/balance"
 	redisCache "vozko/infra/cache"
+	aichat_repository "vozko/infra/repositories/aichat"
 	aiusage_repository "vozko/infra/repositories/aiusage"
 	balance_repository "vozko/infra/repositories/balance"
 	georef_repository "vozko/infra/repositories/georef"
@@ -137,12 +138,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	searchCEPUC := cep_usecase.NewSearchCEPUseCaseWithReference(c.repositories.cep, viacep.NewClient(viacep.Config{}), georef_repository.NewPlaces(c.db))
 
-	openrouterCfg := openrouter_service.Config{
-		APIKey:       c.cfg.OpenRouterAPIKey,
-		DefaultModel: c.cfg.OpenRouterDefaultModel,
-		HTTPReferer:  c.cfg.OpenRouterHTTPReferer,
-		XTitle:       c.cfg.OpenRouterXTitle,
-	}
+	openrouterCfg := openrouter_service.ConfigFrom(c.cfg)
 
 	queryKnowledgeBaseUC := rag_usecase.NewQueryKnowledgeBaseUseCase(c.services.ragEmbedding, c.repositories.ragVector, c.repositories.ragChunk, c.repositories.ragDocument, c.repositories.ragKnowledgeBase)
 	queryAgentKBUC := rag_usecase.NewQueryAgentKnowledgeBaseUseCase(c.repositories.ragAgentKB, queryKnowledgeBaseUC)
@@ -1188,6 +1184,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	)
 	c.useCases.aichat.SetChargeLedger(balance_repository.NewReferenceTotals(c.db))
 	c.useCases.aichat.SetUsageLedger(aiusage_repository.NewUsageRepository(c.db))
+	c.useCases.aichat.SetThreadProjects(aichat_repository.NewThreadProjects(c.db))
 
 	c.useCases.workflowManager = workflow_usecase.NewWorkflowManager(c.repositories.workflow, c.repositories.workflowRun, wfEngine)
 	c.useCases.triggerEvaluator = workflow_usecase.NewTriggerEvaluator(c.repositories.workflow, c.repositories.workflowRun, wfEngine, c.redisProvider.SharedState())
@@ -1336,6 +1333,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			SetModelLookup(workflow_usecase.ModelLookup)
 		}); ok {
 			setter.SetModelLookup(aiModelValidator)
+		}
+	}
+	for _, uc := range []any{c.useCases.activateWorkflow, c.useCases.updateWorkflow} {
+		if setter, ok := uc.(interface {
+			SetModelCatalog(workflow_usecase.ModelCatalog)
+		}); ok {
+			setter.SetModelCatalog(c.services.ai)
 		}
 	}
 

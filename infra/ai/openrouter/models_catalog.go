@@ -6,10 +6,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	openrouter "github.com/revrost/go-openrouter"
 
 	"vozko/domain/ai"
 )
@@ -22,6 +24,7 @@ const (
 	catalogSupportedParameters = "tools"
 	imageOutputModalities      = "image"
 	audioOutputModalities      = "audio"
+	speechOutputModalities     = "speech"
 )
 
 func chatModelsQuery() url.Values {
@@ -75,12 +78,64 @@ type openRouterModel struct {
 		ContextLength *int64 `json:"context_length"`
 	} `json:"top_provider"`
 	Architecture struct {
-		InputModalities []string `json:"input_modalities"`
+		InputModalities  []string `json:"input_modalities"`
+		OutputModalities []string `json:"output_modalities"`
 	} `json:"architecture"`
+	SupportedParameters []string `json:"supported_parameters"`
+	Reasoning           *struct {
+		SupportedEfforts []string `json:"supported_efforts"`
+		DefaultEffort    string   `json:"default_effort"`
+		Mandatory        bool     `json:"mandatory"`
+	} `json:"reasoning"`
 }
 
-func (m openRouterModel) accepts(modality string) bool {
-	return slices.Contains(m.Architecture.InputModalities, modality)
+func (m openRouterModel) facts() ai.ModelFacts {
+	f := ai.ModelFacts{
+		ID:               m.ID,
+		Name:             m.Name,
+		Created:          m.Created,
+		InputModalities:  m.Architecture.InputModalities,
+		OutputModalities: m.Architecture.OutputModalities,
+		Parameters:       m.SupportedParameters,
+		ContextLength:    contextLengthOf(m.ContextLength, m.TopProvider.ContextLength),
+		Price:            priceOf(m.Pricing.Prompt, m.Pricing.Completion),
+	}
+	if m.Reasoning != nil {
+		f.Reasoning = &ai.ReasoningFacts{Efforts: m.Reasoning.SupportedEfforts, Default: m.Reasoning.DefaultEffort, Mandatory: m.Reasoning.Mandatory}
+	}
+	return f
+}
+
+func sdkModelFacts(m openrouter.Model) ai.ModelFacts {
+	return ai.ModelFacts{
+		ID:               m.ID,
+		Name:             m.Name,
+		Created:          m.Created,
+		InputModalities:  m.Architecture.InputModalities,
+		OutputModalities: m.Architecture.OutputModalities,
+		Parameters:       m.SupportedParameters,
+		ContextLength:    contextLengthOf(m.ContextLength, m.TopProvider.ContextLength),
+		Price:            priceOf(m.Pricing.Prompt, m.Pricing.Completion),
+	}
+}
+
+func contextLengthOf(model, topProvider *int64) int64 {
+	if model != nil && *model > 0 {
+		return *model
+	}
+	if topProvider != nil && *topProvider > 0 {
+		return *topProvider
+	}
+	return 0
+}
+
+func priceOf(prompt, completion string) *ai.ModelPrice {
+	p, perr := strconv.ParseFloat(strings.TrimSpace(prompt), 64)
+	c, cerr := strconv.ParseFloat(strings.TrimSpace(completion), 64)
+	if perr != nil || cerr != nil || p < 0 || c < 0 {
+		return nil
+	}
+	return &ai.ModelPrice{PromptPerMillion: p * 1_000_000, CompletionPerMillion: c * 1_000_000}
 }
 
 func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, bool) {
@@ -96,6 +151,24 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 	}
 	f.mu.Unlock()
 
+	if fresh, ok := f.fetch(ctx); ok {
+		f.mu.Lock()
+		f.cache = fresh
+		f.cachedAt = f.now()
+		f.mu.Unlock()
+		return fresh, true
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.cache != nil {
+		log.Printf("[ai-catalog] refresh failed, serving the catalog from %s", f.cachedAt.Format(time.RFC3339))
+		return f.cache, true
+	}
+	return nil, false
+}
+
+func (f *modelCatalogFetcher) fetch(ctx context.Context) ([]ai.ModelInfo, bool) {
 	params := url.Values{}
 	for key, values := range f.query {
 		params[key] = values
@@ -129,31 +202,7 @@ func (f *modelCatalogFetcher) FetchModelsWithPricing(ctx context.Context) ([]ai.
 
 	result := make([]ai.ModelInfo, 0, len(payload.Data))
 	for _, m := range payload.Data {
-		info := ai.ModelInfo{
-			ID:      m.ID,
-			Name:    m.Name,
-			Created:    m.Created,
-			SeesImages: m.accepts(imageOutputModalities),
-			HearsAudio: m.accepts(audioOutputModalities),
-		}
-		if v := parseFloat64(m.Pricing.Prompt); v > 0 {
-			info.PromptPrice = v * 1_000_000
-		}
-		if v := parseFloat64(m.Pricing.Completion); v > 0 {
-			info.CompletionPrice = v * 1_000_000
-		}
-		if m.ContextLength != nil && *m.ContextLength > 0 {
-			info.ContextLength = *m.ContextLength
-		} else if m.TopProvider.ContextLength != nil && *m.TopProvider.ContextLength > 0 {
-			info.ContextLength = *m.TopProvider.ContextLength
-		}
-		result = append(result, info)
+		result = append(result, ai.DescribeModel(m.facts()))
 	}
-
-	f.mu.Lock()
-	f.cache = result
-	f.cachedAt = f.now()
-	f.mu.Unlock()
-
 	return result, true
 }

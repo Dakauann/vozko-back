@@ -1,0 +1,213 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "post",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "photo",
+          "type": "image",
+          "assetId": "m-1",
+          "transform": {
+            "x": 0.5,
+            "y": 0.4,
+            "w": 1,
+            "h": 0.8,
+            "rotation": 0,
+            "opacity": 1
+          }
+        },
+        {
+          "id": "cta-1",
+          "type": "instance",
+          "name": "CTA",
+          "componentId": "cta",
+          "transform": {
+            "x": 0.5,
+            "y": 0.86,
+            "w": 0.4444,
+            "h": 0.1111,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "groupId": "footer",
+          "overrides": [
+            {
+              "layerId": "label",
+              "text": "Compre agora",
+              "fontWeight": 700,
+              "italic": false
+            },
+            {
+              "layerId": "pill",
+              "fill": "#e4003a"
+            },
+            {
+              "layerId": "arrow",
+              "hidden": true
+            }
+          ]
+        },
+        {
+          "id": "cta-2",
+          "type": "instance",
+          "componentId": "cta",
+          "transform": {
+            "x": 0.5,
+            "y": 0.95,
+            "w": 0.3,
+            "h": 0.06,
+            "rotation": -8,
+            "opacity": 0.9
+          },
+          "flipX": true,
+          "locked": true,
+          "groupId": "footer"
+        },
+        {
+          "id": "logo",
+          "type": "instance",
+          "componentId": "badge",
+          "transform": {
+            "x": 0.1,
+            "y": 0.1,
+            "w": 0.1,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "overrides": [
+            {
+              "layerId": "mark",
+              "iconId": "star",
+              "fill": "#ffcc00"
+            },
+            {
+              "layerId": "shot",
+              "assetId": "m-2",
+              "crop": {
+                "x": 0,
+                "y": 0,
+                "w": 0.5,
+                "h": 1
+              }
+            }
+          ]
+        }
+      ],
+      "groups": [
+        {
+          "id": "footer",
+          "name": "Rodapé"
+        }
+      ]
+    },
+    {
+      "id": "cta",
+      "name": "Botão",
+      "component": true,
+      "x": 0,
+      "y": -300,
+      "canvas": {
+        "width": 480,
+        "height": 120,
+        "background": ""
+      },
+      "layers": [
+        {
+          "id": "pill",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#111111",
+          "radius": 0.5,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          }
+        },
+        {
+          "id": "label",
+          "type": "text",
+          "text": "Saiba mais",
+          "fontId": "montserrat",
+          "fontSize": 0.3,
+          "fill": "#ffffff",
+          "transform": {
+            "x": 0.45,
+            "y": 0.5,
+            "w": 0.7,
+            "h": 0.5,
+            "rotation": 0,
+            "opacity": 1
+          }
+        },
+        {
+          "id": "arrow",
+          "type": "icon",
+          "iconId": "arrow-right",
+          "fill": "#ffffff",
+          "transform": {
+            "x": 0.87,
+            "y": 0.5,
+            "w": 0.1,
+            "h": 0.34,
+            "rotation": 0,
+            "opacity": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "badge",
+      "component": true,
+      "x": 600,
+      "y": -300,
+      "canvas": {
+        "width": 200,
+        "height": 200,
+        "background": "#000000"
+      },
+      "layers": [
+        {
+          "id": "shot",
+          "type": "image",
+          "assetId": "m-3",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          }
+        },
+        {
+          "id": "mark",
+          "type": "icon",
+          "iconId": "heart",
+          "fill": "#ffffff",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.5,
+            "h": 0.5,
+            "rotation": 0,
+            "opacity": 1
+          }
+        }
+      ]
+    }
+  ]
+}

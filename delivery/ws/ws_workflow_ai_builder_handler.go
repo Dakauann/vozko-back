@@ -61,7 +61,7 @@ func NewWSWorkflowAIBuilderHandler(useCase workflow_usecase.AIBuilderUseCase, ws
 // @Description	|---|---|---|
 // @Description	| `user_prompt` | `{"text": string, "graph"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |
 // @Description	| `set_workflow_type` | `{"type": "messages" \| "voice"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |
-// @Description	| `set_model` | `{"model": string}` | Escolhe o modelo de IA dos próximos pedidos. |
+// @Description	| `set_model` | `{"model": string, "reasoning"?: string}` | Escolhe o modelo de IA dos próximos pedidos e, opcionalmente, o nível de raciocínio: um dos `reasoning.levels` do modelo em `GET /agents/options`. Sem `reasoning`, vale o padrão do modelo. O assistente precisa de ferramentas, então o modelo é conferido no catálogo na escolha e antes de cada pedido: sem uso de ferramentas confirmado, com um nível que ele não oferece ou com o catálogo ilegível, nada vai ao provedor e a resposta é `done` com `valid: false`, o motivo em `summary` e o código em `code`. |
 // @Description	| `hydrate_graph` | `{"graph": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |
 // @Description	| `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: "cancelado"`. |
 // @Description
@@ -78,11 +78,12 @@ func NewWSWorkflowAIBuilderHandler(useCase workflow_usecase.AIBuilderUseCase, ws
 // @Description	| `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |
 // @Description	| `assistant_delta` | `{"text": string}` | Trecho da resposta do assistente. |
 // @Description	| `assistant_done` | `{"tools": number}` | Fim da resposta; `tools` é o número de ações do passo. |
+// @Description	| `assistant_retry` | `{"attempt": number, "of": number, "text"?: string, "reasoning"?: string}` | A conexão com o provedor de IA caiu e o mesmo passo vai ser repetido, sem refazer as ações já feitas. Apague do fim da resposta o `text` e do fim do raciocínio o `reasoning` que esse passo já tinha enviado. |
 // @Description	| `tool` | `{"name": string, "summary": string, "ok": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |
 // @Description	| `resource_resolved` | `{"kind": string, "query": string, "matches": [{"id": string, "name": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |
 // @Description	| `meta` | `{"name": string, "description": string, "workflowType": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |
 // @Description	| `idle` | `{"valid": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |
-// @Description	| `done` | `{"valid": boolean, "summary": string, "residualIssues"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. |
+// @Description	| `done` | `{"valid": boolean, "summary": string, "code"?: string, "residualIssues"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. Quando o modelo é recusado, `code` traz `model_without_tools`, `model_catalog_unavailable` ou `reasoning_level_unsupported`. |
 // @Description	| `error` | `{"error": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |
 // @Description
 // @Description	Valores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.
@@ -164,7 +165,7 @@ func (h *WSWorkflowAIBuilderHandler) HandleNewSession(w http.ResponseWriter, r *
 // @Description	|---|---|---|
 // @Description	| `user_prompt` | `{"text": string, "graph"?: Graph}` | Pede uma alteração. Se `graph` vier, ele substitui o fluxo atual antes do pedido. Pedidos enviados durante outro pedido entram na fila. |
 // @Description	| `set_workflow_type` | `{"type": "messages" \| "voice"}` | Troca o tipo do fluxo. Responde com `graph_snapshot`. |
-// @Description	| `set_model` | `{"model": string}` | Escolhe o modelo de IA dos próximos pedidos. |
+// @Description	| `set_model` | `{"model": string, "reasoning"?: string}` | Escolhe o modelo de IA dos próximos pedidos e, opcionalmente, o nível de raciocínio: um dos `reasoning.levels` do modelo em `GET /agents/options`. Sem `reasoning`, vale o padrão do modelo. O assistente precisa de ferramentas, então o modelo é conferido no catálogo na escolha e antes de cada pedido: sem uso de ferramentas confirmado, com um nível que ele não oferece ou com o catálogo ilegível, nada vai ao provedor e a resposta é `done` com `valid: false`, o motivo em `summary` e o código em `code`. |
 // @Description	| `hydrate_graph` | `{"graph": Graph}` | Substitui o fluxo (por exemplo, depois de edições manuais) e responde com `graph_snapshot`. |
 // @Description	| `cancel` | sem `data` | Interrompe o pedido em andamento, que termina com `done` e `summary: "cancelado"`. |
 // @Description
@@ -181,11 +182,12 @@ func (h *WSWorkflowAIBuilderHandler) HandleNewSession(w http.ResponseWriter, r *
 // @Description	| `reasoning_done` | sem `payload` | Fim do raciocínio do passo. |
 // @Description	| `assistant_delta` | `{"text": string}` | Trecho da resposta do assistente. |
 // @Description	| `assistant_done` | `{"tools": number}` | Fim da resposta; `tools` é o número de ações do passo. |
+// @Description	| `assistant_retry` | `{"attempt": number, "of": number, "text"?: string, "reasoning"?: string}` | A conexão com o provedor de IA caiu e o mesmo passo vai ser repetido, sem refazer as ações já feitas. Apague do fim da resposta o `text` e do fim do raciocínio o `reasoning` que esse passo já tinha enviado. |
 // @Description	| `tool` | `{"name": string, "summary": string, "ok": boolean}` | Cada ação no fluxo. `ok: false` traz o motivo em `summary`. |
 // @Description	| `resource_resolved` | `{"kind": string, "query": string, "matches": [{"id": string, "name": string}]}` | O assistente buscou um recurso do workspace (agentes, mídias, filas, troncos...). |
 // @Description	| `meta` | `{"name": string, "description": string, "workflowType": string}` | O assistente definiu nome, descrição ou tipo do fluxo. |
 // @Description	| `idle` | `{"valid": boolean}` | O assistente respondeu sem alterar o fluxo e espera o próximo pedido. |
-// @Description	| `done` | `{"valid": boolean, "summary": string, "residualIssues"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. |
+// @Description	| `done` | `{"valid": boolean, "summary": string, "code"?: string, "residualIssues"?: LintIssue[]}` | O pedido terminou: o fluxo foi validado, um limite foi atingido, foi cancelado ou houve erro do provedor de IA. Quando o modelo é recusado, `code` traz `model_without_tools`, `model_catalog_unavailable` ou `reasoning_level_unsupported`. |
 // @Description	| `error` | `{"error": string}` | Não foi possível abrir a sessão (limite de sessões, fluxo inexistente ou de outro workspace). A conexão é encerrada. |
 // @Description
 // @Description	Valores de `tool.name`: `get_node_spec`, `find_resource`, `add_node`, `connect`, `update_node`, `remove_node`, `remove_edge`, `set_meta` e `finish`.

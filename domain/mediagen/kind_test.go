@@ -262,3 +262,19 @@ func TestProcessingKindsReadOneSourceWithoutAModel(t *testing.T) {
 		t.Fatal("the source is part of the fingerprint")
 	}
 }
+
+func TestEveryKindRunsInTheLaneThatCapsIt(t *testing.T) {
+	for _, kind := range Kinds() {
+		lane, ceiling := kind.ActiveLane()
+		wantLane, wantCeiling := ProcessingKinds(), MaxActiveProcessing
+		if kind.UsesModel() {
+			wantLane, wantCeiling = GenerationKinds(), MaxActiveGenerations
+		}
+		if !reflect.DeepEqual(lane, wantLane) || ceiling != wantCeiling {
+			t.Fatalf("%s runs in %v capped at %d, want %v capped at %d", kind, lane, ceiling, wantLane, wantCeiling)
+		}
+	}
+	if _, ceiling := KindSoundEffect.ActiveLane(); ceiling != MaxActiveGenerations {
+		t.Fatalf("a sound effect shares the generation lane, got a ceiling of %d", ceiling)
+	}
+}

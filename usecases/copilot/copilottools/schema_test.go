@@ -4,8 +4,6 @@ import (
 	"errors"
 	"reflect"
 	"testing"
-
-	"vozko/domain/tools"
 )
 
 type schemaFake struct {
@@ -20,7 +18,7 @@ type schemaFake struct {
 
 func TestStructParams(t *testing.T) {
 	desc := map[string]string{"name": "the name", "flag": "a flag"}
-	params, required := structParams(reflect.TypeOf(schemaFake{}), desc)
+	params, required := StructParams(reflect.TypeOf(schemaFake{}), desc)
 
 	for _, k := range []string{"name", "opt", "flag", "count", "list"} {
 		if _, ok := params[k]; !ok {
@@ -47,13 +45,13 @@ func TestStructParams(t *testing.T) {
 
 func TestBindArgs(t *testing.T) {
 	var f schemaFake
-	bindArgs(map[string]interface{}{"name": "x", "flag": true, "count": 3}, &f)
+	BindArgs(map[string]interface{}{"name": "x", "flag": true, "count": 3}, &f)
 	if f.Name != "x" || f.Flag == nil || !*f.Flag || f.Count != 3 {
 		t.Fatalf("bind wrong: %+v", f)
 	}
 
 	var g schemaFake
-	bindArgs(map[string]interface{}{"name": make(chan int)}, &g)
+	BindArgs(map[string]interface{}{"name": make(chan int)}, &g)
 	if g.Name != "" {
 		t.Fatal("unmarshalable args must be a no-op")
 	}
@@ -61,7 +59,7 @@ func TestBindArgs(t *testing.T) {
 
 func TestBindArgsOnlyBindsSchemaFields(t *testing.T) {
 	var f schemaFake
-	bindArgs(map[string]interface{}{
+	BindArgs(map[string]interface{}{
 		"name": "x", "NoTag": "leak", "Hidden": "leak",
 		"workspaceId": "leak", "createdBy": "leak", "id": "leak",
 	}, &f)
@@ -73,29 +71,6 @@ func TestBindArgsOnlyBindsSchemaFields(t *testing.T) {
 	}
 }
 
-func TestCreateInputRejectsScopeFromArgs(t *testing.T) {
-	var f agentFields
-	bindArgs(map[string]interface{}{"name": "x", "workspaceId": "evil", "departmentId": "evil"}, &f)
-	if in := f.toCreateInput(); in.WorkspaceID != "" {
-		t.Fatal("workspace/department must never bind from model args")
-	}
-	if f.Name == nil || *f.Name != "x" {
-		t.Fatal("real fields still bind")
-	}
-}
-
-func TestAgentSchemasExcludeScope(t *testing.T) {
-	create := NewCreateAgentTool(nil, AgentDeps{}).Definition().Parameters
-	update := NewUpdateAgentTool(nil, nil, AgentDeps{}).Definition().Parameters
-	for _, params := range []map[string]tools.Parameter{create, update} {
-		for _, k := range []string{"workspaceId", "workspaceID", "departmentId", "departmentID", "departmentIds"} {
-			if _, ok := params[k]; ok {
-				t.Fatalf("scope key %q must never appear in a tool schema", k)
-			}
-		}
-	}
-}
-
 type taggedArgs struct {
 	Query    string   `json:"query" req:"true" desc:"o que procurar"`
 	Status   string   `json:"status" enum:"open,closed" desc:"situação"`
@@ -104,7 +79,7 @@ type taggedArgs struct {
 }
 
 func TestStructParamsReadsDescriptionsEnumsAndListItemsFromTags(t *testing.T) {
-	params, required := structParams(reflect.TypeOf(taggedArgs{}), nil)
+	params, required := StructParams(reflect.TypeOf(taggedArgs{}), nil)
 	if params["query"].Description != "o que procurar" || len(required) != 1 || required[0] != "query" {
 		t.Fatalf("query = %+v required = %v", params["query"], required)
 	}
@@ -117,7 +92,7 @@ func TestStructParamsReadsDescriptionsEnumsAndListItemsFromTags(t *testing.T) {
 }
 
 func TestDescriptionMapStillWinsOverTheTag(t *testing.T) {
-	params, _ := structParams(reflect.TypeOf(taggedArgs{}), map[string]string{"query": "override"})
+	params, _ := StructParams(reflect.TypeOf(taggedArgs{}), map[string]string{"query": "override"})
 	if params["query"].Description != "override" {
 		t.Fatalf("description = %q", params["query"].Description)
 	}
@@ -125,26 +100,26 @@ func TestDescriptionMapStillWinsOverTheTag(t *testing.T) {
 
 func TestDecodeArgsRefusesMissingRequiredFields(t *testing.T) {
 	var got taggedArgs
-	if err := decodeArgs(map[string]interface{}{"status": "open"}, &got); err == nil {
+	if err := DecodeArgs(map[string]interface{}{"status": "open"}, &got); err == nil {
 		t.Fatal("a missing required field must refuse, not run with an empty value")
 	}
-	if err := decodeArgs(map[string]interface{}{"query": "   "}, &got); err == nil {
+	if err := DecodeArgs(map[string]interface{}{"query": "   "}, &got); err == nil {
 		t.Fatal("a blank required string is missing too")
 	}
-	if err := decodeArgs(map[string]interface{}{"query": "maria", "page": 2.0, "unknown": "x"}, &got); err != nil || got.Query != "maria" || got.Page != 2 {
+	if err := DecodeArgs(map[string]interface{}{"query": "maria", "page": 2.0, "unknown": "x"}, &got); err != nil || got.Query != "maria" || got.Page != 2 {
 		t.Fatalf("decode = %+v, %v", got, err)
 	}
 }
 
 func TestDecodeArgsRefusesAValueOutsideItsEnum(t *testing.T) {
 	var got taggedArgs
-	if err := decodeArgs(map[string]interface{}{"query": "x", "status": "deleted"}, &got); err == nil {
+	if err := DecodeArgs(map[string]interface{}{"query": "x", "status": "deleted"}, &got); err == nil {
 		t.Fatal("an enum is a contract, not a suggestion")
 	}
 }
 
 func TestDefinitionBuildsFromTheArgsStruct(t *testing.T) {
-	def := definition("search_x", "procura", taggedArgs{})
+	def := Definition("search_x", "procura", taggedArgs{})
 	if def.Name != "search_x" || def.Description != "procura" || len(def.Parameters) != 4 || def.Required[0] != "query" {
 		t.Fatalf("definition = %+v", def)
 	}
@@ -160,15 +135,15 @@ type embeddingArgsFake struct {
 }
 
 func TestEmbeddedArgsArePromotedIntoTheSchemaAndDecoding(t *testing.T) {
-	def := definition("embedded", "", embeddingArgsFake{})
+	def := Definition("embedded", "", embeddingArgsFake{})
 	if _, ok := def.Parameters["media_id"]; !ok || len(def.Required) != 2 {
 		t.Fatalf("schema = %+v required %v", def.Parameters, def.Required)
 	}
 	var a embeddingArgsFake
-	if err := decodeArgs(map[string]interface{}{"name": "x"}, &a); err == nil {
+	if err := DecodeArgs(map[string]interface{}{"name": "x"}, &a); err == nil {
 		t.Fatal("missing embedded required field was accepted")
 	}
-	if err := decodeArgs(map[string]interface{}{"name": "x", "media_id": "m1", "extra": "y"}, &a); err != nil || a.MediaID != "m1" {
+	if err := DecodeArgs(map[string]interface{}{"name": "x", "media_id": "m1", "extra": "y"}, &a); err != nil || a.MediaID != "m1" {
 		t.Fatalf("decoded %+v err %v", a, err)
 	}
 }
@@ -186,31 +161,14 @@ func TestDecodeArgsRefusesInventedIDs(t *testing.T) {
 		{"phone_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "stage_ids": []interface{}{"1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "stage-2"}},
 	} {
 		var a idArgsFake
-		err := decodeArgs(args, &a)
-		if !errors.Is(err, errInvalidArgs) {
+		err := DecodeArgs(args, &a)
+		if !errors.Is(err, ErrInvalidArgs) {
 			t.Fatalf("%v accepted: %v", args, err)
 		}
 	}
 	var a idArgsFake
-	if err := decodeArgs(map[string]interface{}{"phone_id": " 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d ", "note": "x"}, &a); err != nil || a.PhoneID != "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" {
+	if err := DecodeArgs(map[string]interface{}{"phone_id": " 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d ", "note": "x"}, &a); err != nil || a.PhoneID != "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" {
 		t.Fatalf("a real id was refused: %v", err)
-	}
-}
-
-func TestAListOfObjectsDescribesItsItemFields(t *testing.T) {
-	def := definition("render_video", "x", renderVideoArgs{})
-	scenes := def.Parameters["scenes"]
-	if scenes.Type != "array" || scenes.Items == nil || scenes.Items.Type != "object" {
-		t.Fatalf("scenes %+v", scenes)
-	}
-	if scenes.Items.Properties["seconds"].Type != "number" || scenes.Items.Properties["media_id"].Type != "string" {
-		t.Fatalf("item fields %+v", scenes.Items.Properties)
-	}
-	if len(scenes.Items.Required) != 2 {
-		t.Fatalf("required %v", scenes.Items.Required)
-	}
-	if ids := def.Parameters["music_media_id"]; ids.Type != "string" || ids.Items != nil {
-		t.Fatalf("scalar %+v", ids)
 	}
 }
 
@@ -225,7 +183,7 @@ type schemaNestedFake struct {
 }
 
 func TestAnObjectFieldDescribesItsFieldsAndAListEnumConstrainsItsItems(t *testing.T) {
-	params, _ := structParams(reflect.TypeOf(schemaNestedFake{}), nil)
+	params, _ := StructParams(reflect.TypeOf(schemaNestedFake{}), nil)
 	gradient := params["gradient"]
 	if gradient.Type != "object" || gradient.Items == nil || gradient.Description != "degradê" {
 		t.Fatalf("gradient %+v", gradient)
@@ -239,5 +197,44 @@ func TestAnObjectFieldDescribesItsFieldsAndAListEnumConstrainsItsItems(t *testin
 	clear := params["clear"]
 	if clear.Type != "array" || len(clear.Enum) != 0 || clear.Items == nil || len(clear.Items.Enum) != 2 || clear.Items.Enum[0] != "shadow" {
 		t.Fatalf("an enum on a list must constrain its items, got %+v", clear)
+	}
+}
+
+type schemaCellFake struct {
+	Text string `json:"text" req:"true"`
+}
+
+type schemaGridFake struct {
+	Rows     [][]string          `json:"rows"`
+	Cube     [][][]int           `json:"cube"`
+	Marks    [][]string          `json:"marks" enum:"a,b"`
+	Cells    [][]schemaCellFake  `json:"cells"`
+	Pointers []*schemaCellFake   `json:"pointers"`
+	Deep     *[][]schemaCellFake `json:"deep"`
+}
+
+func TestListsOfListsDeclareTheirItemsAtAnyDepth(t *testing.T) {
+	params, _ := StructParams(reflect.TypeOf(schemaGridFake{}), nil)
+	rows := params["rows"].Items
+	if rows == nil || rows.Type != "array" || rows.Items == nil || rows.Items.Type != "string" {
+		t.Fatalf("rows %+v", rows)
+	}
+	cube := params["cube"].Items
+	if cube == nil || cube.Items == nil || cube.Items.Items == nil || cube.Items.Items.Type != "integer" {
+		t.Fatalf("cube %+v", cube)
+	}
+	marks := params["marks"]
+	if len(marks.Enum) != 0 || marks.Items.Items == nil || len(marks.Items.Items.Enum) != 2 || len(marks.Items.Enum) != 0 {
+		t.Fatalf("an enum on a list of lists must constrain the innermost items, got %+v", marks.Items)
+	}
+	for _, name := range []string{"cells", "deep"} {
+		cells := params[name].Items
+		if cells == nil || cells.Type != "array" || cells.Items == nil || cells.Items.Type != "object" || cells.Items.Properties["text"].Type != "string" || cells.Items.Required[0] != "text" {
+			t.Fatalf("%s %+v", name, cells)
+		}
+	}
+	pointers := params["pointers"].Items
+	if pointers == nil || pointers.Type != "object" || pointers.Properties["text"].Type != "string" {
+		t.Fatalf("pointers %+v", pointers)
 	}
 }

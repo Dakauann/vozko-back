@@ -12,15 +12,17 @@ const (
 )
 
 type Thread struct {
-	ID            string
-	WorkspaceID   string
-	UserID        string
-	Title         string
-	Model         string
-	LastMessageAt *time.Time
-	CostTracked   bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID             string
+	WorkspaceID    string
+	UserID         string
+	Title          string
+	Model          string
+	ReasoningLevel string
+	ProjectID      string
+	LastMessageAt  *time.Time
+	CostTracked    bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type Message struct {

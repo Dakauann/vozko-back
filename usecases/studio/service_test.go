@@ -89,10 +89,34 @@ func service(t *testing.T) (*Service, *memoryProjects) {
 	return svc, projects
 }
 
+func TestAProjectCreatedByAChatCommandCarriesItsOriginToTheRepository(t *testing.T) {
+	svc, projects := service(t)
+	origin := studio.Origin{ThreadID: "th-1", CommandID: "0b9a5f9e-3c55-4c1e-9a43-6f0d2c7e8a11"}
+	p, err := svc.Create(context.Background(), "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false), origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored := projects.items[p.ID]; stored == nil || stored.Origin != origin {
+		t.Fatalf("stored %+v", stored)
+	}
+}
+
+func TestAMalformedOriginCreatesNothing(t *testing.T) {
+	svc, projects := service(t)
+	_, err := svc.Create(context.Background(), "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false), studio.Origin{ThreadID: "th-1"})
+	var invalid *studio.ValidationError
+	if !errors.As(err, &invalid) || invalid.Codes()[studio.FieldOrigin] != studio.CodeRequired {
+		t.Fatalf("got %v", err)
+	}
+	if len(projects.items) != 0 {
+		t.Fatalf("created %d projects", len(projects.items))
+	}
+}
+
 func TestSavingFromAStaleVersionIsAConflict(t *testing.T) {
 	svc, _ := service(t)
 	ctx := context.Background()
-	p, err := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false))
+	p, err := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false), studio.Origin{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +135,7 @@ func TestSavingFromAStaleVersionIsAConflict(t *testing.T) {
 func TestSavingRefusesAMissingVersion(t *testing.T) {
 	svc, _ := service(t)
 	ctx := context.Background()
-	p, err := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false))
+	p, err := svc.Create(ctx, "ws", "u", studio.KindVideo, "Reels", videoJSON(t, false), studio.Origin{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ const (
 	EventReasoningDone  = "reasoning_done"
 	EventAssistantDone  = "assistant_done"
 	EventTool           = "tool"
+	EventAssistantRetry = "assistant_retry"
 )
 
 type Driver interface {
@@ -72,7 +74,9 @@ type Config struct {
 	Temperature        float32
 	MaxTokensPerGen    int
 	ReasoningMaxTokens int
+	ReasoningEffort    ai.ReasoningLevel
 	MaxIterations      int
+	IterateUntilDone   bool
 	NoProgressStop     int
 	RepeatedTurnStop   int
 	RepairBudget       int
@@ -87,10 +91,12 @@ type Config struct {
 	CostCeilingMicros  int64
 	GraceInstruction   string
 	KeepToolImages     int
+	ProviderRetries    int
+	ProviderRetryBase  time.Duration
 }
 
 func (c Config) withDefaults() Config {
-	if c.MaxIterations <= 0 {
+	if c.MaxIterations <= 0 && !c.IterateUntilDone {
 		c.MaxIterations = 30
 	}
 	if c.NoProgressStop <= 0 {
@@ -126,16 +132,32 @@ func (c Config) withDefaults() Config {
 	if c.KeepToolImages <= 0 {
 		c.KeepToolImages = 2
 	}
+	if c.ProviderRetries <= 0 {
+		c.ProviderRetries = 3
+	}
+	if c.ProviderRetryBase <= 0 {
+		c.ProviderRetryBase = time.Second
+	}
 	return c
 }
 
 const (
-	regroundTail      = 1
-	userRequestPrefix = "PEDIDO DO USUÁRIO:\n"
+	regroundTail       = 1
+	userRequestPrefix  = "PEDIDO DO USUÁRIO:\n"
+	interjectionPrefix = "NOVA MENSAGEM DO USUÁRIO, enviada enquanto você trabalhava; leve-a em conta antes do próximo passo:\n"
+	appNoticePrefix    = "AVISO DO APP (não é uma mensagem do usuário):\n"
 )
+
+func AppNotice(text string) string {
+	return appNoticePrefix + text
+}
 
 func UserRequest(prompt string) string {
 	return userRequestPrefix + prompt
+}
+
+func Interjection(prompt string) string {
+	return interjectionPrefix + prompt
 }
 
 func (c Config) request(drv Driver, messages []ai.Message) ai.GenerateInput {
@@ -144,6 +166,7 @@ func (c Config) request(drv Driver, messages []ai.Message) ai.GenerateInput {
 		Temperature:        c.Temperature,
 		MaxTokens:          c.MaxTokensPerGen,
 		ReasoningMaxTokens: c.ReasoningMaxTokens,
+		ReasoningEffort:    c.ReasoningEffort,
 		SystemPrompt:       drv.SystemPrompt(),
 		Messages:           messages,
 		Tools:              drv.Tools(),
@@ -166,6 +189,10 @@ func (c Config) budgetSpent(sess *Session) bool {
 	return tokens || money
 }
 
+func (c Config) allows(iter int) bool {
+	return c.IterateUntilDone || iter <= c.MaxIterations
+}
+
 func (c Config) contextFull(promptTokens int) bool {
 	window := c.ModelLimits.ContextLength
 	return window > 0 && float64(promptTokens) >= c.CompactAt*float64(window)
@@ -174,6 +201,7 @@ func (c Config) contextFull(promptTokens int) bool {
 type Session struct {
 	History      []ai.Message
 	PromptImages []string
+	Frame        func(string) string
 	TokensUsed   int
 	CostMicros   int64
 }
@@ -198,10 +226,17 @@ var (
 	ErrSessionBudget   = errors.New("agentloop: session token budget exhausted")
 	ErrOutputTruncated = errors.New("agentloop: the model output kept hitting its length limit")
 	ErrProviderFailed  = errors.New("agentloop: the AI provider refused or failed the call")
+	ErrRepeatedTurn    = errors.New("agentloop: the model repeated the same tool calls without converging")
+
+	ErrProviderUnreachable = errors.New("agentloop: the connection to the AI provider kept failing after every retry")
 )
 
 type Guard interface {
 	Admit(ctx context.Context) error
+}
+
+type Inbox interface {
+	Drain(ctx context.Context, history []ai.Message) []ai.Message
 }
 
 type Engine struct {
@@ -270,10 +305,14 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	repeatedTurns := 0
 	lastPromptTokens := 0
 
-	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: UserRequest(prompt), Images: sess.PromptImages})
+	frame := sess.Frame
+	if frame == nil {
+		frame = UserRequest
+	}
+	sess.History = append(sess.History, ai.Message{Role: ai.RoleUser, Content: frame(prompt), Images: sess.PromptImages})
 	sess.History = trimHistory(sess.History, cfg.MaxHistoryMsgs)
 
-	for iter := 1; iter <= cfg.MaxIterations; iter++ {
+	for iter := 1; cfg.allows(iter); iter++ {
 		if ctx.Err() != nil {
 			return Outcome{Kind: OutcomeDone, Valid: false, Summary: sessionEndReason(ctx.Err())}
 		}
@@ -285,6 +324,11 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 				return Outcome{Kind: OutcomeDone, Valid: false, Summary: reasonHalted, Halt: err}
 			}
 		}
+		if inbox, ok := drv.(Inbox); ok {
+			if arrived := inbox.Drain(ctx, sess.History); len(arrived) > 0 {
+				sess.History = trimHistory(append(sess.History, arrived...), cfg.MaxHistoryMsgs)
+			}
+		}
 
 		emit(EventIteration, iterationPayload{N: iter, Max: cfg.MaxIterations, TokensUsed: sess.TokensUsed, TokenBudget: cfg.SessionTokenBudget})
 		if cfg.contextFull(lastPromptTokens) {
@@ -294,7 +338,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		msgs := append(append([]ai.Message(nil), sess.History...),
 			ai.Message{Role: ai.RoleUser, Content: drv.Reground(iter, cfg.MaxIterations, noMutationStreak)})
 
-		out, err := e.streamGenerate(ctx, emit, cfg.request(drv, msgs))
+		out, err := e.generate(ctx, emit, cfg, cfg.request(drv, msgs))
 		if err != nil {
 			if ctx.Err() != nil {
 				return Outcome{Kind: OutcomeDone, Valid: false, Summary: sessionEndReason(ctx.Err())}
@@ -452,7 +496,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 		if turnSig != "" && turnSig == prevTurnSig {
 			repeatedTurns++
 			if repeatedTurns >= cfg.RepeatedTurnStop {
-				return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonRepeatedTurn}
+				return Outcome{Kind: OutcomeDone, Valid: prog.Valid, Summary: reasonRepeatedTurn, Halt: ErrRepeatedTurn}
 			}
 		} else {
 			repeatedTurns = 0
@@ -470,7 +514,7 @@ func (e *Engine) graceAnswer(ctx context.Context, emit Emit, drv Driver, cfg Con
 	msgs := append(append([]ai.Message(nil), sess.History...), ai.Message{Role: ai.RoleUser, Content: cfg.GraceInstruction})
 	request := cfg.request(drv, msgs)
 	request.ToolChoice = "none"
-	out, err := e.streamGenerate(ctx, emit, request)
+	out, err := e.generate(ctx, emit, cfg, request)
 	if err != nil {
 		return stop
 	}
@@ -498,7 +542,69 @@ func clearOldToolResults(h []ai.Message, keepRecent int) []ai.Message {
 	return out
 }
 
-const reasoningChunkChars = 240
+const (
+	reasoningChunkChars = 240
+	retryGrowth         = 3
+	retryJitterShare    = 5
+)
+
+type RetryNotice struct {
+	Attempt   int    `json:"attempt"`
+	Of        int    `json:"of"`
+	Text      string `json:"text,omitempty"`
+	Reasoning string `json:"reasoning,omitempty"`
+}
+
+type streamFailure struct {
+	err       error
+	text      string
+	reasoning string
+}
+
+func (f *streamFailure) Error() string { return f.err.Error() }
+func (f *streamFailure) Unwrap() error { return f.err }
+
+func (c Config) retryDelay(retry int) time.Duration {
+	step := c.ProviderRetryBase
+	for i := 0; i < retry; i++ {
+		step *= retryGrowth
+	}
+	return step + time.Duration(rand.Int64N(int64(step)/retryJitterShare+1))
+}
+
+func (e *Engine) generate(ctx context.Context, emit Emit, cfg Config, input ai.GenerateInput) (*ai.GenerateOutput, error) {
+	for retry := 0; ; retry++ {
+		out, err := e.streamGenerate(ctx, emit, input)
+		if err == nil || ctx.Err() != nil || !errors.Is(err, ai.ErrProviderTransient) {
+			return out, err
+		}
+		if retry >= cfg.ProviderRetries {
+			return nil, fmt.Errorf("%w (%d attempts): %w", ErrProviderUnreachable, retry+1, err)
+		}
+		delay := cfg.retryDelay(retry)
+		log.Printf("%s %s%v; retrying the same step in %s (%d of %d)", cfg.LogPrefix, providerErrPrefix, err, delay.Round(time.Millisecond), retry+1, cfg.ProviderRetries)
+		notice := RetryNotice{Attempt: retry + 1, Of: cfg.ProviderRetries}
+		var shown *streamFailure
+		if errors.As(err, &shown) {
+			notice.Text, notice.Reasoning = shown.text, shown.reasoning
+		}
+		emit(EventAssistantRetry, notice)
+		if !waitFor(ctx, delay) {
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func waitFor(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return ctx.Err() == nil
+	}
+}
 
 func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.GenerateInput) (*ai.GenerateOutput, error) {
 	ch, err := e.AI.GenerateStream(ctx, input)
@@ -506,7 +612,7 @@ func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.Generat
 		return nil, err
 	}
 	out := &ai.GenerateOutput{}
-	var content, pending, reasoning strings.Builder
+	var content, pending, reasoning, shownReasoning strings.Builder
 	reasoningStreamed := false
 	flush := func() {
 		if pending.Len() == 0 {
@@ -535,6 +641,7 @@ func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.Generat
 		case ai.StreamEventReasoning:
 			reasoningStreamed = true
 			reasoning.WriteString(ev.Token)
+			shownReasoning.WriteString(ev.Token)
 			if reasoning.Len() >= reasoningChunkChars || strings.Contains(ev.Token, "\n\n") {
 				flushReasoning()
 			}
@@ -557,7 +664,7 @@ func (e *Engine) streamGenerate(ctx context.Context, emit Emit, input ai.Generat
 		case ai.StreamEventError:
 			flush()
 			endReasoning()
-			return nil, ev.Error
+			return nil, &streamFailure{err: ev.Error, text: content.String(), reasoning: shownReasoning.String()}
 		}
 	}
 	flush()

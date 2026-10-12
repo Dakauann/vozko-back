@@ -1,0 +1,213 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "feed",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "sales",
+          "type": "chart",
+          "name": "Vendas",
+          "transform": {
+            "x": 0.5,
+            "y": 0.28,
+            "w": 0.84,
+            "h": 0.4,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "chart": {
+            "kind": "barGrouped",
+            "data": {
+              "labels": [
+                "Jan",
+                "Fev",
+                "Mar",
+                "Abr"
+              ],
+              "series": [
+                {
+                  "name": "2025",
+                  "values": [
+                    1200.5,
+                    1800,
+                    null,
+                    2400
+                  ]
+                },
+                {
+                  "name": "2026",
+                  "values": [
+                    1500,
+                    2100,
+                    2600,
+                    3100
+                  ]
+                }
+              ]
+            },
+            "style": {
+              "palette": [
+                "#ff0066",
+                "#2563eb",
+                "#10b981"
+              ],
+              "fontId": "inter",
+              "fontSize": 0.05,
+              "textColor": "#111111",
+              "gridColor": "#11111133",
+              "axes": true,
+              "gridlines": true,
+              "legend": "bottom",
+              "valueLabels": true,
+              "barRadius": 0.2,
+              "barGap": 0.3,
+              "lineWidth": 0.008,
+              "smooth": false,
+              "points": true,
+              "hole": 0.55
+            },
+            "format": {
+              "locale": "pt-BR",
+              "decimals": 1,
+              "prefix": "R$ ",
+              "percent": false
+            }
+          }
+        },
+        {
+          "id": "share",
+          "type": "chart",
+          "transform": {
+            "x": 0.27,
+            "y": 0.75,
+            "w": 0.4,
+            "h": 0.4,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "chart": {
+            "kind": "donut",
+            "data": {
+              "labels": [
+                "Instagram",
+                "WhatsApp",
+                "Site"
+              ],
+              "series": [
+                {
+                  "name": "Leads",
+                  "values": [
+                    45,
+                    35,
+                    20
+                  ]
+                }
+              ]
+            },
+            "style": {
+              "palette": [
+                "#ff0066",
+                "#2563eb",
+                "#10b981"
+              ],
+              "fontId": "inter",
+              "fontSize": 0.05,
+              "textColor": "#111111",
+              "gridColor": "#11111133",
+              "axes": true,
+              "gridlines": true,
+              "legend": "right",
+              "valueLabels": true,
+              "barRadius": 0,
+              "barGap": 0.3,
+              "lineWidth": 0.008,
+              "smooth": false,
+              "points": true,
+              "hole": 0.6
+            },
+            "format": {
+              "locale": "pt-BR",
+              "decimals": 0,
+              "percent": true
+            }
+          }
+        },
+        {
+          "id": "spread",
+          "type": "chart",
+          "transform": {
+            "x": 0.73,
+            "y": 0.75,
+            "w": 0.4,
+            "h": 0.4,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "locked": true,
+          "chart": {
+            "kind": "scatter",
+            "data": {
+              "labels": [
+                "a",
+                "b",
+                "c"
+              ],
+              "series": [
+                {
+                  "name": "Preço",
+                  "values": [
+                    10,
+                    20,
+                    30
+                  ]
+                },
+                {
+                  "name": "Vendas",
+                  "values": [
+                    300,
+                    220,
+                    150
+                  ]
+                }
+              ]
+            },
+            "style": {
+              "palette": [
+                "#2563eb"
+              ],
+              "fontId": "inter",
+              "fontSize": 0.05,
+              "textColor": "#111111",
+              "gridColor": "#11111133",
+              "axes": true,
+              "gridlines": true,
+              "legend": "none",
+              "valueLabels": false,
+              "barRadius": 0,
+              "barGap": 0.3,
+              "lineWidth": 0.008,
+              "smooth": true,
+              "points": true,
+              "hole": 0.55
+            },
+            "format": {
+              "locale": "en-US",
+              "decimals": 0,
+              "suffix": " un",
+              "percent": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

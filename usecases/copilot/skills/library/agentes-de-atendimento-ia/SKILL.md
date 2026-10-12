@@ -1,5 +1,6 @@
 ---
 name: agentes-de-atendimento-ia
+surface: panel
 description: Como escrever as instruções de um agente de IA de atendimento (papel, limites, fonte de verdade, passagem para humano) e testar antes de ligar; carregue antes de criar ou ajustar um agente.
 ---
 

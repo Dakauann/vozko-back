@@ -1,0 +1,144 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#101010" },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-media",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-video",
+          "type": "video",
+          "assetId": "m-video",
+          "startMs": 0,
+          "durationMs": 1500,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "contain",
+          "transform": { "x": 0.5, "y": 0.4, "w": 0.7, "h": 0.4, "rotation": 0, "opacity": 1 },
+          "effects": [
+            {
+              "id": "fx-glow",
+              "type": "outer-glow",
+              "color": "#ffd400",
+              "opacity": 0.8,
+              "x": 0,
+              "y": 0,
+              "blur": 24,
+              "spread": 2,
+              "keyframes": {
+                "opacity": [
+                  { "atMs": 0, "value": 0.2, "easing": "easeInOut" },
+                  { "atMs": 750, "value": 0.9, "easing": "easeInOut" },
+                  { "atMs": 1500, "value": 0.2, "easing": "linear" }
+                ],
+                "blur": [
+                  { "atMs": 0, "value": 12, "easing": "linear" },
+                  { "atMs": 750, "value": 32, "easing": "linear" }
+                ]
+              }
+            },
+            { "id": "fx-shadow", "type": "drop-shadow", "color": "#000000", "opacity": 0.5, "x": 0, "y": 18, "blur": 30, "spread": 0 }
+          ],
+          "strokes": [{ "type": "solid", "color": "#ffffff", "opacity": 1, "width": 8, "align": "outside" }]
+        },
+        {
+          "id": "c-photo",
+          "type": "image",
+          "assetId": "m-photo",
+          "startMs": 1500,
+          "durationMs": 1500,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.4, "w": 0.6, "h": 0.3, "rotation": 4, "opacity": 1 },
+          "effects": [
+            {
+              "id": "fx-drop",
+              "type": "drop-shadow",
+              "color": "#00000099",
+              "opacity": 1,
+              "x": 0,
+              "y": 12,
+              "blur": 20,
+              "spread": 0,
+              "showBehind": true,
+              "keyframes": { "y": [{ "atMs": 0, "value": 4, "easing": "easeOut" }, { "atMs": 1200, "value": 24, "easing": "linear" }] }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-text",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-title",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.75, "w": 0.8, "h": 0.12, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "l-title",
+            "type": "text",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "text": "Oferta",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 800,
+            "align": "center",
+            "fills": [
+              { "type": "solid", "color": "#ffffff", "opacity": 1 },
+              { "type": "gradient", "gradient": { "from": "#ffd40000", "to": "#ffd400", "angle": 90 }, "opacity": 0.6, "blendMode": "screen" }
+            ],
+            "strokes": [{ "type": "solid", "color": "#e11d48", "opacity": 1, "width": 6, "align": "outside" }],
+            "effects": [
+              {
+                "id": "fx-pulse",
+                "type": "outer-glow",
+                "color": "#ffd400",
+                "opacity": 0.75,
+                "x": 0,
+                "y": 0,
+                "blur": 16,
+                "spread": 0,
+                "keyframes": {
+                  "opacity": [
+                    { "atMs": 0, "value": 0, "easing": "easeOut" },
+                    { "atMs": 600, "value": 1, "easing": "easeInOut" }
+                  ],
+                  "spread": [
+                    { "atMs": 0, "value": 0, "easing": "linear" },
+                    { "atMs": 600, "value": 6, "easing": "linear" }
+                  ]
+                }
+              },
+              {
+                "id": "fx-inner",
+                "type": "inner-shadow",
+                "color": "#000000",
+                "opacity": 0.35,
+                "x": 0,
+                "y": 2,
+                "blur": 6,
+                "spread": 0,
+                "keyframes": { "x": [{ "atMs": 0, "value": -4, "easing": "linear" }, { "atMs": 3000, "value": 4, "easing": "linear" }] }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

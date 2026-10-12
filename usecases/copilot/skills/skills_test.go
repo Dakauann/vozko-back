@@ -106,3 +106,61 @@ func TestABrokenLibraryIsRefused(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+func TestASkillSurfaceIsReadFromItsFrontmatter(t *testing.T) {
+	files := fstest.MapFS{"library/estudio/SKILL.md": {Data: []byte("---\nname: estudio\ndescription: d\nsurface: studio\n---\n\nx\n")}}
+	lib, err := load(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := lib.Find("estudio"); got.Surface != copilot.SkillStudioOnly {
+		t.Fatalf("surface = %q", got.Surface)
+	}
+	if _, err := load(fstest.MapFS{"library/a/SKILL.md": {Data: []byte("---\nname: a\ndescription: d\nsurface: moon\n---\nx")}}); !errors.Is(err, copilot.ErrSkillSurface) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+func TestTheStudioSeesDesignSkillsAndThePanelSeesAttendanceSkills(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	studio := copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "p1", ProjectKind: copilot.StudioImage}
+	panel := copilot.View{}
+	for name, want := range map[string][2]bool{
+		"design-de-imagem":        {true, false},
+		"motion-design":           {true, false},
+		"metricas-de-atendimento": {false, true},
+		"criativos-que-performam": {true, true},
+		"briefing-criativo":       {true, true},
+	} {
+		skill, ok := lib.Find(name)
+		if !ok {
+			t.Fatalf("%s is missing", name)
+		}
+		if skill.OfferedOn(studio) != want[0] || skill.OfferedOn(panel) != want[1] {
+			t.Errorf("%s offered on studio %v and panel %v, want %v", name, skill.OfferedOn(studio), skill.OfferedOn(panel), want)
+		}
+	}
+}
+
+func TestASkillOnlyPointsToSkillsOfferedWhereverItIsOffered(t *testing.T) {
+	lib, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	views := []copilot.View{{Surface: copilot.SurfaceStudio, ProjectID: "p1", ProjectKind: copilot.StudioVideo}, {}}
+	for _, from := range lib.All() {
+		for _, to := range lib.All() {
+			if to.Name == from.Name || !regexp.MustCompile(`\b`+regexp.QuoteMeta(to.Name)+`\b`).MatchString(from.Description+"\n"+from.Body) {
+				continue
+			}
+			for _, view := range views {
+				if from.OfferedOn(view) && !to.OfferedOn(view) {
+					t.Errorf("%s points to %s, which is not offered on %q", from.Name, to.Name, view.Surface)
+				}
+			}
+		}
+	}
+}

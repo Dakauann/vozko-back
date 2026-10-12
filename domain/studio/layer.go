@@ -14,6 +14,9 @@ const (
 	LayerText  LayerType = "text"
 	LayerShape LayerType = "shape"
 	LayerIcon  LayerType = "icon"
+	LayerPaint LayerType = "paint"
+
+	LayerInstance LayerType = "instance"
 )
 
 type ShapeKind string
@@ -25,6 +28,7 @@ const (
 	ShapeArrow    ShapeKind = "arrow"
 	ShapeTriangle ShapeKind = "triangle"
 	ShapeStar     ShapeKind = "star"
+	ShapePolygon  ShapeKind = "polygon"
 	ShapePath     ShapeKind = "path"
 )
 
@@ -40,15 +44,11 @@ const (
 var (
 	colorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$`)
 	tokenPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
-	shapes       = map[ShapeKind]bool{ShapeRect: true, ShapeEllipse: true, ShapeLine: true, ShapeArrow: true, ShapeTriangle: true, ShapeStar: true, ShapePath: true}
+	shapes       = map[ShapeKind]bool{ShapeRect: true, ShapeEllipse: true, ShapeLine: true, ShapeArrow: true, ShapeTriangle: true, ShapeStar: true, ShapePolygon: true, ShapePath: true}
 	aligns       = map[string]bool{"": true, "left": true, "center": true, "right": true}
 	frames       = map[ShapeKind]bool{"": true, ShapeEllipse: true, ShapeTriangle: true, ShapeStar: true}
 	gradients    = map[string]bool{"": true, GradientLinear: true, GradientRadial: true}
-	blendModes   = map[string]bool{
-		"": true, "normal": true, "multiply": true, "screen": true, "overlay": true, "darken": true, "lighten": true,
-		"color-dodge": true, "color-burn": true, "hard-light": true, "soft-light": true, "difference": true, "exclusion": true,
-		"hue": true, "saturation": true, "color": true, "luminosity": true,
-	}
+	blendModes   = blendModeSet()
 )
 
 const (
@@ -142,52 +142,81 @@ type Shadow struct {
 }
 
 type Layer struct {
-	ID          string      `json:"id"`
-	Type        LayerType   `json:"type"`
-	Name        string      `json:"name,omitempty"`
-	Transform   Transform   `json:"transform"`
-	Hidden      bool        `json:"hidden,omitempty"`
-	Locked      bool        `json:"locked,omitempty"`
-	GroupID     string      `json:"groupId,omitempty"`
-	AssetID     string      `json:"assetId,omitempty"`
-	Crop        *Crop       `json:"crop,omitempty"`
-	FlipX       bool        `json:"flipX,omitempty"`
-	FlipY       bool        `json:"flipY,omitempty"`
-	Radius      float64     `json:"radius,omitempty"`
-	Filters     *Filters    `json:"filters,omitempty"`
-	Color       *ColorGrade `json:"color,omitempty"`
-	Text        string      `json:"text,omitempty"`
-	FontID      string      `json:"fontId,omitempty"`
-	FontSize    float64     `json:"fontSize,omitempty"`
-	FontWeight  int         `json:"fontWeight,omitempty"`
-	Italic      bool        `json:"italic,omitempty"`
-	Align       string      `json:"align,omitempty"`
-	LineHeight  float64     `json:"lineHeight,omitempty"`
-	Letter      float64     `json:"letterSpacing,omitempty"`
-	Fill        string      `json:"fill,omitempty"`
-	Stroke      string      `json:"stroke,omitempty"`
-	StrokeWidth float64     `json:"strokeWidth,omitempty"`
-	Dash        bool        `json:"dash,omitempty"`
-	Shadow      *Shadow     `json:"shadow,omitempty"`
-	Shape       ShapeKind   `json:"shape,omitempty"`
-	ArrowStart  bool        `json:"arrowStart,omitempty"`
-	ArrowEnd    bool        `json:"arrowEnd,omitempty"`
-	IconID      string      `json:"iconId,omitempty"`
-	BlendMode   string      `json:"blendMode,omitempty"`
-	Clip        bool        `json:"clip,omitempty"`
-	Gradient    *Gradient   `json:"gradient,omitempty"`
-	Highlight   *Highlight  `json:"highlight,omitempty"`
-	Curve       float64     `json:"curve,omitempty"`
-	Frame       ShapeKind   `json:"frame,omitempty"`
-	Path        string      `json:"path,omitempty"`
-	FillRule    string      `json:"fillRule,omitempty"`
-	LineCap     string      `json:"lineCap,omitempty"`
-	LineJoin    string      `json:"lineJoin,omitempty"`
-	MiterLimit  float64     `json:"miterLimit,omitempty"`
-	DashArray   []float64   `json:"dashArray,omitempty"`
-	DashOffset  float64     `json:"dashOffset,omitempty"`
-	Points      int         `json:"points,omitempty"`
-	Inner       float64     `json:"inner,omitempty"`
+	ID          string        `json:"id"`
+	Type        LayerType     `json:"type"`
+	Name        string        `json:"name,omitempty"`
+	Transform   Transform     `json:"transform"`
+	Hidden      bool          `json:"hidden,omitempty"`
+	Locked      bool          `json:"locked,omitempty"`
+	GroupID     string        `json:"groupId,omitempty"`
+	AssetID     string        `json:"assetId,omitempty"`
+	Crop        *Crop         `json:"crop,omitempty"`
+	FlipX       bool          `json:"flipX,omitempty"`
+	FlipY       bool          `json:"flipY,omitempty"`
+	Radius      float64       `json:"radius,omitempty"`
+	Filters     *Filters      `json:"filters,omitempty"`
+	Color       *ColorGrade   `json:"color,omitempty"`
+	ChromaKey   *ChromaKey    `json:"chromaKey,omitempty"`
+	Text        string        `json:"text,omitempty"`
+	FontID      string        `json:"fontId,omitempty"`
+	FontSize    float64       `json:"fontSize,omitempty"`
+	FontWeight  int           `json:"fontWeight,omitempty"`
+	Italic      bool          `json:"italic,omitempty"`
+	Align       string        `json:"align,omitempty"`
+	LineHeight  float64       `json:"lineHeight,omitempty"`
+	Letter      float64       `json:"letterSpacing,omitempty"`
+	Runs        []TextRun     `json:"runs,omitempty"`
+	Fill        string        `json:"fill,omitempty"`
+	Stroke      string        `json:"stroke,omitempty"`
+	StrokeWidth float64       `json:"strokeWidth,omitempty"`
+	Dash        bool          `json:"dash,omitempty"`
+	Shadow      *Shadow       `json:"shadow,omitempty"`
+	Shape       ShapeKind     `json:"shape,omitempty"`
+	ArrowStart  bool          `json:"arrowStart,omitempty"`
+	ArrowEnd    bool          `json:"arrowEnd,omitempty"`
+	IconID      string        `json:"iconId,omitempty"`
+	BlendMode   string        `json:"blendMode,omitempty"`
+	Clip        bool          `json:"clip,omitempty"`
+	Gradient    *Gradient     `json:"gradient,omitempty"`
+	Highlight   *Highlight    `json:"highlight,omitempty"`
+	Curve       float64       `json:"curve,omitempty"`
+	Frame       ShapeKind     `json:"frame,omitempty"`
+	Path        string        `json:"path,omitempty"`
+	FillRule    string        `json:"fillRule,omitempty"`
+	LineCap     string        `json:"lineCap,omitempty"`
+	LineJoin    string        `json:"lineJoin,omitempty"`
+	MiterLimit  float64       `json:"miterLimit,omitempty"`
+	DashArray   []float64     `json:"dashArray,omitempty"`
+	DashOffset  float64       `json:"dashOffset,omitempty"`
+	Points      int           `json:"points,omitempty"`
+	Inner       float64       `json:"inner,omitempty"`
+	Pattern     *Pattern      `json:"pattern,omitempty"`
+	GradientMap *GradientMap  `json:"gradientMap,omitempty"`
+	Fills       []Paint       `json:"fills,omitempty"`
+	Strokes     []StrokePaint `json:"strokes,omitempty"`
+	Effects     []Effect      `json:"effects,omitempty"`
+	Surface     *PixelSurface `json:"surface,omitempty"`
+	Mask        *PixelSurface `json:"mask,omitempty"`
+	Vfx         []Vfx         `json:"vfx,omitempty"`
+
+	ComponentID string             `json:"componentId,omitempty"`
+	Overrides   []InstanceOverride `json:"overrides,omitempty"`
+
+	FillStyleID   string `json:"fillStyleId,omitempty"`
+	StrokeStyleID string `json:"strokeStyleId,omitempty"`
+	TextStyleID   string `json:"textStyleId,omitempty"`
+	EffectStyleID string `json:"effectStyleId,omitempty"`
+
+	LayoutItem *LayoutItem `json:"layoutItem,omitempty"`
+
+	ArrowStartKind string `json:"arrowStartKind,omitempty"`
+	ArrowEndKind   string `json:"arrowEndKind,omitempty"`
+
+	Chart *ChartSpec `json:"chart,omitempty"`
+	Table *TableSpec `json:"table,omitempty"`
+	QR    *QRSpec    `json:"qr,omitempty"`
+
+	PathOps []PathOp `json:"pathOps,omitempty"`
 }
 
 func finite(values ...float64) bool {
@@ -206,11 +235,11 @@ func (l Layer) strokedShape() bool {
 }
 
 func (l Layer) paintsFill() bool {
-	return (l.Type == LayerText || l.Type == LayerIcon || l.Type == LayerShape) && !l.strokedShape() && l.Gradient == nil
+	return (l.Type == LayerText || l.Type == LayerIcon || l.Type == LayerShape) && !l.strokedShape() && l.Gradient == nil && len(l.Fills) == 0
 }
 
 func (l Layer) paintsStroke() bool {
-	return l.strokedShape() || ((l.Type == LayerText || l.Type == LayerShape) && l.StrokeWidth > 0)
+	return len(l.Strokes) == 0 && (l.strokedShape() || ((l.Type == LayerText || l.Type == LayerShape) && l.StrokeWidth > 0))
 }
 
 func validColor(c string, required bool) bool {
@@ -236,17 +265,37 @@ func (t Transform) issue() string {
 	return ""
 }
 
-func (l Layer) issue() string {
+func (l Layer) issue() string { return l.issueWithin(utf8.RuneCountInString(l.Text)) }
+
+func (l Layer) issueWithin(runLimit int) string {
 	if !validToken(l.ID) || (l.GroupID != "" && !validToken(l.GroupID)) || utf8.RuneCountInString(l.Name) > maxTokenRunes*2 {
 		return CodeInvalid
 	}
 	if code := l.Transform.issue(); code != "" {
 		return code
 	}
+	if l.Type == LayerInstance {
+		return l.instanceIssue()
+	}
+	if l.Type == LayerChart {
+		return l.chartIssue()
+	}
+	if l.Type == LayerTable {
+		return l.tableIssue()
+	}
+	if l.Type == LayerQR {
+		return l.qrIssue()
+	}
+	if l.ComponentID != "" || len(l.Overrides) > 0 || l.Chart != nil || l.Table != nil || l.QR != nil {
+		return CodeInvalid
+	}
+	if code := l.styleIDsIssue(); code != "" {
+		return code
+	}
 	if !validColor(l.Fill, false) || !validColor(l.Stroke, false) || !within(l.StrokeWidth, 0, 200) || !within(l.Radius, 0, 1) {
 		return CodeInvalid
 	}
-	if l.Shadow != nil && (!validColor(l.Shadow.Color, true) || !within(l.Shadow.Blur, 0, 200) || !within(l.Shadow.X, -500, 500) || !within(l.Shadow.Y, -500, 500)) {
+	if l.Shadow != nil && !l.Shadow.valid() {
 		return CodeInvalid
 	}
 	if !blendModes[l.BlendMode] || !frames[l.Frame] || !fillRules[l.FillRule] {
@@ -264,10 +313,28 @@ func (l Layer) issue() string {
 	if !within(l.Curve, -1, 1) {
 		return CodeOutOfRange
 	}
-	if l.Color != nil && l.Type != LayerImage {
+	if (l.Color != nil || l.ChromaKey != nil || len(l.Vfx) > 0) && l.Type != LayerImage {
 		return CodeInvalid
 	}
+	code := stillVfxIssue(l.Vfx)
+	if code == "" {
+		code = l.paintIssue()
+	}
+	if code == "" {
+		code = l.pixelIssue()
+	}
+	if code == "" {
+		code = l.textRunsIssue(runLimit)
+	}
+	if code == "" {
+		code = l.pathOpsIssue()
+	}
+	if code != "" {
+		return code
+	}
 	switch l.Type {
+	case LayerPaint:
+		return ""
 	case LayerImage:
 		return l.imageIssue()
 	case LayerText:
@@ -284,6 +351,9 @@ func (l Layer) issue() string {
 }
 
 func (l Layer) strokeIssue() string {
+	if code := l.lineEndIssue(); code != "" {
+		return code
+	}
 	if !lineCaps[l.LineCap] || !lineJoins[l.LineJoin] {
 		return CodeUnknown
 	}
@@ -321,7 +391,9 @@ func (l Layer) shapeIssue() string {
 		return CodeUnknown
 	case (l.Shape == ShapePath) != (l.Path != ""), l.Path != "" && !ValidPath(l.Path):
 		return CodeInvalid
-	case l.Shape != ShapeStar && (l.Points != 0 || l.Inner != 0):
+	case l.Shape == ShapePolygon && l.Inner != 0:
+		return CodeInvalid
+	case l.Shape != ShapeStar && l.Shape != ShapePolygon && (l.Points != 0 || l.Inner != 0):
 		return CodeInvalid
 	case l.Points != 0 && (l.Points < MinStarPoints || l.Points > MaxStarPoints):
 		return CodeOutOfRange
@@ -341,7 +413,10 @@ func (l Layer) imageIssue() string {
 	if f := l.Filters; f != nil && (!within(f.Brightness, -1, 1) || !within(f.Contrast, -100, 100) || !within(f.Saturation, -2, 10) || !within(f.Blur, 0, 40)) {
 		return CodeOutOfRange
 	}
-	return l.Color.issue()
+	if code := l.Color.issue(); code != "" {
+		return code
+	}
+	return l.stillChromaIssue()
 }
 
 func (l Layer) textIssue() string {

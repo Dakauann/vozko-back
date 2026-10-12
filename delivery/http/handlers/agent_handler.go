@@ -798,6 +798,43 @@ func toCamelCase(s string) string {
 	return strings.ToLower(s[:1]) + s[1:]
 }
 
+type agentOptionsDefaults struct {
+	MessagingModel string `json:"messagingModel"`
+}
+
+type agentOptionsResponse struct {
+	Providers         []agentProviderOption          `json:"providers"`
+	Models            map[string]agentProviderModels `json:"models"`
+	Messaging         []string                       `json:"messaging"`
+	ModelPricing      []ai.ModelInfo                 `json:"modelPricing"`
+	ModelCapabilities []ai.ModelCapability           `json:"modelCapabilities"`
+	Defaults          agentOptionsDefaults           `json:"defaults"`
+}
+
+// @Summary		Opções de modelos de IA
+// @Description	Lista os modelos de conversa disponíveis, do mais popular para o menos popular, com preço por milhão de tokens, janela de contexto, capacidades e níveis de raciocínio. É a mesma lista dos seletores de modelo da Elo, do construtor de fluxos, dos nós de IA e dos agentes.
+// @Description
+// @Description	`modelCapabilities` é o vocabulário de capacidades, na ordem de exibição. Cada item de `modelPricing` traz em `capabilities` só o que o catálogo do provedor confirma; o que o catálogo não informa fica de fora, nunca é presumido.
+// @Description
+// @Description	| Capacidade | Quando o modelo tem |
+// @Description	|---|---|
+// @Description	| vision | aceita imagens na entrada |
+// @Description	| tools | aceita ferramentas (a Elo e o construtor de fluxos precisam) |
+// @Description	| reasoning | aceita o parâmetro de raciocínio |
+// @Description	| long_context | janela de contexto de 1.000.000 de tokens ou mais |
+// @Description	| image_output | gera imagens na saída |
+// @Description	| audio_input | aceita áudio na entrada |
+// @Description	| low_price | preço conhecido de até US$ 0,30 por milhão de tokens de entrada e US$ 1,50 de saída |
+// @Description	| free | preço conhecido e zero na entrada e na saída |
+// @Description
+// @Description	`reasoning` aparece só quando o catálogo lista os níveis do modelo e o padrão dele: `levels` em ordem crescente (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, só os que o modelo aceita; `none` some quando o raciocínio é obrigatório) e `default`. Sem `reasoning`, o modelo não oferece escolha de nível, e um nível enviado para ele é recusado.
+// @Tags			Agentes
+// @Produce		json
+// @Success		200	{object}	agentOptionsResponse
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/agents/options [get]
 func (h *AgentHandler) ListOptions(w http.ResponseWriter, r *http.Request) {
 	modelsByProvider := map[agent.AgentProvider]agentProviderModels{}
 	var messagingModels []string
@@ -815,26 +852,18 @@ func (h *AgentHandler) ListOptions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	payload := struct {
-		Providers    []agentProviderOption          `json:"providers"`
-		Models       map[string]agentProviderModels `json:"models"`
-		Messaging    []string                       `json:"messaging"`
-		ModelPricing []ai.ModelInfo                 `json:"modelPricing"`
-		Defaults     struct {
-			MessagingModel string `json:"messagingModel"`
-		} `json:"defaults"`
-	}{
-		Providers:    getSupportedAgentProviders(),
-		Models:       make(map[string]agentProviderModels, len(modelsByProvider)),
-		Messaging:    messagingModels,
-		ModelPricing: modelsWithPricing,
+	payload := agentOptionsResponse{
+		Providers:         getSupportedAgentProviders(),
+		Models:            make(map[string]agentProviderModels, len(modelsByProvider)),
+		Messaging:         messagingModels,
+		ModelPricing:      modelsWithPricing,
+		ModelCapabilities: ai.ModelCapabilities(),
+		Defaults:          agentOptionsDefaults{MessagingModel: defaultMessagingModel},
 	}
 
 	for provider, models := range modelsByProvider {
 		payload.Models[string(provider)] = models
 	}
-
-	payload.Defaults.MessagingModel = defaultMessagingModel
 
 	response.WriteSuccess(w, http.StatusOK, payload)
 }

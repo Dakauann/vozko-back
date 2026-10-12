@@ -175,7 +175,8 @@ type toolEventPayload struct {
 }
 
 type setModelData struct {
-	Model string `json:"model"`
+	Model     string `json:"model"`
+	Reasoning string `json:"reasoning,omitempty"`
 }
 
 type metaPayload struct {
@@ -193,6 +194,7 @@ type graphSnapshotPayload struct {
 type donePayload struct {
 	Valid          bool                 `json:"valid"`
 	Summary        string               `json:"summary"`
+	Code           string               `json:"code,omitempty"`
 	ResidualIssues []workflow.LintIssue `json:"residualIssues,omitempty"`
 }
 
@@ -223,6 +225,7 @@ type builderState struct {
 	description string
 
 	model       string
+	reasoning   ai.ReasoningLevel
 	graph       *workflow.Graph
 	fullCatalog []workflow.NodeDefinition
 
@@ -267,7 +270,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 
 	promptCh := make(chan promptData, 4)
 	typeCh := make(chan string, 2)
-	modelCh := make(chan string, 2)
+	modelCh := make(chan setModelData, 2)
 	hydrateCh := make(chan *workflow.Graph, 2)
 	closeCh := make(chan struct{})
 
@@ -316,7 +319,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 				var d setModelData
 				if json.Unmarshal(msg.Data, &d) == nil && strings.TrimSpace(d.Model) != "" {
 					select {
-					case modelCh <- d.Model:
+					case modelCh <- d:
 					default:
 					}
 				}
@@ -344,8 +347,9 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 			uc.applyWorkflowType(st, t)
 			uc.relint(st)
 			uc.snapshot(emit, st)
-		case m := <-modelCh:
-			st.model = m
+		case d := <-modelCh:
+			st.chooseModel(d)
+			uc.guardModel(ctx, emit, st)
 		case g := <-hydrateCh:
 			uc.applyHydrate(st, g)
 			uc.relint(st)
@@ -355,7 +359,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 				uc.applyHydrate(st, turn.Graph)
 				uc.relint(st)
 			}
-			if !uc.guardBalance(ctx, emit, st) {
+			if !uc.guardBalance(ctx, emit, st) || !uc.guardModel(ctx, emit, st) {
 				continue
 			}
 			st.prompts = append(st.prompts, turn.Text)
@@ -490,6 +494,25 @@ func (uc *aiBuilderUC) guardBalance(ctx context.Context, emit agentloop.Emit, st
 	return true
 }
 
+func (st *builderState) chooseModel(d setModelData) {
+	model := strings.TrimSpace(d.Model)
+	if model == "" {
+		return
+	}
+	st.model, st.reasoning = model, ai.ParseReasoningLevel(d.Reasoning)
+}
+
+func (uc *aiBuilderUC) guardModel(ctx context.Context, emit agentloop.Emit, st *builderState) bool {
+	_, err := ai.ResolveAgentModel(ctx, uc.deps.AIService, st.model, st.reasoning)
+	refusal, refused := ai.RefusalOf(err)
+	if !refused {
+		return true
+	}
+	log.Printf("[wf-ai-builder] s%d refused model %s with reasoning %q: %v", st.sessionID, st.model, st.reasoning, err)
+	uc.finish(ctx, emit, st, donePayload{Summary: refusal.Message, Code: refusal.Code}, 0)
+	return false
+}
+
 func (uc *aiBuilderUC) relint(st *builderState) {
 	st.exempt = collectExecuteModeLeafNodes(st.graph)
 	st.lastReport = workflow.LintGraph(st.graph, st.wfType, st.fullCatalog, st.exempt, builderHandleResolver)
@@ -534,8 +557,12 @@ func (uc *aiBuilderUC) snapshot(emit agentloop.Emit, st *builderState) {
 }
 
 func (uc *aiBuilderUC) emitDone(ctx context.Context, emit agentloop.Emit, st *builderState, valid bool, summary string, tokensUsed int) {
-	log.Printf("[wf-ai-builder] s%d DONE valid=%v blocking=%d tokens=%d reason=%q",
-		st.sessionID, valid, len(st.lastReport.Blocking()), tokensUsed, summary)
+	uc.finish(ctx, emit, st, donePayload{Valid: valid, Summary: summary}, tokensUsed)
+}
+
+func (uc *aiBuilderUC) finish(ctx context.Context, emit agentloop.Emit, st *builderState, done donePayload, tokensUsed int) {
+	log.Printf("[wf-ai-builder] s%d DONE valid=%v blocking=%d tokens=%d code=%q reason=%q",
+		st.sessionID, done.Valid, len(st.lastReport.Blocking()), tokensUsed, done.Code, done.Summary)
 	if uc.deps.AuditSink != nil {
 		_ = uc.deps.AuditSink.Record(context.WithoutCancel(ctx), BuilderAuditRecord{
 			WorkspaceID:    st.workspaceID,
@@ -544,12 +571,13 @@ func (uc *aiBuilderUC) emitDone(ctx context.Context, emit agentloop.Emit, st *bu
 			Prompts:        append([]string(nil), st.prompts...),
 			Model:          uc.deps.Model,
 			FinalGraphHash: graphHash(st.graph),
-			Valid:          valid,
+			Valid:          done.Valid,
 			TokensUsed:     tokensUsed,
 			At:             time.Now().UTC(),
 		})
 	}
-	emit("done", donePayload{Valid: valid, Summary: summary, ResidualIssues: st.lastReport.Blocking()})
+	done.ResidualIssues = st.lastReport.Blocking()
+	emit("done", done)
 }
 
 func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
@@ -560,6 +588,7 @@ func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
 		Temperature:        0,
 		MaxTokensPerGen:    builderMaxTokensPerGen,
 		ReasoningMaxTokens: builderReasoningMaxTokens,
+		ReasoningEffort:    st.reasoning,
 		MaxIterations:      uc.maxIter,
 		NoProgressStop:     uc.noProgress,
 		RepairBudget:       uc.repairCap,

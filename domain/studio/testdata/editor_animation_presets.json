@@ -1,0 +1,181 @@
+{
+  "valid": [
+    {
+      "name": "visual path with entrance and exit",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 2000,
+        "keyframes": {
+          "position": [
+            { "atMs": 0, "x": -0.3, "y": 0.1, "easing": "easeInOut" },
+            { "atMs": 800, "x": 0, "y": 0, "easing": "linear", "spatial": "smooth", "in": { "x": -0.1, "y": 0.05 }, "out": { "x": 0.1, "y": -0.05 } },
+            { "atMs": 1600, "x": 0.2, "y": -0.1, "easing": "linear" }
+          ],
+          "opacity": [
+            { "atMs": 0, "value": 0, "easing": "easeOut" },
+            { "atMs": 400, "value": 1, "easing": "linear" }
+          ]
+        },
+        "behaviors": [
+          { "id": "shake", "kind": "wiggle", "property": "rotation", "frequency": 3, "amount": 4, "seed": 42 }
+        ],
+        "motionIn": { "edge": "bottom", "durationMs": 500 },
+        "transitionOut": { "kind": "blockDissolve", "durationMs": 500, "easing": "linear", "size": 0.05, "softness": 0.3 }
+      }
+    },
+    {
+      "name": "visual axis lanes",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1200,
+        "keyframes": {
+          "x": [
+            { "atMs": 0, "value": -0.2, "easing": "backOut" },
+            { "atMs": 600, "value": 0, "easing": "linear" }
+          ],
+          "rotation": [
+            { "atMs": 0, "value": -15, "easing": "easeOut" },
+            { "atMs": 600, "value": 0, "easing": "linear" }
+          ],
+          "scaleX": [
+            { "atMs": 0, "value": 0.5, "easing": "easeOut" },
+            { "atMs": 600, "value": 1, "easing": "linear" }
+          ],
+          "blur": [
+            { "atMs": 0, "value": 12, "easing": "easeOut" },
+            { "atMs": 400, "value": 0, "easing": "linear" }
+          ]
+        },
+        "behaviors": [
+          { "id": "settle", "kind": "overshoot", "property": "x", "amplitude": 0.05, "frequency": 4, "decay": 8 }
+        ],
+        "motionBlur": true
+      }
+    },
+    {
+      "name": "text cascade",
+      "animation": {
+        "scope": "text",
+        "durationMs": 3000,
+        "textIn": { "unit": "word", "style": "fade", "durationMs": 300, "staggerMs": 90, "easing": "easeOut" },
+        "textAnimators": [
+          {
+            "id": "anim-cascade",
+            "unit": "char",
+            "properties": { "opacity": 0, "y": 60, "rotation": -12, "scale": 40, "blur": 8, "tracking": 6 },
+            "selector": {
+              "kind": "range",
+              "units": "percent",
+              "start": 0,
+              "end": 25,
+              "offset": -25,
+              "order": "centerOut",
+              "shape": "rampUp",
+              "easeHigh": 50,
+              "easeLow": -20,
+              "amount": 100,
+              "seed": 7
+            },
+            "keyframes": {
+              "offset": [
+                { "atMs": 0, "value": -25, "easing": "easeOut" },
+                { "atMs": 1000, "value": 100, "easing": "linear" }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "vfx only",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1500,
+        "vfx": [
+          {
+            "id": "grain-1",
+            "kind": "grain",
+            "seed": 3,
+            "params": { "amount": 0.4 },
+            "keyframes": {
+              "amount": [
+                { "atMs": 0, "value": 0, "easing": "easeIn" },
+                { "atMs": 800, "value": 0.6, "easing": "linear" }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "reason": "unknown field",
+      "code": "invalid",
+      "animation": { "scope": "visual", "durationMs": 1000, "motionBlur": true, "speed": 2 }
+    },
+    {
+      "reason": "unknown scope",
+      "code": "unknown",
+      "animation": { "scope": "audio", "durationMs": 1000, "motionBlur": true }
+    },
+    {
+      "reason": "duration below the shortest clip",
+      "code": "out_of_range",
+      "animation": { "scope": "visual", "durationMs": 50, "motionBlur": true }
+    },
+    {
+      "reason": "a lane a preset does not carry",
+      "code": "invalid",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1000,
+        "keyframes": {
+          "fill": [
+            { "atMs": 0, "color": "#ffffff", "easing": "linear" },
+            { "atMs": 500, "color": "#000000", "easing": "linear" }
+          ]
+        }
+      }
+    },
+    {
+      "reason": "text parts on a visual preset",
+      "code": "invalid",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1000,
+        "textIn": { "unit": "word", "style": "fade", "durationMs": 300, "staggerMs": 90, "easing": "easeOut" }
+      }
+    },
+    {
+      "reason": "behavior bound to a track",
+      "code": "invalid",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1000,
+        "behaviors": [
+          { "id": "pulse", "kind": "audioReact", "property": "opacity", "trackId": "music", "amount": -0.4, "floorDb": -45, "ceilingDb": -12 }
+        ]
+      }
+    },
+    {
+      "reason": "nothing to apply",
+      "code": "required",
+      "animation": { "scope": "visual", "durationMs": 1000 }
+    },
+    {
+      "reason": "relative x lands out of range",
+      "code": "out_of_range",
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1000,
+        "keyframes": {
+          "x": [
+            { "atMs": 0, "value": 0, "easing": "linear" },
+            { "atMs": 500, "value": 2, "easing": "linear" }
+          ]
+        }
+      }
+    }
+  ]
+}

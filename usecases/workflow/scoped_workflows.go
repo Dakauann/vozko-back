@@ -1,6 +1,10 @@
 package workflow_usecase
 
-import "vozko/domain/workflow"
+import (
+	"context"
+
+	"vozko/domain/workflow"
+)
 
 type scopedWorkflows struct {
 	get      workflow.GetWorkflowUseCase
@@ -34,11 +38,11 @@ func (uc *scopedWorkflows) Get(scope workflow.Scope, workflowID string) (*workfl
 	return wf, nil
 }
 
-func (uc *scopedWorkflows) Update(scope workflow.Scope, workflowID string, changes *workflow.Workflow) (*workflow.Workflow, error) {
+func (uc *scopedWorkflows) Update(ctx context.Context, scope workflow.Scope, workflowID string, changes *workflow.Workflow) (*workflow.Workflow, error) {
 	if _, err := uc.Get(scope, workflowID); err != nil {
 		return nil, err
 	}
-	return uc.update.Execute(workflowID, changes)
+	return uc.update.Execute(ctx, workflowID, changes)
 }
 
 func (uc *scopedWorkflows) Delete(scope workflow.Scope, workflowID string) error {
@@ -48,11 +52,11 @@ func (uc *scopedWorkflows) Delete(scope workflow.Scope, workflowID string) error
 	return uc.delete.Execute(workflowID)
 }
 
-func (uc *scopedWorkflows) Activate(scope workflow.Scope, workflowID string) (*workflow.Workflow, error) {
+func (uc *scopedWorkflows) Activate(ctx context.Context, scope workflow.Scope, workflowID string) (*workflow.Workflow, error) {
 	if _, err := uc.Get(scope, workflowID); err != nil {
 		return nil, err
 	}
-	return uc.activate.Execute(workflowID)
+	return uc.activate.Execute(ctx, workflowID)
 }
 
 func (uc *scopedWorkflows) Pause(scope workflow.Scope, workflowID string) (*workflow.Workflow, error) {

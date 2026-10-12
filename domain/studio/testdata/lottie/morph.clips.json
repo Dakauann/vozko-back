@@ -1,0 +1,100 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "square",
+    "background": "#000000"
+  },
+  "durationMs": 1000,
+  "tracks": [
+    {
+      "id": "t-lottie",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-00000000-0000-4000-8000-000000000001",
+          "type": "group",
+          "startMs": 0,
+          "durationMs": 1000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "tracks": [
+            {
+              "id": "t-00000000-0000-4000-8000-000000000002",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "c-00000000-0000-4000-8000-000000000003",
+                  "type": "overlay",
+                  "startMs": 0,
+                  "durationMs": 1000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "w": 0.6,
+                    "h": 0.6,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "layer": {
+                    "id": "l-00000000-0000-4000-8000-000000000004",
+                    "type": "shape",
+                    "shape": "path",
+                    "path": "M0.1667 0.1667 C0.1667 0.1667 0.8333 0.1667 0.8333 0.1667 C0.8333 0.1667 0.8333 0.8333 0.8333 0.8333 C0.8333 0.8333 0.1667 0.8333 0.1667 0.8333 C0.1667 0.8333 0.1667 0.1667 0.1667 0.1667 Z",
+                    "transform": {
+                      "x": 0.5,
+                      "y": 0.5,
+                      "w": 1,
+                      "h": 1,
+                      "rotation": 0,
+                      "opacity": 1
+                    },
+                    "fill": "#8033e6"
+                  },
+                  "name": "Forma viva",
+                  "keyframes": {
+                    "path": [
+                      {
+                        "atMs": 0,
+                        "path": "M0.1667 0.1667 C0.1667 0.1667 0.8333 0.1667 0.8333 0.1667 C0.8333 0.1667 0.8333 0.8333 0.8333 0.8333 C0.8333 0.8333 0.1667 0.8333 0.1667 0.8333 C0.1667 0.8333 0.1667 0.1667 0.1667 0.1667 Z",
+                        "easing": "cubic-bezier(0.4,0,0.2,1)",
+                        "firstVertex": {
+                          "x": 0.1667,
+                          "y": 0.1667
+                        }
+                      },
+                      {
+                        "atMs": 1000,
+                        "path": "M0.5 0 C0.5 0 1 0.5 1 0.5 C1 0.5 0.5 1 0.5 1 C0.5 1 0 0.5 0 0.5 C0 0.5 0.5 0 0.5 0 Z",
+                        "easing": "linear",
+                        "firstVertex": {
+                          "x": 0.5,
+                          "y": 0
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ],
+          "name": "morph"
+        }
+      ]
+    }
+  ]
+}

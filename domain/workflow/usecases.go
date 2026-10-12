@@ -12,7 +12,7 @@ type CreateWorkflowUseCase interface {
 }
 
 type UpdateWorkflowUseCase interface {
-	Execute(workflowID string, workflow *Workflow) (*Workflow, error)
+	Execute(ctx context.Context, workflowID string, workflow *Workflow) (*Workflow, error)
 }
 
 type AssignDepartmentUseCase interface {
@@ -32,7 +32,7 @@ type ListWorkflowsUseCase interface {
 }
 
 type ActivateWorkflowUseCase interface {
-	Execute(workflowID string) (*Workflow, error)
+	Execute(ctx context.Context, workflowID string) (*Workflow, error)
 }
 
 type PauseWorkflowUseCase interface {

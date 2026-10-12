@@ -1,5 +1,6 @@
 ---
 name: campanhas-de-whatsapp
+surface: panel
 description: Como planejar e enviar campanhas de WhatsApp (oficial e não oficial) sem queimar o número: autorização, limites diários, nota de qualidade, frequência, segmentação e horário; carregue antes de criar ou iniciar uma campanha.
 ---
 

@@ -1,0 +1,89 @@
+{
+  "blendModes": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "add", "color-burn", "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity"],
+  "lumaModes": ["dark", "light"],
+  "lumaRanges": { "threshold": [0, 1], "softness": [0.001, 1] },
+  "matteChannels": ["alpha", "luma"],
+  "valid": {
+    "schema": "studio.video",
+    "version": 1,
+    "canvas": { "aspect": "square", "background": "#000000" },
+    "durationMs": 3000,
+    "tracks": [
+      {
+        "id": "t-plate",
+        "kind": "visual",
+        "clips": [
+          {
+            "id": "c-plate",
+            "type": "image",
+            "assetId": "m-plate",
+            "startMs": 0,
+            "durationMs": 3000,
+            "trimInMs": 0,
+            "volume": 1,
+            "fadeInMs": 0,
+            "fadeOutMs": 0,
+            "fit": "cover",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "lumaKey": {
+              "mode": "dark",
+              "threshold": 0.1,
+              "softness": 0.2,
+              "keyframes": { "threshold": [{ "atMs": 0, "value": 0, "easing": "linear" }, { "atMs": 2000, "value": 0.3, "easing": "easeOut" }] }
+            }
+          }
+        ]
+      },
+      {
+        "id": "t-leak",
+        "kind": "visual",
+        "clips": [
+          {
+            "id": "c-leak",
+            "type": "video",
+            "assetId": "m-leak",
+            "startMs": 0,
+            "durationMs": 3000,
+            "trimInMs": 0,
+            "volume": 1,
+            "fadeInMs": 0,
+            "fadeOutMs": 0,
+            "fit": "cover",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 0.8 },
+            "blendMode": "add",
+            "matte": true,
+            "matteChannel": "luma",
+            "matteInvert": true
+          }
+        ]
+      },
+      {
+        "id": "t-title",
+        "kind": "visual",
+        "clips": [
+          {
+            "id": "c-title",
+            "type": "overlay",
+            "startMs": 500,
+            "durationMs": 2000,
+            "trimInMs": 0,
+            "volume": 1,
+            "fadeInMs": 0,
+            "fadeOutMs": 0,
+            "transform": { "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.2, "rotation": 0, "opacity": 1 },
+            "layer": {
+              "id": "l-title",
+              "type": "shape",
+              "shape": "rect",
+              "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+              "fill": "#ffffff",
+              "blendMode": "add"
+            },
+            "matte": true,
+            "matteChannel": "alpha"
+          }
+        ]
+      }
+    ]
+  }
+}

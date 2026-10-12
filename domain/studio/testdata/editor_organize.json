@@ -1,0 +1,297 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "story",
+    "background": "#000000"
+  },
+  "durationMs": 12000,
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "visual",
+      "labelColor": "blue",
+      "clips": [
+        {
+          "id": "shot",
+          "type": "video",
+          "name": "Abertura na loja",
+          "labelColor": "orange",
+          "assetId": "m-video",
+          "startMs": 0,
+          "durationMs": 6000,
+          "trimInMs": 1500,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "markers": [
+            {
+              "id": "door",
+              "atMs": 2500,
+              "label": "porta abre",
+              "color": "yellow"
+            },
+            {
+              "id": "smile",
+              "atMs": 4000,
+              "durationMs": 1200,
+              "note": "melhor sorriso, usar no corte final"
+            }
+          ]
+        },
+        {
+          "id": "box",
+          "type": "group",
+          "name": "Bloco do preço",
+          "labelColor": "green",
+          "startMs": 6000,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "markers": [
+            {
+              "id": "price-in",
+              "atMs": 500
+            }
+          ],
+          "tracks": [
+            {
+              "id": "box-inner",
+              "kind": "visual",
+              "labelColor": "pink",
+              "clips": [
+                {
+                  "id": "price",
+                  "type": "overlay",
+                  "name": "Preço",
+                  "labelColor": "red",
+                  "startMs": 0,
+                  "durationMs": 4000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.5,
+                    "y": 0.6,
+                    "w": 0.6,
+                    "h": 0.12,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "layer": {
+                    "id": "price-layer",
+                    "type": "text",
+                    "transform": {
+                      "x": 0.5,
+                      "y": 0.6,
+                      "w": 0.6,
+                      "h": 0.12,
+                      "rotation": 0,
+                      "opacity": 1
+                    },
+                    "text": "R$ 49,90",
+                    "fontId": "inter",
+                    "fontSize": 0.08,
+                    "fontWeight": 700,
+                    "align": "center",
+                    "lineHeight": 1.2,
+                    "fill": "#ffffff"
+                  },
+                  "markers": [
+                    {
+                      "id": "flash",
+                      "atMs": 1000,
+                      "durationMs": 300,
+                      "color": "purple"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "guides",
+      "kind": "visual",
+      "name": "Guias",
+      "labelColor": "cyan",
+      "shy": true,
+      "clips": [
+        {
+          "id": "safe-area",
+          "type": "image",
+          "name": "Área segura do Reels",
+          "guide": true,
+          "assetId": "m-safe",
+          "startMs": 0,
+          "durationMs": 12000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "contain",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 0.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "rigs",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "rig",
+          "type": "null",
+          "name": "Controle do logo",
+          "labelColor": "purple",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.1,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "markers": [
+            {
+              "id": "rig-hit",
+              "atMs": 1500,
+              "color": "red"
+            }
+          ]
+        },
+        {
+          "id": "glow",
+          "type": "effect",
+          "name": "Brilho de teste",
+          "guide": true,
+          "labelColor": "yellow",
+          "startMs": 3000,
+          "durationMs": 1000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "vfx": [
+            {
+              "id": "grain",
+              "kind": "grain",
+              "seed": 7
+            }
+          ],
+          "markers": [
+            {
+              "id": "glow-peak",
+              "atMs": 400
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "music",
+      "kind": "audio",
+      "name": "Trilha",
+      "labelColor": "green",
+      "clips": [
+        {
+          "id": "song",
+          "type": "audio",
+          "name": "Trilha principal",
+          "assetId": "m-song",
+          "startMs": 0,
+          "durationMs": 12000,
+          "trimInMs": 2000,
+          "volume": 0.8,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "markers": [
+            {
+              "id": "b1",
+              "atMs": 2480,
+              "beat": true
+            },
+            {
+              "id": "b2",
+              "atMs": 2980,
+              "beat": true,
+              "color": "red"
+            },
+            {
+              "id": "drop",
+              "atMs": 6000,
+              "durationMs": 4000,
+              "label": "refrão",
+              "note": "entra o coro"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "markers": [
+    {
+      "id": "intro",
+      "atMs": 0,
+      "durationMs": 2000,
+      "label": "Intro",
+      "color": "blue"
+    },
+    {
+      "id": "offer",
+      "atMs": 6000,
+      "label": "Oferta",
+      "note": "o preço aparece aqui; manter 3 s na tela"
+    }
+  ]
+}

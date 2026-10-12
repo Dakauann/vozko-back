@@ -38,3 +38,27 @@ func TestASkillTitleIsItsFirstHeading(t *testing.T) {
 		t.Fatalf("a skill without a heading falls back to its name, got %q", got)
 	}
 }
+
+func TestASkillCanBeScopedToTheStudioOrToThePanel(t *testing.T) {
+	studio := View{Surface: SurfaceStudio, ProjectID: "p1", ProjectKind: StudioImage}
+	panel := View{Surface: SurfaceAttendance}
+	cases := []struct {
+		surface     SkillSurface
+		onStudio    bool
+		onThePanel  bool
+		onNoSurface bool
+	}{
+		{SkillEverywhere, true, true, true},
+		{SkillStudioOnly, true, false, false},
+		{SkillPanelOnly, false, true, true},
+	}
+	for _, c := range cases {
+		skill := Skill{Name: "x", Description: "d", Body: "b", Surface: c.surface}
+		if skill.OfferedOn(studio) != c.onStudio || skill.OfferedOn(panel) != c.onThePanel || skill.OfferedOn(View{}) != c.onNoSurface {
+			t.Errorf("surface %q offered wrongly", c.surface)
+		}
+	}
+	if err := (Skill{Name: "x", Description: "d", Body: "b", Surface: "moon"}).Validate(); !errors.Is(err, ErrSkillSurface) {
+		t.Fatalf("an unknown surface must be refused, got %v", err)
+	}
+}

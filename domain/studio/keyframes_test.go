@@ -131,13 +131,6 @@ func TestKeyframesAreKeptInTheDocument(t *testing.T) {
 func TestKeyframesKeepTheirRules(t *testing.T) {
 	cases := map[string]func(*VideoDocument){
 		"on audio": func(d *VideoDocument) { d.Tracks[2].Clips[0].Keyframes = slide() },
-		"more keys on one property than a clip holds": func(d *VideoDocument) {
-			many := make([]mediagen.Keyframe, mediagen.MaxKeyframesPerProperty+1)
-			for i := range many {
-				many[i] = mediagen.Keyframe{AtMS: int64(i), Value: 0.5, Easing: mediagen.EaseLinear}
-			}
-			d.Tracks[1].Clips[0].Keyframes = keys(mediagen.Keyframes{X: many})
-		},
 		"unknown easing": func(d *VideoDocument) {
 			d.Tracks[1].Clips[0].Keyframes = keys(mediagen.Keyframes{Y: []mediagen.Keyframe{{AtMS: 0, Value: 0.5, Easing: "wiggle"}}})
 		},
@@ -155,7 +148,7 @@ func TestKeyframesKeepTheirRules(t *testing.T) {
 }
 
 func fillWithKeyframes(d *VideoDocument) {
-	many := make([]mediagen.Keyframe, mediagen.MaxKeyframesPerProperty)
+	many := make([]mediagen.Keyframe, 32)
 	for i := range many {
 		many[i] = mediagen.Keyframe{AtMS: int64(i), Value: 0.5, Easing: mediagen.EaseLinear}
 	}
@@ -179,7 +172,7 @@ func fillWithKeyframes(d *VideoDocument) {
 
 func TestAVideoDocumentTakesAnyNumberOfTracksClipsAndKeyframes(t *testing.T) {
 	doc := videoDoc()
-	doc.DurationMS = mediagen.MaxVideoMS
+	doc.DurationMS = MaxVideoMS
 	fillWithKeyframes(&doc)
 	for i := 0; i < 300; i++ {
 		extra := doc.Tracks[1].Clips[0]

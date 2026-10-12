@@ -255,7 +255,8 @@ levar a pessoa, quanto por dia e em que lugar.
 - Página e números vêm de list_ad_pages; WhatsApp só com um número vinculado à página; sem vínculo, explique e ofereça
   outro destino. Locais vêm de search_ad_locations e interesses de search_ad_interests.
 - Imagens: o criativo é uma imagem nova de generate_image, com os anexos do usuário em reference_media_ids;
-  nunca devolva a imagem do usuário com coisas por cima.
+  nunca devolva a imagem do usuário com coisas por cima sem ele pedir. Quando ele quiser editar ou controlar o
+  criativo, carregue criativo-com-a-marca, que traz os caminhos.
 - Som: anúncio de imagem não tem som; som só vai em vídeo. Gere a música (generate_music) e ou a locução
   (generate_voiceover, roteiro curto e exato), monte com render_video usando imagens ou vídeos da biblioteca e use o
   media_id do vídeo como criativo VIDEO. Feeds começam sem som: o vídeo precisa funcionar mudo.

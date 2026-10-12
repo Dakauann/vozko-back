@@ -13,6 +13,7 @@ var (
 )
 
 type UserMessage struct {
+	ClientID      string
 	Content       string
 	AttachmentIDs []string
 }
@@ -36,7 +37,9 @@ func ImageURLs(attachments []Attachment) []string {
 	return out
 }
 
-func PromptWithAttachments(content string, attachments []Attachment) string {
+const BlindImagesNote = "[O modelo desta conversa não enxerga imagens: as imagens anexadas não chegam até você. Não descreva nem suponha o que elas mostram; diga ao usuário que com este modelo você não consegue ver imagens e sugira trocar, no seletor de modelos, para um modelo com visão]"
+
+func PromptWithAttachments(content string, attachments []Attachment, seesImages bool) string {
 	if len(attachments) == 0 {
 		return content
 	}
@@ -45,6 +48,9 @@ func PromptWithAttachments(content string, attachments []Attachment) string {
 	b.WriteString("\n\n[Arquivos anexados pelo usuário nesta mensagem; use o media_id nas ferramentas]")
 	for _, a := range attachments {
 		b.WriteString("\n- " + a.Name + " (media_id: " + a.MediaID + ", tipo: " + a.Kind + ")")
+	}
+	if !seesImages && len(ImageURLs(attachments)) > 0 {
+		b.WriteString("\n" + BlindImagesNote)
 	}
 	return strings.TrimSpace(b.String())
 }

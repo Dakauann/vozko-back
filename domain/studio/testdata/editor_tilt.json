@@ -1,0 +1,244 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "landscape",
+    "background": "#101010",
+    "perspective": 0
+  },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "flip",
+          "type": "video",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "assetId": "m-video",
+          "fit": "cover",
+          "keyframes": {
+            "rotationY": [
+              {
+                "atMs": 0,
+                "value": 0,
+                "easing": "easeInOut"
+              },
+              {
+                "atMs": 1000,
+                "value": 180,
+                "easing": "linear"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "cards",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "card",
+          "type": "image",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.4,
+            "h": 0.4,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "assetId": "m-card",
+          "fit": "contain",
+          "rotationY": 45,
+          "anchor": {
+            "x": 0,
+            "y": 0.5
+          },
+          "keyframes": {
+            "rotationX": [
+              {
+                "atMs": 0,
+                "value": -30,
+                "easing": "easeOut"
+              },
+              {
+                "atMs": 1500,
+                "value": 0,
+                "easing": "linear"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "decks",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "deck",
+          "type": "group",
+          "startMs": 0,
+          "durationMs": 1000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "rotationX": 20,
+          "keyframes": {
+            "rotationY": [
+              {
+                "atMs": 0,
+                "value": -90,
+                "easing": "linear"
+              },
+              {
+                "atMs": 800,
+                "value": 0,
+                "easing": "linear"
+              }
+            ]
+          },
+          "tracks": [
+            {
+              "id": "deck-v",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "inner",
+                  "type": "image",
+                  "startMs": 0,
+                  "durationMs": 1000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "w": 0.5,
+                    "h": 0.5,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "assetId": "m-card",
+                  "fit": "cover"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "title",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.8,
+            "w": 0.8,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "title-text",
+            "type": "text",
+            "text": "Oferta",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fill": "#ffffff",
+            "align": "center",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            }
+          },
+          "rotationX": -15,
+          "textAnimators": [
+            {
+              "id": "anim-flip",
+              "unit": "char",
+              "properties": {
+                "opacity": 0,
+                "rotationX": 90,
+                "rotationY": -45
+              },
+              "selector": {
+                "kind": "range",
+                "units": "percent",
+                "start": 0,
+                "end": 25,
+                "offset": -25,
+                "order": "forward",
+                "shape": "rampUp",
+                "easeHigh": 0,
+                "easeLow": 0,
+                "amount": 100,
+                "seed": 3
+              },
+              "keyframes": {
+                "offset": [
+                  {
+                    "atMs": 0,
+                    "value": -25,
+                    "easing": "easeOut"
+                  },
+                  {
+                    "atMs": 1000,
+                    "value": 100,
+                    "easing": "linear"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

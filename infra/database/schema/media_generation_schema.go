@@ -16,6 +16,7 @@ type MediaGenerationJob struct {
 	Fingerprint       string         `gorm:"size:64;not null;uniqueIndex:idx_media_generation_jobs_active,priority:3"`
 	Kind              string         `gorm:"size:16;not null;default:'image'"`
 	Voice             string         `gorm:"size:32"`
+	DurationMS        int            `gorm:"column:duration_ms;not null;default:0"`
 	Video             datatypes.JSON `gorm:"type:jsonb"`
 	SourceMediaID     string         `gorm:"size:64"`
 	BillingReference  string         `gorm:"size:128"`

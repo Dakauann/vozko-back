@@ -30,6 +30,7 @@ const (
 	FieldModel      = "model"
 	FieldKind       = "kind"
 	FieldVoice      = "voice"
+	FieldDuration   = "durationMs"
 	FieldScenes     = "video.scenes"
 	FieldTimeline   = "video.timeline"
 	FieldSource     = "sourceMediaId"

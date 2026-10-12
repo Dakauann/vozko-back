@@ -44,17 +44,22 @@ func (g *fakeGenerator) Generate(_ context.Context, req mediagen.Request, refere
 const (
 	imageModel = "openai/gpt-image-2.5-flare"
 	musicModel = "google/lyria-3-clip-preview"
+	soundModel = "bytedance-seed/seed-audio-1-0"
 )
 
 type fakeCatalog struct {
 	models []mediagen.Model
 	audio  []mediagen.Model
+	sounds []mediagen.Model
 	err    error
 }
 
 func (c *fakeCatalog) Models(_ context.Context, kind mediagen.Kind) ([]mediagen.Model, error) {
-	if kind == mediagen.KindImage {
+	switch kind {
+	case mediagen.KindImage:
 		return c.models, c.err
+	case mediagen.KindSoundEffect:
+		return c.sounds, c.err
 	}
 	return c.audio, c.err
 }
@@ -63,6 +68,7 @@ func newFakeCatalog() *fakeCatalog {
 	return &fakeCatalog{
 		models: []mediagen.Model{{ID: imageModel, Name: "GPT Image 2.5 Flare"}, {ID: "google/gemini-3-pro-image", Name: "Gemini 3 Pro Image"}},
 		audio:  []mediagen.Model{{ID: musicModel, Name: "Lyria 3 Clip"}},
+		sounds: []mediagen.Model{{ID: soundModel, Name: "Seed Audio 1.0"}},
 	}
 }
 
@@ -364,6 +370,7 @@ type fixture struct {
 	gen     *fakeGenerator
 	audio   *fakeGenerator
 	video   *fakeGenerator
+	sound   *fakeGenerator
 	costs   *fakeCosts
 	late    *fakeCosts
 	charges *fakeCharges
@@ -377,10 +384,10 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{lib: newFakeLibrary(), cat: newFakeCatalog(), gen: &fakeGenerator{}, audio: &fakeGenerator{output: musicModel}, video: &fakeGenerator{output: "render"}, costs: &fakeCosts{costs: map[string]int64{}}, late: &fakeCosts{costs: map[string]int64{}}, charges: &fakeCharges{}, funds: &fakeFunds{}, bill: &fakeAIBilling{}, up: &fakeUploader{}, queue: &fakeQueue{}, jobs: newFakeJobs()}
+	f := &fixture{lib: newFakeLibrary(), cat: newFakeCatalog(), gen: &fakeGenerator{}, audio: &fakeGenerator{output: musicModel}, video: &fakeGenerator{output: "render"}, sound: &fakeGenerator{output: soundModel, unpriced: true, generation: "gen-tts-1"}, costs: &fakeCosts{costs: map[string]int64{}}, late: &fakeCosts{costs: map[string]int64{}}, charges: &fakeCharges{}, funds: &fakeFunds{}, bill: &fakeAIBilling{}, up: &fakeUploader{}, queue: &fakeQueue{}, jobs: newFakeJobs()}
 	svc, err := NewService(Deps{
 		Generators: map[mediagen.Kind]mediagen.Generator{
-			mediagen.KindImage: f.gen, mediagen.KindMusic: f.audio, mediagen.KindVoice: f.audio, mediagen.KindVideo: f.video,
+			mediagen.KindImage: f.gen, mediagen.KindMusic: f.audio, mediagen.KindVoice: f.audio, mediagen.KindSoundEffect: f.sound, mediagen.KindVideo: f.video,
 			mediagen.KindCutout: f.video, mediagen.KindCaptions: f.video, mediagen.KindDenoise: f.video, mediagen.KindProxy: f.video,
 		},
 		Models: f.cat, Jobs: f.jobs, Queue: f.queue, Funds: f.funds, Billing: f.bill, Uploader: f.up, Library: f.lib,
@@ -674,7 +681,7 @@ func TestPollingBacksOffByHalfUpToFiveSeconds(t *testing.T) {
 func fullDeps() Deps {
 	gen := &fakeGenerator{}
 	return Deps{
-		Generators: map[mediagen.Kind]mediagen.Generator{mediagen.KindImage: gen, mediagen.KindMusic: gen, mediagen.KindVoice: gen, mediagen.KindVideo: gen, mediagen.KindCutout: gen, mediagen.KindCaptions: gen, mediagen.KindDenoise: gen, mediagen.KindProxy: gen},
+		Generators: map[mediagen.Kind]mediagen.Generator{mediagen.KindImage: gen, mediagen.KindMusic: gen, mediagen.KindVoice: gen, mediagen.KindSoundEffect: gen, mediagen.KindVideo: gen, mediagen.KindCutout: gen, mediagen.KindCaptions: gen, mediagen.KindDenoise: gen, mediagen.KindProxy: gen},
 		Models:     newFakeCatalog(), Jobs: newFakeJobs(), Queue: &fakeQueue{}, Funds: &fakeFunds{}, Billing: &fakeAIBilling{}, Uploader: &fakeUploader{}, Library: newFakeLibrary(),
 		Costs: &fakeCosts{}, LateCosts: &fakeCosts{}, Charges: &fakeCharges{},
 	}

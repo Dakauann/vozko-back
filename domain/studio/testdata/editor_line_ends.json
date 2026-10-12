@@ -1,0 +1,21 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "a1",
+      "x": 0,
+      "y": 0,
+      "canvas": { "width": 1080, "height": 1080, "background": "#ffffff" },
+      "layers": [
+        { "id": "open", "type": "shape", "shape": "line", "transform": { "x": 0.5, "y": 0.1, "w": 0.6, "h": 0.03, "rotation": 0, "opacity": 1 }, "stroke": "#111111", "strokeWidth": 8, "arrowStart": true, "arrowStartKind": "openArrow", "arrowEnd": true },
+        { "id": "dots", "type": "shape", "shape": "line", "transform": { "x": 0.5, "y": 0.2, "w": 0.6, "h": 0.03, "rotation": 0, "opacity": 1 }, "stroke": "#111111", "strokeWidth": 8, "arrowStart": true, "arrowStartKind": "dot", "arrowEnd": true, "arrowEndKind": "dot" },
+        { "id": "bars", "type": "shape", "shape": "line", "transform": { "x": 0.5, "y": 0.3, "w": 0.6, "h": 0.03, "rotation": 0, "opacity": 1 }, "stroke": "#111111", "strokeWidth": 8, "dashArray": [3, 2], "arrowStart": true, "arrowStartKind": "bar", "arrowEnd": true, "arrowEndKind": "bar" },
+        { "id": "rounded", "type": "shape", "shape": "line", "transform": { "x": 0.5, "y": 0.4, "w": 0.6, "h": 0.03, "rotation": 0, "opacity": 1 }, "stroke": "#111111", "strokeWidth": 8, "arrowStart": true, "arrowStartKind": "round", "arrowEnd": true, "arrowEndKind": "square" },
+        { "id": "curve", "type": "shape", "shape": "path", "path": "M0 1 C0.3 0 0.7 0 1 1", "transform": { "x": 0.5, "y": 0.55, "w": 0.6, "h": 0.15, "rotation": 0, "opacity": 1 }, "stroke": "#111111", "strokeWidth": 8, "arrowStart": true, "arrowStartKind": "diamond", "arrowEnd": true, "arrowEndKind": "arrow" },
+        { "id": "hexagon", "type": "shape", "shape": "polygon", "points": 6, "transform": { "x": 0.3, "y": 0.8, "w": 0.25, "h": 0.25, "rotation": 0, "opacity": 1 }, "fill": "#3b82f6" },
+        { "id": "octagon", "type": "shape", "shape": "polygon", "transform": { "x": 0.7, "y": 0.8, "w": 0.25, "h": 0.25, "rotation": 0, "opacity": 1 }, "fill": "#e11d48" }
+      ]
+    }
+  ]
+}

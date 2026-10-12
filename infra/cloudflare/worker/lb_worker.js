@@ -1,41 +1,11 @@
-// =====================================================================
-// Workspace-sticky API load-balancer Worker
-//
-// - Reads active replica directory from Cloudflare KV (binding: REPLICAS_KV)
-// - Picks one replica per workspaceId via Rendezvous (HRW) hash
-// - HRW score MUST match the Go implementation in
-//   domain/sip_trunk/hash_ring.go (FNV-1a 64 + '\0' separator +
-//   SplitMix64), otherwise the trunk owner the LB picks won't match the
-//   trunk owner the cluster reconciler assigned.
-// - Forwards request (HTTP + WebSocket), with failover to the 2nd HRW
-//   pick on idempotent methods only.
-// - Authenticates to origin with shared secret (binding: LB_SECRET)
-//
-// Bindings required:
-//   REPLICAS_KV   KV namespace      (entries: replicas:<id> -> {id,url,...})
-//   LB_SECRET     Secret string     (matched by the origin gateway)
-//   LB_DEBUG_TOKEN Secret string     Used only to gate /__lb/replicas
-//
-// Entry shape written by the Go publisher
-// (infra/cloudflare/kv_directory.go):
-//   {"id":"<uuid>","url":"https://replica-1.example.com",
-//    "region":"us-east","updated_at":1730000000}
-// =====================================================================
-
 const KV_KEY_PREFIX = "replicas:";
-const KV_CACHE_TTL_MS = 30_000;       // refresh directory every 30s
-const KV_LIST_PAGE_SIZE = 1000;         // CF KV max per list page
+const KV_LIST_PAGE_SIZE = 1000;
+const DIRECTORY_TTL_SECONDS = 30;
+const DIRECTORY_PATH = "/__lb/directory";
 const FAILOVER_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-// Module-scope cache (per-isolate; CF spins many isolates so cache is best-effort).
-let _cache = { at: 0, replicas: [] };
+let _memory = { at: 0, replicas: [] };
 
-// ---------------------------------------------------------------------
-// Hashing — must mirror Go score():
-//   h = fnv1a64(key + 0x00 + replicaID)
-//   h = splitmix64_finalize(h)
-// See domain/sip_trunk/hash_ring.go.
-// ---------------------------------------------------------------------
 const FNV64_OFFSET = 0xcbf29ce484222325n;
 const FNV64_PRIME = 0x00000100000001b3n;
 const MASK64 = 0xffffffffffffffffn;
@@ -55,7 +25,7 @@ function score(key, replicaId) {
   const b = _enc.encode(replicaId);
   const buf = new Uint8Array(a.length + 1 + b.length);
   buf.set(a, 0);
-  buf[a.length] = 0;                 // null separator — MUST match Go
+  buf[a.length] = 0;
   buf.set(b, a.length + 1);
 
   let x = fnv1a64Bytes(buf);
@@ -65,10 +35,6 @@ function score(key, replicaId) {
   return x;
 }
 
-// ---------------------------------------------------------------------
-// Rendezvous (Highest Random Weight) selection.
-// Tie-break on smaller replicaID lexicographically — matches Go.
-// ---------------------------------------------------------------------
 function pick(workspaceId, replicas) {
   if (!replicas.length) return null;
   if (replicas.length === 1) return replicas[0];
@@ -88,7 +54,6 @@ function pick(workspaceId, replicas) {
   return best;
 }
 
-// Pick top-N for failover ordering. O(N*K) but K is small (≤2).
 function pickRanked(workspaceId, replicas, n) {
   if (!workspaceId) {
     const shuffled = [...replicas];
@@ -107,16 +72,18 @@ function pickRanked(workspaceId, replicas, n) {
   return scored.slice(0, n).map(x => x.r);
 }
 
-// ---------------------------------------------------------------------
-// KV directory read with module-memory cache. Paginates with cursor so we
-// don't silently truncate at growth time.
-// ---------------------------------------------------------------------
-async function getReplicas(env) {
-  const now = Date.now();
-  if (now - _cache.at < KV_CACHE_TTL_MS && _cache.replicas.length > 0) {
-    return _cache.replicas;
+function validReplicas(values) {
+  const replicas = [];
+  for (const v of Array.isArray(values) ? values : []) {
+    if (v && typeof v.id === "string" && typeof v.url === "string") {
+      replicas.push(v);
+    }
   }
+  replicas.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return replicas;
+}
 
+async function readDirectoryFromKV(env) {
   const keys = [];
   let cursor;
   for (; ;) {
@@ -133,30 +100,56 @@ async function getReplicas(env) {
   const values = await Promise.all(
     keys.map(k => env.REPLICAS_KV.get(k.name, { type: "json" }))
   );
+  return validReplicas(values);
+}
 
-  const replicas = [];
-  for (const v of values) {
-    if (v && typeof v.id === "string" && typeof v.url === "string") {
-      replicas.push(v);
-    }
+function directoryKey(url) {
+  return new Request(new URL(DIRECTORY_PATH, url.origin).toString());
+}
+
+async function readSharedDirectory(key) {
+  try {
+    const cached = await caches.default.match(key);
+    if (!cached) return null;
+    const shared = await cached.json();
+    const replicas = validReplicas(shared && shared.replicas);
+    if (!replicas.length || typeof shared.at !== "number") return null;
+    return { at: shared.at, replicas };
+  } catch (_) {
+    return null;
+  }
+}
+
+function shareDirectory(key, directory) {
+  return caches.default.put(key, new Response(JSON.stringify(directory), {
+    headers: {
+      "content-type": "application/json",
+      "cache-control": `max-age=${DIRECTORY_TTL_SECONDS}`,
+    },
+  })).catch(() => {});
+}
+
+async function getReplicas(env, url, ctx) {
+  const now = Date.now();
+  if (now - _memory.at < DIRECTORY_TTL_SECONDS * 1000 && _memory.replicas.length > 0) {
+    return _memory.replicas;
   }
 
-  // Stable order so HRW tie-breaking is deterministic across isolates.
-  replicas.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const key = directoryKey(url);
+  const shared = await readSharedDirectory(key);
+  if (shared) {
+    _memory = shared;
+    return shared.replicas;
+  }
 
-  _cache = { at: now, replicas };
+  const replicas = await readDirectoryFromKV(env);
+  if (replicas.length > 0) {
+    _memory = { at: now, replicas };
+    ctx.waitUntil(shareDirectory(key, _memory));
+  }
   return replicas;
 }
 
-function bustCache() {
-  _cache = { at: 0, replicas: [] };
-}
-
-// ---------------------------------------------------------------------
-// Workspace ID extraction.
-// Order: ?workspace= → ?workspace_id= → x-workspace-id → JWT claim.
-// JWT decode is unsigned — the origin still validates the signature.
-// ---------------------------------------------------------------------
 function getWorkspaceId(req, url) {
   const qp = url.searchParams.get("workspace") || url.searchParams.get("workspace_id");
   if (qp) return qp;
@@ -170,22 +163,15 @@ function getWorkspaceId(req, url) {
       const parts = auth.slice(7).split(".");
       if (parts.length >= 2) {
         const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-        // atob requires padding
         const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
         const json = JSON.parse(atob(padded));
         if (json.workspace_id) return String(json.workspace_id);
       }
-    } catch (_) { /* malformed JWT — fall through */ }
+    } catch (_) { }
   }
   return "";
 }
 
-// ---------------------------------------------------------------------
-// Forward a single request to a chosen replica.
-// Faithfully proxies Method/Body/Upgrade by passing the original Request
-// as the init template (`new Request(url, req)`), which preserves the
-// readable stream and `Upgrade: websocket` semantics on Cloudflare.
-// ---------------------------------------------------------------------
 async function forward(req, target, env, workspaceId) {
   const incoming = new URL(req.url);
   const upstream = new URL(target.url);
@@ -200,21 +186,16 @@ async function forward(req, target, env, workspaceId) {
   const cfIP = req.headers.get("cf-connecting-ip");
   if (cfIP) {
     headers.set("x-real-ip", cfIP);
-    // Append client IP to XFF chain rather than overwrite.
     const xff = req.headers.get("x-forwarded-for");
     headers.set("x-forwarded-for", xff ? `${xff}, ${cfIP}` : cfIP);
   }
   headers.set("x-forwarded-proto", incoming.protocol.replace(":", ""));
   headers.set("x-forwarded-host", incoming.host);
 
-  // `new Request(url, req)` keeps method, body stream, and upgrade headers.
   const upstreamReq = new Request(upstream.toString(), req);
   return fetch(upstreamReq, { headers, redirect: "manual" });
 }
 
-// Forward with failover to 2nd HRW pick. Only used for idempotent methods,
-// because retrying a non-idempotent request risks duplicate writes — and
-// because the second pick may not own this workspace's SIP trunk anyway.
 async function forwardWithMaybeFailover(req, replicas, env, workspaceId) {
   const canFailover = FAILOVER_METHODS.has(req.method) && replicas.length > 1;
   const targets = canFailover ? pickRanked(workspaceId, replicas, 2) : [pick(workspaceId, replicas)];
@@ -225,35 +206,25 @@ async function forwardWithMaybeFailover(req, replicas, env, workspaceId) {
     if (!target) continue;
     try {
       const resp = await forward(req, target, env, workspaceId);
-      // Pure transport-failure-style upstream errors → try next replica.
-      // 5xx from a healthy origin is left to the caller to surface — we
-      // only failover on 502/503/504 which usually mean upstream unreachable.
       if (i + 1 < targets.length && (resp.status === 502 || resp.status === 503 || resp.status === 504)) {
-        bustCache();
         continue;
       }
       return { resp, target };
     } catch (err) {
       lastErr = err;
-      bustCache();
-      // Loop to next target.
     }
   }
   throw lastErr || new Error("all replicas failed");
 }
 
-// =====================================================================
-// Handler
-// =====================================================================
 export default {
-  async fetch(req, env, _ctx) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
 
     if (!env.REPLICAS_KV || !env.LB_SECRET) {
       return new Response("load balancer is not configured", { status: 503 });
     }
 
-    // Health endpoint — no KV, no workspace.
     if (url.pathname === "/__lb/health") {
       return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
         status: 200,
@@ -261,16 +232,19 @@ export default {
       });
     }
 
-    // Debug access is disabled unless a dedicated token is configured.
+    if (url.pathname === DIRECTORY_PATH) {
+      return new Response("not found", { status: 404 });
+    }
+
     if (url.pathname === "/__lb/replicas") {
       if (!env.LB_DEBUG_TOKEN || req.headers.get("x-debug-token") !== env.LB_DEBUG_TOKEN) {
         return new Response("forbidden", { status: 403 });
       }
-      const replicas = await getReplicas(env);
+      const replicas = await getReplicas(env, url, ctx);
       return new Response(JSON.stringify({
         replicas,
-        cached_at: _cache.at,
-        cache_age_ms: Date.now() - _cache.at,
+        cached_at: _memory.at,
+        cache_age_ms: Date.now() - _memory.at,
       }, null, 2), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -278,7 +252,7 @@ export default {
     }
 
     const workspaceId = getWorkspaceId(req, url);
-    const replicas = await getReplicas(env);
+    const replicas = await getReplicas(env, url, ctx);
     if (replicas.length === 0) {
       return new Response("no replicas available", { status: 503 });
     }
@@ -287,20 +261,15 @@ export default {
     try {
       ({ resp, target } = await forwardWithMaybeFailover(req, replicas, env, workspaceId));
     } catch (err) {
-      bustCache();
       return new Response(`upstream error: ${err && err.message ? err.message : err}`, {
         status: 502,
       });
     }
 
-    // WebSocket upgrade: never re-wrap the response (it would drop the
-    // webSocket pair). Just return as-is.
     if (resp.status === 101) return resp;
 
     const out = new Response(resp.body, resp);
     out.headers.set("x-origin-replica", target.id);
-    // Note: do NOT echo workspace ID back to the browser in prod — it can
-    // leak tenant info into client logs. Gated on a debug header.
     if (workspaceId && req.headers.get("x-origin-debug") === "1") {
       out.headers.set("x-origin-workspace", workspaceId);
     }

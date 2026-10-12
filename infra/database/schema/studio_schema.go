@@ -19,7 +19,12 @@ type StudioProject struct {
 	CreatedAt   time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt   time.Time      `gorm:"autoUpdateTime;index:idx_studio_projects_listing,priority:3,sort:desc"`
 	ArchivedAt  *time.Time     `gorm:"type:timestamptz"`
+
+	ChatThreadID    *string `gorm:"size:64;uniqueIndex:ux_studio_projects_origin,priority:1,where:chat_thread_id IS NOT NULL AND screen_command_id IS NOT NULL"`
+	ScreenCommandID *string `gorm:"type:uuid;uniqueIndex:ux_studio_projects_origin,priority:2,where:chat_thread_id IS NOT NULL AND screen_command_id IS NOT NULL"`
 }
+
+const StudioProjectOriginPredicate = "chat_thread_id IS NOT NULL AND screen_command_id IS NOT NULL"
 
 func (StudioProject) TableName() string { return "studio_projects" }
 
@@ -59,3 +64,23 @@ type StudioCapabilityReport struct {
 }
 
 func (StudioCapabilityReport) TableName() string { return "studio_capability_reports" }
+
+type StudioAnimationPreset struct {
+	ID          string         `gorm:"primaryKey;type:uuid"`
+	WorkspaceID string         `gorm:"type:uuid;not null;index:idx_studio_animation_presets_listing,priority:1"`
+	Name        string         `gorm:"size:160;not null"`
+	Description string         `gorm:"size:1000;not null;default:''"`
+	Animation   datatypes.JSON `gorm:"type:jsonb;not null"`
+	CreatedBy   string         `gorm:"type:uuid;not null"`
+	CreatedAt   time.Time      `gorm:"autoCreateTime;index:idx_studio_animation_presets_listing,priority:2,sort:desc"`
+	UpdatedAt   time.Time      `gorm:"autoUpdateTime"`
+}
+
+func (StudioAnimationPreset) TableName() string { return "studio_animation_presets" }
+
+func (p *StudioAnimationPreset) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == "" {
+		p.ID = uuid.New().String()
+	}
+	return nil
+}

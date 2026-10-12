@@ -21,6 +21,8 @@ const (
 	MediaTypeSticker      MediaType = "sticker"
 	MediaTypeStudioProxy  MediaType = "studio_proxy"
 	MediaTypeLeadImport   MediaType = "lead_import"
+	MediaTypeLut          MediaType = "lut"
+	MediaTypeLottie       MediaType = "lottie"
 )
 
 type Media struct {

@@ -10,8 +10,17 @@ var ErrThreadNotFound = errors.New("aichat: thread not found")
 type ListThreadsInput struct {
 	WorkspaceID string
 	UserID      string
+	Query       string
 	Limit       int
 	Offset      int
+}
+
+type ThreadProjects interface {
+	BindProject(threadID, projectID string) (bool, error)
+}
+
+type ProjectAdopter interface {
+	AdoptProject(threadID, projectID string) error
 }
 
 type ThreadRepository interface {
@@ -19,7 +28,7 @@ type ThreadRepository interface {
 	GetByID(id string) (*Thread, error)
 	ListByUser(input ListThreadsInput) ([]*Thread, int64, error)
 	Rename(id, title string) error
-	Touch(id string, lastMessageAt time.Time, model string) error
+	Touch(id string, lastMessageAt time.Time, model, reasoningLevel string) error
 	Delete(id string) error
 }
 
@@ -35,4 +44,5 @@ type MessageRepository interface {
 	DeleteByThread(threadID string) error
 	ClaimProposal(threadID, proposalID string, outcome ProposalStatus) (*Message, error)
 	ExpireProposals(threadID string) error
+	HasPendingProposal(threadID string) (bool, error)
 }

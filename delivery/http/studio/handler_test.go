@@ -22,12 +22,18 @@ import (
 )
 
 type fakeService struct {
-	project *studio.Project
-	saveErr error
-	version int64
+	project   *studio.Project
+	saveErr   error
+	createErr error
+	version   int64
+	origin    studio.Origin
 }
 
-func (f *fakeService) Create(_ context.Context, ws, user string, kind studio.Kind, name string, doc json.RawMessage) (*studio.Project, error) {
+func (f *fakeService) Create(_ context.Context, ws, user string, kind studio.Kind, name string, doc json.RawMessage, origin studio.Origin) (*studio.Project, error) {
+	f.origin = origin
+	if f.createErr != nil {
+		return nil, f.createErr
+	}
 	return &studio.Project{ID: "p-1", WorkspaceID: ws, CreatedBy: user, Kind: kind, Name: name, Document: doc, Version: 1}, nil
 }
 
@@ -57,24 +63,30 @@ func (f *fakeCapabilities) Report(_ context.Context, report studio.CapabilityRep
 }
 
 type fakeExports struct {
-	received []byte
-	err      error
+	received    []byte
+	description string
+	err         error
 }
 
-func (f *fakeExports) Save(_ context.Context, _, _ string, video io.Reader) (media.Media, error) {
-	received, err := io.ReadAll(video)
+func (f *fakeExports) Save(_ context.Context, _, _, description string, file io.Reader) (media.Media, error) {
+	received, err := io.ReadAll(file)
 	if err != nil {
 		return media.Media{}, err
 	}
-	f.received = received
+	f.received, f.description = received, description
 	return media.Media{ID: "e-1", URL: "https://cdn.test/e-1.mp4"}, f.err
 }
 
-func exportForm(t *testing.T, field string, video []byte) (string, string) {
+func exportForm(t *testing.T, field string, video []byte, description ...string) (string, string) {
 	t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
-	part, err := form.CreateFormFile(field, "export.mp4")
+	for _, named := range description {
+		if err := form.WriteField("description", named); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile(field, "export.bin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +115,7 @@ func serveAll(t *testing.T, svc *fakeService, capabilities *fakeCapabilities, ex
 	allow := func(_ workspace_domain.Resource, _ workspace_domain.Action, next http.HandlerFunc) http.HandlerFunc {
 		return next
 	}
-	RegisterProtectedRoutes(router, NewHandler(svc, capabilities, exports), allow)
+	RegisterProtectedRoutes(router, NewHandler(svc, capabilities, exports, &fakePresets{}), allow)
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -165,6 +177,30 @@ func TestProjectsAreCreatedAndListed(t *testing.T) {
 	}
 }
 
+func TestAProjectCreatedByAChatCommandHandsItsOriginToTheService(t *testing.T) {
+	svc := &fakeService{}
+	body := `{"kind":"image","name":"Post","document":{"schema":"studio.image"},"origin":{"threadId":"th-1","commandId":"0b9a5f9e-3c55-4c1e-9a43-6f0d2c7e8a11"}}`
+	if rec := serve(t, svc, http.MethodPost, "/studio/projects", body, nil); rec.Code != http.StatusCreated {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body)
+	}
+	if svc.origin != (studio.Origin{ThreadID: "th-1", CommandID: "0b9a5f9e-3c55-4c1e-9a43-6f0d2c7e8a11"}) {
+		t.Fatalf("origin %+v", svc.origin)
+	}
+	manual := &fakeService{}
+	if rec := serve(t, manual, http.MethodPost, "/studio/projects", `{"kind":"image","name":"Post","document":{"schema":"studio.image"}}`, nil); rec.Code != http.StatusCreated || !manual.origin.Empty() {
+		t.Fatalf("status %d origin %+v", rec.Code, manual.origin)
+	}
+}
+
+func TestAChatCommandProjectOfSomeoneElseIsAConflict(t *testing.T) {
+	svc := &fakeService{createErr: studio.ErrOriginTaken}
+	body := `{"kind":"image","name":"Post","document":{"schema":"studio.image"},"origin":{"threadId":"th-1","commandId":"0b9a5f9e-3c55-4c1e-9a43-6f0d2c7e8a11"}}`
+	rec := serve(t, svc, http.MethodPost, "/studio/projects", body, nil)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "origin_taken") || strings.Contains(rec.Body.String(), `"id":"p-1"`) {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body)
+	}
+}
+
 func TestCapabilitiesAreReportedForTheSessionOfTheCaller(t *testing.T) {
 	capabilities := &fakeCapabilities{}
 	body := `{"kind":"video","capabilities":{"backend":"webgl","gpuRenderer":"ANGLE","webgpu":true,"decode":true,"encodeVideo":true,"encodeAudio":false,"pixelRatio":2,"cores":8,"memoryGb":8},"usage":{"frames":120,"stalls":2,"browserExports":1,"exportFailures":{"no_encoder":1}}}`
@@ -190,16 +226,25 @@ func TestCapabilityReportsAnswerInvalidAndTakenSessions(t *testing.T) {
 	}
 }
 
-func TestAnExportedVideoIsStreamedToTheServiceAndAnsweredWithItsMedia(t *testing.T) {
+func TestAnExportedFileIsStreamedToTheServiceAndAnsweredWithItsMedia(t *testing.T) {
 	exports := &fakeExports{}
-	body, contentType := exportForm(t, "video", []byte("mp4 bytes"))
+	body, contentType := exportForm(t, "file", []byte("mp4 bytes"), "Promo Feed")
 	rec := serveAll(t, &fakeService{}, &fakeCapabilities{}, exports, http.MethodPost, "/studio/projects/p-1/exports", body, map[string]string{"Content-Type": contentType})
-	if rec.Code != http.StatusCreated || string(exports.received) != "mp4 bytes" || !strings.Contains(rec.Body.String(), `"mediaId":"e-1"`) {
+	if rec.Code != http.StatusCreated || string(exports.received) != "mp4 bytes" || exports.description != "Promo Feed" || !strings.Contains(rec.Body.String(), `"mediaId":"e-1"`) {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body)
 	}
 }
 
-func TestAnExportWithoutTheVideoPartIsRefused(t *testing.T) {
+func TestAnExportDescriptionOverTheLimitIsRefusedBeforeTheFile(t *testing.T) {
+	exports := &fakeExports{}
+	body, contentType := exportForm(t, "file", []byte("mp4 bytes"), strings.Repeat("a", studio.MaxExportDescriptionRunes*4+1))
+	rec := serveAll(t, &fakeService{}, &fakeCapabilities{}, exports, http.MethodPost, "/studio/projects/p-1/exports", body, map[string]string{"Content-Type": contentType})
+	if rec.Code != http.StatusUnprocessableEntity || exports.received != nil {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAnExportWithoutTheFilePartIsRefused(t *testing.T) {
 	body, contentType := exportForm(t, "other", []byte("mp4 bytes"))
 	rec := serveAll(t, &fakeService{}, &fakeCapabilities{}, &fakeExports{}, http.MethodPost, "/studio/projects/p-1/exports", body, map[string]string{"Content-Type": contentType})
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "invalid_export") {
@@ -215,10 +260,10 @@ func TestExportsAnswerWhatWentWrong(t *testing.T) {
 	cases := map[error][2]string{
 		studio.ErrExportTooLarge: {"422", "export_too_large"},
 		studio.ErrInvalidExport:  {"422", "invalid_export"},
-		studio.ErrNotVideo:       {"422", "not_video"},
+		studio.ErrExportFormat:   {"422", "export_format"},
 	}
 	for err, want := range cases {
-		body, contentType := exportForm(t, "video", []byte("mp4 bytes"))
+		body, contentType := exportForm(t, "file", []byte("mp4 bytes"))
 		rec := serveAll(t, &fakeService{}, &fakeCapabilities{}, &fakeExports{err: err}, http.MethodPost, "/studio/projects/p-1/exports", body, map[string]string{"Content-Type": contentType})
 		if strconv.Itoa(rec.Code) != want[0] || !strings.Contains(rec.Body.String(), want[1]) {
 			t.Fatalf("%v: status %d body %s", err, rec.Code, rec.Body)

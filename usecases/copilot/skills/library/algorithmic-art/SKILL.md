@@ -1,5 +1,6 @@
 ---
 name: algorithmic-art
+surface: studio
 description: Creating algorithmic art on an artboard of the Estúdio image editor with seeded randomness and parameter exploration, computing every element yourself. Use this when users request generative art, algorithmic art, flow fields, particle systems or patterns made by rules. Create original algorithmic art rather than copying existing artists' work to avoid copyright violations.
 license: Apache 2.0, complete terms in LICENSE.txt. Modified by Vozko for the Estúdio editor and Elo's tools; every change is listed in NOTICE.md.
 ---

@@ -23,7 +23,7 @@ func TestOnlyDoneAndFailedAreTerminal(t *testing.T) {
 }
 
 func TestFailureCodesAreAClosedSet(t *testing.T) {
-	for _, code := range []FailureCode{FailureGeneration, FailureStorage, FailureTimedOut, FailureEnqueue, FailureInsufficientFunds, FailureReferenceUnavailable} {
+	for _, code := range []FailureCode{FailureGeneration, FailureStorage, FailureTimedOut, FailureEnqueue, FailureInsufficientFunds, FailureReferenceUnavailable, FailureCostUnreported, FailureProviderBusy} {
 		if !code.Known() {
 			t.Fatalf("%s rejected", code)
 		}

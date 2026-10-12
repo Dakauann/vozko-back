@@ -1,0 +1,3247 @@
+[
+  {
+    "name": "table accepted",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "table without spec",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      }
+    },
+    "code": "required"
+  },
+  {
+    "name": "table with a stray layer field",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      },
+      "fill": "#ff0000"
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table without columns",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [],
+        "rows": [],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "required"
+  },
+  {
+    "name": "table row shorter than the columns",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "a"
+            },
+            {
+              "text": "b"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table with a null cell",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            null,
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table column with an unknown align",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "justify"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "unknown"
+  },
+  {
+    "name": "table column width zero",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 0,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "table column width past the limit",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 101,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "table cell with a control character",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "a\u0007"
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table cell with a tab",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "a\tb"
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table cell past the text limit",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table run past the cell text",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "abc",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 4,
+                  "italic": true
+                }
+              ]
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table run with a font size",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "abc",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 2,
+                  "fontSize": 0.1
+                }
+              ]
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table run with an unknown font",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "abc",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 2,
+                  "fontId": "comic"
+                }
+              ]
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "unknown"
+  },
+  {
+    "name": "table run without style",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "abc",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 2
+                }
+              ]
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table runs overlapping",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "abcdef",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 3,
+                  "italic": true
+                },
+                {
+                  "start": 2,
+                  "end": 5,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "b"
+            },
+            {
+              "text": "c"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table unknown font",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "comic",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "unknown"
+  },
+  {
+    "name": "table unknown borders",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "dotted",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "unknown"
+  },
+  {
+    "name": "table bad color",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "blue",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table weight off the hundreds",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 650,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "table font size too small",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.005,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "table border too thick",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.06,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "table padding too wide",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 3.5
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "table line height too tight",
+    "layer": {
+      "id": "case",
+      "type": "table",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.5,
+        "h": 0.5,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 0.5,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr accepted",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "qr whatsapp with logo accepted",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "5511999998888",
+          "message": "Olá! Vi o anúncio\nquero saber mais"
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#1e40af",
+        "light": "#fffbeb",
+        "logo": {
+          "assetId": "media-logo",
+          "scale": 0.28,
+          "aspect": 1.6
+        }
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "qr without spec",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      }
+    },
+    "code": "required"
+  },
+  {
+    "name": "qr with a stray layer field",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      },
+      "text": "x"
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr unknown link kind",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "sms",
+          "text": "x"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "unknown"
+  },
+  {
+    "name": "qr link with a stray field",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "url",
+          "url": "https://vozko.com",
+          "phone": "5511999998888"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr short link with a bad id",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "ABC",
+          "url": "https://vzk.to/a"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr url without scheme",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "url",
+          "url": "vozko.com"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr url with a space",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "url",
+          "url": "https://vozko.com/a b"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr url past 2048 bytes",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "url",
+          "url": "https://vozko.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr phone with symbols",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "+55 11 99999-8888"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr phone too short",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "1234567"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr phone starting with zero",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "05511999998888"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr message with a control character",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "5511999998888",
+          "message": "a\u0001"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr blank text",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "text",
+          "text": "  \n "
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "required"
+  },
+  {
+    "name": "qr unknown level",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "X",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "unknown"
+  },
+  {
+    "name": "qr quiet zone of one module",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 1,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr quiet zone too wide",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 17,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr color with alpha",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff00"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr inverted colors",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#ffffff",
+        "light": "#111111"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr low contrast orange",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#f97316",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr dark red passes",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#b91c1c",
+        "light": "#ffffff"
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "qr text past the H capacity",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "text",
+          "text": "ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação "
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "too_large"
+  },
+  {
+    "name": "qr text within the L capacity",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "text",
+          "text": "ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação ação "
+        },
+        "ecc": "L",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "qr whatsapp message past the capacity once escaped",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "5511999998888",
+          "message": "çççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççççç"
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "too_large"
+  },
+  {
+    "name": "qr whatsapp message within the capacity once escaped",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "whatsapp",
+          "phone": "5511999998888",
+          "message": "ç (a) é ~!*'_-."
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "qr logo on level L",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "L",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff",
+        "logo": {
+          "assetId": "media-logo",
+          "scale": 0.1,
+          "aspect": 1
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr logo past the M limit",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff",
+        "logo": {
+          "assetId": "media-logo",
+          "scale": 0.21,
+          "aspect": 1
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr logo at the Q limit",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "Q",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff",
+        "logo": {
+          "assetId": "media-logo",
+          "scale": 0.25,
+          "aspect": 1
+        }
+      }
+    },
+    "code": null
+  },
+  {
+    "name": "qr logo too small",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff",
+        "logo": {
+          "assetId": "media-logo",
+          "scale": 0.05,
+          "aspect": 1
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr logo aspect too wide",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff",
+        "logo": {
+          "assetId": "media-logo",
+          "scale": 0.2,
+          "aspect": 11
+        }
+      }
+    },
+    "code": "out_of_range"
+  },
+  {
+    "name": "qr logo with a bad asset id",
+    "layer": {
+      "id": "case",
+      "type": "qr",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "H",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff",
+        "logo": {
+          "assetId": "Bad Id",
+          "scale": 0.2,
+          "aspect": 1
+        }
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "qr spec on a shape layer",
+    "layer": {
+      "id": "case",
+      "type": "shape",
+      "shape": "rect",
+      "fill": "#ffffff",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "qr": {
+        "link": {
+          "kind": "shortLink",
+          "shortLinkId": "3f2c8a1e-9b4d-4c2a-8e1f-5a6b7c8d9e0f",
+          "url": "https://vzk.to/aB3dE9"
+        },
+        "ecc": "M",
+        "quietZone": 4,
+        "dark": "#111111",
+        "light": "#ffffff"
+      }
+    },
+    "code": "invalid"
+  },
+  {
+    "name": "table spec on a text layer",
+    "layer": {
+      "id": "case",
+      "type": "text",
+      "text": "a",
+      "transform": {
+        "x": 0.5,
+        "y": 0.5,
+        "w": 0.3,
+        "h": 0.3,
+        "rotation": 0,
+        "opacity": 1
+      },
+      "table": {
+        "columns": [
+          {
+            "width": 2,
+            "align": "left"
+          },
+          {
+            "width": 1,
+            "align": "right"
+          },
+          {
+            "width": 1,
+            "align": "center"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "text": "Plano"
+            },
+            {
+              "text": "Preço"
+            },
+            {
+              "text": "Usuários"
+            }
+          ],
+          [
+            {
+              "text": "Básico",
+              "runs": [
+                {
+                  "start": 0,
+                  "end": 6,
+                  "fontWeight": 700,
+                  "fill": "#2563eb"
+                }
+              ]
+            },
+            {
+              "text": "R$ 49,90"
+            },
+            {
+              "text": "3"
+            }
+          ],
+          [
+            {
+              "text": "Pro\nmais vendido",
+              "runs": [
+                {
+                  "start": 4,
+                  "end": 16,
+                  "italic": true,
+                  "caps": true
+                }
+              ]
+            },
+            {
+              "text": "R$ 99,90"
+            },
+            {
+              "text": "10"
+            }
+          ],
+          [
+            {
+              "text": "Empresa"
+            },
+            {
+              "text": ""
+            },
+            {
+              "text": "ilimitado"
+            }
+          ]
+        ],
+        "header": true,
+        "style": {
+          "fontId": "inter",
+          "fontSize": 0.06,
+          "lineHeight": 1.25,
+          "weight": 400,
+          "textColor": "#111111",
+          "fill": "#00000000",
+          "headerFill": "#111111",
+          "headerText": "#ffffff",
+          "headerWeight": 700,
+          "banding": true,
+          "bandFill": "#1111110f",
+          "borders": "rows",
+          "borderColor": "#11111140",
+          "borderWidth": 0.004,
+          "padding": 0.6
+        }
+      }
+    },
+    "code": "invalid"
+  }
+]

@@ -10,9 +10,17 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/copilot"
 	"vozko/infra/copilotscreen"
+	aichat_repository "vozko/infra/repositories/aichat"
 	"vozko/usecases/agentloop"
 	copilot_usecase "vozko/usecases/copilot"
 	copilottools "vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/attendancetools"
+	"vozko/usecases/copilot/copilottools/crmtools"
+	"vozko/usecases/copilot/copilottools/leadtools"
+	"vozko/usecases/copilot/copilottools/mediatools"
+	"vozko/usecases/copilot/copilottools/platformtools"
+	"vozko/usecases/copilot/copilottools/skilltools"
+	"vozko/usecases/copilot/copilottools/telephonytools"
 	"vozko/usecases/copilot/skills"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
@@ -26,7 +34,7 @@ func (c *Container) buildCopilot(
 ) *copilot_usecase.Service {
 	now := time.Now
 	state := c.workspaceReadiness()
-	attendanceDeps := copilottools.AttendanceDeps{
+	attendanceDeps := attendancetools.AttendanceDeps{
 		Sections:    c.useCases.getOverview,
 		Departments: c.useCases.listWorkspaceDepartments,
 		Now:         now,
@@ -35,32 +43,33 @@ func (c *Container) buildCopilot(
 	if err != nil {
 		log.Fatalf("[container] copilot skills: %v", err)
 	}
-	agentDeps := copilottools.AgentDeps{KnowledgeBases: c.useCases.listKnowledgeBases, Collections: c.mcpCollection, Catalog: c.services.toolRegistry}
+	agentDeps := platformtools.AgentDeps{KnowledgeBases: c.useCases.listKnowledgeBases, Collections: c.mcpCollection, Catalog: c.services.toolRegistry}
 	toolset := append([]copilot.Tool{
-		copilottools.NewListAgentsTool(listAgents),
-		copilottools.NewCountAgentsTool(listAgents),
-		copilottools.NewGetAgentTool(getAgent, c.services.toolRegistry),
-		copilottools.NewCreateAgentTool(createAgent, agentDeps),
-		copilottools.NewUpdateAgentTool(getAgent, updateAgent, agentDeps),
-		copilottools.NewDeleteAgentTool(getAgent, deleteAgent),
-		copilottools.NewListDepartmentsTool(c.useCases.listWorkspaceDepartments),
-		copilottools.NewOfferActionTool(state),
-		copilottools.NewListModelsTool(c.services.ai),
-		copilottools.NewListAgentToolsTool(c.services.toolRegistry),
-		copilottools.NewAttendanceMetricsTool(attendanceDeps),
-		copilottools.NewAttendanceTrendTool(attendanceDeps),
-		copilottools.NewAttendanceTeamTool(attendanceDeps),
-		copilottools.NewMemberActivityTool(c.memberActivityUseCase()),
-		copilottools.NewAttendanceBacklogTool(attendanceDeps),
-		copilottools.NewAttendanceStagesTool(attendanceDeps),
-		copilottools.NewAttendanceReworkTool(attendanceDeps),
-		copilottools.NewAttendanceLiveTool(attendanceDeps),
-		copilottools.NewCampaignDispatchTool(c.useCases.getWCDispatchReport, attendanceDeps),
+		platformtools.NewListAgentsTool(listAgents),
+		platformtools.NewCountAgentsTool(listAgents),
+		platformtools.NewGetAgentTool(getAgent, c.services.toolRegistry),
+		platformtools.NewCreateAgentTool(createAgent, agentDeps),
+		platformtools.NewUpdateAgentTool(getAgent, updateAgent, agentDeps),
+		platformtools.NewDeleteAgentTool(getAgent, deleteAgent),
+		platformtools.NewListDepartmentsTool(c.useCases.listWorkspaceDepartments),
+		platformtools.NewOfferActionTool(state),
+		platformtools.NewAskUserTool(),
+		platformtools.NewListModelsTool(c.services.ai),
+		platformtools.NewListAgentToolsTool(c.services.toolRegistry),
+		attendancetools.NewAttendanceMetricsTool(attendanceDeps),
+		attendancetools.NewAttendanceTrendTool(attendanceDeps),
+		attendancetools.NewAttendanceTeamTool(attendanceDeps),
+		attendancetools.NewMemberActivityTool(c.memberActivityUseCase()),
+		attendancetools.NewAttendanceBacklogTool(attendanceDeps),
+		attendancetools.NewAttendanceStagesTool(attendanceDeps),
+		attendancetools.NewAttendanceReworkTool(attendanceDeps),
+		attendancetools.NewAttendanceLiveTool(attendanceDeps),
+		attendancetools.NewCampaignDispatchTool(c.useCases.getWCDispatchReport, attendanceDeps),
 		c.conversationInsightsTool(now),
-		copilottools.NewCalculateTool(),
-		copilottools.NewQueryDatasetTool(),
-		copilottools.NewRenderChartTool(),
-		copilottools.NewLoadSkillTool(skillLibrary),
+		attendancetools.NewCalculateTool(),
+		attendancetools.NewQueryDatasetTool(),
+		attendancetools.NewRenderChartTool(),
+		skilltools.NewLoadSkillTool(skillLibrary),
 	}, append(c.operationTools(), c.numberAutomationTools(getAgent)...)...)
 	svc := copilot_usecase.NewService(
 		agentloop.Engine{AI: c.services.ai},
@@ -73,10 +82,11 @@ func (c *Container) buildCopilot(
 		state,
 		func() string { return uuid.New().String() },
 	)
-	svc.SetAnswerCostCeiling(int64(c.cfg.CopilotAnswerCostLimitUSD * 1_000_000))
 	screens := copilotscreen.NewBroker(c.redisProvider.SharedState())
 	screens.Start(context.Background())
 	svc.SetScreenMailbox(screens)
+	svc.SetQueue(c.repositories.aichatQueue)
+	svc.SetProjectAdopter(aichat_repository.NewProjectAdopter(c.db))
 	return svc
 }
 
@@ -103,16 +113,16 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.telegramTools(),
 		c.adsTools(),
 		{
-			copilottools.NewGenerateImageTool(c.mediaGeneration().Service),
-			copilottools.NewGenerateMusicTool(c.mediaGeneration().Service),
-			copilottools.NewGenerateVoiceoverTool(c.mediaGeneration().Service),
-			copilottools.NewRenderVideoTool(c.mediaGeneration().Service),
+			mediatools.NewGenerateImageTool(c.mediaGeneration().Service),
+			mediatools.NewGenerateMusicTool(c.mediaGeneration().Service),
+			mediatools.NewGenerateVoiceoverTool(c.mediaGeneration().Service),
+			mediatools.NewRenderVideoTool(c.mediaGeneration().Service),
 		},
 		c.studioTools(),
-		{copilottools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
+		{crmtools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
 		{
-			copilottools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
-			copilottools.NewActivateWorkflowTool(c.useCases.scopedWorkflows),
+			crmtools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
+			crmtools.NewActivateWorkflowTool(c.useCases.scopedWorkflows),
 		},
 	} {
 		out = append(out, group...)
@@ -121,14 +131,14 @@ func (c *Container) operationTools() []copilot.Tool {
 }
 
 func (c *Container) templateCreateTools() []copilot.Tool {
-	deps := copilottools.TemplateCreateDeps{
+	deps := crmtools.TemplateCreateDeps{
 		Phones:    c.useCases.workspacePhones,
 		Templates: c.useCases.workspaceTemplates,
 		Media:     c.useCases.getMedia,
 	}
 	return []copilot.Tool{
-		copilottools.NewListBusinessPhonesTool(deps),
-		copilottools.NewCreateTemplateTool(deps),
+		crmtools.NewListBusinessPhonesTool(deps),
+		crmtools.NewCreateTemplateTool(deps),
 	}
 }
 
@@ -137,20 +147,20 @@ func (c *Container) numberAutomationTools(getAgent agent.GetAgentUseCase) []copi
 	if funnels == nil {
 		return nil
 	}
-	deps := copilottools.NumberAutomationDeps{
+	deps := platformtools.NumberAutomationDeps{
 		Numbers:   c.numberReceptive(),
 		Agents:    getAgent,
 		Workflows: c.useCases.scopedWorkflows,
 		Funnels:   funnels,
 	}
 	return []copilot.Tool{
-		copilottools.NewNumberAutomationTool(deps),
-		copilottools.NewConfigureNumberAutomationTool(deps),
+		platformtools.NewNumberAutomationTool(deps),
+		platformtools.NewConfigureNumberAutomationTool(deps),
 	}
 }
 
 func (c *Container) campaignTools() []copilot.Tool {
-	deps := copilottools.CampaignDeps{
+	deps := crmtools.CampaignDeps{
 		Preview:   c.useCases.wcImportPreview,
 		Create:    c.useCases.createWCCampaign,
 		Start:     c.useCases.startWCCampaign,
@@ -161,14 +171,14 @@ func (c *Container) campaignTools() []copilot.Tool {
 		Balance:   c.services.cachedBalanceChecker,
 	}
 	return []copilot.Tool{
-		copilottools.NewPreviewCampaignImportTool(deps),
-		copilottools.NewCreateCampaignTool(deps),
-		copilottools.NewStartCampaignTool(deps),
+		crmtools.NewPreviewCampaignImportTool(deps),
+		crmtools.NewCreateCampaignTool(deps),
+		crmtools.NewStartCampaignTool(deps),
 	}
 }
 
 func (c *Container) workspaceAdminTools() []copilot.Tool {
-	deps := copilottools.WorkspaceAdminDeps{
+	deps := platformtools.WorkspaceAdminDeps{
 		Members:           c.useCases.listWsMembers,
 		Invite:            c.useCases.inviteMember,
 		Invites:           c.useCases.listWorkspaceInvites,
@@ -187,34 +197,34 @@ func (c *Container) workspaceAdminTools() []copilot.Tool {
 		ScopedDepartments: c.useCases.scopedDepartments,
 	}
 	return []copilot.Tool{
-		copilottools.NewListWorkspaceMembersTool(deps),
-		copilottools.NewListWorkspaceInvitesTool(deps),
-		copilottools.NewGetMemberPermissionsTool(deps),
-		copilottools.NewListPermissionCatalogTool(deps),
-		copilottools.NewInviteMemberTool(deps),
-		copilottools.NewCancelInviteTool(deps),
-		copilottools.NewRemoveMemberTool(deps),
-		copilottools.NewChangeMemberRoleTool(deps),
-		copilottools.NewUpdateMemberPermissionsTool(deps),
-		copilottools.NewListRolesTool(deps),
-		copilottools.NewCreateRoleTool(deps),
-		copilottools.NewUpdateRoleTool(deps),
-		copilottools.NewDeleteRoleTool(deps),
-		copilottools.NewListDepartmentMembersTool(deps),
-		copilottools.NewCreateDepartmentTool(deps),
-		copilottools.NewUpdateDepartmentTool(deps),
-		copilottools.NewDeleteDepartmentTool(deps),
-		copilottools.NewAddDepartmentMemberTool(deps),
-		copilottools.NewRemoveDepartmentMemberTool(deps),
+		platformtools.NewListWorkspaceMembersTool(deps),
+		platformtools.NewListWorkspaceInvitesTool(deps),
+		platformtools.NewGetMemberPermissionsTool(deps),
+		platformtools.NewListPermissionCatalogTool(deps),
+		platformtools.NewInviteMemberTool(deps),
+		platformtools.NewCancelInviteTool(deps),
+		platformtools.NewRemoveMemberTool(deps),
+		platformtools.NewChangeMemberRoleTool(deps),
+		platformtools.NewUpdateMemberPermissionsTool(deps),
+		platformtools.NewListRolesTool(deps),
+		platformtools.NewCreateRoleTool(deps),
+		platformtools.NewUpdateRoleTool(deps),
+		platformtools.NewDeleteRoleTool(deps),
+		platformtools.NewListDepartmentMembersTool(deps),
+		platformtools.NewCreateDepartmentTool(deps),
+		platformtools.NewUpdateDepartmentTool(deps),
+		platformtools.NewDeleteDepartmentTool(deps),
+		platformtools.NewAddDepartmentMemberTool(deps),
+		platformtools.NewRemoveDepartmentMemberTool(deps),
 	}
 }
 
 func (c *Container) accessTools() []copilot.Tool {
-	deps := copilottools.AccessDeps{Diagnose: c.useCases.diagnoseAccess}
+	deps := platformtools.AccessDeps{Diagnose: c.useCases.diagnoseAccess, Projects: c.studioService()}
 	return []copilot.Tool{
-		copilottools.NewExplainPermissionTool(),
-		copilottools.NewDiagnoseAccessTool(deps),
-		copilottools.NewOpenScreenTool(deps),
+		platformtools.NewExplainPermissionTool(),
+		platformtools.NewDiagnoseAccessTool(deps),
+		platformtools.NewOpenScreenTool(deps),
 	}
 }
 
@@ -222,15 +232,15 @@ func (c *Container) callTools() []copilot.Tool {
 	if c.sipTrunks == nil || c.callRouting == nil {
 		return nil
 	}
-	history := copilottools.CallHistoryDeps{History: c.callHistory(), Permissions: c.useCases.checkWsAccess}
-	lines := copilottools.PhoneLineDeps{
+	history := telephonytools.CallHistoryDeps{History: c.callHistory(), Permissions: c.useCases.checkWsAccess}
+	lines := telephonytools.PhoneLineDeps{
 		List:   c.sipTrunks.Lines.List,
 		Get:    c.sipTrunks.Lines.Get,
 		Create: c.sipTrunks.Lines.Create,
 		Update: c.sipTrunks.Lines.Update,
 		Delete: c.sipTrunks.Lines.Delete,
 	}
-	queues := copilottools.CallQueueDeps{
+	queues := telephonytools.CallQueueDeps{
 		Queues:      c.callRouting.Catalog,
 		Monitor:     c.callRouting.Monitor,
 		Music:       c.callRouting.Music,
@@ -239,18 +249,18 @@ func (c *Container) callTools() []copilot.Tool {
 		Now:         time.Now,
 	}
 	return []copilot.Tool{
-		copilottools.NewPlaceCallTool(copilottools.CallDeps{Planner: c.sipTrunks.Planner}),
-		copilottools.NewListCallsTool(history),
-		copilottools.NewGetCallTool(history),
-		copilottools.NewListPhoneLinesTool(lines),
-		copilottools.NewCreatePhoneLineTool(lines),
-		copilottools.NewUpdatePhoneLineTool(lines),
-		copilottools.NewChangePhoneLinePasswordTool(lines),
-		copilottools.NewDeletePhoneLineTool(lines),
-		copilottools.NewListCallQueuesTool(queues),
-		copilottools.NewCreateCallQueueTool(queues),
-		copilottools.NewUpdateCallQueueTool(queues),
-		copilottools.NewDeleteCallQueueTool(queues),
+		telephonytools.NewPlaceCallTool(telephonytools.CallDeps{Planner: c.sipTrunks.Planner}),
+		telephonytools.NewListCallsTool(history),
+		telephonytools.NewGetCallTool(history),
+		telephonytools.NewListPhoneLinesTool(lines),
+		telephonytools.NewCreatePhoneLineTool(lines),
+		telephonytools.NewUpdatePhoneLineTool(lines),
+		telephonytools.NewChangePhoneLinePasswordTool(lines),
+		telephonytools.NewDeletePhoneLineTool(lines),
+		telephonytools.NewListCallQueuesTool(queues),
+		telephonytools.NewCreateCallQueueTool(queues),
+		telephonytools.NewUpdateCallQueueTool(queues),
+		telephonytools.NewDeleteCallQueueTool(queues),
 	}
 }
 
@@ -258,10 +268,10 @@ func (c *Container) telegramTools() []copilot.Tool {
 	if c.telegram == nil || c.telegram.Connect == nil {
 		return nil
 	}
-	deps := copilottools.TelegramDeps{Connect: c.telegram.Connect, List: c.telegram.List, Departments: c.useCases.scopedDepartments}
+	deps := crmtools.TelegramDeps{Connect: c.telegram.Connect, List: c.telegram.List, Departments: c.useCases.scopedDepartments}
 	return []copilot.Tool{
-		copilottools.NewListTelegramBotsTool(deps),
-		copilottools.NewConnectTelegramBotTool(deps),
+		crmtools.NewListTelegramBotsTool(deps),
+		crmtools.NewConnectTelegramBotTool(deps),
 	}
 }
 
@@ -270,7 +280,7 @@ func (c *Container) unofficialCampaignTools() []copilot.Tool {
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled || campaigns == nil || !campaigns.Enabled {
 		return nil
 	}
-	deps := copilottools.UnofficialCampaignDeps{
+	deps := crmtools.UnofficialCampaignDeps{
 		Scopes:  c.services.conversationAuthImpl,
 		Numbers: uwuc.NewListInstancesUseCase(c.unofficialWhatsApp.Instances),
 		Usable:  campaigns.Instances,
@@ -281,10 +291,10 @@ func (c *Container) unofficialCampaignTools() []copilot.Tool {
 		Media:   c.useCases.getMedia,
 	}
 	return []copilot.Tool{
-		copilottools.NewListUnofficialNumbersTool(deps),
-		copilottools.NewPreviewUnofficialImportTool(deps),
-		copilottools.NewCreateUnofficialCampaignTool(deps),
-		copilottools.NewStartUnofficialCampaignTool(deps),
+		crmtools.NewListUnofficialNumbersTool(deps),
+		crmtools.NewPreviewUnofficialImportTool(deps),
+		crmtools.NewCreateUnofficialCampaignTool(deps),
+		crmtools.NewStartUnofficialCampaignTool(deps),
 	}
 }
 
@@ -292,18 +302,18 @@ func (c *Container) dealTools() []copilot.Tool {
 	if c.services.conversationEntryLookup == nil || c.useCases.personDeals == nil {
 		return nil
 	}
-	deps := copilottools.DealDeps{
+	deps := crmtools.DealDeps{
 		Deals:     c.useCases.personDeals,
 		Pipelines: c.useCases.listPipelines,
 		Stages:    c.useCases.listStages,
 		Entries:   c.services.conversationEntryLookup,
 	}
 	return []copilot.Tool{
-		copilottools.NewListDealPipelinesTool(deps),
-		copilottools.NewListDealsTool(deps),
-		copilottools.NewCreateDealTool(deps),
-		copilottools.NewMoveDealTool(deps),
-		copilottools.NewLinkDealTool(deps),
+		crmtools.NewListDealPipelinesTool(deps),
+		crmtools.NewListDealsTool(deps),
+		crmtools.NewCreateDealTool(deps),
+		crmtools.NewMoveDealTool(deps),
+		crmtools.NewLinkDealTool(deps),
 	}
 }
 
@@ -312,7 +322,7 @@ func (c *Container) funnelTools() []copilot.Tool {
 	if funnels == nil {
 		return nil
 	}
-	deps := copilottools.FunnelDeps{
+	deps := crmtools.FunnelDeps{
 		CreatePipeline: c.useCases.createPipeline,
 		CreateStage:    c.useCases.createStage,
 		UpdateStage:    c.useCases.updateStage,
@@ -321,11 +331,11 @@ func (c *Container) funnelTools() []copilot.Tool {
 		Funnels:        funnels,
 	}
 	return []copilot.Tool{
-		copilottools.NewCreatePipelineTool(deps),
-		copilottools.NewCreateStageTool(deps),
-		copilottools.NewRenameStageTool(deps),
-		copilottools.NewReorderStagesTool(deps),
-		copilottools.NewSetInitialStageTool(deps),
+		crmtools.NewCreatePipelineTool(deps),
+		crmtools.NewCreateStageTool(deps),
+		crmtools.NewRenameStageTool(deps),
+		crmtools.NewReorderStagesTool(deps),
+		crmtools.NewSetInitialStageTool(deps),
 	}
 }
 
@@ -333,16 +343,16 @@ func (c *Container) assignmentTools() []copilot.Tool {
 	if c.services.conversationEntryLookup == nil || c.services.personAssign == nil {
 		return nil
 	}
-	deps := copilottools.AssignmentDeps{
+	deps := crmtools.AssignmentDeps{
 		Assign:      c.services.personAssign,
 		Members:     c.useCases.listAssignableMembers,
 		Departments: c.useCases.listWorkspaceDepartments,
 		Entries:     c.services.conversationEntryLookup,
 	}
 	return []copilot.Tool{
-		copilottools.NewListAssignableMembersTool(deps),
-		copilottools.NewAssignConversationTool(deps),
-		copilottools.NewTransferConversationTool(deps),
+		crmtools.NewListAssignableMembersTool(deps),
+		crmtools.NewAssignConversationTool(deps),
+		crmtools.NewTransferConversationTool(deps),
 	}
 }
 
@@ -350,13 +360,13 @@ func (c *Container) conversationActionTools() []copilot.Tool {
 	if c.services.conversationEntryLookup == nil || c.services.personSend == nil {
 		return nil
 	}
-	deps := copilottools.ConversationActionDeps{
+	deps := crmtools.ConversationActionDeps{
 		Send:      c.services.personSend,
 		Scheduler: c.useCases.personScheduler,
 		Entries:   c.services.conversationEntryLookup,
 		Broadcast: c.services.conversationHub,
 	}
-	templates := copilottools.TemplateSendDeps{
+	templates := crmtools.TemplateSendDeps{
 		Scheduler: c.useCases.personScheduler,
 		Send:      c.services.personTemplateSend,
 		Templates: c.useCases.workspaceTemplates,
@@ -365,10 +375,10 @@ func (c *Container) conversationActionTools() []copilot.Tool {
 		Entries:   c.services.conversationEntryLookup,
 	}
 	return []copilot.Tool{
-		copilottools.NewSendMessageTool(deps),
-		copilottools.NewScheduleMessageTool(deps),
-		copilottools.NewCancelScheduledMessageTool(deps),
-		copilottools.NewSendTemplateTool(templates),
+		crmtools.NewSendMessageTool(deps),
+		crmtools.NewScheduleMessageTool(deps),
+		crmtools.NewCancelScheduledMessageTool(deps),
+		crmtools.NewSendTemplateTool(templates),
 	}
 }
 
@@ -376,7 +386,7 @@ func (c *Container) labelTools() []copilot.Tool {
 	if c.services.conversationEntryLookup == nil {
 		return nil
 	}
-	deps := copilottools.LabelDeps{
+	deps := crmtools.LabelDeps{
 		EntryLabels: c.useCases.entryLabels,
 		Create:      c.useCases.createLabel,
 		List:        c.useCases.listLabels,
@@ -384,9 +394,9 @@ func (c *Container) labelTools() []copilot.Tool {
 		Broadcast:   c.services.conversationHub,
 	}
 	return []copilot.Tool{
-		copilottools.NewApplyLabelTool(deps),
-		copilottools.NewRemoveLabelTool(deps),
-		copilottools.NewCreateLabelTool(deps),
+		crmtools.NewApplyLabelTool(deps),
+		crmtools.NewRemoveLabelTool(deps),
+		crmtools.NewCreateLabelTool(deps),
 	}
 }
 
@@ -395,15 +405,15 @@ func (c *Container) stageMoveTools() []copilot.Tool {
 	if funnels == nil || c.services.conversationEntryLookup == nil {
 		return nil
 	}
-	deps := copilottools.StageMoveDeps{
+	deps := crmtools.StageMoveDeps{
 		Move:      c.useCases.moveEntryStage,
 		Funnels:   funnels,
 		Entries:   c.services.conversationEntryLookup,
 		Broadcast: c.services.conversationHub,
 	}
 	return []copilot.Tool{
-		copilottools.NewMoveConversationStageTool(deps),
-		copilottools.NewMoveConversationFunnelTool(deps),
+		crmtools.NewMoveConversationStageTool(deps),
+		crmtools.NewMoveConversationFunnelTool(deps),
 	}
 }
 
@@ -412,7 +422,7 @@ func (c *Container) catalogTools() []copilot.Tool {
 	if funnels == nil {
 		return nil
 	}
-	deps := copilottools.CatalogDeps{
+	deps := crmtools.CatalogDeps{
 		Templates: c.useCases.workspaceTemplates,
 		Funnels:   funnels,
 		Labels:    c.useCases.listLabels,
@@ -421,32 +431,32 @@ func (c *Container) catalogTools() []copilot.Tool {
 		Now:       time.Now,
 	}
 	return []copilot.Tool{
-		copilottools.NewListTemplatesTool(deps),
-		copilottools.NewListPipelinesTool(deps),
-		copilottools.NewListLabelsTool(deps),
-		copilottools.NewListCalendarEventsTool(deps),
-		copilottools.NewListWorkflowsTool(deps),
+		crmtools.NewListTemplatesTool(deps),
+		crmtools.NewListPipelinesTool(deps),
+		crmtools.NewListLabelsTool(deps),
+		crmtools.NewListCalendarEventsTool(deps),
+		crmtools.NewListWorkflowsTool(deps),
 	}
 }
 
 func (c *Container) knowledgeTools() []copilot.Tool {
-	deps := copilottools.KnowledgeDeps{List: c.useCases.listKnowledgeBases, Query: c.useCases.scopedKnowledgeQuery}
+	deps := crmtools.KnowledgeDeps{List: c.useCases.listKnowledgeBases, Query: c.useCases.scopedKnowledgeQuery}
 	return []copilot.Tool{
-		copilottools.NewListKnowledgeBasesTool(deps),
-		copilottools.NewSearchKnowledgeTool(deps),
+		crmtools.NewListKnowledgeBasesTool(deps),
+		crmtools.NewSearchKnowledgeTool(deps),
 	}
 }
 
 func (c *Container) knowledgeWriteTools() []copilot.Tool {
-	deps := copilottools.KnowledgeWriteDeps{
+	deps := crmtools.KnowledgeWriteDeps{
 		Create:    c.useCases.createKnowledgeBase,
 		Access:    c.useCases.knowledgeBaseAccess,
 		Documents: c.useCases.scopedKnowledgeDocuments,
 		Media:     c.useCases.getMedia,
 	}
 	return []copilot.Tool{
-		copilottools.NewCreateKnowledgeBaseTool(deps),
-		copilottools.NewAddKnowledgeDocumentTool(deps),
+		crmtools.NewCreateKnowledgeBaseTool(deps),
+		crmtools.NewAddKnowledgeDocumentTool(deps),
 	}
 }
 
@@ -454,19 +464,19 @@ func (c *Container) conversationTools() []copilot.Tool {
 	if c.services.inboxService == nil || c.services.conversationHistoryReader == nil {
 		return nil
 	}
-	deps := copilottools.ConversationDeps{
+	deps := crmtools.ConversationDeps{
 		Inbox:   c.services.inboxService,
 		History: c.services.conversationHistoryReader,
 		Leads:   c.useCases.leadQueries,
 	}
 	return []copilot.Tool{
-		copilottools.NewSearchConversationsTool(deps),
-		copilottools.NewReadConversationTool(deps),
+		crmtools.NewSearchConversationsTool(deps),
+		crmtools.NewReadConversationTool(deps),
 	}
 }
 
 func (c *Container) leadTools() []copilot.Tool {
-	deps := copilottools.LeadDeps{
+	deps := leadtools.LeadDeps{
 		Leads:       c.useCases.leadQueries,
 		Memories:    c.useCases.listLeadMemories,
 		Pages:       c.leadPages(),
@@ -474,8 +484,8 @@ func (c *Container) leadTools() []copilot.Tool {
 		Areas:       c.leadAreas(),
 		Definitions: c.repositories.customField,
 	}
-	memories := copilottools.LeadMemoryDeps{Leads: c.useCases.leadQueries, Create: c.useCases.createLeadMemory, Update: c.useCases.updateLeadMemory}
-	actions := copilottools.LeadActionDeps{
+	memories := leadtools.LeadMemoryDeps{Leads: c.useCases.leadQueries, Create: c.useCases.createLeadMemory, Update: c.useCases.updateLeadMemory}
+	actions := leadtools.LeadActionDeps{
 		Leads:     deps,
 		Actions:   c.leadActions(),
 		Sends:     c.leadSends(),
@@ -484,14 +494,14 @@ func (c *Container) leadTools() []copilot.Tool {
 		Names:     c.actorNames(),
 	}
 	return []copilot.Tool{
-		copilottools.NewSearchLeadsTool(deps),
-		copilottools.NewGetLeadTool(deps),
-		copilottools.NewLeadGeoSummaryTool(deps),
-		copilottools.NewAddLeadMemoryTool(memories),
-		copilottools.NewUpdateLeadMemoryTool(memories),
-		copilottools.NewPrepareLeadActionTool(actions),
-		copilottools.NewStartLeadSendTool(actions),
-		copilottools.NewCancelLeadSendTool(actions),
+		leadtools.NewSearchLeadsTool(deps),
+		leadtools.NewGetLeadTool(deps),
+		leadtools.NewLeadGeoSummaryTool(deps),
+		leadtools.NewAddLeadMemoryTool(memories),
+		leadtools.NewUpdateLeadMemoryTool(memories),
+		leadtools.NewPrepareLeadActionTool(actions),
+		leadtools.NewStartLeadSendTool(actions),
+		leadtools.NewCancelLeadSendTool(actions),
 	}
 }
 
@@ -499,5 +509,5 @@ func (c *Container) conversationInsightsTool(now copilottools.Clock) copilot.Too
 	if c.audience == nil || !c.audience.Enabled {
 		return nil
 	}
-	return copilottools.NewConversationInsightsTool(c.audience.Stats, c.audience.List, now)
+	return attendancetools.NewConversationInsightsTool(c.audience.Stats, c.audience.List, now)
 }

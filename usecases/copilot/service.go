@@ -39,8 +39,10 @@ type Service struct {
 	newID    IDGenerator
 	screens  copilot.ScreenMailbox
 	turns    *TurnRegistry
+	queue    aichat.QueueRepository
+	adopter  aichat.ProjectAdopter
 
-	answerCostCeiling int64
+	retryBase time.Duration
 }
 
 type AttachmentResolver interface {
@@ -62,18 +64,36 @@ func NewService(
 }
 
 func (s *Service) Stream(ctx context.Context, thread *aichat.Thread, msg copilot.UserMessage, cc copilot.Context, emit agentloop.Emit) error {
-	content := strings.TrimSpace(msg.Content)
-	if content == "" && len(msg.AttachmentIDs) == 0 {
-		return ErrEmptyMessage
-	}
-	attachments, err := s.resolveAttachments(cc.WorkspaceID, msg.AttachmentIDs)
-	if err != nil {
+	content, attachments, err := s.prepare(cc.WorkspaceID, msg)
+	fromQueue := errors.Is(err, ErrEmptyMessage)
+	switch {
+	case fromQueue:
+		queued, qerr := s.hasQueued(thread.ID)
+		if qerr != nil {
+			return qerr
+		}
+		if !queued {
+			return ErrEmptyMessage
+		}
+	case err != nil:
 		return err
 	}
 	if err := s.messages.ExpireProposals(thread.ID); err != nil {
 		return err
 	}
-	return s.runTurn(ctx, thread, content, cc, emit, attachments, true)
+	return s.runTurn(ctx, thread, turnStart{content: content, attachments: attachments, persist: !fromQueue, fromQueue: fromQueue}, cc, emit)
+}
+
+func (s *Service) prepare(workspaceID string, msg copilot.UserMessage) (string, []copilot.Attachment, error) {
+	content := strings.TrimSpace(msg.Content)
+	if content == "" && len(msg.AttachmentIDs) == 0 {
+		return "", nil, ErrEmptyMessage
+	}
+	attachments, err := s.resolveAttachments(workspaceID, msg.AttachmentIDs)
+	if err != nil {
+		return "", nil, err
+	}
+	return content, attachments, nil
 }
 
 func (s *Service) resolveAttachments(workspaceID string, ids []string) ([]copilot.Attachment, error) {
@@ -97,41 +117,89 @@ func (s *Service) resolveAttachments(workspaceID string, ids []string) ([]copilo
 	return out, nil
 }
 
-func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content string, cc copilot.Context, emit agentloop.Emit, attachments []copilot.Attachment, persistUserMsg bool, prelude ...toolStep) error {
-	prompt := copilot.PromptWithAttachments(content, attachments)
+type turnStart struct {
+	content     string
+	attachments []copilot.Attachment
+	persist     bool
+	fromQueue   bool
+	notice      bool
+	prelude     []toolStep
+}
+
+func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turnStart, cc copilot.Context, emit agentloop.Emit) error {
 	model := thread.Model
 	if strings.TrimSpace(model) == "" {
 		model = defaultCopilotModel
 	}
+	level := ai.ParseReasoningLevel(thread.ReasoningLevel)
+	limits, err := ai.ResolveAgentModel(ctx, s.engine.AI, model, level)
+	if refusal, refused := ai.RefusalOf(err); refused {
+		log.Printf("[copilot] thread %s refused model %s: %v", thread.ID, model, err)
+		emit("error", map[string]interface{}{"error": refusal.Message, "code": refusal.Code})
+		emit("done", map[string]interface{}{"content": ""})
+		return nil
+	}
+	sees := limits.SeesImages()
 
-	history, err := s.buildHistory(thread.ID)
+	history, err := s.buildHistory(thread.ID, sees)
 	if err != nil {
 		return err
 	}
-	if persistUserMsg {
-		user := &aichat.Message{ThreadID: thread.ID, Role: aichat.RoleUser, Content: content}
-		if len(attachments) > 0 {
-			user.Attachments, _ = json.Marshal(attachments)
+	userTurn := start.persist || start.fromQueue
+	if userTurn {
+		delivered, err := s.deliverQueued(thread.ID, emit)
+		if err != nil {
+			return err
+		}
+		if start.fromQueue {
+			if len(delivered) == 0 {
+				emit("done", map[string]interface{}{"content": ""})
+				return nil
+			}
+			last := delivered[len(delivered)-1]
+			start.content, start.attachments = last.Content, storedAttachments(last.Attachments)
+			delivered = delivered[:len(delivered)-1]
+		}
+		for _, q := range delivered {
+			history = append(history, userMessage(q.Message(), agentloop.UserRequest, sees))
+		}
+	}
+	if start.persist {
+		user := &aichat.Message{ThreadID: thread.ID, Role: aichat.RoleUser, Content: start.content}
+		if len(start.attachments) > 0 {
+			user.Attachments, _ = json.Marshal(start.attachments)
 		}
 		if err := s.messages.Create(user); err != nil {
 			return err
 		}
 	}
+	prompt := copilot.PromptWithAttachments(start.content, start.attachments, sees)
 
 	rec := &turnRecorder{emit: emit}
-	for _, ts := range prelude {
+	for _, ts := range start.prelude {
 		emitStep(rec.emitFn, ts)
 	}
 	cc.Datasets = copilot.NewDatasetStore()
 	cc.ChargeReference = aichat.ChargeReference(thread.ID)
-	limits := s.modelLimits(ctx, model)
-	cc.SeesImages = limits.SeesImages
+	cc.SeesImages = sees
 	cc = s.attachScreen(cc, thread.ID, emit)
 
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	driver.state = s.workspaceState(ctx, cc)
-	sess := &agentloop.Session{History: history, PromptImages: copilot.ImageURLs(attachments)}
-	out := s.engine.Run(ctx, rec.emitFn, driver, DefaultConfig(cc, limits, s.costCeiling()), sess, prompt)
+	driver.reattach = func(next copilot.Context) copilot.Context {
+		s.turns.Moved(thread.ID, next.View)
+		return s.attachScreen(next, thread.ID, emit)
+	}
+	driver.adopt = func(projectID string) error { return s.adopt(thread, projectID) }
+	driver.inbox = s.withOpenings(thread.ID, rec, driver, s.inbox(thread.ID, model, sees, rec, emit))
+	sess := &agentloop.Session{History: history, PromptImages: copilot.ImageURLs(start.attachments)}
+	if start.notice {
+		sess.Frame = agentloop.AppNotice
+	}
+	cfg := DefaultConfig(cc, limits)
+	cfg.ReasoningEffort = level
+	cfg.ProviderRetryBase = s.retryBase
+	out := s.engine.Run(ctx, rec.emitFn, driver, cfg, sess, prompt)
 
 	switch out.Kind {
 	case agentloop.OutcomePaused:
@@ -153,15 +221,15 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, content st
 		if reply != "" || len(rec.tools) > 0 {
 			_ = s.messages.Create(rec.message(thread.ID, reply, model))
 		}
-		if msg := haltMessage(out.Halt); msg != "" {
-			emit("error", map[string]interface{}{"error": msg})
+		if failure := haltFailure(out.Halt); failure != nil {
+			emit("error", failure)
 		}
 		emit("done", map[string]interface{}{"content": reply})
 	}
 
-	_ = s.threads.Touch(thread.ID, time.Now().UTC(), model)
-	if persistUserMsg && strings.TrimSpace(thread.Title) == "" {
-		_ = s.threads.Rename(thread.ID, deriveTitle(titleSource(content, attachments)))
+	_ = s.threads.Touch(thread.ID, time.Now().UTC(), model, string(level))
+	if userTurn && strings.TrimSpace(thread.Title) == "" {
+		_ = s.threads.Rename(thread.ID, deriveTitle(titleSource(start.content, start.attachments)))
 	}
 	return nil
 }
@@ -212,7 +280,7 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 		model = defaultCopilotModel
 	}
 	approvedCC := s.attachScreen(cc, thread.ID, emit)
-	approvedCC.SeesImages = s.modelLimits(ctx, model).SeesImages
+	approvedCC.SeesImages = s.modelLimits(ctx, model).SeesImages()
 	approvedCC.ChargeReference = aichat.ChargeReference(thread.ID)
 	driver := NewDriver(approvedCC, model, s.registry, s.access, s.funds, s.newID)
 	res := driver.ExecuteApproved(ctx, pa, approval, emit)
@@ -220,7 +288,7 @@ func (s *Service) Approve(ctx context.Context, thread *aichat.Thread, actionID s
 	if tool, found := s.registry.Get(pa.ToolName); found && executed.Ok && tool.Meta().Mutating {
 		executed.Changed = string(tool.Meta().Resource)
 	}
-	return s.runTurn(ctx, thread, approvalContinuationPrompt(pa, res), cc, emit, nil, false, executed)
+	return s.runTurn(ctx, thread, turnStart{content: approvalContinuationPrompt(pa, res), prelude: []toolStep{executed}}, cc, emit)
 }
 
 const rejectedActionMessage = "Ação cancelada. Nada foi alterado."
@@ -235,35 +303,12 @@ func (s *Service) Reject(ctx context.Context, thread *aichat.Thread, actionID st
 	return nil
 }
 
-func (s *Service) SetAnswerCostCeiling(micros int64) {
-	s.answerCostCeiling = micros
-}
-
-func (s *Service) costCeiling() int64 {
-	if s.answerCostCeiling > 0 {
-		return s.answerCostCeiling
-	}
-	return DefaultAnswerCostCeilingMicros
-}
-
 func (s *Service) modelLimits(ctx context.Context, model string) ai.ModelInfo {
-	if s.engine.AI == nil {
-		return ai.ModelInfo{ID: model}
-	}
-	models, err := s.engine.AI.GetModelsWithPricing(ctx)
-	if err != nil {
-		log.Printf("[copilot] model catalog unavailable, answering with the token budget: %v", err)
-		return ai.ModelInfo{ID: model}
-	}
-	for _, m := range models {
-		if m.ID == model {
-			return m
-		}
-	}
-	return ai.ModelInfo{ID: model}
+	m, _ := ai.ResolveAgentModel(ctx, s.engine.AI, model, "")
+	return m
 }
 
-func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
+func (s *Service) buildHistory(threadID string, sees bool) ([]ai.Message, error) {
 	_, total, err := s.messages.ListByThread(aichat.ListMessagesInput{ThreadID: threadID, Limit: 1})
 	if err != nil {
 		return nil, err
@@ -283,11 +328,15 @@ func (s *Service) buildHistory(threadID string) ([]ai.Message, error) {
 		case aichat.RoleSystem:
 			out = append(out, ai.Message{Role: ai.RoleSystem, Content: m.Content})
 		case aichat.RoleUser:
-			attachments := storedAttachments(m.Attachments)
-			out = append(out, ai.Message{Role: ai.RoleUser, Content: agentloop.UserRequest(copilot.PromptWithAttachments(m.Content, attachments)), Images: copilot.ImageURLs(attachments)})
+			out = append(out, userMessage(m, agentloop.UserRequest, sees))
 		}
 	}
 	return out, nil
+}
+
+func userMessage(m *aichat.Message, frame func(string) string, sees bool) ai.Message {
+	attachments := storedAttachments(m.Attachments)
+	return ai.Message{Role: ai.RoleUser, Content: frame(copilot.PromptWithAttachments(m.Content, attachments, sees)), Images: copilot.ImageURLs(attachments)}
 }
 
 func assistantHistoryContent(m *aichat.Message) string {
@@ -404,6 +453,7 @@ type toolStep struct {
 	Result  string              `json:"result,omitempty"`
 	Changed string              `json:"changed,omitempty"`
 	Error   string              `json:"error,omitempty"`
+	Awaits  *copilot.View       `json:"awaits,omitempty"`
 }
 
 const maxToolErrorRunes = 500
@@ -412,6 +462,12 @@ func stepFromResult(name string, res copilot.Result) toolStep {
 	step := toolStep{Name: name, Summary: string(res.Status), Ok: res.Status == copilot.StatusOK, Chart: res.Chart, Card: res.Card, Media: res.Media, Subject: res.Subject, Result: renderData(res.Data)}
 	if !step.Ok {
 		step.Error = clippedError(res.Message)
+	}
+	if step.Ok && res.Opening != nil {
+		step.Awaits = res.Opening.Awaiting()
+	}
+	if !step.Ok && res.AwaitsScreen != nil {
+		step.Awaits = res.AwaitsScreen
 	}
 	return step
 }
@@ -466,6 +522,9 @@ func (t toolStep) payload() map[string]interface{} {
 	if t.Error != "" {
 		payload["error"] = t.Error
 	}
+	if t.Awaits != nil {
+		payload["awaits"] = t.Awaits
+	}
 	return payload
 }
 
@@ -479,6 +538,10 @@ func (r *turnRecorder) emitFn(eventType string, payload interface{}) {
 	switch eventType {
 	case "reasoning_delta":
 		r.reasoning.WriteString(eventText(payload))
+	case agentloop.EventAssistantRetry:
+		if notice, ok := payload.(agentloop.RetryNotice); ok {
+			r.takeBackReasoning(notice.Reasoning)
+		}
 	case "tool":
 		r.tools = append(r.tools, toolStepFromPayload(payload))
 	case EventChart:
@@ -495,6 +558,37 @@ func (r *turnRecorder) emitFn(eventType string, payload interface{}) {
 		}
 	}
 	r.emit(eventType, payload)
+}
+
+func (r *turnRecorder) takeBackReasoning(shown string) {
+	kept, found := strings.CutSuffix(r.reasoning.String(), shown)
+	if shown == "" || !found {
+		return
+	}
+	r.reasoning.Reset()
+	r.reasoning.WriteString(kept)
+}
+
+func (r *turnRecorder) reset() {
+	r.reasoning.Reset()
+	r.tools = nil
+}
+
+func (r *turnRecorder) awaits(projectID string) bool {
+	for _, step := range r.tools {
+		if step.Awaits != nil && step.Awaits.ProjectID == projectID {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *turnRecorder) opened(projectID string) {
+	for i := range r.tools {
+		if r.tools[i].Awaits != nil && r.tools[i].Awaits.ProjectID == projectID {
+			r.tools[i].Awaits = nil
+		}
+	}
 }
 
 func (r *turnRecorder) message(threadID, content, model string) *aichat.Message {
@@ -531,5 +625,6 @@ func toolStepFromPayload(payload interface{}) toolStep {
 	ok, _ := p["ok"].(bool)
 	subject, _ := p["subject"].(*copilot.Subject)
 	failure, _ := p["error"].(string)
-	return toolStep{Name: name, Summary: summary, Ok: ok, Subject: subject, Error: failure}
+	awaits, _ := p["awaits"].(*copilot.View)
+	return toolStep{Name: name, Summary: summary, Ok: ok, Subject: subject, Error: failure, Awaits: awaits}
 }

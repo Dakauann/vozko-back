@@ -61,6 +61,26 @@ func TestTheCommercialModelIsAlwaysNamedAndTheFileUploaded(t *testing.T) {
 	}
 }
 
+func TestARemovalFormWithoutTheCommercialModelIsNeverBuilt(t *testing.T) {
+	for _, model := range []string{"", "  ", "bria-rmbg", "u2net"} {
+		if _, _, err := removalForm(model, []byte("jpeg bytes")); err == nil {
+			t.Errorf("a removal form was built for model %q, so rembg would pick its own default", model)
+		}
+	}
+	body, contentType, err := removalForm(Model, []byte("jpeg bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/remove", body)
+	req.Header.Set("Content-Type", contentType)
+	if err := req.ParseMultipartForm(1 << 20); err != nil {
+		t.Fatal(err)
+	}
+	if got := req.FormValue("model"); got != "isnet-general-use" {
+		t.Fatalf("model = %q", got)
+	}
+}
+
 func TestAnythingButAPNGIsRefused(t *testing.T) {
 	for name, c := range map[string]struct {
 		status int

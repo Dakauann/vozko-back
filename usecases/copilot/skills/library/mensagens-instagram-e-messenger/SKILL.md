@@ -1,5 +1,6 @@
 ---
 name: mensagens-instagram-e-messenger
+surface: panel
 description: Anúncios que abrem conversa no Direct do Instagram ou no Messenger: quando escolher cada canal, mensagem de boas vindas, perguntas prontas e resposta rápida; carregue antes de criar um anúncio de conversa fora do WhatsApp.
 ---
 

@@ -99,7 +99,7 @@ func TestAVoiceWorkflowActivatesOnATrunkOfItsWorkspace(t *testing.T) {
 	_ = repo.Create(voiceWorkflow("wf-1", "trunk-1", "greeting"))
 	uc := voiceActivation(repo, inboundTrunksStub{"ws1|trunk-1": true})
 
-	got, err := uc.Execute("wf-1")
+	got, err := uc.Execute(context.Background(), "wf-1")
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestAVoiceWorkflowNeedsAUsableTrunk(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := NewMockWorkflowRepository()
 			_ = repo.Create(voiceWorkflow("wf-1", tc.trunk, "greeting"))
-			if _, err := voiceActivation(repo, tc.trunks).Execute("wf-1"); !errors.Is(err, tc.want) {
+			if _, err := voiceActivation(repo, tc.trunks).Execute(context.Background(), "wf-1"); !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
 		})
@@ -139,14 +139,14 @@ func TestOnlyOneActiveVoiceWorkflowAnswersATrunk(t *testing.T) {
 	_ = repo.Create(voiceWorkflow("wf-new", "trunk-1", "greeting"))
 	uc := voiceActivation(repo, inboundTrunksStub{"ws1|trunk-1": true})
 
-	if _, err := uc.Execute("wf-new"); !errors.Is(err, workflow.ErrVoiceTrunkTaken) {
+	if _, err := uc.Execute(context.Background(), "wf-new"); !errors.Is(err, workflow.ErrVoiceTrunkTaken) {
 		t.Fatalf("err = %v, want ErrVoiceTrunkTaken", err)
 	}
 
 	live, _ := repo.FindByID("wf-live")
 	live.Status = workflow.WorkflowStatusPaused
 	_ = repo.Update(live)
-	if _, err := uc.Execute("wf-live"); err != nil {
+	if _, err := uc.Execute(context.Background(), "wf-live"); err != nil {
 		t.Fatalf("reactivating the only workflow on the trunk: %v", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestPlayAudioMustPointAtAnAudioFileOfTheWorkspace(t *testing.T) {
 	for mediaID, wantErr := range map[string]bool{"greeting": false, "picture": true, "missing": true} {
 		repo := NewMockWorkflowRepository()
 		_ = repo.Create(voiceWorkflow("wf-1", "trunk-1", mediaID))
-		_, err := voiceActivation(repo, inboundTrunksStub{"ws1|trunk-1": true}).Execute("wf-1")
+		_, err := voiceActivation(repo, inboundTrunksStub{"ws1|trunk-1": true}).Execute(context.Background(), "wf-1")
 		if got := errors.Is(err, workflow.ErrNodeInvalidMediaID); got != wantErr {
 			t.Errorf("media %q: err = %v, want refused = %v", mediaID, err, wantErr)
 		}
@@ -181,7 +181,7 @@ func TestAQueueTransferMustPointAtAQueueOfTheWorkspace(t *testing.T) {
 			if tc.queues != nil {
 				uc.SetCallQueues(tc.queues)
 			}
-			_, err := uc.Execute("wf-1")
+			_, err := uc.Execute(context.Background(), "wf-1")
 			if tc.wantErr != errors.Is(err, workflow.ErrNodeInvalidQueueID) || (!tc.wantErr && err != nil) {
 				t.Fatalf("err = %v", err)
 			}

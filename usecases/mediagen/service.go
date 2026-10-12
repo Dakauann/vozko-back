@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/ai"
 	"vozko/domain/media"
 	"vozko/domain/mediagen"
 )
@@ -213,10 +214,7 @@ func (s *Service) reused(ctx context.Context, job *mediagen.Job) (*mediagen.Job,
 }
 
 func (s *Service) withinActiveCap(ctx context.Context, job *mediagen.Job) error {
-	kinds, ceiling := mediagen.ProcessingKinds(), mediagen.MaxActiveProcessing
-	if job.Kind.UsesModel() {
-		kinds, ceiling = mediagen.GenerationKinds(), mediagen.MaxActiveGenerations
-	}
+	kinds, ceiling := job.Kind.ActiveLane()
 	active, err := s.d.Jobs.CountActive(ctx, job.WorkspaceID, kinds, mediagen.ActiveSince(s.now()))
 	if err != nil {
 		return err
@@ -340,7 +338,7 @@ func (s *Service) generationFailed(ctx context.Context, job *mediagen.Job, err e
 	var charged *mediagen.ChargedFailure
 	detail := mediagen.FailureDetail(err)
 	if !job.Kind.UsesModel() || !errors.As(err, &charged) {
-		s.fail(ctx, job, mediagen.FailureGeneration, detail)
+		s.fail(ctx, job, refusalFailure(err), detail)
 		return
 	}
 	cost, ok := s.d.Costs.CostMicros(ctx, charged.GenerationID)
@@ -397,6 +395,13 @@ func (s *Service) Settle(ctx context.Context) error {
 		log.Printf("CRITICAL: [media-generation] %d job(s) never got a provider cost within %s and were closed unbilled: %v", len(expired), mediagen.SettleWindow, expired)
 	}
 	return nil
+}
+
+func refusalFailure(err error) mediagen.FailureCode {
+	if errors.Is(err, ai.ErrProviderBusy) {
+		return mediagen.FailureProviderBusy
+	}
+	return mediagen.FailureGeneration
 }
 
 func sourceFailure(err error) mediagen.FailureCode {

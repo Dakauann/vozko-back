@@ -1,0 +1,5 @@
+{
+  "defaultShadow": { "color": "#00000066", "blur": 12, "x": 0, "y": 6 },
+  "textShadow": { "color": "#00000059", "blurShare": 0.2, "offsetShare": 0.06 },
+  "heavyTextShadow": { "alpha": 0.75, "blurShare": 0.35, "offsetShare": 0.12 }
+}

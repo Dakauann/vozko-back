@@ -22,9 +22,12 @@ func NewService(projects studio.Repository) (*Service, error) {
 	return &Service{projects: projects}, nil
 }
 
-func (s *Service) Create(ctx context.Context, workspaceID, userID string, kind studio.Kind, name string, document json.RawMessage) (*studio.Project, error) {
+func (s *Service) Create(ctx context.Context, workspaceID, userID string, kind studio.Kind, name string, document json.RawMessage, origin studio.Origin) (*studio.Project, error) {
 	p, err := studio.NewProject(workspaceID, userID, kind, name, document)
 	if err != nil {
+		return nil, err
+	}
+	if err := p.SetOrigin(origin); err != nil {
 		return nil, err
 	}
 	if err := s.projects.Create(ctx, p); err != nil {

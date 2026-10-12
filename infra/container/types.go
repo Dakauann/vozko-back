@@ -315,6 +315,7 @@ type repositories struct {
 	addonSubscription       workspace_addon_domain.AddonSubscriptionRepository
 	aichatThread            aichat_domain.ThreadRepository
 	aichatMessage           aichat_domain.MessageRepository
+	aichatQueue             aichat_domain.QueueRepository
 	workspaceConfig         workspace_config_domain.Repository
 	issue                   issues_domain.Repository
 	issueResponse           issue_response_domain.Repository

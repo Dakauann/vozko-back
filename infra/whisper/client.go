@@ -96,14 +96,54 @@ type verboseResponse struct {
 }
 
 type verboseSegment struct {
-	ID               int     `json:"id"`
-	Start            float64 `json:"start"`
-	End              float64 `json:"end"`
-	Text             string  `json:"text"`
-	AvgLogprob       float64 `json:"avg_logprob"`
-	NoSpeechProb     float64 `json:"no_speech_prob"`
-	CompressionRatio float64 `json:"compression_ratio"`
+	ID               int            `json:"id"`
+	Start            float64        `json:"start"`
+	End              float64        `json:"end"`
+	Text             string         `json:"text"`
+	AvgLogprob       float64        `json:"avg_logprob"`
+	NoSpeechProb     float64        `json:"no_speech_prob"`
+	CompressionRatio float64        `json:"compression_ratio"`
+	Words            []verboseToken `json:"words"`
 }
+
+type verboseToken struct {
+	Word  string   `json:"word"`
+	Start *float64 `json:"start"`
+	End   *float64 `json:"end"`
+}
+
+func (t verboseToken) timed() bool {
+	return t.Start != nil && t.End != nil && *t.Start >= 0 && *t.End >= 0
+}
+
+func wordsFromTokens(tokens []verboseToken) []stt.Word {
+	var words []stt.Word
+	spaced := true
+	for _, token := range tokens {
+		if !token.timed() {
+			return nil
+		}
+		text := strings.TrimSpace(token.Word)
+		if text == "" {
+			spaced = true
+			continue
+		}
+		if spaced || strings.HasPrefix(token.Word, " ") {
+			words = append(words, stt.Word{Text: text, Start: *token.Start, End: *token.End})
+		} else {
+			words[len(words)-1].Text += text
+			words[len(words)-1].End = *token.End
+		}
+		spaced = strings.HasSuffix(token.Word, " ")
+	}
+	return words
+}
+
+type formField struct {
+	name, value string
+}
+
+var wordTimingFields = []formField{{name: "token_timestamps", value: "true"}, {name: "split_on_word", value: "true"}}
 
 type whisperCppResponse struct {
 	Text string `json:"text"`
@@ -122,7 +162,7 @@ func (c *Client) TranscribeSegments(ctx context.Context, audioData []byte, langu
 	if c.serverType != ServerTypeWhisperCpp {
 		return c.transcribeSpeaches(ctx, audioData, language)
 	}
-	resp, _, err := c.whisperCppRequest(ctx, audioData, language, "verbose_json")
+	resp, _, err := c.whisperCppRequest(ctx, audioData, language, "verbose_json", wordTimingFields...)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +173,7 @@ func (c *Client) TranscribeSegments(ctx context.Context, audioData []byte, langu
 	}
 	result := &stt.Transcription{Text: strings.TrimSpace(verbose.Text), Language: verbose.Language, Duration: verbose.Duration}
 	for _, seg := range verbose.Segments {
-		result.Segments = append(result.Segments, stt.Segment{ID: seg.ID, Start: seg.Start, End: seg.End, Text: strings.TrimSpace(seg.Text)})
+		result.Segments = append(result.Segments, stt.Segment{ID: seg.ID, Start: seg.Start, End: seg.End, Text: strings.TrimSpace(seg.Text), Words: wordsFromTokens(seg.Words)})
 	}
 	return result, nil
 }
@@ -185,7 +225,7 @@ func (c *Client) transcribeWhisperCpp(ctx context.Context, audioData []byte, lan
 	return result, nil
 }
 
-func (c *Client) whisperCppRequest(ctx context.Context, audioData []byte, language, format string) (*http.Response, bool, error) {
+func (c *Client) whisperCppRequest(ctx context.Context, audioData []byte, language, format string, fields ...formField) (*http.Response, bool, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -219,6 +259,11 @@ func (c *Client) whisperCppRequest(ctx context.Context, audioData []byte, langua
 
 	if err := writer.WriteField("response_format", format); err != nil {
 		return nil, false, fmt.Errorf("whisper.cpp: write response_format: %w", err)
+	}
+	for _, field := range fields {
+		if err := writer.WriteField(field.name, field.value); err != nil {
+			return nil, false, fmt.Errorf("whisper.cpp: write %s: %w", field.name, err)
+		}
 	}
 
 	lang := c.language

@@ -8,9 +8,9 @@ import (
 	"vozko/domain/copilot"
 )
 
-func validateArgs[T any](entries conversation.EntryLookup, cc copilot.Context, args map[string]interface{}) (T, error) {
+func ValidateArgs[T any](entries conversation.EntryLookup, cc copilot.Context, args map[string]interface{}) (T, error) {
 	var a T
-	if err := decodeArgs(args, &a); err != nil {
+	if err := DecodeArgs(args, &a); err != nil {
 		return a, err
 	}
 	entryID, entryType, ok := entryRef(&a)
@@ -25,7 +25,7 @@ func entryRef(dst any) (string, string, bool) {
 	var id, kind string
 	found := false
 	for _, f := range reflect.VisibleFields(value.Type()) {
-		switch jsonName(f) {
+		switch JSONName(f) {
 		case "entry_id":
 			id, found = value.FieldByIndex(f.Index).String(), true
 		case "entry_type":
@@ -36,14 +36,14 @@ func entryRef(dst any) (string, string, bool) {
 }
 
 func requireConversation(entries conversation.EntryLookup, cc copilot.Context, entryID, entryType string) error {
-	target, err := targetOf(entryID, entryType)
+	target, err := TargetOf(entryID, entryType)
 	if err != nil {
 		return err
 	}
 	if entries != nil {
-		if entry, err := entries.LookupEntry(viewerOf(cc), target.EntryID, target.EntryType); err == nil && entry != nil {
+		if entry, err := entries.LookupEntry(ViewerOf(cc), target.EntryID, target.EntryType); err == nil && entry != nil {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: conversa não encontrada ou sem acesso; use o entry_id e o entry_type exatos de search_conversations", errInvalidArgs)
+	return fmt.Errorf("%w: conversa não encontrada ou sem acesso; use o entry_id e o entry_type exatos de search_conversations", ErrInvalidArgs)
 }

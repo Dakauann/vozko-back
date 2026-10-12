@@ -29,13 +29,23 @@ Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigi
   ícones são camadas sobre o vídeo (overlay). Formas vetoriais: shape path com path SVG de 0 a 1 dentro da caixa da
   camada, ou path_preset; estrelas aceitam points e inner.
 - Animação: animate (keyframes de x, y, scale, rotation e opacity com easing), motion_preset, entrance e exit.
+- Biblioteca de elementos (formas, ícones, textos prontos, animações, molduras, grades, controles): busque com
+  studio_library_search e insira com add_element; o item vira clipes comuns, os mesmos que a pessoa arrasta do painel.
+  Molduras e grades recortam os clipes de clip_ids em vez de criar clipes.
+- Gráficos com dados: add_chart, update_chart_data e animate_chart (entrada que sobe, traça, gira ou surge);
+  prefira a barras feitas com formas.
+- Predefinições de animação (prontas e do workspace): liste com studio_animation_presets, aplique com
+  apply_animation_preset e guarde a animação de um clipe com studio_save_animation_preset.
 - Confira com studio_look antes de dizer que terminou. Para entender um vídeo ou imagem da biblioteca antes de cortar,
   use studio_look com media_id.
-- Legendas, limpeza de áudio e remoção de fundo: studio_start_job. Música, locução e imagem com IA:
-  studio_generate_music, studio_generate_voiceover e studio_generate_image. Esses trabalhos vão para a fila: continue
+- Você não ouve: depois de mexer em música, voz, efeitos ou volumes, meça com studio_listen (loudness, picos e voz
+  contra música por trecho) e decida pelos números.
+- Legendas, limpeza de áudio e remoção de fundo: studio_start_job. Música, locução, efeito sonoro e imagem com IA:
+  studio_generate_music, studio_generate_voiceover, studio_generate_sfx e studio_generate_image. Esses trabalhos vão para a fila: continue
   editando o resto, acompanhe com studio_jobs e confira depois com studio_read; o editor coloca o resultado sozinho.
-- Se o objetivo, a duração, o formato ou o tom não estiverem claros antes de uma edição grande, pergunte com studio_ask
-  (2 a 4 opções). Ao terminar, você pode oferecer o próximo passo com studio_ask.
+- Peça nova do zero: antes de criar, carregue com load_skill a habilidade briefing-criativo e valide o brief num só
+  studio_ask (até 4 perguntas). Numa edição grande com objetivo, duração, formato ou tom pouco claros, pergunte com
+  studio_ask. Ao terminar, você pode oferecer o próximo passo com studio_ask.
 - Você pode fazer qualquer tipo de edição que o editor permite. Para o ofício, carregue com load_skill as habilidades que
   combinam com o pedido (por exemplo edicao-de-video, motion-design, legendas-e-texto ou video-com-som).`
 
@@ -66,6 +76,10 @@ Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigi
   texto em arco, modos de mistura, recorte (crop), formato da foto (frame), máscara (clip na camada logo acima da forma
   ou do texto), espelhar, ajustes e filtros prontos, ícones do catálogo e degradê no fundo da arte. Tire um efeito com
   clear. Não há limite de camadas.
+- Biblioteca de elementos (formas, ícones, textos prontos, animações, molduras, grades): busque com
+  studio_library_search e insira com add_element; o item vira camadas comuns, as mesmas que a pessoa arrasta do painel.
+  Molduras e grades entram vazias e recebem fotos com fill_frame.
+- Gráficos com dados: add_chart e update_chart_data; expand_chart vira formas comuns. Prefira a barras feitas com formas.
 - Um grupo com "base" é uma estrutura: a camada base é o elemento pai e as outras camadas do grupo são filhas. Mover ou
   girar a base leva os filhos junto; redimensionar a base não mexe nos filhos. Apagar, duplicar, ocultar ou travar a base
   vale para a família inteira. Crie com scaffold_layers; ungroup_layers na base desfaz a estrutura e num filho tira só ele.
@@ -73,14 +87,20 @@ Chame as ferramentas normalmente: o sistema pede aprovação quando o modo exigi
 - Confira com studio_look antes de dizer que terminou.
 - Remoção de fundo: studio_start_job. Imagem com IA: studio_generate_image. Esses trabalhos vão para a fila: continue
   editando, acompanhe com studio_jobs; o editor coloca o resultado sozinho.
-- Se o objetivo, o formato ou o estilo não estiverem claros antes de uma edição grande, pergunte com studio_ask
-  (2 a 4 opções).
+- Peça nova do zero: antes de criar, carregue com load_skill a habilidade briefing-criativo e valide o brief num só
+  studio_ask (até 4 perguntas). Numa edição grande com objetivo, formato ou estilo pouco claros, pergunte com studio_ask.
 - Você pode fazer qualquer tipo de arte que o editor permite. Para o ofício, carregue com load_skill as habilidades que
   combinam com o pedido; numa peça nova, comece por direcao-de-arte e design-de-imagem, que indicam as demais.`
 
+const studioAdPrompt = `
+- Anúncio com o projeto: o criativo é o arquivo exportado. Exporte com studio_export (imagem em png ou jpeg, sem
+  transparência; no vídeo, acompanhe com studio_read até export done com outdated false) e use o media_id como criativo
+  IMAGE ou VIDEO em create_ad, ou em save_ad_draft quando a conta não puder gastar. Antes, carregue com load_skill a
+  habilidade criativos-que-performam, que traz o caminho completo.`
+
 func studioPrompt(kind copilot.StudioKind) string {
 	if kind == copilot.StudioImage {
-		return studioImagePrompt
+		return studioImagePrompt + studioAdPrompt
 	}
-	return studioVideoPrompt
+	return studioVideoPrompt + studioAdPrompt
 }

@@ -19,3 +19,9 @@ func TestAProviderFailureTellsTheUserWithoutTheTechnicalCause(t *testing.T) {
 		t.Fatal("the user must never see the provider's internal reason")
 	}
 }
+
+func TestARepeatedActionStopTellsTheUserWhy(t *testing.T) {
+	if haltMessage(agentloop.ErrRepeatedTurn) != msgRepeatedTurn {
+		t.Fatal("a stop for repeating the same action must explain itself to the user")
+	}
+}

@@ -1,0 +1,118 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "square",
+    "background": "#000000"
+  },
+  "durationMs": 2000,
+  "tracks": [
+    {
+      "id": "t-lottie",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-00000000-0000-4000-8000-000000000001",
+          "type": "group",
+          "startMs": 0,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "tracks": [
+            {
+              "id": "t-00000000-0000-4000-8000-000000000002",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "c-00000000-0000-4000-8000-000000000003",
+                  "type": "null",
+                  "startMs": 0,
+                  "durationMs": 2000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "w": 0.1,
+                    "h": 0.1,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "name": "Pivô",
+                  "keyframes": {
+                    "rotation": [
+                      {
+                        "atMs": 0,
+                        "value": 0,
+                        "easing": "linear"
+                      },
+                      {
+                        "atMs": 2000,
+                        "value": 360,
+                        "easing": "linear"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "t-00000000-0000-4000-8000-000000000004",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "c-00000000-0000-4000-8000-000000000005",
+                  "type": "overlay",
+                  "startMs": 0,
+                  "durationMs": 2000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.75,
+                    "y": 0.5,
+                    "w": 0.1,
+                    "h": 0.1,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "layer": {
+                    "id": "l-00000000-0000-4000-8000-000000000006",
+                    "type": "shape",
+                    "shape": "path",
+                    "path": "M1 0 L1 1 L0 1 L0 0 Z",
+                    "transform": {
+                      "x": 0.5,
+                      "y": 0.5,
+                      "w": 1,
+                      "h": 1,
+                      "rotation": 0,
+                      "opacity": 1
+                    },
+                    "fill": "#ff8000"
+                  },
+                  "name": "Satélite",
+                  "parentId": "c-00000000-0000-4000-8000-000000000003"
+                }
+              ]
+            }
+          ],
+          "name": "parenting"
+        }
+      ]
+    }
+  ]
+}

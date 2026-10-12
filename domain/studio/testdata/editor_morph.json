@@ -1,0 +1,89 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "square", "background": "#000000" },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-plate",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-plate",
+          "type": "image",
+          "assetId": "m-plate",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+          "masks": [
+            {
+              "id": "k-blob",
+              "shape": "path",
+              "mode": "add",
+              "x": 0.5,
+              "y": 0.5,
+              "w": 0.8,
+              "h": 0.8,
+              "rotation": 0,
+              "path": "M0.5 0 L1 0.5 L0.5 1 L0 0.5 Z",
+              "feather": 0.02,
+              "expansion": 0,
+              "opacity": 1,
+              "keyframes": {
+                "path": [
+                  { "atMs": 0, "path": "M0.5 0 L1 0.5 L0.5 1 L0 0.5 Z", "easing": "easeInOut" },
+                  { "atMs": 1500, "path": "M0 0.5 A0.5 0.5 0 0 1 1 0.5 A0.5 0.5 0 0 1 0 0.5 Z", "easing": "linear", "firstVertex": { "x": 1, "y": 0.5 } }
+                ],
+                "feather": [
+                  { "atMs": 0, "value": 0.02, "easing": "linear" },
+                  { "atMs": 1500, "value": 0.1, "easing": "linear" }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t-shapes",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-morph",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "l-morph",
+            "type": "shape",
+            "shape": "path",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "fill": "#ffcc00",
+            "path": "M0.1 0.1 L0.9 0.1 L0.9 0.9 L0.1 0.9 Z"
+          },
+          "keyframes": {
+            "path": [
+              { "atMs": 0, "path": "M0.1 0.1 L0.9 0.1 L0.9 0.9 L0.1 0.9 Z", "easing": "easeInOut", "firstVertex": { "x": 0.1, "y": 0.1 } },
+              { "atMs": 1000, "path": "M0.5 0 L0.62 0.35 L1 0.35 L0.69 0.57 L0.81 0.91 L0.5 0.7 L0.19 0.91 L0.31 0.57 L0 0.35 L0.38 0.35 Z", "easing": "cubic-bezier(0.33,0,0.67,1)" },
+              { "atMs": 2000, "path": "M0.2 0.5 C0.2 0.2 0.8 0.2 0.8 0.5 C0.8 0.8 0.2 0.8 0.2 0.5 Z", "easing": "hold" }
+            ],
+            "rotation": [
+              { "atMs": 0, "value": 0, "easing": "linear" },
+              { "atMs": 2000, "value": 90, "easing": "linear" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

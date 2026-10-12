@@ -14,9 +14,15 @@ description: Como criar carrosséis que fazem a pessoa deslizar até o fim e min
 - Formato: 4:5 só com imagens, 1:1 se houver vídeo; o essencial dentro do centro 3:4.
 
 ## Montar no editor de imagem
-1. Cada cartão é uma arte. Monte o primeiro completo e confira com studio_look.
-2. Para o próximo cartão, peça com studio_ask que o usuário abra uma cópia do projeto; você só edita o projeto aberto.
-3. Mantenha grade, cores, fontes e os mesmos x, y, w e h dos títulos em todos os cartões; troque só o conteúdo.
+1. Cada cartão é uma prancheta do mesmo projeto. Monte o primeiro completo e confira com studio_look.
+2. Para o próximo cartão, duplicate_artboard do primeiro e troque só o conteúdo.
+3. Mantenha grade, cores, fontes e os mesmos x, y, w e h dos títulos em todos os cartões.
+4. Antes de dizer que está pronto, veja o conjunto lado a lado com studio_look e artboard_id all.
+
+## Fotos da mesma série
+- Fotos geradas uma a uma saem com fundo e luz diferentes, e cada uma vira um retângulo de outro tom sobre o cartão. Desde a primeira: o mesmo fundo e a mesma luz descritos com as mesmas palavras em todos os prompts, e a primeira imagem aprovada em reference_media_ids das próximas, com o papel dito no prompt ("fundo e luz da referência 1").
+- Ou gere os produtos e recorte cada um (studio_start_job kind cutout) sobre um fundo único: a cor da marca, um degradê ou um fundo gerado uma vez para todos, com a mesma sombra de contato, a mesma escala e a mesma linha de base em cada cartão.
+- Se a série já saiu desencontrada, ofereça os caminhos com o custo de cada um: recortar e pôr num fundo comum é grátis; gerar de novo custa; um duotom igual em todos esconde a diferença, mas tira a cor do produto.
 
 ## Miniatura do YouTube
 - Um rosto com emoção clara ou um objeto só, e de 3 a 4 palavras em fonte forte sem serifa.

@@ -9,4 +9,7 @@ Changes made by Vozko on 2026-10-09:
 - Fonts that are not in the Estúdio catalog were replaced by the nearest catalog font: DejaVu Sans became open-sans, DejaVu Serif and FreeSerif became merriweather, FreeSans became inter (bold as weight 700).
 - "Apply the theme" names the editor operations used to apply it.
 
+Changes made by Vozko on 2026-10-12:
+- Added the "Using the Themes Without Sameness" section: brand first, pick by concept, adapt hues instead of reusing a theme verbatim, headline voice free, vary across pieces.
+
 Only `SKILL.md` is loaded by the product. This notice and the license stay with the source.

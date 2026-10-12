@@ -1,0 +1,103 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "square",
+    "background": "#000000"
+  },
+  "durationMs": 1500,
+  "tracks": [
+    {
+      "id": "t-lottie",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-00000000-0000-4000-8000-000000000001",
+          "type": "group",
+          "startMs": 0,
+          "durationMs": 1500,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "tracks": [
+            {
+              "id": "t-00000000-0000-4000-8000-000000000002",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "c-00000000-0000-4000-8000-000000000003",
+                  "type": "overlay",
+                  "startMs": 0,
+                  "durationMs": 1500,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.5,
+                    "y": 0.4,
+                    "w": 0.8,
+                    "h": 0.2,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "layer": {
+                    "id": "l-00000000-0000-4000-8000-000000000004",
+                    "type": "shape",
+                    "shape": "path",
+                    "path": "M0 1 C0 1 0.3125 0 0.5 0 C0.6875 0 1 1 1 1",
+                    "transform": {
+                      "x": 0.5,
+                      "y": 0.5,
+                      "w": 1,
+                      "h": 1,
+                      "rotation": 0,
+                      "opacity": 1
+                    },
+                    "stroke": "#ffffff",
+                    "strokeWidth": 43.2,
+                    "lineCap": "round",
+                    "lineJoin": "miter",
+                    "miterLimit": 4
+                  },
+                  "name": "Linha",
+                  "keyframes": {
+                    "trimEnd": [
+                      {
+                        "atMs": 0,
+                        "value": 0,
+                        "easing": "cubic-bezier(0.25,0.1,0.25,1)"
+                      },
+                      {
+                        "atMs": 1000,
+                        "value": 1,
+                        "easing": "linear"
+                      }
+                    ]
+                  },
+                  "line": {
+                    "trim": {
+                      "start": 0,
+                      "end": 0,
+                      "offset": 90
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "name": "trim"
+        }
+      ]
+    }
+  ]
+}

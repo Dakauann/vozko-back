@@ -12,9 +12,10 @@ var ErrChoiceMissing = errors.New("a choice on the approval card was not made")
 type ChoiceKind string
 
 const (
-	ChoiceImageModel ChoiceKind = "image_model"
-	ChoiceMusicModel ChoiceKind = "music_model"
-	ChoiceVoiceModel ChoiceKind = "voice_model"
+	ChoiceImageModel       ChoiceKind = "image_model"
+	ChoiceMusicModel       ChoiceKind = "music_model"
+	ChoiceVoiceModel       ChoiceKind = "voice_model"
+	ChoiceSoundEffectModel ChoiceKind = "sfx_model"
 )
 
 type ChoiceField struct {

@@ -1,0 +1,142 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "a1",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "petal",
+          "type": "shape",
+          "shape": "ellipse",
+          "transform": {
+            "x": 0.5,
+            "y": 0.3,
+            "w": 0.04,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6",
+          "groupId": "flower"
+        },
+        {
+          "id": "tile",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.3,
+            "h": 0.3,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6",
+          "groupId": "tiles"
+        },
+        {
+          "id": "word",
+          "type": "text",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.8,
+            "h": 0.12,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "text": "Oi",
+          "fontId": "inter",
+          "fontSize": 0.032,
+          "fontWeight": 400,
+          "align": "center",
+          "lineHeight": 1.2,
+          "fill": "#111111",
+          "groupId": "tiles"
+        },
+        {
+          "id": "half",
+          "type": "shape",
+          "shape": "triangle",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.3,
+            "h": 0.3,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6",
+          "groupId": "halves"
+        },
+        {
+          "id": "frame",
+          "type": "shape",
+          "shape": "rect",
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.3,
+            "h": 0.3,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fill": "#3b82f6",
+          "groupId": "outer"
+        }
+      ],
+      "groups": [
+        {
+          "id": "flower",
+          "name": "Flor",
+          "repeat": {
+            "mode": "radial",
+            "count": 12,
+            "shown": 10,
+            "radius": 180,
+            "startAngle": -90,
+            "sweep": 300,
+            "direction": "ccw",
+            "upright": true,
+            "reverseOverlap": true
+          }
+        },
+        {
+          "id": "tiles",
+          "repeat": {
+            "mode": "grid",
+            "rows": 4,
+            "columns": 6,
+            "gapX": 12,
+            "gapY": -4,
+            "layout": "brick-row",
+            "offset": 0.5,
+            "flipRows": "vertical",
+            "flipColumns": "horizontal"
+          }
+        },
+        {
+          "id": "outer"
+        },
+        {
+          "id": "halves",
+          "parentId": "outer",
+          "repeat": {
+            "mode": "mirror",
+            "angle": 45,
+            "gap": 8,
+            "side": "start"
+          }
+        }
+      ]
+    }
+  ]
+}

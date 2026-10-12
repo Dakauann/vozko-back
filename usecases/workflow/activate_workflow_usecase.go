@@ -43,7 +43,8 @@ type activateWorkflowUseCase struct {
 	mcpCollectionRepo domainmcp.CollectionRepository
 	knowledgeBaseRepo knowledgeBaseLookup
 
-	modelLookup ModelLookup
+	modelLookup  ModelLookup
+	modelCatalog ModelCatalog
 
 	inboundTrunks InboundTrunkLookup
 	callQueues    CallQueueLookup
@@ -137,7 +138,11 @@ func (uc *activateWorkflowUseCase) SetModelLookup(lookup ModelLookup) {
 	uc.modelLookup = lookup
 }
 
-func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflow, error) {
+func (uc *activateWorkflowUseCase) SetModelCatalog(catalog ModelCatalog) {
+	uc.modelCatalog = catalog
+}
+
+func (uc *activateWorkflowUseCase) Execute(ctx context.Context, workflowID string) (*workflow.Workflow, error) {
 	if workflowID == "" {
 		return nil, workflow.ErrWorkflowNotFound
 	}
@@ -163,6 +168,9 @@ func (uc *activateWorkflowUseCase) Execute(workflowID string) (*workflow.Workflo
 	}
 
 	if err := workflow.ValidateGraph(&w.Graph, w.Type, leafNodes); err != nil {
+		return nil, err
+	}
+	if err := checkGraphReasoning(ctx, uc.modelCatalog, &w.Graph); err != nil {
 		return nil, err
 	}
 	if err := validateNodeScopes(&w.Graph, w.Type, catalog); err != nil {

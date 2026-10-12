@@ -32,16 +32,16 @@ func (a *granularAuthorizer) HasWorkspacePermission(userID, _ string, resource, 
 	return ok
 }
 
-func (granularAuthorizer) CanAccessEntry(_, _, _, _ string, _ bool) bool    { return true }
-func (granularAuthorizer) CanAccessCampaign(_, _, _, _ string, _ bool) bool { return true }
-func (granularAuthorizer) GetAccessibleEntryIDs(_, _ string, _ bool) []string {
+func (*granularAuthorizer) CanAccessEntry(_, _, _, _ string, _ bool) bool    { return true }
+func (*granularAuthorizer) CanAccessCampaign(_, _, _, _ string, _ bool) bool { return true }
+func (*granularAuthorizer) GetAccessibleEntryIDs(_, _ string, _ bool) []string {
 	return nil
 }
-func (granularAuthorizer) GetDepartmentScope(_, _ string, _ bool) (conversation.DepartmentAccessScope, bool) {
+func (*granularAuthorizer) GetDepartmentScope(_, _ string, _ bool) (conversation.DepartmentAccessScope, bool) {
 	return conversation.DepartmentAccessScope{}, true
 }
-func (granularAuthorizer) IsWorkspaceMember(_, _ string) bool       { return true }
-func (granularAuthorizer) IsWorkspaceOwnerOrAdmin(_, _ string) bool { return false }
+func (*granularAuthorizer) IsWorkspaceMember(_, _ string) bool       { return true }
+func (*granularAuthorizer) IsWorkspaceOwnerOrAdmin(_, _ string) bool { return false }
 
 type stubSessionRegistry struct {
 	listAvailable []callsession_domain.CallSession

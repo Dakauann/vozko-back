@@ -73,6 +73,16 @@ func TestAMediaFileIsServedAsAnAttachmentFromTheWorkspace(t *testing.T) {
 	}
 }
 
+func TestEditorExportsDownloadWithTheirExtension(t *testing.T) {
+	for contentType, name := range map[string]string{"image/svg+xml": "m-1.svg", "application/pdf": "m-1.pdf", "image/gif": "m-1.gif", "image/webp": "m-1.webp"} {
+		reader := &fakeReader{content: &mediadomain.Content{Media: &mediadomain.Media{ID: "m-1"}, ContentType: contentType, Data: []byte("x")}}
+		rec := serveFile(t, reader, readOnly)
+		if rec.Header().Get("Content-Disposition") != `attachment; filename="`+name+`"` || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Fatalf("%s: headers %v", contentType, rec.Header())
+		}
+	}
+}
+
 func TestAnUnlabelledFileIsSniffed(t *testing.T) {
 	png := []byte("\x89PNG\r\n\x1a\n0000")
 	reader := &fakeReader{content: &mediadomain.Content{Media: &mediadomain.Media{ID: "m-1"}, Data: png}}

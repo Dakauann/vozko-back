@@ -1,16 +1,19 @@
 package studio
 
 type ColorGrade struct {
-	Exposure    float64 `json:"exposure,omitempty"`
-	Contrast    float64 `json:"contrast,omitempty"`
-	Highlights  float64 `json:"highlights,omitempty"`
-	Shadows     float64 `json:"shadows,omitempty"`
-	Whites      float64 `json:"whites,omitempty"`
-	Blacks      float64 `json:"blacks,omitempty"`
-	Temperature float64 `json:"temperature,omitempty"`
-	Tint        float64 `json:"tint,omitempty"`
-	Saturation  float64 `json:"saturation,omitempty"`
-	Vibrance    float64 `json:"vibrance,omitempty"`
+	Exposure    float64       `json:"exposure,omitempty"`
+	Contrast    float64       `json:"contrast,omitempty"`
+	Highlights  float64       `json:"highlights,omitempty"`
+	Shadows     float64       `json:"shadows,omitempty"`
+	Whites      float64       `json:"whites,omitempty"`
+	Blacks      float64       `json:"blacks,omitempty"`
+	Temperature float64       `json:"temperature,omitempty"`
+	Tint        float64       `json:"tint,omitempty"`
+	Saturation  float64       `json:"saturation,omitempty"`
+	Vibrance    float64       `json:"vibrance,omitempty"`
+	Curves      *ColorCurves  `json:"curves,omitempty"`
+	HSL         *HueSecondary `json:"hsl,omitempty"`
+	Lut         *GradeLut     `json:"lut,omitempty"`
 }
 
 const (
@@ -30,14 +33,20 @@ func (g *ColorGrade) issue() string {
 			return CodeOutOfRange
 		}
 	}
-	return ""
+	if code := g.Curves.issue(); code != "" {
+		return code
+	}
+	if code := g.HSL.issue(); code != "" {
+		return code
+	}
+	return g.Lut.issue()
 }
 
 func (c Clip) gradeIssue() string {
 	if c.Color == nil {
 		return ""
 	}
-	if c.Type != ClipVideo && c.Type != ClipImage {
+	if c.Type != ClipVideo && c.Type != ClipImage && c.Type != ClipGroup {
 		return CodeInvalid
 	}
 	return c.Color.issue()

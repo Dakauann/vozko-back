@@ -359,7 +359,29 @@ func (f *fakeNumbers) RecordPageLink(_ context.Context, _, pageID, number string
 	return nil
 }
 
-type fakeMedia struct{ err error }
+type fakeMedia struct {
+	err       error
+	facts     *ads.MediaFacts
+	factsErr  error
+	inspected int
+}
+
+func (f *fakeMedia) Facts(ctx context.Context, ws string, ref ads.MediaRef) (ads.MediaFacts, error) {
+	f.inspected++
+	if _, err := f.Describe(ctx, ws, ref); err != nil {
+		return ads.MediaFacts{}, err
+	}
+	if f.factsErr != nil {
+		return ads.MediaFacts{}, f.factsErr
+	}
+	if f.facts != nil {
+		return *f.facts, nil
+	}
+	if ref.Kind == ads.MediaVideo {
+		return ads.MediaFacts{Kind: ads.MediaVideo, Container: ads.ContainerMP4, Bytes: 8 << 20, Width: 1080, Height: 1920, DurationMS: 15_000}, nil
+	}
+	return ads.MediaFacts{Kind: ads.MediaImage, Container: ads.ContainerPNG, Bytes: 1 << 20, Width: 1080, Height: 1080}, nil
+}
 
 func (f *fakeMedia) Describe(_ context.Context, _ string, ref ads.MediaRef) (*media.Media, error) {
 	if f.err != nil {

@@ -1,0 +1,27 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "artboards": [
+    {
+      "id": "a1",
+      "x": 0,
+      "y": 0,
+      "canvas": { "width": 1080, "height": 1080, "background": "#ffffff" },
+      "layers": [
+        {
+          "id": "seal",
+          "type": "shape",
+          "shape": "ellipse",
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5, "rotation": 0, "opacity": 1 },
+          "fill": "#e11d48",
+          "shadow": { "color": "#00000066", "blur": 12, "x": 0, "y": 6 },
+          "pathOps": [
+            { "id": "op-zig", "kind": "zigZag", "size": 14, "ridges": 4, "points": "corner" },
+            { "id": "op-ring", "kind": "offset", "amount": -30, "copies": 1, "copyOffset": 0, "join": "miter", "miterLimit": 6 },
+            { "id": "op-cut", "kind": "merge", "mode": "exclude", "path": "M0 0 L1 0 L1 1 L0 1 Z", "fillRule": "evenodd", "x": 0.75, "y": 0.25, "w": 0.4, "h": 0.4, "rotation": 15 }
+          ]
+        }
+      ]
+    }
+  ]
+}

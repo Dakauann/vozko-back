@@ -32,7 +32,8 @@ func (turnMessages) DeleteByThread(string) error { return nil }
 func (turnMessages) ClaimProposal(string, string, aichat.ProposalStatus) (*aichat.Message, error) {
 	return nil, nil
 }
-func (turnMessages) ExpireProposals(string) error { return nil }
+func (turnMessages) ExpireProposals(string) error            { return nil }
+func (turnMessages) HasPendingProposal(string) (bool, error) { return false, nil }
 
 type fundedBalance struct{}
 

@@ -64,6 +64,10 @@ func (c *Container) mediaGeneration() *mediaGenerationBundle {
 	if err != nil {
 		log.Fatalf("[media-generation] audio generator: %v", err)
 	}
+	sounds, err := openroutergen.NewSoundGenerator(provider, soundEffectEncoder{})
+	if err != nil {
+		log.Fatalf("[media-generation] sound effect generator: %v", err)
+	}
 	mediaClient := &http.Client{Timeout: renderDownloadTimeout}
 	cutout, err := rembg.New(c.cfg.RembgURL, &http.Client{Timeout: rembgTimeout}, mediaClient)
 	if err != nil {
@@ -74,14 +78,15 @@ func (c *Container) mediaGeneration() *mediaGenerationBundle {
 	}
 	service, err := mediagen_usecase.NewService(mediagen_usecase.Deps{
 		Generators: map[mediagen.Kind]mediagen.Generator{
-			mediagen.KindImage:    images,
-			mediagen.KindMusic:    audio,
-			mediagen.KindVoice:    audio,
-			mediagen.KindVideo:    media_infra.NewVideoRenderer(mediaClient),
-			mediagen.KindCutout:   cutout,
-			mediagen.KindCaptions: media_infra.NewCaptionsGenerator(mediaClient, c.services.captionsWhisperPool, captionsLanguage),
-			mediagen.KindDenoise:  media_infra.NewDenoiseGenerator(mediaClient),
-			mediagen.KindProxy:    media_infra.NewProxyGenerator(mediaClient),
+			mediagen.KindImage:       images,
+			mediagen.KindMusic:       audio,
+			mediagen.KindVoice:       audio,
+			mediagen.KindSoundEffect: sounds,
+			mediagen.KindVideo:       media_infra.NewVideoRenderer(mediaClient),
+			mediagen.KindCutout:      cutout,
+			mediagen.KindCaptions:    media_infra.NewCaptionsGenerator(mediaClient, c.services.captionsWhisperPool, captionsLanguage),
+			mediagen.KindDenoise:     media_infra.NewDenoiseGenerator(mediaClient),
+			mediagen.KindProxy:       media_infra.NewProxyGenerator(mediaClient),
 		},
 		Models:    openrouter.NewMediaModelCatalog(c.cfg.OpenRouterAPIKey),
 		Jobs:      mediagen_repository.NewJobRepository(c.db),
@@ -109,4 +114,10 @@ type adAudioEncoder struct{}
 
 func (adAudioEncoder) Encode(ctx context.Context, raw []byte) ([]byte, error) {
 	return media_infra.EncodeAdAudio(ctx, raw)
+}
+
+type soundEffectEncoder struct{}
+
+func (soundEffectEncoder) EncodeSound(ctx context.Context, raw []byte, length time.Duration) ([]byte, error) {
+	return media_infra.EncodeSoundEffect(ctx, raw, length)
 }

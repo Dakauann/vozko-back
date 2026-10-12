@@ -183,3 +183,48 @@ func TestAWorkspaceRunsAtMostThreeAIGenerationsAtOnce(t *testing.T) {
 		t.Fatalf("processing has its own ceiling: %v", err)
 	}
 }
+
+func soundEffectRequest() mediagen.Request {
+	return mediagen.Request{Kind: mediagen.KindSoundEffect, WorkspaceID: "ws-1", Model: soundModel, Prompt: "whoosh rápido de transição", DurationMS: 1_500}
+}
+
+func TestASoundEffectIsBilledAtTheCostTheProviderRecordsAndStoredAsAudio(t *testing.T) {
+	f := newFixture(t)
+	f.costs.costs["gen-tts-1"] = 7_500
+	job := run(t, f, soundEffectRequest())
+	if job.Status != mediagen.StatusDone || f.sound.calls != 1 || f.audio.calls != 0 || job.DurationMS != 1_500 {
+		t.Fatalf("job %+v", job)
+	}
+	if len(f.costs.asked) != 1 || f.costs.asked[0] != "gen-tts-1" {
+		t.Fatalf("the cost is read from the provider's record of the generation, asked %v", f.costs.asked)
+	}
+	if len(f.bill.events) != 1 || f.bill.events[0].model != soundModel || f.bill.events[0].cost != 7_500 {
+		t.Fatalf("billing %+v", f.bill.events)
+	}
+	if f.up.kinds[0] != media.MediaTypeAudio || !strings.HasPrefix(f.up.names[0], "audio/ws-1/") || !strings.HasSuffix(f.up.names[0], ".m4a") {
+		t.Fatalf("stored %v %v", f.up.names, f.up.kinds)
+	}
+}
+
+func TestASoundEffectWhoseCostIsNotYetRecordedWaitsUnbilledAndUndelivered(t *testing.T) {
+	f := newFixture(t)
+	job := run(t, f, soundEffectRequest())
+	if job.Status != mediagen.StatusSettling || job.GenerationID != "gen-tts-1" || len(f.bill.events) != 0 {
+		t.Fatalf("job %+v billed %+v", job, f.bill.events)
+	}
+	if _, ok := job.Delivered(); ok {
+		t.Fatal("an unbilled sound effect was handed out")
+	}
+}
+
+func TestASoundEffectModelOutsideItsCatalogIsRefused(t *testing.T) {
+	f := newFixture(t)
+	req := soundEffectRequest()
+	req.Model = musicModel
+	if _, err := f.svc.Request(context.Background(), req, "u-1"); modelCode(t, err) != mediagen.CodeUnknown {
+		t.Fatalf("got %v", err)
+	}
+	if len(f.jobs.jobs) != 0 {
+		t.Fatal("a job was created")
+	}
+}

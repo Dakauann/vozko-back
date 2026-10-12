@@ -9,18 +9,20 @@ import (
 	"vozko/delivery/http/metawebhook"
 	"vozko/domain/advertising"
 	"vozko/domain/copilot"
+	"vozko/domain/studio"
+	"vozko/infra/adpreview"
 	fbinfra "vozko/infra/facebook"
+	"vozko/infra/mediaprobe"
 	"vozko/infra/meta/marketing"
 	"vozko/infra/netguard"
 	"vozko/infra/remotefile"
 	advertising_repository "vozko/infra/repositories/advertising"
 	adsuc "vozko/usecases/advertising"
-	"vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/adtools"
 )
 
 const (
-	adCreativeDownloadTimeout = 30 * time.Second
-	adCreativeMaxBytes        = 30 << 20
+	adCreativeDownloadTimeout = 60 * time.Second
 	adsWebhookAttempts        = 20
 	adsWebhookTimeout         = 30 * time.Second
 	adsWebhookRetryDelay      = 30 * time.Second
@@ -50,6 +52,7 @@ type adsBundle struct {
 	WebhookSubscription *adsuc.WebhookSubscriptionUseCase
 	Handler             *advertisinghttp.Handler
 	WebhookHandler      *metawebhook.Handler
+	Placements          *adsuc.PlacementLookUseCase
 }
 
 func (c *Container) initAds() {
@@ -110,8 +113,8 @@ func (c *Container) adsManager() *adsBundle {
 	jobs := advertising_repository.NewPublishJobRepository(c.db)
 	numbers := advertising_repository.NewNumberDirectory(c.db)
 
-	fetcher := remotefile.NewFetcher(netguard.NewHTTPClient(adCreativeDownloadTimeout), adCreativeMaxBytes)
-	media := adsuc.NewMediaSource(c.useCases.getMedia, fetcher)
+	fetcher := creativeFiles{remotefile.NewFetcher(netguard.NewHTTPClient(adCreativeDownloadTimeout), studio.MaxExportBytes)}
+	media := adsuc.NewMediaSource(c.useCases.getMedia, fetcher, mediaprobe.NewCreative())
 	if c.useCases.notifier == nil {
 		log.Fatalf("[ads] the notifier must exist before the ads manager, or funds alerts would never be sent")
 	}
@@ -147,6 +150,7 @@ func (c *Container) adsManager() *adsBundle {
 	bundle.Readiness = adsuc.NewReadinessUseCase(sync, gateway)
 	bundle.Drafts = adsuc.NewDraftsUseCase(advertising_repository.NewDraftRepository(c.db), accounts, jobs, objects, bundle.Publish)
 	bundle.Bulk = adsuc.NewBulkUseCase(bundle.Manage)
+	bundle.Placements = adsuc.NewPlacementLookUseCase(media, adpreview.NewPainter())
 	bundle.SavedReports = adsuc.NewSavedReportsUseCase(savedReports, accounts)
 	bundle.Runs = adsuc.NewReportRunsUseCase(bundle.Live, bundle.Report, objects, savedReports, advertising_repository.NewReportExportRepository(c.db))
 	bundle.Webhooks = adsuc.NewWebhookConsumer(adsuc.WebhookConsumerDeps{
@@ -214,27 +218,39 @@ func (c *Container) crmCustomers() adsuc.CustomerDirectory {
 
 func (c *Container) adsTools() []copilot.Tool {
 	bundle := c.adsManager()
-	ads := copilottools.AdsDeps{
-		Accounts:  bundle.Accounts,
-		Reports:   bundle.Report,
-		Manage:    bundle.Manage,
-		Assets:    bundle.Assets,
-		Publish:   bundle.Publish,
-		Live:      bundle.Live,
-		Drafts:    bundle.Drafts,
-		Readiness: bundle.Readiness,
-		Targeting: bundle.Assets,
-		Forms:     bundle.Forms,
-		Editor:    bundle.Manage,
-		Bulk:      bundle.Bulk,
-		Sources:   bundle.Assets,
+	ads := adtools.AdsDeps{
+		Accounts:   bundle.Accounts,
+		Reports:    bundle.Report,
+		Manage:     bundle.Manage,
+		Assets:     bundle.Assets,
+		Publish:    bundle.Publish,
+		Live:       bundle.Live,
+		Drafts:     bundle.Drafts,
+		Readiness:  bundle.Readiness,
+		Targeting:  bundle.Assets,
+		Forms:      bundle.Forms,
+		Editor:     bundle.Manage,
+		Bulk:       bundle.Bulk,
+		Sources:    bundle.Assets,
+		Placements: bundle.Placements,
 	}
-	tools := copilottools.AdsTools(ads)
-	tools = append(tools, copilottools.AdManageTools(copilottools.AdManageDeps{
+	manage := adtools.AdManageDeps{
 		Bulk: bundle.Bulk, SpendCap: bundle.Manage, Runs: bundle.Runs, Reports: bundle.SavedReports, Now: time.Now,
-	}, ads)...)
-	tools = append(tools, copilottools.AdGrowthTools(copilottools.AdGrowthDeps{
+	}
+	growth := adtools.AdGrowthDeps{
 		Audiences: bundle.Audience, Rules: bundle.Rules, Tests: bundle.SplitTests, Conversions: bundle.Conversions, Pixels: bundle.Assets, Now: time.Now,
-	}, ads)...)
-	return append(tools, copilottools.NewConnectAdAccountTool())
+	}
+	return adtools.AllAdTools(ads, manage, growth)
+}
+
+type creativeFiles struct {
+	*remotefile.Fetcher
+}
+
+func (c creativeFiles) Open(ctx context.Context, url string) (advertising.MediaFile, error) {
+	file, err := c.Fetcher.Open(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
 }

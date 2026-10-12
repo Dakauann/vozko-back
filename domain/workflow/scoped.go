@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"errors"
 
 	wd "vozko/domain/workspace/workspace_department"
@@ -15,8 +16,8 @@ type Scope struct {
 
 type ScopedWorkflowsUseCase interface {
 	Get(scope Scope, workflowID string) (*Workflow, error)
-	Update(scope Scope, workflowID string, changes *Workflow) (*Workflow, error)
+	Update(ctx context.Context, scope Scope, workflowID string, changes *Workflow) (*Workflow, error)
 	Delete(scope Scope, workflowID string) error
-	Activate(scope Scope, workflowID string) (*Workflow, error)
+	Activate(ctx context.Context, scope Scope, workflowID string) (*Workflow, error)
 	Pause(scope Scope, workflowID string) (*Workflow, error)
 }

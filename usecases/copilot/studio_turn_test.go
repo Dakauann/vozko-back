@@ -142,6 +142,121 @@ func TestScreenSessionSendsTheCommandAndReturnsTheEditorReply(t *testing.T) {
 	}
 }
 
+const testClaimant = "5f1c1a9e-8f7a-4c1e-9d55-3c2b8f0e6a11"
+
+type claimingTab struct {
+	mu       sync.Mutex
+	box      *mailbox
+	threadID string
+	claims   int
+	answer   bool
+	goes     []copilot.ScreenGo
+}
+
+func (c *claimingTab) emit(eventType string, payload interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch eventType {
+	case EventScreenCommand:
+		cmd := payload.(copilot.ScreenCommand)
+		claim, _ := copilot.ScreenClaim(testClaimant)
+		for range c.claims {
+			go func() { _ = c.box.Deliver(copilot.ScreenKey(c.threadID, cmd.ID), claim) }()
+		}
+	case EventScreenGo:
+		signal := payload.(copilot.ScreenGo)
+		c.goes = append(c.goes, signal)
+		if c.answer {
+			go func() {
+				_ = c.box.Deliver(copilot.ScreenKey(c.threadID, signal.ID), copilot.ScreenReply{OK: true, Data: []byte(`{"applied":[1]}`)})
+			}()
+		}
+	}
+}
+
+func (c *claimingTab) signals() []copilot.ScreenGo {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]copilot.ScreenGo(nil), c.goes...)
+}
+
+func TestAChangeRunsOnlyAfterTheTurnLetsTheClaimingTabGo(t *testing.T) {
+	box := newMailbox()
+	tab := &claimingTab{box: box, threadID: "th1", claims: 2, answer: true}
+	screen := &screenSession{threadID: "th1", projectID: studioView.ProjectID, mailbox: box, emit: tab.emit, newID: func() string { return "cmd-1" }}
+	reply, err := screen.Run(context.Background(), copilot.ScreenCommand{Name: copilot.ScreenEdit})
+	if err != nil || !reply.OK || string(reply.Data) != `{"applied":[1]}` {
+		t.Fatalf("Run() = %+v, %v", reply, err)
+	}
+	goes := tab.signals()
+	if len(goes) != 1 || goes[0] != (copilot.ScreenGo{ID: "cmd-1", Claimant: testClaimant}) {
+		t.Fatalf("exactly the first claim must be let go, got %+v", goes)
+	}
+}
+
+func TestAChangeNobodyClaimedInTimeIsReportedAsNeverApplied(t *testing.T) {
+	box := newMailbox()
+	tab := &claimingTab{box: box, threadID: "th1"}
+	screen := &screenSession{threadID: "th1", projectID: studioView.ProjectID, mailbox: box, emit: tab.emit, newID: func() string { return "cmd-1" }}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err := screen.Run(ctx, copilot.ScreenCommand{Name: copilot.ScreenEdit}); !errors.Is(err, copilot.ErrScreenUnavailable) {
+		t.Fatalf("an unclaimed change must expire as never applied, got %v", err)
+	}
+	late, _ := copilot.ScreenClaim(testClaimant)
+	_ = box.Deliver(copilot.ScreenKey("th1", "cmd-1"), late)
+	if goes := tab.signals(); len(goes) != 0 {
+		t.Fatalf("a claim that arrives after the turn gave up must never be let go, got %+v", goes)
+	}
+}
+
+func TestAClaimedChangeThatNeverAnswersIsReportedAsUnconfirmed(t *testing.T) {
+	box := newMailbox()
+	tab := &claimingTab{box: box, threadID: "th1", claims: 1}
+	screen := &screenSession{threadID: "th1", projectID: studioView.ProjectID, mailbox: box, emit: tab.emit, newID: func() string { return "cmd-1" }}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	if _, err := screen.Run(ctx, copilot.ScreenCommand{Name: copilot.ScreenEdit}); !errors.Is(err, copilot.ErrScreenUnconfirmed) {
+		t.Fatalf("a change the tab started but never confirmed must say so, got %v", err)
+	}
+}
+
+func TestAClaimReachesTheWaitingTurnOnlyWithAValidClaimant(t *testing.T) {
+	box := newMailbox()
+	svc := &Service{}
+	svc.SetScreenMailbox(box)
+	wait, cancel := box.Expect(copilot.ScreenKey("th1", "cmd-1"))
+	defer cancel()
+	if err := svc.ClaimScreenCommand("th1", "cmd-1", "tab-1"); !errors.Is(err, copilot.ErrInvalidScreenClaim) {
+		t.Fatalf("a malformed claimant must be refused, got %v", err)
+	}
+	if err := svc.ClaimScreenCommand("th1", "cmd-1", testClaimant); err != nil {
+		t.Fatalf("ClaimScreenCommand() = %v", err)
+	}
+	reply, err := wait(context.Background())
+	if err != nil || reply.Claim != testClaimant {
+		t.Fatalf("the waiting turn must receive the claim, got %+v %v", reply, err)
+	}
+}
+
+func TestAReadNeverHandsOutAGoSignal(t *testing.T) {
+	box := newMailbox()
+	tab := &claimingTab{box: box, threadID: "th1", claims: 1}
+	out := &screenEmit{box: box, threadID: "th1", reply: copilot.ScreenReply{OK: true, Data: []byte(`{"tracks":[]}`)}}
+	emit := func(eventType string, payload interface{}) {
+		tab.emit(eventType, payload)
+		out.emit(eventType, payload)
+	}
+	screen := &screenSession{threadID: "th1", projectID: studioView.ProjectID, mailbox: box, emit: emit, newID: func() string { return "cmd-1" }}
+	reply, err := screen.Run(context.Background(), copilot.ScreenCommand{Name: copilot.ScreenRead})
+	if err != nil || string(reply.Data) != `{"tracks":[]}` {
+		t.Fatalf("Run() = %+v, %v", reply, err)
+	}
+	if goes := tab.signals(); len(goes) != 0 {
+		t.Fatalf("a read changes nothing and must never be let go, got %+v", goes)
+	}
+}
+
 func TestScreenSessionFailsClosedWhenTheEditorIsSilent(t *testing.T) {
 	screen := &screenSession{threadID: "th1", projectID: studioView.ProjectID, mailbox: newMailbox(), emit: func(string, interface{}) {}, newID: func() string { return "cmd-1" }}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
@@ -157,7 +272,7 @@ func TestScreenSessionFailsClosedWhenTheEditorIsSilent(t *testing.T) {
 func TestAStudioTurnCarriesTheScreenAndTheModelsSight(t *testing.T) {
 	th := &fakeThreads{thread: &aichat.Thread{ID: "th1", WorkspaceID: "ws1", UserID: "u1", Model: "vision-model"}}
 	look := newStudioTool("studio_look", copilot.Meta{Resource: workspace.ResourceMedia, Action: workspace.ActionRead})
-	prov := &scriptAI{turns: [][]ai.ToolCall{{call("studio_look", nil)}, {}}, texts: []string{"", "vi"}, models: []ai.ModelInfo{{ID: "vision-model", SeesImages: true}}}
+	prov := &scriptAI{turns: [][]ai.ToolCall{{call("studio_look", nil)}, {}}, texts: []string{"", "vi"}, models: []ai.ModelInfo{toolModel("vision-model", ai.CapabilityVision)}}
 	svc := newService(prov, th, &fakeMessages{}, look)
 	svc.SetScreenMailbox(newMailbox())
 	cc := ownerCtx
@@ -170,14 +285,17 @@ func TestAStudioTurnCarriesTheScreenAndTheModelsSight(t *testing.T) {
 	}
 
 	plain := &fakeTool{name: "list_agents", meta: readMeta}
-	prov = &scriptAI{turns: [][]ai.ToolCall{{call("list_agents", nil)}, {}}, texts: []string{"", "ok"}}
+	prov = &scriptAI{turns: [][]ai.ToolCall{{call("list_agents", nil)}, {}}, texts: []string{"", "ok"}, models: []ai.ModelInfo{toolModel("vision-model")}}
 	svc = newService(prov, th, &fakeMessages{}, plain)
 	svc.SetScreenMailbox(newMailbox())
 	if err := svc.Stream(context.Background(), th.thread, copilot.UserMessage{Content: "liste"}, ownerCtx, (&capture{}).emit); err != nil {
 		t.Fatal(err)
 	}
-	if plain.gotCC.Screen != nil {
-		t.Fatal("outside the studio no screen is attached")
+	if plain.gotCC.Screen == nil {
+		t.Fatal("outside the studio the screen is still there to create a project")
+	}
+	if _, err := plain.gotCC.Screen.Run(context.Background(), copilot.ScreenCommand{Name: copilot.ScreenRead}); !errors.Is(err, copilot.ErrNoScreen) {
+		t.Fatalf("outside the studio no command may act on a project, got %v", err)
 	}
 }
 
@@ -233,6 +351,22 @@ func TestAStudioOutlineReachesTheModelButIsNotKeptInHistory(t *testing.T) {
 	}
 }
 
+func TestTheStudioPromptShowsTheWayFromTheProjectToAnAd(t *testing.T) {
+	for _, kind := range []copilot.StudioKind{copilot.StudioVideo, copilot.StudioImage} {
+		view := studioView
+		view.ProjectKind = kind
+		prompt := systemPrompt(view, time.Now())
+		for _, want := range []string{"studio_export", "media_id", "create_ad", "save_ad_draft", "criativos-que-performam"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s studio prompt does not mention %s", kind, want)
+			}
+		}
+	}
+	if strings.Contains(systemPrompt(copilot.View{}, time.Now()), studioAdPrompt) {
+		t.Fatal("the studio ad route must not leak outside the studio")
+	}
+}
+
 func TestTheStudioPromptLeavesOutTheGuidesOfOtherAreas(t *testing.T) {
 	studio := systemPrompt(studioView, time.Now())
 	general := systemPrompt(copilot.View{}, time.Now())
@@ -247,17 +381,36 @@ func TestTheStudioPromptLeavesOutTheGuidesOfOtherAreas(t *testing.T) {
 	}
 }
 
+func TestANewStudioPieceStartsFromTheBriefingSkill(t *testing.T) {
+	for _, kind := range []copilot.StudioKind{copilot.StudioVideo, copilot.StudioImage} {
+		prompt := studioPrompt(kind)
+		if !strings.Contains(prompt, "briefing-criativo") || !strings.Contains(prompt, "studio_ask") {
+			t.Errorf("the %s studio prompt must point a new piece to the briefing skill and studio_ask", kind)
+		}
+	}
+}
+
+func TestStudioJobsRunUntilDone(t *testing.T) {
+	cc := ownerCtx
+	cc.View = studioView
+	model := ai.ModelInfo{ID: "m", ContextLength: 200_000, PromptPrice: 3, CompletionPrice: 15}
+	c := DefaultConfig(cc, model)
+	if !c.IterateUntilDone || c.CostCeilingMicros != 0 {
+		t.Fatalf("a studio job must stop when the model is done, the funds run out or it repeats itself: %+v", c)
+	}
+}
+
 func TestStudioAnswersHaveRoomForEditBatches(t *testing.T) {
 	cc := ownerCtx
 	cc.View = studioView
-	studio := DefaultConfig(cc, ai.ModelInfo{}, 0)
+	studio := DefaultConfig(cc, ai.ModelInfo{})
 	if studio.MaxTokensPerGen != studioMaxTokensPerGen || studio.ReasoningMaxTokens != studioReasoningMaxTokens {
 		t.Fatalf("studio budget = %d output, %d reasoning", studio.MaxTokensPerGen, studio.ReasoningMaxTokens)
 	}
 	if studio.MaxTokensPerGen-studio.ReasoningMaxTokens < 16000 {
 		t.Fatal("after reasoning, a studio answer must still fit a full edit batch")
 	}
-	if got := DefaultConfig(ownerCtx, ai.ModelInfo{}, 0).MaxTokensPerGen; got != answerMaxTokensPerGen {
+	if got := DefaultConfig(ownerCtx, ai.ModelInfo{}).MaxTokensPerGen; got != answerMaxTokensPerGen {
 		t.Fatalf("general output budget = %d", got)
 	}
 }

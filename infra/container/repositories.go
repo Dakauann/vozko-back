@@ -154,6 +154,7 @@ func (c *Container) initRepositories() {
 		addonSubscription:       workspace_addon_repository.NewAddonSubscriptionRepository(c.db),
 		aichatThread:            aichat_repository.NewThreadRepository(c.db),
 		aichatMessage:           aichat_repository.NewMessageRepository(c.db),
+		aichatQueue:             aichat_repository.NewQueueRepository(c.db),
 		workspaceConfig:         workspace_config_repository.NewRepository(c.db),
 		issue:                   issues_repository.NewIssuesRepository(c.db),
 		issueResponse:           issues_repository.NewIssueResponseRepository(c.db),

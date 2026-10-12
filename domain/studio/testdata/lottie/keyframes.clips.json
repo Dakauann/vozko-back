@@ -1,0 +1,161 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "square",
+    "background": "#000000"
+  },
+  "durationMs": 2000,
+  "tracks": [
+    {
+      "id": "t-lottie",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-00000000-0000-4000-8000-000000000001",
+          "type": "group",
+          "startMs": 0,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 1,
+            "h": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "tracks": [
+            {
+              "id": "t-00000000-0000-4000-8000-000000000002",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "c-00000000-0000-4000-8000-000000000003",
+                  "type": "null",
+                  "startMs": 0,
+                  "durationMs": 2000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.25,
+                    "y": 0.5,
+                    "w": 0.1,
+                    "h": 0.1,
+                    "rotation": 0,
+                    "opacity": 1
+                  },
+                  "name": "Bola",
+                  "keyframes": {
+                    "x": [
+                      {
+                        "atMs": 0,
+                        "value": 0.25,
+                        "easing": "cubic-bezier(0.33,0,0.67,1)"
+                      },
+                      {
+                        "atMs": 1000,
+                        "value": 0.75,
+                        "easing": "linear"
+                      }
+                    ],
+                    "rotation": [
+                      {
+                        "atMs": 0,
+                        "value": 0,
+                        "easing": "hold"
+                      },
+                      {
+                        "atMs": 500,
+                        "value": 45,
+                        "easing": "cubic-bezier(0.4,0,0.6,1)"
+                      },
+                      {
+                        "atMs": 1000,
+                        "value": 90,
+                        "easing": "linear"
+                      }
+                    ],
+                    "scale": [
+                      {
+                        "atMs": 0,
+                        "value": 0.5,
+                        "easing": "cubic-bezier(0.2,0,0.8,1)"
+                      },
+                      {
+                        "atMs": 667,
+                        "value": 1,
+                        "easing": "linear"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "t-00000000-0000-4000-8000-000000000004",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "c-00000000-0000-4000-8000-000000000005",
+                  "type": "overlay",
+                  "startMs": 0,
+                  "durationMs": 2000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": {
+                    "x": 0.5,
+                    "y": 0.5,
+                    "w": 0.2,
+                    "h": 0.2,
+                    "rotation": 0,
+                    "opacity": 0
+                  },
+                  "layer": {
+                    "id": "l-00000000-0000-4000-8000-000000000006",
+                    "type": "shape",
+                    "shape": "path",
+                    "path": "M0.5 0 C0.7759 0 1 0.2241 1 0.5 C1 0.7759 0.7759 1 0.5 1 C0.2241 1 0 0.7759 0 0.5 C0 0.2241 0.2241 0 0.5 0 Z",
+                    "transform": {
+                      "x": 0.5,
+                      "y": 0.5,
+                      "w": 1,
+                      "h": 1,
+                      "rotation": 0,
+                      "opacity": 1
+                    },
+                    "fill": "#00cc66"
+                  },
+                  "name": "Bola",
+                  "keyframes": {
+                    "opacity": [
+                      {
+                        "atMs": 0,
+                        "value": 0,
+                        "easing": "linear"
+                      },
+                      {
+                        "atMs": 333,
+                        "value": 1,
+                        "easing": "linear"
+                      }
+                    ]
+                  },
+                  "parentId": "c-00000000-0000-4000-8000-000000000003"
+                }
+              ]
+            }
+          ],
+          "name": "keyframes"
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -26,6 +25,8 @@ import (
 const (
 	chatDefaultPageSize = 30
 	chatMaxPageSize     = 100
+
+	screenClaimBodyBytes = 1 << 10
 )
 
 type AIChatHandler struct {
@@ -38,11 +39,14 @@ func NewAIChatHandler(svc *aichat_usecase.Service, copilot *copilot_usecase.Serv
 }
 
 type threadDTO struct {
-	ID            string  `json:"id"`
-	Title         string  `json:"title"`
-	Model         string  `json:"model"`
-	LastMessageAt *string `json:"lastMessageAt,omitempty"`
-	CreatedAt     string  `json:"createdAt"`
+	ID             string  `json:"id"`
+	Title          string  `json:"title"`
+	Model          string  `json:"model"`
+	ReasoningLevel string  `json:"reasoningLevel,omitempty"`
+	ProjectID      string  `json:"projectId,omitempty"`
+	Running        bool    `json:"running,omitempty"`
+	LastMessageAt  *string `json:"lastMessageAt,omitempty"`
+	CreatedAt      string  `json:"createdAt"`
 }
 
 type toolActivityDTO struct {
@@ -105,12 +109,22 @@ func (h *AIChatHandler) CreateThread(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusCreated, toThreadDTO(thread))
 }
 
+// @Summary		Conversas com a Elo
+// @Description	Lista as conversas do usuário neste espaço de trabalho, da atividade mais recente para a mais antiga, paginadas (`page`, `pageSize` até 100). `q` filtra pelo título, sem diferenciar maiúsculas. Cada item traz `id`, `title`, `model`, `reasoningLevel` (o nível de raciocínio guardado com o modelo; ausente quando é o padrão do modelo), `lastMessageAt`, `createdAt`, `projectId` (o projeto do Estúdio a que a conversa pertence, presente depois da primeira resposta no Estúdio) e `running` (true enquanto uma resposta da Elo roda na conversa).
+// @Tags			Elo
+// @Produce		json
+// @Param			q			query		string	false	"busca no título"
+// @Param			page		query		int		false	"página, a partir de 1"
+// @Param			pageSize	query		int		false	"itens por página, até 100"
+// @Success		200			{object}	map[string]interface{}
+// @Security		BearerAuth
+// @Router			/chat/threads [get]
 func (h *AIChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
 	limit, offset, page, pageSize := parseChatPagination(r)
 
-	threads, total, err := h.svc.ListThreads(workspaceID, claims.UserID, limit, offset)
+	threads, total, err := h.svc.ListThreads(workspaceID, claims.UserID, r.URL.Query().Get("q"), limit, offset)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -119,19 +133,32 @@ func (h *AIChatHandler) ListThreads(w http.ResponseWriter, r *http.Request) {
 	items := make([]threadDTO, len(threads))
 	for i, t := range threads {
 		items[i] = toThreadDTO(t)
+		items[i].Running = h.copilot.TurnRunning(t.ID)
 	}
 	response.WriteSuccess(w, http.StatusOK, map[string]any{
 		"items": items, "total": total, "page": page, "pageSize": pageSize,
 	})
 }
 
+// @Summary		Histórico de uma conversa com a Elo
+// @Description	Lista as mensagens da conversa em ordem cronológica, paginadas (`page`, `pageSize` até 100). A resposta traz `items`, `total`, `page`, `pageSize`, `running` (true enquanto uma resposta da Elo roda nesta conversa) e `queued`: as mensagens que o usuário deixou na fila e que a Elo ainda não recebeu, na ordem de envio (`{clientId, content, attachments, createdAt}`), para que outra aba ou um recarregamento mostre a mesma fila. `projectId` é o projeto do Estúdio a que a conversa pertence, vazio antes da primeira resposta no Estúdio. Uma resposta que recebeu uma mensagem no meio aparece dividida: a parte de antes, a mensagem do usuário e a parte de depois.
+// @Tags			Elo
+// @Produce		json
+// @Param			id			path		string	true	"conversa"
+// @Param			page		query		int		false	"página, a partir de 1"
+// @Param			pageSize	query		int		false	"itens por página, até 100"
+// @Success		200			{object}	map[string]interface{}
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		404			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/chat/threads/{id}/messages [get]
 func (h *AIChatHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
 	threadID := mux.Vars(r)["id"]
 	limit, offset, page, pageSize := parseChatPagination(r)
 
-	msgs, total, err := h.svc.ListMessages(workspaceID, claims.UserID, threadID, limit, offset)
+	thread, msgs, total, err := h.svc.ListMessages(workspaceID, claims.UserID, threadID, limit, offset)
 	if err != nil {
 		h.writeError(w, err)
 		return
@@ -141,8 +168,13 @@ func (h *AIChatHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	for i, m := range msgs {
 		items[i] = toMessageDTO(m)
 	}
+	queued, err := h.copilot.Queued(threadID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
 	response.WriteSuccess(w, http.StatusOK, map[string]any{
-		"items": items, "total": total, "page": page, "pageSize": pageSize, "running": h.copilot.TurnRunning(threadID),
+		"items": items, "total": total, "page": page, "pageSize": pageSize, "running": h.copilot.TurnRunning(threadID), "queued": queued, "projectId": thread.ProjectID,
 	})
 }
 
@@ -182,14 +214,19 @@ func (h *AIChatHandler) DeleteThread(w http.ResponseWriter, r *http.Request) {
 // @Description
 // @Description	| Campo | Tipo | Regra |
 // @Description	|---|---|---|
-// @Description	| content | string | o texto do usuário; vazio só com anexos |
+// @Description	| content | string | o texto do usuário; vazio só com anexos ou quando há mensagens na fila (então só a fila é entregue) |
 // @Description	| attachments | string[] | ids de mídia anexados |
 // @Description	| model | string | modelo da conversa, opcional |
+// @Description	| reasoning | string | nível de raciocínio, opcional: um dos `reasoning.levels` do modelo em GET /agents/options (`none`, `minimal`, `low`, `medium`, `high`, `xhigh` ou `max`); vazio usa o padrão do modelo. Fica guardado na conversa junto com o modelo e vale também para aprovações. Trocar de modelo sem enviar nível volta ao padrão do novo modelo |
 // @Description	| timezone | string | fuso horário do usuário |
 // @Description	| mode | string | `ask` (padrão), `edit` ou `full` |
 // @Description	| view | object | a tela aberta; vazio fora das telas abaixo |
 // @Description
 // @Description	`view.surface` é `attendance` (com `dateFrom`, `dateTo` em YYYY-MM-DD, `departmentId`, `memberId`, `channel`, `campaignId`, `campaignType`, `includeAi`), `studio` (com `projectId` e `projectKind` `image` ou `video`) ou `leads`. Na página Leads, `view.leadFilter` é o filtro efetivo da lista, no mesmo formato do parâmetro `filter` de GET /leads (`{groups: [{conjunction, predicates: [{field, key, operator, values}]}]}`, com a busca incluída como predicado `query`), até 16 KiB e validado como os filtros de lead; `view.selectedLeads` é quantos leads estão marcados na tabela (0 a 10.000.000). A Elo recebe só os nomes dos campos filtrados, nunca os valores, e usa o filtro quando uma ferramenta pede `use_screen_filter`. Campos de outra tela, filtro inválido ou contagem fora do intervalo respondem 400.
+// @Description
+// @Description	No Estúdio, a primeira resposta liga a conversa ao projeto aberto (`view.projectId`). Depois disso, um envio, uma aprovação ou uma recusa com outro projeto responde 409 com `code: thread_other_project` e nada roda: a Elo nunca edita um projeto com o histórico de outro. Fora do Estúdio a conversa continua normalmente.
+// @Description
+// @Description	Uma conversa tem uma resposta por vez: com outra resposta rodando, responde 409 com `code: turn_running`, e o cliente deixa a mensagem na fila (POST /chat/threads/{id}/queue). Mensagens que estavam na fila entram na conversa antes desta, com o evento `delivered`. Durante a resposta, mensagens da fila chegam à Elo entre um passo e outro (evento `delivered`, que divide a resposta em duas partes) e, se sobrar alguma no fim, a Elo responde a ela no mesmo stream, depois de `done`.
 // @Description
 // @Description	O idioma do pedido (parâmetro `locale` ou cabeçalho `Accept-Language`: pt, en, es ou de; pt quando ausente) é o idioma do que a Elo grava para o usuário, como a exportação de leads.
 // @Description
@@ -214,6 +251,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 		Content     string              `json:"content"`
 		Attachments []string            `json:"attachments"`
 		Model       string              `json:"model"`
+		Reasoning   string              `json:"reasoning"`
 		View        copilot_domain.View `json:"view"`
 		Timezone    string              `json:"timezone"`
 		Mode        string              `json:"mode"`
@@ -243,9 +281,11 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	if m := strings.TrimSpace(body.Model); m != "" {
-		thread.Model = m
+	if err := h.svc.ClaimProject(thread, body.View.ProjectID); err != nil {
+		h.writeError(w, err)
+		return
 	}
+	thread.ChooseModel(body.Model, body.Reasoning)
 
 	r = withDepartmentCreationScope(r, "")
 	turn, err := h.copilot.BeginTurn(r.Context(), thread.ID, claims.UserID)
@@ -258,7 +298,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	cc.Timezone = body.Timezone
 	cc.Mode = mode
 	message := copilot_domain.UserMessage{Content: body.Content, AttachmentIDs: body.Attachments}
-	streamTurn(w, r, flusher, turn, func(ctx context.Context, emit agentloop.Emit) error {
+	h.streamTurn(w, r, flusher, turn, thread, cc, func(ctx context.Context, emit agentloop.Emit) error {
 		return h.copilot.Stream(ctx, thread, message, cc, emit)
 	})
 }
@@ -321,6 +361,10 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
+	if err := h.svc.ClaimProject(thread, body.View.ProjectID); err != nil {
+		h.writeError(w, err)
+		return
+	}
 	r = withDepartmentCreationScope(r, "")
 	turn, err := h.copilot.BeginTurn(r.Context(), thread.ID, claims.UserID)
 	if err != nil {
@@ -331,11 +375,35 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	cc.View = body.View
 	cc.Mode = mode
 	approval := copilot_domain.Approval{Secrets: body.Secrets, Choices: body.Choices}
-	streamTurn(w, r, flusher, turn, func(ctx context.Context, emit agentloop.Emit) error {
+	h.streamTurn(w, r, flusher, turn, thread, cc, func(ctx context.Context, emit agentloop.Emit) error {
 		return h.copilot.Approve(ctx, thread, actionID, approval, cc, emit)
 	})
 }
 
+type rejectActionRequest struct {
+	View copilot_domain.View `json:"view"`
+	Mode string              `json:"mode"`
+}
+
+// @Summary		Recusar uma proposta da Elo
+// @Description	Marca a proposta como recusada, sem executar nada, e responde no stream (`text/event-stream`) com `done` e `status: rejected`. Se o usuário deixou mensagens na fila enquanto o cartão esperava, a Elo responde a elas no mesmo stream logo depois: chega um evento `delivered` com as mensagens e, em seguida, a nova resposta até `done`, `error` ou `awaiting_approval`.
+// @Description
+// @Description	| Campo | Tipo | Regra |
+// @Description	|---|---|---|
+// @Description	| view | object | a tela aberta, no mesmo formato do envio de mensagem; usada só para responder à fila |
+// @Description	| mode | string | `ask` (padrão), `edit` ou `full` |
+// @Tags			Elo
+// @Accept			json
+// @Produce		text/event-stream
+// @Param			id			path		string	true	"conversa"
+// @Param			actionId	path		string	true	"id da proposta"
+// @Param			body		body		object	false	"campos na tabela acima"
+// @Success		200			{string}	string	"eventos SSE"
+// @Failure		400			{object}	response.ErrorResponse
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		409			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/chat/threads/{id}/actions/{actionId}/reject [post]
 func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	workspaceID := middleware.GetWorkspaceID(r)
@@ -347,19 +415,145 @@ func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusInternalServerError, "streaming não suportado", nil)
 		return
 	}
+	var body rejectActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
+		return
+	}
+	if err := body.View.Validate(); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
+		return
+	}
+	mode, err := copilot_domain.ParseMode(body.Mode)
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "modo de execução inválido", nil)
+		return
+	}
 	thread, err := h.svc.Precheck(workspaceID, claims.UserID, threadID)
 	if err != nil {
 		h.writeError(w, err)
 		return
 	}
-	emit := startChatSSE(w, flusher)
-	if err := h.copilot.Reject(r.Context(), thread, actionID, emit); err != nil {
-		emit("error", map[string]any{"error": err.Error()})
+	if err := h.svc.ClaimProject(thread, body.View.ProjectID); err != nil {
+		h.writeError(w, err)
+		return
+	}
+	r = withDepartmentCreationScope(r, "")
+	turn, err := h.copilot.BeginTurn(r.Context(), thread.ID, claims.UserID)
+	if err != nil {
+		h.writeTurnError(w, err)
+		return
+	}
+	cc := copilotCtx(r, claims.UserID, workspaceID)
+	cc.View = body.View
+	cc.Mode = mode
+	h.streamTurn(w, r, flusher, turn, thread, cc, func(ctx context.Context, emit agentloop.Emit) error {
+		return h.copilot.Reject(ctx, thread, actionID, emit)
+	})
+}
+
+type queueMessageRequest struct {
+	ClientID    string   `json:"clientId"`
+	Content     string   `json:"content"`
+	Attachments []string `json:"attachments"`
+}
+
+// @Summary		Deixar uma mensagem na fila enquanto a Elo trabalha
+// @Description	Enquanto uma resposta da Elo está rodando nesta conversa, ou enquanto um cartão de aprovação espera, a mensagem não abre uma segunda resposta: ela entra na fila da conversa e é entregue à Elo no próximo ponto seguro, depois do passo de ferramenta em andamento e antes da próxima chamada ao modelo. Uma chamada ao modelo que já começou nunca é repetida nem cortada por causa dela.
+// @Description
+// @Description	| Campo | Tipo | Regra |
+// @Description	|---|---|---|
+// @Description	| clientId | string | id gerado pelo cliente, 1 a 64 caracteres entre letras, números, `-` e `_`; repetir o mesmo id devolve a mesma mensagem, sem duplicar |
+// @Description	| content | string | o texto; vazio só com anexos |
+// @Description	| attachments | string[] | ids de mídia anexados, como no envio de mensagem |
+// @Description
+// @Description	Quem acompanha o stream da resposta recebe `queued` (`{clientId, content, attachments, createdAt}`), `unqueued` (`{clientId}`) quando ela é retirada e `delivered` (`{messages: [{id, clientId, content, attachments, createdAt}]}`) quando ela entra na conversa; `id` é o da mensagem gravada. Se a resposta termina antes de entregar a fila, a Elo começa outra resposta com as mensagens da fila, no mesmo stream. Um cartão de aprovação segura a fila até ser aprovado ou recusado. Parar a resposta não entrega a fila: as mensagens ficam esperando e vão junto com o próximo envio (ou com um envio de conteúdo vazio, que entrega só a fila).
+// @Description
+// @Description	A mensagem na fila conta como uma mensagem normal: exige plano ativo e saldo. Sem resposta em andamento e sem cartão esperando, responde 404 com `code: turn_not_running`, e o cliente envia a mensagem normalmente.
+// @Tags			Elo
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string						true	"conversa"
+// @Param			body	body		queueMessageRequest			true	"mensagem (campos na tabela acima)"
+// @Success		202		{object}	copilot_usecase.QueuedView
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		402		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/chat/threads/{id}/queue [post]
+func (h *AIChatHandler) QueueMessage(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	workspaceID := middleware.GetWorkspaceID(r)
+	threadID := mux.Vars(r)["id"]
+
+	var body queueMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
+		return
+	}
+	thread, err := h.svc.Precheck(workspaceID, claims.UserID, threadID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	queued, err := h.copilot.Enqueue(thread, claims.UserID, copilot_domain.UserMessage{ClientID: body.ClientID, Content: body.Content, AttachmentIDs: body.Attachments})
+	if err != nil {
+		h.writeQueueError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusAccepted, copilot_usecase.ViewOfQueued(queued))
+}
+
+// @Summary		Retirar uma mensagem da fila
+// @Description	Retira da fila uma mensagem que a Elo ainda não recebeu. Quem acompanha o stream recebe `unqueued` com o `clientId`. Uma mensagem já entregue (ou já retirada) responde 404 com `code: queued_message_gone`.
+// @Tags			Elo
+// @Produce		json
+// @Param			id			path		string	true	"conversa"
+// @Param			clientId	path		string	true	"id da mensagem gerado pelo cliente"
+// @Success		200			{object}	map[string]bool
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		404			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/chat/threads/{id}/queue/{clientId} [delete]
+func (h *AIChatHandler) UnqueueMessage(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	workspaceID := middleware.GetWorkspaceID(r)
+	threadID := mux.Vars(r)["id"]
+
+	thread, err := h.svc.Authorize(workspaceID, claims.UserID, threadID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	if err := h.copilot.Unqueue(thread, claims.UserID, mux.Vars(r)["clientId"]); err != nil {
+		h.writeQueueError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (h *AIChatHandler) writeQueueError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, aichat.ErrInvalidClientID):
+		response.WriteError(w, http.StatusBadRequest, "id da mensagem inválido", nil)
+	case errors.Is(err, copilot_usecase.ErrEmptyMessage):
+		response.WriteError(w, http.StatusBadRequest, "mensagem vazia", nil)
+	case errors.Is(err, copilot_domain.ErrTooManyAttachments), errors.Is(err, copilot_domain.ErrAttachmentNotFound):
+		response.WriteError(w, http.StatusBadRequest, "anexo inválido", nil)
+	case errors.Is(err, aichat.ErrQueuedMessageGone):
+		response.WriteErrorWithCode(w, http.StatusNotFound, "queued_message_gone", "a mensagem já foi entregue ou retirada da fila", nil)
+	case errors.Is(err, copilot_usecase.ErrQueueUnavailable):
+		response.WriteError(w, http.StatusServiceUnavailable, "fila indisponível", nil)
+	default:
+		h.writeTurnError(w, err)
 	}
 }
 
 // @Summary		Responder a um comando da Elo na tela aberta
-// @Description	Quando a Elo trabalha no Estúdio, ela envia pelo stream da conversa um evento `screen_command` (`{id, name, projectId, args}`), com `name` em `read`, `edit`, `look`, `resolve_source` ou `follow_job`. O editor aberto executa o comando e devolve o resultado aqui, uma única vez, dentro do tempo do comando; depois disso a resposta é ignorada e a Elo é avisada de que o editor não respondeu.
+// @Description	Quando a Elo trabalha no Estúdio, ela envia pelo stream da conversa um evento `screen_command` (`{id, name, projectId, args}`), com `name` em `read`, `edit`, `look`, `resolve_source`, `follow_job`, `export`, `listen` ou `save_preset`. O editor aberto executa o comando e devolve o resultado aqui, uma única vez, dentro do tempo do comando; depois disso a resposta é ignorada e a Elo é avisada de que o editor não respondeu.
+// @Description
+// @Description	`create_project` chega também fora do Estúdio, com `projectId` vazio e o pedido do projeto em `args` (`kind`, `name`, `media`, `sizes`, `aspect`, `durationMs`). Quem responde é a aba da conversa: ela cria o projeto e, se o usuário escolheu abrir telas sozinho, abre o editor dele. `data` traz `{projectId, kind, opened}`, com `opened` true só quando o editor foi aberto. Uma aba que não pode criar responde `ok` false com `code: no_editor`, e outra aba pode responder no lugar dela.
 // @Description
 // @Description	| Campo | Tipo | Regra |
 // @Description	|---|---|---|
@@ -367,6 +561,8 @@ func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 // @Description	| data | object | resultado do comando (resumo do projeto, ids criados, estado dos trabalhos) |
 // @Description	| error | object | `{code, message}` quando ok é false; code em snake_case, message com até 600 caracteres |
 // @Description	| images | string[] | no máximo 1 imagem JPEG ou PNG em data URL, até 1,5 MB |
+// @Description
+// @Description	Comandos que mudam algo (`edit`, `save_preset`, `create_project`) só podem ser aplicados depois de `POST /chat/threads/{id}/screen/{commandId}/claim` e do evento `screen_go` com o mesmo `claimant`; assim, um comando que expirou nunca é aplicado mais tarde.
 // @Description
 // @Description	Só o dono da conversa responde; campos desconhecidos e corpos acima de 2 MB são recusados.
 // @Tags			Elo
@@ -412,8 +608,132 @@ func (h *AIChatHandler) ScreenReply(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusAccepted, map[string]bool{"ok": true})
 }
 
+type screenClaimRequest struct {
+	Claimant string `json:"claimant"`
+}
+
+// @Summary		Pedir para aplicar um comando da Elo que muda algo
+// @Description	`edit`, `save_preset` e `create_project` mudam o projeto ou criam algo. Antes de mudar qualquer coisa, a aba que vai executar o comando pede aqui para aplicar, com um `claimant` novo (UUID) por tentativa, e espera no stream da conversa o evento `screen_go` (`{id, claimant}`) com o mesmo `claimant`. Sem esse evento, a aba não aplica nada e o comando termina sem mudança.
+// @Description
+// @Description	A Elo só libera o primeiro pedido que chegar dentro do tempo do comando; depois de liberar, ela espera a resposta normal por mais um tempo do comando. Um pedido que chega depois de ela desistir nunca é liberado, então um comando que expirou nunca é aplicado mais tarde, por exemplo quando uma aba adormecida em segundo plano volta.
+// @Description
+// @Description	| Campo | Tipo | Regra |
+// @Description	|---|---|---|
+// @Description	| claimant | string | UUID gerado pela aba para esta tentativa |
+// @Tags			Elo
+// @Accept			json
+// @Produce		json
+// @Param			id			path		string				true	"conversa"
+// @Param			commandId	path		string				true	"id do comando recebido no evento screen_command"
+// @Param			body		body		screenClaimRequest	true	"quem pede para aplicar"
+// @Success		202			{object}	map[string]bool
+// @Failure		400			{object}	response.ErrorResponse
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		503			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/chat/threads/{id}/screen/{commandId}/claim [post]
+func (h *AIChatHandler) ScreenClaim(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	workspaceID := middleware.GetWorkspaceID(r)
+	threadID := mux.Vars(r)["id"]
+	commandID := mux.Vars(r)["commandId"]
+	if _, err := uuid.Parse(commandID); err != nil || claims == nil {
+		response.WriteError(w, http.StatusBadRequest, "comando inválido", nil)
+		return
+	}
+	var req screenClaimRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, screenClaimBodyBytes))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "pedido inválido", nil)
+		return
+	}
+	thread, err := h.svc.Authorize(workspaceID, claims.UserID, threadID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	switch err := h.copilot.ClaimScreenCommand(thread.ID, commandID, req.Claimant); {
+	case errors.Is(err, copilot_domain.ErrInvalidScreenClaim):
+		response.WriteError(w, http.StatusBadRequest, "pedido inválido", nil)
+	case err != nil:
+		response.WriteError(w, http.StatusServiceUnavailable, "a Elo não está esperando este comando", nil)
+	default:
+		response.WriteSuccess(w, http.StatusAccepted, map[string]bool{"ok": true})
+	}
+}
+
+type projectOpenedRequest struct {
+	View     copilot_domain.View `json:"view"`
+	Mode     string              `json:"mode"`
+	Timezone string              `json:"timezone"`
+}
+
+// @Summary		Avisar a Elo que o editor do projeto abriu
+// @Description	A aba manda este aviso quando o editor do projeto do Estúdio ligado à conversa abre na tela (pelo cartão, pela lista do Estúdio ou por um link) e de novo sempre que a aba com o editor volta a ficar visível. Nunca vira mensagem do usuário na conversa.
+// @Description
+// @Description	Se um comando da Elo ficou sem resposta porque a aba estava em segundo plano ou adormecida, o aviso de aba visível diz a ela que o editor responde de novo: no próximo ponto seguro da resposta que está rodando ou, se ela já respondeu, numa resposta retomada uma vez.
+// @Description
+// @Description	| Campo | Tipo | Regra |
+// @Description	|---|---|---|
+// @Description	| view | object | a tela do editor, no formato do envio de mensagem, com `surface: studio` |
+// @Description	| mode | string | `ask` (padrão), `edit` ou `full`; vale se a Elo retomar o trabalho |
+// @Description	| timezone | string | fuso do navegador, como no envio de mensagem |
+// @Description
+// @Description	`outcome` diz o que aconteceu:
+// @Description	- `delivered`: uma resposta da Elo está rodando; ela recebe o aviso no próximo ponto seguro, depois do passo de ferramenta em andamento, e segue com as ferramentas do Estúdio, sem chamada extra ao modelo.
+// @Description	- `resumed`: a última resposta dela criou este projeto e ficou esperando o editor abrir, ou ficou sem resposta deste editor; ela retoma o trabalho numa nova resposta, que a aba acompanha por `GET /chat/threads/{id}/turn/events`. Sem ninguém acompanhando, essa resposta é encerrada depois de um curto período, e parar a resposta vale como sempre. Retoma uma vez só.
+// @Description	- `ignored`: nada a fazer, sem custo. Vale para um projeto que não é o da conversa, para uma conversa sem projeto e para quando a Elo não esperava este editor.
+// @Tags			Elo
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string					true	"conversa"
+// @Param			body	body		projectOpenedRequest	true	"tela aberta (campos na tabela acima)"
+// @Success		202		{object}	map[string]string
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/chat/threads/{id}/project-opened [post]
+func (h *AIChatHandler) ProjectOpened(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	workspaceID := middleware.GetWorkspaceID(r)
+	threadID := mux.Vars(r)["id"]
+
+	var body projectOpenedRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
+		return
+	}
+	if err := body.View.Validate(); err != nil || !body.View.OnStudio() {
+		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
+		return
+	}
+	mode, err := copilot_domain.ParseMode(body.Mode)
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "modo de execução inválido", nil)
+		return
+	}
+	thread, err := h.svc.Authorize(workspaceID, claims.UserID, threadID)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	r = withDepartmentCreationScope(r, "")
+	cc := copilotCtx(r, claims.UserID, workspaceID)
+	cc.View = body.View
+	cc.Mode = mode
+	cc.Timezone = body.Timezone
+	outcome, err := h.copilot.ProjectOpened(r.Context(), thread, cc)
+	if err != nil {
+		h.writeTurnError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusAccepted, map[string]string{"outcome": string(outcome)})
+}
+
 // @Summary		Acompanhar a resposta da Elo em andamento
-// @Description	Reabre o stream de uma resposta que ainda está rodando nesta conversa, por exemplo depois de recarregar a página. O stream (`text/event-stream`) primeiro repete o que a resposta já produziu, com os trechos de texto e de raciocínio já agrupados, e os comandos `screen_command` ainda sem resposta; depois segue os eventos novos até `done`, `error` ou `awaiting_approval`, no mesmo formato do envio de mensagem.
+// @Description	Reabre o stream de uma resposta que ainda está rodando nesta conversa, por exemplo depois de recarregar a página. O stream (`text/event-stream`) primeiro repete o que a resposta já produziu, com os trechos de texto e de raciocínio já agrupados, e os comandos `screen_command` ainda sem resposta; depois segue os eventos novos até `done`, `error` ou `awaiting_approval`, no mesmo formato do envio de mensagem. Depois de uma entrega da fila (`delivered`), a repetição começa nessa entrega, porque o que veio antes já está gravado no histórico. Se a Elo responder à fila em seguida, o stream continua depois de `done` até o fim dessa nova resposta.
 // @Description
 // @Description	Uma resposta que terminou continua visível aqui por alguns segundos e depois some; o histórico da conversa passa a ter a mensagem completa. O histórico (`GET /chat/threads/{id}/messages`) informa `running: true` enquanto há resposta em andamento.
 // @Description
@@ -549,10 +869,10 @@ func threadCostResponse(cost aichat.ThreadCost) ThreadCostResponse {
 	}
 }
 
-func streamTurn(w http.ResponseWriter, r *http.Request, flusher http.Flusher, turn *copilot_usecase.Turn, run func(context.Context, agentloop.Emit) error) {
+func (h *AIChatHandler) streamTurn(w http.ResponseWriter, r *http.Request, flusher http.Flusher, turn *copilot_usecase.Turn, thread *aichat.Thread, cc copilot_domain.Context, run copilot_usecase.TurnFunc) {
 	replay, live, leave := turn.Subscribe()
 	defer leave()
-	turn.Run(run)
+	h.copilot.Start(turn, thread, cc, run)
 	pumpTurn(r.Context(), startChatSSE(w, flusher), replay, live)
 }
 
@@ -626,6 +946,8 @@ func (h *AIChatHandler) writeError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusPaymentRequired, "saldo insuficiente", nil)
 	case errors.Is(err, aichat_usecase.ErrEmptyMessage):
 		response.WriteError(w, http.StatusBadRequest, "mensagem vazia", nil)
+	case errors.Is(err, aichat_usecase.ErrOtherProject):
+		response.WriteErrorWithCode(w, http.StatusConflict, "thread_other_project", "esta conversa pertence a outro projeto do Estúdio; comece uma conversa nova neste projeto", nil)
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "erro interno", nil)
 	}
@@ -652,10 +974,12 @@ func parseChatPagination(r *http.Request) (limit, offset, page, pageSize int) {
 
 func toThreadDTO(t *aichat.Thread) threadDTO {
 	dto := threadDTO{
-		ID:        t.ID,
-		Title:     t.Title,
-		Model:     t.Model,
-		CreatedAt: t.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		ID:             t.ID,
+		Title:          t.Title,
+		Model:          t.Model,
+		ReasoningLevel: t.ReasoningLevel,
+		ProjectID:      t.ProjectID,
+		CreatedAt:      t.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}
 	if t.LastMessageAt != nil {
 		s := t.LastMessageAt.UTC().Format("2006-01-02T15:04:05Z07:00")

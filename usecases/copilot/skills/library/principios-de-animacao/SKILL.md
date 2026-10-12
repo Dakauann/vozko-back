@@ -1,5 +1,6 @@
 ---
 name: principios-de-animacao
+surface: studio
 description: Os princípios clássicos de animação aplicados ao motion design do Estúdio (antecipação, exagero, continuidade e sobreposição, arcos, tempo, encenação, ação secundária) e receitas de movimentos (tremer, pulsar, batimento, cair e quicar, girar, balançar, zoom, explosão de partículas, revelar); carregue junto com motion-design quando a animação parecer mecânica, rígida ou sem vida.
 ---
 
@@ -8,7 +9,7 @@ description: Os princípios clássicos de animação aplicados ao motion design 
 motion-design dá os tempos e as curvas. Esta habilidade diz como fazer o movimento parecer vivo. A 30 quadros por segundo, 1 quadro dura 33 ms.
 
 ## Os princípios, traduzidos para animate
-- **Desacelerar e acelerar.** Nada começa nem para de repente. Entrada desacelera (easeOut ou cubic-bezier(0.05,0.7,0.1,1)); saída acelera (easeIn ou cubic-bezier(0.3,0,0.8,0.15)).
+- **Desacelerar e acelerar.** Nada começa nem para de repente. Entrada desacelera (easeOut, a enfática cubic-bezier(0.05,0.7,0.1,1), a calma cubic-bezier(0,0,0.3,1) ou backOut, conforme o vocabulário de movimento de motion-design); saída acelera (easeIn ou cubic-bezier(0.3,0,0.8,0.15)).
 - **Antecipação.** Antes de um movimento grande, um recuo curto para o lado oposto: de 2 a 4 quadros e de 5% a 10% da distância. Faça com backIn no trecho que sai, ou com uma chave a mais (recuo e depois o movimento).
 - **Exagero e acomodação.** Passe de 4% a 10% do alvo e volte em 4 a 8 quadros: backOut, spring ou cubic-bezier(0.34,1.56,0.64,1). Elastic e bounce são exagero cômico.
 - **Continuidade e sobreposição.** Partes de um conjunto não chegam juntas: a principal chega primeiro e as secundárias de 2 a 4 quadros depois (at_ms escalonados), cada uma com a mesma curva.
@@ -17,7 +18,7 @@ motion-design dá os tempos e as curvas. Esta habilidade diz como fazer o movime
 - **Encenação.** Um movimento principal por vez. Enquanto o herói se move, o resto fica parado ou quase parado.
 - **Ação secundária.** Um detalhe que reforça a principal sem disputar com ela: o selo gira 6 graus quando o produto chega, a sombra cresce quando o título cai.
 - **Profundidade.** O que está longe é menor, mais lento e desfocado (blur de 4 a 10); o que está perto é maior, mais rápido e nítido.
-- **Estilo constante.** O mesmo papel usa sempre o mesmo movimento no vídeo inteiro; o tom escolhido (sóbrio ou brincalhão) vale para todos os elementos.
+- **Estilo constante.** O mesmo papel usa sempre o mesmo movimento no vídeo inteiro; o vocabulário escolhido (cinético, editorial, brincalhão, cinematográfico, glitch ou tipográfico) vale para todos os elementos, e muda de uma peça para outra conforme o conceito.
 
 ## Receitas
 - **Tremer (erro, alerta, impacto).** x oscilando 1% a 2% do quadro em volta da posição, chaves a cada 2 quadros por 6 a 10 quadros, linear, terminando na posição original.

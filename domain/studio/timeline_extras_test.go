@@ -35,17 +35,12 @@ func TestLinksMarkersAndMotionsKeepTheirRules(t *testing.T) {
 		"motion too long": {func(d *VideoDocument) {
 			d.Tracks[1].Clips[0].MotionOut = &mediagen.Motion{Edge: mediagen.EdgeTop, DurationMS: 2_500}
 		}, FieldTracks, CodeOutOfRange},
-		"marker past limit": {func(d *VideoDocument) { d.Markers = []Marker{{ID: "m1", AtMS: mediagen.MaxVideoMS + 1}} }, FieldMarkers, CodeOutOfRange},
+		"marker past limit": {func(d *VideoDocument) { d.Markers = []Marker{{ID: "m1", AtMS: MaxVideoMS + 1}} }, FieldMarkers, CodeOutOfRange},
 		"duplicate marker":  {func(d *VideoDocument) { d.Markers = []Marker{{ID: "m1"}, {ID: "m1", AtMS: 10}} }, FieldMarkers, CodeDuplicate},
 		"bad marker id":     {func(d *VideoDocument) { d.Markers = []Marker{{ID: "M 1"}} }, FieldMarkers, CodeInvalid},
 		"long marker label": {func(d *VideoDocument) {
 			d.Markers = []Marker{{ID: "m1", Label: strings.Repeat("a", MaxMarkerLabelRunes+1)}}
 		}, FieldMarkers, CodeTooLarge},
-		"too many markers": {func(d *VideoDocument) {
-			for i := 0; i <= MaxMarkers; i++ {
-				d.Markers = append(d.Markers, Marker{ID: "m" + strings.Repeat("x", i%10) + string(rune('a'+i%26)) + string(rune('a'+i/26)), AtMS: int64(i)})
-			}
-		}, FieldMarkers, CodeTooMany},
 	}
 	for name, c := range cases {
 		doc := videoDoc()

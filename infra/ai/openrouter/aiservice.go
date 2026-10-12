@@ -73,6 +73,9 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 	if len(input.Messages) == 0 {
 		return nil, ai.ErrNoMessages
 	}
+	if err := s.checkReasoning(ctx, input); err != nil {
+		return nil, err
+	}
 
 	req := s.buildRequest(s.visibleInput(ctx, input))
 	if req.Model == "" {
@@ -96,7 +99,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 		for iter := 0; ; iter++ {
 			stream, err := s.client.CreateChatCompletionStream(ctx, req)
 			if err != nil {
-				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: fmt.Errorf("stream: %w", err)}
+				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(fmt.Errorf("stream: %w", err))}
 				return
 			}
 
@@ -125,7 +128,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 						break
 					}
 					stream.Close()
-					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: err}
+					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(err)}
 					s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 					return
 				}
@@ -199,7 +202,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 			s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
 
 			if streamUnfinished(finishReason, totalUsage) {
-				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: fmt.Errorf("%w: model=%s generation=%s finish=%q", ai.ErrStreamIncomplete, req.Model, genID, finishReason)}
+				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(fmt.Errorf("%w: model=%s generation=%s finish=%q", ai.ErrStreamIncomplete, req.Model, genID, finishReason))}
 				return
 			}
 
@@ -289,6 +292,9 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 	if len(input.Messages) == 0 {
 		return nil, ai.ErrNoMessages
 	}
+	if err := s.checkReasoning(ctx, input); err != nil {
+		return nil, err
+	}
 
 	req := s.buildRequest(s.visibleInput(ctx, input))
 	if req.Model == "" {
@@ -306,7 +312,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 	for iter := 0; ; iter++ {
 		resp, err := s.client.CreateChatCompletion(ctx, req)
 		if err != nil {
-			return nil, fmt.Errorf("openrouter: %w", err)
+			return nil, fmt.Errorf("openrouter: %w", classified(err))
 		}
 
 		if resp.Usage != nil {
@@ -423,24 +429,7 @@ func (s *Service) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, err
 	}
 	result := make([]ai.ModelInfo, 0, len(models))
 	for _, m := range models {
-		info := ai.ModelInfo{
-			ID:   m.ID,
-			Name: m.Name,
-		}
-
-		if v := parseFloat64(m.Pricing.Prompt); v > 0 {
-			info.PromptPrice = v * 1_000_000
-		}
-		if v := parseFloat64(m.Pricing.Completion); v > 0 {
-			info.CompletionPrice = v * 1_000_000
-		}
-		if m.ContextLength != nil && *m.ContextLength > 0 {
-			info.ContextLength = *m.ContextLength
-		} else if m.TopProvider.ContextLength != nil && *m.TopProvider.ContextLength > 0 {
-			info.ContextLength = *m.TopProvider.ContextLength
-		}
-		info.Created = m.Created
-		result = append(result, info)
+		result = append(result, ai.DescribeModel(sdkModelFacts(m)))
 	}
 	return result, nil
 }
@@ -498,10 +487,7 @@ func (s *Service) buildRequest(input ai.GenerateInput) openrouter.ChatCompletion
 	if input.MaxTokens > 0 {
 		req.MaxTokens = input.MaxTokens
 	}
-	if input.ReasoningMaxTokens > 0 {
-		mt := input.ReasoningMaxTokens
-		req.Reasoning = &openrouter.ChatCompletionReasoning{MaxTokens: &mt}
-	}
+	req.Reasoning = reasoningField(input)
 	if input.ToolChoice != "" && len(req.Tools) > 0 {
 		req.ToolChoice = input.ToolChoice
 	}
@@ -565,17 +551,33 @@ func carriesImages(messages []ai.Message) bool {
 	return false
 }
 
+func reasoningField(input ai.GenerateInput) *openrouter.ChatCompletionReasoning {
+	if input.ReasoningEffort != "" {
+		effort := string(input.ReasoningEffort)
+		return &openrouter.ChatCompletionReasoning{Effort: &effort}
+	}
+	if input.ReasoningMaxTokens > 0 {
+		budget := input.ReasoningMaxTokens
+		return &openrouter.ChatCompletionReasoning{MaxTokens: &budget}
+	}
+	return nil
+}
+
+func (s *Service) checkReasoning(ctx context.Context, input ai.GenerateInput) error {
+	if input.ReasoningEffort == "" {
+		return nil
+	}
+	models, _ := s.catalogFetcher.FetchModelsWithPricing(ctx)
+	return ai.CheckReasoning(models, s.modelFor(input), input.ReasoningEffort)
+}
+
 func (s *Service) seesImages(ctx context.Context, model string) bool {
 	models, ok := s.catalogFetcher.FetchModelsWithPricing(ctx)
 	if !ok {
 		return false
 	}
-	for _, m := range models {
-		if m.ID == model {
-			return m.SeesImages
-		}
-	}
-	return false
+	m, found := ai.FindModel(models, model)
+	return found && m.SeesImages()
 }
 
 func userMessage(m ai.Message) openrouter.ChatCompletionMessage {
@@ -655,47 +657,6 @@ func isStreamClosedError(err error) bool {
 		strings.Contains(s, "stream closed")
 }
 
-func resolveParamType(raw string) (schemaType, formatHint string) {
-	return tools.ResolveParamType(raw)
-}
-
-func itemsSchema(items *tools.ParameterItems) map[string]interface{} {
-	schema := map[string]interface{}{"type": items.Type}
-	if items.Description != "" {
-		schema["description"] = items.Description
-	}
-	if len(items.Enum) > 0 {
-		schema["enum"] = items.Enum
-	}
-	if items.Type != "object" || len(items.Properties) == 0 {
-		return schema
-	}
-	props := make(map[string]interface{}, len(items.Properties))
-	for key, p := range items.Properties {
-		prop := map[string]interface{}{"type": p.Type, "description": p.Description}
-		if len(p.Enum) > 0 {
-			prop["enum"] = p.Enum
-		}
-		if p.Type == "array" && p.Items != nil {
-			prop["items"] = itemsSchema(p.Items)
-		}
-		if p.Type == "object" && p.Items != nil {
-			nested := itemsSchema(p.Items)
-			for _, key := range []string{"properties", "required"} {
-				if value, ok := nested[key]; ok {
-					prop[key] = value
-				}
-			}
-		}
-		props[key] = prop
-	}
-	schema["properties"] = props
-	if len(items.Required) > 0 {
-		schema["required"] = items.Required
-	}
-	return schema
-}
-
 func convertTools(defs []tools.Definition) []openrouter.Tool {
 	if len(defs) == 0 {
 		return nil
@@ -706,67 +667,9 @@ func convertTools(defs []tools.Definition) []openrouter.Tool {
 		if name == "" {
 			continue
 		}
-		props := make(map[string]interface{})
-		for k, p := range def.Parameters {
-			if k = strings.TrimSpace(k); k != "" {
-				schemaType, formatHint := resolveParamType(p.Type)
-				desc := p.Description
-				if formatHint != "" {
-					if desc != "" {
-						desc += " "
-					}
-					desc += formatHint
-				}
-				prop := map[string]interface{}{"type": schemaType, "description": desc}
-				if len(p.Enum) > 0 {
-					prop["enum"] = p.Enum
-				}
-				if schemaType == "array" && p.Items != nil {
-					prop["items"] = itemsSchema(p.Items)
-				}
-				if schemaType == "object" && p.Items != nil && len(p.Items.Properties) > 0 {
-					objProps := make(map[string]interface{})
-					for ik, ip := range p.Items.Properties {
-						subType, subFormat := resolveParamType(ip.Type)
-						subDesc := ip.Description
-						if subFormat != "" {
-							if subDesc != "" {
-								subDesc += " "
-							}
-							subDesc += subFormat
-						}
-						objProp := map[string]interface{}{"type": subType, "description": subDesc}
-						if len(ip.Enum) > 0 {
-							objProp["enum"] = ip.Enum
-						}
-						objProps[ik] = objProp
-					}
-					prop["properties"] = objProps
-					if len(p.Items.Required) > 0 {
-						prop["required"] = p.Items.Required
-					}
-				}
-				props[k] = prop
-			}
-		}
-		if len(props) == 0 {
-			schema := map[string]interface{}{"type": "object"}
-			if len(def.Required) > 0 {
-				schema["required"] = def.Required
-			}
-			result = append(result, openrouter.Tool{
-				Type:     openrouter.ToolTypeFunction,
-				Function: &openrouter.FunctionDefinition{Name: name, Description: def.Description, Parameters: schema},
-			})
-			continue
-		}
-		schema := map[string]interface{}{"type": "object", "properties": props}
-		if len(def.Required) > 0 {
-			schema["required"] = def.Required
-		}
 		result = append(result, openrouter.Tool{
 			Type:     openrouter.ToolTypeFunction,
-			Function: &openrouter.FunctionDefinition{Name: name, Description: def.Description, Parameters: schema},
+			Function: &openrouter.FunctionDefinition{Name: name, Description: def.Description, Parameters: def.JSONSchema()},
 		})
 	}
 	return result

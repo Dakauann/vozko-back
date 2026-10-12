@@ -16,9 +16,11 @@ import (
 )
 
 type fakeThreads struct {
-	thread  *aichat.Thread
-	touched bool
-	renamed string
+	thread       *aichat.Thread
+	touched      bool
+	touchedModel string
+	touchedLevel string
+	renamed      string
 }
 
 func (f *fakeThreads) Create(*aichat.Thread) error               { return nil }
@@ -26,9 +28,12 @@ func (f *fakeThreads) GetByID(id string) (*aichat.Thread, error) { return f.thre
 func (f *fakeThreads) ListByUser(aichat.ListThreadsInput) ([]*aichat.Thread, int64, error) {
 	return nil, 0, nil
 }
-func (f *fakeThreads) Rename(id, title string) error                { f.renamed = title; return nil }
-func (f *fakeThreads) Touch(id string, t time.Time, m string) error { f.touched = true; return nil }
-func (f *fakeThreads) Delete(id string) error                       { return nil }
+func (f *fakeThreads) Rename(id, title string) error { f.renamed = title; return nil }
+func (f *fakeThreads) Touch(id string, t time.Time, m, level string) error {
+	f.touched, f.touchedModel, f.touchedLevel = true, m, level
+	return nil
+}
+func (f *fakeThreads) Delete(id string) error { return nil }
 
 type fakeMessages struct {
 	created      []*aichat.Message
@@ -38,6 +43,7 @@ type fakeMessages struct {
 	listErrAfter int
 	listCalls    int
 	claimErr     error
+	listCreated  bool
 }
 
 func (f *fakeMessages) Create(m *aichat.Message) error {
@@ -51,6 +57,9 @@ func (f *fakeMessages) ListByThread(in aichat.ListMessagesInput) ([]*aichat.Mess
 	f.listCalls++
 	if f.listErr != nil && f.listCalls > f.listErrAfter {
 		return nil, 0, f.listErr
+	}
+	if f.listCreated {
+		return f.created, int64(len(f.created)), nil
 	}
 	return f.list, int64(len(f.list)), nil
 }
@@ -76,6 +85,15 @@ func (f *fakeMessages) ExpireProposals(threadID string) error {
 		}
 	}
 	return nil
+}
+
+func (f *fakeMessages) HasPendingProposal(threadID string) (bool, error) {
+	for _, m := range f.created {
+		if m.ThreadID == threadID && m.ProposalStatus == aichat.ProposalPending {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (f *fakeMessages) propose(pa copilot.PendingAction) *aichat.Message {
@@ -305,7 +323,7 @@ func TestService_BuildHistorySkipsToolTurns(t *testing.T) {
 		{Role: aichat.RoleTool, Content: "tool-result"},
 	}}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
-	h, err := svc.buildHistory("t1")
+	h, err := svc.buildHistory("t1", true)
 	if err != nil {
 		t.Fatalf("buildHistory: %v", err)
 	}
@@ -328,7 +346,7 @@ func TestService_Stream_HistoryError(t *testing.T) {
 func TestService_BuildHistory_SecondListError(t *testing.T) {
 	ms := &fakeMessages{listErr: errors.New("db"), listErrAfter: 1}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
-	if _, err := svc.buildHistory("t1"); err == nil {
+	if _, err := svc.buildHistory("t1", true); err == nil {
 		t.Fatal("expected the second list error")
 	}
 }
@@ -339,7 +357,7 @@ func TestService_BuildHistory_Offset(t *testing.T) {
 		list[i] = &aichat.Message{Role: aichat.RoleUser, Content: "m"}
 	}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, &fakeMessages{list: list})
-	if _, err := svc.buildHistory("t1"); err != nil {
+	if _, err := svc.buildHistory("t1", true); err != nil {
 		t.Fatalf("buildHistory with offset: %v", err)
 	}
 }
@@ -649,7 +667,7 @@ func TestService_ASilentToolTurnStillTellsTheModelWhatHappened(t *testing.T) {
 		{Role: aichat.RoleAssistant, Content: "  "},
 	}}
 	svc := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms)
-	h, err := svc.buildHistory("t1")
+	h, err := svc.buildHistory("t1", true)
 	if err != nil {
 		t.Fatalf("buildHistory: %v", err)
 	}
@@ -691,7 +709,7 @@ func TestService_AGeneratedImageStaysKnownToTheModelOnLaterTurns(t *testing.T) {
 func TestService_AnApprovedActionKeepsWhatItReturnedInTheHistory(t *testing.T) {
 	steps, _ := json.Marshal([]toolStep{stepFromResult("create_ad", copilot.Result{Status: copilot.StatusOK, Data: map[string]string{"draft_id": "d-9"}})})
 	ms := &fakeMessages{list: []*aichat.Message{{Role: aichat.RoleAssistant, Content: "Rascunho criado.", ToolCalls: steps}}}
-	h, err := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms).buildHistory("t1")
+	h, err := newService(&scriptAI{}, &fakeThreads{thread: testThread()}, ms).buildHistory("t1", true)
 	if err != nil {
 		t.Fatalf("buildHistory: %v", err)
 	}

@@ -2,14 +2,14 @@ package copilottools
 
 import "strings"
 
-func argString(args map[string]interface{}, key string) string {
+func ArgString(args map[string]interface{}, key string) string {
 	if v, ok := args[key].(string); ok {
 		return strings.TrimSpace(v)
 	}
 	return ""
 }
 
-func argInt(args map[string]interface{}, key string) int {
+func ArgInt(args map[string]interface{}, key string) int {
 	switch v := args[key].(type) {
 	case float64:
 		return int(v)
@@ -19,18 +19,18 @@ func argInt(args map[string]interface{}, key string) int {
 	return 0
 }
 
-func argBoolPtr(args map[string]interface{}, key string) *bool {
+func ArgBoolPtr(args map[string]interface{}, key string) *bool {
 	if v, ok := args[key].(bool); ok {
 		return &v
 	}
 	return nil
 }
 
-func trimLower(s string) string {
+func TrimLower(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-func argStringList(args map[string]interface{}, key string) []string {
+func ArgStringList(args map[string]interface{}, key string) []string {
 	switch v := args[key].(type) {
 	case []interface{}:
 		out := make([]string, 0, len(v))
@@ -48,29 +48,4 @@ func argStringList(args map[string]interface{}, key string) []string {
 		}
 	}
 	return nil
-}
-
-func argToolBindings(args map[string]interface{}, key string) []toolBindingArg {
-	raw, ok := args[key].([]interface{})
-	if !ok {
-		return nil
-	}
-	out := make([]toolBindingArg, 0, len(raw))
-	for _, item := range raw {
-		m, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		name, _ := m["name"].(string)
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		binding := toolBindingArg{Name: name}
-		if cfg, ok := m["config"].(map[string]interface{}); ok && len(cfg) > 0 {
-			binding.Config = cfg
-		}
-		out = append(out, binding)
-	}
-	return out
 }

@@ -1,5 +1,6 @@
 ---
 name: base-de-conhecimento
+surface: panel
 description: Como organizar o conteúdo de uma base de conhecimento para o agente achar a resposta certa (um assunto por seção, perguntas frequentes, atualização); carregue antes de criar ou preencher uma base.
 ---
 

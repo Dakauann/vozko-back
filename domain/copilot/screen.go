@@ -9,7 +9,12 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
+
+	"vozko/domain/studio"
 )
 
 const (
@@ -23,6 +28,8 @@ var (
 	ErrInvalidScreenReply = errors.New("copilot: invalid screen reply")
 	ErrNoScreen           = errors.New("copilot: no open screen is attached to this answer")
 	ErrScreenUnavailable  = errors.New("copilot: the open screen did not answer in time")
+	ErrScreenUnconfirmed  = errors.New("copilot: the open screen started the change and did not confirm it in time")
+	ErrInvalidScreenClaim = errors.New("copilot: invalid screen claim")
 	screenCode            = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 	screenImagePrefixes   = []string{"data:image/jpeg;base64,", "data:image/png;base64,"}
 )
@@ -36,6 +43,9 @@ const (
 	ScreenResolveSource ScreenCommandName = "resolve_source"
 	ScreenFollowJob     ScreenCommandName = "follow_job"
 	ScreenExport        ScreenCommandName = "export"
+	ScreenListen        ScreenCommandName = "listen"
+	ScreenSavePreset    ScreenCommandName = "save_preset"
+	ScreenCreateProject ScreenCommandName = "create_project"
 )
 
 var screenTimeouts = map[ScreenCommandName]time.Duration{
@@ -45,10 +55,13 @@ var screenTimeouts = map[ScreenCommandName]time.Duration{
 	ScreenResolveSource: 10 * time.Second,
 	ScreenFollowJob:     10 * time.Second,
 	ScreenExport:        60 * time.Second,
+	ScreenListen:        45 * time.Second,
+	ScreenSavePreset:    20 * time.Second,
+	ScreenCreateProject: 45 * time.Second,
 }
 
 func ScreenCommandNames() []ScreenCommandName {
-	return []ScreenCommandName{ScreenRead, ScreenEdit, ScreenLook, ScreenResolveSource, ScreenFollowJob, ScreenExport}
+	return []ScreenCommandName{ScreenRead, ScreenEdit, ScreenLook, ScreenResolveSource, ScreenFollowJob, ScreenExport, ScreenListen, ScreenSavePreset, ScreenCreateProject}
 }
 
 func (n ScreenCommandName) Known() bool {
@@ -56,8 +69,28 @@ func (n ScreenCommandName) Known() bool {
 	return ok
 }
 
+func (n ScreenCommandName) NeedsProject() bool {
+	return n != ScreenCreateProject
+}
+
 func (n ScreenCommandName) Timeout() time.Duration {
 	return screenTimeouts[n]
+}
+
+func (n ScreenCommandName) Commits() bool {
+	return n == ScreenEdit || n == ScreenSavePreset || n == ScreenCreateProject
+}
+
+type ScreenGo struct {
+	ID       string `json:"id"`
+	Claimant string `json:"claimant"`
+}
+
+func ScreenClaim(claimant string) (ScreenReply, error) {
+	if _, err := uuid.Parse(claimant); err != nil || len(claimant) != len(uuid.Nil.String()) {
+		return ScreenReply{}, ErrInvalidScreenClaim
+	}
+	return ScreenReply{OK: true, Claim: claimant}, nil
 }
 
 type ScreenCommand struct {
@@ -77,6 +110,62 @@ type ScreenReply struct {
 	Data   json.RawMessage `json:"data,omitempty"`
 	Error  *ScreenError    `json:"error,omitempty"`
 	Images []string        `json:"images,omitempty"`
+	Target *ScreenTarget   `json:"target,omitempty"`
+	Claim  string          `json:"claim,omitempty"`
+}
+
+const (
+	LookArtboard  = "artboard"
+	LookArtboards = "artboards"
+	LookMoments   = "moments"
+	LookMedia     = "media"
+
+	maxScreenTargetIDRunes = 128
+	maxArtboardNumber      = 100_000
+)
+
+type ScreenTarget struct {
+	Kind       string `json:"kind"`
+	ProjectID  string `json:"projectId,omitempty"`
+	ArtboardID string `json:"artboardId,omitempty"`
+	N          int    `json:"n,omitempty"`
+	Name       string `json:"name,omitempty"`
+	FromMS     *int64 `json:"fromMs,omitempty"`
+	ToMS       *int64 `json:"toMs,omitempty"`
+}
+
+func plainText(value string, maxRunes int) bool {
+	if utf8.RuneCountInString(value) > maxRunes || !utf8.ValidString(value) {
+		return false
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func (t ScreenTarget) valid() bool {
+	if t.ProjectID != "" || !plainText(t.ArtboardID, maxScreenTargetIDRunes) || !plainText(t.Name, studio.MaxNameRunes) {
+		return false
+	}
+	artboard := t.ArtboardID != "" || t.N != 0 || t.Name != ""
+	timed := t.FromMS != nil || t.ToMS != nil
+	switch t.Kind {
+	case LookArtboard:
+		return !timed && strings.TrimSpace(t.ArtboardID) != "" && t.N >= 1 && t.N <= maxArtboardNumber
+	case LookMoments:
+		return !artboard && t.FromMS != nil && t.ToMS != nil && *t.FromMS >= 0 && *t.FromMS <= *t.ToMS && *t.ToMS <= studio.MaxVideoMS
+	case LookArtboards, LookMedia:
+		return !artboard && !timed
+	}
+	return false
+}
+
+func (t ScreenTarget) In(projectID string) *ScreenTarget {
+	t.ProjectID = projectID
+	return &t
 }
 
 const ScreenNoEditor = "no_editor"
@@ -130,13 +219,16 @@ func DecodeScreenReply(raw []byte) (ScreenReply, error) {
 }
 
 func (r ScreenReply) valid() bool {
-	if r.OK != (r.Error == nil) {
+	if r.OK != (r.Error == nil) || r.Claim != "" {
 		return false
 	}
 	if r.Error != nil && (!screenCode.MatchString(r.Error.Code) || utf8.RuneCountInString(r.Error.Message) > MaxScreenMessageRunes) {
 		return false
 	}
 	if len(r.Images) > MaxScreenImages {
+		return false
+	}
+	if r.Target != nil && (!r.OK || !r.Target.valid()) {
 		return false
 	}
 	for _, image := range r.Images {

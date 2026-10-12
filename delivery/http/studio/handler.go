@@ -24,7 +24,7 @@ const (
 )
 
 type Service interface {
-	Create(ctx context.Context, workspaceID, userID string, kind studio.Kind, name string, document json.RawMessage) (*studio.Project, error)
+	Create(ctx context.Context, workspaceID, userID string, kind studio.Kind, name string, document json.RawMessage, origin studio.Origin) (*studio.Project, error)
 	List(ctx context.Context, q studio.ListQuery) ([]studio.Summary, int64, error)
 	Get(ctx context.Context, workspaceID, id string) (*studio.Project, error)
 	Save(ctx context.Context, workspaceID, id string, expectedVersion int64, change studio.Change) (*studio.Project, error)
@@ -32,19 +32,34 @@ type Service interface {
 }
 
 type Handler struct {
-	svc          Service
-	capabilities CapabilityReporter
-	exports      ExportSaver
+	svc           Service
+	capabilities  CapabilityReporter
+	exports       ExportSaver
+	presets       PresetService
+	libraryAssets LibraryAssetImporter
 }
 
-func NewHandler(svc Service, capabilities CapabilityReporter, exports ExportSaver) *Handler {
-	return &Handler{svc: svc, capabilities: capabilities, exports: exports}
+func NewHandler(svc Service, capabilities CapabilityReporter, exports ExportSaver, presets PresetService) *Handler {
+	return &Handler{svc: svc, capabilities: capabilities, exports: exports, presets: presets}
 }
 
 type CreateRequest struct {
 	Kind     string          `json:"kind" enums:"image,video"`
 	Name     string          `json:"name" example:"Post de segunda"`
 	Document json.RawMessage `json:"document" swaggertype:"object"`
+	Origin   *CreateOrigin   `json:"origin,omitempty"`
+}
+
+type CreateOrigin struct {
+	ThreadID  string `json:"threadId" example:"4b1f6c2e-8a3d-4f5e-9b7c-1d2e3f4a5b6c"`
+	CommandID string `json:"commandId" format:"uuid" example:"0b9a5f9e-3c55-4c1e-9a43-6f0d2c7e8a11"`
+}
+
+func (o *CreateOrigin) toDomain() studio.Origin {
+	if o == nil {
+		return studio.Origin{}
+	}
+	return studio.Origin{ThreadID: o.ThreadID, CommandID: o.CommandID}
 }
 
 type SaveRequest struct {
@@ -113,12 +128,13 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Criar projeto do Estúdio
-// @Description	Cria um projeto de imagem (documento studio.image) ou de vídeo (documento studio.video). O documento é validado inteiro: campos desconhecidos, fontes fora da lista, clipes sobrepostos na mesma faixa ou valores fora dos limites respondem 422 com o código por campo. Até 512 KB.
+// @Description	Cria um projeto de imagem (documento studio.image) ou de vídeo (documento studio.video). O documento é validado inteiro: campos desconhecidos, fontes fora da lista, clipes sobrepostos na mesma faixa ou valores fora dos limites respondem 422 com o código por campo. Até 512 KB. Com origin (a conversa da Elo e o id do comando de tela), repetir o pedido devolve o mesmo projeto em vez de criar outro; se esse projeto for de outra pessoa ou de outro workspace, responde 409 origin_taken.
 // @Tags			Estúdio
 // @Accept			json
 // @Produce		json
 // @Param			body	body		CreateRequest	true	"projeto"
 // @Success		201		{object}	ProjectResponse
+// @Failure		409		{object}	response.ErrorResponse
 // @Failure		422		{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/studio/projects [post]
@@ -131,7 +147,7 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	if !decodeProject(w, r, &body) {
 		return
 	}
-	p, err := h.svc.Create(r.Context(), workspaceID, requesterOf(r), studio.Kind(body.Kind), body.Name, body.Document)
+	p, err := h.svc.Create(r.Context(), workspaceID, requesterOf(r), studio.Kind(body.Kind), body.Name, body.Document, body.Origin.toDomain())
 	if err != nil {
 		writeError(w, err, "Failed to create the project")
 		return
@@ -252,18 +268,24 @@ func writeError(w http.ResponseWriter, err error, fallback string) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest, httpx.CodeVersionRequired, "Informe a versão carregada", nil)
 	case errors.Is(err, studio.ErrProjectNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", "Projeto não encontrado", nil)
+	case errors.Is(err, studio.ErrPresetNotFound):
+		response.WriteErrorWithCode(w, http.StatusNotFound, "not_found", "Predefinição não encontrada", nil)
+	case errors.Is(err, studio.ErrPresetReadOnly):
+		response.WriteErrorWithCode(w, http.StatusConflict, "read_only", "As predefinições prontas não podem ser alteradas nem apagadas", nil)
 	case errors.Is(err, studio.ErrExportTooLarge):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "export_too_large", "O vídeo exportado passa do tamanho máximo", nil)
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "export_too_large", "O arquivo exportado passa do tamanho máximo", nil)
 	case errors.Is(err, studio.ErrInvalidExport):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "invalid_export", "O arquivo enviado não é um MP4 válido", nil)
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "invalid_export", "O arquivo enviado não é um arquivo que o editor gera", nil)
 	case errors.As(err, &tooBig):
 		response.WriteErrorWithCode(w, http.StatusRequestEntityTooLarge, "export_too_large", "O envio passa do tamanho máximo", nil)
-	case errors.Is(err, studio.ErrNotVideo):
-		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "not_video", "Só projetos de vídeo são exportados como vídeo", nil)
+	case errors.Is(err, studio.ErrExportFormat):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "export_format", "Este tipo de projeto não exporta esse formato", nil)
 	case errors.Is(err, studio.ErrCreatorRequired), errors.Is(err, studio.ErrUserRequired):
 		response.WriteErrorWithCode(w, http.StatusUnauthorized, "unauthenticated", "Usuário não identificado", nil)
 	case errors.Is(err, studio.ErrSessionTaken):
 		response.WriteErrorWithCode(w, http.StatusConflict, "session_taken", "Essa sessão do editor pertence a outra pessoa", nil)
+	case errors.Is(err, studio.ErrOriginTaken):
+		response.WriteErrorWithCode(w, http.StatusConflict, "origin_taken", "O projeto deste pedido da Elo pertence a outra pessoa", nil)
 	default:
 		log.Printf("[studio] %s: %v", fallback, err)
 		response.WriteError(w, http.StatusInternalServerError, fallback, nil)

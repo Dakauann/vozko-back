@@ -1,0 +1,91 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "landscape", "background": "#000000" },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-shapes",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-trail",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 1500,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.2, "y": 0.5, "w": 0.05, "h": 0.09, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "l-trail",
+            "type": "shape",
+            "shape": "ellipse",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "fill": "#38bdf8"
+          },
+          "repeat": {
+            "mode": "linear",
+            "copies": 5,
+            "shift": 0,
+            "x": 80,
+            "y": 0,
+            "scale": 0.9,
+            "rotation": 12,
+            "startOpacity": 1,
+            "endOpacity": 0.2,
+            "order": "below",
+            "keyframes": {
+              "shift": [
+                { "atMs": 0, "value": 0, "easing": "linear" },
+                { "atMs": 1500, "value": 2, "easing": "linear" }
+              ],
+              "copies": [
+                { "atMs": 0, "value": 1, "easing": "easeOut" },
+                { "atMs": 600, "value": 5, "easing": "linear" }
+              ]
+            }
+          }
+        },
+        {
+          "id": "c-ring",
+          "type": "overlay",
+          "startMs": 1500,
+          "durationMs": 1500,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.04, "h": 0.07, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "l-ring",
+            "type": "text",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+            "text": "A",
+            "fontId": "inter",
+            "fontSize": 0.05,
+            "fontWeight": 700,
+            "align": "center",
+            "lineHeight": 1.2,
+            "fill": "#ffffff"
+          },
+          "repeat": {
+            "mode": "radial",
+            "count": 8,
+            "radius": 120,
+            "startAngle": -90,
+            "upright": true,
+            "endOpacity": 0.4,
+            "keyframes": {
+              "radius": [
+                { "atMs": 0, "value": 40, "easing": "spring" },
+                { "atMs": 800, "value": 120, "easing": "linear" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

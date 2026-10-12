@@ -24,6 +24,7 @@ type Project struct {
 	Document    json.RawMessage
 	Version     int64
 	CreatedBy   string
+	Origin      Origin
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -78,12 +79,20 @@ func (p *Project) Apply(change Change) error {
 	return nil
 }
 
+func CleanProjectName(name string) (string, error) {
+	return cleanName(name)
+}
+
 func cleanName(name string) (string, error) {
-	clean := strings.Join(strings.Fields(name), " ")
+	return cleanLabel(name, MaxNameRunes)
+}
+
+func cleanLabel(text string, maxRunes int) (string, error) {
+	clean := strings.Join(strings.Fields(text), " ")
 	if clean == "" {
 		return "", issue(FieldName, CodeRequired)
 	}
-	if utf8.RuneCountInString(clean) > MaxNameRunes {
+	if utf8.RuneCountInString(clean) > maxRunes {
 		return "", issue(FieldName, CodeTooLarge)
 	}
 	return clean, nil

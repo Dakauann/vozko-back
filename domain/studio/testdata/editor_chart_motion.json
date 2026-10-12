@@ -1,0 +1,193 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "landscape",
+    "background": "#000000"
+  },
+  "durationMs": 6000,
+  "tracks": [
+    {
+      "id": "charts",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "trend",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.8,
+            "h": 0.7,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "trend-chart",
+            "type": "chart",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "chart": {
+              "kind": "lineMulti",
+              "data": {
+                "labels": [
+                  "T1",
+                  "T2",
+                  "T3",
+                  "T4"
+                ],
+                "series": [
+                  {
+                    "name": "Receita",
+                    "values": [
+                      10,
+                      14,
+                      13,
+                      20
+                    ]
+                  },
+                  {
+                    "name": "Custo",
+                    "values": [
+                      8,
+                      9,
+                      null,
+                      11
+                    ]
+                  }
+                ]
+              },
+              "style": {
+                "palette": [
+                  "#38bdf8",
+                  "#f97316"
+                ],
+                "fontId": "inter",
+                "fontSize": 0.05,
+                "textColor": "#ffffff",
+                "gridColor": "#ffffff33",
+                "axes": true,
+                "gridlines": true,
+                "legend": "bottom",
+                "valueLabels": false,
+                "barRadius": 0,
+                "barGap": 0.3,
+                "lineWidth": 0.008,
+                "smooth": true,
+                "points": true,
+                "hole": 0.55
+              },
+              "format": {
+                "locale": "de-DE",
+                "decimals": 0,
+                "percent": false
+              }
+            }
+          },
+          "chartIn": {
+            "style": "draw",
+            "order": "series",
+            "durationMs": 1200,
+            "staggerMs": 300,
+            "easing": "easeOut"
+          }
+        },
+        {
+          "id": "slices",
+          "type": "overlay",
+          "startMs": 3000,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.5,
+            "h": 0.8,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "slices-chart",
+            "type": "chart",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "chart": {
+              "kind": "pie",
+              "data": {
+                "labels": [
+                  "A",
+                  "B",
+                  "C"
+                ],
+                "series": [
+                  {
+                    "name": "Fatia",
+                    "values": [
+                      50,
+                      30,
+                      20
+                    ]
+                  }
+                ]
+              },
+              "style": {
+                "palette": [
+                  "#38bdf8",
+                  "#f97316",
+                  "#a3e635"
+                ],
+                "fontId": "inter",
+                "fontSize": 0.05,
+                "textColor": "#ffffff",
+                "gridColor": "#ffffff33",
+                "axes": true,
+                "gridlines": true,
+                "legend": "right",
+                "valueLabels": true,
+                "barRadius": 0,
+                "barGap": 0.3,
+                "lineWidth": 0.008,
+                "smooth": false,
+                "points": true,
+                "hole": 0.55
+              },
+              "format": {
+                "locale": "es-ES",
+                "decimals": 0,
+                "percent": true
+              }
+            }
+          },
+          "chartIn": {
+            "style": "sweep",
+            "order": "category",
+            "durationMs": 600,
+            "staggerMs": 600,
+            "easing": "cubic-bezier(0.2,0,0.2,1)"
+          }
+        }
+      ]
+    }
+  ]
+}

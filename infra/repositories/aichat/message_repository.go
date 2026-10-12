@@ -75,6 +75,15 @@ func (r *messageRepository) ExpireProposals(threadID string) error {
 		Update("proposal_status", string(aichat.ProposalExpired)).Error
 }
 
+func (r *messageRepository) HasPendingProposal(threadID string) (bool, error) {
+	var found []string
+	err := r.db.Model(&schema.AIChatMessage{}).
+		Where("thread_id = ? AND proposal_status = ?", threadID, aichat.ProposalPending).
+		Limit(1).
+		Pluck("id", &found).Error
+	return len(found) > 0, err
+}
+
 func toMessageDomain(rec *schema.AIChatMessage) *aichat.Message {
 	return &aichat.Message{
 		ID:               rec.ID,

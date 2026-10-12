@@ -30,7 +30,7 @@ func ptr[T any](v T) *T { return &v }
 
 func TestTransitionsSitOnTheCutBetweenTouchingClips(t *testing.T) {
 	doc := cutDoc()
-	push := Transition{ID: "t2", FromClipID: "a", ToClipID: "b", Kind: TransitionPush, DurationMS: 800, Alignment: AlignStart, Easing: "cubic-bezier(0.2,0,0,1)", Direction: ptr("up")}
+	push := Transition{ID: "t2", FromClipID: "a", ToClipID: "b", Kind: TransitionPush, DurationMS: 800, Alignment: AlignStart, Easing: "cubic-bezier(0.2,0,0,1)", TransitionOptions: TransitionOptions{Direction: ptr("up")}}
 	doc.Tracks[0].Transitions = []Transition{push}
 	if err := ValidateDocument(KindVideo, mustJSON(t, doc)); err != nil {
 		t.Fatalf("push refused: %v", err)

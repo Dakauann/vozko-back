@@ -1,55 +1,15 @@
-package copilottools
+package copilottools_test
 
 import (
 	"strings"
 	"testing"
 
 	"vozko/domain/copilot"
+	"vozko/usecases/copilot/copilottools/studiotools"
 )
 
-func operationToolset() []copilot.Tool {
-	conversations := ConversationDeps{}
-	leads := LeadDeps{}
-	return []copilot.Tool{
-		NewSearchConversationsTool(conversations), NewReadConversationTool(conversations),
-		NewSearchLeadsTool(leads), NewGetLeadTool(leads), NewLeadGeoSummaryTool(leads),
-		NewPrepareLeadActionTool(LeadActionDeps{}), NewStartLeadSendTool(LeadActionDeps{}), NewCancelLeadSendTool(LeadActionDeps{}),
-		NewAddLeadMemoryTool(LeadMemoryDeps{}), NewUpdateLeadMemoryTool(LeadMemoryDeps{}),
-		NewListKnowledgeBasesTool(KnowledgeDeps{}), NewSearchKnowledgeTool(KnowledgeDeps{}),
-		NewListTemplatesTool(CatalogDeps{}), NewListPipelinesTool(CatalogDeps{}), NewListLabelsTool(CatalogDeps{}),
-		NewListCalendarEventsTool(CatalogDeps{}), NewListWorkflowsTool(CatalogDeps{}),
-		NewMoveConversationStageTool(StageMoveDeps{}), NewMoveConversationFunnelTool(StageMoveDeps{}),
-		NewApplyLabelTool(LabelDeps{}), NewRemoveLabelTool(LabelDeps{}), NewCreateLabelTool(LabelDeps{}),
-		NewSendMessageTool(ConversationActionDeps{}), NewScheduleMessageTool(ConversationActionDeps{}),
-		NewCancelScheduledMessageTool(ConversationActionDeps{}), NewSendTemplateTool(TemplateSendDeps{}),
-		NewListAssignableMembersTool(AssignmentDeps{}), NewAssignConversationTool(AssignmentDeps{}),
-		NewTransferConversationTool(AssignmentDeps{}),
-		NewPauseWorkflowTool(nil), NewActivateWorkflowTool(nil),
-		NewCreateCalendarEventTool(nil),
-		NewCreatePipelineTool(FunnelDeps{}), NewCreateStageTool(FunnelDeps{}), NewRenameStageTool(FunnelDeps{}),
-		NewReorderStagesTool(FunnelDeps{}), NewSetInitialStageTool(FunnelDeps{}),
-		NewListDealPipelinesTool(DealDeps{}), NewListDealsTool(DealDeps{}), NewCreateDealTool(DealDeps{}),
-		NewMoveDealTool(DealDeps{}), NewLinkDealTool(DealDeps{}),
-		NewListBusinessPhonesTool(TemplateCreateDeps{}), NewCreateTemplateTool(TemplateCreateDeps{}),
-		NewPreviewCampaignImportTool(CampaignDeps{}), NewCreateCampaignTool(CampaignDeps{}), NewStartCampaignTool(CampaignDeps{}),
-		NewCreateKnowledgeBaseTool(KnowledgeWriteDeps{}), NewAddKnowledgeDocumentTool(KnowledgeWriteDeps{}),
-		NewCreateAgentTool(nil, AgentDeps{}), NewUpdateAgentTool(nil, nil, AgentDeps{}), NewDeleteAgentTool(nil, nil),
-		NewListUnofficialNumbersTool(UnofficialCampaignDeps{}), NewPreviewUnofficialImportTool(UnofficialCampaignDeps{}),
-		NewCreateUnofficialCampaignTool(UnofficialCampaignDeps{}), NewStartUnofficialCampaignTool(UnofficialCampaignDeps{}),
-		NewGenerateImageTool(nil),
-	}
-}
-
-func allTools() []copilot.Tool {
-	tools := append(append(append(append(operationToolset(), adminTools(WorkspaceAdminDeps{})...), accessTools(AccessDeps{})...), callTools(CallDeps{})...), AdsTools(AdsDeps{})...)
-	tools = append(tools, AdManageTools(AdManageDeps{}, AdsDeps{})...)
-	tools = append(tools, AdGrowthTools(AdGrowthDeps{}, AdsDeps{})...)
-	tools = append(tools, StudioTools(StudioDeps{})...)
-	return append(tools, NewConnectAdAccountTool())
-}
-
 func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		if !tool.Meta().Mutating {
 			continue
 		}
@@ -60,7 +20,7 @@ func TestEveryChangeIsCheckedBeforeTheUserSeesIt(t *testing.T) {
 }
 
 func TestNoToolLetsTheModelChooseTheWorkspace(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		for name := range tool.Definition().Parameters {
 			if strings.Contains(strings.ToLower(name), "workspace") {
 				t.Errorf("%s takes %q: the workspace must come from the session, never from the model", tool.Definition().Name, name)
@@ -70,7 +30,7 @@ func TestNoToolLetsTheModelChooseTheWorkspace(t *testing.T) {
 }
 
 func TestEveryToolDeclaresAPermission(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		if m := tool.Meta(); m.Resource == "" || m.Action == "" {
 			t.Errorf("%s has no permission", tool.Definition().Name)
 		}
@@ -78,7 +38,7 @@ func TestEveryToolDeclaresAPermission(t *testing.T) {
 }
 
 func TestChangesToAConversationShowWhoTheyTouch(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		def := tool.Definition()
 		_, targetsConversation := def.Parameters["entry_id"]
 		if !tool.Meta().Mutating || !targetsConversation {
@@ -91,7 +51,7 @@ func TestChangesToAConversationShowWhoTheyTouch(t *testing.T) {
 }
 
 func TestConversationIdsAlwaysTravelWithTheirChannel(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		def := tool.Definition()
 		if _, ok := def.Parameters["entry_id"]; !ok {
 			continue
@@ -104,7 +64,7 @@ func TestConversationIdsAlwaysTravelWithTheirChannel(t *testing.T) {
 
 func TestToolNamesAreUnique(t *testing.T) {
 	seen := map[string]bool{}
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		name := tool.Definition().Name
 		if seen[name] {
 			t.Errorf("duplicate tool %s", name)
@@ -114,7 +74,7 @@ func TestToolNamesAreUnique(t *testing.T) {
 }
 
 func TestSecretsNeverTravelThroughTheModel(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		def := tool.Definition()
 		for name := range def.Parameters {
 			lower := strings.ToLower(name)
@@ -138,7 +98,7 @@ func TestSecretsNeverTravelThroughTheModel(t *testing.T) {
 }
 
 func TestEveryChangeNamesWhatItTouchesOnTheCard(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		if !tool.Meta().Mutating {
 			continue
 		}
@@ -152,7 +112,7 @@ func TestStudioToolsLiveOnlyInsideTheStudio(t *testing.T) {
 	video := copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: copilot.StudioVideo}
 	image := video
 	image.ProjectKind = copilot.StudioImage
-	for _, tool := range StudioTools(StudioDeps{}) {
+	for _, tool := range studiotools.StudioTools(studiotools.StudioDeps{}) {
 		name := tool.Definition().Name
 		if _, scoped := tool.(copilot.Scoped); !scoped {
 			t.Fatalf("%s is not scoped to the studio", name)
@@ -170,7 +130,7 @@ func TestStudioToolsLiveOnlyInsideTheStudio(t *testing.T) {
 		}
 	}
 	for name, view := range map[string]copilot.View{"studio_edit_video": video, "studio_edit_image": image, "studio_generate_music": video, "studio_generate_voiceover": video} {
-		for _, tool := range StudioTools(StudioDeps{}) {
+		for _, tool := range studiotools.StudioTools(studiotools.StudioDeps{}) {
 			if tool.Definition().Name == name && (!view.Offers(tool) || (view == video && image.Offers(tool)) || (view == image && video.Offers(tool))) {
 				t.Fatalf("%s must be offered only on its project kind", name)
 			}
@@ -179,7 +139,7 @@ func TestStudioToolsLiveOnlyInsideTheStudio(t *testing.T) {
 }
 
 func TestEveryModeGradedToolCanBeProposed(t *testing.T) {
-	for _, tool := range allTools() {
+	for _, tool := range registeredTools(t) {
 		if _, graded := tool.(copilot.Graded); !graded {
 			continue
 		}

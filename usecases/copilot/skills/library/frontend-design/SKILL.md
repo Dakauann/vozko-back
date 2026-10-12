@@ -1,5 +1,6 @@
 ---
 name: frontend-design
+surface: studio
 description: Guidance for distinctive, intentional visual design when creating a new piece in the Estúdio (post, banner, ad, poster, carousel or video) or reshaping an existing one. Helps with aesthetic direction, typography, and making choices that don't read as templated defaults.
 license: Apache 2.0, complete terms in LICENSE.txt. Modified by Vozko for the Estúdio editor and Elo's tools; every change is listed in NOTICE.md.
 ---

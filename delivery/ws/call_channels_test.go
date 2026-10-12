@@ -113,10 +113,14 @@ func TestAParkedCallIsFindableUntilItEnds(t *testing.T) {
 	eventually(t, "audio to reach the caller", func() bool { return len(call.snapshotAudioCalls()) == 1 })
 
 	call.closeDoneOnce()
-	eventually(t, "the ended call to leave the directory", func() bool {
-		_, ok := channels.Find("ws-1", "sip-in-1")
-		return !ok
-	})
+	select {
+	case <-routed.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the parked call never finished after the caller left")
+	}
+	if _, ok := channels.Find("ws-1", "sip-in-1"); ok {
+		t.Fatal("the ended call is still in the directory")
+	}
 }
 
 func TestHoldReleasesTheOperatorAndConnectHandsTheCallerToAnother(t *testing.T) {

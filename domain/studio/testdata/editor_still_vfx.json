@@ -1,0 +1,283 @@
+{
+  "stills": {
+    "grain": [
+      "amount",
+      "size",
+      "chroma"
+    ],
+    "lightLeak": [
+      "amount",
+      "size",
+      "x",
+      "y"
+    ],
+    "vignette": [
+      "amount",
+      "size",
+      "softness",
+      "roundness"
+    ],
+    "chromaticAberration": [
+      "amount",
+      "angle",
+      "radial"
+    ],
+    "glitch": [
+      "amount",
+      "size",
+      "split",
+      "scanlines"
+    ],
+    "lensFlare": [
+      "amount",
+      "size",
+      "x",
+      "y",
+      "ghosts",
+      "streak"
+    ],
+    "glow": [
+      "amount",
+      "size",
+      "threshold"
+    ],
+    "mosaic": [
+      "amount",
+      "size"
+    ],
+    "posterize": [
+      "amount",
+      "levels"
+    ],
+    "mirror": [
+      "amount",
+      "x",
+      "y",
+      "angle"
+    ],
+    "offset": [
+      "amount",
+      "shiftX",
+      "shiftY"
+    ],
+    "directionalBlur": [
+      "amount",
+      "angle",
+      "length"
+    ],
+    "zoomBlur": [
+      "amount",
+      "x",
+      "y",
+      "length"
+    ],
+    "spinBlur": [
+      "amount",
+      "x",
+      "y",
+      "angle"
+    ],
+    "waveWarp": [
+      "amount",
+      "angle",
+      "length",
+      "height",
+      "phase"
+    ],
+    "ripple": [
+      "amount",
+      "size",
+      "x",
+      "y",
+      "length",
+      "height",
+      "phase"
+    ],
+    "twirl": [
+      "amount",
+      "size",
+      "x",
+      "y",
+      "angle"
+    ],
+    "bulge": [
+      "amount",
+      "size",
+      "x",
+      "y",
+      "height"
+    ],
+    "cornerPin": [
+      "amount",
+      "topLeftX",
+      "topLeftY",
+      "topRightX",
+      "topRightY",
+      "bottomRightX",
+      "bottomRightY",
+      "bottomLeftX",
+      "bottomLeftY"
+    ],
+    "fractalNoise": [
+      "amount",
+      "size",
+      "complexity",
+      "contrast",
+      "brightness"
+    ],
+    "gradientRamp": [
+      "amount",
+      "x",
+      "y",
+      "radial",
+      "toX",
+      "toY"
+    ],
+    "fourColorGradient": [
+      "amount",
+      "softness",
+      "topLeftX",
+      "topLeftY",
+      "topRightX",
+      "topRightY",
+      "bottomRightX",
+      "bottomRightY",
+      "bottomLeftX",
+      "bottomLeftY"
+    ]
+  },
+  "valid": {
+    "schema": "studio.image",
+    "version": 2,
+    "artboards": [
+      {
+        "id": "a1",
+        "x": 0,
+        "y": 0,
+        "canvas": {
+          "width": 1080,
+          "height": 1350,
+          "background": "#101418",
+          "vfx": [
+            {
+              "id": "vfx-grain",
+              "kind": "grain",
+              "seed": 4182,
+              "params": {
+                "amount": 0.4,
+                "size": 1.5
+              }
+            },
+            {
+              "id": "vfx-vignette",
+              "kind": "vignette",
+              "seed": 0,
+              "params": {
+                "amount": 0.6
+              },
+              "colors": {
+                "color": "#000000"
+              }
+            },
+            {
+              "id": "vfx-ramp",
+              "kind": "gradientRamp",
+              "seed": 0,
+              "params": {
+                "amount": 0.4,
+                "radial": 1
+              },
+              "colors": {
+                "color": "#112233"
+              }
+            }
+          ]
+        },
+        "layers": [
+          {
+            "id": "photo",
+            "type": "image",
+            "assetId": "media-portrait",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 0.8,
+              "h": 0.6,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "vfx": [
+              {
+                "id": "vfx-leak",
+                "kind": "lightLeak",
+                "seed": 77,
+                "params": {
+                  "amount": 0.7,
+                  "x": 0.1,
+                  "y": 0.2
+                },
+                "colors": {
+                  "color": "#ff7a2f",
+                  "color2": "#ff2f6d"
+                }
+              },
+              {
+                "id": "vfx-flare",
+                "kind": "lensFlare",
+                "seed": 9,
+                "hidden": true,
+                "params": {
+                  "ghosts": 0.4,
+                  "streak": 0.2
+                }
+              },
+              {
+                "id": "vfx-split",
+                "kind": "chromaticAberration",
+                "seed": 0,
+                "params": {
+                  "amount": 0.3,
+                  "radial": 1
+                }
+              },
+              {
+                "id": "vfx-glitch",
+                "kind": "glitch",
+                "seed": 512,
+                "params": {
+                  "amount": 0.5,
+                  "split": 18,
+                  "scanlines": 0.3
+                }
+              },
+              {
+                "id": "vfx-glow",
+                "kind": "glow",
+                "seed": 0,
+                "params": {
+                  "threshold": 0.5
+                }
+              },
+              {
+                "id": "vfx-pin",
+                "kind": "cornerPin",
+                "seed": 0,
+                "params": {
+                  "topRightX": 1.2
+                }
+              },
+              {
+                "id": "vfx-twirl",
+                "kind": "twirl",
+                "seed": 0,
+                "params": {
+                  "angle": -400
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

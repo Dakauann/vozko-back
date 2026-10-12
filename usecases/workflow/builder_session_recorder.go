@@ -103,6 +103,20 @@ func (r *BuilderSessionRecorder) Outbound(raw []byte) {
 			r.mu.Unlock()
 		}
 
+	case "assistant_retry":
+		var p struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(frame.Payload, &p) != nil || p.Text == "" {
+			return
+		}
+		r.mu.Lock()
+		if kept, found := strings.CutSuffix(r.assistant.String(), p.Text); found {
+			r.assistant.Reset()
+			r.assistant.WriteString(kept)
+		}
+		r.mu.Unlock()
+
 	case "assistant_done":
 		r.mu.Lock()
 		r.recordLocked(r.flushAssistantLocked())

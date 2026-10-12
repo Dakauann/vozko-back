@@ -1,0 +1,125 @@
+{
+  "presets": [
+    {
+      "id": "builtin.riseIn",
+      "name": "Subir e surgir",
+      "description": "Sobe um pouco enquanto aparece e assenta com um leve balanço.",
+      "names": { "pt": "Subir e surgir", "en": "Rise in", "es": "Subir y aparecer", "de": "Aufsteigen" },
+      "descriptions": {
+        "pt": "Sobe um pouco enquanto aparece e assenta com um leve balanço.",
+        "en": "Rises slightly while fading in and settles with a soft bounce.",
+        "es": "Sube un poco mientras aparece y se asienta con un leve rebote.",
+        "de": "Steigt beim Einblenden leicht auf und setzt mit sanftem Nachfedern auf."
+      },
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1500,
+        "keyframes": {
+          "y": [
+            { "atMs": 0, "value": 0.08, "easing": "easeOut" },
+            { "atMs": 600, "value": 0, "easing": "linear" }
+          ],
+          "opacity": [
+            { "atMs": 0, "value": 0, "easing": "easeOut" },
+            { "atMs": 400, "value": 1, "easing": "linear" }
+          ]
+        },
+        "behaviors": [
+          { "id": "settle", "kind": "overshoot", "property": "y", "amplitude": 0.05, "frequency": 4, "decay": 8 }
+        ]
+      }
+    },
+    {
+      "id": "builtin.popIn",
+      "name": "Estourar",
+      "description": "Cresce do pequeno ao tamanho certo com um salto elástico.",
+      "names": { "pt": "Estourar", "en": "Pop in", "es": "Aparecer de golpe", "de": "Aufploppen" },
+      "descriptions": {
+        "pt": "Cresce do pequeno ao tamanho certo com um salto elástico.",
+        "en": "Grows from small to full size with an elastic snap.",
+        "es": "Crece de pequeño a su tamaño con un salto elástico.",
+        "de": "Wächst von klein auf volle Größe mit elastischem Schwung."
+      },
+      "animation": {
+        "scope": "visual",
+        "durationMs": 1200,
+        "keyframes": {
+          "scale": [
+            { "atMs": 0, "value": 0.2, "easing": "backOut" },
+            { "atMs": 450, "value": 1, "easing": "linear" }
+          ],
+          "opacity": [
+            { "atMs": 0, "value": 0, "easing": "easeOut" },
+            { "atMs": 200, "value": 1, "easing": "linear" }
+          ]
+        },
+        "behaviors": [
+          { "id": "bounce", "kind": "overshoot", "property": "scale", "amplitude": 0.08, "frequency": 5, "decay": 7 }
+        ]
+      }
+    },
+    {
+      "id": "builtin.slideAcross",
+      "name": "Atravessar",
+      "description": "Entra pela esquerda e sai pela direita com rastro de movimento.",
+      "names": { "pt": "Atravessar", "en": "Slide across", "es": "Cruzar", "de": "Durchgleiten" },
+      "descriptions": {
+        "pt": "Entra pela esquerda e sai pela direita com rastro de movimento.",
+        "en": "Enters from the left and leaves to the right with motion blur.",
+        "es": "Entra por la izquierda y sale por la derecha con desenfoque de movimiento.",
+        "de": "Kommt von links und geht nach rechts mit Bewegungsunschärfe."
+      },
+      "animation": {
+        "scope": "visual",
+        "durationMs": 2000,
+        "motionIn": { "edge": "left", "durationMs": 600 },
+        "motionOut": { "edge": "right", "durationMs": 600 },
+        "motionBlur": true
+      }
+    },
+    {
+      "id": "builtin.breathe",
+      "name": "Respirar",
+      "description": "Pulsa devagar e balança de leve, bom para chamar atenção sem pressa.",
+      "names": { "pt": "Respirar", "en": "Breathe", "es": "Respirar", "de": "Atmen" },
+      "descriptions": {
+        "pt": "Pulsa devagar e balança de leve, bom para chamar atenção sem pressa.",
+        "en": "Pulses slowly and sways a little, good for calm attention.",
+        "es": "Late despacio y se balancea un poco, ideal para llamar la atención con calma.",
+        "de": "Pulsiert langsam und schwankt leicht, ideal für ruhige Aufmerksamkeit."
+      },
+      "animation": {
+        "scope": "visual",
+        "durationMs": 3000,
+        "keyframes": {
+          "scale": [
+            { "atMs": 0, "value": 1, "easing": "easeInOut" },
+            { "atMs": 1500, "value": 1.06, "easing": "easeInOut" },
+            { "atMs": 3000, "value": 1, "easing": "linear" }
+          ]
+        },
+        "behaviors": [
+          { "id": "sway", "kind": "wiggle", "property": "rotation", "frequency": 0.5, "amount": 2, "seed": 7 }
+        ]
+      }
+    },
+    {
+      "id": "builtin.wordCascade",
+      "name": "Cascata de palavras",
+      "description": "As palavras sobem uma a uma e o texto some suave no fim.",
+      "names": { "pt": "Cascata de palavras", "en": "Word cascade", "es": "Cascada de palabras", "de": "Wortkaskade" },
+      "descriptions": {
+        "pt": "As palavras sobem uma a uma e o texto some suave no fim.",
+        "en": "Words rise one by one and the text fades out gently at the end.",
+        "es": "Las palabras suben una a una y el texto se desvanece al final.",
+        "de": "Wörter steigen nacheinander auf und der Text blendet am Ende sanft aus."
+      },
+      "animation": {
+        "scope": "text",
+        "durationMs": 3000,
+        "textIn": { "unit": "word", "style": "rise", "durationMs": 400, "staggerMs": 120, "easing": "easeOut" },
+        "textOut": { "unit": "word", "style": "fade", "durationMs": 300, "staggerMs": 60, "easing": "easeIn" }
+      }
+    }
+  ]
+}

@@ -28,7 +28,7 @@ description: Como fazer vídeos explicativos, tutoriais e peças com números ou
 - Animação em etapas, uma mudança por vez; o estado final fica parado pelo menos 2 s.
 
 ## Montar no Estúdio
-- Barras com add_shape rect que entram uma por vez com entrance slideUp, de 100 a 150 ms entre elas, ou com animate em scale de 0,9 para 1 e easeOut.
+- Gráficos com add_chart (categorias em chart_labels, números em chart_series), não com formas soltas: o gráfico parte do zero, escreve os números no formato do idioma e se redesenha quando os dados mudam. No vídeo, animate_chart com grow e chart_order category faz as barras subirem uma depois da outra (stagger_ms de 100 a 150 ms); draw traça uma linha.
 - Números grandes com add_text, font_weight 800, e um rótulo curto embaixo.
 - Contador que muda: vários add_text em sequência com animate de opacity em hold, ou textos curtos trocados no tempo.
 - Confira com studio_look no fim de cada etapa.

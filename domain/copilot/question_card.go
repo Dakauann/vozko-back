@@ -11,36 +11,66 @@ import (
 const (
 	ActionAsk ActionKind = "ask"
 
+	MaxFormQuestions       = 4
 	MaxQuestionRunes       = 280
 	MaxQuestionOptionRunes = 80
+	MaxQuestionDetailRunes = 120
 	MinQuestionOptions     = 2
 	MaxQuestionOptions     = 4
 )
 
-var ErrInvalidQuestion = errors.New("copilot: the question card is not answerable in one tap")
+var ErrInvalidQuestion = errors.New("copilot: the question card cannot be answered with a tap or a short reply")
 
-type Question struct {
-	Text    string   `json:"text"`
-	Options []string `json:"options"`
+type QuestionOption struct {
+	Label  string `json:"label"`
+	Detail string `json:"detail,omitempty"`
 }
 
-func NewQuestionCard(text string, options []string) (*ActionCard, error) {
-	clean := strings.TrimSpace(text)
-	if clean == "" || utf8.RuneCountInString(clean) > MaxQuestionRunes || shared.HasLongDash(clean) {
+type Question struct {
+	Text    string           `json:"text"`
+	Options []QuestionOption `json:"options"`
+}
+
+func NewQuestionCard(questions []Question) (*ActionCard, error) {
+	if len(questions) == 0 || len(questions) > MaxFormQuestions {
 		return nil, ErrInvalidQuestion
 	}
-	if len(options) < MinQuestionOptions || len(options) > MaxQuestionOptions {
-		return nil, ErrInvalidQuestion
-	}
-	seen := make(map[string]bool, len(options))
-	cleaned := make([]string, 0, len(options))
-	for _, option := range options {
-		o := strings.TrimSpace(option)
-		if o == "" || utf8.RuneCountInString(o) > MaxQuestionOptionRunes || shared.HasLongDash(o) || seen[strings.ToLower(o)] {
+	asked := make(map[string]bool, len(questions))
+	cleaned := make([]Question, 0, len(questions))
+	for _, question := range questions {
+		clean, err := cleanQuestion(question)
+		if err != nil || asked[strings.ToLower(clean.Text)] {
 			return nil, ErrInvalidQuestion
 		}
-		seen[strings.ToLower(o)] = true
-		cleaned = append(cleaned, o)
+		asked[strings.ToLower(clean.Text)] = true
+		cleaned = append(cleaned, clean)
 	}
-	return &ActionCard{Kind: ActionAsk, Question: &Question{Text: clean, Options: cleaned}}, nil
+	return &ActionCard{Kind: ActionAsk, Questions: cleaned}, nil
+}
+
+func cleanQuestion(question Question) (Question, error) {
+	text, ok := shortText(question.Text, MaxQuestionRunes, false)
+	if !ok || len(question.Options) < MinQuestionOptions || len(question.Options) > MaxQuestionOptions {
+		return Question{}, ErrInvalidQuestion
+	}
+	seen := make(map[string]bool, len(question.Options))
+	cleaned := make([]QuestionOption, 0, len(question.Options))
+	for _, option := range question.Options {
+		label, labelOK := shortText(option.Label, MaxQuestionOptionRunes, false)
+		detail, detailOK := shortText(option.Detail, MaxQuestionDetailRunes, true)
+		if !labelOK || !detailOK || seen[strings.ToLower(label)] {
+			return Question{}, ErrInvalidQuestion
+		}
+		seen[strings.ToLower(label)] = true
+		cleaned = append(cleaned, QuestionOption{Label: label, Detail: detail})
+	}
+	return Question{Text: text, Options: cleaned}, nil
+}
+
+func shortText(raw string, maxRunes int, optional bool) (string, bool) {
+	clean := strings.TrimSpace(raw)
+	if clean == "" {
+		return "", optional
+	}
+	return clean, utf8.RuneCountInString(clean) <= maxRunes && !shared.HasLongDash(clean)
 }

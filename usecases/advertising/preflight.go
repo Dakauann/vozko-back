@@ -243,6 +243,9 @@ func (p preflighter) checkCreative(ctx context.Context, workspaceID, token strin
 			mediaURLs[ref.MediaID] = url
 		}
 	}
+	if err := p.media.checkSpec(ctx, workspaceID, c.MediaRefs(), prefix+"media"); err != nil {
+		return err
+	}
 	if err := p.checkMetaMedia(ctx, token, account, c, prefix, mediaURLs); err != nil {
 		return err
 	}

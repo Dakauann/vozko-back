@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +23,8 @@ type aiTurn struct {
 	usage     *ai.Usage
 	noUsage   bool
 	errEvent  error
+	openErr   error
+	block     bool
 }
 
 type fakeAI struct {
@@ -29,6 +32,7 @@ type fakeAI struct {
 	errAt    int
 	blockCtx bool
 	delay    time.Duration
+	onCall   func(n int)
 	mu       sync.Mutex
 	idx      int
 	models   []string
@@ -46,6 +50,9 @@ func (f *fakeAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-cha
 	i := f.idx
 	f.idx++
 	f.mu.Unlock()
+	if f.onCall != nil {
+		f.onCall(i + 1)
+	}
 
 	if f.blockCtx {
 		ch := make(chan ai.StreamEvent)
@@ -63,9 +70,17 @@ func (f *fakeAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-cha
 	if i < len(f.turns) {
 		t = f.turns[i]
 	}
+	if t.openErr != nil {
+		return nil, t.openErr
+	}
 	ch := make(chan ai.StreamEvent, 16)
 	go func() {
 		defer close(ch)
+		if t.block {
+			<-ctx.Done()
+			ch <- ai.StreamEvent{Type: ai.StreamEventError, Error: ctx.Err()}
+			return
+		}
 		if f.delay > 0 {
 			time.Sleep(f.delay)
 		}
@@ -525,13 +540,15 @@ func TestWithDefaults(t *testing.T) {
 	if d.MaxIterations != 30 || d.NoProgressStop != 5 || d.RepairBudget != 3 ||
 		d.EmptyTurnRetries != 2 || d.MaxHistoryMsgs != 80 || d.MaxTokensPerGen != 24000 ||
 		d.ReasoningMaxTokens != 10000 || d.FinishToolName != "finish" ||
-		d.RepeatedTurnStop != 3 || d.CompactAt != 0.5 || d.KeepRecent != 8 || d.KeepToolImages != 2 {
+		d.RepeatedTurnStop != 3 || d.CompactAt != 0.5 || d.KeepRecent != 8 || d.KeepToolImages != 2 ||
+		d.ProviderRetries != 3 || d.ProviderRetryBase != time.Second {
 		t.Fatalf("defaults wrong: %+v", d)
 	}
 	in := Config{MaxIterations: 1, NoProgressStop: 1, RepairBudget: 1, EmptyTurnRetries: 1,
 		MaxHistoryMsgs: 1, MaxTokensPerGen: 1, ReasoningMaxTokens: 1, FinishToolName: "fim",
-		RepeatedTurnStop: 1, CompactAt: 0.7, KeepRecent: 1, KeepToolImages: 1}
-	if out := in.withDefaults(); out != in {
+		RepeatedTurnStop: 1, CompactAt: 0.7, KeepRecent: 1, KeepToolImages: 1,
+		ProviderRetries: 1, ProviderRetryBase: time.Millisecond}
+	if out := in.withDefaults(); !reflect.DeepEqual(out, in) {
 		t.Fatalf("populated config must be unchanged, got %+v", out)
 	}
 }

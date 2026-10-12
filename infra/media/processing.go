@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"vozko/domain/captions"
 	"vozko/domain/mediagen"
 	"vozko/domain/stt"
 )
 
 const (
 	maxProcessingSourceBytes = 120 << 20
-	maxCueRunes              = 84
 	processingModel          = "vozko/processing"
 )
 
@@ -69,11 +69,11 @@ func (g *CaptionsGenerator) Generate(ctx context.Context, _ mediagen.Request, so
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", mediagen.ErrGenerationFailed, err)
 	}
-	vtt, ok := webVTT(transcription.Segments)
-	if !ok {
+	cues := captions.Cues(transcription.TimedWords(), captions.SocialVideo)
+	if len(cues) == 0 {
 		return nil, fmt.Errorf("%w: no speech was found", mediagen.ErrGenerationFailed)
 	}
-	return &mediagen.Output{Bytes: []byte(vtt), MIMEType: "text/vtt", Model: processingModel}, nil
+	return &mediagen.Output{Bytes: []byte(webVTT(cues)), MIMEType: "text/vtt", Model: processingModel}, nil
 }
 
 func speechWAV(ctx context.Context, raw []byte) ([]byte, error) {
@@ -93,59 +93,13 @@ func speechWAV(ctx context.Context, raw []byte) ([]byte, error) {
 	return readOutput(out)
 }
 
-func webVTT(segments []stt.Segment) (string, bool) {
+func webVTT(cues []captions.Cue) string {
 	var b strings.Builder
 	b.WriteString("WEBVTT\n")
-	cues := 0
-	for _, seg := range segments {
-		text := strings.Join(strings.Fields(seg.Text), " ")
-		if text == "" || seg.End <= seg.Start {
-			continue
-		}
-		for _, cue := range splitCue(text, seg.Start, seg.End) {
-			cues++
-			fmt.Fprintf(&b, "\n%d\n%s --> %s\n%s\n", cues, vttTime(cue.start), vttTime(cue.end), cue.text)
-		}
+	for i, cue := range cues {
+		fmt.Fprintf(&b, "\n%d\n%s --> %s\n%s\n", i+1, vttTime(cue.Start), vttTime(cue.End), cue.Text())
 	}
-	return b.String(), cues > 0
-}
-
-type cue struct {
-	start, end float64
-	text       string
-}
-
-func splitCue(text string, start, end float64) []cue {
-	var chunks []string
-	var line []string
-	length := 0
-	for _, word := range strings.Fields(text) {
-		if length > 0 && length+1+len([]rune(word)) > maxCueRunes {
-			chunks = append(chunks, strings.Join(line, " "))
-			line, length = nil, 0
-		}
-		if length > 0 {
-			length++
-		}
-		line = append(line, word)
-		length += len([]rune(word))
-	}
-	chunks = append(chunks, strings.Join(line, " "))
-	total := 0
-	for _, c := range chunks {
-		total += len([]rune(c))
-	}
-	out := make([]cue, 0, len(chunks))
-	at := start
-	for i, c := range chunks {
-		next := end
-		if i < len(chunks)-1 {
-			next = at + (end-start)*float64(len([]rune(c)))/float64(total)
-		}
-		out = append(out, cue{start: at, end: next, text: c})
-		at = next
-	}
-	return out
+	return b.String()
 }
 
 func vttTime(seconds float64) string {

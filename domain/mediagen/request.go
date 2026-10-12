@@ -14,14 +14,15 @@ import (
 type Kind string
 
 const (
-	KindImage    Kind = "image"
-	KindMusic    Kind = "music"
-	KindVoice    Kind = "voice"
-	KindVideo    Kind = "video"
-	KindCutout   Kind = "cutout"
-	KindCaptions Kind = "captions"
-	KindDenoise  Kind = "denoise"
-	KindProxy    Kind = "proxy"
+	KindImage       Kind = "image"
+	KindMusic       Kind = "music"
+	KindVoice       Kind = "voice"
+	KindSoundEffect Kind = "sfx"
+	KindVideo       Kind = "video"
+	KindCutout      Kind = "cutout"
+	KindCaptions    Kind = "captions"
+	KindDenoise     Kind = "denoise"
+	KindProxy       Kind = "proxy"
 )
 
 type Storage struct {
@@ -38,17 +39,18 @@ type kindRules struct {
 }
 
 var rules = map[Kind]kindRules{
-	KindImage:    {storage: Storage{Type: media.MediaTypeProductImage, Folder: "images", Extension: ".jpg", Label: "Imagem gerada com IA"}, model: true},
-	KindMusic:    {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Música gerada com IA"}, model: true},
-	KindVoice:    {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Locução gerada com IA"}, model: true},
-	KindVideo:    {storage: Storage{Type: media.MediaTypeProductVideo, Folder: "videos", Extension: ".mp4", Label: "Vídeo do Estúdio"}},
-	KindCutout:   {storage: Storage{Type: media.MediaTypeProductImage, Folder: "images", Extension: ".png", Label: "Imagem sem fundo"}},
-	KindCaptions: {storage: Storage{Type: media.MediaTypeDocument, Folder: "captions", Extension: ".vtt", Label: "Legendas"}},
-	KindDenoise:  {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Áudio limpo"}},
-	KindProxy:    {storage: Storage{Type: media.MediaTypeStudioProxy, Folder: "proxies", Extension: ".mp4", Label: "Prévia de edição"}, reusable: true},
+	KindImage:       {storage: Storage{Type: media.MediaTypeProductImage, Folder: "images", Extension: ".jpg", Label: "Imagem gerada com IA"}, model: true},
+	KindMusic:       {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Música gerada com IA"}, model: true},
+	KindVoice:       {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Locução gerada com IA"}, model: true},
+	KindSoundEffect: {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Efeito sonoro gerado com IA"}, model: true},
+	KindVideo:       {storage: Storage{Type: media.MediaTypeProductVideo, Folder: "videos", Extension: ".mp4", Label: "Vídeo do Estúdio"}},
+	KindCutout:      {storage: Storage{Type: media.MediaTypeProductImage, Folder: "images", Extension: ".png", Label: "Imagem sem fundo"}},
+	KindCaptions:    {storage: Storage{Type: media.MediaTypeDocument, Folder: "captions", Extension: ".vtt", Label: "Legendas"}},
+	KindDenoise:     {storage: Storage{Type: media.MediaTypeAudio, Folder: "audio", Extension: ".m4a", Label: "Áudio limpo"}},
+	KindProxy:       {storage: Storage{Type: media.MediaTypeStudioProxy, Folder: "proxies", Extension: ".mp4", Label: "Prévia de edição"}, reusable: true},
 }
 
-var kinds = []Kind{KindImage, KindMusic, KindVoice, KindVideo, KindCutout, KindCaptions, KindDenoise, KindProxy}
+var kinds = []Kind{KindImage, KindMusic, KindVoice, KindSoundEffect, KindVideo, KindCutout, KindCaptions, KindDenoise, KindProxy}
 
 func Kinds() []Kind { return append([]Kind(nil), kinds...) }
 
@@ -60,6 +62,13 @@ func GenerationKinds() []Kind {
 		}
 	}
 	return out
+}
+
+func (k Kind) ActiveLane() ([]Kind, int) {
+	if k.UsesModel() {
+		return GenerationKinds(), MaxActiveGenerations
+	}
+	return ProcessingKinds(), MaxActiveProcessing
 }
 
 func ProcessingKinds() []Kind {
@@ -103,6 +112,7 @@ type Request struct {
 	Aspect            Aspect
 	ReferenceMediaIDs []string
 	Voice             string
+	DurationMS        int
 	Video             Timeline
 	SourceMediaID     string
 	BillingReference  string
@@ -171,6 +181,8 @@ func (r Request) contentIssues() ([]FieldIssue, error) {
 		return textIssues(FieldPrompt, r.Prompt, MaxMusicPromptRunes), nil
 	case KindVoice:
 		return voiceIssues(r), nil
+	case KindSoundEffect:
+		return soundEffectIssues(r), nil
 	case KindVideo:
 		return videoIssues(r), nil
 	case KindCutout, KindCaptions, KindDenoise, KindProxy:
@@ -208,6 +220,8 @@ func (r Request) normalized() Request {
 		out.Prompt = strings.TrimSpace(r.Prompt)
 	case KindVoice:
 		out.Prompt, out.Voice = strings.TrimSpace(r.Prompt), strings.TrimSpace(r.Voice)
+	case KindSoundEffect:
+		out.Prompt, out.DurationMS = strings.TrimSpace(r.Prompt), r.DurationMS
 	case KindVideo:
 		out.Aspect, out.Video = r.Aspect, r.Video.normalized()
 	case KindCutout, KindCaptions, KindDenoise, KindProxy:
@@ -276,6 +290,9 @@ func (r Request) Fingerprint(requestedBy string) string {
 	parts := []string{n.WorkspaceID, strings.TrimSpace(requestedBy), string(n.Kind), n.Model, normalizePrompt(n.Prompt), string(n.Aspect), n.Voice, n.SourceMediaID}
 	parts = appendCounted(parts, n.ReferenceMediaIDs)
 	parts = appendCounted(parts, n.Video.fingerprintParts())
+	if n.DurationMS != 0 {
+		parts = append(parts, FieldDuration, strconv.Itoa(n.DurationMS))
+	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
 }

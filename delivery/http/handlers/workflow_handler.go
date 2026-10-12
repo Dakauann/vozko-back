@@ -106,7 +106,7 @@ func (h *WorkflowHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Graph:         req.Graph,
 	}
 
-	updated, err := h.workflows.Update(workflowScope(r), id, wf)
+	updated, err := h.workflows.Update(r.Context(), workflowScope(r), id, wf)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -212,7 +212,7 @@ func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *WorkflowHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
-	wf, err := h.workflows.Activate(workflowScope(r), id)
+	wf, err := h.workflows.Activate(r.Context(), workflowScope(r), id)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -425,6 +425,8 @@ func (h *WorkflowHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusUnprocessableEntity, "Uma coleção MCP selecionada é inválida ou não foi encontrada", nil)
 	case errors.Is(err, workflow.ErrNodeInvalidModelID):
 		response.WriteError(w, http.StatusUnprocessableEntity, "O modelo de IA selecionado é inválido ou não está disponível. Use um modelo da lista (find_resource ai_models).", map[string]string{"detail": err.Error()})
+	case errors.Is(err, workflow.ErrNodeReasoningLevelUnsupported):
+		response.WriteError(w, http.StatusUnprocessableEntity, "O modelo de IA de um nó não oferece o nível de raciocínio escolhido. Escolha um nível da lista do modelo ou deixe o padrão.", map[string]string{"detail": err.Error()})
 	case errors.Is(err, workflow.ErrNodeInvalidToolParamType):
 		response.WriteError(w, http.StatusUnprocessableEntity, "Um parâmetro de ferramenta (custom_tools) tem um tipo inválido. Use um tipo suportado (string, number, integer, boolean, array, object, date, time, datetime, email, phone, enum).", map[string]string{"detail": err.Error()})
 	case errors.Is(err, workflow.ErrVoiceTrunkRequired), errors.Is(err, workflow.ErrVoiceTrunkInvalid):

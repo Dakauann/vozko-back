@@ -1,0 +1,82 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#000000" },
+  "durationMs": 4000,
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "photo",
+          "type": "image",
+          "assetId": "m-1",
+          "startMs": 0,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.4, "h": 0.3, "rotation": 0, "opacity": 1 },
+          "keyframes": {
+            "rotation": [
+              { "atMs": 0, "value": 0, "easing": "easeInOut" },
+              { "atMs": 1000, "value": 30, "easing": "linear" }
+            ],
+            "scale": [
+              { "atMs": 0, "value": 0.6, "easing": "easeOut" },
+              { "atMs": 500, "value": 1, "easing": "linear" }
+            ]
+          },
+          "behaviors": [
+            { "id": "shake-x", "kind": "wiggle", "property": "x", "frequency": 3, "amount": 0.02, "seed": 42 },
+            { "id": "rock", "kind": "loop", "property": "rotation", "mode": "pingpong", "side": "both" },
+            { "id": "turn", "kind": "drift", "property": "rotation", "rate": -15.5 },
+            { "id": "settle", "kind": "overshoot", "property": "scale", "amplitude": 0.05, "frequency": 4, "decay": 8 },
+            { "id": "pulse", "kind": "audioReact", "property": "opacity", "trackId": "music", "amount": -0.4, "floorDb": -45, "ceilingDb": -12 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "rig",
+          "type": "null",
+          "startMs": 500,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.1, "h": 0.1, "rotation": 0, "opacity": 1 },
+          "behaviors": [
+            { "id": "float", "kind": "wiggle", "property": "y", "frequency": 0.5, "amount": 0, "seed": 0, "offsetMs": 1200 },
+            { "id": "grow", "kind": "drift", "property": "scaleX", "rate": 0 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "music",
+      "kind": "audio",
+      "clips": [
+        {
+          "id": "song",
+          "type": "audio",
+          "assetId": "m-2",
+          "startMs": 0,
+          "durationMs": 4000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0
+        }
+      ]
+    }
+  ]
+}

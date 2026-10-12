@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -50,6 +52,7 @@ type ImageGenerator struct {
 	apiKey  string
 	baseURL string
 	http    *http.Client
+	unsent  []time.Duration
 }
 
 func NewImageGenerator(cfg Config) (*ImageGenerator, error) {
@@ -65,7 +68,7 @@ func NewImageGenerator(cfg Config) (*ImageGenerator, error) {
 	if client == nil {
 		client = &http.Client{Timeout: defaultTimeout}
 	}
-	return &ImageGenerator{apiKey: apiKey, baseURL: baseURL, http: client}, nil
+	return &ImageGenerator{apiKey: apiKey, baseURL: baseURL, http: client, unsent: unsentRetryDelays}, nil
 }
 
 type generationRequest struct {
@@ -187,13 +190,15 @@ func (g *ImageGenerator) request(ctx context.Context, body generationRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, g.baseURL+"/images", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+g.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := g.http.Do(httpReq)
+	resp, err := send(ctx, g.http, g.unsent, func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, g.baseURL+"/images", bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+g.apiKey)
+		httpReq.Header.Set("Content-Type", "application/json")
+		return httpReq, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("openroutergen: request failed: %w", err)
 	}
@@ -203,7 +208,7 @@ func (g *ImageGenerator) request(ctx context.Context, body generationRequest) (*
 		return nil, fmt.Errorf("openroutergen: read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("%w: status %d: %s", mediagen.ErrGenerationFailed, resp.StatusCode, truncate(raw))
+		return nil, refused(resp, raw)
 	}
 	var out generationResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -240,6 +245,19 @@ func decodeBase64(encoded string) ([]byte, error) {
 }
 
 func (g *ImageGenerator) download(ctx context.Context, rawURL string) ([]byte, error) {
+	for attempt := 0; ; attempt++ {
+		raw, err := g.fetch(ctx, rawURL)
+		if err == nil || errors.Is(err, mediagen.ErrGenerationFailed) || attempt >= len(g.unsent) || ctx.Err() != nil {
+			return raw, err
+		}
+		log.Printf("[media-generation] the generated image could not be fetched (%v); fetching it again in %s", err, g.unsent[attempt])
+		if !waitFor(ctx, g.unsent[attempt]) {
+			return nil, err
+		}
+	}
+}
+
+func (g *ImageGenerator) fetch(ctx context.Context, rawURL string) ([]byte, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err

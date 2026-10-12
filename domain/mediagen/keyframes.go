@@ -10,31 +10,31 @@ import (
 type Easing string
 
 const (
-	EaseLinear              Easing = "linear"
-	EaseHold                Easing = "hold"
-	EaseIn                  Easing = "easeIn"
-	EaseOut                 Easing = "easeOut"
-	EaseInOut               Easing = "easeInOut"
-	EaseBackIn              Easing = "backIn"
-	EaseBackOut             Easing = "backOut"
-	EaseBackInOut           Easing = "backInOut"
-	EaseElastic             Easing = "elastic"
-	EaseBounce              Easing = "bounce"
-	EaseSpring              Easing = "spring"
-	MaxKeyframesPerProperty        = 32
-	MaxTimelineKeyframes           = 400
-	MinKeyframeScale               = 0.05
-	MaxKeyframeScale               = 5.0
-	MaxKeyframeRotation            = 3600.0
-	MinKeyframePosition            = -1.0
-	MaxKeyframePosition            = 2.0
-	maxAnimatedBox                 = 4.0
+	EaseLinear           Easing = "linear"
+	EaseHold             Easing = "hold"
+	EaseIn               Easing = "easeIn"
+	EaseOut              Easing = "easeOut"
+	EaseInOut            Easing = "easeInOut"
+	EaseBackIn           Easing = "backIn"
+	EaseBackOut          Easing = "backOut"
+	EaseBackInOut        Easing = "backInOut"
+	EaseElastic          Easing = "elastic"
+	EaseBounce           Easing = "bounce"
+	EaseSpring           Easing = "spring"
+	MaxTimelineKeyframes        = 400
+	MinKeyframeScale            = 0.05
+	MaxKeyframeScale            = 5.0
+	MaxKeyframeRotation         = 3600.0
+	MinKeyframePosition         = -1.0
+	MaxKeyframePosition         = 2.0
+	maxAnimatedBox              = 4.0
 )
 
 type Keyframe struct {
 	AtMS   int64   `json:"atMs"`
 	Value  float64 `json:"value"`
 	Easing Easing  `json:"easing"`
+	Smooth bool    `json:"smooth,omitempty"`
 }
 
 type Keyframes struct {
@@ -310,14 +310,15 @@ func (k *Keyframes) MaxScale() float64 {
 }
 
 func PropertyIssue(frames []Keyframe, low, high float64) string {
-	if len(frames) > MaxKeyframesPerProperty {
-		return CodeTooMany
-	}
+	return PropertyIssueWithin(frames, low, high, MaxVideoMS)
+}
+
+func PropertyIssueWithin(frames []Keyframe, low, high float64, maxAbsMS int64) string {
 	for i, f := range frames {
 		switch {
 		case !f.Easing.Known():
 			return CodeUnknown
-		case f.AtMS < -MaxVideoMS || f.AtMS > MaxVideoMS:
+		case f.AtMS < -maxAbsMS || f.AtMS > maxAbsMS:
 			return CodeOutOfRange
 		case math.IsNaN(f.Value) || f.Value < low || f.Value > high:
 			return CodeOutOfRange
@@ -329,6 +330,10 @@ func PropertyIssue(frames []Keyframe, low, high float64) string {
 }
 
 func KeyframesIssue(k *Keyframes, box Transform) string {
+	return KeyframesIssueWithin(k, box, MaxVideoMS)
+}
+
+func KeyframesIssueWithin(k *Keyframes, box Transform, maxAbsMS int64) string {
 	if k == nil {
 		return ""
 	}
@@ -346,7 +351,7 @@ func KeyframesIssue(k *Keyframes, box Transform) string {
 		{k.Opacity, 0, 1},
 	}
 	for _, c := range checks {
-		if code := PropertyIssue(c.frames, c.low, c.high); code != "" {
+		if code := PropertyIssueWithin(c.frames, c.low, c.high, maxAbsMS); code != "" {
 			return code
 		}
 	}

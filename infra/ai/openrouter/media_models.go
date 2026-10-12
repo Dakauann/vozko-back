@@ -14,6 +14,7 @@ var ErrMediaCatalogUnavailable = errors.New("openrouter: the media model catalog
 type MediaModelCatalog struct {
 	images *modelCatalogFetcher
 	audio  *modelCatalogFetcher
+	speech *modelCatalogFetcher
 }
 
 var _ mediagen.ModelCatalog = (*MediaModelCatalog)(nil)
@@ -26,6 +27,7 @@ func newMediaModelCatalog(apiKey, baseURL string) *MediaModelCatalog {
 	return &MediaModelCatalog{
 		images: newCatalogFetcher(apiKey, baseURL, outputModelsQuery(imageOutputModalities)),
 		audio:  newCatalogFetcher(apiKey, baseURL, outputModelsQuery(audioOutputModalities)),
+		speech: newCatalogFetcher(apiKey, baseURL, outputModelsQuery(speechOutputModalities)),
 	}
 }
 
@@ -34,9 +36,11 @@ func (c *MediaModelCatalog) Models(ctx context.Context, kind mediagen.Kind) ([]m
 	case mediagen.KindImage:
 		return fetched(ctx, c.images, func(ai.ModelInfo) bool { return true })
 	case mediagen.KindMusic:
-		return fetched(ctx, c.audio, func(m ai.ModelInfo) bool { return !m.HearsAudio })
+		return fetched(ctx, c.audio, func(m ai.ModelInfo) bool { return !m.HearsAudio() })
 	case mediagen.KindVoice:
-		return fetched(ctx, c.audio, func(m ai.ModelInfo) bool { return m.HearsAudio })
+		return fetched(ctx, c.audio, func(m ai.ModelInfo) bool { return m.HearsAudio() })
+	case mediagen.KindSoundEffect:
+		return fetched(ctx, c.speech, billedPerGeneratedSecond)
 	}
 	return nil, fmt.Errorf("openrouter: no model catalog for %q", kind)
 }
@@ -53,4 +57,8 @@ func fetched(ctx context.Context, fetcher *modelCatalogFetcher, keep func(ai.Mod
 		}
 	}
 	return out, nil
+}
+
+func billedPerGeneratedSecond(m ai.ModelInfo) bool {
+	return m.PromptPrice == 0 && m.CompletionPrice > 0
 }

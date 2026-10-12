@@ -13,6 +13,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"vozko/domain/media"
+	"vozko/domain/studio"
 )
 
 type UploadMediaUseCase struct {
@@ -31,13 +32,13 @@ func NewUploadMediaUseCase(
 }
 
 func (uc *UploadMediaUseCase) UploadMedia(workspaceID string, mediaData []byte, mediaName string, mediaType media.MediaType, description string) (media.Media, error) {
-	if !validUploadType(mediaType) {
-		return media.Media{}, fmt.Errorf("invalid media type: %s", mediaType)
-	}
-
 	const maxFileSizeBytes = 25 * 1024 * 1024
 	if len(mediaData) > maxFileSizeBytes {
 		return media.Media{}, fmt.Errorf("file too large: maximum allowed size is 25 MB")
+	}
+
+	if err := uploadIssue(mediaName, mediaData, mediaType); err != nil {
+		return media.Media{}, err
 	}
 
 	if mediaType == media.MediaTypeProductImage {
@@ -111,6 +112,32 @@ func (uc *UploadMediaUseCase) createPreviewMedia(mediaData []byte, mediaName str
 	}
 
 	return buf.Bytes(), previewImageName
+}
+
+func uploadIssue(mediaName string, mediaData []byte, mediaType media.MediaType) error {
+	switch mediaType {
+	case media.MediaTypeLut:
+		return lutIssue(mediaName, mediaData)
+	case media.MediaTypeLottie:
+		if err := studio.ParseLottie(mediaName, mediaData); err != nil {
+			return fmt.Errorf("invalid Lottie file: %w", err)
+		}
+		return nil
+	}
+	if !validUploadType(mediaType) {
+		return fmt.Errorf("invalid media type: %s", mediaType)
+	}
+	return nil
+}
+
+func lutIssue(mediaName string, mediaData []byte) error {
+	if strings.ToLower(filepath.Ext(mediaName)) != studio.CubeFileExt {
+		return fmt.Errorf("invalid media type: a LUT must be a %s file", studio.CubeFileExt)
+	}
+	if _, err := studio.ParseCube(mediaData); err != nil {
+		return fmt.Errorf("invalid LUT file: %w", err)
+	}
+	return nil
 }
 
 func (uc *UploadMediaUseCase) isImageFile(mediaName string) bool {

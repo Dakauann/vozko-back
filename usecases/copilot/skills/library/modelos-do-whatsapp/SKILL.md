@@ -1,5 +1,6 @@
 ---
 name: modelos-do-whatsapp
+surface: panel
 description: Como escrever modelos do WhatsApp oficial que a Meta aprova na categoria certa (marketing, utilidade, autenticação), variáveis, motivos de reprovação e custo; carregue antes de criar um modelo.
 ---
 

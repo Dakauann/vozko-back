@@ -170,6 +170,29 @@ func TestConvertTools_ArraysInsideArrayItemsKeepTheirItems(t *testing.T) {
 	}
 }
 
+func TestConvertTools_ListsOfListsKeepTheirItems(t *testing.T) {
+	def := tools.Definition{
+		Name: "studio_edit_image",
+		Parameters: map[string]tools.Parameter{
+			"operations": {Type: "array", Description: "ops", Items: &tools.ParameterItems{
+				Type: "object",
+				Properties: map[string]tools.Parameter{
+					"table_rows": {Type: "array", Description: "linhas", Items: &tools.ParameterItems{Type: "array", Items: &tools.ParameterItems{Type: "string"}}},
+				},
+			}},
+		},
+	}
+	schema := convertTools([]tools.Definition{def})[0].Function.Parameters.(map[string]interface{})
+	rows := schema["properties"].(map[string]interface{})["operations"].(map[string]interface{})["items"].(map[string]interface{})["properties"].(map[string]interface{})["table_rows"].(map[string]interface{})
+	inner := rows["items"].(map[string]interface{})
+	if inner["type"] != "array" || inner["items"].(map[string]interface{})["type"] != "string" {
+		t.Fatalf("table_rows = %+v", rows)
+	}
+	if issues := tools.SchemaIssues(schema); len(issues) > 0 {
+		t.Fatalf("issues: %v", issues)
+	}
+}
+
 func TestConvertTools_ObjectsAndEnumListsInsideArrayItems(t *testing.T) {
 	def := tools.Definition{
 		Name: "studio_edit_image",

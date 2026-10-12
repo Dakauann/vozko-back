@@ -41,24 +41,30 @@ const (
 	StatusError  Status = "error"
 )
 
-const SubjectSkill = "skill"
+const (
+	SubjectSkill      = "skill"
+	SubjectStudioLook = "studio_look"
+)
 
 type Subject struct {
-	Kind  string `json:"kind"`
-	Key   string `json:"key"`
-	Label string `json:"label"`
+	Kind   string        `json:"kind"`
+	Key    string        `json:"key"`
+	Label  string        `json:"label"`
+	Target *ScreenTarget `json:"target,omitempty"`
 }
 
 type Result struct {
-	Status  Status
-	Data    interface{}
-	Message string
-	Chart   *Chart
-	Card    *ActionCard
-	Media   *Media
-	Images  []string
-	Subject *Subject
-	EndTurn bool
+	Status       Status
+	Data         interface{}
+	Message      string
+	Chart        *Chart
+	Card         *ActionCard
+	Media        *Media
+	Images       []string
+	Subject      *Subject
+	EndTurn      bool
+	Opening      *ProjectOpening
+	AwaitsScreen *View
 }
 
 type MediaKind string
@@ -91,4 +97,15 @@ type Tool interface {
 	Definition() tools.Definition
 	Meta() Meta
 	Execute(ctx context.Context, cc Context, args map[string]interface{}) Result
+}
+
+type ViewDefined interface {
+	DefinitionOn(view View) tools.Definition
+}
+
+func DefinitionOn(tool Tool, view View) tools.Definition {
+	if defined, ok := tool.(ViewDefined); ok {
+		return defined.DefinitionOn(view)
+	}
+	return tool.Definition()
 }

@@ -1,0 +1,101 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#000000" },
+  "durationMs": 4000,
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "first",
+          "type": "image",
+          "assetId": "m-1",
+          "startMs": 0,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+          "transitionIn": { "kind": "blockDissolve", "durationMs": 500, "easing": "linear", "size": 0.05, "softness": 0.3 }
+        },
+        {
+          "id": "second",
+          "type": "image",
+          "assetId": "m-2",
+          "startMs": 2000,
+          "durationMs": 2000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+          "transitionOut": { "kind": "gradientWipe", "durationMs": 700, "easing": "easeInOut", "mapAssetId": "m-3", "softness": 0.25, "reverse": true }
+        }
+      ],
+      "transitions": [
+        {
+          "id": "cut",
+          "fromClipId": "first",
+          "toClipId": "second",
+          "kind": "venetianBlinds",
+          "durationMs": 600,
+          "alignment": "center",
+          "easing": "linear",
+          "angle": 90,
+          "size": 0.1,
+          "softness": 0.2
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "logo",
+          "type": "overlay",
+          "startMs": 500,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 300,
+          "transform": { "x": 0.5, "y": 0.2, "w": 0.4, "h": 0.1, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "logo-shape",
+            "type": "shape",
+            "shape": "rect",
+            "fill": "#ffcc00",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+          },
+          "transitionIn": { "kind": "radialWipe", "durationMs": 800, "easing": "easeOut", "angle": 180, "originX": 0.5, "originY": 1, "softness": 0.1 }
+        },
+        {
+          "id": "badge",
+          "type": "overlay",
+          "startMs": 3500,
+          "durationMs": 500,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.8, "y": 0.8, "w": 0.2, "h": 0.1, "rotation": 15, "opacity": 1 },
+          "layer": {
+            "id": "badge-shape",
+            "type": "shape",
+            "shape": "ellipse",
+            "fill": "#ffffff",
+            "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+          },
+          "transitionIn": { "kind": "slide", "durationMs": 200, "easing": "backOut", "direction": "up" },
+          "transitionOut": { "kind": "gradientWipe", "durationMs": 300, "easing": "linear", "map": "clouds", "angle": 0, "originX": 0.5, "originY": 0.5, "softness": 0.5, "reverse": false }
+        }
+      ]
+    }
+  ]
+}

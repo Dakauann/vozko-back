@@ -71,6 +71,8 @@ func parse(raw string) (copilot.Skill, error) {
 			skill.Name = strings.TrimSpace(value)
 		case "description":
 			skill.Description = strings.TrimSpace(value)
+		case "surface":
+			skill.Surface = copilot.SkillSurface(strings.TrimSpace(value))
 		}
 	}
 	skill.Body = strings.TrimSpace(body)

@@ -3,6 +3,7 @@ package copilot_usecase
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,10 @@ type scriptAI struct {
 	idx    int
 	inputs []ai.GenerateInput
 	models []ai.ModelInfo
+	faults []error
+	drafts []string
+
+	catalogErr error
 }
 
 func (s *scriptAI) Generate(ctx context.Context, in ai.GenerateInput) (*ai.GenerateOutput, error) {
@@ -38,9 +43,24 @@ func (s *scriptAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-c
 	if i < len(s.texts) {
 		txt = s.texts[i]
 	}
+	var fault error
+	var draft string
+	if i < len(s.faults) {
+		fault = s.faults[i]
+	}
+	if i < len(s.drafts) {
+		draft = s.drafts[i]
+	}
 	ch := make(chan ai.StreamEvent, 4)
 	go func() {
 		defer close(ch)
+		if draft != "" {
+			ch <- ai.StreamEvent{Type: ai.StreamEventReasoning, Token: draft}
+		}
+		if fault != nil {
+			ch <- ai.StreamEvent{Type: ai.StreamEventError, Error: fault}
+			return
+		}
 		if txt != "" {
 			ch <- ai.StreamEvent{Type: ai.StreamEventToken, Token: txt}
 		}
@@ -50,7 +70,17 @@ func (s *scriptAI) GenerateStream(ctx context.Context, in ai.GenerateInput) (<-c
 }
 func (s *scriptAI) GetAvaibleModels(ctx context.Context) ([]string, error) { return nil, nil }
 func (s *scriptAI) GetModelsWithPricing(ctx context.Context) ([]ai.ModelInfo, error) {
+	if s.catalogErr != nil {
+		return nil, s.catalogErr
+	}
+	if s.models == nil {
+		return []ai.ModelInfo{toolModel("m"), toolModel(defaultCopilotModel)}, nil
+	}
 	return s.models, nil
+}
+
+func toolModel(id string, more ...ai.ModelCapability) ai.ModelInfo {
+	return ai.ModelInfo{ID: id, Capabilities: append([]ai.ModelCapability{ai.CapabilityTools}, more...)}
 }
 
 type fakeAccess struct {
@@ -136,7 +166,7 @@ func TestDriver_ReadExecutesAndScopes(t *testing.T) {
 		turns: [][]ai.ToolCall{{call("read_x", map[string]interface{}{"q": "hi"})}, {}},
 		texts: []string{"", "pronto"},
 	}}
-	out := e.Run(context.Background(), (&capture{}).emit, drv, DefaultConfig(ownerCtx, ai.ModelInfo{}, 0), &agentloop.Session{}, "leia")
+	out := e.Run(context.Background(), (&capture{}).emit, drv, DefaultConfig(ownerCtx, ai.ModelInfo{}), &agentloop.Session{}, "leia")
 	if out.Kind != agentloop.OutcomeIdle {
 		t.Fatalf("expected idle after a read + reply, got %+v", out)
 	}
@@ -153,7 +183,7 @@ func TestDriver_MutationPausesForApproval(t *testing.T) {
 	drv := driverWith(&fakeAccess{}, wt)
 	e := agentloop.Engine{AI: &scriptAI{turns: [][]ai.ToolCall{{call("write_x", map[string]interface{}{"a": 1})}}}}
 	cp := &capture{}
-	out := e.Run(context.Background(), cp.emit, drv, DefaultConfig(ownerCtx, ai.ModelInfo{}, 0), &agentloop.Session{}, "crie")
+	out := e.Run(context.Background(), cp.emit, drv, DefaultConfig(ownerCtx, ai.ModelInfo{}), &agentloop.Session{}, "crie")
 	if out.Kind != agentloop.OutcomePaused {
 		t.Fatalf("expected paused for approval, got %+v", out)
 	}
@@ -166,6 +196,21 @@ func TestDriver_MutationPausesForApproval(t *testing.T) {
 	}
 	if !cp.has("tool_proposal") {
 		t.Fatal("a proposal event must be emitted")
+	}
+}
+
+func TestEveryStepIsSignedByItsToolAndArguments(t *testing.T) {
+	drv := driverWith(&fakeAccess{}, &fakeTool{name: "read_x", meta: readMeta})
+	sign := func(c ai.ToolCall) string { return drv.Dispatch(context.Background(), c, (&capture{}).emit).Signature }
+	first := sign(call("read_x", map[string]interface{}{"id": "a", "page": 1}))
+	if first == "" || first != sign(call("read_x", map[string]interface{}{"page": 1, "id": "a"})) {
+		t.Fatalf("identical calls must share a signature, got %q", first)
+	}
+	if first == sign(call("read_x", map[string]interface{}{"id": "b", "page": 1})) {
+		t.Fatal("different arguments are progress, not repetition")
+	}
+	if sign(call("nope", nil)) == "" {
+		t.Fatal("a refused call must be signed too, so a model stuck on it is caught")
 	}
 }
 
@@ -255,19 +300,19 @@ func TestDriver_MintID(t *testing.T) {
 	}
 }
 
-func TestAKnownModelIsLimitedByItsOwnWindowAndByMoney(t *testing.T) {
+func TestAKnownModelRunsUntilDoneWithinItsOwnWindow(t *testing.T) {
 	model := ai.ModelInfo{ID: "m", ContextLength: 400_000, PromptPrice: 1.25, CompletionPrice: 10}
-	c := DefaultConfig(ownerCtx, model, 2_000_000)
-	if c.WorkspaceID != "ws1" || c.FinishToolName != "finish" || c.MaxIterations != answerMaxIterations {
+	c := DefaultConfig(ownerCtx, model)
+	if c.WorkspaceID != "ws1" || c.FinishToolName != "finish" || !c.IterateUntilDone {
 		t.Fatalf("unexpected config: %+v", c)
 	}
-	if c.ModelLimits != model || c.CostCeilingMicros != 2_000_000 || c.SessionTokenBudget != 0 || c.GraceInstruction == "" {
-		t.Fatalf("a known model must be bounded by its window and the cost ceiling: %+v", c)
+	if !reflect.DeepEqual(c.ModelLimits, model) || c.CostCeilingMicros != 0 || c.SessionTokenBudget != 0 {
+		t.Fatalf("a known model is bounded by its window and the funds guard only: %+v", c)
 	}
 }
 
 func TestAnUnknownModelKeepsTheTokenBudget(t *testing.T) {
-	c := DefaultConfig(ownerCtx, ai.ModelInfo{ID: "m"}, 2_000_000)
+	c := DefaultConfig(ownerCtx, ai.ModelInfo{ID: "m"})
 	if c.SessionTokenBudget != AnswerTokenBudget || c.CostCeilingMicros != 0 || c.GraceInstruction == "" {
 		t.Fatalf("without a cataloged window and price the token budget must stay: %+v", c)
 	}
@@ -639,5 +684,22 @@ func TestDriver_EveryStepOfAProposalKnowsWhichProposalItIs(t *testing.T) {
 	}
 	if strings.Join(wt.seen, ",") != "validate:act-1" || wt.gotCC.ProposalID != "act-1" {
 		t.Fatalf("the approval saw %v and ran with %q", wt.seen, wt.gotCC.ProposalID)
+	}
+}
+
+type viewDefinedTool struct{ *fakeTool }
+
+func (v viewDefinedTool) DefinitionOn(view copilot.View) tools.Definition {
+	return tools.Definition{Name: v.name, Description: "seen on " + string(view.Surface)}
+}
+
+func (v viewDefinedTool) OfferedOn(copilot.View) bool { return true }
+
+func TestTheDriverSendsTheDefinitionMadeForTheCurrentView(t *testing.T) {
+	cc := ownerCtx
+	cc.View = copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "p1", ProjectKind: copilot.StudioImage}
+	drv := NewDriver(cc, "m", NewRegistry(viewDefinedTool{&fakeTool{name: "load_skill", meta: readMeta}}), &fakeAccess{}, openFunds{}, nil)
+	if defs := drv.Tools(); len(defs) != 1 || defs[0].Description != "seen on studio" {
+		t.Fatalf("tools = %+v", defs)
 	}
 }

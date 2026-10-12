@@ -1,0 +1,289 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "story",
+    "background": "#000000"
+  },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-counters",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-money",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.3,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-money",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "0",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 700,
+            "align": "center",
+            "lineHeight": 1.2,
+            "fill": "#ffffff"
+          },
+          "counter": {
+            "value": 0,
+            "decimals": 1,
+            "locale": "pt-BR",
+            "grouping": true,
+            "prefix": "R$ ",
+            "suffix": " mil"
+          },
+          "keyframes": {
+            "counter": [
+              {
+                "atMs": 0,
+                "value": 0,
+                "easing": "easeOut"
+              },
+              {
+                "atMs": 2000,
+                "value": 12500.5,
+                "easing": "linear"
+              }
+            ]
+          },
+          "textIn": {
+            "unit": "char",
+            "style": "fade",
+            "durationMs": 300,
+            "staggerMs": 35,
+            "easing": "easeOut"
+          }
+        }
+      ]
+    },
+    {
+      "id": "t-paths",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-arc",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 1000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-arc",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "Oferta de hoje",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 700,
+            "align": "center",
+            "lineHeight": 1.2,
+            "fill": "#ffffff"
+          },
+          "textPath": {
+            "shape": "arc",
+            "bend": 0.6,
+            "offset": 0.5,
+            "align": "center"
+          },
+          "keyframes": {
+            "pathOffset": [
+              {
+                "atMs": 0,
+                "value": -0.5,
+                "easing": "easeInOut"
+              },
+              {
+                "atMs": 900,
+                "value": 1.5,
+                "easing": "linear"
+              }
+            ]
+          }
+        },
+        {
+          "id": "c-ring",
+          "type": "overlay",
+          "startMs": 1000,
+          "durationMs": 1000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.6,
+            "h": 0.34,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-ring",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "Frete grátis para todo o Brasil",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 700,
+            "align": "center",
+            "lineHeight": 1.2,
+            "fill": "#ffffff"
+          },
+          "textPath": {
+            "shape": "circle",
+            "offset": 0.25,
+            "align": "end",
+            "reverse": true
+          }
+        },
+        {
+          "id": "c-custom",
+          "type": "overlay",
+          "startMs": 2000,
+          "durationMs": 1000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-custom",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "Novidade",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 700,
+            "align": "left",
+            "lineHeight": 1.2,
+            "fill": "#ffffff"
+          },
+          "textPath": {
+            "shape": "custom",
+            "path": "M0 0.8 C0.3 0.1 0.7 0.1 1 0.8",
+            "offset": 0,
+            "align": "start",
+            "upright": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "t-both",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-both",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.75,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-both",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "0",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 700,
+            "align": "center",
+            "lineHeight": 1.2,
+            "fill": "#ffffff"
+          },
+          "counter": {
+            "value": 98,
+            "decimals": 0,
+            "locale": "en-US",
+            "grouping": false,
+            "suffix": "%"
+          },
+          "textPath": {
+            "shape": "wave",
+            "bend": -0.4,
+            "offset": 0.5,
+            "align": "center"
+          }
+        }
+      ]
+    }
+  ]
+}

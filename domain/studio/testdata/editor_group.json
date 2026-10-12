@@ -1,0 +1,260 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#000000" },
+  "durationMs": 6000,
+  "tracks": [
+    {
+      "id": "base",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "backdrop",
+          "type": "image",
+          "assetId": "m-backdrop",
+          "startMs": 0,
+          "durationMs": 6000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "fit": "cover",
+          "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+        }
+      ]
+    },
+    {
+      "id": "titles",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "intro",
+          "type": "group",
+          "name": "Abertura",
+          "startMs": 500,
+          "durationMs": 4000,
+          "trimInMs": 250,
+          "volume": 0.8,
+          "fadeInMs": 0,
+          "fadeOutMs": 300,
+          "speed": 1.25,
+          "transform": { "x": 0.45, "y": 0.55, "w": 0.8, "h": 0.8, "rotation": 5, "opacity": 0.9 },
+          "keyframes": {
+            "x": [
+              { "atMs": 0, "value": 0.4, "easing": "easeOut" },
+              { "atMs": 1500, "value": 0.45, "easing": "linear" }
+            ]
+          },
+          "blur": 2,
+          "color": { "exposure": 0.2, "saturation": 10 },
+          "masks": [
+            { "id": "spot", "shape": "ellipse", "mode": "add", "x": 0.5, "y": 0.5, "w": 0.9, "h": 0.9, "rotation": 0, "feather": 0.1, "expansion": 0, "opacity": 1 }
+          ],
+          "blendMode": "screen",
+          "vfx": [{ "id": "edge", "kind": "vignette", "seed": 7 }],
+          "transitionIn": { "kind": "wipe", "durationMs": 400, "easing": "easeOut", "angle": 90 },
+          "parentId": "rig",
+          "tracks": [
+            {
+              "id": "inner-pictures",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "shot-a",
+                  "type": "video",
+                  "assetId": "m-shot-a",
+                  "startMs": 0,
+                  "durationMs": 2000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "fit": "cover",
+                  "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+                },
+                {
+                  "id": "shot-b",
+                  "type": "image",
+                  "assetId": "m-shot-b",
+                  "startMs": 2000,
+                  "durationMs": 3000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "fit": "contain",
+                  "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 },
+                  "masks": [
+                    { "id": "frame", "shape": "rectangle", "mode": "add", "x": 0.5, "y": 0.5, "w": 0.8, "h": 0.8, "rotation": 0, "roundness": 0.2, "feather": 0, "expansion": 0, "opacity": 1 }
+                  ]
+                }
+              ],
+              "transitions": [
+                { "id": "inner-cut", "fromClipId": "shot-a", "toClipId": "shot-b", "kind": "dissolve", "durationMs": 400, "alignment": "center", "easing": "linear" }
+              ]
+            },
+            {
+              "id": "inner-words",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "inner-rig",
+                  "type": "null",
+                  "startMs": 0,
+                  "durationMs": 5000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": { "x": 0.5, "y": 0.7, "w": 0.1, "h": 0.1, "rotation": 0, "opacity": 1 },
+                  "keyframes": {
+                    "rotation": [
+                      { "atMs": 0, "value": 0, "easing": "linear" },
+                      { "atMs": 5000, "value": 30, "easing": "linear" }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "inner-titles",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "caption",
+                  "type": "overlay",
+                  "startMs": 300,
+                  "durationMs": 2500,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": { "x": 0.5, "y": 1.1, "w": 0.7, "h": 0.12, "rotation": 0, "opacity": 1 },
+                  "layer": {
+                    "id": "caption-text",
+                    "type": "text",
+                    "text": "Novidade",
+                    "fontId": "inter",
+                    "fontSize": 0.06,
+                    "fill": "#ffffff",
+                    "align": "center",
+                    "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+                  },
+                  "parentId": "inner-rig"
+                },
+                {
+                  "id": "logo",
+                  "type": "group",
+                  "startMs": 3000,
+                  "durationMs": 2000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": { "x": 0.5, "y": 0.3, "w": 0.5, "h": 0.5, "rotation": 0, "opacity": 1 },
+                  "matte": true,
+                  "matteChannel": "luma",
+                  "tracks": [
+                    {
+                      "id": "logo-pieces",
+                      "kind": "visual",
+                      "clips": [
+                        {
+                          "id": "logo-mark",
+                          "type": "image",
+                          "assetId": "m-logo",
+                          "startMs": 0,
+                          "durationMs": 2000,
+                          "trimInMs": 0,
+                          "volume": 1,
+                          "fadeInMs": 0,
+                          "fadeOutMs": 0,
+                          "fit": "contain",
+                          "transform": { "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.6, "rotation": 0, "opacity": 1 }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "inner-grain",
+              "kind": "visual",
+              "clips": [
+                {
+                  "id": "inner-fx",
+                  "type": "effect",
+                  "startMs": 0,
+                  "durationMs": 5000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 0.6 },
+                  "vfx": [{ "id": "inner-grain-vfx", "kind": "grain", "seed": 3 }]
+                }
+              ]
+            },
+            {
+              "id": "inner-voice",
+              "kind": "audio",
+              "clips": [
+                {
+                  "id": "voice",
+                  "type": "audio",
+                  "assetId": "m-voice",
+                  "startMs": 0,
+                  "durationMs": 4000,
+                  "trimInMs": 0,
+                  "volume": 1,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 0,
+                  "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+                }
+              ]
+            },
+            {
+              "id": "inner-music",
+              "kind": "audio",
+              "gainDb": -6,
+              "ducking": { "triggerTrackIds": ["inner-voice"], "reduceDb": 12, "attackMs": 100, "releaseMs": 300, "holdMs": 0, "sensitivity": 0.5 },
+              "clips": [
+                {
+                  "id": "music",
+                  "type": "audio",
+                  "assetId": "m-music",
+                  "startMs": 0,
+                  "durationMs": 5000,
+                  "trimInMs": 0,
+                  "volume": 0.7,
+                  "fadeInMs": 0,
+                  "fadeOutMs": 500,
+                  "transform": { "x": 0.5, "y": 0.5, "w": 1, "h": 1, "rotation": 0, "opacity": 1 }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "rig",
+          "type": "null",
+          "startMs": 0,
+          "durationMs": 6000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.1, "h": 0.1, "rotation": 0, "opacity": 1 }
+        }
+      ]
+    }
+  ],
+  "markers": [{ "id": "beat", "atMs": 1500, "label": "batida" }]
+}

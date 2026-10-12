@@ -2,11 +2,13 @@ package aichat_repository
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
 
 	"vozko/domain/aichat"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -16,6 +18,35 @@ type threadRepository struct {
 
 func NewThreadRepository(db *gorm.DB) aichat.ThreadRepository {
 	return &threadRepository{db: db}
+}
+
+func NewThreadProjects(db *gorm.DB) aichat.ThreadProjects {
+	return &threadRepository{db: db}
+}
+
+func NewProjectAdopter(db *gorm.DB) aichat.ProjectAdopter {
+	return &threadRepository{db: db}
+}
+
+func (r *threadRepository) AdoptProject(threadID, projectID string) error {
+	res := r.db.Model(&schema.AIChatThread{}).Where("id = ?", threadID).Update("project_id", projectID)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return aichat.ErrThreadNotFound
+	}
+	return nil
+}
+
+func (r *threadRepository) BindProject(threadID, projectID string) (bool, error) {
+	res := r.db.Model(&schema.AIChatThread{}).
+		Where("id = ? AND (project_id IS NULL OR project_id = ?)", threadID, projectID).
+		Update("project_id", projectID)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 func (r *threadRepository) Create(thread *aichat.Thread) error {
@@ -43,6 +74,9 @@ func (r *threadRepository) GetByID(id string) (*aichat.Thread, error) {
 func (r *threadRepository) ListByUser(input aichat.ListThreadsInput) ([]*aichat.Thread, int64, error) {
 	q := r.db.Model(&schema.AIChatThread{}).
 		Where("workspace_id = ? AND user_id = ?", input.WorkspaceID, input.UserID)
+	if search := strings.TrimSpace(input.Query); search != "" {
+		q = q.Where(`title ILIKE ? ESCAPE '\'`, database.LikeContains(search))
+	}
 
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -71,10 +105,11 @@ func (r *threadRepository) Rename(id, title string) error {
 		Update("title", title).Error
 }
 
-func (r *threadRepository) Touch(id string, lastMessageAt time.Time, model string) error {
+func (r *threadRepository) Touch(id string, lastMessageAt time.Time, model, reasoningLevel string) error {
 	updates := map[string]any{"last_message_at": lastMessageAt}
 	if model != "" {
 		updates["model"] = model
+		updates["reasoning_level"] = reasoningLevel
 	}
 	return r.db.Model(&schema.AIChatThread{}).
 		Where("id = ?", id).
@@ -87,26 +122,44 @@ func (r *threadRepository) Delete(id string) error {
 
 func toThreadDomain(rec *schema.AIChatThread) *aichat.Thread {
 	return &aichat.Thread{
-		ID:            rec.ID,
-		WorkspaceID:   rec.WorkspaceID,
-		UserID:        rec.UserID,
-		Title:         rec.Title,
-		Model:         rec.Model,
-		LastMessageAt: rec.LastMessageAt,
-		CostTracked:   rec.CostTracked,
-		CreatedAt:     rec.CreatedAt,
-		UpdatedAt:     rec.UpdatedAt,
+		ID:             rec.ID,
+		WorkspaceID:    rec.WorkspaceID,
+		UserID:         rec.UserID,
+		Title:          rec.Title,
+		Model:          rec.Model,
+		ReasoningLevel: rec.ReasoningLevel,
+		ProjectID:      projectOf(rec.ProjectID),
+		LastMessageAt:  rec.LastMessageAt,
+		CostTracked:    rec.CostTracked,
+		CreatedAt:      rec.CreatedAt,
+		UpdatedAt:      rec.UpdatedAt,
 	}
+}
+
+func projectOf(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
+}
+
+func projectColumn(id string) *string {
+	if id == "" {
+		return nil
+	}
+	return &id
 }
 
 func toThreadSchema(t *aichat.Thread) *schema.AIChatThread {
 	return &schema.AIChatThread{
-		ID:            t.ID,
-		WorkspaceID:   t.WorkspaceID,
-		UserID:        t.UserID,
-		Title:         t.Title,
-		Model:         t.Model,
-		LastMessageAt: t.LastMessageAt,
-		CostTracked:   t.CostTracked,
+		ID:             t.ID,
+		WorkspaceID:    t.WorkspaceID,
+		UserID:         t.UserID,
+		Title:          t.Title,
+		Model:          t.Model,
+		ReasoningLevel: t.ReasoningLevel,
+		ProjectID:      projectColumn(t.ProjectID),
+		LastMessageAt:  t.LastMessageAt,
+		CostTracked:    t.CostTracked,
 	}
 }

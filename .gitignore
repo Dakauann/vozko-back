@@ -19,3 +19,4 @@ docker/asterisk/
 # Compiled test binaries. Windows App Control blocks executables run from the
 # temp directory, so `go test` needs `-c -o .testbin/` to run here at all.
 .testbin/
+elodesigneval.exe

@@ -1,18 +1,25 @@
 package workflow_usecase
 
 import (
+	"context"
+
 	"vozko/domain/workflow"
 )
 
 type updateWorkflowUseCase struct {
-	repo workflow.WorkflowRepository
+	repo         workflow.WorkflowRepository
+	modelCatalog ModelCatalog
 }
 
 func NewUpdateWorkflowUseCase(repo workflow.WorkflowRepository) workflow.UpdateWorkflowUseCase {
 	return &updateWorkflowUseCase{repo: repo}
 }
 
-func (uc *updateWorkflowUseCase) Execute(workflowID string, input *workflow.Workflow) (*workflow.Workflow, error) {
+func (uc *updateWorkflowUseCase) SetModelCatalog(catalog ModelCatalog) {
+	uc.modelCatalog = catalog
+}
+
+func (uc *updateWorkflowUseCase) Execute(ctx context.Context, workflowID string, input *workflow.Workflow) (*workflow.Workflow, error) {
 	if workflowID == "" {
 		return nil, workflow.ErrWorkflowNotFound
 	}
@@ -44,6 +51,9 @@ func (uc *updateWorkflowUseCase) Execute(workflowID string, input *workflow.Work
 
 	existing.Normalize()
 	if err := existing.Validate(); err != nil {
+		return nil, err
+	}
+	if err := checkGraphReasoning(ctx, uc.modelCatalog, &existing.Graph); err != nil {
 		return nil, err
 	}
 

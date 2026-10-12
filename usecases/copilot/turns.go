@@ -24,6 +24,8 @@ func NewTurnRegistry(limits copilot.TurnLimits) *TurnRegistry {
 	return &TurnRegistry{limits: limits, turns: map[string]*Turn{}}
 }
 
+type TurnFunc func(ctx context.Context, emit agentloop.Emit) error
+
 type pendingCommand struct {
 	id    string
 	event copilot.TurnEvent
@@ -43,6 +45,8 @@ type Turn struct {
 	nextID      int
 	finished    bool
 	orphan      *time.Timer
+	opened      *copilot.View
+	moved       *copilot.View
 }
 
 func (r *TurnRegistry) Begin(parent context.Context, threadID, ownerID string) (*Turn, error) {
@@ -113,6 +117,66 @@ func (r *TurnRegistry) Settle(threadID, commandID string) {
 	}
 }
 
+func (r *TurnRegistry) current(threadID string) (*Turn, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	turn, ok := r.turns[threadID]
+	return turn, ok
+}
+
+func (r *TurnRegistry) Offer(threadID, ownerID string, view copilot.View) (bool, error) {
+	turn, ok := r.current(threadID)
+	if !ok {
+		return false, nil
+	}
+	if turn.ownerID != ownerID {
+		return false, copilot.ErrTurnForbidden
+	}
+	turn.mu.Lock()
+	defer turn.mu.Unlock()
+	if turn.finished {
+		return false, nil
+	}
+	turn.opened = &view
+	return true, nil
+}
+
+func (r *TurnRegistry) TakeOpened(threadID string) (copilot.View, bool) {
+	turn, ok := r.current(threadID)
+	if !ok {
+		return copilot.View{}, false
+	}
+	turn.mu.Lock()
+	defer turn.mu.Unlock()
+	return turn.takeOpenedLocked()
+}
+
+func (r *TurnRegistry) Moved(threadID string, view copilot.View) {
+	turn, ok := r.current(threadID)
+	if !ok {
+		return
+	}
+	turn.mu.Lock()
+	defer turn.mu.Unlock()
+	turn.moved = &view
+}
+
+func (t *Turn) takeOpenedLocked() (copilot.View, bool) {
+	if t.opened == nil {
+		return copilot.View{}, false
+	}
+	view := *t.opened
+	t.opened = nil
+	return view, true
+}
+
+func (t *Turn) screenLocked(fallback copilot.View) copilot.View {
+	if t.moved != nil {
+		return *t.moved
+	}
+	return fallback
+}
+
 func (r *TurnRegistry) forget(turn *Turn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -132,20 +196,29 @@ func (t *Turn) running() bool {
 }
 
 func (t *Turn) Emit(eventType string, payload interface{}) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.emitLocked(eventType, payload)
+}
+
+func (t *Turn) emitLocked(eventType string, payload interface{}) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("[copilot] dropped unencodable %s event: %v", eventType, err)
 		return
 	}
 	event := copilot.TurnEvent{Type: eventType, Payload: raw}
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.finished {
 		return
 	}
-	if cmd, ok := payload.(copilot.ScreenCommand); ok && eventType == EventScreenCommand {
+	cmd, isCommand := payload.(copilot.ScreenCommand)
+	switch {
+	case isCommand && eventType == EventScreenCommand:
 		t.pending = append(t.pending, pendingCommand{id: cmd.ID, event: event})
-	} else {
+	case eventType == EventDelivered:
+		t.log = copilot.NewTurnLog(t.registry.limits)
+		t.log.Append(eventType, raw)
+	default:
 		t.log.Append(eventType, raw)
 	}
 	for id, ch := range t.subscribers {
@@ -221,19 +294,73 @@ func (t *Turn) settle(commandID string) {
 	t.pending = kept
 }
 
-func (t *Turn) Run(run func(ctx context.Context, emit agentloop.Emit) error) {
+func (t *Turn) Run(run TurnFunc) {
+	t.start(run, nil)
+}
+
+func (t *Turn) start(run TurnFunc, next func() TurnFunc) {
 	go func() {
 		defer t.finish()
-		defer func() {
-			if p := recover(); p != nil {
-				log.Printf("[copilot] answer on thread %s panicked: %v", t.threadID, p)
-				t.Emit("error", map[string]interface{}{"error": msgTurnCrashed})
+		for run != nil {
+			if !t.runOnce(run) {
+				next = nil
 			}
-		}()
-		if err := run(t.ctx, t.Emit); err != nil {
-			t.Emit("error", map[string]interface{}{"error": err.Error()})
+			run = t.continueWith(next)
 		}
 	}()
+}
+
+func (t *Turn) runOnce(run TurnFunc) (ok bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("[copilot] answer on thread %s panicked: %v", t.threadID, p)
+			t.Emit("error", map[string]interface{}{"error": msgTurnCrashed})
+			ok = false
+		}
+	}()
+	if err := run(t.ctx, t.Emit); err != nil {
+		t.Emit("error", map[string]interface{}{"error": err.Error()})
+		return false
+	}
+	return true
+}
+
+func (t *Turn) continueWith(next func() TurnFunc) TurnFunc {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if next != nil && t.ctx.Err() == nil {
+		if follow := next(); follow != nil {
+			return follow
+		}
+	}
+	t.finished = true
+	return nil
+}
+
+func (r *TurnRegistry) Hold(threadID, ownerID string, waiting func() (bool, error), add func(running *Turn) error) error {
+	r.mu.Lock()
+	if turn, ok := r.turns[threadID]; ok {
+		if turn.ownerID != ownerID {
+			r.mu.Unlock()
+			return copilot.ErrTurnForbidden
+		}
+		turn.mu.Lock()
+		if !turn.finished {
+			r.mu.Unlock()
+			defer turn.mu.Unlock()
+			return add(turn)
+		}
+		turn.mu.Unlock()
+	}
+	defer r.mu.Unlock()
+	busy, err := waiting()
+	if err != nil {
+		return err
+	}
+	if !busy {
+		return copilot.ErrTurnNotRunning
+	}
+	return add(nil)
 }
 
 func (t *Turn) finish() {

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"vozko/domain/mediagen"
 )
@@ -35,6 +36,7 @@ type AudioGenerator struct {
 	apiKey  string
 	baseURL string
 	http    *http.Client
+	unsent  []time.Duration
 	encoder AudioEncoder
 }
 
@@ -48,7 +50,7 @@ func NewAudioGenerator(cfg Config, encoder AudioEncoder) (*AudioGenerator, error
 	if err != nil {
 		return nil, err
 	}
-	return &AudioGenerator{apiKey: image.apiKey, baseURL: image.baseURL, http: image.http, encoder: encoder}, nil
+	return &AudioGenerator{apiKey: image.apiKey, baseURL: image.baseURL, http: image.http, unsent: image.unsent, encoder: encoder}, nil
 }
 
 type chatMessage struct {
@@ -168,20 +170,21 @@ func (g *AudioGenerator) stream(ctx context.Context, body audioRequest) (*stream
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, g.baseURL+"/chat/completions", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Authorization", "Bearer "+g.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
-	resp, err := g.http.Do(httpReq)
+	resp, err := send(ctx, g.http, g.unsent, func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, g.baseURL+"/chat/completions", bytes.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header.Set("Authorization", "Bearer "+g.apiKey)
+		httpReq.Header.Set("Content-Type", "application/json")
+		return httpReq, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("openroutergen: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		return nil, fmt.Errorf("%w: status %d: %s", mediagen.ErrGenerationFailed, resp.StatusCode, truncate(raw))
+		return nil, refusal(resp)
 	}
 	return readAudioStream(resp.Body)
 }

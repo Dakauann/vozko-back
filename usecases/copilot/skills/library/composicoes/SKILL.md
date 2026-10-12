@@ -1,5 +1,6 @@
 ---
 name: composicoes
+surface: studio
 description: Treze arquétipos de layout para posts, cartazes e banners (texto atrás da pessoa, divisão diagonal, janela, cartaz tipográfico, grade suíça, selo, corte sangrando, colagem, número grande, Z, foto dentro do texto, faixa de horizonte, repetição com quebra), com coordenadas para 1:1, 4:5 e 9:16; carregue ao montar o layout de uma arte.
 ---
 
@@ -11,6 +12,15 @@ Coordenadas do editor: x e y são o centro da camada, w e h o tamanho, tudo em f
 - Mesmo tamanho visual entre formatos: f(4:5) = 0.8 × f(1:1); f(9:16) = 0.5625 × f(1:1).
 - Largura de uma palavra ≈ letras × a × f × (altura ÷ largura da arte). Valores aproximados de a para caixa alta (confira na tela, são estimativas): bebas-neue 0.40, oswald 700 0.48, roboto ou lato 900 0.64, inter, open-sans, nunito ou playfair-display 900 0.66, work-sans 800 0.68, raleway 800 0.70, poppins 800 0.72, merriweather 900 0.74, montserrat 900 0.78. Minúsculas ficam perto de 0.8 disso. Exemplo: "DRIFT" em bebas-neue ocupando 0.84 da largura de uma arte quadrada pede f ≈ 0.42; em 9:16, f ≈ 0.24.
 - Zonas seguras: no 9:16, texto entre x 0.06 e 0.94 e y 0.14 e 0.65 (o palco de texto, quase quadrado). Componha o texto ali como numa peça 1:1 e deixe a imagem preencher o topo e a zona de interface embaixo. Um 1:1 mostrado na grade 3:4 do perfil perde 12.5% de cada lado: o essencial fica entre x 0.125 e 0.875. Para o resto, carregue formatos-e-zonas-seguras.
+
+## Escolha do eixo
+O centro é uma das opções, não o ponto de partida. Escolha o eixo antes do arquétipo:
+- Centrado: objeto simétrico de verdade (selo, emblema, retrato de frente), convite, luxo silencioso. Ganha vida com um acento fora do eixo: um selo girado, um dado no canto, uma letra que sangra.
+- Assimétrico: a massa grande de um lado (centro em x 0.60 a 0.75) e o texto na margem oposta (x 0.07), equilibrados por peso e não por espelho; o vazio trabalha. Cabe em quase tudo com foto boa: editorial, imóveis, saúde, corporativo.
+- Fora do eixo: o herói num terço (0.33 ou 0.67) ou caído para um canto, com a borda oposta respirando; cabe quando o assunto olha ou se move para um lado, e o espaço vai para onde ele olha.
+- Tensão diagonal: os pesos em cantos opostos (título no alto à esquerda, produto ou oferta embaixo à direita) ligados por uma inclinação, uma linha ou um olhar; esporte, promoção, lançamento (Diagonais e inclinação).
+- Quebrar a moldura: o assunto passa da borda da arte, de uma janela ou de uma faixa (corte sangrando, recorte saindo da janela, letra cortada pela borda); dá presença a comida, produto, pessoa e imóvel. Receita em formas-e-decoracao.
+Espelho perfeito (arcos concêntricos iguais, placa de letreiro centralizada) costuma ler como modelo pronto. Se o conceito pede centro, desequilibre uma coisa: um arco que se abre, uma letra que escapa, um peso maior de um lado.
 
 ## 1. Texto atrás da pessoa
 Para silhuetas fortes: pessoas, carros, produtos; eventos, esporte, moda, lançamentos. A pessoa cobre de 15% a 35% da palavra, nunca a primeira letra e nunca mais de uma letra inteira. Montagem em profundidade-e-camadas.
@@ -70,3 +80,22 @@ Para imóveis, viagem, corporativo. Foto nos 55% a 65% de cima, faixa sólida em
 
 ## 13. Repetição com quebra
 Para varejo e lançamentos. Uma grade 3 × 3 ou 4 × 4 do mesmo objeto ou palavra; uma célula muda de cor, rotação ou conteúdo. Título pequeno; o ritmo faz o trabalho. Crie as células em lote, alinhe com align_layers e distribute_layers e agrupe com group_layers.
+
+## Layouts densos (painel, cardápio, listagem, página de site)
+Muita informação pede grade antes do primeiro elemento. Com n colunas, margem m e calha g, cada coluna mede c = (1 - 2m - (n - 1) × g) ÷ n e um bloco de k colunas mede k × c + (k - 1) × g; o centro do bloco é a borda esquerda mais metade dessa largura. Em peças densas, margem de 0.04 a 0.06 e calha de 0.015 a 0.025, a mesma na horizontal e na vertical.
+- Painel de dados (16:9 ou tela): 12 colunas. Navegação numa barra lateral de 2 colunas ou numa barra de topo; uma linha de 3 ou 4 cartões de indicador (3 ou 4 colunas cada); abaixo, o gráfico principal em 8 colunas ao lado de um painel de 4 (ranking, rosca, metas); embaixo, a tabela ou a lista de detalhe na largura toda (add_chart, add_table). Hierarquia: indicador, depois gráfico, depois detalhe. No cartão de indicador o número é o maior texto, o rótulo fica pequeno acima e a variação vem com seta e cor.
+- Cardápio: 2 colunas em 4:5 ou A4, 1 em 9:16. Categoria como título com respiro acima; cada item com o nome à esquerda e o preço alinhado à direita na mesma linha de base, a descrição pequena embaixo; todos os preços numa coluna. Um ou dois pratos com foto quebram a lista.
+- Listagem (imóveis, produtos, catálogo): cartões em 2 × 2, 3 × 2 ou 2 × 3; dentro de cada cartão a mesma ordem (foto, nome, dado, preço) e fotos na mesma proporção.
+- Página de site, primeira dobra: 12 colunas. Barra de navegação de 0.06 a 0.08 de altura (logo à esquerda, de 3 a 5 links e um botão à direita); texto em 5 ou 6 colunas (título, apoio de 1 ou 2 linhas, botão principal e um secundário), imagem ou produto nas 6 ou 7 restantes, podendo sangrar ou quebrar a moldura; uma faixa de prova embaixo (logos ou números).
+- Ritmo de cartões: a mesma calha entre todos, o mesmo respiro interno (0.02 a 0.03), os mesmos cantos e a mesma sombra. set_layout com layout_gap e layout_padding segura o ritmo; um cartão que se repete vira componente (create_component, add_instance). Um cartão maior que os outros (o indicador principal, o item em destaque) quebra a monotonia sem sair da grade.
+- Densidade legível: até 3 tamanhos de texto mais os números; tudo alinhado à esquerda dentro do cartão; separe por proximidade e fundo em vez de bordas; diferencie por peso (número pesado, rótulo leve) antes de diferenciar por tamanho; um acento só para o dado que importa. Se não cabe, corte conteúdo antes de diminuir a fonte; os pisos de tamanho e contraste de design-de-imagem continuam.
+
+## Diagonais e inclinação
+Valem para qualquer arquétipo que use ângulo (divisão diagonal, faixa de velocidade, selo girado, título inclinado).
+- Uma inclinação dominante por peça. Tudo o que corre paralelo à costura usa exatamente o mesmo rotation (título, faixa, linhas de velocidade). Um segundo ângulo só quando é claramente outro, a pelo menos 15 graus do primeiro; 2 ou 3 graus de diferença parecem erro. studio_look com view guides lista os ângulos e avisa quando dois ficam quase paralelos.
+- Ângulo e energia: de 5 a 12 graus anima sem cansar; de 15 a 30 é esporte, promoção e urgência; 45 é alerta. Subindo para a direita (rotation negativo) lê como avanço e crescimento; descendo, como queda.
+- Faixa girada que sangra: numa arte quadrada, com rotation θ e altura h, a faixa precisa de w de pelo menos (1 + h × sen θ) ÷ cos θ para as pontas não aparecerem; na prática, w de 1.3 a 1.5 até 20 graus. Confira as pontas com view wireframe, que desenha o contorno real girado.
+- Texto girado: título curto aguenta até 15 graus; texto corrido, preço e dados ficam retos. Rótulo lateral a 90 ou -90 graus, com no máximo três palavras.
+- O olho corre pela diagonal: ponha o ponto de chegada (oferta, botão, logo) no fim dela, no lado mais alto ou na direção do movimento.
+- Contraponto: numa peça toda reta, um único selo ou adesivo girado de 8 a 15 graus vira o acento; numa peça diagonal, um bloco reto de informação dá descanso e leitura.
+- Profundidade na diagonal: elementos maiores perto e menores longe ao longo da mesma linha, linhas que convergem para um ponto. No vídeo, rotation_x e rotation_y inclinam um clipe em profundidade (um cartão visto de lado, um piso em perspectiva) em vez de só girá-lo no plano.

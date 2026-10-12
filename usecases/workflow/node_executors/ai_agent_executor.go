@@ -64,6 +64,20 @@ func NewAIAgentExecutor(aiSvc ai.Service, agentRepo agent.Repository, msgRepo co
 	}
 }
 
+func (e *aiAgentExecutor) generate(ctx context.Context, node *workflow.Node, input ai.GenerateInput) (*ai.GenerateOutput, error) {
+	if choice, ok := node.InlineAIModelChoice(); ok && choice.Level != "" {
+		models, err := e.aiService.GetModelsWithPricing(ctx)
+		if err != nil {
+			log.Printf("[workflow][ai_agent] model catalog unavailable, refusing reasoning level %q: %v", choice.Level, err)
+		}
+		if err := workflow.CheckNodeReasoning(node, models); err != nil {
+			return nil, err
+		}
+		input.ReasoningEffort = choice.Level
+	}
+	return e.aiService.Generate(ctx, input)
+}
+
 func (e *aiAgentExecutor) SetAIAttendance(svc WorkflowAIAttendance) {
 	if e != nil {
 		e.aiAttendance = svc
@@ -180,6 +194,7 @@ func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 			}, Description: "Modo do nó (padrão 'agent' quando vazio). 'agent': usa um agente salvo, preencha agent_id; model/instructions são ignorados. 'prompt': agente ad-hoc, preencha model e instructions; agent_id é ignorado."},
 			{Key: "agent_id", Label: "Agente", Type: "select", Placeholder: "Selecione um agente", OptionsSource: "agents"},
 			{Key: "model", Label: "Modelo", Type: "select", Placeholder: "Selecione um modelo", OptionsSource: "ai_models"},
+			{Key: workflow.ConfigKeyReasoningLevel, Label: "Nível de raciocínio", Type: "reasoning_level", Description: "Só no modo 'prompt'. Um dos níveis que o modelo oferece em reasoning.levels (find_resource ai_models ou GET /agents/options); vazio usa o padrão do modelo. Um nível que o modelo não oferece é recusado ao salvar, ao ativar e na execução."},
 			{Key: "instructions", Label: "Prompt do sistema", Type: "textarea", Placeholder: "Descreva como a IA deve se comportar..."},
 			{Key: "additional_context", Label: "Contexto adicional", Type: "textarea", Placeholder: "Ex: O CEP {{last.cep}} fica no bairro {{last.bairro}}"},
 			{Key: "context_window", Label: "Janela de contexto (mensagens)", Type: "number", Placeholder: "50"},
@@ -519,7 +534,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), aiAgentTimeout)
 	defer cancel()
 
-	output, err := e.aiService.Generate(ctxWithTimeout, ai.GenerateInput{
+	output, err := e.generate(ctxWithTimeout, ctx.Node, ai.GenerateInput{
 		WorkspaceID:       ctx.Workflow.WorkspaceID,
 		Model:             model,
 		SystemPrompt:      prompt,

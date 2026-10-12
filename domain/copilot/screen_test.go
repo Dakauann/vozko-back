@@ -38,6 +38,43 @@ func TestScreenRepliesAreDecodedStrictly(t *testing.T) {
 		"two captures":             `{"ok":true,"images":["` + jpegDataURL(10) + `","` + jpegDataURL(10) + `"]}`,
 		"capture too large":        `{"ok":true,"images":["` + jpegDataURL(MaxScreenImageBytes+1) + `"]}`,
 		"trailing data":            `{"ok":true}{"ok":false}`,
+		"a claim from the body":    `{"ok":true,"claim":"5f1c1a9e-8f7a-4c1e-9d55-3c2b8f0e6a11"}`,
+	}
+	for name, raw := range refused {
+		if _, err := DecodeScreenReply([]byte(raw)); !errors.Is(err, ErrInvalidScreenReply) {
+			t.Fatalf("%s: DecodeScreenReply() = %v, want ErrInvalidScreenReply", name, err)
+		}
+	}
+}
+
+func TestScreenRepliesNameWhatTheEditorLookedAt(t *testing.T) {
+	accepted := map[string]string{
+		"a named artboard":     `{"ok":true,"target":{"kind":"artboard","artboardId":"ab-2","n":2,"name":"Capa"}}`,
+		"an unnamed artboard":  `{"ok":true,"target":{"kind":"artboard","artboardId":"ab-2","n":2}}`,
+		"every artboard":       `{"ok":true,"target":{"kind":"artboards"}}`,
+		"a stretch of moments": `{"ok":true,"target":{"kind":"moments","fromMs":3000,"toMs":5000}}`,
+		"a single moment":      `{"ok":true,"target":{"kind":"moments","fromMs":3000,"toMs":3000}}`,
+		"a library media":      `{"ok":true,"target":{"kind":"media"}}`,
+	}
+	for name, raw := range accepted {
+		reply, err := DecodeScreenReply([]byte(raw))
+		if err != nil || reply.Target == nil {
+			t.Fatalf("%s: DecodeScreenReply() = %+v, %v", name, reply, err)
+		}
+	}
+	refused := map[string]string{
+		"an unknown kind":           `{"ok":true,"target":{"kind":"desktop"}}`,
+		"an artboard without id":    `{"ok":true,"target":{"kind":"artboard","n":1}}`,
+		"an artboard without place": `{"ok":true,"target":{"kind":"artboard","artboardId":"ab-1"}}`,
+		"a name too long":           `{"ok":true,"target":{"kind":"artboard","artboardId":"ab-1","n":1,"name":"` + strings.Repeat("a", 121) + `"}}`,
+		"a control character":       `{"ok":true,"target":{"kind":"artboard","artboardId":"ab-1","n":1,"name":"a\nb"}}`,
+		"moments without times":     `{"ok":true,"target":{"kind":"moments"}}`,
+		"moments backwards":         `{"ok":true,"target":{"kind":"moments","fromMs":5000,"toMs":3000}}`,
+		"moments past the video":    `{"ok":true,"target":{"kind":"moments","fromMs":0,"toMs":600001}}`,
+		"times on an artboard":      `{"ok":true,"target":{"kind":"artboard","artboardId":"ab-1","n":1,"fromMs":0,"toMs":10}}`,
+		"an artboard on moments":    `{"ok":true,"target":{"kind":"moments","fromMs":0,"toMs":10,"artboardId":"ab-1"}}`,
+		"a project the editor sets": `{"ok":true,"target":{"kind":"artboards","projectId":"p-9"}}`,
+		"a target on a refusal":     `{"ok":false,"error":{"code":"x","message":"y"},"target":{"kind":"artboards"}}`,
 	}
 	for name, raw := range refused {
 		if _, err := DecodeScreenReply([]byte(raw)); !errors.Is(err, ErrInvalidScreenReply) {
@@ -61,6 +98,28 @@ func TestEveryScreenCommandHasABoundedWait(t *testing.T) {
 	}
 	if ScreenCommandName("click").Known() {
 		t.Fatal("an unknown command must not be known")
+	}
+}
+
+func TestOnlyCommandsThatChangeSomethingWaitForAClaim(t *testing.T) {
+	changing := map[ScreenCommandName]bool{ScreenEdit: true, ScreenSavePreset: true, ScreenCreateProject: true}
+	for _, name := range ScreenCommandNames() {
+		if name.Commits() != changing[name] {
+			t.Fatalf("%s.Commits() = %v, want %v", name, name.Commits(), changing[name])
+		}
+	}
+}
+
+func TestAClaimNamesTheTabThatAsked(t *testing.T) {
+	claimant := "5f1c1a9e-8f7a-4c1e-9d55-3c2b8f0e6a11"
+	reply, err := ScreenClaim(claimant)
+	if err != nil || reply.Claim != claimant || !reply.OK || reply.Declined() {
+		t.Fatalf("ScreenClaim() = %+v, %v", reply, err)
+	}
+	for _, bad := range []string{"", "tab-1", strings.Repeat("a", 36)} {
+		if _, err := ScreenClaim(bad); !errors.Is(err, ErrInvalidScreenClaim) {
+			t.Fatalf("ScreenClaim(%q) = %v, want ErrInvalidScreenClaim", bad, err)
+		}
 	}
 }
 

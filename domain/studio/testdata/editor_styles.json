@@ -1,0 +1,167 @@
+{
+  "schema": "studio.image",
+  "version": 2,
+  "styles": [
+    {
+      "id": "red",
+      "kind": "color",
+      "name": "Marca/Vermelho",
+      "color": "#e4003a"
+    },
+    {
+      "id": "sunset",
+      "kind": "color",
+      "name": "Marca/Pôr do sol",
+      "description": "Degradê das campanhas de verão",
+      "gradient": {
+        "from": "#ff7a00",
+        "to": "#e4003a",
+        "angle": 90,
+        "kind": "linear"
+      }
+    },
+    {
+      "id": "h1",
+      "kind": "text",
+      "name": "Texto/Título",
+      "role": "heading",
+      "fontId": "montserrat",
+      "fontWeight": 800,
+      "fontSizePx": 72,
+      "lineHeight": 1.05,
+      "letterSpacing": -0.01
+    },
+    {
+      "id": "brand-font",
+      "kind": "text",
+      "name": "Texto/Fonte da marca",
+      "fontId": "montserrat",
+      "italic": false
+    },
+    {
+      "id": "soft",
+      "kind": "effect",
+      "name": "Sombra/Suave",
+      "shadow": {
+        "color": "#00000059",
+        "blur": 24,
+        "x": 0,
+        "y": 8
+      }
+    }
+  ],
+  "artboards": [
+    {
+      "id": "feed",
+      "x": 0,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1080,
+        "background": "#E4003A",
+        "backgroundStyleId": "red"
+      },
+      "layers": [
+        {
+          "id": "title",
+          "type": "text",
+          "text": "Promoção de outubro",
+          "fontId": "montserrat",
+          "fontWeight": 800,
+          "fontSize": 0.06666666666666667,
+          "lineHeight": 1.05,
+          "letterSpacing": -0.01,
+          "fill": "#ffffff",
+          "shadow": {
+            "color": "#00000059",
+            "blur": 24,
+            "x": 0,
+            "y": 8
+          },
+          "transform": {
+            "x": 0.5,
+            "y": 0.3,
+            "w": 0.8,
+            "h": 0.2,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "textStyleId": "h1",
+          "effectStyleId": "soft"
+        },
+        {
+          "id": "card",
+          "type": "shape",
+          "shape": "rect",
+          "fill": "#ff7a00",
+          "gradient": {
+            "from": "#ff7a00",
+            "to": "#e4003a",
+            "angle": 90,
+            "kind": "linear"
+          },
+          "stroke": "#e4003a",
+          "strokeWidth": 4,
+          "transform": {
+            "x": 0.5,
+            "y": 0.7,
+            "w": 0.6,
+            "h": 0.2,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fillStyleId": "sunset",
+          "strokeStyleId": "red"
+        },
+        {
+          "id": "badge",
+          "type": "icon",
+          "iconId": "star",
+          "fill": "#e4003a",
+          "transform": {
+            "x": 0.9,
+            "y": 0.1,
+            "w": 0.1,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "fillStyleId": "red"
+        }
+      ]
+    },
+    {
+      "id": "story",
+      "x": 1180,
+      "y": 0,
+      "canvas": {
+        "width": 1080,
+        "height": 1920,
+        "background": "#ffffff"
+      },
+      "layers": [
+        {
+          "id": "story-title",
+          "type": "text",
+          "text": "Promoção",
+          "fontId": "montserrat",
+          "fontWeight": 800,
+          "fontSize": 0.0375,
+          "lineHeight": 1.05,
+          "letterSpacing": -0.01,
+          "fill": "#e4003a",
+          "transform": {
+            "x": 0.5,
+            "y": 0.3,
+            "w": 0.8,
+            "h": 0.1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "textStyleId": "h1",
+          "fillStyleId": "red"
+        }
+      ]
+    }
+  ]
+}

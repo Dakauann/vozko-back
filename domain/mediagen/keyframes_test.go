@@ -128,7 +128,6 @@ func TestKeyframesAreValidated(t *testing.T) {
 		"time range":      {X: []Keyframe{{AtMS: MaxVideoMS + 1, Value: 0.5, Easing: EaseLinear}}},
 		"not a number":    {X: []Keyframe{{AtMS: 0, Value: math.NaN(), Easing: EaseLinear}}},
 		"empty animation": {},
-		"too many on one": {X: manyKeyframes(MaxKeyframesPerProperty + 1)},
 	}
 	for name, k := range cases {
 		if code := animatedClip(k).issue(4000, true); code == "" {
@@ -149,10 +148,30 @@ func manyKeyframes(n int) []Keyframe {
 	return frames
 }
 
+func TestAPropertyTakesAnyNumberOfKeys(t *testing.T) {
+	if code := PropertyIssue(manyKeyframes(1000), 0, 1); code != "" {
+		t.Fatalf("a long lane was refused: %s", code)
+	}
+}
+
+func TestTheKeyTimeBoundIsChosenByTheCaller(t *testing.T) {
+	late := []Keyframe{{AtMS: 600_000, Value: 0.5, Easing: EaseLinear}}
+	if code := PropertyIssue(late, 0, 1); code != CodeOutOfRange {
+		t.Fatalf("a key past the render limit: %q", code)
+	}
+	if code := PropertyIssueWithin(late, 0, 1, 600_000); code != "" {
+		t.Fatalf("a key inside a wider bound: %q", code)
+	}
+	if code := KeyframesIssueWithin(&Keyframes{X: late}, Transform{W: 0.5, H: 0.5}, 600_000); code != "" {
+		t.Fatalf("transform keys inside a wider bound: %q", code)
+	}
+}
+
 func TestATimelineCapsItsKeyframes(t *testing.T) {
+	const perClip = 40
 	track := Track{}
-	for i := 0; i < MaxTimelineKeyframes/MaxKeyframesPerProperty+1; i++ {
-		c := animatedClip(&Keyframes{X: manyKeyframes(MaxKeyframesPerProperty)})
+	for i := 0; i < MaxTimelineKeyframes/perClip+1; i++ {
+		c := animatedClip(&Keyframes{X: manyKeyframes(perClip)})
 		c.StartMS = int64(i) * 1000
 		c.DurationMS = 1000
 		track.Clips = append(track.Clips, c)

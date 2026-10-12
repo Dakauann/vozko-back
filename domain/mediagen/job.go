@@ -56,11 +56,12 @@ const (
 	FailureInsufficientFunds    FailureCode = "insufficient_funds"
 	FailureReferenceUnavailable FailureCode = "reference_unavailable"
 	FailureCostUnreported       FailureCode = "cost_unreported"
+	FailureProviderBusy         FailureCode = "provider_busy"
 )
 
 func (c FailureCode) Known() bool {
 	switch c {
-	case FailureGeneration, FailureStorage, FailureTimedOut, FailureEnqueue, FailureInsufficientFunds, FailureReferenceUnavailable, FailureCostUnreported:
+	case FailureGeneration, FailureStorage, FailureTimedOut, FailureEnqueue, FailureInsufficientFunds, FailureReferenceUnavailable, FailureCostUnreported, FailureProviderBusy:
 		return true
 	}
 	return false
@@ -75,6 +76,7 @@ type Job struct {
 	Aspect            Aspect
 	ReferenceMediaIDs []string
 	Voice             string
+	DurationMS        int
 	Video             Timeline
 	SourceMediaID     string
 	BillingReference  string
@@ -116,6 +118,7 @@ func NewJob(req Request, requestedBy string) (*Job, error) {
 		Aspect:            n.Aspect,
 		ReferenceMediaIDs: n.ReferenceMediaIDs,
 		Voice:             n.Voice,
+		DurationMS:        n.DurationMS,
 		Video:             n.Video,
 		SourceMediaID:     n.SourceMediaID,
 		BillingReference:  n.BillingReference,
@@ -127,7 +130,7 @@ func NewJob(req Request, requestedBy string) (*Job, error) {
 func (j *Job) Request() Request {
 	return Request{
 		WorkspaceID: j.WorkspaceID, Kind: j.Kind, Model: j.Model, Prompt: j.Prompt, Aspect: j.Aspect,
-		ReferenceMediaIDs: j.ReferenceMediaIDs, Voice: j.Voice, Video: j.Video, SourceMediaID: j.SourceMediaID, BillingReference: j.BillingReference,
+		ReferenceMediaIDs: j.ReferenceMediaIDs, Voice: j.Voice, DurationMS: j.DurationMS, Video: j.Video, SourceMediaID: j.SourceMediaID, BillingReference: j.BillingReference,
 	}
 }
 

@@ -15,6 +15,13 @@ type Segment struct {
 	Text       string  `json:"text"`
 	Confidence float64 `json:"confidence,omitempty"`
 	NoSpeech   float64 `json:"no_speech_prob,omitempty"`
+	Words      []Word  `json:"words,omitempty"`
+}
+
+type Word struct {
+	Text  string  `json:"text"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
 }
 
 type FilterConfig struct {

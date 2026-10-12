@@ -1,33 +1,111 @@
 package studio
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"path"
+	"strings"
+	"unicode/utf8"
+)
+
+type ExportFormat string
+
+const (
+	ExportMP4  ExportFormat = "mp4"
+	ExportGIF  ExportFormat = "gif"
+	ExportWebP ExportFormat = "webp"
+	ExportPDF  ExportFormat = "pdf"
+	ExportSVG  ExportFormat = "svg"
+	ExportPNG  ExportFormat = "png"
+	ExportJPEG ExportFormat = "jpeg"
 )
 
 const (
-	MaxExportBytes    = 95 << 20
-	ExportContentType = "video/mp4"
-	exportsFolder     = "studio-exports"
-	exportExtension   = ".mp4"
-	mp4HeaderBytes    = 8
-	mp4BrandOffset    = 4
-	mp4Brand          = "ftyp"
+	MaxExportBytes            = 512 << 20
+	MaxExportDescriptionRunes = 255
+	ExportHeadBytes           = 21
+	exportsFolder             = "studio-exports"
+	webpAnimationFlag         = 0x02
+	webpFlagsOffset           = 20
 )
 
 var (
 	ErrExportTooLarge = errors.New("studio: the export is larger than allowed")
-	ErrInvalidExport  = errors.New("studio: the export is not a valid MP4")
+	ErrInvalidExport  = errors.New("studio: the export is not a file the editor makes")
 )
 
-func ExportKey(workspaceID, projectID, exportID string) string {
-	return path.Join(exportsFolder, workspaceID, projectID, exportID+exportExtension)
+type exportSpec struct {
+	contentType string
+	extension   string
+	kind        Kind
+}
+
+var exportSpecs = map[ExportFormat]exportSpec{
+	ExportMP4:  {contentType: "video/mp4", extension: ".mp4", kind: KindVideo},
+	ExportGIF:  {contentType: "image/gif", extension: ".gif", kind: KindVideo},
+	ExportWebP: {contentType: "image/webp", extension: ".webp", kind: KindVideo},
+	ExportPDF:  {contentType: "application/pdf", extension: ".pdf", kind: KindImage},
+	ExportSVG:  {contentType: "image/svg+xml", extension: ".svg", kind: KindImage},
+	ExportPNG:  {contentType: "image/png", extension: ".png", kind: KindVideo},
+	ExportJPEG: {contentType: "image/jpeg", extension: ".jpg", kind: KindVideo},
+}
+
+var (
+	pngSignature  = []byte("\x89PNG\r\n\x1a\n")
+	jpegSignature = []byte{0xff, 0xd8, 0xff}
+)
+
+func (f ExportFormat) ContentType() string {
+	return exportSpecs[f].contentType
+}
+
+func ExportAllowed(kind Kind, format ExportFormat) bool {
+	spec, ok := exportSpecs[format]
+	return ok && spec.kind == kind
+}
+
+func DetectExport(head []byte) (ExportFormat, bool) {
+	switch {
+	case len(head) >= 8 && string(head[4:8]) == "ftyp":
+		return ExportMP4, true
+	case bytes.HasPrefix(head, []byte("GIF87a")), bytes.HasPrefix(head, []byte("GIF89a")):
+		return ExportGIF, true
+	case animatedWebPHead(head):
+		return ExportWebP, true
+	case bytes.HasPrefix(head, []byte("%PDF-")):
+		return ExportPDF, true
+	case bytes.HasPrefix(head, []byte("<svg ")):
+		return ExportSVG, true
+	case bytes.HasPrefix(head, pngSignature):
+		return ExportPNG, true
+	case bytes.HasPrefix(head, jpegSignature):
+		return ExportJPEG, true
+	}
+	return "", false
+}
+
+func animatedWebPHead(head []byte) bool {
+	return len(head) > webpFlagsOffset && string(head[0:4]) == "RIFF" && string(head[8:16]) == "WEBPVP8X" && head[webpFlagsOffset]&webpAnimationFlag != 0
+}
+
+func ExportKey(workspaceID, projectID, exportID string, format ExportFormat) string {
+	return path.Join(exportsFolder, workspaceID, projectID, exportID+exportSpecs[format].extension)
+}
+
+func ExportDescription(requested, projectName string) (string, error) {
+	clean := strings.Join(strings.Fields(requested), " ")
+	if clean == "" {
+		return projectName, nil
+	}
+	if utf8.RuneCountInString(clean) > MaxExportDescriptionRunes {
+		return "", ErrInvalidExport
+	}
+	return clean, nil
 }
 
 type exportReader struct {
 	body io.Reader
-	head []byte
 	read int64
 }
 
@@ -40,15 +118,6 @@ func (e *exportReader) Read(p []byte) (int, error) {
 	e.read += int64(n)
 	if e.read > MaxExportBytes {
 		return 0, ErrExportTooLarge
-	}
-	if len(e.head) < mp4HeaderBytes {
-		e.head = append(e.head, p[:min(n, mp4HeaderBytes-len(e.head))]...)
-		if len(e.head) == mp4HeaderBytes && string(e.head[mp4BrandOffset:]) != mp4Brand {
-			return 0, ErrInvalidExport
-		}
-	}
-	if errors.Is(err, io.EOF) && len(e.head) < mp4HeaderBytes {
-		return 0, ErrInvalidExport
 	}
 	return n, err
 }

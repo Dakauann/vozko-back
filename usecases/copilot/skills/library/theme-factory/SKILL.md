@@ -1,5 +1,6 @@
 ---
 name: theme-factory
+surface: studio
 description: Toolkit for styling Estúdio projects with a theme. These can be posts, banners, ads, carousels, presentations or videos. There are 10 pre-set themes with colors/fonts that you can apply to any project that has been created, or can generate a new theme on-the-fly.
 license: Apache 2.0, complete terms in LICENSE.txt. Modified by Vozko for the Estúdio editor and Elo's tools; every change is listed in NOTICE.md.
 ---
@@ -57,6 +58,13 @@ After a preferred theme is selected:
 
 ## Create your Own Theme
 To handle cases where none of the existing themes work for an artifact, create a custom theme. Based on provided inputs, generate a new theme similar to the ones above. Give the theme a similar name describing what the font/color combinations represent. Use any basic description provided to choose appropriate colors/fonts. After generating the theme, show it for review and verification. Following that, apply the theme as described above.
+
+## Using the Themes Without Sameness
+- The brand comes first: its colors, fonts, product photo or the brief's own palette always beat a theme. The themes are for projects with no brand, and they are starting points, not the answer.
+- Pick by the concept of the piece (its idea and mood), not by the category list under "Best Used For".
+- Adapt before applying: shift the hues toward the subject, change which color owns most of the area, push or soften the contrast, or add one accent taken from the photo. A theme reused verbatim on unrelated briefs makes every piece look the same.
+- The theme fonts are safe defaults for body text; the headline can take a voice chosen for the concept from the full font list (see direcao-de-arte), as long as contrast and size floors hold.
+- Across several pieces in one conversation, vary the theme or its adaptation unless the user wants one look for a series.
 
 
 ## Theme Definitions

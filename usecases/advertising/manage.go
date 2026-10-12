@@ -184,8 +184,11 @@ func (uc *ManageUseCase) planEdit(ctx context.Context, workspaceID, metaID strin
 	if edit.Creative != nil {
 		for _, ref := range edit.Creative.MediaRefs() {
 			if _, err := uc.media.describe(ctx, workspaceID, ref); err != nil {
-				return nil, ads.FieldError("creative.media", "not_found")
+				return nil, ads.FieldError("creative.media", codeMediaNotFound)
 			}
+		}
+		if err := uc.media.checkSpec(ctx, workspaceID, edit.Creative.MediaRefs(), "creative.media"); err != nil {
+			return nil, err
 		}
 	}
 	return &editPlan{target: t, detail: detail, edit: edit}, nil

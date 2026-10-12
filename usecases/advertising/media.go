@@ -28,6 +28,7 @@ type CreativeFile struct {
 type MediaSource interface {
 	Describe(ctx context.Context, workspaceID string, ref ads.MediaRef) (*media.Media, error)
 	Load(ctx context.Context, workspaceID string, ref ads.MediaRef) (*CreativeFile, error)
+	Facts(ctx context.Context, workspaceID string, ref ads.MediaRef) (ads.MediaFacts, error)
 }
 
 type mediaReader interface {
@@ -36,15 +37,18 @@ type mediaReader interface {
 
 type fileFetcher interface {
 	Fetch(ctx context.Context, url string) ([]byte, error)
+	Open(ctx context.Context, url string) (ads.MediaFile, error)
 }
 
 type library struct {
 	media   mediaReader
 	fetcher fileFetcher
+	probe   CreativeProbe
+	facts   *factsCache
 }
 
-func NewMediaSource(media mediaReader, fetcher fileFetcher) MediaSource {
-	return &library{media: media, fetcher: fetcher}
+func NewMediaSource(media mediaReader, fetcher fileFetcher, probe CreativeProbe) MediaSource {
+	return &library{media: media, fetcher: fetcher, probe: probe, facts: newFactsCache()}
 }
 
 func libraryKindMatches(kind ads.MediaKind, t media.MediaType) bool {

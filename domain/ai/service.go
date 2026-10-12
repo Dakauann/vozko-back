@@ -15,14 +15,14 @@ type Service interface {
 }
 
 type ModelInfo struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	PromptPrice     float64 `json:"promptPrice"`
-	CompletionPrice float64 `json:"completionPrice"`
-	Created         int64   `json:"created,omitempty"`
-	ContextLength   int64   `json:"contextLength,omitempty"`
-	SeesImages      bool    `json:"seesImages,omitempty"`
-	HearsAudio      bool    `json:"hearsAudio,omitempty"`
+	ID              string            `json:"id"`
+	Name            string            `json:"name"`
+	PromptPrice     float64           `json:"promptPrice"`
+	CompletionPrice float64           `json:"completionPrice"`
+	Created         int64             `json:"created,omitempty"`
+	ContextLength   int64             `json:"contextLength,omitempty"`
+	Capabilities    []ModelCapability `json:"capabilities"`
+	Reasoning       *ReasoningOptions `json:"reasoning,omitempty"`
 }
 
 type StreamEventType int
@@ -74,6 +74,7 @@ type GenerateInput struct {
 	Temperature        float32
 	MaxTokens          int
 	ReasoningMaxTokens int
+	ReasoningEffort    ReasoningLevel
 	ResponseFormat     *ResponseFormat
 	Tools              []tools.Definition
 	ToolConfigs        map[string]map[string]interface{}

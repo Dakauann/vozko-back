@@ -1,0 +1,214 @@
+{
+  "legibleTextPx": 12,
+  "frames": [
+    {
+      "id": "feed",
+      "fit": "crop",
+      "minRatio": 0.8,
+      "maxRatio": 1.91,
+      "tolerance": 0.01,
+      "displayWidth": 390,
+      "recommended": { "width": 1440, "height": 1800 },
+      "minimum": { "width": 600, "height": 0 },
+      "safe": null,
+      "positions": [
+        { "platform": "facebook", "position": "feed" },
+        { "platform": "facebook", "position": "profile_feed" },
+        { "platform": "instagram", "position": "stream" },
+        { "platform": "instagram", "position": "profile_feed" },
+        { "platform": "instagram", "position": "explore_home" },
+        { "platform": "instagram", "position": "ig_search" },
+        { "platform": "threads", "position": "threads_stream" }
+      ]
+    },
+    {
+      "id": "vertical",
+      "fit": "fill",
+      "minRatio": 0.5625,
+      "maxRatio": 0.5625,
+      "tolerance": 0.01,
+      "displayWidth": 390,
+      "recommended": { "width": 1440, "height": 2560 },
+      "minimum": { "width": 500, "height": 0 },
+      "safe": { "top": 0.14, "bottom": 0.35, "side": 0.06 },
+      "positions": [
+        { "platform": "facebook", "position": "story" },
+        { "platform": "facebook", "position": "facebook_reels" },
+        { "platform": "instagram", "position": "story" },
+        { "platform": "instagram", "position": "reels" },
+        { "platform": "instagram", "position": "profile_reels" }
+      ]
+    },
+    {
+      "id": "square",
+      "fit": "crop",
+      "minRatio": 1,
+      "maxRatio": 1,
+      "tolerance": 0.01,
+      "displayWidth": 180,
+      "recommended": { "width": 1080, "height": 1080 },
+      "minimum": { "width": 0, "height": 0 },
+      "safe": null,
+      "positions": [{ "platform": "facebook", "position": "marketplace" }]
+    },
+    {
+      "id": "right_column",
+      "fit": "crop",
+      "minRatio": 1,
+      "maxRatio": 1,
+      "tolerance": 0.01,
+      "displayWidth": 254,
+      "recommended": { "width": 1080, "height": 1080 },
+      "minimum": { "width": 254, "height": 133 },
+      "safe": null,
+      "positions": [{ "platform": "facebook", "position": "right_hand_column" }]
+    },
+    {
+      "id": "search",
+      "fit": "crop",
+      "minRatio": 1,
+      "maxRatio": 1.91,
+      "tolerance": 0.03,
+      "displayWidth": 390,
+      "recommended": { "width": 1080, "height": 1080 },
+      "minimum": { "width": 600, "height": 600 },
+      "safe": null,
+      "positions": [{ "platform": "facebook", "position": "search" }]
+    },
+    {
+      "id": "messenger",
+      "fit": "crop",
+      "minRatio": 1,
+      "maxRatio": 1.91,
+      "tolerance": 0.03,
+      "displayWidth": 260,
+      "recommended": { "width": 1200, "height": 628 },
+      "minimum": { "width": 0, "height": 0 },
+      "safe": null,
+      "positions": [{ "platform": "messenger", "position": "sponsored_messages" }]
+    },
+    {
+      "id": "audience_network",
+      "fit": "crop",
+      "minRatio": 1,
+      "maxRatio": 1.91,
+      "tolerance": 0.03,
+      "displayWidth": 320,
+      "recommended": { "width": 1200, "height": 628 },
+      "minimum": { "width": 398, "height": 208 },
+      "safe": null,
+      "positions": [{ "platform": "audience_network", "position": "classic" }]
+    },
+    {
+      "id": "thumbnail",
+      "fit": "crop",
+      "minRatio": 1,
+      "maxRatio": 1,
+      "tolerance": 0.01,
+      "displayWidth": 96,
+      "recommended": { "width": 1080, "height": 1080 },
+      "minimum": { "width": 0, "height": 0 },
+      "safe": null,
+      "positions": [
+        { "platform": "facebook", "position": "notification" },
+        { "platform": "facebook", "position": "facebook_reels_overlay" }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "frame": "feed", "width": 1080, "height": 1350,
+      "expect": { "ratio": 0.8, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0, "background": 0, "visible": { "width": 1080, "height": 1350 }, "minTextPx": 34, "belowMinimum": false }
+    },
+    {
+      "frame": "feed", "width": 1080, "height": 1920,
+      "expect": { "ratio": 0.8, "crop": { "x0": 0, "y0": 0.1484, "x1": 1, "y1": 0.8516 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0.2969, "background": 0, "visible": { "width": 1080, "height": 1350 }, "minTextPx": 34, "belowMinimum": false }
+    },
+    {
+      "frame": "feed", "width": 1200, "height": 628,
+      "expect": { "ratio": 1.9108, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0, "background": 0, "visible": { "width": 1200, "height": 628 }, "minTextPx": 37, "belowMinimum": false }
+    },
+    {
+      "frame": "vertical", "width": 1080, "height": 1080,
+      "expect": { "ratio": 0.5625, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0.2188, "x1": 1, "y1": 0.7813 }, "safe": { "x0": 0.06, "y0": 0.14, "x1": 0.94, "y1": 0.65 }, "cropLoss": 0, "background": 0.4375, "visible": { "width": 1080, "height": 1080 }, "minTextPx": 34, "belowMinimum": false }
+    },
+    {
+      "frame": "vertical", "width": 1440, "height": 2560,
+      "expect": { "ratio": 0.5625, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0.06, "y0": 0.14, "x1": 0.94, "y1": 0.65 }, "cropLoss": 0, "background": 0, "visible": { "width": 1440, "height": 2560 }, "minTextPx": 45, "belowMinimum": false }
+    },
+    {
+      "frame": "vertical", "width": 1080, "height": 1350,
+      "expect": { "ratio": 0.5625, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0.1484, "x1": 1, "y1": 0.8516 }, "safe": { "x0": 0.06, "y0": 0.14, "x1": 0.94, "y1": 0.65 }, "cropLoss": 0, "background": 0.2969, "visible": { "width": 1080, "height": 1350 }, "minTextPx": 34, "belowMinimum": false }
+    },
+    {
+      "frame": "square", "width": 1080, "height": 1350,
+      "expect": { "ratio": 1, "crop": { "x0": 0, "y0": 0.1, "x1": 1, "y1": 0.9 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0.2, "background": 0, "visible": { "width": 1080, "height": 1080 }, "minTextPx": 72, "belowMinimum": false }
+    },
+    {
+      "frame": "right_column", "width": 1200, "height": 628,
+      "expect": { "ratio": 1, "crop": { "x0": 0.2383, "y0": 0, "x1": 0.7617, "y1": 1 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0.4767, "background": 0, "visible": { "width": 628, "height": 628 }, "minTextPx": 30, "belowMinimum": false }
+    },
+    {
+      "frame": "right_column", "width": 240, "height": 240,
+      "expect": { "ratio": 1, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0, "background": 0, "visible": { "width": 240, "height": 240 }, "minTextPx": 12, "belowMinimum": true }
+    },
+    {
+      "frame": "search", "width": 1080, "height": 1920,
+      "expect": { "ratio": 1, "crop": { "x0": 0, "y0": 0.2188, "x1": 1, "y1": 0.7813 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0.4375, "background": 0, "visible": { "width": 1080, "height": 1080 }, "minTextPx": 34, "belowMinimum": false }
+    },
+    {
+      "frame": "audience_network", "width": 600, "height": 600,
+      "expect": { "ratio": 1, "crop": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0, "background": 0, "visible": { "width": 600, "height": 600 }, "minTextPx": 23, "belowMinimum": false }
+    },
+    {
+      "frame": "thumbnail", "width": 1080, "height": 1350,
+      "expect": { "ratio": 1, "crop": { "x0": 0, "y0": 0.1, "x1": 1, "y1": 0.9 }, "image": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "safe": { "x0": 0, "y0": 0, "x1": 1, "y1": 1 }, "cropLoss": 0.2, "background": 0, "visible": { "width": 1080, "height": 1080 }, "minTextPx": 135, "belowMinimum": false }
+    }
+  ],
+  "plans": [
+    {
+      "placements": { "automatic": true },
+      "frames": [
+        { "id": "feed", "positions": [
+          { "platform": "facebook", "position": "feed" },
+          { "platform": "facebook", "position": "profile_feed" },
+          { "platform": "instagram", "position": "stream" },
+          { "platform": "instagram", "position": "profile_feed" },
+          { "platform": "instagram", "position": "explore_home" },
+          { "platform": "instagram", "position": "ig_search" }
+        ] },
+        { "id": "vertical", "positions": [
+          { "platform": "facebook", "position": "story" },
+          { "platform": "facebook", "position": "facebook_reels" },
+          { "platform": "instagram", "position": "story" },
+          { "platform": "instagram", "position": "reels" },
+          { "platform": "instagram", "position": "profile_reels" }
+        ] },
+        { "id": "square", "positions": [{ "platform": "facebook", "position": "marketplace" }] },
+        { "id": "right_column", "positions": [{ "platform": "facebook", "position": "right_hand_column" }] },
+        { "id": "search", "positions": [{ "platform": "facebook", "position": "search" }] },
+        { "id": "thumbnail", "positions": [
+          { "platform": "facebook", "position": "notification" },
+          { "platform": "facebook", "position": "facebook_reels_overlay" }
+        ] }
+      ],
+      "videoOnly": [{ "platform": "facebook", "position": "instream_video" }]
+    },
+    {
+      "placements": { "automatic": false, "platforms": ["instagram"], "positions": { "instagram": ["story", "stream"] } },
+      "frames": [
+        { "id": "feed", "positions": [{ "platform": "instagram", "position": "stream" }] },
+        { "id": "vertical", "positions": [{ "platform": "instagram", "position": "story" }] }
+      ],
+      "videoOnly": []
+    },
+    {
+      "placements": { "automatic": false, "platforms": ["messenger", "audience_network"] },
+      "frames": [
+        { "id": "messenger", "positions": [{ "platform": "messenger", "position": "sponsored_messages" }] },
+        { "id": "audience_network", "positions": [{ "platform": "audience_network", "position": "classic" }] }
+      ],
+      "videoOnly": [{ "platform": "audience_network", "position": "rewarded_video" }]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package workflow_usecase
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -24,7 +25,7 @@ func (g getWorkflowStub) Execute(id string) (*workflow.Workflow, error) {
 
 type updateWorkflowStub struct{ *workflowCalls }
 
-func (u updateWorkflowStub) Execute(id string, wf *workflow.Workflow) (*workflow.Workflow, error) {
+func (u updateWorkflowStub) Execute(_ context.Context, id string, wf *workflow.Workflow) (*workflow.Workflow, error) {
 	u.record("update", id)
 	return wf, nil
 }
@@ -46,6 +47,12 @@ func (s statusWorkflowStub) Execute(id string) (*workflow.Workflow, error) {
 	return &workflow.Workflow{ID: id}, nil
 }
 
+type activateWorkflowStub struct{ statusWorkflowStub }
+
+func (a activateWorkflowStub) Execute(_ context.Context, id string) (*workflow.Workflow, error) {
+	return a.statusWorkflowStub.Execute(id)
+}
+
 var workflowsByID = getWorkflowStub{
 	"w-sales": {ID: "w-sales", WorkspaceID: "ws1", DepartmentID: "d-sales"},
 	"w-other": {ID: "w-other", WorkspaceID: "ws2", DepartmentID: "d-sales"},
@@ -55,7 +62,7 @@ var workflowsByID = getWorkflowStub{
 func scopedFixture() (workflow.ScopedWorkflowsUseCase, *workflowCalls) {
 	calls := &workflowCalls{}
 	return NewScopedWorkflowsUseCase(workflowsByID, updateWorkflowStub{calls}, deleteWorkflowStub{calls},
-		statusWorkflowStub{calls, "activate"}, statusWorkflowStub{calls, "pause"}), calls
+		activateWorkflowStub{statusWorkflowStub{calls, "activate"}}, statusWorkflowStub{calls, "pause"}), calls
 }
 
 func salesScope() workflow.Scope {
@@ -71,13 +78,13 @@ func TestScopedWorkflowsHideAnotherWorkspacesWorkflow(t *testing.T) {
 	if _, err := uc.Pause(owner, "w-other"); !errors.Is(err, workflow.ErrWorkflowNotFound) {
 		t.Fatalf("pause: %v", err)
 	}
-	if _, err := uc.Activate(owner, "w-other"); !errors.Is(err, workflow.ErrWorkflowNotFound) {
+	if _, err := uc.Activate(context.Background(), owner, "w-other"); !errors.Is(err, workflow.ErrWorkflowNotFound) {
 		t.Fatalf("activate: %v", err)
 	}
 	if err := uc.Delete(owner, "w-other"); !errors.Is(err, workflow.ErrWorkflowNotFound) {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := uc.Update(owner, "w-other", &workflow.Workflow{}); !errors.Is(err, workflow.ErrWorkflowNotFound) {
+	if _, err := uc.Update(context.Background(), owner, "w-other", &workflow.Workflow{}); !errors.Is(err, workflow.ErrWorkflowNotFound) {
 		t.Fatalf("update: %v", err)
 	}
 	if len(calls.calls) != 0 {
@@ -94,7 +101,7 @@ func TestScopedWorkflowsRefuseAnotherDepartmentsWorkflow(t *testing.T) {
 
 func TestScopedWorkflowsFailClosedWithoutAScope(t *testing.T) {
 	uc, calls := scopedFixture()
-	if _, err := uc.Activate(workflow.Scope{WorkspaceID: "ws1"}, "w-sales"); !errors.Is(err, workflow.ErrWorkflowAccessDenied) || len(calls.calls) != 0 {
+	if _, err := uc.Activate(context.Background(), workflow.Scope{WorkspaceID: "ws1"}, "w-sales"); !errors.Is(err, workflow.ErrWorkflowAccessDenied) || len(calls.calls) != 0 {
 		t.Fatalf("err %v calls %v", err, calls.calls)
 	}
 }
@@ -104,13 +111,13 @@ func TestScopedWorkflowsRunTheChangeInsideTheScope(t *testing.T) {
 	if _, err := uc.Pause(salesScope(), "w-sales"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := uc.Activate(salesScope(), "w-sales"); err != nil {
+	if _, err := uc.Activate(context.Background(), salesScope(), "w-sales"); err != nil {
 		t.Fatal(err)
 	}
 	if err := uc.Delete(salesScope(), "w-sales"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := uc.Update(salesScope(), "w-sales", &workflow.Workflow{Name: "novo"}); err != nil {
+	if _, err := uc.Update(context.Background(), salesScope(), "w-sales", &workflow.Workflow{Name: "novo"}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"pause:w-sales", "activate:w-sales", "delete:w-sales", "update:w-sales"}

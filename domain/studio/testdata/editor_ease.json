@@ -1,0 +1,50 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": { "aspect": "story", "background": "#000000" },
+  "durationMs": 600000,
+  "tracks": [
+    {
+      "id": "main",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "title",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 600000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": { "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.2, "rotation": 0, "opacity": 1 },
+          "layer": {
+            "id": "title-text",
+            "type": "text",
+            "transform": { "x": 0.5, "y": 0.5, "w": 0.6, "h": 0.2, "rotation": 0, "opacity": 1 },
+            "text": "Oferta",
+            "fontId": "inter",
+            "fontSize": 0.05,
+            "fill": "#ffffff"
+          },
+          "keyframes": {
+            "x": [
+              { "atMs": 0, "value": 0.1, "easing": "cubic-bezier(0.333,0.333,0.667,1)" },
+              { "atMs": 1000, "value": 0.5, "easing": "cubic-bezier(0.333,0,0.667,1)", "smooth": false },
+              { "atMs": 2000, "value": 0.6, "easing": "linear", "smooth": true },
+              { "atMs": 599000, "value": 0.9, "easing": "linear" }
+            ],
+            "opacity": [
+              { "atMs": 0, "value": 0, "easing": "cubic-bezier(0.333,0,0.667,1)" },
+              { "atMs": 500, "value": 1, "easing": "hold", "smooth": true }
+            ],
+            "fill": [
+              { "atMs": 0, "color": "#ffffff", "easing": "cubic-bezier(0.9,0,0.95,0.3)" },
+              { "atMs": 400, "color": "#ffcc00", "easing": "linear" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

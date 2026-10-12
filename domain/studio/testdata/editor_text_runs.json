@@ -1,0 +1,222 @@
+{
+  "schema": "studio.video",
+  "version": 1,
+  "canvas": {
+    "aspect": "story",
+    "background": "#000000"
+  },
+  "durationMs": 3000,
+  "tracks": [
+    {
+      "id": "t-texts",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-headline",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.3,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-headline",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "Compre agora com 50% off",
+            "fontId": "inter",
+            "fontSize": 0.06,
+            "fontWeight": 400,
+            "align": "center",
+            "lineHeight": 1.2,
+            "letterSpacing": 0.02,
+            "fill": "#ffffff",
+            "runs": [
+              {
+                "start": 0,
+                "end": 6,
+                "fontWeight": 800,
+                "fill": "#ffcc00"
+              },
+              {
+                "start": 7,
+                "end": 12,
+                "italic": true,
+                "underline": true
+              },
+              {
+                "start": 17,
+                "end": 20,
+                "fontId": "bebas-neue",
+                "fontSize": 0.09,
+                "letterSpacing": 0
+              },
+              {
+                "start": 21,
+                "end": 24,
+                "caps": true,
+                "italic": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t-counters",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-money",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.5,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-money",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "0",
+            "fontId": "inter",
+            "fontSize": 0.08,
+            "fontWeight": 700,
+            "align": "center",
+            "lineHeight": 1.2,
+            "fill": "#ffffff",
+            "runs": [
+              {
+                "start": 0,
+                "end": 2,
+                "fill": "#ffcc00",
+                "fontSize": 0.05
+              },
+              {
+                "start": 3,
+                "end": 4,
+                "fontWeight": 900
+              },
+              {
+                "start": 4,
+                "end": 8,
+                "fontSize": 0.04,
+                "fill": "#dddddd"
+              }
+            ]
+          },
+          "counter": {
+            "value": 0,
+            "decimals": 0,
+            "locale": "pt-BR",
+            "grouping": true,
+            "prefix": "R$ ",
+            "suffix": " mil"
+          },
+          "keyframes": {
+            "counter": [
+              {
+                "atMs": 0,
+                "value": 0,
+                "easing": "easeOut"
+              },
+              {
+                "atMs": 2000,
+                "value": 12500,
+                "easing": "linear"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "t-paths",
+      "kind": "visual",
+      "clips": [
+        {
+          "id": "c-arc",
+          "type": "overlay",
+          "startMs": 0,
+          "durationMs": 3000,
+          "trimInMs": 0,
+          "volume": 1,
+          "fadeInMs": 0,
+          "fadeOutMs": 0,
+          "transform": {
+            "x": 0.5,
+            "y": 0.7,
+            "w": 0.86,
+            "h": 0.16,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "layer": {
+            "id": "l-arc",
+            "type": "text",
+            "transform": {
+              "x": 0.5,
+              "y": 0.5,
+              "w": 1,
+              "h": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "text": "Frete grátis hoje",
+            "fontId": "poppins",
+            "fontSize": 0.05,
+            "fontWeight": 600,
+            "align": "center",
+            "fill": "#ffffff",
+            "runs": [
+              {
+                "start": 6,
+                "end": 12,
+                "fill": "#22c55e",
+                "fontWeight": 800
+              }
+            ]
+          },
+          "textPath": {
+            "shape": "arc",
+            "bend": 0.5,
+            "offset": 0.5,
+            "align": "center"
+          }
+        }
+      ]
+    }
+  ]
+}
