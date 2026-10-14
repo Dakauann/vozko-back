@@ -214,16 +214,18 @@ func (q *listQuery) placesFrom(extra string, extraArgs ...interface{}) (string, 
 }
 
 type placeMatch struct {
-	sql  string
-	args []interface{}
+	sql      string
+	args     []interface{}
+	rank     string
+	rankArgs []interface{}
 }
 
-func placeWordStart(column, keyStart, prefix string) placeMatch {
+func placeWordStart(column, keyStart, exactName, prefix string) placeMatch {
 	if prefix == "" {
 		return placeMatch{}
 	}
 	sql, args := infracrmfilter.WordStartMatch(column, keyStart, prefix)
-	return placeMatch{sql: " AND " + sql, args: args}
+	return placeMatch{sql: " AND " + sql, args: args, rank: "(" + exactName + " = ?) DESC, ", rankArgs: []interface{}{prefix}}
 }
 
 func (q *listQuery) citiesSQL() (string, []interface{}) {
@@ -231,8 +233,8 @@ func (q *listQuery) citiesSQL() (string, []interface{}) {
 }
 
 func (q *listQuery) suggestPlaces(prefix string) {
-	q.cityPlace = placeWordStart("la.city_key", ":", prefix)
-	q.districtPlace = placeWordStart("la.district_key", "", prefix)
+	q.cityPlace = placeWordStart("la.city_key", ":", "split_part(g.city_key, ':', 2)", prefix)
+	q.districtPlace = placeWordStart("la.district_key", "", "g.district_key", prefix)
 }
 
 func commonestSpelling(column string) string {
@@ -243,7 +245,8 @@ func (q *listQuery) cityCountsSQL(inner, outer string, limit int) (string, []int
 	from, args := q.placesFrom(q.cityPlace.sql, q.cityPlace.args...)
 	sql := "SELECT g.city_key AS city_key, " + commonestSpelling("city") + ", " + commonestSpelling("state") + ", sum(g.n)::bigint AS count" + outer +
 		" FROM (SELECT la.city_key, la.city, la.state, COUNT(*) AS n" + inner + " " + from + " GROUP BY la.city_key, la.city, la.state) g" +
-		" GROUP BY g.city_key ORDER BY count DESC, g.city_key LIMIT ?"
+		" GROUP BY g.city_key ORDER BY " + q.cityPlace.rank + "count DESC, g.city_key LIMIT ?"
+	args = append(args, q.cityPlace.rankArgs...)
 	return sql, append(args, limit)
 }
 
@@ -257,8 +260,9 @@ func (q *listQuery) districtCountsSQL(inner string, innerArgs []interface{}, out
 		commonestSpelling("city") + ", " + commonestSpelling("state") + ", sum(g.n)::bigint AS count" + outer +
 		" FROM (SELECT la.city_key, la.district_key, la.district, la.city, la.state, COUNT(*) AS n" + inner + " " + from +
 		" GROUP BY la.city_key, la.district_key, la.district, la.city, la.state) g" +
-		" GROUP BY g.city_key, g.district_key" + having + " ORDER BY count DESC, g.city_key, g.district_key LIMIT ?"
+		" GROUP BY g.city_key, g.district_key" + having + " ORDER BY " + q.districtPlace.rank + "count DESC, g.city_key, g.district_key LIMIT ?"
 	args := append(append([]interface{}{}, innerArgs...), fromArgs...)
+	args = append(args, q.districtPlace.rankArgs...)
 	return sql, append(args, limit)
 }
 

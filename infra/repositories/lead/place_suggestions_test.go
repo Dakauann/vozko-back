@@ -14,11 +14,11 @@ func TestReadPlacesWithAPrefixSuggestsPlacesWhoseWordsStartWithIt(t *testing.T) 
 	r := &repository{db: db, agg: newAggregateCache(nil)}
 	membership := `la\.workspace_id = \$1 AND la\.is_primary AND la\.city_key IS NOT NULL AND la\.lead_id IN \(SELECT leads\.id FROM leads WHERE leads\.workspace_id = \$2 AND leads\.deleted_at IS NULL\)`
 	expectMapSession(mock)
-	mock.ExpectQuery(`FROM lead_addresses la WHERE `+membership+` AND \(la\.city_key LIKE \$3 OR la\.city_key LIKE \$4\) GROUP BY la\.city_key, la\.city, la\.state\) g GROUP BY g\.city_key ORDER BY count DESC, g\.city_key LIMIT \$5$`).
-		WithArgs(pageWorkspace, pageWorkspace, "%:santo%", "% santo%", lead.MaxPlaceSuggestions).
+	mock.ExpectQuery(`FROM lead_addresses la WHERE `+membership+` AND \(la\.city_key LIKE \$3 OR la\.city_key LIKE \$4\) GROUP BY la\.city_key, la\.city, la\.state\) g GROUP BY g\.city_key ORDER BY \(split_part\(g\.city_key, ':', 2\) = \$5\) DESC, count DESC, g\.city_key LIMIT \$6$`).
+		WithArgs(pageWorkspace, pageWorkspace, "%:santo%", "% santo%", "santo", lead.MaxPlaceSuggestions).
 		WillReturnRows(sqlmock.NewRows([]string{"city_key", "city", "state", "count"}).AddRow("sp:santo andre", "Santo André", "SP", 3))
-	mock.ExpectQuery(`FROM lead_addresses la WHERE `+membership+` AND la\.district_key IS NOT NULL AND \(la\.district_key LIKE \$3 OR la\.district_key LIKE \$4\) GROUP BY .* LIMIT \$5$`).
-		WithArgs(pageWorkspace, pageWorkspace, "santo%", "% santo%", lead.MaxPlaceSuggestions).
+	mock.ExpectQuery(`FROM lead_addresses la WHERE `+membership+` AND la\.district_key IS NOT NULL AND \(la\.district_key LIKE \$3 OR la\.district_key LIKE \$4\) GROUP BY .* ORDER BY \(g\.district_key = \$5\) DESC, count DESC, .* LIMIT \$6$`).
+		WithArgs(pageWorkspace, pageWorkspace, "santo%", "% santo%", "santo", lead.MaxPlaceSuggestions).
 		WillReturnRows(sqlmock.NewRows([]string{"city_key", "district_key", "district", "city", "state", "count"}).AddRow("rn:natal", "santo antonio", "Santo Antônio", "Natal", "RN", 2))
 	mock.ExpectCommit()
 
