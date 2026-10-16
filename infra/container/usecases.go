@@ -516,7 +516,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		media_infra.NewDOCXParser(),
 		media_infra.NewXLSXParser(),
 		media_infra.NewPlainTextParser(),
-	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC, c.services.serviceMessageBilling)
+	), c.redisProvider.SharedState(), ragService, cachedBalanceChecker, llmPriceFetcher, consumeWhatsappTemplateUC, c.services.serviceMessageBilling, c.repositories.messageStatusRecorder)
 	if err != nil {
 		log.Fatalf("Failed to build the WhatsApp message handler: %v", err)
 	}
@@ -533,9 +533,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}); ok {
 		setter.SetReceptiveContainers(wc_usecase.NewEnsureReceptiveContainerUseCase(c.repositories.wcCampaign))
 	}
-	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate)
+	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate, c.repositories.whatsappQuality)
 	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.services.fileReader)
-	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba).WithNotifier(notifierUC, dashboardURL)
+	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba, c.repositories.whatsappQuality, c.repositories.whatsappOptOuts).WithNotifier(notifierUC, dashboardURL)
 
 	affiliateStatsUC := affiliate_usecase.NewGetAffiliateStatsUseCase(c.repositories.affiliate)
 

@@ -84,6 +84,16 @@ func (g *IdempotencyGuard) IsDuplicate(key string) bool {
 	return !acquired
 }
 
+func (g *IdempotencyGuard) Forget(key string) error {
+	if key == "" || g.state == nil {
+		return nil
+	}
+	if err := g.state.Del("dedup:webhook:" + key); err != nil {
+		return fmt.Errorf("forget webhook dedup key: %w", err)
+	}
+	return nil
+}
+
 func (g *IdempotencyGuard) processingKey(key string) string {
 	return "dedup:webhook:processing:" + key
 }

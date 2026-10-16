@@ -7,6 +7,7 @@ type PhoneWebhookPayload struct {
 
 type PhoneWebhookEntry struct {
 	ID      string               `json:"id"`
+	Time    int64                `json:"time"`
 	Changes []PhoneWebhookChange `json:"changes"`
 }
 
@@ -31,6 +32,20 @@ type PhoneWebhookValue struct {
 
 	BanInfo  *BanInfo  `json:"ban_info,omitempty"`
 	WABAInfo *WABAInfo `json:"waba_info,omitempty"`
+
+	Metadata        PhoneWebhookMetadata  `json:"metadata"`
+	UserPreferences []PhoneUserPreference `json:"user_preferences,omitempty"`
+}
+
+type PhoneWebhookMetadata struct {
+	PhoneNumberID string `json:"phone_number_id,omitempty"`
+}
+
+type PhoneUserPreference struct {
+	WaID      string `json:"wa_id"`
+	Category  string `json:"category"`
+	Value     string `json:"value"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type BanInfo struct {

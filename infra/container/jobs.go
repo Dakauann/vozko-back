@@ -9,6 +9,8 @@ import (
 	webhook_repository "vozko/infra/repositories/webhook"
 	adsuc "vozko/usecases/advertising"
 	webhook_usecase "vozko/usecases/webhook"
+	businessphone_usecase "vozko/usecases/whatsapp/business_phone"
+	messagestatus_usecase "vozko/usecases/whatsapp/messagestatus"
 
 	"vozko/domain/shared"
 	cronPackage "vozko/infra/cron"
@@ -127,6 +129,14 @@ func (c *Container) initJobRunner() {
 			return err
 		}))
 	}
+
+	c.jobRunner.SetWhatsAppPhoneQualityJobs(businessphone_usecase.NewPollPhoneQualityUseCase(
+		c.repositories.businessPhone, c.services.businessPhoneMetaAPI, c.repositories.messageStatusSending,
+		c.repositories.whatsappQualityHistory, c.repositories.whatsappQuality,
+	))
+
+	messageStatuses := messagestatus_usecase.NewPipeline(c.repositories.messageStatusLedger)
+	c.jobRunner.SetWhatsAppMessageStatusJobs(cronPackage.CtxJobFunc(messageStatuses.Sweep), cronPackage.CtxJobFunc(messageStatuses.Purge))
 
 	if c.services.reportService != nil {
 		reportService := c.services.reportService

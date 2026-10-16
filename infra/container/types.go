@@ -135,6 +135,9 @@ import (
 	webhook_domain "vozko/domain/webhook"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	callpermission_domain "vozko/domain/whatsapp/call_permission"
+	whatsapp_messagestatus "vozko/domain/whatsapp/messagestatus"
+	whatsapp_optout "vozko/domain/whatsapp/optout"
+	whatsapp_quality "vozko/domain/whatsapp/quality"
 	whatsapp_template "vozko/domain/whatsapp/template"
 	waba_domain "vozko/domain/whatsapp/waba"
 	wc_domain "vozko/domain/whatsapp_campaign"
@@ -263,6 +266,12 @@ type repositories struct {
 	wcDispatchReport        wc_entry_domain.DispatchReportReader
 	businessPhone           businessphone.Repository
 	ownerPhoneReader        businessphone.OwnerPhoneReader
+	whatsappQuality         whatsapp_quality.Recorder
+	whatsappQualityHistory  whatsapp_quality.History
+	messageStatusRecorder   whatsapp_messagestatus.Recorder
+	messageStatusLedger     whatsapp_messagestatus.Ledger
+	messageStatusSending    whatsapp_messagestatus.SendingPhones
+	whatsappOptOuts         whatsapp_optout.Recorder
 	callRecording           call_recordings.CallRecordRepository
 	callCDR                 call_cdr_domain.Repository
 	balance                 balance_domain.Repository

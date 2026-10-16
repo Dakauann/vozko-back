@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"strings"
+
+	"vozko/domain/metaplatform"
 )
 
 var ErrWebhookNotSubscribed = errors.New("meta did not keep the ad account webhook subscription")
@@ -21,28 +23,8 @@ var accountWebhookFields = []string{
 	"marketing_messages_subscriber_upload_status",
 }
 
-type AppSubscription struct {
-	Object      string
-	CallbackURL string
-	Fields      []string
-	Active      bool
-}
+type AppSubscription = metaplatform.AppSubscription
 
 func AccountWebhook(callbackURL string) AppSubscription {
 	return AppSubscription{Object: accountWebhookObject, CallbackURL: strings.TrimSpace(callbackURL), Fields: slices.Clone(accountWebhookFields), Active: true}
-}
-
-func (s AppSubscription) CoveredBy(current []AppSubscription) bool {
-	for _, c := range current {
-		if c.Object != s.Object || !c.Active || c.CallbackURL != s.CallbackURL {
-			continue
-		}
-		for _, field := range s.Fields {
-			if !slices.Contains(c.Fields, field) {
-				return false
-			}
-		}
-		return true
-	}
-	return false
 }

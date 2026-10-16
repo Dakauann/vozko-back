@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"vozko/domain/whatsapp/optout"
 
 	"vozko/delivery/http/response"
 	"vozko/domain/conversation"
@@ -133,6 +134,7 @@ var phoneWebhookFields = map[string]bool{
 	businessphone.FieldAccountUpdate:            true,
 	businessphone.FieldAccountReviewUpdate:      true,
 	businessphone.FieldBusinessStatusUpdate:     true,
+	optout.WebhookField:                         true,
 }
 
 var templateWebhookFields = map[string]bool{

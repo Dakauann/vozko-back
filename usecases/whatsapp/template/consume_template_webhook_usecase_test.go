@@ -91,9 +91,16 @@ func (m *mockTemplateSharedState) SetNX(key, value string, ttl time.Duration) (b
 	return true, nil
 }
 
-func (m *mockTemplateSharedState) SetString(string, string, time.Duration) error    { return nil }
-func (m *mockTemplateSharedState) GetString(string) (string, error)                 { return "", nil }
-func (m *mockTemplateSharedState) Del(...string) error                              { return nil }
+func (m *mockTemplateSharedState) SetString(string, string, time.Duration) error { return nil }
+func (m *mockTemplateSharedState) GetString(string) (string, error)              { return "", nil }
+func (m *mockTemplateSharedState) Del(keys ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, k := range keys {
+		delete(m.store, k)
+	}
+	return nil
+}
 func (m *mockTemplateSharedState) Exists(string) (bool, error)                      { return false, nil }
 func (m *mockTemplateSharedState) Incr(string) (int64, error)                       { return 0, nil }
 func (m *mockTemplateSharedState) Decr(string) (int64, error)                       { return 0, nil }
@@ -447,5 +454,33 @@ func TestExtractTemplateDedupKey_EmptyPayload(t *testing.T) {
 	key := extractTemplateDedupKey(payload)
 	if key != "" {
 		t.Fatalf("expected empty for empty payload, got '%s'", key)
+	}
+}
+
+func TestConsumeTemplate_AFailedEventIsProcessedAgainWhenRedelivered(t *testing.T) {
+	sub := &mockTemplateQueueSub{}
+	handler := &mockTemplateHandler{execErr: errors.New("history write failed")}
+	state := newMockTemplateSharedState()
+
+	uc := NewConsumeTemplateWebhookUseCase(sub, handler, state)
+	_ = uc.Start()
+
+	raw := makeTemplateWebhookPayload("waba-1", whatsapptemplate.FieldMessageTemplateQualityUpdate, "", "tpl", "pt_BR", 777)
+	first := &mockTemplateAck{}
+	sub.handler(raw, first)
+	time.Sleep(100 * time.Millisecond)
+	if !first.wasNacked() {
+		t.Fatal("a failed event must be requeued")
+	}
+
+	handler.mu.Lock()
+	handler.execErr = nil
+	handler.mu.Unlock()
+	second := &mockTemplateAck{}
+	sub.handler(raw, second)
+	time.Sleep(100 * time.Millisecond)
+
+	if handler.callCount() != 2 || !second.wasAcked() {
+		t.Fatalf("the redelivery must be processed, not dropped as a duplicate: calls=%d acked=%v", handler.callCount(), second.wasAcked())
 	}
 }

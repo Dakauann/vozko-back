@@ -63,23 +63,23 @@ func (c *Container) initAds() {
 		log.Fatalf("[ads] failed to start the publish worker: %v", err)
 	}
 	if c.ads.WebhookSubscription != nil {
-		go keepAdsWebhookSubscribed(c.ads.WebhookSubscription)
+		go keepWebhookSubscribed("[ads] ad account webhook subscription", c.ads.WebhookSubscription.Ensure)
 	}
 }
 
-func keepAdsWebhookSubscribed(subscription *adsuc.WebhookSubscriptionUseCase) {
+func keepWebhookSubscribed(label string, ensure func(context.Context) (bool, error)) {
 	for attempt := 1; attempt <= adsWebhookAttempts; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), adsWebhookTimeout)
-		changed, err := subscription.Ensure(ctx)
+		changed, err := ensure(ctx)
 		cancel()
 		if err == nil {
-			log.Printf("[ads] ad account webhook subscription checked (changed: %v)", changed)
+			log.Printf("%s checked (changed: %v)", label, changed)
 			return
 		}
-		log.Printf("[ads] ad account webhook subscription attempt %d/%d failed: %v", attempt, adsWebhookAttempts, err)
+		log.Printf("%s attempt %d/%d failed: %v", label, attempt, adsWebhookAttempts, err)
 		time.Sleep(adsWebhookRetryDelay)
 	}
-	log.Printf("[ads] ad account webhook subscription gave up; ad status changes rely on the periodic sync until the next restart")
+	log.Printf("%s gave up until the next restart", label)
 }
 
 func (c *Container) adsManager() *adsBundle {

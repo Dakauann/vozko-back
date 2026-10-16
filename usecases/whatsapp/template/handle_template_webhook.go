@@ -1,19 +1,24 @@
 package template_usecase
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
+	"vozko/domain/whatsapp/quality"
 	"vozko/domain/whatsapp/template"
 )
 
 type handleTemplateWebhook struct {
-	repo template.Repository
+	repo     template.Repository
+	recorder quality.Recorder
+	now      func() time.Time
 }
 
-func NewHandleTemplateWebhook(repo template.Repository) template.HandleTemplateWebhookUseCase {
-	return &handleTemplateWebhook{repo: repo}
+func NewHandleTemplateWebhook(repo template.Repository, recorder quality.Recorder) template.HandleTemplateWebhookUseCase {
+	return &handleTemplateWebhook{repo: repo, recorder: recorder, now: time.Now}
 }
 
 func (h *handleTemplateWebhook) Execute(payload *template.TemplateWebhookPayload) error {
@@ -21,23 +26,50 @@ func (h *handleTemplateWebhook) Execute(payload *template.TemplateWebhookPayload
 		return nil
 	}
 
+	var recordErrs []error
 	for _, entry := range payload.Entry {
+		occurredAt := quality.OccurredAt(entry.Time, h.now())
 		for _, change := range entry.Changes {
 			switch change.Field {
 			case template.FieldMessageTemplateStatusUpdate:
+				recordErrs = append(recordErrs, h.recordSignal(entry.ID, occurredAt, quality.SignalStatus, change.Value, "", change.Value.Event))
 				h.handleStatusUpdate(entry.ID, change.Value)
 			case template.FieldMessageTemplateQualityUpdate:
+				recordErrs = append(recordErrs, h.recordSignal(entry.ID, occurredAt, quality.SignalQuality, change.Value, change.Value.PreviousQualityScore, change.Value.NewQualityScore))
 				h.handleQualityUpdate(entry.ID, change.Value)
 			case template.FieldMessageTemplateComponentsUpdate:
 				h.handleComponentsUpdate(entry.ID, change.Value)
 			case template.FieldTemplateCategoryUpdate:
+				recordErrs = append(recordErrs, h.recordSignal(entry.ID, occurredAt, quality.SignalCategory, change.Value, change.Value.PreviousCategory, change.Value.NewCategory))
 				h.handleCategoryUpdate(entry.ID, change.Value)
 			default:
 				log.Printf("[template-webhook] unhandled field: %s", change.Field)
 			}
 		}
 	}
-	return nil
+	return errors.Join(recordErrs...)
+}
+
+func (h *handleTemplateWebhook) recordSignal(wabaID string, occurredAt time.Time, signal quality.Signal, v template.TemplateWebhookValue, previous, current string) error {
+	if v.MessageTemplateID == 0 {
+		return nil
+	}
+	change := quality.Change{
+		Subject:    quality.SubjectTemplate,
+		ExternalID: fmt.Sprintf("%d", v.MessageTemplateID),
+		WABAID:     wabaID,
+		Name:       v.MessageTemplateName,
+		Signal:     signal,
+		Event:      strings.ToUpper(strings.TrimSpace(v.Event)),
+		Previous:   strings.ToUpper(strings.TrimSpace(previous)),
+		Current:    strings.ToUpper(strings.TrimSpace(current)),
+		Source:     quality.SourceWebhook,
+		OccurredAt: occurredAt,
+	}
+	if change.Current == "" {
+		return nil
+	}
+	return h.recorder.Record(change)
 }
 
 func eventToStatus(event string) (template.TemplateStatus, bool) {

@@ -26,7 +26,7 @@ func seedPhone(repo *mockRepository, id, displayPhone, wabaID string) *businessp
 func TestQualityUpdate_Flagged(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -60,7 +60,7 @@ func TestQualityUpdate_Unflagged(t *testing.T) {
 	repo := newMockRepo()
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.Status = businessphone.StatusFlagged
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -88,7 +88,7 @@ func TestQualityUpdate_Unflagged(t *testing.T) {
 func TestQualityUpdate_Restricted(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -120,7 +120,7 @@ func TestQualityUpdate_Restricted(t *testing.T) {
 
 func TestQualityUpdate_PhoneNotFound(t *testing.T) {
 	repo := newMockRepo()
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -146,7 +146,7 @@ func TestQualityUpdate_NoChange(t *testing.T) {
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.Status = businessphone.StatusFlagged
 	phone.MessagingLimitTier = "TIER_10K"
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -174,7 +174,7 @@ func TestNameUpdate_Approved(t *testing.T) {
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.NameStatus = businessphone.NameStatusPendingReview
 	phone.VerifiedName = "OldName"
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -207,7 +207,7 @@ func TestNameUpdate_Rejected(t *testing.T) {
 	repo := newMockRepo()
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.NameStatus = businessphone.NameStatusPendingReview
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -240,7 +240,7 @@ func TestNameUpdate_Rejected(t *testing.T) {
 func TestAccountAlerts_MessagingLimitUpdate(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -271,7 +271,7 @@ func TestAccountAlerts_VerifiedAccount(t *testing.T) {
 	repo := newMockRepo()
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.IsOfficialBusiness = false
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -299,7 +299,7 @@ func TestAccountAlerts_VerifiedAccount(t *testing.T) {
 func TestAccountAlerts_DisabledUpdate(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -330,7 +330,7 @@ func TestCapabilityUpdate_UpdatesAllPhonesInWABA(t *testing.T) {
 	seedPhone(repo, "p1", "+15551111111", "waba1")
 	seedPhone(repo, "p2", "+15552222222", "waba1")
 	seedPhone(repo, "p3", "+15553333333", "waba2")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -364,7 +364,7 @@ func TestCapabilityUpdate_UpdatesAllPhonesInWABA(t *testing.T) {
 func TestCapabilityUpdate_Unlimited(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551111111", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -392,7 +392,7 @@ func TestAccountUpdate_Ban(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
 	seedPhone(repo, "p2", "+15559999999", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -426,7 +426,7 @@ func TestAccountUpdate_Reinstate(t *testing.T) {
 	p1.Status = businessphone.StatusBanned
 	p2 := seedPhone(repo, "p2", "+15559999999", "waba1")
 	p2.Status = businessphone.StatusBanned
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -455,7 +455,7 @@ func TestAccountUpdate_Reinstate(t *testing.T) {
 
 func TestExecute_NilPayload(t *testing.T) {
 	repo := newMockRepo()
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	if err := uc.Execute(nil); err != nil {
 		t.Fatalf("Execute(nil): %v", err)
@@ -464,7 +464,7 @@ func TestExecute_NilPayload(t *testing.T) {
 
 func TestExecute_EmptyEntries(t *testing.T) {
 	repo := newMockRepo()
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -479,7 +479,7 @@ func TestExecute_EmptyEntries(t *testing.T) {
 func TestQualityUpdate_NormalizesPhoneNumber(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -510,7 +510,7 @@ func TestMultipleChangesInSinglePayload(t *testing.T) {
 	repo := newMockRepo()
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.NameStatus = businessphone.NameStatusPendingReview
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -553,7 +553,7 @@ func TestQualityUpdate_RepoUpdateError(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
 	repo.updateErr = errors.New("db unavailable")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -621,7 +621,7 @@ func TestCapabilityUpdate_AlsoUpdatesWABAEntity(t *testing.T) {
 	seedPhone(repo, "p1", "+15551111111", "waba1")
 	wabaRepo := newMockWABARepo()
 	seedWABA(wabaRepo, "w1", "waba1")
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -654,7 +654,7 @@ func TestCapabilityUpdate_WABANotFound_StillUpdatesPhones(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551111111", "waba1")
 	wabaRepo := newMockWABARepo()
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -684,7 +684,7 @@ func TestCapabilityUpdate_WABATierNoChange(t *testing.T) {
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
 	w.MessagingLimitTier = "TIER_100K"
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -712,7 +712,7 @@ func TestAccountUpdate_VerifiedAccount(t *testing.T) {
 	repo := newMockRepo()
 	phone := seedPhone(repo, "p1", "+15551234567", "waba1")
 	phone.IsOfficialBusiness = false
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -739,7 +739,7 @@ func TestAccountUpdate_VerifiedAccount(t *testing.T) {
 
 func TestAccountUpdate_PartnerAdded(t *testing.T) {
 	repo := newMockRepo()
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -767,7 +767,7 @@ func TestAccountUpdate_ScheduleForDisable(t *testing.T) {
 	repo := newMockRepo()
 	seedPhone(repo, "p1", "+15551234567", "waba1")
 	seedPhone(repo, "p2", "+15559999999", "waba1")
-	uc := NewHandlePhoneWebhook(repo, newMockWABARepo())
+	uc := NewHandlePhoneWebhook(repo, newMockWABARepo(), &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -800,7 +800,7 @@ func TestAccountReviewUpdate_Approved(t *testing.T) {
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
 	w.AccountReviewStatus = "PENDING"
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -829,7 +829,7 @@ func TestAccountReviewUpdate_Rejected(t *testing.T) {
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
 	w.AccountReviewStatus = "PENDING"
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -856,7 +856,7 @@ func TestAccountReviewUpdate_Rejected(t *testing.T) {
 func TestAccountReviewUpdate_WABANotFound(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -881,7 +881,7 @@ func TestBusinessStatusUpdate_VerificationApproved(t *testing.T) {
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
 	w.BusinessVerificationStatus = "PENDING"
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -910,7 +910,7 @@ func TestBusinessStatusUpdate_VerificationRejected(t *testing.T) {
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
 	w.BusinessVerificationStatus = "PENDING"
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -938,7 +938,7 @@ func TestBusinessStatusUpdate_DecisionFallback(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -966,7 +966,7 @@ func TestBusinessStatusUpdate_DecisionFallback(t *testing.T) {
 func TestBusinessStatusUpdate_WABANotFound(t *testing.T) {
 	repo := newMockRepo()
 	wabaRepo := newMockWABARepo()
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",
@@ -991,7 +991,7 @@ func TestBusinessStatusUpdate_NoChange(t *testing.T) {
 	wabaRepo := newMockWABARepo()
 	w := seedWABA(wabaRepo, "w1", "waba1")
 	w.BusinessVerificationStatus = "VERIFIED"
-	uc := NewHandlePhoneWebhook(repo, wabaRepo)
+	uc := NewHandlePhoneWebhook(repo, wabaRepo, &fakeQualityRecorder{}, &fakeOptOutRecorder{})
 
 	payload := &businessphone.PhoneWebhookPayload{
 		Object: "whatsapp_business_account",

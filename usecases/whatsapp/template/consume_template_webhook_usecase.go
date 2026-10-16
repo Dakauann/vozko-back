@@ -47,7 +47,10 @@ func (uc *consumeTemplateWebhookUseCase) handle(raw []byte, ack messaging.Messag
 	}
 
 	dedupKey := extractTemplateDedupKey(&payload)
-	if dedupKey != "" && uc.dedup.IsDuplicate("template:"+dedupKey) {
+	if dedupKey != "" {
+		dedupKey = "template:" + dedupKey
+	}
+	if dedupKey != "" && uc.dedup.IsDuplicate(dedupKey) {
 		log.Printf("[webhook-consumer] duplicate template event ignored: %s", dedupKey)
 		_ = ack.Ack()
 		return
@@ -65,6 +68,9 @@ func (uc *consumeTemplateWebhookUseCase) handle(raw []byte, ack messaging.Messag
 		defer func() { <-uc.semaphore }()
 		defer func() {
 			if shouldRequeue {
+				if err := uc.dedup.Forget(dedupKey); err != nil {
+					log.Printf("[webhook-consumer] failed to forget template event %s: %v", dedupKey, err)
+				}
 				if err := ack.Nack(true); err != nil {
 					log.Printf("[webhook-consumer] failed to nack template event: %v", err)
 				}

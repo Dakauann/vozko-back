@@ -1,6 +1,7 @@
 package businessphone_usecase
 
 import (
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -8,20 +9,25 @@ import (
 	"vozko/brand"
 	"vozko/domain/notification"
 	businessphone "vozko/domain/whatsapp/business_phone"
+	"vozko/domain/whatsapp/optout"
+	"vozko/domain/whatsapp/quality"
 	"vozko/domain/whatsapp/waba"
 )
 
 type handlePhoneWebhook struct {
 	repo         businessphone.Repository
 	wabaRepo     waba.Repository
+	recorder     quality.Recorder
+	optOuts      optout.Recorder
 	notifier     notification.Notifier
 	dashboardURL string
+	now          func() time.Time
 }
 
 var _ businessphone.HandlePhoneWebhookUseCase = (*handlePhoneWebhook)(nil)
 
-func NewHandlePhoneWebhook(repo businessphone.Repository, wabaRepo waba.Repository) *handlePhoneWebhook {
-	return &handlePhoneWebhook{repo: repo, wabaRepo: wabaRepo}
+func NewHandlePhoneWebhook(repo businessphone.Repository, wabaRepo waba.Repository, recorder quality.Recorder, optOuts optout.Recorder) *handlePhoneWebhook {
+	return &handlePhoneWebhook{repo: repo, wabaRepo: wabaRepo, recorder: recorder, optOuts: optOuts, now: time.Now}
 }
 
 func (h *handlePhoneWebhook) WithNotifier(n notification.Notifier, dashboardURL string) *handlePhoneWebhook {
@@ -56,11 +62,15 @@ func (h *handlePhoneWebhook) Execute(payload *businessphone.PhoneWebhookPayload)
 		return nil
 	}
 
+	var recordErrs []error
 	for _, entry := range payload.Entry {
+		occurredAt := quality.OccurredAt(entry.Time, h.now())
 		for _, change := range entry.Changes {
 			switch change.Field {
 			case businessphone.FieldPhoneNumberQualityUpdate:
-				h.handleQualityUpdate(change.Value)
+				recordErrs = append(recordErrs, h.handleQualityUpdate(change.Value, occurredAt))
+			case optout.WebhookField:
+				recordErrs = append(recordErrs, h.recordUserPreferences(change.Value, occurredAt))
 			case businessphone.FieldPhoneNumberNameUpdate:
 				h.handleNameUpdate(change.Value)
 			case businessphone.FieldAccountAlerts:
@@ -78,22 +88,23 @@ func (h *handlePhoneWebhook) Execute(payload *businessphone.PhoneWebhookPayload)
 			}
 		}
 	}
-	return nil
+	return errors.Join(recordErrs...)
 }
 
-func (h *handlePhoneWebhook) handleQualityUpdate(v businessphone.PhoneWebhookValue) {
+func (h *handlePhoneWebhook) handleQualityUpdate(v businessphone.PhoneWebhookValue, occurredAt time.Time) error {
 	phoneNumber := normalizePhoneNumber(v.DisplayPhoneNumber)
 	if phoneNumber == "" {
 		log.Printf("[phone-webhook] quality_update: missing display_phone_number")
-		return
+		return nil
 	}
 
 	phone, err := h.repo.FindByDisplayPhoneNumber(phoneNumber)
 	if err != nil {
 		log.Printf("[phone-webhook] quality_update: phone %s not found: %v", phoneNumber, err)
-		return
+		return nil
 	}
 
+	recordErr := h.recordQualityEvent(phone, v, occurredAt)
 	changed := false
 
 	if v.CurrentLimit != "" && phone.MessagingLimitTier != v.CurrentLimit {
@@ -125,14 +136,63 @@ func (h *handlePhoneWebhook) handleQualityUpdate(v businessphone.PhoneWebhookVal
 		} else {
 			log.Printf("[phone-webhook] quality_update: phone %s updated (event=%s, limit=%s)", phoneNumber, v.Event, v.CurrentLimit)
 			if phone.Status == businessphone.StatusFlagged || phone.Status == businessphone.StatusRestricted {
-				quality := "Em risco"
+				label := "Em risco"
 				if phone.Status == businessphone.StatusRestricted {
-					quality = "Restrita"
+					label = "Restrita"
 				}
-				h.notifyPhoneAlert(phone, "quality:"+string(phone.Status), "Qualidade do número em risco - "+brand.Active().Name, "whatsapp_quality_alert.html", map[string]interface{}{"Quality": quality})
+				h.notifyPhoneAlert(phone, "quality:"+string(phone.Status), "Qualidade do número em risco - "+brand.Active().Name, "whatsapp_quality_alert.html", map[string]interface{}{"Quality": label})
 			}
 		}
 	}
+	return recordErr
+}
+
+func (h *handlePhoneWebhook) recordUserPreferences(v businessphone.PhoneWebhookValue, fallback time.Time) error {
+	var events []optout.Event
+	for _, p := range v.UserPreferences {
+		preference, ok := optout.ParsePreference(p.Value)
+		if !ok || strings.TrimSpace(p.WaID) == "" {
+			continue
+		}
+		event := optout.Event{
+			PhoneNumberID: v.Metadata.PhoneNumberID,
+			RecipientHash: optout.HashRecipient(p.WaID),
+			Category:      strings.TrimSpace(p.Category),
+			Preference:    preference,
+			OccurredAt:    quality.OccurredAt(p.Timestamp, fallback),
+		}
+		if event.Validate() == nil {
+			events = append(events, event)
+		}
+	}
+	return h.optOuts.Record(events...)
+}
+
+func (h *handlePhoneWebhook) recordQualityEvent(phone *businessphone.WhatsAppBusinessPhoneNumber, v businessphone.PhoneWebhookValue, occurredAt time.Time) error {
+	if strings.TrimSpace(phone.MetaPhoneNumberID) == "" {
+		return nil
+	}
+	base := quality.Change{
+		Subject:    quality.SubjectPhone,
+		ExternalID: phone.MetaPhoneNumberID,
+		WABAID:     phone.WABAId,
+		Name:       phone.DisplayPhoneNumber,
+		Event:      strings.ToUpper(strings.TrimSpace(v.Event)),
+		Source:     quality.SourceWebhook,
+		OccurredAt: occurredAt,
+	}
+	var changes []quality.Change
+	if base.Event != "" {
+		status := base
+		status.Signal, status.Current = quality.SignalStatus, base.Event
+		changes = append(changes, status)
+	}
+	limit := base
+	limit.Signal = quality.SignalMessagingLimit
+	if moved, ok := limit.Moved(phone.MessagingLimitTier, v.CurrentLimit); ok {
+		changes = append(changes, moved)
+	}
+	return h.recorder.Record(changes...)
 }
 
 func (h *handlePhoneWebhook) handleNameUpdate(v businessphone.PhoneWebhookValue) {

@@ -72,6 +72,8 @@ import (
 
 func (c *Container) initRepositories() {
 	monthlySendCaps := balance_repository.NewMonthlySendCapRepository(c.db)
+	messageStatus := whatsapp_repository.NewMessageStatusRepository(c.db)
+	qualityChanges := whatsapp_repository.NewQualityChangeRepository(c.db)
 	c.repositories = &repositories{
 		product:                 product_repository.NewRepository(c.db, c.services.inventory),
 		property:                property_repository.NewRepository(c.db),
@@ -103,6 +105,12 @@ func (c *Container) initRepositories() {
 		wcDispatchReport:        wc_entry_repository.NewDispatchReportReader(c.db),
 		businessPhone:           whatsapp_repository.NewCachedBusinessPhoneRepository(whatsapp_repository.NewBusinessPhoneRepository(c.db), c.redisProvider.SharedState()),
 		ownerPhoneReader:        whatsapp_repository.NewOwnerPhoneReader(c.db),
+		whatsappQuality:         qualityChanges,
+		whatsappQualityHistory:  qualityChanges,
+		messageStatusRecorder:   messageStatus,
+		messageStatusLedger:     messageStatus,
+		messageStatusSending:    messageStatus,
+		whatsappOptOuts:         whatsapp_repository.NewOptOutRepository(c.db),
 		callRecording:           call_recording_repository.NewRepository(c.db),
 		callCDR:                 call_cdr_repository.NewRepository(c.db),
 		balance:                 balance_repository.NewCachedBalanceRepository(balance_repository.NewRepository(c.db), c.redisProvider.SharedState()),

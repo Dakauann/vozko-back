@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"vozko/domain/whatsapp/messagestatus"
 
 	"github.com/google/uuid"
 
@@ -82,6 +83,7 @@ type handleWhatsAppMessageUseCase struct {
 	consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase
 	serviceMessageBilling   conversation.ServiceMessageBilling
 	templateSendAttempts    whatsapp_template.SendAttemptRepository
+	statusEvents            messagestatus.Recorder
 	balanceLedger           balance.Repository
 
 	billingPub messaging.MessageQueuePub
@@ -496,7 +498,7 @@ const (
 	AnalysisDebounceRedisKey = "analysis:debounce:pending"
 )
 
-func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, mediaStore conversation.MediaStore, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase, serviceMessageBilling conversation.ServiceMessageBilling) (conversation.HandleWhatsAppMessageUseCase, error) {
+func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory conversation.WhatsAppClientFactory, leadRepo lead.Repository, agentRepo agent.Repository, toolRegistry toolsdomain.Service, historyManager conversation.MessageHistoryManager, messageRepo conversation.MessageRepository, configRepo config.SystemConfigRepository, whisperPool *whisper.Pool, wcCampaignRepo wc.Repository, wcEntryRepo wce.Repository, businessPhoneRepo businessphone.Repository, messageWindowRepo lmw.Repository, mediaStore conversation.MediaStore, hub conversation.EventBroadcaster, stageRepo stage.Repository, textExtractor media.TextExtractor, sharedState cache.SharedState, ragService rag.RAGService, cachedBalanceChecker balance.CachedBalanceChecker, llmPriceFetcher workspace_pricing.LLMPriceFetcher, consumeWhatsappTemplate balance.ConsumeWhatsappTemplateUseCase, serviceMessageBilling conversation.ServiceMessageBilling, statusEvents messagestatus.Recorder) (conversation.HandleWhatsAppMessageUseCase, error) {
 	if consumeWhatsappTemplate == nil {
 		return nil, fmt.Errorf("%w: whatsapp template billing", conversation.ErrRefundNotConfigured)
 	}
@@ -506,8 +508,12 @@ func NewHandleWhatsAppMessageUseCase(aiService ai.Service, whatsappClientFactory
 	if serviceMessageBilling == nil {
 		return nil, fmt.Errorf("%w: whatsapp service message billing", conversation.ErrRefundNotConfigured)
 	}
+	if statusEvents == nil {
+		return nil, errors.New("whatsapp message status recorder is required")
+	}
 
 	return &handleWhatsAppMessageUseCase{
+		statusEvents:            statusEvents,
 		aiService:               aiService,
 		leadRepo:                leadRepo,
 		agentRepo:               agentRepo,
@@ -1192,10 +1198,14 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 	}
 
 	var statusErrors []error
+	var statusEvents []messagestatus.Event
 
 	for _, entry := range payload.Entry {
 		for _, change := range entry.Changes {
 			for _, status := range change.Value.Statuses {
+				if event, ok := statusEventOf(change.Value.Metadata.PhoneNumberID, status, time.Now()); ok {
+					statusEvents = append(statusEvents, event)
+				}
 				logMessage := fmt.Sprintf("[whatsapp-status] Message %s: status=%s, recipient=%s, timestamp=%s",
 					status.ID, status.Status, status.RecipientID, status.Timestamp)
 
@@ -1271,10 +1281,33 @@ func (uc *handleWhatsAppMessageUseCase) logStatusUpdates(payload *conversation.W
 		}
 	}
 
+	if err := uc.statusEvents.Record(statusEvents...); err != nil {
+		statusErrors = append(statusErrors, err)
+	}
+
 	if len(statusErrors) > 0 {
 		return fmt.Errorf("%w: %v", conversation.ErrWhatsAppWebhookRetryable, errors.Join(statusErrors...))
 	}
 	return nil
+}
+
+func statusEventOf(phoneNumberID string, status conversation.WhatsAppStatus, now time.Time) (messagestatus.Event, bool) {
+	parsed, ok := messagestatus.ParseStatus(status.Status)
+	if !ok {
+		return messagestatus.Event{}, false
+	}
+	occurredAt, ok := messagestatus.ParseOccurredAt(status.Timestamp)
+	if !ok {
+		occurredAt = now.UTC()
+	}
+	event := messagestatus.Event{MessageID: status.ID, PhoneNumberID: phoneNumberID, Status: parsed, OccurredAt: occurredAt}
+	if len(status.Errors) > 0 {
+		event.ErrorCode = status.Errors[0].Code
+	}
+	if status.Pricing != nil {
+		event.Pricing = status.Pricing.Category
+	}
+	return event, event.Validate() == nil
 }
 
 func mapWhatsAppWebhookEntryStatus(status string) (wce.SendStatus, bool) {

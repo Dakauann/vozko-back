@@ -10,6 +10,14 @@ import (
 	"vozko/infra/database/schema"
 )
 
+const recordTemplateVersionSQL = `
+INSERT INTO whatsapp_template_versions (external_id, waba_id, content_hash, name, language, category, parameter_format, components, status, captured_at)
+SELECT external_id, waba_id, md5(concat_ws('|', name, language, category, parameter_format, COALESCE(components::text, ''))),
+       name, language, category, parameter_format, components, status, now()
+FROM whatsapp_templates
+WHERE id = ? AND external_id <> ''
+ON CONFLICT (external_id, waba_id, content_hash) DO NOTHING`
+
 type repository struct {
 	db *gorm.DB
 }
@@ -20,7 +28,13 @@ func NewTemplateRepository(db *gorm.DB) template.Repository {
 
 func (r *repository) Create(t *template.Template) error {
 	record := mapToSchema(t)
-	if err := r.db.Create(&record).Error; err != nil {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&record).Error; err != nil {
+			return err
+		}
+		return tx.Exec(recordTemplateVersionSQL, record.ID).Error
+	})
+	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			return template.ErrTemplateAlreadyExists
 		}
@@ -46,14 +60,16 @@ func (r *repository) Update(templateID string, t *template.Template) error {
 		"header_media_url": t.HeaderMediaURL,
 		"header_media_id":  t.HeaderMediaID,
 	}
-	result := r.db.Model(&schema.WhatsAppTemplate{}).Where("id = ?", templateID).Updates(update)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return template.ErrTemplateNotFound
-	}
-	return nil
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&schema.WhatsAppTemplate{}).Where("id = ?", templateID).Updates(update)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return template.ErrTemplateNotFound
+		}
+		return tx.Exec(recordTemplateVersionSQL, templateID).Error
+	})
 }
 
 func (r *repository) Delete(templateID string) error {

@@ -9,6 +9,7 @@ import (
 	"vozko/domain/messaging"
 	"vozko/domain/webhook"
 	businessphone "vozko/domain/whatsapp/business_phone"
+	"vozko/domain/whatsapp/optout"
 	webhook_usecase "vozko/usecases/webhook"
 )
 
@@ -47,7 +48,10 @@ func (uc *consumePhoneWebhookUseCase) handle(raw []byte, ack messaging.MessageAc
 	}
 
 	dedupKey := extractPhoneDedupKey(&payload)
-	if dedupKey != "" && uc.dedup.IsDuplicate("phone:"+dedupKey) {
+	if dedupKey != "" {
+		dedupKey = "phone:" + dedupKey
+	}
+	if dedupKey != "" && uc.dedup.IsDuplicate(dedupKey) {
 		log.Printf("[webhook-consumer] duplicate phone event ignored: %s", dedupKey)
 		_ = ack.Ack()
 		return
@@ -55,13 +59,24 @@ func (uc *consumePhoneWebhookUseCase) handle(raw []byte, ack messaging.MessageAc
 
 	uc.semaphore <- struct{}{}
 	go func() {
+		shouldRequeue := false
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[webhook-consumer] panic in phone handler: %v", r)
+				shouldRequeue = true
 			}
 		}()
 		defer func() { <-uc.semaphore }()
 		defer func() {
+			if shouldRequeue {
+				if err := uc.dedup.Forget(dedupKey); err != nil {
+					log.Printf("[webhook-consumer] failed to forget phone event %s: %v", dedupKey, err)
+				}
+				if err := ack.Nack(true); err != nil {
+					log.Printf("[webhook-consumer] failed to nack phone event: %v", err)
+				}
+				return
+			}
 			if err := ack.Ack(); err != nil {
 				log.Printf("[webhook-consumer] failed to ack phone event: %v", err)
 			}
@@ -69,6 +84,7 @@ func (uc *consumePhoneWebhookUseCase) handle(raw []byte, ack messaging.MessageAc
 
 		if err := uc.handler.Execute(&payload); err != nil {
 			log.Printf("[webhook-consumer] failed to process phone event: %v", err)
+			shouldRequeue = true
 		}
 	}()
 }
@@ -79,7 +95,11 @@ func extractPhoneDedupKey(payload *businessphone.PhoneWebhookPayload) string {
 	}
 	for _, entry := range payload.Entry {
 		for _, change := range entry.Changes {
-			return fmt.Sprintf("%s:%s:%s", entry.ID, change.Field, change.Value.DisplayPhoneNumber)
+			key := fmt.Sprintf("%s:%s:%s", entry.ID, change.Field, change.Value.DisplayPhoneNumber)
+			for _, preference := range change.Value.UserPreferences {
+				key += fmt.Sprintf(":%s/%s/%d", optout.HashRecipient(preference.WaID), preference.Value, preference.Timestamp)
+			}
+			return key
 		}
 	}
 	return ""

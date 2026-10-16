@@ -242,6 +242,17 @@ func (p *WhatsAppBusinessPhoneNumber) CanBeUpdated() bool {
 	return p.Status != StatusVerifying
 }
 
+func (p *WhatsAppBusinessPhoneNumber) QualityPollable() bool {
+	if p.Provider.Normalized() != ProviderMeta || strings.TrimSpace(p.WABAId) == "" || strings.TrimSpace(p.AccessToken) == "" {
+		return false
+	}
+	switch p.Status {
+	case StatusBanned, StatusDisconnected, StatusPending, StatusVerifying, StatusOnboardingFailed:
+		return false
+	}
+	return true
+}
+
 func (p *WhatsAppBusinessPhoneNumber) IsVerified() bool {
 	return p.Status == StatusConnected
 }

@@ -91,9 +91,16 @@ func (m *mockPhoneSharedState) SetNX(key, value string, ttl time.Duration) (bool
 	return true, nil
 }
 
-func (m *mockPhoneSharedState) SetString(string, string, time.Duration) error    { return nil }
-func (m *mockPhoneSharedState) GetString(string) (string, error)                 { return "", nil }
-func (m *mockPhoneSharedState) Del(...string) error                              { return nil }
+func (m *mockPhoneSharedState) SetString(string, string, time.Duration) error { return nil }
+func (m *mockPhoneSharedState) GetString(string) (string, error)              { return "", nil }
+func (m *mockPhoneSharedState) Del(keys ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, k := range keys {
+		delete(m.store, k)
+	}
+	return nil
+}
 func (m *mockPhoneSharedState) Exists(string) (bool, error)                      { return false, nil }
 func (m *mockPhoneSharedState) Incr(string) (int64, error)                       { return 0, nil }
 func (m *mockPhoneSharedState) Decr(string) (int64, error)                       { return 0, nil }
@@ -325,21 +332,31 @@ func TestConsumePhone_InvalidJSONNacks(t *testing.T) {
 	}
 }
 
-func TestConsumePhone_HandlerErrorStillAcks(t *testing.T) {
+func TestConsumePhone_AHandlerErrorIsRequeuedAndProcessedAgain(t *testing.T) {
 	sub := &mockPhoneQueueSub{}
-	handler := &mockPhoneHandler{execErr: errors.New("repo error")}
+	handler := &mockPhoneHandler{execErr: errors.New("history write failed")}
 	state := newMockPhoneSharedState()
 
 	uc := NewConsumePhoneWebhookUseCase(sub, handler, state)
 	_ = uc.Start()
 
-	ack := &mockPhoneAck{}
-	sub.handler(makePhoneWebhookPayload("waba-1", businessphone.FieldPhoneNumberQualityUpdate, "+15551234567"), ack)
+	raw := makePhoneWebhookPayload("waba-1", businessphone.FieldPhoneNumberQualityUpdate, "+15551234567")
+	first := &mockPhoneAck{}
+	sub.handler(raw, first)
+	time.Sleep(100 * time.Millisecond)
+	if !first.wasNacked() || first.wasAcked() {
+		t.Fatal("a failed event must be requeued, never acked")
+	}
 
+	handler.mu.Lock()
+	handler.execErr = nil
+	handler.mu.Unlock()
+	second := &mockPhoneAck{}
+	sub.handler(raw, second)
 	time.Sleep(100 * time.Millisecond)
 
-	if !ack.wasAcked() {
-		t.Fatal("should ack even when handler returns error")
+	if handler.callCount() != 2 || !second.wasAcked() {
+		t.Fatalf("the redelivery must be processed, not dropped as a duplicate: calls=%d acked=%v", handler.callCount(), second.wasAcked())
 	}
 }
 
@@ -378,5 +395,20 @@ func TestExtractPhoneDedupKey_EmptyPayload(t *testing.T) {
 	key := extractPhoneDedupKey(payload)
 	if key != "" {
 		t.Fatalf("expected empty for empty payload, got '%s'", key)
+	}
+}
+
+func TestExtractPhoneDedupKey_EachOptOutIsItsOwnEvent(t *testing.T) {
+	payload := func(waID string) *businessphone.PhoneWebhookPayload {
+		return &businessphone.PhoneWebhookPayload{Entry: []businessphone.PhoneWebhookEntry{{
+			ID: "waba-1",
+			Changes: []businessphone.PhoneWebhookChange{{
+				Field: "user_preferences",
+				Value: businessphone.PhoneWebhookValue{UserPreferences: []businessphone.PhoneUserPreference{{WaID: waID, Value: "stop", Timestamp: 1}}},
+			}},
+		}}}
+	}
+	if extractPhoneDedupKey(payload("5511999990001")) == extractPhoneDedupKey(payload("5511999990002")) {
+		t.Fatal("two different people opting out must not be taken as the same event")
 	}
 }

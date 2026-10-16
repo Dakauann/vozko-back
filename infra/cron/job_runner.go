@@ -139,6 +139,15 @@ func (r *JobRunner) SetWhatsAppTemplateSendJobs(reconcile ctxJob) {
 	r.addChannelJob("whatsapp_template_send_reconcile", time.Hour, reconcile)
 }
 
+func (r *JobRunner) SetWhatsAppPhoneQualityJobs(poll ctxJob) {
+	r.addChannelJob("whatsapp_phone_quality_poll", 30*time.Minute, poll)
+}
+
+func (r *JobRunner) SetWhatsAppMessageStatusJobs(sweep, purge ctxJob) {
+	r.addChannelJob("whatsapp_message_status_sweep", 10*time.Minute, sweep)
+	r.addChannelJob("whatsapp_message_status_purge", 24*time.Hour, purge)
+}
+
 func (r *JobRunner) SetLeadImportJobs(sweep ctxJob) {
 	r.addChannelJob("lead_import_sweep", time.Minute, sweep)
 }

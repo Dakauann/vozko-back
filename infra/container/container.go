@@ -78,6 +78,7 @@ func New() *Container {
 	c.initUseCases(consumeWhatsappTemplateUC)
 	c.syncLinkedRoles()
 	c.initAds()
+	c.initWhatsAppWebhookSubscription()
 	c.initMediaGeneration()
 	c.initLiveDecisions()
 	c.startConversationHub()
