@@ -22,7 +22,7 @@ type Assignments interface {
 }
 
 type Automation interface {
-	Dispatch(ctx context.Context, in conversation_usecase.InboundAutomationInput)
+	Dispatch(ctx context.Context, in conversation_usecase.InboundAutomationInput) error
 }
 
 type LeadFinder interface {

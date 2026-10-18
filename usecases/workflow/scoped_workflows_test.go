@@ -61,8 +61,10 @@ var workflowsByID = getWorkflowStub{
 
 func scopedFixture() (workflow.ScopedWorkflowsUseCase, *workflowCalls) {
 	calls := &workflowCalls{}
-	return NewScopedWorkflowsUseCase(workflowsByID, updateWorkflowStub{calls}, deleteWorkflowStub{calls},
-		activateWorkflowStub{statusWorkflowStub{calls, "activate"}}, statusWorkflowStub{calls, "pause"}), calls
+	return NewScopedWorkflowsUseCase(ScopedWorkflowsDeps{
+		Create: createWorkflowStub{calls}, Get: workflowsByID, Update: updateWorkflowStub{calls}, Delete: deleteWorkflowStub{calls},
+		Activate: activateWorkflowStub{statusWorkflowStub{calls, "activate"}}, Pause: statusWorkflowStub{calls, "pause"},
+	}), calls
 }
 
 func salesScope() workflow.Scope {

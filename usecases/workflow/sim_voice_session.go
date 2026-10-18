@@ -58,7 +58,7 @@ func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *web
 		})
 	})
 	registry := NewNodeExecutorRegistry()
-	RegisterDefaultExecutors(registry, ExecutorDeps{VoiceAudio: audio})
+	RegisterDefaultExecutors(registry, ExecutorDeps{VoiceAudio: audio, ConversationEvents: simulationEvents, HTTPEgress: s.deps.HTTPEgress})
 	runs := newSimRunRepo(func(*workflow.WorkflowRun) {})
 	logs := newSimLogRepo(func(entry *workflow.WorkflowRunLog) {
 		send("node_executed", nodeEventPayload{

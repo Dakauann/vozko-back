@@ -14,7 +14,7 @@ func (e *filterExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeConditionFilter,
 		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Filtro",
 		Description: "Continua o fluxo apenas se a condição for verdadeira. Caso contrário, encerra.",
 		Icon:        "Funnel",

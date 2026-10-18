@@ -3,6 +3,7 @@ package unofficial_whatsapp_campaign
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
@@ -413,9 +414,10 @@ func (f *fakeGateway) Resolve(_ context.Context, instance *uw.Instance, in uwuc.
 }
 
 type fakeSender struct {
-	mu   sync.Mutex
-	sent []conversation_usecase.SendCampaignMessageInput
-	err  error
+	mu      sync.Mutex
+	sent    []conversation_usecase.SendCampaignMessageInput
+	err     error
+	textErr error
 }
 
 func (f *fakeSender) SendCampaignMessage(in conversation_usecase.SendCampaignMessageInput) (*conversation.Message, error) {
@@ -424,9 +426,13 @@ func (f *fakeSender) SendCampaignMessage(in conversation_usecase.SendCampaignMes
 	if f.err != nil {
 		return nil, f.err
 	}
+	if f.textErr != nil && in.MediaID == "" {
+		return nil, f.textErr
+	}
 	f.sent = append(f.sent, in)
-	pid := "prov-" + in.EntryID
-	return &conversation.Message{ID: "msg-" + in.EntryID, ExternalMessageID: &pid}, nil
+	n := strconv.Itoa(len(f.sent))
+	pid := "prov-" + in.EntryID + "-" + n
+	return &conversation.Message{ID: "msg-" + in.EntryID + "-" + n, ExternalMessageID: &pid}, nil
 }
 
 func (f *fakeSender) count() int {

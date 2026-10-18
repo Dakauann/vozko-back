@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"vozko/brand"
 )
@@ -27,7 +28,28 @@ var emailFuncs = template.FuncMap{
 		}
 		return m, nil
 	},
-	"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+	"safeHTML":    func(s string) template.HTML { return template.HTML(s) },
+	"lines":       textLines,
+	"buttonWidth": buttonWidth,
+}
+
+const (
+	buttonMinWidth    = 180
+	buttonCharWidth   = 9
+	buttonSidePadding = 48
+)
+
+func textLines(text string) []string {
+	normalized := strings.ReplaceAll(strings.TrimSpace(text), "\r\n", "\n")
+	return strings.Split(normalized, "\n")
+}
+
+func buttonWidth(label string) int {
+	width := utf8.RuneCountInString(label)*buttonCharWidth + buttonSidePadding
+	if width < buttonMinWidth {
+		return buttonMinWidth
+	}
+	return width
 }
 
 const (

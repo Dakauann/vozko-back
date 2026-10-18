@@ -39,3 +39,29 @@ func TestDepartmentAccessScope_ReadScope(t *testing.T) {
 		})
 	}
 }
+
+func TestDepartmentAccessScope_Reaches(t *testing.T) {
+	restricted := DepartmentAccessScope{DepartmentIDs: []string{"d1"}, Restrict: true, WorkspaceHasDepartments: true}
+	empty := DepartmentAccessScope{Restrict: true, WorkspaceHasDepartments: true}
+	open := DepartmentAccessScope{WorkspaceHasDepartments: true}
+
+	cases := []struct {
+		name       string
+		scope      DepartmentAccessScope
+		department string
+		want       bool
+	}{
+		{"a member reaches an own department", restricted, "d1", true},
+		{"a member does not reach a foreign department", restricted, "d2", false},
+		{"a member in no department reaches no department", empty, "d1", false},
+		{"a conversation without department is reached by every member", restricted, "", true},
+		{"an unrestricted member reaches every department", open, "d9", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.scope.Reaches(tc.department); got != tc.want {
+				t.Fatalf("Reaches(%q) = %v, want %v", tc.department, got, tc.want)
+			}
+		})
+	}
+}

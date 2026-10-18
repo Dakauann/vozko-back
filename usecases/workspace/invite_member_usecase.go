@@ -83,6 +83,7 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 	}
 
 	var permissions []workspace.PermissionEntry
+	roleName := inviteRoleLabel(input.Role)
 	if hasCustomRole {
 		role, err := uc.roleRepo.GetRoleByID(input.RoleID)
 		if err != nil {
@@ -92,6 +93,7 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 			return nil, workspace.ErrRoleNotFound
 		}
 		permissions = role.Permissions
+		roleName = role.Name
 	}
 
 	existingUser, _ := uc.userRepo.FindByEmail(email)
@@ -170,6 +172,7 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 			"InviterEmail":  inviterEmail,
 			"WorkspaceName": ws.Name,
 			"Role":          string(input.Role),
+			"RoleName":      roleName,
 			"Token":         invite.Token,
 			"AcceptURL":     acceptURL,
 			"LoginURL":      loginURL,
@@ -181,4 +184,15 @@ func (uc *inviteMemberUseCase) Execute(inviterID, workspaceID, callerRole string
 	invite.WorkspaceName = ws.Name
 	invite.InviterEmail = inviterEmail
 	return invite, nil
+}
+
+func inviteRoleLabel(role workspace.Role) string {
+	switch role {
+	case workspace.RoleAdmin:
+		return "Administrador"
+	case workspace.RoleMember:
+		return "Membro"
+	default:
+		return string(role)
+	}
 }

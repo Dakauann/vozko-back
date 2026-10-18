@@ -217,8 +217,9 @@ type fakeAutomation struct {
 	inputs []conversation_usecase.InboundAutomationInput
 }
 
-func (f *fakeAutomation) Dispatch(_ context.Context, in conversation_usecase.InboundAutomationInput) {
+func (f *fakeAutomation) Dispatch(_ context.Context, in conversation_usecase.InboundAutomationInput) error {
 	f.inputs = append(f.inputs, in)
+	return nil
 }
 
 type fakeEvents struct{ events []wcdomain.VisitorEvent }

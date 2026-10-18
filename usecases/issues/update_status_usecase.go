@@ -94,6 +94,7 @@ func (uc *updateIssueStatusUseCase) notifyStatusChange(issue *issues.Issue, oldS
 	placeholders := map[string]interface{}{
 		"OwnerName":      ownerName,
 		"IssueTitle":     issue.Title,
+		"WorkspaceName":  ws.Name,
 		"OldStatusLabel": oldLabel,
 		"OldStatusColor": oldColor,
 		"NewStatusLabel": newLabel,

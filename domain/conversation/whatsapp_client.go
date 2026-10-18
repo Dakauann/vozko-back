@@ -78,7 +78,7 @@ type WhatsAppClient interface {
 	ListTemplates(ctx context.Context, input ListTemplatesInput) (*ListTemplatesOutput, error)
 	GetTemplate(ctx context.Context, templateID string) (*Template, error)
 	CreateTemplate(ctx context.Context, input CreateTemplateInput) (*CreateTemplateOutput, error)
-	UpdateTemplate(ctx context.Context, templateID string, input UpdateTemplateInput) error
+	EditTemplate(ctx context.Context, templateID string, input EditTemplateInput) error
 	DeleteTemplate(ctx context.Context, input DeleteTemplateInput) error
 
 	UploadMediaForTemplate(ctx context.Context, input UploadMediaForTemplateInput) (string, error)
@@ -437,8 +437,9 @@ type SendTemplateMessageInput struct {
 }
 
 const (
-	TemplateButtonSubTypeURL      = "url"
-	TemplateButtonSubTypeCopyCode = "copy_code"
+	TemplateButtonSubTypeURL        = "url"
+	TemplateButtonSubTypeCopyCode   = "copy_code"
+	TemplateButtonSubTypeQuickReply = "quick_reply"
 )
 
 type TemplateButtonParam struct {
@@ -446,6 +447,7 @@ type TemplateButtonParam struct {
 	Index      int
 	Text       string
 	CouponCode string
+	Payload    string
 }
 
 func (in SendTemplateMessageInput) Validate() error {
@@ -541,7 +543,7 @@ type UploadMediaForTemplateInput struct {
 	MimeType string
 }
 
-type UpdateTemplateInput struct {
+type EditTemplateInput struct {
 	Category   string
 	Components []TemplateComponent
 }

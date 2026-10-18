@@ -57,16 +57,25 @@ type Card struct {
 	OwnerName      string
 	OptedOutAt     *time.Time
 	OptOutSource   OptOutSource
+	OptOutRecord   *ConsentRecord
 	Area           *Area
 	CustomFields   map[string]any
 	RelativesCount int
 	ReferredCount  int
 }
 
+func optOutRecordOf(l *Lead) *ConsentRecord {
+	if l.OptedOutAt == nil || l.ConsentRecord == nil || l.ConsentRecord.Kind != ConsentWithdraw {
+		return nil
+	}
+	record := *l.ConsentRecord
+	return &record
+}
+
 func CardOf(l *Lead, v Viewer) Card {
 	card := Card{
 		LeadID: l.ID, Version: l.Version, Name: l.RealName(), Number: l.Number, Blocked: l.Blocked, Owner: l.Owner,
-		OptedOutAt: l.OptedOutAt, OptOutSource: l.OptOutSource,
+		OptedOutAt: l.OptedOutAt, OptOutSource: l.OptOutSource, OptOutRecord: optOutRecordOf(l),
 		CustomFields:   customfield.VisibleValues(v.Definitions, v.Fields, l.CustomFields),
 		RelativesCount: l.RelativesCount, ReferredCount: l.ReferredCount,
 	}

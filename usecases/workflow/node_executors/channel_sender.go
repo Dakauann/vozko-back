@@ -2,31 +2,66 @@ package node_executors
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/google/uuid"
 
+	"vozko/domain/campaign"
 	"vozko/domain/channel"
 	"vozko/domain/conversation"
+	lead_domain "vozko/domain/lead"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
 type channelSender struct {
-	whatsapp *whatsappSender
-	adapters conversation.AdapterRegistry
-	history  conversation.MessageHistoryManager
-	media    conversation.ConversationMediaRepository
+	whatsapp   *whatsappSender
+	adapters   conversation.AdapterRegistry
+	history    conversation.MessageHistoryManager
+	media      conversation.ConversationMediaRepository
+	entryLeads lead_domain.EntryLeads
+	leads      leadLookup
+	lines      refusalLines
 }
 
 func newChannelSender(deps SenderDeps) *channelSender {
 	return &channelSender{
-		whatsapp: newWhatsAppSender(deps),
-		adapters: deps.Adapters,
-		history:  deps.HistoryManager,
-		media:    deps.ConversationMediaRepo,
+		whatsapp:   newWhatsAppSender(deps),
+		adapters:   deps.Adapters,
+		history:    deps.HistoryManager,
+		media:      deps.ConversationMediaRepo,
+		entryLeads: deps.EntryLeads,
+		leads:      deps.LeadRepo,
+		lines:      refusalLines{events: deps.Events},
 	}
+}
+
+func (s *channelSender) refuseUnreachableContact(ctx context.Context, run *workflow.WorkflowRun) error {
+	if s.entryLeads == nil || s.leads == nil {
+		return fmt.Errorf("%w: the lead of this conversation cannot be checked", errRecipientRefused)
+	}
+	ref := shared.EntryRef{EntryID: run.EntryID, EntryType: shared.EntryType(run.EntryType)}
+	leadID, err := s.entryLeads.LeadOfEntry(ctx, run.WorkspaceID, ref)
+	if errors.Is(err, lead_domain.ErrLeadNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: the lead of this conversation could not be read: %w", errRecipientRefused, err)
+	}
+	contact, err := s.leads.FindByID(run.WorkspaceID, leadID)
+	if errors.Is(err, lead_domain.ErrLeadNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("%w: lead %s could not be read: %w", errRecipientRefused, leadID, err)
+	}
+	if err := campaign.ContactRefusal(contact); err != nil {
+		return s.lines.refuse(run, leadID, err)
+	}
+	return nil
 }
 
 type SentMessage struct {
@@ -80,6 +115,9 @@ func (s *channelSender) SendText(
 		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, message withheld",
 			run.ID, entryType, run.EntryID)
 		return nil, nil
+	}
+	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+		return nil, err
 	}
 
 	outcome, err := adapter.SendText(ctx, ec, conversation.SendTextRequest{Body: text})
@@ -154,6 +192,9 @@ func (s *channelSender) SendMedia(
 		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, media withheld",
 			run.ID, entryType, run.EntryID)
 		return nil, nil
+	}
+	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+		return nil, err
 	}
 
 	kind := detectMediaType(mediaURL)
@@ -237,6 +278,9 @@ func newChannelSenderFromWhatsApp(wa *whatsappSender) *channelSender {
 		s.adapters = wa.deps.Adapters
 		s.history = wa.deps.HistoryManager
 		s.media = wa.deps.ConversationMediaRepo
+		s.entryLeads = wa.deps.EntryLeads
+		s.leads = wa.deps.LeadRepo
+		s.lines = refusalLines{events: wa.deps.Events}
 	}
 	return s
 }
@@ -271,6 +315,9 @@ func (s *channelSender) SendInteractive(
 		log.Printf("[workflow][run:%s] channel %s outbound window closed for entry=%s, prompt withheld",
 			run.ID, run.EntryType, run.EntryID)
 		return nil, nil
+	}
+	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+		return nil, err
 	}
 
 	outcome, err := adapter.SendInteractive(ctx, ec, req)
@@ -374,6 +421,9 @@ func (s *channelSender) SendSegments(
 		log.Printf("[workflow][run:%s] channel %s outbound window closed, %d segment(s) withheld",
 			run.ID, run.EntryType, len(segments))
 		return false, nil
+	}
+	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+		return false, err
 	}
 
 	presence, _ := adapter.(conversation.PresenceAdapter)

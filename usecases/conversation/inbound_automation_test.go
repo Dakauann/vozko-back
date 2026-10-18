@@ -39,6 +39,10 @@ func (s stubInboundCounter) CountInboundByEntry(string, shared.EntryType) (int64
 	return s.count, s.err
 }
 
+func (s stubInboundCounter) GetByEntryAndExternalMessageID(shared.EntryType, string, string) (*conversation.Message, error) {
+	return nil, conversation.ErrMessageNotFound
+}
+
 func newAutomationUnderTest(count int64) (*InboundAutomation, *recordingEvaluator, *recordingReplier, *recordingScheduler) {
 	ev, rep, sch := &recordingEvaluator{}, &recordingReplier{}, &recordingScheduler{}
 	return NewInboundAutomation(ev, rep, sch, stubInboundCounter{count: count}), ev, rep, sch

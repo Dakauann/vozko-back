@@ -1,0 +1,66 @@
+package workflow_usecase
+
+import (
+	"context"
+	"testing"
+
+	"vozko/domain/conversation"
+)
+
+func TestSimWhatsAppClientRefusesMoreButtonsThanWhatsAppAllows(t *testing.T) {
+	outCh := make(chan SimOutboundMessage, 1)
+	client := newSimWhatsAppClient(outCh)
+	buttons := make([]conversation.InteractiveButton, 0, conversation.WhatsAppButtonMaxCount+1)
+	for _, id := range []string{"a", "b", "c", "d"} {
+		buttons = append(buttons, conversation.InteractiveButton{ID: id, Title: id})
+	}
+
+	_, err := client.SendButtonMessage(context.Background(), conversation.SendButtonMessageInput{
+		To:       "5511999990000",
+		BodyText: "MENU PRINCIPAL",
+		Buttons:  buttons,
+	})
+
+	if err == nil {
+		t.Fatal("err = nil, want the WhatsApp button limit to be enforced")
+	}
+	if len(outCh) != 0 {
+		t.Fatal("a refused message must not reach the simulated chat")
+	}
+}
+
+func TestSimWhatsAppClientRefusesAListWithoutRows(t *testing.T) {
+	outCh := make(chan SimOutboundMessage, 1)
+	client := newSimWhatsAppClient(outCh)
+
+	_, err := client.SendListMessage(context.Background(), conversation.SendListMessageInput{
+		To:         "5511999990000",
+		BodyText:   "Escolha",
+		ButtonText: "Escolha",
+	})
+
+	if err == nil {
+		t.Fatal("err = nil, want an empty list to be refused")
+	}
+	if len(outCh) != 0 {
+		t.Fatal("a refused message must not reach the simulated chat")
+	}
+}
+
+func TestSimWhatsAppClientDeliversAValidButtonMessage(t *testing.T) {
+	outCh := make(chan SimOutboundMessage, 1)
+	client := newSimWhatsAppClient(outCh)
+
+	_, err := client.SendButtonMessage(context.Background(), conversation.SendButtonMessageInput{
+		To:       "5511999990000",
+		BodyText: "Deseja continuar?",
+		Buttons:  []conversation.InteractiveButton{{ID: "sim", Title: "Sim"}},
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outCh) != 1 {
+		t.Fatal("a valid message must reach the simulated chat")
+	}
+}

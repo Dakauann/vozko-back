@@ -60,9 +60,10 @@ func (c *Container) wireUnofficialCampaignCreate(bundle *unofficialWhatsAppCampa
 		SetAutomation(uwcuc.AutomationCheck)
 		SetLeadsByID(uwcuc.LeadsByID)
 		SetIdempotentCampaigns(uwcuc.IdempotentCampaigns)
+		SetGroupSeats(uwcuc.GroupSeats)
 	})
 	if !ok {
-		log.Fatalf("[unofficial-whatsapp-campaigns] the campaign creation cannot take the workflow checks, lead targets and idempotency keys")
+		log.Fatalf("[unofficial-whatsapp-campaigns] the campaign creation cannot take the workflow checks, lead targets, idempotency keys and group seats")
 	}
 	keyed, ok := bundle.Campaigns.(uwcuc.IdempotentCampaigns)
 	if !ok {
@@ -71,6 +72,7 @@ func (c *Container) wireUnofficialCampaignCreate(bundle *unofficialWhatsAppCampa
 	configurable.SetAutomation(c.campaignAutomation())
 	configurable.SetLeadsByID(c.repositories.lead)
 	configurable.SetIdempotentCampaigns(keyed)
+	configurable.SetGroupSeats(c.unofficialWhatsApp.Groups)
 }
 
 func (c *Container) unofficialSends() *leadsend_usecase.Unofficial {

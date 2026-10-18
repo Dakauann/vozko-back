@@ -78,6 +78,7 @@ type ContactIdentityLookup interface {
 	ContactsByIDs(ctx context.Context, contactIDs []string) (map[string]ContactDisplay, error)
 	ContactForConversation(ctx context.Context, conversationID string) (ContactDisplay, string, error)
 	AuthorsByHandle(ctx context.Context, entryID string, handles []string) (map[string]ContactDisplay, error)
+	AuthorsByAccount(ctx context.Context, handlesByAccount map[string][]string) (map[string]map[string]ContactDisplay, error)
 }
 
 type InstagramContactDisplay = ContactDisplay
@@ -771,6 +772,7 @@ func (s *HistoryProviderService) buildInboxEntries(
 	}
 
 	s.hydrateContactSenders(entries)
+	s.attributeGroupPreviews(entries, rows)
 	s.enrichAssignments(entries, workspaceID)
 	return entries
 }
@@ -1705,12 +1707,16 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 }
 
 func (s *MessageSenderService) SendAgentTextMessage(entryID, entryType, text, agentID string) (*conversation.Message, error) {
+	return s.sendAutomatedText(entryID, entryType, text, conversation.SentByAI(agentID))
+}
+
+func (s *MessageSenderService) sendAutomatedText(entryID, entryType, text string, sentBy conversation.SentBy) (*conversation.Message, error) {
 	adapter := s.adapterFor(entryType)
 	if adapter == nil {
 		return nil, conversation.ErrNoAdapterForEntryType
 	}
 
-	message, err := s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByAI(agentID), "",
+	message, err := s.sendViaAdapter(adapter, entryID, entryType, sentBy, "",
 		func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 			return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: text})
 		},

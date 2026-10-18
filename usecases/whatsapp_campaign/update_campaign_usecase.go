@@ -1,6 +1,10 @@
 package whatsapp_campaign_usecase
 
 import (
+	"context"
+	"fmt"
+
+	"vozko/domain/buttonaction"
 	"vozko/domain/campaign"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	"vozko/domain/whatsapp/template"
@@ -17,6 +21,16 @@ type updateCampaignUseCase struct {
 	businessPhoneRepo businessphone.Repository
 	phoneAccessRepo   workspace_phone_access.Repository
 	automation        AutomationCheck
+	exitRisk          ExitRiskGate
+	templateGrants    TemplateGrants
+}
+
+func (uc *updateCampaignUseCase) SetTemplateGrants(grants TemplateGrants) {
+	uc.templateGrants = grants
+}
+
+func (uc *updateCampaignUseCase) SetExitRiskGate(gate ExitRiskGate) {
+	uc.exitRisk = gate
 }
 
 func (uc *updateCampaignUseCase) SetAutomation(automation AutomationCheck) {
@@ -39,7 +53,7 @@ func NewUpdateCampaignUseCase(
 	}
 }
 
-func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) (*wc.Campaign, error) {
+func (uc *updateCampaignUseCase) Execute(ctx context.Context, campaignID string, input *wc.Campaign) (*wc.Campaign, error) {
 	if campaignID == "" {
 		return nil, wc.ErrCampaignNotFound
 	}
@@ -58,6 +72,7 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 		return nil, err
 	}
 
+	templateChanged := input.TemplateID != "" && input.TemplateID != existing.TemplateID
 	existing.Name = input.Name
 	if input.Type.IsValid() {
 		existing.Type = input.Type
@@ -75,7 +90,6 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 	existing.EnableAnalysis = input.EnableAnalysis
 	existing.EnableAutoStaging = input.EnableAutoStaging
 	existing.EnableAutoMemory = input.EnableAutoMemory
-	existing.PreferAudio = input.PreferAudio
 	existing.AiModel = input.AiModel
 	existing.Archived = input.Archived
 
@@ -115,8 +129,12 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 		businessPhone, _ = uc.businessPhoneRepo.FindByID(existing.BusinessPhoneID)
 	}
 
+	var admission *buttonaction.CampaignAdmission
 	if !existing.IsOrganic() {
 		if uc.templateRepo == nil {
+			return nil, wc.ErrCampaignTemplateNotFound
+		}
+		if templateChanged && !uc.granted(existing.WorkspaceID, existing.TemplateID) {
 			return nil, wc.ErrCampaignTemplateNotFound
 		}
 
@@ -140,10 +158,21 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 		} else if businessPhone != nil && tmpl.WABAId == "" {
 			return nil, wc.ErrCampaignTemplatePhoneMismatch
 		}
+
+		if templateChanged {
+			if admission, err = uc.admitTemplate(ctx, existing.WorkspaceID, tmpl, input.ExitRiskAcknowledgedBy); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if err := uc.campaignRepo.Update(campaignID, existing); err != nil {
 		return nil, err
+	}
+	if admission != nil {
+		if err := uc.exitRisk.RecordCampaignAdmission(ctx, existing.WorkspaceID, campaignID, *admission); err != nil {
+			return nil, fmt.Errorf("campaign %s was saved, but its new template's exit setup was not recorded: %w", campaignID, err)
+		}
 	}
 
 	saved, err := uc.campaignRepo.FindByID(campaignID)
@@ -159,4 +188,23 @@ func (uc *updateCampaignUseCase) Execute(campaignID string, input *wc.Campaign) 
 	}
 
 	return saved, nil
+}
+
+func (uc *updateCampaignUseCase) admitTemplate(ctx context.Context, workspaceID string, tmpl *template.Template, acknowledgedBy string) (*buttonaction.CampaignAdmission, error) {
+	if uc.exitRisk == nil {
+		return nil, buttonaction.ErrUnavailable
+	}
+	admission, err := uc.exitRisk.AdmitCampaign(ctx, workspaceID, tmpl, acknowledgedBy)
+	if err != nil {
+		return nil, err
+	}
+	return &admission, nil
+}
+
+func (uc *updateCampaignUseCase) granted(workspaceID, templateID string) bool {
+	if uc.templateGrants == nil {
+		return false
+	}
+	granted, err := uc.templateGrants.HasAccess(workspaceID, templateID)
+	return err == nil && granted
 }

@@ -38,6 +38,18 @@ func concurrentIndexes() []concurrentIndex {
 				WHERE read = false AND deleted_at IS NULL AND ` + SentByContactSQL(""),
 		},
 		{
+			name: "ux_uwce_campaign_group",
+			sql: `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_uwce_campaign_group
+				ON unofficial_whatsapp_campaign_entries (campaign_id, jid)
+				WHERE lead_id IS NULL AND deleted_at IS NULL`,
+		},
+		{
+			name: "idx_uwce_group_target",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_uwce_group_target
+				ON unofficial_whatsapp_campaign_entries (workspace_id, jid)
+				WHERE lead_id IS NULL AND deleted_at IS NULL`,
+		},
+		{
 			name: "idx_cm_sender_unknown",
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cm_sender_unknown
 				ON conversation_messages (id)
@@ -90,6 +102,12 @@ func concurrentIndexes() []concurrentIndex {
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_workspace_referred
 				ON leads (workspace_id, referred_count)
 				WHERE referred_count > 0`,
+		},
+		{
+			name: "idx_leads_workspace_company",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_leads_workspace_company
+				ON leads (workspace_id, company_id)
+				WHERE company_id IS NOT NULL AND deleted_at IS NULL`,
 		},
 		{
 			name: "idx_lead_addresses_workspace_place",
@@ -149,6 +167,12 @@ func concurrentIndexes() []concurrentIndex {
 			replaces: "idx_wce_campaign_status_del",
 		},
 		{
+			name: CampaignEntryWaveIndex,
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + CampaignEntryWaveIndex + `
+				ON whatsapp_campaign_entries (campaign_id, wave_number, status)
+				WHERE wave_number > 0 AND deleted_at IS NULL`,
+		},
+		{
 			name: LeadPhoneHoldersIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + LeadPhoneHoldersIndex + `
 				ON lead_phones (workspace_id, number, lead_id)`,
@@ -166,6 +190,7 @@ const (
 	UnlinkedCallsByCounterpartIndex = "idx_calls_ws_counterpart_unlinked"
 	LeadCustomFieldsIndex           = "idx_leads_custom_fields"
 	CampaignEntryLiveStatusIndex    = "idx_wce_campaign_status_live"
+	CampaignEntryWaveIndex          = "idx_wce_campaign_wave_status"
 )
 
 func ConcurrentIndexSQL(name string) (string, bool) {

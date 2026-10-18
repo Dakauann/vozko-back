@@ -9,16 +9,21 @@ import (
 )
 
 func agentActor(ctx context.Context, config map[string]interface{}) string {
-	agentID := strings.TrimSpace(configString(config, "__agent_id"))
-	if agentID == "" {
-		if ctxAgent, ok := agentctx.AgentFromContext(ctx); ok {
-			agentID = ctxAgent.ID
-		}
-	}
+	agentID := agentIDOf(ctx, config)
 	if agentID == "" {
 		return ""
 	}
 	return actor.FormatAI(agentID)
+}
+
+func agentIDOf(ctx context.Context, config map[string]interface{}) string {
+	if agentID := configString(config, "__agent_id"); agentID != "" {
+		return agentID
+	}
+	if ctxAgent, ok := agentctx.AgentFromContext(ctx); ok {
+		return strings.TrimSpace(ctxAgent.ID)
+	}
+	return ""
 }
 
 func automationActor(ctx context.Context, config map[string]interface{}) string {

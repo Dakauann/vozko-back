@@ -7,7 +7,6 @@ import (
 
 	audiencehttp "vozko/delivery/http/audience"
 	ca "vozko/domain/audience"
-	"vozko/domain/notification"
 	"vozko/domain/shared"
 	ca_repository "vozko/infra/repositories/audience"
 	workspace_config_repository "vozko/infra/repositories/workspace_config"
@@ -42,7 +41,7 @@ type audienceBundle struct {
 
 const audienceRetention = 365 * 24 * time.Hour
 
-func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboardURL string) {
+func (c *Container) initCommentAnalysis(dashboardURL string) {
 	bundle := &audienceBundle{}
 	c.audience = bundle
 
@@ -166,7 +165,7 @@ func (c *Container) initCommentAnalysis(notifier notification.Notifier, dashboar
 		Balance:         c.services.cachedBalanceChecker,
 		State:           state,
 		Metrics:         c.services.metrics,
-		Notifier:        notifier,
+		Notifications:   c.notifications().Publisher,
 		Broadcaster:     c.services.conversationHub,
 		Timeline:        c.services.crmTelemetryEmitter,
 		Live:            c.services.conversationHub,

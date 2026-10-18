@@ -77,3 +77,16 @@ type Recorder interface {
 type History interface {
 	LatestValues(subject Subject, signal Signal, externalIDs []string) (map[string]string, error)
 }
+
+type Timeline interface {
+	LatestBySignal(subject Subject, externalID string) (map[Signal]Change, error)
+}
+
+type ChangeLog interface {
+	Recent(subject Subject, externalID string, limit int) ([]Change, error)
+}
+
+type Reader interface {
+	Timeline
+	ChangeLog
+}

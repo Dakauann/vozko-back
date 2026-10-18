@@ -2,6 +2,7 @@ package lead
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strings"
@@ -123,7 +124,7 @@ func TestSave_ChecksTheVersionBumpsItAndWritesTheEventsInOneTransaction(t *testi
 	mock.ExpectQuery(exact(saveSQL)).
 		WithArgs(
 			"5511987654321", "Ana Souza", "manual", nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, true, sqlmock.AnyArg(), nil, "", nil, sqlmock.AnyArg(),
+			nil, nil, nil, true, sqlmock.AnyArg(), nil, "", nil, nil, sqlmock.AnyArg(),
 			leadUUID, wsUUID, int64(4), "5511987654321",
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(5))
@@ -152,12 +153,18 @@ func TestSave_WritesTheOptOutWithItsSource(t *testing.T) {
 	l.Blocked, l.BlockedAt = false, time.Time{}
 	optedOut := time.Date(2026, time.October, 8, 12, 0, 0, 0, time.UTC)
 	l.OptedOutAt, l.OptOutSource = &optedOut, lead.OptOutLeadRequest
+	l.ConsentRecord = &lead.ConsentRecord{Kind: lead.ConsentWithdraw, Source: lead.ConsentManual, At: optedOut, EventID: "ev-1",
+		Actor: lead.ConsentActor{Type: lead.ConsentActorUser, ID: actorUUID}}
+	recordJSON, err := json.Marshal(l.ConsentRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(exact(saveSQL)).
 		WithArgs(
 			"5511987654321", "Ana Souza", "manual", nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, &optedOut, "lead_request", false, nil, nil, "", nil, sqlmock.AnyArg(),
+			nil, &optedOut, "lead_request", false, nil, nil, "", nil, string(recordJSON), sqlmock.AnyArg(),
 			leadUUID, wsUUID, int64(4), "5511987654321",
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"version"}).AddRow(5))

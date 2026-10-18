@@ -106,6 +106,7 @@ func (c *Container) initRouter() {
 		whatsAppOutreachHandler(c),
 		unofficialWhatsAppWebhookHandler(c),
 		unofficialWhatsAppGroupHandler(c),
+		unofficialWhatsAppWorkspaceGroupHandler(c),
 		unofficialWhatsAppCampaignHandler(c),
 		audienceHandler(c),
 		c.handlers.sendCap,
@@ -114,8 +115,17 @@ func (c *Container) initRouter() {
 		c.studioHandler(),
 		webchatRoutes(c),
 		c.leadGeographyHandler(),
+		c.leadCompanyHandler(),
 		c.callListHandler(),
 		c.leadReferencePointHandler(),
+		c.buttonActionHandler(),
+		c.campaignExitHandler(),
+		c.smartCampaignHandler(),
+		c.templateHealthHandler(),
+		c.campaignLaunchHandler(),
+		c.notificationHandler(),
+		c.notificationAdminHandler(),
+		c.customerPortfolioHandler(),
 	)
 
 }

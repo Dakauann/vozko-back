@@ -1,0 +1,40 @@
+{{define "title"}}Resumo de notificações - {{.Brand.Name}}{{end}}
+{{define "preheader"}}{{.Total}} {{if eq .Total 1}}aviso não lido{{else}}avisos não lidos{{end}} em {{.WorkspaceName}}{{end}}
+{{define "eyebrow"}}{{.WorkspaceName}}{{end}}
+{{define "content"}}
+{{template "heading" dict "status" "Resumo diário" "tone" "info" "title" "Resumo de notificações" "subtitle" (printf "Avisos de %s que você ainda não leu, até %s às 08:00." .WorkspaceName .Date)}}
+{{template "gap" 24}}
+{{range $i, $item := .Items}}
+{{if $i}}{{template "gap" 12}}{{end}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+    <tr>
+        <td class="vx-panel" bgcolor="#ffffff" style="padding:14px 16px; border:1px solid #dce1e5; border-radius:8px; background-color:#ffffff; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                    <td valign="middle">{{template "badge" dict "tone" (or $item.Tone "info") "text" (or $item.CategoryLabel "Notificação")}}</td>
+                    <td valign="middle" align="right" class="vx-muted" style="font-size:12px; line-height:18px; color:#58626a; white-space:nowrap;">{{$item.SentAt}}</td>
+                </tr>
+            </table>
+            {{template "gap" 10}}
+            <a href="{{$item.ActionURL}}" target="_blank" class="vx-fg" style="font-family:Oxanium,'Segoe UI',Inter,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif; font-size:16px; font-weight:600; line-height:22px; color:#14171a; text-decoration:none; word-break:break-word;">{{$item.Title}}</a>
+            {{if $item.Body}}<p class="vx-muted" style="margin:6px 0 0; font-size:14px; line-height:21px; color:#58626a; word-break:break-word;">{{range $n, $line := lines $item.Body}}{{if $n}}<br>{{end}}{{$line}}{{end}}</p>{{end}}
+        </td>
+    </tr>
+</table>
+{{end}}
+{{if .More}}
+{{template "gap" 16}}
+<p class="vx-muted" style="margin:0; font-size:14px; line-height:21px; color:#58626a;">e mais {{.More}} {{if eq .More 1}}aviso{{else}}avisos{{end}} na central de notificações.</p>
+{{end}}
+{{template "gap" 28}}
+{{template "cta" dict "url" .InboxURL "label" "Ver todas as notificações"}}
+{{template "gap" 28}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td class="vx-muted vx-rule" style="padding-top:16px; border-top:1px solid #dce1e5; font-size:12px; line-height:18px; color:#58626a;">
+            Você recebe este resumo porque escolheu juntar os avisos do dia em um único e-mail. Avisos críticos continuam chegando na hora.
+            Para mudar, abra o sino na {{.Brand.Name}} e entre nas preferências de e-mail.
+        </td>
+    </tr>
+</table>
+{{end}}

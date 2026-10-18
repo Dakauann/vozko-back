@@ -202,7 +202,7 @@ func TestLeadSupportedFieldsAreRegisteredInTheDomain(t *testing.T) {
 		crmfilter.FieldZip, crmfilter.FieldState, crmfilter.FieldCity, crmfilter.FieldDistrict,
 		crmfilter.FieldGeoPrecision, crmfilter.FieldGeoStatus, crmfilter.FieldHasAddress, crmfilter.FieldHasIdentity,
 		crmfilter.FieldOptedOut, crmfilter.FieldWhatsAppOptIn, crmfilter.FieldRelationKind,
-		crmfilter.FieldRelativesCount, crmfilter.FieldReferredCount, crmfilter.FieldReferredBy,
+		crmfilter.FieldRelativesCount, crmfilter.FieldReferredCount, crmfilter.FieldReferredBy, crmfilter.FieldCompany,
 	}
 	for _, field := range supported {
 		if _, ok := crmfilter.SpecFor(field); !ok {

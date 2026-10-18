@@ -88,6 +88,8 @@ var (
 	ScreenMessageShortcuts          = registerScreen("message_shortcuts")
 	ScreenLeads                     = registerScreen("leads")
 	ScreenLeadDetail                = registerScreen("lead_detail", "leadId")
+	ScreenLeadCompanies             = registerScreen("lead_companies")
+	ScreenCustomerPortfolio         = registerScreen("customer_portfolio")
 	ScreenLinks                     = registerScreen("links")
 	ScreenLinkNew                   = registerScreen("link_new")
 	ScreenLinkDetail                = registerScreen("link_detail", "id")
@@ -104,6 +106,15 @@ var (
 	ScreenInvoices                  = registerScreen("invoices")
 	ScreenWorkspace                 = registerScreen("workspace")
 	ScreenWorkspaceInvites          = registerScreen("workspace_invites")
+)
+
+var (
+	ScreenUnofficialGroups              = registerScreen("unofficial_groups")
+	ScreenUnofficialGroupsList          = registerScreen("unofficial_groups_list")
+	ScreenUnofficialGroupDetail         = registerScreen("unofficial_group_detail", "groupId")
+	ScreenUnofficialGroupPeople         = registerScreen("unofficial_group_people")
+	ScreenUnofficialGroupAnalyses       = registerScreen("unofficial_group_analyses")
+	ScreenUnofficialGroupAnalysisDetail = registerScreen("unofficial_group_analysis_detail", "analysisId")
 )
 
 func (s Screen) Valid() bool {

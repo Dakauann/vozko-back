@@ -218,7 +218,7 @@ func (e *conditionBranchExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeConditionBranch,
 		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Condição",
 		Description: "Divide o fluxo com base em uma condição (campo, operador, valor).",
 		Icon:        "GitBranch",

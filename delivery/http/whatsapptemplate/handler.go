@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	buttonactionhttp "vozko/delivery/http/buttonaction"
 	"vozko/delivery/http/response"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
@@ -29,6 +30,8 @@ type WhatsAppTemplateHandler struct {
 	workspaceTemplateAccessRepo workspace_template_access.Repository
 	phoneRepo                   businessphone.Repository
 	workspaceTemplates          whatsapptemplatedomain.WorkspaceTemplatesUseCase
+	exitGuardedCreator          ExitGuardedCreator
+	editor                      ExitGuardedEditor
 }
 
 func NewWhatsAppTemplateHandler(
@@ -472,7 +475,7 @@ func (h *WhatsAppTemplateHandler) verifyTemplateOwnership(w http.ResponseWriter,
 }
 
 // @Summary		Criar modelo de mensagem
-// @Description	Cria um novo modelo (template) de mensagem do WhatsApp para um telefone comercial do workspace e concede acesso ao workspace. O telefone precisa pertencer ao workspace.
+// @Description	Cria um novo modelo (template) de mensagem do WhatsApp para um telefone comercial do workspace e concede acesso ao workspace. O telefone precisa pertencer ao workspace. O corpo pode trazer a saída do lead junto: `buttonActions` (as mesmas ações de PUT /whatsapp/templates/{id}/button-actions, pelo `buttonIndex` dos botões enviados e com `buttonText` igual ao texto desse botão) e `exitConfirmation`; elas nunca vão para a revisão e só são gravadas depois que a Meta aceita o modelo, substituindo a saída já gravada para o mesmo nome e idioma (as permissões de cada tipo de ação valem para o que muda em relação a essa saída). Sem nenhuma delas no corpo, a saída já gravada para esse nome e idioma fica como está. Uma criação recusada pela Meta não muda nada. Um modelo de MARKETING precisa mostrar uma saída ao lead: um botão de resposta rápida com ação `opt_out` ou `consent_grant`, ou um comando `/palavra` no texto (cabeçalho de texto, corpo, rodapé ou texto de um botão de resposta rápida, por exemplo um rodapé "Responda /sair para não receber mais"). Sem isso, é recusado com 422 `marketing_template_needs_exit` antes de chegar à Meta, sem reconhecimento de risco que libere. Modelos UTILITY e AUTHENTICATION não precisam de saída. As recusas das ações usam os códigos `button_action_*` e `exit_*` da rota de ações.
 // @Tags			Modelos de WhatsApp
 // @Accept			json
 // @Produce		json
@@ -482,6 +485,7 @@ func (h *WhatsAppTemplateHandler) verifyTemplateOwnership(w http.ResponseWriter,
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse
+// @Failure		422	{object}	response.ErrorResponse
 // @Failure		500	{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/whatsapp/templates [post]
@@ -491,7 +495,6 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
-	wsID := middleware.GetWorkspaceID(r)
 
 	var req CreateTemplateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -524,8 +527,11 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 		HeaderMediaURL:  req.HeaderMediaURL,
 	}
 
-	result, err := h.workspaceTemplates.Create(wsID, claims.UserID, input)
+	result, err := h.createGuarded(r, req, input)
 	if err != nil {
+		if buttonactionhttp.WriteRefusal(w, err) {
+			return
+		}
 		if errors.Is(err, whatsapptemplatedomain.ErrPhoneOutsideWorkspace) {
 			response.WriteError(w, http.StatusForbidden, "This phone does not belong to your workspace", nil)
 			return

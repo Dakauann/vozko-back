@@ -202,6 +202,7 @@ func (s *Service) createPart(ctx context.Context, a Actor, plan *sendPlan, name,
 		created, err := s.deps.Official.Create.Execute(ctx, &wc.Campaign{
 			WorkspaceID: a.WorkspaceID, Name: name, Type: wc.CampaignTypeStandard, TemplateID: p.TemplateID, BusinessPhoneID: p.BusinessPhoneID,
 			Status: wc.CampaignStatusStopped, Source: campaign.SourceLeadSelection, IdempotencyKey: key, PhoneInputs: inputs,
+			ExitRiskAcknowledgedBy: acknowledger(a, p),
 		})
 		if err != nil {
 			return "", err
@@ -221,4 +222,11 @@ func (s *Service) createPart(ctx context.Context, a Actor, plan *sendPlan, name,
 		return "", err
 	}
 	return created.ID, nil
+}
+
+func acknowledger(a Actor, p leadaction.SendParams) string {
+	if !p.ExitRiskAcknowledged {
+		return ""
+	}
+	return a.UserID
 }

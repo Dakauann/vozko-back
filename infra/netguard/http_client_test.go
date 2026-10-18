@@ -1,6 +1,7 @@
 package netguard
 
 import (
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -32,5 +33,21 @@ func TestTheGuardedClientIgnoresProxySettings(t *testing.T) {
 	transport, ok := NewHTTPClient(time.Second).Transport.(*http.Transport)
 	if !ok || transport.Proxy != nil {
 		t.Fatal("a proxy would dial on the guard's behalf and skip the address check")
+	}
+}
+
+func TestTheLegacyTLSClientKeepsTheGuardAndStopsAtTLS12(t *testing.T) {
+	client := NewLegacyTLSHTTPClient(time.Second)
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.MaxVersion != tls.VersionTLS12 {
+		t.Fatal("the fallback client exists for servers that fail a TLS 1.3 handshake")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	if _, err := client.Get(server.URL); !errors.Is(err, ErrBlockedAddress) {
+		t.Fatalf("the fallback must refuse internal addresses like the main client, got %v", err)
 	}
 }

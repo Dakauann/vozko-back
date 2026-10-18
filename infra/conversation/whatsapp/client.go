@@ -1363,15 +1363,11 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 	}
 
 	for _, btn := range input.Buttons {
-		param := templateParameter{Type: "text", Text: btn.Text}
-		if btn.SubType == conversation.TemplateButtonSubTypeCopyCode {
-			param = templateParameter{Type: "coupon_code", CouponCode: btn.CouponCode}
-		}
 		components = append(components, templateComponentPayload{
 			Type:       "button",
 			SubType:    btn.SubType,
 			Index:      strconv.Itoa(btn.Index),
-			Parameters: []templateParameter{param},
+			Parameters: []templateParameter{templateButtonParameter(btn)},
 		})
 	}
 
@@ -1725,67 +1721,7 @@ func (c *Client) CreateTemplate(ctx context.Context, input conversation.CreateTe
 		payload.ParameterFormat = input.ParameterFormat
 	}
 
-	for _, comp := range input.Components {
-		compType := strings.ToUpper(comp.Type)
-		apiComp := createTemplateComponent{
-			Type:                      compType,
-			Text:                      comp.Text,
-			AddSecurityRecommendation: comp.AddSecurityRecommendation,
-			CodeExpirationMinutes:     comp.CodeExpirationMinutes,
-		}
-
-		if compType == "HEADER" && comp.Format != "" {
-			apiComp.Format = strings.ToUpper(comp.Format)
-		}
-
-		if compType == "BUTTONS" && len(comp.Buttons) > 0 {
-			apiComp.Text = ""
-			for _, btn := range comp.Buttons {
-				btnType := strings.ToUpper(btn.Type)
-				apiBtn := createTemplateButton{
-					Type:        btnType,
-					Text:        btn.Text,
-					URL:         btn.URL,
-					PhoneNumber: btn.PhoneNumber,
-					OTPType:     strings.ToUpper(strings.TrimSpace(btn.OTPType)),
-				}
-
-				if btn.Example != "" {
-					apiBtn.Example = []string{btn.Example}
-				}
-
-				if btnType == "COPY_CODE" && btn.Example != "" {
-
-					apiBtn.Text = ""
-				}
-				apiComp.Buttons = append(apiComp.Buttons, apiBtn)
-			}
-		}
-
-		if comp.Example != nil {
-			apiComp.Example = &createTemplateExample{
-				HeaderText:   comp.Example.HeaderText,
-				HeaderHandle: comp.Example.HeaderHandle,
-				BodyText:     comp.Example.BodyText,
-			}
-
-			for _, np := range comp.Example.BodyTextNamed {
-				apiComp.Example.BodyTextNamed = append(apiComp.Example.BodyTextNamed, createNamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-
-			for _, np := range comp.Example.HeaderTextNamed {
-				apiComp.Example.HeaderTextNamed = append(apiComp.Example.HeaderTextNamed, createNamedParamExample{
-					ParamName: np.ParamName,
-					Example:   np.Example,
-				})
-			}
-		}
-
-		payload.Components = append(payload.Components, apiComp)
-	}
+	payload.Components = toWireComponents(input.Components)
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -1885,68 +1821,6 @@ func (c *Client) fetchTemplateRejectedReason(ctx context.Context, templateID str
 		return ""
 	}
 	return reason
-}
-
-func (c *Client) UpdateTemplate(ctx context.Context, templateID string, input conversation.UpdateTemplateInput) error {
-	if c == nil || c.accessToken == "" {
-		return conversation.ErrWhatsAppClientDisabled
-	}
-	if templateID == "" {
-		return conversation.ErrWhatsAppTemplateIDRequired
-	}
-
-	payload := make(map[string]interface{})
-	if input.Category != "" {
-		payload["category"] = input.Category
-	}
-	if len(input.Components) > 0 {
-		comps := make([]createTemplateComponent, len(input.Components))
-		for i, comp := range input.Components {
-			comps[i] = createTemplateComponent{
-				Type: strings.ToUpper(comp.Type),
-				Text: comp.Text,
-			}
-			if comp.Example != nil {
-				comps[i].Example = &createTemplateExample{
-					BodyText: comp.Example.BodyText,
-				}
-			}
-		}
-		payload["components"] = comps
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-
-	endpoint := fmt.Sprintf("%s/%s", c.baseURL, templateID)
-	if c.templatesChannelScoped {
-		endpoint = fmt.Sprintf("%s/v1/configs/templates/%s", c.baseURL, url.PathEscape(templateID))
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	c.setAuth(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("whatsapp update template failed: status=%d body=%s", resp.StatusCode, string(respBody))
-	}
-
-	return nil
 }
 
 func (c *Client) DeleteTemplate(ctx context.Context, input conversation.DeleteTemplateInput) error {
@@ -2285,6 +2159,18 @@ type templateParameter struct {
 	Video         *templateMediaParam    `json:"video,omitempty"`
 	Document      *templateDocumentParam `json:"document,omitempty"`
 	CouponCode    string                 `json:"coupon_code,omitempty"`
+	Payload       string                 `json:"payload,omitempty"`
+}
+
+func templateButtonParameter(btn conversation.TemplateButtonParam) templateParameter {
+	switch btn.SubType {
+	case conversation.TemplateButtonSubTypeCopyCode:
+		return templateParameter{Type: "coupon_code", CouponCode: btn.CouponCode}
+	case conversation.TemplateButtonSubTypeQuickReply:
+		return templateParameter{Type: "payload", Payload: btn.Payload}
+	default:
+		return templateParameter{Type: "text", Text: btn.Text}
+	}
 }
 
 type templateMediaParam struct {
@@ -2356,6 +2242,72 @@ type templateExampleResponse struct {
 type templateNamedParamResponse struct {
 	ParamName string `json:"param_name"`
 	Example   string `json:"example"`
+}
+
+func toWireComponents(components []conversation.TemplateComponent) []createTemplateComponent {
+	out := make([]createTemplateComponent, 0, len(components))
+	for _, comp := range components {
+		compType := strings.ToUpper(comp.Type)
+		apiComp := createTemplateComponent{
+			Type:                      compType,
+			Text:                      comp.Text,
+			AddSecurityRecommendation: comp.AddSecurityRecommendation,
+			CodeExpirationMinutes:     comp.CodeExpirationMinutes,
+		}
+
+		if compType == "HEADER" && comp.Format != "" {
+			apiComp.Format = strings.ToUpper(comp.Format)
+		}
+
+		if compType == "BUTTONS" && len(comp.Buttons) > 0 {
+			apiComp.Text = ""
+			for _, btn := range comp.Buttons {
+				btnType := strings.ToUpper(btn.Type)
+				apiBtn := createTemplateButton{
+					Type:        btnType,
+					Text:        btn.Text,
+					URL:         btn.URL,
+					PhoneNumber: btn.PhoneNumber,
+					OTPType:     strings.ToUpper(strings.TrimSpace(btn.OTPType)),
+				}
+
+				if btn.Example != "" {
+					apiBtn.Example = []string{btn.Example}
+				}
+
+				if btnType == "COPY_CODE" && btn.Example != "" {
+
+					apiBtn.Text = ""
+				}
+				apiComp.Buttons = append(apiComp.Buttons, apiBtn)
+			}
+		}
+
+		if comp.Example != nil {
+			apiComp.Example = &createTemplateExample{
+				HeaderText:   comp.Example.HeaderText,
+				HeaderHandle: comp.Example.HeaderHandle,
+				BodyText:     comp.Example.BodyText,
+			}
+
+			for _, np := range comp.Example.BodyTextNamed {
+				apiComp.Example.BodyTextNamed = append(apiComp.Example.BodyTextNamed, createNamedParamExample{
+					ParamName: np.ParamName,
+					Example:   np.Example,
+				})
+			}
+
+			for _, np := range comp.Example.HeaderTextNamed {
+				apiComp.Example.HeaderTextNamed = append(apiComp.Example.HeaderTextNamed, createNamedParamExample{
+					ParamName: np.ParamName,
+					Example:   np.Example,
+				})
+			}
+		}
+
+		out = append(out, apiComp)
+	}
+	return out
 }
 
 type createTemplateRequest struct {

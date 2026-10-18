@@ -81,8 +81,9 @@ func TestChannelSenderSendsThroughAdapter(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	history := &recordingHistory{}
 	sender := &channelSender{
-		adapters: conversation.NewAdapterRegistry(adapter),
-		history:  history,
+		adapters:   conversation.NewAdapterRegistry(adapter),
+		entryLeads: &entryLeads{}, leads: &knownLeadRepo{},
+		history: history,
 	}
 
 	sent, err := sender.SendText(context.Background(), igRun(), "olá!", conversation.MessageTypeAIResponse)
@@ -115,8 +116,9 @@ func TestChannelSenderWithheldWhenWindowClosed(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: false}
 	history := &recordingHistory{}
 	sender := &channelSender{
-		adapters: conversation.NewAdapterRegistry(adapter),
-		history:  history,
+		adapters:   conversation.NewAdapterRegistry(adapter),
+		entryLeads: &entryLeads{}, leads: &knownLeadRepo{},
+		history: history,
 	}
 
 	sent, err := sender.SendText(context.Background(), igRun(), "olá!", conversation.MessageTypeAIResponse)
@@ -142,8 +144,9 @@ func TestChannelSenderPropagatesProviderFailure(t *testing.T) {
 	}
 	history := &recordingHistory{}
 	sender := &channelSender{
-		adapters: conversation.NewAdapterRegistry(adapter),
-		history:  history,
+		adapters:   conversation.NewAdapterRegistry(adapter),
+		entryLeads: &entryLeads{}, leads: &knownLeadRepo{},
+		history: history,
 	}
 
 	if _, err := sender.SendText(context.Background(), igRun(), "olá!", conversation.MessageTypeAIResponse); err == nil {
@@ -194,8 +197,9 @@ func TestChannelSenderSupports(t *testing.T) {
 func TestChannelSenderFailsWhenTranscriptCannotBeWritten(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	sender := &channelSender{
-		adapters: conversation.NewAdapterRegistry(adapter),
-		history:  &recordingHistory{err: errors.New("db down")},
+		adapters:   conversation.NewAdapterRegistry(adapter),
+		entryLeads: &entryLeads{}, leads: &knownLeadRepo{},
+		history: &recordingHistory{err: errors.New("db down")},
 	}
 
 	if _, err := sender.SendText(context.Background(), igRun(), "olá!", conversation.MessageTypeAIResponse); err == nil {
@@ -208,9 +212,10 @@ func TestChannelSenderBridgesMediaOnTheAdapterPath(t *testing.T) {
 	history := &recordingHistory{}
 	mediaRepo := &recordingConversationMedia{}
 	sender := &channelSender{
-		adapters: conversation.NewAdapterRegistry(adapter),
-		history:  history,
-		media:    mediaRepo,
+		adapters:   conversation.NewAdapterRegistry(adapter),
+		entryLeads: &entryLeads{}, leads: &knownLeadRepo{},
+		history: history,
+		media:   mediaRepo,
 	}
 
 	const mediaURL = "https://cdn.example.com/promo.png"
@@ -249,8 +254,9 @@ func TestChannelSenderSendsMediaWithoutAMediaRepository(t *testing.T) {
 	adapter := &fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}
 	history := &recordingHistory{}
 	sender := &channelSender{
-		adapters: conversation.NewAdapterRegistry(adapter),
-		history:  history,
+		adapters:   conversation.NewAdapterRegistry(adapter),
+		entryLeads: &entryLeads{}, leads: &knownLeadRepo{},
+		history: history,
 	}
 
 	if _, err := sender.SendMedia(context.Background(), igRun(), "https://cdn.example.com/a.pdf", "veja"); err != nil {

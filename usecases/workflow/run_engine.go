@@ -225,6 +225,12 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 			return e.runRepo.Update(run)
 		}
 
+		if workflow.CallEnded(runtime) {
+			log.Printf("[workflow] engine: run=%s caller hung up before node=%s, cancelling", run.ID, node.ID)
+			run.SetCancelled()
+			return e.runRepo.Update(run)
+		}
+
 		durableSteps++
 		run.State.Set(workflow.StateKeyDurableSteps, durableSteps)
 		if durableSteps > workflow.MaxDurableExecutionsPerRun {
@@ -308,7 +314,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
 				return e.runRepo.Update(run)
 			}
-			if run.RetryCount < workflow.MaxRetriesPerNode {
+			if run.RetryCount < workflow.MaxRetriesPerNode && !workflow.InCall(runtime) {
 				run.RetryCount++
 				retryDelay := int64(run.RetryCount*run.RetryCount*5) * int64(time.Second)
 				run.SetWaiting(time.Now().UTC().UnixMilli()+retryDelay/int64(time.Millisecond), workflow.WaitReasonRetry)
@@ -317,8 +323,8 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
 				return e.runRepo.Update(run)
 			}
-			log.Printf("[workflow] engine: run=%s node=%s FAILED (retries exhausted), error: %v",
-				run.ID, node.ID, err)
+			log.Printf("[workflow] engine: run=%s node=%s FAILED, retry=%d in_call=%v, error: %v",
+				run.ID, node.ID, run.RetryCount, workflow.InCall(runtime), err)
 			run.SetError(err.Error())
 			e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, nil, err.Error())
 			return e.runRepo.Update(run)
@@ -341,6 +347,13 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 			log.Printf("[workflow] engine: run=%s node=%s signaled completion", run.ID, node.ID)
 			run.SetCompleted()
 			e.writeLog(run.ID, node, workflow.LogStatusExecuted, nil, result.Output, "")
+			return e.runRepo.Update(run)
+		}
+
+		if result.Wait != nil && workflow.InCall(runtime) {
+			log.Printf("[workflow] engine: run=%s node=%s tried to pause during a call, failing", run.ID, node.ID)
+			run.SetError(workflow.ErrWaitDuringCall.Error())
+			e.writeLog(run.ID, node, workflow.LogStatusFailed, nil, result.Output, run.Error)
 			return e.runRepo.Update(run)
 		}
 

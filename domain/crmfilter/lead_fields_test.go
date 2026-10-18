@@ -36,9 +36,15 @@ func TestLeadFields_AcceptTheirValues(t *testing.T) {
 		{"relatives count", pred(FieldRelativesCount, OpGreaterEq, "2")},
 		{"referred count", pred(FieldReferredCount, OpBetween, "1", "10")},
 		{"referred by", pred(FieldReferredBy, OpIn, "0b7c3f1e-2d4a-4c5b-9e8f-1a2b3c4d5e6f")},
+		{"in a company", pred(FieldCompany, OpIn, "0b7c3f1e-2d4a-4c5b-9e8f-1a2b3c4d5e6f")},
+		{"in no company", pred(FieldCompany, OpIsEmpty)},
 		{"every geo placement", pred(FieldGeoPlacement, OpIn, "on_map", "approximate", "without_address", "not_found", "pending")},
 		{"a geo placement left out", pred(FieldGeoPlacement, OpNotEquals, "on_map")},
 		{"approximate positions inside an area", pred(FieldAreaApproximate, OpIn, "0b7c3f1e-2d4a-4c5b-9e8f-1a2b3c4d5e6f")},
+		{"how the lead left", pred(FieldOptOutSource, OpIn, "button_reply", "template_word")},
+		{"how the lead did not leave", pred(FieldOptOutSource, OpNotIn, "manual")},
+		{"when the lead left", pred(FieldOptedOutAt, OpBetween, "2026-10-01", "2026-10-16")},
+		{"left after a day", pred(FieldOptedOutAt, OpAfter, "2026-10-01T00:00:00Z")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -61,6 +67,7 @@ func TestLeadFields_RefuseValuesThatCannotMatch(t *testing.T) {
 	}{
 		{"an id that is not a uuid", pred(FieldID, OpIn, "1 OR 1=1"), ErrInvalidValue},
 		{"a referrer that is not a uuid", pred(FieldReferredBy, OpEquals, "abc"), ErrInvalidValue},
+		{"a company that is not a uuid", pred(FieldCompany, OpIn, "acme"), ErrInvalidValue},
 		{"a phone that is not a phone", pred(FieldPhoneAny, OpIn, "12"), ErrInvalidValue},
 		{"an unknown birthday window", pred(FieldBirthday, OpEquals, "next_year"), ErrInvalidValue},
 		{"a negated birthday window", pred(FieldBirthday, OpNotEquals, BirthdayToday), ErrUnsupportedOp},
@@ -78,6 +85,9 @@ func TestLeadFields_RefuseValuesThatCannotMatch(t *testing.T) {
 		{"an unknown geo placement", pred(FieldGeoPlacement, OpIn, "somewhere"), ErrInvalidValue},
 		{"a geo placement in another case", pred(FieldGeoPlacement, OpIn, "ON_MAP"), ErrInvalidValue},
 		{"a geo placement presence test", pred(FieldGeoPlacement, OpIsSet), ErrUnsupportedOp},
+		{"a presence test on how the lead left", pred(FieldOptOutSource, OpIsSet), ErrUnsupportedOp},
+		{"a text search on how the lead left", pred(FieldOptOutSource, OpContains, "word"), ErrUnsupportedOp},
+		{"an opt-out date that is not a date", pred(FieldOptedOutAt, OpAfter, "ontem"), ErrInvalidDate},
 		{"an approximate area that is not a uuid", pred(FieldAreaApproximate, OpIn, "north"), ErrInvalidValue},
 		{"an approximate area excluded", pred(FieldAreaApproximate, OpNotIn, "0b7c3f1e-2d4a-4c5b-9e8f-1a2b3c4d5e6f"), ErrUnsupportedOp},
 		{"more approximate areas than one predicate may bind", pred(FieldAreaApproximate, OpIn, manyAreaIDs(MaxAreas+1)...), ErrTooManyValues},

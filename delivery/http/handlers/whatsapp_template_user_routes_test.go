@@ -261,7 +261,15 @@ func newTemplateTestHandler(opts ...func(*templateTestOpts)) *whatsapptemplateht
 	for _, fn := range opts {
 		fn(o)
 	}
-	return whatsapptemplatehttp.NewWhatsAppTemplateHandler(
+	workspaceTemplates := templateusecase.NewWorkspaceTemplatesUseCase(templateusecase.WorkspaceTemplatesDeps{
+		Access: o.templateAccessRepo,
+		Grants: o.templateAccessRepo,
+		Phones: o.phoneRepo,
+		List:   o.listUC,
+		Get:    o.getUC,
+		Create: o.createUC,
+	})
+	h := whatsapptemplatehttp.NewWhatsAppTemplateHandler(
 		o.listUC,
 		o.getUC,
 		o.syncUC,
@@ -273,15 +281,10 @@ func newTemplateTestHandler(opts ...func(*templateTestOpts)) *whatsapptemplateht
 		nil,
 		o.templateAccessRepo,
 		o.phoneRepo,
-		templateusecase.NewWorkspaceTemplatesUseCase(templateusecase.WorkspaceTemplatesDeps{
-			Access: o.templateAccessRepo,
-			Grants: o.templateAccessRepo,
-			Phones: o.phoneRepo,
-			List:   o.listUC,
-			Get:    o.getUC,
-			Create: o.createUC,
-		}),
+		workspaceTemplates,
 	)
+	h.SetExitGuardedCreator(passThroughCreator{templates: workspaceTemplates})
+	return h
 }
 
 type templateTestOpts struct {

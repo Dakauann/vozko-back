@@ -127,7 +127,7 @@ func (c *Container) initHandlers() {
 		c.useCases.ensureReceptiveContainer,
 	)
 	c.services.dialog360Onboarding.WithProvisioningGate(c.useCases.phoneProvisioningGate)
-	c.services.dialog360Onboarding.WithNotifier(c.useCases.notifier, c.useCases.dashboardURL)
+	c.services.dialog360Onboarding.WithNotices(c.phoneNotices(c.useCases.dashboardURL))
 	if c.cfg.Dialog360WebhookBaseURL != "" {
 		base := strings.TrimRight(c.cfg.Dialog360WebhookBaseURL, "/")
 		msgWebhookURL := base + "/webhooks/360dialog/messages"
@@ -227,7 +227,7 @@ func (c *Container) initHandlers() {
 			c.useCases.listShops,
 		),
 		whatsappCampaign: withCampaignAccess(c, handlers.NewWhatsAppCampaignHandler(
-			c.useCases.createWCCampaign,
+			c.createWithWavePolicy(c.useCases.createWCCampaign, c.useCases.deleteWCCampaign),
 			c.useCases.updateWCCampaign,
 			c.useCases.assignWCCampaignDepartment,
 			c.useCases.deleteWCCampaign,
@@ -554,7 +554,6 @@ func (c *Container) initHandlers() {
 			c.useCases.listIssueResponses,
 		),
 		workflow: handlers.NewWorkflowHandler(
-			c.useCases.createWorkflow,
 			c.useCases.scopedWorkflows,
 			c.useCases.assignWorkflowDepartment,
 			c.useCases.listWorkflows,

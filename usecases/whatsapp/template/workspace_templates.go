@@ -27,6 +27,7 @@ type WorkspaceTemplatesDeps struct {
 	Access TemplateAccess
 	Grants TemplateGrants
 	Phones PhoneOwners
+	Names  domain.GrantedTemplateNames
 	List   domain.ListUseCase
 	Get    domain.GetUseCase
 	Create domain.CreateTemplateUseCase
@@ -36,13 +37,14 @@ type workspaceTemplates struct {
 	access TemplateAccess
 	grants TemplateGrants
 	phones PhoneOwners
+	names  domain.GrantedTemplateNames
 	list   domain.ListUseCase
 	get    domain.GetUseCase
 	create domain.CreateTemplateUseCase
 }
 
 func NewWorkspaceTemplatesUseCase(deps WorkspaceTemplatesDeps) domain.WorkspaceTemplatesUseCase {
-	return &workspaceTemplates{access: deps.Access, grants: deps.Grants, phones: deps.Phones, list: deps.List, get: deps.Get, create: deps.Create}
+	return &workspaceTemplates{access: deps.Access, grants: deps.Grants, phones: deps.Phones, names: deps.Names, list: deps.List, get: deps.Get, create: deps.Create}
 }
 
 func (uc *workspaceTemplates) Create(workspaceID, grantedBy string, input domain.CreateTemplateInput) (*domain.CreateTemplateOutput, error) {
@@ -90,4 +92,22 @@ func (uc *workspaceTemplates) Get(workspaceID, templateID string) (*domain.Templ
 		return nil, domain.ErrTemplateAccessDenied
 	}
 	return uc.get.Execute(templateID)
+}
+
+func (uc *workspaceTemplates) FindByName(workspaceID, name, language string) ([]*domain.Template, error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, domain.ErrTemplateAccessDenied
+	}
+	if uc.names == nil {
+		return nil, domain.ErrTemplateLookupUnavailable
+	}
+	name, language = domain.LookupKey(name, language)
+	if name == "" || language == "" {
+		return []*domain.Template{}, nil
+	}
+	found, err := uc.names.FindGrantedByName(workspaceID, name, language)
+	if err != nil {
+		return nil, fmt.Errorf("templates named %s (%s) of %s: %w", name, language, workspaceID, err)
+	}
+	return found, nil
 }

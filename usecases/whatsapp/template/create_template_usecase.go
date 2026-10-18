@@ -220,12 +220,7 @@ func (uc *createTemplateUseCase) processHeaderMediaURLs(client conversation.What
 
 			log.Printf("[template-create] Detected URL in header_handle: %s, uploading to Meta...", handle)
 
-			fileName := inferFileNameFromURL(handle)
-
-			uploadedHandle, err := client.UploadMediaForTemplate(context.Background(), conversation.UploadMediaForTemplateInput{
-				URL:      handle,
-				FileName: fileName,
-			})
+			uploadedHandle, err := uploadTemplateMedia(context.Background(), client, handle)
 			if err != nil {
 				return err
 			}
@@ -237,6 +232,10 @@ func (uc *createTemplateUseCase) processHeaderMediaURLs(client conversation.What
 	}
 
 	return nil
+}
+
+func uploadTemplateMedia(ctx context.Context, client conversation.WhatsAppClient, url string) (string, error) {
+	return client.UploadMediaForTemplate(ctx, conversation.UploadMediaForTemplateInput{URL: url, FileName: inferFileNameFromURL(url)})
 }
 
 func isURL(s string) bool {

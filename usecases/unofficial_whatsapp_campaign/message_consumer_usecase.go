@@ -31,7 +31,10 @@ const (
 	errInstanceUnusable    = 910002
 	errResolveConversation = 910003
 	errSendFailed          = 910004
+	errExitTextNotSent     = 910005
 )
+
+const maxEntryErrorLength = 500
 
 type ConsumerDeps struct {
 	QueueSub  messaging.MessageQueueSub
@@ -45,6 +48,7 @@ type ConsumerDeps struct {
 	Spam      SpamGuard
 
 	Eligibility campaignguard.EntryGate
+	Groups      GroupSending
 
 	Assignments Assigner
 	Metrics     MetricRecorder
@@ -199,12 +203,7 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		return campaignqueue.RetryLater(wait)
 	}
 
-	resolved, err := c.deps.Instances.Resolve(ctx, instance, uwuc.ResolveInput{
-		JID:         jid,
-		PhoneNumber: entry.Number,
-		Name:        entry.Name,
-		CampaignID:  camp.ID,
-	})
+	resolved, err := c.openConversation(ctx, instance, camp, entry, jid)
 	if err != nil {
 		c.failEntry(entry.ID, errResolveConversation, "could not open a conversation with this number")
 		return campaignqueue.Drop
@@ -231,8 +230,43 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 	}
 	spent, sent = true, true
 
-	c.recordSuccess(ctx, camp, instance, entry, resolved, message, variant)
+	c.recordSuccess(ctx, camp, instance, entry, resolved, message, variant, c.sendExitText(camp, resolved))
 	return campaignqueue.Done
+}
+
+type exitTextOutcome struct {
+	messageID    string
+	errorCode    int
+	errorMessage string
+}
+
+func (c *messageConsumerUseCase) sendExitText(camp *uwc.Campaign, resolved *uwuc.Resolved) exitTextOutcome {
+	if camp.Message.ExitText == "" {
+		return exitTextOutcome{}
+	}
+	message, err := c.deps.Sender.SendCampaignMessage(conversation_usecase.SendCampaignMessageInput{
+		CampaignID:  camp.ID,
+		EntryID:     resolved.Conversation.ID,
+		EntryType:   string(shared.EntryTypeUnofficialWhatsApp),
+		Text:        camp.Message.ExitText,
+		WorkspaceID: camp.WorkspaceID,
+	})
+	if err == nil && message == nil {
+		err = errors.New("the exit text was sent without a stored message")
+	}
+	if err != nil {
+		log.Printf("[unofficial-whatsapp-campaign] the audio of campaign %s reached conversation %s without its exit text: %v", camp.ID, resolved.Conversation.ID, err)
+		return exitTextOutcome{errorCode: errExitTextNotSent, errorMessage: entryErrorMessage(fmt.Errorf("the audio was sent but its exit text was not: %w", err))}
+	}
+	return exitTextOutcome{messageID: message.ID}
+}
+
+func entryErrorMessage(err error) string {
+	message := err.Error()
+	if len(message) > maxEntryErrorLength {
+		message = message[:maxEntryErrorLength]
+	}
+	return message
 }
 
 func (c *messageConsumerUseCase) handleSendFailure(
@@ -259,11 +293,7 @@ func (c *messageConsumerUseCase) handleSendFailure(
 		return campaignqueue.RetryLater(restrictionRequeueDelay)
 	}
 
-	message := err.Error()
-	if len(message) > 500 {
-		message = message[:500]
-	}
-	c.failEntry(entry.ID, errSendFailed, message)
+	c.failEntry(entry.ID, errSendFailed, entryErrorMessage(err))
 	return campaignqueue.Drop
 }
 
@@ -275,6 +305,7 @@ func (c *messageConsumerUseCase) recordSuccess(
 	resolved *uwuc.Resolved,
 	message *conversation.Message,
 	variant int,
+	exit exitTextOutcome,
 ) {
 	providerID, messageID := "", ""
 	if message != nil {
@@ -289,18 +320,23 @@ func (c *messageConsumerUseCase) recordSuccess(
 		ConversationID:    resolved.Conversation.ID,
 		ProviderMessageID: providerID,
 		MessageID:         messageID,
+		ExitMessageID:     exit.messageID,
 		VariantIndex:      variant,
 		SentAt:            time.Now().UTC(),
+		ErrorCode:         exit.errorCode,
+		ErrorMessage:      exit.errorMessage,
 	}); err != nil {
 		log.Printf("[unofficial-whatsapp-campaign] could not record the send for entry %s: %v", entry.ID, err)
 	}
 
-	if c.deps.Assignments != nil {
+	person := !entry.TargetsGroup()
+
+	if person && c.deps.Assignments != nil {
 		c.deps.Assignments.EnsureAssignment(
 			resolved.Conversation.ID, string(shared.EntryTypeUnofficialWhatsApp), instance.ID)
 	}
 
-	if c.deps.Spam != nil {
+	if person && c.deps.Spam != nil {
 		if err := c.deps.Spam.Record(entry.LeadID, instance.ID, camp.ID); err != nil {
 			log.Printf("[unofficial-whatsapp-campaign] could not record the cooldown for lead %s: %v", entry.LeadID, err)
 		}
@@ -317,7 +353,7 @@ func (c *messageConsumerUseCase) recordSuccess(
 		})
 	}
 
-	if c.deps.Workflows != nil && camp.EnableWorkflow {
+	if person && c.deps.Workflows != nil && camp.EnableWorkflow {
 		c.deps.Workflows.CampaignSent(CampaignSentTrigger{
 			WorkspaceID:       camp.WorkspaceID,
 			CampaignID:        camp.ID,
@@ -376,6 +412,9 @@ func (c *messageConsumerUseCase) setEntryStatus(entryID string, status campaign.
 }
 
 func (c *messageConsumerUseCase) admit(ctx context.Context, camp *uwc.Campaign, entry *uwc.Entry, senderID string) campaignguard.Admission {
+	if entry.TargetsGroup() {
+		return c.admitGroup(ctx, entry, senderID)
+	}
 	admission := campaignguard.Admit(ctx, c.deps.Eligibility, camp.WorkspaceID, entry.LeadID, senderID,
 		func(status campaign.SendStatus, code int, message string) error {
 			return c.deps.Entries.UpdateStatus(entry.ID, status, "", code, message)

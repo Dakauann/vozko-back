@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/buttonaction"
 	"vozko/domain/campaign"
 	"vozko/domain/conversation"
 	"vozko/domain/copilot"
@@ -149,6 +150,7 @@ type actionHarness struct {
 	proposals *fakeProposals
 	deps      LeadActionDeps
 	at        time.Time
+	exit      *fakeExitVerdicts
 }
 
 func newActionHarness(preview *leadaction.Preview) *actionHarness {
@@ -159,7 +161,8 @@ func newActionHarness(preview *leadaction.Preview) *actionHarness {
 		proposals: newProposals(),
 	}
 	h.at = time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
-	h.deps = LeadActionDeps{Leads: leads, Actions: h.actions, Sends: h.sends, Proposals: h.proposals, Now: func() time.Time { return h.at }}
+	h.exit = &fakeExitVerdicts{state: buttonaction.VerdictOK}
+	h.deps = LeadActionDeps{Leads: leads, Actions: h.actions, Sends: h.sends, Proposals: h.proposals, Exit: h.exit, Now: func() time.Time { return h.at }}
 	return h
 }
 

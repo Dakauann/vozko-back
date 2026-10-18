@@ -125,6 +125,7 @@ type Store interface {
 
 	ClaimBuild(ctx context.Context, workspaceID, id, token string, now time.Time) (*List, error)
 	AppendItems(ctx context.Context, b BuildBatch) error
+	AddItems(ctx context.Context, a Addition) (int64, error)
 	FinishBuild(ctx context.Context, workspaceID, id, token string, status Status, failureCode string, now time.Time) error
 	Buildable(ctx context.Context, now time.Time, limit int) ([]BuildRef, error)
 	FailExhausted(ctx context.Context, now time.Time) (int64, error)

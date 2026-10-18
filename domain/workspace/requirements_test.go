@@ -55,3 +55,16 @@ func TestHoldsAllNeedsEveryEntryAndAPerson(t *testing.T) {
 		})
 	}
 }
+
+func TestHoldsCapabilityNeedsEveryPermissionTheCatalogListsAndRefusesAnUnknownKey(t *testing.T) {
+	export := heldPermissions{"leads:read": true, "leads:export": true, "reports:create": true, "reports:read": true}
+	if !HoldsCapability(export, "ws", "u", false, "leads.export") {
+		t.Fatal("holding every listed permission holds the capability")
+	}
+	if HoldsCapability(heldPermissions{"leads:read": true, "leads:export": true}, "ws", "u", false, "leads.export") {
+		t.Fatal("missing a listed permission does not hold the capability")
+	}
+	if HoldsCapability(export, "ws", "u", false, "nope.never") {
+		t.Fatal("an unknown capability is never held")
+	}
+}

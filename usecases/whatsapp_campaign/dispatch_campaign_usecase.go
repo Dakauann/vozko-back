@@ -1,11 +1,13 @@
 package whatsapp_campaign_usecase
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"vozko/domain/cache"
 	"vozko/domain/campaign"
+	"vozko/domain/campaign/launchcheck"
 	"vozko/domain/messaging"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
@@ -19,6 +21,38 @@ type dispatchCampaignUseCase struct {
 	messageConsumerUC wc.MessageConsumerUseCase
 	shared            cache.SharedState
 	dispatcher        *campaignqueue.Dispatcher
+	smart             SmartStarter
+	launch            LaunchGate
+}
+
+type LaunchGate interface {
+	Run(ctx context.Context, campaignID string) (launchcheck.Report, error)
+}
+
+func (c *dispatchCampaignUseCase) SetLaunchGate(gate LaunchGate) {
+	c.launch = gate
+}
+
+func (c *dispatchCampaignUseCase) admitLaunch(input wc.DispatchCampaignInput) error {
+	if c.launch == nil {
+		return wc.ErrLaunchCheckUnavailable
+	}
+	report, err := c.launch.Run(context.Background(), input.CampaignID)
+	if err != nil {
+		return err
+	}
+	return report.Admit(input.ConfirmedFingerprint)
+}
+
+func (c *dispatchCampaignUseCase) SetSmartCampaigns(smart SmartStarter) {
+	c.smart = smart
+}
+
+func (c *dispatchCampaignUseCase) startsInWaves(campaignID string) (bool, error) {
+	if c.smart == nil {
+		return false, nil
+	}
+	return c.smart.Manages(campaignID)
 }
 
 func NewDispatchCampaignUseCase(
@@ -69,6 +103,18 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 	attempt := campaign.StartAttempt{Source: campaignItem.Source, Action: action, From: currentStatus, Reviewed: input.Reviewed}
 	if err := attempt.RefuseUnreviewed(); err != nil {
 		return err
+	}
+	if action == wc.CampaignActionStart {
+		if err := c.admitLaunch(input); err != nil {
+			return err
+		}
+		waves, err := c.startsInWaves(input.CampaignID)
+		if err != nil {
+			return err
+		}
+		if waves {
+			return c.smart.Start(context.Background(), input.CampaignID)
+		}
 	}
 	targetStatus, revertStatus := transition.Target, transition.Revert
 	if !transition.FansOutWork {
@@ -125,12 +171,12 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 
 			case wc.CampaignActionPause:
 				if err := c.messageConsumerUC.PauseCampaignConsumer(input.CampaignID); err != nil {
-					log.Printf("failed to pause whatsapp campaign consumer: %v", err)
+					return c.revert(input.CampaignID, revertStatus, targetStatus, fmt.Errorf("failed to pause whatsapp campaign consumer: %w", err))
 				}
 
 			case wc.CampaignActionStop:
 				if err := c.messageConsumerUC.StopCampaignConsumer(input.CampaignID); err != nil {
-					log.Printf("failed to stop whatsapp campaign consumer: %v", err)
+					return c.revert(input.CampaignID, revertStatus, targetStatus, fmt.Errorf("failed to stop whatsapp campaign consumer: %w", err))
 				}
 			}
 		}
@@ -158,4 +204,11 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 	}
 
 	return nil
+}
+
+func (c *dispatchCampaignUseCase) revert(campaignID string, to, from wc.Status, cause error) error {
+	if _, err := c.CampaignRepo.UpdateStatus(campaignID, to, from); err != nil {
+		return fmt.Errorf("%w (status revert failed: %v)", cause, err)
+	}
+	return cause
 }

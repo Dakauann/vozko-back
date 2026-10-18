@@ -125,6 +125,7 @@ func (f *createFixture) useCase(screener campaignguard.Screener) wc.CreateCampai
 	uc := NewCreateCampaignUseCase(f.campaigns, f.entries, f.leads, templates, phones, &ownershipWorkspacePhoneAccessRepo{hasAccess: true}, screener)
 	uc.(*createCampaignUseCase).SetTemplateGrants(allowGrants{})
 	uc.(*createCampaignUseCase).SetAutomation(automationThatAllows{})
+	uc.(*createCampaignUseCase).SetExitRiskGate(admittingGate{})
 	return uc
 }
 

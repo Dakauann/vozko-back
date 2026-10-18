@@ -148,6 +148,7 @@ func (f *leadTargetFixture) build(t *testing.T, automation AutomationCheck) wc.C
 	concrete := uc.(*createCampaignUseCase)
 	concrete.SetTemplateGrants(allowGrants{})
 	concrete.SetAutomation(automation)
+	concrete.SetExitRiskGate(admittingGate{})
 	concrete.SetIdempotentCampaigns(f.keys)
 	return uc
 }

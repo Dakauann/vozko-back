@@ -3,7 +3,9 @@ package container
 import (
 	"context"
 	callhistoryhttp "vozko/delivery/http/callhistory"
+	buttonaction_usecase "vozko/usecases/buttonaction"
 	"vozko/usecases/conversationad"
+	leadexit_usecase "vozko/usecases/leadexit"
 	mpuc "vozko/usecases/metaplatform"
 
 	"gorm.io/gorm"
@@ -160,6 +162,7 @@ import (
 	cronPackage "vozko/infra/cron"
 	queue "vozko/infra/messaging"
 	prometheus_service "vozko/infra/prometheus"
+	customerportfolio_repository "vozko/infra/repositories/customerportfolio"
 	lead_repository "vozko/infra/repositories/lead"
 	"vozko/infra/s3"
 	"vozko/infra/security"
@@ -175,15 +178,18 @@ import (
 	conversation_usecase "vozko/usecases/conversation"
 	copilot_usecase "vozko/usecases/copilot"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
+	customerportfolio_usecase "vozko/usecases/customerportfolio"
 	customfield_usecase "vozko/usecases/customfield"
 	dealautomation_usecase "vozko/usecases/dealautomation"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	leadarea_usecase "vozko/usecases/leadarea"
+	leadcompany_usecase "vozko/usecases/leadcompany"
 	livedecisions_usecase "vozko/usecases/livedecisions"
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
 	"vozko/usecases/opportunityio"
 	report_usecase "vozko/usecases/report"
+	wc_usecase "vozko/usecases/whatsapp_campaign"
 	workflow_usecase "vozko/usecases/workflow"
 )
 
@@ -197,6 +203,7 @@ type Container struct {
 	commentAutomationShared     *commentAutomationBundle
 	services                    *services
 	useCases                    *useCases
+	smartCampaigns              smartCampaignWiring
 	handlers                    *handlers_
 	agentMCP                    *handlers.AgentMCPBundle
 	instagram                   *instagramBundle
@@ -229,10 +236,22 @@ type Container struct {
 
 	analyticsGate cache.Gate
 
-	leadAreaService *leadarea_usecase.Service
+	leadAreaService    *leadarea_usecase.Service
+	leadCompanyService *leadcompany_usecase.Service
+
+	customerPortfolioStore   *customerportfolio_repository.Store
+	customerPortfolioService *customerportfolio_usecase.Service
 
 	leadActionBundle *leadActionBundle
 	callListBundle   *callListBundle
+
+	buttonActionService *buttonaction_usecase.Service
+	launchCheckService  *wc_usecase.LaunchCheck
+
+	notificationCenter  *notificationWiring
+	leadExitInboundStep *leadexit_usecase.Step
+
+	conversationRuns *workflow_usecase.ConversationRunStarter
 }
 
 type repositories struct {
@@ -256,6 +275,7 @@ type repositories struct {
 	insurance               insurance.InsuranceRepository
 	whatsappTemplate        whatsapp_template.Repository
 	whatsappTemplateSend    whatsapp_template.SendAttemptRepository
+	whatsappTemplateNames   whatsapp_template.GrantedTemplateNames
 	passwordResetToken      auth.PasswordResetTokenRepository
 	emailVerification       auth.EmailVerificationRepository
 	systemConfig            config_domain.SystemConfigRepository
@@ -268,6 +288,8 @@ type repositories struct {
 	ownerPhoneReader        businessphone.OwnerPhoneReader
 	whatsappQuality         whatsapp_quality.Recorder
 	whatsappQualityHistory  whatsapp_quality.History
+	whatsappQualityTimeline whatsapp_quality.Reader
+	wcSchedules             wc_domain.ScheduleClaimer
 	messageStatusRecorder   whatsapp_messagestatus.Recorder
 	messageStatusLedger     whatsapp_messagestatus.Ledger
 	messageStatusSending    whatsapp_messagestatus.SendingPhones
@@ -385,8 +407,6 @@ type services struct {
 	documentValidator             customer.DocumentValidator
 	pricingService                payment.PricingService
 	shippingGateways              map[shipping.Provider]shipping.ProviderGateway
-	agentProviders                map[agent_domain.AgentProvider]agent_domain.ProviderService
-	toolProviders                 map[agent_domain.AgentProvider]tools.ProviderService
 	toolRegistry                  tools.Service
 	insuranceProviders            []insurance.QuoteProvider
 	whisperPool                   *whisper.Pool

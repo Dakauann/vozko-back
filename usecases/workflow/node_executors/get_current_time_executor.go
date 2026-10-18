@@ -17,7 +17,7 @@ func (e *getCurrentTimeExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeActionGetCurrentTime,
 		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Hora Atual",
 		Description: "Obtém a data e hora atual e salva em variáveis.",
 		Icon:        "Clock",

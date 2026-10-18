@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"vozko/domain/buttonaction"
 	"vozko/domain/campaign"
 	"vozko/domain/copilot"
 	"vozko/domain/customfield"
@@ -17,6 +18,7 @@ import (
 	"vozko/domain/selection"
 	"vozko/domain/shared"
 	"vozko/domain/tools"
+	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	tmpl "vozko/domain/whatsapp/template"
 	"vozko/domain/workspace"
 	"vozko/usecases/copilot/copilottools"
@@ -370,6 +372,8 @@ func leadActionFailure(err error) copilot.Result {
 		return failed(err.Error())
 	case errors.Is(err, errOutsideOfACard):
 		return failed("ações sobre leads só rodam por um cartão de aprovação; proponha a ação")
+	case errors.Is(err, buttonaction.ErrExitRiskNotAcknowledged):
+		return failed("o modelo não mostra ao lead como parar de receber mensagens e o usuário não marcou no cartão de aprovação que entende os riscos; nada foi preparado. Proponha de novo e peça que ele marque no cartão, ou que defina a saída no modelo")
 	case errors.Is(err, errProposalExpired):
 		return failed("a contagem desta proposta expirou; proponha de novo para o usuário aprovar a contagem atual")
 	case errors.Is(err, errCardArgsDiffered):
@@ -400,6 +404,8 @@ func leadActionFailure(err error) copilot.Result {
 		return failed("seleção grande demais para essa ação; use um filtro menor, limit ou split=true num disparo")
 	case errors.Is(err, leadaction.ErrPhoneUnavailable):
 		return failed("esse número oficial não pode ser usado por este workspace; use list_business_phones")
+	case errors.Is(err, uwc.ErrCampaignNeedsExit):
+		return failed(copilottools.UnofficialMessageNeedsExit)
 	}
 	if res, known := sharedLeadFailure(err); known {
 		return res

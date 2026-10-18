@@ -140,6 +140,8 @@ type EntryWithLastMessage struct {
 	LastMessageType       MessageType
 	LastMessageAt         time.Time
 	LastMessageFrom       string
+	LastMessageSenderKind string
+	LastMessageSenderID   string
 	HasMedia              bool
 	MediaType             MediaType
 	MatchedMessages       []MatchedMessageResult

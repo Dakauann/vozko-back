@@ -3,6 +3,7 @@ package crmtools
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -22,6 +23,7 @@ const (
 	knownQRNumber   = "4d5e6f70-8192-4a3b-9c4d-5e6f7a8b9c0d"
 	knownQRCampaign = "5e6f7081-92a3-4b4c-8d5e-6f7a8b9c0d1e"
 	knownQRImage    = "6f708192-a3b4-4c5d-9e6f-7a8b9c0d1e2f"
+	knownQRAudio    = "70819203-b4c5-4d6e-8f70-8b9c0d1e2f3a"
 )
 
 type fakeScopes struct{ denied bool }
@@ -75,11 +77,15 @@ type fakeQRCreate struct {
 	got      *uwc.Campaign
 	scope    uw.DepartmentScope
 	creation wd.CreationScope
+	err      error
 }
 
 func (f *fakeQRCreate) Execute(ctx context.Context, c *uwc.Campaign, scope uw.DepartmentScope) (*uwc.Campaign, error) {
 	f.got, f.scope = c, scope
 	f.creation, _ = wd.GetCreationScope(ctx)
+	if f.err != nil {
+		return nil, f.err
+	}
 	return &uwc.Campaign{ID: knownQRCampaign, Name: c.Name, Metrics: &campaign.Metrics{TotalNumbers: 2}}, nil
 }
 
@@ -122,14 +128,17 @@ func newQRFixture() qrFixture {
 	f.deps = UnofficialCampaignDeps{
 		Scopes: fakeScopes{}, Numbers: f.numbers, Usable: qrInstances, Preview: f.preview, Create: f.create,
 		Access: fakeQRAccess{knownQRCampaign: readyQRCampaign()}, Actions: f.actions,
-		Media: fakeChatMedia{knownQRImage: {ID: knownQRImage, WorkspaceID: "ws-1", URL: "https://files.test/ws-1/promo.jpg", Type: media.MediaTypeProductImage}},
+		Media: fakeChatMedia{
+			knownQRImage: {ID: knownQRImage, WorkspaceID: "ws-1", URL: "https://files.test/ws-1/promo.jpg", Type: media.MediaTypeProductImage},
+			knownQRAudio: {ID: knownQRAudio, WorkspaceID: "ws-1", URL: "https://files.test/ws-1/recado.ogg", Type: media.MediaTypeAudio},
+		},
 	}
 	return f
 }
 
 func qrCreateArgs(changes map[string]interface{}) map[string]interface{} {
 	return withArgs(map[string]interface{}{
-		"media_id": knownSheet, "message": "Oi {{1}}, sentimos sua falta!", "name": "Reativação", "number_id": knownQRNumber,
+		"media_id": knownSheet, "message": "Oi {{1}}, sentimos sua falta! Responda /sair para não receber mais.", "name": "Reativação", "number_id": knownQRNumber,
 	}, changes)
 }
 
@@ -218,6 +227,44 @@ func TestCreateUnofficialCampaignPreflight(t *testing.T) {
 	}
 }
 
+func TestCreateUnofficialCampaignNeedsTheExitShownInTheMessage(t *testing.T) {
+	f := newQRFixture()
+	tool := NewCreateUnofficialCampaignTool(f.deps)
+	err := tooltest.Validate(t, tool, tooltest.Member(), qrCreateArgs(map[string]interface{}{"message": "Oi {{1}}, sentimos sua falta!"}))
+	if !errors.Is(err, copilottools.ErrInvalidArgs) || !strings.Contains(err.Error(), "/sair") {
+		t.Fatalf("hidden exit = %v", err)
+	}
+
+	f.create.err = fmt.Errorf("validate: %w", uwc.ErrCampaignNeedsExit)
+	cc := tooltest.Member()
+	res := tool.Execute(creating(cc), cc, qrCreateArgs(nil))
+	if res.Status != copilot.StatusError || res.Message != copilottools.UnofficialMessageNeedsExit {
+		t.Fatalf("refused create = %+v", res)
+	}
+}
+
+func TestAnUnofficialAudioCampaignNeedsItsExitText(t *testing.T) {
+	f := newQRFixture()
+	tool := NewCreateUnofficialCampaignTool(f.deps)
+	audio := map[string]interface{}{"message": "", "attachment_media_id": knownQRAudio}
+	err := tooltest.Validate(t, tool, tooltest.Member(), qrCreateArgs(audio))
+	if !errors.Is(err, copilottools.ErrInvalidArgs) || !strings.Contains(err.Error(), "exit_text") {
+		t.Fatalf("audio without exit text = %v", err)
+	}
+
+	audio["exit_text"] = "Responda /sair para não receber mais"
+	if err := tooltest.Validate(t, tool, tooltest.Member(), qrCreateArgs(audio)); err != nil {
+		t.Fatalf("audio with exit text = %v", err)
+	}
+	cc := tooltest.Member()
+	if res := tool.Execute(creating(cc), cc, qrCreateArgs(audio)); res.Status != copilot.StatusOK {
+		t.Fatalf("result = %+v", res)
+	}
+	if got := f.create.got.Message; got.Kind != uwc.KindAudio || got.MediaID != knownQRAudio || got.ExitText != "Responda /sair para não receber mais" {
+		t.Fatalf("message = %+v", got)
+	}
+}
+
 func TestCreateUnofficialCampaignUsesTheRowsReadByTheServer(t *testing.T) {
 	f := newQRFixture()
 	cc := tooltest.Member()
@@ -241,7 +288,7 @@ func TestCreateUnofficialCampaignShowsTheFirstMessage(t *testing.T) {
 	tool := NewCreateUnofficialCampaignTool(f.deps)
 	p := tool.(copilot.Previewer).Preview(context.Background(), tooltest.Member(), qrCreateArgs(nil))
 	data, ok := p.Data.(MessagePreview)
-	if p.Kind != copilot.PreviewMessage || !ok || data.Text != "Oi Maria, sentimos sua falta!" || data.Channel != "unofficial_whatsapp" {
+	if p.Kind != copilot.PreviewMessage || !ok || data.Text != "Oi Maria, sentimos sua falta! Responda /sair para não receber mais." || data.Channel != "unofficial_whatsapp" {
 		t.Fatalf("preview = %+v", p)
 	}
 	fields := tool.(copilot.Describer).Describe(context.Background(), tooltest.Member(), qrCreateArgs(nil))

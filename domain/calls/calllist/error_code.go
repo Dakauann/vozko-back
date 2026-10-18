@@ -41,6 +41,8 @@ var errorCodes = []struct {
 	{ErrBuildClaimLost, "call_list_build_claim_lost"},
 	{ErrBuildCursorInvalid, "call_list_build_cursor_invalid"},
 	{ErrItemCursorInvalid, "call_list_items_cursor_invalid"},
+	{ErrLeadNotAdmitted, "call_list_lead_not_admitted"},
+	{ErrListFull, "call_list_full"},
 }
 
 func ErrorCode(err error) string {

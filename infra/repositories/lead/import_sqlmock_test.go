@@ -116,7 +116,7 @@ func TestWriteRowsLocksEnrichesAndCheckpointsWithEveryArgument(t *testing.T) {
 	mock.ExpectQuery(exact(importLockSQL)).WithArgs(wsUUID, pq.StringArray{leadUUID}).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "version"}).AddRow(leadUUID, 3))
 	mock.ExpectQuery(exact(importEnrichSQL)).
-		WithArgs(args([]driver.Value{sqlmock.AnyArg(), pq.StringArray{leadUUID}, pq.Int64Array{3}, pq.StringArray{"Maria"}}, anyArgs(10), []driver.Value{wsUUID})...).
+		WithArgs(args([]driver.Value{sqlmock.AnyArg(), pq.StringArray{leadUUID}, pq.Int64Array{3}, pq.StringArray{"Maria"}}, anyArgs(11), []driver.Value{wsUUID})...).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "version"}).AddRow(leadUUID, 4))
 	mock.ExpectExec(`INSERT INTO "lead_events"`).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(exact(importCheckpointSQL)).WithArgs(1, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), importUUID, claimToken).

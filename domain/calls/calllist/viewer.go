@@ -9,11 +9,7 @@ type Viewer struct {
 }
 
 func Holds(checker workspace.PermissionChecker, workspaceID, userID string, isAdmin bool, key workspace.CapabilityKey) bool {
-	entries, err := workspace.CapabilitiesRequire([]workspace.CapabilityKey{key})
-	if err != nil {
-		return false
-	}
-	return workspace.HoldsAll(checker, workspaceID, userID, isAdmin, entries)
+	return workspace.HoldsCapability(checker, workspaceID, userID, isAdmin, key)
 }
 
 func ViewerOf(checker workspace.PermissionChecker, workspaceID, userID string, isAdmin bool) Viewer {

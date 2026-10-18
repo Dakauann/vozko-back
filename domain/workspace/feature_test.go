@@ -121,6 +121,7 @@ var formScreenCapabilities = map[CapabilityKey]bool{
 	"links.edit":                  true,
 	"issues.create":               true,
 	"audience.alerts":             true,
+	"team.lead_exit":              true,
 }
 
 func TestSeeingAScreenNeverRequiresAnActionPermission(t *testing.T) {

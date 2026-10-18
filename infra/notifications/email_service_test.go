@@ -17,8 +17,8 @@ func TestEmailServiceFrom(t *testing.T) {
 		fromName  string
 		want      string
 	}{
-		{"name and email", "no-reply@vozkoglobal.com", "Vozko", "Vozko <no-reply@vozkoglobal.com>"},
-		{"email only", "no-reply@vozkoglobal.com", "", "no-reply@vozkoglobal.com"},
+		{"name and email", "no-reply@vozkoia.com", "Vozko", "Vozko <no-reply@vozkoia.com>"},
+		{"email only", "no-reply@vozkoia.com", "", "no-reply@vozkoia.com"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

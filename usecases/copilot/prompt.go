@@ -174,7 +174,8 @@ const areasPrompt = `
 
 # WhatsApp
 - Modelos: create_template manda para a Meta aprovar (minutos a horas); o número vem de list_business_phones e a mídia
-  do cabeçalho é um anexo do usuário.
+  do cabeçalho é um anexo do usuário. edit_template manda uma nova versão de um modelo existente (template_id de
+  list_templates) para a revisão da Meta.
 - Campanha oficial a partir de planilha: preview_campaign_import primeiro (linhas válidas, problemas com o número da
   linha, custo estimado e saldo), depois create_campaign com o mesmo mapeamento. A campanha nasce parada; só chame
   start_campaign quando o usuário pedir para enviar.
@@ -192,7 +193,7 @@ const areasPrompt = `
   BotFather (o token vai no campo protegido).
 
 # Agentes de IA
-- Antes de criar ou editar, resolva valores válidos: modelos (list_models), vozes (list_voices), ferramentas
+- Antes de criar ou editar, resolva valores válidos: modelos (list_models), ferramentas
   internas (list_agent_tools) e departamentos (list_departments). Reúna os campos obrigatórios com o usuário antes de
   chamar create_agent ou update_agent.
 - Para incluir ou tirar ferramentas, bases de conhecimento ou coleções MCP de um agente existente, use os parâmetros

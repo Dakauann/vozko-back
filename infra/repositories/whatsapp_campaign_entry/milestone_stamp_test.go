@@ -81,14 +81,14 @@ func TestASendByNumberStampsSentAt(t *testing.T) {
 	}
 }
 
-func TestAResetClearsEveryMilestoneWithTheStatus(t *testing.T) {
+func TestAResetClearsEveryMilestoneAndTheWaveWithTheStatus(t *testing.T) {
 	repo, mock, sqlDB := newEntryDB(t)
 	defer sqlDB.Close()
 
 	mock.ExpectExec(`UPDATE "whatsapp_campaign_entries" SET `+
-		`"delivered_at"=.+,"failed_at"=.+,"message_id"=.+,"read_at"=.+,"sent_at"=.+,"status"=.+`+
+		`"delivered_at"=.+,"failed_at"=.+,"message_id"=.+,"read_at"=.+,"sent_at"=.+,"status"=.+,"wave_number"=.+`+
 		`WHERE campaign_id = .+`).
-		WithArgs(nil, nil, "", nil, nil, "PENDING", sqlmock.AnyArg(), "campaign-1").
+		WithArgs(nil, nil, "", nil, nil, "PENDING", 0, sqlmock.AnyArg(), "campaign-1").
 		WillReturnResult(sqlmock.NewResult(0, 3))
 
 	if _, err := repo.ResetAllStatuses("campaign-1"); err != nil {

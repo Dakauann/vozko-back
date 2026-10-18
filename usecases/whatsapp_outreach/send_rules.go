@@ -2,7 +2,6 @@ package whatsapp_outreach
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -81,16 +80,7 @@ func grantedTemplate(templates TemplateFinder, grant workspace_template_access.C
 }
 
 func (r sendRules) refuseUnreachable(contact *lead.Lead) error {
-	switch campaign.LeadRefusal(campaign.LeadFactsOf(contact)) {
-	case "":
-		return nil
-	case campaign.SkipBlocked:
-		return wo.ErrLeadBlocked
-	case campaign.SkipOptedOut:
-		return wo.ErrLeadOptedOut
-	default:
-		return wo.ErrInvalidPhone
-	}
+	return campaign.RecipientRefusal(contact)
 }
 
 func (r sendRules) claimContact(ctx context.Context, workspaceID, leadID, phoneID string) (func(), error) {
@@ -179,9 +169,7 @@ func (r sendRules) storeTemplateInfo(d delivery) {
 }
 
 func (r sendRules) recordMessage(ctx context.Context, d delivery, result *template.BilledSendResult) bool {
-	info := d.tmpl.RenderInfo(d.bodyParams)
-	bodyText, _ := info["body_text"].(string)
-	metaBytes, err := json.Marshal(info)
+	bodyText, metadata, err := d.tmpl.HistoryRecord(d.bodyParams)
 	if err != nil {
 		log.Printf("[whatsapp-outreach] could not marshal template metadata for entry %s: %v", d.entry.ID, err)
 		return false
@@ -198,7 +186,7 @@ func (r sendRules) recordMessage(ctx context.Context, d delivery, result *templa
 		To:          d.to,
 		Text:        bodyText,
 		Timestamp:   r.deps.Now(),
-		Metadata:    json.RawMessage(metaBytes),
+		Metadata:    metadata,
 	}
 	if err := r.deps.History.Record(ctx, record); err != nil {
 		log.Printf("[whatsapp-outreach] template delivered but not recorded on entry %s: %v", d.entry.ID, err)

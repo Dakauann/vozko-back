@@ -18,6 +18,7 @@ import (
 	"vozko/domain/payment"
 	"vozko/domain/ticket"
 	"vozko/domain/user"
+	"vozko/domain/workspace"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
@@ -32,7 +33,7 @@ type handlePaymentWebhookUseCase struct {
 	creditBalance         balance.CreditBalanceUseCase
 	debitBalance          balance.DebitBalanceUseCase
 	recordEarning         affiliate.RecordEarningUseCase
-	notifier              notification.Notifier
+	notifications         notification.Publisher
 	dashboardURL          string
 	confirmMonthlyBilling billing.ConfirmMonthlyBillingUseCase
 }
@@ -65,9 +66,9 @@ func NewHandlePaymentWebhookUseCase(
 
 var _ payment.HandlePaymentWebhookUseCase = (*handlePaymentWebhookUseCase)(nil)
 
-func (uc *handlePaymentWebhookUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *handlePaymentWebhookUseCase {
-	uc.notifier = n
-	uc.dashboardURL = dashboardURL
+func (uc *handlePaymentWebhookUseCase) WithNotifications(publisher notification.Publisher, dashboardURL string) *handlePaymentWebhookUseCase {
+	uc.notifications = publisher
+	uc.dashboardURL = strings.TrimRight(dashboardURL, "/")
 	return uc
 }
 
@@ -76,21 +77,37 @@ func (uc *handlePaymentWebhookUseCase) WithMonthlyBilling(confirmer billing.Conf
 	return uc
 }
 
+const balancePath = "/dashboard/balance"
+
 func (uc *handlePaymentWebhookUseCase) notifyTopUpConfirmed(inv *invoice.Invoice, amountUSDMicros int64) {
-	if uc.notifier == nil {
+	if uc.notifications == nil {
 		return
 	}
-	_ = uc.notifier.Notify(notification.Notification{
+	amount := fmt.Sprintf("US$ %.2f", float64(amountUSDMicros)/1e6)
+	_, err := uc.notifications.Publish(context.Background(), notification.Draft{
 		WorkspaceID: inv.WorkspaceID,
-		Subject:     "Saldo adicionado - " + brand.Active().Name,
-		Template:    "wallet_topup_confirmed.html",
-		Placeholders: map[string]interface{}{
-			"Amount":       fmt.Sprintf("US$ %.2f", float64(amountUSDMicros)/1e6),
-			"DashboardURL": uc.dashboardURL,
+		Category:    notification.CategoryBilling,
+		Severity:    notification.SeveritySuccess,
+		Title:       "Saldo adicionado",
+		Body:        "Recebemos o pagamento e " + amount + " já estão disponíveis na carteira.",
+		ActionURL:   balancePath,
+		ActionLabel: "Ver saldo",
+		Audience:    notification.Holding(workspace.ResourceBalance, workspace.ActionRead),
+		Email:       true,
+		EmailCopy: &notification.EmailCopy{
+			Template: "wallet_topup_confirmed.html",
+			Subject:  "Saldo adicionado - " + brand.Active().Name,
+			Placeholders: map[string]interface{}{
+				"Amount":       amount,
+				"DashboardURL": notification.AbsoluteLink(uc.dashboardURL, balancePath),
+			},
 		},
 		DedupKey: "wallet_topup:" + inv.ID,
-		DedupTTL: 30 * 24 * time.Hour,
+		Source:   notification.SourceTopUp,
 	})
+	if err != nil {
+		log.Printf("[invoice-webhook] balance added notification for invoice %s failed: %v", inv.ID, err)
+	}
 }
 
 func (uc *handlePaymentWebhookUseCase) Execute(event *payment.WebhookEvent) error {

@@ -35,7 +35,6 @@ type instanceDTO struct {
 	DailySendCap    int        `json:"dailySendCap"`
 	SendDelayMinMS  int        `json:"sendDelayMinMs"`
 	SendDelayMaxMS  int        `json:"sendDelayMaxMs"`
-	AutoRejectCalls bool       `json:"autoRejectCalls"`
 	WarmupStartedAt *time.Time `json:"warmupStartedAt,omitempty"`
 
 	AgentID              *string `json:"agentId,omitempty"`
@@ -104,7 +103,6 @@ func toInstanceDTO(i *uw.Instance) instanceDTO {
 		DailySendCap:    i.DailySendCap,
 		SendDelayMinMS:  i.SendDelayMinMS,
 		SendDelayMaxMS:  i.SendDelayMaxMS,
-		AutoRejectCalls: i.AutoRejectCalls,
 		WarmupStartedAt: i.WarmupStartedAt,
 
 		AgentID:              i.AgentID,

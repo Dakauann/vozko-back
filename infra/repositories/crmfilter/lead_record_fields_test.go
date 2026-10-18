@@ -103,6 +103,14 @@ func TestLeadRecordFields_GoldenSQL(t *testing.T) {
 		{"referred by", pred(crmfilter.FieldReferredBy, crmfilter.OpIn, someLead),
 			"leads.id IN (SELECT lr_b.other_lead_id FROM lead_relations lr_b WHERE lr_b.workspace_id = ? AND lr_b.kind = ? AND lr_b.lead_id = ANY(?::uuid[]))",
 			[]interface{}{testWorkspace, "referred", pq.Array([]string{someLead})}},
+		{"in a company", pred(crmfilter.FieldCompany, crmfilter.OpIn, someLead),
+			"leads.company_id = ANY(?::uuid[])", []interface{}{pq.Array([]string{someLead})}},
+		{"outside the companies keeps the leads in none", pred(crmfilter.FieldCompany, crmfilter.OpNotIn, someLead),
+			"(leads.company_id IS NULL OR leads.company_id <> ALL(?::uuid[]))", []interface{}{pq.Array([]string{someLead})}},
+		{"in any company", pred(crmfilter.FieldCompany, crmfilter.OpIsSet),
+			"leads.company_id IS NOT NULL", nil},
+		{"in no company", pred(crmfilter.FieldCompany, crmfilter.OpIsEmpty),
+			"leads.company_id IS NULL", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

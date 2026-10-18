@@ -171,7 +171,7 @@ func TestUpdateCampaignUseCase_RejectsBusinessPhoneOutsideWorkspace(t *testing.T
 
 	uc := NewUpdateCampaignUseCase(campaignRepo, nil, nil, businessPhones, phoneAccess)
 
-	_, err := uc.Execute("camp-1", &wc.Campaign{
+	_, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{
 		Name:            "Updated Campaign",
 		TemplateID:      "tmpl-1",
 		BusinessPhoneID: "phone-2",
@@ -230,7 +230,7 @@ func TestUpdateCampaignUseCase_AllowsGrantedBusinessPhoneAccessForOwnerlessPhone
 
 	uc := NewUpdateCampaignUseCase(campaignRepo, nil, nil, businessPhones, phoneAccess)
 
-	_, err := uc.Execute("camp-1", &wc.Campaign{
+	_, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{
 		Name:            "Updated Campaign",
 		TemplateID:      "tmpl-1",
 		BusinessPhoneID: "phone-2",
@@ -276,7 +276,7 @@ func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {
 		}
 	}
 
-	updated, err := uc.Execute("camp-1", archiveInput(true))
+	updated, err := uc.Execute(context.Background(), "camp-1", archiveInput(true))
 	if err != nil {
 		t.Fatalf("archive update failed: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {
 		t.Fatal("expected archived=true to be persisted in the repository")
 	}
 
-	updated, err = uc.Execute("camp-1", archiveInput(false))
+	updated, err = uc.Execute(context.Background(), "camp-1", archiveInput(false))
 	if err != nil {
 		t.Fatalf("unarchive update failed: %v", err)
 	}

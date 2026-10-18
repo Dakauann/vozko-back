@@ -44,7 +44,7 @@ func TestReceptiveCannotBeEditedAsACampaign(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &guardRepoStub{stored: &wc.Campaign{ID: "c1", Type: tc.stored, Name: "x", BusinessPhoneID: "phone-1"}}
-			_, err := NewUpdateCampaignUseCase(repo, nil, nil, nil, nil).Execute("c1", &wc.Campaign{Name: "y", Type: tc.input, EnableAgentResponses: true})
+			_, err := NewUpdateCampaignUseCase(repo, nil, nil, nil, nil).Execute(context.Background(), "c1", &wc.Campaign{Name: "y", Type: tc.input, EnableAgentResponses: true})
 			if !errors.Is(err, wc.ErrReceptiveManagedByNumber) {
 				t.Fatalf("err %v", err)
 			}

@@ -188,3 +188,14 @@ func TestSpec_ResolvesDepartmentOverWorkspace(t *testing.T) {
 	assert.False(t, Resolve(ws, dept).IsOpen(time.Date(2026, 9, 7, 12, 0, 0, 0, loc)), "monday is not inherited back")
 	assert.True(t, Resolve(ws, nil).IsOpen(time.Date(2026, 9, 7, 12, 0, 0, 0, loc)), "no department hours inherits")
 }
+
+func TestResolveAppliesTheSameOverrideToStoredSpecs(t *testing.T) {
+	workspace := &Spec{Timezone: "America/Sao_Paulo", Days: map[string][]Window{"mon": {{Start: "08:00", End: "18:00"}}}}
+	department := &Spec{Timezone: "America/Sao_Paulo", Days: map[string][]Window{"sat": {{Start: "09:00", End: "13:00"}}}}
+	if Resolve(workspace, department) != department {
+		t.Fatal("a department spec overrides the workspace spec")
+	}
+	if Resolve(workspace, nil) != workspace {
+		t.Fatal("a department without hours inherits the workspace spec")
+	}
+}

@@ -37,12 +37,10 @@ type HandleWebhookTriggerUseCase interface {
 type handleWebhookTrigger struct {
 	webhookRepo  workflow.WorkflowWebhookRepository
 	workflowRepo workflow.WorkflowRepository
-	runRepo      workflow.WorkflowRunRepository
 	entries      workflow.EntryOwnershipChecker
 	resolver     workflow.EntryResolver
-	launcher     RunLauncher
+	starter      runStarter
 	dedup        webhookDedupGuard
-	sharedState  cache.SharedState
 }
 
 func NewHandleWebhookTriggerUseCase(
@@ -58,12 +56,10 @@ func NewHandleWebhookTriggerUseCase(
 	return &handleWebhookTrigger{
 		webhookRepo:  webhookRepo,
 		workflowRepo: workflowRepo,
-		runRepo:      runRepo,
 		entries:      entries,
 		resolver:     entryResolver,
-		launcher:     launcher,
+		starter:      runStarter{runs: runRepo, launcher: launcher, sharedState: sharedState},
 		dedup:        dedup,
-		sharedState:  sharedState,
 	}
 }
 
@@ -124,33 +120,17 @@ func (uc *handleWebhookTrigger) Execute(req WebhookRequest) (*WebhookResult, err
 		return nil, workflow.ErrWebhookNoTriggerNode
 	}
 
-	existing, err := uc.runRepo.FindActiveByEntryAndTrigger(w.ID, entryID, trigger.ID)
-	if err != nil {
-		return nil, err
-	}
-	if existing != nil {
-		return &WebhookResult{RunID: existing.ID, AlreadyRunning: true}, nil
-	}
-
-	if !tryAcquireWorkspaceSlot(uc.sharedState, wh.WorkspaceID) {
-		return nil, workflow.ErrWorkspaceAtCapacity
-	}
-
-	event := workflow.TriggerEvent{
+	started, err := uc.starter.start(w, trigger, workflow.TriggerEvent{
 		WorkspaceID: wh.WorkspaceID,
 		EntryID:     entryID,
 		EntryType:   entryType,
 		TriggerType: workflow.TriggerWebhook,
 		Data:        map[string]interface{}{"webhook": buildWebhookVars(req, body)},
-	}
-	run := newTriggeredRun(w, trigger, event)
-	if err := uc.runRepo.Create(run); err != nil {
-		releaseWorkspaceSlot(uc.sharedState, wh.WorkspaceID)
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	uc.launcher.Launch(run, w)
-	return &WebhookResult{RunID: run.ID}, nil
+	return &WebhookResult{RunID: started.RunID, AlreadyRunning: started.AlreadyRunning}, nil
 }
 
 func verifyWebhookAuth(wh *workflow.WorkflowWebhook, req WebhookRequest) error {

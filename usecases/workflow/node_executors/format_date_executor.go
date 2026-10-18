@@ -19,7 +19,7 @@ func (e *formatDateExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeActionFormatDate,
 		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Formatar Data/Hora",
 		Description: "Formata, converte ou calcula datas e horários.",
 		Icon:        "CalendarBlank",

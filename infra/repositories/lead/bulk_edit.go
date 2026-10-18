@@ -170,6 +170,9 @@ func (r *repository) ApplyBatch(ctx context.Context, w leadaction.BatchWrite) (l
 	if strings.TrimSpace(w.ActorID) == "" {
 		return leadaction.Tally{}, leadaction.ErrActorRequired
 	}
+	if w.Edit.Kind == leadaction.EditRestoreOptOut && len(ids) > 0 {
+		return r.applyOptOutRestores(ctx, workspaceID, ids, w)
+	}
 	b, err := newBulkEdit(w.Edit)
 	if err != nil {
 		return leadaction.Tally{}, err
@@ -238,6 +241,9 @@ func (r *repository) TallyBatch(ctx context.Context, workspaceID string, ids []s
 	unique, err := lead.SelectionIDs(ids)
 	if err != nil {
 		return leadaction.Tally{}, err
+	}
+	if e.Kind == leadaction.EditRestoreOptOut && len(unique) > 0 {
+		return r.tallyOptOutRestores(ctx, workspaceID, unique, e)
 	}
 	b, err := newBulkEdit(e)
 	if err != nil {

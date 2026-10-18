@@ -1,8 +1,9 @@
 package node_executors
 
 import (
-	"crypto/tls"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -11,54 +12,21 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
 	"vozko/domain/workflow"
 )
 
-var privateIPNets []*net.IPNet
+const (
+	defaultHTTPRequestTimeout = 15 * time.Second
+	MaxHTTPRequestTimeout     = 30 * time.Second
+	maxHTTPResponseBytes      = 64 * 1024
+)
 
-func init() {
-	for _, cidr := range []string{
-		"127.0.0.0/8",
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"169.254.0.0/16",
-		"::1/128",
-		"fc00::/7",
-		"fe80::/10",
-	} {
-		_, ipNet, _ := net.ParseCIDR(cidr)
-		privateIPNets = append(privateIPNets, ipNet)
-	}
-}
+var errHTTPEgressNotConfigured = errors.New("outbound HTTP is not configured on this server")
 
-func isPrivateURL(rawURL string) error {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-	host := parsed.Hostname()
-	if host == "" {
-		return fmt.Errorf("URL has no host")
-	}
-
-	ips, err := net.LookupHost(host)
-	if err != nil {
-		return fmt.Errorf("DNS lookup failed for %s: %w", host, err)
-	}
-
-	for _, ipStr := range ips {
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
-		}
-		for _, priv := range privateIPNets {
-			if priv.Contains(ip) {
-				return fmt.Errorf("URL resolves to private IP %s (blocked)", ipStr)
-			}
-		}
-	}
-	return nil
+type HTTPEgress struct {
+	Client    *http.Client
+	LegacyTLS *http.Client
 }
 
 func normalizeRequestMap(value interface{}) map[string]interface{} {
@@ -86,24 +54,11 @@ func normalizeRequestMap(value interface{}) map[string]interface{} {
 }
 
 type httpRequestExecutor struct {
-	transport      *http.Transport
-	transportTLS12 *http.Transport
+	egress HTTPEgress
 }
 
-func NewHTTPRequestExecutor() workflow.NodeExecutor {
-	base := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-	tls12 := base.Clone()
-	tls12.TLSClientConfig = &tls.Config{MaxVersion: tls.VersionTLS12}
-
-	return &httpRequestExecutor{transport: base, transportTLS12: tls12}
+func NewHTTPRequestExecutor(egress HTTPEgress) workflow.NodeExecutor {
+	return &httpRequestExecutor{egress: egress}
 }
 
 func isTLSHandshakeError(err error) bool {
@@ -117,11 +72,38 @@ func isTLSHandshakeError(err error) bool {
 		strings.Contains(msg, "tls: protocol version")
 }
 
+func httpRequestTimeout(config map[string]interface{}) time.Duration {
+	var seconds float64
+	switch v := config["timeout_seconds"].(type) {
+	case float64:
+		seconds = v
+	case int:
+		seconds = float64(v)
+	}
+	if seconds <= 0 {
+		return defaultHTTPRequestTimeout
+	}
+	return min(time.Duration(seconds*float64(time.Second)), MaxHTTPRequestTimeout)
+}
+
+func httpFailure(ctx *workflow.NodeContext, label, message string) *workflow.NodeResult {
+	nextID := resolveEdgeByLabel(ctx.Graph.OutgoingEdges(ctx.Node.ID), label)
+	return &workflow.NodeResult{
+		NextNodeID: nextID,
+		Output: map[string]interface{}{
+			"success":      false,
+			"error":        message,
+			"next_edge":    label,
+			"next_node_id": nextID,
+		},
+	}
+}
+
 func (e *httpRequestExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeActionHTTPRequest,
 		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Requisição HTTP",
 		Description: "Faz uma requisição HTTP para um serviço externo.",
 		Icon:        "Globe",
@@ -178,7 +160,7 @@ func (e *httpRequestExecutor) Definition() workflow.NodeDefinition {
 			{Key: "auth_token", Label: "Token / Senha", Type: "text", Placeholder: "Token ou senha (suporta variáveis)", Description: "Bearer token, senha do Basic Auth, ou valor da API Key"},
 			{Key: "auth_user", Label: "Usuário (Basic Auth)", Type: "text", Placeholder: "username", Description: "Apenas para Basic Auth"},
 			{Key: "auth_key_name", Label: "Nome do Header (API Key)", Type: "text", Placeholder: "X-API-Key", Description: "Nome do header para API Key"},
-			{Key: "timeout_seconds", Label: "Timeout (segundos)", Type: "number", Placeholder: "15", Description: "Tempo máximo de espera pela resposta"},
+			{Key: "timeout_seconds", Label: "Timeout (segundos)", Type: "number", Placeholder: "15", Description: "Tempo máximo de espera pela resposta, até 30 segundos"},
 			{Key: "capture_variable", Label: "Salvar resposta em variável", Type: "text", Placeholder: "nome_variavel", Description: "Salva o corpo da resposta em uma variável para uso em nós posteriores"},
 		},
 	}
@@ -195,15 +177,11 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 
 	if rawURL == "" {
 		log.Printf("[http_request] node %s: empty URL, skipping", ctx.Node.ID)
-		edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-		nextID := resolveEdgeByLabel(edges, "falha")
-		return &workflow.NodeResult{
-			NextNodeID: nextID,
-			Output: map[string]interface{}{
-				"success": false,
-				"error":   "URL is empty",
-			},
-		}, nil
+		return httpFailure(ctx, "falha", "URL is empty"), nil
+	}
+	if e.egress.Client == nil {
+		log.Printf("[http_request] node %s: refused, %v", ctx.Node.ID, errHTTPEgressNotConfigured)
+		return httpFailure(ctx, "falha", errHTTPEgressNotConfigured.Error()), nil
 	}
 
 	rawURL = workflow.Interpolate(rawURL, ctx.State, nil)
@@ -222,19 +200,6 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 
 	log.Printf("[http_request] node %s: %s %s", ctx.Node.ID, method, rawURL)
 
-	if err := isPrivateURL(rawURL); err != nil {
-		log.Printf("[http_request] node %s: SSRF blocked: %v", ctx.Node.ID, err)
-		edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-		nextID := resolveEdgeByLabel(edges, "falha")
-		return &workflow.NodeResult{
-			NextNodeID: nextID,
-			Output: map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("request blocked: %v", err),
-			},
-		}, nil
-	}
-
 	bodyStr := ""
 	if bs, ok := ctx.Node.Config["body"].(string); ok && bs != "" {
 		bodyStr = workflow.Interpolate(bs, ctx.State, nil)
@@ -247,12 +212,17 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 		authToken = workflow.Interpolate(authToken, ctx.State, nil)
 	}
 
+	callCtx, releaseCall := ctx.CallContext()
+	defer releaseCall()
+	requestCtx, cancel := context.WithTimeout(callCtx, httpRequestTimeout(ctx.Node.Config))
+	defer cancel()
+
 	makeReq := func() (*http.Request, error) {
 		var body io.Reader
 		if bodyStr != "" {
 			body = strings.NewReader(bodyStr)
 		}
-		req, err := http.NewRequest(method, rawURL, body)
+		req, err := http.NewRequestWithContext(requestCtx, method, rawURL, body)
 		if err != nil {
 			return nil, err
 		}
@@ -294,51 +264,27 @@ func (e *httpRequestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	req, err := makeReq()
 	if err != nil {
 		log.Printf("[http_request] node %s: failed to create request: %v", ctx.Node.ID, err)
-		edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-		nextID := resolveEdgeByLabel(edges, "falha")
-		return &workflow.NodeResult{
-			NextNodeID: nextID,
-			Output: map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("failed to create request: %v", err),
-			},
-		}, nil
+		return httpFailure(ctx, "falha", fmt.Sprintf("failed to create request: %v", err)), nil
 	}
 
-	timeout := 15 * time.Second
-	if ts, ok := ctx.Node.Config["timeout_seconds"].(float64); ok && ts > 0 {
-		timeout = time.Duration(ts) * time.Second
-	} else if ts, ok := ctx.Node.Config["timeout_seconds"].(int); ok && ts > 0 {
-		timeout = time.Duration(ts) * time.Second
-	}
-
-	resp, err := (&http.Client{Timeout: timeout, Transport: e.transport}).Do(req)
-	if err != nil && isTLSHandshakeError(err) {
+	resp, err := e.egress.Client.Do(req)
+	if err != nil && isTLSHandshakeError(err) && e.egress.LegacyTLS != nil {
 		log.Printf("[http_request] node %s: TLS handshake failed (%v), retrying capped at TLS 1.2", ctx.Node.ID, err)
 		if req2, mkErr := makeReq(); mkErr == nil {
-			resp, err = (&http.Client{Timeout: timeout, Transport: e.transportTLS12}).Do(req2)
+			resp, err = e.egress.LegacyTLS.Do(req2)
 		}
 	}
 	if err != nil {
 		log.Printf("[http_request] node %s: transport error: %v", ctx.Node.ID, err)
-		output := map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("transport error: %v", err),
-		}
-		edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-
 		label := "falha"
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			label = "timeout"
 		}
-		nextID := resolveEdgeByLabel(edges, label)
-		output["next_edge"] = label
-		output["next_node_id"] = nextID
-		return &workflow.NodeResult{NextNodeID: nextID, Output: output}, nil
+		return httpFailure(ctx, label, fmt.Sprintf("transport error: %v", err)), nil
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxHTTPResponseBytes))
 
 	output := map[string]interface{}{
 		"status_code": resp.StatusCode,

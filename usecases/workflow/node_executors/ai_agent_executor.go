@@ -653,6 +653,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 			sendOutput, _, sendErr := e.waSender.SendText(context.Background(), ctx.Run, msgText, conversation.MessageTypeAIResponse)
 			if sendErr != nil {
 				log.Printf("%s segmented send failed at segment %d/%d: %v", logPrefix, i+1, len(segmentedMessages), sendErr)
+				if failsTheStep(sendErr) {
+					return nil, sendErr
+				}
 				allSent = false
 				break
 			}
@@ -672,6 +675,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	if isSegmented && !isWhatsApp && len(segmentedMessages) > 0 && len(output.ToolCalls) == 0 {
 		log.Printf("%s segmented %s delivery: %d messages", logPrefix, ctx.Run.EntryType, len(segmentedMessages))
 		delivered, sendErr := e.sender.SendSegments(context.Background(), ctx.Run, segmentedMessages, nil)
+		if failsTheStep(sendErr) {
+			return nil, sendErr
+		}
 		if sendErr != nil {
 			log.Printf("%s segmented delivery failed: %v", logPrefix, sendErr)
 		} else if !delivered {
@@ -685,6 +691,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 	if !isSegmented && responseText != "" && len(output.ToolCalls) == 0 && e.sender.Supports(ctx.Run) {
 		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
+		if failsTheStep(sendErr) {
+			return nil, sendErr
+		}
 		if sendErr != nil {
 			log.Printf("%s default delivery failed: %v", logPrefix, sendErr)
 		} else if sent == nil {

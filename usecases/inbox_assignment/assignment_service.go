@@ -37,6 +37,7 @@ type AssignmentService struct {
 	accounts           EntryAccountReader
 	receivers          ConversationReceivers
 	outreach           ia.EntryOutreachReader
+	portfolio          ia.PortfolioHolders
 }
 
 func NewAssignmentService(
@@ -111,6 +112,18 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		return s.assignToAutomation(workspaceID, entryID, entryType, businessPhoneID, departmentID, governor)
 	}
 
+	holder, err := s.portfolioHolder(workspaceID, entryID, entryType, departmentID)
+	if err != nil {
+		log.Printf("[InboxAssignment] cannot read the carteira of entry %s (%s), leaving it for the next message: %v", entryID, entryType, err)
+		return ""
+	}
+	if holder != "" {
+		return s.handOut(handOutInput{
+			WorkspaceID: workspaceID, EntryID: entryID, EntryType: entryType,
+			BusinessPhoneID: businessPhoneID, DepartmentID: departmentID, UserID: holder, Trigger: ia.TriggerPortfolio,
+		})
+	}
+
 	pool := s.humanPool(workspaceID, departmentID)
 	if len(pool.Ring) == 0 {
 		if departmentID != "" {
@@ -132,36 +145,52 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		}
 	}
 
-	assignment := &ia.InboxAssignment{
-		WorkspaceID:     workspaceID,
-		BusinessPhoneID: businessPhoneID,
-		EntryID:         entryID,
-		EntryType:       entryType,
-		AssignedUserID:  assignedUserID,
-	}
-	if err := s.repo.Assign(assignment); err != nil {
-		log.Printf("[InboxAssignment] error creating assignment for entry %s → user %s: %v", entryID, assignedUserID, err)
+	log.Printf("[InboxAssignment] picked user %s for entry %s (%s) (trigger=%s, index %d/%d, mode=%s reason=%s)",
+		assignedUserID, entryID, entryType, trigger, nextIndex, len(pool.Ring), pool.Mode, pool.Reason)
+
+	return s.handOut(handOutInput{
+		WorkspaceID: workspaceID, EntryID: entryID, EntryType: entryType,
+		BusinessPhoneID: businessPhoneID, DepartmentID: departmentID, UserID: assignedUserID, Trigger: trigger,
+	})
+}
+
+type handOutInput struct {
+	WorkspaceID     string
+	EntryID         string
+	EntryType       string
+	BusinessPhoneID string
+	DepartmentID    string
+	UserID          string
+	Trigger         string
+}
+
+func (s *AssignmentService) handOut(in handOutInput) string {
+	if err := s.repo.Assign(&ia.InboxAssignment{
+		WorkspaceID:     in.WorkspaceID,
+		BusinessPhoneID: in.BusinessPhoneID,
+		EntryID:         in.EntryID,
+		EntryType:       in.EntryType,
+		AssignedUserID:  in.UserID,
+	}); err != nil {
+		log.Printf("[InboxAssignment] error creating assignment for entry %s → user %s: %v", in.EntryID, in.UserID, err)
 		return ""
 	}
 
-	log.Printf("[InboxAssignment] assigned entry %s (%s) → user %s (trigger=%s, index %d/%d, mode=%s reason=%s, phone %s)",
-		entryID, entryType, assignedUserID, trigger, nextIndex, len(pool.Ring), pool.Mode, pool.Reason, businessPhoneID)
+	log.Printf("[InboxAssignment] assigned entry %s (%s) → user %s (trigger=%s, phone %s)", in.EntryID, in.EntryType, in.UserID, in.Trigger, in.BusinessPhoneID)
 
 	s.recordHistoryAndEvent(recordInput{
-		WorkspaceID:       workspaceID,
-		EntryID:           entryID,
-		EntryType:         entryType,
-		AssignedUserID:    assignedUserID,
-		PreviousUserID:    "",
-		Trigger:           trigger,
+		WorkspaceID:       in.WorkspaceID,
+		EntryID:           in.EntryID,
+		EntryType:         in.EntryType,
+		AssignedUserID:    in.UserID,
+		Trigger:           in.Trigger,
 		AssignedByActorID: actor.SystemID,
-		BusinessPhoneID:   businessPhoneID,
-		DepartmentID:      departmentID,
+		BusinessPhoneID:   in.BusinessPhoneID,
+		DepartmentID:      in.DepartmentID,
 		EventType:         ce.EventAutoAssigned,
-		Channel:           channelForEntryType(entryType),
+		Channel:           channelForEntryType(in.EntryType),
 	})
-
-	return assignedUserID
+	return in.UserID
 }
 
 func (s *AssignmentService) outreachOwner(entryID, entryType string, pool Pool) string {

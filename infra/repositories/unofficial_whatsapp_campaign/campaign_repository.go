@@ -69,7 +69,6 @@ func (r *repository) Update(campaignID string, c *uwc.Campaign) error {
 		"enable_analysis":        c.EnableAnalysis,
 		"enable_auto_staging":    c.EnableAutoStaging,
 		"enable_auto_memory":     c.EnableAutoMemory,
-		"prefer_audio":           c.PreferAudio,
 		"ai_model":               c.AiModel,
 		"send_delay_min_ms":      c.SendDelayMinMS,
 		"send_delay_max_ms":      c.SendDelayMaxMS,
@@ -265,3 +264,15 @@ func applySorts(db *gorm.DB, sorts []shared.Sort) *gorm.DB {
 	}
 	return db
 }
+
+func (r *repository) ClaimScheduledStart(campaignID string, dueBy time.Time) (bool, error) {
+	result := r.db.Model(&schema.UnofficialWhatsAppCampaign{}).
+		Where("id = ? AND scheduled_start > ? AND scheduled_start <= ?", campaignID, time.Time{}, dueBy.UTC()).
+		Update("scheduled_start", time.Time{})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+var _ campaign.ScheduleClaimer = (*repository)(nil)

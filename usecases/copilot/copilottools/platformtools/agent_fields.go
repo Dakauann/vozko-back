@@ -10,29 +10,25 @@ import (
 )
 
 type agentFields struct {
-	Name              *string `json:"name" req:"true"`
-	Description       *string `json:"description"`
-	InitialMessage    *string `json:"initialMessage"`
-	UseInitialMessage *bool   `json:"useInitialMessage"`
-	MessagingPrompt   *string `json:"messagingPrompt" req:"true"`
-	MessagingModel    *string `json:"messagingModel" req:"true"`
-	AvatarURL         *string `json:"avatarUrl"`
-	Provider          *string `json:"provider" req:"true"`
-	BusinessPhoneID   *string `json:"businessPhoneId"`
-	IsActive          *bool   `json:"isActive"`
+	Name            *string `json:"name" req:"true"`
+	Description     *string `json:"description"`
+	MessagingPrompt *string `json:"messagingPrompt" req:"true"`
+	MessagingModel  *string `json:"messagingModel" req:"true"`
+	AvatarURL       *string `json:"avatarUrl"`
+	Provider        *string `json:"provider" req:"true"`
+	BusinessPhoneID *string `json:"businessPhoneId"`
+	IsActive        *bool   `json:"isActive"`
 }
 
 var agentFieldDescriptions = map[string]string{
-	"name":              "nome do agente",
-	"description":       "descrição interna do agente",
-	"initialMessage":    "mensagem inicial enviada ao iniciar a conversa",
-	"useInitialMessage": "liga/desliga o envio da mensagem inicial",
-	"messagingPrompt":   "prompt de mensagens (comportamento do agente por texto)",
-	"messagingModel":    "id do modelo de LLM para mensagens (use list_models para um id válido)",
-	"avatarUrl":         "URL do avatar do agente",
-	"provider":          "provedor do agente, ex.: platform",
-	"businessPhoneId":   "id do número de WhatsApp Business vinculado ao agente",
-	"isActive":          "se o agente está ativo",
+	"name":            "nome do agente",
+	"description":     "descrição interna do agente",
+	"messagingPrompt": "prompt de mensagens (comportamento do agente por texto)",
+	"messagingModel":  "id do modelo de LLM para mensagens (use list_models para um id válido)",
+	"avatarUrl":       "URL do avatar do agente",
+	"provider":        "provedor do agente, ex.: platform",
+	"businessPhoneId": "id do número de WhatsApp Business vinculado ao agente",
+	"isActive":        "se o agente está ativo",
 
 	"internalTools":          "ferramentas internas do agente (lista COMPLETA; use list_agent_tools para nomes válidos e o config exigido por cada uma). Cabeçalhos (headers) e outros valores protegidos: envie só os NOMES com valor vazio (ex.: {\"Authorization\": \"\"}); o usuário digita os valores no cartão de aprovação e você nunca os vê.",
 	"knowledgeBaseIds":       "ids das bases de conhecimento a vincular (devem ser deste workspace)",
@@ -47,15 +43,13 @@ var agentFieldDescriptions = map[string]string{
 
 func (f agentFields) toUpdateInput() agent.UpdateAgentInput {
 	in := agent.UpdateAgentInput{
-		Name:              f.Name,
-		Description:       f.Description,
-		InitialMessage:    f.InitialMessage,
-		UseInitialMessage: f.UseInitialMessage,
-		MessagingPrompt:   f.MessagingPrompt,
-		MessagingModel:    f.MessagingModel,
-		AvatarURL:         f.AvatarURL,
-		BusinessPhoneID:   f.BusinessPhoneID,
-		IsActive:          f.IsActive,
+		Name:            f.Name,
+		Description:     f.Description,
+		MessagingPrompt: f.MessagingPrompt,
+		MessagingModel:  f.MessagingModel,
+		AvatarURL:       f.AvatarURL,
+		BusinessPhoneID: f.BusinessPhoneID,
+		IsActive:        f.IsActive,
 	}
 	if f.Provider != nil {
 		p := agent.AgentProvider(*f.Provider)
@@ -66,17 +60,13 @@ func (f agentFields) toUpdateInput() agent.UpdateAgentInput {
 
 func (f agentFields) toCreateInput() agent.CreateAgentInput {
 	in := agent.CreateAgentInput{
-		UseInitialMessage: f.UseInitialMessage,
-		IsActive:          f.IsActive,
+		IsActive: f.IsActive,
 	}
 	if f.Name != nil {
 		in.Name = *f.Name
 	}
 	if f.Description != nil {
 		in.Description = *f.Description
-	}
-	if f.InitialMessage != nil {
-		in.InitialMessage = *f.InitialMessage
 	}
 	if f.MessagingPrompt != nil {
 		in.MessagingPrompt = *f.MessagingPrompt

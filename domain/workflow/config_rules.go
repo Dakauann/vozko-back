@@ -1,10 +1,10 @@
 package workflow
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	"vozko/domain/channel"
 	"vozko/domain/conversation"
 	"vozko/domain/tools"
 )
@@ -191,8 +191,8 @@ func ValidateInteractivePromptConfig(g *Graph) error {
 			body = "x"
 		}
 
-		if interactivePromptType(n.Config) == "list" {
-			sections, perr := parseInteractiveListSections(n.Config)
+		if InteractivePromptStyle(n.Config) == channel.InteractiveStyleList {
+			sections, perr := InteractiveListSections(n.Config)
 			if perr != nil {
 				return fmt.Errorf("%w: node %q: %v", ErrNodeInvalidInteractiveConfig, n.ID, perr)
 			}
@@ -212,7 +212,7 @@ func ValidateInteractivePromptConfig(g *Graph) error {
 			continue
 		}
 
-		buttons, perr := parseInteractiveButtons(n.Config)
+		buttons, perr := InteractiveButtons(n.Config)
 		if perr != nil {
 			return fmt.Errorf("%w: node %q: %v", ErrNodeInvalidInteractiveConfig, n.ID, perr)
 		}
@@ -229,59 +229,6 @@ func ValidateInteractivePromptConfig(g *Graph) error {
 		}
 	}
 	return nil
-}
-
-func interactivePromptType(config map[string]interface{}) string {
-	t, _ := config["interactive_type"].(string)
-	if strings.EqualFold(strings.TrimSpace(t), "list") {
-		return "list"
-	}
-	return "buttons"
-}
-
-func parseInteractiveButtons(config map[string]interface{}) ([]conversation.InteractiveButton, error) {
-	raw, _ := config["buttons"].(string)
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[]" {
-		return nil, nil
-	}
-	var buttons []conversation.InteractiveButton
-	if err := json.Unmarshal([]byte(raw), &buttons); err != nil {
-		return nil, fmt.Errorf("botões inválidos: %v", err)
-	}
-	return buttons, nil
-}
-
-type interactiveListRowJSON struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-}
-
-type interactiveListSectionJSON struct {
-	Title string                   `json:"title"`
-	Rows  []interactiveListRowJSON `json:"rows"`
-}
-
-func parseInteractiveListSections(config map[string]interface{}) ([]conversation.ListSection, error) {
-	raw, _ := config["sections"].(string)
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[]" {
-		return nil, nil
-	}
-	var parsed []interactiveListSectionJSON
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		return nil, fmt.Errorf("opções da lista inválidas: %v", err)
-	}
-	sections := make([]conversation.ListSection, 0, len(parsed))
-	for _, s := range parsed {
-		rows := make([]conversation.ListRow, 0, len(s.Rows))
-		for _, r := range s.Rows {
-			rows = append(rows, conversation.ListRow{ID: r.ID, Title: r.Title, Description: r.Description})
-		}
-		sections = append(sections, conversation.ListSection{Title: s.Title, Rows: rows})
-	}
-	return sections, nil
 }
 
 func interactiveListRowCount(sections []conversation.ListSection) int {

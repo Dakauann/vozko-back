@@ -23,6 +23,7 @@ import (
 	template_domain "vozko/domain/whatsapp/template"
 	"vozko/domain/workflow"
 	calendar_usecase "vozko/usecases/calendar"
+	"vozko/usecases/workflow/node_executors"
 )
 
 type simServerMsg struct {
@@ -83,6 +84,7 @@ type WSWorkflowSimulationDeps struct {
 	GoogleCalendar calendar.GoogleOAuthService
 	BillingPub     messaging.MessageQueuePub
 	CallQueues     CallQueueLookup
+	HTTPEgress     node_executors.HTTPEgress
 }
 
 type WSWorkflowSimulationUseCase interface {
@@ -521,6 +523,7 @@ func (s *wsWorkflowSimulation) newSimulationRegistry(workspaceID, simLeadID stri
 		AgentRepo:             s.deps.AgentRepo,
 		MessageRepo:           simMsgRepo,
 		HistoryManager:        &simHistoryManager{},
+		ConversationEvents:    simulationEvents,
 		LeadRepo:              &simLeadRepo{},
 		WhatsAppEntryRepo:     &simWhatsAppEntryRepo{leadID: simLeadID},
 		BusinessPhoneRepo:     &simBusinessPhoneRepo{workspaceID: workspaceID},
@@ -540,6 +543,7 @@ func (s *wsWorkflowSimulation) newSimulationRegistry(workspaceID, simLeadID stri
 			calendar_usecase.NewUpdateEventUseCase(s.deps.CalendarRepo, s.deps.GoogleCalendar),
 		),
 		BillingPub: s.deps.BillingPub,
+		HTTPEgress: s.deps.HTTPEgress,
 	})
 	return registry
 }

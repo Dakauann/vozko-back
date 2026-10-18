@@ -12,6 +12,7 @@ const (
 	CodeAccessDenied          = "template_access_denied"
 	CodeHeaderMediaOutside    = "template_header_media_outside_storage"
 	CodePhoneOutsideWorkspace = "template_phone_outside_workspace"
+	CodeLookupUnavailable     = "template_lookup_unavailable"
 	CodeAlreadyExists         = "template_already_exists"
 	CodeExternalIDRequired    = "template_external_id_required"
 	CodeCategoryUnavailable   = "template_category_unavailable"
@@ -80,6 +81,13 @@ const (
 	CodeSendParamsMismatch       = "template_send_params_mismatch"
 	CodeQuoteOutOfRange          = "template_quote_out_of_range"
 
+	CodeNotEditable        = "template_not_editable"
+	CodeEditCategoryLocked = "template_edit_category_locked"
+	CodeEditUnsupported    = "template_edit_unsupported"
+	CodeEditWindow         = "template_edit_window"
+	CodeInUse              = "template_in_use"
+	CodeEditNotOwner       = "template_edit_not_owner"
+
 	CodeProviderRejected    = "template_provider_rejected"
 	CodeProviderUnavailable = "template_provider_unavailable"
 )
@@ -89,6 +97,7 @@ var errorCodes = map[error]string{
 	ErrTemplateAccessDenied:        CodeAccessDenied,
 	ErrHeaderMediaOutsideStorage:   CodeHeaderMediaOutside,
 	ErrPhoneOutsideWorkspace:       CodePhoneOutsideWorkspace,
+	ErrTemplateLookupUnavailable:   CodeLookupUnavailable,
 	ErrTemplateAlreadyExists:       CodeAlreadyExists,
 	ErrExternalIDRequired:          CodeExternalIDRequired,
 	ErrTemplateCategoryUnavailable: CodeCategoryUnavailable,
@@ -156,6 +165,13 @@ var errorCodes = map[error]string{
 	ErrSendAttemptConflict:    CodeSendAttemptConflict,
 	ErrTemplateParamsMismatch: CodeSendParamsMismatch,
 	ErrQuoteOutOfRange:        CodeQuoteOutOfRange,
+
+	ErrTemplateNotEditable: CodeNotEditable,
+	ErrEditCategoryLocked:  CodeEditCategoryLocked,
+	ErrEditUnsupported:     CodeEditUnsupported,
+	ErrEditWindow:          CodeEditWindow,
+	ErrTemplateInUse:       CodeInUse,
+	ErrEditNotOwner:        CodeEditNotOwner,
 }
 
 func ErrorCode(err error) string {

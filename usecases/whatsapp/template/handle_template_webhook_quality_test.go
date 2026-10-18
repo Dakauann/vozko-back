@@ -111,3 +111,37 @@ func TestAnEventWithoutTemplateIDIsNotRecorded(t *testing.T) {
 		t.Fatalf("nothing identifies the template, got %+v", recorder.changes)
 	}
 }
+
+type recordingHealthSignals struct{ changed []string }
+
+func (r *recordingHealthSignals) TemplateChanged(externalID string) {
+	r.changed = append(r.changed, externalID)
+}
+
+func TestQualityStatusAndCategoryChangesAreSignalledAfterTheyAreRecorded(t *testing.T) {
+	signals := &recordingHealthSignals{}
+	uc := NewHandleTemplateWebhook(newMockTemplateRepo(), &fakeQualityRecorder{})
+	uc.(HealthSignalling).SetHealthSignals(signals)
+
+	for _, field := range []string{template.FieldMessageTemplateQualityUpdate, template.FieldMessageTemplateStatusUpdate, template.FieldTemplateCategoryUpdate, template.FieldMessageTemplateComponentsUpdate} {
+		_ = uc.Execute(signalPayload(field, 1791990878, template.TemplateWebhookValue{
+			MessageTemplateID: 42, Event: "PAUSED", NewQualityScore: "YELLOW", NewCategory: "MARKETING",
+		}))
+	}
+
+	if len(signals.changed) != 3 || signals.changed[0] != "42" {
+		t.Fatalf("signalled %v, want the three health changes and not the components update", signals.changed)
+	}
+}
+
+func TestAChangeThatCouldNotBeRecordedIsNotSignalled(t *testing.T) {
+	signals := &recordingHealthSignals{}
+	uc := NewHandleTemplateWebhook(newMockTemplateRepo(), &fakeQualityRecorder{err: errors.New("db down")})
+	uc.(HealthSignalling).SetHealthSignals(signals)
+
+	_ = uc.Execute(signalPayload(template.FieldMessageTemplateQualityUpdate, 1791990878, template.TemplateWebhookValue{MessageTemplateID: 42, NewQualityScore: "RED"}))
+
+	if len(signals.changed) != 0 {
+		t.Fatalf("signalled %v before the change was stored", signals.changed)
+	}
+}

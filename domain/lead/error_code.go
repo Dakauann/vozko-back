@@ -5,6 +5,7 @@ import (
 
 	"vozko/domain/address"
 	"vozko/domain/customfield"
+	"vozko/domain/leadcompany"
 )
 
 var errorCodes = []struct {
@@ -30,6 +31,20 @@ var errorCodes = []struct {
 	{ErrLeadSourceInvalid, "lead_source_invalid"},
 	{ErrLeadConsentSourceInvalid, "lead_consent_source_invalid"},
 	{ErrLeadOptOutSourceInvalid, "lead_opt_out_source_invalid"},
+	{ErrConsentSourceUnknown, "lead_consent_source_unknown"},
+	{ErrConsentKindInvalid, "lead_consent_kind_invalid"},
+	{ErrConsentNotAllowed, "lead_consent_not_allowed"},
+	{ErrConsentActorInvalid, "lead_consent_actor_invalid"},
+	{ErrConsentEvidenceRequired, "lead_consent_evidence_required"},
+	{ErrConsentEvidenceInvalid, "lead_consent_evidence_invalid"},
+	{ErrConsentExcerptTooLong, "lead_consent_excerpt_too_long"},
+	{ErrConsentPurposeTooLong, "lead_consent_purpose_too_long"},
+	{ErrConsentTimeRequired, "lead_consent_time_required"},
+	{ErrConsentSourceForbidden, "lead_consent_source_forbidden"},
+	{ErrLeadOptedOut, "lead_opted_out"},
+	{ErrOptOutConfirmationStale, "lead_opt_out_confirmation_stale"},
+	{ErrOptOutNotRestorable, "lead_opt_out_not_restorable"},
+	{ErrLeadNotOptedOut, "lead_not_opted_out"},
 	{ErrPhoneInvalid, "lead_phone_invalid"},
 	{ErrPhoneLabelInvalid, "lead_phone_label_invalid"},
 	{ErrPhoneLimit, "lead_phone_limit"},
@@ -63,6 +78,8 @@ var errorCodes = []struct {
 	{ErrProfileSourceInvalid, "lead_profile_source_invalid"},
 	{ErrProfileCEPUnknown, "lead_cep_not_found"},
 	{ErrProfileCEPUnchecked, "lead_cep_unavailable"},
+	{leadcompany.ErrNotFound, "lead_company_not_found"},
+	{leadcompany.ErrClosed, "lead_company_closed"},
 }
 
 var inputRefusals = []error{
@@ -72,6 +89,8 @@ var inputRefusals = []error{
 	address.ErrInvalidAddress, ErrAddressLabelInvalid, ErrAddressLimit, ErrAddressPrimary, ErrAddressUnknown, ErrNoPrimaryAddress,
 	ErrRelationKindInvalid, ErrRelationSelf, ErrRelativesQueryInvalid, ErrPageQueryInvalid,
 	ErrProfileEmpty, ErrProfileCEPUnknown, ErrLeadOptOutSourceInvalid, ErrLocationInvalid,
+	ErrConsentSourceUnknown, ErrConsentKindInvalid, ErrConsentNotAllowed, ErrConsentActorInvalid,
+	ErrConsentEvidenceRequired, ErrConsentEvidenceInvalid, ErrConsentExcerptTooLong, ErrConsentPurposeTooLong, ErrConsentTimeRequired,
 }
 
 func ErrorCode(err error) string {

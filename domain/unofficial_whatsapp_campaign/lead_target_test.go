@@ -8,7 +8,7 @@ import (
 )
 
 func leadTargeted(targets ...TargetInput) *Campaign {
-	return &Campaign{Name: "Matrículas", InstanceID: "instance", Message: MessageSpec{Kind: KindText, Bodies: []string{"Olá {{1}}"}}, Targets: targets}
+	return &Campaign{Name: "Matrículas", InstanceID: "instance", Message: MessageSpec{Kind: KindText, Bodies: []string{"Olá {{1}}, responda /sair para sair"}}, Targets: targets}
 }
 
 func TestALeadTargetNeedsNoNumberOfItsOwn(t *testing.T) {

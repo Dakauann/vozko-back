@@ -35,6 +35,7 @@ type Draft struct {
 	Email         string
 	BirthDate     string
 	WhatsAppOptIn *bool
+	ConsentBy     string
 	Phones        []ContactPhone
 	Addresses     []AddressInput
 	CustomFields  map[string]any
@@ -47,6 +48,7 @@ type Edit struct {
 	Email         *string
 	BirthDate     *string
 	WhatsAppOptIn *bool
+	ConsentBy     string
 	Phones        *[]ContactPhone
 	Addresses     *[]AddressInput
 	CustomFields  map[string]any
@@ -67,7 +69,7 @@ func New(workspaceID string, d Draft, now time.Time) (*Lead, error) {
 	}
 	phones, addresses := d.Phones, d.Addresses
 	edit := Edit{Name: &d.Name, Nickname: &d.Nickname, Email: &d.Email, BirthDate: &d.BirthDate, WhatsAppOptIn: d.WhatsAppOptIn,
-		Phones: &phones, Addresses: &addresses}
+		ConsentBy: d.ConsentBy, Phones: &phones, Addresses: &addresses}
 	if err := l.ApplyEdit(edit, now); err != nil {
 		return nil, err
 	}
@@ -112,11 +114,9 @@ func (l *Lead) ApplyEdit(e Edit, now time.Time) error {
 		}
 		next.BirthDate = birth
 	}
-	if e.WhatsAppOptIn != nil {
-		if *e.WhatsAppOptIn {
-			next.grantWhatsAppOptIn(ConsentManual, now)
-		} else {
-			next.WhatsAppOptIn = nil
+	if e.WhatsAppOptIn != nil && (*e.WhatsAppOptIn || next.WhatsAppOptIn != nil) {
+		if _, err := next.ApplyConsentChange(SheetConsent(*e.WhatsAppOptIn, e.ConsentBy, now)); err != nil {
+			return err
 		}
 	}
 	if e.Phones != nil {
@@ -152,13 +152,6 @@ func parseBirthDate(raw string, now time.Time) (*shared.Date, error) {
 
 func birthDateAllowed(date shared.Date, now time.Time) bool {
 	return !date.After(now) && date.YearsAt(now) <= MaxAgeInYears
-}
-
-func (l *Lead) grantWhatsAppOptIn(source ConsentSource, now time.Time) {
-	if l.WhatsAppOptIn == nil {
-		l.WhatsAppOptIn = &Consent{GrantedAt: now, Source: source}
-	}
-	l.OptedOutAt, l.OptOutSource = nil, ""
 }
 
 func (l *Lead) Block(by string, at time.Time) bool {
@@ -219,18 +212,6 @@ func validOwner(owner string) bool {
 	return false
 }
 
-func (l *Lead) OptOut(at time.Time, source OptOutSource) (bool, error) {
-	if !source.Valid() {
-		return false, ErrLeadOptOutSourceInvalid
-	}
-	if l.OptedOutAt != nil {
-		return false, nil
-	}
-	l.OptedOutAt, l.OptOutSource = &at, source
-	l.WhatsAppOptIn = nil
-	return true, nil
-}
-
 func ValidateEmail(email string) error {
 	if email == "" || utf8.RuneCountInString(email) > MaxEmailLength {
 		return ErrLeadEmailInvalid
@@ -262,6 +243,7 @@ func (l *Lead) RecordFields() map[string]any {
 	put(FieldOptedOut, true, l.OptedOutAt != nil)
 	put(FieldOptOutSource, string(l.OptOutSource), l.OptedOutAt != nil && l.OptOutSource != "")
 	put(FieldBlocked, true, l.Blocked)
+	put(FieldCompany, l.CompanyID, l.CompanyID != "")
 	if l.BirthDate != nil {
 		fields[FieldBirthDate] = l.BirthDate.String()
 	}

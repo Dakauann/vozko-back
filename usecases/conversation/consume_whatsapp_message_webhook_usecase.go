@@ -10,6 +10,7 @@ import (
 	"time"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
+	"vozko/domain/leadexit"
 	"vozko/domain/messaging"
 	"vozko/domain/webhook"
 	webhook_usecase "vozko/usecases/webhook"
@@ -187,6 +188,9 @@ func (uc *consumeWhatsAppMessageWebhookUseCase) handle(raw []byte, ack messaging
 				if releaseErr := uc.dedup.Release(trackedDedupKey); releaseErr != nil {
 					log.Printf("[webhook-consumer] failed to release whatsapp dedupe key after handler error: %v", releaseErr)
 				}
+			}
+			if errors.Is(err, leadexit.ErrRunInProgress) && uc.requeueInProgressMessage(raw, ack, dedupKey) {
+				return
 			}
 			if !errors.Is(err, conversation.ErrWhatsAppWebhookSkipped) {
 

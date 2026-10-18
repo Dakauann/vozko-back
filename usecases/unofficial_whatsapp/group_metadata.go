@@ -16,6 +16,7 @@ type groupMetadata struct {
 	profiles subjectProfile
 	ttl      time.Duration
 	now      func() time.Time
+	watcher  GroupWatcher
 }
 
 func newGroupMetadata(d HandleWebhookDeps, profiles subjectProfile) groupMetadata {
@@ -113,6 +114,9 @@ func (s groupMetadata) sync(
 
 	if err := s.groups.LinkParticipantContacts(ctx, group.ID, instance.ID); err != nil {
 		log.Printf("[unofficial-whatsapp] participant contact link failed for %s: %v", group.JID, err)
+	}
+	if s.watcher != nil {
+		s.watcher.SeatSynced(ctx, instance, group)
 	}
 	return group, nil
 }

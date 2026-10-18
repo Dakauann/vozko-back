@@ -18,7 +18,7 @@ func (e *loopExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeActionLoop,
 		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Loop / Iteração",
 		Description: "Itera sobre uma lista (array JSON). A cada passagem define o item atual e o índice.",
 		Icon:        "ArrowsClockwise",

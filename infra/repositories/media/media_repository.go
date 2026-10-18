@@ -106,7 +106,7 @@ func (r *MediaRepository) ListMediasByWorkspace(workspaceID string) ([]media.Med
 }
 
 func (r *MediaRepository) DeleteMedia(mediaID string) error {
-	if err := r.db.Delete(&schema.Media{}, mediaID).Error; err != nil {
+	if err := r.db.Where("id = ?", mediaID).Delete(&schema.Media{}).Error; err != nil {
 		return err
 	}
 	return nil

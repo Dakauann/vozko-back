@@ -8,11 +8,8 @@ import (
 	"vozko/domain/workflow"
 )
 
-func allowLoopback(t *testing.T) {
-	t.Helper()
-	saved := privateIPNets
-	privateIPNets = nil
-	t.Cleanup(func() { privateIPNets = saved })
+func testEgress() HTTPEgress {
+	return HTTPEgress{Client: &http.Client{}}
 }
 
 func httpNodeCtx(id string, config map[string]interface{}, state *workflow.RunState) *workflow.NodeContext {
@@ -27,7 +24,6 @@ func httpNodeCtx(id string, config map[string]interface{}, state *workflow.RunSt
 }
 
 func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
-	allowLoopback(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[{"id":1,"token":"3656101BC0"},{"id":2,"token":"SECOND"}]`))
@@ -41,7 +37,7 @@ func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
 		"capture_variable": "token_consulta_cadastro",
 	}, &state)
 
-	if _, err := NewHTTPRequestExecutor().Execute(ctx); err != nil {
+	if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	if got := workflow.Interpolate("{{token_consulta_cadastro[0].token}}", &state, nil); got != "3656101BC0" {
@@ -53,7 +49,6 @@ func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
 }
 
 func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
-	allowLoopback(t)
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`[{"id":1,"token":"REALTOKEN"}]`))
 	}))
@@ -73,7 +68,7 @@ func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
 	defer apiSrv.Close()
 
 	state := workflow.NewRunState()
-	exec := NewHTTPRequestExecutor()
+	exec := NewHTTPRequestExecutor(testEgress())
 
 	ctx1 := httpNodeCtx("s2_1", map[string]interface{}{
 		"url": tokenSrv.URL, "method": "GET", "capture_variable": "token_consulta_cadastro",
@@ -103,7 +98,6 @@ func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
 }
 
 func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
-	allowLoopback(t)
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
@@ -122,7 +116,7 @@ func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
 		"auth_type":  "bearer",
 		"auth_token": "Bearer {{token_consulta_cadastro[0].token}}",
 	}, &state)
-	if _, err := NewHTTPRequestExecutor().Execute(ctx); err != nil {
+	if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	if gotAuth != "Bearer REALTOKEN" {
@@ -131,7 +125,6 @@ func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
 }
 
 func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
-	allowLoopback(t)
 
 	t.Run("object body (401) exposes status_code and keeps body fields", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +137,7 @@ func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 		ctx := httpNodeCtx("s2_2", map[string]interface{}{
 			"url": srv.URL, "method": "GET", "capture_variable": "dados_beneficiario",
 		}, &state)
-		if _, err := NewHTTPRequestExecutor().Execute(ctx); err != nil {
+		if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 
@@ -170,7 +163,7 @@ func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 		ctx := httpNodeCtx("s2_1", map[string]interface{}{
 			"url": srv.URL, "method": "GET", "capture_variable": "token_consulta_cadastro",
 		}, &state)
-		if _, err := NewHTTPRequestExecutor().Execute(ctx); err != nil {
+		if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 		if got := workflow.Interpolate("{{token_consulta_cadastro.status_code}}", &state, nil); got != "200" {

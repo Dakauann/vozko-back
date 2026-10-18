@@ -164,6 +164,9 @@ type UpdateParticipantsInput struct {
 type GroupAPI interface {
 	GroupInfo(ctx context.Context, ref InstanceRef, groupJID string, opts GroupInfoOptions) (*Group, error)
 	ListGroups(ctx context.Context, ref InstanceRef, withParticipants bool) ([]*Group, error)
+	CreateGroup(ctx context.Context, ref InstanceRef, name string, participants []string) (*Group, error)
+	JoinGroup(ctx context.Context, ref InstanceRef, inviteLink string) (*Group, error)
+	InviteInfo(ctx context.Context, ref InstanceRef, inviteLink string) (*Group, error)
 
 	UpdateGroupName(ctx context.Context, ref InstanceRef, groupJID, name string) error
 	UpdateGroupDescription(ctx context.Context, ref InstanceRef, groupJID, description string) error

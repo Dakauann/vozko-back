@@ -140,7 +140,7 @@ func (s *Schedule) Validate() error {
 	return nil
 }
 
-func Resolve(workspace, department *Schedule) *Schedule {
+func Resolve[T Schedule | Spec](workspace, department *T) *T {
 	if department != nil {
 		return department
 	}

@@ -5,11 +5,13 @@ import (
 	"strings"
 	"testing"
 
+	"vozko/domain/buttonaction"
 	"vozko/domain/copilot"
 	"vozko/domain/media"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	tmpl "vozko/domain/whatsapp/template"
+	buttonaction_usecase "vozko/usecases/buttonaction"
 	"vozko/usecases/copilot/copilottools/tooltest"
 )
 
@@ -36,22 +38,18 @@ func (f *fakeWorkspacePhones) ListOwned(workspaceID string, input businessphone.
 }
 
 type fakeTemplateCreator struct {
-	grantedBy string
-	workspace string
-	input     tmpl.CreateTemplateInput
-	err       error
+	actor buttonaction_usecase.Actor
+	input tmpl.CreateTemplateInput
+	req   buttonaction_usecase.CreateTemplateRequest
+	err   error
 }
 
-func (f *fakeTemplateCreator) List(string, tmpl.ListInput) (*shared.PaginatedResult[*tmpl.Template], error) {
-	return nil, nil
-}
-func (f *fakeTemplateCreator) Get(string, string) (*tmpl.Template, error) { return nil, nil }
-func (f *fakeTemplateCreator) Create(workspaceID, grantedBy string, in tmpl.CreateTemplateInput) (*tmpl.CreateTemplateOutput, error) {
-	f.workspace, f.grantedBy, f.input = workspaceID, grantedBy, in
+func (f *fakeTemplateCreator) CreateTemplate(_ context.Context, a buttonaction_usecase.Actor, req buttonaction_usecase.CreateTemplateRequest) (*tmpl.CreateTemplateOutput, error) {
+	f.actor, f.input, f.req = a, req.Template, req
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &tmpl.CreateTemplateOutput{ID: "t-new", Name: in.Name, Status: tmpl.TemplateStatus("PENDING")}, nil
+	return &tmpl.CreateTemplateOutput{ID: "t-new", Name: req.Template.Name, Status: tmpl.TemplateStatus("PENDING")}, nil
 }
 
 type fakeChatMedia map[string]*media.Media
@@ -67,7 +65,7 @@ func (f fakeChatMedia) GetMedia(workspaceID, id string) (*media.Media, error) {
 var bannerMedia = fakeChatMedia{knownBanner: {ID: knownBanner, WorkspaceID: "ws-1", URL: "https://files.test/ws-1/banner.jpg", Type: media.MediaTypeProductImage}}
 
 func templateCreateDeps(creator *fakeTemplateCreator) TemplateCreateDeps {
-	return TemplateCreateDeps{Phones: &fakeWorkspacePhones{}, Templates: creator, Media: bannerMedia}
+	return TemplateCreateDeps{Phones: &fakeWorkspacePhones{}, Creator: creator, Media: bannerMedia}
 }
 
 func TestTemplateCreationToolsCheckTheirPermissions(t *testing.T) {
@@ -91,8 +89,8 @@ func TestCreateTemplateBuildsMetaComponentsAsTheUser(t *testing.T) {
 		t.Fatalf("status %s: %s", res.Status, res.Message)
 	}
 	in := creator.input
-	if creator.workspace != "ws-1" || creator.grantedBy != "u-1" || in.Name != "pedido_enviado" || in.Language != "pt_BR" || in.Category != tmpl.TemplateCategoryUtility {
-		t.Fatalf("input %+v by %q in %q", in, creator.grantedBy, creator.workspace)
+	if creator.actor.WorkspaceID != "ws-1" || creator.actor.UserID != "u-1" || in.Name != "pedido_enviado" || in.Language != "pt_BR" || in.Category != tmpl.TemplateCategoryUtility {
+		t.Fatalf("input %+v by %+v", in, creator.actor)
 	}
 	if len(in.Components) != 4 || in.Components[0].Format != "IMAGE" || in.HeaderMediaURL == nil || *in.HeaderMediaURL != "https://files.test/ws-1/banner.jpg" {
 		t.Fatalf("components %+v", in.Components)
@@ -136,11 +134,21 @@ func TestCreateTemplateRefusesAuthenticationAndExplainsMetaRules(t *testing.T) {
 	}
 }
 
+func TestCreateTemplateExplainsTheExitAMarketingTemplateMustShow(t *testing.T) {
+	refused := &fakeTemplateCreator{err: buttonaction.ErrMarketingNeedsExit}
+	res := NewCreateTemplateTool(templateCreateDeps(refused)).Execute(context.Background(), tooltest.Member(), map[string]interface{}{
+		"business_phone_id": knownPhone, "name": "x", "category": "MARKETING", "body": "oi",
+	})
+	if res.Status != copilot.StatusError || !strings.Contains(res.Message, "/sair") || !strings.Contains(res.Message, buttonaction.ErrorCode(buttonaction.ErrMarketingNeedsExit)) {
+		t.Fatalf("result %+v", res)
+	}
+}
+
 func newTemplateArgs() map[string]interface{} {
 	return map[string]interface{}{
 		"business_phone_id": knownPhone, "name": "Refiliacao_Convite", "category": "MARKETING",
 		"header_media_id": knownBanner, "body": "Olá {{1}}! Sua filiação pode voltar.", "body_examples": []interface{}{"Maria"},
-		"footer": "Responda quando puder", "quick_replies": []interface{}{"Quero reativar", "Agora não"},
+		"footer": "Responda /sair para não receber mais", "quick_replies": []interface{}{"Quero reativar", "Agora não"},
 	}
 }
 

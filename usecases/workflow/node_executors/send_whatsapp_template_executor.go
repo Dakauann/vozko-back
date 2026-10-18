@@ -79,6 +79,9 @@ func (e *sendTemplateExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 	output, usedBusinessPhoneID, err := e.sender.SendTemplate(context.Background(), ctx.Run, templateID, preferredBusinessPhoneID, paramValues, ctx.State)
 	if err != nil {
 		log.Printf("[workflow][node:%s][run:%s] send_template error: %v", ctx.Node.ID, ctx.Run.ID, err)
+		if failsTheStep(err) {
+			return nil, err
+		}
 		return &workflow.NodeResult{
 			Output: map[string]interface{}{"business_phone_id": usedBusinessPhoneID, "template_id": templateID, "template_name": "", "message_id": "", "sent": false},
 		}, nil

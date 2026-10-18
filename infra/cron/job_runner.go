@@ -127,6 +127,10 @@ func (r *JobRunner) SetUnofficialWhatsAppHistoryJob(sweep ctxJob) {
 	r.addChannelJob("unofficial_whatsapp_history_sweep", time.Minute, sweep)
 }
 
+func (r *JobRunner) SetUnofficialWhatsAppGroupJobs(sweep ctxJob) {
+	r.addChannelJob("unofficial_whatsapp_groups_sweep", time.Minute, sweep)
+}
+
 func (r *JobRunner) SetAssignmentJobs(rescue ctxJob) {
 	r.addChannelJob("assignment_rescue", time.Minute, rescue)
 }
@@ -141,6 +145,10 @@ func (r *JobRunner) SetWhatsAppTemplateSendJobs(reconcile ctxJob) {
 
 func (r *JobRunner) SetWhatsAppPhoneQualityJobs(poll ctxJob) {
 	r.addChannelJob("whatsapp_phone_quality_poll", 30*time.Minute, poll)
+}
+
+func (r *JobRunner) SetSmartCampaignJobs(tick ctxJob) {
+	r.addChannelJob("smart_campaign_waves", time.Minute, tick)
 }
 
 func (r *JobRunner) SetWhatsAppMessageStatusJobs(sweep, purge ctxJob) {
@@ -170,6 +178,12 @@ func (r *JobRunner) SetCallListJobs(sweep ctxJob) {
 
 func (r *JobRunner) SetReportRetentionJobs(expire ctxJob) {
 	r.addChannelJob("report_retention", time.Hour, expire)
+}
+
+func (r *JobRunner) SetNotificationJobs(sweep, purge, digest ctxJob) {
+	r.addChannelJob("notification_sweep", time.Minute, sweep)
+	r.addChannelJob("notification_purge", 24*time.Hour, purge)
+	r.addChannelJob("notification_digest", time.Hour, digest)
 }
 
 func (r *JobRunner) SetScheduledMessageJobs(sweep, purge ctxJob) {

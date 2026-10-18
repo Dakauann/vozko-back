@@ -190,12 +190,12 @@ func soundEffectRequest() mediagen.Request {
 
 func TestASoundEffectIsBilledAtTheCostTheProviderRecordsAndStoredAsAudio(t *testing.T) {
 	f := newFixture(t)
-	f.costs.costs["gen-tts-1"] = 7_500
+	f.costs.costs["gen-sound-1"] = 7_500
 	job := run(t, f, soundEffectRequest())
 	if job.Status != mediagen.StatusDone || f.sound.calls != 1 || f.audio.calls != 0 || job.DurationMS != 1_500 {
 		t.Fatalf("job %+v", job)
 	}
-	if len(f.costs.asked) != 1 || f.costs.asked[0] != "gen-tts-1" {
+	if len(f.costs.asked) != 1 || f.costs.asked[0] != "gen-sound-1" {
 		t.Fatalf("the cost is read from the provider's record of the generation, asked %v", f.costs.asked)
 	}
 	if len(f.bill.events) != 1 || f.bill.events[0].model != soundModel || f.bill.events[0].cost != 7_500 {
@@ -209,7 +209,7 @@ func TestASoundEffectIsBilledAtTheCostTheProviderRecordsAndStoredAsAudio(t *test
 func TestASoundEffectWhoseCostIsNotYetRecordedWaitsUnbilledAndUndelivered(t *testing.T) {
 	f := newFixture(t)
 	job := run(t, f, soundEffectRequest())
-	if job.Status != mediagen.StatusSettling || job.GenerationID != "gen-tts-1" || len(f.bill.events) != 0 {
+	if job.Status != mediagen.StatusSettling || job.GenerationID != "gen-sound-1" || len(f.bill.events) != 0 {
 		t.Fatalf("job %+v billed %+v", job, f.bill.events)
 	}
 	if _, ok := job.Delivered(); ok {

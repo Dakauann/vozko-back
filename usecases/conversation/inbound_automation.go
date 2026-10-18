@@ -3,6 +3,7 @@ package conversation_usecase
 import (
 	"context"
 	"log"
+	"time"
 
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
@@ -25,11 +26,18 @@ type InboundCounter interface {
 	CountInboundByEntry(entryID string, entryType shared.EntryType) (int64, error)
 }
 
+type InboundMessages interface {
+	InboundCounter
+	StoredInboundLookup
+}
+
 type InboundAutomationInput struct {
 	WorkspaceID          string
 	EntryID              string
 	EntryType            shared.EntryType
 	ContactRef           string
+	ProviderMessageID    string
+	ReceivedAt           time.Time
 	LeadID               *string
 	Text                 string
 	Selection            *workflow.OptionSelection
@@ -41,16 +49,17 @@ type InboundAutomation struct {
 	workflows WorkflowEvaluator
 	agents    AgentReplier
 	analysis  AnalysisRequester
-	inbound   InboundCounter
+	inbound   InboundMessages
 
 	delegations conversation.DelegationRepository
+
 }
 
 func NewInboundAutomation(
 	workflows WorkflowEvaluator,
 	agents AgentReplier,
 	analysis AnalysisRequester,
-	inbound InboundCounter,
+	inbound InboundMessages,
 ) *InboundAutomation {
 	return &InboundAutomation{workflows: workflows, agents: agents, analysis: analysis, inbound: inbound}
 }
@@ -70,12 +79,13 @@ func (a *InboundAutomation) effective(ctx context.Context, in InboundAutomationI
 	return in, true
 }
 
-func (a *InboundAutomation) Dispatch(ctx context.Context, in InboundAutomationInput) {
+func (a *InboundAutomation) Dispatch(ctx context.Context, in InboundAutomationInput) error {
 	if effective, ok := a.effective(ctx, in); ok {
 		a.fireWorkflows(effective)
 		a.replyWithAgent(ctx, effective)
 	}
 	a.ScheduleAnalysis(in)
+	return nil
 }
 
 func (a *InboundAutomation) FireWorkflows(ctx context.Context, in InboundAutomationInput) {
@@ -103,6 +113,7 @@ func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput) {
 	}
 	workflow.ApplySelection(data, in.Selection)
 	workflow.ApplyContactNumber(data, in.ContactRef)
+	workflow.ApplyTriggerMessage(data, a.triggerMessageID(in))
 
 	a.workflows.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: in.WorkspaceID,
@@ -156,6 +167,13 @@ func (a *InboundAutomation) ScheduleAnalysis(in InboundAutomationInput) {
 		return
 	}
 	a.analysis.ScheduleAnalysis(in.EntryID, in.EntryType)
+}
+
+func (a *InboundAutomation) triggerMessageID(in InboundAutomationInput) string {
+	if a.inbound == nil {
+		return ""
+	}
+	return StoredInboundMessageID(a.inbound, in.EntryType, in.EntryID, in.ProviderMessageID)
 }
 
 func (a *InboundAutomation) isFirstInbound(in InboundAutomationInput) bool {

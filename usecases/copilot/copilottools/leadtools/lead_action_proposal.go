@@ -22,7 +22,7 @@ func cardKey(cc copilot.Context) string {
 }
 
 func argsDigest(args map[string]interface{}) string {
-	raw, err := json.Marshal(args)
+	raw, err := json.Marshal(withoutCardChoices(args))
 	if err != nil {
 		raw = []byte(err.Error())
 	}

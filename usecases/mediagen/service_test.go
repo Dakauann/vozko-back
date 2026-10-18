@@ -384,7 +384,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	f := &fixture{lib: newFakeLibrary(), cat: newFakeCatalog(), gen: &fakeGenerator{}, audio: &fakeGenerator{output: musicModel}, video: &fakeGenerator{output: "render"}, sound: &fakeGenerator{output: soundModel, unpriced: true, generation: "gen-tts-1"}, costs: &fakeCosts{costs: map[string]int64{}}, late: &fakeCosts{costs: map[string]int64{}}, charges: &fakeCharges{}, funds: &fakeFunds{}, bill: &fakeAIBilling{}, up: &fakeUploader{}, queue: &fakeQueue{}, jobs: newFakeJobs()}
+	f := &fixture{lib: newFakeLibrary(), cat: newFakeCatalog(), gen: &fakeGenerator{}, audio: &fakeGenerator{output: musicModel}, video: &fakeGenerator{output: "render"}, sound: &fakeGenerator{output: soundModel, unpriced: true, generation: "gen-sound-1"}, costs: &fakeCosts{costs: map[string]int64{}}, late: &fakeCosts{costs: map[string]int64{}}, charges: &fakeCharges{}, funds: &fakeFunds{}, bill: &fakeAIBilling{}, up: &fakeUploader{}, queue: &fakeQueue{}, jobs: newFakeJobs()}
 	svc, err := NewService(Deps{
 		Generators: map[mediagen.Kind]mediagen.Generator{
 			mediagen.KindImage: f.gen, mediagen.KindMusic: f.audio, mediagen.KindVoice: f.audio, mediagen.KindSoundEffect: f.sound, mediagen.KindVideo: f.video,

@@ -36,6 +36,10 @@ func (f *fakeInstagramContacts) AuthorsByHandle(context.Context, string, []strin
 	return nil, nil
 }
 
+func (f *fakeInstagramContacts) AuthorsByAccount(context.Context, map[string][]string) (map[string]map[string]InstagramContactDisplay, error) {
+	return nil, nil
+}
+
 func (f *fakeInstagramContacts) ContactForConversation(_ context.Context, conversationID string) (InstagramContactDisplay, string, error) {
 	if f.err != nil {
 		return InstagramContactDisplay{}, "", f.err

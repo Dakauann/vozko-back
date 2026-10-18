@@ -88,6 +88,7 @@ type unofficialMessageArgs struct {
 	sheetArgs
 	Message           string `json:"message" desc:"o texto exato que cada contato recebe; variáveis {{1}}, {{2}} na ordem de variable_columns (legenda, quando houver anexo)"`
 	AttachmentMediaID string `json:"attachment_media_id" id:"true" desc:"media_id de um anexo da conversa (imagem, vídeo, áudio ou documento) para enviar junto"`
+	ExitText          string `json:"exit_text" desc:"só com anexo de áudio: o texto curto enviado logo depois do áudio, com o comando de saída que o contato vê"`
 }
 
 func (a unofficialMessageArgs) request(deps UnofficialCampaignDeps, cc copilot.Context) (uwc.ImportRequest, error) {
@@ -103,7 +104,7 @@ func (a unofficialMessageArgs) request(deps UnofficialCampaignDeps, cc copilot.C
 }
 
 func (a unofficialMessageArgs) message(deps UnofficialCampaignDeps, cc copilot.Context) (uwc.MessageSpec, error) {
-	spec := uwc.MessageSpec{Kind: uwc.KindText}
+	spec := uwc.MessageSpec{Kind: uwc.KindText, ExitText: strings.TrimSpace(a.ExitText)}
 	if text := strings.TrimSpace(a.Message); text != "" {
 		spec.Bodies = []string{text}
 	}
@@ -212,6 +213,9 @@ func (t *createUnofficialCampaignTool) Validate(ctx context.Context, cc copilot.
 	req, err := a.request(t.deps, cc)
 	if err != nil {
 		return err
+	}
+	if err := req.Message.RequireShownExit(); err != nil {
+		return fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, unofficialCampaignFailure(err).Message)
 	}
 	preview, err := t.deps.Preview.Preview(ctx, req)
 	if err != nil {
@@ -423,10 +427,13 @@ func unofficialCampaignFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "o WhatsApp está limitando conversas novas desse número agora; tente mais tarde"}
 	case errors.Is(err, uwc.ErrCampaignNotFound):
 		return copilot.Result{Status: copilot.StatusError, Message: "campanha desconhecida ou sem acesso"}
+	case errors.Is(err, uwc.ErrCampaignNeedsExit):
+		return copilot.Result{Status: copilot.StatusError, Message: copilottools.UnofficialMessageNeedsExit}
 	case errors.Is(err, uwc.ErrCampaignTargetsTooMany):
 		return copilot.Result{Status: copilot.StatusError, Message: fmt.Sprintf("a planilha passa do limite de %d contatos por campanha", uwc.MaxCampaignTargets)}
 	case errors.Is(err, uwc.ErrMessageBodyRequired), errors.Is(err, uwc.ErrMessageBodyEmpty), errors.Is(err, uwc.ErrMessageBodyTooLong),
-		errors.Is(err, uwc.ErrMessageMediaRequired), errors.Is(err, uwc.ErrCampaignVariablesMismatch), errors.Is(err, uwc.ErrCampaignVariableEmpty):
+		errors.Is(err, uwc.ErrMessageMediaRequired), errors.Is(err, uwc.ErrCampaignVariablesMismatch), errors.Is(err, uwc.ErrCampaignVariableEmpty),
+		errors.Is(err, uwc.ErrMessageExitTextTooLong):
 		return copilot.Result{Status: copilot.StatusError, Message: "a mensagem não pode ser enviada assim: " + err.Error()}
 	}
 	log.Printf("[copilot] unofficial campaign tool failed: %v", err)

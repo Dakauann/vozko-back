@@ -334,3 +334,18 @@ func (d LeadDescriptor) campaignEntryScope(entries, campaigns string) (string, [
 	}
 	return live + " AND " + CampaignEntriesInWorkspace(entries, campaigns), []interface{}{d.WorkspaceID}
 }
+
+type ChannelContacts struct {
+	Conversations string
+	Contacts      string
+	ContactColumn string
+}
+
+func ContactsOf(entryType shared.EntryType) (ChannelContacts, bool) {
+	for _, c := range contactChannels {
+		if c.entryType == entryType {
+			return ChannelContacts{Conversations: c.conversations, Contacts: c.contacts, ContactColumn: c.contactColumn}, true
+		}
+	}
+	return ChannelContacts{}, false
+}

@@ -15,17 +15,20 @@ const scheduleStartBatchSize = 200
 type scheduleStartJob struct {
 	campaigns uwc.Repository
 	dispatch  uwc.DispatchCampaignUseCase
+	schedules campaign.ScheduleClaimer
 }
 
 func NewScheduleStartJob(
 	campaigns uwc.Repository,
 	dispatch uwc.DispatchCampaignUseCase,
+	schedules campaign.ScheduleClaimer,
 ) uwc.StartScheduleJob {
-	return &scheduleStartJob{campaigns: campaigns, dispatch: dispatch}
+	return &scheduleStartJob{campaigns: campaigns, dispatch: dispatch, schedules: schedules}
 }
 
 func (j *scheduleStartJob) StartScheduledCampaigns() error {
-	due, err := j.campaigns.ListScheduledToStart(time.Now().UTC(), scheduleStartBatchSize)
+	now := time.Now().UTC()
+	due, err := j.campaigns.ListScheduledToStart(now, scheduleStartBatchSize)
 	if err != nil {
 		return err
 	}
@@ -34,14 +37,19 @@ func (j *scheduleStartJob) StartScheduledCampaigns() error {
 		if camp == nil || camp.ID == "" {
 			continue
 		}
-		err := j.dispatch.Dispatch(context.Background(), uwc.DispatchCampaignInput{
+		claimed, err := j.schedules.ClaimScheduledStart(camp.ID, now)
+		if err != nil {
+			log.Printf("[unofficial-whatsapp-campaign] could not claim the schedule of %s: %v", camp.ID, err)
+			continue
+		}
+		if !claimed {
+			continue
+		}
+		err = j.dispatch.Dispatch(context.Background(), uwc.DispatchCampaignInput{
 			CampaignID: camp.ID,
 			Action:     campaign.ActionStart,
 		})
-		if err == nil {
-			continue
-		}
-		if errors.Is(err, campaign.ErrAlreadyRunning) {
+		if err == nil || errors.Is(err, campaign.ErrAlreadyRunning) {
 			continue
 		}
 		log.Printf("[unofficial-whatsapp-campaign] scheduled start failed for %s: %v", camp.ID, err)

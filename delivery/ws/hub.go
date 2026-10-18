@@ -3497,6 +3497,7 @@ type redisWorkspaceBroadcast struct {
 	StageWorkspaceID string          `json:"u,omitempty"`
 	WorkspaceID      string          `json:"w,omitempty"`
 	ExcludeUserID    string          `json:"x,omitempty"`
+	UserIDs          []string        `json:"ul,omitempty"`
 	ReplicaID        string          `json:"r"`
 }
 
@@ -3549,6 +3550,8 @@ func (h *ConversationHub) deliverWorkspaceBroadcast(p redisWorkspaceBroadcast) {
 		h.sendToWorkspaceWithPermission(p.WorkspaceID, "audience", "read", p.Payload)
 	case leadUpdateBroadcastType:
 		h.deliverLeadUpdate(p.WorkspaceID, p.Payload)
+	case notificationCreatedBroadcastType:
+		h.sendToUsers(p.WorkspaceID, p.UserIDs, p.Payload)
 	}
 }
 

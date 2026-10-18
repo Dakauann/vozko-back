@@ -65,6 +65,7 @@ type LeadActionDeps struct {
 	Proposals ProposalStore
 	Templates LeadTemplates
 	Names     actor.Namer
+	Exit      copilottools.ExitVerdicts
 	Now       func() time.Time
 }
 
@@ -151,6 +152,9 @@ func (t *prepareLeadActionTool) plan(ctx context.Context, cc copilot.Context, ar
 	params, field, err := t.params(cc, action, a)
 	if err != nil {
 		return leadActionPlan{}, err
+	}
+	if params.Send != nil && copilottools.ExitRiskAcknowledgedBy(cc, args) != "" {
+		params.Send.ExitRiskAcknowledged = true
 	}
 	return leadActionPlan{args: a, field: field, request: leadaction_usecase.Request{
 		Actor:            copilottools.ViewerOf(cc),
@@ -364,6 +368,9 @@ func (t *prepareLeadActionTool) Validate(ctx context.Context, cc copilot.Context
 	if _, err := t.plan(ctx, cc, args); err != nil {
 		return refusalOf(err)
 	}
+	if err := t.refuseUnaskedExitRisk(ctx, cc, args); err != nil {
+		return err
+	}
 	card, found, err := t.card(cc)
 	if err != nil {
 		return refusalOf(err)
@@ -439,7 +446,8 @@ func (t *prepareLeadActionTool) Describe(ctx context.Context, cc copilot.Context
 			fields = append(fields, copilot.Field{Key: "skipped", Value: skipped + partial})
 		}
 	}
-	return append(fields, t.sendFields(cc, p, preview)...)
+	fields = append(fields, t.sendFields(cc, p, preview)...)
+	return append(fields, t.exitFields(ctx, cc, p)...)
 }
 
 func (t *prepareLeadActionTool) keepCard(cc copilot.Context, args map[string]interface{}, preview *leadaction.Preview) {

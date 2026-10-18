@@ -1,12 +1,15 @@
 package workflow_usecase
 
 import (
+	"errors"
+
 	"vozko/domain/agent"
 	"vozko/domain/ai"
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	calendar_domain "vozko/domain/calendar"
 	"vozko/domain/conversation"
+	ce "vozko/domain/conversation_event"
 	label_domain "vozko/domain/label"
 	lead_domain "vozko/domain/lead"
 	lead_message_window_domain "vozko/domain/lead_message_window"
@@ -35,6 +38,7 @@ type ExecutorDeps struct {
 	MessageRepo           conversation.MessageRepository
 	HistoryManager        conversation.MessageHistoryManager
 	LeadRepo              lead_domain.Repository
+	EntryLeads            lead_domain.EntryLeads
 	WhatsAppEntryRepo     wce.Repository
 	BusinessPhoneRepo     businessphone.Repository
 	MessageWindowRepo     lead_message_window_domain.Repository
@@ -53,6 +57,7 @@ type ExecutorDeps struct {
 	StageBroadcaster      node_executors.StageBroadcaster
 	Deals                 node_executors.DealDesk
 	LeadProfiles          node_executors.LeadProfileWriter
+	Consent               node_executors.ConsentRecorder
 	DepartmentRepo        dept_domain.Repository
 	ConversationHandOff   node_executors.ConversationHandOff
 	WorkspaceRepo         workspace_domain.Repository
@@ -63,10 +68,28 @@ type ExecutorDeps struct {
 	FileStorage           media_domain.FileStorage
 	ConversationMediaRepo conversation.ConversationMediaRepository
 	VoiceAudio            workflow.VoiceAudio
+	HTTPEgress            node_executors.HTTPEgress
 
 	AIAttendance       node_executors.WorkflowAIAttendance
 	ConversationStatus conversation.ConversationStatusUpdater
 	Adapters           conversation.AdapterRegistry
+	ConversationEvents ce.Logger
+}
+
+var ErrConversationEventsRequired = errors.New("workflow executors: the conversation event logger is required to record refused sends")
+
+type discardedEvents struct{}
+
+func (discardedEvents) Log(*ce.ConversationEvent) {}
+
+var simulationEvents ce.Logger = discardedEvents{}
+
+func RegisterProductionExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) error {
+	if deps.ConversationEvents == nil {
+		return ErrConversationEventsRequired
+	}
+	RegisterDefaultExecutors(registry, deps)
+	return nil
 }
 
 func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) {
@@ -85,6 +108,8 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 		FileStorage:           deps.FileStorage,
 		ConversationMediaRepo: deps.ConversationMediaRepo,
 		Adapters:              deps.Adapters,
+		EntryLeads:            deps.EntryLeads,
+		Events:                deps.ConversationEvents,
 	}
 
 	emailSender := deps.EmailSender
@@ -96,7 +121,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionSendEmail, node_executors.NewSendEmailExecutor(emailSender))
 	registry.Register(workflow.NodeTypeActionSendMedia, node_executors.NewSendMediaExecutor(waDeps))
 	registry.Register(workflow.NodeTypeActionSetVariable, node_executors.NewSetVariableExecutor())
-	registry.Register(workflow.NodeTypeActionHTTPRequest, node_executors.NewHTTPRequestExecutor())
+	registry.Register(workflow.NodeTypeActionHTTPRequest, node_executors.NewHTTPRequestExecutor(deps.HTTPEgress))
 	registry.Register(workflow.NodeTypeActionSendInteractive, node_executors.NewInteractivePromptExecutor(waDeps))
 
 	aiAgentExec := node_executors.NewAIAgentExecutor(deps.AIService, deps.AgentRepo, deps.MessageRepo, deps.CachedBalanceChecker, node_executors.NewWhatsAppSenderFromDeps(waDeps), deps.RAGService)
@@ -112,6 +137,9 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionMoveStage, node_executors.NewMoveStageExecutor(deps.StageRepo, deps.AssignStage, deps.StageBroadcaster))
 	registry.Register(workflow.NodeTypeActionManageOpportunity, node_executors.NewManageOpportunityExecutor(deps.Deals))
 	registry.Register(workflow.NodeTypeActionUpdateLead, node_executors.NewUpdateLeadExecutor(deps.LeadProfiles))
+	consentDeps := node_executors.ConsentNodeDeps{Consent: deps.Consent, Messages: deps.MessageRepo, EntryLeads: deps.EntryLeads, Leads: deps.LeadRepo}
+	registry.Register(workflow.NodeTypeActionConsent, node_executors.NewConsentExecutor(consentDeps))
+	registry.Register(workflow.NodeTypeConditionConsent, node_executors.NewCheckConsentExecutor(consentDeps))
 	registry.Register(workflow.NodeTypeActionTransferDepartment, node_executors.NewTransferDepartmentExecutor(deps.DepartmentRepo, deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionAssignMember, node_executors.NewAssignMemberExecutor(deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionFinishConversation, node_executors.NewFinishConversationExecutor(deps.ConversationStatus))

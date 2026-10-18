@@ -35,6 +35,11 @@ type harness struct {
 
 func newHarness(t *testing.T, mutate func(*wcdomain.Widget)) *harness {
 	t.Helper()
+	return newHarnessWith(t, mutate, nil)
+}
+
+func newHarnessWith(t *testing.T, mutate func(*wcdomain.Widget), automation Automation) *harness {
+	t.Helper()
 	keys, err := wcdomain.DeriveKeys("test-root")
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +75,7 @@ func newHarness(t *testing.T, mutate func(*wcdomain.Widget)) *harness {
 		Presenter:     noPresenter{},
 		Media:         &fakeMedia{},
 		Assignments:   h.assignments,
-		Automation:    h.automation,
+		Automation:    automationOr(automation, h.automation),
 		Events:        h.events,
 		Operators:     &fakeOperators{},
 		Now:           func() time.Time { return h.now },

@@ -10,6 +10,7 @@ import (
 	"vozko/brand"
 	ads "vozko/domain/advertising"
 	"vozko/domain/notification"
+	"vozko/domain/workspace"
 )
 
 const (
@@ -93,15 +94,15 @@ var fundsCopies = map[ads.FundsReason]fundsCopy{
 }
 
 type FundsAlerts struct {
-	notifier     notification.Notifier
+	publisher    notification.Publisher
 	dashboardURL string
 }
 
-func NewFundsAlerts(notifier notification.Notifier, dashboardURL string) *FundsAlerts {
-	return &FundsAlerts{notifier: notifier, dashboardURL: strings.TrimRight(dashboardURL, "/")}
+func NewFundsAlerts(publisher notification.Publisher, dashboardURL string) *FundsAlerts {
+	return &FundsAlerts{publisher: publisher, dashboardURL: strings.TrimRight(dashboardURL, "/")}
 }
 
-func (a *FundsAlerts) Alert(_ context.Context, account *ads.AdAccount, funds ads.Funds) error {
+func (a *FundsAlerts) Alert(ctx context.Context, account *ads.AdAccount, funds ads.Funds) error {
 	text, ok := fundsCopies[funds.Reason]
 	if !funds.Level.NeedsAttention() || !ok {
 		return nil
@@ -110,29 +111,46 @@ func (a *FundsAlerts) Alert(_ context.Context, account *ads.AdAccount, funds ads
 	if funds.RoomMinor != nil {
 		room = formatMinor(account.Currency, *funds.RoomMinor)
 	}
-	managerURL := a.dashboardURL + "/advertising?account=" + account.ID
-	actionURL := account.PortalURL(ads.PortalBilling)
+	managerPath := "/dashboard/advertising?account=" + account.ID
+	action := account.PortalURL(ads.PortalBilling)
 	if text.inVozko {
-		actionURL = a.dashboardURL + "/advertising/overview?account=" + account.ID
+		action = "/dashboard/advertising/overview?account=" + account.ID
 	}
-	return a.notifier.Notify(notification.Notification{
+	severity := notification.SeverityWarning
+	if text.tone == "danger" {
+		severity = notification.SeverityCritical
+	}
+	message := text.message(account.Name, room)
+	_, err := a.publisher.Publish(ctx, notification.Draft{
 		WorkspaceID: account.WorkspaceID,
-		Subject:     text.headline + " - " + brand.Active().Name,
-		Template:    fundsAlertTemplate,
-		Placeholders: map[string]interface{}{
-			"Headline":    text.headline,
-			"Subtitle":    text.subtitle,
-			"Message":     text.message(account.Name, room),
-			"Situation":   text.situation,
-			"Tone":        text.tone,
-			"AccountName": account.Name,
-			"ActionURL":   actionURL,
-			"ActionLabel": text.action,
-			"ManagerURL":  managerURL,
+		Category:    notification.CategoryAdvertising,
+		Severity:    severity,
+		Title:       notification.ClipTitle(text.headline),
+		Body:        message,
+		ActionURL:   action,
+		ActionLabel: text.action,
+		Audience:    notification.Holding(workspace.ResourceAds, workspace.ActionUpdate),
+		Email:       true,
+		EmailCopy: &notification.EmailCopy{
+			Template: fundsAlertTemplate,
+			Subject:  text.headline + " - " + brand.Active().Name,
+			Placeholders: map[string]interface{}{
+				"Headline":    text.headline,
+				"Subtitle":    text.subtitle,
+				"Message":     message,
+				"Situation":   text.situation,
+				"Tone":        text.tone,
+				"AccountName": account.Name,
+				"ActionURL":   notification.AbsoluteLink(a.dashboardURL, action),
+				"ActionLabel": text.action,
+				"ManagerURL":  notification.AbsoluteLink(a.dashboardURL, managerPath),
+			},
 		},
-		DedupKey: "meta_ads_funds:" + account.ID + ":" + string(funds.Reason),
-		DedupTTL: fundsAlertEvery,
+		DedupKey:    "meta_ads_funds:" + account.ID + ":" + string(funds.Reason),
+		DedupWindow: fundsAlertEvery,
+		Source:      notification.SourceAdsFunds,
 	})
+	return err
 }
 
 func formatMinor(currency string, minor int64) string {

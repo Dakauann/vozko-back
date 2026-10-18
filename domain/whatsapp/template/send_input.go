@@ -38,6 +38,8 @@ func (t *Template) BuildSendInput(p SendInputParams) (conversation.SendTemplateM
 		}
 	}
 
+	out.Buttons = append(out.Buttons, t.quickReplyParams()...)
+
 	if t.IsAuthentication() {
 		code, err := t.AuthenticationCode(p.BodyParams)
 		if err != nil {

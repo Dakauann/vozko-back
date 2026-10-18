@@ -11,23 +11,18 @@ var agentVarPattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 type InterpolatedAgent struct {
 	MessagingPrompt string
-	InitialMessage  string
 }
 
 func InterpolateAgent(a *Agent, vars map[string]string) InterpolatedAgent {
 	defaults := buildDefaultsMap(a.Variables)
 	return InterpolatedAgent{
 		MessagingPrompt: resolveTemplate(a.MessagingPrompt, vars, defaults),
-		InitialMessage:  resolveTemplate(a.InitialMessage, vars, defaults),
 	}
 }
 
 func ExtractVariableNames(a *Agent) []string {
 	seen := make(map[string]bool)
 	for _, name := range extractNames(a.MessagingPrompt) {
-		seen[name] = true
-	}
-	for _, name := range extractNames(a.InitialMessage) {
 		seen[name] = true
 	}
 	if len(seen) == 0 {
@@ -45,13 +40,11 @@ func VariableUsedIn(a *Agent, name string) VariableUsage {
 	needle := "{{" + name + "}}"
 	return VariableUsage{
 		MessagingPrompt: strings.Contains(a.MessagingPrompt, needle),
-		InitialMessage:  strings.Contains(a.InitialMessage, needle),
 	}
 }
 
 type VariableUsage struct {
 	MessagingPrompt bool `json:"messagingPrompt"`
-	InitialMessage  bool `json:"initialMessage"`
 }
 
 type RequiredVariableInfo struct {

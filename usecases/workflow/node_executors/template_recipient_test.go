@@ -112,8 +112,8 @@ func TestAnOptedOutRefusalIsNamedForTheRunLog(t *testing.T) {
 	_, _, err := senderWithLeads(&knownLeadRepo{byID: optedOutLead()}, &recordingTemplateSends{}, &recordingHistory{}).
 		SendTemplate(context.Background(), waMediaRun(), "t1", "", nil, nil)
 
-	if !errors.Is(err, errTemplateRecipientRefused) {
-		t.Fatalf("err %v, want errTemplateRecipientRefused", err)
+	if !errors.Is(err, errRecipientRefused) {
+		t.Fatalf("err %v, want errRecipientRefused", err)
 	}
 }
 

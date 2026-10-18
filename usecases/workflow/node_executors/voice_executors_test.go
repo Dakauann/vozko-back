@@ -10,11 +10,16 @@ import (
 )
 
 type fakeVoiceCall struct {
+	ended       chan struct{}
 	played      [][]byte
 	interrupted bool
 	keys        []rune
 	waited      []time.Duration
 	err         error
+}
+
+func (c *fakeVoiceCall) Done() <-chan struct{} {
+	return c.ended
 }
 
 func (c *fakeVoiceCall) Play(pcm []byte, interruptible bool) (bool, error) {

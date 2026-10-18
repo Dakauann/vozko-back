@@ -53,6 +53,10 @@ func (c *simVoiceCall) TransferToQueue(_ context.Context, transfer workflow.Queu
 	return true, nil
 }
 
+func (c *simVoiceCall) Done() <-chan struct{} {
+	return c.keys.Done()
+}
+
 func (c *simVoiceCall) Play(_ []byte, interruptible bool) (bool, error) {
 	if c.keys.Ended() {
 		return false, workflow.ErrCallEnded
@@ -80,6 +84,10 @@ type scriptedVoiceCall struct {
 
 func (c scriptedVoiceCall) TransferToQueue(context.Context, workflow.QueueTransfer) (bool, error) {
 	return c.transfer != testTransferTimedOut, nil
+}
+
+func (c scriptedVoiceCall) Done() <-chan struct{} {
+	return nil
 }
 
 func (c scriptedVoiceCall) Play([]byte, bool) (bool, error) {

@@ -20,7 +20,6 @@ const (
 var (
 	ErrAgentNameRequired                    = errors.New("agent name is required")
 	ErrAgentNameTooLong                     = errors.New("agent name must not exceed 120 characters")
-	ErrAgentInitialMessageRequired          = errors.New("agent initial message is required")
 	ErrAgentMessagingPromptRequired         = errors.New("agent messaging prompt is required")
 	ErrAgentMessagingModelRequired          = errors.New("agent messaging model is required")
 	ErrAgentMessagingModelTooLong           = errors.New("agent messaging model must not exceed 64 characters")
@@ -175,9 +174,7 @@ type Agent struct {
 	MCPCollectionIDs []string `json:"mcpCollectionIds,omitempty"`
 	Name             string   `json:"name"`
 	Description      string   `json:"description"`
-	InitialMessage   string   `json:"initialMessage"`
 
-	UseInitialMessage  bool              `json:"useInitialMessage"`
 	MessagingPrompt    string            `json:"messagingPrompt"`
 	MessagingModel     string            `json:"messagingModel"`
 	AvatarURL          string            `json:"avatarUrl"`
@@ -203,7 +200,6 @@ func (a *Agent) Normalize() {
 	a.DepartmentID = strings.TrimSpace(a.DepartmentID)
 	a.Name = strings.TrimSpace(a.Name)
 	a.Description = strings.TrimSpace(a.Description)
-	a.InitialMessage = strings.TrimSpace(a.InitialMessage)
 	a.MessagingPrompt = strings.TrimSpace(a.MessagingPrompt)
 	a.MessagingModel = strings.TrimSpace(a.MessagingModel)
 	a.AvatarURL = strings.TrimSpace(a.AvatarURL)
@@ -299,9 +295,6 @@ func (a *Agent) Validate() error {
 		return ErrAgentNameTooLong
 	}
 
-	if a.UseInitialMessage && a.InitialMessage == "" {
-		return ErrAgentInitialMessageRequired
-	}
 	if a.MessagingPrompt == "" {
 		return ErrAgentMessagingPromptRequired
 	}
@@ -342,16 +335,6 @@ func (a *Agent) Validate() error {
 		seen[lower] = struct{}{}
 	}
 	return nil
-}
-
-func (a *Agent) ShouldUseInitialMessage() bool {
-	if a == nil {
-		return false
-	}
-	if !a.UseInitialMessage {
-		return false
-	}
-	return strings.TrimSpace(a.InitialMessage) != ""
 }
 
 func (a *Agent) ProviderToolIDs() []string {

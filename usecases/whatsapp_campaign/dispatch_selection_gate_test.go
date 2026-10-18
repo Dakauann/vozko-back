@@ -11,7 +11,7 @@ import (
 func TestAPlainCampaignStarts(t *testing.T) {
 	campaigns := newMockCampaignRepo()
 	campaigns.campaigns["camp-1"] = &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", Status: wc.CampaignStatusStopped}
-	uc := NewDispatchCampaignUseCase(nil, campaigns, newMockEntryRepo(), nil, nil)
+	uc := passingDispatch(campaigns)
 	if err := uc.Dispatch(wc.DispatchCampaignInput{CampaignID: "camp-1", Action: wc.CampaignActionStart}); err != nil {
 		t.Fatalf("Dispatch = %v", err)
 	}
@@ -36,7 +36,7 @@ func TestASelectionSendStartsThroughItsReviewOrResumes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			campaigns := newMockCampaignRepo()
 			campaigns.campaigns["camp-1"] = &wc.Campaign{ID: "camp-1", WorkspaceID: "ws-1", Status: tc.from, Source: campaign.SourceLeadSelection}
-			uc := NewDispatchCampaignUseCase(nil, campaigns, newMockEntryRepo(), nil, nil)
+			uc := passingDispatch(campaigns)
 
 			err := uc.Dispatch(wc.DispatchCampaignInput{CampaignID: "camp-1", Action: wc.CampaignActionStart, Reviewed: tc.reviewed})
 

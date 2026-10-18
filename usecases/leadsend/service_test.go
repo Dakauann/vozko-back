@@ -20,7 +20,7 @@ func templateParams() leadaction.SendParams {
 }
 
 func unofficialParams() leadaction.SendParams {
-	return leadaction.SendParams{Name: "Matrículas", InstanceID: "inst-1", Message: &uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"Olá {{1}}"}},
+	return leadaction.SendParams{Name: "Matrículas", InstanceID: "inst-1", Message: &uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"Olá {{1}}, responda /sair para sair"}},
 		Bindings: []campaign.VariableBinding{{Source: campaign.BindName}}}
 }
 
@@ -258,6 +258,39 @@ func TestTheUnofficialPreparationUsesTheConnectedNumber(t *testing.T) {
 		if p.unofficial == nil || p.unofficial.CreatedByID != "user-1" || len(p.unofficial.Targets) != 4 {
 			t.Fatalf("created = %+v", p.unofficial)
 		}
+	}
+}
+
+func TestAnUnofficialSendWhoseMessageHidesTheExitIsRefusedBeforeAnythingIsCreated(t *testing.T) {
+	h := newHarness(nil)
+	h.seed(4)
+	hidden := unofficialParams()
+	hidden.Message = &uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"Olá {{1}}"}}
+
+	if _, err := h.svc.Quote(scoped(), requester(), leadaction.ActionSendUnofficial, hidden, 4); !errors.Is(err, uwc.ErrCampaignNeedsExit) {
+		t.Fatalf("Quote = %v, want ErrCampaignNeedsExit", err)
+	}
+	if _, err := prepare(h, scoped(), leadaction.ActionSendUnofficial, hidden); !errors.Is(err, uwc.ErrCampaignNeedsExit) {
+		t.Fatalf("Prepare = %v, want ErrCampaignNeedsExit", err)
+	}
+	if len(h.world.parts) != 0 {
+		t.Fatalf("created = %+v", h.world.parts)
+	}
+}
+
+func TestAnUnofficialAudioSendNeedsItsExitText(t *testing.T) {
+	h := newHarness(nil)
+	h.seed(4)
+	audio := unofficialParams()
+	audio.Bindings = nil
+	audio.Message = &uwc.MessageSpec{Kind: uwc.KindAudio, MediaID: "m-1"}
+
+	if _, err := h.svc.Quote(scoped(), requester(), leadaction.ActionSendUnofficial, audio, 4); !errors.Is(err, uwc.ErrCampaignNeedsExit) {
+		t.Fatalf("Quote without the exit text = %v, want ErrCampaignNeedsExit", err)
+	}
+	audio.Message.ExitText = "Responda /sair para não receber mais"
+	if _, err := h.svc.Quote(scoped(), requester(), leadaction.ActionSendUnofficial, audio, 4); err != nil {
+		t.Fatalf("Quote with the exit text = %v", err)
 	}
 }
 

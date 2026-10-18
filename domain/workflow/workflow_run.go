@@ -156,6 +156,10 @@ func (r *WorkflowRun) Validate() error {
 	return nil
 }
 
+func (r *WorkflowRun) NodeVisit() string {
+	return fmt.Sprintf("%s#%d", r.CurrentNodeID, r.State.GetInt(StateKeyDurableSteps)-r.RetryCount)
+}
+
 func (r *WorkflowRun) SetWaiting(wakeAt int64, reason WaitReason) {
 	r.Status = RunStatusWaiting
 	r.WakeAt = &wakeAt

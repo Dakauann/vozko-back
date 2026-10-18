@@ -35,7 +35,7 @@ const (
 const ExportFormatCSV = "csv"
 
 func Actions() []Action {
-	return []Action{ActionClassify, ActionAssignOwner, ActionBlock, ActionExport, ActionMetaAudience, ActionCallList, ActionSendTemplate, ActionSendUnofficial}
+	return []Action{ActionClassify, ActionAssignOwner, ActionBlock, ActionExport, ActionMetaAudience, ActionCallList, ActionSendTemplate, ActionSendUnofficial, ActionRestoreOptOut}
 }
 
 func (a Action) Known() bool {
@@ -48,7 +48,7 @@ func (a Action) Known() bool {
 }
 
 func (a Action) Runs() bool {
-	return a == ActionClassify || a == ActionAssignOwner || a == ActionBlock
+	return a == ActionClassify || a == ActionAssignOwner || a == ActionBlock || a == ActionRestoreOptOut
 }
 
 func (a Action) Requirements(p Params, sensitiveField bool) []workspace.CapabilityKey {
@@ -79,6 +79,8 @@ func (a Action) Requirements(p Params, sensitiveField bool) []workspace.Capabili
 		return []workspace.CapabilityKey{CapabilitySendTemplate}
 	case ActionSendUnofficial:
 		return []workspace.CapabilityKey{CapabilitySendUnofficial}
+	case ActionRestoreOptOut:
+		return []workspace.CapabilityKey{CapabilityConsent}
 	}
 	return nil
 }
@@ -110,6 +112,8 @@ type Params struct {
 	Description     string          `json:"description,omitempty"`
 	CallList        *CallListParams `json:"callList,omitempty"`
 	Send            *SendParams     `json:"send,omitempty" swaggerignore:"true"`
+	Note            string          `json:"note,omitempty"`
+	ConfirmCount    int             `json:"confirmCount,omitempty"`
 }
 
 type CallListParams struct {
@@ -143,6 +147,7 @@ func (p Params) Normalized() Params {
 	p.Name = strings.TrimSpace(p.Name)
 	p.Description = strings.TrimSpace(p.Description)
 	p.CallList = p.CallList.normalized()
+	p.Note = strings.TrimSpace(p.Note)
 	if p.Send != nil {
 		send := p.Send.normalized()
 		p.Send = &send
@@ -156,6 +161,12 @@ func (p Params) ClearsValue() bool {
 
 func (p Params) Validate(a Action) error {
 	p = p.Normalized()
+	if a == ActionRestoreOptOut {
+		return p.validateRestore()
+	}
+	if p.restoreFields() && a.Known() {
+		return ErrParamsAmbiguous
+	}
 	if a.Sends() {
 		return p.validateSend(a)
 	}

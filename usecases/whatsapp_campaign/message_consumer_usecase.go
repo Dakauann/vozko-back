@@ -2,7 +2,6 @@ package whatsapp_campaign_usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -58,6 +57,7 @@ type messageConsumerUseCase struct {
 	InflightReserver        balance.InflightReserver
 	CachedBalanceChecker    balance.CachedBalanceChecker
 	triggerEvaluator        workflow_domain.TriggerEvaluator
+	smart                   SmartCampaigns
 
 	runner *campaignqueue.Runner
 }
@@ -109,7 +109,7 @@ func (c *messageConsumerUseCase) attachRunner(
 ) {
 	c.runner = campaignqueue.New(
 		sub, pub, sharedState,
-		campaignStatusStore{repo: c.CampaignRepo},
+		campaignStatusStore{repo: c.CampaignRepo, owner: c},
 		pendingEntryCounter{repo: c.EntryRepo},
 		campaignqueue.Config{
 			Namespace:         wc.QueueNamespace,
@@ -124,7 +124,10 @@ func (c *messageConsumerUseCase) attachRunner(
 	)
 }
 
-type campaignStatusStore struct{ repo wc.Repository }
+type campaignStatusStore struct {
+	repo  wc.Repository
+	owner *messageConsumerUseCase
+}
 
 func (s campaignStatusStore) ListRunningCampaignIDs() ([]string, error) {
 	items, err := s.repo.ListByStatus(wc.CampaignStatusRunning)
@@ -141,6 +144,9 @@ func (s campaignStatusStore) ListRunningCampaignIDs() ([]string, error) {
 }
 
 func (s campaignStatusStore) CompleteCampaign(campaignID string) (bool, error) {
+	if waves, err := s.ownedByWaves(campaignID); err != nil || waves {
+		return false, err
+	}
 	return s.repo.UpdateStatus(campaignID, wc.CampaignStatusCompleted, wc.CampaignStatusRunning)
 }
 
@@ -493,13 +499,11 @@ func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampai
 	if c.MessageHistoryManager == nil || entry == nil || tmpl == nil {
 		return
 	}
-	templateInfo := tmpl.RenderInfo(params)
-	metaBytes, err := json.Marshal(templateInfo)
+	bodyText, metadata, err := tmpl.HistoryRecord(params)
 	if err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to marshal template metadata for entry %s: %v\n", entry.ID, err)
 		return
 	}
-	bodyText, _ := templateInfo["body_text"].(string)
 
 	record := conversation.MessageHistoryRecord{
 		SentBy:      conversation.SentByCampaign(entry.CampaignID),
@@ -510,7 +514,7 @@ func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampai
 		MessageID:   messageID,
 		To:          toPhone,
 		Text:        bodyText,
-		Metadata:    json.RawMessage(metaBytes),
+		Metadata:    metadata,
 	}
 	if err := c.MessageHistoryManager.Record(context.Background(), record); err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to record template message for entry %s: %v\n", entry.ID, err)

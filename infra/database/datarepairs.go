@@ -48,6 +48,9 @@ func dataRepairs() []dataRepair {
 		{"pp_drop_retired_sip_trunk_prices", dropRetiredSIPTrunkPrices},
 		{"support_drop_legacy_tables", dropLegacySupportTables},
 		{"wc_move_receptive_to_the_number", moveReceptiveToTheNumber},
+		{"wc_consume_used_schedules", consumeUsedSchedules},
+		{"drop_retired_setting_columns", dropRetiredSettingColumns},
+		{"lx_drop_workspace_exit_settings", dropWorkspaceExitSettings},
 	}
 }
 
@@ -115,6 +118,7 @@ func backfillConversationCampaigns(tx *gorm.DB) error {
 		) AS latest
 		WHERE latest.conversation_id = c.id
 		  AND c.campaign_id = ''
+		  AND c.chat_id NOT LIKE '%@g.us'
 	`).Error
 }
 
@@ -602,6 +606,10 @@ func copyInstagramPrivateReplies(tx *gorm.DB) error {
 		FROM instagram_private_replies p
 		ON CONFLICT (source, comment_id) DO NOTHING
 	`).Error
+}
+
+func dropWorkspaceExitSettings(tx *gorm.DB) error {
+	return tx.Exec("DROP TABLE IF EXISTS workspace_exit_settings").Error
 }
 
 func dropLegacySupportTables(tx *gorm.DB) error {

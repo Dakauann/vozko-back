@@ -206,7 +206,7 @@ func (c *recordingWhatsAppClient) GetTemplate(context.Context, string) (*convers
 func (c *recordingWhatsAppClient) CreateTemplate(context.Context, conversation.CreateTemplateInput) (*conversation.CreateTemplateOutput, error) {
 	return nil, errors.New("not used")
 }
-func (c *recordingWhatsAppClient) UpdateTemplate(context.Context, string, conversation.UpdateTemplateInput) error {
+func (c *recordingWhatsAppClient) EditTemplate(context.Context, string, conversation.EditTemplateInput) error {
 	return errors.New("not used")
 }
 func (c *recordingWhatsAppClient) DeleteTemplate(context.Context, conversation.DeleteTemplateInput) error {

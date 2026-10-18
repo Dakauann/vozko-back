@@ -25,6 +25,10 @@ func (f *fakeScopedWorkflows) Get(scope workflow.Scope, id string) (*workflow.Wo
 	return &workflow.Workflow{ID: id, Name: "Boas-vindas", Status: "active"}, nil
 }
 
+func (f *fakeScopedWorkflows) Create(context.Context, workflow.Scope, *workflow.Workflow) (*workflow.Workflow, error) {
+	return nil, nil
+}
+
 func (f *fakeScopedWorkflows) Update(context.Context, workflow.Scope, string, *workflow.Workflow) (*workflow.Workflow, error) {
 	return nil, nil
 }

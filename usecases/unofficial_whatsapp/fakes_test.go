@@ -921,3 +921,29 @@ func (f *fakeInstanceRepo) ListLiveByJID(_ context.Context, jid string) ([]*uw.I
 	}
 	return out, nil
 }
+
+func (f *fakeGroupRepo) ListByJIDs(_ context.Context, workspaceID string, jids []string) (map[string][]*uw.Group, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string][]*uw.Group{}
+	for _, jid := range jids {
+		for _, g := range f.groups {
+			if g.WorkspaceID == workspaceID && g.JID == jid {
+				out[jid] = append(out[jid], g)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeGroupAPI) CreateGroup(context.Context, uw.InstanceRef, string, []string) (*uw.Group, error) {
+	return nil, uw.ErrGroupNotFound
+}
+
+func (f *fakeGroupAPI) JoinGroup(context.Context, uw.InstanceRef, string) (*uw.Group, error) {
+	return nil, uw.ErrGroupNotFound
+}
+
+func (f *fakeGroupAPI) InviteInfo(context.Context, uw.InstanceRef, string) (*uw.Group, error) {
+	return nil, uw.ErrGroupNotFound
+}

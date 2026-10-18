@@ -2,8 +2,10 @@ package node_executors
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"vozko/domain/conversation"
 	"vozko/domain/workflow"
 )
 
@@ -44,8 +46,64 @@ func listConfig(t *testing.T, rows ...[3]string) map[string]interface{} {
 	return map[string]interface{}{"interactive_type": "list", "sections": string(raw)}
 }
 
+func mustOptions(t *testing.T, config map[string]interface{}, state *workflow.RunState) []conversation.InteractiveOption {
+	t.Helper()
+	options, err := interactiveOptionsOf(config, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return options
+}
+
+func importedConfig(t *testing.T, raw string) map[string]interface{} {
+	t.Helper()
+	var config map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &config); err != nil {
+		t.Fatal(err)
+	}
+	return config
+}
+
+func TestInteractiveOptionsReadsImportedButtonsArray(t *testing.T) {
+	config := importedConfig(t, `{"interactive_type":"buttons","buttons":[{"id":"cat_musc","title":"Valores/horários"},{"id":"sobre","title":"Sobre academia"}]}`)
+
+	got := mustOptions(t, config, newTestState())
+
+	if len(got) != 2 || got[0].ID != "cat_musc" || got[1].Title != "Sobre academia" {
+		t.Fatalf("options = %+v", got)
+	}
+}
+
+func TestInteractiveOptionsReadsImportedListSectionsArray(t *testing.T) {
+	config := importedConfig(t, `{"interactive_type":"list","sections":[{"title":"Opções","rows":[{"id":"val_musc","title":"Valores"}]}]}`)
+
+	got := mustOptions(t, config, newTestState())
+
+	if len(got) != 1 || got[0].ID != "val_musc" || got[0].Title != "Valores" {
+		t.Fatalf("options = %+v", got)
+	}
+}
+
+func TestInteractiveOptionsReportsButtonsThatAreNotAList(t *testing.T) {
+	_, err := interactiveOptionsOf(map[string]interface{}{"buttons": float64(6)}, newTestState())
+
+	if !errors.Is(err, workflow.ErrNodeInvalidInteractiveConfig) {
+		t.Fatalf("err = %v, want ErrNodeInvalidInteractiveConfig", err)
+	}
+}
+
+func TestAskInteractiveOutputsListsImportedButtonsAsBranches(t *testing.T) {
+	config := importedConfig(t, `{"interactive_type":"buttons","buttons":[{"id":"gympass","title":"Gympass"}]}`)
+
+	outputs := AskInteractiveOutputs(config)
+
+	if len(outputs) == 0 || outputs[0].ID != "gympass" || outputs[0].Optional {
+		t.Fatalf("outputs = %+v, want the gympass branch first", outputs)
+	}
+}
+
 func TestInteractiveOptionsReadsTheButtonsShape(t *testing.T) {
-	got := interactiveOptionsOf(buttonsConfig(t, "sim", "Sim", "nao", "Não"), newTestState())
+	got := mustOptions(t, buttonsConfig(t, "sim", "Sim", "nao", "Não"), newTestState())
 
 	if len(got) != 2 {
 		t.Fatalf("options = %d, want 2", len(got))
@@ -56,7 +114,7 @@ func TestInteractiveOptionsReadsTheButtonsShape(t *testing.T) {
 }
 
 func TestInteractiveOptionsReadsTheListShapeAcrossSections(t *testing.T) {
-	got := interactiveOptionsOf(
+	got := mustOptions(t,
 		listConfig(t, [3]string{"a", "Primeira", "desc"}, [3]string{"b", "Segunda", ""}),
 		newTestState(),
 	)
@@ -73,7 +131,7 @@ func TestInteractiveOptionsInterpolatesTitlesButNeverIDs(t *testing.T) {
 	state := newTestState()
 	state.Set("nome", "Ana")
 
-	got := interactiveOptionsOf(buttonsConfig(t, "opt_{{nome}}", "Falar com {{nome}}"), state)
+	got := mustOptions(t, buttonsConfig(t, "opt_{{nome}}", "Falar com {{nome}}"), state)
 
 	if len(got) != 1 {
 		t.Fatalf("options = %d", len(got))
@@ -87,7 +145,7 @@ func TestInteractiveOptionsInterpolatesTitlesButNeverIDs(t *testing.T) {
 }
 
 func TestInteractiveOptionsSkipsRowsWithNoID(t *testing.T) {
-	got := interactiveOptionsOf(
+	got := mustOptions(t,
 		listConfig(t, [3]string{"", "Sem id", ""}, [3]string{"b", "Com id", ""}),
 		newTestState(),
 	)
@@ -97,7 +155,7 @@ func TestInteractiveOptionsSkipsRowsWithNoID(t *testing.T) {
 }
 
 func TestInteractiveOptionsIsEmptyForAnUnconfiguredNode(t *testing.T) {
-	if got := interactiveOptionsOf(map[string]interface{}{}, newTestState()); len(got) != 0 {
+	if got := mustOptions(t, map[string]interface{}{}, newTestState()); len(got) != 0 {
 		t.Errorf("options = %+v, want none", got)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"vozko/domain/address"
 	"vozko/domain/customfield"
 	leaddomain "vozko/domain/lead"
+	"vozko/domain/leadcompany"
 	"vozko/domain/shared"
 	lead_usecase "vozko/usecases/lead"
 )
@@ -39,16 +40,21 @@ func (h *LeadHandler) writeCommandError(w http.ResponseWriter, err error) {
 	case errors.Is(err, shared.ErrVersionRequired):
 		httpx.WriteVersionRequired(w)
 	case errors.Is(err, leaddomain.ErrLeadForbidden), errors.Is(err, leaddomain.ErrLeadOwnerOutOfReach), errors.Is(err, leaddomain.ErrAddressesForbidden),
-		errors.Is(err, customfield.ErrValueForbidden):
+		errors.Is(err, customfield.ErrValueForbidden), errors.Is(err, leaddomain.ErrConsentSourceForbidden):
 		response.WriteErrorWithCode(w, http.StatusForbidden, leaddomain.ErrorCode(err), err.Error(), refusalDetails(err))
 	case errors.Is(err, leaddomain.ErrLeadNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, leaddomain.ErrorCode(err), "Lead not found", nil)
+	case errors.Is(err, leadcompany.ErrNotFound):
+		response.WriteErrorWithCode(w, http.StatusNotFound, leaddomain.ErrorCode(err), err.Error(), nil)
+	case errors.Is(err, leadcompany.ErrClosed):
+		response.WriteErrorWithCode(w, http.StatusConflict, leaddomain.ErrorCode(err), err.Error(), nil)
 	case errors.Is(err, leaddomain.ErrRelativeNotFound), errors.Is(err, leaddomain.ErrRelationOtherWorkspace), errors.Is(err, leaddomain.ErrRelationNotFound),
 		errors.Is(err, leaddomain.ErrLocationNotFound), errors.Is(err, leaddomain.ErrAddressNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, leaddomain.ErrorCode(err), err.Error(), nil)
 	case errors.Is(err, leaddomain.ErrLeadDuplicate):
 		response.WriteErrorWithCode(w, http.StatusConflict, leaddomain.ErrorCode(err), "Já existe um lead com este número", identityHolderDetails(err))
-	case errors.Is(err, leaddomain.ErrIdentityInUse), errors.Is(err, leaddomain.ErrRelationExists):
+	case errors.Is(err, leaddomain.ErrIdentityInUse), errors.Is(err, leaddomain.ErrRelationExists),
+		errors.Is(err, leaddomain.ErrLeadOptedOut), errors.Is(err, leaddomain.ErrOptOutConfirmationStale):
 		response.WriteErrorWithCode(w, http.StatusConflict, leaddomain.ErrorCode(err), err.Error(), nil)
 	case leaddomain.IsInputRefusal(err):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, leaddomain.ErrorCode(err), err.Error(), refusalDetails(err))
@@ -92,7 +98,7 @@ func (h *LeadHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Editar um lead
-// @Description	Altera os campos enviados e mantém todos os outros como estão (campos ausentes nunca são apagados; envie "" para limpar um texto). Exige no cabeçalho `If-Match` a `version` lida: sem ela a resposta é 428 `version_required`; se o lead mudou depois da leitura, a resposta é 409 `version_conflict` com o registro atual em `current`, mostrando só o que você pode ler. O corpo aceita só `number`, `name`, `nickname`, `email`, `birthDate`, `whatsappOptIn`, `phones`, `addresses` e `customFields`; qualquer outra chave é recusada com 400 `invalid_body`, que nomeia a chave. `customFields` é um mapa parcial pela chave do campo: só as chaves enviadas mudam, `null` limpa uma chave, e as chaves ausentes (inclusive as sensíveis que você não pode ver) ficam como estão. Cada valor é conferido com o campo personalizado de lead do workspace (400 `custom_field_unknown_key`, `custom_field_value_type`, `custom_field_value_not_in_options`, `custom_field_value_required`, com a chave em `expected.key`); escrever ou limpar um campo sensível exige `leads:read_sensitive` (403 `custom_field_sensitive_forbidden`). Enviar `addresses` exige `leads:read_addresses` (403 `lead_addresses_forbidden`), porque quem não tem essa permissão só vê o bairro e a cidade e substituiria a lista inteira sem ver o que apaga. `phones` e `addresses`, quando enviados, substituem a lista inteira (envie `id` para manter um item; um `id` que não é deste lead é recusado com `lead_phone_unknown` ou `lead_address_unknown`). Mudar o texto de um endereço devolve a posição para `pending`, a não ser que a posição tenha sido marcada à mão e `keepPosition` seja `true`; latitude e longitude nunca vêm do cliente como colunas do endereço; o alfinete posicionado à mão vem em `pin` {latitude, longitude} e é gravado no mesmo comando, com precisão `exact` e origem `manual`, pelas mesmas regras de POST /leads/{id}/addresses/{addressId}/pin (um ponto inválido dá 400 `lead_location_invalid`; a geocodificação automática nunca substitui esse alfinete). Trocar o número de WhatsApp (`number`) só é possível enquanto o lead não tem conversas (409 `lead_identity_in_use`: cadastre o número como telefone de contato); um número de outro lead dá 409 `lead_identity_taken`. O responsável (`ownerId`) muda por POST /leads/{id}/owner e o bloqueio por POST /leads/{id}/block. A resposta e o `current` do 409 mostram só o que você pode ler: campos sensíveis só para `leads:read_sensitive` e endereços completos só para `leads:read_addresses` (sem ela, cada endereço traz só bairro, cidade, UF e o código IBGE da cidade, sem CEP, rua, número, complemento nem posição). Códigos de 400: `invalid_body`, `lead_identity_required`, `lead_number_invalid`, `lead_name_too_long`, `lead_nickname_too_long`, `lead_email_invalid`, `lead_birth_date_invalid`, `lead_phone_*`, `lead_address_*`.
+// @Description	Altera os campos enviados e mantém todos os outros como estão (campos ausentes nunca são apagados; envie "" para limpar um texto). Exige no cabeçalho `If-Match` a `version` lida: sem ela a resposta é 428 `version_required`; se o lead mudou depois da leitura, a resposta é 409 `version_conflict` com o registro atual em `current`, mostrando só o que você pode ler. O corpo aceita só `number`, `name`, `nickname`, `email`, `birthDate`, `whatsappOptIn`, `phones`, `addresses` e `customFields`; qualquer outra chave é recusada com 400 `invalid_body`, que nomeia a chave. `whatsappOptIn` true registra o consentimento como um registro manual de quem edita (exige também `leads:consent`, 403 `forbidden`); false sobre um consentimento registrado é uma retirada pela equipe (o lead passa a não receber mensagens), e false num lead sem consentimento não muda nada. `customFields` é um mapa parcial pela chave do campo: só as chaves enviadas mudam, `null` limpa uma chave, e as chaves ausentes (inclusive as sensíveis que você não pode ver) ficam como estão. Cada valor é conferido com o campo personalizado de lead do workspace (400 `custom_field_unknown_key`, `custom_field_value_type`, `custom_field_value_not_in_options`, `custom_field_value_required`, com a chave em `expected.key`); escrever ou limpar um campo sensível exige `leads:read_sensitive` (403 `custom_field_sensitive_forbidden`). Enviar `addresses` exige `leads:read_addresses` (403 `lead_addresses_forbidden`), porque quem não tem essa permissão só vê o bairro e a cidade e substituiria a lista inteira sem ver o que apaga. `phones` e `addresses`, quando enviados, substituem a lista inteira (envie `id` para manter um item; um `id` que não é deste lead é recusado com `lead_phone_unknown` ou `lead_address_unknown`). Mudar o texto de um endereço devolve a posição para `pending`, a não ser que a posição tenha sido marcada à mão e `keepPosition` seja `true`; latitude e longitude nunca vêm do cliente como colunas do endereço; o alfinete posicionado à mão vem em `pin` {latitude, longitude} e é gravado no mesmo comando, com precisão `exact` e origem `manual`, pelas mesmas regras de POST /leads/{id}/addresses/{addressId}/pin (um ponto inválido dá 400 `lead_location_invalid`; a geocodificação automática nunca substitui esse alfinete). Trocar o número de WhatsApp (`number`) só é possível enquanto o lead não tem conversas (409 `lead_identity_in_use`: cadastre o número como telefone de contato); um número de outro lead dá 409 `lead_identity_taken`. O responsável (`ownerId`) muda por POST /leads/{id}/owner e o bloqueio por POST /leads/{id}/block. A resposta e o `current` do 409 mostram só o que você pode ler: campos sensíveis só para `leads:read_sensitive` e endereços completos só para `leads:read_addresses` (sem ela, cada endereço traz só bairro, cidade, UF e o código IBGE da cidade, sem CEP, rua, número, complemento nem posição). Códigos de 400: `invalid_body`, `lead_identity_required`, `lead_number_invalid`, `lead_name_too_long`, `lead_nickname_too_long`, `lead_email_invalid`, `lead_birth_date_invalid`, `lead_phone_*`, `lead_address_*`.
 // @Tags			Leads
 // @Accept			json
 // @Produce		json
@@ -256,7 +262,7 @@ func (h *LeadHandler) SetOwner(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Registrar que o lead não quer receber mensagens
-// @Description	Marca o lead como "não quer receber mensagens" e retira o consentimento registrado. A partir daí os envios para ele passam a ser recusados antes de qualquer cobrança: nenhuma campanha (oficial ou não oficial) envia para ele, e a entrada fica com o código 920002 (`opted_out`), inclusive em campanhas criadas antes da marca; um modelo avulso (nova conversa, modelo numa conversa, mensagem agendada, envio pela Elo) responde `lead_opted_out`; um fluxo de automação não envia modelos para ele (o passo falha). Listas de ligação também o deixam de fora; uma ligação direta continua possível. Registra a origem em `source`: `operator` (a equipe decidiu, o padrão quando o corpo vem vazio ou sem `source`) ou `lead_request` (o lead pediu); a origem volta em `optOutSource` e fica no histórico de alterações. Só uma nova autorização explícita (whatsappOptIn em PUT /leads/{id}) desfaz a marca; importações e canais nunca a desfazem. Não exige `If-Match`; repetir o pedido não muda nada (a primeira origem fica). Uma chave desconhecida no corpo responde 400 `invalid_body`; uma origem desconhecida, 400 `lead_opt_out_source_invalid`.
+// @Description	Atalho de POST /leads/{id}/consent para uma retirada com origem `manual`: marca o lead como "não quer receber mensagens" e retira o consentimento registrado, gravando o evento `consent_withdrawn` no histórico. A partir daí os envios para ele passam a ser recusados antes de qualquer cobrança: nenhuma campanha (oficial ou não oficial) envia para ele, e a entrada fica com o código 920002 (`opted_out`), inclusive em campanhas criadas antes da marca; um modelo avulso (nova conversa, modelo numa conversa, mensagem agendada, envio pela Elo) responde `lead_opted_out`; um fluxo de automação não envia nada para ele (texto, mídia, botões, lista ou modelo; o passo falha com `lead_opted_out`), menos uma única confirmação de saída configurada pelo usuário. Listas de ligação também o deixam de fora; uma ligação direta continua possível. Registra a origem em `source`: `operator` (a equipe decidiu, o padrão quando o corpo vem vazio ou sem `source`) ou `lead_request` (o lead pediu); a origem volta em `optOutSource` e fica no histórico de alterações. Só uma nova autorização explícita com prova (POST /leads/{id}/consent com `kind` `grant`, ou whatsappOptIn em PUT /leads/{id}, que exige `leads:consent`) desfaz a marca; importações e canais nunca a desfazem. Não exige `If-Match`; repetir o pedido não muda nada (a primeira origem fica). Uma chave desconhecida no corpo responde 400 `invalid_body`; uma origem desconhecida, 400 `lead_opt_out_source_invalid`.
 // @Tags			Leads
 // @Accept			json
 // @Produce		json
@@ -383,4 +389,42 @@ func (h *LeadHandler) SetDistrict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, toLeadRecord(placed, h.now()))
+}
+
+// @Summary		Definir a empresa do lead
+// @Description	Comando de um campo só: coloca o lead numa empresa (`companyId` com o ID da empresa), troca de empresa ou tira o lead da empresa (`companyId` null). Um lead faz parte de no máximo uma empresa. Entrar exige `leads:update` e `lead_companies:read`; sair exige só `leads:update`. A empresa precisa estar aceitando novos leads (`acceptsLeads`); fechada, a resposta é 409 `lead_company_closed`, inclusive quando ela fecha no mesmo instante, porque a checagem é feita na mesma transação que grava. Uma empresa de outro workspace ou apagada responde 404 `lead_company_not_found`. Repetir a empresa atual não muda nada, mesmo com a empresa fechada. Não exige `If-Match`; o histórico do lead ganha o evento `company_changed`.
+// @Tags			Leads
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string					true	"ID do lead (UUID)"
+// @Param			request	body		SetLeadCompanyRequest	true	"Empresa (null para tirar o lead da empresa)"
+// @Success		200		{object}	lead.LeadRecordResponse
+// @Failure		400		{object}	response.ErrorResponse	"invalid_body"
+// @Failure		403		{object}	response.ErrorResponse	"forbidden"
+// @Failure		404		{object}	response.ErrorResponse	"lead_not_found, lead_company_not_found"
+// @Failure		409		{object}	response.ErrorResponse	"lead_company_closed, version_conflict"
+// @Failure		500		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/leads/{id}/company [post]
+func (h *LeadHandler) SetCompany(w http.ResponseWriter, r *http.Request) {
+	a, ok := h.commandActor(w, r)
+	if !ok {
+		return
+	}
+	var req SetLeadCompanyRequest
+	if !httpx.DecodeStrictJSON(w, r, &req) {
+		return
+	}
+	companyID, ok := req.companyID()
+	if !ok {
+		response.WriteInvalidBodyError(w, map[string]string{"companyId": "string (the company id) or null (leave the company); required"})
+		return
+	}
+	changed, err := h.commands.SetCompany(r.Context(), a, mux.Vars(r)["id"], companyID)
+	if err != nil {
+		h.writeCommandError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, toLeadRecord(changed, h.now()))
 }

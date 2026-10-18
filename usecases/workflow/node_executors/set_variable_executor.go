@@ -12,7 +12,7 @@ func (e *setVariableExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeActionSetVariable,
 		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Definir Variável",
 		Description: "Define uma variável no estado do fluxo.",
 		Icon:        "BracketsCurly",

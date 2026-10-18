@@ -3,9 +3,11 @@ package whatsapp_campaign_usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 
+	"vozko/domain/buttonaction"
 	"vozko/domain/campaign"
 	"vozko/domain/lead"
 	businessphone "vozko/domain/whatsapp/business_phone"
@@ -31,6 +33,16 @@ type createCampaignUseCase struct {
 	templateGrants     TemplateGrants
 	automation         AutomationCheck
 	keyed              IdempotentCampaigns
+	exitRisk           ExitRiskGate
+}
+
+type ExitRiskGate interface {
+	AdmitCampaign(ctx context.Context, workspaceID string, tmpl *template.Template, acknowledgedBy string) (buttonaction.CampaignAdmission, error)
+	RecordCampaignAdmission(ctx context.Context, workspaceID, campaignID string, admission buttonaction.CampaignAdmission) error
+}
+
+func (uc *createCampaignUseCase) SetExitRiskGate(gate ExitRiskGate) {
+	uc.exitRisk = gate
 }
 
 type TemplateGrants interface {
@@ -180,6 +192,14 @@ func (uc *createCampaignUseCase) Execute(ctx context.Context, input *wc.Campaign
 		input.ID = uuid.New().String()
 	}
 
+	if uc.exitRisk == nil {
+		return nil, buttonaction.ErrUnavailable
+	}
+	admission, err := uc.exitRisk.AdmitCampaign(ctx, input.WorkspaceID, tmpl, input.ExitRiskAcknowledgedBy)
+	if err != nil {
+		return nil, err
+	}
+
 	targets, err := campaigncreate.Resolve(uc.leadRepo, uc.leadRepo, input.WorkspaceID, phoneTargets(input.PhoneInputs))
 	if err != nil {
 		return nil, err
@@ -219,6 +239,9 @@ func (uc *createCampaignUseCase) Execute(ctx context.Context, input *wc.Campaign
 			return uc.winnerOf(input)
 		}
 		return nil, err
+	}
+	if err := uc.exitRisk.RecordCampaignAdmission(ctx, input.WorkspaceID, input.ID, admission); err != nil {
+		return nil, fmt.Errorf("campaign %s was saved, but its exit risk acknowledgement was not recorded: %w", input.ID, err)
 	}
 
 	return uc.hydrated(input.ID)

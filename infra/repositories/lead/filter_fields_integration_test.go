@@ -19,6 +19,7 @@ func TestEveryLeadFilterFieldAnswersOnPostgres(t *testing.T) {
 	repo := &repository{db: db, agg: newAggregateCache(nil)}
 	ws, owner := uuid.NewString(), uuid.NewString()
 	ana, bia, caio := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	company := uuid.NewString()
 	setup := []string{
 		`INSERT INTO leads (id, workspace_id, number, name, email, nickname, source, version, birth_date, owner_id, owner_kind, opted_out_at, whatsapp_opt_in_at, relatives_count, referred_count, custom_fields, created_at, updated_at) VALUES
 		 ('` + ana + `', '` + ws + `', '5511987654321', 'Ana', 'ana@gmail.com', 'Aninha', 'manual', 1, '1990-10-08', '` + owner + `', 'human', NULL, now(), 1, 1, '{"classificacao": "positivo"}', now(), now()),
@@ -32,6 +33,7 @@ func TestEveryLeadFilterFieldAnswersOnPostgres(t *testing.T) {
 		`INSERT INTO lead_relations (id, workspace_id, lead_id, other_lead_id, dimension, kind, created_at) VALUES
 		 (gen_random_uuid(), '` + ws + `', '` + ana + `', '` + bia + `', 'family', 'child', now()),
 		 (gen_random_uuid(), '` + ws + `', '` + ana + `', '` + caio + `', 'referral', 'referred', now())`,
+		`UPDATE leads SET company_id = '` + company + `' WHERE id IN ('` + ana + `', '` + bia + `')`,
 	}
 	for _, sql := range setup {
 		if err := db.Exec(sql).Error; err != nil {
@@ -74,6 +76,10 @@ func TestEveryLeadFilterFieldAnswersOnPostgres(t *testing.T) {
 		{"relatives count", one(crmfilter.FieldRelativesCount, crmfilter.OpGreaterEq, "1"), 2},
 		{"referred count", one(crmfilter.FieldReferredCount, crmfilter.OpEquals, "1"), 1},
 		{"referred by", one(crmfilter.FieldReferredBy, crmfilter.OpIn, ana), 1},
+		{"in the company", one(crmfilter.FieldCompany, crmfilter.OpIn, company), 2},
+		{"outside the company counts the leads in none", one(crmfilter.FieldCompany, crmfilter.OpNotIn, company), 1},
+		{"in any company", one(crmfilter.FieldCompany, crmfilter.OpIsSet), 2},
+		{"in no company", one(crmfilter.FieldCompany, crmfilter.OpIsEmpty), 1},
 		{"custom select", crmfilter.Filter{Groups: []crmfilter.Group{{Conjunction: crmfilter.And, Predicates: []crmfilter.Predicate{
 			crmfilter.Predicate{Field: crmfilter.FieldCustom, Key: "classificacao", Operator: crmfilter.OpIn, Values: []string{"positivo"}}.BindKind(crmfilter.KindEnum),
 		}}}}, 1},

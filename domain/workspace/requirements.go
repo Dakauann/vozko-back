@@ -42,3 +42,11 @@ func HoldsAll(checker PermissionChecker, workspaceID, userID string, isAdmin boo
 	}
 	return true
 }
+
+func HoldsCapability(checker PermissionChecker, workspaceID, userID string, isAdmin bool, key CapabilityKey) bool {
+	entries, err := CapabilitiesRequire([]CapabilityKey{key})
+	if err != nil {
+		return false
+	}
+	return HoldsAll(checker, workspaceID, userID, isAdmin, entries)
+}

@@ -86,7 +86,7 @@ func TestAudioModelsAreSplitIntoMusicAndVoiceByWhetherTheyHear(t *testing.T) {
 
 const speechModelsBody = `{
   "data": [
-    {"id": "elevenlabs/eleven-v4", "name": "Eleven v4", "pricing": {"prompt": "0.00004", "completion": "0"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}},
+    {"id": "acme/speech-v4", "name": "Speech v4", "pricing": {"prompt": "0.00004", "completion": "0"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}},
     {"id": "bytedance-seed/seed-audio-1-0", "name": "Seed Audio 1.0", "pricing": {"prompt": "0", "completion": "0.0025"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}},
     {"id": "fish-audio/s2.1-pro-free:free", "name": "Free", "pricing": {"prompt": "0", "completion": "0"}, "architecture": {"input_modalities": ["text"], "output_modalities": ["speech"]}}
   ]

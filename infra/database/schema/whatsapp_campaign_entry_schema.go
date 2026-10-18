@@ -15,6 +15,7 @@ type WhatsAppCampaignEntry struct {
 	Status                  string         `gorm:"size:40;not null;default:'PENDING';index:idx_wce_campaign_status_created,priority:2"`
 	MessageID               string         `gorm:"size:100;index:idx_wce_message_id"`
 	SendRound               int            `gorm:"not null;default:0"`
+	WaveNumber              int            `gorm:"column:wave_number;not null;default:0"`
 	ErrorCode               int            `gorm:"default:0;index:idx_wce_error_code"`
 	ErrorMessage            string         `gorm:"size:500"`
 	ReceivedBusinessPhoneID *string        `gorm:"type:uuid;index"`

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"vozko/domain/balance"
+	"vozko/domain/buttonaction"
 	"vozko/domain/campaign"
 	"vozko/domain/copilot"
 	"vozko/domain/media"
@@ -32,6 +33,7 @@ type CampaignDeps struct {
 	Phones    businessphone.WorkspacePhonesUseCase
 	Costs     tmpl.TemplateCostReader
 	Balance   balance.BalanceReader
+	Exit      copilottools.ExitVerdicts
 }
 
 type sheetArgs struct {
@@ -97,7 +99,14 @@ func (t *previewCampaignImportTool) Execute(ctx context.Context, cc copilot.Cont
 	if err != nil {
 		return campaignFailure(err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: previewData(preview)}
+	verdict, err := copilottools.ExitVerdictOf(ctx, t.deps.Exit, cc, req.TemplateID)
+	if err != nil {
+		return campaignFailure(err)
+	}
+	data := previewData(preview)
+	data["lead_exit"] = string(verdict.State)
+	data["lead_exit_note"] = copilottools.ExitVerdictField(verdict).Value
+	return copilot.Result{Status: copilot.StatusOK, Data: data}
 }
 
 func previewData(p *wc.ImportPreview) map[string]interface{} {
@@ -157,6 +166,9 @@ func (t *createCampaignTool) Describe(ctx context.Context, cc copilot.Context, a
 	if template, err := t.deps.Templates.Get(cc.WorkspaceID, req.TemplateID); err == nil {
 		fields = append(fields, copilot.Field{Key: "template", Value: template.Name})
 	}
+	if verdict, err := copilottools.ExitVerdictOf(ctx, t.deps.Exit, cc, req.TemplateID); err == nil {
+		fields = append(fields, copilottools.ExitVerdictField(verdict))
+	}
 	preview, err := t.deps.Preview.Preview(ctx, req)
 	if err != nil {
 		return append(fields, copilot.Field{Key: "contacts", Value: "não foi possível ler a planilha"})
@@ -212,6 +224,8 @@ func (t *createCampaignTool) Execute(ctx context.Context, cc copilot.Context, ar
 		TemplateID:      req.TemplateID,
 		BusinessPhoneID: phoneID,
 		PhoneInputs:     preview.PhoneInputs(),
+
+		ExitRiskAcknowledgedBy: copilottools.ExitRiskAcknowledgedBy(cc, args),
 	})
 	if err != nil {
 		return campaignFailure(err)
@@ -348,6 +362,10 @@ func campaignFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusDenied, Message: "o workspace não tem assinatura ativa; campanhas não podem ser iniciadas"}
 	case errors.Is(err, wc.ErrDispatchCampaignAlreadyRunning):
 		return copilot.Result{Status: copilot.StatusError, Message: "a campanha já está em envio"}
+	case errors.Is(err, buttonaction.ErrExitRiskNotAcknowledged):
+		return copilot.Result{Status: copilot.StatusError, Message: "o modelo não mostra ao lead como parar de receber mensagens e o usuário não marcou no cartão de aprovação que entende os riscos; nada foi criado. Proponha de novo e peça que ele marque no cartão, ou que defina a saída no modelo"}
+	case errors.Is(err, buttonaction.ErrTemplateNotFound):
+		return copilot.Result{Status: copilot.StatusError, Message: "modelo desconhecido ou sem acesso; use os ids de list_templates"}
 	}
 	var notReady *wc.TemplateNotReadyError
 	if errors.As(err, &notReady) {
@@ -393,7 +411,25 @@ func (t *createCampaignTool) Validate(ctx context.Context, cc copilot.Context, a
 	if preview.ValidRows == 0 {
 		return fmt.Errorf("%w: a planilha não tem nenhuma linha válida; rode preview_campaign_import e corrija", copilottools.ErrInvalidArgs)
 	}
-	return nil
+	choices, err := t.Choices(ctx, cc, args)
+	if err != nil {
+		return err
+	}
+	return copilottools.RefuseUnaskedExitRisk(args, choices)
+}
+
+func (t *createCampaignTool) Choices(ctx context.Context, cc copilot.Context, args map[string]interface{}) ([]copilot.ChoiceField, error) {
+	var a createCampaignArgs
+	copilottools.BindArgs(args, &a)
+	templateID, err := copilottools.KnownID(a.TemplateID, "template_id", "list_templates")
+	if err != nil {
+		return nil, err
+	}
+	verdict, err := copilottools.ExitVerdictOf(ctx, t.deps.Exit, cc, templateID)
+	if err != nil {
+		return nil, err
+	}
+	return copilottools.ExitRiskChoices(verdict), nil
 }
 
 func (t *startCampaignTool) Validate(_ context.Context, cc copilot.Context, args map[string]interface{}) error {

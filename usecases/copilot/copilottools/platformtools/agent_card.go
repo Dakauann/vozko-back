@@ -126,8 +126,6 @@ func agentFieldCard(f agentFields) []copilot.Field {
 	text("messagingModel", f.MessagingModel)
 	text("provider", f.Provider)
 	flag("isActive", f.IsActive)
-	text("initialMessage", f.InitialMessage)
-	flag("useInitialMessage", f.UseInitialMessage)
 	text("avatarUrl", f.AvatarURL)
 	if f.BusinessPhoneID != nil {
 		out = append(out, copilot.Field{Key: "phone", Value: "muda o número de WhatsApp em que o agente responde"})

@@ -59,6 +59,12 @@ func (uc *updateCampaignUseCase) Execute(
 	if err := campaign.RefuseSelectionChange(existing.Source, existing.ChangesWhatIsSent(in)); err != nil {
 		return nil, err
 	}
+	if err := existing.RefuseNumberChange(in); err != nil {
+		return nil, err
+	}
+	if err := existing.RequireExitFor(in); err != nil {
+		return nil, err
+	}
 	if err := campaignautomation.Require(uc.automation, existing.WorkspaceID, in.Automation(), in.EntryMetadata()); err != nil {
 		return nil, err
 	}
@@ -73,7 +79,6 @@ func (uc *updateCampaignUseCase) Execute(
 	existing.EnableAnalysis = in.EnableAnalysis
 	existing.EnableAutoStaging = in.EnableAutoStaging
 	existing.EnableAutoMemory = in.EnableAutoMemory
-	existing.PreferAudio = in.PreferAudio
 	existing.AiModel = in.AiModel
 	existing.SendDelayMinMS = in.SendDelayMinMS
 	existing.SendDelayMaxMS = in.SendDelayMaxMS

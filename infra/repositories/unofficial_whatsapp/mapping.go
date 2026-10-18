@@ -90,7 +90,6 @@ func toInstanceSchema(i *uw.Instance) *schema.UnofficialWhatsAppInstance {
 		WarmupStartedAt: i.WarmupStartedAt,
 		SendDelayMinMS:  i.SendDelayMinMS,
 		SendDelayMaxMS:  i.SendDelayMaxMS,
-		AutoRejectCalls: i.AutoRejectCalls,
 
 		AgentID:              i.AgentID,
 		WorkflowID:           i.WorkflowID,
@@ -161,7 +160,6 @@ func toInstanceDomain(record *schema.UnofficialWhatsAppInstance) *uw.Instance {
 		WarmupStartedAt: record.WarmupStartedAt,
 		SendDelayMinMS:  record.SendDelayMinMS,
 		SendDelayMaxMS:  record.SendDelayMaxMS,
-		AutoRejectCalls: record.AutoRejectCalls,
 
 		AgentID:              record.AgentID,
 		WorkflowID:           record.WorkflowID,

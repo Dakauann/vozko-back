@@ -62,6 +62,7 @@ type Entry struct {
 
 	ProviderMessageID string `json:"providerMessageId,omitempty"`
 	MessageID         string `json:"messageId,omitempty"`
+	ExitMessageID     string `json:"exitMessageId,omitempty"`
 	ErrorCode         int    `json:"errorCode,omitempty"`
 	ErrorMessage      string `json:"errorMessage,omitempty"`
 
@@ -90,7 +91,7 @@ func (e *Entry) Validate() error {
 	if e.CampaignID == "" {
 		return ErrEntryCampaignRequired
 	}
-	if e.LeadID == "" {
+	if e.LeadID == "" && !e.TargetsGroup() {
 		return ErrEntryLeadRequired
 	}
 	if !ValidStatus(e.Status) {
@@ -99,7 +100,17 @@ func (e *Entry) Validate() error {
 	return nil
 }
 
+func (e *Entry) ShownMessageID() string {
+	if e.ExitMessageID != "" {
+		return e.ExitMessageID
+	}
+	return e.MessageID
+}
+
 func (e *Entry) NeedsNumberCheck(now time.Time) bool {
+	if e.TargetsGroup() {
+		return false
+	}
 	if e.JID == "" || e.CheckedAt == nil {
 		return true
 	}

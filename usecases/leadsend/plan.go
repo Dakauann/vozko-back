@@ -69,6 +69,9 @@ func (s *Service) target(ctx context.Context, a Actor, plan *sendPlan) (int, err
 	if err := plan.params.Message.Validate(); err != nil {
 		return 0, err
 	}
+	if err := plan.params.Message.RequireShownExit(); err != nil {
+		return 0, err
+	}
 	instance, err := s.deps.Unofficial.Instances.Usable(ctx, a.WorkspaceID, scope, plan.params.InstanceID)
 	if err != nil {
 		return 0, err

@@ -36,6 +36,7 @@ func AdvanceOnReply(run *workflow.WorkflowRun, w *workflow.Workflow, data map[st
 	}
 
 	run.State.Set("_wait_outcome", outcome)
+	workflow.ForgetTriggerMessage(&run.State)
 	for k, v := range data {
 		run.State.Set(k, v)
 	}

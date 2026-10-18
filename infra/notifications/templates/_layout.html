@@ -1,78 +1,123 @@
 <!DOCTYPE html>
-<html lang="pt-BR" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<html lang="pt-BR" dir="ltr" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="x-apple-disable-message-reformatting">
-    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
-    <meta name="color-scheme" content="light">
-    <meta name="supported-color-schemes" content="light">
+    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <title>{{block "title" .}}{{.Brand.Name}}{{end}}</title>
-    <!--[if mso]>
-    <noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
-    <![endif]-->
+    {{safeHTML "<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><style>body,table,td,th,p,a,span,h1{font-family:'Segoe UI',Arial,sans-serif !important;}</style><![endif]-->"}}
+    {{safeHTML "<!--[if !mso]><!-->"}}
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Oxanium:wght@600&amp;display=swap" rel="stylesheet">
+    {{safeHTML "<!--<![endif]-->"}}
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap');
         html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
         * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
         table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
         img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
-        a { color: #2463eb; }
+        a { color: #007a5c; }
+        a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
+        u + #body a { color: inherit; text-decoration: none; font-size: inherit; font-family: inherit; font-weight: inherit; line-height: inherit; }
         @media only screen and (max-width: 620px) {
-            .vx-container { width: 100% !important; border-radius: 0 !important; }
-            .vx-pad { padding-left: 26px !important; padding-right: 26px !important; }
+            .vx-outer { padding: 16px 10px 24px !important; }
+            .vx-container { width: 100% !important; }
+            .vx-pad { padding-left: 20px !important; padding-right: 20px !important; }
+            .vx-title { font-size: 22px !important; }
+            .vx-btn, .vx-btn td, .vx-btn a { width: 100% !important; }
+            .vx-btn a { display: block !important; padding-left: 0 !important; padding-right: 0 !important; }
+            .vx-stack { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: left !important; }
+            .vx-row-label { padding-bottom: 0 !important; padding-right: 16px !important; }
+            .vx-row-value { border-top: 0 !important; padding-top: 2px !important; padding-left: 16px !important; text-align: left !important; }
+            .vx-code { font-size: 30px !important; letter-spacing: 0.14em !important; }
         }
+    </style>
+    <style>
+        :root { color-scheme: light dark; supported-color-schemes: light dark; }
+        @media (prefers-color-scheme: dark) {
+            body, .vx-canvas { background-color: #0e1011 !important; }
+            .vx-card { background-color: #14171a !important; border-color: #2c3035 !important; }
+            .vx-panel { background-color: #14171a !important; border-color: #2c3035 !important; }
+            .vx-well { background-color: #1c1f22 !important; border-color: #2c3035 !important; }
+            .vx-rule { border-color: #2c3035 !important; }
+            .vx-fg { color: #f3f5f6 !important; }
+            .vx-muted { color: #9da3aa !important; }
+            .vx-link { color: #57e0ae !important; }
+            .vx-logo-tile { background-color: #ffffff !important; border-color: #2c3035 !important; }
+            .vx-btn-primary { background-color: #4dcb9d !important; border-color: #4dcb9d !important; color: #0e1011 !important; }
+            .vx-btn-secondary { background-color: #1c1f22 !important; border-color: #636b74 !important; color: #f3f5f6 !important; }
+            .vx-tone-success { background-color: #27b975 !important; color: #0e1011 !important; }
+            .vx-tone-warning { background-color: #f8b720 !important; color: #0e1011 !important; }
+            .vx-tone-danger { background-color: #e4253f !important; color: #ffffff !important; }
+            .vx-tone-info { background-color: #3da5f5 !important; color: #0e1011 !important; }
+            .vx-tone-brand { background-color: #4dcb9d !important; color: #0e1011 !important; }
+            .vx-tone-neutral { background-color: #6c757f !important; color: #ffffff !important; }
+        }
+    </style>
+    <style>
+        [data-ogsb] .vx-canvas { background-color: #0e1011 !important; }
+        [data-ogsb] .vx-card, [data-ogsb] .vx-panel { background-color: #14171a !important; }
+        [data-ogsb] .vx-well { background-color: #1c1f22 !important; }
+        [data-ogsb] .vx-logo-tile { background-color: #ffffff !important; }
+        [data-ogsc] .vx-fg { color: #f3f5f6 !important; }
+        [data-ogsc] .vx-muted { color: #9da3aa !important; }
+        [data-ogsc] .vx-link { color: #57e0ae !important; }
+        [data-ogsb] .vx-btn-primary { background-color: #4dcb9d !important; }
+        [data-ogsc] .vx-btn-primary { color: #0e1011 !important; }
     </style>
 </head>
 
-<body style="margin:0; padding:0; background-color:#eef1f6; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;">
-    <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; line-height:0; font-size:0; color:#eef1f6;">{{block "preheader" .}}{{.Brand.Name}}{{end}}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+<body id="body" class="vx-canvas" style="margin:0; padding:0; width:100%; background-color:#f6f8f9; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;">
+    <div style="display:none; max-height:0; max-width:0; overflow:hidden; mso-hide:all; opacity:0; line-height:0; font-size:1px; color:#f6f8f9;">{{block "preheader" .}}{{.Brand.Name}}{{end}}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#eef1f6" style="background-color:#eef1f6;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f6f8f9" class="vx-canvas" style="width:100%; background-color:#f6f8f9;">
         <tr>
-            <td align="center" style="padding:40px 16px 28px;">
-
-                <!-- Content card (elevated-container surface) -->
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="vx-container" style="width:600px; max-width:600px; background-color:#ffffff; border:1px solid #e1e7ef; border-radius:20px; overflow:hidden; box-shadow:0px 0.7066px 0.7066px -0.6667px rgba(0,0,0,0.08), 0px 1.8066px 1.8066px -1.3333px rgba(0,0,0,0.08), 0px 3.6218px 3.6218px -2px rgba(0,0,0,0.07), 0px 6.8656px 6.8656px -2.6667px rgba(0,0,0,0.07), 0px 13.6468px 13.6468px -3.3333px rgba(0,0,0,0.05), 0px 30px 30px -4px rgba(0,0,0,0.02);">
-
-                    <!-- Brand -->
+            <td align="center" class="vx-outer" style="padding:40px 16px 32px;">
+                {{safeHTML "<!--[if mso]><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" align=\"center\"><tr><td><![endif]-->"}}
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" class="vx-container" style="width:600px; max-width:600px; border-collapse:separate;">
                     <tr>
-                        <td class="vx-pad" align="center" style="padding:36px 40px 28px; border-bottom:1px solid #eef1f6;">
-                            <img src="{{.Brand.LogoURL}}" alt="{{.Brand.Name}}" height="40" style="display:inline-block; border:0; max-height:40px; width:auto;" />
+                        <td class="vx-card" bgcolor="#ffffff" style="background-color:#ffffff; border:1px solid #dce1e5; border-radius:12px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td class="vx-pad vx-rule" style="padding:18px 40px; border-bottom:1px solid #dce1e5;">
+                                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                            <tr>
+                                                <td width="40" valign="middle" style="width:40px;">
+                                                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+                                                        <tr>
+                                                            <td class="vx-logo-tile" bgcolor="#ffffff" style="background-color:#ffffff; border:1px solid #dce1e5; border-radius:8px; padding:2px;">
+                                                                <img src="{{.Brand.LogoURL}}" alt="{{.Brand.Name}}" width="34" height="34" style="display:block; width:34px; height:34px; border:0;">
+                                                            </td>
+                                                        </tr>
+                                                    </table>
+                                                </td>
+                                                <td valign="middle" class="vx-fg" style="padding-left:12px; font-family:Oxanium,'Segoe UI',Inter,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif; font-size:17px; font-weight:600; line-height:22px; letter-spacing:0.01em; color:#14171a;">{{.Brand.Name}}</td>
+                                                <td align="right" valign="middle" class="vx-muted" style="padding-left:12px; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; line-height:16px; color:#58626a;">{{block "eyebrow" .}}{{end}}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="vx-pad" style="padding:32px 40px 36px; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                                        {{block "content" .}}{{end}}
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
-
-                    <!-- Content -->
-                    {{block "content" .}}{{end}}
-
                     <tr>
-                        <td style="font-size:0; line-height:0; height:22px;">&nbsp;</td>
-                    </tr>
-
-                </table>
-
-                <!-- Footer below the card -->
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
-                    <tr>
-                        <td class="vx-pad" align="center" style="padding:26px 40px 0;">
-                            <p style="margin:0 0 4px; font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:600; color:#65758b; text-align:center; letter-spacing:0.03em;">{{.Brand.LegalName}}</p>
-                            <p style="margin:0 0 12px; font-family:Inter,Arial,sans-serif; font-size:12px; color:#8797ab; text-align:center;">CNPJ {{.Brand.CNPJ}}</p>
-                            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:12px; color:#8797ab; text-align:center; line-height:1.6;">
-                                <a href="{{.Brand.SiteURL}}" style="color:#2463eb; text-decoration:none;">{{.Brand.EmailDomain}}</a>
-                                &nbsp;&nbsp;&middot;&nbsp;&nbsp;
-                                <a href="mailto:{{.Brand.SupportEmail}}" style="color:#2463eb; text-decoration:none;">{{.Brand.SupportEmail}}</a>
+                        <td class="vx-pad" style="padding:24px 40px 0; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                            <p class="vx-muted" style="margin:0 0 10px; font-size:12px; line-height:18px; color:#58626a;">Este é um email automático da {{.Brand.Name}} sobre a sua conta. Se tiver dúvidas, fale com o suporte em <a href="mailto:{{.Brand.SupportEmail}}" class="vx-link" style="color:#007a5c; text-decoration:underline;">{{.Brand.SupportEmail}}</a>.</p>
+                            <p class="vx-muted" style="margin:0; font-size:12px; line-height:18px; color:#58626a;">
+                                <strong class="vx-fg" style="font-weight:600; color:#14171a;">{{.Brand.LegalName}}</strong>&nbsp;&middot;&nbsp;CNPJ {{.Brand.CNPJ}}&nbsp;&middot;&nbsp;<a href="{{.Brand.SiteURL}}" class="vx-link" style="color:#007a5c; text-decoration:none;">{{.Brand.EmailDomain}}</a>
                             </p>
                         </td>
                     </tr>
-                    <tr>
-                        <td class="vx-pad" align="center" style="padding:16px 40px 0;">
-                            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:11px; color:#aab6c8; text-align:center; line-height:1.6;">Esta mensagem foi enviada por {{.Brand.Name}}. Se tiver dúvidas, fale com o suporte.</p>
-                        </td>
-                    </tr>
                 </table>
-
+                {{safeHTML "<!--[if mso]></td></tr></table><![endif]-->"}}
             </td>
         </tr>
     </table>

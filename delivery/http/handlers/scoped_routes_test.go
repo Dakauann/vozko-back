@@ -10,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/domain/campaign/launchcheck"
 	"vozko/domain/rag"
 	wc "vozko/domain/whatsapp_campaign"
 	dept "vozko/domain/workspace/workspace_department"
@@ -25,15 +26,16 @@ func scopedRequest(method, body string, vars map[string]string, departments ...s
 }
 
 type startStub struct {
-	err     error
-	started bool
+	err       error
+	started   bool
+	confirmed string
 }
 
-func (s *startStub) Start(workspaceID string, _ *dept.DepartmentFilter, id string) (*wc.Campaign, error) {
+func (s *startStub) StartConfirmed(workspaceID string, _ *dept.DepartmentFilter, id, confirmedFingerprint string) (*wc.Campaign, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	s.started = workspaceID == "ws1" && id == "c1"
+	s.started, s.confirmed = workspaceID == "ws1" && id == "c1", confirmedFingerprint
 	return &wc.Campaign{ID: id}, nil
 }
 
@@ -49,6 +51,7 @@ func TestStartCampaignRouteMapsEveryRefusal(t *testing.T) {
 		{wc.ErrCampaignAllProcessed, http.StatusBadRequest},
 		{wc.ErrDispatchCampaignAlreadyRunning, http.StatusBadRequest},
 		{errors.New("queue down"), http.StatusInternalServerError},
+		{launchcheck.Report{Findings: []launchcheck.Finding{{Code: launchcheck.CodeNoExit, Level: launchcheck.Confirm}}}.Admit(""), http.StatusConflict},
 	}
 	for _, c := range cases {
 		h := &WhatsAppCampaignHandler{}
@@ -62,6 +65,18 @@ func TestStartCampaignRouteMapsEveryRefusal(t *testing.T) {
 		if c.err == nil && !start.started {
 			t.Fatal("campaign was not started with the request workspace")
 		}
+	}
+}
+
+func TestStartCampaignRouteCarriesThePersonsConfirmation(t *testing.T) {
+	h := &WhatsAppCampaignHandler{}
+	start := &startStub{}
+	h.SetStartCampaign(start)
+
+	h.StartCampaign(httptest.NewRecorder(), scopedRequest(http.MethodPost, `{"confirmedFingerprint":"fp-1"}`, map[string]string{"id": "c1"}, "d-sales"))
+
+	if !start.started || start.confirmed != "fp-1" {
+		t.Fatalf("started %v confirmed %q", start.started, start.confirmed)
 	}
 }
 

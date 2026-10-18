@@ -11,6 +11,8 @@ import (
 	"vozko/domain/whatsapp/quality"
 )
 
+var ErrPhoneNotListed = errors.New("meta does not list this phone number on its account")
+
 type PollPhoneQualityUseCase struct {
 	phones  businessphone.Repository
 	meta    businessphone.MetaAPIService
@@ -68,19 +70,8 @@ func (uc *PollPhoneQualityUseCase) Execute(ctx context.Context) error {
 			continue
 		}
 		for _, info := range infos {
-			if !active[info.ID] {
-				continue
-			}
-			base := quality.Change{Subject: quality.SubjectPhone, ExternalID: info.ID, WABAID: account.wabaID, Name: info.DisplayPhoneNumber, Source: quality.SourcePoll, OccurredAt: now}
-			rating := base
-			rating.Signal = quality.SignalQuality
-			if moved, ok := rating.Moved(ratings[info.ID], info.QualityRating); ok {
-				changes = append(changes, moved)
-			}
-			status := base
-			status.Signal = quality.SignalStatus
-			if moved, ok := status.Moved(statuses[info.ID], info.Status); ok {
-				changes = append(changes, moved)
+			if active[info.ID] {
+				changes = append(changes, moved(info, account.wabaID, now, ratings[info.ID], statuses[info.ID])...)
 			}
 		}
 	}
@@ -88,6 +79,48 @@ func (uc *PollPhoneQualityUseCase) Execute(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+func (uc *PollPhoneQualityUseCase) RefreshPhone(ctx context.Context, phone *businessphone.WhatsAppBusinessPhoneNumber) (businessphone.MetaPhoneNumberInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return businessphone.MetaPhoneNumberInfo{}, err
+	}
+	infos, err := uc.meta.ListPhoneNumbers(phone.WABAId, phone.AccessToken)
+	if err != nil {
+		return businessphone.MetaPhoneNumberInfo{}, fmt.Errorf("list phones of waba %s: %w", phone.WABAId, err)
+	}
+	for _, info := range infos {
+		if info.ID != phone.MetaPhoneNumberID {
+			continue
+		}
+		ids := []string{info.ID}
+		ratings, err := uc.history.LatestValues(quality.SubjectPhone, quality.SignalQuality, ids)
+		if err != nil {
+			return info, err
+		}
+		statuses, err := uc.history.LatestValues(quality.SubjectPhone, quality.SignalStatus, ids)
+		if err != nil {
+			return info, err
+		}
+		return info, uc.changes.Record(moved(info, phone.WABAId, uc.now().UTC(), ratings[info.ID], statuses[info.ID])...)
+	}
+	return businessphone.MetaPhoneNumberInfo{}, fmt.Errorf("%w: %s", ErrPhoneNotListed, phone.MetaPhoneNumberID)
+}
+
+func moved(info businessphone.MetaPhoneNumberInfo, wabaID string, now time.Time, previousRating, previousStatus string) []quality.Change {
+	base := quality.Change{Subject: quality.SubjectPhone, ExternalID: info.ID, WABAID: wabaID, Name: info.DisplayPhoneNumber, Source: quality.SourcePoll, OccurredAt: now}
+	var changes []quality.Change
+	rating := base
+	rating.Signal = quality.SignalQuality
+	if change, ok := rating.Moved(previousRating, info.QualityRating); ok {
+		changes = append(changes, change)
+	}
+	status := base
+	status.Signal = quality.SignalStatus
+	if change, ok := status.Moved(previousStatus, info.Status); ok {
+		changes = append(changes, change)
+	}
+	return changes
 }
 
 func (uc *PollPhoneQualityUseCase) accountsOf(active map[string]bool) ([]accountToPoll, error) {

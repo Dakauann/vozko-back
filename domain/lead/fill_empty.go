@@ -1,6 +1,7 @@
 package lead
 
 import (
+	"errors"
 	"maps"
 	"slices"
 
@@ -66,16 +67,20 @@ func (f *gapFill) birthDate(incoming *shared.Date) {
 	}
 }
 
-func (f *gapFill) consent(incoming *Consent) {
+func (f *gapFill) consent(grant *ConsentChange) error {
+	if grant == nil {
+		return nil
+	}
+	changed, err := f.next.ApplyConsentChange(*grant)
 	switch {
-	case incoming == nil || f.next.WhatsAppOptIn != nil:
-	case f.next.OptedOutAt != nil:
+	case errors.Is(err, ErrLeadOptedOut):
 		f.conflict(FieldWhatsAppOptIn)
-	default:
-		consent := *incoming
-		f.next.WhatsAppOptIn = &consent
+	case err != nil:
+		return err
+	case changed:
 		f.change(FieldWhatsAppOptIn)
 	}
+	return nil
 }
 
 func (f *gapFill) customFields(incoming map[string]any) map[string]any {

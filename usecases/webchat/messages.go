@@ -195,6 +195,8 @@ func (s *VisitorService) afterInbound(
 		EntryID:              conv.ID,
 		EntryType:            shared.EntryTypeWebchat,
 		ContactRef:           v.ID,
+		ProviderMessageID:    message.ID,
+		ReceivedAt:           message.CreatedAt,
 		LeadID:               v.LeadID,
 		Text:                 text,
 		Selection:            selection,
@@ -205,7 +207,9 @@ func (s *VisitorService) afterInbound(
 	s.Async(func() {
 		runCtx, cancel := context.WithTimeout(detached, automationTimeout)
 		defer cancel()
-		s.Automation.Dispatch(runCtx, input)
+		if err := s.Automation.Dispatch(runCtx, input); err != nil {
+			log.Printf("[webchat] automation of conversation=%s message=%s stopped: %v", conv.ID, message.ID, err)
+		}
 	})
 }
 

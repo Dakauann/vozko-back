@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"vozko/brand"
-	"vozko/domain/notification"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	"vozko/domain/whatsapp/optout"
 	"vozko/domain/whatsapp/quality"
@@ -19,8 +17,7 @@ type handlePhoneWebhook struct {
 	wabaRepo     waba.Repository
 	recorder     quality.Recorder
 	optOuts      optout.Recorder
-	notifier     notification.Notifier
-	dashboardURL string
+	notices      businessphone.PhoneNotifier
 	now          func() time.Time
 }
 
@@ -30,31 +27,18 @@ func NewHandlePhoneWebhook(repo businessphone.Repository, wabaRepo waba.Reposito
 	return &handlePhoneWebhook{repo: repo, wabaRepo: wabaRepo, recorder: recorder, optOuts: optOuts, now: time.Now}
 }
 
-func (h *handlePhoneWebhook) WithNotifier(n notification.Notifier, dashboardURL string) *handlePhoneWebhook {
-	h.notifier = n
-	h.dashboardURL = dashboardURL
+func (h *handlePhoneWebhook) WithNotices(notices businessphone.PhoneNotifier) *handlePhoneWebhook {
+	h.notices = notices
 	return h
 }
 
-func (h *handlePhoneWebhook) notifyPhoneAlert(phone *businessphone.WhatsAppBusinessPhoneNumber, state, subject, template string, extra map[string]interface{}) {
-	if h.notifier == nil || phone == nil || phone.OwnerWorkspaceID == "" {
+func (h *handlePhoneWebhook) notifyPhone(phone *businessphone.WhatsAppBusinessPhoneNumber, notice businessphone.PhoneNotice) {
+	if h.notices == nil {
 		return
 	}
-	ph := map[string]interface{}{
-		"PhoneNumber":  phone.DisplayPhoneNumber,
-		"DashboardURL": h.dashboardURL,
+	if err := h.notices.NotifyPhone(phone, notice); err != nil {
+		log.Printf("[phone-webhook] %s notification for phone %s failed: %v", notice.State, phone.ID, err)
 	}
-	for k, v := range extra {
-		ph[k] = v
-	}
-	_ = h.notifier.Notify(notification.Notification{
-		WorkspaceID:  phone.OwnerWorkspaceID,
-		Subject:      subject,
-		Template:     template,
-		Placeholders: ph,
-		DedupKey:     "phone_alert:" + state + ":" + phone.ID,
-		DedupTTL:     7 * 24 * time.Hour,
-	})
 }
 
 func (h *handlePhoneWebhook) Execute(payload *businessphone.PhoneWebhookPayload) error {
@@ -136,11 +120,7 @@ func (h *handlePhoneWebhook) handleQualityUpdate(v businessphone.PhoneWebhookVal
 		} else {
 			log.Printf("[phone-webhook] quality_update: phone %s updated (event=%s, limit=%s)", phoneNumber, v.Event, v.CurrentLimit)
 			if phone.Status == businessphone.StatusFlagged || phone.Status == businessphone.StatusRestricted {
-				label := "Em risco"
-				if phone.Status == businessphone.StatusRestricted {
-					label = "Restrita"
-				}
-				h.notifyPhoneAlert(phone, "quality:"+string(phone.Status), "Qualidade do número em risco - "+brand.Active().Name, "whatsapp_quality_alert.html", map[string]interface{}{"Quality": label})
+				h.notifyPhone(phone, businessphone.QualityNotice(phone.Status == businessphone.StatusRestricted))
 			}
 		}
 	}
@@ -235,23 +215,9 @@ func (h *handlePhoneWebhook) handleNameUpdate(v businessphone.PhoneWebhookValue)
 			log.Printf("[phone-webhook] name_update: phone %s updated (decision=%s, name=%s)", phoneNumber, decision, v.RequestedVerifiedName)
 			switch decision {
 			case "APPROVED":
-				h.notifyPhoneAlert(phone, "name_approved", "Nome de exibição aprovado - "+brand.Active().Name, "whatsapp_account_update.html", map[string]interface{}{
-					"Headline":    "Nome de exibição aprovado",
-					"Subtitle":    phone.VerifiedName,
-					"Message":     "O nome de exibição do seu número de WhatsApp foi aprovado e já está ativo.",
-					"StatusLabel": "Aprovado",
-					"Tone":        "success",
-					"Glyph":       "check",
-				})
+				h.notifyPhone(phone, businessphone.NameApprovedNotice(phone.VerifiedName))
 			case "REJECTED", "DECLINED":
-				h.notifyPhoneAlert(phone, "name_rejected", "Nome de exibição reprovado - "+brand.Active().Name, "whatsapp_account_update.html", map[string]interface{}{
-					"Headline":    "Nome de exibição reprovado",
-					"Subtitle":    "Ação necessária",
-					"Message":     "O nome de exibição solicitado para o seu número de WhatsApp não foi aprovado. Acesse o painel para enviar um novo nome.",
-					"StatusLabel": "Reprovado",
-					"Tone":        "warning",
-					"Glyph":       "alert",
-				})
+				h.notifyPhone(phone, businessphone.NameRejectedNotice())
 			}
 		}
 	}
@@ -302,7 +268,7 @@ func (h *handlePhoneWebhook) handleAccountAlerts(v businessphone.PhoneWebhookVal
 		} else {
 			log.Printf("[phone-webhook] account_alerts: phone %s updated (event=%s)", phoneNumber, event)
 			if bannedNow {
-				h.notifyPhoneAlert(phone, "banned", "Número de WhatsApp bloqueado - "+brand.Active().Name, "whatsapp_number_banned.html", nil)
+				h.notifyPhone(phone, businessphone.BannedNotice())
 			}
 		}
 	}
@@ -378,14 +344,7 @@ func (h *handlePhoneWebhook) handleAccountUpdate(wabaID string, v businessphone.
 				log.Printf("[phone-webhook] account_update: failed to update phone %s: %v", phoneNumber, err)
 			} else {
 				log.Printf("[phone-webhook] account_update: phone %s marked as official business", phoneNumber)
-				h.notifyPhoneAlert(phone, "verified", "Conta WhatsApp verificada - "+brand.Active().Name, "whatsapp_account_update.html", map[string]interface{}{
-					"Headline":    "Conta verificada",
-					"Subtitle":    "O seu número foi marcado como empresa oficial",
-					"Message":     "A sua conta WhatsApp foi verificada e o seu número agora aparece como empresa oficial para os seus clientes.",
-					"StatusLabel": "Verificado",
-					"Tone":        "success",
-					"Glyph":       "check",
-				})
+				h.notifyPhone(phone, businessphone.VerifiedNotice())
 			}
 		}
 		return
@@ -408,7 +367,7 @@ func (h *handlePhoneWebhook) handleAccountUpdate(wabaID string, v businessphone.
 						if err := h.repo.Update(phone.ID, phone); err != nil {
 							log.Printf("[phone-webhook] account_update: failed to flag phone %s: %v", phone.DisplayPhoneNumber, err)
 						} else {
-							h.notifyPhoneAlert(phone, "scheduled_disable", "Número agendado para desativação - "+brand.Active().Name, "whatsapp_scheduled_disable.html", map[string]interface{}{"DisableDate": v.BanInfo.WABABanDate})
+							h.notifyPhone(phone, businessphone.ScheduledDisableNotice(v.BanInfo.WABABanDate))
 						}
 					}
 				}
@@ -426,7 +385,7 @@ func (h *handlePhoneWebhook) handleAccountUpdate(wabaID string, v businessphone.
 						if err := h.repo.Update(phone.ID, phone); err != nil {
 							log.Printf("[phone-webhook] account_update: failed to ban phone %s: %v", phone.DisplayPhoneNumber, err)
 						} else {
-							h.notifyPhoneAlert(phone, "banned", "Número de WhatsApp bloqueado - "+brand.Active().Name, "whatsapp_number_banned.html", nil)
+							h.notifyPhone(phone, businessphone.BannedNotice())
 						}
 					}
 				}
@@ -452,14 +411,7 @@ func (h *handlePhoneWebhook) handleAccountUpdate(wabaID string, v businessphone.
 				}
 				log.Printf("[phone-webhook] account_update: waba %s reinstated, %d phones restored", wabaID, len(phones))
 				if reinstated != nil {
-					h.notifyPhoneAlert(reinstated, "reinstated", "Conta WhatsApp restaurada - "+brand.Active().Name, "whatsapp_account_update.html", map[string]interface{}{
-						"Headline":    "Conta restaurada",
-						"Subtitle":    "Os seus números estão ativos novamente",
-						"Message":     "A sua conta WhatsApp foi restaurada. Os seus números já podem enviar e receber mensagens normalmente.",
-						"StatusLabel": "Ativo",
-						"Tone":        "success",
-						"Glyph":       "check",
-					})
+					h.notifyPhone(reinstated, businessphone.ReinstatedNotice())
 				}
 			}
 		}

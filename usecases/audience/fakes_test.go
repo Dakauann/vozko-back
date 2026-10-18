@@ -13,6 +13,7 @@ import (
 	"vozko/domain/ai"
 	ca "vozko/domain/audience"
 	"vozko/domain/shared"
+	"vozko/usecases/notification/notificationtest"
 )
 
 var now = time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
@@ -667,6 +668,7 @@ type harness struct {
 	balance         *fakeBalance
 	state           *fakeState
 	broadcaster     *fakeBroadcaster
+	notices         *notificationtest.Publisher
 	engine          *Engine
 }
 
@@ -699,6 +701,7 @@ func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 		balance:         &fakeBalance{micros: 1_000_000},
 		state:           newFakeState(),
 		broadcaster:     &fakeBroadcaster{},
+		notices:         &notificationtest.Publisher{},
 	}
 	engine, err := NewEngine(EngineDeps{
 		Repo: h.repo, Settings: NewSettingsResolver(h.settings), Batches: h.batches,
@@ -707,7 +710,7 @@ func newHarness(t interface{ Fatal(...any) }, budget ca.Budget) *harness {
 		Usage:           NewUsageLimiter(h.state),
 		WorkspaceLimits: h.workspaceLimits,
 		Balance:         h.balance, State: h.state, Clock: fixedClock{now}, Budget: budget,
-		Broadcaster: h.broadcaster,
+		Broadcaster: h.broadcaster, Notifications: h.notices, DashboardURL: "https://app.vozko.test/",
 	})
 	if err != nil {
 		t.Fatal(err)

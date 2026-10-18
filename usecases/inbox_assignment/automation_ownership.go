@@ -152,6 +152,16 @@ func (s *AssignmentService) HandOffToRoulette(in ia.RouletteHandOff) (string, er
 	}
 
 	businessPhoneID := s.handOffAccount(existing, in)
+	if actor.KindOf(by) != actor.KindHuman {
+		holder, err := s.portfolioHolder(in.WorkspaceID, in.EntryID, in.EntryType, departmentID)
+		if err != nil {
+			return "", fmt.Errorf("hand-off %s (%s): %w", in.EntryID, in.EntryType, err)
+		}
+		if holder != "" {
+			return s.handOffTo(in, businessPhoneID, by, holder, ia.TriggerAutomationHandoffPortfolio)
+		}
+	}
+
 	pool := s.humanPool(in.WorkspaceID, departmentID)
 	if len(pool.Ring) == 0 || businessPhoneID == "" {
 		log.Printf("[InboxAssignment] hand-off of entry %s (%s): no ring to draw from in department %q, releasing it to the team", in.EntryID, in.EntryType, departmentID)
@@ -168,7 +178,11 @@ func (s *AssignmentService) HandOffToRoulette(in ia.RouletteHandOff) (string, er
 	if err != nil {
 		return "", fmt.Errorf("hand-off %s (%s): ring: %w", in.EntryID, in.EntryType, err)
 	}
-	moved, err := s.reassign(in.EntryID, in.EntryType, businessPhoneID, in.WorkspaceID, userID, by, ia.TriggerAutomationHandoffRoulette)
+	return s.handOffTo(in, businessPhoneID, by, userID, ia.TriggerAutomationHandoffRoulette)
+}
+
+func (s *AssignmentService) handOffTo(in ia.RouletteHandOff, businessPhoneID, by, userID, trigger string) (string, error) {
+	moved, err := s.reassign(in.EntryID, in.EntryType, businessPhoneID, in.WorkspaceID, userID, by, trigger)
 	if err != nil {
 		return "", fmt.Errorf("hand-off %s (%s) to %s: %w", in.EntryID, in.EntryType, userID, err)
 	}

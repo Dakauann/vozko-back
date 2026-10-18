@@ -15,6 +15,7 @@ type handleTemplateWebhook struct {
 	repo     template.Repository
 	recorder quality.Recorder
 	now      func() time.Time
+	signals  TemplateHealthSignals
 }
 
 func NewHandleTemplateWebhook(repo template.Repository, recorder quality.Recorder) template.HandleTemplateWebhookUseCase {
@@ -32,16 +33,22 @@ func (h *handleTemplateWebhook) Execute(payload *template.TemplateWebhookPayload
 		for _, change := range entry.Changes {
 			switch change.Field {
 			case template.FieldMessageTemplateStatusUpdate:
-				recordErrs = append(recordErrs, h.recordSignal(entry.ID, occurredAt, quality.SignalStatus, change.Value, "", change.Value.Event))
+				err := h.recordSignal(entry.ID, occurredAt, quality.SignalStatus, change.Value, "", change.Value.Event)
+				recordErrs = append(recordErrs, err)
 				h.handleStatusUpdate(entry.ID, change.Value)
+				h.signalChanged(err, change.Value)
 			case template.FieldMessageTemplateQualityUpdate:
-				recordErrs = append(recordErrs, h.recordSignal(entry.ID, occurredAt, quality.SignalQuality, change.Value, change.Value.PreviousQualityScore, change.Value.NewQualityScore))
+				err := h.recordSignal(entry.ID, occurredAt, quality.SignalQuality, change.Value, change.Value.PreviousQualityScore, change.Value.NewQualityScore)
+				recordErrs = append(recordErrs, err)
 				h.handleQualityUpdate(entry.ID, change.Value)
+				h.signalChanged(err, change.Value)
 			case template.FieldMessageTemplateComponentsUpdate:
 				h.handleComponentsUpdate(entry.ID, change.Value)
 			case template.FieldTemplateCategoryUpdate:
-				recordErrs = append(recordErrs, h.recordSignal(entry.ID, occurredAt, quality.SignalCategory, change.Value, change.Value.PreviousCategory, change.Value.NewCategory))
+				err := h.recordSignal(entry.ID, occurredAt, quality.SignalCategory, change.Value, change.Value.PreviousCategory, change.Value.NewCategory)
+				recordErrs = append(recordErrs, err)
 				h.handleCategoryUpdate(entry.ID, change.Value)
+				h.signalChanged(err, change.Value)
 			default:
 				log.Printf("[template-webhook] unhandled field: %s", change.Field)
 			}

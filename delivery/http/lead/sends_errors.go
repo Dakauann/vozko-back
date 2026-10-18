@@ -79,6 +79,7 @@ var sendCodes = []struct {
 	{unofficial_whatsapp_campaign.ErrMenuOptionsTooMany, http.StatusBadRequest, "send_message_invalid"},
 	{unofficial_whatsapp_campaign.ErrMenuOptionLabelTooLong, http.StatusBadRequest, "send_message_invalid"},
 	{unofficial_whatsapp_campaign.ErrMenuOptionIDRequired, http.StatusBadRequest, "send_message_invalid"},
+	{unofficial_whatsapp_campaign.ErrMessageExitTextTooLong, http.StatusBadRequest, "send_message_invalid"},
 }
 
 func sendRefusal(err error) (int, string, bool) {
@@ -97,6 +98,9 @@ func sendRefusal(err error) (int, string, bool) {
 			}
 		}
 		return http.StatusBadRequest, code, true
+	}
+	if code := unofficial_whatsapp_campaign.ErrorCode(err); code != "" {
+		return http.StatusUnprocessableEntity, code, true
 	}
 	for _, known := range sendCodes {
 		if errors.Is(err, known.err) {

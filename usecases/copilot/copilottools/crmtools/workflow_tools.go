@@ -45,7 +45,7 @@ func (t *workflowStatusTool) Definition() tools.Definition {
 }
 
 func ScopeOf(cc copilot.Context) workflow.Scope {
-	return workflow.Scope{WorkspaceID: cc.WorkspaceID, Departments: cc.Departments}
+	return workflow.Scope{WorkspaceID: cc.WorkspaceID, Departments: cc.Departments, Requester: copilottools.RequesterOf(cc)}
 }
 
 func (t *workflowStatusTool) Describe(_ context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
@@ -83,6 +83,9 @@ func (t *workflowStatusTool) Execute(ctx context.Context, cc copilot.Context, ar
 }
 
 func workflowFailure(tool string, err error) copilot.Result {
+	if res, ok := copilottools.ConsentGrantRefusal(err); ok {
+		return res
+	}
 	switch {
 	case errors.Is(err, workflow.ErrWorkflowAccessDenied):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "o usuário não tem acesso a esta automação"}

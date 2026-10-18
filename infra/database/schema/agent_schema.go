@@ -13,8 +13,6 @@ type Agent struct {
 	DepartmentID       *string        `gorm:"type:uuid;index"`
 	Name               string         `gorm:"not null;size:120"`
 	Description        string         `gorm:"type:text"`
-	InitialMessage     string         `gorm:"not null;type:text"`
-	UseInitialMessage  bool           `gorm:"column:use_initial_message;not null;default:true"`
 	MessagingPrompt    string         `gorm:"not null;type:text"`
 	MessagingModel     string         `gorm:"size:120;default:'gpt-4o-mini'"`
 	AvatarURL          string         `gorm:"size:255"`

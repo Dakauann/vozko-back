@@ -1,0 +1,16 @@
+{{define "title"}}{{.Headline}} - {{.Brand.Name}}{{end}}
+{{define "preheader"}}{{.CampaignName}}: {{.Reason}}.{{end}}
+{{define "eyebrow"}}Campanhas{{end}}
+{{define "content"}}
+{{template "heading" dict "status" "Ação necessária" "tone" "warning" "title" .Headline "subtitle" .CampaignName}}
+{{template "gap" 24}}
+<p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
+    O disparo inteligente segurou esta campanha para proteger o seu número e o seu modelo. Ninguém mais recebe mensagens dela até alguém retomar.
+</p>
+{{template "gap" 24}}
+{{template "details" dict "title" "O que aconteceu" "k1" "Campanha" "v1" .CampaignName "k2" "Motivo" "v2" .Reason "k3" "Quando" "v3" (printf "%s, horário de Brasília" .HeldAt) "k4" "Onda" "v4" .Wave}}
+{{template "gap" 16}}
+{{template "panel" dict "tone" "warning" "title" "Como retomar" "body" .Advice}}
+{{template "gap" 28}}
+{{template "cta" dict "url" .DashboardURL "label" "Ver campanha"}}
+{{end}}

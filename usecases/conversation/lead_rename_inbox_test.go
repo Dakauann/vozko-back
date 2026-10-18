@@ -31,6 +31,10 @@ func (f *fakeChannelContacts) AuthorsByHandle(context.Context, string, []string)
 	return nil, nil
 }
 
+func (f *fakeChannelContacts) AuthorsByAccount(context.Context, map[string][]string) (map[string]map[string]ContactDisplay, error) {
+	return nil, nil
+}
+
 func TestHydrateContactSenders_OperatorsLeadNameSurvivesThePushname(t *testing.T) {
 	svc := &HistoryProviderService{}
 	svc.SetContactIdentityLookup(shared.EntryTypeUnofficialWhatsApp, &fakeChannelContacts{
@@ -153,6 +157,10 @@ func (h *headerContacts) ContactForConversation(context.Context, string) (Contac
 }
 
 func (h *headerContacts) AuthorsByHandle(context.Context, string, []string) (map[string]ContactDisplay, error) {
+	return nil, nil
+}
+
+func (h *headerContacts) AuthorsByAccount(context.Context, map[string][]string) (map[string]map[string]ContactDisplay, error) {
 	return nil, nil
 }
 

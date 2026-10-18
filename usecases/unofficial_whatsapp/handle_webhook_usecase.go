@@ -13,6 +13,7 @@ import (
 
 	"vozko/domain/campaign"
 	"vozko/domain/conversation"
+	"vozko/domain/leadexit"
 	"vozko/domain/media"
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
@@ -81,6 +82,8 @@ type HandleWebhookUseCase struct {
 	handover      *LineHandover
 	historyOff    bool
 	historyWindow time.Duration
+	exitStep      leadexit.Step
+	groupWatcher  GroupWatcher
 }
 
 type HandleWebhookDeps struct {
@@ -208,12 +211,17 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 	if err != nil {
 		return err
 	}
+	uc.watchGroupMessage(ctx, instance, sub, ev)
 
 	if !ev.RunsAutomation() || !sub.conversation.InScope(instance.HandleGroups) {
 		uc.broadcastEntryUpdate(sub.conversation.ID)
 		return nil
 	}
 
+	exit, err := uc.runLeadExit(ctx, instance, sub, ev)
+	if err != nil {
+		return err
+	}
 	auto := uc.automationFor(sub.conversation.ID)
 
 	uc.ensureAssignment(sub.conversation, instance)
@@ -223,7 +231,9 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 		log.Printf("[unofficial-whatsapp] delegation of %s unreadable, no automation runs: %v", sub.conversation.ID, err)
 	} else {
 		uc.fireWorkflowTriggers(instance, sub.conversation, ev, auto, automation)
-		uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, automation)
+		if !exit.OptedOut {
+			uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, automation)
+		}
 	}
 	uc.scheduleAnalysis(instance, sub.conversation, auto)
 	uc.broadcastEntryUpdate(sub.conversation.ID)
@@ -235,6 +245,7 @@ func (uc *HandleWebhookUseCase) handleOutbound(ctx context.Context, instance *uw
 	if err != nil {
 		return err
 	}
+	uc.watchGroupMessage(ctx, instance, sub, ev)
 	if ev.Kind == uw.EventOutboundFromDevice && !ev.Backfill && sub.conversation.InScope(instance.HandleGroups) {
 		uc.scheduleAnalysis(instance, sub.conversation, uc.automationFor(sub.conversation.ID))
 	}
@@ -666,6 +677,7 @@ func (uc *HandleWebhookUseCase) handleGroupChanged(ctx context.Context, instance
 	if err := uc.groups.markStale(ctx, instance.ID, ev.ChatID); err != nil {
 		log.Printf("[unofficial-whatsapp] could not flag group %s as stale: %v", ev.ChatID, err)
 	}
+	uc.watchGroupChange(ctx, instance, ev.ChatID)
 	return nil
 }
 
@@ -742,6 +754,7 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		data[workflow.DataKeySelectedOptionTitle] = ev.Text
 	}
 	workflow.ApplyContactNumber(data, uw.PhoneFromJID(conv.ChatID))
+	workflow.ApplyTriggerMessage(data, uc.storedInboundID(conv.ID, ev.ProviderMessageID))
 
 	uc.workflows.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: instance.WorkspaceID,
@@ -750,6 +763,13 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		TriggerType: workflow.TriggerMessageReceived,
 		Data:        data,
 	})
+}
+
+func (uc *HandleWebhookUseCase) storedInboundID(conversationID, providerMessageID string) string {
+	if uc.messages == nil {
+		return ""
+	}
+	return conversation_usecase.StoredInboundMessageID(uc.messages, shared.EntryTypeUnofficialWhatsApp, conversationID, providerMessageID)
 }
 
 func (uc *HandleWebhookUseCase) maybeReplyWithAgent(

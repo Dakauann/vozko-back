@@ -17,6 +17,7 @@ import (
 	"vozko/domain/metrics"
 	"vozko/domain/notification"
 	"vozko/domain/shared"
+	"vozko/domain/workspace"
 )
 
 const (
@@ -28,6 +29,7 @@ const (
 	maxSplitDepth = 2
 
 	capNotificationTemplate = "comment_analysis_cap_reached.html"
+	audiencePath            = "/dashboard/audience"
 )
 
 type EngineDeps struct {
@@ -43,7 +45,7 @@ type EngineDeps struct {
 	Balance         balance.CachedBalanceChecker
 	State           cache.SharedState
 	Metrics         metrics.AudienceMetricsRecorder
-	Notifier        notification.Notifier
+	Notifications   notification.Publisher
 	Broadcaster     ca.AnalysisBroadcaster
 	Timeline        ca.ConversationAnalysisObserver
 	Live            ca.ConversationAnalysisLive
@@ -610,22 +612,33 @@ func (e *Engine) recordBatch(ctx context.Context, b ca.Batch) {
 }
 
 func (e *Engine) notifyCapReached(workspaceID string, dailyCap int, now time.Time) {
-	if e.Notifier == nil {
+	if e.Notifications == nil {
 		return
 	}
 	day := now.UTC().Format("2006-01-02")
-	if err := e.Notifier.Notify(notification.Notification{
+	_, err := e.Notifications.Publish(context.Background(), notification.Draft{
 		WorkspaceID: workspaceID,
-		Subject:     "Limite diário de análise de comentários atingido - " + brand.Active().Name,
-		Template:    capNotificationTemplate,
-		Placeholders: map[string]interface{}{
-			"DailyCap":     dailyCap,
-			"Date":         day,
-			"DashboardURL": e.DashboardURL,
+		Category:    notification.CategorySystem,
+		Severity:    notification.SeverityWarning,
+		Title:       "Limite diário de análise de comentários atingido",
+		Body:        fmt.Sprintf("Uma publicação passou de %d comentários analisados hoje. Nenhum comentário foi perdido: os restantes ficam na fila e são analisados quando o limite reiniciar, ou antes, se você aumentar o limite.", dailyCap),
+		ActionURL:   audiencePath,
+		ActionLabel: "Ajustar limite",
+		Audience:    notification.Holding(workspace.ResourceAudience, workspace.ActionUpdate),
+		Email:       true,
+		EmailCopy: &notification.EmailCopy{
+			Template: capNotificationTemplate,
+			Subject:  "Limite diário de análise de comentários atingido - " + brand.Active().Name,
+			Placeholders: map[string]interface{}{
+				"DailyCap":     dailyCap,
+				"Date":         day,
+				"DashboardURL": notification.AbsoluteLink(e.DashboardURL, audiencePath),
+			},
 		},
 		DedupKey: "comment_analysis_cap:" + workspaceID + ":" + day,
-		DedupTTL: 24 * time.Hour,
-	}); err != nil {
+		Source:   notification.SourceCommentAnalysis,
+	})
+	if err != nil {
 		log.Printf("[comment-analysis] cap notification for workspace %s failed: %v", workspaceID, err)
 	}
 }

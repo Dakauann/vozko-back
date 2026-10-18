@@ -8,6 +8,7 @@ import (
 	"vozko/domain/ai"
 	leadmemory "vozko/domain/lead_memory"
 	"vozko/domain/rag"
+	"vozko/domain/shared"
 	"vozko/domain/tools"
 	lead_memory_usecase "vozko/usecases/lead_memory"
 	rag_usecase "vozko/usecases/rag"
@@ -19,10 +20,15 @@ type Assembler struct {
 	tools    tools.Service
 	rag      rag.RAGService
 	memories leadmemory.ListUseCase
+	citable  tools_usecase.RecentMessages
 }
 
 func New(toolRegistry tools.Service, ragService rag.RAGService, memories leadmemory.ListUseCase) *Assembler {
 	return &Assembler{tools: toolRegistry, rag: ragService, memories: memories}
+}
+
+func (a *Assembler) CiteMessagesFrom(messages tools_usecase.RecentMessages) {
+	a.citable = messages
 }
 
 type Request struct {
@@ -109,7 +115,7 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 		}
 	}
 
-	messages, volatileTail := a.conversation(ctx, req)
+	messages, volatileTail := a.conversation(ctx, req, a.citations(req, toolNames))
 
 	workspaceID := ""
 	if req.Agent != nil {
@@ -165,7 +171,23 @@ func (a *Assembler) systemPrompt(ctx context.Context, req Request, basePrompt st
 	return sb.String()
 }
 
-func (a *Assembler) conversation(ctx context.Context, req Request) ([]ai.Message, int) {
+func (a *Assembler) citations(req Request, toolNames []string) string {
+	if !tools_usecase.CitesMessages(toolNames) {
+		return ""
+	}
+	at := tools_usecase.CitableConversation{EntryID: req.EntryID, EntryType: shared.EntryType(req.EntryType)}
+	if at.EntryID == "" {
+		at.EntryID, _ = req.ToolSeed["__entry_id"].(string)
+		entryType, _ := req.ToolSeed["__entry_type"].(string)
+		at.EntryType = shared.EntryType(entryType)
+	}
+	if req.Agent != nil {
+		at.AgentID = req.Agent.ID
+	}
+	return tools_usecase.CitableMessagesNote(a.citable, at)
+}
+
+func (a *Assembler) conversation(ctx context.Context, req Request, citations string) ([]ai.Message, int) {
 	messages := append([]ai.Message(nil), req.History...)
 	if strings.TrimSpace(req.UserMessage) != "" {
 		messages = append(messages, ai.Message{Role: ai.RoleUser, Content: req.UserMessage})
@@ -179,7 +201,7 @@ func (a *Assembler) conversation(ctx context.Context, req Request) ([]ai.Message
 		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
 		Query:            req.RAGQuery,
 	})
-	return append(messages, ai.ContextNote(grounding)), contextNoteTail
+	return append(messages, ai.ContextNote(grounding, citations)), contextNoteTail
 }
 
 func containsToolName(names []string, want string) bool {

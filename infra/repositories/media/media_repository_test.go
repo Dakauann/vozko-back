@@ -69,3 +69,14 @@ func TestMediasByIDsAreReadInAStableOrder(t *testing.T) {
 		t.Fatalf("medias = %+v", medias)
 	}
 }
+
+func TestDeletingAMediaBindsItsIDAsAValue(t *testing.T) {
+	repo, mock := newMockRepository(t)
+	mock.ExpectExec(`UPDATE "medias" SET "deleted_at"=\$1 WHERE id = \$2 AND "medias"."deleted_at" IS NULL`).
+		WithArgs(sqlmock.AnyArg(), "39f79300-9545-4f18-abe2-c89109249d67").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := repo.DeleteMedia("39f79300-9545-4f18-abe2-c89109249d67"); err != nil {
+		t.Fatal(err)
+	}
+}

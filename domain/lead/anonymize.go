@@ -25,12 +25,13 @@ const (
 	ErasureCallNumbers               ErasureTarget = "calls"
 	ErasureTemplateSendNumbers       ErasureTarget = "whatsapp_template_sends"
 	ErasureCallListItems             ErasureTarget = "call_list_items"
+	ErasureCustomerPortfolio         ErasureTarget = "customer_portfolio_entries"
 )
 
 func ErasureTargets() []ErasureTarget {
 	return []ErasureTarget{
 		ErasureRecord, ErasurePhones, ErasureAddresses, ErasureRelations, ErasureEvents, ErasureMemories,
-		ErasureCampaignEntries, ErasureUnofficialCampaignEntries, ErasureCallNumbers, ErasureTemplateSendNumbers, ErasureCallListItems,
+		ErasureCampaignEntries, ErasureUnofficialCampaignEntries, ErasureCallNumbers, ErasureTemplateSendNumbers, ErasureCallListItems, ErasureCustomerPortfolio,
 	}
 }
 

@@ -35,6 +35,8 @@ type LeadSendParams struct {
 	SendDelayMaxMS  int                                 `json:"sendDelayMaxMs,omitempty"`
 	DailyCap        int                                 `json:"dailyCap,omitempty"`
 	Bindings        []campaign.VariableBinding          `json:"bindings,omitempty"`
+
+	ExitRiskAcknowledged bool `json:"exitRiskAcknowledged,omitempty" example:"false"`
 }
 
 func (p *LeadSendParams) toDomain() *leadaction.SendParams {
@@ -44,6 +46,7 @@ func (p *LeadSendParams) toDomain() *leadaction.SendParams {
 	send := &leadaction.SendParams{
 		Name: p.Name, DepartmentID: p.DepartmentID, Split: p.Split, BusinessPhoneID: p.BusinessPhoneID, TemplateID: p.TemplateID,
 		InstanceID: p.InstanceID, SendDelayMinMS: p.SendDelayMinMS, SendDelayMaxMS: p.SendDelayMaxMS, DailyCap: p.DailyCap, Bindings: p.Bindings,
+		ExitRiskAcknowledged: p.ExitRiskAcknowledged,
 	}
 	if p.Message != nil {
 		message := p.Message.ToDomain()

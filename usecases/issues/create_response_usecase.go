@@ -114,6 +114,7 @@ func (uc *createResponseUseCase) notifyIssueOwner(issue *issues.Issue, resp *iss
 	placeholders := map[string]interface{}{
 		"OwnerName":     ownerName,
 		"IssueTitle":    issue.Title,
+		"WorkspaceName": ws.Name,
 		"StatusLabel":   statusLabel,
 		"StatusColor":   statusColor,
 		"AuthorName":    authorName,

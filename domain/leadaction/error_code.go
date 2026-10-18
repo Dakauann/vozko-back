@@ -40,6 +40,8 @@ var errorCodes = []struct {
 	{ErrSendMessageRequired, "lead_action_send_message_required"},
 	{ErrSendPacingInvalid, "lead_action_send_pacing_invalid"},
 	{ErrCallListRequired, "lead_action_call_list_required"},
+	{ErrNoteRequired, "lead_action_note_required"},
+	{ErrNoteTooLong, "lead_action_note_too_long"},
 }
 
 func ErrorCode(err error) string {

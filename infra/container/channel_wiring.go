@@ -16,9 +16,10 @@ import (
 )
 
 type contactIdentityFuncs struct {
-	byIDs           func(ctx context.Context, ids []string) (map[string]conversation_usecase.ContactDisplay, error)
-	forConversation func(ctx context.Context, conversationID string) (conversation_usecase.ContactDisplay, string, error)
-	authorsByHandle func(ctx context.Context, entryID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error)
+	byIDs            func(ctx context.Context, ids []string) (map[string]conversation_usecase.ContactDisplay, error)
+	forConversation  func(ctx context.Context, conversationID string) (conversation_usecase.ContactDisplay, string, error)
+	authorsByHandle  func(ctx context.Context, entryID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error)
+	authorsInAccount func(ctx context.Context, accountID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error)
 }
 
 func (f contactIdentityFuncs) ContactsByIDs(ctx context.Context, ids []string) (map[string]conversation_usecase.ContactDisplay, error) {
@@ -40,6 +41,24 @@ func (f contactIdentityFuncs) AuthorsByHandle(ctx context.Context, entryID strin
 		return nil, nil
 	}
 	return f.authorsByHandle(ctx, entryID, handles)
+}
+
+func (f contactIdentityFuncs) AuthorsByAccount(ctx context.Context, handlesByAccount map[string][]string) (map[string]map[string]conversation_usecase.ContactDisplay, error) {
+	if f.authorsInAccount == nil {
+		return nil, nil
+	}
+	out := make(map[string]map[string]conversation_usecase.ContactDisplay, len(handlesByAccount))
+	for accountID, handles := range handlesByAccount {
+		if accountID == "" || len(handles) == 0 {
+			continue
+		}
+		authors, err := f.authorsInAccount(ctx, accountID, handles)
+		if err != nil {
+			return nil, err
+		}
+		out[accountID] = authors
+	}
+	return out, nil
 }
 
 var _ conversation_usecase.ContactIdentityLookup = contactIdentityFuncs{}

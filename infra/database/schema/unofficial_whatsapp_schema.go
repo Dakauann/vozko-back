@@ -84,7 +84,6 @@ type UnofficialWhatsAppInstance struct {
 	WarmupStartedAt *time.Time `gorm:"type:timestamptz"`
 	SendDelayMinMS  int        `gorm:"not null;default:3000"`
 	SendDelayMaxMS  int        `gorm:"not null;default:12000"`
-	AutoRejectCalls bool       `gorm:"not null;default:false"`
 
 	AgentID              *string `gorm:"type:uuid;index"`
 	WorkflowID           *string `gorm:"type:uuid;index"`

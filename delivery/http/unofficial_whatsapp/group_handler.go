@@ -7,18 +7,18 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
 type GroupHandler struct {
-	groups *uwuc.GroupUseCases
+	groups      *uwuc.GroupUseCases
+	departments DepartmentScopeResolver
 }
 
-func NewGroupHandler(groups *uwuc.GroupUseCases) *GroupHandler {
-	return &GroupHandler{groups: groups}
+func NewGroupHandler(groups *uwuc.GroupUseCases, departments DepartmentScopeResolver) *GroupHandler {
+	return &GroupHandler{groups: groups, departments: departments}
 }
 
 type groupParticipantDTO struct {
@@ -90,12 +90,12 @@ func toGroupDTO(g *uw.Group) groupDTO {
 }
 
 func (h *GroupHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
-	workspaceID, ok := httpx.RequireWorkspace(w, r)
+	workspaceID, scope, ok := requireRequestScope(w, r, h.departments)
 	if !ok {
 		return
 	}
 
-	groups, err := h.groups.List(r.Context(), workspaceID, mux.Vars(r)["id"])
+	groups, err := h.groups.List(r.Context(), workspaceID, mux.Vars(r)["id"], scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -115,7 +115,7 @@ func (h *GroupHandler) GetGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	group, err := h.groups.Get(r.Context(), tgt.workspaceID, tgt.instanceID, tgt.groupJID,
-		r.URL.Query().Get("refresh") == "true")
+		r.URL.Query().Get("refresh") == "true", tgt.scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -129,7 +129,7 @@ func (h *GroupHandler) GetInviteLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	link, err := h.groups.InviteLink(r.Context(), tgt.workspaceID, tgt.instanceID, tgt.groupJID)
+	link, err := h.groups.InviteLink(r.Context(), tgt.workspaceID, tgt.instanceID, tgt.groupJID, tgt.scope)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -151,7 +151,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	workspaceID, instanceID, groupJID := tgt.workspaceID, tgt.instanceID, tgt.groupJID
+	workspaceID, instanceID, groupJID, scope := tgt.workspaceID, tgt.instanceID, tgt.groupJID, tgt.scope
 
 	var req updateGroupRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -166,7 +166,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if req.Subject != nil {
 		group, err = h.groups.UpdateName(ctx, uwuc.UpdateNameInput{
 			WorkspaceID: workspaceID, InstanceID: instanceID,
-			GroupJID: groupJID, Name: *req.Subject,
+			GroupJID: groupJID, Name: *req.Subject, Scope: scope,
 		})
 		if err != nil {
 			writeDomainError(w, err)
@@ -176,7 +176,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if req.Description != nil {
 		group, err = h.groups.UpdateDescription(ctx, uwuc.UpdateDescriptionInput{
 			WorkspaceID: workspaceID, InstanceID: instanceID,
-			GroupJID: groupJID, Description: *req.Description,
+			GroupJID: groupJID, Description: *req.Description, Scope: scope,
 		})
 		if err != nil {
 			writeDomainError(w, err)
@@ -184,7 +184,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.ImageURL != nil {
-		group, err = h.groups.UpdateImage(ctx, workspaceID, instanceID, groupJID, *req.ImageURL)
+		group, err = h.groups.UpdateImage(ctx, workspaceID, instanceID, groupJID, *req.ImageURL, scope)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -192,7 +192,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AdminsOnlyMessages != nil || req.AdminsOnlyEdit != nil {
 		group, err = h.groups.UpdateSettings(ctx, uwuc.UpdateSettingsInput{
-			WorkspaceID: workspaceID, InstanceID: instanceID, GroupJID: groupJID,
+			WorkspaceID: workspaceID, InstanceID: instanceID, GroupJID: groupJID, Scope: scope,
 			AdminsOnlyMessages: req.AdminsOnlyMessages,
 			AdminsOnlyEdit:     req.AdminsOnlyEdit,
 		})
@@ -203,7 +203,7 @@ func (h *GroupHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if group == nil {
-		group, err = h.groups.Get(ctx, workspaceID, instanceID, groupJID, false)
+		group, err = h.groups.Get(ctx, workspaceID, instanceID, groupJID, false, scope)
 		if err != nil {
 			writeDomainError(w, err)
 			return
@@ -252,6 +252,7 @@ func (h *GroupHandler) participants(w http.ResponseWriter, r *http.Request, dest
 		WorkspaceID:  tgt.workspaceID,
 		InstanceID:   tgt.instanceID,
 		GroupJID:     tgt.groupJID,
+		Scope:        tgt.scope,
 		Action:       action,
 		Participants: req.Participants,
 	})
@@ -268,7 +269,7 @@ func (h *GroupHandler) LeaveGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.groups.Leave(r.Context(), tgt.workspaceID, tgt.instanceID, tgt.groupJID); err != nil {
+	if err := h.groups.Leave(r.Context(), tgt.workspaceID, tgt.instanceID, tgt.groupJID, tgt.scope); err != nil {
 		writeDomainError(w, err)
 		return
 	}
@@ -279,10 +280,11 @@ type target struct {
 	workspaceID string
 	instanceID  string
 	groupJID    string
+	scope       uw.DepartmentScope
 }
 
 func (h *GroupHandler) resolveTarget(w http.ResponseWriter, r *http.Request) (target, bool) {
-	workspaceID, ok := httpx.RequireWorkspace(w, r)
+	workspaceID, scope, ok := requireRequestScope(w, r, h.departments)
 	if !ok {
 		return target{}, false
 	}
@@ -294,11 +296,12 @@ func (h *GroupHandler) resolveTarget(w http.ResponseWriter, r *http.Request) (ta
 			writeDomainError(w, err)
 			return target{}, false
 		}
-		return target{workspaceID: workspaceID, instanceID: instanceID, groupJID: groupJID}, true
+		return target{workspaceID: workspaceID, instanceID: instanceID, groupJID: groupJID, scope: scope}, true
 	}
 	return target{
 		workspaceID: workspaceID,
 		instanceID:  vars["id"],
 		groupJID:    vars["groupJid"],
+		scope:       scope,
 	}, true
 }

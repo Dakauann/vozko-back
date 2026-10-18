@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -32,9 +33,10 @@ const (
 		" email = NULLIF(v.email, ''), birth_date = NULLIF(v.birth_date, '')::date, owner_id = NULLIF(v.owner_id, '')::uuid," +
 		" owner_kind = NULLIF(v.owner_kind, ''), custom_fields = NULLIF(v.custom_fields, '')::jsonb," +
 		" whatsapp_opt_in_at = NULLIF(v.opt_in_at, '')::timestamptz, whatsapp_opt_in_source = NULLIF(v.opt_in_source, '')," +
-		" whatsapp_opt_in_purpose = NULLIF(v.opt_in_purpose, ''), updated_at = ?, version = leads.version + 1" +
-		" FROM unnest(?::uuid[], ?::bigint[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[])" +
-		" AS v(id, version, name, name_source, nickname, email, birth_date, owner_id, owner_kind, custom_fields, opt_in_at, opt_in_source, opt_in_purpose)" +
+		" whatsapp_opt_in_purpose = NULLIF(v.opt_in_purpose, '')," +
+		" whatsapp_consent_record = COALESCE(NULLIF(v.consent_record, '')::jsonb, leads.whatsapp_consent_record), updated_at = ?, version = leads.version + 1" +
+		" FROM unnest(?::uuid[], ?::bigint[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[], ?::text[])" +
+		" AS v(id, version, name, name_source, nickname, email, birth_date, owner_id, owner_kind, custom_fields, opt_in_at, opt_in_source, opt_in_purpose, consent_record)" +
 		" WHERE leads.id = v.id AND leads.version = v.version AND leads.workspace_id = ? AND leads.deleted_at IS NULL" +
 		" RETURNING leads.id::text AS id, leads.version AS version"
 
@@ -294,6 +296,13 @@ func nullText(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
 }
 
+func enrichedConsentRecord(existing, enriched *lead.Lead) (datatypes.JSON, error) {
+	if enriched.ConsentRecord == nil || (existing != nil && existing.ConsentRecord == enriched.ConsentRecord) {
+		return nil, nil
+	}
+	return consentRecordColumn(enriched.ConsentRecord)
+}
+
 func (s *Imports) updateEnriched(tx *gorm.DB, ws string, items []*importItem, now time.Time) error {
 	if len(items) == 0 {
 		return nil
@@ -302,7 +311,7 @@ func (s *Imports) updateEnriched(tx *gorm.DB, ws string, items []*importItem, no
 	ids := make(pq.StringArray, n)
 	versions := make(pq.Int64Array, n)
 	names := make(pq.StringArray, n)
-	texts := make([][]sql.NullString, 10)
+	texts := make([][]sql.NullString, 11)
 	for i := range texts {
 		texts[i] = make([]sql.NullString, n)
 	}
@@ -314,13 +323,17 @@ func (s *Imports) updateEnriched(tx *gorm.DB, ws string, items []*importItem, no
 		}
 		ownerID, ownerKind := ownerColumns(l.Owner)
 		optInAt, optInSource, optInPurpose := consentColumns(l.WhatsAppOptIn)
+		consentRecord, err := enrichedConsentRecord(it.existing, l)
+		if err != nil {
+			return err
+		}
 		at := ""
 		if optInAt != nil {
 			at = optInAt.UTC().Format(time.RFC3339Nano)
 		}
 		ids[i], versions[i], names[i] = l.ID, it.existing.Version, l.Name
 		for col, value := range []string{string(l.NameSource), l.Nickname, l.Email, string(birthDateColumn(l.BirthDate)), string(ownerID),
-			string(ownerKind), string(customFields), at, string(optInSource), string(optInPurpose)} {
+			string(ownerKind), string(customFields), at, string(optInSource), string(optInPurpose), string(consentRecord)} {
 			texts[col][i] = nullText(value)
 		}
 	}

@@ -44,6 +44,8 @@ type InboxEntry struct {
 	LastMessageType         string                     `json:"last_message_type,omitempty"`
 	LastMessageSender       string                     `json:"last_message_sender,omitempty"`
 	LastMessageSenderAvatar string                     `json:"last_message_sender_avatar,omitempty"`
+	LastMessageAuthor       string                     `json:"last_message_author,omitempty"`
+	LastMessageFromUs       bool                       `json:"last_message_from_us,omitempty"`
 	WindowOpen              bool                       `json:"window_open"`
 	WindowExpiresAt         *time.Time                 `json:"window_expires_at,omitempty"`
 	WindowClosedReason      string                     `json:"window_closed_reason,omitempty"`

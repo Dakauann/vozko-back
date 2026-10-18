@@ -202,6 +202,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		tools_usecase.NewRescheduleMeetingToolUseCase(rescheduleEventUC),
 		tools_usecase.NewSearchKnowledgeBaseToolUseCase(ragService),
 	}
+	toolHandlers = append(toolHandlers, c.consentToolHandlers()...)
 	c.services.toolRegistry = tools_usecase.NewService(toolHandlers...)
 	if c.mcpRegistry != nil {
 		c.services.toolRegistry = tools_usecase.NewCompositeToolService(c.services.toolRegistry, c.mcpRegistry, c.mcpCollection)
@@ -217,6 +218,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.initConversationSenders()
 
 	turnAssembler := agentturn.New(c.services.toolRegistry, ragService, leadMemories.list)
+	c.citeConsentMessages(turnAssembler)
 	c.mustChannelAIReply().SetAssembler(turnAssembler)
 
 	simulationAI, err := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
@@ -265,6 +267,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 	c.wireOfficialCampaignCreate(createWCCampaignUC)
 	updateWCCampaignUC := wc_usecase.NewUpdateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess)
+	c.grantTemplatesOnUpdate(updateWCCampaignUC)
 	c.automateCampaignChanges("official update", updateWCCampaignUC)
 	assignWCCampaignDepartmentUC := wc_usecase.NewAssignDepartmentUseCase(c.repositories.wcCampaign, resolveCreationDepartmentUC)
 	deleteWCCampaignUC := wc_usecase.NewDeleteCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
@@ -315,7 +318,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub),
 		c.adOriginRecorder(),
 	)
-	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), sendEligibility, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
+	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.observedCampaignEntries(), c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), sendEligibility, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	if err != nil {
@@ -386,6 +389,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	if dashboardURL == "" {
 		dashboardURL = brand.Active().SiteURL
 	}
+	c.wireSmartCampaigns(messageConsumerWCCampaignUC, dispatchWCCampaignUC, dashboardURL)
 
 	var lowBalanceLister balance_domain.LowBalanceLister
 	if l, ok := c.repositories.balance.(balance_domain.LowBalanceLister); ok {
@@ -397,7 +401,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			lowBalanceThresholdMicros = parsed
 		}
 	}
-	monitorLowBalanceUC := balance_usecase.NewMonitorLowBalanceUseCase(lowBalanceLister, notifierUC, c.redisProvider.SharedState(), dashboardURL, lowBalanceThresholdMicros)
+	monitorLowBalanceUC := balance_usecase.NewMonitorLowBalanceUseCase(lowBalanceLister, c.notifications().Publisher, c.redisProvider.SharedState(), dashboardURL, lowBalanceThresholdMicros)
 
 	entitlementResolverUC := workspace_addon_usecase.NewEntitlementResolver(
 		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
@@ -412,7 +416,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	dialog360PartnerForAddons := businessphone_infra.NewDialog360PartnerClient(c.cfg.Dialog360PartnerAPIBase, c.cfg.Dialog360PartnerID, c.cfg.Dialog360PartnerAPIKey, c.cfg.Dialog360SolutionID, &http.Client{Timeout: 30 * time.Second}).WithRateLimit(c.redisProvider.SharedState())
 	phoneProvisioningGateUC := businessphone_usecase.NewPhoneProvisioningGate(getWorkspaceEntitlementsUC, c.repositories.ownerPhoneReader)
 	addonPhoneDeactivatorUC := businessphone_usecase.NewDeactivateExcessPhonesUseCase(getWorkspaceEntitlementsUC, c.repositories.ownerPhoneReader, c.repositories.businessPhone, dialog360PartnerForAddons).
-		WithNotifier(notifierUC, dashboardURL)
+		WithNotices(c.phoneNotices(dashboardURL))
 	callSlotManager := workspace_domain.NewCallSlotManager(c.redisProvider.SharedState(), c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.replicaID).WithEntitlements(entitlementResolverUC)
 	c.services.callSlotManager = callSlotManager
 
@@ -492,7 +496,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	vendorChannelReconcilerUC := businessphone_usecase.NewReconcileVendorChannelsUseCase(dialog360PartnerForAddons, c.repositories.ownerPhoneReader, opsAlerter)
 	channelStatusReconcilerUC := businessphone_usecase.NewReconcileChannelStatusUseCase(dialog360PartnerForAddons, c.repositories.ownerPhoneReader, c.repositories.businessPhone, c.repositories.waba)
 
-	handlePaymentWebhookUC := payment_usecase.NewHandlePaymentWebhookUseCase(c.repositories.payment, c.repositories.order, c.services.emailService, c.repositories.user, createTicketUC, c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifier(notifierUC, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
+	handlePaymentWebhookUC := payment_usecase.NewHandlePaymentWebhookUseCase(c.repositories.payment, c.repositories.order, c.services.emailService, c.repositories.user, createTicketUC, c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifications(c.notifications().Publisher, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
 
 	var asaasConsumer, mercadoPagoConsumer payment_domain.ConsumePaymentWebhookUseCase
 	if c.cfg.PaymentProvider == payment_domain.ProviderMercadoPago {
@@ -510,7 +514,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.redisProvider.SharedState(),
 		)
 	}
-	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.businessPhone, c.repositories.leadMessageWindow, c.mediaStore(), c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
+	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.observedCampaignEntries(), c.repositories.businessPhone, c.repositories.leadMessageWindow, c.mediaStore(), c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
 		media_infra.NewDOCXParser(),
@@ -534,8 +538,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		setter.SetReceptiveContainers(wc_usecase.NewEnsureReceptiveContainerUseCase(c.repositories.wcCampaign))
 	}
 	handleTemplateWebhookUC := whatsapp_template_usecase.NewHandleTemplateWebhook(c.repositories.whatsappTemplate, c.repositories.whatsappQuality)
+	c.signalTemplateHealth(handleTemplateWebhookUC)
 	setHeaderMediaUC := whatsapp_template_usecase.NewSetTemplateHeaderMediaUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.services.fileReader)
-	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.repositories.businessPhone, c.repositories.waba, c.repositories.whatsappQuality, c.repositories.whatsappOptOuts).WithNotifier(notifierUC, dashboardURL)
+	handlePhoneWebhookUC := businessphone_usecase.NewHandlePhoneWebhook(c.signallingPhones(), c.repositories.waba, c.repositories.whatsappQuality, c.repositories.whatsappOptOuts).WithNotices(c.phoneNotices(dashboardURL))
 
 	affiliateStatsUC := affiliate_usecase.NewGetAffiliateStatsUseCase(c.repositories.affiliate)
 
@@ -724,6 +729,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Access: c.repositories.workspaceTemplateAccess,
 			Grants: c.repositories.workspaceTemplateAccess,
 			Phones: c.repositories.businessPhone,
+			Names:  c.repositories.whatsappTemplateNames,
 			List:   whatsapp_template_usecase.NewListTemplatesUseCase(c.repositories.whatsappTemplate),
 			Get:    whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
 			Create: whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader),
@@ -926,7 +932,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		ensureCurrentWorkspaceSubscription: currentSubscriptionUC,
 		ensureActiveWorkspaceSubscription:  activeSubscriptionUC,
 		expireSubscriptions:                workspace_plan_usecase.NewExpireSubscriptionsUseCase(c.repositories.workspaceSubscription, addonPhoneDeactivatorUC),
-		remindExpiringSubscriptions:        workspace_plan_usecase.NewRemindExpiringSubscriptionsUseCase(c.repositories.workspaceSubscription, c.repositories.workspacePlan, notifierUC, dashboardURL),
+		remindExpiringSubscriptions:        workspace_plan_usecase.NewRemindExpiringSubscriptionsUseCase(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.notifications().Publisher, dashboardURL),
 		setPlanVisibility:                  workspace_plan_usecase.NewSetPlanVisibilityUseCase(c.repositories.workspacePlan),
 		listVisiblePlans:                   workspace_plan_usecase.NewListVisiblePlansUseCase(c.repositories.workspacePlan, workspaceReferralReader),
 		setPlanExclusiveAffiliate:          workspace_plan_usecase.NewSetPlanExclusiveAffiliateUseCase(c.repositories.workspacePlan, c.repositories.affiliate),
@@ -1105,6 +1111,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Access:       c.useCases.wcCampaignAccess,
 		Subscription: activeSubscriptionUC,
 		Dispatch:     dispatchWCCampaignUC,
+		Schedules:    c.repositories.wcSchedules,
 	})
 	c.useCases.wcImportPreview = wc_usecase.NewImportPreviewUseCase(wc_usecase.ImportPreviewDeps{
 		Files:     c.useCases.readMedia,
@@ -1139,6 +1146,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		MessageRepo:           c.repositories.conversation,
 		HistoryManager:        messageHistoryManager,
 		LeadRepo:              c.repositories.lead,
+		EntryLeads:            c.repositories.lead,
 		WhatsAppEntryRepo:     c.repositories.wcEntry,
 		BusinessPhoneRepo:     c.repositories.businessPhone,
 		MessageWindowRepo:     c.repositories.leadMessageWindow,
@@ -1156,6 +1164,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		StageBroadcaster:      c.services.conversationHub,
 		Deals:                 opportunitySvc,
 		LeadProfiles:          leadProfiles,
+		Consent:               c.leadConsent(),
 		DepartmentRepo:        c.repositories.workspaceDepartment,
 		ConversationHandOff:   c.services.assignmentService,
 		WorkspaceRepo:         c.repositories.workspace,
@@ -1168,8 +1177,12 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		ConversationStatus:    c.services.conversationStatusUpdater,
 		Adapters:              c.liveAdapterRegistry(),
 		VoiceAudio:            c.callRouting.VoiceAudio,
+		HTTPEgress:            workflowHTTPEgress(),
+		ConversationEvents:    ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
 	}
-	workflow_usecase.RegisterDefaultExecutors(wfRegistry, executorDeps)
+	if err := workflow_usecase.RegisterProductionExecutors(wfRegistry, executorDeps); err != nil {
+		log.Fatalf("[workflow] executors: %v", err)
+	}
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
 	wfEngine.SetWakeScheduler(workflow_usecase.NewQueueWakeScheduler(c.services.workflowWakePub))
 	wfEngine.SetRunLocker(c.redisProvider.RunLocker())
@@ -1198,6 +1211,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		webhook_usecase.NewIdempotencyGuard(c.redisProvider.SharedState(), 6*time.Hour),
 		c.redisProvider.SharedState(),
 	)
+	c.wireConversationRuns(wfEngine)
 	c.useCases.consumeWorkflowWake = workflow_usecase.NewConsumeRunWakeUseCase(
 		c.services.workflowWakeSub,
 		c.services.workflowWakePub,
@@ -1218,6 +1232,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		GoogleCalendar: c.services.googleCalendar,
 		BillingPub:     c.services.billingQueuePub,
 		CallQueues:     c.callRouting.Queues,
+		HTTPEgress:     executorDeps.HTTPEgress,
 	})
 	var aiModelValidator workflow_usecase.ModelLookup
 	if orSvc, ok := c.services.ai.(*openrouter_service.Service); ok {
@@ -1436,6 +1451,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Printf("Failed to start the scheduled message consumer: %v; the sweep will deliver messages up to a minute late", err)
 	}
 
+	c.wireLeadExit()
 	if err := c.useCases.consumeWhatsAppMsgWebhook.Start(); err != nil {
 		log.Fatal("Failed to start WhatsApp message webhook consumer:", err)
 	}
@@ -1463,14 +1479,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		}
 	}
 
-	c.initCommentAnalysis(notifierUC, dashboardURL)
-	c.useCases.scopedWorkflows = workflow_usecase.NewScopedWorkflowsUseCase(
-		c.useCases.getWorkflow,
-		c.useCases.updateWorkflow,
-		c.useCases.deleteWorkflow,
-		c.useCases.activateWorkflow,
-		c.useCases.pauseWorkflow,
-	)
+	c.initCommentAnalysis(dashboardURL)
+	c.useCases.scopedWorkflows = c.consentGuardedWorkflows()
+	c.guardAgentConsentGrants()
 	c.useCases.personDeals = opportunity_usecase.NewPersonDeals(c.useCases.opportunity, c.services.conversationAuth, c.services.conversationAuth)
 	c.useCases.dealAutomation = dealautomation_usecase.New(c.repositories.dealAutomation, c.useCases.checkWsAccess, c.useCases.opportunity)
 	c.services.personAssign = ia_usecase.NewPersonAssignUseCase(ia_usecase.PersonAssignDeps{

@@ -108,7 +108,7 @@ func newLeadTargetHarness() *leadTargetHarness {
 func leadDraft(targets ...uwc.TargetInput) *uwc.Campaign {
 	return &uwc.Campaign{
 		WorkspaceID: "ws-1", InstanceID: "inst-1", Name: "Matrículas", Source: campaign.SourceLeadSelection,
-		Message: uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"Olá {{1}}"}}, Targets: targets,
+		Message: uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"Olá {{1}}, responda /sair para sair"}}, Targets: targets,
 	}
 }
 

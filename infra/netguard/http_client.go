@@ -1,6 +1,7 @@
 package netguard
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -14,6 +15,14 @@ const maxRedirects = 5
 var ErrBlockedAddress = errors.New("destination is a private, loopback or reserved address")
 
 func NewHTTPClient(timeout time.Duration) *http.Client {
+	return newGuardedClient(timeout, nil)
+}
+
+func NewLegacyTLSHTTPClient(timeout time.Duration) *http.Client {
+	return newGuardedClient(timeout, &tls.Config{MaxVersion: tls.VersionTLS12})
+}
+
+func newGuardedClient(timeout time.Duration, tlsConfig *tls.Config) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second, Control: refuseBlocked}
 	return &http.Client{
 		Timeout: timeout,
@@ -24,6 +33,7 @@ func NewHTTPClient(timeout time.Duration) *http.Client {
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: time.Second,
+			TLSClientConfig:       tlsConfig,
 		},
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {

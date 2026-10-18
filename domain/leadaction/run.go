@@ -123,6 +123,12 @@ func NewRun(r RunRequest, now time.Time) (*Run, error) {
 	if err := r.Params.Validate(r.Action); err != nil {
 		return nil, err
 	}
+	if err := r.Params.ValidateCommit(r.Action); err != nil {
+		return nil, err
+	}
+	if err := ConfirmSelected(r.Action, r.Params.Normalized(), r.Selected); err != nil {
+		return nil, err
+	}
 	at := now.UTC()
 	return &Run{
 		ID: r.ID, WorkspaceID: strings.TrimSpace(r.WorkspaceID), ActorID: strings.TrimSpace(r.ActorID), IsAdmin: r.IsAdmin,

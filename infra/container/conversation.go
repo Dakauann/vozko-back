@@ -164,6 +164,7 @@ func (c *Container) wireConversationHub() {
 	c.services.assignmentService.SetTelemetry(telemetryPub)
 	c.services.assignmentService.SetEventLogger(eventLoggerEarly)
 	c.services.assignmentService.SetOutreach(ia_repo.NewOutreachRepository(c.db))
+	c.services.assignmentService.SetPortfolio(c.customerPortfolioEntries())
 	c.services.assignmentService.SetRoster(ia_usecase.NewRosterService(
 		c.repositories.workspace,
 		c.repositories.workspaceDepartment,

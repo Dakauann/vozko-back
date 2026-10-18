@@ -60,6 +60,9 @@ func TestApplyImportCreatesALeadFromTheRow(t *testing.T) {
 	if l.WhatsAppOptIn == nil || l.WhatsAppOptIn.Source != ConsentImport || l.WhatsAppOptIn.Purpose != "Novidades" {
 		t.Fatalf("consent = %+v", l.WhatsAppOptIn)
 	}
+	if r := l.ConsentRecord; r == nil || r.Evidence != (ConsentEvidence{Type: EvidenceImportLine, Ref: "job-1:3"}) || r.Actor != (ConsentActor{Type: ConsentActorUser, ID: "user-9"}) {
+		t.Fatalf("the imported grant must cite its job and line and who ran it: %+v", l.ConsentRecord)
+	}
 	if len(l.Phones) != 1 || len(l.Addresses) != 1 || !l.Addresses[0].Primary || l.CustomFields["interesse"] != "Matrícula" {
 		t.Fatalf("collections = %+v %+v %+v", l.Phones, l.Addresses, l.CustomFields)
 	}
@@ -391,7 +394,7 @@ func TestMatchByContactFindsTheSamePersonWithoutWhatsApp(t *testing.T) {
 	}
 }
 
-var fillEmptyRules = ImportRules{Policy: PolicyFillEmpty}
+var fillEmptyRules = ImportRules{Policy: PolicyFillEmpty, Job: "job-1", RequestedBy: "user-9"}
 
 func TestApplyImportReportsRequiredFieldsANewLeadMisses(t *testing.T) {
 	defs := []*customfield.Definition{
@@ -410,7 +413,7 @@ func TestApplyImportReportsRequiredFieldsANewLeadMisses(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ApplyImport(nil, importedRecord(), ImportRules{Policy: PolicyFillEmpty, Definitions: defs, Viewer: tc.viewer})
+			got, err := ApplyImport(nil, importedRecord(), ImportRules{Policy: PolicyFillEmpty, Job: "job-1", RequestedBy: "user-9", Definitions: defs, Viewer: tc.viewer})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -430,7 +433,7 @@ func TestApplyImportReportsRequiredFieldsANewLeadMisses(t *testing.T) {
 		})
 	}
 	existing := storedLead()
-	enriched, err := ApplyImport(existing, importedRecord(), ImportRules{Policy: PolicyFillEmpty, Definitions: defs})
+	enriched, err := ApplyImport(existing, importedRecord(), ImportRules{Policy: PolicyFillEmpty, Job: "job-1", RequestedBy: "user-9", Definitions: defs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,11 +449,35 @@ func TestApplyImportKeepsAVeryLongCustomFieldKeyInItsIssue(t *testing.T) {
 	defs := []*customfield.Definition{{Key: key, Type: customfield.TypeText, Required: true}}
 	record := importedRecord()
 	record.CustomFields = nil
-	got, err := ApplyImport(nil, record, ImportRules{Policy: PolicyFillEmpty, Definitions: defs})
+	got, err := ApplyImport(nil, record, ImportRules{Policy: PolicyFillEmpty, Job: "job-1", RequestedBy: "user-9", Definitions: defs})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Issues) != 1 || got.Issues[0].Field != "custom_field:"+key {
 		t.Fatalf("issues = %+v", got.Issues)
+	}
+}
+
+func TestAnImportedConsentWithoutItsJobCannotBeProved(t *testing.T) {
+	if _, err := ApplyImport(nil, importedRecord(), ImportRules{Policy: PolicyFillEmpty}); !errors.Is(err, ErrConsentEvidenceRequired) {
+		t.Fatalf("an import grant without its job = %v, want ErrConsentEvidenceRequired", err)
+	}
+}
+
+func TestAnImportWithoutWhoRanItIsTheSystemsGrant(t *testing.T) {
+	got, err := ApplyImport(nil, importedRecord(), ImportRules{Policy: PolicyFillEmpty, Job: "job-1"})
+	if err != nil || got.Lead.ConsentRecord == nil || got.Lead.ConsentRecord.Actor != (ConsentActor{Type: ConsentActorSystem}) {
+		t.Fatalf("decision = %+v, %v", got.Lead, err)
+	}
+}
+
+func TestAnEnrichingImportGrantsOnlyALeadWithNoWillRecorded(t *testing.T) {
+	existing := storedLead()
+	got, err := ApplyImport(existing, importedRecord(), fillEmptyRules)
+	if err != nil || !slices.Contains(got.Changed, FieldWhatsAppOptIn) || got.Lead.ConsentRecord == nil || got.Lead.ConsentRecord.Evidence.Ref != "job-1:3" {
+		t.Fatalf("decision = %+v, %v", got, err)
+	}
+	if existing.WhatsAppOptIn != nil || existing.ConsentRecord != nil {
+		t.Fatal("deciding must not write through to the stored lead")
 	}
 }

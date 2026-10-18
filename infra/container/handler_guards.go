@@ -1,14 +1,21 @@
 package container
 
 import (
+	"log"
+
 	"vozko/delivery/http/handlers"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
+	wc_domain "vozko/domain/whatsapp_campaign"
 	wc_usecase "vozko/usecases/whatsapp_campaign"
 )
 
 func withCampaignAccess(c *Container, h *handlers.WhatsAppCampaignHandler) *handlers.WhatsAppCampaignHandler {
 	h.SetCampaignAccess(c.useCases.wcCampaignAccess)
-	h.SetStartCampaign(c.useCases.startWCCampaign)
+	start, ok := c.useCases.startWCCampaign.(wc_domain.ConfirmedStartUseCase)
+	if !ok {
+		log.Fatalf("[launch-check] the official campaign start cannot carry the confirmed launch check")
+	}
+	h.SetStartCampaign(start)
 	return h
 }
 

@@ -56,6 +56,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		servers:   c.unofficialWhatsApp.Servers,
 		messaging: c.unofficialWhatsApp.Messaging,
 		provider:  c.unofficialWhatsApp.Provider,
+		groups:    c.unofficialWhatsApp.Groups,
 		resolver: uwuc.NewConversationResolver(
 			c.unofficialWhatsApp.Contacts,
 			c.unofficialWhatsApp.Conversations,
@@ -81,6 +82,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		Eligibility: eligibility,
 		Assignments: c.services.assignmentService,
 		Broadcaster: &campaignEntryBroadcaster{hub: c.services.conversationHub},
+		Groups:      gateway,
 	})
 	bundle.Consumer = consumer
 	bundle.PauseForInst = uwcuc.NewPauseCampaignsForInstanceUseCase(bundle.Campaigns, consumer)
@@ -95,7 +97,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		bundle.Campaigns, bundle.Entries, gateway, consumer,
 		c.services.wcQueuePub, c.redisProvider.SharedState(),
 	)
-	bundle.ScheduleJob = uwcuc.NewScheduleStartJob(bundle.Campaigns, bundle.Dispatch)
+	bundle.ScheduleJob = uwcuc.NewScheduleStartJob(bundle.Campaigns, bundle.Dispatch, unofficialSchedules(bundle.Campaigns))
 	bundle.Create = uwcuc.NewCreateCampaignUseCase(
 		bundle.Campaigns, bundle.Entries, c.repositories.lead, gateway, eligibility, departments)
 	c.wireUnofficialCampaignCreate(bundle)
@@ -134,6 +136,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 			bundle.Dispatch, c.redisProvider.SharedState())).(uwc.QuickSendUseCase),
 		Validate:    uwcuc.NewValidateTargetsUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Departments: c.services.conversationAuthImpl,
+		Permissions: c.useCases.checkWsAccess,
 	})
 }
 
@@ -142,7 +145,16 @@ type unofficialCampaignGateway struct {
 	servers   uw.ServerRepository
 	messaging uw.MessagingAPI
 	provider  uw.ProviderAPI
+	groups    uw.GroupRepository
 	resolver  *uwuc.ConversationResolver
+}
+
+func (g *unofficialCampaignGateway) Seat(ctx context.Context, instanceID, groupJID string) (*uw.Group, error) {
+	return g.groups.FindByJID(ctx, instanceID, groupJID)
+}
+
+func (g *unofficialCampaignGateway) Conversation(ctx context.Context, instance *uw.Instance, groupJID, subject string) (*uwuc.Resolved, error) {
+	return g.resolver.ResolveGroup(ctx, instance, groupJID, subject)
 }
 
 func (g *unofficialCampaignGateway) Instance(ctx context.Context, instanceID string) (*uw.Instance, error) {

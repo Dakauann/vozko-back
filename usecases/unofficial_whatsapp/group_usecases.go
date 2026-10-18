@@ -80,8 +80,8 @@ func (uc *GroupUseCases) ResolveConversation(
 	return conv.InstanceID, conv.ChatID, nil
 }
 
-func (uc *GroupUseCases) List(ctx context.Context, workspaceID, instanceID string) ([]*uw.Group, error) {
-	if _, err := uc.instanceFor(ctx, workspaceID, instanceID); err != nil {
+func (uc *GroupUseCases) List(ctx context.Context, workspaceID, instanceID string, scope uw.DepartmentScope) ([]*uw.Group, error) {
+	if _, err := uc.instanceFor(ctx, workspaceID, instanceID, scope); err != nil {
 		return nil, err
 	}
 	return uc.groups.ListByInstance(ctx, instanceID)
@@ -91,8 +91,9 @@ func (uc *GroupUseCases) Get(
 	ctx context.Context,
 	workspaceID, instanceID, groupJID string,
 	refresh bool,
+	scope uw.DepartmentScope,
 ) (*uw.Group, error) {
-	instance, err := uc.instanceFor(ctx, workspaceID, instanceID)
+	instance, err := uc.instanceFor(ctx, workspaceID, instanceID, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +113,8 @@ func (uc *GroupUseCases) Get(
 	return group, nil
 }
 
-func (uc *GroupUseCases) InviteLink(ctx context.Context, workspaceID, instanceID, groupJID string) (string, error) {
-	instance, group, err := uc.adminContext(ctx, workspaceID, instanceID, groupJID)
+func (uc *GroupUseCases) InviteLink(ctx context.Context, workspaceID, instanceID, groupJID string, scope uw.DepartmentScope) (string, error) {
+	instance, group, err := uc.adminContext(ctx, workspaceID, instanceID, groupJID, scope)
 	if err != nil {
 		return "", err
 	}
@@ -133,6 +134,7 @@ type UpdateNameInput struct {
 	WorkspaceID string
 	InstanceID  string
 	GroupJID    string
+	Scope       uw.DepartmentScope
 	Name        string
 }
 
@@ -140,7 +142,7 @@ func (uc *GroupUseCases) UpdateName(ctx context.Context, in UpdateNameInput) (*u
 	if err := uw.ValidateGroupName(in.Name); err != nil {
 		return nil, err
 	}
-	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID,
+	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID, in.Scope,
 		func(ref uw.InstanceRef, jid string) error {
 			return uc.groupAPI.UpdateGroupName(ctx, ref, jid, in.Name)
 		})
@@ -150,6 +152,7 @@ type UpdateDescriptionInput struct {
 	WorkspaceID string
 	InstanceID  string
 	GroupJID    string
+	Scope       uw.DepartmentScope
 	Description string
 }
 
@@ -157,7 +160,7 @@ func (uc *GroupUseCases) UpdateDescription(ctx context.Context, in UpdateDescrip
 	if err := uw.ValidateGroupTopic(in.Description); err != nil {
 		return nil, err
 	}
-	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID,
+	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID, in.Scope,
 		func(ref uw.InstanceRef, jid string) error {
 			return uc.groupAPI.UpdateGroupDescription(ctx, ref, jid, in.Description)
 		})
@@ -167,12 +170,13 @@ type UpdateSettingsInput struct {
 	WorkspaceID        string
 	InstanceID         string
 	GroupJID           string
+	Scope              uw.DepartmentScope
 	AdminsOnlyMessages *bool
 	AdminsOnlyEdit     *bool
 }
 
 func (uc *GroupUseCases) UpdateSettings(ctx context.Context, in UpdateSettingsInput) (*uw.Group, error) {
-	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID,
+	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID, in.Scope,
 		func(ref uw.InstanceRef, jid string) error {
 			if in.AdminsOnlyMessages != nil {
 				if err := uc.groupAPI.UpdateAnnounce(ctx, ref, jid, *in.AdminsOnlyMessages); err != nil {
@@ -192,6 +196,7 @@ type UpdateParticipantsInput struct {
 	WorkspaceID  string
 	InstanceID   string
 	GroupJID     string
+	Scope        uw.DepartmentScope
 	Action       uw.GroupAction
 	Participants []string
 }
@@ -203,7 +208,7 @@ func (uc *GroupUseCases) UpdateParticipants(ctx context.Context, in UpdatePartic
 	if len(in.Participants) == 0 {
 		return nil, uw.ErrNoParticipants
 	}
-	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID,
+	return uc.mutate(ctx, in.WorkspaceID, in.InstanceID, in.GroupJID, in.Scope,
 		func(ref uw.InstanceRef, jid string) error {
 			return uc.groupAPI.UpdateParticipants(ctx, ref, uw.UpdateParticipantsInput{
 				GroupJID:     jid,
@@ -213,15 +218,15 @@ func (uc *GroupUseCases) UpdateParticipants(ctx context.Context, in UpdatePartic
 		})
 }
 
-func (uc *GroupUseCases) UpdateImage(ctx context.Context, workspaceID, instanceID, groupJID, url string) (*uw.Group, error) {
-	return uc.mutate(ctx, workspaceID, instanceID, groupJID,
+func (uc *GroupUseCases) UpdateImage(ctx context.Context, workspaceID, instanceID, groupJID, url string, scope uw.DepartmentScope) (*uw.Group, error) {
+	return uc.mutate(ctx, workspaceID, instanceID, groupJID, scope,
 		func(ref uw.InstanceRef, jid string) error {
 			return uc.groupAPI.UpdateGroupImage(ctx, ref, jid, url)
 		})
 }
 
-func (uc *GroupUseCases) Leave(ctx context.Context, workspaceID, instanceID, groupJID string) error {
-	instance, group, err := uc.resolve(ctx, workspaceID, instanceID, groupJID)
+func (uc *GroupUseCases) Leave(ctx context.Context, workspaceID, instanceID, groupJID string, scope uw.DepartmentScope) error {
+	instance, group, err := uc.resolve(ctx, workspaceID, instanceID, groupJID, scope)
 	if err != nil {
 		return err
 	}
@@ -241,9 +246,10 @@ func (uc *GroupUseCases) Leave(ctx context.Context, workspaceID, instanceID, gro
 func (uc *GroupUseCases) mutate(
 	ctx context.Context,
 	workspaceID, instanceID, groupJID string,
+	scope uw.DepartmentScope,
 	apply func(ref uw.InstanceRef, jid string) error,
 ) (*uw.Group, error) {
-	instance, group, err := uc.adminContext(ctx, workspaceID, instanceID, groupJID)
+	instance, group, err := uc.adminContext(ctx, workspaceID, instanceID, groupJID, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -260,8 +266,9 @@ func (uc *GroupUseCases) mutate(
 func (uc *GroupUseCases) adminContext(
 	ctx context.Context,
 	workspaceID, instanceID, groupJID string,
+	scope uw.DepartmentScope,
 ) (*uw.Instance, *uw.Group, error) {
-	instance, group, err := uc.resolve(ctx, workspaceID, instanceID, groupJID)
+	instance, group, err := uc.resolve(ctx, workspaceID, instanceID, groupJID, scope)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -274,8 +281,9 @@ func (uc *GroupUseCases) adminContext(
 func (uc *GroupUseCases) resolve(
 	ctx context.Context,
 	workspaceID, instanceID, groupJID string,
+	scope uw.DepartmentScope,
 ) (*uw.Instance, *uw.Group, error) {
-	instance, err := uc.instanceFor(ctx, workspaceID, instanceID)
+	instance, err := uc.instanceFor(ctx, workspaceID, instanceID, scope)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -293,13 +301,13 @@ func (uc *GroupUseCases) resolve(
 	return instance, group, nil
 }
 
-func (uc *GroupUseCases) instanceFor(ctx context.Context, workspaceID, instanceID string) (*uw.Instance, error) {
+func (uc *GroupUseCases) instanceFor(ctx context.Context, workspaceID, instanceID string, scope uw.DepartmentScope) (*uw.Instance, error) {
 	instance, err := uc.instances.FindByID(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
-	if instance.WorkspaceID != workspaceID {
-		return nil, uw.ErrInstanceNotFound
+	if err := EnsureVisible(instance, workspaceID, scope); err != nil {
+		return nil, err
 	}
 	return instance, nil
 }

@@ -274,9 +274,31 @@ func (s *Service) fill(ctx context.Context, l *calllist.List, token string) erro
 }
 
 func (s *Service) admit(ctx context.Context, l *calllist.List, dial lead.DialContext, ids []string) (calllist.BuildBatch, error) {
+	admissions, err := s.admissions(ctx, l, dial, ids)
+	if err != nil {
+		return calllist.BuildBatch{}, err
+	}
+	batch := calllist.BuildBatch{WorkspaceID: l.WorkspaceID, ListID: l.ID, Skipped: calllist.Skips{}}
+	for _, a := range admissions {
+		if a.skip != "" {
+			batch.Skipped.Add(a.skip)
+			continue
+		}
+		batch.Items = append(batch.Items, calllist.Item{LeadID: a.leadID, Phone: a.phone})
+	}
+	return batch, nil
+}
+
+type admission struct {
+	leadID string
+	phone  string
+	skip   calllist.SkipReason
+}
+
+func (s *Service) admissions(ctx context.Context, l *calllist.List, dial lead.DialContext, ids []string) ([]admission, error) {
 	leads, err := s.deps.Leads.LoadManyForDial(ctx, l.WorkspaceID, ids)
 	if err != nil {
-		return calllist.BuildBatch{}, fmt.Errorf("leads of the frozen selection: %w", err)
+		return nil, fmt.Errorf("leads of the frozen selection: %w", err)
 	}
 	byID := make(map[string]*lead.Lead, len(leads))
 	numbers := make([]string, 0, len(leads))
@@ -289,19 +311,49 @@ func (s *Service) admit(ctx context.Context, l *calllist.List, dial lead.DialCon
 	var identities []*lead.Lead
 	if l.Phone.Source == calllist.PhoneContact && len(numbers) > 0 {
 		if identities, err = s.deps.Leads.FindIdentities(ctx, l.WorkspaceID, numbers); err != nil {
-			return calllist.BuildBatch{}, fmt.Errorf("WhatsApp holders of the chosen numbers: %w", err)
+			return nil, fmt.Errorf("WhatsApp holders of the chosen numbers: %w", err)
 		}
 	}
-	batch := calllist.BuildBatch{WorkspaceID: l.WorkspaceID, ListID: l.ID, Skipped: calllist.Skips{}}
+	out := make([]admission, 0, len(ids))
 	for _, id := range ids {
 		phone, skip := calllist.Admission(byID[id], l.Phone, identities, dial)
-		if skip != "" {
-			batch.Skipped.Add(skip)
-			continue
-		}
-		batch.Items = append(batch.Items, calllist.Item{LeadID: id, Phone: phone})
+		out = append(out, admission{leadID: id, phone: phone, skip: skip})
 	}
-	return batch, nil
+	return out, nil
+}
+
+func (s *Service) AddLead(ctx context.Context, add calllist.LeadAddition) (bool, error) {
+	add.WorkspaceID, add.ListID, add.LeadID = strings.TrimSpace(add.WorkspaceID), strings.TrimSpace(add.ListID), strings.TrimSpace(add.LeadID)
+	switch {
+	case add.WorkspaceID == "":
+		return false, calllist.ErrWorkspaceRequired
+	case add.ListID == "":
+		return false, calllist.ErrListNotFound
+	case add.LeadID == "":
+		return false, calllist.AdmissionRefused(calllist.SkipGone)
+	}
+	l, err := s.deps.Store.Get(ctx, add.WorkspaceID, add.ListID)
+	if err != nil {
+		return false, err
+	}
+	if err := l.AcceptsNewLeads(); err != nil {
+		return false, err
+	}
+	admissions, err := s.admissions(ctx, l, l.DialContext(), []string{add.LeadID})
+	if err != nil {
+		return false, err
+	}
+	if skip := admissions[0].skip; skip != "" {
+		return false, calllist.AdmissionRefused(skip)
+	}
+	added, err := s.deps.Store.AddItems(ctx, calllist.Addition{
+		WorkspaceID: l.WorkspaceID, ListID: l.ID, At: s.now(),
+		Items: []calllist.Item{{LeadID: add.LeadID, Phone: admissions[0].phone}},
+	})
+	if err != nil {
+		return false, err
+	}
+	return added > 0, nil
 }
 
 type ListView struct {

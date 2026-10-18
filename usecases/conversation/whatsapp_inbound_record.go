@@ -1,6 +1,7 @@
 package conversation_usecase
 
 import (
+	"encoding/json"
 	"strings"
 
 	"vozko/domain/conversation"
@@ -32,7 +33,7 @@ func (uc *handleWhatsAppMessageUseCase) inboundTextRecord(message *conversation.
 		To:             target.businessNumber,
 		Text:           text,
 		Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
-		Metadata:       message.Location.Metadata(),
+		Metadata:       inboundMetadata(message),
 		AdReferral:     message.Referral.AdReferral(),
 	}
 	if leadRecord != nil {
@@ -40,4 +41,42 @@ func (uc *handleWhatsAppMessageUseCase) inboundTextRecord(message *conversation.
 		record.SenderAvatar = leadRecord.ProfilePictureURL
 	}
 	return record
+}
+
+func inboundMetadata(message *conversation.WhatsAppMessage) json.RawMessage {
+	facts := map[string]any{}
+	if located := message.Location.Metadata(); len(located) > 0 {
+		if err := json.Unmarshal(located, &facts); err != nil {
+			return located
+		}
+	}
+	if b := message.Button; b != nil {
+		facts["button"] = map[string]string{"payload": b.Payload, "text": b.Text}
+	}
+	if c := message.Context; c != nil && strings.TrimSpace(c.ID) != "" {
+		facts["context"] = map[string]string{"id": strings.TrimSpace(c.ID)}
+	}
+	if choice := interactiveChoice(message.Interactive); choice != nil {
+		facts["interactive"] = choice
+	}
+	if len(facts) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(facts)
+	if err != nil {
+		return message.Location.Metadata()
+	}
+	return raw
+}
+
+func interactiveChoice(i *conversation.WhatsAppInteractive) map[string]string {
+	switch {
+	case i == nil:
+		return nil
+	case i.ButtonReply != nil:
+		return map[string]string{"type": i.Type, "id": i.ButtonReply.ID, "title": i.ButtonReply.Title}
+	case i.ListReply != nil:
+		return map[string]string{"type": i.Type, "id": i.ListReply.ID, "title": i.ListReply.Title}
+	}
+	return nil
 }

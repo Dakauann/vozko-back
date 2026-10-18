@@ -18,7 +18,8 @@ type UnofficialWhatsAppCampaign struct {
 	Source         OptionalText `gorm:"column:source;type:varchar(32)"`
 	IdempotencyKey OptionalText `gorm:"column:idempotency_key;type:varchar(200)"`
 
-	Name string `gorm:"size:255;not null"`
+	Name     string `gorm:"size:255;not null"`
+	Audience string `gorm:"size:16;not null;default:'leads'"`
 
 	MessageKind string       `gorm:"size:16;not null;default:'text'"`
 	Message     LeadMetadata `gorm:"type:jsonb;default:'{}'"`
@@ -31,7 +32,6 @@ type UnofficialWhatsAppCampaign struct {
 	EnableAnalysis       bool    `gorm:"not null;default:false"`
 	EnableAutoStaging    bool    `gorm:"not null;default:false"`
 	EnableAutoMemory     bool    `gorm:"not null;default:false"`
-	PreferAudio          bool    `gorm:"not null;default:false"`
 	AiModel              string  `gorm:"size:120"`
 
 	SendDelayMinMS int `gorm:"not null;default:3000"`
@@ -68,7 +68,7 @@ type UnofficialWhatsAppCampaignEntry struct {
 	CampaignID  string `gorm:"type:uuid;not null;index:idx_uwce_campaign_del,priority:1;uniqueIndex:idx_uwce_campaign_lead,priority:1;index:idx_uwce_campaign_status_created,priority:1"`
 	WorkspaceID string `gorm:"type:uuid;not null;index"`
 
-	LeadID string `gorm:"type:uuid;not null;index;uniqueIndex:idx_uwce_campaign_lead,priority:2"`
+	LeadID *string `gorm:"type:uuid;index;uniqueIndex:idx_uwce_campaign_lead,priority:2"`
 	Number string `gorm:"size:32;not null;index"`
 	Name   string `gorm:"size:200"`
 
@@ -83,6 +83,7 @@ type UnofficialWhatsAppCampaignEntry struct {
 
 	ProviderMessageID string  `gorm:"size:128;index:idx_uwce_provider_msg"`
 	MessageID         *string `gorm:"type:uuid;index"`
+	ExitMessageID     *string `gorm:"type:uuid"`
 	ErrorCode         int     `gorm:"default:0;index"`
 	ErrorMessage      string  `gorm:"size:500"`
 

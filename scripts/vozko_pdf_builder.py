@@ -7,8 +7,8 @@ Matches the exact design of vozko_api_autenticacao.pdf:
 - Content pages: numbered section titles, endpoint badges,
   parameter tables (blue header, alternating rows), dark code blocks,
   error tables, info boxes with blue left border
-- Header bar ("Vozko Global API | <topic>") + page numbers
-- Footer line ("Vozko Global - Documentacao Publica da API")
+- Header bar ("<BRAND_NAME> API | <topic>") + page numbers
+- Footer line ("<BRAND_NAME> - Documentacao Publica da API")
 
 Usage:
     from vozko_pdf_builder import VozkoPdfBuilder
@@ -36,6 +36,8 @@ from reportlab.platypus import (
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
 from reportlab.pdfgen import canvas
 import os
+
+BRAND_NAME = os.environ["BRAND_NAME"]
 
 # ── Exact colors from vozko_api_autenticacao.pdf ────────────────
 BLUE         = HexColor('#2563EB')     # (0.1451, 0.3882, 0.9216)
@@ -98,7 +100,7 @@ class _NumberedCanvas(canvas.Canvas):
         # header text on the bar
         self.setFont('Helvetica-Bold', 9)
         self.setFillColor(TEXT_DARK)
-        self.drawString(LEFT, H - 22, f'Vozko Global API  |  {self._topic}')
+        self.drawString(LEFT, H - 22, f'{BRAND_NAME} API  |  {self._topic}')
         self.drawRightString(RIGHT, H - 22, f'Pagina {pg}')
 
         # --- bottom footer ---
@@ -108,7 +110,7 @@ class _NumberedCanvas(canvas.Canvas):
         self.setFont('Helvetica', 7)
         self.setFillColor(TEXT_MUTED)
         self.drawCentredString(W / 2, 30,
-                               'Vozko Global  -  Documentacao Publica da API')
+                               f'{BRAND_NAME}  -  Documentacao Publica da API')
 
 
 class VozkoPdfBuilder:
@@ -116,7 +118,7 @@ class VozkoPdfBuilder:
 
     def __init__(self, topic: str, subtitle: str, output_path: str,
                  version: str = 'Versao 1.0', date_str: str = 'Abril 2026',
-                 base_url: str = 'https://api.vozkoglobal.com'):
+                 base_url: str = os.environ['API_BASE_URL']):
         self._topic = topic
         self._subtitle = subtitle
         self._output = output_path
@@ -216,10 +218,9 @@ class VozkoPdfBuilder:
                 c.setFillColor(BLUE)
                 c.rect(0 - LEFT, 0 - 55, W, H, fill=1, stroke=0)
 
-                # "Vozko Global" — centered, bold 42pt
                 c.setFont('Helvetica-Bold', 42)
                 c.setFillColor(WHITE)
-                c.drawCentredString(W / 2 - LEFT, H - 55 - 120, 'Vozko Global')
+                c.drawCentredString(W / 2 - LEFT, H - 55 - 120, BRAND_NAME)
 
                 # "Documentacao da API" — centered, 16pt
                 c.setFont('Helvetica', 16)
@@ -243,8 +244,7 @@ class VozkoPdfBuilder:
                 c.setFont('Helvetica', 11)
                 c.drawCentredString(mid, H - 55 - 380, f'{version}  |  {date}')
 
-                # "Documentacao Publica - Vozko Global"
-                c.drawCentredString(mid, H - 55 - 400, 'Documentacao Publica  -  Vozko Global')
+                c.drawCentredString(mid, H - 55 - 400, f'Documentacao Publica  -  {BRAND_NAME}')
 
                 # Base URL
                 c.setFont('Helvetica', 10)

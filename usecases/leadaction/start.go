@@ -24,6 +24,9 @@ func (s *Service) Start(ctx context.Context, req Request) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	if err := req.Params.ValidateCommit(req.Action); err != nil {
+		return Outcome{}, err
+	}
 	if err := req.Selection.ValidateConfirmed(); err != nil {
 		return Outcome{}, err
 	}
@@ -94,6 +97,10 @@ func (s *Service) startRun(ctx context.Context, req Request, defs []*customfield
 		}
 		if frozen.Size == 0 {
 			return leadaction.ErrSelectionEmpty
+		}
+		if err := leadaction.ConfirmSelected(req.Action, req.Params, frozen.Size); err != nil {
+			s.dropSnapshot(ctx, req.Actor.WorkspaceID, runID)
+			return err
 		}
 		run, err = leadaction.NewRun(leadaction.RunRequest{
 			ID: runID, WorkspaceID: req.Actor.WorkspaceID, ActorID: req.Actor.UserID, IsAdmin: req.Actor.IsAdmin,

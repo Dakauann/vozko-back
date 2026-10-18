@@ -7,6 +7,7 @@ import (
 	"testing"
 	"vozko/domain/campaign"
 
+	"vozko/domain/buttonaction"
 	"vozko/domain/copilot"
 	"vozko/domain/media"
 	wc "vozko/domain/whatsapp_campaign"
@@ -43,13 +44,17 @@ func (f *fakeImportPreview) Preview(_ context.Context, req wc.ImportRequest) (*w
 }
 
 type fakeCampaignCreate struct {
-	got   *wc.Campaign
-	scope wd.CreationScope
+	got         *wc.Campaign
+	scope       wd.CreationScope
+	withoutExit bool
 }
 
 func (f *fakeCampaignCreate) Execute(ctx context.Context, c *wc.Campaign) (*wc.Campaign, error) {
 	f.got = c
 	f.scope, _ = wd.GetCreationScope(ctx)
+	if f.withoutExit && c.ExitRiskAcknowledgedBy == "" {
+		return nil, buttonaction.ErrExitRiskNotAcknowledged
+	}
 	return &wc.Campaign{ID: knownCampaign, Name: c.Name, Metrics: &wc.CampaignMetrics{TotalNumbers: 2, NotEligiblePossibleSpam: 1}}, nil
 }
 
@@ -85,13 +90,15 @@ type campaignFixture struct {
 	preview *fakeImportPreview
 	create  *fakeCampaignCreate
 	start   *fakeCampaignStart
+	exit    *fakeExitVerdicts
 }
 
 func newCampaignFixture() campaignFixture {
-	f := campaignFixture{preview: &fakeImportPreview{}, create: &fakeCampaignCreate{}, start: &fakeCampaignStart{}}
+	f := campaignFixture{preview: &fakeImportPreview{}, create: &fakeCampaignCreate{}, start: &fakeCampaignStart{}, exit: &fakeExitVerdicts{state: buttonaction.VerdictOK}}
 	f.deps = CampaignDeps{
 		Preview: f.preview, Create: f.create, Start: f.start, Access: fakeCampaignAccess{},
 		Templates: grantedTemplates{}, Phones: &fakeWorkspacePhones{}, Costs: fakeCosts{}, Balance: fakeBalance(2_000_000),
+		Exit: f.exit,
 	}
 	return f
 }

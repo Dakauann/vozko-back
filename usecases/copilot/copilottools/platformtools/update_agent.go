@@ -72,12 +72,11 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 		copilottools.ArgStringList(args, "removeMcpCollectionIds"),
 	)
 
-	if in.InitialMessage != nil && *in.InitialMessage != "" && in.UseInitialMessage == nil {
-		enabled := true
-		in.UseInitialMessage = &enabled
-	}
-
+	in.RequestedBy = copilottools.RequesterOf(cc)
 	out, err := t.update.Execute(ctx, id, in)
+	if res, refused := copilottools.ConsentGrantRefusal(err); refused {
+		return res
+	}
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}

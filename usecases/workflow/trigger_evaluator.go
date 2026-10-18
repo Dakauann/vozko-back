@@ -165,6 +165,7 @@ func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *work
 	}
 
 	run.State.Set("_wait_outcome", "message_received")
+	workflow.ForgetTriggerMessage(&run.State)
 	for k, v := range event.Data {
 		run.State.Set(k, v)
 	}

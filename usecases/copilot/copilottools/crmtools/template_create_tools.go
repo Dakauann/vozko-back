@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 
+	"vozko/domain/buttonaction"
 	"vozko/domain/copilot"
 	"vozko/domain/media"
 	"vozko/domain/shared"
@@ -14,15 +15,22 @@ import (
 	businessphone "vozko/domain/whatsapp/business_phone"
 	tmpl "vozko/domain/whatsapp/template"
 	"vozko/domain/workspace"
+	buttonaction_usecase "vozko/usecases/buttonaction"
 	"vozko/usecases/copilot/copilottools"
 )
 
 const defaultTemplateLanguage = "pt_BR"
 
+const marketingExitHint = "um modelo de MARKETING precisa mostrar ao lead como sair: escreva um comando com barra no texto, por exemplo o rodapé \"Responda /sair para não receber mais\", ou indique em exit_button o texto de um dos quick_replies para ele tirar o lead da lista"
+
+type TemplateCreator interface {
+	CreateTemplate(ctx context.Context, a buttonaction_usecase.Actor, req buttonaction_usecase.CreateTemplateRequest) (*tmpl.CreateTemplateOutput, error)
+}
+
 type TemplateCreateDeps struct {
-	Phones    businessphone.WorkspacePhonesUseCase
-	Templates tmpl.WorkspaceTemplatesUseCase
-	Media     media.GetMediaUseCase
+	Phones  businessphone.WorkspacePhonesUseCase
+	Creator TemplateCreator
+	Media   media.GetMediaUseCase
 }
 
 type listBusinessPhonesTool struct{ deps TemplateCreateDeps }
@@ -55,16 +63,11 @@ func (t *listBusinessPhonesTool) Execute(_ context.Context, cc copilot.Context, 
 }
 
 type createTemplateArgs struct {
-	BusinessPhoneID string   `json:"business_phone_id" req:"true" desc:"business_phone_id exato de list_business_phones" id:"true"`
-	Name            string   `json:"name" req:"true" desc:"nome técnico: minúsculas, números e _ (ex.: pedido_enviado)"`
-	Category        string   `json:"category" req:"true" desc:"MARKETING (promoção) ou UTILITY (aviso de pedido, cobrança, lembrete)"`
-	Language        string   `json:"language" desc:"idioma, padrão pt_BR"`
-	HeaderText      string   `json:"header_text" desc:"título curto opcional (sem variáveis)"`
-	HeaderMediaID   string   `json:"header_media_id" desc:"media_id de um anexo para o cabeçalho (imagem, vídeo ou documento)" id:"true"`
-	Body            string   `json:"body" req:"true" desc:"texto da mensagem; variáveis como {{1}}, {{2}}"`
-	BodyExamples    []string `json:"body_examples" desc:"um exemplo para cada variável do texto, na ordem"`
-	Footer          string   `json:"footer" desc:"rodapé curto opcional, sem variáveis"`
-	QuickReplies    []string `json:"quick_replies" desc:"textos de botões de resposta rápida (até 3)"`
+	BusinessPhoneID string `json:"business_phone_id" req:"true" desc:"business_phone_id exato de list_business_phones" id:"true"`
+	Name            string `json:"name" req:"true" desc:"nome técnico: minúsculas, números e _ (ex.: pedido_enviado)"`
+	Category        string `json:"category" req:"true" desc:"MARKETING (promoção) ou UTILITY (aviso de pedido, cobrança, lembrete)"`
+	Language        string `json:"language" desc:"idioma, padrão pt_BR"`
+	templateContentArgs
 }
 
 type createTemplateTool struct{ deps TemplateCreateDeps }
@@ -80,8 +83,9 @@ func (t *createTemplateTool) Meta() copilot.Meta {
 func (t *createTemplateTool) Definition() tools.Definition {
 	def := copilottools.Definition("create_template",
 		"Cria um modelo de mensagem do WhatsApp e envia para aprovação da Meta. As regras da Meta são verificadas antes do envio "+
-			"(nome, variáveis, exemplos, tamanhos, rodapé e botões). A aprovação da Meta leva de minutos a horas; o status aparece em "+
-			"list_templates. Só depois da aprovação do usuário.", createTemplateArgs{})
+			"(nome, variáveis, exemplos, tamanhos, rodapé e botões). Um modelo MARKETING só é criado se mostrar ao lead como sair: "+
+			"um comando com barra no texto, como o rodapé \"Responda /sair para não receber mais\", ou um botão de resposta rápida indicado em exit_button. "+
+			"A aprovação da Meta leva de minutos a horas; o status aparece em list_templates. Só depois da aprovação do usuário.", createTemplateArgs{})
 	param := def.Parameters["category"]
 	param.Enum = []string{string(tmpl.TemplateCategoryMarketing), string(tmpl.TemplateCategoryUtility)}
 	def.Parameters["category"] = param
@@ -136,7 +140,7 @@ func (t *createTemplateTool) Describe(_ context.Context, cc copilot.Context, arg
 	}
 }
 
-func (t *createTemplateTool) Execute(_ context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
+func (t *createTemplateTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
 	var a createTemplateArgs
 	if err := copilottools.DecodeArgs(args, &a); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
@@ -151,18 +155,29 @@ func (t *createTemplateTool) Execute(_ context.Context, cc copilot.Context, args
 	}
 	components, headerURL, err := t.components(cc, a)
 	if err != nil {
-		return templateCreateFailure(err)
+		return templateFailure(err)
 	}
-	out, err := t.deps.Templates.Create(cc.WorkspaceID, cc.UserID, tmpl.CreateTemplateInput{
-		BusinessPhoneID: phoneID,
-		Name:            a.name(),
-		Language:        a.language(),
-		Category:        category,
-		Components:      components,
-		HeaderMediaURL:  headerURL,
+	if t.deps.Creator == nil {
+		return copilot.Result{Status: copilot.StatusError, Message: "a criação de modelos está indisponível agora"}
+	}
+	actions, err := a.exitActions()
+	if err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
+	}
+	out, err := t.deps.Creator.CreateTemplate(ctx, copilottools.ButtonActor(cc), buttonaction_usecase.CreateTemplateRequest{
+		Template: tmpl.CreateTemplateInput{
+			BusinessPhoneID: phoneID,
+			Name:            a.name(),
+			Language:        a.language(),
+			Category:        category,
+			Components:      components,
+			HeaderMediaURL:  headerURL,
+		},
+		Actions:          actions,
+		ExitConfirmation: strings.TrimSpace(a.ExitConfirmation),
 	})
 	if err != nil {
-		return templateCreateFailure(err)
+		return templateFailure(err)
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{
 		"template_id": out.ID, "name": out.Name, "status": out.Status, "rejected_reason": out.RejectedReason,
@@ -170,36 +185,7 @@ func (t *createTemplateTool) Execute(_ context.Context, cc copilot.Context, args
 }
 
 func (t *createTemplateTool) components(cc copilot.Context, a createTemplateArgs) ([]tmpl.TemplateComponent, *string, error) {
-	var out []tmpl.TemplateComponent
-	var headerURL *string
-	switch {
-	case strings.TrimSpace(a.HeaderMediaID) != "":
-		m, err := t.deps.Media.GetMedia(cc.WorkspaceID, strings.TrimSpace(a.HeaderMediaID))
-		if err != nil {
-			return nil, nil, err
-		}
-		url := m.URL
-		headerURL = &url
-		out = append(out, tmpl.TemplateComponent{Type: "HEADER", Format: headerFormat(m.Type), Example: &tmpl.TemplateExample{HeaderHandle: []string{url}}})
-	case strings.TrimSpace(a.HeaderText) != "":
-		out = append(out, tmpl.TemplateComponent{Type: "HEADER", Format: "TEXT", Text: strings.TrimSpace(a.HeaderText)})
-	}
-	body := tmpl.TemplateComponent{Type: "BODY", Text: strings.TrimSpace(a.Body)}
-	if len(a.BodyExamples) > 0 {
-		body.Example = &tmpl.TemplateExample{BodyText: [][]string{a.BodyExamples}}
-	}
-	out = append(out, body)
-	if footer := strings.TrimSpace(a.Footer); footer != "" {
-		out = append(out, tmpl.TemplateComponent{Type: "FOOTER", Text: footer})
-	}
-	if len(a.QuickReplies) > 0 {
-		buttons := make([]tmpl.TemplateButton, 0, len(a.QuickReplies))
-		for _, text := range a.QuickReplies {
-			buttons = append(buttons, tmpl.TemplateButton{Type: "QUICK_REPLY", Text: strings.TrimSpace(text)})
-		}
-		out = append(out, tmpl.TemplateComponent{Type: "BUTTONS", Buttons: buttons})
-	}
-	return out, headerURL, nil
+	return a.components(t.deps.Media, cc, nil)
 }
 
 func headerFormat(kind media.MediaType) string {
@@ -212,7 +198,7 @@ func headerFormat(kind media.MediaType) string {
 	return "DOCUMENT"
 }
 
-func templateCreateFailure(err error) copilot.Result {
+func templateFailure(err error) copilot.Result {
 	switch {
 	case errors.Is(err, tmpl.ErrPhoneOutsideWorkspace):
 		return copilot.Result{Status: copilot.StatusDenied, Message: "esse número não é deste workspace; use list_business_phones"}
@@ -220,11 +206,13 @@ func templateCreateFailure(err error) copilot.Result {
 		return copilot.Result{Status: copilot.StatusError, Message: "anexo desconhecido; peça ao usuário para anexar o arquivo na conversa"}
 	case errors.Is(err, tmpl.ErrHeaderMediaOutsideStorage):
 		return copilot.Result{Status: copilot.StatusError, Message: "a mídia do cabeçalho precisa ser um arquivo anexado ou da biblioteca de mídias"}
+	case errors.Is(err, buttonaction.ErrMarketingNeedsExit):
+		return copilot.Result{Status: copilot.StatusError, Message: "modelo recusado (" + buttonaction.ErrorCode(err) + "): " + marketingExitHint + ". Corrija e proponha de novo."}
 	}
 	if code := tmpl.ErrorCode(err); code != "" && code != tmpl.CodeUnknown {
 		return copilot.Result{Status: copilot.StatusError, Message: "o modelo não segue as regras da Meta (" + code + "): " + err.Error() + ". Corrija e proponha de novo."}
 	}
-	log.Printf("[copilot] create_template failed: %v", err)
+	log.Printf("[copilot] template tool failed: %v", err)
 	return copilot.Result{Status: copilot.StatusError, Message: "a Meta recusou o modelo ou não respondeu; confira na tela de modelos"}
 }
 
@@ -246,5 +234,5 @@ func (t *createTemplateTool) Validate(_ context.Context, cc copilot.Context, arg
 	if err := tmpl.ValidateDraft(a.name(), a.category(), components); err != nil {
 		return fmt.Errorf("%w: o modelo não segue as regras da Meta: %v", copilottools.ErrInvalidArgs, err)
 	}
-	return nil
+	return requireShownExit(&tmpl.Template{Category: a.category(), Components: components}, a.templateContentArgs)
 }

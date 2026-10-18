@@ -1,25 +1,25 @@
 {{define "title"}}Convite para área de trabalho - {{.Brand.Name}}{{end}}
 {{define "preheader"}}{{.InviterEmail}} convidou você para a área de trabalho {{.WorkspaceName}}.{{end}}
+{{define "eyebrow"}}Convite{{end}}
 {{define "content"}}
-<tr>
-    <td class="vx-pad" style="padding:12px 40px 0;">
-        {{template "symbol" dict "tone" "brand" "glyph" "bell"}}
-        {{template "heading" dict "title" "Convite para colaborar" "subtitle" "Você foi convidado para uma área de trabalho"}}
-    </td>
-</tr>
-<tr>
-    <td class="vx-pad" style="padding:24px 40px 12px;">
-        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
-            Olá <strong style="color:#344256;">{{.Email}}</strong>, <strong style="color:#344256;">{{.InviterEmail}}</strong> convidou você para participar da área de trabalho <strong style="color:#344256;">{{.WorkspaceName}}</strong> na {{.Brand.Name}}.
-        </p>
-        {{template "details" dict "title" "Detalhes do convite" "k1" "Área de trabalho" "v1" .WorkspaceName "k2" "Função" "v2" .Role "k3" "Expira em" "v3" "7 dias"}}
-        <div style="height:24px; line-height:24px;">&nbsp;</div>
-        {{template "cta" dict "url" .AcceptURL "label" "Aceitar convite"}}
-        <p style="margin:18px 0 24px; font-family:Inter,Arial,sans-serif; font-size:12px; color:#8797ab; text-align:center; line-height:1.6;">
-            Ou abra este link no seu navegador:<br>
-            <a href="{{.AcceptURL}}" style="color:#2463eb; text-decoration:none; word-break:break-all;">{{.AcceptURL}}</a>
-        </p>
-        {{template "panel" dict "tone" "info" "title" "Não tem uma conta?" "body" (printf "Crie a sua conta usando o email %s e o convite ficará disponível automaticamente." .Email)}}
-    </td>
-</tr>
+{{template "heading" dict "title" "Convite para colaborar" "subtitle" (printf "Você foi convidado para %s" .WorkspaceName)}}
+{{template "gap" 24}}
+<p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
+    Olá <strong style="font-weight:600;">{{.Email}}</strong>, {{if .InviterEmail}}<strong style="font-weight:600;">{{.InviterEmail}}</strong> convidou você{{else}}você foi convidado{{end}} para participar da área de trabalho <strong style="font-weight:600;">{{.WorkspaceName}}</strong> na {{.Brand.Name}}.
+</p>
+{{template "gap" 24}}
+{{template "details" dict "title" "Detalhes do convite" "k1" "Área de trabalho" "v1" .WorkspaceName "k2" (and .InviterEmail "Convidado por") "v2" .InviterEmail "k3" "Função" "v3" (or .RoleName .Role) "k4" "Validade" "v4" "7 dias"}}
+{{template "gap" 28}}
+{{template "cta" dict "url" .AcceptURL "label" "Aceitar convite"}}
+<p class="vx-muted" style="margin:16px 0 0; font-size:13px; line-height:20px; color:#58626a;">
+    Se o botão não funcionar, abra este link no navegador:<br>
+    <a href="{{.AcceptURL}}" class="vx-link" style="color:#007a5c; text-decoration:underline; word-break:break-all;">{{.AcceptURL}}</a>
+</p>
+{{template "gap" 24}}
+{{template "panel" dict "tone" "info" "title" "Não tem uma conta?" "body" (printf "Crie a sua conta usando o email %s e o convite ficará disponível automaticamente." .Email)}}
+{{if .LoginURL}}
+<p class="vx-muted" style="margin:16px 0 0; font-size:13px; line-height:20px; color:#58626a;">
+    Já tem conta? <a href="{{.LoginURL}}" class="vx-link" style="color:#007a5c; text-decoration:underline;">Entre</a> com este email para ver o convite.
+</p>
+{{end}}
 {{end}}

@@ -105,6 +105,7 @@ const (
 	NodeTypeActionMoveStage                 NodeType = "action_move_stage"
 	NodeTypeActionManageOpportunity         NodeType = "action_manage_opportunity"
 	NodeTypeActionUpdateLead                NodeType = "action_update_lead"
+	NodeTypeActionConsent                   NodeType = "action_consent"
 
 	NodeTypeWaitDuration              NodeType = "wait_duration"
 	NodeTypeWaitForReply              NodeType = "wait_for_reply"
@@ -117,6 +118,7 @@ const (
 	NodeTypeConditionCheckStage       NodeType = "condition_check_stage"
 	NodeTypeConditionCheckOpportunity NodeType = "condition_check_opportunity"
 	NodeTypeConditionChannel          NodeType = "condition_channel"
+	NodeTypeConditionConsent          NodeType = "condition_consent"
 	NodeTypeEnd                       NodeType = "end"
 
 	NodeTypeDecorationBackground NodeType = "decoration_background"
@@ -150,10 +152,12 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionMoveStage,
 		NodeTypeActionManageOpportunity,
 		NodeTypeActionUpdateLead,
+		NodeTypeActionConsent,
 		NodeTypeConditionCheckLabel,
 		NodeTypeConditionCheckStage,
 		NodeTypeConditionCheckOpportunity,
 		NodeTypeConditionChannel,
+		NodeTypeConditionConsent,
 		NodeTypeEnd,
 		NodeTypeDecorationBackground:
 		return true
@@ -216,7 +220,7 @@ func (n *NodeType) UnmarshalJSON(data []byte) error {
 
 func (n NodeType) IsCondition() bool {
 	switch n {
-	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionCheckStage, NodeTypeConditionCheckOpportunity, NodeTypeConditionChannel:
+	case NodeTypeConditionBranch, NodeTypeConditionAIClassfy, NodeTypeConditionTextMatch, NodeTypeConditionFilter, NodeTypeConditionCheckLabel, NodeTypeConditionCheckStage, NodeTypeConditionCheckOpportunity, NodeTypeConditionChannel, NodeTypeConditionConsent:
 		return true
 	}
 	return false
@@ -333,6 +337,7 @@ func (w *Workflow) Normalize() {
 	}
 
 	w.normalizeAIAgentResponseEdges()
+	w.normalizeInteractivePromptConfigs()
 }
 
 func (w *Workflow) normalizeAIAgentResponseEdges() {

@@ -13,6 +13,7 @@ var leadIndexShapes = map[string]string{
 	"idx_leads_workspace_owner":    "ON leads (workspace_id, owner_id) WHERE owner_id IS NOT NULL AND deleted_at IS NULL",
 	"idx_leads_workspace_birthday": "ON leads (workspace_id, (extract(month from birth_date)), (extract(day from birth_date))) WHERE birth_date IS NOT NULL AND deleted_at IS NULL",
 	"idx_leads_workspace_referred": "ON leads (workspace_id, referred_count) WHERE referred_count > 0",
+	"idx_leads_workspace_company":  "ON leads (workspace_id, company_id) WHERE company_id IS NOT NULL AND deleted_at IS NULL",
 }
 
 func leadIndexes(t *testing.T) []concurrentIndex {

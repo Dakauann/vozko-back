@@ -33,7 +33,7 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 	db, repo := collectionsDB(t)
 	db.Config.DisableForeignKeyConstraintWhenMigrating = true
 	if err := db.AutoMigrate(&schema.LeadMemory{}, &schema.WhatsAppCampaignEntry{}, &schema.UnofficialWhatsAppCampaignEntry{},
-		&schema.Call{}, &schema.WhatsAppTemplateSend{}, &schema.CallListItem{}); err != nil {
+		&schema.Call{}, &schema.WhatsAppTemplateSend{}, &schema.CallListItem{}, &schema.CustomerPortfolioEntry{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	ws := uuid.NewString()
@@ -59,12 +59,12 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 	}
 	must(db.Exec("UPDATE leads SET custom_fields = ?::jsonb, whatsapp_opt_in_at = now(), whatsapp_opt_in_source = 'manual' WHERE id = ?",
 		`{"classificacao": "positivo"}`, w.maria.ID).Error)
-	must(db.Create(&schema.LeadMemory{WorkspaceID: ws, LeadID: w.maria.ID, Category: "family", Content: "tem dois filhos", ActorKind: "human", ActorID: "u"}).Error)
+	must(db.Create(&schema.LeadMemory{WorkspaceID: ws, LeadID: &w.maria.ID, Category: "family", Content: "tem dois filhos", ActorKind: "human", ActorID: "u"}).Error)
 	mariaEntry, anaEntry := uuid.NewString(), uuid.NewString()
 	must(db.Create(&schema.WhatsAppCampaignEntry{ID: mariaEntry, CampaignID: uuid.NewString(), LeadID: w.maria.ID,
 		Variables: pq.StringArray{"Maria"}, Metadata: schema.LeadMetadata{"bairro": "Bela Vista"}}).Error)
 	must(db.Create(&schema.WhatsAppCampaignEntry{ID: anaEntry, CampaignID: uuid.NewString(), LeadID: w.ana.ID}).Error)
-	must(db.Create(&schema.UnofficialWhatsAppCampaignEntry{ID: uuid.NewString(), CampaignID: uuid.NewString(), WorkspaceID: ws, LeadID: w.maria.ID,
+	must(db.Create(&schema.UnofficialWhatsAppCampaignEntry{ID: uuid.NewString(), CampaignID: uuid.NewString(), WorkspaceID: ws, LeadID: &w.maria.ID,
 		Number: "5511987654321", Name: "Maria", Variables: pq.StringArray{"Maria"}, Metadata: schema.LeadMetadata{"cpf": "x"}}).Error)
 	call := func(id string, leadID *string, from, to string) {
 		must(db.Create(&schema.Call{ID: id, CallID: uuid.NewString(), WorkspaceID: ws, Type: "voice", Direction: "inbound", Source: "sip",
@@ -87,6 +87,8 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 	send(w.anaSend, &anaEntry, "551133334444")
 	must(db.Exec("INSERT INTO call_list_items (id, workspace_id, list_id, lead_id, phone, position, state, note, created_at, updated_at)"+
 		" VALUES (?, ?, ?, ?, '5511987654321', 1, 'closed', 'mora com a filha', now(), now())", uuid.NewString(), ws, uuid.NewString(), w.maria.ID).Error)
+	must(db.Exec("INSERT INTO customer_portfolio_entries (id, workspace_id, holder_id, lead_id, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())",
+		uuid.NewString(), ws, uuid.NewString(), w.maria.ID).Error)
 	return w
 }
 
@@ -208,6 +210,9 @@ func TestAnonymizeErasesThePersonEverywhereAgainstPostgres(t *testing.T) {
 	}
 	if n := w.count(t, "SELECT count(*) FROM call_list_items WHERE lead_id = ? AND phone = '' AND note IS NULL AND state = 'closed'", w.maria.ID); n != 1 {
 		t.Errorf("the call list item of the person keeps its number or note, found %d erased", n)
+	}
+	if n := w.count(t, "SELECT count(*) FROM customer_portfolio_entries WHERE lead_id = ?", w.maria.ID); n != 0 {
+		t.Errorf("an anonymized person must leave every carteira, found %d entries", n)
 	}
 }
 

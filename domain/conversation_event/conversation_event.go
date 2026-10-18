@@ -52,6 +52,9 @@ const (
 	EventQueueAbandoned    EventType = "queue_abandoned"
 	EventQueueOverflow     EventType = "queue_overflow"
 	EventCallLinked        EventType = "call_linked"
+
+	EventLeadExitAction  EventType = "lead_exit_action"
+	EventLeadSendRefused EventType = "lead_send_refused"
 )
 
 func (t EventType) Valid() bool {
@@ -65,7 +68,8 @@ func (t EventType) Valid() bool {
 		EventTransferOffered, EventTransferAccepted, EventTransferDeclined,
 		EventTransferCompleted, EventTransferFailed, EventTransferQueued,
 		EventQueueEnqueued, EventQueueConnected, EventQueueAbandoned,
-		EventQueueOverflow, EventCallLinked:
+		EventQueueOverflow, EventCallLinked,
+		EventLeadExitAction, EventLeadSendRefused:
 		return true
 	}
 	return false

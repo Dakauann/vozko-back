@@ -66,3 +66,41 @@ func TestUnofficialWhatsAppContactIdentity_NoLeadAddsNoBlankKey(t *testing.T) {
 		t.Error("the group flag must survive; it is what suppresses lead-only affordances")
 	}
 }
+
+type handleContacts struct {
+	uw.ContactRepository
+
+	byInstance map[string][]*uw.Contact
+	asked      map[string][]string
+}
+
+func (c *handleContacts) FindByHandles(_ context.Context, instanceID string, handles []string) ([]*uw.Contact, error) {
+	if c.asked == nil {
+		c.asked = map[string][]string{}
+	}
+	c.asked[instanceID] = append(c.asked[instanceID], handles...)
+	return c.byInstance[instanceID], nil
+}
+
+func TestUnofficialWhatsAppContactIdentity_GroupAuthorsResolvedPerInstance(t *testing.T) {
+	contacts := &handleContacts{byInstance: map[string][]*uw.Contact{
+		"instance-1": {{ID: "c-1", PhoneNumber: "5511900000001", ContactName: "Rita"}},
+		"instance-2": {{ID: "c-2", PhoneNumber: "5511900000002", ContactName: "Bruno"}},
+	}}
+	lookup := unofficialWhatsAppContactIdentity(&unofficialWhatsAppBundle{Contacts: contacts})
+
+	got, err := lookup.AuthorsByAccount(context.Background(), map[string][]string{
+		"instance-1": {"+5511900000001"},
+		"instance-2": {"+5511900000002"},
+		"":           {"+5511900000003"},
+	})
+	if err != nil {
+		t.Fatalf("AuthorsByAccount: %v", err)
+	}
+	if got["instance-1"]["+5511900000001"].Name != "Rita" || got["instance-2"]["+5511900000002"].Name != "Bruno" {
+		t.Fatalf("authors not keyed by instance and handle: %+v", got)
+	}
+	if len(contacts.asked) != 2 {
+		t.Errorf("asked %d instances, want one query per known instance: %v", len(contacts.asked), contacts.asked)
+	}
+}

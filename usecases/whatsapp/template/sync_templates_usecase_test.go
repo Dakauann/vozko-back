@@ -101,7 +101,7 @@ func (m *syncTemplatesClientMock) CreateTemplate(context.Context, conversation.C
 	return nil, nil
 }
 
-func (m *syncTemplatesClientMock) UpdateTemplate(context.Context, string, conversation.UpdateTemplateInput) error {
+func (m *syncTemplatesClientMock) EditTemplate(context.Context, string, conversation.EditTemplateInput) error {
 	return nil
 }
 

@@ -94,6 +94,7 @@ func (uc *createIssueUseCase) notifyIssueCreated(issue *issues.Issue) {
 	placeholders := map[string]interface{}{
 		"OwnerName":        ownerName,
 		"IssueTitle":       issue.Title,
+		"WorkspaceName":    ws.Name,
 		"IssueDescription": issue.Description,
 		"DashboardURL":     dashboardURL,
 	}

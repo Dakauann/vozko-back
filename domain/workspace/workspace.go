@@ -78,11 +78,14 @@ var (
 	ResourceWebchatWidgets              = registerResource("webchat_widgets")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
+	ResourceUnofficialWhatsAppGroups    = registerResource("unofficial_whatsapp_groups")
 	ResourceSIPTrunks                   = registerResource("sip_trunks")
 	ResourceCallQueues                  = registerResource("call_queues")
 	ResourceCallHistory                 = registerResource("call_history")
 	ResourceCallLists                   = registerResource("call_lists")
 	ResourceAds                         = registerResource("ads")
+	ResourceLeadCompanies               = registerResource("lead_companies")
+	ResourceCustomerPortfolios          = registerResource("customer_portfolios")
 )
 
 func (r Resource) IsValid() bool {
@@ -135,6 +138,7 @@ var (
 	ActionExport        = registerAction("export")
 	ActionBulkUpdate    = registerAction("bulk_update")
 	ActionManage        = registerAction("manage")
+	ActionConsent       = registerAction("consent")
 )
 
 func (a Action) IsValid() bool {
@@ -266,6 +270,10 @@ var ResourceActions = map[Resource][]ActionDefinition{
 			{Resource: ResourceLeads, Action: ActionRead},
 			{Resource: ResourceLeads, Action: ActionUpdate},
 		}},
+		{ActionName: ActionConsent, Description: "Registrar o consentimento do lead para receber mensagens, com a prova de como foi dado; retirar o consentimento só exige editar leads", Requires: []PermissionEntry{
+			{Resource: ResourceLeads, Action: ActionRead},
+			{Resource: ResourceLeads, Action: ActionUpdate},
+		}},
 		{ActionName: ActionDelete, Description: "Excluir leads", Risks: []RiskKind{RiskDeletesData}},
 	},
 	ResourceCallRecordings: {
@@ -275,6 +283,29 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Ver o histórico das chamadas de que participou: resultado, duração, transferências e custo"},
 		{ActionName: ActionViewOthers, Description: "Ver as chamadas de todos os membros do workspace", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
 			{Resource: ResourceCallHistory, Action: ActionRead},
+		}},
+	},
+	ResourceLeadCompanies: {
+		{ActionName: ActionRead, Description: "Ver as empresas dos leads, a imagem de cada uma e quantos leads fazem parte dela"},
+		{ActionName: ActionCreate, Description: "Cadastrar empresas para agrupar leads", Requires: []PermissionEntry{
+			{Resource: ResourceLeadCompanies, Action: ActionRead},
+		}},
+		{ActionName: ActionUpdate, Description: "Renomear empresas, trocar a imagem e ligar ou desligar a entrada de novos leads", Requires: []PermissionEntry{
+			{Resource: ResourceLeadCompanies, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Excluir empresas; os leads delas continuam cadastrados, sem empresa", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceLeadCompanies, Action: ActionRead},
+		}},
+	},
+	ResourceCustomerPortfolios: {
+		{ActionName: ActionRead, Description: "Ver a própria carteira de clientes"},
+		{ActionName: ActionUse, Description: "Colocar clientes na própria carteira e tirá-los dela; as conversas novas desses clientes chegam direto para você, mesmo off-line", Requires: []PermissionEntry{
+			{Resource: ResourceCustomerPortfolios, Action: ActionRead},
+			{Resource: ResourceConversations, Action: ActionRead},
+		}},
+		{ActionName: ActionManage, Description: "Ver a carteira de qualquer membro, colocar clientes na carteira de outra pessoa, mover e tirar clientes", Requires: []PermissionEntry{
+			{Resource: ResourceCustomerPortfolios, Action: ActionUse},
+			{Resource: ResourceMembers, Action: ActionRead},
 		}},
 	},
 	ResourceCallLists: {
@@ -404,6 +435,24 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionDelete, Description: "Excluir campanhas de WhatsApp não oficial", Risks: []RiskKind{RiskDeletesData}},
 		{ActionName: ActionStart, Description: "Iniciar disparos de campanhas de WhatsApp não oficial", Risks: []RiskKind{RiskContactsCustomers}},
 		{ActionName: ActionStop, Description: "Pausar ou parar campanhas de WhatsApp não oficial em execução"},
+	},
+	ResourceUnofficialWhatsAppGroups: {
+		{ActionName: ActionRead, Description: "Visualizar os grupos de WhatsApp dos números conectados por QR Code, os membros, as métricas, as mensagens e as análises"},
+		{ActionName: ActionCreate, Description: "Entrar em grupos por link de convite e criar grupos com os números conectados por QR Code", Requires: []PermissionEntry{
+			{Resource: ResourceUnofficialWhatsAppGroups, Action: ActionRead},
+		}},
+		{ActionName: ActionUpdate, Description: "Acompanhar grupos, buscar os grupos dos números e alterar categoria, nome, descrição, foto e configurações", Requires: []PermissionEntry{
+			{Resource: ResourceUnofficialWhatsAppGroups, Action: ActionRead},
+		}},
+		{ActionName: ActionConfigure, Description: "Criar, editar e pausar as análises de IA dos grupos; cada análise consome saldo", Risks: []RiskKind{RiskSpendsBalance}, Requires: []PermissionEntry{
+			{Resource: ResourceUnofficialWhatsAppGroups, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Sair de grupos com os números e excluir análises com o histórico", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceUnofficialWhatsAppGroups, Action: ActionRead},
+		}},
+		{ActionName: ActionExport, Description: "Exportar os membros dos grupos, com os telefones, para uma planilha", Risks: []RiskKind{RiskSensitiveData}, Requires: []PermissionEntry{
+			{Resource: ResourceUnofficialWhatsAppGroups, Action: ActionRead},
+		}},
 	},
 	ResourceIssues: {
 		{ActionName: ActionCreate, Description: "Criar issues"},

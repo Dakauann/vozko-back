@@ -27,3 +27,7 @@ func (s DepartmentAccessScope) ReadScope(actorID string, isAdmin bool, selectedD
 	}
 	return read, nil
 }
+
+func (s DepartmentAccessScope) Reaches(departmentID string) bool {
+	return !s.Restrict || departmentID == "" || slices.Contains(s.DepartmentIDs, departmentID)
+}

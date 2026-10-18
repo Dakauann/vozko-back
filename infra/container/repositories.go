@@ -74,6 +74,7 @@ func (c *Container) initRepositories() {
 	monthlySendCaps := balance_repository.NewMonthlySendCapRepository(c.db)
 	messageStatus := whatsapp_repository.NewMessageStatusRepository(c.db)
 	qualityChanges := whatsapp_repository.NewQualityChangeRepository(c.db)
+	wcCampaigns := wc_repository.NewCachedRepository(wc_repository.NewRepository(c.db), c.redisProvider.SharedState())
 	c.repositories = &repositories{
 		product:                 product_repository.NewRepository(c.db, c.services.inventory),
 		property:                property_repository.NewRepository(c.db),
@@ -95,18 +96,21 @@ func (c *Container) initRepositories() {
 		insurance:               insurance_repository.NewRepository(c.db),
 		whatsappTemplate:        whatsapp_repository.NewCachedTemplateRepository(whatsapp_repository.NewTemplateRepository(c.db), c.redisProvider.SharedState()),
 		whatsappTemplateSend:    whatsapp_repository.NewTemplateSendRepository(c.db),
+		whatsappTemplateNames:   whatsapp_repository.NewGrantedTemplateNames(c.db),
 		passwordResetToken:      auth_repository.NewPasswordResetTokenRepository(c.db),
 		emailVerification:       auth_repository.NewEmailVerificationRedisRepository(c.redisProvider.SharedState()),
 		systemConfig:            config_repository.NewSystemConfigRepository(c.db),
 		customer:                customer_repository.NewCustomerRepository(c.db),
 		shop:                    shop_repository.NewRepository(c.db),
-		wcCampaign:              wc_repository.NewCachedRepository(wc_repository.NewRepository(c.db), c.redisProvider.SharedState()),
+		wcCampaign:              wcCampaigns,
+		wcSchedules:             wcCampaigns,
 		wcEntry:                 wc_entry_repository.NewRepository(c.db),
 		wcDispatchReport:        wc_entry_repository.NewDispatchReportReader(c.db),
 		businessPhone:           whatsapp_repository.NewCachedBusinessPhoneRepository(whatsapp_repository.NewBusinessPhoneRepository(c.db), c.redisProvider.SharedState()),
 		ownerPhoneReader:        whatsapp_repository.NewOwnerPhoneReader(c.db),
 		whatsappQuality:         qualityChanges,
 		whatsappQualityHistory:  qualityChanges,
+		whatsappQualityTimeline: qualityChanges,
 		messageStatusRecorder:   messageStatus,
 		messageStatusLedger:     messageStatus,
 		messageStatusSending:    messageStatus,

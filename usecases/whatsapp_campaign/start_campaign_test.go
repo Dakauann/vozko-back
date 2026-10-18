@@ -104,3 +104,44 @@ func TestOnlyTheReviewedStartTellsTheDispatchTheSendWasReviewed(t *testing.T) {
 		t.Fatalf("dispatched %+v", dispatch.inputs)
 	}
 }
+
+func TestAManualStartConsumesAPendingSchedule(t *testing.T) {
+	ledger := &scheduleLedger{claimable: map[string]bool{"ready": true}}
+	uc := NewStartCampaignUseCase(StartCampaignDeps{
+		Access:       startAccess{"ready": {ID: "ready", WorkspaceID: "ws1", Metrics: &wc.CampaignMetrics{TotalNumbers: 3, Pending: 3}}},
+		Subscription: startSubscription{},
+		Dispatch:     &startDispatch{},
+		Schedules:    ledger,
+	})
+
+	if _, err := uc.Start("ws1", nil, "ready"); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(ledger.claimed) != 1 || ledger.claimable["ready"] {
+		t.Fatalf("claimed %v, want the schedule consumed by the manual start", ledger.claimed)
+	}
+}
+
+func TestAConfirmedStartCarriesThePersonsConfirmationToTheDispatch(t *testing.T) {
+	dispatch := &reviewedDispatch{}
+	uc := NewStartCampaignUseCase(StartCampaignDeps{
+		Access:       startAccess{"ready": {ID: "ready", WorkspaceID: "ws1", Metrics: &wc.CampaignMetrics{TotalNumbers: 3, Pending: 3}}},
+		Subscription: startSubscription{},
+		Dispatch:     dispatch,
+	})
+	confirmed, ok := uc.(wc.ConfirmedStartUseCase)
+	if !ok {
+		t.Fatal("the start use case cannot carry a confirmation")
+	}
+
+	if _, err := confirmed.StartConfirmed("ws1", nil, "ready", "fp-1"); err != nil {
+		t.Fatalf("StartConfirmed = %v", err)
+	}
+	if _, err := uc.Start("ws1", nil, "ready"); err != nil {
+		t.Fatalf("Start = %v", err)
+	}
+	if len(dispatch.inputs) != 2 || dispatch.inputs[0].ConfirmedFingerprint != "fp-1" || dispatch.inputs[1].ConfirmedFingerprint != "" {
+		t.Fatalf("dispatched %+v", dispatch.inputs)
+	}
+}

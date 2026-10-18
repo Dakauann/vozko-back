@@ -81,6 +81,10 @@ const (
 
 	lockBuildSQL = "SELECT * FROM call_lists WHERE workspace_id = ? AND id = ? AND status = 'building' AND claim_token = ? FOR UPDATE"
 
+	lockOpenListSQL = getListSQL + " FOR UPDATE"
+
+	countAddedSQL = "UPDATE call_lists SET item_count = item_count + ?, updated_at = ? WHERE workspace_id = ? AND id = ?"
+
 	appendItemsSQL = "INSERT INTO call_list_items (id, workspace_id, list_id, lead_id, phone, position, state, created_at, updated_at)" +
 		" SELECT f.id, ?::uuid, ?::uuid, f.lead_id, f.phone," +
 		" (SELECT COALESCE(MAX(e.position), 0) FROM call_list_items e WHERE e.list_id = ?::uuid) + row_number() OVER (ORDER BY f.ord), 'pending', ?, ?" +
@@ -301,19 +305,9 @@ func (s *Store) AppendItems(ctx context.Context, b calllist.BuildBatch) error {
 		if err != nil {
 			return err
 		}
-		inserted := int64(0)
-		if len(b.Items) > 0 {
-			ids, leads, phones := make(pq.StringArray, 0, len(b.Items)), make(pq.StringArray, 0, len(b.Items)), make(pq.StringArray, 0, len(b.Items))
-			for _, item := range b.Items {
-				ids = append(ids, uuid.NewString())
-				leads = append(leads, item.LeadID)
-				phones = append(phones, item.Phone)
-			}
-			result := tx.Exec(appendItemsSQL, b.WorkspaceID, b.ListID, b.ListID, at, at, ids, leads, phones, b.ListID)
-			if result.Error != nil {
-				return fmt.Errorf("append call list items: %w", result.Error)
-			}
-			inserted = result.RowsAffected
+		inserted, err := insertItems(tx, b.WorkspaceID, b.ListID, b.Items, at)
+		if err != nil {
+			return err
 		}
 		skipped := calllist.Skips{}
 		skipped.Merge(l.Skipped)
@@ -324,6 +318,63 @@ func (s *Store) AppendItems(ctx context.Context, b calllist.BuildBatch) error {
 		}
 		return tx.Exec(advanceBuildSQL, inserted, string(raw), schema.OptionalText(b.Cursor), at, at, b.WorkspaceID, b.ListID).Error
 	})
+}
+
+func insertItems(tx *gorm.DB, workspaceID, listID string, items []calllist.Item, at time.Time) (int64, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	ids, leads, phones := make(pq.StringArray, 0, len(items)), make(pq.StringArray, 0, len(items)), make(pq.StringArray, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, uuid.NewString())
+		leads = append(leads, item.LeadID)
+		phones = append(phones, item.Phone)
+	}
+	result := tx.Exec(appendItemsSQL, workspaceID, listID, listID, at, at, ids, leads, phones, listID)
+	if result.Error != nil {
+		return 0, fmt.Errorf("append call list items: %w", result.Error)
+	}
+	return result.RowsAffected, nil
+}
+
+func (s *Store) AddItems(ctx context.Context, a calllist.Addition) (int64, error) {
+	if !validRef(a.WorkspaceID, a.ListID) {
+		return 0, calllist.ErrListNotFound
+	}
+	if err := admissibleIDs(a.Items); err != nil {
+		return 0, err
+	}
+	at := a.At.UTC()
+	added := int64(0)
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		l, err := oneList(tx, lockOpenListSQL, a.WorkspaceID, a.ListID)
+		if err != nil {
+			return err
+		}
+		if err := l.AcceptsNewLeads(); err != nil {
+			return err
+		}
+		if added, err = insertItems(tx, a.WorkspaceID, a.ListID, a.Items, at); err != nil || added == 0 {
+			return err
+		}
+		return tx.Exec(countAddedSQL, added, at, a.WorkspaceID, a.ListID).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return added, nil
+}
+
+func admissibleIDs(items []calllist.Item) error {
+	if len(items) == 0 {
+		return calllist.AdmissionRefused(calllist.SkipGone)
+	}
+	for _, item := range items {
+		if len(database.UUIDArray([]string{item.LeadID})) != 1 {
+			return calllist.AdmissionRefused(calllist.SkipGone)
+		}
+	}
+	return nil
 }
 
 func (s *Store) FinishBuild(ctx context.Context, workspaceID, id, token string, status calllist.Status, failureCode string, now time.Time) error {

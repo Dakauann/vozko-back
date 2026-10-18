@@ -19,6 +19,8 @@ type MessageSpecDTO struct {
 	Footer  string          `json:"footer,omitempty"`
 	Button  string          `json:"button,omitempty"`
 	Options []MenuOptionDTO `json:"options,omitempty"`
+
+	ExitText string `json:"exitText,omitempty"`
 }
 
 type MenuOptionDTO struct {
@@ -41,6 +43,7 @@ func (d MessageSpecDTO) ToDomain() uwc.MessageSpec {
 		Footer:   d.Footer,
 		Button:   d.Button,
 		Options:  options,
+		ExitText: d.ExitText,
 	}
 }
 
@@ -58,11 +61,13 @@ func MessageSpecToDTO(m uwc.MessageSpec) MessageSpecDTO {
 		Footer:   m.Footer,
 		Button:   m.Button,
 		Options:  options,
+		ExitText: m.ExitText,
 	}
 }
 
 type campaignTargetDTO struct {
 	Number    string                 `json:"number"`
+	GroupJID  string                 `json:"groupJid,omitempty"`
 	Name      string                 `json:"name,omitempty"`
 	Variables []string               `json:"variables,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
@@ -70,6 +75,7 @@ type campaignTargetDTO struct {
 
 type campaignPayload struct {
 	Name       string         `json:"name"`
+	Audience   string         `json:"audience,omitempty"`
 	InstanceID string         `json:"instanceId"`
 	Message    MessageSpecDTO `json:"message"`
 
@@ -81,7 +87,6 @@ type campaignPayload struct {
 	EnableAnalysis       bool   `json:"enableAnalysis"`
 	EnableAutoStaging    bool   `json:"enableAutoStaging"`
 	EnableAutoMemory     bool   `json:"enableAutoMemory"`
-	PreferAudio          bool   `json:"preferAudio"`
 	AiModel              string `json:"aiModel,omitempty"`
 
 	SendDelayMinMS int `json:"sendDelayMinMs,omitempty"`
@@ -114,7 +119,7 @@ func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
 	targets := make([]uwc.TargetInput, 0, len(p.Targets))
 	for _, t := range p.Targets {
 		targets = append(targets, uwc.TargetInput{
-			Number: t.Number, Name: t.Name, Variables: t.Variables, Metadata: t.Metadata,
+			Number: t.Number, GroupJID: t.GroupJID, Name: t.Name, Variables: t.Variables, Metadata: t.Metadata,
 		})
 	}
 
@@ -122,6 +127,7 @@ func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
 		WorkspaceID:          workspaceID,
 		InstanceID:           p.InstanceID,
 		Name:                 p.Name,
+		Audience:             uwc.Audience(p.Audience),
 		Message:              p.Message.ToDomain(),
 		AgentID:              p.AgentID,
 		WorkflowID:           p.WorkflowID,
@@ -131,7 +137,6 @@ func (p campaignPayload) toDomain(workspaceID string) *uwc.Campaign {
 		EnableAnalysis:       p.EnableAnalysis,
 		EnableAutoStaging:    p.EnableAutoStaging,
 		EnableAutoMemory:     p.EnableAutoMemory,
-		PreferAudio:          p.PreferAudio,
 		AiModel:              p.AiModel,
 		SendDelayMinMS:       p.SendDelayMinMS,
 		SendDelayMaxMS:       p.SendDelayMaxMS,
@@ -152,8 +157,9 @@ type campaignDTO struct {
 	DepartmentID *string `json:"departmentId,omitempty"`
 	InstanceID   string  `json:"instanceId"`
 
-	Name    string         `json:"name"`
-	Message MessageSpecDTO `json:"message"`
+	Name     string         `json:"name"`
+	Audience string         `json:"audience"`
+	Message  MessageSpecDTO `json:"message"`
 
 	InstanceLabel       string `json:"instanceLabel,omitempty"`
 	InstanceStatus      string `json:"instanceStatus,omitempty"`
@@ -167,7 +173,6 @@ type campaignDTO struct {
 	EnableAnalysis       bool   `json:"enableAnalysis"`
 	EnableAutoStaging    bool   `json:"enableAutoStaging"`
 	EnableAutoMemory     bool   `json:"enableAutoMemory"`
-	PreferAudio          bool   `json:"preferAudio"`
 	AiModel              string `json:"aiModel,omitempty"`
 
 	SendDelayMinMS int `json:"sendDelayMinMs"`
@@ -194,6 +199,7 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 		WorkspaceID:          c.WorkspaceID,
 		InstanceID:           c.InstanceID,
 		Name:                 c.Name,
+		Audience:             string(c.Audience),
 		Message:              MessageSpecToDTO(c.Message),
 		InstanceLabel:        c.InstanceLabel,
 		InstanceStatus:       c.InstanceStatus,
@@ -206,7 +212,6 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 		EnableAnalysis:       c.EnableAnalysis,
 		EnableAutoStaging:    c.EnableAutoStaging,
 		EnableAutoMemory:     c.EnableAutoMemory,
-		PreferAudio:          c.PreferAudio,
 		AiModel:              c.AiModel,
 		SendDelayMinMS:       c.SendDelayMinMS,
 		SendDelayMaxMS:       c.SendDelayMaxMS,
@@ -235,6 +240,8 @@ type campaignEntryDTO struct {
 	LeadID     string `json:"leadId"`
 	Number     string `json:"number"`
 	Name       string `json:"name,omitempty"`
+	JID        string `json:"jid,omitempty"`
+	IsGroup    bool   `json:"isGroup"`
 
 	ConversationID string `json:"conversationId,omitempty"`
 
@@ -265,6 +272,8 @@ func entryToDTO(e *uwc.EntryWithLead) campaignEntryDTO {
 		LeadID:             e.Entry.LeadID,
 		Number:             e.Entry.Number,
 		Name:               e.Entry.Name,
+		JID:                e.Entry.JID,
+		IsGroup:            e.Entry.TargetsGroup(),
 		ConversationID:     e.Entry.ConversationID,
 		Status:             string(e.Entry.Status),
 		VariantIndex:       e.Entry.VariantIndex,

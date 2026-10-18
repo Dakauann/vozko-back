@@ -65,11 +65,17 @@ func (c *simWhatsAppClient) SendTextMessage(_ context.Context, input conversatio
 }
 
 func (c *simWhatsAppClient) SendButtonMessage(_ context.Context, input conversation.SendButtonMessageInput) (*conversation.SendTextMessageOutput, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
 	labelsJSON, _ := json.Marshal(input.Buttons)
 	return c.fakeOutput(input.BodyText+" [buttons:"+string(labelsJSON)+"]", "button"), nil
 }
 
 func (c *simWhatsAppClient) SendListMessage(_ context.Context, input conversation.SendListMessageInput) (*conversation.SendTextMessageOutput, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
 	sectionsJSON, _ := json.Marshal(input.Sections)
 	return c.fakeOutput(input.BodyText+" [list:"+string(sectionsJSON)+"]", "list"), nil
 }
@@ -152,7 +158,7 @@ func (c *simWhatsAppClient) GetTemplate(_ context.Context, _ string) (*conversat
 func (c *simWhatsAppClient) CreateTemplate(_ context.Context, _ conversation.CreateTemplateInput) (*conversation.CreateTemplateOutput, error) {
 	return &conversation.CreateTemplateOutput{}, nil
 }
-func (c *simWhatsAppClient) UpdateTemplate(_ context.Context, _ string, _ conversation.UpdateTemplateInput) error {
+func (c *simWhatsAppClient) EditTemplate(_ context.Context, _ string, _ conversation.EditTemplateInput) error {
 	return nil
 }
 func (c *simWhatsAppClient) DeleteTemplate(_ context.Context, _ conversation.DeleteTemplateInput) error {

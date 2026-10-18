@@ -50,6 +50,8 @@ func (c *Container) leadCommandDeps() lead_usecase.CommandDeps {
 		Duplicates:  c.repositories.lead,
 		Definitions: c.repositories.customField,
 		Anonymizer:  c.repositories.lead,
+		Memberships: c.repositories.lead,
+		Companies:   c.repositories.lead,
 	}
 }
 

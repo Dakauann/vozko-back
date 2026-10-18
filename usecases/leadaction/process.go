@@ -82,6 +82,7 @@ func (s *Service) execute(ctx context.Context, run *leadaction.Run, token string
 	if err != nil {
 		return err
 	}
+	edit.ChosenAt = run.CreatedAt
 	if run.Phase == leadaction.PhaseEdit {
 		if err := s.applyEdits(ctx, run, token, edit); err != nil {
 			return err

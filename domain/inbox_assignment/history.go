@@ -10,15 +10,17 @@ const (
 	TriggerSystem    = "system"
 	TriggerRescue    = "rescue"
 	TriggerOutreach  = "inbound_outreach"
+	TriggerPortfolio = "inbound_portfolio"
 
 	TriggerOutreachSent = "outreach_sent"
 
-	TriggerAutomationGoverned        = "automation_governed"
-	TriggerAutomationHandoff         = "automation_handoff"
-	TriggerAutomationHandoffRoulette = "automation_handoff_rr"
-	TriggerAutomationReleased        = "automation_released"
-	TriggerAutomationTakenOver       = "automation_taken_over"
-	TriggerAutomationResumed         = "automation_resumed"
+	TriggerAutomationGoverned         = "automation_governed"
+	TriggerAutomationHandoff          = "automation_handoff"
+	TriggerAutomationHandoffRoulette  = "automation_handoff_rr"
+	TriggerAutomationHandoffPortfolio = "automation_handoff_portfolio"
+	TriggerAutomationReleased         = "automation_released"
+	TriggerAutomationTakenOver        = "automation_taken_over"
+	TriggerAutomationResumed          = "automation_resumed"
 )
 
 var RescueCandidateTriggers = []string{TriggerInboundRR, TriggerAutomationHandoffRoulette, TriggerRescue}

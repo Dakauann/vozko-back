@@ -1,15 +1,22 @@
 package workspace_plan_usecase
 
 import (
+	"context"
+	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"vozko/brand"
 	"vozko/domain/notification"
+	"vozko/domain/workspace"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
-const planExpiryReminderLeadTime = 7 * 24 * time.Hour
+const (
+	planExpiryReminderLeadTime = 7 * 24 * time.Hour
+	plansPath                  = "/dashboard/plans"
+)
 
 type upcomingExpirationsReader interface {
 	ListUpcomingExpirations(from, to time.Time, batchSize int) ([]*workspace_plan.WorkspaceSubscription, error)
@@ -18,7 +25,7 @@ type upcomingExpirationsReader interface {
 type remindExpiringSubscriptionsUseCase struct {
 	subscriptions upcomingExpirationsReader
 	plans         workspace_plan.PlanReader
-	notifier      notification.Notifier
+	publisher     notification.Publisher
 	dashboardURL  string
 	batchSize     int
 	now           clockFn
@@ -27,21 +34,21 @@ type remindExpiringSubscriptionsUseCase struct {
 func NewRemindExpiringSubscriptionsUseCase(
 	subscriptions upcomingExpirationsReader,
 	plans workspace_plan.PlanReader,
-	notifier notification.Notifier,
+	publisher notification.Publisher,
 	dashboardURL string,
 ) workspace_plan.RemindExpiringSubscriptionsUseCase {
 	return &remindExpiringSubscriptionsUseCase{
 		subscriptions: subscriptions,
 		plans:         plans,
-		notifier:      notifier,
-		dashboardURL:  dashboardURL,
+		publisher:     publisher,
+		dashboardURL:  strings.TrimRight(dashboardURL, "/"),
 		batchSize:     defaultExpireBatchSize,
 		now:           utcNow,
 	}
 }
 
 func (uc *remindExpiringSubscriptionsUseCase) RemindExpiring() (int, error) {
-	if uc.notifier == nil {
+	if uc.publisher == nil {
 		return 0, nil
 	}
 	now := uc.now()
@@ -51,24 +58,42 @@ func (uc *remindExpiringSubscriptionsUseCase) RemindExpiring() (int, error) {
 	}
 	sent := 0
 	for _, sub := range due {
-		planName := "o seu plano"
-		if p, perr := uc.plans.GetByID(sub.PlanDefinitionID); perr == nil && p != nil && p.Name != "" {
-			planName = p.Name
+		if err := uc.remind(sub); err != nil {
+			log.Printf("[plan-expiry] reminder for workspace %s failed: %v", sub.WorkspaceID, err)
+			continue
 		}
-		if nerr := uc.notifier.Notify(notification.Notification{
-			WorkspaceID: sub.WorkspaceID,
-			Subject:     "Seu plano expira em breve - " + brand.Active().Name,
-			Template:    "plan_expiry_reminder.html",
-			Placeholders: map[string]interface{}{
-				"PlanName":     planName,
-				"ExpiryDate":   sub.CurrentPeriodEnd.Format("02/01/2006"),
-				"DashboardURL": uc.dashboardURL,
-			},
-			DedupKey: "plan_expiry_reminder:" + sub.WorkspaceID + ":" + strconv.FormatInt(sub.CurrentPeriodEnd.Unix(), 10),
-			DedupTTL: planExpiryReminderLeadTime + 24*time.Hour,
-		}); nerr == nil {
-			sent++
-		}
+		sent++
 	}
 	return sent, nil
+}
+
+func (uc *remindExpiringSubscriptionsUseCase) remind(sub *workspace_plan.WorkspaceSubscription) error {
+	planName := "o seu plano"
+	if p, err := uc.plans.GetByID(sub.PlanDefinitionID); err == nil && p != nil && p.Name != "" {
+		planName = p.Name
+	}
+	expiry := sub.CurrentPeriodEnd.Format("02/01/2006")
+	_, err := uc.publisher.Publish(context.Background(), notification.Draft{
+		WorkspaceID: sub.WorkspaceID,
+		Category:    notification.CategoryBilling,
+		Severity:    notification.SeverityWarning,
+		Title:       notification.ClipTitle("Renove " + planName + " até " + expiry),
+		Body:        "O plano " + planName + " expira em " + expiry + ". Renove para não interromper as chamadas, automações e números de WhatsApp incluídos no plano.",
+		ActionURL:   plansPath,
+		ActionLabel: "Renovar plano",
+		Audience:    notification.Holding(workspace.ResourcePlans, workspace.ActionCreate),
+		Email:       true,
+		EmailCopy: &notification.EmailCopy{
+			Template: "plan_expiry_reminder.html",
+			Subject:  "Seu plano expira em breve - " + brand.Active().Name,
+			Placeholders: map[string]interface{}{
+				"PlanName":     planName,
+				"ExpiryDate":   expiry,
+				"DashboardURL": notification.AbsoluteLink(uc.dashboardURL, plansPath),
+			},
+		},
+		DedupKey: "plan_expiry_reminder:" + sub.WorkspaceID + ":" + strconv.FormatInt(sub.CurrentPeriodEnd.Unix(), 10),
+		Source:   notification.SourcePlanExpiry,
+	})
+	return err
 }

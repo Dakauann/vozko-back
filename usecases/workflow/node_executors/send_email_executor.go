@@ -23,7 +23,7 @@ func (e *sendEmailExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeActionSendEmail,
 		Category:    workflow.NodeCategoryMessaging,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Enviar E-mail",
 		Description: "Envia um e-mail usando um servidor SMTP configurado pelo usuário.",
 		Icon:        "EnvelopeSimple",
@@ -107,7 +107,9 @@ func (e *sendEmailExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 		return emailFailureResult(ctx, nil, "falha", fmt.Errorf("parâmetros de e-mail inválidos: %w", err)), nil
 	}
 
-	result, err := e.sender.Send(context.Background(), cfg, message)
+	callCtx, releaseCall := ctx.CallContext()
+	defer releaseCall()
+	result, err := e.sender.Send(callCtx, cfg, message)
 	if err != nil {
 		label := "falha"
 		if isSMTPTimeout(err) {

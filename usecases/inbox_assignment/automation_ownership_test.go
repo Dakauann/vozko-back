@@ -14,6 +14,7 @@ import (
 	ce "vozko/domain/conversation_event"
 	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/shared"
+	"vozko/domain/workspace"
 	dept "vozko/domain/workspace/workspace_department"
 )
 
@@ -107,18 +108,23 @@ type stubAccounts struct {
 func (s *stubAccounts) EntryAccountID(string, string) (string, error) { return s.account, s.err }
 
 type stubReceivers struct {
-	denied     map[string]bool
-	admins     map[string]bool
-	noRoulette map[string]bool
+	denied      map[string]bool
+	admins      map[string]bool
+	noRoulette  map[string]bool
+	noPortfolio map[string]bool
+	scopes      map[string]conversation.DepartmentAccessScope
 }
 
 func (s *stubReceivers) GetDepartmentScope(userID, _ string, _ bool) (conversation.DepartmentAccessScope, bool) {
-	return conversation.DepartmentAccessScope{}, !s.denied[userID]
+	return s.scopes[userID], !s.denied[userID]
 }
 
 func (s *stubReceivers) HasWorkspacePermission(userID, _, resource, action string, _ bool) bool {
 	if resource == ia.RouletteResource && action == ia.RouletteAction {
 		return !s.noRoulette[userID]
+	}
+	if resource == string(workspace.ResourceCustomerPortfolios) {
+		return !s.noPortfolio[userID]
 	}
 	return true
 }

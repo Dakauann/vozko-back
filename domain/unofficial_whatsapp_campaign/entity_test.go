@@ -14,8 +14,62 @@ func validCampaign() *Campaign {
 		WorkspaceID: "ws-1",
 		InstanceID:  "inst-1",
 		Name:        "Cobrança agosto",
-		Message:     MessageSpec{Kind: KindText, Bodies: []string{"bom dia"}},
+		Message:     MessageSpec{Kind: KindText, Bodies: []string{"bom dia! Responda /sair para não receber mais mensagens."}},
 		Targets:     []TargetInput{{Number: "5584999990001"}},
+	}
+}
+
+func TestANewCampaignMustShowTheLeadHowToLeave(t *testing.T) {
+	c := validCampaign()
+	c.Normalize()
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a message showing /sair: %v", err)
+	}
+
+	c = validCampaign()
+	c.Message.Bodies = []string{"bom dia"}
+	c.Normalize()
+	if err := c.Validate(); !errors.Is(err, ErrCampaignNeedsExit) {
+		t.Fatalf("no exit shown: got %v", err)
+	}
+}
+
+func TestAnEditNeedsTheExitOnlyWhenItChangesTheMessage(t *testing.T) {
+	legacy := validCampaign()
+	legacy.Message.Bodies = []string{"bom dia"}
+
+	rename := *legacy
+	rename.Name = "Cobrança setembro"
+	if err := legacy.RequireExitFor(&rename); err != nil {
+		t.Fatalf("an edit that keeps the message: %v", err)
+	}
+
+	rewritten := *legacy
+	rewritten.Message = MessageSpec{Kind: KindText, Bodies: []string{"boa tarde"}}
+	if err := legacy.RequireExitFor(&rewritten); !errors.Is(err, ErrCampaignNeedsExit) {
+		t.Fatalf("a new message without an exit: got %v", err)
+	}
+
+	rewritten.Message.Bodies = []string{"boa tarde, responda /parar para sair"}
+	if err := legacy.RequireExitFor(&rewritten); err != nil {
+		t.Fatalf("a new message with an exit: %v", err)
+	}
+
+	oldAudio := validCampaign()
+	oldAudio.Message = MessageSpec{Kind: KindAudio, MediaID: "m-1"}
+	kept := *oldAudio
+	kept.Name = "Áudio de outubro"
+	if err := oldAudio.RequireExitFor(&kept); err != nil {
+		t.Fatalf("an old audio kept as it was: %v", err)
+	}
+	newAudio := *oldAudio
+	newAudio.Message = MessageSpec{Kind: KindAudio, MediaID: "m-2"}
+	if err := oldAudio.RequireExitFor(&newAudio); !errors.Is(err, ErrCampaignNeedsExit) {
+		t.Fatalf("a new audio without its exit text: got %v", err)
+	}
+	newAudio.Message.ExitText = "Responda /sair para não receber mais"
+	if err := oldAudio.RequireExitFor(&newAudio); err != nil {
+		t.Fatalf("a new audio with its exit text: %v", err)
 	}
 }
 

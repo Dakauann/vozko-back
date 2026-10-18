@@ -67,6 +67,10 @@ func (d LeadDescriptor) recordField(field crmfilter.Field) (FieldMapping, error)
 		return flag(col("opted_out_at"))
 	case crmfilter.FieldWhatsAppOptIn:
 		return flag(col("whatsapp_opt_in_at"))
+	case crmfilter.FieldOptOutSource:
+		return compiled(crmfilter.KindEnum, d.compileOptOutSource)
+	case crmfilter.FieldOptedOutAt:
+		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindDate, Expr: col("opted_out_at")}, nil
 	case crmfilter.FieldRelationKind:
 		return compiled(crmfilter.KindEnum, d.compileRelationKind)
 	case crmfilter.FieldRelativesCount:
@@ -75,6 +79,8 @@ func (d LeadDescriptor) recordField(field crmfilter.Field) (FieldMapping, error)
 		return FieldMapping{Style: StyleColumn, Kind: crmfilter.KindNumber, Expr: col("referred_count")}, nil
 	case crmfilter.FieldReferredBy:
 		return compiled(crmfilter.KindIDSet, d.compileReferredBy)
+	case crmfilter.FieldCompany:
+		return compiled(crmfilter.KindIDSet, d.compileCompany)
 	case crmfilter.FieldGeoPlacement:
 		return compiled(crmfilter.KindEnum, d.compileGeoPlacement)
 	case crmfilter.FieldAreaApproximate:
@@ -350,4 +356,20 @@ func unsupported(p crmfilter.Predicate) error {
 
 func (d LeadDescriptor) BirthdayCondition(windows ...string) (string, []interface{}, error) {
 	return d.compileBirthday(crmfilter.Predicate{Field: crmfilter.FieldBirthday, Operator: crmfilter.OpIn, Values: windows})
+}
+
+func (d LeadDescriptor) compileCompany(p crmfilter.Predicate) (string, []interface{}, error) {
+	column := d.alias() + ".company_id"
+	ids := pq.Array(trimmedValues(p.Values))
+	switch p.Operator {
+	case crmfilter.OpEquals, crmfilter.OpIn:
+		return column + " = ANY(?::uuid[])", []interface{}{ids}, nil
+	case crmfilter.OpNotEquals, crmfilter.OpNotIn:
+		return "(" + column + " IS NULL OR " + column + " <> ALL(?::uuid[]))", []interface{}{ids}, nil
+	case crmfilter.OpIsSet:
+		return column + " IS NOT NULL", nil, nil
+	case crmfilter.OpIsEmpty:
+		return column + " IS NULL", nil, nil
+	}
+	return "", nil, unsupported(p)
 }

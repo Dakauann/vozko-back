@@ -77,10 +77,9 @@ type UpdateInstanceConfigInput struct {
 	HandleGroups         *bool
 	ImportHistory        *bool
 
-	DailySendCap    *int
-	SendDelayMinMS  *int
-	SendDelayMaxMS  *int
-	AutoRejectCalls *bool
+	DailySendCap   *int
+	SendDelayMinMS *int
+	SendDelayMaxMS *int
 
 	Scope uw.DepartmentScope
 }
@@ -108,7 +107,6 @@ func (uc *UpdateInstanceConfigUseCase) Execute(ctx context.Context, in UpdateIns
 	applyBool(&instance.EnableAutoMemory, in.EnableAutoMemory)
 	applyBool(&instance.HandleGroups, in.HandleGroups)
 	applyBool(&instance.ImportHistory, in.ImportHistory)
-	applyBool(&instance.AutoRejectCalls, in.AutoRejectCalls)
 	applyInt(&instance.DailySendCap, in.DailySendCap)
 	applyInt(&instance.SendDelayMinMS, in.SendDelayMinMS)
 	applyInt(&instance.SendDelayMaxMS, in.SendDelayMaxMS)

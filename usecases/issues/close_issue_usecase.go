@@ -90,6 +90,7 @@ func (uc *closeIssueUseCase) notifyIssueClosed(issue *issues.Issue, oldStatus is
 	placeholders := map[string]interface{}{
 		"OwnerName":      ownerName,
 		"IssueTitle":     issue.Title,
+		"WorkspaceName":  ws.Name,
 		"OldStatusLabel": oldLabel,
 		"OldStatusColor": oldColor,
 		"NewStatusLabel": newLabel,

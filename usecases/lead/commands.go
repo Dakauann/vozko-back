@@ -13,6 +13,7 @@ import (
 	"vozko/domain/actor"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
+	"vozko/domain/leadcompany"
 	"vozko/domain/recordevent"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
@@ -54,12 +55,15 @@ type CommandDeps struct {
 	Duplicates  lead.DuplicateFinder
 	Definitions DefinitionSource
 	Anonymizer  lead.Anonymizer
+	Memberships lead.MembershipStore
+	Companies   leadcompany.Reader
 	Now         func() time.Time
 	NewID       func() string
 }
 
 type Commands struct {
 	deps    CommandDeps
+	consent *ConsentCommands
 	writer  recordWriter
 	viewers viewers
 	blocker *WhatsAppBlocker
@@ -81,6 +85,8 @@ func NewCommands(deps CommandDeps) (*Commands, error) {
 		"duplicates":   deps.Duplicates == nil,
 		"definitions":  deps.Definitions == nil,
 		"anonymizer":   deps.Anonymizer == nil,
+		"memberships":  deps.Memberships == nil,
+		"companies":    deps.Companies == nil,
 	}
 	for name, absent := range missing {
 		if absent {
@@ -101,8 +107,13 @@ func NewCommands(deps CommandDeps) (*Commands, error) {
 	if err != nil {
 		return nil, err
 	}
+	consent, err := NewConsentCommands(ConsentDeps{Store: deps.Store, Notifier: deps.Notifier, Now: deps.Now, NewID: deps.NewID})
+	if err != nil {
+		return nil, err
+	}
 	return &Commands{
 		deps:    deps,
+		consent: consent,
 		writer:  recordWriter{store: deps.Store, notifier: deps.Notifier},
 		viewers: viewers{permissions: deps.Permissions, definitions: deps.Definitions},
 		blocker: blocker,
@@ -121,7 +132,7 @@ type BlockResult struct {
 }
 
 func (c *Commands) Create(ctx context.Context, a Actor, d lead.Draft) (CreateResult, error) {
-	v, err := c.authorize(a, workspace.ActionCreate)
+	v, err := c.authorize(a, append([]workspace.Action{workspace.ActionCreate}, consentActions(d.WhatsAppOptIn)...)...)
 	if err != nil {
 		return CreateResult{}, err
 	}
@@ -130,6 +141,7 @@ func (c *Commands) Create(ctx context.Context, a Actor, d lead.Draft) (CreateRes
 			return CreateResult{}, err
 		}
 	}
+	d.ConsentBy = a.UserID
 	created, err := c.draft(a.WorkspaceID, v, d)
 	if err != nil {
 		return CreateResult{}, err
@@ -172,13 +184,14 @@ func (c *Commands) ChangeIdentity(ctx context.Context, a Actor, id string, expec
 }
 
 func (c *Commands) edit(ctx context.Context, a Actor, id string, expected *int64, e lead.Edit, kind recordevent.Kind) (*lead.Lead, error) {
-	v, err := c.authorize(a, workspace.ActionUpdate)
+	v, err := c.authorize(a, append([]workspace.Action{workspace.ActionUpdate}, consentActions(e.WhatsAppOptIn)...)...)
 	if err != nil {
 		return nil, err
 	}
 	if e.Addresses != nil && !v.ReadsAddresses {
 		return nil, lead.ErrAddressesForbidden
 	}
+	e.ConsentBy = a.UserID
 	sent := e.Fields()
 	current, err := c.writer.load(ctx, a.WorkspaceID, id)
 	if err != nil {
@@ -281,25 +294,6 @@ func (c *Commands) SetOwner(ctx context.Context, a Actor, id, owner string) (*le
 
 func (c *Commands) CheckOwner(a Actor, owner string) error {
 	return c.reach.CheckOwner(a, owner)
-}
-
-func (c *Commands) OptOut(ctx context.Context, a Actor, id string, source lead.OptOutSource) (*lead.Lead, error) {
-	v, err := c.authorize(a, workspace.ActionUpdate)
-	if err != nil {
-		return nil, err
-	}
-	source = source.OrDefault()
-	if !source.Valid() {
-		return nil, lead.ErrLeadOptOutSourceInvalid
-	}
-	sent := []string{lead.FieldOptedOut, lead.FieldWhatsAppOptIn}
-	opted, err := c.targeted(ctx, a, v, id, lead.EventOptedOut, sent, func(l *lead.Lead) (bool, error) {
-		return l.OptOut(c.now(), source)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return opted.VisibleTo(v, sent), nil
 }
 
 func (c *Commands) SetArea(ctx context.Context, a Actor, id string, area lead.Area) (*lead.Lead, error) {

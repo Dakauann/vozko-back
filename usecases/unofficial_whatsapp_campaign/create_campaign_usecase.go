@@ -27,6 +27,7 @@ type createCampaignUseCase struct {
 	leadsByID          LeadsByID
 	automation         AutomationCheck
 	keyed              IdempotentCampaigns
+	groupSeats         GroupSeats
 }
 
 type LeadsByID interface {
@@ -126,7 +127,7 @@ func (uc *createCampaignUseCase) Execute(
 	if in.ID == "" {
 		in.ID = uuid.New().String()
 	}
-	entries, err := uc.materializeTargets(ctx, in, instance)
+	entries, err := uc.entriesFor(ctx, in, instance)
 	if err != nil {
 		return nil, err
 	}

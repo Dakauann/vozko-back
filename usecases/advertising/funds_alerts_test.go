@@ -9,23 +9,15 @@ import (
 
 	ads "vozko/domain/advertising"
 	"vozko/domain/notification"
+	"vozko/domain/workspace"
+	"vozko/usecases/notification/notificationtest"
 )
-
-type capturedNotifications struct {
-	sent []notification.Notification
-	err  error
-}
-
-func (c *capturedNotifications) Notify(n notification.Notification) error {
-	c.sent = append(c.sent, n)
-	return c.err
-}
 
 func alertAccount() *ads.AdAccount {
 	return &ads.AdAccount{ID: "acc-1", WorkspaceID: "ws-1", MetaAccountID: "1762972444913096", BusinessID: "biz-1", Name: "Vozko CRM BRL", Currency: "BRL"}
 }
 
-func TestEachFundsProblemSendsOneEmailPerDayWithTheFixAtMeta(t *testing.T) {
+func TestEachFundsProblemNotifiesTheAdsTeamOncePerDayWithTheFixAtMeta(t *testing.T) {
 	room := int64(2510)
 	cases := map[ads.FundsReason]string{
 		ads.ReasonFundsLow:          "R$ 25,10",
@@ -36,68 +28,90 @@ func TestEachFundsProblemSendsOneEmailPerDayWithTheFixAtMeta(t *testing.T) {
 		ads.ReasonGracePeriod:       "não conseguiu cobrar",
 	}
 	for reason, phrase := range cases {
-		notifier := &capturedNotifications{}
-		alerts := NewFundsAlerts(notifier, "https://app.vozko.test/dashboard")
+		publisher := &notificationtest.Publisher{}
+		alerts := NewFundsAlerts(publisher, "https://app.vozko.test/")
 		funds := ads.Funds{Level: ads.FundsLow, Reason: reason, RoomMinor: &room}
 		if err := alerts.Alert(context.Background(), alertAccount(), funds); err != nil {
 			t.Fatalf("%s: %v", reason, err)
 		}
-		if len(notifier.sent) != 1 {
-			t.Fatalf("%s: sent %d", reason, len(notifier.sent))
+		d := publisher.Only(t)
+		if d.WorkspaceID != "ws-1" || d.Category != notification.CategoryAdvertising || !d.Email {
+			t.Fatalf("%s: draft %+v", reason, d)
 		}
-		n := notifier.sent[0]
-		if n.WorkspaceID != "ws-1" || n.Template != fundsAlertTemplate || n.DedupKey != "meta_ads_funds:acc-1:"+string(reason) || n.DedupTTL != 24*time.Hour {
-			t.Fatalf("%s: notification %+v", reason, n)
+		if !d.Audience.Equal(notification.Holding(workspace.ResourceAds, workspace.ActionUpdate)) {
+			t.Fatalf("%s: audience %+v, want the people who manage ads", reason, d.Audience)
 		}
-		message, _ := n.Placeholders["Message"].(string)
-		if !strings.Contains(message, phrase) {
-			t.Errorf("%s: message %q lacks %q", reason, message, phrase)
+		if d.DedupKey != "meta_ads_funds:acc-1:"+string(reason) || d.DedupWindow != 24*time.Hour {
+			t.Fatalf("%s: dedup %q %v", reason, d.DedupKey, d.DedupWindow)
 		}
-		url, _ := n.Placeholders["ActionURL"].(string)
+		if !strings.Contains(d.Body, phrase) {
+			t.Errorf("%s: body %q lacks %q", reason, d.Body, phrase)
+		}
+		stopped := reason == ads.ReasonFundsOut || reason == ads.ReasonSpendLimitReached || reason == ads.ReasonPaymentFailed
+		if stopped != (d.Severity == notification.SeverityCritical) {
+			t.Errorf("%s: severity %s; critical only when the ads already stopped", reason, d.Severity)
+		}
 		limit := reason == ads.ReasonSpendLimitLow || reason == ads.ReasonSpendLimitReached
-		if limit && url != "https://app.vozko.test/dashboard/advertising/overview?account=acc-1" {
-			t.Errorf("%s: the limit is changed in Vozko, got %q", reason, url)
+		if limit && d.ActionURL != "/dashboard/advertising/overview?account=acc-1" {
+			t.Errorf("%s: the limit is changed in the app, got %q", reason, d.ActionURL)
 		}
-		if !limit && !strings.HasPrefix(url, "https://business.facebook.com/") {
-			t.Errorf("%s: funds and payments are fixed in Meta billing, got %q", reason, url)
+		if !limit && !strings.HasPrefix(d.ActionURL, "https://business.facebook.com/") {
+			t.Errorf("%s: funds and payments are fixed in Meta billing, got %q", reason, d.ActionURL)
 		}
-		if n.Placeholders["AccountName"] != "Vozko CRM BRL" || n.Placeholders["ManagerURL"] != "https://app.vozko.test/dashboard/advertising?account=acc-1" {
-			t.Errorf("%s: placeholders %+v", reason, n.Placeholders)
+
+		email := d.EmailCopy
+		if email == nil || email.Template != fundsAlertTemplate || !strings.HasPrefix(email.Subject, d.Title) {
+			t.Fatalf("%s: email %+v", reason, email)
+		}
+		message, _ := email.Placeholders["Message"].(string)
+		if message != d.Body {
+			t.Errorf("%s: the email and the bell must say the same thing", reason)
+		}
+		if email.Placeholders["AccountName"] != "Vozko CRM BRL" || email.Placeholders["ManagerURL"] != "https://app.vozko.test/dashboard/advertising?account=acc-1" {
+			t.Errorf("%s: placeholders %+v", reason, email.Placeholders)
+		}
+		if limit && email.Placeholders["ActionURL"] != "https://app.vozko.test/dashboard/advertising/overview?account=acc-1" {
+			t.Errorf("%s: email action %v", reason, email.Placeholders["ActionURL"])
 		}
 	}
 }
 
 func TestAFundsAlertNeverCallsMetaMoneyOnlySaldo(t *testing.T) {
-	notifier := &capturedNotifications{}
+	publisher := &notificationtest.Publisher{}
 	room := int64(0)
-	_ = NewFundsAlerts(notifier, "https://app.vozko.test/dashboard").Alert(context.Background(), alertAccount(), ads.Funds{Level: ads.FundsOut, Reason: ads.ReasonFundsOut, RoomMinor: &room})
-	for key, value := range notifier.sent[0].Placeholders {
+	_ = NewFundsAlerts(publisher, "https://app.vozko.test").Alert(context.Background(), alertAccount(), ads.Funds{Level: ads.FundsOut, Reason: ads.ReasonFundsOut, RoomMinor: &room})
+	d := publisher.Only(t)
+	texts := []string{d.Title, d.Body, d.ActionLabel}
+	for _, value := range d.EmailCopy.Placeholders {
 		text, _ := value.(string)
+		texts = append(texts, text)
+	}
+	for _, text := range texts {
 		if strings.Contains(strings.ToLower(text), "saldo") {
-			t.Errorf("%s says saldo, which is the Vozko wallet: %q", key, text)
+			t.Errorf("says saldo, which is the Vozko wallet: %q", text)
 		}
 	}
 }
 
-func TestOnlyProblemsAreEmailed(t *testing.T) {
-	notifier := &capturedNotifications{}
-	alerts := NewFundsAlerts(notifier, "https://app.vozko.test/dashboard")
+func TestOnlyProblemsAreNotified(t *testing.T) {
+	publisher := &notificationtest.Publisher{}
+	alerts := NewFundsAlerts(publisher, "https://app.vozko.test")
 	for _, level := range []ads.FundsLevel{ads.FundsOK, ads.FundsUnknown} {
 		if err := alerts.Alert(context.Background(), alertAccount(), ads.Funds{Level: level, Reason: ads.ReasonBillingUnreadable}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if len(notifier.sent) != 0 {
-		t.Fatalf("sent %+v", notifier.sent)
+	if drafts := publisher.Drafts(); len(drafts) != 0 {
+		t.Fatalf("published %+v", drafts)
 	}
 }
 
-func TestAFailedEmailIsReported(t *testing.T) {
-	notifier := &capturedNotifications{err: errors.New("queue down")}
+func TestAFailedNotificationIsReported(t *testing.T) {
+	publisher := &notificationtest.Publisher{Err: errors.New("db down")}
 	room := int64(0)
-	err := NewFundsAlerts(notifier, "https://app.vozko.test/dashboard").Alert(context.Background(), alertAccount(), ads.Funds{Level: ads.FundsOut, Reason: ads.ReasonFundsOut, RoomMinor: &room})
+	err := NewFundsAlerts(publisher, "https://app.vozko.test").Alert(context.Background(), alertAccount(), ads.Funds{Level: ads.FundsOut, Reason: ads.ReasonFundsOut, RoomMinor: &room})
 	if err == nil {
-		t.Fatal("a failed email must be reported so the next sync retries it")
+		t.Fatal("a failed notification must be reported so the next sync retries it")
 	}
 }
 

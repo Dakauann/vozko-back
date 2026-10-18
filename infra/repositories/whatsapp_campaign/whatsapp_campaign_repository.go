@@ -91,7 +91,6 @@ func createCampaignIn(db *gorm.DB, c *wc.Campaign) error {
 		EnableAnalysis:       c.EnableAnalysis,
 		EnableAutoStaging:    c.EnableAutoStaging,
 		EnableAutoMemory:     c.EnableAutoMemory,
-		PreferAudio:          c.PreferAudio,
 		ShowTemplateInCrm:    c.ShowTemplateInCrm,
 		AiModel:              c.AiModel,
 		Status:               string(c.Status),
@@ -165,7 +164,6 @@ func (r *repository) Update(campaignID string, c *wc.Campaign) error {
 		"enable_analysis":        c.EnableAnalysis,
 		"enable_auto_staging":    c.EnableAutoStaging,
 		"enable_auto_memory":     c.EnableAutoMemory,
-		"prefer_audio":           c.PreferAudio,
 		"show_template_in_crm":   c.ShowTemplateInCrm,
 		"ai_model":               c.AiModel,
 		"archived":               c.Archived,
@@ -250,7 +248,7 @@ func (r *repository) ListScheduledToStart(at time.Time, limit int) ([]*wc.Campai
 	query := r.db.Model(&schema.WhatsAppCampaign{}).
 		Where("scheduled_start <= ?", at.UTC()).
 		Where("scheduled_start > ?", time.Time{}).
-		Where("status <> ?", string(wc.CampaignStatusRunning)).
+		Where("status = ?", string(wc.CampaignStatusStopped)).
 		Order("scheduled_start ASC")
 
 	if limit > 0 {
@@ -432,7 +430,6 @@ func mapToDomain(record *schema.WhatsAppCampaign) *wc.Campaign {
 		EnableAnalysis:       record.EnableAnalysis,
 		EnableAutoStaging:    record.EnableAutoStaging,
 		EnableAutoMemory:     record.EnableAutoMemory,
-		PreferAudio:          record.PreferAudio,
 		ShowTemplateInCrm:    record.ShowTemplateInCrm,
 		AiModel:              record.AiModel,
 		Status:               normalizeCampaignStatus(record.Status),
@@ -566,3 +563,15 @@ func applySorts(db *gorm.DB, sorts []shared.Sort) *gorm.DB {
 
 	return query
 }
+
+func (r *repository) ClaimScheduledStart(campaignID string, dueBy time.Time) (bool, error) {
+	result := r.db.Model(&schema.WhatsAppCampaign{}).
+		Where("id = ? AND scheduled_start > ? AND scheduled_start <= ?", campaignID, time.Time{}, dueBy.UTC()).
+		Update("scheduled_start", time.Time{})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+var _ wc.ScheduleClaimer = (*repository)(nil)

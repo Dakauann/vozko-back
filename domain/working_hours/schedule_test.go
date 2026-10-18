@@ -196,7 +196,7 @@ func TestResolve_DepartmentWithoutHoursInheritsWorkspace(t *testing.T) {
 }
 
 func TestResolve_NeitherConfiguredIsAlwaysOpen(t *testing.T) {
-	got := Resolve(nil, nil)
+	got := Resolve[Schedule](nil, nil)
 	assert.True(t, got.IsOpen(at(2026, 9, 13, 3, 0)))
 	assert.Equal(t, time.Hour, got.Elapsed(at(2026, 9, 13, 3, 0), at(2026, 9, 13, 4, 0)))
 }

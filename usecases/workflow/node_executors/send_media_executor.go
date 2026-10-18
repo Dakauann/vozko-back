@@ -107,6 +107,9 @@ func (e *sendMediaExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 	sent, err := e.channel.SendMedia(context.Background(), ctx.Run, mediaURL, caption)
 	if err != nil {
 		log.Printf("[workflow][node:%s][run:%s] send_media error: %v", ctx.Node.ID, ctx.Run.ID, err)
+		if failsTheStep(err) {
+			return nil, err
+		}
 		return fail(mediaURL), nil
 	}
 	if sent == nil {

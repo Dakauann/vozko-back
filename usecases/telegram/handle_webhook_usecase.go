@@ -217,7 +217,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, account *tgdo
 	uc.enrichContact(ctx, account, contact)
 
 	if private {
-		uc.automation.Dispatch(ctx, automationInput(account, contact, conv, ev.Text, nil))
+		return uc.automation.Dispatch(ctx, automationInput(account, contact, conv, ev.Text, tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID), ev.Timestamp, nil))
 	}
 	return nil
 }
@@ -396,7 +396,7 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	}
 
 	if conv.IsPrivate() {
-		in := automationInput(account, contact, conv, ev.Text, &workflow.OptionSelection{
+		in := automationInput(account, contact, conv, ev.Text, "cb:"+ev.CallbackQueryID, ev.Timestamp, &workflow.OptionSelection{
 			ID:    ev.CallbackData,
 			Title: ev.Text,
 			Kind:  "callback_query",
@@ -449,7 +449,7 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 	}
 
 	if conv.IsPrivate() {
-		in := automationInput(account, contact, conv, text, nil)
+		in := automationInput(account, contact, conv, text, tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID), ev.Timestamp, nil)
 		uc.automation.FireWorkflows(ctx, in)
 		uc.automation.ReplyWithAgent(ctx, in)
 	}
@@ -898,7 +898,8 @@ func automationInput(
 	account *tgdomain.Account,
 	contact *tgdomain.Contact,
 	conv *tgdomain.Conversation,
-	text string,
+	text, providerMessageID string,
+	receivedAt time.Time,
 	sel *workflow.OptionSelection,
 ) conversation_usecase.InboundAutomationInput {
 	in := conversation_usecase.InboundAutomationInput{
@@ -906,6 +907,8 @@ func automationInput(
 		EntryID:              conv.ID,
 		EntryType:            shared.EntryTypeTelegram,
 		ContactRef:           strconv.FormatInt(conv.TGChatID, 10),
+		ProviderMessageID:    providerMessageID,
+		ReceivedAt:           receivedAt,
 		Text:                 text,
 		Selection:            sel,
 		ConversationOverride: conv.AutomationEnabled,

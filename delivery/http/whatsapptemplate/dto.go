@@ -3,6 +3,7 @@ package whatsapptemplate
 import (
 	"time"
 
+	"vozko/delivery/http/httpx"
 	whatsapptemplatedomain "vozko/domain/whatsapp/template"
 )
 
@@ -28,6 +29,9 @@ type CreateTemplateRequest struct {
 	ParameterFormat string                     `json:"parameterFormat" example:"POSITIONAL"`
 	Components      []TemplateComponentRequest `json:"components"`
 	HeaderMediaURL  *string                    `json:"headerMediaUrl,omitempty" example:"https://cdn.exemplo.com/cabecalho.jpg"`
+
+	ButtonActions    []httpx.ButtonActionRequest `json:"buttonActions,omitempty"`
+	ExitConfirmation string                      `json:"exitConfirmation,omitempty" example:"Pronto, você não receberá mais mensagens."`
 }
 
 type TemplateComponentRequest struct {

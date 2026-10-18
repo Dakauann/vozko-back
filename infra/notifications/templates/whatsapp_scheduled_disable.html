@@ -1,20 +1,16 @@
 {{define "title"}}Número agendado para desativação - {{.Brand.Name}}{{end}}
 {{define "preheader"}}O número {{.PhoneNumber}} será desativado em {{.DisableDate}}.{{end}}
+{{define "eyebrow"}}WhatsApp{{end}}
 {{define "content"}}
-<tr>
-    <td class="vx-pad" style="padding:12px 40px 0;">
-        {{template "symbol" dict "tone" "danger" "glyph" "alert"}}
-        {{template "heading" dict "title" "Desativação agendada" "subtitle" (printf "Programada para %s" .DisableDate)}}
-    </td>
-</tr>
-<tr>
-    <td class="vx-pad" style="padding:24px 40px 12px;">
-        <p style="margin:0 0 22px; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.6;">
-            A Meta agendou a desativação do seu número de WhatsApp. Ação rápida é necessária para evitar a perda do número na data abaixo.
-        </p>
-        {{template "details" dict "title" "Número afetado" "k1" "Número" "v1" .PhoneNumber "k2" "Desativação em" "v2" .DisableDate}}
-        <div style="height:24px; line-height:24px;">&nbsp;</div>
-        {{template "cta" dict "url" .DashboardURL "label" "Resolver agora"}}
-    </td>
-</tr>
+{{template "heading" dict "status" "Desativação agendada" "tone" "danger" "title" "Desativação agendada" "subtitle" (printf "Programada para %s" .DisableDate)}}
+{{template "gap" 24}}
+<p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
+    A Meta agendou a desativação do seu número de WhatsApp. Ação rápida é necessária para evitar a perda do número na data abaixo.
+</p>
+{{template "gap" 24}}
+{{template "details" dict "title" "Número afetado" "k1" "Número" "v1" .PhoneNumber "k2" "Desativação em" "v2" .DisableDate}}
+{{template "gap" 16}}
+{{template "panel" dict "tone" "danger" "title" "O que fazer" "body" "Revise as políticas do WhatsApp Business e resolva a pendência junto à Meta antes da data. Nosso suporte pode ajudar a entender o motivo."}}
+{{template "gap" 28}}
+{{template "cta" dict "url" .DashboardURL "label" "Resolver agora"}}
 {{end}}

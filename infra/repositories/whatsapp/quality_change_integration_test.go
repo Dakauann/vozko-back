@@ -100,3 +100,57 @@ func TestQualityChangeIntegration_AnInvalidChangeWritesNothing(t *testing.T) {
 		t.Fatalf("a batch with an invalid change writes nothing, found %d rows", count)
 	}
 }
+
+func TestQualityChangeIntegration_TheTimelineKeepsTheLatestChangePerSignal(t *testing.T) {
+	db := qualityIntegrationDB(t)
+	repo := NewQualityChangeRepository(db)
+	at := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	yellow := redTemplate(at)
+	yellow.Previous, yellow.Current = "GREEN", "YELLOW"
+	paused := redTemplate(at.Add(30 * time.Minute))
+	paused.Signal, paused.Previous, paused.Current = quality.SignalStatus, "APPROVED", "PAUSED"
+	other := redTemplate(at.Add(2 * time.Hour))
+	other.ExternalID = "another"
+	if err := repo.Record(yellow, redTemplate(at.Add(time.Hour)), paused, other); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	latest, err := repo.LatestBySignal(quality.SubjectTemplate, "2096955574574516")
+
+	if err != nil {
+		t.Fatalf("LatestBySignal: %v", err)
+	}
+	if q := latest[quality.SignalQuality]; q.Current != "RED" || !q.OccurredAt.Equal(at.Add(time.Hour)) {
+		t.Fatalf("quality = %+v, want the red change an hour later", q)
+	}
+	if s := latest[quality.SignalStatus]; s.Current != "PAUSED" || !s.OccurredAt.Equal(at.Add(30*time.Minute)) {
+		t.Fatalf("status = %+v, want the paused change", s)
+	}
+	if len(latest) != 2 {
+		t.Fatalf("got %d signals, want only this template's two", len(latest))
+	}
+}
+
+func TestQualityChangeIntegration_RecentListsThisTemplatesChangesNewestFirst(t *testing.T) {
+	db := qualityIntegrationDB(t)
+	repo := NewQualityChangeRepository(db)
+	at := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	yellow := redTemplate(at)
+	yellow.Previous, yellow.Current = "GREEN", "YELLOW"
+	paused := redTemplate(at.Add(30 * time.Minute))
+	paused.Signal, paused.Previous, paused.Current = quality.SignalStatus, "APPROVED", "PAUSED"
+	other := redTemplate(at.Add(2 * time.Hour))
+	other.ExternalID = "another"
+	if err := repo.Record(yellow, redTemplate(at.Add(time.Hour)), paused, other); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	recent, err := repo.Recent(quality.SubjectTemplate, "2096955574574516", 2)
+
+	if err != nil {
+		t.Fatalf("Recent: %v", err)
+	}
+	if len(recent) != 2 || recent[0].Current != "RED" || recent[1].Current != "PAUSED" {
+		t.Fatalf("recent = %+v, want the red then the paused change", recent)
+	}
+}

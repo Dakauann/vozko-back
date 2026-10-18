@@ -85,11 +85,14 @@ func (p *importPass) authorize() error {
 		return leadimport.ErrNotReady
 	}
 	a := Actor{UserID: p.job.RequestedBy, WorkspaceID: p.job.WorkspaceID, IsAdmin: p.job.RequestedByAdmin}
-	return p.i.permit(a, p.job.Settings.Requirements(p.defs)...)
+	if err := p.i.permit(a, p.job.Settings.Requirements(p.defs)...); err != nil {
+		return err
+	}
+	return p.i.refuseUngrantedConsent(a, *p.job.Settings)
 }
 
 func (p *importPass) decide(existing *lead.Lead, row lead.ImportRecord) (lead.ImportDecision, error) {
-	return lead.ApplyImport(existing, row, lead.ImportRules{Policy: p.job.Settings.Policy, Definitions: p.defs, Viewer: p.viewer})
+	return lead.ApplyImport(existing, row, lead.ImportRules{Policy: p.job.Settings.Policy, Job: p.job.ID, RequestedBy: p.job.RequestedBy, Definitions: p.defs, Viewer: p.viewer})
 }
 
 func (p *importPass) prepare(ctx context.Context, rows []lead.ImportRow) ([]leadimport.RowItem, []lead.ImportIssue, error) {

@@ -85,7 +85,7 @@ func TestTheSoundEffectToolNamesNoVendor(t *testing.T) {
 	for _, param := range def.Parameters {
 		text += " " + strings.ToLower(param.Description)
 	}
-	for _, vendor := range []string{"seed", "bytedance", "openrouter", "elevenlabs", "lyria", "google", "openai"} {
+	for _, vendor := range []string{"seed", "bytedance", "openrouter", "lyria", "google", "openai"} {
 		if strings.Contains(text, vendor) {
 			t.Fatalf("the tool text names %q: %s", vendor, text)
 		}

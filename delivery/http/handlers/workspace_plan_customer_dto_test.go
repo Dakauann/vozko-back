@@ -16,8 +16,8 @@ func TestToCustomerPlanDetails_HidesCostAndMarkup(t *testing.T) {
 		PricingItems: []workspace_plan.PlanPricingItem{
 			{
 				ID:          "pi-1",
-				Category:    "voice",
-				Service:     "tts",
+				Category:    "telephony",
+				Service:     "whatsapp_calls",
 				Metric:      "per_minute",
 				CostMicros:  1_234_567,
 				PriceMicros: 3_000_000,

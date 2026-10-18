@@ -139,8 +139,7 @@ func (uc *HandleMessagingUseCase) inbound(ctx context.Context, page *fbdomain.Pa
 	if ev.Standby || conv.OwnedByAnotherApp(uc.d.OurAppID) {
 		return nil
 	}
-	uc.d.Automation.Dispatch(ctx, automationInput(page, contact, conv, text, metachannel.QuickReplySelection(ev.Message)))
-	return nil
+	return uc.d.Automation.Dispatch(ctx, automationInput(page, contact, conv, text, ev.Message.MID, ev.Timestamp, metachannel.QuickReplySelection(ev.Message)))
 }
 
 func (uc *HandleMessagingUseCase) echo(ctx context.Context, page *fbdomain.Page, ev *mm.Event) error {
@@ -234,8 +233,7 @@ func (uc *HandleMessagingUseCase) postback(ctx context.Context, page *fbdomain.P
 	if ev.Standby || conv.OwnedByAnotherApp(uc.d.OurAppID) {
 		return nil
 	}
-	uc.d.Automation.Dispatch(ctx, automationInput(page, contact, conv, ev.Postback.Title, metachannel.PostbackSelection(ev.Postback)))
-	return nil
+	return uc.d.Automation.Dispatch(ctx, automationInput(page, contact, conv, ev.Postback.Title, ev.Postback.MID, ev.Timestamp, metachannel.PostbackSelection(ev.Postback)))
 }
 
 func (uc *HandleMessagingUseCase) referral(ctx context.Context, page *fbdomain.Page, ev *mm.Event) error {
@@ -404,13 +402,15 @@ func sentVia(appID, ourAppID string) string {
 	return "external_app"
 }
 
-func automationInput(page *fbdomain.Page, contact *fbdomain.Contact, conv *fbdomain.Conversation, text string, sel *workflow.OptionSelection) conversation_usecase.InboundAutomationInput {
+func automationInput(page *fbdomain.Page, contact *fbdomain.Contact, conv *fbdomain.Conversation, text, providerMessageID string, receivedAt time.Time, sel *workflow.OptionSelection) conversation_usecase.InboundAutomationInput {
 
 	return conversation_usecase.InboundAutomationInput{
 		WorkspaceID:          page.WorkspaceID,
 		EntryID:              conv.ID,
 		EntryType:            shared.EntryTypeFacebook,
 		ContactRef:           contact.PSID,
+		ProviderMessageID:    providerMessageID,
+		ReceivedAt:           receivedAt,
 		LeadID:               contact.LeadID,
 		Text:                 text,
 		Selection:            sel,

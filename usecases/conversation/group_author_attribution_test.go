@@ -37,6 +37,10 @@ func (l *authorLookup) AuthorsByHandle(_ context.Context, _ string, handles []st
 	return out, nil
 }
 
+func (l *authorLookup) AuthorsByAccount(context.Context, map[string][]string) (map[string]map[string]ContactDisplay, error) {
+	return nil, nil
+}
+
 const groupEntryType = shared.EntryTypeUnofficialWhatsApp
 
 func serviceWith(lookup ContactIdentityLookup) *HistoryProviderService {

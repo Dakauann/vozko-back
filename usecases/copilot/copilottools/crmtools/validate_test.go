@@ -33,18 +33,27 @@ func TestTemplatePreflightRefusesWhatWouldFailAfterApproval(t *testing.T) {
 		changes map[string]interface{}
 		want    string
 	}{
-		"invented phone":    {map[string]interface{}{"business_phone_id": "0199f6d4-8761-7000-b3a1-example01"}, "nunca invente"},
-		"foreign phone":     {map[string]interface{}{"business_phone_id": "9f8e7d6c-5b4a-4392-8170-000000000000"}, "list_business_phones"},
-		"meta name rule":    {map[string]interface{}{"name": "Refiliação Convite"}, "regras da Meta"},
-		"variable, no body": {map[string]interface{}{"body_examples": []interface{}{}}, "regras da Meta"},
-		"authentication":    {map[string]interface{}{"category": "AUTHENTICATION"}, "MARKETING ou UTILITY"},
-		"foreign header":    {map[string]interface{}{"header_media_id": "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918"}, "anexado"},
+		"invented phone":      {map[string]interface{}{"business_phone_id": "0199f6d4-8761-7000-b3a1-example01"}, "nunca invente"},
+		"foreign phone":       {map[string]interface{}{"business_phone_id": "9f8e7d6c-5b4a-4392-8170-000000000000"}, "list_business_phones"},
+		"meta name rule":      {map[string]interface{}{"name": "Refiliação Convite"}, "regras da Meta"},
+		"variable, no body":   {map[string]interface{}{"body_examples": []interface{}{}}, "regras da Meta"},
+		"authentication":      {map[string]interface{}{"category": "AUTHENTICATION"}, "MARKETING ou UTILITY"},
+		"foreign header":      {map[string]interface{}{"header_media_id": "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918"}, "anexado"},
+		"marketing, no exit":  {map[string]interface{}{"footer": "Responda quando puder"}, "/sair"},
+		"exit word, no slash": {map[string]interface{}{"footer": "Responda SAIR para não receber"}, "/sair"},
 	}
 	for label, c := range cases {
 		err := tooltest.Validate(t, NewCreateTemplateTool(templateCreateDeps(&fakeTemplateCreator{})), tooltest.Member(), withArgs(newTemplateArgs(), c.changes))
 		if !errors.Is(err, copilottools.ErrInvalidArgs) || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v", label, err)
 		}
+	}
+}
+
+func TestTemplatePreflightLetsAUtilityTemplateGoWithoutAnExit(t *testing.T) {
+	args := withArgs(newTemplateArgs(), map[string]interface{}{"category": "UTILITY", "footer": "Responda quando puder"})
+	if err := tooltest.Validate(t, NewCreateTemplateTool(templateCreateDeps(&fakeTemplateCreator{})), tooltest.Member(), args); err != nil {
+		t.Fatalf("utility without exit refused: %v", err)
 	}
 }
 

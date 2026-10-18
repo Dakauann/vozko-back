@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"vozko/brand"
-	"vozko/domain/notification"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	"vozko/domain/whatsapp/waba"
 	wc "vozko/domain/whatsapp_campaign"
@@ -28,8 +27,7 @@ type Dialog360OnboardingService struct {
 	httpClient          *http.Client
 	provisioningGate    businessphone.ProvisioningGate
 
-	notifier     notification.Notifier
-	dashboardURL string
+	notices      businessphone.PhoneNotifier
 }
 
 func (s *Dialog360OnboardingService) WithMessagingWebhook(webhookURL string, httpClient *http.Client) *Dialog360OnboardingService {
@@ -46,45 +44,29 @@ func (s *Dialog360OnboardingService) WithProvisioningGate(gate businessphone.Pro
 	return s
 }
 
-func (s *Dialog360OnboardingService) WithNotifier(n notification.Notifier, dashboardURL string) *Dialog360OnboardingService {
-	s.notifier = n
-	s.dashboardURL = dashboardURL
+func (s *Dialog360OnboardingService) WithNotices(notices businessphone.PhoneNotifier) *Dialog360OnboardingService {
+	s.notices = notices
 	return s
 }
 
 func (s *Dialog360OnboardingService) notifyOnboardingFailed(phone *businessphone.WhatsAppBusinessPhoneNumber) {
-	if s.notifier == nil || phone == nil || phone.OwnerWorkspaceID == "" {
+	if phone == nil {
 		return
 	}
-	_ = s.notifier.Notify(notification.Notification{
-		WorkspaceID: phone.OwnerWorkspaceID,
-		Subject:     "Falha na configuração do número - " + brand.Active().Name,
-		Template:    "whatsapp_onboarding_failed.html",
-		Placeholders: map[string]interface{}{
-			"PhoneNumber":  phone.DisplayPhoneNumber,
-			"Reason":       phone.OnboardingError,
-			"DashboardURL": s.dashboardURL,
-		},
-		DedupKey: "phone_onboarding_failed:" + phone.ID,
-		DedupTTL: 24 * time.Hour,
-	})
+	s.notifyPhone(phone, businessphone.OnboardingFailedNotice(phone.OnboardingError))
 }
 
 func (s *Dialog360OnboardingService) notifyNumberLive(phone *businessphone.WhatsAppBusinessPhoneNumber) {
-	if s.notifier == nil || phone == nil || phone.OwnerWorkspaceID == "" {
+	s.notifyPhone(phone, businessphone.NumberLiveNotice())
+}
+
+func (s *Dialog360OnboardingService) notifyPhone(phone *businessphone.WhatsAppBusinessPhoneNumber, notice businessphone.PhoneNotice) {
+	if s.notices == nil || phone == nil {
 		return
 	}
-	_ = s.notifier.Notify(notification.Notification{
-		WorkspaceID: phone.OwnerWorkspaceID,
-		Subject:     "Seu número de WhatsApp está ativo - " + brand.Active().Name,
-		Template:    "whatsapp_number_live.html",
-		Placeholders: map[string]interface{}{
-			"PhoneNumber":  phone.DisplayPhoneNumber,
-			"DashboardURL": s.dashboardURL,
-		},
-		DedupKey: "phone_live:" + phone.ID,
-		DedupTTL: 30 * 24 * time.Hour,
-	})
+	if err := s.notices.NotifyPhone(phone, notice); err != nil {
+		log.Printf("[dialog360-onboarding] %s notification for phone %s failed: %v", notice.State, phone.ID, err)
+	}
 }
 
 func (s *Dialog360OnboardingService) checkProvisioningAllowed(workspaceID string) error {

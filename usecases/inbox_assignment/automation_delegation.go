@@ -35,7 +35,7 @@ func (d AutomationDirectory) usable(workspaceID string, a conversation.Automatio
 		}
 	case conversation.AutomationWorkflow:
 		found, err := d.Workflows.FindByID(a.ID)
-		if err == nil && found != nil && found.WorkspaceID == workspaceID && found.Status == workflow.WorkflowStatusActive && found.Type != workflow.WorkflowTypeVoice {
+		if err == nil && found.StartsConversationsIn(workspaceID) == nil {
 			return nil
 		}
 	}

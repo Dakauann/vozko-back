@@ -18,11 +18,47 @@ var (
 	ErrNoDTMFKeys       = errors.New("choose at least one key")
 	ErrAudioNotPlayable = errors.New("audio file cannot be played on calls")
 	ErrNotTransferable  = errors.New("this call cannot be transferred")
+	ErrWaitDuringCall   = errors.New("a voice flow cannot pause while the caller is on the line")
 )
 
 type VoiceCall interface {
 	Play(pcm []byte, interruptible bool) (interrupted bool, err error)
 	NextKey(timeout time.Duration) (key rune, pressed bool, err error)
+	Done() <-chan struct{}
+}
+
+func InCall(runtime interface{}) bool {
+	call, ok := runtime.(VoiceCall)
+	return ok && call != nil
+}
+
+func CallEnded(runtime interface{}) bool {
+	if !InCall(runtime) {
+		return false
+	}
+	select {
+	case <-runtime.(VoiceCall).Done():
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *NodeContext) CallContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	call, err := VoiceCallFrom(c)
+	if err != nil {
+		return ctx, cancel
+	}
+	hungUp := call.Done()
+	go func() {
+		select {
+		case <-hungUp:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return ctx, cancel
 }
 
 type QueueTransfer struct {

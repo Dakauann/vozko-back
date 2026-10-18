@@ -709,6 +709,46 @@ func schemaConstraints() []performanceIndex {
 				ON unofficial_whatsapp_group_participants (group_id, jid)`,
 		},
 		{
+			name: "idx_uw_group_workspace_jid",
+			sql: `CREATE INDEX IF NOT EXISTS idx_uw_group_workspace_jid
+				ON unofficial_whatsapp_groups (workspace_id, jid)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_uw_workspace_group_jid",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_workspace_group_jid
+				ON unofficial_whatsapp_workspace_groups (workspace_id, jid)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_uw_workspace_group_followed",
+			sql: `CREATE INDEX IF NOT EXISTS idx_uw_workspace_group_followed
+				ON unofficial_whatsapp_workspace_groups (workspace_id, followed_at)
+				WHERE deleted_at IS NULL AND followed_at IS NOT NULL`,
+		},
+		{
+			name: "ux_uw_group_member_person",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_group_member_person
+				ON unofficial_whatsapp_group_members (group_id, person_key)`,
+		},
+		{
+			name: "idx_uw_workspace_group_series",
+			sql: `CREATE INDEX IF NOT EXISTS idx_uw_workspace_group_series
+				ON unofficial_whatsapp_workspace_groups (series_id, series_sequence)
+				WHERE series_id IS NOT NULL AND deleted_at IS NULL`,
+		},
+		{
+			name: "ux_uw_group_analysis_run_cycle",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_group_analysis_run_cycle
+				ON unofficial_whatsapp_group_analysis_runs (analysis_id, cycle)`,
+		},
+		{
+			name: "idx_uw_group_analysis_due_schedule",
+			sql: `CREATE INDEX IF NOT EXISTS idx_uw_group_analysis_due_schedule
+				ON unofficial_whatsapp_group_analyses (next_run_at)
+				WHERE deleted_at IS NULL AND status = 'active' AND trigger = 'scheduled'`,
+		},
+		{
 			name: "ux_uw_history_active_per_instance",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_history_active_per_instance
 				ON unofficial_whatsapp_history_syncs (instance_id)

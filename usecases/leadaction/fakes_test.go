@@ -250,6 +250,8 @@ type fakeWriter struct {
 	batches int
 	sizes   []int
 	events  int
+	applied []leadaction.Edit
+	tallied []leadaction.Edit
 }
 
 func newFakeWriter(ids []string) *fakeWriter {
@@ -280,6 +282,7 @@ func (w *fakeWriter) ApplyBatch(_ context.Context, b leadaction.BatchWrite) (lea
 	defer w.mu.Unlock()
 	w.batches++
 	w.sizes = append(w.sizes, len(b.LeadIDs))
+	w.applied = append(w.applied, b.Edit)
 	var t leadaction.Tally
 	for _, id := range b.LeadIDs {
 		s, ok := w.leads[id]
@@ -309,6 +312,7 @@ func (w *fakeWriter) ApplyBatch(_ context.Context, b leadaction.BatchWrite) (lea
 func (w *fakeWriter) TallyBatch(_ context.Context, _ string, ids []string, e leadaction.Edit) (leadaction.Tally, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.tallied = append(w.tallied, e)
 	var t leadaction.Tally
 	for _, id := range ids {
 		s, ok := w.leads[id]

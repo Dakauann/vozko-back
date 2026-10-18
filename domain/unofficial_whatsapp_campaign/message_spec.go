@@ -21,6 +21,7 @@ var (
 	ErrMenuOptionsTooMany     = errors.New("unofficial whatsapp campaign: too many options for this menu style")
 	ErrMenuOptionLabelTooLong = errors.New("unofficial whatsapp campaign: a menu option label is too long")
 	ErrMenuOptionIDRequired   = errors.New("unofficial whatsapp campaign: every menu option needs an id")
+	ErrMessageExitTextTooLong = errors.New("unofficial whatsapp campaign: the exit text is too long")
 )
 
 type MessageKind string
@@ -81,6 +82,8 @@ type MessageSpec struct {
 	Footer  string                 `json:"footer,omitempty"`
 	Button  string                 `json:"button,omitempty"`
 	Options []uw.InteractiveOption `json:"options,omitempty"`
+
+	ExitText string `json:"exitText,omitempty"`
 }
 
 func (m *MessageSpec) Normalize() {
@@ -93,6 +96,10 @@ func (m *MessageSpec) Normalize() {
 	m.Style = strings.ToLower(strings.TrimSpace(m.Style))
 	m.Footer = strings.TrimSpace(m.Footer)
 	m.Button = strings.TrimSpace(m.Button)
+	m.ExitText = strings.TrimSpace(m.ExitText)
+	if m.Kind != KindAudio {
+		m.ExitText = ""
+	}
 
 	m.Bodies = shared.NonEmptyTrimmed(m.Bodies)
 
@@ -105,7 +112,8 @@ func (m MessageSpec) SameAs(other MessageSpec) bool {
 	m.Normalize()
 	other.Normalize()
 	return m.Kind == other.Kind && slices.Equal(m.Bodies, other.Bodies) && m.MediaID == other.MediaID && m.FileName == other.FileName &&
-		m.Style == other.Style && m.Footer == other.Footer && m.Button == other.Button && slices.Equal(m.Options, other.Options)
+		m.Style == other.Style && m.Footer == other.Footer && m.Button == other.Button && slices.Equal(m.Options, other.Options) &&
+		m.ExitText == other.ExitText
 }
 
 func (m MessageSpec) ParameterCount() int {
@@ -136,6 +144,10 @@ func (m MessageSpec) Validate() error {
 
 	if !shared.PositionalParametersAgree(m.Bodies) {
 		return ErrMessageVariantMismatch
+	}
+
+	if uw.TextTooLong(m.ExitText) {
+		return ErrMessageExitTextTooLong
 	}
 
 	if m.Kind.NeedsMedia() && m.MediaID == "" {

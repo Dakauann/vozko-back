@@ -40,6 +40,7 @@ func allImportPermissions() fakePermissions {
 	return fakePermissions{
 		"leads:create": true, "leads:read": true, "leads:update": true, "leads:assign": true,
 		"leads:read_addresses": true, "leads:read_sensitive": true, "unofficial_whatsapp_instances:send": true, "media:read": true,
+		"leads:consent": true,
 	}
 }
 

@@ -2,10 +2,7 @@ package businessphone_usecase
 
 import (
 	"log"
-	"time"
 
-	"vozko/brand"
-	"vozko/domain/notification"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	workspace_addon "vozko/domain/workspace/workspace_addon"
 )
@@ -15,8 +12,7 @@ type deactivateExcessPhonesUseCase struct {
 	phones       businessphone.OwnerPhoneReader
 	phoneRepo    businessphone.Repository
 	partner      businessphone.Dialog360PartnerService
-	notifier     notification.Notifier
-	dashboardURL string
+	notices      businessphone.PhoneNotifier
 }
 
 var _ workspace_addon.EntitlementChangeHandler = (*deactivateExcessPhonesUseCase)(nil)
@@ -35,33 +31,21 @@ func NewDeactivateExcessPhonesUseCase(
 	}
 }
 
-func (uc *deactivateExcessPhonesUseCase) WithNotifier(n notification.Notifier, dashboardURL string) *deactivateExcessPhonesUseCase {
-	uc.notifier = n
-	uc.dashboardURL = dashboardURL
+func (uc *deactivateExcessPhonesUseCase) WithNotices(notices businessphone.PhoneNotifier) *deactivateExcessPhonesUseCase {
+	uc.notices = notices
 	return uc
 }
 
 func (uc *deactivateExcessPhonesUseCase) notifySuspended(workspaceID, phoneID string) {
-	if uc.notifier == nil {
+	if uc.notices == nil {
 		return
 	}
-	display := ""
-	if ph, err := uc.phoneRepo.FindByID(phoneID); err == nil && ph != nil {
-		display = ph.DisplayPhoneNumber
+	phone := &businessphone.WhatsAppBusinessPhoneNumber{ID: phoneID, OwnerWorkspaceID: workspaceID}
+	if found, err := uc.phoneRepo.FindByID(phoneID); err == nil && found != nil {
+		phone.DisplayPhoneNumber = found.DisplayPhoneNumber
 	}
-	if err := uc.notifier.Notify(notification.Notification{
-		WorkspaceID: workspaceID,
-		Subject:     "Número de WhatsApp suspenso - " + brand.Active().Name,
-		Template:    "whatsapp_number_suspended.html",
-		Placeholders: map[string]interface{}{
-			"PhoneNumber":  display,
-			"Reason":       "Complemento ou plano inativo",
-			"DashboardURL": uc.dashboardURL,
-		},
-		DedupKey: "whatsapp_suspended:" + phoneID,
-		DedupTTL: time.Hour,
-	}); err != nil {
-		log.Printf("[addon-deactivate] suspension email for phone %s failed: %v", phoneID, err)
+	if err := uc.notices.NotifyPhone(phone, businessphone.SuspendedNotice()); err != nil {
+		log.Printf("[addon-deactivate] suspension notification for phone %s failed: %v", phoneID, err)
 	}
 }
 

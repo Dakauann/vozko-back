@@ -30,3 +30,33 @@ func TestCreateCampaignRefusesATemplateNotGrantedToTheWorkspace(t *testing.T) {
 		t.Fatalf("err %v asked %q", err, grants.asked)
 	}
 }
+
+func TestChangingACampaignToATemplateNotGrantedIsRefused(t *testing.T) {
+	stored, fixture := updateFixture(t, "")
+	counted := &countedCampaigns{mockCampaignRepo: stored}
+	built := fixture.(*updateCampaignUseCase)
+	uc := NewUpdateCampaignUseCase(counted, built.entryRepo, built.templateRepo, built.businessPhoneRepo, nil)
+	grants := &denyGrants{}
+	uc.(*updateCampaignUseCase).SetTemplateGrants(grants)
+	uc.(*updateCampaignUseCase).SetExitRiskGate(&recordingGate{})
+
+	_, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", TemplateID: "tmpl-2"})
+
+	if err != wc.ErrCampaignTemplateNotFound || grants.asked != "ws-1|tmpl-2" {
+		t.Fatalf("err %v asked %q", err, grants.asked)
+	}
+	if counted.updates != 0 {
+		t.Fatal("a template the workspace was never granted was saved")
+	}
+}
+
+func TestATemplateChangeWithoutAGrantCheckIsRefused(t *testing.T) {
+	stored, fixture := updateFixture(t, "")
+	built := fixture.(*updateCampaignUseCase)
+	uc := NewUpdateCampaignUseCase(stored, built.entryRepo, built.templateRepo, built.businessPhoneRepo, nil)
+	uc.(*updateCampaignUseCase).SetExitRiskGate(&recordingGate{})
+
+	if _, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", TemplateID: "tmpl-2"}); err != wc.ErrCampaignTemplateNotFound {
+		t.Fatalf("err %v, want the change refused when grants cannot be checked", err)
+	}
+}

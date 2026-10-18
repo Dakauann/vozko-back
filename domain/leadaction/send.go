@@ -40,6 +40,8 @@ type SendParams struct {
 	SendDelayMaxMS  int                                       `json:"sendDelayMaxMs,omitempty"`
 	DailyCap        int                                       `json:"dailyCap,omitempty"`
 	Bindings        []campaign.VariableBinding                `json:"bindings,omitempty"`
+
+	ExitRiskAcknowledged bool `json:"exitRiskAcknowledged,omitempty"`
 }
 
 func (a Action) Sends() bool {

@@ -38,6 +38,7 @@ func routeGates(t *testing.T) map[string]gatedRoute {
 		{http.MethodPost, "/leads/" + routeLeadID + "/anonymize"},
 		{http.MethodGet, "/leads/" + routeLeadID + "/relatives"},
 		{http.MethodPost, "/leads/" + routeLeadID + "/district"},
+		{http.MethodPost, "/leads/" + routeLeadID + "/company"},
 		{http.MethodGet, "/entries/" + relativeLeadID + "/lead"},
 	} {
 		send(t, router, call.method, call.path, nil, nil)

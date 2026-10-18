@@ -60,8 +60,11 @@ type RecordSendInput struct {
 	ConversationID    string
 	ProviderMessageID string
 	MessageID         string
+	ExitMessageID     string
 	VariantIndex      int
 	SentAt            time.Time
+	ErrorCode         int
+	ErrorMessage      string
 }
 
 type EntryRepository interface {

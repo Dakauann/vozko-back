@@ -140,6 +140,7 @@ type GroupRepository interface {
 	FindByJID(ctx context.Context, instanceID, jid string) (*Group, error)
 	FindByID(ctx context.Context, id string) (*Group, error)
 	ListByInstance(ctx context.Context, instanceID string) ([]*Group, error)
+	ListByJIDs(ctx context.Context, workspaceID string, jids []string) (map[string][]*Group, error)
 	Participants(ctx context.Context, groupID string) ([]GroupParticipant, error)
 
 	MarkStale(ctx context.Context, instanceID, jid string, at time.Time) error

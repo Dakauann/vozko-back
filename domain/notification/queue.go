@@ -4,6 +4,8 @@ const (
 	Exchange = "notifications_exchange"
 
 	EmailNotificationTopic = "notification_emails"
+	FanoutTopic            = "notification.fanout"
+	BroadcastTopic         = "notification.broadcast"
 )
 
 type NotificationQueueMessage struct {
@@ -11,4 +13,12 @@ type NotificationQueueMessage struct {
 	Template     string                 `json:"template"`
 	Subject      string                 `json:"subject"`
 	Placeholders map[string]interface{} `json:"placeholders"`
+}
+
+type FanoutMessage struct {
+	NotificationID string `json:"notificationId"`
+}
+
+type BroadcastMessage struct {
+	BroadcastID string `json:"broadcastId"`
 }

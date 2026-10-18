@@ -37,6 +37,8 @@ type fakeStore struct {
 	inserted  []*lead.Lead
 	added     []lead.Relation
 	removedBy []string
+	joined    []savedCall
+	closing   bool
 	raceOnce  bool
 	nextID    int
 	clock     int
@@ -288,6 +290,7 @@ type commandsFixture struct {
 	duplicates *fakeDuplicates
 	fields     *fakeDefinitions
 	anonymizer *fakeAnonymizer
+	companies  fakeCompanies
 	cmds       *Commands
 }
 
@@ -298,7 +301,7 @@ func allPermissions() fakePermissions {
 func newCommandsFixture(t *testing.T, perms fakePermissions, leads ...*lead.Lead) *commandsFixture {
 	t.Helper()
 	f := &commandsFixture{store: newFakeStore(leads...), perms: perms, notifier: &fakeNotifier{}, meta: &fakeMeta{}, entries: &fakeEntries{}, duplicates: &fakeDuplicates{},
-		fields: &fakeDefinitions{defs: leadDefinitions()}, anonymizer: &fakeAnonymizer{}}
+		fields: &fakeDefinitions{defs: leadDefinitions()}, anonymizer: &fakeAnonymizer{}, companies: fakeCompanies{}}
 	f.anonymizer.store = f.store
 	cmds, err := NewCommands(CommandDeps{
 		Store:       f.store,
@@ -319,6 +322,8 @@ func newCommandsFixture(t *testing.T, perms fakePermissions, leads ...*lead.Lead
 		Duplicates:  f.duplicates,
 		Definitions: f.fields,
 		Anonymizer:  f.anonymizer,
+		Memberships: f.store,
+		Companies:   f.companies,
 		Now:         func() time.Time { return cmdNow },
 	})
 	if err != nil {
@@ -343,7 +348,7 @@ func completeCommandDeps() CommandDeps {
 		Store: newFakeStore(), Permissions: fakePermissions{}, Owners: fakeOwners{}, Visibility: fakeVisibility{}, Notifier: &fakeNotifier{},
 		Phones: fakePhones{}, PhoneGrants: fakeGrants{}, Meta: &fakeMeta{},
 		Entries: &fakeEntries{}, Relations: newFakeStore(), Duplicates: &fakeDuplicates{},
-		Definitions: &fakeDefinitions{}, Anonymizer: &fakeAnonymizer{},
+		Definitions: &fakeDefinitions{}, Anonymizer: &fakeAnonymizer{}, Memberships: newFakeStore(), Companies: fakeCompanies{},
 	}
 }
 
@@ -358,6 +363,8 @@ func TestNewCommandsRefusesAMissingDependency(t *testing.T) {
 		"phones":       func(d *CommandDeps) { d.Phones = nil },
 		"phone grants": func(d *CommandDeps) { d.PhoneGrants = nil },
 		"meta":         func(d *CommandDeps) { d.Meta = nil },
+		"memberships":  func(d *CommandDeps) { d.Memberships = nil },
+		"companies":    func(d *CommandDeps) { d.Companies = nil },
 	}
 	for name, drop := range missing {
 		t.Run(name, func(t *testing.T) {
@@ -604,7 +611,7 @@ func TestOptOutIsRecordedOnceAndNeedsLeadsUpdate(t *testing.T) {
 		t.Fatalf("OptOut = %+v, %v", got, err)
 	}
 	event := f.store.saves[0].events[0]
-	if event.Kind != lead.EventOptedOut {
+	if event.Kind != lead.EventConsentWithdrawn {
 		t.Fatalf("event = %+v", event)
 	}
 	recordedSource := false
@@ -644,7 +651,7 @@ func TestATargetedCommandThatKeepsLosingRacesIsAConflictNotAFailure(t *testing.T
 		Visibility: fakeVisibility{cmdUser: true}, Notifier: &fakeNotifier{}, Now: func() time.Time { return cmdNow },
 		Phones: fakePhones{}, PhoneGrants: fakeGrants{}, Meta: &fakeMeta{},
 		Entries: &fakeEntries{}, Relations: store, Duplicates: &fakeDuplicates{},
-		Definitions: &fakeDefinitions{}, Anonymizer: &fakeAnonymizer{},
+		Definitions: &fakeDefinitions{}, Anonymizer: &fakeAnonymizer{}, Memberships: store, Companies: fakeCompanies{},
 	})
 	if err != nil {
 		t.Fatal(err)

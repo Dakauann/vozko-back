@@ -15,6 +15,7 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	"vozko/domain/user"
+	workspace_domain "vozko/domain/workspace"
 	"vozko/infra/http/middleware"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 )
@@ -39,6 +40,7 @@ type CampaignHandler struct {
 	departments DepartmentScopeResolver
 	access      uwc.CampaignAccessUseCase
 	actions     uwc.CampaignActionUseCase
+	permissions workspace_domain.CheckAccessUseCase
 }
 
 type CampaignHandlerDeps struct {
@@ -60,6 +62,7 @@ type CampaignHandlerDeps struct {
 	QuickSend   uwc.QuickSendUseCase
 	Validate    uwc.ValidateTargetsUseCase
 	Departments DepartmentScopeResolver
+	Permissions workspace_domain.CheckAccessUseCase
 }
 
 func NewCampaignHandler(d CampaignHandlerDeps) *CampaignHandler {
@@ -69,6 +72,7 @@ func NewCampaignHandler(d CampaignHandlerDeps) *CampaignHandler {
 		entries: d.Entries, reset: d.Reset, clear: d.Clear,
 		addEntry: d.AddEntry, updEntry: d.UpdateEntry, delEntry: d.DeleteEntry,
 		quickSend: d.QuickSend, validate: d.Validate, departments: d.Departments, access: d.Access, actions: d.Actions,
+		permissions: d.Permissions,
 	}
 }
 
@@ -111,6 +115,17 @@ func (h *CampaignHandler) ownedCampaign(w http.ResponseWriter, r *http.Request) 
 		return "", uw.DepartmentScope{}, nil, false
 	}
 	return workspaceID, scope, c, true
+}
+
+func (h *CampaignHandler) seesGroups(r *http.Request, workspaceID string) bool {
+	claims := middleware.GetClaims(r)
+	if claims == nil || h.permissions == nil {
+		return false
+	}
+	if claims.Role == string(user.RoleAdmin) {
+		return true
+	}
+	return h.permissions.Execute(claims.UserID, workspaceID, workspace_domain.ResourceUnofficialWhatsAppGroups, workspace_domain.ActionRead) == nil
 }
 
 func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -240,6 +255,20 @@ func (h *CampaignHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// @Summary		Criar uma campanha não oficial
+// @Description	Cria uma campanha parada do WhatsApp não oficial com os números enviados. O contato só usa a saída que vê: cada variação da mensagem precisa mostrar um comando com barra, como `Responda /sair para não receber mais mensagens.`, e sem ele a criação responde 422 `unofficial_campaign_needs_exit`, sem exceção. Um áudio não mostra legenda ao contato: nele o comando vai em `message.exitText`, um texto curto enviado logo depois do áudio na mesma conversa, e um áudio sem esse texto é recusado do mesmo jeito. Se o texto de saída falhar depois do áudio, o contato fica SENT com o código 910005 e o motivo, sem reenviar o áudio. Um link (`https://loja.com/sair`) ou uma data (`12/10`) não contam. Depois do envio, quem responde o comando mostrado na última mensagem de campanha que recebeu nesta conversa deixa de receber mensagens, sem mensagem de confirmação. O fluxo e o agente são conferidos pelo passo compartilhado.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			body	body		object	true	"Campos da campanha e números"
+// @Success		201		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns [post]
 func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	workspaceID, scope, ok := h.campaignScope(w, r)
 	if !ok {
@@ -255,6 +284,10 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if claims := middleware.GetClaims(r); claims == nil || claims.Role != string(user.RoleAdmin) {
 		draft.SeedOutcome = nil
 	}
+	if draft.TargetsGroups() && !h.seesGroups(r, workspaceID) {
+		response.WriteError(w, http.StatusForbidden, "you do not have access to this workspace's groups", nil)
+		return
+	}
 
 	created, err := h.create.Execute(r.Context(), draft, scope)
 	if err != nil {
@@ -265,7 +298,7 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Editar uma campanha não oficial
-// @Description	Atualiza mensagem, número, ritmo, fluxo e agente de uma campanha que não está em andamento. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado: fluxo de outro workspace responde 403 `campaign_workflow_forbidden`, fluxo ou agente inexistente 422, variável do agente ausente 400 `AGENT_REQUIRED_VARIABLE_MISSING`, passo indisponível 503.
+// @Description	Atualiza mensagem, número, ritmo, fluxo e agente de uma campanha que não está em andamento. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado: fluxo de outro workspace responde 403 `campaign_workflow_forbidden`, fluxo ou agente inexistente 422, variável do agente ausente 400 `AGENT_REQUIRED_VARIABLE_MISSING`, passo indisponível 503. Uma mensagem nova precisa mostrar ao contato um comando de saída, como `/sair`, em cada variação, ou no `exitText` de um áudio: sem ele responde 422 `unofficial_campaign_needs_exit`. Editar outros campos de uma campanha antiga mantém a mensagem dela sem essa exigência.
 // @Tags			Unofficial WhatsApp Campaigns
 // @Accept			json
 // @Produce		json
@@ -647,8 +680,13 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrCampaignRunning),
 		errors.Is(err, uwc.ErrCampaignResetNotAllowed),
 		errors.Is(err, uwc.ErrCampaignClearNotAllowed),
+		errors.Is(err, uwc.ErrGroupCampaignNumberLocked),
+		errors.Is(err, uwc.ErrCampaignAudienceMismatch),
 		errors.Is(err, uwcuc.ErrQuickSendBusy):
 		response.WriteError(w, http.StatusConflict, err.Error(), nil)
+
+	case errors.Is(err, uwc.ErrCampaignNeedsExit):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, uwc.ErrorCode(err), err.Error(), nil)
 
 	case errors.Is(err, uwc.ErrCampaignResetCodeInvalid), errors.Is(err, uwc.ErrCampaignClearCodeInvalid):
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
@@ -663,6 +701,8 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrCampaignTargetsRequired),
 		errors.Is(err, uwc.ErrCampaignTargetsTooMany),
 		errors.Is(err, uwc.ErrCampaignTargetInvalid),
+		errors.Is(err, uwc.ErrCampaignAudienceInvalid),
+		errors.Is(err, uwc.ErrGroupCampaignFunnel),
 		errors.Is(err, uwc.ErrCampaignVariablesMismatch),
 		errors.Is(err, uwc.ErrCampaignVariableEmpty),
 		errors.Is(err, uwc.ErrCampaignWorkflowVarsMissing),
@@ -678,6 +718,7 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrMenuOptionsTooMany),
 		errors.Is(err, uwc.ErrMenuOptionLabelTooLong),
 		errors.Is(err, uwc.ErrMenuOptionIDRequired),
+		errors.Is(err, uwc.ErrMessageExitTextTooLong),
 		errors.Is(err, campaign.ErrSeededOutcomeOverflow):
 		response.WriteError(w, http.StatusUnprocessableEntity, err.Error(), nil)
 
@@ -693,7 +734,8 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 
 	case errors.Is(err, campaign.ErrAutomationUnavailable),
 		errors.Is(err, campaign.ErrIdempotencyUnavailable),
-		errors.Is(err, campaign.ErrLeadTargetsUnavailable):
+		errors.Is(err, campaign.ErrLeadTargetsUnavailable),
+		errors.Is(err, uwcuc.ErrGroupTargetsUnavailable):
 		response.WriteError(w, http.StatusServiceUnavailable, err.Error(), nil)
 
 	default:

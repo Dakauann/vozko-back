@@ -91,7 +91,7 @@ func (m *fallbackPolicyWhatsAppClient) CreateTemplate(context.Context, conversat
 	return nil, nil
 }
 
-func (m *fallbackPolicyWhatsAppClient) UpdateTemplate(context.Context, string, conversation.UpdateTemplateInput) error {
+func (m *fallbackPolicyWhatsAppClient) EditTemplate(context.Context, string, conversation.EditTemplateInput) error {
 	return nil
 }
 

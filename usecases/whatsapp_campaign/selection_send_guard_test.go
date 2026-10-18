@@ -1,6 +1,7 @@
 package whatsapp_campaign_usecase
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -30,7 +31,9 @@ func updateFixture(t *testing.T, source string) (*mockCampaignRepo, wc.UpdateCam
 	templates := newMockTemplateRepo()
 	templates.templates["tmpl-1"] = &template.Template{ID: "tmpl-1", Status: template.TemplateStatusApproved, WABAId: "waba-1"}
 	templates.templates["tmpl-2"] = &template.Template{ID: "tmpl-2", Status: template.TemplateStatusApproved, WABAId: "waba-1"}
-	return campaigns, NewUpdateCampaignUseCase(campaigns, newMockEntryRepo(), templates, phones, nil)
+	uc := NewUpdateCampaignUseCase(campaigns, newMockEntryRepo(), templates, phones, nil)
+	uc.(*updateCampaignUseCase).SetTemplateGrants(allowGrants{})
+	return campaigns, uc
 }
 
 func foreignWorkflowStep(t *testing.T) *campaignautomation.Step {
@@ -56,7 +59,7 @@ func TestASelectionSendKeepsTheTemplateAndNumberItWasReviewedWith(t *testing.T) 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			campaigns, uc := updateFixture(t, campaign.SourceLeadSelection)
-			_, err := uc.Execute("camp-1", tc.input)
+			_, err := uc.Execute(context.Background(), "camp-1", tc.input)
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("Execute = %v, want %v", err, tc.err)
 			}
@@ -69,18 +72,19 @@ func TestASelectionSendKeepsTheTemplateAndNumberItWasReviewedWith(t *testing.T) 
 
 func TestAPlainCampaignMayChangeItsTemplate(t *testing.T) {
 	_, uc := updateFixture(t, "")
-	if _, err := uc.Execute("camp-1", &wc.Campaign{Name: "Matrículas", TemplateID: "tmpl-2"}); err != nil {
+	uc.(*updateCampaignUseCase).SetExitRiskGate(admittingGate{})
+	if _, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", TemplateID: "tmpl-2"}); err != nil {
 		t.Fatalf("Execute = %v", err)
 	}
 }
 
 func TestUpdateRunsTheSharedWorkflowStepItself(t *testing.T) {
 	_, uc := updateFixture(t, "")
-	if _, err := uc.Execute("camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrAutomationUnavailable) {
+	if _, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrAutomationUnavailable) {
 		t.Fatalf("Execute without the step = %v, want ErrAutomationUnavailable", err)
 	}
 	uc.(*updateCampaignUseCase).SetAutomation(foreignWorkflowStep(t))
-	if _, err := uc.Execute("camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrWorkflowForbidden) {
+	if _, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrWorkflowForbidden) {
 		t.Fatalf("Execute = %v, want ErrWorkflowForbidden", err)
 	}
 }

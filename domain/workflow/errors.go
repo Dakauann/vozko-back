@@ -55,6 +55,7 @@ var (
 	ErrNodeInvalidResponseMode          = errors.New("workflow: invalid response_mode value (must be 'default' or 'segmented')")
 	ErrNodeSegmentedSendConflict        = errors.New("workflow: AI agent with segmented response_mode sends messages automatically, remove the downstream send_text node to avoid duplicate messages")
 	ErrNodeInvalidInteractiveConfig     = errors.New("workflow: interactive prompt node has invalid buttons/list options (see WhatsApp limits)")
+	ErrInteractiveOptionsNotAList       = errors.New("deve ser uma lista")
 
 	ErrRunNotFound              = errors.New("workflow: run not found")
 	ErrRunAlreadyExists         = errors.New("workflow: active run already exists for this workflow and entry")

@@ -2,6 +2,7 @@ package whatsapp_campaign_repository
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -18,7 +19,7 @@ type CachedRepository struct {
 	ttl    time.Duration
 }
 
-func NewCachedRepository(inner wc.Repository, shared cache.SharedState) wc.Repository {
+func NewCachedRepository(inner wc.Repository, shared cache.SharedState) *CachedRepository {
 	return &CachedRepository{inner: inner, shared: shared, ttl: campaignCacheTTL}
 }
 
@@ -134,3 +135,17 @@ func (r *CachedRepository) ListByStatus(status wc.Status) ([]*wc.Campaign, error
 func (r *CachedRepository) ListScheduledToStart(at time.Time, limit int) ([]*wc.Campaign, error) {
 	return r.inner.ListScheduledToStart(at, limit)
 }
+
+func (r *CachedRepository) ClaimScheduledStart(campaignID string, dueBy time.Time) (bool, error) {
+	claimer, ok := r.inner.(wc.ScheduleClaimer)
+	if !ok {
+		return false, errors.New("whatsapp campaign repository cannot claim schedules")
+	}
+	claimed, err := claimer.ClaimScheduledStart(campaignID, dueBy)
+	if err == nil && claimed {
+		r.invalidate(strings.TrimSpace(campaignID))
+	}
+	return claimed, err
+}
+
+var _ wc.ScheduleClaimer = (*CachedRepository)(nil)

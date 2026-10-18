@@ -726,7 +726,7 @@ func (c *mockWhatsAppClient) GetTemplate(_ context.Context, _ string) (*conversa
 func (c *mockWhatsAppClient) CreateTemplate(_ context.Context, _ conversation.CreateTemplateInput) (*conversation.CreateTemplateOutput, error) {
 	return nil, nil
 }
-func (c *mockWhatsAppClient) UpdateTemplate(_ context.Context, _ string, _ conversation.UpdateTemplateInput) error {
+func (c *mockWhatsAppClient) EditTemplate(_ context.Context, _ string, _ conversation.EditTemplateInput) error {
 	return nil
 }
 func (c *mockWhatsAppClient) DeleteTemplate(_ context.Context, _ conversation.DeleteTemplateInput) error {

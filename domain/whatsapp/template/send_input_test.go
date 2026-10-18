@@ -84,8 +84,14 @@ func TestBuildSendInput_AuthenticationUsesTheButtonsOwnIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(out.Buttons) != 1 || out.Buttons[0].Index != 1 {
-		t.Errorf("buttons = %+v, want one at index 1", out.Buttons)
+	var codes []conversation.TemplateButtonParam
+	for _, b := range out.Buttons {
+		if b.SubType == conversation.TemplateButtonSubTypeURL {
+			codes = append(codes, b)
+		}
+	}
+	if len(codes) != 1 || codes[0].Index != 1 {
+		t.Errorf("buttons = %+v, want one code button at index 1", out.Buttons)
 	}
 }
 

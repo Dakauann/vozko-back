@@ -231,8 +231,7 @@ func (uc *HandleWebhookUseCase) handleInboundMessage(ctx context.Context, accoun
 	}
 
 	uc.enrichContact(ctx, account, contact, msg.MID)
-	uc.automation.Dispatch(ctx, automationInput(account, contact, conv, text, metachannel.QuickReplySelection(msg)))
-	return nil
+	return uc.automation.Dispatch(ctx, automationInput(account, contact, conv, text, msg.MID, ev.Timestamp, metachannel.QuickReplySelection(msg)))
 }
 
 func (uc *HandleWebhookUseCase) handleEcho(ctx context.Context, account *igdomain.Account, ev *igdomain.Event) error {
@@ -288,7 +287,7 @@ func (uc *HandleWebhookUseCase) handlePostback(ctx context.Context, account *igd
 		return err
 	}
 
-	uc.automation.FireWorkflows(ctx, automationInput(account, contact, conv, ev.Postback.Title, &workflow.OptionSelection{
+	uc.automation.FireWorkflows(ctx, automationInput(account, contact, conv, ev.Postback.Title, ev.Postback.MID, ev.Timestamp, &workflow.OptionSelection{
 		ID:    ev.Postback.Payload,
 		Title: ev.Postback.Title,
 		Kind:  "postback",
@@ -462,13 +461,16 @@ func automationInput(
 	account *igdomain.Account,
 	contact *igdomain.Contact,
 	conv *igdomain.Conversation,
-	text string,
+	text, providerMessageID string,
+	receivedAt time.Time,
 	sel *workflow.OptionSelection,
 ) conversation_usecase.InboundAutomationInput {
 	in := conversation_usecase.InboundAutomationInput{
 		WorkspaceID:          account.WorkspaceID,
 		EntryID:              conv.ID,
 		EntryType:            shared.EntryTypeInstagram,
+		ProviderMessageID:    providerMessageID,
+		ReceivedAt:           receivedAt,
 		Text:                 text,
 		Selection:            sel,
 		ConversationOverride: conv.AutomationEnabled,

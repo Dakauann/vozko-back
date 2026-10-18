@@ -369,10 +369,11 @@ func (r *entryRepository) RecordSend(entryID string, in uwc.RecordSendInput) err
 			"conversation_id":     ptr(in.ConversationID),
 			"provider_message_id": in.ProviderMessageID,
 			"message_id":          ptr(in.MessageID),
+			"exit_message_id":     ptr(in.ExitMessageID),
 			"variant_index":       in.VariantIndex,
 			"sent_at":             in.SentAt.UTC(),
-			"error_code":          0,
-			"error_message":       "",
+			"error_code":          in.ErrorCode,
+			"error_message":       in.ErrorMessage,
 			"updated_at":          time.Now().UTC(),
 		}).Error
 }

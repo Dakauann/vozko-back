@@ -8,6 +8,7 @@ import (
 
 	"vozko/domain/campaign"
 	"vozko/domain/lead"
+	"vozko/domain/whatsapp_campaign/smartcampaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 )
 
@@ -25,6 +26,7 @@ var (
 	ErrCampaignPhoneNumbersTooMany       = errors.New("whatsapp campaign phone numbers exceed allowed limit")
 	ErrCampaignPhoneNumberInvalid        = errors.New("whatsapp campaign phone number is invalid, must be E.164 format starting with 55 (e.g., 558499999999)")
 	ErrCampaignNotFound                  = errors.New("whatsapp campaign not found")
+	ErrLaunchCheckUnavailable            = errors.New("whatsapp campaign launch check is not configured")
 	ErrCampaignStatusInvalid             = campaign.ErrStatusInvalid
 	ErrCampaignResetCodeInvalid          = errors.New("invalid reset confirmation code")
 	ErrCampaignResetNotAllowed           = errors.New("whatsapp campaign reset not allowed while running")
@@ -119,7 +121,6 @@ type Campaign struct {
 	EnableAnalysis       bool                        `json:"enableAnalysis"`
 	EnableAutoStaging    bool                        `json:"enableAutoStaging"`
 	EnableAutoMemory     bool                        `json:"enableAutoMemory"`
-	PreferAudio          bool                        `json:"preferAudio"`
 	ShowTemplateInCrm    bool                        `json:"showTemplateInCrm"`
 	AiModel              string                      `json:"aiModel,omitempty"`
 	Status               Status                      `json:"status"`
@@ -133,6 +134,10 @@ type Campaign struct {
 	UpdatedAt            time.Time                   `json:"updatedAt"`
 
 	ScheduledStart time.Time `json:"scheduledStart,omitempty"`
+
+	WavePolicy *smartcampaign.Policy `json:"-"`
+
+	ExitRiskAcknowledgedBy string `json:"-"`
 }
 
 func (c *Campaign) IsOrganic() bool {

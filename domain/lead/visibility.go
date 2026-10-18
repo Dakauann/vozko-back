@@ -102,6 +102,8 @@ func (l *Lead) VisibleTo(v Viewer, sent []string) *Lead {
 		case FieldRelations:
 			visible.Relations = l.Relations
 			visible.RelativesCount, visible.ReferredCount = l.RelativesCount, l.ReferredCount
+		case FieldCompany:
+			visible.CompanyID = l.CompanyID
 		}
 	}
 	return VisibleFields(visible, v)

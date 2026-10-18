@@ -41,6 +41,7 @@ var leadValueRules = map[crmfilter.Field]func(string) bool{
 	crmfilter.FieldGeoStatus:    func(v string) bool { return GeoStatus(v).Valid() },
 	crmfilter.FieldGeoPrecision: func(v string) bool { return geo.Precision(v).Known() },
 	crmfilter.FieldRelationKind: func(v string) bool { return RelationKind(v).Valid() },
+	crmfilter.FieldOptOutSource: func(v string) bool { return OptOutOrigin(v).Valid() },
 }
 
 func ValidateFilter(f crmfilter.Filter) error {

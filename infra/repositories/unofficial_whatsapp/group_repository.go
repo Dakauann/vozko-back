@@ -81,16 +81,19 @@ func (r *groupRepository) Upsert(ctx context.Context, g *uw.Group) error {
 			return nil
 		}
 
-		if err := tx.Where("group_id = ?", stored.ID).
-			Delete(&schema.UnofficialWhatsAppGroupParticipant{}).Error; err != nil {
-			return err
-		}
-
 		rows := make([]schema.UnofficialWhatsAppGroupParticipant, 0, len(g.Participants))
+		present := make([]string, 0, len(g.Participants))
+		seen := make(map[string]struct{}, len(g.Participants))
 		for _, p := range g.Participants {
-			if strings.TrimSpace(p.JID) == "" {
+			jid := truncate(p.JID, 64)
+			if strings.TrimSpace(jid) == "" {
 				continue
 			}
+			if _, dup := seen[jid]; dup {
+				continue
+			}
+			seen[jid] = struct{}{}
+			present = append(present, jid)
 			rows = append(rows, schema.UnofficialWhatsAppGroupParticipant{
 				GroupID:     stored.ID,
 				JID:         truncate(p.JID, 64),
@@ -103,10 +106,14 @@ func (r *groupRepository) Upsert(ctx context.Context, g *uw.Group) error {
 		if len(rows) == 0 {
 			return nil
 		}
-		return tx.Clauses(clause.OnConflict{
+		if err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "group_id"}, {Name: "jid"}},
-			DoNothing: true,
-		}).Create(&rows).Error
+			DoUpdates: clause.AssignmentColumns([]string{"lid", "phone_number", "display_name", "role", "updated_at"}),
+		}).Create(&rows).Error; err != nil {
+			return err
+		}
+		return tx.Where("group_id = ? AND jid NOT IN ?", stored.ID, present).
+			Delete(&schema.UnofficialWhatsAppGroupParticipant{}).Error
 	})
 }
 
@@ -214,4 +221,24 @@ func (r *groupRepository) Delete(ctx context.Context, id string) error {
 		}
 		return tx.Delete(&schema.UnofficialWhatsAppGroup{}, "id = ?", id).Error
 	})
+}
+
+func (r *groupRepository) ListByJIDs(ctx context.Context, workspaceID string, jids []string) (map[string][]*uw.Group, error) {
+	out := map[string][]*uw.Group{}
+	if len(jids) == 0 {
+		return out, nil
+	}
+	var records []schema.UnofficialWhatsAppGroup
+	err := r.db.WithContext(ctx).
+		Where("workspace_id = ? AND jid IN ?", workspaceID, jids).
+		Order("created_at ASC").
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range records {
+		seat := toGroupDomain(&records[i], nil)
+		out[seat.JID] = append(out[seat.JID], seat)
+	}
+	return out, nil
 }

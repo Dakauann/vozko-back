@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"vozko/domain/customfield"
 	"vozko/domain/lead"
@@ -26,6 +27,7 @@ type Edit struct {
 	Value     any
 	Recorded  bool
 	EventKind recordevent.Kind
+	ChosenAt  time.Time
 }
 
 func EditFor(a Action, p Params, defs []*customfield.Definition, viewer customfield.Viewer) (Edit, error) {
@@ -37,6 +39,8 @@ func EditFor(a Action, p Params, defs []*customfield.Definition, viewer customfi
 	}
 	p = p.Normalized()
 	switch a {
+	case ActionRestoreOptOut:
+		return restoreEdit(p), nil
 	case ActionClassify:
 		var value any
 		if err := json.Unmarshal(p.Value, &value); err != nil {
@@ -85,7 +89,7 @@ func (e Edit) Assignment() lead.Assignment {
 }
 
 func (e Edit) PendingFor(s selection.Selection) *lead.Assignment {
-	if s.Mode != selection.ModeFirstN {
+	if s.Mode != selection.ModeFirstN || e.Kind == EditRestoreOptOut {
 		return nil
 	}
 	a := e.Assignment()

@@ -34,6 +34,9 @@ const (
 	FieldReferredCount  Field = "referred_count"
 	FieldReferredBy     Field = "referred_by"
 	FieldGeoPlacement   Field = "geo_placement"
+	FieldOptOutSource   Field = "opt_out_source"
+	FieldOptedOutAt     Field = "opted_out_at"
+	FieldCompany        Field = "company"
 
 	FieldAreaApproximate Field = "area_approximate"
 )
@@ -58,6 +61,7 @@ var (
 	birthdayOps  = []Operator{OpEquals, OpIn}
 	areaOps      = []Operator{OpIn}
 	placementOps = []Operator{OpIn, OpNotIn, OpEquals, OpNotEquals}
+	optOutOps    = []Operator{OpIn, OpNotIn, OpEquals, OpNotEquals}
 	leadFieldSet = []FieldSpec{
 		{FieldID, KindIDSet, exactIDOps, true},
 		{FieldPhoneAny, KindString, exactIDOps, true},
@@ -82,12 +86,16 @@ var (
 		{FieldArea, KindIDSet, areaOps, true},
 		{FieldAreaApproximate, KindIDSet, areaOps, true},
 		{FieldGeoPlacement, KindEnum, placementOps, true},
+		{FieldOptOutSource, KindEnum, optOutOps, true},
+		{FieldOptedOutAt, KindDate, dateOps, false},
+		{FieldCompany, KindIDSet, idSetOps, true},
 	}
 )
 
 var valueRules = map[Field]func(string) error{
 	FieldID:              uuidValue,
 	FieldReferredBy:      uuidValue,
+	FieldCompany:         uuidValue,
 	FieldArea:            uuidValue,
 	FieldAreaApproximate: uuidValue,
 	FieldGeoPlacement:    geoPlacementValue,

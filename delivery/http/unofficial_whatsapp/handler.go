@@ -64,20 +64,28 @@ func NewHandler(d HandlerDeps) *Handler {
 }
 
 func (h *Handler) scopeFor(r *http.Request) (uw.DepartmentScope, bool) {
+	return requestScope(h.departments, r)
+}
+
+func requestScope(departments DepartmentScopeResolver, r *http.Request) (uw.DepartmentScope, bool) {
 	claims := middleware.GetClaims(r)
-	if claims == nil || h.departments == nil {
+	if claims == nil || departments == nil {
 		return uw.DepartmentScope{}, false
 	}
-	return uw.ResolveScope(h.departments, claims.UserID, middleware.GetWorkspaceID(r), claims.Role == string(user_domain.RoleAdmin))
+	return uw.ResolveScope(departments, claims.UserID, middleware.GetWorkspaceID(r), claims.Role == string(user_domain.RoleAdmin))
 }
 
 func (h *Handler) requireScope(w http.ResponseWriter, r *http.Request) (string, uw.DepartmentScope, bool) {
+	return requireRequestScope(w, r, h.departments)
+}
+
+func requireRequestScope(w http.ResponseWriter, r *http.Request, departments DepartmentScopeResolver) (string, uw.DepartmentScope, bool) {
 	workspaceID := middleware.GetWorkspaceID(r)
 	if workspaceID == "" {
 		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
 		return "", uw.DepartmentScope{}, false
 	}
-	scope, allowed := h.scopeFor(r)
+	scope, allowed := requestScope(departments, r)
 	if !allowed {
 		response.WriteError(w, http.StatusForbidden,
 			"you do not have access to this workspace's numbers", nil)
@@ -215,10 +223,9 @@ type updateInstanceRequest struct {
 	HandleGroups         *bool `json:"handleGroups"`
 	ImportHistory        *bool `json:"importHistory"`
 
-	DailySendCap    *int  `json:"dailySendCap"`
-	SendDelayMinMS  *int  `json:"sendDelayMinMs"`
-	SendDelayMaxMS  *int  `json:"sendDelayMaxMs"`
-	AutoRejectCalls *bool `json:"autoRejectCalls"`
+	DailySendCap   *int `json:"dailySendCap"`
+	SendDelayMinMS *int `json:"sendDelayMinMs"`
+	SendDelayMaxMS *int `json:"sendDelayMaxMs"`
 }
 
 func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
@@ -254,10 +261,9 @@ func (h *Handler) UpdateInstance(w http.ResponseWriter, r *http.Request) {
 		HandleGroups:         req.HandleGroups,
 		ImportHistory:        req.ImportHistory,
 
-		DailySendCap:    req.DailySendCap,
-		SendDelayMinMS:  req.SendDelayMinMS,
-		SendDelayMaxMS:  req.SendDelayMaxMS,
-		AutoRejectCalls: req.AutoRejectCalls,
+		DailySendCap:   req.DailySendCap,
+		SendDelayMinMS: req.SendDelayMinMS,
+		SendDelayMaxMS: req.SendDelayMaxMS,
 	}
 	if _, ok := raw["departmentId"]; ok {
 		in.DepartmentID = &req.DepartmentID

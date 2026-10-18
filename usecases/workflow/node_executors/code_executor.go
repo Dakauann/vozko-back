@@ -112,7 +112,7 @@ func (e *codeExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:     workflow.NodeTypeActionCode,
 		Category: workflow.NodeCategoryLogic,
-		Scopes:   []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:   []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:    "Código (JavaScript)",
 		Description: "Executa JavaScript em um sandbox seguro. " +
 			"Tem acesso a input, state.get/set, fetch (HTTPS), secrets, log, json, b64, crypto, sleep. " +
@@ -165,7 +165,9 @@ func (e *codeExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 		}
 	}
 
-	execCtx, cancel := context.WithTimeout(context.Background(), timeout+time.Second)
+	callCtx, releaseCall := ctx.CallContext()
+	defer releaseCall()
+	execCtx, cancel := context.WithTimeout(callCtx, timeout+time.Second)
 	defer cancel()
 
 	runID := ""

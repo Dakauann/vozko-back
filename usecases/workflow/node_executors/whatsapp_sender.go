@@ -15,6 +15,7 @@ import (
 
 	"vozko/domain/campaign"
 	"vozko/domain/conversation"
+	ce "vozko/domain/conversation_event"
 	lead_domain "vozko/domain/lead"
 	media_domain "vozko/domain/media"
 	"vozko/domain/messaging"
@@ -22,6 +23,7 @@ import (
 	businessphone "vozko/domain/whatsapp/business_phone"
 	template_domain "vozko/domain/whatsapp/template"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	wo "vozko/domain/whatsapp_outreach"
 	"vozko/domain/workflow"
 	media_infra "vozko/infra/media"
 )
@@ -31,7 +33,7 @@ type leadLookup interface {
 	FindByNumber(workspaceID, number string) (*lead_domain.Lead, error)
 }
 
-var errTemplateRecipientRefused = errors.New("workflow whatsapp sender: this lead may not receive templates")
+var errRecipientRefused = errors.New("workflow sender: this lead may not receive messages")
 
 type whatsappEntryLookup interface {
 	FindByID(id string) (*wce.WhatsAppCampaignEntry, error)
@@ -77,6 +79,10 @@ type SenderDeps struct {
 	ConversationMediaRepo conversation.ConversationMediaRepository
 
 	Adapters conversation.AdapterRegistry
+
+	EntryLeads lead_domain.EntryLeads
+
+	Events ce.Logger
 }
 
 type whatsappSender struct {
@@ -114,6 +120,9 @@ func (s *whatsappSender) SendText(ctx context.Context, run *workflow.WorkflowRun
 	}
 	target, err := s.resolveTarget(run.EntryID, run.WorkspaceID)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := s.refuseUnreachableRecipient(run, target); err != nil {
 		return nil, "", err
 	}
 
@@ -171,6 +180,9 @@ func (s *whatsappSender) SendButtons(ctx context.Context, run *workflow.Workflow
 	}
 	target, err := s.resolveTarget(run.EntryID, run.WorkspaceID)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := s.refuseUnreachableRecipient(run, target); err != nil {
 		return nil, "", err
 	}
 
@@ -234,6 +246,9 @@ func (s *whatsappSender) SendButtonsWithInput(ctx context.Context, run *workflow
 	if err != nil {
 		return nil, "", err
 	}
+	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+		return nil, "", err
+	}
 
 	selectedBusinessPhoneID := target.receivedBusinessPhoneID
 	if selectedBusinessPhoneID == "" {
@@ -290,6 +305,9 @@ func (s *whatsappSender) SendListWithInput(ctx context.Context, run *workflow.Wo
 	if err != nil {
 		return nil, "", err
 	}
+	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+		return nil, "", err
+	}
 
 	selectedBusinessPhoneID := target.receivedBusinessPhoneID
 	if selectedBusinessPhoneID == "" {
@@ -344,6 +362,9 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 	}
 	target, err := s.resolveTarget(run.EntryID, run.WorkspaceID)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := s.refuseUnreachableRecipient(run, target); err != nil {
 		return nil, "", err
 	}
 
@@ -477,7 +498,7 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.refuseUnreachableRecipient(run.WorkspaceID, target); err != nil {
+	if err := s.refuseUnreachableRecipient(run, target); err != nil {
 		return nil, "", err
 	}
 
@@ -513,6 +534,10 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 	log.Printf("[workflow][whatsapp_sender] sending template %s (bodyParams=%d, headerParams=%d) to %s",
 		tmpl.Name, len(params), len(headerParams), target.leadNumber)
 
+	body, metadata, err := tmpl.HistoryRecord(params)
+	if err != nil {
+		return nil, usedBusinessPhoneID, err
+	}
 	sent, err := s.deps.TemplateSends.Execute(ctx, template_domain.BilledSendInput{
 		WorkspaceID:     run.WorkspaceID,
 		IdempotencyKey:  uuid.New().String(),
@@ -538,8 +563,9 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 			MessageID:   strings.TrimSpace(output.MessageID),
 			From:        from,
 			To:          target.leadNumber,
-			Text:        fmt.Sprintf("[template:%s]", tmpl.Name),
+			Text:        body,
 			Timestamp:   time.Now().UTC(),
+			Metadata:    metadata,
 		}
 		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
@@ -586,17 +612,21 @@ func (s *whatsappSender) resolveTargetForRun(run *workflow.WorkflowRun, state *w
 	}, nil
 }
 
-func (s *whatsappSender) refuseUnreachableRecipient(workspaceID string, target *whatsappSendTarget) error {
-	contacts, err := s.recipientLeads(workspaceID, target)
+func (s *whatsappSender) refuseUnreachableRecipient(run *workflow.WorkflowRun, target *whatsappSendTarget) error {
+	contacts, err := s.recipientLeads(run.WorkspaceID, target)
 	if err != nil {
 		return err
 	}
 	for _, contact := range contacts {
-		if reason := campaign.LeadRefusal(campaign.LeadFactsOf(contact)); reason != "" {
-			return fmt.Errorf("%w: lead %s (%s)", errTemplateRecipientRefused, contact.ID, reason)
+		if err := campaign.RecipientRefusal(contact); err != nil {
+			return refusalLines{events: s.deps.Events}.refuse(run, contact.ID, err)
 		}
 	}
 	return nil
+}
+
+func refusedRecipient(leadID string, refusal error) error {
+	return fmt.Errorf("%w: lead %s (%s): %w", errRecipientRefused, leadID, wo.ErrorCode(refusal), refusal)
 }
 
 func (s *whatsappSender) recipientLeads(workspaceID string, target *whatsappSendTarget) ([]*lead_domain.Lead, error) {
@@ -604,16 +634,16 @@ func (s *whatsappSender) recipientLeads(workspaceID string, target *whatsappSend
 		return []*lead_domain.Lead{target.contact}, nil
 	}
 	if s.deps.LeadRepo == nil {
-		return nil, fmt.Errorf("%w: the lead cannot be checked", errTemplateRecipientRefused)
+		return nil, fmt.Errorf("%w: the lead cannot be checked", errRecipientRefused)
 	}
 	var contacts []*lead_domain.Lead
 	if target.leadID != "" {
 		named, err := s.deps.LeadRepo.FindByID(workspaceID, target.leadID)
 		if err != nil {
-			return nil, fmt.Errorf("%w: lead %s could not be read: %w", errTemplateRecipientRefused, target.leadID, err)
+			return nil, fmt.Errorf("%w: lead %s could not be read: %w", errRecipientRefused, target.leadID, err)
 		}
 		if named == nil {
-			return nil, fmt.Errorf("%w: lead %s is not in this workspace", errTemplateRecipientRefused, target.leadID)
+			return nil, fmt.Errorf("%w: lead %s is not in this workspace", errRecipientRefused, target.leadID)
 		}
 		if lead_domain.SameNumber(named.Number, target.leadNumber) {
 			return []*lead_domain.Lead{named}, nil
@@ -625,7 +655,7 @@ func (s *whatsappSender) recipientLeads(workspaceID string, target *whatsappSend
 		return contacts, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: the lead of this number could not be read: %w", errTemplateRecipientRefused, err)
+		return nil, fmt.Errorf("%w: the lead of this number could not be read: %w", errRecipientRefused, err)
 	}
 	if holder != nil {
 		contacts = append(contacts, holder)

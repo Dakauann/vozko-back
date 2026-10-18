@@ -107,6 +107,7 @@ func (c *Container) operationTools() []copilot.Tool {
 		c.templateCreateTools(),
 		c.campaignTools(),
 		c.unofficialCampaignTools(),
+		c.unofficialGroupTools(),
 		c.workspaceAdminTools(),
 		c.accessTools(),
 		c.callTools(),
@@ -132,13 +133,18 @@ func (c *Container) operationTools() []copilot.Tool {
 
 func (c *Container) templateCreateTools() []copilot.Tool {
 	deps := crmtools.TemplateCreateDeps{
-		Phones:    c.useCases.workspacePhones,
-		Templates: c.useCases.workspaceTemplates,
-		Media:     c.useCases.getMedia,
+		Phones:  c.useCases.workspacePhones,
+		Creator: c.buttonActions(),
+		Media:   c.useCases.getMedia,
 	}
 	return []copilot.Tool{
 		crmtools.NewListBusinessPhonesTool(deps),
 		crmtools.NewCreateTemplateTool(deps),
+		crmtools.NewEditTemplateTool(crmtools.TemplateEditDeps{
+			Templates: c.useCases.workspaceTemplates,
+			Editor:    c.buttonActions(),
+			Media:     c.useCases.getMedia,
+		}),
 	}
 }
 
@@ -169,6 +175,7 @@ func (c *Container) campaignTools() []copilot.Tool {
 		Phones:    c.useCases.workspacePhones,
 		Costs:     c.useCases.consumeWhatsappTemplate,
 		Balance:   c.services.cachedBalanceChecker,
+		Exit:      c.buttonActions(),
 	}
 	return []copilot.Tool{
 		crmtools.NewPreviewCampaignImportTool(deps),
@@ -280,7 +287,18 @@ func (c *Container) unofficialCampaignTools() []copilot.Tool {
 	if c.unofficialWhatsApp == nil || !c.unofficialWhatsApp.Enabled || campaigns == nil || !campaigns.Enabled {
 		return nil
 	}
-	deps := crmtools.UnofficialCampaignDeps{
+	deps := c.unofficialCampaignToolDeps()
+	return []copilot.Tool{
+		crmtools.NewListUnofficialNumbersTool(deps),
+		crmtools.NewPreviewUnofficialImportTool(deps),
+		crmtools.NewCreateUnofficialCampaignTool(deps),
+		crmtools.NewStartUnofficialCampaignTool(deps),
+	}
+}
+
+func (c *Container) unofficialCampaignToolDeps() crmtools.UnofficialCampaignDeps {
+	campaigns := c.unofficialWhatsAppCampaigns
+	return crmtools.UnofficialCampaignDeps{
 		Scopes:  c.services.conversationAuthImpl,
 		Numbers: uwuc.NewListInstancesUseCase(c.unofficialWhatsApp.Instances),
 		Usable:  campaigns.Instances,
@@ -290,11 +308,25 @@ func (c *Container) unofficialCampaignTools() []copilot.Tool {
 		Actions: campaigns.Actions,
 		Media:   c.useCases.getMedia,
 	}
+}
+
+func (c *Container) unofficialGroupTools() []copilot.Tool {
+	campaigns := c.unofficialWhatsAppCampaigns
+	if c.unofficialWhatsApp == nil || c.unofficialWhatsApp.WorkspaceGroups == nil || campaigns == nil || !campaigns.Enabled {
+		return nil
+	}
+	deps := crmtools.UnofficialGroupDeps{
+		Campaigns:   c.unofficialCampaignToolDeps(),
+		Groups:      c.unofficialWhatsApp.WorkspaceGroups,
+		Permissions: c.useCases.checkWsAccess,
+	}
 	return []copilot.Tool{
-		crmtools.NewListUnofficialNumbersTool(deps),
-		crmtools.NewPreviewUnofficialImportTool(deps),
-		crmtools.NewCreateUnofficialCampaignTool(deps),
-		crmtools.NewStartUnofficialCampaignTool(deps),
+		crmtools.NewUnofficialGroupsDashboardTool(deps),
+		crmtools.NewListUnofficialGroupsTool(deps),
+		crmtools.NewUnofficialGroupOverviewTool(deps),
+		crmtools.NewUnofficialGroupPeopleTool(deps),
+		crmtools.NewCreateUnofficialGroupCampaignTool(deps),
+		crmtools.NewCreateUnofficialGroupAnalysisTool(deps),
 	}
 }
 
@@ -492,6 +524,7 @@ func (c *Container) leadTools() []copilot.Tool {
 		Proposals: c.redisProvider.SharedState(),
 		Templates: c.useCases.workspaceTemplates,
 		Names:     c.actorNames(),
+		Exit:      c.buttonActions(),
 	}
 	return []copilot.Tool{
 		leadtools.NewSearchLeadsTool(deps),

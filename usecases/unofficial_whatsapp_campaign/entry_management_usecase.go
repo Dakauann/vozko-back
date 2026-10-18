@@ -70,6 +70,9 @@ func (uc *entryManagementUseCase) add(ctx context.Context, in uwc.AddEntriesInpu
 	if !allowRunning && camp.Status == campaign.StatusRunning {
 		return nil, uwc.ErrCampaignRunning
 	}
+	if camp.TargetsGroups() && len(in.Numbers) > 0 {
+		return nil, uwc.ErrCampaignAudienceMismatch
+	}
 	if err := campaign.RefuseSelectionChange(camp.Source, true); err != nil {
 		return nil, err
 	}
@@ -179,6 +182,9 @@ func (uc *entryManagementUseCase) updateEntry(ctx context.Context, in uwc.Update
 		return nil, err
 	}
 
+	if in.Number != nil && entry.TargetsGroup() {
+		return nil, uwc.ErrCampaignAudienceMismatch
+	}
 	if in.Number != nil {
 		number := uwc.NormalizeTarget(*in.Number)
 		if number == "" {

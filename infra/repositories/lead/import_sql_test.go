@@ -7,7 +7,7 @@ func TestImportStatementsBindEveryPlaceholder(t *testing.T) {
 		importIdentitySQL: 2, importHoldersSQL: 6, importIdentityIDsSQL: 2,
 		importGetSQL: 2, importSaveSQL: 19, importSaveSQL + importClaimGuardSQL: 20, importClaimSQL: 6, importClaimableSQL: 3,
 		importFailStalledSQL: 4, importExpiredSQL: 2, importDeleteSQL: 1, importDeleteIssuesSQL: 1, importDeleteAllLinksSQL: 1, importIssuesSQL: 3,
-		importLockSQL: 2, importReloadSQL: 2, importInsertedSQL: 2, importEnrichSQL: 15, importCheckpointSQL: 6,
+		importLockSQL: 2, importReloadSQL: 2, importInsertedSQL: 2, importEnrichSQL: 16, importCheckpointSQL: 6,
 		importPendingLinksSQL: 2, importDeleteLinksSQL: 2, importInsertRelationsSQL: 8, importUnusedSQL: 3, importMineSQL: 4, importPlacementSQL: len(importPlacementArgs) + 2, importStampFilledSQL: 3,
 	}
 	for sql, want := range cases {

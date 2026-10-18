@@ -132,3 +132,37 @@ func TestPollDoesNothingWithoutSendingPhones(t *testing.T) {
 		t.Fatalf("err %v, asked %v", err, meta.asked)
 	}
 }
+
+func TestRefreshPhoneReadsOneNumberAndRecordsWhatMoved(t *testing.T) {
+	repo := newMockRepo()
+	pollPhone(repo, "p1", "m1", "waba-1")
+	meta := &accountsMeta{mockMetaAPIService: newMockMetaAPI(), byWABA: map[string][]businessphone.MetaPhoneNumberInfo{
+		"waba-1": {{ID: "m0", QualityRating: "RED", Status: "BANNED"}, {ID: "m1", QualityRating: "YELLOW", Status: "FLAGGED"}},
+	}}
+	history := fakeHistory{latest: map[quality.Signal]map[string]string{
+		quality.SignalQuality: {"m1": "GREEN"},
+		quality.SignalStatus:  {"m1": "FLAGGED"},
+	}}
+	recorder := &fakeQualityRecorder{}
+
+	info, err := newPhonePoll(repo, meta, nil, history, recorder).RefreshPhone(context.Background(), repo.phoneNumbers["p1"])
+
+	if err != nil || info.Status != "FLAGGED" || info.QualityRating != "YELLOW" {
+		t.Fatalf("RefreshPhone = %+v, %v", info, err)
+	}
+	if len(meta.asked) != 1 || len(recorder.changes) != 1 || recorder.changes[0].Current != "YELLOW" {
+		t.Fatalf("asked %v, recorded %+v, want one request and only the quality that moved", meta.asked, recorder.changes)
+	}
+}
+
+func TestRefreshPhoneFailsWhenMetaDoesNotListTheNumber(t *testing.T) {
+	repo := newMockRepo()
+	pollPhone(repo, "p1", "m1", "waba-1")
+	meta := &accountsMeta{mockMetaAPIService: newMockMetaAPI(), byWABA: map[string][]businessphone.MetaPhoneNumberInfo{"waba-1": {}}}
+
+	_, err := newPhonePoll(repo, meta, nil, fakeHistory{}, &fakeQualityRecorder{}).RefreshPhone(context.Background(), repo.phoneNumbers["p1"])
+
+	if !errors.Is(err, ErrPhoneNotListed) {
+		t.Fatalf("RefreshPhone = %v, want ErrPhoneNotListed", err)
+	}
+}

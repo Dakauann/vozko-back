@@ -84,19 +84,43 @@ type LeadAreaResponse struct {
 }
 
 type LeadCardResponse struct {
-	LeadID         string            `json:"leadId"`
-	Version        int64             `json:"version" example:"4"`
-	Name           string            `json:"name,omitempty" example:"Maria Souza"`
-	Number         string            `json:"number,omitempty" example:"5511987654321"`
-	Blocked        bool              `json:"blocked"`
-	Owner          string            `json:"owner,omitempty"`
-	OwnerName      string            `json:"ownerName,omitempty" example:"Marina Costa"`
-	OptedOutAt     *string           `json:"optedOutAt,omitempty" example:"2026-10-08T12:00:00Z"`
-	OptOutSource   string            `json:"optOutSource,omitempty" enums:"operator,lead_request" example:"operator"`
-	Area           *LeadAreaResponse `json:"area,omitempty"`
-	CustomFields   map[string]any    `json:"customFields,omitempty"`
-	RelativesCount int               `json:"relativesCount"`
-	ReferredCount  int               `json:"referredCount"`
+	LeadID         string                  `json:"leadId"`
+	Version        int64                   `json:"version" example:"4"`
+	Name           string                  `json:"name,omitempty" example:"Maria Souza"`
+	Number         string                  `json:"number,omitempty" example:"5511987654321"`
+	Blocked        bool                    `json:"blocked"`
+	Owner          string                  `json:"owner,omitempty"`
+	OwnerName      string                  `json:"ownerName,omitempty" example:"Marina Costa"`
+	OptedOutAt     *string                 `json:"optedOutAt,omitempty" example:"2026-10-08T12:00:00Z"`
+	OptOutSource   string                  `json:"optOutSource,omitempty" enums:"operator,lead_request" example:"operator"`
+	OptOut         *LeadCardOptOutResponse `json:"optOut,omitempty"`
+	Area           *LeadAreaResponse       `json:"area,omitempty"`
+	CustomFields   map[string]any          `json:"customFields,omitempty"`
+	RelativesCount int                     `json:"relativesCount"`
+	ReferredCount  int                     `json:"referredCount"`
+}
+
+type LeadCardOptOutResponse struct {
+	At                 string `json:"at" example:"2026-10-16T16:59:00Z"`
+	Source             string `json:"source" enums:"manual,conversation_request,button_reply,workflow,ai_agent,elo,keyword,api" example:"button_reply"`
+	ActorType          string `json:"actorType" enums:"user,agent,workflow,system,lead" example:"lead"`
+	EvidenceType       string `json:"evidenceType,omitempty" enums:"message,note,button_reply,form_submission,import_line" example:"button_reply"`
+	Excerpt            string `json:"excerpt,omitempty" example:"SAIR"`
+	ConfirmationSentAt string `json:"confirmationSentAt,omitempty" example:"2026-10-16T16:59:01Z"`
+}
+
+func leadCardOptOutResponse(r *leaddomain.ConsentRecord) *LeadCardOptOutResponse {
+	if r == nil {
+		return nil
+	}
+	out := &LeadCardOptOutResponse{
+		At: fmtNonZero(r.At), Source: string(r.Source), ActorType: string(r.Actor.Type),
+		EvidenceType: string(r.Evidence.Type), Excerpt: r.Evidence.Excerpt,
+	}
+	if r.ConfirmationSentAt != nil {
+		out.ConfirmationSentAt = fmtNonZero(*r.ConfirmationSentAt)
+	}
+	return out
 }
 
 type SetLeadDistrictRequest struct {
@@ -232,7 +256,7 @@ func relativesPageResponse(page leaddomain.RelativesPage, seenFrom string) Relat
 func leadCardResponse(c leaddomain.Card) LeadCardResponse {
 	out := LeadCardResponse{
 		LeadID: c.LeadID, Version: c.Version, Name: c.Name, Number: c.Number, Blocked: c.Blocked, Owner: c.Owner, OwnerName: c.OwnerName,
-		OptedOutAt: fmtTimePtr(c.OptedOutAt), OptOutSource: string(c.OptOutSource),
+		OptedOutAt: fmtTimePtr(c.OptedOutAt), OptOutSource: string(c.OptOutSource), OptOut: leadCardOptOutResponse(c.OptOutRecord),
 		CustomFields: c.CustomFields, RelativesCount: c.RelativesCount, ReferredCount: c.ReferredCount,
 	}
 	if c.Area != nil {

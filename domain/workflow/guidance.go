@@ -17,6 +17,7 @@ OUTROS ESCOPOS:
 - {{var.<nome>}} → variáveis do fluxo: definidas por set_variable e pelos dados do gatilho/campanha. (Atenção: o response_variable de um agente guarda o OBJETO completo da resposta; para o texto prefira {{node.<idDoAgente>.response_text}}.)
 - {{ai.<chave>}} → saídas do último agente de IA (ex.: {{ai.response_text}}).
 - {{message}}    → texto recebido do contato.
+- {{selected_option_id}}, {{selected_option_title}} → opção que o contato tocou: o id e o título do botão ou da linha de lista, ou template_button:<índice> (a partir de 0) e o texto quando ele tocou um botão de template. Para seguir por um botão de template, use condition_branch com {{selected_option_id}} eq template_button:<índice> ou {{selected_option_title}} eq_ci <texto>.
 - {{contact_number}} → endereço do contato no canal: telefone (só dígitos) no WhatsApp, id do chat no Telegram, IGSID no Instagram. Ausente em grupos. Ideal para lookups por contato (ex.: URL de http_request).
 - {{sys.date}}, {{sys.time}}, {{sys.timestamp}} → data/hora atuais.
 

@@ -319,6 +319,7 @@ func NewRabbitMQQueueSub(
 
 var prefetchByTopic = map[string]int{
 	"webhook.whatsapp.message": 20,
+	"notification.fanout":      8,
 }
 
 const defaultChannelPrefetch = 1

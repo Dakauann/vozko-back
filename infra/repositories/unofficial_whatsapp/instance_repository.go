@@ -45,7 +45,6 @@ func (r *instanceRepository) Update(ctx context.Context, i *uw.Instance) error {
 		"daily_send_cap":         record.DailySendCap,
 		"send_delay_min_ms":      record.SendDelayMinMS,
 		"send_delay_max_ms":      record.SendDelayMaxMS,
-		"auto_reject_calls":      record.AutoRejectCalls,
 		"agent_id":               record.AgentID,
 		"workflow_id":            record.WorkflowID,
 		"pipeline_id":            record.PipelineID,

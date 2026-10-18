@@ -118,7 +118,7 @@ func (c *Container) adsManager() *adsBundle {
 	if c.useCases.notifier == nil {
 		log.Fatalf("[ads] the notifier must exist before the ads manager, or funds alerts would never be sent")
 	}
-	fundsAlerts := adsuc.NewFundsAlerts(c.useCases.notifier, c.useCases.dashboardURL)
+	fundsAlerts := adsuc.NewFundsAlerts(c.notifications().Publisher, c.useCases.dashboardURL)
 	sync := adsuc.NewSyncUseCase(accounts, grants, gateway, objects, insights, fundsAlerts)
 	fees := adsuc.NewFeeCharger(c.services.workspacePricer, c.repositories.balance, c.useCases.ensureActiveWorkspaceSubscription)
 

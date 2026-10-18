@@ -16,6 +16,7 @@ import (
 	conversation_usecase "vozko/usecases/conversation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
+	uwguc "vozko/usecases/unofficial_whatsapp_group"
 )
 
 type unofficialWhatsAppBundle struct {
@@ -42,6 +43,10 @@ type unofficialWhatsAppBundle struct {
 	Handler        *uwhttp.Handler
 	WebhookHandler *uwhttp.WebhookHandler
 	GroupHandler   *uwhttp.GroupHandler
+	GroupUseCases  *uwuc.GroupUseCases
+
+	WorkspaceGroups       *uwguc.Service
+	WorkspaceGroupHandler *uwhttp.WorkspaceGroupHandler
 
 	Connect            *uwuc.ConnectInstanceUseCase
 	HistorySync        *uwuc.HistorySyncUseCase
@@ -103,7 +108,7 @@ func (c *Container) initUnofficialWhatsApp() {
 		Departments: c.services.conversationAuthImpl,
 	})
 
-	bundle.GroupHandler = uwhttp.NewGroupHandler(uwuc.NewGroupUseCases(uwuc.GroupUseCaseDeps{
+	bundle.GroupUseCases = uwuc.NewGroupUseCases(uwuc.GroupUseCaseDeps{
 		Instances:     bundle.Instances,
 		Servers:       bundle.Servers,
 		Contacts:      bundle.Contacts,
@@ -113,7 +118,8 @@ func (c *Container) initUnofficialWhatsApp() {
 		Messaging:     bundle.Messaging,
 		Assets:        bundle.Assets,
 		FileStorage:   c.services.fileStorage,
-	}))
+	})
+	bundle.GroupHandler = uwhttp.NewGroupHandler(bundle.GroupUseCases, c.services.conversationAuthImpl)
 
 	bundle.WebhookHandler = uwhttp.NewWebhookHandler(bundle.Instances, nil)
 
@@ -180,6 +186,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Analysis:      c.services.analysisScheduler,
 		Delegations:   c.services.delegations,
 	})
+	handler.SetLeadExitStep(c.leadExitStep())
 
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 		handler.SetCampaignDeliverySink(
@@ -192,6 +199,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 	}
 
 	c.wireUnofficialWhatsAppLineAndHistory(bundle, handler)
+	c.initWorkspaceGroups(bundle, handler)
 
 	bundle.SeedInboxPublisher = uwuc.NewSeedInboxPublisher(c.services.uwSeedQueuePub)
 	bundle.ConsumeSeedInbox = uwuc.NewConsumeSeedInboxUseCase(
@@ -331,6 +339,21 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 		}
 	}
 
+	authorsInInstance := func(ctx context.Context, instanceID string, handles []string) (map[string]conversation_usecase.ContactDisplay, error) {
+		found, err := contacts.FindByHandles(ctx, instanceID, handles)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[string]conversation_usecase.ContactDisplay, len(found))
+		for _, contact := range found {
+			if contact == nil {
+				continue
+			}
+			out[contact.Handle()] = display(contact)
+		}
+		return out, nil
+	}
+
 	return contactIdentityFuncs{
 		byIDs: func(ctx context.Context, ids []string) (map[string]conversation_usecase.ContactDisplay, error) {
 			found, err := contacts.FindByIDs(ctx, ids)
@@ -369,19 +392,9 @@ func unofficialWhatsAppContactIdentity(bundle *unofficialWhatsAppBundle) convers
 			if !conv.IsGroup {
 				return nil, nil
 			}
-			found, err := contacts.FindByHandles(ctx, conv.InstanceID, handles)
-			if err != nil {
-				return nil, err
-			}
-			out := make(map[string]conversation_usecase.ContactDisplay, len(found))
-			for _, contact := range found {
-				if contact == nil {
-					continue
-				}
-				out[contact.Handle()] = display(contact)
-			}
-			return out, nil
+			return authorsInInstance(ctx, conv.InstanceID, handles)
 		},
+		authorsInAccount: authorsInInstance,
 	}
 }
 

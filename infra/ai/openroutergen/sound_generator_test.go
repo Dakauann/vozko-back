@@ -74,7 +74,7 @@ func soundRequest() mediagen.Request {
 }
 
 func TestASoundEffectIsAskedAsAPromptWithItsLengthAndLeftForTheCostLookup(t *testing.T) {
-	s := &speechServer{audio: []byte("ID3mp3"), generation: "gen-tts-1"}
+	s := &speechServer{audio: []byte("ID3mp3"), generation: "gen-sound-1"}
 	enc := &recordingSoundEncoder{}
 	out, err := soundGenerator(t, s.start(t), enc).Generate(context.Background(), soundRequest(), nil)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestASoundEffectIsAskedAsAPromptWithItsLengthAndLeftForTheCostLookup(t *tes
 	if !bytes.Equal(enc.raw, []byte("ID3mp3")) || enc.length != 1500*time.Millisecond {
 		t.Fatalf("encoder got %q for %v", enc.raw, enc.length)
 	}
-	if string(out.Bytes) != "m4a" || out.MIMEType != "audio/mp4" || out.Model != "bytedance-seed/seed-audio-1-0" || out.GenerationID != "gen-tts-1" {
+	if string(out.Bytes) != "m4a" || out.MIMEType != "audio/mp4" || out.Model != "bytedance-seed/seed-audio-1-0" || out.GenerationID != "gen-sound-1" {
 		t.Fatalf("output %+v", out)
 	}
 	if out.CostReported || out.Billable(mediagen.KindSoundEffect) == nil {
@@ -119,10 +119,10 @@ func TestASoundEffectThatFailsAfterTheProviderStartedIsCharged(t *testing.T) {
 		"unencodable": {[]byte("ID3"), &recordingSoundEncoder{err: errors.New("ffmpeg")}},
 	}
 	for name, c := range cases {
-		s := &speechServer{audio: c.audio, generation: "gen-tts-2"}
+		s := &speechServer{audio: c.audio, generation: "gen-sound-2"}
 		_, err := soundGenerator(t, s.start(t), c.enc).Generate(context.Background(), soundRequest(), nil)
 		var charged *mediagen.ChargedFailure
-		if !errors.As(err, &charged) || charged.GenerationID != "gen-tts-2" || !errors.Is(err, mediagen.ErrGenerationFailed) {
+		if !errors.As(err, &charged) || charged.GenerationID != "gen-sound-2" || !errors.Is(err, mediagen.ErrGenerationFailed) {
 			t.Errorf("%s: got %v", name, err)
 		}
 	}

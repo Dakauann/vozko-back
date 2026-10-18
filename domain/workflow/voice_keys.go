@@ -12,6 +12,10 @@ func NewKeyQueue(keys <-chan rune, ended <-chan struct{}) *KeyQueue {
 	return &KeyQueue{keys: keys, ended: ended}
 }
 
+func (q *KeyQueue) Done() <-chan struct{} {
+	return q.ended
+}
+
 func (q *KeyQueue) Ended() bool {
 	select {
 	case <-q.ended:

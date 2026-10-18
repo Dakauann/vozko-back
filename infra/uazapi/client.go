@@ -28,7 +28,8 @@ type Config struct {
 }
 
 type Client struct {
-	http *http.Client
+	http          *http.Client
+	groupPageSize int
 }
 
 func NewClient(cfg Config) *Client {
@@ -36,7 +37,7 @@ func NewClient(cfg Config) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: requestTimeout}
 	}
-	return &Client{http: httpClient}
+	return &Client{http: httpClient, groupPageSize: defaultGroupPageSize}
 }
 
 var _ uw.ProviderAPI = (*Client)(nil)

@@ -35,6 +35,8 @@ func (e recordEdit) notified() []string {
 
 type editChange func(current, next *lead.Lead) (recordEdit, error)
 
+type recordSave func(ctx context.Context, l *lead.Lead, expectedVersion int64, events []recordevent.Event) error
+
 type recordWriter struct {
 	store    lead.Store
 	notifier lead.ChangeNotifier
@@ -83,6 +85,10 @@ func (w recordWriter) retrying(ctx context.Context, workspaceID, actorID, id str
 }
 
 func (w recordWriter) retryingEdit(ctx context.Context, workspaceID, id string, change editChange) (*lead.Lead, error) {
+	return w.retryingSave(ctx, workspaceID, id, change, w.store.Save)
+}
+
+func (w recordWriter) retryingSave(ctx context.Context, workspaceID, id string, change editChange, save recordSave) (*lead.Lead, error) {
 	for attempt := 0; attempt < targetedAttempts; attempt++ {
 		current, err := w.load(ctx, workspaceID, id)
 		if err != nil {
@@ -96,7 +102,7 @@ func (w recordWriter) retryingEdit(ctx context.Context, workspaceID, id string, 
 		if !edit.changed() {
 			return current, nil
 		}
-		err = w.store.Save(ctx, &next, current.Version, edit.events)
+		err = save(ctx, &next, current.Version, edit.events)
 		if err == nil {
 			w.notify(&next, edit.notified())
 			return &next, nil

@@ -1,103 +1,131 @@
 {{- /* Reusable, design-system email components. Call with the dict helper, e.g.
        {{template "cta" dict "url" .ResetURL "label" "Redefinir senha"}} */ -}}
 
-{{- /* symbol is intentionally a no-op. Gmail and most clients strip inline SVG and
-       border-radius, so an icon tile renders as a bare colored square. The brand is
-       carried by the real logo in the header, and meaning by the tone-coloured panels
-       and the heading. The define is kept so templates need no edits. */ -}}
-{{define "symbol"}}{{end}}
+{{- define "tone-fill" -}}{{if eq . "success"}}#078349{{else if eq . "warning"}}#e19f05{{else if eq . "danger"}}#c31d33{{else if eq . "info"}}#0b6bcb{{else if eq . "brand"}}#00c28e{{else}}#58626a{{end}}{{- end -}}
+{{- define "tone-on" -}}{{if eq . "warning"}}#3a1b03{{else if eq . "brand"}}#0e1011{{else}}#ffffff{{end}}{{- end -}}
+{{- define "tone-class" -}}vx-tone-{{if eq . "success"}}success{{else if eq . "warning"}}warning{{else if eq . "danger"}}danger{{else if eq . "info"}}info{{else if eq . "brand"}}brand{{else}}neutral{{end}}{{- end -}}
+{{- define "tone-glyph" -}}{{if eq . "success"}}&#10003;{{else if or (eq . "warning") (eq . "danger")}}!{{else}}i{{end}}{{- end -}}
 
-{{- /* heading: centered title + optional subtitle. */ -}}
+{{define "gap"}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="{{.}}" style="height:{{.}}px; line-height:{{.}}px; font-size:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr></table>{{end}}
+
+{{- /* heading: the page title register. Optional solid StatusChip (status + tone) above a
+       left-aligned Oxanium title, then an optional muted subtitle. */ -}}
 {{define "heading"}}
-<h1 style="margin:24px 0 0; font-family:Inter,Arial,sans-serif; font-size:24px; font-weight:600; color:#344256; line-height:1.3; letter-spacing:-0.01em; text-align:center;">{{.title}}</h1>
-{{if .subtitle}}<p style="margin:9px 0 0; font-family:Inter,Arial,sans-serif; font-size:15px; color:#65758b; line-height:1.5; text-align:center;">{{.subtitle}}</p>{{end}}
+{{if .status}}{{template "badge" dict "tone" .tone "text" .status}}{{template "gap" 14}}{{end}}
+<h1 class="vx-fg vx-title" style="margin:0; font-family:Oxanium,'Segoe UI',Inter,-apple-system,BlinkMacSystemFont,Roboto,Helvetica,Arial,sans-serif; font-size:24px; font-weight:600; line-height:1.25; letter-spacing:0.01em; color:#14171a; mso-line-height-rule:exactly;">{{.title}}</h1>
+{{if .subtitle}}<p class="vx-muted" style="margin:8px 0 0; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; line-height:22px; color:#58626a;">{{.subtitle}}</p>{{end}}
 {{end}}
 
-{{- /* cta: the site's primary Button, rebuilt bulletproof. Pill (rounded-full),
-       bg-primary #2463eb, text-primary-foreground #ffffff, text-sm font-medium. */ -}}
+{{- /* cta: the site's Button rebuilt bulletproof, with a VML roundrect for Outlook on Windows.
+       Primary (default): bg-primary #00c28e, dark primary-foreground ink #0e1011, 1px
+       primary-edge #009970, 6px control radius. variant "secondary" is the outline button:
+       card ground, 1px control-edge #798a96, foreground ink. Full width below 620px. */ -}}
 {{define "cta"}}
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:8px auto 0;">
+{{$secondary := eq (or .variant "") "secondary"}}
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="vx-btn" style="border-collapse:separate;">
     <tr>
-        <td align="center" bgcolor="#2463eb" style="border-radius:9999px;">
-            <!--[if mso]>
-            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{.url}}" style="height:44px;v-text-anchor:middle;width:240px;" arcsize="50%" strokecolor="#2463eb" fillcolor="#2463eb">
-            <w:anchorlock/><center style="color:#ffffff;font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:500;">{{.label}}</center>
+        <td align="center" class="{{if $secondary}}vx-btn-secondary{{else}}vx-btn-primary{{end}}" bgcolor="{{if $secondary}}#ffffff{{else}}#00c28e{{end}}" style="border-radius:6px; background-color:{{if $secondary}}#ffffff{{else}}#00c28e{{end}};">
+            {{safeHTML "<!--[if mso]>"}}
+            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{.url}}" style="height:44px; v-text-anchor:middle; width:{{buttonWidth .label}}px;" arcsize="14%" strokecolor="{{if $secondary}}#798a96{{else}}#009970{{end}}" strokeweight="1px" fillcolor="{{if $secondary}}#ffffff{{else}}#00c28e{{end}}">
+                <w:anchorlock/>
+                <center style="color:{{if $secondary}}#14171a{{else}}#0e1011{{end}}; font-family:'Segoe UI',Arial,sans-serif; font-size:15px; font-weight:600;">{{.label}}</center>
             </v:roundrect>
-            <![endif]-->
-            <!--[if !mso]><!-->
-            <a href="{{.url}}" style="display:inline-block; min-width:176px; background-color:#2463eb; color:#ffffff; font-family:Inter,Arial,sans-serif; font-size:14px; font-weight:500; line-height:44px; text-align:center; text-decoration:none; border-radius:9999px; padding:0 30px; box-shadow:0 1px 2px 0 rgba(15,23,42,0.06), 0 10px 22px -12px rgba(36,99,235,0.5);">{{.label}}</a>
-            <!--<![endif]-->
+            {{safeHTML "<![endif]-->"}}
+            {{safeHTML "<!--[if !mso]><!-->"}}
+            <a href="{{.url}}" target="_blank" class="{{if $secondary}}vx-btn-secondary{{else}}vx-btn-primary{{end}}" style="display:inline-block; padding:0 22px; border:1px solid {{if $secondary}}#798a96{{else}}#009970{{end}}; border-radius:6px; background-color:{{if $secondary}}#ffffff{{else}}#00c28e{{end}}; color:{{if $secondary}}#14171a{{else}}#0e1011{{end}}; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:15px; font-weight:600; line-height:42px; text-align:center; text-decoration:none; -webkit-text-size-adjust:none;">{{.label}}</a>
+            {{safeHTML "<!--<![endif]-->"}}
         </td>
     </tr>
 </table>
 {{end}}
 
-{{- /* panel: a notice surface. Hairline 1px border + tint, never a thick colored left-stripe.
-       tone: info|success|warning|danger. */ -}}
+{{- /* panel: the frontend Notice. Card ground with a 1px hairline, never a tint and never a
+       thick coloured left-stripe; the status lives only in the solid round mark, while
+       title and body stay neutral. tone: info|success|warning|danger|brand. */ -}}
 {{define "panel"}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
     <tr>
-        <td style="padding:18px 20px; border-radius:16px; border:1px solid {{if eq .tone "success"}}#cbebdb{{else if eq .tone "warning"}}#f6e6b8{{else if eq .tone "danger"}}#f6d0d2{{else}}#cfe0ff{{end}}; background-color:{{if eq .tone "success"}}#f1f9f5{{else if eq .tone "warning"}}#fef8e7{{else if eq .tone "danger"}}#fdeced{{else}}#f2f6ff{{end}};">
-            {{if .title}}<p style="margin:0 0 6px; font-family:Inter,Arial,sans-serif; font-size:14px; font-weight:600; color:{{if eq .tone "success"}}#2f604b{{else if eq .tone "warning"}}#8f6a08{{else if eq .tone "danger"}}#9b1c1c{{else}}#1e3fae{{end}};">{{.title}}</p>{{end}}
-            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:13px; color:#65758b; line-height:1.6;">{{.body}}</p>
-        </td>
-    </tr>
-</table>
-{{end}}
-
-{{- /* codebox: a one-time code or token. Solid Signal Blue, white mono code. */ -}}
-{{define "codebox"}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-        <td align="center" style="padding:32px 20px; border-radius:18px; background-color:#2463eb; text-align:center;">
-            <p style="margin:0 0 14px; font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:600; color:#ffffff; text-transform:uppercase; letter-spacing:0.14em;">{{.label}}</p>
-            <p style="margin:0; font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:40px; font-weight:700; color:#ffffff; letter-spacing:0.18em;">{{.code}}</p>
-        </td>
-    </tr>
-</table>
-{{end}}
-
-{{- /* datarow: a label/value detail line. Used inside the details card, or wrap a
-       sequence in your own table. The last row's rule sits under the card padding. */ -}}
-{{define "datarow"}}
-<tr>
-    <td style="padding:11px 0; border-bottom:1px solid #edf1f7; font-family:Inter,Arial,sans-serif; font-size:13px; color:#65758b;">{{.label}}</td>
-    <td align="right" style="padding:11px 0; border-bottom:1px solid #edf1f7; font-family:Inter,Arial,sans-serif; font-size:13px; font-weight:600; color:#344256;">{{.value}}</td>
-</tr>
-{{end}}
-
-{{- /* details: a framed summary surface with an optional section label and up to five
-       label/value rows. Restores the substance of a real transactional receipt without
-       any banned pattern. Pass k1..k5 / v1..v5; empty pairs are skipped. */ -}}
-{{define "details"}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-        <td style="padding:6px 22px 14px; border:1px solid #e1e7ef; border-radius:16px; background-color:#fafbfd;">
-            {{if .title}}<p style="margin:0; padding:14px 0 2px; font-family:Inter,Arial,sans-serif; font-size:11px; font-weight:600; color:#4e5e74; text-transform:uppercase; letter-spacing:0.09em;">{{.title}}</p>{{end}}
+        <td class="vx-panel" bgcolor="#ffffff" style="padding:14px 16px; border:1px solid #dce1e5; border-radius:6px; background-color:#ffffff;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                {{if .k1}}{{template "datarow" dict "label" .k1 "value" .v1}}{{end}}
-                {{if .k2}}{{template "datarow" dict "label" .k2 "value" .v2}}{{end}}
-                {{if .k3}}{{template "datarow" dict "label" .k3 "value" .v3}}{{end}}
-                {{if .k4}}{{template "datarow" dict "label" .k4 "value" .v4}}{{end}}
-                {{if .k5}}{{template "datarow" dict "label" .k5 "value" .v5}}{{end}}
+                <tr>
+                    <td width="20" valign="top" style="width:20px; padding:1px 12px 0 0;">
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+                            <tr>
+                                <td width="18" height="18" align="center" valign="middle" class="{{template "tone-class" .tone}}" bgcolor="{{template "tone-fill" .tone}}" style="width:18px; height:18px; border-radius:9px; background-color:{{template "tone-fill" .tone}}; color:{{template "tone-on" .tone}}; font-family:Arial,Helvetica,sans-serif; font-size:12px; font-weight:700; line-height:18px; text-align:center; mso-line-height-rule:exactly;">{{template "tone-glyph" .tone}}</td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td valign="top" style="font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+                        {{if .title}}<p class="vx-fg" style="margin:0 0 4px; font-size:14px; font-weight:600; line-height:20px; color:#14171a;">{{.title}}</p>{{end}}
+                        <p class="vx-muted" style="margin:0; font-size:13px; line-height:20px; color:#58626a;">{{.body}}</p>
+                    </td>
+                </tr>
             </table>
         </td>
     </tr>
 </table>
 {{end}}
 
-{{- /* textblock: a free-text surface (a description, a support reply). Same framed
-       look as the details card; optional uppercase label. Preserves line breaks. */ -}}
-{{define "textblock"}}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{{- /* codebox: a one-time code or token. A neutral well (green is reserved for commit,
+       selection and focus) with the code as a large Oxanium readout. */ -}}
+{{define "codebox"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
     <tr>
-        <td style="padding:16px 20px; border:1px solid #e1e7ef; border-radius:16px; background-color:#fafbfd;">
-            {{if .label}}<p style="margin:0 0 8px; font-family:Inter,Arial,sans-serif; font-size:11px; font-weight:600; color:#4e5e74; text-transform:uppercase; letter-spacing:0.09em;">{{.label}}</p>{{end}}
-            <p style="margin:0; font-family:Inter,Arial,sans-serif; font-size:14px; color:#65758b; line-height:1.7; white-space:pre-wrap;">{{.body}}</p>
+        <td align="center" class="vx-well" bgcolor="#f6f8f9" style="padding:24px 16px 26px; border:1px solid #dce1e5; border-radius:8px; background-color:#f6f8f9; text-align:center;">
+            <p class="vx-muted" style="margin:0 0 10px; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; line-height:16px; color:#58626a;">{{.label}}</p>
+            <p class="vx-fg vx-code" style="margin:0; font-family:Oxanium,'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:36px; font-weight:600; line-height:44px; letter-spacing:0.2em; color:#14171a; font-variant-numeric:tabular-nums; mso-line-height-rule:exactly;">{{.code}}</p>
         </td>
     </tr>
 </table>
 {{end}}
 
-{{- /* badge: a status pill carrying meaning via tint+ink. tone: info|success|warning|danger|neutral. */ -}}
-{{define "badge"}}<span style="display:inline-block; padding:4px 12px; border-radius:9999px; font-family:Inter,Arial,sans-serif; font-size:12px; font-weight:600; background-color:{{if eq .tone "success"}}#eef7f3{{else if eq .tone "warning"}}#fef8e7{{else if eq .tone "danger"}}#fdeced{{else if eq .tone "info"}}#eef3ff{{else}}#f1f5f9{{end}}; color:{{if eq .tone "success"}}#2f604b{{else if eq .tone "warning"}}#8f6a08{{else if eq .tone "danger"}}#9b1c1c{{else if eq .tone "info"}}#1e3fae{{else}}#4e5e74{{end}};">{{.text}}</span>{{end}}
+{{- /* datarow: a label/value detail line. Used inside the details card; rule draws the
+       hairline above the row (every row but the first one under no title). Below 620px
+       the value stacks under its label. */ -}}
+{{define "datarow"}}
+<tr>
+    <td valign="top" class="vx-muted vx-rule vx-stack vx-row-label" style="padding:10px 12px 10px 16px; {{if .rule}}border-top:1px solid #dce1e5; {{end}}font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:20px; color:#58626a;">{{.label}}</td>
+    <td valign="top" align="right" class="vx-fg vx-rule vx-stack vx-row-value" style="padding:10px 16px 10px 12px; {{if .rule}}border-top:1px solid #dce1e5; {{end}}font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; font-weight:500; line-height:20px; color:#14171a; text-align:right; word-break:break-word; font-variant-numeric:tabular-nums;">{{.value}}</td>
+</tr>
+{{end}}
+
+{{- /* details: a framed summary panel (the frontend's card with a legend header and hairline
+       rows) with an optional sentence-case label and up to six label/value rows. Pass
+       k1..k6 / v1..v6; empty pairs are skipped. */ -}}
+{{define "details"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+    <tr>
+        <td class="vx-panel" bgcolor="#ffffff" style="border:1px solid #dce1e5; border-radius:8px; background-color:#ffffff;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {{if .title}}<tr><td colspan="2" class="vx-muted" style="padding:12px 16px 10px; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; line-height:16px; color:#58626a;">{{.title}}</td></tr>{{end}}
+                {{if .k1}}{{template "datarow" dict "label" .k1 "value" .v1 "rule" .title}}{{end}}
+                {{if .k2}}{{template "datarow" dict "label" .k2 "value" .v2 "rule" true}}{{end}}
+                {{if .k3}}{{template "datarow" dict "label" .k3 "value" .v3 "rule" true}}{{end}}
+                {{if .k4}}{{template "datarow" dict "label" .k4 "value" .v4 "rule" true}}{{end}}
+                {{if .k5}}{{template "datarow" dict "label" .k5 "value" .v5 "rule" true}}{{end}}
+                {{if .k6}}{{template "datarow" dict "label" .k6 "value" .v6 "rule" true}}{{end}}
+            </table>
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* textblock: a free-text panel (a description, a support reply). Same frame as the
+       details card with an optional label header. Line breaks become <br> so they survive
+       Outlook, which ignores white-space. */ -}}
+{{define "textblock"}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">
+    <tr>
+        <td class="vx-panel" bgcolor="#ffffff" style="border:1px solid #dce1e5; border-radius:8px; background-color:#ffffff;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {{if .label}}<tr><td class="vx-muted vx-rule" style="padding:12px 16px 10px; border-bottom:1px solid #dce1e5; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; line-height:16px; color:#58626a;">{{.label}}</td></tr>{{end}}
+                <tr><td class="vx-fg" style="padding:14px 16px 16px; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:22px; color:#14171a; word-break:break-word;">{{range $i, $line := lines .body}}{{if $i}}<br>{{end}}{{$line}}{{end}}</td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
+{{end}}
+
+{{- /* badge: the frontend StatusChip. Solid tone fill with its measured foreground ink, 6px
+       radius, 12px medium. tone: info|success|warning|danger|brand|neutral. */ -}}
+{{define "badge"}}<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;"><tr><td class="{{template "tone-class" .tone}}" bgcolor="{{template "tone-fill" .tone}}" style="padding:3px 10px; border-radius:6px; background-color:{{template "tone-fill" .tone}}; color:{{template "tone-on" .tone}}; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; line-height:18px; white-space:nowrap; mso-line-height-rule:exactly;">{{.text}}</td></tr></table>{{end}}

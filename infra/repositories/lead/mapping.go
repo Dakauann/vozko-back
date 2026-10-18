@@ -83,6 +83,28 @@ func consentOf(at *time.Time, source, purpose schema.OptionalText) *lead.Consent
 	return &lead.Consent{GrantedAt: *at, Source: lead.ConsentSource(source), Purpose: string(purpose)}
 }
 
+func consentRecordColumn(r *lead.ConsentRecord) (datatypes.JSON, error) {
+	if r == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return nil, fmt.Errorf("lead consent record: %w", err)
+	}
+	return datatypes.JSON(raw), nil
+}
+
+func consentRecordOf(id string, raw datatypes.JSON) (*lead.ConsentRecord, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var r lead.ConsentRecord
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, fmt.Errorf("lead %s consent record is not an object: %w", id, err)
+	}
+	return &r, nil
+}
+
 func blockedAtColumn(l *lead.Lead) *time.Time {
 	if !l.Blocked || l.BlockedAt.IsZero() {
 		return nil
@@ -97,35 +119,40 @@ func toSchema(l *lead.Lead) (*schema.Lead, error) {
 		return nil, err
 	}
 	ownerID, ownerKind := ownerColumns(l.Owner)
+	consentRecord, err := consentRecordColumn(l.ConsentRecord)
+	if err != nil {
+		return nil, err
+	}
 	optInAt, optInSource, optInPurpose := consentColumns(l.WhatsAppOptIn)
 	return &schema.Lead{
-		ID:                   l.ID,
-		WorkspaceID:          l.WorkspaceID,
-		Number:               schema.OptionalText(l.Number),
-		Name:                 l.Name,
-		NameSource:           schema.OptionalText(l.NameSource),
-		Nickname:             schema.OptionalText(l.Nickname),
-		Email:                schema.OptionalText(l.Email),
-		BirthDate:            birthDateColumn(l.BirthDate),
-		Source:               schema.OptionalText(l.Source),
-		OwnerID:              ownerID,
-		OwnerKind:            ownerKind,
-		CustomFields:         customFields,
-		WhatsAppOptInAt:      optInAt,
-		WhatsAppOptInSource:  optInSource,
-		WhatsAppOptInPurpose: optInPurpose,
-		OptedOutAt:           l.OptedOutAt,
-		OptedOutSource:       optOutSourceColumn(l),
-		ProfilePictureURL:    l.ProfilePictureURL,
-		Age:                  l.StoredAge,
-		Blocked:              l.Blocked,
-		BlockedAt:            blockedAtColumn(l),
-		BlockedBy:            l.BlockedBy,
-		RelativesCount:       l.RelativesCount,
-		ReferredCount:        l.ReferredCount,
-		Version:              l.Version,
-		CreatedAt:            l.CreatedAt,
-		UpdatedAt:            l.UpdatedAt,
+		ID:                    l.ID,
+		WorkspaceID:           l.WorkspaceID,
+		Number:                schema.OptionalText(l.Number),
+		Name:                  l.Name,
+		NameSource:            schema.OptionalText(l.NameSource),
+		Nickname:              schema.OptionalText(l.Nickname),
+		Email:                 schema.OptionalText(l.Email),
+		BirthDate:             birthDateColumn(l.BirthDate),
+		Source:                schema.OptionalText(l.Source),
+		OwnerID:               ownerID,
+		OwnerKind:             ownerKind,
+		CustomFields:          customFields,
+		WhatsAppOptInAt:       optInAt,
+		WhatsAppOptInSource:   optInSource,
+		WhatsAppOptInPurpose:  optInPurpose,
+		OptedOutAt:            l.OptedOutAt,
+		OptedOutSource:        optOutSourceColumn(l),
+		WhatsAppConsentRecord: consentRecord,
+		ProfilePictureURL:     l.ProfilePictureURL,
+		Age:                   l.StoredAge,
+		Blocked:               l.Blocked,
+		BlockedAt:             blockedAtColumn(l),
+		BlockedBy:             l.BlockedBy,
+		RelativesCount:        l.RelativesCount,
+		ReferredCount:         l.ReferredCount,
+		Version:               l.Version,
+		CreatedAt:             l.CreatedAt,
+		UpdatedAt:             l.UpdatedAt,
 	}, nil
 }
 
@@ -135,6 +162,10 @@ func toDomain(row *schema.Lead) (*lead.Lead, error) {
 		return nil, err
 	}
 	customFields, err := customFieldsOf(row.ID, row.CustomFields)
+	if err != nil {
+		return nil, err
+	}
+	consentRecord, err := consentRecordOf(row.ID, row.WhatsAppConsentRecord)
 	if err != nil {
 		return nil, err
 	}
@@ -153,12 +184,14 @@ func toDomain(row *schema.Lead) (*lead.Lead, error) {
 		WhatsAppOptIn:     consentOf(row.WhatsAppOptInAt, row.WhatsAppOptInSource, row.WhatsAppOptInPurpose),
 		OptedOutAt:        row.OptedOutAt,
 		OptOutSource:      optOutSourceOf(row),
+		ConsentRecord:     consentRecord,
 		ProfilePictureURL: row.ProfilePictureURL,
 		StoredAge:         row.Age,
 		Blocked:           row.Blocked,
 		BlockedBy:         row.BlockedBy,
 		RelativesCount:    row.RelativesCount,
 		ReferredCount:     row.ReferredCount,
+		CompanyID:         string(row.CompanyID),
 		Version:           row.Version,
 		CreatedAt:         row.CreatedAt,
 		UpdatedAt:         row.UpdatedAt,

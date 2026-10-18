@@ -582,6 +582,8 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		LastMessageType string     `gorm:"column:last_message_type"`
 		LastMessageAt   time.Time  `gorm:"column:last_message_at"`
 		LastMessageFrom string     `gorm:"column:last_message_from"`
+		SenderKind      string     `gorm:"column:last_message_sender_kind"`
+		SenderID        string     `gorm:"column:last_message_sender_id"`
 		HasMedia        bool       `gorm:"column:has_media"`
 		MediaType       string     `gorm:"column:media_type"`
 		AgentID         string     `gorm:"column:agent_id"`
@@ -604,11 +606,12 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			       %s,
 			       lm.text AS last_message_text, lm.message_type AS last_message_type,
 			       lm.created_at AS last_message_at, lm.from_participant AS last_message_from,
+			       lm.sender_kind AS last_message_sender_kind, lm.sender_id AS last_message_sender_id,
 			       (lm.media_id IS NOT NULL) AS has_media, COALESCE(lm.media_type, '') AS media_type
 			FROM filtered_entries e
 			%s
 			JOIN LATERAL (
-				SELECT cm.text, cm.message_type, cm.created_at, cm.from_participant, cm.media_id, cm.media_type
+				SELECT cm.text, cm.message_type, cm.created_at, cm.from_participant, cm.sender_kind, cm.sender_id, cm.media_id, cm.media_type
 				FROM conversation_messages cm
 				WHERE cm.entry_id = e.entry_id AND cm.entry_type = ? AND cm.deleted_at IS NULL
 				ORDER BY cm.created_at DESC, cm.id DESC LIMIT 1
@@ -639,7 +642,8 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		       te.close_source, te.close_reason, te.close_outcome, te.closed_at,
 		       COALESCE(uc.cnt, 0) AS unread_count,
 		       te.last_message_text, te.last_message_type, te.last_message_at,
-		       te.last_message_from, te.has_media, te.media_type
+		       te.last_message_from, te.last_message_sender_kind, te.last_message_sender_id,
+		       te.has_media, te.media_type
 		FROM top_entries te
 		LEFT JOIN unread_counts uc ON uc.entry_id = te.entry_id
 		ORDER BY te.last_message_at DESC
@@ -670,6 +674,8 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			LastMessageType:       conversation.MessageType(r.LastMessageType),
 			LastMessageAt:         r.LastMessageAt,
 			LastMessageFrom:       r.LastMessageFrom,
+			LastMessageSenderKind: r.SenderKind,
+			LastMessageSenderID:   r.SenderID,
 			HasMedia:              r.HasMedia,
 			MediaType:             conversation.MediaType(r.MediaType),
 			AgentID:               r.AgentID,
@@ -1440,6 +1446,8 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		LastMessageType string    `gorm:"column:last_message_type"`
 		LastMessageAt   time.Time `gorm:"column:last_message_at"`
 		LastMessageFrom string    `gorm:"column:last_message_from"`
+		SenderKind      string    `gorm:"column:last_message_sender_kind"`
+		SenderID        string    `gorm:"column:last_message_sender_id"`
 		HasMedia        bool      `gorm:"column:has_media"`
 		MediaType       string    `gorm:"column:media_type"`
 	}
@@ -1458,11 +1466,13 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 			m.message_type AS last_message_type,
 			m.created_at AS last_message_at,
 			m.from_participant AS last_message_from,
+			m.sender_kind AS last_message_sender_kind,
+			m.sender_id AS last_message_sender_id,
 			(m.media_id IS NOT NULL) AS has_media,
 			COALESCE(m.media_type, '') AS media_type
 		FROM conversation_messages m
-		WHERE m.entry_id = ?::uuid AND m.entry_type = ?
-		ORDER BY m.created_at DESC
+		WHERE m.entry_id = ?::uuid AND m.entry_type = ? AND m.deleted_at IS NULL
+		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT 1
 	`, database.SentByContactSQL("cm2"))
 
@@ -1488,6 +1498,8 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		LastMessageType:       conversation.MessageType(result.LastMessageType),
 		LastMessageAt:         result.LastMessageAt,
 		LastMessageFrom:       result.LastMessageFrom,
+		LastMessageSenderKind: result.SenderKind,
+		LastMessageSenderID:   result.SenderID,
 		HasMedia:              result.HasMedia,
 		MediaType:             conversation.MediaType(result.MediaType),
 		AgentID:               info.AgentID,

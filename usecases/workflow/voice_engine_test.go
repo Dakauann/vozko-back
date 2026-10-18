@@ -13,6 +13,11 @@ type scriptedCaller struct {
 	keys   []rune
 	plays  int
 	hangUp bool
+	ended  chan struct{}
+}
+
+func (c *scriptedCaller) Done() <-chan struct{} {
+	return c.ended
 }
 
 func (c *scriptedCaller) Play(_ []byte, _ bool) (bool, error) {

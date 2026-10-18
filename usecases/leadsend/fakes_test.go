@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/address"
 	"vozko/domain/balance"
+	"vozko/domain/buttonaction"
 	"vozko/domain/cache"
 	"vozko/domain/campaign"
 	"vozko/domain/conversation"
@@ -118,6 +119,8 @@ type world struct {
 	createErr    error
 	startedBy    map[string]bool
 	deleted      []string
+
+	templateWithoutExit bool
 }
 
 func newWorld() *world {
@@ -300,6 +303,9 @@ func (c *officialCreate) Execute(ctx context.Context, in *wc.Campaign) (*wc.Camp
 	c.contexts = append(c.contexts, ctx)
 	if c.w.createErr != nil {
 		return nil, c.w.createErr
+	}
+	if c.w.templateWithoutExit && in.ExitRiskAcknowledgedBy == "" {
+		return nil, buttonaction.ErrExitRiskNotAcknowledged
 	}
 	if id, ok := c.w.byKey(in.IdempotencyKey); ok {
 		return c.w.parts[id].official, nil

@@ -22,6 +22,7 @@ func RegisterProtectedRoutes(
 	protected.HandleFunc("/whatsapp/templates/sync", ac(wt, workspace_domain.ActionUpdate, h.SyncForWorkspace)).Methods(http.MethodPost)
 	protected.HandleFunc("/whatsapp/templates/{id}/sync", ac(wt, workspace_domain.ActionUpdate, h.SyncOneForWorkspace)).Methods(http.MethodPost)
 	protected.HandleFunc("/whatsapp/templates/{id}/header-media", ac(wt, workspace_domain.ActionUpdate, h.UpdateHeaderMediaForWorkspace)).Methods(http.MethodPatch)
+	protected.HandleFunc("/whatsapp/templates/{id}/content", ac(wt, workspace_domain.ActionUpdate, h.EditForWorkspace)).Methods(http.MethodPut)
 }
 
 func RegisterAdminRoutes(admin *mux.Router, h *WhatsAppTemplateHandler) {

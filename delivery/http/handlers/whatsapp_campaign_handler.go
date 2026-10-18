@@ -13,8 +13,11 @@ import (
 
 	"github.com/gorilla/mux"
 
+	buttonactionhttp "vozko/delivery/http/buttonaction"
+	"vozko/delivery/http/campaignlaunchhttp"
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
+	"vozko/delivery/http/smartcampaignhttp"
 	"vozko/domain/agent"
 	"vozko/domain/auth"
 	campaigndomain "vozko/domain/campaign"
@@ -36,7 +39,7 @@ type WhatsAppCampaignHandler struct {
 	deleteUseCase           wc.DeleteCampaignUseCase
 	getUseCase              wc.GetCampaignUseCase
 	access                  wc.CampaignAccessUseCase
-	start                   wc.StartCampaignUseCase
+	start                   wc.ConfirmedStartUseCase
 	listUseCase             wc.ListCampaignsUseCase
 	listEntriesUseCase      wc.ListEntriesUseCase
 	dispatchUseCase         wc.DispatchCampaignUseCase
@@ -117,12 +120,13 @@ type whatsappCampaignRequest struct {
 	EnableAnalysis       bool                               `json:"enableAnalysis"`
 	EnableAutoStaging    bool                               `json:"enableAutoStaging"`
 	EnableAutoMemory     bool                               `json:"enableAutoMemory"`
-	PreferAudio          bool                               `json:"preferAudio"`
 	ShowTemplateInCrm    bool                               `json:"showTemplateInCrm"`
 	AiModel              string                             `json:"aiModel,omitempty"`
 	ScheduledStart       *string                            `json:"scheduledStart,omitempty"`
 	StageGroupID         string                             `json:"StageGroupID,omitempty"`
 	PhoneNumbers         []whatsappCampaignPhoneNumberInput `json:"phoneNumbers"`
+	ExitRiskAcknowledged bool                               `json:"exitRiskAcknowledged,omitempty"`
+	SmartPolicy          *smartcampaignhttp.PolicyBody      `json:"smartPolicy,omitempty"`
 }
 
 type whatsappCampaignPhoneNumberInput struct {
@@ -177,10 +181,20 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 		EnableAnalysis:       req.EnableAnalysis && !req.EnableAgentResponses,
 		EnableAutoStaging:    req.EnableAutoStaging && !req.EnableAgentResponses,
 		EnableAutoMemory:     req.EnableAutoMemory && !req.EnableAgentResponses,
-		PreferAudio:          req.PreferAudio && req.AgentID != "",
 		ShowTemplateInCrm:    req.ShowTemplateInCrm,
 		AiModel:              req.AiModel,
 		PhoneInputs:          req.toDomainPhoneInputs(),
+	}
+	if req.ExitRiskAcknowledged {
+		campaign.ExitRiskAcknowledgedBy = claims.UserID
+	}
+	if req.SmartPolicy != nil {
+		policy, err := req.SmartPolicy.ToDomain()
+		if err != nil {
+			h.handleDomainError(w, err)
+			return
+		}
+		campaign.WavePolicy = &policy
 	}
 
 	if req.ScheduledStart != nil && *req.ScheduledStart != "" {
@@ -210,7 +224,7 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 }
 
 // @Summary		Editar uma campanha oficial
-// @Description	Atualiza nome, modelo, número, fluxo e agente. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (`workflowId`, `agentId`), variável obrigatória ausente 400 (`AGENT_REQUIRED_VARIABLE_MISSING` ou `metadata`).
+// @Description	Atualiza nome, modelo, número, fluxo e agente. Trocar o modelo passa pela mesma regra da criação: um modelo cujo veredito de saída é `none` exige `exitRiskAcknowledged: true` no corpo (422 `exit_risk_not_acknowledged` sem ele), e o reconhecimento fica gravado com quem reconheceu e quando. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (`workflowId`, `agentId`), variável obrigatória ausente 400 (`AGENT_REQUIRED_VARIABLE_MISSING` ou `metadata`).
 // @Tags			WhatsApp Campaigns
 // @Accept			json
 // @Produce		json
@@ -255,7 +269,6 @@ func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request)
 		EnableAnalysis:       req.EnableAnalysis && !req.EnableAgentResponses,
 		EnableAutoStaging:    req.EnableAutoStaging && !req.EnableAgentResponses,
 		EnableAutoMemory:     req.EnableAutoMemory && !req.EnableAgentResponses,
-		PreferAudio:          req.PreferAudio && req.AgentID != "",
 		ShowTemplateInCrm:    req.ShowTemplateInCrm,
 		AiModel:              req.AiModel,
 		PhoneInputs:          req.toDomainPhoneInputs(),
@@ -270,7 +283,11 @@ func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request)
 		updateCampaign.ScheduledStart = parsed
 	}
 
-	updated, err := h.updateUseCase.Execute(id, updateCampaign)
+	if req.ExitRiskAcknowledged {
+		updateCampaign.ExitRiskAcknowledgedBy = claims.UserID
+	}
+
+	updated, err := h.updateUseCase.Execute(r.Context(), id, updateCampaign)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -483,7 +500,7 @@ func (h *WhatsAppCampaignHandler) Archive(w http.ResponseWriter, r *http.Request
 	}
 
 	existing.Archived = true
-	if _, err := h.updateUseCase.Execute(campaignID, existing); err != nil {
+	if _, err := h.updateUseCase.Execute(r.Context(), campaignID, existing); err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to archive campaign", nil)
 		return
 	}
@@ -510,7 +527,7 @@ func (h *WhatsAppCampaignHandler) Unarchive(w http.ResponseWriter, r *http.Reque
 	}
 
 	existing.Archived = false
-	if _, err := h.updateUseCase.Execute(campaignID, existing); err != nil {
+	if _, err := h.updateUseCase.Execute(r.Context(), campaignID, existing); err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "Failed to unarchive campaign", nil)
 		return
 	}
@@ -600,11 +617,12 @@ func parseWCConversationFilter(values url.Values) wce.ConversationFilter {
 }
 
 // @Summary		Iniciar uma campanha oficial
-// @Description	Uma campanha preparada a partir de leads (origem `lead_selection`), parada, só começa pela revisão (POST /leads/actions/sends/start), que pula quem entrou em outra campanha em andamento e confere saldo e limite mensal: por aqui responde 409 `send_start_from_leads`. Pausada, ela retoma por aqui. O mesmo vale para o início agendado e para as ferramentas do assistente.
+// @Description	Uma campanha preparada a partir de leads (origem `lead_selection`), parada, só começa pela revisão (POST /leads/actions/sends/start), que pula quem entrou em outra campanha em andamento e confere saldo e limite mensal: por aqui responde 409 `send_start_from_leads`. Pausada, ela retoma por aqui. O mesmo vale para o início agendado e para as ferramentas do assistente. Todo início passa pela verificação de GET /whatsapp/campaigns/{id}/launch-check: um bloqueio responde 409 `campaign_launch_blocked`; riscos sem a confirmação atual respondem 409 `campaign_launch_unconfirmed`, e o início é aceito quando confirmedFingerprint traz o fingerprint mais recente.
 // @Tags			WhatsApp Campaigns
 // @Accept			json
 // @Produce		json
-// @Param			id		path		string	true	"Campanha"
+// @Param			id		path		string				true	"Campanha"
+// @Param			body	body		StartCampaignRequest	false	"Confirmação dos riscos da verificação de início"
 // @Success		202		{object}	map[string]interface{}
 // @Failure		400		{object}	response.ErrorResponse
 // @Failure		402		{object}	response.ErrorResponse
@@ -614,6 +632,10 @@ func parseWCConversationFilter(values url.Values) wce.ConversationFilter {
 // @Failure		503		{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/whatsapp/campaigns/{id}/start [post]
+type StartCampaignRequest struct {
+	ConfirmedFingerprint string `json:"confirmedFingerprint,omitempty" example:"3f2a9c1b7d4e8a60"`
+}
+
 func (h *WhatsAppCampaignHandler) StartCampaign(w http.ResponseWriter, r *http.Request) {
 	campaignID := mux.Vars(r)["id"]
 	if campaignID == "" {
@@ -624,7 +646,12 @@ func (h *WhatsAppCampaignHandler) StartCampaign(w http.ResponseWriter, r *http.R
 		response.WriteError(w, http.StatusForbidden, "You don't have access to this campaign", nil)
 		return
 	}
-	_, err := h.start.Start(middleware.GetWorkspaceID(r), middleware.GetDepartmentFilter(r), campaignID)
+	var body StartCampaignRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		response.WriteValidationError(w, map[string]string{"body": "invalid JSON"})
+		return
+	}
+	_, err := h.start.StartConfirmed(middleware.GetWorkspaceID(r), middleware.GetDepartmentFilter(r), campaignID, body.ConfirmedFingerprint)
 	switch {
 	case err == nil:
 		response.WriteSuccess(w, http.StatusAccepted, map[string]string{"message": "WhatsApp campaign started"})
@@ -859,7 +886,7 @@ func (h *WhatsAppCampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *
 }
 
 func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err error) {
-	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) {
+	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) || buttonactionhttp.WriteRefusal(w, err) || smartcampaignhttp.WriteRefusal(w, err) {
 		return
 	}
 	switch {
@@ -920,7 +947,7 @@ func writeCampaignAutomationRefusal(w http.ResponseWriter, err error) bool {
 }
 
 func (h *WhatsAppCampaignHandler) handleDispatchError(w http.ResponseWriter, err error) {
-	if httpx.WriteSelectionSendRefusal(w, err) {
+	if httpx.WriteSelectionSendRefusal(w, err) || smartcampaignhttp.WriteRefusal(w, err) || campaignlaunchhttp.WriteRefusal(w, err) {
 		return
 	}
 	switch {
@@ -1362,7 +1389,7 @@ func (h *WhatsAppCampaignHandler) SetCampaignAccess(access wc.CampaignAccessUseC
 	h.access = access
 }
 
-func (h *WhatsAppCampaignHandler) SetStartCampaign(start wc.StartCampaignUseCase) {
+func (h *WhatsAppCampaignHandler) SetStartCampaign(start wc.ConfirmedStartUseCase) {
 	h.start = start
 }
 

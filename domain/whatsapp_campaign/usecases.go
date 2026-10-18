@@ -15,7 +15,7 @@ type CreateCampaignUseCase interface {
 }
 
 type UpdateCampaignUseCase interface {
-	Execute(campaignID string, campaign *Campaign) (*Campaign, error)
+	Execute(ctx context.Context, campaignID string, campaign *Campaign) (*Campaign, error)
 }
 
 type AssignDepartmentUseCase interface {
@@ -93,10 +93,11 @@ type DispatchEntry struct {
 }
 
 type DispatchCampaignInput struct {
-	CampaignID string
-	Entries    []DispatchEntry
-	Action     CampaignAction
-	Reviewed   bool
+	CampaignID           string
+	Entries              []DispatchEntry
+	Action               CampaignAction
+	Reviewed             bool
+	ConfirmedFingerprint string
 }
 
 type DispatchQueueMessage struct {
@@ -224,6 +225,10 @@ type CampaignAccessUseCase interface {
 
 type StartCampaignUseCase interface {
 	Start(workspaceID string, departments *wd.DepartmentFilter, campaignID string) (*Campaign, error)
+}
+
+type ConfirmedStartUseCase interface {
+	StartConfirmed(workspaceID string, departments *wd.DepartmentFilter, campaignID, confirmedFingerprint string) (*Campaign, error)
 }
 
 type ReviewedStartUseCase interface {

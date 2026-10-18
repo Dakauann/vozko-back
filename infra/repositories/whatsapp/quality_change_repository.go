@@ -21,6 +21,8 @@ func NewQualityChangeRepository(db *gorm.DB) *QualityChangeRepository {
 var (
 	_ quality.Recorder = (*QualityChangeRepository)(nil)
 	_ quality.History  = (*QualityChangeRepository)(nil)
+	_ quality.Timeline  = (*QualityChangeRepository)(nil)
+	_ quality.ChangeLog = (*QualityChangeRepository)(nil)
 )
 
 func (r *QualityChangeRepository) LatestValues(subject quality.Subject, signal quality.Signal, externalIDs []string) (map[string]string, error) {
@@ -65,4 +67,42 @@ func (r *QualityChangeRepository) Record(changes ...quality.Change) error {
 		return fmt.Errorf("record whatsapp quality changes: %w", err)
 	}
 	return nil
+}
+
+func (r *QualityChangeRepository) LatestBySignal(subject quality.Subject, externalID string) (map[quality.Signal]quality.Change, error) {
+	var rows []schema.WhatsAppQualityChange
+	if err := r.db.Raw(`
+		SELECT DISTINCT ON (signal) * FROM whatsapp_quality_changes
+		WHERE subject = ? AND external_id = ?
+		ORDER BY signal, occurred_at DESC, recorded_at DESC`,
+		string(subject), externalID,
+	).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("read the whatsapp quality timeline: %w", err)
+	}
+	latest := make(map[quality.Signal]quality.Change, len(rows))
+	for _, row := range rows {
+		latest[quality.Signal(row.Signal)] = changeOf(row)
+	}
+	return latest, nil
+}
+
+func (r *QualityChangeRepository) Recent(subject quality.Subject, externalID string, limit int) ([]quality.Change, error) {
+	var rows []schema.WhatsAppQualityChange
+	if err := r.db.Where("subject = ? AND external_id = ?", string(subject), externalID).
+		Order("occurred_at DESC, recorded_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("read the recent whatsapp quality changes: %w", err)
+	}
+	changes := make([]quality.Change, len(rows))
+	for i, row := range rows {
+		changes[i] = changeOf(row)
+	}
+	return changes, nil
+}
+
+func changeOf(row schema.WhatsAppQualityChange) quality.Change {
+	return quality.Change{
+		Subject: quality.Subject(row.Subject), ExternalID: row.ExternalID, WABAID: row.WABAID, Name: row.Name,
+		Signal: quality.Signal(row.Signal), Event: row.Event, Previous: row.Previous, Current: row.Current,
+		Source: quality.Source(row.Source), OccurredAt: row.OccurredAt,
+	}
 }

@@ -1,11 +1,11 @@
 package agent
 
+import "vozko/domain/workspace"
+
 type CreateAgentInput struct {
 	WorkspaceID        string            `json:"-"`
 	Name               string            `json:"name" req:"true"`
 	Description        string            `json:"description"`
-	InitialMessage     string            `json:"initialMessage"`
-	UseInitialMessage  *bool             `json:"useInitialMessage"`
 	MessagingPrompt    string            `json:"messagingPrompt" req:"true"`
 	MessagingModel     string            `json:"messagingModel" req:"true"`
 	AvatarURL          string            `json:"avatarUrl"`
@@ -22,6 +22,8 @@ type CreateAgentInput struct {
 	KnowledgeBaseIDs   []string          `json:"-"`
 	MCPCollectionIDs   []string          `json:"-"`
 	Variables          []AgentVariable   `json:"-"`
+
+	RequestedBy workspace.Requester `json:"-"`
 }
 
 func BuildForCreate(in CreateAgentInput) *Agent {
@@ -29,8 +31,6 @@ func BuildForCreate(in CreateAgentInput) *Agent {
 		WorkspaceID:        in.WorkspaceID,
 		Name:               in.Name,
 		Description:        in.Description,
-		InitialMessage:     in.InitialMessage,
-		UseInitialMessage:  boolOr(in.UseInitialMessage, true),
 		MessagingPrompt:    in.MessagingPrompt,
 		MessagingModel:     in.MessagingModel,
 		AvatarURL:          in.AvatarURL,
@@ -51,30 +51,30 @@ func BuildForCreate(in CreateAgentInput) *Agent {
 }
 
 type UpdateAgentInput struct {
-	Name              *string           `json:"name"`
-	Description       *string           `json:"description"`
-	InitialMessage    *string           `json:"initialMessage"`
-	UseInitialMessage *bool             `json:"useInitialMessage"`
-	MessagingPrompt   *string           `json:"messagingPrompt"`
-	MessagingModel    *string           `json:"messagingModel"`
-	AvatarURL         *string           `json:"avatarUrl"`
-	Provider          *AgentProvider    `json:"provider"`
-	BusinessPhoneID   *string           `json:"businessPhoneId"`
-	IsActive          *bool             `json:"isActive"`
-	RAGEnabled        *bool             `json:"-"`
-	Archived          *bool             `json:"-"`
-	Tags              []string          `json:"-"`
-	Metadata          map[string]string `json:"-"`
-	InternalTools     []ToolBinding     `json:"-"`
-	MediaIDs          []string          `json:"-"`
-	KnowledgeBaseIDs  []string          `json:"-"`
-	MCPCollectionIDs  []string          `json:"-"`
-	Variables         []AgentVariable   `json:"-"`
+	Name             *string           `json:"name"`
+	Description      *string           `json:"description"`
+	MessagingPrompt  *string           `json:"messagingPrompt"`
+	MessagingModel   *string           `json:"messagingModel"`
+	AvatarURL        *string           `json:"avatarUrl"`
+	Provider         *AgentProvider    `json:"provider"`
+	BusinessPhoneID  *string           `json:"businessPhoneId"`
+	IsActive         *bool             `json:"isActive"`
+	RAGEnabled       *bool             `json:"-"`
+	Archived         *bool             `json:"-"`
+	Tags             []string          `json:"-"`
+	Metadata         map[string]string `json:"-"`
+	InternalTools    []ToolBinding     `json:"-"`
+	MediaIDs         []string          `json:"-"`
+	KnowledgeBaseIDs []string          `json:"-"`
+	MCPCollectionIDs []string          `json:"-"`
+	Variables        []AgentVariable   `json:"-"`
 
 	ReplaceWhatsAppTemplate bool       `json:"-"`
 	WhatsAppTemplateID      *string    `json:"-"`
 	ReplaceRAGConfig        bool       `json:"-"`
 	RAGConfig               *RAGConfig `json:"-"`
+
+	RequestedBy workspace.Requester `json:"-"`
 }
 
 func (a *Agent) ApplyUpdate(in UpdateAgentInput) {
@@ -83,12 +83,6 @@ func (a *Agent) ApplyUpdate(in UpdateAgentInput) {
 	}
 	if in.Description != nil {
 		a.Description = *in.Description
-	}
-	if in.InitialMessage != nil {
-		a.InitialMessage = *in.InitialMessage
-	}
-	if in.UseInitialMessage != nil {
-		a.UseInitialMessage = *in.UseInitialMessage
 	}
 	if in.MessagingPrompt != nil {
 		a.MessagingPrompt = *in.MessagingPrompt

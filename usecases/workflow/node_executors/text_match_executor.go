@@ -17,7 +17,7 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:        workflow.NodeTypeConditionTextMatch,
 		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
+		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
 		Label:       "Classificar Texto",
 		Description: "Roteia o fluxo com base no texto recebido (switch/case).",
 		Icon:        "GitBranch",

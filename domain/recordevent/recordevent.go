@@ -15,6 +15,7 @@ type Change struct {
 }
 
 type Event struct {
+	ID      string
 	Actor   string
 	Kind    Kind
 	Changes []Change

@@ -82,13 +82,15 @@ func (uc *dispatchCampaignUseCase) Dispatch(ctx context.Context, input uwc.Dispa
 	switch action {
 	case campaign.ActionPause:
 		if err := uc.consumer.PauseCampaignConsumer(input.CampaignID); err != nil {
-			log.Printf("[unofficial-whatsapp-campaign] could not pause the consumer: %v", err)
+			uc.revert(input.CampaignID, transition)
+			return fmt.Errorf("could not pause the consumer: %w", err)
 		}
 		return nil
 
 	case campaign.ActionStop:
 		if err := uc.consumer.StopCampaignConsumer(input.CampaignID); err != nil {
-			log.Printf("[unofficial-whatsapp-campaign] could not stop the consumer: %v", err)
+			uc.revert(input.CampaignID, transition)
+			return fmt.Errorf("could not stop the consumer: %w", err)
 		}
 		return nil
 	}

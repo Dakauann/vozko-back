@@ -93,3 +93,37 @@ func (r *ConversationResolver) bridgeContactLead(
 	}
 	contact.LeadID = &leadID
 }
+
+func (r *ConversationResolver) ResolveGroup(
+	ctx context.Context,
+	instance *uw.Instance,
+	groupJID, subject string,
+) (*Resolved, error) {
+	if !uw.IsGroupJID(groupJID) {
+		return nil, uw.ErrNotAGroupJID
+	}
+	existing, findErr := r.conversations.FindByChatID(ctx, instance.ID, groupJID)
+	alreadyExisted := findErr == nil && existing != nil
+
+	contact, err := r.contacts.FindOrCreate(ctx, uw.FindOrCreateContactInput{
+		WorkspaceID: instance.WorkspaceID,
+		InstanceID:  instance.ID,
+		JID:         groupJID,
+		Name:        subject,
+		IsGroup:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	conv, err := r.conversations.FindOrCreate(ctx, uw.FindOrCreateConversationInput{
+		WorkspaceID: instance.WorkspaceID,
+		InstanceID:  instance.ID,
+		ContactID:   contact.ID,
+		ChatID:      groupJID,
+		IsGroup:     true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Resolved{Conversation: conv, Contact: contact, AlreadyExisted: alreadyExisted}, nil
+}

@@ -39,6 +39,8 @@ type stubCommands struct {
 	area       leaddomain.Area
 	duplicates []lead_usecase.DuplicateWarning
 	optOut     leaddomain.OptOutSource
+	consent    lead_usecase.ConsentInput
+	company    string
 }
 
 func (s *stubCommands) answer(call string, expected *int64) (*leaddomain.Lead, error) {

@@ -11,6 +11,7 @@ import (
 	geocoding_usecase "vozko/usecases/geocoding"
 	lead_usecase "vozko/usecases/lead"
 	leadarea_usecase "vozko/usecases/leadarea"
+	leadcompany_usecase "vozko/usecases/leadcompany"
 )
 
 func (c *Container) leadGenerations() domainCache.Versions {
@@ -75,4 +76,28 @@ func (c *Container) leadReferencePointHandler() *leadhttp.ReferencePointHandler 
 		log.Fatalf("[lead-places] %v", err)
 	}
 	return leadhttp.NewReferencePointHandler(points).WithPlaces(places)
+}
+
+func (c *Container) leadCompanies() *leadcompany_usecase.Service {
+	if c.leadCompanyService != nil {
+		return c.leadCompanyService
+	}
+	if c.services.conversationAuthImpl == nil || c.useCases.getMedia == nil {
+		log.Fatalf("[lead-companies] the authorizer and the media library must be wired before the lead companies")
+	}
+	companies, err := leadcompany_usecase.New(leadcompany_usecase.Deps{
+		Companies:   c.repositories.lead,
+		Permissions: c.services.conversationAuthImpl,
+		Images:      c.useCases.getMedia,
+		Notifier:    c.leadChangeNotifier(),
+	})
+	if err != nil {
+		log.Fatalf("[lead-companies] %v", err)
+	}
+	c.leadCompanyService = companies
+	return companies
+}
+
+func (c *Container) leadCompanyHandler() *leadhttp.CompanyHandler {
+	return leadhttp.NewCompanyHandler(c.leadCompanies())
 }

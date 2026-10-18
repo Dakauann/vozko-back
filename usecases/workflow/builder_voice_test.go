@@ -13,12 +13,16 @@ import (
 	"vozko/usecases/workflow/node_executors"
 )
 
-func TestTheCopilotOffersOnlyVoiceNodesInAVoiceWorkflow(t *testing.T) {
-	catalog := append(voiceCatalog(), node_executors.NewTextMatchExecutor().Definition())
+func TestTheCopilotOffersOnlyCallSafeNodesInAVoiceWorkflow(t *testing.T) {
+	catalog := append(voiceCatalog(),
+		node_executors.NewTextMatchExecutor().Definition(),
+		node_executors.NewWaitDurationExecutor().Definition(),
+		node_executors.NewSendTextExecutor(node_executors.SenderDeps{}).Definition(),
+	)
 	uc := &aiBuilderUC{}
 
 	voice := uc.typeEnum(&builderState{wfType: workflow.WorkflowTypeVoice, fullCatalog: catalog})
-	want := []string{"action_play_audio", "action_transfer_to_queue", "end", "trigger_call_received", "wait_dtmf"}
+	want := []string{"action_play_audio", "action_transfer_to_queue", "condition_text_match", "end", "trigger_call_received", "wait_dtmf"}
 	sort.Strings(want)
 	if len(voice) != len(want) {
 		t.Fatalf("voice nodes = %v, want %v", voice, want)

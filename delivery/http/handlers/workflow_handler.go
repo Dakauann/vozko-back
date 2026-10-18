@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
@@ -18,7 +19,6 @@ import (
 )
 
 type WorkflowHandler struct {
-	createUC           workflow.CreateWorkflowUseCase
 	workflows          workflow.ScopedWorkflowsUseCase
 	assignDepartmentUC workflow.AssignDepartmentUseCase
 	listUC             workflow.ListWorkflowsUseCase
@@ -31,7 +31,6 @@ type WorkflowHandler struct {
 }
 
 func NewWorkflowHandler(
-	createUC workflow.CreateWorkflowUseCase,
 	workflows workflow.ScopedWorkflowsUseCase,
 	assignDepartmentUC workflow.AssignDepartmentUseCase,
 	listUC workflow.ListWorkflowsUseCase,
@@ -43,7 +42,6 @@ func NewWorkflowHandler(
 	catalogFn func() []workflow.NodeDefinition,
 ) *WorkflowHandler {
 	return &WorkflowHandler{
-		createUC:           createUC,
 		workflows:          workflows,
 		assignDepartmentUC: assignDepartmentUC,
 		listUC:             listUC,
@@ -79,7 +77,7 @@ func (h *WorkflowHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	r = withDepartmentCreationScope(r, req.DepartmentID)
 
-	created, err := h.createUC.Execute(r.Context(), wf)
+	created, err := h.workflows.Create(r.Context(), workflowScope(r), wf)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return
@@ -345,10 +343,15 @@ func (h *WorkflowHandler) ValidateGraph(w http.ResponseWriter, r *http.Request) 
 }
 
 func workflowScope(r *http.Request) workflow.Scope {
-	return workflow.Scope{WorkspaceID: middleware.GetWorkspaceID(r), Departments: middleware.GetDepartmentFilter(r)}
+	return workflow.Scope{WorkspaceID: middleware.GetWorkspaceID(r), Departments: middleware.GetDepartmentFilter(r), Requester: httpx.RequesterOf(r)}
 }
 
+const workflowConsentGrantNeedsReplyCode = "workflow_consent_grant_needs_reply"
+
 func (h *WorkflowHandler) handleDomainError(w http.ResponseWriter, err error) {
+	if httpx.WriteConsentGrantRefusal(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, workflow.ErrWorkflowNotFound):
 		response.WriteError(w, http.StatusNotFound, "Workflow não encontrado", nil)
@@ -441,6 +444,8 @@ func (h *WorkflowHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusUnprocessableEntity, "A mídia selecionada é inválida ou não foi encontrada", nil)
 	case errors.Is(err, workflow.ErrInvalidNodeType):
 		response.WriteError(w, http.StatusUnprocessableEntity, "O workflow contém um tipo de nó inválido", nil)
+	case errors.Is(err, workflow.ErrConsentGrantNeedsReply):
+		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, workflowConsentGrantNeedsReplyCode, "Registrar consentimento só vale depois da resposta do lead em todos os caminhos (Aguardar Resposta, uma opção de botões ou o botão do template). Para opt-out use Retirar.", map[string]string{"detail": err.Error()})
 	case errors.Is(err, workflow.ErrNodeConfigMissing):
 		response.WriteError(w, http.StatusUnprocessableEntity, "Configuração obrigatória ausente em um nó do workflow", nil)
 	default:
@@ -590,7 +595,7 @@ func (h *WorkflowHandler) Import(w http.ResponseWriter, r *http.Request) {
 
 	r = withDepartmentCreationScope(r, r.URL.Query().Get("departmentId"))
 
-	created, err := h.createUC.Execute(r.Context(), wf)
+	created, err := h.workflows.Create(r.Context(), workflowScope(r), wf)
 	if err != nil {
 		h.handleDomainError(w, err)
 		return

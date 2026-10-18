@@ -146,7 +146,7 @@ func TestInRunningCampaignsAgainstPostgres(t *testing.T) {
 		t.Fatalf("unofficial campaign: %v", err)
 	}
 	other := seedLead(t, db, ws, false)
-	if err := db.Create(&schema.UnofficialWhatsAppCampaignEntry{ID: uuid.NewString(), CampaignID: unofficialRunning.ID, WorkspaceID: ws, LeadID: other, Number: "5511", Status: "PENDING"}).Error; err != nil {
+	if err := db.Create(&schema.UnofficialWhatsAppCampaignEntry{ID: uuid.NewString(), CampaignID: unofficialRunning.ID, WorkspaceID: ws, LeadID: &other, Number: "5511", Status: "PENDING"}).Error; err != nil {
 		t.Fatalf("unofficial entry: %v", err)
 	}
 

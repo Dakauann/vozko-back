@@ -62,7 +62,8 @@ const (
 	WSEventConversationStatusCountsUpdate WSEventType = "conversation:conversation_status_counts_update"
 	WSEventAdOrigin                       WSEventType = "conversation:ad_origin"
 
-	WSEventAudienceAnalyzed WSEventType = "audience:analyzed"
+	WSEventAudienceAnalyzed    WSEventType = "audience:analyzed"
+	WSEventNotificationCreated WSEventType = "notification:created"
 
 	WSEventStartCall WSEventType = "start_call"
 	WSEventEndCall   WSEventType = "end_call"

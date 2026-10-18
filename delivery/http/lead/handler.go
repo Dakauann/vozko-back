@@ -27,10 +27,12 @@ type Commands interface {
 	Block(ctx context.Context, a lead_usecase.Actor, id string, in lead_usecase.BlockInput) (lead_usecase.BlockResult, error)
 	SetOwner(ctx context.Context, a lead_usecase.Actor, id, owner string) (*leaddomain.Lead, error)
 	OptOut(ctx context.Context, a lead_usecase.Actor, id string, source leaddomain.OptOutSource) (*leaddomain.Lead, error)
+	RecordConsent(ctx context.Context, a lead_usecase.Actor, id string, in lead_usecase.ConsentInput) (lead_usecase.ConsentResult, error)
 	AddRelative(ctx context.Context, a lead_usecase.Actor, id string, in lead_usecase.AddRelativeInput) (lead_usecase.RelativeResult, error)
 	LinkRelation(ctx context.Context, a lead_usecase.Actor, id, otherID string, kind leaddomain.RelationKind) (lead_usecase.RelationResult, error)
 	RemoveRelation(ctx context.Context, a lead_usecase.Actor, relationID string) (leaddomain.Relation, error)
 	SetArea(ctx context.Context, a lead_usecase.Actor, id string, area leaddomain.Area) (*leaddomain.Lead, error)
+	SetCompany(ctx context.Context, a lead_usecase.Actor, id, companyID string) (*leaddomain.Lead, error)
 	Anonymize(ctx context.Context, a lead_usecase.Actor, id string) (leaddomain.Erasure, error)
 }
 

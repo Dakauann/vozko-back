@@ -684,6 +684,7 @@ func newTestSimulationRegistry(deps ExecutorDeps, workspaceID, simLeadID string,
 		AgentRepo:             deps.AgentRepo,
 		MessageRepo:           simMsgRepo,
 		HistoryManager:        &simHistoryManager{},
+		ConversationEvents:    simulationEvents,
 		LeadRepo:              &simLeadRepo{},
 		WhatsAppEntryRepo:     &simWhatsAppEntryRepo{leadID: simLeadID},
 		BusinessPhoneRepo:     &simBusinessPhoneRepo{workspaceID: workspaceID},
@@ -705,6 +706,7 @@ func newTestSimulationRegistry(deps ExecutorDeps, workspaceID, simLeadID string,
 		WorkspaceRepo:         deps.WorkspaceRepo,
 		CachedBalanceChecker:  deps.CachedBalanceChecker,
 		VoiceAudio:            deps.VoiceAudio,
+		HTTPEgress:            deps.HTTPEgress,
 	})
 	return registry
 }

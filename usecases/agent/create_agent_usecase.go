@@ -14,6 +14,7 @@ import (
 )
 
 type createAgentUseCase struct {
+	consentGrantGuard
 	repo               agent.Repository
 	businessPhoneRepo  businessphone.Repository
 	toolRegistry       tools.Service
@@ -80,6 +81,9 @@ func (uc *createAgentUseCase) Execute(ctx context.Context, in agent.CreateAgentI
 
 	selectedTools, err := resolveInternalToolSelection(uc.toolRegistry, a.InternalTools, nil)
 	if err != nil {
+		return nil, err
+	}
+	if err := uc.refuseUngrantedConsentSkill(a.WorkspaceID, in.RequestedBy, nil, selectedTools); err != nil {
 		return nil, err
 	}
 	a.InternalTools = selectedTools

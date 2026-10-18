@@ -95,6 +95,7 @@ type LeadRecordResponse struct {
 	CustomFields      map[string]any         `json:"customFields,omitempty"`
 	RelativesCount    int                    `json:"relativesCount"`
 	ReferredCount     int                    `json:"referredCount"`
+	CompanyID         string                 `json:"companyId,omitempty" example:"3c2b1a00-7d1a-4c61-9a0e-2f8d4c1b2a10"`
 	Version           int64                  `json:"version" example:"3"`
 	CreatedAt         string                 `json:"createdAt,omitempty"`
 	UpdatedAt         string                 `json:"updatedAt,omitempty"`
@@ -253,6 +254,7 @@ func toLeadRecord(l *leaddomain.Lead, now time.Time) LeadRecordResponse {
 		CustomFields:      l.CustomFields,
 		RelativesCount:    l.RelativesCount,
 		ReferredCount:     l.ReferredCount,
+		CompanyID:         l.CompanyID,
 		Version:           l.Version,
 		CreatedAt:         fmtNonZero(l.CreatedAt),
 		UpdatedAt:         fmtNonZero(l.UpdatedAt),

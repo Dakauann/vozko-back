@@ -31,7 +31,7 @@ var operatorCapabilities = []CapabilityKey{
 	"crm_board.view", "crm_board.move_stage",
 	"labels.view", "funnels.view", "message_shortcuts.view",
 	"media.view", "media.upload",
-	"leads.view",
+	"leads.view", "leads.consent", "lead_companies.view", "customer_portfolios.view", "customer_portfolios.use",
 	"calls.use", "call_history.view",
 	"call_lists.view", "call_lists.work",
 	"ai_chat.view", "ai_chat.chat",
@@ -44,7 +44,7 @@ var supervisorCapabilities = append(append([]CapabilityKey{}, operatorCapabiliti
 	"message_shortcuts.create", "message_shortcuts.edit",
 	"attendance.view", "attendance.targets_view",
 	"call_history.view_team", "call_history.listen", "calls.presence",
-	"team.members", "departments.view",
+	"team.members", "departments.view", "customer_portfolios.manage",
 )
 
 var RolePresets = []RolePreset{
@@ -73,6 +73,7 @@ var RolePresets = []RolePreset{
 			"deals.view", "deals.create", "deals.edit", "deals.assign",
 			"leads.import", "leads.edit", "leads.block", "leads.assign", "leads.read_sensitive", "leads.read_addresses", "leads.configure",
 			"leads.bulk_edit", "leads.export", "leads.meta_audience", "leads.send_template", "leads.send_unofficial",
+			"lead_companies.create", "lead_companies.edit", "lead_companies.delete", "lead_companies.membership",
 			"call_lists.manage",
 			"whatsapp_campaigns.view", "whatsapp_campaigns.crm",
 			"team.invite", "departments.edit",
@@ -95,10 +96,10 @@ var RolePresets = []RolePreset{
 		Highlights:  []string{"Somente leitura", "Métricas e relatórios", "Campanhas e anúncios"},
 		Capabilities: []CapabilityKey{
 			"inbox.view", "inbox.view_others", "inbox.analysis",
-			"crm_board.view", "funnels.view", "deals.view", "leads.view",
+			"crm_board.view", "funnels.view", "deals.view", "leads.view", "lead_companies.view",
 			"attendance.view", "attendance.targets_view", "attendance.campaign_report",
 			"reports.view", "reports.create", "audience.view",
-			"whatsapp_campaigns.view", "unofficial_campaigns.view", "ads.view",
+			"whatsapp_campaigns.view", "unofficial_campaigns.view", "unofficial_groups.view", "ads.view",
 			"ai_chat.view", "ai_chat.chat",
 		},
 	},
@@ -113,10 +114,12 @@ var RolePresets = []RolePreset{
 			"whatsapp_templates.view", "whatsapp_templates.create", "whatsapp_templates.edit",
 			"unofficial_campaigns.view", "unofficial_campaigns.create", "unofficial_campaigns.edit",
 			"unofficial_campaigns.start", "unofficial_campaigns.stop",
+			"unofficial_groups.view", "unofficial_groups.join", "unofficial_groups.edit", "unofficial_groups.analyses",
+			"unofficial_groups.export", "unofficial_groups.to_leads",
 			"instagram.view", "instagram.manage", "facebook.view", "facebook.manage",
 			"ads.view", "ads.toggle", "ads.edit", "audience.view",
 			"links.view", "links.create", "links.edit",
-			"leads.view", "leads.import", "media.view", "media.upload", "reports.view",
+			"leads.view", "leads.import", "media.view", "media.upload", "reports.view", "lead_companies.view",
 		},
 	},
 	{

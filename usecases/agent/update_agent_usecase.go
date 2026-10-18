@@ -11,6 +11,7 @@ import (
 )
 
 type updateAgentUseCase struct {
+	consentGrantGuard
 	repo              agent.Repository
 	businessPhoneRepo businessphone.Repository
 	toolRegistry      tools.Service
@@ -71,6 +72,9 @@ func (uc *updateAgentUseCase) Execute(ctx context.Context, agentID string, in ag
 
 	selectedTools, err := resolveInternalToolSelection(uc.toolRegistry, in.InternalTools, existingTools)
 	if err != nil {
+		return nil, err
+	}
+	if err := uc.refuseUngrantedConsentSkill(current.WorkspaceID, in.RequestedBy, existingTools, selectedTools); err != nil {
 		return nil, err
 	}
 	current.InternalTools = selectedTools

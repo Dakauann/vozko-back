@@ -8,6 +8,8 @@ import (
 
 	ca "vozko/domain/audience"
 	"vozko/domain/shared"
+	"vozko/domain/notification"
+	"vozko/domain/workspace"
 )
 
 func smallBudget() ca.Budget {
@@ -252,6 +254,17 @@ func TestEngine_DailyCapStopsTheCycle(t *testing.T) {
 	}
 	if h.repo.countStatus(ca.StatusPending) != 20 {
 		t.Fatalf("pending = %d, want 20", h.repo.countStatus(ca.StatusPending))
+	}
+	notice := h.notices.Only(t)
+	if notice.WorkspaceID != "ws-1" || notice.Category != notification.CategorySystem || notice.Severity != notification.SeverityWarning || !notice.Email {
+		t.Fatalf("cap notice = %+v", notice)
+	}
+	if !notice.Audience.Equal(notification.Holding(workspace.ResourceAudience, workspace.ActionUpdate)) {
+		t.Fatalf("audience = %+v, want the people who configure the analysis", notice.Audience)
+	}
+	if notice.ActionURL != "/dashboard/audience" || notice.EmailCopy == nil || notice.EmailCopy.Template != capNotificationTemplate ||
+		notice.EmailCopy.Placeholders["DashboardURL"] != "https://app.vozko.test/dashboard/audience" {
+		t.Fatalf("link %q email %+v", notice.ActionURL, notice.EmailCopy)
 	}
 	if _, still := h.scheduler.hints[ref().Key()]; !still {
 		t.Fatal("the hint must survive a cap stop")

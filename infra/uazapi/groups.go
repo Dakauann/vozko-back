@@ -107,28 +107,77 @@ func (c *Client) GroupInfo(
 	return group, nil
 }
 
-func (c *Client) ListGroups(ctx context.Context, ref uw.InstanceRef, withParticipants bool) ([]*uw.Group, error) {
-	path := "/group/list?noparticipants=true"
-	if withParticipants {
-		path = "/group/list?noparticipants=false"
-	}
+const defaultGroupPageSize = 100
 
-	var resp struct {
-		Groups []groupResponse `json:"groups"`
+func (c *Client) ListGroups(ctx context.Context, ref uw.InstanceRef, withParticipants bool) ([]*uw.Group, error) {
+	var out []*uw.Group
+	for offset := 0; ; offset += c.groupPageSize {
+		var resp struct {
+			Groups []groupResponse `json:"groups"`
+		}
+		err := c.instanceCall(ctx, ref, http.MethodPost, "/group/list", map[string]any{
+			"limit":          c.groupPageSize,
+			"offset":         offset,
+			"noParticipants": !withParticipants,
+		}, &resp)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range resp.Groups {
+			if group := item.toDomain(); group.JID != "" {
+				out = append(out, group)
+			}
+		}
+		if len(resp.Groups) < c.groupPageSize {
+			return out, nil
+		}
 	}
-	if err := c.instanceCall(ctx, ref, http.MethodGet, path, nil, &resp); err != nil {
+}
+
+func (c *Client) CreateGroup(ctx context.Context, ref uw.InstanceRef, name string, participants []string) (*uw.Group, error) {
+	if err := uw.ValidateGroupName(name); err != nil {
 		return nil, err
 	}
-
-	out := make([]*uw.Group, 0, len(resp.Groups))
-	for _, item := range resp.Groups {
-		group := item.toDomain()
-		if group.JID == "" {
-			continue
-		}
-		out = append(out, group)
+	var resp struct {
+		Group groupResponse `json:"group"`
 	}
-	return out, nil
+	err := c.instanceCall(ctx, ref, http.MethodPost, "/group/create", map[string]any{
+		"name":         strings.TrimSpace(name),
+		"participants": normalizeParticipants(participants),
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return groupFrom(resp.Group)
+}
+
+func (c *Client) JoinGroup(ctx context.Context, ref uw.InstanceRef, inviteLink string) (*uw.Group, error) {
+	return c.inviteCall(ctx, ref, "/group/join", inviteLink)
+}
+
+func (c *Client) InviteInfo(ctx context.Context, ref uw.InstanceRef, inviteLink string) (*uw.Group, error) {
+	return c.inviteCall(ctx, ref, "/group/inviteInfo", inviteLink)
+}
+
+func (c *Client) inviteCall(ctx context.Context, ref uw.InstanceRef, path, inviteLink string) (*uw.Group, error) {
+	var resp struct {
+		Group groupResponse `json:"group"`
+	}
+	err := c.instanceCall(ctx, ref, http.MethodPost, path, map[string]any{
+		"invitecode": strings.TrimSpace(inviteLink),
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return groupFrom(resp.Group)
+}
+
+func groupFrom(r groupResponse) (*uw.Group, error) {
+	group := r.toDomain()
+	if !uw.IsGroupJID(group.JID) {
+		return nil, uw.ErrGroupNotFound
+	}
+	return group, nil
 }
 
 func (c *Client) UpdateGroupName(ctx context.Context, ref uw.InstanceRef, groupJID, name string) error {

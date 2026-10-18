@@ -1,0 +1,32 @@
+{{define "title"}}{{.Headline}} - {{.Brand.Name}}{{end}}
+{{define "preheader"}}{{if .CategoryLabel}}{{.CategoryLabel}}: {{end}}{{.Headline}}{{end}}
+{{define "eyebrow"}}{{if .WorkspaceName}}{{.WorkspaceName}}{{else}}Notificações{{end}}{{end}}
+{{define "content"}}
+{{template "heading" dict "status" (or .CategoryLabel "Notificação") "tone" (or .Tone "info") "title" .Headline}}
+{{template "gap" 20}}
+<p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a; word-break:break-word;">{{range $i, $line := lines .Message}}{{if $i}}<br>{{end}}{{$line}}{{end}}</p>
+{{if .ImageURL}}
+{{template "gap" 24}}
+<img src="{{.ImageURL}}" alt="{{.Headline}}" width="518" style="display:block; width:100%; max-width:518px; height:auto; border:1px solid #dce1e5; border-radius:8px;" class="vx-rule">
+{{end}}
+{{template "gap" 28}}
+{{if .ActionURL}}
+{{template "cta" dict "url" .ActionURL "label" (or .ActionLabel "Abrir")}}
+{{if .InboxURL}}
+<p class="vx-muted" style="margin:16px 0 0; font-size:13px; line-height:20px; color:#58626a;">
+    <a href="{{.InboxURL}}" class="vx-link" style="color:#007a5c; text-decoration:underline;">Ver todas as notificações</a>
+</p>
+{{end}}
+{{else if .InboxURL}}
+{{template "cta" dict "url" .InboxURL "label" "Ver todas as notificações"}}
+{{end}}
+{{template "gap" 28}}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td class="vx-muted vx-rule" style="padding-top:16px; border-top:1px solid #dce1e5; font-size:12px; line-height:18px; color:#58626a;">
+            {{if .SentAt}}Enviada em {{.SentAt}} (horário de Brasília){{end}}{{if and .SentAt .WorkspaceName}} &middot; {{end}}{{if .WorkspaceName}}Área de trabalho {{.WorkspaceName}}{{end}}{{if or .SentAt .WorkspaceName}}<br>{{end}}
+            Esta notificação também está na central de notificações da {{.Brand.Name}}.
+        </td>
+    </tr>
+</table>
+{{end}}

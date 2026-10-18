@@ -423,7 +423,7 @@ func TestEveryNewStatementBindsAsManyArgumentsAsItHasPlaceholders(t *testing.T) 
 		"entry":    strings.Count(leadOfEntrySQL, "?"),
 		"version":  strings.Count(currentVersionSQL, "?"),
 	}
-	want := map[string]int{"lock": 2, "shift": 5, "update": 24, "requeue": 25, "promote": 5, "save": 24, "withCols": 21, "holders": 7, "livingAt": 4, "find": 2, "delete": 2, "entry": 3, "version": 2}
+	want := map[string]int{"lock": 2, "shift": 5, "update": 24, "requeue": 25, "promote": 5, "save": 25, "withCols": 21, "holders": 7, "livingAt": 4, "find": 2, "delete": 2, "entry": 3, "version": 2}
 	for name, got := range statements {
 		if got != want[name] {
 			t.Errorf("%s has %d placeholders, want %d", name, got, want[name])

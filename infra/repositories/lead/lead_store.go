@@ -31,7 +31,7 @@ const (
 	currentVersionSQL = "SELECT version FROM leads WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL"
 )
 
-var saveSQL = "UPDATE leads SET " + recordColumnsSQL + ", updated_at = ?, version = version + 1" +
+var saveSQL = "UPDATE leads SET " + recordColumnsSQL + ", whatsapp_consent_record = ?, updated_at = ?, version = version + 1" +
 	" WHERE id = ? AND workspace_id = ? AND version = ? AND deleted_at IS NULL" +
 	" AND (leads.number IS NOT DISTINCT FROM ? OR NOT EXISTS (SELECT 1 FROM " + infracrmfilter.LeadEntriesSource() +
 	" WHERE lead_entries.lead_id = leads.id)) RETURNING version"
@@ -134,7 +134,11 @@ func (r *repository) Save(ctx context.Context, l *lead.Lead, expectedVersion int
 		return err
 	}
 	now := time.Now().UTC()
-	args := append(columns, now, l.ID, l.WorkspaceID, expectedVersion, schema.OptionalText(l.Number))
+	consentRecord, err := consentRecordColumn(l.ConsentRecord)
+	if err != nil {
+		return err
+	}
+	args := append(columns, jsonArg(consentRecord), now, l.ID, l.WorkspaceID, expectedVersion, schema.OptionalText(l.Number))
 
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var versions []int64
@@ -164,17 +168,25 @@ func (r *repository) Save(ctx context.Context, l *lead.Lead, expectedVersion int
 }
 
 func whyNotSaved(tx *gorm.DB, l *lead.Lead, expectedVersion int64) error {
-	var current []int64
-	if err := tx.Raw(currentVersionSQL, l.ID, l.WorkspaceID).Scan(&current).Error; err != nil {
-		return err
-	}
+	current, err := storedVersion(tx, l)
 	switch {
-	case len(current) == 0:
-		return lead.ErrLeadNotFound
-	case current[0] != expectedVersion:
+	case err != nil:
+		return err
+	case current != expectedVersion:
 		return shared.ErrVersionConflict
 	}
 	return lead.ErrIdentityInUse
+}
+
+func storedVersion(tx *gorm.DB, l *lead.Lead) (int64, error) {
+	var current []int64
+	if err := tx.Raw(currentVersionSQL, l.ID, l.WorkspaceID).Scan(&current).Error; err != nil {
+		return 0, err
+	}
+	if len(current) == 0 {
+		return 0, lead.ErrLeadNotFound
+	}
+	return current[0], nil
 }
 
 func eventRows(workspaceID, leadID string, events []recordevent.Event, at time.Time) ([]schema.LeadEvent, error) {
@@ -189,7 +201,7 @@ func eventRows(workspaceID, leadID string, events []recordevent.Event, at time.T
 		}
 		actorID, kind := actor.Split(e.Actor)
 		rows = append(rows, schema.LeadEvent{
-			ID:          uuid.New().String(),
+			ID:          eventID(e),
 			WorkspaceID: workspaceID,
 			LeadID:      leadID,
 			ActorID:     schema.OptionalText(actorID),
@@ -200,6 +212,13 @@ func eventRows(workspaceID, leadID string, events []recordevent.Event, at time.T
 		})
 	}
 	return rows, nil
+}
+
+func eventID(e recordevent.Event) string {
+	if id := strings.TrimSpace(e.ID); id != "" {
+		return id
+	}
+	return uuid.New().String()
 }
 
 func insertEventRows(tx *gorm.DB, rows []schema.LeadEvent) error {

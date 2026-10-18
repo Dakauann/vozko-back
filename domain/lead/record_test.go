@@ -46,7 +46,7 @@ func TestNewLead(t *testing.T) {
 
 func TestNewLeadIsAManualRecordAtVersionOne(t *testing.T) {
 	optIn := true
-	l, err := New("ws-1", Draft{Name: "  Maria   Souza ", Email: " Maria@Exemplo.com.BR ", BirthDate: "1990-04-21", WhatsAppOptIn: &optIn}, recordNow)
+	l, err := New("ws-1", Draft{Name: "  Maria   Souza ", Email: " Maria@Exemplo.com.BR ", BirthDate: "1990-04-21", WhatsAppOptIn: &optIn, ConsentBy: "u-1"}, recordNow)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -58,6 +58,12 @@ func TestNewLeadIsAManualRecordAtVersionOne(t *testing.T) {
 	}
 	if l.WhatsAppOptIn == nil || l.WhatsAppOptIn.Source != ConsentManual || !l.WhatsAppOptIn.GrantedAt.Equal(recordNow) {
 		t.Fatalf("opt-in = %+v", l.WhatsAppOptIn)
+	}
+	if l.ConsentRecord == nil || l.ConsentRecord.Actor != (ConsentActor{Type: ConsentActorUser, ID: "u-1"}) || l.ConsentRecord.Evidence.Ref != SheetEvidenceRef {
+		t.Fatalf("the grant must record who ticked it on the sheet: %+v", l.ConsentRecord)
+	}
+	if _, err := New("ws-1", Draft{Name: "Maria", WhatsAppOptIn: &optIn}, recordNow); !errors.Is(err, ErrConsentActorInvalid) {
+		t.Fatalf("a grant without who recorded it = %v, want ErrConsentActorInvalid", err)
 	}
 	if _, err := New("", Draft{Name: "Maria"}, recordNow); !errors.Is(err, ErrLeadWorkspaceRequired) {
 		t.Fatalf("a lead needs a workspace, got %v", err)
@@ -112,18 +118,18 @@ func TestApplyEditConsent(t *testing.T) {
 	yes, no := true, false
 	l := Lead{WorkspaceID: "ws-1", Number: "5511987654321", OptedOutAt: &optedOut}
 
-	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &yes}, recordNow); err != nil {
+	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &yes, ConsentBy: "u-1"}, recordNow); err != nil {
 		t.Fatalf("ApplyEdit: %v", err)
 	}
 	if l.WhatsAppOptIn == nil || l.OptedOutAt != nil {
 		t.Fatalf("an explicit consent re-grants and clears the opt-out: %+v", l)
 	}
 	granted := l.WhatsAppOptIn.GrantedAt
-	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &yes}, recordNow.Add(time.Hour)); err != nil || !l.WhatsAppOptIn.GrantedAt.Equal(granted) {
+	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &yes, ConsentBy: "u-1"}, recordNow.Add(time.Hour)); err != nil || !l.WhatsAppOptIn.GrantedAt.Equal(granted) {
 		t.Fatalf("granting again keeps the first grant: %+v", l.WhatsAppOptIn)
 	}
-	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &no}, recordNow); err != nil || l.WhatsAppOptIn != nil {
-		t.Fatalf("revoking clears the consent: %+v", l.WhatsAppOptIn)
+	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &no, ConsentBy: "u-1"}, recordNow); err != nil || l.WhatsAppOptIn != nil || l.OptedOutAt == nil || l.OptOutSource != OptOutOperator {
+		t.Fatalf("unticking a recorded grant is the operator's withdrawal: %+v", l)
 	}
 }
 
@@ -181,23 +187,28 @@ func TestSetOwner(t *testing.T) {
 	}
 }
 
+func operatorWithdrawal(at time.Time, requested OptOutSource) ConsentChange {
+	return ConsentChange{Kind: ConsentWithdraw, Source: ConsentManual, Actor: ConsentActor{Type: ConsentActorUser, ID: "u-1"}, RequestedBy: requested, At: at}
+}
+
 func TestOptOut(t *testing.T) {
 	l := Lead{WorkspaceID: "ws-1", Number: "5511987654321", WhatsAppOptIn: &Consent{GrantedAt: recordNow.Add(-time.Hour), Source: ConsentImport}}
-	changed, err := l.OptOut(recordNow, OptOutLeadRequest)
+	changed, err := l.ApplyConsentChange(operatorWithdrawal(recordNow, OptOutLeadRequest))
 	if err != nil || !changed || l.OptedOutAt == nil || !l.OptedOutAt.Equal(recordNow) || l.WhatsAppOptIn != nil || l.OptOutSource != OptOutLeadRequest {
 		t.Fatalf("OptOut = %+v (changed %v, err %v)", l, changed, err)
 	}
-	if changed, err := l.OptOut(recordNow.Add(time.Hour), OptOutOperator); err != nil || changed || !l.OptedOutAt.Equal(recordNow) || l.OptOutSource != OptOutLeadRequest {
+	if changed, err := l.ApplyConsentChange(operatorWithdrawal(recordNow.Add(time.Hour), OptOutOperator)); err != nil || changed || !l.OptedOutAt.Equal(recordNow) || l.OptOutSource != OptOutLeadRequest {
 		t.Fatal("opting out twice keeps the first opt-out and its source")
 	}
 }
 
 func TestOptOutRefusesAnUnknownSource(t *testing.T) {
-	for _, source := range []OptOutSource{"", "rumour"} {
-		l := Lead{WorkspaceID: "ws-1", Number: "5511987654321"}
-		if changed, err := l.OptOut(recordNow, source); !errors.Is(err, ErrLeadOptOutSourceInvalid) || changed || l.OptedOutAt != nil {
-			t.Fatalf("OptOut(%q) = (%v, %v), want the source refusal and no change", source, changed, err)
-		}
+	l := Lead{WorkspaceID: "ws-1", Number: "5511987654321"}
+	if changed, err := l.ApplyConsentChange(operatorWithdrawal(recordNow, "rumour")); !errors.Is(err, ErrLeadOptOutSourceInvalid) || changed || l.OptedOutAt != nil {
+		t.Fatalf("an unknown source = (%v, %v), want the source refusal and no change", changed, err)
+	}
+	if changed, err := l.ApplyConsentChange(operatorWithdrawal(recordNow, "")); err != nil || !changed || l.OptOutSource != OptOutOperator {
+		t.Fatalf("no source = (%v, %v) %q, want the team's decision", changed, err, l.OptOutSource)
 	}
 	if !IsInputRefusal(ErrLeadOptOutSourceInvalid) || ErrorCode(ErrLeadOptOutSourceInvalid) != "lead_opt_out_source_invalid" {
 		t.Fatal("an unknown opt-out source is a coded input refusal")
@@ -206,7 +217,7 @@ func TestOptOutRefusesAnUnknownSource(t *testing.T) {
 
 func TestOnlyAnExplicitConsentClearsTheOptOut(t *testing.T) {
 	l := Lead{WorkspaceID: "ws-1", Number: "5511987654321"}
-	if _, err := l.OptOut(recordNow, OptOutOperator); err != nil {
+	if _, err := l.ApplyConsentChange(operatorWithdrawal(recordNow, OptOutOperator)); err != nil {
 		t.Fatal(err)
 	}
 	name := "Ana"
@@ -214,11 +225,11 @@ func TestOnlyAnExplicitConsentClearsTheOptOut(t *testing.T) {
 		t.Fatalf("an edit without consent kept the opt-out? opted %v err %v", l.OptedOutAt, err)
 	}
 	refused := false
-	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &refused}, recordNow); err != nil || l.OptedOutAt == nil {
+	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &refused, ConsentBy: "u-1"}, recordNow); err != nil || l.OptedOutAt == nil {
 		t.Fatalf("withdrawing consent must not clear the opt-out: opted %v err %v", l.OptedOutAt, err)
 	}
 	granted := true
-	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &granted}, recordNow.Add(time.Hour)); err != nil {
+	if err := l.ApplyEdit(Edit{WhatsAppOptIn: &granted, ConsentBy: "u-1"}, recordNow.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if l.OptedOutAt != nil || l.OptOutSource != "" || l.WhatsAppOptIn == nil || l.WhatsAppOptIn.Source != ConsentManual {
@@ -229,7 +240,7 @@ func TestOnlyAnExplicitConsentClearsTheOptOut(t *testing.T) {
 func TestTheOptOutSourceIsRecorded(t *testing.T) {
 	before := Lead{WorkspaceID: "ws-1", Number: "5511987654321"}
 	after := before
-	if _, err := after.OptOut(recordNow, OptOutLeadRequest); err != nil {
+	if _, err := after.ApplyConsentChange(operatorWithdrawal(recordNow, OptOutLeadRequest)); err != nil {
 		t.Fatal(err)
 	}
 	fields := after.RecordFields()

@@ -52,6 +52,7 @@ type memoryStore struct {
 	lists       map[string]*calllist.List
 	items       map[string]*calllist.Item
 	appended    []calllist.BuildBatch
+	additions   []calllist.Addition
 	finished    []calllist.Status
 	failures    []string
 	claimErr    error
@@ -168,6 +169,41 @@ func (s *memoryStore) AppendItems(_ context.Context, b calllist.BuildBatch) erro
 	l.Skipped.Merge(b.Skipped)
 	l.BuildCursor = b.Cursor
 	return nil
+}
+
+func (s *memoryStore) AddItems(_ context.Context, a calllist.Addition) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l := s.lists[a.ListID]
+	if l == nil || l.WorkspaceID != a.WorkspaceID {
+		return 0, calllist.ErrListNotFound
+	}
+	if err := l.AcceptsNewLeads(); err != nil {
+		return 0, err
+	}
+	s.additions = append(s.additions, a)
+	added := int64(0)
+	for _, item := range a.Items {
+		if s.holds(a.ListID, item.LeadID) {
+			continue
+		}
+		s.nextIDs++
+		l.ItemCount++
+		stored := calllist.Item{ID: "item-" + string(rune('a'+s.nextIDs-1)), ListID: a.ListID, WorkspaceID: a.WorkspaceID, LeadID: item.LeadID,
+			Phone: item.Phone, Position: l.ItemCount, State: calllist.StatePending, CreatedAt: a.At}
+		s.items[stored.ID] = &stored
+		added++
+	}
+	return added, nil
+}
+
+func (s *memoryStore) holds(listID, leadID string) bool {
+	for _, item := range s.items {
+		if item.ListID == listID && item.LeadID == leadID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *memoryStore) FinishBuild(_ context.Context, _, id, token string, status calllist.Status, failure string, _ time.Time) error {

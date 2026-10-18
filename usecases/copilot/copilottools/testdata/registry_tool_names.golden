@@ -57,6 +57,8 @@ create_saved_audience
 create_stage
 create_template
 create_unofficial_campaign
+create_unofficial_group_analysis
+create_unofficial_group_campaign
 delete_ad
 delete_ad_audience
 delete_ad_rule
@@ -69,6 +71,7 @@ diagnose_access
 duplicate_ad
 edit_ad_set
 edit_ad_text
+edit_template
 estimate_ad_audience
 explain_permission
 export_ad_report
@@ -117,6 +120,7 @@ list_pipelines
 list_roles
 list_telegram_bots
 list_templates
+list_unofficial_groups
 list_unofficial_numbers
 list_workflows
 list_workspace_invites
@@ -185,6 +189,9 @@ swap_ad_creative
 transfer_conversation
 turn_off_ad
 turn_on_ad
+unofficial_group_overview
+unofficial_group_people
+unofficial_groups_dashboard
 update_ad_budget
 update_ad_draft
 update_agent

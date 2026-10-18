@@ -216,7 +216,7 @@ func (i *Import) Catalog(ctx context.Context, a Actor) (ImportCatalog, error) {
 	fields := leadimport.Catalog(defs)
 	catalog := ImportCatalog{Fields: make([]ImportField, len(fields)), FillEmpty: i.viewers.allowed(a, workspace.ActionUpdate)}
 	for idx, f := range fields {
-		catalog.Fields[idx] = ImportField{Field: f, Allowed: f.Requires == "" || i.viewers.allowed(a, f.Requires)}
+		catalog.Fields[idx] = i.catalogField(a, f)
 	}
 	seed := i.grants(a, leadimport.Settings{SeedInbox: true, Script: &unofficial_whatsapp.SeedScript{}})
 	catalog.SeedInbox, catalog.SeedScript = seed.Seed && i.deps.Seeder != nil, seed.Script && i.deps.Seeder != nil
@@ -257,6 +257,9 @@ func (i *Import) DryRun(ctx context.Context, a Actor, id string, s leadimport.Se
 	if err := i.permit(a, s.Requirements(defs)...); err != nil {
 		return nil, err
 	}
+	if err := i.refuseUngrantedConsent(a, s); err != nil {
+		return nil, err
+	}
 	from := job.Status
 	job.RequestedByAdmin = a.IsAdmin
 	if err := job.Configure(s, i.now()); err != nil {
@@ -282,6 +285,9 @@ func (i *Import) Start(ctx context.Context, a Actor, id string) (*leadimport.Job
 		return nil, err
 	}
 	if err := i.permit(a, job.Settings.Requirements(defs)...); err != nil {
+		return nil, err
+	}
+	if err := i.refuseUngrantedConsent(a, *job.Settings); err != nil {
 		return nil, err
 	}
 	job.RequestedByAdmin = a.IsAdmin

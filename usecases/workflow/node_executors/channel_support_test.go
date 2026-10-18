@@ -133,7 +133,7 @@ func (a *presenceSupportAdapter) SendText(_ context.Context, _ *conversation.Ent
 
 func TestSegmentsAreDeliveredOnAnAdapterBackedChannel(t *testing.T) {
 	adapter := &presenceSupportAdapter{supportAdapter: supportAdapter{entryType: shared.EntryTypeTelegram}}
-	s := newChannelSender(SenderDeps{Adapters: conversation.NewAdapterRegistry(adapter)})
+	s := newChannelSender(SenderDeps{Adapters: conversation.NewAdapterRegistry(adapter), EntryLeads: &entryLeads{}, LeadRepo: &knownLeadRepo{}})
 
 	delivered, err := s.SendSegments(context.Background(), telegramRun(),
 		[]string{"Olá", "Como posso ajudar?"}, func(time.Duration) {})
@@ -153,7 +153,8 @@ func TestSegmentsAreDeliveredOnAnAdapterBackedChannel(t *testing.T) {
 
 func TestSegmentsDeliverWithoutAPresenceCapability(t *testing.T) {
 	s := newChannelSender(SenderDeps{
-		Adapters: conversation.NewAdapterRegistry(supportAdapter{entryType: shared.EntryTypeTelegram}),
+		Adapters:   conversation.NewAdapterRegistry(supportAdapter{entryType: shared.EntryTypeTelegram}),
+		EntryLeads: &entryLeads{}, LeadRepo: &knownLeadRepo{},
 	})
 
 	delivered, err := s.SendSegments(context.Background(), telegramRun(),

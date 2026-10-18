@@ -29,9 +29,10 @@ type BatchWrite struct {
 }
 
 type Tally struct {
-	Changed   []Changed
-	Unchanged int
-	Gone      int
+	Changed       []Changed
+	Unchanged     int
+	Gone          int
+	NotRestorable int
 }
 
 func (t Tally) Skipped() map[SkipReason]int {
@@ -41,6 +42,9 @@ func (t Tally) Skipped() map[SkipReason]int {
 	}
 	if t.Gone > 0 {
 		skipped[SkipGone] = t.Gone
+	}
+	if t.NotRestorable > 0 {
+		skipped[SkipOptOutNotRestorable] = t.NotRestorable
 	}
 	return skipped
 }

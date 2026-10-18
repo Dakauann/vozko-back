@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime"
 	"time"
+	advertisinghttp "vozko/delivery/http/advertising"
 	affiliatehttp "vozko/delivery/http/affiliate"
 	analyticshttp "vozko/delivery/http/analytics"
 	attendancehttp "vozko/delivery/http/attendance"
@@ -14,26 +15,26 @@ import (
 	authhttp "vozko/delivery/http/auth"
 	balancehttp "vozko/delivery/http/balance"
 	buildersessionhttp "vozko/delivery/http/buildersession"
+	buttonactionhttp "vozko/delivery/http/buttonaction"
 	calendarhttp "vozko/delivery/http/calendar"
 	callbillinghttp "vozko/delivery/http/callbilling"
-	callrecordinghttp "vozko/delivery/http/callrecording"
 	callhistoryhttp "vozko/delivery/http/callhistory"
 	calllisthttp "vozko/delivery/http/calllist"
+	callrecordinghttp "vozko/delivery/http/callrecording"
 	callroutinghttp "vozko/delivery/http/callrouting"
+	campaignexithttp "vozko/delivery/http/campaignexit"
+	campaignlaunchhttp "vozko/delivery/http/campaignlaunchhttp"
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
+	customerportfoliohttp "vozko/delivery/http/customerportfolio"
 	customfieldhttp "vozko/delivery/http/customfield"
 	dealautomationhttp "vozko/delivery/http/dealautomation"
 	exporthttp "vozko/delivery/http/export"
-	advertisinghttp "vozko/delivery/http/advertising"
 	facebookhttp "vozko/delivery/http/facebook"
 	"vozko/delivery/http/handlers"
-	mediagenhttp "vozko/delivery/http/mediagen"
-	studiohttp "vozko/delivery/http/studio"
-	webchathttp "vozko/delivery/http/webchat"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
 	issuehttp "vozko/delivery/http/issue"
@@ -41,11 +42,13 @@ import (
 	leadhttp "vozko/delivery/http/lead"
 	leadmemoryhttp "vozko/delivery/http/leadmemory"
 	livedecisionhttp "vozko/delivery/http/livedecision"
+	mediagenhttp "vozko/delivery/http/mediagen"
 	mediashttp "vozko/delivery/http/medias"
 	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
 	metaplatformhttp "vozko/delivery/http/metaplatform"
+	"vozko/delivery/http/notificationhttp"
 	opportunityhttp "vozko/delivery/http/opportunity"
 	opportunityboardhttp "vozko/delivery/http/opportunityboard"
 	paymentsplithttp "vozko/delivery/http/paymentsplit"
@@ -56,13 +59,17 @@ import (
 	scheduledmessagehttp "vozko/delivery/http/scheduledmessage"
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	siptrunkhttp "vozko/delivery/http/siptrunk"
+	smartcampaignhttp "vozko/delivery/http/smartcampaignhttp"
 	stagehttp "vozko/delivery/http/stage"
+	studiohttp "vozko/delivery/http/studio"
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	telegramhttp "vozko/delivery/http/telegram"
+	templatehealthhttp "vozko/delivery/http/templatehealthhttp"
 	tickethttp "vozko/delivery/http/ticket"
 	unofficialwahttp "vozko/delivery/http/unofficial_whatsapp"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
+	webchathttp "vozko/delivery/http/webchat"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
 	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
@@ -179,6 +186,7 @@ type router struct {
 	unofficialWhatsAppHandler      *unofficialwahttp.Handler
 	whatsappOutreachHandler        *whatsappoutreachhttp.Handler
 	unofficialWhatsAppGroups       *unofficialwahttp.GroupHandler
+	unofficialWhatsAppWorkspace    *unofficialwahttp.WorkspaceGroupHandler
 	unofficialWhatsAppCampaigns    *unofficialwahttp.CampaignHandler
 	unofficialWhatsAppWebhook      *unofficialwahttp.WebhookHandler
 	workspaceHandler               *workspacehttp.WorkspaceHandler
@@ -200,8 +208,17 @@ type router struct {
 	departmentMiddleware           *middleware.DepartmentMiddleware
 	webchat                        WebchatRoutes
 	leadGeographyHandler           *leadhttp.GeographyHandler
+	leadCompanyHandler             *leadhttp.CompanyHandler
 	callListHandler                *calllisthttp.Handler
 	leadReferencePointHandler      *leadhttp.ReferencePointHandler
+	buttonActionHandler            *buttonactionhttp.Handler
+	campaignExitHandler            *campaignexithttp.Handler
+	smartCampaignHandler           *smartcampaignhttp.Handler
+	templateHealthHandler          *templatehealthhttp.Handler
+	campaignLaunchHandler          *campaignlaunchhttp.Handler
+	notificationHandler            *notificationhttp.Handler
+	notificationAdminHandler       *notificationhttp.AdminHandler
+	customerPortfolioHandler       *customerportfoliohttp.Handler
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -304,6 +321,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	whatsappOutreachHandler *whatsappoutreachhttp.Handler,
 	unofficialWhatsAppWebhook *unofficialwahttp.WebhookHandler,
 	unofficialWhatsAppGroups *unofficialwahttp.GroupHandler,
+	unofficialWhatsAppWorkspace *unofficialwahttp.WorkspaceGroupHandler,
 	unofficialWhatsAppCampaigns *unofficialwahttp.CampaignHandler,
 	audienceHandler *audiencehttp.Handler,
 	sendCapHandler *balancehttp.SendCapHandler,
@@ -312,14 +330,32 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	studioHandler *studiohttp.Handler,
 	webchat WebchatRoutes,
 	leadGeographyHandler *leadhttp.GeographyHandler,
+	leadCompanyHandler *leadhttp.CompanyHandler,
 	callListHandler *calllisthttp.Handler,
 	leadReferencePointHandler *leadhttp.ReferencePointHandler,
+	buttonActionHandler *buttonactionhttp.Handler,
+	campaignExitHandler *campaignexithttp.Handler,
+	smartCampaignHandler *smartcampaignhttp.Handler,
+	templateHealthHandler *templatehealthhttp.Handler,
+	campaignLaunchHandler *campaignlaunchhttp.Handler,
+	notificationHandler *notificationhttp.Handler,
+	notificationAdminHandler *notificationhttp.AdminHandler,
+	customerPortfolioHandler *customerportfoliohttp.Handler,
 ) Router {
 	r := &router{
+		notificationHandler:            notificationHandler,
+		notificationAdminHandler:       notificationAdminHandler,
+		customerPortfolioHandler:       customerPortfolioHandler,
+		smartCampaignHandler:           smartCampaignHandler,
+		templateHealthHandler:          templateHealthHandler,
+		campaignLaunchHandler:          campaignLaunchHandler,
 		leadReferencePointHandler:      leadReferencePointHandler,
+		buttonActionHandler:            buttonActionHandler,
+		campaignExitHandler:            campaignExitHandler,
 		callListHandler:                callListHandler,
 		webchat:                        webchat,
 		leadGeographyHandler:           leadGeographyHandler,
+		leadCompanyHandler:             leadCompanyHandler,
 		metaChannels:                   metaChannels,
 		mediaGenerationHandler:         mediaGenerationHandler,
 		studioHandler:                  studioHandler,
@@ -335,6 +371,7 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		whatsappOutreachHandler:        whatsappOutreachHandler,
 		unofficialWhatsAppWebhook:      unofficialWhatsAppWebhook,
 		unofficialWhatsAppGroups:       unofficialWhatsAppGroups,
+		unofficialWhatsAppWorkspace:    unofficialWhatsAppWorkspace,
 		unofficialWhatsAppCampaigns:    unofficialWhatsAppCampaigns,
 		mux:                            mux.NewRouter(),
 		productHandler:                 productHandler,
@@ -499,6 +536,12 @@ func (r *router) setupRoutes() {
 	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
 	callroutinghttp.RegisterProtectedRoutes(protected, r.callRoutingHandler, r.ac)
 	calllisthttp.RegisterProtectedRoutes(protected, r.callListHandler, r.ac)
+	buttonactionhttp.RegisterProtectedRoutes(protected, r.buttonActionHandler, r.ac)
+	campaignexithttp.RegisterProtectedRoutes(protected, r.campaignExitHandler, r.ac)
+	smartcampaignhttp.RegisterProtectedRoutes(protected, r.smartCampaignHandler, r.ac)
+	templatehealthhttp.RegisterProtectedRoutes(protected, r.templateHealthHandler, r.ac)
+	campaignlaunchhttp.RegisterProtectedRoutes(protected, r.campaignLaunchHandler, r.ac)
+	notificationhttp.RegisterProtectedRoutes(protected, r.notificationHandler)
 	r.setupUnofficialWhatsAppRoutes(protected)
 	r.setupWhatsAppOutreachRoutes(protected)
 	r.setupWABARoutes(protected)
@@ -532,6 +575,7 @@ func (r *router) setupRoutes() {
 	r.setupAdminCallRecordingRoutes(adminRoutes)
 	r.setupAdminUserRoutes(adminRoutes)
 	authhttp.RegisterAdminRoutes(adminRoutes, r.authHandler)
+	notificationhttp.RegisterAdminRoutes(adminRoutes, r.notificationAdminHandler)
 	r.setupAdminBalanceRoutes(adminRoutes)
 	r.setupAdminWorkspaceTemplateAccessRoutes(adminRoutes)
 	r.setupAdminWorkspacePhoneAccessRoutes(adminRoutes)
@@ -660,6 +704,7 @@ func (r *router) setupUnofficialWhatsAppRoutes(protected *mux.Router) {
 	}
 	unofficialwahttp.RegisterProtectedRoutes(protected, r.unofficialWhatsAppHandler, r.ac)
 	unofficialwahttp.RegisterGroupRoutes(protected, r.unofficialWhatsAppGroups, r.ac)
+	unofficialwahttp.RegisterWorkspaceGroupRoutes(protected, r.unofficialWhatsAppWorkspace, r.ac)
 	unofficialwahttp.RegisterCampaignRoutes(protected, r.unofficialWhatsAppCampaigns, r.ac)
 }
 
@@ -836,6 +881,8 @@ func (r *router) setupAdminShippingRoutes(adminRoutes *mux.Router) {
 
 func (r *router) setupLeadRoutes(protected *mux.Router) {
 	leadhttp.RegisterGeographyRoutes(protected, r.leadGeographyHandler, r.ac)
+	leadhttp.RegisterCompanyRoutes(protected, r.leadCompanyHandler, r.ac)
+	customerportfoliohttp.RegisterRoutes(protected, r.customerPortfolioHandler, r.ac)
 	leadhttp.RegisterReferencePointRoutes(protected, r.leadReferencePointHandler, r.ac)
 	leadhttp.RegisterRoutes(protected, r.leadHandler, r.ac)
 	leadhttp.RegisterImportRoutes(protected, r.leadHandler, r.ac, r.mediaUploadRateLimiter)

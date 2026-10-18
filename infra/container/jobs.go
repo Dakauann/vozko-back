@@ -27,7 +27,7 @@ const reportRetentionSweepLimit = 500
 
 func (c *Container) initJobRunner() {
 	cron_job := cronPackage.NewOrderCleanupJob(c.useCases.cancelExpiredOrder)
-	startScheduledWhatsappCampaignsJob := whatsapp_campaign_usecase.NewScheduleStartJob(c.useCases.dispatchWCCampaign, c.repositories.wcCampaign)
+	startScheduledWhatsappCampaignsJob := whatsapp_campaign_usecase.NewScheduleStartJob(c.useCases.dispatchWCCampaign, c.repositories.wcCampaign, c.repositories.wcSchedules)
 	analysisDebounceJob := conversation_usecase.NewAnalysisDebounceJob(
 		c.redisProvider.SharedState(),
 		c.repositories.conversation,
@@ -110,6 +110,7 @@ func (c *Container) initJobRunner() {
 	c.jobRunner = cronPackage.NewJobRunner(cron_job, startScheduledWhatsappCampaignsJob, c.redisProvider.SharedState(), analysisDebounceJob, autoCloseJob, c.useCases.workflowManager, c.useCases.expireSubscriptions, c.useCases.remindExpiringSubscriptions, c.useCases.monitorLowBalance, c.useCases.renewCalendarChannels, c.useCases.reconcileWhatsAppTemplates, c.useCases.reconcileWhatsAppEntitlements, c.useCases.emitMonthlyInvoices, c.useCases.cancelBillingSweep, c.useCases.vendorChannelReconciler, c.useCases.channelStatusReconciler, c.useCases.purgeShortLinkClicks)
 
 	c.jobRunner.SetScheduledMessageJobs(c.useCases.sweepScheduledMessages, c.useCases.purgeScheduledMessages)
+	c.jobRunner.SetNotificationJobs(c.notificationJobs())
 
 	if c.services.assignmentService != nil {
 		rescue := ia_usecase.NewRescueJob(
@@ -130,6 +131,7 @@ func (c *Container) initJobRunner() {
 		}))
 	}
 
+	c.jobRunner.SetSmartCampaignJobs(cronPackage.CtxJobFunc(c.smartCampaignTick))
 	c.jobRunner.SetWhatsAppPhoneQualityJobs(businessphone_usecase.NewPollPhoneQualityUseCase(
 		c.repositories.businessPhone, c.services.businessPhoneMetaAPI, c.repositories.messageStatusSending,
 		c.repositories.whatsappQualityHistory, c.repositories.whatsappQuality,
@@ -208,6 +210,9 @@ func (c *Container) initJobRunner() {
 		)
 		if c.unofficialWhatsApp.HistorySync != nil {
 			c.jobRunner.SetUnofficialWhatsAppHistoryJob(c.unofficialWhatsApp.HistorySync)
+		}
+		if c.unofficialWhatsApp.WorkspaceGroups != nil {
+			c.jobRunner.SetUnofficialWhatsAppGroupJobs(c.unofficialWhatsApp.WorkspaceGroups.Sweep())
 		}
 	}
 }

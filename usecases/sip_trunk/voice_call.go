@@ -36,6 +36,10 @@ func (c *liveVoiceCall) Play(pcm []byte, interruptible bool) (bool, error) {
 	return interrupted, err
 }
 
+func (c *liveVoiceCall) Done() <-chan struct{} {
+	return c.keys.Done()
+}
+
 func (c *liveVoiceCall) NextKey(timeout time.Duration) (rune, bool, error) {
 	return c.keys.Next(timeout)
 }

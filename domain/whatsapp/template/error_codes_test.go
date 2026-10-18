@@ -103,7 +103,8 @@ func isErrorsNewCall(expr ast.Expr) bool {
 
 var codedSentinelNames = map[string]bool{
 	"ErrTemplateNotFound": true, "ErrTemplateAccessDenied": true, "ErrHeaderMediaOutsideStorage": true, "ErrPhoneOutsideWorkspace": true, "ErrTemplateAlreadyExists": true,
-	"ErrExternalIDRequired": true, "ErrTemplateCategoryUnavailable": true,
+	"ErrTemplateLookupUnavailable": true,
+	"ErrExternalIDRequired":        true, "ErrTemplateCategoryUnavailable": true,
 	"ErrHeaderMediaURLNotApplicable": true, "ErrTemplateNameRequired": true,
 	"ErrTemplateNameInvalidChars": true, "ErrTemplateNameMustStartLetter": true,
 	"ErrTemplateNameTooLong": true, "ErrHeaderTextTooLong": true,
@@ -125,13 +126,15 @@ var codedSentinelNames = map[string]bool{
 	"ErrPricingUnavailable": true, "ErrTemplateNotSendable": true,
 	"ErrBillingNotConfigured": true, "ErrSendAttemptConflict": true,
 	"ErrTemplateParamsMismatch": true, "ErrQuoteOutOfRange": true,
-	"ErrOTPTypeRequired":        true, "ErrInvalidOTPType": true,
+	"ErrOTPTypeRequired": true, "ErrInvalidOTPType": true,
 	"ErrMultipleOTPButtons": true, "ErrOTPButtonNotAuthentication": true,
 	"ErrOTPTypeUnsupported":           true,
 	"ErrAuthenticationNeedsOTPButton": true, "ErrCodeExpirationOutOfRange": true,
 	"ErrAuthenticationCodeRequired": true,
 	"ErrAuthenticationNoHeader":     true, "ErrAuthenticationBodyNotEditable": true,
 	"ErrAuthenticationFooterNotEditable": true, "ErrAuthenticationCodeTooLong": true,
+	"ErrTemplateNotEditable": true, "ErrEditCategoryLocked": true, "ErrEditUnsupported": true,
+	"ErrEditWindow": true, "ErrTemplateInUse": true, "ErrEditNotOwner": true,
 }
 
 func TestCodedSentinelNamesMatchesTheTable(t *testing.T) {

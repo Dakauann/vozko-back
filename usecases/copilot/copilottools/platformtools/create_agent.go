@@ -52,12 +52,11 @@ func (t *createAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	in.KnowledgeBaseIDs = copilottools.ArgStringList(args, "knowledgeBaseIds")
 	in.MCPCollectionIDs = copilottools.ArgStringList(args, "mcpCollectionIds")
 
-	if in.UseInitialMessage == nil {
-		use := in.InitialMessage != ""
-		in.UseInitialMessage = &use
-	}
-
+	in.RequestedBy = copilottools.RequesterOf(cc)
 	out, err := t.create.Execute(ctx, in)
+	if res, refused := copilottools.ConsentGrantRefusal(err); refused {
+		return res
+	}
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}

@@ -22,6 +22,7 @@ import (
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	lmw "vozko/domain/lead_message_window"
+	"vozko/domain/leadexit"
 	"vozko/domain/media"
 	"vozko/domain/messaging"
 	"vozko/domain/rag"
@@ -93,6 +94,7 @@ type handleWhatsAppMessageUseCase struct {
 	live        LiveMode
 	analysis    *AnalysisScheduler
 	receptive   wc.EnsureReceptiveContainerUseCase
+	exitStep    leadexit.Step
 }
 
 const failedStatusRefundTTL = 30 * 24 * time.Hour
@@ -182,26 +184,7 @@ func (uc *handleWhatsAppMessageUseCase) guardRecordAIResponse(ctx context.Contex
 	return uc.loopGuard.RecordAIResponse(ctx, workspaceID, conversationID)
 }
 
-type selectedInteractiveOption struct {
-	ID    string
-	Title string
-	Kind  string
-}
-
-func selectedOptionFromMessage(msg *conversation.WhatsAppMessage) *selectedInteractiveOption {
-	if msg == nil || msg.Interactive == nil {
-		return nil
-	}
-	if br := msg.Interactive.ButtonReply; br != nil && strings.TrimSpace(br.ID) != "" {
-		return &selectedInteractiveOption{ID: br.ID, Title: br.Title, Kind: "button"}
-	}
-	if lr := msg.Interactive.ListReply; lr != nil && strings.TrimSpace(lr.ID) != "" {
-		return &selectedInteractiveOption{ID: lr.ID, Title: lr.Title, Kind: "list"}
-	}
-	return nil
-}
-
-func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, messageText string, msgType string, mediaType string, history []*conversation.Message, selected *selectedInteractiveOption) {
+func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, inboundWamid string, messageText string, msgType string, mediaType string, history []*conversation.Message, selected *workflow_domain.OptionSelection) {
 	if uc.triggerEvaluator == nil || entryID == "" {
 		return
 	}
@@ -246,13 +229,8 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	if mediaType != "" {
 		data["media_type"] = mediaType
 	}
-	if selected != nil {
-		workflow_domain.ApplySelection(data, &workflow_domain.OptionSelection{
-			ID:    selected.ID,
-			Title: selected.Title,
-			Kind:  selected.Kind,
-		})
-	}
+	workflow_domain.ApplySelection(data, selected)
+	workflow_domain.ApplyTriggerMessage(data, uc.storedInboundID(inboundWamid))
 	if agentCtx != nil {
 		if cID, _ := agentCtx.getCampaignInfo(); cID != "" {
 			data["campaign_id"] = cID
@@ -741,12 +719,20 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 			return err
 		}
 	}
+	exit, err := uc.runLeadExit(ctx, message, whatsAppExitTarget{
+		agentCtx: agentCtx, leadRecord: leadRecord, entryID: entryID, entryType: entryType, conversationID: conversationID,
+		businessNumber: businessNumber, receivedPhoneID: receivedBusinessPhoneID, history: history,
+	})
+	if err != nil {
+		return err
+	}
+	selected := selectedOptionFromMessage(message, exit.Selection)
 	recipientPhone := strings.TrimSpace(message.From)
 	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
 	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: conversation.PromptContent(message.Text.Body, "")})
 
-	if agentCtx != nil && agentCtx.skipResponse {
-		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (agent responses disabled)")
+	if agentCtx != nil && (agentCtx.skipResponse || exit.OptedOut) {
+		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (agent responses disabled=%v, lead opted out=%v)", agentCtx.skipResponse, exit.OptedOut)
 
 		if agentCtx.wcCampaign != nil && (agentCtx.wcCampaign.EnableAnalysis || agentCtx.wcCampaign.EnableAutoStaging) {
 			go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
@@ -754,7 +740,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 
 		if agentCtx.firesWorkflow() {
 			log.Printf("[whatsapp-usecase] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.automation.WorkflowRef())
-			go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.Text.Body, "text", "", history, selectedOptionFromMessage(message))
+			go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.ID, message.Text.Body, "text", "", history, selected)
 		}
 		return nil
 	}
@@ -2256,7 +2242,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 	}
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-	go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, captionOrFilename, "media", mediaType, history, nil)
+	go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.ID, captionOrFilename, "media", mediaType, history, nil)
 
 	log.Printf("[whatsapp-media] %s message processed", mediaType)
 	return nil
@@ -2681,7 +2667,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 		if agentCtx.firesWorkflow() {
 			log.Printf("[whatsapp-audio] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.automation.WorkflowRef())
-			go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, transcribedText, "audio", "audio", history, nil)
+			go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, transcribedText, "audio", "audio", history, nil)
 		}
 		return nil
 	}
@@ -2796,7 +2782,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		sttLatency.Milliseconds(), aiLatency.Milliseconds(), sendLatency.Milliseconds(), totalLatency.Milliseconds())
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-	go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, transcribedText, "audio", "audio", history, nil)
+	go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, transcribedText, "audio", "audio", history, nil)
 
 	return nil
 }

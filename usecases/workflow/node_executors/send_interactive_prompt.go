@@ -2,20 +2,21 @@ package node_executors
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"time"
 
+	"vozko/domain/channel"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
 const (
-	interactiveHandleNoMatch    = "no_match"
-	interactiveHandleNoReply    = "no_reply"
-	interactiveHandleSendFailed = "send_failed"
+	interactiveHandleNoMatch    = workflow.InteractiveHandleNoMatch
+	interactiveHandleNoReply    = workflow.InteractiveHandleNoReply
+	interactiveHandleSendFailed = workflow.InteractiveHandleSendFailed
 )
 
 const interactiveDefaultTimeoutSeconds = 300
@@ -96,47 +97,12 @@ func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 	}
 }
 
-type listRowConfig struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+func isListPrompt(config map[string]interface{}) bool {
+	return workflow.InteractivePromptStyle(config) == channel.InteractiveStyleList
 }
 
-type listSectionConfig struct {
-	Title string          `json:"title"`
-	Rows  []listRowConfig `json:"rows"`
-}
-
-func interactiveTypeOf(config map[string]interface{}) string {
-	t, _ := config["interactive_type"].(string)
-	if strings.TrimSpace(strings.ToLower(t)) == "list" {
-		return "list"
-	}
-	return "buttons"
-}
-
-func parseButtonsConfig(config map[string]interface{}) []conversation.InteractiveButton {
-	raw, _ := config["buttons"].(string)
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var buttons []conversation.InteractiveButton
-	if err := json.Unmarshal([]byte(raw), &buttons); err != nil {
-		return nil
-	}
-	return buttons
-}
-
-func parseListSectionsConfig(config map[string]interface{}) []listSectionConfig {
-	raw, _ := config["sections"].(string)
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	var sections []listSectionConfig
-	if err := json.Unmarshal([]byte(raw), &sections); err != nil {
-		return nil
-	}
-	return sections
+func invalidInteractiveConfig(err error) error {
+	return fmt.Errorf("%w: %v", workflow.ErrNodeInvalidInteractiveConfig, err)
 }
 
 func AskInteractiveOutputs(config map[string]interface{}) []workflow.HandleDefinition {
@@ -154,14 +120,16 @@ func AskInteractiveOutputs(config map[string]interface{}) []workflow.HandleDefin
 		outputs = append(outputs, workflow.HandleDefinition{ID: id, Label: label})
 	}
 
-	if interactiveTypeOf(config) == "list" {
-		for _, section := range parseListSectionsConfig(config) {
+	if isListPrompt(config) {
+		sections, _ := workflow.InteractiveListSections(config)
+		for _, section := range sections {
 			for _, row := range section.Rows {
 				appendOption(row.ID, row.Title)
 			}
 		}
 	} else {
-		for _, b := range parseButtonsConfig(config) {
+		buttons, _ := workflow.InteractiveButtons(config)
+		for _, b := range buttons {
 			if b.Type == conversation.ButtonTypeCopyCode {
 				continue
 			}
@@ -250,7 +218,7 @@ func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer
 				ctx.Node.ID, ctx.Run.ID)
 			return "", nil
 		}
-		if interactiveTypeOf(ctx.Node.Config) == "list" {
+		if isListPrompt(ctx.Node.Config) {
 			return e.sendList(ctx, body, footer)
 		}
 		return e.sendButtons(ctx, body, footer)
@@ -260,7 +228,10 @@ func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer
 }
 
 func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, body, footer string) (string, error) {
-	options := interactiveOptionsOf(ctx.Node.Config, ctx.State)
+	options, err := interactiveOptionsOf(ctx.Node.Config, ctx.State)
+	if err != nil {
+		return "", err
+	}
 	if len(options) == 0 {
 		return "", workflow.ErrNodeConfigMissing
 	}
@@ -270,7 +241,7 @@ func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, bo
 		Header:  workflow.Interpolate(stringConfig(ctx.Node.Config, "header_text"), ctx.State, nil),
 		Footer:  footer,
 		Options: options,
-		Style:   interactiveTypeOf(ctx.Node.Config),
+		Style:   workflow.InteractivePromptStyle(ctx.Node.Config),
 	})
 	if err != nil {
 		return "", err
@@ -281,38 +252,46 @@ func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, bo
 	return sent.ProviderMessageID, nil
 }
 
-func interactiveOptionsOf(config map[string]interface{}, state *workflow.RunState) []conversation.InteractiveOption {
+func interactiveOptionsOf(config map[string]interface{}, state *workflow.RunState) ([]conversation.InteractiveOption, error) {
 	var out []conversation.InteractiveOption
-
-	if interactiveTypeOf(config) == "list" {
-		for _, section := range parseListSectionsConfig(config) {
-			for _, row := range section.Rows {
-				if strings.TrimSpace(row.ID) == "" {
-					continue
-				}
-				out = append(out, conversation.InteractiveOption{
-					ID:    row.ID,
-					Title: workflow.Interpolate(row.Title, state, nil),
-				})
-			}
-		}
-		return out
-	}
-
-	for _, b := range parseButtonsConfig(config) {
-		if strings.TrimSpace(b.ID) == "" {
-			continue
+	appendOption := func(id, title string) {
+		if strings.TrimSpace(id) == "" {
+			return
 		}
 		out = append(out, conversation.InteractiveOption{
-			ID:    b.ID,
-			Title: workflow.Interpolate(b.Title, state, nil),
+			ID:    id,
+			Title: workflow.Interpolate(title, state, nil),
 		})
 	}
-	return out
+
+	if isListPrompt(config) {
+		sections, err := workflow.InteractiveListSections(config)
+		if err != nil {
+			return nil, invalidInteractiveConfig(err)
+		}
+		for _, section := range sections {
+			for _, row := range section.Rows {
+				appendOption(row.ID, row.Title)
+			}
+		}
+		return out, nil
+	}
+
+	buttons, err := workflow.InteractiveButtons(config)
+	if err != nil {
+		return nil, invalidInteractiveConfig(err)
+	}
+	for _, b := range buttons {
+		appendOption(b.ID, b.Title)
+	}
+	return out, nil
 }
 
 func (e *interactivePromptExecutor) sendButtons(ctx *workflow.NodeContext, body, footer string) (string, error) {
-	buttons := parseButtonsConfig(ctx.Node.Config)
+	buttons, err := workflow.InteractiveButtons(ctx.Node.Config)
+	if err != nil {
+		return "", invalidInteractiveConfig(err)
+	}
 	if len(buttons) == 0 {
 		return "", workflow.ErrNodeConfigMissing
 	}
@@ -338,21 +317,17 @@ func (e *interactivePromptExecutor) sendButtons(ctx *workflow.NodeContext, body,
 }
 
 func (e *interactivePromptExecutor) sendList(ctx *workflow.NodeContext, body, footer string) (string, error) {
-	sectionsCfg := parseListSectionsConfig(ctx.Node.Config)
-	sections := make([]conversation.ListSection, 0, len(sectionsCfg))
-	for _, sc := range sectionsCfg {
-		rows := make([]conversation.ListRow, 0, len(sc.Rows))
-		for _, r := range sc.Rows {
-			rows = append(rows, conversation.ListRow{
-				ID:          r.ID,
-				Title:       workflow.Interpolate(r.Title, ctx.State, nil),
-				Description: workflow.Interpolate(r.Description, ctx.State, nil),
-			})
+	sections, err := workflow.InteractiveListSections(ctx.Node.Config)
+	if err != nil {
+		return "", invalidInteractiveConfig(err)
+	}
+	for i := range sections {
+		sections[i].Title = workflow.Interpolate(sections[i].Title, ctx.State, nil)
+		for j := range sections[i].Rows {
+			row := &sections[i].Rows[j]
+			row.Title = workflow.Interpolate(row.Title, ctx.State, nil)
+			row.Description = workflow.Interpolate(row.Description, ctx.State, nil)
 		}
-		sections = append(sections, conversation.ListSection{
-			Title: workflow.Interpolate(sc.Title, ctx.State, nil),
-			Rows:  rows,
-		})
 	}
 
 	buttonLabel := strings.TrimSpace(workflow.Interpolate(stringConfig(ctx.Node.Config, "list_button"), ctx.State, nil))

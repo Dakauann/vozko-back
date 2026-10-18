@@ -605,6 +605,7 @@ func (r *repository) ResetAllStatuses(campaignID string) (int64, error) {
 	updates["status"] = string(wce.SendStatusPending)
 	updates["message_id"] = ""
 	updates["send_round"] = gorm.Expr("send_round + 1")
+	updates["wave_number"] = 0
 	result := r.db.Model(&schema.WhatsAppCampaignEntry{}).
 		Where("campaign_id = ?", campaignID).
 		Updates(updates)

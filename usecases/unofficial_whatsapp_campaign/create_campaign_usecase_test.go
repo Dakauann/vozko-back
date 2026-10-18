@@ -72,7 +72,7 @@ func draft() *uwc.Campaign {
 		WorkspaceID: "ws-1",
 		InstanceID:  "inst-1",
 		Name:        "cobranca agosto",
-		Message:     uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"bom dia"}},
+		Message:     uwc.MessageSpec{Kind: uwc.KindText, Bodies: []string{"bom dia! Responda /sair para não receber mais mensagens."}},
 		Targets: []uwc.TargetInput{
 			{Number: "5584999990001"},
 			{Number: "5584999990002"},
@@ -164,11 +164,25 @@ func TestCreateDedupsTargets(t *testing.T) {
 func TestCreateRefusesTargetsMissingVariables(t *testing.T) {
 	uc, campaigns, _, _, _ := newCreateHarness(t)
 	in := draft()
-	in.Message.Bodies = []string{"oi {{1}}"}
+	in.Message.Bodies = []string{"oi {{1}}, responda /sair para sair"}
 
 	_, err := uc.Execute(context.Background(), in, uw.Unrestricted())
 	if !errors.Is(err, uwc.ErrCampaignVariablesMismatch) {
 		t.Fatalf("err = %v, want ErrCampaignVariablesMismatch", err)
+	}
+	if len(campaigns.campaigns) != 0 {
+		t.Fatal("a refused campaign was still persisted")
+	}
+}
+
+func TestCreateRefusesAMessageThatDoesNotShowTheExit(t *testing.T) {
+	uc, campaigns, _, _, _ := newCreateHarness(t)
+	in := draft()
+	in.Message.Bodies = []string{"bom dia! Responda /sair", "boa tarde"}
+
+	_, err := uc.Execute(context.Background(), in, uw.Unrestricted())
+	if !errors.Is(err, uwc.ErrCampaignNeedsExit) {
+		t.Fatalf("err = %v, want ErrCampaignNeedsExit", err)
 	}
 	if len(campaigns.campaigns) != 0 {
 		t.Fatal("a refused campaign was still persisted")

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/agent"
 	"vozko/domain/ai"
@@ -87,8 +88,6 @@ type agentVariableRequest struct {
 type createAgentRequest struct {
 	Name               string                 `json:"name"`
 	Description        string                 `json:"description"`
-	InitialMessage     string                 `json:"initialMessage"`
-	UseInitialMessage  *bool                  `json:"useInitialMessage,omitempty"`
 	MessagingPrompt    string                 `json:"messagingPrompt"`
 	MessagingModel     string                 `json:"messagingModel"`
 	AvatarURL          string                 `json:"avatarUrl"`
@@ -111,8 +110,6 @@ type createAgentRequest struct {
 type updateAgentRequest struct {
 	Name               string                 `json:"name"`
 	Description        string                 `json:"description"`
-	InitialMessage     string                 `json:"initialMessage"`
-	UseInitialMessage  *bool                  `json:"useInitialMessage,omitempty"`
 	MessagingPrompt    string                 `json:"messagingPrompt"`
 	MessagingModel     string                 `json:"messagingModel"`
 	AvatarURL          string                 `json:"avatarUrl"`
@@ -206,8 +203,6 @@ func (h *AgentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID:        middleware.GetWorkspaceID(r),
 		Name:               req.Name,
 		Description:        req.Description,
-		InitialMessage:     req.InitialMessage,
-		UseInitialMessage:  req.UseInitialMessage,
 		MessagingPrompt:    req.MessagingPrompt,
 		MessagingModel:     req.MessagingModel,
 		AvatarURL:          req.AvatarURL,
@@ -224,6 +219,7 @@ func (h *AgentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		KnowledgeBaseIDs:   req.KnowledgeBaseIDs,
 		MCPCollectionIDs:   req.MCPCollectionIDs,
 		Variables:          convertVariables(req.Variables),
+		RequestedBy:        httpx.RequesterOf(r),
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -318,8 +314,6 @@ func (h *AgentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	updated, err := h.updateUseCase.Execute(r.Context(), id, agent.UpdateAgentInput{
 		Name:                    &req.Name,
 		Description:             &req.Description,
-		InitialMessage:          &req.InitialMessage,
-		UseInitialMessage:       ptrBool(boolPtrOrDefault(req.UseInitialMessage, true)),
 		MessagingPrompt:         &req.MessagingPrompt,
 		MessagingModel:          &req.MessagingModel,
 		Provider:                &provider,
@@ -338,6 +332,7 @@ func (h *AgentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		WhatsAppTemplateID:      req.WhatsAppTemplateID,
 		ReplaceRAGConfig:        true,
 		RAGConfig:               convertRAGConfig(req.RAGConfig),
+		RequestedBy:             httpx.RequesterOf(r),
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -869,6 +864,9 @@ func (h *AgentHandler) ListOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AgentHandler) handleDomainError(w http.ResponseWriter, err error) {
+	if httpx.WriteConsentGrantRefusal(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, agent.ErrAgentNotFound):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "AGENT_NOT_FOUND", "Agent not found", nil)
@@ -876,8 +874,6 @@ func (h *AgentHandler) handleDomainError(w http.ResponseWriter, err error) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_NAME_REQUIRED", "Agent name is required", map[string]string{"name": "required"})
 	case errors.Is(err, agent.ErrAgentNameTooLong):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_NAME_TOO_LONG", "Agent name must not exceed 120 characters", map[string]string{"name": "must not exceed 120 characters"})
-	case errors.Is(err, agent.ErrAgentInitialMessageRequired):
-		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_INITIAL_MESSAGE_REQUIRED", "Initial message is required", map[string]string{"initialMessage": "required"})
 	case errors.Is(err, agent.ErrAgentMessagingPromptRequired):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_MESSAGING_PROMPT_REQUIRED", "Messaging prompt is required", map[string]string{"messagingPrompt": "required"})
 	case errors.Is(err, agent.ErrAgentProviderRequired):
@@ -929,7 +925,6 @@ func (h *AgentHandler) writeInvalidBodyError(w http.ResponseWriter) {
 	response.WriteInvalidBodyError(w, map[string]string{
 		"name":               "string (required)",
 		"description":        "string (optional)",
-		"initialMessage":     "string (required)",
 		"messagingPrompt":    "string (required)",
 		"language":           "string (required)",
 		"messagingModel":     "string (required)",

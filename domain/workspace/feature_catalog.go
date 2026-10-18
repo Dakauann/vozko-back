@@ -8,6 +8,7 @@ var (
 	conversationsRead = need(ResourceConversations, ActionRead)
 	stagesRead        = need(ResourceStages, ActionRead)
 	membersRead       = need(ResourceMembers, ActionRead)
+	groupsRead        = need(ResourceUnofficialWhatsAppGroups, ActionRead)
 )
 
 var Features = []Feature{
@@ -147,6 +148,7 @@ var Features = []Feature{
 			{Key: "leads.import", Description: "Cadastrar leads e importar planilhas", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionCreate)}},
 			{Key: "leads.import_to_inbox", Description: "Criar conversas na caixa de entrada ao importar leads", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionCreate), need(ResourceUnofficialWhatsAppInstances, ActionSend)}},
 			{Key: "leads.edit", Description: "Editar os dados dos leads e gerenciar as memórias da IA", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionUpdate)}},
+			{Key: "leads.consent", Description: "Registrar e retirar o consentimento do lead para receber mensagens, com quem registrou, a finalidade e a prova", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionUpdate), need(ResourceLeads, ActionConsent)}},
 			{Key: "leads.block", Description: "Bloquear leads", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionBlock)}},
 			{Key: "leads.assign", Description: "Definir o responsável por um lead", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionAssign), membersRead}},
 			{Key: "leads.read_sensitive", Description: "Ver, filtrar e editar os campos marcados como dados sensíveis, como a classificação", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionReadSensitive)}},
@@ -158,6 +160,30 @@ var Features = []Feature{
 			{Key: "leads.send_template", Description: "Enviar um modelo do WhatsApp oficial a uma seleção de leads: prepara o disparo parado, mostra quem recebe e o custo, e só envia depois de confirmar (consome saldo)", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceWhatsAppCampaigns, ActionCreate), need(ResourceWhatsAppCampaigns, ActionStart), need(ResourceWhatsAppTemplates, ActionSend), need(ResourceWhatsAppTemplates, ActionRead), need(ResourceBusinessPhones, ActionRead), conversationsRead}},
 			{Key: "leads.send_unofficial", Description: "Enviar uma mensagem pelo WhatsApp conectado por QR Code a uma seleção de leads: prepara o disparo parado e só envia depois de confirmar", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceUnofficialWhatsAppCampaigns, ActionCreate), need(ResourceUnofficialWhatsAppCampaigns, ActionStart), need(ResourceUnofficialWhatsAppInstances, ActionRead)}},
 			{Key: "leads.anonymize", Description: "Anonimizar um lead: apaga de vez nome, contatos, endereços, família, campos, memórias e variáveis de campanha, e mascara o número nas chamadas e cobranças", Requires: []PermissionEntry{need(ResourceLeads, ActionRead), need(ResourceLeads, ActionAnonymize)}, ManagersOnly: true},
+		},
+	},
+	{
+		Key:         "lead_companies",
+		Name:        "Empresas de leads",
+		Location:    "Menu lateral › Leads › Empresas, e o campo Empresa na ficha do lead",
+		Description: "Empresas que agrupam leads, com nome, imagem e uma chave que libera ou fecha a entrada de novos leads; um lead faz parte de no máximo uma empresa.",
+		Capabilities: []Capability{
+			{Key: "lead_companies.view", Description: "Ver as empresas, a imagem de cada uma e quantos leads fazem parte dela", Requires: []PermissionEntry{need(ResourceLeadCompanies, ActionRead)}, Screens: []Screen{ScreenLeadCompanies}},
+			{Key: "lead_companies.create", Description: "Cadastrar empresas; enviar a imagem exige também enviar mídias", Requires: []PermissionEntry{need(ResourceLeadCompanies, ActionRead), need(ResourceLeadCompanies, ActionCreate)}},
+			{Key: "lead_companies.edit", Description: "Renomear empresas, trocar a imagem e ligar ou desligar a entrada de novos leads", Requires: []PermissionEntry{need(ResourceLeadCompanies, ActionRead), need(ResourceLeadCompanies, ActionUpdate)}},
+			{Key: "lead_companies.delete", Description: "Excluir empresas; os leads delas continuam cadastrados, sem empresa", Requires: []PermissionEntry{need(ResourceLeadCompanies, ActionRead), need(ResourceLeadCompanies, ActionDelete)}},
+			{Key: "lead_companies.membership", Description: "Colocar um lead numa empresa que aceita novos leads, trocar de empresa ou tirar o lead dela", Requires: []PermissionEntry{need(ResourceLeadCompanies, ActionRead), need(ResourceLeads, ActionRead), need(ResourceLeads, ActionUpdate)}},
+		},
+	},
+	{
+		Key:         "customer_portfolios",
+		Name:        "Carteira de clientes",
+		Location:    "Menu lateral › Leads › Carteira, o cartão do lead na conversa e a ficha do lead",
+		Description: "Clientes que um membro colocou na própria carteira: as conversas novas deles chegam direto para essa pessoa, mesmo off-line, em vez de passar pela roleta. No Instagram e no Facebook o cliente é reconhecido pelo perfil (@).",
+		Capabilities: []Capability{
+			{Key: "customer_portfolios.view", Description: "Ver a própria carteira: quem está nela, por qual canal e desde quando", Requires: []PermissionEntry{need(ResourceCustomerPortfolios, ActionRead)}, Screens: []Screen{ScreenCustomerPortfolio}},
+			{Key: "customer_portfolios.use", Description: "Colocar clientes na própria carteira e tirá-los dela; as conversas novas desses clientes chegam direto para você", Requires: []PermissionEntry{need(ResourceCustomerPortfolios, ActionRead), need(ResourceCustomerPortfolios, ActionUse), conversationsRead}},
+			{Key: "customer_portfolios.manage", Description: "Ver a carteira de qualquer membro, colocar clientes na carteira de outra pessoa, mover e tirar clientes", Requires: []PermissionEntry{need(ResourceCustomerPortfolios, ActionRead), need(ResourceCustomerPortfolios, ActionUse), need(ResourceCustomerPortfolios, ActionManage), conversationsRead, membersRead}},
 		},
 	},
 	{
@@ -356,6 +382,22 @@ var Features = []Feature{
 			{Key: "unofficial_campaigns.delete", Description: "Excluir campanhas e contatos", Requires: []PermissionEntry{need(ResourceUnofficialWhatsAppCampaigns, ActionRead), need(ResourceUnofficialWhatsAppCampaigns, ActionDelete)}},
 			{Key: "unofficial_campaigns.start", Description: "Iniciar disparos", Requires: []PermissionEntry{need(ResourceUnofficialWhatsAppCampaigns, ActionRead), need(ResourceUnofficialWhatsAppCampaigns, ActionStart)}},
 			{Key: "unofficial_campaigns.stop", Description: "Pausar e parar disparos", Requires: []PermissionEntry{need(ResourceUnofficialWhatsAppCampaigns, ActionRead), need(ResourceUnofficialWhatsAppCampaigns, ActionStop)}},
+		},
+	},
+	{
+		Key:         "unofficial_groups",
+		Name:        "Grupos de WhatsApp",
+		Location:    "Menu lateral › WhatsApp › Grupos",
+		Description: "Grupos de WhatsApp dos números conectados por QR Code, com membros, crescimento, mensagens e análises de IA.",
+		Scopes:      []ScopeRule{ScopeDepartments},
+		Capabilities: []Capability{
+			{Key: "unofficial_groups.view", Description: "Ver os grupos, os membros, as métricas, as mensagens, as pessoas em vários grupos e as análises", Requires: []PermissionEntry{groupsRead}, Screens: []Screen{ScreenUnofficialGroups, ScreenUnofficialGroupsList, ScreenUnofficialGroupDetail, ScreenUnofficialGroupPeople, ScreenUnofficialGroupAnalyses, ScreenUnofficialGroupAnalysisDetail}},
+			{Key: "unofficial_groups.join", Description: "Entrar em grupos por link de convite e criar grupos, inclusive em série", Requires: []PermissionEntry{groupsRead, need(ResourceUnofficialWhatsAppGroups, ActionCreate)}},
+			{Key: "unofficial_groups.edit", Description: "Acompanhar grupos, buscar os grupos dos números e alterar categoria, nome, descrição, foto e configurações", Requires: []PermissionEntry{groupsRead, need(ResourceUnofficialWhatsAppGroups, ActionUpdate)}},
+			{Key: "unofficial_groups.analyses", Description: "Criar, editar e pausar análises de IA dos grupos", Requires: []PermissionEntry{groupsRead, need(ResourceUnofficialWhatsAppGroups, ActionConfigure)}},
+			{Key: "unofficial_groups.delete", Description: "Sair de grupos e excluir análises", Requires: []PermissionEntry{groupsRead, need(ResourceUnofficialWhatsAppGroups, ActionDelete)}},
+			{Key: "unofficial_groups.export", Description: "Exportar os membros dos grupos para planilha", Requires: []PermissionEntry{groupsRead, need(ResourceUnofficialWhatsAppGroups, ActionExport)}},
+			{Key: "unofficial_groups.to_leads", Description: "Cadastrar os membros dos grupos como leads", Requires: []PermissionEntry{groupsRead, need(ResourceLeads, ActionRead), need(ResourceLeads, ActionCreate)}},
 		},
 	},
 	{

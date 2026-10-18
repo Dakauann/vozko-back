@@ -132,6 +132,16 @@ var PureGraphRules = []GraphRule{
 		Hint:     "No nó wait_dtmf, 'keys' precisa de ao menos uma tecla, só 0-9, * ou #, sem repetir. Cada tecla vira uma saída com o próprio dígito como rótulo.",
 		Validate: ValidateDTMFWaits,
 	},
+	{
+		Code:     LintMissingRequiredField,
+		Hint:     "O nó action_consent precisa de 'mode': 'registrar' (grava o consentimento) ou 'retirar' (grava o opt-out).",
+		Validate: ValidateConsentModes,
+	},
+	{
+		Code:     LintConsentGrantNeedsReply,
+		Hint:     "O nó action_consent em modo 'registrar' só vale depois da resposta do lead em todos os caminhos: a saída 'replied' de wait_for_reply, uma opção de action_send_interactive ou a saída 'true' de uma condição sobre {{selected_option_id}} ou {{selected_option_title}} (botão do template). Para opt-out use o modo 'retirar', que vale em qualquer ponto.",
+		Validate: ValidateConsentGrantsFollowAReply,
+	},
 }
 
 func RunPureGraphRules(g *Graph) error {

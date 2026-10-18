@@ -204,7 +204,6 @@ type Instance struct {
 	WarmupStartedAt *time.Time `json:"warmupStartedAt,omitempty"`
 	SendDelayMinMS  int        `json:"sendDelayMinMs"`
 	SendDelayMaxMS  int        `json:"sendDelayMaxMs"`
-	AutoRejectCalls bool       `json:"autoRejectCalls"`
 
 	AgentID              *string `json:"agentId,omitempty"`
 	WorkflowID           *string `json:"workflowId,omitempty"`

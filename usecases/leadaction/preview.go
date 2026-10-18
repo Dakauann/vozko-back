@@ -43,6 +43,7 @@ func (s *Service) Preview(ctx context.Context, req Request) (*leadaction.Preview
 		if err != nil {
 			return nil, err
 		}
+		e.ChosenAt = s.now()
 		edit = &e
 	}
 	counted := req.Selection

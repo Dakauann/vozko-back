@@ -65,11 +65,8 @@ const (
 )
 
 func (s ConsentSource) Valid() bool {
-	switch s {
-	case ConsentForm, ConsentImport, ConsentManual, ConsentConversationRequest:
-		return true
-	}
-	return false
+	_, known := consentRules[s]
+	return known
 }
 
 type Consent struct {
@@ -93,7 +90,8 @@ type Lead struct {
 	WhatsAppOptIn     *Consent       `json:"whatsappOptIn,omitempty"`
 	OptedOutAt        *time.Time     `json:"optedOutAt,omitempty"`
 	OptOutSource      OptOutSource   `json:"optOutSource,omitempty"`
-	Blocked           bool           `json:"blocked"`
+	ConsentRecord     *ConsentRecord `json:"-"`
+	Blocked          bool           `json:"blocked"`
 	BlockedAt         time.Time      `json:"blockedAt"`
 	BlockedBy         *string        `json:"blockedBy"`
 	ProfilePictureURL string         `json:"profilePictureUrl,omitempty"`
@@ -101,6 +99,7 @@ type Lead struct {
 	Phones            []ContactPhone `json:"phones,omitempty"`
 	Addresses         []Address      `json:"addresses,omitempty"`
 	Relations         []Relation     `json:"relations,omitempty"`
+	CompanyID         string         `json:"companyId,omitempty"`
 	RelativesCount    int            `json:"relativesCount"`
 	ReferredCount     int            `json:"referredCount"`
 	Version           int64          `json:"version"`

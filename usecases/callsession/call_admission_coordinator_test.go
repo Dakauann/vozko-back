@@ -96,12 +96,6 @@ type stubPricer struct {
 func (s *stubPricer) ResolveForWorkspace(string) ([]workspace_pricing.ResolvedPricingItem, error) {
 	return nil, nil
 }
-func (s *stubPricer) PriceSTT(string, string, float64) (workspace_pricing.PriceResult, error) {
-	return workspace_pricing.PriceResult{}, nil
-}
-func (s *stubPricer) PriceTTS(string, string, string, int) (workspace_pricing.PriceResult, error) {
-	return workspace_pricing.PriceResult{}, nil
-}
 func (s *stubPricer) PriceLLM(string, string, int, int, int64) (workspace_pricing.PriceResult, error) {
 	return workspace_pricing.PriceResult{}, nil
 }

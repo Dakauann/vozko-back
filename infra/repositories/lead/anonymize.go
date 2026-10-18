@@ -44,9 +44,11 @@ const (
 
 	eraseCallListItemsSQL = "UPDATE call_list_items SET phone = '', note = NULL WHERE workspace_id = ? AND lead_id = ?"
 
+	eraseCustomerPortfolioSQL = "DELETE FROM customer_portfolio_entries WHERE workspace_id = ? AND lead_id = ?"
+
 	eraseCampaignEntriesSQL = "UPDATE whatsapp_campaign_entries SET variables = NULL, metadata = '{}'::jsonb WHERE lead_id = ?"
 
-	anonymizeLeadSQL = "UPDATE leads SET " + recordColumnsSQL + ", relatives_count = 0, referred_count = 0, updated_at = ?, deleted_at = ?, version = version + 1" +
+	anonymizeLeadSQL = "UPDATE leads SET " + recordColumnsSQL + ", whatsapp_consent_record = NULL, relatives_count = 0, referred_count = 0, company_id = NULL, updated_at = ?, deleted_at = ?, version = version + 1" +
 		" WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL RETURNING version"
 )
 
@@ -84,6 +86,7 @@ var leadScopedErasures = []erasureStep{
 	{lead.ErasureMemories, eraseMemoriesSQL},
 	{lead.ErasureEvents, redactLeadEventsSQL},
 	{lead.ErasureCallListItems, eraseCallListItemsSQL},
+	{lead.ErasureCustomerPortfolio, eraseCustomerPortfolioSQL},
 }
 
 type maskMapping struct {

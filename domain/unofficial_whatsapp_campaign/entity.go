@@ -50,6 +50,7 @@ func NewInstanceUnusableError(label, reason string) *InstanceUnusableError {
 type TargetInput struct {
 	Number    string                     `json:"number"`
 	LeadID    string                     `json:"leadId,omitempty"`
+	GroupJID  string                     `json:"groupJid,omitempty"`
 	Name      string                     `json:"name,omitempty"`
 	Variables []string                   `json:"variables,omitempty"`
 	Metadata  map[string]interface{}     `json:"metadata,omitempty"`
@@ -67,8 +68,9 @@ type Campaign struct {
 	Source         string `json:"source,omitempty"`
 	IdempotencyKey string `json:"idempotencyKey,omitempty"`
 
-	Name    string      `json:"name"`
-	Message MessageSpec `json:"message"`
+	Name     string      `json:"name"`
+	Audience Audience    `json:"audience"`
+	Message  MessageSpec `json:"message"`
 
 	InstanceLabel       string `json:"instanceLabel,omitempty"`
 	InstanceStatus      string `json:"instanceStatus,omitempty"`
@@ -82,7 +84,6 @@ type Campaign struct {
 	EnableAnalysis       bool   `json:"enableAnalysis"`
 	EnableAutoStaging    bool   `json:"enableAutoStaging"`
 	EnableAutoMemory     bool   `json:"enableAutoMemory"`
-	PreferAudio          bool   `json:"preferAudio"`
 	AiModel              string `json:"aiModel,omitempty"`
 
 	SendDelayMinMS int `json:"sendDelayMinMs"`
@@ -138,7 +139,15 @@ func (c *Campaign) Normalize() {
 		c.DailyCap = 0
 	}
 
+	if c.Audience == "" {
+		c.Audience = AudienceLeads
+	}
+
 	if len(c.Targets) == 0 {
+		return
+	}
+	if c.TargetsGroups() {
+		c.Targets = normalizeGroupTargets(c.Targets)
 		return
 	}
 
@@ -199,6 +208,11 @@ func (c *Campaign) Validate() error {
 	if err := c.ValidateMetadata(); err != nil {
 		return err
 	}
+	if !c.TargetsGroups() {
+		if err := c.Message.RequireShownExit(); err != nil {
+			return err
+		}
+	}
 	if err := c.validateSchedule(); err != nil {
 		return err
 	}
@@ -213,8 +227,8 @@ func (c *Campaign) Validate() error {
 		return ErrCampaignTargetsTooMany
 	}
 	for _, t := range c.Targets {
-		if t.LeadID == "" && !ValidTargetNumber(t.Number) {
-			return fmt.Errorf("%w: %q", ErrCampaignTargetInvalid, t.Number)
+		if err := validateTarget(c.Audience, t); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -229,6 +243,12 @@ func (c *Campaign) ValidateMetadata() error {
 	}
 	if !c.Status.IsValid() {
 		return ErrCampaignStatusInvalid
+	}
+	if c.Audience != "" && !c.Audience.Valid() {
+		return ErrCampaignAudienceInvalid
+	}
+	if c.TargetsGroups() && c.PipelineID != "" {
+		return ErrGroupCampaignFunnel
 	}
 	return c.Message.Validate()
 }
