@@ -31,8 +31,8 @@ type TemplateEditDeps struct {
 }
 
 type editTemplateArgs struct {
-	TemplateID   string `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
-	Category     string `json:"category" desc:"nova categoria, só para modelo reprovado ou pausado; vazio mantém a atual"`
+	TemplateID    string `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
+	Category      string `json:"category" desc:"nova categoria, só para modelo reprovado ou pausado; vazio mantém a atual"`
 	RemoveHeader  bool   `json:"remove_header" desc:"true tira o cabeçalho atual"`
 	RemoveFooter  bool   `json:"remove_footer" desc:"true tira o rodapé atual"`
 	RemoveButtons bool   `json:"remove_buttons" desc:"true tira todos os botões atuais"`
