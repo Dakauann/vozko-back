@@ -10,6 +10,7 @@ import (
 
 	"vozko/domain/attendance"
 	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 const (
@@ -23,15 +24,7 @@ func (r *repository) analytics(fn func(tx *gorm.DB) error) error {
 }
 
 func (r *repository) analyticsContext(ctx context.Context, fn func(tx *gorm.DB) error) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
-			return err
-		}
-		if err := tx.Exec("SET LOCAL statement_timeout = '" + analyticsStatementTimeout + "'").Error; err != nil {
-			return err
-		}
-		return fn(tx)
-	})
+	return database.InSession(ctx, r.db, []string{database.JITOff, database.StatementTimeout(analyticsStatementTimeout)}, fn)
 }
 
 func (r *repository) withScope(
@@ -101,13 +94,13 @@ func scopeMessagesSQL() string {
 		LEFT JOIN LATERAL (
 			SELECT
 			MIN(cm.created_at) FILTER (
-				WHERE ` + database.SentByContactSQL("cm") + `
+				WHERE ` + sqlexpr.SentByContact("cm") + `
 			) AS first_inbound_at,
 			MIN(cm.created_at) FILTER (
-				WHERE ` + database.SentAsReplySQL("cm") + `
+				WHERE ` + sqlexpr.SentAsReply("cm") + `
 			) AS first_agent_at,
 			MAX(cm.created_at) FILTER (
-				WHERE ` + database.SentAsReplySQL("cm") + `
+				WHERE ` + sqlexpr.SentAsReply("cm") + `
 			) AS last_agent_at,
 			MIN(cm.created_at) FILTER (
 				WHERE se.assigned_user_id <> ''
@@ -115,10 +108,10 @@ func scopeMessagesSQL() string {
 			) AS first_assignee_op_at,
 			COUNT(cm.id)::int AS total_msgs,
 			COUNT(cm.id) FILTER (
-				WHERE ` + database.SentByContactSQL("cm") + `
+				WHERE ` + sqlexpr.SentByContact("cm") + `
 			)::int AS inbound_msgs,
 			COUNT(cm.id) FILTER (
-				WHERE ` + database.SentOutboundSQL("cm") + `
+				WHERE ` + sqlexpr.SentOutbound("cm") + `
 			)::int AS outbound_msgs,
 			COUNT(cm.id) FILTER (
 				WHERE cm.message_type = 'template'
@@ -127,7 +120,7 @@ func scopeMessagesSQL() string {
 			WHERE cm.entry_id = se.entry_id
 			  AND cm.entry_type = se.entry_type
 			  AND cm.deleted_at IS NULL
-			  AND ` + realMessageSQL("cm") + `
+			  AND ` + sqlexpr.RealMessage("cm") + `
 		) msg ON TRUE
 		WHERE msg.total_msgs > 0
 	`
@@ -474,7 +467,7 @@ func overviewEntrySelect(workspaceID string, f attendance.OverviewFilter) (strin
 				WHERE cm.entry_id = ` + src.EntryAlias + `.id
 				  AND cm.entry_type = '` + string(src.EntryType) + `'
 				  AND cm.deleted_at IS NULL
-				  AND ` + realMessageSQL("cm")
+				  AND ` + sqlexpr.RealMessage("cm")
 		a = append(a, fca...)
 		if from != nil {
 			sql += " AND cm.created_at >= ?"

@@ -458,7 +458,7 @@ func mediaKindFor(t media.MediaType) mediaKind {
 	switch t {
 	case media.MediaTypeProductImage:
 		return kindImage
-	case media.MediaTypeProductVideo, media.MediaTypeVslVideo:
+	case media.MediaTypeProductVideo:
 		return kindVideo
 	case media.MediaTypeAudio:
 		return kindAudio

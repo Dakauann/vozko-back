@@ -1,0 +1,14 @@
+{{define "title"}}Pague a fatura até {{.CutoffDate}} - {{.Brand.Name}}{{end}}
+{{define "preheader"}}A fatura de {{.Amount}} venceu. Pague até {{.CutoffDate}} para manter o plano, os complementos e os números de WhatsApp.{{end}}
+{{define "eyebrow"}}Faturamento{{end}}
+{{define "content"}}
+{{template "heading" dict "status" "Fatura vencida" "tone" "warning" "title" (printf "Pague até %s para manter o acesso" .CutoffDate) "subtitle" (printf "Fatura de %s, vencida em %s" .Amount .DueDate)}}
+{{template "gap" 24}}
+<p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
+    Ainda não recebemos o pagamento da fatura do mês. Se ela não for paga até <strong style="font-weight:600;">{{.CutoffDate}}</strong>, o plano e os complementos deste workspace são encerrados e os números de WhatsApp incluídos são desconectados.
+</p>
+{{template "gap" 24}}
+{{template "details" dict "title" "Fatura" "k1" "Valor" "v1" .Amount "k2" "Venceu em" "v2" .DueDate "k3" "Prazo final" "v3" .CutoffDate}}
+{{template "gap" 28}}
+{{template "cta" dict "url" .PayURL "label" "Pagar fatura"}}
+{{end}}

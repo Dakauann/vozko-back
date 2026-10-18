@@ -149,14 +149,14 @@ func manyKeyframes(n int) []Keyframe {
 }
 
 func TestAPropertyTakesAnyNumberOfKeys(t *testing.T) {
-	if code := PropertyIssue(manyKeyframes(1000), 0, 1); code != "" {
+	if code := PropertyIssueWithin(manyKeyframes(1000), 0, 1, MaxVideoMS); code != "" {
 		t.Fatalf("a long lane was refused: %s", code)
 	}
 }
 
 func TestTheKeyTimeBoundIsChosenByTheCaller(t *testing.T) {
 	late := []Keyframe{{AtMS: 600_000, Value: 0.5, Easing: EaseLinear}}
-	if code := PropertyIssue(late, 0, 1); code != CodeOutOfRange {
+	if code := PropertyIssueWithin(late, 0, 1, MaxVideoMS); code != CodeOutOfRange {
 		t.Fatalf("a key past the render limit: %q", code)
 	}
 	if code := PropertyIssueWithin(late, 0, 1, 600_000); code != "" {

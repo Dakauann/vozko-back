@@ -401,10 +401,6 @@ func (q channelQuery) statusColumnOrEmpty() string {
 	return q.StatusColumn
 }
 
-func (q channelQuery) containerCTE(assignmentClause string) string {
-	return fmt.Sprintf(q.ContainerCTE, assignmentClause)
-}
-
 func (q channelQuery) usesCampaignContainer(kind conversation.ContainerKind) bool {
 	return kind == conversation.ContainerKindCampaign && q.CampaignCTE != ""
 }
@@ -426,8 +422,4 @@ func (q channelQuery) filterForKind(
 	}
 	clause, args := departmentClause(q.DepartmentColumn, q.DepartmentEntryCol)
 	return fmt.Sprintf(q.ContainerFilter, clause), args
-}
-
-func (q channelQuery) containerFilter(departmentClause string) string {
-	return fmt.Sprintf(q.ContainerFilter, departmentClause)
 }

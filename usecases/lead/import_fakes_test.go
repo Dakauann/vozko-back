@@ -306,17 +306,6 @@ func (b *fakeLeadBase) byNumber(number string) *lead.Lead {
 	return nil
 }
 
-func (b *fakeLeadBase) byName(name string) *lead.Lead {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, l := range b.leads {
-		if l.Name == name {
-			return l
-		}
-	}
-	return nil
-}
-
 type fakeImportWriter struct {
 	base   *fakeLeadBase
 	store  *fakeImportStore

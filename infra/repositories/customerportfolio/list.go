@@ -7,6 +7,7 @@ import (
 	cp "vozko/domain/customerportfolio"
 	"vozko/domain/shared"
 	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 	infracrmfilter "vozko/infra/repositories/crmfilter"
 )
 
@@ -115,7 +116,7 @@ func (s *Store) List(ctx context.Context, workspaceID string, q cp.ListQuery) (*
 	countSQL, countArgs := "SELECT COUNT(*) FROM customer_portfolio_entries p"+scope, args
 	if search := strings.TrimSpace(q.Search); search != "" {
 		rows += listSearchSQL
-		args = append(args, database.LikeContains(search))
+		args = append(args, sqlexpr.LikeContains(search))
 		countSQL, countArgs = "WITH rows AS ("+listRowsSQL+scope+") SELECT COUNT(*) FROM rows"+listSearchSQL, args
 	}
 	db := s.db.WithContext(ctx)

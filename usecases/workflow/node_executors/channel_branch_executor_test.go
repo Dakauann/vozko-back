@@ -172,7 +172,6 @@ func TestChannelBranch_OffersOnlyReachableChannels(t *testing.T) {
 		shared.EntryTypeTelegram,
 		shared.EntryTypeFacebook,
 	} {
-		assert.True(t, KnownChannelBranch(string(entryType)), string(entryType))
 		assert.Contains(t, workflow.ChannelBranchOrder, entryType)
 	}
 
@@ -181,11 +180,6 @@ func TestChannelBranch_OffersOnlyReachableChannels(t *testing.T) {
 			"%s is not a messaging channel, so a run can never be on it", entryType)
 	}
 
-}
-
-func TestChannelBranch_KnownHandleRejectsNonsense(t *testing.T) {
-	assert.True(t, KnownChannelBranch(workflow.ChannelBranchDefault))
-	assert.False(t, KnownChannelBranch("carrier_pigeon"))
 }
 
 func TestChannelOf_ReadsTheRunAndToleratesNil(t *testing.T) {

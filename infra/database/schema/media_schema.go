@@ -10,7 +10,6 @@ import (
 type MediaType string
 
 const (
-	MediaTypeVslVideo     MediaType = "vsl_video"
 	MediaTypeProductImage MediaType = "image"
 	MediaTypeProductVideo MediaType = "video"
 	MediaTypeDocumentPdf  MediaType = "document_pdf"

@@ -98,10 +98,6 @@ type clipRepeatLane struct {
 	frames []mediagen.Keyframe
 }
 
-func ClipRepeatModeKnown(mode string) bool { return clipRepeatModes[mode] }
-
-func ClipRepeatOrderKnown(order string) bool { return clipRepeatOrders[order] }
-
 func ClipRepeatFieldRange(field string) (ValueRange, bool) {
 	r, known := clipRepeatRanges[field]
 	return r, known

@@ -5,42 +5,6 @@ import (
 	"time"
 )
 
-func TestUsageWindowIsMeasuredFromNowNotFromMidnight(t *testing.T) {
-	now := time.Date(2026, 9, 11, 23, 30, 0, 0, time.UTC)
-	buckets := UsageBucketsInWindow(now)
-
-	if len(buckets) != 24 {
-		t.Fatalf("window holds %d buckets, want 24", len(buckets))
-	}
-	if buckets[0] != UsageBucketKey(now) {
-		t.Errorf("newest bucket = %q, want the current hour %q", buckets[0], UsageBucketKey(now))
-	}
-	oldest := UsageBucketKey(now.Add(-23 * time.Hour))
-	if buckets[len(buckets)-1] != oldest {
-		t.Errorf("oldest bucket = %q, want %q from the previous day", buckets[len(buckets)-1], oldest)
-	}
-
-	next := UsageBucketsInWindow(now.Add(time.Hour))
-	if next[0] == buckets[0] {
-		t.Error("the window did not advance after an hour")
-	}
-	if hasBucket(next, buckets[len(buckets)-1]) {
-		t.Error("the oldest hour did not age out of the window")
-	}
-	if !hasBucket(next, buckets[0]) {
-		t.Error("the window dropped an hour that is still inside it")
-	}
-}
-
-func hasBucket(all []string, want string) bool {
-	for _, s := range all {
-		if s == want {
-			return true
-		}
-	}
-	return false
-}
-
 func TestUsageBucketKeyRoundTrips(t *testing.T) {
 	at := time.Date(2026, 9, 11, 20, 47, 13, 0, time.UTC)
 

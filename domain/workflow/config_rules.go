@@ -238,29 +238,3 @@ func interactiveListRowCount(sections []conversation.ListSection) int {
 	}
 	return n
 }
-
-func BoolFromConfig(config map[string]interface{}, key string, fallback bool) bool {
-	if config == nil {
-		return fallback
-	}
-	v, ok := config[key]
-	if !ok || v == nil {
-		return fallback
-	}
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		switch strings.ToLower(strings.TrimSpace(t)) {
-		case "true", "1", "yes", "on":
-			return true
-		case "false", "0", "no", "off", "":
-			return false
-		}
-	case float64:
-		return t != 0
-	case int:
-		return t != 0
-	}
-	return fallback
-}

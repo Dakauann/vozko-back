@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	leadmemory "vozko/domain/lead_memory"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -21,7 +22,7 @@ func NewRepository(db *gorm.DB) leadmemory.Repository {
 func (r *repository) Create(m *leadmemory.LeadMemory) error {
 	row := fromDomain(m)
 	if err := r.db.Create(&row).Error; err != nil {
-		if isDuplicateKey(err) {
+		if database.IsUniqueViolation(err) {
 			return leadmemory.ErrDuplicate
 		}
 		return err
@@ -129,7 +130,7 @@ func (r *repository) Update(m *leadmemory.LeadMemory) error {
 			"actor_id":     m.ActorID,
 		})
 	if result.Error != nil {
-		if isDuplicateKey(result.Error) {
+		if database.IsUniqueViolation(result.Error) {
 			return leadmemory.ErrDuplicate
 		}
 		return result.Error
@@ -151,14 +152,6 @@ func (r *repository) SoftDelete(workspaceID, id string) error {
 		return leadmemory.ErrNotFound
 	}
 	return nil
-}
-
-func isDuplicateKey(err error) bool {
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "duplicate key") || strings.Contains(msg, "unique constraint")
 }
 
 var _ leadmemory.Repository = (*repository)(nil)

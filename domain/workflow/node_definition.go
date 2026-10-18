@@ -188,14 +188,6 @@ func NormalizeNodeDefinition(def NodeDefinition) NodeDefinition {
 	return def
 }
 
-func DefinitionAllowedForTrigger(def NodeDefinition, triggerType TriggerType) bool {
-	def = NormalizeNodeDefinition(def)
-	if def.Type.IsTrigger() {
-		return def.Type == NodeType(triggerType)
-	}
-	return DefinitionAllowedForType(def, triggerType.WorkflowType())
-}
-
 func (n NodeType) Category() NodeCategory {
 	switch {
 	case n.IsDecoration():

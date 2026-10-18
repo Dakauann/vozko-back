@@ -70,8 +70,6 @@ func (b BBox) Validate() error {
 
 func BrazilBounds() BBox { return brazilBounds }
 
-func ShapeBounds() BBox { return shapeBounds }
-
 func (b BBox) widened(degrees float64) BBox {
 	return BBox{South: b.South - degrees, West: b.West - degrees, North: b.North + degrees, East: b.East + degrees}
 }

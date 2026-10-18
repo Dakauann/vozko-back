@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"vozko/domain/agent"
-	"vozko/domain/callrouting"
 	domainmcp "vozko/domain/agent/mcp"
+	"vozko/domain/callrouting"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
 	rag_domain "vozko/domain/rag"
@@ -293,10 +293,6 @@ func collectExecuteModeLeafNodes(g *workflow.Graph) map[string]bool {
 		}
 	}
 	return leafNodes
-}
-
-func validateSegmentedSendConflict(g *workflow.Graph) error {
-	return workflow.ValidateSegmentedSendConflict(g)
 }
 
 func validateRequiredOutputEdges(graph *workflow.Graph, catalog []workflow.NodeDefinition) error {

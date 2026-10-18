@@ -16,12 +16,11 @@ import (
 var errFakeBoom = errors.New("fake: boom")
 
 type fakeOppRepo struct {
-	store      map[string]*opportunity.Opportunity
-	links      []opportunity.ConversationLink
-	events     []opportunity.Event
-	locks      int
-	getErr     error
-	createErrs int
+	store  map[string]*opportunity.Opportunity
+	links  []opportunity.ConversationLink
+	events []opportunity.Event
+	locks  int
+	getErr error
 
 	bumpBehindTheScenes string
 }

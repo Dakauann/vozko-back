@@ -106,10 +106,6 @@ func planCustomSlot(key string, defs []*customfield.Definition) (boundSlot, erro
 	return boundSlot{}, fmt.Errorf("%w: %q", ErrBindingFieldUnknown, key)
 }
 
-func (p BindingPlan) Slots() int {
-	return len(p.slots)
-}
-
 func (p BindingPlan) NeedsLead() bool {
 	for _, s := range p.slots {
 		if s.source != BindLiteral {

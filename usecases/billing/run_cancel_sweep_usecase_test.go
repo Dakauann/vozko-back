@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	billing "vozko/domain/billing"
 	"vozko/domain/invoice"
 	workspace_addon "vozko/domain/workspace/workspace_addon"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
@@ -82,7 +83,7 @@ func unpaidMonthly(id, ws string) invoice.Invoice {
 }
 
 func sweepFixture(inv *fakeInvoiceRepo, subs *fakeSubs, addons *fakeAddons, onReduced *fakeEntitlementHandler, alerter *fakeAlerter, day int) *cancelSweepUseCase {
-	uc := NewCancelSweepUseCase(inv, subs, addons, onReduced, alerter)
+	uc := NewCancelSweepUseCase(inv, subs, addons, onReduced, alerter, &recordingNotices{})
 	uc.now = func() time.Time { return time.Date(2026, 3, day, 12, 0, 0, 0, time.UTC) }
 	return uc
 }
@@ -108,7 +109,7 @@ func TestSweep_CancelsUnpaidWorkspace(t *testing.T) {
 	onReduced := &fakeEntitlementHandler{}
 	alerter := &fakeAlerter{}
 
-	n, err := sweepFixture(inv, subs, addons, onReduced, alerter, 27).Execute()
+	n, err := sweepFixture(inv, subs, addons, onReduced, alerter, 28).Execute()
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -139,7 +140,7 @@ func TestSweep_CancellationFailureAlertsAndRetries(t *testing.T) {
 	onReduced := &fakeEntitlementHandler{failWS: map[string]error{"ws-1": errors.New("vendor down")}}
 	alerter := &fakeAlerter{}
 
-	n, err := sweepFixture(inv, subs, addons, onReduced, alerter, 27).Execute()
+	n, err := sweepFixture(inv, subs, addons, onReduced, alerter, 28).Execute()
 	if err != nil {
 		t.Fatalf("a per-workspace cancel failure must not fail the whole run: %v", err)
 	}
@@ -189,7 +190,7 @@ func TestSweep_OneFailureDoesNotBlockOthers(t *testing.T) {
 	onReduced := &fakeEntitlementHandler{failWS: map[string]error{"ws-2": errors.New("vendor blip")}}
 	alerter := &fakeAlerter{}
 
-	n, err := sweepFixture(inv, &fakeSubs{}, &fakeAddons{byWS: byWS}, onReduced, alerter, 27).Execute()
+	n, err := sweepFixture(inv, &fakeSubs{}, &fakeAddons{byWS: byWS}, onReduced, alerter, 28).Execute()
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -209,7 +210,49 @@ func TestSweep_OneFailureDoesNotBlockOthers(t *testing.T) {
 
 func TestSweep_InvoiceRepoErrorPropagates(t *testing.T) {
 	inv := &fakeInvoiceRepo{err: errors.New("db down")}
-	if _, err := sweepFixture(inv, &fakeSubs{}, &fakeAddons{}, &fakeEntitlementHandler{}, &fakeAlerter{}, 27).Execute(); err == nil {
+	if _, err := sweepFixture(inv, &fakeSubs{}, &fakeAddons{}, &fakeEntitlementHandler{}, &fakeAlerter{}, 28).Execute(); err == nil {
 		t.Fatal("expected the unpaid-invoice query error to propagate")
+	}
+}
+
+func dueOn(id, ws string, due time.Time) invoice.Invoice {
+	inv := unpaidMonthly(id, ws)
+	inv.DueDate = &due
+	return inv
+}
+
+func sweepAt(inv *fakeInvoiceRepo, onReduced *fakeEntitlementHandler, now time.Time) *cancelSweepUseCase {
+	uc := NewCancelSweepUseCase(inv, &fakeSubs{}, &fakeAddons{}, onReduced, &fakeAlerter{}, &recordingNotices{})
+	uc.now = func() time.Time { return now }
+	return uc
+}
+
+func TestSweep_TheWholeCutoffDayIsStillTheCustomersToPay(t *testing.T) {
+	brt := billing.LocationBRT()
+	inv := &fakeInvoiceRepo{unpaid: []invoice.Invoice{dueOn("inv-1", "ws-1", time.Date(2026, 3, 23, 0, 0, 0, 0, brt))}}
+	onReduced := &fakeEntitlementHandler{}
+
+	n, err := sweepAt(inv, onReduced, time.Date(2026, 3, 27, 23, 0, 0, 0, brt)).Execute()
+
+	if err != nil || n != 0 || len(onReduced.reduced) != 0 {
+		t.Fatalf("swept=%d reduced=%v err=%v, want nothing cancelled before 23:59:59 BRT on the cutoff day", n, onReduced.reduced, err)
+	}
+}
+
+func TestSweep_AnInvoiceIsCancelledOnlyAfterItsOwnMonthsCutoff(t *testing.T) {
+	brt := billing.LocationBRT()
+	inv := &fakeInvoiceRepo{unpaid: []invoice.Invoice{
+		dueOn("inv-march", "ws-1", time.Date(2026, 3, 23, 0, 0, 0, 0, brt)),
+		dueOn("inv-april", "ws-2", time.Date(2026, 4, 23, 0, 0, 0, 0, brt)),
+	}}
+	onReduced := &fakeEntitlementHandler{}
+
+	n, err := sweepAt(inv, onReduced, time.Date(2026, 3, 28, 0, 30, 0, 0, brt)).Execute()
+
+	if err != nil || n != 1 || len(onReduced.reduced) != 1 || onReduced.reduced[0] != "ws-1" {
+		t.Fatalf("swept=%d reduced=%v err=%v, want only the march invoice cancelled", n, onReduced.reduced, err)
+	}
+	if inv.statuses["inv-april"] == invoice.StatusExpired {
+		t.Fatal("an invoice due next month was cancelled before its own cutoff")
 	}
 }

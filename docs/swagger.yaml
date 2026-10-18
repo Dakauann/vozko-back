@@ -6927,6 +6927,53 @@ definitions:
       url:
         type: string
     type: object
+  copilot.StudioKind:
+    enum:
+    - image
+    - video
+    type: string
+    x-enum-varnames:
+    - StudioImage
+    - StudioVideo
+  copilot.Surface:
+    enum:
+    - attendance
+    - studio
+    - leads
+    type: string
+    x-enum-varnames:
+    - SurfaceAttendance
+    - SurfaceStudio
+    - SurfaceLeads
+  copilot.View:
+    properties:
+      campaignId:
+        type: string
+      campaignType:
+        type: string
+      channel:
+        type: string
+      dateFrom:
+        type: string
+      dateTo:
+        type: string
+      departmentId:
+        type: string
+      includeAi:
+        type: boolean
+      leadFilter:
+        $ref: '#/definitions/crmfilter.Filter'
+      memberId:
+        type: string
+      projectId:
+        type: string
+      projectKind:
+        $ref: '#/definitions/copilot.StudioKind'
+      selectedLeads:
+        type: integer
+      surface:
+        $ref: '#/definitions/copilot.Surface'
+    type: object
   copilot_usecase.QueuedView:
     properties:
       attachments:
@@ -7765,6 +7812,13 @@ definitions:
         type: string
     type: object
   handlers.projectOpenedRequest:
+    properties:
+      mode:
+        type: string
+      timezone:
+        type: string
+      view:
+        $ref: '#/definitions/copilot.View'
     type: object
   handlers.queueMessageRequest:
     properties:
@@ -13525,76 +13579,6 @@ definitions:
         example: APPROVED
         type: string
       templateId:
-        type: string
-    type: object
-  ticket.Document:
-    properties:
-      contentType:
-        type: string
-      createdAt:
-        type: string
-      fileName:
-        type: string
-      id:
-        type: string
-      ticketId:
-        type: string
-      type:
-        $ref: '#/definitions/ticket.DocumentType'
-      uploadedBy:
-        type: string
-      url:
-        type: string
-    type: object
-  ticket.DocumentType:
-    enum:
-    - rg
-    - address_proof
-    - medical_prescription
-    type: string
-    x-enum-varnames:
-    - DocumentTypeRG
-    - DocumentTypeAddressProof
-    - DocumentTypeMedicalPrescription
-  ticket.Status:
-    enum:
-    - waiting_documents
-    - waiting_approval
-    - ready_for_label
-    - label_generated
-    type: string
-    x-enum-varnames:
-    - StatusWaitingDocuments
-    - StatusWaitingApproval
-    - StatusReadyForLabel
-    - StatusLabelGenerated
-  ticket.Ticket:
-    properties:
-      createdAt:
-        type: string
-      documents:
-        items:
-          $ref: '#/definitions/ticket.Document'
-        type: array
-      id:
-        type: string
-      lastRevertedBy:
-        type: string
-      lastStatusAt:
-        type: string
-      lastStatusBy:
-        type: string
-      orderId:
-        type: string
-      shippingCost:
-        type: number
-      status:
-        $ref: '#/definitions/ticket.Status'
-      trackingCode:
-        type: string
-      updatedAt:
-        type: string
-      userId:
         type: string
     type: object
   unofficial_whatsapp.GroupRole:
@@ -31257,39 +31241,6 @@ paths:
       summary: Lista de oportunidades
       tags:
       - Oportunidades
-  /orders/{orderId}/ticket:
-    get:
-      description: Retorna o ticket de envio associado a um pedido do usuário autenticado.
-      parameters:
-      - description: ID do pedido
-        in: path
-        name: orderId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/ticket.Ticket'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Obter ticket de um pedido
-      tags:
-      - Tickets
   /pipelines:
     get:
       description: Retorna os funis do workspace, opcionalmente filtrados pelo tipo
@@ -33870,103 +33821,6 @@ paths:
       summary: Guardar um arquivo exportado pelo editor
       tags:
       - Estúdio
-  /tickets:
-    get:
-      description: Retorna a lista paginada dos tickets de envio do usuário autenticado,
-        com filtros por status, busca textual e período.
-      parameters:
-      - description: Número da página (inicia em 1)
-        in: query
-        name: page
-        type: integer
-      - description: Quantidade de itens por página
-        in: query
-        name: pageSize
-        type: integer
-      - description: Filtrar por status (aceita vários separados por vírgula)
-        in: query
-        name: status
-        type: string
-      - description: Busca textual
-        in: query
-        name: search
-        type: string
-      - description: 'Ordenação (ex.: createdAt:desc, status:asc)'
-        in: query
-        name: sort
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/ticket.Ticket'
-            type: array
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Listar meus tickets
-      tags:
-      - Tickets
-  /tickets/{ticketId}/documents:
-    post:
-      consumes:
-      - multipart/form-data
-      description: Faz o upload de um documento (RG, comprovante de endereço ou receita
-        médica) para um ticket de envio do usuário autenticado.
-      parameters:
-      - description: ID do ticket
-        in: path
-        name: ticketId
-        required: true
-        type: string
-      - description: Tipo do documento (rg, address_proof, medical_prescription)
-        in: formData
-        name: documentType
-        required: true
-        type: string
-      - description: Arquivo do documento
-        in: formData
-        name: file
-        required: true
-        type: file
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/ticket.Document'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/response.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Enviar documento do ticket
-      tags:
-      - Tickets
   /unofficial-whatsapp/campaigns:
     post:
       consumes:

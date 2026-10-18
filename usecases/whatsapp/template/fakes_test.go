@@ -1,25 +1,10 @@
 package template_usecase
 
 import (
-	"context"
-
-	"vozko/domain/balance"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/whatsapp/template"
 )
-
-type sendMockWAClient struct {
-	syncTemplatesClientMock
-	sendInput  *conversation.SendTemplateMessageInput
-	sendOutput *conversation.SendTextMessageOutput
-	sendErr    error
-}
-
-func (m *sendMockWAClient) SendTemplateMessage(_ context.Context, input conversation.SendTemplateMessageInput) (*conversation.SendTextMessageOutput, error) {
-	m.sendInput = &input
-	return m.sendOutput, m.sendErr
-}
 
 type sendMockClientFactory struct {
 	client      conversation.WhatsAppClient
@@ -76,60 +61,3 @@ func (r *sendMockTemplateRepo) UpdateStatus(string, template.TemplateStatus) err
 func (r *sendMockTemplateRepo) UpdateHeaderMediaURL(string, *string) error       { return nil }
 func (r *sendMockTemplateRepo) UpdateHeaderMedia(string, *string, *string) error { return nil }
 func (r *sendMockTemplateRepo) SyncFromExternal(*template.Template) error        { return nil }
-
-type sendMockBillingUC struct {
-	executeWorkspaceID string
-	executeRefID       string
-	executeCategory    string
-	executeCalled      bool
-	executeErr         error
-
-	refundWorkspaceID string
-	refundRefID       string
-	refundCategory    string
-	refundCalled      bool
-	refundErr         error
-}
-
-func (m *sendMockBillingUC) Execute(wsID, refID, cat string) (*balance.Transaction, error) {
-	m.executeCalled = true
-	m.executeWorkspaceID = wsID
-	m.executeRefID = refID
-	m.executeCategory = cat
-	if m.executeErr != nil {
-		return nil, m.executeErr
-	}
-	return &balance.Transaction{ID: "tx-send-1", Amount: 16_667}, nil
-}
-func (m *sendMockBillingUC) Refund(wsID, refID, cat string) error {
-	m.refundCalled = true
-	m.refundWorkspaceID = wsID
-	m.refundRefID = refID
-	m.refundCategory = cat
-	return m.refundErr
-}
-func (m *sendMockBillingUC) GetTemplateCostMicros(string, string) (int64, error) { return 0, nil }
-
-func utilityTemplate() *template.Template {
-	return &template.Template{
-		ID:         "tpl-1",
-		ExternalID: "ext-1",
-		WABAId:     "waba-1",
-		Name:       "hello_world",
-		Language:   "pt_BR",
-		Category:   "UTILITY",
-		Status:     "APPROVED",
-	}
-}
-
-func authenticationTemplate() *template.Template {
-	t := utilityTemplate()
-	t.Category = "AUTHENTICATION"
-	return t
-}
-
-func marketingTemplate() *template.Template {
-	t := utilityTemplate()
-	t.Category = "MARKETING"
-	return t
-}

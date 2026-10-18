@@ -51,7 +51,6 @@ import (
 	"vozko/delivery/http/notificationhttp"
 	opportunityhttp "vozko/delivery/http/opportunity"
 	opportunityboardhttp "vozko/delivery/http/opportunityboard"
-	paymentsplithttp "vozko/delivery/http/paymentsplit"
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
 	reporthttp "vozko/delivery/http/report"
@@ -65,7 +64,6 @@ import (
 	systemconfighttp "vozko/delivery/http/systemconfig"
 	telegramhttp "vozko/delivery/http/telegram"
 	templatehealthhttp "vozko/delivery/http/templatehealthhttp"
-	tickethttp "vozko/delivery/http/ticket"
 	unofficialwahttp "vozko/delivery/http/unofficial_whatsapp"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
@@ -98,25 +96,16 @@ const enableRequestLogging = true
 
 type router struct {
 	mux                            *mux.Router
-	productHandler                 *handlers.ProductHandler
-	propertyHandler                *handlers.PropertyHandler
-	categoryHandler                *handlers.CategoryHandler
 	agentHandler                   *handlers.AgentHandler
 	aiChatHandler                  *handlers.AIChatHandler
 	authHandler                    *authhttp.AuthHandler
 	userHandler                    *userhttp.UserHandler
 	mediasHandler                  *mediashttp.MediasHandler
-	cartHandler                    *handlers.CartHandler
 	addressHandler                 *handlers.AddressHandler
-	orderHandler                   *handlers.OrderHandler
 	cepHandler                     *cephttp.CEPHandler
 	webhookHandler                 *handlers.WebhookHandler
 	mercadoPagoWebhookHandler      *mercadopagohttp.WebhookHandler
 	readMeHandler                  *readmehttp.Handler
-	paymentSplitHandler            *paymentsplithttp.PaymentSplitHandler
-	ticketHandler                  *tickethttp.TicketHandler
-	shippingHandler                *handlers.ShippingHandler
-	insuranceHandler               *handlers.InsuranceHandler
 	whatsappTemplateHandler        *whatsapptemplatehttp.WhatsAppTemplateHandler
 	whatsappBusinessPhoneHandler   *whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandler
 	wabaHandler                    *wabahttp.WABAHandler
@@ -125,7 +114,6 @@ type router struct {
 	authMiddleware                 *middleware.AuthMiddleware
 	metricsHandler                 *handlers.MetricsHandler
 	metricsQueryHandler            *handlers.MetricsQueryHandler
-	shopHandler                    *handlers.ShopHandler
 	leadHandler                    *leadhttp.LeadHandler
 	callRecordingHandler           *callrecordinghttp.CallRecordingHandler
 	balanceHandler                 *balancehttp.BalanceHandler
@@ -225,25 +213,17 @@ func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.
 	return r.workspaceMiddleware.CheckAccess(resource, action, handler)
 }
 
-func NewRouter(productHandler *handlers.ProductHandler,
-	propertyHandler *handlers.PropertyHandler,
-	categoryHandler *handlers.CategoryHandler,
+func NewRouter(
 	agentHandler *handlers.AgentHandler,
 	aiChatHandler *handlers.AIChatHandler,
 	authHandler *authhttp.AuthHandler,
 	userHandler *userhttp.UserHandler,
 	mediasHandler *mediashttp.MediasHandler,
-	cartHandler *handlers.CartHandler,
 	addressHandler *handlers.AddressHandler,
-	orderHandler *handlers.OrderHandler,
 	cepHandler *cephttp.CEPHandler,
 	webhookHandler *handlers.WebhookHandler,
 	mercadoPagoWebhookHandler *mercadopagohttp.WebhookHandler,
 	readMeHandler *readmehttp.Handler,
-	paymentSplitHandler *paymentsplithttp.PaymentSplitHandler,
-	ticketHandler *tickethttp.TicketHandler,
-	shippingHandler *handlers.ShippingHandler,
-	insuranceHandler *handlers.InsuranceHandler,
 	whatsappTemplateHandler *whatsapptemplatehttp.WhatsAppTemplateHandler,
 	whatsappBusinessPhoneHandler *whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandler,
 	wabaHandler *wabahttp.WABAHandler,
@@ -251,7 +231,6 @@ func NewRouter(productHandler *handlers.ProductHandler,
 	whatsappCampaignHandler *handlers.WhatsAppCampaignHandler,
 	metricsHandler *handlers.MetricsHandler,
 	metricsQueryHandler *handlers.MetricsQueryHandler,
-	shopHandler *handlers.ShopHandler,
 	leadHandler *leadhttp.LeadHandler,
 	callRecordingHandler *callrecordinghttp.CallRecordingHandler,
 	balanceHandler *balancehttp.BalanceHandler,
@@ -374,32 +353,22 @@ func NewRouter(productHandler *handlers.ProductHandler,
 		unofficialWhatsAppWorkspace:    unofficialWhatsAppWorkspace,
 		unofficialWhatsAppCampaigns:    unofficialWhatsAppCampaigns,
 		mux:                            mux.NewRouter(),
-		productHandler:                 productHandler,
-		propertyHandler:                propertyHandler,
-		categoryHandler:                categoryHandler,
 		agentHandler:                   agentHandler,
 		aiChatHandler:                  aiChatHandler,
 		authHandler:                    authHandler,
 		userHandler:                    userHandler,
 		mediasHandler:                  mediasHandler,
-		cartHandler:                    cartHandler,
 		addressHandler:                 addressHandler,
-		orderHandler:                   orderHandler,
 		cepHandler:                     cepHandler,
 		webhookHandler:                 webhookHandler,
 		mercadoPagoWebhookHandler:      mercadoPagoWebhookHandler,
 		readMeHandler:                  readMeHandler,
-		paymentSplitHandler:            paymentSplitHandler,
-		ticketHandler:                  ticketHandler,
-		shippingHandler:                shippingHandler,
-		insuranceHandler:               insuranceHandler,
 		whatsappTemplateHandler:        whatsappTemplateHandler,
 		whatsappBusinessPhoneHandler:   whatsappBusinessPhoneHandler,
 		wabaHandler:                    wabaHandler,
 		whatsappCampaignHandler:        whatsappCampaignHandler,
 		metricsHandler:                 metricsHandler,
 		metricsQueryHandler:            metricsQueryHandler,
-		shopHandler:                    shopHandler,
 		leadHandler:                    leadHandler,
 		callRecordingHandler:           callRecordingHandler,
 		balanceHandler:                 balanceHandler,
@@ -489,11 +458,7 @@ func (r *router) setupRoutes() {
 		EmailVerification: r.emailVerificationRateLimiter,
 	})
 	r.setupWhatsAppOnboardRoute()
-	r.setupPublicProductRoutes()
-	r.setupPublicPropertyRoutes()
-	r.setupPublicCategoryRoutes()
 	r.setupWebhookRoutes()
-	r.setupPublicInsuranceRoutes()
 	r.setupPublicWorkspacePlanRoutes()
 	r.setupCEPRoutes()
 	r.setupShortLinkPublicRoutes()
@@ -508,14 +473,7 @@ func (r *router) setupRoutes() {
 
 	r.setupUserRoutes(protected)
 	authhttp.RegisterProtectedRoutes(protected, r.authHandler)
-	r.setupCartRoutes(protected)
 	r.setupAddressRoutes(protected)
-	r.setupOrderRoutes(protected)
-	r.setupInsuranceRoutes(protected)
-	r.setupTicketRoutes(protected)
-	r.setupShopRoutes(protected)
-	r.setupShopProductRoutes(protected)
-	r.setupShopPropertyRoutes(protected)
 	r.setupUserBalanceRoutes(protected)
 	r.setupUserInvoiceRoutes(protected)
 	r.setupCallBillingRoutes(protected)
@@ -562,15 +520,11 @@ func (r *router) setupRoutes() {
 	adminRoutes.Use(r.rolesMiddleware.RequireRole(user.RoleAdmin))
 
 	r.setupAdminSystemConfigRoutes(adminRoutes)
-	r.setupAdminCategoryRoutes(adminRoutes)
 	r.setupAdminMetricsRoutes(adminRoutes)
 
 	r.setupAdminWhatsAppTemplateRoutes(adminRoutes)
 	r.setupAdminWhatsAppBusinessPhoneRoutes(adminRoutes)
 	r.setupAdminAgentRoutes(adminRoutes)
-	r.setupAdminPaymentSplitRoutes(adminRoutes)
-	r.setupAdminTicketRoutes(adminRoutes)
-	r.setupAdminShippingRoutes(adminRoutes)
 	r.setupLeadRoutes(protected)
 	r.setupAdminCallRecordingRoutes(adminRoutes)
 	r.setupAdminUserRoutes(adminRoutes)
@@ -618,7 +572,7 @@ func (r *router) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, req)
-		log.Printf("[HTTP] %s %s from=%s duration=%s", req.Method, req.URL.Path, req.RemoteAddr, time.Since(start))
+		log.Printf("[HTTP] %s %s from=%s duration=%s", req.Method, middleware.LoggedPath(req.URL.Path), req.RemoteAddr, time.Since(start))
 	})
 }
 
@@ -716,23 +670,6 @@ func (r *router) setupMetaEmbeddedSignupRoutes(protected *mux.Router) {
 	metaembeddedsignuphttp.RegisterProtectedRoutes(protected, r.metaEmbeddedSignupHandler, r.ac)
 }
 
-func (r *router) setupPublicProductRoutes() {
-	r.mux.HandleFunc("/products", r.productHandler.List).Methods(http.MethodGet)
-	r.mux.HandleFunc("/products/search", r.productHandler.Search).Methods(http.MethodGet)
-	r.mux.HandleFunc("/products/{id}", r.productHandler.Get).Methods(http.MethodGet)
-}
-
-func (r *router) setupPublicPropertyRoutes() {
-	r.mux.HandleFunc("/properties", r.propertyHandler.List).Methods(http.MethodGet)
-	r.mux.HandleFunc("/properties/search", r.propertyHandler.Search).Methods(http.MethodGet)
-	r.mux.HandleFunc("/properties/{id}", r.propertyHandler.Get).Methods(http.MethodGet)
-}
-
-func (r *router) setupPublicCategoryRoutes() {
-	r.mux.HandleFunc("/categories", r.categoryHandler.List).Methods(http.MethodGet)
-	r.mux.HandleFunc("/categories/{id}", r.categoryHandler.Get).Methods(http.MethodGet)
-}
-
 func (r *router) setupWebhookRoutes() {
 	r.mux.HandleFunc("/webhooks/asaas", r.webhookHandler.HandleAsaasWebhook).Methods(http.MethodPost)
 	mercadopagohttp.RegisterPublicRoutes(r.mux, r.mercadoPagoWebhookHandler)
@@ -752,12 +689,6 @@ func (r *router) setupWebhookRoutes() {
 	workflowwebhookhttp.RegisterPublicRoutes(r.mux, r.workflowWebhookHandler, r.workflowWebhookRateLimiter)
 }
 
-func (r *router) setupPublicInsuranceRoutes() {
-	insuranceOpenRoutes := r.mux.PathPrefix("/insurance").Subrouter()
-	insuranceOpenRoutes.HandleFunc("/policies", r.insuranceHandler.ListPolicies).Methods(http.MethodGet)
-	insuranceOpenRoutes.HandleFunc("/policies/{policyType}", r.insuranceHandler.DescribePolicy).Methods(http.MethodGet)
-}
-
 func (r *router) setupPublicWorkspacePlanRoutes() {
 	r.mux.HandleFunc("/plans", r.workspacePlanHandler.ListPublic).Methods(http.MethodGet)
 }
@@ -770,37 +701,11 @@ func (r *router) setupUserRoutes(protected *mux.Router) {
 	userhttp.RegisterProtectedRoutes(protected, r.userHandler)
 }
 
-func (r *router) setupCartRoutes(protected *mux.Router) {
-	protected.HandleFunc("/cart", r.cartHandler.GetCart).Methods(http.MethodGet)
-	protected.HandleFunc("/cart", r.cartHandler.AddToCart).Methods(http.MethodPost)
-	protected.HandleFunc("/cart/clear", r.cartHandler.ClearCart).Methods(http.MethodDelete)
-	protected.HandleFunc("/cart/items/{itemId}", r.cartHandler.UpdateCartItem).Methods(http.MethodPut)
-	protected.HandleFunc("/cart/items/{itemId}/decrement", r.cartHandler.DecrementCartItem).Methods(http.MethodPatch)
-	protected.HandleFunc("/cart/items/{itemId}", r.cartHandler.RemoveFromCart).Methods(http.MethodDelete)
-}
-
 func (r *router) setupAddressRoutes(protected *mux.Router) {
 	protected.HandleFunc("/addresses", r.addressHandler.List).Methods(http.MethodGet)
 	protected.HandleFunc("/addresses", r.addressHandler.Create).Methods(http.MethodPost)
 	protected.HandleFunc("/addresses/{id}", r.addressHandler.Update).Methods(http.MethodPut)
 	protected.HandleFunc("/addresses/{id}", r.addressHandler.Delete).Methods(http.MethodDelete)
-}
-
-func (r *router) setupOrderRoutes(protected *mux.Router) {
-	protected.HandleFunc("/orders", r.orderHandler.ListOrders).Methods(http.MethodGet)
-	protected.HandleFunc("/orders/{id}", r.orderHandler.GetOrder).Methods(http.MethodGet)
-	protected.HandleFunc("/orders/checkout", r.orderHandler.Checkout).Methods(http.MethodPost)
-}
-
-func (r *router) setupInsuranceRoutes(protected *mux.Router) {
-	insuranceRoutes := protected.PathPrefix("/insurance").Subrouter()
-	insuranceRoutes.HandleFunc("/quotations", r.insuranceHandler.ListQuotations).Methods(http.MethodGet)
-	insuranceRoutes.HandleFunc("/quotations/{quotationId}", r.insuranceHandler.GetQuotation).Methods(http.MethodGet)
-	insuranceRoutes.HandleFunc("/quotations", r.insuranceHandler.Quote).Methods(http.MethodPost)
-}
-
-func (r *router) setupTicketRoutes(protected *mux.Router) {
-	tickethttp.RegisterProtectedRoutes(protected, r.ticketHandler)
 }
 
 func (r *router) setupAdminWorkspacesConfigRoutes(adminRoutes *mux.Router) {
@@ -832,12 +737,6 @@ func (r *router) setupAdminSystemConfigRoutes(adminRoutes *mux.Router) {
 	systemconfighttp.RegisterAdminRoutes(adminRoutes, r.systemConfigHandler)
 }
 
-func (r *router) setupAdminCategoryRoutes(adminRoutes *mux.Router) {
-	adminRoutes.HandleFunc("/categories", r.categoryHandler.Create).Methods(http.MethodPost)
-	adminRoutes.HandleFunc("/categories/{id}", r.categoryHandler.Update).Methods(http.MethodPut)
-	adminRoutes.HandleFunc("/categories/{id}", r.categoryHandler.Delete).Methods(http.MethodDelete)
-}
-
 func (r *router) setupAdminWhatsAppTemplateRoutes(adminRoutes *mux.Router) {
 	whatsapptemplatehttp.RegisterAdminRoutes(adminRoutes, r.whatsappTemplateHandler)
 }
@@ -864,21 +763,6 @@ func (r *router) setupAdminAgentRoutes(adminRoutes *mux.Router) {
 	adminRoutes.HandleFunc("/agents/{id}", r.agentHandler.Delete).Methods(http.MethodDelete)
 }
 
-func (r *router) setupAdminPaymentSplitRoutes(adminRoutes *mux.Router) {
-	paymentsplithttp.RegisterAdminRoutes(adminRoutes, r.paymentSplitHandler)
-}
-
-func (r *router) setupAdminTicketRoutes(adminRoutes *mux.Router) {
-	tickethttp.RegisterAdminRoutes(adminRoutes, r.ticketHandler)
-}
-
-func (r *router) setupAdminShippingRoutes(adminRoutes *mux.Router) {
-	adminRoutes.HandleFunc("/shipping/providers/{provider}", r.shippingHandler.ListProviderAccounts).Methods(http.MethodGet)
-	adminRoutes.HandleFunc("/shipping/providers/{provider}/authorization-url", r.shippingHandler.GetAuthorizationURL).Methods(http.MethodPost)
-	adminRoutes.HandleFunc("/shipping/providers/{provider}/connect", r.shippingHandler.ConnectProviderAccount).Methods(http.MethodPost)
-	adminRoutes.HandleFunc("/shipping/providers/{provider}/{accountId}/reconnect", r.shippingHandler.ReconnectProviderAccount).Methods(http.MethodPost)
-}
-
 func (r *router) setupLeadRoutes(protected *mux.Router) {
 	leadhttp.RegisterGeographyRoutes(protected, r.leadGeographyHandler, r.ac)
 	leadhttp.RegisterCompanyRoutes(protected, r.leadCompanyHandler, r.ac)
@@ -900,26 +784,6 @@ func (r *router) setupMediaRoutes() {
 	mediasRoutes.Use(r.authMiddleware.Authenticate)
 	mediasRoutes.Use(r.workspaceMiddleware.ResolveWorkspace())
 	mediashttp.RegisterRoutes(mediasRoutes, r.mediasHandler, r.ac, r.mediaUploadRateLimiter)
-}
-
-func (r *router) setupShopProductRoutes(protected *mux.Router) {
-	protected.HandleFunc("/products", r.productHandler.Create).Methods(http.MethodPost)
-	protected.HandleFunc("/products/{id}", r.productHandler.Update).Methods(http.MethodPut)
-	protected.HandleFunc("/products/{id}/variants/{variantId}/stock", r.productHandler.LaunchVariantStock).Methods(http.MethodPost)
-}
-
-func (r *router) setupShopPropertyRoutes(protected *mux.Router) {
-	protected.HandleFunc("/properties", r.propertyHandler.Create).Methods(http.MethodPost)
-	protected.HandleFunc("/properties/{id}", r.propertyHandler.Update).Methods(http.MethodPut)
-	protected.HandleFunc("/properties/{id}", r.propertyHandler.Delete).Methods(http.MethodDelete)
-}
-
-func (r *router) setupShopRoutes(protected *mux.Router) {
-	protected.HandleFunc("/shops", r.shopHandler.List).Methods(http.MethodGet)
-	protected.HandleFunc("/shops", r.shopHandler.Create).Methods(http.MethodPost)
-	protected.HandleFunc("/shops/me", r.shopHandler.GetMyShops).Methods(http.MethodGet)
-	protected.HandleFunc("/shops/{id}", r.shopHandler.Get).Methods(http.MethodGet)
-	protected.HandleFunc("/shops/{id}", r.shopHandler.Update).Methods(http.MethodPut)
 }
 
 func (r *router) setupUserBalanceRoutes(protected *mux.Router) {

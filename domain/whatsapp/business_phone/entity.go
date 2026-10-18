@@ -163,17 +163,6 @@ func (v BusinessVertical) IsValid() bool {
 	}
 }
 
-func ValidVerticals() []BusinessVertical {
-	return []BusinessVertical{
-		VerticalAlcohol, VerticalApparel, VerticalAuto, VerticalBeauty,
-		VerticalEducation, VerticalEntertainment, VerticalEventPlanning,
-		VerticalFinance, VerticalGovernment, VerticalGrocery, VerticalHealth,
-		VerticalHotel, VerticalMatrimony, VerticalNonprofit, VerticalOnlineGambling,
-		VerticalOTCDrugs, VerticalOther, VerticalPhysicalGambling,
-		VerticalProfServices, VerticalRestaurant, VerticalRetail, VerticalTravel,
-	}
-}
-
 type WhatsAppBusinessPhoneNumber struct {
 	ID                         string          `json:"id"`
 	Provider                   Provider        `json:"provider,omitempty"`
@@ -214,28 +203,6 @@ type BusinessProfile struct {
 	ProfilePictureHandle string           `json:"profilePictureHandle,omitempty"`
 	Websites             []string         `json:"websites,omitempty"`
 	Vertical             BusinessVertical `json:"vertical,omitempty"`
-}
-
-func NewWhatsAppBusinessPhoneNumber(displayPhoneNumber, metaPhoneNumberID, wabaID string) (*WhatsAppBusinessPhoneNumber, error) {
-	displayPhoneNumber = strings.TrimSpace(displayPhoneNumber)
-	if displayPhoneNumber == "" {
-		return nil, ErrPhoneNumberRequired
-	}
-
-	metaPhoneNumberID = strings.TrimSpace(metaPhoneNumberID)
-	if metaPhoneNumberID == "" {
-		return nil, ErrMetaPhoneNumberIDRequired
-	}
-
-	return &WhatsAppBusinessPhoneNumber{
-		Provider:           ProviderMeta,
-		MetaPhoneNumberID:  metaPhoneNumberID,
-		WABAId:             strings.TrimSpace(wabaID),
-		DisplayPhoneNumber: displayPhoneNumber,
-		Status:             StatusPending,
-		QualityRating:      QualityRatingUnknown,
-		NameStatus:         NameStatusNone,
-	}, nil
 }
 
 func (p *WhatsAppBusinessPhoneNumber) CanBeUpdated() bool {

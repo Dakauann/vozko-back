@@ -12,8 +12,8 @@ import (
 
 	"vozko/domain/shared"
 	uwg "vozko/domain/unofficial_whatsapp_group"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 const maxRunsRead = 500
@@ -161,7 +161,7 @@ func (r *runRepository) Themes(ctx context.Context, f uwg.ThemeFilter) (*shared.
 	search := ""
 	if s := strings.TrimSpace(f.Search); s != "" {
 		search = ` AND t.key LIKE ? ESCAPE '\'`
-		args = append(args, database.LikeContains(strings.ToLower(s)))
+		args = append(args, sqlexpr.LikeContains(strings.ToLower(s)))
 	}
 	themes := `WITH themes AS (
 		SELECT t.key, t.label, r.group_id, wg.subject, r.completed_at

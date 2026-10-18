@@ -95,7 +95,4 @@ func TestOnlyObjectsThatCarryABudgetCanChangeIt(t *testing.T) {
 			t.Fatalf("%+v: %v", o, err)
 		}
 	}
-	if err := ValidateDailyBudget(0); !errors.Is(err, ErrInvalidBudget) {
-		t.Fatal("zero budget accepted")
-	}
 }

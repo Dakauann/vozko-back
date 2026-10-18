@@ -50,7 +50,7 @@ func (s *scriptedReserver) Reserve(ws string, delta, budget int64) (bool, error)
 type guardedRun struct {
 	call      *fakeCRMCall
 	admission *fakeAdmission
-	pub       *fakeBillingPub
+
 	reason    chan string
 	done      chan struct{}
 	answeredC chan struct{}

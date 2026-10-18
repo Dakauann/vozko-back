@@ -13,7 +13,7 @@ import (
 
 	"vozko/domain/geo"
 	"vozko/domain/georef"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 const (
@@ -146,7 +146,7 @@ func scoped(q georef.PlaceQuery, city, state string) (string, []interface{}) {
 
 func (p *Places) Cities(ctx context.Context, q georef.PlaceQuery, limit int) ([]georef.Place, error) {
 	scope, scopeArgs := scoped(q, "", cityStateScope)
-	args := append(append([]interface{}{database.LikePrefix(q.Key)}, scopeArgs...), q.Key, limit)
+	args := append(append([]interface{}{sqlexpr.LikePrefix(q.Key)}, scopeArgs...), q.Key, limit)
 	var rows []struct {
 		CityCode     string
 		Name         string
@@ -172,7 +172,7 @@ func (p *Places) Cities(ctx context.Context, q georef.PlaceQuery, limit int) ([]
 
 func (p *Places) Districts(ctx context.Context, q georef.PlaceQuery, limit int) ([]georef.Place, error) {
 	scope, scopeArgs := scoped(q, districtCityScope, districtStateScope)
-	args := append(append([]interface{}{georef.SourceCNEFE, database.LikePrefix(q.Key)}, scopeArgs...), q.Key, limit)
+	args := append(append([]interface{}{georef.SourceCNEFE, sqlexpr.LikePrefix(q.Key)}, scopeArgs...), q.Key, limit)
 	var rows []struct {
 		CityCode     string
 		DistrictKey  string
@@ -200,7 +200,7 @@ func (p *Places) Districts(ctx context.Context, q georef.PlaceQuery, limit int) 
 
 func (p *Places) Streets(ctx context.Context, q georef.PlaceQuery, limit int) ([]georef.Place, error) {
 	scope, scopeArgs := scoped(q, streetCityScope, streetStateScope)
-	args := append(append([]interface{}{q.StreetKey, database.LikePrefix(q.StreetKey)}, scopeArgs...), limit)
+	args := append(append([]interface{}{q.StreetKey, sqlexpr.LikePrefix(q.StreetKey)}, scopeArgs...), limit)
 	var rows []struct {
 		ZipCode           string
 		StreetKey         string
@@ -250,7 +250,7 @@ func (p *Places) Streets(ctx context.Context, q georef.PlaceQuery, limit int) ([
 
 func (p *Places) CEPs(ctx context.Context, q georef.PlaceQuery, limit int) ([]georef.Place, error) {
 	scope, scopeArgs := scoped(q, cepCityScope, cepStateScope)
-	args := append(append([]interface{}{database.LikePrefix(q.ZipPrefix)}, scopeArgs...), q.ZipPrefix, limit)
+	args := append(append([]interface{}{sqlexpr.LikePrefix(q.ZipPrefix)}, scopeArgs...), q.ZipPrefix, limit)
 	var rows []struct {
 		ZipCode      string
 		Latitude     float64

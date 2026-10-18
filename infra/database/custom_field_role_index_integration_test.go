@@ -13,15 +13,9 @@ import (
 
 func buildConcurrentIndex(t *testing.T, db *gorm.DB, name string) {
 	t.Helper()
-	for _, idx := range concurrentIndexes() {
-		if idx.name == name {
-			if err := createIndexConcurrently(db, idx); err != nil {
-				t.Fatalf("%s: %v", name, err)
-			}
-			return
-		}
+	if err := createIndexConcurrently(db, declaredConcurrentIndex(t, name)); err != nil {
+		t.Fatalf("%s: %v", name, err)
 	}
-	t.Fatalf("%s is not built", name)
 }
 
 func insertRoleDefinition(db *gorm.DB, workspaceID, objectType, key string, role any) (string, error) {

@@ -116,20 +116,3 @@ func NewBalance(id, workspaceID string, initialAmount int64, currency string) *B
 		UpdatedAt:   now,
 	}
 }
-
-func NewTransaction(id, balanceID, workspaceID string, txType TransactionType, amount int64, resourceType ResourceType, balanceBefore, balanceAfter int64, serviceType ServiceType, referenceID *string, description string) *Transaction {
-	return &Transaction{
-		ID:            id,
-		BalanceID:     balanceID,
-		WorkspaceID:   workspaceID,
-		Type:          txType,
-		Amount:        amount,
-		ResourceType:  resourceType,
-		BalanceBefore: balanceBefore,
-		BalanceAfter:  balanceAfter,
-		ServiceType:   serviceType,
-		ReferenceID:   referenceID,
-		Description:   description,
-		CreatedAt:     time.Now(),
-	}
-}

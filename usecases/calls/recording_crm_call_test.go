@@ -78,8 +78,6 @@ func (noopPub) PublishWithDelay(topic string, message []byte, delay time.Duratio
 }
 func (noopPub) ValidateConnection() error { return nil }
 
-func silentFrame() []byte { return make([]byte, 320) }
-
 func toneFrame(v int16) []byte {
 	b := make([]byte, 320)
 	for i := 0; i < len(b); i += 2 {

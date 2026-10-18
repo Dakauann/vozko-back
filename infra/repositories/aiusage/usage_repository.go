@@ -5,8 +5,8 @@ import (
 	"gorm.io/gorm/clause"
 
 	"vozko/domain/aiusage"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 type UsageRepository struct {
@@ -56,7 +56,7 @@ type usageTotalsRow struct {
 
 func (r *UsageRepository) TotalsUnder(workspaceID, referencePrefix string) (aiusage.Totals, error) {
 	var row usageTotalsRow
-	if err := r.db.Raw(usageTotalsSQL, workspaceID, database.LikePrefix(referencePrefix)).Scan(&row).Error; err != nil {
+	if err := r.db.Raw(usageTotalsSQL, workspaceID, sqlexpr.LikePrefix(referencePrefix)).Scan(&row).Error; err != nil {
 		return aiusage.Totals{}, err
 	}
 	return aiusage.Totals{

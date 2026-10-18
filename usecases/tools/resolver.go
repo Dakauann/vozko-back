@@ -124,14 +124,6 @@ func ResolveTools(
 	}
 }
 
-func ResolveToolsForVisibility(
-	registry tools.Service,
-	bindings []agent.ToolBinding,
-	visibility agent.ToolVisibility,
-) ResolvedToolSet {
-	return ResolveToolsWithOptions(registry, bindings, visibility, ToolResolverOptions{})
-}
-
 func ResolveToolsWithOptions(
 	registry tools.Service,
 	bindings []agent.ToolBinding,
@@ -145,25 +137,6 @@ func ResolveToolsWithOptions(
 		ctx := agentctx.WithAgent(context.Background(), opts.Agent)
 		mcpDefs := composite.MCPDefinitionsForAgent(ctx)
 		result.Definitions = append(result.Definitions, mcpDefs...)
-	}
-	return result
-}
-
-func PatchDefinitionsForWorkspace(defs []tools.Definition, workspaceID string, registry tools.Service) []tools.Definition {
-	if workspaceID == "" || registry == nil || len(defs) == 0 {
-		return defs
-	}
-	ctx := tools.ToolContext{WorkspaceID: workspaceID}
-	result := make([]tools.Definition, len(defs))
-	copy(result, defs)
-	for i, def := range result {
-		h, ok := registry.Handler(strings.ToLower(strings.TrimSpace(def.Name)))
-		if !ok {
-			continue
-		}
-		if ch, ok := h.(tools.ContextualHandler); ok {
-			result[i] = ch.DefinitionWithContext(ctx)
-		}
 	}
 	return result
 }

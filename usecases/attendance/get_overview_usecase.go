@@ -31,10 +31,6 @@ type OverviewService interface {
 	attendance.OverviewSectionsUseCase
 }
 
-func NewGetOverviewUseCase(repo attendance.Repository) OverviewService {
-	return &getOverviewUseCase{repo: repo, now: nowUTC}
-}
-
 func NewGetOverviewUseCaseWithDeps(
 	repo attendance.Repository,
 	queue queue_event.Repository,

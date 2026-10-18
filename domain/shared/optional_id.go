@@ -12,7 +12,3 @@ func OptionalID(value *string) *string {
 	}
 	return &trimmed
 }
-
-func OptionalIDOf(value string) *string {
-	return OptionalID(&value)
-}

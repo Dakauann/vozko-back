@@ -185,7 +185,7 @@ func emitFixture(subs *fakeSubs, plans *fakePlans, addons *fakeAddons, wss *fake
 }
 
 func emitWith(subs *fakeSubs, plans *fakePlans, addons *fakeAddons, wss *fakeWorkspaces, pricing *fakePricing, inv *fakeCreateInvoice) *emitMonthlyInvoicesUseCase {
-	uc := NewEmitMonthlyInvoicesUseCase(subs, plans, addons, wss, pricing, inv)
+	uc := NewEmitMonthlyInvoicesUseCase(subs, plans, addons, wss, pricing, inv, &recordingNotices{})
 	uc.now = func() time.Time { return time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC) }
 	return uc
 }

@@ -193,24 +193,6 @@ func (e *mockEligible) GetEligibleUsersForWorkspaceDepartment(wsID, deptID strin
 	return append([]string(nil), e.departmentUsers[key]...)
 }
 
-type dynamicEligible struct {
-	callNum int
-	pools   [][]string
-}
-
-func (d *dynamicEligible) GetEligibleUsersForWorkspace(string, bool) []string {
-	idx := d.callNum
-	if idx >= len(d.pools) {
-		idx = len(d.pools) - 1
-	}
-	d.callNum++
-	return append([]string(nil), d.pools[idx]...)
-}
-
-func (d *dynamicEligible) GetEligibleUsersForWorkspaceDepartment(string, string, bool) []string {
-	return d.GetEligibleUsersForWorkspace("", false)
-}
-
 type mockResolver struct {
 	workspaceID   string
 	workspaceErr  error

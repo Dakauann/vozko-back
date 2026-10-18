@@ -13,11 +13,12 @@ import (
 	"vozko/domain/leadaction"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 const (
 	claimableRunSQL = "((status = 'queued' AND (not_before IS NULL OR not_before <= ?))" +
-		" OR (status = 'running' AND " + database.LeaseFreeSQL + "))"
+		" OR (status = 'running' AND " + sqlexpr.LeaseFree + "))"
 
 	claimSQL = "UPDATE lead_action_runs SET status = 'running', claim_token = ?, heartbeat_at = ?, not_before = NULL, attempts = attempts + 1," +
 		" started_at = COALESCE(started_at, ?), updated_at = ?" +
@@ -27,7 +28,7 @@ const (
 
 	failStalledSQL = "WITH stalled AS (UPDATE lead_action_runs SET status = 'failed', failure_code = 'stalled', claim_token = NULL, finished_at = ?, updated_at = ?" +
 		" WHERE attempts >= ? AND ((status = 'queued' AND (not_before IS NULL OR not_before <= ?))" +
-		" OR (status = 'running' AND (heartbeat_at IS NULL OR heartbeat_at < ?))) RETURNING action)" +
+		" OR (status = 'running' AND " + sqlexpr.LeaseExpired + ")) RETURNING action)" +
 		" SELECT action, count(*) AS runs FROM stalled GROUP BY action"
 
 	saveSQL = "UPDATE lead_action_runs SET status = ?, phase = ?, cursor = ?, result = ?::jsonb, failure_code = ?, attempts = ?, claim_token = ?," +

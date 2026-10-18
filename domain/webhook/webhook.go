@@ -29,14 +29,6 @@ const (
 	TopicUnofficialWhatsAppInstance = "webhook.unofficialwhatsapp.instance"
 )
 
-func UnofficialWhatsAppTopics() []string {
-	return []string{
-		TopicUnofficialWhatsAppMessage,
-		TopicUnofficialWhatsAppHistory,
-		TopicUnofficialWhatsAppInstance,
-	}
-}
-
 func TopicForUnofficialWhatsAppEvent(event string) string {
 	switch event {
 	case "messages", "messages_update":
@@ -48,10 +40,6 @@ func TopicForUnofficialWhatsAppEvent(event string) string {
 	}
 }
 
-func TelegramTopics() []string {
-	return []string{TopicTelegramMessage, TopicTelegramAccount}
-}
-
 func TopicForFacebookField(field string) string {
 	switch field {
 	case "feed", "mention", "videos":
@@ -61,11 +49,6 @@ func TopicForFacebookField(field string) string {
 	default:
 		return TopicFacebookPage
 	}
-}
-
-func InstagramTopics() []string {
-
-	return []string{TopicInstagramMessage, TopicInstagramComment, TopicInstagramAccount}
 }
 
 func TopicForInstagramField(field string) string {

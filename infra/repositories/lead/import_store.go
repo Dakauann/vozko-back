@@ -16,6 +16,7 @@ import (
 	"vozko/domain/leadimport"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 const (
@@ -32,13 +33,13 @@ const (
 
 	importClaimSQL = "UPDATE lead_imports SET claim_token = ?, heartbeat_at = ?, attempts = attempts + 1, updated_at = ?" +
 		" WHERE id = ? AND status IN " + activeImportStatusesSQL + " AND attempts < ?" +
-		" AND " + database.LeaseFreeSQL + " RETURNING *"
+		" AND " + sqlexpr.LeaseFree + " RETURNING *"
 
 	importClaimableSQL = "SELECT id::text AS id, workspace_id::text AS workspace_id FROM lead_imports WHERE status IN " + activeImportStatusesSQL + " AND attempts < ?" +
-		" AND " + database.LeaseFreeSQL + " ORDER BY created_at LIMIT ?"
+		" AND " + sqlexpr.LeaseFree + " ORDER BY created_at LIMIT ?"
 
 	importFailStalledSQL = "WITH stalled AS (SELECT id, status FROM lead_imports WHERE status IN " + activeImportStatusesSQL +
-		" AND attempts >= ? AND (heartbeat_at IS NULL OR heartbeat_at < ?) FOR UPDATE)" +
+		" AND attempts >= ? AND " + sqlexpr.LeaseExpired + " FOR UPDATE)" +
 		" UPDATE lead_imports SET status = 'failed', failure_code = 'stalled', claim_token = NULL, finished_at = ?, updated_at = ?" +
 		" FROM stalled WHERE lead_imports.id = stalled.id" +
 		" RETURNING lead_imports.id::text AS id, lead_imports.workspace_id::text AS workspace_id, stalled.status AS status"

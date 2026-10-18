@@ -84,6 +84,13 @@ func newHarnessWith(t *testing.T, mutate func(*wcdomain.Widget), automation Auto
 	return h
 }
 
+func automationOr(override Automation, fallback *fakeAutomation) Automation {
+	if override != nil {
+		return override
+	}
+	return fallback
+}
+
 func (h *harness) solvedChallenge(t *testing.T) (string, string) {
 	t.Helper()
 	c, err := h.svc.Challenge(context.Background(), h.widget.PublicKey, siteOrigin)

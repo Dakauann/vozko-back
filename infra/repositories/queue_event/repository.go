@@ -134,28 +134,4 @@ func (r *repository) StatsWithSL(workspaceID string, from, to *time.Time, slSeco
 }
 
 type Sink struct {
-	repo qe.Repository
-}
-
-func NewSink(repo qe.Repository) *Sink {
-	return &Sink{repo: repo}
-}
-
-func (s *Sink) Persist(workspaceID, transferID, callID, targetKind, targetID, typ string, position int, waitedMS int64, at time.Time) {
-	if s == nil || s.repo == nil || workspaceID == "" {
-		return
-	}
-	go func() {
-		_ = s.repo.Create(&qe.Event{
-			WorkspaceID: workspaceID,
-			TransferID:  transferID,
-			CallID:      callID,
-			TargetKind:  targetKind,
-			TargetID:    targetID,
-			Type:        typ,
-			Position:    position,
-			WaitedMS:    waitedMS,
-			OccurredAt:  at,
-		})
-	}()
 }

@@ -583,12 +583,6 @@ func (f *fakeGroupAPI) GroupInfo(ctx context.Context, ref uw.InstanceRef, jid st
 	return g, nil
 }
 
-func (f *fakeGroupAPI) infoCallCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.infoCalls)
-}
-
 func (f *fakeGroupAPI) ListGroups(context.Context, uw.InstanceRef, bool) ([]*uw.Group, error) {
 	return nil, nil
 }

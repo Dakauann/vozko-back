@@ -17,10 +17,6 @@ type getOverviewUseCase struct {
 	live     callsession.CallSessionRegistry
 }
 
-func NewGetOverviewUseCase(repo telephony.Repository) telephony.GetOverviewUseCase {
-	return &getOverviewUseCase{repo: repo}
-}
-
 func NewGetOverviewUseCaseWithDeps(
 	repo telephony.Repository,
 	queue queue_event.Repository,

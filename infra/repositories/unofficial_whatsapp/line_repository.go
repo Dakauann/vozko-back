@@ -46,6 +46,16 @@ func (r *lineRepository) ListSameNumber(ctx context.Context, instance *uw.Instan
 	return out, nil
 }
 
+const conversationTakenOnTargetSQL = `EXISTS (
+			SELECT 1 FROM unofficial_whatsapp_conversations b
+			 WHERE b.instance_id = @to AND b.deleted_at IS NULL
+			   AND b.campaign_id = %[1]s.campaign_id
+			   AND (b.contact_id = %[2]s OR (%[1]s.chat_id <> '' AND b.chat_id = %[1]s.chat_id)))`
+
+func conversationTakenOnTarget(conversation, contactID string) string {
+	return fmt.Sprintf(conversationTakenOnTargetSQL, conversation, contactID)
+}
+
 type rowMove struct {
 	table    string
 	eligible string
@@ -64,11 +74,7 @@ var (
 		eligible: `EXISTS (
 			SELECT 1 FROM unofficial_whatsapp_contacts k
 			 WHERE k.id = a.contact_id AND k.instance_id = @to)
-		AND NOT EXISTS (
-			SELECT 1 FROM unofficial_whatsapp_conversations b
-			 WHERE b.instance_id = @to AND b.deleted_at IS NULL
-			   AND b.campaign_id = a.campaign_id
-			   AND (b.contact_id = a.contact_id OR (a.chat_id <> '' AND b.chat_id = a.chat_id)))`,
+		AND NOT ` + conversationTakenOnTarget("a", "a.contact_id"),
 	}
 	groupMove = rowMove{
 		table: "unofficial_whatsapp_groups",
@@ -130,7 +136,8 @@ func (r *lineRepository) repointToTwins(ctx context.Context, from, to string) (i
 	conversations := r.db.WithContext(ctx).Exec(`
 		UPDATE unofficial_whatsapp_conversations c
 		   SET contact_id = twin.id, updated_at = NOW()`+twinContactSQL+`
-		   AND c.contact_id = a.id AND c.deleted_at IS NULL`, args)
+		   AND c.contact_id = a.id AND c.deleted_at IS NULL
+		   AND NOT `+conversationTakenOnTarget("c", "twin.id"), args)
 	if conversations.Error != nil {
 		if database.IsUniqueViolation(conversations.Error) {
 			log.Printf("[unofficial-whatsapp][line] %s -> %s: two old contacts resolve to one new contact in the same campaign; "+

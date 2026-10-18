@@ -88,19 +88,6 @@ func TestDescriptorDocumentsAcceptAnyType(t *testing.T) {
 	}
 }
 
-func TestDescriptorRegisters(t *testing.T) {
-	registry, err := channel.NewRegistry(Descriptor())
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	if _, err := registry.Get(channel.KindUnofficialWhatsApp); err != nil {
-		t.Errorf("Get by kind: %v", err)
-	}
-	if _, err := registry.ByEntryType(shared.EntryTypeUnofficialWhatsApp); err != nil {
-		t.Errorf("ByEntryType: %v", err)
-	}
-}
-
 func TestDescriptorInboxSQLIsWellFormed(t *testing.T) {
 	inbox := Descriptor().InboxSQL
 

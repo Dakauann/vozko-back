@@ -32,7 +32,6 @@ func (s *stubPlacements) EntryPlacements(entryIDs []string) (map[string]conversa
 }
 
 type batchAssignments struct {
-	stubAssignments
 	byEntry map[string]*inbox_assignment.InboxAssignment
 	batches int
 	singles int

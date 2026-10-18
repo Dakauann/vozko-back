@@ -63,10 +63,6 @@ func NewHandler(d HandlerDeps) *Handler {
 	}
 }
 
-func (h *Handler) scopeFor(r *http.Request) (uw.DepartmentScope, bool) {
-	return requestScope(h.departments, r)
-}
-
 func requestScope(departments DepartmentScopeResolver, r *http.Request) (uw.DepartmentScope, bool) {
 	claims := middleware.GetClaims(r)
 	if claims == nil || departments == nil {

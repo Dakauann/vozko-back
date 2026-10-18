@@ -11,8 +11,8 @@ import (
 	"gorm.io/gorm/clause"
 
 	"vozko/domain/advertising"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 const objectBatchSize = 200
@@ -145,7 +145,7 @@ func (r *objectRepository) List(ctx context.Context, q advertising.ObjectQuery) 
 		query = query.Where("effective_status IN ?", statuses)
 	}
 	if search := strings.TrimSpace(q.Search); search != "" {
-		query = query.Where(`name ILIKE ? ESCAPE '\'`, "%"+database.EscapeLike(search)+"%")
+		query = query.Where(`name ILIKE ? ESCAPE '\'`, sqlexpr.LikeContains(search))
 	}
 	if !q.IncludeRemoved {
 		query = query.Where("removed = ?", false)
@@ -164,7 +164,6 @@ func (r *objectRepository) List(ctx context.Context, q advertising.ObjectQuery) 
 	}
 	return out, nil
 }
-
 
 func toObjectRecord(o *advertising.Object) (*schema.AdObject, error) {
 	creative, err := encodeJSON(o.Creative)

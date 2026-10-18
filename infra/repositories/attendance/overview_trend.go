@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/attendance"
+	"vozko/infra/database/sqlexpr"
 )
 
 func (r *repository) GetTrend(
@@ -240,7 +241,7 @@ func trendEngagedPredicate(src channelSource) string {
 				WHERE cm.entry_id = ` + src.EntryAlias + `.id
 				  AND cm.entry_type = '` + string(src.EntryType) + `'
 				  AND cm.deleted_at IS NULL
-				  AND ` + realMessageSQL("cm") + `
+				  AND ` + sqlexpr.RealMessage("cm") + `
 			))`
 }
 

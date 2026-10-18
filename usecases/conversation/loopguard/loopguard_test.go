@@ -33,12 +33,6 @@ func (f *fakeSharedState) IncrWithTTL(key string, _ time.Duration) (int64, error
 	return f.counts[key], nil
 }
 
-func (f *fakeSharedState) reset(key string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	delete(f.counts, key)
-}
-
 func (f *fakeSharedState) SetNX(string, string, time.Duration) (bool, error) {
 	panic("loopguard test: unexpected SetNX call")
 }

@@ -11,8 +11,8 @@ import (
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwg "vozko/domain/unofficial_whatsapp_group"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 type memberRepository struct{ db *gorm.DB }
@@ -249,9 +249,9 @@ func membersToDomain(rows []schema.UnofficialWhatsAppGroupMember) []uwg.Member {
 }
 
 func memberSearchSQL(search string) (string, []any) {
-	like := database.LikeContains(search)
+	like := sqlexpr.LikeContains(search)
 	if digits := uw.NormalizePhone(search); digits != "" {
-		return `(m.display_name ILIKE ? ESCAPE '\' OR m.phone LIKE ? ESCAPE '\')`, []any{like, database.LikeContains(digits)}
+		return `(m.display_name ILIKE ? ESCAPE '\' OR m.phone LIKE ? ESCAPE '\')`, []any{like, sqlexpr.LikeContains(digits)}
 	}
 	return `m.display_name ILIKE ? ESCAPE '\'`, []any{like}
 }

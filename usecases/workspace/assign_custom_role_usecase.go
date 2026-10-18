@@ -1,8 +1,6 @@
 package workspace_usecase
 
 import (
-	"github.com/google/uuid"
-
 	"vozko/domain/workspace"
 )
 
@@ -49,16 +47,7 @@ func (uc *assignCustomRoleUseCase) Execute(actorID, workspaceID, memberUserID, c
 		return nil, err
 	}
 
-	perms := make([]*workspace.Permission, len(role.Permissions))
-	for i, pe := range role.Permissions {
-		perms[i] = &workspace.Permission{
-			ID:       uuid.New().String(),
-			MemberID: target.ID,
-			Resource: pe.Resource,
-			Action:   pe.Action,
-		}
-	}
-	if err := uc.repo.SetPermissions(target.ID, perms); err != nil {
+	if err := uc.repo.SetPermissions(target.ID, memberGrants(target.ID, role.Permissions)); err != nil {
 		return nil, err
 	}
 

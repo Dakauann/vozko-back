@@ -14,8 +14,8 @@ import (
 	"vozko/domain/cache"
 	"vozko/domain/geocoding"
 	"vozko/domain/lead"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 var (
@@ -32,14 +32,14 @@ const (
 
 var (
 	geocodeClaimSQL = "WITH RECURSIVE queued(workspace_id) AS (" +
-		"(SELECT a.workspace_id FROM lead_addresses a WHERE " + database.GeocodeQueuedSQL("a") + " ORDER BY a.workspace_id LIMIT 1)" +
+		"(SELECT a.workspace_id FROM lead_addresses a WHERE " + sqlexpr.GeocodeQueued("a") + " ORDER BY a.workspace_id LIMIT 1)" +
 		" UNION ALL" +
-		" SELECT (SELECT a.workspace_id FROM lead_addresses a WHERE " + database.GeocodeQueuedSQL("a") +
+		" SELECT (SELECT a.workspace_id FROM lead_addresses a WHERE " + sqlexpr.GeocodeQueued("a") +
 		" AND a.workspace_id > queued.workspace_id ORDER BY a.workspace_id LIMIT 1)" +
 		" FROM queued WHERE queued.workspace_id IS NOT NULL)," +
 		" picked AS (SELECT due.id FROM (SELECT workspace_id, workspace_id <= ?::uuid AS wrapped FROM queued" +
 		" WHERE workspace_id IS NOT NULL ORDER BY 2, 1) turns CROSS JOIN LATERAL (" +
-		"SELECT a.id FROM lead_addresses a WHERE a.workspace_id = turns.workspace_id AND " + database.GeocodeQueuedSQL("a") +
+		"SELECT a.id FROM lead_addresses a WHERE a.workspace_id = turns.workspace_id AND " + sqlexpr.GeocodeQueued("a") +
 		" AND a.geo_next_at <= ? AND EXISTS (SELECT 1 FROM leads l WHERE l.id = a.lead_id AND l.deleted_at IS NULL)" +
 		" ORDER BY a.geo_next_at, a.id LIMIT ? FOR UPDATE OF a SKIP LOCKED) due" +
 		" ORDER BY turns.wrapped, turns.workspace_id LIMIT ?)" +
@@ -62,9 +62,9 @@ var (
 
 	geocodeReleaseSQL = "UPDATE lead_addresses SET geo_claim = NULL WHERE geo_claim = ?::uuid AND id = ANY(?::uuid[])"
 
-	geocodeArmSQL = "UPDATE lead_addresses SET geo_next_at = ? WHERE " + database.GeocodeQueuedSQL("") + " AND geo_next_at IS NULL"
+	geocodeArmSQL = "UPDATE lead_addresses SET geo_next_at = ? WHERE " + sqlexpr.GeocodeQueued("") + " AND geo_next_at IS NULL"
 
-	geocodeBacklogSQL = "SELECT geo_status AS status, COUNT(*) AS n FROM lead_addresses WHERE " + database.GeocodeQueuedSQL("") +
+	geocodeBacklogSQL = "SELECT geo_status AS status, COUNT(*) AS n FROM lead_addresses WHERE " + sqlexpr.GeocodeQueued("") +
 		" GROUP BY geo_status"
 
 	geocodeWakeSQL = "WITH batch AS (SELECT a.id FROM lead_addresses a WHERE a.id > ?::uuid AND a.geo_status = ? AND a.geo_next_at > ?" +

@@ -101,7 +101,7 @@ func (uc *StartConversationUseCase) Execute(
 	if err != nil {
 		return nil, fmt.Errorf("unofficial whatsapp: could not verify the number: %w", err)
 	}
-	if len(checks) == 0 || !checks[0].IsOnWhatsApp {
+	if len(checks) == 0 || !checks[0].Reachable() {
 		return nil, ErrNotOnWhatsApp
 	}
 	check := checks[0]

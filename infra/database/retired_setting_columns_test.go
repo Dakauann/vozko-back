@@ -1,7 +1,6 @@
 package database
 
 import (
-	"slices"
 	"sync"
 	"testing"
 
@@ -9,12 +8,6 @@ import (
 
 	"vozko/infra/database/schema"
 )
-
-func TestRetiredSettingColumnsRepairIsRegistered(t *testing.T) {
-	if !slices.Contains(repairNames(), "drop_retired_setting_columns") {
-		t.Fatal("the retired setting columns cleanup is not registered in runDataRepairs")
-	}
-}
 
 func TestRetiredSettingColumnsAreGoneFromTheSchema(t *testing.T) {
 	models := map[string]interface{}{
@@ -43,7 +36,7 @@ func TestRetiredSettingColumnsAreGoneFromTheSchema(t *testing.T) {
 }
 
 func TestDropRetiredSettingColumnsAgainstPostgres(t *testing.T) {
-	tx := repairTx(t)
+	tx := postgresTx(t)
 	for _, ddl := range []string{
 		`DROP TABLE IF EXISTS whatsapp_campaigns, unofficial_whatsapp_campaigns, agents, unofficial_whatsapp_instances CASCADE`,
 		`CREATE TABLE whatsapp_campaigns (id uuid PRIMARY KEY, name text, prefer_audio boolean NOT NULL DEFAULT false)`,
@@ -84,7 +77,7 @@ func TestDropRetiredSettingColumnsAgainstPostgres(t *testing.T) {
 }
 
 func TestDropRetiredSettingColumnsSkipsMissingTables(t *testing.T) {
-	tx := repairTx(t)
+	tx := postgresTx(t)
 	for _, column := range retiredSettingColumns {
 		if err := tx.Exec(`DROP TABLE IF EXISTS ` + column.table + ` CASCADE`).Error; err != nil {
 			t.Fatalf("clear %s: %v", column.table, err)

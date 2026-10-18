@@ -15,18 +15,6 @@ func stampOf(user, itemID, callID string) callsession.CallListItemStamp {
 	return callsession.CallListItemStamp{WorkspaceID: ws, UserID: user, ItemID: itemID, CallRecordID: callID}
 }
 
-func openItems(t *testing.T, h *harness) {
-	t.Helper()
-	for id, item := range h.store.items {
-		if item.State != calllist.StatePending || item.ReservedBy != "" || item.Disposition != "" {
-			t.Fatalf("item %s = %+v, want it pending and untouched", id, item)
-		}
-	}
-	if h.store.lists["list-1"].ClosedCount != 0 {
-		t.Fatalf("closed count = %d", h.store.lists["list-1"].ClosedCount)
-	}
-}
-
 func TestNextSaysWhenItStoppedBeforeTheQueueEnded(t *testing.T) {
 	h := newHarness()
 	h.store.lists["list-1"] = activeList("list-1", worker)

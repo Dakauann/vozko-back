@@ -23,8 +23,7 @@ func (c *captureIngestor) Enqueue(_ context.Context, in ca.IngestInput) error {
 
 type fakeCommentTexts struct {
 	fakeCommentRepo
-	byID    map[string]*igdomain.Comment
-	deleted []string
+	byID map[string]*igdomain.Comment
 }
 
 func (f *fakeCommentTexts) FindByIGCommentID(_ context.Context, _, id string) (*igdomain.Comment, error) {

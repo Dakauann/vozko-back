@@ -70,12 +70,7 @@ func (e *TransactionsExporter) Rows(input balancedomain.ListTransactionsInput) (
 		}
 	}
 
-	currentRate := 0.0
-	if e.exchangeRate != nil {
-		if item, err := e.exchangeRate.Execute(); err == nil && item != nil && item.PriceMicros > 0 {
-			currentRate = float64(item.PriceMicros) / 1_000_000
-		}
-	}
+	currentRate, _ := currentExchangeRate(e.exchangeRate)
 
 	rows := make([][]string, 0, len(all))
 	for _, t := range all {

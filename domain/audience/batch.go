@@ -31,10 +31,6 @@ const (
 	BatchKindAlertBrief BatchKind = "alert_brief"
 )
 
-func AllBatchKinds() []BatchKind {
-	return []BatchKind{BatchKindComment, BatchKindAuthorRole, BatchKindReply, BatchKindAlertBrief}
-}
-
 func (k BatchKind) Valid() bool {
 	switch k {
 	case BatchKindComment, BatchKindAuthorRole, BatchKindReply, BatchKindAlertBrief:

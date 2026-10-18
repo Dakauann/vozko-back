@@ -12,6 +12,7 @@ import (
 	"vozko/domain/campaign"
 	"vozko/domain/shared"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 	"vozko/infra/repositories/campaignstamp"
 )
@@ -395,14 +396,11 @@ func (r *entryRepository) UpdateEntryDetails(entryID string, in uwc.UpdateEntryD
 			"updated_at": time.Now().UTC(),
 		}).Error
 
-	var pgErr *pq.Error
-	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+	if database.IsUniqueViolation(err) {
 		return uwc.ErrEntryDuplicate
 	}
 	return err
 }
-
-const uniqueViolation = "23505"
 
 func (r *entryRepository) ResetAllStatuses(campaignID string) (int64, error) {
 	updates := campaignstamp.Clear()

@@ -69,8 +69,8 @@ type UnofficialWhatsAppCampaignEntry struct {
 	WorkspaceID string `gorm:"type:uuid;not null;index"`
 
 	LeadID *string `gorm:"type:uuid;index;uniqueIndex:idx_uwce_campaign_lead,priority:2"`
-	Number string `gorm:"size:32;not null;index"`
-	Name   string `gorm:"size:200"`
+	Number string  `gorm:"size:32;not null;index"`
+	Name   string  `gorm:"size:200"`
 
 	ContactID      *string `gorm:"type:uuid;index"`
 	ConversationID *string `gorm:"type:uuid;index:idx_uwce_conversation"`
@@ -94,9 +94,9 @@ type UnofficialWhatsAppCampaignEntry struct {
 	DeliveredAt *time.Time
 	ReadAt      *time.Time
 	FailedAt    *time.Time
-	CreatedAt time.Time      `gorm:"autoCreateTime;index:idx_uwce_campaign_status_created,priority:3"`
-	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt gorm.DeletedAt `gorm:"index;index:idx_uwce_campaign_del,priority:2"`
+	CreatedAt   time.Time      `gorm:"autoCreateTime;index:idx_uwce_campaign_status_created,priority:3"`
+	UpdatedAt   time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt   gorm.DeletedAt `gorm:"index;index:idx_uwce_campaign_del,priority:2"`
 
 	Lead Lead `gorm:"foreignKey:LeadID;references:ID"`
 }

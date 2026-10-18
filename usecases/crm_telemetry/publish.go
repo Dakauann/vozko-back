@@ -96,11 +96,3 @@ func (a *PresenceAdapter) Transition(workspaceID, userID, state, source string) 
 		At:          time.Now().UTC(),
 	})
 }
-
-func EmitEvent(pub crm_telemetry.Publisher, ev interface {
-}) {
-	if pub == nil || ev == nil {
-		return
-	}
-	_ = pub.Publish(crm_telemetry.KindConversationEvent, ev)
-}

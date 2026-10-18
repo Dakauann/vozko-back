@@ -192,7 +192,7 @@ func headerFormat(kind media.MediaType) string {
 	switch kind {
 	case media.MediaTypeProductImage:
 		return "IMAGE"
-	case media.MediaTypeProductVideo, media.MediaTypeVslVideo:
+	case media.MediaTypeProductVideo:
 		return "VIDEO"
 	}
 	return "DOCUMENT"

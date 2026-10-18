@@ -26,7 +26,6 @@ import (
 const reportRetentionSweepLimit = 500
 
 func (c *Container) initJobRunner() {
-	cron_job := cronPackage.NewOrderCleanupJob(c.useCases.cancelExpiredOrder)
 	startScheduledWhatsappCampaignsJob := whatsapp_campaign_usecase.NewScheduleStartJob(c.useCases.dispatchWCCampaign, c.repositories.wcCampaign, c.repositories.wcSchedules)
 	analysisDebounceJob := conversation_usecase.NewAnalysisDebounceJob(
 		c.redisProvider.SharedState(),
@@ -107,7 +106,7 @@ func (c *Container) initJobRunner() {
 		c.repositories.wcEntry,
 		c.services.conversationStatusUpdater,
 	)
-	c.jobRunner = cronPackage.NewJobRunner(cron_job, startScheduledWhatsappCampaignsJob, c.redisProvider.SharedState(), analysisDebounceJob, autoCloseJob, c.useCases.workflowManager, c.useCases.expireSubscriptions, c.useCases.remindExpiringSubscriptions, c.useCases.monitorLowBalance, c.useCases.renewCalendarChannels, c.useCases.reconcileWhatsAppTemplates, c.useCases.reconcileWhatsAppEntitlements, c.useCases.emitMonthlyInvoices, c.useCases.cancelBillingSweep, c.useCases.vendorChannelReconciler, c.useCases.channelStatusReconciler, c.useCases.purgeShortLinkClicks)
+	c.jobRunner = cronPackage.NewJobRunner(startScheduledWhatsappCampaignsJob, c.redisProvider.SharedState(), analysisDebounceJob, autoCloseJob, c.useCases.workflowManager, c.useCases.expireSubscriptions, c.useCases.remindExpiringSubscriptions, c.useCases.monitorLowBalance, c.useCases.renewCalendarChannels, c.useCases.reconcileWhatsAppTemplates, c.useCases.reconcileWhatsAppEntitlements, c.useCases.emitMonthlyInvoices, c.useCases.cancelBillingSweep, c.useCases.vendorChannelReconciler, c.useCases.channelStatusReconciler, c.useCases.purgeShortLinkClicks)
 
 	c.jobRunner.SetScheduledMessageJobs(c.useCases.sweepScheduledMessages, c.useCases.purgeScheduledMessages)
 	c.jobRunner.SetNotificationJobs(c.notificationJobs())

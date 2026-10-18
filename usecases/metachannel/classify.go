@@ -90,12 +90,6 @@ func Classify(msg *mm.Message, prefix string) (conversation.MessageType, json.Ra
 	return msgType, raw
 }
 
-func ReferralMetadata(prefix string, r *mm.Referral) map[string]any {
-	meta := map[string]any{}
-	addReferral(meta, prefix, r)
-	return meta
-}
-
 func addReferral(meta map[string]any, prefix string, r *mm.Referral) {
 	if r == nil {
 		return

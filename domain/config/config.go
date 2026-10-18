@@ -96,12 +96,6 @@ func (c *SystemConfig) IsWithinWorkHours() bool {
 	return currentMinutes >= startMinutes && currentMinutes < endMinutes
 }
 
-func isBusinessDay(t time.Time) bool {
-	dayOfWeek := t.Weekday()
-
-	return dayOfWeek != time.Sunday && dayOfWeek != time.Saturday
-}
-
 func parseTimeToMinutes(timeStr string) (int, error) {
 	t, err := time.Parse("15:04", timeStr)
 	if err != nil {

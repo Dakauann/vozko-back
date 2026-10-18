@@ -173,7 +173,7 @@ func studioMediaType(t media.MediaType) string {
 	switch t {
 	case media.MediaTypeProductImage:
 		return copilot.StudioMediaImage
-	case media.MediaTypeProductVideo, media.MediaTypeVslVideo:
+	case media.MediaTypeProductVideo:
 		return copilot.StudioMediaVideo
 	case media.MediaTypeAudio:
 		return copilot.StudioMediaAudio

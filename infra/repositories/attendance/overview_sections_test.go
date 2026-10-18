@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/attendance"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 type capturedSQL struct {
@@ -240,12 +240,12 @@ func TestScopeMessagesProbeEachConversationThroughItsIndex(t *testing.T) {
 func TestScopeCountsMessagesByWhoSentThem(t *testing.T) {
 	sql := scopeMessagesSQL()
 	for _, want := range []string{
-		"WHERE " + database.SentByContactSQL("cm") + "\n\t\t\t) AS first_inbound_at",
-		"WHERE " + database.SentAsReplySQL("cm") + "\n\t\t\t) AS first_agent_at",
-		"WHERE " + database.SentAsReplySQL("cm") + "\n\t\t\t) AS last_agent_at",
+		"WHERE " + sqlexpr.SentByContact("cm") + "\n\t\t\t) AS first_inbound_at",
+		"WHERE " + sqlexpr.SentAsReply("cm") + "\n\t\t\t) AS first_agent_at",
+		"WHERE " + sqlexpr.SentAsReply("cm") + "\n\t\t\t) AS last_agent_at",
 		"cm.sender_id = se.assigned_user_id",
-		"WHERE " + database.SentByContactSQL("cm") + "\n\t\t\t)::int AS inbound_msgs",
-		"WHERE " + database.SentOutboundSQL("cm") + "\n\t\t\t)::int AS outbound_msgs",
+		"WHERE " + sqlexpr.SentByContact("cm") + "\n\t\t\t)::int AS inbound_msgs",
+		"WHERE " + sqlexpr.SentOutbound("cm") + "\n\t\t\t)::int AS outbound_msgs",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Errorf("scope does not read %q:\n%s", want, sql)

@@ -1968,40 +1968,6 @@ func (uc *handleWhatsAppMessageUseCase) resolveAgentTools(agentRecord *agent.Age
 	return result
 }
 
-func brazilDoubleNineVariant(number string) string {
-	trimmed := strings.TrimSpace(number)
-	if trimmed == "" {
-		return ""
-	}
-
-	withPlus := strings.HasPrefix(trimmed, "+")
-	digits := trimmed
-	if withPlus {
-		digits = digits[1:]
-	}
-
-	if len(digits) <= 4 || !strings.HasPrefix(digits, "55") {
-		return ""
-	}
-
-	suffix := digits[4:]
-
-	if len(suffix) >= 1 && suffix[0] == '9' {
-
-		variant := digits[:4] + suffix[1:]
-		if withPlus {
-			return "+" + variant
-		}
-		return variant
-	}
-
-	variant := digits[:4] + "9" + suffix
-	if withPlus {
-		return "+" + variant
-	}
-	return variant
-}
-
 func deriveConversationID(from string, leadRecord *lead.Lead) string {
 	if leadRecord != nil {
 		if id := strings.TrimSpace(leadRecord.ID); id != "" {
@@ -2040,37 +2006,6 @@ func parseWhatsAppTimestamp(raw string) time.Time {
 		return time.Now().UTC()
 	}
 	return time.Unix(seconds, 0).UTC()
-}
-
-func (uc *handleWhatsAppMessageUseCase) prependBaseSystemPrompt(ctx context.Context, prompt string) string {
-	if uc.configRepo == nil {
-		log.Println("[whatsapp-usecase] configRepo is nil, skipping base prompt")
-		return prompt
-	}
-
-	cfg, err := uc.configRepo.Get(ctx)
-	if err != nil {
-		log.Printf("[whatsapp-usecase] error loading config: %v", err)
-		return prompt
-	}
-	if cfg == nil {
-		log.Println("[whatsapp-usecase] config is nil, skipping base prompt")
-		return prompt
-	}
-
-	basePrompt := strings.TrimSpace(cfg.BaseSystemPrompt)
-	if basePrompt == "" {
-		log.Println("[whatsapp-usecase] BaseSystemPrompt is empty")
-		return prompt
-	}
-
-	log.Printf("[whatsapp-usecase] Base system prompt loaded (%d chars)", len(basePrompt))
-
-	if prompt == "" {
-		return basePrompt
-	}
-
-	return basePrompt + "\n\n" + prompt
 }
 
 func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
@@ -2867,25 +2802,6 @@ func sendWhatsAppTypingIndicatorWithDelay(
 	}
 	if delay > 0 {
 		time.Sleep(delay)
-	}
-}
-
-func extractMetadataMap(metadata interface{}) map[string]interface{} {
-	if metadata == nil {
-		return nil
-	}
-
-	switch m := metadata.(type) {
-	case map[string]interface{}:
-		return m
-	case map[string]string:
-		result := make(map[string]interface{}, len(m))
-		for k, v := range m {
-			result[k] = v
-		}
-		return result
-	default:
-		return nil
 	}
 }
 

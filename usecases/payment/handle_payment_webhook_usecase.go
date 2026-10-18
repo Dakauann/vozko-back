@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"strings"
-	"time"
 
 	"vozko/brand"
 	"vozko/domain/affiliate"
@@ -14,20 +13,13 @@ import (
 	billing "vozko/domain/billing"
 	"vozko/domain/invoice"
 	"vozko/domain/notification"
-	"vozko/domain/order"
 	"vozko/domain/payment"
-	"vozko/domain/ticket"
-	"vozko/domain/user"
+	"vozko/domain/shared"
 	"vozko/domain/workspace"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
 type handlePaymentWebhookUseCase struct {
-	paymentRepo           payment.PaymentRepository
-	orderRepo             order.OrderRepository
-	emailService          notification.EmailService
-	userRepo              user.UserRepository
-	createTicket          ticket.CreateTicketUseCase
 	invoiceRepo           invoice.Repository
 	activateSubscription  workspace_plan.SubscribeWorkspaceUseCase
 	creditBalance         balance.CreditBalanceUseCase
@@ -39,11 +31,6 @@ type handlePaymentWebhookUseCase struct {
 }
 
 func NewHandlePaymentWebhookUseCase(
-	paymentRepo payment.PaymentRepository,
-	orderRepo order.OrderRepository,
-	emailService notification.EmailService,
-	userRepo user.UserRepository,
-	createTicket ticket.CreateTicketUseCase,
 	invoiceRepo invoice.Repository,
 	activateSubscription workspace_plan.SubscribeWorkspaceUseCase,
 	creditBalance balance.CreditBalanceUseCase,
@@ -51,11 +38,6 @@ func NewHandlePaymentWebhookUseCase(
 	recordEarning affiliate.RecordEarningUseCase,
 ) *handlePaymentWebhookUseCase {
 	return &handlePaymentWebhookUseCase{
-		paymentRepo:          paymentRepo,
-		orderRepo:            orderRepo,
-		emailService:         emailService,
-		userRepo:             userRepo,
-		createTicket:         createTicket,
 		invoiceRepo:          invoiceRepo,
 		activateSubscription: activateSubscription,
 		creditBalance:        creditBalance,
@@ -83,7 +65,7 @@ func (uc *handlePaymentWebhookUseCase) notifyTopUpConfirmed(inv *invoice.Invoice
 	if uc.notifications == nil {
 		return
 	}
-	amount := fmt.Sprintf("US$ %.2f", float64(amountUSDMicros)/1e6)
+	amount := shared.FormatBRL(inv.AmountBRL)
 	_, err := uc.notifications.Publish(context.Background(), notification.Draft{
 		WorkspaceID: inv.WorkspaceID,
 		Category:    notification.CategoryBilling,
@@ -114,201 +96,7 @@ func (uc *handlePaymentWebhookUseCase) Execute(event *payment.WebhookEvent) erro
 	if event == nil || event.Payment.ID == "" {
 		return nil
 	}
-
-	normalizedEvent := strings.ToUpper(event.Event)
-
-	if uc.isInvoicePayment(event.Payment.ID) {
-		return uc.handleInvoicePayment(event, normalizedEvent)
-	}
-
-	paymentStatus, orderStatus := mapWebhookEventToStatuses(normalizedEvent)
-
-	orderID := ""
-	shouldSendPaymentEmail := false
-	paymentAmount := event.Payment.Value
-	paymentMethod := event.Payment.BillingType
-
-	if event.Payment.ExternalReference != "" {
-		existingPayment, err := uc.paymentRepo.GetPaymentByID(event.Payment.ExternalReference)
-		if err != nil {
-			return err
-		}
-		if existingPayment == nil {
-			return payment.ErrPaymentNotFound
-		}
-
-		if paymentStatus != nil {
-			if *paymentStatus == payment.StatusReceived || *paymentStatus == payment.StatusReceivedInCash {
-				if existingPayment.Status != *paymentStatus {
-					shouldSendPaymentEmail = true
-					if paymentAmount == 0 {
-						paymentAmount = existingPayment.Amount
-					}
-					if paymentMethod == "" {
-						paymentMethod = string(existingPayment.BillingType)
-					}
-				}
-			}
-
-			if err := uc.paymentRepo.UpdatePaymentStatus(event.Payment.ExternalReference, *paymentStatus); err != nil {
-				return err
-			}
-		}
-
-		if existingPayment.OrderID != nil {
-			orderID = *existingPayment.OrderID
-		}
-	}
-
-	if orderStatus != nil && orderID != "" {
-		if err := uc.orderRepo.UpdateStatus(orderID, *orderStatus); err != nil {
-			return err
-		}
-
-		if *orderStatus == order.StatusPaid && uc.createTicket != nil {
-			orderData, err := uc.orderRepo.GetByIDForSystem(orderID)
-			if err != nil {
-				return err
-			}
-			if orderData != nil {
-				if _, err := uc.createTicket.Execute(orderID, orderData.UserID); err != nil && err != ticket.ErrTicketAlreadyExists {
-					return err
-				}
-			}
-		}
-	}
-
-	if shouldSendPaymentEmail && orderID != "" {
-		orderData, err := uc.orderRepo.GetByIDForSystem(orderID)
-		if err != nil {
-			return err
-		}
-
-		go uc.sendPaymentConfirmationEmail(orderData, paymentAmount, paymentMethod)
-	}
-
-	return nil
-}
-
-func (uc *handlePaymentWebhookUseCase) sendPaymentConfirmationEmail(ord *order.Order, amount float64, billingType string) {
-	if ord == nil || uc.emailService == nil {
-		return
-	}
-
-	email := uc.getUserEmail(ord.UserID)
-	if email == "" {
-		email = ord.CustomerName
-	}
-	if email == "" {
-		return
-	}
-
-	amountStr := fmt.Sprintf("%.2f", amount)
-	method := formatPaymentMethod(billingType)
-	paymentDate := time.Now().Format("02/01/2006 15:04")
-
-	subject := "Pagamento Confirmado - " + brand.Active().Name
-	if err := uc.emailService.SendTemplate(email, subject, "payment_confirmation.html", map[string]interface{}{
-		"CustomerName":  ord.CustomerName,
-		"OrderID":       ord.ID,
-		"Amount":        amountStr,
-		"PaymentMethod": method,
-		"PaymentDate":   paymentDate,
-	}); err != nil {
-		return
-	}
-}
-
-func (uc *handlePaymentWebhookUseCase) getUserEmail(userID string) string {
-	if userID == "" || uc.userRepo == nil {
-		return ""
-	}
-
-	u, err := uc.userRepo.FindByID(userID)
-	if err != nil {
-		return ""
-	}
-
-	return u.Email
-}
-
-func formatPaymentMethod(method string) string {
-	if method == "" {
-		return "PIX"
-	}
-
-	switch strings.ToUpper(method) {
-	case "PIX":
-		return "PIX"
-	case "BOLETO":
-		return "Boleto"
-	case "CREDIT_CARD":
-		return "Cartao de Credito"
-	default:
-		return strings.ToUpper(method)
-	}
-}
-
-func mapWebhookEventToStatuses(event string) (*payment.Status, *order.Status) {
-	var payStatus *payment.Status
-	var ordStatus *order.Status
-
-	switch event {
-	case "PAYMENT_CREATED":
-		ps := payment.StatusPending
-		os := order.StatusPending
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_CONFIRMED", "PAYMENT_APPROVED_BY_RISK_ANALYSIS", "PAYMENT_AUTHORIZED":
-		ps := payment.StatusPending
-		os := order.StatusProcessing
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_RECEIVED":
-		ps := payment.StatusReceived
-		os := order.StatusPaid
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_RECEIVED_IN_CASH_UNDONE":
-		ps := payment.StatusPending
-		os := order.StatusProcessing
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_OVERDUE":
-		ps := payment.StatusOverdue
-		os := order.StatusProcessing
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_REFUNDED", "PAYMENT_PARTIALLY_REFUNDED", "PAYMENT_CHARGEBACK":
-		ps := payment.StatusRefunded
-		os := order.StatusRefunded
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_REFUND_IN_PROGRESS":
-		ps := payment.StatusRefundInProgress
-		payStatus = &ps
-	case "PAYMENT_RECEIVED_IN_CASH":
-		ps := payment.StatusReceivedInCash
-		os := order.StatusPaid
-		payStatus = &ps
-		ordStatus = &os
-	case "PAYMENT_DELETED", "PAYMENT_REJECTED":
-		ps := payment.StatusCancelled
-		os := order.StatusCancelled
-		payStatus = &ps
-		ordStatus = &os
-	default:
-	}
-
-	return payStatus, ordStatus
-}
-
-func (uc *handlePaymentWebhookUseCase) isInvoicePayment(providerChargeID string) bool {
-	inv, err := uc.invoiceRepo.GetByExternalID(providerChargeID)
-	if err != nil || inv == nil {
-		return false
-	}
-	return true
+	return uc.handleInvoicePayment(event, strings.ToUpper(event.Event))
 }
 
 func (uc *handlePaymentWebhookUseCase) handleInvoicePayment(event *payment.WebhookEvent, normalizedEvent string) error {
@@ -593,21 +381,4 @@ func invoiceRateMicros(inv *invoice.Invoice) int64 {
 		return 0
 	}
 	return int64(math.Round(inv.ExchangeRate * 1_000_000))
-}
-
-func ptrTime(t time.Time) *time.Time { return &t }
-
-func invoicePaidDate(inv *invoice.Invoice) time.Time {
-	if inv != nil && inv.PaidAt != nil && *inv.PaidAt > 0 {
-		return time.Unix(*inv.PaidAt, 0)
-	}
-	return time.Now()
-}
-
-func optionalString(s string) *string {
-	trimmed := strings.TrimSpace(s)
-	if trimmed == "" {
-		return nil
-	}
-	return &trimmed
 }

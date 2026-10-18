@@ -56,7 +56,7 @@ func libraryKindMatches(kind ads.MediaKind, t media.MediaType) bool {
 	case ads.MediaImage:
 		return t == media.MediaTypeProductImage
 	case ads.MediaVideo:
-		return t == media.MediaTypeProductVideo || t == media.MediaTypeVslVideo
+		return t == media.MediaTypeProductVideo
 	}
 	return false
 }

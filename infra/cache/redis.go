@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"time"
-	"vozko/domain/cache"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -11,16 +10,6 @@ import (
 type redisCache struct {
 	client *redis.Client
 	ctx    context.Context
-}
-
-func NewRedisCache(addr string) cache.Cache {
-	client := redis.NewClient(&redis.Options{
-		Addr: addr,
-	})
-	return &redisCache{
-		client: client,
-		ctx:    context.Background(),
-	}
 }
 
 func (r *redisCache) Delete(key string) error {

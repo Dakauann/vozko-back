@@ -32,17 +32,6 @@ func (r *CachedWorkspaceRepository) invalidateMember(workspaceID, userID string)
 	_ = r.shared.Del(memberCacheKey(workspaceID, userID))
 }
 
-func (r *CachedWorkspaceRepository) invalidateMemberByID(memberID string) {
-	if r.shared == nil || memberID == "" {
-		return
-	}
-	m, err := r.inner.GetMemberByID(memberID)
-	if err != nil || m == nil {
-		return
-	}
-	r.invalidateMember(m.WorkspaceID, m.UserID)
-}
-
 func permCacheKey(memberID string) string {
 	return "ws:perms:" + memberID
 }

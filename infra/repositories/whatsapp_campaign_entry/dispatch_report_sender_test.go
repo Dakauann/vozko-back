@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 func TestARepliedEntryIsOneTheContactWroteBackTo(t *testing.T) {
 	for name, sql := range map[string]string{"funnel": repliedSQL, "daily": dailySQL} {
-		if !strings.Contains(sql, database.SentByContactSQL("m")) {
+		if !strings.Contains(sql, sqlexpr.SentByContact("m")) {
 			t.Errorf("%s does not read who sent the message:\n%s", name, sql)
 		}
 		if strings.Contains(sql, "@inbound") {

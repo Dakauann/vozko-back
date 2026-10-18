@@ -461,11 +461,6 @@ func GetRequiredMocks(deps []VariableDependency) []RequiredMock {
 	return mocks
 }
 
-func CanTestIndependently(config map[string]interface{}) bool {
-	deps := ExtractDependencies(config)
-	return !RequiresUpstreamData(deps)
-}
-
 func ExtractCampaignVars(g Graph) []string {
 	seen := make(map[string]bool)
 	for _, node := range g.Nodes {

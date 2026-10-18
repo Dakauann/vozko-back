@@ -21,6 +21,8 @@ const (
 	SourceLowBalance      = "low_balance"
 	SourceTopUp           = "wallet_top_up"
 	SourcePlanExpiry      = "plan_expiry"
+	SourceMonthlyInvoice  = "monthly_invoice"
+	SourceBillingCutoff   = "billing_cutoff"
 	SourceCommentAnalysis = "comment_analysis"
 	SourcePhoneAlert      = "whatsapp_phone"
 )

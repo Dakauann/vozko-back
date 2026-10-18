@@ -23,8 +23,6 @@ type entryAccessRepository interface {
 	ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error)
 }
 
-type instagramEntryAccessRepository = entryAccessRepository
-
 type workspaceMembershipRepository interface {
 	GetMember(workspaceID, userID string) (*workspace.Member, error)
 	HasPermission(memberID string, resource workspace.Resource, action workspace.Action) (bool, error)

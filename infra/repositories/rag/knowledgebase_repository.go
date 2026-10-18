@@ -29,13 +29,10 @@ func (r *knowledgeBaseRepository) Update(ctx context.Context, kb *rag.KnowledgeB
 	configJSON, _ := json.Marshal(kb.Config)
 
 	update := map[string]interface{}{
-		"name":           kb.Name,
-		"description":    kb.Description,
-		"status":         string(kb.Status),
-		"config":         string(configJSON),
-		"document_count": kb.DocumentCount,
-		"chunk_count":    kb.ChunkCount,
-		"total_size_mb":  kb.TotalSizeMB,
+		"name":        kb.Name,
+		"description": kb.Description,
+		"status":      string(kb.Status),
+		"config":      string(configJSON),
 	}
 
 	result := r.db.WithContext(ctx).Model(&schema.KnowledgeBase{}).Where("id = ?", kb.ID).Updates(update)

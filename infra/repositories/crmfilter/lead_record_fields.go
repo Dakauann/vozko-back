@@ -9,7 +9,7 @@ import (
 	"vozko/domain/cep"
 	"vozko/domain/crmfilter"
 	"vozko/domain/lead"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 var ErrWorkspaceScopeRequired = fmt.Errorf("%w: this lead field reads workspace tables and needs the workspace", crmfilter.ErrNotApplicable)
@@ -145,7 +145,7 @@ func (d LeadDescriptor) compileNumber(p crmfilter.Predicate) (string, []interfac
 	case crmfilter.OpIsEmpty:
 		return identity + " IS NULL", nil, nil
 	case crmfilter.OpContains:
-		return d.phoneMatch("lp_f", "LIKE ?", database.LikeContains(vals[0]))
+		return d.phoneMatch("lp_f", "LIKE ?", sqlexpr.LikeContains(vals[0]))
 	case crmfilter.OpEquals, crmfilter.OpIn:
 		return d.phoneMatch("lp_f", "= ANY(?)", pq.Array(vals))
 	case crmfilter.OpNotEquals, crmfilter.OpNotIn:

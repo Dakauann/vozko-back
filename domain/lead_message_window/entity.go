@@ -36,26 +36,3 @@ type WindowStatus struct {
 	CanReceiveNormalMessages bool       `json:"canReceiveNormalMessages"`
 	WindowExpiresAt          *time.Time `json:"windowExpiresAt,omitempty"`
 }
-
-func NewWindowStatus(window *LeadMessageWindow, businessPhoneID string) WindowStatus {
-	if window == nil {
-		return WindowStatus{
-			BusinessPhoneID:          businessPhoneID,
-			CanReceiveNormalMessages: false,
-		}
-	}
-
-	isOpen := window.IsWindowOpen()
-	status := WindowStatus{
-		BusinessPhoneID:          window.BusinessPhoneID,
-		LastMessageAt:            &window.LastMessageAt,
-		CanReceiveNormalMessages: isOpen,
-	}
-
-	if isOpen {
-		expiresAt := window.WindowExpiresAt()
-		status.WindowExpiresAt = &expiresAt
-	}
-
-	return status
-}

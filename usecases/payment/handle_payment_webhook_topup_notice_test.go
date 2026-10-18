@@ -16,7 +16,7 @@ func paidTopUp(t *testing.T, publisher *notificationtest.Publisher) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"1": {ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeTopUp, AmountUSD: 12_500_000, WorkspaceID: "ws-1", Status: invoice.StatusPending, AmountBRL: 75, ExchangeRate: 6},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, &webhookCreditBalance{}, &webhookDebitBalance{}, nil).
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, &webhookCreditBalance{}, &webhookDebitBalance{}, nil).
 		WithNotifications(publisher, "https://app.vozko.test/")
 	for i := 0; i < 2; i++ {
 		if err := uc.Execute(&payment.WebhookEvent{Event: payment.EventPaymentReceived, Payment: payment.WebhookPayment{ID: "1"}}); err != nil {
@@ -36,10 +36,10 @@ func TestAPaidTopUpTellsTheBillingTeamTheBalanceArrived(t *testing.T) {
 	if !d.Audience.Equal(notification.Holding(workspace.ResourceBalance, workspace.ActionRead)) {
 		t.Fatalf("audience = %+v, want the people who see the balance, not only the owner", d.Audience)
 	}
-	if !strings.Contains(d.Body, "US$ 12.50") || d.ActionURL != "/dashboard/balance" || d.DedupKey != "wallet_topup:inv-1" {
+	if !strings.Contains(d.Body, "R$ 75,00") || d.ActionURL != "/dashboard/balance" || d.DedupKey != "wallet_topup:inv-1" {
 		t.Fatalf("body %q link %q dedup %q", d.Body, d.ActionURL, d.DedupKey)
 	}
-	if d.EmailCopy == nil || d.EmailCopy.Template != "wallet_topup_confirmed.html" || d.EmailCopy.Placeholders["Amount"] != "US$ 12.50" ||
+	if d.EmailCopy == nil || d.EmailCopy.Template != "wallet_topup_confirmed.html" || d.EmailCopy.Placeholders["Amount"] != "R$ 75,00" ||
 		d.EmailCopy.Placeholders["DashboardURL"] != "https://app.vozko.test/dashboard/balance" {
 		t.Fatalf("email = %+v", d.EmailCopy)
 	}

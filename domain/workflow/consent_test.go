@@ -37,19 +37,11 @@ func TestATemplateButtonTapIsASelectionFlowsCanBranchOn(t *testing.T) {
 	if data[DataKeySelectedOptionID] != "template_button:1" || data[DataKeySelectedOptionTitle] != "SAIR" || data[DataKeySelectedOptionKind] != OptionKindTemplateButton {
 		t.Fatalf("data = %+v", data)
 	}
-	if index, ok := TemplateButtonIndex("template_button:1"); !ok || index != 1 {
-		t.Fatalf("index = %d, %v", index, ok)
-	}
 
 	unmatched := map[string]interface{}{}
 	ApplySelection(unmatched, TemplateButtonSelection("Talvez", 0, false))
 	if unmatched[DataKeySelectedOptionID] != OptionKindTemplateButton || unmatched[DataKeySelectedOptionTitle] != "Talvez" {
 		t.Fatalf("an unmatched tap keeps its text and no index: %+v", unmatched)
-	}
-	for _, id := range []string{"template_button", "template_button:", "template_button:x", "button:1", "template_button:-1"} {
-		if _, ok := TemplateButtonIndex(id); ok {
-			t.Errorf("%q has no button index", id)
-		}
 	}
 }
 

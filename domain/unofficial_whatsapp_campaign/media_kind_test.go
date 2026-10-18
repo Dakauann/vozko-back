@@ -11,7 +11,6 @@ func TestKindForMediaSendsEachFileAsWhatItIs(t *testing.T) {
 		media.MediaTypeProductImage: KindImage,
 		media.MediaTypeSticker:      KindImage,
 		media.MediaTypeProductVideo: KindVideo,
-		media.MediaTypeVslVideo:     KindVideo,
 		media.MediaTypeAudio:        KindAudio,
 		media.MediaTypeDocumentPdf:  KindDocument,
 		media.MediaTypeDocument:     KindDocument,

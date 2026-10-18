@@ -56,7 +56,7 @@ func withinUploadLimit(repository media.MediaRepository, workspaceID string) err
 
 func validUploadType(mediaType media.MediaType) bool {
 	switch mediaType {
-	case media.MediaTypeProductImage, media.MediaTypeProductVideo, media.MediaTypeVslVideo, media.MediaTypeHtml5,
+	case media.MediaTypeProductImage, media.MediaTypeProductVideo, media.MediaTypeHtml5,
 		media.MediaTypeDocumentPdf, media.MediaTypeDocumentDoc, media.MediaTypeDocument,
 		media.MediaTypeAudio, media.MediaTypeSticker:
 		return true

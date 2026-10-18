@@ -18,6 +18,7 @@ import (
 	"vozko/domain/shared"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 var (
@@ -32,17 +33,17 @@ var (
 		" LEFT JOIN lead_addresses a ON a.lead_id = i.lead_id AND a.workspace_id = i.workspace_id AND a.is_primary" +
 		" LEFT JOIN calls c ON c.id = i.last_call_id AND c.workspace_id = i.workspace_id" +
 		" LEFT JOIN LATERAL (SELECT COUNT(*) AS total FROM calls ca WHERE ca.workspace_id = i.workspace_id AND ca.lead_id = i.lead_id" +
-		" AND ca.started_at >= i.created_at AND " + database.CallAttemptSQL("ca") + ") attempts ON true"
+		" AND ca.started_at >= i.created_at AND " + callAttemptSQL("ca") + ") attempts ON true"
 
 	itemsSQL = itemsSelectSQL + " FROM call_list_items i" + itemsJoinSQL + " WHERE i.workspace_id = ? AND i.list_id = ?"
 
-	agendaKeySQL = database.CallListAgendaSQL("")
+	agendaKeySQL = sqlexpr.CallListAgenda("")
 
 	agendaDueSQL = agendaSegmentSQL(calllist.SegmentDue) + " AND " + agendaKeySQL + " <= ?::timestamptz"
 
-	agendaQueueSQL = agendaSegmentSQL(calllist.SegmentQueue) + " AND " + agendaKeySQL + " = 'infinity'::timestamptz"
+	agendaQueueSQL = agendaSegmentSQL(calllist.SegmentQueue) + " AND " + agendaKeySQL + " = " + sqlexpr.NoCallback
 
-	agendaWaitingSQL = agendaSegmentSQL(calllist.SegmentWaiting) + " AND " + agendaKeySQL + " > ?::timestamptz AND " + agendaKeySQL + " < 'infinity'::timestamptz"
+	agendaWaitingSQL = agendaSegmentSQL(calllist.SegmentWaiting) + " AND " + agendaKeySQL + " > ?::timestamptz AND " + agendaKeySQL + " < " + sqlexpr.NoCallback
 
 	agendaTimeAfterSQL = " AND (" + agendaKeySQL + ", position) > (?::timestamptz, ?)"
 
@@ -74,7 +75,7 @@ const (
 
 	deleteListSQL = "DELETE FROM call_lists WHERE workspace_id = ? AND id = ?"
 
-	buildClaimableSQL = "status = 'building' AND attempts < ? AND " + database.LeaseFreeSQL
+	buildClaimableSQL = "status = 'building' AND attempts < ? AND " + sqlexpr.LeaseFree
 
 	claimBuildSQL = "UPDATE call_lists SET claim_token = ?, heartbeat_at = ?, attempts = attempts + 1, updated_at = ?" +
 		" WHERE workspace_id = ? AND id = ? AND " + buildClaimableSQL + " RETURNING *"
@@ -103,7 +104,7 @@ const (
 	buildableSQL = "SELECT workspace_id::text AS workspace_id, id::text AS id FROM call_lists WHERE " + buildClaimableSQL + " ORDER BY created_at LIMIT ?"
 
 	failExhaustedSQL = "UPDATE call_lists SET status = 'failed', failure_code = ?, claim_token = NULL, heartbeat_at = NULL, updated_at = ?" +
-		" WHERE status = 'building' AND attempts >= ? AND " + database.LeaseFreeSQL
+		" WHERE status = 'building' AND attempts >= ? AND " + sqlexpr.LeaseFree
 
 	itemColumns = "i.id, i.workspace_id, i.list_id, i.lead_id, i.phone, i.position, i.state, i.reserved_by, i.reserved_until, i.disposition, i.note," +
 		" i.refusal, i.callback_at, i.last_call_id, i.closed_by, i.closed_at, i.created_at, i.updated_at"

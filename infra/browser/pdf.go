@@ -129,34 +129,3 @@ func (r *Renderer) Render(ctx context.Context, url string, options PDFOptions) (
 	}
 	return pdf, nil
 }
-
-func measureBodyWidth(url string) (float64, error) {
-	executable := locateChromium()
-	if executable == "" {
-		return 0, fmt.Errorf("browser: no chromium executable was found")
-	}
-
-	allocatorCtx, cancelAllocator := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.ExecPath(executable),
-			chromedp.Flag("headless", "new"),
-			chromedp.Flag("no-sandbox", true),
-			chromedp.WindowSize(a4WidthPx, a4HeightPx),
-		)...)
-	defer cancelAllocator()
-
-	browserCtx, cancelBrowser := chromedp.NewContext(allocatorCtx)
-	defer cancelBrowser()
-
-	timeoutCtx, cancelTimeout := context.WithTimeout(browserCtx, defaultTimeout)
-	defer cancelTimeout()
-
-	var width float64
-	err := chromedp.Run(timeoutCtx,
-		chromedp.EmulateViewport(a4WidthPx, a4HeightPx),
-		chromedp.Navigate(url),
-		chromedp.Poll(readyFlag, nil, chromedp.WithPollingInterval(readyPoll)),
-		chromedp.Evaluate("window.__MEASURED_WIDTH__", &width),
-	)
-	return width, err
-}

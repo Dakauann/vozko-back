@@ -8,8 +8,8 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/aichat"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 type threadRepository struct {
@@ -75,7 +75,7 @@ func (r *threadRepository) ListByUser(input aichat.ListThreadsInput) ([]*aichat.
 	q := r.db.Model(&schema.AIChatThread{}).
 		Where("workspace_id = ? AND user_id = ?", input.WorkspaceID, input.UserID)
 	if search := strings.TrimSpace(input.Query); search != "" {
-		q = q.Where(`title ILIKE ? ESCAPE '\'`, database.LikeContains(search))
+		q = q.Where(`title ILIKE ? ESCAPE '\'`, sqlexpr.LikeContains(search))
 	}
 
 	var total int64

@@ -68,7 +68,7 @@ func TestStudioTextRunSchema(t *testing.T) {
 	}
 	field, _ := reflect.TypeOf(studioTextRunArgs{}).FieldByName("RunClear")
 	want := []string{"fill", "font_id", "font_weight", "font_size", "italic", "underline", "caps", "letter_spacing"}
-	if got := copilottools.EnumValues(field); !slices.Equal(got, textRunClearFields()) || !slices.Equal(got, want) {
+	if got := copilottools.EnumValues(field); !slices.Equal(got, want) {
 		t.Fatalf("run_clear enum = %v", got)
 	}
 	for _, edit := range []copilot.Tool{NewStudioEditVideoTool(studioDeps(studio.KindVideo, nil, nil)), NewStudioEditImageTool(studioDeps(studio.KindImage, nil, nil))} {

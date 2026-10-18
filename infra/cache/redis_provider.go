@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -40,14 +39,6 @@ func NewRedisProvider(addr, password string) *RedisProvider {
 	return &RedisProvider{client: client}
 }
 
-func (p *RedisProvider) Ping() error {
-	return p.client.Ping(context.Background()).Err()
-}
-
-func (p *RedisProvider) Close() error {
-	return p.client.Close()
-}
-
 func (p *RedisProvider) Cache() cache.Cache {
 	return &redisCache{
 		client: p.client,
@@ -59,12 +50,6 @@ func (p *RedisProvider) RateLimiterFactory() cache.RateLimiterFactory {
 	return func(prefix string, maxRequests int, window time.Duration) cache.RateLimiter {
 		return NewRedisRateLimiter(p.client, prefix, maxRequests, window)
 	}
-}
-
-func (p *RedisProvider) Info() string {
-	stats := p.client.PoolStats()
-	return fmt.Sprintf("Redis pool: hits=%d misses=%d timeouts=%d totalConns=%d idleConns=%d",
-		stats.Hits, stats.Misses, stats.Timeouts, stats.TotalConns, stats.IdleConns)
 }
 
 func (p *RedisProvider) SharedState() cache.SharedState {

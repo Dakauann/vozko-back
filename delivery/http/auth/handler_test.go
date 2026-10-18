@@ -116,13 +116,6 @@ func postJSON(handler http.HandlerFunc, path string, body interface{}) *httptest
 	return rr
 }
 
-func getRequest(handler http.HandlerFunc, path string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodGet, path, nil)
-	rr := httptest.NewRecorder()
-	handler(rr, req)
-	return rr
-}
-
 func TestLogin_Success(t *testing.T) {
 	h := newTestHandler()
 	rr := postJSON(h.Login, "/auth/login", map[string]string{

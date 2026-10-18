@@ -157,10 +157,6 @@ func PathOpFieldRange(kind, field string) (ValueRange, bool) {
 	return r, owned
 }
 
-func MergeModeKnown(mode string) bool { return mergeModes[mode] }
-
-func ZigZagPointsKnown(points string) bool { return zigZagPoints[points] }
-
 func PathOpJoinKnown(join string) bool { return join != "" && lineJoins[join] }
 
 func (o PathOp) lanes() []pathOpLane {

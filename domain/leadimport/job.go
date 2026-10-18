@@ -38,10 +38,6 @@ func (s Status) Active() bool {
 	return s == StatusAnalyzing || s == StatusImporting
 }
 
-func ActiveStatuses() []Status {
-	return []Status{StatusAnalyzing, StatusImporting}
-}
-
 type Stage string
 
 const (

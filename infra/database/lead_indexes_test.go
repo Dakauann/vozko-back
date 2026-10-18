@@ -1,45 +1,18 @@
 package database
 
 import (
-	"strings"
 	"testing"
 
 	"vozko/infra/database/schema"
 	"vozko/infra/repositories/repotest"
 )
 
-var leadIndexShapes = map[string]string{
-	"ux_leads_workspace_id_id":     "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_leads_workspace_id_id ON leads (workspace_id, id)",
-	"idx_leads_workspace_owner":    "ON leads (workspace_id, owner_id) WHERE owner_id IS NOT NULL AND deleted_at IS NULL",
-	"idx_leads_workspace_birthday": "ON leads (workspace_id, (extract(month from birth_date)), (extract(day from birth_date))) WHERE birth_date IS NOT NULL AND deleted_at IS NULL",
-	"idx_leads_workspace_referred": "ON leads (workspace_id, referred_count) WHERE referred_count > 0",
-	"idx_leads_workspace_company":  "ON leads (workspace_id, company_id) WHERE company_id IS NOT NULL AND deleted_at IS NULL",
-}
-
-func leadIndexes(t *testing.T) []concurrentIndex {
-	t.Helper()
-	var found []concurrentIndex
-	for _, idx := range concurrentIndexes() {
-		if _, ok := leadIndexShapes[idx.name]; ok {
-			found = append(found, idx)
-		}
-	}
-	if len(found) != len(leadIndexShapes) {
-		t.Fatalf("found %d of the %d lead indexes", len(found), len(leadIndexShapes))
-	}
-	return found
-}
-
-func TestLeadIndexesAreBuiltConcurrentlyInTheirPlannedShape(t *testing.T) {
-	for _, idx := range leadIndexes(t) {
-		sql := strings.Join(strings.Fields(idx.sql), " ")
-		if !strings.Contains(sql, leadIndexShapes[idx.name]) {
-			t.Errorf("%s = %q, want it to contain %q", idx.name, sql, leadIndexShapes[idx.name])
-		}
-		if idx.replaces != "" {
-			t.Errorf("%s must not replace anything", idx.name)
-		}
-	}
+var leadIndexNames = []string{
+	"ux_leads_workspace_id_id",
+	"idx_leads_workspace_owner",
+	"idx_leads_workspace_birthday",
+	"idx_leads_workspace_referred",
+	"idx_leads_workspace_company",
 }
 
 func TestLeadIndexesBuildOnTheLeadsTableAgainstPostgres(t *testing.T) {
@@ -48,7 +21,8 @@ func TestLeadIndexesBuildOnTheLeadsTableAgainstPostgres(t *testing.T) {
 	if err := db.AutoMigrate(&schema.Lead{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	for _, idx := range leadIndexes(t) {
+	for _, name := range leadIndexNames {
+		idx := declaredConcurrentIndex(t, name)
 		if err := createIndexConcurrently(db, idx); err != nil {
 			t.Fatalf("%s: %v", idx.name, err)
 		}

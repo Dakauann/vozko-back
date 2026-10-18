@@ -9,14 +9,14 @@ import (
 
 	"vozko/domain/calls/calllist"
 	"vozko/domain/shared"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 	infracrmfilter "vozko/infra/repositories/crmfilter"
 )
 
 var latestInteractionSQL = "SELECT lead_entries.entry_id::text AS entry_id, lead_entries.entry_type::text AS entry_type, latest.at" +
 	" FROM " + infracrmfilter.LeadEntriesSource() +
 	" CROSS JOIN LATERAL (SELECT m.created_at AS at FROM conversation_messages m WHERE m.entry_id = lead_entries.entry_id" +
-	" AND m.entry_type = lead_entries.entry_type AND m.deleted_at IS NULL AND " + database.RealMessageSQL("m") +
+	" AND m.entry_type = lead_entries.entry_type AND m.deleted_at IS NULL AND " + sqlexpr.RealMessage("m") +
 	" ORDER BY m.created_at DESC LIMIT 1) latest" +
 	" WHERE lead_entries.lead_id = ? ORDER BY latest.at DESC LIMIT 1"
 

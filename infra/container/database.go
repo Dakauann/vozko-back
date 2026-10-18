@@ -1,7 +1,6 @@
 package container
 
 import (
-	"context"
 	"log"
 
 	"vozko/infra/database"
@@ -29,5 +28,4 @@ func (c *Container) initDatabase() {
 	}
 
 	c.db = db
-	go database.RunMessageSenderBackfill(context.Background(), db)
 }

@@ -431,10 +431,6 @@ func TestEveryNewStatementBindsAsManyArgumentsAsItHasPlaceholders(t *testing.T) 
 	}
 }
 
-func lockLeadsSQLFor() string {
-	return withDollars(lockLeadsSQL)
-}
-
 func withDollars(sql string) string {
 	var b strings.Builder
 	n := 0

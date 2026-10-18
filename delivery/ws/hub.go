@@ -194,7 +194,6 @@ func (h *ConversationHub) SetPresenceRecorder(p presenceRecorder) {
 	h.presence = p
 }
 
-
 func (h *ConversationHub) SetEventLogger(logger ce.Logger) {
 	h.eventLogger = logger
 }
@@ -332,17 +331,6 @@ func (h *ConversationHub) UnregisterConnection(conn *WSConnection) {
 
 func (h *ConversationHub) HandleMessage(conn *WSConnection, msg *WSIncomingMessage) {
 	h.incoming <- &incomingMessage{conn: conn, message: msg}
-}
-
-func (h *ConversationHub) isUserAdmin(userID string) bool {
-	if connIDs, ok := h.userConnections[userID]; ok {
-		for connID := range connIDs {
-			if conn, exists := h.connections[connID]; exists {
-				return conn.IsAdmin
-			}
-		}
-	}
-	return false
 }
 
 func (h *ConversationHub) ensureInitialTag(entryID, entryType string) {
@@ -3566,8 +3554,6 @@ func (h *ConversationHub) runReplicaHeartbeat() {
 			value = "1"
 		}
 		_ = h.sharedState.SetString(key, value, heartbeatTTL)
-
-		_ = h.sharedState.SAdd("cluster:replicas", h.replicaID)
 
 		h.sharedState.Expire("hub:workspaces", hubKeyTTL)
 		h.connMu.RLock()

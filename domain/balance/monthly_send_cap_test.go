@@ -8,8 +8,6 @@ import (
 	"vozko/domain/billing"
 )
 
-func int64Ptr(v int64) *int64 { return &v }
-
 func TestNewMonthlySendCap_RejectsNonPositiveLimits(t *testing.T) {
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	for _, limit := range []int64{0, -1} {
@@ -76,7 +74,9 @@ func TestMonthlySendCap_CheckRoom(t *testing.T) {
 
 func TestSendCapChangeRequiresUnlock(t *testing.T) {
 	existing := &MonthlySendCap{WorkspaceID: "ws-1", Limit: 100, CycleDay: 1}
-	with := func(limit int64, day int) *MonthlySendCap { return &MonthlySendCap{WorkspaceID: "ws-1", Limit: limit, CycleDay: day} }
+	with := func(limit int64, day int) *MonthlySendCap {
+		return &MonthlySendCap{WorkspaceID: "ws-1", Limit: limit, CycleDay: day}
+	}
 	cases := []struct {
 		name    string
 		current *MonthlySendCap

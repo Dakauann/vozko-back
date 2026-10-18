@@ -60,14 +60,6 @@ type responseParameters struct {
 	RetryAfter      int   `json:"retry_after"`
 }
 
-func AsAPIError(err error) (*tgdomain.APIError, bool) {
-	var apiErr *tgdomain.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr, true
-	}
-	return nil, false
-}
-
 func (c *Client) call(ctx context.Context, token, method string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {

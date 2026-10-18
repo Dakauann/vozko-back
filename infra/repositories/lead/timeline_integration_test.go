@@ -88,7 +88,7 @@ func newTimelineWorld(t *testing.T) timelineWorld {
 
 	unofficial, uwConversation := uuid.NewString(), uuid.NewString()
 	uwSent := at(5)
-	must(db.Create(&schema.UnofficialWhatsAppCampaignEntry{ID: unofficial, CampaignID: uuid.NewString(), WorkspaceID: ws, LeadID: w.maria.ID,
+	must(db.Create(&schema.UnofficialWhatsAppCampaignEntry{ID: unofficial, CampaignID: uuid.NewString(), WorkspaceID: ws, LeadID: &w.maria.ID,
 		Number: "5511987654321", ConversationID: &uwConversation, SentAt: &uwSent}).Error)
 
 	call := func(workspaceID string, leadID *string, direction, from, to string, minutes int) string {

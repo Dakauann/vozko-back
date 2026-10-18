@@ -59,7 +59,7 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 	}
 	must(db.Exec("UPDATE leads SET custom_fields = ?::jsonb, whatsapp_opt_in_at = now(), whatsapp_opt_in_source = 'manual' WHERE id = ?",
 		`{"classificacao": "positivo"}`, w.maria.ID).Error)
-	must(db.Create(&schema.LeadMemory{WorkspaceID: ws, LeadID: &w.maria.ID, Category: "family", Content: "tem dois filhos", ActorKind: "human", ActorID: "u"}).Error)
+	must(db.Create(&schema.LeadMemory{WorkspaceID: ws, LeadID: w.maria.ID, Category: "family", Content: "tem dois filhos", ActorKind: "human", ActorID: "u"}).Error)
 	mariaEntry, anaEntry := uuid.NewString(), uuid.NewString()
 	must(db.Create(&schema.WhatsAppCampaignEntry{ID: mariaEntry, CampaignID: uuid.NewString(), LeadID: w.maria.ID,
 		Variables: pq.StringArray{"Maria"}, Metadata: schema.LeadMetadata{"bairro": "Bela Vista"}}).Error)

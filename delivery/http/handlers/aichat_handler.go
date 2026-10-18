@@ -15,7 +15,7 @@ import (
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/aichat"
-	copilot_domain "vozko/domain/copilot"
+	"vozko/domain/copilot"
 	"vozko/infra/http/middleware"
 	"vozko/usecases/agentloop"
 	aichat_usecase "vozko/usecases/aichat"
@@ -34,8 +34,8 @@ type AIChatHandler struct {
 	copilot *copilot_usecase.Service
 }
 
-func NewAIChatHandler(svc *aichat_usecase.Service, copilot *copilot_usecase.Service) *AIChatHandler {
-	return &AIChatHandler{svc: svc, copilot: copilot}
+func NewAIChatHandler(svc *aichat_usecase.Service, assistant *copilot_usecase.Service) *AIChatHandler {
+	return &AIChatHandler{svc: svc, copilot: assistant}
 }
 
 type threadDTO struct {
@@ -50,41 +50,41 @@ type threadDTO struct {
 }
 
 type toolActivityDTO struct {
-	Name    string                     `json:"name"`
-	Summary string                     `json:"summary"`
-	Ok      bool                       `json:"ok"`
-	Chart   *copilot_domain.Chart      `json:"chart,omitempty"`
-	Card    *copilot_domain.ActionCard `json:"card,omitempty"`
-	Media   *copilot_domain.Media      `json:"image,omitempty"`
+	Name    string              `json:"name"`
+	Summary string              `json:"summary"`
+	Ok      bool                `json:"ok"`
+	Chart   *copilot.Chart      `json:"chart,omitempty"`
+	Card    *copilot.ActionCard `json:"card,omitempty"`
+	Media   *copilot.Media      `json:"image,omitempty"`
 }
 
 type messageDTO struct {
-	ID          string                      `json:"id"`
-	Role        string                      `json:"role"`
-	Content     string                      `json:"content"`
-	Model       string                      `json:"model,omitempty"`
-	Reasoning   string                      `json:"reasoning,omitempty"`
-	Tools       []toolActivityDTO           `json:"tools,omitempty"`
-	Attachments []copilot_domain.Attachment `json:"attachments,omitempty"`
-	Proposal    *proposalDTO                `json:"proposal,omitempty"`
-	CreatedAt   string                      `json:"createdAt"`
+	ID          string               `json:"id"`
+	Role        string               `json:"role"`
+	Content     string               `json:"content"`
+	Model       string               `json:"model,omitempty"`
+	Reasoning   string               `json:"reasoning,omitempty"`
+	Tools       []toolActivityDTO    `json:"tools,omitempty"`
+	Attachments []copilot.Attachment `json:"attachments,omitempty"`
+	Proposal    *proposalDTO         `json:"proposal,omitempty"`
+	CreatedAt   string               `json:"createdAt"`
 }
 
 type proposalDTO struct {
-	ID       string                       `json:"id"`
-	ToolName string                       `json:"toolName"`
-	Fields   []copilot_domain.Field       `json:"fields"`
-	Preview  *copilot_domain.Preview      `json:"preview,omitempty"`
-	Secrets  []copilot_domain.SecretField `json:"secrets,omitempty"`
-	Choices  []copilot_domain.ChoiceField `json:"choices,omitempty"`
-	Status   string                       `json:"status"`
+	ID       string                `json:"id"`
+	ToolName string                `json:"toolName"`
+	Fields   []copilot.Field       `json:"fields"`
+	Preview  *copilot.Preview      `json:"preview,omitempty"`
+	Secrets  []copilot.SecretField `json:"secrets,omitempty"`
+	Choices  []copilot.ChoiceField `json:"choices,omitempty"`
+	Status   string                `json:"status"`
 }
 
 func toProposalDTO(m *aichat.Message) *proposalDTO {
 	if m.ProposalID == "" {
 		return nil
 	}
-	var pa copilot_domain.PendingAction
+	var pa copilot.PendingAction
 	if json.Unmarshal(m.Proposal, &pa) != nil {
 		return nil
 	}
@@ -248,13 +248,13 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	threadID := mux.Vars(r)["id"]
 
 	var body struct {
-		Content     string              `json:"content"`
-		Attachments []string            `json:"attachments"`
-		Model       string              `json:"model"`
-		Reasoning   string              `json:"reasoning"`
-		View        copilot_domain.View `json:"view"`
-		Timezone    string              `json:"timezone"`
-		Mode        string              `json:"mode"`
+		Content     string       `json:"content"`
+		Attachments []string     `json:"attachments"`
+		Model       string       `json:"model"`
+		Reasoning   string       `json:"reasoning"`
+		View        copilot.View `json:"view"`
+		Timezone    string       `json:"timezone"`
+		Mode        string       `json:"mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
@@ -264,7 +264,7 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
 		return
 	}
-	mode, err := copilot_domain.ParseMode(body.Mode)
+	mode, err := copilot.ParseMode(body.Mode)
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "modo de execução inválido", nil)
 		return
@@ -297,17 +297,17 @@ func (h *AIChatHandler) StreamMessage(w http.ResponseWriter, r *http.Request) {
 	cc.View = body.View
 	cc.Timezone = body.Timezone
 	cc.Mode = mode
-	message := copilot_domain.UserMessage{Content: body.Content, AttachmentIDs: body.Attachments}
+	message := copilot.UserMessage{Content: body.Content, AttachmentIDs: body.Attachments}
 	h.streamTurn(w, r, flusher, turn, thread, cc, func(ctx context.Context, emit agentloop.Emit) error {
 		return h.copilot.Stream(ctx, thread, message, cc, emit)
 	})
 }
 
 type approveActionRequest struct {
-	Secrets map[string]string   `json:"secrets"`
-	Choices map[string]string   `json:"choices"`
-	View    copilot_domain.View `json:"view"`
-	Mode    string              `json:"mode"`
+	Secrets map[string]string `json:"secrets"`
+	Choices map[string]string `json:"choices"`
+	View    copilot.View      `json:"view"`
+	Mode    string            `json:"mode"`
 }
 
 // @Summary		Aprovar uma proposta da Elo
@@ -351,7 +351,7 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
 		return
 	}
-	mode, err := copilot_domain.ParseMode(body.Mode)
+	mode, err := copilot.ParseMode(body.Mode)
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "modo de execução inválido", nil)
 		return
@@ -374,15 +374,15 @@ func (h *AIChatHandler) ApproveAction(w http.ResponseWriter, r *http.Request) {
 	cc := copilotCtx(r, claims.UserID, workspaceID)
 	cc.View = body.View
 	cc.Mode = mode
-	approval := copilot_domain.Approval{Secrets: body.Secrets, Choices: body.Choices}
+	approval := copilot.Approval{Secrets: body.Secrets, Choices: body.Choices}
 	h.streamTurn(w, r, flusher, turn, thread, cc, func(ctx context.Context, emit agentloop.Emit) error {
 		return h.copilot.Approve(ctx, thread, actionID, approval, cc, emit)
 	})
 }
 
 type rejectActionRequest struct {
-	View copilot_domain.View `json:"view"`
-	Mode string              `json:"mode"`
+	View copilot.View `json:"view"`
+	Mode string       `json:"mode"`
 }
 
 // @Summary		Recusar uma proposta da Elo
@@ -424,7 +424,7 @@ func (h *AIChatHandler) RejectAction(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
 		return
 	}
-	mode, err := copilot_domain.ParseMode(body.Mode)
+	mode, err := copilot.ParseMode(body.Mode)
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "modo de execução inválido", nil)
 		return
@@ -497,7 +497,7 @@ func (h *AIChatHandler) QueueMessage(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, err)
 		return
 	}
-	queued, err := h.copilot.Enqueue(thread, claims.UserID, copilot_domain.UserMessage{ClientID: body.ClientID, Content: body.Content, AttachmentIDs: body.Attachments})
+	queued, err := h.copilot.Enqueue(thread, claims.UserID, copilot.UserMessage{ClientID: body.ClientID, Content: body.Content, AttachmentIDs: body.Attachments})
 	if err != nil {
 		h.writeQueueError(w, err)
 		return
@@ -539,7 +539,7 @@ func (h *AIChatHandler) writeQueueError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusBadRequest, "id da mensagem inválido", nil)
 	case errors.Is(err, copilot_usecase.ErrEmptyMessage):
 		response.WriteError(w, http.StatusBadRequest, "mensagem vazia", nil)
-	case errors.Is(err, copilot_domain.ErrTooManyAttachments), errors.Is(err, copilot_domain.ErrAttachmentNotFound):
+	case errors.Is(err, copilot.ErrTooManyAttachments), errors.Is(err, copilot.ErrAttachmentNotFound):
 		response.WriteError(w, http.StatusBadRequest, "anexo inválido", nil)
 	case errors.Is(err, aichat.ErrQueuedMessageGone):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "queued_message_gone", "a mensagem já foi entregue ou retirada da fila", nil)
@@ -586,12 +586,12 @@ func (h *AIChatHandler) ScreenReply(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "comando inválido", nil)
 		return
 	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, copilot_domain.MaxScreenReplyBytes))
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, copilot.MaxScreenReplyBytes))
 	if err != nil {
 		response.WriteError(w, http.StatusRequestEntityTooLarge, "resposta grande demais", nil)
 		return
 	}
-	reply, err := copilot_domain.DecodeScreenReply(raw)
+	reply, err := copilot.DecodeScreenReply(raw)
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "resposta inválida", nil)
 		return
@@ -654,7 +654,7 @@ func (h *AIChatHandler) ScreenClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch err := h.copilot.ClaimScreenCommand(thread.ID, commandID, req.Claimant); {
-	case errors.Is(err, copilot_domain.ErrInvalidScreenClaim):
+	case errors.Is(err, copilot.ErrInvalidScreenClaim):
 		response.WriteError(w, http.StatusBadRequest, "pedido inválido", nil)
 	case err != nil:
 		response.WriteError(w, http.StatusServiceUnavailable, "a Elo não está esperando este comando", nil)
@@ -664,9 +664,9 @@ func (h *AIChatHandler) ScreenClaim(w http.ResponseWriter, r *http.Request) {
 }
 
 type projectOpenedRequest struct {
-	View     copilot_domain.View `json:"view"`
-	Mode     string              `json:"mode"`
-	Timezone string              `json:"timezone"`
+	View     copilot.View `json:"view"`
+	Mode     string       `json:"mode"`
+	Timezone string       `json:"timezone"`
 }
 
 // @Summary		Avisar a Elo que o editor do projeto abriu
@@ -709,7 +709,7 @@ func (h *AIChatHandler) ProjectOpened(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
 		return
 	}
-	mode, err := copilot_domain.ParseMode(body.Mode)
+	mode, err := copilot.ParseMode(body.Mode)
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "modo de execução inválido", nil)
 		return
@@ -869,14 +869,14 @@ func threadCostResponse(cost aichat.ThreadCost) ThreadCostResponse {
 	}
 }
 
-func (h *AIChatHandler) streamTurn(w http.ResponseWriter, r *http.Request, flusher http.Flusher, turn *copilot_usecase.Turn, thread *aichat.Thread, cc copilot_domain.Context, run copilot_usecase.TurnFunc) {
+func (h *AIChatHandler) streamTurn(w http.ResponseWriter, r *http.Request, flusher http.Flusher, turn *copilot_usecase.Turn, thread *aichat.Thread, cc copilot.Context, run copilot_usecase.TurnFunc) {
 	replay, live, leave := turn.Subscribe()
 	defer leave()
 	h.copilot.Start(turn, thread, cc, run)
 	pumpTurn(r.Context(), startChatSSE(w, flusher), replay, live)
 }
 
-func pumpTurn(ctx context.Context, emit func(string, interface{}), replay []copilot_domain.TurnEvent, live <-chan copilot_domain.TurnEvent) {
+func pumpTurn(ctx context.Context, emit func(string, interface{}), replay []copilot.TurnEvent, live <-chan copilot.TurnEvent) {
 	for _, ev := range replay {
 		emit(ev.Type, ev.Payload)
 	}
@@ -895,20 +895,20 @@ func pumpTurn(ctx context.Context, emit func(string, interface{}), replay []copi
 
 func (h *AIChatHandler) writeTurnError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, copilot_domain.ErrTurnRunning):
+	case errors.Is(err, copilot.ErrTurnRunning):
 		response.WriteErrorWithCode(w, http.StatusConflict, "turn_running", "a Elo ainda está respondendo nesta conversa", nil)
-	case errors.Is(err, copilot_domain.ErrTurnNotRunning):
+	case errors.Is(err, copilot.ErrTurnNotRunning):
 		response.WriteErrorWithCode(w, http.StatusNotFound, "turn_not_running", "nenhuma resposta da Elo está em andamento nesta conversa", nil)
-	case errors.Is(err, copilot_domain.ErrTurnForbidden):
+	case errors.Is(err, copilot.ErrTurnForbidden):
 		response.WriteError(w, http.StatusForbidden, "sem acesso a esta conversa", nil)
 	default:
 		h.writeError(w, err)
 	}
 }
 
-func copilotCtx(r *http.Request, userID, workspaceID string) copilot_domain.Context {
+func copilotCtx(r *http.Request, userID, workspaceID string) copilot.Context {
 	claims := middleware.GetClaims(r)
-	return copilot_domain.Context{
+	return copilot.Context{
 		WorkspaceID: workspaceID,
 		UserID:      userID,
 		Departments: middleware.GetDepartmentFilter(r),

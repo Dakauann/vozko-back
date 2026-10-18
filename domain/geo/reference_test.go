@@ -23,9 +23,6 @@ func TestReferenceKeysFor(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ReferenceKeysFor() = %+v, expected %+v", got, want)
 	}
-	if !ReferenceKeysFor(nil).Empty() {
-		t.Fatalf("keys of nothing must be empty")
-	}
 }
 
 func TestReferencePlacesFor(t *testing.T) {

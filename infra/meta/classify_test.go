@@ -32,7 +32,7 @@ func TestFacebookDomainClassifiesGraphErrors(t *testing.T) {
 			t.Errorf("%v classified %q, want %q", tc.err, got, tc.want)
 		}
 	}
-	if fbdomain.ErrorCode(fmt.Errorf("x: %w", &Error{Code: 10900})) != 10900 {
+	if code, _ := fbdomain.ErrorCodes(fmt.Errorf("x: %w", &Error{Code: 10900})); code != 10900 {
 		t.Fatal("error code not exposed")
 	}
 }

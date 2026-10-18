@@ -12,7 +12,7 @@ import (
 	"vozko/domain/geo"
 	"vozko/domain/geocoding"
 	"vozko/domain/lead"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 func TestGeocodeClaimSQLLeasesBeforeAnyProviderCall(t *testing.T) {
@@ -32,7 +32,7 @@ func TestGeocodeClaimSQLLeasesBeforeAnyProviderCall(t *testing.T) {
 			t.Fatalf("claim SQL misses %q:\n%s", want, sql)
 		}
 	}
-	if got := strings.Count(sql, database.GeocodeQueuedSQL("a")); got != 3 {
+	if got := strings.Count(sql, sqlexpr.GeocodeQueued("a")); got != 3 {
 		t.Fatalf("the queued predicate appears %d times, want 3 so every branch matches the partial index", got)
 	}
 	if got := strings.Count(sql, "geo_next_at <= ?"); got != 1 {
@@ -180,7 +180,7 @@ func TestGeocodeSettleSQLGuardsTheClaimAndTheFingerprint(t *testing.T) {
 
 func TestGeocodeArmAndBacklogUseTheQueuedPredicate(t *testing.T) {
 	for name, sql := range map[string]string{"arm": geocodeArmSQL, "backlog": geocodeBacklogSQL, "release": geocodeReleaseSQL} {
-		if name != "release" && !strings.Contains(sql, database.GeocodeQueuedSQL("")) {
+		if name != "release" && !strings.Contains(sql, sqlexpr.GeocodeQueued("")) {
 			t.Fatalf("%s SQL = %q, want the queued predicate", name, sql)
 		}
 	}

@@ -10,7 +10,7 @@ import (
 
 	"vozko/domain/shared"
 	uwg "vozko/domain/unofficial_whatsapp_group"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 type statsReader struct{ db *gorm.DB }
@@ -207,7 +207,7 @@ func (r *statsReader) CrossGroupPeople(ctx context.Context, f uwg.PeopleFilter) 
 	search := ""
 	if s := strings.TrimSpace(f.Search); s != "" {
 		search = ` AND (bool_or(m.display_name ILIKE ? ESCAPE '\') OR MAX(m.phone) LIKE ? ESCAPE '\' OR bool_or(m.jid ILIKE ? ESCAPE '\'))`
-		like := database.LikeContains(s)
+		like := sqlexpr.LikeContains(s)
 		args = append(args, like, like, like)
 	}
 	people := `WITH ` + fg + `, people AS (
@@ -274,7 +274,7 @@ func (r *statsReader) Membership(ctx context.Context, f uwg.MembershipFilter) ([
 		filterArgs = append(filterArgs, strings.TrimSpace(*f.Category))
 	}
 	if s := strings.TrimSpace(f.Search); s != "" {
-		like := database.LikeContains(s)
+		like := sqlexpr.LikeContains(s)
 		filter += ` AND (fg.subject ILIKE ? ESCAPE '\' OR fg.description ILIKE ? ESCAPE '\')`
 		filterArgs = append(filterArgs, like, like)
 	}

@@ -49,11 +49,9 @@ type Pricer interface {
 }
 
 type pricer struct {
-	repo             Repository
-	planPricing      PlanPricingProvider
-	llmFetcher       LLMPriceFetcher
-	voiceRateFetcher VoiceCreditRateFetcher
-	modelCostFetcher ModelCharCostFetcher
+	repo        Repository
+	planPricing PlanPricingProvider
+	llmFetcher  LLMPriceFetcher
 
 	resolvedCache    sync.Map
 	resolvedCacheTTL time.Duration
@@ -78,14 +76,6 @@ type PricerOption func(*pricer)
 
 func WithLLMPriceFetcher(f LLMPriceFetcher) PricerOption {
 	return func(p *pricer) { p.llmFetcher = f }
-}
-
-func WithVoiceCreditRateFetcher(f VoiceCreditRateFetcher) PricerOption {
-	return func(p *pricer) { p.voiceRateFetcher = f }
-}
-
-func WithModelCharCostFetcher(f ModelCharCostFetcher) PricerOption {
-	return func(p *pricer) { p.modelCostFetcher = f }
 }
 
 func WithPlanPricingProvider(pp PlanPricingProvider) PricerOption {

@@ -353,16 +353,6 @@ func TestParseProviderMessageIDAcceptsLegacyTwoFieldForm(t *testing.T) {
 	}
 }
 
-func TestSortByUpdateID(t *testing.T) {
-	events := []*Event{{UpdateID: 30}, {UpdateID: 10}, {UpdateID: 20}}
-	SortByUpdateID(events)
-	for i, want := range []int64{10, 20, 30} {
-		if events[i].UpdateID != want {
-			t.Fatalf("position %d = %d, want %d", i, events[i].UpdateID, want)
-		}
-	}
-}
-
 func TestCallbackQueryUsesTheButtonLabelAsTheMessageText(t *testing.T) {
 	ev := normalizeFixture(t, "callback_query_with_keyboard.json")
 

@@ -75,7 +75,7 @@ func tokenFromRequest(r *http.Request) string {
 
 func (rlm *RateLimiterMiddleware) observeRejection(r *http.Request, ip, reason string, retryAfter time.Duration) {
 	log.Printf("[rate-limit] REJECT limiter=%s ip=%s method=%s path=%s reason=%s retry_after=%s",
-		rlm.name, ip, r.Method, r.URL.Path, reason, retryAfter)
+		rlm.name, ip, r.Method, LoggedPath(r.URL.Path), reason, retryAfter)
 	if rlm.metrics != nil {
 		rlm.metrics.IncRateLimited(rlm.name, ip, reason)
 	}

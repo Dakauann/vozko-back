@@ -383,15 +383,6 @@ func TestAreaRoutesMapTheirRefusals(t *testing.T) {
 	}
 }
 
-func mustJSON(t *testing.T, v any) string {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
-}
-
 func errorCodeOf(t *testing.T, body []byte) string {
 	t.Helper()
 	var out struct {

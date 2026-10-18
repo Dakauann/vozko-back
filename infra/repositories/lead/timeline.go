@@ -15,7 +15,7 @@ import (
 	"vozko/domain/calls/cdr"
 	"vozko/domain/lead"
 	"vozko/domain/shared"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 	infracrmfilter "vozko/infra/repositories/crmfilter"
 	opportunity_repository "vozko/infra/repositories/opportunity"
 )
@@ -79,7 +79,7 @@ func conversationBranch(scan lead.TimelineScan) timelineBranch {
 		selects: timelineSelect(quoted(string(lead.TimelineConversation)), at, item, quoted(string(lead.TimelineRefEntry)),
 			"lead_entries.entry_id::text", "lead_entries.entry_type::text", "''", "''",
 			"jsonb_build_object('channel', lead_entries.entry_type)", noCallFacts),
-		from: infracrmfilter.LeadEntriesSource() + " " + firstMessage + database.NotSeedPlaceholderSQL("tcm") +
+		from: infracrmfilter.LeadEntriesSource() + " " + firstMessage + sqlexpr.NotSeedPlaceholder("tcm") +
 			" ORDER BY tcm.created_at LIMIT 1) tfirst",
 		where: "lead_entries.lead_id = ?",
 		args:  []interface{}{scan.LeadID},
@@ -173,7 +173,7 @@ func leadCalls(scan lead.TimelineScan) timelineBranch {
 }
 
 func unlinkedCallsOfNumbers(scan lead.TimelineScan) timelineBranch {
-	inner, innerArgs := callsBounded("tcl.workspace_id = ? AND tcl.lead_id IS NULL AND tcl.deleted_at IS NULL AND "+database.CallCounterpartSQL("tcl")+" = tnum.number",
+	inner, innerArgs := callsBounded("tcl.workspace_id = ? AND tcl.lead_id IS NULL AND tcl.deleted_at IS NULL AND "+sqlexpr.CallCounterpart("tcl")+" = tnum.number",
 		[]interface{}{scan.WorkspaceID}, scan.Before, scan.Limit)
 	return callBranch("unnest(?::text[]) AS tnum(number) CROSS JOIN LATERAL ("+inner+") tcl", callSummary,
 		append([]interface{}{pq.Array(scan.NumberForms)}, innerArgs...))

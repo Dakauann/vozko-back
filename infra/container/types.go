@@ -41,7 +41,6 @@ import (
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
 	opportunityhttp "vozko/delivery/http/opportunity"
 	opportunityboardhttp "vozko/delivery/http/opportunityboard"
-	paymentsplithttp "vozko/delivery/http/paymentsplit"
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
 	reporthttp "vozko/delivery/http/report"
@@ -50,7 +49,6 @@ import (
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
 	systemconfighttp "vozko/delivery/http/systemconfig"
-	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
@@ -86,10 +84,7 @@ import (
 	call_cdr_domain "vozko/domain/calls/cdr"
 	call_recordings "vozko/domain/calls/recordings"
 	callsession_domain "vozko/domain/callsession"
-	"vozko/domain/cart"
-	"vozko/domain/category"
 	"vozko/domain/cep"
-	"vozko/domain/cluster"
 	coexistence_domain "vozko/domain/coexistence"
 	config_domain "vozko/domain/config"
 	conversation_domain "vozko/domain/conversation"
@@ -101,8 +96,6 @@ import (
 	decision_domain "vozko/domain/decision"
 	export_domain "vozko/domain/export"
 	ia_domain "vozko/domain/inbox_assignment"
-	"vozko/domain/insurance"
-	"vozko/domain/inventory"
 	invoice_domain "vozko/domain/invoice"
 	issues_domain "vozko/domain/issues"
 	issue_response_domain "vozko/domain/issues/issue_response"
@@ -116,22 +109,16 @@ import (
 	"vozko/domain/messaging"
 	"vozko/domain/notification"
 	opportunity_domain "vozko/domain/opportunity"
-	"vozko/domain/order"
 	"vozko/domain/payment"
 	pipeline_domain "vozko/domain/pipeline"
-	"vozko/domain/product"
-	"vozko/domain/property"
 	qe_domain "vozko/domain/queue_event"
 	rag_domain "vozko/domain/rag"
 	report_domain "vozko/domain/report"
 	savedview_domain "vozko/domain/savedview"
 	scheduled_message_domain "vozko/domain/scheduled_message"
-	"vozko/domain/shipping"
-	"vozko/domain/shop"
 	shortlink_domain "vozko/domain/shortlink"
 	stage_domain "vozko/domain/stage"
 	telephony_domain "vozko/domain/telephony"
-	"vozko/domain/ticket"
 	"vozko/domain/tools"
 	"vozko/domain/user"
 	webhook_domain "vozko/domain/webhook"
@@ -256,23 +243,13 @@ type Container struct {
 
 type repositories struct {
 	conversationAnalyses    audience_domain.ConversationReader
-	product                 product.ProductRepository
-	property                property.PropertyRepository
-	category                category.Repository
 	agent                   agent_domain.Repository
 	lead                    lead_repository.Repository
 	conversation            conversation_domain.MessageRepository
 	user                    user.UserRepository
 	media                   media.MediaRepository
-	cart                    cart.CartRepository
 	address                 address.AddressRepository
 	cep                     cep.CEPRepository
-	order                   order.OrderRepository
-	payment                 payment.PaymentRepository
-	paymentSplit            payment.PaymentSplitRepository
-	ticket                  ticket.Repository
-	shippingAccount         shipping.ProviderAccountRepository
-	insurance               insurance.InsuranceRepository
 	whatsappTemplate        whatsapp_template.Repository
 	whatsappTemplateSend    whatsapp_template.SendAttemptRepository
 	whatsappTemplateNames   whatsapp_template.GrantedTemplateNames
@@ -280,7 +257,6 @@ type repositories struct {
 	emailVerification       auth.EmailVerificationRepository
 	systemConfig            config_domain.SystemConfigRepository
 	customer                customer.CustomerRepository
-	shop                    shop.Repository
 	wcCampaign              wc_domain.Repository
 	wcEntry                 wc_entry_domain.Repository
 	wcDispatchReport        wc_entry_domain.DispatchReportReader
@@ -385,7 +361,6 @@ type services struct {
 	uwSeedQueueSub                messaging.MessageQueueSub
 	cache                         cache.Cache
 	rateLimiterFactory            cache.RateLimiterFactory
-	clusterRegistry               *cluster.Registry
 	metrics                       *prometheus_service.PrometheusService
 	ai                            ai.Service
 	whatsapp                      conversation_domain.WhatsAppClient
@@ -397,18 +372,13 @@ type services struct {
 	adOrigins                     conversation_domain.AdOriginRepository
 	adOriginRecorder              *conversationad.Recorder
 	fileReader                    media.FileReader
-	ticketFileStorage             ticket.FileStorage
 	asaasService                  asaas_service.AsaasServiceUseCases
 	paymentGateway                payment.Gateway
 	mercadoPagoWebhookResolver    payment.WebhookResolver
 	emailService                  notification.EmailService
 	templateLoaderService         notification.TemplateLoader
-	inventory                     inventory.VariantStockService
 	documentValidator             customer.DocumentValidator
-	pricingService                payment.PricingService
-	shippingGateways              map[shipping.Provider]shipping.ProviderGateway
 	toolRegistry                  tools.Service
-	insuranceProviders            []insurance.QuoteProvider
 	whisperPool                   *whisper.Pool
 	captionsWhisperPool           *whisper.Pool
 	businessPhoneMetaAPI          businessphone.MetaAPIService
@@ -454,27 +424,27 @@ type services struct {
 	aiAttendanceService           *aa_usecase.AsyncSessionService
 	ragEmbedding                  rag_domain.EmbeddingService
 	ragTextChunker                rag_domain.TextChunker
-	ragDocProcessor               rag_domain.DocumentProcessor
-	ragTextExtractor              rag_domain.TextExtractor
-	ragQueuePub                   messaging.MessageQueuePub
-	ragQueueSub                   messaging.MessageQueueSub
-	shortlinkQueuePub             messaging.MessageQueuePub
-	shortlinkQueueSub             messaging.MessageQueueSub
-	webhookQueuePub               messaging.MessageQueuePub
-	webhookQueueSub               messaging.MessageQueueSub
-	billingQueuePub               messaging.MessageQueuePub
-	scheduledMsgQueuePub          messaging.MessageQueuePub
-	scheduledMsgQueueSub          messaging.MessageQueueSub
-	billingQueueSub               messaging.MessageQueueSub
-	recordingQueuePub             messaging.MessageQueuePub
-	recordingQueueSub             messaging.MessageQueueSub
-	googleCalendar                calendar_domain.GoogleOAuthService
-	cachedBalanceChecker          balance_domain.CachedBalanceChecker
-	liveGate                      *livedecisions_usecase.GateHandle
-	liveSubjects                  *conversation_usecase.LiveSubjects
-	analysisScheduler             *conversation_usecase.AnalysisScheduler
-	decisionModel                 decision_domain.Model
-	serviceMessageBilling         conversation_domain.ServiceMessageBilling
+
+	ragTextExtractor      rag_domain.TextExtractor
+	ragQueuePub           messaging.MessageQueuePub
+	ragQueueSub           messaging.MessageQueueSub
+	shortlinkQueuePub     messaging.MessageQueuePub
+	shortlinkQueueSub     messaging.MessageQueueSub
+	webhookQueuePub       messaging.MessageQueuePub
+	webhookQueueSub       messaging.MessageQueueSub
+	billingQueuePub       messaging.MessageQueuePub
+	scheduledMsgQueuePub  messaging.MessageQueuePub
+	scheduledMsgQueueSub  messaging.MessageQueueSub
+	billingQueueSub       messaging.MessageQueueSub
+	recordingQueuePub     messaging.MessageQueuePub
+	recordingQueueSub     messaging.MessageQueueSub
+	googleCalendar        calendar_domain.GoogleOAuthService
+	cachedBalanceChecker  balance_domain.CachedBalanceChecker
+	liveGate              *livedecisions_usecase.GateHandle
+	liveSubjects          *conversation_usecase.LiveSubjects
+	analysisScheduler     *conversation_usecase.AnalysisScheduler
+	decisionModel         decision_domain.Model
+	serviceMessageBilling conversation_domain.ServiceMessageBilling
 
 	callSessions                callsession_domain.CallSessionRegistry
 	calls                       callsession_domain.CallRegistry
@@ -499,27 +469,9 @@ type services struct {
 }
 
 type useCases struct {
-	createProduct         product.CreateProductUseCase
-	updateProduct         product.UpdateProductUseCase
-	launchVariantStock    product.LaunchVariantStockUseCase
 	handlePaymentWebhook  payment.HandlePaymentWebhookUseCase
 	handleWhatsAppMessage conversation_domain.HandleWhatsAppMessageUseCase
-	getProduct            product.GetProductUseCase
-	listProducts          product.ListProductsUseCase
-	searchProducts        product.SearchProductsUseCase
 
-	createProperty   property.CreatePropertyUseCase
-	updateProperty   property.UpdatePropertyUseCase
-	getProperty      property.GetPropertyUseCase
-	listProperties   property.ListPropertiesUseCase
-	searchProperties property.SearchPropertiesUseCase
-	deleteProperty   property.DeletePropertyUseCase
-
-	createCategory        category.CreateCategoryUseCase
-	updateCategory        category.UpdateCategoryUseCase
-	deleteCategory        category.DeleteCategoryUseCase
-	getCategory           category.GetCategoryUseCase
-	listCategories        category.ListCategoriesUseCase
 	createAgent           agent_domain.CreateAgentUseCase
 	simulateAgentTurn     agent_domain.SimulateTurnUseCase
 	aichat                *aichat_usecase.Service
@@ -543,14 +495,6 @@ type useCases struct {
 	getMedia    media.GetMediaUseCase
 	readMedia   media.ReadMediaUseCase
 
-	getCart   cart.GetCartUseCase
-	clearCart cart.ClearCartUseCase
-
-	addToCart         cart.AddToCartUseCase
-	removeFromCart    cart.RemoveFromCartUseCase
-	updateCartItem    cart.UpdateCartItemUseCase
-	decrementCartItem cart.DecrementCartItemUseCase
-
 	consumeNotifications notification_usecase.ConsumeEmailUseCase
 	publishEmail         notification_usecase.PublishEmailUseCase
 	notifier             notification.Notifier
@@ -561,11 +505,6 @@ type useCases struct {
 	getAddresses  address.GetAddressesUseCase
 	updateAddress address.UpdateAddressUseCase
 	deleteAddress address.DeleteAddressUseCase
-
-	checkout           order.CheckoutUseCase
-	getOrder           order.GetOrderUseCase
-	listOrders         order.ListOrdersUseCase
-	cancelExpiredOrder order.CancelExpiredOrderUseCase
 
 	searchCEP cep.CEPSearchUseCase
 
@@ -582,32 +521,6 @@ type useCases struct {
 	logoutAll             auth.LogoutAllUseCase
 	listSessions          auth.ListSessionsUseCase
 	revokeSession         auth.RevokeSessionUseCase
-
-	createPaymentSplit       payment.CreatePaymentSplitUseCase
-	updatePaymentSplit       payment.UpdatePaymentSplitUseCase
-	deletePaymentSplit       payment.DeletePaymentSplitUseCase
-	getPaymentSplit          payment.GetPaymentSplitUseCase
-	listPaymentSplits        payment.ListPaymentSplitsUseCase
-	getPaymentSplitSuppliers payment.GetPaymentSplitSuppliersUseCase
-
-	createTicket        ticket.CreateTicketUseCase
-	listTickets         ticket.ListTicketsUseCase
-	listUserTickets     ticket.ListUserTicketsUseCase
-	getTicketByOrder    ticket.GetTicketByOrderUseCase
-	uploadTicketDoc     ticket.UploadTicketDocumentUseCase
-	updateTicketStatus  ticket.UpdateTicketStatusUseCase
-	generateTicketLabel ticket.GenerateLabelUseCase
-
-	getShippingAuthorizationURL shipping.GetAuthorizationURLUseCase
-	connectShippingAccount      shipping.ConnectProviderAccountUseCase
-	listShippingAccounts        shipping.ListProviderAccountsUseCase
-	calculateFreight            shipping.CalculateFreightUseCase
-
-	quoteInsurance                insurance.QuoteInsuranceUseCase
-	listInsuranceQuotations       insurance.ListUserQuotationsUseCase
-	getInsuranceQuotation         insurance.GetQuotationUseCase
-	listInsurancePolicies         insurance.ListPoliciesUseCase
-	describeInsuranceRequirements insurance.DescribeQuoteRequirementsUseCase
 
 	listWhatsAppTemplates         whatsapp_template.ListUseCase
 	getWhatsAppTemplate           whatsapp_template.GetUseCase
@@ -633,12 +546,6 @@ type useCases struct {
 	getWorkspaceConfig         workspace_config_domain.GetWorkspaceConfigUseCase
 	updateWorkspaceConfig      workspace_config_domain.UpdateWorkspaceConfigUseCase
 	updateWorkspaceConfigOwner workspace_config_domain.UpdateWorkspaceConfigOwnerUseCase
-
-	createShop shop.CreateShopUseCase
-	updateShop shop.UpdateShopUseCase
-	deleteShop shop.DeleteShopUseCase
-	getShop    shop.GetShopUseCase
-	listShops  shop.ListShopsUseCase
 
 	createWCCampaign           wc_domain.CreateCampaignUseCase
 	updateWCCampaign           wc_domain.UpdateCampaignUseCase
@@ -996,31 +903,21 @@ type useCases struct {
 }
 
 type handlers_ struct {
-	product                 *handlers.ProductHandler
-	property                *handlers.PropertyHandler
-	category                *handlers.CategoryHandler
 	agent                   *handlers.AgentHandler
 	aichat                  *handlers.AIChatHandler
 	auth                    *authhttp.AuthHandler
 	user                    *userhttp.UserHandler
 	media                   *mediashttp.MediasHandler
-	cart                    *handlers.CartHandler
 	address                 *handlers.AddressHandler
-	order                   *handlers.OrderHandler
 	cep                     *cephttp.CEPHandler
 	webhook                 *handlers.WebhookHandler
 	mercadoPagoWebhook      *mercadopagohttp.WebhookHandler
 	readMe                  *readmehttp.Handler
-	paymentSplit            *paymentsplithttp.PaymentSplitHandler
-	ticket                  *tickethttp.TicketHandler
-	shipping                *handlers.ShippingHandler
-	insurance               *handlers.InsuranceHandler
 	whatsappTemplate        *whatsapptemplatehttp.WhatsAppTemplateHandler
 	whatsappOutreach        *whatsappoutreachhttp.Handler
 	systemConfig            *systemconfighttp.SystemConfigHandler
 	metrics                 *handlers.MetricsHandler
 	metricsQuery            *handlers.MetricsQueryHandler
-	shop                    *handlers.ShopHandler
 	whatsappCampaign        *handlers.WhatsAppCampaignHandler
 	whatsappBusinessPhone   *whatsappbusinessphonehttp.WhatsAppBusinessPhoneHandler
 	metaEmbeddedSignup      *metaembeddedsignuphttp.MetaEmbeddedSignupHandler

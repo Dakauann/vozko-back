@@ -45,9 +45,3 @@ func requirePrivilegedDepartmentAssignment(w http.ResponseWriter, r *http.Reques
 	response.WriteError(w, http.StatusForbidden, "Only owners and admins can assign departments after creation", nil)
 	return false
 }
-
-func writeDepartmentAlreadyAssignedError(w http.ResponseWriter) {
-	response.WriteValidationError(w, map[string]string{
-		"departmentId": "resource already has a department",
-	})
-}

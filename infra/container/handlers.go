@@ -44,7 +44,6 @@ import (
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
 	opportunityhttp "vozko/delivery/http/opportunity"
 	opportunityboardhttp "vozko/delivery/http/opportunityboard"
-	paymentsplithttp "vozko/delivery/http/paymentsplit"
 	pipelinehttp "vozko/delivery/http/pipeline"
 	readmehttp "vozko/delivery/http/readme"
 	reporthttp "vozko/delivery/http/report"
@@ -53,7 +52,6 @@ import (
 	shortlinkhttp "vozko/delivery/http/shortlink"
 	stagehttp "vozko/delivery/http/stage"
 	systemconfighttp "vozko/delivery/http/systemconfig"
-	tickethttp "vozko/delivery/http/ticket"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
@@ -77,7 +75,6 @@ import (
 	crmboard_usecase "vozko/usecases/crmboard"
 	crmbulk_usecase "vozko/usecases/crmbulk"
 	oppboard_usecase "vozko/usecases/oppboard"
-	payment_usecase "vozko/usecases/payment"
 	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	workflow_usecase "vozko/usecases/workflow"
 )
@@ -141,32 +138,16 @@ func (c *Container) initHandlers() {
 	}
 
 	c.handlers = &handlers_{
-		product:            handlers.NewProductHandler(c.useCases.createProduct, c.useCases.updateProduct, c.useCases.launchVariantStock, c.useCases.getProduct, c.useCases.listProducts, c.useCases.searchProducts),
-		property:           handlers.NewPropertyHandler(c.useCases.createProperty, c.useCases.updateProperty, c.useCases.getProperty, c.useCases.listProperties, c.useCases.searchProperties, c.useCases.deleteProperty),
-		category:           handlers.NewCategoryHandler(c.useCases.createCategory, c.useCases.updateCategory, c.useCases.deleteCategory, c.useCases.getCategory, c.useCases.listCategories),
 		agent:              handlers.NewAgentHandler(c.useCases.createAgent, c.useCases.updateAgent, c.useCases.assignAgentDepartment, c.useCases.deleteAgent, c.useCases.getAgent, c.useCases.listAgents, c.useCases.simulateAgentTurn, c.services.toolRegistry, c.services.ai, c.repositories.whatsappTemplate),
 		aichat:             handlers.NewAIChatHandler(c.useCases.aichat, c.useCases.copilot),
 		auth:               c.newAuthHandler(),
 		user:               userhttp.NewUserHandler(c.useCases.listUsers, c.useCases.updateUserRole, c.useCases.findUserByID, c.useCases.updateUser, c.useCases.deleteUser, c.useCases.getWorkspaceSubscription, c.services.documentValidator),
 		media:              mediashttp.NewMediasHandler(c.useCases.uploadMedia, c.useCases.listMedia, c.useCases.getMedia, c.useCases.readMedia),
-		cart:               handlers.NewCartHandler(c.useCases.addToCart, c.useCases.removeFromCart, c.useCases.updateCartItem, c.useCases.decrementCartItem, c.useCases.getCart, c.useCases.clearCart),
 		address:            handlers.NewAddressHandler(c.useCases.createAddress, c.useCases.getAddresses, c.useCases.updateAddress, c.useCases.deleteAddress),
-		order:              handlers.NewOrderHandler(c.useCases.checkout, c.useCases.getOrder, c.useCases.listOrders),
 		cep:                cephttp.NewCEPHandler(c.useCases.searchCEP),
 		webhook:            c.buildWebhookHandler(),
 		mercadoPagoWebhook: c.buildMercadoPagoWebhookHandler(),
 		readMe:             readmehttp.NewHandler(c.cfg.ReadMeWebhookSecret, c.repositories.user, c.services.readMeTokenService),
-		paymentSplit: paymentsplithttp.NewPaymentSplitHandler(
-			c.useCases.createPaymentSplit,
-			c.useCases.updatePaymentSplit,
-			c.useCases.deletePaymentSplit,
-			c.useCases.getPaymentSplit,
-			c.useCases.listPaymentSplits,
-			payment_usecase.NewGetPaymentSplitSuppliersUseCase(c.repositories.paymentSplit),
-		),
-		ticket:    tickethttp.NewTicketHandler(c.useCases.listUserTickets, c.useCases.getTicketByOrder, c.useCases.uploadTicketDoc, c.useCases.listTickets, c.useCases.updateTicketStatus, c.useCases.generateTicketLabel),
-		shipping:  handlers.NewShippingHandler(c.useCases.getShippingAuthorizationURL, c.useCases.connectShippingAccount, c.useCases.listShippingAccounts),
-		insurance: handlers.NewInsuranceHandler(c.useCases.quoteInsurance, c.useCases.listInsuranceQuotations, c.useCases.getInsuranceQuotation, c.useCases.listInsurancePolicies, c.useCases.describeInsuranceRequirements),
 		whatsappTemplate: whatsapptemplatehttp.NewWhatsAppTemplateHandler(
 			c.useCases.listWhatsAppTemplates,
 			c.useCases.getWhatsAppTemplate,
@@ -220,12 +201,6 @@ func (c *Container) initHandlers() {
 		),
 		metrics:      metricsHandler,
 		metricsQuery: metricsQueryHandler,
-		shop: handlers.NewShopHandler(
-			c.useCases.createShop,
-			c.useCases.updateShop,
-			c.useCases.getShop,
-			c.useCases.listShops,
-		),
 		whatsappCampaign: withCampaignAccess(c, handlers.NewWhatsAppCampaignHandler(
 			c.createWithWavePolicy(c.useCases.createWCCampaign, c.useCases.deleteWCCampaign),
 			c.useCases.updateWCCampaign,

@@ -75,15 +75,6 @@ type codedError interface {
 	ErrorCode() (code, subcode int)
 }
 
-func ErrorCode(err error) int {
-	var ce codedError
-	if errors.As(err, &ce) {
-		code, _ := ce.ErrorCode()
-		return code
-	}
-	return 0
-}
-
 const (
 	CodeNoProfile         = 2018218
 	CodeProfilePermission = 2018247

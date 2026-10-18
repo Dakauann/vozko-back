@@ -2,7 +2,6 @@ package template
 
 import (
 	"errors"
-	"sort"
 )
 
 const (
@@ -196,25 +195,6 @@ func IsValidationError(err error) bool {
 		}
 	}
 	return false
-}
-
-func KnownErrorCodes() []string {
-	codes := make([]string, 0, len(errorCodes)+3)
-	seen := map[string]bool{}
-	for _, code := range errorCodes {
-		if !seen[code] {
-			seen[code] = true
-			codes = append(codes, code)
-		}
-	}
-	for _, code := range []string{CodeUnknown, CodeProviderRejected, CodeProviderUnavailable} {
-		if !seen[code] {
-			seen[code] = true
-			codes = append(codes, code)
-		}
-	}
-	sort.Strings(codes)
-	return codes
 }
 
 type ProviderError interface {

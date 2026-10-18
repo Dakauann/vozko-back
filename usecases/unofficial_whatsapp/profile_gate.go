@@ -2,7 +2,6 @@ package unofficial_whatsapp
 
 import (
 	"sync"
-	"time"
 
 	"golang.org/x/time/rate"
 )
@@ -44,15 +43,4 @@ func (g *profileGate) allow(instanceID string) bool {
 	return limiter.Allow()
 }
 
-func (g *profileGate) forget(instanceID string) {
-	if g == nil {
-		return
-	}
-	g.mu.Lock()
-	delete(g.limiters, instanceID)
-	g.mu.Unlock()
-}
-
 var sharedProfileGate = newProfileGate()
-
-const profileGateWindow = time.Second / profileReadsPerSecond

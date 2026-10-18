@@ -1,9 +1,6 @@
 package workspace_usecase
 
 import (
-	"github.com/google/uuid"
-	"log"
-
 	"vozko/domain/workspace"
 )
 
@@ -35,37 +32,11 @@ func (uc *setMemberPermissionsUseCase) Execute(actorID, workspaceID, memberUserI
 		return nil, err
 	}
 
-	if kept, dropped := workspace.DropRetiredResources(input.Permissions); len(dropped) > 0 {
-		log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
-			"set member permissions in workspace "+workspaceID, len(input.Permissions)-len(kept), dropped)
-		input.Permissions = kept
+	entries, err := validatedPermissions("set member permissions in workspace "+workspaceID, input.Permissions)
+	if err != nil {
+		return nil, err
 	}
-
-	for _, pe := range input.Permissions {
-		if !pe.Resource.IsValid() {
-			return nil, workspace.ErrInvalidResource
-		}
-		if !pe.Action.IsValid() {
-			return nil, workspace.ErrInvalidAction
-		}
-		if !workspace.ValidActionForResource(pe.Resource, pe.Action) {
-			return nil, workspace.ErrInvalidAction
-		}
-	}
-
-	input.Permissions = workspace.EnforceDependencies(input.Permissions)
-
-	permissions := make([]*workspace.Permission, len(input.Permissions))
-	for i, pe := range input.Permissions {
-		permissions[i] = &workspace.Permission{
-			ID:       uuid.New().String(),
-			MemberID: target.ID,
-			Resource: pe.Resource,
-			Action:   pe.Action,
-		}
-	}
-
-	if err := uc.repo.SetPermissions(target.ID, permissions); err != nil {
+	if err := uc.repo.SetPermissions(target.ID, memberGrants(target.ID, entries)); err != nil {
 		return nil, err
 	}
 

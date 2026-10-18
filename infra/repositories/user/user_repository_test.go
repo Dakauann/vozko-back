@@ -82,15 +82,6 @@ func encrypted(t *testing.T, plain string) []byte {
 	return v.([]byte)
 }
 
-func blindIdx(t *testing.T, scope, value string) []byte {
-	t.Helper()
-	bi, err := piigorm.NewBlindIndex(scope, value)
-	if err != nil {
-		t.Fatalf("blind index %s/%s: %v", scope, value, err)
-	}
-	return []byte(bi)
-}
-
 func TestEncryptDoc_EmptyReturnsNullAndNilIndex(t *testing.T) {
 	enc, bi, err := encryptDoc(schema.UserCPFBlindScope, "")
 	if err != nil {

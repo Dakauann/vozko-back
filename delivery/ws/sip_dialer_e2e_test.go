@@ -216,8 +216,8 @@ func startStack(t *testing.T, cfg dialerStackConfig) *dialerStack {
 type dialerClient struct {
 	t    *testing.T
 	conn *websocket.Conn
-	msgs chan WSOutgoingMessage
-	raw  chan json.RawMessage
+
+	raw chan json.RawMessage
 }
 
 func (s *dialerStack) connect(t *testing.T, userID, workspaceID string) *dialerClient {

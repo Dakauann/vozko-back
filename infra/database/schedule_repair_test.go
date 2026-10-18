@@ -1,7 +1,6 @@
 package database
 
 import (
-	"slices"
 	"testing"
 	"time"
 
@@ -9,15 +8,9 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestScheduleRepairIsRegistered(t *testing.T) {
-	if !slices.Contains(repairNames(), "wc_consume_used_schedules") {
-		t.Fatal("the schedule repair is not registered in runDataRepairs")
-	}
-}
-
 func scheduleFixtures(t *testing.T) *gorm.DB {
 	t.Helper()
-	tx := repairTx(t)
+	tx := postgresTx(t)
 	for _, ddl := range []string{
 		`CREATE TABLE whatsapp_campaigns (id uuid PRIMARY KEY, status varchar(20), scheduled_start timestamptz)`,
 		`CREATE TABLE whatsapp_campaign_entries (id uuid PRIMARY KEY, campaign_id uuid, status varchar(40))`,

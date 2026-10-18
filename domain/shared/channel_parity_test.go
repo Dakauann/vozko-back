@@ -174,7 +174,6 @@ func TestExportedListsMirrorTheirPredicates(t *testing.T) {
 	}{
 		{"ConversationViewableEntryTypes", ConversationViewableEntryTypes(), EntryType.SupportsConversationView},
 		{"CRMTaggableEntryTypes", CRMTaggableEntryTypes(), EntryType.SupportsCRMTagging},
-		{"ConversationClosableEntryTypes", ConversationClosableEntryTypes(), EntryType.SupportsConversationClosing},
 		{"InboxScopableEntryTypes", InboxScopableEntryTypes(), EntryType.SupportsInboxScope},
 		{"ContainerScopedInboxEntryTypes", ContainerScopedInboxEntryTypes(), EntryType.SupportsContainerScopedInbox},
 		{"KnownEntryTypes", KnownEntryTypes(), EntryType.IsKnown},

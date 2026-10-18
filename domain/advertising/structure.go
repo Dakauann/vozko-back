@@ -1,7 +1,6 @@
 package advertising
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -215,13 +214,6 @@ func (o *Object) recentBudgetChanges(now time.Time) []time.Time {
 		}
 	}
 	return recent
-}
-
-func ValidateDailyBudget(minor int64) error {
-	if minor <= 0 {
-		return fmt.Errorf("%w: %d", ErrInvalidBudget, minor)
-	}
-	return nil
 }
 
 func DeliveredObjects(rows []DailyInsight) []string {

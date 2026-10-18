@@ -232,21 +232,6 @@ type googleEntryPoint struct {
 	URI            string `json:"uri"`
 }
 
-type googleEvent struct {
-	ID                  string                   `json:"id,omitempty"`
-	Summary             string                   `json:"summary"`
-	Description         string                   `json:"description,omitempty"`
-	Location            string                   `json:"location,omitempty"`
-	Start               googleDateTime           `json:"start"`
-	End                 googleDateTime           `json:"end"`
-	Attendees           []googleAttendee         `json:"attendees,omitempty"`
-	ColorID             string                   `json:"colorId,omitempty"`
-	Status              string                   `json:"status,omitempty"`
-	HangoutLink         string                   `json:"hangoutLink,omitempty"`
-	ConferenceData      *googleConferenceData    `json:"conferenceData,omitempty"`
-	CreateConferenceReq *googleConferenceRequest `json:"conferenceDataVersion,omitempty"`
-}
-
 type googleEventRequest struct {
 	Summary                 string                   `json:"summary"`
 	Description             string                   `json:"description,omitempty"`

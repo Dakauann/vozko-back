@@ -35,12 +35,6 @@ func TestPreviousRangeHasTheSameLengthRightBefore(t *testing.T) {
 	}
 }
 
-func TestPercentChangeIsUnknownFromZero(t *testing.T) {
-	if PercentChange(10, 0) != nil || *PercentChange(15, 10) != 50 {
-		t.Fatal("percent change wrong")
-	}
-}
-
 func TestCostPerThruPlay(t *testing.T) {
 	m := LiveMetrics{Metrics: Metrics{SpendMicros: 10_000_000}, Video: VideoMetrics{ThruPlays: 4}}
 	if *m.CostPerThruPlay() != 2_500_000 {

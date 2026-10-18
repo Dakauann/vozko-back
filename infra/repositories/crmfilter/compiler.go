@@ -7,7 +7,7 @@ import (
 
 	"vozko/domain/crmfilter"
 	"vozko/domain/shared"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 
 	"github.com/lib/pq"
 )
@@ -119,7 +119,7 @@ func compileColumn(m FieldMapping, p crmfilter.Predicate) (string, []interface{}
 	case crmfilter.OpNotIn:
 		return e + " <> ALL(?)", []interface{}{pq.Array(vals)}, nil
 	case crmfilter.OpContains:
-		return e + " ILIKE ?", []interface{}{database.LikeContains(vals[0])}, nil
+		return e + " ILIKE ?", []interface{}{sqlexpr.LikeContains(vals[0])}, nil
 	case crmfilter.OpGreaterEq:
 		a, err := scalarArg(m.Kind, vals[0])
 		return e + " >= ?", []interface{}{a}, err
@@ -278,7 +278,7 @@ func compileText(m FieldMapping, p crmfilter.Predicate) (string, []interface{}, 
 	if p.Operator != crmfilter.OpContains {
 		return "", nil, fmt.Errorf("%w: %q (text)", ErrUnsupportedOperator, p.Operator)
 	}
-	pattern := database.LikeContains(trimmedValues(p.Values)[0])
+	pattern := sqlexpr.LikeContains(trimmedValues(p.Values)[0])
 	args := make([]interface{}, m.Params)
 	for i := range args {
 		args[i] = pattern

@@ -24,13 +24,6 @@ type wireCall struct {
 	body   []byte
 }
 
-func (c wireCall) jsonField(t *testing.T, field string, out any) {
-	t.Helper()
-	if err := json.Unmarshal([]byte(c.form.Get(field)), out); err != nil {
-		t.Fatalf("form field %s = %q: %v", field, c.form.Get(field), err)
-	}
-}
-
 type wireLog struct {
 	mu    sync.Mutex
 	calls []wireCall

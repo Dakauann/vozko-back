@@ -153,17 +153,17 @@ func (f *fakeRuns) only() *leadaction.Run {
 type fakeSelections struct {
 	selectedCount int
 	matched       int
-	pages         [][]string
-	snapshots     map[string][]string
-	freezes       int
-	counted       []selection.Selection
-	resolved      []string
-	dropped       []string
-	frozenSel     []selection.Selection
-	frozenIDs     []string
-	pendings      []*lead.Assignment
-	selected      []selection.Selection
-	paged         []string
+
+	snapshots map[string][]string
+	freezes   int
+	counted   []selection.Selection
+	resolved  []string
+	dropped   []string
+	frozenSel []selection.Selection
+	frozenIDs []string
+	pendings  []*lead.Assignment
+	selected  []selection.Selection
+	paged     []string
 }
 
 func newFakeSelections(matched int, ids []string) *fakeSelections {

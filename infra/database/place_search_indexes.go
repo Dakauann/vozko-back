@@ -10,8 +10,8 @@ const (
 	GeoCEPStreetStateBuiltIndex = "idx_geo_cep_streets_state_built"
 )
 
-func placeSearchIndexes() []concurrentIndex {
-	return []concurrentIndex{
+func placeSearchIndexes() []ddl {
+	return []ddl{
 		{
 			name: GeoCityPrefixIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + GeoCityPrefixIndex + `
@@ -51,10 +51,5 @@ func placeSearchIndexes() []concurrentIndex {
 }
 
 func PlaceSearchIndexNames() []string {
-	indexes := placeSearchIndexes()
-	names := make([]string, len(indexes))
-	for i, idx := range indexes {
-		names[i] = idx.name
-	}
-	return names
+	return ddlNames(placeSearchIndexes())
 }

@@ -113,5 +113,4 @@ func TestTemplateAPIError_SurvivesWrapping(t *testing.T) {
 func TestTemplateAPIError_PlainErrorIsNotAProviderError(t *testing.T) {
 	_, ok := template.AsProviderError(errors.New("database is down"))
 	assert.False(t, ok)
-	assert.False(t, IsProviderUnavailable(errors.New("database is down")))
 }

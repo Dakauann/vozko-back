@@ -38,12 +38,6 @@ type ReplyPolicy struct {
 	MaxAutoSeverity int       `json:"maxAutoSeverity"`
 }
 
-func DefaultReplyPolicy() ReplyPolicy {
-	p := ReplyPolicy{Mode: ReplyModeOff}
-	p.Normalize()
-	return p
-}
-
 func (p *ReplyPolicy) Normalize() {
 	p.Mode = ReplyMode(strings.ToLower(strings.TrimSpace(string(p.Mode))))
 	if !p.Mode.Valid() {

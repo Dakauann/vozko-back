@@ -84,11 +84,6 @@ func (f conversationStatusFuncs) SetStatus(ctx context.Context, entryID string, 
 
 var _ conversation_usecase.ConversationStatusStore = conversationStatusFuncs{}
 
-type entryResolver interface {
-	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
-	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)
-}
-
 func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCase {
 	uc := export_usecase.NewExportEntriesUseCase(
 		c.repositories.conversationAnalyses,

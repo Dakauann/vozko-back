@@ -432,24 +432,6 @@ func TestSendWhatsappMediaTool_Execute_Video_UploadsAndSends(t *testing.T) {
 	}
 }
 
-func TestSendWhatsappMediaTool_Execute_VslVideo_TreatedAsVideo(t *testing.T) {
-	client := &recordingWhatsAppClient{}
-	srv := serveBytes([]byte("fakemp4"), "video/mp4")
-	defer srv.Close()
-
-	tool := newMediaToolWith(t, client,
-		media.Media{ID: "vsl1", URL: srv.URL + "/x.mp4", Type: media.MediaTypeVslVideo})
-
-	if _, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{
-		"to": "5511999999999", "media_id": "vsl1",
-	}); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-	if client.sendVideoInput == nil {
-		t.Fatalf("VSL must dispatch as video; SendVideoMessage was not called")
-	}
-}
-
 func TestSendWhatsappMediaTool_Execute_Audio_FallsBackToLink(t *testing.T) {
 	client := &recordingWhatsAppClient{}
 	tool := newMediaToolWith(t, client,

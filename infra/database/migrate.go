@@ -34,16 +34,7 @@ func RunMigrations(db *gorm.DB) error {
 			return err
 		}
 
-		if err := renameCommentAnalysisToAudience(tx); err != nil {
-			return err
-		}
-
-		if err := renameImageGenerationToMedia(tx); err != nil {
-			return err
-		}
-
 		if err := tx.AutoMigrate(
-			&schema.Category{},
 			&schema.Agent{},
 			&schema.ConversationMessage{},
 			&schema.UnattributedServiceMessage{},
@@ -51,36 +42,14 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.AIChatMessage{},
 			&schema.AIChatQueuedMessage{},
 			&schema.AIUsageRecord{},
-			&schema.Product{},
 			&schema.Media{},
 			&schema.User{},
-			&schema.OptionType{},
-			&schema.OptionValue{},
-			&schema.Variant{},
-			&schema.VariantOption{},
-			&schema.VariantMedia{},
-			&schema.Cart{},
-			&schema.CartItem{},
-			&schema.CartItemOption{},
 			&schema.Address{},
 			&schema.CEP{},
-			&schema.Order{},
-			&schema.OrderItem{},
-			&schema.OrderItemOption{},
-			&schema.Payment{},
-			&schema.PaymentSplit{},
-			&schema.VariantStockAdjustment{},
-			&schema.Ticket{},
-			&schema.TicketDocument{},
-			&schema.ShippingProviderAccount{},
-			&schema.InsuranceQuotation{},
-			&schema.InsuranceQuote{},
 			&schema.WhatsAppTemplate{},
 			&schema.PasswordResetToken{},
 			&schema.SystemConfig{},
 			&schema.Customer{},
-			&schema.Property{},
-			&schema.Shop{},
 			&schema.WhatsAppCampaign{},
 			&schema.CallRecording{},
 			&schema.Call{},
@@ -188,7 +157,6 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.MCPCollection{},
 			&schema.MCPCollectionMember{},
 			&schema.AgentMCPCollection{},
-			&schema.ProcessedWebhookEvent{},
 			&schema.Opportunity{},
 			&schema.DealAutomation{},
 			&schema.LiveDecisionRecord{},
@@ -211,8 +179,6 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.InstagramConversation{},
 			&schema.InstagramMedia{},
 			&schema.InstagramComment{},
-			&schema.InstagramCommentRule{},
-			&schema.InstagramPrivateReply{},
 			&schema.MetaDataDeletionRequest{},
 			&schema.FacebookGrant{},
 			&schema.FacebookPage{},

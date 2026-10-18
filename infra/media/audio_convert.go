@@ -25,20 +25,6 @@ func runFFmpeg(input []byte, args ...string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-func ConvertPCMToOGG(pcmData []byte, sampleRate int) ([]byte, error) {
-	return runFFmpeg(pcmData,
-		"-f", "s16le",
-		"-ar", fmt.Sprintf("%d", sampleRate),
-		"-ac", "1",
-		"-i", "pipe:0",
-		"-c:a", "libopus",
-		"-b:a", "24k",
-		"-application", "voip",
-		"-f", "ogg",
-		"pipe:1",
-	)
-}
-
 func ConvertToOGGOpus(audioData []byte) ([]byte, error) {
 	return runFFmpeg(audioData,
 		"-hide_banner",

@@ -1,0 +1,14 @@
+{{define "title"}}Plano e complementos encerrados - {{.Brand.Name}}{{end}}
+{{define "preheader"}}A fatura de {{.Amount}} não foi paga até o prazo. O plano, os complementos e os números de WhatsApp foram encerrados.{{end}}
+{{define "eyebrow"}}Faturamento{{end}}
+{{define "content"}}
+{{template "heading" dict "status" "Acesso encerrado" "tone" "danger" "title" "Plano e complementos encerrados" "subtitle" (printf "A fatura de %s, vencida em %s, não foi paga até o prazo" .Amount .DueDate)}}
+{{template "gap" 24}}
+<p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
+    Como a fatura do mês não foi paga, encerramos o plano e os complementos deste workspace e desconectamos os números de WhatsApp incluídos neles.
+</p>
+{{template "gap" 16}}
+{{template "panel" dict "tone" "danger" "title" "Para voltar a usar" "body" "Contrate um plano de novo pelo painel para voltar a usar o plano, os complementos e os números de WhatsApp."}}
+{{template "gap" 28}}
+{{template "cta" dict "url" .PlansURL "label" "Contratar plano"}}
+{{end}}

@@ -1,25 +1,16 @@
 package database
 
 import (
-	"errors"
-	"fmt"
 	"log"
 
 	"gorm.io/gorm"
 
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
-var errReplacementNotValid = errors.New("indexes: the replacement index is not valid yet, the index it replaces is kept")
-
-type concurrentIndex struct {
-	name     string
-	sql      string
-	replaces string
-}
-
-func concurrentIndexes() []concurrentIndex {
-	return append([]concurrentIndex{
+func concurrentIndexes() []ddl {
+	return append([]ddl{
 		{
 			name: "idx_conv_event_ws_type_created",
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_conv_event_ws_type_created
@@ -35,7 +26,7 @@ func concurrentIndexes() []concurrentIndex {
 			name: "idx_cm_unread_contact",
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cm_unread_contact
 				ON conversation_messages (entry_id, entry_type)
-				WHERE read = false AND deleted_at IS NULL AND ` + SentByContactSQL(""),
+				WHERE read = false AND deleted_at IS NULL AND ` + sqlexpr.SentByContact(""),
 		},
 		{
 			name: "ux_uwce_campaign_group",
@@ -50,17 +41,10 @@ func concurrentIndexes() []concurrentIndex {
 				WHERE lead_id IS NULL AND deleted_at IS NULL`,
 		},
 		{
-			name: "idx_cm_sender_unknown",
-			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cm_sender_unknown
-				ON conversation_messages (id)
-				WHERE sender_kind = 'unknown'`,
-		},
-		{
 			name: schema.CustomFieldLiveKeyIndex,
 			sql: `CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ` + schema.CustomFieldLiveKeyIndex + `
 				ON custom_field_definitions (workspace_id, object_type, key)
 				WHERE deleted_at IS NULL`,
-			replaces: "idx_custom_field_ws_object_key",
 		},
 		{
 			name: schema.CustomFieldLiveRoleIndex,
@@ -119,8 +103,7 @@ func concurrentIndexes() []concurrentIndex {
 			name: GeocodeQueueIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + GeocodeQueueIndex + `
 				ON lead_addresses (workspace_id, geo_next_at) INCLUDE (geo_status)
-				WHERE ` + GeocodeQueuedSQL(""),
-			replaces: "idx_lead_addresses_geo_queue",
+				WHERE ` + sqlexpr.GeocodeQueued(""),
 		},
 		{
 			name: LeadAddressWindowIndex,
@@ -149,14 +132,13 @@ func concurrentIndexes() []concurrentIndex {
 		{
 			name: UnlinkedCallsByCounterpartIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + UnlinkedCallsByCounterpartIndex + `
-				ON calls (workspace_id, ` + CallCounterpartSQL("") + `, started_at DESC)
+				ON calls (workspace_id, ` + sqlexpr.CallCounterpart("") + `, started_at DESC)
 				WHERE lead_id IS NULL AND deleted_at IS NULL`,
-			replaces: "idx_calls_workspace_counterpart",
 		},
 		{
 			name: CallListAgendaIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + CallListAgendaIndex + `
-				ON call_list_items (list_id, (` + CallListAgendaSQL("") + `), position)
+				ON call_list_items (list_id, (` + sqlexpr.CallListAgenda("") + `), position)
 				WHERE state = 'pending'`,
 		},
 		{
@@ -164,7 +146,6 @@ func concurrentIndexes() []concurrentIndex {
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + CampaignEntryLiveStatusIndex + `
 				ON whatsapp_campaign_entries (campaign_id, status) INCLUDE (lead_id)
 				WHERE deleted_at IS NULL`,
-			replaces: "idx_wce_campaign_status_del",
 		},
 		{
 			name: CampaignEntryWaveIndex,
@@ -176,10 +157,14 @@ func concurrentIndexes() []concurrentIndex {
 			name: LeadPhoneHoldersIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + LeadPhoneHoldersIndex + `
 				ON lead_phones (workspace_id, number, lead_id)`,
-			replaces: "idx_lead_phones_workspace_number",
 		},
 	}, append(placeSearchIndexes(), leadSearchIndexes()...)...)
 }
+
+const (
+	CallListAgendaIndex = "idx_call_list_items_agenda"
+	GeocodeQueueIndex   = "idx_lead_addresses_geo_queue_ws"
+)
 
 const LeadPhoneHoldersIndex = "idx_lead_phones_workspace_number_lead"
 
@@ -194,12 +179,7 @@ const (
 )
 
 func ConcurrentIndexSQL(name string) (string, bool) {
-	for _, idx := range concurrentIndexes() {
-		if idx.name == name {
-			return idx.sql, true
-		}
-	}
-	return "", false
+	return lookupDDL(name, concurrentIndexes())
 }
 
 func createConcurrentIndexes(db *gorm.DB) {
@@ -210,7 +190,7 @@ func createConcurrentIndexes(db *gorm.DB) {
 	}
 }
 
-func createIndexConcurrently(db *gorm.DB, idx concurrentIndex) error {
+func createIndexConcurrently(db *gorm.DB, idx ddl) error {
 	var invalid bool
 	err := db.Raw(`
 		SELECT EXISTS (
@@ -228,24 +208,5 @@ func createIndexConcurrently(db *gorm.DB, idx concurrentIndex) error {
 			return err
 		}
 	}
-	if err := db.Exec(idx.sql).Error; err != nil {
-		return err
-	}
-	if idx.replaces == "" {
-		return nil
-	}
-	return dropReplacedIndex(db, idx)
-}
-
-func dropReplacedIndex(db *gorm.DB, idx concurrentIndex) error {
-	var valid bool
-	err := db.Raw(`SELECT COALESCE((SELECT i.indisvalid FROM pg_index i WHERE i.indexrelid = to_regclass(?::text)), false)`, idx.name).
-		Scan(&valid).Error
-	if err != nil {
-		return err
-	}
-	if !valid {
-		return fmt.Errorf("%w: %s replacing %s", errReplacementNotValid, idx.name, idx.replaces)
-	}
-	return db.Exec("DROP INDEX CONCURRENTLY IF EXISTS " + idx.replaces).Error
+	return db.Exec(idx.sql).Error
 }

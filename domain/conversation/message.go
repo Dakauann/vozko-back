@@ -100,15 +100,6 @@ func InboundMessageTypes() []MessageType {
 	}
 }
 
-func InboundMessageTypeStrings() []string {
-	types := InboundMessageTypes()
-	result := make([]string, len(types))
-	for i, t := range types {
-		result[i] = string(t)
-	}
-	return result
-}
-
 func (t MessageType) IsInbound() bool {
 	switch t {
 	case MessageTypeUserMessage, MessageTypeAudio, MessageTypeMedia,

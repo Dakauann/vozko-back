@@ -18,8 +18,6 @@ import (
 	call_billing_repository "vozko/infra/repositories/call_billing"
 	call_cdr_repository "vozko/infra/repositories/call_cdr"
 	call_recording_repository "vozko/infra/repositories/call_recording"
-	cart_repository "vozko/infra/repositories/cart"
-	category_repository "vozko/infra/repositories/category"
 	cep_repository "vozko/infra/repositories/cep"
 	config_repository "vozko/infra/repositories/config"
 	conversation_repository "vozko/infra/repositories/conversation"
@@ -28,7 +26,6 @@ import (
 	customfield_repository "vozko/infra/repositories/customfield"
 	dealautomation_repository "vozko/infra/repositories/dealautomation"
 	ia_repository "vozko/infra/repositories/inbox_assignment"
-	insurance_repository "vozko/infra/repositories/insurance"
 	invoice_repository "vozko/infra/repositories/invoice"
 	issues_repository "vozko/infra/repositories/issues"
 	label_repository "vozko/infra/repositories/label"
@@ -39,22 +36,15 @@ import (
 	media_repository "vozko/infra/repositories/media"
 	msg_shortcut_repository "vozko/infra/repositories/message_shortcut"
 	opportunity_repository "vozko/infra/repositories/opportunity"
-	order_repository "vozko/infra/repositories/order"
-	payment_repository "vozko/infra/repositories/payment"
 	pipeline_repository "vozko/infra/repositories/pipeline"
-	product_repository "vozko/infra/repositories/product"
-	property_repository "vozko/infra/repositories/property"
 	qe_repository "vozko/infra/repositories/queue_event"
 	rag_repository "vozko/infra/repositories/rag"
 	report_repository "vozko/infra/repositories/report"
 	savedview_repository "vozko/infra/repositories/savedview"
 	scheduled_message_repository "vozko/infra/repositories/scheduled_message"
-	shipping_repository "vozko/infra/repositories/shipping"
-	shop_repository "vozko/infra/repositories/shop"
 	shortlink_repository "vozko/infra/repositories/shortlink"
 	stage_repository "vozko/infra/repositories/stage"
 	telephony_repository "vozko/infra/repositories/telephony"
-	ticket_repository "vozko/infra/repositories/ticket"
 	user_repository "vozko/infra/repositories/user"
 	whatsapp_repository "vozko/infra/repositories/whatsapp"
 	wc_repository "vozko/infra/repositories/whatsapp_campaign"
@@ -76,24 +66,14 @@ func (c *Container) initRepositories() {
 	qualityChanges := whatsapp_repository.NewQualityChangeRepository(c.db)
 	wcCampaigns := wc_repository.NewCachedRepository(wc_repository.NewRepository(c.db), c.redisProvider.SharedState())
 	c.repositories = &repositories{
-		product:                 product_repository.NewRepository(c.db, c.services.inventory),
-		property:                property_repository.NewRepository(c.db),
-		category:                category_repository.NewRepository(c.db),
 		agent:                   agent_repository.NewCachedRepository(agent_repository.NewRepository(c.db), c.redisProvider.SharedState()),
 		lead:                    lead_repository.NewCachedRepository(c.db, c.redisProvider.SharedState()),
 		conversation:            conversation_repository.NewRepository(c.db),
 		conversationAnalyses:    ca_repository.NewConversationReader(c.db),
 		user:                    user_repository.NewUserRepository(c.db),
 		media:                   media_repository.NewMediaRepository(c.db),
-		cart:                    cart_repository.NewRepository(c.db, c.services.inventory),
 		address:                 address_repository.NewRepository(c.db),
 		cep:                     cep_repository.NewRepository(c.db),
-		order:                   order_repository.NewRepository(c.db, c.services.inventory),
-		payment:                 payment_repository.NewRepository(c.db),
-		paymentSplit:            payment_repository.NewSplitRepository(c.db),
-		ticket:                  ticket_repository.NewRepository(c.db),
-		shippingAccount:         shipping_repository.NewProviderAccountRepository(c.db),
-		insurance:               insurance_repository.NewRepository(c.db),
 		whatsappTemplate:        whatsapp_repository.NewCachedTemplateRepository(whatsapp_repository.NewTemplateRepository(c.db), c.redisProvider.SharedState()),
 		whatsappTemplateSend:    whatsapp_repository.NewTemplateSendRepository(c.db),
 		whatsappTemplateNames:   whatsapp_repository.NewGrantedTemplateNames(c.db),
@@ -101,7 +81,6 @@ func (c *Container) initRepositories() {
 		emailVerification:       auth_repository.NewEmailVerificationRedisRepository(c.redisProvider.SharedState()),
 		systemConfig:            config_repository.NewSystemConfigRepository(c.db),
 		customer:                customer_repository.NewCustomerRepository(c.db),
-		shop:                    shop_repository.NewRepository(c.db),
 		wcCampaign:              wcCampaigns,
 		wcSchedules:             wcCampaigns,
 		wcEntry:                 wc_entry_repository.NewRepository(c.db),

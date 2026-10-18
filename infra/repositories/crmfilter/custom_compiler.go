@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"vozko/domain/crmfilter"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 
 	"github.com/lib/pq"
 )
@@ -63,7 +63,7 @@ func compileJSONBOption(op crmfilter.Operator, column, key string, vals []string
 		return anyOfContainment(op, column, docs, err)
 	case crmfilter.OpContains:
 		if kind == crmfilter.KindString {
-			return "(" + column + " ->> ?::text) ILIKE ?::text", []interface{}{key, database.LikeContains(vals[0])}, nil
+			return "(" + column + " ->> ?::text) ILIKE ?::text", []interface{}{key, sqlexpr.LikeContains(vals[0])}, nil
 		}
 	}
 	return "", nil, unsupportedCustom(op, kind)

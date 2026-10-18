@@ -2,7 +2,6 @@ package ws
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"sync"
 	"testing"
@@ -89,27 +88,6 @@ func (stubCallRegistry) Lookup(string, string) (callsession_domain.CallEntry, bo
 	return callsession_domain.CallEntry{}, false
 }
 func (stubCallRegistry) Unregister(string, string) {}
-
-func newRecordingSession(userID, workspaceID string) (*callSession, *[]*WSOutgoingMessage) {
-	var mu sync.Mutex
-	var out []*WSOutgoingMessage
-	send := func(m *WSOutgoingMessage) {
-		mu.Lock()
-		defer mu.Unlock()
-		out = append(out, m)
-	}
-	s := newCallSession("sess-"+userID, userID, workspaceID, send, nil, log.Default(), 0)
-	return s, &out
-}
-
-func mustMarshal(t *testing.T, v any) json.RawMessage {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	return b
-}
 
 type presenceSession struct {
 	id, userID, workspaceID string

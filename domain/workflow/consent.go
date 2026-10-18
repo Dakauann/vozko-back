@@ -76,18 +76,6 @@ func TemplateButtonSelection(text string, index int, matched bool) *OptionSelect
 	return &OptionSelection{ID: id, Title: strings.TrimSpace(text), Kind: OptionKindTemplateButton}
 }
 
-func TemplateButtonIndex(optionID string) (int, bool) {
-	raw, found := strings.CutPrefix(strings.TrimSpace(optionID), OptionKindTemplateButton+":")
-	if !found {
-		return 0, false
-	}
-	index, err := strconv.Atoi(raw)
-	if err != nil || index < 0 {
-		return 0, false
-	}
-	return index, true
-}
-
 func ValidateConsentModes(g *Graph) error {
 	for i := range g.Nodes {
 		n := &g.Nodes[i]

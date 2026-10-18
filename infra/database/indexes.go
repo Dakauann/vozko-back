@@ -3,43 +3,23 @@ package database
 import (
 	"fmt"
 	"log"
-	"strings"
+	"slices"
 
 	"gorm.io/gorm"
 
 	"vozko/domain/balance"
 	ia "vozko/domain/inbox_assignment"
+	"vozko/infra/database/sqlexpr"
 )
 
-func SQLStringLiteral(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
-func SQLStringLiteralList(values []string) string {
-	quoted := make([]string, len(values))
-	for i, v := range values {
-		quoted[i] = SQLStringLiteral(v)
-	}
-	return strings.Join(quoted, ", ")
-}
-
-type performanceIndex struct {
-	name string
-	sql  string
-}
-
-func performanceIndexes() []performanceIndex {
-	return []performanceIndex{
+func performanceIndexes() []ddl {
+	return []ddl{
 
 		{
 			name: "idx_cm_inbox_whatsapp",
 			sql: `CREATE INDEX IF NOT EXISTS idx_cm_inbox_whatsapp
 				ON conversation_messages (entry_id, created_at DESC)
 				WHERE entry_type = 'whatsapp' AND deleted_at IS NULL`,
-		},
-		{
-			name: "idx_cm_unread_count (superseded by idx_cm_unread_contact)",
-			sql:  `DROP INDEX IF EXISTS idx_cm_unread_count`,
 		},
 		{
 			name: "idx_cm_entry_del_created",
@@ -54,15 +34,11 @@ func performanceIndexes() []performanceIndex {
 				WHERE whatsapp_message_id IS NOT NULL AND whatsapp_message_id != '' AND deleted_at IS NULL`,
 		},
 		{
-			name: "idx_cm_service_exposure (superseded by idx_cm_meta_service_cost)",
-			sql:  `DROP INDEX IF EXISTS idx_cm_service_exposure`,
-		},
-		{
 			name: "idx_cm_meta_service_cost",
 			sql: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_cm_meta_service_cost
 				ON conversation_messages (created_at)
 				INCLUDE (entry_id, delivery_status)
-				WHERE %s`, ServiceMessageIndexPredicateSQL("")),
+				WHERE %s`, sqlexpr.ServiceMessageIndexed("")),
 		},
 
 		{
@@ -109,17 +85,6 @@ func performanceIndexes() []performanceIndex {
 			sql: `CREATE INDEX IF NOT EXISTS idx_wce_campaign_convstatus_active
 				ON whatsapp_campaign_entries (campaign_id, conversation_status)
 				WHERE deleted_at IS NULL AND conversation_status <> ''`,
-		},
-
-		{
-			name: "idx_analysis_entry_type_created",
-			sql: `CREATE INDEX IF NOT EXISTS idx_analysis_entry_type_created
-				ON analyses (entry_id, entry_type, created_at DESC)`,
-		},
-		{
-			name: "idx_analysis_entry_composite",
-			sql: `CREATE INDEX IF NOT EXISTS idx_analysis_entry_composite
-				ON analyses (entry_id, entry_type)`,
 		},
 
 		{
@@ -170,15 +135,11 @@ func performanceIndexes() []performanceIndex {
 				ON assignment_history (workspace_id, started_at DESC)`,
 		},
 		{
-			name: "idx_ah_rescue_scan (superseded by idx_ah_rescue_candidates)",
-			sql:  `DROP INDEX IF EXISTS idx_ah_rescue_scan`,
-		},
-		{
 			name: "idx_ah_rescue_candidates",
 			sql: fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_ah_rescue_candidates
 				ON assignment_history (workspace_id, started_at)
 				WHERE ended_at IS NULL AND "trigger" IN (%s)`,
-				SQLStringLiteralList(ia.RescueCandidateTriggers)),
+				sqlexpr.LiteralList(ia.RescueCandidateTriggers)),
 		},
 		{
 			name: "idx_ia_ws_created",
@@ -234,7 +195,7 @@ func performanceIndexes() []performanceIndex {
 				ON balance_transactions (created_at)
 				INCLUDE (workspace_id, type, is_refund)
 				WHERE service_type = %s`,
-				SQLStringLiteral(string(balance.ServiceWhatsAppCampaign))),
+				sqlexpr.Literal(string(balance.ServiceWhatsAppCampaign))),
 		},
 		{
 			name: "idx_bt_ws_svc_created_charges",
@@ -279,11 +240,6 @@ func performanceIndexes() []performanceIndex {
 			sql: `CREATE INDEX IF NOT EXISTS idx_cm_lateral_join
 				ON conversation_messages (entry_id, entry_type, created_at DESC, id DESC)
 				WHERE deleted_at IS NULL`,
-		},
-
-		{
-			name: "idx_cm_unread_inbound (superseded by idx_cm_unread_contact)",
-			sql:  `DROP INDEX IF EXISTS idx_cm_unread_inbound`,
 		},
 
 		{
@@ -476,12 +432,7 @@ func performanceIndexes() []performanceIndex {
 }
 
 func PerformanceIndexSQL(name string) (string, bool) {
-	for _, idx := range append(performanceIndexes(), schemaConstraints()...) {
-		if idx.name == name {
-			return idx.sql, true
-		}
-	}
-	return "", false
+	return lookupDDL(name, slices.Concat(performanceIndexes(), schemaConstraints()))
 }
 
 func CreatePerformanceIndexes(db *gorm.DB) {
@@ -494,8 +445,8 @@ func CreatePerformanceIndexes(db *gorm.DB) {
 	createCompositeLeadKeys(db)
 }
 
-func schemaConstraints() []performanceIndex {
-	return []performanceIndex{
+func schemaConstraints() []ddl {
+	return []ddl{
 		{
 			name: "idx_short_links_code_active",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS idx_short_links_code_active
@@ -531,11 +482,6 @@ func schemaConstraints() []performanceIndex {
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_leads_workspace_number
 				ON leads (workspace_id, number)
 				WHERE deleted_at IS NULL`,
-		},
-		{
-			name: "ux_branches_sip_user",
-			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_branches_sip_user
-				ON branches (sip_user)`,
 		},
 
 		{
@@ -639,12 +585,10 @@ func schemaConstraints() []performanceIndex {
 		},
 
 		{
-			name: "ux_uw_instance_jid (superseded)",
-			sql:  `DROP INDEX IF EXISTS ux_uw_instance_jid`,
-		},
-		{
 			name: "ux_uw_instance_live_jid",
-			sql:  uwLiveInstanceJIDIndexSQL,
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_instance_live_jid
+				ON unofficial_whatsapp_instances (jid)
+				WHERE jid <> '' AND deleted_at IS NULL AND status = 'CONNECTED'`,
 		},
 		{
 			name: "ux_uw_instance_delivery_token",
@@ -669,14 +613,6 @@ func schemaConstraints() []performanceIndex {
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_contact_instance_lid
 				ON unofficial_whatsapp_contacts (instance_id, lid)
 				WHERE lid <> '' AND deleted_at IS NULL`,
-		},
-		{
-			name: "ux_uw_conversation_instance_contact (superseded)",
-			sql:  `DROP INDEX IF EXISTS ux_uw_conversation_instance_contact`,
-		},
-		{
-			name: "ux_uw_conversation_instance_chat (superseded)",
-			sql:  `DROP INDEX IF EXISTS ux_uw_conversation_instance_chat`,
 		},
 		{
 			name: "ux_uw_conversation_instance_contact_campaign",
@@ -762,10 +698,6 @@ func schemaConstraints() []performanceIndex {
 		},
 
 		{
-			name: "ux_cm_entry_type_external_msgid (superseded)",
-			sql:  `DROP INDEX IF EXISTS ux_cm_entry_type_external_msgid`,
-		},
-		{
 			name: "ux_cm_entry_external_msgid",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_cm_entry_external_msgid
 				ON conversation_messages (entry_type, entry_id, external_message_id)
@@ -797,17 +729,9 @@ func schemaConstraints() []performanceIndex {
 				WHERE idempotency_key IS NOT NULL AND deleted_at IS NULL`,
 		},
 		{
-			name: "ux_ca_subject_drop_legacy",
-			sql:  `DROP INDEX IF EXISTS ux_ca_source_comment`,
-		},
-		{
 			name: "ux_ca_revision",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ca_revision
 				ON audience_analyses (source, subject_kind, subject_id, revision)`,
-		},
-		{
-			name: "ux_ca_subject_drop_single_revision",
-			sql:  `DROP INDEX IF EXISTS ux_ca_subject`,
 		},
 		{
 			name: "idx_ca_latest_revision",
@@ -830,13 +754,5 @@ func schemaConstraints() []performanceIndex {
 }
 
 func createSchemaConstraints(tx *gorm.DB) error {
-	for _, c := range schemaConstraints() {
-		if err := tx.Exec(c.sql).Error; err != nil {
-			return fmt.Errorf("creating constraint %s: %w", c.name, err)
-		}
-	}
-	if err := CreateLeadCollectionConstraints(tx); err != nil {
-		return err
-	}
-	return CreateCallListConstraints(tx)
+	return execDDL(tx, slices.Concat(schemaConstraints(), leadCollectionConstraints(), callListConstraints()))
 }

@@ -23,7 +23,7 @@ func TestReadSessionSettingsBoundTheStatement(t *testing.T) {
 }
 
 func TestInReadSessionAppliesTheSettingsInsideOneReadOnlyTransaction(t *testing.T) {
-	db, mock, sqlDB := newRepairDB(t)
+	db, mock, sqlDB := sqlmockDB(t)
 	defer sqlDB.Close()
 	mock.ExpectBegin()
 	mock.ExpectExec(`SET LOCAL work_mem = '32MB'`).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -45,7 +45,7 @@ func TestInReadSessionAppliesTheSettingsInsideOneReadOnlyTransaction(t *testing.
 }
 
 func TestInReadSessionReportsAStatementTimeoutAsADeadline(t *testing.T) {
-	db, mock, sqlDB := newRepairDB(t)
+	db, mock, sqlDB := sqlmockDB(t)
 	defer sqlDB.Close()
 	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT 1`).WillReturnError(errors.New("ERROR: canceling statement due to statement timeout (SQLSTATE 57014)"))
@@ -60,7 +60,7 @@ func TestInReadSessionReportsAStatementTimeoutAsADeadline(t *testing.T) {
 }
 
 func TestInReadSessionStopsAtAFailedSetting(t *testing.T) {
-	db, mock, sqlDB := newRepairDB(t)
+	db, mock, sqlDB := sqlmockDB(t)
 	defer sqlDB.Close()
 	boom := errors.New("boom")
 	mock.ExpectBegin()
@@ -73,5 +73,24 @@ func TestInReadSessionStopsAtAFailedSetting(t *testing.T) {
 	})
 	if !errors.Is(err, boom) || called {
 		t.Fatalf("InReadSession() = %v, called = %v, want the setting error and no read", err, called)
+	}
+}
+
+func TestInSessionTunesAWritableTransactionAndReportsATimeoutAsADeadline(t *testing.T) {
+	db, mock, sqlDB := sqlmockDB(t)
+	defer sqlDB.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec(`SET LOCAL jit = off`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`SET LOCAL statement_timeout = '15s'`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(`CREATE TEMP TABLE scope`).WillReturnError(errors.New("ERROR: canceling statement due to statement timeout (SQLSTATE 57014)"))
+	mock.ExpectRollback()
+	err := InSession(context.Background(), db, []string{JITOff, StatementTimeout("15s")}, func(tx *gorm.DB) error {
+		return tx.Exec("CREATE TEMP TABLE scope").Error
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("InSession() = %v, want a deadline", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

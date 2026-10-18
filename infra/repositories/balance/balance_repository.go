@@ -1,6 +1,7 @@
 package balance_repository
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/shared"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -428,10 +430,7 @@ func (r *BalanceRepositoryImpl) AggregateWhatsAppTemplateCharges(filter balance.
 		Net      int64
 	}
 	var rows []row
-	if err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SET LOCAL statement_timeout = '30s'").Error; err != nil {
-			return err
-		}
+	if err := database.InReadSession(context.Background(), r.db, []string{database.StatementTimeout("30s")}, func(tx *gorm.DB) error {
 		return tx.Raw(sql, args...).Scan(&rows).Error
 	}); err != nil {
 		return nil, err

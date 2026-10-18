@@ -2,7 +2,6 @@ package audience_usecase
 
 import (
 	"context"
-	"errors"
 	"log"
 	"time"
 
@@ -244,8 +243,4 @@ func logResult(job string, ref ca.ContainerRef, res containerResult) {
 	}
 	log.Printf("[comment-analysis-%s] %s analyzed=%d released=%d skipped=%d deferred=%d batches=%d%s",
 		job, ref.Key(), res.Analyzed, res.Released, res.Skipped, res.Deferred, res.Batches, stopped)
-}
-
-func IsCapStop(err error) bool {
-	return errors.Is(err, ca.ErrDailyCapReached) || errors.Is(err, ca.ErrBalanceBelowFloor) || errors.Is(err, ca.ErrCycleCapReached)
 }

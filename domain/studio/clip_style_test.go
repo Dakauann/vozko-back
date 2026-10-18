@@ -81,10 +81,3 @@ func TestEffectKeysStayOutOfImageDocuments(t *testing.T) {
 		t.Fatal("the same layer without keys was refused")
 	}
 }
-
-func TestMediaEffectTypesMatchTheEditor(t *testing.T) {
-	types := MediaEffectTypes()
-	if len(types) != 2 || types[0] != EffectDropShadow || types[1] != EffectOuterGlow {
-		t.Fatalf("media effect types drifted: %v", types)
-	}
-}

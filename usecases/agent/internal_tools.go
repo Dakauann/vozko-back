@@ -52,28 +52,6 @@ func resolveInternalToolSelection(registry tools.Service, requested []agent.Tool
 	}
 }
 
-func filterExistingTools(index *toolRegistryIndex, names []string) []string {
-	if len(index.all) == 0 || len(names) == 0 {
-		return []string{}
-	}
-	seen := make(map[string]struct{}, len(index.defs))
-	for _, name := range names {
-		normalized := strings.TrimSpace(strings.ToLower(name))
-		if _, ok := index.defs[normalized]; ok {
-			seen[index.defs[normalized].Name] = struct{}{}
-		}
-	}
-	if len(seen) == 0 {
-		return []string{}
-	}
-	result := make([]string, 0, len(seen))
-	for name := range seen {
-		result = append(result, name)
-	}
-	sort.Strings(result)
-	return result
-}
-
 func filterExistingToolBindings(index *toolRegistryIndex, bindings []agent.ToolBinding) []agent.ToolBinding {
 	if len(index.all) == 0 || len(bindings) == 0 {
 		return []agent.ToolBinding{}
@@ -100,38 +78,6 @@ func filterExistingToolBindings(index *toolRegistryIndex, bindings []agent.ToolB
 		return result[i].Name < result[j].Name
 	})
 	return result
-}
-
-func validateRequestedTools(index *toolRegistryIndex, names []string) ([]string, error) {
-	if len(names) == 0 {
-		return []string{}, nil
-	}
-	if len(index.defs) == 0 {
-		return nil, fmt.Errorf("%w: %s", agent.ErrAgentInternalToolInvalid, strings.Join(names, ", "))
-	}
-	seen := make(map[string]struct{}, len(names))
-	result := make([]string, 0, len(names))
-	for _, name := range names {
-		normalized := strings.TrimSpace(strings.ToLower(name))
-		if normalized == "" {
-			continue
-		}
-		if _, deprecated := deprecatedTools[normalized]; deprecated {
-			continue
-		}
-		def, ok := index.defs[normalized]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", agent.ErrAgentInternalToolInvalid, name)
-		}
-		canonical := def.Name
-		if _, exists := seen[canonical]; exists {
-			continue
-		}
-		seen[canonical] = struct{}{}
-		result = append(result, canonical)
-	}
-	sort.Strings(result)
-	return result, nil
 }
 
 func validateRequestedToolBindings(index *toolRegistryIndex, bindings []agent.ToolBinding) ([]agent.ToolBinding, error) {

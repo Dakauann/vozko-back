@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -488,10 +487,6 @@ func fileAttachment(kind MediaKind, f *FileMeta, fallbackMIME string) Attachment
 		Duration: f.Duration,
 		TooLarge: f.FileSize > MaxDownloadBytes,
 	}
-}
-
-func SortByUpdateID(events []*Event) {
-	sort.SliceStable(events, func(i, j int) bool { return events[i].UpdateID < events[j].UpdateID })
 }
 
 func ProviderMessageID(botUserID, chatID, messageID int64) string {

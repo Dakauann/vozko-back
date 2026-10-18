@@ -26,9 +26,9 @@ const adReplyJSON = `{"title":"Promoção de outubro","body":"Fale com a gente",
 
 func TestAnAdClickOnAWhatsAppWebNumberIsRead(t *testing.T) {
 	cases := map[string]string{
-		"content object":                `{"text":"Olá, vi o anúncio","contextInfo":{"externalAdReply":` + adReplyJSON + `}}`,
-		"content serialized as text":    strconv.Quote(`{"text":"Olá, vi o anúncio","contextInfo":{"externalAdReply":` + adReplyJSON + `}}`),
-		"nested extendedTextMessage":    `{"extendedTextMessage":{"text":"Olá","contextInfo":{"externalAdReply":` + adReplyJSON + `}}}`,
+		"content object":                 `{"text":"Olá, vi o anúncio","contextInfo":{"externalAdReply":` + adReplyJSON + `}}`,
+		"content serialized as text":     strconv.Quote(`{"text":"Olá, vi o anúncio","contextInfo":{"externalAdReply":` + adReplyJSON + `}}`),
+		"nested extendedTextMessage":     `{"extendedTextMessage":{"text":"Olá","contextInfo":{"externalAdReply":` + adReplyJSON + `}}}`,
 		"lower camel thumbnail spelling": `{"text":"Olá","contextInfo":{"externalAdReply":{"title":"Promoção de outubro","sourceId":"120200","sourceUrl":"https://fb.me/abc","thumbnailUrl":"https://scontent/ad.jpg"}}}`,
 	}
 	for name, content := range cases {

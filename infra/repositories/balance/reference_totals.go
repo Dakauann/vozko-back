@@ -4,7 +4,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/balance"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 func NewReferenceTotals(db *gorm.DB) balance.ReferenceTotaler {
@@ -35,7 +35,7 @@ type referenceTotalsRow struct {
 
 func (r *BalanceRepositoryImpl) TotalsUnder(workspaceID, referencePrefix string) (balance.ReferenceTotals, error) {
 	var row referenceTotalsRow
-	err := r.db.Raw(referenceTotalsSQL, workspaceID, database.LikePrefix(referencePrefix), database.LikePrefix("refund:"+referencePrefix)).Scan(&row).Error
+	err := r.db.Raw(referenceTotalsSQL, workspaceID, sqlexpr.LikePrefix(referencePrefix), sqlexpr.LikePrefix("refund:"+referencePrefix)).Scan(&row).Error
 	if err != nil {
 		return balance.ReferenceTotals{}, err
 	}

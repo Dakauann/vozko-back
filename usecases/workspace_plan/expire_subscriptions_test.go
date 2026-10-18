@@ -12,10 +12,9 @@ import (
 )
 
 type countingExpireRepo struct {
-	calls         []expireCall
-	returns       []expireReturn
-	callIndex     int
-	subscriptions map[string]*workspace_plan.WorkspaceSubscription
+	calls     []expireCall
+	returns   []expireReturn
+	callIndex int
 }
 
 type expireCall struct {

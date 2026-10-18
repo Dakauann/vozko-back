@@ -71,21 +71,6 @@ func firstDefaultEdge(edges []workflow.Edge) string {
 	return ""
 }
 
-func resolveEdgeByLabel(edges []workflow.Edge, label string) string {
-	if label != "" {
-		for _, e := range edges {
-			if e.Label == label {
-				return e.Target
-			}
-		}
-	}
-
-	if len(edges) > 0 {
-		return edges[0].Target
-	}
-	return ""
-}
-
 func findExactEdgeByLabel(edges []workflow.Edge, label string) string {
 	if label == "" {
 		return ""

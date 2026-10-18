@@ -2,7 +2,6 @@ package balance_usecase
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	"vozko/domain/notification"
+	"vozko/domain/shared"
 	"vozko/domain/workspace"
 )
 
@@ -21,18 +21,20 @@ const (
 
 type MonitorLowBalanceUseCase struct {
 	lister          balance.LowBalanceLister
+	exchangeRate    ExchangeRateReader
 	publisher       notification.Publisher
 	state           cache.SharedState
 	dashboardURL    string
 	thresholdMicros int64
 }
 
-func NewMonitorLowBalanceUseCase(lister balance.LowBalanceLister, publisher notification.Publisher, state cache.SharedState, dashboardURL string, thresholdMicros int64) *MonitorLowBalanceUseCase {
+func NewMonitorLowBalanceUseCase(lister balance.LowBalanceLister, exchangeRate ExchangeRateReader, publisher notification.Publisher, state cache.SharedState, dashboardURL string, thresholdMicros int64) *MonitorLowBalanceUseCase {
 	if thresholdMicros <= 0 {
 		thresholdMicros = defaultLowBalanceThresholdMicros
 	}
 	return &MonitorLowBalanceUseCase{
 		lister:          lister,
+		exchangeRate:    exchangeRate,
 		publisher:       publisher,
 		state:           state,
 		dashboardURL:    strings.TrimRight(dashboardURL, "/"),
@@ -76,8 +78,12 @@ func (uc *MonitorLowBalanceUseCase) Run() (int, error) {
 }
 
 func (uc *MonitorLowBalanceUseCase) notify(row balance.LowBalanceRow) error {
-	amount := formatWalletAmount(row.AmountMicros, row.Currency)
-	_, err := uc.publisher.Publish(context.Background(), notification.Draft{
+	rate, err := currentExchangeRate(uc.exchangeRate)
+	if err != nil {
+		return err
+	}
+	amount := shared.FormatMicrosBRL(row.AmountMicros, rate)
+	_, err = uc.publisher.Publish(context.Background(), notification.Draft{
 		WorkspaceID: row.WorkspaceID,
 		Category:    notification.CategoryBilling,
 		Severity:    notification.SeverityWarning,
@@ -131,14 +137,4 @@ func (uc *MonitorLowBalanceUseCase) clearAlerted(workspaceID string) {
 	if err := uc.state.SRem(lowBalanceAlertedSetKey, workspaceID); err != nil {
 		log.Printf("[balance-monitor] clear alerted %s failed: %v", workspaceID, err)
 	}
-}
-
-func formatWalletAmount(micros int64, currency string) string {
-	amount := fmt.Sprintf("%.2f", float64(micros)/1_000_000)
-	amount = strings.Replace(amount, ".", ",", 1)
-	prefix := "US$"
-	if strings.EqualFold(currency, "BRL") {
-		prefix = "R$"
-	}
-	return prefix + " " + amount
 }

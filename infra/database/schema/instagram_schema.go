@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"gorm.io/gorm"
 
 	"vozko/infra/crypto/piigorm"
@@ -187,22 +186,6 @@ func (c *InstagramComment) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-type InstagramPrivateReply struct {
-	IGCommentID string `gorm:"column:ig_comment_id;primaryKey;size:64"`
-	IGAccountID string `gorm:"type:uuid;not null;index"`
-	Status      string `gorm:"size:16;not null;default:'ATTEMPTED'"`
-
-	RecipientIGSID *string `gorm:"column:recipient_igsid;size:64"`
-	IGMessageID    *string `gorm:"column:ig_message_id;type:text"`
-	ErrorCode      int     `gorm:"default:0"`
-	ErrorMessage   string  `gorm:"size:500"`
-
-	AttemptedAt time.Time `gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
-}
-
-func (InstagramPrivateReply) TableName() string { return "instagram_private_replies" }
-
 type WebhookProcessedEvent struct {
 	ID        string    `gorm:"primaryKey;size:255"`
 	Channel   string    `gorm:"size:64;not null;index"`
@@ -211,36 +194,3 @@ type WebhookProcessedEvent struct {
 }
 
 func (WebhookProcessedEvent) TableName() string { return "webhook_processed_events" }
-
-type InstagramCommentRule struct {
-	ID          string `gorm:"primaryKey;type:uuid"`
-	WorkspaceID string `gorm:"type:uuid;not null;index"`
-	IGAccountID string `gorm:"type:uuid;not null;index:idx_ig_rule_account"`
-
-	Name    string `gorm:"size:120;not null"`
-	Enabled bool   `gorm:"not null;default:true;index:idx_ig_rule_enabled"`
-
-	IGMediaID string `gorm:"column:ig_media_id;size:64;not null;default:'';index:idx_ig_rule_media"`
-
-	Match    string         `gorm:"size:16;not null;default:'contains'"`
-	Keywords pq.StringArray `gorm:"type:text[]"`
-	Actions  pq.StringArray `gorm:"type:text[]"`
-
-	PublicReplyText  string `gorm:"type:text"`
-	PrivateReplyText string `gorm:"type:text"`
-
-	Priority int `gorm:"not null;default:0;index:idx_ig_rule_priority"`
-
-	CreatedAt time.Time      `gorm:"autoCreateTime"`
-	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
-}
-
-func (InstagramCommentRule) TableName() string { return "instagram_comment_rules" }
-
-func (r *InstagramCommentRule) BeforeCreate(tx *gorm.DB) error {
-	if r.ID == "" {
-		r.ID = uuid.NewString()
-	}
-	return nil
-}

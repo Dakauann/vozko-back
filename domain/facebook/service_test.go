@@ -17,14 +17,14 @@ func TestSubscribedFieldsAreAllValid(t *testing.T) {
 func TestValidateRedirectURI(t *testing.T) {
 	ok := []string{"https://api.example.com/oauth/facebook/callback", "http://localhost:8080/oauth/facebook/callback/"}
 	for _, raw := range ok {
-		if err := ValidateRedirectURI(raw); err != nil {
+		if err := ValidateRedirectURIFor(raw, OAuthCallbackPath); err != nil {
 			t.Errorf("%s: %v", raw, err)
 		}
 	}
 	bad := []string{"", "api.example.com/oauth/facebook/callback", "http://api.example.com/oauth/facebook/callback",
 		"https://api.example.com/oauth/instagram/callback", "https://api.example.com/oauth/facebook/callback?x=1"}
 	for _, raw := range bad {
-		if err := ValidateRedirectURI(raw); err == nil {
+		if err := ValidateRedirectURIFor(raw, OAuthCallbackPath); err == nil {
 			t.Errorf("%s accepted", raw)
 		}
 	}

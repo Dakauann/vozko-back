@@ -11,8 +11,8 @@ import (
 
 	"vozko/domain/shared"
 	uwg "vozko/domain/unofficial_whatsapp_group"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 type groupRepository struct{ db *gorm.DB }
@@ -140,7 +140,7 @@ func (r *groupRepository) List(ctx context.Context, f uwg.GroupFilter) (*shared.
 			Where("wg.workspace_id = ? AND wg.deleted_at IS NULL", f.WorkspaceID).
 			Where(where, args...)
 		if search := strings.TrimSpace(f.Search); search != "" {
-			like := database.LikeContains(search)
+			like := sqlexpr.LikeContains(search)
 			q = q.Where("(wg.subject ILIKE ? ESCAPE '\\' OR wg.description ILIKE ? ESCAPE '\\')", like, like)
 		}
 		if f.Followed != nil {

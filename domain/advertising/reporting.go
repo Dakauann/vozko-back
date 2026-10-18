@@ -147,14 +147,6 @@ func PreviousRange(r DateRange) DateRange {
 	return DateRange{Since: until.AddDate(0, 0, -(days - 1)), Until: until}
 }
 
-func PercentChange(current, previous float64) *float64 {
-	if previous == 0 {
-		return nil
-	}
-	change := (current - previous) / previous * 100
-	return &change
-}
-
 func (q LiveQuery) UniqueFieldsAllowed() bool {
 	return !slices.Contains(q.Breakdowns, BreakdownHourOfDay)
 }

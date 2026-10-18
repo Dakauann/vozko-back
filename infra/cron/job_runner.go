@@ -8,7 +8,6 @@ import (
 	"vozko/domain/cache"
 	calendar_domain "vozko/domain/calendar"
 	"vozko/domain/conversation"
-	"vozko/domain/cron"
 	shortlink_domain "vozko/domain/shortlink"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	whatsapp_template "vozko/domain/whatsapp/template"
@@ -19,7 +18,6 @@ import (
 )
 
 type JobRunner struct {
-	orderCleanupJob                    cron.OrderCleanupChecker
 	startScheduledWhatsappCampaignsJob wc_usecase.StartScheduleJob
 	shared                             cache.SharedState
 	analysisDebounceJob                conversation.AnalysisDebounceJob
@@ -39,9 +37,8 @@ type JobRunner struct {
 	purgeShortLinkClicks               shortlink_domain.PurgeClicksUseCase
 }
 
-func NewJobRunner(orderCleanupJob cron.OrderCleanupChecker, startScheduledWhatsappCampaignsJob wc_usecase.StartScheduleJob, shared cache.SharedState, analysisDebounceJob conversation.AnalysisDebounceJob, autoCloseJob conversation.AutoCloseJob, workflowManager workflow_domain.WorkflowManager, expireSubscriptions workspace_plan.ExpireSubscriptionsUseCase, remindExpiringSubscriptions workspace_plan.RemindExpiringSubscriptionsUseCase, monitorLowBalance *balance_usecase.MonitorLowBalanceUseCase, renewCalendarChannels calendar_domain.RenewExpiringChannelsUseCase, reconcileWhatsAppTemplates whatsapp_template.ReconcileTemplatesUseCase, reconcileWhatsAppEntitlements businessphone.EntitlementReconciler, emitMonthlyInvoices billing.EmitMonthlyInvoicesUseCase, cancelBillingSweep billing.CancelSweepUseCase, vendorChannelReconciler businessphone.VendorChannelReconciler, channelStatusReconciler businessphone.ChannelStatusReconciler, purgeShortLinkClicks shortlink_domain.PurgeClicksUseCase) *JobRunner {
+func NewJobRunner(startScheduledWhatsappCampaignsJob wc_usecase.StartScheduleJob, shared cache.SharedState, analysisDebounceJob conversation.AnalysisDebounceJob, autoCloseJob conversation.AutoCloseJob, workflowManager workflow_domain.WorkflowManager, expireSubscriptions workspace_plan.ExpireSubscriptionsUseCase, remindExpiringSubscriptions workspace_plan.RemindExpiringSubscriptionsUseCase, monitorLowBalance *balance_usecase.MonitorLowBalanceUseCase, renewCalendarChannels calendar_domain.RenewExpiringChannelsUseCase, reconcileWhatsAppTemplates whatsapp_template.ReconcileTemplatesUseCase, reconcileWhatsAppEntitlements businessphone.EntitlementReconciler, emitMonthlyInvoices billing.EmitMonthlyInvoicesUseCase, cancelBillingSweep billing.CancelSweepUseCase, vendorChannelReconciler businessphone.VendorChannelReconciler, channelStatusReconciler businessphone.ChannelStatusReconciler, purgeShortLinkClicks shortlink_domain.PurgeClicksUseCase) *JobRunner {
 	return &JobRunner{
-		orderCleanupJob:                    orderCleanupJob,
 		startScheduledWhatsappCampaignsJob: startScheduledWhatsappCampaignsJob,
 		shared:                             shared,
 		analysisDebounceJob:                analysisDebounceJob,
@@ -238,7 +235,6 @@ func (r *JobRunner) releaseLock(name string) {
 }
 
 func (r *JobRunner) StartAll() {
-	go r.runOrderCleanupEvery5Minutes()
 	go r.runStartScheduledWhatsappCampaignsJob()
 	go r.runAnalysisDebounceEveryMinute()
 	go r.runConversationAutoCloseEvery5Minutes()
@@ -413,19 +409,6 @@ func (r *JobRunner) runStartScheduledWhatsappCampaignsJob() {
 	for range ticker.C {
 		if r.startScheduledWhatsappCampaignsJob != nil && r.tryLock("start_scheduled_wc_campaigns", 2*time.Minute) {
 			_ = r.startScheduledWhatsappCampaignsJob.StartScheduledWhatsappCampaigns()
-		}
-	}
-}
-
-func (r *JobRunner) runOrderCleanupEvery5Minutes() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		if r.tryLock("order_cleanup", 10*time.Minute) {
-			if err := r.orderCleanupJob.CheckExpiredOrders(); err != nil {
-				continue
-			}
 		}
 	}
 }

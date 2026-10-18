@@ -1,11 +1,5 @@
 package studiotools
 
-import (
-	"reflect"
-
-	"vozko/usecases/copilot/copilottools"
-)
-
 const studioTextRunGuide = "Estilo em parte de um texto: style_text(o texto alvo, layer_id na imagem ou clip_id no vídeo; char_start e char_end, ou match e match_all?; fill?, font_id?, font_weight?, font_size?, italic?, underline?, caps?, letter_spacing?, run_clear?): muda só aqueles caracteres e mantém o resto da camada; fill no trecho passa por cima de um degradê; sem char_start nem match vale para o texto inteiro, na própria camada; " +
 	"num contador as posições contam o prefixo, um único caractere para o número inteiro e o sufixo; ao editar o texto depois, as letras novas herdam o estilo da letra anterior. " +
 	"Formato de um trecho estilizado (cor e peso ilustrativos): {\"op\":\"style_text\",\"match\":\"50%\",\"fill\":\"#3d7a5c\",\"font_weight\":600}. "
@@ -18,9 +12,4 @@ type studioTextRunArgs struct {
 	Underline *bool    `json:"underline,omitempty" desc:"style_text: sublinha o trecho"`
 	Caps      *bool    `json:"caps,omitempty" desc:"style_text: mostra as letras do trecho em maiúsculas sem mudar o texto"`
 	RunClear  []string `json:"run_clear,omitempty" enum:"fill,font_id,font_weight,font_size,italic,underline,caps,letter_spacing" desc:"style_text: campos que voltam ao valor da própria camada no trecho"`
-}
-
-func textRunClearFields() []string {
-	field, _ := reflect.TypeOf(studioTextRunArgs{}).FieldByName("RunClear")
-	return copilottools.EnumValues(field)
 }

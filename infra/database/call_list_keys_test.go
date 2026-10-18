@@ -12,31 +12,6 @@ import (
 	"vozko/infra/repositories/repotest"
 )
 
-func TestCallListItemsKeepTheirLeadInTheSameWorkspace(t *testing.T) {
-	for _, key := range compositeLeadKeys {
-		if key.table == "call_list_items" && key.column == "lead_id" && key.constraint == "fk_lead_call_list_items_workspace_lead" {
-			return
-		}
-	}
-	t.Fatal("call_list_items must reference leads (workspace_id, id) like the other lead tables")
-}
-
-func TestCallListConstraintsTieItemsToTheirListAndCall(t *testing.T) {
-	sqls := make([]string, 0)
-	for _, c := range callListConstraints() {
-		sqls = append(sqls, strings.Join(strings.Fields(c.sql), " "))
-	}
-	joined := strings.Join(sqls, "\n")
-	for _, want := range []string{
-		"FOREIGN KEY (workspace_id, list_id) REFERENCES call_lists (workspace_id, id) ON DELETE CASCADE",
-		"FOREIGN KEY (last_call_id) REFERENCES calls (id) ON DELETE SET NULL",
-	} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("constraints must contain %q, got:\n%s", want, joined)
-		}
-	}
-}
-
 func TestCallListItemsCannotCrossWorkspacesAndGoWithTheirListAgainstPostgres(t *testing.T) {
 	db := repotest.IsolatedDB(t, "call_list_keys")
 	db.Config.DisableForeignKeyConstraintWhenMigrating = true

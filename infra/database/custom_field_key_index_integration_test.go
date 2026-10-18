@@ -10,17 +10,6 @@ import (
 	"vozko/infra/repositories/repotest"
 )
 
-func liveKeyIndex(t *testing.T) concurrentIndex {
-	t.Helper()
-	for _, idx := range concurrentIndexes() {
-		if idx.name == schema.CustomFieldLiveKeyIndex {
-			return idx
-		}
-	}
-	t.Fatalf("%s is not built", schema.CustomFieldLiveKeyIndex)
-	return concurrentIndex{}
-}
-
 func indexExists(t *testing.T, db *gorm.DB, name string) bool {
 	t.Helper()
 	var exists bool
@@ -37,17 +26,10 @@ func insertDefinition(db *gorm.DB, workspaceID, key string) (string, error) {
 	return id, err
 }
 
-func TestDeletedCustomFieldKeysCanBeRecreatedAfterTheIndexSwap(t *testing.T) {
+func TestDeletedCustomFieldKeysCanBeRecreated(t *testing.T) {
 	db := repotest.IsolatedDB(t, "cfkey", &schema.CustomFieldDefinition{})
-	if err := db.Exec(`CREATE UNIQUE INDEX idx_custom_field_ws_object_key ON custom_field_definitions (workspace_id, object_type, key)`).Error; err != nil {
-		t.Fatalf("legacy index fixture: %v", err)
-	}
-
-	if err := createIndexConcurrently(db, liveKeyIndex(t)); err != nil {
+	if err := createIndexConcurrently(db, declaredConcurrentIndex(t, schema.CustomFieldLiveKeyIndex)); err != nil {
 		t.Fatalf("createIndexConcurrently() error = %v", err)
-	}
-	if indexExists(t, db, "idx_custom_field_ws_object_key") {
-		t.Fatal("the legacy non partial index must be dropped once the new one is valid")
 	}
 	if !indexExists(t, db, schema.CustomFieldLiveKeyIndex) {
 		t.Fatal("the partial index was not built")
@@ -68,7 +50,7 @@ func TestDeletedCustomFieldKeysCanBeRecreatedAfterTheIndexSwap(t *testing.T) {
 		t.Fatalf("a deleted key must be reusable: %v", err)
 	}
 
-	if err := createIndexConcurrently(db, liveKeyIndex(t)); err != nil {
+	if err := createIndexConcurrently(db, declaredConcurrentIndex(t, schema.CustomFieldLiveKeyIndex)); err != nil {
 		t.Fatalf("a second boot must be a no op, got %v", err)
 	}
 }

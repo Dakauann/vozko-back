@@ -48,10 +48,6 @@ var sourceActions = map[shared.EntryType]map[Action]struct{}{
 	shared.EntryTypeFacebook:  {ActionPublicReply: {}, ActionPrivateReply: {}, ActionHide: {}, ActionDelete: {}, ActionLike: {}},
 }
 
-func Sources() []shared.EntryType {
-	return []shared.EntryType{shared.EntryTypeInstagram, shared.EntryTypeFacebook}
-}
-
 type Rule struct {
 	ID          string
 	WorkspaceID string

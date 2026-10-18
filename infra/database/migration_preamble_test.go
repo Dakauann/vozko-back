@@ -12,7 +12,7 @@ import (
 )
 
 func TestTheMigrationWaitsItsTurnThenRefusesToHangOnATableLock(t *testing.T) {
-	db, mock, sqlDB := newRepairDB(t)
+	db, mock, sqlDB := sqlmockDB(t)
 	defer sqlDB.Close()
 
 	mock.ExpectExec(`SELECT pg_advisory_xact_lock`).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -29,7 +29,7 @@ func TestTheMigrationWaitsItsTurnThenRefusesToHangOnATableLock(t *testing.T) {
 }
 
 func TestAMissingExtensionStopsTheMigration(t *testing.T) {
-	db, mock, sqlDB := newRepairDB(t)
+	db, mock, sqlDB := sqlmockDB(t)
 	defer sqlDB.Close()
 
 	mock.ExpectExec(`SELECT pg_advisory_xact_lock`).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -49,7 +49,7 @@ func expectSearchFold(mock sqlmock.Sqlmock) {
 }
 
 func TestAMissingSearchExtensionStopsTheMigration(t *testing.T) {
-	db, mock, sqlDB := newRepairDB(t)
+	db, mock, sqlDB := sqlmockDB(t)
 	defer sqlDB.Close()
 
 	mock.ExpectExec(`SELECT pg_advisory_xact_lock`).WillReturnResult(sqlmock.NewResult(0, 0))

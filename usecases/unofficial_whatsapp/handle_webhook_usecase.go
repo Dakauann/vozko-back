@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"log"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"vozko/domain/campaign"
 	"vozko/domain/conversation"
@@ -921,13 +922,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func truncateRaw(raw json.RawMessage, n int) string {
-	if len(raw) <= n {
-		return string(raw)
-	}
-	return string(raw[:n]) + "…"
 }
 
 func adReferralOf(reply *uw.AdReply) *conversation.AdReferral {

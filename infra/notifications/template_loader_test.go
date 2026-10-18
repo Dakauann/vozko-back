@@ -1,6 +1,7 @@
 package notification_service
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,12 +22,6 @@ func loaderForTests() *TemplateLoaderService {
 	return NewTemplateLoaderService("templates")
 }
 
-type orderItemForTests struct {
-	ProductName     string
-	ProductMediaURL string
-	Quantity        int
-	TotalPrice      string
-}
 
 type templateCase struct {
 	name    string
@@ -38,8 +33,10 @@ type templateCase struct {
 func everyTemplateWithItsSenderData() []templateCase {
 	dash := "https://app.example.com/dashboard"
 	return []templateCase{
-		{"addon_payment_failed.html", map[string]interface{}{"AddonName": "+1 Número WhatsApp", "Amount": "US$ 49,00", "DashboardURL": dash}, true, []string{"Número WhatsApp", "US$ 49,00"}},
-		{"addon_renewal_reminder.html", map[string]interface{}{"AddonName": "+1 Número WhatsApp", "Amount": "US$ 49,00", "RenewalDate": "10/07/2026", "DashboardURL": dash}, true, []string{"10/07/2026"}},
+		{"monthly_invoice_issued.html", map[string]interface{}{"Amount": "R$ 497,90", "DueDate": "23/11/2026", "PayURL": "https://pay.example.com/i/abc", "DashboardURL": dash + "/invoices",
+			"Lines": []invoiceLineForTests{{Label: "Plano Growth", Amount: "R$ 397,00"}, {Label: "2 x Número de WhatsApp", Amount: "R$ 100,90"}}}, true, []string{"R$ 497,90", "23/11/2026", "Plano Growth", "2 x Número de WhatsApp", "pay.example.com/i/abc"}},
+		{"billing_cutoff_warning.html", map[string]interface{}{"Amount": "R$ 497,90", "DueDate": "23/11/2026", "CutoffDate": "27/11/2026", "PayURL": "https://pay.example.com/i/abc"}, true, []string{"27/11/2026", "R$ 497,90", "números de WhatsApp"}},
+		{"billing_access_cut.html", map[string]interface{}{"Amount": "R$ 497,90", "DueDate": "23/11/2026", "PlansURL": dash + "/plans"}, true, []string{"R$ 497,90", "números de WhatsApp", "/plans"}},
 		{"comment_analysis_cap_reached.html", map[string]interface{}{"DailyCap": 20000, "Date": "2026-09-02", "DashboardURL": dash}, true, []string{"20000", "2026-09-02"}},
 		{"email_verification.html", map[string]interface{}{"Email": "u@x.com", "Token": "123456"}, false, []string{"u@x.com", "123456"}},
 		{"issue_created_confirmation.html", map[string]interface{}{"OwnerName": "João", "IssueTitle": "Não consigo conectar o número", "WorkspaceName": "Loja da Ana", "IssueDescription": "Tentei conectar.\nDeu erro.", "DashboardURL": dash + "/issues/1"}, true, []string{"João", "Loja da Ana", "Tentei conectar.<br>Deu erro."}},
@@ -47,16 +44,13 @@ func everyTemplateWithItsSenderData() []templateCase {
 		{"issue_status_update.html", map[string]interface{}{"OwnerName": "João", "IssueTitle": "Não consigo conectar o número", "WorkspaceName": "Loja da Ana", "OldStatusLabel": "Aberto", "OldStatusColor": "#4A90E2", "NewStatusLabel": "Fechado", "NewStatusColor": "#28a745", "IsClosed": true, "DashboardURL": dash + "/issues/1"}, true, []string{"Chamado encerrado", "Aberto", "Fechado"}},
 		{"login_locked.html", map[string]interface{}{"Email": "u@x.com", "ResetURL": dash + "/reset-password"}, true, []string{"u@x.com", "reset-password"}},
 		{"login_successful.html", map[string]interface{}{"Email": "u@x.com", "LoginTime": "2026-06-28 14:30:00"}, false, []string{"2026-06-28 14:30:00"}},
-		{"low_balance_warning.html", map[string]interface{}{"Balance": "US$ 2,30", "DashboardURL": dash}, true, []string{"US$ 2,30"}},
+		{"low_balance_warning.html", map[string]interface{}{"Balance": "R$ 12,42", "DashboardURL": dash}, true, []string{"R$ 12,42"}},
 		{"meta_ads_funds_alert.html", map[string]interface{}{"Headline": "Os anúncios pararam: os fundos acabaram", "Subtitle": "Adicione fundos na Meta para voltar a veicular", "Message": "Os fundos da conta de anúncios Loja na Meta acabaram.", "Situation": "Sem fundos", "Tone": "danger", "AccountName": "Loja", "ActionURL": "https://business.facebook.com/billing_hub/payment_settings", "ActionLabel": "Adicionar fundos na Meta", "ManagerURL": dash + "/advertising?account=a-1"}, true, []string{"Adicionar fundos na Meta", "Sem fundos", "advertising?account=a-1"}},
-		{"order_cancelled_expired.html", map[string]interface{}{"OrderID": "a81f3c", "CustomerName": "Ana", "TotalAmount": "149.90"}, false, []string{"#a81f3c", "R$ 149.90"}},
-		{"order_confirmation.html", map[string]interface{}{"OrderID": "a81f3c", "CustomerName": "Ana", "TotalAmount": "149.90", "Items": []orderItemForTests{{"Caneca", "https://cdn.example.com/caneca.png", 2, "99.90"}}}, false, []string{"Caneca", "https://cdn.example.com/caneca.png", "R$ 99.90", "R$ 149.90"}},
 		{"password_changed.html", map[string]interface{}{"Email": "u@x.com", "DashboardURL": dash}, true, []string{"u@x.com"}},
 		{"password_reset.html", map[string]interface{}{"Email": "u@x.com", "Token": "123456", "ExpiresIn": "1 hora"}, false, []string{"123456", "1 hora"}},
 		{"password_reset_locked.html", map[string]interface{}{"Email": "u@x.com", "DashboardURL": dash}, true, []string{"u@x.com"}},
-		{"payment_confirmation.html", map[string]interface{}{"CustomerName": "Ana", "OrderID": "a81f3c", "Amount": "149.90", "PaymentMethod": "PIX", "PaymentDate": "16/10/2026 14:30"}, false, []string{"R$ 149.90", "PIX", "16/10/2026 14:30"}},
 		{"plan_expiry_reminder.html", map[string]interface{}{"PlanName": "Plano Growth", "ExpiryDate": "12/07/2026", "DashboardURL": dash}, true, []string{"Plano Growth", "12/07/2026"}},
-		{"wallet_topup_confirmed.html", map[string]interface{}{"Amount": "US$ 50.00", "DashboardURL": dash}, true, []string{"US$ 50.00"}},
+		{"wallet_topup_confirmed.html", map[string]interface{}{"Amount": "R$ 250,00", "DashboardURL": dash}, true, []string{"R$ 250,00"}},
 		{"welcome_email.html", map[string]interface{}{"Email": "u@x.com"}, true, []string{"u@x.com"}},
 		{"whatsapp_account_update.html", map[string]interface{}{"PhoneNumber": "+55 11 90000-0000", "DashboardURL": dash, "Headline": "Nome de exibição aprovado", "Subtitle": "Loja", "Message": "O nome foi aprovado.", "StatusLabel": "Aprovado", "Tone": "success", "Glyph": "check"}, true, []string{"Nome de exibição aprovado", "Aprovado", "11 90000-0000"}},
 		{"whatsapp_campaign_hold.html", map[string]interface{}{"Headline": "Campanha pausada automaticamente", "CampaignName": "Promo outubro", "Reason": "a Meta limitou o número por spam (131048)", "HeldAt": "16/10 12:56", "Wave": "3", "Advice": "Revise o motivo e retome a campanha.", "DashboardURL": dash + "/whatsapp-campaigns/1"}, true, []string{"Promo outubro", "16/10 12:56", "Revise o motivo e retome a campanha."}},
@@ -70,6 +64,11 @@ func everyTemplateWithItsSenderData() []templateCase {
 		{"notification.html", fullNotificationData(), true, []string{"Campanha concluída"}},
 		{"notification_digest.html", digestData(3), true, []string{"Campanha A pausada", "Saldo baixo", "e mais 3 avisos"}},
 	}
+}
+
+type invoiceLineForTests struct {
+	Label  string
+	Amount string
 }
 
 type digestLineForTests struct {
@@ -176,6 +175,26 @@ func TestLoadTemplate_ComposesLayoutAndRendersData(t *testing.T) {
 	for _, want := range []string{"user@example.com", "482913", "15 minutos"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected rendered email to contain placeholder value %q", want)
+		}
+	}
+}
+
+func TestEveryTemplateFileHasItsSenderCase(t *testing.T) {
+	covered := map[string]bool{}
+	for _, c := range everyTemplateWithItsSenderData() {
+		covered[c.name] = true
+	}
+	files, err := filepath.Glob(filepath.Join("templates", "*.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		name := filepath.Base(file)
+		if strings.HasPrefix(name, "_") {
+			continue
+		}
+		if !covered[name] {
+			t.Errorf("%s has no sender case: either a sender uses it and the case is missing, or nothing sends it and it should be deleted", name)
 		}
 	}
 }

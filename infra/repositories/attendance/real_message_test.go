@@ -3,10 +3,11 @@ package attendance_repository
 import (
 	"strings"
 	"testing"
+	"vozko/infra/database/sqlexpr"
 )
 
 func TestRealMessageSQL_ExcludesOnlyTheLeadImportSeed(t *testing.T) {
-	got := realMessageSQL("cm")
+	got := sqlexpr.RealMessage("cm")
 
 	for _, want := range []string{
 		"cm.message_type = 'system'",
@@ -20,7 +21,7 @@ func TestRealMessageSQL_ExcludesOnlyTheLeadImportSeed(t *testing.T) {
 }
 
 func TestRealMessageSQL_CoalescesNullMetadata(t *testing.T) {
-	got := realMessageSQL("cm")
+	got := sqlexpr.RealMessage("cm")
 
 	if !strings.Contains(got, "COALESCE(cm.metadata->>'seed', '')") {
 		t.Fatalf(
@@ -32,7 +33,7 @@ func TestRealMessageSQL_CoalescesNullMetadata(t *testing.T) {
 }
 
 func TestRealMessageSQL_HonoursTheAlias(t *testing.T) {
-	got := realMessageSQL("m2")
+	got := sqlexpr.RealMessage("m2")
 
 	if strings.Contains(got, "cm.") {
 		t.Fatalf("predicate leaked the cm alias: %s", got)
@@ -43,7 +44,7 @@ func TestRealMessageSQL_HonoursTheAlias(t *testing.T) {
 }
 
 func TestRealMessageSQL_ExcludesImportedHistory(t *testing.T) {
-	got := realMessageSQL("cm")
+	got := sqlexpr.RealMessage("cm")
 
 	if !strings.Contains(got, "COALESCE(cm.metadata->>'backfill', '') <> 'true'") {
 		t.Fatalf("a message imported from the phone's history happened before Vozko; it must not count as attendance: %s", got)
@@ -53,7 +54,7 @@ func TestRealMessageSQL_ExcludesImportedHistory(t *testing.T) {
 func TestOwnerResponseTimeStartsFromARealMessage(t *testing.T) {
 	got := ownerResponseLateralsSQL()
 
-	if !strings.Contains(got, liveMessageSQL("m")) {
+	if !strings.Contains(got, sqlexpr.LiveMessage("m")) {
 		t.Fatalf("response time must start at the first real customer message, not days-old imported history: %s", got)
 	}
 }

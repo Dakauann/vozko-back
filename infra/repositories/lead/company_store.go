@@ -12,6 +12,7 @@ import (
 	"vozko/domain/shared"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 const (
@@ -114,7 +115,7 @@ func (r *repository) ListCompanies(ctx context.Context, workspaceID string, q le
 	}
 	filter, args := "", []interface{}{workspaceID}
 	if search := strings.TrimSpace(q.Search); search != "" {
-		filter, args = companySearchSQL, append(args, database.LikeContains(search))
+		filter, args = companySearchSQL, append(args, sqlexpr.LikeContains(search))
 	}
 	db := r.db.WithContext(ctx)
 	var total int64

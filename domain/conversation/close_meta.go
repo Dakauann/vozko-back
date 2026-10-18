@@ -278,22 +278,7 @@ type AutoCloseCandidate struct {
 	LastAgentMessageAt time.Time
 }
 
-const DefaultAutoCloseIdleAfterHours = 24
-
-const (
-	MinAutoCloseIdleAfterHours = 1
-	MaxAutoCloseIdleAfterHours = 168
-)
-
-func ClampAutoCloseIdleHours(hours int) int {
-	if hours < MinAutoCloseIdleAfterHours {
-		return DefaultAutoCloseIdleAfterHours
-	}
-	if hours > MaxAutoCloseIdleAfterHours {
-		return MaxAutoCloseIdleAfterHours
-	}
-	return hours
-}
+const ()
 
 func DecodeOutcomeCapturePatch(body []byte, field string) (capture *OutcomeCapture, clear bool, err error) {
 	if len(body) == 0 {

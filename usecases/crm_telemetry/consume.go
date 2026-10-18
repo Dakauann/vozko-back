@@ -45,24 +45,6 @@ type ConsumerDeps struct {
 	Drops     crm_telemetry.DropRecorder
 }
 
-func NewConsumer(
-	queueSub messaging.MessageQueueSub,
-	events ce.Repository,
-	history ia.HistoryRepository,
-	aiRepo aa.Repository,
-	queueRepo qe.Repository,
-	presence ap.Repository,
-) crm_telemetry.Consumer {
-	return NewConsumerWithDeps(ConsumerDeps{
-		QueueSub:  queueSub,
-		Events:    events,
-		History:   history,
-		AIRepo:    aiRepo,
-		QueueRepo: queueRepo,
-		Presence:  presence,
-	})
-}
-
 func NewConsumerWithDeps(d ConsumerDeps) crm_telemetry.Consumer {
 	directLog := &directEventLogger{repo: d.Events}
 	aiSvc := aa_usecase.NewSessionService(d.AIRepo, directLog)

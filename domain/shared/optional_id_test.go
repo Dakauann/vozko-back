@@ -10,14 +10,15 @@ func TestAnAbsentValueStaysAbsent(t *testing.T) {
 
 func TestAnEmptyValueBecomesAbsent(t *testing.T) {
 	for _, raw := range []string{"", "   ", "\t\n"} {
-		if got := OptionalIDOf(raw); got != nil {
+		if got := OptionalID(&raw); got != nil {
 			t.Fatalf("%q resolved to %q; an empty id means no id", raw, *got)
 		}
 	}
 }
 
 func TestARealIDIsTrimmedNotDropped(t *testing.T) {
-	got := OptionalIDOf("  9f1d2c3b-4a5e  ")
+	raw := "  9f1d2c3b-4a5e  "
+	got := OptionalID(&raw)
 	if got == nil {
 		t.Fatal("a real id was dropped")
 	}

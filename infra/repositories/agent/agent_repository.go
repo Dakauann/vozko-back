@@ -368,14 +368,6 @@ func encodeStrings(values []string) string {
 	return string(bytes)
 }
 
-func encodeStringMap(values map[string]string) string {
-	if values == nil {
-		values = make(map[string]string)
-	}
-	bytes, _ := json.Marshal(values)
-	return string(bytes)
-}
-
 func decodeStringMap(raw string) map[string]string {
 	result := make(map[string]string)
 	if strings.TrimSpace(raw) == "" {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"vozko/domain/crmfilter"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 type Style int
@@ -156,7 +156,7 @@ func (d ConversationDescriptor) Field(field crmfilter.Field) (FieldMapping, erro
 	case crmfilter.FieldUnread:
 		unreadCount := "(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = " + entryID +
 			" AND cm4.entry_type = " + entryType +
-			" AND cm4.read = false AND " + database.SentByContactSQL("cm4") +
+			" AND cm4.read = false AND " + sqlexpr.SentByContact("cm4") +
 			" AND cm4.deleted_at IS NULL)"
 		return FieldMapping{
 			Style:     StyleBool,

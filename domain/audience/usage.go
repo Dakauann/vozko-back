@@ -67,16 +67,6 @@ func ParseUsageBucketKey(key string) (time.Time, error) {
 	return at.UTC(), nil
 }
 
-func UsageBucketsInWindow(now time.Time) []string {
-	count := int(UsageWindow / UsageBucket)
-	keys := make([]string, 0, count)
-	start := now.UTC().Truncate(UsageBucket)
-	for i := 0; i < count; i++ {
-		keys = append(keys, UsageBucketKey(start.Add(-time.Duration(i)*UsageBucket)))
-	}
-	return keys
-}
-
 type UsageLimiter interface {
 	Claim(ctx context.Context, workspaceID string, items, limit int, now time.Time) (bool, error)
 

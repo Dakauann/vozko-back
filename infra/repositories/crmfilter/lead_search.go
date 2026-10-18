@@ -8,6 +8,7 @@ import (
 	"vozko/domain/crmfilter"
 	"vozko/domain/lead"
 	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 func (d LeadDescriptor) compileQuery(p crmfilter.Predicate) (string, []interface{}, error) {
@@ -84,7 +85,7 @@ func phoneMatchOf(term lead.SearchTerm) (string, interface{}) {
 	if len(term.Numbers) > 0 {
 		return "= ANY(?)", pq.Array(term.Numbers)
 	}
-	return "LIKE ?", database.LikeContains(term.Digits)
+	return "LIKE ?", sqlexpr.LikeContains(term.Digits)
 }
 
 func (d LeadDescriptor) SearchOrder(f crmfilter.Filter) (string, []interface{}, bool) {
@@ -99,7 +100,7 @@ func (d LeadDescriptor) SearchOrder(f crmfilter.Filter) (string, []interface{}, 
 			}
 			name := database.SearchFold(d.alias() + ".name")
 			order := "(" + name + " LIKE " + database.SearchFold("?") + ") DESC NULLS LAST, public.similarity(" + name + ", " + database.SearchFold("?") + ") DESC NULLS LAST"
-			return order, []interface{}{database.LikePrefix(search.RankText()), search.RankText()}, true
+			return order, []interface{}{sqlexpr.LikePrefix(search.RankText()), search.RankText()}, true
 		}
 	}
 	return "", nil, false
@@ -129,13 +130,13 @@ func searchSet(ws string, term lead.SearchTerm) (string, []interface{}) {
 
 func wordMatch(expr, placeholder, word string, wordStartOnly bool, keyStart string) (string, []interface{}) {
 	if !wordStartOnly {
-		return expr + " LIKE " + placeholder, []interface{}{database.LikeContains(word)}
+		return expr + " LIKE " + placeholder, []interface{}{sqlexpr.LikeContains(word)}
 	}
-	first := database.LikePrefix(word)
+	first := sqlexpr.LikePrefix(word)
 	if keyStart != "" {
 		first = "%" + keyStart + first
 	}
-	return "(" + expr + " LIKE " + placeholder + " OR " + expr + " LIKE " + placeholder + ")", []interface{}{first, "% " + database.LikePrefix(word)}
+	return "(" + expr + " LIKE " + placeholder + " OR " + expr + " LIKE " + placeholder + ")", []interface{}{first, "% " + sqlexpr.LikePrefix(word)}
 }
 
 func phoneSearchSet(ws string, term lead.SearchTerm) (string, []interface{}) {

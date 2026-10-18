@@ -41,8 +41,6 @@ type ReferenceKeys struct {
 	CityNames []CityName
 }
 
-func (k ReferenceKeys) Empty() bool { return len(k.ZipCodes) == 0 && len(k.CityNames) == 0 }
-
 type ReferencePlaces struct {
 	Districts []address.Place
 	CityCodes []string

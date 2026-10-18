@@ -9,6 +9,7 @@ import (
 	"vozko/domain/cache"
 	"vozko/domain/notification"
 	"vozko/domain/workspace"
+	"vozko/domain/workspace/workspace_pricing"
 	"vozko/usecases/notification/notificationtest"
 )
 
@@ -53,10 +54,24 @@ func (s *memorySet) SRem(_ string, members ...string) error {
 	return nil
 }
 
+type fixedExchangeRate struct {
+	micros int64
+	err    error
+}
+
+func (f fixedExchangeRate) Execute() (*workspace_pricing.PricingItem, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &workspace_pricing.PricingItem{PriceMicros: f.micros}, nil
+}
+
+var reaisPerDollar = fixedExchangeRate{micros: 5_400_000}
+
 func TestLowBalanceNotifiesTheBillingTeamOnceUntilTheBalanceRecovers(t *testing.T) {
 	publisher := &notificationtest.Publisher{}
 	state := newMemorySet("recovered-ws")
-	monitor := NewMonitorLowBalanceUseCase(fixedLowBalances{{WorkspaceID: "ws-1", AmountMicros: 2_300_000, Currency: "BRL"}}, publisher, state, "https://app.vozko.test/", 0)
+	monitor := NewMonitorLowBalanceUseCase(fixedLowBalances{{WorkspaceID: "ws-1", AmountMicros: 2_300_000, Currency: "USD"}}, reaisPerDollar, publisher, state, "https://app.vozko.test/", 0)
 
 	if n, err := monitor.Run(); err != nil || n != 1 {
 		t.Fatalf("run = %d, %v", n, err)
@@ -68,10 +83,10 @@ func TestLowBalanceNotifiesTheBillingTeamOnceUntilTheBalanceRecovers(t *testing.
 	if !d.Audience.Equal(notification.Holding(workspace.ResourceBalance, workspace.ActionRead)) {
 		t.Fatalf("audience = %+v, want the people who see the balance", d.Audience)
 	}
-	if !strings.Contains(d.Body, "R$ 2,30") || d.ActionURL != "/dashboard/balance" {
+	if !strings.Contains(d.Body, "R$ 12,42") || d.ActionURL != "/dashboard/balance" {
 		t.Fatalf("body %q link %q", d.Body, d.ActionURL)
 	}
-	if d.EmailCopy == nil || d.EmailCopy.Template != "low_balance_warning.html" || d.EmailCopy.Placeholders["Balance"] != "R$ 2,30" ||
+	if d.EmailCopy == nil || d.EmailCopy.Template != "low_balance_warning.html" || d.EmailCopy.Placeholders["Balance"] != "R$ 12,42" ||
 		d.EmailCopy.Placeholders["DashboardURL"] != "https://app.vozko.test/dashboard/balance" {
 		t.Fatalf("email = %+v", d.EmailCopy)
 	}
@@ -90,7 +105,7 @@ func TestLowBalanceNotifiesTheBillingTeamOnceUntilTheBalanceRecovers(t *testing.
 func TestAFailedPublishIsRetriedOnTheNextRun(t *testing.T) {
 	publisher := &notificationtest.Publisher{Err: errors.New("db down")}
 	state := newMemorySet()
-	monitor := NewMonitorLowBalanceUseCase(fixedLowBalances{{WorkspaceID: "ws-1", AmountMicros: 1, Currency: "USD"}}, publisher, state, "https://app.vozko.test", 0)
+	monitor := NewMonitorLowBalanceUseCase(fixedLowBalances{{WorkspaceID: "ws-1", AmountMicros: 1, Currency: "USD"}}, reaisPerDollar, publisher, state, "https://app.vozko.test", 0)
 
 	if _, err := monitor.Run(); err != nil {
 		t.Fatal(err)
@@ -102,5 +117,18 @@ func TestAFailedPublishIsRetriedOnTheNextRun(t *testing.T) {
 	_, _ = monitor.Run()
 	if len(publisher.Drafts()) != 2 || !state.members["ws-1"] {
 		t.Fatalf("the next run retries and then marks it: drafts=%d", len(publisher.Drafts()))
+	}
+}
+
+func TestTheLowBalanceAlertWaitsWhenTheExchangeRateCannotBeRead(t *testing.T) {
+	publisher := &notificationtest.Publisher{}
+	state := newMemorySet()
+	monitor := NewMonitorLowBalanceUseCase(fixedLowBalances{{WorkspaceID: "ws-1", AmountMicros: 2_300_000, Currency: "USD"}}, fixedExchangeRate{err: errors.New("pricing down")}, publisher, state, "https://app.vozko.test/", 0)
+
+	if _, err := monitor.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.Drafts()) != 0 || state.members["ws-1"] {
+		t.Fatal("without the rate the balance cannot be shown in reais, so the alert waits for the next run")
 	}
 }

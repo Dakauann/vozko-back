@@ -444,18 +444,17 @@ func (f fakeCaps) MonthlySendCapUsage(string, time.Time) (*balance.SendCapUsage,
 }
 
 type harness struct {
-	svc         *Service
-	world       *world
-	snapshots   *fakeSnapshots
-	leads       *fakeLeads
-	contacts    *fakeContacts
-	create      *officialCreate
-	start       *officialStart
-	act         *unofficialAct
-	cached      *forgetful
-	metrics     *fakeMetrics
-	deps        Deps
-	departments []wd.Department
+	svc       *Service
+	world     *world
+	snapshots *fakeSnapshots
+	leads     *fakeLeads
+	contacts  *fakeContacts
+	create    *officialCreate
+	start     *officialStart
+	act       *unofficialAct
+	cached    *forgetful
+	metrics   *fakeMetrics
+	deps      Deps
 }
 
 type fakeMetrics struct {

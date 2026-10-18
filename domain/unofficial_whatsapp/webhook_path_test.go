@@ -52,15 +52,6 @@ func TestHashDeliveryTokenIsStableAndOneWay(t *testing.T) {
 	}
 }
 
-func TestDeliveryTokenMatches(t *testing.T) {
-	if !DeliveryTokenMatches("abc", "abc") {
-		t.Error("equal tokens must match")
-	}
-	if DeliveryTokenMatches("abc", "abd") || DeliveryTokenMatches("abc", "ab") {
-		t.Error("unequal tokens must not match")
-	}
-}
-
 func TestRedactWebhookPathHidesTheToken(t *testing.T) {
 	token, _ := GenerateDeliveryToken()
 	path := WebhookPathPrefix + "/" + token

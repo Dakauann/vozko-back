@@ -3,7 +3,6 @@ package node_executors
 import (
 	"strings"
 
-	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
@@ -66,16 +65,4 @@ func routeByChannel(edges []workflow.Edge, channel string) (string, bool) {
 		}
 	}
 	return fallback, false
-}
-
-func KnownChannelBranch(handle string) bool {
-	if handle == workflow.ChannelBranchDefault {
-		return true
-	}
-	for _, entryType := range workflow.ChannelBranchOrder {
-		if string(entryType) == handle {
-			return true
-		}
-	}
-	return shared.EntryType(handle).IsKnown()
 }

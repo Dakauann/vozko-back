@@ -36,9 +36,7 @@ const (
 const (
 	CategoryAgentUtility ToolCategory = "agent_utility"
 	CategoryMessaging    ToolCategory = "messaging"
-	CategoryInsurance    ToolCategory = "insurance"
 	CategoryAgentAction  ToolCategory = "agent_action"
-	CategoryPayment      ToolCategory = "payment"
 )
 
 type Definition struct {

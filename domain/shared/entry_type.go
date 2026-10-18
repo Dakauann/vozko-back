@@ -134,10 +134,6 @@ func (e EntryType) SupportsConversationClosing() bool {
 	return ok
 }
 
-func ConversationClosableEntryTypes() []EntryType {
-	return sortedEntryTypes(conversationClosableEntryTypes)
-}
-
 var templateEntryTypes = map[EntryType]struct{}{
 	EntryTypeWhatsApp: {},
 }

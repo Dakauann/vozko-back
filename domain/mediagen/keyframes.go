@@ -309,10 +309,6 @@ func (k *Keyframes) MaxScale() float64 {
 	return high
 }
 
-func PropertyIssue(frames []Keyframe, low, high float64) string {
-	return PropertyIssueWithin(frames, low, high, MaxVideoMS)
-}
-
 func PropertyIssueWithin(frames []Keyframe, low, high float64, maxAbsMS int64) string {
 	for i, f := range frames {
 		switch {

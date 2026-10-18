@@ -1,13 +1,9 @@
 package database
 
-import (
-	"fmt"
+import "gorm.io/gorm"
 
-	"gorm.io/gorm"
-)
-
-func callListConstraints() []struct{ name, sql string } {
-	return []struct{ name, sql string }{
+func callListConstraints() []ddl {
+	return []ddl{
 		{
 			name: "fk_call_list_items_workspace_list",
 			sql: `DO $$
@@ -30,10 +26,5 @@ func callListConstraints() []struct{ name, sql string } {
 }
 
 func CreateCallListConstraints(db *gorm.DB) error {
-	for _, c := range callListConstraints() {
-		if err := db.Exec(c.sql).Error; err != nil {
-			return fmt.Errorf("creating constraint %s: %w", c.name, err)
-		}
-	}
-	return nil
+	return execDDL(db, callListConstraints())
 }

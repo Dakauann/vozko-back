@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -142,10 +141,6 @@ func makeSafeFetchClient(parent context.Context, timeout time.Duration) *http.Cl
 			return nil
 		},
 	}
-}
-
-type fetchCallState struct {
-	calls atomic.Int32
 }
 
 func validateFetchURL(raw string, limits Limits) (*url.URL, error) {

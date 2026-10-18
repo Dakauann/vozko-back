@@ -87,7 +87,7 @@ func TestCampaignPreflightChecksRowsAndStartability(t *testing.T) {
 	}
 }
 
-type doneCampaignAccess struct{ fakeCampaignAccess }
+type doneCampaignAccess struct{}
 
 func (doneCampaignAccess) Owned(string, *wd.DepartmentFilter, string) (*wc.Campaign, error) {
 	return &wc.Campaign{ID: knownCampaign, Metrics: &wc.CampaignMetrics{TotalNumbers: 2, Processed: 2}}, nil

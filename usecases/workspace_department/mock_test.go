@@ -20,8 +20,6 @@ func newMockRepo() *mockRepository {
 	}
 }
 
-func (m *mockRepository) failNext(err error) { m.nextErr = err }
-
 func (m *mockRepository) consumeErr() error {
 	err := m.nextErr
 	m.nextErr = nil

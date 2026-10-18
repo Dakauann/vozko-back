@@ -43,22 +43,6 @@ func TestValidateRedirectURI(t *testing.T) {
 	}
 }
 
-func TestRedirectURIFor(t *testing.T) {
-	cases := map[string]string{
-		"https://api.example.com":     "https://api.example.com" + OAuthCallbackPath,
-		"https://api.example.com/":    "https://api.example.com" + OAuthCallbackPath,
-		"  https://api.example.com  ": "https://api.example.com" + OAuthCallbackPath,
-	}
-	for base, want := range cases {
-		if got := RedirectURIFor(base); got != want {
-			t.Errorf("RedirectURIFor(%q) = %q, want %q", base, got, want)
-		}
-		if err := ValidateRedirectURI(RedirectURIFor(base)); err != nil {
-			t.Errorf("RedirectURIFor(%q) produced an invalid URI: %v", base, err)
-		}
-	}
-}
-
 func TestRequiredScopes(t *testing.T) {
 	scopes := RequiredScopes()
 

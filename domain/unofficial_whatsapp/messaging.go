@@ -71,6 +71,10 @@ type NumberCheck struct {
 	VerifiedName string
 }
 
+func (c NumberCheck) Reachable() bool {
+	return c.IsOnWhatsApp && strings.TrimSpace(c.JID) != ""
+}
+
 type ChatProfile struct {
 	JID          string
 	LID          string

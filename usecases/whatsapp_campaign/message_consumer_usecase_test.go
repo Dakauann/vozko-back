@@ -22,7 +22,6 @@ import (
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
-	wsc "vozko/domain/workspace_config"
 )
 
 type mockMessageQueueSub struct {
@@ -133,12 +132,6 @@ func (m *mockMessageQueuePub) PublishWithDelay(topic string, message []byte, del
 }
 
 func (m *mockMessageQueuePub) ValidateConnection() error { return nil }
-
-func (m *mockMessageQueuePub) messagesFor(topic string) [][]byte {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.messages[topic]
-}
 
 func (m *mockMessageQueuePub) delayedMessagesFor(topic string) []delayedMessage {
 	m.mu.Lock()
@@ -757,8 +750,7 @@ func (f *mockWhatsAppClientFactory) WABAIdForPhone(_ string) (string, error) {
 }
 
 type mockCheckBalance struct {
-	hasFunds   atomic.Bool
-	costMicros int64
+	hasFunds atomic.Bool
 }
 
 func (m *mockCheckBalance) Execute(_ string, _ int64) (bool, error) {
@@ -904,19 +896,6 @@ type mockMessageHistoryManager struct{}
 
 func (m *mockMessageHistoryManager) Record(_ context.Context, _ conversation.MessageHistoryRecord) error {
 	return nil
-}
-
-type mockWorkspaceConfigRepo struct{}
-
-func (m *mockWorkspaceConfigRepo) GetByWorkspaceID(_ context.Context, _ string) (*wsc.WorkspaceConfig, error) {
-	return &wsc.WorkspaceConfig{CampaignSpamProtectionDays: 0}, nil
-}
-
-func (m *mockWorkspaceConfigRepo) Upsert(_ context.Context, _ *wsc.WorkspaceConfig) error { return nil }
-func (m *mockWorkspaceConfigRepo) EnsureExists(_ context.Context, _ string) error         { return nil }
-
-func (m *mockWorkspaceConfigRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Context, []string) (map[string]int, error) {
-	return map[string]int{}, nil
 }
 
 type mockLeadCampaignSendRepo struct{}
@@ -3006,8 +2985,4 @@ func (r *mockBusinessPhoneRepo) UpdateCallsEnabled(string, bool) error { return 
 
 func (f *mockWhatsAppClient) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
 	return &conversation.SendTextMessageOutput{}, nil
-}
-
-func (m *mockWorkspaceConfigRepo) ListRoulettePolicies(context.Context) ([]wsc.RoulettePolicy, error) {
-	return nil, nil
 }

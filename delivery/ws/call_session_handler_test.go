@@ -146,14 +146,6 @@ func (f *fakeEndUseCase) Execute(_ context.Context, in callsession_domain.EndOut
 	return nil
 }
 
-func (f *fakeEndUseCase) snapshot() []callsession_domain.EndOutboundCallInput {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]callsession_domain.EndOutboundCallInput, len(f.calls))
-	copy(out, f.calls)
-	return out
-}
-
 type recordingAdmission struct {
 	releaseCount int32
 }

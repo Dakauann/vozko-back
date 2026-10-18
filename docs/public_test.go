@@ -54,13 +54,11 @@ func TestSwaggerIsPublic(t *testing.T) {
 					t.Errorf("internal schema exposed: %s", name)
 				}
 			}
-			// Keep customer operations, including legitimate workspace administration.
 			for path, method := range map[string]string{
 				"/auth/login": "post",
 				"/workspaces": "get",
 				"/workspaces/{workspaceId}/members/{userId}/role": "put",
 				"/whatsapp/templates":                             "post",
-				"/tickets":                                        "get",
 			} {
 				if _, ok := spec.Paths[path][method]; !ok {
 					t.Errorf("customer operation missing: %s %s", method, path)

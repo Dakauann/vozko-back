@@ -52,16 +52,7 @@ func (uc *acceptInviteUseCase) Execute(userID, userEmail, token string) (*worksp
 		Role:        invite.Role,
 		RoleID:      invite.RoleID,
 	}
-	permissions := make([]*workspace.Permission, len(invite.Permissions))
-	for i, pe := range invite.Permissions {
-		permissions[i] = &workspace.Permission{
-			ID:       uuid.New().String(),
-			MemberID: member.ID,
-			Resource: pe.Resource,
-			Action:   pe.Action,
-		}
-	}
-	if err := uc.repo.AcceptInvite(invite.ID, member, permissions, invite.DepartmentIDs); err != nil {
+	if err := uc.repo.AcceptInvite(invite.ID, member, memberGrants(member.ID, invite.Permissions), invite.DepartmentIDs); err != nil {
 		return nil, err
 	}
 

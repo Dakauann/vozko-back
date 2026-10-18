@@ -29,21 +29,6 @@ func TestCloseReasonValid(t *testing.T) {
 	}
 }
 
-func TestClampAutoCloseIdleHours(t *testing.T) {
-	if got := ClampAutoCloseIdleHours(0); got != DefaultAutoCloseIdleAfterHours {
-		t.Fatalf("0 → %d want %d", got, DefaultAutoCloseIdleAfterHours)
-	}
-	if got := ClampAutoCloseIdleHours(-3); got != DefaultAutoCloseIdleAfterHours {
-		t.Fatalf("neg → %d", got)
-	}
-	if got := ClampAutoCloseIdleHours(48); got != 48 {
-		t.Fatalf("48 → %d", got)
-	}
-	if got := ClampAutoCloseIdleHours(999); got != MaxAutoCloseIdleAfterHours {
-		t.Fatalf("999 → %d want %d", got, MaxAutoCloseIdleAfterHours)
-	}
-}
-
 func TestConversationStatusStillThreeOnly(t *testing.T) {
 	for _, s := range []ConversationStatus{"new", "ongoing", "finished"} {
 		if !s.Valid() {

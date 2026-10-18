@@ -8,7 +8,7 @@ import (
 	"vozko/domain/campaign"
 	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
-	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 const scopePlaceholder = "{scope}"
@@ -22,7 +22,7 @@ const workspaceScopeSQL = `e.campaign_id IN (
 
 var repliedSQL = `EXISTS (
 		SELECT 1 FROM conversation_messages m
-		WHERE m.entry_id = e.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND ` + database.SentByContactSQL("m") + `
+		WHERE m.entry_id = e.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND ` + sqlexpr.SentByContact("m") + `
 	)`
 
 var stageCountsSQL = `COUNT(*) AS base,
@@ -59,7 +59,7 @@ WITH scoped AS (
 	SELECT r.first_at FROM scoped s
 	CROSS JOIN LATERAL (
 		SELECT MIN(m.created_at) AS first_at FROM conversation_messages m
-		WHERE m.entry_id = s.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND ` + database.SentByContactSQL("m") + `
+		WHERE m.entry_id = s.id AND m.entry_type = @entryType AND m.deleted_at IS NULL AND ` + sqlexpr.SentByContact("m") + `
 		  AND m.created_at < @to
 	) r
 ), events AS (

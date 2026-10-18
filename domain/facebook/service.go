@@ -13,10 +13,6 @@ const (
 	OAuthCallbackPath = "/oauth/facebook/callback"
 )
 
-func ValidateRedirectURI(raw string) error {
-	return ValidateRedirectURIFor(raw, OAuthCallbackPath)
-}
-
 func ValidateRedirectURIFor(raw, callbackPath string) error {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

@@ -68,6 +68,10 @@ const (
 	StatusExpired   Status = "EXPIRED"
 )
 
+func SettledStatuses() []string {
+	return []string{string(StatusPaid), string(StatusRefunded)}
+}
+
 type Invoice struct {
 	ID               string            `json:"id"`
 	WorkspaceID      string            `json:"workspaceId"`

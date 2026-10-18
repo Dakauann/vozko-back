@@ -1,6 +1,7 @@
 package analytics_repository
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"vozko/domain/shared"
 	wsc "vozko/domain/workspace_config"
 	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 )
 
 type metaServiceMessageCostRow struct {
@@ -40,17 +42,17 @@ type metaServiceMessageCostRow struct {
 
 const providerExpr = `COALESCE(p.provider, '` + string(analytics_domain.ServiceMessageProviderUnattributed) + `')`
 
-var serviceMessagePredicate = database.ServiceMessagePredicateSQL("cm")
+var serviceMessagePredicate = sqlexpr.ServiceMessage("cm")
 
 var metaConfirmedPredicate = `cm.meta_pricing_billable IS TRUE
-			      AND cm.meta_pricing_category = ` + database.SQLStringLiteral(conversation.MetaPricingCategoryService) + `
-			      AND COALESCE(cm.meta_conversation_origin, '') <> ` + database.SQLStringLiteral(conversation.MetaOriginFreeEntryPoint)
+			      AND cm.meta_pricing_category = ` + sqlexpr.Literal(conversation.MetaPricingCategoryService) + `
+			      AND COALESCE(cm.meta_conversation_origin, '') <> ` + sqlexpr.Literal(conversation.MetaOriginFreeEntryPoint)
 
 var (
-	campaignService = database.SQLStringLiteral(string(balance.ServiceWhatsAppCampaign))
-	billedServices  = campaignService + `, ` + database.SQLStringLiteral(string(balance.ServiceWhatsAppConversation))
-	vozkoPaysMeta   = `meta_payer <> ` + database.SQLStringLiteral(string(wsc.MetaPayerClient))
-	defaultPayer    = database.SQLStringLiteral(string(wsc.MetaPayerVozko))
+	campaignService = sqlexpr.Literal(string(balance.ServiceWhatsAppCampaign))
+	billedServices  = campaignService + `, ` + sqlexpr.Literal(string(balance.ServiceWhatsAppConversation))
+	vozkoPaysMeta   = `meta_payer <> ` + sqlexpr.Literal(string(wsc.MetaPayerClient))
+	defaultPayer    = sqlexpr.Literal(string(wsc.MetaPayerVozko))
 )
 
 const (
@@ -209,15 +211,7 @@ func (r *repository) GetMetaServiceMessageCost(input analytics_domain.MetaServic
 }
 
 func (r *repository) boundedRead(read func(tx *gorm.DB) error) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SET LOCAL jit = off").Error; err != nil {
-			return err
-		}
-		if err := tx.Exec("SET LOCAL statement_timeout = '15s'").Error; err != nil {
-			return err
-		}
-		return read(tx)
-	})
+	return database.InReadSession(context.Background(), r.db, []string{database.JITOff, database.StatementTimeout("15s")}, read)
 }
 
 func buildMetaServiceMessageCost(

@@ -12,8 +12,6 @@ type EffectKeyframes struct {
 
 var mediaEffectTypes = map[string]bool{EffectDropShadow: true, EffectOuterGlow: true}
 
-func MediaEffectTypes() []string { return []string{EffectDropShadow, EffectOuterGlow} }
-
 func (k *EffectKeyframes) issue() string {
 	if k == nil {
 		return ""

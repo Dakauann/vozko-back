@@ -19,8 +19,6 @@ type EntryCampaignResolver interface {
 	CampaignIDForEntry(ctx context.Context, entryID string) (string, error)
 }
 
-type instagramEntryResolver = EntryOwnerResolver
-
 type campaignWorkspaceResolver struct {
 	wcCampaignRepo wc_domain.Repository
 	waEntryRepo    wce.Repository

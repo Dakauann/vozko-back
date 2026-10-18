@@ -3,7 +3,6 @@ package unofficial_whatsapp
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -29,10 +28,6 @@ func GenerateDeliveryToken() (string, error) {
 func HashDeliveryToken(token string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
 	return hex.EncodeToString(sum[:])
-}
-
-func DeliveryTokenMatches(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func WebhookURLFor(baseURL, deliveryToken string) string {

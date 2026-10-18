@@ -20779,58 +20779,6 @@
                 }
             }
         },
-        "/orders/{orderId}/ticket": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna o ticket de envio associado a um pedido do usuário autenticado.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tickets"
-                ],
-                "summary": "Obter ticket de um pedido",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do pedido",
-                        "name": "orderId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/ticket.Ticket"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/pipelines": {
             "get": {
                 "security": [
@@ -24578,153 +24526,6 @@
                     },
                     "422": {
                         "description": "Unprocessable Entity",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/tickets": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Retorna a lista paginada dos tickets de envio do usuário autenticado, com filtros por status, busca textual e período.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tickets"
-                ],
-                "summary": "Listar meus tickets",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Número da página (inicia em 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Quantidade de itens por página",
-                        "name": "pageSize",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Filtrar por status (aceita vários separados por vírgula)",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Busca textual",
-                        "name": "search",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Ordenação (ex.: createdAt:desc, status:asc)",
-                        "name": "sort",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/ticket.Ticket"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/tickets/{ticketId}/documents": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Faz o upload de um documento (RG, comprovante de endereço ou receita médica) para um ticket de envio do usuário autenticado.",
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Tickets"
-                ],
-                "summary": "Enviar documento do ticket",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "ID do ticket",
-                        "name": "ticketId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Tipo do documento (rg, address_proof, medical_prescription)",
-                        "name": "documentType",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "Arquivo do documento",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/ticket.Document"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -43999,6 +43800,74 @@
                 }
             }
         },
+        "copilot.StudioKind": {
+            "type": "string",
+            "enum": [
+                "image",
+                "video"
+            ],
+            "x-enum-varnames": [
+                "StudioImage",
+                "StudioVideo"
+            ]
+        },
+        "copilot.Surface": {
+            "type": "string",
+            "enum": [
+                "attendance",
+                "studio",
+                "leads"
+            ],
+            "x-enum-varnames": [
+                "SurfaceAttendance",
+                "SurfaceStudio",
+                "SurfaceLeads"
+            ]
+        },
+        "copilot.View": {
+            "type": "object",
+            "properties": {
+                "campaignId": {
+                    "type": "string"
+                },
+                "campaignType": {
+                    "type": "string"
+                },
+                "channel": {
+                    "type": "string"
+                },
+                "dateFrom": {
+                    "type": "string"
+                },
+                "dateTo": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "includeAi": {
+                    "type": "boolean"
+                },
+                "leadFilter": {
+                    "$ref": "#/definitions/crmfilter.Filter"
+                },
+                "memberId": {
+                    "type": "string"
+                },
+                "projectId": {
+                    "type": "string"
+                },
+                "projectKind": {
+                    "$ref": "#/definitions/copilot.StudioKind"
+                },
+                "selectedLeads": {
+                    "type": "integer"
+                },
+                "surface": {
+                    "$ref": "#/definitions/copilot.Surface"
+                }
+            }
+        },
         "copilot_usecase.QueuedView": {
             "type": "object",
             "properties": {
@@ -45157,7 +45026,18 @@
             }
         },
         "handlers.projectOpenedRequest": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "view": {
+                    "$ref": "#/definitions/copilot.View"
+                }
+            }
         },
         "handlers.queueMessageRequest": {
             "type": "object",
@@ -53377,107 +53257,6 @@
                     "example": "APPROVED"
                 },
                 "templateId": {
-                    "type": "string"
-                }
-            }
-        },
-        "ticket.Document": {
-            "type": "object",
-            "properties": {
-                "contentType": {
-                    "type": "string"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "fileName": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "ticketId": {
-                    "type": "string"
-                },
-                "type": {
-                    "$ref": "#/definitions/ticket.DocumentType"
-                },
-                "uploadedBy": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "ticket.DocumentType": {
-            "type": "string",
-            "enum": [
-                "rg",
-                "address_proof",
-                "medical_prescription"
-            ],
-            "x-enum-varnames": [
-                "DocumentTypeRG",
-                "DocumentTypeAddressProof",
-                "DocumentTypeMedicalPrescription"
-            ]
-        },
-        "ticket.Status": {
-            "type": "string",
-            "enum": [
-                "waiting_documents",
-                "waiting_approval",
-                "ready_for_label",
-                "label_generated"
-            ],
-            "x-enum-varnames": [
-                "StatusWaitingDocuments",
-                "StatusWaitingApproval",
-                "StatusReadyForLabel",
-                "StatusLabelGenerated"
-            ]
-        },
-        "ticket.Ticket": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "documents": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/ticket.Document"
-                    }
-                },
-                "id": {
-                    "type": "string"
-                },
-                "lastRevertedBy": {
-                    "type": "string"
-                },
-                "lastStatusAt": {
-                    "type": "string"
-                },
-                "lastStatusBy": {
-                    "type": "string"
-                },
-                "orderId": {
-                    "type": "string"
-                },
-                "shippingCost": {
-                    "type": "number"
-                },
-                "status": {
-                    "$ref": "#/definitions/ticket.Status"
-                },
-                "trackingCode": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "userId": {
                     "type": "string"
                 }
             }

@@ -26,8 +26,8 @@ func staleInvoiceFixture() (*fakeInvoiceRepo, *fakeSubs, *cancelSweepUseCase) {
 
 	invoices := &fakeInvoiceRepo{unpaid: []invoice.Invoice{stale}}
 	subs := &fakeSubs{latest: fresh}
-	uc := NewCancelSweepUseCase(invoices, subs, &fakeAddons{}, &fakeEntitlementHandler{}, &fakeAlerter{})
-	uc.now = func() time.Time { return time.Date(2026, 9, 27, 3, 48, 0, 0, time.UTC) }
+	uc := NewCancelSweepUseCase(invoices, subs, &fakeAddons{}, &fakeEntitlementHandler{}, &fakeAlerter{}, &recordingNotices{})
+	uc.now = func() time.Time { return time.Date(2026, 9, 28, 3, 48, 0, 0, time.UTC) }
 	return invoices, subs, uc
 }
 
@@ -63,8 +63,8 @@ func TestSweep_StillExpiresTheSubscriptionTheInvoiceBelongsTo(t *testing.T) {
 
 	invoices := &fakeInvoiceRepo{unpaid: []invoice.Invoice{unpaid}}
 	subs := &fakeSubs{latest: current}
-	uc := NewCancelSweepUseCase(invoices, subs, &fakeAddons{}, &fakeEntitlementHandler{}, &fakeAlerter{})
-	uc.now = func() time.Time { return time.Date(2026, 9, 27, 3, 48, 0, 0, time.UTC) }
+	uc := NewCancelSweepUseCase(invoices, subs, &fakeAddons{}, &fakeEntitlementHandler{}, &fakeAlerter{}, &recordingNotices{})
+	uc.now = func() time.Time { return time.Date(2026, 9, 28, 3, 48, 0, 0, time.UTC) }
 
 	if _, err := uc.Execute(); err != nil {
 		t.Fatalf("sweep failed: %v", err)

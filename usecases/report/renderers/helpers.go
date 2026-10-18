@@ -132,11 +132,3 @@ func parseDayEnd(value string) (time.Time, bool) {
 	}
 	return parsed.Add(24*time.Hour - time.Second), true
 }
-
-func parseRFC3339(value string) (time.Time, bool) {
-	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
-	if err != nil {
-		return time.Time{}, false
-	}
-	return parsed, true
-}

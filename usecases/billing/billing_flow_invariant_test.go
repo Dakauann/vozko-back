@@ -112,7 +112,7 @@ func TestBillingFlow_InvariantNoUncollectedChannelBilled(t *testing.T) {
 			}
 			plans := &fakePlans{plans: map[string]*workspace_plan.PlanDefinition{"plan-1": {ID: "plan-1", BasePriceBRLCents: 50_000}}}
 
-			emit := NewEmitMonthlyInvoicesUseCase(&fakeSubs{subs: subList}, plans, addons, &fakeWorkspaces{byWS: wsMap}, &fakePricing{rate: 6.0}, &storeBackedCreateInvoice{store: store})
+			emit := NewEmitMonthlyInvoicesUseCase(&fakeSubs{subs: subList}, plans, addons, &fakeWorkspaces{byWS: wsMap}, &fakePricing{rate: 6.0}, &storeBackedCreateInvoice{store: store}, &recordingNotices{})
 			emit.now = func() time.Time { return time.Date(year, time.February, 18, 12, 0, 0, 0, time.UTC) }
 			if n, err := emit.Execute(); err != nil || n != 3 {
 				t.Fatalf("emit: n=%d err=%v, want 3 invoices", n, err)
@@ -127,8 +127,8 @@ func TestBillingFlow_InvariantNoUncollectedChannelBilled(t *testing.T) {
 			}
 
 			onReduced := &fakeEntitlementHandler{}
-			sweep := NewCancelSweepUseCase(store, &fakeSubs{}, addons, onReduced, &fakeAlerter{})
-			sweep.now = func() time.Time { return time.Date(year, time.February, 27, 12, 0, 0, 0, time.UTC) }
+			sweep := NewCancelSweepUseCase(store, &fakeSubs{}, addons, onReduced, &fakeAlerter{}, &recordingNotices{})
+			sweep.now = func() time.Time { return time.Date(year, time.February, 28, 12, 0, 0, 0, time.UTC) }
 			if _, err := sweep.Execute(); err != nil {
 				t.Fatalf("sweep: %v", err)
 			}

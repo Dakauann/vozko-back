@@ -66,10 +66,9 @@ func TestValidateWalletID_MissingIdentity(t *testing.T) {
 }
 
 type walletServerOpts struct {
-	paymentStatus   int
-	paymentBody     string
-	deleteStatus    int
-	wantDeleteCalls int
+	paymentStatus int
+	paymentBody   string
+	deleteStatus  int
 }
 
 func newWalletServer(t *testing.T, opts *walletServerOpts) (*httptest.Server, *int) {

@@ -69,10 +69,6 @@ func (k SubjectKind) Valid() bool {
 	return false
 }
 
-func SubjectKindValues() []string {
-	return []string{string(SubjectKindComment), string(SubjectKindConversation)}
-}
-
 func (k SubjectKind) SupportedOn(s Source) bool {
 	switch k {
 	case SubjectKindComment:

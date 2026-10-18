@@ -85,7 +85,7 @@ func (r *repository) UpdateStatus(id string, status invoice.Status) error {
 
 func (r *repository) MarkPaid(id string, amountUSD int64) (bool, error) {
 	now := time.Now().Unix()
-	result := r.db.Model(&schema.Invoice{}).Where("id = ? AND status != ?", id, string(invoice.StatusPaid)).Updates(map[string]interface{}{
+	result := r.db.Model(&schema.Invoice{}).Where("id = ? AND status NOT IN ?", id, invoice.SettledStatuses()).Updates(map[string]interface{}{
 		"status":     string(invoice.StatusPaid),
 		"amount_usd": amountUSD,
 		"paid_at":    now,

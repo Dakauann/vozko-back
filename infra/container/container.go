@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"vozko/domain/cluster"
 	"vozko/domain/workspace/workspace_pricing"
 	redisCache "vozko/infra/cache"
 	"vozko/infra/cloudflare"
@@ -147,13 +146,6 @@ func (c *Container) Shutdown() {
 	c.stopSIPTrunks()
 
 	c.metricsHTTP.Shutdown()
-
-	if c.services.clusterRegistry != nil && c.replicaID != "" {
-		if err := c.services.clusterRegistry.Withdraw(c.replicaID); err != nil {
-			log.Printf("cluster registry withdraw failed: %v", err)
-		}
-		_ = c.redisProvider.SharedState().Del(cluster.HeartbeatKeyPrefix + c.replicaID)
-	}
 
 	if c.recordingPool != nil {
 		c.recordingPool.Shutdown()

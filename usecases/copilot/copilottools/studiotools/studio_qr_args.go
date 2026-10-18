@@ -30,10 +30,6 @@ type studioQRArgs struct {
 	QRRemoveLogo *bool    `json:"qr_remove_logo,omitempty" desc:"update_qr_code: true tira o logo"`
 }
 
-func (a studioQRArgs) isShortLink() bool {
-	return a.QRLink == qrLinkShort || (a.QRLink == "" && a.ShortLinkID != "")
-}
-
 func (a studioQRArgs) argsIssue() string {
 	for _, color := range []string{a.QRDark, a.QRLight} {
 		if color != "" && (len(color) != 7 || !chartColor(color)) {

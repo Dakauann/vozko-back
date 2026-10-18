@@ -2,7 +2,6 @@ package whatsapp
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -78,22 +77,6 @@ func truncateForMessage(s string) string {
 		return s
 	}
 	return s[:maxRawMessage] + "…"
-}
-
-func AsTemplateAPIError(err error) (*TemplateAPIError, bool) {
-	var apiErr *TemplateAPIError
-	if errors.As(err, &apiErr) {
-		return apiErr, true
-	}
-	return nil, false
-}
-
-func IsProviderUnavailable(err error) bool {
-	apiErr, ok := AsTemplateAPIError(err)
-	if !ok {
-		return false
-	}
-	return apiErr.ProviderUnavailable()
 }
 
 func (e *TemplateAPIError) ProviderUnavailable() bool {

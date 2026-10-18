@@ -203,39 +203,6 @@ type TemplateButton struct {
 	OTPType     string `json:"otpType,omitempty"`
 }
 
-func NewTemplate(name, externalID, language string, category TemplateCategory, status TemplateStatus) (*Template, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return nil, ErrTemplateNameRequired
-	}
-
-	externalID = strings.TrimSpace(externalID)
-	if externalID == "" {
-		return nil, ErrExternalIDRequired
-	}
-
-	if language == "" {
-		language = "pt_BR"
-	}
-
-	if !category.IsValid() {
-		category = TemplateCategoryMarketing
-	}
-
-	if !status.IsValid() {
-		status = TemplateStatusPending
-	}
-
-	return &Template{
-		Name:       strings.ToLower(name),
-		ExternalID: externalID,
-		Language:   language,
-		Category:   category,
-		Status:     status,
-		Components: []TemplateComponent{},
-	}, nil
-}
-
 func (t *Template) AddComponent(componentType, format, text string, parameters []string) {
 	t.Components = append(t.Components, TemplateComponent{
 		Type:       strings.ToUpper(componentType),

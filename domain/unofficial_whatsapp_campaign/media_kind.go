@@ -6,7 +6,7 @@ func KindForMedia(t media.MediaType) MessageKind {
 	switch t {
 	case media.MediaTypeProductImage, media.MediaTypeSticker:
 		return KindImage
-	case media.MediaTypeProductVideo, media.MediaTypeVslVideo:
+	case media.MediaTypeProductVideo:
 		return KindVideo
 	case media.MediaTypeAudio:
 		return KindAudio

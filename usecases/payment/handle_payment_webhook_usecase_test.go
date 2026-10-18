@@ -6,11 +6,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/invoice"
-	"vozko/domain/order"
 	"vozko/domain/payment"
-	"vozko/domain/shared"
-	"vozko/domain/ticket"
-	"vozko/domain/user"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 )
 
@@ -116,7 +112,7 @@ func TestHandleAsaasWebhook_SubscriptionInvoiceActivatesPlan(t *testing.T) {
 	}}
 	subscribe := &webhookSubscribeWorkspacePlan{}
 	credit := &webhookCreditBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, subscribe, credit, &webhookDebitBalance{}, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, subscribe, credit, &webhookDebitBalance{}, nil)
 
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
@@ -151,7 +147,7 @@ func TestHandleAsaasWebhook_TopUpInvoiceCreditsBalance(t *testing.T) {
 	}}
 	subscribe := &webhookSubscribeWorkspacePlan{}
 	credit := &webhookCreditBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, subscribe, credit, &webhookDebitBalance{}, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, subscribe, credit, &webhookDebitBalance{}, nil)
 
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-2"}})
 	if err != nil {
@@ -166,164 +162,6 @@ func TestHandleAsaasWebhook_TopUpInvoiceCreditsBalance(t *testing.T) {
 	if credit.calls[0].WorkspaceID != "ws-2" || credit.calls[0].Amount != 8000000 {
 		t.Fatalf("unexpected credit input: %+v", credit.calls[0])
 	}
-}
-
-type mockPaymentRepo struct {
-	payments map[string]*payment.Payment
-	statuses map[string]payment.Status
-}
-
-func newMockPaymentRepo() *mockPaymentRepo {
-	return &mockPaymentRepo{
-		payments: make(map[string]*payment.Payment),
-		statuses: make(map[string]payment.Status),
-	}
-}
-
-func (r *mockPaymentRepo) CreatePayment(p *payment.Payment) error { r.payments[p.ID] = p; return nil }
-func (r *mockPaymentRepo) GetPaymentByID(id string) (*payment.Payment, error) {
-	p, ok := r.payments[id]
-	if !ok {
-		return nil, nil
-	}
-	return p, nil
-}
-func (r *mockPaymentRepo) UpdatePaymentStatus(id string, status payment.Status) error {
-	r.statuses[id] = status
-	return nil
-}
-func (r *mockPaymentRepo) ListPaymentsByUser(string) ([]payment.Payment, error) { return nil, nil }
-func (r *mockPaymentRepo) RefundPayment(string, int64) error                    { return nil }
-func (r *mockPaymentRepo) CancelPayment(string) error                           { return nil }
-
-type errMockPaymentRepo struct {
-	mockPaymentRepo
-	getErr    error
-	updateErr error
-}
-
-func (r *errMockPaymentRepo) GetPaymentByID(id string) (*payment.Payment, error) {
-	if r.getErr != nil {
-		return nil, r.getErr
-	}
-	return r.mockPaymentRepo.GetPaymentByID(id)
-}
-
-func (r *errMockPaymentRepo) UpdatePaymentStatus(id string, status payment.Status) error {
-	if r.updateErr != nil {
-		return r.updateErr
-	}
-	return r.mockPaymentRepo.UpdatePaymentStatus(id, status)
-}
-
-type mockOrderRepo struct {
-	orders  map[string]*order.Order
-	updated map[string]order.Status
-}
-
-func newMockOrderRepo() *mockOrderRepo {
-	return &mockOrderRepo{
-		orders:  make(map[string]*order.Order),
-		updated: make(map[string]order.Status),
-	}
-}
-
-func (r *mockOrderRepo) Create(*order.Order) error { return nil }
-func (r *mockOrderRepo) CreateWithInventoryReservation(*order.Order, []order.InventoryUpdate) error {
-	return nil
-}
-func (r *mockOrderRepo) Update(*order.Order) error { return nil }
-func (r *mockOrderRepo) UpdateStatus(id string, status order.Status) error {
-	r.updated[id] = status
-	return nil
-}
-func (r *mockOrderRepo) GetByID(string, string) (*order.Order, error) { return nil, nil }
-func (r *mockOrderRepo) GetByIDForSystem(id string) (*order.Order, error) {
-	o, ok := r.orders[id]
-	if !ok {
-		return nil, nil
-	}
-	return o, nil
-}
-func (r *mockOrderRepo) ListByWorkspace(order.ListOrdersInput) (*shared.PaginatedResult[*order.Order], error) {
-	return nil, nil
-}
-func (r *mockOrderRepo) GetExpiredOrders() ([]*order.Order, error)            { return nil, nil }
-func (r *mockOrderRepo) CancelOrder(string) error                             { return nil }
-func (r *mockOrderRepo) CancelExpiredOrdersAndReturnInventory([]string) error { return nil }
-
-type errMockOrderRepo struct {
-	mockOrderRepo
-	updateStatusErr  error
-	getByIDForSysErr error
-}
-
-func (r *errMockOrderRepo) UpdateStatus(id string, status order.Status) error {
-	if r.updateStatusErr != nil {
-		return r.updateStatusErr
-	}
-	return r.mockOrderRepo.UpdateStatus(id, status)
-}
-
-func (r *errMockOrderRepo) GetByIDForSystem(id string) (*order.Order, error) {
-	if r.getByIDForSysErr != nil {
-		return nil, r.getByIDForSysErr
-	}
-	return r.mockOrderRepo.GetByIDForSystem(id)
-}
-
-type mockEmailService struct {
-	sent []string
-	err  error
-}
-
-func (s *mockEmailService) SendEmail(to, subject, body string) error { return s.err }
-func (s *mockEmailService) SendTemplate(to, subject, template string, data map[string]interface{}) error {
-	s.sent = append(s.sent, to)
-	return s.err
-}
-
-type mockUserRepo struct {
-	users map[string]*user.User
-}
-
-func newMockUserRepo() *mockUserRepo {
-	return &mockUserRepo{users: make(map[string]*user.User)}
-}
-
-func (r *mockUserRepo) WithTx(interface{}) user.UserRepository { return r }
-func (r *mockUserRepo) Create(*user.User) error                { return nil }
-func (r *mockUserRepo) Update(string, *user.User) error        { return nil }
-func (r *mockUserRepo) Delete(string) error                    { return nil }
-func (r *mockUserRepo) FindByID(id string) (*user.User, error) {
-	u, ok := r.users[id]
-	if !ok {
-		return nil, errors.New("not found")
-	}
-	return u, nil
-}
-func (r *mockUserRepo) FindByIDs([]string) ([]*user.User, error)  { return nil, nil }
-func (r *mockUserRepo) FindByEmail(string) (*user.User, error)    { return nil, nil }
-func (r *mockUserRepo) FindByDocument(string) (*user.User, error) { return nil, nil }
-func (r *mockUserRepo) List(user.ListUsersInput) (*shared.PaginatedResult[*user.User], error) {
-	return nil, nil
-}
-func (r *mockUserRepo) CountByRole(user.Role) (int64, error)      { return 0, nil }
-func (r *mockUserRepo) GetUserRole(string) (string, error)        { return "", nil }
-func (r *mockUserRepo) GetTokenVersion(string) (int, error)       { return 0, nil }
-func (r *mockUserRepo) IncrementTokenVersion(string) (int, error) { return 0, nil }
-
-type mockCreateTicket struct {
-	calls int
-	err   error
-}
-
-func (m *mockCreateTicket) Execute(orderID, userID string) (*ticket.Ticket, error) {
-	m.calls++
-	if m.err != nil {
-		return nil, m.err
-	}
-	return &ticket.Ticket{}, nil
 }
 
 type errWebhookInvoiceRepo struct {
@@ -371,195 +209,22 @@ func (u *errWebhookDebitBalance) Execute(balance.DebitBalanceInput) (*balance.Tr
 }
 
 func TestHandleAsaasWebhook_NilEvent(t *testing.T) {
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(&webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}, nil, nil, nil, nil)
 	if err := uc.Execute(nil); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
 
 func TestHandleAsaasWebhook_EmptyPaymentID(t *testing.T) {
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(&webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}, nil, nil, nil, nil)
 	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: ""}}); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
 
-func TestHandleAsaasWebhook_NonInvoice_PaymentCreated(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-ext"] = &payment.Payment{
-		ID:      "pay-ext",
-		OrderID: &orderID,
-		Status:  payment.StatusPending,
-		Amount:  100,
-	}
-	ordRepo := newMockOrderRepo()
-	ordRepo.orders["order-1"] = &order.Order{ID: "order-1", UserID: "user-1", CustomerName: "Test"}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_CREATED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-ext"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if payRepo.statuses["pay-ext"] != payment.StatusPending {
-		t.Fatalf("expected PENDING status, got %v", payRepo.statuses["pay-ext"])
-	}
-	if ordRepo.updated["order-1"] != order.StatusPending {
-		t.Fatalf("expected order pending, got %v", ordRepo.updated["order-1"])
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_PaymentReceived_SendsEmail(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-ext"] = &payment.Payment{
-		ID:          "pay-ext",
-		OrderID:     &orderID,
-		Status:      payment.StatusPending,
-		Amount:      200,
-		BillingType: payment.BillingTypePix,
-	}
-	ordRepo := newMockOrderRepo()
-	ordRepo.orders["order-1"] = &order.Order{ID: "order-1", UserID: "user-1", CustomerName: "Buyer"}
-	userRepo := newMockUserRepo()
-	userRepo.users["user-1"] = &user.User{ID: "user-1", Email: "buyer@test.com"}
-	emailSvc := &mockEmailService{}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	createTicketMock := &mockCreateTicket{}
-
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, emailSvc, userRepo, createTicketMock, invRepo, nil, nil, nil, nil)
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-ext", Value: 200, BillingType: "PIX"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if payRepo.statuses["pay-ext"] != payment.StatusReceived {
-		t.Fatalf("expected RECEIVED status")
-	}
-	if ordRepo.updated["order-1"] != order.StatusPaid {
-		t.Fatalf("expected order paid")
-	}
-	if createTicketMock.calls != 1 {
-		t.Fatalf("expected ticket creation, got %d calls", createTicketMock.calls)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_PaymentNotFound(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, nil, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-not-found"},
-	})
-	if !errors.Is(err, payment.ErrPaymentNotFound) {
-		t.Fatalf("expected ErrPaymentNotFound, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_GetPaymentError(t *testing.T) {
-	payRepo := &errMockPaymentRepo{
-		mockPaymentRepo: *newMockPaymentRepo(),
-		getErr:          errors.New("db error"),
-	}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, nil, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err == nil || err.Error() != "db error" {
-		t.Fatalf("expected db error, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_UpdateStatusError(t *testing.T) {
-	payRepo := &errMockPaymentRepo{
-		mockPaymentRepo: *newMockPaymentRepo(),
-		updateErr:       errors.New("update fail"),
-	}
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", Status: payment.StatusPending}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, nil, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_CREATED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err == nil || err.Error() != "update fail" {
-		t.Fatalf("expected update fail, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_OrderUpdateError(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending}
-	ordRepo := &errMockOrderRepo{
-		mockOrderRepo:   *newMockOrderRepo(),
-		updateStatusErr: errors.New("order update fail"),
-	}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err == nil || err.Error() != "order update fail" {
-		t.Fatalf("expected order update fail, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_TicketAlreadyExists(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending}
-	ordRepo := newMockOrderRepo()
-	ordRepo.orders["order-1"] = &order.Order{ID: "order-1", UserID: "u-1"}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	ticketMock := &mockCreateTicket{err: ticket.ErrTicketAlreadyExists}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, ticketMock, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err != nil {
-		t.Fatalf("ErrTicketAlreadyExists should be tolerated, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_TicketCreateError(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending}
-	ordRepo := newMockOrderRepo()
-	ordRepo.orders["order-1"] = &order.Order{ID: "order-1", UserID: "u-1"}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	ticketMock := &mockCreateTicket{err: errors.New("ticket fail")}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, ticketMock, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err == nil || err.Error() != "ticket fail" {
-		t.Fatalf("expected ticket fail, got %v", err)
-	}
-}
-
 func TestHandleAsaasWebhook_NonInvoice_NoExternalReference(t *testing.T) {
 	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, invRepo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(invRepo, nil, nil, nil, nil)
 
 	err := uc.Execute(&payment.AsaasWebhookEvent{
 		Event:   "PAYMENT_RECEIVED",
@@ -570,90 +235,11 @@ func TestHandleAsaasWebhook_NonInvoice_NoExternalReference(t *testing.T) {
 	}
 }
 
-func TestHandleAsaasWebhook_NonInvoice_UnknownEvent(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", Status: payment.StatusPending}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, nil, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "SOMETHING_UNKNOWN",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err != nil {
-		t.Fatalf("unknown event should not error, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_ReceivedInCash(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{
-		ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending,
-		Amount: 300, BillingType: payment.BillingTypeBoleto,
-	}
-	ordRepo := newMockOrderRepo()
-	ordRepo.orders["order-1"] = &order.Order{ID: "order-1", UserID: "u-1", CustomerName: "User"}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, nil, invRepo, nil, nil, nil, nil)
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED_IN_CASH",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if payRepo.statuses["pay-1"] != payment.StatusReceivedInCash {
-		t.Fatalf("expected RECEIVED_IN_CASH, got %v", payRepo.statuses["pay-1"])
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_Refund(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", Status: payment.StatusReceived}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, nil, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_REFUNDED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if payRepo.statuses["pay-1"] != payment.StatusRefunded {
-		t.Fatalf("expected REFUNDED, got %v", payRepo.statuses["pay-1"])
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_GetOrderForEmailError(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{
-		ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending,
-	}
-	ordRepo := &errMockOrderRepo{
-		mockOrderRepo: *newMockOrderRepo(),
-	}
-
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext-pay", ExternalReference: "pay-1", Value: 100, BillingType: "PIX"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestHandleAsaasWebhook_TopUp_AmountUSDZero(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp, AmountUSD: 0},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("expected nil for zero amount, got %v", err)
@@ -665,7 +251,7 @@ func TestHandleAsaasWebhook_TopUp_AlreadyPaid(t *testing.T) {
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp, AmountUSD: 1000, Status: invoice.StatusPaid},
 	}}
 	credit := &webhookCreditBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, credit, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("expected nil for already paid, got %v", err)
@@ -682,7 +268,7 @@ func TestHandleAsaasWebhook_TopUp_MarkPaidError(t *testing.T) {
 		}},
 		markPaidErr: errors.New("mark paid fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected mark paid error")
@@ -694,7 +280,7 @@ func TestHandleAsaasWebhook_TopUp_CreditBalanceError(t *testing.T) {
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp, AmountUSD: 1000, WorkspaceID: "ws-1"},
 	}}
 	credit := &errWebhookCreditBalance{err: errors.New("credit fail")}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, credit, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected credit fail error")
@@ -706,7 +292,7 @@ func TestHandleAsaasWebhook_TopUp_Overdue(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_OVERDUE", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -721,7 +307,7 @@ func TestHandleAsaasWebhook_TopUp_Refunded_PaidInvoice(t *testing.T) {
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPaid, AmountBRL: 30, ExchangeRate: 6},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -750,7 +336,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_DebitsWithRefundFlag(t *testin
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 8000, WorkspaceID: "ws-1", Status: invoice.StatusPaid, AmountBRL: 48, ExchangeRate: 6},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -769,7 +355,7 @@ func TestHandleAsaasWebhook_TopUp_Refunded_DebitError(t *testing.T) {
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPaid},
 	}}
 	debit := &errWebhookDebitBalance{err: errors.New("debit fail")}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 
 	if err != nil {
@@ -781,7 +367,7 @@ func TestHandleAsaasWebhook_TopUp_Deleted(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_DELETED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -795,7 +381,7 @@ func TestHandleAsaasWebhook_TopUp_UnknownEvent(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_CREATED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -810,7 +396,7 @@ func TestHandleAsaasWebhook_Subscription_MarkPaidError(t *testing.T) {
 		}},
 		markPaidErr: errors.New("mark fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected error")
@@ -823,7 +409,7 @@ func TestHandleAsaasWebhook_Subscription_AlreadyPaid(t *testing.T) {
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 1000, Status: invoice.StatusPaid},
 	}}
 	subscribe := &webhookSubscribeWorkspacePlan{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, subscribe, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, subscribe, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -837,7 +423,7 @@ func TestHandleAsaasWebhook_Subscription_NilPlanDefinitionID(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: nil, AmountUSD: 1000},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected error for nil plan definition")
@@ -849,7 +435,7 @@ func TestHandleAsaasWebhook_Subscription_EmptyPlanDefinitionID(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &empty, AmountUSD: 1000},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected error for whitespace plan definition")
@@ -861,7 +447,7 @@ func TestHandleAsaasWebhook_Subscription_NilActivator(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 1000},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected error for nil activator")
@@ -874,7 +460,7 @@ func TestHandleAsaasWebhook_Subscription_ActivateError(t *testing.T) {
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 1000, WorkspaceID: "ws-1"},
 	}}
 	subscribe := &webhookSubscribeWorkspacePlan{err: errors.New("activate fail")}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, subscribe, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, subscribe, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected activate error")
@@ -888,7 +474,7 @@ func TestHandleAsaasWebhook_Subscription_CreditBalanceError(t *testing.T) {
 	}}
 	subscribe := &webhookSubscribeWorkspacePlan{}
 	credit := &errWebhookCreditBalance{err: errors.New("credit fail")}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, subscribe, credit, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, subscribe, credit, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil {
 		t.Fatal("expected credit fail error")
@@ -902,7 +488,7 @@ func TestHandleAsaasWebhook_Subscription_ZeroAmount_NoCredit(t *testing.T) {
 	}}
 	subscribe := &webhookSubscribeWorkspacePlan{}
 	credit := &webhookCreditBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, subscribe, credit, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, subscribe, credit, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -917,7 +503,7 @@ func TestHandleAsaasWebhook_Subscription_Overdue(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_OVERDUE", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -932,7 +518,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -947,215 +533,13 @@ func TestHandleAsaasWebhook_Subscription_Deleted(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_DELETED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repo.statusUpdates[0] != invoice.StatusCancelled {
 		t.Fatalf("expected CANCELLED, got %v", repo.statusUpdates[0])
-	}
-}
-
-func TestHandleAsaasWebhook_InvoiceLookupError(t *testing.T) {
-	repo := &errWebhookInvoiceRepo{
-		webhookInvoiceRepo: webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-			"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp},
-		}},
-		getByExtErr: errors.New("lookup fail"),
-	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
-	if err != nil {
-		t.Fatalf("expected nil (falls through to non-invoice), got %v", err)
-	}
-}
-
-func TestMapAsaasEventToStatuses(t *testing.T) {
-	tests := []struct {
-		event     string
-		payStatus *payment.Status
-		ordStatus *order.Status
-	}{
-		{"PAYMENT_CREATED", ptr(payment.StatusPending), ptrO(order.StatusPending)},
-		{"PAYMENT_CONFIRMED", ptr(payment.StatusPending), ptrO(order.StatusProcessing)},
-		{"PAYMENT_APPROVED_BY_RISK_ANALYSIS", ptr(payment.StatusPending), ptrO(order.StatusProcessing)},
-		{"PAYMENT_AUTHORIZED", ptr(payment.StatusPending), ptrO(order.StatusProcessing)},
-		{"PAYMENT_RECEIVED", ptr(payment.StatusReceived), ptrO(order.StatusPaid)},
-		{"PAYMENT_RECEIVED_IN_CASH_UNDONE", ptr(payment.StatusPending), ptrO(order.StatusProcessing)},
-		{"PAYMENT_OVERDUE", ptr(payment.StatusOverdue), ptrO(order.StatusProcessing)},
-		{"PAYMENT_REFUNDED", ptr(payment.StatusRefunded), ptrO(order.StatusRefunded)},
-		{"PAYMENT_PARTIALLY_REFUNDED", ptr(payment.StatusRefunded), ptrO(order.StatusRefunded)},
-		{"PAYMENT_REFUND_IN_PROGRESS", ptr(payment.StatusRefundInProgress), nil},
-		{"PAYMENT_RECEIVED_IN_CASH", ptr(payment.StatusReceivedInCash), ptrO(order.StatusPaid)},
-		{"PAYMENT_DELETED", ptr(payment.StatusCancelled), ptrO(order.StatusCancelled)},
-		{"UNKNOWN_EVENT", nil, nil},
-	}
-
-	for _, tt := range tests {
-		ps, os := mapWebhookEventToStatuses(tt.event)
-		if tt.payStatus == nil && ps != nil {
-			t.Errorf("%s: expected nil payStatus, got %v", tt.event, *ps)
-		}
-		if tt.payStatus != nil && (ps == nil || *ps != *tt.payStatus) {
-			t.Errorf("%s: expected payStatus %v, got %v", tt.event, *tt.payStatus, ps)
-		}
-		if tt.ordStatus == nil && os != nil {
-			t.Errorf("%s: expected nil ordStatus, got %v", tt.event, *os)
-		}
-		if tt.ordStatus != nil && (os == nil || *os != *tt.ordStatus) {
-			t.Errorf("%s: expected ordStatus %v, got %v", tt.event, *tt.ordStatus, os)
-		}
-	}
-}
-
-func ptr(s payment.Status) *payment.Status { return &s }
-func ptrO(s order.Status) *order.Status    { return &s }
-
-func TestFormatPaymentMethod(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"", "PIX"},
-		{"PIX", "PIX"},
-		{"pix", "PIX"},
-		{"BOLETO", "Boleto"},
-		{"boleto", "Boleto"},
-		{"CREDIT_CARD", "Cartao de Credito"},
-		{"credit_card", "Cartao de Credito"},
-		{"OTHER", "OTHER"},
-	}
-	for _, tt := range tests {
-		result := formatPaymentMethod(tt.input)
-		if result != tt.expected {
-			t.Errorf("formatPaymentMethod(%q) = %q, want %q", tt.input, result, tt.expected)
-		}
-	}
-}
-
-func TestSendPaymentConfirmationEmail_NilOrder(t *testing.T) {
-	uc := &handlePaymentWebhookUseCase{emailService: &mockEmailService{}}
-	uc.sendPaymentConfirmationEmail(nil, 100, "PIX")
-
-}
-
-func TestSendPaymentConfirmationEmail_NilEmailService(t *testing.T) {
-	uc := &handlePaymentWebhookUseCase{}
-	uc.sendPaymentConfirmationEmail(&order.Order{}, 100, "PIX")
-
-}
-
-func TestSendPaymentConfirmationEmail_NoEmail(t *testing.T) {
-	userRepo := newMockUserRepo()
-	uc := &handlePaymentWebhookUseCase{emailService: &mockEmailService{}, userRepo: userRepo}
-	uc.sendPaymentConfirmationEmail(&order.Order{UserID: "u-1"}, 100, "PIX")
-}
-
-func TestSendPaymentConfirmationEmail_Success(t *testing.T) {
-	userRepo := newMockUserRepo()
-	userRepo.users["u-1"] = &user.User{ID: "u-1", Email: "test@test.com"}
-	emailSvc := &mockEmailService{}
-	uc := &handlePaymentWebhookUseCase{emailService: emailSvc, userRepo: userRepo}
-	uc.sendPaymentConfirmationEmail(&order.Order{ID: "ord-1", UserID: "u-1", CustomerName: "Test"}, 100, "PIX")
-	if len(emailSvc.sent) != 1 || emailSvc.sent[0] != "test@test.com" {
-		t.Fatalf("expected email sent to test@test.com, got %v", emailSvc.sent)
-	}
-}
-
-func TestSendPaymentConfirmationEmail_FallbackToCustomerName(t *testing.T) {
-	userRepo := newMockUserRepo()
-	emailSvc := &mockEmailService{}
-	uc := &handlePaymentWebhookUseCase{emailService: emailSvc, userRepo: userRepo}
-	uc.sendPaymentConfirmationEmail(&order.Order{ID: "ord-1", UserID: "u-1", CustomerName: "cust@email.com"}, 100, "BOLETO")
-	if len(emailSvc.sent) != 1 || emailSvc.sent[0] != "cust@email.com" {
-		t.Fatalf("expected fallback to customer name, got %v", emailSvc.sent)
-	}
-}
-
-func TestSendPaymentConfirmationEmail_EmailError(t *testing.T) {
-	userRepo := newMockUserRepo()
-	userRepo.users["u-1"] = &user.User{ID: "u-1", Email: "test@test.com"}
-	emailSvc := &mockEmailService{err: errors.New("smtp fail")}
-	uc := &handlePaymentWebhookUseCase{emailService: emailSvc, userRepo: userRepo}
-	uc.sendPaymentConfirmationEmail(&order.Order{ID: "ord-1", UserID: "u-1", CustomerName: "Test"}, 100, "PIX")
-
-}
-
-func TestGetUserEmail_EmptyUserID(t *testing.T) {
-	uc := &handlePaymentWebhookUseCase{}
-	if email := uc.getUserEmail(""); email != "" {
-		t.Fatalf("expected empty, got %s", email)
-	}
-}
-
-func TestGetUserEmail_NilUserRepo(t *testing.T) {
-	uc := &handlePaymentWebhookUseCase{}
-	if email := uc.getUserEmail("u-1"); email != "" {
-		t.Fatalf("expected empty, got %s", email)
-	}
-}
-
-type countingInvoiceRepo struct {
-	webhookInvoiceRepo
-	getByExtCalls int
-	getByExtErr   error
-	updateErr     error
-}
-
-func (r *countingInvoiceRepo) GetByExternalID(externalID string) (*invoice.Invoice, error) {
-	r.getByExtCalls++
-	if r.getByExtCalls >= 2 && r.getByExtErr != nil {
-		return nil, r.getByExtErr
-	}
-	return r.webhookInvoiceRepo.GetByExternalID(externalID)
-}
-
-func (r *countingInvoiceRepo) UpdateStatus(id string, status invoice.Status) error {
-	if r.updateErr != nil {
-		return r.updateErr
-	}
-	return r.webhookInvoiceRepo.UpdateStatus(id, status)
-}
-
-func TestHandleAsaasWebhook_HandleInvoicePayment_LookupError(t *testing.T) {
-	repo := &countingInvoiceRepo{
-		webhookInvoiceRepo: webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-			"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp},
-		}},
-		getByExtErr: errors.New("lookup fail"),
-	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
-	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
-	if err == nil || err.Error() != "invoice lookup failed: lookup fail" {
-		t.Fatalf("expected lookup fail, got %v", err)
-	}
-}
-
-type nilSecondCallInvoiceRepo struct {
-	webhookInvoiceRepo
-	getByExtCalls int
-}
-
-func (r *nilSecondCallInvoiceRepo) GetByExternalID(externalID string) (*invoice.Invoice, error) {
-	r.getByExtCalls++
-	if r.getByExtCalls >= 2 {
-		return nil, nil
-	}
-	return r.webhookInvoiceRepo.GetByExternalID(externalID)
-}
-
-func TestHandleAsaasWebhook_HandleInvoicePayment_NilInvoice(t *testing.T) {
-	repo := &nilSecondCallInvoiceRepo{
-		webhookInvoiceRepo: webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-			"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeTopUp},
-		}},
-	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
-	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
-	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
 	}
 }
 
@@ -1166,7 +550,7 @@ func TestHandleAsaasWebhook_TopUp_Overdue_UpdateStatusError(t *testing.T) {
 		}},
 		updateErr: errors.New("update fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_OVERDUE", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
@@ -1180,7 +564,7 @@ func TestHandleAsaasWebhook_TopUp_Refunded_UpdateStatusError(t *testing.T) {
 		}},
 		updateErr: errors.New("update fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, &webhookDebitBalance{}, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, &webhookDebitBalance{}, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
@@ -1194,7 +578,7 @@ func TestHandleAsaasWebhook_TopUp_Deleted_UpdateStatusError(t *testing.T) {
 		}},
 		updateErr: errors.New("update fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_DELETED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
@@ -1209,7 +593,7 @@ func TestHandleAsaasWebhook_Subscription_Overdue_UpdateStatusError(t *testing.T)
 		}},
 		updateErr: errors.New("update fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_OVERDUE", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
@@ -1224,7 +608,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_UpdateStatusError(t *testing.T
 		}},
 		updateErr: errors.New("update fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
@@ -1239,68 +623,11 @@ func TestHandleAsaasWebhook_Subscription_Deleted_UpdateStatusError(t *testing.T)
 		}},
 		updateErr: errors.New("update fail"),
 	}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_DELETED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
 	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_GetByIDForSystem_TicketError(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending}
-	ordRepo := &errMockOrderRepo{
-		mockOrderRepo:    *newMockOrderRepo(),
-		getByIDForSysErr: errors.New("order fetch fail"),
-	}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, &mockCreateTicket{}, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext", ExternalReference: "pay-1", Value: 100, BillingType: "PIX"},
-	})
-	if err == nil || err.Error() != "order fetch fail" {
-		t.Fatalf("expected order fetch fail, got %v", err)
-	}
-}
-
-func TestHandleAsaasWebhook_NonInvoice_GetByIDForSystem_EmailError(t *testing.T) {
-	payRepo := newMockPaymentRepo()
-	orderID := "order-1"
-	payRepo.payments["pay-1"] = &payment.Payment{ID: "pay-1", OrderID: &orderID, Status: payment.StatusPending}
-
-	ordRepo := &callCountingOrderRepo{
-		mockOrderRepo: *newMockOrderRepo(),
-		failOnCall:    1,
-		err:           errors.New("email order fetch fail"),
-	}
-	invRepo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{}}
-	uc := NewHandlePaymentWebhookUseCase(payRepo, ordRepo, nil, nil, nil, invRepo, nil, nil, nil, nil)
-
-	err := uc.Execute(&payment.AsaasWebhookEvent{
-		Event:   "PAYMENT_RECEIVED",
-		Payment: payment.AsaasWebhookPayment{ID: "ext", ExternalReference: "pay-1", Value: 100, BillingType: "PIX"},
-	})
-	if err == nil || err.Error() != "email order fetch fail" {
-		t.Fatalf("expected email order fetch fail, got %v", err)
-	}
-}
-
-type callCountingOrderRepo struct {
-	mockOrderRepo
-	callCount  int
-	failOnCall int
-	err        error
-}
-
-func (r *callCountingOrderRepo) GetByIDForSystem(id string) (*order.Order, error) {
-	r.callCount++
-	if r.callCount >= r.failOnCall {
-		return nil, r.err
-	}
-	return r.mockOrderRepo.GetByIDForSystem(id)
 }
 
 type trackingDebitBalance struct {
@@ -1322,7 +649,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_PaidInvoice_DebitsBalance(t *t
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 5000, AmountBRL: 30.0, WorkspaceID: "ws-1", Status: invoice.StatusPaid},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1344,7 +671,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_UnpaidInvoice_NoDebit(t *testi
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPending},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1360,7 +687,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_ZeroAmount_NoDebit(t *testing.
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 0, WorkspaceID: "ws-1", Status: invoice.StatusPaid},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1376,7 +703,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_DebitError_StillUpdatesStatus(
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPaid},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 
 	if err != nil {
@@ -1393,7 +720,7 @@ func TestHandleAsaasWebhook_Subscription_PartialRefund_PaidInvoice_DebitsBalance
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-1": {ID: "inv-1", ExternalID: "pay-1", Purpose: invoice.PurposeSubscription, PlanDefinitionID: &planID, AmountUSD: 3000, AmountBRL: 18.0, WorkspaceID: "ws-1", Status: invoice.StatusPaid},
 	}}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_PARTIALLY_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1412,7 +739,7 @@ func TestHandleAsaasWebhook_Subscription_Refunded_UpdateStatusError_WithDebit(t 
 		updateErr: errors.New("update fail"),
 	}
 	debit := &trackingDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-1"}})
 	if err == nil || err.Error() != "update fail" {
 		t.Fatalf("expected update fail, got %v", err)
@@ -1420,5 +747,21 @@ func TestHandleAsaasWebhook_Subscription_Refunded_UpdateStatusError_WithDebit(t 
 
 	if len(debit.calls) != 1 {
 		t.Fatalf("expected debit to be attempted before status update, got %d calls", len(debit.calls))
+	}
+}
+
+type failingInvoiceLookup struct{ webhookInvoiceRepo }
+
+func (failingInvoiceLookup) GetByExternalID(string) (*invoice.Invoice, error) {
+	return nil, errors.New("connection reset")
+}
+
+func TestHandleWebhook_AFailedInvoiceLookupIsRetriedNotDropped(t *testing.T) {
+	uc := NewHandlePaymentWebhookUseCase(&failingInvoiceLookup{}, nil, &webhookCreditBalance{}, &webhookDebitBalance{}, nil)
+
+	err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_RECEIVED", Payment: payment.AsaasWebhookPayment{ID: "pay_1"}})
+
+	if err == nil {
+		t.Fatal("a paid charge whose invoice could not be read was acknowledged; it must fail so the provider retries")
 	}
 }

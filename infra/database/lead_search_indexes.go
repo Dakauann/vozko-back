@@ -9,18 +9,18 @@ const (
 	LeadAddressPlaceLeadIndex = "idx_lead_addresses_place_lead"
 )
 
-func workspaceTrigram(name, table, expr, where string) concurrentIndex {
+func workspaceTrigram(name, table, expr, where string) ddl {
 	sql := `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + name + `
 				ON ` + table + ` USING gin (workspace_id, ` + expr + ` public.gin_trgm_ops)`
 	if where != "" {
 		sql += `
 				WHERE ` + where
 	}
-	return concurrentIndex{name: name, sql: sql}
+	return ddl{name: name, sql: sql}
 }
 
-func leadSearchIndexes() []concurrentIndex {
-	return []concurrentIndex{
+func leadSearchIndexes() []ddl {
+	return []ddl{
 		workspaceTrigram(LeadSearchNameIndex, "leads", SearchFold("name"), "deleted_at IS NULL"),
 		workspaceTrigram(LeadSearchNicknameIndex, "leads", SearchFold("nickname"), "nickname IS NOT NULL AND deleted_at IS NULL"),
 		workspaceTrigram(LeadSearchNumberIndex, "leads", "number", "deleted_at IS NULL"),

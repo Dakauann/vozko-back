@@ -5,7 +5,6 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/invoice"
-	"vozko/domain/order"
 	"vozko/domain/payment"
 )
 
@@ -18,7 +17,7 @@ func TestHandleWebhook_Chargeback_DebitsLikeARefund(t *testing.T) {
 		},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 
 	err := uc.Execute(&payment.WebhookEvent{
 		Event:    payment.EventPaymentChargeback,
@@ -52,7 +51,7 @@ func TestHandleWebhook_Chargeback_Subscription(t *testing.T) {
 		},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 
 	if err := uc.Execute(&payment.WebhookEvent{
 		Event:   payment.EventPaymentChargeback,
@@ -74,7 +73,7 @@ func TestHandleWebhook_Chargeback_MonthlyBilling_ReversesOnlyCreditablePortion(t
 		},
 	}}
 	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
 
 	if err := uc.Execute(&payment.WebhookEvent{
 		Event:   payment.EventPaymentChargeback,
@@ -96,7 +95,7 @@ func TestHandleWebhook_Rejected_CancelsInvoice(t *testing.T) {
 			repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 				"1": {ID: "inv-1", ExternalID: "1", Purpose: purpose, WorkspaceID: "ws-1", Status: invoice.StatusPending},
 			}}
-			uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, nil, nil, nil)
+			uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, nil, nil)
 
 			if err := uc.Execute(&payment.WebhookEvent{
 				Event:   payment.EventPaymentRejected,
@@ -117,7 +116,7 @@ func TestHandleWebhook_InAnalysis_MovesNothing(t *testing.T) {
 	}}
 	credit := &webhookCreditBalance{}
 	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, debit, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, credit, debit, nil)
 
 	if err := uc.Execute(&payment.WebhookEvent{
 		Event:   payment.EventPaymentInAnalysis,
@@ -139,48 +138,6 @@ func TestHandleWebhook_InAnalysis_MovesNothing(t *testing.T) {
 	}
 }
 
-func TestMapWebhookEventToStatuses_ProviderEvents(t *testing.T) {
-	cases := []struct {
-		event      string
-		wantPay    *payment.Status
-		wantOrder  *order.Status
-		nilAllowed bool
-	}{
-		{
-			event:     payment.EventPaymentChargeback,
-			wantPay:   ptrPaymentStatus(payment.StatusRefunded),
-			wantOrder: ptrOrderStatus(order.StatusRefunded),
-		},
-		{
-			event:     payment.EventPaymentRejected,
-			wantPay:   ptrPaymentStatus(payment.StatusCancelled),
-			wantOrder: ptrOrderStatus(order.StatusCancelled),
-		},
-		{
-			event:      payment.EventPaymentInAnalysis,
-			nilAllowed: true,
-		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.event, func(t *testing.T) {
-			payStatus, ordStatus := mapWebhookEventToStatuses(c.event)
-			if c.nilAllowed {
-				if payStatus != nil || ordStatus != nil {
-					t.Fatalf("%s must move nothing, got (%v,%v)", c.event, payStatus, ordStatus)
-				}
-				return
-			}
-			if payStatus == nil || *payStatus != *c.wantPay {
-				t.Fatalf("payment status: got %v want %v", payStatus, *c.wantPay)
-			}
-			if ordStatus == nil || *ordStatus != *c.wantOrder {
-				t.Fatalf("order status: got %v want %v", ordStatus, *c.wantOrder)
-			}
-		})
-	}
-}
-
 func TestHandleWebhook_ProviderAgnostic(t *testing.T) {
 	newRepo := func() *webhookInvoiceRepo {
 		return &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
@@ -196,7 +153,7 @@ func TestHandleWebhook_ProviderAgnostic(t *testing.T) {
 		t.Run(string(provider), func(t *testing.T) {
 			repo := newRepo()
 			credit := &webhookCreditBalance{}
-			uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, nil, nil)
+			uc := NewHandlePaymentWebhookUseCase(repo, nil, credit, nil, nil)
 
 			if err := uc.Execute(&payment.WebhookEvent{
 				Event:    payment.EventPaymentReceived,
@@ -220,7 +177,7 @@ func TestHandleWebhook_EventNamesAreNormalizedToUpper(t *testing.T) {
 		"1": {ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeTopUp, AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPending, AmountBRL: 30, ExchangeRate: 6},
 	}}
 	credit := &webhookCreditBalance{}
-	uc := NewHandlePaymentWebhookUseCase(nil, nil, nil, nil, nil, repo, nil, credit, nil, nil)
+	uc := NewHandlePaymentWebhookUseCase(repo, nil, credit, nil, nil)
 
 	if err := uc.Execute(&payment.WebhookEvent{
 		Event:   "payment_received",
@@ -232,6 +189,3 @@ func TestHandleWebhook_EventNamesAreNormalizedToUpper(t *testing.T) {
 		t.Fatalf("a lowercase event name must still be handled, got %d credits", len(credit.calls))
 	}
 }
-
-func ptrPaymentStatus(s payment.Status) *payment.Status { return &s }
-func ptrOrderStatus(s order.Status) *order.Status       { return &s }

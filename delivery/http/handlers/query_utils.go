@@ -61,13 +61,6 @@ func parseSort(values url.Values, allowed map[string]string) []shared.Sort {
 	return sorts
 }
 
-func firstQueryValue(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return values[0]
-}
-
 func splitListValues(values []string) []string {
 	result := make([]string, 0)
 	for _, raw := range values {

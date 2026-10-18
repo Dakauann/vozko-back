@@ -23,6 +23,7 @@ type emitMonthlyInvoicesUseCase struct {
 	workspaces    workspace.Repository
 	pricing       workspace_pricing.Repository
 	createInvoice invoice.CreateInvoiceUseCase
+	notices       BillingNotices
 	billingType   string
 	dueDay        int
 	batchSize     int
@@ -36,6 +37,7 @@ func NewEmitMonthlyInvoicesUseCase(
 	workspaces workspace.Repository,
 	pricing workspace_pricing.Repository,
 	createInvoice invoice.CreateInvoiceUseCase,
+	notices BillingNotices,
 ) *emitMonthlyInvoicesUseCase {
 	return &emitMonthlyInvoicesUseCase{
 		subs:          subs,
@@ -44,6 +46,7 @@ func NewEmitMonthlyInvoicesUseCase(
 		workspaces:    workspaces,
 		pricing:       pricing,
 		createInvoice: createInvoice,
+		notices:       notices,
 		billingType:   "PIX",
 		dueDay:        billing.DefaultDueDay,
 		batchSize:     defaultEmitBatchSize,
@@ -144,7 +147,7 @@ func (uc *emitMonthlyInvoicesUseCase) emitForWorkspace(sub *workspace_plan.Works
 
 	key := fmt.Sprintf("monthly:%s:%s", sub.WorkspaceID, anchor.In(billing.LocationBRT()).Format("2006-01-02"))
 
-	_, err = uc.createInvoice.Execute(invoice.CreateInvoiceInput{
+	out, err := uc.createInvoice.Execute(invoice.CreateInvoiceInput{
 		WorkspaceID:      sub.WorkspaceID,
 		UserID:           ws.OwnerID,
 		Purpose:          invoice.PurposeMonthlyBilling,
@@ -160,5 +163,15 @@ func (uc *emitMonthlyInvoicesUseCase) emitForWorkspace(sub *workspace_plan.Works
 	if err != nil {
 		return false, fmt.Errorf("create invoice: %w", err)
 	}
+	uc.announce(out)
 	return true, nil
+}
+
+func (uc *emitMonthlyInvoicesUseCase) announce(out *invoice.CreateInvoiceOutput) {
+	if out == nil || out.Invoice == nil {
+		return
+	}
+	if err := uc.notices.InvoiceIssued(out.Invoice); err != nil {
+		log.Printf("[billing-emit] invoice %s was issued but its notice failed, the next run retries it: %v", out.Invoice.ID, err)
+	}
 }

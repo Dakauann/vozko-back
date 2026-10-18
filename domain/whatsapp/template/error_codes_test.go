@@ -32,23 +32,6 @@ func TestErrorCode_UnknownErrorIsNamedNotEmpty(t *testing.T) {
 	assert.False(t, IsValidationError(nil))
 }
 
-func TestKnownErrorCodes_IncludesTheProviderAndUnknownCodes(t *testing.T) {
-	codes := KnownErrorCodes()
-	assert.Contains(t, codes, CodeUnknown)
-	assert.Contains(t, codes, CodeProviderRejected)
-	assert.Contains(t, codes, CodeProviderUnavailable)
-	assert.Contains(t, codes, CodeBodyNeedsExample)
-}
-
-func TestKnownErrorCodes_AreUniqueAndNonEmpty(t *testing.T) {
-	seen := map[string]bool{}
-	for _, code := range KnownErrorCodes() {
-		assert.NotEmpty(t, code)
-		assert.False(t, seen[code], "duplicate code %q: the UI would map two failures to one sentence", code)
-		seen[code] = true
-	}
-}
-
 func TestEverySentinelHasACode(t *testing.T) {
 	fset := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fset, ".", nil, 0)

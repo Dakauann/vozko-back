@@ -47,6 +47,15 @@ func uniqueRoleName(roles workspace.CustomRoleRepository, workspaceID, name, exc
 	return nil
 }
 
+func memberGrants(memberID string, entries []workspace.PermissionEntry) []*workspace.Permission {
+	kept, _ := workspace.DropRetiredResources(entries)
+	grants := make([]*workspace.Permission, len(kept))
+	for i, entry := range kept {
+		grants[i] = &workspace.Permission{ID: uuid.New().String(), MemberID: memberID, Resource: entry.Resource, Action: entry.Action}
+	}
+	return grants
+}
+
 func validatedPermissions(context string, entries []workspace.PermissionEntry) ([]workspace.PermissionEntry, error) {
 	if kept, dropped := workspace.DropRetiredResources(entries); len(dropped) > 0 {
 		log.Printf("[workspace] %s: dropping %d permission(s) for resource(s) this build no longer defines: %v",
@@ -70,11 +79,7 @@ func propagateRolePermissions(repo workspace.Repository, roles workspace.CustomR
 		return fmt.Errorf("role %s saved but its members could not be listed: %w", role.ID, err)
 	}
 	for _, m := range members {
-		perms := make([]*workspace.Permission, len(role.Permissions))
-		for i, pe := range role.Permissions {
-			perms[i] = &workspace.Permission{ID: uuid.New().String(), MemberID: m.ID, Resource: pe.Resource, Action: pe.Action}
-		}
-		if err := repo.SetPermissions(m.ID, perms); err != nil {
+		if err := repo.SetPermissions(m.ID, memberGrants(m.ID, role.Permissions)); err != nil {
 			return fmt.Errorf("role %s saved but member %s kept the old permissions: %w", role.ID, m.ID, err)
 		}
 	}

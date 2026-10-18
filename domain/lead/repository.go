@@ -80,11 +80,6 @@ func ParseSortKey(value string) (SortKey, bool) {
 	return "", false
 }
 
-func (k SortKey) Valid() bool {
-	_, ok := ParseSortKey(string(k))
-	return ok
-}
-
 type LeadFacets struct {
 	Total           int64 `json:"total"`
 	Blocked         int64 `json:"blocked"`

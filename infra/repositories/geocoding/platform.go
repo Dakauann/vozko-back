@@ -11,6 +11,7 @@ import (
 	"vozko/domain/geocoding"
 	"vozko/domain/leadmap"
 	"vozko/infra/database"
+	"vozko/infra/database/sqlexpr"
 	infracrmfilter "vozko/infra/repositories/crmfilter"
 )
 
@@ -73,7 +74,7 @@ func (r *PlatformReader) GeocodingWorkspaces(ctx context.Context, query geocodin
 	search := query.Search != ""
 	var filter []interface{}
 	if search {
-		filter = append(filter, database.LikeContains(query.Search))
+		filter = append(filter, sqlexpr.LikeContains(query.Search))
 	}
 	db := r.db.WithContext(ctx)
 	var total int64

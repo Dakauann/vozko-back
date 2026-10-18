@@ -8,6 +8,7 @@ import (
 
 	"vozko/domain/working_hours"
 	workspace_department "vozko/domain/workspace/workspace_department"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -113,7 +114,7 @@ func (r *repositoryImpl) AddMember(dm *workspace_department.DepartmentMember) er
 		MemberID:     dm.MemberID,
 	}
 	if err := r.db.Create(&row).Error; err != nil {
-		if isDuplicateKeyError(err) {
+		if database.IsUniqueViolation(err) {
 			return workspace_department.ErrDepartmentMemberExists
 		}
 		return err
@@ -279,30 +280,4 @@ func decodeWorkingHours(departmentID string, raw *string) *working_hours.Spec {
 		return nil
 	}
 	return spec
-}
-
-func isDuplicateKeyError(err error) bool {
-	return err != nil && (errors.As(err, &duplicateKeyErr{}) ||
-		containsDuplicateKey(err.Error()))
-}
-
-type duplicateKeyErr struct{}
-
-func (duplicateKeyErr) Error() string { return "duplicate key" }
-
-func containsDuplicateKey(s string) bool {
-	return len(s) > 0 && (contains(s, "duplicate key") || contains(s, "UNIQUE constraint"))
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

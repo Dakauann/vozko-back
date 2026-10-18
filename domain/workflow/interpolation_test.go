@@ -773,77 +773,6 @@ func TestGetRequiredMocks_Deduplicates(t *testing.T) {
 	}
 }
 
-func TestCanTestIndependently_NoVariables(t *testing.T) {
-	config := map[string]interface{}{
-		"url":    "https://api.example.com",
-		"method": "GET",
-	}
-
-	if !CanTestIndependently(config) {
-		t.Fatal("expected true for config with no variables")
-	}
-}
-
-func TestCanTestIndependently_OnlySysVariables(t *testing.T) {
-	config := map[string]interface{}{
-		"timestamp": "{{sys.timestamp}}",
-	}
-
-	if !CanTestIndependently(config) {
-		t.Fatal("expected true for config with only sys variables")
-	}
-}
-
-func TestCanTestIndependently_OnlyVarVariables(t *testing.T) {
-	config := map[string]interface{}{
-		"text": "Hello {{message}}",
-	}
-
-	if !CanTestIndependently(config) {
-		t.Fatal("expected true for config with only var variables")
-	}
-}
-
-func TestCanTestIndependently_HasLastVariable(t *testing.T) {
-	config := map[string]interface{}{
-		"text": "Response: {{last.body}}",
-	}
-
-	if CanTestIndependently(config) {
-		t.Fatal("expected false for config with last variable")
-	}
-}
-
-func TestCanTestIndependently_HasNodeVariable(t *testing.T) {
-	config := map[string]interface{}{
-		"url": "https://api.com/{{node.http1.id}}",
-	}
-
-	if CanTestIndependently(config) {
-		t.Fatal("expected false for config with node variable")
-	}
-}
-
-func TestCanTestIndependently_HasAIVariable(t *testing.T) {
-	config := map[string]interface{}{
-		"text": "AI said: {{ai.response}}",
-	}
-
-	if CanTestIndependently(config) {
-		t.Fatal("expected false for config with ai variable")
-	}
-}
-
-func TestCanTestIndependently_HasCustomCaptureVariable(t *testing.T) {
-	config := map[string]interface{}{
-		"cep": "{{respostacep.cep}}",
-	}
-
-	if CanTestIndependently(config) {
-		t.Fatal("expected false for config with custom capture variable")
-	}
-}
-
 func TestExtractCampaignVars_EmptyGraph(t *testing.T) {
 	g := Graph{}
 	got := ExtractCampaignVars(g)
@@ -957,23 +886,6 @@ func TestExtractCampaignVars_MultipleInSameString(t *testing.T) {
 	}
 	if got[0] != "city" || got[1] != "name" {
 		t.Fatalf("expected [city name], got %v", got)
-	}
-}
-
-func TestCanTestIndependently_ComplexConfig(t *testing.T) {
-
-	config := map[string]interface{}{
-		"url": "https://api.com/{{sys.timestamp}}",
-		"headers": map[string]interface{}{
-			"X-User": "{{var.user}}",
-		},
-		"body": map[string]interface{}{
-			"message": "{{message}}",
-		},
-	}
-
-	if !CanTestIndependently(config) {
-		t.Fatal("expected true for config with only var/sys variables")
 	}
 }
 

@@ -144,7 +144,7 @@ func TestNormalizedLeavesPolygonsAndCirclesAsDrawn(t *testing.T) {
 }
 
 func TestShapeBoundsHoldBrazilWithAMargin(t *testing.T) {
-	bounds, brazil := ShapeBounds(), BrazilBounds()
+	bounds, brazil := shapeBounds, BrazilBounds()
 	if bounds.Validate() != nil {
 		t.Fatalf("shape bounds = %+v", bounds)
 	}

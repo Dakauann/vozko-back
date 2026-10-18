@@ -35,17 +35,17 @@ func (q *CallQueue) BeforeCreate(tx *gorm.DB) error {
 }
 
 type CallTransfer struct {
-	ID            string     `gorm:"primaryKey;type:uuid"`
-	WorkspaceID   string     `gorm:"type:uuid;not null;index:idx_call_transfer_ws_created,priority:1"`
-	CallID        string     `gorm:"size:160;not null;index"`
-	FromUserID    string     `gorm:"size:64;not null"`
-	TargetKind    string     `gorm:"size:16;not null"`
-	TargetQueueID string     `gorm:"size:64"`
-	TargetUserID  string     `gorm:"size:64"`
-	Notes         string     `gorm:"type:text"`
-	Outcome       string     `gorm:"size:16;not null"`
-	AnsweredBy    string     `gorm:"size:64"`
-	CreatedAt     time.Time  `gorm:"not null;index:idx_call_transfer_ws_created,priority:2"`
+	ID            string    `gorm:"primaryKey;type:uuid"`
+	WorkspaceID   string    `gorm:"type:uuid;not null;index:idx_call_transfer_ws_created,priority:1"`
+	CallID        string    `gorm:"size:160;not null;index"`
+	FromUserID    string    `gorm:"size:64;not null"`
+	TargetKind    string    `gorm:"size:16;not null"`
+	TargetQueueID string    `gorm:"size:64"`
+	TargetUserID  string    `gorm:"size:64"`
+	Notes         string    `gorm:"type:text"`
+	Outcome       string    `gorm:"size:16;not null"`
+	AnsweredBy    string    `gorm:"size:64"`
+	CreatedAt     time.Time `gorm:"not null;index:idx_call_transfer_ws_created,priority:2"`
 	FinishedAt    *time.Time
 }
 

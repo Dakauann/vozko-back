@@ -725,12 +725,6 @@ func TestAIBilling_UnknownModel_ZeroPrice(t *testing.T) {
 	}
 }
 
-type errLLMFetcher struct{ err error }
-
-func (f *errLLMFetcher) FetchLLMPriceMicros(string) (int64, int64, error) {
-	return 0, 0, f.err
-}
-
 type errDefaultsPricingRepo struct{ err error }
 
 func (m *errDefaultsPricingRepo) ListDefaultPricingItems() ([]workspace_pricing.PricingItem, error) {

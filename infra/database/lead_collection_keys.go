@@ -23,8 +23,8 @@ var compositeLeadKeys = []compositeLeadKey{
 	{table: "call_list_items", constraint: "fk_lead_call_list_items_workspace_lead", column: "lead_id"},
 }
 
-func leadCollectionConstraints() []struct{ name, sql string } {
-	return []struct{ name, sql string }{
+func leadCollectionConstraints() []ddl {
+	return []ddl{
 		{
 			name: "ux_lead_addresses_primary",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_lead_addresses_primary
@@ -35,14 +35,6 @@ func leadCollectionConstraints() []struct{ name, sql string } {
 			name: "ux_lead_relations_pair",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_lead_relations_pair
 				ON lead_relations (workspace_id, least(lead_id, other_lead_id), greatest(lead_id, other_lead_id), dimension)`,
-		},
-		{
-			name: "idx_lead_relations_lead",
-			sql:  `DROP INDEX IF EXISTS idx_lead_relations_lead`,
-		},
-		{
-			name: "idx_lead_relations_other_lead",
-			sql:  `DROP INDEX IF EXISTS idx_lead_relations_other_lead`,
 		},
 	}
 }

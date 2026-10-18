@@ -280,7 +280,3 @@ func ValidateRedirectURI(raw string) error {
 	}
 	return nil
 }
-
-func RedirectURIFor(apiBaseURL string) string {
-	return strings.TrimRight(strings.TrimSpace(apiBaseURL), "/") + OAuthCallbackPath
-}

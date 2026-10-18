@@ -65,7 +65,7 @@ func (r *StageGroupRepository) Update(group *stage.StageGroup) error {
 
 func (r *StageGroupRepository) Delete(id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("tag_group_id = ?", id).Delete(&schema.StageGroupItem{}).Error; err != nil {
+		if err := tx.Where("stage_group_id = ?", id).Delete(&schema.StageGroupItem{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("id = ?", id).Delete(&schema.StageGroup{}).Error
@@ -141,7 +141,7 @@ func (r *StageGroupRepository) RemoveItem(itemID string) error {
 
 func (r *StageGroupRepository) GetItems(StageGroupID string) ([]stage.StageGroupItem, error) {
 	var items []schema.StageGroupItem
-	if err := r.db.Where("tag_group_id = ?", StageGroupID).
+	if err := r.db.Where("stage_group_id = ?", StageGroupID).
 		Order("position ASC").
 		Find(&items).Error; err != nil {
 		return nil, err

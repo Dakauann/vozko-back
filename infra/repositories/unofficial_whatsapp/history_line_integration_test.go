@@ -259,6 +259,11 @@ func TestLineTransferKeepsAChatTheNewNumberAlreadyStartedAgainstPostgres(t *test
 	if f.instanceOf(t, "unofficial_whatsapp_conversations", oldConv) != f.old {
 		t.Error("a colliding conversation must stay where it was rather than break the unique index")
 	}
+	var contactID string
+	f.db.Table("unofficial_whatsapp_conversations").Where("id = ?", oldConv).Pluck("contact_id", &contactID)
+	if contactID != oldCarla {
+		t.Errorf("kept conversation contact = %s, want it to keep the old number's contact %s", contactID, oldCarla)
+	}
 }
 
 func TestLineTransferWorksInBatchesAndIsIdempotentAgainstPostgres(t *testing.T) {

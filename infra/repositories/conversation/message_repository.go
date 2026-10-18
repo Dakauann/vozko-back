@@ -13,6 +13,7 @@ import (
 	"vozko/domain/shared"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 
 	"github.com/lib/pq"
 	"gorm.io/gorm"
@@ -67,10 +68,6 @@ func entryTableForLastMessage(entryType string) string {
 		return ch.EntryTable
 	}
 	return ""
-}
-
-func (r *repository) touchEntryLastMessageAt(entryID, entryType string, at time.Time) {
-	r.touchEntryMessageClocks(entryID, entryType, conversation.SentBy{}, at)
 }
 
 func (r *repository) touchEntryMessageClocks(entryID, entryType string, sentBy conversation.SentBy, at time.Time) {
@@ -284,7 +281,7 @@ func (r *repository) MarkAsRead(input conversation.MarkAsReadInput) (int64, erro
 	query := r.db.Model(&schema.ConversationMessage{}).
 		Where("entry_id = ? AND entry_type = ?", input.EntryID, string(input.EntryType)).
 		Where("read = ?", false).
-		Where(database.SentByContactSQL(""))
+		Where(sqlexpr.SentByContact(""))
 
 	if input.UpToTimestamp != nil {
 		query = query.Where("created_at <= ?", *input.UpToTimestamp)
@@ -311,7 +308,7 @@ func (r *repository) CountUnreadByEntry(entryID string, entryType shared.EntryTy
 	err := r.db.Model(&schema.ConversationMessage{}).
 		Where("entry_id = ? AND entry_type = ?", entryID, string(entryType)).
 		Where("read = ?", false).
-		Where(database.SentByContactSQL("")).
+		Where(sqlexpr.SentByContact("")).
 		Count(&count).Error
 	return count, err
 }
@@ -332,7 +329,7 @@ func (r *repository) CountUnreadByEntries(entryIDs []string, entryType shared.En
 		Where("entry_id IN ?", entryIDs).
 		Where("entry_type = ?", string(entryType)).
 		Where("read = ?", false).
-		Where(database.SentByContactSQL("")).
+		Where(sqlexpr.SentByContact("")).
 		Group("entry_id").
 		Scan(&results).Error
 
@@ -647,7 +644,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		FROM top_entries te
 		LEFT JOIN unread_counts uc ON uc.entry_id = te.entry_id
 		ORDER BY te.last_message_at DESC
-	`, entryCTE, leadField, bphoneField, campaignIDField, campaignNameField, aiFields, entryJoin, database.SentByContactSQL("cm2"))
+	`, entryCTE, leadField, bphoneField, campaignIDField, campaignNameField, aiFields, entryJoin, sqlexpr.SentByContact("cm2"))
 
 	queryArgs := append(append([]interface{}{}, cteArgs...), et, pageSize, offset, et, et)
 
@@ -892,7 +889,7 @@ func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesI
 	}
 
 	if input.HasUnread != nil {
-		unreadSubquery := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = entries.entry_id AND cm4.entry_type = ? AND cm4.read = false AND ` + database.SentByContactSQL("cm4") + ` AND cm4.deleted_at IS NULL)`
+		unreadSubquery := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = entries.entry_id AND cm4.entry_type = ? AND cm4.read = false AND ` + sqlexpr.SentByContact("cm4") + ` AND cm4.deleted_at IS NULL)`
 		if *input.HasUnread {
 			whereConditions = append(whereConditions, fmt.Sprintf("%s > 0", unreadSubquery))
 		} else {
@@ -1133,7 +1130,7 @@ func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesIn
 	}
 
 	if input.HasUnread != nil {
-		unreadSub := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = ae.entry_id AND cm4.entry_type = ae.entry_type AND cm4.read = false AND ` + database.SentByContactSQL("cm4") + ` AND cm4.deleted_at IS NULL)`
+		unreadSub := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = ae.entry_id AND cm4.entry_type = ae.entry_type AND cm4.read = false AND ` + sqlexpr.SentByContact("cm4") + ` AND cm4.deleted_at IS NULL)`
 		if *input.HasUnread {
 			whereConditions = append(whereConditions, fmt.Sprintf("%s > 0", unreadSub))
 		} else {
@@ -1474,7 +1471,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		WHERE m.entry_id = ?::uuid AND m.entry_type = ? AND m.deleted_at IS NULL
 		ORDER BY m.created_at DESC, m.id DESC
 		LIMIT 1
-	`, database.SentByContactSQL("cm2"))
+	`, sqlexpr.SentByContact("cm2"))
 
 	err := r.db.Raw(query, entryID, string(entryType)).Scan(&result).Error
 
@@ -1536,7 +1533,7 @@ func (r *repository) CountInboundByEntry(entryID string, entryType shared.EntryT
 		SELECT COUNT(*)
 		FROM conversation_messages
 		WHERE entry_id = ?::uuid AND entry_type = ? AND deleted_at IS NULL
-		  AND `+database.SentByContactSQL("")+`
+		  AND `+sqlexpr.SentByContact("")+`
 	`, entryID, string(entryType)).Scan(&count).Error
 	if err != nil {
 		return 0, err

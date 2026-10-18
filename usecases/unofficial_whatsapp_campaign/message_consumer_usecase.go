@@ -384,7 +384,7 @@ func (c *messageConsumerUseCase) resolveJID(
 	if err != nil {
 		return "", false, err
 	}
-	if len(checks) == 0 || !checks[0].IsOnWhatsApp {
+	if len(checks) == 0 || !checks[0].Reachable() {
 		_ = c.deps.Entries.RecordCheck(entry.ID, "", now, false)
 		return "", false, nil
 	}

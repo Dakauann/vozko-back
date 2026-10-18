@@ -34,12 +34,12 @@ type liveCall struct {
 	lifecycleDone chan struct{}
 	started       atomic.Bool
 
-	uplink         chan []byte
-	uplinkClose    sync.Once
-	uplinkDropped  atomic.Uint64
-	uplinkStarted  atomic.Bool
-	uplinkDoneOnce sync.Once
-	uplinkDone     chan struct{}
+	uplink        chan []byte
+	uplinkClose   sync.Once
+	uplinkDropped atomic.Uint64
+	uplinkStarted atomic.Bool
+
+	uplinkDone chan struct{}
 
 	inboundConverter inboundAudioConverter
 

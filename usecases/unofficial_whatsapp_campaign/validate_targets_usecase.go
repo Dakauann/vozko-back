@@ -86,7 +86,7 @@ func (uc *validateTargetsUseCase) Execute(ctx context.Context, campaignID string
 				continue
 			}
 			out.Checked++
-			if check.IsOnWhatsApp {
+			if check.Reachable() {
 				out.OnWhatsApp++
 				_ = uc.repos.entries.RecordCheck(entry.ID, check.JID, now, true)
 				continue

@@ -16,8 +16,6 @@ import (
 	rag_domain "vozko/domain/rag"
 	report_domain "vozko/domain/report"
 	scheduled_message_domain "vozko/domain/scheduled_message"
-	pricing_service "vozko/domain/services/pricing"
-	"vozko/domain/shipping"
 	shortlink_domain "vozko/domain/shortlink"
 	unofficial_whatsapp_domain "vozko/domain/unofficial_whatsapp"
 	webhook_domain "vozko/domain/webhook"
@@ -32,7 +30,6 @@ import (
 	"vozko/infra/s3"
 	"vozko/infra/security"
 	document_service "vozko/infra/services/document"
-	inventory_service "vozko/infra/services/inventory"
 	businessphone_infra "vozko/infra/whatsapp/business_phone"
 	google_calendar "vozko/third_party/google_calendar"
 )
@@ -56,7 +53,6 @@ func (c *Container) initServices() {
 
 	prometheusService := prometheus_service.NewPrometheusService(c.replicaID)
 
-	inventorySvc := inventory_service.NewVariantStockService(c.db)
 	documentValidator := document_service.NewValidator()
 
 	storage := s3.NewS3Service()
@@ -64,8 +60,6 @@ func (c *Container) initServices() {
 
 	tmplLoader := notification_service.NewTemplateLoaderService("/infra/notifications/templates")
 	emailSvc := notification_service.NewEmailService(tmplLoader, c.cfg.ResendAPIKey, c.cfg.ResendFromEmail, c.cfg.ResendFromName, c.cfg.ResendMaxRPS)
-
-	shippingGateways := make(map[shipping.Provider]shipping.ProviderGateway)
 
 	workflowWakeExchange := workflow_domain.Exchange
 	crmTelemetryExchange := crm_telemetry_domain.Exchange
@@ -113,16 +107,12 @@ func (c *Container) initServices() {
 		readMeTokenService:         readMeTokenIssuer,
 		fileStorage:                storage,
 		fileReader:                 storage,
-		ticketFileStorage:          storage,
 		asaasService:               asaasSvc,
 		paymentGateway:             paymentGateway,
 		mercadoPagoWebhookResolver: mercadoPagoResolver,
 		templateLoaderService:      tmplLoader,
 		emailService:               emailSvc,
-		inventory:                  inventorySvc,
 		documentValidator:          documentValidator,
-		pricingService:             pricing_service.NewPricingService(),
-		shippingGateways:           shippingGateways,
 		ragEmbedding:               rag_infra.NewEmbeddingService(c.cfg.OllamaURL, rag_domain.DefaultEmbeddingModel),
 		ragTextChunker:             rag_infra.NewTextChunker(),
 		ragTextExtractor:           rag_infra.NewTextExtractor(),

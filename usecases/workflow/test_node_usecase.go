@@ -334,11 +334,6 @@ func buildTestRun(wf *workflow.Workflow, workspaceID string) *workflow.WorkflowR
 	}
 }
 
-func buildTestExecutorDeps(deps ExecutorDeps) interface{} {
-
-	return deps
-}
-
 func resolveTestMode(deps []workflow.VariableDependency) (TestMode, bool, bool) {
 	hasAIDeps := workflow.HasAIDependencies(deps)
 	requiresUpstream := workflow.RequiresUpstreamData(deps)
@@ -556,10 +551,6 @@ func setNestedMockValue(root map[string]interface{}, path string, value interfac
 		}
 		current = next
 	}
-}
-
-func hasAllRequiredMocks(required []workflow.RequiredMock, mockedState map[string]interface{}) bool {
-	return len(missingRequiredMocks(required, mockedState)) == 0
 }
 
 func shouldBlockForMissingMocks(testMode TestMode, mockedState map[string]interface{}, missing []string) bool {

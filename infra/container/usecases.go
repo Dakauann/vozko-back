@@ -69,8 +69,6 @@ import (
 	calls_cdr_usecase "vozko/usecases/calls_cdr"
 	calls_query_usecase "vozko/usecases/calls_query"
 	callsession_usecase "vozko/usecases/callsession"
-	cart_usecase "vozko/usecases/cart"
-	category_usecase "vozko/usecases/category"
 	cep_usecase "vozko/usecases/cep"
 	coexistence_usecase "vozko/usecases/coexistence"
 	config_usecase "vozko/usecases/config"
@@ -81,7 +79,6 @@ import (
 	customfield_usecase "vozko/usecases/customfield"
 	dealautomation_usecase "vozko/usecases/dealautomation"
 	ia_usecase "vozko/usecases/inbox_assignment"
-	insurance_usecase "vozko/usecases/insurance"
 	invoice_usecase "vozko/usecases/invoice"
 	issues_usecase "vozko/usecases/issues"
 	label_usecase "vozko/usecases/label"
@@ -90,20 +87,14 @@ import (
 	notification_usecase "vozko/usecases/notification"
 	opportunity_usecase "vozko/usecases/opportunity"
 	"vozko/usecases/opportunityio"
-	order_usecase "vozko/usecases/order"
 	payment_usecase "vozko/usecases/payment"
 	pipeline_usecase "vozko/usecases/pipeline"
-	product_usecase "vozko/usecases/product"
-	property_usecase "vozko/usecases/property"
 	rag_usecase "vozko/usecases/rag"
 	savedview_usecase "vozko/usecases/savedview"
-	shipping_usecase "vozko/usecases/shipping"
-	shop_usecase "vozko/usecases/shop"
 	shortlink_usecase "vozko/usecases/shortlink"
 	sip_trunk_usecase "vozko/usecases/sip_trunk"
 	stage_usecase "vozko/usecases/stage"
 	telephony_usecase "vozko/usecases/telephony"
-	ticket_usecase "vozko/usecases/ticket"
 	tools_usecase "vozko/usecases/tools"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	user_usecase "vozko/usecases/user"
@@ -232,15 +223,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	llmPriceFetcher := openrouter_service.NewLLMPriceFetcher(c.services.ai.(*openrouter_service.Service), 1*time.Hour)
 
-	createTicketUC := ticket_usecase.NewCreateTicketUseCase(c.repositories.ticket)
-
 	verifyEmailTokenUC := auth_usecase.NewVerifyEmailTokenUseCase(c.repositories.emailVerification)
 
-	createCategoryUC := category_usecase.NewCreateCategoryUseCase(c.repositories.category)
-	updateCategoryUC := category_usecase.NewUpdateCategoryUseCase(c.repositories.category)
-	deleteCategoryUC := category_usecase.NewDeleteCategoryUseCase(c.repositories.category)
-	getCategoryUC := category_usecase.NewGetCategoryUseCase(c.repositories.category)
-	listCategoriesUC := category_usecase.NewListCategoriesUseCase(c.repositories.category)
 	resolveCreationDepartmentUC := workspace_department_usecase.NewResolveCreationDepartmentUseCase(c.repositories.workspace, c.repositories.workspaceDepartment)
 
 	createStageGroupUC := stage_usecase.NewCreateStageGroupUseCase(c.repositories.stageGroup, resolveCreationDepartmentUC)
@@ -374,9 +358,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.New(log.Writer(), "rec-pool ", log.LstdFlags),
 	)
 
-	insuranceProviders := c.services.insuranceProviders
-	describeRequirementsUC := insurance_usecase.NewDescribeRequirementsUseCase(insuranceProviders)
-
 	publishEmailUC := notification_usecase.NewPublishEmailUseCase(c.services.notificationsQueuePub)
 	queuedEmailSvc := notification_service.NewQueuedEmailService(publishEmailUC)
 	consumeEmailUC := notification_usecase.NewConsumeEmailUseCase(c.services.notificationQueueSub, c.services.notificationsQueuePub, c.services.emailService, c.services.metrics)
@@ -401,7 +382,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			lowBalanceThresholdMicros = parsed
 		}
 	}
-	monitorLowBalanceUC := balance_usecase.NewMonitorLowBalanceUseCase(lowBalanceLister, c.notifications().Publisher, c.redisProvider.SharedState(), dashboardURL, lowBalanceThresholdMicros)
+	monitorLowBalanceUC := balance_usecase.NewMonitorLowBalanceUseCase(lowBalanceLister, workspace_pricing_usecase.NewGetExchangeRateUseCase(c.repositories.workspacePricing), c.notifications().Publisher, c.redisProvider.SharedState(), dashboardURL, lowBalanceThresholdMicros)
 
 	entitlementResolverUC := workspace_addon_usecase.NewEntitlementResolver(
 		c.repositories.workspaceSubscription, c.repositories.workspacePlan,
@@ -490,13 +471,17 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	affiliateRecordEarningUC := affiliate_usecase.NewRecordEarningUseCase(c.repositories.affiliate, affiliateExchangeRateProvider)
 
 	opsAlerter := alerting.NewLogOpsAlerter()
-	emitMonthlyInvoicesUC := billing_usecase.NewEmitMonthlyInvoicesUseCase(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.addonSubscription, c.repositories.workspace, c.repositories.workspacePricing, createInvoiceUC)
+	billingNotices, err := billing_usecase.NewNotices(c.notifications().Publisher, c.repositories.addonDefinition, dashboardURL)
+	if err != nil {
+		log.Fatalf("[billing] notices: %v", err)
+	}
+	emitMonthlyInvoicesUC := billing_usecase.NewEmitMonthlyInvoicesUseCase(c.repositories.workspaceSubscription, c.repositories.workspacePlan, c.repositories.addonSubscription, c.repositories.workspace, c.repositories.workspacePricing, createInvoiceUC, billingNotices)
 	confirmMonthlyBillingUC := billing_usecase.NewConfirmMonthlyBillingUseCase(c.repositories.workspaceSubscription, c.repositories.addonSubscription).WithReactivation(addonPhoneDeactivatorUC)
-	cancelSweepUC := billing_usecase.NewCancelSweepUseCase(c.repositories.invoice, c.repositories.workspaceSubscription, c.repositories.addonSubscription, addonPhoneDeactivatorUC, opsAlerter)
+	cancelSweepUC := billing_usecase.NewCancelSweepUseCase(c.repositories.invoice, c.repositories.workspaceSubscription, c.repositories.addonSubscription, addonPhoneDeactivatorUC, opsAlerter, billingNotices)
 	vendorChannelReconcilerUC := businessphone_usecase.NewReconcileVendorChannelsUseCase(dialog360PartnerForAddons, c.repositories.ownerPhoneReader, opsAlerter)
 	channelStatusReconcilerUC := businessphone_usecase.NewReconcileChannelStatusUseCase(dialog360PartnerForAddons, c.repositories.ownerPhoneReader, c.repositories.businessPhone, c.repositories.waba)
 
-	handlePaymentWebhookUC := payment_usecase.NewHandlePaymentWebhookUseCase(c.repositories.payment, c.repositories.order, c.services.emailService, c.repositories.user, createTicketUC, c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifications(c.notifications().Publisher, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
+	handlePaymentWebhookUC := payment_usecase.NewHandlePaymentWebhookUseCase(c.repositories.invoice, subscribeWorkspacePlanUC, creditBalanceUC, debitBalanceUC, affiliateRecordEarningUC).WithNotifications(c.notifications().Publisher, dashboardURL).WithMonthlyBilling(confirmMonthlyBillingUC)
 
 	var asaasConsumer, mercadoPagoConsumer payment_domain.ConsumePaymentWebhookUseCase
 	if c.cfg.PaymentProvider == payment_domain.ProviderMercadoPago {
@@ -600,27 +585,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		notifier:              notifierUC,
 		dashboardURL:          dashboardURL,
 		monitorLowBalance:     monitorLowBalanceUC,
-		createProduct:         product_usecase.NewCreateProductUseCase(c.repositories.product, c.repositories.category, c.repositories.shop),
-		updateProduct:         product_usecase.NewUpdateProductUseCase(c.repositories.product, c.repositories.category, c.repositories.shop),
-		launchVariantStock:    product_usecase.NewLaunchVariantStockUseCase(c.repositories.product, c.services.inventory),
 		handlePaymentWebhook:  handlePaymentWebhookUC,
 		handleWhatsAppMessage: handleWhatsAppMessageUC,
-		getProduct:            product_usecase.NewGetProductUseCase(c.repositories.product),
-		listProducts:          product_usecase.NewListProductsUseCase(c.repositories.product),
-		searchProducts:        product_usecase.NewSearchProductsUseCase(c.repositories.product),
 
-		createProperty:   property_usecase.NewCreatePropertyUseCase(c.repositories.property, c.repositories.shop),
-		updateProperty:   property_usecase.NewUpdatePropertyUseCase(c.repositories.property, c.repositories.shop),
-		getProperty:      property_usecase.NewGetPropertyUseCase(c.repositories.property),
-		listProperties:   property_usecase.NewListPropertiesUseCase(c.repositories.property),
-		searchProperties: property_usecase.NewSearchPropertiesUseCase(c.repositories.property),
-		deleteProperty:   property_usecase.NewDeletePropertyUseCase(c.repositories.property),
-
-		createCategory:        createCategoryUC,
-		updateCategory:        updateCategoryUC,
-		deleteCategory:        deleteCategoryUC,
-		getCategory:           getCategoryUC,
-		listCategories:        listCategoriesUC,
 		createAgent:           createAgentUC,
 		simulateAgentTurn:     simulateAgentUC,
 		updateAgent:           updateAgentUC,
@@ -663,22 +630,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getMedia:  media_usecase.NewGetMediaUseCase(c.repositories.media),
 		readMedia: media_usecase.NewReadMediaUseCase(media_usecase.NewGetMediaUseCase(c.repositories.media), c.services.fileReader),
 
-		getCart:           cart_usecase.NewGetCartUseCase(c.repositories.cart),
-		clearCart:         cart_usecase.NewClearCartUseCase(c.repositories.cart),
-		addToCart:         cart_usecase.NewAddToCartUseCase(c.repositories.cart, c.repositories.product, c.repositories.user, c.services.pricingService),
-		removeFromCart:    cart_usecase.NewRemoveFromCartUseCase(c.repositories.cart),
-		updateCartItem:    cart_usecase.NewUpdateCartItemUseCase(c.repositories.cart, c.repositories.product, c.repositories.user, c.services.pricingService),
-		decrementCartItem: cart_usecase.NewDecrementCartItemUseCase(c.repositories.cart),
-
 		createAddress: address_usecase.NewCreateAddressUseCase(c.repositories.address),
 		getAddresses:  address_usecase.NewGetAddressesUseCase(c.repositories.address),
 		updateAddress: address_usecase.NewUpdateAddressUseCase(c.repositories.address),
 		deleteAddress: address_usecase.NewDeleteAddressUseCase(c.repositories.address),
-
-		checkout:           order_usecase.NewCheckoutUseCase(c.repositories.order, c.repositories.cart, c.repositories.address, c.repositories.product, c.repositories.payment, c.repositories.paymentSplit, c.services.documentValidator, c.services.paymentGateway, c.services.emailService, c.repositories.user, c.services.pricingService),
-		getOrder:           order_usecase.NewGetOrderUseCase(c.repositories.order),
-		listOrders:         order_usecase.NewListOrdersUseCase(c.repositories.order),
-		cancelExpiredOrder: order_usecase.NewCancelExpiredOrderUseCase(c.repositories.order, c.repositories.payment, c.services.emailService, c.repositories.user, c.repositories.product),
 
 		searchCEP: searchCEPUC,
 
@@ -697,31 +652,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		logoutAll:             auth_usecase.NewLogoutAllUseCase(c.repositories.user, c.repositories.session, c.redisProvider.SharedState()),
 		listSessions:          auth_usecase.NewListSessionsUseCase(c.repositories.session),
 		revokeSession:         auth_usecase.NewRevokeSessionUseCase(c.repositories.session, c.redisProvider.SharedState()),
-
-		createPaymentSplit: payment_usecase.NewCreatePaymentSplitUseCase(c.repositories.paymentSplit),
-		updatePaymentSplit: payment_usecase.NewUpdatePaymentSplitUseCase(c.repositories.paymentSplit),
-		deletePaymentSplit: payment_usecase.NewDeletePaymentSplitUseCase(c.repositories.paymentSplit),
-		getPaymentSplit:    payment_usecase.NewGetPaymentSplitUseCase(c.repositories.paymentSplit),
-		listPaymentSplits:  payment_usecase.NewListPaymentSplitsUseCase(c.repositories.paymentSplit),
-
-		createTicket:        createTicketUC,
-		listTickets:         ticket_usecase.NewListTicketsUseCase(c.repositories.ticket),
-		listUserTickets:     ticket_usecase.NewListUserTicketsUseCase(c.repositories.ticket),
-		getTicketByOrder:    ticket_usecase.NewGetTicketByOrderUseCase(c.repositories.ticket),
-		uploadTicketDoc:     ticket_usecase.NewUploadTicketDocumentUseCase(c.repositories.ticket, c.services.ticketFileStorage),
-		updateTicketStatus:  ticket_usecase.NewUpdateTicketStatusUseCase(c.repositories.ticket, c.repositories.user, c.services.emailService),
-		generateTicketLabel: ticket_usecase.NewGenerateLabelUseCase(c.repositories.ticket, c.repositories.order, c.repositories.address),
-
-		getShippingAuthorizationURL: shipping_usecase.NewGetAuthorizationURL(c.services.shippingGateways),
-		connectShippingAccount:      shipping_usecase.NewConnectProviderAccount(c.repositories.shippingAccount, c.services.shippingGateways),
-		listShippingAccounts:        shipping_usecase.NewListProviderAccounts(c.repositories.shippingAccount),
-		calculateFreight:            shipping_usecase.NewCalculateFreight(c.repositories.shippingAccount, c.services.shippingGateways, 5*time.Minute),
-
-		quoteInsurance:                insurance_usecase.NewQuoteUseCase(c.repositories.insurance, insuranceProviders),
-		listInsuranceQuotations:       insurance_usecase.NewListUserQuotationsUseCase(c.repositories.insurance),
-		getInsuranceQuotation:         insurance_usecase.NewGetQuotationUseCase(c.repositories.insurance),
-		listInsurancePolicies:         insurance_usecase.NewListPoliciesUseCase(),
-		describeInsuranceRequirements: describeRequirementsUC,
 
 		listWhatsAppTemplates: whatsapp_template_usecase.NewListTemplatesUseCase(c.repositories.whatsappTemplate),
 		getWhatsAppTemplate:   whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
@@ -750,12 +680,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getWorkspaceConfig:         workspace_config_usecase.NewGetWorkspaceConfigUseCase(c.repositories.workspaceConfig),
 		updateWorkspaceConfig:      workspace_config_usecase.NewUpdateWorkspaceConfigUseCase(c.repositories.workspaceConfig),
 		updateWorkspaceConfigOwner: workspace_config_usecase.NewUpdateWorkspaceConfigOwnerUseCase(c.repositories.workspaceConfig, c.repositories.workspace),
-
-		createShop: shop_usecase.NewCreateShopUseCase(c.repositories.shop, c.repositories.media),
-		updateShop: shop_usecase.NewUpdateShopUseCase(c.repositories.shop, c.repositories.media),
-		deleteShop: shop_usecase.NewDeleteShopUseCase(c.repositories.shop),
-		getShop:    shop_usecase.NewGetShopUseCase(c.repositories.shop),
-		listShops:  shop_usecase.NewListShopsUseCase(c.repositories.shop),
 
 		listBusinessPhones:         businessphone_usecase.NewListUseCase(c.repositories.businessPhone),
 		workspacePhones:            businessphone_usecase.NewWorkspacePhonesUseCase(businessphone_usecase.NewListUseCase(c.repositories.businessPhone), c.repositories.workspacePhoneAccess),

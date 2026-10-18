@@ -20,10 +20,6 @@ func NewCodeExecutor() workflow.NodeExecutor {
 	return &codeExecutor{sandbox: scriptvm.New(scriptvm.DefaultLimits())}
 }
 
-func NewCodeExecutorWithLimits(l scriptvm.Limits) workflow.NodeExecutor {
-	return &codeExecutor{sandbox: scriptvm.New(l)}
-}
-
 const defaultCodeNodeSnippet = `// ─────────────────────────────────────────────────────────────────────
 // Sandbox JavaScript, sem eval, sem require, sem timers, sem DOM.
 // Retorne um objeto → seus campos viram a saída deste nó, acessíveis

@@ -11,8 +11,8 @@ import (
 
 	"vozko/domain/shared"
 	uwg "vozko/domain/unofficial_whatsapp_group"
-	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 )
 
 var ErrAnalysisLeaseLost = errors.New("the analysis lease was taken by another worker")
@@ -98,7 +98,7 @@ func (r *analysisRepository) List(ctx context.Context, f uwg.AnalysisFilter) (*s
 			q = q.Where("a.group_id = ?", f.GroupID)
 		}
 		if search := strings.TrimSpace(f.Search); search != "" {
-			like := database.LikeContains(search)
+			like := sqlexpr.LikeContains(search)
 			q = q.Where(`(a.name ILIKE ? ESCAPE '\' OR a.prompt ILIKE ? ESCAPE '\' OR wg.subject ILIKE ? ESCAPE '\')`, like, like, like)
 		}
 		return q
