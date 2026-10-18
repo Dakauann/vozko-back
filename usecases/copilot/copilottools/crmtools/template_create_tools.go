@@ -160,7 +160,7 @@ func (t *createTemplateTool) Execute(ctx context.Context, cc copilot.Context, ar
 	if t.deps.Creator == nil {
 		return copilot.Result{Status: copilot.StatusError, Message: "a criação de modelos está indisponível agora"}
 	}
-	actions, err := a.exitActions()
+	actions, err := a.exitActions(components)
 	if err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
@@ -185,7 +185,7 @@ func (t *createTemplateTool) Execute(ctx context.Context, cc copilot.Context, ar
 }
 
 func (t *createTemplateTool) components(cc copilot.Context, a createTemplateArgs) ([]tmpl.TemplateComponent, *string, error) {
-	return a.components(t.deps.Media, cc, nil)
+	return a.components(t.deps.Media, cc, keptParts{})
 }
 
 func headerFormat(kind media.MediaType) string {

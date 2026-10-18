@@ -107,6 +107,91 @@ func TestEditTemplateCanReplaceOrRemoveTheHeader(t *testing.T) {
 	}
 }
 
+func storedWithEveryPart() *tmpl.Template {
+	stored := storedPromo(tmpl.TemplateStatusApproved, tmpl.TemplateCategoryUtility)
+	stored.Components = []tmpl.TemplateComponent{
+		{Type: "HEADER", Format: "TEXT", Text: "Cadastro"},
+		{Type: "BODY", Text: "Oi"},
+		{Type: "FOOTER", Text: "Equipe"},
+		{Type: "BUTTONS", Buttons: []tmpl.TemplateButton{{Type: "QUICK_REPLY", Text: "Quero uma demonstração"}, {Type: "QUICK_REPLY", Text: "Parar"}, {Type: "URL", Text: "Site", URL: "https://vozko.test"}}},
+	}
+	return stored
+}
+
+func componentOfType(components []tmpl.TemplateComponent, kind string) (tmpl.TemplateComponent, bool) {
+	for _, comp := range components {
+		if comp.Type == kind {
+			return comp, true
+		}
+	}
+	return tmpl.TemplateComponent{}, false
+}
+
+func TestEditTemplateKeepsEveryPartItIsNotGiven(t *testing.T) {
+	editor := &fakeTemplateEditor{}
+	tool := NewEditTemplateTool(editDeps(storedWithEveryPart(), editor))
+	args := map[string]interface{}{"template_id": editedTemplateID, "body": "Olá {{1}}, recebemos seu cadastro.", "body_examples": []interface{}{"Maria"}}
+
+	res := tool.Execute(context.Background(), tooltest.Member(), args)
+
+	if res.Status != copilot.StatusOK {
+		t.Fatalf("res = %+v", res)
+	}
+	components := editor.req.Edit.Components
+	header, _ := componentOfType(components, "HEADER")
+	footer, _ := componentOfType(components, "FOOTER")
+	buttons, _ := componentOfType(components, "BUTTONS")
+	if header.Text != "Cadastro" || footer.Text != "Equipe" || len(buttons.Buttons) != 3 || buttons.Buttons[2].URL != "https://vozko.test" {
+		t.Fatalf("an edit that does not mention a part must keep it: %+v", components)
+	}
+	preview := tool.(copilot.Previewer).Preview(context.Background(), tooltest.Member(), args)
+	if shown, _ := componentOfType(preview.Data.(TemplatePreview).Components, "BUTTONS"); len(shown.Buttons) != 3 {
+		t.Fatalf("the approval card must show the kept buttons: %+v", preview.Data)
+	}
+}
+
+func TestEditTemplateReplacesOrRemovesTheFooterAndButtonsOnlyWhenAsked(t *testing.T) {
+	editor := &fakeTemplateEditor{}
+	tool := NewEditTemplateTool(editDeps(storedWithEveryPart(), editor))
+	base := map[string]interface{}{"template_id": editedTemplateID, "body": "Oi"}
+	with := func(extra map[string]interface{}) map[string]interface{} {
+		args := map[string]interface{}{}
+		for k, v := range base {
+			args[k] = v
+		}
+		for k, v := range extra {
+			args[k] = v
+		}
+		return args
+	}
+
+	tool.Execute(context.Background(), tooltest.Member(), with(map[string]interface{}{"footer": "Para sair, responda /sair", "quick_replies": []interface{}{"Sim"}}))
+	footer, _ := componentOfType(editor.req.Edit.Components, "FOOTER")
+	buttons, _ := componentOfType(editor.req.Edit.Components, "BUTTONS")
+	if footer.Text != "Para sair, responda /sair" || len(buttons.Buttons) != 1 || buttons.Buttons[0].Text != "Sim" {
+		t.Fatalf("replaced = %+v", editor.req.Edit.Components)
+	}
+
+	tool.Execute(context.Background(), tooltest.Member(), with(map[string]interface{}{"remove_footer": true, "remove_buttons": true}))
+	if _, kept := componentOfType(editor.req.Edit.Components, "FOOTER"); kept {
+		t.Fatalf("removed footer = %+v", editor.req.Edit.Components)
+	}
+	if _, kept := componentOfType(editor.req.Edit.Components, "BUTTONS"); kept {
+		t.Fatalf("removed buttons = %+v", editor.req.Edit.Components)
+	}
+}
+
+func TestEditTemplateCanMakeAKeptQuickReplyTheExitButton(t *testing.T) {
+	editor := &fakeTemplateEditor{}
+	args := map[string]interface{}{"template_id": editedTemplateID, "body": "Oi", "exit_button": "Parar"}
+
+	res := NewEditTemplateTool(editDeps(storedWithEveryPart(), editor)).Execute(context.Background(), tooltest.Member(), args)
+
+	if res.Status != copilot.StatusOK || len(editor.req.Actions) != 1 || editor.req.Actions[0].ButtonIndex != 1 || editor.req.Actions[0].ButtonText != "Parar" {
+		t.Fatalf("res = %+v, actions = %+v", res, editor.req.Actions)
+	}
+}
+
 func TestEditTemplateMakesAQuickReplyTheExitButton(t *testing.T) {
 	editor := &fakeTemplateEditor{}
 	args := editArgs(map[string]interface{}{"footer": "", "quick_replies": []interface{}{"Quero", "Parar"}, "exit_button": "Parar", "exit_confirmation": "Pronto."})

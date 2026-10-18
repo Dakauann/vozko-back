@@ -33,7 +33,9 @@ type TemplateEditDeps struct {
 type editTemplateArgs struct {
 	TemplateID   string `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
 	Category     string `json:"category" desc:"nova categoria, só para modelo reprovado ou pausado; vazio mantém a atual"`
-	RemoveHeader bool   `json:"remove_header" desc:"true tira o cabeçalho atual"`
+	RemoveHeader  bool   `json:"remove_header" desc:"true tira o cabeçalho atual"`
+	RemoveFooter  bool   `json:"remove_footer" desc:"true tira o rodapé atual"`
+	RemoveButtons bool   `json:"remove_buttons" desc:"true tira todos os botões atuais"`
 	templateContentArgs
 }
 
@@ -50,8 +52,9 @@ func (t *editTemplateTool) Meta() copilot.Meta {
 func (t *editTemplateTool) Definition() tools.Definition {
 	def := copilottools.Definition("edit_template",
 		"Edita o conteúdo de um modelo existente e envia a nova versão para a revisão da Meta; enquanto ela revisa, campanhas não usam o modelo. "+
-			"Mande o modelo inteiro: o que não vier sai. Nome e idioma não mudam; a categoria só muda em modelo reprovado ou pausado. "+
-			"O cabeçalho de mídia atual fica, a não ser que venha header_media_id, header_text ou remove_header. Modelos de AUTHENTICATION não são editados aqui. "+
+			"Mande sempre o corpo; cabeçalho, rodapé e botões atuais ficam como estão, a não ser que venham novos (header_text ou header_media_id, footer, quick_replies) "+
+			"ou remove_header, remove_footer, remove_buttons. quick_replies troca todos os botões, inclusive os de link e telefone. "+
+			"Nome e idioma não mudam; a categoria só muda em modelo reprovado ou pausado. Modelos de AUTHENTICATION não são editados aqui. "+
 			"A Meta aceita uma edição por dia e dez a cada 30 dias num modelo aprovado, e nenhuma campanha em andamento ou agendada pode estar usando o modelo. "+
 			"Um modelo MARKETING precisa continuar mostrando ao lead como sair. Só depois da aprovação do usuário.", editTemplateArgs{})
 	param := def.Parameters["category"]
@@ -70,16 +73,33 @@ func (t *editTemplateTool) prepare(cc copilot.Context, a editTemplateArgs) (temp
 	if err != nil {
 		return templateEdit{}, err
 	}
-	var kept *tmpl.TemplateComponent
-	if header, ok := tmpl.MediaHeaderOf(stored.Components); ok && !a.RemoveHeader {
-		kept = &header
-	}
-	components, headerURL, err := a.components(t.deps.Media, cc, kept)
+	components, headerURL, err := a.components(t.deps.Media, cc, a.keptFrom(stored.Components))
 	if err != nil {
 		return templateEdit{}, err
 	}
 	edit := tmpl.Edit{Category: tmpl.TemplateCategory(strings.ToUpper(strings.TrimSpace(a.Category))), Components: components, HeaderMediaURL: headerURL}
 	return templateEdit{stored: stored, edit: edit}, nil
+}
+
+func (a editTemplateArgs) keptFrom(stored []tmpl.TemplateComponent) keptParts {
+	var kept keptParts
+	for _, comp := range stored {
+		switch strings.ToUpper(strings.TrimSpace(comp.Type)) {
+		case "HEADER":
+			if !a.RemoveHeader {
+				kept.header = &comp
+			}
+		case "FOOTER":
+			if !a.RemoveFooter {
+				kept.footer = &comp
+			}
+		case "BUTTONS":
+			if !a.RemoveButtons {
+				kept.buttons = &comp
+			}
+		}
+	}
+	return kept
 }
 
 func (t *editTemplateTool) Preview(_ context.Context, cc copilot.Context, args map[string]interface{}) *copilot.Preview {
@@ -127,7 +147,7 @@ func (t *editTemplateTool) Validate(_ context.Context, cc copilot.Context, args 
 	if err := tmpl.CheckEdit(prepared.stored, prepared.edit, nil, time.Now()); err != nil {
 		return fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, templateRefusalText(err))
 	}
-	if _, err := a.exitActions(); err != nil {
+	if _, err := a.exitActions(prepared.edit.Components); err != nil {
 		return err
 	}
 	return nil
@@ -141,13 +161,13 @@ func (t *editTemplateTool) Execute(ctx context.Context, cc copilot.Context, args
 	if t.deps.Editor == nil {
 		return copilot.Result{Status: copilot.StatusError, Message: "a edição de modelos está indisponível agora"}
 	}
-	actions, err := a.exitActions()
-	if err != nil {
-		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
-	}
 	prepared, err := t.prepare(cc, a)
 	if err != nil {
 		return templateEditFailure(err)
+	}
+	actions, err := a.exitActions(prepared.edit.Components)
+	if err != nil {
+		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
 	edited, err := t.deps.Editor.EditTemplate(ctx, copilottools.ButtonActor(cc), buttonaction_usecase.EditTemplateRequest{
 		TemplateID:       prepared.stored.ID,

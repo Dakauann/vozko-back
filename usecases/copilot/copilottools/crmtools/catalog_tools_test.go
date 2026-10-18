@@ -28,7 +28,12 @@ func (f *fakeTemplates) List(workspaceID string, in tmpl.ListInput) (*shared.Pag
 	body := "Olá {{1}}, seu pedido {{2}} saiu."
 	return &shared.PaginatedResult[*tmpl.Template]{Items: []*tmpl.Template{{
 		ID: "t1", Name: "pedido_saiu", Language: "pt_BR", Category: "UTILITY", Status: tmpl.TemplateStatusApproved,
-		Components: []tmpl.TemplateComponent{{Type: "BODY", Text: body}},
+		Components: []tmpl.TemplateComponent{
+			{Type: "HEADER", Format: "TEXT", Text: "Seu pedido"},
+			{Type: "BODY", Text: body},
+			{Type: "FOOTER", Text: "Responda /sair"},
+			{Type: "BUTTONS", Buttons: []tmpl.TemplateButton{{Type: "QUICK_REPLY", Text: "Rastrear"}, {Type: "URL", Text: "Ver pedido", URL: "https://loja.test/p/{{1}}"}}},
+		},
 	}}, TotalItems: 1, TotalPages: 1, Page: 1}, nil
 }
 
@@ -100,6 +105,17 @@ func TestListTemplatesExplainsTheVariables(t *testing.T) {
 	b, _ := json.Marshal(res.Data)
 	if !strings.Contains(string(b), `"variables":2`) || !strings.Contains(string(b), "pedido_saiu") {
 		t.Fatalf("data = %s", b)
+	}
+}
+
+func TestListTemplatesShowsTheWholeTemplateSoAnEditCanKeepIt(t *testing.T) {
+	deps, _, _, _, _, _ := catalogDeps()
+	res := NewListTemplatesTool(deps).Execute(context.Background(), tooltest.Member(), nil)
+	b, _ := json.Marshal(res.Data)
+	for _, want := range []string{`"header":{"format":"TEXT","text":"Seu pedido"}`, `"footer":"Responda /sair"`, `{"text":"Rastrear","type":"QUICK_REPLY"}`, `{"text":"Ver pedido","type":"URL","url":"https://loja.test/p/{{1}}"}`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("missing %s in %s", want, b)
+		}
 	}
 }
 

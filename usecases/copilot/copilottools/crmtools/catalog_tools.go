@@ -61,7 +61,7 @@ func (t *listTemplatesTool) Meta() copilot.Meta { return readMeta(workspace.Reso
 func (t *listTemplatesTool) Definition() tools.Definition {
 	return copilottools.Definition("list_templates",
 		"Lista os modelos de mensagem do WhatsApp do workspace (aprovados, por padrão): nome, idioma, categoria, se está pronto "+
-			"para envio, quantas variáveis ({{1}}, {{2}}...) o texto pede e o texto do corpo.",
+			"para envio, quantas variáveis ({{1}}, {{2}}...) o texto pede, o texto do corpo e, quando existem, o cabeçalho, o rodapé e os botões.",
 		listTemplatesArgs{})
 }
 
@@ -87,7 +87,7 @@ func (t *listTemplatesTool) Execute(_ context.Context, cc copilot.Context, args 
 		if item == nil {
 			continue
 		}
-		templates = append(templates, map[string]interface{}{
+		entry := map[string]interface{}{
 			"template_id": item.ID,
 			"name":        item.Name,
 			"language":    item.Language,
@@ -96,11 +96,45 @@ func (t *listTemplatesTool) Execute(_ context.Context, cc copilot.Context, args 
 			"ready":       item.IsReadyToSend(),
 			"variables":   item.ParameterCount(),
 			"body":        copilottools.ClipText(item.GetBodyText(), 400),
-		})
+		}
+		for key, part := range templateParts(item.Components) {
+			entry[key] = part
+		}
+		templates = append(templates, entry)
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{
 		"page": page, "total": out.TotalItems, "has_more": page < out.TotalPages, "templates": templates,
 	}}
+}
+
+func templateParts(components []tmpl.TemplateComponent) map[string]interface{} {
+	parts := map[string]interface{}{}
+	for _, comp := range components {
+		switch strings.ToUpper(strings.TrimSpace(comp.Type)) {
+		case "HEADER":
+			header := map[string]interface{}{"format": strings.ToUpper(comp.Format)}
+			if comp.Text != "" {
+				header["text"] = comp.Text
+			}
+			parts["header"] = header
+		case "FOOTER":
+			parts["footer"] = comp.Text
+		case "BUTTONS":
+			buttons := make([]map[string]interface{}, 0, len(comp.Buttons))
+			for _, b := range comp.Buttons {
+				button := map[string]interface{}{"type": b.Type, "text": b.Text}
+				if b.URL != "" {
+					button["url"] = b.URL
+				}
+				if b.PhoneNumber != "" {
+					button["phone"] = b.PhoneNumber
+				}
+				buttons = append(buttons, button)
+			}
+			parts["buttons"] = buttons
+		}
+	}
+	return parts
 }
 
 type listPipelinesTool struct{ deps CatalogDeps }
