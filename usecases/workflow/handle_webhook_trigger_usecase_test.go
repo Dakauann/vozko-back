@@ -15,34 +15,38 @@ func headerFunc(h map[string]string) func(string) string {
 }
 
 type webhookHarness struct {
-	uc       HandleWebhookTriggerUseCase
-	webhooks *fakeWebhookRepo
-	wfRepo   *MockWorkflowRepository
-	runRepo  *MockWorkflowRunRepository
-	entries  *fakeEntryChecker
-	resolver *fakeEntryResolver
-	launcher *fakeLauncher
-	dedup    *fakeDedup
-	state    *fakeSharedState
+	uc         HandleWebhookTriggerUseCase
+	webhooks   *fakeWebhookRepo
+	wfRepo     *MockWorkflowRepository
+	runRepo    *MockWorkflowRunRepository
+	entries    *fakeEntryChecker
+	resolver   *fakeEntryResolver
+	launcher   *fakeLauncher
+	dedup      *fakeDedup
+	state      *fakeSharedState
+	deliveries *fakeDeliveryLog
+	metrics    *metricsSpy
 }
 
 func newWebhookHarness() *webhookHarness {
 	h := &webhookHarness{
-		webhooks: newFakeWebhookRepo(),
-		wfRepo:   NewMockWorkflowRepository(),
-		runRepo:  NewMockWorkflowRunRepository(),
-		entries:  &fakeEntryChecker{owns: true},
-		resolver: &fakeEntryResolver{},
-		launcher: &fakeLauncher{},
-		dedup:    &fakeDedup{},
-		state:    &fakeSharedState{allow: true},
+		webhooks:   newFakeWebhookRepo(),
+		wfRepo:     NewMockWorkflowRepository(),
+		runRepo:    NewMockWorkflowRunRepository(),
+		entries:    &fakeEntryChecker{owns: true},
+		resolver:   &fakeEntryResolver{},
+		launcher:   &fakeLauncher{},
+		dedup:      &fakeDedup{},
+		state:      &fakeSharedState{allow: true},
+		deliveries: &fakeDeliveryLog{},
+		metrics:    &metricsSpy{},
 	}
 	h.wfRepo.workflows["wf1"] = webhookWorkflow()
 	h.webhooks.put(&workflow.WorkflowWebhook{
 		ID: "whid", WorkflowID: "wf1", WorkspaceID: "ws1", Token: "tok",
 		AuthMode: workflow.WebhookAuthNone, Method: "POST", Active: true,
 	})
-	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, h.dedup, h.state)
+	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, h.dedup, h.state, h.deliveries, h.metrics)
 	return h
 }
 
@@ -239,6 +243,44 @@ func TestWebhookTrigger_WorkflowInactiveOrMissing(t *testing.T) {
 	delete(h.wfRepo.workflows, "wf1")
 	if _, err := h.uc.Execute(baseReq()); !errors.Is(err, workflow.ErrWorkflowNotActive) {
 		t.Fatalf("missing: got %v", err)
+	}
+}
+
+type rememberingDedup struct{ seen map[string]bool }
+
+func (d *rememberingDedup) IsDuplicate(key string) bool {
+	if d.seen[key] {
+		return true
+	}
+	d.seen[key] = true
+	return false
+}
+
+func (d *rememberingDedup) Forget(key string) error {
+	delete(d.seen, key)
+	return nil
+}
+
+func TestARetryAfterARefusalIsDeliveredInsteadOfCountedAsDuplicate(t *testing.T) {
+	h := newWebhookHarness()
+	dedup := &rememberingDedup{seen: map[string]bool{}}
+	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, dedup, h.state, h.deliveries, h.metrics)
+	req := baseReq()
+	req.Header = headerFunc(map[string]string{"X-Idempotency-Key": "evt-7"})
+
+	h.wfRepo.workflows["wf1"].Status = workflow.WorkflowStatusPaused
+	if _, err := h.uc.Execute(req); !errors.Is(err, workflow.ErrWorkflowNotActive) {
+		t.Fatalf("paused: got %v", err)
+	}
+	h.wfRepo.workflows["wf1"].Status = workflow.WorkflowStatusActive
+
+	res, err := h.uc.Execute(req)
+	if err != nil || res.Duplicate || res.RunID == "" {
+		t.Fatalf("result = %+v err = %v, the sender's retry after resuming the workflow must start the run", res, err)
+	}
+	again, err := h.uc.Execute(req)
+	if err != nil || !again.Duplicate {
+		t.Fatalf("result = %+v err = %v, an accepted delivery keeps its key", again, err)
 	}
 }
 

@@ -92,11 +92,11 @@ func TestTagsCountDistinctCampaignConversationsPerLiveLabel(t *testing.T) {
 		`JOIN labels l ON l\.id = el\.label_id::text AND l\.deleted_at IS NULL\s+`+
 		`JOIN whatsapp_campaign_entries e ON e\.id = el\.entry_id AND e\.deleted_at IS NULL\s+`+
 		`WHERE e\.campaign_id = .+ AND el\.entry_type = .+ AND el\.deleted_at IS NULL\s+`+
-		`GROUP BY l\.id, l\.name, l\.color\s+ORDER BY count DESC, l\.name\s+LIMIT .+`).
-		WithArgs("c1", "whatsapp", 10).
+		`GROUP BY l\.id, l\.name, l\.color\s+ORDER BY count DESC, l\.name, l\.id\s+LIMIT .+ OFFSET .+`).
+		WithArgs("c1", "whatsapp", 10, 20).
 		WillReturnRows(sqlmock.NewRows([]string{"label_id", "name", "color", "count"}).AddRow("l1", "interessado", "#00D09A", 7))
 
-	got, err := reader.Tags(campaignScope(t), 10)
+	got, err := reader.Tags(campaignScope(t), wce.Page{Limit: 10, Offset: 20})
 	if err != nil {
 		t.Fatalf("Tags() error = %v", err)
 	}
@@ -144,11 +144,11 @@ func TestCampaignsBreakTheScopeDownPerCampaignLargestFirst(t *testing.T) {
 
 	mock.ExpectQuery(`(?s)SELECT e\.campaign_id, c\.name AS campaign_name, COUNT\(\*\) AS base,.*` +
 		`JOIN whatsapp_campaigns c ON c\.id = e\.campaign_id.*` +
-		`GROUP BY e\.campaign_id, c\.name\s+ORDER BY base DESC, c\.name\s+LIMIT .+`).
+		`GROUP BY e\.campaign_id, c\.name\s+ORDER BY base DESC, c\.name, e\.campaign_id\s+LIMIT .+ OFFSET .+`).
 		WillReturnRows(sqlmock.NewRows([]string{"campaign_id", "campaign_name", "base", "sent", "delivered", "read", "replied", "failed"}).
 			AddRow("c1", "Lançamento", 10, 9, 8, 6, 3, 1))
 
-	got, err := reader.Campaigns(campaignScope(t), 50)
+	got, err := reader.Campaigns(campaignScope(t), wce.FirstPage(50))
 	if err != nil {
 		t.Fatalf("Campaigns() error = %v", err)
 	}

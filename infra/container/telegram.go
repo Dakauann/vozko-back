@@ -78,7 +78,7 @@ func (c *Container) initTelegram() {
 	})
 	bundle.WebhookHandler = telegramhttp.NewWebhookHandler(bundle.Accounts, nil)
 
-	bundle.CheckHealth = tguc.NewCheckWebhookHealthUseCase(bundle.Accounts, api)
+	bundle.CheckHealth = tguc.NewCheckWebhookHealthUseCase(bundle.Accounts, api, c.cfg.TelegramWebhookBaseURL)
 
 	bundle.Enabled = true
 	log.Printf("[telegram] channel enabled (webhook base=%s)", c.cfg.TelegramWebhookBaseURL)

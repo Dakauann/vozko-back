@@ -48,6 +48,7 @@ type Enqueuer interface {
 
 type HoldNotifier interface {
 	Held(c *wc.Campaign, wave int, d sc.Decision, at time.Time)
+	Resumed(c *wc.Campaign)
 }
 
 type Locks interface {
@@ -123,6 +124,7 @@ func (e *Engine) Start(ctx context.Context, campaignID string) error {
 			return err
 		}
 		s.state.Resumed(e.d.Now())
+		e.d.Notifier.Resumed(s.campaign)
 		if s.current != nil && s.current.State == sc.Drained && !s.current.ObservationOver(e.d.Now()) {
 			s.state.DueAt = s.current.ObserveUntil
 			return e.d.States.SaveState(s.state)
@@ -432,6 +434,7 @@ func (e *Engine) continueWave(s *subject) error {
 		return errors.Join(err, revertErr)
 	}
 	s.state.Resumed(e.d.Now())
+	e.d.Notifier.Resumed(s.campaign)
 	s.state.DueAt = e.d.Now().Add(inFlightRecheck)
 	return e.d.States.SaveState(s.state)
 }

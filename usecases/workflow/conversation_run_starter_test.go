@@ -2,7 +2,9 @@ package workflow_usecase
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"vozko/domain/workflow"
 )
@@ -153,6 +155,67 @@ func TestStartForConversationAtCapacityAndCreateFailureReleaseTheSlot(t *testing
 	}
 	if h.state.decrs != 1 || len(h.launcher.launched) != 0 {
 		t.Fatalf("the slot must be released and nothing launched, decrs=%d launched=%d", h.state.decrs, len(h.launcher.launched))
+	}
+}
+
+func agentCallableWorkflow() *workflow.Workflow {
+	w := tapWorkflow()
+	w.Graph.Nodes = append(w.Graph.Nodes, workflow.Node{ID: "tac", Type: workflow.NodeTypeTriggerAgentCall})
+	w.Graph.Edges = append(w.Graph.Edges, workflow.Edge{Source: "tac", Target: "e1"})
+	return w
+}
+
+func TestStartForConversationStartsAtTheTriggerOfTheAskedType(t *testing.T) {
+	h := newConversationStartHarness()
+	h.wfRepo.workflows["wf-tap"] = agentCallableWorkflow()
+	start := tapStart()
+	start.TriggerType = workflow.TriggerAgentCall
+	start.StartedBy = workflow.StartedByAgent("agent-1")
+
+	started, err := h.starter.StartForConversation(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := h.launcher.launched[0]
+	if started.RunID != run.ID || run.TriggerNodeID != "tac" || run.CurrentNodeID != "tac" {
+		t.Fatalf("run must start at the agent-call trigger, got %s/%s", run.TriggerNodeID, run.CurrentNodeID)
+	}
+	if run.TriggerType != workflow.TriggerAgentCall || run.StartedBy != "agent:agent-1" {
+		t.Fatalf("run = %+v", run)
+	}
+}
+
+func TestStartForConversationRefusesATriggerTypeTheWorkflowDoesNotHave(t *testing.T) {
+	h := newConversationStartHarness()
+	start := tapStart()
+	start.TriggerType = workflow.TriggerAgentCall
+
+	_, err := h.starter.StartForConversation(start)
+	if !errors.Is(err, workflow.ErrTriggerNotInWorkflow) || !strings.Contains(err.Error(), "trigger_agent_call") {
+		t.Fatalf("err = %v, want ErrTriggerNotInWorkflow naming the type", err)
+	}
+	if len(h.launcher.launched) != 0 || h.state.incrs != 0 {
+		t.Fatal("a refused start must not take a slot or launch")
+	}
+}
+
+func TestAnAlreadyRunningStartSaysSinceWhenAndWhere(t *testing.T) {
+	h := newConversationStartHarness()
+	h.wfRepo.workflows["wf-tap"] = agentCallableWorkflow()
+	since := time.Date(2026, 10, 19, 20, 15, 0, 0, time.UTC)
+	h.runRepo.runs["r-existing"] = &workflow.WorkflowRun{
+		ID: "r-existing", WorkflowID: "wf-tap", EntryID: "entry1", TriggerNodeID: "tac", CurrentNodeID: "e1",
+		Status: workflow.RunStatusRunning, StartedAt: since,
+	}
+	start := tapStart()
+	start.TriggerType = workflow.TriggerAgentCall
+
+	started, err := h.starter.StartForConversation(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !started.AlreadyRunning || !started.StartedAt.Equal(since) || started.CurrentNodeID != "e1" || started.CurrentNodeType != workflow.NodeTypeEnd {
+		t.Fatalf("started = %+v", started)
 	}
 }
 

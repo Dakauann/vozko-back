@@ -56,6 +56,7 @@ func (c *Container) initJobRunner() {
 	if c.webchat != nil {
 		channels = append(channels, analysisChannel{shared.EntryTypeWebchat, webchatAnalysisResolver(c.webchat)})
 	}
+	channels = append(channels, c.tiktokAnalysisChannel())
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		resolver := campaignAwareResolver(
 			unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp),
@@ -109,6 +110,7 @@ func (c *Container) initJobRunner() {
 	c.jobRunner = cronPackage.NewJobRunner(startScheduledWhatsappCampaignsJob, c.redisProvider.SharedState(), analysisDebounceJob, autoCloseJob, c.useCases.workflowManager, c.useCases.expireSubscriptions, c.useCases.remindExpiringSubscriptions, c.useCases.monitorLowBalance, c.useCases.renewCalendarChannels, c.useCases.reconcileWhatsAppTemplates, c.useCases.reconcileWhatsAppEntitlements, c.useCases.emitMonthlyInvoices, c.useCases.cancelBillingSweep, c.useCases.vendorChannelReconciler, c.useCases.channelStatusReconciler, c.useCases.purgeShortLinkClicks)
 
 	c.jobRunner.SetScheduledMessageJobs(c.useCases.sweepScheduledMessages, c.useCases.purgeScheduledMessages)
+	c.jobRunner.SetTeamChatJobs(c.teamChatSweep())
 	c.jobRunner.SetNotificationJobs(c.notificationJobs())
 
 	if c.services.assignmentService != nil {
@@ -167,6 +169,10 @@ func (c *Container) initJobRunner() {
 
 	c.jobRunner.SetWebhookEventPurgeJob(webhook_usecase.NewPurgeProcessedEventsUseCase(
 		webhook_repository.NewProcessedEventRepository(c.db), 30*24*time.Hour))
+	c.jobRunner.SetCommentRuleExecutionPurgeJob(c.commentAutomation().Purge)
+	c.jobRunner.SetWorkflowTraceRetentionJob(c.workflowTraceRetention())
+	c.jobRunner.SetWorkflowRuntimeAlertJob(c.useCases.workflowRuntimeAlerts)
+	c.jobRunner.SetAgentContinuationSweepJob(c.useCases.agentContinuationSweep)
 
 	if c.instagram != nil && c.instagram.Enabled {
 		c.jobRunner.SetInstagramJobs(c.instagram.RefreshTokens)
@@ -185,6 +191,8 @@ func (c *Container) initJobRunner() {
 		cronPackage.CtxJobFunc(c.ads.Conversions.DispatchAll),
 		cronPackage.CtxJobFunc(c.ads.GrantHealth.Execute),
 	)
+	forms := c.whatsappForms()
+	c.jobRunner.SetWhatsAppFormJobs(cronPackage.CtxJobFunc(forms.RecoverStuck), cronPackage.CtxJobFunc(forms.ReconcileAll))
 	c.jobRunner.SetMediaGenerationJobs(cronPackage.CtxJobFunc(c.mediaGeneration().Service.Reap))
 
 	if c.audience != nil && c.audience.Enabled {
@@ -194,6 +202,13 @@ func (c *Container) initJobRunner() {
 	if c.telegram != nil && c.telegram.Enabled {
 		c.jobRunner.SetTelegramJobs(c.telegram.CheckHealth)
 	}
+	if ml := c.mercadoLivre; ml == nil || ml.RefreshTokens == nil || ml.Health == nil || ml.Reconcile == nil || ml.MissedFeeds == nil || ml.Purge == nil {
+		log.Fatalf("[mercadolivre] the channel jobs were not built")
+	} else {
+		c.jobRunner.SetMercadoLivreJobs(ml.RefreshTokens, ml.Health, ml.Reconcile, ml.MissedFeeds)
+		c.jobRunner.SetMercadoLivrePurgeJob(ml.Purge)
+	}
+	c.registerTikTokJobs()
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 		c.jobRunner.SetUnofficialWhatsAppCampaignJobs(
 			cronPackage.CtxJobFunc(func(context.Context) error {

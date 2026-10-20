@@ -36,7 +36,7 @@ func (t *workflowStatusTool) Meta() copilot.Meta {
 func (t *workflowStatusTool) Definition() tools.Definition {
 	if t.activate {
 		return copilottools.Definition("activate_workflow",
-			"Ativa uma automação pausada ou em rascunho; ela volta a rodar nas conversas. Só depois da aprovação do usuário.",
+			"Publica o rascunho atual da automação e a deixa ativa; as novas execuções passam a usar essa versão publicada e as que já estão em andamento terminam na versão em que começaram. Só depois da aprovação do usuário.",
 			workflowStatusArgs{})
 	}
 	return copilottools.Definition("pause_workflow",
@@ -72,19 +72,26 @@ func (t *workflowStatusTool) Execute(ctx context.Context, cc copilot.Context, ar
 	change := t.workflows.Pause
 	if t.activate {
 		change = func(scope workflow.Scope, id string) (*workflow.Workflow, error) {
-			return t.workflows.Activate(ctx, scope, id)
+			return t.workflows.Publish(ctx, scope, id)
 		}
 	}
 	wf, err := change(ScopeOf(cc), id)
 	if err != nil {
 		return workflowFailure(t.Definition().Name, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{"workflow": wf.Name, "status": wf.Status}}
+	data := map[string]interface{}{"workflow": wf.Name, "status": wf.Status}
+	if t.activate && wf.PublishedVersion != nil {
+		data["published_version"] = *wf.PublishedVersion
+	}
+	return copilot.Result{Status: copilot.StatusOK, Data: data}
 }
 
 func workflowFailure(tool string, err error) copilot.Result {
 	if res, ok := copilottools.ConsentGrantRefusal(err); ok {
 		return res
+	}
+	if blocked, ok := workflow.NotPublishableOf(err); ok {
+		return copilot.Result{Status: copilot.StatusError, Message: "a automação tem problemas que impedem publicar; corrija todos antes de ativar: " + blocked.Error()}
 	}
 	switch {
 	case errors.Is(err, workflow.ErrWorkflowAccessDenied):

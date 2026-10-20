@@ -1,9 +1,12 @@
 package workflow
 
 import (
-	"errors"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
+
+	"vozko/domain/redact"
 )
 
 type LintSeverity string
@@ -11,6 +14,7 @@ type LintSeverity string
 const (
 	SeverityBlocking LintSeverity = "blocking"
 	SeverityAdvisory LintSeverity = "advisory"
+	SeverityInfo     LintSeverity = "info"
 )
 
 type LintIssueCode string
@@ -28,6 +32,7 @@ const (
 	LintTriggerIncompatible      LintIssueCode = "TRIGGER_INCOMPATIBLE_WITH_TYPE"
 	LintDuplicateTriggerType     LintIssueCode = "GRAPH_DUPLICATE_TRIGGER_TYPE"
 	LintTriggerHasIncoming       LintIssueCode = "TRIGGER_HAS_INCOMING_EDGE"
+	LintTriggerNotConnected      LintIssueCode = "TRIGGER_NOT_CONNECTED"
 	LintNodeNoIncoming           LintIssueCode = "NODE_NO_INCOMING"
 	LintNodeNoOutgoing           LintIssueCode = "NODE_NO_OUTGOING"
 	LintOrphanNode               LintIssueCode = "GRAPH_ORPHAN_NODE"
@@ -41,6 +46,12 @@ const (
 	LintInvalidToolParamType     LintIssueCode = "NODE_INVALID_TOOL_PARAM_TYPE"
 	LintInvalidInteractiveConfig LintIssueCode = "NODE_INVALID_INTERACTIVE_CONFIG"
 	LintInvalidDTMFConfig        LintIssueCode = "NODE_INVALID_DTMF_CONFIG"
+	LintInvalidResourceRef       LintIssueCode = "NODE_INVALID_RESOURCE_REF"
+	LintInvalidConfigValue       LintIssueCode = "NODE_INVALID_CONFIG_VALUE"
+	LintReasoningUnsupported     LintIssueCode = "NODE_REASONING_UNSUPPORTED"
+	LintPinInvalid               LintIssueCode = "NODE_PIN_INVALID"
+	LintVoiceTrunkInvalid        LintIssueCode = "WORKFLOW_VOICE_TRUNK_INVALID"
+	LintWorkflowInvalid          LintIssueCode = "WORKFLOW_INVALID"
 
 	LintBadHandleLabel      LintIssueCode = "EDGE_BAD_HANDLE_LABEL"
 	LintDanglingDataRef     LintIssueCode = "DATA_REF_DANGLING"
@@ -48,6 +59,9 @@ const (
 	LintMissingResourceRef  LintIssueCode = "NODE_MISSING_RESOURCE_REF"
 	LintUnknownConfigKey    LintIssueCode = "NODE_UNKNOWN_CONFIG_KEY"
 	LintConfigShapeMismatch LintIssueCode = "NODE_CONFIG_SHAPE_MISMATCH"
+	LintCodeReadsTemplate   LintIssueCode = "NODE_CODE_READS_TEMPLATE"
+	LintSecretInPlainText   LintIssueCode = "NODE_SECRET_IN_PLAIN_TEXT"
+	LintPinnedOutput        LintIssueCode = "NODE_PINNED_OUTPUT"
 )
 
 type LintIssue struct {
@@ -55,6 +69,7 @@ type LintIssue struct {
 	Severity LintSeverity  `json:"severity"`
 	NodeID   string        `json:"nodeId,omitempty"`
 	Field    string        `json:"field,omitempty"`
+	Path     string        `json:"path,omitempty"`
 	EdgeRef  string        `json:"edgeRef,omitempty"`
 	Message  string        `json:"message"`
 	Hint     string        `json:"hint,omitempty"`
@@ -62,6 +77,7 @@ type LintIssue struct {
 
 type LintReport struct {
 	Issues []LintIssue `json:"issues"`
+	causes []error
 }
 
 func (r LintReport) Blocking() []LintIssue {
@@ -142,6 +158,16 @@ var PureGraphRules = []GraphRule{
 		Hint:     "O nó action_consent em modo 'registrar' só vale depois da resposta do lead em todos os caminhos: a saída 'replied' de wait_for_reply, uma opção de action_send_interactive ou a saída 'true' de uma condição sobre {{selected_option_id}} ou {{selected_option_title}} (botão do template). Para opt-out use o modo 'retirar', que vale em qualquer ponto.",
 		Validate: ValidateConsentGrantsFollowAReply,
 	},
+	{
+		Code:     LintAgentCallInputsInvalid,
+		Hint:     "No gatilho Chamado por agente IA, cada campo precisa de um nome único com letras minúsculas, dígitos e _, e um tipo entre string, number, boolean, object e array. Sem campos também vale.",
+		Validate: ValidateAgentCallTriggers,
+	},
+	{
+		Code:     LintReplyToAgentWithoutTrigger,
+		Hint:     "O nó Responder ao agente só funciona em fluxos com o gatilho Chamado por agente IA. Adicione esse gatilho ou remova o nó.",
+		Validate: ValidateReplyToAgentNodes,
+	},
 }
 
 func RunPureGraphRules(g *Graph) error {
@@ -156,138 +182,268 @@ func RunPureGraphRules(g *Graph) error {
 func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt map[string]bool, resolveHandles DynamicHandleResolver) LintReport {
 	report := LintReport{}
 	add := func(i LintIssue) { report.Issues = append(report.Issues, i) }
-
-	if err := ValidateGraph(g, wfType, exempt); err != nil {
-		code, hint := structuralIssueInfo(err)
-		add(LintIssue{Code: code, Severity: SeverityBlocking, NodeID: nodeIDFromErr(err), Message: err.Error(), Hint: hint})
+	addProblem := func(err error, i LintIssue) {
+		i.Severity = SeverityBlocking
+		i.NodeID = nodeIDFromErr(err)
+		i.Message = err.Error()
+		add(i)
+		report.causes = append(report.causes, err)
 	}
 
-	if err := ValidateNodeScopes(g, wfType, catalog); err != nil {
-		add(LintIssue{
-			Code: LintNodeIncompatibleScope, Severity: SeverityBlocking,
-			NodeID:  nodeIDFromErr(err),
-			Message: err.Error(),
-			Hint:    fmt.Sprintf("Este tipo de nó não é permitido em workflows do tipo %q. Remova-o ou troque por um nó compatível.", wfType),
+	for _, err := range GraphProblems(g, wfType, exempt) {
+		code, hint := issueInfo(err)
+		addProblem(err, LintIssue{Code: code, Hint: hint})
+	}
+
+	for _, err := range NodeScopeProblems(g, wfType, catalog) {
+		addProblem(err, LintIssue{
+			Code: LintNodeIncompatibleScope,
+			Hint: fmt.Sprintf("Este tipo de nó não é permitido em workflows do tipo %q. Remova-o ou troque por um nó compatível.", wfType),
 		})
 	}
 
-	if err := ValidateRequiredOutputEdges(g, catalog); err != nil {
-		add(LintIssue{
-			Code: LintMissingRequiredOutput, Severity: SeverityBlocking,
-			NodeID:  nodeIDFromErr(err),
-			Message: err.Error(),
-			Hint:    "Conecte uma aresta a partir de cada saída obrigatória deste nó (o rótulo da aresta deve ser o id da saída).",
+	outputProblems := append(RequiredOutputProblems(g, catalog), RequiredDynamicOutputProblems(g, resolveHandles)...)
+	for _, err := range outputProblems {
+		addProblem(err, LintIssue{
+			Code: LintMissingRequiredOutput,
+			Path: missingOutputOf(err),
+			Hint: "Conecte uma aresta a partir de cada saída obrigatória deste nó (o rótulo da aresta deve ser o id da saída).",
 		})
 	}
 
-	if err := ValidateRequiredDynamicOutputs(g, resolveHandles); err != nil {
-		add(LintIssue{
-			Code: LintMissingRequiredOutput, Severity: SeverityBlocking,
-			NodeID:  nodeIDFromErr(err),
-			Message: err.Error(),
-			Hint:    "Conecte uma aresta a partir de cada saída obrigatória deste nó (o rótulo da aresta deve ser o id da saída).",
-		})
-	}
-
-	if err := ValidateNodeConfigs(g, catalog); err != nil {
-		code := LintMissingRequiredField
-		hint := "Preencha o campo de configuração obrigatório (use get_node_spec para ver o schema do nó)."
-		if errors.Is(err, ErrNodeFieldOutOfRange) {
-			code = LintFieldOutOfRange
-			hint = "Ajuste o valor para dentro do intervalo permitido do campo (veja Min/Max em get_node_spec)."
-		}
-		add(LintIssue{
-			Code: code, Severity: SeverityBlocking,
-			NodeID:  nodeIDFromErr(err),
-			Field:   fieldFromErr(err),
-			Message: err.Error(),
-			Hint:    hint,
-		})
+	for _, err := range append(NodeConfigProblems(g, catalog), StructuredConfigProblems(g)...) {
+		code, hint := issueInfo(err)
+		addProblem(err, LintIssue{Code: code, Field: fieldFromErr(err), Hint: hint})
 	}
 
 	for _, rule := range PureGraphRules {
 		if err := rule.Validate(g); err != nil {
-			add(LintIssue{
-				Code: rule.Code, Severity: SeverityBlocking,
-				NodeID:  nodeIDFromErr(err),
-				Field:   fieldFromErr(err),
-				Message: err.Error(),
-				Hint:    rule.Hint,
-			})
+			addProblem(err, LintIssue{Code: rule.Code, Field: fieldFromErr(err), Hint: rule.Hint})
 		}
 	}
 
 	defs := NodeCatalogMap(catalog)
-	lintDynamicHandles(g, resolveHandles, add)
+	lintEdgeHandles(g, defs, resolveHandles, add)
 	lintDataFlow(g, defs, add)
 	lintFunctionalResourceRefs(g, add)
 	lintNodeShape(g, defs, add)
+	lintCodeReadsTemplates(g, add)
+	lintSecretsInPlainText(g, add)
+	lintPinnedOutputs(g, add)
 
 	return report
 }
 
-func structuralIssueInfo(err error) (LintIssueCode, string) {
-	switch {
-	case errors.Is(err, ErrGraphEmpty):
-		return LintGraphEmpty, "O grafo está vazio. Adicione ao menos um nó de gatilho (trigger) e um nó 'end'."
-	case errors.Is(err, ErrGraphTooManyNodes):
-		return LintGraphTooManyNodes, "O grafo excede o número máximo de nós. Simplifique o fluxo."
-	case errors.Is(err, ErrGraphTooManyEdges):
-		return LintGraphTooManyEdges, "O grafo excede o número máximo de arestas. Simplifique as conexões."
-	case errors.Is(err, ErrInvalidWorkflowType):
-		return LintInvalidWorkflowType, "Defina um tipo de workflow válido ('messages' ou 'voip') via set_meta."
-	case errors.Is(err, ErrGraphDuplicateNodeID):
-		return LintDuplicateNodeID, "Há ids de nó duplicados. Cada nó precisa de um id único."
-	case errors.Is(err, ErrInvalidNodeType):
-		return LintInvalidNodeType, "Há um nó com tipo inválido. Use apenas tipos do catálogo."
-	case errors.Is(err, ErrGraphInvalidEdgeRef):
-		return LintInvalidEdgeRef, "Uma aresta referencia um nó inexistente. Remova-a ou corrija os ids de source/target."
-	case errors.Is(err, ErrGraphNoTrigger):
-		return LintNoTrigger, "Adicione um nó de gatilho (trigger), todo workflow precisa de pelo menos um."
-	case errors.Is(err, ErrGraphNoEndNode):
-		return LintNoEnd, "Adicione um nó 'end', todo workflow precisa de pelo menos um caminho que termine em 'end'."
-	case errors.Is(err, ErrGraphTriggerIncompatibleWithType):
-		return LintTriggerIncompatible, "O gatilho não é compatível com o tipo do workflow. Troque o gatilho ou o tipo (set_meta)."
-	case errors.Is(err, ErrGraphDuplicateTriggerType):
-		return LintDuplicateTriggerType, "Há gatilhos duplicados do mesmo tipo. Mantenha apenas um por tipo."
-	case errors.Is(err, ErrGraphNodeNoIncoming):
-		return LintNodeNoIncoming, "Um nó (não-gatilho) não tem aresta de entrada. Conecte-o a partir de um nó anterior."
-	case errors.Is(err, ErrGraphNodeNoOutgoing):
-		return LintNodeNoOutgoing, "Um nó (não-end) não tem aresta de saída. Conecte-o a um próximo nó ou a 'end'."
-	case errors.Is(err, ErrGraphOrphanNode):
-		return LintOrphanNode, "Há nós inalcançáveis a partir do gatilho. Conecte-os ao fluxo ou remova-os."
-	case errors.Is(err, ErrGraphCycleDetected):
-		return LintCycleDetected, "Há um ciclo inválido. Ciclos só são permitidos quando contêm um nó wait_* ou action_loop e conseguem alcançar um nó 'end'."
-	default:
-		return LintGraphStructure, "Corrija a estrutura do grafo conforme a mensagem."
+func lintPinnedOutputs(g *Graph, add func(LintIssue)) {
+	for _, n := range g.Nodes {
+		if n.Pinned == nil {
+			continue
+		}
+		add(LintIssue{
+			Code: LintPinnedOutput, Severity: SeverityInfo,
+			NodeID:  n.ID,
+			Message: "Saída fixada (apenas testes)",
+			Hint:    "Nos testes este nó devolve a saída fixada sem executar. Em produção ele sempre executa: a publicação remove as saídas fixadas.",
+		})
 	}
 }
 
-func lintDynamicHandles(g *Graph, resolveHandles DynamicHandleResolver, add func(LintIssue)) {
-	if resolveHandles == nil {
-		return
-	}
-	reserved := map[string]bool{"": true, "default": true, "erro": true}
+const genericCodeStatePath = "node.<id>.<campo>"
+
+func lintCodeReadsTemplates(g *Graph, add func(LintIssue)) {
 	for i := range g.Nodes {
 		n := g.Nodes[i]
-		handles, ok := resolveHandles(n)
-		if !ok {
+		if n.Type != NodeTypeActionCode {
 			continue
 		}
-		valid := make(map[string]bool, len(handles))
-		for _, h := range handles {
-			valid[h.ID] = true
+		code, _ := n.Config["code"].(string)
+		match := interpolationPattern.FindStringSubmatch(code)
+		if match == nil {
+			continue
+		}
+		hint := fmt.Sprintf("Leia a saída do nó anterior com input.<campo> e a de outro nó com state.get('%s').", genericCodeStatePath)
+		path := normalizeIndexing(match[1])
+		switch {
+		case strings.HasPrefix(path, SecretScope+"."):
+			hint = fmt.Sprintf("Leia o segredo do workspace com secrets.get('%s').", strings.TrimPrefix(path, SecretScope+"."))
+		case !strings.HasPrefix(path, "sys."):
+			hint += fmt.Sprintf(" Aqui: state.get('%s').", path)
+		}
+		add(LintIssue{
+			Code: LintCodeReadsTemplate, Severity: SeverityAdvisory,
+			NodeID:  n.ID,
+			Field:   "code",
+			Path:    "code",
+			Message: fmt.Sprintf("Código lê template: o nó %q usa %s dentro do JavaScript, mas templates não são interpolados no código, então o script recebe o texto literal", n.ID, match[0]),
+			Hint:    hint,
+		})
+	}
+}
+
+var codeCredentialAssignment = regexp.MustCompile("['\"]?([A-Za-z_$][\\w$]*)['\"]?\\s*[:=]\\s*('[^'\\n]+'|\"[^\"\\n]+\"|`[^`\\n]+`)")
+
+var secretNameUnsafe = regexp.MustCompile(`[^a-z0-9_]+`)
+
+func lintSecretsInPlainText(g *Graph, add func(LintIssue)) {
+	for i := range g.Nodes {
+		n := g.Nodes[i]
+		switch n.Type {
+		case NodeTypeActionHTTPRequest:
+			lintHTTPCredentials(n, add)
+		case NodeTypeActionSetVariable:
+			name, _ := n.Config["variable"].(string)
+			if redact.IsSensitiveKey(name) && isPlainCredential(n.Config["value"]) {
+				addPlainSecretIssue(add, n, "value", "config.value", fmt.Sprintf("a variável %q", name), templateSecretHint(name))
+			}
+		case NodeTypeActionCode:
+			code, _ := n.Config["code"].(string)
+			if name, ok := codeCredentialLiteral(code); ok {
+				addPlainSecretIssue(add, n, "code", "code:"+name, fmt.Sprintf("o valor atribuído a %q no JavaScript", name),
+					fmt.Sprintf("Mova o valor para os segredos do workspace e leia com secrets.get('%s').", suggestedSecretName(name)))
+			}
+		}
+	}
+}
+
+func lintHTTPCredentials(n Node, add func(LintIssue)) {
+	headers := RequestMap(n.Config["headers"])
+	for _, key := range sortedKeys(headers) {
+		if redact.IsSensitiveKey(key) && isPlainCredential(headers[key]) {
+			addPlainSecretIssue(add, n, "headers", "headers."+key, fmt.Sprintf("o cabeçalho %q", key), templateSecretHint(key))
+			break
+		}
+	}
+	if isPlainCredential(n.Config["auth_token"]) {
+		addPlainSecretIssue(add, n, "auth_token", "auth_token", "o token de autenticação", templateSecretHint("auth_token"))
+	}
+	body, _ := n.Config["body"].(string)
+	if path, ok := plainCredentialInJSON(RequestMap(body)); ok {
+		key := path[len(path)-1]
+		addPlainSecretIssue(add, n, "body", "body."+strings.Join(path, "."), fmt.Sprintf("o campo %q do corpo", key), templateSecretHint(key))
+	}
+}
+
+func plainCredentialInJSON(m map[string]interface{}) ([]string, bool) {
+	for _, key := range sortedKeys(m) {
+		if redact.IsSensitiveKey(key) && isPlainCredential(m[key]) {
+			return []string{key}, true
+		}
+		if nested, ok := m[key].(map[string]interface{}); ok {
+			if found, ok := plainCredentialInJSON(nested); ok {
+				return append([]string{key}, found...), true
+			}
+		}
+	}
+	return nil, false
+}
+
+func codeCredentialLiteral(code string) (string, bool) {
+	for _, m := range codeCredentialAssignment.FindAllStringSubmatch(code, -1) {
+		if !redact.IsSensitiveKey(m[1]) {
+			continue
+		}
+		if strings.HasPrefix(m[2], "`") && strings.Contains(m[2], "${") {
+			continue
+		}
+		return m[1], true
+	}
+	return "", false
+}
+
+func isPlainCredential(v interface{}) bool {
+	switch typed := v.(type) {
+	case nil:
+		return false
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		return trimmed != "" && !strings.Contains(trimmed, "{{")
+	case bool:
+		return false
+	default:
+		return true
+	}
+}
+
+func suggestedSecretName(key string) string {
+	name := strings.Trim(secretNameUnsafe.ReplaceAllString(strings.ToLower(key), "_"), "_")
+	if len(name) > 64 {
+		name = name[:64]
+	}
+	if name == "" {
+		return "nome"
+	}
+	return name
+}
+
+func templateSecretHint(key string) string {
+	return fmt.Sprintf("Mova o valor para os segredos do workspace e use {{secret.%s}} no lugar.", suggestedSecretName(key))
+}
+
+func addPlainSecretIssue(add func(LintIssue), n Node, field, path, what, hint string) {
+	add(LintIssue{
+		Code: LintSecretInPlainText, Severity: SeverityAdvisory,
+		NodeID:  n.ID,
+		Field:   field,
+		Path:    path,
+		Message: fmt.Sprintf("Segredo em texto no fluxo: o nó %q guarda %s em texto puro, que fica salvo no grafo e visível para quem abre ou exporta o fluxo", n.ID, what),
+		Hint:    hint,
+	})
+}
+
+func sortedKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func EdgeHasOutput(outputs []HandleDefinition, label string) bool {
+	if label == "" {
+		return true
+	}
+	if len(outputs) == 0 {
+		return label == "default"
+	}
+	for _, o := range outputs {
+		if o.ID == label {
+			return true
+		}
+	}
+	return false
+}
+
+func NodeOutputs(n Node, defs map[NodeType]NodeDefinition, resolveHandles DynamicHandleResolver) ([]HandleDefinition, bool) {
+	if resolveHandles != nil {
+		if handles, ok := resolveHandles(n); ok {
+			return handles, true
+		}
+	}
+	def, ok := defs[n.Type]
+	if !ok || def.DynamicHandles {
+		return nil, false
+	}
+	return def.Outputs, true
+}
+
+func lintEdgeHandles(g *Graph, defs map[NodeType]NodeDefinition, resolveHandles DynamicHandleResolver, add func(LintIssue)) {
+	for i := range g.Nodes {
+		n := g.Nodes[i]
+		outputs, known := NodeOutputs(n, defs, resolveHandles)
+		if !known {
+			continue
 		}
 		for _, e := range g.OutgoingEdges(n.ID) {
-			if reserved[e.Label] || valid[e.Label] {
+			if EdgeHasOutput(outputs, e.Label) {
 				continue
 			}
 			add(LintIssue{
-				Code: LintBadHandleLabel, Severity: SeverityAdvisory,
+				Code: LintBadHandleLabel, Severity: SeverityBlocking,
 				NodeID:  n.ID,
 				EdgeRef: e.Source + "->" + e.Target,
 				Message: fmt.Sprintf("aresta do nó %q usa o rótulo %q, que não corresponde a nenhuma saída atual do nó", n.ID, e.Label),
-				Hint:    "Defina as saídas (cases / custom_tools) ANTES de conectar, e use o id exato da saída como rótulo da aresta.",
+				Hint:    "Ligue a conexão de novo a partir de uma das saídas atuais do nó, ou apague-a. Para saídas dinâmicas, defina as opções (cases, custom_tools, botões ou linhas) ANTES de conectar e use o id exato da saída como rótulo da aresta.",
 			})
 		}
 	}

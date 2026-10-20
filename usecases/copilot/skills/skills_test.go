@@ -132,6 +132,7 @@ func TestTheStudioSeesDesignSkillsAndThePanelSeesAttendanceSkills(t *testing.T) 
 		"design-de-imagem":        {true, false},
 		"motion-design":           {true, false},
 		"metricas-de-atendimento": {false, true},
+		"formularios-whatsapp":    {false, true},
 		"criativos-que-performam": {true, true},
 		"briefing-criativo":       {true, true},
 	} {

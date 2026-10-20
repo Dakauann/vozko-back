@@ -19,7 +19,7 @@ func TestHTTPExecutor_WithoutAGuardedClientRefusesToSend(t *testing.T) {
 	defer srv.Close()
 
 	state := workflow.NewRunState()
-	res, err := NewHTTPRequestExecutor(HTTPEgress{}).Execute(httpNodeCtx("h1", map[string]interface{}{"url": srv.URL}, &state))
+	res, err := NewHTTPRequestExecutor(HTTPEgress{}, nil).Execute(httpNodeCtx("h1", map[string]interface{}{"url": srv.URL}, &state))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestHTTPExecutor_AHangUpAbortsTheRequest(t *testing.T) {
 	time.AfterFunc(50*time.Millisecond, func() { close(call.ended) })
 
 	started := time.Now()
-	res, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx)
+	res, err := NewHTTPRequestExecutor(testEgress(), nil).Execute(ctx)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestHTTPExecutor_ASlowServerTakesTheTimeoutBranch(t *testing.T) {
 	ctx := httpNodeCtx("h1", map[string]interface{}{"url": srv.URL, "timeout_seconds": float64(1)}, &state)
 	ctx.Graph.Edges = append(ctx.Graph.Edges, workflow.Edge{Source: "h1", Target: "slow", Label: "timeout"})
 
-	res, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx)
+	res, err := NewHTTPRequestExecutor(testEgress(), nil).Execute(ctx)
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}

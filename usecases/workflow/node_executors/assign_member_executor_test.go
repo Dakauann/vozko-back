@@ -296,7 +296,7 @@ func TestAssignMember_Definition(t *testing.T) {
 	}
 }
 
-func TestAssignMember_NoErrorEdge(t *testing.T) {
+func TestAssignMemberWithoutAnErrorEdgeFailsTheStepInsteadOfTakingTheSuccessPath(t *testing.T) {
 	wsMock := &assignMemberWorkspaceMock{member: nil, memberErr: nil}
 	iaMock := &assignMemberHandOffMock{}
 	exec := NewAssignMemberExecutor(wsMock, iaMock)
@@ -310,8 +310,8 @@ func TestAssignMember_NoErrorEdge(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if result.NextNodeID != "ok" {
-		t.Errorf("NextNodeID = %q, want ok (fallback)", result.NextNodeID)
+	if result.NextNodeID != "" || result.ErrorKind != workflow.ErrorKindConfig || result.Error == "" {
+		t.Errorf("result = %+v, want a config failure and no next node", result)
 	}
 	if result.Output["success"] != false {
 		t.Error("expected success=false")

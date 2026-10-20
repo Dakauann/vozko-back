@@ -211,6 +211,8 @@ func (r *mockEntryRepo) CountByConversationStatusForWorkspace(string) (map[strin
 	return nil, nil
 }
 
+func (r *mockEntryRepo) EachStored(string, func(wce.StoredEntry) error) error { return nil }
+
 type mockMessageRepo struct {
 	created []*conversation.Message
 }
@@ -270,6 +272,9 @@ func (r *mockMessageRepo) GetByExternalMessageID(shared.EntryType, string) (*con
 }
 func (r *mockMessageRepo) GetByEntryAndExternalMessageID(shared.EntryType, string, string) (*conversation.Message, error) {
 	return nil, nil
+}
+func (r *mockMessageRepo) GetByClientRequestID(shared.EntryType, string, string) (*conversation.Message, error) {
+	return nil, conversation.ErrMessageNotFound
 }
 func (r *mockMessageRepo) ClaimExternalEcho(*conversation.Message) (bool, error)          { return false, nil }
 func (r *mockMessageRepo) UpdateDeliveryStatus(string, conversation.DeliveryStatus) error { return nil }

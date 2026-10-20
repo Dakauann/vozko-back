@@ -24,7 +24,7 @@ Mande campanha só para quem aceitou receber mensagens do negócio por WhatsApp 
 - Tenha quem responda: campanha sem atendimento desperdiça as respostas.
 
 ## WhatsApp não oficial (QR code)
-Não tem modelos nem custo por mensagem, mas o número pode ser banido pelo WhatsApp se parecer spam. Use só com contatos que conhecem o negócio, envios lentos (o Vozko já espaça), listas pequenas e texto variado. Número novo precisa de uso normal antes de campanhas.
+Não tem modelos nem custo por mensagem, mas o número pode ser banido pelo WhatsApp se parecer spam. Use só com contatos que conhecem o negócio, envios lentos (a plataforma já espaça), listas pequenas e texto variado. Número novo precisa de uso normal antes de campanhas.
 
-## No Vozko
+## Na plataforma
 Oficial: preview_campaign_import, create_campaign, start_campaign. Não oficial: preview_unofficial_campaign_import, create_unofficial_campaign, start_unofficial_campaign. Mostre as linhas válidas, os problemas e o custo antes de iniciar.

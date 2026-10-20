@@ -63,7 +63,7 @@ var sendSkipNames = map[campaign.SkipReason]string{
 }
 
 var sendCountedNames = map[campaign.CountedReason]string{
-	campaign.CountedWindowOpen:        "com janela aberta (a Vozko cobra o modelo mesmo assim)",
+	campaign.CountedWindowOpen:        "com janela aberta (a plataforma cobra o modelo mesmo assim)",
 	campaign.CountedNoConsentRecorded: "sem consentimento registrado",
 }
 

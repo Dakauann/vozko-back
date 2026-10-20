@@ -11,7 +11,9 @@ import (
 
 const (
 	MaxReportDays  = 92
+	MaxExportDays  = 731
 	ReportTagLimit = 10
+	ExportPageRows = 500
 	reportDayForm  = "2006-01-02"
 )
 
@@ -27,7 +29,11 @@ type DayWindow struct {
 }
 
 func NewDayWindow(fromDay, toDay string, loc *time.Location) (DayWindow, error) {
-	if loc == nil {
+	return NewDayWindowWithin(fromDay, toDay, loc, MaxReportDays)
+}
+
+func NewDayWindowWithin(fromDay, toDay string, loc *time.Location, maxDays int) (DayWindow, error) {
+	if loc == nil || maxDays <= 0 {
 		return DayWindow{}, ErrReportWindowInvalid
 	}
 	from, err := time.ParseInLocation(reportDayForm, fromDay, loc)
@@ -39,7 +45,7 @@ func NewDayWindow(fromDay, toDay string, loc *time.Location) (DayWindow, error) 
 		return DayWindow{}, ErrReportWindowInvalid
 	}
 	w := DayWindow{From: from, To: last.AddDate(0, 0, 1), Location: loc}
-	if w.To.After(from.AddDate(0, 0, MaxReportDays)) {
+	if w.To.After(from.AddDate(0, 0, maxDays)) {
 		return DayWindow{}, ErrReportWindowTooLong
 	}
 	return w, nil
@@ -102,8 +108,25 @@ type DispatchReportReader interface {
 	Funnel(scope ReportScope) (Funnel, error)
 	Daily(scope ReportScope, window DayWindow) ([]DayCount, error)
 	FailureReasons(scope ReportScope) ([]FailureReasonCount, error)
-	Tags(scope ReportScope, limit int) ([]TagCount, error)
-	Campaigns(scope ReportScope, limit int) ([]CampaignFunnel, error)
+	Tags(scope ReportScope, page Page) ([]TagCount, error)
+	Campaigns(scope ReportScope, page Page) ([]CampaignFunnel, error)
+}
+
+type Page struct {
+	Limit  int
+	Offset int
+}
+
+func FirstPage(limit int) Page {
+	return Page{Limit: limit}
+}
+
+func (p Page) Next() Page {
+	return Page{Limit: p.Limit, Offset: p.Offset + p.Limit}
+}
+
+func (p Page) IsLast(rows int) bool {
+	return rows < p.Limit
 }
 
 func DenseDays(window DayWindow, sparse []DayCount) []DayCount {

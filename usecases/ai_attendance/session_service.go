@@ -97,6 +97,19 @@ func (s *SessionService) RecordAIReply(in aa.StartInput, messageID string) {
 	}
 }
 
+func (s *SessionService) RecordToolCalls(in aa.StartInput, count int) {
+	if count <= 0 {
+		return
+	}
+	sess := s.EnsureOpen(in)
+	if sess == nil {
+		return
+	}
+	if err := s.repo.IncrementToolCalls(sess.ID, count); err != nil {
+		log.Printf("[AIAttendance] IncrementToolCalls session=%s: %v", sess.ID, err)
+	}
+}
+
 func (s *SessionService) End(request aa.EndRequest) {
 	if s == nil || s.repo == nil {
 		return

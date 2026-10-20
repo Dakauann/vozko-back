@@ -2,29 +2,36 @@ package container
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
 	"time"
 
 	wsdelivery "vozko/delivery/ws"
+	"vozko/domain/ai"
 	conversation_domain "vozko/domain/conversation"
 	"vozko/domain/shared"
+	"vozko/domain/whatsapp/medialimits"
 	workflow_domain "vozko/domain/workflow"
 	conversation_infra "vozko/infra/conversation"
 	whatsapp_infra "vozko/infra/conversation/whatsapp"
 	"vozko/infra/conversation/whatsapp/media"
 	"vozko/infra/natdiscovery"
+	ah_repository "vozko/infra/repositories/assignment_history"
 	conversation_repository "vozko/infra/repositories/conversation"
 	ia_repo "vozko/infra/repositories/inbox_assignment"
 	wc_entry_repository "vozko/infra/repositories/whatsapp_campaign_entry"
 	aa_usecase "vozko/usecases/ai_attendance"
 	cauc "vozko/usecases/audience"
+	"vozko/usecases/channelmedia"
 	conversation_usecase "vozko/usecases/conversation"
 	ce_usecase "vozko/usecases/conversation_event"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	label_usecase "vozko/usecases/label"
+	"vozko/usecases/messageaction"
+	"vozko/usecases/messagestate"
 	stage_usecase "vozko/usecases/stage"
 )
 
@@ -81,6 +88,7 @@ func (c *Container) wireConversationHub() {
 	}); ok {
 		if wfs, ok := c.repositories.workflow.(interface {
 			FindByIDs(ids []string) ([]*workflow_domain.Workflow, error)
+			workflow_domain.VersionReader
 		}); ok {
 			historyProvider.SetWorkflowLookups(runs, wfs)
 		}
@@ -172,6 +180,8 @@ func (c *Container) wireConversationHub() {
 		c.redisProvider.SharedState(),
 	))
 	c.services.assignmentService.SetPresence(c.repositories.agentPresence)
+	c.services.assignmentService.SetWorkload(ia_repo.NewWorkloadRepository(c.db))
+	c.services.assignmentService.SetHandouts(ah_repository.NewHandoutReader(c.db))
 	c.services.delegations = conversation_repository.NewDelegationRepository(c.db)
 	entryInfo := conversation_repository.NewEntryAutomationReader(c.db)
 	c.services.assignmentService.SetAutomationGovernance(entryInfo)
@@ -272,6 +282,10 @@ func (c *Container) wireConversationHub() {
 
 }
 
+func (c *Container) agentTurnAI() ai.Service {
+	return aa_usecase.CountToolCalls(c.services.ai, c.services.aiAttendanceService, c.aiToolCallLog(), c.services.metrics)
+}
+
 func (c *Container) initConversationSenders() {
 	messageSender := conversation_usecase.NewMessageSenderService(
 		c.repositories.conversation,
@@ -289,6 +303,7 @@ func (c *Container) initConversationSenders() {
 	)
 	messageSender.SetCallPermissionRepo(c.repositories.callPermission)
 	messageSender.SetMediaLibrary(c.repositories.media)
+	messageSender.SetMediaDownloads(mediaDownloads())
 	c.services.messageSender = messageSender
 
 	operatorSend, err := conversation_usecase.NewOperatorSendUseCase(
@@ -296,19 +311,45 @@ func (c *Container) initConversationSenders() {
 		c.repositories.user,
 		c.services.operatorSendFinalizer,
 		c.services.serviceMessageBilling,
+		conversation_usecase.NewSendRequestLedger(c.repositories.conversation, c.redisProvider.SharedState()),
 	)
 	if err != nil {
 		log.Fatalf("[container] %v", err)
 	}
 	c.services.operatorSend = operatorSend
 	c.services.liveOperatorSend.Use(operatorSend)
+	c.wireMessageActions(messageSender)
 
 	c.services.channelAIReply = conversation_usecase.NewChannelAIReplyService(
 		c.repositories.agent,
-		c.services.ai,
+		c.agentTurnAI(),
 		c.repositories.conversation,
 		messageSender,
+		c.liveAdapterRegistry(),
+		c.services.assignmentService,
+		ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
 	)
+}
+
+func (c *Container) wireMessageActions(messageSender *conversation_usecase.MessageSenderService) {
+	actions, err := messageaction.NewUseCases(messageaction.Deps{
+		Access:   c.services.conversationAuth,
+		Messages: c.repositories.conversation,
+		Channels: messageaction.Channels{
+			Adapters: c.liveAdapterRegistry(),
+			Official: messageSender.OfficialReactions(),
+		},
+		Writer: messagestate.Writer{Messages: c.repositories.conversation, Announcer: c.services.conversationHub},
+		Send:   c.services.liveOperatorSend,
+	})
+	if err != nil {
+		log.Fatalf("[container] %v", err)
+	}
+	c.services.conversationHub.SetMessageActions(actions)
+	c.services.conversationHub.SetMediaLimits(channelmedia.Limits{
+		Adapters: c.liveAdapterRegistry(),
+		Official: medialimits.Official(),
+	})
 }
 
 func (c *Container) mustChannelAIReply() *conversation_usecase.ChannelAIReplyService {
@@ -343,6 +384,9 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	if adapter == nil {
 		return
 	}
+	if err := channelAdapterPortsGap(adapter); err != nil {
+		log.Fatalf("[container] %v", err)
+	}
 	c.services.channelAdapters = append(c.services.channelAdapters, adapter)
 	registry := conversation_domain.NewAdapterRegistry(c.services.channelAdapters...)
 
@@ -359,6 +403,16 @@ func (c *Container) registerChannelAdapter(adapter conversation_domain.ChannelAd
 	}); ok {
 		setter.SetChannelAdapters(registry)
 	}
+}
+
+func channelAdapterPortsGap(adapter conversation_domain.ChannelAdapter) error {
+	if _, described := adapter.(conversation_domain.CapabilitiesAdapter); !described {
+		return fmt.Errorf("the %s channel adapter does not describe its capabilities; agent replies could not respect its text rules", adapter.EntryType())
+	}
+	if _, batched := adapter.(conversation_domain.WindowStatesAdapter); !batched {
+		return fmt.Errorf("the %s channel adapter cannot report window states for a page of entries; its inbox rows would all show the composer closed", adapter.EntryType())
+	}
+	return nil
 }
 
 func (c *Container) liveAdapterRegistry() *conversation_domain.LiveAdapterRegistry {

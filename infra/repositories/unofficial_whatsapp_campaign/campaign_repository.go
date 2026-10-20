@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 
 	"vozko/domain/campaign"
@@ -74,7 +75,7 @@ func (r *repository) Update(campaignID string, c *uwc.Campaign) error {
 		"send_delay_max_ms":      c.SendDelayMaxMS,
 		"daily_cap":              c.DailyCap,
 		"archived":               c.Archived,
-		"instance_id":            c.InstanceID,
+		"instance_id":            schema.OptionalText(c.InstanceID),
 		"updated_at":             time.Now().UTC(),
 	}
 	if c.DepartmentID != "" {
@@ -220,7 +221,10 @@ func applyFilters(db *gorm.DB, input uwc.ListCampaignsInput) *gorm.DB {
 		db = db.Where("department_id IN ?", input.DepartmentIDs)
 	}
 	if len(input.InstanceIDs) > 0 {
-		db = db.Where("instance_id IN ?", input.InstanceIDs)
+		db = db.Where("(instance_id IN ? OR sender_instance_ids && ?)", input.InstanceIDs, pq.StringArray(input.InstanceIDs))
+	}
+	if input.Audience != "" {
+		db = db.Where("audience = ?", string(input.Audience))
 	}
 	if input.Status != "" {
 		db = db.Where("status = ?", string(input.Status))

@@ -262,6 +262,7 @@ func skipUnsupportedNode(ctx *workflow.NodeContext, nodeKind string) *workflow.N
 	log.Printf("[workflow][node:%s][run:%s] %s is not supported on channel %q, node skipped, run continues (entry=%s)",
 		ctx.Node.ID, ctx.Run.ID, nodeKind, ctx.Run.EntryType, ctx.Run.EntryID)
 	return &workflow.NodeResult{
+		Skipped: true,
 		Output: map[string]interface{}{
 			"sent":              false,
 			"skipped":           true,

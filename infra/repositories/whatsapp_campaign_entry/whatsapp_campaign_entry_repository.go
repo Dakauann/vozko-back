@@ -10,10 +10,12 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/database/schema"
+	"vozko/infra/database/sqlexpr"
 	"vozko/infra/repositories/campaignstamp"
 )
 
@@ -1318,6 +1320,9 @@ func (r *repository) UpdateConversationStatus(entryID string, write wce.Conversa
 			now := time.Now().UTC()
 			updates["closed_at"] = now
 		}
+	}
+	if conversation.ConversationStatus(write.Status).EndsTheWait() {
+		updates[sqlexpr.AwaitingReplySinceColumn] = nil
 	}
 
 	result := r.db.Model(&schema.WhatsAppCampaignEntry{}).

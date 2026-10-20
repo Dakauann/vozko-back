@@ -20,6 +20,7 @@ import (
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/domain/workflow"
 	conversation_usecase "vozko/usecases/conversation"
+	"vozko/usecases/messagestate"
 )
 
 type AssignmentService interface {
@@ -74,6 +75,7 @@ type HandleWebhookUseCase struct {
 	assignments        AssignmentService
 	aiReply            AIReplier
 	workflows          WorkflowTrigger
+	router             *conversation_usecase.InboundRouter
 	leads              LeadLinker
 	analysis           AnalysisScheduler
 	delegations        conversation.DelegationRepository
@@ -125,6 +127,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		assignments:   d.Assignments,
 		aiReply:       d.AIReply,
 		workflows:     d.Workflows,
+		router:        conversation_usecase.InboundRouterOf(d.Workflows),
 		leads:         d.Leads,
 		analysis:      d.Analysis,
 		delegations:   d.Delegations,
@@ -231,8 +234,13 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 	if err != nil {
 		log.Printf("[unofficial-whatsapp] delegation of %s unreadable, no automation runs: %v", sub.conversation.ID, err)
 	} else {
-		uc.fireWorkflowTriggers(instance, sub.conversation, ev, auto, automation)
-		if !exit.OptedOut {
+		event := uc.messageEvent(instance, sub.conversation, ev, auto, automation)
+		route := uc.router.Route(event, sub.conversation.RunsAutomation(instance.HandleGroups), false)
+		routed := uc.router.Deliver(route, event)
+		if route.Consumer.StartsRuns() {
+			uc.fireWorkflowTriggers(instance, sub.conversation, routed, automation)
+		}
+		if route.Consumer.AgentReplies() && !exit.OptedOut {
 			uc.maybeReplyWithAgent(ctx, instance, sub.subject, sub.conversation, ev, automation)
 		}
 	}
@@ -546,10 +554,50 @@ func (uc *HandleWebhookUseCase) handleMessageUpdate(ctx context.Context, instanc
 	}
 
 	uc.advanceDeliveryStatus(ctx, entryID, ev)
-	if entryID != "" {
-		uc.broadcastEntryUpdate(entryID)
+	if entryID == "" {
+		return nil
 	}
+	if ev.Kind == uw.EventMessageEdited || ev.Kind == uw.EventMessageDeleted {
+		return uc.applyProviderChange(entryID, ev)
+	}
+	uc.broadcastEntryUpdate(entryID)
 	return nil
+}
+
+func (uc *HandleWebhookUseCase) applyProviderChange(entryID string, ev *uw.Event) error {
+	target, found, err := uc.storedMessage(entryID, firstNonEmpty(ev.TargetProviderMessageID, ev.ProviderMessageID))
+	if err != nil {
+		return err
+	}
+	if !found {
+		uc.broadcastEntryUpdate(entryID)
+		return nil
+	}
+	receivedAt := time.Now().UTC()
+	if ev.Kind == uw.EventMessageDeleted {
+		target.Retract(receivedAt)
+	} else {
+		target.ApplyEdit(ev.Text, receivedAt)
+	}
+	return uc.stateWriter().Save(target)
+}
+
+func (uc *HandleWebhookUseCase) storedMessage(entryID, providerMessageID string) (*conversation.Message, bool, error) {
+	if uc.messages == nil || entryID == "" || providerMessageID == "" {
+		return nil, false, nil
+	}
+	stored, err := uc.messages.GetByEntryAndExternalMessageID(shared.EntryTypeUnofficialWhatsApp, entryID, providerMessageID)
+	if errors.Is(err, conversation.ErrMessageNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return stored, true, nil
+}
+
+func (uc *HandleWebhookUseCase) stateWriter() messagestate.Writer {
+	return messagestate.Writer{Messages: uc.messages, Announcer: uc.broadcaster}
 }
 
 func (uc *HandleWebhookUseCase) advanceDeliveryStatus(
@@ -602,28 +650,28 @@ func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, instance *uw
 	if err != nil {
 		return err
 	}
-	if uc.history == nil {
-		return nil
-	}
-	err = uc.history.Record(ctx, conversation.MessageHistoryRecord{
-		SentBy:            reactionSender(ev, sub),
-		EntryID:           sub.conversation.ID,
-		EntryType:         shared.EntryTypeUnofficialWhatsApp,
-		Channel:           conversation.MessageChannelUnofficialWhatsApp,
-		MessageType:       conversation.MessageTypeReaction,
-		ProviderMessageID: ev.ProviderMessageID,
-		Text:              ev.Emoji,
-		From:              sub.authorHandle,
-		To:                instance.Label(),
-		Timestamp:         ev.Timestamp,
-		Metadata:          inboundMetadata(ev),
-		SenderName:        sub.authorName,
-	})
+	target, found, err := uc.storedMessage(sub.conversation.ID, ev.TargetProviderMessageID)
 	if err != nil {
 		return err
 	}
-	uc.broadcastEntryUpdate(sub.conversation.ID)
-	return nil
+	if !found {
+		log.Printf("[unofficial-whatsapp] instance %s: reaction %s to message %s in conversation %s has no stored target, dropped",
+			instance.ID, ev.ProviderMessageID, ev.TargetProviderMessageID, sub.conversation.ID)
+		return nil
+	}
+	if err := target.React(reactionOf(ev, sub)); err != nil {
+		return err
+	}
+	return uc.stateWriter().Save(target)
+}
+
+func reactionOf(ev *uw.Event, sub *chatContext) conversation.Reaction {
+	reaction := conversation.Reaction{Emoji: ev.Emoji, Direction: conversation.ReactionInbound, ActorID: sub.authorHandle, At: messagestate.Stamp(ev.Timestamp)}
+	if ev.FromMe {
+		reaction.Direction = conversation.ReactionOutbound
+		reaction.ActorID = ""
+	}
+	return reaction
 }
 
 func (uc *HandleWebhookUseCase) handleConnection(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
@@ -678,15 +726,8 @@ func (uc *HandleWebhookUseCase) handleGroupChanged(ctx context.Context, instance
 	if err := uc.groups.markStale(ctx, instance.ID, ev.ChatID); err != nil {
 		log.Printf("[unofficial-whatsapp] could not flag group %s as stale: %v", ev.ChatID, err)
 	}
-	uc.watchGroupChange(ctx, instance, ev.ChatID)
+	uc.watchGroupChange(ctx, instance, ev.ChatID, ev.GroupChange)
 	return nil
-}
-
-func reactionSender(ev *uw.Event, sub *chatContext) conversation.SentBy {
-	if ev.FromMe {
-		return conversation.SentExternally()
-	}
-	return conversation.SentByContact(sub.authorHandle)
 }
 
 func (uc *HandleWebhookUseCase) handleCall(ctx context.Context, instance *uw.Instance, ev *uw.Event) error {
@@ -731,14 +772,22 @@ func (uc *HandleWebhookUseCase) scheduleAnalysis(instance *uw.Instance, conv *uw
 func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	instance *uw.Instance,
 	conv *uw.Conversation,
-	ev *uw.Event,
-	auto *CampaignAutomation,
+	event workflow.TriggerEvent,
 	automation conversation.ChannelAutomation,
 ) {
 	if uc.workflows == nil || !conv.RunsAutomation(instance.HandleGroups) || !automation.RunsWorkflows() {
 		return
 	}
+	uc.workflows.Evaluate(event)
+}
 
+func (uc *HandleWebhookUseCase) messageEvent(
+	instance *uw.Instance,
+	conv *uw.Conversation,
+	ev *uw.Event,
+	auto *CampaignAutomation,
+	automation conversation.ChannelAutomation,
+) workflow.TriggerEvent {
 	scopedWorkflowID := automation.WorkflowRef()
 	data := map[string]any{"text": ev.Text}
 
@@ -757,13 +806,13 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 	workflow.ApplyContactNumber(data, uw.PhoneFromJID(conv.ChatID))
 	workflow.ApplyTriggerMessage(data, uc.storedInboundID(conv.ID, ev.ProviderMessageID))
 
-	uc.workflows.Evaluate(workflow.TriggerEvent{
+	return workflow.TriggerEvent{
 		WorkspaceID: instance.WorkspaceID,
 		EntryID:     conv.ID,
 		EntryType:   string(shared.EntryTypeUnofficialWhatsApp),
 		TriggerType: workflow.TriggerMessageReceived,
 		Data:        data,
-	})
+	}
 }
 
 func (uc *HandleWebhookUseCase) storedInboundID(conversationID, providerMessageID string) string {

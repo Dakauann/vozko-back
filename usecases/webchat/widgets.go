@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"vozko/domain/pipeline"
 	"vozko/domain/shared"
 	wcdomain "vozko/domain/webchat"
+	"vozko/usecases/shared/automationrefs"
 )
 
 type WidgetInput struct {
@@ -43,12 +43,7 @@ type WidgetInput struct {
 	EnableAutoMemory     *bool
 }
 
-type References struct {
-	Agents      AgentFinder
-	Workflows   WorkflowFinder
-	Pipelines   PipelineFinder
-	Departments DepartmentFinder
-}
+type References = automationrefs.Finders
 
 type Widgets struct {
 	widgets wcdomain.WidgetRepository
@@ -184,34 +179,10 @@ func (uc *Widgets) apply(ctx context.Context, w *wcdomain.Widget, in WidgetInput
 	if err := w.Validate(); err != nil {
 		return err
 	}
-	return uc.refs.ownedBy(ctx, w)
-}
-
-func (r References) ownedBy(ctx context.Context, w *wcdomain.Widget) error {
-	ws := w.WorkspaceID
-	if w.AgentID != nil {
-		a, err := r.Agents.FindByID(*w.AgentID)
-		if err != nil || a == nil || a.WorkspaceID != ws {
-			return wcdomain.ErrReferenceNotInWorkspace
-		}
-	}
-	if w.WorkflowID != nil {
-		wf, err := r.Workflows.FindByID(*w.WorkflowID)
-		if err != nil || wf == nil || wf.WorkspaceID != ws {
-			return wcdomain.ErrReferenceNotInWorkspace
-		}
-	}
-	if w.PipelineID != nil {
-		p, err := r.Pipelines.GetByID(ws, *w.PipelineID)
-		if err != nil || p == nil || p.WorkspaceID != ws || p.ObjectType != pipeline.ObjectConversation {
-			return wcdomain.ErrReferenceNotInWorkspace
-		}
-	}
-	if w.DepartmentID != nil {
-		d, err := r.Departments.GetDepartmentByID(*w.DepartmentID)
-		if err != nil || d == nil || d.WorkspaceID != ws {
-			return wcdomain.ErrReferenceNotInWorkspace
-		}
+	if err := uc.refs.OwnedBy(ctx, w.WorkspaceID, automationrefs.Refs{
+		AgentID: w.AgentID, WorkflowID: w.WorkflowID, PipelineID: w.PipelineID, DepartmentID: w.DepartmentID,
+	}); err != nil {
+		return wcdomain.ErrReferenceNotInWorkspace
 	}
 	return nil
 }

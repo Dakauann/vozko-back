@@ -121,6 +121,9 @@ func (c *messageConsumerUseCase) precheck(campaignID string) error {
 	if err != nil || camp == nil {
 		return fmt.Errorf("unofficial whatsapp campaign consumer: campaign %s not found: %w", campaignID, err)
 	}
+	if camp.TargetsGroups() {
+		return c.precheckGroups(ctx, camp)
+	}
 	instance, err := c.deps.Instances.Instance(ctx, camp.InstanceID)
 	if err != nil || instance == nil {
 		return fmt.Errorf("unofficial whatsapp campaign consumer: number for campaign %s not found: %w", campaignID, err)
@@ -149,6 +152,9 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 	}
 	if entry.Status != campaign.SendStatusPending {
 		return campaignqueue.Drop
+	}
+	if entry.TargetsGroup() {
+		return c.handleGroup(ctx, camp, entry)
 	}
 
 	instance, err := c.deps.Instances.Instance(ctx, camp.InstanceID)
@@ -203,10 +209,22 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		return campaignqueue.RetryLater(wait)
 	}
 
+	result, delivered := c.deliver(ctx, camp, entry, instance, jid)
+	spent, sent = delivered, delivered
+	return result
+}
+
+func (c *messageConsumerUseCase) deliver(
+	ctx context.Context,
+	camp *uwc.Campaign,
+	entry *uwc.Entry,
+	instance *uw.Instance,
+	jid string,
+) (campaignqueue.Result, bool) {
 	resolved, err := c.openConversation(ctx, instance, camp, entry, jid)
 	if err != nil {
 		c.failEntry(entry.ID, errResolveConversation, "could not open a conversation with this number")
-		return campaignqueue.Drop
+		return campaignqueue.Drop, false
 	}
 
 	variant := camp.Message.VariantFor(entry.ID)
@@ -226,12 +244,11 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 		Footer:      camp.Message.Footer,
 	})
 	if err != nil {
-		return c.handleSendFailure(ctx, instance, camp, entry, err)
+		return c.handleSendFailure(ctx, instance, camp, entry, err), false
 	}
-	spent, sent = true, true
 
 	c.recordSuccess(ctx, camp, instance, entry, resolved, message, variant, c.sendExitText(camp, resolved))
-	return campaignqueue.Done
+	return campaignqueue.Done, true
 }
 
 type exitTextOutcome struct {
@@ -316,6 +333,7 @@ func (c *messageConsumerUseCase) recordSuccess(
 	}
 
 	if err := c.deps.Entries.RecordSend(entry.ID, uwc.RecordSendInput{
+		SenderInstanceID:  instance.ID,
 		ContactID:         resolved.Contact.ID,
 		ConversationID:    resolved.Conversation.ID,
 		ProviderMessageID: providerID,
@@ -412,9 +430,6 @@ func (c *messageConsumerUseCase) setEntryStatus(entryID string, status campaign.
 }
 
 func (c *messageConsumerUseCase) admit(ctx context.Context, camp *uwc.Campaign, entry *uwc.Entry, senderID string) campaignguard.Admission {
-	if entry.TargetsGroup() {
-		return c.admitGroup(ctx, entry, senderID)
-	}
 	admission := campaignguard.Admit(ctx, c.deps.Eligibility, camp.WorkspaceID, entry.LeadID, senderID,
 		func(status campaign.SendStatus, code int, message string) error {
 			return c.deps.Entries.UpdateStatus(entry.ID, status, "", code, message)

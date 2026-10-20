@@ -40,6 +40,7 @@ type VisitorMessage struct {
 	Text      string        `json:"text,omitempty"`
 	Media     *VisitorMedia `json:"media,omitempty"`
 	Options   []Option      `json:"options,omitempty"`
+	Quote     *VisitorQuote `json:"quote,omitempty"`
 	CreatedAt time.Time     `json:"createdAt"`
 }
 

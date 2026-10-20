@@ -38,7 +38,7 @@ type transcriptRow struct {
 
 const transcriptColumns = `SELECT id, created_at, from_participant, text, direction
 	FROM conversation_messages
-	WHERE entry_id = ? AND entry_type = 'unofficial_whatsapp' AND deleted_at IS NULL
+	WHERE entry_id = ? AND entry_type = 'unofficial_whatsapp' AND deleted_at IS NULL AND retracted_at IS NULL
 	  AND message_type <> 'reaction' AND btrim(text) <> '' AND text NOT LIKE '[%]'`
 
 func (r *messageReader) TextAfter(ctx context.Context, conversationID string, after uwg.Cursor, limit int) ([]uwg.TranscriptLine, error) {

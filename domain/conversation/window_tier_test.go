@@ -30,7 +30,7 @@ func TestEvaluateWindow(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := EvaluateWindow(caps, tc.last, now, tc.human)
+			got := EvaluateWindow(caps, tc.last, 0, now, tc.human)
 			if got.Open != tc.wantOpen || got.Tier != tc.wantTier || got.Reason != tc.wantReason {
 				t.Fatalf("window = %+v", got)
 			}

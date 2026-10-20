@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -21,7 +22,7 @@ import (
 // @Tags			Unofficial WhatsApp Groups
 // @Produce		json
 // @Param			id			path		string	true	"Grupo"
-// @Param			status		query		string	false	"active ou left"
+// @Param			status		query		string	false	"active, left (saiu, por conta própria ou sem autor conhecido) ou removed (removido por um admin)"
 // @Param			adminsOnly	query		bool	false	"Somente admins"
 // @Param			search		query		string	false	"Nome ou telefone"
 // @Param			leadLinked	query		bool	false	"Com ou sem lead"
@@ -42,7 +43,7 @@ func (h *WorkspaceGroupHandler) Members(w http.ResponseWriter, r *http.Request) 
 	values := r.URL.Query()
 	status := uwg.MemberStatus(strings.TrimSpace(values.Get("status")))
 	if status != "" && !status.Valid() {
-		response.WriteError(w, http.StatusBadRequest, "status must be active or left", nil)
+		response.WriteError(w, http.StatusBadRequest, "status must be active, left or removed", nil)
 		return
 	}
 	page, err := h.groups.ListMembers(r.Context(), a, mux.Vars(r)["id"], uwg.MemberFilter{
@@ -61,7 +62,7 @@ func (h *WorkspaceGroupHandler) Members(w http.ResponseWriter, r *http.Request) 
 }
 
 // @Summary		Exportar os membros de um grupo
-// @Description	Planilha CSV (separada por ponto e vírgula, com BOM) com nome, telefone, status, papel, datas de entrada e saída e se é um dos nossos números.
+// @Description	A mesma planilha CSV da exportação de vários grupos (`/unofficial-whatsapp/groups/members/export`), só com este grupo.
 // @Tags			Unofficial WhatsApp Groups
 // @Produce		text/csv
 // @Param			id	path		string	true	"Grupo"
@@ -80,11 +81,56 @@ func (h *WorkspaceGroupHandler) ExportMembers(w http.ResponseWriter, r *http.Req
 		writeWorkspaceGroupError(w, err)
 		return
 	}
+	writeMemberExport(w, export)
+}
+
+// @Summary		Exportar os membros de vários grupos
+// @Description	Uma única planilha CSV (separada por ponto e vírgula, com BOM) com os membros dos grupos escolhidos e/ou de uma série inteira: grupo, JID do grupo, nossos números no grupo, nome, telefone, JID, número oculto (LID), status (ativo, saiu, removido), papel (superadmin, admin, membro), datas no fuso do workspace, lead, outros grupos e qual dos nossos números é o membro. Um grupo fora do escopo de quem pede recusa a exportação inteira.
+// @Tags			Unofficial WhatsApp Groups
+// @Produce		text/csv
+// @Param			groupIds	query		string	false	"IDs dos grupos separados por vírgula"
+// @Param			seriesId	query		string	false	"Série: exporta todos os grupos dela"
+// @Success		200			{string}	string	"arquivo CSV"
+// @Failure		400			{object}	response.ErrorResponse
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		404			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/groups/members/export [get]
+func (h *WorkspaceGroupHandler) ExportGroupMembers(w http.ResponseWriter, r *http.Request) {
+	a, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	values := r.URL.Query()
+	export, err := h.groups.ExportGroupMembers(r.Context(), a, uwguc.MemberExportInput{
+		GroupIDs: listQuery(values, "groupIds"),
+		SeriesID: strings.TrimSpace(values.Get("seriesId")),
+	})
+	if err != nil {
+		writeWorkspaceGroupError(w, err)
+		return
+	}
+	writeMemberExport(w, export)
+}
+
+func writeMemberExport(w http.ResponseWriter, export *uwguc.MemberExport) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, export.FileName))
 	if _, err := io.WriteString(w, export.Document); err != nil {
 		log.Printf("[groups] member export not fully written: %v", err)
 	}
+}
+
+func listQuery(values url.Values, key string) []string {
+	var out []string
+	for _, raw := range values[key] {
+		for _, part := range strings.Split(raw, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
 }
 
 // @Summary		Cadastrar membros como leads
@@ -114,6 +160,38 @@ func (h *WorkspaceGroupHandler) MembersToLeads(w http.ResponseWriter, r *http.Re
 		return
 	}
 	result, err := h.groups.AddMembersToLeads(r.Context(), a, mux.Vars(r)["id"], req.PersonKeys)
+	if err != nil {
+		writeWorkspaceGroupError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, result)
+}
+
+// @Summary		Cadastrar pessoas dos grupos como leads
+// @Description	Para cada pessoa escolhida na lista de pessoas dos grupos, cria ou reaproveita um lead pelo telefone e vincula a ele todas as participações dela nos grupos acompanhados do escopo de quem pede. Pessoas com o telefone oculto não viram lead.
+// @Tags			Unofficial WhatsApp Groups
+// @Accept			json
+// @Produce		json
+// @Param			body	body		membersToLeadsRequest	true	"Pessoas"
+// @Success		200		{object}	unofficial_whatsapp_group_usecase.LeadLinkResult
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/groups/people/leads [post]
+func (h *WorkspaceGroupHandler) PeopleToLeads(w http.ResponseWriter, r *http.Request) {
+	a, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var req membersToLeadsRequest
+	if !decodeGroupBody(w, r, &req) {
+		return
+	}
+	if len(req.PersonKeys) == 0 {
+		response.WriteError(w, http.StatusBadRequest, "choose at least one person", nil)
+		return
+	}
+	result, err := h.groups.AddPeopleToLeads(r.Context(), a, req.PersonKeys)
 	if err != nil {
 		writeWorkspaceGroupError(w, err)
 		return
@@ -298,7 +376,7 @@ func (h *WorkspaceGroupHandler) PreviewInvite(w http.ResponseWriter, r *http.Req
 }
 
 // @Summary		Entrar em um grupo
-// @Description	O primeiro número entra na hora; os outros entram um a cada 10 minutos, para não parecer automação ao WhatsApp. Um convite revogado ou inválido para o plano inteiro; falhas passageiras tentam de novo até 3 vezes.
+// @Description	O primeiro número entra na hora; os outros entram um a cada 10 minutos, para não parecer automação ao WhatsApp. Um convite revogado ou inválido para o plano inteiro; falhas passageiras tentam de novo até 3 vezes. Com `category` o grupo fica nessa categoria (até 60 caracteres): a primeira entrada do plano define a categoria, as seguintes só preenchem um grupo ainda sem categoria.
 // @Tags			Unofficial WhatsApp Groups
 // @Accept			json
 // @Produce		json
@@ -319,7 +397,38 @@ func (h *WorkspaceGroupHandler) Join(w http.ResponseWriter, r *http.Request) {
 	if !decodeGroupBody(w, r, &req) {
 		return
 	}
-	result, err := h.groups.JoinGroup(r.Context(), a, uwguc.JoinInput{InviteLink: req.InviteLink, InstanceIDs: req.InstanceIDs, Follow: req.Follow})
+	result, err := h.groups.JoinGroup(r.Context(), a, uwguc.JoinInput{InviteLink: req.InviteLink, InstanceIDs: req.InstanceIDs, Follow: req.Follow, Category: req.Category})
+	if err != nil {
+		writeWorkspaceGroupError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusCreated, result)
+}
+
+// @Summary		Adicionar números a um grupo
+// @Description	Coloca no grupo números seus que ainda não estão nele, pela mesma fila de entradas: o primeiro entra na hora e os outros um a cada 10 minutos. O convite vem de um número seu que é admin do grupo; sem admin, usa o convite de uma entrada anterior do grupo. Sem nenhum dos dois o pedido é recusado e o grupo precisa ser aberto com um convite. Categoria e acompanhamento do grupo continuam como estão.
+// @Tags			Unofficial WhatsApp Groups
+// @Accept			json
+// @Produce		json
+// @Param			id		path		string					true	"ID do grupo"
+// @Param			body	body		addGroupNumbersRequest	true	"Números que vão entrar"
+// @Success		201		{object}	unofficial_whatsapp_group_usecase.JoinResult
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/groups/{id}/numbers [post]
+func (h *WorkspaceGroupHandler) AddNumbers(w http.ResponseWriter, r *http.Request) {
+	a, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	var req addGroupNumbersRequest
+	if !decodeGroupBody(w, r, &req) {
+		return
+	}
+	result, err := h.groups.AddNumbers(r.Context(), a, mux.Vars(r)["id"], req.InstanceIDs)
 	if err != nil {
 		writeWorkspaceGroupError(w, err)
 		return

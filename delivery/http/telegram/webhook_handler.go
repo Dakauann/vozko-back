@@ -106,6 +106,7 @@ func topicFor(u *tgdomain.Update) string {
 		u.BusinessMessage != nil,
 		u.EditedBusinessMessage != nil,
 		u.DeletedBusinessMessages != nil,
+		u.MessageReaction != nil,
 		u.CallbackQuery != nil:
 		return webhook.TopicTelegramMessage
 	default:

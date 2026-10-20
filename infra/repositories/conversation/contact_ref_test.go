@@ -62,6 +62,7 @@ func TestContactRef_ChannelsWithoutLeadsProjectTheirContactID(t *testing.T) {
 	for entryType, want := range map[shared.EntryType]string{
 		shared.EntryTypeInstagram: "igc.contact_id",
 		shared.EntryTypeTelegram:  "tgc.contact_id",
+		shared.EntryTypeMercadoLivre: "mlc.contact_id",
 		shared.EntryTypeWhatsApp:  "wce.lead_id",
 	} {
 		if got := contactRefUUID(entryType); got != want {

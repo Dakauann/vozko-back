@@ -68,7 +68,7 @@ func (c *Container) mediaGeneration() *mediaGenerationBundle {
 	if err != nil {
 		log.Fatalf("[media-generation] sound effect generator: %v", err)
 	}
-	mediaClient := &http.Client{Timeout: renderDownloadTimeout}
+	mediaClient := renderMediaClient()
 	cutout, err := rembg.New(c.cfg.RembgURL, &http.Client{Timeout: rembgTimeout}, mediaClient)
 	if err != nil {
 		log.Fatalf("[media-generation] background removal: %v", err)

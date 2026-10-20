@@ -319,7 +319,7 @@ func (b *fakeBroadcaster) BroadcastMessageSent(string, string, string, string, *
 }
 func (b *fakeBroadcaster) BroadcastMessageError(string, string, string, string, string, string) {}
 func (b *fakeBroadcaster) BroadcastRead(string, string, []string, string, time.Time)            {}
-func (b *fakeBroadcaster) BroadcastUnreadCount(string, string, int64)                           {}
+func (b *fakeBroadcaster) BroadcastMessageUpdated(string, string, *conversation.Message)        {}
 func (b *fakeBroadcaster) BroadcastTyping(string, string, string, bool)                         {}
 func (b *fakeBroadcaster) BroadcastStageUpdate(string, string, string)                          {}
 func (b *fakeBroadcaster) BroadcastLabelUpdate(string, string, string)                          {}

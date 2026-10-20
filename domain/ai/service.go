@@ -87,6 +87,18 @@ type GenerateInput struct {
 	SessionID          string
 	AsOf               time.Time
 	VolatileTail       int
+	AgentTurn          AgentTurn
+}
+
+type AgentTurn struct {
+	EntryID    string
+	EntryType  string
+	AgentID    string
+	CampaignID string
+}
+
+func (t AgentTurn) Identified() bool {
+	return t.EntryID != "" && t.EntryType != "" && t.AgentID != ""
 }
 
 type GenerateOutput struct {

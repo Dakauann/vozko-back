@@ -15,12 +15,13 @@ func NewGetCurrentTimeExecutor() workflow.NodeExecutor {
 
 func (e *getCurrentTimeExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionGetCurrentTime,
-		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Hora Atual",
-		Description: "Obtém a data e hora atual e salva em variáveis.",
-		Icon:        "Clock",
+		Type:         workflow.NodeTypeActionGetCurrentTime,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryLogic,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Hora Atual",
+		Description:  "Obtém a data e hora atual e salva em variáveis.",
+		Icon:         "Clock",
 		Guidance: workflow.NodeGuidance{
 			When: "Para obter a data/hora atual em um fuso e usar adiante.",
 		},

@@ -70,9 +70,50 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if ec == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
-	return conversation.EvaluateWindow(a.caps, ec.LastInboundAt, time.Now().UTC(), true), nil
-
+	account, err := a.accounts.FindByID(ctx, ec.AccountID)
+	if err != nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
+	}
+	return a.windowOf(account, ec.LastInboundAt, time.Now().UTC()), nil
 }
+
+func (a *channelAdapter) WindowStates(ctx context.Context, entryIDs []string) (map[string]conversation.WindowState, error) {
+	convs, err := a.conversations.FindByIDs(ctx, shared.UniqueNonEmpty(entryIDs))
+	if err != nil {
+		return nil, err
+	}
+	accountIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		accountIDs = append(accountIDs, conv.IGAccountID)
+	}
+	accounts, err := a.accounts.FindByIDs(ctx, shared.UniqueNonEmpty(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	accountByID := make(map[string]*igdomain.Account, len(accounts))
+	for _, account := range accounts {
+		accountByID[account.ID] = account
+	}
+	now := time.Now().UTC()
+	out := make(map[string]conversation.WindowState, len(convs))
+	for _, conv := range convs {
+		out[conv.ID] = a.windowOf(accountByID[conv.IGAccountID], conv.LastCustomerMessageAt, now)
+	}
+	return out, nil
+}
+
+func (a *channelAdapter) windowOf(account *igdomain.Account, lastInbound *time.Time, now time.Time) conversation.WindowState {
+	if account == nil || !account.CanReceiveMessages() || account.AccessToken == "" {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+	}
+	return conversation.EvaluateWindow(a.caps, lastInbound, 0, now, true)
+}
+
+var _ conversation.WindowStatesAdapter = (*channelAdapter)(nil)
+
+func (a *channelAdapter) Capabilities() channel.Capabilities { return a.caps }
+
+var _ conversation.CapabilitiesAdapter = (*channelAdapter)(nil)
 
 func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	account, err := a.sendableAccount(ctx, ec)

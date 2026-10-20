@@ -24,7 +24,6 @@ import (
 var (
 	_ conversation.WhatsAppClient               = (*simWhatsAppClient)(nil)
 	_ conversation.WhatsAppClientFactory        = (*simWhatsAppClientFactory)(nil)
-	_ conversation.MessageHistoryManager        = (*simHistoryManager)(nil)
 	_ lead_domain.Repository                    = (*simLeadRepo)(nil)
 	_ wce.Repository                            = (*simWhatsAppEntryRepo)(nil)
 	_ businessphone.Repository                  = (*simBusinessPhoneRepo)(nil)
@@ -37,31 +36,40 @@ var (
 )
 
 type SimOutboundMessage struct {
-	Type        string      `json:"type"`
-	Text        string      `json:"text"`
-	To          string      `json:"to"`
-	MessageID   string      `json:"messageId"`
-	Extra       interface{} `json:"extra,omitempty"`
-	AudioBase64 string      `json:"audioBase64,omitempty"`
-	AudioMime   string      `json:"audioMime,omitempty"`
+	Type        string                `json:"type"`
+	Text        string                `json:"text"`
+	To          string                `json:"to"`
+	MessageID   string                `json:"messageId"`
+	Extra       interface{}           `json:"extra,omitempty"`
+	AudioBase64 string                `json:"audioBase64,omitempty"`
+	AudioMime   string                `json:"audioMime,omitempty"`
+	Message     *conversation.Message `json:"message,omitempty"`
 }
 
 type simWhatsAppClient struct {
-	outCh chan<- SimOutboundMessage
+	channel *simChannel
 }
 
-func newSimWhatsAppClient(outCh chan<- SimOutboundMessage) *simWhatsAppClient {
-	return &simWhatsAppClient{outCh: outCh}
+func newSimWhatsAppClient(channel *simChannel) *simWhatsAppClient {
+	return &simWhatsAppClient{channel: channel}
 }
 
-func (c *simWhatsAppClient) fakeOutput(text, msgType string) *conversation.SendTextMessageOutput {
-	id := "sim-" + uuid.New().String()
-	c.outCh <- SimOutboundMessage{Type: msgType, Text: text, MessageID: id, To: "5511999990000"}
-	return &conversation.SendTextMessageOutput{MessageID: id}
+func (c *simWhatsAppClient) fakeOutput(send simChannelSend) *conversation.SendTextMessageOutput {
+	if send.summary == "" {
+		send.summary = send.text
+	}
+	return &conversation.SendTextMessageOutput{MessageID: c.channel.sent(send)}
+}
+
+func (c *simWhatsAppClient) mediaOutput(kind conversation.MediaType, media *conversation.AttachedMedia, caption string) *conversation.SendTextMessageOutput {
+	return c.fakeOutput(simChannelSend{
+		msgType: simChannelMessageTypeMedia, text: caption, summary: "[" + string(kind) + "] " + caption,
+		mediaType: kind, media: media,
+	})
 }
 
 func (c *simWhatsAppClient) SendTextMessage(_ context.Context, input conversation.SendTextMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput(input.Body, "text"), nil
+	return c.fakeOutput(simChannelSend{msgType: simChannelMessageTypeText, text: input.Body}), nil
 }
 
 func (c *simWhatsAppClient) SendButtonMessage(_ context.Context, input conversation.SendButtonMessageInput) (*conversation.SendTextMessageOutput, error) {
@@ -69,7 +77,7 @@ func (c *simWhatsAppClient) SendButtonMessage(_ context.Context, input conversat
 		return nil, err
 	}
 	labelsJSON, _ := json.Marshal(input.Buttons)
-	return c.fakeOutput(input.BodyText+" [buttons:"+string(labelsJSON)+"]", "button"), nil
+	return c.fakeOutput(simChannelSend{msgType: simChannelMessageTypeButton, text: input.BodyText, summary: input.BodyText + " [buttons:" + string(labelsJSON) + "]"}), nil
 }
 
 func (c *simWhatsAppClient) SendListMessage(_ context.Context, input conversation.SendListMessageInput) (*conversation.SendTextMessageOutput, error) {
@@ -77,36 +85,47 @@ func (c *simWhatsAppClient) SendListMessage(_ context.Context, input conversatio
 		return nil, err
 	}
 	sectionsJSON, _ := json.Marshal(input.Sections)
-	return c.fakeOutput(input.BodyText+" [list:"+string(sectionsJSON)+"]", "list"), nil
+	return c.fakeOutput(simChannelSend{msgType: simChannelMessageTypeList, text: input.BodyText, summary: input.BodyText + " [list:" + string(sectionsJSON) + "]"}), nil
+}
+
+func (c *simWhatsAppClient) SendFlowMessage(_ context.Context, input conversation.SendFlowMessageInput) (*conversation.SendTextMessageOutput, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
+	return c.fakeOutput(simChannelSend{msgType: "flow", text: input.Body, summary: input.Body + " [flow:" + input.FlowID + "]"}), nil
 }
 
 func (c *simWhatsAppClient) SendCallPermissionRequest(_ context.Context, input conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput(input.BodyText+" [call_permission_request]", "call_permission_request"), nil
+	return c.fakeOutput(simChannelSend{msgType: "call_permission_request", text: input.BodyText, summary: input.BodyText + " [call_permission_request]"}), nil
 }
 
 func (c *simWhatsAppClient) SendImageMessage(_ context.Context, input conversation.SendImageMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput("[image] "+input.Caption, "media"), nil
+	return c.mediaOutput(conversation.MediaTypeImage, c.channel.attached(input.Link, input.ImageID, ""), input.Caption), nil
 }
 
 func (c *simWhatsAppClient) SendVideoMessage(_ context.Context, input conversation.SendVideoMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput("[video] "+input.Caption, "media"), nil
+	return c.mediaOutput(conversation.MediaTypeVideo, c.channel.attached(input.Link, input.VideoID, ""), input.Caption), nil
 }
 
 func (c *simWhatsAppClient) SendDocumentMessage(_ context.Context, input conversation.SendDocumentMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput("[document] "+input.Caption, "media"), nil
+	return c.mediaOutput(conversation.MediaTypeDocument, c.channel.attached(input.Link, input.DocumentID, input.Filename), input.Caption), nil
 }
 
-func (c *simWhatsAppClient) SendStickerMessage(_ context.Context, _ conversation.SendStickerMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput("[sticker]", "media"), nil
+func (c *simWhatsAppClient) SendStickerMessage(_ context.Context, input conversation.SendStickerMessageInput) (*conversation.SendTextMessageOutput, error) {
+	return c.fakeOutput(simChannelSend{
+		msgType: simChannelMessageTypeMedia, summary: "[sticker]", mediaType: conversation.MediaTypeSticker,
+		media: c.channel.attached(input.Link, input.StickerID, ""),
+	}), nil
 }
 
 func (c *simWhatsAppClient) SendAudioMessage(_ context.Context, input conversation.SendAudioMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput("[audio] "+input.AudioURL, "media"), nil
+	return c.fakeOutput(simChannelSend{
+		msgType: simChannelMessageTypeMedia, summary: "[audio] " + input.AudioURL, mediaType: conversation.MediaTypeAudio,
+		media: c.channel.attached(input.AudioURL, "", ""),
+	}), nil
 }
 
 func (c *simWhatsAppClient) SendAudioBytes(_ context.Context, _ string, data []byte, filename string, mime string) (*conversation.SendTextMessageOutput, error) {
-
-	id := "sim-" + uuid.New().String()
 	if strings.TrimSpace(mime) == "" {
 		mime = "audio/ogg"
 	}
@@ -118,32 +137,27 @@ func (c *simWhatsAppClient) SendAudioBytes(_ context.Context, _ string, data []b
 	if len(data) > 0 {
 		encoded = base64.StdEncoding.EncodeToString(data)
 	}
-	c.outCh <- SimOutboundMessage{
-		Type:        "audio",
-		Text:        caption,
-		MessageID:   id,
-		To:          "5511999990000",
-		AudioBase64: encoded,
-		AudioMime:   mime,
-	}
-	return &conversation.SendTextMessageOutput{MessageID: id}, nil
+	return c.fakeOutput(simChannelSend{
+		msgType: simChannelMessageTypeAudio, summary: caption, audioBase64: encoded, audioMime: mime,
+		mediaType: conversation.MediaTypeAudio, media: &conversation.AttachedMedia{MimeType: mime, Filename: filename, Size: int64(len(data))},
+	}), nil
 }
 
 func (c *simWhatsAppClient) SendTemplateMessage(_ context.Context, input conversation.SendTemplateMessageInput) (*conversation.SendTextMessageOutput, error) {
-	return c.fakeOutput("[template:"+input.TemplateName+"]", "template"), nil
+	return c.fakeOutput(simChannelSend{msgType: "template", summary: "[template:" + input.TemplateName + "]"}), nil
 }
 
 func (c *simWhatsAppClient) SendTypingIndicator(_ context.Context, _ string) error { return nil }
 func (c *simWhatsAppClient) MarkMessageAsRead(_ context.Context, _ string) error   { return nil }
 
-func (c *simWhatsAppClient) UploadAudio(_ context.Context, _ []byte, _ string) (string, error) {
-	return "sim-media-" + uuid.New().String(), nil
+func (c *simWhatsAppClient) UploadAudio(_ context.Context, data []byte, filename string) (string, error) {
+	return c.channel.upload(data, filename, ""), nil
 }
-func (c *simWhatsAppClient) UploadImage(_ context.Context, _ []byte, _ string, _ string) (string, error) {
-	return "sim-media-" + uuid.New().String(), nil
+func (c *simWhatsAppClient) UploadImage(_ context.Context, data []byte, filename string, mime string) (string, error) {
+	return c.channel.upload(data, filename, mime), nil
 }
-func (c *simWhatsAppClient) UploadMedia(_ context.Context, _ []byte, _ string, _ string) (string, error) {
-	return "sim-media-" + uuid.New().String(), nil
+func (c *simWhatsAppClient) UploadMedia(_ context.Context, data []byte, filename string, mime string) (string, error) {
+	return c.channel.upload(data, filename, mime), nil
 }
 func (c *simWhatsAppClient) DownloadMedia(_ context.Context, _ string) ([]byte, string, error) {
 	return []byte{}, "application/octet-stream", nil
@@ -172,8 +186,8 @@ type simWhatsAppClientFactory struct {
 	client *simWhatsAppClient
 }
 
-func newSimWhatsAppClientFactory(outCh chan<- SimOutboundMessage) *simWhatsAppClientFactory {
-	return &simWhatsAppClientFactory{client: newSimWhatsAppClient(outCh)}
+func newSimWhatsAppClientFactory(channel *simChannel) *simWhatsAppClientFactory {
+	return &simWhatsAppClientFactory{client: newSimWhatsAppClient(channel)}
 }
 
 func (f *simWhatsAppClientFactory) ClientForPhone(_ string) (conversation.WhatsAppClient, error) {
@@ -357,6 +371,10 @@ func (r *simWhatsAppEntryRepo) CountByConversationStatusForWorkspace(_ string) (
 	return nil, nil
 }
 
+func (r *simWhatsAppEntryRepo) EachStored(string, func(wce.StoredEntry) error) error {
+	return nil
+}
+
 type simBusinessPhoneRepo struct {
 	workspaceID string
 }
@@ -425,23 +443,11 @@ func (r *simMessageWindowRepo) FindByLeadAndBusinessPhone(_, _ string) (*lead_me
 func (r *simMessageWindowRepo) FindAllByLead(_ string) ([]*lead_message_window_domain.LeadMessageWindow, error) {
 	return nil, nil
 }
-func (r *simMessageWindowRepo) FindOpenWindowsByLeadIDs(_ []string, _ string) (map[string]*lead_message_window_domain.LeadMessageWindow, error) {
+func (r *simMessageWindowRepo) FindByLeadIDs(_ []string) ([]*lead_message_window_domain.LeadMessageWindow, error) {
 	return nil, nil
 }
 func (r *simMessageWindowRepo) GetLastMessageTime(_, _ string) (*time.Time, error) {
 	return nil, nil
-}
-
-type simHistoryManager struct {
-	mu      sync.Mutex
-	records []conversation.MessageHistoryRecord
-}
-
-func (m *simHistoryManager) Record(_ context.Context, record conversation.MessageHistoryRecord) error {
-	m.mu.Lock()
-	m.records = append(m.records, record)
-	m.mu.Unlock()
-	return nil
 }
 
 type simTemplateSends struct {
@@ -543,6 +549,9 @@ func (r *simMessageRepo) GetByExternalMessageID(_ shared.EntryType, _ string) (*
 }
 func (r *simMessageRepo) GetByEntryAndExternalMessageID(_ shared.EntryType, _, _ string) (*conversation.Message, error) {
 	return nil, nil
+}
+func (r *simMessageRepo) GetByClientRequestID(_ shared.EntryType, _, _ string) (*conversation.Message, error) {
+	return nil, conversation.ErrMessageNotFound
 }
 func (r *simMessageRepo) ClaimExternalEcho(_ *conversation.Message) (bool, error) {
 	return false, nil
@@ -673,6 +682,15 @@ func (r *simLogRepo) FindByRunID(_ string) ([]*workflow.WorkflowRunLog, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.logs, nil
+}
+
+func (r *simLogRepo) PageByRunID(_ string, offset, limit int) ([]*workflow.WorkflowRunLog, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if offset >= len(r.logs) {
+		return []*workflow.WorkflowRunLog{}, nil
+	}
+	return r.logs[offset:min(offset+limit, len(r.logs))], nil
 }
 
 func (r *simLogRepo) CountByRun(_ string) (int64, error) {

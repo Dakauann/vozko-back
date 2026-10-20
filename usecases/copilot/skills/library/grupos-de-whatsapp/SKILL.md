@@ -33,8 +33,10 @@ description: Como ler e cuidar dos grupos de WhatsApp dos números por QR code: 
 
 ## Mandando mensagem em grupos
 - Grupo é espaço coletivo: mensagem demais faz as pessoas silenciarem ou saírem. Poucas mensagens por semana, com valor (novidade, oferta real, aviso útil).
-- Em grupo onde só admins enviam, só um número admin consegue postar; os outros números não servem para a campanha.
-- Uma campanha para grupos manda a mesma mensagem em cada grupo escolhido, aos poucos, pelo número escolhido. Mostre os grupos e o texto antes de iniciar.
+- Em grupo onde só admins enviam, só um número admin consegue postar; os outros números não servem para aquele grupo.
+- Uma campanha para grupos não tem número: cada grupo sai por um dos números do usuário que está nele e pode postar, e a plataforma divide o volume entre esses números, que enviam ao mesmo tempo. Mais números nos grupos deixam a campanha mais rápida e espalham o risco.
+- Um grupo sem nenhum número que possa postar não entra na campanha. Se o número que posta estiver desconectado, o grupo espera ele voltar.
+- O cartão mostra, por grupo, quais números podem postar e quanto tempo o envio deve levar. Mostre isso, os grupos e o texto antes de iniciar.
 - Entrar em muitos grupos de uma vez com o mesmo número parece automação para o WhatsApp. A plataforma espaça as entradas; não sugira contornar isso.
 
 ## Na plataforma

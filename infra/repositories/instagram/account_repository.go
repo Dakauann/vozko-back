@@ -140,6 +140,18 @@ func (r *accountRepository) FindByID(ctx context.Context, id string) (*igdomain.
 	return toAccountDomain(&record), nil
 }
 
+func (r *accountRepository) FindByIDs(ctx context.Context, ids []string) ([]*igdomain.Account, error) {
+	records, err := database.FindByIDs[schema.InstagramAccount](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*igdomain.Account, 0, len(records))
+	for i := range records {
+		out = append(out, toAccountDomain(&records[i]))
+	}
+	return out, nil
+}
+
 func (r *accountRepository) FindByIGUserID(ctx context.Context, igUserID string) (*igdomain.Account, error) {
 	var record schema.InstagramAccount
 	if err := r.db.WithContext(ctx).First(&record, "ig_user_id = ?", igUserID).Error; err != nil {

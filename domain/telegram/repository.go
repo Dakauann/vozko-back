@@ -16,6 +16,7 @@ type AccountRepository interface {
 	SetWebhookRegistered(ctx context.Context, id string, at time.Time) error
 
 	FindByID(ctx context.Context, id string) (*Account, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Account, error)
 	FindByIDForWebhook(ctx context.Context, id string) (*Account, error)
 	FindByBotUserID(ctx context.Context, botUserID int64) (*Account, error)
 	FindByBotUserIDUnscoped(ctx context.Context, botUserID int64) (*Account, error)
@@ -82,6 +83,7 @@ type ContactProfile struct {
 type ConversationRepository interface {
 	FindOrCreate(ctx context.Context, in FindOrCreateConversationInput) (*Conversation, error)
 	FindByID(ctx context.Context, id string) (*Conversation, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Conversation, error)
 	FindByContact(ctx context.Context, accountID, contactID string) (*Conversation, error)
 	FindByChat(ctx context.Context, accountID string, chatID int64) (*Conversation, error)
 

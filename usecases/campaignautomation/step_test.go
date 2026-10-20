@@ -144,3 +144,100 @@ func TestRequireRunsTheStepOnlyWhenTheCampaignHasAutomation(t *testing.T) {
 		t.Fatalf("Require with a nil step = %v, want ErrAutomationUnavailable", err)
 	}
 }
+
+func storedEntries(entries ...campaign.EntryMetadata) (StoredEntries, *int) {
+	visited := 0
+	return func(visit func(campaign.EntryMetadata) error) error {
+		for _, entry := range entries {
+			visited++
+			if err := visit(entry); err != nil {
+				return err
+			}
+		}
+		return nil
+	}, &visited
+}
+
+func TestRequireStoredChecksTheSavedEntriesOnlyWhenTheAutomationChanges(t *testing.T) {
+	step := newStep(t,
+		fakeWorkflows{byID: map[string]*workflow.Workflow{"wf-1": needsSchoolWorkflow("ws-1")}},
+		fakeAgents{byID: map[string]*agent.Agent{"agent-1": needsSchoolAgent("ws-1")}},
+	)
+	school := campaign.EntryMetadata{Label: "lead 1", Metadata: map[string]any{"escola": "Prisma"}}
+	noSchool := campaign.EntryMetadata{Label: "lead 2"}
+	workflowAutomation := campaign.Automation{WorkflowID: "wf-1", EnableWorkflow: true}
+	agentAutomation := campaign.Automation{AgentID: "agent-1", EnableAgentResponses: true}
+	cases := []struct {
+		name   string
+		before campaign.Automation
+		after  campaign.Automation
+		saved  []campaign.EntryMetadata
+		want   error
+	}{
+		{name: "an edit that keeps the automation reads no entry", before: workflowAutomation, after: workflowAutomation, saved: []campaign.EntryMetadata{noSchool}},
+		{name: "turning the automation off reads no entry", before: workflowAutomation, after: campaign.Automation{}, saved: []campaign.EntryMetadata{noSchool}},
+		{name: "a new workflow whose variables every saved entry has", before: campaign.Automation{}, after: workflowAutomation, saved: []campaign.EntryMetadata{school, school}},
+		{name: "a new workflow a saved entry cannot fill", before: campaign.Automation{}, after: workflowAutomation, saved: []campaign.EntryMetadata{school, noSchool}, want: campaign.ErrWorkflowVarsMissing},
+		{name: "a new agent a saved entry cannot fill", before: workflowAutomation, after: agentAutomation, saved: []campaign.EntryMetadata{noSchool}, want: campaign.ErrAgentVarsMissing},
+		{name: "a new automation that does not exist", before: campaign.Automation{}, after: campaign.Automation{WorkflowID: "wf-x"}, want: campaign.ErrWorkflowNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stored, _ := storedEntries(tc.saved...)
+			if err := RequireStored(step, "ws-1", tc.before, tc.after, stored); !errors.Is(err, tc.want) {
+				t.Fatalf("RequireStored = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestRequireStoredStopsAtTheFirstEntryThatCannotBeFilled(t *testing.T) {
+	step := newStep(t, fakeWorkflows{byID: map[string]*workflow.Workflow{"wf-1": needsSchoolWorkflow("ws-1")}}, fakeAgents{})
+	noSchool := campaign.EntryMetadata{Label: "lead 1"}
+	stored, visited := storedEntries(noSchool, noSchool, noSchool)
+	if err := RequireStored(step, "ws-1", campaign.Automation{}, campaign.Automation{WorkflowID: "wf-1"}, stored); !errors.Is(err, campaign.ErrWorkflowVarsMissing) {
+		t.Fatalf("RequireStored = %v, want ErrWorkflowVarsMissing", err)
+	}
+	if *visited != 1 {
+		t.Fatalf("visited %d entries, want the walk to stop at the first refusal", *visited)
+	}
+}
+
+func TestRequireStoredResolvesTheAutomationOnceForEveryEntry(t *testing.T) {
+	workflows := &countingWorkflows{wf: needsSchoolWorkflow("ws-1")}
+	step := newStep(t, workflows, fakeAgents{})
+	school := campaign.EntryMetadata{Label: "lead 1", Metadata: map[string]any{"escola": "Prisma"}}
+	stored, _ := storedEntries(school, school, school, school)
+	if err := RequireStored(step, "ws-1", campaign.Automation{}, campaign.Automation{WorkflowID: "wf-1"}, stored); err != nil {
+		t.Fatalf("RequireStored = %v", err)
+	}
+	if workflows.calls != 1 {
+		t.Fatalf("looked the workflow up %d times, want once", workflows.calls)
+	}
+}
+
+func TestRequireStoredRefusesAChangedAutomationItCannotVerify(t *testing.T) {
+	stored, _ := storedEntries()
+	after := campaign.Automation{WorkflowID: "wf-1"}
+	if err := RequireStored(nil, "ws-1", campaign.Automation{}, after, stored); !errors.Is(err, campaign.ErrAutomationUnavailable) {
+		t.Fatalf("without the rules = %v, want ErrAutomationUnavailable", err)
+	}
+	step := newStep(t, fakeWorkflows{byID: map[string]*workflow.Workflow{"wf-1": needsSchoolWorkflow("ws-1")}}, fakeAgents{})
+	if err := RequireStored(step, "ws-1", campaign.Automation{}, after, nil); !errors.Is(err, campaign.ErrAutomationUnavailable) {
+		t.Fatalf("without the saved entries = %v, want ErrAutomationUnavailable", err)
+	}
+	failing := func(func(campaign.EntryMetadata) error) error { return errors.New("db down") }
+	if err := RequireStored(step, "ws-1", campaign.Automation{}, after, failing); err == nil {
+		t.Fatal("a failed read of the saved entries must refuse the edit")
+	}
+}
+
+type countingWorkflows struct {
+	wf    *workflow.Workflow
+	calls int
+}
+
+func (c *countingWorkflows) Execute(string) (*workflow.Workflow, error) {
+	c.calls++
+	return c.wf, nil
+}

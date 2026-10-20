@@ -21,12 +21,13 @@ func NewSendMediaExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 
 func (e *sendMediaExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionSendMedia,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:       "Enviar Mídia",
-		Description: "Envia uma imagem, vídeo, áudio ou documento ao contato.",
-		Icon:        "Image",
+		Type:         workflow.NodeTypeActionSendMedia,
+		TestBehavior: workflow.NodeTestSendsMessage,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:        "Enviar Mídia",
+		Description:  "Envia uma imagem, vídeo, áudio ou documento ao contato.",
+		Icon:         "Image",
 		Guidance: workflow.NodeGuidance{
 			When: "Para enviar imagem, vídeo, áudio ou documento.",
 		},

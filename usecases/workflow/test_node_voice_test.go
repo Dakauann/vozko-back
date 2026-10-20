@@ -52,7 +52,7 @@ func TestTheKeyWaitTestOffersAnOptionalKeyField(t *testing.T) {
 	w := voiceWorkflow("wf-1", "trunk-1", "greeting")
 	w.Normalize()
 	_ = repo.Create(w)
-	tester := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: NewNodeExecutorRegistry()})
+	tester := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: NewNodeExecutorRegistry()})
 
 	analysis, err := tester.Analyze(context.Background(), AnalyzeNodeInput{WorkflowID: "wf-1", WorkspaceID: "ws1", NodeID: "keys"})
 	if err != nil {
@@ -91,7 +91,7 @@ func TestTheQueueTransferTestOffersAnOptionalOutcomeField(t *testing.T) {
 	w := voiceWorkflowWithQueue("q1")
 	w.Normalize()
 	_ = repo.Create(w)
-	tester := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: NewNodeExecutorRegistry()})
+	tester := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: NewNodeExecutorRegistry()})
 
 	analysis, err := tester.Analyze(context.Background(), AnalyzeNodeInput{WorkflowID: "wf-1", WorkspaceID: "ws1", NodeID: "fila"})
 	if err != nil {

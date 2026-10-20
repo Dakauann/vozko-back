@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
+	"maps"
 	"mime"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,7 @@ type workflowRunLookup interface {
 
 type workflowLookup interface {
 	FindByIDs(ids []string) ([]*workflow.Workflow, error)
+	workflow.VersionReader
 }
 
 type HistoryProviderService struct {
@@ -480,6 +482,31 @@ func (s *HistoryProviderService) GetHistoryBefore(entryID string, entryType shar
 	return messages, hasMore, nil
 }
 
+func (s *HistoryProviderService) GetHistoryAfter(entryID string, entryType shared.EntryType, after time.Time, limit int) ([]*conversation.Message, bool, error) {
+	limit = conversation.HistoryPageSize(limit)
+
+	messages, err := s.messageRepo.ListByEntryPaginated(conversation.ListMessagesInput{
+		EntryID:   entryID,
+		EntryType: entryType,
+		Limit:     limit + 1,
+		After:     &after,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	reverseMessages(messages)
+
+	hasAfter := len(messages) > limit
+	if hasAfter {
+		messages = messages[:limit]
+	}
+
+	s.present(entryID, entryType, messages)
+
+	return messages, hasAfter, nil
+}
+
 func (s *HistoryProviderService) GetHistoryAround(entryID string, entryType shared.EntryType, around time.Time, limit int) ([]*conversation.Message, bool, bool, int64, error) {
 	limit = conversation.HistoryPageSize(limit)
 
@@ -686,7 +713,7 @@ func (s *HistoryProviderService) buildInboxEntries(
 		}
 	}
 
-	windowMap := s.batchGetWindowStatus(rows)
+	windows := s.inboxWindows(rows)
 
 	waEntryMap := make(map[string]*wce.WhatsAppCampaignEntry, len(waEntryIDs))
 	if len(waEntryIDs) > 0 && s.whatsappRepo != nil {
@@ -709,10 +736,9 @@ func (s *HistoryProviderService) buildInboxEntries(
 		senderName, senderAvatar := s.getSenderInfo(
 			e.LastMessageFrom, e.LastMessageType, leadName, leadNumber, leadPicture)
 
-		windowOpen := false
-		var windowExpiresAt *time.Time
-		if ws, ok := windowMap[e.EntryID]; ok {
-			windowOpen, windowExpiresAt = ws.open, ws.expiresAt
+		window, known := windows[shared.EntryRef{EntryID: e.EntryID, EntryType: e.EntryType}]
+		if !known {
+			window = conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 		}
 
 		automationEnabled := e.AutomationEnabled == nil || *e.AutomationEnabled
@@ -757,8 +783,11 @@ func (s *HistoryProviderService) buildInboxEntries(
 			LastMessageType:         s.getDisplayMessageType(e),
 			LastMessageSender:       senderName,
 			LastMessageSenderAvatar: senderAvatar,
-			WindowOpen:              windowOpen,
-			WindowExpiresAt:         windowExpiresAt,
+			LastMessageSenderKind:   lastSenderKind(e),
+			WindowOpen:              window.Open,
+			WindowExpiresAt:         window.ExpiresAt,
+			WindowClosedReason:      string(window.Reason),
+			WindowClosedDetail:      window.ProviderDetail,
 			BusinessPhoneID:         e.BusinessPhoneID,
 			AutomationEnabled:       automationEnabled,
 			MatchedMessages:         matchedMessages,
@@ -768,6 +797,9 @@ func (s *HistoryProviderService) buildInboxEntries(
 			CloseReason:             e.Close.Reason,
 			CloseOutcome:            e.Close.Outcome,
 			ClosedAt:                e.Close.ClosedAt,
+			LastCustomerMessageAt:   e.LastCustomerMessageAt,
+			LastAgentMessageAt:      e.LastAgentMessageAt,
+			WaitingSince:            conversation.WaitingSince(convStatus, e.AwaitingReplySince),
 		})
 	}
 
@@ -847,12 +879,16 @@ func (s *HistoryProviderService) SearchInboxEntries(input conversation.SearchInb
 		MinMessageCount:        input.MinMessageCount,
 		MaxMessageCount:        input.MaxMessageCount,
 		HasUnread:              input.HasUnread,
+		IsGroup:                input.IsGroup,
 		WindowOpen:             input.WindowOpen,
 		Channel:                input.Channel,
 		DateFrom:               input.DateFrom,
 		DateTo:                 input.DateTo,
+		LabelID:                input.LabelID,
 		ConversationStatus:     input.ConversationStatus,
 		SortOrder:              input.SortOrder,
+		Personal:               input.Personal,
+		PersonalUserID:         input.UserID,
 		AssignedUserID:         input.AssignedUserID,
 		ResponsibleUserID:      input.ResponsibleUserID,
 		ResponsibleUnassigned:  input.ResponsibleUnassigned,
@@ -925,16 +961,44 @@ func (s *HistoryProviderService) enrichAIHandlers(entries []conversation.InboxEn
 		}
 	}
 
+	var versions workflow.VersionReader
+	if s.workflowRepo != nil {
+		versions = s.workflowRepo
+	}
+	runWorkflows := pinnedRunWorkflows(runByEntry, workflowMap, versions)
 	for i := range entries {
 		var run *workflow.WorkflowRun
 		if runByEntry != nil {
 			run = runByEntry[entries[i].EntryID]
 		}
-		entries[i].AIHandler = buildAIHandler(profileByEntry[entries[i].EntryID], run, agentMap, workflowMap)
+		entries[i].AIHandler = buildAIHandler(profileByEntry[entries[i].EntryID], run, agentMap, workflowMap, runWorkflows)
 	}
 }
 
-func buildAIHandler(profile conversation.AutomationProfile, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow) *conversation.AIHandler {
+func pinnedRunWorkflows(runs map[string]*workflow.WorkflowRun, workflows map[string]*workflow.Workflow, versions workflow.VersionReader) map[string]*workflow.Workflow {
+	out := make(map[string]*workflow.Workflow, len(runs))
+	if versions == nil {
+		return out
+	}
+	for _, run := range runs {
+		if run == nil {
+			continue
+		}
+		wf, ok := workflows[run.WorkflowID]
+		if !ok {
+			continue
+		}
+		pinned, err := workflow.ForRun(versions, wf, run)
+		if err != nil {
+			log.Printf("[HistoryProvider] run %s: the pinned workflow version is unreadable, the step is not shown: %v", run.ID, err)
+			continue
+		}
+		out[run.ID] = pinned
+	}
+	return out
+}
+
+func buildAIHandler(profile conversation.AutomationProfile, run *workflow.WorkflowRun, agentMap map[string]*agent.Agent, workflowMap map[string]*workflow.Workflow, runWorkflows map[string]*workflow.Workflow) *conversation.AIHandler {
 	governor, configured := profile.Configured()
 
 	if run != nil || (configured && governor.Kind == conversation.AutomationWorkflow) {
@@ -947,10 +1011,10 @@ func buildAIHandler(profile conversation.AutomationProfile, run *workflow.Workfl
 		}
 		if wf, ok := workflowMap[h.WorkflowID]; ok {
 			h.WorkflowName = wf.Name
-			if h.CurrentNodeID != "" {
-				if node := wf.Graph.FindNode(h.CurrentNodeID); node != nil {
-					h.CurrentNodeType = string(node.Type)
-				}
+		}
+		if pinned, ok := runWorkflows[h.WorkflowRunID]; ok && h.CurrentNodeID != "" {
+			if node := pinned.Graph.FindNode(h.CurrentNodeID); node != nil {
+				h.CurrentNodeType = string(node.Type)
 			}
 		}
 		return h
@@ -989,18 +1053,7 @@ func (s *HistoryProviderService) GetInboxEntry(entryID, entryType string) (*conv
 	rows := []conversation.EntryWithLastMessage{*e}
 	entries := s.buildInboxEntries(rows, s.entryWorkspaceID(entryID, entryType))
 	s.enrichAIHandlers(entries, rows)
-	entry := &entries[0]
-
-	var window conversation.WindowState
-	if e.EntryType == shared.EntryTypeWhatsApp {
-		window = s.getWindowStatus(e.LeadID, e.BusinessPhoneID)
-	} else {
-		window = s.GetWindowStatusForEntry(entryID, entryType)
-	}
-	entry.WindowOpen, entry.WindowExpiresAt = window.Open, window.ExpiresAt
-	entry.WindowClosedReason = string(window.Reason)
-
-	return entry, nil
+	return &entries[0], nil
 }
 
 func (s *HistoryProviderService) entryWorkspaceID(entryID, entryType string) string {
@@ -1020,76 +1073,14 @@ func (s *HistoryProviderService) entryWorkspaceID(entryID, entryType string) str
 }
 
 func (s *HistoryProviderService) getWindowStatus(leadID, businessPhoneID string) conversation.WindowState {
-	if leadID == "" || s.messageWindowRepo == nil {
+	if leadID == "" {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 	}
-
-	if businessPhoneID == "" {
-		windows, err := s.messageWindowRepo.FindAllByLead(leadID)
-		if err != nil || len(windows) == 0 {
-			return conversation.ClosedWindow(conversation.WindowReasonNoInbound)
-		}
-		for _, w := range windows {
-			if w.IsWindowOpen() {
-				expiresAt := w.WindowExpiresAt()
-				return conversation.OpenWindow(&expiresAt)
-			}
-		}
-		return conversation.ClosedWindow(conversation.WindowReasonExpired)
+	byLead, err := s.officialWindowsByLead([]string{leadID})
+	if err != nil {
+		log.Printf("[window] official window lookup failed for lead %s: %v", leadID, err)
 	}
-
-	window, err := s.messageWindowRepo.FindByLeadAndBusinessPhone(leadID, businessPhoneID)
-	if err != nil || window == nil {
-		return conversation.ClosedWindow(conversation.WindowReasonNoInbound)
-	}
-
-	if window.IsWindowOpen() {
-		expiresAt := window.WindowExpiresAt()
-		return conversation.OpenWindow(&expiresAt)
-	}
-	return conversation.ClosedWindow(conversation.WindowReasonExpired)
-}
-
-type windowStatus struct {
-	open      bool
-	expiresAt *time.Time
-}
-
-func (s *HistoryProviderService) batchGetWindowStatus(entries []conversation.EntryWithLastMessage) map[string]windowStatus {
-	result := make(map[string]windowStatus, len(entries))
-	if s.messageWindowRepo == nil || len(entries) == 0 {
-		return result
-	}
-
-	type entryRef struct {
-		entryID string
-		leadID  string
-	}
-	byBPhone := make(map[string][]entryRef)
-	for _, e := range entries {
-		if e.EntryType == shared.EntryTypeWhatsApp && e.LeadID != "" && e.BusinessPhoneID != "" {
-			byBPhone[e.BusinessPhoneID] = append(byBPhone[e.BusinessPhoneID], entryRef{e.EntryID, e.LeadID})
-		}
-	}
-
-	for bphoneID, refs := range byBPhone {
-		leadIDs := make([]string, len(refs))
-		for i, ref := range refs {
-			leadIDs[i] = ref.leadID
-		}
-		windowByLead, err := s.messageWindowRepo.FindOpenWindowsByLeadIDs(leadIDs, bphoneID)
-		if err != nil {
-			continue
-		}
-		for _, ref := range refs {
-			if w, ok := windowByLead[ref.leadID]; ok && w.IsWindowOpen() {
-				expiresAt := w.WindowExpiresAt()
-				result[ref.entryID] = windowStatus{open: true, expiresAt: &expiresAt}
-			}
-		}
-	}
-
-	return result
+	return officialRowWindow(byLead, err, leadID, businessPhoneID)
 }
 
 func (s *HistoryProviderService) getSenderInfo(from string, messageType conversation.MessageType, leadName, leadNumber, leadPicture string) (name, avatar string) {
@@ -1160,6 +1151,9 @@ func (s *HistoryProviderService) PresentMessage(entryID, entryType string, messa
 }
 
 func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLastMessage) string {
+	if e.LastMessageRetracted {
+		return "[mensagem apagada]"
+	}
 	if e.HasMedia {
 		switch e.MediaType {
 		case conversation.MediaTypeImage:
@@ -1198,7 +1192,7 @@ func (s *HistoryProviderService) formatMessagePreview(e conversation.EntryWithLa
 }
 
 func (s *HistoryProviderService) getDisplayMessageType(e conversation.EntryWithLastMessage) string {
-	if e.HasMedia {
+	if e.HasMedia && !e.LastMessageRetracted {
 		return string(e.MediaType)
 	}
 	return "text"
@@ -1489,6 +1483,7 @@ type MessageSenderService struct {
 	messageWindowRepo     lmw.Repository
 	mediaRepo             conversation.ConversationMediaRepository
 	mediaLibrary          media.MediaRepository
+	mediaDownloads        media.RemoteFiles
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	hub                   conversation.EventBroadcaster
 
@@ -1511,6 +1506,10 @@ func (s *MessageSenderService) SetMediaLibrary(repo media.MediaRepository) {
 	s.mediaLibrary = repo
 }
 
+func (s *MessageSenderService) SetMediaDownloads(downloads media.RemoteFiles) {
+	s.mediaDownloads = downloads
+}
+
 func (s *MessageSenderService) SetChannelAdapters(registry conversation.AdapterRegistry) {
 	s.channelAdapters = registry
 }
@@ -1530,7 +1529,7 @@ func (s *MessageSenderService) sendViaAdapter(
 	adapter conversation.ChannelAdapter,
 	entryID, entryType string,
 	sentBy conversation.SentBy,
-	replyToMessageID string,
+	origin conversation.SendOrigin,
 	send func(*conversation.EntryContext) (*conversation.SendOutcome, error),
 	msgType conversation.MessageType,
 	text string,
@@ -1572,6 +1571,7 @@ func (s *MessageSenderService) sendViaAdapter(
 		DeliveryStatus: conversation.DeliveryStatusSent,
 		CreatedAt:      now,
 		UpdatedAt:      now,
+		ClientRequestID: origin.ClientRequestID,
 	}
 	if sentBy.Kind() == conversation.SenderHuman {
 		author := sentBy.Participant()
@@ -1582,8 +1582,19 @@ func (s *MessageSenderService) sendViaAdapter(
 		providerID := outcome.ProviderMessageID
 		message.ExternalMessageID = &providerID
 	}
-	if replyToMessageID != "" {
-		message.ReplyToMessageID = &replyToMessageID
+	if outcome != nil && outcome.DeliveryStatus != conversation.DeliveryStatusNone {
+		message.DeliveryStatus = outcome.DeliveryStatus
+	}
+	if outcome != nil {
+		for _, key := range slices.Sorted(maps.Keys(outcome.Metadata)) {
+			if err := message.AttachMetadata(key, outcome.Metadata[key]); err != nil {
+				log.Printf("[MessageSender] provider metadata %s not stored on %s message: %v", key, entryType, err)
+			}
+		}
+	}
+	if origin.ReplyToMessageID != "" {
+		replyTo := origin.ReplyToMessageID
+		message.ReplyToMessageID = &replyTo
 	}
 	if mediaID != "" {
 		message.MediaID = &mediaID
@@ -1629,10 +1640,10 @@ func NewMessageSenderService(
 	}
 }
 
-func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error) {
+func (s *MessageSenderService) SendTextMessage(entryID, entryType, text string, origin conversation.SendOrigin) (*conversation.Message, error) {
 	if adapter := s.adapterFor(entryType); adapter != nil {
-		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
-		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(userID), replyToMessageID,
+		replyProviderID := s.resolveProviderMessageID(origin.ReplyToMessageID)
+		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(origin.SenderUserID), origin,
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{
 					HumanInitiated:           true,
@@ -1658,7 +1669,7 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 		return nil, fmt.Errorf("failed to resolve WhatsApp client: %w", err)
 	}
 
-	contextMessageID := s.resolveContextMessageID(replyToMessageID)
+	contextMessageID := s.resolveContextMessageID(origin.ReplyToMessageID)
 
 	output, err := whatsappClient.SendTextMessage(context.Background(), conversation.SendTextMessageInput{
 		To:               leadNumber,
@@ -1670,29 +1681,7 @@ func (s *MessageSenderService) SendTextMessage(entryID, entryType, text, userID,
 		return nil, err
 	}
 
-	now := time.Now().UTC()
-	waMsgID := output.MessageID
-	message := &conversation.Message{
-		SentBy:            conversation.SentByPerson(userID),
-		ID:                uuid.NewString(),
-		EntryID:           entryID,
-		EntryType:         shared.EntryType(entryType),
-		Channel:           conversation.MessageChannelWhatsApp,
-		MessageType:       conversation.MessageTypeOperator,
-		From:              userID,
-		To:                leadNumber,
-		Text:              text,
-		Read:              true,
-		ReadAt:            &now,
-		ReadBy:            &userID,
-		WhatsAppMessageID: &waMsgID,
-		DeliveryStatus:    conversation.DeliveryStatusSent,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}
-	if replyToMessageID != "" {
-		message.ReplyToMessageID = &replyToMessageID
-	}
+	message := officialOperatorMessage(entryID, entryType, leadNumber, output.MessageID, text, origin)
 	message.Normalize()
 
 	if err := s.messageRepo.Create(message); err != nil {
@@ -1716,7 +1705,7 @@ func (s *MessageSenderService) sendAutomatedText(entryID, entryType, text string
 		return nil, conversation.ErrNoAdapterForEntryType
 	}
 
-	message, err := s.sendViaAdapter(adapter, entryID, entryType, sentBy, "",
+	message, err := s.sendViaAdapter(adapter, entryID, entryType, sentBy, conversation.SendOrigin{},
 		func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 			return adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: text})
 		},
@@ -1894,15 +1883,15 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 	return message, nil
 }
 
-func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID string, caption string) (*conversation.Message, error) {
+func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, mediaType, caption string, origin conversation.SendOrigin) (*conversation.Message, error) {
 	if adapter := s.adapterFor(entryType); adapter != nil {
 		mediaRecord, err := s.mediaRepo.GetByID(mediaID)
 		if err != nil || mediaRecord == nil {
 			return nil, fmt.Errorf("media not found: %w", err)
 		}
-		replyProviderID := s.resolveProviderMessageID(replyToMessageID)
+		replyProviderID := s.resolveProviderMessageID(origin.ReplyToMessageID)
 
-		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(userID), replyToMessageID,
+		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(origin.SenderUserID), origin,
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{
 					HumanInitiated:           true,
@@ -1951,7 +1940,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 	var output *conversation.SendTextMessageOutput
 	var waMediaID string
 
-	contextMessageID := s.resolveContextMessageID(replyToMessageID)
+	contextMessageID := s.resolveContextMessageID(origin.ReplyToMessageID)
 
 	switch conversation.MediaType(mediaType) {
 	case conversation.MediaTypeImage:
@@ -2017,32 +2006,9 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 		return nil, fmt.Errorf("whatsapp send returned no output for media type %s", mediaType)
 	}
 
-	now := time.Now().UTC()
-	mt := conversation.MediaType(mediaType)
-	waMsgID := output.MessageID
-	message := &conversation.Message{
-		SentBy:            conversation.SentByPerson(userID),
-		ID:                uuid.NewString(),
-		EntryID:           entryID,
-		EntryType:         shared.EntryType(entryType),
-		Channel:           conversation.MessageChannelWhatsApp,
-		MessageType:       conversation.MessageTypeOperator,
-		From:              userID,
-		To:                leadNumber,
-		Text:              caption,
-		MediaID:           &mediaID,
-		MediaType:         mt,
-		Read:              true,
-		ReadAt:            &now,
-		ReadBy:            &userID,
-		WhatsAppMessageID: &waMsgID,
-		DeliveryStatus:    conversation.DeliveryStatusSent,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}
-	if replyToMessageID != "" {
-		message.ReplyToMessageID = &replyToMessageID
-	}
+	message := officialOperatorMessage(entryID, entryType, leadNumber, output.MessageID, caption, origin)
+	message.MediaID = &mediaID
+	message.MediaType = conversation.MediaType(mediaType)
 	message.Normalize()
 
 	if err := s.messageRepo.Create(message); err != nil {
@@ -2056,7 +2022,7 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 	return message, nil
 }
 
-func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, replyToMessageID string, input conversation.SendButtonInput) (*conversation.Message, error) {
+func (s *MessageSenderService) SendButtonMessage(entryID, entryType string, input conversation.SendButtonInput, origin conversation.SendOrigin) (*conversation.Message, error) {
 	leadID, leadNumber, businessPhoneID, err := s.getEntryInfo(entryID, entryType)
 	if err != nil {
 		return nil, err
@@ -2081,39 +2047,21 @@ func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, rep
 	}
 
 	output, err := whatsappClient.SendButtonMessage(context.Background(), conversation.SendButtonMessageInput{
-		To:         leadNumber,
-		HeaderType: conversation.HeaderType(input.HeaderType),
-		HeaderText: input.HeaderText,
-		BodyText:   input.BodyText,
-		FooterText: input.FooterText,
-		Buttons:    buttons,
+		To:               leadNumber,
+		HeaderType:       conversation.HeaderType(input.HeaderType),
+		HeaderText:       input.HeaderText,
+		BodyText:         input.BodyText,
+		FooterText:       input.FooterText,
+		Buttons:          buttons,
+		ContextMessageID: s.resolveContextMessageID(origin.ReplyToMessageID),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	now := time.Now().UTC()
-	waMsgID := output.MessageID
-	message := &conversation.Message{
-		SentBy:            conversation.SentByPerson(userID),
-		ID:                uuid.NewString(),
-		EntryID:           entryID,
-		EntryType:         shared.EntryType(entryType),
-		Channel:           conversation.MessageChannelWhatsApp,
-		MessageType:       conversation.MessageTypeOperator,
-		From:              userID,
-		To:                leadNumber,
-		Text:              input.BodyText,
-		Read:              true,
-		ReadAt:            &now,
-		ReadBy:            &userID,
-		WhatsAppMessageID: &waMsgID,
-		DeliveryStatus:    conversation.DeliveryStatusSent,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}
-	if replyToMessageID != "" {
-		message.ReplyToMessageID = &replyToMessageID
+	message := officialOperatorMessage(entryID, entryType, leadNumber, output.MessageID, input.BodyText, origin)
+	if err := message.AttachButtons(input); err != nil {
+		return nil, fmt.Errorf("failed to keep the buttons on the message: %w", err)
 	}
 	message.Normalize()
 
@@ -2127,39 +2075,49 @@ func (s *MessageSenderService) SendButtonMessage(entryID, entryType, userID, rep
 	return message, nil
 }
 
+func officialOperatorMessage(entryID, entryType, leadNumber, providerMessageID, text string, origin conversation.SendOrigin) *conversation.Message {
+	now := time.Now().UTC()
+	author := origin.SenderUserID
+	message := &conversation.Message{
+		SentBy:            conversation.SentByPerson(author),
+		ID:                uuid.NewString(),
+		EntryID:           entryID,
+		EntryType:         shared.EntryType(entryType),
+		Channel:           conversation.MessageChannelWhatsApp,
+		MessageType:       conversation.MessageTypeOperator,
+		From:              author,
+		To:                leadNumber,
+		Text:              text,
+		Read:              true,
+		ReadAt:            &now,
+		ReadBy:            &author,
+		WhatsAppMessageID: &providerMessageID,
+		DeliveryStatus:    conversation.DeliveryStatusSent,
+		ClientRequestID:   origin.ClientRequestID,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if origin.ReplyToMessageID != "" {
+		replyTo := origin.ReplyToMessageID
+		message.ReplyToMessageID = &replyTo
+	}
+	return message
+}
+
 func (s *MessageSenderService) scheduleAnalysis(entryID, entryType string) {
 	s.analysis.ScheduleAnalysis(entryID, shared.EntryType(entryType))
 }
 
+const maxOperatorMediaBytes = 32 * 1024 * 1024
+
 func (s *MessageSenderService) downloadMediaFromCDN(mediaURL, originalFilename string) ([]byte, string, string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	req, err := http.NewRequest(http.MethodGet, strings.TrimSpace(mediaURL), nil)
+	file, err := media.Download(context.Background(), s.mediaDownloads, strings.TrimSpace(mediaURL), maxOperatorMediaBytes)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("invalid media URL: %w", err)
+		return nil, "", "", err
 	}
+	data := file.Data
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to download media: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", "", fmt.Errorf("failed to download media: status=%d", resp.StatusCode)
-	}
-
-	reader := io.LimitReader(resp.Body, 32*1024*1024+1)
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to read media: %w", err)
-	}
-
-	if len(data) > 32*1024*1024 {
-		return nil, "", "", fmt.Errorf("media size exceeds 32MB limit")
-	}
-
-	mimeType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	mimeType := strings.TrimSpace(file.ContentType)
 	if mimeType == "" || mimeType == "application/octet-stream" || mimeType == "application/zip" {
 		mimeType = http.DetectContentType(data)
 	}
@@ -2357,11 +2315,6 @@ func (s *MessageSenderService) resolveProviderMessageID(replyToMessageID string)
 		return *msg.WhatsAppMessageID
 	}
 	return ""
-}
-
-type ChannelMessageSender interface {
-	SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*conversation.Message, error)
-	SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID, caption string) (*conversation.Message, error)
 }
 
 type uploadConversationMediaUseCase struct {

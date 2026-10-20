@@ -33,6 +33,9 @@ func (uc *validateTargetsUseCase) Execute(ctx context.Context, campaignID string
 	if err != nil {
 		return nil, err
 	}
+	if camp.TargetsGroups() {
+		return &uwc.ValidateTargetsOutput{CampaignID: campaignID}, nil
+	}
 	instance, err := uc.instances.Instance(ctx, camp.InstanceID)
 	if err != nil {
 		return nil, err

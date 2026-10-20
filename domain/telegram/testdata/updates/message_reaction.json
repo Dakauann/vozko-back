@@ -1,0 +1,21 @@
+{
+  "update_id": 870123490,
+  "message_reaction": {
+    "chat": {
+      "id": 5041234567,
+      "first_name": "Marina",
+      "username": "marina_alves",
+      "type": "private"
+    },
+    "message_id": 4822,
+    "user": {
+      "id": 5041234567,
+      "is_bot": false,
+      "first_name": "Marina",
+      "username": "marina_alves"
+    },
+    "date": 1785312060,
+    "old_reaction": [],
+    "new_reaction": [{"type": "emoji", "emoji": "👍"}]
+  }
+}

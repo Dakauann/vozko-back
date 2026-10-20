@@ -135,13 +135,60 @@ func TestAGroupChangeResyncsFollowedGroupsOnly(t *testing.T) {
 	before := len(w.seatSync.refreshs)
 
 	w.seatSync.rosters[g.JID] = participants("5511981124410", "5511960213375")
-	w.svc.GroupChanged(context.Background(), w.instance("n1"), g.JID)
-	w.svc.GroupChanged(context.Background(), w.instance("n1"), other.JID)
+	w.svc.GroupChanged(context.Background(), w.instance("n1"), g.JID, uw.GroupParticipantChange{})
+	w.svc.GroupChanged(context.Background(), w.instance("n1"), other.JID, uw.GroupParticipantChange{})
 
 	if len(w.seatSync.refreshs) != before+1 {
 		t.Fatalf("refreshes = %v, want only the followed group resynced", w.seatSync.refreshs[before:])
 	}
 	if w.members.eventsOf(uwg.MemberEventJoin) != 1 {
 		t.Fatalf("the change did not reach the members")
+	}
+}
+
+func (f *fakeMembers) statusOf(groupID, personKey string) uwg.MemberStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byGroup[groupID][personKey].Status
+}
+
+func (f *fakeMembers) leaveCauses() []uwg.DepartureCause {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []uwg.DepartureCause
+	for _, e := range f.events {
+		if e.Kind == uwg.MemberEventLeave {
+			out = append(out, e.Cause)
+		}
+	}
+	return out
+}
+
+func TestAWebhookRemovalByAnotherMemberIsRecordedAsRemoved(t *testing.T) {
+	w := newWorld()
+	g := w.followed(t, "120363000000000001@g.us", participants("5511981124410", "5511960213375"), "n1")
+
+	w.seatSync.rosters[g.JID] = participants("5511981124410")
+	w.svc.GroupChanged(context.Background(), w.instance("n1"), g.JID, uw.GroupParticipantChange{
+		Actors: []string{"5511981124410@s.whatsapp.net"}, Left: []string{"5511960213375@s.whatsapp.net"},
+	})
+
+	if got := w.members.statusOf(g.ID, "5511960213375"); got != uwg.MemberRemoved {
+		t.Fatalf("status = %q, want removed", got)
+	}
+	if causes := w.members.leaveCauses(); len(causes) != 1 || causes[0] != uwg.CauseRemoved {
+		t.Fatalf("leave causes = %v, want one removal still counted as a leave", causes)
+	}
+}
+
+func TestAWebhookDepartureWithoutAnActorStaysALeave(t *testing.T) {
+	w := newWorld()
+	g := w.followed(t, "120363000000000001@g.us", participants("5511981124410", "5511960213375"), "n1")
+
+	w.seatSync.rosters[g.JID] = participants("5511981124410")
+	w.svc.GroupChanged(context.Background(), w.instance("n1"), g.JID, uw.GroupParticipantChange{Left: []string{"5511960213375@s.whatsapp.net"}})
+
+	if got := w.members.statusOf(g.ID, "5511960213375"); got != uwg.MemberLeft {
+		t.Fatalf("status = %q, want left", got)
 	}
 }

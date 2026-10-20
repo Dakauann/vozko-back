@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 )
@@ -45,13 +46,15 @@ const (
 	TriggerNoReply         TriggerType = "trigger_no_reply"
 	TriggerWebhook         TriggerType = "trigger_webhook"
 	TriggerCallReceived    TriggerType = "trigger_call_received"
+	TriggerFormSubmitted   TriggerType = "trigger_form_submitted"
+	TriggerAgentCall       TriggerType = "trigger_agent_call"
 )
 
 func (t TriggerType) Valid() bool {
 	switch t {
 	case TriggerFirstMessage, TriggerMessageReceived, TriggerCampaignSent,
 		TriggerStageAdded, TriggerManual, TriggerNoReply, TriggerWebhook,
-		TriggerCallReceived:
+		TriggerCallReceived, TriggerFormSubmitted, TriggerAgentCall:
 		return true
 	}
 	return false
@@ -75,6 +78,8 @@ const (
 	NodeTypeTriggerNoReply         NodeType = "trigger_no_reply"
 	NodeTypeTriggerWebhook         NodeType = "trigger_webhook"
 	NodeTypeTriggerCallReceived    NodeType = "trigger_call_received"
+	NodeTypeTriggerFormSubmitted   NodeType = "trigger_form_submitted"
+	NodeTypeTriggerAgentCall       NodeType = "trigger_agent_call"
 
 	NodeTypeActionPlayAudio NodeType = "action_play_audio"
 	NodeTypeWaitDTMF        NodeType = "wait_dtmf"
@@ -84,6 +89,7 @@ const (
 	NodeTypeActionSendTemplate              NodeType = "action_send_template"
 	NodeTypeActionSendEmail                 NodeType = "action_send_email"
 	NodeTypeActionSendInteractive           NodeType = "action_send_interactive"
+	NodeTypeActionSendForm                  NodeType = "action_send_form"
 	NodeTypeActionSendMedia                 NodeType = "action_send_media"
 	NodeTypeActionAIAgent                   NodeType = "action_ai_agent"
 	NodeTypeActionAIExtract                 NodeType = "action_ai_extract"
@@ -106,6 +112,7 @@ const (
 	NodeTypeActionManageOpportunity         NodeType = "action_manage_opportunity"
 	NodeTypeActionUpdateLead                NodeType = "action_update_lead"
 	NodeTypeActionConsent                   NodeType = "action_consent"
+	NodeTypeActionReplyToAgent              NodeType = "action_reply_to_agent"
 
 	NodeTypeWaitDuration              NodeType = "wait_duration"
 	NodeTypeWaitForReply              NodeType = "wait_for_reply"
@@ -129,11 +136,14 @@ func (n NodeType) Valid() bool {
 	case NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
 		NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
 		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
-		NodeTypeTriggerCallReceived, NodeTypeActionPlayAudio, NodeTypeWaitDTMF,
+		NodeTypeTriggerCallReceived, NodeTypeTriggerFormSubmitted,
+		NodeTypeTriggerAgentCall,
+		NodeTypeActionPlayAudio, NodeTypeWaitDTMF,
 		NodeTypeTransferToQueue,
 		NodeTypeActionSendText, NodeTypeActionSendTemplate,
 		NodeTypeActionSendEmail,
 		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,
+		NodeTypeActionSendForm,
 		NodeTypeActionAIAgent, NodeTypeActionAIExtract,
 		NodeTypeActionSetVariable, NodeTypeActionHTTPRequest,
 		NodeTypeActionRunTool,
@@ -153,6 +163,7 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionManageOpportunity,
 		NodeTypeActionUpdateLead,
 		NodeTypeActionConsent,
+		NodeTypeActionReplyToAgent,
 		NodeTypeConditionCheckLabel,
 		NodeTypeConditionCheckStage,
 		NodeTypeConditionCheckOpportunity,
@@ -165,15 +176,20 @@ func (n NodeType) Valid() bool {
 	return false
 }
 
+var triggerNodeTypes = []NodeType{
+	NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
+	NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
+	NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
+	NodeTypeTriggerCallReceived, NodeTypeTriggerFormSubmitted,
+	NodeTypeTriggerAgentCall,
+}
+
+func TriggerNodeTypes() []NodeType {
+	return slices.Clone(triggerNodeTypes)
+}
+
 func (n NodeType) IsTrigger() bool {
-	switch n {
-	case NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
-		NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
-		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
-		NodeTypeTriggerCallReceived:
-		return true
-	}
-	return false
+	return slices.Contains(triggerNodeTypes, n)
 }
 
 func (n NodeType) WaitsForCaller() bool {
@@ -194,6 +210,14 @@ func (n NodeType) IsInteractivePrompt() bool {
 
 func (n NodeType) ParksForReply() bool {
 	return n.IsWait() || n.IsInteractivePrompt()
+}
+
+func (n NodeType) IsFormPrompt() bool {
+	return n == NodeTypeActionSendForm
+}
+
+func (n NodeType) AwaitsContact() bool {
+	return n.ParksForReply() || n.IsFormPrompt()
 }
 
 const NodeTypeActionSendWhatsappButtonLegacy NodeType = "action_send_whatsapp_button"
@@ -251,7 +275,8 @@ func (n NodeType) IsMessaging() bool {
 	switch n {
 	case NodeTypeActionSendText, NodeTypeActionSendTemplate,
 		NodeTypeActionSendEmail,
-		NodeTypeActionSendInteractive, NodeTypeActionSendMedia:
+		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,
+		NodeTypeActionSendForm:
 		return true
 	}
 	return false
@@ -270,6 +295,7 @@ type Node struct {
 	Type     NodeType               `json:"type"`
 	Position Position               `json:"position"`
 	Config   map[string]interface{} `json:"config"`
+	Pinned   *NodePin               `json:"pinned,omitempty"`
 }
 
 type Position struct {
@@ -306,6 +332,16 @@ type Workflow struct {
 	UpdatedAt     time.Time              `json:"updatedAt"`
 
 	RequiredCampaignVars []string `json:"requiredCampaignVars,omitempty"`
+
+	PublishedVersion      *int       `json:"publishedVersion"`
+	PublishedAt           *time.Time `json:"publishedAt"`
+	HasUnpublishedChanges bool       `json:"hasUnpublishedChanges"`
+	PublishedGraphHash    string     `json:"-"`
+	GraphVersion          *int       `json:"-"`
+
+	EntryPoints []EntryPoint `json:"entryPoints,omitempty"`
+
+	Handles map[string][]HandleDefinition `json:"handles,omitempty"`
 }
 
 func (w *Workflow) Normalize() {
@@ -337,7 +373,7 @@ func (w *Workflow) Normalize() {
 	}
 
 	w.normalizeAIAgentResponseEdges()
-	w.normalizeInteractivePromptConfigs()
+	CanonicalizeStructuredConfigs(&w.Graph)
 }
 
 func (w *Workflow) normalizeAIAgentResponseEdges() {
@@ -370,6 +406,10 @@ func (w *Workflow) Validate() error {
 	}
 	if !w.Type.Valid() {
 		return ErrInvalidWorkflowType
+	}
+
+	if err := ValidatePins(&w.Graph); err != nil {
+		return err
 	}
 
 	for _, trig := range w.Graph.TriggerTypes() {
@@ -485,6 +525,10 @@ func (g *Graph) PrimaryTriggerType() TriggerType {
 }
 
 func (g *Graph) AncestorsOf(targetNodeID string) map[string]bool {
+	return g.AncestorsAvoiding(targetNodeID, "")
+}
+
+func (g *Graph) AncestorsAvoiding(targetNodeID, avoidNodeID string) map[string]bool {
 	ancestors := make(map[string]bool)
 	queue := []string{targetNodeID}
 	visited := map[string]bool{targetNodeID: true}
@@ -493,6 +537,9 @@ func (g *Graph) AncestorsOf(targetNodeID string) map[string]bool {
 		cur := queue[0]
 		queue = queue[1:]
 		for _, e := range g.IncomingEdges(cur) {
+			if e.Source == avoidNodeID && avoidNodeID != "" {
+				continue
+			}
 			if !visited[e.Source] {
 				visited[e.Source] = true
 				ancestors[e.Source] = true

@@ -12,12 +12,13 @@ func NewFilterExecutor() workflow.NodeExecutor {
 
 func (e *filterExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionFilter,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Filtro",
-		Description: "Continua o fluxo apenas se a condição for verdadeira. Caso contrário, encerra.",
-		Icon:        "Funnel",
+		Type:         workflow.NodeTypeConditionFilter,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Filtro",
+		Description:  "Continua o fluxo apenas se a condição for verdadeira. Caso contrário, encerra.",
+		Icon:         "Funnel",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para continuar só se a condição for verdadeira; caso contrário a execução encerra ali.",
 			Behavior: "Quando a condição é falsa, a execução do fluxo ENCERRA neste nó; quando verdadeira, segue pela saída para o próximo nó.",

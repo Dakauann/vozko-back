@@ -55,6 +55,21 @@ func TestConcurrentIndexReportsAFailedValidityCheck(t *testing.T) {
 	}
 }
 
+func TestTheIndexesOnTheHotWorkflowRunTablesAreBuiltConcurrently(t *testing.T) {
+	for _, name := range []string{
+		"idx_wfrl_payload_prune", "idx_wfr_entry_status", "idx_wfr_workflow_started", "idx_wfr_terminal_started",
+		"idx_wfr_agent_entry_started", "idx_wfr_entry_started", "idx_wfrl_failed_executed", "idx_wfr_workflow_updated",
+		"idx_wfr_agent_awaiting_continuation", WorkflowRunTriggerDataPruneIndex,
+	} {
+		if _, ok := ConcurrentIndexSQL(name); !ok {
+			t.Errorf("%s is not in the concurrent index list; a plain CREATE INDEX locks workflow_runs or workflow_run_logs for writes", name)
+		}
+		if _, ok := PerformanceIndexSQL(name); ok {
+			t.Errorf("%s is still declared as a plain index", name)
+		}
+	}
+}
+
 func TestEveryConcurrentIndexIsBuiltConcurrently(t *testing.T) {
 	for _, idx := range concurrentIndexes() {
 		sql := strings.Join(strings.Fields(idx.sql), " ")
@@ -66,3 +81,15 @@ func TestEveryConcurrentIndexIsBuiltConcurrently(t *testing.T) {
 	}
 }
 
+func TestTheLiveCampaignCountsReadOnlyTheirIndex(t *testing.T) {
+	for _, name := range []string{CampaignEntryLiveStatusIndex, UnofficialCampaignEntryLiveStatusIndex} {
+		sql, ok := ConcurrentIndexSQL(name)
+		if !ok {
+			t.Fatalf("%s is not in the concurrent index list; the live progress count would read every entry row", name)
+		}
+		flat := strings.Join(strings.Fields(sql), " ")
+		if !strings.Contains(flat, "(campaign_id, status)") || !strings.Contains(flat, "WHERE deleted_at IS NULL") {
+			t.Fatalf("%s must cover campaign_id and status for live entries only: %s", name, flat)
+		}
+	}
+}

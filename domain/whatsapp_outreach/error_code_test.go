@@ -40,6 +40,7 @@ func TestErrorCodeNamesEveryRefusalOfATemplateSend(t *testing.T) {
 		{fmt.Errorf("send: %w", ErrSendOutcomeUnknown), CodeSendOutcomeUnknown},
 		{fmt.Errorf("%w: %w", ErrSendOutcomeUnknown, template.ErrSendInProgress), CodeSendOutcomeUnknown},
 		{ErrConversationNotFound, CodeConversationNotFound},
+		{fmt.Errorf("%w: %w", template.ErrFormNotSendable, errors.New("blocked")), CodeFormNotSendable},
 		{fmt.Errorf("send: %w", ErrLeadOptedOut), CodeLeadOptedOut},
 		{errors.New("meta answered 500"), ""},
 		{nil, ""},

@@ -3,6 +3,7 @@ package whatsapp_campaign_entry
 import (
 	"time"
 
+	"vozko/domain/campaign"
 	"vozko/domain/shared"
 )
 
@@ -31,6 +32,8 @@ type Repository interface {
 	ListByLeadID(leadID string) ([]WhatsAppCampaignEntry, error)
 
 	ListRecentlyUpdated(campaignID string, limit int) ([]WhatsAppCampaignEntry, error)
+
+	EachStored(campaignID string, visit func(StoredEntry) error) error
 
 	CountByCampaignID(campaignID string) (int64, error)
 
@@ -157,4 +160,19 @@ type EntryWithLead struct {
 	Metadata                 interface{}            `json:"metadata,omitempty"`
 	LastMessageAt            *time.Time             `json:"lastMessageAt,omitempty"`
 	CanReceiveNormalMessages bool                   `json:"canReceiveNormalMessages"`
+}
+
+type StoredEntry struct {
+	LeadID    string
+	Status    SendStatus
+	Variables []string
+	Metadata  map[string]interface{}
+}
+
+func (e StoredEntry) AutomationMetadata() campaign.EntryMetadata {
+	return campaign.EntryMetadataOf(e.LeadID, "", e.Metadata)
+}
+
+func (e StoredEntry) AwaitsSending() bool {
+	return e.Status == SendStatusPending
 }

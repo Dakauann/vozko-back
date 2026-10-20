@@ -23,6 +23,10 @@ func RegisterRoutes(
 		ac(workspace_domain.ResourceTelegramAccounts, workspace_domain.ActionRead, h.ExportTelegramEntries)).Methods(http.MethodGet)
 	protected.HandleFunc("/facebook/pages/{id}/entries/export",
 		ac(workspace_domain.ResourceFacebookPages, workspace_domain.ActionRead, h.ExportFacebookEntries)).Methods(http.MethodGet)
+	protected.HandleFunc("/mercadolivre/accounts/{id}/entries/export",
+		ac(workspace_domain.ResourceMercadoLivreAccounts, workspace_domain.ActionRead, h.ExportMercadoLivreEntries)).Methods(http.MethodGet)
+	protected.HandleFunc("/tiktok/accounts/{id}/entries/export",
+		ac(workspace_domain.ResourceTikTokAccounts, workspace_domain.ActionRead, h.ExportTikTokEntries)).Methods(http.MethodGet)
 
 	protected.HandleFunc("/unofficial-whatsapp/campaigns/{id}/entries/export",
 		ac(workspace_domain.ResourceUnofficialWhatsAppCampaigns, workspace_domain.ActionRead,

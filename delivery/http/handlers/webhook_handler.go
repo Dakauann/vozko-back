@@ -242,6 +242,8 @@ func (h *WebhookHandler) routeWhatsAppEnvelope(w http.ResponseWriter, body []byt
 		topic = webhook.TopicWhatsAppTemplate
 	case coexistenceWebhookFields[field]:
 		topic = webhook.TopicWhatsAppCoexistence
+	case webhook.IsWhatsAppFlowsField(field):
+		topic = webhook.TopicWhatsAppFlows
 	default:
 		topic = webhook.TopicWhatsAppMessage
 	}

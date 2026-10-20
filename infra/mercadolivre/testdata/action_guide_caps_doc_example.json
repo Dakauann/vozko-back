@@ -1,0 +1,22 @@
+[
+   {
+      "option_id":"REQUEST_VARIANTS",
+      "cap_available":1
+   },
+   {
+      "option_id":"REQUEST_BILLING_INFO",
+      "cap_available":1
+   },
+   {
+      "option_id":"SEND_INVOICE_LINK",
+      "cap_available":1
+   },
+   {
+      "option_id":"DELIVERY_PROMISE",
+      "cap_available":1
+   },
+   {
+      "option_id":"OTHER",
+      "cap_available":1
+   }
+]

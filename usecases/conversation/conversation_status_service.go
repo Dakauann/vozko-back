@@ -40,7 +40,18 @@ type ConversationStatusService struct {
 	outcomes         OutcomeCaptureReader
 	announcer        StatusAnnouncer
 	departments      EntryDepartmentResolver
+	agentRuns        AgentRunCanceller
 	now              func() time.Time
+}
+
+type AgentRunCanceller interface {
+	CancelAgentRunsOfFinishedConversation(entryID, entryType string) error
+}
+
+func (s *ConversationStatusService) SetAgentRunCanceller(c AgentRunCanceller) {
+	if s != nil {
+		s.agentRuns = c
+	}
 }
 
 type ConversationStatusCounter func(ctx context.Context, workspaceID, accountID string) (map[string]int64, error)
@@ -336,9 +347,19 @@ func (s *ConversationStatusService) applyStatusActor(
 		}
 		if status == conversation.ConversationStatusFinished {
 			s.endAISessionContained(entryID, entryType, wsID, actorID)
+			s.cancelAgentRuns(entryID, entryType)
 		}
 	}
 	return nil
+}
+
+func (s *ConversationStatusService) cancelAgentRuns(entryID, entryType string) {
+	if s.agentRuns == nil {
+		return
+	}
+	if err := s.agentRuns.CancelAgentRunsOfFinishedConversation(entryID, entryType); err != nil {
+		log.Printf("[conversation-status] %s %s finished but its agent-started runs could not be cancelled: %v", entryType, entryID, err)
+	}
 }
 
 func (s *ConversationStatusService) endAISessionContained(entryID, entryType, workspaceID, closedBy string) {

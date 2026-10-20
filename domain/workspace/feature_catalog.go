@@ -266,6 +266,15 @@ var Features = []Feature{
 		},
 	},
 	{
+		Key:         "team_chat",
+		Name:        "Chat da equipe",
+		Location:    "Barra superior › Equipe",
+		Description: "Conversas internas entre os membros do workspace: mensagens diretas e grupos, com histórico, leitura, menções e mensagens agendadas. Todo membro usa, sem permissão; criar grupos depende do papel. Os clientes nunca veem estas conversas.",
+		Capabilities: []Capability{
+			{Key: "team_chat.groups", Description: "Criar grupos. Todo membro do workspace já conversa com os colegas e administra os grupos em que é administrador.", Requires: []PermissionEntry{need(ResourceTeamChat, ActionCreate)}},
+		},
+	},
+	{
 		Key:         "agents",
 		Name:        "Agentes",
 		Location:    "Menu lateral › Agentes",
@@ -311,9 +320,9 @@ var Features = []Feature{
 		Description: "Fluxos de automação que reagem a eventos das conversas.",
 		Scopes:      []ScopeRule{ScopeDepartments},
 		Capabilities: []Capability{
-			{Key: "workflows.view", Description: "Ver as automações, as configurações e as execuções", Requires: []PermissionEntry{need(ResourceWorkflows, ActionRead)}, Screens: []Screen{ScreenWorkflows, ScreenWorkflowDetail}},
+			{Key: "workflows.view", Description: "Ver as automações, as configurações, as execuções e os nomes dos segredos", Requires: []PermissionEntry{need(ResourceWorkflows, ActionRead)}, Screens: []Screen{ScreenWorkflows, ScreenWorkflowDetail, ScreenWorkflowSecrets}},
 			{Key: "workflows.create", Description: "Criar, importar e executar automações manualmente", Requires: []PermissionEntry{need(ResourceWorkflows, ActionRead), need(ResourceWorkflows, ActionCreate)}, Screens: []Screen{ScreenWorkflowNew}},
-			{Key: "workflows.edit", Description: "Editar, ativar, pausar, testar e configurar webhooks de automações", Requires: []PermissionEntry{need(ResourceWorkflows, ActionRead), need(ResourceWorkflows, ActionUpdate)}},
+			{Key: "workflows.edit", Description: "Editar, ativar, pausar, testar e configurar webhooks de automações, e criar, substituir e remover segredos", Requires: []PermissionEntry{need(ResourceWorkflows, ActionRead), need(ResourceWorkflows, ActionUpdate)}},
 			{Key: "workflows.delete", Description: "Excluir automações", Requires: []PermissionEntry{need(ResourceWorkflows, ActionRead), need(ResourceWorkflows, ActionDelete)}},
 		},
 	},
@@ -344,6 +353,23 @@ var Features = []Feature{
 			{Key: "whatsapp_templates.edit", Description: "Sincronizar modelos com a Meta e trocar a mídia do cabeçalho", Requires: []PermissionEntry{need(ResourceWhatsAppTemplates, ActionRead), need(ResourceWhatsAppTemplates, ActionUpdate)}},
 			{Key: "whatsapp_templates.delete", Description: "Excluir modelos", Requires: []PermissionEntry{need(ResourceWhatsAppTemplates, ActionRead), need(ResourceWhatsAppTemplates, ActionDelete)}},
 			{Key: "whatsapp_templates.send", Description: "Enviar um modelo para um número novo", Requires: []PermissionEntry{need(ResourceWhatsAppTemplates, ActionSend), need(ResourceWhatsAppTemplates, ActionRead), need(ResourceBusinessPhones, ActionRead), conversationsRead}, Screens: []Screen{ScreenWhatsAppTemplateSend}},
+		},
+	},
+	{
+		Key:         "whatsapp_forms",
+		Name:        "Formulários do WhatsApp",
+		Location:    "Menu lateral › WhatsApp › Formulários, o botão de formulário da conversa e os fluxos de automação",
+		Description: "Formulários que o cliente preenche dentro do WhatsApp oficial; as respostas ficam no lead e podem ser exportadas.",
+		Capabilities: []Capability{
+			{Key: "whatsapp_forms.view", Description: "Ver os formulários, onde estão publicados e os envios", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead)}, Screens: []Screen{ScreenWhatsAppForms, ScreenWhatsAppFormDetail}},
+			{Key: "whatsapp_forms.build", Description: "Criar formulários e editar o rascunho no construtor", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppForms, ActionCreate), need(ResourceWhatsAppForms, ActionUpdate)}, Screens: []Screen{ScreenWhatsAppFormNew, ScreenWhatsAppFormBuilder}},
+			{Key: "whatsapp_forms.publish", Description: "Publicar e descontinuar formulários na Meta", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppForms, ActionConfigure)}},
+			{Key: "whatsapp_forms.send", Description: "Enviar formulários nas conversas do WhatsApp oficial", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppForms, ActionSend), conversationsRead}},
+			{Key: "whatsapp_forms.delete", Description: "Arquivar formulários", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppForms, ActionDelete)}},
+			{Key: "whatsapp_forms.responses", Description: "Ver as respostas das conversas que você alcança", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppFormResponses, ActionRead)}},
+			{Key: "whatsapp_forms.responses_sensitive", Description: "Ver respostas sensíveis, fotos e documentos", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppFormResponses, ActionRead), need(ResourceWhatsAppFormResponses, ActionReadSensitive)}},
+			{Key: "whatsapp_forms.export", Description: "Exportar as respostas em CSV ou XLSX", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppFormResponses, ActionRead), need(ResourceWhatsAppFormResponses, ActionExport)}},
+			{Key: "whatsapp_forms.responses_delete", Description: "Excluir respostas e os arquivos enviados nelas", Requires: []PermissionEntry{need(ResourceWhatsAppForms, ActionRead), need(ResourceWhatsAppFormResponses, ActionRead), need(ResourceWhatsAppFormResponses, ActionDelete)}},
 		},
 	},
 	{
@@ -422,6 +448,30 @@ var Features = []Feature{
 			{Key: "facebook.connect", Description: "Conectar páginas", Requires: []PermissionEntry{need(ResourceFacebookPages, ActionRead), need(ResourceFacebookPages, ActionCreate)}, Screens: []Screen{ScreenFacebookConnect}},
 			{Key: "facebook.manage", Description: "Publicar, moderar comentários e editar as configurações das páginas", Requires: []PermissionEntry{need(ResourceFacebookPages, ActionRead), need(ResourceFacebookPages, ActionUpdate)}},
 			{Key: "facebook.disconnect", Description: "Desconectar páginas", Requires: []PermissionEntry{need(ResourceFacebookPages, ActionRead), need(ResourceFacebookPages, ActionDelete)}},
+		},
+	},
+	{
+		Key:         "mercadolivre",
+		Name:        "Mercado Livre",
+		Location:    "Menu lateral › Mercado Livre › Contas",
+		Description: "Contas de vendedor do Mercado Livre conectadas: as mensagens pós-venda chegam nas conversas, com o agente ou o fluxo que atende cada conta.",
+		Capabilities: []Capability{
+			{Key: "mercadolivre.view", Description: "Ver as contas, as permissões concedidas e o estado da conexão", Requires: []PermissionEntry{need(ResourceMercadoLivreAccounts, ActionRead)}, Screens: []Screen{ScreenMercadoLivreAccounts, ScreenMercadoLivreAccount}},
+			{Key: "mercadolivre.connect", Description: "Conectar e reconectar contas", Requires: []PermissionEntry{need(ResourceMercadoLivreAccounts, ActionRead), need(ResourceMercadoLivreAccounts, ActionCreate)}, Screens: []Screen{ScreenMercadoLivreConnect}},
+			{Key: "mercadolivre.manage", Description: "Editar a automação, o departamento e o funil das contas e verificar a conexão", Requires: []PermissionEntry{need(ResourceMercadoLivreAccounts, ActionRead), need(ResourceMercadoLivreAccounts, ActionUpdate)}},
+			{Key: "mercadolivre.disconnect", Description: "Desconectar contas", Requires: []PermissionEntry{need(ResourceMercadoLivreAccounts, ActionRead), need(ResourceMercadoLivreAccounts, ActionDelete)}},
+		},
+	},
+	{
+		Key:         "tiktok",
+		Name:        "TikTok",
+		Location:    "Menu lateral › TikTok › Contas",
+		Description: "Contas do TikTok conectadas: as mensagens diretas chegam nas conversas e os comentários dos vídeos têm regras de resposta, com o agente ou o fluxo que atende cada conta.",
+		Capabilities: []Capability{
+			{Key: "tiktok.view", Description: "Ver as contas, os vídeos, os comentários e o estado da conexão", Requires: []PermissionEntry{need(ResourceTikTokAccounts, ActionRead)}, Screens: []Screen{ScreenTikTokAccounts, ScreenTikTokAccount}},
+			{Key: "tiktok.connect", Description: "Conectar e reconectar contas", Requires: []PermissionEntry{need(ResourceTikTokAccounts, ActionRead), need(ResourceTikTokAccounts, ActionCreate)}, Screens: []Screen{ScreenTikTokConnect}},
+			{Key: "tiktok.manage", Description: "Responder, ocultar e curtir comentários e editar as regras, a automação, o departamento e o funil das contas", Requires: []PermissionEntry{need(ResourceTikTokAccounts, ActionRead), need(ResourceTikTokAccounts, ActionUpdate)}},
+			{Key: "tiktok.disconnect", Description: "Desconectar contas", Requires: []PermissionEntry{need(ResourceTikTokAccounts, ActionRead), need(ResourceTikTokAccounts, ActionDelete)}},
 		},
 	},
 	{
@@ -515,7 +565,7 @@ var Features = []Feature{
 		Key:         "issues",
 		Name:        "Suporte",
 		Location:    "Menu lateral › Suporte",
-		Description: "Solicitações de suporte abertas com a equipe Vozko.",
+		Description: "Solicitações de suporte abertas com a equipe da plataforma.",
 		Capabilities: []Capability{
 			{Key: "issues.view", Description: "Ver as solicitações e as respostas", Requires: []PermissionEntry{need(ResourceIssues, ActionRead)}, Screens: []Screen{ScreenIssues, ScreenIssueDetail}},
 			{Key: "issues.create", Description: "Abrir solicitações", Requires: []PermissionEntry{need(ResourceIssues, ActionRead), need(ResourceIssues, ActionCreate)}, Screens: []Screen{ScreenIssueNew}},

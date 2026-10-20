@@ -10,6 +10,7 @@ import (
 
 	"vozko/delivery/http/response"
 	"vozko/domain/conversation"
+	"vozko/domain/inbox_assignment"
 	"vozko/domain/working_hours"
 	workspaceconfigdomain "vozko/domain/workspace_config"
 	"vozko/infra/http/middleware"
@@ -70,7 +71,7 @@ func (h *WorkspaceConfigHandler) load(w http.ResponseWriter, r *http.Request) (*
 }
 
 // @Summary		Atualizar configuração do workspace
-// @Description	Atualiza as preferências do workspace: atribuição de administradores, modo da roleta (online ou última vez online, com janela e resgate), música de espera, política da fila de atendimento e encerramento automático de conversas.
+// @Description	Atualiza as preferências do workspace: atribuição de administradores, roleta (quem participa: online ou última vez online, com janela e resgate; como escolhe: rodízio, prioridade por níveis, peso, menos ocupado, mais tempo sem receber, aleatório ou livre; limite de conversas abertas por pessoa e lista de quem recebe), música de espera, política da fila de atendimento e encerramento automático de conversas.
 // @Tags			Configuração do workspace
 // @Accept			json
 // @Produce		json
@@ -110,6 +111,9 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 			"rouletteLastSeenWindowHours": "number (optional, 1..168)",
 			"rouletteRescueEnabled":       "boolean (optional)",
 			"rouletteRescueAfterMinutes":  "number (optional, 1..1440)",
+			"rouletteStrategy":            "string (optional): round_robin | priority | weighted | least_busy | longest_idle | random | claim",
+			"rouletteMaxOpenPerMember":    "number (optional, 0..500, 0 = no limit)",
+			"rouletteRecipients":          "array (optional) of {userId, tier 1..10, weight 1..10}",
 			"workingHours":                "object (optional), or null to clear",
 			"outcomeCapture":              "object (optional), or null to clear",
 		})
@@ -138,7 +142,7 @@ func (h *WorkspaceConfigHandler) Update(w http.ResponseWriter, r *http.Request) 
 			response.WriteError(w, http.StatusForbidden, "Insufficient permissions to update workspace configuration", nil)
 			return
 		}
-		if working_hours.IsPolicyError(err) || conversation.IsOutcomePolicyError(err) {
+		if working_hours.IsPolicyError(err) || conversation.IsOutcomePolicyError(err) || inbox_assignment.IsRoulettePolicyError(err) {
 			response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 			return
 		}

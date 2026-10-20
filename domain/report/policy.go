@@ -2,13 +2,18 @@ package report
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
 	"vozko/domain/workspace"
 )
 
-const KindLeads Kind = "leads"
+const (
+	KindLeads                 Kind = "leads"
+	KindWhatsAppDispatch      Kind = "whatsapp_dispatch"
+	KindWhatsAppFormResponses Kind = "whatsapp_form_responses"
+)
 
 const FailureForbidden FailureCode = "forbidden"
 
@@ -16,6 +21,7 @@ var (
 	ErrNoPolicy       = errors.New("report: this kind declares no access policy")
 	ErrKindNotOffered = errors.New("report: this kind is requested from its own page, not through /reports")
 	ErrNotAllowed     = errors.New("report: you do not have the permissions this report needs")
+	ErrInvalidParams  = errors.New("report: the parameters cannot be rendered by this kind")
 )
 
 var errorCodes = []struct {
@@ -24,6 +30,7 @@ var errorCodes = []struct {
 }{
 	{ErrNotAllowed, "report_forbidden"},
 	{ErrKindNotOffered, "report_kind_not_offered"},
+	{ErrInvalidParams, "report_invalid_params"},
 }
 
 func ErrorCode(err error) string {
@@ -94,6 +101,21 @@ type Internal interface {
 	Internal() bool
 }
 
+type ParamsChecker interface {
+	CheckParams(job Job) error
+}
+
+func CheckParams(r Renderer, job Job) error {
+	checker, ok := r.(ParamsChecker)
+	if !ok {
+		return nil
+	}
+	if err := checker.CheckParams(job); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidParams, err)
+	}
+	return nil
+}
+
 func PolicyOf(r Renderer, job Job) (Policy, error) {
 	guard, ok := r.(Guard)
 	if !ok {
@@ -134,4 +156,13 @@ func (r *formatRouter) Internal() bool {
 		}
 	}
 	return false
+}
+
+func (r *formatRouter) CheckParams(job Job) error {
+	for _, format := range r.order {
+		if checker, ok := r.renderers[format].(ParamsChecker); ok {
+			return checker.CheckParams(job)
+		}
+	}
+	return nil
 }

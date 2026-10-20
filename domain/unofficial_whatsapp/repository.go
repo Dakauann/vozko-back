@@ -34,6 +34,7 @@ type InstanceRepository interface {
 	RotateDeliveryToken(ctx context.Context, id, token, tokenHash string) error
 
 	FindByID(ctx context.Context, id string) (*Instance, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Instance, error)
 	FindByDeliveryTokenHash(ctx context.Context, tokenHash string) (*Instance, error)
 	FindByJID(ctx context.Context, jid string) (*Instance, error)
 	ListLiveByJID(ctx context.Context, jid string) ([]*Instance, error)
@@ -108,6 +109,7 @@ type ContactProfile struct {
 type ConversationRepository interface {
 	FindOrCreate(ctx context.Context, in FindOrCreateConversationInput) (*Conversation, error)
 	FindByID(ctx context.Context, id string) (*Conversation, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Conversation, error)
 	FindByChatID(ctx context.Context, instanceID, chatID string) (*Conversation, error)
 	EntryIDsForContact(ctx context.Context, instanceID, contactID string) ([]string, error)
 

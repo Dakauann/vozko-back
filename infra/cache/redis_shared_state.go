@@ -193,6 +193,23 @@ func (s *redisSharedState) HDelIfValue(key, field, value string) error {
 
 var _ domainCache.HashFieldAcknowledger = (*redisSharedState)(nil)
 
+var deleteKeyIfValue = redis.NewScript(`
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+`)
+
+func (s *redisSharedState) DelIfValue(key, value string) (bool, error) {
+	deleted, err := deleteKeyIfValue.Run(s.ctx, s.client, []string{key}, value).Int64()
+	if err != nil {
+		return false, err
+	}
+	return deleted > 0, nil
+}
+
+var _ domainCache.OwnedKeyDeleter = (*redisSharedState)(nil)
+
 func (s *redisSharedState) HGetAll(key string) (map[string]string, error) {
 	result, err := s.client.HGetAll(s.ctx, key).Result()
 	if err != nil {

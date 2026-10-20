@@ -1,9 +1,11 @@
 package shared
 
 var plainSignatureEntryTypes = map[EntryType]struct{}{
-	EntryTypeInstagram: {},
-	EntryTypeFacebook:  {},
-	EntryTypeWebchat:   {},
+	EntryTypeInstagram:    {},
+	EntryTypeFacebook:     {},
+	EntryTypeWebchat:      {},
+	EntryTypeMercadoLivre: {},
+	EntryTypeTikTok:       {},
 }
 
 func (e EntryType) SignsWithPlainText() bool {
@@ -12,10 +14,12 @@ func (e EntryType) SignsWithPlainText() bool {
 }
 
 var entryTypeDisplayLabels = map[EntryType]string{
-	EntryTypeInstagram: "Instagram",
-	EntryTypeTelegram:  "Telegram",
-	EntryTypeFacebook:  "Messenger",
-	EntryTypeWebchat:   "WebChat",
+	EntryTypeInstagram:    "Instagram",
+	EntryTypeTelegram:     "Telegram",
+	EntryTypeFacebook:     "Messenger",
+	EntryTypeWebchat:      "WebChat",
+	EntryTypeMercadoLivre: "Mercado Livre",
+	EntryTypeTikTok:       "TikTok",
 }
 
 func (e EntryType) DisplayLabel() string {

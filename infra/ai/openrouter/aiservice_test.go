@@ -25,7 +25,7 @@ func TestAiCompletetion(t *testing.T) {
 	aiService, err := NewService(Config{
 		APIKey:       apiKey,
 		DefaultModel: "x-ai/grok-4.1-fast",
-	}, nil, noopBillingPub{})
+	}, nil, noopBillingPub{}, &leakTally{})
 	if err != nil {
 		t.Fatalf("NewService() = %v", err)
 	}
@@ -67,10 +67,16 @@ func (noopBillingPub) PublishWithDelay(string, []byte, time.Duration) error {
 func (noopBillingPub) ValidateConnection() error { return nil }
 
 func TestNewServiceRequiresABillingPublisher(t *testing.T) {
-	if _, err := NewService(Config{APIKey: "k"}, nil, nil); !errors.Is(err, ai.ErrBillingNotConfigured) {
+	if _, err := NewService(Config{APIKey: "k"}, nil, nil, &leakTally{}); !errors.Is(err, ai.ErrBillingNotConfigured) {
 		t.Fatalf("NewService() = %v, want ai.ErrBillingNotConfigured", err)
 	}
-	if _, err := NewService(Config{APIKey: "k"}, nil, noopBillingPub{}); err != nil {
+	if _, err := NewService(Config{APIKey: "k"}, nil, noopBillingPub{}, &leakTally{}); err != nil {
 		t.Fatalf("a service with a publisher failed to build: %v", err)
+	}
+}
+
+func TestNewServiceRequiresBillingMetricsSoUnbilledCallsAreNeverInvisible(t *testing.T) {
+	if _, err := NewService(Config{APIKey: "k"}, nil, noopBillingPub{}, nil); !errors.Is(err, ai.ErrBillingNotConfigured) {
+		t.Fatalf("NewService() = %v, want ai.ErrBillingNotConfigured without a billing metrics recorder", err)
 	}
 }

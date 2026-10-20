@@ -48,6 +48,7 @@ type NodeDefinition struct {
 	DefaultConfig  map[string]interface{} `json:"defaultConfig"`
 	ConfigSchema   []ConfigField          `json:"configSchema"`
 	Guidance       NodeGuidance           `json:"guidance"`
+	TestBehavior   NodeTestBehavior       `json:"testBehavior"`
 
 	ChannelLimits map[string]ChannelInteractiveLimits `json:"channelLimits,omitempty"`
 }
@@ -138,8 +139,12 @@ func DefinitionAllowedForType(def NodeDefinition, wfType WorkflowType) bool {
 	if def.Type.IsTrigger() {
 		return TriggerType(def.Type).WorkflowType() == wfType
 	}
-	for _, scope := range def.Scopes {
-		if wfType.Accepts(scope) {
+	return def.acceptedBy(wfType)
+}
+
+func (d NodeDefinition) acceptedBy(t WorkflowType) bool {
+	for _, scope := range d.Scopes {
+		if t.Accepts(scope) {
 			return true
 		}
 	}
@@ -217,6 +222,7 @@ func BuiltinDefinitions() []NodeDefinition {
 		{
 			Type:          NodeTypeTriggerFirstMessage,
 			Category:      NodeCategoryTrigger,
+			TestBehavior:  NodeTestTrigger,
 			Scopes:        []NodeScope{NodeScopeWhatsApp},
 			Label:         "Primeira Mensagem",
 			Description:   "Dispara quando o contato envia a primeira mensagem.",
@@ -231,6 +237,7 @@ func BuiltinDefinitions() []NodeDefinition {
 		{
 			Type:          NodeTypeTriggerMessageReceived,
 			Category:      NodeCategoryTrigger,
+			TestBehavior:  NodeTestTrigger,
 			Scopes:        []NodeScope{NodeScopeWhatsApp},
 			Label:         "Mensagem Recebida",
 			Description:   "Dispara a cada mensagem recebida no chat.",
@@ -245,6 +252,7 @@ func BuiltinDefinitions() []NodeDefinition {
 		{
 			Type:          NodeTypeTriggerWebhook,
 			Category:      NodeCategoryTrigger,
+			TestBehavior:  NodeTestTrigger,
 			Scopes:        []NodeScope{NodeScopeWhatsApp},
 			Label:         "Webhook",
 			Description:   "Dispara quando um sistema externo faz um POST na URL do webhook.",
@@ -257,10 +265,11 @@ func BuiltinDefinitions() []NodeDefinition {
 			},
 		},
 		{
-			Type:     NodeTypeTriggerCallReceived,
-			Category: NodeCategoryTrigger,
-			Scopes:   []NodeScope{NodeScopeVoice},
-			Label:    "Ligação Recebida",
+			Type:         NodeTypeTriggerCallReceived,
+			Category:     NodeCategoryTrigger,
+			TestBehavior: NodeTestTrigger,
+			Scopes:       []NodeScope{NodeScopeVoice},
+			Label:        "Ligação Recebida",
 			Description: "Dispara quando uma ligação chega pelo tronco SIP escolhido. O fluxo atende a " +
 				"ligação no lugar de chamar a equipe.",
 			Icon:          "PhoneCall",
@@ -279,8 +288,57 @@ func BuiltinDefinitions() []NodeDefinition {
 			},
 		},
 		{
+			Type:          NodeTypeTriggerFormSubmitted,
+			Category:      NodeCategoryTrigger,
+			TestBehavior:  NodeTestTrigger,
+			Scopes:        []NodeScope{NodeScopeWhatsApp},
+			Label:         "Formulário respondido",
+			Description:   "Dispara quando um contato envia as respostas de um formulário do WhatsApp.",
+			Icon:          "ClipboardText",
+			DefaultConfig: map[string]interface{}{FormTriggerFormIDsKey: []interface{}{}},
+			ConfigSchema: []ConfigField{
+				{Key: FormTriggerFormIDsKey, Label: "Formulários", Type: "multi-select", OptionsSource: "whatsapp_forms", Description: "Vazio: qualquer formulário."},
+			},
+			OutputKeys: []OutputKeyDefinition{
+				{Key: DataKeyFormID, Description: "ID do formulário respondido"},
+				{Key: DataKeyFormResponseID, Description: "ID da resposta"},
+				{Key: "form.<campo>", Description: "Resposta de cada campo pela chave do campo; campos sensíveis chegam mascarados"},
+			},
+			Guidance: NodeGuidance{
+				When: "Inicia o fluxo a cada resposta enviada a um formulário do WhatsApp, por exemplo para etiquetar a conversa, criar uma oportunidade ou avisar a equipe.",
+				Behavior: "Cada resposta inicia a sua própria execução, mesmo quando a mesma pessoa responde o formulário de novo. " +
+					"Disponibiliza {{form_id}}, {{form_response_id}} e {{form.<chave_do_campo>}} com o valor exibido de cada resposta (campos sensíveis mascarados). " +
+					"Sem formulários escolhidos, dispara para qualquer formulário.",
+			},
+		},
+		{
+			Type:          NodeTypeTriggerAgentCall,
+			Category:      NodeCategoryTrigger,
+			TestBehavior:  NodeTestTrigger,
+			Scopes:        []NodeScope{NodeScopeWhatsApp},
+			Label:         "Chamado por agente IA",
+			Description:   "Dispara quando um agente de IA executa este fluxo na conversa em que está atendendo.",
+			Icon:          "Robot",
+			DefaultConfig: map[string]interface{}{AgentCallInputsKey: []interface{}{}},
+			ConfigSchema: []ConfigField{
+				{Key: AgentCallInputsKey, Label: "Campos recebidos do agente", Type: "agent_call_inputs",
+					Description: "Cada campo vira um parâmetro da ferramenta Executar fluxo: nome (minúsculas, dígitos e _), tipo (string, number, boolean, object, array), descrição, obrigatório e exemplo."},
+			},
+			OutputKeys: []OutputKeyDefinition{
+				{Key: DataKeyAgentInput + ".<campo>", Description: "Valor de cada campo enviado pelo agente"},
+				{Key: DataKeyAgent + ".id", Description: "ID do agente que executou o fluxo"},
+				{Key: DataKeyAgent + ".name", Description: "Nome do agente que executou o fluxo"},
+			},
+			Guidance: NodeGuidance{
+				When: "Inicia o fluxo quando um agente de IA chama a ferramenta Executar fluxo durante um atendimento, sempre na conversa atual.",
+				Behavior: "Disponibiliza {{input.<campo>}} com os campos declarados (validados antes de iniciar) e {{agent.id}} / {{agent.name}}. " +
+					"Use o nó Responder ao agente para devolver um resultado ao agente.",
+			},
+		},
+		{
 			Type:          NodeTypeEnd,
 			Category:      NodeCategoryEnd,
+			TestBehavior:  NodeTestEnd,
 			Scopes:        []NodeScope{NodeScopeShared, NodeScopeVoice},
 			Label:         "Fim",
 			Description:   "Finaliza a execução do fluxo. Em fluxos de voz, desliga a ligação.",

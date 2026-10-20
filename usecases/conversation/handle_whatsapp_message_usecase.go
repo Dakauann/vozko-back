@@ -2,7 +2,6 @@ package conversation_usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -36,7 +35,6 @@ import (
 	workflow_domain "vozko/domain/workflow"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 	"vozko/infra/whisper"
-	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
 	balance_usecase "vozko/usecases/balance"
 	ia_usecase "vozko/usecases/inbox_assignment"
@@ -55,6 +53,7 @@ const (
 )
 
 type handleWhatsAppMessageUseCase struct {
+	formReplies             FormReplyReceiver
 	aiService               ai.Service
 	leadRepo                lead.Repository
 	agentRepo               agent.Repository
@@ -73,7 +72,10 @@ type handleWhatsAppMessageUseCase struct {
 	assignmentService       *ia_usecase.AssignmentService
 	aiAttendance            AIAttendanceRecorder
 	triggerEvaluator        workflow_domain.TriggerEvaluator
+	inboundRouter           *InboundRouter
+	turnLock                *AgentTurnLock
 	turnAssembler           *agentturn.Assembler
+	workflowNames           ActorNameResolver
 	stageRepo               stage.Repository
 	textExtractor           media.TextExtractor
 	sharedState             cache.SharedState
@@ -115,6 +117,11 @@ func (uc *handleWhatsAppMessageUseCase) SetAIAttendance(svc AIAttendanceRecorder
 
 func (uc *handleWhatsAppMessageUseCase) SetTriggerEvaluator(eval workflow_domain.TriggerEvaluator) {
 	uc.triggerEvaluator = eval
+	uc.inboundRouter = InboundRouterOf(eval)
+}
+
+func (uc *handleWhatsAppMessageUseCase) SetAgentTurnLock(lock *AgentTurnLock) {
+	uc.turnLock = lock
 }
 
 func (uc *handleWhatsAppMessageUseCase) SetBillingPub(pub messaging.MessageQueuePub) {
@@ -184,14 +191,14 @@ func (uc *handleWhatsAppMessageUseCase) guardRecordAIResponse(ctx context.Contex
 	return uc.loopGuard.RecordAIResponse(ctx, workspaceID, conversationID)
 }
 
-func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, inboundWamid string, messageText string, msgType string, mediaType string, history []*conversation.Message, selected *workflow_domain.OptionSelection) {
-	if uc.triggerEvaluator == nil || entryID == "" {
+func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentContext, event workflow_domain.TriggerEvent, history []*conversation.Message) {
+	if uc.triggerEvaluator == nil || event.EntryID == "" {
 		return
 	}
 
 	if agentCtx != nil && agentCtx.wcEntry != nil &&
 		agentCtx.wcEntry.AutomationEnabled != nil && !*agentCtx.wcEntry.AutomationEnabled {
-		log.Printf("[whatsapp-workflow] automation disabled for entry=%s, skipping workflow triggers", entryID)
+		log.Printf("[whatsapp-workflow] automation disabled for entry=%s, skipping workflow triggers", event.EntryID)
 		return
 	}
 
@@ -199,22 +206,28 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		return
 	}
 
-	workspaceID := ""
-	if agentCtx != nil {
-		workspaceID = agentCtx.getWorkspaceID()
-	}
-	if workspaceID == "" {
+	if event.WorkspaceID == "" {
 		return
 	}
 
-	if dec := uc.guardCheckInbound(context.Background(), workspaceID, entryID, messageText); dec.Block {
-		log.Printf("[whatsapp-workflow] loop suspected for entry=%s reason=%s count=%d, skipping workflow triggers", entryID, dec.Reason, dec.Count)
+	messageText, _ := event.Data["message"].(string)
+	if dec := uc.guardCheckInbound(context.Background(), event.WorkspaceID, event.EntryID, messageText); dec.Block {
+		log.Printf("[whatsapp-workflow] loop suspected for entry=%s reason=%s count=%d, skipping workflow triggers", event.EntryID, dec.Reason, dec.Count)
 		return
 	}
 
-	data := map[string]interface{}{
-		"message": messageText,
+	uc.triggerEvaluator.Evaluate(event)
+
+	if isFirstInboundMessage(history) {
+		first := event
+		first.TriggerType = workflow_domain.TriggerFirstMessage
+		first.Reply = nil
+		uc.triggerEvaluator.Evaluate(first)
 	}
+}
+
+func (uc *handleWhatsAppMessageUseCase) messageEvent(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, inboundWamid string, messageText string, msgType string, mediaType string, selected *workflow_domain.OptionSelection) workflow_domain.TriggerEvent {
+	data := workflow_domain.InboundMessageData(messageText, msgType, mediaType, selected)
 	contact := ""
 	if agentCtx != nil && agentCtx.wcLeadRecord != nil {
 		contact = agentCtx.wcLeadRecord.Number
@@ -223,15 +236,10 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		contact = lead.NormalizeWhatsAppNumber(senderNumber)
 	}
 	workflow_domain.ApplyContactNumber(data, contact)
-	if msgType != "" {
-		data["message_type"] = msgType
-	}
-	if mediaType != "" {
-		data["media_type"] = mediaType
-	}
-	workflow_domain.ApplySelection(data, selected)
 	workflow_domain.ApplyTriggerMessage(data, uc.storedInboundID(inboundWamid))
+	workspaceID := ""
 	if agentCtx != nil {
+		workspaceID = agentCtx.getWorkspaceID()
 		if cID, _ := agentCtx.getCampaignInfo(); cID != "" {
 			data["campaign_id"] = cID
 		}
@@ -259,22 +267,12 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 		}
 	}
 
-	uc.triggerEvaluator.Evaluate(workflow_domain.TriggerEvent{
+	return workflow_domain.TriggerEvent{
 		WorkspaceID: workspaceID,
 		EntryID:     entryID,
 		EntryType:   string(entryType),
 		TriggerType: workflow_domain.TriggerMessageReceived,
 		Data:        data,
-	})
-
-	if isFirstInboundMessage(history) {
-		uc.triggerEvaluator.Evaluate(workflow_domain.TriggerEvent{
-			WorkspaceID: workspaceID,
-			EntryID:     entryID,
-			EntryType:   string(entryType),
-			TriggerType: workflow_domain.TriggerFirstMessage,
-			Data:        data,
-		})
 	}
 }
 
@@ -385,6 +383,8 @@ type agentContext struct {
 	agent           *agent.Agent
 	skipResponse    bool
 	automation      conversation.ChannelAutomation
+
+	automationResolved bool
 }
 
 func (a *agentContext) firesWorkflow() bool {
@@ -555,6 +555,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	}
 
 	statusErr := uc.logStatusUpdates(payload)
+	uc.foldInboundReactions(payload)
 
 	message, metadata, _ := uc.extractInboundMessage(payload)
 	if message == nil {
@@ -608,32 +609,7 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	}
 	businessNumber := metadataBusinessNumber(metadata)
 
-	if agentCtx != nil && agentCtx.agent != nil {
-		ctx = agentctx.WithAgent(ctx, agentCtx.agent)
-		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
-	}
-
-	whatsappCtx := WhatsAppContext{
-		UserPhoneNumber:     message.From,
-		ConversationID:      conversationID,
-		MessageReceivedTime: parseWhatsAppTimestamp(message.Timestamp),
-	}
-	if agentCtx != nil {
-		if agentCtx.wcCampaign != nil {
-			whatsappCtx.CampaignName = agentCtx.wcCampaign.Name
-		}
-		if agentCtx.agent != nil {
-			whatsappCtx.AgentName = agentCtx.agent.Name
-		}
-	}
-	if leadRecord != nil {
-		whatsappCtx.UserName = leadRecord.RealName()
-	}
-	if agentCtx != nil {
-		if agentCtx.wcEntry != nil {
-			whatsappCtx.Metadata = agentCtx.wcEntry.Metadata
-		}
-	}
+	ctx = withAgentTurn(ctx, agentCtx)
 
 	entryID, entryType := agentCtx.getEntryInfo()
 	if entryID != "" {
@@ -679,20 +655,10 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		}
 	}
 
-	var outboundBusinessPhoneID string
-	if agentCtx != nil && agentCtx.wcCampaign != nil && agentCtx.wcCampaign.BusinessPhoneID != "" {
-		outboundBusinessPhoneID = agentCtx.wcCampaign.BusinessPhoneID
-		log.Printf("[whatsapp-usecase] using campaign business phone for reply: db_id=%s", outboundBusinessPhoneID)
-	}
-	if outboundBusinessPhoneID == "" && receivedBusinessPhoneID != "" {
-		outboundBusinessPhoneID = receivedBusinessPhoneID
-		log.Printf("[whatsapp-usecase] using received phone for reply: db_id=%s", outboundBusinessPhoneID)
-	}
-
 	if uc.assignmentService != nil && entryID != "" {
 		phoneForAssignment := receivedBusinessPhoneID
 		if phoneForAssignment == "" {
-			phoneForAssignment = outboundBusinessPhoneID
+			phoneForAssignment = replyPhoneID(agentCtx, receivedBusinessPhoneID)
 		}
 		if phoneForAssignment != "" {
 			assignedUID := uc.assignmentService.EnsureAssignment(entryID, string(entryType), phoneForAssignment)
@@ -713,8 +679,23 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		}
 	}
 
+	formTarget := formReplyTarget{workspaceID: agentCtx.getWorkspaceID(), entryID: entryID, entryType: entryType, conversationID: conversationID, businessPhoneID: receivedBusinessPhoneID}
+	if agentCtx != nil && agentCtx.wcEntry != nil {
+		formTarget.leadID = agentCtx.wcEntry.LeadID
+	}
+	if formTarget.leadID == "" && leadRecord != nil {
+		formTarget.leadID = leadRecord.ID
+	}
+	formReply, err := uc.receiveFormReply(ctx, message, formTarget)
+	if err != nil {
+		return err
+	}
+
 	if uc.historyManager != nil && entryID != "" {
-		record := uc.inboundTextRecord(message, inboundTarget{entryID: entryID, entryType: entryType, conversationID: conversationID, businessNumber: businessNumber}, leadRecord)
+		record, err := withFormCard(uc.inboundTextRecord(message, inboundTarget{entryID: entryID, entryType: entryType, conversationID: conversationID, businessNumber: businessNumber}, leadRecord), formReply)
+		if err != nil {
+			return err
+		}
 		if err := uc.historyManager.Record(ctx, record); err != nil {
 			return err
 		}
@@ -727,20 +708,17 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		return err
 	}
 	selected := selectedOptionFromMessage(message, exit.Selection)
-	recipientPhone := strings.TrimSpace(message.From)
-	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
-	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: conversation.PromptContent(message.Text.Body, "")})
 
-	if agentCtx != nil && (agentCtx.skipResponse || exit.OptedOut) {
-		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (agent responses disabled=%v, lead opted out=%v)", agentCtx.skipResponse, exit.OptedOut)
+	resumedByForm := formReply != nil && formReply.ResumedRunID != ""
+	inboundEvent := uc.messageEvent(agentCtx, entryID, entryType, message.From, message.ID, message.Text.Body, "text", "", selected)
+	route := uc.routeInbound(agentCtx, inboundEvent, resumedByForm)
+	uc.deliverInbound(agentCtx, route, inboundEvent, history, agentCtx.firesWorkflow() && !resumedByForm)
+
+	if agentCtx != nil && (agentCtx.skipResponse || exit.OptedOut || !route.Consumer.AgentReplies()) {
+		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (agent responses disabled=%v, lead opted out=%v, consumer=%s)", agentCtx.skipResponse, exit.OptedOut, route.Consumer)
 
 		if agentCtx.wcCampaign != nil && (agentCtx.wcCampaign.EnableAnalysis || agentCtx.wcCampaign.EnableAutoStaging) {
 			go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-		}
-
-		if agentCtx.firesWorkflow() {
-			log.Printf("[whatsapp-usecase] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.automation.WorkflowRef())
-			go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.ID, message.Text.Body, "text", "", history, selected)
 		}
 		return nil
 	}
@@ -755,190 +733,17 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 		return nil
 	}
 
-	if dec := uc.guardRecordAIResponse(ctx, agentCtx.getWorkspaceID(), entryID); dec.Block {
-		log.Printf("[whatsapp-usecase] AI reply rate limit hit for entry=%s count=%d, skipping AI response", entryID, dec.Count)
+	release, held := uc.turnLock.HoldForInbound(ctx, entryID, entryType)
+	if !held {
+		release()
 		return nil
 	}
-
-	var messagingModel string
-	if agentCtx != nil && agentCtx.agent != nil && agentCtx.agent.MessagingModel != "" {
-		messagingModel = agentCtx.agent.MessagingModel
-	}
-
-	if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), messagingModel) {
-		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
-		return nil
-	}
-
-	var campaignPhoneID string
-	if agentCtx != nil && agentCtx.wcCampaign != nil {
-		campaignPhoneID = agentCtx.wcCampaign.BusinessPhoneID
-	}
-	outboundClient, err := uc.resolveWhatsAppClient(campaignPhoneID, receivedBusinessPhoneID)
-	if err != nil {
-		log.Printf("[whatsapp-usecase] cannot send reply: %v", err)
-		return fmt.Errorf("cannot send WhatsApp reply: %w", err)
-	}
-
-	recipientNumber := strings.TrimSpace(message.From)
-	incomingMessageID := strings.TrimSpace(message.ID)
-	initialTypingSentAt := ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-usecase]", time.Time{})
-
-	turnEntryID, turnEntryType := "", shared.EntryType("")
-	if agentCtx != nil {
-		turnEntryID, turnEntryType = agentCtx.getEntryInfo()
-	}
-	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
-		agentCtx:        agentCtx,
-		whatsappCtx:     whatsappCtx,
-		RecipientPhone:  recipientPhone,
-		BusinessPhoneID: outboundBusinessPhoneID,
-		EntryID:         turnEntryID,
-		EntryType:       turnEntryType,
-		Vars:            agent.MetadataToVars(whatsappCtx.Metadata),
-		Query:           message.Text.Body,
-		Messages:        conversationMessages,
-		Model:           messagingModel,
-		Temperature:     0.2,
-		Segmented:       true,
-	})
-	toolsForAgent := generateInput.Tools
-
-	log.Printf("[whatsapp-usecase] Starting AI response generation (model: %s, tools: %d)", messagingModel, len(toolsForAgent))
-
-	output, err := uc.aiService.Generate(ctx, generateInput)
-	if err != nil {
-		fmt.Println(err)
+	turn := whatsAppInboundTurn{agentCtx: agentCtx, leadRecord: leadRecord, message: message, entryID: entryID, entryType: entryType,
+		conversationID: conversationID, businessNumber: businessNumber, receivedPhoneID: receivedBusinessPhoneID}
+	err = uc.sendAgentReply(ctx, turn.reply(message.Text.Body, conversation.PromptContent(message.Text.Body, "")))
+	release()
+	if err := failedReply(err); err != nil {
 		return err
-	}
-
-	if uc.historyManager != nil && (conversationID != "" || entryID != "") && len(output.ToolCalls) > 0 {
-		for _, tc := range output.ToolCalls {
-			toolCallText := fmt.Sprintf("[Tool Call] %s: %s", tc.Name, tc.Arguments)
-			toolCallRecord := conversation.MessageHistoryRecord{
-				SentBy:         agentCtx.sentBy(),
-				EntryID:        entryID,
-				EntryType:      entryType,
-				Channel:        conversation.MessageChannelWhatsApp,
-				MessageType:    conversation.MessageTypeToolCall,
-				ConversationID: conversationID,
-				MessageID:      uuid.NewString(),
-				From:           "system",
-				To:             "system",
-				Text:           toolCallText,
-				Timestamp:      time.Now().UTC(),
-			}
-			if err := uc.historyManager.Record(ctx, toolCallRecord); err != nil {
-				log.Printf("[whatsapp-usecase] failed to record tool call: %v", err)
-			}
-
-			if tc.Result != nil {
-				var toolResultText string
-				if tc.Result.IsError {
-					if txt := strings.TrimSpace(tc.Result.ContextUpdateText); txt != "" {
-						toolResultText = fmt.Sprintf("[Tool Error] %s", txt)
-					} else if tc.Result.Result != nil {
-						resultJSON, err := json.Marshal(tc.Result.Result)
-						if err == nil {
-							toolResultText = fmt.Sprintf("[Tool Error] %s", string(resultJSON))
-						} else {
-							toolResultText = fmt.Sprintf("[Tool Error] %v", tc.Result.Result)
-						}
-					} else {
-						toolResultText = "[Tool Error] execution failed"
-					}
-				} else if tc.Result.ContextUpdateText != "" {
-					toolResultText = fmt.Sprintf("[Tool Result] %s", tc.Result.ContextUpdateText)
-				} else if tc.Result.Result != nil {
-					resultJSON, err := json.Marshal(tc.Result.Result)
-					if err == nil {
-						toolResultText = fmt.Sprintf("[Tool Result] %s", string(resultJSON))
-					} else {
-						toolResultText = fmt.Sprintf("[Tool Result] %v", tc.Result.Result)
-					}
-				}
-
-				if toolResultText != "" {
-					toolResultRecord := conversation.MessageHistoryRecord{
-						SentBy:         agentCtx.sentBy(),
-						EntryID:        entryID,
-						EntryType:      entryType,
-						Channel:        conversation.MessageChannelWhatsApp,
-						MessageType:    conversation.MessageTypeToolResult,
-						ConversationID: conversationID,
-						MessageID:      uuid.NewString(),
-						From:           "system",
-						To:             "system",
-						Text:           toolResultText,
-						Timestamp:      time.Now().UTC(),
-					}
-					if err := uc.historyManager.Record(ctx, toolResultRecord); err != nil {
-						log.Printf("[whatsapp-usecase] failed to record tool result: %v", err)
-					}
-				}
-			}
-		}
-	}
-
-	messages := output.Messages
-	if len(messages) == 0 {
-
-		if content := strings.TrimSpace(output.Message.Content); content != "" {
-			messages = []string{content}
-		}
-	}
-
-	for i, m := range messages {
-		messages[i] = sanitizeAIOutput(m)
-	}
-	messages = filterEmptyStrings(messages)
-
-	{
-		for i, msgText := range messages {
-			if i == 0 {
-				initialTypingSentAt = ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-usecase]", initialTypingSentAt)
-				waitForWhatsAppTypingVisibility(initialTypingSentAt, whatsAppTypingMinVisibleTime)
-			} else {
-				sendWhatsAppTypingIndicatorWithDelay(ctx, outboundClient, incomingMessageID, "[whatsapp-usecase]", 1500*time.Millisecond, time.Second)
-			}
-
-			sendInput := conversation.SendTextMessageInput{
-				To:   recipientNumber,
-				Body: msgText,
-			}
-			sendOutput, err := outboundClient.SendTextMessage(ctx, sendInput)
-			if err != nil {
-				return err
-			}
-
-			if uc.historyManager != nil && (conversationID != "" || entryID != "") {
-				record := conversation.MessageHistoryRecord{
-					SentBy:         agentCtx.sentBy(),
-					EntryID:        entryID,
-					EntryType:      entryType,
-					Channel:        conversation.MessageChannelWhatsApp,
-					MessageType:    conversation.MessageTypeAIResponse,
-					ConversationID: conversationID,
-					MessageID:      "",
-					From:           businessNumber,
-					To:             sendInput.To,
-					Text:           sendInput.Body,
-					Timestamp:      time.Now().UTC(),
-				}
-				if sendOutput != nil {
-					record.MessageID = strings.TrimSpace(sendOutput.MessageID)
-					if strings.TrimSpace(record.To) == "" {
-						record.To = strings.TrimSpace(sendOutput.ContactWaID)
-					}
-				}
-				if err := uc.historyManager.Record(ctx, record); err != nil {
-					return err
-				}
-				uc.recordAIAttendance(agentCtx, entryID, entryType, record.MessageID)
-			}
-
-			log.Printf("[whatsapp-usecase] ai response:\n%s", msgText)
-		}
 	}
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
@@ -956,6 +761,7 @@ func (uc *handleWhatsAppMessageUseCase) composeConversationHistory(history []*co
 	businessNorm := lead.NormalizeNumber(businessNumber)
 	userNorm := lead.NormalizeNumber(userNumber)
 	messages := make([]ai.Message, 0, len(history[start:]))
+	labels := historySourceLabels(uc.workflowNames, history[start:])
 
 	for _, msg := range history[start:] {
 		if msg == nil {
@@ -971,10 +777,10 @@ func (uc *handleWhatsAppMessageUseCase) composeConversationHistory(history []*co
 		if msg.MessageType.IsCallEvent() {
 			continue
 		}
-		if strings.TrimSpace(msg.Text) == "" {
+		if strings.TrimSpace(msg.ReadableText()) == "" {
 			continue
 		}
-		content := msg.PromptContent()
+		content := labels.Label(msg, msg.PromptContent())
 
 		senderNorm := lead.NormalizeNumber(msg.From)
 		role := ai.RoleUser
@@ -1720,6 +1526,13 @@ func (uc *handleWhatsAppMessageUseCase) extractInboundMessage(payload *conversat
 				msgType := strings.ToLower(msg.Type)
 				log.Printf("[whatsapp-usecase] extractInboundMessage: msgType=%s, from=%s, id=%s", msgType, msg.From, msg.ID)
 
+				if _, isForm := msg.FormReply(); msgType == "interactive" && isForm {
+					msg.Type = "text"
+					msg.Text = &conversation.WhatsAppTextMessage{Body: conversation.FormReplyPlaceholder}
+					change.Value.Messages[k] = msg
+					return &change.Value.Messages[k], &metadata, contactName
+				}
+
 				if msgType == "interactive" && msg.Interactive != nil {
 					log.Printf("[whatsapp-usecase] Interactive message received: type=%s, buttonReply=%v, listReply=%v",
 						msg.Interactive.Type, msg.Interactive.ButtonReply != nil, msg.Interactive.ListReply != nil)
@@ -2125,21 +1938,22 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 		domainMediaType := conversation.MediaType(mediaType)
 
 		record := conversation.MessageHistoryRecord{
-			SentBy:         conversation.SentByContact(message.From),
-			EntryID:        entryID,
-			EntryType:      entryType,
-			Channel:        conversation.MessageChannelWhatsApp,
-			MessageType:    conversation.MessageTypeMedia,
-			ConversationID: conversationID,
-			MessageID:      strings.TrimSpace(message.ID),
-			From:           strings.TrimSpace(message.From),
-			To:             businessNumber,
-			Text:           displayText,
-			Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
-			MediaID:        cdnMediaID,
-			MediaType:      domainMediaType,
-			MediaURL:       cdnURL,
-			AdReferral:     message.Referral.AdReferral(),
+			SentBy:             conversation.SentByContact(message.From),
+			EntryID:            entryID,
+			EntryType:          entryType,
+			Channel:            conversation.MessageChannelWhatsApp,
+			MessageType:        conversation.MessageTypeMedia,
+			ConversationID:     conversationID,
+			MessageID:          strings.TrimSpace(message.ID),
+			From:               strings.TrimSpace(message.From),
+			To:                 businessNumber,
+			Text:               displayText,
+			Timestamp:          parseWhatsAppTimestamp(message.Timestamp),
+			MediaID:            cdnMediaID,
+			MediaType:          domainMediaType,
+			MediaURL:           cdnURL,
+			ReplyToWAMessageID: quotedProviderMessageID(message),
+			AdReferral:         message.Referral.AdReferral(),
 		}
 
 		if extractedText != "" {
@@ -2152,22 +1966,24 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 		}
 	}
 
-	if extractedText != "" {
+	inboundEvent := uc.messageEvent(agentCtx, entryID, entryType, message.From, message.ID, captionOrFilename, "media", mediaType, nil)
+	route := uc.routeInbound(agentCtx, inboundEvent, false)
+
+	if extractedText != "" && !route.Consumer.AgentReplies() {
+		log.Printf("[whatsapp-media] media text extracted and recorded, but skipping AI response (consumer=%s)", route.Consumer)
+	} else if extractedText != "" {
 		userMessage := conversation.PromptContent(displayText, extractedText)
 
 		if uc.aiService != nil && agentCtx != nil && !agentCtx.skipResponse && !IsFloodDetected(ctx) {
-			var mediaModel string
-			if agentCtx.agent != nil {
-				mediaModel = agentCtx.agent.MessagingModel
-			}
-			if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), mediaModel) {
-				log.Printf("[whatsapp-media] media text extracted and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
-			} else if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), entryID, userMessage); dec.Block {
+			if dec := uc.guardCheckInbound(ctx, agentCtx.getWorkspaceID(), entryID, userMessage); dec.Block {
 				log.Printf("[whatsapp-media] loop suspected for entry=%s reason=%s count=%d, skipping AI response", entryID, dec.Reason, dec.Count)
-			} else if dec := uc.guardRecordAIResponse(ctx, agentCtx.getWorkspaceID(), entryID); dec.Block {
-				log.Printf("[whatsapp-media] AI reply rate limit hit for entry=%s count=%d, skipping AI response", entryID, dec.Count)
-			} else {
-				uc.generateMediaAIResponse(ctx, agentCtx, leadRecord, message, metadata, conversationID, businessNumber, entryID, entryType, receivedPhoneID, history, userMessage)
+			} else if release, held := uc.turnLock.HoldForInbound(ctx, entryID, entryType); held {
+				turn := whatsAppInboundTurn{agentCtx: agentCtx, leadRecord: leadRecord, message: message, entryID: entryID, entryType: entryType,
+					conversationID: conversationID, businessNumber: businessNumber, receivedPhoneID: receivedPhoneID}
+				if err := failedReply(uc.sendAgentReply(withAgentTurn(ctx, agentCtx), turn.reply(userMessage, userMessage))); err != nil {
+					log.Printf("[whatsapp-media] AI reply to the media content failed: %v", err)
+				}
+				release()
 			}
 		} else if agentCtx != nil && agentCtx.skipResponse {
 			log.Printf("[whatsapp-media] media text extracted and recorded, but skipping AI response (agent responses disabled)")
@@ -2177,154 +1993,10 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 	}
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-	go uc.fireWorkflowTriggers(agentCtx, entryID, entryType, message.From, message.ID, captionOrFilename, "media", mediaType, history, nil)
+	uc.deliverInbound(agentCtx, route, inboundEvent, history, true)
 
 	log.Printf("[whatsapp-media] %s message processed", mediaType)
 	return nil
-}
-
-func (uc *handleWhatsAppMessageUseCase) generateMediaAIResponse(
-	ctx context.Context,
-	agentCtx *agentContext,
-	leadRecord *lead.Lead,
-	message *conversation.WhatsAppMessage,
-	metadata *conversation.WhatsAppMetadata,
-	conversationID string,
-	businessNumber string,
-	entryID string,
-	entryType shared.EntryType,
-	receivedPhoneID string,
-	history []*conversation.Message,
-	userMessage string,
-) {
-	var toolsForAgent []toolsdomain.Definition
-
-	var campaignPhoneID string
-	if agentCtx.wcCampaign != nil {
-		campaignPhoneID = agentCtx.wcCampaign.BusinessPhoneID
-	}
-
-	recipientPhone := strings.TrimSpace(message.From)
-
-	mediaBusinessPhoneID := campaignPhoneID
-	if mediaBusinessPhoneID == "" {
-		mediaBusinessPhoneID = receivedPhoneID
-	}
-	var mediaEntryMetadata map[string]interface{}
-	if agentCtx.wcEntry != nil {
-		mediaEntryMetadata = agentCtx.wcEntry.Metadata
-	}
-
-	whatsappCtx := WhatsAppContext{
-		UserPhoneNumber:     message.From,
-		ConversationID:      conversationID,
-		MessageReceivedTime: parseWhatsAppTimestamp(message.Timestamp),
-	}
-	if agentCtx.wcCampaign != nil {
-		whatsappCtx.CampaignName = agentCtx.wcCampaign.Name
-	}
-	if agentCtx.agent != nil {
-		whatsappCtx.AgentName = agentCtx.agent.Name
-		ctx = agentctx.WithAgent(ctx, agentCtx.agent)
-		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
-	}
-	if agentCtx.wcLeadRecord != nil {
-		whatsappCtx.UserName = agentCtx.wcLeadRecord.RealName()
-	}
-	if agentCtx.wcEntry != nil {
-		whatsappCtx.Metadata = agentCtx.wcEntry.Metadata
-	}
-	if leadRecord != nil {
-		whatsappCtx.UserName = leadRecord.RealName()
-	}
-
-	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
-	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: userMessage})
-
-	var mediaMessagingModel string
-	if agentCtx != nil && agentCtx.agent != nil && agentCtx.agent.MessagingModel != "" {
-		mediaMessagingModel = agentCtx.agent.MessagingModel
-	}
-	outboundClient, err := uc.resolveWhatsAppClient(campaignPhoneID, receivedPhoneID)
-	if err != nil {
-		log.Printf("[whatsapp-media] Cannot resolve client for media AI reply: %v", err)
-		return
-	}
-	incomingMessageID := strings.TrimSpace(message.ID)
-	initialTypingSentAt := ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-media]", time.Time{})
-
-	log.Printf("[whatsapp-media] Generating AI response for extracted media content (model: %s, tools: %d)...", mediaMessagingModel, len(toolsForAgent))
-	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
-		agentCtx:        agentCtx,
-		whatsappCtx:     whatsappCtx,
-		RecipientPhone:  recipientPhone,
-		BusinessPhoneID: mediaBusinessPhoneID,
-		EntryID:         entryID,
-		EntryType:       entryType,
-		Vars:            agent.MetadataToVars(mediaEntryMetadata),
-		Query:           userMessage,
-		Messages:        conversationMessages,
-		Model:           mediaMessagingModel,
-		Temperature:     0.2,
-	})
-	toolsForAgent = generateInput.Tools
-
-	output, err := uc.aiService.Generate(ctx, generateInput)
-	if err != nil {
-		log.Printf("[whatsapp-media] AI generation failed for media: %v", err)
-		return
-	}
-
-	messages := output.Messages
-	if len(messages) == 0 {
-		if content := strings.TrimSpace(output.Message.Content); content != "" {
-			messages = []string{content}
-		}
-	}
-
-	for i, m := range messages {
-		messages[i] = sanitizeAIOutput(m)
-	}
-	messages = filterEmptyStrings(messages)
-
-	for i, msgText := range messages {
-		if i == 0 {
-			initialTypingSentAt = ensureWhatsAppTypingIndicatorFresh(ctx, outboundClient, incomingMessageID, "[whatsapp-media]", initialTypingSentAt)
-			waitForWhatsAppTypingVisibility(initialTypingSentAt, whatsAppTypingMinVisibleTime)
-		} else {
-			sendWhatsAppTypingIndicatorWithDelay(ctx, outboundClient, incomingMessageID, "[whatsapp-media]", 1500*time.Millisecond, time.Second)
-		}
-
-		sendOutput, sendErr := outboundClient.SendTextMessage(ctx, conversation.SendTextMessageInput{
-			To:   recipientPhone,
-			Body: msgText,
-		})
-		if sendErr != nil {
-			log.Printf("[whatsapp-media] Failed to send AI response: %v", sendErr)
-			return
-		}
-
-		if uc.historyManager != nil && (conversationID != "" || entryID != "") {
-			record := conversation.MessageHistoryRecord{
-				SentBy:         agentCtx.sentBy(),
-				EntryID:        entryID,
-				EntryType:      entryType,
-				Channel:        conversation.MessageChannelWhatsApp,
-				MessageType:    conversation.MessageTypeAIResponse,
-				ConversationID: conversationID,
-				From:           businessNumber,
-				To:             recipientPhone,
-				Text:           msgText,
-				Timestamp:      time.Now().UTC(),
-			}
-			if sendOutput != nil {
-				record.MessageID = strings.TrimSpace(sendOutput.MessageID)
-			}
-			_ = uc.historyManager.Record(ctx, record)
-		}
-
-		log.Printf("[whatsapp-media] AI response sent for media content")
-	}
 }
 
 func getExtensionFromMimeType(mimeType string) string {
@@ -2475,12 +2147,15 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 			SentBy:            conversation.SentByContact(message.From),
 			From:              strings.TrimSpace(message.From),
 			To:                businessNumber,
-			Text:              "[Áudio]",
+			Text:              conversation.AudioPlaceholder,
 			MediaID:           mediaIDPtr,
 			MediaType:         conversation.MediaTypeAudio,
 			WhatsAppMessageID: &wamid,
 			CreatedAt:         timestamp,
 			UpdatedAt:         now,
+		}
+		if quoted := quotedMessageID(uc.messageRepo, audioEntryType, audioEntryID, quotedProviderMessageID(message)); quoted != "" {
+			inboundMsg.ReplyToMessageID = &quoted
 		}
 		inboundMsg.Normalize()
 
@@ -2547,63 +2222,25 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 	log.Printf("[whatsapp-audio] STT: %q (latency=%dms, conf=%.2f, dur=%.2fs)",
 		transcribedText, sttLatency.Milliseconds(), transcription.Confidence, transcription.Duration)
-	audioText := "[Áudio] " + transcribedText
-
-	if savedMessageID != "" && uc.messageRepo != nil {
-		updatedMsg := &conversation.Message{
-			Text:      audioText,
-			UpdatedAt: time.Now().UTC(),
-		}
-		if err := uc.messageRepo.Update(savedMessageID, updatedMsg); err != nil {
-			log.Printf("[whatsapp-audio] Failed to update message with transcription: %v", err)
-		} else {
-			log.Printf("[whatsapp-audio] Message %s updated with transcription", savedMessageID)
-		}
-	}
+	audioText := conversation.SpokenText(transcribedText)
+	uc.storeTranscript(savedMessageID, transcribedText)
 
 	if uc.aiService == nil {
 		log.Println("[whatsapp-audio] AI service not configured")
 		return errors.New("ai service not configured")
 	}
 
-	if agentCtx != nil && agentCtx.agent != nil {
-		ctx = agentctx.WithAgent(ctx, agentCtx.agent)
-		ctx = agentctx.WithToolExecutionTracker(ctx, agentctx.NewToolExecutionTracker())
-	}
+	ctx = withAgentTurn(ctx, agentCtx)
 
-	whatsappCtx := WhatsAppContext{
-		UserPhoneNumber:     message.From,
-		ConversationID:      conversationID,
-		MessageReceivedTime: parseWhatsAppTimestamp(message.Timestamp),
-	}
-	if agentCtx != nil {
-		if agentCtx.wcCampaign != nil {
-			whatsappCtx.CampaignName = agentCtx.wcCampaign.Name
-		}
-		if agentCtx.agent != nil {
-			whatsappCtx.AgentName = agentCtx.agent.Name
-		}
-		if agentCtx.wcLeadRecord != nil {
-			whatsappCtx.UserName = agentCtx.wcLeadRecord.RealName()
-		}
-		if agentCtx.wcEntry != nil {
-			whatsappCtx.Metadata = agentCtx.wcEntry.Metadata
-		}
-	}
-	if leadRecord != nil {
-		whatsappCtx.UserName = leadRecord.RealName()
-	}
+	inboundEvent := uc.messageEvent(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, transcribedText, "audio", "audio", nil)
+	route := uc.routeInbound(agentCtx, inboundEvent, false)
 
-	if agentCtx != nil && agentCtx.skipResponse {
-		log.Printf("[whatsapp-audio] audio transcribed and recorded, but skipping AI response (agent responses disabled)")
+	if agentCtx != nil && (agentCtx.skipResponse || !route.Consumer.AgentReplies()) {
+		log.Printf("[whatsapp-audio] audio transcribed and recorded, but skipping AI response (agent responses disabled=%v, consumer=%s)", agentCtx.skipResponse, route.Consumer)
 		if agentCtx.wcCampaign != nil && (agentCtx.wcCampaign.EnableAnalysis || agentCtx.wcCampaign.EnableAutoStaging) {
 			go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
 		}
-
-		if agentCtx.firesWorkflow() {
-			log.Printf("[whatsapp-audio] firing workflow triggers for campaign %s (workflow %s)", agentCtx.wcCampaign.ID, agentCtx.automation.WorkflowRef())
-			go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, transcribedText, "audio", "audio", history, nil)
-		}
+		uc.deliverInbound(agentCtx, route, inboundEvent, history, agentCtx.firesWorkflow())
 		return nil
 	}
 
@@ -2616,108 +2253,28 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 		log.Printf("[whatsapp-audio] loop suspected for entry=%s reason=%s count=%d, skipping AI response", audioEntryID, dec.Reason, dec.Count)
 		return nil
 	}
-	if dec := uc.guardRecordAIResponse(ctx, agentCtx.getWorkspaceID(), audioEntryID); dec.Block {
-		log.Printf("[whatsapp-audio] AI reply rate limit hit for entry=%s count=%d, skipping AI response", audioEntryID, dec.Count)
+	release, held := uc.turnLock.HoldForInbound(ctx, audioEntryID, audioEntryType)
+	defer release()
+	if !held {
 		return nil
 	}
 
-	var audioMessagingModel string
-	if agentCtx != nil && agentCtx.agent != nil && agentCtx.agent.MessagingModel != "" {
-		audioMessagingModel = agentCtx.agent.MessagingModel
-	}
-
-	if !uc.canAffordAIReply(agentCtx.getWorkspaceID(), audioMessagingModel) {
-		log.Printf("[whatsapp-audio] audio transcribed and recorded, but skipping AI response (insufficient balance for workspace %s)", agentCtx.getWorkspaceID())
+	turn := whatsAppInboundTurn{agentCtx: agentCtx, leadRecord: leadRecord, message: message, entryID: audioEntryID, entryType: audioEntryType,
+		conversationID: conversationID, businessNumber: businessNumber, receivedPhoneID: audioReceivedBusinessPhoneID}
+	replyStart := time.Now()
+	err = uc.sendAgentReply(ctx, turn.reply(transcribedText, conversation.PromptContent(audioText, "")))
+	if _, skipped := replySkipReason(err); skipped {
 		return nil
 	}
-
-	recipientPhone := strings.TrimSpace(message.From)
-
-	audioBusinessPhoneID := audioCampaignPhoneID
-	if audioBusinessPhoneID == "" {
-		audioBusinessPhoneID = audioReceivedBusinessPhoneID
-	}
-	audioEntryIDSeed, audioEntryTypeSeed := "", shared.EntryType("")
-	if agentCtx != nil {
-		audioEntryIDSeed, audioEntryTypeSeed = agentCtx.getEntryInfo()
-	}
-
-	conversationMessages := uc.composeConversationHistory(history, businessNumber, message.From)
-	conversationMessages = append(conversationMessages, ai.Message{Role: ai.RoleUser, Content: conversation.PromptContent(audioText, "")})
-
-	generateInput := uc.assembleWhatsAppTurn(ctx, whatsAppTurn{
-		agentCtx:        agentCtx,
-		whatsappCtx:     whatsappCtx,
-		RecipientPhone:  recipientPhone,
-		BusinessPhoneID: audioBusinessPhoneID,
-		EntryID:         audioEntryIDSeed,
-		EntryType:       audioEntryTypeSeed,
-		Vars:            agent.MetadataToVars(whatsappCtx.Metadata),
-		Query:           transcribedText,
-		Messages:        conversationMessages,
-		Model:           audioMessagingModel,
-	})
-	toolsForAgent := generateInput.Tools
-
-	log.Printf("[whatsapp-audio] Generating AI response (model: %s, tools: %d)...", audioMessagingModel, len(toolsForAgent))
-	aiStart := time.Now()
-
-	output, err := uc.aiService.Generate(ctx, generateInput)
-	aiLatency := time.Since(aiStart)
-
 	if err != nil {
-		log.Printf("[whatsapp-audio] AI generation failed: %v", err)
-		return fmt.Errorf("AI generation failed: %w", err)
-	}
-
-	responseText := sanitizeAIOutput(strings.TrimSpace(output.Message.Content))
-	if responseText == "" {
-		log.Println("[whatsapp-audio] Empty AI response")
-		return nil
-	}
-
-	log.Printf("[whatsapp-audio] AI response (latency=%dms): %q", aiLatency.Milliseconds(), responseText)
-
-	log.Println("[whatsapp-audio] Sending text response...")
-	sendStart := time.Now()
-
-	sendResult, err := audioClient.SendTextMessage(ctx, conversation.SendTextMessageInput{
-		To:   message.From,
-		Body: responseText,
-	})
-	sendLatency := time.Since(sendStart)
-	if err != nil {
-		log.Printf("[whatsapp-audio] Failed to send text reply: %v", err)
+		log.Printf("[whatsapp-audio] AI reply failed: %v", err)
 		return err
 	}
-
-	log.Printf("[whatsapp-audio] Text reply sent! Message ID: %s (latency=%dms)", sendResult.MessageID, sendLatency.Milliseconds())
-
-	if uc.historyManager != nil && (conversationID != "" || audioEntryID != "") {
-		record := conversation.MessageHistoryRecord{
-			SentBy:         agentCtx.sentBy(),
-			EntryID:        audioEntryID,
-			EntryType:      audioEntryType,
-			Channel:        conversation.MessageChannelWhatsApp,
-			MessageType:    conversation.MessageTypeAIResponse,
-			ConversationID: conversationID,
-			MessageID:      sendResult.MessageID,
-			From:           businessNumber,
-			To:             strings.TrimSpace(message.From),
-			Text:           responseText,
-			Timestamp:      time.Now().UTC(),
-		}
-		if err := uc.historyManager.Record(ctx, record); err != nil {
-			log.Printf("[whatsapp-audio] Failed to record outbound history: %v", err)
-		}
-	}
-
-	totalLatency := sttLatency + aiLatency + sendLatency
-	log.Printf("[whatsapp-audio] Complete audio flow: STT=%dms, AI=%dms, Send=%dms, Total=%dms",
-		sttLatency.Milliseconds(), aiLatency.Milliseconds(), sendLatency.Milliseconds(), totalLatency.Milliseconds())
+	log.Printf("[whatsapp-audio] Complete audio flow: STT=%dms, reply=%dms",
+		sttLatency.Milliseconds(), time.Since(replyStart).Milliseconds())
 
 	go uc.maybeRunWhatsAppCampaignTools(context.Background(), agentCtx, leadRecord, conversationID, history)
-	go uc.fireWorkflowTriggers(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, transcribedText, "audio", "audio", history, nil)
+	uc.deliverInbound(agentCtx, route, inboundEvent, history, true)
 
 	return nil
 }
@@ -2816,8 +2373,9 @@ type whatsAppTurn struct {
 
 	Vars map[string]string
 
-	Query    string
-	Messages []ai.Message
+	Query       string
+	Messages    []ai.Message
+	TriggerNote string
 
 	Model       string
 	Temperature float32
@@ -2881,6 +2439,7 @@ func (uc *handleWhatsAppMessageUseCase) assembleWhatsAppTurn(ctx context.Context
 		LeadID:             leadID,
 		Session:            agentturn.ReplySession(t.EntryID),
 		History:            t.Messages,
+		TriggerNote:        t.TriggerNote,
 		Model:              t.Model,
 		Temperature:        t.Temperature,
 		Segmented:          t.Segmented,
@@ -2901,6 +2460,10 @@ func (uc *handleWhatsAppMessageUseCase) assembler() *agentturn.Assembler {
 
 func (uc *handleWhatsAppMessageUseCase) SetTurnAssembler(a *agentturn.Assembler) {
 	uc.turnAssembler = a
+}
+
+func (uc *handleWhatsAppMessageUseCase) SetWorkflowNames(names ActorNameResolver) {
+	uc.workflowNames = names
 }
 
 func (uc *handleWhatsAppMessageUseCase) storeInboundMedia(entryID string, entryType shared.EntryType, kind conversation.MediaType, mimeType string, data []byte, filename, whatsappMediaID string) *conversation.ConversationMedia {
@@ -2942,6 +2505,7 @@ func (uc *handleWhatsAppMessageUseCase) prepareAutomation(actx *agentContext, re
 		return false
 	}
 	actx.automation = automation
+	actx.automationResolved = true
 
 	switch {
 	case actx.firesWorkflow():

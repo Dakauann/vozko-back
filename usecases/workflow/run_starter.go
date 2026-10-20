@@ -2,7 +2,7 @@ package workflow_usecase
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +23,7 @@ func tryAcquireWorkspaceSlot(state cache.SharedState, workspaceID string) bool {
 	}
 	ok, err := state.TryIncr(workspaceConcurrencyKey(workspaceID), maxConcurrentRunsPerWorkspace)
 	if err != nil {
-		log.Printf("[workflow] run-start: concurrency check failed for workspace %s (fail-open): %v", workspaceID, err)
+		slog.Warn("workflow.run_start.concurrency_check_failed_open", slog.String("workspace_id", workspaceID), slog.String("error", err.Error()))
 		return true
 	}
 	return ok
@@ -34,7 +34,7 @@ func releaseWorkspaceSlot(state cache.SharedState, workspaceID string) {
 		return
 	}
 	if _, err := state.Decr(workspaceConcurrencyKey(workspaceID)); err != nil {
-		log.Printf("[workflow] run-start: failed to decrement concurrency for workspace %s: %v", workspaceID, err)
+		slog.Warn("workflow.run_start.concurrency_release_failed", slog.String("workspace_id", workspaceID), slog.String("error", err.Error()))
 	}
 }
 
@@ -45,28 +45,56 @@ func newTriggeredRun(w *workflow.Workflow, trigger *workflow.Node, event workflo
 	}
 	now := time.Now().UTC()
 	return &workflow.WorkflowRun{
-		ID:            uuid.New().String(),
-		WorkflowID:    w.ID,
-		WorkspaceID:   event.WorkspaceID,
-		EntryID:       event.EntryID,
-		EntryType:     event.EntryType,
-		Status:        workflow.RunStatusRunning,
-		TriggerNodeID: trigger.ID,
-		CurrentNodeID: trigger.ID,
-		State:         state,
-		StartedAt:     now,
-		UpdatedAt:     now,
+		ID:              triggeredRunID(w.ID, event),
+		WorkflowID:      w.ID,
+		WorkspaceID:     event.WorkspaceID,
+		EntryID:         event.EntryID,
+		EntryType:       event.EntryType,
+		Status:          workflow.RunStatusRunning,
+		TriggerNodeID:   trigger.ID,
+		CurrentNodeID:   trigger.ID,
+		State:           state,
+		StartedAt:       now,
+		UpdatedAt:       now,
+		TriggerType:     event.TriggerType,
+		StartedBy:       event.Starter(),
+		WorkflowVersion: graphVersionOf(w),
+		TriggerData:     workflow.TriggerDataOf(state),
 	}
+}
+
+func graphVersionOf(w *workflow.Workflow) *int {
+	if w == nil || w.GraphVersion == nil {
+		return nil
+	}
+	version := *w.GraphVersion
+	return &version
+}
+
+func pinnedWorkflow(repo workflow.PublishedReader, run *workflow.WorkflowRun, loaded *workflow.Workflow) (*workflow.Workflow, error) {
+	if loaded != nil && loaded.ID == run.WorkflowID && run.WorkflowVersion != nil && loaded.GraphVersion != nil && *run.WorkflowVersion == *loaded.GraphVersion {
+		return loaded, nil
+	}
+	return workflow.LoadForRun(repo, run)
+}
+
+var occurrenceRunSpace = uuid.MustParse("6f1c2b9e-4d3a-5e7f-8a1b-2c3d4e5f6a7b")
+
+func triggeredRunID(workflowID string, event workflow.TriggerEvent) string {
+	if key := event.OccurrenceKey(); key != "" {
+		return uuid.NewSHA1(occurrenceRunSpace, []byte(workflowID+"/"+key)).String()
+	}
+	return uuid.New().String()
 }
 
 func executeLocked(engine *RunEngine, run *workflow.WorkflowRun, w *workflow.Workflow) {
 	if !engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] run-start: skipping run %s, already locked", run.ID)
+		slog.Info("workflow.run_start.already_locked", runLogAttrs(run, run.CurrentNodeID)...)
 		return
 	}
 	defer engine.UnlockRun(run.ID)
 	if err := engine.Execute(run, w); err != nil {
-		log.Printf("[workflow] run-start: engine error for run %s: %v", run.ID, err)
+		slog.Error("workflow.run_start.engine_error", append(runLogAttrs(run, run.CurrentNodeID), slog.String("error", outbound.String(err.Error())))...)
 	}
 }
 

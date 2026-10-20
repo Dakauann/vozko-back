@@ -1,6 +1,11 @@
 package conversation_repository
 
-import "vozko/domain/shared"
+import (
+	"fmt"
+	"sort"
+
+	"vozko/domain/shared"
+)
 
 var contactRefs = map[shared.EntryType]string{
 	shared.EntryTypeWhatsApp: "wce.lead_id",
@@ -8,6 +13,9 @@ var contactRefs = map[shared.EntryType]string{
 	shared.EntryTypeInstagram: "igc.contact_id",
 	shared.EntryTypeTelegram:  "tgc.contact_id",
 	shared.EntryTypeFacebook:  "fbc.contact_id",
+
+	shared.EntryTypeMercadoLivre: "mlc.contact_id",
+	shared.EntryTypeTikTok:       "ttc.contact_id",
 
 	shared.EntryTypeWebchat: `COALESCE(
 		(SELECT wcv.lead_id FROM webchat_visitors wcv
@@ -20,11 +28,42 @@ var contactRefs = map[shared.EntryType]string{
 		uwc.contact_id)`,
 }
 
-func contactRefUUID(entryType shared.EntryType) string {
-	if ref, ok := contactRefs[entryType]; ok {
-		return ref
+func init() {
+	if missing := entryTypesWithoutContactRef(); len(missing) > 0 {
+		panic(fmt.Sprintf("conversation repository: no contact slot for %v; every entry type in the registries needs one in contactRefs", missing))
 	}
-	return "NULL::uuid"
+}
+
+func entryTypesWithoutContactRef() []shared.EntryType {
+	seen := map[shared.EntryType]struct{}{}
+	check := func(entryType shared.EntryType) {
+		if _, ok := contactRefs[entryType]; !ok {
+			seen[entryType] = struct{}{}
+		}
+	}
+	for _, entryType := range shared.KnownEntryTypes() {
+		check(entryType)
+	}
+	for _, src := range entrySources {
+		check(src.EntryType)
+	}
+	for _, q := range channelQueries {
+		check(q.EntryType)
+	}
+	missing := make([]shared.EntryType, 0, len(seen))
+	for entryType := range seen {
+		missing = append(missing, entryType)
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+	return missing
+}
+
+func contactRefUUID(entryType shared.EntryType) string {
+	ref, ok := contactRefs[entryType]
+	if !ok {
+		panic(fmt.Sprintf("conversation repository: no contact slot for entry type %q", entryType))
+	}
+	return ref
 }
 
 func contactRefText(entryType shared.EntryType) string {

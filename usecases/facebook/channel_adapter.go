@@ -67,12 +67,67 @@ func (a *ChannelAdapter) ResolveEntry(ctx context.Context, entryID string) (*con
 	}, nil
 }
 
-func (a *ChannelAdapter) WindowState(_ context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
+func (a *ChannelAdapter) WindowState(ctx context.Context, ec *conversation.EntryContext) (conversation.WindowState, error) {
 	if ec == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
-	return conversation.EvaluateWindow(a.caps, ec.LastInboundAt, a.now(), true), nil
+	page, err := a.d.Pages.FindByID(ctx, ec.AccountID)
+	if err != nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
+	}
+	return a.windowOf(page, ec.LastInboundAt, a.now()), nil
 }
+
+func (a *ChannelAdapter) WindowStates(ctx context.Context, entryIDs []string) (map[string]conversation.WindowState, error) {
+	convs, err := a.d.Conversations.FindByIDs(ctx, shared.UniqueNonEmpty(entryIDs))
+	if err != nil {
+		return nil, err
+	}
+	pageIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		pageIDs = append(pageIDs, conv.PageID)
+	}
+	pages, err := a.d.Pages.FindByIDs(ctx, shared.UniqueNonEmpty(pageIDs))
+	if err != nil {
+		return nil, err
+	}
+	pageByID := make(map[string]*fbdomain.Page, len(pages))
+	for _, page := range pages {
+		pageByID[page.ID] = page
+	}
+	now := a.now()
+	out := make(map[string]conversation.WindowState, len(convs))
+	for _, conv := range convs {
+		out[conv.ID] = a.windowOf(pageByID[conv.PageID], conv.LastCustomerMessageAt, now)
+	}
+	return out, nil
+}
+
+func (a *ChannelAdapter) windowOf(page *fbdomain.Page, lastInbound *time.Time, now time.Time) conversation.WindowState {
+	if page == nil || !page.Can(fbdomain.CapMessaging) || page.PageToken == "" {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+	}
+	return conversation.EvaluateWindow(a.caps, lastInbound, 0, now, true)
+}
+
+var _ conversation.WindowStatesAdapter = (*ChannelAdapter)(nil)
+
+func (a *ChannelAdapter) AutomationDisclosure(ctx context.Context, ec *conversation.EntryContext) (string, error) {
+	if ec == nil {
+		return "", conversation.ErrNoAdapterForEntryType
+	}
+	page, err := a.d.Pages.FindByID(ctx, ec.AccountID)
+	if err != nil {
+		return "", err
+	}
+	return page.Automation().Disclosure, nil
+}
+
+var _ conversation.DisclosingAdapter = (*ChannelAdapter)(nil)
+
+func (a *ChannelAdapter) Capabilities() channel.Capabilities { return a.caps }
+
+var _ conversation.CapabilitiesAdapter = (*ChannelAdapter)(nil)
 
 func (a *ChannelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	if a.caps.TextTooLong(req.Body) {
@@ -210,7 +265,7 @@ func (a *ChannelAdapter) target(ctx context.Context, ec *conversation.EntryConte
 	if err != nil {
 		return sendTarget{}, err
 	}
-	window := conversation.EvaluateWindow(a.caps, ec.LastInboundAt, a.now(), humanInitiated)
+	window := conversation.EvaluateWindow(a.caps, ec.LastInboundAt, 0, a.now(), humanInitiated)
 	tier, ok := fbdomain.SendTierFor(window.Tier)
 	if !window.Open || !ok {
 		return sendTarget{}, conversation.ErrOutboundWindowClosed

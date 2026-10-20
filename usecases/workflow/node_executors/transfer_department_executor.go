@@ -24,12 +24,13 @@ func NewTransferDepartmentExecutor(deptRepo dept.Repository, workspaceRepo works
 
 func (e *transferDepartmentExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionTransferDepartment,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Transferir conversa",
-		Description: "Passa a conversa a uma pessoa pela roleta do workspace (o mesmo rodízio da primeira mensagem) e pausa a automação. O departamento é opcional: vazio, usa o da conversa.",
-		Icon:        "UsersThree",
+		Type:         workflow.NodeTypeActionTransferDepartment,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Transferir conversa",
+		Description:  "Passa a conversa a uma pessoa pela roleta do workspace (a mesma regra de distribuição da primeira mensagem) e pausa a automação. O departamento é opcional: vazio, usa o da conversa.",
+		Icon:         "UsersThree",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para passar a conversa a uma pessoa pela roleta, do departamento da conversa ou de um departamento escolhido.",
 			Behavior: "Usa o modo da roleta do workspace (online ou última vez online) e só entrega a quem pode receber conversas. Sem ninguém disponível, a conversa vai para a fila da equipe (queued = true). Pausa a automação desta conversa.",
@@ -86,8 +87,7 @@ func (e *transferDepartmentExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		return failTransfer(edges, fmt.Sprintf("erro ao transferir conversa: %v", err)), nil
 	}
 
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "sucesso"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":             true,
 			"queued":              owner == "",
@@ -96,7 +96,7 @@ func (e *transferDepartmentExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 			"assigned_user_id":    owner,
 			"assigned_user_email": e.memberEmail(ctx.Run.WorkspaceID, owner),
 		},
-	}, nil
+	}, edges, "sucesso"), nil
 }
 
 func (e *transferDepartmentExecutor) departmentName(departmentID string) string {
@@ -122,11 +122,10 @@ func (e *transferDepartmentExecutor) memberEmail(workspaceID, userID string) str
 }
 
 func failTransfer(edges []workflow.Edge, msg string) *workflow.NodeResult {
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "erro"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   msg,
 		},
-	}
+	}, edges, "erro")
 }

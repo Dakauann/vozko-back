@@ -13,7 +13,7 @@ var (
 	ErrInvalidPost            = errors.New("facebook post request is invalid")
 	ErrPublishKindUnavailable = errors.New("this facebook post kind is not available yet")
 	ErrPostNotFound           = errors.New("facebook post not found")
-	ErrPostNotEditable        = errors.New("only posts published through Vozko can be edited")
+	ErrPostNotEditable        = errors.New("only posts published through this platform can be edited")
 	ErrDeleteNotPermitted     = errors.New("facebook does not allow deleting this post through the app")
 	ErrPublishJobNotFound     = errors.New("facebook publish job not found")
 	ErrReelLimit              = errors.New("facebook allows 30 reels per page every 24 hours")

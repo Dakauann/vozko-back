@@ -27,7 +27,7 @@ A Meta oferece dois tipos de formulário: mais volume (rápido de enviar no celu
 
 ## Depois do cadastro
 - Cadastro esfria em minutos: contate o quanto antes, idealmente na primeira hora. Veja funil-e-qualificacao.
-- No Vozko os cadastros chegam em Formulários e leads (a busca na Meta roda a cada 15 minutos). Combine com o usuário quem liga ou manda mensagem e em quanto tempo.
+- Na plataforma os cadastros chegam em Formulários e leads (a busca na Meta roda a cada 15 minutos). Combine com o usuário quem liga ou manda mensagem e em quanto tempo.
 - Avalie pelo custo por cadastro qualificado, não só pelo custo por cadastro. Com conversões do CRM ligadas (get_ad_conversion_settings), a Meta aprende quem vira oportunidade e venda.
 
 ## Erros comuns

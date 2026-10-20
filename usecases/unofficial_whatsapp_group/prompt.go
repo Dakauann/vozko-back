@@ -10,7 +10,6 @@ import (
 
 	"vozko/domain/ai"
 	"vozko/domain/shared"
-	uw "vozko/domain/unofficial_whatsapp"
 	uwg "vozko/domain/unofficial_whatsapp_group"
 )
 
@@ -68,11 +67,8 @@ func authorOf(line uwg.TranscriptLine, names map[string]string) promptAuthor {
 		return promptAuthor{name: uwg.OurTeamAuthor}
 	}
 	handle := strings.TrimSpace(line.Author)
-	jid := handle
-	if phone := uw.NormalizePhone(handle); phone != "" && strings.HasPrefix(handle, "+") {
-		jid = phone + "@" + uw.DomainUser
-	}
-	name := names[uwg.PersonKey(uw.PhoneFromJID(jid), jid)]
+	jid := uwg.HandleJID(handle)
+	name := names[uwg.HandleKey(handle)]
 	if name == "" {
 		name = handle
 	}

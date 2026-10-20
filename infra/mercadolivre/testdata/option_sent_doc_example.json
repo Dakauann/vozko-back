@@ -1,0 +1,22 @@
+{
+    "id": "94353d192b9640e8b1ed3c77aa406f39",
+    "to": {
+        "user_id": 618491100,
+        "name": "Test Test"
+    },
+    "status": "available",
+    "text": "Cómo estás María, estaría necesitando de...",
+    "message_date": {
+        "received": "2020-09-09T19:07:24.890Z",
+        "available": "2020-09-09T19:07:25.056Z",
+        "notified": null,
+        "created": "2020-09-09T19:07:24.890Z",
+        "read": null
+    },
+    "message_moderation": {
+        "status": "clean",
+        "reason": null,
+        "source": "online",
+        "moderation_date": "2020-09-09T19:07:25.056Z"
+    }
+}

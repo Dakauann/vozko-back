@@ -22,6 +22,7 @@ type Brand struct {
 	Phone         string
 	FromEmail     string
 	LogoURL       string
+	Gender        Gender
 }
 
 var (
@@ -96,6 +97,7 @@ func fromEnv() (Brand, error) {
 		FromEmail:     req("BRAND_FROM_EMAIL"),
 		LogoURL:       req("BRAND_LOGO_URL"),
 	}
+	gender := req("BRAND_GENDER")
 
 	if len(missing) > 0 {
 		return Brand{}, fmt.Errorf(
@@ -103,5 +105,10 @@ func fromEnv() (Brand, error) {
 			strings.Join(missing, ", "),
 		)
 	}
+	parsed, err := ParseGender(gender)
+	if err != nil {
+		return Brand{}, fmt.Errorf("BRAND_GENDER: %w", err)
+	}
+	b.Gender = parsed
 	return b, nil
 }

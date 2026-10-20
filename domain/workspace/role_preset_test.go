@@ -213,3 +213,16 @@ func TestTheOperatorTakesCallsWithoutGainingConversationEdits(t *testing.T) {
 		t.Fatal("the operator must never hold conversations:update, which also edits CRM data in bulk, custom fields and saved views")
 	}
 }
+
+func TestOnlyTeamLeadersCreateTeamChatGroups(t *testing.T) {
+	groupCreators := map[RolePresetKey]bool{PresetSupervisor: true, PresetManager: true}
+	for _, preset := range RolePresets {
+		held := false
+		for _, key := range preset.Capabilities {
+			held = held || key == "team_chat.groups"
+		}
+		if held != groupCreators[preset.Key] {
+			t.Errorf("preset %q: team_chat.groups = %v, want %v", preset.Key, held, groupCreators[preset.Key])
+		}
+	}
+}

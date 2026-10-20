@@ -27,6 +27,7 @@ import (
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
 	conversationhttp "vozko/delivery/http/conversation"
+	"vozko/delivery/http/conversationnotehttp"
 	crmboardhttp "vozko/delivery/http/crmboard"
 	crmbulkhttp "vozko/delivery/http/crmbulk"
 	customerportfoliohttp "vozko/delivery/http/customerportfolio"
@@ -44,6 +45,7 @@ import (
 	livedecisionhttp "vozko/delivery/http/livedecision"
 	mediagenhttp "vozko/delivery/http/mediagen"
 	mediashttp "vozko/delivery/http/medias"
+	mercadolivrehttp "vozko/delivery/http/mercadolivre"
 	mercadopagohttp "vozko/delivery/http/mercadopago"
 	messageshortcuthttp "vozko/delivery/http/messageshortcut"
 	metaembeddedsignuphttp "vozko/delivery/http/metaembeddedsignup"
@@ -62,15 +64,20 @@ import (
 	stagehttp "vozko/delivery/http/stage"
 	studiohttp "vozko/delivery/http/studio"
 	systemconfighttp "vozko/delivery/http/systemconfig"
+	"vozko/delivery/http/teamchathttp"
 	telegramhttp "vozko/delivery/http/telegram"
 	templatehealthhttp "vozko/delivery/http/templatehealthhttp"
+	tiktokhttp "vozko/delivery/http/tiktok"
 	unofficialwahttp "vozko/delivery/http/unofficial_whatsapp"
 	userhttp "vozko/delivery/http/user"
 	wabahttp "vozko/delivery/http/waba"
 	webchathttp "vozko/delivery/http/webchat"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
+	"vozko/delivery/http/whatsappformhttp"
 	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
+	workflowalerthttp "vozko/delivery/http/workflowalerthttp"
+	workflowsecrethttp "vozko/delivery/http/workflowsecrethttp"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
 	workspaceaddonhttp "vozko/delivery/http/workspaceaddon"
@@ -168,6 +175,8 @@ type router struct {
 	audienceHandler                *audiencehttp.Handler
 	sendCapHandler                 *balancehttp.SendCapHandler
 	telegramHandler                *telegramhttp.Handler
+	mercadoLivre                   MercadoLivreRoutes
+	tiktok                         TikTokRoutes
 	sipTrunkHandler                *siptrunkhttp.Handler
 	callRoutingHandler             *callroutinghttp.Handler
 	telegramWebhookHandler         *telegramhttp.WebhookHandler
@@ -185,6 +194,8 @@ type router struct {
 	issueHandler                   *issuehttp.IssueHandler
 	workflowHandler                *handlers.WorkflowHandler
 	workflowWebhookHandler         *workflowwebhookhttp.Handler
+	workflowSecretHandler          *workflowsecrethttp.Handler
+	workflowAlertHandler           *workflowalerthttp.Handler
 	wsWorkflowSimulatorHandler     *wsdelivery.WSWorkflowSimulatorHandler
 	wsWorkflowAIBuilderHandler     *wsdelivery.WSWorkflowAIBuilderHandler
 	builderSessionHandler          *buildersessionhttp.BuilderSessionHandler
@@ -207,6 +218,9 @@ type router struct {
 	notificationHandler            *notificationhttp.Handler
 	notificationAdminHandler       *notificationhttp.AdminHandler
 	customerPortfolioHandler       *customerportfoliohttp.Handler
+	conversationNoteHandler        *conversationnotehttp.Handler
+	teamChatHandler                *teamchathttp.Handler
+	whatsappFormHandler            *whatsappformhttp.Handler
 }
 
 func (r *router) ac(resource workspace_domain.Resource, action workspace_domain.Action, handler http.HandlerFunc) http.HandlerFunc {
@@ -276,6 +290,8 @@ func NewRouter(
 	issueHandler *issuehttp.IssueHandler,
 	workflowHandler *handlers.WorkflowHandler,
 	workflowWebhookHandler *workflowwebhookhttp.Handler,
+	workflowSecretHandler *workflowsecrethttp.Handler,
+	workflowAlertHandler *workflowalerthttp.Handler,
 	wsWorkflowSimulatorHandler *wsdelivery.WSWorkflowSimulatorHandler,
 	wsWorkflowAIBuilderHandler *wsdelivery.WSWorkflowAIBuilderHandler,
 	builderSessionHandler *buildersessionhttp.BuilderSessionHandler,
@@ -320,8 +336,18 @@ func NewRouter(
 	notificationHandler *notificationhttp.Handler,
 	notificationAdminHandler *notificationhttp.AdminHandler,
 	customerPortfolioHandler *customerportfoliohttp.Handler,
+	conversationNoteHandler *conversationnotehttp.Handler,
+	teamChatHandler *teamchathttp.Handler,
+	whatsappFormHandler *whatsappformhttp.Handler,
+	mercadoLivre MercadoLivreRoutes,
+	tiktok TikTokRoutes,
 ) Router {
 	r := &router{
+		mercadoLivre:                   mercadoLivre,
+		tiktok:                         tiktok,
+		conversationNoteHandler:        conversationNoteHandler,
+		teamChatHandler:                teamChatHandler,
+		whatsappFormHandler:            whatsappFormHandler,
 		notificationHandler:            notificationHandler,
 		notificationAdminHandler:       notificationAdminHandler,
 		customerPortfolioHandler:       customerPortfolioHandler,
@@ -409,6 +435,8 @@ func NewRouter(
 		issueHandler:                   issueHandler,
 		workflowHandler:                workflowHandler,
 		workflowWebhookHandler:         workflowWebhookHandler,
+		workflowSecretHandler:          workflowSecretHandler,
+		workflowAlertHandler:           workflowAlertHandler,
 		wsWorkflowSimulatorHandler:     wsWorkflowSimulatorHandler,
 		wsWorkflowAIBuilderHandler:     wsWorkflowAIBuilderHandler,
 		builderSessionHandler:          builderSessionHandler,
@@ -491,6 +519,9 @@ func (r *router) setupRoutes() {
 
 	r.setupAudienceRoutes(protected)
 	r.setupTelegramRoutes(protected)
+	mercadolivrehttp.RegisterProtectedRoutes(protected, r.mercadoLivre.Handler, r.ac)
+	mercadolivrehttp.RegisterCatalogRoutes(protected, r.mercadoLivre.Catalog, r.ac)
+	tiktokhttp.RegisterProtectedRoutes(protected, r.tiktok.Handler, r.ac)
 	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
 	callroutinghttp.RegisterProtectedRoutes(protected, r.callRoutingHandler, r.ac)
 	calllisthttp.RegisterProtectedRoutes(protected, r.callListHandler, r.ac)
@@ -555,6 +586,9 @@ func (r *router) setupRoutes() {
 	r.setupLabelRoutes(protected)
 	r.setupMessageShortcutRoutes(protected)
 	r.setupScheduledMessageRoutes(protected)
+	conversationnotehttp.RegisterRoutes(protected, r.conversationNoteHandler, r.ac)
+	teamchathttp.RegisterRoutes(protected, r.teamChatHandler, r.ac)
+	whatsappformhttp.RegisterRoutes(protected, r.whatsappFormHandler, r.ac)
 	r.setupLeadMemoryRoutes(protected)
 	r.setupAttendanceRoutes(protected)
 	r.setupWorkspaceRoutes(protected)
@@ -683,6 +717,8 @@ func (r *router) setupWebhookRoutes() {
 	advertisinghttp.RegisterWebhookRoute(r.mux, r.metaChannels.AdsWebhook)
 
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
+	mercadolivrehttp.RegisterPublicRoutes(r.mux, r.mercadoLivre.Handler, r.mercadoLivre.Notifications)
+	tiktokhttp.RegisterPublicRoutes(r.mux, r.tiktok.Handler, r.tiktok.Webhook)
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)
 	webchathttp.RegisterPublicRoutes(r.mux, r.webchat.Public)
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)
@@ -820,6 +856,8 @@ func (r *router) setupWhatsAppCampaignRoutes(protected *mux.Router) {
 	wcRoutes.HandleFunc("/{id}", r.ac(wc, workspace_domain.ActionUpdate, r.whatsappCampaignHandler.Update)).Methods(http.MethodPut)
 	wcRoutes.HandleFunc("/{id}/department", r.ac(wc, workspace_domain.ActionUpdate, r.whatsappCampaignHandler.AssignDepartment)).Methods(http.MethodPatch)
 	wcRoutes.HandleFunc("/{id}", r.ac(wc, workspace_domain.ActionDelete, r.whatsappCampaignHandler.Delete)).Methods(http.MethodDelete)
+	wcRoutes.HandleFunc("/{id}/progress", r.ac(wc, workspace_domain.ActionRead, r.whatsappCampaignHandler.Progress)).Methods(http.MethodGet)
+	wcRoutes.HandleFunc("/{id}/timeline", r.ac(wc, workspace_domain.ActionRead, r.whatsappCampaignHandler.Timeline)).Methods(http.MethodGet)
 	wcRoutes.HandleFunc("/{id}/entries", r.ac(wc, workspace_domain.ActionRead, r.whatsappCampaignHandler.ListEntries)).Methods(http.MethodGet)
 	wcRoutes.HandleFunc("/{id}/entries", r.ac(wc, workspace_domain.ActionUpdate, r.whatsappCampaignHandler.AddEntries)).Methods(http.MethodPost)
 	wcRoutes.HandleFunc("/{id}/entries/{entryId}", r.ac(wc, workspace_domain.ActionUpdate, r.whatsappCampaignHandler.UpdateEntry)).Methods(http.MethodPatch)
@@ -1033,13 +1071,21 @@ func (r *router) setupWorkflowRoutes(protected *mux.Router) {
 	protected.HandleFunc("/workflows/{id}/export", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.Export)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/activate", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.Activate)).Methods(http.MethodPost)
 	protected.HandleFunc("/workflows/{id}/pause", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.Pause)).Methods(http.MethodPost)
+	protected.HandleFunc("/workflows/{id}/publish", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.Publish)).Methods(http.MethodPost)
+	protected.HandleFunc("/workflows/{id}/versions", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.ListVersions)).Methods(http.MethodGet)
+	protected.HandleFunc("/workflows/{id}/versions/{version}", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.GetVersion)).Methods(http.MethodGet)
+	protected.HandleFunc("/workflows/{id}/versions/{version}/restore", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.RestoreVersion)).Methods(http.MethodPost)
+	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/pin-from-run", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.PinFromRun)).Methods(http.MethodPost)
 	protected.HandleFunc("/workflows/{id}/runs", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.ListRuns)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/runs", r.ac(wf, workspace_domain.ActionCreate, r.workflowHandler.StartRun)).Methods(http.MethodPost)
 	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/analyze", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.AnalyzeNode)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/test", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.TestNode)).Methods(http.MethodPost)
 	workflowwebhookhttp.RegisterRoutes(protected, r.workflowWebhookHandler, r.ac)
+	workflowsecrethttp.RegisterRoutes(protected, r.workflowSecretHandler, r.ac)
+	workflowalerthttp.RegisterRoutes(protected, r.workflowAlertHandler, r.ac)
 	protected.HandleFunc("/workflow-runs/{runId}", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.GetRun)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflow-runs/{runId}/cancel", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.CancelRun)).Methods(http.MethodPost)
+	protected.HandleFunc("/conversations/{entryType}/{entryId}/workflow-runs", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.ListConversationRuns)).Methods(http.MethodGet)
 	if r.builderSessionHandler != nil {
 		buildersessionhttp.RegisterRoutes(protected, r.builderSessionHandler, r.ac)
 	}

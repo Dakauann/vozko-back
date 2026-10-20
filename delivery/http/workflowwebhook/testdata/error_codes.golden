@@ -1,0 +1,8 @@
+invalid_auth_mode
+webhook_already_exists
+webhook_config_failed
+webhook_deliveries_failed
+webhook_not_found
+workflow_access_denied
+workflow_not_found
+workflow_unreadable

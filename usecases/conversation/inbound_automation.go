@@ -50,6 +50,7 @@ type InboundAutomation struct {
 	agents    AgentReplier
 	analysis  AnalysisRequester
 	inbound   InboundMessages
+	router    *InboundRouter
 
 	delegations conversation.DelegationRepository
 
@@ -61,7 +62,7 @@ func NewInboundAutomation(
 	analysis AnalysisRequester,
 	inbound InboundMessages,
 ) *InboundAutomation {
-	return &InboundAutomation{workflows: workflows, agents: agents, analysis: analysis, inbound: inbound}
+	return &InboundAutomation{workflows: workflows, agents: agents, analysis: analysis, inbound: inbound, router: InboundRouterOf(workflows)}
 }
 
 func (a *InboundAutomation) WithDelegations(delegations conversation.DelegationRepository) *InboundAutomation {
@@ -80,29 +81,36 @@ func (a *InboundAutomation) effective(ctx context.Context, in InboundAutomationI
 }
 
 func (a *InboundAutomation) Dispatch(ctx context.Context, in InboundAutomationInput) error {
-	if effective, ok := a.effective(ctx, in); ok {
-		a.fireWorkflows(effective)
-		a.replyWithAgent(ctx, effective)
-	}
+	a.Consume(ctx, in)
 	a.ScheduleAnalysis(in)
 	return nil
 }
 
+func (a *InboundAutomation) Consume(ctx context.Context, in InboundAutomationInput) {
+	a.consume(ctx, in, true)
+}
+
 func (a *InboundAutomation) FireWorkflows(ctx context.Context, in InboundAutomationInput) {
-	if effective, ok := a.effective(ctx, in); ok {
-		a.fireWorkflows(effective)
+	a.consume(ctx, in, false)
+}
+
+func (a *InboundAutomation) consume(ctx context.Context, in InboundAutomationInput, agentMayReply bool) {
+	effective, ok := a.effective(ctx, in)
+	if !ok {
+		return
+	}
+	event := a.messageEvent(effective)
+	route := a.router.Route(event, conversation.AutomationAllowed(effective.ConversationOverride), false)
+	routed := a.router.Deliver(route, event)
+	if route.Consumer.StartsRuns() {
+		a.fireWorkflows(effective, routed)
+	}
+	if agentMayReply && route.Consumer.AgentReplies() {
+		a.replyWithAgent(ctx, effective)
 	}
 }
 
-func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput) {
-	if a.workflows == nil || !in.Config.RunsWorkflows() {
-		return
-	}
-	if !conversation.AutomationAllowed(in.ConversationOverride) {
-		log.Printf("[inbound-automation] automation disabled for %s %s, skipping workflow triggers", in.EntryType, in.EntryID)
-		return
-	}
-
+func (a *InboundAutomation) messageEvent(in InboundAutomationInput) workflow.TriggerEvent {
 	data := map[string]interface{}{
 		"message":      in.Text,
 		"channel":      string(in.EntryType),
@@ -114,29 +122,31 @@ func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput) {
 	workflow.ApplySelection(data, in.Selection)
 	workflow.ApplyContactNumber(data, in.ContactRef)
 	workflow.ApplyTriggerMessage(data, a.triggerMessageID(in))
-
-	a.workflows.Evaluate(workflow.TriggerEvent{
+	return workflow.TriggerEvent{
 		WorkspaceID: in.WorkspaceID,
 		EntryID:     in.EntryID,
 		EntryType:   string(in.EntryType),
 		TriggerType: workflow.TriggerMessageReceived,
 		Data:        data,
-	})
-
-	if a.isFirstInbound(in) {
-		a.workflows.Evaluate(workflow.TriggerEvent{
-			WorkspaceID: in.WorkspaceID,
-			EntryID:     in.EntryID,
-			EntryType:   string(in.EntryType),
-			TriggerType: workflow.TriggerFirstMessage,
-			Data:        data,
-		})
 	}
 }
 
-func (a *InboundAutomation) ReplyWithAgent(ctx context.Context, in InboundAutomationInput) {
-	if effective, ok := a.effective(ctx, in); ok {
-		a.replyWithAgent(ctx, effective)
+func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput, event workflow.TriggerEvent) {
+	if a.workflows == nil || !in.Config.RunsWorkflows() {
+		return
+	}
+	if !conversation.AutomationAllowed(in.ConversationOverride) {
+		log.Printf("[inbound-automation] automation disabled for %s %s, skipping workflow triggers", in.EntryType, in.EntryID)
+		return
+	}
+
+	a.workflows.Evaluate(event)
+
+	if a.isFirstInbound(in) {
+		first := event
+		first.TriggerType = workflow.TriggerFirstMessage
+		first.Reply = nil
+		a.workflows.Evaluate(first)
 	}
 }
 

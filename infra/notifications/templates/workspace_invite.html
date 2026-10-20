@@ -5,7 +5,7 @@
 {{template "heading" dict "title" "Convite para colaborar" "subtitle" (printf "Você foi convidado para %s" .WorkspaceName)}}
 {{template "gap" 24}}
 <p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
-    Olá <strong style="font-weight:600;">{{.Email}}</strong>, {{if .InviterEmail}}<strong style="font-weight:600;">{{.InviterEmail}}</strong> convidou você{{else}}você foi convidado{{end}} para participar da área de trabalho <strong style="font-weight:600;">{{.WorkspaceName}}</strong> na {{.Brand.Name}}.
+    Olá <strong style="font-weight:600;">{{.Email}}</strong>, {{if .InviterEmail}}<strong style="font-weight:600;">{{.InviterEmail}}</strong> convidou você{{else}}você foi convidado{{end}} para participar da área de trabalho <strong style="font-weight:600;">{{.WorkspaceName}}</strong> {{.Brand.Portuguese.InBrand}}.
 </p>
 {{template "gap" 24}}
 {{template "details" dict "title" "Detalhes do convite" "k1" "Área de trabalho" "v1" .WorkspaceName "k2" (and .InviterEmail "Convidado por") "v2" .InviterEmail "k3" "Função" "v3" (or .RoleName .Role) "k4" "Validade" "v4" "7 dias"}}

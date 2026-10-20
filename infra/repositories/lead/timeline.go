@@ -16,6 +16,7 @@ import (
 	"vozko/domain/lead"
 	"vozko/domain/shared"
 	"vozko/infra/database/sqlexpr"
+	"vozko/infra/repositories/conversation"
 	infracrmfilter "vozko/infra/repositories/crmfilter"
 	opportunity_repository "vozko/infra/repositories/opportunity"
 )
@@ -78,7 +79,7 @@ func conversationBranch(scan lead.TimelineScan) timelineBranch {
 	return timelineBranch{
 		selects: timelineSelect(quoted(string(lead.TimelineConversation)), at, item, quoted(string(lead.TimelineRefEntry)),
 			"lead_entries.entry_id::text", "lead_entries.entry_type::text", "''", "''",
-			"jsonb_build_object('channel', lead_entries.entry_type)", noCallFacts),
+			"jsonb_build_object('channel', lead_entries.entry_type, 'line', "+conversation_repository.EntryLineSQL("lead_entries.entry_type", "lead_entries.entry_id")+")", noCallFacts),
 		from: infracrmfilter.LeadEntriesSource() + " " + firstMessage + sqlexpr.NotSeedPlaceholder("tcm") +
 			" ORDER BY tcm.created_at LIMIT 1) tfirst",
 		where: "lead_entries.lead_id = ?",
@@ -313,6 +314,7 @@ type timelineRow struct {
 
 type timelineSummaryRow struct {
 	Channel           string     `json:"channel"`
+	Line              string     `json:"line"`
 	Status            string     `json:"status"`
 	Title             string     `json:"title"`
 	CampaignID        string     `json:"campaignId"`
@@ -346,7 +348,7 @@ func (s timelineSummaryRow) summary() lead.TimelineSummary {
 		}
 	}
 	summary := lead.TimelineSummary{
-		Channel: shared.EntryType(s.Channel), Status: s.Status, Title: s.Title, CampaignID: s.CampaignID,
+		Channel: shared.EntryType(s.Channel), Line: s.Line, Status: s.Status, Title: s.Title, CampaignID: s.CampaignID,
 		Event: s.Event, Fields: fields, Direction: s.Direction, Source: s.Source, DurationSec: s.DurationSec,
 		AnsweredAt: s.AnsweredAt, ValueCents: s.ValueCents, Currency: s.Currency, PipelineID: s.PipelineID,
 		StageID: s.StageID, Category: s.Category, Text: s.Text, FromStageID: s.FromStageID, StageName: s.StageName, FromStageName: s.FromStageName,

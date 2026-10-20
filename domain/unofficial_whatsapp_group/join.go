@@ -40,6 +40,7 @@ type JoinTask struct {
 	GroupJID    string     `json:"groupJid,omitempty"`
 	Sequence    int        `json:"sequence"`
 	Follow      bool       `json:"follow"`
+	Category    string     `json:"category,omitempty"`
 	Status      JoinStatus `json:"status"`
 	Attempts    int        `json:"attempts"`
 	Error       string     `json:"error,omitempty"`
@@ -59,6 +60,13 @@ func (t JoinTask) Anchor() bool {
 	return t.Sequence == 0
 }
 
+func (t JoinTask) CategoryFor(current string) string {
+	if t.Category == "" || (current != "" && !t.Anchor()) {
+		return current
+	}
+	return t.Category
+}
+
 func (t *JoinTask) Retry(now time.Time, reason string) {
 	t.Attempts++
 	t.Error = reason
@@ -76,11 +84,16 @@ type JoinPlanInput struct {
 	InviteLink  string
 	InstanceIDs []string
 	Follow      bool
+	Category    string
 	CreatedByID string
 }
 
 func PlanJoins(in JoinPlanInput, now time.Time) ([]JoinTask, error) {
 	link, err := NormalizeInviteLink(in.InviteLink)
+	if err != nil {
+		return nil, err
+	}
+	category, err := NormalizeCategory(in.Category)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +111,7 @@ func PlanJoins(in JoinPlanInput, now time.Time) ([]JoinTask, error) {
 		seq := len(tasks)
 		tasks = append(tasks, JoinTask{
 			PlanID: in.PlanID, WorkspaceID: in.WorkspaceID, InstanceID: id, InviteLink: link,
-			Sequence: seq, Follow: in.Follow, Status: JoinPending, CreatedByID: in.CreatedByID,
+			Sequence: seq, Follow: in.Follow, Category: category, Status: JoinPending, CreatedByID: in.CreatedByID,
 			DueAt: now.Add(time.Duration(seq) * JoinSpacing),
 		})
 	}

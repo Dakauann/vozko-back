@@ -1,8 +1,9 @@
 package channel
 
 import (
+	"mime"
+	"strings"
 	"time"
-	"unicode/utf8"
 
 	"vozko/domain/shared"
 )
@@ -17,6 +18,8 @@ const (
 	KindUnofficialWhatsApp Kind = "unofficial_whatsapp"
 	KindFacebook           Kind = "facebook"
 	KindWebchat            Kind = "webchat"
+	KindMercadoLivre       Kind = "mercadolivre"
+	KindTikTok             Kind = "tiktok"
 
 	KindWhatsApp Kind = "whatsapp"
 )
@@ -33,9 +36,13 @@ type Capabilities struct {
 	MaxTextBytes int
 	MaxTextRunes int
 
+	ProviderTextRules []TextRule
+
 	OutboundWindow   time.Duration
 	ExtendedWindow   time.Duration
 	HumanAgentWindow bool
+
+	OutboundBudget int
 
 	SignatureFormat string
 
@@ -85,12 +92,16 @@ type MediaLimit struct {
 	MIMETypes []string
 }
 
-func (l MediaLimit) Allows(mime string) bool {
+func (l MediaLimit) Allows(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil || !strings.Contains(mediaType, "/") {
+		return false
+	}
 	if len(l.MIMETypes) == 0 {
 		return true
 	}
 	for _, m := range l.MIMETypes {
-		if m == mime {
+		if strings.EqualFold(m, mediaType) {
 			return true
 		}
 	}
@@ -98,11 +109,10 @@ func (l MediaLimit) Allows(mime string) bool {
 }
 
 func (c Capabilities) TextTooLong(body string) bool {
-	if c.MaxTextBytes > 0 && len(body) > c.MaxTextBytes {
-		return true
-	}
-	if c.MaxTextRunes > 0 && utf8.RuneCountInString(body) > c.MaxTextRunes {
-		return true
+	for _, rule := range c.lengthRules() {
+		if _, broken := rule.Check(body); broken {
+			return true
+		}
 	}
 	return false
 }

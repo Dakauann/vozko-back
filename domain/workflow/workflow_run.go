@@ -35,9 +35,12 @@ func (s RunStatus) IsTerminal() bool {
 type LogStatus string
 
 const (
-	LogStatusExecuted LogStatus = "executed"
-	LogStatusSkipped  LogStatus = "skipped"
-	LogStatusFailed   LogStatus = "failed"
+	LogStatusExecuted  LogStatus = "executed"
+	LogStatusSkipped   LogStatus = "skipped"
+	LogStatusFailed    LogStatus = "failed"
+	LogStatusCancelled LogStatus = "cancelled"
+	LogStatusWaiting   LogStatus = "waiting"
+	LogStatusGate      LogStatus = "gate"
 )
 
 type RunState struct {
@@ -119,25 +122,31 @@ const (
 	WaitReasonEvent    WaitReason = "event"
 	WaitReasonBalance  WaitReason = "insufficient_balance"
 	WaitReasonRetry    WaitReason = "retry"
+	WaitReasonForm     WaitReason = "form"
 )
 
 type WorkflowRun struct {
-	ID            string     `json:"id"`
-	WorkflowID    string     `json:"workflowId"`
-	WorkspaceID   string     `json:"workspaceId"`
-	EntryID       string     `json:"entryId"`
-	EntryType     string     `json:"entryType"`
-	Status        RunStatus  `json:"status"`
-	TriggerNodeID string     `json:"triggerNodeId,omitempty"`
-	CurrentNodeID string     `json:"currentNodeId,omitempty"`
-	State         RunState   `json:"state"`
-	WakeAt        *int64     `json:"wakeAt,omitempty"`
-	WaitReason    WaitReason `json:"waitReason,omitempty"`
-	RetryCount    int        `json:"retryCount"`
-	Error         string     `json:"error,omitempty"`
-	StartedAt     time.Time  `json:"startedAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
-	CompletedAt   *time.Time `json:"completedAt,omitempty"`
+	ID              string                 `json:"id"`
+	WorkflowID      string                 `json:"workflowId"`
+	WorkspaceID     string                 `json:"workspaceId"`
+	EntryID         string                 `json:"entryId"`
+	EntryType       string                 `json:"entryType"`
+	Status          RunStatus              `json:"status"`
+	TriggerNodeID   string                 `json:"triggerNodeId,omitempty"`
+	CurrentNodeID   string                 `json:"currentNodeId,omitempty"`
+	State           RunState               `json:"state"`
+	WakeAt          *int64                 `json:"wakeAt,omitempty"`
+	WaitReason      WaitReason             `json:"waitReason,omitempty"`
+	RetryCount      int                    `json:"retryCount"`
+	Error           string                 `json:"error,omitempty"`
+	StartedAt       time.Time              `json:"startedAt"`
+	UpdatedAt       time.Time              `json:"updatedAt"`
+	CompletedAt     *time.Time             `json:"completedAt,omitempty"`
+	TriggerType     TriggerType            `json:"triggerType,omitempty"`
+	StartedBy       string                 `json:"startedBy,omitempty"`
+	WorkflowVersion *int                   `json:"workflowVersion,omitempty"`
+	AgentResult     map[string]interface{} `json:"agentResult,omitempty"`
+	TriggerData     map[string]interface{} `json:"triggerData,omitempty"`
 }
 
 func (r *WorkflowRun) Validate() error {
@@ -204,4 +213,17 @@ type WorkflowRunLog struct {
 	Output     map[string]interface{} `json:"output,omitempty"`
 	Error      string                 `json:"error,omitempty"`
 	ExecutedAt time.Time              `json:"executedAt"`
+	Attempt    int                    `json:"attempt"`
+	StartedAt  *time.Time             `json:"startedAt,omitempty"`
+	FinishedAt *time.Time             `json:"finishedAt,omitempty"`
+	DurationMs int64                  `json:"durationMs"`
+	Branch     string                 `json:"branch,omitempty"`
+	ErrorKind  ErrorKind              `json:"errorKind,omitempty"`
+	ErrorChain []string               `json:"errorChain,omitempty"`
+	Stack      string                 `json:"stack,omitempty"`
+	ScriptLogs []ScriptLog            `json:"scriptLogs,omitempty"`
+	HTTP       []HTTPExchange         `json:"http,omitempty"`
+	Pinned     bool                   `json:"pinned,omitempty"`
+	Simulated  bool                   `json:"simulated,omitempty"`
+	Notice     string                 `json:"notice,omitempty"`
 }

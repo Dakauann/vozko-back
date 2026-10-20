@@ -120,11 +120,15 @@ func (e Escalation) Message() string {
 	return b.String()
 }
 
+var commentSurfaceLabels = map[Source]string{
+	SourceFacebook: "Facebook",
+}
+
 func sourceLabel(s Source) string {
-	if s == SourceInstagram {
-		return "Instagram"
+	if label, ok := commentSurfaceLabels[s]; ok {
+		return label
 	}
-	return string(s)
+	return s.EntryType().DisplayLabel()
 }
 
 func stanceLabel(s Stance) string {

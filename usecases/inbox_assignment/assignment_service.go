@@ -59,6 +59,14 @@ func (s *AssignmentService) SetRoster(roster ia.RosterProvider) { s.candidates.S
 
 func (s *AssignmentService) SetPresence(seen ia.LastSeenReader) { s.candidates.SetPresence(seen) }
 
+func (s *AssignmentService) SetWorkload(workload ia.WorkloadReader) {
+	s.candidates.SetWorkload(workload)
+}
+
+func (s *AssignmentService) SetHandouts(handouts ia.HandoutReader) {
+	s.candidates.SetHandouts(handouts)
+}
+
 func (s *AssignmentService) Candidates() *CandidateResolver { return s.candidates }
 
 func (s *AssignmentService) workspaceConfigFor(workspaceID string) *wsc.WorkspaceConfig {
@@ -127,14 +135,18 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 	pool := s.humanPool(workspaceID, departmentID)
 	if len(pool.Ring) == 0 {
 		if departmentID != "" {
-			log.Printf("[InboxAssignment] no connected eligible users for workspace %s department %s, entry %s stays unassigned", workspaceID, departmentID, entryID)
+			log.Printf("[InboxAssignment] no eligible users for workspace %s department %s (strategy=%s reason=%s), entry %s stays unassigned", workspaceID, departmentID, pool.Strategy, pool.Reason, entryID)
 		} else {
-			log.Printf("[InboxAssignment] no connected eligible users for workspace %s, entry %s stays unassigned (visible to all)", workspaceID, entryID)
+			log.Printf("[InboxAssignment] no eligible users for workspace %s (strategy=%s reason=%s), entry %s stays unassigned (visible to all)", workspaceID, pool.Strategy, pool.Reason, entryID)
 		}
 		return ""
 	}
 
 	assignedUserID, nextIndex, trigger := s.outreachOwner(entryID, entryType, pool), 0, ia.TriggerOutreach
+	if assignedUserID == "" && !pool.CanPick() {
+		log.Printf("[InboxAssignment] workspace %s distributes by %s, entry %s waits for the first eligible member who opens it", workspaceID, pool.Strategy, entryID)
+		return ""
+	}
 	if assignedUserID == "" {
 		var err error
 		trigger = ia.TriggerInboundRR
@@ -145,8 +157,8 @@ func (s *AssignmentService) EnsureAssignment(entryID, entryType, businessPhoneID
 		}
 	}
 
-	log.Printf("[InboxAssignment] picked user %s for entry %s (%s) (trigger=%s, index %d/%d, mode=%s reason=%s)",
-		assignedUserID, entryID, entryType, trigger, nextIndex, len(pool.Ring), pool.Mode, pool.Reason)
+	log.Printf("[InboxAssignment] picked user %s for entry %s (%s) (trigger=%s, index %d/%d, mode=%s strategy=%s reason=%s)",
+		assignedUserID, entryID, entryType, trigger, nextIndex, len(pool.Ring), pool.Mode, pool.Strategy, pool.Reason)
 
 	return s.handOut(handOutInput{
 		WorkspaceID: workspaceID, EntryID: entryID, EntryType: entryType,
@@ -492,22 +504,23 @@ func (s *AssignmentService) claimNextInRing(workspaceID, businessPhoneID, depart
 			return "", 0, err
 		}
 
-		lastAssigned, stateID := "", ""
+		last, stateID := ia.LastPick{}, ""
 		if state != nil {
-			lastAssigned = state.LastAssignedUserID
+			last = ia.LastPick{Key: state.LastAssignedUserID, At: state.UpdatedAt}
 			stateID = state.ID
 		}
 
-		idx = ia.NextIndex(pool.Ring, lastAssigned, pool.Resume)
-		userID = pool.Ring[idx]
+		var turn ia.Turn
+		turn, idx = pool.Rotation.Next(last)
+		userID = turn.UserID
 
 		claimed, err := s.repo.CompareAndSwapRoundRobinState(&ia.RoundRobinState{
 			ID:                 stateID,
 			WorkspaceID:        workspaceID,
 			BusinessPhoneID:    businessPhoneID,
 			DepartmentID:       departmentID,
-			LastAssignedUserID: userID,
-		}, lastAssigned)
+			LastAssignedUserID: turn.Key,
+		}, last.Key)
 		if err != nil {
 			log.Printf("[InboxAssignment] error saving round-robin state: %v", err)
 			return userID, idx, nil

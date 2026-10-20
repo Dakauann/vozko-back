@@ -33,6 +33,7 @@ func (c *Container) launchCheck() *wc_usecase.LaunchCheck {
 		Costs:          c.useCases.consumeWhatsappTemplate,
 		Balances:       c.services.cachedBalanceChecker,
 		Caps:           caps,
+		Forms:          c.formPublications(),
 		Now:            time.Now,
 	})
 	return c.launchCheckService

@@ -98,7 +98,7 @@ func TestForeignObjectIsAckedWithoutPublishing(t *testing.T) {
 
 func TestEntryWithoutRouteIsSkipped(t *testing.T) {
 	pub := &fakePublisher{}
-	rec := post(newHandler(pub), []byte(`{"object":"page","entry":[{"id":"P","time":1}]}`))
+	rec := post(newHandler(pub, "page"), []byte(`{"object":"page","entry":[{"id":"P","time":1}]}`))
 	if rec.Code != http.StatusOK || len(pub.items) != 0 {
 		t.Fatalf("code=%d published=%d", rec.Code, len(pub.items))
 	}
@@ -106,7 +106,7 @@ func TestEntryWithoutRouteIsSkipped(t *testing.T) {
 
 func TestPublishFailureAsksMetaToRetry(t *testing.T) {
 	pub := &fakePublisher{err: errors.New("broker down")}
-	rec := post(newHandler(pub), []byte(`{"object":"page","entry":[{"id":"P","messaging":[{"sender":{"id":"U"},"recipient":{"id":"P"},"timestamp":1,"message":{"mid":"m"}}]}]}`))
+	rec := post(newHandler(pub, "page"), []byte(`{"object":"page","entry":[{"id":"P","messaging":[{"sender":{"id":"U"},"recipient":{"id":"P"},"timestamp":1,"message":{"mid":"m"}}]}]}`))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("code = %d", rec.Code)
 	}
@@ -117,7 +117,7 @@ func TestBadSignatureIsRejected(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/x", bytes.NewReader([]byte(`{}`)))
 	req.Header.Set("X-Hub-Signature-256", "sha256=00")
 	rec := httptest.NewRecorder()
-	newHandler(pub).Handle(rec, req)
+	newHandler(pub, "page").Handle(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("code = %d", rec.Code)
 	}
@@ -126,7 +126,7 @@ func TestBadSignatureIsRejected(t *testing.T) {
 func TestHandshakeEchoesChallenge(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/webhooks/x?hub.mode=subscribe&hub.verify_token=verify&hub.challenge=42", nil)
 	rec := httptest.NewRecorder()
-	newHandler(&fakePublisher{}).Handle(rec, req)
+	newHandler(&fakePublisher{}, "page").Handle(rec, req)
 	if rec.Code != http.StatusOK || rec.Body.String() != "42" {
 		t.Fatalf("code=%d body=%q", rec.Code, rec.Body.String())
 	}

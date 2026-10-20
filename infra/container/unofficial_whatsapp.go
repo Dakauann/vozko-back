@@ -256,7 +256,7 @@ func (c *Container) wireUnofficialWhatsAppConversationStack() {
 		bundle.Messaging,
 	)
 	if setter, ok := adapter.(interface{ SetVoiceTranscoder(uw.VoiceTranscoder) }); ok {
-		setter.SetVoiceTranscoder(uazapi.NewVoiceTranscoder())
+		setter.SetVoiceTranscoder(uazapi.NewVoiceTranscoder(mediaDownloads()))
 	}
 
 	c.registerChannelAdapter(adapter)

@@ -202,7 +202,7 @@ func TestDispatchReportReaderAgainstPostgres(t *testing.T) {
 	})
 
 	t.Run("campaign breakdown ranks every campaign in scope", func(t *testing.T) {
-		got, err := reader.Campaigns(wholeWorkspace, 50)
+		got, err := reader.Campaigns(wholeWorkspace, wce.FirstPage(50))
 		if err != nil {
 			t.Fatalf("Campaigns() error = %v", err)
 		}
@@ -212,6 +212,20 @@ func TestDispatchReportReaderAgainstPostgres(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("Campaigns() = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("campaign breakdown pages without repeating or skipping a campaign", func(t *testing.T) {
+		first, err := reader.Campaigns(wholeWorkspace, wce.FirstPage(1))
+		if err != nil {
+			t.Fatalf("Campaigns() first page error = %v", err)
+		}
+		second, err := reader.Campaigns(wholeWorkspace, wce.FirstPage(1).Next())
+		if err != nil {
+			t.Fatalf("Campaigns() second page error = %v", err)
+		}
+		if len(first) != 1 || len(second) != 1 || first[0].CampaignID != launch || second[0].CampaignID != otherDept {
+			t.Fatalf("pages = %+v then %+v, want %s then %s", first, second, launch, otherDept)
 		}
 	})
 
@@ -240,7 +254,7 @@ func TestDispatchReportReaderAgainstPostgres(t *testing.T) {
 	})
 
 	t.Run("tags", func(t *testing.T) {
-		got, err := reader.Tags(campaignScope, 10)
+		got, err := reader.Tags(campaignScope, wce.FirstPage(10))
 		if err != nil {
 			t.Fatalf("Tags() error = %v", err)
 		}

@@ -9,11 +9,13 @@ import (
 )
 
 type UnofficialWhatsAppCampaign struct {
-	ID           string  `gorm:"primaryKey;type:uuid"`
-	WorkspaceID  string  `gorm:"type:uuid;not null;index;index:idx_uwc_ws_del,priority:1"`
-	DepartmentID *string `gorm:"type:uuid;index"`
-	InstanceID   string  `gorm:"type:uuid;not null;index:idx_uwc_instance"`
-	CreatedByID  *string `gorm:"type:uuid;index"`
+	ID           string       `gorm:"primaryKey;type:uuid"`
+	WorkspaceID  string       `gorm:"type:uuid;not null;index;index:idx_uwc_ws_del,priority:1"`
+	DepartmentID *string      `gorm:"type:uuid;index"`
+	InstanceID   OptionalText `gorm:"type:uuid;index:idx_uwc_instance"`
+	CreatedByID  *string      `gorm:"type:uuid;index"`
+
+	SenderInstanceIDs pq.StringArray `gorm:"column:sender_instance_ids;type:text[]"`
 
 	Source         OptionalText `gorm:"column:source;type:varchar(32)"`
 	IdempotencyKey OptionalText `gorm:"column:idempotency_key;type:varchar(200)"`
@@ -77,6 +79,8 @@ type UnofficialWhatsAppCampaignEntry struct {
 
 	JID       string     `gorm:"column:jid;size:64"`
 	CheckedAt *time.Time `gorm:"column:checked_at"`
+
+	SenderInstanceID *string `gorm:"column:sender_instance_id;type:uuid"`
 
 	Status       string `gorm:"size:40;not null;default:'PENDING';index:idx_uwce_campaign_status_created,priority:2"`
 	VariantIndex int    `gorm:"not null;default:0"`

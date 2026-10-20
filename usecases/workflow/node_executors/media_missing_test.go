@@ -26,7 +26,7 @@ func TestMissingMediaIsReportedNotFallenBackOn(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			s := &whatsappSender{}
+			s := &whatsappSender{deps: SenderDeps{MediaFetcher: unguardedTestFetcher()}}
 			_, _, err := s.downloadMedia(context.Background(), srv.URL+"/foto.jpeg")
 			if err == nil {
 				t.Fatal("a non-2xx download must be an error")
@@ -44,7 +44,7 @@ func TestMissingMediaSurvivesWrapping(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := &whatsappSender{}
+	s := &whatsappSender{deps: SenderDeps{MediaFetcher: unguardedTestFetcher()}}
 	_, _, err := s.downloadMedia(context.Background(), srv.URL+"/foto.jpeg")
 
 	if !errors.Is(err, errMediaNotFound) {

@@ -9,6 +9,7 @@ import (
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	workflow_domain "vozko/domain/workflow"
 	workspace_department "vozko/domain/workspace/workspace_department"
+	"vozko/infra/repositories/campaignstamp"
 	uwrepo "vozko/infra/repositories/unofficial_whatsapp"
 	uwc_repo "vozko/infra/repositories/unofficial_whatsapp_campaign"
 	conversation_usecase "vozko/usecases/conversation"
@@ -31,6 +32,8 @@ type unofficialWhatsAppCampaignBundle struct {
 	Instances    uwc.CampaignInstanceUseCase
 	ScheduleJob  uwc.StartScheduleJob
 	PauseForInst uwc.PauseCampaignsForInstanceUseCase
+	Senders      uwcuc.GroupSenderDirectory
+	Estimate     uwc.EstimateCampaignUseCase
 
 	Handler *uwhttp.CampaignHandler
 }
@@ -105,6 +108,8 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	bundle.Actions = uwcuc.NewCampaignActionUseCase(bundle.Access, bundle.Dispatch)
 	bundle.Preview = uwcuc.NewImportPreviewUseCase(c.useCases.readMedia)
 	bundle.Instances = uwcuc.NewCampaignInstanceUseCase(gateway)
+	bundle.Senders = gateway
+	bundle.Estimate = uwcuc.NewEstimateCampaignUseCase(bundle.Entries, gateway, gateway)
 
 	logChannelCapabilities("unofficial-whatsapp-campaigns", map[string]bool{
 		"sender":         sender != nil,
@@ -117,7 +122,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 
 	bundle.Handler = uwhttp.NewCampaignHandler(uwhttp.CampaignHandlerDeps{
 		Create:      bundle.Create,
-		Update:      c.automateCampaignChanges("unofficial update", uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway)).(uwc.UpdateCampaignUseCase),
+		Update:      c.automateCampaignEdits("unofficial update", uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway)).(uwc.UpdateCampaignUseCase),
 		Get:         uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Access:      bundle.Access,
 		Actions:     bundle.Actions,
@@ -125,7 +130,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		Delete:      uwcuc.NewDeleteCampaignUseCase(bundle.Campaigns, bundle.Entries),
 		AssignDep:   uwcuc.NewAssignDepartmentUseCase(bundle.Campaigns, departments),
 		Summary:     uwcuc.NewGetSummaryUseCase(summary),
-		Entries:     uwcuc.NewListEntriesUseCase(bundle.Entries),
+		Entries:     uwcuc.NewListEntriesUseCase(bundle.Entries, gateway),
 		Reset:       uwcuc.NewResetCampaignUseCase(bundle.Campaigns, bundle.Entries),
 		Clear:       uwcuc.NewClearHistoryUseCase(bundle.Campaigns, bundle.Entries, c.repositories.conversation),
 		AddEntry:    c.automateCampaignChanges("unofficial add entries", uwcuc.NewAddEntriesUseCase(bundle.Campaigns, bundle.Entries, c.repositories.lead)).(uwc.AddEntriesUseCase),
@@ -135,9 +140,12 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 			bundle.Campaigns, bundle.Entries, c.repositories.lead,
 			bundle.Dispatch, c.redisProvider.SharedState())).(uwc.QuickSendUseCase),
 		Validate:    uwcuc.NewValidateTargetsUseCase(bundle.Campaigns, bundle.Entries, gateway),
+		Estimate:    bundle.Estimate,
 		Departments: c.services.conversationAuthImpl,
 		Permissions: c.useCases.checkWsAccess,
 	})
+	live := c.campaignLive("unofficial_whatsapp_campaign", bundle.Entries, campaignstamp.UnofficialEntries)
+	bundle.Handler.SetLive(live.progress, live.timeline)
 }
 
 type unofficialCampaignGateway struct {
@@ -149,8 +157,20 @@ type unofficialCampaignGateway struct {
 	resolver  *uwuc.ConversationResolver
 }
 
-func (g *unofficialCampaignGateway) Seat(ctx context.Context, instanceID, groupJID string) (*uw.Group, error) {
-	return g.groups.FindByJID(ctx, instanceID, groupJID)
+func (g *unofficialCampaignGateway) Seats(ctx context.Context, workspaceID, groupJID string) ([]*uw.Group, error) {
+	seats, err := g.SeatsOf(ctx, workspaceID, []string{groupJID})
+	if err != nil {
+		return nil, err
+	}
+	return seats[groupJID], nil
+}
+
+func (g *unofficialCampaignGateway) SeatsOf(ctx context.Context, workspaceID string, groupJIDs []string) (map[string][]*uw.Group, error) {
+	return g.groups.ListByJIDs(ctx, workspaceID, groupJIDs)
+}
+
+func (g *unofficialCampaignGateway) WorkspaceInstances(ctx context.Context, workspaceID string) ([]*uw.Instance, error) {
+	return uwuc.AllWorkspaceInstances(ctx, g.instances, workspaceID)
 }
 
 func (g *unofficialCampaignGateway) Conversation(ctx context.Context, instance *uw.Instance, groupJID, subject string) (*uwuc.Resolved, error) {

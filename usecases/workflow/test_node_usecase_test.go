@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/redact"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
@@ -47,22 +48,21 @@ func TestBuildTestRun_UsesUUIDIdentifiers(t *testing.T) {
 	}
 }
 
-func TestPrepareExecution_UsesSimulationRegistryWhenExecutorDepsAreAvailable(t *testing.T) {
-	registry := createTestRegistry()
-	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerManual}}, nil)
-	uc := &testNodeUseCase{deps: TestNodeDeps{
-		Registry: registry,
-		ExecutorDeps: ExecutorDeps{
-			MessageRepo: &simMessageRepo{},
-		},
-	}}
+func fixedExecutors(registry *NodeExecutorRegistry) TestExecutors {
+	return func(SimSandbox) *NodeExecutorRegistry { return registry }
+}
 
-	prepared, err := uc.prepareExecution(wf, "ws1", map[string]interface{}{"message": "oi"})
+func TestTheNodeTestSandboxSimulatesTheConversationAndSeedsTheTriggerVariables(t *testing.T) {
+	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerManual}}, nil)
+	uc := &testNodeUseCase{deps: TestNodeDeps{}}
+
+	prepared, err := uc.newNodeTest(wf, &wf.Graph.Nodes[0], TestNodeInput{WorkspaceID: "ws1", TriggerVars: map[string]interface{}{"message": "oi"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if prepared.registry == registry {
-		t.Fatal("expected prepareExecution to use a dedicated simulation registry")
+	defer close(prepared.done)
+	if _, ok := prepared.registry.Get(workflow.NodeTypeActionSendText); !ok {
+		t.Fatal("without an override the sandbox builds the simulation registry")
 	}
 	if prepared.run.EntryType != string(shared.EntryTypeWhatsApp) {
 		t.Fatalf("expected simulated entry type %q, got %q", shared.EntryTypeWhatsApp, prepared.run.EntryType)
@@ -145,7 +145,10 @@ func (e *countingAIExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 	}, nil
 }
 
-type captureHTTPExecutor struct{ ran *int }
+type captureHTTPExecutor struct {
+	ran        *int
+	lastConfig map[string]interface{}
+}
 
 func (e *captureHTTPExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{Type: workflow.NodeTypeActionHTTPRequest, Label: "Requisição HTTP"}
@@ -155,6 +158,7 @@ func (e *captureHTTPExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	if e.ran != nil {
 		*e.ran++
 	}
+	e.lastConfig = workflow.InterpolateMap(ctx.Node.Config, ctx.State, nil)
 	if cv, _ := ctx.Node.Config["capture_variable"].(string); cv != "" && ctx.State != nil {
 		ctx.State.Set(cv, []interface{}{map[string]interface{}{"token": "REALTOK"}})
 	}
@@ -166,7 +170,8 @@ func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	registry := NewNodeExecutorRegistry()
 	httpRan := 0
 	aiRan := 0
-	registry.Register(workflow.NodeTypeActionHTTPRequest, &captureHTTPExecutor{ran: &httpRan})
+	httpExec := &captureHTTPExecutor{ran: &httpRan}
+	registry.Register(workflow.NodeTypeActionHTTPRequest, httpExec)
 	registry.Register(workflow.NodeTypeActionAIAgent, &countingAIExecutor{executed: &aiRan})
 
 	nodes := []workflow.Node{
@@ -194,13 +199,14 @@ func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	wf := createTestWorkflow("wf1", "ws1", nodes, edges)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
-		WorkflowID:  "wf1",
-		WorkspaceID: "ws1",
-		NodeID:      "s2_2",
-		MockedState: map[string]interface{}{"ana_response.tool_args.cpf": "70658062433"},
+		WorkflowID:       "wf1",
+		WorkspaceID:      "ws1",
+		NodeID:           "s2_2",
+		MockedState:      map[string]interface{}{"ana_response.tool_args.cpf": "70658062433"},
+		ConfirmRealCalls: true,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -211,11 +217,14 @@ func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	if aiRan != 0 {
 		t.Fatalf("expected mocked AI agent to be skipped, ran %d time(s)", aiRan)
 	}
-	if got := result.InterpolatedConfig["auth_token"]; got != "REALTOK" {
+	if got := httpExec.lastConfig["auth_token"]; got != "REALTOK" {
 		t.Fatalf("auth_token did not resolve from upstream producer: got %v, want REALTOK", got)
 	}
-	if qp, _ := result.InterpolatedConfig["query_params"].(map[string]interface{}); qp["cpf"] != "70658062433" {
-		t.Fatalf("cpf mock did not interpolate: got %v", result.InterpolatedConfig["query_params"])
+	if qp, _ := httpExec.lastConfig["query_params"].(map[string]interface{}); qp["cpf"] != "70658062433" {
+		t.Fatalf("cpf mock did not interpolate: got %v", httpExec.lastConfig["query_params"])
+	}
+	if got := result.InterpolatedConfig["auth_token"]; got != redact.Mask {
+		t.Fatalf("the response must mask the resolved token: got %v", got)
 	}
 }
 
@@ -244,7 +253,8 @@ func TestAnalyze_NodeWithNoDependencies(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -305,7 +315,8 @@ func TestAnalyze_NodeWithLastDependency(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -359,7 +370,8 @@ func TestAnalyze_NodeWithAIDependency(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -403,7 +415,8 @@ func TestAnalyze_NodeWithCustomCaptureVariable(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -457,7 +470,7 @@ func TestAnalyze_NodeWithAIResponseVariableDependency(t *testing.T) {
 	wf := createTestWorkflow("wf1", "ws1", nodes, edges)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
 		WorkflowID:  "wf1",
@@ -511,7 +524,7 @@ func TestAnalyze_NodeWithBareAIResponseVariableDependency(t *testing.T) {
 	wf := createTestWorkflow("wf1", "ws1", nodes, edges)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
 		WorkflowID:  "wf1",
@@ -570,7 +583,8 @@ func TestAnalyze_NodeWithNodeScopeDependency(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -615,7 +629,8 @@ func TestAnalyze_NodeWithVarScopeDependency(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -642,7 +657,8 @@ func TestAnalyze_WorkflowNotFound(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	_, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -668,7 +684,8 @@ func TestAnalyze_WorkspaceMismatch(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	_, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -694,7 +711,8 @@ func TestAnalyze_NodeNotFound(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	_, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -732,7 +750,8 @@ func TestExecute_SimpleNode(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -779,7 +798,8 @@ func TestExecute_WithInterpolation(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -826,7 +846,8 @@ func TestExecute_WithMockedState(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -868,7 +889,7 @@ func TestExecute_WithMissingAIMockedStateReturnsValidationError(t *testing.T) {
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
 		WorkflowID:  "wf1",
@@ -927,7 +948,8 @@ func TestExecute_ExecuteUntilUsesUpstreamState(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -978,7 +1000,8 @@ func TestExecute_ExecuteUntilWithIncompleteMockInputDoesNotRunUpstreamExecution(
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1039,7 +1062,7 @@ func TestExecute_WithMissingAIResponseVariableMockReturnsValidationError(t *test
 	wf := createTestWorkflow("wf1", "ws1", nodes, edges)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
 		WorkflowID:  "wf1",
@@ -1098,7 +1121,7 @@ func TestExecute_WithMissingBareAIResponseVariableMockReturnsValidationError(t *
 	wf := createTestWorkflow("wf1", "ws1", nodes, edges)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
 		WorkflowID:  "wf1",
@@ -1148,7 +1171,7 @@ func TestExecute_WithNestedAIMockedState(t *testing.T) {
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
 		WorkflowID:  "wf1",
@@ -1188,7 +1211,7 @@ func TestExecute_ExecuteUntilUsesProvidedCustomMocksWithoutReachingTarget(t *tes
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
 
-	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Registry: registry})
+	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: registry, Executors: fixedExecutors(registry)})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
 		WorkflowID:  "wf1",
@@ -1233,7 +1256,8 @@ func TestExecute_SkipExecutionFlag(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1284,7 +1308,8 @@ func TestExecute_MergesOutputsIntoStateAfter(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1337,7 +1362,8 @@ func TestExecute_HTTPRequest(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1347,6 +1373,7 @@ func TestExecute_HTTPRequest(t *testing.T) {
 		TriggerVars: map[string]interface{}{
 			"user_id": "123",
 		},
+		ConfirmRealCalls: true,
 	})
 
 	if err != nil {
@@ -1383,7 +1410,8 @@ func TestExecute_NoExecutor(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1409,7 +1437,8 @@ func TestExecute_WorkflowNotFound(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	_, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1435,7 +1464,8 @@ func TestExecute_WorkspaceMismatch(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	_, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1461,7 +1491,8 @@ func TestExecute_NodeNotFound(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	_, err := uc.Execute(context.Background(), TestNodeInput{
@@ -1579,7 +1610,8 @@ func TestAnalyze_MixedDependencies(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{
@@ -1636,7 +1668,8 @@ func TestAnalyze_NestedConfig(t *testing.T) {
 
 	uc := NewTestNodeUseCase(TestNodeDeps{
 		WorkflowRepo: repo,
-		Registry:     registry,
+		Steps:        registry,
+		Executors:    fixedExecutors(registry),
 	})
 
 	result, err := uc.Analyze(context.Background(), AnalyzeNodeInput{

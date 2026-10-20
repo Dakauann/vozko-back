@@ -56,6 +56,7 @@ func TestNormalizeUpdateKinds(t *testing.T) {
 		{"group_message.json", EventInboundMessage},
 		{"unknown_update.json", EventUnknown},
 		{"large_ids.json", EventInboundMessage},
+		{"message_reaction.json", EventReaction},
 	}
 
 	for _, tc := range cases {
@@ -393,5 +394,62 @@ func TestLabelForMatchesAcrossRows(t *testing.T) {
 	var nilKB *InlineKeyboardMarkup
 	if got := nilKB.LabelFor("support"); got != "" {
 		t.Errorf("a nil keyboard must be safe, got %q", got)
+	}
+}
+
+func TestMessageReactionFixtureCarriesTheReactorAndTheTarget(t *testing.T) {
+	ev := normalizeFixture(t, "message_reaction.json")
+
+	if ev.ChatID != 5041234567 || ev.MessageID != 4822 {
+		t.Fatalf("chat = %d message = %d, want the reacted message in its chat", ev.ChatID, ev.MessageID)
+	}
+	if ev.From == nil || ev.From.ID != 5041234567 {
+		t.Fatalf("from = %+v, want the reacting user as the actor", ev.From)
+	}
+	if ev.ReactionEmoji != "👍" {
+		t.Fatalf("emoji = %q", ev.ReactionEmoji)
+	}
+	if !ev.Timestamp.Equal(unixToTime(1785312060)) {
+		t.Fatalf("timestamp = %v, want the reaction date", ev.Timestamp)
+	}
+	if ev.IdempotencyKey != "tg:acct-1:reaction:870123490" {
+		t.Fatalf("idempotency key = %q", ev.IdempotencyKey)
+	}
+}
+
+func TestMessageReactionKeepsOnlyWhatTheInboxCanShow(t *testing.T) {
+	const user = `"user": {"id": 77, "is_bot": false, "first_name": "Ana"}`
+	cases := []struct {
+		name      string
+		reaction  string
+		wantKind  EventKind
+		wantEmoji string
+	}{
+		{"an emoji reaction is kept", user + `, "old_reaction": [], "new_reaction": [{"type": "emoji", "emoji": "❤"}]`, EventReaction, "❤"},
+		{"an empty new reaction means the reaction was removed", user + `, "old_reaction": [{"type": "emoji", "emoji": "❤"}], "new_reaction": []`, EventReaction, ""},
+		{"a custom emoji has no portable glyph", user + `, "old_reaction": [], "new_reaction": [{"type": "custom_emoji", "custom_emoji_id": "5368324170671202286"}]`, EventUnsupportedReaction, ""},
+		{"a paid star reaction is not an emoji", user + `, "old_reaction": [], "new_reaction": [{"type": "paid"}]`, EventUnsupportedReaction, ""},
+		{"switching from an emoji to a custom emoji removes the emoji we show", user + `, "old_reaction": [{"type": "emoji", "emoji": "👍"}], "new_reaction": [{"type": "custom_emoji", "custom_emoji_id": "1"}]`, EventReaction, ""},
+		{"a premium user adding a second emoji shows the one just added", user + `, "old_reaction": [{"type": "emoji", "emoji": "👍"}], "new_reaction": [{"type": "emoji", "emoji": "👍"}, {"type": "emoji", "emoji": "🔥"}]`, EventReaction, "🔥"},
+		{"removing one of two emojis shows the one that stays", user + `, "old_reaction": [{"type": "emoji", "emoji": "👍"}, {"type": "emoji", "emoji": "🔥"}], "new_reaction": [{"type": "emoji", "emoji": "👍"}]`, EventReaction, "👍"},
+		{"an emoji beside a custom emoji is still shown", user + `, "old_reaction": [], "new_reaction": [{"type": "custom_emoji", "custom_emoji_id": "1"}, {"type": "emoji", "emoji": "🎉"}]`, EventReaction, "🎉"},
+		{"an anonymous reaction has no actor to attribute it to", `"actor_chat": {"id": -100123, "type": "channel"}, "old_reaction": [], "new_reaction": [{"type": "emoji", "emoji": "👍"}]`, EventUnsupportedReaction, ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := []byte(`{"update_id": 1, "message_reaction": {"chat": {"id": 77, "type": "private"}, "message_id": 9, "date": 1785312060, ` + tc.reaction + `}}`)
+			update, err := DecodeUpdate(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ev := NormalizeUpdate("acct-1", update, raw)
+			if ev.Kind != tc.wantKind || ev.ReactionEmoji != tc.wantEmoji {
+				t.Fatalf("kind = %q emoji = %q, want %q %q", ev.Kind, ev.ReactionEmoji, tc.wantKind, tc.wantEmoji)
+			}
+			if ev.ChatID != 77 || ev.MessageID != 9 {
+				t.Fatalf("chat = %d message = %d", ev.ChatID, ev.MessageID)
+			}
+		})
 	}
 }

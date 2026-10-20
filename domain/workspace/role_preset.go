@@ -35,6 +35,7 @@ var operatorCapabilities = []CapabilityKey{
 	"calls.use", "call_history.view",
 	"call_lists.view", "call_lists.work",
 	"ai_chat.view", "ai_chat.chat",
+	"whatsapp_forms.view", "whatsapp_forms.send", "whatsapp_forms.responses",
 }
 
 var supervisorCapabilities = append(append([]CapabilityKey{}, operatorCapabilities...),
@@ -45,6 +46,7 @@ var supervisorCapabilities = append(append([]CapabilityKey{}, operatorCapabiliti
 	"attendance.view", "attendance.targets_view",
 	"call_history.view_team", "call_history.listen", "calls.presence",
 	"team.members", "departments.view", "customer_portfolios.manage",
+	"team_chat.groups",
 )
 
 var RolePresets = []RolePreset{
@@ -77,6 +79,7 @@ var RolePresets = []RolePreset{
 			"call_lists.manage",
 			"whatsapp_campaigns.view", "whatsapp_campaigns.crm",
 			"team.invite", "departments.edit",
+			"whatsapp_forms.build", "whatsapp_forms.publish", "whatsapp_forms.delete", "whatsapp_forms.responses_sensitive", "whatsapp_forms.export", "whatsapp_forms.responses_delete",
 		),
 	},
 	{
@@ -117,6 +120,8 @@ var RolePresets = []RolePreset{
 			"unofficial_groups.view", "unofficial_groups.join", "unofficial_groups.edit", "unofficial_groups.analyses",
 			"unofficial_groups.export", "unofficial_groups.to_leads",
 			"instagram.view", "instagram.manage", "facebook.view", "facebook.manage",
+			"mercadolivre.view", "mercadolivre.manage",
+			"tiktok.view", "tiktok.manage",
 			"ads.view", "ads.toggle", "ads.edit", "audience.view",
 			"links.view", "links.create", "links.edit",
 			"leads.view", "leads.import", "media.view", "media.upload", "reports.view", "lead_companies.view",

@@ -73,6 +73,14 @@ var capabilityRules = map[Capability]capabilityRule{
 	CapSubscribe: {scopes: []string{ScopeManageMetadata}, tasks: []Task{TaskCreateContent, TaskManage, TaskModerate}},
 }
 
+func CapabilityRequirements(c Capability) (scopes []string, anyTask []Task, ok bool) {
+	rule, ok := capabilityRules[c]
+	if !ok {
+		return nil, nil, false
+	}
+	return append([]string(nil), rule.scopes...), append([]Task(nil), rule.tasks...), true
+}
+
 func AllCapabilities() []Capability {
 	out := make([]Capability, 0, len(capabilityRules))
 	for c := range capabilityRules {

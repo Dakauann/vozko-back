@@ -14,7 +14,8 @@ func TestEveryStatementBindsAsManyArgumentsAsItHasPlaceholders(t *testing.T) {
 		stalePendingSQL: 2, purgeSQL: 2, summarySQL: 3, markReadSQL: 4, markUnreadSQL: 3, markAllReadSQL: 3,
 		membersSQL: 1, workspaceNameSQL: 1, workspaceIDsSQL: 1, workspaceIDsAfterSQL: 2,
 		holdForDigestSQL: 2, heldWorkspacesSQL: 2, heldWorkspacesAfterSQL: 3, heldDigestsSQL: 3, releaseDigestsSQL: 3,
-		broadcastStatsSQL: 1,
+		broadcastStatsSQL: 1, withdrawSQL: 2,
+		seeEpisodeSQL: 2, advanceEpisodeSQL: 5, closeEpisodeSQL: 3, resolveEpisodesSQL: 4, purgeEpisodesSQL: 2,
 	}
 	for statement, args := range fixed {
 		if got := strings.Count(statement, "?"); got != args {

@@ -65,24 +65,67 @@ type EntryResult struct {
 	Created     bool
 }
 
-func (s *Service) ManageForEntry(workspaceID string, cmd EntryCommand) (*EntryResult, error) {
+type EntryPreview struct {
+	Action       EntryAction
+	PipelineID   string
+	Stage        *stage.Stage
+	Title        string
+	ValueCents   *int64
+	LostReasonID string
+}
+
+func (s *Service) entryPlan(workspaceID string, cmd EntryCommand) ([]*stage.Stage, *opportunity.StageRef, error) {
 	if cmd.Actor == "" {
-		return nil, ErrActorRequired
+		return nil, nil, ErrActorRequired
 	}
 	if cmd.EntryID == "" || cmd.EntryType == "" {
-		return nil, ErrEntryTypeRequired
+		return nil, nil, ErrEntryTypeRequired
 	}
 	if !cmd.Action.Valid() {
-		return nil, ErrUnknownAction
+		return nil, nil, ErrUnknownAction
 	}
 	if cmd.Action == EntryCreateNew && cmd.OpportunityID != "" {
-		return nil, ErrDealIDOnNewDeal
+		return nil, nil, ErrDealIDOnNewDeal
 	}
 	stages, err := s.PipelineStages(workspaceID, cmd.PipelineID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	target, err := s.targetStage(workspaceID, cmd, stages)
+	if err != nil {
+		return nil, nil, err
+	}
+	return stages, target, nil
+}
+
+func (s *Service) PreviewForEntry(workspaceID string, cmd EntryCommand) (*EntryPreview, error) {
+	stages, target, err := s.entryPlan(workspaceID, cmd)
+	if err != nil {
+		return nil, err
+	}
+	landing := target
+	if landing == nil && (cmd.Action == EntryCreate || cmd.Action == EntryCreateNew) {
+		initial, err := initialStage(stages)
+		if err != nil {
+			return nil, err
+		}
+		landing = &initial
+	}
+	preview := &EntryPreview{
+		Action: cmd.Action, PipelineID: cmd.PipelineID, Title: cmd.Title, ValueCents: cmd.ValueCents, LostReasonID: cmd.LostReasonID,
+	}
+	if landing != nil {
+		for _, st := range stages {
+			if st.ID == landing.ID {
+				preview.Stage = st
+			}
+		}
+	}
+	return preview, nil
+}
+
+func (s *Service) ManageForEntry(workspaceID string, cmd EntryCommand) (*EntryResult, error) {
+	stages, target, err := s.entryPlan(workspaceID, cmd)
 	if err != nil {
 		return nil, err
 	}

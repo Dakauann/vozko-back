@@ -216,6 +216,7 @@ var refusalReplies = map[string]refusalReply{
 	wo.CodeBillingUnavailable:     {http.StatusInternalServerError, "cobrança indisponível, envio recusado"},
 	wo.CodeSendOutcomeUnknown:     {http.StatusConflict, "o WhatsApp pode ter entregue o modelo, confira a conversa antes de enviar de novo"},
 	wo.CodeConversationNotFound:   {http.StatusNotFound, "conversa não encontrada"},
+	wo.CodeFormNotSendable:        {http.StatusUnprocessableEntity, "o formulário deste modelo não pode ser enviado deste número agora"},
 }
 
 func (h *Handler) writeDomainError(w http.ResponseWriter, err error, result *wo.StartedConversation) {

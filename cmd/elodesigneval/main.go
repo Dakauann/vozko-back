@@ -218,7 +218,7 @@ func main() {
 	}
 	ledger := &usageLedger{}
 	references := newReferenceLedger(ledger)
-	service, err := openrouter.NewService(openrouter.ConfigFrom(config.LoadConfig()), nil, references)
+	service, err := openrouter.NewService(openrouter.ConfigFrom(config.LoadConfig()), nil, references, references)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

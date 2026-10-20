@@ -15,12 +15,13 @@ func NewTextMatchExecutor() workflow.NodeExecutor {
 
 func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionTextMatch,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Classificar Texto",
-		Description: "Roteia o fluxo com base no texto recebido (switch/case).",
-		Icon:        "GitBranch",
+		Type:         workflow.NodeTypeConditionTextMatch,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Classificar Texto",
+		Description:  "Roteia o fluxo com base no texto recebido (switch/case).",
+		Icon:         "GitBranch",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para rotear por correspondência de texto (switch/case) sem custo de IA.",
 			Behavior: "Saídas DINÂMICAS: cada item de 'cases' cria uma saída (rótulo igual ao value do case), preencha 'cases' ANTES de conectar. Há sempre uma saída 'default' para quando nada corresponde.",
@@ -34,7 +35,7 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 			"match_mode": "exact",
 		},
 		Outputs: []workflow.HandleDefinition{
-			{ID: "default", Label: "Padrão", Optional: true},
+			{ID: textMatchNoMatch, Label: "Padrão", Optional: true},
 		},
 		DynamicHandles: true,
 		OutputKeys: []workflow.OutputKeyDefinition{
@@ -51,6 +52,8 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 		},
 	}
 }
+
+const textMatchNoMatch = "default"
 
 func (e *textMatchExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
 	textTpl, _ := ctx.Node.Config["text"].(string)
@@ -92,22 +95,19 @@ func (e *textMatchExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 		}
 
 		if matched {
-			label := value
-			nextID := resolveEdgeByLabel(edges, label)
-			log.Printf("[text_match] node %s: matched case=%q → next=%s", ctx.Node.ID, value, nextID)
-			return &workflow.NodeResult{
-				NextNodeID: nextID,
-				Output:     map[string]interface{}{"matched": value, "text": text},
-			}, nil
+			result := routeOutput(&workflow.NodeResult{
+				Output: map[string]interface{}{"matched": value, "text": text},
+			}, edges, value, textMatchNoMatch)
+			log.Printf("[text_match] node %s: matched case=%q → next=%s", ctx.Node.ID, value, result.NextNodeID)
+			return result, nil
 		}
 	}
 
-	nextID := resolveEdgeByLabel(edges, "default")
-	log.Printf("[text_match] node %s: no match, using default → next=%s", ctx.Node.ID, nextID)
-	return &workflow.NodeResult{
-		NextNodeID: nextID,
-		Output:     map[string]interface{}{"matched": "", "text": text, "fallback": true},
-	}, nil
+	result := routeOutput(&workflow.NodeResult{
+		Output: map[string]interface{}{"matched": "", "text": text, "fallback": true},
+	}, edges, textMatchNoMatch)
+	log.Printf("[text_match] node %s: no match, using default → next=%s", ctx.Node.ID, result.NextNodeID)
+	return result, nil
 }
 
 func TextMatchOutputs(config map[string]interface{}) []workflow.HandleDefinition {
@@ -130,7 +130,7 @@ func TextMatchOutputs(config map[string]interface{}) []workflow.HandleDefinition
 	}
 
 	outputs = append(outputs, workflow.HandleDefinition{
-		ID:       "default",
+		ID:       textMatchNoMatch,
 		Label:    "Padrão",
 		Optional: true,
 	})

@@ -2,8 +2,6 @@ package workflow_usecase
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -36,14 +34,13 @@ const (
 )
 
 const (
-	builderMaxIterations      = 30
-	builderNoProgressStop     = 5
-	builderRepairBudget       = 3
-	builderMaxTokensPerGen    = 24000
-	builderReasoningMaxTokens = 10000
-	builderEmptyTurnRetries   = 2
-	builderMaxHistoryMsgs     = 80
-	builderLogTail            = 24
+	builderNoProgressStop         = 5
+	builderRepairBudget           = 3
+	builderMaxTokensPerGen        = 24000
+	builderReasoningMaxTokens     = 10000
+	builderEmptyTurnRetries       = 2
+	builderUncatalogedTokenBudget = 1_000_000
+	builderLogTail                = 24
 )
 
 var builderSessionSeq int64
@@ -102,13 +99,11 @@ type AIBuilderUseCaseDeps struct {
 	AuditSink                 BuilderAuditSink
 	Model                     string
 	MaxTokens                 int
-	SessionTimeout            time.Duration
 	MaxConcurrentPerWorkspace int
 
 	BalanceGate      BalanceGate
 	MinBalanceMicros int64
 
-	MaxIterations  int
 	NoProgressStop int
 	RepairBudget   int
 }
@@ -125,12 +120,8 @@ func NewAIBuilderUseCase(deps AIBuilderUseCaseDeps) AIBuilderUseCase {
 		deps:       deps,
 		engine:     agentloop.Engine{AI: deps.AIService},
 		active:     make(map[string]int),
-		maxIter:    deps.MaxIterations,
 		noProgress: deps.NoProgressStop,
 		repairCap:  deps.RepairBudget,
-	}
-	if uc.maxIter <= 0 {
-		uc.maxIter = builderMaxIterations
 	}
 	if uc.noProgress <= 0 {
 		uc.noProgress = builderNoProgressStop
@@ -146,7 +137,6 @@ type aiBuilderUC struct {
 	engine     agentloop.Engine
 	mu         sync.Mutex
 	active     map[string]int
-	maxIter    int
 	noProgress int
 	repairCap  int
 }
@@ -225,6 +215,7 @@ type builderState struct {
 	description string
 
 	model       string
+	modelInfo   ai.ModelInfo
 	reasoning   ai.ReasoningLevel
 	graph       *workflow.Graph
 	fullCatalog []workflow.NodeDefinition
@@ -363,13 +354,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 				continue
 			}
 			st.prompts = append(st.prompts, turn.Text)
-			lctx := ctx
-			var cancel context.CancelFunc
-			if uc.deps.SessionTimeout > 0 {
-				lctx, cancel = context.WithTimeout(ctx, uc.deps.SessionTimeout)
-			} else {
-				lctx, cancel = context.WithCancel(ctx)
-			}
+			lctx, cancel := context.WithCancel(ctx)
 			loopCancelMu.Lock()
 			loopCancel = cancel
 			loopCancelMu.Unlock()
@@ -503,9 +488,10 @@ func (st *builderState) chooseModel(d setModelData) {
 }
 
 func (uc *aiBuilderUC) guardModel(ctx context.Context, emit agentloop.Emit, st *builderState) bool {
-	_, err := ai.ResolveAgentModel(ctx, uc.deps.AIService, st.model, st.reasoning)
+	info, err := ai.ResolveAgentModel(ctx, uc.deps.AIService, st.model, st.reasoning)
 	refusal, refused := ai.RefusalOf(err)
 	if !refused {
+		st.modelInfo = info
 		return true
 	}
 	log.Printf("[wf-ai-builder] s%d refused model %s with reasoning %q: %v", st.sessionID, st.model, st.reasoning, err)
@@ -533,10 +519,34 @@ func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) 
 }
 
 func ResolveNodeHandles(catalog []workflow.NodeDefinition, n workflow.Node) []workflow.HandleDefinition {
+	return resolveNodeHandles(workflow.NodeCatalogMap(catalog), n)
+}
+
+func ResolveHandlesOf(catalog []workflow.NodeDefinition, nodes []workflow.Node) map[string][]workflow.HandleDefinition {
+	defs := workflow.NodeCatalogMap(catalog)
+	handles := make(map[string][]workflow.HandleDefinition, len(nodes))
+	for _, n := range nodes {
+		handles[n.ID] = resolveNodeHandles(defs, n)
+	}
+	return handles
+}
+
+func DynamicHandlesOf(catalog []workflow.NodeDefinition, nodes []workflow.Node) map[string][]workflow.HandleDefinition {
+	defs := workflow.NodeCatalogMap(catalog)
+	handles := make(map[string][]workflow.HandleDefinition)
+	for _, n := range nodes {
+		if defs[n.Type].DynamicHandles {
+			handles[n.ID] = resolveNodeHandles(defs, n)
+		}
+	}
+	return handles
+}
+
+func resolveNodeHandles(defs map[workflow.NodeType]workflow.NodeDefinition, n workflow.Node) []workflow.HandleDefinition {
 	if h, ok := builderHandleResolver(n); ok {
 		return h
 	}
-	if def, ok := workflow.NodeCatalogMap(catalog)[n.Type]; ok {
+	if def, ok := defs[n.Type]; ok {
 		return def.Outputs
 	}
 	return nil
@@ -581,7 +591,7 @@ func (uc *aiBuilderUC) finish(ctx context.Context, emit agentloop.Emit, st *buil
 }
 
 func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
-	return agentloop.Config{
+	cfg := agentloop.Config{
 		WorkspaceID:        st.workspaceID,
 		BillingReference:   st.cacheScope,
 		SessionID:          st.cacheScope,
@@ -589,15 +599,20 @@ func (uc *aiBuilderUC) builderConfig(st *builderState) agentloop.Config {
 		MaxTokensPerGen:    builderMaxTokensPerGen,
 		ReasoningMaxTokens: builderReasoningMaxTokens,
 		ReasoningEffort:    st.reasoning,
-		MaxIterations:      uc.maxIter,
 		NoProgressStop:     uc.noProgress,
 		RepairBudget:       uc.repairCap,
-		SessionTokenBudget: uc.deps.MaxTokens,
 		EmptyTurnRetries:   builderEmptyTurnRetries,
-		MaxHistoryMsgs:     builderMaxHistoryMsgs,
 		FinishToolName:     toolFinish,
 		LogPrefix:          fmt.Sprintf("[wf-ai-builder] s%d", st.sessionID),
 	}
+	return agentloop.UntilDone(cfg, st.modelInfo, uc.uncatalogedTokenBudget())
+}
+
+func (uc *aiBuilderUC) uncatalogedTokenBudget() int {
+	if uc.deps.MaxTokens > 0 {
+		return uc.deps.MaxTokens
+	}
+	return builderUncatalogedTokenBudget
 }
 
 type builderDriver struct {
@@ -797,6 +812,7 @@ func (uc *aiBuilderUC) applyAddNode(st *builderState, tc ai.ToolCall) (string, e
 		Position: workflow.Position{X: float64(100 + (len(st.graph.Nodes)%6)*220), Y: float64(100 + (len(st.graph.Nodes)/6)*140)},
 		Config:   cfg,
 	}
+	workflow.CanonicalizeNodeConfig(&node)
 	st.graph.Nodes = append(st.graph.Nodes, node)
 	if cid, ok := tc.Arguments["client_id"].(string); ok && cid != "" {
 		st.clientIDs[cid] = id
@@ -850,6 +866,7 @@ func (uc *aiBuilderUC) applyUpdateNode(st *builderState, tc ai.ToolCall) (string
 		for k, v := range cfg {
 			node.Config[k] = v
 		}
+		workflow.CanonicalizeNodeConfig(node)
 	}
 	return fmt.Sprintf("update_node %s", id), nil
 }
@@ -1038,8 +1055,8 @@ func (uc *aiBuilderUC) handleFindResource(ctx context.Context, emit agentloop.Em
 
 func (uc *aiBuilderUC) systemPrompt(st *builderState) string {
 	var b strings.Builder
-	b.WriteString("Você é o Copiloto de Fluxos da ")
-	b.WriteString(brand.Active().Name)
+	b.WriteString("Você é o Copiloto de Fluxos ")
+	b.WriteString(brand.Active().Portuguese().OfBrand)
 	b.WriteString(", um agente que CONSTRÓI e EDITA grafos de workflow (nós + arestas) a partir de pedidos em linguagem natural.\n\n")
 	b.WriteString("Você opera por chamadas de ferramenta sobre um grafo mantido no servidor. A cada turno você recebe o estado atual do grafo e a lista de problemas do validador; faça mutações para resolver o pedido do usuário e DEIXAR O GRAFO VÁLIDO.\n\n")
 	b.WriteString("REGRA DE TÉRMINO (inviolável): só chame finish quando NÃO houver problemas BLOQUEANTES. O validador do domínio é a única autoridade, finish é recusado se houver qualquer problema bloqueante. Problemas ADVISORY (dica) não impedem finish, mas resolva-os quando possível para um fluxo totalmente funcional. Nunca chame finish no mesmo turno em que faz mutações.\n\n")
@@ -1100,7 +1117,11 @@ func (uc *aiBuilderUC) catalogLines(st *builderState) []string {
 func (uc *aiBuilderUC) regroundMessage(st *builderState, iter, maxIter, noMutationStreak int) string {
 	var b strings.Builder
 	b.WriteString("OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta do usuário, não repita a resposta anterior):\n")
-	fmt.Fprintf(&b, "ITERAÇÃO %d de %d (orçamento limitado).\n", iter, maxIter)
+	if maxIter > 0 {
+		fmt.Fprintf(&b, "ITERAÇÃO %d de %d.\n", iter, maxIter)
+	} else {
+		fmt.Fprintf(&b, "ITERAÇÃO %d.\n", iter)
+	}
 	if noMutationStreak == 1 {
 		b.WriteString("ATENÇÃO: você NÃO alterou o grafo no último turno. PARE de só consultar, execute AGORA uma mutação concreta (add_node/connect/update_node/remove_*) para resolver os problemas bloqueantes, ou chame finish se já estiver válido. Não repita get_node_spec/find_resource para algo que já consultou.\n")
 	} else if noMutationStreak >= 2 {
@@ -1295,7 +1316,8 @@ func parseConfigJSON(raw interface{}) (map[string]interface{}, error) {
 }
 
 func serializeGraph(g *workflow.Graph) string {
-	b, err := json.MarshalIndent(g, "", "  ")
+	unpinned := workflow.StripPins(*g)
+	b, err := json.MarshalIndent(&unpinned, "", "  ")
 	if err != nil {
 		return "{}"
 	}
@@ -1303,12 +1325,7 @@ func serializeGraph(g *workflow.Graph) string {
 }
 
 func graphHash(g *workflow.Graph) string {
-	b, err := json.Marshal(g)
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	return workflow.GraphHash(g)
 }
 
 func blockingSignature(r workflow.LintReport) string {
@@ -1384,7 +1401,7 @@ func allTriggerTypes() []workflow.TriggerType {
 	return []workflow.TriggerType{
 		workflow.TriggerFirstMessage, workflow.TriggerMessageReceived, workflow.TriggerCampaignSent,
 		workflow.TriggerStageAdded, workflow.TriggerManual, workflow.TriggerNoReply,
-		workflow.TriggerCallReceived,
+		workflow.TriggerCallReceived, workflow.TriggerFormSubmitted,
 	}
 }
 

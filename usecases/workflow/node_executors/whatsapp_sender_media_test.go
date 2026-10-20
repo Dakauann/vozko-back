@@ -115,6 +115,7 @@ func newMediaSender(client conversation.WhatsAppClient, history conversation.Mes
 		WhatsAppEntryRepo:     stubMediaEntryRepo{},
 		HistoryManager:        history,
 		ConversationMediaRepo: mediaRepo,
+		MediaFetcher:          unguardedTestFetcher(),
 	}}
 }
 

@@ -39,10 +39,14 @@ func NewOperatorAutomationToggle(automation AutomationPauser, ownership *Assignm
 }
 
 func (t *OperatorAutomationToggle) SetAutomation(ctx context.Context, in OperatorAutomationInput) (OperatorAutomationResult, error) {
-	entryType := string(in.EntryType)
 	if !t.allows(in) {
 		return OperatorAutomationResult{}, ErrAutomationForbidden
 	}
+	return t.apply(ctx, in)
+}
+
+func (t *OperatorAutomationToggle) apply(ctx context.Context, in OperatorAutomationInput) (OperatorAutomationResult, error) {
+	entryType := string(in.EntryType)
 
 	if err := t.automation.SetAutomation(ctx, in.EntryID, in.EntryType, in.Enabled); err != nil {
 		return OperatorAutomationResult{}, err

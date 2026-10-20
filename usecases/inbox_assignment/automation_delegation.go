@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"vozko/domain/actor"
 	"vozko/domain/agent"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
@@ -23,7 +24,7 @@ type AutomationDirectory struct {
 	Workflows WorkflowDirectory
 }
 
-func (d AutomationDirectory) usable(workspaceID string, a conversation.Automation) error {
+func (d AutomationDirectory) Usable(workspaceID string, a conversation.Automation) error {
 	if !a.Valid() {
 		return conversation.ErrAutomationInvalid
 	}
@@ -73,11 +74,33 @@ func NewAutomationDelegation(delegations conversation.DelegationRepository, togg
 	return &AutomationDelegation{delegations: delegations, toggle: toggle, directory: directory}
 }
 
+type SystemDelegation struct {
+	WorkspaceID string
+	EntryID     string
+	EntryType   shared.EntryType
+	Automation  conversation.Automation
+}
+
 func (d *AutomationDelegation) Delegate(ctx context.Context, in DelegateInput) (OperatorAutomationResult, error) {
 	if !d.toggle.allows(in.toggle()) {
 		return OperatorAutomationResult{}, ErrAutomationForbidden
 	}
-	if err := d.directory.usable(in.WorkspaceID, in.Automation); err != nil {
+	return d.delegate(ctx, in)
+}
+
+func (d *AutomationDelegation) DelegateAsSystem(ctx context.Context, in SystemDelegation) error {
+	_, err := d.delegate(ctx, DelegateInput{
+		ActorUserID: actor.SystemID,
+		WorkspaceID: in.WorkspaceID,
+		EntryID:     in.EntryID,
+		EntryType:   in.EntryType,
+		Automation:  in.Automation,
+	})
+	return err
+}
+
+func (d *AutomationDelegation) delegate(ctx context.Context, in DelegateInput) (OperatorAutomationResult, error) {
+	if err := d.directory.Usable(in.WorkspaceID, in.Automation); err != nil {
 		return OperatorAutomationResult{}, err
 	}
 	previous, err := d.delegations.Find(ctx, in.EntryID, in.EntryType)
@@ -94,7 +117,7 @@ func (d *AutomationDelegation) Delegate(ctx context.Context, in DelegateInput) (
 		return OperatorAutomationResult{}, fmt.Errorf("delegate %s (%s): %w", in.EntryID, in.EntryType, err)
 	}
 
-	result, err := d.toggle.SetAutomation(ctx, in.toggle())
+	result, err := d.toggle.apply(ctx, in.toggle())
 	if err != nil {
 		if restoreErr := d.restore(ctx, in, previous); restoreErr != nil {
 			return result, fmt.Errorf("%w; the previous delegation could not be restored: %v", err, restoreErr)

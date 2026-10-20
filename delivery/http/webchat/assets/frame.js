@@ -797,6 +797,7 @@
   function renderBubble(m) {
     var bubble = el("div", "bubble" + (m.state ? " " + m.state : ""));
     bubble.title = m.createdAt ? new Date(m.createdAt).toLocaleString() : "";
+    if (m.quote && m.quote.text) { bubble.appendChild(el("span", "quote", m.quote.text)); }
     if (m.text) { bubble.appendChild(document.createTextNode(m.text)); }
     if (m.media && /^https:\/\//.test(m.media.url)) {
       if (m.media.kind === "image" || m.media.kind === "sticker") {

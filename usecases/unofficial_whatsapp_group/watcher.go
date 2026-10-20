@@ -54,7 +54,7 @@ func (s *Service) primaryCheckDue(groupID string, now time.Time) bool {
 	return true
 }
 
-func (s *Service) GroupChanged(ctx context.Context, instance *uw.Instance, groupJID string) {
+func (s *Service) GroupChanged(ctx context.Context, instance *uw.Instance, groupJID string, change uw.GroupParticipantChange) {
 	g, err := s.d.Groups.FindByJID(ctx, instance.WorkspaceID, groupJID)
 	if err != nil || !g.Followed() || g.PrimaryInstanceID != instance.ID {
 		return
@@ -64,7 +64,7 @@ func (s *Service) GroupChanged(ctx context.Context, instance *uw.Instance, group
 		log.Printf("[groups] could not resync group %s after a change: %v", g.ID, err)
 		return
 	}
-	s.applyFromWebhook(ctx, g, seat)
+	s.applyFromWebhook(ctx, g, seat, func(current []uwg.Member) uwg.DepartureCauses { return uwg.CausesFromChange(change, current) })
 }
 
 func (s *Service) SeatSynced(ctx context.Context, instance *uw.Instance, seat *uw.Group) {
@@ -90,16 +90,16 @@ func (s *Service) SeatSynced(ctx context.Context, instance *uw.Instance, seat *u
 		return
 	}
 	if g.Followed() && g.PrimaryInstanceID == instance.ID {
-		s.applyFromWebhook(ctx, g, seat)
+		s.applyFromWebhook(ctx, g, seat, nil)
 	}
 }
 
-func (s *Service) applyFromWebhook(ctx context.Context, g *uwg.Group, seat *uw.Group) {
+func (s *Service) applyFromWebhook(ctx context.Context, g *uwg.Group, seat *uw.Group, explain departures) {
 	instances, err := s.workspaceInstances(ctx, g.WorkspaceID)
 	if err != nil {
 		return
 	}
-	if err := s.applySeat(ctx, g, seat, instances); err != nil {
+	if err := s.applySeatExplained(ctx, g, seat, instances, explain); err != nil {
 		log.Printf("[groups] could not update the members of group %s: %v", g.ID, err)
 	}
 }

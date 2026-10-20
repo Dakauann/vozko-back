@@ -11,7 +11,6 @@ import (
 	"vozko/domain/savedview"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
-	"vozko/domain/workspace"
 )
 
 type EntrySearcher interface {
@@ -311,20 +310,11 @@ func (s *Service) resolveScope(workspaceID, userID string, isAdmin bool, selecte
 	if s.authorizer == nil {
 		return nil, false, "", "", ErrUnauthorized
 	}
-	scope, allowed := s.authorizer.GetDepartmentScope(userID, workspaceID, isAdmin)
-	if !allowed {
-		return nil, false, "", "", ErrUnauthorized
-	}
-	read, err := scope.ReadScope(userID, isAdmin, selectedDepartmentID)
+	visible, err := conversation.VisibilityScopeOf(s.authorizer, userID, workspaceID, isAdmin, selectedDepartmentID)
 	if err != nil {
 		return nil, false, "", "", fmt.Errorf("%w: %w", ErrUnauthorized, err)
 	}
-	if !isAdmin &&
-		!s.authorizer.IsWorkspaceOwnerOrAdmin(userID, workspaceID) &&
-		!s.authorizer.HasWorkspacePermission(userID, workspaceID, string(workspace.ResourceConversations), string(workspace.ActionViewOthers), false) {
-		assignedUserID = userID
-	}
-	return read.DepartmentIDs, read.RestrictDepartments, read.AssigneeOverrideUserID, assignedUserID, nil
+	return visible.DepartmentIDs, visible.RestrictDepartments, visible.AssigneeOverrideUserID, visible.AssignedUserID, nil
 }
 
 func withPredicate(base crmfilter.Filter, p crmfilter.Predicate) crmfilter.Filter {

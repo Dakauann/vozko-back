@@ -24,6 +24,8 @@ type historyStub struct {
 	latestLimit int
 	beforeLimit int
 	before      time.Time
+	afterLimit  int
+	after       time.Time
 }
 
 func (h *historyStub) GetHistory(entryID string, entryType shared.EntryType, limit int) ([]*conversation.Message, bool, int64, error) {
@@ -147,5 +149,55 @@ func TestReadHistory_NoAdIsAskedForWhenAccessIsDenied(t *testing.T) {
 	ads := &adOriginStub{origin: &conversation.AdOrigin{Title: "Promoção"}}
 	if _, err := NewHistoryReader(&accessStub{allow: false}, &historyStub{}, ads).ReadHistory(historyQuery()); err == nil || ads.asked != 0 {
 		t.Fatalf("err=%v asked=%d", err, ads.asked)
+	}
+}
+
+func (h *historyStub) GetHistoryAfter(entryID string, entryType shared.EntryType, after time.Time, limit int) ([]*conversation.Message, bool, error) {
+	h.afterLimit = limit
+	h.after = after
+	return []*conversation.Message{{ID: "m2"}}, true, nil
+}
+
+func TestReadHistory_ReadsAfterACursorForTheCatchUpPage(t *testing.T) {
+	history := &historyStub{}
+	cursor := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	q := historyQuery()
+	q.After = &cursor
+	q.Limit = 10_000
+	page, err := NewHistoryReader(&accessStub{allow: true}, history, nil).ReadHistory(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !history.after.Equal(cursor) || history.afterLimit != conversation.MaxHistoryPageSize {
+		t.Fatalf("after = %v limit = %d", history.after, history.afterLimit)
+	}
+	if !page.HasAfter || page.HasMore || page.Messages[0].ID != "m2" {
+		t.Fatalf("page = %+v", page)
+	}
+	if history.latestLimit != 0 || history.beforeLimit != 0 {
+		t.Fatal("an after page must not read the latest or an older page")
+	}
+}
+
+func TestReadHistory_RefusesTwoCursorsAtOnce(t *testing.T) {
+	cursor := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	q := historyQuery()
+	q.Before, q.After = &cursor, &cursor
+	_, err := NewHistoryReader(&accessStub{allow: true}, &historyStub{}, nil).ReadHistory(q)
+	if !errors.Is(err, conversation.ErrHistoryCursorConflict) {
+		t.Fatalf("err = %v, want ErrHistoryCursorConflict", err)
+	}
+}
+
+func TestReadHistory_ChecksAccessBeforeReadingAfterACursor(t *testing.T) {
+	history := &historyStub{}
+	cursor := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	q := historyQuery()
+	q.After = &cursor
+	if _, err := NewHistoryReader(&accessStub{allow: false}, history, nil).ReadHistory(q); !errors.Is(err, conversation.ErrUnauthorized) {
+		t.Fatalf("err = %v, want ErrUnauthorized", err)
+	}
+	if history.afterLimit != 0 {
+		t.Fatal("history was read before access was granted")
 	}
 }

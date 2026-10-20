@@ -90,3 +90,25 @@ func (b *NotificationBroadcast) BeforeCreate(*gorm.DB) error {
 	}
 	return nil
 }
+
+type NotificationEpisode struct {
+	ID             string     `gorm:"primaryKey;type:uuid"`
+	WorkspaceID    string     `gorm:"type:uuid;not null;uniqueIndex:idx_notification_episodes_open,priority:1,where:closed_at IS NULL"`
+	ConditionKey   string     `gorm:"type:varchar(255);not null;uniqueIndex:idx_notification_episodes_open,priority:2,where:closed_at IS NULL"`
+	StepsSent      int        `gorm:"type:smallint;not null;default:0"`
+	OpenedAt       time.Time  `gorm:"type:timestamptz;not null"`
+	LastSeenAt     time.Time  `gorm:"type:timestamptz;not null;index:idx_notification_episodes_last_seen"`
+	LastSentAt     *time.Time `gorm:"type:timestamptz"`
+	NotificationID *string    `gorm:"type:uuid"`
+	ClosedAt       *time.Time `gorm:"type:timestamptz"`
+	CloseReason    string     `gorm:"type:varchar(16);not null;default:''"`
+}
+
+func (NotificationEpisode) TableName() string { return "notification_episodes" }
+
+func (e *NotificationEpisode) BeforeCreate(*gorm.DB) error {
+	if e.ID == "" {
+		e.ID = uuid.New().String()
+	}
+	return nil
+}

@@ -1,0 +1,19 @@
+{
+    "id": 11751825075,
+   "seller_id": 179571326,
+   "buyer_id": 56801932,
+   "item_id": "MLA739200576",
+   "deleted_from_listing": false,
+   "suspected_spam": false,
+   "status": "ANSWERED",
+   "hold": false,
+   "text": "Texto de la pregunta.",
+   "app_id": 8304540643508652,
+   "date_created": "2021-02-08T17:51:21.746608612Z",
+   "last_updated": "2021-02-08T17:51:29.184950392Z",
+   "answer": {
+       "text": "",
+       "status": "BANNED",
+       "date_created": "2021-02-16T14:52:13.580-04:00"
+   }
+}

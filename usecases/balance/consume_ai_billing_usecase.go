@@ -9,18 +9,15 @@ import (
 	"vozko/domain/aiusage"
 	"vozko/domain/balance"
 	"vozko/domain/messaging"
+	"vozko/domain/metrics"
 	workspace_pricing "vozko/domain/workspace/workspace_pricing"
 )
-
-type BillingMetrics interface {
-	IncBillingSkipped(reason string)
-}
 
 type ConsumeAIBillingUseCase struct {
 	subscriber  messaging.MessageQueueSub
 	balanceRepo balance.Repository
 	pricer      workspace_pricing.Pricer
-	metrics     BillingMetrics
+	metrics     metrics.BillingMetricsRecorder
 	usage       aiusage.Recorder
 	semaphore   chan struct{}
 }
@@ -29,13 +26,13 @@ func NewConsumeAIBillingUseCase(
 	subscriber messaging.MessageQueueSub,
 	balanceRepo balance.Repository,
 	pricer workspace_pricing.Pricer,
-	metrics BillingMetrics,
+	billingMetrics metrics.BillingMetricsRecorder,
 ) *ConsumeAIBillingUseCase {
 	return &ConsumeAIBillingUseCase{
 		subscriber:  subscriber,
 		balanceRepo: balanceRepo,
 		pricer:      pricer,
-		metrics:     metrics,
+		metrics:     billingMetrics,
 		semaphore:   make(chan struct{}, 10),
 	}
 }

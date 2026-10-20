@@ -1,8 +1,10 @@
 package unofficial_whatsapp_group_usecase
 
 import (
+	"encoding/json"
 	"time"
 
+	"vozko/domain/conversation"
 	"vozko/domain/unofficial_whatsapp_group"
 )
 
@@ -34,6 +36,7 @@ type GroupSummary struct {
 
 type GroupRow struct {
 	Group            *unofficial_whatsapp_group.Group        `json:"group"`
+	GroupCreatedAt   *time.Time                              `json:"groupCreatedAt,omitempty"`
 	Numbers          []NumberSeat                            `json:"numbers"`
 	Activity         unofficial_whatsapp_group.GroupActivity `json:"activity"`
 	Summary          *GroupSummary                           `json:"summary,omitempty"`
@@ -123,4 +126,35 @@ type LeadLinkResult struct {
 	Linked        int `json:"linked"`
 	AlreadyLinked int `json:"alreadyLinked"`
 	WithoutPhone  int `json:"withoutPhone"`
+}
+
+type GroupMessage struct {
+	ID               string                               `json:"id"`
+	EntryID          string                               `json:"entryId"`
+	Channel          conversation.MessageChannel          `json:"channel"`
+	MessageType      conversation.MessageType             `json:"messageType"`
+	Direction        conversation.MessageHistoryDirection `json:"direction"`
+	From             string                               `json:"from"`
+	SenderName       string                               `json:"senderName"`
+	SenderAvatar     string                               `json:"senderAvatar,omitempty"`
+	OurTeam          bool                                 `json:"ourTeam"`
+	Text             string                               `json:"text"`
+	Transcript       string                               `json:"transcript,omitempty"`
+	MediaID          *string                              `json:"mediaId,omitempty"`
+	MediaType        conversation.MediaType               `json:"mediaType,omitempty"`
+	Media            *conversation.AttachedMedia          `json:"media,omitempty"`
+	ReplyToMessageID *string                              `json:"replyToMessageId,omitempty"`
+	DeliveryStatus   conversation.DeliveryStatus          `json:"deliveryStatus,omitempty"`
+	Read             bool                                 `json:"read"`
+	Metadata         json.RawMessage                      `json:"metadata,omitempty" swaggertype:"object"`
+	EditedAt         *time.Time                           `json:"editedAt,omitempty"`
+	RetractedAt      *time.Time                           `json:"retractedAt,omitempty"`
+	CreatedAt        time.Time                            `json:"createdAt"`
+}
+
+type GroupMessagesPage struct {
+	ConversationID string         `json:"conversationId,omitempty"`
+	Messages       []GroupMessage `json:"messages"`
+	HasMore        bool           `json:"hasMore"`
+	NextBefore     *time.Time     `json:"nextBefore,omitempty"`
 }

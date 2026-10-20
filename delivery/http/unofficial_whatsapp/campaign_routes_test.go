@@ -27,6 +27,7 @@ func TestRegisterCampaignRoutes_AppliesRBAC(t *testing.T) {
 		{http.MethodGet, "/unofficial-whatsapp/campaigns/c-1/entries", res + ":read"},
 
 		{http.MethodPost, "/unofficial-whatsapp/campaigns", res + ":create"},
+		{http.MethodPost, "/unofficial-whatsapp/campaigns/estimate", res + ":create"},
 		{http.MethodPut, "/unofficial-whatsapp/campaigns/c-1", res + ":update"},
 		{http.MethodDelete, "/unofficial-whatsapp/campaigns/c-1", res + ":delete"},
 		{http.MethodPatch, "/unofficial-whatsapp/campaigns/c-1/department", res + ":update"},

@@ -58,7 +58,7 @@ func (managersOnly) HasWorkspacePermission(string, string, string, string, bool)
 func TestPublishedNotificationReachesTheRightInboxesEndToEnd(t *testing.T) {
 	db := repotest.IsolatedDB(t, "notificationflow",
 		&schema.User{}, &schema.Workspace{}, &schema.WorkspaceCustomRole{}, &schema.WorkspaceMember{},
-		&schema.Notification{}, &schema.NotificationRecipient{}, &schema.NotificationPreference{}, &schema.NotificationBroadcast{},
+		&schema.Notification{}, &schema.NotificationRecipient{}, &schema.NotificationPreference{}, &schema.NotificationBroadcast{}, &schema.NotificationEpisode{},
 	)
 	ctx := context.Background()
 
@@ -82,7 +82,7 @@ func TestPublishedNotificationReachesTheRightInboxesEndToEnd(t *testing.T) {
 	store := notification_repository.NewStore(db)
 	preferences := notification_repository.NewPreferenceStore(db)
 	queue, pusher, mail := &syncQueue{}, &countingPusher{}, &mailbox{}
-	publisher, err := notification_usecase.NewPublisher(notification_usecase.PublisherDeps{Outbox: store, Queue: queue, Images: noImages{}})
+	publisher, err := notification_usecase.NewPublisher(notification_usecase.PublisherDeps{Outbox: store, Queue: queue, Images: noImages{}, Episodes: notification_repository.NewEpisodeStore(db)})
 	if err != nil {
 		t.Fatal(err)
 	}

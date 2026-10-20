@@ -1,0 +1,60 @@
+{
+   "options":[
+      {
+         "id":"REQUEST_VARIANTS",
+         "internal_description":"This is an example...",
+         "enabled":true,
+         "type":"template",
+         "templates":[
+            {
+               "id":"TEMPLATE___REQUEST_VARIANTS___1",
+               "vars":null
+            }
+         ],
+         "actionable":true,
+         "child_options":null,
+         "cap_available":1
+      },
+      {
+         "id":"DELIVERY_PROMISE",
+         "internal_description":"This is an example...",
+         "enabled":true,
+         "type":"TEMPLATE",
+         "templates":[
+            {
+               "id":"TEMPLATE___DELIVERY_PROMISE___1",
+               "texts":{
+                  "mlb":{
+                     "html":"Olá,\nEntregaremos sua compra %s entre %d e %d h."
+                  }
+               },
+               "vars":[
+                  {
+                     "id":"TEMPLATE___DELIVERY_PROMISE___1___VAR___INIT",
+                     "type":"NUMBER"
+                  },
+                  {
+                     "id":"TEMPLATE___DELIVERY_PROMISE___1___VAR___LIMIT",
+                     "type":"NUMBER"
+                  }
+               ]
+            }
+         ],
+         "actionable":true,
+         "char_limit":null,
+         "child_options":[],
+         "cap_available":1
+      },
+      {
+         "id":"OTHER",
+         "internal_description":"This is an example...",
+         "enabled":true,
+         "type":"free_text",
+         "templates":null,
+         "actionable":true,
+         "char_limit":350,
+         "child_options":null,
+         "cap_available":0
+      }
+   ]
+}

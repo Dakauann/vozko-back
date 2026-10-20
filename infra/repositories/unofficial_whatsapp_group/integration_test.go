@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -530,12 +531,12 @@ func TestJoinTasksAreClaimedOnceAndRemainingOnesFailTogether(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
 	tasks, _ := uwg.PlanJoins(uwg.JoinPlanInput{PlanID: uuid.NewString(), WorkspaceID: w.ws, InviteLink: "https://chat.whatsapp.com/Ky3pQm8Lx2AbCdEfGh1234",
-		InstanceIDs: []string{w.n1, w.n2}}, w.now)
+		InstanceIDs: []string{w.n1, w.n2}, Category: "Clientes VIP"}, w.now)
 	if err := w.joins.CreateMany(ctx, tasks); err != nil {
 		t.Fatal(err)
 	}
 	first, err := w.joins.ClaimNext(ctx, w.now, "w1", w.now.Add(time.Minute))
-	if err != nil || first == nil || first.Sequence != 0 {
+	if err != nil || first == nil || first.Sequence != 0 || first.Category != "Clientes VIP" {
 		t.Fatalf("claim = %+v, %v; want only the anchor due now", first, err)
 	}
 	if again := must(w.joins.ClaimNext(ctx, w.now, "w2", w.now.Add(time.Minute))); again != nil {
@@ -586,9 +587,9 @@ func TestGroupCampaignsReadTheGroupEntriesOfUnofficialCampaigns(t *testing.T) {
 	if err := w.db.AutoMigrate(&schema.UnofficialWhatsAppCampaign{}, &schema.UnofficialWhatsAppCampaignEntry{}); err != nil {
 		t.Fatal(err)
 	}
-	running := schema.UnofficialWhatsAppCampaign{WorkspaceID: w.ws, InstanceID: w.n1, Name: "Ofertas", Audience: "groups", Status: "RUNNING"}
-	done := schema.UnofficialWhatsAppCampaign{WorkspaceID: w.ws, InstanceID: w.n1, Name: "Antiga", Audience: "groups", Status: "COMPLETED"}
-	leads := schema.UnofficialWhatsAppCampaign{WorkspaceID: w.ws, InstanceID: w.n1, Name: "Leads", Status: "RUNNING"}
+	running := schema.UnofficialWhatsAppCampaign{WorkspaceID: w.ws, SenderInstanceIDs: pq.StringArray{w.n1}, Name: "Ofertas", Audience: "groups", Status: "RUNNING"}
+	done := schema.UnofficialWhatsAppCampaign{WorkspaceID: w.ws, InstanceID: schema.OptionalText(w.n1), Name: "Antiga", Audience: "groups", Status: "COMPLETED"}
+	leads := schema.UnofficialWhatsAppCampaign{WorkspaceID: w.ws, InstanceID: schema.OptionalText(w.n1), Name: "Leads", Status: "RUNNING"}
 	for _, c := range []*schema.UnofficialWhatsAppCampaign{&running, &done, &leads} {
 		if err := w.db.Create(c).Error; err != nil {
 			t.Fatal(err)
@@ -630,4 +631,97 @@ func must[T any](value T, err error) T {
 		panic(err)
 	}
 	return value
+}
+
+func TestRemovalsAreDeparturesThatKeepTheirCause(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	start := w.now.Add(-10 * 24 * time.Hour)
+	w.applyRoster(t, w.vila, start, true, "5511981124410", "5511960213375", "5511974550192", "5511970001201")
+
+	current, err := w.members.All(ctx, w.vila.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := w.now.Add(-2 * 24 * time.Hour)
+	diff := uwg.DiffMembers(w.vila.ID, w.ws, current, roster("5511981124410"), uwg.NewOwnNumbers([]string{"5511970001201"}, nil), at, false)
+	diff.Attribute(uwg.DepartureCauses{"5511960213375": uwg.CauseRemoved, "5511974550192": uwg.CauseLeft, "5511970001201": uwg.CauseRemoved})
+	if err := w.members.Apply(ctx, w.vila, diff, at); err != nil {
+		t.Fatal(err)
+	}
+
+	counts, err := w.members.Counts(ctx, w.vila.ID, w.now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.Active != 1 || counts.Left30d != 2 || counts.Removed30d != 1 || counts.OursRemoved != 1 {
+		t.Fatalf("counts = %+v, want 1 active, 2 departures of which 1 removal, and our number removed", counts)
+	}
+
+	removed, err := w.members.List(ctx, w.ws, uwg.MemberFilter{GroupID: w.vila.ID, Status: uwg.MemberRemoved, Pagination: shared.Pagination{Page: 1, PageSize: 20}})
+	if err != nil || removed.TotalItems != 2 {
+		t.Fatalf("removed members = %v, %v; want the removed person and our number", removed, err)
+	}
+
+	var causes []string
+	if err := w.db.Raw(`SELECT cause FROM unofficial_whatsapp_group_member_events WHERE group_id = ? AND kind = 'leave' AND our_number = false ORDER BY cause`, w.vila.ID).Scan(&causes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(causes) != 2 || causes[0] != "left" || causes[1] != "removed" {
+		t.Fatalf("leave causes = %v, want both departures with their cause", causes)
+	}
+
+	activity, err := w.stats.GroupActivity(ctx, w.ws, []string{w.vila.ID}, w.now.Add(-30*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if activity[w.vila.ID].Leaves != 2 {
+		t.Fatalf("leaves = %d, want the removal still counted as a departure", activity[w.vila.ID].Leaves)
+	}
+}
+
+func TestAPersonsMembershipsAreReadAcrossVisibleFollowedGroups(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	at := w.now.Add(-24 * time.Hour)
+	w.applyRoster(t, w.vila, at, true, "5511981124410", "5511960213375")
+	w.applyRoster(t, w.ofertas, at, true, "5511981124410")
+	w.applyRoster(t, w.other, at, true, "5511981124410")
+
+	all, err := w.members.ByPeople(ctx, w.ws, []string{"5511981124410"}, uwg.Scope{})
+	if err != nil || len(all) != 2 {
+		t.Fatalf("memberships = %+v, %v; want the two followed groups only", all, err)
+	}
+	scoped, err := w.members.ByPeople(ctx, w.ws, []string{"5511981124410"}, uwg.Scope{Restrict: true, InstanceIDs: []string{w.n1}})
+	if err != nil || len(scoped) != 1 || scoped[0].GroupID != w.vila.ID {
+		t.Fatalf("scoped memberships = %+v, %v; want only the group of the caller's number", scoped, err)
+	}
+}
+
+func TestTheLastLinkIsTheNewestFinishedJoinOfThatGroup(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	const jid = "120363888000000001@g.us"
+	if link := must(w.joins.LastLink(ctx, w.ws, jid)); link != "" {
+		t.Fatalf("link with no joins = %q", link)
+	}
+	for i, link := range []string{"https://chat.whatsapp.com/Old1111111111111111", "https://chat.whatsapp.com/New2222222222222222", "https://chat.whatsapp.com/Bad3333333333333333"} {
+		tasks, _ := uwg.PlanJoins(uwg.JoinPlanInput{PlanID: uuid.NewString(), WorkspaceID: w.ws, InviteLink: link, InstanceIDs: []string{w.n1}}, w.now.Add(time.Duration(i)*time.Hour))
+		claimed := must(func() (*uwg.JoinTask, error) {
+			if err := w.joins.CreateMany(ctx, tasks); err != nil {
+				return nil, err
+			}
+			return w.joins.ClaimNext(ctx, w.now.Add(time.Duration(i)*time.Hour), "w1", w.now.Add(time.Duration(i)*time.Hour+time.Minute))
+		}())
+		claimed.GroupJID, claimed.Status = jid, uwg.JoinDone
+		if i == 2 {
+			claimed.Status = uwg.JoinFailed
+		}
+		if err := w.joins.Save(ctx, claimed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if link := must(w.joins.LastLink(ctx, w.ws, jid)); link != "https://chat.whatsapp.com/New2222222222222222" {
+		t.Fatalf("last link = %q, want the newest join that finished", link)
+	}
 }

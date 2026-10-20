@@ -14,12 +14,13 @@ func NewChannelBranchExecutor() workflow.NodeExecutor {
 
 func (e *channelBranchExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionChannel,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Canal",
-		Description: "Divide o fluxo pelo canal em que a conversa está acontecendo.",
-		Icon:        "Broadcast",
+		Type:         workflow.NodeTypeConditionChannel,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Canal",
+		Description:  "Divide o fluxo pelo canal em que a conversa está acontecendo.",
+		Icon:         "Broadcast",
 		Guidance: workflow.NodeGuidance{
 			When: "Quando o mesmo fluxo atende vários canais e um trecho precisa mudar (ex.: template no WhatsApp oficial, texto simples no resto).",
 			Examples: []string{
@@ -42,13 +43,17 @@ func (e *channelBranchExecutor) Execute(ctx *workflow.NodeContext) (*workflow.No
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 	targetID, matched := routeByChannel(edges, channel)
 
-	return &workflow.NodeResult{
+	result := &workflow.NodeResult{
 		NextNodeID: targetID,
 		Output: map[string]interface{}{
 			"channel": channel,
 			"matched": matched,
 		},
-	}, nil
+	}
+	if targetID == "" {
+		return routeOutput(result, edges, channel, workflow.ChannelBranchDefault), nil
+	}
+	return result, nil
 }
 
 func routeByChannel(edges []workflow.Edge, channel string) (string, bool) {

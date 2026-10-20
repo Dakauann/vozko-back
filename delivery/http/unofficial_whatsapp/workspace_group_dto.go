@@ -42,6 +42,11 @@ type joinWorkspaceGroupRequest struct {
 	InviteLink  string   `json:"inviteLink"`
 	InstanceIDs []string `json:"instanceIds"`
 	Follow      bool     `json:"follow"`
+	Category    string   `json:"category"`
+}
+
+type addGroupNumbersRequest struct {
+	InstanceIDs []string `json:"instanceIds"`
 }
 
 type analysisRequest struct {

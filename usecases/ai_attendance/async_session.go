@@ -33,6 +33,24 @@ func (s *AsyncSessionService) RecordAIReply(in aa.StartInput, messageID string) 
 	})
 }
 
+func (s *AsyncSessionService) RecordToolCalls(in aa.StartInput, count int) {
+	if s == nil || s.pub == nil || count <= 0 {
+		return
+	}
+	_ = s.pub.Publish(crm_telemetry.KindAISession, crm_telemetry.AISessionPayload{
+		Op:          crm_telemetry.AISessionOpRecordToolCalls,
+		WorkspaceID: in.WorkspaceID,
+		EntryID:     in.EntryID,
+		EntryType:   in.EntryType,
+		AgentID:     in.AgentID,
+		Channel:     in.Channel,
+		CallID:      in.CallID,
+		CampaignID:  in.CampaignID,
+		Model:       in.Model,
+		ToolCalls:   count,
+	})
+}
+
 func (s *AsyncSessionService) End(request aa.EndRequest) {
 	if s == nil || s.pub == nil {
 		return

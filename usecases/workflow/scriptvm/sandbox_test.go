@@ -7,25 +7,37 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"vozko/domain/workflow"
 )
 
-type mapState struct {
-	mu  sync.Mutex
-	bag map[string]interface{}
+func newMapState() *workflow.RunState {
+	state := workflow.NewRunState()
+	return &state
 }
 
-func newMapState() *mapState { return &mapState{bag: map[string]interface{}{}} }
-
-func (m *mapState) Get(k string) (interface{}, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	v, ok := m.bag[k]
-	return v, ok
-}
-func (m *mapState) Set(k string, v interface{}) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.bag[k] = v
+func TestRun_StateGetReadsAnEarlierNodeOutputThroughTheTemplatePaths(t *testing.T) {
+	s := New(DefaultLimits())
+	st := newMapState()
+	workflow.RecordNodeOutput(st, "n55", map[string]interface{}{
+		"status_code": float64(200),
+		"body":        map[string]interface{}{"accessToken": "x"},
+	})
+	res, err := s.Run(context.Background(), `
+		return {
+			status: state.get('node.n55.status_code'),
+			token: state.get('node.n55.body.accessToken'),
+			last: state.get('last.status_code'),
+			raw: state.get('_node_n55_status_code'),
+		};
+	`, Capabilities{State: st})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m := res.Value.(map[string]interface{})
+	if asFloat(m["status"]) != 200 || m["token"] != "x" || asFloat(m["last"]) != 200 || asFloat(m["raw"]) != 200 {
+		t.Fatalf("unexpected lookups: %#v", m)
+	}
 }
 
 func TestRun_ReturnsObject(t *testing.T) {

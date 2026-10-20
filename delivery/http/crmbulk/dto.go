@@ -17,6 +17,7 @@ type BulkApplyRequest struct {
 	Action        string              `json:"action" example:"move_stage"`
 	Targets       []BulkTargetRequest `json:"targets"`
 	Value         string              `json:"value" example:"stage_a1b2c3"`
+	OutcomeCode   string              `json:"outcomeCode,omitempty" example:"sold"`
 	Filter        *crmfilter.Filter   `json:"filter,omitempty"`
 	Mode          string              `json:"mode,omitempty" enums:"ids,all_matching,everyone" example:"all_matching"`
 	ExpectedCount int                 `json:"expectedCount,omitempty" example:"340"`

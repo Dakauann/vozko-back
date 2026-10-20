@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -10,9 +12,10 @@ import (
 )
 
 type referenceLedger struct {
-	mu    sync.Mutex
-	total *usageLedger
-	byRef map[string]int64
+	mu       sync.Mutex
+	total    *usageLedger
+	byRef    map[string]int64
+	unbilled int
 }
 
 func newReferenceLedger(total *usageLedger) *referenceLedger {
@@ -38,6 +41,19 @@ func (l *referenceLedger) PublishWithDelay(topic string, message []byte, _ time.
 }
 
 func (l *referenceLedger) ValidateConnection() error { return nil }
+
+func (l *referenceLedger) IncBillingSkipped(reason string) {
+	l.mu.Lock()
+	l.unbilled++
+	l.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "warning: a provider call could not be billed (%s); the spending cap undercounts\n", reason)
+}
+
+func (l *referenceLedger) Unbilled() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.unbilled
+}
 
 func (l *referenceLedger) takeFor(reference string) int64 {
 	l.mu.Lock()

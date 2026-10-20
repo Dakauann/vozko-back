@@ -41,6 +41,8 @@ func newWorld(t *testing.T) *world {
 		&schema.InstagramContact{}, &schema.InstagramConversation{},
 		&schema.FacebookContact{}, &schema.FacebookConversation{},
 		&schema.WebchatVisitor{}, &schema.WebchatConversation{},
+		&schema.MercadoLivreContact{}, &schema.MercadoLivreConversation{},
+		&schema.TikTokContact{}, &schema.TikTokConversation{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -77,6 +79,20 @@ func (w *world) telegram(workspaceID string, leadID *string) (contactID, convers
 	contactID, conversationID, account := uuid.NewString(), uuid.NewString(), uuid.NewString()
 	w.create(&schema.TelegramContact{ID: contactID, WorkspaceID: workspaceID, AccountID: account, TGUserID: time.Now().UnixNano(), TGChatID: time.Now().UnixNano(), Username: "tg_user", FirstName: "Tele", LastName: "Gram", LeadID: leadID})
 	w.create(&schema.TelegramConversation{ID: conversationID, WorkspaceID: workspaceID, AccountID: account, ContactID: contactID, TGChatID: time.Now().UnixNano()})
+	return contactID, conversationID
+}
+
+func (w *world) mercadoLivre(workspaceID, nickname string, leadID *string) (contactID, conversationID string) {
+	contactID, conversationID, account := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	w.create(&schema.MercadoLivreContact{ID: contactID, WorkspaceID: workspaceID, AccountID: account, MLUserID: "3000000001", Nickname: nickname, LeadID: leadID})
+	w.create(&schema.MercadoLivreConversation{ID: conversationID, WorkspaceID: workspaceID, AccountID: account, ContactID: contactID, PackKey: "2000000001"})
+	return contactID, conversationID
+}
+
+func (w *world) tiktok(workspaceID, username string, leadID *string) (contactID, conversationID string) {
+	contactID, conversationID, account := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	w.create(&schema.TikTokContact{ID: contactID, WorkspaceID: workspaceID, AccountID: account, UniqueIdentifier: "+" + contactID, Username: username, DisplayName: "Perfil " + username, LeadID: leadID})
+	w.create(&schema.TikTokConversation{ID: conversationID, WorkspaceID: workspaceID, AccountID: account, ContactID: contactID, ConversationID: "S:1:0:" + conversationID})
 	return contactID, conversationID
 }
 
@@ -183,6 +199,12 @@ func TestHolderOfConversationMatchesTheLeadFirstThenTheContact(t *testing.T) {
 	tgContact, tgBoth := w.telegram(w.ws, &lead)
 	w.put(bob, cp.ContactSubject(shared.EntryTypeTelegram, tgContact))
 	_, strangerConversation := w.instagram(w.ws, "stranger", nil)
+	mlContact, mlConversation := w.mercadoLivre(w.ws, "COMPRADOR123", nil)
+	w.put(bob, cp.ContactSubject(shared.EntryTypeMercadoLivre, mlContact))
+	_, mlWithLead := w.mercadoLivre(w.ws, "COMPRADOR456", &lead)
+	ttContact, ttConversation := w.tiktok(w.ws, "bia.tt", nil)
+	w.put(bob, cp.ContactSubject(shared.EntryTypeTikTok, ttContact))
+	_, ttWithLead := w.tiktok(w.ws, "maria.tt", &lead)
 
 	cases := []struct {
 		name      string
@@ -196,6 +218,10 @@ func TestHolderOfConversationMatchesTheLeadFirstThenTheContact(t *testing.T) {
 		{"instagram is matched by the contact (the @)", igConversation, shared.EntryTypeInstagram, w.ws, bob},
 		{"the lead wins over the contact", tgBoth, shared.EntryTypeTelegram, w.ws, ana},
 		{"a customer in nobody's carteira", strangerConversation, shared.EntryTypeInstagram, w.ws, ""},
+		{"mercado livre is matched by the buyer contact", mlConversation, shared.EntryTypeMercadoLivre, w.ws, bob},
+		{"mercado livre linked to a lead reaches the lead's holder", mlWithLead, shared.EntryTypeMercadoLivre, w.ws, ana},
+		{"tiktok is matched by the contact", ttConversation, shared.EntryTypeTikTok, w.ws, bob},
+		{"tiktok linked to a lead reaches the lead's holder", ttWithLead, shared.EntryTypeTikTok, w.ws, ana},
 		{"another workspace never sees the holder", igConversation, shared.EntryTypeInstagram, w.other, ""},
 	}
 	for _, c := range cases {
@@ -249,9 +275,13 @@ func TestListShowsWhoIsInACarteiraWithSearchAndPages(t *testing.T) {
 	w.put(ana, cp.ContactSubject(shared.EntryTypeInstagram, igContact))
 	tgContact, _ := w.telegram(w.ws, nil)
 	w.put(bob, cp.ContactSubject(shared.EntryTypeTelegram, tgContact))
+	mlContact, _ := w.mercadoLivre(w.ws, "COMPRADOR123", nil)
+	w.put(ana, cp.ContactSubject(shared.EntryTypeMercadoLivre, mlContact))
+	ttContact, _ := w.tiktok(w.ws, "bia.tt", nil)
+	w.put(bob, cp.ContactSubject(shared.EntryTypeTikTok, ttContact))
 
 	anas, err := w.store.List(ctx, w.ws, cp.ListQuery{HolderID: ana, PageSize: 10})
-	if err != nil || anas.TotalItems != 2 || len(anas.Items) != 2 {
+	if err != nil || anas.TotalItems != 3 || len(anas.Items) != 3 {
 		t.Fatalf("ana's carteira = %+v %v", anas, err)
 	}
 	byChannel := map[shared.EntryType]cp.Display{}
@@ -264,15 +294,22 @@ func TestListShowsWhoIsInACarteiraWithSearchAndPages(t *testing.T) {
 	if d := byChannel[shared.EntryTypeInstagram]; d.Handle != "joana.ig" || d.Name != "Perfil joana.ig" {
 		t.Fatalf("instagram display = %+v", d)
 	}
+	if d := byChannel[shared.EntryTypeMercadoLivre]; d.Handle != "COMPRADOR123" || d.Name != "COMPRADOR123" {
+		t.Fatalf("mercado livre display = %+v", d)
+	}
 
 	everyone, err := w.store.List(ctx, w.ws, cp.ListQuery{PageSize: 2})
-	if err != nil || everyone.TotalItems != 3 || len(everyone.Items) != 2 {
+	if err != nil || everyone.TotalItems != 5 || len(everyone.Items) != 2 {
 		t.Fatalf("everyone page 1 = %+v %v", everyone, err)
 	}
 
 	found, err := w.store.List(ctx, w.ws, cp.ListQuery{Search: "JOANA"})
 	if err != nil || found.TotalItems != 1 || found.Items[0].Display.Handle != "joana.ig" {
 		t.Fatalf("search by handle = %+v %v", found, err)
+	}
+	tiktok, err := w.store.List(ctx, w.ws, cp.ListQuery{Search: "bia.tt"})
+	if err != nil || tiktok.TotalItems != 1 || tiktok.Items[0].Display.Handle != "bia.tt" || tiktok.Items[0].Display.Name != "Perfil bia.tt" || tiktok.Items[0].HolderID != bob {
+		t.Fatalf("tiktok display = %+v %v", tiktok, err)
 	}
 	telegram, err := w.store.List(ctx, w.ws, cp.ListQuery{Search: "tele gram"})
 	if err != nil || telegram.TotalItems != 1 || telegram.Items[0].HolderID != bob {

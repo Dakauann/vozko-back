@@ -244,3 +244,26 @@ func toReplyDomain(r *schema.CommentPrivateReply) *privatereply.Record {
 		ErrorCode: r.ErrorCode, ErrorMessage: r.ErrorMessage, AttemptedAt: r.AttemptedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
+
+type executionClaimRepository struct {
+	db *gorm.DB
+}
+
+func NewExecutionClaimRepository(db *gorm.DB) ca.ExecutionClaims {
+	return &executionClaimRepository{db: db}
+}
+
+func (r *executionClaimRepository) Claim(ctx context.Context, source shared.EntryType, commentID, ruleID string) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "source"}, {Name: "comment_id"}}, DoNothing: true}).
+		Create(&schema.CommentRuleExecution{Source: string(source), CommentID: commentID, RuleID: ruleID})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
+func (r *executionClaimRepository) PurgeOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).Where("claimed_at < ?", cutoff).Delete(&schema.CommentRuleExecution{})
+	return result.RowsAffected, result.Error
+}

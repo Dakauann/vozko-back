@@ -31,9 +31,23 @@ func (r *repository) Create(s *aa.Session) error {
 	return nil
 }
 
+const toolCallCountColumn = "tool_call_count"
+
 func (r *repository) Update(s *aa.Session) error {
 	rec := toSchema(s)
-	return r.db.Save(rec).Error
+	return r.db.Omit(toolCallCountColumn).Save(rec).Error
+}
+
+func (r *repository) IncrementToolCalls(sessionID string, count int) error {
+	if sessionID == "" || count <= 0 {
+		return nil
+	}
+	return r.db.Model(&schema.AIAttendanceSession{}).
+		Where("id = ?", sessionID).
+		Updates(map[string]interface{}{
+			toolCallCountColumn: gorm.Expr(toolCallCountColumn+" + ?", count),
+			"updated_at":        time.Now().UTC(),
+		}).Error
 }
 
 func (r *repository) FindOpenByEntry(workspaceID, entryID, entryType string) (*aa.Session, error) {

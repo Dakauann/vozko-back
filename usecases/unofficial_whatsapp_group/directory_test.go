@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
@@ -199,7 +200,7 @@ func TestAnUnfollowDuringAWhatsAppRefreshStays(t *testing.T) {
 		}
 	}
 
-	w.svc.GroupChanged(context.Background(), w.instance("n1"), g.JID)
+	w.svc.GroupChanged(context.Background(), w.instance("n1"), g.JID, uw.GroupParticipantChange{})
 
 	if w.groups.get(g.ID).Followed() {
 		t.Fatalf("a refresh that started before the unfollow followed the group again")
@@ -263,5 +264,34 @@ func TestAGroupOurNumberOwnsIsRecordedAsCreatedHere(t *testing.T) {
 	g, err := w.groups.FindByJID(context.Background(), ws, "120363000000000009@g.us")
 	if err != nil || g.Origin != uwg.OriginManaged {
 		t.Fatalf("group = %+v, %v, want a group our number owns recorded as created here", g, err)
+	}
+}
+
+func TestMembersWeRemoveAreRecordedAsRemoved(t *testing.T) {
+	w := newWorld()
+	g := w.followed(t, "120363000000000001@g.us", participants("5511981124410", "5511960213375"), "n1")
+	w.seats.put(&uw.Group{WorkspaceID: ws, InstanceID: "n1", JID: g.JID, Subject: "Moradores", WeCanSend: true, WeAreAdmin: true,
+		Participants: participants("5511981124410")})
+
+	if _, err := w.svc.ManageMembers(context.Background(), everyone(), g.ID, uw.GroupActionRemove, []string{"5511960213375"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.members.statusOf(g.ID, "5511960213375"); got != uwg.MemberRemoved {
+		t.Fatalf("status = %q, want removed by us", got)
+	}
+}
+
+func TestAGroupRowCarriesTheDateWhatsAppCreatedTheGroup(t *testing.T) {
+	w := newWorld()
+	g := w.groupWithSeats(t, "120363000000000001@g.us", "Moradores", "n1")
+	created := time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC)
+	w.seats.put(&uw.Group{WorkspaceID: ws, InstanceID: "n1", JID: g.JID, Subject: "Moradores", GroupCreatedAt: &created})
+
+	rows, err := w.svc.GroupsByID(context.Background(), everyone(), []string{g.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].GroupCreatedAt == nil || !rows[0].GroupCreatedAt.Equal(created) {
+		t.Fatalf("created = %v, want %v", rows[0].GroupCreatedAt, created)
 	}
 }

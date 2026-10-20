@@ -151,13 +151,19 @@ const webhookHealthLead = time.Hour
 const pendingUpdateAlarm = 20
 
 type CheckWebhookHealthUseCase struct {
-	accounts tgdomain.AccountRepository
-	api      tgdomain.BotAPI
-	batch    int
+	accounts     tgdomain.AccountRepository
+	api          tgdomain.BotAPI
+	registration *ConnectAccountUseCase
+	batch        int
 }
 
-func NewCheckWebhookHealthUseCase(accounts tgdomain.AccountRepository, api tgdomain.BotAPI) *CheckWebhookHealthUseCase {
-	return &CheckWebhookHealthUseCase{accounts: accounts, api: api, batch: 100}
+func NewCheckWebhookHealthUseCase(accounts tgdomain.AccountRepository, api tgdomain.BotAPI, webhookBaseURL string) *CheckWebhookHealthUseCase {
+	return &CheckWebhookHealthUseCase{
+		accounts:     accounts,
+		api:          api,
+		registration: NewConnectAccountUseCase(accounts, api, webhookBaseURL),
+		batch:        100,
+	}
 }
 
 func (uc *CheckWebhookHealthUseCase) Execute(ctx context.Context) error {
@@ -197,6 +203,8 @@ func (uc *CheckWebhookHealthUseCase) probe(ctx context.Context, account *tgdomai
 		return
 	}
 
+	uc.syncSubscriptions(ctx, account, info)
+
 	health := tgdomain.WebhookHealth{
 		PendingCount: info.PendingCount,
 		LastError:    info.LastErrorMessage,
@@ -222,6 +230,18 @@ func (uc *CheckWebhookHealthUseCase) probe(ctx context.Context, account *tgdomai
 	if account.Status == tgdomain.StatusWebhookFailing {
 		uc.transition(ctx, account, tgdomain.StatusActive, "")
 	}
+}
+
+func (uc *CheckWebhookHealthUseCase) syncSubscriptions(ctx context.Context, account *tgdomain.Account, info *tgdomain.WebhookInfo) {
+	registered := tgdomain.WebhookURLFor(uc.registration.webhookBaseURL, account.ID)
+	if info.URL != registered || tgdomain.SubscribesToAllowedUpdates(info.AllowedUpdates) {
+		return
+	}
+	if err := uc.registration.registerWebhook(ctx, account); err != nil {
+		log.Printf("[telegram] resubscribing @%s to %v failed: %v", account.BotUsername, tgdomain.AllowedUpdates(), err)
+		return
+	}
+	log.Printf("[telegram] resubscribed @%s from %v to %v", account.BotUsername, info.AllowedUpdates, tgdomain.AllowedUpdates())
 }
 
 func (uc *CheckWebhookHealthUseCase) transition(ctx context.Context, account *tgdomain.Account, next tgdomain.Status, reason string) {

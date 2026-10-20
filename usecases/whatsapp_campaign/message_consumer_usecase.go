@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/cache"
+	domaincampaign "vozko/domain/campaign"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	lead_campaign_send "vozko/domain/lead_campaign_send"
@@ -18,10 +19,13 @@ import (
 	"vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	wf "vozko/domain/whatsappform"
 	workflow_domain "vozko/domain/workflow"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	"vozko/usecases/campaignguard"
 	"vozko/usecases/campaignqueue"
+	template_usecase "vozko/usecases/whatsapp/template"
+	whatsappform_usecase "vozko/usecases/whatsappform"
 )
 
 const messageSendDelay = 15 * time.Millisecond
@@ -58,6 +62,7 @@ type messageConsumerUseCase struct {
 	CachedBalanceChecker    balance.CachedBalanceChecker
 	triggerEvaluator        workflow_domain.TriggerEvaluator
 	smart                   SmartCampaigns
+	forms                   template_usecase.FormSends
 
 	runner *campaignqueue.Runner
 }
@@ -162,6 +167,10 @@ func (p pendingEntryCounter) CountPendingEntries(campaignID string) (int64, erro
 
 func (c *messageConsumerUseCase) SetTriggerEvaluator(eval workflow_domain.TriggerEvaluator) {
 	c.triggerEvaluator = eval
+}
+
+func (c *messageConsumerUseCase) SetFormSends(forms template_usecase.FormSends) {
+	c.forms = forms
 }
 
 func (c *messageConsumerUseCase) Start() error {
@@ -404,11 +413,23 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	fmt.Printf("whatsapp campaign consumer: template '%s' isNamedFormat=%v, paramNames=%v\n",
 		tmpl.Name, tmpl.IsNamedParameterFormat(), tmpl.GetParameterNames())
 
+	form, err := template_usecase.PrepareFormSend(ctx, c.forms, tmpl, whatsappform_usecase.TemplateSend{
+		WorkspaceID: campaign.WorkspaceID, BusinessPhoneID: campaign.BusinessPhoneID, ContactNumber: normalizedPhone,
+		Origin: formOrigin(campaign), OriginRef: campaignID, EntryID: entryID, LeadID: entry.LeadID,
+	})
+	if err != nil {
+		fmt.Printf("whatsapp campaign consumer: the form of template %s cannot be sent to %s: %v\n", tmpl.Name, phoneNumber, err)
+		c.updateEntryStatusWithError(entryID, wce.SendStatusFailed, "", wce.ErrorCodeFormNotSendable, err.Error())
+		return sendResultConfigError
+	}
+
 	sendInput, err := tmpl.BuildSendInput(template.SendInputParams{
 		To:         normalizedPhone,
 		BodyParams: variables,
+		FlowToken:  form.Token(),
 	})
 	if err != nil {
+		form.Settle(ctx, "", err)
 		fmt.Printf("whatsapp campaign consumer: cannot build the send for %s: %v\n", phoneNumber, err)
 		c.updateEntryStatusWithError(entryID, wce.SendStatusFailed, "",
 			internalWhatsAppCampaignErrMissingEntryVariables, err.Error())
@@ -420,6 +441,7 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	}
 
 	result, err := whatsappClient.SendTemplateMessage(ctx, sendInput)
+	form.Settle(ctx, messageIDOf(result), err)
 
 	if errors.Is(err, conversation.ErrSendOutcomeUnknown) {
 		fmt.Printf("whatsapp campaign consumer: send outcome unknown for %s (Meta accepted, response unreadable), keeping the charge: %v\n", phoneNumber, err)
@@ -440,10 +462,7 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 		return sendResultAPIError
 	}
 
-	messageID := ""
-	if result != nil {
-		messageID = result.MessageID
-	}
+	messageID := messageIDOf(result)
 
 	c.storeTemplateInfoOnEntry(entry, tmpl, variables)
 
@@ -535,6 +554,20 @@ func (c *messageConsumerUseCase) updateEntryStatusWithError(entryID string, stat
 
 func parseMetaAPIError(result *conversation.SendTextMessageOutput) (int, string) {
 	return template.ParseProviderError(result)
+}
+
+func messageIDOf(result *conversation.SendTextMessageOutput) string {
+	if result == nil {
+		return ""
+	}
+	return result.MessageID
+}
+
+func formOrigin(c *wc.Campaign) wf.SendOrigin {
+	if c.Source == domaincampaign.SourceLeadSelection {
+		return wf.OriginTemplateBulk
+	}
+	return wf.OriginCampaign
 }
 
 func SignalSendingsAvailable() {

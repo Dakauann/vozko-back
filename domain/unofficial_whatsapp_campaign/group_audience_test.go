@@ -10,7 +10,7 @@ import (
 
 func groupCampaign(targets ...TargetInput) *Campaign {
 	return &Campaign{
-		WorkspaceID: "w1", InstanceID: "n1", Name: "Ofertas da semana",
+		WorkspaceID: "w1", Name: "Ofertas da semana",
 		Audience: AudienceGroups,
 		Message:  MessageSpec{Kind: KindText, Bodies: []string{"Oferta de hoje: café 500 g por R$ 14,90."}},
 		Targets:  targets,
@@ -63,6 +63,7 @@ func TestGroupCampaignTargetsMustBeGroups(t *testing.T) {
 func TestLeadCampaignRefusesGroupTargets(t *testing.T) {
 	c := groupCampaign(TargetInput{Number: "5511981124410", GroupJID: "120363@g.us"})
 	c.Audience = AudienceLeads
+	c.InstanceID = "n1"
 	c.Message.Bodies = []string{"Oi! Responda /sair para não receber mais mensagens."}
 	c.Normalize()
 	if err := c.Validate(); !errors.Is(err, ErrCampaignTargetInvalid) {
@@ -129,11 +130,12 @@ func TestGroupCampaignEditNeedsNoExitCommand(t *testing.T) {
 	}
 }
 
-func TestGroupCampaignKeepsItsNumber(t *testing.T) {
+func TestAnOlderGroupCampaignRefusesAnotherNumber(t *testing.T) {
 	existing := groupCampaign(TargetInput{GroupJID: "120363@g.us"})
+	existing.InstanceID = "n1"
 	existing.Normalize()
-	if err := existing.RefuseNumberChange(&Campaign{InstanceID: "n2"}); !errors.Is(err, ErrGroupCampaignNumberLocked) {
-		t.Fatalf("RefuseNumberChange = %v, want ErrGroupCampaignNumberLocked", err)
+	if err := existing.RefuseNumberChange(&Campaign{InstanceID: "n2"}); !errors.Is(err, ErrGroupCampaignTakesNoNumber) {
+		t.Fatalf("RefuseNumberChange = %v, want ErrGroupCampaignTakesNoNumber", err)
 	}
 	if err := existing.RefuseNumberChange(&Campaign{InstanceID: "n1"}); err != nil {
 		t.Fatalf("same number refused: %v", err)

@@ -37,7 +37,7 @@ func TestHTTPExecutor_ArrayBodyCaptured_IsNavigable(t *testing.T) {
 		"capture_variable": "token_consulta_cadastro",
 	}, &state)
 
-	if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
+	if _, err := NewHTTPRequestExecutor(testEgress(), nil).Execute(ctx); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	if got := workflow.Interpolate("{{token_consulta_cadastro[0].token}}", &state, nil); got != "3656101BC0" {
@@ -68,7 +68,7 @@ func TestHTTPExecutor_TokenChain_SendsSingleCorrectBearer(t *testing.T) {
 	defer apiSrv.Close()
 
 	state := workflow.NewRunState()
-	exec := NewHTTPRequestExecutor(testEgress())
+	exec := NewHTTPRequestExecutor(testEgress(), nil)
 
 	ctx1 := httpNodeCtx("s2_1", map[string]interface{}{
 		"url": tokenSrv.URL, "method": "GET", "capture_variable": "token_consulta_cadastro",
@@ -116,7 +116,7 @@ func TestHTTPExecutor_StripsDuplicateBearerPrefix(t *testing.T) {
 		"auth_type":  "bearer",
 		"auth_token": "Bearer {{token_consulta_cadastro[0].token}}",
 	}, &state)
-	if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
+	if _, err := NewHTTPRequestExecutor(testEgress(), nil).Execute(ctx); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	if gotAuth != "Bearer REALTOKEN" {
@@ -137,7 +137,7 @@ func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 		ctx := httpNodeCtx("s2_2", map[string]interface{}{
 			"url": srv.URL, "method": "GET", "capture_variable": "dados_beneficiario",
 		}, &state)
-		if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
+		if _, err := NewHTTPRequestExecutor(testEgress(), nil).Execute(ctx); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 
@@ -163,7 +163,7 @@ func TestHTTPExecutor_StatusCodeOnCaptureVar(t *testing.T) {
 		ctx := httpNodeCtx("s2_1", map[string]interface{}{
 			"url": srv.URL, "method": "GET", "capture_variable": "token_consulta_cadastro",
 		}, &state)
-		if _, err := NewHTTPRequestExecutor(testEgress()).Execute(ctx); err != nil {
+		if _, err := NewHTTPRequestExecutor(testEgress(), nil).Execute(ctx); err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 		if got := workflow.Interpolate("{{token_consulta_cadastro.status_code}}", &state, nil); got != "200" {

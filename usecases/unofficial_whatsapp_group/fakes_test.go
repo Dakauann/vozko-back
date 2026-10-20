@@ -338,6 +338,24 @@ func (f *fakeMembers) ByPersonKeys(_ context.Context, groupID string, keys []str
 	return out, nil
 }
 
+func (f *fakeMembers) ByPeople(_ context.Context, workspaceID string, keys []string, scope uwg.Scope) ([]uwg.Member, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []uwg.Member
+	for groupID, members := range f.byGroup {
+		g := f.groups.get(groupID)
+		if g == nil || g.WorkspaceID != workspaceID || !g.Followed() || !f.groups.inScope(g, scope) {
+			continue
+		}
+		for _, k := range keys {
+			if m, ok := members[k]; ok && m.Status == uwg.MemberActive {
+				out = append(out, m)
+			}
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeMembers) SetLead(_ context.Context, groupID, personKey, leadID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -700,6 +718,18 @@ func (f *fakeJoins) Recent(context.Context, string, uwg.Scope, time.Time) ([]uwg
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]uwg.JoinTask(nil), f.tasks...), nil
+}
+
+func (f *fakeJoins) LastLink(_ context.Context, workspaceID, groupJID string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.tasks) - 1; i >= 0; i-- {
+		t := f.tasks[i]
+		if t.WorkspaceID == workspaceID && t.GroupJID == groupJID && t.Status == uwg.JoinDone {
+			return t.InviteLink, nil
+		}
+	}
+	return "", nil
 }
 
 func (f *fakeJoins) snapshot() []uwg.JoinTask {

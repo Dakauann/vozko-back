@@ -72,14 +72,14 @@ func (r recordingCatalog) GetModelsWithPricing(ctx context.Context) ([]ai.ModelI
 
 func TestSavingAWorkflowAsksTheCatalogWithTheRequestContext(t *testing.T) {
 	repo := NewMockWorkflowRepository()
-	if err := repo.Create(&workflow.Workflow{ID: "wf-1", WorkspaceID: "ws-1", Name: "Fluxo", Status: workflow.WorkflowStatusDraft, Type: workflow.WorkflowTypeMessages}); err != nil {
+	if err := repo.Create(&workflow.Workflow{ID: "wf-1", WorkspaceID: "ws-1", Name: "Fluxo", Status: workflow.WorkflowStatusDraft, Type: workflow.WorkflowTypeMessages, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
 	var seen []interface{}
 	uc := NewUpdateWorkflowUseCase(repo).(*updateWorkflowUseCase)
 	uc.SetModelCatalog(recordingCatalog{staticCatalog: staticCatalog{builderThinker()}, seen: &seen})
 	ctx := context.WithValue(context.Background(), requestKey{}, "req-1")
-	if _, err := uc.Execute(ctx, "wf-1", &workflow.Workflow{Name: "Fluxo", Type: workflow.WorkflowTypeMessages, Graph: reasoningGraph("high")}); err != nil {
+	if _, err := uc.Execute(ctx, "wf-1", &workflow.Workflow{Name: "Fluxo", Type: workflow.WorkflowTypeMessages, Graph: reasoningGraph("high")}, 1); err != nil {
 		t.Fatal(err)
 	}
 	if len(seen) != 1 || seen[0] != "req-1" {
@@ -89,14 +89,14 @@ func TestSavingAWorkflowAsksTheCatalogWithTheRequestContext(t *testing.T) {
 
 func TestSavingAWorkflowChecksTheReasoningLevel(t *testing.T) {
 	repo := NewMockWorkflowRepository()
-	if err := repo.Create(&workflow.Workflow{ID: "wf-1", WorkspaceID: "ws-1", Name: "Fluxo", Status: workflow.WorkflowStatusDraft, Type: workflow.WorkflowTypeMessages}); err != nil {
+	if err := repo.Create(&workflow.Workflow{ID: "wf-1", WorkspaceID: "ws-1", Name: "Fluxo", Status: workflow.WorkflowStatusDraft, Type: workflow.WorkflowTypeMessages, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
 	uc := NewUpdateWorkflowUseCase(repo).(*updateWorkflowUseCase)
 	uc.SetModelCatalog(staticCatalog{builderThinker()})
 
 	refused := &workflow.Workflow{Name: "Fluxo", Type: workflow.WorkflowTypeMessages, Graph: reasoningGraph("max")}
-	if _, err := uc.Execute(context.Background(), "wf-1", refused); !errors.Is(err, workflow.ErrNodeReasoningLevelUnsupported) {
+	if _, err := uc.Execute(context.Background(), "wf-1", refused, 1); !errors.Is(err, workflow.ErrNodeReasoningLevelUnsupported) {
 		t.Fatalf("save with an unsupported level err = %v, want refusal", err)
 	}
 	saved, _ := repo.FindByID("wf-1")
@@ -105,7 +105,7 @@ func TestSavingAWorkflowChecksTheReasoningLevel(t *testing.T) {
 	}
 
 	accepted := &workflow.Workflow{Name: "Fluxo", Type: workflow.WorkflowTypeMessages, Graph: reasoningGraph("high")}
-	if _, err := uc.Execute(context.Background(), "wf-1", accepted); err != nil {
+	if _, err := uc.Execute(context.Background(), "wf-1", accepted, 1); err != nil {
 		t.Fatalf("save with an offered level err = %v", err)
 	}
 }

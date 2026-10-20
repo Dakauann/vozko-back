@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	ca "vozko/domain/commentautomation"
@@ -21,55 +22,107 @@ type Actions interface {
 }
 
 type Evaluator struct {
-	rules ca.Repository
+	rules  ca.Repository
+	claims ca.ExecutionClaims
 }
 
-func NewEvaluator(rules ca.Repository) *Evaluator {
-	return &Evaluator{rules: rules}
+func NewEvaluator(rules ca.Repository, claims ca.ExecutionClaims) *Evaluator {
+	if rules == nil || claims == nil {
+		panic("comment rules evaluator: rules and execution claims are required")
+	}
+	return &Evaluator{rules: rules, claims: claims}
 }
 
-func (e *Evaluator) Evaluate(ctx context.Context, source shared.EntryType, accountID, commentID string, subject ca.Subject, actions Actions) {
+func (e *Evaluator) Evaluate(ctx context.Context, source shared.EntryType, accountID, commentID string, subject ca.Subject, actions Actions) error {
 	if subject.IsOurs {
-		return
+		return nil
+	}
+	if strings.TrimSpace(commentID) == "" {
+		return fmt.Errorf("%w: %s account %s", ca.ErrCommentIDRequired, source, accountID)
 	}
 	candidates, err := e.rules.ListCandidates(ctx, source, accountID, subject.ContainerID)
 	if err != nil {
-		log.Printf("[comment-rules] %s account %s: rules unavailable: %v", source, accountID, err)
-		return
+		return fmt.Errorf("%w: %s account %s: %w", ca.ErrRulesUnavailable, source, accountID, err)
 	}
 	for _, rule := range candidates {
 		if !rule.Matches(subject) {
 			continue
 		}
+		claimed, err := e.claims.Claim(ctx, source, commentID, rule.ID)
+		if err != nil {
+			return fmt.Errorf("%w: %s comment %s: %w", ca.ErrExecutionUnclaimed, source, commentID, err)
+		}
+		if !claimed {
+			log.Printf("[comment-rules] %s comment %s already ran its rule; skipping", source, commentID)
+			return nil
+		}
 		log.Printf("[comment-rules] %s rule %q (%s) matched comment %s", source, rule.Name, rule.ID, commentID)
-		apply(ctx, rule, commentID, subject, actions)
-		return
+		return apply(ctx, rule, commentID, subject, actions)
 	}
+	return nil
 }
 
-func apply(ctx context.Context, rule *ca.Rule, commentID string, subject ca.Subject, actions Actions) {
+func apply(ctx context.Context, rule *ca.Rule, commentID string, subject ca.Subject, actions Actions) error {
+	var failures []error
 	for _, action := range rule.Actions {
-		var err error
-		switch action {
-		case ca.ActionPublicReply:
-			if text := ca.RenderText(rule.PublicReplyText, subject); text != "" {
-				err = actions.ReplyPublicly(ctx, rule, commentID, text)
-			}
-		case ca.ActionPrivateReply:
-			if text := ca.RenderText(rule.PrivateReplyText, subject); text != "" {
-				err = actions.ReplyPrivately(ctx, rule, commentID, text)
-			}
-		case ca.ActionHide:
-			err = actions.Hide(ctx, rule, commentID)
-		case ca.ActionDelete:
-			err = actions.Delete(ctx, rule, commentID)
-		case ca.ActionLike:
-			err = actions.Like(ctx, rule, commentID)
-		}
-		if err != nil {
-			log.Printf("[comment-rules] %s rule %s action %s on comment %s: %v", rule.Source, rule.ID, action, commentID, err)
+		if err := run(ctx, rule, action, commentID, subject, actions); err != nil {
+			failures = append(failures, fmt.Errorf("%w: %s rule %s action %s on comment %s: %w", ca.ErrActionFailed, rule.Source, rule.ID, action, commentID, err))
 		}
 	}
+	return errors.Join(failures...)
+}
+
+func run(ctx context.Context, rule *ca.Rule, action ca.Action, commentID string, subject ca.Subject, actions Actions) error {
+	switch action {
+	case ca.ActionPublicReply:
+		return reply(rule, action, ca.RenderText(rule.PublicReplyText, subject), func(text string) error {
+			return actions.ReplyPublicly(ctx, rule, commentID, text)
+		})
+	case ca.ActionPrivateReply:
+		return reply(rule, action, ca.RenderText(rule.PrivateReplyText, subject), func(text string) error {
+			return actions.ReplyPrivately(ctx, rule, commentID, text)
+		})
+	case ca.ActionHide:
+		return actions.Hide(ctx, rule, commentID)
+	case ca.ActionDelete:
+		return actions.Delete(ctx, rule, commentID)
+	case ca.ActionLike:
+		return actions.Like(ctx, rule, commentID)
+	}
+	return fmt.Errorf("%w: %s", ca.ErrUnknownAction, action)
+}
+
+func reply(rule *ca.Rule, action ca.Action, text string, send func(string) error) error {
+	if text == "" {
+		return nil
+	}
+	if err := ca.CheckReply(rule.Source, action, text); err != nil {
+		return err
+	}
+	return send(text)
+}
+
+type ExecutionPurge struct {
+	claims ca.ExecutionClaims
+	now    func() time.Time
+}
+
+func NewExecutionPurge(claims ca.ExecutionClaims, now func() time.Time) *ExecutionPurge {
+	if claims == nil || now == nil {
+		panic("comment rule execution purge: claims and clock are required")
+	}
+	return &ExecutionPurge{claims: claims, now: now}
+}
+
+func (p *ExecutionPurge) Execute(ctx context.Context) error {
+	purged, err := p.claims.PurgeOlderThan(ctx, p.now().Add(-ca.ExecutionRetention))
+	if err != nil {
+		return err
+	}
+	if purged > 0 {
+		log.Printf("[comment-rules] purged %d execution claim(s) older than %s", purged, ca.ExecutionRetention)
+	}
+	return nil
 }
 
 type AccountVerifier interface {

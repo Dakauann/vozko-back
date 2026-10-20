@@ -47,12 +47,13 @@ func NewCheckConsentExecutor(deps ConsentNodeDeps) workflow.NodeExecutor {
 
 func (e *consentExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionConsent,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Consentimento",
-		Description: "Registra ou retira o consentimento do lead da conversa para receber mensagens.",
-		Icon:        "ShieldCheck",
+		Type:         workflow.NodeTypeActionConsent,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Consentimento",
+		Description:  "Registra ou retira o consentimento do lead da conversa para receber mensagens.",
+		Icon:         "ShieldCheck",
 		Guidance: workflow.NodeGuidance{
 			When: "Para gravar no lead da conversa a vontade dele sobre receber mensagens: 'registrar' quando ele aceitou, 'retirar' quando pediu para parar.",
 			Behavior: "Modo 'registrar' só é aceito depois da resposta do lead em todos os caminhos (saída 'replied' de wait_for_reply, uma opção de action_send_interactive " +
@@ -89,12 +90,13 @@ func (e *consentExecutor) Definition() workflow.NodeDefinition {
 
 func (e *checkConsentExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionConsent,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Lead tem consentimento?",
-		Description: "Segue pelo estado do consentimento do lead da conversa: concedido, retirado ou sem registro.",
-		Icon:        "SealQuestion",
+		Type:         workflow.NodeTypeConditionConsent,
+		TestBehavior: workflow.NodeTestReadsData,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Lead tem consentimento?",
+		Description:  "Segue pelo estado do consentimento do lead da conversa: concedido, retirado ou sem registro.",
+		Icon:         "SealQuestion",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para seguir caminhos diferentes conforme o lead da conversa aceitou receber mensagens, pediu para parar ou não tem registro.",
 			Behavior: "Lê o registro atual do lead. Uma conversa sem lead segue por 'none'. Uma falha de leitura interrompe a execução em vez de escolher um caminho.",
@@ -135,10 +137,9 @@ func (e *consentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	if err != nil {
 		return consentChangeFailure(err)
 	}
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(ctx.Graph.OutgoingEdges(ctx.Node.ID), "sucesso"),
-		Output:     map[string]interface{}{"lead_id": leadID, "changed": outcome.Changed, "event_id": outcome.EventID},
-	}, nil
+	return routeOutput(&workflow.NodeResult{
+		Output: map[string]interface{}{"lead_id": leadID, "changed": outcome.Changed, "event_id": outcome.EventID},
+	}, ctx.Graph.OutgoingEdges(ctx.Node.ID), "sucesso"), nil
 }
 
 func (e *consentExecutor) change(ctx *workflow.NodeContext, mode string) (lead_domain.ConsentChange, error) {

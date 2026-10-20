@@ -31,6 +31,7 @@ type ConversationMessage struct {
 	SentVia           string     `gorm:"column:sent_via;type:varchar(20);not null;default:''"`
 	SenderKind        string     `gorm:"column:sender_kind;type:varchar(16);not null;default:'unknown'"`
 	SenderID          string     `gorm:"column:sender_id;type:varchar(120);not null;default:''"`
+	ClientRequestID   *string    `gorm:"column:client_request_id;type:varchar(128)"`
 
 	MetaPricingCategory    string `gorm:"column:meta_pricing_category;type:varchar(20);default:''"`
 	MetaPricingBillable    *bool  `gorm:"column:meta_pricing_billable"`
@@ -39,7 +40,11 @@ type ConversationMessage struct {
 	MetaPricingType        string `gorm:"column:meta_pricing_type;type:varchar(32);default:''"`
 	MetaPricing            []byte `gorm:"column:meta_pricing;type:jsonb"`
 
-	Metadata  []byte         `gorm:"type:jsonb"`
+	Metadata    []byte     `gorm:"type:jsonb"`
+	Transcript  string     `gorm:"type:text;not null;default:''"`
+	EditedAt    *time.Time `gorm:"type:timestamptz"`
+	RetractedAt *time.Time `gorm:"type:timestamptz"`
+
 	CreatedAt time.Time      `gorm:"autoCreateTime;index:idx_cm_entry_composite,priority:3;index:idx_cm_type_entry_created,priority:3;index:idx_cm_entry_del_created,priority:4"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt gorm.DeletedAt `gorm:"index;index:idx_cm_entry_del_created,priority:3"`

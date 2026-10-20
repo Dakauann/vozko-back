@@ -23,7 +23,7 @@ func transcriptLines(history []*conversation.Message) []string {
 		if !msg.Transcribable() {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%s: %s\n", transcriptRole(msg), strings.TrimSpace(msg.Text)))
+		lines = append(lines, fmt.Sprintf("%s: %s\n", transcriptRole(msg), strings.TrimSpace(msg.ReadableText())))
 	}
 	return lines
 }

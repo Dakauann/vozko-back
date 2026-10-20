@@ -8,6 +8,7 @@ import (
 
 	"vozko/domain/copilot"
 	"vozko/domain/shared"
+	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	uwg "vozko/domain/unofficial_whatsapp_group"
 	"vozko/domain/workspace"
@@ -100,10 +101,46 @@ func groupRow(id, subject string, canPost bool) *uwguc.GroupRow {
 	}
 }
 
+type fakeGroupEstimate struct {
+	directory *fakeGroupDirectory
+	scopes    []uw.DepartmentScope
+}
+
+func (f *fakeGroupEstimate) Draft(_ context.Context, in uwc.EstimateInput, scope uw.DepartmentScope) (*uwc.DraftEstimate, error) {
+	f.scopes = append(f.scopes, scope)
+	draft := &uwc.DraftEstimate{}
+	for _, jid := range in.GroupJIDs {
+		group := uwc.GroupSenders{JID: jid, Senders: []uwc.SenderNumber{}, Block: uwg.SenderNotInGroup}
+		for _, row := range f.directory.rows {
+			if row.Group.JID != jid {
+				continue
+			}
+			group.Name, group.Block = row.Group.Subject, uwg.SenderCannotPost
+			for _, seat := range row.Numbers {
+				if seat.CanPost {
+					group.Senders = append(group.Senders, uwc.SenderNumber{InstanceID: seat.InstanceID, Label: seat.Label})
+					group.Block = uwg.SenderReady
+				}
+			}
+		}
+		if group.Block == uwg.SenderReady {
+			draft.Estimate.Pending++
+			draft.Estimate.Duration += 90 * time.Second
+		}
+		draft.Groups = append(draft.Groups, group)
+	}
+	return draft, nil
+}
+
+func (f *fakeGroupEstimate) Remaining(context.Context, *uwc.Campaign) (*uwc.SendEstimate, error) {
+	return &uwc.SendEstimate{}, nil
+}
+
 type groupFixture struct {
 	deps      UnofficialGroupDeps
 	directory *fakeGroupDirectory
 	create    *fakeQRCreate
+	estimate  *fakeGroupEstimate
 }
 
 func newGroupFixture() groupFixture {
@@ -112,10 +149,12 @@ func newGroupFixture() groupFixture {
 		knownGroupA: groupRow(knownGroupA, "Moradores", true),
 		knownGroupB: groupRow(knownGroupB, "Ofertas", false),
 	}}
+	estimate := &fakeGroupEstimate{directory: directory}
 	return groupFixture{
-		deps:      UnofficialGroupDeps{Campaigns: qr.deps, Groups: directory, Permissions: fakeGroupAccess{}},
+		deps:      UnofficialGroupDeps{Campaigns: qr.deps, Groups: directory, Permissions: fakeGroupAccess{}, Estimate: estimate},
 		directory: directory,
 		create:    qr.create,
+		estimate:  estimate,
 	}
 }
 
@@ -200,7 +239,7 @@ func TestAnUnknownGroupIsReportedAsNotFound(t *testing.T) {
 
 func groupCampaignInput(changes map[string]interface{}) map[string]interface{} {
 	return withArgs(map[string]interface{}{
-		"name": "Ofertas da semana", "number_id": knownQRNumber, "group_ids": []interface{}{knownGroupA}, "message": "Chegou a promoção da semana!",
+		"name": "Ofertas da semana", "group_ids": []interface{}{knownGroupA}, "message": "Chegou a promoção da semana!",
 	}, changes)
 }
 
@@ -216,19 +255,35 @@ func TestAGroupCampaignIsCreatedStoppedWithTheGroupsAsTargets(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 	got := f.create.got
-	if got.Audience != uwc.AudienceGroups || got.InstanceID != knownQRNumber || len(got.Targets) != 1 || got.Targets[0].GroupJID != f.directory.rows[knownGroupA].Group.JID {
+	if got.Audience != uwc.AudienceGroups || got.InstanceID != "" || len(got.Targets) != 1 || got.Targets[0].GroupJID != f.directory.rows[knownGroupA].Group.JID {
 		t.Fatalf("campaign = %+v", got)
 	}
 	if got.Message.Bodies[0] != "Chegou a promoção da semana!" || !f.create.scope.Restrict {
 		t.Fatalf("message %+v scope %+v", got.Message, f.create.scope)
 	}
 	fields := tool.(copilot.Describer).Describe(context.Background(), tooltest.Member(), groupCampaignInput(nil))
-	if !tooltest.HasField(fields, "groups", "Moradores") || !tooltest.HasField(fields, "phone", "Loja Centro") {
+	if !tooltest.HasField(fields, "groups", "Moradores (Loja Centro)") || !tooltest.HasField(fields, "sendTime", "cerca de 2 min") {
 		t.Fatalf("card = %+v", fields)
+	}
+	if len(f.estimate.scopes) == 0 || !f.estimate.scopes[0].Restrict {
+		t.Fatalf("the senders were planned without the user's department scope: %+v", f.estimate.scopes)
 	}
 }
 
-func TestAGroupCampaignRefusesGroupsTheNumberCannotPostIn(t *testing.T) {
+func TestAGroupCampaignFailsClosedWithoutTheSenderPlan(t *testing.T) {
+	f := newGroupFixture()
+	f.deps.Estimate = nil
+	tool := NewCreateUnofficialGroupCampaignTool(f.deps)
+	if err := tooltest.Validate(t, tool, tooltest.Member(), groupCampaignInput(nil)); err == nil {
+		t.Fatal("a group campaign was prepared without knowing who posts in each group")
+	}
+	cc := tooltest.Member()
+	if res := tool.Execute(creating(cc), cc, groupCampaignInput(nil)); res.Status == copilot.StatusOK || f.create.got != nil {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+func TestAGroupCampaignRefusesGroupsNoNumberCanPostIn(t *testing.T) {
 	f := newGroupFixture()
 	tool := NewCreateUnofficialGroupCampaignTool(f.deps)
 	err := tooltest.Validate(t, tool, tooltest.Member(), groupCampaignInput(map[string]interface{}{"group_ids": []interface{}{knownGroupA, knownGroupB}}))

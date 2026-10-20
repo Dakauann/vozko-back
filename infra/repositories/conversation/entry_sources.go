@@ -3,7 +3,9 @@ package conversation_repository
 import (
 	"strings"
 
+	"vozko/domain/conversation"
 	"vozko/domain/shared"
+	"vozko/infra/database/sqlexpr"
 )
 
 type entrySource struct {
@@ -140,6 +142,46 @@ var entrySources = []entrySource{
 		Department: "wcw.department_id",
 	},
 	{
+		EntryType: shared.EntryTypeMercadoLivre,
+		From:      "mercadolivre_conversations mlc",
+
+		WorkspaceJoin: "JOIN mercadolivre_accounts mla ON mla.id = mlc.account_id AND mla.workspace_id = ?",
+
+		EntryID: "mlc.id",
+
+		Account: "COALESCE(mlc.account_id::text, '')",
+
+		ConversationStatus: "mlc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "mlc.created_at",
+		UpdatedAt:     "mlc.updated_at",
+		LastMessageAt: "mlc.last_message_at",
+		Deleted:       "mlc.deleted_at IS NULL",
+
+		Department: "mla.department_id",
+	},
+	{
+		EntryType: shared.EntryTypeTikTok,
+		From:      "tiktok_conversations ttc",
+
+		WorkspaceJoin: "JOIN tiktok_accounts tta ON tta.id = ttc.account_id AND tta.workspace_id = ?",
+
+		EntryID: "ttc.id",
+
+		Account: "COALESCE(ttc.account_id::text, '')",
+
+		ConversationStatus: "ttc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "ttc.created_at",
+		UpdatedAt:     "ttc.updated_at",
+		LastMessageAt: "ttc.last_message_at",
+		Deleted:       "ttc.deleted_at IS NULL",
+
+		Department: "tta.department_id",
+	},
+	{
 		EntryType:     shared.EntryTypeUnofficialWhatsApp,
 		From:          "unofficial_whatsapp_conversations uwc",
 		WorkspaceJoin: "JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id AND uwi.workspace_id = ?",
@@ -205,21 +247,59 @@ func (src entrySource) conditions(scope entrySourceScope) (string, []interface{}
 		}
 	}
 
+	rule, ruleArgs := src.visibilityConditions(scope.visibility())
+	sql.WriteString(rule)
+	args = append(args, ruleArgs...)
+
+	return sql.String(), args
+}
+
+func (s entrySourceScope) visibility() conversation.VisibilityScope {
+	return conversation.VisibilityScope{
+		ReadScope: conversation.ReadScope{
+			DepartmentIDs:          s.DepartmentIDs,
+			RestrictDepartments:    s.RestrictDepartments,
+			AssigneeOverrideUserID: s.AssigneeOverrideUserID,
+		},
+		AssignedUserID: s.AssignedUserID,
+	}
+}
+
+func (src entrySource) visibilityConditions(visibility conversation.VisibilityScope) (string, []interface{}) {
+	var sql strings.Builder
+	var args []interface{}
+
 	if src.Department != "" {
-		clause, deptArgs := departmentScopeClause(src.Department, src.EntryID, scope.DepartmentIDs, scope.RestrictDepartments, scope.AssigneeOverrideUserID)
+		clause, deptArgs := departmentScopeClause(src.Department, src.EntryID, visibility.DepartmentIDs, visibility.RestrictDepartments, visibility.AssigneeOverrideUserID)
 		sql.WriteString(clause)
 		args = append(args, deptArgs...)
-	} else if scope.RestrictDepartments {
+	} else if visibility.RestrictDepartments {
 		sql.WriteString(" AND 1 = 0")
 	}
 
-	if scope.AssignedUserID != "" {
-		clause, selfArgs := assignedSelfClause(src.EntryID, scope.AssignedUserID)
+	if visibility.AssignedUserID != "" {
+		clause, selfArgs := assignedSelfClause(src.EntryID, visibility.AssignedUserID)
 		sql.WriteString(clause)
 		args = append(args, selfArgs...)
 	}
 
 	return sql.String(), args
+}
+
+func VisibleEntrySQL(entryIDExpr, entryTypeExpr, workspaceID string, visibility conversation.VisibilityScope) (string, []interface{}) {
+	if visibility.Unrestricted() {
+		return "", nil
+	}
+	branches := make([]string, 0, len(entrySources))
+	var args []interface{}
+	for _, src := range entrySources {
+		rule, ruleArgs := src.visibilityConditions(visibility)
+		branches = append(branches, "("+entryTypeExpr+" = '"+string(src.EntryType)+"' AND EXISTS (SELECT 1 FROM "+src.From+" "+src.WorkspaceJoin+
+			" WHERE "+src.EntryID+" = "+entryIDExpr+rule+"))")
+		args = append(args, workspaceID)
+		args = append(args, ruleArgs...)
+	}
+	return "(" + strings.Join(branches, " OR ") + ")", args
 }
 
 func (src entrySource) inboxSelect(scope entrySourceScope, workspaceID string) (string, []interface{}) {
@@ -228,10 +308,19 @@ func (src entrySource) inboxSelect(scope entrySourceScope, workspaceID string) (
 	sql := "SELECT " + src.EntryID + " AS entry_id, '" + string(src.EntryType) + "'::text AS entry_type, " +
 		contactRefUUID(src.EntryType) + " AS lead_id, " +
 		src.Account + " AS business_phone_id, " +
-		src.LastMessageAt + " AS lm_created_at" +
+		src.LastMessageAt + " AS lm_created_at, " +
+		src.waitingSinceSQL() + " AS ws_at" +
 		" FROM " + src.From + " " + join + where
 
 	return sql, append(args, whereArgs...)
+}
+
+func (src entrySource) waitingSinceSQL() string {
+	ch, ok := channelQueryFor(src.EntryType)
+	if !ok || ch.MessageClockTable == "" {
+		return "NULL::timestamptz"
+	}
+	return sqlexpr.WaitingSince(ch.MessageClockTable)
 }
 
 func (src entrySource) boardSelect(scope entrySourceScope, workspaceID string) (string, []interface{}) {

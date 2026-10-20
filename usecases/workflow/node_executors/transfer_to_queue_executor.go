@@ -20,12 +20,13 @@ func NewTransferToQueueExecutor() workflow.NodeExecutor {
 
 func (e *transferToQueueExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeTransferToQueue,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeVoice},
-		Label:       "Transferir para Fila",
-		Description: "Coloca quem ligou na fila com música de espera até um atendente livre atender.",
-		Icon:        "Headset",
+		Type:         workflow.NodeTypeTransferToQueue,
+		TestBehavior: workflow.NodeTestVoiceOnly,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeVoice},
+		Label:        "Transferir para Fila",
+		Description:  "Coloca quem ligou na fila com música de espera até um atendente livre atender.",
+		Icon:         "Headset",
 		Guidance: workflow.NodeGuidance{
 			When: "Para passar a ligação a uma pessoa: depois do menu, na opção 'falar com atendente'. Só existe em fluxos de voz.",
 			Behavior: "Escolha a fila (queue_id, use find_resource call_queues). Quem ligou ouve a música de espera da fila e é entregue " +

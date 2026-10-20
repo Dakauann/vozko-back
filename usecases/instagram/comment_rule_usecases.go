@@ -20,8 +20,8 @@ func NewCommentRules(evaluator *cauc.Evaluator, actions *CommentActionRunner) *C
 	return &CommentRules{evaluator: evaluator, actions: actions}
 }
 
-func (r *CommentRules) Execute(ctx context.Context, comment *igdomain.Comment) {
-	r.evaluator.Evaluate(ctx, shared.EntryTypeInstagram, comment.IGAccountID, comment.IGCommentID, CommentSubject(comment), r.actions)
+func (r *CommentRules) Execute(ctx context.Context, comment *igdomain.Comment) error {
+	return r.evaluator.Evaluate(ctx, shared.EntryTypeInstagram, comment.IGAccountID, comment.IGCommentID, CommentSubject(comment), r.actions)
 }
 
 func CommentSubject(c *igdomain.Comment) ca.Subject {

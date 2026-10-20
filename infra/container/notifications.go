@@ -48,10 +48,11 @@ func (c *Container) notifications() *notificationWiring {
 	broadcastStore := notification_repository.NewBroadcastStore(c.db)
 	directory := notification_repository.NewDirectory(c.db)
 	preferences := notification_repository.NewPreferenceStore(c.db)
+	episodes := notification_repository.NewEpisodeStore(c.db)
 	queue := notification_usecase.NewQueue(c.services.notificationsQueuePub)
 	images := notification_service.NewImageStore(c.services.fileStorage)
 
-	publisher, err := notification_usecase.NewPublisher(notification_usecase.PublisherDeps{Outbox: store, Queue: queue, Images: images})
+	publisher, err := notification_usecase.NewPublisher(notification_usecase.PublisherDeps{Outbox: store, Queue: queue, Images: images, Episodes: episodes})
 	if err != nil {
 		log.Fatalf("[notifications] publisher: %v", err)
 	}
@@ -72,7 +73,7 @@ func (c *Container) notifications() *notificationWiring {
 		Broadcasts:  broadcasts,
 		Images:      notification_usecase.NewImages(images),
 		Sweeper:     sweeper,
-		Retention:   notification_usecase.NewRetention(store, notification_usecase.DefaultPurgeSize, nil),
+		Retention:   notification_usecase.NewRetention(store, episodes, notification_usecase.DefaultPurgeSize, nil),
 		store:       store,
 		directory:   directory,
 		preferences: preferences,

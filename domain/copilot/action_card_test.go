@@ -33,3 +33,12 @@ func TestConnectFacebookOffersTheFacebookCapability(t *testing.T) {
 		t.Fatalf("capability = %q, %v", c, ok)
 	}
 }
+
+func TestConnectMercadoLivreOffersTheMercadoLivreCapability(t *testing.T) {
+	if ActionConnectMercadoLivre != "connect_mercadolivre" || !ActionConnectMercadoLivre.Valid() {
+		t.Fatalf("action = %q", ActionConnectMercadoLivre)
+	}
+	if c, ok := ActionConnectMercadoLivre.Capability(); !ok || c != readiness.MercadoLivre || string(c) != "mercadolivre" {
+		t.Fatalf("capability = %q, %v", c, ok)
+	}
+}

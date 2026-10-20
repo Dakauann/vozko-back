@@ -74,7 +74,11 @@ func ResolveTools(
 		}
 
 		canonical := strings.TrimSpace(def.Name)
-		if _, exists := seen[canonical]; exists {
+		identity := def.BindingIdentity(binding.Config)
+		if identity == "" {
+			continue
+		}
+		if _, exists := seen[identity]; exists {
 			continue
 		}
 
@@ -94,12 +98,13 @@ func ResolveTools(
 			continue
 		}
 
-		seen[canonical] = struct{}{}
+		seen[identity] = struct{}{}
 
+		toolName := def.ToolNameFor(binding.Config)
 		expandedDef := def
 		if len(binding.Config) > 0 {
 			expandedDef = def.WithConfigExpansion(binding.Config)
-			configsMap[strings.ToLower(canonical)] = binding.Config
+			configsMap[strings.ToLower(toolName)] = binding.Config
 		}
 
 		h, hOk := registry.Handler(strings.ToLower(key))
@@ -113,6 +118,9 @@ func ResolveTools(
 					expandedDef = expandedDef.WithConfigExpansion(binding.Config)
 				}
 			}
+		}
+		if toolName != canonical {
+			expandedDef.Name, expandedDef.HandlerName = toolName, canonical
 		}
 
 		result = append(result, expandedDef)

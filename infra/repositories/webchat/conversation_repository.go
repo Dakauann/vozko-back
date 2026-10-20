@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	wcdomain "vozko/domain/webchat"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 	conversation_repository "vozko/infra/repositories/conversation"
 )
@@ -63,6 +64,22 @@ func (r *conversationRepository) FindOrCreate(ctx context.Context, in wcdomain.F
 
 func (r *conversationRepository) FindByID(ctx context.Context, id string) (*wcdomain.Conversation, error) {
 	return r.first(ctx, "id = ?", id)
+}
+
+func (r *conversationRepository) FindByIDs(ctx context.Context, ids []string) ([]*wcdomain.Conversation, error) {
+	records, err := database.FindByIDs[schema.WebchatConversation](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*wcdomain.Conversation, 0, len(records))
+	for i := range records {
+		conv, err := toConversationDomain(&records[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, conv)
+	}
+	return out, nil
 }
 
 func (r *conversationRepository) FindByVisitor(ctx context.Context, widgetID, visitorID string) (*wcdomain.Conversation, error) {

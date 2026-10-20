@@ -30,7 +30,7 @@ Ao passar, o agente avisa o cliente com honestidade e deixa um resumo para a equ
 ## Comece estreito
 Comece com um escopo pequeno (por exemplo, dúvidas frequentes e agendamento) e amplie só depois de ver o agente funcionando. Limites frouxos demais fazem o agente inventar; apertados demais fazem ele recusar o que poderia resolver.
 
-## Montar no Vozko
+## Montar na plataforma
 - list_models para escolher o modelo; list_agent_tools para as ferramentas que fazem sentido (agenda, memória do contato, base de conhecimento).
 - Ligue o agente a uma base de conhecimento com o conteúdo do negócio (veja a habilidade base-de-conhecimento).
 - create_agent ou update_agent mostram tudo antes, com a aprovação do usuário.

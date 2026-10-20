@@ -58,7 +58,7 @@ type DiscardResponse struct {
 }
 
 // @Summary		Listar rascunhos da conta
-// @Description	Rascunhos guardados no Vozko (a Meta não expõe os rascunhos dela pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows traz as linhas que entram na tabela como "Em rascunho" e objectCount soma essas linhas, o número de "Conferir e publicar". Rascunhos já publicados saem da lista.
+// @Description	Rascunhos guardados na plataforma (a Meta não expõe os rascunhos dela pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows traz as linhas que entram na tabela como "Em rascunho" e objectCount soma essas linhas, o número de "Conferir e publicar". Rascunhos já publicados saem da lista.
 // @Tags			Anúncios
 // @Produce		json
 // @Param			id	path		string	true	"ID da conta de anúncios"

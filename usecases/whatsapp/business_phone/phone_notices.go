@@ -3,7 +3,6 @@ package businessphone_usecase
 import (
 	"context"
 	"strings"
-	"time"
 
 	"vozko/brand"
 	"vozko/domain/notification"
@@ -11,25 +10,25 @@ import (
 	"vozko/domain/workspace"
 )
 
-const (
-	phonesPath          = "/dashboard/whatsapp-business-phones"
-	defaultNoticeWindow = 7 * 24 * time.Hour
-)
+const phonesPath = "/dashboard/whatsapp-business-phones"
 
 type PhoneNotices struct {
-	publisher    notification.Publisher
+	publisher    notification.EpisodePublisher
 	dashboardURL string
 }
 
 var _ businessphone.PhoneNotifier = (*PhoneNotices)(nil)
 
-func NewPhoneNotices(publisher notification.Publisher, dashboardURL string) *PhoneNotices {
+func NewPhoneNotices(publisher notification.EpisodePublisher, dashboardURL string) *PhoneNotices {
 	return &PhoneNotices{publisher: publisher, dashboardURL: strings.TrimRight(dashboardURL, "/")}
 }
 
 func (n *PhoneNotices) NotifyPhone(phone *businessphone.WhatsAppBusinessPhoneNumber, notice businessphone.PhoneNotice) error {
-	if n == nil || n.publisher == nil || phone == nil || phone.OwnerWorkspaceID == "" {
+	if !n.owned(phone) {
 		return nil
+	}
+	if err := n.ClearPhone(phone, notice.Ends...); err != nil {
+		return err
 	}
 	placeholders := map[string]interface{}{
 		"PhoneNumber":  phone.DisplayPhoneNumber,
@@ -38,9 +37,9 @@ func (n *PhoneNotices) NotifyPhone(phone *businessphone.WhatsAppBusinessPhoneNum
 	for k, v := range notice.Extra {
 		placeholders[k] = v
 	}
-	window := notice.Window
-	if window <= 0 {
-		window = defaultNoticeWindow
+	episodeKey := ""
+	if notice.Persists() {
+		episodeKey = phoneEpisodeKey(notice.State, phone.ID)
 	}
 	body := notice.Body
 	if phone.DisplayPhoneNumber != "" {
@@ -61,9 +60,27 @@ func (n *PhoneNotices) NotifyPhone(phone *businessphone.WhatsAppBusinessPhoneNum
 			Subject:      notice.Subject + " - " + brand.Active().Name,
 			Placeholders: placeholders,
 		},
-		DedupKey:    "phone_alert:" + notice.State + ":" + phone.ID,
-		DedupWindow: window,
-		Source:      notification.SourcePhoneAlert,
+		EpisodeKey: episodeKey,
+		Source:     notification.SourcePhoneAlert,
 	})
 	return err
+}
+
+func (n *PhoneNotices) ClearPhone(phone *businessphone.WhatsAppBusinessPhoneNumber, states ...string) error {
+	if !n.owned(phone) || len(states) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(states))
+	for _, state := range states {
+		keys = append(keys, phoneEpisodeKey(state, phone.ID))
+	}
+	return n.publisher.Resolve(context.Background(), phone.OwnerWorkspaceID, keys...)
+}
+
+func (n *PhoneNotices) owned(phone *businessphone.WhatsAppBusinessPhoneNumber) bool {
+	return n != nil && n.publisher != nil && phone != nil && phone.OwnerWorkspaceID != ""
+}
+
+func phoneEpisodeKey(state, phoneID string) string {
+	return "phone_alert:" + state + ":" + phoneID
 }

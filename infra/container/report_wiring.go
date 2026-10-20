@@ -5,9 +5,14 @@ import (
 	"log"
 	"strings"
 
+	lead_domain "vozko/domain/lead"
+	opportunity_domain "vozko/domain/opportunity"
 	report_domain "vozko/domain/report"
+	"vozko/domain/shared"
+	"vozko/domain/whatsappform"
 	dept "vozko/domain/workspace/workspace_department"
 	"vozko/infra/browser"
+	whatsappform_repository "vozko/infra/repositories/whatsappform"
 	report_usecase "vozko/usecases/report"
 	report_renderers "vozko/usecases/report/renderers"
 )
@@ -40,6 +45,57 @@ func (s reportDepartmentScopes) For(_ context.Context, workspaceID, userID strin
 	return dept.RequesterScope(s.members, s.departments, workspaceID, userID, isAdmin)
 }
 
+type formReadScopes struct {
+	deals opportunity_domain.PersonDealsUseCase
+}
+
+func (s formReadScopes) ReadScope(userID, workspaceID string, isAdmin bool) (whatsappform.ReadScope, bool) {
+	scope, err := s.deals.Scope(shared.Person{UserID: userID, SystemAdmin: isAdmin}, workspaceID)
+	if err != nil {
+		return whatsappform.ReadScope{}, false
+	}
+	return whatsappform.ReadScope{Restrict: scope.Restrict, DepartmentIDs: scope.DepartmentIDs, AssigneeUserID: scope.AssigneeOverride}, true
+}
+
+type leadsByID interface {
+	FindByIDs(workspaceID string, ids []string) ([]*lead_domain.Lead, error)
+}
+
+type formLeadNames struct {
+	leads leadsByID
+}
+
+func (n formLeadNames) Names(_ context.Context, workspaceID string, ids []string) (map[string]string, error) {
+	found, err := n.leads.FindByIDs(workspaceID, ids)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]string, len(found))
+	for _, l := range found {
+		if l != nil && l.WorkspaceID == workspaceID {
+			names[l.ID] = l.RealName()
+		}
+	}
+	return names, nil
+}
+
+func (c *Container) whatsAppFormResponsesRenderer() report_domain.Renderer {
+	if c.db == nil || c.useCases.personDeals == nil || c.repositories.lead == nil || c.repositories.businessPhone == nil || c.services.conversationAuth == nil {
+		log.Printf("[report] whatsapp form responses export is off: a dependency is not configured")
+		return nil
+	}
+	return report_renderers.NewWhatsAppFormResponsesRenderer(report_renderers.WhatsAppFormResponsesDeps{
+		Forms:       whatsappform_repository.NewFormStore(c.db),
+		Versions:    whatsappform_repository.NewVersionStore(c.db),
+		Responses:   whatsappform_repository.NewResponseStore(c.db),
+		Scopes:      formReadScopes{deals: c.useCases.personDeals},
+		LeadNames:   formLeadNames{leads: c.repositories.lead},
+		Phones:      c.repositories.businessPhone,
+		Locations:   c.attendanceScheduleResolver(),
+		Permissions: c.services.conversationAuth,
+	})
+}
+
 func (c *Container) buildReportRegistry() *report_domain.Registry {
 	registry := report_domain.NewRegistry()
 
@@ -67,10 +123,14 @@ func (c *Container) buildReportRegistry() *report_domain.Registry {
 			report_renderers.NewOpportunitiesRenderer(c.services.opportunityIO, c.useCases.personDeals))
 	}
 	registry.Register(c.leadExportRenderer())
+	if c.useCases.exportWCDispatchReport != nil {
+		registry.Register(report_renderers.NewWhatsAppDispatchRenderer(c.useCases.exportWCDispatchReport, reportDepartmentScopes{members: c.repositories.workspace, departments: c.repositories.workspaceDepartment}))
+	}
 	if c.services.transactionsExporter != nil {
 		withPDF(report_domain.KindBalanceTransactions, "transacoes",
 			report_renderers.NewBalanceTransactionsRenderer(c.services.transactionsExporter))
 	}
+	registry.Register(c.whatsAppFormResponsesRenderer())
 
 	return registry
 }

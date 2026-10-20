@@ -14,6 +14,7 @@ import (
 	"vozko/domain/billing"
 	"vozko/domain/conversation"
 	"vozko/domain/whatsapp/template"
+	whatsappform_usecase "vozko/usecases/whatsappform"
 )
 
 const inFlightGrace = 2 * time.Minute
@@ -33,6 +34,7 @@ type BilledTemplateSenderDeps struct {
 	Inflight       balance.InflightReserver
 	BalanceChecker balance.CachedBalanceChecker
 	Alerter        billing.OpsAlerter
+	Forms          FormSends
 	Now            func() time.Time
 }
 
@@ -106,8 +108,7 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		return nil, err
 	}
 
-	sendInput, err := buildTemplateSendInput(tmpl, in, "")
-	if err != nil {
+	if err := tmpl.CheckSendInput(sendParamsOf(in, "", "")); err != nil {
 		return nil, err
 	}
 
@@ -180,19 +181,32 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 		}
 	}()
 
+	form, err := PrepareFormSend(ctx, uc.deps.Forms, tmpl, formSendOf(in))
+	if err != nil {
+		return nil, err
+	}
+	sendInput, err := tmpl.BuildSendInput(sendParamsOf(in, attempt.ID, form.Token()))
+	if err != nil {
+		form.Settle(ctx, "", err)
+		return nil, err
+	}
+
 	chargeRef := template.ChargeReferenceID(attempt.ID)
 
 	alreadyCharged, existsErr := uc.deps.Ledger.ExistsTransactionByReferenceID(chargeRef)
 	if existsErr != nil {
+		form.Settle(ctx, "", existsErr)
 		return nil, fmt.Errorf("could not verify existing charge: %w", existsErr)
 	}
 	if !alreadyCharged {
 		if _, consumeErr := uc.deps.Consume.Execute(in.WorkspaceID, chargeRef, category); consumeErr != nil {
+			form.Settle(ctx, "", consumeErr)
 			return nil, consumeErr
 		}
 	}
 
 	if err := uc.deps.Attempts.MarkCharged(ctx, attempt.ID, costMicros, uc.deps.Now()); err != nil {
+		form.Settle(ctx, "", err)
 		if errors.Is(err, template.ErrSendAttemptConflict) {
 			return nil, template.ErrSendInProgress
 		}
@@ -203,11 +217,11 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 
 	client, err := uc.deps.ClientFactory.ClientForPhone(in.BusinessPhoneID)
 	if err != nil {
+		form.Settle(ctx, "", err)
 		uc.refund(ctx, attempt, category)
 		return nil, err
 	}
 
-	sendInput.BizOpaqueCallbackData = attempt.ID
 	out, sendErr := client.SendTemplateMessage(ctx, sendInput)
 	outcome := template.ClassifySendOutcome(out, sendErr)
 
@@ -220,6 +234,7 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 	if out != nil {
 		result.MessageID = out.MessageID
 	}
+	form.Settle(ctx, result.MessageID, sendErr)
 
 	switch outcome {
 	case template.OutcomeAccepted, template.OutcomeAcceptedNoID:
@@ -317,13 +332,22 @@ func replayOf(attempt *template.SendAttempt, tmpl *template.Template) *template.
 	}
 }
 
-func buildTemplateSendInput(tmpl *template.Template, in template.BilledSendInput, attemptID string) (conversation.SendTemplateMessageInput, error) {
-	return tmpl.BuildSendInput(template.SendInputParams{
+func sendParamsOf(in template.BilledSendInput, attemptID, flowToken string) template.SendInputParams {
+	return template.SendInputParams{
 		To:                    in.ToNumber,
 		BodyParams:            in.BodyParams,
 		HeaderParams:          in.HeaderParams,
 		BizOpaqueCallbackData: attemptID,
-	})
+		FlowToken:             flowToken,
+	}
+}
+
+func formSendOf(in template.BilledSendInput) whatsappform_usecase.TemplateSend {
+	return whatsappform_usecase.TemplateSend{
+		WorkspaceID: in.WorkspaceID, BusinessPhoneID: in.BusinessPhoneID, ContactNumber: in.ToNumber,
+		Origin: in.Origin, OriginRef: in.OriginRef, EntryID: in.EntryID, LeadID: in.LeadID,
+		WorkflowRunID: in.WorkflowRunID, SentBy: in.UserID,
+	}
 }
 
 func metaErrorFrom(out *conversation.SendTextMessageOutput, err error) (int, string) {

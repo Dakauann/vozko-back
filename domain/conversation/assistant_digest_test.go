@@ -69,3 +69,14 @@ func TestDigestTranscriptLabelsTurnsAndSkipsNoise(t *testing.T) {
 		t.Fatalf("long message runes = %d", got)
 	}
 }
+
+func TestDigestTranscriptHearsTheAudioAndSkipsRetractedMessages(t *testing.T) {
+	at := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	lines := DigestTranscript([]*Message{
+		{MessageType: MessageTypeAudio, Direction: MessageDirectionInbound, Text: AudioPlaceholder, Transcript: "quero o plano"},
+		{MessageType: MessageTypeUserMessage, Direction: MessageDirectionInbound, Text: "segredo", RetractedAt: &at},
+	})
+	if len(lines) != 1 || lines[0].Text != AudioPlaceholder+" quero o plano" {
+		t.Fatalf("lines = %+v", lines)
+	}
+}

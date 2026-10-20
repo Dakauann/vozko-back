@@ -14,17 +14,13 @@ import (
 	"vozko/domain/conversation"
 	mm "vozko/domain/metamessaging"
 	"vozko/domain/shared"
+	"vozko/usecases/messagestate"
 )
 
 type MessageStore interface {
 	GetByExternalMessageID(entryType shared.EntryType, externalID string) (*conversation.Message, error)
 	GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error)
 	Update(messageID string, message *conversation.Message) error
-	Delete(messageID string) error
-}
-
-type EntryUpdateBroadcaster interface {
-	BroadcastEntryUpdate(entryID, entryType string, message *conversation.Message)
 }
 
 type FetchFunc func(ctx context.Context, url string) ([]byte, string, error)
@@ -38,7 +34,7 @@ type Transcript struct {
 	Media       conversation.MediaStore
 	Ads         conversation.AdOriginRecorder
 	Fetch       FetchFunc
-	Broadcaster EntryUpdateBroadcaster
+	Broadcaster messagestate.Announcer
 }
 
 type Party struct {
@@ -237,72 +233,74 @@ func (t *Transcript) Find(entryID, mid string) (*conversation.Message, error) {
 	return t.Messages.GetByExternalMessageID(t.EntryType, mid)
 }
 
-func (t *Transcript) Tombstone(entryID, mid string) error {
-	return t.mutate(entryID, mid, func(m *conversation.Message) (bool, error) {
-		return false, t.Messages.Delete(m.ID)
+func (t *Transcript) Retract(entryID, mid string, at time.Time) error {
+	return t.change(entryID, mid, func(m *conversation.Message) error {
+		m.Retract(messagestate.Stamp(at))
+		return nil
 	})
 }
 
-func (t *Transcript) ApplyEdit(entryID string, edit *mm.MessageEdit) error {
-	return t.mutate(entryID, edit.MID, func(m *conversation.Message) (bool, error) {
-		m.Text = strings.TrimSpace(edit.Text)
-		m.Metadata = MergeMetadata(m.Metadata, map[string]any{
-			t.Prefix + "_edited":     true,
-			t.Prefix + "_edit_count": edit.NumEdit.String(),
-		})
-		return true, nil
+func (t *Transcript) ApplyEdit(entryID string, edit *mm.MessageEdit, at time.Time) error {
+	return t.change(entryID, edit.MID, func(m *conversation.Message) error {
+		m.ApplyEdit(edit.Text, messagestate.Stamp(at))
+		return nil
 	})
 }
 
-func (t *Transcript) ApplyReaction(entryID string, r *mm.Reaction, at time.Time) error {
-	return t.mutate(entryID, r.MID, func(m *conversation.Message) (bool, error) {
-		payload := map[string]any{
-			t.Prefix + "_reaction_action": r.Action,
-			t.Prefix + "_reaction":        r.Reaction,
-			t.Prefix + "_reaction_emoji":  r.Emoji,
-			t.Prefix + "_reaction_at":     at.UTC().Format(time.RFC3339),
-		}
-		if r.Action == "unreact" {
-			payload[t.Prefix+"_reaction"] = ""
-			payload[t.Prefix+"_reaction_emoji"] = ""
-		}
-		m.Metadata = MergeMetadata(m.Metadata, payload)
-		return true, nil
+func (t *Transcript) ApplyReaction(entryID string, r *mm.Reaction, actorID string, at time.Time) error {
+	return t.change(entryID, r.MID, func(m *conversation.Message) error {
+		return m.React(conversation.Reaction{Emoji: reactionEmoji(r), Direction: conversation.ReactionInbound, ActorID: actorID, At: messagestate.Stamp(at)})
 	})
+}
+
+func reactionEmoji(r *mm.Reaction) string {
+	if r.Action == "unreact" {
+		return ""
+	}
+	if emoji := strings.TrimSpace(r.Emoji); emoji != "" {
+		return emoji
+	}
+	return strings.TrimSpace(r.Reaction)
 }
 
 func (t *Transcript) MarkRead(entryID, mid string) error {
-	return t.mutate(entryID, mid, func(m *conversation.Message) (bool, error) {
-		if m.DeliveryStatus == conversation.DeliveryStatusRead {
-			return false, nil
-		}
-		m.DeliveryStatus = conversation.DeliveryStatusRead
-		return true, nil
-	})
-}
-
-func (t *Transcript) mutate(entryID, mid string, change func(*conversation.Message) (bool, error)) error {
-	if t.Messages == nil || mid == "" {
-		return nil
-	}
-	existing, err := t.Find(entryID, mid)
-	if err != nil {
-		if errors.Is(err, conversation.ErrMessageNotFound) {
-			return nil
-		}
+	existing, found, err := t.stored(entryID, mid)
+	if err != nil || !found {
 		return err
 	}
-	save, err := change(existing)
-	if err != nil {
-		return err
-	}
-	if save {
+	if existing.DeliveryStatus != conversation.DeliveryStatusRead {
+		existing.DeliveryStatus = conversation.DeliveryStatusRead
 		if err := t.Messages.Update(existing.ID, existing); err != nil {
 			return err
 		}
 	}
 	t.BroadcastEntryUpdate(existing.EntryID)
 	return nil
+}
+
+func (t *Transcript) change(entryID, mid string, apply func(*conversation.Message) error) error {
+	existing, found, err := t.stored(entryID, mid)
+	if err != nil || !found {
+		return err
+	}
+	if err := apply(existing); err != nil {
+		return err
+	}
+	return messagestate.Writer{Messages: t.Messages, Announcer: t.Broadcaster}.Save(existing)
+}
+
+func (t *Transcript) stored(entryID, mid string) (*conversation.Message, bool, error) {
+	if t.Messages == nil || mid == "" {
+		return nil, false, nil
+	}
+	existing, err := t.Find(entryID, mid)
+	if errors.Is(err, conversation.ErrMessageNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return existing, true, nil
 }
 
 func (t *Transcript) BroadcastEntryUpdate(entryID string) {

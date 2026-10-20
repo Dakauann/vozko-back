@@ -55,6 +55,8 @@ const (
 
 	EventLeadExitAction  EventType = "lead_exit_action"
 	EventLeadSendRefused EventType = "lead_send_refused"
+
+	EventAgentReplyWithheld EventType = "agent_reply_withheld"
 )
 
 func (t EventType) Valid() bool {
@@ -69,7 +71,8 @@ func (t EventType) Valid() bool {
 		EventTransferCompleted, EventTransferFailed, EventTransferQueued,
 		EventQueueEnqueued, EventQueueConnected, EventQueueAbandoned,
 		EventQueueOverflow, EventCallLinked,
-		EventLeadExitAction, EventLeadSendRefused:
+		EventLeadExitAction, EventLeadSendRefused,
+		EventAgentReplyWithheld:
 		return true
 	}
 	return false

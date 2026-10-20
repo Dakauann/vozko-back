@@ -147,7 +147,9 @@ func isTerminalRenderError(err error) bool {
 		errors.Is(err, report.ErrEmptyResult) ||
 		errors.Is(err, report.ErrUnknownKind) ||
 		errors.Is(err, report.ErrFormatUnsupported) ||
-		errors.Is(err, report.ErrNoRenderer)
+		errors.Is(err, report.ErrNoRenderer) ||
+		errors.Is(err, report.ErrNotAllowed) ||
+		errors.Is(err, report.ErrInvalidParams)
 }
 
 func failureCodeFor(err error) report.FailureCode {
@@ -162,6 +164,8 @@ func failureCodeFor(err error) report.FailureCode {
 		return report.FailureUnsupported
 	case errors.Is(err, report.ErrNoRenderer):
 		return report.FailureNoRenderer
+	case errors.Is(err, report.ErrNotAllowed):
+		return report.FailureForbidden
 	case errors.Is(err, context.DeadlineExceeded):
 		return report.FailureRenderFailed
 	}

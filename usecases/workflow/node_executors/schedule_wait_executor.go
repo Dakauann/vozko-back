@@ -16,8 +16,9 @@ func NewScheduleWaitExecutor() workflow.NodeExecutor {
 
 func (e *scheduleWaitExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:     workflow.NodeTypeWaitSchedule,
-		Category: workflow.NodeCategoryWait,
+		Type:         workflow.NodeTypeWaitSchedule,
+		TestBehavior: workflow.NodeTestWaits,
+		Category:     workflow.NodeCategoryWait,
 		Scopes: []workflow.NodeScope{
 			workflow.NodeScopeShared,
 		},

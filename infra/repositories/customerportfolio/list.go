@@ -53,6 +53,18 @@ var contactDisplays = []struct {
 			handle: "NULLIF(" + a + ".email, '')", number: "NULLIF(" + a + ".phone, '')", avatar: "NULL",
 		}
 	}},
+	{shared.EntryTypeMercadoLivre, func(a string) displayColumns {
+		return displayColumns{
+			name:   "NULLIF(" + a + ".nickname, '')",
+			handle: "NULLIF(" + a + ".nickname, '')", number: "NULL", avatar: "NULL",
+		}
+	}},
+	{shared.EntryTypeTikTok, func(a string) displayColumns {
+		return displayColumns{
+			name:   "COALESCE(NULLIF(" + a + ".display_name, ''), NULLIF(" + a + ".username, ''))",
+			handle: "NULLIF(" + a + ".username, '')", number: "NULL", avatar: "NULL",
+		}
+	}},
 }
 
 func fullName(a string) string {

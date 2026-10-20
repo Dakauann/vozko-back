@@ -15,7 +15,7 @@ import (
 
 var editedComponentTypes = map[string]bool{"HEADER": true, "BODY": true, "FOOTER": true, "BUTTONS": true}
 
-var editableButtonTypes = map[string]bool{"QUICK_REPLY": true, "URL": true, "PHONE_NUMBER": true}
+var editableButtonTypes = map[string]bool{"QUICK_REPLY": true, "URL": true, "PHONE_NUMBER": true, template.ButtonTypeFlow: true}
 
 type storedComponent struct {
 	Type    string            `json:"type"`

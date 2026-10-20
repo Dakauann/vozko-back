@@ -130,7 +130,13 @@ type MessageResponse struct {
 	Text      string           `json:"text,omitempty"`
 	Media     *MediaResponse   `json:"media,omitempty"`
 	Options   []OptionResponse `json:"options,omitempty"`
+	Quote     *QuoteResponse   `json:"quote,omitempty"`
 	CreatedAt time.Time        `json:"createdAt"`
+}
+
+type QuoteResponse struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
 }
 
 type HistoryResponse struct {
@@ -185,6 +191,9 @@ func toMessageResponse(m wcdomain.VisitorMessage) MessageResponse {
 	out := MessageResponse{ID: m.ID, Author: string(m.Author), Text: m.Text, Options: toOptions(m.Options), CreatedAt: m.CreatedAt}
 	if m.Media != nil {
 		out.Media = &MediaResponse{Kind: m.Media.Kind, URL: m.Media.URL, MimeType: m.Media.MimeType, Filename: m.Media.Filename}
+	}
+	if m.Quote != nil {
+		out.Quote = &QuoteResponse{ID: m.Quote.ID, Text: m.Quote.Text}
 	}
 	return out
 }

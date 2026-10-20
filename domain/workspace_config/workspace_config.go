@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/inbox_assignment"
 	"vozko/domain/working_hours"
 )
 
@@ -67,6 +68,10 @@ type WorkspaceConfig struct {
 	RouletteLastSeenWindowHours int    `json:"rouletteLastSeenWindowHours"`
 	RouletteRescueEnabled       bool   `json:"rouletteRescueEnabled"`
 	RouletteRescueAfterMinutes  int    `json:"rouletteRescueAfterMinutes"`
+
+	RouletteStrategy         inbox_assignment.Strategy    `json:"rouletteStrategy"`
+	RouletteMaxOpenPerMember int                          `json:"rouletteMaxOpenPerMember"`
+	RouletteRecipients       []inbox_assignment.Recipient `json:"rouletteRecipients"`
 
 	WorkingHours *working_hours.Spec `json:"workingHours,omitempty"`
 
@@ -166,6 +171,27 @@ func (c *WorkspaceConfig) EffectiveRouletteRescueAfter() time.Duration {
 	return time.Duration(ClampRouletteRescueMinutes(c.RouletteRescueAfterMinutes)) * time.Minute
 }
 
+func (c *WorkspaceConfig) EffectiveRouletteStrategy() inbox_assignment.Strategy {
+	if c == nil {
+		return inbox_assignment.DefaultStrategy
+	}
+	return inbox_assignment.NormalizeStrategy(string(c.RouletteStrategy))
+}
+
+func (c *WorkspaceConfig) EffectiveRouletteMaxOpenPerMember() int {
+	if c == nil || c.RouletteMaxOpenPerMember < 0 {
+		return 0
+	}
+	return min(c.RouletteMaxOpenPerMember, inbox_assignment.MaxOpenPerMember)
+}
+
+func (c *WorkspaceConfig) EffectiveRouletteRecipients() []inbox_assignment.Recipient {
+	if c == nil {
+		return nil
+	}
+	return c.RouletteRecipients
+}
+
 func (c *WorkspaceConfig) RouletteRescueActive() bool {
 	if c == nil {
 		return false
@@ -204,6 +230,10 @@ type UpdateWorkspaceConfigOwnerInput struct {
 	RouletteLastSeenWindowHours *int    `json:"rouletteLastSeenWindowHours,omitempty"`
 	RouletteRescueEnabled       *bool   `json:"rouletteRescueEnabled,omitempty"`
 	RouletteRescueAfterMinutes  *int    `json:"rouletteRescueAfterMinutes,omitempty"`
+
+	RouletteStrategy         *string                       `json:"rouletteStrategy,omitempty"`
+	RouletteMaxOpenPerMember *int                          `json:"rouletteMaxOpenPerMember,omitempty"`
+	RouletteRecipients       *[]inbox_assignment.Recipient `json:"rouletteRecipients,omitempty"`
 
 	WorkingHours      *working_hours.Spec `json:"workingHours,omitempty"`
 	ClearWorkingHours bool                `json:"-"`

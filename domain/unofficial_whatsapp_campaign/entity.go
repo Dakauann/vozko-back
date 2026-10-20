@@ -65,6 +65,8 @@ type Campaign struct {
 	InstanceID   string `json:"instanceId"`
 	CreatedByID  string `json:"createdById,omitempty"`
 
+	SenderInstanceIDs []string `json:"senderInstanceIds,omitempty"`
+
 	Source         string `json:"source,omitempty"`
 	IdempotencyKey string `json:"idempotencyKey,omitempty"`
 
@@ -102,6 +104,8 @@ type Campaign struct {
 	Targets       []TargetInput     `json:"targets,omitempty"`
 	RecentEntries []Entry           `json:"recentEntries,omitempty"`
 	Metrics       *campaign.Metrics `json:"metrics,omitempty"`
+	TargetNames   []string          `json:"targetNames,omitempty"`
+	Estimate      *SendEstimate     `json:"-"`
 
 	SeedOutcome *campaign.SeededOutcome `json:"seedOutcome,omitempty"`
 
@@ -114,6 +118,7 @@ func (c *Campaign) Normalize() {
 	c.WorkspaceID = strings.TrimSpace(c.WorkspaceID)
 	c.DepartmentID = strings.TrimSpace(c.DepartmentID)
 	c.InstanceID = strings.TrimSpace(c.InstanceID)
+	c.SenderInstanceIDs = normalizeSenderPool(c.SenderInstanceIDs)
 	c.Name = strings.TrimSpace(c.Name)
 	c.AgentID = strings.TrimSpace(c.AgentID)
 	c.WorkflowID = strings.TrimSpace(c.WorkflowID)
@@ -208,6 +213,9 @@ func (c *Campaign) Validate() error {
 	if err := c.ValidateMetadata(); err != nil {
 		return err
 	}
+	if c.TargetsGroups() && c.InstanceID != "" {
+		return ErrGroupCampaignTakesNoNumber
+	}
 	if !c.TargetsGroups() {
 		if err := c.Message.RequireShownExit(); err != nil {
 			return err
@@ -238,14 +246,14 @@ func (c *Campaign) ValidateMetadata() error {
 	if c.Name == "" {
 		return ErrCampaignNameRequired
 	}
-	if c.InstanceID == "" {
+	if c.Audience != "" && !c.Audience.Valid() {
+		return ErrCampaignAudienceInvalid
+	}
+	if c.InstanceID == "" && !c.TargetsGroups() {
 		return ErrCampaignInstanceIDRequired
 	}
 	if !c.Status.IsValid() {
 		return ErrCampaignStatusInvalid
-	}
-	if c.Audience != "" && !c.Audience.Valid() {
-		return ErrCampaignAudienceInvalid
 	}
 	if c.TargetsGroups() && c.PipelineID != "" {
 		return ErrGroupCampaignFunnel

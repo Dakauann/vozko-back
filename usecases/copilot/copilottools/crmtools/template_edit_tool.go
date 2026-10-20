@@ -212,7 +212,7 @@ func templateEditMessage(err error) string {
 	case errors.Is(err, tmpl.ErrEditCategoryLocked):
 		return "um modelo aprovado mantém a categoria; deixe category vazio"
 	case errors.Is(err, tmpl.ErrEditUnsupported):
-		return "este modelo tem partes que o Vozko não edita aqui (autenticação, botões de fluxo ou de código); a edição precisa ser feita na tela do modelo ou na Meta"
+		return "este modelo tem partes que a plataforma não edita aqui (autenticação, botões de fluxo ou de código); a edição precisa ser feita na tela do modelo ou na Meta"
 	case errors.Is(err, tmpl.ErrTemplateAccessDenied), errors.Is(err, tmpl.ErrTemplateNotFound):
 		return "modelo desconhecido ou fora deste workspace; use list_templates"
 	}

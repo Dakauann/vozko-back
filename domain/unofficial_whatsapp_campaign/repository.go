@@ -16,6 +16,7 @@ type ListCampaignsInput struct {
 	WorkspaceID   string
 	DepartmentIDs []string
 	InstanceIDs   []string
+	Audience      Audience
 	Search        string
 	Status        campaign.Status
 	Archived      *bool
@@ -56,6 +57,7 @@ type Repository interface {
 }
 
 type RecordSendInput struct {
+	SenderInstanceID  string
 	ContactID         string
 	ConversationID    string
 	ProviderMessageID string
@@ -79,6 +81,7 @@ type EntryRepository interface {
 	List(input ListEntriesInput) (*shared.PaginatedResult[*EntryWithLead], error)
 	ListByStatus(campaignID string, status campaign.SendStatus, limit int) ([]Entry, error)
 	ListRecentlyUpdated(campaignID string, limit int) ([]Entry, error)
+	EachAutomationMetadata(campaignID string, visit func(campaign.EntryMetadata) error) error
 
 	CountByStatus(campaignID string) (*campaign.Counts, error)
 	CountByStatusForCampaigns(campaignIDs []string) (map[string]*campaign.Counts, error)
@@ -94,6 +97,8 @@ type EntryRepository interface {
 	UpsertEntries(campaignID string, entries []Entry) error
 
 	ConversationIDsForCampaign(campaignID string) ([]string, error)
+
+	TargetNamesForCampaigns(campaignIDs []string, limit int) (map[string][]string, error)
 }
 
 type UpdateEntryDetails struct {

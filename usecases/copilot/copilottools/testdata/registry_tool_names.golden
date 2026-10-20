@@ -46,6 +46,7 @@ create_campaign
 create_customer_list_audience
 create_deal
 create_department
+create_form_automation
 create_knowledge_base
 create_label
 create_lead_form
@@ -59,6 +60,7 @@ create_template
 create_unofficial_campaign
 create_unofficial_group_analysis
 create_unofficial_group_campaign
+create_whatsapp_form
 delete_ad
 delete_ad_audience
 delete_ad_rule
@@ -75,6 +77,7 @@ edit_template
 estimate_ad_audience
 explain_permission
 export_ad_report
+export_whatsapp_form_responses
 generate_image
 generate_music
 generate_voiceover
@@ -122,6 +125,7 @@ list_telegram_bots
 list_templates
 list_unofficial_groups
 list_unofficial_numbers
+list_whatsapp_forms
 list_workflows
 list_workspace_invites
 list_workspace_members
@@ -140,6 +144,7 @@ prepare_lead_action
 preview_campaign_import
 preview_unofficial_campaign_import
 publish_ad_draft
+publish_whatsapp_form
 query_dataset
 read_conversation
 recent_ad_conversions
@@ -162,6 +167,7 @@ search_knowledge
 search_leads
 send_message
 send_template
+send_whatsapp_form
 set_ad_rule_status
 set_ad_spend_cap
 set_initial_stage
@@ -201,3 +207,5 @@ update_lead_memory
 update_member_permissions
 update_phone_line
 update_role
+whatsapp_form_responses
+whatsapp_form_results

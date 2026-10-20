@@ -67,6 +67,7 @@ func (c *Container) buttonActionOwnership() *buttonaction_usecase.WorkspaceOwner
 		Stages:      c.repositories.stage,
 		Departments: c.repositories.workspaceDepartment,
 		Members:     c.repositories.workspace,
+		Automations: c.automationDirectory(),
 	})
 	if err != nil {
 		log.Fatalf("[button-actions] checking action parameters needs the workflow, field, pipeline, stage, department and member repositories: %v", err)

@@ -400,3 +400,46 @@ func TestAcceptedUploadIsStoredUnderTheSniffedType(t *testing.T) {
 		t.Fatalf("file name %q, message %+v", media.stored[0].OriginalFilename, msg)
 	}
 }
+
+func TestHistoryShowsWhichLineATeamReplyQuotes(t *testing.T) {
+	h := newHarness(t, nil)
+	s := h.session(t)
+	conv, _ := h.conversations.FindOrCreate(context.Background(), wcdomain.FindOrCreateConversationInput{WidgetID: h.widget.ID, VisitorID: s.Visitor.ID})
+	quoting := func(id, target string) *conversation.Message {
+		return &conversation.Message{ID: id, EntryID: conv.ID, EntryType: shared.EntryTypeWebchat, MessageType: conversation.MessageTypeOperator, SentBy: conversation.SentByPerson("u-1"), Text: "resposta " + id, ReplyToMessageID: &target}
+	}
+	h.svc.Messages = fakeMessages{
+		rows: []*conversation.Message{
+			quoting("r-foreign", "x-1"),
+			quoting("r-internal", "t-1"),
+			quoting("r-older", "o-1"),
+			quoting("r-page", "q-1"),
+			{ID: "t-1", EntryID: conv.ID, EntryType: shared.EntryTypeWebchat, MessageType: conversation.MessageTypeToolResult, Text: "segredo"},
+			{ID: "q-1", EntryID: conv.ID, EntryType: shared.EntryTypeWebchat, MessageType: conversation.MessageTypeUserMessage, Text: "tem estoque?", SentBy: conversation.SentByContact(s.Visitor.ID)},
+		},
+		older: []*conversation.Message{
+			{ID: "o-1", EntryID: conv.ID, EntryType: shared.EntryTypeWebchat, MessageType: conversation.MessageTypeUserMessage, Text: "bom dia", SentBy: conversation.SentByContact(s.Visitor.ID)},
+			{ID: "x-1", EntryID: "another-conversation", EntryType: shared.EntryTypeWebchat, MessageType: conversation.MessageTypeUserMessage, Text: "de outra pessoa", SentBy: conversation.SentByContact("someone")},
+		},
+	}
+
+	view, err := h.svc.History(context.Background(), s, HistoryInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quotes := map[string]string{}
+	for _, m := range view.Messages {
+		if m.Quote != nil {
+			quotes[m.ID] = m.Quote.ID + ":" + m.Quote.Text
+		}
+	}
+	want := map[string]string{"r-page": "q-1:tem estoque?", "r-older": "o-1:bom dia"}
+	if len(quotes) != len(want) {
+		t.Fatalf("quotes = %v, want %v; internal rows and other conversations are never quoted", quotes, want)
+	}
+	for id, q := range want {
+		if quotes[id] != q {
+			t.Fatalf("quote of %s = %q, want %q", id, quotes[id], q)
+		}
+	}
+}

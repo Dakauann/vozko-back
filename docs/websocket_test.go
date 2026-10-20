@@ -9,9 +9,7 @@ import (
 )
 
 var neverSentOnASocket = map[string]string{
-	"conversation:media_ready": "declared in delivery/ws/types.go but never emitted",
-	"conversation:unread":      "BroadcastUnreadCount has no callers",
-	"conversation:error":       "documented as the error envelope of both sockets",
+	"conversation:error": "documented as the error envelope of both sockets",
 }
 
 func socketDescriptions(t *testing.T) map[string]string {
@@ -87,9 +85,19 @@ func TestEverySocketMessageIsInTheSwaggerDescriptions(t *testing.T) {
 	})
 
 	t.Run("workflow simulator", func(t *testing.T) {
-		files := []string{"../usecases/workflow/ws_workflow_simulation.go", "../usecases/workflow/sim_voice_session.go"}
+		files := []string{"../usecases/workflow/ws_workflow_simulation.go", "../usecases/workflow/sim_voice_session.go", "../usecases/workflow/sim_debugger.go"}
 		names := messageNames(t, `(?:send\(|Type: |case )"([a-z_]+)"`, files...)
+		names = append(names, messageNames(t, `simReply[A-Za-z]* += "([a-z_]+)"`, "../usecases/workflow/sim_inbound.go")...)
 		requireDocumented(t, docs["/ws/workflows/{id}/simulate"], names)
+	})
+
+	t.Run("workflow simulator messages carry the conversation shape", func(t *testing.T) {
+		description := docs["/ws/workflows/{id}/simulate"]
+		for _, field := range []string{"`message`", "`metadata.buttons`", "`metadata.list`", "`metadata.form`", "`location`", "`media`", "`would_do`", "`sent_messages`", "`simulated`", "`notice`"} {
+			if !strings.Contains(description, field) {
+				t.Errorf("the simulator description does not explain %s", field)
+			}
+		}
 	})
 
 	t.Run("workflow ai builder", func(t *testing.T) {

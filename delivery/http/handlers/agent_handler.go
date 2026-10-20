@@ -698,6 +698,7 @@ func (h *AgentHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 		ConfigSchema       map[string]camelConfigParam `json:"configSchema,omitempty"`
 		RequiredConfig     []string                    `json:"requiredConfig,omitempty"`
 		RequiresConfig     bool                        `json:"requiresConfig"`
+		BindingKey         string                      `json:"bindingKey,omitempty"`
 	}
 
 	camelDefs := make([]camelTool, len(definitions))
@@ -780,6 +781,7 @@ func (h *AgentHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 			ConfigSchema:       configSchema,
 			RequiredConfig:     def.RequiredConfig,
 			RequiresConfig:     def.RequiresConfig,
+			BindingKey:         def.BindingKey,
 		}
 	}
 

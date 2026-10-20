@@ -26,6 +26,9 @@ const (
 		" gone AS (DELETE FROM notification_recipients WHERE notification_id IN (SELECT id FROM doomed))" +
 		" DELETE FROM notifications WHERE id IN (SELECT id FROM doomed)"
 
+	withdrawSQL = "WITH gone AS (DELETE FROM notification_recipients WHERE notification_id = ?)" +
+		" DELETE FROM notifications WHERE id = ?"
+
 	inboxSelectSQL = "SELECT n.id::text AS id, n.category, n.severity, n.title, n.body, n.image_url, n.action_url, n.action_label," +
 		" r.created_at, r.read_at FROM notification_recipients r JOIN notifications n ON n.id = r.notification_id" +
 		" WHERE r.workspace_id = ? AND r.user_id = ?"
@@ -126,6 +129,13 @@ func (s *Store) StalePending(ctx context.Context, createdBefore time.Time, limit
 func (s *Store) PurgeBefore(ctx context.Context, cutoff time.Time, limit int) (int, error) {
 	result := s.db.WithContext(ctx).Exec(purgeSQL, cutoff, limit)
 	return int(result.RowsAffected), result.Error
+}
+
+func (s *Store) Withdraw(ctx context.Context, id string) error {
+	if !validUUID(id) {
+		return nil
+	}
+	return s.db.WithContext(ctx).Exec(withdrawSQL, id, id).Error
 }
 
 type ItemRow struct {

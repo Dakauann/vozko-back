@@ -23,6 +23,10 @@ type fakeAccountRepo struct {
 	TokenUpdates  int
 	ErasedTokens  int
 	Deletes       int
+
+	FindByIDCalls  int
+	FindByIDsCalls int
+	FindByIDsErr   error
 }
 
 func (f *fakeAccountRepo) Create(context.Context, *igdomain.Account) error { return nil }
@@ -55,10 +59,28 @@ func (f *fakeAccountRepo) SetWebhookSubscribedAt(context.Context, string, time.T
 }
 
 func (f *fakeAccountRepo) FindByID(ctx context.Context, id string) (*igdomain.Account, error) {
+	f.FindByIDCalls++
 	if f.FindByIDFn != nil {
 		return f.FindByIDFn(ctx, id)
 	}
 	return nil, igdomain.ErrAccountNotFound
+}
+
+func (f *fakeAccountRepo) FindByIDs(ctx context.Context, ids []string) ([]*igdomain.Account, error) {
+	f.FindByIDsCalls++
+	if f.FindByIDsErr != nil {
+		return nil, f.FindByIDsErr
+	}
+	out := make([]*igdomain.Account, 0, len(ids))
+	for _, id := range ids {
+		if f.FindByIDFn == nil {
+			break
+		}
+		if account, err := f.FindByIDFn(ctx, id); err == nil {
+			out = append(out, account)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeAccountRepo) FindByIGUserID(ctx context.Context, igUserID string) (*igdomain.Account, error) {
@@ -169,6 +191,10 @@ type fakeConversationRepo struct {
 
 	InboundRecorded  int
 	OutboundRecorded int
+
+	FindByIDCalls  int
+	FindByIDsCalls int
+	FindByIDsErr   error
 }
 
 func (f *fakeConversationRepo) FindOrCreate(ctx context.Context, workspaceID, igAccountID, contactID string) (*igdomain.Conversation, error) {
@@ -184,10 +210,28 @@ func (f *fakeConversationRepo) FindOrCreate(ctx context.Context, workspaceID, ig
 }
 
 func (f *fakeConversationRepo) FindByID(ctx context.Context, id string) (*igdomain.Conversation, error) {
+	f.FindByIDCalls++
 	if f.FindByIDFn != nil {
 		return f.FindByIDFn(ctx, id)
 	}
 	return nil, igdomain.ErrConversationNotFound
+}
+
+func (f *fakeConversationRepo) FindByIDs(ctx context.Context, ids []string) ([]*igdomain.Conversation, error) {
+	f.FindByIDsCalls++
+	if f.FindByIDsErr != nil {
+		return nil, f.FindByIDsErr
+	}
+	out := make([]*igdomain.Conversation, 0, len(ids))
+	for _, id := range ids {
+		if f.FindByIDFn == nil {
+			break
+		}
+		if conv, err := f.FindByIDFn(ctx, id); err == nil {
+			out = append(out, conv)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeConversationRepo) FindByContact(ctx context.Context, igAccountID, contactID string) (*igdomain.Conversation, error) {

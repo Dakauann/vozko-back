@@ -145,6 +145,36 @@ func (h *ExportHandler) ExportFacebookEntries(w http.ResponseWriter, r *http.Req
 	h.exportChannelEntries(w, r, exportdomain.EntryTypeFacebook, "facebook-page")
 }
 
+// @Summary		Exportar conversas de uma conta do Mercado Livre
+// @Description	Coloca na fila um relatório com as conversas pós-venda da conta.
+// @Tags			Mercado Livre
+// @Produce		json
+// @Param			id	path	string	true	"ID da conta do Mercado Livre"
+// @Success		202	{object}	report.Job	"Relatorio na fila; acompanhe por /reports/{id}"
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/mercadolivre/accounts/{id}/entries/export [get]
+func (h *ExportHandler) ExportMercadoLivreEntries(w http.ResponseWriter, r *http.Request) {
+	h.exportChannelEntries(w, r, exportdomain.EntryTypeMercadoLivre, "mercadolivre-account")
+}
+
+// @Summary		Exportar conversas de uma conta do TikTok
+// @Description	Coloca na fila um relatório com as conversas de mensagens diretas da conta.
+// @Tags			TikTok
+// @Produce		json
+// @Param			id	path	string	true	"ID da conta do TikTok"
+// @Success		202	{object}	report.Job	"Relatorio na fila; acompanhe por /reports/{id}"
+// @Failure		400	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/tiktok/accounts/{id}/entries/export [get]
+func (h *ExportHandler) ExportTikTokEntries(w http.ResponseWriter, r *http.Request) {
+	h.exportChannelEntries(w, r, exportdomain.EntryTypeTikTok, "tiktok-account")
+}
+
 func (h *ExportHandler) ExportUnofficialWhatsAppCampaignEntries(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	q.Set("type", "campaign")

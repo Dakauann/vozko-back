@@ -31,6 +31,7 @@ type TimelineRefResponse struct {
 
 type TimelineSummaryResponse struct {
 	Channel       string   `json:"channel,omitempty" example:"whatsapp"`
+	Line          string   `json:"line,omitempty" example:"+55 11 4000-1000"`
 	Status        string   `json:"status,omitempty" example:"READ"`
 	Title         string   `json:"title,omitempty" example:"Volta às aulas"`
 	CampaignID    string   `json:"campaignId,omitempty"`
@@ -69,7 +70,7 @@ func timelineResponse(leadID string, page leaddomain.TimelinePage) LeadTimelineR
 	for _, item := range page.Items {
 		s := item.Summary
 		summary := TimelineSummaryResponse{
-			Channel: string(s.Channel), Status: s.Status, Title: s.Title, CampaignID: s.CampaignID, Event: s.Event, Fields: s.Fields,
+			Channel: string(s.Channel), Line: s.Line, Status: s.Status, Title: s.Title, CampaignID: s.CampaignID, Event: s.Event, Fields: s.Fields,
 			Direction: s.Direction, Source: s.Source, DurationSec: s.DurationSec, ValueCents: s.ValueCents, Currency: s.Currency,
 			PipelineID: s.PipelineID, StageID: s.StageID, Category: s.Category, Text: s.Text, FromStageID: s.FromStageID, StageName: s.StageName,
 			FromStageName: s.FromStageName, Disposition: s.Disposition, CallListID: s.CallListID,

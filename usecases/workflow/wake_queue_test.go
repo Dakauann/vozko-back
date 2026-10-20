@@ -145,6 +145,7 @@ func TestRunEngine_EnqueuesWakeOnWait(t *testing.T) {
 	registry := NewNodeExecutorRegistry()
 	RegisterDefaultExecutors(registry, ExecutorDeps{})
 	engine := NewRunEngine(runRepo, logRepo, registry)
+	engine.SetAutomationGate(SandboxAutomationGate{})
 
 	scheduler := &mockWakeScheduler{}
 	engine.SetWakeScheduler(scheduler)
@@ -208,6 +209,7 @@ func TestConsumeRunWake_ResumesMatchingRun(t *testing.T) {
 	registry := NewNodeExecutorRegistry()
 	RegisterDefaultExecutors(registry, ExecutorDeps{})
 	engine := NewRunEngine(runRepo, logRepo, registry)
+	engine.SetAutomationGate(SandboxAutomationGate{})
 
 	w := &workflow.Workflow{
 		ID:          "w1",
@@ -274,6 +276,7 @@ func TestConsumeRunWake_IgnoresStaleWakeMessage(t *testing.T) {
 	registry := NewNodeExecutorRegistry()
 	RegisterDefaultExecutors(registry, ExecutorDeps{})
 	engine := NewRunEngine(runRepo, logRepo, registry)
+	engine.SetAutomationGate(SandboxAutomationGate{})
 
 	w := &workflow.Workflow{
 		ID:          "w1",

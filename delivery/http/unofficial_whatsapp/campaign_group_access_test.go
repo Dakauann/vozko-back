@@ -32,7 +32,7 @@ func (a groupsAccess) Execute(_, _ string, resource workspace_domain.Resource, a
 
 func createGroupCampaign(h *CampaignHandler) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodPost, "/unofficial-whatsapp/campaigns", bytes.NewBufferString(
-		`{"name":"demo","instanceId":"inst-1","audience":"groups","message":{"kind":"text","bodies":["oi"]},"targets":[{"groupJid":"120363000000000001@g.us"}]}`))
+		`{"name":"demo","audience":"groups","message":{"kind":"text","bodies":["oi"]},"targets":[{"groupJid":"120363000000000001@g.us"}]}`))
 	ctx := context.WithValue(r.Context(), middleware.WorkspaceIDContextKey, "ws-1")
 	ctx = context.WithValue(ctx, middleware.ClaimsContextKey, &auth.Claims{UserID: "u-1", Role: "user"})
 	w := httptest.NewRecorder()

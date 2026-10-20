@@ -43,14 +43,24 @@ func (s ProfileSource) EventKind() recordevent.Kind {
 	return recordevent.Kind(profileEventPrefix + string(s))
 }
 
+func (s ProfileSource) nameSource() Source {
+	if s == ProfileFromForm {
+		return SourceForm
+	}
+	return SourceChannel
+}
+
 type Profile struct {
 	Address      address.Postal
 	BirthDate    string
 	CustomFields map[string]string
+	Name         string
+	Email        string
 }
 
 func (p Profile) Empty() bool {
-	return p.Address.Normalize() == (address.Postal{}) && strings.TrimSpace(p.BirthDate) == "" && len(p.customFieldValues()) == 0
+	return p.Address.Normalize() == (address.Postal{}) && strings.TrimSpace(p.BirthDate) == "" && len(p.customFieldValues()) == 0 &&
+		strings.TrimSpace(p.Name) == "" && strings.TrimSpace(p.Email) == ""
 }
 
 func (p Profile) customFieldValues() map[string]string {
@@ -78,7 +88,7 @@ type ProfileOutcome struct {
 	Conflicts []string
 }
 
-func (l *Lead) ApplyProfile(p Profile, defs []*customfield.Definition, now time.Time) (ProfileOutcome, error) {
+func (l *Lead) ApplyProfile(p Profile, defs []*customfield.Definition, now time.Time, source ProfileSource) (ProfileOutcome, error) {
 	if !l.IsAggregate() {
 		return ProfileOutcome{}, ErrAggregateNotLoaded
 	}
@@ -86,6 +96,15 @@ func (l *Lead) ApplyProfile(p Profile, defs []*customfield.Definition, now time.
 		return ProfileOutcome{}, ErrProfileEmpty
 	}
 	f := newGapFill(l, 0)
+	if name := strings.TrimSpace(p.Name); name != "" {
+		f.name(source.nameSource(), name)
+	}
+	if email := strings.TrimSpace(p.Email); email != "" {
+		if err := ValidateEmail(email); err != nil {
+			return ProfileOutcome{}, err
+		}
+		f.text(FieldEmail, f.next.Email, email, func(n *Lead) { n.Email = email })
+	}
 	values, err := profileCustomFields(p.customFieldValues(), defs)
 	if err != nil {
 		return ProfileOutcome{}, err

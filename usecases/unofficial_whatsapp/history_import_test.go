@@ -51,6 +51,7 @@ type entryUpdates struct {
 	conversation.EventBroadcaster
 	mu      sync.Mutex
 	entries []string
+	updated []string
 }
 
 func (b *entryUpdates) BroadcastEntryUpdate(entryID, _ string, _ *conversation.Message) {

@@ -337,7 +337,6 @@ func DefaultConfig(cc copilot.Context, model ai.ModelInfo) agentloop.Config {
 		SessionID:        cc.ChargeReference,
 		Temperature:      0.2,
 		MaxTokensPerGen:  answerMaxTokensPerGen,
-		IterateUntilDone: true,
 		FinishToolName:   "finish",
 		LogPrefix:        "[copilot] ws=" + cc.WorkspaceID,
 		GraceInstruction: answerGraceInstruction,
@@ -346,12 +345,7 @@ func DefaultConfig(cc copilot.Context, model ai.ModelInfo) agentloop.Config {
 		cfg.MaxTokensPerGen = studioMaxTokensPerGen
 		cfg.ReasoningMaxTokens = studioReasoningMaxTokens
 	}
-	if model.HasKnownLimits() {
-		cfg.ModelLimits = model
-		return cfg
-	}
-	cfg.SessionTokenBudget = AnswerTokenBudget
-	return cfg
+	return agentloop.UntilDone(cfg, model, AnswerTokenBudget)
 }
 
 func summarizeCall(call ai.ToolCall) string {

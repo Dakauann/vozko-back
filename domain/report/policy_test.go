@@ -183,3 +183,26 @@ func TestReportErrorCodes(t *testing.T) {
 		}
 	}
 }
+
+type checkingRenderer struct {
+	guardedRenderer
+	err error
+}
+
+func (r checkingRenderer) CheckParams(Job) error { return r.err }
+
+func TestCheckParamsAsksTheRendererAndSurvivesTheFormatRouter(t *testing.T) {
+	if err := CheckParams(plainRenderer{}, Job{}); err != nil {
+		t.Fatalf("a renderer without a parameter rule = %v", err)
+	}
+	refusing := checkingRenderer{guardedRenderer: guardedRenderer{kind: KindWhatsAppDispatch}, err: errors.New("the period is too long")}
+	if err := CheckParams(refusing, Job{}); !errors.Is(err, ErrInvalidParams) {
+		t.Fatalf("a refusal = %v, want ErrInvalidParams", err)
+	}
+	if err := CheckParams(NewFormatRouter(KindWhatsAppDispatch, refusing, plainRenderer{}), Job{}); !errors.Is(err, ErrInvalidParams) {
+		t.Fatalf("the router lost the parameter rule: %v", err)
+	}
+	if ErrorCode(CheckParams(refusing, Job{})) != "report_invalid_params" {
+		t.Fatal("an invalid parameter has no code the client can translate")
+	}
+}

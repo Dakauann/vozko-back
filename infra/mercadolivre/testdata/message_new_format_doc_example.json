@@ -1,0 +1,42 @@
+{
+	"paging": null,
+	"conversation_status": null,
+	"messages": [{
+		"id": "fd1d2e37ad004ede9e0bf25d1215002d",
+		"site_id": "MLB",
+		"client_id": 123456789,
+		"from": {
+			"user_id": 123456789000
+		},
+		"to": {
+			"user_id": 2332423234
+		},
+		"status": "available",
+		"subject": null,
+		"text": "Mensagem de teste",
+		"message_date": {
+			"received": "2020-12-05T20:01:46.000Z",
+			"available": "2020-12-05T20:01:46.000Z",
+			"notified": "2020-12-05T20:01:46.000Z",
+			"created": "2020-12-05T20:01:46.000Z",
+			"read": null
+		},
+		"message_moderation": {
+			"status": "clean",
+			"reason": null,
+			"source": "online",
+			"moderation_date": "2020-12-05T20:01:46.000Z"
+		},
+		"message_attachments": null,
+		"message_resources": [{
+				"id": "000011122344",
+				"name": "packs"
+			},
+			{
+				"id": "475684066",
+				"name": "sellers"
+			}
+		],
+		"conversation_first_message": false
+	}]
+}

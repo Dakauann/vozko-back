@@ -17,12 +17,13 @@ func NewFormatDateExecutor() workflow.NodeExecutor {
 
 func (e *formatDateExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionFormatDate,
-		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Formatar Data/Hora",
-		Description: "Formata, converte ou calcula datas e horários.",
-		Icon:        "CalendarBlank",
+		Type:         workflow.NodeTypeActionFormatDate,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryLogic,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Formatar Data/Hora",
+		Description:  "Formata, converte ou calcula datas e horários.",
+		Icon:         "CalendarBlank",
 		Guidance: workflow.NodeGuidance{
 			When: "Para formatar/converter/calcular datas e horas.",
 		},

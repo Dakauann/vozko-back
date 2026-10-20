@@ -57,6 +57,7 @@ func (t *updateAgentTool) Execute(ctx context.Context, cc copilot.Context, args 
 	in := fields.toUpdateInput()
 
 	in.InternalTools = mergeToolBindings(
+		t.card.Catalog,
 		a.InternalTools,
 		t.card.secrets().reveal(argToolBindings(args, "addTools"), args),
 		copilottools.ArgStringList(args, "removeTools"),

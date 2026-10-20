@@ -73,13 +73,21 @@ func (uc *SyncUseCase) recordFunds(ctx context.Context, account *ads.AdAccount, 
 	if err := uc.access.accounts.SaveFunds(ctx, account); err != nil {
 		return err
 	}
-	if !funds.Level.NeedsAttention() {
-		return nil
-	}
-	if err := uc.alerts.Alert(ctx, account, funds); err != nil {
-		log.Printf("[ads] funds alert for ad account %s could not be sent (the next sync retries): %v", account.ID, err)
-	}
+	uc.reportFunds(ctx, account, funds)
 	return nil
+}
+
+func (uc *SyncUseCase) reportFunds(ctx context.Context, account *ads.AdAccount, funds ads.Funds) {
+	switch {
+	case funds.Level == ads.FundsOK:
+		if err := uc.alerts.Recovered(ctx, account); err != nil {
+			log.Printf("[ads] funds alerts of ad account %s could not be closed (the next sync retries): %v", account.ID, err)
+		}
+	case funds.Level.NeedsAttention():
+		if err := uc.alerts.Alert(ctx, account, funds); err != nil {
+			log.Printf("[ads] funds alert for ad account %s could not be sent (the next sync retries): %v", account.ID, err)
+		}
+	}
 }
 
 func (uc *SyncUseCase) billingKind(ctx context.Context, account *ads.AdAccount, token string) ads.BillingKind {

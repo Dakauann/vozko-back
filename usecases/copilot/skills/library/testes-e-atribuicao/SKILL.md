@@ -16,7 +16,7 @@ description: Como a Meta atribui resultados aos anúncios (janelas de clique e v
 - Divisão igual do público (a Meta separa as pessoas para não verem as duas versões).
 - Duração: no mínimo 7 dias e até 30; antes disso o resultado raramente é confiável. A Meta só aponta vencedor com significância estatística.
 - Orçamento suficiente para cada versão gerar resultados; com poucos resultados por lado, o teste não conclui.
-- No Vozko: create_ad_test com 2 a 5 campanhas ou conjuntos já publicados, de 1 a 30 dias; list_ad_tests acompanha.
+- Na plataforma: create_ad_test com 2 a 5 campanhas ou conjuntos já publicados, de 1 a 30 dias; list_ad_tests acompanha.
 
 ## Sem teste formal
 Para comparar criativos no dia a dia, coloque vários no mesmo conjunto e deixe a Meta distribuir; depois de alguns dias e dezenas de resultados, pause os claramente piores. Isso não prova causa como um teste A/B, mas é o caminho prático com orçamento pequeno.

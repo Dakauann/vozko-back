@@ -78,30 +78,95 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if err != nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
+	var contact *tgdomain.Contact
+	if windowReadsContact(account) {
+		contact, err = a.contacts.FindByID(ctx, ec.ContactID)
+		if err != nil {
+			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
+		}
+	}
+	return windowOf(account, contact, ec.LastInboundAt, time.Now().UTC()), nil
+}
 
+func (a *channelAdapter) WindowStates(ctx context.Context, entryIDs []string) (map[string]conversation.WindowState, error) {
+	convs, err := a.conversations.FindByIDs(ctx, shared.UniqueNonEmpty(entryIDs))
+	if err != nil {
+		return nil, err
+	}
+	accountIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		accountIDs = append(accountIDs, conv.AccountID)
+	}
+	accounts, err := a.accounts.FindByIDs(ctx, shared.UniqueNonEmpty(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	accountByID := make(map[string]*tgdomain.Account, len(accounts))
+	for _, account := range accounts {
+		accountByID[account.ID] = account
+	}
+	contactIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		if account := accountByID[conv.AccountID]; account != nil && windowReadsContact(account) {
+			contactIDs = append(contactIDs, conv.ContactID)
+		}
+	}
+	contactByID := map[string]*tgdomain.Contact{}
+	if len(contactIDs) > 0 {
+		contacts, err := a.contacts.FindByIDs(ctx, shared.UniqueNonEmpty(contactIDs))
+		if err != nil {
+			return nil, err
+		}
+		for _, contact := range contacts {
+			contactByID[contact.ID] = contact
+		}
+	}
+	now := time.Now().UTC()
+	out := make(map[string]conversation.WindowState, len(convs))
+	for _, conv := range convs {
+		out[conv.ID] = windowOf(accountByID[conv.AccountID], contactByID[conv.ContactID], conv.LastCustomerMessageAt, now)
+	}
+	return out, nil
+}
+
+func windowReadsContact(account *tgdomain.Account) bool {
+	return account.Mode != tgdomain.ModeBusiness && account.CanSend()
+}
+
+func windowOf(account *tgdomain.Account, contact *tgdomain.Contact, lastInbound *time.Time, now time.Time) conversation.WindowState {
+	if account == nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+	}
 	if account.Mode == tgdomain.ModeBusiness {
 		if !account.BusinessEnabled || !account.Rights().CanReply {
-			return conversation.ClosedWindow(conversation.WindowReasonReplyRevoked), nil
+			return conversation.ClosedWindow(conversation.WindowReasonReplyRevoked)
 		}
-		if ec.LastInboundAt == nil {
-			return conversation.ClosedWindow(conversation.WindowReasonNoInbound), nil
+		if !account.CanSend() {
+			return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 		}
-		expires := ec.LastInboundAt.Add(tgdomain.BusinessMessagingWindow)
-		if time.Now().UTC().Before(expires) {
-			return conversation.OpenWindow(&expires), nil
+		if lastInbound == nil {
+			return conversation.ClosedWindow(conversation.WindowReasonNoInbound)
 		}
-		return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
+		expires := lastInbound.Add(tgdomain.BusinessMessagingWindow)
+		if now.Before(expires) {
+			return conversation.OpenWindow(&expires)
+		}
+		return conversation.ClosedWindow(conversation.WindowReasonExpired)
 	}
-
-	contact, err := a.contacts.FindByID(ctx, ec.ContactID)
-	if err != nil {
-		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
+	if !account.CanSend() || contact == nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
 	}
 	if contact.Blocked {
-		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked), nil
+		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked)
 	}
-	return conversation.OpenWindow(nil), nil
+	return conversation.OpenWindow(nil)
 }
+
+var _ conversation.WindowStatesAdapter = (*channelAdapter)(nil)
+
+func (a *channelAdapter) Capabilities() channel.Capabilities { return a.caps }
+
+var _ conversation.CapabilitiesAdapter = (*channelAdapter)(nil)
 
 func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	account, conv, err := a.sendable(ctx, ec)
@@ -271,14 +336,14 @@ func (a *channelAdapter) EditText(ctx context.Context, ec *conversation.EntryCon
 	return nil
 }
 
-func (a *channelAdapter) Retract(ctx context.Context, ec *conversation.EntryContext, providerMessageID string, sentAt time.Time) error {
+func (a *channelAdapter) EditWindow() time.Duration { return tgdomain.EditWindow }
+
+func (a *channelAdapter) RetractWindow() time.Duration { return tgdomain.DeleteWindow }
+
+func (a *channelAdapter) Retract(ctx context.Context, ec *conversation.EntryContext, providerMessageID string) error {
 	account, conv, err := a.sendable(ctx, ec)
 	if err != nil {
 		return err
-	}
-	if !sentAt.IsZero() && time.Since(sentAt) > tgdomain.DeleteWindow {
-		return fmt.Errorf("%w: telegram only allows deleting messages sent in the last 48 hours",
-			conversation.ErrCapabilityUnsupported)
 	}
 	_, messageID, ok := tgdomain.ParseProviderMessageID(providerMessageID)
 	if !ok {

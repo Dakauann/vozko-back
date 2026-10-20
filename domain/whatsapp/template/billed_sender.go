@@ -3,6 +3,8 @@ package template
 import (
 	"context"
 	"errors"
+
+	"vozko/domain/whatsappform"
 )
 
 var (
@@ -29,6 +31,11 @@ type BilledSendInput struct {
 
 	CampaignID string
 	EntryID    string
+
+	Origin        whatsappform.SendOrigin
+	OriginRef     string
+	LeadID        string
+	WorkflowRunID string
 }
 
 type BilledSendResult struct {

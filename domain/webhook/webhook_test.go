@@ -18,3 +18,9 @@ func TestFacebookFieldRouting(t *testing.T) {
 		}
 	}
 }
+
+func TestFlowsEventsHaveTheirOwnTopic(t *testing.T) {
+	if !IsWhatsAppFlowsField("flows") || IsWhatsAppFlowsField("messages") || TopicWhatsAppFlows != "webhook.whatsapp.flows" {
+		t.Fatal("flows events route to webhook.whatsapp.flows and nothing else does")
+	}
+}

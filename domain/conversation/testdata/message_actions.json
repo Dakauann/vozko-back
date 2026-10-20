@@ -1,0 +1,188 @@
+{
+  "now": "2026-10-18T12:00:00Z",
+  "operator_id": "user-ana",
+  "capabilities": {
+    "full": { "react": true, "edit": true, "delete": true, "edit_window_seconds": 900, "delete_window_seconds": 172800 },
+    "react_only": { "react": true, "edit": false, "delete": false, "edit_window_seconds": 0, "delete_window_seconds": 0 },
+    "none": { "react": false, "edit": false, "delete": false, "edit_window_seconds": 0, "delete_window_seconds": 0 },
+    "no_windows": { "react": false, "edit": true, "delete": true, "edit_window_seconds": 0, "delete_window_seconds": 0 }
+  },
+  "cases": [
+    {
+      "name": "own recent text on a channel that can do everything allows every action",
+      "capabilities": "full",
+      "message": { "id": "m-1", "messageType": "operator", "text": "oi", "externalMessageId": "pm-1", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": true, "delete": true, "resend": false }
+    },
+    {
+      "name": "a channel without capabilities allows nothing",
+      "capabilities": "none",
+      "message": { "id": "m-2", "messageType": "operator", "text": "oi", "externalMessageId": "pm-2", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a react only channel never offers edit or delete",
+      "capabilities": "react_only",
+      "message": { "id": "m-3", "messageType": "operator", "text": "oi", "externalMessageId": "pm-3", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a message the provider never acknowledged cannot be acted on",
+      "capabilities": "full",
+      "message": { "id": "m-4", "messageType": "operator", "text": "oi", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "the official WhatsApp message id counts as the provider id",
+      "capabilities": "react_only",
+      "message": { "id": "m-5", "messageType": "user_message", "text": "bom dia", "whatsappMessageId": "wamid.5", "sentBy": { "kind": "contact", "id": "5511999990000" }, "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a deleted message allows nothing",
+      "capabilities": "full",
+      "message": { "id": "m-6", "messageType": "operator", "text": "", "externalMessageId": "pm-6", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "retracted_at": "2026-10-18T11:58:00Z", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a teammate's message can be reacted to but only its author edits or deletes it",
+      "capabilities": "full",
+      "message": { "id": "m-7", "messageType": "operator", "text": "oi", "externalMessageId": "pm-7", "sentBy": { "kind": "human", "id": "user-bruno" }, "sender_user_id": "user-bruno", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a customer message can be reacted to and never edited or deleted",
+      "capabilities": "full",
+      "message": { "id": "m-8", "messageType": "user_message", "text": "oi", "externalMessageId": "pm-8", "sentBy": { "kind": "contact", "id": "5511999990000" }, "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "an AI reply is not an operator message, so only reacting is allowed",
+      "capabilities": "full",
+      "message": { "id": "m-9", "messageType": "ai_response", "text": "posso ajudar", "externalMessageId": "pm-9", "sentBy": { "kind": "ai", "id": "ai:agent-1" }, "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "past the edit window the text is frozen but the message can still be deleted",
+      "capabilities": "full",
+      "message": { "id": "m-10", "messageType": "operator", "text": "oi", "externalMessageId": "pm-10", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:40:00Z" },
+      "expected": { "react": true, "edit": false, "delete": true, "resend": false }
+    },
+    {
+      "name": "the edit window includes its last second",
+      "capabilities": "full",
+      "message": { "id": "m-11", "messageType": "operator", "text": "oi", "externalMessageId": "pm-11", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:45:00Z" },
+      "expected": { "react": true, "edit": true, "delete": true, "resend": false }
+    },
+    {
+      "name": "past the delete window only reacting is left",
+      "capabilities": "full",
+      "message": { "id": "m-12", "messageType": "operator", "text": "oi", "externalMessageId": "pm-12", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-15T12:00:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a media message cannot be edited but can be deleted",
+      "capabilities": "full",
+      "message": { "id": "m-13", "messageType": "operator", "text": "legenda", "mediaId": "media-1", "mediaType": "image", "externalMessageId": "pm-13", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": true, "resend": false }
+    },
+    {
+      "name": "a message with buttons cannot be edited",
+      "capabilities": "full",
+      "message": { "id": "m-14", "messageType": "operator", "text": "escolha", "externalMessageId": "pm-14", "metadata": { "buttons": { "body_text": "escolha", "buttons": [{ "id": "b1", "title": "Sim" }] } }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": true, "resend": false }
+    },
+    {
+      "name": "a template cannot be edited",
+      "capabilities": "full",
+      "message": { "id": "m-15", "messageType": "template", "text": "Olá", "externalMessageId": "pm-15", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": true, "resend": false }
+    },
+    {
+      "name": "an empty text has nothing to edit",
+      "capabilities": "full",
+      "message": { "id": "m-16", "messageType": "operator", "text": "  ", "externalMessageId": "pm-16", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": true, "resend": false }
+    },
+    {
+      "name": "a channel that declares no window edits and deletes nothing",
+      "capabilities": "no_windows",
+      "message": { "id": "m-17", "messageType": "operator", "text": "oi", "externalMessageId": "pm-17", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "without an operator nobody owns the message",
+      "capabilities": "full",
+      "operator_id": "",
+      "message": { "id": "m-18", "messageType": "operator", "text": "oi", "externalMessageId": "pm-18", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a message without a send time is outside every window",
+      "capabilities": "full",
+      "message": { "id": "m-19", "messageType": "operator", "text": "oi", "externalMessageId": "pm-19", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana" },
+      "expected": { "react": true, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a failed template is never resent, because the resend would go out as free text without its header, buttons and variables",
+      "capabilities": "full",
+      "message": { "id": "m-20", "messageType": "template", "text": "Olá", "externalMessageId": "pm-20", "deliveryStatus": "failed", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": true, "edit": false, "delete": true, "resend": false }
+    },
+    {
+      "name": "a failed text can be resent even on a channel without message actions, because resend is a normal send",
+      "capabilities": "none",
+      "message": { "id": "m-21", "messageType": "operator", "text": "oi", "externalMessageId": "pm-21", "deliveryStatus": "failed", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": true }
+    },
+    {
+      "name": "a teammate's failed text can be resent by any operator who can send in the conversation",
+      "capabilities": "none",
+      "message": { "id": "m-22", "messageType": "operator", "text": "oi", "externalMessageId": "pm-22", "deliveryStatus": "failed", "sentBy": { "kind": "human", "id": "user-bruno" }, "sender_user_id": "user-bruno", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": true }
+    },
+    {
+      "name": "a failed media message is resent with its caption",
+      "capabilities": "none",
+      "message": { "id": "m-23", "messageType": "operator", "text": "legenda", "mediaId": "media-23", "mediaType": "image", "externalMessageId": "pm-23", "deliveryStatus": "failed", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": true }
+    },
+    {
+      "name": "a failed button message is resent with its stored buttons",
+      "capabilities": "none",
+      "message": { "id": "m-24", "messageType": "operator", "text": "escolha", "externalMessageId": "pm-24", "deliveryStatus": "failed", "metadata": { "buttons": { "body_text": "escolha", "buttons": [{ "id": "b1", "title": "Sim" }] } }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": true }
+    },
+    {
+      "name": "a failed sticker is not resent, because the operator send cannot reproduce it",
+      "capabilities": "none",
+      "message": { "id": "m-25", "messageType": "operator", "text": "", "mediaId": "media-25", "mediaType": "sticker", "externalMessageId": "pm-25", "deliveryStatus": "failed", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a failed message that was already resent cannot be resent again",
+      "capabilities": "none",
+      "message": { "id": "m-26", "messageType": "operator", "text": "oi", "externalMessageId": "pm-26", "deliveryStatus": "failed", "metadata": { "resent_as": "m-99" }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a delivered message is never resent",
+      "capabilities": "none",
+      "message": { "id": "m-27", "messageType": "operator", "text": "oi", "externalMessageId": "pm-27", "deliveryStatus": "delivered", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "a failed AI reply is not an operator message, so it is not resent",
+      "capabilities": "none",
+      "message": { "id": "m-28", "messageType": "ai_response", "text": "posso ajudar", "externalMessageId": "pm-28", "deliveryStatus": "failed", "sentBy": { "kind": "ai", "id": "ai:agent-1" }, "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    },
+    {
+      "name": "without an operator nobody can resend a failed message",
+      "capabilities": "none",
+      "operator_id": "",
+      "message": { "id": "m-29", "messageType": "operator", "text": "oi", "externalMessageId": "pm-29", "deliveryStatus": "failed", "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "expected": { "react": false, "edit": false, "delete": false, "resend": false }
+    }
+  ]
+}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
@@ -39,77 +38,19 @@ func (m *messageHistoryManager) Record(_ context.Context, record conversation.Me
 		return nil
 	}
 
-	timestamp := record.Timestamp
-	if timestamp.IsZero() {
-		timestamp = time.Now().UTC()
-	}
-
 	entryID := record.GetEntryID()
-
-	entryType := record.EntryType
-	if !entryType.Valid() {
-		entryType = shared.EntryTypeWhatsApp
-	}
-
-	channel := record.Channel
-	if !channel.Valid() {
-		channel = conversation.MessageChannelWhatsApp
-	}
-
-	msgType := record.MessageType
-	if !msgType.Valid() {
-		if record.SentBy.IsContact() {
-			msgType = conversation.MessageTypeUserMessage
-		} else {
-			msgType = conversation.MessageTypeAIResponse
-		}
-	}
-
-	var mediaID *string
-	var mediaType conversation.MediaType
-	if record.MediaID != "" {
-		mediaID = &record.MediaID
-		mediaType = record.MediaType
-	}
-
-	message := &conversation.Message{
-		ID:           ensureMessageID(record.MessageID),
-		EntryID:      strings.TrimSpace(entryID),
-		EntryType:    entryType,
-		Channel:      channel,
-		MessageType:  msgType,
-		Direction:    record.SentBy.Direction(),
-		SentBy:       record.SentBy,
-		From:         strings.TrimSpace(record.From),
-		To:           strings.TrimSpace(record.To),
-		Text:         strings.TrimSpace(record.Text),
-		MediaID:      mediaID,
-		MediaType:    mediaType,
-		Metadata:     record.Metadata,
-		SenderName:   strings.TrimSpace(record.SenderName),
-		SenderAvatar: strings.TrimSpace(record.SenderAvatar),
-		CreatedAt:    timestamp,
-		UpdatedAt:    timestamp,
-	}
-	if record.Read {
-		readAt := time.Now().UTC()
-		message.Read = true
-		message.ReadAt = &readAt
-	}
+	message := record.Message()
+	message.ID = ensureMessageID(record.MessageID)
+	entryType := message.EntryType
 
 	providerID := strings.TrimSpace(record.ProviderMessageID)
-	wamid := strings.TrimSpace(record.MessageID)
-
 	dedupID := providerID
-	if providerID != "" {
-		message.ExternalMessageID = &providerID
-	} else if wamid != "" {
-		message.WhatsAppMessageID = &wamid
-		dedupID = wamid
+	if providerID == "" {
+		dedupID = strings.TrimSpace(record.MessageID)
 	}
 
 	if quoted := strings.TrimSpace(record.ReplyToWAMessageID); quoted != "" {
-		if id := m.resolveQuotedMessageID(entryType, entryID, quoted); id != "" {
+		if id := quotedMessageID(m.repo, entryType, entryID, quoted); id != "" {
 			message.ReplyToMessageID = &id
 		}
 	}
@@ -150,11 +91,14 @@ func (m *messageHistoryManager) Record(_ context.Context, record conversation.Me
 	return err
 }
 
-func (m *messageHistoryManager) resolveQuotedMessageID(entryType shared.EntryType, entryID, providerID string) string {
-	if existing, err := m.repo.GetByEntryAndExternalMessageID(entryType, entryID, providerID); err == nil && existing != nil {
+func quotedMessageID(repo conversation.MessageRepository, entryType shared.EntryType, entryID, providerID string) string {
+	if repo == nil || strings.TrimSpace(providerID) == "" {
+		return ""
+	}
+	if existing, err := repo.GetByEntryAndExternalMessageID(entryType, entryID, providerID); err == nil && existing != nil {
 		return existing.ID
 	}
-	if existing, err := m.repo.GetByWhatsAppMessageID(providerID); err == nil && existing != nil {
+	if existing, err := repo.GetByWhatsAppMessageID(providerID); err == nil && existing != nil {
 		return existing.ID
 	}
 	return ""

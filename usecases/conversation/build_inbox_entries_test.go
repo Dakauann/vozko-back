@@ -135,3 +135,21 @@ func TestBuildInboxEntries_ANameThatIsTheLeadsOwnNumberIsNoName(t *testing.T) {
 		t.Fatalf("a real name stays: %+v", entries[1])
 	}
 }
+
+func TestBuildInboxEntries_TheLastSenderKindLetsClientsNameTheSender(t *testing.T) {
+	svc := &HistoryProviderService{leadRepo: &builderLeadRepo{byID: map[string]*lead.Lead{}}, whatsappRepo: &builderWARepo{}}
+
+	entries := svc.buildInboxEntries([]conversation.EntryWithLastMessage{
+		{EntryID: "ml-1", EntryType: shared.EntryTypeMercadoLivre, LastMessageType: conversation.MessageTypeOperator, LastMessageSenderKind: "external"},
+		{EntryID: "ig-1", EntryType: shared.EntryTypeInstagram, LastMessageType: conversation.MessageTypeOperator, LastMessageSenderKind: "human", LastMessageSenderID: "8a6e0804-2bd0-4672-b79d-d97027f9071a"},
+		{EntryID: "tg-1", EntryType: shared.EntryTypeTelegram, LastMessageType: conversation.MessageTypeUserMessage},
+		{EntryID: "wc-1", EntryType: shared.EntryTypeWebchat, LastMessageType: conversation.MessageTypeOperator, LastMessageSenderKind: "pigeon"},
+	}, "ws-1")
+
+	want := map[string]string{"ml-1": "external", "ig-1": "human", "tg-1": "", "wc-1": ""}
+	for _, e := range entries {
+		if e.LastMessageSenderKind != want[e.EntryID] {
+			t.Errorf("%s: sender kind = %q, want %q", e.EntryID, e.LastMessageSenderKind, want[e.EntryID])
+		}
+	}
+}

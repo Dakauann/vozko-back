@@ -31,6 +31,12 @@ CREATE TABLE webchat_widgets (id uuid PRIMARY KEY, workspace_id uuid, department
 CREATE TABLE webchat_visitors (id uuid PRIMARY KEY, lead_id uuid);
 CREATE TABLE webchat_conversations (id uuid PRIMARY KEY, widget_id uuid, visitor_id uuid, conversation_status text,
 	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
+CREATE TABLE mercadolivre_accounts (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
+CREATE TABLE mercadolivre_conversations (id uuid PRIMARY KEY, account_id uuid, contact_id uuid, conversation_status text,
+	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
+CREATE TABLE tiktok_accounts (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
+CREATE TABLE tiktok_conversations (id uuid PRIMARY KEY, account_id uuid, contact_id uuid, conversation_status text,
+	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
 CREATE TABLE unofficial_whatsapp_instances (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
 CREATE TABLE unofficial_whatsapp_contacts (id uuid PRIMARY KEY, lead_id uuid);
 CREATE TABLE unofficial_whatsapp_campaigns (id uuid PRIMARY KEY, deleted_at timestamptz);
@@ -56,6 +62,8 @@ func seedEntryUnion(t *testing.T, db *gorm.DB) seededEntries {
 	t.Helper()
 	ws, other := uuid.NewString(), uuid.NewString()
 	campaign, foreignCampaign, igAccount, tgAccount := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
+	mlAccount, foreignMLAccount := uuid.NewString(), uuid.NewString()
+	ttAccount, foreignTTAccount := uuid.NewString(), uuid.NewString()
 	exec := func(sql string, args ...interface{}) {
 		if err := db.Exec(sql, args...).Error; err != nil {
 			t.Fatalf("seed: %v", err)
@@ -64,6 +72,8 @@ func seedEntryUnion(t *testing.T, db *gorm.DB) seededEntries {
 	exec(`INSERT INTO whatsapp_campaigns (id, workspace_id, type) VALUES (?, ?, 'standard'), (?, ?, 'standard')`, campaign, ws, foreignCampaign, other)
 	exec(`INSERT INTO instagram_accounts (id, workspace_id) VALUES (?, ?)`, igAccount, ws)
 	exec(`INSERT INTO telegram_accounts (id, workspace_id) VALUES (?, ?)`, tgAccount, ws)
+	exec(`INSERT INTO mercadolivre_accounts (id, workspace_id) VALUES (?, ?), (?, ?)`, mlAccount, ws, foreignMLAccount, other)
+	exec(`INSERT INTO tiktok_accounts (id, workspace_id) VALUES (?, ?), (?, ?)`, ttAccount, ws, foreignTTAccount, other)
 
 	seeded := seededEntries{workspaceID: ws}
 	for range 3 {
@@ -79,6 +89,16 @@ func seedEntryUnion(t *testing.T, db *gorm.DB) seededEntries {
 	telegram := uuid.NewString()
 	exec(`INSERT INTO telegram_conversations (id, account_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, telegram, tgAccount)
 	seeded.ids = append(seeded.ids, telegram)
+	mercadoLivre := uuid.NewString()
+	exec(`INSERT INTO mercadolivre_conversations (id, account_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, mercadoLivre, mlAccount)
+	seeded.ids = append(seeded.ids, mercadoLivre)
+	exec(`INSERT INTO mercadolivre_conversations (id, account_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, uuid.NewString(), foreignMLAccount)
+	exec(`INSERT INTO mercadolivre_conversations (id, account_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, now(), now(), now(), now())`, uuid.NewString(), mlAccount)
+	tiktok := uuid.NewString()
+	exec(`INSERT INTO tiktok_conversations (id, account_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, tiktok, ttAccount)
+	seeded.ids = append(seeded.ids, tiktok)
+	exec(`INSERT INTO tiktok_conversations (id, account_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, uuid.NewString(), foreignTTAccount)
+	exec(`INSERT INTO tiktok_conversations (id, account_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, now(), now(), now(), now())`, uuid.NewString(), ttAccount)
 
 	exec(`INSERT INTO whatsapp_campaign_entries (id, campaign_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, uuid.NewString(), foreignCampaign)
 	exec(`INSERT INTO whatsapp_campaign_entries (id, campaign_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, now(), now(), now(), now())`, uuid.NewString(), campaign)
@@ -123,7 +143,8 @@ func TestResolveEntryRefsByFilter_PagesTheWholeUnionOnceAgainstPostgres(t *testi
 	for _, r := range refs {
 		types[r.EntryType]++
 	}
-	if types[shared.EntryTypeWhatsApp] != 3 || types[shared.EntryTypeInstagram] != 2 || types[shared.EntryTypeTelegram] != 1 {
+	if types[shared.EntryTypeWhatsApp] != 3 || types[shared.EntryTypeInstagram] != 2 || types[shared.EntryTypeTelegram] != 1 ||
+		types[shared.EntryTypeMercadoLivre] != 1 || types[shared.EntryTypeTikTok] != 1 {
 		t.Fatalf("every source must be paged, got %v", types)
 	}
 

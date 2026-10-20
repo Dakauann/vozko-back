@@ -22,3 +22,22 @@ func TestStoryEventsGetAReadablePreview(t *testing.T) {
 		t.Errorf("a story reply with text previews the text, got %q", got)
 	}
 }
+
+func TestARetractedLastMessageNeverLeaksIntoThePreview(t *testing.T) {
+	s := &HistoryProviderService{}
+	retracted := conversation.EntryWithLastMessage{
+		LastMessageType: conversation.MessageTypeMedia, LastMessageText: "segredo", HasMedia: true, MediaType: conversation.MediaTypeImage,
+		LastMessageRetracted: true,
+	}
+	if got := s.formatMessagePreview(retracted); got != "[mensagem apagada]" {
+		t.Fatalf("preview = %q", got)
+	}
+}
+
+func TestARetractedLastMessageIsNoLongerShownAsMedia(t *testing.T) {
+	s := &HistoryProviderService{}
+	retracted := conversation.EntryWithLastMessage{HasMedia: true, MediaType: conversation.MediaTypeImage, LastMessageRetracted: true}
+	if got := s.getDisplayMessageType(retracted); got != "text" {
+		t.Fatalf("type = %q", got)
+	}
+}

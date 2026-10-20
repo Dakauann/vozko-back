@@ -68,6 +68,10 @@ func (m *syncTemplatesClientMock) SendListMessage(context.Context, conversation.
 	return nil, nil
 }
 
+func (m *syncTemplatesClientMock) SendFlowMessage(context.Context, conversation.SendFlowMessageInput) (*conversation.SendTextMessageOutput, error) {
+	return nil, nil
+}
+
 func (m *syncTemplatesClientMock) SendTypingIndicator(context.Context, string) error {
 	return nil
 }

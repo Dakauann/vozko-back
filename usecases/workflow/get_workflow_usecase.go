@@ -24,5 +24,6 @@ func (uc *getWorkflowUseCase) Execute(workflowID string) (*workflow.Workflow, er
 	if w == nil {
 		return nil, workflow.ErrWorkflowNotFound
 	}
+	w.RefreshPublication()
 	return w, nil
 }

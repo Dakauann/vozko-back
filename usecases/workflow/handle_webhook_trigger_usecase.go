@@ -4,10 +4,18 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"vozko/domain/cache"
+	"vozko/domain/conversation"
+	"vozko/domain/metrics"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
+	"vozko/pkg/webhookanswer"
 	"vozko/pkg/webhookauth"
 )
 
@@ -26,6 +34,7 @@ type WebhookResult struct {
 
 type webhookDedupGuard interface {
 	IsDuplicate(key string) bool
+	Forget(key string) error
 }
 
 var idempotencyHeaderCandidates = []string{"X-Idempotency-Key", "X-Webhook-Id", "X-Event-Id"}
@@ -41,6 +50,8 @@ type handleWebhookTrigger struct {
 	resolver     workflow.EntryResolver
 	starter      runStarter
 	dedup        webhookDedupGuard
+	deliveries   workflow.WebhookDeliveryRepository
+	metrics      metrics.WorkflowMetricsRecorder
 }
 
 func NewHandleWebhookTriggerUseCase(
@@ -52,24 +63,50 @@ func NewHandleWebhookTriggerUseCase(
 	launcher RunLauncher,
 	dedup webhookDedupGuard,
 	sharedState cache.SharedState,
+	deliveries workflow.WebhookDeliveryRepository,
+	recorder metrics.WorkflowMetricsRecorder,
 ) HandleWebhookTriggerUseCase {
+	if deliveries == nil || recorder == nil {
+		panic("workflow: the webhook trigger needs the delivery log and the metrics recorder")
+	}
 	return &handleWebhookTrigger{
 		webhookRepo:  webhookRepo,
 		workflowRepo: workflowRepo,
 		entries:      entries,
 		resolver:     entryResolver,
-		starter:      runStarter{runs: runRepo, launcher: launcher, sharedState: sharedState},
+		starter:      runStarter{runs: runRepo, launcher: launcher, sharedState: sharedState, workflows: workflowRepo},
 		dedup:        dedup,
+		deliveries:   deliveries,
+		metrics:      recorder,
 	}
 }
 
 func (uc *handleWebhookTrigger) Execute(req WebhookRequest) (*WebhookResult, error) {
+	received := time.Now().UTC()
 	wh, err := uc.webhookRepo.FindByToken(req.Token)
+	if err == nil && wh == nil {
+		err = workflow.ErrWebhookNotFound
+	}
 	if err != nil {
+		uc.metrics.IncWorkflowWebhookDelivery(string(workflow.WebhookOutcomeRejected), workflow.WebhookRejectionReason(err))
 		return nil, err
 	}
-	if wh == nil || !wh.Active {
-		return nil, workflow.ErrWebhookNotFound
+
+	delivery := &workflow.WebhookDelivery{
+		ID:          uuid.New().String(),
+		WebhookID:   wh.ID,
+		WorkflowID:  wh.WorkflowID,
+		WorkspaceID: wh.WorkspaceID,
+		ReceivedAt:  received,
+	}
+	result, err := uc.deliver(wh, req, delivery)
+	uc.record(delivery, result, err, received)
+	return result, err
+}
+
+func (uc *handleWebhookTrigger) deliver(wh *workflow.WorkflowWebhook, req WebhookRequest, delivery *workflow.WebhookDelivery) (result *WebhookResult, err error) {
+	if !wh.Active {
+		return nil, workflow.ErrWebhookInactive
 	}
 	if !wh.AllowsMethod(req.Method) {
 		return nil, workflow.ErrWebhookMethodNotAllowed
@@ -78,16 +115,34 @@ func (uc *handleWebhookTrigger) Execute(req WebhookRequest) (*WebhookResult, err
 		return nil, err
 	}
 
-	if uc.dedup != nil && uc.dedup.IsDuplicate(dedupKey(wh, req)) {
+	body := parseJSONBody(req.RawBody)
+	delivery.PayloadKeys = workflow.PayloadKeys(body)
+
+	if uc.dedup == nil {
+		return uc.accept(wh, req, body, delivery)
+	}
+	key := dedupKey(wh, req)
+	if uc.dedup.IsDuplicate(key) {
 		return &WebhookResult{Duplicate: true}, nil
 	}
+	defer func() {
+		if err == nil {
+			return
+		}
+		if forgetErr := uc.dedup.Forget(key); forgetErr != nil {
+			slog.Warn("workflow.webhook.dedup_forget_failed", slog.String("workspace_id", wh.WorkspaceID), slog.String("workflow_id", wh.WorkflowID), slog.String("error", forgetErr.Error()))
+		}
+	}()
+	return uc.accept(wh, req, body, delivery)
+}
 
-	body := parseJSONBody(req.RawBody)
+func (uc *handleWebhookTrigger) accept(wh *workflow.WorkflowWebhook, req WebhookRequest, body map[string]interface{}, delivery *workflow.WebhookDelivery) (*WebhookResult, error) {
 	entryID := stringField(body, "entry_id")
 	entryType := stringField(body, "entry_type")
 
 	switch {
 	case entryID != "" && entryType != "":
+		delivery.EntryResolution = workflow.WebhookEntryByID
 		owns, err := uc.entries.OwnsEntry(wh.WorkspaceID, entryID, entryType)
 		if err != nil {
 			return nil, err
@@ -96,6 +151,7 @@ func (uc *handleWebhookTrigger) Execute(req WebhookRequest) (*WebhookResult, err
 			return nil, workflow.ErrWebhookEntryForbidden
 		}
 	case stringField(body, "phone") != "":
+		delivery.EntryResolution = workflow.WebhookEntryByPhone
 		resolvedID, resolvedType, rerr := uc.resolver.ResolveByPhone(wh.WorkspaceID, stringField(body, "phone"))
 		if rerr != nil {
 			return nil, rerr
@@ -107,12 +163,13 @@ func (uc *handleWebhookTrigger) Execute(req WebhookRequest) (*WebhookResult, err
 	default:
 		return nil, workflow.ErrWebhookEntryRequired
 	}
+	delivery.EntryID, delivery.EntryType = entryID, entryType
 
-	w, err := uc.workflowRepo.FindByID(wh.WorkflowID)
+	w, err := workflow.LoadPublished(uc.workflowRepo, wh.WorkflowID)
 	if err != nil {
 		return nil, err
 	}
-	if w == nil || w.Status != workflow.WorkflowStatusActive {
+	if !w.Callable() {
 		return nil, workflow.ErrWorkflowNotActive
 	}
 	trigger := w.Graph.TriggerNodeByType(workflow.TriggerWebhook)
@@ -125,12 +182,61 @@ func (uc *handleWebhookTrigger) Execute(req WebhookRequest) (*WebhookResult, err
 		EntryID:     entryID,
 		EntryType:   entryType,
 		TriggerType: workflow.TriggerWebhook,
+		StartedBy:   workflow.StartedByWebhook(delivery.ID),
 		Data:        map[string]interface{}{"webhook": buildWebhookVars(req, body)},
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &WebhookResult{RunID: started.RunID, AlreadyRunning: started.AlreadyRunning}, nil
+}
+
+func (uc *handleWebhookTrigger) record(delivery *workflow.WebhookDelivery, result *WebhookResult, err error, received time.Time) {
+	switch {
+	case err != nil:
+		delivery.Outcome = workflow.WebhookOutcomeRejected
+		delivery.Reason = workflow.WebhookRejectionReason(err)
+		delivery.HTTPStatus = webhookanswer.RejectionStatus(delivery.Reason)
+	case result.Duplicate:
+		delivery.Outcome = workflow.WebhookOutcomeDuplicate
+	case result.AlreadyRunning:
+		delivery.Outcome = workflow.WebhookOutcomeAlreadyRunning
+	default:
+		delivery.Outcome = workflow.WebhookOutcomeAccepted
+	}
+	if err == nil {
+		delivery.HTTPStatus = webhookanswer.AcceptStatus(string(delivery.Outcome))
+		delivery.RunID = result.RunID
+	}
+	delivery.LatencyMs = time.Since(received).Milliseconds()
+	uc.metrics.IncWorkflowWebhookDelivery(string(delivery.Outcome), delivery.Reason)
+	if recordErr := uc.deliveries.Record(delivery); recordErr != nil {
+		slog.Error("workflow.webhook.delivery_log_failed",
+			slog.String("workspace_id", delivery.WorkspaceID),
+			slog.String("workflow_id", delivery.WorkflowID),
+			slog.String("delivery_id", delivery.ID),
+			slog.String("outcome", string(delivery.Outcome)),
+			slog.String("error", recordErr.Error()))
+	}
+}
+
+type ListWebhookDeliveriesUseCase struct {
+	deliveries workflow.WebhookDeliveryRepository
+	visibility conversation.Visibility
+}
+
+func NewListWebhookDeliveriesUseCase(deliveries workflow.WebhookDeliveryRepository, visibility conversation.Visibility) *ListWebhookDeliveriesUseCase {
+	return &ListWebhookDeliveriesUseCase{deliveries: deliveries, visibility: visibility}
+}
+
+func (uc *ListWebhookDeliveriesUseCase) Execute(viewer shared.Person, workspaceID, workflowID string, pagination shared.Pagination) (*shared.PaginatedResult[*workflow.WebhookDelivery], error) {
+	if strings.TrimSpace(workspaceID) == "" {
+		return nil, workflow.ErrWorkspaceIDRequired
+	}
+	if strings.TrimSpace(workflowID) == "" {
+		return nil, workflow.ErrWorkflowIDRequired
+	}
+	return uc.deliveries.ListByWorkflow(workspaceID, workflowID, conversationScope(uc.visibility, viewer, workspaceID), pagination)
 }
 
 func verifyWebhookAuth(wh *workflow.WorkflowWebhook, req WebhookRequest) error {

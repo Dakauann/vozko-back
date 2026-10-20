@@ -9,6 +9,7 @@ import (
 	"vozko/domain/lead"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
+	"vozko/usecases/campaignautomation"
 )
 
 type automationThatAllows struct{}
@@ -17,10 +18,18 @@ func (automationThatAllows) Check(string, campaign.Automation, []campaign.EntryM
 	return nil
 }
 
+func (automationThatAllows) Rule(string, campaign.Automation) (campaignautomation.Rule, error) {
+	return campaignautomation.Rule{}, nil
+}
+
 type automationThatRefuses struct{ err error }
 
 func (a automationThatRefuses) Check(string, campaign.Automation, []campaign.EntryMetadata) error {
 	return a.err
+}
+
+func (a automationThatRefuses) Rule(string, campaign.Automation) (campaignautomation.Rule, error) {
+	return campaignautomation.Rule{}, a.err
 }
 
 type workspaceLeads struct {

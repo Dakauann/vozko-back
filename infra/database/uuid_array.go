@@ -24,3 +24,12 @@ func UUIDArray(ids []string) pq.StringArray {
 	}
 	return out
 }
+
+func AllUUIDs(ids ...string) bool {
+	for _, id := range ids {
+		if len(UUIDArray([]string{id})) == 0 {
+			return false
+		}
+	}
+	return true
+}

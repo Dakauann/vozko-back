@@ -1,8 +1,7 @@
 package workflow_usecase
 
 import (
-	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"vozko/domain/cache"
@@ -14,6 +13,7 @@ type triggerEvaluator struct {
 	runRepo      workflow.WorkflowRunRepository
 	engine       *RunEngine
 	sharedState  cache.SharedState
+	waiters      *ReplyWaiters
 }
 
 func NewTriggerEvaluator(
@@ -27,38 +27,53 @@ func NewTriggerEvaluator(
 		runRepo:      runRepo,
 		engine:       engine,
 		sharedState:  sharedState,
+		waiters:      NewReplyWaiters(workflowRepo, runRepo, engine),
+	}
+}
+
+func (te *triggerEvaluator) WaitingForReply(event workflow.TriggerEvent) (*workflow.WorkflowRun, error) {
+	return te.waiters.WaitingForReply(event)
+}
+
+func (te *triggerEvaluator) WakeForReply(run *workflow.WorkflowRun, event workflow.TriggerEvent) bool {
+	return te.waiters.WakeForReply(run, event)
+}
+
+var _ workflow.ReplyWaiters = (*triggerEvaluator)(nil)
+
+func eventLogAttrs(event workflow.TriggerEvent) []any {
+	return []any{
+		slog.String("workspace_id", event.WorkspaceID),
+		slog.String("entry_id", event.EntryID),
+		slog.String("trigger", string(event.TriggerType)),
 	}
 }
 
 func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
-	log.Printf("[workflow] trigger: evaluating event type=%s workspace=%s entry=%s", event.TriggerType, event.WorkspaceID, event.EntryID)
+	slog.Debug("workflow.trigger.evaluate", eventLogAttrs(event)...)
 
 	handledReplyRun := ""
 	handledReplyWorkflow := ""
 	if event.TriggerType == workflow.TriggerMessageReceived && event.EntryID != "" {
-		if run, lerr := te.runRepo.FindWaitingReplyByEntry(event.EntryID); lerr != nil {
-			log.Printf("[workflow] trigger: failed to look up waiting-reply run for entry=%s: %v", event.EntryID, lerr)
-		} else if run != nil {
-			if w, werr := te.workflowRepo.FindByID(run.WorkflowID); werr == nil && w != nil {
-				handledReplyRun = run.ID
-				handledReplyWorkflow = run.WorkflowID
-				te.wakeRunForReply(run, w, event)
-			}
+		routed, ok := te.routeReply(event)
+		if !ok {
+			return
 		}
+		handledReplyRun, handledReplyWorkflow = routed.RunID, routed.WorkflowID
 	}
 
 	workflows, err := te.workflowRepo.FindActiveByTrigger(event.WorkspaceID, event.TriggerType)
 	if err != nil {
-		log.Printf("[workflow] trigger: failed to find workflows for %s: %v", event.TriggerType, err)
+		slog.Error("workflow.trigger.find_workflows_failed", append(eventLogAttrs(event), slog.String("error", err.Error()))...)
 		return
 	}
 
-	log.Printf("[workflow] trigger: found %d active workflows for trigger=%s", len(workflows), event.TriggerType)
+	slog.Debug("workflow.trigger.candidates", append(eventLogAttrs(event), slog.Int("workflows", len(workflows)))...)
 
 	for _, w := range workflows {
 
 		if handledReplyWorkflow != "" && w.ID == handledReplyWorkflow {
-			log.Printf("[workflow] trigger: workflow=%s already consumed this message via run=%s, not starting another", w.ID, handledReplyRun)
+			slog.Info("workflow.trigger.message_already_consumed", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("run_id", handledReplyRun))...)
 			continue
 		}
 
@@ -71,9 +86,9 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 			continue
 		}
 
-		existing, err := te.runRepo.FindActiveByEntryAndTrigger(w.ID, event.EntryID, trigger.ID)
+		existing, err := te.blockingRun(w, trigger, event)
 		if err != nil {
-			log.Printf("[workflow] trigger: failed to check existing run: %v", err)
+			slog.Error("workflow.trigger.existing_run_check_failed", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("error", err.Error()))...)
 			continue
 		}
 		if existing != nil {
@@ -81,77 +96,76 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 			if existing.ID == handledReplyRun {
 				continue
 			}
-			if existing.Status == workflow.RunStatusWaiting && existing.WaitReason == workflow.WaitReasonReply {
-				te.wakeRunForReply(existing, w, event)
-			} else if existing.Status == workflow.RunStatusWaiting && existing.WaitReason == workflow.WaitReasonDuration {
+			wakesOnMessage := existing.Status == workflow.RunStatusWaiting && (existing.WaitReason == workflow.WaitReasonReply || existing.WaitReason == workflow.WaitReasonDuration)
+			if !wakesOnMessage {
+				slog.Info("workflow.trigger.existing_run_blocks", append(runLogAttrs(existing, existing.CurrentNodeID), slog.String("status", string(existing.Status)))...)
+				continue
+			}
+			pinned, err := pinnedWorkflow(te.workflowRepo, existing, w)
+			if err != nil || pinned == nil {
+				slog.Error("workflow.trigger.pinned_version_unreadable", append(runLogAttrs(existing, existing.CurrentNodeID), slog.Any("error", err))...)
+				continue
+			}
+			if existing.WaitReason == workflow.WaitReasonReply {
+				te.waiters.wake(existing, pinned, event)
+			} else if existing.WaitReason == workflow.WaitReasonDuration {
 
-				te.wakeRunForMessage(existing, w, event)
+				te.wakeRunForMessage(existing, pinned, event)
 			} else {
-				log.Printf("[workflow] trigger: skipping workflow=%s, existing run=%s in status=%s", w.ID, existing.ID, existing.Status)
+				slog.Info("workflow.trigger.existing_run_blocks", append(runLogAttrs(existing, existing.CurrentNodeID), slog.String("status", string(existing.Status)))...)
 			}
 			continue
 		}
 
 		if !tryAcquireWorkspaceSlot(te.sharedState, event.WorkspaceID) {
-			log.Printf("[workflow] trigger: workspace %s at concurrency limit (%d), skipping workflow %s", event.WorkspaceID, maxConcurrentRunsPerWorkspace, w.ID)
+			slog.Warn("workflow.trigger.workspace_at_capacity", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.Int("limit", maxConcurrentRunsPerWorkspace))...)
 			continue
 		}
 
 		run := newTriggeredRun(w, trigger, event)
 		if err := te.runRepo.Create(run); err != nil {
-			log.Printf("[workflow] trigger: failed to create run: %v", err)
+			slog.Error("workflow.trigger.create_run_failed", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("error", err.Error()))...)
 			releaseWorkspaceSlot(te.sharedState, event.WorkspaceID)
 			continue
 		}
 
-		log.Printf("[workflow] trigger: created run=%s for workflow=%s entry=%s, starting engine", run.ID, w.ID, event.EntryID)
+		slog.Info("workflow.trigger.run_created", append(runLogAttrs(run, run.CurrentNodeID), slog.String("workflow_id", w.ID), slog.String("started_by", run.StartedBy))...)
 
 		executeLocked(te.engine, run, w)
 		releaseWorkspaceSlot(te.sharedState, event.WorkspaceID)
 	}
 }
 
-func (te *triggerEvaluator) wakeRunForReply(run *workflow.WorkflowRun, w *workflow.Workflow, event workflow.TriggerEvent) {
-	if !te.engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] trigger: skipping wake for run=%s, already locked", run.ID)
-		return
+func (te *triggerEvaluator) blockingRun(w *workflow.Workflow, trigger *workflow.Node, event workflow.TriggerEvent) (*workflow.WorkflowRun, error) {
+	if event.TriggerType.StartsRunPerEvent() {
+		return nil, nil
 	}
-	defer te.engine.UnlockRun(run.ID)
+	return te.runRepo.FindActiveByEntryAndTrigger(w.ID, event.EntryID, trigger.ID)
+}
 
-	log.Printf("[workflow] trigger: waking run=%s for reply (entry=%s)", run.ID, event.EntryID)
-
-	if err := AdvanceOnReply(run, w, event.Data); err != nil {
-		if errors.Is(err, ErrInteractiveReplyUnhandled) {
-			log.Printf("[workflow] trigger: run=%s ignored unhandled interactive reply (entry=%s), left parked", run.ID, event.EntryID)
-			return
-		}
-		if errors.Is(err, ErrMissingRepliedEdge) {
-			run.SetError(err.Error())
-			if uerr := te.runRepo.Update(run); uerr != nil {
-				log.Printf("[workflow] trigger: failed to mark run %s as error: %v", run.ID, uerr)
-			}
-		}
-		return
+func (te *triggerEvaluator) routeReply(event workflow.TriggerEvent) (workflow.ReplyRouting, bool) {
+	if event.Reply != nil {
+		return *event.Reply, true
 	}
-
-	if err := te.runRepo.Update(run); err != nil {
-		log.Printf("[workflow] trigger: failed to wake run %s: %v", run.ID, err)
-		return
+	waiters := te.waiters
+	run, err := waiters.WaitingForReply(event)
+	if err != nil {
+		return workflow.ReplyRouting{}, false
 	}
-
-	if err := te.engine.Execute(run, w); err != nil {
-		log.Printf("[workflow] trigger: engine error for woken run %s: %v", run.ID, err)
+	if run == nil || !waiters.WakeForReply(run, event) {
+		return workflow.ReplyRouting{}, true
 	}
+	return workflow.ReplyRouting{RunID: run.ID, WorkflowID: run.WorkflowID}, true
 }
 
 func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *workflow.Workflow, event workflow.TriggerEvent) {
 	if !te.engine.TryLockRun(run.ID) {
-		log.Printf("[workflow] trigger: skipping message wake for run=%s, already locked", run.ID)
+		slog.Info("workflow.trigger.message_wake_locked", runLogAttrs(run, run.CurrentNodeID)...)
 		return
 	}
 	defer te.engine.UnlockRun(run.ID)
 
-	log.Printf("[workflow] trigger: cancelling duration wait run=%s, user sent message (entry=%s)", run.ID, event.EntryID)
+	slog.Info("workflow.trigger.message_cancels_wait", runLogAttrs(run, run.CurrentNodeID)...)
 
 	node := w.Graph.FindNode(run.CurrentNodeID)
 	if node == nil || (node.Type != workflow.NodeTypeWaitDuration && node.Type != workflow.NodeTypeWaitSchedule) {
@@ -160,7 +174,7 @@ func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *work
 	edges := w.Graph.OutgoingEdges(run.CurrentNodeID)
 	nextID := findExactEdgeByLabel(edges, "message_received")
 	if nextID == "" {
-		log.Printf("[workflow] trigger: ignoring message wake for run=%s, wait node=%s has no message_received edge", run.ID, run.CurrentNodeID)
+		slog.Info("workflow.trigger.wait_has_no_message_edge", runLogAttrs(run, run.CurrentNodeID)...)
 		return
 	}
 
@@ -175,12 +189,12 @@ func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *work
 	run.UpdatedAt = time.Now().UTC()
 
 	if err := te.runRepo.Update(run); err != nil {
-		log.Printf("[workflow] trigger: failed to wake run %s: %v", run.ID, err)
+		slog.Error("workflow.trigger.message_wake_save_failed", append(runLogAttrs(run, run.CurrentNodeID), slog.String("error", err.Error()))...)
 		return
 	}
 
 	if err := te.engine.Execute(run, w); err != nil {
-		log.Printf("[workflow] trigger: engine error for woken run %s: %v", run.ID, err)
+		slog.Error("workflow.trigger.engine_error", append(runLogAttrs(run, run.CurrentNodeID), slog.String("error", outbound.String(err.Error())))...)
 	}
 }
 
@@ -188,14 +202,14 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 
 	if campaignWfID, ok := event.Data["campaign_workflow_id"].(string); ok && campaignWfID != "" {
 		if w.ID != campaignWfID {
-			log.Printf("[workflow] trigger: skipping workflow=%s (campaign linked to workflow=%s)", w.ID, campaignWfID)
+			slog.Debug("workflow.trigger.skip_campaign_linked_elsewhere", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("linked_workflow_id", campaignWfID))...)
 			return false
 		}
 	}
 
 	if accountWfID, ok := event.Data["account_workflow_id"].(string); ok && accountWfID != "" {
 		if w.ID != accountWfID {
-			log.Printf("[workflow] trigger: skipping workflow=%s (channel account linked to workflow=%s)", w.ID, accountWfID)
+			slog.Debug("workflow.trigger.skip_account_linked_elsewhere", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("linked_workflow_id", accountWfID))...)
 			return false
 		}
 	}
@@ -222,7 +236,7 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 		return StageID == eventTagID
 
 	case workflow.TriggerCampaignSent:
-		campaignID, _ := cfg["campaign_id"].(string)
+		campaignID, _ := cfg[workflow.CampaignTriggerCampaignIDKey].(string)
 		if campaignID == "" {
 			return true
 		}
@@ -232,6 +246,10 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 	case workflow.TriggerNoReply:
 
 		return true
+
+	case workflow.TriggerFormSubmitted:
+		formID, _ := event.Data[workflow.DataKeyFormID].(string)
+		return workflow.FormTriggerAccepts(cfg, formID)
 
 	default:
 		return true

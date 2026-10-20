@@ -1,0 +1,60 @@
+{
+  "paging":{
+     "limit":10,
+     "offset":0,
+     "total":3
+  },
+  "conversation_status":{
+       "path": "/packs/2000000089077943/seller/415458330",
+       "status": "active",
+       "substatus": null,
+       "status_date": "2020-12-05T20:01:46.000Z",
+       "status_update_allowed": false,
+       "claim_id": null,
+       "shipping_id": null
+   },
+  "messages":[
+     {
+        "id":"fd1d2e37ad004ede9e0bf25d1215002d",
+        "site_id":"MLB",
+        "client_id":123456789,
+        "from":{
+           "user_id": 123456789000
+        },
+        "to":{
+           "user_id": 2332423234
+        },
+        "status":"available",
+        "subject":null,
+        "text":"Mensaje de test",
+        "message_date":{
+           "received":"2020-12-05T20:01:46.000Z",
+           "available":"2020-12-05T20:01:46.000Z",
+           "notified":"2020-12-05T20:01:46.000Z",
+           "created":"2020-12-05T20:01:46.000Z",
+           "read":null
+        },
+        "message_moderation":{
+           "status":"clean",
+           "reason":null,
+           "source":"online",
+           "moderation_date":"2020-12-05T20:01:46.000Z"
+        },
+        "message_attachments":null,
+        "message_resources":[
+           {
+              "id":"000011122344",
+              "name":"packs"
+           },
+           {
+              "id":"475684066",
+              "name":"sellers"
+           }
+        ],
+        "conversation_first_message":false,
+        "conversation_id": "/packs/2000000089077943/sellers/415458330/conversations/resale-seller"
+     }
+  ],
+  "seller_max_message_length":350,
+  "buyer_max_message_length":3500
+}

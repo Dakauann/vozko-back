@@ -143,6 +143,7 @@ type FacebookConversation struct {
 	LastMessageAt         *time.Time `gorm:"column:last_message_at;index:idx_fb_conv_lastmsg"`
 	LastCustomerMessageAt *time.Time `gorm:"column:last_customer_message_at"`
 	LastAgentMessageAt    *time.Time `gorm:"column:last_agent_message_at"`
+	AwaitingReplySince    *time.Time `gorm:"column:awaiting_reply_since"`
 
 	DeliveredWatermark *time.Time `gorm:"type:timestamptz"`
 	ReadWatermark      *time.Time `gorm:"type:timestamptz"`

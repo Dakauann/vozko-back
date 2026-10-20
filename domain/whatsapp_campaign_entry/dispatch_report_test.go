@@ -171,3 +171,41 @@ func TestScopeFingerprintsNeverCollideAcrossWhatTheyCover(t *testing.T) {
 		t.Fatalf("the same departments in another order must share a cache entry: %q vs %q", otherOrder.Fingerprint(), sameSet.Fingerprint())
 	}
 }
+
+func TestAnExportWindowReachesFurtherThanTheChartButStillHasAnEnd(t *testing.T) {
+	from := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	last := from.AddDate(0, 0, MaxExportDays-1)
+
+	w, err := NewDayWindowWithin(from.Format("2006-01-02"), last.Format("2006-01-02"), time.UTC, MaxExportDays)
+	if err != nil {
+		t.Fatalf("NewDayWindowWithin() error = %v", err)
+	}
+	if got := len(w.Days()); got != MaxExportDays {
+		t.Fatalf("len(Days()) = %d, want %d", got, MaxExportDays)
+	}
+	if _, err := NewDayWindowWithin(from.Format("2006-01-02"), last.AddDate(0, 0, 1).Format("2006-01-02"), time.UTC, MaxExportDays); !errors.Is(err, ErrReportWindowTooLong) {
+		t.Fatalf("one day past the export maximum: error = %v, want %v", err, ErrReportWindowTooLong)
+	}
+	if MaxExportDays <= MaxReportDays {
+		t.Fatalf("an export must reach further than the chart: %d <= %d", MaxExportDays, MaxReportDays)
+	}
+}
+
+func TestAWindowWithoutAMaximumIsRefused(t *testing.T) {
+	if _, err := NewDayWindowWithin("2026-09-01", "2026-09-02", time.UTC, 0); !errors.Is(err, ErrReportWindowInvalid) {
+		t.Fatalf("a zero maximum: error = %v, want %v", err, ErrReportWindowInvalid)
+	}
+}
+
+func TestPagesAdvanceByTheirOwnSize(t *testing.T) {
+	first := FirstPage(500)
+	if first != (Page{Limit: 500}) {
+		t.Fatalf("FirstPage(500) = %+v", first)
+	}
+	if got := first.Next().Next(); got != (Page{Limit: 500, Offset: 1000}) {
+		t.Fatalf("the third page = %+v, want offset 1000", got)
+	}
+	if !first.IsLast(499) || first.IsLast(500) {
+		t.Fatal("a page shorter than its limit is the last one, a full page is not")
+	}
+}

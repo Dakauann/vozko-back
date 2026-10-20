@@ -129,3 +129,5 @@
 {{- /* badge: the frontend StatusChip. Solid tone fill with its measured foreground ink, 6px
        radius, 12px medium. tone: info|success|warning|danger|brand|neutral. */ -}}
 {{define "badge"}}<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;"><tr><td class="{{template "tone-class" .tone}}" bgcolor="{{template "tone-fill" .tone}}" style="padding:3px 10px; border-radius:6px; background-color:{{template "tone-fill" .tone}}; color:{{template "tone-on" .tone}}; font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; line-height:18px; white-space:nowrap; mso-line-height-rule:exactly;">{{.text}}</td></tr></table>{{end}}
+
+{{define "episode-notice"}}<div data-episode-notice="">{{template "panel" dict "tone" (or .EpisodeTone "info") "title" .EpisodeTitle "body" .EpisodeNotice}}</div>{{template "gap" 24}}{{end}}

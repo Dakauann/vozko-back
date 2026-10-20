@@ -39,7 +39,7 @@ func TestWorkflowAudioIsTranscodedAndUploaded(t *testing.T) {
 	t.Cleanup(func() { convertAudioFn = original })
 
 	client := &audioClient{}
-	s := &whatsappSender{}
+	s := &whatsappSender{deps: SenderDeps{MediaFetcher: unguardedTestFetcher()}}
 
 	out, err := s.sendAudioAsVoiceNote(context.Background(), client, "5511999999999", srv.URL+"/a.ogg")
 	if err != nil {
@@ -70,7 +70,7 @@ func TestWorkflowAudioFallsBackToLinkWhenTranscodeFails(t *testing.T) {
 	t.Cleanup(func() { convertAudioFn = original })
 
 	client := &audioClient{}
-	s := &whatsappSender{}
+	s := &whatsappSender{deps: SenderDeps{MediaFetcher: unguardedTestFetcher()}}
 
 	out, err := s.sendAudioAsVoiceNote(context.Background(), client, "5511999999999", srv.URL+"/a.ogg")
 	if err != nil {
@@ -86,7 +86,7 @@ func TestWorkflowAudioFallsBackToLinkWhenTranscodeFails(t *testing.T) {
 
 func TestWorkflowAudioFallsBackToLinkWhenDownloadFails(t *testing.T) {
 	client := &audioClient{}
-	s := &whatsappSender{}
+	s := &whatsappSender{deps: SenderDeps{MediaFetcher: unguardedTestFetcher()}}
 
 	out, err := s.sendAudioAsVoiceNote(context.Background(), client, "5511999999999", "http://127.0.0.1:1/nope.ogg")
 	if err != nil {

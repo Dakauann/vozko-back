@@ -16,12 +16,13 @@ func NewLoopExecutor() workflow.NodeExecutor {
 
 func (e *loopExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionLoop,
-		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Loop / Iteração",
-		Description: "Itera sobre uma lista (array JSON). A cada passagem define o item atual e o índice.",
-		Icon:        "ArrowsClockwise",
+		Type:         workflow.NodeTypeActionLoop,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryLogic,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Loop / Iteração",
+		Description:  "Itera sobre uma lista (array JSON). A cada passagem define o item atual e o índice.",
+		Icon:         "ArrowsClockwise",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para iterar sobre uma lista (list_variable).",
 			Behavior: "Percorre a lista item a item: a saída 'body' executa uma vez por item (normalmente retornando ao próprio loop para iterar) e a saída 'done' segue ao terminar. Um ciclo de volta ao loop é válido; o loop garante o término.",
@@ -67,13 +68,12 @@ func (e *loopExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 	}
 	if list == nil {
 
-		return &workflow.NodeResult{
-			NextNodeID: findOutputTarget(ctx.Graph, ctx.Node.ID, "fail"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"item": nil, "index": 0, "total": 0,
 				"is_first": true, "is_last": true,
 			},
-		}, nil
+		}, ctx.Graph.OutgoingEdges(ctx.Node.ID), "fail"), nil
 	}
 
 	total := len(list)
@@ -99,13 +99,12 @@ func (e *loopExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 	if currentIndex >= total {
 
 		ctx.State.Delete(indexKey)
-		return &workflow.NodeResult{
-			NextNodeID: findOutputTarget(ctx.Graph, ctx.Node.ID, "done"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"item": nil, "index": currentIndex, "total": total,
 				"is_first": false, "is_last": true,
 			},
-		}, nil
+		}, ctx.Graph.OutgoingEdges(ctx.Node.ID), "done"), nil
 	}
 
 	item := list[currentIndex]
@@ -114,8 +113,7 @@ func (e *loopExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 
 	ctx.State.Set(indexKey, float64(currentIndex+1))
 
-	return &workflow.NodeResult{
-		NextNodeID: findOutputTarget(ctx.Graph, ctx.Node.ID, "body"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"item":     item,
 			"index":    currentIndex,
@@ -123,7 +121,7 @@ func (e *loopExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 			"is_first": currentIndex == 0,
 			"is_last":  currentIndex == total-1,
 		},
-	}, nil
+	}, ctx.Graph.OutgoingEdges(ctx.Node.ID), "body"), nil
 }
 
 func toSlice(val interface{}) []interface{} {
@@ -184,28 +182,8 @@ func parseLoopIndex(v interface{}) int {
 	}
 }
 
-func findOutputTarget(graph *workflow.Graph, nodeID, handleID string) string {
-	edges := graph.OutgoingEdges(nodeID)
-	for _, edge := range edges {
-		if edge.Label == handleID {
-			return edge.Target
-		}
-	}
-
-	if len(edges) == 0 {
-		return ""
-	}
-	if handleID == "body" {
-		return edges[0].Target
-	}
-	if handleID == "done" && len(edges) > 1 {
-		return edges[len(edges)-1].Target
-	}
-	return edges[0].Target
-}
-
 func isInLoopBody(graph *workflow.Graph, loopNodeID, prevNodeID string) bool {
-	bodyTarget := findOutputTarget(graph, loopNodeID, "body")
+	bodyTarget := resolveEdgeByLabelStrict(graph.OutgoingEdges(loopNodeID), "body")
 	if bodyTarget == "" {
 		return false
 	}
@@ -224,7 +202,7 @@ func isInLoopBody(graph *workflow.Graph, loopNodeID, prevNodeID string) bool {
 		}
 
 		node := graph.FindNode(curr)
-		if node != nil && (node.Type.ParksForReply() || node.Type.IsTrigger()) {
+		if node != nil && (node.Type.AwaitsContact() || node.Type.IsTrigger()) {
 			continue
 		}
 		for _, e := range graph.OutgoingEdges(curr) {

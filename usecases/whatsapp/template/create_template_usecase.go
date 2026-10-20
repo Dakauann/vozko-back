@@ -17,18 +17,20 @@ type createTemplateUseCase struct {
 	templateRepo  template.Repository
 	headerMediaUC template.SetTemplateHeaderMediaUseCase
 	storage       StorageURLs
+	publications  FlowPublications
 }
 
 type StorageURLs interface {
 	KeyFromURL(url string) (string, bool)
 }
 
-func NewCreateTemplateUseCase(clientFactory template.WhatsAppClientFactory, templateRepo template.Repository, headerMediaUC template.SetTemplateHeaderMediaUseCase, storage StorageURLs) template.CreateTemplateUseCase {
+func NewCreateTemplateUseCase(clientFactory template.WhatsAppClientFactory, templateRepo template.Repository, headerMediaUC template.SetTemplateHeaderMediaUseCase, storage StorageURLs, publications FlowPublications) template.CreateTemplateUseCase {
 	return &createTemplateUseCase{
 		clientFactory: clientFactory,
 		templateRepo:  templateRepo,
 		headerMediaUC: headerMediaUC,
 		storage:       storage,
+		publications:  publications,
 	}
 }
 
@@ -61,12 +63,15 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 
 		for _, b := range c.Buttons {
 			comp.Buttons = append(comp.Buttons, template.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				Example:        b.Example,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID,
+				FlowAction:     b.FlowAction,
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 
@@ -95,6 +100,9 @@ func (uc *createTemplateUseCase) Execute(input template.CreateTemplateInput) (*t
 	}
 
 	if err := template.ValidateDraft(name, input.Category, domainComponents); err != nil {
+		return nil, err
+	}
+	if err := CheckFormPublished(context.Background(), uc.publications, input.WorkspaceID, wabaID, &template.Template{Components: domainComponents}); err != nil {
 		return nil, err
 	}
 

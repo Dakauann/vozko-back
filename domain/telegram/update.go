@@ -24,6 +24,8 @@ type Update struct {
 
 	CallbackQuery *CallbackQuery     `json:"callback_query,omitempty"`
 	MyChatMember  *ChatMemberUpdated `json:"my_chat_member,omitempty"`
+
+	MessageReaction *MessageReactionUpdated `json:"message_reaction,omitempty"`
 }
 
 type User struct {
@@ -194,16 +196,18 @@ func DecodeUpdate(body []byte) (*Update, error) {
 type EventKind string
 
 const (
-	EventInboundMessage     EventKind = "inbound_message"
-	EventOutboundMessage    EventKind = "outbound_message"
-	EventEditedMessage      EventKind = "edited_message"
-	EventDeletedMessages    EventKind = "deleted_messages"
-	EventCallbackQuery      EventKind = "callback_query"
-	EventContactShared      EventKind = "contact_shared"
-	EventBlocked            EventKind = "blocked"
-	EventUnblocked          EventKind = "unblocked"
-	EventBusinessConnection EventKind = "business_connection"
-	EventUnknown            EventKind = "unknown"
+	EventInboundMessage      EventKind = "inbound_message"
+	EventOutboundMessage     EventKind = "outbound_message"
+	EventEditedMessage       EventKind = "edited_message"
+	EventDeletedMessages     EventKind = "deleted_messages"
+	EventCallbackQuery       EventKind = "callback_query"
+	EventContactShared       EventKind = "contact_shared"
+	EventBlocked             EventKind = "blocked"
+	EventUnblocked           EventKind = "unblocked"
+	EventBusinessConnection  EventKind = "business_connection"
+	EventReaction            EventKind = "reaction"
+	EventUnsupportedReaction EventKind = "unsupported_reaction"
+	EventUnknown             EventKind = "unknown"
 )
 
 type Attachment struct {
@@ -246,6 +250,8 @@ type Event struct {
 	CallbackData    string
 
 	DeletedMessageIDs []int64
+
+	ReactionEmoji string
 
 	Connection *BusinessConnection
 
@@ -343,6 +349,9 @@ func NormalizeUpdate(accountID string, u *Update, raw json.RawMessage) *Event {
 			ev.ChatType = ChatTypePrivate
 		}
 		return ev
+
+	case u.MessageReaction != nil:
+		return reactionEvent(base, u.MessageReaction, raw)
 
 	case u.MyChatMember != nil:
 		m := u.MyChatMember
@@ -524,4 +533,23 @@ func unixToTime(sec int64) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(sec, 0).UTC()
+}
+
+func reactionEvent(base func(EventKind, string) *Event, r *MessageReactionUpdated, raw json.RawMessage) *Event {
+	emoji, representable := r.ShownEmoji()
+	kind := EventReaction
+	if !representable {
+		kind = EventUnsupportedReaction
+	}
+	ev := base(kind, "reaction")
+	ev.ChatID = r.Chat.ID
+	ev.ChatType = r.Chat.Type
+	ev.MessageID = r.MessageID
+	ev.From = r.User
+	ev.Timestamp = unixToTime(r.Date)
+	ev.ReactionEmoji = emoji
+	if !representable {
+		ev.Raw = raw
+	}
+	return ev
 }

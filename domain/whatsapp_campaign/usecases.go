@@ -16,6 +16,7 @@ type CreateCampaignUseCase interface {
 
 type UpdateCampaignUseCase interface {
 	Execute(ctx context.Context, campaignID string, campaign *Campaign) (*Campaign, error)
+	SetArchived(ctx context.Context, campaignID string, archived bool) error
 }
 
 type AssignDepartmentUseCase interface {

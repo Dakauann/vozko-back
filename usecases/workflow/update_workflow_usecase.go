@@ -19,12 +19,15 @@ func (uc *updateWorkflowUseCase) SetModelCatalog(catalog ModelCatalog) {
 	uc.modelCatalog = catalog
 }
 
-func (uc *updateWorkflowUseCase) Execute(ctx context.Context, workflowID string, input *workflow.Workflow) (*workflow.Workflow, error) {
+func (uc *updateWorkflowUseCase) Execute(ctx context.Context, workflowID string, input *workflow.Workflow, revision int) (*workflow.Workflow, error) {
 	if workflowID == "" {
 		return nil, workflow.ErrWorkflowNotFound
 	}
 	if input == nil {
 		return nil, workflow.ErrNameRequired
+	}
+	if err := workflow.RequireDraftRevision(revision); err != nil {
+		return nil, err
 	}
 
 	existing, err := uc.repo.FindByID(workflowID)
@@ -35,10 +38,6 @@ func (uc *updateWorkflowUseCase) Execute(ctx context.Context, workflowID string,
 		return nil, workflow.ErrWorkflowNotFound
 	}
 
-	if existing.Status != workflow.WorkflowStatusDraft {
-		existing.Status = workflow.WorkflowStatusDraft
-	}
-
 	existing.Name = input.Name
 	existing.Description = input.Description
 
@@ -47,7 +46,7 @@ func (uc *updateWorkflowUseCase) Execute(ctx context.Context, workflowID string,
 	}
 	existing.TriggerType = ""
 	existing.TriggerConfig = nil
-	existing.Graph = input.Graph
+	existing.Graph = workflow.RestoreWithheldPins(input.Graph, existing.Graph)
 
 	existing.Normalize()
 	if err := existing.Validate(); err != nil {
@@ -57,11 +56,9 @@ func (uc *updateWorkflowUseCase) Execute(ctx context.Context, workflowID string,
 		return nil, err
 	}
 
-	existing.Version++
-
-	if err := uc.repo.Update(existing); err != nil {
+	if _, err := uc.repo.SaveDraft(existing, revision); err != nil {
 		return nil, err
 	}
 
-	return uc.repo.FindByID(workflowID)
+	return findWithPublication(uc.repo, workflowID)
 }

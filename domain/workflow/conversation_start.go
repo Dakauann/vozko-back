@@ -1,16 +1,33 @@
 package workflow
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func (w *Workflow) StartsConversationsIn(workspaceID string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
-	switch {
-	case w == nil || workspaceID == "" || w.WorkspaceID != workspaceID:
+	if w == nil || workspaceID == "" || w.WorkspaceID != workspaceID {
 		return ErrWorkflowNotFound
-	case w.Status != WorkflowStatusActive:
+	}
+	switch WorkflowBlockReason(w) {
+	case EntryBlockedNotPublished:
+		return fmt.Errorf("%w: workflow %s", ErrWorkflowNotPublished, w.ID)
+	case EntryBlockedPaused:
 		return ErrWorkflowNotActive
-	case w.Type == WorkflowTypeVoice:
+	}
+	if w.Type == WorkflowTypeVoice {
 		return ErrInvalidWorkflowType
 	}
 	return nil
+}
+
+func (w *Workflow) CallableByAgentIn(workspaceID string) ([]AgentCallInput, error) {
+	if err := w.StartsConversationsIn(workspaceID); err != nil {
+		return nil, err
+	}
+	if w.Graph.TriggerNodeByType(TriggerAgentCall) == nil {
+		return nil, fmt.Errorf("%w: %s", ErrTriggerNotInWorkflow, TriggerAgentCall)
+	}
+	return w.Graph.AgentCallInputs()
 }

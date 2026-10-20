@@ -25,7 +25,7 @@
     <tr>
         <td class="vx-muted vx-rule" style="padding-top:16px; border-top:1px solid #dce1e5; font-size:12px; line-height:18px; color:#58626a;">
             {{if .SentAt}}Enviada em {{.SentAt}} (horário de Brasília){{end}}{{if and .SentAt .WorkspaceName}} &middot; {{end}}{{if .WorkspaceName}}Área de trabalho {{.WorkspaceName}}{{end}}{{if or .SentAt .WorkspaceName}}<br>{{end}}
-            Esta notificação também está na central de notificações da {{.Brand.Name}}.
+            Esta notificação também está na central de notificações {{.Brand.Portuguese.OfBrand}}.
         </td>
     </tr>
 </table>

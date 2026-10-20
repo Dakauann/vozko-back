@@ -16,7 +16,7 @@ type DatasetResponse struct {
 }
 
 // @Summary		Configuração de conversões
-// @Description	Para onde o Vozko envia os eventos do CRM (negócio criado vira LeadSubmitted, negócio ganho vira Purchase): conjunto de dados do WhatsApp ou pixel.
+// @Description	Para onde a plataforma envia os eventos do CRM (negócio criado vira LeadSubmitted, negócio ganho vira Purchase): conjunto de dados do WhatsApp ou pixel.
 // @Tags			Anúncios
 // @Produce		json
 // @Success		200	{object}	advertising.ConversionSettings

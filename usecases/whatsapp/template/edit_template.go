@@ -32,6 +32,7 @@ type EditTemplateDeps struct {
 	Storage   StorageURLs
 	Sync      template.SyncTemplateUseCase
 	Media     template.SetTemplateHeaderMediaUseCase
+	Forms     FlowPublications
 	Now       func() time.Time
 }
 
@@ -58,6 +59,9 @@ func (uc *EditTemplate) EditContent(ctx context.Context, in template.EditContent
 		return nil, fmt.Errorf("edits of template %s: %w", tmpl.ID, err)
 	}
 	if err := template.CheckEdit(tmpl, in.Edit, previous, now); err != nil {
+		return nil, err
+	}
+	if err := CheckFormPublished(ctx, uc.d.Forms, in.WorkspaceID, tmpl.WABAId, &template.Template{Components: in.Edit.Components}); err != nil {
 		return nil, err
 	}
 	busy, err := uc.d.Campaigns.BusyWithTemplate(tmpl.ID, now)

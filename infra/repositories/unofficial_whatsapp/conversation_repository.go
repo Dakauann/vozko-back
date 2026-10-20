@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	uw "vozko/domain/unofficial_whatsapp"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 	conversation_repository "vozko/infra/repositories/conversation"
 )
@@ -90,6 +91,18 @@ func (r *conversationRepository) FindByID(ctx context.Context, id string) (*uw.C
 		return nil, err
 	}
 	return toConversationDomain(&record), nil
+}
+
+func (r *conversationRepository) FindByIDs(ctx context.Context, ids []string) ([]*uw.Conversation, error) {
+	records, err := database.FindByIDs[schema.UnofficialWhatsAppConversation](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*uw.Conversation, 0, len(records))
+	for i := range records {
+		out = append(out, toConversationDomain(&records[i]))
+	}
+	return out, nil
 }
 
 func (r *conversationRepository) FindByChatID(ctx context.Context, instanceID, chatID string) (*uw.Conversation, error) {

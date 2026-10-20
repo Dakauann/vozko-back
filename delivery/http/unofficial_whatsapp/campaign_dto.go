@@ -185,9 +185,11 @@ type campaignDTO struct {
 	ScheduledStart *time.Time `json:"scheduledStart,omitempty"`
 	Archived       bool       `json:"archived"`
 
-	Metrics   *campaign.Metrics `json:"metrics,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
-	UpdatedAt time.Time         `json:"updatedAt"`
+	Metrics     *campaign.Metrics    `json:"metrics,omitempty"`
+	TargetNames []string             `json:"targetNames,omitempty"`
+	Estimate    *campaignEstimateDTO `json:"estimate,omitempty"`
+	CreatedAt   time.Time            `json:"createdAt"`
+	UpdatedAt   time.Time            `json:"updatedAt"`
 }
 
 func campaignToDTO(c *uwc.Campaign) campaignDTO {
@@ -220,6 +222,7 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 		StatusReason:         c.StatusReason,
 		Archived:             c.Archived,
 		Metrics:              c.Metrics,
+		TargetNames:          c.TargetNames,
 		CreatedAt:            c.CreatedAt,
 		UpdatedAt:            c.UpdatedAt,
 	}
@@ -230,6 +233,10 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 	if !c.ScheduledStart.IsZero() {
 		start := c.ScheduledStart
 		dto.ScheduledStart = &start
+	}
+	if c.Estimate != nil {
+		estimate := estimateToDTO(*c.Estimate)
+		dto.Estimate = &estimate
 	}
 	return dto
 }
@@ -242,6 +249,9 @@ type campaignEntryDTO struct {
 	Name       string `json:"name,omitempty"`
 	JID        string `json:"jid,omitempty"`
 	IsGroup    bool   `json:"isGroup"`
+
+	SenderInstanceID string `json:"senderInstanceId,omitempty"`
+	SenderLabel      string `json:"senderLabel,omitempty"`
 
 	ConversationID string `json:"conversationId,omitempty"`
 
@@ -274,6 +284,8 @@ func entryToDTO(e *uwc.EntryWithLead) campaignEntryDTO {
 		Name:               e.Entry.Name,
 		JID:                e.Entry.JID,
 		IsGroup:            e.Entry.TargetsGroup(),
+		SenderInstanceID:   e.Entry.SenderInstanceID,
+		SenderLabel:        e.Entry.SenderLabel,
 		ConversationID:     e.Entry.ConversationID,
 		Status:             string(e.Entry.Status),
 		VariantIndex:       e.Entry.VariantIndex,

@@ -27,19 +27,15 @@ func ExtractedTextMetadata(extractedText string) []byte {
 }
 
 func (m *Message) ExtractedText() string {
-	if m == nil || len(m.Metadata) == 0 {
+	if m == nil {
 		return ""
 	}
-	var meta map[string]string
-	if err := json.Unmarshal(m.Metadata, &meta); err != nil {
-		return ""
-	}
-	return meta[ExtractedTextMetadataKey]
+	return metadataString(metadataFields(m.Metadata), ExtractedTextMetadataKey)
 }
 
 func (m *Message) PromptContent() string {
 	if m == nil {
 		return ""
 	}
-	return PromptContent(m.Text, m.ExtractedText())
+	return PromptContent(m.ReadableText(), m.ExtractedText())
 }

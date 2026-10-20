@@ -17,13 +17,15 @@ const (
 	MessageChannelUnofficialWhatsApp MessageChannel = "unofficial_whatsapp"
 	MessageChannelFacebook           MessageChannel = "facebook"
 	MessageChannelWebchat            MessageChannel = "webchat"
+	MessageChannelMercadoLivre       MessageChannel = "mercadolivre"
+	MessageChannelTikTok             MessageChannel = "tiktok"
 )
 
 func (c MessageChannel) Valid() bool {
 	switch c {
 	case MessageChannelWhatsApp,
 		MessageChannelInstagram, MessageChannelTelegram, MessageChannelUnofficialWhatsApp,
-		MessageChannelFacebook, MessageChannelWebchat:
+		MessageChannelFacebook, MessageChannelWebchat, MessageChannelMercadoLivre, MessageChannelTikTok:
 		return true
 	}
 	return false
@@ -251,14 +253,18 @@ type Message struct {
 
 	ReplyToMessageID *string `json:"replyToMessageId,omitempty" bson:"replyToMessageId,omitempty"`
 
-	DeliveryStatus DeliveryStatus   `json:"deliveryStatus,omitempty" bson:"deliveryStatus,omitempty"`
-	SenderName     string           `json:"senderName,omitempty"`
-	SenderAvatar   string           `json:"senderAvatar,omitempty"`
-	SentVia        MessageTransport `json:"sentVia,omitempty"`
-	SentBy         SentBy           `json:"sentBy"`
-	Metadata       json.RawMessage  `json:"metadata,omitempty"`
-	CreatedAt      time.Time        `json:"createdAt"`
-	UpdatedAt      time.Time        `json:"updatedAt"`
+	DeliveryStatus  DeliveryStatus   `json:"deliveryStatus,omitempty" bson:"deliveryStatus,omitempty"`
+	SenderName      string           `json:"senderName,omitempty"`
+	SenderAvatar    string           `json:"senderAvatar,omitempty"`
+	SentVia         MessageTransport `json:"sentVia,omitempty"`
+	SentBy          SentBy           `json:"sentBy"`
+	ClientRequestID string           `json:"client_request_id,omitempty"`
+	Metadata        json.RawMessage  `json:"metadata,omitempty"`
+	Transcript      string           `json:"transcript,omitempty"`
+	EditedAt        *time.Time       `json:"edited_at,omitempty"`
+	RetractedAt     *time.Time       `json:"retracted_at,omitempty"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
 }
 
 func (m *Message) ResolvedDirection() MessageHistoryDirection {
@@ -349,9 +355,29 @@ func (m *Message) Transcribable() bool {
 	if m.MessageType.IsCallEvent() {
 		return false
 	}
-	return strings.TrimSpace(m.Text) != ""
+	return strings.TrimSpace(m.ReadableText()) != ""
 }
 
 func (m *Message) HasMedia() bool {
 	return m.MediaID != nil && *m.MediaID != ""
+}
+
+func (m *Message) ProviderMessageID() string {
+	if m == nil {
+		return ""
+	}
+	if m.ExternalMessageID != nil && strings.TrimSpace(*m.ExternalMessageID) != "" {
+		return strings.TrimSpace(*m.ExternalMessageID)
+	}
+	if m.WhatsAppMessageID != nil && strings.TrimSpace(*m.WhatsAppMessageID) != "" {
+		return strings.TrimSpace(*m.WhatsAppMessageID)
+	}
+	return ""
+}
+
+func (m *Message) SenderUserID() string {
+	if m == nil || m.SentBy.Kind() != SenderHuman || !m.SentBy.Valid() {
+		return ""
+	}
+	return m.SentBy.ID()
 }

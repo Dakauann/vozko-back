@@ -99,17 +99,14 @@ func TestFirstMessageTriggerIsSkippedWhenCountFails(t *testing.T) {
 	}
 }
 
-func TestConversationOverrideSilencesWorkflowsAndAnalysisButAgentDecides(t *testing.T) {
+func TestConversationOverrideSilencesWorkflowsAnalysisAndTheAgent(t *testing.T) {
 	auto, ev, rep, sch := newAutomationUnderTest(1)
 	off := false
 	in := automationInput()
 	in.ConversationOverride = &off
 	auto.Dispatch(context.Background(), in)
-	if len(ev.events) != 0 || len(sch.scheduled) != 0 {
-		t.Fatalf("workflows=%d analysis=%d, want none", len(ev.events), len(sch.scheduled))
-	}
-	if len(rep.reqs) != 1 || rep.reqs[0].AutomationEnabled == nil || *rep.reqs[0].AutomationEnabled {
-		t.Fatalf("agent must receive the override to decide: %+v", rep.reqs)
+	if len(ev.events) != 0 || len(sch.scheduled) != 0 || len(rep.reqs) != 0 {
+		t.Fatalf("workflows=%d analysis=%d agent=%d, want none: automation off means no automated consumer", len(ev.events), len(sch.scheduled), len(rep.reqs))
 	}
 }
 
@@ -138,7 +135,7 @@ func TestAgentReplyCarriesTheChannelDisclosure(t *testing.T) {
 	in := automationInput()
 	in.Config.Disclosure = "Assistente virtual"
 
-	auto.ReplyWithAgent(context.Background(), in)
+	auto.Consume(context.Background(), in)
 
 	if len(rep.reqs) != 1 || rep.reqs[0].Disclosure != "Assistente virtual" {
 		t.Fatalf("agent requests = %+v", rep.reqs)

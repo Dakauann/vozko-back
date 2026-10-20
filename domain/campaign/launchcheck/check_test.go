@@ -58,6 +58,7 @@ func TestBlocks(t *testing.T) {
 		CodeTemplateNotReady: func(s *Snapshot) { s.Template.Ready = false },
 		CodePhoneUnavailable: func(s *Snapshot) { s.Phone.Status = businessphone.StatusRestricted },
 		CodeMonthlyCapFull:   func(s *Snapshot) { s.CapRoom = room(0) },
+		CodeFormNotSendable:  func(s *Snapshot) { s.Template.FormNotSendable = true },
 	}
 	for code, mutate := range cases {
 		t.Run(string(code), func(t *testing.T) {

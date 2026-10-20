@@ -43,7 +43,7 @@ func newCenterRig(t *testing.T, directory fixedDirectory, granted grantedPermiss
 		pusher: &recordingPusher{}, emails: &recordingNotifier{}, clock: newClock(),
 	}
 	var err error
-	rig.publisher, err = NewPublisher(PublisherDeps{Outbox: rig.store, Queue: rig.queue, Images: rig.images, Now: rig.clock.now})
+	rig.publisher, err = NewPublisher(PublisherDeps{Outbox: rig.store, Queue: rig.queue, Images: rig.images, Episodes: newMemoryEpisodes(), Now: rig.clock.now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestPublishRefusesInvalidDraftsAndForeignImagesWithoutStoring(t *testing.T)
 func TestPublishingTheSameDedupKeyTwiceReturnsTheFirstWithoutQueueingAgain(t *testing.T) {
 	rig := newCenterRig(t, teamDirectory(), nil)
 	d := campaignDraft()
-	d.DedupKey, d.DedupWindow = "smart_campaign_hold:c-1:spam", 24*time.Hour
+	d.DedupKey = "monthly_invoice:inv-1"
 	first, _ := rig.publisher.Publish(context.Background(), d)
 	second, err := rig.publisher.Publish(context.Background(), d)
 	if err != nil || second.ID != first.ID {
@@ -366,7 +366,7 @@ func TestRetentionPurgesOldNotificationsInBatchesUntilDone(t *testing.T) {
 	}
 	_, _, _ = store.Create(context.Background(), notification.Record{Draft: notification.Draft{WorkspaceID: "ws-1"}, CreatedAt: clock.at})
 
-	retention := NewRetention(store, 2, clock.now)
+	retention := NewRetention(store, newMemoryEpisodes(), 2, clock.now)
 	if err := retention.Purge(context.Background()); err != nil {
 		t.Fatalf("purge: %v", err)
 	}

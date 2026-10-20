@@ -20,7 +20,13 @@ import (
 	conversation_usecase "vozko/usecases/conversation"
 )
 
-type fakeWidgets struct{ byID map[string]*wcdomain.Widget }
+type fakeWidgets struct {
+	byID map[string]*wcdomain.Widget
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
+}
 
 func (f *fakeWidgets) Create(_ context.Context, w *wcdomain.Widget) error {
 	w.ID = uuid.NewString()
@@ -39,10 +45,24 @@ func (f *fakeWidgets) FindByID(_ context.Context, ws, id string) (*wcdomain.Widg
 	return nil, wcdomain.ErrWidgetNotFound
 }
 func (f *fakeWidgets) FindByIDUnscoped(_ context.Context, id string) (*wcdomain.Widget, error) {
+	f.findByIDCalls++
 	if w, ok := f.byID[id]; ok {
 		return w, nil
 	}
 	return nil, wcdomain.ErrWidgetNotFound
+}
+func (f *fakeWidgets) FindByIDsUnscoped(_ context.Context, ids []string) ([]*wcdomain.Widget, error) {
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*wcdomain.Widget, 0, len(ids))
+	for _, id := range ids {
+		if w, ok := f.byID[id]; ok {
+			out = append(out, w)
+		}
+	}
+	return out, nil
 }
 func (f *fakeWidgets) FindByPublicKey(_ context.Context, key string) (*wcdomain.Widget, error) {
 	for _, w := range f.byID {
@@ -57,7 +77,13 @@ func (f *fakeWidgets) ListByWorkspace(context.Context, wcdomain.ListWidgetsInput
 }
 func (f *fakeWidgets) Delete(context.Context, string, string) error { return nil }
 
-type fakeVisitors struct{ byID map[string]*wcdomain.Visitor }
+type fakeVisitors struct {
+	byID map[string]*wcdomain.Visitor
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
+}
 
 func (f *fakeVisitors) Create(_ context.Context, v *wcdomain.Visitor) error {
 	v.ID = uuid.NewString()
@@ -65,13 +91,24 @@ func (f *fakeVisitors) Create(_ context.Context, v *wcdomain.Visitor) error {
 	return nil
 }
 func (f *fakeVisitors) FindByID(_ context.Context, id string) (*wcdomain.Visitor, error) {
+	f.findByIDCalls++
 	if v, ok := f.byID[id]; ok {
 		return v, nil
 	}
 	return nil, wcdomain.ErrVisitorNotFound
 }
-func (f *fakeVisitors) FindByIDs(context.Context, []string) ([]*wcdomain.Visitor, error) {
-	return nil, nil
+func (f *fakeVisitors) FindByIDs(_ context.Context, ids []string) ([]*wcdomain.Visitor, error) {
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*wcdomain.Visitor, 0, len(ids))
+	for _, id := range ids {
+		if v, ok := f.byID[id]; ok {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 func (f *fakeVisitors) FindByExternalID(_ context.Context, widgetID, externalID string) (*wcdomain.Visitor, error) {
 	for _, v := range f.byID {
@@ -99,6 +136,10 @@ func (f *fakeVisitors) SetBlocked(_ context.Context, id string, blocked bool, _ 
 
 type fakeConversations struct {
 	byID map[string]*wcdomain.Conversation
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
 }
 
 func (f *fakeConversations) FindOrCreate(_ context.Context, in wcdomain.FindOrCreateConversationInput) (*wcdomain.Conversation, error) {
@@ -112,10 +153,24 @@ func (f *fakeConversations) FindOrCreate(_ context.Context, in wcdomain.FindOrCr
 	return c, nil
 }
 func (f *fakeConversations) FindByID(_ context.Context, id string) (*wcdomain.Conversation, error) {
+	f.findByIDCalls++
 	if c, ok := f.byID[id]; ok {
 		return c, nil
 	}
 	return nil, wcdomain.ErrConversationNotFound
+}
+func (f *fakeConversations) FindByIDs(_ context.Context, ids []string) ([]*wcdomain.Conversation, error) {
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*wcdomain.Conversation, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := f.byID[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 func (f *fakeConversations) FindByVisitor(_ context.Context, widgetID, visitorID string) (*wcdomain.Conversation, error) {
 	for _, c := range f.byID {
@@ -243,10 +298,22 @@ func (f *fakeLeads) FindOrCreate(_, number string, _ lead.LeadUpdate) (*lead.Lea
 	return &lead.Lead{ID: "lead-" + number}, true, nil
 }
 
-type fakeMessages struct{ rows []*conversation.Message }
+type fakeMessages struct {
+	rows  []*conversation.Message
+	older []*conversation.Message
+}
 
 func (f fakeMessages) ListByEntryPaginated(conversation.ListMessagesInput) ([]*conversation.Message, error) {
 	return f.rows, nil
+}
+
+func (f fakeMessages) GetByID(id string) (*conversation.Message, error) {
+	for _, m := range append(append([]*conversation.Message{}, f.rows...), f.older...) {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return nil, conversation.ErrMessageNotFound
 }
 
 type noPresenter struct{}

@@ -9,10 +9,18 @@ import (
 	ads "vozko/domain/advertising"
 )
 
-type recordedAlerts struct{ sent []ads.Funds }
+type recordedAlerts struct {
+	sent      []ads.Funds
+	recovered []string
+}
 
 func (r *recordedAlerts) Alert(_ context.Context, _ *ads.AdAccount, funds ads.Funds) error {
 	r.sent = append(r.sent, funds)
+	return nil
+}
+
+func (r *recordedAlerts) Recovered(_ context.Context, account *ads.AdAccount) error {
+	r.recovered = append(r.recovered, account.ID)
 	return nil
 }
 
@@ -56,6 +64,9 @@ func TestAHealthyAccountIsStoredWithoutAnAlert(t *testing.T) {
 	if w.accounts.byID["acc-1"].FundsLevel != ads.FundsOK || len(alerts.sent) != 0 {
 		t.Fatalf("stored %+v alerts %+v", w.accounts.byID["acc-1"], alerts.sent)
 	}
+	if len(alerts.recovered) != 1 {
+		t.Fatalf("a healthy account resolves any open funds alert, got %v", alerts.recovered)
+	}
 }
 
 func TestUnreadableBillingLeavesTheFundsUnknownWithoutFailingTheSync(t *testing.T) {
@@ -69,6 +80,9 @@ func TestUnreadableBillingLeavesTheFundsUnknownWithoutFailingTheSync(t *testing.
 	}
 	if len(alerts.sent) != 0 {
 		t.Fatalf("unknown funds are shown, not emailed: %+v", alerts.sent)
+	}
+	if len(alerts.recovered) != 0 {
+		t.Fatal("unread funds are not a recovery: the alert stays open until the funds are seen")
 	}
 }
 
@@ -117,5 +131,8 @@ func TestTheWatchSeesATopUpAndStopsAlerting(t *testing.T) {
 	}
 	if len(alerts.sent) != 0 {
 		t.Fatalf("a funded account must not be alerted: %+v", alerts.sent)
+	}
+	if len(alerts.recovered) != 1 || alerts.recovered[0] != "acc-1" {
+		t.Fatalf("the top up closes the out of funds episode, got %v", alerts.recovered)
 	}
 }

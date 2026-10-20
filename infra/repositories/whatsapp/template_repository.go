@@ -333,12 +333,15 @@ func mapComponentsToSchema(components []template.TemplateComponent) schema.Whats
 		}
 		for _, b := range c.Buttons {
 			result[i].Buttons = append(result[i].Buttons, schema.WhatsAppTemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				Example:        b.Example,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID,
+				FlowAction:     b.FlowAction,
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 		if c.Example != nil {
@@ -377,12 +380,15 @@ func mapToDomain(record *schema.WhatsAppTemplate) *template.Template {
 		}
 		for _, b := range c.Buttons {
 			components[i].Buttons = append(components[i].Buttons, template.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				Example:        b.Example,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID,
+				FlowAction:     b.FlowAction,
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 		if c.Example != nil {

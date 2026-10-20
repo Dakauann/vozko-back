@@ -133,7 +133,7 @@ func (t *listAdAudiencesTool) Meta() copilot.Meta { return adsMeta(workspace.Act
 
 func (t *listAdAudiencesTool) Definition() tools.Definition {
 	return copilottools.Definition("list_ad_audiences",
-		"Lista os públicos personalizados e semelhantes da conta na Meta (tamanho aproximado e se já pode ser usado) e os públicos salvos do Vozko. "+
+		"Lista os públicos personalizados e semelhantes da conta na Meta (tamanho aproximado e se já pode ser usado) e os públicos salvos da plataforma. "+
 			"O audience_id de cada público é o que create_ad e save_ad_draft aceitam em custom_audiences. Diz também se a conta aceitou os termos "+
 			"de públicos personalizados da Meta (terms_accepted); sem eles nenhum público de clientes pode ser criado.",
 		adAccountArgs{})
@@ -221,7 +221,7 @@ func (t *createCustomerListAudienceTool) AlsoRequires() []workspace.PermissionEn
 
 func (t *createCustomerListAudienceTool) Definition() tools.Definition {
 	return copilottools.Definition("create_customer_list_audience",
-		"Cria na Meta um público personalizado com os contatos do CRM, filtrados por etapa, etiqueta e datas. Os telefones e nomes saem do Vozko "+
+		"Cria na Meta um público personalizado com os contatos do CRM, filtrados por etapa, etiqueta e datas. Os telefones e nomes saem da plataforma "+
 			"criptografados (hash), como a Meta exige; nenhum dado pessoal aparece aqui, só quantos contatos entram. Exige que a conta tenha aceitado "+
 			"os termos de públicos personalizados da Meta: se não aceitou, chame ad_account_readiness. A Meta leva algumas horas para calcular o "+
 			"tamanho. Só depois da aprovação do usuário.",
@@ -391,7 +391,7 @@ func (t *createSavedAudienceTool) Meta() copilot.Meta { return adsMeta(workspace
 
 func (t *createSavedAudienceTool) Definition() tools.Definition {
 	return copilottools.Definition("create_saved_audience",
-		"Guarda no Vozko um público pronto (lugares, idade, gênero, interesses e públicos personalizados) para reaproveitar ao criar anúncios. "+
+		"Guarda na plataforma um público pronto (lugares, idade, gênero, interesses e públicos personalizados) para reaproveitar ao criar anúncios. "+
 			"Não muda nada na Meta. Só depois da aprovação do usuário.",
 		savedAudienceArgs{})
 }
@@ -483,7 +483,7 @@ func (t *createSavedAudienceTool) Execute(ctx context.Context, cc copilot.Contex
 type deleteAdAudienceArgs struct {
 	AdAccountID     string `json:"ad_account_id" req:"true" desc:"ad_account_id de list_ad_accounts (também aceita o id da Meta ou o nome exato da conta)"`
 	AudienceID      string `json:"audience_id" desc:"audience_id de list_ad_audiences, para apagar um público da Meta"`
-	SavedAudienceID string `json:"saved_audience_id" id:"true" desc:"saved_audience_id de list_ad_audiences, para apagar um público salvo do Vozko"`
+	SavedAudienceID string `json:"saved_audience_id" id:"true" desc:"saved_audience_id de list_ad_audiences, para apagar um público salvo da plataforma"`
 }
 
 type audienceRemoval struct {
@@ -499,7 +499,7 @@ func (t *deleteAdAudienceTool) Meta() copilot.Meta { return adsMeta(workspace.Ac
 
 func (t *deleteAdAudienceTool) Definition() tools.Definition {
 	return copilottools.Definition("delete_ad_audience",
-		"Apaga um público personalizado ou semelhante da Meta (audience_id) ou um público salvo do Vozko (saved_audience_id), um por vez. "+
+		"Apaga um público personalizado ou semelhante da Meta (audience_id) ou um público salvo da plataforma (saved_audience_id), um por vez. "+
 			"Anúncios que usam o público da Meta deixam de alcançá-lo. Só depois da aprovação do usuário.",
 		deleteAdAudienceArgs{})
 }
@@ -548,7 +548,7 @@ func (t *deleteAdAudienceTool) Describe(ctx context.Context, cc copilot.Context,
 	}
 	where := "público da Meta"
 	if p.savedID != "" {
-		where = "público salvo do Vozko"
+		where = "público salvo da plataforma"
 	}
 	return []copilot.Field{{Key: "audience", Value: p.name}, {Key: "kind", Value: where}}
 }

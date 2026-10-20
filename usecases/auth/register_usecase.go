@@ -188,7 +188,7 @@ func (uc *registerUseCase) linkExistingCustomer(userID, cpf, cnpj string) {
 }
 
 func (uc *registerUseCase) sendWelcomeEmail(email string) {
-	subject := "Bem-vindo à " + brand.Active().Name + "!"
+	subject := "Bem-vindo " + brand.Active().Portuguese().ToBrand + "!"
 	_ = uc.emailService.SendTemplate(email, subject, "welcome_email.html", map[string]interface{}{
 		"Email": email,
 	})

@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,6 +12,13 @@ const (
 	interactiveButtonsKey  = "buttons"
 	interactiveSectionsKey = "sections"
 )
+
+type interactiveButtonJSON struct {
+	Type     conversation.ButtonType `json:"Type"`
+	ID       string                  `json:"ID"`
+	Title    string                  `json:"Title"`
+	CopyCode string                  `json:"CopyCode"`
+}
 
 type interactiveListRowJSON struct {
 	ID          string `json:"id"`
@@ -34,17 +40,21 @@ func InteractivePromptStyle(config map[string]interface{}) string {
 }
 
 func InteractiveButtons(config map[string]interface{}) ([]conversation.InteractiveButton, error) {
-	var buttons []conversation.InteractiveButton
-	if err := decodeInteractiveOptions(config, interactiveButtonsKey, &buttons); err != nil {
+	var parsed []interactiveButtonJSON
+	if err := decodeStructuredConfig(config, interactiveButtonsKey, &parsed); err != nil {
 		return nil, fmt.Errorf("botões inválidos: %w", err)
+	}
+	buttons := make([]conversation.InteractiveButton, 0, len(parsed))
+	for _, b := range parsed {
+		buttons = append(buttons, conversation.InteractiveButton{Type: b.Type, ID: b.ID, Title: b.Title, CopyCode: b.CopyCode})
 	}
 	return buttons, nil
 }
 
 func InteractiveListSections(config map[string]interface{}) ([]conversation.ListSection, error) {
-	parsed, err := decodeInteractiveListSections(config)
-	if err != nil {
-		return nil, err
+	var parsed []interactiveListSectionJSON
+	if err := decodeStructuredConfig(config, interactiveSectionsKey, &parsed); err != nil {
+		return nil, fmt.Errorf("opções da lista inválidas: %w", err)
 	}
 	sections := make([]conversation.ListSection, 0, len(parsed))
 	for _, s := range parsed {
@@ -57,70 +67,36 @@ func InteractiveListSections(config map[string]interface{}) ([]conversation.List
 	return sections, nil
 }
 
-func decodeInteractiveListSections(config map[string]interface{}) ([]interactiveListSectionJSON, error) {
-	var sections []interactiveListSectionJSON
-	if err := decodeInteractiveOptions(config, interactiveSectionsKey, &sections); err != nil {
-		return nil, fmt.Errorf("opções da lista inválidas: %w", err)
-	}
-	return sections, nil
-}
-
-func decodeInteractiveOptions(config map[string]interface{}, key string, target interface{}) error {
-	raw, err := interactiveOptionsJSON(config[key])
-	if err != nil || raw == nil {
-		return err
-	}
-	return json.Unmarshal(raw, target)
-}
-
-func interactiveOptionsJSON(value interface{}) ([]byte, error) {
-	switch v := value.(type) {
-	case nil:
-		return nil, nil
-	case string:
-		trimmed := strings.TrimSpace(v)
-		if trimmed == "" {
-			return nil, nil
+func InteractiveOptionHandles(config map[string]interface{}) []HandleDefinition {
+	handles := make([]HandleDefinition, 0, 4)
+	seen := make(map[string]struct{})
+	add := func(id, label string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return
 		}
-		return []byte(trimmed), nil
-	case []interface{}:
-		return json.Marshal(v)
-	default:
-		return nil, ErrInteractiveOptionsNotAList
-	}
-}
-
-func (w *Workflow) normalizeInteractivePromptConfigs() {
-	for i := range w.Graph.Nodes {
-		node := &w.Graph.Nodes[i]
-		if node.Type.IsInteractivePrompt() {
-			encodeImportedInteractiveOptions(node.Config)
+		if _, dup := seen[id]; dup {
+			return
 		}
+		seen[id] = struct{}{}
+		handles = append(handles, HandleDefinition{ID: id, Label: label})
 	}
-}
 
-func encodeImportedInteractiveOptions(config map[string]interface{}) {
-	if isJSONList(config[interactiveButtonsKey]) {
-		if buttons, err := InteractiveButtons(config); err == nil {
-			setEncodedOptions(config, interactiveButtonsKey, buttons)
+	if InteractivePromptStyle(config) == channel.InteractiveStyleList {
+		sections, _ := InteractiveListSections(config)
+		for _, section := range sections {
+			for _, row := range section.Rows {
+				add(row.ID, row.Title)
+			}
 		}
+		return handles
 	}
-	if isJSONList(config[interactiveSectionsKey]) {
-		if sections, err := decodeInteractiveListSections(config); err == nil {
-			setEncodedOptions(config, interactiveSectionsKey, sections)
+	buttons, _ := InteractiveButtons(config)
+	for _, b := range buttons {
+		if b.Type == conversation.ButtonTypeCopyCode {
+			continue
 		}
+		add(b.ID, b.Title)
 	}
-}
-
-func isJSONList(value interface{}) bool {
-	_, ok := value.([]interface{})
-	return ok
-}
-
-func setEncodedOptions(config map[string]interface{}, key string, options interface{}) {
-	encoded, err := json.Marshal(options)
-	if err != nil {
-		return
-	}
-	config[key] = string(encoded)
+	return handles
 }

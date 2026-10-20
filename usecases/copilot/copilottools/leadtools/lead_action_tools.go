@@ -548,7 +548,7 @@ func outcomeData(o leadaction_usecase.Outcome) map[string]interface{} {
 	case o.Report != nil:
 		return map[string]interface{}{
 			"report_id": o.Report.ID, "status": string(o.Report.Status),
-			"next": "o arquivo fica pronto em Relatórios; só quem pediu pode baixar",
+			"next": copilottools.ReportQueuedNext,
 		}
 	case o.Send != nil:
 		return sendReviewData(o.Send, "para enviar, start_lead_send com channel e campaign_ids; para descartar, cancel_lead_send")

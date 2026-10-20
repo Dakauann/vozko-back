@@ -283,30 +283,12 @@ func (c *consumer) applyAISession(p crm_telemetry.AISessionPayload) error {
 		return nil
 	}
 	switch p.Op {
-	case crm_telemetry.AISessionOpEnsureOpen, crm_telemetry.AISessionOpRecordReply:
-		if p.Op == crm_telemetry.AISessionOpEnsureOpen {
-			_ = c.aiSess.EnsureOpen(aa.StartInput{
-				WorkspaceID: p.WorkspaceID,
-				EntryID:     p.EntryID,
-				EntryType:   p.EntryType,
-				AgentID:     p.AgentID,
-				Channel:     p.Channel,
-				CallID:      p.CallID,
-				CampaignID:  p.CampaignID,
-				Model:       p.Model,
-			})
-			return nil
-		}
-		c.aiSess.RecordAIReply(aa.StartInput{
-			WorkspaceID: p.WorkspaceID,
-			EntryID:     p.EntryID,
-			EntryType:   p.EntryType,
-			AgentID:     p.AgentID,
-			Channel:     p.Channel,
-			CallID:      p.CallID,
-			CampaignID:  p.CampaignID,
-			Model:       p.Model,
-		}, p.MessageID)
+	case crm_telemetry.AISessionOpEnsureOpen:
+		_ = c.aiSess.EnsureOpen(aiSessionStart(p))
+	case crm_telemetry.AISessionOpRecordReply:
+		c.aiSess.RecordAIReply(aiSessionStart(p), p.MessageID)
+	case crm_telemetry.AISessionOpRecordToolCalls:
+		c.aiSess.RecordToolCalls(aiSessionStart(p), p.ToolCalls)
 	case crm_telemetry.AISessionOpEndOpen:
 		c.aiSess.End(aa.EndRequest{
 			WorkspaceID: p.WorkspaceID,
@@ -322,4 +304,17 @@ func (c *consumer) applyAISession(p crm_telemetry.AISessionPayload) error {
 		c.aiSess.TouchInbound(p.WorkspaceID, p.EntryID, p.EntryType)
 	}
 	return nil
+}
+
+func aiSessionStart(p crm_telemetry.AISessionPayload) aa.StartInput {
+	return aa.StartInput{
+		WorkspaceID: p.WorkspaceID,
+		EntryID:     p.EntryID,
+		EntryType:   p.EntryType,
+		AgentID:     p.AgentID,
+		Channel:     p.Channel,
+		CallID:      p.CallID,
+		CampaignID:  p.CampaignID,
+		Model:       p.Model,
+	}
 }

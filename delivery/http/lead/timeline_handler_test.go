@@ -79,7 +79,7 @@ func TestTheTimelineAnswersOnePageOfItems(t *testing.T) {
 			{ID: "call:c-1", Kind: leaddomain.TimelineCall, At: at, Actor: "u-1", ActorName: "Sara", Ref: leaddomain.TimelineRef{Type: leaddomain.TimelineRefCall, ID: "provider-1"},
 				Summary: leaddomain.TimelineSummary{Direction: "outbound", Status: "completed", DurationSec: 42, AnsweredAt: &answered, Source: "sip"}},
 			{ID: "conversation:whatsapp:e-1", Kind: leaddomain.TimelineConversation, At: at.Add(-time.Hour),
-				Ref: leaddomain.TimelineRef{Type: leaddomain.TimelineRefEntry, ID: "e-1", EntryType: shared.EntryTypeWhatsApp}, Summary: leaddomain.TimelineSummary{Channel: shared.EntryTypeWhatsApp}},
+				Ref: leaddomain.TimelineRef{Type: leaddomain.TimelineRefEntry, ID: "e-1", EntryType: shared.EntryTypeWhatsApp}, Summary: leaddomain.TimelineSummary{Channel: shared.EntryTypeWhatsApp, Line: "+55 11 4000-1000"}},
 			{ID: "record:ev-1", Kind: leaddomain.TimelineRecord, At: at.Add(-2 * time.Hour), Actor: "system", Ref: leaddomain.TimelineRef{Type: leaddomain.TimelineRefEvent, ID: "ev-1"},
 				Summary: leaddomain.TimelineSummary{Event: "updated", Fields: []string{"name"}}},
 		},
@@ -108,7 +108,7 @@ func TestTheTimelineAnswersOnePageOfItems(t *testing.T) {
 		call.Summary.AnsweredAt != "2026-10-08T14:03:04Z" || call.Summary.Source != "sip" {
 		t.Fatalf("call item = %+v", call)
 	}
-	if conv := out.Items[1]; conv.Ref != (TimelineRefResponse{Type: "entry", ID: "e-1", EntryType: "whatsapp"}) || conv.Summary.Channel != "whatsapp" {
+	if conv := out.Items[1]; conv.Ref != (TimelineRefResponse{Type: "entry", ID: "e-1", EntryType: "whatsapp"}) || conv.Summary.Channel != "whatsapp" || conv.Summary.Line != "+55 11 4000-1000" {
 		t.Fatalf("conversation item = %+v", conv)
 	}
 	if record := out.Items[2]; record.Summary.Event != "updated" || len(record.Summary.Fields) != 1 || record.Summary.Fields[0] != "name" {
@@ -117,7 +117,7 @@ func TestTheTimelineAnswersOnePageOfItems(t *testing.T) {
 	var raw map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &raw)
 	if items, _ := raw["items"].([]any); len(items) == 3 {
-		if summary, _ := items[1].(map[string]any)["summary"].(map[string]any); len(summary) != 1 {
+		if summary, _ := items[1].(map[string]any)["summary"].(map[string]any); len(summary) != 2 {
 			t.Fatalf("empty summary fields must be left out: %v", summary)
 		}
 	}

@@ -21,12 +21,13 @@ func NewSendEmailExecutor(sender email_usecase.SMTPSender) workflow.NodeExecutor
 
 func (e *sendEmailExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionSendEmail,
-		Category:    workflow.NodeCategoryMessaging,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Enviar E-mail",
-		Description: "Envia um e-mail usando um servidor SMTP configurado pelo usuário.",
-		Icon:        "EnvelopeSimple",
+		Type:         workflow.NodeTypeActionSendEmail,
+		TestBehavior: workflow.NodeTestExternalCall,
+		Category:     workflow.NodeCategoryMessaging,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Enviar E-mail",
+		Description:  "Envia um e-mail usando um servidor SMTP configurado pelo usuário.",
+		Icon:         "EnvelopeSimple",
 		Guidance: workflow.NodeGuidance{
 			When: "Para enviar e-mail via SMTP.",
 		},
@@ -100,27 +101,25 @@ func (e *sendEmailExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 	config := interpolateEmailNodeConfig(ctx.Node.Config, ctx.State)
 	cfg, err := email_usecase.SMTPConfigFromMap(config)
 	if err != nil {
-		return emailFailureResult(ctx, nil, "falha", fmt.Errorf("configuração SMTP inválida: %w", err)), nil
+		return emailFailureResult(ctx, nil, outputFailure, fmt.Errorf("configuração SMTP inválida: %w", err)), nil
 	}
 	message, err := email_usecase.EmailMessageFromMap(config)
 	if err != nil {
-		return emailFailureResult(ctx, nil, "falha", fmt.Errorf("parâmetros de e-mail inválidos: %w", err)), nil
+		return emailFailureResult(ctx, nil, outputFailure, fmt.Errorf("parâmetros de e-mail inválidos: %w", err)), nil
 	}
 
 	callCtx, releaseCall := ctx.CallContext()
 	defer releaseCall()
 	result, err := e.sender.Send(callCtx, cfg, message)
 	if err != nil {
-		label := "falha"
+		label := outputFailure
 		if isSMTPTimeout(err) {
-			label = "timeout"
+			label = outputTimeout
 		}
 		log.Printf("[workflow][node:%s][run:%s] send_email error: %v", ctx.Node.ID, ctx.Run.ID, err)
 		return emailFailureResult(ctx, &message, label, err), nil
 	}
 
-	edges := outgoingEmailEdges(ctx)
-	nextID := resolveEdgeByLabel(edges, "sucesso")
 	output := map[string]interface{}{
 		"to":              result.To,
 		"cc":              result.Cc,
@@ -131,20 +130,18 @@ func (e *sendEmailExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 		"sent":            true,
 		"success":         true,
 		"next_edge":       "sucesso",
-		"next_node_id":    nextID,
 	}
-	return &workflow.NodeResult{NextNodeID: nextID, Output: output}, nil
+	routed := routeOutput(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), "sucesso")
+	output["next_node_id"] = routed.NextNodeID
+	return routed, nil
 }
 
 func emailFailureResult(ctx *workflow.NodeContext, message *email_usecase.EmailMessage, label string, err error) *workflow.NodeResult {
-	edges := outgoingEmailEdges(ctx)
-	nextID := resolveEdgeByLabel(edges, label)
 	output := map[string]interface{}{
-		"sent":         false,
-		"success":      false,
-		"error":        err.Error(),
-		"next_edge":    label,
-		"next_node_id": nextID,
+		"sent":      false,
+		"success":   false,
+		"error":     err.Error(),
+		"next_edge": label,
 	}
 	if message != nil {
 		output["to"] = message.To
@@ -152,7 +149,9 @@ func emailFailureResult(ctx *workflow.NodeContext, message *email_usecase.EmailM
 		output["bcc"] = message.Bcc
 		output["subject"] = message.Subject
 	}
-	return &workflow.NodeResult{NextNodeID: nextID, Output: output}
+	routed := routeOutput(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), label, timeoutFallback(label)...)
+	output["next_node_id"] = routed.NextNodeID
+	return routed
 }
 
 func interpolateEmailNodeConfig(config map[string]interface{}, state *workflow.RunState) map[string]interface{} {
@@ -189,13 +188,6 @@ func interpolateEmailNodeValue(value interface{}, state *workflow.RunState) inte
 	default:
 		return typed
 	}
-}
-
-func outgoingEmailEdges(ctx *workflow.NodeContext) []workflow.Edge {
-	if ctx == nil || ctx.Graph == nil || ctx.Node == nil {
-		return nil
-	}
-	return ctx.Graph.OutgoingEdges(ctx.Node.ID)
 }
 
 func isSMTPTimeout(err error) bool {

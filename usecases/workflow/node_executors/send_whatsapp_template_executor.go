@@ -2,7 +2,6 @@ package node_executors
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"strings"
 	"vozko/domain/shared"
@@ -19,12 +18,13 @@ func NewSendTemplateExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 
 func (e *sendTemplateExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionSendTemplate,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:       "Enviar Template",
-		Description: "Envia um template pré-aprovado do WhatsApp para o contato. Selecione o número do WhatsApp emissor.",
-		Icon:        "FileText",
+		Type:         workflow.NodeTypeActionSendTemplate,
+		TestBehavior: workflow.NodeTestSendsMessage,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:        "Enviar Template",
+		Description:  "Envia um template pré-aprovado do WhatsApp para o contato. Selecione o número do WhatsApp emissor.",
+		Icon:         "FileText",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para enviar um template de WhatsApp pré-aprovado (necessário fora da janela de 24h). Em fluxos de voz, envia ao número da chamada.",
 			Behavior: "Em fluxos VoIP o destinatário vem de {{phone_number}} (número da chamada) e o número emissor do WhatsApp precisa ser selecionado em \"Número do WhatsApp\".",
@@ -49,6 +49,16 @@ func (e *sendTemplateExecutor) Definition() workflow.NodeDefinition {
 	}
 }
 
+func templateParamValues(config map[string]interface{}, key string) map[string]string {
+	paramValues := make(map[string]string)
+	if params, ok := config[key].(map[string]interface{}); ok {
+		for k, v := range params {
+			paramValues[k] = workflow.TemplateText(v)
+		}
+	}
+	return paramValues
+}
+
 func (e *sendTemplateExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
 	if shared.EntryType(ctx.Run.EntryType) != shared.EntryTypeWhatsApp {
 		return skipUnsupportedNode(ctx, "action_send_template"), nil
@@ -61,12 +71,7 @@ func (e *sendTemplateExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 	preferredBusinessPhoneID, _ := ctx.Node.Config["business_phone_id"].(string)
 	preferredBusinessPhoneID = strings.TrimSpace(workflow.Interpolate(preferredBusinessPhoneID, ctx.State, nil))
 
-	paramValues := make(map[string]string)
-	if params, ok := ctx.Node.Config["params"].(map[string]interface{}); ok {
-		for k, v := range params {
-			paramValues[k] = fmt.Sprintf("%v", v)
-		}
-	}
+	paramValues := templateParamValues(ctx.Node.Config, "params")
 
 	if e.sender == nil {
 		log.Printf("[workflow][node:%s][run:%s] send_template: no WhatsApp sender configured, skipping actual send",

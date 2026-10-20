@@ -49,6 +49,7 @@ func guardedSender(contact *lead_domain.Lead, client *countingWhatsAppClient, hi
 		LeadRepo:          &knownLeadRepo{byID: contact},
 		WhatsAppEntryRepo: stubMediaEntryRepo{},
 		HistoryManager:    history,
+		MediaFetcher:      unguardedTestFetcher(),
 	}}
 }
 

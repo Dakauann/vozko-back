@@ -2,7 +2,6 @@ package container
 
 import (
 	"log"
-	"net/http"
 
 	callroutinghttp "vozko/delivery/http/callrouting"
 	wsdelivery "vozko/delivery/ws"
@@ -56,7 +55,7 @@ func (p callAnswerPermission) allowed(userID, workspaceID string, resource works
 }
 
 func (c *Container) initCallRouting() {
-	voiceAudio := media_infra.NewVoiceAudioLoader(c.repositories.media, &http.Client{Timeout: voiceAudioDownloadTimeout})
+	voiceAudio := media_infra.NewVoiceAudioLoader(c.repositories.media, voiceAudioClient())
 	library, err := holdmusic.NewLibrary(voiceAudio)
 	if err != nil {
 		log.Fatalf("Failed to load the hold music library: %v", err)

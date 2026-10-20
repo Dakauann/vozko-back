@@ -33,6 +33,8 @@ type EntryContext struct {
 
 type SendOutcome struct {
 	ProviderMessageID string
+	DeliveryStatus    DeliveryStatus
+	Metadata          map[string]any
 }
 
 type SendTextRequest struct {
@@ -64,22 +66,27 @@ const (
 	WindowReasonAccountRestricted  WindowClosedReason = "account_restricted"
 	WindowReasonReplyRevoked       WindowClosedReason = "reply_revoked"
 	WindowReasonChannelUnavailable WindowClosedReason = "channel_unavailable"
+	WindowReasonProviderBlocked    WindowClosedReason = "provider_blocked"
+	WindowReasonBudgetExhausted    WindowClosedReason = "budget_exhausted"
 )
 
 type WindowState struct {
-	Open      bool
-	ExpiresAt *time.Time
-	Reason    WindowClosedReason
-	Tier      channel.WindowTier
+	Open           bool
+	ExpiresAt      *time.Time
+	Reason         WindowClosedReason
+	ProviderDetail string
+	Tier           channel.WindowTier
 }
 
 func OpenWindow(expiresAt *time.Time) WindowState {
 	return WindowState{Open: true, ExpiresAt: expiresAt, Reason: WindowReasonNone, Tier: channel.WindowTierStandard}
 }
 
-func EvaluateWindow(caps channel.Capabilities, lastInbound *time.Time, now time.Time, humanInitiated bool) WindowState {
+func EvaluateWindow(caps channel.Capabilities, lastInbound *time.Time, outboundSinceInbound int, now time.Time, humanInitiated bool) WindowState {
 	tier, expiresAt := caps.Window(lastInbound, now, humanInitiated)
 	switch {
+	case tier != channel.WindowTierNone && caps.OutboundBudget > 0 && outboundSinceInbound >= caps.OutboundBudget:
+		return ClosedWindow(WindowReasonBudgetExhausted)
 	case tier != channel.WindowTierNone:
 		return WindowState{Open: true, ExpiresAt: expiresAt, Tier: tier}
 	case lastInbound == nil:
@@ -97,6 +104,29 @@ func ClosedWindowUntil(reason WindowClosedReason, until *time.Time) WindowState 
 	return WindowState{ExpiresAt: until, Reason: reason}
 }
 
+func ClosedByProvider(detail string) WindowState {
+	return WindowState{Reason: WindowReasonProviderBlocked, ProviderDetail: detail}
+}
+
+type CapabilitiesAdapter interface {
+	Capabilities() channel.Capabilities
+}
+
+func CapabilitiesOf(registry AdapterRegistry, t shared.EntryType) (channel.Capabilities, error) {
+	if registry == nil {
+		return channel.Capabilities{}, ErrNoAdapterForEntryType
+	}
+	adapter, err := registry.For(t)
+	if err != nil {
+		return channel.Capabilities{}, err
+	}
+	described, ok := adapter.(CapabilitiesAdapter)
+	if !ok {
+		return channel.Capabilities{}, ErrCapabilityUnsupported
+	}
+	return described.Capabilities(), nil
+}
+
 type ChannelAdapter interface {
 	EntryType() shared.EntryType
 
@@ -106,6 +136,10 @@ type ChannelAdapter interface {
 
 	SendText(ctx context.Context, ec *EntryContext, req SendTextRequest) (*SendOutcome, error)
 	SendMedia(ctx context.Context, ec *EntryContext, req SendMediaRequest) (*SendOutcome, error)
+}
+
+type DisclosingAdapter interface {
+	AutomationDisclosure(ctx context.Context, ec *EntryContext) (string, error)
 }
 
 type ReactingAdapter interface {
@@ -120,10 +154,16 @@ type PresenceAdapter interface {
 
 type EditingAdapter interface {
 	EditText(ctx context.Context, ec *EntryContext, providerMessageID, body string) error
+	EditWindow() time.Duration
 }
 
 type RetractingAdapter interface {
-	Retract(ctx context.Context, ec *EntryContext, providerMessageID string, sentAt time.Time) error
+	Retract(ctx context.Context, ec *EntryContext, providerMessageID string) error
+	RetractWindow() time.Duration
+}
+
+type MessageActionChannel interface {
+	ResolveEntry(ctx context.Context, entryID string) (*EntryContext, error)
 }
 
 type InteractiveOption struct {

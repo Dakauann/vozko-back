@@ -1,0 +1,10 @@
+{
+   "_id": "495cac10-8496-45f8-a6f5-8bff0a948597",
+   "resource": "/shipments/43729529445",
+   "user_id": 779432305,
+   "topic": "shipments",
+   "application_id": 213123389095511,
+   "attempts": 1,
+   "sent": "2022-09-13T21:06:13.632Z",
+   "received": "2022-09-13T20:59:13.911Z"
+}

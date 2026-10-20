@@ -13,6 +13,8 @@ var ChannelBranchOrder = []shared.EntryType{
 	shared.EntryTypeTelegram,
 	shared.EntryTypeFacebook,
 	shared.EntryTypeWebchat,
+	shared.EntryTypeMercadoLivre,
+	shared.EntryTypeTikTok,
 }
 
 func ChannelOf(run *WorkflowRun) string {

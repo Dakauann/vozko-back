@@ -92,6 +92,11 @@ func (r *JobRunner) SetAdsJobs(recentSync, settledSync, reviewRefresh, fundsWatc
 	r.addChannelJob("ads_grant_health", 6*time.Hour, grantHealth)
 }
 
+func (r *JobRunner) SetWhatsAppFormJobs(recoverStuck, reconcile ctxJob) {
+	r.addChannelJob("whatsapp_form_recover", 15*time.Minute, recoverStuck)
+	r.addChannelJob("whatsapp_form_reconcile", 24*time.Hour, reconcile)
+}
+
 func (r *JobRunner) SetMediaGenerationJobs(reaper ctxJob) {
 	r.addChannelJob("media_generation_reaper", time.Minute, reaper)
 }
@@ -101,12 +106,46 @@ func (r *JobRunner) SetWebhookEventPurgeJob(purge ctxJob) {
 	r.addChannelJob("webhook_event_purge", 24*time.Hour, purge)
 }
 
+func (r *JobRunner) SetWorkflowTraceRetentionJob(retention ctxJob) {
+	r.addChannelJob("workflow_trace_retention", 6*time.Hour, retention)
+}
+
+func (r *JobRunner) SetWorkflowRuntimeAlertJob(evaluate ctxJob) {
+	r.addChannelJob("workflow_runtime_alerts", workflow_domain.RuntimeAlertEvaluationPeriod, evaluate)
+}
+
+func (r *JobRunner) SetAgentContinuationSweepJob(sweep ctxJob) {
+	r.addChannelJob("workflow_agent_continuation_sweep", workflow_domain.ContinuationSweepPeriod, sweep)
+}
+
+func (r *JobRunner) SetCommentRuleExecutionPurgeJob(purge ctxJob) {
+	r.addChannelJob("comment_rule_execution_purge", 24*time.Hour, purge)
+}
+
 func (r *JobRunner) SetAudienceJobs(flush, backstop, rollup, purge, backfill ctxJob) {
 	r.addChannelJob("audience_flush", 30*time.Second, flush)
 	r.addChannelJob("audience_backstop", 5*time.Minute, backstop)
 	r.addChannelJob("audience_rollup", time.Hour, rollup)
 	r.addChannelJob("audience_purge", 24*time.Hour, purge)
 	r.addChannelJob("audience_backfill", time.Minute, backfill)
+}
+
+func (r *JobRunner) SetMercadoLivreJobs(tokenRefresh, health, reconcile, missedFeeds ctxJob) {
+	r.addChannelJob("mercadolivre_token_refresh", 30*time.Minute, tokenRefresh)
+	r.addChannelJob("mercadolivre_health_check", 24*time.Hour, health)
+	r.addChannelJob("mercadolivre_reconcile", 10*time.Minute, reconcile)
+	r.addChannelJob("mercadolivre_missed_feeds", time.Hour, missedFeeds)
+}
+
+func (r *JobRunner) SetMercadoLivrePurgeJob(purge ctxJob) {
+	r.addChannelJob("mercadolivre_purge", 24*time.Hour, purge)
+}
+
+func (r *JobRunner) SetTikTokJobs(tokenRefresh, health, purge, commentWork ctxJob) {
+	r.addChannelJob("tiktok_token_refresh", time.Hour, tokenRefresh)
+	r.addChannelJob("tiktok_health_check", 24*time.Hour, health)
+	r.addChannelJob("tiktok_purge", 24*time.Hour, purge)
+	r.addChannelJob("tiktok_comment_work", 10*time.Second, commentWork)
 }
 
 func (r *JobRunner) SetTelegramJobs(webhookHealth ctxJob) {
@@ -186,6 +225,10 @@ func (r *JobRunner) SetNotificationJobs(sweep, purge, digest ctxJob) {
 func (r *JobRunner) SetScheduledMessageJobs(sweep, purge ctxJob) {
 	r.addChannelJob("scheduled_message_sweep", time.Minute, sweep)
 	r.addChannelJob("scheduled_message_purge", 24*time.Hour, purge)
+}
+
+func (r *JobRunner) SetTeamChatJobs(sweep ctxJob) {
+	r.addChannelJob("team_chat_scheduled_sweep", time.Minute, sweep)
 }
 
 func (r *JobRunner) addChannelJob(name string, period time.Duration, job ctxJob) {

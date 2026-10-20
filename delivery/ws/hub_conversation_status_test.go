@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
+	conversation_usecase "vozko/usecases/conversation"
 )
 
 type mockStatusUpdater struct {
@@ -298,6 +299,7 @@ func TestHandleSetConversationStatus_NonAdminCanSetFinished(t *testing.T) {
 
 	hub := NewConversationHub(authorizer, nil, nil, &eligibilityFakeSharedState{}, "test-replica", "")
 	hub.statusUpdater = statusMock
+	hub.SetPersonFinish(conversation_usecase.NewPersonFinish(authorizer, statusMock))
 	hub.broadcast = make(chan *broadcastMessage, 10)
 
 	conn := &WSConnection{

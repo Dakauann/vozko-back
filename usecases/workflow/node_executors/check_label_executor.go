@@ -17,12 +17,13 @@ func NewCheckLabelExecutor(labelRepo label.Repository) workflow.NodeExecutor {
 
 func (e *checkLabelExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionCheckLabel,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Verificar Etiqueta",
-		Description: "Verifica se a entrada possui uma etiqueta específica.",
-		Icon:        "TagChevron",
+		Type:         workflow.NodeTypeConditionCheckLabel,
+		TestBehavior: workflow.NodeTestReadsData,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Verificar Etiqueta",
+		Description:  "Verifica se a entrada possui uma etiqueta específica.",
+		Icon:         "TagChevron",
 		Guidance: workflow.NodeGuidance{
 			When: "Para verificar se a conversa tem uma etiqueta específica.",
 		},
@@ -53,16 +54,22 @@ func (e *checkLabelExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 
+	if e.labelRepo == nil {
+		return &workflow.NodeResult{
+			Error:     "a leitura de etiquetas está indisponível neste contexto (ex.: simulação)",
+			ErrorKind: workflow.ErrorKindConfig,
+		}, nil
+	}
+
 	entryLabels, err := e.labelRepo.GetEntryLabels(ctx.Run.EntryID, ctx.Run.EntryType, ctx.Run.WorkspaceID)
 	if err != nil {
 
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabelStrict(edges, "false"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"matched":  false,
 				"label_id": labelID,
 			},
-		}, nil
+		}, edges, "false"), nil
 	}
 
 	matched := false
@@ -80,12 +87,11 @@ func (e *checkLabelExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 		targetEdge = "true"
 	}
 
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(edges, targetEdge),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"matched":    matched,
 			"label_id":   labelID,
 			"label_name": matchedName,
 		},
-	}, nil
+	}, edges, targetEdge), nil
 }

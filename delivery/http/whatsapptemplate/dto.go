@@ -46,12 +46,15 @@ type TemplateComponentRequest struct {
 }
 
 type TemplateButtonRequest struct {
-	Type        string `json:"type" example:"URL"`
-	Text        string `json:"text" example:"Acessar site"`
-	URL         string `json:"url" example:"https://exemplo.com.br"`
-	PhoneNumber string `json:"phone_number" example:"5511987654321"`
-	Example     string `json:"example" example:"https://exemplo.com.br/promo"`
-	OTPType     string `json:"otp_type,omitempty" example:"COPY_CODE"`
+	Type           string `json:"type" example:"URL"`
+	Text           string `json:"text" example:"Acessar site"`
+	URL            string `json:"url" example:"https://exemplo.com.br"`
+	PhoneNumber    string `json:"phone_number" example:"5511987654321"`
+	Example        string `json:"example" example:"https://exemplo.com.br/promo"`
+	OTPType        string `json:"otp_type,omitempty" example:"COPY_CODE"`
+	FlowID         string `json:"flowId,omitempty" example:"1234567890"`
+	FlowAction     string `json:"flowAction,omitempty" example:"navigate"`
+	NavigateScreen string `json:"navigateScreen,omitempty" example:"S_INICIO"`
 }
 
 type TemplateExampleRequest struct {
@@ -136,12 +139,15 @@ func toDomainComponents(requested []TemplateComponentRequest) []whatsapptemplate
 
 		for _, b := range c.Buttons {
 			comp.Buttons = append(comp.Buttons, whatsapptemplatedomain.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				Example:        b.Example,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID,
+				FlowAction:     b.FlowAction,
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 

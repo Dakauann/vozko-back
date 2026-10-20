@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/inbox_assignment"
 	"vozko/domain/working_hours"
 	workspaceconfigdomain "vozko/domain/workspace_config"
 )
@@ -22,6 +23,9 @@ type WorkspaceConfigResponse struct {
 	RouletteLastSeenWindowHours         int                          `json:"rouletteLastSeenWindowHours" example:"48"`
 	RouletteRescueEnabled               bool                         `json:"rouletteRescueEnabled" example:"true"`
 	RouletteRescueAfterMinutes          int                          `json:"rouletteRescueAfterMinutes" example:"15"`
+	RouletteStrategy                    string                       `json:"rouletteStrategy" example:"priority" enums:"round_robin,priority,weighted,least_busy,longest_idle,random,claim"`
+	RouletteMaxOpenPerMember            int                          `json:"rouletteMaxOpenPerMember" example:"8"`
+	RouletteRecipients                  []inbox_assignment.Recipient `json:"rouletteRecipients"`
 	WorkingHours                        *working_hours.Spec          `json:"workingHours,omitempty"`
 	OutcomeCapture                      *conversation.OutcomeCapture `json:"outcomeCapture,omitempty"`
 	UpdatedBy                           string                       `json:"updatedBy,omitempty" example:"usr_a1b2c3"`
@@ -44,12 +48,22 @@ func toWorkspaceConfigResponse(c *workspaceconfigdomain.WorkspaceConfig) Workspa
 		RouletteLastSeenWindowHours:         int(c.EffectiveRouletteLastSeenWindow() / time.Hour),
 		RouletteRescueEnabled:               c.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:          int(c.EffectiveRouletteRescueAfter() / time.Minute),
+		RouletteStrategy:                    string(c.EffectiveRouletteStrategy()),
+		RouletteMaxOpenPerMember:            c.EffectiveRouletteMaxOpenPerMember(),
+		RouletteRecipients:                  recipientsOrEmpty(c.EffectiveRouletteRecipients()),
 		WorkingHours:                        c.WorkingHours,
 		OutcomeCapture:                      c.OutcomeCapture,
 		UpdatedBy:                           c.UpdatedBy,
 		CreatedAt:                           c.CreatedAt,
 		UpdatedAt:                           c.UpdatedAt,
 	}
+}
+
+func recipientsOrEmpty(recipients []inbox_assignment.Recipient) []inbox_assignment.Recipient {
+	if recipients == nil {
+		return []inbox_assignment.Recipient{}
+	}
+	return recipients
 }
 
 type AdminWorkspaceConfigResponse struct {

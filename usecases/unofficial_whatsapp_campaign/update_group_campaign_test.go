@@ -21,15 +21,15 @@ func stoppedGroupCampaign() (*fakeCampaignRepo, *fakeEntryRepo, *fakeGateway) {
 	return campaigns, newFakeEntryRepo(), gateway
 }
 
-func TestAGroupCampaignEditKeepsItsNumber(t *testing.T) {
+func TestAnOlderGroupCampaignEditRefusesAnotherNumber(t *testing.T) {
 	campaigns, entries, gateway := stoppedGroupCampaign()
 	edit := edited("Oferta nova")
 	edit.InstanceID = "inst-2"
 
 	_, err := updateWithAutomation(campaigns, entries, gateway).Execute(context.Background(), "camp-1", edit, uw.Unrestricted())
 
-	if !errors.Is(err, uwc.ErrGroupCampaignNumberLocked) {
-		t.Fatalf("Execute = %v, want ErrGroupCampaignNumberLocked", err)
+	if !errors.Is(err, uwc.ErrGroupCampaignTakesNoNumber) {
+		t.Fatalf("Execute = %v, want ErrGroupCampaignTakesNoNumber", err)
 	}
 }
 
@@ -43,5 +43,19 @@ func TestAGroupCampaignEditChangesTheMessageWithoutAnExitCommand(t *testing.T) {
 	}
 	if saved.Audience != uwc.AudienceGroups {
 		t.Fatalf("audience after edit = %q, want groups", saved.Audience)
+	}
+}
+
+func TestAGroupCampaignWithoutANumberIsEditedWithoutLookingOneUp(t *testing.T) {
+	campaigns, entries, _ := stoppedGroupCampaign()
+	stored, _ := campaigns.FindByID("camp-1")
+	stored.InstanceID = ""
+	stored.SenderInstanceIDs = []string{"inst-1", "inst-2"}
+	campaigns.put(stored)
+
+	saved, err := updateWithAutomation(campaigns, entries, &fakeGateway{}).Execute(context.Background(), "camp-1", edited("Oferta nova: feijão 1 kg"), uw.Unrestricted())
+
+	if err != nil || saved.Message.Bodies[0] != "Oferta nova: feijão 1 kg" || saved.InstanceID != "" {
+		t.Fatalf("Execute = %+v, %v", saved, err)
 	}
 }

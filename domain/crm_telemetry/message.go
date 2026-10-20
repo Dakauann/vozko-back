@@ -56,6 +56,8 @@ const (
 	AISessionOpEndOpen      AISessionOp = "end_open"
 	AISessionOpTouchInbound AISessionOp = "touch_inbound"
 	AISessionOpEnsureOpen   AISessionOp = "ensure_open"
+
+	AISessionOpRecordToolCalls AISessionOp = "record_tool_calls"
 )
 
 type AISessionPayload struct {
@@ -73,6 +75,7 @@ type AISessionPayload struct {
 	Reason              string      `json:"reason,omitempty"`
 	HandoffTargetUserID string      `json:"handoff_target_user_id,omitempty"`
 	EndedBy             string      `json:"ended_by,omitempty"`
+	ToolCalls           int         `json:"tool_calls,omitempty"`
 }
 
 type QueueEventPayload struct {

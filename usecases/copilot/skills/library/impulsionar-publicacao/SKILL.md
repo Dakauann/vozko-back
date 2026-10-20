@@ -14,7 +14,7 @@ description: Quando e como transformar uma publicação existente do Facebook ou
 - Quando o objetivo é venda, cadastro ou conversa com controle de público, orçamento e resultado: crie o anúncio pelo fluxo completo, com o objetivo certo.
 - Publicação com texto longo, informação desatualizada ou sem chamada clara.
 
-## Como fazer no Vozko
+## Como fazer na plataforma
 - list_page_posts mostra as publicações; use EXISTING_POST com post_id e post_platform.
 - Para engajamento com a própria publicação, destino ON_POST. Para levar a uma conversa ou a um site, escolha o objetivo e o destino correspondentes.
 - O texto e a imagem da publicação não mudam no anúncio; se precisar de outra chamada, crie um anúncio novo.

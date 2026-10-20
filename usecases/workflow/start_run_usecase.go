@@ -1,81 +1,51 @@
 package workflow_usecase
 
 import (
-	"time"
+	"strings"
 
-	"github.com/google/uuid"
-
+	"vozko/domain/conversation"
 	"vozko/domain/workflow"
 )
 
-type startRunUseCase struct {
-	workflowRepo workflow.WorkflowRepository
-	runRepo      workflow.WorkflowRunRepository
+type conversationStarter interface {
+	StartForConversation(in ConversationStart) (StartedRun, error)
 }
 
-func NewStartRunUseCase(
-	workflowRepo workflow.WorkflowRepository,
-	runRepo workflow.WorkflowRunRepository,
-) workflow.StartRunUseCase {
-	return &startRunUseCase{
-		workflowRepo: workflowRepo,
-		runRepo:      runRepo,
-	}
+type startRunUseCase struct {
+	starter    conversationStarter
+	runs       workflow.WorkflowRunRepository
+	visibility conversation.Visibility
+}
+
+func NewStartRunUseCase(starter *ConversationRunStarter, runs workflow.WorkflowRunRepository, visibility conversation.Visibility) workflow.StartRunUseCase {
+	return &startRunUseCase{starter: starter, runs: runs, visibility: visibility}
 }
 
 func (uc *startRunUseCase) Execute(input workflow.StartRunInput) (*workflow.WorkflowRun, error) {
-	w, err := uc.workflowRepo.FindByID(input.WorkflowID)
-	if err != nil {
-		return nil, err
-	}
-	if w == nil {
+	if strings.TrimSpace(input.WorkspaceID) == "" || strings.TrimSpace(input.WorkflowID) == "" {
 		return nil, workflow.ErrWorkflowNotFound
 	}
-	if w.Status != workflow.WorkflowStatusActive {
-		return nil, workflow.ErrWorkflowNotActive
+	if err := conversationVisibleTo(uc.visibility, input.Viewer, input.WorkspaceID, input.EntryID, input.EntryType); err != nil {
+		return nil, err
 	}
-
-	trigger := w.Graph.TriggerNode()
-	if trigger == nil {
-		return nil, workflow.ErrGraphNoTrigger
+	data := make(map[string]interface{}, len(input.Variables)+1)
+	for k, v := range input.Variables {
+		data[k] = v
 	}
-
-	existing, err := uc.runRepo.FindActiveByEntryAndTrigger(input.WorkflowID, input.EntryID, trigger.ID)
+	data[workflow.VarChannel] = input.EntryType
+	started, err := uc.starter.StartForConversation(ConversationStart{
+		WorkspaceID: input.WorkspaceID,
+		WorkflowID:  input.WorkflowID,
+		EntryID:     input.EntryID,
+		EntryType:   input.EntryType,
+		StartedBy:   input.StartedBy,
+		Data:        data,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if existing != nil {
+	if started.AlreadyRunning {
 		return nil, workflow.ErrRunAlreadyExists
 	}
-
-	state := workflow.NewRunState()
-	for k, v := range input.Variables {
-		state.Set(k, v)
-	}
-	state.Set(workflow.VarChannel, input.EntryType)
-
-	now := time.Now().UTC()
-	run := &workflow.WorkflowRun{
-		ID:            uuid.New().String(),
-		WorkflowID:    input.WorkflowID,
-		WorkspaceID:   input.WorkspaceID,
-		EntryID:       input.EntryID,
-		EntryType:     input.EntryType,
-		Status:        workflow.RunStatusRunning,
-		TriggerNodeID: trigger.ID,
-		CurrentNodeID: trigger.ID,
-		State:         state,
-		StartedAt:     now,
-		UpdatedAt:     now,
-	}
-
-	if err := run.Validate(); err != nil {
-		return nil, err
-	}
-
-	if err := uc.runRepo.Create(run); err != nil {
-		return nil, err
-	}
-
-	return run, nil
+	return findWorkspaceRun(uc.runs, input.WorkspaceID, started.RunID)
 }

@@ -184,3 +184,30 @@ func (r *repository) ListByActor(workspaceID, actorID string, from, to time.Time
 	}
 	return out, nil
 }
+
+func NewHandoutReader(db *gorm.DB) ia.HandoutReader {
+	return &repository{db: db}
+}
+
+func (r *repository) LastHandouts(workspaceID string, userIDs []string) (map[string]time.Time, error) {
+	out := make(map[string]time.Time, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		UserID string
+		LastAt time.Time
+	}
+	err := r.db.Model(&schema.AssignmentHistory{}).
+		Select("assigned_actor_id AS user_id, MAX(started_at) AS last_at").
+		Where("workspace_id = ? AND assigned_actor_id IN ?", workspaceID, userIDs).
+		Group("assigned_actor_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.UserID] = row.LastAt.UTC()
+	}
+	return out, nil
+}

@@ -183,6 +183,17 @@ func (a *fakeWindowAdapter) WindowState(_ context.Context, _ *conversation.Entry
 	return conversation.ClosedWindow(conversation.WindowReasonExpired), nil
 }
 
+func (a *fakeWindowAdapter) WindowStates(ctx context.Context, entryIDs []string) (map[string]conversation.WindowState, error) {
+	out := map[string]conversation.WindowState{}
+	if a.resolveErr != nil {
+		return out, nil
+	}
+	for _, id := range entryIDs {
+		out[id], _ = a.WindowState(ctx, &conversation.EntryContext{EntryID: id, EntryType: a.entryType})
+	}
+	return out, nil
+}
+
 func (a *fakeWindowAdapter) SendText(_ context.Context, _ *conversation.EntryContext, _ conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	return &conversation.SendOutcome{}, nil
 }

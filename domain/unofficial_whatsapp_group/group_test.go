@@ -133,3 +133,16 @@ func TestSeriesNameNumbersTheCopyWithinTheNameLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestTheWhatsAppCreationDateIsTheEarliestOneASeatReports(t *testing.T) {
+	early := time.Date(2024, 3, 1, 12, 0, 0, 0, time.UTC)
+	late := early.Add(time.Hour)
+	seats := []*uw.Group{{InstanceID: "n1"}, {InstanceID: "n2", GroupCreatedAt: &late}, {InstanceID: "n3", GroupCreatedAt: &early}}
+
+	if got := WhatsAppCreatedAt(seats); got == nil || !got.Equal(early) {
+		t.Fatalf("created = %v, want %v", got, early)
+	}
+	if got := WhatsAppCreatedAt([]*uw.Group{{InstanceID: "n1"}}); got != nil {
+		t.Fatalf("created = %v, want unknown without a reported date", got)
+	}
+}

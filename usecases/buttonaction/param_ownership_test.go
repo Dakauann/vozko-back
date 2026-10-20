@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/buttonaction"
 	"vozko/domain/calls/calllist"
+	"vozko/domain/conversation"
 	"vozko/domain/customfield"
 	"vozko/domain/pipeline"
 	"vozko/domain/stage"
@@ -74,6 +75,15 @@ func (o ownedDepartments) GetDepartmentByID(id string) (*wd.Department, error) {
 	return nil, errNotStored
 }
 
+type usableAutomations map[conversation.Automation]bool
+
+func (u usableAutomations) Usable(workspaceID string, a conversation.Automation) error {
+	if workspaceID == ws && u[a] {
+		return nil
+	}
+	return conversation.ErrAutomationUnusable
+}
+
 type ownedMembers map[string]*workspace.Member
 
 func (o ownedMembers) GetMember(workspaceID, userID string) (*workspace.Member, error) {
@@ -96,6 +106,10 @@ func ownershipFixture(t *testing.T, fields ownedFields) *WorkspaceOwnership {
 		},
 		Departments: ownedDepartments{"dep-1": {ID: "dep-1", WorkspaceID: ws}, "dep-other": {ID: "dep-other", WorkspaceID: "ws-2"}},
 		Members:     ownedMembers{ws + "|user-ana": {UserID: "user-ana", WorkspaceID: ws}},
+		Automations: usableAutomations{
+			{Kind: conversation.AutomationAgent, ID: "agent-1"}:  true,
+			{Kind: conversation.AutomationWorkflow, ID: "wf-1"}: true,
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +137,10 @@ func TestEveryActionParameterMustBelongToTheWorkspace(t *testing.T) {
 		{"a team of another workspace", buttonaction.KindHandOff, buttonaction.Params{DepartmentID: "dep-other"}, false},
 		{"a member of this workspace", buttonaction.KindHandOff, buttonaction.Params{UserID: "user-ana"}, true},
 		{"a stranger", buttonaction.KindHandOff, buttonaction.Params{UserID: "user-x"}, false},
+		{"an agent that can answer", buttonaction.KindDelegate, buttonaction.Params{AgentID: "agent-1"}, true},
+		{"an agent that cannot answer", buttonaction.KindDelegate, buttonaction.Params{AgentID: "agent-off"}, false},
+		{"a workflow that takes conversations", buttonaction.KindDelegate, buttonaction.Params{WorkflowID: "wf-1"}, true},
+		{"a workflow that cannot take conversations", buttonaction.KindDelegate, buttonaction.Params{WorkflowID: "wf-other"}, false},
 		{"a workflow of this workspace", buttonaction.KindStartWorkflow, buttonaction.Params{WorkflowID: "wf-1"}, true},
 		{"a workflow of another workspace", buttonaction.KindStartWorkflow, buttonaction.Params{WorkflowID: "wf-other"}, false},
 		{"a call list of this workspace", buttonaction.KindCallList, buttonaction.Params{CallListID: "list-1"}, true},

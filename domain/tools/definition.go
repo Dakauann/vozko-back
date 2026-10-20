@@ -41,6 +41,7 @@ const (
 
 type Definition struct {
 	Name               string
+	HandlerName        string `json:",omitempty"`
 	DisplayName        string
 	Description        string
 	DisplayDescription string
@@ -52,6 +53,7 @@ type Definition struct {
 	RequiredConfig     []string
 	RequiresConfig     bool
 	AdminOnly          bool
+	BindingKey         string `json:",omitempty"`
 }
 
 func (d Definition) SensitiveConfig() []string {
@@ -119,36 +121,15 @@ func (d Definition) WithConfigExpansion(config map[string]interface{}) Definitio
 
 	var extraDesc string
 
-	if pathParams, ok := config["path_params"].([]interface{}); ok && len(pathParams) > 0 {
-		params := parseSchemaParams(pathParams)
-		if len(params) > 0 {
-			result.Parameters["path_values"] = Parameter{
-				Type:        "object",
-				Description: buildParamDescription("Path parameters to replace in the URL", params),
-			}
-			extraDesc += buildSchemaSection("Path Parameters", params)
-		}
-	}
-
-	if querySchema, ok := config["query_schema"].([]interface{}); ok && len(querySchema) > 0 {
-		params := parseSchemaParams(querySchema)
-		if len(params) > 0 {
-			result.Parameters["query_values"] = Parameter{
-				Type:        "object",
-				Description: buildParamDescription("Query parameters to append to the URL", params),
-			}
-			extraDesc += buildSchemaSection("Query Parameters", params)
-		}
-	}
-
-	if bodySchema, ok := config["body_schema"].([]interface{}); ok && len(bodySchema) > 0 {
-		params := parseSchemaParams(bodySchema)
-		if len(params) > 0 {
-			result.Parameters["body_values"] = Parameter{
-				Type:        "object",
-				Description: buildParamDescription("JSON body fields to send", params),
-			}
-			extraDesc += buildSchemaSection("Body Parameters", params)
+	for _, schema := range []struct{ configKey, param, base, title string }{
+		{"path_params", "path_values", "Path parameters to replace in the URL", "Path Parameters"},
+		{"query_schema", "query_values", "Query parameters to append to the URL", "Query Parameters"},
+		{"body_schema", "body_values", "JSON body fields to send", "Body Parameters"},
+	} {
+		raw, _ := config[schema.configKey].([]interface{})
+		if param, section, ok := SchemaObjectParameter(schema.base, schema.title, raw); ok {
+			result.Parameters[schema.param] = param
+			extraDesc += section
 		}
 	}
 
@@ -162,6 +143,14 @@ func (d Definition) WithConfigExpansion(config map[string]interface{}) Definitio
 	}
 
 	return result
+}
+
+func SchemaObjectParameter(base, title string, raw []interface{}) (Parameter, string, bool) {
+	params := parseSchemaParams(raw)
+	if len(params) == 0 {
+		return Parameter{}, "", false
+	}
+	return Parameter{Type: "object", Description: buildParamDescription(base, params)}, buildSchemaSection(title, params), true
 }
 
 func parseSchemaParams(raw []interface{}) []SchemaParameter {
@@ -378,6 +367,8 @@ type ExecutionResult struct {
 	ContextUpdateText  string
 	ShouldEndSession   bool
 	DialStatusOverride string
+	RunID              string
+	ErrorCode          string
 }
 
 type Handler interface {

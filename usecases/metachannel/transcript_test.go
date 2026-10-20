@@ -84,7 +84,14 @@ func (f *memoryFiles) UploadFile(key string, _ []byte, _ string) error {
 }
 func (f *memoryFiles) GetFileURL(key string) string { return "https://cdn/" + key }
 
-type recordingBroadcast struct{ entries []string }
+type recordingBroadcast struct {
+	entries []string
+	updated []string
+}
+
+func (r *recordingBroadcast) BroadcastMessageUpdated(_, _ string, message *conversation.Message) {
+	r.updated = append(r.updated, message.ID)
+}
 
 func (r *recordingBroadcast) BroadcastEntryUpdate(entryID, _ string, _ *conversation.Message) {
 	r.entries = append(r.entries, entryID)
@@ -168,39 +175,97 @@ func TestFailedDownloadStillRecordsTheText(t *testing.T) {
 	}
 }
 
-func TestEditReactionReadAndTombstone(t *testing.T) {
+func TestAnEditReplacesTheTextAndReachesTheOpenThread(t *testing.T) {
+	tr, _, store, _, broadcast := newTranscript()
+	store.byMID["m1"] = &conversation.Message{ID: "row-1", EntryID: "e1", EntryType: shared.EntryTypeFacebook}
+	at := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	if err := tr.ApplyEdit("e1", &mm.MessageEdit{MID: "m1", Text: " new ", NumEdit: "2"}, at); err != nil {
+		t.Fatal(err)
+	}
+
+	edited := store.byMID["m1"]
+	if edited.Text != "new" || edited.EditedAt == nil || !edited.EditedAt.Equal(at) {
+		t.Fatalf("text = %q edited_at = %v", edited.Text, edited.EditedAt)
+	}
+	if len(store.updated) != 1 || strings.Join(broadcast.updated, ",") != "row-1" || strings.Join(broadcast.entries, ",") != "e1" {
+		t.Fatalf("updated=%v message_updated=%v entry_update=%v", store.updated, broadcast.updated, broadcast.entries)
+	}
+}
+
+func TestAReactionIsFoldedOntoTheMessageInTheOneShape(t *testing.T) {
+	tr, _, store, _, broadcast := newTranscript()
+	store.byMID["m1"] = &conversation.Message{ID: "row-1", EntryID: "e1", EntryType: shared.EntryTypeFacebook}
+	at := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	if err := tr.ApplyReaction("e1", &mm.Reaction{MID: "m1", Action: "react", Reaction: "love", Emoji: "❤️"}, "psid-9", at); err != nil {
+		t.Fatal(err)
+	}
+	want := conversation.Reaction{Emoji: "❤️", Direction: conversation.ReactionInbound, ActorID: "psid-9", At: at}
+	if got := store.byMID["m1"].Reactions(); len(got) != 1 || got[0] != want {
+		t.Fatalf("reactions = %+v, want [%+v]", got, want)
+	}
+
+	if err := tr.ApplyReaction("e1", &mm.Reaction{MID: "m1", Action: "react", Reaction: "like"}, "psid-9", at); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.byMID["m1"].Reactions(); len(got) != 1 || got[0].Emoji != "like" {
+		t.Fatalf("a reaction without emoji falls back to its name and replaces the previous one: %+v", got)
+	}
+
+	if err := tr.ApplyReaction("e1", &mm.Reaction{MID: "m1", Action: "unreact", Reaction: "like", Emoji: "👍"}, "psid-9", at); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.byMID["m1"].Reactions(); len(got) != 0 {
+		t.Fatalf("an unreact must remove the reaction: %+v", got)
+	}
+	if len(broadcast.updated) != 3 {
+		t.Fatalf("each reaction change must reach the open thread: %v", broadcast.updated)
+	}
+}
+
+func TestADeletedMessageIsRetractedNotRemoved(t *testing.T) {
+	tr, _, store, _, broadcast := newTranscript()
+	store.byMID["m1"] = &conversation.Message{ID: "row-1", EntryID: "e1", EntryType: shared.EntryTypeFacebook, Text: "oi"}
+	at := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	if err := tr.Retract("e1", "m1", at); err != nil {
+		t.Fatal(err)
+	}
+
+	if retracted := store.byMID["m1"]; !retracted.IsRetracted() || !retracted.RetractedAt.Equal(at) {
+		t.Fatalf("retracted_at = %v", retracted.RetractedAt)
+	}
+	if len(store.deleted) != 0 || len(store.updated) != 1 || strings.Join(broadcast.updated, ",") != "row-1" {
+		t.Fatalf("deleted=%v updated=%v message_updated=%v", store.deleted, store.updated, broadcast.updated)
+	}
+}
+
+func TestAReadReceiptRefreshesOnlyTheInboxRow(t *testing.T) {
 	tr, _, store, _, broadcast := newTranscript()
 	store.byMID["m1"] = &conversation.Message{ID: "row-1", EntryID: "e1"}
 
-	if err := tr.ApplyEdit("e1", &mm.MessageEdit{MID: "m1", Text: " new ", NumEdit: "2"}); err != nil {
-		t.Fatal(err)
-	}
-	if store.byMID["m1"].Text != "new" {
-		t.Fatalf("text = %q", store.byMID["m1"].Text)
-	}
-	if err := tr.ApplyReaction("e1", &mm.Reaction{MID: "m1", Action: "react", Reaction: "love", Emoji: "x"}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
 	if err := tr.MarkRead("e1", "m1"); err != nil {
 		t.Fatal(err)
 	}
+
 	if store.byMID["m1"].DeliveryStatus != conversation.DeliveryStatusRead {
 		t.Fatal("read not applied")
 	}
-	if err := tr.Tombstone("e1", "m1"); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.updated) != 3 || len(store.deleted) != 1 || len(broadcast.entries) != 4 {
-		t.Fatalf("updated=%v deleted=%v broadcasts=%v", store.updated, store.deleted, broadcast.entries)
+	if len(broadcast.entries) != 1 || len(broadcast.updated) != 0 {
+		t.Fatalf("entry_update=%v message_updated=%v", broadcast.entries, broadcast.updated)
 	}
 }
 
 func TestMutationsOnUnknownMessagesAreNoOps(t *testing.T) {
 	tr, _, store, _, broadcast := newTranscript()
-	if err := tr.ApplyEdit("e1", &mm.MessageEdit{MID: "ghost"}); err != nil {
+	if err := tr.ApplyEdit("e1", &mm.MessageEdit{MID: "ghost"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.updated) != 0 || len(broadcast.entries) != 0 {
+	if err := tr.Retract("e1", "ghost", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.updated) != 0 || len(broadcast.entries) != 0 || len(broadcast.updated) != 0 {
 		t.Fatal("unknown message touched")
 	}
 }

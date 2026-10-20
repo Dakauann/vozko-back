@@ -90,12 +90,12 @@ func TestUpdatingAWorkflowNeedsTheConsentPermissionOnlyForANewOrChangedGrant(t *
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			uc, calls := consentFixture(consentPermissions)
-			_, err := uc.Update(context.Background(), scopeOf("u-plain"), tc.id, &workflow.Workflow{Name: "x", Graph: workflow.Graph{Nodes: tc.nodes}})
+			_, err := uc.Update(context.Background(), scopeOf("u-plain"), tc.id, &workflow.Workflow{Name: "x", Graph: workflow.Graph{Nodes: tc.nodes}}, 1)
 			if tc.refused {
 				if !errors.Is(err, workspace.ErrConsentGrantForbidden) || len(calls.calls) != 0 {
 					t.Fatalf("err %v calls %v", err, calls.calls)
 				}
-				if _, err := uc.Update(context.Background(), scopeOf("u-grantor"), tc.id, &workflow.Workflow{Name: "x", Graph: workflow.Graph{Nodes: tc.nodes}}); err != nil {
+				if _, err := uc.Update(context.Background(), scopeOf("u-grantor"), tc.id, &workflow.Workflow{Name: "x", Graph: workflow.Graph{Nodes: tc.nodes}}, 1); err != nil {
 					t.Fatalf("a grantor was refused: %v", err)
 				}
 				return

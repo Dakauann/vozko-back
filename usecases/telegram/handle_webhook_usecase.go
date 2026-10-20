@@ -20,6 +20,7 @@ import (
 	tgdomain "vozko/domain/telegram"
 	"vozko/domain/workflow"
 	conversation_usecase "vozko/usecases/conversation"
+	"vozko/usecases/messagestate"
 )
 
 const profileTTL = 7 * 24 * time.Hour
@@ -179,6 +180,12 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, account *tgdoma
 		return uc.handleBlockToggle(ctx, account, ev)
 	case tgdomain.EventBusinessConnection:
 		return uc.handleBusinessConnection(ctx, account, ev)
+	case tgdomain.EventReaction:
+		return uc.handleReaction(ctx, account, ev)
+	case tgdomain.EventUnsupportedReaction:
+		log.Printf("[telegram] reaction without an emoji or a user ignored account=@%s chat=%d message=%d raw=%s",
+			account.BotUsername, ev.ChatID, ev.MessageID, truncateRaw(ev.Raw, 512))
+		return nil
 	case tgdomain.EventUnknown:
 		log.Printf("[telegram] unhandled update kind account=@%s raw=%s",
 			account.BotUsername, truncateRaw(ev.Raw, 512))
@@ -329,16 +336,8 @@ func (uc *HandleWebhookUseCase) handleEdited(ctx context.Context, account *tgdom
 		return err
 	}
 
-	existing.Text = ev.Text
-	existing.Metadata = mergeMetadata(existing.Metadata, map[string]any{
-		"telegram_edited":    true,
-		"telegram_edited_at": ev.Timestamp.UTC().Format(time.RFC3339),
-	})
-	if err := uc.messages.Update(existing.ID, existing); err != nil {
-		return err
-	}
-	uc.broadcastEntryUpdate(existing.EntryID)
-	return nil
+	existing.ApplyEdit(ev.Text, messagestate.Stamp(ev.Timestamp))
+	return uc.stateWriter().Save(existing)
 }
 
 func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
@@ -354,12 +353,52 @@ func (uc *HandleWebhookUseCase) handleDeleted(ctx context.Context, account *tgdo
 			}
 			return err
 		}
-		if err := uc.messages.Delete(existing.ID); err != nil {
+		existing.Retract(messagestate.Stamp(ev.Timestamp))
+		if err := uc.stateWriter().Save(existing); err != nil {
 			return err
 		}
-		uc.broadcastEntryUpdate(existing.EntryID)
 	}
 	return nil
+}
+
+func (uc *HandleWebhookUseCase) handleReaction(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
+	if uc.messages == nil {
+		return nil
+	}
+	if ev.From == nil || ev.From.ID == 0 {
+		log.Printf("[telegram] reaction with no user dropped account=@%s chat=%d message=%d", account.BotUsername, ev.ChatID, ev.MessageID)
+		return nil
+	}
+	conv, err := uc.conversations.FindByChat(ctx, account.ID, ev.ChatID)
+	if errors.Is(err, tgdomain.ErrConversationNotFound) {
+		log.Printf("[telegram] reaction in chat %d with no conversation dropped account=@%s", ev.ChatID, account.BotUsername)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	providerID := tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID)
+	target, err := uc.messages.GetByEntryAndExternalMessageID(shared.EntryTypeTelegram, conv.ID, providerID)
+	if errors.Is(err, conversation.ErrMessageNotFound) {
+		log.Printf("[telegram] reaction to message %s in conversation %s has no stored target, dropped", providerID, conv.ID)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := target.React(conversation.Reaction{
+		Emoji:     ev.ReactionEmoji,
+		Direction: conversation.ReactionInbound,
+		ActorID:   strconv.FormatInt(ev.From.ID, 10),
+		At:        messagestate.Stamp(ev.Timestamp),
+	}); err != nil {
+		return err
+	}
+	return uc.stateWriter().Save(target)
+}
+
+func (uc *HandleWebhookUseCase) stateWriter() messagestate.Writer {
+	return messagestate.Writer{Messages: uc.messages, Announcer: uc.broadcaster}
 }
 
 func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account *tgdomain.Account, ev *tgdomain.Event) error {
@@ -401,8 +440,7 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 			Title: ev.Text,
 			Kind:  "callback_query",
 		})
-		uc.automation.FireWorkflows(ctx, in)
-		uc.automation.ReplyWithAgent(ctx, in)
+		uc.automation.Consume(ctx, in)
 	}
 	return nil
 }
@@ -450,8 +488,7 @@ func (uc *HandleWebhookUseCase) handleContactShared(ctx context.Context, account
 
 	if conv.IsPrivate() {
 		in := automationInput(account, contact, conv, text, tgdomain.ProviderMessageID(account.BotUserID, ev.ChatID, ev.MessageID), ev.Timestamp, nil)
-		uc.automation.FireWorkflows(ctx, in)
-		uc.automation.ReplyWithAgent(ctx, in)
+		uc.automation.Consume(ctx, in)
 	}
 	return nil
 }
@@ -870,21 +907,6 @@ func extensionFor(contentType, fileName, filePath string) string {
 		return ext
 	}
 	return ""
-}
-
-func mergeMetadata(existing json.RawMessage, updates map[string]any) json.RawMessage {
-	merged := map[string]any{}
-	if len(existing) > 0 {
-		_ = json.Unmarshal(existing, &merged)
-	}
-	for k, v := range updates {
-		merged[k] = v
-	}
-	raw, err := json.Marshal(merged)
-	if err != nil {
-		return existing
-	}
-	return raw
 }
 
 func truncateRaw(raw json.RawMessage, n int) string {

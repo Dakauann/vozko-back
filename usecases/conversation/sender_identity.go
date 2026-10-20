@@ -98,3 +98,11 @@ func (s *HistoryProviderService) senderActors(messages []*conversation.Message) 
 		idsByKind[conversation.SenderWorkflow],
 	)
 }
+
+func lastSenderKind(e conversation.EntryWithLastMessage) string {
+	sender := conversation.RestoreSentBy(e.LastMessageSenderKind, e.LastMessageSenderID)
+	if !sender.Valid() {
+		return ""
+	}
+	return string(sender.Kind())
+}

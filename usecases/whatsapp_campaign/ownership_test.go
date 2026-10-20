@@ -244,7 +244,7 @@ func TestUpdateCampaignUseCase_AllowsGrantedBusinessPhoneAccessForOwnerlessPhone
 	}
 }
 
-func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {
+func TestUpdateCampaignUseCase_SetArchivedPersistsTheFlag(t *testing.T) {
 	campaignRepo := newMockCampaignRepo()
 	campaignRepo.campaigns["camp-1"] = &wc.Campaign{
 		ID:              "camp-1",
@@ -268,31 +268,15 @@ func TestUpdateCampaignUseCase_PersistsArchivedFromInput(t *testing.T) {
 
 	uc := NewUpdateCampaignUseCase(campaignRepo, newMockEntryRepo(), templates, businessPhones, nil)
 
-	archiveInput := func(archived bool) *wc.Campaign {
-		return &wc.Campaign{
-			Name:            "Campaign",
-			BusinessPhoneID: "phone-1",
-			Archived:        archived,
-		}
-	}
-
-	updated, err := uc.Execute(context.Background(), "camp-1", archiveInput(true))
-	if err != nil {
-		t.Fatalf("archive update failed: %v", err)
-	}
-	if !updated.Archived {
-		t.Fatal("expected campaign to be archived after Execute(Archived=true)")
+	if err := uc.SetArchived(context.Background(), "camp-1", true); err != nil {
+		t.Fatalf("archive failed: %v", err)
 	}
 	if stored, _ := campaignRepo.FindByID("camp-1"); !stored.Archived {
 		t.Fatal("expected archived=true to be persisted in the repository")
 	}
 
-	updated, err = uc.Execute(context.Background(), "camp-1", archiveInput(false))
-	if err != nil {
-		t.Fatalf("unarchive update failed: %v", err)
-	}
-	if updated.Archived {
-		t.Fatal("expected campaign to be unarchived after Execute(Archived=false)")
+	if err := uc.SetArchived(context.Background(), "camp-1", false); err != nil {
+		t.Fatalf("unarchive failed: %v", err)
 	}
 	if stored, _ := campaignRepo.FindByID("camp-1"); stored.Archived {
 		t.Fatal("expected archived=false to be persisted in the repository")

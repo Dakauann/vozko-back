@@ -7,12 +7,13 @@ import (
 	"log"
 	"time"
 
+	ca "vozko/domain/commentautomation"
 	fbdomain "vozko/domain/facebook"
 	mm "vozko/domain/metamessaging"
 )
 
 type CommentRuleRunner interface {
-	Evaluate(ctx context.Context, page *fbdomain.Page, comment *fbdomain.Comment)
+	Evaluate(ctx context.Context, page *fbdomain.Page, comment *fbdomain.Comment) error
 }
 
 type CommentAudience interface {
@@ -183,13 +184,20 @@ func (uc *HandleFeedUseCase) commentAdded(ctx context.Context, page *fbdomain.Pa
 	if err := uc.d.Comments.UpsertMany(ctx, []*fbdomain.Comment{c}); err != nil {
 		return err
 	}
+	if !c.IsOurs {
+		if err := uc.d.Rules.Evaluate(ctx, page, c); err != nil {
+			if ca.Retryable(err) {
+				return err
+			}
+			log.Printf("[facebook-feed] comment %s rule actions failed: %v", c.FBCommentID, err)
+		}
+	}
 	if err := uc.d.Posts.AddCounts(ctx, ev.PostID, 0, 1); err != nil {
 		log.Printf("[facebook-feed] post %s comment count not updated: %v", ev.PostID, err)
 	}
 	if c.IsOurs {
 		return nil
 	}
-	uc.d.Rules.Evaluate(ctx, page, c)
 	uc.d.Audience.Enqueue(ctx, c)
 	return nil
 }

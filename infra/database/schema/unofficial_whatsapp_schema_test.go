@@ -79,6 +79,7 @@ func TestUnofficialWhatsAppConversationColumnNames(t *testing.T) {
 		"LastMessageAt":         "last_message_at",
 		"LastCustomerMessageAt": "last_customer_message_at",
 		"LastAgentMessageAt":    "last_agent_message_at",
+		"AwaitingReplySince":    "awaiting_reply_since",
 	})
 }
 

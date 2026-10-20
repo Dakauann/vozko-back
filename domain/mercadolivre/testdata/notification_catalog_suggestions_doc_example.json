@@ -1,0 +1,10 @@
+{
+
+  "topic": "catalog_suggestions",
+  "resource": "/catalog_suggestions/MLA123456",
+  "user_id": 123456,
+  "application_id": 5775857146034005,
+  "attempts": 1,
+  "recieved": "2021-12-05T17:13:53.617074685Z",
+  "sent": "2021-12-05T19:22:31.579985295Z"
+}

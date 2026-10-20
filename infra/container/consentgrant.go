@@ -10,14 +10,23 @@ import (
 
 func (c *Container) consentGuardedWorkflows() workflow_domain.ScopedWorkflowsUseCase {
 	c.mustConsentGrantChecker()
+	publish, ok := c.useCases.activateWorkflow.(workflow_domain.PublishWorkflowUseCase)
+	if !ok {
+		log.Fatalf("[workflows] the activation use case cannot publish versions")
+	}
 	return workflow_usecase.NewScopedWorkflowsUseCase(workflow_usecase.ScopedWorkflowsDeps{
-		Create:      c.useCases.createWorkflow,
-		Get:         c.useCases.getWorkflow,
-		Update:      c.useCases.updateWorkflow,
-		Delete:      c.useCases.deleteWorkflow,
-		Activate:    c.useCases.activateWorkflow,
-		Pause:       c.useCases.pauseWorkflow,
-		Permissions: c.services.conversationAuthImpl,
+		Create:           c.useCases.createWorkflow,
+		Get:              c.useCases.getWorkflow,
+		Update:           c.useCases.updateWorkflow,
+		Delete:           c.useCases.deleteWorkflow,
+		AssignDepartment: c.useCases.assignWorkflowDepartment,
+		Activate:         c.useCases.activateWorkflow,
+		Publish:          publish,
+		Pause:            c.useCases.pauseWorkflow,
+		Versions:         workflow_usecase.NewWorkflowVersionsUseCase(c.repositories.workflow),
+		Permissions:      c.services.conversationAuthImpl,
+		PinSources:       workflow_usecase.NewRunPinSources(c.repositories.workflowRun, c.conversationVisibility()),
+		EntryPoints:      c.workflowEntryPoints(),
 	})
 }
 

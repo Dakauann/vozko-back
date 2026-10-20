@@ -52,7 +52,7 @@ func (t *getAdConversionSettingsTool) Meta() copilot.Meta {
 
 func (t *getAdConversionSettingsTool) Definition() tools.Definition {
 	return copilottools.Definition("get_ad_conversion_settings",
-		"Mostra como o Vozko avisa a Meta das conversões do CRM: se está ligado, a conta de anúncios, se o WhatsApp oficial está ligado ao "+
+		"Mostra como a plataforma avisa a Meta das conversões do CRM: se está ligado, a conta de anúncios, se o WhatsApp oficial está ligado ao "+
 			"conjunto de dados da Meta, o pixel e quais eventos saem (oportunidade criada envia LeadSubmitted, oportunidade ganha envia Purchase).",
 		struct{}{})
 }
@@ -321,7 +321,7 @@ func (t *recentAdConversionsTool) Meta() copilot.Meta { return adsMeta(workspace
 
 func (t *recentAdConversionsTool) Definition() tools.Definition {
 	return copilottools.Definition("recent_ad_conversions",
-		"Mostra as últimas conversões que o Vozko tentou enviar à Meta: o evento, se foi enviado, pulado ou falhou e o motivo. "+
+		"Mostra as últimas conversões que a plataforma tentou enviar à Meta: o evento, se foi enviado, pulado ou falhou e o motivo. "+
 			"Motivos comuns: not_enabled (envio desligado), event_off (evento desligado), no_ad_identity (o contato não veio de anúncio), "+
 			"too_old (mais de 7 dias), no_dataset (sem conjunto de dados nem pixel), value_missing (venda sem valor).",
 		struct{}{})

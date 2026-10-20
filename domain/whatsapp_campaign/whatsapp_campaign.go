@@ -133,7 +133,7 @@ type Campaign struct {
 	CreatedAt            time.Time                   `json:"createdAt"`
 	UpdatedAt            time.Time                   `json:"updatedAt"`
 
-	ScheduledStart time.Time `json:"scheduledStart,omitempty"`
+	ScheduledStart time.Time `json:"scheduledStart,omitzero"`
 
 	WavePolicy *smartcampaign.Policy `json:"-"`
 
@@ -211,16 +211,8 @@ func (c *Campaign) Validate() error {
 	if !c.Status.IsValid() {
 		return ErrCampaignStatusInvalid
 	}
-	if !c.ScheduledStart.IsZero() {
-		if c.ScheduledStart.Before(time.Now()) {
-			return ErrCampaignScheduledStartInvalid
-		}
-		if time.Until(c.ScheduledStart) < 5*time.Minute {
-			return ErrCampaignScheduledStartTooSoon
-		}
-		if time.Until(c.ScheduledStart) > 365*24*time.Hour {
-			return ErrCampaignScheduledStartTooSoon
-		}
+	if err := validateScheduledStart(c.ScheduledStart); err != nil {
+		return err
 	}
 
 	if len(c.PhoneInputs) == 0 {
@@ -234,6 +226,37 @@ func (c *Campaign) Validate() error {
 			return ErrCampaignPhoneNumberInvalid
 		}
 	}
+	return nil
+}
+
+func validateScheduledStart(start time.Time) error {
+	if start.IsZero() {
+		return nil
+	}
+	if start.Before(time.Now()) {
+		return ErrCampaignScheduledStartInvalid
+	}
+	if time.Until(start) < 5*time.Minute {
+		return ErrCampaignScheduledStartTooSoon
+	}
+	if time.Until(start) > 365*24*time.Hour {
+		return ErrCampaignScheduledStartTooSoon
+	}
+	return nil
+}
+
+func (c *Campaign) Reschedule(start time.Time) error {
+	start = start.UTC()
+	if start.Equal(c.ScheduledStart.UTC()) {
+		return nil
+	}
+	if !start.IsZero() && c.Status == CampaignStatusRunning {
+		return ErrCampaignRunning
+	}
+	if err := validateScheduledStart(start); err != nil {
+		return err
+	}
+	c.ScheduledStart = start
 	return nil
 }
 
@@ -264,13 +287,20 @@ func (c *Campaign) ValidateTemplateVariables(requiredParamCount int) error {
 		if entry.Skip != "" {
 			continue
 		}
-		if len(entry.Variables) < requiredParamCount {
-			return ErrCampaignTemplateVariablesMismatch
+		if err := RequireTemplateVariables(requiredParamCount, entry.Variables); err != nil {
+			return err
 		}
-		for i := 0; i < requiredParamCount; i++ {
-			if strings.TrimSpace(entry.Variables[i]) == "" {
-				return ErrCampaignTemplateVariableEmpty
-			}
+	}
+	return nil
+}
+
+func RequireTemplateVariables(requiredParamCount int, variables []string) error {
+	if len(variables) < requiredParamCount {
+		return ErrCampaignTemplateVariablesMismatch
+	}
+	for i := 0; i < requiredParamCount; i++ {
+		if strings.TrimSpace(variables[i]) == "" {
+			return ErrCampaignTemplateVariableEmpty
 		}
 	}
 	return nil

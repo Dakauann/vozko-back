@@ -38,6 +38,7 @@ type Params struct {
 	Purpose      string `json:"purpose,omitempty"`
 	DepartmentID string `json:"departmentId,omitempty"`
 	UserID       string `json:"userId,omitempty"`
+	AgentID      string `json:"agentId,omitempty"`
 	WorkflowID   string `json:"workflowId,omitempty"`
 	CallListID   string `json:"callListId,omitempty"`
 	FieldKey     string `json:"fieldKey,omitempty"`
@@ -51,6 +52,7 @@ func (p Params) trimmed() Params {
 		Purpose:      lead.NormalizeConsentPurpose(p.Purpose),
 		DepartmentID: strings.TrimSpace(p.DepartmentID),
 		UserID:       strings.TrimSpace(p.UserID),
+		AgentID:      strings.TrimSpace(p.AgentID),
 		WorkflowID:   strings.TrimSpace(p.WorkflowID),
 		CallListID:   strings.TrimSpace(p.CallListID),
 		FieldKey:     strings.TrimSpace(p.FieldKey),
@@ -182,6 +184,8 @@ func paramShape(kind Kind, p Params) (bool, Params) {
 		return lead.ValidateConsentPurpose(p.Purpose) == nil, Params{Purpose: p.Purpose}
 	case KindHandOff:
 		return (p.DepartmentID == "") != (p.UserID == ""), Params{DepartmentID: p.DepartmentID, UserID: p.UserID}
+	case KindDelegate:
+		return (p.AgentID == "") != (p.WorkflowID == ""), Params{AgentID: p.AgentID, WorkflowID: p.WorkflowID}
 	case KindStartWorkflow:
 		return p.WorkflowID != "", Params{WorkflowID: p.WorkflowID}
 	case KindCallList:

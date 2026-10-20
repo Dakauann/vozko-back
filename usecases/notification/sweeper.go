@@ -58,25 +58,33 @@ func (s *Sweeper) Sweep(ctx context.Context) error {
 }
 
 type Retention struct {
-	outbox notification.Outbox
-	batch  int
-	now    func() time.Time
+	outbox   notification.Outbox
+	episodes notification.EpisodeStore
+	batch    int
+	now      func() time.Time
 }
 
-func NewRetention(outbox notification.Outbox, batch int, now func() time.Time) *Retention {
+func NewRetention(outbox notification.Outbox, episodes notification.EpisodeStore, batch int, now func() time.Time) *Retention {
 	if batch <= 0 {
 		batch = DefaultPurgeSize
 	}
-	return &Retention{outbox: outbox, batch: batch, now: clockOrNow(now)}
+	return &Retention{outbox: outbox, episodes: episodes, batch: batch, now: clockOrNow(now)}
 }
 
 func (r *Retention) Purge(ctx context.Context) error {
 	cutoff := r.now().Add(-RetentionPeriod)
+	if err := r.purgeInBatches(ctx, cutoff, r.outbox.PurgeBefore); err != nil {
+		return err
+	}
+	return r.purgeInBatches(ctx, cutoff, r.episodes.PurgeEpisodesBefore)
+}
+
+func (r *Retention) purgeInBatches(ctx context.Context, cutoff time.Time, purge func(context.Context, time.Time, int) (int, error)) error {
 	for i := 0; i < maxPurgeBatches; i++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		purged, err := r.outbox.PurgeBefore(ctx, cutoff, r.batch)
+		purged, err := purge(ctx, cutoff, r.batch)
 		if err != nil {
 			return err
 		}

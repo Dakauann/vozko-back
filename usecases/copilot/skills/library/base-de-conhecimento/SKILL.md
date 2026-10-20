@@ -24,7 +24,7 @@ O conteúdo é dividido em pedaços, e o agente busca os pedaços mais parecidos
 - Objeções comuns e a resposta certa.
 - O que o agente não deve responder e para quem passar.
 
-## No Vozko
+## Na plataforma
 - create_knowledge_base cria a base; add_knowledge_document adiciona o conteúdo.
 - Depois de montar, teste com search_knowledge usando as perguntas reais dos clientes; se a resposta certa não aparece, divida ou renomeie a seção.
 - Mantenha atualizado: base velha faz o agente afirmar coisa errada com confiança.

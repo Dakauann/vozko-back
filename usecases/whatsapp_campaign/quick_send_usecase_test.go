@@ -290,6 +290,8 @@ func (r *qsEntryRepo) CountByConversationStatusForWorkspace(_ string) (map[strin
 	return nil, nil
 }
 
+func (r *qsEntryRepo) EachStored(string, func(wce.StoredEntry) error) error { return nil }
+
 type qsLeadRepo struct {
 	mu        sync.Mutex
 	createErr error

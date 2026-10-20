@@ -216,7 +216,7 @@ func (a *Authorizer) entryAssignment(workspaceID, entryID, entryType string) (*i
 }
 
 func (a *Authorizer) canViewOthers(userID, workspaceID string) bool {
-	return a.HasWorkspacePermission(userID, workspaceID, string(workspace.ResourceConversations), string(workspace.ActionViewOthers), false)
+	return conversation.SeesOthers(a, userID, workspaceID)
 }
 
 func (a *Authorizer) CanAccessCampaign(userID, workspaceID, campaignID, campaignType string, isAdmin bool) bool {

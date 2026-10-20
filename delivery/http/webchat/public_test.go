@@ -26,6 +26,9 @@ func (s widgetStore) FindByID(context.Context, string, string) (*wcdomain.Widget
 func (s widgetStore) FindByIDUnscoped(context.Context, string) (*wcdomain.Widget, error) {
 	return s.w, nil
 }
+func (s widgetStore) FindByIDsUnscoped(context.Context, []string) ([]*wcdomain.Widget, error) {
+	return []*wcdomain.Widget{s.w}, nil
+}
 func (s widgetStore) FindByPublicKey(_ context.Context, key string) (*wcdomain.Widget, error) {
 	if s.w == nil || s.w.PublicKey != key {
 		return nil, wcdomain.ErrWidgetNotFound

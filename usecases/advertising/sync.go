@@ -27,6 +27,7 @@ type syncGateway interface {
 
 type FundsAlerter interface {
 	Alert(ctx context.Context, account *ads.AdAccount, funds ads.Funds) error
+	Recovered(ctx context.Context, account *ads.AdAccount) error
 }
 
 type SyncUseCase struct {

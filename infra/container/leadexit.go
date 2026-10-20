@@ -35,18 +35,19 @@ func (c *Container) leadExitStep() leadexit.Step {
 		log.Fatalf("[lead-exit] unofficial campaign messages: %v", err)
 	}
 	step, err := leadexit_usecase.NewStep(leadexit_usecase.Deps{
-		Buttons:   c.buttonActions(),
-		Sent:      sent,
-		Campaigns: campaigns,
-		Runs:      leadexit_repository.NewRunStore(c.db),
-		Consent:   c.leadConsent(),
-		Leads:     c.repositories.lead,
-		HandOff:   c.services.assignmentService,
-		Profiles:  c.leadProfiles(),
-		Deals:     c.useCases.opportunity,
-		Workflows: c.tapWorkflows(),
-		CallLists: c.callLists(),
-		Events:    ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
+		Buttons:     c.buttonActions(),
+		Sent:        sent,
+		Campaigns:   campaigns,
+		Runs:        leadexit_repository.NewRunStore(c.db),
+		Consent:     c.leadConsent(),
+		Leads:       c.repositories.lead,
+		HandOff:     c.services.assignmentService,
+		Profiles:    c.leadProfiles(),
+		Deals:       c.useCases.opportunity,
+		Workflows:   c.tapWorkflows(),
+		Delegations: c.buttonDelegations(),
+		CallLists:   c.callLists(),
+		Events:      ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
 	})
 	if err != nil {
 		log.Fatalf("[lead-exit] step: %v", err)

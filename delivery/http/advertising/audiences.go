@@ -110,7 +110,7 @@ func (h *Handler) DeleteAudience(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Públicos salvos
-// @Description	Combinações de público e posicionamentos salvas no Vozko para reaproveitar ao criar anúncios.
+// @Description	Combinações de público e posicionamentos salvas na plataforma para reaproveitar ao criar anúncios.
 // @Tags			Anúncios
 // @Produce		json
 // @Success		200	{array}	advertising.SavedAudience

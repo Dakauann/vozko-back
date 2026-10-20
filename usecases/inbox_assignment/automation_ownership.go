@@ -163,7 +163,7 @@ func (s *AssignmentService) HandOffToRoulette(in ia.RouletteHandOff) (string, er
 	}
 
 	pool := s.humanPool(in.WorkspaceID, departmentID)
-	if len(pool.Ring) == 0 || businessPhoneID == "" {
+	if !pool.CanPick() || businessPhoneID == "" {
 		log.Printf("[InboxAssignment] hand-off of entry %s (%s): no ring to draw from in department %q, releasing it to the team", in.EntryID, in.EntryType, departmentID)
 		moved, err := s.unassign(in.EntryID, in.EntryType, in.WorkspaceID, ia.TriggerAutomationHandoff)
 		if err != nil {

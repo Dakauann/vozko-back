@@ -423,3 +423,20 @@ func TestAudioWithoutATranscoderFailsWithAReason(t *testing.T) {
 		t.Errorf("err = %q; it must name the missing piece", err)
 	}
 }
+
+func TestTheAdapterDeclaresWhatsAppEditAndDeleteWindows(t *testing.T) {
+	adapter, _, _, _ := adapterFixture(t, nil)
+
+	got := conversation.MessageCapabilitiesOf(adapter)
+	want := conversation.MessageCapabilities{
+		React: true, Edit: true, Delete: true,
+		EditWindowSeconds:   int64(uw.EditWindow.Seconds()),
+		DeleteWindowSeconds: int64(uw.DeleteWindow.Seconds()),
+	}
+	if got != want {
+		t.Fatalf("capabilities = %+v, want %+v", got, want)
+	}
+	if uw.EditWindow != 15*time.Minute {
+		t.Errorf("WhatsApp lets a sender edit for 15 minutes, declared %v", uw.EditWindow)
+	}
+}

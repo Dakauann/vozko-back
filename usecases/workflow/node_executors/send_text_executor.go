@@ -16,12 +16,13 @@ func NewSendTextExecutor(deps SenderDeps) workflow.NodeExecutor {
 
 func (e *sendTextExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionSendText,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:       "Enviar Texto",
-		Description: "Envia uma mensagem de texto ao contato.",
-		Icon:        "PaperPlaneTilt",
+		Type:         workflow.NodeTypeActionSendText,
+		TestBehavior: workflow.NodeTestSendsMessage,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:        "Enviar Texto",
+		Description:  "Envia uma mensagem de texto ao contato.",
+		Icon:         "PaperPlaneTilt",
 		Guidance: workflow.NodeGuidance{
 			When: "Para enviar uma mensagem de texto ao contato (texto fixo ou montado com variáveis). Útil para enviar a saída de um nó anterior, ou em canais onde o agente não envia sozinho.",
 			Examples: []string{

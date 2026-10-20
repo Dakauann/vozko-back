@@ -1,0 +1,17 @@
+{
+    "paging": {
+        "limit": 10,
+        "offset": 0,
+        "total": 4
+    },
+    "conversation_status": {
+        "path": "/packs/22175467/sellers/32086568493",
+        "status": "blocked",
+        "substatus": "blocked_by_buyer",
+        "status_date": "2020-01-10T19:58:04.317Z",
+        "status_update_allowed": false,
+        "claim_ids": null,
+        "shipping_id": null
+    },
+    "messages": []
+}

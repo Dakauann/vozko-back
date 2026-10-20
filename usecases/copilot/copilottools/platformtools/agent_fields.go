@@ -33,8 +33,8 @@ var agentFieldDescriptions = map[string]string{
 	"internalTools":          "ferramentas internas do agente (lista COMPLETA; use list_agent_tools para nomes válidos e o config exigido por cada uma). Cabeçalhos (headers) e outros valores protegidos: envie só os NOMES com valor vazio (ex.: {\"Authorization\": \"\"}); o usuário digita os valores no cartão de aprovação e você nunca os vê.",
 	"knowledgeBaseIds":       "ids das bases de conhecimento a vincular (devem ser deste workspace)",
 	"mcpCollectionIds":       "ids das coleções MCP a vincular (devem ser deste workspace)",
-	"addTools":               "ferramentas internas a ADICIONAR ou substituir, preservando as demais. Use list_agent_tools para o nome exato e o config exigido (ex.: http_request exige url e method). Ao substituir, a configuração inteira é trocada: repita os nomes dos cabeçalhos que devem continuar. Cabeçalhos (headers) e outros valores protegidos: envie só os NOMES com valor vazio (ex.: {\"Authorization\": \"\"}); o usuário digita os valores no cartão de aprovação e você nunca os vê.",
-	"removeTools":            "nomes das ferramentas internas a REMOVER do agente",
+	"addTools":               "ferramentas internas a ADICIONAR ou substituir, preservando as demais. Use list_agent_tools para o nome exato e o config exigido (ex.: http_request exige url e method). Ao substituir, a configuração inteira é trocada: repita os nomes dos cabeçalhos que devem continuar. Cabeçalhos (headers) e outros valores protegidos: envie só os NOMES com valor vazio (ex.: {\"Authorization\": \"\"}); o usuário digita os valores no cartão de aprovação e você nunca os vê. run_workflow (Executar fluxo) vale uma vez por fluxo: cada item com um workflow_id diferente é uma ferramenta própria e os outros fluxos do agente são preservados.",
+	"removeTools":            "nomes das ferramentas internas a REMOVER do agente. Para tirar só um fluxo de run_workflow, use run_workflow_<id do fluxo>; run_workflow sozinho remove todos os fluxos",
 	"addKnowledgeBaseIds":    "ids de bases de conhecimento a ADICIONAR, preservando as atuais",
 	"removeKnowledgeBaseIds": "ids de bases de conhecimento a REMOVER",
 	"addMcpCollectionIds":    "ids de coleções MCP a ADICIONAR, preservando as atuais",
@@ -157,10 +157,37 @@ func mergeStrings(current, add, remove []string) []string {
 	return out
 }
 
-func mergeToolBindings(current []agent.ToolBinding, add []toolBindingArg, remove []string) []agent.ToolBinding {
+type bindingIdentities map[string]tools.Definition
+
+func bindingIdentitiesOf(catalog ToolCatalog) bindingIdentities {
+	ids := bindingIdentities{}
+	if catalog == nil {
+		return ids
+	}
+	for _, def := range catalog.Definitions() {
+		ids[copilottools.TrimLower(def.Name)] = def
+	}
+	return ids
+}
+
+func (ids bindingIdentities) of(name string, config map[string]interface{}) string {
+	if def, ok := ids[copilottools.TrimLower(name)]; ok {
+		return def.BindingIdentity(config)
+	}
+	return copilottools.TrimLower(name)
+}
+
+func dropped(drop map[string]struct{}, name, identity string) bool {
+	_, byIdentity := drop[identity]
+	_, byName := drop[copilottools.TrimLower(name)]
+	return byIdentity || byName
+}
+
+func mergeToolBindings(catalog ToolCatalog, current []agent.ToolBinding, add []toolBindingArg, remove []string) []agent.ToolBinding {
 	if len(add) == 0 && len(remove) == 0 {
 		return nil
 	}
+	ids := bindingIdentitiesOf(catalog)
 	drop := make(map[string]struct{}, len(remove))
 	for _, name := range remove {
 		if name = copilottools.TrimLower(name); name != "" {
@@ -170,10 +197,10 @@ func mergeToolBindings(current []agent.ToolBinding, add []toolBindingArg, remove
 	replace := make(map[string]agent.ToolBinding, len(add))
 	order := make([]string, 0, len(add))
 	for _, a := range add {
-		key := copilottools.TrimLower(a.Name)
-		if key == "" {
+		if copilottools.TrimLower(a.Name) == "" {
 			continue
 		}
+		key := ids.of(a.Name, a.Config)
 		if _, exists := replace[key]; !exists {
 			order = append(order, key)
 		}
@@ -183,8 +210,8 @@ func mergeToolBindings(current []agent.ToolBinding, add []toolBindingArg, remove
 	out := make([]agent.ToolBinding, 0, len(current)+len(add))
 	kept := make(map[string]struct{}, len(current))
 	for _, tb := range current {
-		key := copilottools.TrimLower(tb.Name)
-		if _, dropped := drop[key]; dropped {
+		key := ids.of(tb.Name, tb.Config)
+		if dropped(drop, tb.Name, key) {
 			continue
 		}
 		if updated, ok := replace[key]; ok {
@@ -199,7 +226,7 @@ func mergeToolBindings(current []agent.ToolBinding, add []toolBindingArg, remove
 		if _, already := kept[key]; already {
 			continue
 		}
-		if _, dropped := drop[key]; dropped {
+		if dropped(drop, replace[key].Name, key) {
 			continue
 		}
 		out = append(out, replace[key])

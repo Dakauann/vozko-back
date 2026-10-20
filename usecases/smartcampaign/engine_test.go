@@ -306,9 +306,15 @@ func TestAYellowTemplatePausesAtOnceAndResumeWaitsForGreen(t *testing.T) {
 	if !errors.Is(err, sc.ErrStillUnhealthy) || r.status("c1") != campaign.StatusPaused {
 		t.Fatalf("resume while yellow = %v, want refused", err)
 	}
+	if len(r.notifier.resumed) != 1 {
+		t.Fatalf("a refused resume must keep the hold alert open, resumed %v", r.notifier.resumed)
+	}
 
 	r.health.templates["tpl-c1"] = sc.TemplateState{Status: "APPROVED", Quality: "GREEN", Category: "UTILITY"}
 	r.start("c1")
+	if len(r.notifier.resumed) != 2 || r.notifier.resumed[1] != "c1" {
+		t.Fatalf("a resume closes the hold alert so the next hold notifies again, resumed %v", r.notifier.resumed)
+	}
 
 	if pending, _ := r.store.PendingInWave("c1", 1); pending != 0 {
 		t.Fatalf("%d unsent contacts stayed in the interrupted wave", pending)
@@ -330,6 +336,9 @@ func TestAManualPauseResumesTheSameWave(t *testing.T) {
 
 	if r.store.waveCount("c1") != 1 || r.wave("c1", 1).State != sc.Enqueued {
 		t.Fatal("a manual resume did not continue the same wave")
+	}
+	if len(r.notifier.resumed) != 2 {
+		t.Fatalf("continuing the same wave is also a resume, resumed %v", r.notifier.resumed)
 	}
 	if last := r.consumer.calls[len(r.consumer.calls)-1]; last != "subscribe:c1" {
 		t.Fatalf("last consumer call = %s, want the consumer attached again", last)

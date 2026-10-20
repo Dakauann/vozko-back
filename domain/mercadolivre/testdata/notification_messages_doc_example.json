@@ -1,0 +1,11 @@
+{
+  "id": "5e2827f2-99b7-474e-b68b-6a86e934cc7e",
+  "resource": "3f6da1e35ac84f70a24af7360d24c7bc",
+  "user_id": 123456789,
+  "topic": "messages",
+  "actions": ["created"],
+  "application_id": 89745685555,
+  "attempts": 1,
+  "sent": "2017-10-09T13:44:33.006Z",
+  "received": "2017-10-09T13:44:32.984Z"
+}

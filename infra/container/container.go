@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"vozko/usecases/workflow/node_executors"
 
 	"vozko/domain/workspace/workspace_pricing"
 	redisCache "vozko/infra/cache"
@@ -23,7 +24,7 @@ import (
 )
 
 func New() *Container {
-	c := &Container{}
+	c := &Container{formSenderRelay: node_executors.NewFormSenderRelay()}
 	c.cfg = config.LoadConfig()
 
 	c.validatePortLayout()
@@ -39,7 +40,7 @@ func New() *Container {
 	c.wireContainerPipelines()
 
 	c.seedPricingDefaults()
-	c.services.whatsappClientFactory = template_infra.NewWhatsAppClientFactory(c.repositories.businessPhone, &http.Client{Timeout: 30 * time.Second}, c.cfg.Dialog360MessagingBase, c.cfg.WhatsAppAppID)
+	c.services.whatsappClientFactory = template_infra.NewWhatsAppClientFactory(c.repositories.businessPhone, &http.Client{Timeout: 30 * time.Second}, c.cfg.Dialog360MessagingBase, c.cfg.WhatsAppAppID, mediaDownloads())
 
 	currentSubscriptionUC := workspace_plan_usecase.NewEnsureCurrentWorkspaceSubscriptionUseCase(c.repositories.workspaceSubscription)
 	activeSubscriptionUC := workspace_plan_usecase.NewEnsureActiveWorkspaceSubscriptionUseCase(currentSubscriptionUC)
@@ -72,6 +73,8 @@ func New() *Container {
 	c.initInstagram()
 	c.initFacebook()
 	c.initTelegram()
+	c.initMercadoLivre()
+	c.initTikTok()
 	c.initWebchat()
 	c.initUnofficialWhatsApp()
 	c.initUseCases(consumeWhatsappTemplateUC)
@@ -80,11 +83,14 @@ func New() *Container {
 	c.initWhatsAppWebhookSubscription()
 	c.initMediaGeneration()
 	c.initNotifications()
+	c.wirePersonalInbox()
 	c.initLiveDecisions()
 	c.startConversationHub()
 	c.wireInstagramConversationStack()
 	c.wireFacebookConversationStack()
 	c.wireTelegramConversationStack()
+	c.wireMercadoLivreConversationStack()
+	c.wireTikTokConversationStack()
 	c.wireWebchatConversationStack()
 	c.wireUnofficialWhatsAppConversationStack()
 	c.wireDelegations()

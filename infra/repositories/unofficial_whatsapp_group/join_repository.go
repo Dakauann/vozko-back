@@ -116,10 +116,21 @@ func (r *joinRepository) Recent(ctx context.Context, workspaceID string, scope u
 	return out, nil
 }
 
+func (r *joinRepository) LastLink(ctx context.Context, workspaceID, groupJID string) (string, error) {
+	var links []string
+	err := r.db.WithContext(ctx).Model(&schema.UnofficialWhatsAppGroupJoin{}).
+		Where("workspace_id = ? AND group_jid = ? AND status = ?", workspaceID, groupJID, string(uwg.JoinDone)).
+		Order("created_at DESC").Limit(1).Pluck("invite_link", &links).Error
+	if err != nil || len(links) == 0 {
+		return "", err
+	}
+	return links[0], nil
+}
+
 func joinToRow(t uwg.JoinTask) schema.UnofficialWhatsAppGroupJoin {
 	return schema.UnofficialWhatsAppGroupJoin{
 		ID: t.ID, PlanID: t.PlanID, WorkspaceID: t.WorkspaceID, InstanceID: t.InstanceID,
-		InviteLink: t.InviteLink, GroupJID: t.GroupJID, Sequence: t.Sequence, Follow: t.Follow,
+		InviteLink: t.InviteLink, GroupJID: t.GroupJID, Sequence: t.Sequence, Follow: t.Follow, Category: t.Category,
 		Status: string(t.Status), Attempts: t.Attempts, Error: truncate(t.Error, 500), DueAt: t.DueAt,
 		LeaseOwner: t.LeaseOwner, LeaseUntil: t.LeaseUntil, CreatedByID: optional(t.CreatedByID),
 	}
@@ -128,7 +139,7 @@ func joinToRow(t uwg.JoinTask) schema.UnofficialWhatsAppGroupJoin {
 func joinToDomain(r *schema.UnofficialWhatsAppGroupJoin) uwg.JoinTask {
 	return uwg.JoinTask{
 		ID: r.ID, PlanID: r.PlanID, WorkspaceID: r.WorkspaceID, InstanceID: r.InstanceID,
-		InviteLink: r.InviteLink, GroupJID: r.GroupJID, Sequence: r.Sequence, Follow: r.Follow,
+		InviteLink: r.InviteLink, GroupJID: r.GroupJID, Sequence: r.Sequence, Follow: r.Follow, Category: r.Category,
 		Status: uwg.JoinStatus(r.Status), Attempts: r.Attempts, Error: r.Error, DueAt: r.DueAt,
 		CreatedByID: value(r.CreatedByID), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		LeaseOwner: r.LeaseOwner, LeaseUntil: r.LeaseUntil,

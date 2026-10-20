@@ -94,7 +94,7 @@ func TestBuildRequest_ResponseFormatJSONSchema(t *testing.T) {
 
 func mustService(t *testing.T, cfg Config, toolSvc tools.Service) *Service {
 	t.Helper()
-	s, err := NewService(cfg, toolSvc, noopBillingPub{})
+	s, err := NewService(cfg, toolSvc, noopBillingPub{}, &leakTally{})
 	if err != nil {
 		t.Fatalf("NewService() = %v", err)
 	}

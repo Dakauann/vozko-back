@@ -10,6 +10,8 @@ var (
 	ErrOutputTooLarge = errors.New("scriptvm: output exceeds size limit")
 
 	ErrStaticReject = errors.New("scriptvm: code rejected by static analyzer")
+
+	errBlockedAddress = errors.New("scriptvm: blocked private/loopback address")
 )
 
 type ScriptError struct {

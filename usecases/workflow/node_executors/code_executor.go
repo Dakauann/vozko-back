@@ -3,21 +3,24 @@ package node_executors
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"vozko/domain/workflow"
+	"vozko/domain/workflowsecret"
 	"vozko/usecases/workflow/scriptvm"
 )
 
 type codeExecutor struct {
 	sandbox *scriptvm.Sandbox
+	secrets workflowsecret.Resolver
 }
 
-func NewCodeExecutor() workflow.NodeExecutor {
-	return &codeExecutor{sandbox: scriptvm.New(scriptvm.DefaultLimits())}
+func NewCodeExecutor(secrets workflowsecret.Resolver) workflow.NodeExecutor {
+	return &codeExecutor{sandbox: scriptvm.New(scriptvm.DefaultLimits()), secrets: secrets}
 }
 
 const defaultCodeNodeSnippet = `// ─────────────────────────────────────────────────────────────────────
@@ -106,10 +109,11 @@ return {
 
 func (e *codeExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:     workflow.NodeTypeActionCode,
-		Category: workflow.NodeCategoryLogic,
-		Scopes:   []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:    "Código (JavaScript)",
+		Type:         workflow.NodeTypeActionCode,
+		TestBehavior: workflow.NodeTestExternalCall,
+		Category:     workflow.NodeCategoryLogic,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Código (JavaScript)",
 		Description: "Executa JavaScript em um sandbox seguro. " +
 			"Tem acesso a input, state.get/set, fetch (HTTPS), secrets, log, json, b64, crypto, sleep. " +
 			"O valor retornado vira a saída do nó (acessível via {{last.<campo>}}).",
@@ -161,53 +165,56 @@ func (e *codeExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 		}
 	}
 
+	secrets, err := resolveNodeSecrets(ctx, e.secrets, workflow.CodeSecretNames(code))
+	if err != nil {
+		return secretFailure(err)
+	}
+
 	callCtx, releaseCall := ctx.CallContext()
 	defer releaseCall()
 	execCtx, cancel := context.WithTimeout(callCtx, timeout+time.Second)
 	defer cancel()
 
-	runID := ""
-	nodeID := ""
-	if ctx.Run != nil {
-		runID = ctx.Run.ID
-	}
-	if ctx.Node != nil {
-		nodeID = ctx.Node.ID
-	}
-
 	caps := scriptvm.Capabilities{
-		Input: lastNodeOutput(ctx),
-		State: ctx.State,
+		Input:   workflow.LastNodeOutput(ctx.State),
+		State:   scrubbedState{state: ctx.State, scrub: secrets.scrub},
+		Secrets: secrets.values,
 		Audit: func(r scriptvm.AuditRecord) {
-			slog.Info("workflow.code.audit",
-				slog.String("run_id", runID),
-				slog.String("node_id", nodeID),
+			slog.Info("workflow.code.audit", append(nodeLogAttrs(ctx),
 				slog.Int64("wall_ms", r.WallMs),
 				slog.Int("fetch_calls", r.FetchCalls),
 				slog.Int("ssrf_blocked", r.SSRFBlocked),
 				slog.Any("state_writes", r.StateWrites),
 				slog.Any("secrets_accessed", r.SecretsAccessed),
 				slog.Bool("errored", r.Errored),
-			)
+			)...)
+			ctx.Trace.RecordScriptLogs(scriptLogs(r.Logs))
+			for _, fetch := range r.Fetches {
+				ctx.Trace.RecordHTTP(fetch)
+			}
 		},
 	}
 
 	res, err := e.sandbox.Run(execCtx, code, caps)
 	if err != nil {
-		return nil, fmt.Errorf("action_code: %w", err)
+		var scriptErr *scriptvm.ScriptError
+		if errors.As(err, &scriptErr) {
+			ctx.Trace.RecordStack(scriptErr.Stack)
+		}
+		return nil, workflow.Fail(codeFailureKind(err), fmt.Errorf("action_code: %w", secrets.scrubError(err)))
 	}
 
 	out := map[string]interface{}{}
 	var returned interface{}
 	if res.Returns {
-		returned = res.Value
+		returned = secrets.scrub.Value(res.Value)
 
-		if m, ok := res.Value.(map[string]interface{}); ok {
+		if m, ok := returned.(map[string]interface{}); ok {
 			for k, v := range m {
 				out[k] = v
 			}
 		} else {
-			out["result"] = res.Value
+			out["result"] = returned
 		}
 	}
 
@@ -221,14 +228,23 @@ func (e *codeExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 	return &workflow.NodeResult{Output: out}, nil
 }
 
-func lastNodeOutput(ctx *workflow.NodeContext) map[string]interface{} {
-	if ctx == nil || ctx.State == nil {
+func codeFailureKind(err error) workflow.ErrorKind {
+	switch {
+	case errors.Is(err, scriptvm.ErrTimeout):
+		return workflow.ErrorKindTimeout
+	case errors.Is(err, scriptvm.ErrStaticReject), errors.Is(err, scriptvm.ErrDisabled):
+		return workflow.ErrorKindConfig
+	}
+	return workflow.ErrorKindScript
+}
+
+func scriptLogs(entries []scriptvm.LogEntry) []workflow.ScriptLog {
+	if len(entries) == 0 {
 		return nil
 	}
-	if v, ok := ctx.State.Get("_last_node_output"); ok {
-		if m, ok := v.(map[string]interface{}); ok {
-			return m
-		}
+	out := make([]workflow.ScriptLog, len(entries))
+	for i, entry := range entries {
+		out[i] = workflow.ScriptLog{Level: entry.Level, Message: entry.Msg}
 	}
-	return nil
+	return out
 }

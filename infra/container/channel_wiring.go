@@ -7,6 +7,7 @@ import (
 	export_domain "vozko/domain/export"
 	facebook_repository "vozko/infra/repositories/facebook"
 	instagram_repository "vozko/infra/repositories/instagram"
+	mercadolivre_repository "vozko/infra/repositories/mercadolivre"
 	telegram_repository "vozko/infra/repositories/telegram"
 	unofficial_whatsapp_repository "vozko/infra/repositories/unofficial_whatsapp"
 	webchat_repository "vozko/infra/repositories/webchat"
@@ -114,5 +115,7 @@ func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCa
 	if c.webchat != nil {
 		setter.SetChannelEntryLister(export_domain.EntryTypeWebchat, webchat_repository.NewExportRepository(c.db))
 	}
+	setter.SetChannelEntryLister(export_domain.EntryTypeMercadoLivre, mercadolivre_repository.NewExportRepository(c.db))
+	setter.SetChannelEntryLister(export_domain.EntryTypeTikTok, c.tiktokExportLister())
 	return uc
 }

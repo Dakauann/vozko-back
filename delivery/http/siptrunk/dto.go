@@ -24,7 +24,7 @@ type TrunkSettingsDTO struct {
 	BindHost              string            `json:"bindHost,omitempty" example:"0.0.0.0"`
 	BindPort              int               `json:"bindPort,omitempty" example:"5063"`
 	PublicAddress         string            `json:"publicAddress,omitempty" example:"203.0.113.10"`
-	UserAgent             string            `json:"userAgent,omitempty" example:"Vozko"`
+	UserAgent             string            `json:"userAgent,omitempty" example:"MinhaMarca"`
 	ExtraInviteHeaders    map[string]string `json:"extraInviteHeaders,omitempty"`
 	AllowRegisterHeaders  []string          `json:"allowRegisterHeaders,omitempty"`
 	InboundAllowedSources []string          `json:"inboundAllowedSources,omitempty" example:"203.0.113.0/24"`

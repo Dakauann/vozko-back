@@ -15,6 +15,8 @@ var capabilityLabels = map[readiness.Capability]string{
 	readiness.Telegram:           "Telegram",
 	readiness.Facebook:           "Páginas do Facebook",
 	readiness.Webchat:            "WebChat",
+	readiness.MercadoLivre:       "Contas do Mercado Livre",
+	readiness.TikTok:             "Contas do TikTok",
 	readiness.KnowledgeBases:     "Bases de conhecimento",
 }
 

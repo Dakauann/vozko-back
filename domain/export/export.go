@@ -17,7 +17,22 @@ const (
 	EntryTypeUnofficialWhatsApp EntryType = "unofficial_whatsapp"
 	EntryTypeFacebook           EntryType = "facebook"
 	EntryTypeWebchat            EntryType = "webchat"
+	EntryTypeMercadoLivre       EntryType = "mercadolivre"
+	EntryTypeTikTok             EntryType = "tiktok"
 )
+
+func ExportableEntryTypes() []EntryType {
+	return []EntryType{
+		EntryTypeWhatsApp,
+		EntryTypeInstagram,
+		EntryTypeTelegram,
+		EntryTypeUnofficialWhatsApp,
+		EntryTypeFacebook,
+		EntryTypeWebchat,
+		EntryTypeMercadoLivre,
+		EntryTypeTikTok,
+	}
+}
 
 func (t EntryType) HasSendStatus() bool {
 	return t == EntryTypeWhatsApp || t == EntryTypeUnofficialWhatsApp

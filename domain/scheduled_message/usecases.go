@@ -9,6 +9,7 @@ type WindowState struct {
 	Open            bool       `json:"open"`
 	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
 	ClosedReason    string     `json:"closedReason,omitempty"`
+	ClosedDetail    string     `json:"closedDetail,omitempty"`
 	LatestAllowedAt *time.Time `json:"latestAllowedAt,omitempty"`
 
 	TemplateLatestAllowedAt *time.Time `json:"templateLatestAllowedAt,omitempty"`

@@ -94,7 +94,7 @@ func (uc *HealthCheckUseCase) checkGrant(ctx context.Context, grant *fbdomain.Gr
 
 func (uc *HealthCheckUseCase) checkPage(ctx context.Context, grant *fbdomain.Grant, page *fbdomain.Page, remote *fbdomain.RemotePage) {
 	if remote == nil || remote.AccessToken == "" || !grant.Lists(page.FBPageID) {
-		uc.setStatus(ctx, page, fbdomain.StatusTokenRevoked, "the page is no longer shared with Vozko")
+		uc.setStatus(ctx, page, fbdomain.StatusTokenRevoked, "the page is no longer shared with this platform")
 		return
 	}
 	page.PageToken, page.Tasks, page.GrantedScopes = remote.AccessToken, remote.Tasks, grant.ScopesForPage(page.FBPageID)

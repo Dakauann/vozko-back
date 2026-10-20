@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/xuri/excelize/v2"
-
 	balancedomain "vozko/domain/balance"
 	"vozko/domain/shared"
 	"vozko/domain/workspace/workspace_pricing"
+	report_xlsx "vozko/usecases/report/xlsx"
 )
 
 const transactionExportPageSize = shared.MaxPageSize
@@ -140,34 +139,5 @@ func WriteTransactionsCSV(rows [][]string, w io.Writer) error {
 }
 
 func WriteTransactionsXLSX(rows [][]string, w io.Writer) error {
-	file := excelize.NewFile()
-	sheet := "Transactions"
-	index, err := file.NewSheet(sheet)
-	if err != nil {
-		return err
-	}
-	file.SetActiveSheet(index)
-	_ = file.DeleteSheet("Sheet1")
-
-	for column, header := range TransactionExportHeaders() {
-		cell, err := excelize.CoordinatesToCellName(column+1, 1)
-		if err != nil {
-			return err
-		}
-		if err := file.SetCellValue(sheet, cell, header); err != nil {
-			return err
-		}
-	}
-	for rowIndex, row := range rows {
-		for column, value := range row {
-			cell, err := excelize.CoordinatesToCellName(column+1, rowIndex+2)
-			if err != nil {
-				return err
-			}
-			if err := file.SetCellValue(sheet, cell, value); err != nil {
-				return err
-			}
-		}
-	}
-	return file.Write(w)
+	return report_xlsx.WriteTable(w, "Transactions", TransactionExportHeaders(), rows)
 }

@@ -2,6 +2,7 @@ package unofficial_whatsapp_group
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -72,6 +73,45 @@ func TestJoinTaskTerminalStates(t *testing.T) {
 	for _, s := range []JoinStatus{JoinPending, JoinRunning} {
 		if s.Terminal() {
 			t.Fatalf("%s should not be terminal", s)
+		}
+	}
+}
+
+func TestAJoinPlanCarriesItsCategoryToEveryTask(t *testing.T) {
+	tasks, err := PlanJoins(JoinPlanInput{PlanID: "p", WorkspaceID: "w", InviteLink: "https://chat.whatsapp.com/Ky3pQm8Lx2AbCdEfGh1234",
+		InstanceIDs: []string{"n1", "n2"}, Category: "  Clientes VIP "}, joinNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range tasks {
+		if task.Category != "Clientes VIP" {
+			t.Fatalf("task category = %q, want the trimmed category", task.Category)
+		}
+	}
+	if _, err := PlanJoins(JoinPlanInput{PlanID: "p", WorkspaceID: "w", InviteLink: "https://chat.whatsapp.com/Ky3pQm8Lx2AbCdEfGh1234",
+		InstanceIDs: []string{"n1"}, Category: strings.Repeat("a", MaxCategoryRunes+1)}, joinNow); !errors.Is(err, ErrCategoryTooLong) {
+		t.Fatalf("err = %v, want the category limit", err)
+	}
+}
+
+func TestTheAnchorJoinSetsTheCategoryAndLaterJoinsOnlyFillAnEmptyOne(t *testing.T) {
+	anchor := JoinTask{Sequence: 0, Category: "VIP"}
+	later := JoinTask{Sequence: 1, Category: "VIP"}
+	none := JoinTask{Sequence: 0}
+	cases := []struct {
+		task    JoinTask
+		current string
+		want    string
+	}{
+		{anchor, "", "VIP"},
+		{anchor, "Bairro", "VIP"},
+		{later, "", "VIP"},
+		{later, "Bairro", "Bairro"},
+		{none, "Bairro", "Bairro"},
+	}
+	for _, c := range cases {
+		if got := c.task.CategoryFor(c.current); got != c.want {
+			t.Errorf("task %+v on %q = %q, want %q", c.task, c.current, got, c.want)
 		}
 	}
 }

@@ -42,6 +42,26 @@ func TestIsInLoopBody_BlocksTraversalPastWaitNode(t *testing.T) {
 	}
 }
 
+func TestIsInLoopBody_BlocksTraversalPastAFormNode(t *testing.T) {
+	g := &workflow.Graph{
+		Nodes: []workflow.Node{
+			{ID: "loop1", Type: workflow.NodeTypeActionLoop},
+			{ID: "form1", Type: workflow.NodeTypeActionSendForm},
+			{ID: "http1", Type: workflow.NodeTypeActionHTTPRequest},
+		},
+		Edges: []workflow.Edge{
+			{Source: "loop1", Target: "form1", Label: "body"},
+			{Source: "form1", Target: "http1", Label: workflow.FormHandleCompleted},
+		},
+	}
+	if !isInLoopBody(g, "loop1", "form1") {
+		t.Fatal("expected form1 to be considered inside loop body")
+	}
+	if isInLoopBody(g, "loop1", "http1") {
+		t.Fatal("expected http1 to be outside loop body because a form node parks the run")
+	}
+}
+
 func TestLoopExecute_ResetsCounterWhenReEnteringFromOutsideBody(t *testing.T) {
 	exec := NewLoopExecutor()
 	g := buildLoopGraph()

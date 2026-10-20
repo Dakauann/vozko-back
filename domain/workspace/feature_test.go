@@ -108,6 +108,7 @@ var formScreenCapabilities = map[CapabilityKey]bool{
 	"whatsapp_campaigns.edit":     true,
 	"whatsapp_templates.create":   true,
 	"whatsapp_templates.send":     true,
+	"whatsapp_forms.build":        true,
 	"business_phones.connect":     true,
 	"unofficial_numbers.connect":  true,
 	"unofficial_campaigns.create": true,
@@ -116,6 +117,8 @@ var formScreenCapabilities = map[CapabilityKey]bool{
 	"telegram.connect":            true,
 	"webchat.create":              true,
 	"facebook.connect":            true,
+	"mercadolivre.connect":        true,
+	"tiktok.connect":              true,
 	"ads.create":                  true,
 	"links.create":                true,
 	"links.edit":                  true,
@@ -220,5 +223,24 @@ func TestScreensTakeAtMostOneParam(t *testing.T) {
 		if len(s.Params()) > 1 {
 			t.Errorf("screen %q takes %v; navigation carries a single id", s, s.Params())
 		}
+	}
+}
+
+func TestWorkflowSecretsListOpensWithReadWhileChangingThemNeedsUpdate(t *testing.T) {
+	use, ok := CapabilityForScreen(ScreenWorkflowSecrets)
+	if !ok || use.Capability.Key != "workflows.view" {
+		t.Fatalf("the secrets list must be opened by workflows.view, got %+v", use.Capability.Key)
+	}
+	reader := NewGrants(RoleMember, false, []PermissionEntry{{Resource: ResourceWorkflows, Action: ActionRead}})
+	if !use.Capability.Allows(reader) {
+		t.Errorf("reading workflows must open the secrets list, missing %v", use.Capability.Missing(reader))
+	}
+	edit := capabilityOf(t, use.Feature, "workflows.edit")
+	if !strings.Contains(edit.Description, "segredos") {
+		t.Errorf("workflows.edit must explain that workflows:update creates, replaces and removes secrets, got %q", edit.Description)
+	}
+	missing := edit.Missing(reader)
+	if len(missing) != 1 || missing[0].Key() != "workflows:update" {
+		t.Errorf("changing secrets must be blocked only by workflows:update, got %v", missing)
 	}
 }

@@ -216,12 +216,13 @@ func NewConditionBranchExecutor() workflow.NodeExecutor {
 
 func (e *conditionBranchExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionBranch,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Condição",
-		Description: "Divide o fluxo com base em uma condição (campo, operador, valor).",
-		Icon:        "GitBranch",
+		Type:         workflow.NodeTypeConditionBranch,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Condição",
+		Description:  "Divide o fluxo com base em uma condição (campo, operador, valor).",
+		Icon:         "GitBranch",
 		Guidance: workflow.NodeGuidance{
 			When: "Para uma decisão booleana sobre uma variável (operadores: eq, contains, gt, empty, matches, in, etc.).",
 			Examples: []string{
@@ -266,30 +267,11 @@ func (e *conditionBranchExecutor) Execute(ctx *workflow.NodeContext) (*workflow.
 	actual := resolveOperand(variable, ctx.State)
 	matched := EvaluateCondition(actual, operator, expected)
 
-	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-	var targetID string
-	for _, edge := range edges {
-		if matched && (edge.Label == "true" || edge.Label == "yes") {
-			targetID = edge.Target
-			break
-		}
-		if !matched && (edge.Label == "false" || edge.Label == "no") {
-			targetID = edge.Target
-			break
-		}
+	output, alias := "false", "no"
+	if matched {
+		output, alias = "true", "yes"
 	}
-	if targetID == "" && len(edges) > 0 {
-		if matched {
-			targetID = edges[0].Target
-		} else if len(edges) > 1 {
-			targetID = edges[1].Target
-		} else {
-			targetID = edges[0].Target
-		}
-	}
-
-	return &workflow.NodeResult{
-		NextNodeID: targetID,
-		Output:     map[string]interface{}{"matched": matched, "variable": variable, "operator": operator},
-	}, nil
+	return routeOutput(&workflow.NodeResult{
+		Output: map[string]interface{}{"matched": matched, "variable": variable, "operator": operator},
+	}, ctx.Graph.OutgoingEdges(ctx.Node.ID), output, alias), nil
 }

@@ -1,0 +1,9 @@
+{
+  "topic": "public_offers",
+  "resource": "/seller-promotions/offers/1234567",
+  "user_id": 2222222,
+  "application_id": 5111111111111,
+  "attempts": 1,
+  "recieved": "2022-01-20T17:13:53.617074685Z",
+  "sent": "2022-01-20T19:22:31.579985295Z"
+}

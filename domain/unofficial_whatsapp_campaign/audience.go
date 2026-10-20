@@ -3,6 +3,7 @@ package unofficial_whatsapp_campaign
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,10 +12,10 @@ import (
 )
 
 var (
-	ErrCampaignAudienceInvalid   = errors.New("campaign audience must be leads or groups")
-	ErrCampaignAudienceMismatch  = errors.New("this campaign sends to groups; add groups, not numbers")
-	ErrGroupCampaignNumberLocked = errors.New("a group campaign sends from the number that is in those groups; create a new campaign to use another number")
-	ErrGroupCampaignFunnel       = errors.New("a group campaign posts into the group conversation, which stays in the number's funnel; leave the funnel empty")
+	ErrCampaignAudienceInvalid    = errors.New("campaign audience must be leads or groups")
+	ErrCampaignAudienceMismatch   = errors.New("this campaign sends to groups; add groups, not numbers")
+	ErrGroupCampaignTakesNoNumber = errors.New("a group campaign does not take a number: each group is sent by one of your numbers that is in it and may post there")
+	ErrGroupCampaignFunnel        = errors.New("a group campaign posts into the group conversation, which stays in the number's funnel; leave the funnel empty")
 )
 
 type Audience string
@@ -94,5 +95,48 @@ func (c *Campaign) RefuseNumberChange(edit *Campaign) error {
 	if !c.TargetsGroups() || edit == nil || edit.InstanceID == "" || edit.InstanceID == c.InstanceID {
 		return nil
 	}
-	return ErrGroupCampaignNumberLocked
+	return ErrGroupCampaignTakesNoNumber
+}
+
+func (c *Campaign) SenderPool() []string {
+	if c.TargetsGroups() && len(c.SenderInstanceIDs) > 0 {
+		return c.SenderInstanceIDs
+	}
+	if c.InstanceID == "" {
+		return nil
+	}
+	return []string{c.InstanceID}
+}
+
+func (c *Campaign) MaySendThrough(instanceID string) bool {
+	if instanceID == "" {
+		return false
+	}
+	for _, id := range c.SenderPool() {
+		if id == instanceID {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeSenderPool(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

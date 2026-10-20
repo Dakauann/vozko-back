@@ -57,3 +57,12 @@ type CommentPrivateReply struct {
 }
 
 func (CommentPrivateReply) TableName() string { return "comment_private_replies" }
+
+type CommentRuleExecution struct {
+	Source    string    `gorm:"primaryKey;size:32"`
+	CommentID string    `gorm:"primaryKey;size:96"`
+	RuleID    string    `gorm:"size:64;not null"`
+	ClaimedAt time.Time `gorm:"not null;autoCreateTime;index"`
+}
+
+func (CommentRuleExecution) TableName() string { return "comment_rule_executions" }

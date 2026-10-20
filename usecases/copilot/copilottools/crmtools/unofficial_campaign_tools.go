@@ -361,6 +361,9 @@ func (t *startUnofficialCampaignTool) Validate(ctx context.Context, cc copilot.C
 	if err := c.Metrics.Startable(); err != nil {
 		return fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, unofficialCampaignFailure(err).Message)
 	}
+	if c.TargetsGroups() && c.InstanceID == "" {
+		return nil
+	}
 	instance, err := t.deps.Usable.Usable(ctx, cc.WorkspaceID, scope, c.InstanceID)
 	if err != nil {
 		return fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, unofficialCampaignFailure(err).Message)
@@ -385,7 +388,7 @@ func (t *startUnofficialCampaignTool) Describe(ctx context.Context, cc copilot.C
 	minMS, maxMS := c.SendDelayRange()
 	fields := []copilot.Field{
 		{Key: "campaign", Value: c.Name},
-		{Key: "phone", Value: c.InstanceLabel},
+		{Key: "phone", Value: senderLabelOf(c)},
 		{Key: "contacts", Value: fmt.Sprintf("%d", pending)},
 		{Key: "pace", Value: fmt.Sprintf("uma mensagem a cada %d a %d segundos", minMS/1000, maxMS/1000)},
 	}
@@ -438,4 +441,11 @@ func unofficialCampaignFailure(err error) copilot.Result {
 	}
 	log.Printf("[copilot] unofficial campaign tool failed: %v", err)
 	return copilot.Result{Status: copilot.StatusError, Message: "falha na operação da campanha"}
+}
+
+func senderLabelOf(c *uwc.Campaign) string {
+	if c.TargetsGroups() && c.InstanceID == "" {
+		return "cada grupo sai por um número seu que está nele"
+	}
+	return c.InstanceLabel
 }

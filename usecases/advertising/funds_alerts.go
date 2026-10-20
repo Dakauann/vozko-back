@@ -3,9 +3,10 @@ package advertising
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"vozko/brand"
 	ads "vozko/domain/advertising"
@@ -13,10 +14,7 @@ import (
 	"vozko/domain/workspace"
 )
 
-const (
-	fundsAlertTemplate = "meta_ads_funds_alert.html"
-	fundsAlertEvery    = 24 * time.Hour
-)
+const fundsAlertTemplate = "meta_ads_funds_alert.html"
 
 type fundsCopy struct {
 	headline  string
@@ -94,11 +92,11 @@ var fundsCopies = map[ads.FundsReason]fundsCopy{
 }
 
 type FundsAlerts struct {
-	publisher    notification.Publisher
+	publisher    notification.EpisodePublisher
 	dashboardURL string
 }
 
-func NewFundsAlerts(publisher notification.Publisher, dashboardURL string) *FundsAlerts {
+func NewFundsAlerts(publisher notification.EpisodePublisher, dashboardURL string) *FundsAlerts {
 	return &FundsAlerts{publisher: publisher, dashboardURL: strings.TrimRight(dashboardURL, "/")}
 }
 
@@ -106,6 +104,9 @@ func (a *FundsAlerts) Alert(ctx context.Context, account *ads.AdAccount, funds a
 	text, ok := fundsCopies[funds.Reason]
 	if !funds.Level.NeedsAttention() || !ok {
 		return nil
+	}
+	if err := a.publisher.Resolve(ctx, account.WorkspaceID, fundsEpisodeKeys(account.ID, funds.Reason)...); err != nil {
+		return err
 	}
 	room := ""
 	if funds.RoomMinor != nil {
@@ -146,11 +147,28 @@ func (a *FundsAlerts) Alert(ctx context.Context, account *ads.AdAccount, funds a
 				"ManagerURL":  notification.AbsoluteLink(a.dashboardURL, managerPath),
 			},
 		},
-		DedupKey:    "meta_ads_funds:" + account.ID + ":" + string(funds.Reason),
-		DedupWindow: fundsAlertEvery,
-		Source:      notification.SourceAdsFunds,
+		EpisodeKey: fundsEpisodeKey(account.ID, funds.Reason),
+		Source:     notification.SourceAdsFunds,
 	})
 	return err
+}
+
+func (a *FundsAlerts) Recovered(ctx context.Context, account *ads.AdAccount) error {
+	return a.publisher.Resolve(ctx, account.WorkspaceID, fundsEpisodeKeys(account.ID, "")...)
+}
+
+func fundsEpisodeKey(accountID string, reason ads.FundsReason) string {
+	return "meta_ads_funds:" + accountID + ":" + string(reason)
+}
+
+func fundsEpisodeKeys(accountID string, except ads.FundsReason) []string {
+	var keys []string
+	for _, reason := range slices.Sorted(maps.Keys(fundsCopies)) {
+		if reason != except {
+			keys = append(keys, fundsEpisodeKey(accountID, reason))
+		}
+	}
+	return keys
 }
 
 func formatMinor(currency string, minor int64) string {

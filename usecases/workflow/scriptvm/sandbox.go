@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -19,6 +20,9 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+
+	"vozko/domain/workflow"
+	"vozko/usecases/workflow/httptrace"
 )
 
 type Capabilities struct {
@@ -29,7 +33,7 @@ type Capabilities struct {
 }
 
 type StateAPI interface {
-	Get(key string) (interface{}, bool)
+	Lookup(path string) (interface{}, bool)
 	Set(key string, value interface{})
 }
 
@@ -41,6 +45,8 @@ type AuditRecord struct {
 	StateWrites     []string
 	Errored         bool
 	ErrorMsg        string
+	Logs            []LogEntry
+	Fetches         []workflow.HTTPExchange
 }
 
 type Result struct {
@@ -106,6 +112,7 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 	var ssrfBlocked int32
 	var secretAccess []string
 	var stateWrites []string
+	var fetches []workflow.HTTPExchange
 	var stateMu sync.Mutex
 
 	limits := s.limits
@@ -136,21 +143,7 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 		if caps.State == nil {
 			return goja.Undefined()
 		}
-
-		if v, ok := caps.State.Get(key); ok {
-			return vm.ToValue(v)
-		}
-
-		if idx := strings.Index(key, "."); idx > 0 {
-			head, rest := key[:idx], key[idx+1:]
-			root, ok := caps.State.Get(head)
-			if !ok {
-				return goja.Undefined()
-			}
-			v, ok := traverseDottedPath(root, rest)
-			if !ok {
-				return goja.Undefined()
-			}
+		if v, ok := caps.State.Lookup(key); ok {
 			return vm.ToValue(v)
 		}
 		return goja.Undefined()
@@ -194,7 +187,7 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 		stateMu.Unlock()
 		v, ok := caps.Secrets[name]
 		if !ok {
-			panic(vm.NewTypeError(fmt.Sprintf("secrets.get: %q not allowlisted", name)))
+			panic(vm.NewTypeError(fmt.Sprintf("secrets.get: o segredo %q não existe neste workspace ou não foi lido com o nome literal, use secrets.get('%s') e crie-o em Segredos do workspace", name, name)))
 		}
 		return vm.ToValue(v)
 	})
@@ -295,15 +288,23 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 				panic(vm.NewTypeError("fetch: expected url string or options object"))
 			}
 
-			u, err := validateFetchURL(opts.URL, limits)
-			if err != nil {
-				atomic.AddInt32(&ssrfBlocked, 1)
-				panic(vm.NewTypeError(err.Error()))
-			}
-
 			method := strings.ToUpper(opts.Method)
 			if method == "" {
 				method = http.MethodGet
+			}
+			exchange := workflow.HTTPExchange{Method: method, URL: opts.URL}
+			record := func() {
+				stateMu.Lock()
+				fetches = append(fetches, exchange)
+				stateMu.Unlock()
+			}
+
+			u, err := validateFetchURL(opts.URL, limits)
+			if err != nil {
+				atomic.AddInt32(&ssrfBlocked, 1)
+				exchange.EgressRefusal = err.Error()
+				record()
+				panic(vm.NewTypeError(err.Error()))
 			}
 
 			var body string
@@ -320,6 +321,8 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 
 			req, err := http.NewRequestWithContext(execCtx, method, u.String(), strings.NewReader(body))
 			if err != nil {
+				exchange.Error = err.Error()
+				record()
 				panic(vm.NewTypeError(err.Error()))
 			}
 			for k, v := range opts.Headers {
@@ -328,18 +331,37 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 			if body != "" && req.Header.Get("Content-Type") == "" {
 				req.Header.Set("Content-Type", "application/json")
 			}
+			exchange.URL = req.URL.String()
+			exchange.RequestHeaders = httptrace.Headers(req.Header)
+			exchange.RequestBody = body
 
 			callStart := time.Now()
 			resp, err := client.Do(req)
+			exchange.LatencyMs = time.Since(callStart).Milliseconds()
 			if err != nil {
+				exchange.Error = err.Error()
+				if errors.Is(err, errBlockedAddress) {
+					atomic.AddInt32(&ssrfBlocked, 1)
+					exchange.EgressRefusal = err.Error()
+				}
+				record()
 				panic(vm.NewTypeError(err.Error()))
 			}
 			defer resp.Body.Close()
+			exchange.URL = resp.Request.URL.String()
+			exchange.Status = resp.StatusCode
+			exchange.ResponseHeaders = httptrace.Headers(resp.Header)
+			exchange.Redirects = httptrace.Redirects(resp)
 
 			respBody, err := readCappedBody(resp.Body, limits.MaxFetchBodyBytes)
 			if err != nil {
+				exchange.Error = err.Error()
+				exchange.Truncated = true
+				record()
 				panic(vm.NewTypeError(err.Error()))
 			}
+			exchange.ResponseBody = respBody
+			record()
 			hdrs := make(map[string]string, len(resp.Header))
 			for k, v := range resp.Header {
 				if len(v) > 0 {
@@ -365,17 +387,21 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 		_ = vm.GlobalObject().Delete(name)
 	}
 
-	wrapped := "(function(){\n" + code + "\n})()"
+	wrapped := wrapperPrefix + code + "\n})()"
 	value, err := vm.RunString(wrapped)
 
 	wall := time.Since(start).Milliseconds()
+	stateMu.Lock()
 	audit := AuditRecord{
 		WallMs:          wall,
 		FetchCalls:      int(fetchCount),
 		SSRFBlocked:     int(ssrfBlocked),
 		SecretsAccessed: secretAccess,
 		StateWrites:     stateWrites,
+		Logs:            logs,
+		Fetches:         fetches,
 	}
+	stateMu.Unlock()
 
 	if err != nil {
 		audit.Errored = true
@@ -387,7 +413,7 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 		if execCtx.Err() == context.DeadlineExceeded {
 			return nil, ErrTimeout
 		}
-		return nil, &ScriptError{Message: err.Error()}
+		return nil, &ScriptError{Message: err.Error(), Stack: scriptStack(err)}
 	}
 
 	res := &Result{
@@ -415,6 +441,35 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 		caps.Audit(audit)
 	}
 	return res, nil
+}
+
+const wrapperPrefix = "(function(){\n"
+
+var wrapperLines = strings.Count(wrapperPrefix, "\n")
+
+const nodeCodeFrame = "<código do nó>"
+
+func scriptStack(err error) string {
+	var exception *goja.Exception
+	if !errors.As(err, &exception) {
+		return ""
+	}
+	var b strings.Builder
+	if value := exception.Value(); value != nil {
+		b.WriteString(value.String())
+	}
+	for _, frame := range exception.Stack() {
+		position := frame.Position()
+		if position.Line == 0 {
+			continue
+		}
+		name := frame.FuncName()
+		if name == "" {
+			name = nodeCodeFrame
+		}
+		fmt.Fprintf(&b, "\n\tat %s (%d:%d)", name, position.Line-wrapperLines, position.Column)
+	}
+	return b.String()
 }
 
 func freeze(vm *goja.Runtime, o *goja.Object) {
@@ -446,41 +501,4 @@ func stringify(args []goja.Value) string {
 		}
 	}
 	return strings.Join(parts, " ")
-}
-
-func traverseDottedPath(root interface{}, path string) (interface{}, bool) {
-	cur := root
-	for _, seg := range strings.Split(path, ".") {
-		if cur == nil {
-			return nil, false
-		}
-		switch v := cur.(type) {
-		case map[string]interface{}:
-			next, ok := v[seg]
-			if !ok {
-				return nil, false
-			}
-			cur = next
-		case []interface{}:
-
-			idx := -1
-			for i, ch := range seg {
-				if ch < '0' || ch > '9' {
-					idx = -1
-					break
-				}
-				if i == 0 {
-					idx = 0
-				}
-				idx = idx*10 + int(ch-'0')
-			}
-			if idx < 0 || idx >= len(v) {
-				return nil, false
-			}
-			cur = v[idx]
-		default:
-			return nil, false
-		}
-	}
-	return cur, true
 }

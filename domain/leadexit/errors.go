@@ -5,6 +5,7 @@ import (
 
 	"vozko/domain/buttonaction"
 	"vozko/domain/calls/calllist"
+	"vozko/domain/conversation"
 	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/lead"
 	wo "vozko/domain/whatsapp_outreach"
@@ -29,6 +30,8 @@ var errorCodes = []struct {
 	{ErrInboundIncomplete, "lead_exit_inbound_incomplete"},
 	{ia.ErrDepartmentOutOfScope, "hand_off_department_out_of_scope"},
 	{ia.ErrHandOffTargetNoAccess, "hand_off_target_no_access"},
+	{conversation.ErrAutomationUnusable, "automation_unusable"},
+	{conversation.ErrAutomationInvalid, "automation_invalid"},
 	{workflow.ErrWorkflowNotFound, "workflow_not_found"},
 	{workflow.ErrWorkflowNotActive, "workflow_not_active"},
 	{workflow.ErrInvalidWorkflowType, "workflow_type_invalid"},
@@ -38,6 +41,8 @@ var errorCodes = []struct {
 
 var refusals = []error{
 	lead.ErrLeadNotFound,
+	conversation.ErrAutomationUnusable,
+	conversation.ErrAutomationInvalid,
 	ia.ErrDepartmentOutOfScope,
 	ia.ErrHandOffTargetNoAccess,
 	workflow.ErrWorkflowNotFound,

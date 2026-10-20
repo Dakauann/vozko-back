@@ -85,6 +85,9 @@ func (uc *conversationTemplateUseCase) Send(ctx context.Context, in wo.Conversat
 		HeaderParams:    in.HeaderParams,
 		CampaignID:      target.campaign.ID,
 		EntryID:         target.entry.ID,
+		Origin:          in.Origin,
+		OriginRef:       in.OriginRef,
+		LeadID:          target.contact.ID,
 	})
 	if !keepsClaim(err) {
 		release()

@@ -12,6 +12,7 @@ import (
 	"vozko/domain/shared"
 	wcdomain "vozko/domain/webchat"
 	"vozko/infra/crypto/piigorm"
+	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
 
@@ -92,6 +93,22 @@ func (r *widgetRepository) FindByID(ctx context.Context, workspaceID, id string)
 
 func (r *widgetRepository) FindByIDUnscoped(ctx context.Context, id string) (*wcdomain.Widget, error) {
 	return r.first(ctx, "id = ?", id)
+}
+
+func (r *widgetRepository) FindByIDsUnscoped(ctx context.Context, ids []string) ([]*wcdomain.Widget, error) {
+	records, err := database.FindByIDs[schema.WebchatWidget](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*wcdomain.Widget, 0, len(records))
+	for i := range records {
+		widget, err := toWidgetDomain(&records[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, widget)
+	}
+	return out, nil
 }
 
 func (r *widgetRepository) FindByPublicKey(ctx context.Context, publicKey string) (*wcdomain.Widget, error) {

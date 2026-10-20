@@ -26,6 +26,7 @@ func (c *Container) wireTemplateEdit() {
 		Storage:   c.services.fileReader,
 		Sync:      c.useCases.syncWhatsAppTemplate,
 		Media:     c.useCases.setHeaderMediaWhatsApp,
+		Forms:     c.formPublications(),
 		Now:       time.Now,
 	})
 	if err != nil {

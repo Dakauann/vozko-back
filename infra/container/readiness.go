@@ -5,6 +5,7 @@ import (
 
 	fbdomain "vozko/domain/facebook"
 	igdomain "vozko/domain/instagram"
+	mldomain "vozko/domain/mercadolivre"
 	"vozko/domain/rag"
 	"vozko/domain/readiness"
 	"vozko/domain/shared"
@@ -61,6 +62,12 @@ func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 				return tgdomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly}
 			}), 0, access))
 	}
+	if c.mercadoLivre != nil && c.mercadoLivre.Accounts != nil {
+		probes = append(probes, readiness_usecase.NewCountProbe(readiness.MercadoLivre, workspace.ResourceMercadoLivreAccounts,
+			workspaceTotal(c.mercadoLivre.Accounts.ListByWorkspace, func(workspaceID string) mldomain.ListAccountsInput {
+				return mldomain.ListAccountsInput{WorkspaceID: workspaceID, Options: countOnly}
+			}), 0, access))
+	}
 	if c.webchat != nil {
 		probes = append(probes, readiness_usecase.NewCountProbe(readiness.Webchat, workspace.ResourceWebchatWidgets,
 			workspaceTotal(c.webchat.Widgets.ListByWorkspace, func(workspaceID string) wcdomain.ListWidgetsInput {
@@ -73,6 +80,7 @@ func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 				return fbdomain.ListPagesInput{WorkspaceID: workspaceID, Options: countOnly}
 			}), 0, access))
 	}
+	probes = append(probes, c.tiktokReadinessProbe(access))
 	return readiness_usecase.NewSnapshotUseCase(readiness_usecase.SnapshotDeps{
 		Subscription: c.useCases.ensureActiveWorkspaceSubscription,
 		Balance:      c.services.cachedBalanceChecker,

@@ -66,10 +66,12 @@ type MemberRow struct {
 }
 
 type MemberCounts struct {
-	Active   int64 `json:"active"`
-	Left30d  int64 `json:"left30d"`
-	WithLead int64 `json:"withLead"`
-	Hidden   int64 `json:"hidden"`
+	Active      int64 `json:"active"`
+	Left30d     int64 `json:"left30d"`
+	Removed30d  int64 `json:"removed30d"`
+	OursRemoved int64 `json:"oursRemoved"`
+	WithLead    int64 `json:"withLead"`
+	Hidden      int64 `json:"hidden"`
 }
 
 type MemberRepository interface {
@@ -78,6 +80,7 @@ type MemberRepository interface {
 	List(ctx context.Context, workspaceID string, f MemberFilter) (*shared.PaginatedResult[*MemberRow], error)
 	Counts(ctx context.Context, groupID string, since time.Time) (MemberCounts, error)
 	ByPersonKeys(ctx context.Context, groupID string, keys []string) ([]Member, error)
+	ByPeople(ctx context.Context, workspaceID string, keys []string, scope Scope) ([]Member, error)
 	SetLead(ctx context.Context, groupID, personKey, leadID string) error
 	Names(ctx context.Context, groupID string) (map[string]string, error)
 	GroupsOf(ctx context.Context, workspaceID string, personKeys []string, scope Scope) (map[string][]GroupRef, error)
@@ -330,6 +333,7 @@ type JoinRepository interface {
 	FailRemaining(ctx context.Context, planID, reason string) error
 	CancelPlan(ctx context.Context, workspaceID, planID string, scope Scope) (int64, error)
 	Recent(ctx context.Context, workspaceID string, scope Scope, since time.Time) ([]JoinTask, error)
+	LastLink(ctx context.Context, workspaceID, groupJID string) (string, error)
 }
 
 type TranscriptLine struct {

@@ -28,6 +28,7 @@ const (
 	CodeBillingUnavailable     = "billing_unavailable"
 	CodeSendOutcomeUnknown     = "send_outcome_unknown"
 	CodeConversationNotFound   = "conversation_not_found"
+	CodeFormNotSendable        = "form_not_sendable"
 )
 
 var errorCodes = []struct {
@@ -58,6 +59,7 @@ var errorCodes = []struct {
 	{template.ErrWorkspaceRequired, CodeBillingUnavailable},
 	{template.ErrBillingNotConfigured, CodeBillingUnavailable},
 	{ErrConversationNotFound, CodeConversationNotFound},
+	{template.ErrFormNotSendable, CodeFormNotSendable},
 }
 
 func ErrorCode(err error) string {

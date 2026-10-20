@@ -35,6 +35,9 @@ func (uc *replicateTemplateUseCase) Execute(input template.ReplicateTemplateInpu
 	if err != nil {
 		return nil, errors.New("source template not found")
 	}
+	if _, _, ok := source.FormButton(); ok {
+		return nil, template.ErrFlowNotPublished
+	}
 
 	targetWABAId, err := uc.clientFactory.WABAIdForPhone(input.TargetBusinessPhoneID)
 	if err != nil {

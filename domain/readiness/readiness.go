@@ -12,6 +12,8 @@ const (
 	Telegram           Capability = "telegram"
 	Facebook           Capability = "facebook"
 	Webchat            Capability = "webchat"
+	MercadoLivre       Capability = "mercadolivre"
+	TikTok             Capability = "tiktok"
 	KnowledgeBases     Capability = "knowledge_bases"
 )
 

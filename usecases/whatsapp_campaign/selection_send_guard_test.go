@@ -83,8 +83,9 @@ func TestUpdateRunsTheSharedWorkflowStepItself(t *testing.T) {
 	if _, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrAutomationUnavailable) {
 		t.Fatalf("Execute without the step = %v, want ErrAutomationUnavailable", err)
 	}
-	uc.(*updateCampaignUseCase).SetAutomation(foreignWorkflowStep(t))
-	if _, err := uc.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrWorkflowForbidden) {
+	_, withStep := updateFixture(t, "")
+	withStep.(*updateCampaignUseCase).SetAutomation(foreignWorkflowStep(t))
+	if _, err := withStep.Execute(context.Background(), "camp-1", &wc.Campaign{Name: "Matrículas", WorkflowID: "wf-other", EnableWorkflow: true}); !errors.Is(err, campaign.ErrWorkflowForbidden) {
 		t.Fatalf("Execute = %v, want ErrWorkflowForbidden", err)
 	}
 }

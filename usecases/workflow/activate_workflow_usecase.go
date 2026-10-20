@@ -3,6 +3,7 @@ package workflow_usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"vozko/domain/agent"
@@ -143,10 +144,47 @@ func (uc *activateWorkflowUseCase) SetModelCatalog(catalog ModelCatalog) {
 }
 
 func (uc *activateWorkflowUseCase) Execute(ctx context.Context, workflowID string) (*workflow.Workflow, error) {
+	w, err := uc.load(workflowID)
+	if err != nil {
+		return nil, err
+	}
+	if w.Status != workflow.WorkflowStatusDraft && w.Status != workflow.WorkflowStatusPaused {
+		return nil, workflow.ErrCannotActivate
+	}
+	if w.PublishedVersion == nil {
+		return uc.publish(ctx, w)
+	}
+
+	running, err := workflow.PublishedOf(uc.repo, w)
+	if err != nil {
+		return nil, err
+	}
+	running.Normalize()
+	if err := uc.validateRunnable(ctx, running); err != nil {
+		return nil, err
+	}
+	if err := uc.repo.UpdateStatus(w.ID, workflow.WorkflowStatusActive); err != nil {
+		return nil, err
+	}
+	slog.Info("workflow.resumed", slog.String("workspace_id", w.WorkspaceID), slog.String("workflow_id", w.ID), slog.Int("version", *running.GraphVersion))
+	return findWithPublication(uc.repo, w.ID)
+}
+
+func (uc *activateWorkflowUseCase) Publish(ctx context.Context, workflowID string) (*workflow.Workflow, error) {
+	w, err := uc.load(workflowID)
+	if err != nil {
+		return nil, err
+	}
+	if w.Status == workflow.WorkflowStatusArchived {
+		return nil, workflow.ErrCannotActivate
+	}
+	return uc.publish(ctx, w)
+}
+
+func (uc *activateWorkflowUseCase) load(workflowID string) (*workflow.Workflow, error) {
 	if workflowID == "" {
 		return nil, workflow.ErrWorkflowNotFound
 	}
-
 	w, err := uc.repo.FindByID(workflowID)
 	if err != nil {
 		return nil, err
@@ -154,102 +192,107 @@ func (uc *activateWorkflowUseCase) Execute(ctx context.Context, workflowID strin
 	if w == nil {
 		return nil, workflow.ErrWorkflowNotFound
 	}
+	return w, nil
+}
 
-	if w.Status != workflow.WorkflowStatusDraft && w.Status != workflow.WorkflowStatusPaused {
-		return nil, workflow.ErrCannotActivate
-	}
-
+func (uc *activateWorkflowUseCase) publish(ctx context.Context, w *workflow.Workflow) (*workflow.Workflow, error) {
+	storedHash, storedType := workflow.GraphHash(&w.Graph), w.Type
 	w.Normalize()
+	if err := uc.validateRunnable(ctx, w); err != nil {
+		return nil, err
+	}
+	hash := workflow.GraphHash(&w.Graph)
+	attrs := []any{slog.String("workspace_id", w.WorkspaceID), slog.String("workflow_id", w.ID)}
+	if w.PublishedVersion != nil && hash == w.PublishedGraphHash {
+		if w.Status != workflow.WorkflowStatusActive {
+			if err := uc.repo.UpdateStatus(w.ID, workflow.WorkflowStatusActive); err != nil {
+				return nil, err
+			}
+		}
+		slog.Info("workflow.publish.unchanged", append(attrs, slog.Int("version", *w.PublishedVersion))...)
+		return findWithPublication(uc.repo, w.ID)
+	}
+	v, err := uc.repo.PublishVersion(workflow.PublishVersionOf(w, workflow.PublisherFrom(ctx), hash != storedHash || storedType != w.Type))
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("workflow.published", append(attrs, slog.Int("version", v.Version))...)
+	return findWithPublication(uc.repo, w.ID)
+}
 
-	leafNodes := collectExecuteModeLeafNodes(&w.Graph)
+func (uc *activateWorkflowUseCase) validateRunnable(ctx context.Context, w *workflow.Workflow) error {
 	var catalog []workflow.NodeDefinition
 	if uc.catalogFn != nil {
 		catalog = uc.catalogFn()
 	}
+	report := LintWorkflowGraph(catalog, w)
 
-	if err := workflow.ValidateGraph(&w.Graph, w.Type, leafNodes); err != nil {
-		return nil, err
-	}
+	var problems []error
 	if err := checkGraphReasoning(ctx, uc.modelCatalog, &w.Graph); err != nil {
-		return nil, err
+		problems = append(problems, err)
 	}
-	if err := validateNodeScopes(&w.Graph, w.Type, catalog); err != nil {
-		return nil, err
-	}
-
 	if len(catalog) > 0 {
-		if err := validateRequiredOutputEdges(&w.Graph, catalog); err != nil {
-			return nil, err
-		}
-
-		workflowWorkspaceID := strings.TrimSpace(w.WorkspaceID)
-		var validators []workflow.ConfigValidator
-		if uc.businessPhoneRepo != nil {
-			validators = append(validators, &businessPhoneValidator{repo: uc.businessPhoneRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.templateRepo != nil {
-			validators = append(validators, &templateValidator{repo: uc.templateRepo, businessPhoneRepo: uc.businessPhoneRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.agentRepo != nil {
-			validators = append(validators, &agentValidator{repo: uc.agentRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.mcpCollectionRepo != nil {
-			validators = append(validators, &mcpCollectionValidator{repo: uc.mcpCollectionRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.knowledgeBaseRepo != nil {
-			validators = append(validators, &knowledgeBaseValidator{repo: uc.knowledgeBaseRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.mediaRepo != nil {
-			validators = append(validators, &mediaValidator{repo: uc.mediaRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.labelRepo != nil {
-			validators = append(validators, &labelValidator{repo: uc.labelRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.stageRepo != nil {
-			validators = append(validators, &stageValidator{repo: uc.stageRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.dealFunnels != nil {
-			validators = append(validators, &dealValidator{funnels: uc.dealFunnels, workspaceID: workflowWorkspaceID})
-		}
-		if uc.departmentRepo != nil {
-			validators = append(validators, &departmentValidator{repo: uc.departmentRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.workspaceRepo != nil {
-			validators = append(validators, &memberValidator{repo: uc.workspaceRepo, workspaceID: workflowWorkspaceID})
-		}
-		if uc.modelLookup != nil {
-			validators = append(validators, &modelValidator{lookup: uc.modelLookup})
-		}
-		validators = append(validators, &workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID})
-		if err := workflow.ValidateNodeConfigs(&w.Graph, catalog, validators...); err != nil {
-			return nil, err
-		}
+		problems = append(problems, workflow.ReferenceProblems(&w.Graph, catalog, uc.referenceValidators(w)...)...)
 	}
-
-	if err := workflow.RunPureGraphRules(&w.Graph); err != nil {
-		return nil, err
-	}
-
-	if err := workflow.ValidateRequiredDynamicOutputs(&w.Graph, builderHandleResolver); err != nil {
-		return nil, err
-	}
-
 	if w.Type == workflow.WorkflowTypeVoice {
 		if err := uc.validateVoiceTrunk(w); err != nil {
-			return nil, err
+			problems = append(problems, err)
 		}
-		if err := uc.validateCallQueues(w); err != nil {
-			return nil, err
+		problems = append(problems, uc.callQueueProblems(w)...)
+	}
+	for _, p := range problems {
+		if !workflow.IsValidationError(p) {
+			return p
 		}
 	}
 
-	w.Status = workflow.WorkflowStatusActive
-
-	if err := uc.repo.Update(w); err != nil {
-		return nil, err
+	err := workflow.NotPublishableFrom(report, problems)
+	if blocked, ok := workflow.NotPublishableOf(err); ok {
+		slog.Info("workflow.publish.blocked", slog.String("workspace_id", w.WorkspaceID), slog.String("workflow_id", w.ID), slog.Int("issues", len(blocked.Issues)))
 	}
+	return err
+}
 
-	return uc.repo.FindByID(workflowID)
+func (uc *activateWorkflowUseCase) referenceValidators(w *workflow.Workflow) []workflow.ConfigValidator {
+	workflowWorkspaceID := strings.TrimSpace(w.WorkspaceID)
+	var validators []workflow.ConfigValidator
+	if uc.businessPhoneRepo != nil {
+		validators = append(validators, &businessPhoneValidator{repo: uc.businessPhoneRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.templateRepo != nil {
+		validators = append(validators, &templateValidator{repo: uc.templateRepo, businessPhoneRepo: uc.businessPhoneRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.agentRepo != nil {
+		validators = append(validators, &agentValidator{repo: uc.agentRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.mcpCollectionRepo != nil {
+		validators = append(validators, &mcpCollectionValidator{repo: uc.mcpCollectionRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.knowledgeBaseRepo != nil {
+		validators = append(validators, &knowledgeBaseValidator{repo: uc.knowledgeBaseRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.mediaRepo != nil {
+		validators = append(validators, &mediaValidator{repo: uc.mediaRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.labelRepo != nil {
+		validators = append(validators, &labelValidator{repo: uc.labelRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.stageRepo != nil {
+		validators = append(validators, &stageValidator{repo: uc.stageRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.dealFunnels != nil {
+		validators = append(validators, &dealValidator{funnels: uc.dealFunnels, workspaceID: workflowWorkspaceID})
+	}
+	if uc.departmentRepo != nil {
+		validators = append(validators, &departmentValidator{repo: uc.departmentRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.workspaceRepo != nil {
+		validators = append(validators, &memberValidator{repo: uc.workspaceRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.modelLookup != nil {
+		validators = append(validators, &modelValidator{lookup: uc.modelLookup})
+	}
+	return append(validators, &workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID})
 }
 
 func collectExecuteModeLeafNodes(g *workflow.Graph) map[string]bool {
@@ -293,14 +336,6 @@ func collectExecuteModeLeafNodes(g *workflow.Graph) map[string]bool {
 		}
 	}
 	return leafNodes
-}
-
-func validateRequiredOutputEdges(graph *workflow.Graph, catalog []workflow.NodeDefinition) error {
-	return workflow.ValidateRequiredOutputEdges(graph, catalog)
-}
-
-func validateNodeScopes(graph *workflow.Graph, wfType workflow.WorkflowType, catalog []workflow.NodeDefinition) error {
-	return workflow.ValidateNodeScopes(graph, wfType, catalog)
 }
 
 type templateValidator struct {
@@ -480,7 +515,8 @@ func (v *modelValidator) Validate(n *workflow.Node) error {
 	return nil
 }
 
-func (uc *activateWorkflowUseCase) validateCallQueues(w *workflow.Workflow) error {
+func (uc *activateWorkflowUseCase) callQueueProblems(w *workflow.Workflow) []error {
+	var problems []error
 	for _, n := range w.Graph.Nodes {
 		if n.Type != workflow.NodeTypeTransferToQueue {
 			continue
@@ -488,13 +524,14 @@ func (uc *activateWorkflowUseCase) validateCallQueues(w *workflow.Workflow) erro
 		queueID, _ := n.Config["queue_id"].(string)
 		queueID = strings.TrimSpace(queueID)
 		if uc.callQueues == nil || queueID == "" {
-			return fmt.Errorf("%w: node %q", workflow.ErrNodeInvalidQueueID, n.ID)
+			problems = append(problems, fmt.Errorf("%w: node %q", workflow.ErrNodeInvalidQueueID, n.ID))
+			continue
 		}
 		if _, err := uc.callQueues.FindInWorkspace(context.Background(), w.WorkspaceID, queueID); err != nil {
-			return fmt.Errorf("%w: node %q queue_id %q", workflow.ErrNodeInvalidQueueID, n.ID, queueID)
+			problems = append(problems, fmt.Errorf("%w: node %q queue_id %q", workflow.ErrNodeInvalidQueueID, n.ID, queueID))
 		}
 	}
-	return nil
+	return problems
 }
 
 func (uc *activateWorkflowUseCase) validateVoiceTrunk(w *workflow.Workflow) error {

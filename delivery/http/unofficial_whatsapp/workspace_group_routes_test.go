@@ -46,6 +46,7 @@ func TestRegisterWorkspaceGroupRoutes_AppliesRBAC(t *testing.T) {
 		{http.MethodGet, base + "/g-1", res + "read"},
 		{http.MethodGet, base + "/g-1/members", res + "read"},
 		{http.MethodGet, base + "/g-1/campaigns", res + "read"},
+		{http.MethodGet, base + "/g-1/messages", res + "read"},
 		{http.MethodGet, base + "/g-1/invite-link", res + "read"},
 
 		{http.MethodPost, base + "/discover", res + "update"},
@@ -59,12 +60,15 @@ func TestRegisterWorkspaceGroupRoutes_AppliesRBAC(t *testing.T) {
 		{http.MethodPost, base + "/joins", res + "create"},
 		{http.MethodPost, base + "/joins/p-1/cancel", res + "create"},
 		{http.MethodPost, base + "/g-1/series", res + "create"},
+		{http.MethodPost, base + "/g-1/numbers", res + "create"},
 
 		{http.MethodPost, base + "/g-1/leave", res + "delete"},
 		{http.MethodPost, base + "/g-1/participants", res + "update"},
 		{http.MethodDelete, base + "/g-1/participants", res + "delete"},
 		{http.MethodGet, base + "/g-1/members/export", res + "export"},
 		{http.MethodPost, base + "/g-1/members/leads", res + "read,leads:read,leads:create"},
+		{http.MethodGet, base + "/members/export", res + "export"},
+		{http.MethodPost, base + "/people/leads", res + "read,leads:read,leads:create"},
 
 		{http.MethodGet, base + "/analyses", res + "read"},
 		{http.MethodGet, base + "/analyses/a-1", res + "read"},

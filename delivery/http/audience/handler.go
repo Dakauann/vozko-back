@@ -3,6 +3,7 @@ package audience
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -346,13 +347,13 @@ func (h *Handler) SetModeration(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, toAuthorResponse(author))
 }
 
-func accountRef(r *http.Request) (ca.Source, string) {
+func accountRef(r *http.Request) (ca.Source, string, error) {
 	vars := mux.Vars(r)
 	source := ca.Source(strings.TrimSpace(vars["source"]))
-	if source == "" {
-		source = ca.SourceInstagram
+	if !source.Valid() {
+		return "", "", fmt.Errorf("%w: unknown source %q", ca.ErrInvalidFilter, source)
 	}
-	return source, strings.TrimSpace(vars["accountId"])
+	return source, strings.TrimSpace(vars["accountId"]), nil
 }
 
 // @Summary	Configuração da análise de comentários de uma conta
@@ -364,7 +365,11 @@ func accountRef(r *http.Request) (ca.Source, string) {
 // @Security	BearerAuth
 // @Router		/comment-analysis/settings/{source}/{accountId} [get]
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
-	source, accountID := accountRef(r)
+	source, accountID, err := accountRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to load settings")
+		return
+	}
 	s, err := h.getSet.Execute(r.Context(), middleware.GetWorkspaceID(r), source, accountID)
 	if err != nil {
 		writeDomainError(w, err, "Failed to load settings")
@@ -387,7 +392,11 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	source, accountID := accountRef(r)
+	source, accountID, err := accountRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to update settings")
+		return
+	}
 	in := ca.UpdateSettingsInput{
 		WorkspaceID: middleware.GetWorkspaceID(r), Source: source, AccountID: accountID,
 		Enabled: req.Enabled, Model: req.Model, DailyCap: req.DailyCap, Instructions: req.Instructions,
@@ -572,7 +581,11 @@ func (h *Handler) Spend(w http.ResponseWriter, r *http.Request) {
 // @Security	BearerAuth
 // @Router		/comment-analysis/backfill/{source}/{accountId}/estimate [get]
 func (h *Handler) EstimateBackfill(w http.ResponseWriter, r *http.Request) {
-	source, accountID := accountRef(r)
+	source, accountID, err := accountRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to estimate")
+		return
+	}
 	est, err := h.estimate.Execute(r.Context(), middleware.GetWorkspaceID(r), source, accountID, strings.TrimSpace(r.URL.Query().Get("containerId")))
 	if err != nil {
 		writeDomainError(w, err, "Failed to estimate")
@@ -597,7 +610,11 @@ func (h *Handler) StartBackfill(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	source, accountID := accountRef(r)
+	source, accountID, err := accountRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to start backfill")
+		return
+	}
 	b, err := h.start.Execute(r.Context(), ca.StartBackfillInput{
 		WorkspaceID: middleware.GetWorkspaceID(r), Source: source, AccountID: accountID,
 		ContainerID: strings.TrimSpace(req.ContainerID), RequestedByUserID: r.Header.Get("X-User-ID"),
@@ -731,9 +748,12 @@ func (h *Handler) ListAccountSettings(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, out)
 }
 
-func containerRef(r *http.Request) ca.ContainerRef {
-	source, accountID := accountRef(r)
-	return ca.ContainerRef{Source: source, AccountID: accountID, ContainerID: strings.TrimSpace(mux.Vars(r)["containerId"])}
+func containerRef(r *http.Request) (ca.ContainerRef, error) {
+	source, accountID, err := accountRef(r)
+	if err != nil {
+		return ca.ContainerRef{}, err
+	}
+	return ca.ContainerRef{Source: source, AccountID: accountID, ContainerID: strings.TrimSpace(mux.Vars(r)["containerId"])}, nil
 }
 
 // @Summary	Configuração de análise de uma publicação (override e efetiva)
@@ -746,7 +766,12 @@ func containerRef(r *http.Request) ca.ContainerRef {
 // @Security	BearerAuth
 // @Router		/comment-analysis/settings/{source}/{accountId}/containers/{containerId} [get]
 func (h *Handler) GetContainerSettings(w http.ResponseWriter, r *http.Request) {
-	cs, err := h.getContainer.Execute(r.Context(), middleware.GetWorkspaceID(r), containerRef(r))
+	ref, err := containerRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to load post settings")
+		return
+	}
+	cs, err := h.getContainer.Execute(r.Context(), middleware.GetWorkspaceID(r), ref)
 	if err != nil {
 		writeDomainError(w, err, "Failed to load post settings")
 		return
@@ -769,7 +794,11 @@ func (h *Handler) PutContainerSettings(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ref := containerRef(r)
+	ref, err := containerRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to save post settings")
+		return
+	}
 	o := ca.ContainerOverride{
 		WorkspaceID: middleware.GetWorkspaceID(r), Source: ref.Source, AccountID: ref.AccountID, ContainerID: ref.ContainerID,
 		Enabled: req.Enabled, Model: req.Model, SeverityThreshold: req.SeverityThreshold, Instructions: req.Instructions,
@@ -796,7 +825,12 @@ func (h *Handler) PutContainerSettings(w http.ResponseWriter, r *http.Request) {
 // @Security	BearerAuth
 // @Router		/comment-analysis/settings/{source}/{accountId}/containers/{containerId} [delete]
 func (h *Handler) DeleteContainerSettings(w http.ResponseWriter, r *http.Request) {
-	cs, err := h.delContainer.Execute(r.Context(), middleware.GetWorkspaceID(r), containerRef(r))
+	ref, err := containerRef(r)
+	if err != nil {
+		writeDomainError(w, err, "Failed to reset post settings")
+		return
+	}
+	cs, err := h.delContainer.Execute(r.Context(), middleware.GetWorkspaceID(r), ref)
 	if err != nil {
 		writeDomainError(w, err, "Failed to reset post settings")
 		return

@@ -16,6 +16,7 @@ import (
 	"vozko/domain/leadexit"
 	"vozko/domain/workflow"
 	buttonaction_usecase "vozko/usecases/buttonaction"
+	inbox_assignment_usecase "vozko/usecases/inbox_assignment"
 	lead_usecase "vozko/usecases/lead"
 	opportunity_usecase "vozko/usecases/opportunity"
 	workflow_usecase "vozko/usecases/workflow"
@@ -60,24 +61,29 @@ type Workflows interface {
 	StartForConversation(in workflow_usecase.ConversationStart) (workflow_usecase.StartedRun, error)
 }
 
+type Delegations interface {
+	DelegateAsSystem(ctx context.Context, in inbox_assignment_usecase.SystemDelegation) error
+}
+
 type CallLists interface {
 	AddLead(ctx context.Context, add calllist.LeadAddition) (bool, error)
 }
 
 type Deps struct {
-	Buttons   ButtonActions
-	Sent      SentMessages
-	Campaigns CampaignMessages
-	Runs      leadexit.RunStore
-	Consent   Consent
-	Leads     Leads
-	HandOff   HandOff
-	Profiles  Profiles
-	Deals     Deals
-	Workflows Workflows
-	CallLists CallLists
-	Events    ce.Logger
-	Now       func() time.Time
+	Buttons     ButtonActions
+	Sent        SentMessages
+	Campaigns   CampaignMessages
+	Runs        leadexit.RunStore
+	Consent     Consent
+	Leads       Leads
+	HandOff     HandOff
+	Profiles    Profiles
+	Deals       Deals
+	Workflows   Workflows
+	Delegations Delegations
+	CallLists   CallLists
+	Events      ce.Logger
+	Now         func() time.Time
 }
 
 type Step struct {
@@ -88,7 +94,7 @@ var _ leadexit.Step = (*Step)(nil)
 
 func NewStep(deps Deps) (*Step, error) {
 	if deps.Buttons == nil || deps.Sent == nil || deps.Campaigns == nil || deps.Runs == nil || deps.Consent == nil || deps.Leads == nil ||
-		deps.HandOff == nil || deps.Profiles == nil || deps.Deals == nil || deps.Workflows == nil || deps.CallLists == nil || deps.Events == nil {
+		deps.HandOff == nil || deps.Profiles == nil || deps.Deals == nil || deps.Workflows == nil || deps.Delegations == nil || deps.CallLists == nil || deps.Events == nil {
 		return nil, leadexit.ErrUnavailable
 	}
 	if deps.Now == nil {

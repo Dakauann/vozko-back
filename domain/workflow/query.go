@@ -1,6 +1,9 @@
 package workflow
 
-import "vozko/domain/shared"
+import (
+	"vozko/domain/conversation"
+	"vozko/domain/shared"
+)
 
 type ListWorkflowsInput struct {
 	WorkspaceID   string
@@ -11,6 +14,7 @@ type ListWorkflowsInput struct {
 	Type *WorkflowType
 
 	TriggerType *TriggerType
+	EntryKind   *EntryPointKind
 	Options     shared.QueryOptions
 }
 
@@ -19,5 +23,6 @@ type ListRunsInput struct {
 	WorkflowID  string
 	EntryID     string
 	Status      *RunStatus
+	Visibility  conversation.VisibilityScope
 	Options     shared.QueryOptions
 }

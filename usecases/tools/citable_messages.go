@@ -49,7 +49,7 @@ func CitableMessagesNote(reader RecentMessages, at CitableConversation) string {
 		if m == nil || !m.Transcribable() {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("[%s] %s: %s", m.ID, citableAuthor(m, at.AgentID), citableText(m.Text)))
+		lines = append(lines, fmt.Sprintf("[%s] %s: %s", m.ID, citableAuthor(m, at.AgentID), citableText(m.ReadableText())))
 	}
 	return strings.Join(lines, "\n")
 }

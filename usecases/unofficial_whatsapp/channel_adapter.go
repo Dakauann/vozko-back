@@ -92,23 +92,91 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if err != nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
-
-	if !instance.SessionLive() {
-		return conversation.ClosedWindow(conversation.WindowReasonSessionDown), nil
+	now := time.Now().UTC()
+	if closed, decided := instanceWindow(instance, now); decided {
+		return closed, nil
 	}
-	if instance.Restriction.Active(time.Now().UTC()) {
-		return conversation.ClosedWindowUntil(conversation.WindowReasonAccountRestricted, instance.Restriction.Until), nil
-	}
-
 	contact, err := a.contacts.FindByID(ctx, ec.ContactID)
 	if err != nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
-	if contact.Blocked {
-		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked), nil
-	}
-	return conversation.OpenWindow(nil), nil
+	return windowOf(instance, contact, now), nil
 }
+
+func (a *channelAdapter) WindowStates(ctx context.Context, entryIDs []string) (map[string]conversation.WindowState, error) {
+	convs, err := a.conversations.FindByIDs(ctx, shared.UniqueNonEmpty(entryIDs))
+	if err != nil {
+		return nil, err
+	}
+	instanceIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		instanceIDs = append(instanceIDs, conv.InstanceID)
+	}
+	instances, err := a.instances.FindByIDs(ctx, shared.UniqueNonEmpty(instanceIDs))
+	if err != nil {
+		return nil, err
+	}
+	instanceByID := make(map[string]*uw.Instance, len(instances))
+	for _, instance := range instances {
+		instanceByID[instance.ID] = instance
+	}
+	now := time.Now().UTC()
+	contactIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		if instance := instanceByID[conv.InstanceID]; instance != nil {
+			if _, decided := instanceWindow(instance, now); !decided {
+				contactIDs = append(contactIDs, conv.ContactID)
+			}
+		}
+	}
+	contactByID := map[string]*uw.Contact{}
+	if len(contactIDs) > 0 {
+		contacts, err := a.contacts.FindByIDs(ctx, shared.UniqueNonEmpty(contactIDs))
+		if err != nil {
+			return nil, err
+		}
+		for _, contact := range contacts {
+			contactByID[contact.ID] = contact
+		}
+	}
+	out := make(map[string]conversation.WindowState, len(convs))
+	for _, conv := range convs {
+		out[conv.ID] = windowOf(instanceByID[conv.InstanceID], contactByID[conv.ContactID], now)
+	}
+	return out, nil
+}
+
+func instanceWindow(instance *uw.Instance, now time.Time) (conversation.WindowState, bool) {
+	if !instance.SessionLive() {
+		return conversation.ClosedWindow(conversation.WindowReasonSessionDown), true
+	}
+	if instance.Restriction.Active(now) {
+		return conversation.ClosedWindowUntil(conversation.WindowReasonAccountRestricted, instance.Restriction.Until), true
+	}
+	return conversation.WindowState{}, false
+}
+
+func windowOf(instance *uw.Instance, contact *uw.Contact, now time.Time) conversation.WindowState {
+	if instance == nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+	}
+	if closed, decided := instanceWindow(instance, now); decided {
+		return closed
+	}
+	if contact == nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+	}
+	if contact.Blocked {
+		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked)
+	}
+	return conversation.OpenWindow(nil)
+}
+
+var _ conversation.WindowStatesAdapter = (*channelAdapter)(nil)
+
+func (a *channelAdapter) Capabilities() channel.Capabilities { return a.caps }
+
+var _ conversation.CapabilitiesAdapter = (*channelAdapter)(nil)
 
 func (a *channelAdapter) SendText(
 	ctx context.Context,
@@ -290,7 +358,11 @@ func (a *channelAdapter) EditText(ctx context.Context, ec *conversation.EntryCon
 	return err
 }
 
-func (a *channelAdapter) Retract(ctx context.Context, ec *conversation.EntryContext, providerMessageID string, _ time.Time) error {
+func (a *channelAdapter) EditWindow() time.Duration { return uw.EditWindow }
+
+func (a *channelAdapter) RetractWindow() time.Duration { return uw.DeleteWindow }
+
+func (a *channelAdapter) Retract(ctx context.Context, ec *conversation.EntryContext, providerMessageID string) error {
 	_, ref, err := a.prepareSend(ctx, ec, "")
 	if err != nil {
 		return err

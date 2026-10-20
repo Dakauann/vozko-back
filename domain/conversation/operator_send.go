@@ -18,6 +18,7 @@ type OperatorSendInput struct {
 	MediaID          string
 	MediaType        string
 	ReplyToMessageID string
+	RequestID        string
 
 	Signed bool
 

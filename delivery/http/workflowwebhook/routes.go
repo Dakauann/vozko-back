@@ -22,6 +22,7 @@ func RegisterRoutes(
 	protected.HandleFunc("/workflows/{id}/webhook", ac(res, workspace_domain.ActionUpdate, h.CreateWorkflowWebhook)).Methods(http.MethodPost)
 	protected.HandleFunc("/workflows/{id}/webhook", ac(res, workspace_domain.ActionUpdate, h.UpdateWorkflowWebhook)).Methods(http.MethodPut)
 	protected.HandleFunc("/workflows/{id}/webhook/rotate", ac(res, workspace_domain.ActionUpdate, h.RotateWorkflowWebhook)).Methods(http.MethodPost)
+	protected.HandleFunc("/workflows/{id}/webhook/deliveries", ac(res, workspace_domain.ActionRead, h.ListWorkflowWebhookDeliveries)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/webhook", ac(res, workspace_domain.ActionUpdate, h.DeleteWorkflowWebhook)).Methods(http.MethodDelete)
 }
 

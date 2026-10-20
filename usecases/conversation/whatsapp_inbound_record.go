@@ -22,19 +22,20 @@ func (uc *handleWhatsAppMessageUseCase) inboundTextRecord(message *conversation.
 		text = strings.TrimSpace(message.Text.Body)
 	}
 	record := conversation.MessageHistoryRecord{
-		SentBy:         conversation.SentByContact(message.From),
-		EntryID:        target.entryID,
-		EntryType:      target.entryType,
-		Channel:        conversation.MessageChannelWhatsApp,
-		MessageType:    conversation.MessageTypeUserMessage,
-		ConversationID: target.conversationID,
-		MessageID:      strings.TrimSpace(message.ID),
-		From:           strings.TrimSpace(message.From),
-		To:             target.businessNumber,
-		Text:           text,
-		Timestamp:      parseWhatsAppTimestamp(message.Timestamp),
-		Metadata:       inboundMetadata(message),
-		AdReferral:     message.Referral.AdReferral(),
+		SentBy:             conversation.SentByContact(message.From),
+		EntryID:            target.entryID,
+		EntryType:          target.entryType,
+		Channel:            conversation.MessageChannelWhatsApp,
+		MessageType:        conversation.MessageTypeUserMessage,
+		ConversationID:     target.conversationID,
+		MessageID:          strings.TrimSpace(message.ID),
+		From:               strings.TrimSpace(message.From),
+		To:                 target.businessNumber,
+		Text:               text,
+		Timestamp:          parseWhatsAppTimestamp(message.Timestamp),
+		Metadata:           inboundMetadata(message),
+		AdReferral:         message.Referral.AdReferral(),
+		ReplyToWAMessageID: quotedProviderMessageID(message),
 	}
 	if leadRecord != nil {
 		record.SenderName = leadRecord.DisplayName()

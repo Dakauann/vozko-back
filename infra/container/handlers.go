@@ -13,7 +13,6 @@ import (
 	workspace_usecase "vozko/usecases/workspace"
 
 	balance_usecase "vozko/usecases/balance"
-	ia_usecase "vozko/usecases/inbox_assignment"
 
 	affiliatehttp "vozko/delivery/http/affiliate"
 	analyticshttp "vozko/delivery/http/analytics"
@@ -57,6 +56,8 @@ import (
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
 	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
+	workflowalerthttp "vozko/delivery/http/workflowalerthttp"
+	workflowsecrethttp "vozko/delivery/http/workflowsecrethttp"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
 	workspaceaddonhttp "vozko/delivery/http/workspaceaddon"
@@ -110,6 +111,11 @@ func (c *Container) initHandlers() {
 		c.services.conversationHub,
 	)
 	crmBulkService.SetSelection(crmboard_usecase.NewSelectionResolver(crmBoardService), c.sharedAnalyticsGate())
+	crmBulkService.SetConversationActions(crmbulk_usecase.ConversationActions{
+		Finish:   c.services.personFinish,
+		Read:     c.services.messageMarker,
+		Personal: c.services.personalInbox,
+	})
 
 	c.services.dialog360Onboarding = businessphone_infra.NewDialog360OnboardingService(
 		businessphone_infra.NewDialog360PartnerClient(
@@ -300,14 +306,11 @@ func (c *Container) initHandlers() {
 				c.useCases.listConversationEvents,
 			)
 			if c.services.conversationAutomation != nil {
-				toggle := ia_usecase.NewOperatorAutomationToggle(
-					c.services.conversationAutomation,
-					c.services.assignmentService,
-					c.services.conversationAuth,
-				)
+				toggle := c.automationToggle()
 				h.SetAutomationService(toggle)
 				h.SetDelegationService(c.automationDelegation(toggle))
 			}
+			h.SetToolCalls(c.listAIToolCalls())
 			return h
 		}(),
 		conversationWS: wsdelivery.NewConversationWSHandler(
@@ -530,19 +533,24 @@ func (c *Container) initHandlers() {
 		),
 		workflow: handlers.NewWorkflowHandler(
 			c.useCases.scopedWorkflows,
-			c.useCases.assignWorkflowDepartment,
-			c.useCases.listWorkflows,
+			workflow_usecase.NewListWorkflowsWithEntryPoints(c.useCases.listWorkflows, c.workflowEntryPoints()),
 			c.useCases.startWorkflowRun,
 			c.useCases.cancelWorkflowRun,
-			c.useCases.getWorkflowRun,
+			c.workflowRunPages(),
 			c.useCases.listWorkflowRuns,
+			c.useCases.listConversationRuns,
 			c.useCases.testWorkflowNode,
 			c.useCases.nodeCatalogFn,
+			workflow_usecase.NewNodePinsUseCase(c.useCases.scopedWorkflows, c.useCases.getWorkflowRun),
 		),
 		workflowWebhook: workflowwebhookhttp.NewHandler(
 			c.useCases.workflowWebhookConfig,
 			c.useCases.handleWebhookTrigger,
+			workflow_usecase.NewListWebhookDeliveriesUseCase(c.webhookDeliveries(), c.conversationVisibility()),
+			c.useCases.scopedWorkflows,
 		),
+		workflowSecret:      workflowsecrethttp.NewHandler(c.useCases.workflowSecrets),
+		workflowAlert:       workflowalerthttp.NewHandler(c.useCases.workflowRuntimeAlerts, c.useCases.scopedWorkflows),
 		wsWorkflowSimulator: wsdelivery.NewWSWorkflowSimulatorHandler(c.useCases.wsWorkflowSimulation, c.services.metrics),
 		wsWorkflowAIBuilder: wsdelivery.NewWSWorkflowAIBuilderHandler(
 			c.useCases.wsWorkflowAIBuilder,

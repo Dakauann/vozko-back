@@ -3,17 +3,20 @@ package notification_usecase
 import (
 	"time"
 
+	"vozko/brand"
 	"vozko/domain/notification"
 )
 
-const (
-	GenericEmailTemplate = "notification.html"
-	defaultActionLabel   = "Abrir no Vozko"
-)
+const GenericEmailTemplate = "notification.html"
+
+func defaultActionLabel() string {
+	return "Abrir " + brand.Active().Portuguese().InBrand
+}
 
 var categoryLabels = map[notification.Category]string{
 	notification.CategoryAnnouncements: "Comunicados",
 	notification.CategoryCampaigns:     "Campanhas",
+	notification.CategoryConversations: "Conversas",
 	notification.CategoryTemplates:     "Modelos",
 	notification.CategoryChannels:      "Canais",
 	notification.CategoryBilling:       "Financeiro",
@@ -21,6 +24,7 @@ var categoryLabels = map[notification.Category]string{
 	notification.CategoryTeam:          "Equipe",
 	notification.CategorySupport:       "Suporte",
 	notification.CategorySystem:        "Sistema",
+	notification.CategoryAutomations:   "Automações",
 }
 
 var severityTones = map[notification.Severity]string{
@@ -62,7 +66,7 @@ func (c emailComposer) compose(rec notification.Record, workspaceName string) no
 		placeholders["ActionURL"] = notification.AbsoluteLink(c.dashboardURL, rec.ActionURL)
 		placeholders["ActionLabel"] = rec.ActionLabel
 		if rec.ActionLabel == "" {
-			placeholders["ActionLabel"] = defaultActionLabel
+			placeholders["ActionLabel"] = defaultActionLabel()
 		}
 	}
 	return notification.EmailCopy{Template: GenericEmailTemplate, Subject: rec.Title, Placeholders: placeholders}

@@ -24,9 +24,12 @@ func RegisterCampaignRoutes(
 	r.HandleFunc("/archived", ac(res, workspace_domain.ActionRead, h.ListArchived)).Methods(http.MethodGet)
 	r.HandleFunc("/summary", ac(res, workspace_domain.ActionRead, h.Summary)).Methods(http.MethodGet)
 	r.HandleFunc("/{id}", ac(res, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
+	r.HandleFunc("/{id}/progress", ac(res, workspace_domain.ActionRead, h.Progress)).Methods(http.MethodGet)
+	r.HandleFunc("/{id}/timeline", ac(res, workspace_domain.ActionRead, h.Timeline)).Methods(http.MethodGet)
 	r.HandleFunc("/{id}/entries", ac(res, workspace_domain.ActionRead, h.ListEntries)).Methods(http.MethodGet)
 
 	r.HandleFunc("", ac(res, workspace_domain.ActionCreate, h.Create)).Methods(http.MethodPost)
+	r.HandleFunc("/estimate", ac(res, workspace_domain.ActionCreate, h.Estimate)).Methods(http.MethodPost)
 	r.HandleFunc("/{id}", ac(res, workspace_domain.ActionUpdate, h.Update)).Methods(http.MethodPut)
 	r.HandleFunc("/{id}", ac(res, workspace_domain.ActionDelete, h.Delete)).Methods(http.MethodDelete)
 	r.HandleFunc("/{id}/department", ac(res, workspace_domain.ActionUpdate, h.AssignDepartment)).Methods(http.MethodPatch)

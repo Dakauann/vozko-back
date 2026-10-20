@@ -340,3 +340,21 @@ func TestStartUnofficialCampaignShowsThePaceAndActsInScope(t *testing.T) {
 		t.Fatalf("result %+v actions %+v", res, f.actions)
 	}
 }
+
+func TestAGroupCampaignWithoutANumberStartsThroughItsGroups(t *testing.T) {
+	f := newQRFixture()
+	groups := readyQRCampaign()
+	groups.InstanceID, groups.InstanceLabel, groups.Audience = "", "", uwc.AudienceGroups
+	groups.SenderInstanceIDs = []string{knownQRNumber}
+	f.deps.Access = fakeQRAccess{knownQRCampaign: groups}
+	tool := NewStartUnofficialCampaignTool(f.deps)
+	args := map[string]interface{}{"campaign_id": knownQRCampaign}
+
+	if err := tooltest.Validate(t, tool, tooltest.Member(), args); err != nil {
+		t.Fatalf("a group campaign without a number was refused: %v", err)
+	}
+	fields := tool.(copilot.Describer).Describe(context.Background(), tooltest.Member(), args)
+	if tooltest.FieldValue(fields, "phone") != "cada grupo sai por um número seu que está nele" {
+		t.Fatalf("fields = %+v", fields)
+	}
+}

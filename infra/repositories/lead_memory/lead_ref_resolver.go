@@ -1,11 +1,63 @@
 package lead_memory_repository
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"vozko/domain/shared"
 )
+
+var leadRefIsTheLead = map[shared.EntryType]struct{}{
+	shared.EntryTypeWhatsApp: {},
+}
+
+var leadLinkedContactTables = map[shared.EntryType]string{
+	shared.EntryTypeUnofficialWhatsApp: "unofficial_whatsapp_contacts",
+	shared.EntryTypeTelegram:           "telegram_contacts",
+	shared.EntryTypeInstagram:          "instagram_contacts",
+	shared.EntryTypeFacebook:           "facebook_contacts",
+	shared.EntryTypeWebchat:            "webchat_visitors",
+	shared.EntryTypeMercadoLivre:       "mercadolivre_contacts",
+	shared.EntryTypeTikTok:             "tiktok_contacts",
+}
+
+var leadViaContactsQuery = buildLeadViaContactsSQL()
+
+func sortedContactTables() []string {
+	tables := make([]string, 0, len(leadLinkedContactTables))
+	for _, table := range leadLinkedContactTables {
+		tables = append(tables, table)
+	}
+	sort.Strings(tables)
+	return tables
+}
+
+func buildLeadViaContactsSQL() string {
+	tables := sortedContactTables()
+	branches := make([]string, 0, len(tables))
+	for _, table := range tables {
+		branches = append(branches, "SELECT c.lead_id FROM "+table+" c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL")
+	}
+	return "SELECT l.id FROM leads l WHERE l.workspace_id = ?::uuid AND l.deleted_at IS NULL AND l.id IN (" +
+		strings.Join(branches, " UNION ALL ") +
+		") LIMIT 1"
+}
+
+func leadViaContactsSQL() string {
+	return leadViaContactsQuery
+}
+
+func leadViaContactsArgs(workspaceID, ref string) []any {
+	args := make([]any, 0, 1+2*len(leadLinkedContactTables))
+	args = append(args, workspaceID)
+	for range leadLinkedContactTables {
+		args = append(args, ref, workspaceID)
+	}
+	return args
+}
 
 type LeadRefResolver struct {
 	db *gorm.DB
@@ -34,19 +86,6 @@ func (r *LeadRefResolver) ResolveLeadRef(workspaceID, ref string) string {
 		return leadID
 	}
 
-	r.db.Raw(`
-		SELECT l.id FROM leads l
-		WHERE l.workspace_id = ?::uuid AND l.deleted_at IS NULL AND l.id IN (
-			SELECT c.lead_id FROM unofficial_whatsapp_contacts c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
-			UNION ALL
-			SELECT c.lead_id FROM telegram_contacts c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
-			UNION ALL
-			SELECT c.lead_id FROM instagram_contacts c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
-			UNION ALL
-			SELECT c.lead_id FROM webchat_visitors c WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.lead_id IS NOT NULL
-		)
-		LIMIT 1`,
-		workspaceID, ref, workspaceID, ref, workspaceID, ref, workspaceID, ref, workspaceID,
-	).Scan(&leadID)
+	r.db.Raw(leadViaContactsSQL(), leadViaContactsArgs(workspaceID, ref)...).Scan(&leadID)
 	return leadID
 }

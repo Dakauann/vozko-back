@@ -177,7 +177,7 @@ func (d ConversationDescriptor) Field(field crmfilter.Field) (FieldMapping, erro
 		tmpl := "(LOWER(COALESCE(l.name, '')) LIKE LOWER(?) OR COALESCE(l.number, '') LIKE ? OR " +
 			entryID + " IN (SELECT DISTINCT cm_q.entry_id FROM conversation_messages cm_q WHERE cm_q.entry_id = " +
 			entryID + " AND cm_q.entry_type = " + entryType +
-			" AND cm_q.deleted_at IS NULL AND LOWER(cm_q.text) LIKE LOWER(?)))"
+			" AND " + sqlexpr.MessageTextMatches("cm_q") + "))"
 		return FieldMapping{Style: StyleText, Kind: crmfilter.KindText, Template: tmpl, Params: 3}, nil
 
 	default:

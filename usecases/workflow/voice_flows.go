@@ -71,5 +71,10 @@ func newVoiceRun(flow *workflow.Workflow, trigger *workflow.Node, call workflow.
 		State:         state,
 		StartedAt:     now,
 		UpdatedAt:     now,
+		TriggerType:   workflow.TriggerCallReceived,
+		StartedBy:     workflow.StartedByTrigger(workflow.TriggerCallReceived),
+
+		WorkflowVersion: graphVersionOf(flow),
+		TriggerData:     workflow.TriggerDataOf(state),
 	}
 }

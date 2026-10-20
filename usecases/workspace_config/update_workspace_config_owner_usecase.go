@@ -2,14 +2,17 @@ package workspace_config_usecase
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/workspace"
 	wsc "vozko/domain/workspace_config"
 )
 
 type workspaceOwnerFetcher interface {
 	GetWorkspaceByID(id string) (*workspace.Workspace, error)
+	ListMembers(workspaceID string) ([]*workspace.Member, error)
 }
 
 type updateWorkspaceConfigOwnerUseCase struct {
@@ -78,6 +81,9 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 	if input.RouletteRescueAfterMinutes != nil {
 		existing.RouletteRescueAfterMinutes = wsc.ClampRouletteRescueMinutes(*input.RouletteRescueAfterMinutes)
 	}
+	if err := uc.applyRouletteStrategy(workspaceID, existing, input); err != nil {
+		return nil, err
+	}
 
 	switch {
 	case input.ClearWorkingHours:
@@ -107,4 +113,50 @@ func (uc *updateWorkspaceConfigOwnerUseCase) Execute(ctx context.Context, worksp
 	}
 
 	return existing, nil
+}
+
+func (uc *updateWorkspaceConfigOwnerUseCase) applyRouletteStrategy(workspaceID string, cfg *wsc.WorkspaceConfig, input wsc.UpdateWorkspaceConfigOwnerInput) error {
+	if input.RouletteStrategy != nil {
+		strategy, err := ia.ParseStrategy(*input.RouletteStrategy)
+		if err != nil {
+			return err
+		}
+		cfg.RouletteStrategy = strategy
+	}
+	if input.RouletteMaxOpenPerMember != nil {
+		cfg.RouletteMaxOpenPerMember = *input.RouletteMaxOpenPerMember
+	}
+	if input.RouletteRecipients != nil {
+		recipients, err := ia.NormalizeRecipients(*input.RouletteRecipients)
+		if err != nil {
+			return err
+		}
+		if err := uc.requireMembers(workspaceID, recipients); err != nil {
+			return err
+		}
+		cfg.RouletteRecipients = recipients
+	}
+	return ia.ValidateRouletteRules(cfg.EffectiveRouletteStrategy(), cfg.RouletteRecipients, cfg.RouletteMaxOpenPerMember)
+}
+
+func (uc *updateWorkspaceConfigOwnerUseCase) requireMembers(workspaceID string, recipients []ia.Recipient) error {
+	if len(recipients) == 0 {
+		return nil
+	}
+	members, err := uc.wsRepo.ListMembers(workspaceID)
+	if err != nil {
+		return fmt.Errorf("workspace_config: reading members to check roulette recipients: %w", err)
+	}
+	isMember := make(map[string]bool, len(members))
+	for _, m := range members {
+		if m != nil {
+			isMember[m.UserID] = true
+		}
+	}
+	for _, r := range recipients {
+		if !isMember[r.UserID] {
+			return ia.ErrRecipientNotMember
+		}
+	}
+	return nil
 }

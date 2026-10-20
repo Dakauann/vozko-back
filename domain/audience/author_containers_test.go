@@ -15,7 +15,7 @@ func TestAuthorContainersInputValidate(t *testing.T) {
 		"complete":        {in: AuthorContainersInput{WorkspaceID: "ws", AuthorExternalID: "a1"}},
 		"no workspace":    {in: AuthorContainersInput{AuthorExternalID: "a1"}, wantErr: true},
 		"no author":       {in: AuthorContainersInput{WorkspaceID: "ws"}, wantErr: true},
-		"bad source":      {in: AuthorContainersInput{WorkspaceID: "ws", AuthorExternalID: "a1", Source: "tiktok"}, wantErr: true},
+		"bad source":      {in: AuthorContainersInput{WorkspaceID: "ws", AuthorExternalID: "a1", Source: "orkut"}, wantErr: true},
 		"blank source":    {in: AuthorContainersInput{WorkspaceID: "ws", AuthorExternalID: "a1", Source: ""}},
 		"known source":    {in: AuthorContainersInput{WorkspaceID: "ws", AuthorExternalID: "a1", Source: SourceInstagram}},
 		"only whitespace": {in: AuthorContainersInput{WorkspaceID: "ws", AuthorExternalID: "   "}, wantErr: true},

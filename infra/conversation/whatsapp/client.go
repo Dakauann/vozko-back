@@ -17,6 +17,9 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
+	"vozko/domain/media"
+	mm "vozko/domain/metamessaging"
+	"vozko/domain/whatsapp/template"
 )
 
 type Config struct {
@@ -30,6 +33,7 @@ type Config struct {
 	AuthValuePrefix        string
 	OmitPhoneNumberInPath  bool
 	TemplatesChannelScoped bool
+	MediaDownloads         media.RemoteFiles
 }
 
 type Client struct {
@@ -39,6 +43,7 @@ type Client struct {
 	accessToken            string
 	appID                  string
 	httpClient             *http.Client
+	mediaDownloads         media.RemoteFiles
 	authHeaderName         string
 	authValuePrefix        string
 	omitPhoneNumberInPath  bool
@@ -180,6 +185,7 @@ func NewClient(cfg Config) conversation.WhatsAppClient {
 		accessToken:            strings.TrimSpace(cfg.AccessToken),
 		appID:                  strings.TrimSpace(cfg.AppID),
 		httpClient:             httpClient,
+		mediaDownloads:         cfg.MediaDownloads,
 		authHeaderName:         strings.TrimSpace(cfg.AuthHeaderName),
 		authValuePrefix:        cfg.AuthValuePrefix,
 		omitPhoneNumberInPath:  cfg.OmitPhoneNumberInPath,
@@ -924,8 +930,9 @@ func (c *Client) SendButtonMessage(ctx context.Context, input conversation.SendB
 			sb.WriteString("_")
 		}
 		return c.SendTextMessage(ctx, conversation.SendTextMessageInput{
-			To:   input.To,
-			Body: sb.String(),
+			To:               input.To,
+			Body:             sb.String(),
+			ContextMessageID: input.ContextMessageID,
 		})
 	}
 
@@ -988,38 +995,97 @@ func (c *Client) SendButtonMessage(ctx context.Context, input conversation.SendB
 		"type":              "interactive",
 		"interactive":       interactive,
 	}
+	if strings.TrimSpace(input.ContextMessageID) != "" {
+		payload["context"] = map[string]string{"message_id": strings.TrimSpace(input.ContextMessageID)}
+	}
 
+	return c.postInteractive(ctx, payload, "button")
+}
+
+func (c *Client) SendFlowMessage(ctx context.Context, input conversation.SendFlowMessageInput) (*conversation.SendTextMessageOutput, error) {
+	if err := input.Validate(); err != nil {
+		return nil, err
+	}
+	if c == nil || c.phoneNumberID == "" || c.accessToken == "" {
+		return nil, conversation.ErrWhatsAppClientDisabled
+	}
+
+	parameters := map[string]interface{}{
+		"flow_message_version": conversation.WhatsAppFlowMessageVersion,
+		"flow_token":           strings.TrimSpace(input.FlowToken),
+		"flow_id":              strings.TrimSpace(input.FlowID),
+		"flow_cta":             strings.TrimSpace(input.CTA),
+		"flow_action":          template.FlowActionNavigate,
+	}
+	if input.Draft {
+		parameters["mode"] = "draft"
+	}
+
+	interactive := map[string]interface{}{
+		"type": "flow",
+		"body": map[string]interface{}{
+			"text": strings.TrimSpace(input.Body),
+		},
+		"action": map[string]interface{}{
+			"name":       "flow",
+			"parameters": parameters,
+		},
+	}
+	if header := strings.TrimSpace(input.Header); header != "" {
+		interactive["header"] = map[string]interface{}{
+			"type": "text",
+			"text": header,
+		}
+	}
+	if footer := strings.TrimSpace(input.Footer); footer != "" {
+		interactive["footer"] = map[string]interface{}{
+			"text": footer,
+		}
+	}
+
+	payload := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"recipient_type":    "individual",
+		"to":                lead.NormalizeWhatsAppNumber(input.To),
+		"type":              "interactive",
+		"interactive":       interactive,
+	}
+
+	return c.postInteractive(ctx, payload, "flow")
+}
+
+func (c *Client) postInteractive(ctx context.Context, payload map[string]interface{}, kind string) (*conversation.SendTextMessageOutput, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal button message: %w", err)
+		return nil, fmt.Errorf("failed to marshal %s message: %w", kind, err)
 	}
 
 	endpoint := c.messagesEndpoint()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create button message request: %w", err)
+		return nil, fmt.Errorf("failed to create %s message request: %w", kind, err)
 	}
 	c.setAuth(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("button message request failed: %w", err)
+		return nil, fmt.Errorf("%s message request failed: %w", kind, err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read button message response: %w", err)
+		return nil, fmt.Errorf("failed to read %s message response: %w", kind, err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send button message failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("whatsapp send %s message failed: status=%d body=%s", kind, resp.StatusCode, string(respBody))
 	}
 
 	var decoded sendTextMessageResponse
 	if err := json.Unmarshal(respBody, &decoded); err != nil {
-		return nil, fmt.Errorf("failed to parse button message response: %w", err)
+		return nil, fmt.Errorf("failed to parse %s message response: %w", kind, err)
 	}
 
 	output := conversation.SendTextMessageOutput{}
@@ -1095,49 +1161,7 @@ func (c *Client) SendListMessage(ctx context.Context, input conversation.SendLis
 		"interactive":       interactive,
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal list message: %w", err)
-	}
-
-	endpoint := c.messagesEndpoint()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create list message request: %w", err)
-	}
-	c.setAuth(req)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("list message request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read list message response: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send list message failed: status=%d body=%s", resp.StatusCode, string(respBody))
-	}
-
-	var decoded sendTextMessageResponse
-	if err := json.Unmarshal(respBody, &decoded); err != nil {
-		return nil, fmt.Errorf("failed to parse list message response: %w", err)
-	}
-
-	output := conversation.SendTextMessageOutput{}
-	if len(decoded.Messages) > 0 {
-		output.MessageID = decoded.Messages[0].ID
-		output.MessageStatus = decoded.Messages[0].MessageStatus
-	}
-	if len(decoded.Contacts) > 0 {
-		output.ContactWaID = decoded.Contacts[0].WaID
-	}
-
-	return &output, nil
+	return c.postInteractive(ctx, payload, "list")
 }
 
 func (c *Client) SendTextMessage(ctx context.Context, input conversation.SendTextMessageInput) (*conversation.SendTextMessageOutput, error) {
@@ -1937,29 +1961,11 @@ func (c *Client) UploadMediaForTemplate(ctx context.Context, input conversation.
 	return handle, nil
 }
 
+const maxTemplateMediaBytes = 50 * 1024 * 1024
+
 func (c *Client) downloadFromURL(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("failed to download from URL: status=%d", resp.StatusCode)
-	}
-
-	const maxSize = 50 * 1024 * 1024
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
+	file, err := media.Download(ctx, c.mediaDownloads, url, maxTemplateMediaBytes)
+	return file.Data, err
 }
 
 func (c *Client) inferMimeTypeFromFileName(fileName string) string {
@@ -2083,11 +2089,14 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 
 		for _, b := range c.Buttons {
 			components[i].Buttons = append(components[i].Buttons, conversation.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID.String(),
+				FlowAction:     template.NormalizeFlowAction(b.FlowAction),
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 
@@ -2160,6 +2169,11 @@ type templateParameter struct {
 	Document      *templateDocumentParam `json:"document,omitempty"`
 	CouponCode    string                 `json:"coupon_code,omitempty"`
 	Payload       string                 `json:"payload,omitempty"`
+	Action        *templateFlowAction    `json:"action,omitempty"`
+}
+
+type templateFlowAction struct {
+	FlowToken string `json:"flow_token"`
 }
 
 func templateButtonParameter(btn conversation.TemplateButtonParam) templateParameter {
@@ -2168,6 +2182,8 @@ func templateButtonParameter(btn conversation.TemplateButtonParam) templateParam
 		return templateParameter{Type: "coupon_code", CouponCode: btn.CouponCode}
 	case conversation.TemplateButtonSubTypeQuickReply:
 		return templateParameter{Type: "payload", Payload: btn.Payload}
+	case conversation.TemplateButtonSubTypeFlow:
+		return templateParameter{Type: "action", Action: &templateFlowAction{FlowToken: btn.FlowToken}}
 	default:
 		return templateParameter{Type: "text", Text: btn.Text}
 	}
@@ -2223,12 +2239,15 @@ type templateComponentResponse struct {
 }
 
 type templateButtonResponse struct {
-	Type        string   `json:"type"`
-	Text        string   `json:"text,omitempty"`
-	URL         string   `json:"url,omitempty"`
-	PhoneNumber string   `json:"phone_number,omitempty"`
-	Example     []string `json:"example,omitempty"`
-	OTPType     string   `json:"otp_type,omitempty"`
+	Type           string     `json:"type"`
+	Text           string     `json:"text,omitempty"`
+	URL            string     `json:"url,omitempty"`
+	PhoneNumber    string     `json:"phone_number,omitempty"`
+	Example        []string   `json:"example,omitempty"`
+	OTPType        string     `json:"otp_type,omitempty"`
+	FlowID         mm.GraphID `json:"flow_id,omitempty"`
+	FlowAction     string     `json:"flow_action,omitempty"`
+	NavigateScreen string     `json:"navigate_screen,omitempty"`
 }
 
 type templateExampleResponse struct {
@@ -2269,6 +2288,11 @@ func toWireComponents(components []conversation.TemplateComponent) []createTempl
 					URL:         btn.URL,
 					PhoneNumber: btn.PhoneNumber,
 					OTPType:     strings.ToUpper(strings.TrimSpace(btn.OTPType)),
+				}
+				if btnType == template.ButtonTypeFlow {
+					apiBtn.FlowID = strings.TrimSpace(btn.FlowID)
+					apiBtn.FlowAction = template.NormalizeFlowAction(btn.FlowAction)
+					apiBtn.NavigateScreen = strings.TrimSpace(btn.NavigateScreen)
 				}
 
 				if btn.Example != "" {
@@ -2329,12 +2353,15 @@ type createTemplateComponent struct {
 }
 
 type createTemplateButton struct {
-	Type        string   `json:"type"`
-	Text        string   `json:"text,omitempty"`
-	URL         string   `json:"url,omitempty"`
-	PhoneNumber string   `json:"phone_number,omitempty"`
-	Example     []string `json:"example,omitempty"`
-	OTPType     string   `json:"otp_type,omitempty"`
+	Type           string   `json:"type"`
+	Text           string   `json:"text,omitempty"`
+	URL            string   `json:"url,omitempty"`
+	PhoneNumber    string   `json:"phone_number,omitempty"`
+	Example        []string `json:"example,omitempty"`
+	OTPType        string   `json:"otp_type,omitempty"`
+	FlowID         string   `json:"flow_id,omitempty"`
+	FlowAction     string   `json:"flow_action,omitempty"`
+	NavigateScreen string   `json:"navigate_screen,omitempty"`
 }
 
 type createTemplateExample struct {

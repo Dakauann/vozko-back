@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 
 	"vozko/domain/copilot"
@@ -40,6 +41,7 @@ type UnofficialGroupDeps struct {
 	Campaigns   UnofficialCampaignDeps
 	Groups      GroupDirectory
 	Permissions workspace.CheckAccessUseCase
+	Estimate    uwc.EstimateCampaignUseCase
 }
 
 func (d UnofficialGroupDeps) actor(cc copilot.Context) (uwguc.Actor, error) {
@@ -330,8 +332,7 @@ func (t *unofficialGroupPeopleTool) Execute(ctx context.Context, cc copilot.Cont
 
 type groupCampaignArgs struct {
 	Name              string   `json:"name" req:"true" desc:"nome da campanha"`
-	NumberID          string   `json:"number_id" req:"true" id:"true" desc:"number_id de um número presente em todos os grupos e que pode enviar neles (list_unofficial_groups)"`
-	GroupIDs          []string `json:"group_ids" req:"true" id:"true" desc:"group_id exatos de list_unofficial_groups"`
+	GroupIDs          []string `json:"group_ids" req:"true" id:"true" desc:"group_id exatos de list_unofficial_groups; cada grupo precisa de um número seu que possa publicar nele"`
 	Message           string   `json:"message" desc:"o texto exato enviado em cada grupo (legenda, quando houver anexo)"`
 	AttachmentMediaID string   `json:"attachment_media_id" id:"true" desc:"media_id de um anexo da conversa (imagem, vídeo, áudio ou documento) para enviar junto"`
 	DepartmentID      string   `json:"department_id" id:"true" desc:"departamento (list_departments); só quando o usuário tem mais de um"`
@@ -353,14 +354,23 @@ func (t *createUnofficialGroupCampaignTool) Meta() copilot.Meta {
 
 func (t *createUnofficialGroupCampaignTool) Definition() tools.Definition {
 	return copilottools.Definition("create_unofficial_group_campaign",
-		"Cria uma campanha do WhatsApp por QR code que envia uma mensagem em cada grupo escolhido, pelo número escolhido. A "+
-			"campanha nasce parada; para enviar use start_unofficial_campaign. Só depois da aprovação do usuário.",
+		"Cria uma campanha do WhatsApp por QR code que envia uma mensagem em cada grupo escolhido. Não se escolhe número: "+
+			"cada grupo sai, na hora do envio, por um dos números do usuário que está nele e pode publicar (admin quando só admins "+
+			"publicam), dividindo o volume entre eles. A campanha nasce parada; para enviar use start_unofficial_campaign. Só depois da aprovação do usuário.",
 		groupCampaignArgs{})
 }
 
-func (t *createUnofficialGroupCampaignTool) targets(ctx context.Context, cc copilot.Context, a groupCampaignArgs) ([]*uwguc.GroupRow, error) {
+type groupCampaignPlan struct {
+	rows  []*uwguc.GroupRow
+	draft *uwc.DraftEstimate
+}
+
+func (t *createUnofficialGroupCampaignTool) targets(ctx context.Context, cc copilot.Context, a groupCampaignArgs) (*groupCampaignPlan, error) {
 	if err := t.deps.seesGroups(cc); err != nil {
 		return nil, err
+	}
+	if t.deps.Estimate == nil {
+		return nil, errGroupSendersUnknown
 	}
 	actor, err := t.deps.actor(cc)
 	if err != nil {
@@ -370,25 +380,48 @@ func (t *createUnofficialGroupCampaignTool) targets(ctx context.Context, cc copi
 	if err != nil {
 		return nil, err
 	}
-	var blocked []string
+	jids := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if !canPostFrom(row, strings.TrimSpace(a.NumberID)) {
-			blocked = append(blocked, row.Group.Subject)
+		jids = append(jids, row.Group.JID)
+	}
+	draft, err := t.deps.Estimate.Draft(ctx, uwc.EstimateInput{WorkspaceID: cc.WorkspaceID, Audience: uwc.AudienceGroups, GroupJIDs: jids}, actor.Departments)
+	if err != nil {
+		return nil, err
+	}
+	var blocked []string
+	for _, group := range draft.Groups {
+		if group.Block.Permanent() {
+			blocked = append(blocked, group.Name)
 		}
 	}
 	if len(blocked) > 0 {
-		return nil, fmt.Errorf("%w: o número não está ou não pode enviar nestes grupos: %s", copilottools.ErrInvalidArgs, strings.Join(blocked, ", "))
+		return nil, fmt.Errorf("%w: nenhum número seu está ou pode publicar nestes grupos: %s", copilottools.ErrInvalidArgs, strings.Join(blocked, ", "))
 	}
-	return rows, nil
+	return &groupCampaignPlan{rows: rows, draft: draft}, nil
 }
 
-func canPostFrom(row *uwguc.GroupRow, numberID string) bool {
-	for _, seat := range row.Numbers {
-		if seat.InstanceID == numberID {
-			return seat.CanPost
-		}
+var errGroupSendersUnknown = fmt.Errorf("%w: não foi possível saber quais números publicam nesses grupos agora; tente de novo", copilottools.ErrInvalidArgs)
+
+func postingSummary(group uwc.GroupSenders) string {
+	if group.Block == uwg.SenderOffline || len(group.Senders) == 0 {
+		return group.Name + " (números desconectados; envia quando voltarem)"
 	}
-	return false
+	labels := make([]string, 0, len(group.Senders))
+	for _, sender := range group.Senders {
+		labels = append(labels, sender.Label)
+	}
+	return group.Name + " (" + strings.Join(labels, " ou ") + ")"
+}
+
+func sendTimeLabel(estimate uwc.SendEstimate) string {
+	minutes := int(math.Ceil(estimate.Duration.Minutes()))
+	if minutes < 1 {
+		return "menos de 1 min"
+	}
+	if minutes < 60 {
+		return fmt.Sprintf("cerca de %d min", minutes)
+	}
+	return fmt.Sprintf("cerca de %d h %02d min", minutes/60, minutes%60)
 }
 
 func (t *createUnofficialGroupCampaignTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
@@ -398,13 +431,6 @@ func (t *createUnofficialGroupCampaignTool) Validate(ctx context.Context, cc cop
 	}
 	if _, err := t.targets(ctx, cc, a); err != nil {
 		return asInvalid(err)
-	}
-	scope, err := t.deps.Campaigns.scope(cc)
-	if err != nil {
-		return err
-	}
-	if _, err := t.deps.Campaigns.Usable.Usable(ctx, cc.WorkspaceID, scope, a.NumberID); err != nil {
-		return fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, unofficialCampaignFailure(err).Message)
 	}
 	message, err := a.message(t.deps, cc)
 	if err != nil {
@@ -426,19 +452,19 @@ func asInvalid(err error) error {
 func (t *createUnofficialGroupCampaignTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
 	var a groupCampaignArgs
 	copilottools.BindArgs(args, &a)
-	fields := []copilot.Field{
-		{Key: "name", Value: strings.TrimSpace(a.Name)},
-		{Key: "phone", Value: (&createUnofficialCampaignTool{deps: t.deps.Campaigns}).numberLabel(ctx, cc, a.NumberID)},
-	}
-	rows, err := t.targets(ctx, cc, a)
+	fields := []copilot.Field{{Key: "name", Value: strings.TrimSpace(a.Name)}}
+	plan, err := t.targets(ctx, cc, a)
 	if err != nil {
 		return append(fields, copilot.Field{Key: "groups", Value: "grupos desconhecidos ou sem acesso"})
 	}
-	names := make([]string, 0, len(rows))
-	for _, row := range rows {
-		names = append(names, row.Group.Subject)
+	posting := make([]string, 0, len(plan.draft.Groups))
+	for _, group := range plan.draft.Groups {
+		posting = append(posting, postingSummary(group))
 	}
-	fields = append(fields, copilot.Field{Key: "groups", Value: strings.Join(names, ", ")})
+	fields = append(fields,
+		copilot.Field{Key: "groups", Value: strings.Join(posting, ", ")},
+		copilot.Field{Key: "sendTime", Value: sendTimeLabel(plan.draft.Estimate)},
+	)
 	if message, err := a.message(t.deps, cc); err == nil && message.MediaID != "" {
 		fields = append(fields, copilot.Field{Key: "file", Value: message.FileName})
 	}
@@ -456,7 +482,7 @@ func (t *createUnofficialGroupCampaignTool) Execute(ctx context.Context, cc copi
 	if err := copilottools.DecodeArgs(args, &a); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
-	rows, err := t.targets(ctx, cc, a)
+	plan, err := t.targets(ctx, cc, a)
 	if err != nil {
 		return groupFailure(err)
 	}
@@ -472,13 +498,12 @@ func (t *createUnofficialGroupCampaignTool) Execute(ctx context.Context, cc copi
 	if err != nil {
 		return unofficialCampaignFailure(err)
 	}
-	targets := make([]uwc.TargetInput, 0, len(rows))
-	for _, row := range rows {
+	targets := make([]uwc.TargetInput, 0, len(plan.rows))
+	for _, row := range plan.rows {
 		targets = append(targets, uwc.TargetInput{GroupJID: row.Group.JID, Name: row.Group.Subject})
 	}
 	created, err := t.deps.Campaigns.Create.Execute(scoped, &uwc.Campaign{
 		WorkspaceID: cc.WorkspaceID,
-		InstanceID:  strings.TrimSpace(a.NumberID),
 		CreatedByID: cc.UserID,
 		Name:        a.Name,
 		Audience:    uwc.AudienceGroups,

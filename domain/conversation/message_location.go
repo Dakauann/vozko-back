@@ -137,19 +137,3 @@ func locationInText(text string) (Location, bool) {
 	}
 	return Location{Point: geo.Point{Lat: lat, Lng: lng}, Address: strings.Trim(match[1], locationLabelCutset)}, true
 }
-
-func (m Message) MarshalJSON() ([]byte, error) {
-	type plainMessage Message
-	view := struct {
-		plainMessage
-		Location *MessageLocation `json:"location,omitempty"`
-	}{plainMessage: plainMessage(m)}
-	if found, ok := LocationOf(&m); ok {
-		_, candidate := LocationCandidateOf(&m)
-		view.Location = &MessageLocation{
-			Latitude: found.Point.Lat, Longitude: found.Point.Lng,
-			Name: found.Name, Address: found.Address, Candidate: candidate,
-		}
-	}
-	return json.Marshal(view)
-}

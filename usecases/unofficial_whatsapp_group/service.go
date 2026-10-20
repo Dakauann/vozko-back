@@ -9,7 +9,6 @@ import (
 	"vozko/domain/ai"
 	"vozko/domain/balance"
 	"vozko/domain/config"
-	"vozko/domain/shared"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwg "vozko/domain/unofficial_whatsapp_group"
 	balance_usecase "vozko/usecases/balance"
@@ -48,6 +47,8 @@ type Deps struct {
 	Joins     uwg.JoinRepository
 	Messages  uwg.MessageReader
 	Campaigns uwg.CampaignReader
+	Thread    Thread
+	Contacts  ContactFinder
 
 	Instances uw.InstanceRepository
 	Servers   uw.ServerRepository
@@ -121,20 +122,7 @@ func (s *Service) numbersOf(ctx context.Context, a Actor) (numbers, error) {
 }
 
 func (s *Service) workspaceInstances(ctx context.Context, workspaceID string) ([]*uw.Instance, error) {
-	var all []*uw.Instance
-	for page := 1; ; page++ {
-		result, err := s.d.Instances.ListByWorkspace(ctx, uw.ListInstancesInput{
-			WorkspaceID: workspaceID,
-			Options:     shared.QueryOptions{Pagination: shared.Pagination{Page: page, PageSize: shared.MaxPageSize}},
-		})
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, result.Items...)
-		if page >= result.TotalPages || len(result.Items) == 0 {
-			return all, nil
-		}
-	}
+	return uwuc.AllWorkspaceInstances(ctx, s.d.Instances, workspaceID)
 }
 
 func (s *Service) ref(ctx context.Context, instance *uw.Instance) (uw.InstanceRef, error) {

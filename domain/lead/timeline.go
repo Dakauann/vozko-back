@@ -62,6 +62,7 @@ func (r TimelineRef) Entry() (shared.EntryRef, bool) {
 
 type TimelineSummary struct {
 	Channel       shared.EntryType
+	Line          string
 	Status        string
 	Title         string
 	CampaignID    string

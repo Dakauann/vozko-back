@@ -2,6 +2,7 @@ package workflow_repository
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"vozko/domain/shared"
@@ -25,21 +26,30 @@ func (r *runRepository) Create(run *workflow.WorkflowRun) error {
 		return err
 	}
 
+	var columns jsonColumns
 	dbR := &schema.WorkflowRunSchema{
-		ID:            run.ID,
-		WorkflowID:    run.WorkflowID,
-		WorkspaceID:   run.WorkspaceID,
-		EntryID:       run.EntryID,
-		EntryType:     run.EntryType,
-		Status:        string(run.Status),
-		TriggerNodeID: run.TriggerNodeID,
-		CurrentNodeID: run.CurrentNodeID,
-		State:         string(stateJSON),
-		WakeAt:        run.WakeAt,
-		WaitReason:    string(run.WaitReason),
-		RetryCount:    run.RetryCount,
-		Error:         run.Error,
-		CompletedAt:   run.CompletedAt,
+		ID:              run.ID,
+		WorkflowID:      run.WorkflowID,
+		WorkspaceID:     run.WorkspaceID,
+		EntryID:         run.EntryID,
+		EntryType:       run.EntryType,
+		Status:          string(run.Status),
+		TriggerNodeID:   run.TriggerNodeID,
+		CurrentNodeID:   run.CurrentNodeID,
+		State:           string(stateJSON),
+		WakeAt:          run.WakeAt,
+		WaitReason:      string(run.WaitReason),
+		RetryCount:      run.RetryCount,
+		Error:           run.Error,
+		CompletedAt:     run.CompletedAt,
+		TriggerType:     string(run.TriggerType),
+		StartedBy:       run.StartedBy,
+		WorkflowVersion: run.WorkflowVersion,
+		AgentResult:     columns.of(run.AgentResult, run.AgentResult != nil),
+		TriggerData:     columns.of(run.TriggerData, len(run.TriggerData) > 0),
+	}
+	if columns.err != nil {
+		return columns.err
 	}
 
 	if err := r.db.Create(dbR).Error; err != nil {
@@ -58,6 +68,7 @@ func (r *runRepository) Update(run *workflow.WorkflowRun) error {
 		return err
 	}
 
+	var columns jsonColumns
 	updates := map[string]interface{}{
 		"status":          string(run.Status),
 		"current_node_id": run.CurrentNodeID,
@@ -67,10 +78,55 @@ func (r *runRepository) Update(run *workflow.WorkflowRun) error {
 		"retry_count":     run.RetryCount,
 		"error":           run.Error,
 		"completed_at":    run.CompletedAt,
+		"agent_result":    columns.of(run.AgentResult, run.AgentResult != nil),
+	}
+	if columns.err != nil {
+		return columns.err
 	}
 
-	return r.db.Model(&schema.WorkflowRunSchema{}).Where("id = ?", run.ID).Updates(updates).Error
+	res := r.db.Model(&schema.WorkflowRunSchema{}).
+		Where("id = ? AND status NOT IN ?", run.ID, terminalRunStatuses).
+		Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("run %s: %w", run.ID, workflow.ErrRunTerminal)
+	}
+	return nil
 }
+
+const cancelRunSQL = `UPDATE workflow_runs SET status = 'cancelled', error = ?, wake_at = NULL, completed_at = now(), updated_at = now()
+WHERE id = ? AND status IN ('running', 'waiting')`
+
+func (r *runRepository) CancelRun(runID, reason string) (bool, error) {
+	res := r.db.Exec(cancelRunSQL, reason, runID)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
+var _ workflow.RunCanceller = (*runRepository)(nil)
+
+var terminalRunStatuses = []string{
+	string(workflow.RunStatusCompleted),
+	string(workflow.RunStatusError),
+	string(workflow.RunStatusCancelled),
+}
+
+func (r *runRepository) RunStatus(runID string) (workflow.RunStatus, error) {
+	var statuses []string
+	if err := r.db.Model(&schema.WorkflowRunSchema{}).Where("id = ?", runID).Limit(1).Pluck("status", &statuses).Error; err != nil {
+		return "", err
+	}
+	if len(statuses) == 0 {
+		return "", fmt.Errorf("run %s: %w", runID, workflow.ErrRunNotFound)
+	}
+	return workflow.RunStatus(statuses[0]), nil
+}
+
+var _ workflow.RunStatusReader = (*runRepository)(nil)
 
 func (r *runRepository) FindByID(runID string) (*workflow.WorkflowRun, error) {
 	var dbR schema.WorkflowRunSchema
@@ -169,6 +225,9 @@ func (r *runRepository) List(input workflow.ListRunsInput) (*shared.PaginatedRes
 	if input.Status != nil {
 		query = query.Where("status = ?", string(*input.Status))
 	}
+	if visible, args := visibleRunEntries(input.WorkspaceID, input.Visibility); visible != "" {
+		query = query.Where(visible, args...)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -250,24 +309,37 @@ func mapRunToDomain(dbR *schema.WorkflowRunSchema) (*workflow.WorkflowRun, error
 	if err != nil {
 		return nil, err
 	}
+	var agentResult map[string]interface{}
+	if err := decodeColumn(dbR.AgentResult, &agentResult); err != nil {
+		return nil, err
+	}
+	var triggerData map[string]interface{}
+	if err := decodeColumn(dbR.TriggerData, &triggerData); err != nil {
+		return nil, err
+	}
 
 	return &workflow.WorkflowRun{
-		ID:            dbR.ID,
-		WorkflowID:    dbR.WorkflowID,
-		WorkspaceID:   dbR.WorkspaceID,
-		EntryID:       dbR.EntryID,
-		EntryType:     dbR.EntryType,
-		Status:        workflow.RunStatus(dbR.Status),
-		TriggerNodeID: dbR.TriggerNodeID,
-		CurrentNodeID: dbR.CurrentNodeID,
-		State:         state,
-		WakeAt:        dbR.WakeAt,
-		WaitReason:    workflow.WaitReason(dbR.WaitReason),
-		RetryCount:    dbR.RetryCount,
-		Error:         dbR.Error,
-		StartedAt:     dbR.StartedAt,
-		UpdatedAt:     dbR.UpdatedAt,
-		CompletedAt:   dbR.CompletedAt,
+		ID:              dbR.ID,
+		WorkflowID:      dbR.WorkflowID,
+		WorkspaceID:     dbR.WorkspaceID,
+		EntryID:         dbR.EntryID,
+		EntryType:       dbR.EntryType,
+		Status:          workflow.RunStatus(dbR.Status),
+		TriggerNodeID:   dbR.TriggerNodeID,
+		CurrentNodeID:   dbR.CurrentNodeID,
+		State:           state,
+		WakeAt:          dbR.WakeAt,
+		WaitReason:      workflow.WaitReason(dbR.WaitReason),
+		RetryCount:      dbR.RetryCount,
+		Error:           dbR.Error,
+		StartedAt:       dbR.StartedAt,
+		UpdatedAt:       dbR.UpdatedAt,
+		CompletedAt:     dbR.CompletedAt,
+		TriggerType:     workflow.TriggerType(dbR.TriggerType),
+		StartedBy:       dbR.StartedBy,
+		WorkflowVersion: dbR.WorkflowVersion,
+		AgentResult:     agentResult,
+		TriggerData:     triggerData,
 	}, nil
 }
 

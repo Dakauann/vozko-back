@@ -28,6 +28,9 @@ func RegisterWorkspaceGroupRoutes(
 	r.HandleFunc("/dashboard", ac(res, read, h.Dashboard)).Methods(get)
 	r.HandleFunc("/membership", ac(res, read, h.Membership)).Methods(get)
 	r.HandleFunc("/people", ac(res, read, h.People)).Methods(get)
+	r.HandleFunc("/people/leads", ac(res, read,
+		ac(workspace_domain.ResourceLeads, read, ac(workspace_domain.ResourceLeads, create, h.PeopleToLeads)))).Methods(post)
+	r.HandleFunc("/members/export", ac(res, export, h.ExportGroupMembers)).Methods(get)
 	r.HandleFunc("/themes", ac(res, read, h.Themes)).Methods(get)
 	r.HandleFunc("/categories", ac(res, read, h.Categories)).Methods(get)
 	r.HandleFunc("/discover", ac(res, update, h.Discover)).Methods(post)
@@ -51,11 +54,13 @@ func RegisterWorkspaceGroupRoutes(
 	r.HandleFunc("/{id}/unfollow", ac(res, update, h.Unfollow)).Methods(post)
 	r.HandleFunc("/{id}/refresh", ac(res, update, h.Refresh)).Methods(post)
 	r.HandleFunc("/{id}/series", ac(res, create, h.NextInSeries)).Methods(post)
+	r.HandleFunc("/{id}/numbers", ac(res, create, h.AddNumbers)).Methods(post)
 	r.HandleFunc("/{id}/leave", ac(res, remove, h.Leave)).Methods(post)
 	r.HandleFunc("/{id}/participants", ac(res, update, h.ManageMembers)).Methods(post)
 	r.HandleFunc("/{id}/participants", ac(res, remove, h.ManageMembers)).Methods(del)
 	r.HandleFunc("/{id}/invite-link", ac(res, read, h.InviteLink)).Methods(get)
 	r.HandleFunc("/{id}/campaigns", ac(res, read, h.Campaigns)).Methods(get)
+	r.HandleFunc("/{id}/messages", ac(res, read, h.Messages)).Methods(get)
 	r.HandleFunc("/{id}/members", ac(res, read, h.Members)).Methods(get)
 	r.HandleFunc("/{id}/members/export", ac(res, export, h.ExportMembers)).Methods(get)
 	r.HandleFunc("/{id}/members/leads", ac(res, read,

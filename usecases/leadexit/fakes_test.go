@@ -16,6 +16,7 @@ import (
 	"vozko/domain/recordevent"
 	"vozko/domain/shared"
 	buttonaction_usecase "vozko/usecases/buttonaction"
+	inbox_assignment_usecase "vozko/usecases/inbox_assignment"
 	lead_usecase "vozko/usecases/lead"
 	opportunity_usecase "vozko/usecases/opportunity"
 	workflow_usecase "vozko/usecases/workflow"
@@ -250,6 +251,16 @@ func (f *fakeDeals) ManageForEntry(_ string, cmd opportunity_usecase.EntryComman
 	return &opportunity_usecase.EntryResult{Created: true}, nil
 }
 
+type fakeDelegations struct {
+	delegated []inbox_assignment_usecase.SystemDelegation
+	err       error
+}
+
+func (f *fakeDelegations) DelegateAsSystem(_ context.Context, in inbox_assignment_usecase.SystemDelegation) error {
+	f.delegated = append(f.delegated, in)
+	return f.err
+}
+
 type fakeWorkflows struct {
 	starts  []workflow_usecase.ConversationStart
 	started workflow_usecase.StartedRun
@@ -330,6 +341,7 @@ type fixture struct {
 	profiles  *fakeProfiles
 	deals     *fakeDeals
 	workflows *fakeWorkflows
+	delegates *fakeDelegations
 	callLists *fakeCallLists
 	events    *fakeEvents
 	now       time.Time
@@ -347,6 +359,7 @@ func newFixture(t *testing.T, leads ...*lead.Lead) *fixture {
 		profiles:  &fakeProfiles{},
 		deals:     &fakeDeals{},
 		workflows: &fakeWorkflows{},
+		delegates: &fakeDelegations{},
 		callLists: &fakeCallLists{},
 		events:    &fakeEvents{},
 		now:       stepNow,
@@ -361,7 +374,7 @@ func newFixture(t *testing.T, leads ...*lead.Lead) *fixture {
 	}
 	step, err := NewStep(Deps{
 		Buttons: f.buttons, Sent: f.sent, Campaigns: f.campaigns, Runs: f.runs, Consent: consent, Leads: f.leads,
-		HandOff: f.handOff, Profiles: f.profiles, Deals: f.deals, Workflows: f.workflows, CallLists: f.callLists, Events: f.events,
+		HandOff: f.handOff, Profiles: f.profiles, Deals: f.deals, Workflows: f.workflows, Delegations: f.delegates, CallLists: f.callLists, Events: f.events,
 		Now: func() time.Time { return f.now },
 	})
 	if err != nil {

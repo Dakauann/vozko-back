@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"vozko/domain/copilot"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
 	"vozko/usecases/copilot/copilottools/tooltest"
 )
@@ -25,15 +26,23 @@ func (f *fakeScopedWorkflows) Get(scope workflow.Scope, id string) (*workflow.Wo
 	return &workflow.Workflow{ID: id, Name: "Boas-vindas", Status: "active"}, nil
 }
 
+func (f *fakeScopedWorkflows) Detail(scope workflow.Scope, id string) (*workflow.Workflow, error) {
+	return f.Get(scope, id)
+}
+
 func (f *fakeScopedWorkflows) Create(context.Context, workflow.Scope, *workflow.Workflow) (*workflow.Workflow, error) {
 	return nil, nil
 }
 
-func (f *fakeScopedWorkflows) Update(context.Context, workflow.Scope, string, *workflow.Workflow) (*workflow.Workflow, error) {
+func (f *fakeScopedWorkflows) Update(context.Context, workflow.Scope, string, *workflow.Workflow, int) (*workflow.Workflow, error) {
 	return nil, nil
 }
 
 func (f *fakeScopedWorkflows) Delete(workflow.Scope, string) error { return nil }
+
+func (f *fakeScopedWorkflows) AssignDepartment(context.Context, workflow.Scope, string) (*workflow.Workflow, error) {
+	return nil, nil
+}
 
 func (f *fakeScopedWorkflows) Activate(_ context.Context, scope workflow.Scope, id string) (*workflow.Workflow, error) {
 	return f.change("activate", scope, id)
@@ -41,6 +50,40 @@ func (f *fakeScopedWorkflows) Activate(_ context.Context, scope workflow.Scope, 
 
 func (f *fakeScopedWorkflows) Pause(scope workflow.Scope, id string) (*workflow.Workflow, error) {
 	return f.change("pause", scope, id)
+}
+
+func (f *fakeScopedWorkflows) Publish(_ context.Context, scope workflow.Scope, id string) (*workflow.Workflow, error) {
+	w, err := f.change("publish", scope, id)
+	if err != nil {
+		return nil, err
+	}
+	version := 3
+	w.Status, w.PublishedVersion = workflow.WorkflowStatusActive, &version
+	return w, nil
+}
+
+func (f *fakeScopedWorkflows) Versions(workflow.Scope, string, shared.QueryOptions) (*shared.PaginatedResult[*workflow.WorkflowVersion], error) {
+	return nil, nil
+}
+
+func (f *fakeScopedWorkflows) RestoreVersion(context.Context, workflow.Scope, string, int, int) (*workflow.Workflow, error) {
+	return nil, nil
+}
+
+func (f *fakeScopedWorkflows) Version(workflow.Scope, string, int) (*workflow.WorkflowVersion, error) {
+	return nil, nil
+}
+
+func TestActivateWorkflowPublishesTheCurrentDraft(t *testing.T) {
+	wfs := &fakeScopedWorkflows{}
+	res := NewActivateWorkflowTool(wfs).Execute(context.Background(), tooltest.Member(), map[string]interface{}{"workflow_id": knownWorkflow})
+	if res.Status != copilot.StatusOK || len(wfs.ops) != 1 || wfs.ops[0] != "publish:"+knownWorkflow {
+		t.Fatalf("status %s ops %v, want the draft published", res.Status, wfs.ops)
+	}
+	data, _ := res.Data.(map[string]interface{})
+	if data["published_version"] != 3 || data["status"] != workflow.WorkflowStatusActive {
+		t.Fatalf("data = %v", data)
+	}
 }
 
 func (f *fakeScopedWorkflows) change(op string, scope workflow.Scope, id string) (*workflow.Workflow, error) {

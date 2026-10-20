@@ -157,6 +157,48 @@ var channelSources = []channelSource{
 		LeadJoin:   "LEFT JOIN facebook_contacts fbct ON fbct.id = fbc.contact_id",
 		LeadIDExpr: "COALESCE(fbct.lead_id::text, '')",
 	},
+	{
+		EntryType:      shared.EntryTypeMercadoLivre,
+		EntryTable:     "mercadolivre_conversations mlc",
+		EntryAlias:     "mlc",
+		ContainerTable: "mercadolivre_accounts mla",
+		ContainerAlias: "mla",
+		ContainerJoin:  "mla.id = mlc.account_id",
+
+		StatusColumn:       "mlc.conversation_status",
+		CloseSourceColumn:  "mlc.close_source",
+		CloseOutcomeColumn: "mlc.close_outcome",
+		ClosedAtColumn:     "mlc.closed_at",
+		DepartmentColumn:   "mla.department_id",
+		ContainerIDColumn:  "mlc.account_id",
+		ContainerNameExpr:  "COALESCE(NULLIF(mla.nickname, ''), NULLIF(mla.ml_user_id, ''))",
+		WorkspaceColumn:    "mlc.workspace_id",
+		LastMessageColumn:  "mlc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN mercadolivre_contacts mlct ON mlct.id = mlc.contact_id",
+		LeadIDExpr: "COALESCE(mlct.lead_id::text, '')",
+	},
+	{
+		EntryType:      shared.EntryTypeTikTok,
+		EntryTable:     "tiktok_conversations ttc",
+		EntryAlias:     "ttc",
+		ContainerTable: "tiktok_accounts tta",
+		ContainerAlias: "tta",
+		ContainerJoin:  "tta.id = ttc.account_id",
+
+		StatusColumn:       "ttc.conversation_status",
+		CloseSourceColumn:  "ttc.close_source",
+		CloseOutcomeColumn: "ttc.close_outcome",
+		ClosedAtColumn:     "ttc.closed_at",
+		DepartmentColumn:   "tta.department_id",
+		ContainerIDColumn:  "ttc.account_id",
+		ContainerNameExpr:  "COALESCE(NULLIF(tta.username, ''), NULLIF(tta.display_name, ''), tta.open_id)",
+		WorkspaceColumn:    "ttc.workspace_id",
+		LastMessageColumn:  "ttc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN tiktok_contacts ttct ON ttct.id = ttc.contact_id",
+		LeadIDExpr: "COALESCE(ttct.lead_id::text, '')",
+	},
 }
 
 func selectedChannelSources(channel string) []channelSource {
@@ -252,6 +294,19 @@ func EntryWorkspaceUnion() string {
 		}
 		selects = append(selects, "SELECT "+src.EntryAlias+".id AS entry_id, '"+string(src.EntryType)+"'::text AS entry_type, "+
 			src.WorkspaceColumn+" AS workspace_id FROM "+from)
+	}
+	return strings.Join(selects, " UNION ALL ")
+}
+
+func OpenEntryUnion() string {
+	selects := make([]string, 0, len(channelSources))
+	for _, src := range channelSources {
+		where := src.EntryAlias + ".deleted_at IS NULL"
+		if src.StatusColumn != "" {
+			where += " AND COALESCE(" + src.StatusColumn + ", '') <> 'finished'"
+		}
+		selects = append(selects, "SELECT "+src.EntryAlias+".id AS entry_id, '"+string(src.EntryType)+"'::text AS entry_type FROM "+
+			src.EntryTable+" WHERE "+where)
 	}
 	return strings.Join(selects, " UNION ALL ")
 }

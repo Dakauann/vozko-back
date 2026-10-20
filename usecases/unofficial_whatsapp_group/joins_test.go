@@ -257,3 +257,105 @@ func TestAChangeCanReachEveryGroupOfTheSeries(t *testing.T) {
 		t.Fatalf("the category did not reach the second group of the series")
 	}
 }
+
+func TestJoiningWithACategoryFilesTheGroupUnderIt(t *testing.T) {
+	w := newWorld()
+
+	result, err := w.svc.JoinGroup(context.Background(), everyone(), JoinInput{InviteLink: invite, InstanceIDs: []string{"n1"}, Follow: true, Category: "Clientes VIP"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Group == nil || result.Group.Category != "Clientes VIP" {
+		t.Fatalf("group = %+v, want it filed under the chosen category", result.Group)
+	}
+}
+
+const feiraJID = "120363888000000001@g.us"
+
+func (w *world) feiraWithAdmin(t *testing.T, admin bool) *uwg.Group {
+	g := w.groupWithSeats(t, feiraJID, "Feira de Trocas", "n1")
+	seat, err := w.seats.FindByJID(context.Background(), "n1", feiraJID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seat.WeAreAdmin = admin
+	return g
+}
+
+func TestAddingNumbersJoinsThemThroughAFreshLinkFromAnAdminNumber(t *testing.T) {
+	w := newWorld()
+	g := w.feiraWithAdmin(t, true)
+
+	result, err := w.svc.AddNumbers(context.Background(), everyone(), g.ID, []string{"n2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasks := w.joins.snapshot()
+	if len(tasks) != 1 || tasks[0].InviteLink != "https://chat.whatsapp.com/abcdefghij" || tasks[0].InstanceID != "n2" {
+		t.Fatalf("tasks = %+v", tasks)
+	}
+	if len(w.api.joined) != 1 || w.api.joined[0] != "n2" || result.PlanID != tasks[0].PlanID {
+		t.Fatalf("joined = %v result = %+v", w.api.joined, result)
+	}
+}
+
+func TestAddingNumbersKeepsTheGroupCategoryAndFollow(t *testing.T) {
+	w := newWorld()
+	g := w.feiraWithAdmin(t, true)
+	stored := w.groups.get(g.ID)
+	stored.Category = "Clientes VIP"
+	followed := testNow
+	stored.FollowedAt = &followed
+
+	if _, err := w.svc.AddNumbers(context.Background(), everyone(), g.ID, []string{"n2"}); err != nil {
+		t.Fatal(err)
+	}
+	task := w.joins.snapshot()[0]
+	if task.Category != "Clientes VIP" || !task.Follow {
+		t.Fatalf("task = %+v, want the group category and follow carried over", task)
+	}
+}
+
+func TestAddingNumbersFallsBackToTheLinkAnEarlierJoinUsed(t *testing.T) {
+	w := newWorld()
+	g := w.feiraWithAdmin(t, false)
+	w.joins.tasks = append(w.joins.tasks, uwg.JoinTask{
+		ID: "old", PlanID: "p-old", WorkspaceID: ws, InstanceID: "n1", GroupJID: feiraJID,
+		InviteLink: "https://chat.whatsapp.com/Ky3pQm8Lx2AbCdEfGh1234", Status: uwg.JoinDone,
+	})
+
+	if _, err := w.svc.AddNumbers(context.Background(), everyone(), g.ID, []string{"n2"}); err != nil {
+		t.Fatal(err)
+	}
+	tasks := w.joins.snapshot()
+	if len(tasks) != 2 || tasks[1].InviteLink != "https://chat.whatsapp.com/Ky3pQm8Lx2AbCdEfGh1234" {
+		t.Fatalf("tasks = %+v", tasks)
+	}
+}
+
+func TestAddingNumbersRefusesWhenNoLinkCanBeFound(t *testing.T) {
+	w := newWorld()
+	g := w.feiraWithAdmin(t, false)
+
+	if _, err := w.svc.AddNumbers(context.Background(), everyone(), g.ID, []string{"n2"}); !errors.Is(err, uwg.ErrNoInviteLink) {
+		t.Fatalf("err = %v, want ErrNoInviteLink", err)
+	}
+	if len(w.api.joined) != 0 || len(w.joins.snapshot()) != 0 {
+		t.Fatalf("a refused add reached WhatsApp or queued a join")
+	}
+}
+
+func TestAddingNumbersRefusesANumberAlreadyInTheGroupOrOutsideTheScope(t *testing.T) {
+	w := newWorld()
+	g := w.feiraWithAdmin(t, true)
+
+	if _, err := w.svc.AddNumbers(context.Background(), everyone(), g.ID, []string{"n1"}); !errors.Is(err, uwg.ErrNumberAlreadyInGroup) {
+		t.Fatalf("adding a number already inside = %v", err)
+	}
+	if _, err := w.svc.AddNumbers(context.Background(), salesOnly(), g.ID, []string{"n2"}); !errors.Is(err, uwg.ErrNumberOutOfScope) {
+		t.Fatalf("adding another department's number = %v", err)
+	}
+	if len(w.api.joined) != 0 {
+		t.Fatalf("a refused add reached WhatsApp")
+	}
+}

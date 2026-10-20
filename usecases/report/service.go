@@ -117,6 +117,9 @@ func (s *Service) Create(input CreateInput) (*report.Job, error) {
 	if input.FromClient && report.IsInternal(renderer) {
 		return nil, report.ErrKindNotOffered
 	}
+	if err := report.CheckParams(renderer, *job); err != nil {
+		return nil, err
+	}
 	policy, err := report.PolicyOf(renderer, *job)
 	if err != nil {
 		return nil, err

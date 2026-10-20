@@ -127,7 +127,7 @@ func (h *CallSessionWSHandler) WithChannels(channels *CallChannels) *CallSession
 }
 
 // @Summary		WebSocket de chamadas
-// @Description	Leva o áudio das ligações entre o navegador e a Vozko: faz ligações por troncos SIP e pelo WhatsApp, recebe chamadas, transfere para colegas e filas e mostra quem está disponível.
+// @Description	Leva o áudio das ligações entre o navegador e a plataforma: faz ligações por troncos SIP e pelo WhatsApp, recebe chamadas, transfere para colegas e filas e mostra quem está disponível.
 // @Description
 // @Description	## Conectar
 // @Description

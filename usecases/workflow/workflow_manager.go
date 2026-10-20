@@ -48,9 +48,11 @@ func (m *workflowManager) Tick() {
 	for _, run := range stuckRuns {
 		log.Printf("[workflow] tick: marking stuck run %s as error", run.ID)
 		run.SetError("run stuck: not updated within timeout")
-		if err := m.runRepo.Update(run); err != nil {
+		if err := m.engine.saveWith(m.runRepo, run); err != nil {
 			log.Printf("[workflow] tick: failed to update stuck run %s: %v", run.ID, err)
+			continue
 		}
+		m.engine.raiseAlert(workflow.StuckRunSignal(run, now))
 	}
 }
 

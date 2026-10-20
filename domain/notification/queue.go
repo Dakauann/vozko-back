@@ -13,6 +13,7 @@ type NotificationQueueMessage struct {
 	Template     string                 `json:"template"`
 	Subject      string                 `json:"subject"`
 	Placeholders map[string]interface{} `json:"placeholders"`
+	Attempt      int                    `json:"attempt,omitempty"`
 }
 
 type FanoutMessage struct {

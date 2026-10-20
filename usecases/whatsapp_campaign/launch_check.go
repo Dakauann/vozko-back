@@ -2,6 +2,7 @@ package whatsapp_campaign_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,6 +45,7 @@ type LaunchCheckDeps struct {
 	Costs          template.TemplateCostReader
 	Balances       balance.BalanceReader
 	Caps           balance.MonthlySendCapUsageReader
+	Forms          template_usecase.FlowPublications
 	Now            func() time.Time
 }
 
@@ -64,6 +66,7 @@ const (
 	unreadLastRun  = "last_run"
 	unreadBalance  = "balance"
 	unreadCap      = "monthly_cap"
+	unreadForm     = "form"
 )
 
 type launchFacts struct {
@@ -88,7 +91,7 @@ func (c *LaunchCheck) Run(ctx context.Context, campaignID string) (launchcheck.R
 	facts := &launchFacts{snapshot: launchcheck.Snapshot{Pending: int(counts.Pending)}}
 	c.readPhone(camp, facts)
 	if !camp.IsOrganic() {
-		c.readTemplate(camp, facts)
+		c.readTemplate(ctx, camp, facts)
 		c.readExit(ctx, camp, facts)
 		c.readBalance(camp, facts)
 	}
@@ -108,7 +111,7 @@ func (c *LaunchCheck) readPhone(camp *wc.Campaign, facts *launchFacts) {
 	facts.snapshot.Phone = &launchcheck.PhoneFacts{Status: phone.Status}
 }
 
-func (c *LaunchCheck) readTemplate(camp *wc.Campaign, facts *launchFacts) {
+func (c *LaunchCheck) readTemplate(ctx context.Context, camp *wc.Campaign, facts *launchFacts) {
 	tmpl, err := c.d.Templates.FindByID(camp.TemplateID)
 	if err != nil || tmpl == nil {
 		facts.unread(unreadTemplate)
@@ -127,6 +130,17 @@ func (c *LaunchCheck) readTemplate(camp *wc.Campaign, facts *launchFacts) {
 		Flagged:   reading.Flagged,
 		Category:  tmpl.Category,
 		CreatedAs: template.TemplateCategory(camp.TemplateCategory),
+	}
+	c.readForm(ctx, camp, tmpl, facts)
+}
+
+func (c *LaunchCheck) readForm(ctx context.Context, camp *wc.Campaign, tmpl *template.Template, facts *launchFacts) {
+	err := template_usecase.CheckFormPublished(ctx, c.d.Forms, camp.WorkspaceID, tmpl.WABAId, tmpl)
+	switch {
+	case errors.Is(err, template.ErrFlowNotPublished):
+		facts.snapshot.Template.FormNotSendable = true
+	case err != nil:
+		facts.unread(unreadForm)
 	}
 }
 

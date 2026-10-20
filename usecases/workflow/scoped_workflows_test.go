@@ -25,7 +25,7 @@ func (g getWorkflowStub) Execute(id string) (*workflow.Workflow, error) {
 
 type updateWorkflowStub struct{ *workflowCalls }
 
-func (u updateWorkflowStub) Execute(_ context.Context, id string, wf *workflow.Workflow) (*workflow.Workflow, error) {
+func (u updateWorkflowStub) Execute(_ context.Context, id string, wf *workflow.Workflow, _ int) (*workflow.Workflow, error) {
 	u.record("update", id)
 	return wf, nil
 }
@@ -86,7 +86,7 @@ func TestScopedWorkflowsHideAnotherWorkspacesWorkflow(t *testing.T) {
 	if err := uc.Delete(owner, "w-other"); !errors.Is(err, workflow.ErrWorkflowNotFound) {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := uc.Update(context.Background(), owner, "w-other", &workflow.Workflow{}); !errors.Is(err, workflow.ErrWorkflowNotFound) {
+	if _, err := uc.Update(context.Background(), owner, "w-other", &workflow.Workflow{}, 1); !errors.Is(err, workflow.ErrWorkflowNotFound) {
 		t.Fatalf("update: %v", err)
 	}
 	if len(calls.calls) != 0 {
@@ -119,7 +119,7 @@ func TestScopedWorkflowsRunTheChangeInsideTheScope(t *testing.T) {
 	if err := uc.Delete(salesScope(), "w-sales"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := uc.Update(context.Background(), salesScope(), "w-sales", &workflow.Workflow{Name: "novo"}); err != nil {
+	if _, err := uc.Update(context.Background(), salesScope(), "w-sales", &workflow.Workflow{Name: "novo"}, 1); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"pause:w-sales", "activate:w-sales", "delete:w-sales", "update:w-sales"}

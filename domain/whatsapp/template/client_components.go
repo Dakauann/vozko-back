@@ -15,12 +15,15 @@ func ToClientComponents(components []TemplateComponent) []conversation.TemplateC
 
 		for _, b := range c.Buttons {
 			comp.Buttons = append(comp.Buttons, conversation.TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				Example:        b.Example,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID,
+				FlowAction:     b.FlowAction,
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 
@@ -62,12 +65,15 @@ func FromClientComponents(components []conversation.TemplateComponent) []Templat
 
 		for _, b := range c.Buttons {
 			comp.Buttons = append(comp.Buttons, TemplateButton{
-				Type:        b.Type,
-				Text:        b.Text,
-				URL:         b.URL,
-				PhoneNumber: b.PhoneNumber,
-				Example:     b.Example,
-				OTPType:     b.OTPType,
+				Type:           b.Type,
+				Text:           b.Text,
+				URL:            b.URL,
+				PhoneNumber:    b.PhoneNumber,
+				Example:        b.Example,
+				OTPType:        b.OTPType,
+				FlowID:         b.FlowID,
+				FlowAction:     b.FlowAction,
+				NavigateScreen: b.NavigateScreen,
 			})
 		}
 

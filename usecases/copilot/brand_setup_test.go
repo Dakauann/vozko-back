@@ -8,6 +8,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	brand.SetForTest(brand.Brand{Key: "test", Name: "TestBrand"})
+	brand.SetForTest(brand.Brand{Key: "test", Name: "TestBrand", Gender: brand.Feminine})
 	os.Exit(m.Run())
 }

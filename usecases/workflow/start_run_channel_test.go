@@ -1,125 +1,138 @@
 package workflow_usecase
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
-type stubWorkflowRepoForStart struct{ wf *workflow.Workflow }
-
-func (s *stubWorkflowRepoForStart) Create(*workflow.Workflow) error { return nil }
-func (s *stubWorkflowRepoForStart) Update(*workflow.Workflow) error { return nil }
-func (s *stubWorkflowRepoForStart) Delete(string) error             { return nil }
-func (s *stubWorkflowRepoForStart) FindByID(string) (*workflow.Workflow, error) {
-	return s.wf, nil
-}
-func (s *stubWorkflowRepoForStart) FindByWorkspaceID(string) ([]*workflow.Workflow, error) {
-	return nil, nil
-}
-func (s *stubWorkflowRepoForStart) List(workflow.ListWorkflowsInput) (*shared.PaginatedResult[*workflow.Workflow], error) {
-	return nil, nil
-}
-func (s *stubWorkflowRepoForStart) FindActiveByTrigger(string, workflow.TriggerType) ([]*workflow.Workflow, error) {
-	return nil, nil
+type startRunHarness struct {
+	uc       workflow.StartRunUseCase
+	runs     *MockWorkflowRunRepository
+	launcher *fakeLauncher
 }
 
-type captureRunRepo struct{ created *workflow.WorkflowRun }
-
-func (c *captureRunRepo) Create(run *workflow.WorkflowRun) error { c.created = run; return nil }
-func (c *captureRunRepo) Update(*workflow.WorkflowRun) error     { return nil }
-func (c *captureRunRepo) FindByID(string) (*workflow.WorkflowRun, error) {
-	return nil, nil
-}
-func (c *captureRunRepo) FindActiveByEntry(string, string) (*workflow.WorkflowRun, error) {
-	return nil, nil
-}
-func (c *captureRunRepo) FindActiveByEntryAndTrigger(string, string, string) (*workflow.WorkflowRun, error) {
-	return nil, nil
-}
-func (c *captureRunRepo) FindWaitingReplyByEntry(string) (*workflow.WorkflowRun, error) {
-	return nil, nil
-}
-func (c *captureRunRepo) List(workflow.ListRunsInput) (*shared.PaginatedResult[*workflow.WorkflowRun], error) {
-	return nil, nil
-}
-func (c *captureRunRepo) FindWakeableRuns(int64, int) ([]*workflow.WorkflowRun, error) {
-	return nil, nil
-}
-func (c *captureRunRepo) FindStuckRuns(int64) ([]*workflow.WorkflowRun, error) { return nil, nil }
-func (c *captureRunRepo) CancelByWorkflow(string) (int64, error)               { return 0, nil }
-func (c *captureRunRepo) CountByWorkflow(string) (int64, error)                { return 0, nil }
-func (c *captureRunRepo) CountActiveByWorkspace(string) (int64, error)         { return 0, nil }
-
-func startRunFixture(t *testing.T) (workflow.StartRunUseCase, *captureRunRepo) {
+func (h startRunHarness) created(t *testing.T) *workflow.WorkflowRun {
 	t.Helper()
-	wf := &workflow.Workflow{
-		ID:          "wf-1",
-		WorkspaceID: "ws-1",
-		Status:      workflow.WorkflowStatusActive,
-		Graph: workflow.Graph{
-			Nodes: []workflow.Node{
-				{ID: "trigger-1", Type: workflow.NodeTypeTriggerMessageReceived},
-			},
-		},
+	require.Len(t, h.launcher.launched, 1, "the run must be launched on the engine, not left for the stuck-run sweep")
+	stored, err := h.runs.FindByID(h.launcher.launched[0].ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	return stored
+}
+
+func startRunFixture(t *testing.T, visibility conversation.Visibility) startRunHarness {
+	t.Helper()
+	repo := NewMockWorkflowRepository()
+	storedWorkflow(t, repo, workflow.WorkflowStatusActive, waitingGraph("wait", "end"))
+	runs := NewMockWorkflowRunRepository()
+	launcher := &fakeLauncher{}
+	starter, err := NewConversationRunStarter(repo, runs, launcher, &fakeSharedState{allow: true})
+	require.NoError(t, err)
+	return startRunHarness{uc: NewStartRunUseCase(starter, runs, visibility), runs: runs, launcher: launcher}
+}
+
+func manualStart(entryType string) workflow.StartRunInput {
+	return workflow.StartRunInput{
+		WorkflowID:  "wf-1",
+		WorkspaceID: "ws1",
+		EntryID:     "entry-1",
+		EntryType:   entryType,
+		StartedBy:   workflow.StartedByManual("user-1"),
+		Viewer:      shared.Person{UserID: "user-1"},
 	}
-	runs := &captureRunRepo{}
-	return NewStartRunUseCase(&stubWorkflowRepoForStart{wf: wf}, runs), runs
 }
 
 func TestStartRun_SeedsTheChannelVariableFromTheEntryType(t *testing.T) {
-	uc, runs := startRunFixture(t)
+	h := startRunFixture(t, seesEverything{})
 
-	_, err := uc.Execute(workflow.StartRunInput{
-		WorkflowID:  "wf-1",
-		WorkspaceID: "ws-1",
-		EntryID:     "entry-1",
-		EntryType:   "instagram",
-	})
+	_, err := h.uc.Execute(manualStart("instagram"))
 	require.NoError(t, err)
-	require.NotNil(t, runs.created)
 
-	assert.Equal(t, "instagram", runs.created.State.GetString(workflow.VarChannel))
+	assert.Equal(t, "instagram", h.created(t).State.GetString(workflow.VarChannel))
 }
 
 func TestStartRun_CallerVariablesCannotSpoofTheChannel(t *testing.T) {
-	uc, runs := startRunFixture(t)
+	h := startRunFixture(t, seesEverything{})
+	in := manualStart("whatsapp")
+	in.Variables = map[string]interface{}{workflow.VarChannel: "telegram", "nome": "Ana"}
 
-	_, err := uc.Execute(workflow.StartRunInput{
-		WorkflowID:  "wf-1",
-		WorkspaceID: "ws-1",
-		EntryID:     "entry-1",
-		EntryType:   "whatsapp",
-		Variables: map[string]interface{}{
-			workflow.VarChannel: "telegram",
-			"nome":              "Ana",
-		},
-	})
+	_, err := h.uc.Execute(in)
 	require.NoError(t, err)
-	require.NotNil(t, runs.created)
 
-	assert.Equal(t, "whatsapp", runs.created.State.GetString(workflow.VarChannel),
+	created := h.created(t)
+	assert.Equal(t, "whatsapp", created.State.GetString(workflow.VarChannel),
 		"the run's own entry type wins over anything the caller passed")
-	assert.Equal(t, "Ana", runs.created.State.GetString("nome"),
+	assert.Equal(t, "Ana", created.State.GetString("nome"),
 		"unrelated caller variables are untouched")
 }
 
 func TestStartRun_SeededVariableAgreesWithChannelOf(t *testing.T) {
-	uc, runs := startRunFixture(t)
+	h := startRunFixture(t, seesEverything{})
 
-	_, err := uc.Execute(workflow.StartRunInput{
-		WorkflowID:  "wf-1",
-		WorkspaceID: "ws-1",
-		EntryID:     "entry-1",
-		EntryType:   string(shared.EntryTypeUnofficialWhatsApp),
-	})
+	_, err := h.uc.Execute(manualStart(string(shared.EntryTypeUnofficialWhatsApp)))
 	require.NoError(t, err)
 
-	assert.Equal(t,
-		workflow.ChannelOf(runs.created),
-		runs.created.State.GetString(workflow.VarChannel))
+	created := h.created(t)
+	assert.Equal(t, workflow.ChannelOf(created), created.State.GetString(workflow.VarChannel))
+}
+
+func TestStartRun_PinsTheRunToThePublishedVersionAndNamesTheStarter(t *testing.T) {
+	h := startRunFixture(t, seesEverything{})
+
+	run, err := h.uc.Execute(manualStart("whatsapp"))
+	require.NoError(t, err)
+	require.NotNil(t, run)
+
+	created := h.created(t)
+	assert.Equal(t, created.ID, run.ID)
+	require.NotNil(t, created.WorkflowVersion, "a manual run must record the version it started on")
+	assert.Equal(t, 1, *created.WorkflowVersion)
+	assert.Equal(t, workflow.StartedByManual("user-1"), created.StartedBy)
+}
+
+func TestStartRun_AWorkflowOfAnotherWorkspaceIsNotFound(t *testing.T) {
+	h := startRunFixture(t, seesEverything{})
+	in := manualStart("whatsapp")
+	in.WorkspaceID = "ws-other"
+
+	_, err := h.uc.Execute(in)
+	require.ErrorIs(t, err, workflow.ErrWorkflowNotFound)
+	assert.Empty(t, h.launcher.launched)
+}
+
+func TestStartRun_RefusesAConversationTheRequesterCannotSee(t *testing.T) {
+	cases := []struct {
+		name       string
+		visibility conversation.Visibility
+	}{
+		{"hidden by the inbox rule", inboxRule{conversations: map[string]inboxConversation{}}},
+		{"visibility unreadable", inboxRule{err: errors.New("db down")}},
+		{"no visibility wired", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := startRunFixture(t, tc.visibility)
+
+			_, err := h.uc.Execute(manualStart("whatsapp"))
+			require.ErrorIs(t, err, conversation.ErrNotVisible)
+			assert.Empty(t, h.launcher.launched)
+		})
+	}
+}
+
+func TestStartRun_AnExistingRunOnTheConversationIsAConflict(t *testing.T) {
+	h := startRunFixture(t, seesEverything{})
+	_, err := h.uc.Execute(manualStart("whatsapp"))
+	require.NoError(t, err)
+
+	_, err = h.uc.Execute(manualStart("whatsapp"))
+	require.ErrorIs(t, err, workflow.ErrRunAlreadyExists)
+	assert.Len(t, h.launcher.launched, 1)
 }

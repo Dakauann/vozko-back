@@ -29,6 +29,10 @@ type fakeAccounts struct {
 	Updated       []*tgdomain.Account
 	RestoredIDs   []string
 	RegisteredIDs []string
+
+	FindByIDCalls  int
+	FindByIDsCalls int
+	FindByIDsErr   error
 }
 
 type statusWrite struct {
@@ -88,10 +92,28 @@ func (f *fakeAccounts) SetWebhookRegistered(_ context.Context, id string, _ time
 }
 
 func (f *fakeAccounts) FindByID(ctx context.Context, id string) (*tgdomain.Account, error) {
+	f.FindByIDCalls++
 	if f.FindByIDFn != nil {
 		return f.FindByIDFn(ctx, id)
 	}
 	return nil, tgdomain.ErrAccountNotFound
+}
+
+func (f *fakeAccounts) FindByIDs(ctx context.Context, ids []string) ([]*tgdomain.Account, error) {
+	f.FindByIDsCalls++
+	if f.FindByIDsErr != nil {
+		return nil, f.FindByIDsErr
+	}
+	out := make([]*tgdomain.Account, 0, len(ids))
+	for _, id := range ids {
+		if f.FindByIDFn == nil {
+			break
+		}
+		if account, err := f.FindByIDFn(ctx, id); err == nil {
+			out = append(out, account)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeAccounts) FindByIDForWebhook(ctx context.Context, id string) (*tgdomain.Account, error) {
@@ -143,6 +165,10 @@ type fakeContacts struct {
 
 	BlockedWrites []blockWrite
 	ChatIDWrites  []int64
+
+	FindByIDCalls  int
+	FindByIDsCalls int
+	FindByIDsErr   error
 }
 
 type blockWrite struct {
@@ -155,14 +181,28 @@ func (f *fakeContacts) FindOrCreate(context.Context, tgdomain.FindOrCreateContac
 }
 
 func (f *fakeContacts) FindByID(ctx context.Context, id string) (*tgdomain.Contact, error) {
+	f.FindByIDCalls++
 	if f.FindByIDFn != nil {
 		return f.FindByIDFn(ctx, id)
 	}
 	return nil, tgdomain.ErrContactNotFound
 }
 
-func (f *fakeContacts) FindByIDs(context.Context, []string) ([]*tgdomain.Contact, error) {
-	return nil, nil
+func (f *fakeContacts) FindByIDs(ctx context.Context, ids []string) ([]*tgdomain.Contact, error) {
+	f.FindByIDsCalls++
+	if f.FindByIDsErr != nil {
+		return nil, f.FindByIDsErr
+	}
+	out := make([]*tgdomain.Contact, 0, len(ids))
+	for _, id := range ids {
+		if f.FindByIDFn == nil {
+			break
+		}
+		if contact, err := f.FindByIDFn(ctx, id); err == nil {
+			out = append(out, contact)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeContacts) FindByTGUserID(context.Context, string, int64) (*tgdomain.Contact, error) {
@@ -198,6 +238,10 @@ type fakeConversations struct {
 
 	OutboundWrites []string
 	ChatIDWrites   []int64
+
+	FindByIDCalls  int
+	FindByIDsCalls int
+	FindByIDsErr   error
 }
 
 func (f *fakeConversations) FindOrCreate(context.Context, tgdomain.FindOrCreateConversationInput) (*tgdomain.Conversation, error) {
@@ -205,10 +249,28 @@ func (f *fakeConversations) FindOrCreate(context.Context, tgdomain.FindOrCreateC
 }
 
 func (f *fakeConversations) FindByID(ctx context.Context, id string) (*tgdomain.Conversation, error) {
+	f.FindByIDCalls++
 	if f.FindByIDFn != nil {
 		return f.FindByIDFn(ctx, id)
 	}
 	return nil, tgdomain.ErrConversationNotFound
+}
+
+func (f *fakeConversations) FindByIDs(ctx context.Context, ids []string) ([]*tgdomain.Conversation, error) {
+	f.FindByIDsCalls++
+	if f.FindByIDsErr != nil {
+		return nil, f.FindByIDsErr
+	}
+	out := make([]*tgdomain.Conversation, 0, len(ids))
+	for _, id := range ids {
+		if f.FindByIDFn == nil {
+			break
+		}
+		if conv, err := f.FindByIDFn(ctx, id); err == nil {
+			out = append(out, conv)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeConversations) FindByContact(context.Context, string, string) (*tgdomain.Conversation, error) {

@@ -1,0 +1,43 @@
+[
+    {
+        "id": "MLB599260060",
+        "status_code": 200,
+        "body": {
+            "id": "MLB599260060",
+            "site_id": "MLB",
+            "title": "Item De Test - Por Favor No Ofertar",
+            "subtitle": null,
+            "seller_id": 303888594,
+            "category_id": "MLB401685",
+            "price": 130,
+            "currency_id": "BRL",
+            "available_quantity": 1,
+            "permalink": "https://produto.mercadolivre.com.br/MLB-599260060-item-de-test",
+            "thumbnail": "http://http2.mlstatic.com/D_599260060-O.jpg",
+            "status": "active",
+            "date_created": "2018-02-26T18:15:05.000Z",
+            "last_updated": "2018-03-29T04:14:39.000Z",
+            "health": null
+        }
+    },
+    {
+        "code": 200,
+        "body": {
+            "id": "MLB594239600",
+            "site_id": "MLB",
+            "title": "Item De Test - Por Favor No Ofertar",
+            "seller_id": 303888594,
+            "status": "paused"
+        }
+    },
+    {
+        "id": "MLB111",
+        "status_code": 404,
+        "body": {
+            "message": "Item with id MLB111 not found",
+            "error": "not_found",
+            "status": 404,
+            "cause": []
+        }
+    }
+]

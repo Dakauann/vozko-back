@@ -34,7 +34,25 @@ func AllowedUpdates() []string {
 		"business_message",
 		"edited_business_message",
 		"deleted_business_messages",
+		"message_reaction",
 	}
+}
+
+func SubscribesToAllowedUpdates(subscribed []string) bool {
+	wanted := AllowedUpdates()
+	if len(subscribed) != len(wanted) {
+		return false
+	}
+	have := make(map[string]bool, len(subscribed))
+	for _, u := range subscribed {
+		have[u] = true
+	}
+	for _, u := range wanted {
+		if !have[u] {
+			return false
+		}
+	}
+	return true
 }
 
 const DefaultMaxConnections = 40

@@ -108,6 +108,7 @@ type InstagramConversation struct {
 	LastMessageAt         *time.Time `gorm:"column:last_message_at;index:idx_ig_conv_lastmsg"`
 	LastCustomerMessageAt *time.Time `gorm:"column:last_customer_message_at"`
 	LastAgentMessageAt    *time.Time `gorm:"column:last_agent_message_at"`
+	AwaitingReplySince    *time.Time `gorm:"column:awaiting_reply_since"`
 
 	Metadata  LeadMetadata   `gorm:"type:jsonb;default:'{}'"`
 	CreatedAt time.Time      `gorm:"autoCreateTime"`

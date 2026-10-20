@@ -52,7 +52,7 @@ func (h *Handler) viewer(w http.ResponseWriter, r *http.Request) (notification.V
 // @Description
 // @Description	| Categoria | Assunto |
 // @Description	|---|---|
-// @Description	| `announcements` | Comunicados e novidades do Vozko |
+// @Description	| `announcements` | Comunicados e novidades da plataforma |
 // @Description	| `campaigns` | Campanhas |
 // @Description	| `templates` | Modelos de mensagem |
 // @Description	| `channels` | Números e canais |

@@ -294,8 +294,26 @@ func (t *listWorkflowsTool) Meta() copilot.Meta { return readMeta(workspace.Reso
 
 func (t *listWorkflowsTool) Definition() tools.Definition {
 	return copilottools.Definition("list_workflows",
-		"Lista as automações (workflows) que o usuário pode ver, com o status (active, paused, draft, archived) e o tipo de gatilho.",
+		"Lista as automações (workflows) que o usuário pode ver, com o status (active, paused, draft, archived), o tipo de gatilho e entry_points: de onde cada uma recebe execuções (kind: webhook, agent_call, message_received, form_submitted, lead_exit...), se pode receber agora (readiness ready ou blocked), o motivo quando bloqueada (not_published, paused, webhook_inactive, no_agent_bound, no_channel...) e a última chamada (last_received_at; no webhook, last_outcome e last_reason).",
 		listWorkflowsArgs{})
+}
+
+func entryPointsDigest(points []workflow.EntryPoint) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(points))
+	for _, p := range points {
+		entry := map[string]interface{}{"kind": p.Kind, "readiness": p.Readiness}
+		optional := map[string]string{"node_id": p.NodeID, "reason": string(p.Reason), "last_outcome": string(p.LastOutcome), "last_reason": p.LastReason}
+		for key, value := range optional {
+			if value != "" {
+				entry[key] = value
+			}
+		}
+		if p.LastReceivedAt != nil {
+			entry["last_received_at"] = p.LastReceivedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func (t *listWorkflowsTool) Execute(_ context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
@@ -324,6 +342,7 @@ func (t *listWorkflowsTool) Execute(_ context.Context, cc copilot.Context, args 
 		}
 		workflows = append(workflows, map[string]interface{}{
 			"workflow_id": w.ID, "name": w.Name, "status": w.Status, "trigger": w.TriggerType, "description": copilottools.ClipText(w.Description, 200),
+			"unpublished_changes": w.HasUnpublishedChanges, "entry_points": entryPointsDigest(w.EntryPoints),
 		})
 	}
 	return copilot.Result{Status: copilot.StatusOK, Data: map[string]interface{}{

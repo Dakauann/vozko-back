@@ -5,6 +5,7 @@ type Category string
 const (
 	CategoryAnnouncements Category = "announcements"
 	CategoryCampaigns     Category = "campaigns"
+	CategoryConversations Category = "conversations"
 	CategoryTemplates     Category = "templates"
 	CategoryChannels      Category = "channels"
 	CategoryBilling       Category = "billing"
@@ -12,11 +13,13 @@ const (
 	CategoryTeam          Category = "team"
 	CategorySupport       Category = "support"
 	CategorySystem        Category = "system"
+	CategoryAutomations   Category = "automations"
 )
 
 var categoryCatalog = []Category{
 	CategoryAnnouncements,
 	CategoryCampaigns,
+	CategoryConversations,
 	CategoryTemplates,
 	CategoryChannels,
 	CategoryBilling,
@@ -24,6 +27,7 @@ var categoryCatalog = []Category{
 	CategoryTeam,
 	CategorySupport,
 	CategorySystem,
+	CategoryAutomations,
 }
 
 func Categories() []Category {

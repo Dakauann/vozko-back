@@ -48,7 +48,7 @@ func TestAudioIsTranscodedBeforeSending(t *testing.T) {
 	stubConvert(t, []byte("OggS-opus-bytes"), nil)
 
 	c := &audioClientStub{}
-	uc := &SendWhatsappMediaTool{}
+	uc := &SendWhatsappMediaTool{downloads: loopbackDownloads()}
 	res, err := uc.sendAudio(context.Background(), c, "5511999999999", &media.Media{URL: srv})
 	if err != nil {
 		t.Fatalf("sendAudio: %v", err)
@@ -72,7 +72,7 @@ func TestAudioFallsBackToLinkWhenTranscodeFails(t *testing.T) {
 	stubConvert(t, nil, errors.New("ffmpeg not found"))
 
 	c := &audioClientStub{}
-	uc := &SendWhatsappMediaTool{}
+	uc := &SendWhatsappMediaTool{downloads: loopbackDownloads()}
 	if _, err := uc.sendAudio(context.Background(), c, "5511999999999", &media.Media{URL: srv}); err != nil {
 		t.Fatalf("a failed transcode must not fail the send: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestAudioFallsBackToLinkWhenDownloadFails(t *testing.T) {
 	stubConvert(t, []byte("unused"), nil)
 
 	c := &audioClientStub{}
-	uc := &SendWhatsappMediaTool{}
+	uc := &SendWhatsappMediaTool{downloads: loopbackDownloads()}
 	bad := "http://127.0.0.1:1/never-there.ogg"
 	if _, err := uc.sendAudio(context.Background(), c, "5511999999999", &media.Media{URL: bad}); err != nil {
 		t.Fatalf("an unreachable CDN must not fail the send: %v", err)
@@ -103,7 +103,7 @@ func TestAudioFallsBackToLinkWhenByteSendFails(t *testing.T) {
 	stubConvert(t, []byte("OggS-opus-bytes"), nil)
 
 	c := &audioClientStub{bytesErr: errors.New("upload rejected")}
-	uc := &SendWhatsappMediaTool{}
+	uc := &SendWhatsappMediaTool{downloads: loopbackDownloads()}
 	if _, err := uc.sendAudio(context.Background(), c, "5511999999999", &media.Media{URL: srv}); err != nil {
 		t.Fatalf("sendAudio: %v", err)
 	}

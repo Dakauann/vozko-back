@@ -21,12 +21,13 @@ func NewRescheduleMeetingExecutor(reschedule calendar.RescheduleEventUseCase) wo
 
 func (s *rescheduleMeetingExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionRescheduleMeeting,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Reagendar Reunião",
-		Description: "Muda a data/horário de um evento já existente no Google Calendar, mantendo o mesmo link e participantes.",
-		Icon:        "ArrowsClockwise",
+		Type:         workflow.NodeTypeActionRescheduleMeeting,
+		TestBehavior: workflow.NodeTestExternalCall,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Reagendar Reunião",
+		Description:  "Muda a data/horário de um evento já existente no Google Calendar, mantendo o mesmo link e participantes.",
+		Icon:         "ArrowsClockwise",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para mudar a data/horário de um agendamento existente (reagendamento).",
 			Behavior: "Requer o ID do evento (google_event_id do agendamento) e uma conexão ativa com o Google Calendar.",
@@ -145,8 +146,7 @@ func (s *rescheduleMeetingExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	log.Printf("%s moved google event=%s workspace=%s to %s",
 		logPrefix, event.GoogleEventID, workspaceID, newStart.Format(time.RFC3339))
 
-	return &workflow.NodeResult{
-		NextNodeID: scheduleMeetingResolveEdge(ctx, "sucesso"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":         true,
 			"google_event_id": event.GoogleEventID,
@@ -155,17 +155,16 @@ func (s *rescheduleMeetingExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 			"end_time":        event.EndTime.Format(time.RFC3339),
 			"timezone":        timezoneName,
 		},
-	}, nil
+	}, outgoingEdges(ctx), "sucesso"), nil
 }
 
 func rescheduleMeetingFailure(ctx *workflow.NodeContext, message string) *workflow.NodeResult {
 	log.Printf("[workflow][reschedule_meeting][node:%s][run:%s] FAILED: %s",
 		scheduleMeetingNodeID(ctx), scheduleMeetingRunID(ctx), message)
-	return &workflow.NodeResult{
-		NextNodeID: scheduleMeetingResolveEdgeStrict(ctx, "erro"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   message,
 		},
-	}
+	}, outgoingEdges(ctx), "erro")
 }

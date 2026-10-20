@@ -28,7 +28,7 @@ func (uc *sendEmailTool) Definition() tools.Definition {
 		Name:               SendEmailToolName,
 		DisplayName:        "Enviar E-mail",
 		Description:        "Envia um e-mail usando a configuração SMTP própria do usuário.",
-		DisplayDescription: "Envia e-mails pelo servidor SMTP configurado pelo usuário, sem usar o e-mail da " + brand.Active().Name + ".",
+		DisplayDescription: "Envia e-mails pelo servidor SMTP configurado pelo usuário, sem usar o e-mail " + brand.Active().Portuguese().OfBrand + ".",
 		Parameters: map[string]tools.Parameter{
 			"to": {
 				Type:               "string",

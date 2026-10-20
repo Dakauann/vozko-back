@@ -35,7 +35,7 @@ var domainErrors = []errorMapping{
 	{fbdomain.ErrCommentEmpty, http.StatusBadRequest, "invalid_request", "Comment text is required"},
 	{fbdomain.ErrTextTooLong, http.StatusBadRequest, "text_too_long", "Messenger text is limited to 2000 characters"},
 	{fbdomain.ErrPublishJobNotFound, http.StatusNotFound, "not_found", "Publish job not found"},
-	{fbdomain.ErrPostNotEditable, http.StatusConflict, "post_not_editable", "Only posts published through Vozko can be edited"},
+	{fbdomain.ErrPostNotEditable, http.StatusConflict, "post_not_editable", "Only posts published through this platform can be edited"},
 	{fbdomain.ErrPublishKindUnavailable, http.StatusBadRequest, "kind_unavailable", "This post kind is not available yet"},
 	{fbuc.ErrConversationAccessDenied, http.StatusForbidden, "forbidden", "You don't have access to this conversation"},
 }

@@ -43,6 +43,7 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		Inflight:       d.inflight,
 		BalanceChecker: c.services.cachedBalanceChecker,
 		Alerter:        d.alerter,
+		Forms:          lazyFormSends{c: c},
 	})
 	if err != nil {
 		log.Fatalf("[container] whatsapp outreach: %v", err)

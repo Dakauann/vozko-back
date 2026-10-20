@@ -117,6 +117,18 @@ func (r *pageRepository) FindByID(ctx context.Context, id string) (*fbdomain.Pag
 	return r.first(r.db.WithContext(ctx), "id = ?", id)
 }
 
+func (r *pageRepository) FindByIDs(ctx context.Context, ids []string) ([]*fbdomain.Page, error) {
+	records, err := database.FindByIDs[schema.FacebookPage](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*fbdomain.Page, 0, len(records))
+	for i := range records {
+		out = append(out, toPageDomain(&records[i]))
+	}
+	return out, nil
+}
+
 func (r *pageRepository) FindByFBPageID(ctx context.Context, fbPageID string) (*fbdomain.Page, error) {
 	return r.first(r.db.WithContext(ctx), "fb_page_id = ?", fbPageID)
 }

@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	lmw "vozko/domain/lead_message_window"
+	"vozko/domain/shared"
 	"vozko/infra/database/schema"
 )
 
@@ -95,30 +96,21 @@ func (r *repository) FindAllByLead(leadID string) ([]*lmw.LeadMessageWindow, err
 	return result, nil
 }
 
-func (r *repository) FindOpenWindowsByLeadIDs(leadIDs []string, forBusinessPhoneID string) (map[string]*lmw.LeadMessageWindow, error) {
-	if len(leadIDs) == 0 {
-		return make(map[string]*lmw.LeadMessageWindow), nil
+func (r *repository) FindByLeadIDs(leadIDs []string) ([]*lmw.LeadMessageWindow, error) {
+	unique := shared.UniqueNonEmpty(leadIDs)
+	if len(unique) == 0 {
+		return nil, nil
 	}
-
-	forBusinessPhoneID = strings.TrimSpace(forBusinessPhoneID)
-	if forBusinessPhoneID == "" {
-		return nil, lmw.ErrBusinessPhoneIDRequied
-	}
-
-	windowCutoff := time.Now().UTC().Add(-lmw.MessageWindowDuration)
 
 	var windows []schema.LeadMessageWindow
-	err := r.db.Where("lead_id IN ? AND business_phone_id = ? AND last_message_at > ?",
-		leadIDs, forBusinessPhoneID, windowCutoff).Find(&windows).Error
-	if err != nil {
+	if err := r.db.Where("lead_id IN ?", unique).Find(&windows).Error; err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]*lmw.LeadMessageWindow)
-	for _, w := range windows {
-		result[w.LeadID] = toDomain(&w)
+	result := make([]*lmw.LeadMessageWindow, 0, len(windows))
+	for i := range windows {
+		result = append(result, toDomain(&windows[i]))
 	}
-
 	return result, nil
 }
 

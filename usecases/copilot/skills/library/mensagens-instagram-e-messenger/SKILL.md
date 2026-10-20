@@ -22,6 +22,6 @@ description: Anúncios que abrem conversa no Direct do Instagram ou no Messenger
 - Uma resposta automática imediata com horário de atendimento e as respostas às dúvidas mais comuns evita perder quem chega fora do horário.
 
 ## Atendimento
-- Responda em minutos; as mensagens chegam na caixa de entrada do Vozko junto com os outros canais.
+- Responda em minutos; as mensagens chegam na caixa de entrada da plataforma junto com os outros canais.
 - Configure o atendimento do canal (agente de IA ou automação) para responder fora do horário.
 - Avalie pelo custo por conversa e, principalmente, pelo que as conversas viram (oportunidades e vendas no funil).

@@ -29,50 +29,84 @@ func NewStep(workflows Workflows, agents Agents) (*Step, error) {
 	return &Step{workflows: workflows, agents: agents}, nil
 }
 
-func (s *Step) Check(workspaceID string, a campaign.Automation, entries []campaign.EntryMetadata) error {
-	if s == nil || s.workflows == nil || s.agents == nil {
-		return campaign.ErrAutomationUnavailable
-	}
-	if err := s.checkWorkflow(workspaceID, strings.TrimSpace(a.WorkflowID), entries); err != nil {
-		return err
-	}
-	return s.checkAgent(workspaceID, strings.TrimSpace(a.AgentID), entries)
+type Rule struct {
+	workflowKeys []string
+	agent        *agent.Agent
 }
 
-func (s *Step) checkWorkflow(workspaceID, workflowID string, entries []campaign.EntryMetadata) error {
-	if workflowID == "" {
+func (r Rule) Check(entries []campaign.EntryMetadata) error {
+	if err := campaign.RequireWorkflowVars(r.workflowKeys, entries); err != nil {
+		return err
+	}
+	if r.agent == nil {
 		return nil
+	}
+	return campaign.RequireAgentVars(r.agent, entries)
+}
+
+func (s *Step) Check(workspaceID string, a campaign.Automation, entries []campaign.EntryMetadata) error {
+	rule, err := s.Rule(workspaceID, a)
+	if err != nil {
+		return err
+	}
+	return rule.Check(entries)
+}
+
+func (s *Step) Rule(workspaceID string, a campaign.Automation) (Rule, error) {
+	if s == nil || s.workflows == nil || s.agents == nil {
+		return Rule{}, campaign.ErrAutomationUnavailable
+	}
+	keys, err := s.workflowKeys(workspaceID, strings.TrimSpace(a.WorkflowID))
+	if err != nil {
+		return Rule{}, err
+	}
+	found, err := s.agent(workspaceID, strings.TrimSpace(a.AgentID))
+	if err != nil {
+		return Rule{}, err
+	}
+	return Rule{workflowKeys: keys, agent: found}, nil
+}
+
+func (s *Step) workflowKeys(workspaceID, workflowID string) ([]string, error) {
+	if workflowID == "" {
+		return nil, nil
 	}
 	wf, err := s.workflows.Execute(workflowID)
 	if err != nil {
-		return fmt.Errorf("%w: %w", campaign.ErrWorkflowNotFound, err)
+		return nil, fmt.Errorf("%w: %w", campaign.ErrWorkflowNotFound, err)
 	}
 	if wf == nil {
-		return campaign.ErrWorkflowNotFound
+		return nil, campaign.ErrWorkflowNotFound
 	}
 	if wf.WorkspaceID != workspaceID {
-		return campaign.ErrWorkflowForbidden
+		return nil, campaign.ErrWorkflowForbidden
 	}
-	return campaign.RequireWorkflowVars(workflow.ExtractCampaignVars(wf.Graph), entries)
+	return workflow.ExtractCampaignVars(wf.Graph), nil
 }
 
-func (s *Step) checkAgent(workspaceID, agentID string, entries []campaign.EntryMetadata) error {
+func (s *Step) agent(workspaceID, agentID string) (*agent.Agent, error) {
 	if agentID == "" {
-		return nil
+		return nil, nil
 	}
 	found, err := s.agents.Execute(agentID)
 	if err != nil {
-		return fmt.Errorf("%w: %w", campaign.ErrAgentNotFound, err)
+		return nil, fmt.Errorf("%w: %w", campaign.ErrAgentNotFound, err)
 	}
 	if found == nil || found.WorkspaceID != workspaceID {
-		return campaign.ErrAgentNotFound
+		return nil, campaign.ErrAgentNotFound
 	}
-	return campaign.RequireAgentVars(found, entries)
+	return found, nil
 }
 
 type Checker interface {
 	Check(workspaceID string, a campaign.Automation, entries []campaign.EntryMetadata) error
 }
+
+type Rules interface {
+	Rule(workspaceID string, a campaign.Automation) (Rule, error)
+}
+
+type StoredEntries func(visit func(campaign.EntryMetadata) error) error
 
 func Require(step Checker, workspaceID string, a campaign.Automation, entries []campaign.EntryMetadata) error {
 	if !a.Configured() {
@@ -82,4 +116,20 @@ func Require(step Checker, workspaceID string, a campaign.Automation, entries []
 		return campaign.ErrAutomationUnavailable
 	}
 	return step.Check(workspaceID, a, entries)
+}
+
+func RequireStored(rules Rules, workspaceID string, before, after campaign.Automation, stored StoredEntries) error {
+	if !after.Configured() || after == before {
+		return nil
+	}
+	if rules == nil || stored == nil {
+		return campaign.ErrAutomationUnavailable
+	}
+	rule, err := rules.Rule(workspaceID, after)
+	if err != nil {
+		return err
+	}
+	return stored(func(entry campaign.EntryMetadata) error {
+		return rule.Check([]campaign.EntryMetadata{entry})
+	})
 }

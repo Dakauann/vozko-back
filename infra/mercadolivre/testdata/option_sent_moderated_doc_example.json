@@ -1,0 +1,22 @@
+{
+    "id": "94353d192b9640e8b1ed3c77aa406f39",
+    "to": {
+        "user_id": 618491100,
+        "name": "Test Test"
+    },
+    "status": "moderated",
+    "text": "Cómo estás María, estaría necesitando de...",
+    "message_date": {
+        "received": "2020-09-09T19:02:11.438Z",
+        "available": null,
+        "notified": null,
+        "created": "2020-09-09T19:02:11.438Z",
+        "read": null
+    },
+    "message_moderation": {
+        "status": "rejected",
+        "reason": "out_of_place_language",
+        "source": "online",
+        "moderation_date": "2020-09-09T19:02:11.697Z"
+    }
+}

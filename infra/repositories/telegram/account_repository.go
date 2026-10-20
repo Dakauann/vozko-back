@@ -154,6 +154,18 @@ func (r *accountRepository) FindByID(ctx context.Context, id string) (*tgdomain.
 	return toAccountDomain(&record), nil
 }
 
+func (r *accountRepository) FindByIDs(ctx context.Context, ids []string) ([]*tgdomain.Account, error) {
+	records, err := database.FindByIDs[schema.TelegramAccount](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*tgdomain.Account, 0, len(records))
+	for i := range records {
+		out = append(out, toAccountDomain(&records[i]))
+	}
+	return out, nil
+}
+
 func (r *accountRepository) FindByIDForWebhook(ctx context.Context, id string) (*tgdomain.Account, error) {
 	return r.FindByID(ctx, id)
 }

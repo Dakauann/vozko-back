@@ -57,6 +57,8 @@ var actionRequirements = map[string]workspace.PermissionEntry{
 	ActionAssign:      {Resource: workspace.ResourceConversations, Action: workspace.ActionAssign},
 	ActionAddLabel:    {Resource: workspace.ResourceLabels, Action: workspace.ActionAssign},
 	ActionRemoveLabel: {Resource: workspace.ResourceLabels, Action: workspace.ActionAssign},
+	ActionClose:       {Resource: workspace.ResourceConversations, Action: workspace.ActionSend},
+	ActionMarkRead:    {Resource: workspace.ResourceConversations, Action: workspace.ActionRead},
 }
 
 func actionPermission(action string) (resource, act string, ok bool) {
@@ -84,6 +86,7 @@ type BulkInput struct {
 	IsAdmin     bool
 	Action      string
 	Value       string
+	OutcomeCode string
 
 	Targets              []EntryRef
 	Selection            selection.Selection
@@ -103,6 +106,7 @@ type Service struct {
 	broadcaster   Broadcaster
 	targets       selection.Resolver
 	countGate     cache.Gate
+	conversations ConversationActions
 }
 
 func (s *Service) SetSelection(resolver selection.Resolver, countGate cache.Gate) {
@@ -179,6 +183,9 @@ func (s *Service) authorize(in BulkInput) error {
 	}
 	if s.authz == nil || !s.authz.HasWorkspacePermission(in.ActorID, in.WorkspaceID, resource, act, in.IsAdmin) {
 		return ErrForbidden
+	}
+	if !s.conversationActionAvailable(in.Action) {
+		return ErrActionUnavailable
 	}
 	return nil
 }
@@ -280,11 +287,16 @@ func (s *Service) broadcast(in BulkInput, t EntryRef) {
 		s.broadcaster.BroadcastStageUpdate(in.WorkspaceID, t.EntryID, t.EntryType)
 	case ActionAddLabel, ActionRemoveLabel:
 		s.broadcaster.BroadcastLabelUpdate(in.WorkspaceID, t.EntryID, t.EntryType)
+	case ActionMarkRead:
+		s.broadcaster.BroadcastEntryUpdate(t.EntryID, t.EntryType, nil)
 	}
 }
 
-func (s *Service) applyOne(_ context.Context, in BulkInput, t EntryRef) error {
+func (s *Service) applyOne(ctx context.Context, in BulkInput, t EntryRef) error {
 	switch in.Action {
+	case ActionClose, ActionMarkRead:
+		return s.applyConversationAction(ctx, in, t)
+
 	case ActionMoveStage, ActionMoveFunnel:
 		_, err := s.stageAssigner.Execute(in.WorkspaceID, stage.AssignEntryStageInput{
 			StageID:            in.Value,

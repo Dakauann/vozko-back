@@ -4,15 +4,11 @@ import (
 	"context"
 	"time"
 
-	"vozko/domain/agent"
 	"vozko/domain/cache"
 	"vozko/domain/conversation"
 	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/lead"
-	"vozko/domain/pipeline"
 	"vozko/domain/shared"
-	"vozko/domain/workflow"
-	wd "vozko/domain/workspace/workspace_department"
 	conversation_usecase "vozko/usecases/conversation"
 )
 
@@ -36,6 +32,7 @@ type OneShot interface {
 
 type MessageReader interface {
 	ListByEntryPaginated(input conversation.ListMessagesInput) ([]*conversation.Message, error)
+	GetByID(id string) (*conversation.Message, error)
 }
 
 type MessagePresenter interface {
@@ -45,22 +42,6 @@ type MessagePresenter interface {
 type OperatorNotifier interface {
 	BroadcastTyping(entryID, entryType, fromUserID string, isTyping bool)
 	BroadcastEntryUpdate(entryID, entryType string, message *conversation.Message)
-}
-
-type AgentFinder interface {
-	FindByID(agentID string) (*agent.Agent, error)
-}
-
-type WorkflowFinder interface {
-	FindByID(workflowID string) (*workflow.Workflow, error)
-}
-
-type PipelineFinder interface {
-	GetByID(workspaceID, id string) (*pipeline.Pipeline, error)
-}
-
-type DepartmentFinder interface {
-	GetDepartmentByID(id string) (*wd.Department, error)
 }
 
 type Limits struct {

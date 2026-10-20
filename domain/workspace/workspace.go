@@ -75,6 +75,8 @@ var (
 	ResourceFacebookPages               = registerResource("facebook_pages")
 	ResourceAudience                    = registerResource("audience")
 	ResourceTelegramAccounts            = registerResource("telegram_accounts")
+	ResourceMercadoLivreAccounts        = registerResource("mercadolivre_accounts")
+	ResourceTikTokAccounts              = registerResource("tiktok_accounts")
 	ResourceWebchatWidgets              = registerResource("webchat_widgets")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
@@ -86,6 +88,9 @@ var (
 	ResourceAds                         = registerResource("ads")
 	ResourceLeadCompanies               = registerResource("lead_companies")
 	ResourceCustomerPortfolios          = registerResource("customer_portfolios")
+	ResourceWhatsAppForms               = registerResource("whatsapp_forms")
+	ResourceWhatsAppFormResponses       = registerResource("whatsapp_form_responses")
+	ResourceTeamChat                    = registerResource("team_chat")
 )
 
 func (r Resource) IsValid() bool {
@@ -162,6 +167,9 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Renomear conversas do chat de IA"},
 		{ActionName: ActionDelete, Description: "Excluir conversas do chat de IA"},
 	},
+	ResourceTeamChat: {
+		{ActionName: ActionCreate, Description: "Criar grupos no chat da equipe; conversar com os colegas não precisa de permissão"},
+	},
 	ResourceWhatsAppCampaigns: {
 		{ActionName: ActionCreate, Description: "Criar campanhas de WhatsApp"},
 		{ActionName: ActionRead, Description: "Visualizar campanhas de WhatsApp"},
@@ -179,6 +187,39 @@ var ResourceActions = map[Resource][]ActionDefinition{
 			{Resource: ResourceWhatsAppTemplates, Action: ActionRead},
 			{Resource: ResourceBusinessPhones, Action: ActionRead},
 			{Resource: ResourceConversations, Action: ActionRead},
+		}},
+	},
+	ResourceWhatsAppForms: {
+		{ActionName: ActionRead, Description: "Ver os formulários do WhatsApp e onde estão publicados"},
+		{ActionName: ActionCreate, Description: "Criar formulários do WhatsApp", Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppForms, Action: ActionRead},
+		}},
+		{ActionName: ActionUpdate, Description: "Editar o rascunho dos formulários", Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppForms, Action: ActionRead},
+		}},
+		{ActionName: ActionConfigure, Description: "Publicar e descontinuar formulários na Meta", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppForms, Action: ActionRead},
+		}},
+		{ActionName: ActionSend, Description: "Enviar formulários nas conversas do WhatsApp oficial", Risks: []RiskKind{RiskContactsCustomers}, Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppForms, Action: ActionRead},
+			{Resource: ResourceConversations, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Arquivar formulários; as respostas continuam guardadas", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppForms, Action: ActionRead},
+		}},
+	},
+	ResourceWhatsAppFormResponses: {
+		{ActionName: ActionRead, Description: "Ver as respostas dos formulários das conversas que você alcança", Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppForms, Action: ActionRead},
+		}},
+		{ActionName: ActionReadSensitive, Description: "Ver as respostas marcadas como sensíveis, fotos e documentos", Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppFormResponses, Action: ActionRead},
+		}},
+		{ActionName: ActionExport, Description: "Exportar as respostas em CSV ou XLSX", Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppFormResponses, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Excluir respostas e os arquivos enviados nelas", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceWhatsAppFormResponses, Action: ActionRead},
 		}},
 	},
 	ResourceBusinessPhones: {
@@ -408,6 +449,18 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar filas de atendimento telefônico, a música de espera e a espera de cada fila"},
 		{ActionName: ActionUpdate, Description: "Editar filas de atendimento telefônico, quem atende cada uma e a música de espera do workspace", Risks: []RiskKind{RiskChangesAutomation}},
 		{ActionName: ActionDelete, Description: "Remover filas de atendimento telefônico; fluxos de voz que enviam ligações a elas deixam de transferir", Risks: []RiskKind{RiskDeletesData, RiskChangesAutomation}},
+	},
+	ResourceMercadoLivreAccounts: {
+		{ActionName: ActionCreate, Description: "Conectar contas de vendedor do Mercado Livre", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Visualizar as contas do Mercado Livre, suas permissões e o estado da conexão"},
+		{ActionName: ActionUpdate, Description: "Editar as configurações e a automação das contas do Mercado Livre e verificar a conexão", Risks: []RiskKind{RiskContactsCustomers}},
+		{ActionName: ActionDelete, Description: "Desconectar contas do Mercado Livre", Risks: []RiskKind{RiskConnectsAccounts}},
+	},
+	ResourceTikTokAccounts: {
+		{ActionName: ActionCreate, Description: "Conectar contas do TikTok", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Visualizar as contas do TikTok, os vídeos, os comentários e o estado da conexão"},
+		{ActionName: ActionUpdate, Description: "Editar a automação das contas do TikTok e responder, ocultar e curtir comentários", Risks: []RiskKind{RiskContactsCustomers}},
+		{ActionName: ActionDelete, Description: "Desconectar contas do TikTok", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
 	ResourceTelegramAccounts: {
 		{ActionName: ActionCreate, Description: "Conectar bots do Telegram", Risks: []RiskKind{RiskConnectsAccounts}},

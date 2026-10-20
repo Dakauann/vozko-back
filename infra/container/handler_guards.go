@@ -6,6 +6,7 @@ import (
 	"vozko/delivery/http/handlers"
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
 	wc_domain "vozko/domain/whatsapp_campaign"
+	"vozko/infra/repositories/campaignstamp"
 	wc_usecase "vozko/usecases/whatsapp_campaign"
 )
 
@@ -16,6 +17,8 @@ func withCampaignAccess(c *Container, h *handlers.WhatsAppCampaignHandler) *hand
 		log.Fatalf("[launch-check] the official campaign start cannot carry the confirmed launch check")
 	}
 	h.SetStartCampaign(start)
+	live := c.campaignLive("whatsapp_campaign", c.repositories.wcEntry, campaignstamp.OfficialEntries)
+	h.SetLive(live.progress, live.timeline)
 	return h
 }
 

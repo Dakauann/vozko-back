@@ -105,10 +105,13 @@ func (m *memQueue) StatsWithSL(string, *time.Time, *time.Time, int) (*qe.Stats, 
 }
 
 type memAI struct {
-	sessions map[string]*aa.Session
+	sessions  map[string]*aa.Session
+	toolCalls map[string]int
 }
 
-func newMemAI() *memAI { return &memAI{sessions: map[string]*aa.Session{}} }
+func newMemAI() *memAI {
+	return &memAI{sessions: map[string]*aa.Session{}, toolCalls: map[string]int{}}
+}
 
 func (m *memAI) Create(s *aa.Session) error {
 	cp := *s
@@ -255,4 +258,35 @@ func (*memPresence) Spans(string, string, time.Time, time.Time) ([]ap.Interval, 
 
 func (*memHistory) ListByActor(string, string, time.Time, time.Time) ([]*ia.AssignmentHistory, error) {
 	return nil, nil
+}
+
+func (m *memAI) IncrementToolCalls(sessionID string, count int) error {
+	m.toolCalls[sessionID] += count
+	return nil
+}
+
+func TestConsumer_ToolCallsLandOnTheAttendanceSession(t *testing.T) {
+	ai := newMemAI()
+	c := NewConsumerWithDeps(ConsumerDeps{
+		Events:    &memEvents{},
+		History:   &memHistory{},
+		AIRepo:    ai,
+		QueueRepo: &memQueue{},
+		Presence:  &memPresence{},
+		Dedupe:    &memDedupe{},
+	}).(*consumer)
+
+	body, _ := json.Marshal(crm_telemetry.AISessionPayload{
+		Op: crm_telemetry.AISessionOpRecordToolCalls, WorkspaceID: "ws", EntryID: "e1", EntryType: "webchat",
+		AgentID: "ag1", Channel: "webchat", ToolCalls: 3,
+	})
+	env, _ := json.Marshal(crm_telemetry.Envelope{ID: "tc1", Kind: crm_telemetry.KindAISession, Payload: body})
+	ack := &fakeAck{count: 1}
+	c.handle(env, ack)
+	time.Sleep(50 * time.Millisecond)
+
+	open, _ := ai.FindOpenByEntry("ws", "e1", "webchat")
+	if open == nil || ai.toolCalls[open.ID] != 3 {
+		t.Fatalf("session=%v tool calls=%v", open, ai.toolCalls)
+	}
 }

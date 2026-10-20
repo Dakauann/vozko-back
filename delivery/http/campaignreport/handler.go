@@ -25,7 +25,7 @@ func NewHandler(reports wc.GetDispatchReportUseCase) *Handler {
 }
 
 // @Summary		Seção do relatório de disparos na visão de atendimento
-// @Description	Retorna uma seção do relatório de disparos de campanhas (summary, daily, failures, tags ou campaigns) para o painel de atendimento. Os dias são contados no fuso do horário de funcionamento do workspace (ou do departamento), como as demais seções de atendimento. Sem campaign_id, cobre as campanhas de disparo do período; com campaign_id, a campanha inteira. As seções ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.
+// @Description	Retorna uma seção do relatório de disparos de campanhas (summary, daily, failures, tags ou campaigns) para o painel de atendimento. Os dias são contados no fuso do horário de funcionamento do workspace (ou do departamento), como as demais seções de atendimento. Sem campaign_id, cobre as campanhas de disparo do período; com campaign_id, a campanha inteira. As seções ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After. Períodos de mais de 92 dias são recusados com 400; para eles, peça o relatório `whatsapp_dispatch` em POST /reports. Sem escopo de departamento resolvido para quem pede, nada é lido.
 // @Tags			Atendimento
 // @Produce		json
 // @Param			section			path	string	true	"Seção"	Enums(summary, daily, failures, tags, campaigns)
@@ -48,16 +48,12 @@ func (h *Handler) GetSection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query()
-	departmentIDs, blocked := requestedDepartments(r)
-	access := wc.ReportAccess{
-		WorkspaceID:        middleware.GetWorkspaceID(r),
-		CampaignID:         strings.TrimSpace(query.Get("campaign_id")),
-		DepartmentIDs:      departmentIDs,
-		DepartmentsBlocked: blocked,
-		AllowDepartment: func(departmentID string) bool {
-			return httpx.CanAccessDepartment(r, departmentID)
-		},
-	}
+	access := wc.ScopedReportAccess(
+		middleware.GetWorkspaceID(r),
+		strings.TrimSpace(query.Get("campaign_id")),
+		strings.TrimSpace(query.Get("department_id")),
+		middleware.GetDepartmentFilter(r),
+	)
 	period := wc.ReportPeriod{
 		DateFrom: strings.TrimSpace(query.Get("date_from")),
 		DateTo:   strings.TrimSpace(query.Get("date_to")),
@@ -112,15 +108,4 @@ func writeError(w http.ResponseWriter, err error) {
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Failed to load the dispatch report", nil)
 	}
-}
-
-func requestedDepartments(r *http.Request) ([]string, bool) {
-	requested := strings.TrimSpace(r.URL.Query().Get("department_id"))
-	if requested == "" {
-		return httpx.DepartmentFilterIDs(r), httpx.ShouldReturnEmptyDepartmentList(r)
-	}
-	if !httpx.CanAccessDepartment(r, requested) {
-		return nil, true
-	}
-	return []string{requested}, false
 }

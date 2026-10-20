@@ -37,10 +37,10 @@ Desde julho de 2025 a Meta cobra por mensagem entregue, com preço por categoria
 - Curto e com uma ação clara; botões de resposta rápida (até 3) para respostas comuns ("Confirmar", "Remarcar").
 - Rodapé curto. Use o rodapé para mostrar ao lead como sair, com um comando de barra que ele possa enviar, por exemplo "Responda /sair para não receber mais"; sem a barra a mensagem não vale como saída.
 - Outra saída possível é um botão: inclua o texto em quick_replies (por exemplo "Não quero receber") e repita esse texto em exit_button. Com exit_confirmation você define a resposta enviada a quem sair.
-- Saída no marketing: obrigatória. Sem ela o Vozko recusa a criação.
+- Saída no marketing: obrigatória. Sem ela a plataforma recusa a criação.
 - Saída na utilidade: inclua também, por padrão. Só deixe de fora quando o usuário pedir. Use uma frase neutra que fale do tipo de aviso, por exemplo "Para não receber mais estes avisos, responda /sair", sem nada promocional, para o modelo continuar como utilidade.
 
-## No Vozko
+## Na plataforma
 create_template manda para a Meta aprovar (minutos a horas); list_templates mostra a situação e quantas variáveis cada modelo pede. Só use em envios depois de aprovado.
 
 Para mudar um modelo que já existe, use edit_template em vez de criar outro com nome parecido: a Meta trata cópias levemente alteradas de um modelo pausado como tentativa de burlar a pausa. Leia o modelo em list_templates antes: ele mostra cabeçalho, rodapé e botões. Na edição, mande o corpo e só as partes que mudam; o que você não mandar fica como está, e para tirar uma parte use remove_header, remove_footer ou remove_buttons. Mandar quick_replies troca todos os botões, inclusive os de link e telefone. Um modelo aprovado aceita uma edição por dia, então junte as mudanças pedidas numa edição só.

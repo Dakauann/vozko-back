@@ -85,6 +85,11 @@ type Repository interface {
 	FindByID(id string) (*Session, error)
 	ListByEntry(workspaceID, entryID, entryType string, limit, offset int) ([]*Session, int64, error)
 	Stats(workspaceID string, from, to *time.Time) (*Stats, error)
+	IncrementToolCalls(sessionID string, count int) error
+}
+
+type ToolCallRecorder interface {
+	RecordToolCalls(in StartInput, count int)
 }
 
 type Stats struct {

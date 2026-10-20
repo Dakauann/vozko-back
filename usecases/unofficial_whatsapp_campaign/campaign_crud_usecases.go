@@ -12,15 +12,18 @@ import (
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
-const recentEntriesLimit = 20
+const (
+	recentEntriesLimit = 20
+	listTargetNames    = 3
+)
 
 type updateCampaignUseCase struct {
 	repos      campaignRepos
 	instances  InstanceGateway
-	automation AutomationCheck
+	automation campaignautomation.Rules
 }
 
-func (uc *updateCampaignUseCase) SetAutomation(automation AutomationCheck) {
+func (uc *updateCampaignUseCase) SetAutomation(automation campaignautomation.Rules) {
 	uc.automation = automation
 }
 
@@ -65,9 +68,7 @@ func (uc *updateCampaignUseCase) Execute(
 	if err := existing.RequireExitFor(in); err != nil {
 		return nil, err
 	}
-	if err := campaignautomation.Require(uc.automation, existing.WorkspaceID, in.Automation(), in.EntryMetadata()); err != nil {
-		return nil, err
-	}
+	automationBefore := existing.Automation()
 
 	existing.Name = in.Name
 	existing.Message = in.Message
@@ -93,16 +94,21 @@ func (uc *updateCampaignUseCase) Execute(
 	if err := existing.ValidateMetadata(); err != nil {
 		return nil, err
 	}
+	if err := campaignautomation.RequireStored(uc.automation, existing.WorkspaceID, automationBefore, existing.Automation(), uc.storedAutomationEntries(campaignID)); err != nil {
+		return nil, err
+	}
 
-	instance, err := uc.instances.Instance(ctx, existing.InstanceID)
-	if err != nil {
-		return nil, err
-	}
-	if err := uwuc.EnsureVisible(instance, existing.WorkspaceID, scope); err != nil {
-		return nil, err
-	}
-	if err := ensureInstanceCanCampaign(instance); err != nil {
-		return nil, err
+	if existing.InstanceID != "" {
+		instance, err := uc.instances.Instance(ctx, existing.InstanceID)
+		if err != nil {
+			return nil, err
+		}
+		if err := uwuc.EnsureVisible(instance, existing.WorkspaceID, scope); err != nil {
+			return nil, err
+		}
+		if err := ensureInstanceCanCampaign(instance); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := uc.repos.campaigns.Update(campaignID, existing); err != nil {
@@ -118,6 +124,12 @@ func (uc *updateCampaignUseCase) Execute(
 	}
 	enrichInstance(ctx, uc.instances, saved)
 	return saved, nil
+}
+
+func (uc *updateCampaignUseCase) storedAutomationEntries(campaignID string) campaignautomation.StoredEntries {
+	return func(visit func(campaign.EntryMetadata) error) error {
+		return uc.repos.entries.EachAutomationMetadata(campaignID, visit)
+	}
 }
 
 type getCampaignUseCase struct {
@@ -190,9 +202,34 @@ func (uc *listCampaignsUseCase) Execute(
 	for _, item := range result.Items {
 		item.Metrics = campaign.NewMetrics(countsByCampaign[item.ID])
 	}
+	if err := uc.nameGroupTargets(result.Items); err != nil {
+		return nil, err
+	}
 
 	enrichInstance(ctx, uc.instances, result.Items...)
 	return result, nil
+}
+
+func (uc *listCampaignsUseCase) nameGroupTargets(items []*uwc.Campaign) error {
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.TargetsGroups() {
+			ids = append(ids, item.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	names, err := uc.repos.entries.TargetNamesForCampaigns(ids, listTargetNames)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if item.TargetsGroups() {
+			item.TargetNames = names[item.ID]
+		}
+	}
+	return nil
 }
 
 type deleteCampaignUseCase struct{ repos campaignRepos }
@@ -256,12 +293,34 @@ func (uc *getSummaryUseCase) Execute(filter uwc.WorkspaceSummaryFilter) (*campai
 	return campaign.NewMetrics(counts), nil
 }
 
-type listEntriesUseCase struct{ entries uwc.EntryRepository }
+type listEntriesUseCase struct {
+	entries   uwc.EntryRepository
+	instances InstanceLookup
+}
 
-func NewListEntriesUseCase(entries uwc.EntryRepository) uwc.ListEntriesUseCase {
-	return &listEntriesUseCase{entries: entries}
+func NewListEntriesUseCase(entries uwc.EntryRepository, instances InstanceLookup) uwc.ListEntriesUseCase {
+	return &listEntriesUseCase{entries: entries, instances: instances}
 }
 
 func (uc *listEntriesUseCase) Execute(input uwc.ListEntriesInput) (*shared.PaginatedResult[*uwc.EntryWithLead], error) {
-	return uc.entries.List(input)
+	result, err := uc.entries.List(input)
+	if err != nil || result == nil {
+		return result, err
+	}
+	labels := map[string]string{}
+	for _, row := range result.Items {
+		if row == nil || row.Entry == nil || row.Entry.SenderInstanceID == "" {
+			continue
+		}
+		id := row.Entry.SenderInstanceID
+		label, known := labels[id]
+		if !known {
+			if instance, err := uc.instances.Instance(context.Background(), id); err == nil && instance != nil {
+				label = instance.Label()
+			}
+			labels[id] = label
+		}
+		row.Entry.SenderLabel = label
+	}
+	return result, nil
 }

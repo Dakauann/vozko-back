@@ -1,6 +1,7 @@
 package workflow_usecase
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -33,6 +34,30 @@ func TestNewTriggeredRun(t *testing.T) {
 	}
 	if _, ok := run.State.Get("webhook"); !ok {
 		t.Fatal("expected event data seeded into state")
+	}
+}
+
+func TestEveryRunConstructorStoresWhatTheRunStartedWith(t *testing.T) {
+	w := webhookWorkflow()
+	triggered := newTriggeredRun(w, w.Graph.TriggerNodeByType(workflow.TriggerWebhook), webhookEvent())
+	body, _ := triggered.TriggerData["webhook"].(map[string]interface{})
+	if body["body"] != "x" {
+		t.Fatalf("triggered run trigger data = %v, want the webhook body so the run can be reproduced", triggered.TriggerData)
+	}
+
+	voice := newVoiceRun(w, &w.Graph.Nodes[0], workflow.InboundVoiceCall{WorkspaceID: "ws1", CallID: "c-1", CallerNumber: "5511999990000"})
+	if voice.TriggerData["call_id"] != "c-1" {
+		t.Fatalf("voice run trigger data = %v", voice.TriggerData)
+	}
+
+	h := startRunFixture(t, seesEverything{})
+	in := manualStart("whatsapp")
+	in.Variables = map[string]interface{}{"nome": "Ana"}
+	if _, err := h.uc.Execute(in); err != nil {
+		t.Fatal(err)
+	}
+	if created := h.created(t); created.TriggerData["nome"] != "Ana" {
+		t.Fatalf("manual run trigger data = %v", created.TriggerData)
 	}
 }
 
@@ -139,12 +164,23 @@ func TestNewEngineRunLauncherDefaultDispatch(t *testing.T) {
 	t.Fatal("async launched run did not complete in time")
 }
 
-type fakeRunLocker struct{ acquired bool }
+type fakeRunLocker struct {
+	acquired bool
+	err      error
+}
 
 func (l *fakeRunLocker) TryLock(runID string, ttl time.Duration) (bool, error) {
-	return l.acquired, nil
+	return l.acquired, l.err
 }
 func (l *fakeRunLocker) Unlock(runID string) error { return nil }
+
+func TestAnUnreadableRunLockLeavesTheRunForALaterRetry(t *testing.T) {
+	engine := NewRunEngine(NewMockWorkflowRunRepository(), NewMockWorkflowRunLogRepository(), NewNodeExecutorRegistry())
+	engine.SetRunLocker(&fakeRunLocker{acquired: true, err: errors.New("redis down")})
+	if engine.TryLockRun("run-1") {
+		t.Fatal("a lock store outage must not let two workers run the same step")
+	}
+}
 
 func TestExecuteLockedSkipsWhenLocked(t *testing.T) {
 	runRepo := NewMockWorkflowRunRepository()

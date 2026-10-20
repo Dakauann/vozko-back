@@ -1,22 +1,26 @@
 package workflow_usecase
 
 import (
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"vozko/domain/workflow"
 )
 
 type gateStub struct {
 	enabled  bool
+	err      error
 	asked    int
 	lastID   string
 	lastType string
 }
 
-func (g *gateStub) AutomationEnabled(entryID, entryType string) bool {
+func (g *gateStub) AutomationEnabled(entryID, entryType string) (bool, error) {
 	g.asked++
 	g.lastID, g.lastType = entryID, entryType
-	return g.enabled
+	return g.enabled, g.err
 }
 
 type runRepoStub struct {
@@ -112,34 +116,138 @@ func (w *passthroughWorkflowRepo) FindByID(string) (*workflow.Workflow, error) {
 	return nil, nil
 }
 
-func TestResumeIsUnchangedWithoutAGate(t *testing.T) {
+func TestResumeWithoutAGateRunsNothing(t *testing.T) {
 	engine := NewRunEngine(nil, nil, nil)
 
 	run := parkedRun()
+	run.State = workflow.NewRunState()
 	wfs := &passthroughWorkflowRepo{}
 	_ = resumeRunFromCurrent(wfs, &runRepoStub{}, engine, run)
 
-	if !wfs.fetched {
-		t.Error("a nil gate blocked a resume; it must allow everything")
+	if wfs.fetched {
+		t.Error("without a gate the automation switch cannot be read; the resume must not run the next node")
+	}
+	if run.Status != workflow.RunStatusWaiting || run.State.GetInt(workflow.StateKeyGateAttempts) != 1 {
+		t.Errorf("run = %+v, want it parked for a retry", run)
 	}
 }
 
-func TestAutomationOffDefaultsToAllowing(t *testing.T) {
+func TestAutomationOffAllowsOnlyWhenThereIsNothingToCheck(t *testing.T) {
 	var nilEngine *RunEngine
-	if nilEngine.automationOff("entry-1", "whatsapp") {
-		t.Error("a nil engine must not report automation as off")
+	if _, err := nilEngine.automationOff("entry-1", "whatsapp"); !errors.Is(err, workflow.ErrAutomationStateUnreadable) {
+		t.Errorf("err = %v, a nil engine cannot answer for the automation switch", err)
 	}
 
 	engine := NewRunEngine(nil, nil, nil)
-	if engine.automationOff("entry-1", "whatsapp") {
-		t.Error("no gate wired must not report automation as off")
+	if _, err := engine.automationOff("entry-1", "whatsapp"); !errors.Is(err, workflow.ErrAutomationStateUnreadable) {
+		t.Errorf("err = %v, no gate wired must be refused, never read as on", err)
+	}
+
+	engine.SetAutomationGate(SandboxAutomationGate{})
+	if off, err := engine.automationOff("entry-1", "whatsapp"); off || err != nil {
+		t.Error("the sandbox gate is the explicit always-on answer for simulations")
 	}
 
 	engine.SetAutomationGate(&gateStub{enabled: false})
-	if engine.automationOff("", "whatsapp") {
+	if off, err := engine.automationOff("", "whatsapp"); off || err != nil {
 		t.Error("an empty entry id has nothing to check and must be allowed")
 	}
-	if !engine.automationOff("entry-1", "whatsapp") {
+	if off, err := engine.automationOff("entry-1", "whatsapp"); !off || err != nil {
 		t.Error("an explicit disabled answer must stop the run")
+	}
+
+	engine.SetAutomationGate(&gateStub{enabled: true, err: errors.New("db down")})
+	off, err := engine.automationOff("entry-1", "whatsapp")
+	if !errors.Is(err, workflow.ErrAutomationStateUnreadable) {
+		t.Errorf("err = %v, want ErrAutomationStateUnreadable", err)
+	}
+	if off {
+		t.Error("an unreadable gate is an error, not an answer")
+	}
+}
+
+func timeoutParkedRun() *workflow.WorkflowRun {
+	run := parkedRun()
+	wakeAt := time.Now().Add(-time.Minute).UnixMilli()
+	run.WakeAt = &wakeAt
+	run.WaitReason = workflow.WaitReasonReply
+	run.WorkspaceID = "ws-1"
+	return run
+}
+
+func TestResumeRetriesLaterWhenTheGateCannotBeReadAndRunsNothing(t *testing.T) {
+	engine := NewRunEngine(nil, nil, nil)
+	engine.SetAutomationGate(&gateStub{enabled: true, err: errors.New("db down")})
+
+	runs := &runRepoStub{}
+	wfs := &workflowRepoStub{t: t}
+	run := timeoutParkedRun()
+	before := time.Now().UnixMilli()
+
+	if err := resumeRunFromCurrent(wfs, runs, engine, run); err != nil {
+		t.Fatalf("a deferred retry is a normal outcome, not an error: %v", err)
+	}
+	if wfs.fetched {
+		t.Error("no step may run while automation cannot be read")
+	}
+	if run.Status != workflow.RunStatusWaiting || run.State.GetInt(workflow.StateKeyGateAttempts) != 1 || run.RetryCount != 0 {
+		t.Fatalf("status=%q gate attempts=%d node retries=%d, want waiting with one gate attempt and the node retry budget untouched", run.Status, run.State.GetInt(workflow.StateKeyGateAttempts), run.RetryCount)
+	}
+	if run.WaitReason != workflow.WaitReasonReply {
+		t.Errorf("wait reason = %q, the original wait must be kept so the retry resumes it the same way", run.WaitReason)
+	}
+	if run.WakeAt == nil || *run.WakeAt <= before {
+		t.Error("the retry must be scheduled in the future with backoff")
+	}
+	if runs.updates != 1 {
+		t.Errorf("the deferred retry must be persisted once, got %d", runs.updates)
+	}
+}
+
+func TestResumeFailsTheRunWhenTheGateStaysUnreadableAfterTheRetries(t *testing.T) {
+	engine := NewRunEngine(nil, nil, nil)
+	engine.SetAutomationGate(&gateStub{enabled: true, err: errors.New("db down")})
+
+	runs := &runRepoStub{}
+	run := timeoutParkedRun()
+	run.State.Set(workflow.StateKeyGateAttempts, workflow.MaxRetriesPerNode)
+
+	if err := resumeRunFromCurrent(&workflowRepoStub{t: t}, runs, engine, run); err != nil {
+		t.Fatalf("failing the run is a normal outcome: %v", err)
+	}
+	if run.Status != workflow.RunStatusError {
+		t.Fatalf("status = %q, want error", run.Status)
+	}
+	if !strings.Contains(run.Error, workflow.ErrAutomationStateUnreadable.Error()) || !strings.Contains(run.Error, "db down") {
+		t.Errorf("error %q must say the automation state was unreadable and why", run.Error)
+	}
+}
+
+func TestFormResumeRefusesWhenTheGateCannotBeReadSoTheAnswerIsRetried(t *testing.T) {
+	engine := NewRunEngine(nil, nil, nil)
+	engine.SetAutomationGate(&gateStub{enabled: true, err: errors.New("db down")})
+	runs := &runRepoStub{}
+	run := parkedRun()
+
+	stop, err := cancelWhenAutomationOff(runs, engine, run)
+	if !stop || !errors.Is(err, workflow.ErrAutomationStateUnreadable) {
+		t.Fatalf("stop=%v err=%v, want a stop with ErrAutomationStateUnreadable", stop, err)
+	}
+	if runs.updates != 0 || run.Status != workflow.RunStatusWaiting {
+		t.Errorf("the run must be left as it was, got status %q after %d updates", run.Status, runs.updates)
+	}
+}
+
+func TestAReadableGateClearsEarlierGateAttemptsSoALaterOutageGetsAFullBudget(t *testing.T) {
+	engine := NewRunEngine(nil, nil, nil)
+	engine.SetAutomationGate(&gateStub{enabled: true})
+	run := timeoutParkedRun()
+	run.State.Set(workflow.StateKeyGateAttempts, 2)
+
+	if stop, err := cancelWhenAutomationOff(&runRepoStub{}, engine, run); stop || err != nil {
+		t.Fatalf("stop=%v err=%v, want the run to proceed", stop, err)
+	}
+	if _, ok := run.State.Get(workflow.StateKeyGateAttempts); ok {
+		t.Error("the gate attempt counter must be cleared once the gate answers")
 	}
 }

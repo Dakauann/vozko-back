@@ -9,7 +9,8 @@ import (
 
 func TestSimWhatsAppClientRefusesMoreButtonsThanWhatsAppAllows(t *testing.T) {
 	outCh := make(chan SimOutboundMessage, 1)
-	client := newSimWhatsAppClient(outCh)
+	effects := newSimEffects()
+	client := newSimWhatsAppClient(newSimChannel(outCh, effects))
 	buttons := make([]conversation.InteractiveButton, 0, conversation.WhatsAppButtonMaxCount+1)
 	for _, id := range []string{"a", "b", "c", "d"} {
 		buttons = append(buttons, conversation.InteractiveButton{ID: id, Title: id})
@@ -24,6 +25,7 @@ func TestSimWhatsAppClientRefusesMoreButtonsThanWhatsAppAllows(t *testing.T) {
 	if err == nil {
 		t.Fatal("err = nil, want the WhatsApp button limit to be enforced")
 	}
+	effects.drain()
 	if len(outCh) != 0 {
 		t.Fatal("a refused message must not reach the simulated chat")
 	}
@@ -31,7 +33,8 @@ func TestSimWhatsAppClientRefusesMoreButtonsThanWhatsAppAllows(t *testing.T) {
 
 func TestSimWhatsAppClientRefusesAListWithoutRows(t *testing.T) {
 	outCh := make(chan SimOutboundMessage, 1)
-	client := newSimWhatsAppClient(outCh)
+	effects := newSimEffects()
+	client := newSimWhatsAppClient(newSimChannel(outCh, effects))
 
 	_, err := client.SendListMessage(context.Background(), conversation.SendListMessageInput{
 		To:         "5511999990000",
@@ -42,6 +45,7 @@ func TestSimWhatsAppClientRefusesAListWithoutRows(t *testing.T) {
 	if err == nil {
 		t.Fatal("err = nil, want an empty list to be refused")
 	}
+	effects.drain()
 	if len(outCh) != 0 {
 		t.Fatal("a refused message must not reach the simulated chat")
 	}
@@ -49,7 +53,8 @@ func TestSimWhatsAppClientRefusesAListWithoutRows(t *testing.T) {
 
 func TestSimWhatsAppClientDeliversAValidButtonMessage(t *testing.T) {
 	outCh := make(chan SimOutboundMessage, 1)
-	client := newSimWhatsAppClient(outCh)
+	effects := newSimEffects()
+	client := newSimWhatsAppClient(newSimChannel(outCh, effects))
 
 	_, err := client.SendButtonMessage(context.Background(), conversation.SendButtonMessageInput{
 		To:       "5511999990000",
@@ -60,6 +65,7 @@ func TestSimWhatsAppClientDeliversAValidButtonMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	effects.drain()
 	if len(outCh) != 1 {
 		t.Fatal("a valid message must reach the simulated chat")
 	}

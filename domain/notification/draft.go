@@ -1,9 +1,7 @@
 package notification
 
 import (
-	"fmt"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -25,6 +23,12 @@ const (
 	SourceBillingCutoff   = "billing_cutoff"
 	SourceCommentAnalysis = "comment_analysis"
 	SourcePhoneAlert      = "whatsapp_phone"
+	SourceMercadoLivre    = "mercadolivre_account"
+	SourceTikTok          = "tiktok_account"
+	SourceWhatsAppForm    = "whatsapp_form"
+	SourceWorkflowAlert   = "workflow_alert"
+
+	SourceConversationNoteMention = "conversation_note_mention"
 )
 
 type EmailCopy struct {
@@ -46,7 +50,7 @@ type Draft struct {
 	Email       bool
 	EmailCopy   *EmailCopy
 	DedupKey    string
-	DedupWindow time.Duration
+	EpisodeKey  string
 	Source      string
 	BroadcastID string
 	CreatedBy   string
@@ -60,6 +64,7 @@ func (d Draft) Normalize() Draft {
 	d.ActionURL = strings.TrimSpace(d.ActionURL)
 	d.ActionLabel = strings.TrimSpace(d.ActionLabel)
 	d.DedupKey = strings.TrimSpace(d.DedupKey)
+	d.EpisodeKey = strings.TrimSpace(d.EpisodeKey)
 	if d.Severity == "" {
 		d.Severity = SeverityInfo
 	}
@@ -74,8 +79,11 @@ func (d Draft) Validate() error {
 	if err := validateContent(d.Category, d.Severity, d.Title, d.Body, d.ImageURL, d.ActionURL, d.ActionLabel); err != nil {
 		return err
 	}
-	if utf8.RuneCountInString(d.DedupKey) > DedupKeyMaxRunes {
+	if utf8.RuneCountInString(d.DedupKey) > DedupKeyMaxRunes || utf8.RuneCountInString(d.EpisodeKey) > DedupKeyMaxRunes {
 		return ErrDedupKeyTooLong
+	}
+	if d.EpisodeKey != "" && d.DedupKey != "" {
+		return ErrEpisodeDedupConflict
 	}
 	return d.Audience.Validate()
 }
@@ -130,20 +138,14 @@ func AbsoluteLink(base, link string) string {
 }
 
 func ClipTitle(title string) string {
-	title = strings.TrimSpace(title)
-	runes := []rune(title)
-	if len(runes) <= TitleMaxRunes {
-		return title
-	}
-	return strings.TrimSpace(string(runes[:TitleMaxRunes-1])) + "…"
+	return clipRunes(title, TitleMaxRunes)
 }
 
-func (d Draft) StoredDedupKey(at time.Time) string {
-	if d.DedupKey == "" {
-		return ""
+func clipRunes(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
 	}
-	if d.DedupWindow <= 0 {
-		return d.DedupKey
-	}
-	return fmt.Sprintf("%s@%d", d.DedupKey, at.UTC().Truncate(d.DedupWindow).Unix())
+	return strings.TrimSpace(string(runes[:limit-1])) + "…"
 }

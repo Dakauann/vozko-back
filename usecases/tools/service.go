@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"vozko/domain/redact"
 	"vozko/domain/tools"
 )
 
@@ -64,7 +65,7 @@ func (s *Service) Execute(ctx context.Context, name string, params map[string]in
 	if s == nil {
 		return tools.ExecutionResult{}, fmt.Errorf("tool service unavailable")
 	}
-	handler, ok := s.handlers[strings.ToLower(strings.TrimSpace(name))]
+	handler, ok := s.handlerFor(name)
 	if !ok {
 		return tools.ExecutionResult{}, fmt.Errorf("tool %s not found", name)
 	}
@@ -85,7 +86,7 @@ func (s *Service) ExecuteWithConfig(ctx context.Context, name string, config map
 	if s == nil {
 		return tools.ExecutionResult{}, fmt.Errorf("tool service unavailable")
 	}
-	handler, ok := s.handlers[strings.ToLower(strings.TrimSpace(name))]
+	handler, ok := s.handlerFor(name)
 	if !ok {
 		return tools.ExecutionResult{}, fmt.Errorf("tool %s not found", name)
 	}
@@ -109,34 +110,26 @@ func (s *Service) Handler(name string) (tools.Handler, bool) {
 	if s == nil {
 		return nil, false
 	}
-	handler, ok := s.handlers[strings.ToLower(strings.TrimSpace(name))]
-	return handler, ok
+	return s.handlerFor(name)
 }
+
+func (s *Service) handlerFor(name string) (tools.Handler, bool) {
+	key := strings.ToLower(strings.TrimSpace(name))
+	if handler, ok := s.handlers[key]; ok {
+		return handler, true
+	}
+	for base, handler := range s.handlers {
+		if handler.Definition().BindingKey != "" && tools.IsBoundToolName(key, base) {
+			return handler, true
+		}
+	}
+	return nil, false
+}
+
+var toolConfigRedactor = redact.New()
 
 func redactToolConfig(config map[string]interface{}) map[string]interface{} {
-	if config == nil {
-		return nil
-	}
-	redacted := make(map[string]interface{}, len(config))
-	for key, value := range config {
-		if isSensitiveToolConfigKey(key) {
-			redacted[key] = "[REDACTED]"
-			continue
-		}
-		redacted[key] = value
-	}
-	return redacted
-}
-
-func isSensitiveToolConfigKey(key string) bool {
-	key = strings.ToLower(strings.TrimSpace(key))
-	sensitiveParts := []string{"password", "secret", "token", "api_key", "apikey", "authorization", "credential"}
-	for _, part := range sensitiveParts {
-		if strings.Contains(key, part) {
-			return true
-		}
-	}
-	return false
+	return toolConfigRedactor.Map(config)
 }
 
 var _ tools.Service = (*Service)(nil)

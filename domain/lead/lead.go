@@ -45,11 +45,12 @@ const (
 	SourceManual  Source = "manual"
 	SourceImport  Source = "import"
 	SourceChannel Source = "channel"
+	SourceForm    Source = "form"
 )
 
 func (s Source) Valid() bool {
 	switch s {
-	case SourceManual, SourceImport, SourceChannel:
+	case SourceManual, SourceImport, SourceChannel, SourceForm:
 		return true
 	}
 	return false

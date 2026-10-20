@@ -62,7 +62,7 @@ func scriptedServer(t *testing.T, replies []string) (*httptest.Server, func() []
 func loopService(baseURL string) *Service {
 	cfg := openrouter.DefaultConfig("test-key")
 	cfg.BaseURL = baseURL
-	return &Service{client: openrouter.NewClientWithConfig(*cfg), billingPub: &capturingPub{}, toolService: injectFakeToolService{}, maxToolIterations: 3}
+	return &Service{client: openrouter.NewClientWithConfig(*cfg), billingPub: &capturingPub{}, billingMetrics: &leakTally{}, toolService: injectFakeToolService{}, maxToolIterations: 3}
 }
 
 func TestTheForcedFinalAnswerKeepsTheToolsSoTheCacheHolds(t *testing.T) {

@@ -144,6 +144,39 @@ CREATE INDEX IF NOT EXISTS idx_wfr_entry_trigger_active ON workflow_runs (workfl
 -- idx_wfrl_run_executed
 CREATE INDEX IF NOT EXISTS idx_wfrl_run_executed ON workflow_run_logs (run_id, executed_at);
 
+-- idx_wfwd_workflow_received
+CREATE INDEX IF NOT EXISTS idx_wfwd_workflow_received ON workflow_webhook_deliveries (workflow_id, received_at DESC);
+
+-- idx_wfwd_entry
+CREATE INDEX IF NOT EXISTS idx_wfwd_entry ON workflow_webhook_deliveries (entry_id, entry_type);
+
+-- idx_wfwd_received
+CREATE INDEX IF NOT EXISTS idx_wfwd_received ON workflow_webhook_deliveries (received_at);
+
+-- idx_aitc_entry_created
+CREATE INDEX IF NOT EXISTS idx_aitc_entry_created ON ai_tool_calls (entry_id, entry_type, created_at DESC);
+
+-- idx_aitc_created
+CREATE INDEX IF NOT EXISTS idx_aitc_created ON ai_tool_calls (created_at);
+
+-- idx_aitc_failed_created
+CREATE INDEX IF NOT EXISTS idx_aitc_failed_created ON ai_tool_calls (created_at) WHERE outcome = 'error';
+
+-- idx_wfwd_rejected_received
+CREATE INDEX IF NOT EXISTS idx_wfwd_rejected_received ON workflow_webhook_deliveries (received_at) WHERE outcome = 'rejected';
+
+-- idx_wfra_workflow_last_seen
+CREATE INDEX IF NOT EXISTS idx_wfra_workflow_last_seen ON workflow_runtime_alerts (workspace_id, workflow_id, last_seen DESC);
+
+-- idx_wfra_workspace_open
+CREATE INDEX IF NOT EXISTS idx_wfra_workspace_open ON workflow_runtime_alerts (workspace_id, last_seen DESC) WHERE status = 'open';
+
+-- idx_wfra_resolved
+CREATE INDEX IF NOT EXISTS idx_wfra_resolved ON workflow_runtime_alerts (resolved_at) WHERE status = 'resolved';
+
+-- idx_agents_run_workflow_bindings
+CREATE INDEX IF NOT EXISTS idx_agents_run_workflow_bindings ON agents (workspace_id) WHERE deleted_at IS NULL AND tool_bindings @> CAST('{"bindings":[{"name":"run_workflow"}]}' AS jsonb);
+
 -- idx_wce_campaign_lastmsg
 CREATE INDEX IF NOT EXISTS idx_wce_campaign_lastmsg ON whatsapp_campaign_entries (campaign_id, last_message_at DESC) WHERE deleted_at IS NULL AND last_message_at IS NOT NULL;
 
@@ -200,6 +233,36 @@ CREATE INDEX IF NOT EXISTS idx_ca_authors_rank ON audience_authors (source, acco
 
 -- idx_ca_rollups_series
 CREATE INDEX IF NOT EXISTS idx_ca_rollups_series ON audience_rollups (workspace_id, scope, scope_id, bucket_date);
+
+-- idx_ml_acct_workspace_created
+CREATE INDEX IF NOT EXISTS idx_ml_acct_workspace_created ON mercadolivre_accounts (workspace_id, created_at DESC) WHERE deleted_at IS NULL;
+
+-- idx_ml_acct_refresh_due
+CREATE INDEX IF NOT EXISTS idx_ml_acct_refresh_due ON mercadolivre_accounts (access_expires_at, id) WHERE status = 'CONNECTED' AND deleted_at IS NULL;
+
+-- idx_ml_acct_reconcile_due
+CREATE INDEX IF NOT EXISTS idx_ml_acct_reconcile_due ON mercadolivre_accounts (last_reconciled_at, id) WHERE status = 'CONNECTED' AND deleted_at IS NULL;
+
+-- idx_ml_acct_health_due
+CREATE INDEX IF NOT EXISTS idx_ml_acct_health_due ON mercadolivre_accounts (last_health_check_at, id) WHERE status IN ('CONNECTED', 'NEEDS_RECONNECT', 'REVOKED') AND deleted_at IS NULL;
+
+-- idx_ml_acct_purge_due
+CREATE INDEX IF NOT EXISTS idx_ml_acct_purge_due ON mercadolivre_accounts (purge_after, id) WHERE purge_after IS NOT NULL;
+
+-- idx_ml_conv_workspace_lastmsg
+CREATE INDEX IF NOT EXISTS idx_ml_conv_workspace_lastmsg ON mercadolivre_conversations (workspace_id, last_message_at DESC) WHERE deleted_at IS NULL;
+
+-- idx_ml_conv_account_lastmsg
+CREATE INDEX IF NOT EXISTS idx_ml_conv_account_lastmsg ON mercadolivre_conversations (account_id, last_message_at DESC) WHERE deleted_at IS NULL;
+
+-- idx_ml_conv_account_created
+CREATE INDEX IF NOT EXISTS idx_ml_conv_account_created ON mercadolivre_conversations (account_id, created_at DESC, id DESC) WHERE deleted_at IS NULL;
+
+-- idx_ml_conv_account_shipment
+CREATE INDEX IF NOT EXISTS idx_ml_conv_account_shipment ON mercadolivre_conversations (account_id, shipment_id) WHERE shipment_id <> '' AND deleted_at IS NULL;
+
+-- idx_ml_contact_questions_blocked
+CREATE INDEX IF NOT EXISTS idx_ml_contact_questions_blocked ON mercadolivre_contacts (account_id, questions_blocked_at) WHERE questions_blocked_at IS NOT NULL AND deleted_at IS NULL;
 
 ## schema constraints
 
@@ -259,6 +322,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_conversation_account_contact ON telegram
 
 -- ux_tg_file_cache_account_source
 CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_file_cache_account_source ON telegram_file_cache (account_id, source_key);
+
+-- ux_ml_account_live_user
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ml_account_live_user ON mercadolivre_accounts (ml_user_id) WHERE deleted_at IS NULL;
+
+-- ux_ml_contact_account_user
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ml_contact_account_user ON mercadolivre_contacts (account_id, ml_user_id) WHERE deleted_at IS NULL;
+
+-- ux_ml_conversation_account_pack
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ml_conversation_account_pack ON mercadolivre_conversations (account_id, pack_key) WHERE deleted_at IS NULL;
 
 -- ux_wc_widget_public_key
 CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_widget_public_key ON webchat_widgets (public_key);
@@ -369,6 +441,55 @@ DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_call_
 -- fk_call_list_items_last_call
 DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_call_list_items_last_call' AND conrelid = 'call_list_items'::regclass) THEN ALTER TABLE call_list_items ADD CONSTRAINT fk_call_list_items_last_call FOREIGN KEY (last_call_id) REFERENCES calls (id) ON DELETE SET NULL; END IF; END $$;
 
+## tiktok indexes
+
+-- idx_tt_acct_workspace_created
+CREATE INDEX IF NOT EXISTS idx_tt_acct_workspace_created ON tiktok_accounts (workspace_id, created_at DESC) WHERE deleted_at IS NULL;
+
+-- idx_tt_acct_refresh_due
+CREATE INDEX IF NOT EXISTS idx_tt_acct_refresh_due ON tiktok_accounts (access_expires_at, id) WHERE status = 'CONNECTED' AND deleted_at IS NULL;
+
+-- idx_tt_acct_health_due
+CREATE INDEX IF NOT EXISTS idx_tt_acct_health_due ON tiktok_accounts (last_health_check_at, id) WHERE status IN ('CONNECTED', 'NEEDS_RECONNECT') AND deleted_at IS NULL;
+
+-- idx_tt_acct_purge_due
+CREATE INDEX IF NOT EXISTS idx_tt_acct_purge_due ON tiktok_accounts (purge_after, id) WHERE purge_after IS NOT NULL;
+
+-- idx_tt_conv_workspace_lastmsg
+CREATE INDEX IF NOT EXISTS idx_tt_conv_workspace_lastmsg ON tiktok_conversations (workspace_id, last_message_at DESC) WHERE deleted_at IS NULL;
+
+-- idx_tt_conv_account_lastmsg
+CREATE INDEX IF NOT EXISTS idx_tt_conv_account_lastmsg ON tiktok_conversations (account_id, last_message_at DESC) WHERE deleted_at IS NULL;
+
+-- idx_tt_conv_account_created
+CREATE INDEX IF NOT EXISTS idx_tt_conv_account_created ON tiktok_conversations (account_id, created_at DESC, id DESC) WHERE deleted_at IS NULL;
+
+-- idx_tt_video_account_posted
+CREATE INDEX IF NOT EXISTS idx_tt_video_account_posted ON tiktok_videos (account_id, posted_at DESC, item_id DESC);
+
+-- idx_tt_comment_video_time
+CREATE INDEX IF NOT EXISTS idx_tt_comment_video_time ON tiktok_comments (account_id, video_id, commented_at DESC, comment_id DESC);
+
+-- idx_tt_comment_work_due
+CREATE INDEX IF NOT EXISTS idx_tt_comment_work_due ON tiktok_comments (next_lookup_at, id) WHERE lookup = 'pending' OR rules_due;
+
+## tiktok constraints
+
+-- ux_tt_account_live_open_id
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_account_live_open_id ON tiktok_accounts (open_id) WHERE deleted_at IS NULL;
+
+-- ux_tt_contact_account_person
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_contact_account_person ON tiktok_contacts (account_id, unique_identifier) WHERE deleted_at IS NULL;
+
+-- ux_tt_conversation_account_thread
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_conversation_account_thread ON tiktok_conversations (account_id, conversation_id) WHERE deleted_at IS NULL;
+
+-- ux_tt_video_account_item
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_video_account_item ON tiktok_videos (account_id, item_id);
+
+-- ux_tt_comment_account_comment
+CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_comment_account_comment ON tiktok_comments (account_id, comment_id);
+
 ## composite lead keys
 
 -- fk_lead_phones_workspace_lead
@@ -457,11 +578,50 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_call_list_items_agenda ON call_list_
 -- idx_wce_campaign_status_live
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wce_campaign_status_live ON whatsapp_campaign_entries (campaign_id, status) INCLUDE (lead_id) WHERE deleted_at IS NULL;
 
+-- idx_uwce_campaign_status_live
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_uwce_campaign_status_live ON unofficial_whatsapp_campaign_entries (campaign_id, status) WHERE deleted_at IS NULL;
+
 -- idx_wce_campaign_wave_status
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wce_campaign_wave_status ON whatsapp_campaign_entries (campaign_id, wave_number, status) WHERE wave_number > 0 AND deleted_at IS NULL;
 
 -- idx_lead_phones_workspace_number_lead
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_lead_phones_workspace_number_lead ON lead_phones (workspace_id, number, lead_id);
+
+-- idx_wfr_workflow_origin_started
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_workflow_origin_started ON workflow_runs (workflow_id, (CASE WHEN started_by LIKE 'exit:%' THEN 'exit' WHEN started_by LIKE 'manual:%' THEN 'manual' ELSE CAST(trigger_type AS text) END), started_at DESC);
+
+-- idx_wfrl_payload_prune
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_payload_prune ON workflow_run_logs (executed_at) WHERE input IS NOT NULL OR output IS NOT NULL OR http IS NOT NULL OR script_logs IS NOT NULL OR stack IS NOT NULL;
+
+-- idx_wfr_entry_status
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_entry_status ON workflow_runs (entry_id, status);
+
+-- idx_wfr_workflow_started
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_workflow_started ON workflow_runs (workflow_id, started_at DESC);
+
+-- idx_wfr_terminal_started
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_terminal_started ON workflow_runs (started_at) WHERE status IN ('completed', 'error', 'cancelled');
+
+-- idx_wfr_agent_entry_started
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_agent_entry_started ON workflow_runs (entry_id, entry_type, started_at DESC) WHERE started_by LIKE 'agent:%';
+
+-- idx_wfr_entry_started
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_entry_started ON workflow_runs (entry_id, entry_type, started_at DESC);
+
+-- idx_wfrl_failed_executed
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_failed_executed ON workflow_run_logs (executed_at) WHERE status = 'failed';
+
+-- idx_wfr_workflow_updated
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_workflow_updated ON workflow_runs (workflow_id, updated_at);
+
+-- idx_wfr_agent_awaiting_continuation
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_agent_awaiting_continuation ON workflow_runs (updated_at) WHERE started_by LIKE 'agent:%' AND agent_continued_at IS NULL AND status IN ('completed', 'error');
+
+-- idx_wfr_trigger_data_prune
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_trigger_data_prune ON workflow_runs (started_at) WHERE trigger_data IS NOT NULL;
+
+-- idx_wfrl_run_node_executed
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_run_node_executed ON workflow_run_logs (run_id, node_id, executed_at DESC, id DESC);
 
 -- idx_geo_cities_name_prefix
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_geo_cities_name_prefix ON geo_cities (name_key text_pattern_ops);
@@ -502,8 +662,17 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_lead_memories_search_content ON lead
 -- idx_lead_addresses_place_lead
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_lead_addresses_place_lead ON lead_addresses (workspace_id, city_key, district_key) INCLUDE (lead_id) WHERE is_primary;
 
+-- idx_cm_search_text_trgm
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cm_search_text_trgm ON conversation_messages USING gin ((LOWER(COALESCE(text, '') || ' ' || COALESCE(transcript, ''))) public.gin_trgm_ops) WHERE deleted_at IS NULL AND retracted_at IS NULL;
+
+-- ux_cm_entry_client_request
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_cm_entry_client_request ON conversation_messages (entry_type, entry_id, client_request_id) WHERE client_request_id IS NOT NULL;
+
 ## data repairs
 
 wc_consume_used_schedules
 drop_retired_setting_columns
 lx_drop_workspace_exit_settings
+cm_backfill_awaiting_reply
+wf_publish_running_workflows
+wf_canonical_structured_configs

@@ -14,7 +14,7 @@ description: Anúncios que levam para um site (tráfego e vendas): pixel e API d
 - Pixel no site com os eventos do caminho de compra (ver conteúdo, adicionar ao carrinho, iniciar checkout, compra) e o valor da compra.
 - API de Conversões (envio pelo servidor) junto com o pixel, mandando os mesmos eventos com o mesmo identificador de evento, para a Meta não contar duas vezes. Isso recupera conversões que o navegador perde.
 - Qualidade de correspondência dos eventos boa ou ótima: quanto mais dados do cliente o servidor envia (com consentimento), mais conversões a Meta reconhece e menor o custo.
-- No Vozko: list_ad_pixels, create_ad_pixel e get_ad_conversion_settings; as conversões do CRM também podem ir para a Meta.
+- Na plataforma: list_ad_pixels, create_ad_pixel e get_ad_conversion_settings; as conversões do CRM também podem ir para a Meta.
 
 ## Página de destino
 - A página precisa cumprir o que o anúncio promete: mesma oferta, mesmo preço, mesmo produto, logo de cara.

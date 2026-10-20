@@ -39,6 +39,7 @@ func (s *windowService) stateFrom(live conversation.WindowState, entryType strin
 		Open:         live.Open,
 		ExpiresAt:    live.ExpiresAt,
 		ClosedReason: string(live.Reason),
+		ClosedDetail: live.ProviderDetail,
 	}
 	if latest, err := sm.KindText.LatestAllowed(live.Open, live.ExpiresAt, now); err == nil {
 		state.LatestAllowedAt = &latest

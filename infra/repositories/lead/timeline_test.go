@@ -16,6 +16,7 @@ import (
 	"vozko/domain/lead"
 	"vozko/domain/opportunity"
 	"vozko/domain/shared"
+	"vozko/infra/repositories/conversation"
 )
 
 var timelineCursor = shared.Keyset{At: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC), ID: "call:x"}
@@ -301,5 +302,32 @@ func TestTheCallOutcomeOfASummaryFollowsTheCallListRule(t *testing.T) {
 				t.Fatalf("summary = %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAConversationNamesTheLineItRunsOnThroughTheInboxChannelJoins(t *testing.T) {
+	sql, args := timelineQuery(fullScan())
+	want := "jsonb_build_object('channel', lead_entries.entry_type, 'line', " +
+		conversation_repository.EntryLineSQL("lead_entries.entry_type", "lead_entries.entry_id") + ")"
+	if !strings.Contains(sql, want) {
+		t.Fatalf("the conversation summary does not carry its line: %s", sql)
+	}
+	if got := countPlaceholders(sql); got != len(args) {
+		t.Fatalf("%d placeholders for %d args once the line is read", got, len(args))
+	}
+}
+
+func TestAConversationSummaryCarriesItsLine(t *testing.T) {
+	row := timelineRow{Kind: string(lead.TimelineConversation), ItemID: "conversation:telegram:c-1", Summary: []byte(`{"channel":"telegram","line":"loja_bot"}`)}
+	item, err := row.item()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Summary.Line != "loja_bot" || item.Summary.Channel != shared.EntryTypeTelegram {
+		t.Fatalf("summary = %+v", item.Summary)
+	}
+	row.Summary = []byte(`{"channel":"telegram","line":null}`)
+	if item, err = row.item(); err != nil || item.Summary.Line != "" {
+		t.Fatalf("a line the database could not name must read as none: %+v, %v", item.Summary, err)
 	}
 }

@@ -55,6 +55,7 @@ func (uc *workspaceTemplates) Create(workspaceID, grantedBy string, input domain
 	if err != nil || phone == nil || !phone.BelongsToWorkspace(workspaceID) {
 		return nil, domain.ErrPhoneOutsideWorkspace
 	}
+	input.WorkspaceID = workspaceID
 	created, err := uc.create.Execute(input)
 	if err != nil {
 		return nil, err

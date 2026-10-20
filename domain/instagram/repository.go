@@ -17,6 +17,7 @@ type AccountRepository interface {
 	SetWebhookSubscribedAt(ctx context.Context, id string, at time.Time) error
 
 	FindByID(ctx context.Context, id string) (*Account, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Account, error)
 	FindByIGUserID(ctx context.Context, igUserID string) (*Account, error)
 	FindByIGUserIDUnscoped(ctx context.Context, igUserID string) (*Account, error)
 	Restore(ctx context.Context, id string) error
@@ -58,6 +59,7 @@ type ContactProfile struct {
 type ConversationRepository interface {
 	FindOrCreate(ctx context.Context, workspaceID, igAccountID, contactID string) (*Conversation, error)
 	FindByID(ctx context.Context, id string) (*Conversation, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Conversation, error)
 	FindByContact(ctx context.Context, igAccountID, contactID string) (*Conversation, error)
 
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)

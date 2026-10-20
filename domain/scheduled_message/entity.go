@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	MinScheduleLead = time.Minute
+	MinScheduleLead = shared.MessageScheduleLead
 
-	MaxScheduleHorizon = 30 * 24 * time.Hour
+	MaxScheduleHorizon = shared.MessageScheduleHorizon
 )
 
 type Status string

@@ -3,6 +3,7 @@ package unofficial_whatsapp_group_repository
 import (
 	"context"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 
 	uwg "vozko/domain/unofficial_whatsapp_group"
@@ -19,14 +20,14 @@ func campaignScope(scope uwg.Scope) (string, []any) {
 	if len(scope.InstanceIDs) == 0 {
 		return "FALSE", nil
 	}
-	return "c.instance_id IN ?", []any{scope.InstanceIDs}
+	return "(c.instance_id IN ? OR c.sender_instance_ids && ?)", []any{scope.InstanceIDs, pq.StringArray(scope.InstanceIDs)}
 }
 
 func (r *campaignReader) ForGroup(ctx context.Context, workspaceID, groupJID string, scope uwg.Scope, limit int) ([]uwg.GroupCampaign, error) {
 	where, args := campaignScope(scope)
 	var out []uwg.GroupCampaign
 	err := r.db.WithContext(ctx).Raw(`
-		SELECT c.id AS campaign_id, c.name, c.status AS campaign_status, c.instance_id,
+		SELECT c.id AS campaign_id, c.name, c.status AS campaign_status, COALESCE(e.sender_instance_id::text, c.instance_id::text, '') AS instance_id,
 		       e.status AS entry_status, e.error_message, e.sent_at, c.created_at
 		  FROM unofficial_whatsapp_campaign_entries e
 		  JOIN unofficial_whatsapp_campaigns c ON c.id = e.campaign_id AND c.deleted_at IS NULL

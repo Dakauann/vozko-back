@@ -13,11 +13,16 @@ import (
 	wcdomain "vozko/domain/webchat"
 )
 
+type QuotedMessages interface {
+	GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error)
+}
+
 type channelAdapter struct {
 	widgets       wcdomain.WidgetRepository
 	visitors      wcdomain.VisitorRepository
 	conversations wcdomain.ConversationRepository
 	events        wcdomain.EventPublisher
+	quotes        QuotedMessages
 	now           func() time.Time
 	caps          channel.Capabilities
 }
@@ -27,8 +32,10 @@ func NewChannelAdapter(
 	visitors wcdomain.VisitorRepository,
 	conversations wcdomain.ConversationRepository,
 	events wcdomain.EventPublisher,
+	quotes QuotedMessages,
 ) conversation.ChannelAdapter {
 	return &channelAdapter{
+		quotes:        quotes,
 		widgets:       widgets,
 		visitors:      visitors,
 		conversations: conversations,
@@ -65,18 +72,66 @@ func (a *channelAdapter) WindowState(ctx context.Context, ec *conversation.Entry
 	if ec == nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), conversation.ErrNoAdapterForEntryType
 	}
-	if _, err := a.widgets.FindByIDUnscoped(ctx, ec.AccountID); err != nil {
+	widget, err := a.widgets.FindByIDUnscoped(ctx, ec.AccountID)
+	if err != nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), nil
 	}
 	visitor, err := a.visitors.FindByID(ctx, ec.ContactID)
 	if err != nil {
 		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable), err
 	}
-	if visitor.Blocked {
-		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked), nil
-	}
-	return conversation.OpenWindow(nil), nil
+	return windowOf(widget, visitor), nil
 }
+
+func (a *channelAdapter) WindowStates(ctx context.Context, entryIDs []string) (map[string]conversation.WindowState, error) {
+	convs, err := a.conversations.FindByIDs(ctx, shared.UniqueNonEmpty(entryIDs))
+	if err != nil {
+		return nil, err
+	}
+	widgetIDs := make([]string, 0, len(convs))
+	visitorIDs := make([]string, 0, len(convs))
+	for _, conv := range convs {
+		widgetIDs = append(widgetIDs, conv.WidgetID)
+		visitorIDs = append(visitorIDs, conv.VisitorID)
+	}
+	widgets, err := a.widgets.FindByIDsUnscoped(ctx, shared.UniqueNonEmpty(widgetIDs))
+	if err != nil {
+		return nil, err
+	}
+	widgetByID := make(map[string]*wcdomain.Widget, len(widgets))
+	for _, widget := range widgets {
+		widgetByID[widget.ID] = widget
+	}
+	visitors, err := a.visitors.FindByIDs(ctx, shared.UniqueNonEmpty(visitorIDs))
+	if err != nil {
+		return nil, err
+	}
+	visitorByID := make(map[string]*wcdomain.Visitor, len(visitors))
+	for _, visitor := range visitors {
+		visitorByID[visitor.ID] = visitor
+	}
+	out := make(map[string]conversation.WindowState, len(convs))
+	for _, conv := range convs {
+		out[conv.ID] = windowOf(widgetByID[conv.WidgetID], visitorByID[conv.VisitorID])
+	}
+	return out, nil
+}
+
+func windowOf(widget *wcdomain.Widget, visitor *wcdomain.Visitor) conversation.WindowState {
+	if widget == nil || visitor == nil {
+		return conversation.ClosedWindow(conversation.WindowReasonChannelUnavailable)
+	}
+	if visitor.Blocked {
+		return conversation.ClosedWindow(conversation.WindowReasonContactBlocked)
+	}
+	return conversation.OpenWindow(nil)
+}
+
+var _ conversation.WindowStatesAdapter = (*channelAdapter)(nil)
+
+func (a *channelAdapter) Capabilities() channel.Capabilities { return a.caps }
+
+var _ conversation.CapabilitiesAdapter = (*channelAdapter)(nil)
 
 func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryContext, req conversation.SendTextRequest) (*conversation.SendOutcome, error) {
 	body := strings.TrimSpace(req.Body)
@@ -86,7 +141,7 @@ func (a *channelAdapter) SendText(ctx context.Context, ec *conversation.EntryCon
 	if a.caps.TextTooLong(body) {
 		return nil, wcdomain.ErrMessageTooLong
 	}
-	return a.deliver(ctx, ec, wcdomain.VisitorMessage{Author: authorFor(req.HumanInitiated), Text: body})
+	return a.deliver(ctx, ec, wcdomain.VisitorMessage{Author: authorFor(req.HumanInitiated), Text: body, Quote: a.quoteOf(ec, req.ReplyToProviderMessageID)})
 }
 
 func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryContext, req conversation.SendMediaRequest) (*conversation.SendOutcome, error) {
@@ -96,6 +151,7 @@ func (a *channelAdapter) SendMedia(ctx context.Context, ec *conversation.EntryCo
 	return a.deliver(ctx, ec, wcdomain.VisitorMessage{
 		Author: authorFor(req.HumanInitiated),
 		Text:   strings.TrimSpace(req.Caption),
+		Quote:  a.quoteOf(ec, req.ReplyToProviderMessageID),
 		Media: &wcdomain.VisitorMedia{
 			Kind:     req.Kind,
 			URL:      req.URL,
@@ -156,6 +212,17 @@ func (a *channelAdapter) deliver(ctx context.Context, ec *conversation.EntryCont
 		log.Printf("[webchat] record outbound conversation=%s: %v", ec.EntryID, err)
 	}
 	return &conversation.SendOutcome{ProviderMessageID: message.ID}, nil
+}
+
+func (a *channelAdapter) quoteOf(ec *conversation.EntryContext, providerID string) *wcdomain.VisitorQuote {
+	if ec == nil || strings.TrimSpace(providerID) == "" {
+		return nil
+	}
+	quoted, err := a.quotes.GetByEntryAndExternalMessageID(shared.EntryTypeWebchat, ec.EntryID, providerID)
+	if err != nil {
+		return nil
+	}
+	return wcdomain.QuoteOf(quoted)
 }
 
 func authorFor(humanInitiated bool) wcdomain.Author {

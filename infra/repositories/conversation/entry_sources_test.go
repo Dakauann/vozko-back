@@ -28,6 +28,8 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		shared.EntryTypeTelegram,
 		shared.EntryTypeUnofficialWhatsApp,
 		shared.EntryTypeWebchat,
+		shared.EntryTypeMercadoLivre,
+		shared.EntryTypeTikTok,
 	}
 	if len(entrySources) != len(want) {
 		t.Fatalf("registry holds %d sources, want %d", len(entrySources), len(want))
@@ -240,6 +242,8 @@ func TestRegisteringAChannelReachesBothReadPaths(t *testing.T) {
 		Department:    "tga.department_id",
 	})
 	t.Cleanup(func() { entrySources = entrySources[:len(entrySources)-1] })
+	contactRefs[messenger] = "mgc.contact_id"
+	t.Cleanup(func() { delete(contactRefs, messenger) })
 
 	for name, project := range map[string]func(entrySource, entrySourceScope, string) (string, []interface{}){
 		"inbox": entrySource.inboxSelect,
@@ -341,6 +345,8 @@ func TestADepartmentLessChannelFailsClosed(t *testing.T) {
 		LastMessageAt: "tgc.last_message_at", Deleted: "tgc.deleted_at IS NULL",
 	})
 	t.Cleanup(func() { entrySources = entrySources[:len(entrySources)-1] })
+	contactRefs["messenger"] = "mgc.contact_id"
+	t.Cleanup(func() { delete(contactRefs, "messenger") })
 
 	sql, _ := entrySources[len(entrySources)-1].inboxSelect(scope, "ws-1")
 	if !strings.Contains(sql, "1 = 0") {

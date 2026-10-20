@@ -32,11 +32,10 @@ func TestAChannelAddedLaterDoesNotSilentlyBecomeWhatsApp(t *testing.T) {
 	}
 }
 
-func TestAnUnknownEntryTypeKeepsTheHistoricalFallback(t *testing.T) {
-	if got := EntryType("carrier-pigeon").EventChannel(); got != string(EntryTypeWhatsApp) {
-		t.Errorf("EventChannel() = %q, want the whatsapp fallback", got)
-	}
-	if got := EntryType("").EventChannel(); got != string(EntryTypeWhatsApp) {
-		t.Errorf("empty EventChannel() = %q, want the whatsapp fallback", got)
+func TestAnUnknownEntryTypeNamesNoChannel(t *testing.T) {
+	for _, et := range []EntryType{"carrier-pigeon", "", "WhatsApp", " whatsapp"} {
+		if got := et.EventChannel(); got != "" {
+			t.Errorf("%q.EventChannel() = %q, want no channel: an unknown type is never labelled as another channel", et, got)
+		}
 	}
 }

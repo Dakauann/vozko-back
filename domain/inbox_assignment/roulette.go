@@ -9,6 +9,11 @@ type Candidate struct {
 	UserID   string
 	LastSeen time.Time
 	Online   bool
+
+	Tier              int
+	Weight            int
+	OpenConversations int
+	LastHandout       time.Time
 }
 
 type ResumePolicy int

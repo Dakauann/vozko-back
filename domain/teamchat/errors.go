@@ -1,0 +1,32 @@
+package teamchat
+
+import "errors"
+
+var (
+	ErrForbidden            = errors.New("teamchat: you are not a member of this workspace")
+	ErrWorkspaceRequired    = errors.New("teamchat: a thread needs its workspace")
+	ErrPersonRequired       = errors.New("teamchat: a person is required")
+	ErrSamePerson           = errors.New("teamchat: a direct thread needs two different people")
+	ErrTitleRequired        = errors.New("teamchat: a group needs a title")
+	ErrTitleTooLong         = errors.New("teamchat: a group title can have at most 80 characters")
+	ErrMembersRequired      = errors.New("teamchat: a group needs at least one other person")
+	ErrTooManyMembers       = errors.New("teamchat: a group can have at most 256 members")
+	ErrBodyRequired         = errors.New("teamchat: the message is empty")
+	ErrBodyTooLong          = errors.New("teamchat: a message can have at most 4000 characters")
+	ErrTooManyMentions      = errors.New("teamchat: a message can mention at most 50 people")
+	ErrClientIDTooLong      = errors.New("teamchat: client_id can have at most 128 characters")
+	ErrNotFound             = errors.New("teamchat: thread not found")
+	ErrMessageNotFound      = errors.New("teamchat: message not found")
+	ErrNotAuthor            = errors.New("teamchat: only the author can change this")
+	ErrNotAdmin             = errors.New("teamchat: only group admins can do this")
+	ErrDirectThread         = errors.New("teamchat: this only exists in groups")
+	ErrSystemMessage        = errors.New("teamchat: system messages cannot be changed")
+	ErrRecipientUnavailable = errors.New("teamchat: the other person left the workspace")
+	ErrMemberUnavailable    = errors.New("teamchat: someone you picked is not a member of the workspace")
+	ErrReplyOutsideThread   = errors.New("teamchat: a reply must quote a message of the same thread")
+	ErrPageDirection        = errors.New("teamchat: ask for messages before or after a sequence, not both")
+	ErrScheduledNotFound    = errors.New("teamchat: scheduled message not found")
+	ErrScheduledFinal       = errors.New("teamchat: the scheduled message was already sent, canceled or failed")
+	ErrSendAtTooSoon        = errors.New("teamchat: a message can be scheduled from one minute ahead")
+	ErrSendAtTooFar         = errors.New("teamchat: a message can be scheduled up to 30 days ahead")
+)

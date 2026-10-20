@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
 	"vozko/domain/workspace"
@@ -22,8 +21,11 @@ func validDraft() Draft {
 }
 
 func TestEveryCatalogCategoryIsValidAndUnknownOnesAreNot(t *testing.T) {
-	if len(Categories()) != 9 {
-		t.Fatalf("the catalog must list nine categories, got %d", len(Categories()))
+	if len(Categories()) != 11 {
+		t.Fatalf("the catalog must list eleven categories, got %d", len(Categories()))
+	}
+	if !CategoryAutomations.Valid() || CategoryAutomations != "automations" {
+		t.Fatal("workflow runtime alerts need the automations category")
 	}
 	for _, c := range Categories() {
 		if !c.Valid() {
@@ -119,30 +121,6 @@ func TestAbsoluteLinkPrefixesAppPathsOnly(t *testing.T) {
 		if got := AbsoluteLink("https://app.vozko.test/", link); got != want {
 			t.Fatalf("AbsoluteLink(%q) = %q, want %q", link, got, want)
 		}
-	}
-}
-
-func TestStoredDedupKeyBucketsByWindow(t *testing.T) {
-	at := time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
-	d := validDraft()
-	d.DedupKey = "smart_campaign_hold:c-1:spam"
-
-	if got := d.StoredDedupKey(at); got != d.DedupKey {
-		t.Fatalf("without a window the key is stored as given, got %q", got)
-	}
-
-	d.DedupWindow = 24 * time.Hour
-	sameDay := d.StoredDedupKey(at.Add(5 * time.Hour))
-	if d.StoredDedupKey(at) != sameDay {
-		t.Fatal("two moments in the same window must share a key")
-	}
-	if d.StoredDedupKey(at) == d.StoredDedupKey(at.Add(24*time.Hour)) {
-		t.Fatal("the next window must produce a new key so the event can notify again")
-	}
-
-	d.DedupKey = ""
-	if got := d.StoredDedupKey(at); got != "" {
-		t.Fatalf("no dedup key means no stored key, got %q", got)
 	}
 }
 

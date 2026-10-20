@@ -10,73 +10,76 @@ import (
 )
 
 func ValidateNodeScopes(graph *Graph, wfType WorkflowType, catalog []NodeDefinition) error {
+	return firstProblem(NodeScopeProblems(graph, wfType, catalog))
+}
+
+func NodeScopeProblems(graph *Graph, wfType WorkflowType, catalog []NodeDefinition) []error {
 	defs := NodeCatalogMap(catalog)
+	var problems []error
 	for _, node := range graph.Nodes {
 		if node.Type.IsTrigger() || node.Type.Category() == NodeCategoryDecoration {
 			continue
 		}
-		def, ok := defs[node.Type]
-		if !ok {
-			return fmt.Errorf("%w: node %q (%s)", ErrNodeIncompatibleScope, node.ID, node.Type)
-		}
-		if DefinitionAllowedForType(def, wfType) {
+		if def, ok := defs[node.Type]; ok && DefinitionAllowedForType(def, wfType) {
 			continue
 		}
-		return fmt.Errorf("%w: node %q (%s)", ErrNodeIncompatibleScope, node.ID, node.Type)
+		problems = append(problems, fmt.Errorf("%w: node %q (%s)", ErrNodeIncompatibleScope, node.ID, node.Type))
 	}
-	return nil
+	return problems
 }
 
 func ValidateRequiredOutputEdges(graph *Graph, catalog []NodeDefinition) error {
+	return firstProblem(RequiredOutputProblems(graph, catalog))
+}
+
+func RequiredOutputProblems(graph *Graph, catalog []NodeDefinition) []error {
 	defs := NodeCatalogMap(catalog)
-	for _, node := range graph.Nodes {
-		def, ok := defs[node.Type]
-		if !ok || len(def.Outputs) == 0 {
-			continue
-		}
-
-		edgeLabels := make(map[string]struct{})
-		for _, edge := range graph.OutgoingEdges(node.ID) {
-			edgeLabels[edge.Label] = struct{}{}
-		}
-
-		for _, output := range def.Outputs {
-			if output.Optional || strings.TrimSpace(output.ID) == "" {
-				continue
-			}
-			if _, ok := edgeLabels[output.ID]; ok {
-				continue
-			}
-			return fmt.Errorf("%w: node %q output %q", ErrNodeMissingRequiredOutput, node.ID, output.ID)
+	var problems []error
+	for i := range graph.Nodes {
+		node := &graph.Nodes[i]
+		if def, ok := defs[node.Type]; ok {
+			problems = append(problems, unconnectedOutputs(graph, node, def.Outputs)...)
 		}
 	}
-	return nil
+	return problems
 }
 
 func ValidateRequiredDynamicOutputs(graph *Graph, resolveHandles DynamicHandleResolver) error {
+	return firstProblem(RequiredDynamicOutputProblems(graph, resolveHandles))
+}
+
+func RequiredDynamicOutputProblems(graph *Graph, resolveHandles DynamicHandleResolver) []error {
 	if resolveHandles == nil {
 		return nil
 	}
+	var problems []error
 	for i := range graph.Nodes {
 		node := &graph.Nodes[i]
-		handles, ok := resolveHandles(*node)
-		if !ok || len(handles) == 0 {
-			continue
-		}
-		connected := make(map[string]struct{})
-		for _, edge := range graph.OutgoingEdges(node.ID) {
-			connected[edge.Label] = struct{}{}
-		}
-		for _, h := range handles {
-			if h.Optional || strings.TrimSpace(h.ID) == "" {
-				continue
-			}
-			if _, ok := connected[h.ID]; !ok {
-				return fmt.Errorf("%w: node %q output %q", ErrNodeMissingRequiredOutput, node.ID, h.ID)
-			}
+		if handles, ok := resolveHandles(*node); ok {
+			problems = append(problems, unconnectedOutputs(graph, node, handles)...)
 		}
 	}
-	return nil
+	return problems
+}
+
+func unconnectedOutputs(graph *Graph, node *Node, outputs []HandleDefinition) []error {
+	if len(outputs) == 0 {
+		return nil
+	}
+	connected := make(map[string]struct{})
+	for _, edge := range graph.OutgoingEdges(node.ID) {
+		connected[edge.Label] = struct{}{}
+	}
+	var problems []error
+	for _, output := range outputs {
+		if output.Optional || strings.TrimSpace(output.ID) == "" {
+			continue
+		}
+		if _, ok := connected[output.ID]; !ok {
+			problems = append(problems, &MissingOutputError{NodeID: node.ID, OutputID: output.ID})
+		}
+	}
+	return problems
 }
 
 func ValidateSegmentedSendConflict(g *Graph) error {

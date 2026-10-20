@@ -24,7 +24,7 @@ description: Tamanhos, proporções, cortes automáticos e zonas seguras de cada
 
 - Sem recorte definido, o corte da Meta é centralizado: o que está nas bordas some primeiro.
 - Com melhorias de criativo ligadas (enhancements true), a Meta ainda pode expandir ou recortar por conta própria; arte com texto vai com enhancements false.
-- No editor de anúncios, a pessoa troca a mídia de cada posicionamento à mão; pela API o Vozko não separa imagens por posicionamento dentro do mesmo anúncio.
+- No editor de anúncios, a pessoa troca a mídia de cada posicionamento à mão; pela API a plataforma não separa imagens por posicionamento dentro do mesmo anúncio.
 
 ## Reels, Stories e anúncios verticais da Meta (9:16)
 - Tamanho recomendado 1440x2560 (vídeo do editor: 1080x1920).

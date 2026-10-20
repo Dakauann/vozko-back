@@ -191,6 +191,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
 	logoMarkup := fmt.Sprintf(`<img class="logo-img" src="%s" alt="%s">`,
 		html.EscapeString(brand.Active().LogoURL), html.EscapeString(brand.Active().Name))
 	brandNameHTML := html.EscapeString(brand.Active().Name)
+	toBrandHTML := html.EscapeString(brand.Active().Portuguese().ToBrand)
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -441,7 +442,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
 
             <div class="card-header">
                 <h1>Conectar WhatsApp Business</h1>
-                <p class="subtitle">Vincule seu número à %s com o cadastro oficial da Meta. Leva menos de dois minutos.</p>
+                <p class="subtitle">Vincule seu número %s com o cadastro oficial da Meta. Leva menos de dois minutos.</p>
             </div>
 
             <div class="steps">
@@ -646,7 +647,7 @@ func (h *MetaEmbeddedSignupHandler) ServeEmbeddedSignupPage(w http.ResponseWrite
 </html>`,
 		brandNameHTML,
 		logoMarkup,
-		brandNameHTML,
+		toBrandHTML,
 		h.appID,
 		h.graphAPIVer,
 		safeRedirectURL,

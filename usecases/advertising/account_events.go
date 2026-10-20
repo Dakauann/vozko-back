@@ -69,7 +69,7 @@ func (uc *AccountEventsUseCase) Handle(ctx context.Context, changes []ads.AdAcco
 
 func (uc *AccountEventsUseCase) handleAccount(ctx context.Context, metaID string, w *accountWork) error {
 	for kind := range w.skipped {
-		log.Printf("[ads] %s event for ad account %s has no use in Vozko yet; acknowledged", kind, metaID)
+		log.Printf("[ads] %s event for ad account %s has no use on this platform yet; acknowledged", kind, metaID)
 	}
 	if len(w.refs) == 0 && !w.structure {
 		return nil

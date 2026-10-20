@@ -18,6 +18,7 @@ import (
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	wo "vozko/domain/whatsapp_outreach"
+	"vozko/domain/whatsappform"
 	"vozko/domain/workspace_phone_access"
 	"vozko/domain/workspace_template_access"
 	"vozko/usecases/campaignguard"
@@ -183,6 +184,8 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 		HeaderParams:    in.HeaderParams,
 		CampaignID:      campaign.ID,
 		EntryID:         entry.ID,
+		Origin:          whatsappform.OriginTemplateStart,
+		LeadID:          leadRecord.ID,
 	})
 	sent = keepsClaim(err)
 	if err != nil {

@@ -18,6 +18,8 @@ func (c *Container) initWorkspaceGroups(bundle *unofficialWhatsAppBundle, webhoo
 		Joins:     uwgrepo.NewJoinRepository(c.db),
 		Messages:  uwgrepo.NewMessageReader(c.db),
 		Campaigns: uwgrepo.NewCampaignReader(c.db),
+		Thread:    c.services.conversationHistory,
+		Contacts:  bundle.Contacts,
 		Instances: bundle.Instances,
 		Servers:   bundle.Servers,
 		Seats:     bundle.Groups,

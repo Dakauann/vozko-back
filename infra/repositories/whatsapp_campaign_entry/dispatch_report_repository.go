@@ -47,8 +47,8 @@ FROM whatsapp_campaign_entries e
 JOIN whatsapp_campaigns c ON c.id = e.campaign_id
 WHERE ` + scopePlaceholder + ` AND e.deleted_at IS NULL
 GROUP BY e.campaign_id, c.name
-ORDER BY base DESC, c.name
-LIMIT @limit`
+ORDER BY base DESC, c.name, e.campaign_id
+LIMIT @limit OFFSET @offset`
 
 var dailySQL = `
 WITH scoped AS (
@@ -92,8 +92,8 @@ JOIN labels l ON l.id = el.label_id::text AND l.deleted_at IS NULL
 JOIN whatsapp_campaign_entries e ON e.id = el.entry_id AND e.deleted_at IS NULL
 WHERE ` + scopePlaceholder + ` AND el.entry_type = @entryType AND el.deleted_at IS NULL
 GROUP BY l.id, l.name, l.color
-ORDER BY count DESC, l.name
-LIMIT @limit`
+ORDER BY count DESC, l.name, l.id
+LIMIT @limit OFFSET @offset`
 
 type dispatchReportReader struct {
 	db *gorm.DB
@@ -114,9 +114,9 @@ func (r *dispatchReportReader) Funnel(scope wce.ReportScope) (wce.Funnel, error)
 	return out, err
 }
 
-func (r *dispatchReportReader) Campaigns(scope wce.ReportScope, limit int) ([]wce.CampaignFunnel, error) {
+func (r *dispatchReportReader) Campaigns(scope wce.ReportScope, page wce.Page) ([]wce.CampaignFunnel, error) {
 	var out []wce.CampaignFunnel
-	sql, args := scoped(campaignsSQL, scope, stageArgs(map[string]interface{}{"limit": limit}))
+	sql, args := scoped(campaignsSQL, scope, stageArgs(map[string]interface{}{"limit": page.Limit, "offset": page.Offset}))
 	err := r.db.Raw(sql, args).Scan(&out).Error
 	return out, err
 }
@@ -142,11 +142,12 @@ func (r *dispatchReportReader) FailureReasons(scope wce.ReportScope) ([]wce.Fail
 	return out, err
 }
 
-func (r *dispatchReportReader) Tags(scope wce.ReportScope, limit int) ([]wce.TagCount, error) {
+func (r *dispatchReportReader) Tags(scope wce.ReportScope, page wce.Page) ([]wce.TagCount, error) {
 	var out []wce.TagCount
 	sql, args := scoped(tagsSQL, scope, map[string]interface{}{
 		"entryType": string(shared.EntryTypeWhatsApp),
-		"limit":     limit,
+		"limit":     page.Limit,
+		"offset":    page.Offset,
 	})
 	err := r.db.Raw(sql, args).Scan(&out).Error
 	return out, err

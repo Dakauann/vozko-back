@@ -135,3 +135,35 @@ func TestAViewerSeesAMemberOnlyThroughASharedDepartment(t *testing.T) {
 		}
 	}
 }
+
+func TestCanAccessFollowsTheRequestScopeIncludingTheSelectedDepartment(t *testing.T) {
+	ownerOnD1 := &DepartmentFilter{IsOwnerOrAdmin: true, SelectedDepartmentID: strPtr("d1")}
+	cases := []struct {
+		name   string
+		filter *DepartmentFilter
+		dept   string
+		want   bool
+	}{
+		{"no filter denies", nil, "d1", false},
+		{"no filter denies unassigned resources", nil, "", false},
+		{"owner sees any department", owner, "d7", true},
+		{"owner sees unassigned resources", owner, "", true},
+		{"owner looking at one department sees only it", ownerOnD1, "d1", true},
+		{"owner looking at one department does not see another", ownerOnD1, "d2", false},
+		{"owner looking at one department does not see unassigned resources", ownerOnD1, "", false},
+		{"member of a workspace without departments sees everything", flatMember, "d7", true},
+		{"member of a workspace without departments sees unassigned resources", flatMember, "", true},
+		{"member sees own department", twoDeptMember, "d2", true},
+		{"member does not see another department", oneDeptMember, "d2", false},
+		{"restricted member does not see unassigned resources", oneDeptMember, "", false},
+		{"member in no department sees nothing", strandedMember, "d1", false},
+		{"member in no department sees no unassigned resource", strandedMember, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.filter.CanAccess(tc.dept); got != tc.want {
+				t.Fatalf("CanAccess(%q) = %v, want %v", tc.dept, got, tc.want)
+			}
+		})
+	}
+}

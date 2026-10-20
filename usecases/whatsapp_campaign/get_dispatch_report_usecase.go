@@ -24,11 +24,15 @@ type ReportCaching struct {
 	TTL  time.Duration
 }
 
-type getDispatchReportUseCase struct {
+type dispatchTargets struct {
 	campaigns campaignFinder
-	reader    wce.DispatchReportReader
 	locator   wc.ReportLocator
-	caching   ReportCaching
+}
+
+type getDispatchReportUseCase struct {
+	targets dispatchTargets
+	reader  wce.DispatchReportReader
+	caching ReportCaching
 }
 
 type reportTarget struct {
@@ -43,11 +47,11 @@ func NewGetDispatchReportUseCase(
 	locator wc.ReportLocator,
 	caching ReportCaching,
 ) wc.GetDispatchReportUseCase {
-	return &getDispatchReportUseCase{campaigns: campaigns, reader: reader, locator: locator, caching: caching}
+	return &getDispatchReportUseCase{targets: dispatchTargets{campaigns: campaigns, locator: locator}, reader: reader, caching: caching}
 }
 
 func (uc *getDispatchReportUseCase) Summary(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod) (*wc.ReportSummary, error) {
-	target, err := uc.resolve(ctx, access, period)
+	target, err := uc.targets.resolve(ctx, access, period, wce.MaxReportDays)
 	if err != nil {
 		return nil, err
 	}
@@ -56,20 +60,12 @@ func (uc *getDispatchReportUseCase) Summary(ctx context.Context, access wc.Repor
 		if err != nil {
 			return nil, err
 		}
-		out := &wc.ReportSummary{Funnel: funnel}
-		if c := target.campaign; c != nil {
-			created := c.CreatedAt
-			out.CampaignID = c.ID
-			out.CampaignName = c.Name
-			out.TemplateName = c.TemplateName
-			out.CampaignCreatedAt = &created
-		}
-		return out, nil
+		return summaryOf(funnel, target.campaign), nil
 	})
 }
 
 func (uc *getDispatchReportUseCase) Daily(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod) (*wc.ReportDaily, error) {
-	target, err := uc.resolve(ctx, access, period)
+	target, err := uc.targets.resolve(ctx, access, period, wce.MaxReportDays)
 	if err != nil {
 		return nil, err
 	}
@@ -79,17 +75,12 @@ func (uc *getDispatchReportUseCase) Daily(ctx context.Context, access wc.ReportA
 		if err != nil {
 			return nil, err
 		}
-		return &wc.ReportDaily{
-			From:     window.FirstDay(),
-			To:       window.LastDay(),
-			Timezone: window.Location.String(),
-			Days:     wce.DenseDays(window, days),
-		}, nil
+		return dailyOf(window, days), nil
 	})
 }
 
 func (uc *getDispatchReportUseCase) Failures(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod) (*wc.ReportFailures, error) {
-	target, err := uc.resolve(ctx, access, period)
+	target, err := uc.targets.resolve(ctx, access, period, wce.MaxReportDays)
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +94,12 @@ func (uc *getDispatchReportUseCase) Failures(ctx context.Context, access wc.Repo
 }
 
 func (uc *getDispatchReportUseCase) Tags(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod) (*wc.ReportTags, error) {
-	target, err := uc.resolve(ctx, access, period)
+	target, err := uc.targets.resolve(ctx, access, period, wce.MaxReportDays)
 	if err != nil {
 		return nil, err
 	}
 	return rememberReport(ctx, uc, target.scope, wc.ReportSectionTags, "", func() (*wc.ReportTags, error) {
-		tags, err := uc.reader.Tags(target.scope, wce.ReportTagLimit)
+		tags, err := uc.reader.Tags(target.scope, wce.FirstPage(wce.ReportTagLimit))
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +108,7 @@ func (uc *getDispatchReportUseCase) Tags(ctx context.Context, access wc.ReportAc
 }
 
 func (uc *getDispatchReportUseCase) Campaigns(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod) (*wc.ReportCampaigns, error) {
-	target, err := uc.resolve(ctx, access, period)
+	target, err := uc.targets.resolve(ctx, access, period, wce.MaxReportDays)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +116,7 @@ func (uc *getDispatchReportUseCase) Campaigns(ctx context.Context, access wc.Rep
 		return nil, wce.ErrReportScopeInvalid
 	}
 	return rememberReport(ctx, uc, target.scope, wc.ReportSectionCampaigns, "", func() (*wc.ReportCampaigns, error) {
-		rows, err := uc.reader.Campaigns(target.scope, wce.ReportCampaignLimit)
+		rows, err := uc.reader.Campaigns(target.scope, wce.FirstPage(wce.ReportCampaignLimit))
 		if err != nil {
 			return nil, err
 		}
@@ -133,7 +124,7 @@ func (uc *getDispatchReportUseCase) Campaigns(ctx context.Context, access wc.Rep
 	})
 }
 
-func (uc *getDispatchReportUseCase) resolve(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod) (reportTarget, error) {
+func (t dispatchTargets) resolve(ctx context.Context, access wc.ReportAccess, period wc.ReportPeriod, maxDays int) (reportTarget, error) {
 	if access.WorkspaceID == "" || access.AllowDepartment == nil {
 		return reportTarget{}, wc.ErrCampaignAccessDenied
 	}
@@ -141,7 +132,7 @@ func (uc *getDispatchReportUseCase) resolve(ctx context.Context, access wc.Repor
 		if access.DepartmentsBlocked {
 			return reportTarget{}, wc.ErrCampaignAccessDenied
 		}
-		window, err := uc.window(ctx, access.WorkspaceID, singleDepartment(access.DepartmentIDs), period)
+		window, err := t.window(ctx, access.WorkspaceID, singleDepartment(access.DepartmentIDs), period, maxDays)
 		if err != nil {
 			return reportTarget{}, err
 		}
@@ -149,14 +140,14 @@ func (uc *getDispatchReportUseCase) resolve(ctx context.Context, access wc.Repor
 		return reportTarget{scope: scope, window: window}, err
 	}
 
-	campaign, err := uc.campaigns.FindByID(access.CampaignID)
+	campaign, err := t.campaigns.FindByID(access.CampaignID)
 	if err != nil {
 		return reportTarget{}, err
 	}
 	if campaign.WorkspaceID != access.WorkspaceID || !access.AllowDepartment(campaign.DepartmentID) {
 		return reportTarget{}, wc.ErrCampaignAccessDenied
 	}
-	window, err := uc.window(ctx, access.WorkspaceID, campaign.DepartmentID, period)
+	window, err := t.window(ctx, access.WorkspaceID, campaign.DepartmentID, period, maxDays)
 	if err != nil {
 		return reportTarget{}, err
 	}
@@ -164,18 +155,39 @@ func (uc *getDispatchReportUseCase) resolve(ctx context.Context, access wc.Repor
 	return reportTarget{scope: scope, campaign: campaign, window: window}, err
 }
 
-func (uc *getDispatchReportUseCase) window(ctx context.Context, workspaceID, departmentID string, period wc.ReportPeriod) (wce.DayWindow, error) {
-	if uc.locator == nil {
+func (t dispatchTargets) window(ctx context.Context, workspaceID, departmentID string, period wc.ReportPeriod, maxDays int) (wce.DayWindow, error) {
+	if t.locator == nil {
 		return wce.DayWindow{}, errReportZoneUnresolved
 	}
-	loc, err := uc.locator.Location(ctx, workspaceID, departmentID)
+	loc, err := t.locator.Location(ctx, workspaceID, departmentID)
 	if err != nil {
 		return wce.DayWindow{}, err
 	}
 	if loc == nil {
 		return wce.DayWindow{}, errReportZoneUnresolved
 	}
-	return wce.NewDayWindow(period.DateFrom, period.DateTo, loc)
+	return wce.NewDayWindowWithin(period.DateFrom, period.DateTo, loc, maxDays)
+}
+
+func summaryOf(funnel wce.Funnel, campaign *wc.Campaign) *wc.ReportSummary {
+	out := &wc.ReportSummary{Funnel: funnel}
+	if campaign != nil {
+		created := campaign.CreatedAt
+		out.CampaignID = campaign.ID
+		out.CampaignName = campaign.Name
+		out.TemplateName = campaign.TemplateName
+		out.CampaignCreatedAt = &created
+	}
+	return out
+}
+
+func dailyOf(window wce.DayWindow, days []wce.DayCount) *wc.ReportDaily {
+	return &wc.ReportDaily{
+		From:     window.FirstDay(),
+		To:       window.LastDay(),
+		Timezone: window.Location.String(),
+		Days:     wce.DenseDays(window, days),
+	}
 }
 
 func singleDepartment(departmentIDs []string) string {

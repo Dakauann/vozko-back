@@ -15,6 +15,8 @@ import (
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	workspace_domain "vozko/domain/workspace"
+	dept "vozko/domain/workspace/workspace_department"
+	"vozko/infra/http/middleware"
 )
 
 const period = "date_from=2026-09-01&date_to=2026-09-07"
@@ -71,10 +73,18 @@ func (a *accessRecorder) ac(resource workspace_domain.Resource, action workspace
 
 func serve(t *testing.T, reports *reportsStub, target string) *httptest.ResponseRecorder {
 	t.Helper()
+	return serveAs(t, reports, target, &dept.DepartmentFilter{IsOwnerOrAdmin: true})
+}
+
+func serveAs(t *testing.T, reports *reportsStub, target string, scope *dept.DepartmentFilter) *httptest.ResponseRecorder {
+	t.Helper()
 	router := mux.NewRouter()
 	RegisterRoutes(router, NewHandler(reports), (&accessRecorder{}).ac)
 	req := httptest.NewRequest(http.MethodGet, target, nil)
 	req.Header.Set("X-Workspace-ID", "ws1")
+	if scope != nil {
+		req = req.WithContext(context.WithValue(req.Context(), middleware.DepartmentFilterContextKey, scope))
+	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec
@@ -193,5 +203,27 @@ func TestTheAllCampaignsViewNarrowsToTheRequestedDepartment(t *testing.T) {
 
 	if rec.Code != http.StatusOK || len(reports.access.DepartmentIDs) != 1 || reports.access.DepartmentIDs[0] != "d1" {
 		t.Fatalf("status = %d, departments = %v; want only d1", rec.Code, reports.access.DepartmentIDs)
+	}
+}
+
+func TestTheAllCampaignsViewReadsNothingOutsideTheCallersDepartments(t *testing.T) {
+	member := &dept.DepartmentFilter{DepartmentIDs: []string{"d1"}, WorkspaceHasDepartments: true}
+	cases := map[string]struct {
+		scope   *dept.DepartmentFilter
+		target  string
+		blocked bool
+	}{
+		"a member asking for another department": {member, "/attendance/campaigns/summary?" + period + "&department_id=d9", true},
+		"a request without a department scope":   {nil, "/attendance/campaigns/summary?" + period, true},
+		"a member reading their own departments":  {member, "/attendance/campaigns/summary?" + period, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			reports := &reportsStub{}
+			serveAs(t, reports, tc.target, tc.scope)
+			if reports.access.DepartmentsBlocked != tc.blocked {
+				t.Fatalf("access = %+v, want blocked %v", reports.access, tc.blocked)
+			}
+		})
 	}
 }

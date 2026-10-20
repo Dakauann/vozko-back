@@ -56,6 +56,9 @@ type Entry struct {
 	JID       string     `json:"jid,omitempty"`
 	CheckedAt *time.Time `json:"checkedAt,omitempty"`
 
+	SenderInstanceID string `json:"senderInstanceId,omitempty"`
+	SenderLabel      string `json:"senderLabel,omitempty"`
+
 	Status campaign.SendStatus `json:"status"`
 
 	VariantIndex int `json:"variantIndex"`

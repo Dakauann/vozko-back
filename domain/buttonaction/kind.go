@@ -12,6 +12,7 @@ const (
 	KindOptOut        Kind = "opt_out"
 	KindConsentGrant  Kind = "consent_grant"
 	KindHandOff       Kind = "hand_off"
+	KindDelegate      Kind = "delegate"
 	KindStartWorkflow Kind = "start_workflow"
 	KindCallList      Kind = "call_list"
 	KindClassify      Kind = "classify"
@@ -21,13 +22,14 @@ const (
 const (
 	CapabilityConsent       workspace.CapabilityKey = workspace.CapabilityLeadConsent
 	CapabilityAssign        workspace.CapabilityKey = "leads.assign"
+	CapabilityDelegate      workspace.CapabilityKey = "inbox.delegate"
 	CapabilityManageLists   workspace.CapabilityKey = "call_lists.manage"
 	CapabilityEditWorkflows workspace.CapabilityKey = "workflows.edit"
 	CapabilityEditDeals     workspace.CapabilityKey = "deals.edit"
 )
 
 func Kinds() []Kind {
-	return []Kind{KindOptOut, KindConsentGrant, KindHandOff, KindStartWorkflow, KindCallList, KindClassify, KindCreateDeal}
+	return []Kind{KindOptOut, KindConsentGrant, KindHandOff, KindDelegate, KindStartWorkflow, KindCallList, KindClassify, KindCreateDeal}
 }
 
 func (k Kind) Known() bool {
@@ -56,6 +58,8 @@ func RequirementsOf(k Kind) (Requirements, error) {
 		return capabilities(CapabilityConsent), nil
 	case KindHandOff:
 		return capabilities(CapabilityAssign), nil
+	case KindDelegate:
+		return capabilities(CapabilityDelegate), nil
 	case KindCallList:
 		return capabilities(CapabilityManageLists), nil
 	case KindClassify:

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	ads "vozko/domain/advertising"
 	"vozko/domain/notification"
@@ -17,7 +16,7 @@ func alertAccount() *ads.AdAccount {
 	return &ads.AdAccount{ID: "acc-1", WorkspaceID: "ws-1", MetaAccountID: "1762972444913096", BusinessID: "biz-1", Name: "Vozko CRM BRL", Currency: "BRL"}
 }
 
-func TestEachFundsProblemNotifiesTheAdsTeamOncePerDayWithTheFixAtMeta(t *testing.T) {
+func TestEachFundsProblemIsAnAlertEpisodeOfTheAccountWithTheFixAtMeta(t *testing.T) {
 	room := int64(2510)
 	cases := map[ads.FundsReason]string{
 		ads.ReasonFundsLow:          "R$ 25,10",
@@ -41,8 +40,8 @@ func TestEachFundsProblemNotifiesTheAdsTeamOncePerDayWithTheFixAtMeta(t *testing
 		if !d.Audience.Equal(notification.Holding(workspace.ResourceAds, workspace.ActionUpdate)) {
 			t.Fatalf("%s: audience %+v, want the people who manage ads", reason, d.Audience)
 		}
-		if d.DedupKey != "meta_ads_funds:acc-1:"+string(reason) || d.DedupWindow != 24*time.Hour {
-			t.Fatalf("%s: dedup %q %v", reason, d.DedupKey, d.DedupWindow)
+		if d.EpisodeKey != "meta_ads_funds:acc-1:"+string(reason) || d.DedupKey != "" {
+			t.Fatalf("%s: episode %q dedup %q", reason, d.EpisodeKey, d.DedupKey)
 		}
 		if !strings.Contains(d.Body, phrase) {
 			t.Errorf("%s: body %q lacks %q", reason, d.Body, phrase)
@@ -124,5 +123,46 @@ func TestMinorAmountsReadLikeMoney(t *testing.T) {
 	}
 	if got := formatMinor("JPY", 2510); got != "JPY 2510" {
 		t.Errorf("zero decimal currency: %q", got)
+	}
+}
+
+func TestAWorseFundsProblemClosesTheMilderEpisodeAndNotifiesAtOnce(t *testing.T) {
+	publisher := &notificationtest.Publisher{}
+	room := int64(0)
+	if err := NewFundsAlerts(publisher, "https://app.vozko.test").Alert(context.Background(), alertAccount(), ads.Funds{Level: ads.FundsOut, Reason: ads.ReasonFundsOut, RoomMinor: &room}); err != nil {
+		t.Fatal(err)
+	}
+	if d := publisher.Only(t); d.EpisodeKey != "meta_ads_funds:acc-1:funds_out" {
+		t.Fatalf("episode %q", d.EpisodeKey)
+	}
+	resolved := publisher.ResolvedKeys()
+	if !resolved["meta_ads_funds:acc-1:funds_low"] || resolved["meta_ads_funds:acc-1:funds_out"] {
+		t.Fatalf("the milder situation ends, the current one stays open: %v", resolved)
+	}
+	if got := publisher.Resolutions()[0].WorkspaceID; got != "ws-1" {
+		t.Fatalf("resolved in workspace %q", got)
+	}
+}
+
+func TestAddedFundsResolveEveryFundsEpisodeOfTheAccount(t *testing.T) {
+	publisher := &notificationtest.Publisher{}
+	if err := NewFundsAlerts(publisher, "https://app.vozko.test").Recovered(context.Background(), alertAccount()); err != nil {
+		t.Fatal(err)
+	}
+	resolved := publisher.ResolvedKeys()
+	for reason := range fundsCopies {
+		if !resolved["meta_ads_funds:acc-1:"+string(reason)] {
+			t.Errorf("%s stays open after the account recovered", reason)
+		}
+	}
+	if len(publisher.Drafts()) != 0 {
+		t.Fatal("a recovery sends nothing")
+	}
+}
+
+func TestAFailedResolveIsReportedSoTheNextSyncRetries(t *testing.T) {
+	publisher := &notificationtest.Publisher{ResolveErr: errors.New("db down")}
+	if err := NewFundsAlerts(publisher, "https://app.vozko.test").Recovered(context.Background(), alertAccount()); err == nil {
+		t.Fatal("want the error")
 	}
 }

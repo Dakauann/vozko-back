@@ -25,12 +25,13 @@ func (e *waitDTMFExecutor) Definition() workflow.NodeDefinition {
 		keyOptions = append(keyOptions, workflow.ConfigFieldOption{Value: string(key), Label: string(key)})
 	}
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeWaitDTMF,
-		Category:    workflow.NodeCategoryWait,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeVoice},
-		Label:       "Aguardar Tecla",
-		Description: "Espera quem ligou apertar uma tecla do telefone e segue pela opção escolhida.",
-		Icon:        "Hash",
+		Type:         workflow.NodeTypeWaitDTMF,
+		TestBehavior: workflow.NodeTestVoiceOnly,
+		Category:     workflow.NodeCategoryWait,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeVoice},
+		Label:        "Aguardar Tecla",
+		Description:  "Espera quem ligou apertar uma tecla do telefone e segue pela opção escolhida.",
+		Icon:         "Hash",
 		Guidance: workflow.NodeGuidance{
 			When: "Para ler a opção de um menu de voz (URA). Coloque depois de um action_play_audio que anuncia as opções.",
 			Behavior: "Saídas DINÂMICAS: cada tecla em 'keys' (0-9, * ou #) vira uma saída com o próprio dígito como rótulo; " +

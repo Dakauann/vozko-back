@@ -115,6 +115,8 @@ func (f *fakeDedup) IsDuplicate(key string) bool {
 	return f.duplicate
 }
 
+func (f *fakeDedup) Forget(string) error { return nil }
+
 type fakeSharedState struct {
 	allow   bool
 	incrs   int

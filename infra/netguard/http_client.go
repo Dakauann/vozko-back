@@ -2,17 +2,18 @@ package netguard
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"syscall"
 	"time"
+
+	"vozko/domain/shared"
 )
 
 const maxRedirects = 5
 
-var ErrBlockedAddress = errors.New("destination is a private, loopback or reserved address")
+var ErrBlockedAddress = shared.ErrEgressBlocked
 
 func NewHTTPClient(timeout time.Duration) *http.Client {
 	return newGuardedClient(timeout, nil)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"vozko/domain/whatsapp_campaign_entry"
+	dept "vozko/domain/workspace/workspace_department"
 )
 
 var ErrCampaignAccessDenied = errors.New("whatsapp campaign access denied")
@@ -50,6 +51,25 @@ type ReportAccess struct {
 	AllowDepartment    func(departmentID string) bool
 }
 
+func ScopedReportAccess(workspaceID, campaignID, requestedDepartment string, scope *dept.DepartmentFilter) ReportAccess {
+	access := ReportAccess{WorkspaceID: workspaceID, CampaignID: campaignID, AllowDepartment: scope.CanAccess}
+	if scope == nil {
+		access.DepartmentsBlocked = true
+		return access
+	}
+	if requestedDepartment == "" {
+		access.DepartmentIDs = scope.EffectiveDepartmentIDs()
+		access.DepartmentsBlocked = scope.ShouldFilter() && len(access.DepartmentIDs) == 0
+		return access
+	}
+	if !scope.CanAccess(requestedDepartment) {
+		access.DepartmentsBlocked = true
+		return access
+	}
+	access.DepartmentIDs = []string{requestedDepartment}
+	return access
+}
+
 type ReportSummary struct {
 	CampaignID        string                         `json:"campaignId"`
 	CampaignName      string                         `json:"campaignName"`
@@ -83,4 +103,16 @@ type GetDispatchReportUseCase interface {
 	Failures(ctx context.Context, access ReportAccess, period ReportPeriod) (*ReportFailures, error)
 	Tags(ctx context.Context, access ReportAccess, period ReportPeriod) (*ReportTags, error)
 	Campaigns(ctx context.Context, access ReportAccess, period ReportPeriod) (*ReportCampaigns, error)
+}
+
+type DispatchExportSink interface {
+	Summary(summary *ReportSummary) error
+	Daily(daily *ReportDaily) error
+	Campaigns(rows []whatsapp_campaign_entry.CampaignFunnel) error
+	Failures(failures *ReportFailures) error
+	Tags(rows []whatsapp_campaign_entry.TagCount) error
+}
+
+type ExportDispatchReportUseCase interface {
+	Export(ctx context.Context, access ReportAccess, period ReportPeriod, sink DispatchExportSink) error
 }

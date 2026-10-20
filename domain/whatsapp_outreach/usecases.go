@@ -1,6 +1,10 @@
 package whatsapp_outreach
 
-import "context"
+import (
+	"context"
+
+	"vozko/domain/whatsappform"
+)
 
 type StartConversationInput struct {
 	WorkspaceID string
@@ -59,6 +63,9 @@ type ConversationTemplateInput struct {
 	HeaderParams []string
 
 	IdempotencyKey string
+
+	Origin    whatsappform.SendOrigin
+	OriginRef string
 }
 
 type ConversationTemplate struct {

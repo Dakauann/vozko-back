@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/buttonaction"
 	"vozko/domain/calls/calllist"
+	"vozko/domain/conversation"
 	"vozko/domain/customfield"
 	"vozko/domain/pipeline"
 	"vozko/domain/stage"
@@ -36,6 +37,9 @@ type OwnershipDeps struct {
 	Members interface {
 		GetMember(workspaceID, userID string) (*workspace.Member, error)
 	}
+	Automations interface {
+		Usable(workspaceID string, a conversation.Automation) error
+	}
 }
 
 type WorkspaceOwnership struct {
@@ -46,7 +50,7 @@ var _ ParamOwnership = (*WorkspaceOwnership)(nil)
 
 func NewWorkspaceOwnership(deps OwnershipDeps) (*WorkspaceOwnership, error) {
 	if deps.Workflows == nil || deps.CallLists == nil || deps.Fields == nil || deps.Pipelines == nil || deps.Stages == nil ||
-		deps.Departments == nil || deps.Members == nil {
+		deps.Departments == nil || deps.Members == nil || deps.Automations == nil {
 		return nil, buttonaction.ErrUnavailable
 	}
 	return &WorkspaceOwnership{deps: deps}, nil
@@ -69,6 +73,8 @@ func (o *WorkspaceOwnership) owns(ctx context.Context, workspaceID string, kind 
 		return true, nil
 	case buttonaction.KindHandOff:
 		return o.handOffTarget(workspaceID, p), nil
+	case buttonaction.KindDelegate:
+		return o.deps.Automations.Usable(workspaceID, p.Automation()) == nil, nil
 	case buttonaction.KindStartWorkflow:
 		w, err := o.deps.Workflows.FindByID(p.WorkflowID)
 		return err == nil && w != nil && w.WorkspaceID == workspaceID, nil

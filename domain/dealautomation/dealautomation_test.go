@@ -16,6 +16,7 @@ func TestEachChannelIsGovernedByItsOwnPermission(t *testing.T) {
 		{EntryType: shared.EntryTypeInstagram, Kind: conversation.ContainerKindAccount}:           workspace.ResourceInstagramAccounts,
 		{EntryType: shared.EntryTypeFacebook, Kind: conversation.ContainerKindAccount}:            workspace.ResourceFacebookPages,
 		{EntryType: shared.EntryTypeTelegram, Kind: conversation.ContainerKindAccount}:            workspace.ResourceTelegramAccounts,
+		{EntryType: shared.EntryTypeMercadoLivre, Kind: conversation.ContainerKindAccount}:        workspace.ResourceMercadoLivreAccounts,
 	}
 	for channel, want := range cases {
 		got, ok := channel.Resource()

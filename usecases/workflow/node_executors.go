@@ -22,6 +22,7 @@ import (
 	template_domain "vozko/domain/whatsapp/template"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/domain/workflow"
+	"vozko/domain/workflowsecret"
 	workspace_domain "vozko/domain/workspace"
 	dept_domain "vozko/domain/workspace/workspace_department"
 	workspace_phone_access_domain "vozko/domain/workspace_phone_access"
@@ -56,7 +57,9 @@ type ExecutorDeps struct {
 	AssignStage           stage_domain.AssignEntryStageUseCase
 	StageBroadcaster      node_executors.StageBroadcaster
 	Deals                 node_executors.DealDesk
+	DealPreviews          DealPreviewer
 	LeadProfiles          node_executors.LeadProfileWriter
+	LeadPreviews          LeadProfilePreviewer
 	Consent               node_executors.ConsentRecorder
 	DepartmentRepo        dept_domain.Repository
 	ConversationHandOff   node_executors.ConversationHandOff
@@ -69,6 +72,9 @@ type ExecutorDeps struct {
 	ConversationMediaRepo conversation.ConversationMediaRepository
 	VoiceAudio            workflow.VoiceAudio
 	HTTPEgress            node_executors.HTTPEgress
+	MediaFetcher          node_executors.MediaFetcher
+	Secrets               workflowsecret.Resolver
+	Forms                 node_executors.FormSender
 
 	AIAttendance       node_executors.WorkflowAIAttendance
 	ConversationStatus conversation.ConversationStatusUpdater
@@ -77,6 +83,8 @@ type ExecutorDeps struct {
 }
 
 var ErrConversationEventsRequired = errors.New("workflow executors: the conversation event logger is required to record refused sends")
+
+var ErrFormSenderRequired = errors.New("workflow executors: the whatsapp form sender is required to send forms")
 
 type discardedEvents struct{}
 
@@ -87,6 +95,9 @@ var simulationEvents ce.Logger = discardedEvents{}
 func RegisterProductionExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps) error {
 	if deps.ConversationEvents == nil {
 		return ErrConversationEventsRequired
+	}
+	if deps.Forms == nil {
+		return ErrFormSenderRequired
 	}
 	RegisterDefaultExecutors(registry, deps)
 	return nil
@@ -110,6 +121,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 		Adapters:              deps.Adapters,
 		EntryLeads:            deps.EntryLeads,
 		Events:                deps.ConversationEvents,
+		MediaFetcher:          deps.MediaFetcher,
 	}
 
 	emailSender := deps.EmailSender
@@ -121,8 +133,9 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionSendEmail, node_executors.NewSendEmailExecutor(emailSender))
 	registry.Register(workflow.NodeTypeActionSendMedia, node_executors.NewSendMediaExecutor(waDeps))
 	registry.Register(workflow.NodeTypeActionSetVariable, node_executors.NewSetVariableExecutor())
-	registry.Register(workflow.NodeTypeActionHTTPRequest, node_executors.NewHTTPRequestExecutor(deps.HTTPEgress))
+	registry.Register(workflow.NodeTypeActionHTTPRequest, node_executors.NewHTTPRequestExecutor(deps.HTTPEgress, deps.Secrets))
 	registry.Register(workflow.NodeTypeActionSendInteractive, node_executors.NewInteractivePromptExecutor(waDeps))
+	registry.Register(workflow.NodeTypeActionSendForm, node_executors.NewSendFormExecutor(deps.Forms, waDeps))
 
 	aiAgentExec := node_executors.NewAIAgentExecutor(deps.AIService, deps.AgentRepo, deps.MessageRepo, deps.CachedBalanceChecker, node_executors.NewWhatsAppSenderFromDeps(waDeps), deps.RAGService)
 	if deps.AIAttendance != nil {
@@ -144,10 +157,11 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionAssignMember, node_executors.NewAssignMemberExecutor(deps.WorkspaceRepo, deps.ConversationHandOff))
 	registry.Register(workflow.NodeTypeActionFinishConversation, node_executors.NewFinishConversationExecutor(deps.ConversationStatus))
 	registry.Register(workflow.NodeTypeActionFormatDate, node_executors.NewFormatDateExecutor())
-	registry.Register(workflow.NodeTypeActionCode, node_executors.NewCodeExecutor())
+	registry.Register(workflow.NodeTypeActionCode, node_executors.NewCodeExecutor(deps.Secrets))
 	registry.Register(workflow.NodeTypeActionGetCurrentTime, node_executors.NewGetCurrentTimeExecutor())
 	registry.Register(workflow.NodeTypeActionLoop, node_executors.NewLoopExecutor())
 	registry.Register(workflow.NodeTypeActionRunWorkflow, node_executors.NewRunWorkflowExecutor(deps.SubWorkflowRunner))
+	registry.Register(workflow.NodeTypeActionReplyToAgent, node_executors.NewReplyToAgentExecutor())
 
 	registry.Register(workflow.NodeTypeWaitDuration, node_executors.NewWaitDurationExecutor())
 	registry.Register(workflow.NodeTypeWaitForReply, node_executors.NewWaitForReplyExecutor())

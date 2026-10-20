@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"vozko/domain/actor"
 	"vozko/domain/agent"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
@@ -17,6 +18,7 @@ import (
 type profileBackedDelegations struct {
 	profiles *stubAutomationProfiles
 	saved    []conversation.Automation
+	savedBy  []string
 	deleted  int
 	err      error
 }
@@ -39,6 +41,7 @@ func (d *profileBackedDelegations) Save(_ context.Context, del conversation.Dele
 	a := del.Automation
 	d.profiles.profile.Delegate = &a
 	d.saved = append(d.saved, a)
+	d.savedBy = append(d.savedBy, del.DelegatedBy)
 	return nil
 }
 
@@ -76,12 +79,14 @@ func newDelegation(f *aiFixture) (*AutomationDelegation, *profileBackedDelegatio
 			"elsewhere": {ID: "elsewhere", WorkspaceID: "ws-2", IsActive: true},
 		},
 		Workflows: workflowDirectory{
-			"wf-9":  {ID: "wf-9", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusActive},
+			"wf-9":  {ID: "wf-9", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusActive, PublishedVersion: &publishedVersion},
 			"draft": {ID: "draft", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusDraft},
-			"ivr":   {ID: "ivr", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusActive, Type: workflow.WorkflowTypeVoice},
+			"ivr":   {ID: "ivr", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusActive, Type: workflow.WorkflowTypeVoice, PublishedVersion: &publishedVersion},
 		},
 	}), store, access
 }
+
+var publishedVersion = 1
 
 func delegateInput(kind conversation.AutomationKind, id string) DelegateInput {
 	return DelegateInput{
@@ -184,4 +189,45 @@ func TestTheDelegationSurvivesAPauseAndComesBackOnResume(t *testing.T) {
 	res, err := toggle.SetAutomation(context.Background(), toggleInput(pauseOn()))
 	require.NoError(t, err)
 	assert.Equal(t, "workflow:wf-9", res.Owner, "resuming returns to the delegated workflow, not the channel's agent")
+}
+
+func TestASystemDelegationHandsOverWithoutAnyPersonsAccess(t *testing.T) {
+	f := newAIFixture(noAutomation)
+	f.seed("entry-1", "bob")
+	delegation, store, access := newDelegation(f)
+	access.allowed = false
+
+	err := delegation.DelegateAsSystem(context.Background(), SystemDelegation{
+		WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: shared.EntryTypeWhatsApp,
+		Automation: conversation.Automation{Kind: conversation.AutomationAgent, ID: "agent-9"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, conversation.Automation{Kind: conversation.AutomationAgent, ID: "agent-9"}.ActorID(), f.owner("entry-1"))
+	require.Len(t, store.savedBy, 1)
+	assert.Equal(t, actor.SystemID, store.savedBy[0])
+}
+
+func TestASystemDelegationStillRefusesAnAutomationThatCannotAnswer(t *testing.T) {
+	f := newAIFixture(noAutomation)
+	f.seed("entry-1", "bob")
+	delegation, store, _ := newDelegation(f)
+
+	err := delegation.DelegateAsSystem(context.Background(), SystemDelegation{
+		WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: shared.EntryTypeWhatsApp,
+		Automation: conversation.Automation{Kind: conversation.AutomationAgent, ID: "off"},
+	})
+
+	assert.ErrorIs(t, err, conversation.ErrAutomationUnusable)
+	assert.Empty(t, store.saved)
+	assert.Equal(t, "bob", f.owner("entry-1"))
+}
+
+func TestTheDirectoryTellsWhetherAnAutomationCanTakeConversations(t *testing.T) {
+	f := newAIFixture(noAutomation)
+	delegation, _, _ := newDelegation(f)
+	directory := delegation.directory
+
+	assert.NoError(t, directory.Usable("ws-1", conversation.Automation{Kind: conversation.AutomationWorkflow, ID: "wf-9"}))
+	assert.ErrorIs(t, directory.Usable("ws-1", conversation.Automation{Kind: conversation.AutomationWorkflow, ID: "draft"}), conversation.ErrAutomationUnusable)
 }

@@ -10,6 +10,14 @@ type LastSeenReader interface {
 	LastSeen(workspaceID string, userIDs []string) (map[string]time.Time, error)
 }
 
+type WorkloadReader interface {
+	OpenConversations(workspaceID string, userIDs []string) (map[string]int, error)
+}
+
+type HandoutReader interface {
+	LastHandouts(workspaceID string, userIDs []string) (map[string]time.Time, error)
+}
+
 type EntryAttentionReader interface {
 	AttendedSince(entryID, entryType, assignedUserID string, since time.Time) (bool, error)
 }

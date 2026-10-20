@@ -5,6 +5,7 @@ import (
 
 	"vozko/domain/actor"
 	"vozko/domain/crmfilter"
+	"vozko/domain/personalinbox"
 	"vozko/domain/shared"
 )
 
@@ -72,14 +73,19 @@ type SearchEntriesInput struct {
 
 	HasUnread  *bool
 	WindowOpen *bool
+	IsGroup    *bool
 
 	Channel  string
 	DateFrom *time.Time
 	DateTo   *time.Time
+	LabelID  string
 
 	ConversationStatus ConversationStatus
 
 	SortOrder string
+
+	Personal       personalinbox.View
+	PersonalUserID string
 
 	AssignedUserID string
 
@@ -137,6 +143,7 @@ type EntryWithLastMessage struct {
 	BusinessPhoneID       string
 	UnreadCount           int64
 	LastMessageText       string
+	LastMessageRetracted  bool
 	LastMessageType       MessageType
 	LastMessageAt         time.Time
 	LastMessageFrom       string
@@ -154,6 +161,9 @@ type EntryWithLastMessage struct {
 	AutomationEnabled     *bool
 	ConversationStatus    string
 	Close                 CloseRecord
+	LastCustomerMessageAt *time.Time
+	LastAgentMessageAt    *time.Time
+	AwaitingReplySince    *time.Time
 }
 
 type MessageRepository interface {
@@ -193,6 +203,7 @@ type MessageRepository interface {
 	GetByExternalMessageID(entryType shared.EntryType, externalID string) (*Message, error)
 
 	GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*Message, error)
+	GetByClientRequestID(entryType shared.EntryType, entryID, requestID string) (*Message, error)
 	ClaimExternalEcho(message *Message) (bool, error)
 	UpdateDeliveryStatus(wamid string, status DeliveryStatus) error
 	UpdateDeliveryStatusWithReason(wamid string, status DeliveryStatus, errorCode int, errorMessage string) error

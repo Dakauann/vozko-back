@@ -8,14 +8,12 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	_ "golang.org/x/image/webp"
 
@@ -30,6 +28,7 @@ type SendWhatsappMediaTool struct {
 	ctx                   context.Context
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	mediaRepo             media.MediaRepository
+	downloads             media.RemoteFiles
 	adapters              conversation.AdapterRegistry
 }
 
@@ -53,11 +52,13 @@ func NewSendWhatsappMediaToolUseCase(
 	ctx context.Context,
 	whatsappClientFactory conversation.WhatsAppClientFactory,
 	mediaRepo media.MediaRepository,
+	downloads media.RemoteFiles,
 ) *SendWhatsappMediaTool {
 	return &SendWhatsappMediaTool{
 		ctx:                   ctx,
 		whatsappClientFactory: whatsappClientFactory,
 		mediaRepo:             mediaRepo,
+		downloads:             downloads,
 	}
 }
 
@@ -287,7 +288,10 @@ func (uc *SendWhatsappMediaTool) resolveClient(config map[string]interface{}) (c
 }
 
 func (uc *SendWhatsappMediaTool) sendImage(ctx context.Context, c conversation.WhatsAppClient, to, caption string, m *media.Media) (tools.ExecutionResult, error) {
-	imageData, mimeType, fileName, err := fetchMedia(m.URL, maxImageBytes)
+	imageData, mimeType, fileName, err := uc.fetchMedia(ctx, m.URL, maxImageBytes)
+	if media.DownloadRefused(err) {
+		return tools.ExecutionResult{}, err
+	}
 	if err != nil {
 		log.Printf("[%s][image] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendImageByLink(ctx, c, to, caption, m.URL)
@@ -327,7 +331,10 @@ func (uc *SendWhatsappMediaTool) sendImageByLink(ctx context.Context, c conversa
 }
 
 func (uc *SendWhatsappMediaTool) sendVideo(ctx context.Context, c conversation.WhatsAppClient, to, caption string, m *media.Media) (tools.ExecutionResult, error) {
-	data, mimeType, fileName, err := fetchMedia(m.URL, maxVideoBytes)
+	data, mimeType, fileName, err := uc.fetchMedia(ctx, m.URL, maxVideoBytes)
+	if media.DownloadRefused(err) {
+		return tools.ExecutionResult{}, err
+	}
 	if err != nil {
 		log.Printf("[%s][video] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendVideoByLink(ctx, c, to, caption, m.URL)
@@ -364,7 +371,10 @@ func (uc *SendWhatsappMediaTool) sendVideoByLink(ctx context.Context, c conversa
 var convertAudioToOGGOpusFn = media_infra.ConvertToOGGOpus
 
 func (uc *SendWhatsappMediaTool) sendAudio(ctx context.Context, c conversation.WhatsAppClient, to string, m *media.Media) (tools.ExecutionResult, error) {
-	data, _, _, err := fetchMedia(m.URL, maxAudioBytes)
+	data, _, _, err := uc.fetchMedia(ctx, m.URL, maxAudioBytes)
+	if media.DownloadRefused(err) {
+		return tools.ExecutionResult{}, err
+	}
 	if err != nil {
 		log.Printf("[%s][audio] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendAudioByLink(ctx, c, to, m.URL)
@@ -395,7 +405,10 @@ func (uc *SendWhatsappMediaTool) sendAudioByLink(ctx context.Context, c conversa
 }
 
 func (uc *SendWhatsappMediaTool) sendDocument(ctx context.Context, c conversation.WhatsAppClient, to, caption string, m *media.Media) (tools.ExecutionResult, error) {
-	data, mimeType, fileName, err := fetchMedia(m.URL, maxDocumentBytes)
+	data, mimeType, fileName, err := uc.fetchMedia(ctx, m.URL, maxDocumentBytes)
+	if media.DownloadRefused(err) {
+		return tools.ExecutionResult{}, err
+	}
 	if err != nil {
 		log.Printf("[%s][document] fetch failed, falling back to link: %v", ToolNameSendMedia, err)
 		return uc.sendDocumentByLink(ctx, c, to, caption, m.URL, deriveDocumentFilename(m, ""))
@@ -488,34 +501,14 @@ func prettyTypeLabel(t media.MediaType) string {
 	}
 }
 
-func fetchMedia(rawURL string, maxBytes int) ([]byte, string, string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	req, err := http.NewRequest(http.MethodGet, strings.TrimSpace(rawURL), nil)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("invalid media URL: %w", err)
-	}
-
-	resp, err := client.Do(req)
+func (uc *SendWhatsappMediaTool) fetchMedia(ctx context.Context, rawURL string, maxBytes int) ([]byte, string, string, error) {
+	file, err := media.Download(ctx, uc.downloads, strings.TrimSpace(rawURL), int64(maxBytes))
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to download media: %w", err)
 	}
-	defer resp.Body.Close()
+	data := file.Data
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", "", fmt.Errorf("failed to download media: status=%d", resp.StatusCode)
-	}
-
-	reader := io.LimitReader(resp.Body, int64(maxBytes)+1)
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to read media: %w", err)
-	}
-	if len(data) > maxBytes {
-		return nil, "", "", fmt.Errorf("media size exceeds %d bytes limit", maxBytes)
-	}
-
-	mimeType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	mimeType := strings.TrimSpace(file.ContentType)
 	if mimeType == "" || mimeType == "application/octet-stream" {
 		mimeType = http.DetectContentType(data)
 	}

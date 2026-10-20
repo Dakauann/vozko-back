@@ -255,9 +255,11 @@ func (s *VisitorService) History(ctx context.Context, session *Session, in Histo
 	}
 	s.Presenter.PresentMessages(conv.ID, shared.EntryTypeWebchat, rows)
 
+	quoted := s.quotedMessages(conv.ID, rows)
 	out := make([]wcdomain.VisitorMessage, 0, len(rows))
 	for i := len(rows) - 1; i >= 0; i-- {
 		if projected, ok := wcdomain.ProjectMessage(rows[i]); ok {
+			projected.Quote = wcdomain.QuoteOf(quoted[replyTarget(rows[i])])
 			out = append(out, projected)
 		}
 	}
@@ -439,4 +441,38 @@ func (s *VisitorService) Typing(ctx context.Context, session *Session, on bool) 
 	}
 	s.Operators.BroadcastTyping(conv.ID, string(shared.EntryTypeWebchat), session.Visitor.ID, on)
 	return nil
+}
+
+func replyTarget(m *conversation.Message) string {
+	if m == nil || m.ReplyToMessageID == nil {
+		return ""
+	}
+	return *m.ReplyToMessageID
+}
+
+func (s *VisitorService) quotedMessages(conversationID string, rows []*conversation.Message) map[string]*conversation.Message {
+	byID := make(map[string]*conversation.Message, len(rows))
+	for _, m := range rows {
+		byID[m.ID] = m
+	}
+	quoted := map[string]*conversation.Message{}
+	for _, m := range rows {
+		target := replyTarget(m)
+		if target == "" {
+			continue
+		}
+		if _, known := quoted[target]; known {
+			continue
+		}
+		found, inPage := byID[target]
+		if !inPage {
+			found, _ = s.Messages.GetByID(target)
+		}
+		if found != nil && found.EntryID == conversationID && found.EntryType == shared.EntryTypeWebchat {
+			quoted[target] = found
+		} else {
+			quoted[target] = nil
+		}
+	}
+	return quoted
 }

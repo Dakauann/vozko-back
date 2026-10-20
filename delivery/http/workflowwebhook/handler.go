@@ -2,30 +2,75 @@ package workflowwebhook
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"os"
 	"strings"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
 	"vozko/infra/http/middleware"
+	"vozko/pkg/webhookanswer"
 	workflow_usecase "vozko/usecases/workflow"
 
 	"github.com/gorilla/mux"
 )
 
+type DeliveryLister interface {
+	Execute(viewer shared.Person, workspaceID, workflowID string, pagination shared.Pagination) (*shared.PaginatedResult[*workflow.WebhookDelivery], error)
+}
+
 type Handler struct {
-	configUC  workflow_usecase.WorkflowWebhookUseCase
-	triggerUC workflow_usecase.HandleWebhookTriggerUseCase
+	configUC     workflow_usecase.WorkflowWebhookUseCase
+	triggerUC    workflow_usecase.HandleWebhookTriggerUseCase
+	deliveriesUC DeliveryLister
+	workflows    httpx.WorkflowAccess
 }
 
 func NewHandler(
 	configUC workflow_usecase.WorkflowWebhookUseCase,
 	triggerUC workflow_usecase.HandleWebhookTriggerUseCase,
+	deliveriesUC DeliveryLister,
+	workflows httpx.WorkflowAccess,
 ) *Handler {
-	return &Handler{configUC: configUC, triggerUC: triggerUC}
+	return &Handler{configUC: configUC, triggerUC: triggerUC, deliveriesUC: deliveriesUC, workflows: workflows}
+}
+
+// @Summary Listar as últimas chamadas recebidas pelo webhook de um workflow
+// @Description Lista as chamadas ao webhook público deste workflow, da mais recente para a mais antiga: resultado (accepted, duplicate, already_running ou rejected), motivo da recusa (por exemplo workflow_not_active, entry_not_found, unauthorized), código HTTP devolvido, como a conversa foi identificada (entry_id ou phone), a execução iniciada, a latência e apenas os nomes dos campos do corpo, nunca os valores. Chamadas com token desconhecido não aparecem porque não pertencem a nenhum workflow. Chamadas que identificaram uma conversa só aparecem para quem pode ver essa conversa (mesma regra de departamento e de responsável da caixa de entrada); recusas sem conversa aparecem para quem tem `workflows:read` e acesso ao departamento do workflow. As chamadas ficam guardadas por 30 dias.
+// @Tags workflows
+// @Produce json
+// @Param id path string true "ID do workflow"
+// @Param page query int false "Página, a partir de 1"
+// @Param pageSize query int false "Itens por página"
+// @Success 200 {object} response.PaginatedPayload{data=[]workflow.WebhookDelivery}
+// @Failure 401 {object} response.ErrorResponse
+// @Failure 403 {object} response.ErrorResponse "Workflow de outro departamento"
+// @Failure 404 {object} response.ErrorResponse "Workflow não encontrado"
+// @Failure 500 {object} response.ErrorResponse "Erro ao listar as chamadas"
+// @Router /workflows/{id}/webhook/deliveries [get]
+func (h *Handler) ListWorkflowWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := httpx.RequirePerson(w, r)
+	if !ok {
+		return
+	}
+	workflowID := mux.Vars(r)["id"]
+	if !httpx.RequireWorkflowAccess(w, r, h.workflows, workflowID) {
+		return
+	}
+	result, err := h.deliveriesUC.Execute(viewer, middleware.GetWorkspaceID(r), workflowID, httpx.ParsePagination(r.URL.Query()))
+	if err != nil {
+		response.WriteRefusal(w, refusalWebhookDeliveriesFailed)
+		return
+	}
+	response.WritePaginated(w, http.StatusOK, result.Items, response.PaginationMeta{
+		Page:       result.Page,
+		PageSize:   result.PageSize,
+		TotalPages: result.TotalPages,
+		TotalItems: result.TotalItems,
+	})
 }
 
 // @Summary Obter a configuração do gatilho de webhook de um workflow
@@ -43,7 +88,7 @@ func (h *Handler) GetWorkflowWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if wh == nil {
-		response.WriteError(w, http.StatusNotFound, "Webhook não configurado", nil)
+		response.WriteRefusal(w, refusalWebhookNotFound)
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, toWebhookResponse(wh))
@@ -151,7 +196,7 @@ func (h *Handler) DeleteWorkflowWebhook(w http.ResponseWriter, r *http.Request) 
 func (h *Handler) HandleWebhookTrigger(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, webhookMaxBodyBytes))
 	if err != nil {
-		response.WriteError(w, http.StatusBadRequest, "Corpo inválido", nil)
+		response.WriteRefusal(w, refusalWebhookInvalidBody)
 		return
 	}
 
@@ -166,53 +211,58 @@ func (h *Handler) HandleWebhookTrigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	answer := webhookTriggerResponse{Status: string(workflow.WebhookOutcomeAccepted), RunID: result.RunID}
 	switch {
 	case result.Duplicate:
-		response.WriteSuccess(w, http.StatusOK, webhookTriggerResponse{Status: "duplicate"})
+		answer = webhookTriggerResponse{Status: string(workflow.WebhookOutcomeDuplicate)}
 	case result.AlreadyRunning:
-		response.WriteSuccess(w, http.StatusOK, webhookTriggerResponse{Status: "already_running", RunID: result.RunID})
-	default:
-		response.WriteSuccess(w, http.StatusAccepted, webhookTriggerResponse{Status: "accepted", RunID: result.RunID})
+		answer.Status = string(workflow.WebhookOutcomeAlreadyRunning)
 	}
+	response.WriteSuccess(w, webhookanswer.AcceptStatus(answer.Status), answer)
+}
+
+var webhookRejectionMessages = map[string]string{
+	"webhook_inactive":      "Webhook não encontrado",
+	"webhook_not_found":     "Webhook não encontrado",
+	"method_not_allowed":    "Método não permitido",
+	"unauthorized":          "Autenticação inválida",
+	"entry_required":        "O payload precisa conter entry_id e entry_type, ou um phone",
+	"entry_not_found":       "Nenhuma entrada encontrada para o telefone informado",
+	"entry_forbidden":       "Entrada não pertence a este workspace",
+	"no_trigger_node":       "O workflow não possui nó de gatilho de webhook",
+	"workflow_not_active":   "O workflow não está ativo",
+	"workspace_at_capacity": "Limite de execuções simultâneas atingido",
 }
 
 func handleWebhookTriggerError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, workflow.ErrWebhookNotFound):
-		response.WriteError(w, http.StatusNotFound, "Webhook não encontrado", nil)
-	case errors.Is(err, workflow.ErrWebhookMethodNotAllowed):
-		response.WriteError(w, http.StatusMethodNotAllowed, "Método não permitido", nil)
-	case errors.Is(err, workflow.ErrWebhookUnauthorized):
-		response.WriteError(w, http.StatusUnauthorized, "Autenticação inválida", nil)
-	case errors.Is(err, workflow.ErrWebhookEntryRequired):
-		response.WriteError(w, http.StatusBadRequest, "O payload precisa conter entry_id e entry_type, ou um phone", nil)
-	case errors.Is(err, workflow.ErrWebhookEntryNotFound):
-		response.WriteError(w, http.StatusNotFound, "Nenhuma entrada encontrada para o telefone informado", nil)
-	case errors.Is(err, workflow.ErrWebhookEntryForbidden):
-		response.WriteError(w, http.StatusForbidden, "Entrada não pertence a este workspace", nil)
-	case errors.Is(err, workflow.ErrWebhookNoTriggerNode):
-		response.WriteError(w, http.StatusUnprocessableEntity, "O workflow não possui nó de gatilho de webhook", nil)
-	case errors.Is(err, workflow.ErrWorkflowNotActive):
-		response.WriteError(w, http.StatusConflict, "O workflow não está ativo", nil)
-	case errors.Is(err, workflow.ErrWorkspaceAtCapacity):
-		response.WriteError(w, http.StatusTooManyRequests, "Limite de execuções simultâneas atingido", nil)
-	default:
-		response.WriteError(w, http.StatusInternalServerError, "Erro ao processar webhook", nil)
+	reason := workflow.WebhookRejectionReason(err)
+	message, ok := webhookRejectionMessages[reason]
+	if !ok {
+		message = "Erro ao processar webhook"
 	}
+	response.WriteErrorWithCode(w, webhookanswer.RejectionStatus(reason), reason, message, nil)
 }
 
+var (
+	refusalWebhookNotFound         = response.Refusal{Status: http.StatusNotFound, Code: "webhook_not_found", Message: "Webhook não configurado"}
+	refusalWebhookConfigFailed     = response.Refusal{Status: http.StatusInternalServerError, Code: "webhook_config_failed", Message: "Erro ao configurar webhook"}
+	refusalWebhookDeliveriesFailed = response.Refusal{Status: http.StatusInternalServerError, Code: "webhook_deliveries_failed", Message: "Erro ao listar as chamadas do webhook"}
+	refusalWebhookInvalidBody      = response.Refusal{Status: http.StatusBadRequest, Code: "invalid_body", Message: "Corpo inválido"}
+)
+
+var webhookRequestRefusals = []response.Refusal{refusalWebhookConfigFailed, refusalWebhookDeliveriesFailed, httpx.RefusalWorkflowUnreadable}
+
+var webhookOwnConfigRefusals = []response.ErrorRefusal{
+	{Err: workflow.ErrWebhookNotFound, Refusal: refusalWebhookNotFound},
+	{Err: workflow.ErrWebhookAlreadyExists, Refusal: response.Refusal{Status: http.StatusConflict, Code: "webhook_already_exists", Message: "O workflow já possui um webhook"}},
+	{Err: workflow.ErrWebhookInvalidAuthMode, Refusal: response.Refusal{Status: http.StatusBadRequest, Code: "invalid_auth_mode", Message: "Modo de autenticação inválido", Expected: map[string]string{"auth_mode": "Modo de autenticação inválido"}}},
+}
+
+var webhookConfigRefusals = append(append([]response.ErrorRefusal{}, httpx.WorkflowAccessRefusals...), webhookOwnConfigRefusals...)
+
 func handleWebhookConfigError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, workflow.ErrWorkflowNotFound):
-		response.WriteError(w, http.StatusNotFound, "Workflow não encontrado", nil)
-	case errors.Is(err, workflow.ErrWebhookNotFound):
-		response.WriteError(w, http.StatusNotFound, "Webhook não configurado", nil)
-	case errors.Is(err, workflow.ErrWebhookAlreadyExists):
-		response.WriteError(w, http.StatusConflict, "O workflow já possui um webhook", nil)
-	case errors.Is(err, workflow.ErrWebhookInvalidAuthMode):
-		response.WriteValidationError(w, map[string]string{"auth_mode": "Modo de autenticação inválido"})
-	default:
-		response.WriteError(w, http.StatusInternalServerError, "Erro ao configurar webhook", nil)
+	if !response.WriteErrorRefusal(w, err, webhookConfigRefusals) {
+		response.WriteRefusal(w, refusalWebhookConfigFailed)
 	}
 }
 

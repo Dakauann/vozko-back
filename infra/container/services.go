@@ -143,11 +143,12 @@ func (c *Container) initServices() {
 		log.Println("WhatsApp client disabled: missing WHATSAPP_BUSINESS_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN")
 	} else {
 		c.services.whatsapp = whatsapp_client.NewClient(whatsapp_client.Config{
-			BaseURL:       c.cfg.WhatsAppAPIBaseURL,
-			PhoneNumberID: c.cfg.WhatsAppPhoneNumberID,
-			AccessToken:   c.cfg.WhatsAppAccessToken,
-			AppID:         c.cfg.WhatsAppAppID,
-			HTTPClient:    httpClient,
+			BaseURL:        c.cfg.WhatsAppAPIBaseURL,
+			PhoneNumberID:  c.cfg.WhatsAppPhoneNumberID,
+			AccessToken:    c.cfg.WhatsAppAccessToken,
+			AppID:          c.cfg.WhatsAppAppID,
+			HTTPClient:     httpClient,
+			MediaDownloads: mediaDownloads(),
 		})
 	}
 

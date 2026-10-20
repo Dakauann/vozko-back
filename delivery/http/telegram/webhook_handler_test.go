@@ -222,6 +222,7 @@ func TestTopicRouting(t *testing.T) {
 		"callback_query":     {`{"update_id":3,"callback_query":{"id":"q","from":{"id":5,"is_bot":false,"first_name":"M"}}}`, webhook.TopicTelegramMessage},
 		"business_message":   {`{"update_id":4,"business_message":{"message_id":1,"chat":{"id":5,"type":"private"},"date":1}}`, webhook.TopicTelegramMessage},
 		"deleted_business":   {`{"update_id":5,"deleted_business_messages":{"business_connection_id":"c","chat":{"id":5,"type":"private"},"message_ids":[1]}}`, webhook.TopicTelegramMessage},
+		"message_reaction":   {`{"update_id":9,"message_reaction":{"chat":{"id":5,"type":"private"},"message_id":1,"user":{"id":5,"is_bot":false,"first_name":"M"},"date":1,"old_reaction":[],"new_reaction":[{"type":"emoji","emoji":"👍"}]}}`, webhook.TopicTelegramMessage},
 		"my_chat_member":     {`{"update_id":6,"my_chat_member":{"chat":{"id":5,"type":"private"},"from":{"id":5,"is_bot":false,"first_name":"M"},"date":1}}`, webhook.TopicTelegramAccount},
 		"business_connected": {`{"update_id":7,"business_connection":{"id":"c","user":{"id":5,"is_bot":false,"first_name":"L"},"user_chat_id":5,"date":1,"is_enabled":true}}`, webhook.TopicTelegramAccount},
 		"unknown kind":       {`{"update_id":8,"poll_answer":{"poll_id":"p"}}`, webhook.TopicTelegramAccount},

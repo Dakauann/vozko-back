@@ -749,3 +749,49 @@ func TestHeavyFormatsGetTheirOwnQueue(t *testing.T) {
 		t.Fatalf("pdf went to %q; a slow render must not sit in the CSV lane", publisher.topics[1])
 	}
 }
+
+type paramsCheckingRenderer struct {
+	*stubRenderer
+	refusal error
+}
+
+func (r paramsCheckingRenderer) CheckParams(report.Job) error { return r.refusal }
+
+func TestCreateRefusesParametersTheKindCannotRenderBeforeQueueing(t *testing.T) {
+	service, repo, publisher, _ := buildService(t, paramsCheckingRenderer{stubRenderer: okRenderer(), refusal: errors.New("the period is too long")})
+
+	_, err := service.Create(CreateInput{WorkspaceID: "ws-1", RequestedBy: "user-1", Kind: report.KindAttendanceOverview, Format: report.FormatCSV})
+
+	if !errors.Is(err, report.ErrInvalidParams) || len(repo.created) != 0 || len(publisher.published) != 0 {
+		t.Fatalf("err = %v, created %d, published %d", err, len(repo.created), len(publisher.published))
+	}
+}
+
+func TestWorkerFailsARenderTheRequesterMayNotSeeWithoutRetrying(t *testing.T) {
+	renderer := okRenderer()
+	renderer.err = report.ErrNotAllowed
+	service, repo, _, _ := buildService(t, renderer)
+	job := createJob(t, service)
+	ack := &fakeAck{deliveries: 1}
+
+	payload, _ := json.Marshal(report.QueueMessage{JobID: job.ID, WorkspaceID: "ws-1", Kind: job.Kind})
+	NewWorker(service, nil).handle(payload, ack)
+
+	if ack.requeued || repo.failCode[job.ID] != report.FailureForbidden {
+		t.Fatalf("requeued %v, failure %q", ack.requeued, repo.failCode[job.ID])
+	}
+}
+
+func TestWorkerDoesNotRetryParametersTheKindCannotRender(t *testing.T) {
+	renderer := okRenderer()
+	renderer.err = report.ErrInvalidParams
+	service, repo, publisher, _ := buildService(t, renderer)
+	job := createJob(t, service)
+	ack := &fakeAck{deliveries: 1}
+
+	NewWorker(service, nil).handle(publisher.published[0], ack)
+
+	if ack.requeued || repo.failCode[job.ID] != report.FailureRenderFailed {
+		t.Fatalf("requeued %v, failure %q", ack.requeued, repo.failCode[job.ID])
+	}
+}

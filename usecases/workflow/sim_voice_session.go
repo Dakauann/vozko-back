@@ -29,17 +29,19 @@ type callTransferredPayload struct {
 	Notes     string `json:"notes,omitempty"`
 }
 
-func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, wf *workflow.Workflow, trigger *workflow.Node) error {
+func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, wf *workflow.Workflow, trigger *workflow.Node, session SimulationSession) error {
 	send := func(msgType string, payload interface{}) {
 		_ = s.writeJSON(conn, writeMu, simServerMsg{Type: msgType, Payload: payload})
 	}
 
 	keys := make(chan rune, 8)
 	ended := make(chan struct{})
+	starts := make(chan simStart, 4)
 	var hangUp sync.Once
 	endCall := func() { hangUp.Do(func() { close(ended) }) }
 	defer endCall()
-	go readSimulatedKeys(conn, keys, endCall)
+	debugger := newSimDebugger(ctx, &wf.Graph, ended, s.deps.PauseIdleTimeout, func(p simPausedPayload) { send("paused", p) })
+	go readSimulatedKeys(conn, keys, endCall, debugger, starts)
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -57,16 +59,13 @@ func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *web
 			AudioURL:  m.URL,
 		})
 	})
-	registry := NewNodeExecutorRegistry()
-	RegisterDefaultExecutors(registry, ExecutorDeps{VoiceAudio: audio, ConversationEvents: simulationEvents, HTTPEgress: s.deps.HTTPEgress})
+	registry := s.newSimulationRegistry(SimSandbox{
+		WorkspaceID: wf.WorkspaceID, LeadID: uuid.NewString(), Messages: &simMessageRepo{}, Effects: newSimEffects(),
+		RealCallsConfirmed: debugger.realCallsConfirmed,
+	}, audio)
 	runs := newSimRunRepo(func(*workflow.WorkflowRun) {})
 	logs := newSimLogRepo(func(entry *workflow.WorkflowRunLog) {
-		send("node_executed", nodeEventPayload{
-			NodeID:   entry.NodeID,
-			NodeType: string(entry.NodeType),
-			Output:   entry.Output,
-			Error:    entry.Error,
-		})
+		send("node_executed", debugger.nextStep(sandboxStep(entry, workflow.SandboxEffects{}, debugger.pinOf(entry.NodeID))))
 	})
 
 	call := newSimVoiceCall(keys, ended, func(timeout time.Duration) {
@@ -93,26 +92,53 @@ func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *web
 		return s.sendError(conn, writeMu, err.Error())
 	}
 
-	send("sim_started", map[string]string{"runId": run.ID, "workflowId": wf.ID})
-	send("state_update", statePayload{Vars: run.State.Vars})
-	if err := NewRunEngine(runs, logs, registry).ExecuteWithRuntime(run, wf, call); err != nil {
-		send("run_error", map[string]string{"error": err.Error()})
+	if session.AwaitStart {
+		send("sim_ready", simReadyPayload{WorkflowID: wf.ID, TriggerType: string(trigger.Type), RealCallNodes: debugger.realCallNodes()})
+		idle := debugger.idleTimer()
+		defer idle.Stop()
+		for started := false; !started; {
+			select {
+			case req := <-starts:
+				if !req.reproduce {
+					started = true
+					continue
+				}
+				s.refuseCommand(conn, writeMu, "reproduce_run", errReproduceVoice)
+			case <-ended:
+				s.sendCancelled(conn, writeMu, simStopCancelled)
+				return nil
+			case <-idle.C:
+				s.sendCancelled(conn, writeMu, simStopStartTimeout)
+				return nil
+			}
+		}
+	}
+
+	send("sim_started", simStartedPayload{RunID: run.ID, WorkflowID: wf.ID, RealCallNodes: debugger.realCallNodes()})
+	send("state_update", redactedState(run))
+	engine := newSandboxEngine(runs, logs, registry, debugger)
+	if err := engine.ExecuteWithRuntime(run, wf, call); err != nil {
+		send("run_error", runErrorPayload(err.Error(), ""))
 		return nil
 	}
-	send("state_update", statePayload{Vars: run.State.Vars})
+	send("state_update", redactedState(run))
 
+	if reason := debugger.stopped(); reason != "" {
+		s.sendCancelled(conn, writeMu, reason)
+		return nil
+	}
 	switch run.Status {
 	case workflow.RunStatusCompleted:
-		send("run_completed", statePayload{Vars: run.State.Vars})
+		send("run_completed", redactedState(run))
 	case workflow.RunStatusCancelled:
-		send("run_cancelled", nil)
+		s.sendCancelled(conn, writeMu, simStopCancelled)
 	default:
-		send("run_error", map[string]string{"error": run.Error, "status": string(run.Status)})
+		send("run_error", runErrorPayload(run.Error, run.Status))
 	}
 	return nil
 }
 
-func readSimulatedKeys(conn *websocket.Conn, keys chan<- rune, endCall func()) {
+func readSimulatedKeys(conn *websocket.Conn, keys chan<- rune, endCall func(), debugger *simDebugger, starts chan<- simStart) {
 	defer endCall()
 	for {
 		_, raw, err := conn.ReadMessage()
@@ -135,6 +161,10 @@ func readSimulatedKeys(conn *websocket.Conn, keys chan<- rune, endCall func()) {
 			}
 		case "cancel":
 			return
+		default:
+			if !debugger.handle(msg) {
+				offerSimStart(msg, starts)
+			}
 		}
 	}
 }

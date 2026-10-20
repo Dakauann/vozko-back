@@ -88,7 +88,7 @@ func (p *Profiles) Update(ctx context.Context, in ProfileUpdate) (ProfileResult,
 	now := p.now().UTC()
 	var outcome lead.ProfileOutcome
 	saved, err := p.writer.retryingEdit(ctx, in.WorkspaceID, in.LeadID, func(current, next *lead.Lead) (recordEdit, error) {
-		applied, err := next.ApplyProfile(profile, defs, now)
+		applied, err := next.ApplyProfile(profile, defs, now, in.Source)
 		if err != nil {
 			return recordEdit{}, err
 		}
@@ -144,16 +144,64 @@ func checkProfileUpdate(in ProfileUpdate) error {
 	return nil
 }
 
-func (p *Profiles) checkedCEP(ctx context.Context, profile lead.Profile) (lead.Profile, error) {
+type ProfilePreview struct {
+	Changed   []string
+	Conflicts []string
+	Values    map[string]interface{}
+}
+
+const previewLeadName = "Contato Simulado"
+
+func (p *Profiles) Preview(in ProfileUpdate) (ProfilePreview, error) {
+	if strings.TrimSpace(in.WorkspaceID) == "" {
+		return ProfilePreview{}, lead.ErrLeadWorkspaceRequired
+	}
+	if err := checkProfileUpdate(in); err != nil {
+		return ProfilePreview{}, err
+	}
+	if _, _, err := profileCEP(in.Profile); err != nil {
+		return ProfilePreview{}, err
+	}
+	defs, err := p.definitions.ListByObject(in.WorkspaceID, customfield.ObjectLead)
+	if err != nil {
+		return ProfilePreview{}, fmt.Errorf("lead fields of workspace %s: %w", in.WorkspaceID, err)
+	}
+	simulated := &lead.Lead{WorkspaceID: in.WorkspaceID, Name: previewLeadName}
+	simulated.EnsureCollections()
+	outcome, err := simulated.ApplyProfile(in.Profile, defs, p.now().UTC(), in.Source)
+	if err != nil {
+		return ProfilePreview{}, err
+	}
+	values := make(map[string]interface{}, len(outcome.Changed))
+	for _, field := range outcome.Changed {
+		if value, ok := simulated.ProfileValue(field); ok {
+			values[field] = value
+		}
+	}
+	return ProfilePreview{Changed: outcome.Changed, Conflicts: outcome.Conflicts, Values: values}, nil
+}
+
+func profileCEP(profile lead.Profile) (string, bool, error) {
 	raw := strings.TrimSpace(profile.Address.ZipCode)
 	if raw == "" {
+		return "", false, nil
+	}
+	code, err := cep.Parse(raw)
+	if err != nil {
+		return "", false, address.InvalidFieldError{Field: address.FieldZipCode, Rule: address.RuleFormat}
+	}
+	return code, true, nil
+}
+
+func (p *Profiles) checkedCEP(ctx context.Context, profile lead.Profile) (lead.Profile, error) {
+	code, present, err := profileCEP(profile)
+	if err != nil {
+		return lead.Profile{}, err
+	}
+	if !present {
 		return profile, nil
 	}
 	invalid := address.InvalidFieldError{Field: address.FieldZipCode, Rule: address.RuleFormat}
-	code, err := cep.Parse(raw)
-	if err != nil {
-		return lead.Profile{}, invalid
-	}
 	info, err := p.cep.Execute(ctx, code)
 	switch {
 	case errors.Is(err, cep.ErrNotFound):

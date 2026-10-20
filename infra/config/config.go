@@ -98,6 +98,20 @@ type Config struct {
 	TelegramWebhookBaseURL string
 	TelegramBotAPIBaseURL  string
 
+	MercadoLivreAppID             string
+	MercadoLivreClientSecret      string
+	MercadoLivreRedirectURI       string
+	MercadoLivreNotificationToken string
+	MercadoLivreAPIBaseURL        string
+	MercadoLivreAuthURL           string
+
+	TikTokAppID        string
+	TikTokAppSecret    string
+	TikTokAuthorizeURL string
+	TikTokRedirectURI  string
+	TikTokWebhookURL   string
+	TikTokAPIBaseURL   string
+
 	UnofficialWhatsAppWebhookBaseURL string
 	UnofficialWhatsAppServerURL      string
 	UnofficialWhatsAppAdminToken     string
@@ -248,6 +262,20 @@ func LoadConfig() Config {
 
 		TelegramWebhookBaseURL: strings.TrimRight(mustGetEnvTrimmed("TELEGRAM_WEBHOOK_BASE_URL"), "/"),
 		TelegramBotAPIBaseURL:  strings.TrimRight(trimEnv("TELEGRAM_BOT_API_BASE_URL"), "/"),
+
+		MercadoLivreAppID:             mustGetEnvTrimmed("MERCADOLIVRE_APP_ID"),
+		MercadoLivreClientSecret:      mustGetEnvTrimmed("MERCADOLIVRE_CLIENT_SECRET"),
+		MercadoLivreRedirectURI:       mustGetEnvTrimmed("MERCADOLIVRE_REDIRECT_URI"),
+		MercadoLivreNotificationToken: mustGetEnvTrimmed("MERCADOLIVRE_NOTIFICATION_TOKEN"),
+		MercadoLivreAPIBaseURL:        strings.TrimRight(trimEnv("MERCADOLIVRE_API_BASE_URL"), "/"),
+		MercadoLivreAuthURL:           strings.TrimRight(trimEnv("MERCADOLIVRE_AUTH_URL"), "/"),
+
+		TikTokAppID:        mustGetEnvTrimmed("TIKTOK_APP_ID"),
+		TikTokAppSecret:    mustGetEnvTrimmed("TIKTOK_APP_SECRET"),
+		TikTokAuthorizeURL: mustGetEnvTrimmed("TIKTOK_AUTHORIZE_URL"),
+		TikTokRedirectURI:  mustGetEnvTrimmed("TIKTOK_REDIRECT_URI"),
+		TikTokWebhookURL:   mustGetEnvTrimmed("TIKTOK_WEBHOOK_URL"),
+		TikTokAPIBaseURL:   strings.TrimRight(trimEnv("TIKTOK_API_BASE_URL"), "/"),
 
 		UnofficialWhatsAppWebhookBaseURL: strings.TrimRight(
 			mustGetEnvTrimmed("UNOFFICIAL_WHATSAPP_WEBHOOK_BASE_URL"), "/"),

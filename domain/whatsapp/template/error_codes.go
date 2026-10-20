@@ -46,6 +46,14 @@ const (
 	CodeURLButtonTooManyVars    = "template_url_button_too_many_variables"
 	CodeCopyCodeNeedsExample    = "template_copy_code_needs_example"
 
+	CodeFlowButtonNeedsFlow   = "template_flow_button_needs_flow"
+	CodeFlowButtonNeedsScreen = "template_flow_button_needs_screen"
+	CodeInvalidFlowAction     = "template_invalid_flow_action"
+	CodeMultipleFlowButtons   = "template_multiple_flow_buttons"
+	CodeFlowTokenRequired     = "template_flow_token_required"
+	CodeFlowNotPublished      = "template_flow_not_published"
+	CodeFormNotSendable       = "template_form_not_sendable"
+
 	CodeCallPermissionWithButtons      = "template_call_permission_with_buttons"
 	CodeMultipleCallPermissionRequests = "template_multiple_call_permission"
 
@@ -130,6 +138,14 @@ var errorCodes = map[error]string{
 	ErrURLButtonVariableNotEnd: CodeURLButtonVariableNotEnd,
 	ErrURLButtonTooManyVars:    CodeURLButtonTooManyVars,
 	ErrCopyCodeNeedsExample:    CodeCopyCodeNeedsExample,
+
+	ErrFlowButtonNeedsFlow:   CodeFlowButtonNeedsFlow,
+	ErrFlowButtonNeedsScreen: CodeFlowButtonNeedsScreen,
+	ErrInvalidFlowAction:     CodeInvalidFlowAction,
+	ErrMultipleFlowButtons:   CodeMultipleFlowButtons,
+	ErrFlowTokenRequired:     CodeFlowTokenRequired,
+	ErrFlowNotPublished:      CodeFlowNotPublished,
+	ErrFormNotSendable:       CodeFormNotSendable,
 
 	ErrOTPTypeRequired:                 CodeOTPTypeRequired,
 	ErrInvalidOTPType:                  CodeInvalidOTPType,

@@ -19,7 +19,7 @@ import (
 
 func (c *Container) campaignAutomation() *campaignautomation.Step {
 	step, err := campaignautomation.NewStep(
-		workflow_usecase.NewGetWorkflowUseCase(c.repositories.workflow),
+		workflow_usecase.NewGetPublishedWorkflowUseCase(c.repositories.workflow),
 		agent_usecase.NewGetAgentUseCase(c.repositories.agent),
 	)
 	if err != nil {
@@ -36,6 +36,17 @@ func (c *Container) automateCampaignChanges(name string, useCase any) any {
 		log.Fatalf("[campaigns] the %s cannot take the workflow and agent checks", name)
 	}
 	automated.SetAutomation(c.campaignAutomation())
+	return useCase
+}
+
+func (c *Container) automateCampaignEdits(name string, useCase any) any {
+	edited, ok := useCase.(interface {
+		SetAutomation(campaignautomation.Rules)
+	})
+	if !ok {
+		log.Fatalf("[campaigns] the %s cannot take the workflow and agent rules", name)
+	}
+	edited.SetAutomation(c.campaignAutomation())
 	return useCase
 }
 
@@ -60,10 +71,10 @@ func (c *Container) wireUnofficialCampaignCreate(bundle *unofficialWhatsAppCampa
 		SetAutomation(uwcuc.AutomationCheck)
 		SetLeadsByID(uwcuc.LeadsByID)
 		SetIdempotentCampaigns(uwcuc.IdempotentCampaigns)
-		SetGroupSeats(uwcuc.GroupSeats)
+		SetGroupSenders(uwcuc.GroupSenderDirectory)
 	})
 	if !ok {
-		log.Fatalf("[unofficial-whatsapp-campaigns] the campaign creation cannot take the workflow checks, lead targets, idempotency keys and group seats")
+		log.Fatalf("[unofficial-whatsapp-campaigns] the campaign creation cannot take the workflow checks, lead targets, idempotency keys and group senders")
 	}
 	keyed, ok := bundle.Campaigns.(uwcuc.IdempotentCampaigns)
 	if !ok {
@@ -72,7 +83,7 @@ func (c *Container) wireUnofficialCampaignCreate(bundle *unofficialWhatsAppCampa
 	configurable.SetAutomation(c.campaignAutomation())
 	configurable.SetLeadsByID(c.repositories.lead)
 	configurable.SetIdempotentCampaigns(keyed)
-	configurable.SetGroupSeats(c.unofficialWhatsApp.Groups)
+	configurable.SetGroupSenders(bundle.Senders)
 }
 
 func (c *Container) unofficialSends() *leadsend_usecase.Unofficial {

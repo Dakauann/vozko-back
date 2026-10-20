@@ -103,7 +103,7 @@ func TestAnEditSendsEveryComponentAndKeepsWhatVozkoDoesNotModel(t *testing.T) {
 func TestAnEditRefusesToReplaceButtonsVozkoCannotModel(t *testing.T) {
 	server, client := newMetaEditServer(t, `{"id":"x1","components":[
 		{"type":"BODY","text":"Oi"},
-		{"type":"BUTTONS","buttons":[{"type":"FLOW","text":"Abrir","flow_id":"123","flow_action":"navigate"}]}
+		{"type":"BUTTONS","buttons":[{"type":"CATALOG","text":"Ver catalogo"}]}
 	]}`)
 
 	err := client.EditTemplate(context.Background(), "x1", conversation.EditTemplateInput{Components: editedComponents()})

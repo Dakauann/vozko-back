@@ -39,6 +39,11 @@ type PrometheusService struct {
 	leadImport *leadImportMetrics
 	leadAction *leadActionMetrics
 
+	mercadoLivre *prometheus.CounterVec
+	tiktok       *prometheus.CounterVec
+
+	workflow *workflowMetrics
+
 	registry *prometheus.Registry
 }
 
@@ -173,6 +178,9 @@ func NewPrometheusService(replicaID string) *PrometheusService {
 		geocoding:             newGeocodingMetrics(reg),
 		leadImport:            newLeadImportMetrics(reg),
 		leadAction:            newLeadActionMetrics(reg),
+		mercadoLivre:          newMercadoLivreEvents(reg),
+		tiktok:                newTikTokEvents(reg),
+		workflow:              newWorkflowMetrics(reg),
 		registry:              registry,
 	}
 }

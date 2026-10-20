@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"path"
@@ -24,6 +23,7 @@ import (
 	template_domain "vozko/domain/whatsapp/template"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	wo "vozko/domain/whatsapp_outreach"
+	wf "vozko/domain/whatsappform"
 	"vozko/domain/workflow"
 	media_infra "vozko/infra/media"
 )
@@ -83,6 +83,8 @@ type SenderDeps struct {
 	EntryLeads lead_domain.EntryLeads
 
 	Events ce.Logger
+
+	MediaFetcher MediaFetcher
 }
 
 type whatsappSender struct {
@@ -272,16 +274,21 @@ func (s *whatsappSender) SendButtonsWithInput(ctx context.Context, run *workflow
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
+		metadata, err := choicesMetadata(buttonChoices(input))
+		if err != nil {
+			return nil, usedBusinessPhoneID, err
+		}
 		record := conversation.MessageHistoryRecord{
 			EntryID:     run.EntryID,
 			EntryType:   shared.EntryTypeWhatsApp,
 			Channel:     conversation.MessageChannelWhatsApp,
-			MessageType: conversation.MessageTypeTemplate,
+			MessageType: conversation.MessageTypeAIResponse,
 			MessageID:   strings.TrimSpace(res.MessageID),
 			From:        from,
 			To:          target.leadNumber,
 			Text:        input.BodyText,
 			Timestamp:   time.Now().UTC(),
+			Metadata:    metadata,
 		}
 		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
@@ -331,16 +338,21 @@ func (s *whatsappSender) SendListWithInput(ctx context.Context, run *workflow.Wo
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
+		metadata, err := listMetadata(input)
+		if err != nil {
+			return nil, usedBusinessPhoneID, err
+		}
 		record := conversation.MessageHistoryRecord{
 			EntryID:     run.EntryID,
 			EntryType:   shared.EntryTypeWhatsApp,
 			Channel:     conversation.MessageChannelWhatsApp,
-			MessageType: conversation.MessageTypeTemplate,
+			MessageType: conversation.MessageTypeAIResponse,
 			MessageID:   strings.TrimSpace(res.MessageID),
 			From:        from,
 			To:          target.leadNumber,
 			Text:        input.BodyText,
 			Timestamp:   time.Now().UTC(),
+			Metadata:    metadata,
 		}
 		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
@@ -393,6 +405,10 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 		}
 	}
 	if uploadErr != nil {
+		if media_domain.DownloadRefused(uploadErr) {
+			log.Printf("[workflow][whatsapp_sender] media download refused for %s, not sending: %v", mediaURL, uploadErr)
+			return nil, usedBusinessPhoneID, fmt.Errorf("send media: %w", uploadErr)
+		}
 		if errors.Is(uploadErr, errMediaNotFound) {
 			log.Printf("[workflow][whatsapp_sender] media does not exist at %s, not sending: %v", mediaURL, uploadErr)
 			return nil, usedBusinessPhoneID, fmt.Errorf("send media: %w", uploadErr)
@@ -547,6 +563,10 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		BodyParams:      params,
 		HeaderParams:    headerParams,
 		EntryID:         entryID,
+		Origin:          wf.OriginWorkflow,
+		OriginRef:       run.WorkflowID,
+		LeadID:          target.leadID,
+		WorkflowRunID:   run.ID,
 	})
 	if err != nil {
 		return nil, usedBusinessPhoneID, err
@@ -722,36 +742,33 @@ func (s *whatsappSender) ensureTemplatePhone(businessPhoneID, templateWABAID str
 
 const maxMediaDownloadBytes = 25 * 1024 * 1024
 
-var errMediaNotFound = errors.New("media not found at origin")
+var errMediaNotFound = media_domain.ErrRemoteFileMissing
+
+type MediaFetcher interface {
+	FetchMedia(ctx context.Context, mediaURL string) ([]byte, string, error)
+}
+
+type remoteMediaFetcher struct {
+	files media_domain.RemoteFiles
+}
+
+func MediaFetcherOf(files media_domain.RemoteFiles) MediaFetcher {
+	return remoteMediaFetcher{files: files}
+}
+
+func (f remoteMediaFetcher) FetchMedia(ctx context.Context, mediaURL string) ([]byte, string, error) {
+	file, err := media_domain.Download(ctx, f.files, mediaURL, maxMediaDownloadBytes)
+	if err != nil {
+		return nil, "", fmt.Errorf("download %s: %w", mediaURL, err)
+	}
+	return file.Data, file.ContentType, nil
+}
 
 func (s *whatsappSender) downloadMedia(ctx context.Context, mediaURL string) ([]byte, string, error) {
-	httpClient := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mediaURL, nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid media url: %w", err)
+	if s.deps.MediaFetcher == nil {
+		return nil, "", media_domain.ErrRemoteFilesUnwired
 	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("download failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
-			return nil, "", fmt.Errorf("%w (status %d)", errMediaNotFound, resp.StatusCode)
-		}
-		return nil, "", fmt.Errorf("download returned status %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxMediaDownloadBytes+1))
-	if err != nil {
-		return nil, "", fmt.Errorf("read failed: %w", err)
-	}
-	if len(data) > maxMediaDownloadBytes {
-		return nil, "", fmt.Errorf("media exceeds %d bytes", maxMediaDownloadBytes)
-	}
-	return data, resp.Header.Get("Content-Type"), nil
+	return s.deps.MediaFetcher.FetchMedia(ctx, mediaURL)
 }
 
 func (s *whatsappSender) downloadAndUpload(ctx context.Context, client conversation.WhatsAppClient, mediaURL, mediaType string) (string, string, error) {
@@ -952,6 +969,9 @@ func (s *whatsappSender) sendAudioAsVoiceNote(
 	to, mediaURL string,
 ) (*conversation.SendTextMessageOutput, error) {
 	data, _, err := s.downloadMedia(ctx, mediaURL)
+	if media_domain.DownloadRefused(err) {
+		return nil, fmt.Errorf("send audio: %w", err)
+	}
 	if err != nil {
 		log.Printf("[workflow][whatsapp_sender] audio download failed for %s, falling back to link: %v", mediaURL, err)
 		return client.SendAudioMessage(ctx, conversation.SendAudioMessageInput{To: to, AudioURL: mediaURL})

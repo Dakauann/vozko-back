@@ -7,6 +7,7 @@ const (
 	TopicWhatsAppPhone       = "webhook.whatsapp.phone"
 	TopicWhatsAppTemplate    = "webhook.whatsapp.template"
 	TopicWhatsAppCoexistence = "webhook.whatsapp.coexistence"
+	TopicWhatsAppFlows       = "webhook.whatsapp.flows"
 	TopicAsaasPayment        = "webhook.asaas.payment"
 	TopicMercadoPagoPayment  = "webhook.mercadopago.payment"
 
@@ -24,10 +25,21 @@ const (
 	TopicTelegramMessage = "webhook.telegram.message"
 	TopicTelegramAccount = "webhook.telegram.account"
 
+	TopicMercadoLivreMessage  = "webhook.mercadolivre.message"
+	TopicMercadoLivreQuestion = "webhook.mercadolivre.question"
+	TopicMercadoLivreOrder    = "webhook.mercadolivre.order"
+
+	TopicTikTokMessage = "webhook.tiktok.message"
+	TopicTikTokComment = "webhook.tiktok.comment"
+
 	TopicUnofficialWhatsAppMessage  = "webhook.unofficialwhatsapp.message"
 	TopicUnofficialWhatsAppHistory  = "webhook.unofficialwhatsapp.history"
 	TopicUnofficialWhatsAppInstance = "webhook.unofficialwhatsapp.instance"
 )
+
+func IsWhatsAppFlowsField(field string) bool {
+	return field == "flows"
+}
 
 func TopicForUnofficialWhatsAppEvent(event string) string {
 	switch event {

@@ -68,7 +68,7 @@ func turnsOldestFirst(newestFirst []*conversation.Message) []ld.Turn {
 		if m.FromCustomer() {
 			role = ld.RoleCustomer
 		}
-		turns = append(turns, ld.Turn{Role: role, Text: m.Text, At: m.CreatedAt})
+		turns = append(turns, ld.Turn{Role: role, Text: m.ReadableText(), At: m.CreatedAt})
 	}
 	return turns
 }

@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	openrouter "github.com/revrost/go-openrouter"
-
 	"vozko/domain/ai"
 )
 
@@ -83,35 +81,55 @@ func (f *httpGenerationFetcher) FetchUsage(ctx context.Context, generationID str
 	return payload.Data.TokensPrompt, payload.Data.TokensCompletion, costToMicros(payload.Data.TotalCost), true
 }
 
-func (s *Service) billStreamUsage(workspaceID, reference, model, generationID string, usage *openrouter.Usage) {
-	if workspaceID == "" {
-		log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", model)
+const (
+	leakNoIDBeforeTimeout = "no_id_before_timeout"
+	leakRecoveryFailed    = "recovery_failed"
+	leakProviderError     = "provider_error"
+	leakMissingWorkspace  = "missing_workspace"
+)
+
+func (s *Service) countLeak(reason string) {
+	s.billingMetrics.IncBillingSkipped(reason)
+}
+
+func (s *Service) billCall(target billingTarget, ledger *generationLedger, leakReason string) {
+	generationID, usage := ledger.snapshot()
+	if target.workspaceID == "" {
+		log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", target.model)
+		s.countLeak(leakMissingWorkspace)
 		return
 	}
 	if usage != nil {
-		s.publishBillingEvent(workspaceID, reference, model, callUsageOf(usage))
+		s.publishBillingEvent(target.workspaceID, target.reference, target.model, callUsageOf(usage))
 		return
 	}
-	if s.usageFetcher == nil || strings.TrimSpace(generationID) == "" {
-		logUnbilled(workspaceID, model, generationID)
+	if strings.TrimSpace(generationID) == "" {
+		logUnbilled(target.workspaceID, target.model, generationID)
+		s.countLeak(leakReason)
+		return
+	}
+	if s.usageFetcher == nil {
+		logUnbilled(target.workspaceID, target.model, generationID)
+		s.countLeak(leakRecoveryFailed)
 		return
 	}
 	s.recoveries.Add(1)
 	go func() {
 		defer s.recoveries.Done()
-		s.recoverStreamUsage(workspaceID, reference, model, generationID)
+		s.recoverUsage(target, generationID)
 	}()
 }
 
-func (s *Service) recoverStreamUsage(workspaceID, reference, model, generationID string) {
+func (s *Service) recoverUsage(target billingTarget, generationID string) {
 	pt, ct, costMicros, ok := fetchWithRetry(context.Background(), s.usageFetcher, s.usageRetryDelays, generationID)
 	if !ok {
-		logUnbilled(workspaceID, model, generationID)
+		logUnbilled(target.workspaceID, target.model, generationID)
+		s.countLeak(leakRecoveryFailed)
 		return
 	}
 	log.Printf("[ai-billing] recovered usage via /generation id=%s model=%s ws=%s prompt=%d completion=%d cost=%dµ",
-		generationID, model, workspaceID, pt, ct, costMicros)
-	s.publishBillingEvent(workspaceID, reference, model, ai.CallUsage{PromptTokens: pt, CompletionTokens: ct, ProviderCostMicros: costMicros})
+		generationID, target.model, target.workspaceID, pt, ct, costMicros)
+	s.publishBillingEvent(target.workspaceID, target.reference, target.model, ai.CallUsage{PromptTokens: pt, CompletionTokens: ct, ProviderCostMicros: costMicros})
 }
 
 func fetchWithRetry(ctx context.Context, fetcher generationUsageFetcher, delays []time.Duration, generationID string) (int, int, int64, bool) {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
 	"vozko/infra/database/sqlexpr"
+	"vozko/infra/repositories/departmentscope"
 
 	"github.com/lib/pq"
 	"gorm.io/gorm"
@@ -24,27 +24,7 @@ type repository struct {
 }
 
 func departmentScopeClause(deptColumn, entryIDColumn string, departmentIDs []string, restrict bool, assigneeUserID string) (string, []interface{}) {
-	if !restrict {
-		return "", nil
-	}
-	if assigneeUserID != "" && entryIDColumn != "" {
-		if len(departmentIDs) == 0 {
-			clause := fmt.Sprintf(
-				" AND EXISTS (SELECT 1 FROM inbox_assignments ia_d WHERE ia_d.entry_id = %s AND ia_d.assigned_user_id = ?)",
-				entryIDColumn,
-			)
-			return clause, []interface{}{assigneeUserID}
-		}
-		clause := fmt.Sprintf(
-			" AND (%s = ANY(?::uuid[]) OR EXISTS (SELECT 1 FROM inbox_assignments ia_d WHERE ia_d.entry_id = %s AND ia_d.assigned_user_id = ?))",
-			deptColumn, entryIDColumn,
-		)
-		return clause, []interface{}{pq.Array(departmentIDs), assigneeUserID}
-	}
-	if len(departmentIDs) == 0 {
-		return " AND 1 = 0", nil
-	}
-	return fmt.Sprintf(" AND %s = ANY(?::uuid[])", deptColumn), []interface{}{pq.Array(departmentIDs)}
+	return departmentscope.Clause(deptColumn, entryIDColumn, departmentIDs, restrict, assigneeUserID)
 }
 
 func assignedSelfClause(entryIDColumn, assignedUserID string) (string, []interface{}) {
@@ -75,29 +55,45 @@ func (r *repository) touchEntryMessageClocks(entryID, entryType string, sentBy c
 	if table == "" || entryID == "" || at.IsZero() {
 		return
 	}
+	sql, args := messageClockUpdate(table, entryID, entryType, sentBy, at)
+	if err := r.db.Exec(sql, args...).Error; err != nil {
+		log.Printf("[conversation] message clock bump failed (%s %s): %v", entryType, entryID, err)
+	}
+}
 
-	setCustomer := sentBy.IsContact()
-	setAgent := sentBy.FromTheBusiness()
-
+func messageClockUpdate(table, entryID, entryType string, sentBy conversation.SentBy, at time.Time) (string, []interface{}) {
 	sql := fmt.Sprintf(`UPDATE %s SET last_message_at = CASE
 			WHEN last_message_at IS NULL OR last_message_at < ? THEN ? ELSE last_message_at END`, table)
 	args := []interface{}{at, at}
-	if setCustomer {
+	if sentBy.IsContact() {
 		sql += `, last_customer_message_at = CASE
 			WHEN last_customer_message_at IS NULL OR last_customer_message_at < ? THEN ? ELSE last_customer_message_at END`
 		args = append(args, at, at)
 	}
-	if setAgent {
+	if sentBy.FromTheBusiness() {
 		sql += `, last_agent_message_at = CASE
 			WHEN last_agent_message_at IS NULL OR last_agent_message_at < ? THEN ? ELSE last_agent_message_at END`
 		args = append(args, at, at)
 	}
-	sql += ` WHERE id = ?`
-	args = append(args, entryID)
-
-	if err := r.db.Exec(sql, args...).Error; err != nil {
-		log.Printf("[conversation] message clock bump failed (%s %s): %v", entryType, entryID, err)
+	switch {
+	case sentBy.IsContact():
+		sql += `, awaiting_reply_since = CASE
+			WHEN EXISTS (SELECT 1 FROM conversation_messages rw
+				WHERE rw.entry_id = ? AND rw.entry_type = ? AND rw.deleted_at IS NULL
+				  AND ` + sqlexpr.SentAsReply("rw") + ` AND rw.created_at >= ?) THEN awaiting_reply_since
+			WHEN awaiting_reply_since IS NULL OR awaiting_reply_since > ? THEN ?
+			ELSE awaiting_reply_since END`
+		args = append(args, entryID, entryType, at, at, at)
+	case sentBy.AnswersTheCustomer():
+		sql += `, awaiting_reply_since = CASE
+			WHEN awaiting_reply_since IS NULL OR awaiting_reply_since > ? THEN awaiting_reply_since
+			ELSE (SELECT MIN(cw.created_at) FROM conversation_messages cw
+				WHERE cw.entry_id = ? AND cw.entry_type = ? AND cw.deleted_at IS NULL
+				  AND ` + sqlexpr.SentByContact("cw") + ` AND cw.created_at > ?) END`
+		args = append(args, at, entryID, entryType, at)
 	}
+	sql += ` WHERE id = ?`
+	return sql, append(args, entryID)
 }
 
 func (r *repository) recomputeEntryLastMessageAt(entryID, entryType string) {
@@ -179,6 +175,9 @@ func (r *repository) Update(messageID string, message *conversation.Message) err
 	if string(message.MediaType) != "" {
 		updates["media_type"] = string(message.MediaType)
 	}
+	for column, value := range messageStateUpdates(message) {
+		updates[column] = value
+	}
 
 	if len(updates) == 0 {
 		return nil
@@ -195,6 +194,23 @@ func (r *repository) Update(messageID string, message *conversation.Message) err
 		return conversation.ErrMessageNotFound
 	}
 	return nil
+}
+
+func messageStateUpdates(message *conversation.Message) map[string]interface{} {
+	updates := map[string]interface{}{}
+	if len(message.Metadata) > 0 {
+		updates["metadata"] = []byte(message.Metadata)
+	}
+	if message.Transcript != "" {
+		updates["transcript"] = message.Transcript
+	}
+	if message.EditedAt != nil {
+		updates["edited_at"] = *message.EditedAt
+	}
+	if message.RetractedAt != nil {
+		updates["retracted_at"] = *message.RetractedAt
+	}
+	return updates
 }
 
 func (r *repository) Delete(messageID string) error {
@@ -263,7 +279,12 @@ func (r *repository) ListByEntryPaginated(input conversation.ListMessagesInput) 
 		query = query.Limit(input.Limit)
 	}
 
-	if err := query.Order("created_at DESC").Find(&dbMessages).Error; err != nil {
+	readsForward := input.After != nil && input.Before == nil
+	order := "created_at DESC"
+	if readsForward {
+		order = "created_at ASC"
+	}
+	if err := query.Order(order).Find(&dbMessages).Error; err != nil {
 		return nil, err
 	}
 
@@ -271,8 +292,17 @@ func (r *repository) ListByEntryPaginated(input conversation.ListMessagesInput) 
 	for i := range dbMessages {
 		messages = append(messages, mapSchemaToDomain(&dbMessages[i]))
 	}
+	if readsForward {
+		reverseNewestFirst(messages)
+	}
 
 	return messages, nil
+}
+
+func reverseNewestFirst(messages []*conversation.Message) {
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
 }
 
 func (r *repository) MarkAsRead(input conversation.MarkAsReadInput) (int64, error) {
@@ -433,7 +463,11 @@ func mapDomainToSchema(message *conversation.Message) *schema.ConversationMessag
 		SentVia:           string(message.SentVia),
 		SenderKind:        string(message.SentBy.Kind()),
 		SenderID:          message.SentBy.ID(),
+		ClientRequestID:   nilIfEmpty(message.ClientRequestID),
 		Metadata:          message.Metadata,
+		Transcript:        message.Transcript,
+		EditedAt:          message.EditedAt,
+		RetractedAt:       message.RetractedAt,
 		CreatedAt:         message.CreatedAt,
 		UpdatedAt:         message.UpdatedAt,
 	}
@@ -467,10 +501,28 @@ func mapSchemaToDomain(message *schema.ConversationMessage) *conversation.Messag
 		DeliveryStatus:    conversation.DeliveryStatus(message.DeliveryStatus),
 		SentVia:           conversation.MessageTransport(message.SentVia),
 		SentBy:            conversation.RestoreSentBy(message.SenderKind, message.SenderID),
+		ClientRequestID:   valueOrEmpty(message.ClientRequestID),
 		Metadata:          message.Metadata,
+		Transcript:        message.Transcript,
+		EditedAt:          message.EditedAt,
+		RetractedAt:       message.RetractedAt,
 		CreatedAt:         message.CreatedAt,
 		UpdatedAt:         message.UpdatedAt,
 	}
+}
+
+func nilIfEmpty(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func cloneBytes(src []byte) []byte {
@@ -546,6 +598,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		aiFields += ", ''::text AS conversation_status"
 	}
 	aiFields += ", " + ch.closeFieldsSQL()
+	aiFields += ", " + ch.messageClockFieldsSQL()
 	entryJoin := ch.entryJoinOn("e.entry_id")
 
 	if useCampaignFilter {
@@ -576,6 +629,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		CampaignName    string     `gorm:"column:campaign_name"`
 		UnreadCount     int64      `gorm:"column:unread_count"`
 		LastMessageText string     `gorm:"column:last_message_text"`
+		LastRetracted   bool       `gorm:"column:last_message_retracted"`
 		LastMessageType string     `gorm:"column:last_message_type"`
 		LastMessageAt   time.Time  `gorm:"column:last_message_at"`
 		LastMessageFrom string     `gorm:"column:last_message_from"`
@@ -593,6 +647,9 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		CloseReason     string     `gorm:"column:close_reason"`
 		CloseOutcome    string     `gorm:"column:close_outcome"`
 		ClosedAt        *time.Time `gorm:"column:closed_at"`
+		CustomerClock   *time.Time `gorm:"column:last_customer_message_at"`
+		AgentClock      *time.Time `gorm:"column:last_agent_message_at"`
+		AwaitingSince   *time.Time `gorm:"column:awaiting_reply_since"`
 	}
 
 	query := fmt.Sprintf(`
@@ -601,14 +658,14 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			SELECT e.entry_id, %s AS lead_id, %s AS business_phone_id,
 			       %s AS campaign_id, %s AS campaign_name,
 			       %s,
-			       lm.text AS last_message_text, lm.message_type AS last_message_type,
+			       lm.text AS last_message_text, (lm.retracted_at IS NOT NULL) AS last_message_retracted, lm.message_type AS last_message_type,
 			       lm.created_at AS last_message_at, lm.from_participant AS last_message_from,
 			       lm.sender_kind AS last_message_sender_kind, lm.sender_id AS last_message_sender_id,
 			       (lm.media_id IS NOT NULL) AS has_media, COALESCE(lm.media_type, '') AS media_type
 			FROM filtered_entries e
 			%s
 			JOIN LATERAL (
-				SELECT cm.text, cm.message_type, cm.created_at, cm.from_participant, cm.sender_kind, cm.sender_id, cm.media_id, cm.media_type
+				SELECT cm.text, cm.retracted_at, cm.message_type, cm.created_at, cm.from_participant, cm.sender_kind, cm.sender_id, cm.media_id, cm.media_type
 				FROM conversation_messages cm
 				WHERE cm.entry_id = e.entry_id AND cm.entry_type = ? AND cm.deleted_at IS NULL
 				ORDER BY cm.created_at DESC, cm.id DESC LIMIT 1
@@ -637,8 +694,9 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 		       -- back as enabled whatever an operator had set.
 		       te.automation_enabled, te.conversation_status,
 		       te.close_source, te.close_reason, te.close_outcome, te.closed_at,
+		       te.last_customer_message_at, te.last_agent_message_at, te.awaiting_reply_since,
 		       COALESCE(uc.cnt, 0) AS unread_count,
-		       te.last_message_text, te.last_message_type, te.last_message_at,
+		       te.last_message_text, te.last_message_retracted, te.last_message_type, te.last_message_at,
 		       te.last_message_from, te.last_message_sender_kind, te.last_message_sender_id,
 		       te.has_media, te.media_type
 		FROM top_entries te
@@ -668,6 +726,7 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 			BusinessPhoneID:       r.BusinessPhoneID,
 			UnreadCount:           r.UnreadCount,
 			LastMessageText:       r.LastMessageText,
+			LastMessageRetracted:  r.LastRetracted,
 			LastMessageType:       conversation.MessageType(r.LastMessageType),
 			LastMessageAt:         r.LastMessageAt,
 			LastMessageFrom:       r.LastMessageFrom,
@@ -687,618 +746,13 @@ func (r *repository) getEntriesWithMessages(campaignID string, containerKind con
 				Outcome:  r.CloseOutcome,
 				ClosedAt: r.ClosedAt,
 			},
+			LastCustomerMessageAt: r.CustomerClock,
+			LastAgentMessageAt:    r.AgentClock,
+			AwaitingReplySince:    r.AwaitingSince,
 		})
 	}
 
 	return entries, totalCount, nil
-}
-
-func (r *repository) SearchEntriesWithMessages(input conversation.SearchEntriesInput) ([]conversation.EntryWithLastMessage, int64, error) {
-
-	useWorkspaceFilter := input.WorkspaceID != "" && input.CampaignID == ""
-	useCampaignFilter := input.CampaignID != ""
-
-	if useWorkspaceFilter {
-		return r.searchEntriesByWorkspace(input)
-	}
-
-	var filteredIDs []string
-	if !useCampaignFilter {
-		if len(input.EntryIDs) == 0 {
-			return nil, 0, nil
-		}
-
-		filteredIDs = make([]string, 0, len(input.EntryIDs))
-		for _, id := range input.EntryIDs {
-			if id != "" {
-				filteredIDs = append(filteredIDs, id)
-			}
-		}
-		if len(filteredIDs) == 0 {
-			return nil, 0, nil
-		}
-	}
-
-	et := string(input.EntryType)
-
-	ch, ok := channelQueryFor(input.EntryType)
-	if !ok {
-		return nil, 0, fmt.Errorf("invalid entry type: %s", et)
-	}
-
-	var campaignFilter string
-	var campaignFilterArgs []interface{}
-
-	entryJoin := ch.entryJoinOn("entries.entry_id")
-	leadJoin := ch.ContactJoin
-
-	if useCampaignFilter {
-		var departmentArgs []interface{}
-		campaignFilter, departmentArgs = ch.filterForKind(input.ContainerKind,
-			func(column, entryCol string) (string, []interface{}) {
-				return departmentScopeClause(column, entryCol,
-					input.DepartmentIDs, input.RestrictDepartments, input.AssigneeOverrideUserID)
-			})
-		campaignFilterArgs = append([]interface{}{input.CampaignID}, departmentArgs...)
-	}
-
-	var cteConditions []string
-	var cteArgs []interface{}
-
-	if useCampaignFilter {
-		cteConditions = []string{campaignFilter, "cm.entry_type = ?", "cm.entry_id IS NOT NULL", "cm.deleted_at IS NULL"}
-		cteArgs = append(campaignFilterArgs, et)
-	} else {
-		cteConditions = []string{"cm.entry_id = ANY(?::uuid[])", "cm.entry_type = ?", "cm.entry_id IS NOT NULL", "cm.deleted_at IS NULL"}
-		cteArgs = []interface{}{pq.Array(filteredIDs), et}
-	}
-
-	if len(input.StageIDs) > 0 && input.StageWorkspaceID != "" && !useCampaignFilter {
-		if len(input.StageIDs) == 1 && input.StageIDs[0] == "__unstaged__" {
-
-			cteConditions = append(cteConditions, "cm.entry_id NOT IN (SELECT entry_id FROM entry_stages WHERE workspace_id = ? AND deleted_at IS NULL)")
-			cteArgs = append(cteArgs, input.StageWorkspaceID)
-		} else {
-			cteConditions = append(cteConditions, "cm.entry_id IN (SELECT entry_id FROM entry_stages WHERE stage_id = ANY(?) AND workspace_id = ? AND deleted_at IS NULL)")
-			cteArgs = append(cteArgs, pq.Array(input.StageIDs), input.StageWorkspaceID)
-		}
-	}
-
-	if input.Channel != "" {
-		cteConditions = append(cteConditions, "cm.channel = ?")
-		cteArgs = append(cteArgs, input.Channel)
-	}
-
-	if input.DateFrom != nil {
-		cteConditions = append(cteConditions, "cm.created_at >= ?")
-		cteArgs = append(cteArgs, *input.DateFrom)
-	}
-	if input.DateTo != nil {
-		cteConditions = append(cteConditions, "cm.created_at <= ?")
-		cteArgs = append(cteArgs, *input.DateTo)
-	}
-
-	if input.AssignedUserID != "" {
-		cteConditions = append(cteConditions, "(NOT EXISTS (SELECT 1 FROM inbox_assignments ia WHERE ia.entry_id = cm.entry_id) OR EXISTS (SELECT 1 FROM inbox_assignments ia2 WHERE ia2.entry_id = cm.entry_id AND ia2.assigned_user_id = ?))")
-		cteArgs = append(cteArgs, input.AssignedUserID)
-	}
-
-	if input.ResponsibleUnassigned {
-		cteConditions = append(cteConditions, "NOT EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id)")
-	} else if input.ResponsibleKind != "" {
-		cteConditions = append(cteConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id AND iaf.assignee_kind = ?)")
-		cteArgs = append(cteArgs, string(input.ResponsibleKind))
-	} else if input.ResponsibleUserID != "" {
-		cteConditions = append(cteConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = cm.entry_id AND iaf.assigned_user_id = ?)")
-		cteArgs = append(cteArgs, input.ResponsibleUserID)
-	}
-
-	baseQuery := fmt.Sprintf(`
-		WITH entries AS (
-			SELECT DISTINCT entry_id
-			FROM conversation_messages cm
-			WHERE %s
-		)
-		SELECT entries.entry_id
-		FROM entries
-		%s
-		%s
-	`, joinConditions(cteConditions), entryJoin, leadJoin)
-
-	whereConditions := []string{}
-	whereArgs := []interface{}{}
-
-	{
-		statusCol := ch.StatusColumn
-		if statusCol != "" {
-			if input.ConversationStatus == "" {
-				whereConditions = append(whereConditions, statusCol+" IS DISTINCT FROM 'finished'")
-			} else {
-				whereConditions = append(whereConditions, statusCol+" = ?")
-				whereArgs = append(whereArgs, string(input.ConversationStatus))
-			}
-		}
-	}
-
-	if useCampaignFilter && len(input.StageIDs) > 0 && input.StageWorkspaceID != "" {
-		if len(input.StageIDs) == 1 && input.StageIDs[0] == "__unstaged__" {
-			whereConditions = append(whereConditions, "NOT EXISTS (SELECT 1 FROM entry_stages et WHERE et.entry_id = entries.entry_id AND et.workspace_id = ? AND et.deleted_at IS NULL)")
-			whereArgs = append(whereArgs, input.StageWorkspaceID)
-		} else {
-			whereConditions = append(whereConditions, "entries.entry_id IN (SELECT entry_id FROM entry_stages WHERE stage_id = ANY(?) AND workspace_id = ? AND deleted_at IS NULL)")
-			whereArgs = append(whereArgs, pq.Array(input.StageIDs), input.StageWorkspaceID)
-		}
-	}
-
-	if input.Query != "" {
-		queryPattern := "%%" + input.Query + "%%"
-		if input.MessageSearch == "" {
-			if useCampaignFilter {
-				whereConditions = append(whereConditions, `(LOWER(l.name) LIKE LOWER(?) OR l.number LIKE ? OR entries.entry_id IN (
-					SELECT DISTINCT cm_q.entry_id
-					FROM conversation_messages cm_q
-					WHERE cm_q.entry_type = ?
-					  AND cm_q.deleted_at IS NULL AND LOWER(cm_q.text) LIKE LOWER(?)
-				))`)
-				whereArgs = append(whereArgs, queryPattern, queryPattern, et, queryPattern)
-			} else {
-				whereConditions = append(whereConditions, `(LOWER(l.name) LIKE LOWER(?) OR l.number LIKE ? OR entries.entry_id IN (
-					SELECT DISTINCT cm_q.entry_id
-					FROM conversation_messages cm_q
-					WHERE cm_q.entry_id = ANY(?::uuid[]) AND cm_q.entry_type = ?
-					  AND cm_q.deleted_at IS NULL AND LOWER(cm_q.text) LIKE LOWER(?)
-				))`)
-				whereArgs = append(whereArgs, queryPattern, queryPattern, pq.Array(filteredIDs), et, queryPattern)
-			}
-		} else {
-			whereConditions = append(whereConditions, "(LOWER(l.name) LIKE LOWER(?) OR l.number LIKE ?)")
-			whereArgs = append(whereArgs, queryPattern, queryPattern)
-		}
-	}
-
-	if input.MessageSearch != "" {
-		if useCampaignFilter {
-			whereConditions = append(whereConditions, `entries.entry_id IN (
-				SELECT DISTINCT cm2.entry_id
-				FROM conversation_messages cm2
-				WHERE cm2.entry_type = ?
-				  AND cm2.deleted_at IS NULL AND LOWER(cm2.text) LIKE LOWER(?)
-			)`)
-			whereArgs = append(whereArgs, et, "%%"+input.MessageSearch+"%%")
-		} else {
-			whereConditions = append(whereConditions, `entries.entry_id IN (
-				SELECT DISTINCT cm2.entry_id
-				FROM conversation_messages cm2
-				WHERE cm2.entry_id = ANY(?::uuid[]) AND cm2.entry_type = ?
-				  AND cm2.deleted_at IS NULL AND LOWER(cm2.text) LIKE LOWER(?)
-			)`)
-			whereArgs = append(whereArgs, pq.Array(filteredIDs), et, "%%"+input.MessageSearch+"%%")
-		}
-	}
-
-	if input.MinMessageCount != nil || input.MaxMessageCount != nil {
-		countSubquery := `(SELECT COUNT(*) FROM conversation_messages cm3 WHERE cm3.entry_id = entries.entry_id AND cm3.entry_type = ? AND cm3.deleted_at IS NULL)`
-		if input.MinMessageCount != nil {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s >= ?", countSubquery))
-			whereArgs = append(whereArgs, et, *input.MinMessageCount)
-		}
-		if input.MaxMessageCount != nil {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s <= ?", countSubquery))
-			whereArgs = append(whereArgs, et, *input.MaxMessageCount)
-		}
-	}
-
-	if input.HasUnread != nil {
-		unreadSubquery := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = entries.entry_id AND cm4.entry_type = ? AND cm4.read = false AND ` + sqlexpr.SentByContact("cm4") + ` AND cm4.deleted_at IS NULL)`
-		if *input.HasUnread {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s > 0", unreadSubquery))
-		} else {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s = 0", unreadSubquery))
-		}
-		whereArgs = append(whereArgs, et)
-	}
-
-	if input.WindowOpen != nil && ch.WindowSubquery != "" {
-		if *input.WindowOpen {
-			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id IN (%s)", ch.WindowSubquery))
-		} else {
-			whereConditions = append(whereConditions, fmt.Sprintf("entries.entry_id NOT IN (%s)", ch.WindowSubquery))
-		}
-	}
-
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + joinConditions(whereConditions)
-	}
-
-	countQuery := baseQuery + " " + whereClause
-	countQuery = "SELECT COUNT(*) FROM (" + countQuery + ") AS matching_entries"
-
-	allArgs := append(cteArgs, whereArgs...)
-	var totalCount int64
-	if err := r.db.Raw(countQuery, allArgs...).Scan(&totalCount).Error; err != nil {
-		return nil, 0, fmt.Errorf("error counting search results: %w", err)
-	}
-
-	if totalCount == 0 {
-		return nil, 0, nil
-	}
-
-	page := input.Page
-	pageSize := input.PageSize
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 50 {
-		pageSize = 50
-	}
-	offset := (page - 1) * pageSize
-
-	sortDirection := "DESC"
-	if input.SortOrder == "asc" {
-		sortDirection = "ASC"
-	}
-
-	var matchingQuery string
-	var allArgsForMatch []interface{}
-
-	if useCampaignFilter {
-
-		matchingQuery = baseQuery + " " + whereClause
-		matchingQuery = fmt.Sprintf(`
-			SELECT matching.entry_id FROM (%s) AS matching
-			JOIN LATERAL (
-				SELECT cm_l.created_at
-				FROM conversation_messages cm_l
-				WHERE cm_l.entry_id = matching.entry_id AND cm_l.entry_type = ? AND cm_l.deleted_at IS NULL
-				ORDER BY cm_l.created_at DESC LIMIT 1
-			) AS lm ON true
-			ORDER BY lm.created_at %s
-			LIMIT ? OFFSET ?
-		`, matchingQuery, sortDirection)
-		allArgsForMatch = append(allArgs, et, pageSize, offset)
-	} else {
-
-		matchingQuery = baseQuery + " " + whereClause
-		matchingQuery = fmt.Sprintf(`
-			SELECT matching.entry_id FROM (%s) AS matching
-			JOIN LATERAL (
-				SELECT cm_l.created_at
-				FROM conversation_messages cm_l
-				WHERE cm_l.entry_id = matching.entry_id AND cm_l.entry_type = ? AND cm_l.deleted_at IS NULL
-				ORDER BY cm_l.created_at DESC LIMIT 1
-			) AS lm ON true
-			ORDER BY lm.created_at %s
-			LIMIT ? OFFSET ?
-		`, matchingQuery, sortDirection)
-		allArgsForMatch = append(allArgs, et, pageSize, offset)
-	}
-
-	type idResult struct {
-		EntryID string `gorm:"column:entry_id"`
-	}
-	var matchedIDs []idResult
-	if err := r.db.Raw(matchingQuery, allArgsForMatch...).Scan(&matchedIDs).Error; err != nil {
-		return nil, 0, fmt.Errorf("error getting search results: %w", err)
-	}
-
-	if len(matchedIDs) == 0 {
-		return nil, totalCount, nil
-	}
-
-	resultIDs := make([]string, len(matchedIDs))
-	for i, r := range matchedIDs {
-		resultIDs[i] = r.EntryID
-	}
-
-	entries, _, err := r.GetEntriesWithMessages("", resultIDs, input.EntryType, 1, len(resultIDs), "")
-	if err != nil {
-		return nil, 0, fmt.Errorf("error getting entry details: %w", err)
-	}
-
-	searchTerm := input.MessageSearch
-	if searchTerm == "" && input.Query != "" {
-		searchTerm = input.Query
-	}
-
-	if searchTerm != "" {
-		type matchResult struct {
-			MessageID  string    `gorm:"column:message_id"`
-			EntryID    string    `gorm:"column:entry_id"`
-			Text       string    `gorm:"column:text"`
-			From       string    `gorm:"column:from_participant"`
-			MsgType    string    `gorm:"column:message_type"`
-			Channel    string    `gorm:"column:channel"`
-			CreatedAt  time.Time `gorm:"column:created_at"`
-			Position   int64     `gorm:"column:position"`
-			MatchRank  int       `gorm:"column:match_rank"`
-			TotalMatch int       `gorm:"column:total_matches"`
-		}
-
-		var matches []matchResult
-		matchQuery := `
-			WITH ranked AS (
-				SELECT
-					cm.id AS message_id,
-					cm.entry_id,
-					cm.text,
-					cm.from_participant,
-					cm.message_type,
-					cm.channel,
-					cm.created_at,
-					(SELECT COUNT(*) FROM conversation_messages cm2
-					 WHERE cm2.entry_id = cm.entry_id AND cm2.entry_type = cm.entry_type
-					   AND cm2.deleted_at IS NULL AND cm2.created_at > cm.created_at) AS position,
-					ROW_NUMBER() OVER (PARTITION BY cm.entry_id ORDER BY cm.created_at DESC) AS match_rank,
-					COUNT(*) OVER (PARTITION BY cm.entry_id) AS total_matches
-				FROM conversation_messages cm
-				WHERE cm.entry_id = ANY(?::uuid[]) AND cm.entry_type = ?
-				  AND cm.deleted_at IS NULL AND LOWER(cm.text) LIKE LOWER(?)
-			)
-			SELECT message_id, entry_id, text, from_participant, message_type, channel, created_at,
-			       position, match_rank, total_matches
-			FROM ranked
-			WHERE match_rank <= 3
-			ORDER BY entry_id, created_at DESC
-		`
-		r.db.Raw(matchQuery, pq.Array(resultIDs), et, "%%"+searchTerm+"%%").Scan(&matches)
-
-		matchMap := make(map[string][]conversation.MatchedMessageResult)
-		totalMap := make(map[string]int)
-		for _, m := range matches {
-			matchMap[m.EntryID] = append(matchMap[m.EntryID], conversation.MatchedMessageResult{
-				MessageID:    m.MessageID,
-				EntryID:      m.EntryID,
-				Text:         m.Text,
-				From:         m.From,
-				MsgType:      conversation.MessageType(m.MsgType),
-				Channel:      conversation.MessageChannel(m.Channel),
-				CreatedAt:    m.CreatedAt,
-				Position:     m.Position,
-				TotalMatches: m.TotalMatch,
-			})
-			totalMap[m.EntryID] = m.TotalMatch
-		}
-
-		for i := range entries {
-			if mm, ok := matchMap[entries[i].EntryID]; ok {
-				entries[i].MatchedMessages = mm
-				entries[i].TotalMatches = totalMap[entries[i].EntryID]
-			}
-		}
-	}
-
-	return entries, totalCount, nil
-}
-
-func (r *repository) searchEntriesByWorkspace(input conversation.SearchEntriesInput) ([]conversation.EntryWithLastMessage, int64, error) {
-	wsID := input.WorkspaceID
-
-	var entryParts []string
-	var entryArgs []interface{}
-
-	entryCTESQL, entryCTEArgs := buildEntryUnion(entrySourceScope{
-		EntryType:              input.EntryType,
-		WhatsAppCampaignType:   input.WhatsAppCampaignType,
-		ConversationStatus:     string(input.ConversationStatus),
-		ExcludeFinished:        true,
-		DepartmentIDs:          input.DepartmentIDs,
-		RestrictDepartments:    input.RestrictDepartments,
-		AssigneeOverrideUserID: input.AssigneeOverrideUserID,
-	}, wsID, entrySource.inboxSelect)
-	if entryCTESQL != "" {
-		entryParts = append(entryParts, entryCTESQL)
-		entryArgs = append(entryArgs, entryCTEArgs...)
-	}
-
-	if len(entryParts) == 0 {
-		return nil, 0, nil
-	}
-
-	entryCTE := strings.Join(entryParts, " UNION ALL ")
-
-	whereConditions := []string{}
-	whereArgs := []interface{}{}
-
-	if input.Query != "" {
-		queryPattern := "%%" + input.Query + "%%"
-		whereConditions = append(whereConditions, `(
-			LOWER(COALESCE(l.name, '')) LIKE LOWER(?) OR COALESCE(l.number, '') LIKE ?
-			OR ae.entry_id IN (
-				SELECT DISTINCT cm_q.entry_id
-				FROM conversation_messages cm_q
-				WHERE cm_q.entry_id = ae.entry_id AND cm_q.entry_type = ae.entry_type
-				  AND cm_q.deleted_at IS NULL AND LOWER(cm_q.text) LIKE LOWER(?)
-			)
-		)`)
-		whereArgs = append(whereArgs, queryPattern, queryPattern, queryPattern)
-	}
-
-	if len(input.StageIDs) > 0 && input.StageWorkspaceID != "" {
-		if len(input.StageIDs) == 1 && input.StageIDs[0] == "__unstaged__" {
-
-			whereConditions = append(whereConditions, "ae.entry_id NOT IN (SELECT entry_id FROM entry_stages WHERE workspace_id = ? AND deleted_at IS NULL)")
-			whereArgs = append(whereArgs, input.StageWorkspaceID)
-		} else {
-
-			whereConditions = append(whereConditions, "ae.entry_id IN (SELECT entry_id FROM entry_stages WHERE stage_id = ANY(?) AND workspace_id = ? AND deleted_at IS NULL)")
-			whereArgs = append(whereArgs, pq.Array(input.StageIDs), input.StageWorkspaceID)
-		}
-	}
-
-	if input.HasUnread != nil {
-		unreadSub := `(SELECT COUNT(*) FROM conversation_messages cm4 WHERE cm4.entry_id = ae.entry_id AND cm4.entry_type = ae.entry_type AND cm4.read = false AND ` + sqlexpr.SentByContact("cm4") + ` AND cm4.deleted_at IS NULL)`
-		if *input.HasUnread {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s > 0", unreadSub))
-		} else {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s = 0", unreadSub))
-		}
-	}
-
-	if input.Channel != "" {
-		whereConditions = append(whereConditions, `EXISTS (
-			SELECT 1 FROM conversation_messages cm_ch
-			WHERE cm_ch.entry_id = ae.entry_id AND cm_ch.entry_type = ae.entry_type
-			  AND cm_ch.channel = ? AND cm_ch.deleted_at IS NULL
-		)`)
-		whereArgs = append(whereArgs, input.Channel)
-	}
-
-	if input.MessageSearch != "" {
-		whereConditions = append(whereConditions, `EXISTS (
-			SELECT 1 FROM conversation_messages cm_ms
-			WHERE cm_ms.entry_id = ae.entry_id AND cm_ms.entry_type = ae.entry_type
-			  AND cm_ms.deleted_at IS NULL AND LOWER(cm_ms.text) LIKE LOWER(?)
-		)`)
-		whereArgs = append(whereArgs, "%%"+input.MessageSearch+"%%")
-	}
-
-	if input.AssignedUserID != "" {
-		whereConditions = append(whereConditions, "(NOT EXISTS (SELECT 1 FROM inbox_assignments ia WHERE ia.entry_id = ae.entry_id) OR EXISTS (SELECT 1 FROM inbox_assignments ia2 WHERE ia2.entry_id = ae.entry_id AND ia2.assigned_user_id = ?))")
-		whereArgs = append(whereArgs, input.AssignedUserID)
-	}
-
-	if input.ResponsibleUnassigned {
-		whereConditions = append(whereConditions, "NOT EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id)")
-	} else if input.ResponsibleKind != "" {
-		whereConditions = append(whereConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id AND iaf.assignee_kind = ?)")
-		whereArgs = append(whereArgs, string(input.ResponsibleKind))
-	} else if input.ResponsibleUserID != "" {
-		whereConditions = append(whereConditions, "EXISTS (SELECT 1 FROM inbox_assignments iaf WHERE iaf.entry_id = ae.entry_id AND iaf.assigned_user_id = ?)")
-		whereArgs = append(whereArgs, input.ResponsibleUserID)
-	}
-
-	if input.WindowOpen != nil {
-		windowSubquery := `(
-			SELECT wce_w.id FROM whatsapp_campaign_entries wce_w
-			JOIN whatsapp_campaigns wc_w ON wc_w.id = wce_w.campaign_id
-			JOIN lead_message_windows lmw ON lmw.lead_id = wce_w.lead_id AND lmw.business_phone_id = wc_w.business_phone_id
-			WHERE wce_w.deleted_at IS NULL AND lmw.last_message_at > NOW() - INTERVAL '24 hours'
-		)`
-		if *input.WindowOpen {
-			whereConditions = append(whereConditions, fmt.Sprintf("ae.entry_id IN %s", windowSubquery))
-		} else {
-			whereConditions = append(whereConditions, fmt.Sprintf("ae.entry_id NOT IN %s", windowSubquery))
-		}
-	}
-
-	if input.MinMessageCount != nil || input.MaxMessageCount != nil {
-		countSub := `(SELECT COUNT(*) FROM conversation_messages cm3 WHERE cm3.entry_id = ae.entry_id AND cm3.entry_type = ae.entry_type AND cm3.deleted_at IS NULL)`
-		if input.MinMessageCount != nil {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s >= ?", countSub))
-			whereArgs = append(whereArgs, *input.MinMessageCount)
-		}
-		if input.MaxMessageCount != nil {
-			whereConditions = append(whereConditions, fmt.Sprintf("%s <= ?", countSub))
-			whereArgs = append(whereArgs, *input.MaxMessageCount)
-		}
-	}
-
-	if input.DateFrom != nil {
-		whereConditions = append(whereConditions, "ae.lm_created_at >= ?")
-		whereArgs = append(whereArgs, *input.DateFrom)
-	}
-	if input.DateTo != nil {
-		whereConditions = append(whereConditions, "ae.lm_created_at <= ?")
-		whereArgs = append(whereArgs, *input.DateTo)
-	}
-
-	whereClause := ""
-	if len(whereConditions) > 0 {
-		whereClause = "WHERE " + joinConditions(whereConditions)
-	}
-
-	leadsJoin := ""
-	if input.Query != "" {
-		leadsJoin = "LEFT JOIN leads l ON l.id = ae.lead_id AND l.deleted_at IS NULL"
-	}
-	baseCTE := fmt.Sprintf(`
-		WITH all_entries AS (%s),
-		entries_with_msg AS (
-			SELECT ae.entry_id, ae.entry_type, ae.lead_id, ae.business_phone_id,
-			       ae.lm_created_at AS lm_created_at
-			FROM all_entries ae
-			%s
-			%s
-		)
-	`, entryCTE, leadsJoin, whereClause)
-
-	countSQL := baseCTE + " SELECT COUNT(*) FROM entries_with_msg"
-	allCountArgs := append(append([]interface{}{}, entryArgs...), whereArgs...)
-	var totalCount int64
-	if err := r.db.Raw(countSQL, allCountArgs...).Scan(&totalCount).Error; err != nil {
-		return nil, 0, fmt.Errorf("error counting workspace search results: %w", err)
-	}
-	if totalCount == 0 {
-		return nil, 0, nil
-	}
-
-	page := input.Page
-	pageSize := input.PageSize
-	if page <= 0 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 20
-	}
-	if pageSize > 50 {
-		pageSize = 50
-	}
-	offset := (page - 1) * pageSize
-
-	sortDirection := "DESC"
-	if input.SortOrder == "asc" {
-		sortDirection = "ASC"
-	}
-
-	matchSQL := fmt.Sprintf(`%s
-		SELECT entry_id, entry_type FROM entries_with_msg
-		ORDER BY lm_created_at %s
-		LIMIT ? OFFSET ?
-	`, baseCTE, sortDirection)
-
-	type idResult struct {
-		EntryID   string `gorm:"column:entry_id"`
-		EntryType string `gorm:"column:entry_type"`
-	}
-
-	matchArgs := append(append([]interface{}{}, entryArgs...), whereArgs...)
-	matchArgs = append(matchArgs, pageSize, offset)
-	var matchedIDs []idResult
-	if err := r.db.Raw(matchSQL, matchArgs...).Scan(&matchedIDs).Error; err != nil {
-		return nil, 0, fmt.Errorf("error searching workspace entries: %w", err)
-	}
-
-	if len(matchedIDs) == 0 {
-		return nil, totalCount, nil
-	}
-
-	refs := make([]entryRef, 0, len(matchedIDs))
-	for _, m := range matchedIDs {
-		refs = append(refs, entryRef{ID: m.EntryID, Type: shared.EntryType(m.EntryType)})
-	}
-
-	var allEntries []conversation.EntryWithLastMessage
-	for _, batch := range hydrationBatches(refs) {
-		entries, _, err := r.GetEntriesWithMessages("", batch.IDs, batch.EntryType, 1, len(batch.IDs), "")
-		if err != nil {
-			return nil, 0, fmt.Errorf("error hydrating workspace search results: %w", err)
-		}
-		allEntries = append(allEntries, entries...)
-	}
-
-	sortDesc := input.SortOrder != "asc"
-	sort.Slice(allEntries, func(i, j int) bool {
-		if sortDesc {
-			return allEntries[i].LastMessageAt.After(allEntries[j].LastMessageAt)
-		}
-		return allEntries[i].LastMessageAt.Before(allEntries[j].LastMessageAt)
-	})
-
-	return allEntries, totalCount, nil
 }
 
 func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInput) ([]conversation.EntryWithLastMessage, int64, error) {
@@ -1358,23 +812,17 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 		return nil, totalCount, nil
 	}
 
-	order := make(map[string]int, len(matchedIDs))
 	type leadIdentity struct{ name, number string }
 	leadByEntry := make(map[string]leadIdentity, len(matchedIDs))
 	refs := make([]entryRef, 0, len(matchedIDs))
-	for i, m := range matchedIDs {
-		order[m.EntryID] = i
+	for _, m := range matchedIDs {
 		leadByEntry[m.EntryID] = leadIdentity{name: m.LeadName, number: m.LeadNumber}
 		refs = append(refs, entryRef{ID: m.EntryID, Type: shared.EntryType(m.EntryType)})
 	}
 
-	var allEntries []conversation.EntryWithLastMessage
-	for _, batch := range hydrationBatches(refs) {
-		entries, _, err := r.GetEntriesWithMessages("", batch.IDs, batch.EntryType, 1, len(batch.IDs), "")
-		if err != nil {
-			return nil, 0, fmt.Errorf("error hydrating filtered board results: %w", err)
-		}
-		allEntries = append(allEntries, entries...)
+	allEntries, err := r.hydrateInOrder(refs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("error hydrating filtered board results: %w", err)
 	}
 
 	for i := range allEntries {
@@ -1383,10 +831,6 @@ func (r *repository) SearchEntriesByFilter(input conversation.SearchByFilterInpu
 			allEntries[i].LeadNumber = lead.number
 		}
 	}
-
-	sort.Slice(allEntries, func(i, j int) bool {
-		return order[allEntries[i].EntryID] < order[allEntries[j].EntryID]
-	})
 
 	return allEntries, totalCount, nil
 }
@@ -1423,6 +867,9 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		CloseReason     string     `gorm:"column:close_reason"`
 		CloseOutcome    string     `gorm:"column:close_outcome"`
 		ClosedAt        *time.Time `gorm:"column:closed_at"`
+		CustomerClock   *time.Time `gorm:"column:last_customer_message_at"`
+		AgentClock      *time.Time `gorm:"column:last_agent_message_at"`
+		AwaitingSince   *time.Time `gorm:"column:awaiting_reply_since"`
 	}
 	var info entryInfo
 
@@ -1440,6 +887,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		EntryType       string    `gorm:"column:entry_type"`
 		UnreadCount     int64     `gorm:"column:unread_count"`
 		LastMessageText string    `gorm:"column:last_message_text"`
+		LastRetracted   bool      `gorm:"column:last_message_retracted"`
 		LastMessageType string    `gorm:"column:last_message_type"`
 		LastMessageAt   time.Time `gorm:"column:last_message_at"`
 		LastMessageFrom string    `gorm:"column:last_message_from"`
@@ -1460,6 +908,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 			   AND cm2.read = false AND %s
 			   AND cm2.deleted_at IS NULL) AS unread_count,
 			m.text AS last_message_text,
+			(m.retracted_at IS NOT NULL) AS last_message_retracted,
 			m.message_type AS last_message_type,
 			m.created_at AS last_message_at,
 			m.from_participant AS last_message_from,
@@ -1492,6 +941,7 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 		BusinessPhoneID:       businessPhoneID,
 		UnreadCount:           result.UnreadCount,
 		LastMessageText:       result.LastMessageText,
+		LastMessageRetracted:  result.LastRetracted,
 		LastMessageType:       conversation.MessageType(result.LastMessageType),
 		LastMessageAt:         result.LastMessageAt,
 		LastMessageFrom:       result.LastMessageFrom,
@@ -1511,6 +961,9 @@ func (r *repository) GetEntryLastMessage(entryID string, entryType shared.EntryT
 			Outcome:  info.CloseOutcome,
 			ClosedAt: info.ClosedAt,
 		},
+		LastCustomerMessageAt: info.CustomerClock,
+		LastAgentMessageAt:    info.AgentClock,
+		AwaitingReplySince:    info.AwaitingSince,
 	}, nil
 }
 
@@ -1541,6 +994,22 @@ func (r *repository) CountInboundByEntry(entryID string, entryType shared.EntryT
 	return count, nil
 }
 
+var customerSpokeAfterSQL = `SELECT EXISTS (
+	SELECT 1 FROM conversation_messages
+	WHERE entry_id = ?::uuid AND entry_type = ? AND deleted_at IS NULL
+	  AND ` + sqlexpr.SentByContact("") + ` AND created_at > ?
+)`
+
+func (r *repository) CustomerSpokeAfter(entryID string, entryType shared.EntryType, after time.Time) (bool, error) {
+	var spoke bool
+	if err := r.db.Raw(customerSpokeAfterSQL, entryID, string(entryType), after).Scan(&spoke).Error; err != nil {
+		return false, err
+	}
+	return spoke, nil
+}
+
+var _ conversation.CustomerSpeech = (*repository)(nil)
+
 func (r *repository) SearchMessagesByEntry(input conversation.SearchMessagesByEntryInput) ([]*conversation.Message, int64, error) {
 	if input.EntryID == "" || input.Query == "" {
 		return nil, 0, nil
@@ -1564,8 +1033,8 @@ func (r *repository) SearchMessagesByEntry(input conversation.SearchMessagesByEn
 	if err := r.db.Raw(`
 		SELECT COUNT(*)
 		FROM conversation_messages
-		WHERE entry_id = ?::uuid AND entry_type = ? AND deleted_at IS NULL
-		  AND LOWER(text) LIKE LOWER(?)
+		WHERE entry_id = ?::uuid AND entry_type = ?
+		  AND `+sqlexpr.MessageTextMatches("")+`
 	`, input.EntryID, string(input.EntryType), queryPattern).Scan(&totalCount).Error; err != nil {
 		return nil, 0, fmt.Errorf("error counting search results: %w", err)
 	}
@@ -1578,8 +1047,8 @@ func (r *repository) SearchMessagesByEntry(input conversation.SearchMessagesByEn
 	if err := r.db.Raw(`
 		SELECT *
 		FROM conversation_messages
-		WHERE entry_id = ?::uuid AND entry_type = ? AND deleted_at IS NULL
-		  AND LOWER(text) LIKE LOWER(?)
+		WHERE entry_id = ?::uuid AND entry_type = ?
+		  AND `+sqlexpr.MessageTextMatches("")+`
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`, input.EntryID, string(input.EntryType), queryPattern, pageSize, offset).Scan(&dbMessages).Error; err != nil {
@@ -1622,6 +1091,22 @@ func (r *repository) GetByEntryAndExternalMessageID(entryType shared.EntryType, 
 	var dbMessage schema.ConversationMessage
 	if err := r.db.
 		Where("entry_type = ? AND entry_id = ? AND external_message_id = ?", string(entryType), entryID, externalID).
+		First(&dbMessage).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, conversation.ErrMessageNotFound
+		}
+		return nil, err
+	}
+	return mapSchemaToDomain(&dbMessage), nil
+}
+
+func (r *repository) GetByClientRequestID(entryType shared.EntryType, entryID, requestID string) (*conversation.Message, error) {
+	if strings.TrimSpace(requestID) == "" {
+		return nil, conversation.ErrMessageNotFound
+	}
+	var dbMessage schema.ConversationMessage
+	if err := r.db.
+		Where("entry_type = ? AND entry_id = ? AND client_request_id = ?", string(entryType), entryID, requestID).
 		First(&dbMessage).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, conversation.ErrMessageNotFound

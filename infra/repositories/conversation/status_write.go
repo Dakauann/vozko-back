@@ -2,6 +2,7 @@ package conversation_repository
 
 import (
 	"vozko/domain/conversation"
+	"vozko/infra/database/sqlexpr"
 )
 
 func StatusUpdates(write conversation.StatusWrite) map[string]any {
@@ -25,6 +26,9 @@ func StatusUpdates(write conversation.StatusWrite) map[string]any {
 		updates["close_reason"] = ""
 		updates["close_outcome"] = ""
 		updates["closed_at"] = nil
+	}
+	if write.Status.EndsTheWait() {
+		updates[sqlexpr.AwaitingReplySinceColumn] = nil
 	}
 	return updates
 }

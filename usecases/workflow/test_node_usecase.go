@@ -2,8 +2,9 @@ package workflow_usecase
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -42,28 +43,32 @@ type AnalyzeNodeOutput struct {
 }
 
 type TestNodeInput struct {
-	WorkflowID    string                 `json:"workflow_id"`
-	WorkspaceID   string                 `json:"workspace_id"`
-	NodeID        string                 `json:"node_id"`
-	MockedState   map[string]interface{} `json:"mocked_state"`
-	TriggerVars   map[string]interface{} `json:"trigger_vars"`
-	SkipExecution bool                   `json:"skip_execution"`
+	WorkflowID       string                    `json:"workflow_id"`
+	WorkspaceID      string                    `json:"workspace_id"`
+	NodeID           string                    `json:"node_id"`
+	MockedState      map[string]interface{}    `json:"mocked_state"`
+	TriggerVars      map[string]interface{}    `json:"trigger_vars"`
+	SkipExecution    bool                      `json:"skip_execution"`
+	ConfirmRealCalls bool                      `json:"confirm_real_calls"`
+	ContinueWaits    bool                      `json:"continue_waits"`
+	WaitAnswers      map[string]TestWaitAnswer `json:"wait_answers"`
 }
 
 type TestNodeOutput struct {
-	NodeID             string                 `json:"node_id"`
-	NodeType           workflow.NodeType      `json:"node_type"`
-	Success            bool                   `json:"success"`
-	Error              string                 `json:"error,omitempty"`
-	InterpolatedConfig map[string]interface{} `json:"interpolated_config"`
-	ExecutionOutput    map[string]interface{} `json:"execution_output,omitempty"`
-	ExecutionDuration  time.Duration          `json:"execution_duration_ms"`
-	StateAfter         map[string]interface{} `json:"state_after,omitempty"`
-}
-
-type preparedTestExecution struct {
-	run      *workflow.WorkflowRun
-	registry *NodeExecutorRegistry
+	NodeID              string                     `json:"node_id"`
+	NodeType            workflow.NodeType          `json:"node_type"`
+	Success             bool                       `json:"success"`
+	Error               string                     `json:"error,omitempty"`
+	ErrorKind           workflow.ErrorKind         `json:"error_kind,omitempty"`
+	InterpolatedConfig  map[string]interface{}     `json:"interpolated_config"`
+	ExecutionOutput     map[string]interface{}     `json:"execution_output,omitempty"`
+	ExecutionDurationMs int64                      `json:"execution_duration_ms"`
+	StateAfter          map[string]interface{}     `json:"state_after,omitempty"`
+	Pinned              bool                       `json:"pinned,omitempty"`
+	Step                *workflow.WorkflowRunLog   `json:"step,omitempty"`
+	UpstreamSteps       []*workflow.WorkflowRunLog `json:"upstream_steps,omitempty"`
+	Wait                *workflow.WaitPreview      `json:"wait,omitempty"`
+	PathStop            *NodeTestPathStop          `json:"path_stop,omitempty"`
 }
 
 type TestNodeUseCase interface {
@@ -72,11 +77,21 @@ type TestNodeUseCase interface {
 	Execute(ctx context.Context, input TestNodeInput) (*TestNodeOutput, error)
 }
 
+type TestExecutors func(box SimSandbox) *NodeExecutorRegistry
+
+const DefaultNodeTestTimeout = 60 * time.Second
+
 type TestNodeDeps struct {
 	WorkflowRepo workflow.WorkflowRepository
-	Registry     *NodeExecutorRegistry
+	Steps        StepNamer
 	ExecutorDeps ExecutorDeps
+	Executors    TestExecutors
+	Timeout      time.Duration
+	PinSources   PinSources
+	ViewerOf     func(context.Context) (shared.Person, bool)
 }
+
+var ErrNodeTestUnavailable = errors.New("workflow: the node test has no workflow store to read from")
 
 type testNodeUseCase struct {
 	deps TestNodeDeps
@@ -86,23 +101,46 @@ func NewTestNodeUseCase(deps TestNodeDeps) TestNodeUseCase {
 	return &testNodeUseCase{deps: deps}
 }
 
-func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) (*AnalyzeNodeOutput, error) {
-
-	wf, err := uc.deps.WorkflowRepo.FindByID(input.WorkflowID)
+func (uc *testNodeUseCase) loadNode(workflowID, workspaceID, nodeID string) (*workflow.Workflow, *workflow.Node, error) {
+	if uc.deps.WorkflowRepo == nil {
+		return nil, nil, ErrNodeTestUnavailable
+	}
+	wf, err := uc.deps.WorkflowRepo.FindByID(workflowID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load workflow: %w", err)
+		return nil, nil, fmt.Errorf("failed to load workflow: %w", err)
 	}
-	if wf == nil {
-		return nil, workflow.ErrWorkflowNotFound
+	if wf == nil || workspaceID == "" || wf.WorkspaceID != workspaceID {
+		return nil, nil, workflow.ErrWorkflowNotFound
 	}
-
-	if wf.WorkspaceID != input.WorkspaceID {
-		return nil, fmt.Errorf("workspace mismatch")
-	}
-
-	node := wf.Graph.FindNode(input.NodeID)
+	node := wf.Graph.FindNode(nodeID)
 	if node == nil {
-		return nil, fmt.Errorf("node not found: %s", input.NodeID)
+		return nil, nil, fmt.Errorf("%w: %s", workflow.ErrNodeNotFound, nodeID)
+	}
+	return wf, node, nil
+}
+
+func (uc *testNodeUseCase) forViewer(ctx context.Context, wf *workflow.Workflow) *workflow.Workflow {
+	if uc.deps.ViewerOf == nil {
+		return withoutProductionPins(wf)
+	}
+	viewer, ok := uc.deps.ViewerOf(ctx)
+	if !ok {
+		return withoutProductionPins(wf)
+	}
+	return withheldFor(uc.deps.PinSources, viewer, wf)
+}
+
+func (uc *testNodeUseCase) stepName(t workflow.NodeType) string {
+	if uc.deps.Steps == nil {
+		return string(t)
+	}
+	return uc.deps.Steps.StepName(t)
+}
+
+func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) (*AnalyzeNodeOutput, error) {
+	wf, node, err := uc.loadNode(input.WorkflowID, input.WorkspaceID, input.NodeID)
+	if err != nil {
+		return nil, err
 	}
 
 	deps := workflow.ExtractDependencies(node.Config)
@@ -163,10 +201,7 @@ func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) 
 		})
 	}
 
-	nodeLabel := string(node.Type)
-	if def, ok := uc.deps.Registry.definitions[node.Type]; ok {
-		nodeLabel = def.Label
-	}
+	nodeLabel := uc.stepName(node.Type)
 
 	return &AnalyzeNodeOutput{
 		NodeID:        node.ID,
@@ -181,144 +216,97 @@ func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) 
 }
 
 func (uc *testNodeUseCase) Execute(ctx context.Context, input TestNodeInput) (*TestNodeOutput, error) {
-	startTime := time.Now()
-
-	wf, err := uc.deps.WorkflowRepo.FindByID(input.WorkflowID)
+	wf, node, err := uc.loadNode(input.WorkflowID, input.WorkspaceID, input.NodeID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load workflow: %w", err)
+		return nil, err
 	}
-	if wf == nil {
-		return nil, workflow.ErrWorkflowNotFound
+	wf = uc.forViewer(ctx, wf)
+	if node = wf.Graph.FindNode(node.ID); node == nil {
+		return nil, fmt.Errorf("%w: %s", workflow.ErrNodeNotFound, input.NodeID)
 	}
+	started := time.Now()
+	t, err := uc.newNodeTest(wf, node, input)
+	if err != nil {
+		return nil, err
+	}
+	limit := uc.timeout()
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 
-	if wf.WorkspaceID != input.WorkspaceID {
-		return nil, fmt.Errorf("workspace mismatch")
-	}
+	finished := make(chan *TestNodeOutput, 1)
+	go func() {
+		defer close(t.done)
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("workflow.node_test.panic_recovered", append(runLogAttrs(t.run, node.ID), slog.Any("panic", r))...)
+				finished <- t.crashed(r)
+			}
+		}()
+		finished <- t.execute(ctx)
+	}()
 
-	node := wf.Graph.FindNode(input.NodeID)
-	if node == nil {
-		return nil, fmt.Errorf("node not found: %s", input.NodeID)
+	var out *TestNodeOutput
+	select {
+	case out = <-finished:
+	case <-ctx.Done():
+		out = t.timedOut(ctx, limit)
 	}
+	out.ExecutionDurationMs = time.Since(started).Milliseconds()
+	return redactedTestOutput(out), nil
+}
 
+func (t *nodeTest) execute(ctx context.Context) *TestNodeOutput {
+	wf, node, input := t.wf, t.target, t.input
 	deps := workflow.ExtractDependencies(node.Config)
 	testMode, _, _ := resolveTestMode(deps)
-	allMocks := workflow.GetRequiredMocks(deps)
-	requiredMocks := filterMocksForAIDeps(allMocks, &wf.Graph)
-
+	requiredMocks := filterMocksForAIDeps(workflow.GetRequiredMocks(deps), &wf.Graph)
 	if len(requiredMocks) > 0 && testMode == TestModeDirect {
 		testMode = TestModeExecuteUntil
 	}
-
 	missingMocks := missingRequiredMocks(requiredMocks, input.MockedState)
-
 	if shouldBlockForMissingMocks(testMode, input.MockedState, missingMocks) {
-		return buildMissingMocksOutput(node, input.TriggerVars, input.MockedState, missingMocks, startTime), nil
+		return buildMissingMocksOutput(node, input.TriggerVars, input.MockedState, missingMocks)
 	}
 
-	prepared, prepErr := uc.prepareExecution(wf, input.WorkspaceID, input.TriggerVars)
-	if prepErr != nil {
-		return nil, prepErr
-	}
+	state := &t.run.State
+	applyMockedState(state, input.MockedState)
+	t.satisfyCaptureDeps(mockRootKeys(input.MockedState))
 
-	state := prepared.run.State
-	registry := prepared.registry
-
-	applyMockedState(&state, input.MockedState)
-
-	runtime := testVoiceRuntime(wf, input.MockedState)
-	uc.satisfyCaptureDeps(ctx, prepared.run, wf, node, registry, mockRootKeys(input.MockedState), runtime)
-
-	hasUserProvidedMocks := len(input.MockedState) > 0
-	needsUpstreamExecution := testMode == TestModeExecuteUntil &&
-		(!hasUserProvidedMocks || len(missingMocks) > 0)
-
+	needsUpstreamExecution := testMode == TestModeExecuteUntil && (len(input.MockedState) == 0 || len(missingMocks) > 0)
 	if needsUpstreamExecution {
-		if err := uc.executeUntilTarget(ctx, prepared.run, wf, node.ID, registry, runtime); err != nil {
-			applyMockedState(&state, input.MockedState)
-			errorMessage := err.Error()
+		if stop := t.executeUntilTarget(ctx); stop != nil {
+			applyMockedState(state, input.MockedState)
+			message := stop.Message
 			if len(missingMocks) > 0 {
-				errorMessage = fmt.Sprintf(
-					"%s. Forneca valores simulados para continuar o teste: %s",
-					err.Error(),
-					strings.Join(missingMocks, ", "),
-				)
+				message = fmt.Sprintf("%s Forneca valores simulados para continuar o teste: %s", message, strings.Join(missingMocks, ", "))
 			}
+			upstream, _ := t.snapshot()
 			return &TestNodeOutput{
 				NodeID:             node.ID,
 				NodeType:           node.Type,
-				InterpolatedConfig: workflow.InterpolateMap(node.Config, &state, nil),
-				Error:              errorMessage,
-				ExecutionDuration:  time.Since(startTime),
-			}, nil
+				InterpolatedConfig: workflow.InterpolateMap(node.Config, state, nil),
+				Error:              message,
+				ErrorKind:          workflow.ErrorKindTargetNotReached,
+				UpstreamSteps:      upstream,
+				PathStop:           stop,
+			}
 		}
 	}
 
-	applyMockedState(&state, input.MockedState)
-
-	interpolatedConfig := workflow.InterpolateMap(node.Config, &state, nil)
-
-	output := &TestNodeOutput{
+	applyMockedState(state, input.MockedState)
+	upstream, _ := t.snapshot()
+	out := &TestNodeOutput{
 		NodeID:             node.ID,
 		NodeType:           node.Type,
-		InterpolatedConfig: interpolatedConfig,
+		InterpolatedConfig: workflow.InterpolateMap(node.Config, state, nil),
+		UpstreamSteps:      upstream,
 	}
-
 	if input.SkipExecution {
-		output.Success = true
-		output.ExecutionDuration = time.Since(startTime)
-		return output, nil
+		out.Success = true
+		return out
 	}
-
-	executor, ok := registry.Get(node.Type)
-	if !ok {
-		output.Error = fmt.Sprintf("no executor for node type: %s", node.Type)
-		output.ExecutionDuration = time.Since(startTime)
-		return output, nil
-	}
-
-	nodeCtx := &workflow.NodeContext{
-		Run:      prepared.run,
-		Node:     node,
-		State:    &state,
-		Graph:    &wf.Graph,
-		Workflow: wf,
-		Runtime:  runtime,
-	}
-
-	nodeCtx.Node = &workflow.Node{
-		ID:     node.ID,
-		Type:   node.Type,
-		Config: interpolatedConfig,
-	}
-
-	result, execErr := executor.Execute(nodeCtx)
-
-	output.ExecutionDuration = time.Since(startTime)
-
-	if execErr != nil {
-		output.Error = execErr.Error()
-		return output, nil
-	}
-	if result == nil {
-		result = &workflow.NodeResult{}
-	}
-	if result.Error != "" {
-		output.Error = result.Error
-		return output, nil
-	}
-
-	output.Success = true
-
-	if result != nil && result.Output != nil {
-		output.ExecutionOutput = result.Output
-		mergeNodeOutputIntoState(&state, node.ID, result.Output)
-	}
-
-	if state.Vars != nil {
-		output.StateAfter = copyState(state)
-	}
-
-	return output, nil
+	t.settle(out, t.runStep(node))
+	return out
 }
 
 func buildTestRun(wf *workflow.Workflow, workspaceID string) *workflow.WorkflowRun {
@@ -433,72 +421,6 @@ func findCaptureProducer(g *workflow.Graph, varName string) *workflow.Node {
 	return nil
 }
 
-func (uc *testNodeUseCase) satisfyCaptureDeps(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, target *workflow.Node, registry *NodeExecutorRegistry, mockRoots map[string]bool, runtime interface{}) {
-	visited := map[string]bool{}
-	var satisfy func(n *workflow.Node)
-	satisfy = func(n *workflow.Node) {
-		if n == nil || visited[n.ID] {
-			return
-		}
-		visited[n.ID] = true
-		for _, d := range workflow.ExtractDependencies(n.Config) {
-			switch d.Scope {
-			case "var", "sys", "last", "node", "ai":
-				continue
-			}
-			varName := d.Scope
-			if i := strings.IndexByte(varName, '['); i >= 0 {
-				varName = varName[:i]
-			}
-			if varName == "" || mockRoots[varName] {
-				continue
-			}
-			if _, ok := run.State.Get(varName); ok {
-				continue
-			}
-			producer := findCaptureProducer(&wf.Graph, varName)
-			if producer == nil || producer.ID == target.ID || nodeOutputMocked(producer, mockRoots) {
-				continue
-			}
-			satisfy(producer)
-			uc.executeProducer(ctx, run, wf, producer, registry, runtime)
-		}
-	}
-	satisfy(target)
-}
-
-func (uc *testNodeUseCase) executeProducer(_ context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, node *workflow.Node, registry *NodeExecutorRegistry, runtime interface{}) {
-	executor, ok := registry.Get(node.Type)
-	if !ok {
-		return
-	}
-	interpolated := workflow.InterpolateMap(node.Config, &run.State, nil)
-	result, err := executor.Execute(&workflow.NodeContext{
-		Run:      run,
-		Node:     &workflow.Node{ID: node.ID, Type: node.Type, Config: interpolated},
-		State:    &run.State,
-		Graph:    &wf.Graph,
-		Workflow: wf,
-		Runtime:  runtime,
-	})
-	if err != nil || result == nil {
-		return
-	}
-	if result.Output != nil {
-		mergeNodeOutputIntoState(&run.State, node.ID, result.Output)
-	}
-}
-
-func mergeNodeOutputIntoState(state *workflow.RunState, nodeID string, output map[string]interface{}) {
-	if state == nil || output == nil {
-		return
-	}
-	for k, v := range output {
-		state.Set("_last_"+k, v)
-		state.Set("_node_"+nodeID+"_"+k, v)
-	}
-}
-
 func applyMockedState(state *workflow.RunState, mockedState map[string]interface{}) {
 	if state == nil {
 		return
@@ -568,7 +490,7 @@ func shouldBlockForMissingMocks(testMode TestMode, mockedState map[string]interf
 	}
 }
 
-func buildMissingMocksOutput(node *workflow.Node, triggerVars, mockedState map[string]interface{}, missing []string, startedAt time.Time) *TestNodeOutput {
+func buildMissingMocksOutput(node *workflow.Node, triggerVars, mockedState map[string]interface{}, missing []string) *TestNodeOutput {
 	state := workflow.NewRunState()
 	seedTriggerVars(&state, triggerVars)
 	applyMockedState(&state, mockedState)
@@ -577,8 +499,8 @@ func buildMissingMocksOutput(node *workflow.Node, triggerVars, mockedState map[s
 		NodeID:             node.ID,
 		NodeType:           node.Type,
 		Error:              fmt.Sprintf("Forneca valores simulados para continuar o teste: %s", strings.Join(missing, ", ")),
+		ErrorKind:          workflow.ErrorKindMissingMocks,
 		InterpolatedConfig: workflow.InterpolateMap(node.Config, &state, nil),
-		ExecutionDuration:  time.Since(startedAt),
 	}
 }
 
@@ -608,36 +530,6 @@ func copyState(state workflow.RunState) map[string]interface{} {
 	return stateAfter
 }
 
-func (uc *testNodeUseCase) prepareExecution(wf *workflow.Workflow, workspaceID string, triggerVars map[string]interface{}) (*preparedTestExecution, error) {
-	run := buildTestRun(wf, workspaceID)
-	registry := uc.deps.Registry
-
-	if uc.shouldUseSimulationRegistry() {
-		simLeadID := uuid.NewString()
-		simEntryID := uuid.NewString()
-		simMsgRepo := &simMessageRepo{}
-		outboundCh := make(chan SimOutboundMessage, 256)
-
-		registry = newTestSimulationRegistry(uc.deps.ExecutorDeps, workspaceID, simLeadID, simMsgRepo, outboundCh)
-		run.EntryID = simEntryID
-		run.EntryType = string(shared.EntryTypeWhatsApp)
-
-		seedTriggerVars(&run.State, triggerVars)
-		seedSimulationConversation(simMsgRepo, run, triggerVars)
-	} else {
-		seedTriggerVars(&run.State, triggerVars)
-	}
-
-	if registry == nil {
-		return nil, fmt.Errorf("node executor registry is not configured")
-	}
-
-	return &preparedTestExecution{
-		run:      run,
-		registry: registry,
-	}, nil
-}
-
 func seedTriggerVars(state *workflow.RunState, triggerVars map[string]interface{}) {
 	if state == nil {
 		return
@@ -665,179 +557,6 @@ func seedSimulationConversation(repo *simMessageRepo, run *workflow.WorkflowRun,
 		Text:        message,
 		CreatedAt:   time.Now().UTC(),
 	})
-}
-
-func newTestSimulationRegistry(deps ExecutorDeps, workspaceID, simLeadID string, simMsgRepo *simMessageRepo, outboundCh chan<- SimOutboundMessage) *NodeExecutorRegistry {
-	registry := NewNodeExecutorRegistry()
-	simClients := newSimWhatsAppClientFactory(outboundCh)
-	RegisterDefaultExecutors(registry, ExecutorDeps{
-		AIService:             deps.AIService,
-		AgentRepo:             deps.AgentRepo,
-		MessageRepo:           simMsgRepo,
-		HistoryManager:        &simHistoryManager{},
-		ConversationEvents:    simulationEvents,
-		LeadRepo:              &simLeadRepo{},
-		WhatsAppEntryRepo:     &simWhatsAppEntryRepo{leadID: simLeadID},
-		BusinessPhoneRepo:     &simBusinessPhoneRepo{workspaceID: workspaceID},
-		MessageWindowRepo:     &simMessageWindowRepo{},
-		WhatsAppClientFactory: simClients,
-		ToolRegistry:          deps.ToolRegistry,
-		TemplateRepo:          deps.TemplateRepo,
-		MediaRepo:             deps.MediaRepo,
-		TemplateSends:         &simTemplateSends{client: simClients.client, templates: deps.TemplateRepo},
-		SubWorkflowRunner:     &simSubWorkflowRunner{},
-		SharedState:           deps.SharedState,
-		CalendarRepo:          deps.CalendarRepo,
-		GoogleCalendar:        deps.GoogleCalendar,
-		BillingPub:            deps.BillingPub,
-		LabelRepo:             deps.LabelRepo,
-		Labeler:               deps.Labeler,
-		DepartmentRepo:        deps.DepartmentRepo,
-		ConversationHandOff:   deps.ConversationHandOff,
-		WorkspaceRepo:         deps.WorkspaceRepo,
-		CachedBalanceChecker:  deps.CachedBalanceChecker,
-		VoiceAudio:            deps.VoiceAudio,
-		HTTPEgress:            deps.HTTPEgress,
-	})
-	return registry
-}
-
-func (uc *testNodeUseCase) shouldUseSimulationRegistry() bool {
-	deps := uc.deps.ExecutorDeps
-	return deps.AIService != nil ||
-		deps.AgentRepo != nil ||
-		deps.MessageRepo != nil ||
-		deps.HistoryManager != nil ||
-		deps.LeadRepo != nil ||
-		deps.WhatsAppEntryRepo != nil ||
-		deps.BusinessPhoneRepo != nil ||
-		deps.MessageWindowRepo != nil ||
-		deps.WhatsAppClientFactory != nil ||
-		deps.ToolRegistry != nil ||
-		deps.TemplateRepo != nil ||
-		deps.MediaRepo != nil ||
-		deps.CalendarRepo != nil ||
-		deps.GoogleCalendar != nil ||
-		deps.LabelRepo != nil ||
-		deps.DepartmentRepo != nil ||
-		deps.ConversationHandOff != nil ||
-		deps.WorkspaceRepo != nil ||
-		deps.CachedBalanceChecker != nil
-}
-
-func (uc *testNodeUseCase) executeUntilTarget(ctx context.Context, run *workflow.WorkflowRun, wf *workflow.Workflow, targetNodeID string, registry *NodeExecutorRegistry, runtime interface{}) error {
-
-	ancestors := wf.Graph.AncestorsOf(targetNodeID)
-
-	startNodeID := ""
-	if trigger := wf.Graph.TriggerNode(); trigger != nil && ancestors[trigger.ID] {
-		startNodeID = trigger.ID
-	} else {
-		startNodeID = findAncestorRoot(ancestors, &wf.Graph)
-	}
-	if startNodeID == "" {
-		return fmt.Errorf("no upstream path found to node %s", targetNodeID)
-	}
-
-	run.CurrentNodeID = startNodeID
-
-	executionCount := 0
-	nodeVisitCounts := make(map[string]int)
-	insideLoop := loopBodyNodes(&wf.Graph)
-	const maxNodeRevisits = 3
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		if run.CurrentNodeID == targetNodeID {
-			return nil
-		}
-
-		if executionCount >= workflow.MaxExecutionsPerRun {
-			return workflow.ErrMaxExecutionsReached
-		}
-
-		node := wf.Graph.FindNode(run.CurrentNodeID)
-		if node == nil {
-			return fmt.Errorf("node not found: %s", run.CurrentNodeID)
-		}
-		if node.Type.IsEnd() {
-			return fmt.Errorf("workflow completed before reaching node %s", targetNodeID)
-		}
-
-		nodeVisitCounts[node.ID]++
-		revisitLimit := maxNodeRevisits
-		if node.Type == workflow.NodeTypeActionLoop || insideLoop[node.ID] {
-			revisitLimit = workflow.MaxExecutionsPerRun
-		}
-		if nodeVisitCounts[node.ID] > revisitLimit {
-			return fmt.Errorf("loop detected while executing until node %s", targetNodeID)
-		}
-
-		if node.Type.IsTrigger() {
-			next := pickAncestorEdge(wf.Graph.OutgoingEdges(node.ID), ancestors, targetNodeID)
-			if next == "" {
-				return fmt.Errorf("trigger node has no outgoing edges toward target")
-			}
-			run.State.Set("_prev_node_id", node.ID)
-			run.CurrentNodeID = next
-			executionCount++
-			continue
-		}
-
-		executor, ok := registry.Get(node.Type)
-		if !ok {
-			return fmt.Errorf("no executor for upstream node type: %s", node.Type)
-		}
-
-		result, err := executor.Execute(&workflow.NodeContext{
-			Run:      run,
-			Node:     node,
-			Graph:    &wf.Graph,
-			Workflow: wf,
-			State:    &run.State,
-			Runtime:  runtime,
-		})
-		executionCount++
-
-		if err != nil {
-			return fmt.Errorf("failed to execute upstream node %s: %w", node.ID, err)
-		}
-		if result == nil {
-			result = &workflow.NodeResult{}
-		}
-		if result.Error != "" {
-			return fmt.Errorf("upstream node %s failed: %s", node.ID, result.Error)
-		}
-
-		mergeNodeOutputIntoState(&run.State, node.ID, result.Output)
-
-		if result.Wait != nil {
-			return fmt.Errorf("workflow paused on node %s before reaching node %s", node.ID, targetNodeID)
-		}
-		if result.Complete {
-			return fmt.Errorf("workflow completed before reaching node %s", targetNodeID)
-		}
-
-		nextNodeID := result.NextNodeID
-		if nextNodeID != "" && nextNodeID != targetNodeID && !ancestors[nextNodeID] {
-
-			nextNodeID = ""
-		}
-		if nextNodeID == "" {
-			nextNodeID = pickAncestorEdge(wf.Graph.OutgoingEdges(node.ID), ancestors, targetNodeID)
-		}
-		if nextNodeID == "" {
-			return fmt.Errorf("workflow ended before reaching node %s", targetNodeID)
-		}
-
-		run.State.Set("_prev_node_id", node.ID)
-		run.CurrentNodeID = nextNodeID
-	}
 }
 
 func pickAncestorEdge(edges []workflow.Edge, ancestors map[string]bool, targetNodeID string) string {
@@ -921,15 +640,4 @@ func (a *AnalyzeNodeOutput) ToUIAnalysis() UIAnalysis {
 		HasAIDeps:    a.HasAIDeps,
 		Message:      message,
 	}
-}
-
-func (o TestNodeOutput) MarshalJSON() ([]byte, error) {
-	type Alias TestNodeOutput
-	return json.Marshal(&struct {
-		Alias
-		ExecutionDuration int64 `json:"execution_duration_ms"`
-	}{
-		Alias:             Alias(o),
-		ExecutionDuration: o.ExecutionDuration.Milliseconds(),
-	})
 }

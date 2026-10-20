@@ -50,8 +50,8 @@ func NewCommentRules(evaluator *cauc.Evaluator, actions cauc.Actions) *CommentRu
 	return &CommentRules{evaluator: evaluator, actions: actions}
 }
 
-func (r *CommentRules) Evaluate(ctx context.Context, page *fbdomain.Page, comment *fbdomain.Comment) {
-	r.evaluator.Evaluate(ctx, shared.EntryTypeFacebook, page.ID, comment.FBCommentID, CommentSubject(comment), r.actions)
+func (r *CommentRules) Evaluate(ctx context.Context, page *fbdomain.Page, comment *fbdomain.Comment) error {
+	return r.evaluator.Evaluate(ctx, shared.EntryTypeFacebook, page.ID, comment.FBCommentID, CommentSubject(comment), r.actions)
 }
 
 func CommentSubject(c *fbdomain.Comment) ca.Subject {

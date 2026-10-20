@@ -124,7 +124,7 @@ func (c *Container) wireWebchatConversationStack() {
 	}
 	conversations := bundle.Conversations
 
-	c.registerChannelAdapter(wcuc.NewChannelAdapter(bundle.Widgets, bundle.Visitors, conversations, bundle.Broker))
+	c.registerChannelAdapter(wcuc.NewChannelAdapter(bundle.Widgets, bundle.Visitors, conversations, bundle.Broker, c.repositories.conversation))
 
 	if setter, ok := c.services.conversationHistory.(interface {
 		SetAutomationReader(shared.EntryType, func(context.Context, string) (*bool, error))

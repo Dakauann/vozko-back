@@ -1,11 +1,11 @@
-{{define "title"}}Bem-vindo à {{.Brand.Name}}{{end}}
+{{define "title"}}Bem-vindo {{.Brand.Portuguese.ToBrand}}{{end}}
 {{define "preheader"}}A sua conta {{.Brand.Name}} está pronta. Veja os primeiros passos.{{end}}
 {{define "eyebrow"}}Boas-vindas{{end}}
 {{define "content"}}
-{{template "heading" dict "status" "Conta criada" "tone" "success" "title" (printf "Bem-vindo à %s" .Brand.Name) "subtitle" "A sua conta está pronta"}}
+{{template "heading" dict "status" "Conta criada" "tone" "success" "title" (printf "Bem-vindo %s" .Brand.Portuguese.ToBrand) "subtitle" "A sua conta está pronta"}}
 {{template "gap" 24}}
 <p class="vx-fg" style="margin:0; font-size:15px; line-height:24px; color:#14171a;">
-    Olá <strong style="font-weight:600;">{{.Email}}</strong>, é um prazer ter você na {{.Brand.Name}}. Centralize os seus agentes de IA, chamadas e canais de WhatsApp em um único painel de controle.
+    Olá <strong style="font-weight:600;">{{.Email}}</strong>, é um prazer ter você {{.Brand.Portuguese.InBrand}}. Centralize os seus agentes de IA, chamadas e canais de WhatsApp em um único painel de controle.
 </p>
 {{template "gap" 24}}
 {{template "details" dict "title" "Primeiros passos" "k1" "1. Conecte um canal" "v1" "Número de WhatsApp" "k2" "2. Crie um assistente" "v2" "Agente de IA" "k3" "3. Convide a sua equipe" "v3" "Por email"}}

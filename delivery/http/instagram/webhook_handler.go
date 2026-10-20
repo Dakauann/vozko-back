@@ -18,6 +18,7 @@ func NewWebhookHandler(
 		Publisher:   publish,
 		Secrets:     appSecrets,
 		VerifyToken: verifyToken,
+		Objects:     []string{"instagram"},
 		Route:       routeEntry,
 	})
 }

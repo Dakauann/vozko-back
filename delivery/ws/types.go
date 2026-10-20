@@ -21,6 +21,7 @@ const (
 	WSEventRequestConnectedUsers WSEventType = "request_connected_users"
 	WSEventLoadHistory           WSEventType = "load_history"
 	WSEventLoadAround            WSEventType = "load_around"
+	WSEventLoadAfter             WSEventType = "load_after"
 	WSEventRequestInbox          WSEventType = "request_inbox_page"
 	WSEventSearchInbox           WSEventType = "search_inbox"
 	WSEventSearchMessages        WSEventType = "search_messages"
@@ -30,18 +31,25 @@ const (
 	WSEventRequestFunnelColumn   WSEventType = "request_funnel_column"
 	WSEventRequestFunnelSummary  WSEventType = "request_funnel_summary"
 	WSEventSwitchView            WSEventType = "switch_view"
+	WSEventReactMessage          WSEventType = "react_message"
+	WSEventEditMessage           WSEventType = "edit_message"
+	WSEventDeleteMessage         WSEventType = "delete_message"
+	WSEventResendMessage         WSEventType = "resend_message"
+	WSEventPinConversation       WSEventType = "pin_conversation"
+	WSEventMarkUnread            WSEventType = "mark_unread"
+	WSEventClearUnreadMark       WSEventType = "clear_unread_mark"
+	WSEventTeamChatTyping        WSEventType = "team_chat_typing"
 
 	WSEventHistory                        WSEventType = "conversation:history"
 	WSEventMessage                        WSEventType = "conversation:message"
 	WSEventMessageSent                    WSEventType = "conversation:message_sent"
 	WSEventMessageError                   WSEventType = "conversation:message_error"
+	WSEventMessageUpdated                 WSEventType = "conversation:message_updated"
 	WSEventRead                           WSEventType = "conversation:read"
-	WSEventUnreadCount                    WSEventType = "conversation:unread"
 	WSEventTypingRemote                   WSEventType = "conversation:typing"
 	WSEventSubscribed                     WSEventType = "conversation:subscribed"
 	WSEventUnsubscribed                   WSEventType = "conversation:unsubscribed"
 	WSEventError                          WSEventType = "conversation:error"
-	WSEventMediaReady                     WSEventType = "conversation:media_ready"
 	WSEventConnected                      WSEventType = "conversation:connected"
 	WSEventInbox                          WSEventType = "conversation:inbox"
 	WSEventEntryUpdate                    WSEventType = "conversation:entry_update"
@@ -61,9 +69,21 @@ const (
 	WSEventConversationStatusUpdate       WSEventType = "conversation:conversation_status_update"
 	WSEventConversationStatusCountsUpdate WSEventType = "conversation:conversation_status_counts_update"
 	WSEventAdOrigin                       WSEventType = "conversation:ad_origin"
+	WSEventPersonalMark                   WSEventType = "conversation:personal_mark"
+	WSEventViewers                        WSEventType = "conversation:viewers"
+	WSEventNote                           WSEventType = "conversation:note"
+	WSEventNoteDeleted                    WSEventType = "conversation:note_deleted"
 
 	WSEventAudienceAnalyzed    WSEventType = "audience:analyzed"
 	WSEventNotificationCreated WSEventType = "notification:created"
+
+	WSEventTeamChatMessage        WSEventType = "team_chat:message"
+	WSEventTeamChatMessageUpdated WSEventType = "team_chat:message_updated"
+	WSEventTeamChatRead           WSEventType = "team_chat:read"
+	WSEventTeamChatThread         WSEventType = "team_chat:thread"
+	WSEventTeamChatThreadRemoved  WSEventType = "team_chat:thread_removed"
+	WSEventTeamChatTypingRemote   WSEventType = "team_chat:typing"
+	WSEventTeamChatScheduled      WSEventType = "team_chat:scheduled"
 
 	WSEventStartCall WSEventType = "start_call"
 	WSEventEndCall   WSEventType = "end_call"
@@ -129,10 +149,18 @@ type LoadHistoryPayload struct {
 	PageSize  int    `json:"page_size,omitempty"`
 }
 
+type LoadAfterPayload struct {
+	EntryID   string `json:"entry_id"`
+	EntryType string `json:"entry_type"`
+	After     string `json:"after"`
+	PageSize  int    `json:"page_size,omitempty"`
+}
+
 type LoadAroundPayload struct {
 	EntryID   string `json:"entry_id"`
 	EntryType string `json:"entry_type"`
-	Timestamp string `json:"timestamp"`
+	Timestamp string `json:"timestamp,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
 	PageSize  int    `json:"page_size,omitempty"`
 }
 
@@ -151,10 +179,14 @@ type SearchInboxPayload struct {
 	MessageSearch      string `json:"message_search,omitempty"`
 	WindowOpen         *bool  `json:"window_open,omitempty"`
 	HasUnread          *bool  `json:"has_unread,omitempty"`
+	IsGroup            *bool  `json:"is_group,omitempty"`
 	Channel            string `json:"channel,omitempty"`
 	DateFrom           string `json:"date_from,omitempty"`
 	DateTo             string `json:"date_to,omitempty"`
 	ConversationStatus string `json:"conversation_status,omitempty"`
+	Sort               string `json:"sort,omitempty"`
+	LabelID            string `json:"label_id,omitempty"`
+	Personal           string `json:"personal,omitempty"`
 
 	ResponsibleUserID     string `json:"responsible_user_id,omitempty"`
 	ResponsibleUnassigned bool   `json:"responsible_unassigned,omitempty"`
@@ -224,13 +256,14 @@ type AssignToResultPayload struct {
 }
 
 type SearchResultsPayload struct {
-	Query      string                     `json:"query,omitempty"`
-	Filters    conversation.SearchFilters `json:"filters,omitempty"`
-	Entries    []conversation.InboxEntry  `json:"entries"`
-	Page       int                        `json:"page"`
-	PageSize   int                        `json:"page_size"`
-	TotalItems int64                      `json:"total_items"`
-	TotalPages int                        `json:"total_pages"`
+	Query         string                     `json:"query,omitempty"`
+	Filters       conversation.SearchFilters `json:"filters,omitempty"`
+	Entries       []conversation.InboxEntry  `json:"entries"`
+	PersonalMarks []PersonalMarkEntry        `json:"personal_marks"`
+	Page          int                        `json:"page"`
+	PageSize      int                        `json:"page_size"`
+	TotalItems    int64                      `json:"total_items"`
+	TotalPages    int                        `json:"total_pages"`
 }
 
 type WindowReopenedPayload struct {
@@ -266,6 +299,23 @@ type SendButtonPayload struct {
 	ReplyToMessageID *string                      `json:"reply_to_message_id,omitempty"`
 }
 
+type MessageActionPayload struct {
+	EntryID   string `json:"entry_id"`
+	EntryType string `json:"entry_type"`
+	MessageID string `json:"message_id"`
+	RequestID string `json:"request_id"`
+}
+
+type ReactMessagePayload struct {
+	MessageActionPayload
+	Emoji string `json:"emoji"`
+}
+
+type EditMessagePayload struct {
+	MessageActionPayload
+	Text string `json:"text"`
+}
+
 type MarkReadPayload struct {
 	EntryID    string   `json:"entry_id"`
 	EntryType  string   `json:"entry_type"`
@@ -282,16 +332,33 @@ type TypingPayload struct {
 	IsTyping  bool   `json:"is_typing"`
 }
 
+type HistoryDirection string
+
+const (
+	HistoryLatest HistoryDirection = "latest"
+	HistoryBefore HistoryDirection = "before"
+	HistoryAround HistoryDirection = "around"
+	HistoryAfter  HistoryDirection = "after"
+)
+
 type HistoryPayload struct {
 	EntryID   string                  `json:"entry_id"`
 	EntryType string                  `json:"entry_type"`
+	Direction HistoryDirection        `json:"direction"`
 	Messages  []*conversation.Message `json:"messages"`
 	HasMore   bool                    `json:"has_more"`
+	HasAfter  bool                    `json:"has_after"`
 	Total     int64                   `json:"total"`
 	PageSize  int                     `json:"page_size"`
 }
 
 type MessagePayload struct {
+	EntryID   string                `json:"entry_id"`
+	EntryType string                `json:"entry_type"`
+	Message   *conversation.Message `json:"message"`
+}
+
+type MessageUpdatedPayload struct {
 	EntryID   string                `json:"entry_id"`
 	EntryType string                `json:"entry_type"`
 	Message   *conversation.Message `json:"message"`
@@ -334,12 +401,6 @@ type AnalysisUpdatePayload struct {
 	Pending   bool        `json:"pending"`
 }
 
-type UnreadCountPayload struct {
-	EntryID     string `json:"entry_id"`
-	EntryType   string `json:"entry_type"`
-	UnreadCount int64  `json:"unread_count"`
-}
-
 type SubscribedPayload struct {
 	EntryID            string                 `json:"entry_id"`
 	EntryType          string                 `json:"entry_type"`
@@ -356,8 +417,12 @@ type SubscribedPayload struct {
 	WindowOpen         bool                   `json:"window_open"`
 	WindowExpiresAt    *time.Time             `json:"window_expires_at,omitempty"`
 	WindowClosedReason string                 `json:"window_closed_reason,omitempty"`
+	WindowClosedDetail string                 `json:"window_closed_detail,omitempty"`
 	WindowTier         string                 `json:"window_tier,omitempty"`
 	AdOrigin           *conversation.AdOrigin `json:"ad_origin,omitempty"`
+
+	MessageCapabilities conversation.MessageCapabilities `json:"message_capabilities"`
+	MediaLimits         *[]conversation.MediaLimit       `json:"media_limits,omitempty"`
 }
 
 type AdOriginPayload struct {
@@ -386,6 +451,7 @@ type InboxPayload struct {
 	StageCounts              map[string]int64               `json:"stage_counts,omitempty"`
 	ConversationStatusCounts map[string]int64               `json:"conversation_status_counts,omitempty"`
 	AvailableLabels          []conversation.InboxEntryLabel `json:"available_labels,omitempty"`
+	PersonalMarks            []PersonalMarkEntry            `json:"personal_marks"`
 }
 
 type EntryUpdatePayload struct {

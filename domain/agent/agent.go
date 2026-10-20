@@ -234,10 +234,11 @@ func (a *Agent) Normalize() {
 			if t == "" {
 				continue
 			}
-			if _, exists := seen[t]; exists {
+			key := t + "\x00" + bindingConfigKey(binding.Config)
+			if _, exists := seen[key]; exists {
 				continue
 			}
-			seen[t] = struct{}{}
+			seen[key] = struct{}{}
 
 			normalizedVisibility := make([]ToolVisibility, 0, len(binding.Visibility))
 			for _, v := range binding.Visibility {
@@ -285,6 +286,17 @@ func (a *Agent) Normalize() {
 		}
 		a.Variables = uniq
 	}
+}
+
+func bindingConfigKey(config map[string]interface{}) string {
+	if len(config) == 0 {
+		return ""
+	}
+	encoded, err := json.Marshal(config)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func (a *Agent) Validate() error {

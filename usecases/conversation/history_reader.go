@@ -13,6 +13,7 @@ import (
 type HistorySource interface {
 	GetHistory(entryID string, entryType shared.EntryType, limit int) ([]*conversation.Message, bool, int64, error)
 	GetHistoryBefore(entryID string, entryType shared.EntryType, before time.Time, limit int) ([]*conversation.Message, bool, error)
+	GetHistoryAfter(entryID string, entryType shared.EntryType, after time.Time, limit int) ([]*conversation.Message, bool, error)
 }
 
 var errHistoryUnavailable = errors.New("conversation: history source not configured")
@@ -34,6 +35,9 @@ func (r *historyReader) ReadHistory(q conversation.HistoryQuery) (conversation.H
 	if !q.EntryType.SupportsConversationView() {
 		return conversation.HistoryPage{}, conversation.ErrEntryTypeInvalid
 	}
+	if q.Before != nil && q.After != nil {
+		return conversation.HistoryPage{}, conversation.ErrHistoryCursorConflict
+	}
 	if r.authorizer == nil || !r.authorizer.CanAccessEntry(q.Viewer.UserID, q.Viewer.WorkspaceID, q.EntryID, string(q.EntryType), q.Viewer.IsAdmin) {
 		return conversation.HistoryPage{}, conversation.ErrUnauthorized
 	}
@@ -47,6 +51,13 @@ func (r *historyReader) ReadHistory(q conversation.HistoryQuery) (conversation.H
 			return conversation.HistoryPage{}, fmt.Errorf("history of %s before %s: %w", q.EntryID, q.Before.Format(time.RFC3339), err)
 		}
 		return conversation.HistoryPage{Messages: messages, HasMore: hasMore}, nil
+	}
+	if q.After != nil {
+		messages, hasAfter, err := r.history.GetHistoryAfter(q.EntryID, q.EntryType, *q.After, limit)
+		if err != nil {
+			return conversation.HistoryPage{}, fmt.Errorf("history of %s after %s: %w", q.EntryID, q.After.Format(time.RFC3339), err)
+		}
+		return conversation.HistoryPage{Messages: messages, HasAfter: hasAfter}, nil
 	}
 	messages, hasMore, total, err := r.history.GetHistory(q.EntryID, q.EntryType, limit)
 	if err != nil {

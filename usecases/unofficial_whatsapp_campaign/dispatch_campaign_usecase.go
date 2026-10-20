@@ -140,10 +140,33 @@ func (uc *dispatchCampaignUseCase) Dispatch(ctx context.Context, input uwc.Dispa
 }
 
 func (uc *dispatchCampaignUseCase) ensureCanStart(ctx context.Context, camp *uwc.Campaign) error {
+	if camp.TargetsGroups() {
+		return uc.ensureGroupsCanStart(ctx, camp)
+	}
 	instance, err := uc.instances.Instance(ctx, camp.InstanceID)
 	if err != nil {
 		return err
 	}
+	return ensureNumberCanStart(ctx, uc.instances, instance)
+}
+
+func (uc *dispatchCampaignUseCase) ensureGroupsCanStart(ctx context.Context, camp *uwc.Campaign) error {
+	pool, err := campaignSenderPool(ctx, uc.instances, camp)
+	if err != nil {
+		return err
+	}
+	refusal := uwc.ErrGroupCampaignNoNumber
+	for _, id := range pool.ids() {
+		err := ensureNumberCanStart(ctx, uc.instances, pool[id])
+		if err == nil {
+			return nil
+		}
+		refusal = err
+	}
+	return refusal
+}
+
+func ensureNumberCanStart(ctx context.Context, instances InstanceGateway, instance *uw.Instance) error {
 	if err := ensureInstanceCanCampaign(instance); err != nil {
 		return err
 	}
@@ -151,17 +174,17 @@ func (uc *dispatchCampaignUseCase) ensureCanStart(ctx context.Context, camp *uwc
 		return err
 	}
 
-	ref, err := uc.instances.Ref(ctx, instance)
+	ref, err := instances.Ref(ctx, instance)
 	if err != nil {
 		return err
 	}
-	restriction, err := uc.instances.MessagingLimits(ctx, ref)
+	restriction, err := instances.MessagingLimits(ctx, ref)
 	if err != nil {
 		return fmt.Errorf("%w: could not confirm this number may start new conversations",
 			uw.ErrRestrictedByWA)
 	}
 	if restriction != nil {
-		_ = uc.instances.CacheRestriction(ctx, instance.ID, *restriction)
+		_ = instances.CacheRestriction(ctx, instance.ID, *restriction)
 		if restriction.Active(time.Now().UTC()) {
 			return uw.ErrRestrictedByWA
 		}

@@ -49,6 +49,16 @@ func (uc *deactivateExcessPhonesUseCase) notifySuspended(workspaceID, phoneID st
 	}
 }
 
+func (uc *deactivateExcessPhonesUseCase) clearSuspended(workspaceID, phoneID string) {
+	if uc.notices == nil {
+		return
+	}
+	phone := &businessphone.WhatsAppBusinessPhoneNumber{ID: phoneID, OwnerWorkspaceID: workspaceID}
+	if err := uc.notices.ClearPhone(phone, businessphone.SuspendedNoticeState); err != nil {
+		log.Printf("[addon-reactivate] suspension alert of phone %s could not be closed: %v", phoneID, err)
+	}
+}
+
 func (uc *deactivateExcessPhonesUseCase) OnEntitlementReduced(workspaceID string, kind workspace_addon.EntitlementKind) error {
 	if kind != workspace_addon.EntitlementWhatsAppBusinessPhones {
 		return nil
@@ -129,6 +139,7 @@ func (uc *deactivateExcessPhonesUseCase) OnEntitlementIncreased(workspaceID stri
 			log.Printf("[addon-reactivate] channel %s reactivated but local update failed for phone %s: %v", ph.Dialog360ChannelID, ph.ID, uerr)
 		} else {
 			log.Printf("[addon-reactivate] reactivated phone %s (workspace %s)", ph.ID, workspaceID)
+			uc.clearSuspended(workspaceID, ph.ID)
 		}
 	}
 	return nil

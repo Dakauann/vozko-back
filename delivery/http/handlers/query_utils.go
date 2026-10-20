@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"vozko/domain/shared"
+	"vozko/domain/workflow"
 )
 
 func parsePagination(values url.Values) shared.Pagination {
@@ -24,6 +25,22 @@ func parsePagination(values url.Values) shared.Pagination {
 	}
 
 	return shared.Pagination{Page: page, PageSize: pageSize}
+}
+
+func stepWindowOf(values url.Values) (workflow.StepWindow, bool) {
+	var window workflow.StepWindow
+	for key, into := range map[string]*int{"stepsOffset": &window.Offset, "stepsLimit": &window.Limit} {
+		raw := strings.TrimSpace(values.Get(key))
+		if raw == "" {
+			continue
+		}
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			return workflow.StepWindow{}, false
+		}
+		*into = parsed
+	}
+	return window, true
 }
 
 func parseSort(values url.Values, allowed map[string]string) []shared.Sort {

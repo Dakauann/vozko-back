@@ -14,5 +14,15 @@ func NewListWorkflowsUseCase(repo workflow.WorkflowRepository) workflow.ListWork
 }
 
 func (uc *listWorkflowsUseCase) Execute(input workflow.ListWorkflowsInput) (*shared.PaginatedResult[*workflow.Workflow], error) {
-	return uc.repo.List(input)
+	page, err := uc.repo.List(input)
+	if err != nil || page == nil {
+		return page, err
+	}
+	for i, w := range page.Items {
+		if w != nil {
+			w.RefreshPublication()
+			page.Items[i] = withoutProductionPins(w)
+		}
+	}
+	return page, nil
 }

@@ -2,7 +2,6 @@ package unofficial_whatsapp_group_usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -195,6 +194,7 @@ func (s *Service) rowsOf(ctx context.Context, workspaceID string, n numbers, gro
 	for _, g := range groups {
 		rows = append(rows, &GroupRow{
 			Group:            g,
+			GroupCreatedAt:   uwg.WhatsAppCreatedAt(seats[g.JID]),
 			Numbers:          numberSeats(seats[g.JID], n),
 			Activity:         activity[g.ID],
 			Summary:          summaryOf(runs[g.ID]),
@@ -249,12 +249,8 @@ func (s *Service) GetGroup(ctx context.Context, a Actor, id string) (*GroupDetai
 	}
 	detail := &GroupDetail{GroupRow: *rows[0], Growth: []uwg.DailyPoint{}, Analyses: []*uwg.AnalysisRow{}}
 
-	if instanceID, ok := s.readableSeat(ctx, g, n); ok {
-		conv, err := s.d.Messages.GroupConversation(ctx, instanceID, g.JID)
-		if err != nil && !errors.Is(err, uwg.ErrNoGroupConversation) {
-			return nil, err
-		}
-		detail.ConversationID = conv
+	if _, detail.ConversationID, err = s.groupConversation(ctx, g, n); err != nil {
+		return nil, err
 	}
 
 	now := s.d.Clock()
@@ -413,7 +409,13 @@ func (s *Service) syncThrough(ctx context.Context, a Actor, n numbers, g *uwg.Gr
 	return s.applySeat(ctx, g, seat, n.everyone)
 }
 
+type departures func(current []uwg.Member) uwg.DepartureCauses
+
 func (s *Service) applySeat(ctx context.Context, g *uwg.Group, seat *uw.Group, instances []*uw.Instance) error {
+	return s.applySeatExplained(ctx, g, seat, instances, nil)
+}
+
+func (s *Service) applySeatExplained(ctx context.Context, g *uwg.Group, seat *uw.Group, instances []*uw.Instance, explain departures) error {
 	g.AbsorbSeat(seat)
 	if !g.Followed() || len(seat.Participants) == 0 {
 		return s.d.Groups.Save(ctx, g)
@@ -428,6 +430,9 @@ func (s *Service) applySeat(ctx context.Context, g *uwg.Group, seat *uw.Group, i
 	now := s.d.Clock()
 	baseline := g.MembersSyncedAt == nil
 	diff := uwg.DiffMembers(g.ID, g.WorkspaceID, current, seat.Participants, ownNumbers(instances), now, baseline)
+	if explain != nil {
+		diff.Attribute(explain(current))
+	}
 	if err := s.d.Members.Apply(ctx, g, diff, now); err != nil {
 		return err
 	}
@@ -544,7 +549,11 @@ func (s *Service) ManageMembers(ctx context.Context, a Actor, id string, action 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.applySeat(ctx, g, seat, n.everyone); err != nil {
+	var explain departures
+	if action == uw.GroupActionRemove {
+		explain = func(current []uwg.Member) uwg.DepartureCauses { return uwg.RemovedByUs(participants, current) }
+	}
+	if err := s.applySeatExplained(ctx, g, seat, n.everyone, explain); err != nil {
 		return nil, err
 	}
 	return s.d.Groups.FindByID(ctx, a.WorkspaceID, id, n.scope)

@@ -37,11 +37,24 @@ func (m *memWscRepo) GetIncludedUnofficialInstancesByWorkspaceIDs(context.Contex
 }
 
 type memWsOwner struct {
-	ownerID string
+	ownerID    string
+	members    []string
+	membersErr error
 }
 
 func (m *memWsOwner) GetWorkspaceByID(id string) (*workspace.Workspace, error) {
 	return &workspace.Workspace{ID: id, OwnerID: m.ownerID}, nil
+}
+
+func (m *memWsOwner) ListMembers(workspaceID string) ([]*workspace.Member, error) {
+	if m.membersErr != nil {
+		return nil, m.membersErr
+	}
+	out := make([]*workspace.Member, 0, len(m.members))
+	for _, id := range m.members {
+		out = append(out, &workspace.Member{WorkspaceID: workspaceID, UserID: id})
+	}
+	return out, nil
 }
 
 func TestUpdateOwner_AutoCloseDefaultsAndClamp(t *testing.T) {

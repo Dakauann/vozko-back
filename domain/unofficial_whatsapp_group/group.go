@@ -24,6 +24,9 @@ var (
 	ErrNoGroupConversation     = errors.New("the group has no conversation yet")
 	ErrSeriesNeedsManagedGroup = errors.New("only a group created here can start a series")
 	ErrSeriesPartlyUpdated     = errors.New("some groups of the series could not be updated")
+	ErrNoGroupsToExport        = errors.New("choose at least one group to export")
+	ErrNoInviteLink            = errors.New("none of your numbers is admin in this group and no earlier join left an invite link; join it with a link")
+	ErrNumberAlreadyInGroup    = errors.New("that number is already in this group")
 )
 
 const MaxCategoryRunes = 60
@@ -195,4 +198,18 @@ func SeriesName(base string, sequence int) string {
 		name = name[:budget]
 	}
 	return strings.TrimSpace(string(name)) + suffix
+}
+
+func WhatsAppCreatedAt(seats []*uw.Group) *time.Time {
+	var earliest *time.Time
+	for _, seat := range seats {
+		if seat == nil || seat.GroupCreatedAt == nil || seat.GroupCreatedAt.IsZero() {
+			continue
+		}
+		if earliest == nil || seat.GroupCreatedAt.Before(*earliest) {
+			created := *seat.GroupCreatedAt
+			earliest = &created
+		}
+	}
+	return earliest
 }

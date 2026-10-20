@@ -19,8 +19,9 @@ func (s *stubEmailSvc) SendTemplate(to, subject, template string, data map[strin
 }
 
 type delayedPublish struct {
-	topic string
-	delay time.Duration
+	topic   string
+	delay   time.Duration
+	message []byte
 }
 
 type stubPub struct {
@@ -36,7 +37,7 @@ func (p *stubPub) PublishWithDelay(topic string, message []byte, delay time.Dura
 	if p.publishErr != nil {
 		return p.publishErr
 	}
-	p.delayed = append(p.delayed, delayedPublish{topic, delay})
+	p.delayed = append(p.delayed, delayedPublish{topic: topic, delay: delay, message: message})
 	return nil
 }
 func (p *stubPub) ValidateConnection() error { return nil }
@@ -98,15 +99,82 @@ func (m *stubMetrics) count() int {
 
 func mustMessage(t *testing.T) []byte {
 	t.Helper()
+	return messageAtAttempt(t, 0)
+}
+
+func messageAtAttempt(t *testing.T, attempt int) []byte {
+	t.Helper()
 	b, err := json.Marshal(notification.NotificationQueueMessage{
 		Email:    "user@example.com",
 		Subject:  "hi",
 		Template: "welcome",
+		Attempt:  attempt,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return b
+}
+
+func attemptOf(t *testing.T, raw []byte) int {
+	t.Helper()
+	var m notification.NotificationQueueMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m.Attempt
+}
+
+const delayedCopyDeliveryCount = 2
+
+func TestConsumeEmail_RetriesStopAfterMaxBecauseTheAttemptTravelsInTheMessageNotTheBrokerCount(t *testing.T) {
+	pub := &stubPub{}
+	uc := NewConsumeEmailUseCase(nil, pub, &stubEmailSvc{err: errors.New("rate limit exceeded")}, &stubMetrics{})
+
+	message := mustMessage(t)
+	for delivery := 1; delivery <= messaging.MaxRetries+2; delivery++ {
+		before := pub.calls()
+		ack := newStubAck(delayedCopyDeliveryCount)
+		uc.HandleEmailPublication(message, ack)
+		waitDone(t, ack)
+		if pub.calls() == before {
+			if delivery != messaging.MaxRetries {
+				t.Fatalf("dropped at delivery %d, want drop exactly at %d", delivery, messaging.MaxRetries)
+			}
+			return
+		}
+		message = pub.delayed[pub.calls()-1].message
+		if got := attemptOf(t, message); got != delivery {
+			t.Fatalf("republished copy carries attempt %d, want %d", got, delivery)
+		}
+	}
+	t.Fatalf("a failing email kept retrying past %d attempts", messaging.MaxRetries)
+}
+
+func TestConsumeEmail_PermanentFailuresAreDroppedWithoutRetryBecauseRetryingCannotFixThem(t *testing.T) {
+	cases := []string{
+		"failed to send email via Resend: [ERROR]: API key is invalid",
+		"401 unauthorized",
+		"403 forbidden",
+		"422 invalid recipient address",
+	}
+	for _, msg := range cases {
+		t.Run(msg, func(t *testing.T) {
+			pub := &stubPub{}
+			uc := NewConsumeEmailUseCase(nil, pub, &stubEmailSvc{err: errors.New(msg)}, &stubMetrics{})
+			ack := newStubAck(1)
+
+			uc.HandleEmailPublication(mustMessage(t), ack)
+			waitDone(t, ack)
+
+			if pub.calls() != 0 {
+				t.Fatalf("a permanent failure must not be retried, got %d republish", pub.calls())
+			}
+			if !ack.acked {
+				t.Fatal("a permanent failure must be dropped via Ack")
+			}
+		})
+	}
 }
 
 func waitDone(t *testing.T, a *stubAck) {
@@ -165,9 +233,9 @@ func TestConsumeEmail_AtMaxRetries_DropsWithoutRepublish(t *testing.T) {
 	pub := &stubPub{}
 	metrics := &stubMetrics{}
 	uc := NewConsumeEmailUseCase(nil, pub, &stubEmailSvc{err: errors.New("rate limit exceeded")}, metrics)
-	ack := newStubAck(messaging.MaxRetries)
+	ack := newStubAck(1)
 
-	uc.HandleEmailPublication(mustMessage(t), ack)
+	uc.HandleEmailPublication(messageAtAttempt(t, messaging.MaxRetries-1), ack)
 	waitDone(t, ack)
 
 	if pub.calls() != 0 {

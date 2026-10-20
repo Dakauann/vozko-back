@@ -14,6 +14,7 @@ func (c *Container) wireConversationRuns(engine *workflow_usecase.RunEngine) {
 		log.Fatalf("[lead-exit] starting a workflow from a tap: %v", err)
 	}
 	c.conversationRuns = starter
+	c.useCases.startWorkflowRun = workflow_usecase.NewStartRunUseCase(starter, c.repositories.workflowRun, c.conversationVisibility())
 }
 
 func (c *Container) tapWorkflows() *workflow_usecase.ConversationRunStarter {

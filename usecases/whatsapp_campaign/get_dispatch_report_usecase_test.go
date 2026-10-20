@@ -31,6 +31,11 @@ type reportReaderStub struct {
 	tagLimit  int
 	rowLimit  int
 	windowArg wce.DayWindow
+
+	reasons       []wce.FailureReasonCount
+	campaignPages [][]wce.CampaignFunnel
+	tagPages      [][]wce.TagCount
+	pagesAsked    []wce.Page
 }
 
 func (s *reportReaderStub) read(name string, scope wce.ReportScope) error {
@@ -49,17 +54,29 @@ func (s *reportReaderStub) Daily(scope wce.ReportScope, window wce.DayWindow) ([
 }
 
 func (s *reportReaderStub) FailureReasons(scope wce.ReportScope) ([]wce.FailureReasonCount, error) {
-	return nil, s.read("reasons", scope)
+	return s.reasons, s.read("reasons", scope)
 }
 
-func (s *reportReaderStub) Tags(scope wce.ReportScope, limit int) ([]wce.TagCount, error) {
-	s.tagLimit = limit
-	return nil, s.read("tags", scope)
+func (s *reportReaderStub) Tags(scope wce.ReportScope, page wce.Page) ([]wce.TagCount, error) {
+	s.tagLimit = page.Limit
+	return pageOf(s.tagPages, page), s.read("tags", scope)
 }
 
-func (s *reportReaderStub) Campaigns(scope wce.ReportScope, limit int) ([]wce.CampaignFunnel, error) {
-	s.rowLimit = limit
-	return nil, s.read("campaigns", scope)
+func (s *reportReaderStub) Campaigns(scope wce.ReportScope, page wce.Page) ([]wce.CampaignFunnel, error) {
+	s.rowLimit = page.Limit
+	s.pagesAsked = append(s.pagesAsked, page)
+	return pageOf(s.campaignPages, page), s.read("campaigns", scope)
+}
+
+func pageOf[T any](pages [][]T, page wce.Page) []T {
+	if page.Limit <= 0 {
+		return nil
+	}
+	index := page.Offset / page.Limit
+	if index >= len(pages) {
+		return nil
+	}
+	return pages[index]
 }
 
 type keyRecordingMemo struct {

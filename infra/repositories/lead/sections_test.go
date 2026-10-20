@@ -91,10 +91,19 @@ func expectDistinctFacets(mock sqlmock.Sqlmock, campaigns, channels, memories *s
 		WithArgs(pageWorkspace, pageWorkspace).WillReturnRows(campaigns)
 	mock.ExpectQuery(`^SELECT s\.key AS key, COUNT\(\*\) AS count FROM \(SELECT DISTINCT lead_channels\.channel AS key, lead_channels\.lead_id FROM \(.*\) lead_channels `+
 		`WHERE lead_channels\.lead_id IN \(`+sectionMembers+`\)\) s GROUP BY s\.key$`).
-		WithArgs(pageWorkspace, pageWorkspace, pageWorkspace, pageWorkspace, pageWorkspace, pageWorkspace, pageWorkspace).WillReturnRows(channels)
+		WithArgs(leadChannelFacetArgs(pageWorkspace)...).WillReturnRows(channels)
 	mock.ExpectQuery(`^SELECT s\.key AS key, COUNT\(\*\) AS count FROM \(SELECT DISTINCT lm_g\.category AS key, lm_g\.lead_id FROM lead_memories lm_g `+
 		`WHERE lm_g\.workspace_id = \$1 AND lm_g\.deleted_at IS NULL AND lm_g\.lead_id IN \(`+sectionMembers+`\)\) s GROUP BY s\.key$`).
 		WithArgs(pageWorkspace, pageWorkspace).WillReturnRows(memories)
+}
+
+func leadChannelFacetArgs(workspaceID string) []driver.Value {
+	_, unionArgs := infracrmfilter.LeadChannelsIn(workspaceID)
+	args := make([]driver.Value, 0, len(unionArgs)+1)
+	for _, a := range unionArgs {
+		args = append(args, a)
+	}
+	return append(args, workspaceID)
 }
 
 func counts() *sqlmock.Rows { return sqlmock.NewRows([]string{"key", "count"}) }

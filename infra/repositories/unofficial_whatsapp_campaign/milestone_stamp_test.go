@@ -68,8 +68,8 @@ func TestAnUnofficialResetClearsEveryMilestone(t *testing.T) {
 
 	mock.ExpectExec(`UPDATE "unofficial_whatsapp_campaign_entries" SET `+
 		`"delivered_at"=.+,"error_code"=.+,"error_message"=.+,"failed_at"=.+,`+
-		`"message_id"=.+,"provider_message_id"=.+,"read_at"=.+,"sent_at"=.+,"status"=.+ WHERE campaign_id = .+`).
-		WithArgs(nil, 0, "", nil, nil, "", nil, nil, "PENDING", sqlmock.AnyArg(), "campaign-1").
+		`"message_id"=.+,"provider_message_id"=.+,"read_at"=.+,"sender_instance_id"=.+,"sent_at"=.+,"status"=.+ WHERE campaign_id = .+`).
+		WithArgs(nil, 0, "", nil, nil, "", nil, nil, nil, "PENDING", sqlmock.AnyArg(), "campaign-1").
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
 	if _, err := repo.ResetAllStatuses("campaign-1"); err != nil {

@@ -14,7 +14,9 @@ import (
 	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/lead"
 	"vozko/domain/leadexit"
+	"vozko/domain/shared"
 	"vozko/domain/workflow"
+	inbox_assignment_usecase "vozko/usecases/inbox_assignment"
 	lead_usecase "vozko/usecases/lead"
 	opportunity_usecase "vozko/usecases/opportunity"
 	workflow_usecase "vozko/usecases/workflow"
@@ -63,6 +65,8 @@ func (s *Step) runKind(ctx context.Context, in leadexit.Inbound, d leadexit.Deci
 		return s.recordConsent(ctx, in, d, lead.ConsentGrant, params.Purpose)
 	case buttonaction.KindHandOff:
 		return s.handOff(in, params)
+	case buttonaction.KindDelegate:
+		return s.delegate(ctx, in, params)
 	case buttonaction.KindClassify:
 		return s.classify(ctx, in, params)
 	case buttonaction.KindCreateDeal:
@@ -117,6 +121,16 @@ func (s *Step) handOff(in leadexit.Inbound, p buttonaction.Params) (effect, erro
 	return effect{changed: true}, nil
 }
 
+func (s *Step) delegate(ctx context.Context, in leadexit.Inbound, p buttonaction.Params) (effect, error) {
+	err := s.deps.Delegations.DelegateAsSystem(ctx, inbox_assignment_usecase.SystemDelegation{
+		WorkspaceID: in.WorkspaceID, EntryID: in.EntryID, EntryType: shared.EntryType(in.EntryType), Automation: p.Automation(),
+	})
+	if err != nil {
+		return effect{}, err
+	}
+	return effect{changed: true}, nil
+}
+
 func (s *Step) classify(ctx context.Context, in leadexit.Inbound, p buttonaction.Params) (effect, error) {
 	out, err := s.deps.Profiles.Update(ctx, lead_usecase.ProfileUpdate{
 		WorkspaceID: in.WorkspaceID, LeadID: in.LeadID, Actor: actor.SystemID, Source: lead.ProfileFromConversation,
@@ -141,7 +155,8 @@ func (s *Step) createDeal(in leadexit.Inbound, p buttonaction.Params) (effect, e
 
 func (s *Step) startWorkflow(in leadexit.Inbound, d leadexit.Decision, p buttonaction.Params) (effect, error) {
 	started, err := s.deps.Workflows.StartForConversation(workflow_usecase.ConversationStart{
-		WorkspaceID: in.WorkspaceID, WorkflowID: p.WorkflowID, EntryID: in.EntryID, EntryType: in.EntryType, Data: tapRunData(in, d),
+		WorkspaceID: in.WorkspaceID, WorkflowID: p.WorkflowID, EntryID: in.EntryID, EntryType: in.EntryType,
+		StartedBy: workflow.StartedByExit(in.MessageID), Data: tapRunData(in, d),
 	})
 	if err != nil {
 		return effect{}, err

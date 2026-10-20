@@ -18,6 +18,7 @@ func TestSubjectIsExactlyOneLeadOrOneChannelContact(t *testing.T) {
 		{"a telegram contact that never shared a phone", ContactSubject(shared.EntryTypeTelegram, "tg-1"), true},
 		{"a facebook contact", ContactSubject(shared.EntryTypeFacebook, "fb-1"), true},
 		{"a webchat visitor", ContactSubject(shared.EntryTypeWebchat, "wc-1"), true},
+		{"a mercado livre buyer", ContactSubject(shared.EntryTypeMercadoLivre, "ml-1"), true},
 		{"an unofficial whatsapp contact", ContactSubject(shared.EntryTypeUnofficialWhatsApp, "uw-1"), true},
 		{"official whatsapp has no contact table, only leads", ContactSubject(shared.EntryTypeWhatsApp, "x"), false},
 		{"nothing at all", Subject{}, false},

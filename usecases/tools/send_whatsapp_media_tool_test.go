@@ -192,6 +192,9 @@ func (c *recordingWhatsAppClient) SendButtonMessage(context.Context, conversatio
 func (c *recordingWhatsAppClient) SendListMessage(context.Context, conversation.SendListMessageInput) (*conversation.SendTextMessageOutput, error) {
 	return nil, errors.New("not used")
 }
+func (c *recordingWhatsAppClient) SendFlowMessage(context.Context, conversation.SendFlowMessageInput) (*conversation.SendTextMessageOutput, error) {
+	return nil, errors.New("not used")
+}
 func (c *recordingWhatsAppClient) SendTypingIndicator(context.Context, string) error { return nil }
 func (c *recordingWhatsAppClient) MarkMessageAsRead(context.Context, string) error   { return nil }
 func (c *recordingWhatsAppClient) SendTemplateMessage(context.Context, conversation.SendTemplateMessageInput) (*conversation.SendTextMessageOutput, error) {
@@ -235,7 +238,7 @@ func newMediaToolWith(t *testing.T, client *recordingWhatsAppClient, medias ...m
 		m := medias[i]
 		repo.byID[m.ID] = &m
 	}
-	return NewSendWhatsappMediaToolUseCase(context.Background(), &stubFactory{c: client}, repo)
+	return NewSendWhatsappMediaToolUseCase(context.Background(), &stubFactory{c: client}, repo, loopbackDownloads())
 }
 
 func servePNG(t *testing.T) *httptest.Server {

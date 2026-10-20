@@ -38,6 +38,22 @@ func (r *memberRepository) ByPersonKeys(ctx context.Context, groupID string, key
 	return membersToDomain(rows), nil
 }
 
+func (r *memberRepository) ByPeople(ctx context.Context, workspaceID string, keys []string, scope uwg.Scope) ([]uwg.Member, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	where, args := scopeSQL("wg", scope)
+	var rows []schema.UnofficialWhatsAppGroupMember
+	err := r.db.WithContext(ctx).Raw(`SELECT m.* FROM unofficial_whatsapp_group_members m
+		JOIN unofficial_whatsapp_workspace_groups wg ON wg.id = m.group_id AND wg.deleted_at IS NULL AND wg.followed_at IS NOT NULL
+		WHERE m.workspace_id = ? AND m.person_key IN ? AND m.status = 'active' AND `+where+`
+		ORDER BY m.person_key, m.created_at`, append([]any{workspaceID, keys}, args...)...).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return membersToDomain(rows), nil
+}
+
 func (r *memberRepository) Apply(ctx context.Context, g *uwg.Group, diff uwg.MemberDiff, at time.Time) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if len(diff.Upserts) > 0 {
@@ -60,7 +76,7 @@ func (r *memberRepository) Apply(ctx context.Context, g *uwg.Group, diff uwg.Mem
 			for _, e := range diff.Events {
 				events = append(events, schema.UnofficialWhatsAppGroupMemberEvent{
 					WorkspaceID: e.WorkspaceID, GroupID: e.GroupID, PersonKey: e.PersonKey,
-					Kind: string(e.Kind), OurNumber: e.OurNumber, OccurredAt: e.OccurredAt,
+					Kind: string(e.Kind), Cause: string(e.Cause), OurNumber: e.OurNumber, OccurredAt: e.OccurredAt,
 				})
 			}
 			if err := tx.CreateInBatches(&events, 500).Error; err != nil {
@@ -154,10 +170,12 @@ func (r *memberRepository) Counts(ctx context.Context, groupID string, since tim
 	err := r.db.WithContext(ctx).Raw(`
 		SELECT
 		  COUNT(*) FILTER (WHERE status = 'active' AND our_number = false) AS active,
-		  COUNT(*) FILTER (WHERE status = 'left' AND our_number = false AND left_at >= ?) AS left30d,
+		  COUNT(*) FILTER (WHERE status <> 'active' AND our_number = false AND left_at >= ?) AS left30d,
+		  COUNT(*) FILTER (WHERE status = 'removed' AND our_number = false AND left_at >= ?) AS removed30d,
+		  COUNT(*) FILTER (WHERE status = 'removed' AND our_number = true) AS ours_removed,
 		  COUNT(*) FILTER (WHERE status = 'active' AND lead_id IS NOT NULL) AS with_lead,
 		  COUNT(*) FILTER (WHERE status = 'active' AND phone = '') AS hidden
-		FROM unofficial_whatsapp_group_members WHERE group_id = ?`, since, groupID).Scan(&c).Error
+		FROM unofficial_whatsapp_group_members WHERE group_id = ?`, since, since, groupID).Scan(&c).Error
 	return c, err
 }
 

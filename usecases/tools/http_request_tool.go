@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"vozko/domain/tools"
+	"vozko/domain/workflow"
 )
 
-const httpRequestToolName = "http_request"
+const httpRequestToolName = workflow.AgentHTTPRequestTool
 
 const (
 	defaultRequestTimeout = 30 * time.Second

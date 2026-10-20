@@ -394,10 +394,17 @@ func (c *fakeCaps) MonthlySendCapUsage(string, time.Time) (*balance.SendCapUsage
 	return c.usage, nil
 }
 
-type fakeNotifier struct{ held []sc.Decision }
+type fakeNotifier struct {
+	held    []sc.Decision
+	resumed []string
+}
 
 func (n *fakeNotifier) Held(_ *wc.Campaign, _ int, d sc.Decision, _ time.Time) {
 	n.held = append(n.held, d)
+}
+
+func (n *fakeNotifier) Resumed(c *wc.Campaign) {
+	n.resumed = append(n.resumed, c.ID)
 }
 
 type memLocks struct{ keys map[string]bool }

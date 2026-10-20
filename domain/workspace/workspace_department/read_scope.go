@@ -69,3 +69,25 @@ func (f *DepartmentFilter) isOwn(departmentID string) bool {
 	}
 	return false
 }
+
+func (f *DepartmentFilter) CanAccess(resourceDepartmentID string) bool {
+	if f == nil {
+		return false
+	}
+	ids := f.EffectiveDepartmentIDs()
+	if resourceDepartmentID == "" {
+		if f.IsOwnerOrAdmin {
+			return len(ids) == 0
+		}
+		return !f.ShouldFilter()
+	}
+	if len(ids) == 0 {
+		return !f.ShouldFilter() || f.IsOwnerOrAdmin
+	}
+	for _, id := range ids {
+		if id == resourceDepartmentID {
+			return true
+		}
+	}
+	return false
+}

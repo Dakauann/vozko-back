@@ -2,7 +2,9 @@ package unofficial_whatsapp_group_usecase
 
 import (
 	"context"
+	"errors"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -84,6 +86,7 @@ type JoinInput struct {
 	InviteLink  string
 	InstanceIDs []string
 	Follow      bool
+	Category    string
 }
 
 func (s *Service) JoinGroup(ctx context.Context, a Actor, in JoinInput) (*JoinResult, error) {
@@ -97,7 +100,7 @@ func (s *Service) JoinGroup(ctx context.Context, a Actor, in JoinInput) (*JoinRe
 	planID := uuid.NewString()
 	tasks, err := uwg.PlanJoins(uwg.JoinPlanInput{
 		PlanID: planID, WorkspaceID: a.WorkspaceID, InviteLink: in.InviteLink,
-		InstanceIDs: in.InstanceIDs, Follow: in.Follow, CreatedByID: a.UserID,
+		InstanceIDs: in.InstanceIDs, Follow: in.Follow, Category: in.Category, CreatedByID: a.UserID,
 	}, s.d.Clock())
 	if err != nil {
 		return nil, err
@@ -111,6 +114,48 @@ func (s *Service) JoinGroup(ctx context.Context, a Actor, in JoinInput) (*JoinRe
 		return nil, err
 	}
 	return &JoinResult{PlanID: planID, Group: g, Tasks: tasks}, nil
+}
+
+func (s *Service) AddNumbers(ctx context.Context, a Actor, id string, instanceIDs []string) (*JoinResult, error) {
+	n, g, err := s.visibleGroup(ctx, a, id)
+	if err != nil {
+		return nil, err
+	}
+	seats, err := s.visibleSeats(ctx, g, n)
+	if err != nil {
+		return nil, err
+	}
+	for _, seat := range seats {
+		if slices.Contains(instanceIDs, seat.InstanceID) {
+			return nil, uwg.ErrNumberAlreadyInGroup
+		}
+	}
+	if _, err := n.usable(instanceIDs); err != nil {
+		return nil, err
+	}
+	link, err := s.joinLink(ctx, a, g, n)
+	if err != nil {
+		return nil, err
+	}
+	return s.JoinGroup(ctx, a, JoinInput{InviteLink: link, InstanceIDs: instanceIDs, Follow: g.Followed(), Category: g.Category})
+}
+
+func (s *Service) joinLink(ctx context.Context, a Actor, g *uwg.Group, n numbers) (string, error) {
+	instanceID, err := s.adminSeat(ctx, g, n)
+	if err == nil {
+		return s.d.SeatSync.InviteLink(ctx, a.WorkspaceID, instanceID, g.JID, a.Departments)
+	}
+	if !errors.Is(err, uw.ErrNotGroupAdmin) {
+		return "", err
+	}
+	link, err := s.d.Joins.LastLink(ctx, a.WorkspaceID, g.JID)
+	if err != nil {
+		return "", err
+	}
+	if link == "" {
+		return "", uwg.ErrNoInviteLink
+	}
+	return link, nil
 }
 
 func (s *Service) RunDueJoins(ctx context.Context) error {
@@ -147,7 +192,7 @@ func (s *Service) runJoin(ctx context.Context, task *uwg.JoinTask) (*uwg.Group, 
 		}
 		return nil, s.retryJoin(ctx, task, now, err)
 	}
-	g, err := s.adoptGroup(ctx, instance, joined.JID, task.CreatedByID, task.Follow)
+	g, err := s.adoptGroup(ctx, instance, joined.JID, task.CreatedByID, task.Follow, task.CategoryFor)
 	if err != nil {
 		return nil, s.retryJoin(ctx, task, now, err)
 	}
@@ -187,7 +232,7 @@ func (s *Service) failPlan(ctx context.Context, task *uwg.JoinTask, cause error)
 	return cause
 }
 
-func (s *Service) adoptGroup(ctx context.Context, instance *uw.Instance, groupJID, createdByID string, follow bool) (*uwg.Group, error) {
+func (s *Service) adoptGroup(ctx context.Context, instance *uw.Instance, groupJID, createdByID string, follow bool, fileUnder func(current string) string) (*uwg.Group, error) {
 	seat, err := s.d.SeatSync.Get(ctx, instance.WorkspaceID, instance.ID, groupJID, true, uw.Unrestricted())
 	if err != nil {
 		return nil, err
@@ -199,6 +244,9 @@ func (s *Service) adoptGroup(ctx context.Context, instance *uw.Instance, groupJI
 	}
 	if g.CreatedByID == "" {
 		g.CreatedByID = createdByID
+	}
+	if fileUnder != nil {
+		g.Category = fileUnder(g.Category)
 	}
 	instances, err := s.workspaceInstances(ctx, instance.WorkspaceID)
 	if err != nil {
@@ -287,7 +335,7 @@ func (s *Service) createManaged(ctx context.Context, a Actor, in ManagedGroupInp
 	}
 	warnings := s.configureManaged(ctx, ref, created.JID, in, phones)
 
-	g, err := s.adoptGroup(ctx, creator, created.JID, a.UserID, !in.SkipFollow)
+	g, err := s.adoptGroup(ctx, creator, created.JID, a.UserID, !in.SkipFollow, nil)
 	if err != nil {
 		return nil, err
 	}

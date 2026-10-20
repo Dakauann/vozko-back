@@ -11,8 +11,10 @@ import (
 
 var interpolationPattern = regexp.MustCompile(`\{\{\s*([\w.\[\]]+)\s*\}\}`)
 
-func formatValue(val interface{}) string {
+func TemplateText(val interface{}) string {
 	switch v := val.(type) {
+	case nil:
+		return ""
 	case string:
 		return v
 	case map[string]interface{}, []interface{}:
@@ -60,115 +62,33 @@ func deepResolve(root interface{}, path string) (interface{}, bool) {
 }
 
 func Interpolate(text string, state *RunState, sysCtx map[string]interface{}) string {
+	return InterpolateWithSecrets(text, state, sysCtx, nil)
+}
+
+func InterpolateWithSecrets(text string, state *RunState, sysCtx map[string]interface{}, secrets map[string]string) string {
 	if !strings.Contains(text, "{{") {
 		return text
 	}
 	return interpolationPattern.ReplaceAllStringFunc(text, func(match string) string {
-
 		inner := normalizeIndexing(strings.TrimSpace(match[2 : len(match)-2]))
-		parts := strings.SplitN(inner, ".", 2)
-
-		var scope, key string
-		if len(parts) == 2 {
-			scope, key = parts[0], parts[1]
-		} else {
-
-			scope, key = "var", inner
-		}
-
-		switch scope {
-		case "var":
-			val, ok := state.Get(key)
-			if !ok {
-
-				if dotIdx := strings.IndexByte(key, '.'); dotIdx > 0 {
-					if root, ok2 := state.Get(key[:dotIdx]); ok2 {
-						if resolved, ok3 := deepResolve(root, key[dotIdx+1:]); ok3 {
-							return formatValue(resolved)
-						}
-					}
-				}
-				return match
-			}
-			return formatValue(val)
-		case "sys":
-			if sysCtx != nil {
-				if val, ok := sysCtx[key]; ok {
-					return formatValue(val)
-				}
-			}
-			return resolveBuiltinSys(key)
-		case "last":
-			val, ok := state.Get("_last_" + key)
-			if !ok {
-
-				if dotIdx := strings.IndexByte(key, '.'); dotIdx > 0 {
-					if root, ok2 := state.Get("_last_" + key[:dotIdx]); ok2 {
-						if resolved, ok3 := deepResolve(root, key[dotIdx+1:]); ok3 {
-							return formatValue(resolved)
-						}
-					}
-				}
-				return match
-			}
-			return formatValue(val)
-		case "ai":
-			val, ok := state.Get("_ai_" + key)
-			if !ok {
-
-				if dotIdx := strings.IndexByte(key, '.'); dotIdx > 0 {
-					if root, ok2 := state.Get("_ai_" + key[:dotIdx]); ok2 {
-						if resolved, ok3 := deepResolve(root, key[dotIdx+1:]); ok3 {
-							return formatValue(resolved)
-						}
-					}
-				}
-				return match
-			}
-			return formatValue(val)
-		default:
-
-			if scope == "node" {
-				nodeParts := strings.SplitN(key, ".", 2)
-				if len(nodeParts) == 2 {
-					stateKey := "_node_" + nodeParts[0] + "_" + nodeParts[1]
-					if val, ok := state.Get(stateKey); ok {
-						return formatValue(val)
-					}
-					if dotIdx := strings.IndexByte(nodeParts[1], '.'); dotIdx > 0 {
-						if root, ok := state.Get("_node_" + nodeParts[0] + "_" + nodeParts[1][:dotIdx]); ok {
-							if resolved, ok2 := deepResolve(root, nodeParts[1][dotIdx+1:]); ok2 {
-								return formatValue(resolved)
-							}
-						}
-					}
-				}
-				return match
-			}
-
-			if strings.HasPrefix(scope, "node_") {
-				if val, ok := state.Get("_" + scope + "_" + key); ok {
-					return formatValue(val)
-				}
-			}
-
-			if val, ok := state.Get(scope); ok {
-				if m, isMap := val.(map[string]interface{}); isMap {
-					if v, found := m[key]; found {
-						return formatValue(v)
-					}
-				}
-				if resolved, ok3 := deepResolve(val, key); ok3 {
-					return formatValue(resolved)
-				}
-			}
-			if meta, ok := state.Get("_httpmeta_" + scope); ok {
-				if resolved, ok3 := deepResolve(meta, key); ok3 {
-					return formatValue(resolved)
-				}
+		if name, isSecret := strings.CutPrefix(inner, SecretScope+"."); isSecret {
+			if val, ok := secrets[name]; ok {
+				return val
 			}
 			return match
 		}
+		if key, isSys := strings.CutPrefix(inner, "sys."); isSys {
+			if sysCtx != nil {
+				if val, ok := sysCtx[key]; ok {
+					return TemplateText(val)
+				}
+			}
+			return resolveBuiltinSys(key)
+		}
+		if val, ok := ResolveVariable(inner, state); ok {
+			return TemplateText(val)
+		}
+		return match
 	})
 }
 
@@ -196,6 +116,8 @@ func ResolveVariable(ref string, state *RunState) (interface{}, bool) {
 	}
 
 	switch scope {
+	case SecretScope:
+		return nil, false
 	case "var":
 		if val, ok := state.Get(key); ok {
 			return val, true
@@ -264,7 +186,7 @@ func ResolveVariable(ref string, state *RunState) (interface{}, bool) {
 				return resolved, true
 			}
 		}
-		if meta, ok := state.Get("_httpmeta_" + scope); ok {
+		if meta, ok := state.Get(HTTPMetaPrefix + scope); ok {
 			if resolved, ok := deepResolve(meta, key); ok {
 				return resolved, true
 			}
@@ -392,7 +314,7 @@ func RequiresUpstreamData(deps []VariableDependency) bool {
 			return true
 		default:
 
-			if d.Scope != "var" && d.Scope != "sys" {
+			if d.Scope != "var" && d.Scope != "sys" && d.Scope != SecretScope {
 				return true
 			}
 		}
@@ -441,7 +363,7 @@ func GetRequiredMocks(deps []VariableDependency) []RequiredMock {
 			mock.StateKey = d.Key
 			mock.DisplayName = d.Key
 			mock.Source = DependencySourceTrigger
-		case "sys":
+		case "sys", SecretScope:
 
 			continue
 		default:

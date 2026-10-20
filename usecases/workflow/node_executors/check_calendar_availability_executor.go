@@ -23,12 +23,13 @@ func NewCheckCalendarAvailabilityExecutor(repo calendar.Repository, google calen
 
 func (e *checkCalendarAvailabilityExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionCheckCalendarAvailability,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Verificar Disponibilidade",
-		Description: "Consulta o Google Calendar do workspace e retorna horários livres no período informado.",
-		Icon:        "CalendarBlank",
+		Type:         workflow.NodeTypeActionCheckCalendarAvailability,
+		TestBehavior: workflow.NodeTestExternalCall,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Verificar Disponibilidade",
+		Description:  "Consulta o Google Calendar do workspace e retorna horários livres no período informado.",
+		Icon:         "CalendarBlank",
 		Guidance: workflow.NodeGuidance{
 			When: "Para consultar horários livres no Google Calendar.",
 		},
@@ -188,8 +189,7 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 		availableText = "Nenhum horário disponível no período."
 	}
 
-	return &workflow.NodeResult{
-		NextNodeID: calAvailResolveEdge(ctx, "sucesso"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":              true,
 			"available_slots":      availableText,
@@ -200,7 +200,7 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 			"timezone":             timezoneName,
 			"calendar_email":       conn.Email,
 		},
-	}, nil
+	}, outgoingEdges(ctx), "sucesso"), nil
 }
 
 type timeSlot struct {
@@ -321,20 +321,12 @@ func parseHHMM(raw string, defaultH, defaultM int) hhMM {
 }
 
 func calAvailFailure(ctx *workflow.NodeContext, message string) *workflow.NodeResult {
-	return &workflow.NodeResult{
-		NextNodeID: calAvailResolveEdge(ctx, "erro"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   message,
 		},
-	}
-}
-
-func calAvailResolveEdge(ctx *workflow.NodeContext, label string) string {
-	if ctx == nil || ctx.Graph == nil || ctx.Node == nil {
-		return ""
-	}
-	return resolveEdgeByLabel(ctx.Graph.OutgoingEdges(ctx.Node.ID), label)
+	}, outgoingEdges(ctx), "erro")
 }
 
 func parseWorkDays(raw string) map[time.Weekday]bool {

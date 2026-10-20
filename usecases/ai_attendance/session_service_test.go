@@ -10,12 +10,13 @@ import (
 )
 
 type memRepo struct {
-	byEntry map[string]*aa.Session
-	byID    map[string]*aa.Session
+	byEntry   map[string]*aa.Session
+	byID      map[string]*aa.Session
+	toolCalls map[string]int
 }
 
 func newMem() *memRepo {
-	return &memRepo{byEntry: map[string]*aa.Session{}, byID: map[string]*aa.Session{}}
+	return &memRepo{byEntry: map[string]*aa.Session{}, byID: map[string]*aa.Session{}, toolCalls: map[string]int{}}
 }
 
 func key(ws, entry, typ string) string { return ws + "|" + entry + "|" + typ }
@@ -237,4 +238,9 @@ func TestTheHandOffTargetIsResolvedLikeAnyRecipient(t *testing.T) {
 	if got := ce.LookupDetailID(map[string]string{"from_actor_id": "ai:ag1"}, ce.FromActorIDKeys); got != "ai:ag1" {
 		t.Fatalf("from id = %q", got)
 	}
+}
+
+func (m *memRepo) IncrementToolCalls(sessionID string, count int) error {
+	m.toolCalls[sessionID] += count
+	return nil
 }

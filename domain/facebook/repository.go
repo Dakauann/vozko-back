@@ -38,6 +38,7 @@ type PageRepository interface {
 	UpdateProfile(ctx context.Context, id string, remote *RemotePage, pictureKey string, at time.Time) error
 
 	FindByID(ctx context.Context, id string) (*Page, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Page, error)
 	FindByFBPageID(ctx context.Context, fbPageID string) (*Page, error)
 	FindByFBPageIDUnscoped(ctx context.Context, fbPageID string) (*Page, error)
 	ListByWorkspace(ctx context.Context, in ListPagesInput) (*shared.PaginatedResult[*Page], error)
@@ -61,6 +62,7 @@ type ContactRepository interface {
 type ConversationRepository interface {
 	FindOrCreate(ctx context.Context, workspaceID, pageID, contactID string) (*Conversation, error)
 	FindByID(ctx context.Context, id string) (*Conversation, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Conversation, error)
 	FindByContact(ctx context.Context, pageID, contactID string) (*Conversation, error)
 	LatestForPage(ctx context.Context, pageID string) (*Conversation, error)
 

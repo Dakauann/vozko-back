@@ -11,6 +11,7 @@ type ErrorResponse struct {
 	Message  string            `json:"message"`
 	Expected map[string]string `json:"expected,omitempty"`
 	Optional []string          `json:"optional,omitempty"`
+	Details  any               `json:"details,omitempty"`
 }
 
 type CodedErrorResponse struct {
@@ -65,6 +66,12 @@ func WriteErrorWithCode(w http.ResponseWriter, statusCode int, code, message str
 		Message:  message,
 		Expected: expected,
 	})
+}
+
+func WriteErrorWithDetails(w http.ResponseWriter, statusCode int, code, message string, details any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(ErrorResponse{Error: true, Code: code, Message: message, Details: details})
 }
 
 func WriteInvalidBodyError(w http.ResponseWriter, expected map[string]string) {

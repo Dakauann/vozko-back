@@ -3,6 +3,7 @@ package unofficial_whatsapp_campaign
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -252,6 +253,29 @@ func (f *fakeEntryRepo) ListByStatus(campaignID string, status campaign.SendStat
 
 func (f *fakeEntryRepo) ListRecentlyUpdated(string, int) ([]uwc.Entry, error) { return nil, nil }
 
+func (f *fakeEntryRepo) EachAutomationMetadata(campaignID string, visit func(campaign.EntryMetadata) error) error {
+	f.mu.Lock()
+	ids := make([]string, 0, len(f.entries))
+	for id, e := range f.entries {
+		if e.CampaignID == campaignID {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	stored := make([]campaign.EntryMetadata, 0, len(ids))
+	for _, id := range ids {
+		e := f.entries[id]
+		stored = append(stored, campaign.EntryMetadataOf(e.LeadID, e.Number, e.Metadata))
+	}
+	f.mu.Unlock()
+	for _, entry := range stored {
+		if err := visit(entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (f *fakeEntryRepo) CountByStatus(campaignID string) (*campaign.Counts, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -320,6 +344,7 @@ func (f *fakeEntryRepo) RecordSend(id string, in uwc.RecordSendInput) error {
 	f.sends = append(f.sends, in)
 	if e, ok := f.entries[id]; ok {
 		e.Status = campaign.SendStatusSent
+		e.SenderInstanceID = in.SenderInstanceID
 		e.ProviderMessageID = in.ProviderMessageID
 		e.ConversationID = in.ConversationID
 		e.VariantIndex = in.VariantIndex
@@ -355,8 +380,25 @@ func (f *fakeEntryRepo) UpsertEntries(campaignID string, entries []uwc.Entry) er
 }
 func (f *fakeEntryRepo) ConversationIDsForCampaign(string) ([]string, error) { return nil, nil }
 
+func (f *fakeEntryRepo) TargetNamesForCampaigns(ids []string, limit int) (map[string][]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	wanted := map[string]bool{}
+	for _, id := range ids {
+		wanted[id] = true
+	}
+	out := map[string][]string{}
+	for _, e := range f.entries {
+		if wanted[e.CampaignID] && e.TargetsGroup() && len(out[e.CampaignID]) < limit {
+			out[e.CampaignID] = append(out[e.CampaignID], e.Name)
+		}
+	}
+	return out, nil
+}
+
 type fakeGateway struct {
 	instance    *uw.Instance
+	byID        map[string]*uw.Instance
 	checkResult []uw.NumberCheck
 	checkErr    error
 	checkCalls  int
@@ -367,7 +409,13 @@ type fakeGateway struct {
 	resolved    []uwuc.ResolveInput
 }
 
-func (f *fakeGateway) Instance(context.Context, string) (*uw.Instance, error) {
+func (f *fakeGateway) Instance(_ context.Context, id string) (*uw.Instance, error) {
+	if f.byID != nil {
+		if instance, ok := f.byID[id]; ok {
+			return instance, nil
+		}
+		return nil, uw.ErrInstanceNotFound
+	}
 	if f.instance == nil {
 		return nil, uw.ErrInstanceNotFound
 	}

@@ -2,6 +2,7 @@ package conversation_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -16,6 +17,7 @@ type operatorSendUseCase struct {
 	users     user.UserRepository
 	finalizer conversation.OperatorSendFinalizer
 	billing   conversation.ServiceMessageBilling
+	requests  conversation.SendRequestLedger
 }
 
 func NewOperatorSendUseCase(
@@ -23,6 +25,7 @@ func NewOperatorSendUseCase(
 	users user.UserRepository,
 	finalizer conversation.OperatorSendFinalizer,
 	billing conversation.ServiceMessageBilling,
+	requests conversation.SendRequestLedger,
 ) (conversation.OperatorSendUseCase, error) {
 	missing := []string{}
 	if sender == nil {
@@ -37,11 +40,14 @@ func NewOperatorSendUseCase(
 	if billing == nil {
 		missing = append(missing, "service message billing")
 	}
+	if requests == nil {
+		missing = append(missing, "send request ledger")
+	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("operator send use case: missing %s", strings.Join(missing, ", "))
 	}
 
-	return &operatorSendUseCase{sender: sender, users: users, finalizer: finalizer, billing: billing}, nil
+	return &operatorSendUseCase{sender: sender, users: users, finalizer: finalizer, billing: billing, requests: requests}, nil
 }
 
 func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.OperatorSendInput) (*conversation.Message, error) {
@@ -59,6 +65,43 @@ func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.Oper
 		return nil, conversation.ErrMessageContentRequired
 	}
 
+	request, deduplicated, err := conversation.NewSendRequest(in.EntryType, in.EntryID, in.RequestID)
+	if err != nil {
+		return nil, err
+	}
+	if !deduplicated {
+		return uc.deliver(ctx, in)
+	}
+	return uc.deliverOnce(ctx, in, request)
+}
+
+func (uc *operatorSendUseCase) deliverOnce(ctx context.Context, in conversation.OperatorSendInput, request conversation.SendRequest) (*conversation.Message, error) {
+	sent, err := uc.requests.Sent(request)
+	if err == nil {
+		return sent, nil
+	}
+	if !errors.Is(err, conversation.ErrMessageNotFound) {
+		return nil, err
+	}
+
+	claimed, err := uc.requests.Claim(request)
+	if err != nil {
+		return nil, err
+	}
+	if !claimed {
+		return nil, conversation.ErrSendRequestInFlight
+	}
+
+	in.RequestID = request.RequestID
+	message, err := uc.deliver(ctx, in)
+	if err != nil {
+		uc.requests.Release(request)
+		return nil, err
+	}
+	return message, nil
+}
+
+func (uc *operatorSendUseCase) deliver(ctx context.Context, in conversation.OperatorSendInput) (*conversation.Message, error) {
 	if in.WorkspaceID != "" {
 		if err := uc.billing.AllowSend(in.WorkspaceID); err != nil {
 			return nil, err
@@ -84,8 +127,13 @@ func (uc *operatorSendUseCase) Execute(ctx context.Context, in conversation.Oper
 }
 
 func (uc *operatorSendUseCase) send(in conversation.OperatorSendInput) (*conversation.Message, error) {
+	origin := conversation.SendOrigin{
+		SenderUserID:     in.SenderUserID,
+		ReplyToMessageID: in.ReplyToMessageID,
+		ClientRequestID:  in.RequestID,
+	}
 	if in.Buttons != nil {
-		return uc.sender.SendButtonMessage(in.EntryID, in.EntryType, in.SenderUserID, in.ReplyToMessageID, *in.Buttons)
+		return uc.sender.SendButtonMessage(in.EntryID, in.EntryType, *in.Buttons, origin)
 	}
 
 	text := in.Text
@@ -94,12 +142,9 @@ func (uc *operatorSendUseCase) send(in conversation.OperatorSendInput) (*convers
 	}
 
 	if in.MediaID != "" {
-		return uc.sender.SendMediaMessage(
-			in.EntryID, in.EntryType, in.MediaID, in.MediaType,
-			in.SenderUserID, in.ReplyToMessageID, text,
-		)
+		return uc.sender.SendMediaMessage(in.EntryID, in.EntryType, in.MediaID, in.MediaType, text, origin)
 	}
-	return uc.sender.SendTextMessage(in.EntryID, in.EntryType, text, in.SenderUserID, in.ReplyToMessageID)
+	return uc.sender.SendTextMessage(in.EntryID, in.EntryType, text, origin)
 }
 
 func (uc *operatorSendUseCase) senderName(userID string) string {

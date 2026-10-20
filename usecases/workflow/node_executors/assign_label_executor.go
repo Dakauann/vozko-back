@@ -19,12 +19,13 @@ func NewAssignLabelExecutor(labeler label.AutomationLabeler) workflow.NodeExecut
 
 func (e *assignLabelExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionAssignLabel,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Gerenciar Etiqueta",
-		Description: "Adiciona ou remove uma etiqueta existente da conversa atual do workflow, em qualquer canal.",
-		Icon:        "Tag",
+		Type:         workflow.NodeTypeActionAssignLabel,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Gerenciar Etiqueta",
+		Description:  "Adiciona ou remove uma etiqueta existente da conversa atual do workflow, em qualquer canal.",
+		Icon:         "Tag",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para adicionar ou remover uma etiqueta da conversa.",
 			Behavior: "Idempotente: se a conversa já tem a etiqueta (ao adicionar) ou não tem (ao remover), o nó segue pelo caminho de sucesso sem mudar nada.",
@@ -77,23 +78,21 @@ func (e *assignLabelExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 	if err != nil {
 		return labelFailure(edges, err), nil
 	}
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "sucesso"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":    true,
 			"changed":    !change.Unchanged,
 			"label_id":   change.LabelID,
 			"label_name": change.LabelName,
 		},
-	}, nil
+	}, edges, "sucesso"), nil
 }
 
 func labelFailure(edges []workflow.Edge, err error) *workflow.NodeResult {
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "erro"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   fmt.Sprintf("erro ao mudar a etiqueta: %v", err),
 		},
-	}
+	}, edges, "erro")
 }

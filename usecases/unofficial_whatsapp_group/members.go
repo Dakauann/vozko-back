@@ -2,10 +2,7 @@ package unofficial_whatsapp_group_usecase
 
 import (
 	"context"
-	"strings"
-	"time"
 
-	"vozko/domain/report"
 	"vozko/domain/shared"
 	uwg "vozko/domain/unofficial_whatsapp_group"
 )
@@ -36,89 +33,44 @@ func (s *Service) AddMembersToLeads(ctx context.Context, a Actor, groupID string
 	if err != nil {
 		return nil, err
 	}
-	result := &LeadLinkResult{}
-	for _, m := range members {
-		switch {
-		case m.LeadID != "":
-			result.AlreadyLinked++
-		case m.Hidden():
-			result.WithoutPhone++
-		default:
-			leadID, err := s.d.Leads.EnsureLeadForPhone(ctx, a.WorkspaceID, m.Phone, m.DisplayName)
-			if err != nil {
-				return result, err
-			}
-			if err := s.d.Members.SetLead(ctx, g.ID, m.PersonKey, leadID); err != nil {
-				return result, err
-			}
-			result.Linked++
-		}
-	}
-	return result, nil
+	return s.linkToLeads(ctx, a.WorkspaceID, members)
 }
 
-type MemberExport struct {
-	FileName string
-	Document string
-}
-
-func (s *Service) ExportMembers(ctx context.Context, a Actor, groupID string) (*MemberExport, error) {
-	n, g, err := s.visibleGroup(ctx, a, groupID)
+func (s *Service) AddPeopleToLeads(ctx context.Context, a Actor, personKeys []string) (*LeadLinkResult, error) {
+	n, err := s.numbersOf(ctx, a)
 	if err != nil {
 		return nil, err
 	}
-	sheet := report.CSVSection{Header: []string{"Nome", "Telefone", "JID", "Status", "Papel", "Entrou em", "Saiu em", "Lead", "Outros grupos", "Seu número"}}
-	for page := 1; ; page++ {
-		rows, err := s.d.Members.List(ctx, a.WorkspaceID, uwg.MemberFilter{GroupID: g.ID, Scope: n.scope,
-			Pagination: shared.Pagination{Page: page, PageSize: shared.MaxPageSize}})
-		if err != nil {
-			return nil, err
+	members, err := s.d.Members.ByPeople(ctx, a.WorkspaceID, shared.DistinctTrimmed(personKeys), n.scope)
+	if err != nil {
+		return nil, err
+	}
+	return s.linkToLeads(ctx, a.WorkspaceID, members)
+}
+
+func (s *Service) linkToLeads(ctx context.Context, workspaceID string, members []uwg.Member) (*LeadLinkResult, error) {
+	result := &LeadLinkResult{}
+	for _, person := range uwg.MembershipsByPerson(members) {
+		leadID := person.LeadID()
+		switch {
+		case leadID != "":
+			result.AlreadyLinked++
+		case person.Phone() == "":
+			result.WithoutPhone++
+			continue
+		default:
+			created, err := s.d.Leads.EnsureLeadForPhone(ctx, workspaceID, person.Phone(), person.Name())
+			if err != nil {
+				return result, err
+			}
+			leadID = created
+			result.Linked++
 		}
-		for _, m := range rows.Items {
-			sheet.Rows = append(sheet.Rows, []report.CSVCell{
-				report.Text(memberName(m)), report.Text(m.Phone), report.Text(m.JID), report.Text(memberStatusLabel(m.Status)),
-				report.Text(memberRoleLabel(m.Member)), report.Text(formatDate(m.JoinedAt)), report.Text(formatDate(m.LeftAt)),
-				report.Text(m.LeadName), report.Int(int64(m.OtherGroups)), report.Text(yesNo(m.OurNumber)),
-			})
-		}
-		if page >= rows.TotalPages || len(rows.Items) == 0 {
-			break
+		for _, m := range person.Unlinked() {
+			if err := s.d.Members.SetLead(ctx, m.GroupID, m.PersonKey, leadID); err != nil {
+				return result, err
+			}
 		}
 	}
-	return &MemberExport{FileName: report.Filename("csv", "membros", strings.ToLower(g.Subject)), Document: report.BuildCSVDocument([]report.CSVSection{sheet}, true)}, nil
-}
-
-func memberName(m *uwg.MemberRow) string {
-	if strings.TrimSpace(m.DisplayName) == "" && m.ContactName != "" {
-		return m.ContactName
-	}
-	return m.Label()
-}
-
-func memberStatusLabel(status uwg.MemberStatus) string {
-	if status == uwg.MemberActive {
-		return "Ativo"
-	}
-	return "Saiu"
-}
-
-func memberRoleLabel(m uwg.Member) string {
-	if m.IsAdmin() {
-		return "Admin"
-	}
-	return "Membro"
-}
-
-func formatDate(t *time.Time) string {
-	if t == nil {
-		return ""
-	}
-	return t.UTC().Format(time.RFC3339)
-}
-
-func yesNo(v bool) string {
-	if v {
-		return "Sim"
-	}
-	return "Não"
+	return result, nil
 }

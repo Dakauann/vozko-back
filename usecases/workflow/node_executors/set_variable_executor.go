@@ -10,12 +10,13 @@ func NewSetVariableExecutor() workflow.NodeExecutor {
 
 func (e *setVariableExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionSetVariable,
-		Category:    workflow.NodeCategoryLogic,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
-		Label:       "Definir Variável",
-		Description: "Define uma variável no estado do fluxo.",
-		Icon:        "BracketsCurly",
+		Type:         workflow.NodeTypeActionSetVariable,
+		TestBehavior: workflow.NodeTestPure,
+		Category:     workflow.NodeCategoryLogic,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared, workflow.NodeScopeVoice},
+		Label:        "Definir Variável",
+		Description:  "Define uma variável no estado do fluxo.",
+		Icon:         "BracketsCurly",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para gravar/derivar uma variável de fluxo reutilizável adiante.",
 			Behavior: "Grava a variável de fluxo (nome em 'variable') com o 'value' já interpolado; fica disponível adiante como {{var.<nome>}}.",

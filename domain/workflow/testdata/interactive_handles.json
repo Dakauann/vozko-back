@@ -1,0 +1,82 @@
+[
+  {
+    "name": "the list the builder wrote with capitalized keys (workflow 7342ac13, node n27)",
+    "config": {
+      "interactive_type": "list",
+      "sections": "[{\"Title\":\"Aulas Aquáticas\",\"Rows\":[{\"ID\":\"1\",\"Title\":\"Horários Aquáticas 🏊‍♀️\"},{\"ID\":\"2\",\"Title\":\"Materiais Aquáticos 🥽\"}]}]"
+    },
+    "handles": ["1", "2"]
+  },
+  {
+    "name": "a canonical list across two sections",
+    "config": {
+      "interactive_type": "list",
+      "sections": "[{\"title\":\"A\",\"rows\":[{\"id\":\"a\",\"title\":\"A\",\"description\":\"\"}]},{\"title\":\"B\",\"rows\":[{\"id\":\"b\",\"title\":\"B\",\"description\":\"\"}]}]"
+    },
+    "handles": ["a", "b"]
+  },
+  {
+    "name": "list rows given as an imported array with mixed case",
+    "config": {
+      "interactive_type": " LIST ",
+      "sections": [{ "TITLE": "x", "rows": [{ "Id": "um", "title": "Um" }, { "id": "dois", "Title": "Dois" }] }]
+    },
+    "handles": ["um", "dois"]
+  },
+  {
+    "name": "list ids are trimmed, blanks and repeats dropped",
+    "config": {
+      "interactive_type": "list",
+      "sections": "[{\"title\":\"\",\"rows\":[{\"id\":\" a \",\"title\":\"A\"},{\"id\":\"\",\"title\":\"vazio\"},{\"id\":\"a\",\"title\":\"de novo\"}]}]"
+    },
+    "handles": ["a"]
+  },
+  {
+    "name": "editor buttons skip the copy code button",
+    "config": {
+      "interactive_type": "buttons",
+      "buttons": "[{\"Type\":\"reply\",\"ID\":\"sim\",\"Title\":\"Sim\",\"CopyCode\":\"\"},{\"Type\":\"copy_code\",\"ID\":\"cupom\",\"Title\":\"Copiar\",\"CopyCode\":\"X1\"},{\"Type\":\"reply\",\"ID\":\"nao\",\"Title\":\"Não\",\"CopyCode\":\"\"}]"
+    },
+    "handles": ["sim", "nao"]
+  },
+  {
+    "name": "lowercase buttons read the same way",
+    "config": {
+      "buttons": "[{\"type\":\"reply\",\"id\":\"sim\",\"title\":\"Sim\"},{\"id\":\"nao\",\"title\":\"Não\"}]"
+    },
+    "handles": ["sim", "nao"]
+  },
+  {
+    "name": "the style picks the source: a list ignores buttons",
+    "config": {
+      "interactive_type": "list",
+      "buttons": "[{\"ID\":\"btn\",\"Title\":\"B\"}]",
+      "sections": "[]"
+    },
+    "handles": []
+  },
+  {
+    "name": "a repeated key that matches ignoring case: the last one wins, as in encoding/json",
+    "config": {
+      "interactive_type": "list",
+      "sections": "[{\"rows\":[{\"id\":\"primeiro\",\"ID\":\"ultimo\",\"title\":\"A\"}]}]"
+    },
+    "handles": ["ultimo"]
+  },
+  {
+    "name": "a row id that is not text makes the whole list unreadable",
+    "config": {
+      "interactive_type": "list",
+      "sections": "[{\"rows\":[{\"id\":\"ok\",\"title\":\"A\"},{\"id\":1,\"title\":\"B\"}]}]"
+    },
+    "handles": []
+  },
+  {
+    "name": "unreadable options give no option handles",
+    "config": {
+      "interactive_type": "list",
+      "sections": "{not json"
+    },
+    "handles": []
+  }
+]

@@ -33,11 +33,10 @@ func TestEvaluateDoesNotStartASecondRunForAMessageThatResumedAWaitingRun(t *test
 	}
 
 	runs := &recordingRunRepo{waitingReply: waiting}
-	te := &triggerEvaluator{
-		workflowRepo: stubWorkflowRepo{byID: map[string]*workflow.Workflow{wf.ID: wf}, active: []*workflow.Workflow{wf}},
-		runRepo:      runs,
-		engine:       NewRunEngine(runs, stubRunLogRepo{}, NewNodeExecutorRegistry()),
-	}
+	te := NewTriggerEvaluator(
+		stubWorkflowRepo{byID: map[string]*workflow.Workflow{wf.ID: wf}, active: []*workflow.Workflow{wf}},
+		runs, NewRunEngine(runs, stubRunLogRepo{}, NewNodeExecutorRegistry()), nil,
+	)
 
 	te.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: workspaceID,
@@ -81,14 +80,13 @@ func TestEvaluateStillStartsOtherWorkflowsWhenAnotherOnesRunWasResumed(t *testin
 	}
 
 	runs := &recordingRunRepo{waitingReply: waiting}
-	te := &triggerEvaluator{
-		workflowRepo: stubWorkflowRepo{
+	te := NewTriggerEvaluator(
+		stubWorkflowRepo{
 			byID:   map[string]*workflow.Workflow{stale.ID: stale, linked.ID: linked},
 			active: []*workflow.Workflow{stale, linked},
 		},
-		runRepo: runs,
-		engine:  NewRunEngine(runs, stubRunLogRepo{}, NewNodeExecutorRegistry()),
-	}
+		runs, NewRunEngine(runs, stubRunLogRepo{}, NewNodeExecutorRegistry()), nil,
+	)
 
 	te.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: workspaceID,
@@ -126,9 +124,12 @@ type recordingRunRepo struct {
 	waitingReply *workflow.WorkflowRun
 	created      int
 	createdFor   []string
+	lookups      int
+	updates      int
 }
 
 func (r *recordingRunRepo) FindWaitingReplyByEntry(string) (*workflow.WorkflowRun, error) {
+	r.lookups++
 	return r.waitingReply, nil
 }
 
@@ -141,7 +142,10 @@ func (r *recordingRunRepo) Create(run *workflow.WorkflowRun) error {
 	r.createdFor = append(r.createdFor, run.WorkflowID)
 	return nil
 }
-func (r *recordingRunRepo) Update(*workflow.WorkflowRun) error { return nil }
+func (r *recordingRunRepo) Update(*workflow.WorkflowRun) error {
+	r.updates++
+	return nil
+}
 
 type stubRunLogRepo struct {
 	workflow.WorkflowRunLogRepository

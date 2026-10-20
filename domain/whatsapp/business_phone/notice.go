@@ -1,10 +1,6 @@
 package businessphone
 
-import (
-	"time"
-
-	"vozko/domain/notification"
-)
+import "vozko/domain/notification"
 
 type PhoneNotice struct {
 	State    string
@@ -14,9 +10,14 @@ type PhoneNotice struct {
 	Subject  string
 	Template string
 	Extra    map[string]interface{}
-	Window   time.Duration
+	Ends     []string
 }
 
 type PhoneNotifier interface {
 	NotifyPhone(phone *WhatsAppBusinessPhoneNumber, notice PhoneNotice) error
+	ClearPhone(phone *WhatsAppBusinessPhoneNumber, states ...string) error
+}
+
+func (n PhoneNotice) Persists() bool {
+	return n.Severity == notification.SeverityWarning || n.Severity == notification.SeverityCritical
 }

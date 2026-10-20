@@ -135,6 +135,10 @@ type fakePages struct {
 	statuses map[string]fbdomain.Status
 	restored []string
 	seq      int
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
 }
 
 func newFakePages(existing ...*fbdomain.Page) *fakePages {
@@ -213,11 +217,26 @@ func (f *fakePages) UpdateProfile(_ context.Context, id string, remote *fbdomain
 	return nil
 }
 func (f *fakePages) FindByID(_ context.Context, id string) (*fbdomain.Page, error) {
+	f.findByIDCalls++
 	if p, ok := f.byID[id]; ok && !f.deleted[id] {
 		copied := *p
 		return &copied, nil
 	}
 	return nil, fbdomain.ErrPageNotFound
+}
+func (f *fakePages) FindByIDs(_ context.Context, ids []string) ([]*fbdomain.Page, error) {
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*fbdomain.Page, 0, len(ids))
+	for _, id := range ids {
+		if p, ok := f.byID[id]; ok && !f.deleted[id] {
+			copied := *p
+			out = append(out, &copied)
+		}
+	}
+	return out, nil
 }
 func (f *fakePages) FindByFBPageID(_ context.Context, fbPageID string) (*fbdomain.Page, error) {
 	for id, p := range f.byID {
@@ -357,6 +376,10 @@ type fakeConversations struct {
 	outbound   []string
 	watermarks map[string]time.Time
 	metadata   map[string]map[string]any
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
 }
 
 func newFakeConversations() *fakeConversations {
@@ -376,10 +399,24 @@ func (f *fakeConversations) FindOrCreate(_ context.Context, workspaceID, pageID,
 	return c, nil
 }
 func (f *fakeConversations) FindByID(_ context.Context, id string) (*fbdomain.Conversation, error) {
+	f.findByIDCalls++
 	if c, ok := f.byID[id]; ok {
 		return c, nil
 	}
 	return nil, fbdomain.ErrConversationNotFound
+}
+func (f *fakeConversations) FindByIDs(_ context.Context, ids []string) ([]*fbdomain.Conversation, error) {
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*fbdomain.Conversation, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := f.byID[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 func (f *fakeConversations) FindByContact(_ context.Context, pageID, contactID string) (*fbdomain.Conversation, error) {
 	for _, c := range f.byID {

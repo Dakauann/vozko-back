@@ -104,7 +104,7 @@ func safeDialer(parent context.Context, timeout time.Duration) func(ctx context.
 		}
 		for _, ip := range ips {
 			if ipIsBlocked(ip.IP) {
-				return nil, fmt.Errorf("scriptvm: blocked private/loopback address %s", ip.IP)
+				return nil, fmt.Errorf("%w %s", errBlockedAddress, ip.IP)
 			}
 		}
 

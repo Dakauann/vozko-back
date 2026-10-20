@@ -175,6 +175,14 @@ func (r *instanceRepository) FindByID(ctx context.Context, id string) (*uw.Insta
 	return r.first(ctx, r.db.WithContext(ctx).Where("id = ?", id))
 }
 
+func (r *instanceRepository) FindByIDs(ctx context.Context, ids []string) ([]*uw.Instance, error) {
+	records, err := database.FindByIDs[schema.UnofficialWhatsAppInstance](ctx, r.db, ids)
+	if err != nil {
+		return nil, err
+	}
+	return instancesToDomain(records), nil
+}
+
 func (r *instanceRepository) FindByDeliveryTokenHash(ctx context.Context, tokenHash string) (*uw.Instance, error) {
 	if strings.TrimSpace(tokenHash) == "" {
 		return nil, uw.ErrInstanceNotFound

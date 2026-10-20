@@ -122,3 +122,14 @@ func TestValidateKeepsPartialProgressOnFailure(t *testing.T) {
 		t.Fatal("no partial result was returned, so the caller cannot report progress")
 	}
 }
+
+func TestAGroupCampaignHasNoPhoneNumbersToCheck(t *testing.T) {
+	uc, campaigns, _, gateway := newValidateHarness(t)
+	campaigns.put(&uwc.Campaign{ID: "camp-g", WorkspaceID: "ws-1", Audience: uwc.AudienceGroups, Status: campaign.StatusStopped})
+
+	out, err := uc.Execute(context.Background(), "camp-g")
+
+	if err != nil || out.Checked != 0 || out.CampaignID != "camp-g" || gateway.checkCalls != 0 {
+		t.Fatalf("Execute = %+v, %v; want nothing checked for groups", out, err)
+	}
+}

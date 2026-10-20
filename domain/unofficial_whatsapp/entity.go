@@ -33,6 +33,11 @@ var (
 const MaxTextRunes = 65536
 
 const (
+	EditWindow   = 15 * time.Minute
+	DeleteWindow = 48 * time.Hour
+)
+
+const (
 	MaxImageBytes    int64 = 16 << 20
 	MaxVideoBytes    int64 = 16 << 20
 	MaxAudioBytes    int64 = 16 << 20

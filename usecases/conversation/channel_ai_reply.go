@@ -2,14 +2,21 @@ package conversation_usecase
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"vozko/domain/agent"
 	"vozko/domain/ai"
+	aa "vozko/domain/ai_attendance"
 	"vozko/domain/conversation"
+	ce "vozko/domain/conversation_event"
+	"vozko/domain/lead"
+	"vozko/domain/shared"
 	"vozko/usecases/agentctx"
 	"vozko/usecases/agentturn"
 	"vozko/usecases/conversation/loopguard"
@@ -20,22 +27,71 @@ type ChannelAIReplyService struct {
 	agents    agent.Repository
 	aiService ai.Service
 	messages  conversation.MessageRepository
-	sender    *MessageSenderService
+	sender    AgentTextSender
+	adapters  conversation.AdapterRegistry
+	handOff   AgentReplyHandOff
+	events    ce.Logger
 	guard     loopguard.Guard
 	assembler *agentturn.Assembler
+
+	workflowNames ActorNameResolver
+	turnLock      *AgentTurnLock
+	aiAttendance  AIAttendanceRecorder
+	entryLeads    ContinuationLeads
+}
+
+type ContinuationLeads interface {
+	lead.EntryLeads
+	FindByID(workspaceID, id string) (*lead.Lead, error)
+}
+
+func (s *ChannelAIReplyService) SetEntryLeads(leads ContinuationLeads) {
+	s.entryLeads = leads
+}
+
+func (s *ChannelAIReplyService) SetAgentTurnLock(lock *AgentTurnLock) {
+	s.turnLock = lock
+}
+
+func (s *ChannelAIReplyService) SetAIAttendance(recorder AIAttendanceRecorder) {
+	s.aiAttendance = recorder
 }
 
 func NewChannelAIReplyService(
 	agents agent.Repository,
 	aiService ai.Service,
 	messages conversation.MessageRepository,
-	sender *MessageSenderService,
+	sender AgentTextSender,
+	adapters conversation.AdapterRegistry,
+	handOff AgentReplyHandOff,
+	events ce.Logger,
 ) *ChannelAIReplyService {
+	missing := []string{}
+	for name, dep := range map[string]any{
+		"agent repository":    agents,
+		"ai service":          aiService,
+		"message repository":  messages,
+		"agent text sender":   sender,
+		"channel adapters":    adapters,
+		"hand-off":            handOff,
+		"conversation events": events,
+	} {
+		if dep == nil {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		panic("channel ai reply: missing " + strings.Join(missing, ", "))
+	}
 	return &ChannelAIReplyService{
 		agents:    agents,
 		aiService: aiService,
 		messages:  messages,
 		sender:    sender,
+		adapters:  adapters,
+		handOff:   handOff,
+		events:    events,
 	}
 }
 
@@ -45,6 +101,10 @@ func (s *ChannelAIReplyService) SetLoopGuard(g loopguard.Guard) {
 
 func (s *ChannelAIReplyService) SetAssembler(a *agentturn.Assembler) {
 	s.assembler = a
+}
+
+func (s *ChannelAIReplyService) SetWorkflowNames(names ActorNameResolver) {
+	s.workflowNames = names
 }
 
 const historyDepth = 20
@@ -78,6 +138,110 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 		}
 	}
 
+	release, held := s.turnLock.HoldForInbound(ctx, req.EntryID, req.EntryType)
+	defer release()
+	if !held {
+		return nil, nil
+	}
+	message, err := s.reply(ctx, req, text, "")
+	return message, failedReply(err)
+}
+
+func (s *ChannelAIReplyService) ContinuationWindowOpen(ctx context.Context, turn AgentContinuationTurn) (bool, error) {
+	adapter, err := s.adapters.For(turn.EntryType)
+	if err != nil {
+		return false, err
+	}
+	ec, err := adapter.ResolveEntry(ctx, turn.EntryID)
+	if err != nil {
+		return false, err
+	}
+	window, err := adapter.WindowState(ctx, ec)
+	if err != nil {
+		return false, err
+	}
+	return window.Open, nil
+}
+
+func (s *ChannelAIReplyService) ContinueAgentTurn(ctx context.Context, turn AgentContinuationTurn) error {
+	req := conversation.AIReplyRequest{
+		WorkspaceID:           turn.WorkspaceID,
+		EntryID:               turn.EntryID,
+		EntryType:             turn.EntryType,
+		AgentID:               turn.AgentID,
+		AgentResponsesEnabled: true,
+	}
+	leadID, contact, err := s.leadOfTurn(ctx, turn)
+	if err != nil {
+		return err
+	}
+	if err := refusedContact(contact); err != nil {
+		return err
+	}
+	if leadID != "" {
+		req.LeadID = &leadID
+	}
+	if req.Disclosure, err = s.disclosureOf(ctx, turn); err != nil {
+		return err
+	}
+	_, err = s.reply(ctx, req, "", turn.Note)
+	return err
+}
+
+var errContinuationLeadsUnwired = errors.New("channel continuation: the lead of the conversation cannot be read, no lead store wired")
+
+func (s *ChannelAIReplyService) leadOfTurn(ctx context.Context, turn AgentContinuationTurn) (string, *lead.Lead, error) {
+	if s.entryLeads == nil {
+		return "", nil, errContinuationLeadsUnwired
+	}
+	leadID, err := s.entryLeads.LeadOfEntry(ctx, turn.WorkspaceID, shared.EntryRef{EntryID: turn.EntryID, EntryType: turn.EntryType})
+	if errors.Is(err, lead.ErrLeadNotFound) {
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, turnNotStarted(fmt.Errorf("read the lead of %s %s for the continuation: %w", turn.EntryType, turn.EntryID, err))
+	}
+	contact, err := s.entryLeads.FindByID(turn.WorkspaceID, leadID)
+	if err != nil {
+		return "", nil, turnNotStarted(fmt.Errorf("read lead %s for the continuation: %w", leadID, err))
+	}
+	if contact == nil {
+		return "", nil, fmt.Errorf("read lead %s for the continuation: %w", leadID, lead.ErrLeadNotFound)
+	}
+	return leadID, contact, nil
+}
+
+func turnNotStarted(err error) error {
+	return fmt.Errorf("%w: %w", conversation.ErrAgentTurnNotStarted, err)
+}
+
+func (s *ChannelAIReplyService) disclosureOf(ctx context.Context, turn AgentContinuationTurn) (string, error) {
+	adapter, err := s.adapters.For(turn.EntryType)
+	if err != nil {
+		return "", err
+	}
+	disclosing, ok := adapter.(conversation.DisclosingAdapter)
+	if !ok {
+		return "", nil
+	}
+	ec, err := adapter.ResolveEntry(ctx, turn.EntryID)
+	if err != nil {
+		return "", turnNotStarted(fmt.Errorf("resolve %s %s for its automation disclosure: %w", turn.EntryType, turn.EntryID, err))
+	}
+	disclosure, err := disclosing.AutomationDisclosure(ctx, ec)
+	if err != nil {
+		return "", turnNotStarted(fmt.Errorf("read the automation disclosure of %s %s: %w", turn.EntryType, turn.EntryID, err))
+	}
+	return disclosure, nil
+}
+
+func (s *ChannelAIReplyService) reply(ctx context.Context, req conversation.AIReplyRequest, text, triggerNote string) (*conversation.Message, error) {
+	caps, err := conversation.CapabilitiesOf(s.adapters, req.EntryType)
+	if err != nil {
+		log.Printf("[channel-ai] entry=%s the text rules of %s are unknown, not replying: %v", req.EntryID, req.EntryType, err)
+		return nil, err
+	}
+
 	agentRecord, err := s.agents.FindByID(req.AgentID)
 	if err != nil || agentRecord == nil {
 		log.Printf("[channel-ai] entry=%s agent %s unavailable: %v", req.EntryID, req.AgentID, err)
@@ -91,9 +255,17 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 	if err != nil {
 		return nil, err
 	}
-	messages := promptFrom(history, text)
+	messages := promptFrom(history, text, historySourceLabels(s.workflowNames, history))
 
-	out, err := s.aiService.Generate(ctx, s.generateInput(ctx, req, agentRecord, messages, text))
+	now := time.Now().UTC()
+	room, fits := caps.Reserving(conversation.WithAutomationDisclosure(req.Disclosure, "", history, now))
+	if !fits {
+		return s.withholdAndHandOff(req, disclosureFillsLimit())
+	}
+
+	input := s.assembleTurn(ctx, req, agentRecord, messages, text, triggerNote)
+	input.SystemPrompt = withChannelTextRules(input.SystemPrompt, room)
+	out, err := s.aiService.Generate(ctx, input)
 	if err != nil {
 		log.Printf("[channel-ai] entry=%s generation failed: %v", req.EntryID, err)
 		return nil, err
@@ -105,15 +277,26 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 	}
 	if reply == "" {
 		log.Printf("[channel-ai] entry=%s model returned no content, not replying", req.EntryID)
-		return nil, nil
+		return nil, skippedReply(replySkipEmptyReply)
 	}
 
-	reply = conversation.WithAutomationDisclosure(req.Disclosure, reply, history, time.Now().UTC())
+	if violations := room.TextViolations(reply); len(violations) > 0 {
+		rewritten, remaining := s.rewriteWithinRules(ctx, req, input, reply, room, violations)
+		if rewritten == "" {
+			return s.withholdAndHandOff(req, remaining)
+		}
+		reply = rewritten
+	}
+
+	reply = conversation.WithAutomationDisclosure(req.Disclosure, reply, history, now)
+	if violations := caps.TextViolations(reply); len(violations) > 0 {
+		return s.withholdAndHandOff(req, violations)
+	}
 	message, err := s.sender.SendAgentTextMessage(req.EntryID, string(req.EntryType), reply, req.AgentID)
 	if err != nil {
 		if err == conversation.ErrOutboundWindowClosed {
 			log.Printf("[channel-ai] entry=%s outbound window closed, reply withheld", req.EntryID)
-			return nil, nil
+			return nil, skippedReply(replySkipWindowClosed)
 		}
 		return nil, err
 	}
@@ -121,7 +304,22 @@ func (s *ChannelAIReplyService) Reply(ctx context.Context, req conversation.AIRe
 	if s.guard != nil {
 		s.guard.RecordAIResponse(ctx, req.WorkspaceID, req.EntryID)
 	}
+	s.recordAIReply(req, agentRecord, message)
 	return message, nil
+}
+
+func (s *ChannelAIReplyService) recordAIReply(req conversation.AIReplyRequest, agentRecord *agent.Agent, message *conversation.Message) {
+	if s.aiAttendance == nil || message == nil {
+		return
+	}
+	s.aiAttendance.RecordAIReply(aa.StartInput{
+		WorkspaceID: req.WorkspaceID,
+		EntryID:     req.EntryID,
+		EntryType:   string(req.EntryType),
+		AgentID:     agentRecord.ID,
+		Channel:     string(req.EntryType),
+		Model:       strings.TrimSpace(agentRecord.MessagingModel),
+	}, message.ID)
 }
 
 func (s *ChannelAIReplyService) enabled(req conversation.AIReplyRequest) bool {
@@ -146,7 +344,7 @@ func (s *ChannelAIReplyService) buildPrompt(req conversation.AIReplyRequest, lat
 	if err != nil {
 		return nil, err
 	}
-	return promptFrom(history, latest), nil
+	return promptFrom(history, latest, historySourceLabels(s.workflowNames, history)), nil
 }
 
 func (s *ChannelAIReplyService) recentHistory(req conversation.AIReplyRequest) ([]*conversation.Message, error) {
@@ -165,7 +363,7 @@ func (s *ChannelAIReplyService) recentHistory(req conversation.AIReplyRequest) (
 	})
 }
 
-func promptFrom(history []*conversation.Message, latest string) []ai.Message {
+func promptFrom(history []*conversation.Message, latest string, labels conversation.SourceLabels) []ai.Message {
 	out := make([]ai.Message, 0, len(history)+1)
 	for i := len(history) - 1; i >= 0; i-- {
 		m := history[i]
@@ -182,7 +380,7 @@ func promptFrom(history []*conversation.Message, latest string) []ai.Message {
 		if m.MessageType.IsCallEvent() {
 			continue
 		}
-		body := strings.TrimSpace(m.Text)
+		body := strings.TrimSpace(m.ReadableText())
 		if body == "" {
 			continue
 		}
@@ -190,10 +388,10 @@ func promptFrom(history []*conversation.Message, latest string) []ai.Message {
 		if m.FromCustomer() {
 			role = ai.RoleUser
 		}
-		out = append(out, ai.Message{Role: role, Content: body})
+		out = append(out, ai.Message{Role: role, Content: labels.Label(m, body)})
 	}
 
-	if len(out) == 0 || out[len(out)-1].Content != latest {
+	if latest != "" && (len(out) == 0 || out[len(out)-1].Content != latest) {
 		out = append(out, ai.Message{Role: ai.RoleUser, Content: latest})
 	}
 	return out
@@ -205,6 +403,17 @@ func (s *ChannelAIReplyService) generateInput(
 	agentRecord *agent.Agent,
 	messages []ai.Message,
 	latest string,
+) ai.GenerateInput {
+	return s.assembleTurn(ctx, req, agentRecord, messages, latest, "")
+}
+
+func (s *ChannelAIReplyService) assembleTurn(
+	ctx context.Context,
+	req conversation.AIReplyRequest,
+	agentRecord *agent.Agent,
+	messages []ai.Message,
+	latest string,
+	triggerNote string,
 ) ai.GenerateInput {
 	if s.assembler == nil {
 		return ai.GenerateInput{
@@ -251,7 +460,8 @@ func (s *ChannelAIReplyService) generateInput(
 
 		Session: agentturn.ReplySession(req.EntryID),
 
-		History: messages,
+		History:     messages,
+		TriggerNote: triggerNote,
 
 		Model: agentRecord.MessagingModel,
 	})

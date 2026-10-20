@@ -1,38 +1,29 @@
 package workflow_infra
 
 import (
-	"log"
-	"strings"
+	"errors"
 
-	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/domain/conversation"
 	"vozko/domain/workflow"
 )
 
+var errAutomationReaderMissing = errors.New("workflow automation gate: no conversation automation reader wired")
+
 type automationGate struct {
-	entries wce.Repository
+	entries conversation.EntryAutomationReader
 }
 
-func NewAutomationGate(entries wce.Repository) workflow.AutomationGate {
+func NewAutomationGate(entries conversation.EntryAutomationReader) workflow.AutomationGate {
 	return &automationGate{entries: entries}
 }
 
-const entryTypeWhatsApp = "whatsapp"
-
-func (g *automationGate) AutomationEnabled(entryID, entryType string) bool {
-	if g == nil || g.entries == nil || strings.TrimSpace(entryID) == "" {
-		return true
+func (g *automationGate) AutomationEnabled(entryID, entryType string) (bool, error) {
+	if g == nil || g.entries == nil {
+		return false, errAutomationReaderMissing
 	}
-	if t := strings.TrimSpace(strings.ToLower(entryType)); t != "" && t != entryTypeWhatsApp {
-		return true
-	}
-
-	entry, err := g.entries.FindByID(entryID)
+	profile, err := g.entries.EntryAutomation(entryID, entryType)
 	if err != nil {
-		log.Printf("[workflow][automation-gate] could not read entry %s, allowing the run to continue: %v", entryID, err)
-		return true
+		return false, err
 	}
-	if entry == nil || entry.AutomationEnabled == nil {
-		return true
-	}
-	return *entry.AutomationEnabled
+	return conversation.AutomationAllowed(profile.AutomationEnabled), nil
 }

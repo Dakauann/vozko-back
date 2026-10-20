@@ -27,7 +27,7 @@ type createCampaignUseCase struct {
 	leadsByID          LeadsByID
 	automation         AutomationCheck
 	keyed              IdempotentCampaigns
-	groupSeats         GroupSeats
+	groupSenders       GroupSenderDirectory
 }
 
 type LeadsByID interface {
@@ -86,9 +86,13 @@ func (uc *createCampaignUseCase) Execute(
 		return nil, err
 	}
 
-	instance, err := usableInstance(ctx, uc.instances, in.WorkspaceID, scope, in.InstanceID)
-	if err != nil {
-		return nil, err
+	var instance *uw.Instance
+	if !in.TargetsGroups() {
+		usable, err := usableInstance(ctx, uc.instances, in.WorkspaceID, scope, in.InstanceID)
+		if err != nil {
+			return nil, err
+		}
+		instance = usable
 	}
 
 	if uc.departmentResolver != nil {
@@ -99,7 +103,7 @@ func (uc *createCampaignUseCase) Execute(
 		in.DepartmentID = departmentID
 	}
 
-	if pacingUnset {
+	if pacingUnset && instance != nil {
 		in.SendDelayMinMS, in.SendDelayMaxMS = instance.SendDelayRange()
 		in.Normalize()
 	}
@@ -127,7 +131,7 @@ func (uc *createCampaignUseCase) Execute(
 	if in.ID == "" {
 		in.ID = uuid.New().String()
 	}
-	entries, err := uc.entriesFor(ctx, in, instance)
+	entries, err := uc.entriesFor(ctx, in, instance, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +176,13 @@ func (uc *createCampaignUseCase) winnerOf(ctx context.Context, in *uwc.Campaign)
 		return nil, campaign.ErrIdempotencyKeyTaken
 	}
 	return winner, nil
+}
+
+func (uc *createCampaignUseCase) entriesFor(ctx context.Context, in *uwc.Campaign, instance *uw.Instance, scope uw.DepartmentScope) ([]uwc.Entry, error) {
+	if in.TargetsGroups() {
+		return uc.groupEntries(ctx, in, scope)
+	}
+	return uc.materializeTargets(ctx, in, instance)
 }
 
 func (uc *createCampaignUseCase) resolveTargets(in *uwc.Campaign) (campaigncreate.Resolved, error) {

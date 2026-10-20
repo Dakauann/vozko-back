@@ -9,6 +9,8 @@ import (
 
 const SearchPageSize = 10
 
+const ReportQueuedNext = "o arquivo fica pronto em Relatórios; só quem pediu pode baixar"
+
 func ClipText(s string, max int) string {
 	text, cut := shared.TruncateRunes(strings.TrimSpace(s), max)
 	if cut {

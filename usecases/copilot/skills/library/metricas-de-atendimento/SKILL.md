@@ -30,8 +30,8 @@ description: Quais métricas de atendimento importam, referências de mercado pa
 - Conectado quer dizer que o painel estava aberto no navegador, não que a pessoa estava trabalhando. Não existe estado de ausente: só conectado, em ligação e offline.
 - Uma sessão de 14 horas ou mais (possible_forgotten_tab) quase sempre é aba esquecida aberta; não conte como jornada e diga isso.
 - late_start compara com o horário habitual da própria pessoa; no_presence só aparece em dias da semana em que ela costuma trabalhar.
-- A roleta só entrega conversas para quem está conectado. Se alguém "não recebeu nada", veja primeiro se estava offline naquele horário. received_while_offline acima de zero é sinal de problema no sistema, não da pessoa.
+- Quem entra na roleta depende do modo do workspace: no modo online, só quem está conectado; no modo última vez online, também quem esteve conectado dentro da janela. A escolha entre essas pessoas segue a forma configurada (rodízio, prioridade por níveis, peso, menos ocupado, mais tempo sem receber, aleatório ou livre, em que ninguém é escolhido e fica com quem abrir primeiro), e pode haver limite de conversas abertas por pessoa. Se alguém "não recebeu nada", veja primeiro se estava offline, se está fora da lista de prioridade ou peso, ou se estava no limite. received_while_offline acima de zero só indica problema no sistema quando a roleta está no modo online.
 - Fale com cuidado: mostre os fatos e o horário, sem acusar. Quem diz que trabalhou pode ter usado outro navegador ou o celular.
 
-## No Vozko
+## Na plataforma
 attendance_metrics, attendance_trend, attendance_team, attendance_backlog, attendance_live, attendance_rework e attendance_stages trazem os números; member_activity mostra a presença e o trabalho de uma pessoa; conversation_insights mostra o que os clientes falam. Comece pela conclusão, depois os números e uma ação.

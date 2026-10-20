@@ -148,6 +148,12 @@ func concurrentIndexes() []ddl {
 				WHERE deleted_at IS NULL`,
 		},
 		{
+			name: UnofficialCampaignEntryLiveStatusIndex,
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + UnofficialCampaignEntryLiveStatusIndex + `
+				ON unofficial_whatsapp_campaign_entries (campaign_id, status)
+				WHERE deleted_at IS NULL`,
+		},
+		{
 			name: CampaignEntryWaveIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + CampaignEntryWaveIndex + `
 				ON whatsapp_campaign_entries (campaign_id, wave_number, status)
@@ -158,7 +164,73 @@ func concurrentIndexes() []ddl {
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + LeadPhoneHoldersIndex + `
 				ON lead_phones (workspace_id, number, lead_id)`,
 		},
-	}, append(placeSearchIndexes(), leadSearchIndexes()...)...)
+		{
+			name: WorkflowRunOriginIndex,
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + WorkflowRunOriginIndex + `
+				ON workflow_runs (workflow_id, ` + sqlexpr.WorkflowRunOrigin("") + `, started_at DESC)`,
+		},
+		{
+			name: "idx_wfrl_payload_prune",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_payload_prune
+				ON workflow_run_logs (executed_at)
+				WHERE input IS NOT NULL OR output IS NOT NULL OR http IS NOT NULL OR script_logs IS NOT NULL OR stack IS NOT NULL`,
+		},
+		{
+			name: "idx_wfr_entry_status",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_entry_status
+				ON workflow_runs (entry_id, status)`,
+		},
+		{
+			name: "idx_wfr_workflow_started",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_workflow_started
+				ON workflow_runs (workflow_id, started_at DESC)`,
+		},
+		{
+			name: "idx_wfr_terminal_started",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_terminal_started
+				ON workflow_runs (started_at)
+				WHERE status IN ('completed', 'error', 'cancelled')`,
+		},
+		{
+			name: "idx_wfr_agent_entry_started",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_agent_entry_started
+				ON workflow_runs (entry_id, entry_type, started_at DESC)
+				WHERE started_by LIKE 'agent:%'`,
+		},
+		{
+			name: "idx_wfr_entry_started",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_entry_started
+				ON workflow_runs (entry_id, entry_type, started_at DESC)`,
+		},
+		{
+			name: "idx_wfrl_failed_executed",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_failed_executed
+				ON workflow_run_logs (executed_at)
+				WHERE status = 'failed'`,
+		},
+		{
+			name: "idx_wfr_workflow_updated",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_workflow_updated
+				ON workflow_runs (workflow_id, updated_at)`,
+		},
+		{
+			name: "idx_wfr_agent_awaiting_continuation",
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_agent_awaiting_continuation
+				ON workflow_runs (updated_at)
+				WHERE started_by LIKE 'agent:%' AND agent_continued_at IS NULL AND status IN ('completed', 'error')`,
+		},
+		{
+			name: WorkflowRunTriggerDataPruneIndex,
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + WorkflowRunTriggerDataPruneIndex + `
+				ON workflow_runs (started_at)
+				WHERE trigger_data IS NOT NULL`,
+		},
+		{
+			name: WorkflowRunLogNodeIndex,
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + WorkflowRunLogNodeIndex + `
+				ON workflow_run_logs (run_id, node_id, executed_at DESC, id DESC)`,
+		},
+	}, append(append(append(placeSearchIndexes(), leadSearchIndexes()...), messageSearchIndexes()...), messageClientRequestIndexes()...)...)
 }
 
 const (
@@ -169,13 +241,14 @@ const (
 const LeadPhoneHoldersIndex = "idx_lead_phones_workspace_number_lead"
 
 const (
-	LeadAddressWindowIndex          = "idx_lead_addresses_window"
-	LeadAddressLocatedIndex         = "idx_lead_addresses_located_id"
-	LeadLiveIndex                   = "idx_leads_workspace_live"
-	UnlinkedCallsByCounterpartIndex = "idx_calls_ws_counterpart_unlinked"
-	LeadCustomFieldsIndex           = "idx_leads_custom_fields"
-	CampaignEntryLiveStatusIndex    = "idx_wce_campaign_status_live"
-	CampaignEntryWaveIndex          = "idx_wce_campaign_wave_status"
+	LeadAddressWindowIndex                 = "idx_lead_addresses_window"
+	LeadAddressLocatedIndex                = "idx_lead_addresses_located_id"
+	LeadLiveIndex                          = "idx_leads_workspace_live"
+	UnlinkedCallsByCounterpartIndex        = "idx_calls_ws_counterpart_unlinked"
+	LeadCustomFieldsIndex                  = "idx_leads_custom_fields"
+	CampaignEntryLiveStatusIndex           = "idx_wce_campaign_status_live"
+	CampaignEntryWaveIndex                 = "idx_wce_campaign_wave_status"
+	UnofficialCampaignEntryLiveStatusIndex = "idx_uwce_campaign_status_live"
 )
 
 func ConcurrentIndexSQL(name string) (string, bool) {

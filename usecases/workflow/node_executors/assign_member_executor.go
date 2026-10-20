@@ -19,12 +19,13 @@ func NewAssignMemberExecutor(workspaceRepo workspace.Repository, handOff Convers
 
 func (e *assignMemberExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionAssignMember,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Atribuir ao Membro",
-		Description: "Atribui a conversa a um membro específico do workspace.",
-		Icon:        "UserCircle",
+		Type:         workflow.NodeTypeActionAssignMember,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Atribuir ao Membro",
+		Description:  "Atribui a conversa a um membro específico do workspace.",
+		Icon:         "UserCircle",
 		Guidance: workflow.NodeGuidance{
 			When: "Para atribuir a conversa a um atendente específico.",
 		},
@@ -56,44 +57,41 @@ func (e *assignMemberExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 
-	member, err := e.workspaceRepo.GetMember(ctx.Run.WorkspaceID, memberID)
-	if err != nil || member == nil {
-		errMsg := fmt.Sprintf("membro %q não encontrado no workspace", memberID)
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
-			Output: map[string]interface{}{
-				"success": false,
-				"error":   errMsg,
-			},
-		}, nil
-	}
-
-	if e.handOff == nil {
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+	if e.workspaceRepo == nil || e.handOff == nil {
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   "atribuição indisponível neste contexto (ex.: simulação)",
 			},
-		}, nil
+		}, edges, "erro"), nil
 	}
-	if err := e.handOff.HandOffToHuman(ctx.Run.WorkspaceID, ctx.Run.EntryID, ctx.Run.EntryType, member.UserID); err != nil {
-		errMsg := fmt.Sprintf("erro ao atribuir conversa: %v", err)
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+
+	member, err := e.workspaceRepo.GetMember(ctx.Run.WorkspaceID, memberID)
+	if err != nil || member == nil {
+		errMsg := fmt.Sprintf("membro %q não encontrado no workspace", memberID)
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   errMsg,
 			},
-		}, nil
+		}, edges, "erro"), nil
 	}
 
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "sucesso"),
+	if err := e.handOff.HandOffToHuman(ctx.Run.WorkspaceID, ctx.Run.EntryID, ctx.Run.EntryType, member.UserID); err != nil {
+		errMsg := fmt.Sprintf("erro ao atribuir conversa: %v", err)
+		return routeOutput(&workflow.NodeResult{
+			Output: map[string]interface{}{
+				"success": false,
+				"error":   errMsg,
+			},
+		}, edges, "erro"), nil
+	}
+
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":             true,
 			"assigned_user_id":    member.UserID,
 			"assigned_user_email": member.Email,
 		},
-	}, nil
+	}, edges, "sucesso"), nil
 }

@@ -300,6 +300,18 @@ svg.glyph {
   box-shadow: var(--elev-1);
 }
 
+.bubble .quote {
+  display: block;
+  margin: 0 0 6px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid currentColor;
+  opacity: 0.72;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .bubble.pending { opacity: 0.6; }
 .bubble.failed { box-shadow: 0 0 0 1px var(--fault); }
 

@@ -29,12 +29,13 @@ func (e *updateLeadExecutor) Definition() workflow.NodeDefinition {
 		return workflow.ConfigField{Key: key, Label: label, Type: "text", Placeholder: placeholder, Description: description}
 	}
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionUpdateLead,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Atualizar Lead",
-		Description: "Preenche no cadastro do lead da conversa o endereço, o bairro, a data de nascimento e campos personalizados.",
-		Icon:        "UserCircle",
+		Type:         workflow.NodeTypeActionUpdateLead,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Atualizar Lead",
+		Description:  "Preenche no cadastro do lead da conversa o endereço, o bairro, a data de nascimento e campos personalizados.",
+		Icon:         "UserCircle",
 		Guidance: workflow.NodeGuidance{
 			When: "Depois de um passo que extraiu dados da conversa (agente de IA, requisição HTTP, variável), para gravar no cadastro do lead o CEP, o endereço, o bairro, a data de nascimento ou campos personalizados.",
 			Behavior: "Só preenche o que está vazio no cadastro: um valor diferente já salvo nunca é substituído e aparece em conflicts. " +
@@ -105,13 +106,12 @@ func (e *updateLeadExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 		}
 		return failLeadUpdate(edges, reason), nil
 	}
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(edges, "sucesso"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": true, "lead_id": result.LeadID,
 			"changed": fieldList(result.Changed), "conflicts": fieldList(result.Conflicts), "error": "",
 		},
-	}, nil
+	}, edges, "sucesso"), nil
 }
 
 func fieldList(fields []string) []string {
@@ -122,8 +122,7 @@ func fieldList(fields []string) []string {
 }
 
 func failLeadUpdate(edges []workflow.Edge, reason string) *workflow.NodeResult {
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(edges, "erro"),
-		Output:     map[string]interface{}{"success": false, "lead_id": "", "changed": []string{}, "conflicts": []string{}, "error": reason},
-	}
+	return routeOutput(&workflow.NodeResult{
+		Output: map[string]interface{}{"success": false, "lead_id": "", "changed": []string{}, "conflicts": []string{}, "error": reason},
+	}, edges, "erro")
 }

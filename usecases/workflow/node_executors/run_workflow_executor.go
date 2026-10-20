@@ -18,12 +18,13 @@ func NewRunWorkflowExecutor(runner SubWorkflowRunner) workflow.NodeExecutor {
 
 func (e *runWorkflowExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionRunWorkflow,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Executar Sub-Fluxo",
-		Description: "Executa outro fluxo de trabalho e retorna o resultado.",
-		Icon:        "GitMerge",
+		Type:         workflow.NodeTypeActionRunWorkflow,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Executar Sub-Fluxo",
+		Description:  "Executa outro fluxo de trabalho e retorna o resultado.",
+		Icon:         "GitMerge",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para executar outro workflow como sub-fluxo e usar o resultado.",
 			Behavior: "As variáveis produzidas pelo sub-fluxo retornam ao fluxo atual com o prefixo 'sub_'.",

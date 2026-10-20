@@ -41,6 +41,7 @@ func newTimelineWorld(t *testing.T) timelineWorld {
 		&schema.OpportunityEvent{}, &schema.Stage{}, &schema.CallList{}, &schema.CallListItem{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	migrateChannelLineTables(t, db)
 	must := func(err error) {
 		t.Helper()
 		if err != nil {

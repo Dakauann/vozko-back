@@ -5,6 +5,7 @@ import (
 	"log"
 
 	facebookhttp "vozko/delivery/http/facebook"
+	ca "vozko/domain/audience"
 	conversation_domain "vozko/domain/conversation"
 	fbdomain "vozko/domain/facebook"
 	"vozko/domain/shared"
@@ -200,8 +201,8 @@ type facebookAudience interface {
 }
 
 func (c *Container) facebookCommentAudience() facebookAudience {
-	if c.audience != nil && c.audience.Enabled && c.audience.FacebookAdapter != nil {
-		return c.audience.FacebookAdapter
+	if enqueuer, ok := commentAudience[facebookAudience](c.audience, ca.SourceFacebook); ok {
+		return enqueuer
 	}
 	log.Printf("[facebook] comment analysis is not enabled; comments are moderated without audience analysis")
 	return fbuc.AudienceDisabled{}

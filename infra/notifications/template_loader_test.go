@@ -155,6 +155,7 @@ func TestLoadTemplate_ComposesLayoutAndRendersData(t *testing.T) {
 		Name: "Vozko", LegalName: "Vozko", CNPJ: "63.819.955/0001-95",
 		SiteURL: "https://vozkoia.com", EmailDomain: "vozkoia.com",
 		SupportEmail: "suporte@vozkoia.com", LogoURL: "https://cdn.vozkoia.com/logo.png",
+		Gender: brand.Feminine,
 	})
 	t.Cleanup(func() { brand.SetForTest(brand.Brand{}) })
 
@@ -238,6 +239,7 @@ func TestEveryTemplate_TakesTheBrandOnlyFromConfiguration(t *testing.T) {
 		Name: "Acme", LegalName: "Acme Comercio LTDA", CNPJ: "11.222.333/0001-44",
 		SiteURL: "https://acme.example", EmailDomain: "acme.example",
 		SupportEmail: "ajuda@acme.example", LogoURL: "https://cdn.acme.example/logo.png",
+		Gender: brand.Feminine,
 	})
 	t.Cleanup(func() { brand.SetForTest(brand.Brand{}) })
 

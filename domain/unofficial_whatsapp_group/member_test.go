@@ -209,3 +209,25 @@ func TestABaselineAfterUnfollowingRecordsNoEvents(t *testing.T) {
 		t.Fatalf("upserts = %+v, want Camila added and Paula marked as gone", d.Upserts)
 	}
 }
+
+func TestMembershipsGroupByPersonAndShareOneLead(t *testing.T) {
+	rita := activeMember("5511981124410", "Rita")
+	ritaElsewhere := activeMember("5511981124410", "")
+	ritaElsewhere.GroupID, ritaElsewhere.LeadID = "g2", "lead-1"
+	hidden := Member{GroupID: "g1", PersonKey: "161847220033@lid", JID: "161847220033@lid", Status: MemberActive}
+
+	people := MembershipsByPerson([]Member{rita, hidden, ritaElsewhere})
+
+	if len(people) != 2 || people[0].PersonKey() != "5511981124410" || people[1].PersonKey() != "161847220033@lid" {
+		t.Fatalf("people = %+v, want Rita then the hidden member", people)
+	}
+	if people[0].LeadID() != "lead-1" || people[0].Phone() != "5511981124410" || people[0].Name() != "Rita" {
+		t.Fatalf("Rita = lead %q phone %q name %q", people[0].LeadID(), people[0].Phone(), people[0].Name())
+	}
+	if unlinked := people[0].Unlinked(); len(unlinked) != 1 || unlinked[0].GroupID != "g1" {
+		t.Fatalf("unlinked = %+v, want only the g1 membership", unlinked)
+	}
+	if people[1].Phone() != "" {
+		t.Fatalf("a hidden member has no phone to make a lead from")
+	}
+}

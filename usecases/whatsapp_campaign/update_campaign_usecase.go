@@ -20,7 +20,7 @@ type updateCampaignUseCase struct {
 	templateRepo      template.Repository
 	businessPhoneRepo businessphone.Repository
 	phoneAccessRepo   workspace_phone_access.Repository
-	automation        AutomationCheck
+	automation        campaignautomation.Rules
 	exitRisk          ExitRiskGate
 	templateGrants    TemplateGrants
 }
@@ -33,7 +33,7 @@ func (uc *updateCampaignUseCase) SetExitRiskGate(gate ExitRiskGate) {
 	uc.exitRisk = gate
 }
 
-func (uc *updateCampaignUseCase) SetAutomation(automation AutomationCheck) {
+func (uc *updateCampaignUseCase) SetAutomation(automation campaignautomation.Rules) {
 	uc.automation = automation
 }
 
@@ -72,15 +72,21 @@ func (uc *updateCampaignUseCase) Execute(ctx context.Context, campaignID string,
 		return nil, err
 	}
 
-	templateChanged := input.TemplateID != "" && input.TemplateID != existing.TemplateID
+	change := sendingChange{
+		template: input.TemplateID != "" && input.TemplateID != existing.TemplateID,
+		phone:    input.BusinessPhoneID != "" && input.BusinessPhoneID != existing.BusinessPhoneID,
+	}
+	automationBefore := existing.Automation()
+
 	existing.Name = input.Name
 	if input.Type.IsValid() {
 		existing.Type = input.Type
 	}
-	if existing.IsOrganic() {
-		existing.TemplateID = ""
-	} else if input.TemplateID != "" {
+	if change.template {
 		existing.TemplateID = input.TemplateID
+	}
+	if change.phone {
+		existing.BusinessPhoneID = input.BusinessPhoneID
 	}
 	existing.AgentID = input.AgentID
 	existing.WorkflowID = input.WorkflowID
@@ -91,79 +97,21 @@ func (uc *updateCampaignUseCase) Execute(ctx context.Context, campaignID string,
 	existing.EnableAutoStaging = input.EnableAutoStaging
 	existing.EnableAutoMemory = input.EnableAutoMemory
 	existing.AiModel = input.AiModel
-	existing.Archived = input.Archived
-
-	if input.BusinessPhoneID != "" {
-		existing.BusinessPhoneID = input.BusinessPhoneID
+	if err := existing.Reschedule(input.ScheduledStart); err != nil {
+		return nil, err
 	}
 
 	existing.Normalize()
 	if err := existing.ValidateMetadata(); err != nil {
 		return nil, err
 	}
-	if err := campaignautomation.Require(uc.automation, existing.WorkspaceID, existing.Automation(), input.EntryMetadata()); err != nil {
+	if err := campaignautomation.RequireStored(uc.automation, existing.WorkspaceID, automationBefore, existing.Automation(), uc.storedAutomationEntries(campaignID)); err != nil {
 		return nil, err
 	}
 
-	var businessPhone *businessphone.WhatsAppBusinessPhoneNumber
-	if input.BusinessPhoneID != "" && uc.businessPhoneRepo != nil {
-		var bpErr error
-		businessPhone, bpErr = uc.businessPhoneRepo.FindByID(input.BusinessPhoneID)
-		if bpErr != nil || businessPhone == nil {
-			return nil, wc.ErrCampaignBusinessPhoneNotFound
-		}
-
-		allowed, accessErr := hasTemporaryCampaignBusinessPhoneAccess(
-			existing.WorkspaceID,
-			input.BusinessPhoneID,
-			businessPhone,
-			uc.phoneAccessRepo,
-		)
-		if accessErr != nil {
-			return nil, accessErr
-		}
-		if !allowed {
-			return nil, wc.ErrCampaignBusinessPhoneNoAccess
-		}
-	} else if existing.BusinessPhoneID != "" && uc.businessPhoneRepo != nil {
-		businessPhone, _ = uc.businessPhoneRepo.FindByID(existing.BusinessPhoneID)
-	}
-
-	var admission *buttonaction.CampaignAdmission
-	if !existing.IsOrganic() {
-		if uc.templateRepo == nil {
-			return nil, wc.ErrCampaignTemplateNotFound
-		}
-		if templateChanged && !uc.granted(existing.WorkspaceID, existing.TemplateID) {
-			return nil, wc.ErrCampaignTemplateNotFound
-		}
-
-		tmpl, err := uc.templateRepo.FindByID(existing.TemplateID)
-		if err != nil {
-			return nil, wc.ErrCampaignTemplateNotFound
-		}
-
-		if !tmpl.IsReadyToSend() {
-			usabilityMsg := tmpl.GetUsabilityMessage()
-			if usabilityMsg != "" {
-				return nil, wc.NewTemplateNotReadyError(tmpl.Name, usabilityMsg)
-			}
-			return nil, wc.ErrCampaignTemplateNotApproved
-		}
-
-		if businessPhone != nil && tmpl.WABAId != "" && businessPhone.WABAId != "" {
-			if tmpl.WABAId != businessPhone.WABAId {
-				return nil, wc.ErrCampaignTemplatePhoneMismatch
-			}
-		} else if businessPhone != nil && tmpl.WABAId == "" {
-			return nil, wc.ErrCampaignTemplatePhoneMismatch
-		}
-
-		if templateChanged {
-			if admission, err = uc.admitTemplate(ctx, existing.WorkspaceID, tmpl, input.ExitRiskAcknowledgedBy); err != nil {
-				return nil, err
-			}
-		}
+	admission, err := uc.admitSendingChange(ctx, existing, change, input.ExitRiskAcknowledgedBy)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := uc.campaignRepo.Update(campaignID, existing); err != nil {
@@ -188,6 +136,116 @@ func (uc *updateCampaignUseCase) Execute(ctx context.Context, campaignID string,
 	}
 
 	return saved, nil
+}
+
+func (uc *updateCampaignUseCase) SetArchived(_ context.Context, campaignID string, archived bool) error {
+	if campaignID == "" {
+		return wc.ErrCampaignNotFound
+	}
+	existing, err := uc.campaignRepo.FindByID(campaignID)
+	if err != nil {
+		return err
+	}
+	if existing.IsOrganic() {
+		return wc.ErrReceptiveManagedByNumber
+	}
+	existing.Archived = archived
+	return uc.campaignRepo.Update(campaignID, existing)
+}
+
+type sendingChange struct {
+	template bool
+	phone    bool
+}
+
+func (c sendingChange) any() bool {
+	return c.template || c.phone
+}
+
+func (uc *updateCampaignUseCase) admitSendingChange(ctx context.Context, edited *wc.Campaign, change sendingChange, acknowledgedBy string) (*buttonaction.CampaignAdmission, error) {
+	if !change.any() {
+		return nil, nil
+	}
+	businessPhone, err := uc.sendingPhone(edited, change.phone)
+	if err != nil {
+		return nil, err
+	}
+	if uc.templateRepo == nil {
+		return nil, wc.ErrCampaignTemplateNotFound
+	}
+	if change.template && !uc.granted(edited.WorkspaceID, edited.TemplateID) {
+		return nil, wc.ErrCampaignTemplateNotFound
+	}
+	tmpl, err := uc.templateRepo.FindByID(edited.TemplateID)
+	if err != nil {
+		return nil, wc.ErrCampaignTemplateNotFound
+	}
+	if !tmpl.IsReadyToSend() {
+		if usabilityMsg := tmpl.GetUsabilityMessage(); usabilityMsg != "" {
+			return nil, wc.NewTemplateNotReadyError(tmpl.Name, usabilityMsg)
+		}
+		return nil, wc.ErrCampaignTemplateNotApproved
+	}
+	if businessPhone != nil && (tmpl.WABAId == "" || (businessPhone.WABAId != "" && tmpl.WABAId != businessPhone.WABAId)) {
+		return nil, wc.ErrCampaignTemplatePhoneMismatch
+	}
+	if !change.template {
+		return nil, nil
+	}
+	if err := uc.requireFillableTemplate(edited.ID, tmpl.ParameterCount()); err != nil {
+		return nil, err
+	}
+	return uc.admitTemplate(ctx, edited.WorkspaceID, tmpl, acknowledgedBy)
+}
+
+func (uc *updateCampaignUseCase) sendingPhone(edited *wc.Campaign, changed bool) (*businessphone.WhatsAppBusinessPhoneNumber, error) {
+	if uc.businessPhoneRepo == nil || edited.BusinessPhoneID == "" {
+		return nil, nil
+	}
+	businessPhone, err := uc.businessPhoneRepo.FindByID(edited.BusinessPhoneID)
+	if !changed {
+		if err != nil {
+			return nil, nil
+		}
+		return businessPhone, nil
+	}
+	if err != nil || businessPhone == nil {
+		return nil, wc.ErrCampaignBusinessPhoneNotFound
+	}
+	allowed, err := hasTemporaryCampaignBusinessPhoneAccess(edited.WorkspaceID, edited.BusinessPhoneID, businessPhone, uc.phoneAccessRepo)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, wc.ErrCampaignBusinessPhoneNoAccess
+	}
+	return businessPhone, nil
+}
+
+func (uc *updateCampaignUseCase) storedAutomationEntries(campaignID string) campaignautomation.StoredEntries {
+	if uc.entryRepo == nil {
+		return nil
+	}
+	return func(visit func(campaign.EntryMetadata) error) error {
+		return uc.entryRepo.EachStored(campaignID, func(entry wce.StoredEntry) error {
+			return visit(entry.AutomationMetadata())
+		})
+	}
+}
+
+func (uc *updateCampaignUseCase) requireFillableTemplate(campaignID string, requiredParams int) error {
+	if requiredParams == 0 {
+		return nil
+	}
+	if uc.entryRepo == nil {
+		return fmt.Errorf("campaign %s: the saved entries cannot be read to check the new template", campaignID)
+	}
+	return uc.entryRepo.EachStored(campaignID, func(entry wce.StoredEntry) error {
+		if !entry.AwaitsSending() {
+			return nil
+		}
+		return wc.RequireTemplateVariables(requiredParams, entry.Variables)
+	})
 }
 
 func (uc *updateCampaignUseCase) admitTemplate(ctx context.Context, workspaceID string, tmpl *template.Template, acknowledgedBy string) (*buttonaction.CampaignAdmission, error) {

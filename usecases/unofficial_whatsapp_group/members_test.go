@@ -52,7 +52,7 @@ func TestExportWritesOneRowPerMemberWithAHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSuffix(strings.TrimPrefix(export.Document, report.UTF8BOM), report.CSVNewline), report.CSVNewline)
-	if !strings.HasPrefix(export.Document, report.UTF8BOM) || len(lines) != 3 || !strings.HasPrefix(lines[0], "Nome;Telefone") {
+	if !strings.HasPrefix(export.Document, report.UTF8BOM) || len(lines) != 3 || !strings.HasPrefix(lines[0], "Grupo;JID do grupo") {
 		t.Fatalf("document = %q, want a header and two members", export.Document)
 	}
 	if strings.Contains(export.Document, ";=HYPERLINK") || strings.HasPrefix(lines[2], "=") {
@@ -74,5 +74,44 @@ func TestLinkingAMemberToALeadOnlyTouchesThatGroup(t *testing.T) {
 	other, _ := w.members.ByPersonKeys(context.Background(), second.ID, []string{"5511981124410"})
 	if other[0].LeadID != "" {
 		t.Fatalf("a member of another department's group was linked to the lead")
+	}
+}
+
+func TestAddingPeopleToLeadsLinksEveryVisibleMembership(t *testing.T) {
+	w := newWorld()
+	roster := append(participants("5511981124410"), uw.GroupParticipant{JID: "161847220033@lid", LID: "161847220033@lid", DisplayName: "Antônio"})
+	first := w.followed(t, "120363000000000001@g.us", roster, "n1")
+	second := w.followed(t, "120363000000000002@g.us", participants("5511981124410", "5511960213375"), "n1")
+	_ = w.members.SetLead(context.Background(), second.ID, "5511960213375", "lead-existing")
+
+	result, err := w.svc.AddPeopleToLeads(context.Background(), everyone(), []string{"5511981124410", "5511960213375", "161847220033@lid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Linked != 1 || result.AlreadyLinked != 1 || result.WithoutPhone != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(w.leads.linked) != 1 {
+		t.Fatalf("leads created for %v, want one lead for Rita", w.leads.linked)
+	}
+	for _, g := range []*uwg.Group{first, second} {
+		members, _ := w.members.ByPersonKeys(context.Background(), g.ID, []string{"5511981124410"})
+		if members[0].LeadID != "lead-5511981124410" {
+			t.Fatalf("Rita in %s has lead %q, want the same lead in every group", g.Subject, members[0].LeadID)
+		}
+	}
+}
+
+func TestAddingPeopleToLeadsStaysInsideTheScope(t *testing.T) {
+	w := newWorld()
+	w.followed(t, "120363000000000001@g.us", participants("5511981124410"), "n1")
+	theirs := w.followed(t, "120363000000000002@g.us", participants("5511981124410"), "n2")
+
+	if _, err := w.svc.AddPeopleToLeads(context.Background(), salesOnly(), []string{"5511981124410"}); err != nil {
+		t.Fatal(err)
+	}
+	other, _ := w.members.ByPersonKeys(context.Background(), theirs.ID, []string{"5511981124410"})
+	if other[0].LeadID != "" {
+		t.Fatalf("a membership in another department's group was linked")
 	}
 }

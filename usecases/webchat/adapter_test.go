@@ -15,7 +15,7 @@ func adapterHarness() (conversation.ChannelAdapter, *fakeVisitors, *fakeConversa
 	visitors := &fakeVisitors{byID: map[string]*wcdomain.Visitor{"v1": {ID: "v1", WidgetID: "w1"}}}
 	conversations := &fakeConversations{byID: map[string]*wcdomain.Conversation{"c1": {ID: "c1", WorkspaceID: "ws-1", WidgetID: "w1", VisitorID: "v1"}}}
 	events := &fakeEvents{}
-	adapter := NewChannelAdapter(widgets, visitors, conversations, events)
+	adapter := NewChannelAdapter(widgets, visitors, conversations, events, quotedLines)
 	ec, _ := adapter.ResolveEntry(context.Background(), "c1")
 	return adapter, visitors, conversations, events, ec
 }
@@ -98,5 +98,61 @@ func TestModerationNeedsEntryAccess(t *testing.T) {
 	}
 	if !visitors.byID["v1"].Blocked || events.events[0].State != wcdomain.StateBlocked {
 		t.Fatal("block did not take effect")
+	}
+}
+
+type fakeQuotedMessages map[string]*conversation.Message
+
+func (f fakeQuotedMessages) GetByEntryAndExternalMessageID(entryType shared.EntryType, entryID, externalID string) (*conversation.Message, error) {
+	if m, ok := f[string(entryType)+"|"+entryID+"|"+externalID]; ok {
+		return m, nil
+	}
+	return nil, errors.New("message not found")
+}
+
+var quotedLines = fakeQuotedMessages{
+	"webchat|c1|wc_in_v1_question1": {ID: "m-q", ExternalMessageID: ptrTo("wc_in_v1_question1"), MessageType: conversation.MessageTypeUserMessage, SentBy: conversation.SentByContact("v1"), Text: "Vocês entregam no sábado?"},
+	"webchat|c1|wc_tool_internal1":  {ID: "m-t", ExternalMessageID: ptrTo("wc_tool_internal1"), MessageType: conversation.MessageTypeToolResult, Text: "segredo"},
+}
+
+func ptrTo(s string) *string { return &s }
+
+func TestAReplyCarriesTheQuotedLineToTheVisitor(t *testing.T) {
+	adapter, _, _, events, ec := adapterHarness()
+	if _, err := adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: "Entregamos sim", ReplyToProviderMessageID: "wc_in_v1_question1", HumanInitiated: true}); err != nil {
+		t.Fatal(err)
+	}
+	quote := events.events[0].Message.Quote
+	if quote == nil || quote.ID != "wc_in_v1_question1" || quote.Text != "Vocês entregam no sábado?" {
+		t.Fatalf("quote = %+v", quote)
+	}
+}
+
+func TestAMediaReplyCarriesTheQuotedLineToo(t *testing.T) {
+	adapter, _, _, events, ec := adapterHarness()
+	if _, err := adapter.SendMedia(context.Background(), ec, conversation.SendMediaRequest{Kind: "image", URL: "https://cdn.example/a.png", ReplyToProviderMessageID: "wc_in_v1_question1", HumanInitiated: true}); err != nil {
+		t.Fatal(err)
+	}
+	if quote := events.events[0].Message.Quote; quote == nil || quote.ID != "wc_in_v1_question1" {
+		t.Fatalf("quote = %+v", quote)
+	}
+}
+
+func TestAReplyToWhatTheVisitorCannotSeeGoesOutWithoutAQuote(t *testing.T) {
+	cases := map[string]string{
+		"an internal message":               "wc_tool_internal1",
+		"a message of another conversation": "wc_in_v9_elsewhere",
+		"no quoted message":                 "",
+	}
+	for name, providerID := range cases {
+		t.Run(name, func(t *testing.T) {
+			adapter, _, _, events, ec := adapterHarness()
+			if _, err := adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: "Oi", ReplyToProviderMessageID: providerID, HumanInitiated: true}); err != nil {
+				t.Fatalf("the reply itself must still be delivered: %v", err)
+			}
+			if quote := events.events[0].Message.Quote; quote != nil {
+				t.Fatalf("quote = %+v, want none", quote)
+			}
+		})
 	}
 }

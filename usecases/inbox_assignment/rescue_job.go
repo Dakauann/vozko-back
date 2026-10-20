@@ -278,7 +278,7 @@ func (j *RescueJob) rescueOne(ctx context.Context, h *ia.AssignmentHistory, poli
 	if len(pool.Ring) < hopCap {
 		hopCap = len(pool.Ring)
 	}
-	if hops >= hopCap {
+	if hops >= hopCap || !pool.CanPick() {
 		if err := j.assign.UnassignSystem(h.EntryID, h.EntryType, h.WorkspaceID, TriggerRescueExhausted); err != nil {
 			log.Printf("[assignment_rescue] unassign failed for %s (%s): %v", h.EntryID, h.EntryType, err)
 			return outcomeSkipped

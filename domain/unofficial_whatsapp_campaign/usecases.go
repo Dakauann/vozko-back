@@ -209,3 +209,23 @@ type PauseCampaignsForInstanceUseCase interface {
 type CampaignAccessUseCase interface {
 	Owned(ctx context.Context, workspaceID string, scope uw.DepartmentScope, campaignID string) (*Campaign, error)
 }
+
+type EstimateInput struct {
+	WorkspaceID    string
+	Audience       Audience
+	InstanceID     string
+	SendDelayMinMS int
+	SendDelayMaxMS int
+	Targets        int
+	GroupJIDs      []string
+}
+
+type DraftEstimate struct {
+	Estimate SendEstimate
+	Groups   []GroupSenders
+}
+
+type EstimateCampaignUseCase interface {
+	Draft(ctx context.Context, in EstimateInput, scope uw.DepartmentScope) (*DraftEstimate, error)
+	Remaining(ctx context.Context, c *Campaign) (*SendEstimate, error)
+}

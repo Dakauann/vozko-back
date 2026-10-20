@@ -47,6 +47,14 @@ var (
 	ErrURLButtonTooManyVars    = errors.New("URL button can have at most 1 variable")
 	ErrCopyCodeNeedsExample    = errors.New("COPY_CODE button requires an example")
 
+	ErrFlowButtonNeedsFlow   = errors.New("a FLOW button needs the form it opens (flow_id)")
+	ErrFlowButtonNeedsScreen = errors.New("a FLOW button that navigates needs the screen it opens (navigate_screen)")
+	ErrInvalidFlowAction     = errors.New("invalid flow_action - must be navigate or data_exchange")
+	ErrMultipleFlowButtons   = errors.New("a template can carry at most one FLOW button")
+	ErrFlowTokenRequired     = errors.New("a template with a FLOW button needs a form token for every send")
+	ErrFlowNotPublished      = errors.New("the FLOW button must open a form this workspace published on the template's WhatsApp account")
+	ErrFormNotSendable       = errors.New("the form this template opens cannot be sent from this number right now")
+
 	ErrOTPTypeRequired                 = errors.New("an OTP button needs an otp_type - COPY_CODE, ONE_TAP or ZERO_TAP")
 	ErrInvalidOTPType                  = errors.New("invalid otp_type - must be COPY_CODE, ONE_TAP or ZERO_TAP")
 	ErrMultipleOTPButtons              = errors.New("a template can carry at most one OTP button")
@@ -67,7 +75,7 @@ var (
 
 	ErrInvalidComponentType = errors.New("invalid component type - must be HEADER, BODY, FOOTER, BUTTONS, or CALL_PERMISSION_REQUEST")
 	ErrInvalidHeaderFormat  = errors.New("invalid header format - must be TEXT, IMAGE, VIDEO, DOCUMENT, LOCATION, or GIF")
-	ErrInvalidButtonType    = errors.New("invalid button type - must be QUICK_REPLY, URL, PHONE_NUMBER, or COPY_CODE")
+	ErrInvalidButtonType    = errors.New("invalid button type - must be QUICK_REPLY, URL, PHONE_NUMBER, COPY_CODE, or FLOW")
 	ErrInvalidCategory      = errors.New("invalid category - must be MARKETING, UTILITY, or AUTHENTICATION")
 )
 
@@ -195,12 +203,15 @@ type NamedParamExample struct {
 }
 
 type TemplateButton struct {
-	Type        string `json:"type"`
-	Text        string `json:"text"`
-	URL         string `json:"url,omitempty"`
-	PhoneNumber string `json:"phoneNumber,omitempty"`
-	Example     string `json:"example,omitempty"`
-	OTPType     string `json:"otpType,omitempty"`
+	Type           string `json:"type"`
+	Text           string `json:"text"`
+	URL            string `json:"url,omitempty"`
+	PhoneNumber    string `json:"phoneNumber,omitempty"`
+	Example        string `json:"example,omitempty"`
+	OTPType        string `json:"otpType,omitempty"`
+	FlowID         string `json:"flowId,omitempty"`
+	FlowAction     string `json:"flowAction,omitempty"`
+	NavigateScreen string `json:"navigateScreen,omitempty"`
 }
 
 func (t *Template) AddComponent(componentType, format, text string, parameters []string) {
@@ -322,6 +333,14 @@ func (t *Template) IsAuthentication() bool {
 }
 
 func (t *Template) OTPButton() (TemplateButton, int, bool) {
+	return t.buttonOfType(ButtonTypeOTP)
+}
+
+func (t *Template) FormButton() (TemplateButton, int, bool) {
+	return t.buttonOfType(ButtonTypeFlow)
+}
+
+func (t *Template) buttonOfType(buttonType string) (TemplateButton, int, bool) {
 	if t == nil {
 		return TemplateButton{}, 0, false
 	}
@@ -330,7 +349,7 @@ func (t *Template) OTPButton() (TemplateButton, int, bool) {
 			continue
 		}
 		for i, btn := range comp.Buttons {
-			if strings.ToUpper(strings.TrimSpace(btn.Type)) == ButtonTypeOTP {
+			if strings.ToUpper(strings.TrimSpace(btn.Type)) == buttonType {
 				return btn, i, true
 			}
 		}
@@ -511,6 +530,17 @@ const (
 
 const ButtonTypeOTP = "OTP"
 
+const ButtonTypeFlow = "FLOW"
+
+const (
+	FlowActionNavigate     = "navigate"
+	FlowActionDataExchange = "data_exchange"
+)
+
+func NormalizeFlowAction(action string) string {
+	return strings.ToLower(strings.TrimSpace(action))
+}
+
 const authenticationBodyParamCount = 1
 
 const ComponentTypeCallPermissionRequest = "CALL_PERMISSION_REQUEST"
@@ -538,6 +568,7 @@ var validButtonTypes = map[string]bool{
 	"PHONE_NUMBER": true,
 	"COPY_CODE":    true,
 	ButtonTypeOTP:  true,
+	ButtonTypeFlow: true,
 }
 
 var mediaHeaderFormats = map[string]bool{
@@ -685,6 +716,7 @@ func validateButtons(buttons []TemplateButton) error {
 
 	var buttonTypeOrder []string
 	otpCount := 0
+	flowCount := 0
 	for _, btn := range buttons {
 		btnType := strings.ToUpper(strings.TrimSpace(btn.Type))
 
@@ -744,6 +776,14 @@ func validateButtons(buttons []TemplateButton) error {
 			if strings.TrimSpace(btn.Example) == "" {
 				return ErrCopyCodeNeedsExample
 			}
+		case ButtonTypeFlow:
+			flowCount++
+			if flowCount > 1 {
+				return ErrMultipleFlowButtons
+			}
+			if err := validateFlowButton(btn); err != nil {
+				return err
+			}
 		}
 
 		buttonTypeOrder = append(buttonTypeOrder, btnType)
@@ -753,6 +793,22 @@ func validateButtons(buttons []TemplateButton) error {
 		return err
 	}
 
+	return nil
+}
+
+func validateFlowButton(btn TemplateButton) error {
+	if strings.TrimSpace(btn.FlowID) == "" {
+		return ErrFlowButtonNeedsFlow
+	}
+	switch NormalizeFlowAction(btn.FlowAction) {
+	case "", FlowActionNavigate:
+		if strings.TrimSpace(btn.NavigateScreen) == "" {
+			return ErrFlowButtonNeedsScreen
+		}
+	case FlowActionDataExchange:
+	default:
+		return ErrInvalidFlowAction
+	}
 	return nil
 }
 

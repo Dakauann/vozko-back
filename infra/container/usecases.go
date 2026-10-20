@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"vozko/delivery/http/httpx"
+	conversation_repository "vozko/infra/repositories/conversation"
 	workflow_infra "vozko/infra/workflow"
 	"vozko/usecases/conversationad"
 	lead_usecase "vozko/usecases/lead"
@@ -142,7 +144,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	)
 
 	optionsTool := tools_usecase.NewSendWhatsappButtonMessageToolUseCase(context.Background(), c.services.whatsappClientFactory)
-	mediaTool := tools_usecase.NewSendWhatsappMediaToolUseCase(context.Background(), c.services.whatsappClientFactory, c.repositories.media)
+	mediaTool := tools_usecase.NewSendWhatsappMediaToolUseCase(context.Background(), c.services.whatsappClientFactory, c.repositories.media, mediaDownloads())
 	for _, h := range []tools.Handler{optionsTool, mediaTool} {
 		if setter, ok := h.(interface {
 			SetAdapters(conversation_domain.AdapterRegistry)
@@ -199,7 +201,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.services.toolRegistry = tools_usecase.NewCompositeToolService(c.services.toolRegistry, c.mcpRegistry, c.mcpCollection)
 	}
 
-	aiService, err := openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub)
+	aiService, err := openrouter_service.NewService(openrouterCfg, c.services.toolRegistry, c.services.billingQueuePub, c.services.metrics)
 	if err != nil {
 		log.Fatalf("Failed to build the AI service: %v", err)
 	}
@@ -212,7 +214,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.citeConsentMessages(turnAssembler)
 	c.mustChannelAIReply().SetAssembler(turnAssembler)
 
-	simulationAI, err := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub)
+	simulationAI, err := openrouter_service.NewService(openrouterCfg, tools_usecase.NewSimulatedToolService(c.services.toolRegistry), c.services.billingQueuePub, c.services.metrics)
 	if err != nil {
 		log.Fatalf("Failed to build the simulation AI service: %v", err)
 	}
@@ -252,7 +254,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.wireOfficialCampaignCreate(createWCCampaignUC)
 	updateWCCampaignUC := wc_usecase.NewUpdateCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.whatsappTemplate, c.repositories.businessPhone, c.repositories.workspacePhoneAccess)
 	c.grantTemplatesOnUpdate(updateWCCampaignUC)
-	c.automateCampaignChanges("official update", updateWCCampaignUC)
+	c.automateCampaignEdits("official update", updateWCCampaignUC)
 	assignWCCampaignDepartmentUC := wc_usecase.NewAssignDepartmentUseCase(c.repositories.wcCampaign, resolveCreationDepartmentUC)
 	deleteWCCampaignUC := wc_usecase.NewDeleteCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
 	getWCCampaignUC := wc_usecase.NewGetCampaignUseCase(c.repositories.wcCampaign, c.repositories.wcEntry)
@@ -303,6 +305,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		c.adOriginRecorder(),
 	)
 	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.observedCampaignEntries(), c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), sendEligibility, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
+	formSendsSetter, ok := messageConsumerWCCampaignUC.(interface {
+		SetFormSends(whatsapp_template_usecase.FormSends)
+	})
+	if !ok {
+		log.Fatalf("[whatsapp-forms] the campaign consumer cannot take the form sends")
+	}
+	formSendsSetter.SetFormSends(lazyFormSends{c: c})
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	if err != nil {
@@ -499,7 +508,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			c.redisProvider.SharedState(),
 		)
 	}
-	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.services.ai, c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.observedCampaignEntries(), c.repositories.businessPhone, c.repositories.leadMessageWindow, c.mediaStore(), c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
+	handleWhatsAppMessageUC, err := conversation_usecase.NewHandleWhatsAppMessageUseCase(c.agentTurnAI(), c.services.whatsappClientFactory, c.repositories.lead, c.repositories.agent, c.services.toolRegistry, messageHistoryManager, c.repositories.conversation, c.repositories.systemConfig, c.services.whisperPool, c.repositories.wcCampaign, c.observedCampaignEntries(), c.repositories.businessPhone, c.repositories.leadMessageWindow, c.mediaStore(), c.services.conversationHub, c.repositories.stage, media_infra.NewTextExtractorService(
 		media_infra.NewTesseractOCR("por+eng"),
 		media_infra.NewPDFParser(),
 		media_infra.NewDOCXParser(),
@@ -604,6 +613,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listWCCampaigns:            listWCCampaignsUC,
 		getWCCampaignsSummary:      getWCCampaignsSummaryUC,
 		getWCDispatchReport:        getWCDispatchReportUC,
+		exportWCDispatchReport:     wc_usecase.NewExportDispatchReportUseCase(c.repositories.wcCampaign, c.repositories.wcDispatchReport, c.attendanceScheduleResolver()),
 		ensureReceptiveContainer:   wc_usecase.NewEnsureReceptiveContainerUseCase(c.repositories.wcCampaign),
 		listWCEntries:              listWCEntriesUC,
 		resetWCCampaign:            resetWCCampaignUC,
@@ -662,13 +672,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Names:  c.repositories.whatsappTemplateNames,
 			List:   whatsapp_template_usecase.NewListTemplatesUseCase(c.repositories.whatsappTemplate),
 			Get:    whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
-			Create: whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader),
+			Create: whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader, c.formPublications()),
 		}),
 		syncWhatsAppTemplates:         whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
 		reconcileWhatsAppTemplates:    whatsapp_template_usecase.NewReconcileTemplatesUseCase(c.repositories.businessPhone, whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory)),
 		reconcileWhatsAppEntitlements: businessphone_usecase.NewReconcileWhatsAppEntitlementsUseCase(c.repositories.ownerPhoneReader, batchEntitlementResolverUC, addonPhoneDeactivatorUC),
 		syncWhatsAppTemplate:          whatsapp_template_usecase.NewSyncTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
-		createWhatsAppTemplate:        whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader),
+		createWhatsAppTemplate:        whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader, c.formPublications()),
 		replicateWhatsAppTemplate:     whatsapp_template_usecase.NewReplicateTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
 		setHeaderMediaWhatsApp:        setHeaderMediaUC,
 		deleteWhatsAppTemplate:        whatsapp_template_usecase.NewDeleteTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate),
@@ -991,10 +1001,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		listWorkflows:            workflow_usecase.NewListWorkflowsUseCase(c.repositories.workflow),
 		activateWorkflow:         workflow_usecase.NewActivateWorkflowUseCase(c.repositories.workflow),
 		pauseWorkflow:            workflow_usecase.NewPauseWorkflowUseCase(c.repositories.workflow),
-		startWorkflowRun:         workflow_usecase.NewStartRunUseCase(c.repositories.workflow, c.repositories.workflowRun),
-		cancelWorkflowRun:        workflow_usecase.NewCancelRunUseCase(c.repositories.workflowRun),
-		getWorkflowRun:           workflow_usecase.NewGetRunUseCase(c.repositories.workflowRun, c.repositories.workflowRunLog),
-		listWorkflowRuns:         workflow_usecase.NewListRunsUseCase(c.repositories.workflowRun),
+		cancelWorkflowRun:        c.cancelWorkflowRun(),
+		getWorkflowRun:           workflow_usecase.NewGetRunUseCase(c.repositories.workflowRun, c.repositories.workflowRunLog, c.conversationVisibility()),
+		listWorkflowRuns:         workflow_usecase.NewListRunsUseCase(c.repositories.workflowRun, c.conversationVisibility()),
 		workflowWebhookConfig:    workflow_usecase.NewWorkflowWebhookUseCase(c.repositories.workflowWebhook, c.repositories.workflow),
 
 		createCalendarEvent:      calendar_usecase.NewCreateEventUseCase(c.repositories.calendar, c.services.googleCalendar),
@@ -1061,8 +1070,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 
 	wfRegistry := workflow_usecase.NewNodeExecutorRegistry()
+	c.useCases.workflowSecrets = c.newWorkflowSecrets()
 	executorDeps := workflow_usecase.ExecutorDeps{
-		AIService:             c.services.ai,
+		AIService:             c.agentTurnAI(),
 		AgentRepo:             c.repositories.agent,
 		CalendarRepo:          c.repositories.calendar,
 		GoogleCalendar:        c.services.googleCalendar,
@@ -1087,7 +1097,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		AssignStage:           assignEntryStageUC,
 		StageBroadcaster:      c.services.conversationHub,
 		Deals:                 opportunitySvc,
+		DealPreviews:          opportunitySvc,
 		LeadProfiles:          leadProfiles,
+		LeadPreviews:          leadProfiles,
 		Consent:               c.leadConsent(),
 		DepartmentRepo:        c.repositories.workspaceDepartment,
 		ConversationHandOff:   c.services.assignmentService,
@@ -1102,7 +1114,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		Adapters:              c.liveAdapterRegistry(),
 		VoiceAudio:            c.callRouting.VoiceAudio,
 		HTTPEgress:            workflowHTTPEgress(),
+		MediaFetcher:          workflowMediaFetcher(),
+		Secrets:               c.useCases.workflowSecrets,
 		ConversationEvents:    ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
+		Forms:                 c.formSenderRelay,
 	}
 	if err := workflow_usecase.RegisterProductionExecutors(wfRegistry, executorDeps); err != nil {
 		log.Fatalf("[workflow] executors: %v", err)
@@ -1110,7 +1125,16 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	wfEngine := workflow_usecase.NewRunEngine(c.repositories.workflowRun, c.repositories.workflowRunLog, wfRegistry)
 	wfEngine.SetWakeScheduler(workflow_usecase.NewQueueWakeScheduler(c.services.workflowWakePub))
 	wfEngine.SetRunLocker(c.redisProvider.RunLocker())
-	wfEngine.SetAutomationGate(workflow_infra.NewAutomationGate(c.repositories.wcEntry))
+	wfEngine.SetAutomationGate(workflow_infra.NewAutomationGate(conversation_repository.NewEntryAutomationReader(c.db)))
+	wfEngine.SetMetrics(c.services.metrics)
+	runStatuses, ok := c.repositories.workflowRun.(workflow_domain.RunStatusReader)
+	if !ok {
+		log.Fatalf("[workflow] the run repository cannot report a run's status, external cancels would be overwritten")
+	}
+	wfEngine.SetRunStatusReader(runStatuses)
+	wfEngine.SetAgentRunFinishedPublisher(workflow_infra.NewAgentRunFinishedQueue(c.services.workflowWakePub))
+	c.wireWorkflowRuntimeAlerts(wfEngine, wfRegistry)
+	c.wireConversationWorkflowRunList(wfRegistry)
 	c.useCases.voiceFlows = workflow_usecase.NewInboundVoiceFlows(c.repositories.workflow, c.repositories.workflowRun, wfEngine)
 	c.useCases.chatFunds = aichat_usecase.NewFundsGate(cachedBalanceChecker, c.repositories.workspaceSubscription)
 	c.useCases.aichat = aichat_usecase.NewService(
@@ -1125,6 +1149,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	c.useCases.workflowManager = workflow_usecase.NewWorkflowManager(c.repositories.workflow, c.repositories.workflowRun, wfEngine)
 	c.useCases.triggerEvaluator = workflow_usecase.NewTriggerEvaluator(c.repositories.workflow, c.repositories.workflowRun, wfEngine, c.redisProvider.SharedState())
+	c.wireFormWorkflows(wfEngine)
 	c.useCases.handleWebhookTrigger = workflow_usecase.NewHandleWebhookTriggerUseCase(
 		c.repositories.workflowWebhook,
 		c.repositories.workflow,
@@ -1134,8 +1159,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		workflow_usecase.NewEngineRunLauncher(wfEngine, c.redisProvider.SharedState()),
 		webhook_usecase.NewIdempotencyGuard(c.redisProvider.SharedState(), 6*time.Hour),
 		c.redisProvider.SharedState(),
+		c.webhookDeliveries(),
+		c.services.metrics,
 	)
 	c.wireConversationRuns(wfEngine)
+	c.wireAgentWorkflowCalls(wfRegistry, turnAssembler)
 	c.useCases.consumeWorkflowWake = workflow_usecase.NewConsumeRunWakeUseCase(
 		c.services.workflowWakeSub,
 		c.services.workflowWakePub,
@@ -1144,6 +1172,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		wfEngine,
 	)
 	c.useCases.nodeCatalogFn = wfRegistry.Catalog
+	workflowPinSources := workflow_usecase.NewRunPinSources(c.repositories.workflowRun, c.conversationVisibility())
+	var simulationPermissions workspace_domain.PermissionChecker
+	if c.services.conversationAuthImpl != nil {
+		simulationPermissions = c.services.conversationAuthImpl
+	}
 	c.useCases.wsWorkflowSimulation = workflow_usecase.NewWSWorkflowSimulationUseCase(workflow_usecase.WSWorkflowSimulationDeps{
 		WorkflowRepo:   c.repositories.workflow,
 		TemplateRepo:   c.repositories.whatsappTemplate,
@@ -1157,6 +1190,17 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		BillingPub:     c.services.billingQueuePub,
 		CallQueues:     c.callRouting.Queues,
 		HTTPEgress:     executorDeps.HTTPEgress,
+		MediaFetcher:   executorDeps.MediaFetcher,
+		Secrets:        executorDeps.Secrets,
+		LabelRepo:      executorDeps.LabelRepo,
+		StageRepo:      executorDeps.StageRepo,
+		WorkspaceRepo:  executorDeps.WorkspaceRepo,
+		DepartmentRepo: executorDeps.DepartmentRepo,
+		DealPreviews:   executorDeps.DealPreviews,
+		LeadPreviews:   executorDeps.LeadPreviews,
+		Runs:           c.useCases.getWorkflowRun,
+		Permissions:    simulationPermissions,
+		PinSources:     workflowPinSources,
 	})
 	var aiModelValidator workflow_usecase.ModelLookup
 	if orSvc, ok := c.services.ai.(*openrouter_service.Service); ok {
@@ -1182,15 +1226,16 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		NoProgressStop:            30,
 		ModelLookup:               aiModelValidator,
 		MaxTokens:                 1_000_000,
-		SessionTimeout:            10 * time.Minute,
 		MaxConcurrentPerWorkspace: 3,
 		BalanceGate:               cachedBalanceChecker,
 		MinBalanceMicros:          0,
 	})
 	c.useCases.testWorkflowNode = workflow_usecase.NewTestNodeUseCase(workflow_usecase.TestNodeDeps{
 		WorkflowRepo: c.repositories.workflow,
-		Registry:     wfRegistry,
+		Steps:        wfRegistry,
 		ExecutorDeps: executorDeps,
+		PinSources:   workflowPinSources,
+		ViewerOf:     httpx.PersonFromContext,
 	})
 
 	if setter, ok := c.useCases.activateWorkflow.(interface {
@@ -1374,8 +1419,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	if err := c.useCases.consumeScheduledMessage.Start(); err != nil {
 		log.Printf("Failed to start the scheduled message consumer: %v; the sweep will deliver messages up to a minute late", err)
 	}
+	c.startTeamChatDelivery()
 
+	c.useCases.personDeals = opportunity_usecase.NewPersonDeals(c.useCases.opportunity, c.services.conversationAuth, c.services.conversationAuth)
 	c.wireLeadExit()
+	c.wireWhatsAppForms()
 	if err := c.useCases.consumeWhatsAppMsgWebhook.Start(); err != nil {
 		log.Fatal("Failed to start WhatsApp message webhook consumer:", err)
 	}
@@ -1406,7 +1454,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	c.initCommentAnalysis(dashboardURL)
 	c.useCases.scopedWorkflows = c.consentGuardedWorkflows()
 	c.guardAgentConsentGrants()
-	c.useCases.personDeals = opportunity_usecase.NewPersonDeals(c.useCases.opportunity, c.services.conversationAuth, c.services.conversationAuth)
 	c.useCases.dealAutomation = dealautomation_usecase.New(c.repositories.dealAutomation, c.useCases.checkWsAccess, c.useCases.opportunity)
 	c.services.personAssign = ia_usecase.NewPersonAssignUseCase(ia_usecase.PersonAssignDeps{
 		Access:     c.services.conversationAuth,
@@ -1423,10 +1470,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 
 	if c.instagram != nil && c.instagram.Enabled && c.instagram.Consume != nil {
 		if err := c.instagram.Consume.Start(); err != nil {
-			log.Printf("[instagram] failed to start webhook consumers: %v", err)
-		} else {
-			log.Printf("[instagram] webhook consumers started")
+			log.Fatalf("[instagram] failed to start webhook consumers: %v", err)
 		}
+		log.Printf("[instagram] webhook consumers started")
 	}
 
 	c.initFacebookRuntime(messageHistoryManager)
@@ -1441,6 +1487,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	}
 
 	c.initTelegramRuntime(messageHistoryManager)
+	c.initMercadoLivreRuntime(messageHistoryManager)
+	c.startMercadoLivreConsumers()
+	c.initTikTokRuntime(messageHistoryManager)
+	c.startTikTokConsumers()
 	c.initWebchatRuntime(messageHistoryManager)
 
 	if c.telegram != nil && c.telegram.Enabled && c.telegram.Consume != nil {
@@ -1464,6 +1514,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		if err := c.useCases.consumeWorkflowWake.Start(); err != nil {
 			log.Fatal("Failed to start workflow wake consumer:", err)
 		}
+	}
+	if err := c.useCases.consumeAgentRunFinished.Start(); err != nil {
+		log.Fatal("Failed to start the agent continuation consumer:", err)
 	}
 
 	billingConsumer := calls_usecase.NewConsumeCallBillingUseCase(

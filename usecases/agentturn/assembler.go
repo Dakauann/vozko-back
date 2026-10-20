@@ -17,10 +17,21 @@ import (
 )
 
 type Assembler struct {
-	tools    tools.Service
-	rag      rag.RAGService
-	memories leadmemory.ListUseCase
-	citable  tools_usecase.RecentMessages
+	tools     tools.Service
+	rag       rag.RAGService
+	memories  leadmemory.ListUseCase
+	citable   tools_usecase.RecentMessages
+	agentRuns AgentRunContext
+}
+
+type AgentRunContext interface {
+	ContextLine(workspaceID, entryID, entryType string) string
+}
+
+const agentRunHeading = "FLUXO QUE VOCÊ EXECUTOU NESTA CONVERSA:"
+
+func (a *Assembler) TrackAgentRuns(runs AgentRunContext) {
+	a.agentRuns = runs
 }
 
 func New(toolRegistry tools.Service, ragService rag.RAGService, memories leadmemory.ListUseCase) *Assembler {
@@ -59,6 +70,7 @@ type Request struct {
 
 	History     []ai.Message
 	UserMessage string
+	TriggerNote string
 
 	Model       string
 	Temperature float32
@@ -115,7 +127,7 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 		}
 	}
 
-	messages, volatileTail := a.conversation(ctx, req, a.citations(req, toolNames))
+	messages, volatileTail := a.conversation(ctx, req, a.citations(req, toolNames), a.agentRunSection(req, toolDefs))
 
 	workspaceID := ""
 	if req.Agent != nil {
@@ -135,6 +147,7 @@ func (a *Assembler) Assemble(ctx context.Context, req Request) Assembled {
 			BillingReference:  req.Session,
 			SessionID:         req.Session,
 			VolatileTail:      volatileTail,
+			AgentTurn:         req.agentTurn(),
 		},
 		ToolNames: toolNames,
 	}
@@ -175,19 +188,54 @@ func (a *Assembler) citations(req Request, toolNames []string) string {
 	if !tools_usecase.CitesMessages(toolNames) {
 		return ""
 	}
-	at := tools_usecase.CitableConversation{EntryID: req.EntryID, EntryType: shared.EntryType(req.EntryType)}
-	if at.EntryID == "" {
-		at.EntryID, _ = req.ToolSeed["__entry_id"].(string)
-		entryType, _ := req.ToolSeed["__entry_type"].(string)
-		at.EntryType = shared.EntryType(entryType)
-	}
+	entryID, entryType := req.conversationEntry()
+	at := tools_usecase.CitableConversation{EntryID: entryID, EntryType: shared.EntryType(entryType)}
 	if req.Agent != nil {
 		at.AgentID = req.Agent.ID
 	}
 	return tools_usecase.CitableMessagesNote(a.citable, at)
 }
 
-func (a *Assembler) conversation(ctx context.Context, req Request, citations string) ([]ai.Message, int) {
+func (req Request) conversationEntry() (string, string) {
+	if req.EntryID != "" {
+		return req.EntryID, req.EntryType
+	}
+	entryID, _ := req.ToolSeed["__entry_id"].(string)
+	entryType, _ := req.ToolSeed["__entry_type"].(string)
+	return entryID, entryType
+}
+
+func (req Request) agentTurn() ai.AgentTurn {
+	entryID, entryType := req.conversationEntry()
+	turn := ai.AgentTurn{EntryID: entryID, EntryType: entryType, CampaignID: req.CampaignID}
+	if req.Agent != nil {
+		turn.AgentID = req.Agent.ID
+	}
+	return turn
+}
+
+func (a *Assembler) agentRunSection(req Request, defs []tools.Definition) string {
+	if a.agentRuns == nil || req.Agent == nil || !offersWorkflowRuns(defs) {
+		return ""
+	}
+	entryID, entryType := req.conversationEntry()
+	line := a.agentRuns.ContextLine(req.Agent.WorkspaceID, entryID, entryType)
+	if line == "" {
+		return ""
+	}
+	return agentRunHeading + "\n" + line
+}
+
+func offersWorkflowRuns(defs []tools.Definition) bool {
+	for _, def := range defs {
+		if strings.EqualFold(def.Name, tools_usecase.RunWorkflowToolName) || strings.EqualFold(def.HandlerName, tools_usecase.RunWorkflowToolName) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Assembler) conversation(ctx context.Context, req Request, citations, agentRun string) ([]ai.Message, int) {
 	messages := append([]ai.Message(nil), req.History...)
 	if strings.TrimSpace(req.UserMessage) != "" {
 		messages = append(messages, ai.Message{Role: ai.RoleUser, Content: req.UserMessage})
@@ -201,7 +249,7 @@ func (a *Assembler) conversation(ctx context.Context, req Request, citations str
 		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
 		Query:            req.RAGQuery,
 	})
-	return append(messages, ai.ContextNote(grounding, citations)), contextNoteTail
+	return append(messages, ai.ContextNote(grounding, citations, agentRun, req.TriggerNote)), contextNoteTail
 }
 
 func containsToolName(names []string, want string) bool {

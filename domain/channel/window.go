@@ -30,3 +30,13 @@ func (c Capabilities) Window(lastInbound *time.Time, now time.Time, humanInitiat
 	}
 	return WindowTierNone, nil
 }
+
+func (c Capabilities) ReplyHorizon(humanInitiated bool) time.Duration {
+	if c.OutboundWindow <= 0 {
+		return 0
+	}
+	if c.HumanAgentWindow && humanInitiated && c.ExtendedWindow > c.OutboundWindow {
+		return c.ExtendedWindow
+	}
+	return c.OutboundWindow
+}

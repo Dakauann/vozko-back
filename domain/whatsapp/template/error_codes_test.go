@@ -118,6 +118,8 @@ var codedSentinelNames = map[string]bool{
 	"ErrAuthenticationFooterNotEditable": true, "ErrAuthenticationCodeTooLong": true,
 	"ErrTemplateNotEditable": true, "ErrEditCategoryLocked": true, "ErrEditUnsupported": true,
 	"ErrEditWindow": true, "ErrTemplateInUse": true, "ErrEditNotOwner": true,
+	"ErrFlowButtonNeedsFlow": true, "ErrFlowButtonNeedsScreen": true, "ErrInvalidFlowAction": true,
+	"ErrMultipleFlowButtons": true, "ErrFlowTokenRequired": true, "ErrFlowNotPublished": true, "ErrFormNotSendable": true,
 }
 
 func TestCodedSentinelNamesMatchesTheTable(t *testing.T) {

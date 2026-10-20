@@ -141,7 +141,7 @@ func TestApplyProfileAddress(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			l := profileLead(tc.stored...)
-			got, err := l.ApplyProfile(Profile{Address: tc.incoming}, profileDefs(), profileNow)
+			got, err := l.ApplyProfile(Profile{Address: tc.incoming}, profileDefs(), profileNow, ProfileFromForm)
 			if err != nil {
 				t.Fatalf("ApplyProfile: %v", err)
 			}
@@ -168,7 +168,7 @@ func TestApplyProfileRefusesAnAddressItCannotStore(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			l := profileLead(tc.stored...)
 			before := profileLead(tc.stored...)
-			if _, err := l.ApplyProfile(Profile{Address: tc.incoming}, profileDefs(), profileNow); !errors.Is(err, address.ErrInvalidAddress) {
+			if _, err := l.ApplyProfile(Profile{Address: tc.incoming}, profileDefs(), profileNow, ProfileFromForm); !errors.Is(err, address.ErrInvalidAddress) {
 				t.Fatalf("err = %v, want an invalid address", err)
 			}
 			if !reflect.DeepEqual(l, before) {
@@ -199,7 +199,7 @@ func TestApplyProfileBirthDate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			l := profileLead()
 			l.BirthDate = tc.stored
-			got, err := l.ApplyProfile(Profile{BirthDate: tc.incoming}, profileDefs(), profileNow)
+			got, err := l.ApplyProfile(Profile{BirthDate: tc.incoming}, profileDefs(), profileNow, ProfileFromForm)
 			if tc.err != nil {
 				if !errors.Is(err, tc.err) {
 					t.Fatalf("err = %v, want %v", err, tc.err)
@@ -251,7 +251,7 @@ func TestApplyProfileCustomFields(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			l := profileLead()
-			got, err := l.ApplyProfile(Profile{CustomFields: tc.incoming}, profileDefs(), profileNow)
+			got, err := l.ApplyProfile(Profile{CustomFields: tc.incoming}, profileDefs(), profileNow, ProfileFromForm)
 			if tc.err != nil {
 				if !errors.Is(err, tc.err) {
 					t.Fatalf("err = %v, want %v", err, tc.err)
@@ -278,7 +278,7 @@ func TestApplyProfileIsAllOrNothing(t *testing.T) {
 		Address:      address.Postal{ZipCode: "01310100", City: "São Paulo", State: "SP"},
 		BirthDate:    "15/03/1980",
 		CustomFields: map[string]string{"interesse": "médio"},
-	}, profileDefs(), profileNow)
+	}, profileDefs(), profileNow, ProfileFromForm)
 	if !errors.Is(err, customfield.ErrValueNotInOptions) {
 		t.Fatalf("err = %v", err)
 	}
@@ -301,7 +301,7 @@ func TestApplyProfileRefuses(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := tc.lead.ApplyProfile(tc.profile, profileDefs(), profileNow); !errors.Is(err, tc.want) {
+			if _, err := tc.lead.ApplyProfile(tc.profile, profileDefs(), profileNow, ProfileFromForm); !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
 		})
@@ -370,11 +370,113 @@ func TestApplyProfileRefusesANumberThatIsNotFinite(t *testing.T) {
 	defs := append(profileDefs(), &customfield.Definition{Key: "renda", ObjectType: customfield.ObjectLead, Type: customfield.TypeNumber})
 	for _, raw := range []string{"NaN", "inf", "-Infinity"} {
 		l := profileLead()
-		if _, err := l.ApplyProfile(Profile{CustomFields: map[string]string{"renda": raw}}, defs, profileNow); !errors.Is(err, customfield.ErrValueType) {
+		if _, err := l.ApplyProfile(Profile{CustomFields: map[string]string{"renda": raw}}, defs, profileNow, ProfileFromForm); !errors.Is(err, customfield.ErrValueType) {
 			t.Fatalf("renda %q: err = %v, want %v", raw, err, customfield.ErrValueType)
 		}
 		if _, written := l.CustomFields["renda"]; written {
 			t.Fatalf("renda %q was written: %v", raw, l.CustomFields)
 		}
+	}
+}
+
+func TestApplyProfileNameAndEmail(t *testing.T) {
+	cases := []struct {
+		name       string
+		lead       func() *Lead
+		profile    Profile
+		changed    []string
+		conflicts  []string
+		wantName   string
+		wantEmail  string
+		wantSource Source
+	}{
+		{
+			name:      "an empty email is filled",
+			lead:      func() *Lead { return profileLead() },
+			profile:   Profile{Email: "ana@example.com"},
+			changed:   []string{FieldEmail},
+			wantName:  "Ana",
+			wantEmail: "ana@example.com",
+		},
+		{
+			name: "a stored email is kept and the different one is a conflict",
+			lead: func() *Lead {
+				l := profileLead()
+				l.Email = "old@example.com"
+				return l
+			},
+			profile:   Profile{Email: "ana@example.com"},
+			conflicts: []string{FieldEmail},
+			wantName:  "Ana",
+			wantEmail: "old@example.com",
+		},
+		{
+			name: "a name the person typed in a form replaces the WhatsApp profile name",
+			lead: func() *Lead {
+				l := profileLead()
+				l.Name, l.NameSource = "ana_zap", SourceChannel
+				return l
+			},
+			profile:    Profile{Name: "Ana Souza"},
+			changed:    []string{FieldName},
+			wantName:   "Ana Souza",
+			wantSource: SourceForm,
+		},
+		{
+			name: "a name an operator typed is never replaced by a form",
+			lead: func() *Lead {
+				l := profileLead()
+				l.NameSource = SourceManual
+				return l
+			},
+			profile:    Profile{Name: "Ana Souza"},
+			conflicts:  []string{FieldName},
+			wantName:   "Ana",
+			wantSource: SourceManual,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			l := tc.lead()
+			l.Addresses = []Address{}
+			outcome, err := l.ApplyProfile(tc.profile, profileDefs(), profileNow, ProfileFromForm)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(outcome.Changed, tc.changed) || !reflect.DeepEqual(outcome.Conflicts, tc.conflicts) {
+				t.Fatalf("changed %v conflicts %v, want %v %v", outcome.Changed, outcome.Conflicts, tc.changed, tc.conflicts)
+			}
+			if l.Name != tc.wantName || l.Email != tc.wantEmail || (tc.wantSource != "" && l.NameSource != tc.wantSource) {
+				t.Fatalf("lead = %q %q %q", l.Name, l.Email, l.NameSource)
+			}
+		})
+	}
+}
+
+func TestApplyProfileRefusesAnInvalidEmail(t *testing.T) {
+	l := profileLead()
+	if _, err := l.ApplyProfile(Profile{Email: "not an email"}, profileDefs(), profileNow, ProfileFromForm); !errors.Is(err, ErrLeadEmailInvalid) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestANameFromAConversationOnlyFillsAnEmptyName(t *testing.T) {
+	l := profileLead()
+	l.Name, l.NameSource = "ana_zap", SourceChannel
+	outcome, err := l.ApplyProfile(Profile{Name: "Ana Souza"}, profileDefs(), profileNow, ProfileFromConversation)
+	if err != nil || l.Name != "ana_zap" || !reflect.DeepEqual(outcome.Conflicts, []string{FieldName}) {
+		t.Fatalf("a name read from a conversation ranks like the channel name: %q %+v %v", l.Name, outcome, err)
+	}
+}
+
+func TestNameAndEmailAreAProfile(t *testing.T) {
+	if (Profile{Name: "Ana"}).Empty() || (Profile{Email: "a@b.co"}).Empty() {
+		t.Fatal("a name or an email is a profile")
+	}
+	if !(Profile{Name: " ", Email: " "}).Empty() {
+		t.Fatal("blank name and email are not a profile")
+	}
+	if !SourceForm.Valid() {
+		t.Fatal("form is a lead source")
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"vozko/domain/media"
 )
 
 type Fetcher struct {
@@ -17,24 +19,46 @@ func NewFetcher(client *http.Client, maxBytes int64) *Fetcher {
 }
 
 func (f *Fetcher) Fetch(ctx context.Context, url string) ([]byte, error) {
+	file, err := boundedGet(ctx, f.client, url, f.maxBytes)
+	return file.Data, err
+}
+
+type Downloader struct {
+	client *http.Client
+}
+
+var _ media.RemoteFiles = (*Downloader)(nil)
+
+func NewDownloader(client *http.Client) *Downloader {
+	return &Downloader{client: client}
+}
+
+func (d *Downloader) Download(ctx context.Context, url string, maxBytes int64) (media.RemoteFile, error) {
+	return boundedGet(ctx, d.client, url, maxBytes)
+}
+
+func boundedGet(ctx context.Context, client *http.Client, url string, maxBytes int64) (media.RemoteFile, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return media.RemoteFile{}, err
 	}
-	resp, err := f.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return media.RemoteFile{}, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return media.RemoteFile{}, fmt.Errorf("%w (status %d)", media.ErrRemoteFileMissing, resp.StatusCode)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("remote file answered %d", resp.StatusCode)
+		return media.RemoteFile{}, fmt.Errorf("remote file answered %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, f.maxBytes+1))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, err
+		return media.RemoteFile{}, err
 	}
-	if int64(len(data)) > f.maxBytes {
-		return nil, fmt.Errorf("remote file is larger than %d bytes", f.maxBytes)
+	if int64(len(data)) > maxBytes {
+		return media.RemoteFile{}, fmt.Errorf("remote file is larger than %d bytes", maxBytes)
 	}
-	return data, nil
+	return media.RemoteFile{Data: data, ContentType: resp.Header.Get("Content-Type")}, nil
 }

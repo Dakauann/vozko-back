@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"vozko/brand"
 	"vozko/delivery/http/response"
 	"vozko/usecases/shared/oauthstate"
 )
@@ -32,7 +34,7 @@ func WriteResult(w http.ResponseWriter, frontendOrigin string, payload map[strin
 	w.WriteHeader(http.StatusOK)
 
 	_, _ = fmt.Fprintf(w, `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Vozko</title></head>
+<html lang="en"><head><meta charset="utf-8"><title>%s</title></head>
 <body style="font:14px system-ui;padding:24px;text-align:center;color:#444">
 <p>You can close this window.</p>
 <script>
@@ -47,7 +49,7 @@ func WriteResult(w http.ResponseWriter, frontendOrigin string, payload map[strin
   setTimeout(function () { try { window.close(); } catch (e) {} }, 300);
 })();
 </script>
-</body></html>`, encodedPayload, encodedTarget)
+</body></html>`, html.EscapeString(brand.Active().Name), encodedPayload, encodedTarget)
 }
 
 func Redirect(w http.ResponseWriter, r *http.Request, frontendBaseURL, path, fallbackPath string, params url.Values) {

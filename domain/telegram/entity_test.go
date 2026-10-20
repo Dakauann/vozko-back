@@ -389,22 +389,3 @@ func TestDocumentLimitAcceptsAnyType(t *testing.T) {
 		}
 	}
 }
-
-func TestAllowedUpdatesOmitsMessageReaction(t *testing.T) {
-	for _, u := range AllowedUpdates() {
-		if u == "message_reaction" || u == "message_reaction_count" {
-			t.Fatalf("%q must not be subscribed: private chats have no administrators", u)
-		}
-	}
-
-	required := []string{"message", "my_chat_member", "business_connection", "business_message"}
-	have := map[string]bool{}
-	for _, u := range AllowedUpdates() {
-		have[u] = true
-	}
-	for _, r := range required {
-		if !have[r] {
-			t.Errorf("allowed_updates is missing %q", r)
-		}
-	}
-}

@@ -23,6 +23,7 @@ import (
 	"vozko/usecases/copilot/copilottools/telephonytools"
 	"vozko/usecases/copilot/skills"
 	uwuc "vozko/usecases/unofficial_whatsapp"
+	workflow_usecase "vozko/usecases/workflow"
 )
 
 func (c *Container) buildCopilot(
@@ -319,6 +320,7 @@ func (c *Container) unofficialGroupTools() []copilot.Tool {
 		Campaigns:   c.unofficialCampaignToolDeps(),
 		Groups:      c.unofficialWhatsApp.WorkspaceGroups,
 		Permissions: c.useCases.checkWsAccess,
+		Estimate:    campaigns.Estimate,
 	}
 	return []copilot.Tool{
 		crmtools.NewUnofficialGroupsDashboardTool(deps),
@@ -459,7 +461,7 @@ func (c *Container) catalogTools() []copilot.Tool {
 		Funnels:   funnels,
 		Labels:    c.useCases.listLabels,
 		Events:    c.useCases.listCalendarEvents,
-		Workflows: c.useCases.listWorkflows,
+		Workflows: workflow_usecase.NewListWorkflowsWithEntryPoints(c.useCases.listWorkflows, c.workflowEntryPoints()),
 		Now:       time.Now,
 	}
 	return []copilot.Tool{

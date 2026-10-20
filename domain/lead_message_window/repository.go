@@ -9,7 +9,7 @@ type Repository interface {
 
 	FindAllByLead(leadID string) ([]*LeadMessageWindow, error)
 
-	FindOpenWindowsByLeadIDs(leadIDs []string, forBusinessPhoneID string) (map[string]*LeadMessageWindow, error)
+	FindByLeadIDs(leadIDs []string) ([]*LeadMessageWindow, error)
 
 	IsWindowOpen(leadID, businessPhoneID string) (bool, error)
 

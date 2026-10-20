@@ -11,7 +11,7 @@ import (
 
 var invalidRule = []error{
 	ca.ErrNoActions, ca.ErrNameRequired, ca.ErrEmptyKeywords, ca.ErrReplyEmpty,
-	ca.ErrUnknownAction, ca.ErrActionUnsupported, ca.ErrUnknownSource,
+	ca.ErrUnknownAction, ca.ErrActionUnsupported, ca.ErrUnknownSource, ca.ErrReplyTooLong,
 }
 
 func WriteError(w http.ResponseWriter, err error) bool {

@@ -56,6 +56,7 @@ type AttachedMedia struct {
 	URL      string      `json:"url"`
 	MimeType string      `json:"mimeType,omitempty"`
 	Filename string      `json:"filename,omitempty"`
+	Size     int64       `json:"size,omitempty"`
 	Layout   MediaLayout `json:"layout"`
 }
 

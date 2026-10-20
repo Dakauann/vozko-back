@@ -7,6 +7,8 @@ import (
 	"vozko/usecases/conversationad"
 	leadexit_usecase "vozko/usecases/leadexit"
 	mpuc "vozko/usecases/metaplatform"
+	personalinbox_usecase "vozko/usecases/personalinbox"
+	teamchat_usecase "vozko/usecases/teamchat"
 
 	"gorm.io/gorm"
 
@@ -54,6 +56,8 @@ import (
 	whatsappbusinessphonehttp "vozko/delivery/http/whatsappbusinessphone"
 	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
+	workflowalerthttp "vozko/delivery/http/workflowalerthttp"
+	workflowsecrethttp "vozko/delivery/http/workflowsecrethttp"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
 	workspaceaddonhttp "vozko/delivery/http/workspaceaddon"
@@ -133,6 +137,7 @@ import (
 	wc_entry_domain "vozko/domain/whatsapp_campaign_entry"
 	whatsapp_outreach_domain "vozko/domain/whatsapp_outreach"
 	workflow_domain "vozko/domain/workflow"
+	"vozko/domain/workflowsecret"
 	workspace_domain "vozko/domain/workspace"
 	workspace_addon_domain "vozko/domain/workspace/workspace_addon"
 	workspace_department_domain "vozko/domain/workspace/workspace_department"
@@ -177,7 +182,9 @@ import (
 	"vozko/usecases/opportunityio"
 	report_usecase "vozko/usecases/report"
 	wc_usecase "vozko/usecases/whatsapp_campaign"
+	whatsappform_usecase "vozko/usecases/whatsappform"
 	workflow_usecase "vozko/usecases/workflow"
+	"vozko/usecases/workflow/node_executors"
 )
 
 type Container struct {
@@ -202,6 +209,8 @@ type Container struct {
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
+	mercadoLivre                *mercadoLivreBundle
+	tiktok                      *tiktokBundle
 	webchat                     *webchatBundle
 	sipTrunks                   *sipTrunkBundle
 	callRouting                 *callRoutingBundle
@@ -228,6 +237,11 @@ type Container struct {
 
 	customerPortfolioStore   *customerportfolio_repository.Store
 	customerPortfolioService *customerportfolio_usecase.Service
+	whatsappFormsService     *whatsappform_usecase.Service
+	formSenderRelay          *node_executors.FormSenderRelay
+	formRuns                 *workflow_usecase.FormRunResumer
+	formTriggerFirer         *workflow_usecase.FormTriggerFirer
+	formAutomationCatalog    *workflow_usecase.FormAutomations
 
 	leadActionBundle *leadActionBundle
 	callListBundle   *callListBundle
@@ -237,6 +251,7 @@ type Container struct {
 
 	notificationCenter  *notificationWiring
 	leadExitInboundStep *leadexit_usecase.Step
+	teamChatService     *teamchat_usecase.Service
 
 	conversationRuns *workflow_usecase.ConversationRunStarter
 }
@@ -420,6 +435,8 @@ type services struct {
 	conversationAuth              conversation_domain.ConversationAuthorizer
 	assignmentService             *ia_usecase.AssignmentService
 	delegations                   conversation_domain.DelegationRepository
+	personalInbox                 *personalinbox_usecase.Service
+	personFinish                  conversation_domain.PersonFinishUseCase
 	messageMarker                 *conversation_usecase.MessageMarkerService
 	aiAttendanceService           *aa_usecase.AsyncSessionService
 	ragEmbedding                  rag_domain.EmbeddingService
@@ -555,6 +572,7 @@ type useCases struct {
 	listWCCampaigns            wc_domain.ListCampaignsUseCase
 	getWCCampaignsSummary      wc_domain.GetSummaryUseCase
 	getWCDispatchReport        wc_domain.GetDispatchReportUseCase
+	exportWCDispatchReport     wc_domain.ExportDispatchReportUseCase
 	ensureReceptiveContainer   wc_domain.EnsureReceptiveContainerUseCase
 	listWCEntries              wc_domain.ListEntriesUseCase
 	resetWCCampaign            wc_domain.ResetCampaignUseCase
@@ -858,13 +876,18 @@ type useCases struct {
 	cancelWorkflowRun        workflow_domain.CancelRunUseCase
 	getWorkflowRun           workflow_domain.GetRunUseCase
 	listWorkflowRuns         workflow_domain.ListRunsUseCase
+	listConversationRuns     *workflow_usecase.ListConversationRunsUseCase
 	testWorkflowNode         workflow_usecase.TestNodeUseCase
 	workflowWebhookConfig    workflow_usecase.WorkflowWebhookUseCase
 	handleWebhookTrigger     workflow_usecase.HandleWebhookTriggerUseCase
+	workflowSecrets          workflowsecret.UseCases
 	workflowManager          workflow_domain.WorkflowManager
 	triggerEvaluator         workflow_domain.TriggerEvaluator
 	consumeWorkflowWake      workflow_domain.ConsumeRunWakeUseCase
-	nodeCatalogFn            func() []workflow_domain.NodeDefinition
+	consumeAgentRunFinished  *conversation_usecase.ConsumeAgentRunFinished
+	workflowRuntimeAlerts    *workflow_usecase.RuntimeAlerts
+	agentContinuationSweep   *workflow_usecase.AgentContinuationSweep
+	nodeCatalogFn          func() []workflow_domain.NodeDefinition
 	wsWorkflowSimulation     workflow_usecase.WSWorkflowSimulationUseCase
 	wsWorkflowAIBuilder      workflow_usecase.AIBuilderUseCase
 
@@ -964,6 +987,8 @@ type handlers_ struct {
 	issue                   *issuehttp.IssueHandler
 	workflow                *handlers.WorkflowHandler
 	workflowWebhook         *workflowwebhookhttp.Handler
+	workflowSecret          *workflowsecrethttp.Handler
+	workflowAlert           *workflowalerthttp.Handler
 	wsWorkflowSimulator     *wsdelivery.WSWorkflowSimulatorHandler
 	wsWorkflowAIBuilder     *wsdelivery.WSWorkflowAIBuilderHandler
 	builderSession          *buildersessionhttp.BuilderSessionHandler

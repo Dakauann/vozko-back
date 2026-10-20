@@ -106,8 +106,11 @@ func TestFirstMatchingRuleRunsEveryAction(t *testing.T) {
 	rules := newMemoryRules(fbRule("r1", 1, "preço"))
 	actions := &recordingActions{}
 
-	NewEvaluator(rules).Evaluate(context.Background(), shared.EntryTypeFacebook, "page-1", "c-1",
+	err := NewEvaluator(rules, newMemoryClaims()).Evaluate(context.Background(), shared.EntryTypeFacebook, "page-1", "c-1",
 		ca.Subject{ContainerID: "p-1", AuthorName: "Ana", Text: "qual o preço?"}, actions)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	want := []string{"private_reply:c-1:Te chamei", "public_reply:c-1:Oi Ana", "like:c-1"}
 	if len(actions.calls) != len(want) {
@@ -124,20 +127,23 @@ func TestAConsumedPrivateReplyDoesNotStopTheOtherActions(t *testing.T) {
 	rules := newMemoryRules(fbRule("r1", 1, "preço"))
 	actions := &recordingActions{fail: map[ca.Action]error{ca.ActionPrivateReply: privatereply.ErrUsed}}
 
-	NewEvaluator(rules).Evaluate(context.Background(), shared.EntryTypeFacebook, "page-1", "c-1",
+	err := NewEvaluator(rules, newMemoryClaims()).Evaluate(context.Background(), shared.EntryTypeFacebook, "page-1", "c-1",
 		ca.Subject{Text: "preço"}, actions)
 
 	if len(actions.calls) != 3 {
 		t.Fatalf("calls = %v", actions.calls)
+	}
+	if !errors.Is(err, privatereply.ErrUsed) || !errors.Is(err, ca.ErrActionFailed) || ca.Retryable(err) {
+		t.Fatalf("a failed action is reported but never retried: %v", err)
 	}
 }
 
 func TestOurOwnCommentsNeverTriggerRules(t *testing.T) {
 	rules := newMemoryRules(fbRule("r1", 1, "preço"))
 	actions := &recordingActions{}
-	NewEvaluator(rules).Evaluate(context.Background(), shared.EntryTypeFacebook, "page-1", "c-1",
+	err := NewEvaluator(rules, newMemoryClaims()).Evaluate(context.Background(), shared.EntryTypeFacebook, "page-1", "c-1",
 		ca.Subject{Text: "preço", IsOurs: true}, actions)
-	if len(actions.calls) != 0 {
+	if err != nil || len(actions.calls) != 0 {
 		t.Fatalf("calls = %v", actions.calls)
 	}
 }

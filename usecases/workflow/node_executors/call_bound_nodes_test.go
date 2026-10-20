@@ -25,7 +25,7 @@ func TestCodeNode_AHangUpStopsTheScript(t *testing.T) {
 	}
 
 	started := time.Now()
-	if _, err := NewCodeExecutor().Execute(ctx); err == nil {
+	if _, err := NewCodeExecutor(nil).Execute(ctx); err == nil {
 		t.Fatal("an endless script cut short by a hang-up must report an error")
 	}
 	if elapsed := time.Since(started); elapsed > 2*time.Second {

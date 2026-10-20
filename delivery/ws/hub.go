@@ -19,6 +19,7 @@ import (
 	inbox_assignment "vozko/domain/inbox_assignment"
 	"vozko/domain/messaging"
 	"vozko/domain/metrics"
+	"vozko/domain/personalinbox"
 	"vozko/domain/shared"
 	"vozko/domain/user"
 	"vozko/domain/whatsapp_campaign"
@@ -54,6 +55,7 @@ type broadcastMessage struct {
 	entryType     string
 	event         *WSOutgoingMessage
 	excludeUserID string
+	excludeConnID string
 	fromRedis     bool
 }
 
@@ -86,6 +88,11 @@ type ConversationHub struct {
 	statusUpdater        conversation.ConversationStatusUpdater
 	wsMetrics            metrics.WSMetricsRecorder
 	operatorSend         conversation.OperatorSendUseCase
+	messageActions       conversation.MessageActionUseCases
+	mediaLimits          conversation.MediaLimitsReader
+	personalMarks        personalinbox.UseCases
+	personFinish         conversation.PersonFinishUseCase
+	teamChat             teamChatTyping
 
 	connections map[string]*WSConnection
 	connMu      sync.RWMutex
@@ -108,6 +115,12 @@ type ConversationHub struct {
 	refreshWindow      time.Duration
 	pendingRefresh     sync.Map
 	connUserDebounceMu sync.Mutex
+
+	viewersDelay     time.Duration
+	viewerTimers     map[entrySubscription]*time.Timer
+	viewerTimersMu   sync.Mutex
+	viewersMu        sync.Mutex
+	publishedViewers map[entrySubscription]map[string]bool
 
 	sharedState   cache.SharedState
 	replicaID     string
@@ -137,6 +150,9 @@ func NewConversationHub(
 		done:              make(chan struct{}),
 		connUserDebounce:  make(map[string]*time.Timer),
 		refreshWindow:     entryRefreshWindow,
+		viewersDelay:      broadcastDebounceDelay,
+		viewerTimers:      make(map[entrySubscription]*time.Timer),
+		publishedViewers:  make(map[entrySubscription]map[string]bool),
 		sharedState:       sharedState,
 		replicaID:         replicaID,
 		publicAddress:     publicAddress,
@@ -206,6 +222,10 @@ func (h *ConversationHub) SetWorkspaceDepartmentRepo(repo workspaceDepartmentMem
 }
 func (h *ConversationHub) SetConversationStatusUpdater(u conversation.ConversationStatusUpdater) {
 	h.statusUpdater = u
+}
+
+func (h *ConversationHub) SetPersonFinish(finish conversation.PersonFinishUseCase) {
+	h.personFinish = finish
 }
 
 func (h *ConversationHub) SetWSMetrics(rec metrics.WSMetricsRecorder) { h.wsMetrics = rec }
@@ -387,14 +407,18 @@ func (h *ConversationHub) BroadcastMessageSent(userID, requestID, entryID, entry
 	h.broadcast <- &broadcastMessage{
 		entryID:   entryID,
 		entryType: entryType,
-		event: &WSOutgoingMessage{
-			Type: WSEventMessageSent,
-			Payload: MessageSentPayload{
-				RequestID: requestID,
-				EntryID:   entryID,
-				EntryType: entryType,
-				Message:   message,
-			},
+		event:     messageSentEvent(requestID, entryID, entryType, message),
+	}
+}
+
+func messageSentEvent(requestID, entryID, entryType string, message *conversation.Message) *WSOutgoingMessage {
+	return &WSOutgoingMessage{
+		Type: WSEventMessageSent,
+		Payload: MessageSentPayload{
+			RequestID: requestID,
+			EntryID:   entryID,
+			EntryType: entryType,
+			Message:   message,
 		},
 	}
 }
@@ -439,16 +463,22 @@ func (h *ConversationHub) BroadcastRead(entryID, entryType string, messageIDs []
 	}
 }
 
-func (h *ConversationHub) BroadcastUnreadCount(entryID, entryType string, count int64) {
+func (h *ConversationHub) BroadcastMessageUpdated(entryID, entryType string, message *conversation.Message) {
+	if message == nil {
+		return
+	}
+	if h.historyProvider != nil {
+		h.historyProvider.PresentMessage(entryID, entryType, message)
+	}
 	h.broadcast <- &broadcastMessage{
 		entryID:   entryID,
 		entryType: entryType,
 		event: &WSOutgoingMessage{
-			Type: WSEventUnreadCount,
-			Payload: UnreadCountPayload{
-				EntryID:     entryID,
-				EntryType:   entryType,
-				UnreadCount: count,
+			Type: WSEventMessageUpdated,
+			Payload: MessageUpdatedPayload{
+				EntryID:   entryID,
+				EntryType: entryType,
+				Message:   message,
 			},
 		},
 	}
@@ -652,47 +682,13 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 		return
 	}
 
-	var workspaceID string
-	if h.workspaceResolver != nil {
-		workspaceID, _ = h.workspaceResolver.GetEntryWorkspaceID(entryID, entryType)
-	}
+	workspaceID := h.entryWorkspaceID(entryID, entryType)
 	if !h.hasViewersIn(workspaceID) {
 		return
 	}
 
-	var entry *conversation.InboxEntry
-	var err error
-	switch {
-	case h.inboxService != nil:
-		entry, err = h.inboxService.BuildInboxEntry(entryID, entryType)
-	case h.historyProvider != nil:
-		entry, err = h.historyProvider.GetInboxEntry(entryID, entryType)
-	default:
-		return
-	}
-	if err != nil {
-		log.Printf("[ConversationHub] Error building inbox entry %s (%s): %v", entryID, entryType, err)
-		return
-	}
-	if entry == nil {
-		log.Printf("[ConversationHub] BroadcastEntryUpdate: entry %s (%s) not found", entryID, entryType)
-		return
-	}
-
-	var entryCampaignID string
-	if h.workspaceResolver != nil {
-		entryCampaignID, _ = h.workspaceResolver.GetEntryCampaignID(entryID, entryType)
-	}
-
-	assignedUserID := entry.AssignedUserID
-
-	event := &WSOutgoingMessage{
-		Type:    WSEventEntryUpdate,
-		Payload: EntryUpdatePayload{Entry: *entry, Silent: silent},
-	}
-	data, err := json.Marshal(event)
-	if err != nil {
-		log.Printf("[ConversationHub] Error marshaling entry update: %v", err)
+	update, ok := h.buildEntryUpdate(entryID, entryType, workspaceID, silent)
+	if !ok {
 		return
 	}
 
@@ -702,43 +698,15 @@ func (h *ConversationHub) broadcastEntryUpdateLocal(entryID, entryType string, m
 
 	for _, connIDs := range h.userConnections {
 		for connID := range connIDs {
-			if conn, exists := h.connections[connID]; exists {
-				if !allowEntry(conn) {
-					continue
-				}
-
-				if workspaceID != "" && conn.WorkspaceID != "" && conn.WorkspaceID != workspaceID {
-					continue
-				}
-
-				if entryCampaignID != "" && conn.CampaignID != "" && conn.CampaignID != entryCampaignID {
-					continue
-				}
-				if conn.CampaignType != "" && conn.CampaignType != entryType {
-					continue
-				}
-
-				if conn.ConversationStatus != "" && string(entry.ConversationStatus) != conn.ConversationStatus {
-					continue
-				}
-
-				if assignedUserID != "" && conn.UserID != assignedUserID && !conn.IsAdmin {
-					if !h.authorizer.HasWorkspacePermission(conn.UserID, conn.WorkspaceID, "conversations", "view_others", conn.IsAdmin) {
-						continue
-					}
-				}
-				select {
-				case conn.Send <- data:
-				default:
-					log.Printf("[ConversationHub] Send buffer full for user %s (connection %s)", conn.UserID, connID)
-				}
+			if conn, exists := h.connections[connID]; exists && h.entryUpdateReaches(update, allowEntry, conn) {
+				h.deliverEntryUpdate(conn, update)
 			}
 		}
 	}
 
 	h.connMu.RUnlock()
 	if !silent {
-		h.broadcastConversationStatusCountsUpdateLocal(workspaceID, entryCampaignID, entryType)
+		h.broadcastConversationStatusCountsUpdateLocal(workspaceID, update.campaignID, entryType)
 	}
 }
 
@@ -1071,105 +1039,17 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 	})
 
 	if h.inboxService != nil {
-
-		viewMode := conn.ViewMode
-		userID := conn.UserID
-		workspaceID := conn.WorkspaceID
-		departmentID := conn.DepartmentID
-		campaignType := conn.CampaignType
-		whatsAppCampaignType := conn.WhatsAppCampaignType
-		containerKind := conn.ContainerKind
-		campaignID := conn.CampaignID
-		campaignWorkspaceID := conn.CampaignWorkspaceID
-		conversationStatus := conn.ConversationStatus
-		isAdmin := conn.IsAdmin
-		seq := conn.viewSeq
-
+		view := inboxViewOf(conn)
 		go func() {
-			var entries []conversation.InboxEntry
-			var totalItems int64
-			var err error
-
-			if conversationStatus != "" {
-				searchInput := conversation.SearchInboxInput{
-					UserID:               userID,
-					WorkspaceID:          workspaceID,
-					SelectedDepartmentID: departmentID,
-					CampaignID:           campaignID,
-					CampaignType:         campaignType,
-					WhatsAppCampaignType: whatsAppCampaignType,
-					ContainerKind:        conversation.ContainerKind(containerKind),
-					ConversationStatus:   conversation.ConversationStatus(conversationStatus),
-					AssignedUserID:       userID,
-					IsAdmin:              isAdmin,
-					Page:                 1,
-					PageSize:             conversation.DefaultInboxPageSize,
-				}
-				if viewMode != "global" {
-					searchInput.WorkspaceID = ""
-				} else {
-					searchInput.CampaignID = ""
-				}
-				entries, totalItems, err = h.inboxService.SearchInbox(userID, searchInput)
-			} else if viewMode == "global" {
-				entries, totalItems, err = h.inboxService.SearchInbox(
-					userID, conversation.SearchInboxInput{
-						CampaignType:         campaignType,
-						WhatsAppCampaignType: whatsAppCampaignType,
-						WorkspaceID:          workspaceID,
-						SelectedDepartmentID: departmentID,
-						AssignedUserID:       userID,
-						IsAdmin:              isAdmin,
-						Page:                 1,
-						PageSize:             conversation.DefaultInboxPageSize,
-					},
-				)
-			} else {
-				entries, totalItems, err = h.inboxService.SearchInbox(
-					userID, conversation.SearchInboxInput{
-						CampaignID:           campaignID,
-						CampaignType:         campaignType,
-						ContainerKind:        conversation.ContainerKind(containerKind),
-						WorkspaceID:          campaignWorkspaceID,
-						SelectedDepartmentID: departmentID,
-						AssignedUserID:       userID,
-						IsAdmin:              isAdmin,
-						Page:                 1,
-						PageSize:             conversation.DefaultInboxPageSize,
-					},
-				)
-			}
+			payload, err := h.loadInboxPage(view, 1, conversation.DefaultInboxPageSize)
 			if err != nil {
-				log.Printf("[ConversationHub] Error getting inbox for user %s: %v", userID, err)
+				log.Printf("[ConversationHub] Error getting inbox for user %s: %v", view.userID, err)
 				return
 			}
-
-			totalPages := 0
-			if totalItems > 0 {
-				totalPages = int((totalItems + int64(conversation.DefaultInboxPageSize) - 1) / int64(conversation.DefaultInboxPageSize))
-			}
-
-			var StageCounts map[string]int64
-			if viewMode == "global" {
-				StageCounts, _ = h.inboxService.GetInboxStageCounts(workspaceID, "", campaignType)
-			} else {
-				StageCounts, _ = h.inboxService.GetInboxStageCounts(campaignWorkspaceID, campaignID, campaignType)
-			}
-
-			availableLabels, _ := h.inboxService.GetAvailableLabels(workspaceID)
-
-			var convStatusCounts map[string]int64
-			if viewMode == "global" {
-				convStatusCounts, _ = h.inboxService.GetConversationStatusCounts(workspaceID, "", campaignType)
-			} else {
-				convStatusCounts, _ = h.inboxService.GetConversationStatusCounts("", campaignID, campaignType)
-			}
-
-			if conn.viewSeq != seq {
-				log.Printf("[ConversationHub] Discarding stale initial inbox for connection %s (seq %d < %d)", conn.ID, seq, conn.viewSeq)
+			if conn.viewSeq != view.seq {
+				log.Printf("[ConversationHub] Discarding stale initial inbox for connection %s (seq %d < %d)", conn.ID, view.seq, conn.viewSeq)
 				return
 			}
-
 			h.connMu.RLock()
 			_, stillExists := h.connections[conn.ID]
 			h.connMu.RUnlock()
@@ -1177,20 +1057,7 @@ func (h *ConversationHub) handleRegister(conn *WSConnection) {
 				log.Printf("[ConversationHub] Skipping inbox send for connection %s (already closed)", conn.ID)
 				return
 			}
-
-			h.sendToConnection(conn, &WSOutgoingMessage{
-				Type: WSEventInbox,
-				Payload: InboxPayload{
-					Entries:                  entries,
-					Page:                     1,
-					PageSize:                 conversation.DefaultInboxPageSize,
-					TotalItems:               totalItems,
-					TotalPages:               totalPages,
-					StageCounts:              StageCounts,
-					ConversationStatusCounts: convStatusCounts,
-					AvailableLabels:          availableLabels,
-				},
-			})
+			h.sendToConnection(conn, &WSOutgoingMessage{Type: WSEventInbox, Payload: payload})
 		}()
 	}
 
@@ -1655,6 +1522,10 @@ func (h *ConversationHub) handleIncoming(msg *incomingMessage) {
 		if h.checkPermission(msg.conn, "conversations", "read") {
 			h.handleLoadAround(msg.conn, msg.message.Payload)
 		}
+	case WSEventLoadAfter:
+		if h.checkPermission(msg.conn, "conversations", "read") {
+			h.handleLoadAfter(msg.conn, msg.message.Payload)
+		}
 	case WSEventRequestInbox:
 		if h.checkPermission(msg.conn, "conversations", "read") {
 			h.handleRequestInboxPage(msg.conn, msg.message.Payload)
@@ -1693,6 +1564,22 @@ func (h *ConversationHub) handleIncoming(msg *incomingMessage) {
 		if h.checkPermission(msg.conn, "conversations", "send") {
 			h.handleSetConversationStatus(msg.conn, msg.message.Payload)
 		}
+	case WSEventReactMessage:
+		h.handleReactMessage(msg.conn, msg.message.Payload)
+	case WSEventEditMessage:
+		h.handleEditMessage(msg.conn, msg.message.Payload)
+	case WSEventDeleteMessage:
+		h.handleDeleteMessage(msg.conn, msg.message.Payload)
+	case WSEventResendMessage:
+		h.handleResendMessage(msg.conn, msg.message.Payload)
+	case WSEventPinConversation:
+		h.handlePinConversation(msg.conn, msg.message.Payload)
+	case WSEventMarkUnread:
+		h.handleMarkUnread(msg.conn, msg.message.Payload)
+	case WSEventClearUnreadMark:
+		h.handleClearUnreadMark(msg.conn, msg.message.Payload)
+	case WSEventTeamChatTyping:
+		h.handleTeamChatTyping(msg.conn, msg.message.Payload)
 	default:
 		h.sendError(msg.conn, "unknown_event", "Unknown event type: "+string(msg.message.Type))
 	}
@@ -1740,12 +1627,14 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 	}
 	h.entrySubscribers[sub][conn.ID] = true
 	h.subMu.Unlock()
+	h.scheduleViewersAnnouncement(sub)
 
 	info := conversation.EntryInfo{AutomationEnabled: true}
 	var unreadCount int64
 	var windowOpen bool
 	var windowExpiresAt *time.Time
 	var windowClosedReason string
+	var windowClosedDetail string
 	var windowTier string
 	var messages []*conversation.Message
 	var hasMore bool
@@ -1757,6 +1646,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 		unreadCount, _ = h.historyProvider.GetUnreadCount(p.EntryID, shared.EntryType(p.EntryType))
 		window := h.historyProvider.GetWindowStatusForEntry(p.EntryID, p.EntryType)
 		windowOpen, windowExpiresAt, windowClosedReason, windowTier = window.Open, window.ExpiresAt, string(window.Reason), string(window.Tier)
+		windowClosedDetail = window.ProviderDetail
 	}
 	if h.historyReader != nil {
 		page, histErr := h.historyReader.ReadHistory(conversation.HistoryQuery{
@@ -1802,8 +1692,12 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 			WindowOpen:         windowOpen,
 			WindowExpiresAt:    windowExpiresAt,
 			WindowClosedReason: windowClosedReason,
+			WindowClosedDetail: windowClosedDetail,
 			WindowTier:         windowTier,
 			AdOrigin:           adOrigin,
+
+			MessageCapabilities: h.messageCapabilities(p.EntryType),
+			MediaLimits:         h.mediaLimitsOf(p.EntryType),
 		},
 	})
 
@@ -1812,6 +1706,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 		Payload: HistoryPayload{
 			EntryID:   p.EntryID,
 			EntryType: p.EntryType,
+			Direction: HistoryLatest,
 			Messages:  filteredMessages,
 			HasMore:   hasMore,
 			Total:     total,
@@ -1830,6 +1725,7 @@ func (h *ConversationHub) handleSubscribe(conn *WSConnection, payload json.RawMe
 
 	log.Printf("[ConversationHub] User %s subscribed to %s:%s", conn.UserID, p.EntryType, p.EntryID)
 
+	h.clearPersonalUnread(conn, p.EntryID, p.EntryType)
 	go h.tryAssignOnOpen(conn, p.EntryID, p.EntryType)
 }
 
@@ -1845,34 +1741,69 @@ func (h *ConversationHub) handleLoadHistory(conn *WSConnection, payload json.Raw
 		return
 	}
 
-	before, err := time.Parse(time.RFC3339Nano, p.Before)
+	before, err := parseHistoryCursor(p.Before)
 	if err != nil {
-		before, err = time.Parse(time.RFC3339, p.Before)
-		if err != nil {
-			h.sendError(conn, "invalid_timestamp", "before must be a valid ISO 8601 timestamp")
-			return
-		}
+		h.sendError(conn, "invalid_timestamp", "before must be a valid ISO 8601 timestamp")
+		return
 	}
 
+	h.sendHistoryPage(conn, HistoryBefore, conversation.HistoryQuery{
+		Viewer:    connViewer(conn),
+		EntryID:   p.EntryID,
+		EntryType: shared.EntryType(p.EntryType),
+		Before:    &before,
+		Limit:     p.PageSize,
+	})
+}
+
+func (h *ConversationHub) handleLoadAfter(conn *WSConnection, payload json.RawMessage) {
+	var p LoadAfterPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		h.sendError(conn, "invalid_payload", "Invalid load_after payload")
+		return
+	}
+
+	if p.EntryID == "" || p.EntryType == "" || p.After == "" {
+		h.sendError(conn, "missing_fields", "entry_id, entry_type, and after are required")
+		return
+	}
+
+	after, err := parseHistoryCursor(p.After)
+	if err != nil {
+		h.sendError(conn, "invalid_timestamp", "after must be a valid ISO 8601 timestamp")
+		return
+	}
+
+	h.sendHistoryPage(conn, HistoryAfter, conversation.HistoryQuery{
+		Viewer:    connViewer(conn),
+		EntryID:   p.EntryID,
+		EntryType: shared.EntryType(p.EntryType),
+		After:     &after,
+		Limit:     p.PageSize,
+	})
+}
+
+func parseHistoryCursor(raw string) (time.Time, error) {
+	if at, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return at, nil
+	}
+	return time.Parse(time.RFC3339, raw)
+}
+
+func (h *ConversationHub) sendHistoryPage(conn *WSConnection, direction HistoryDirection, q conversation.HistoryQuery) {
 	if h.historyReader == nil {
 		h.sendError(conn, "not_configured", "History provider not configured")
 		return
 	}
 
 	go func() {
-		page, err := h.historyReader.ReadHistory(conversation.HistoryQuery{
-			Viewer:    connViewer(conn),
-			EntryID:   p.EntryID,
-			EntryType: shared.EntryType(p.EntryType),
-			Before:    &before,
-			Limit:     p.PageSize,
-		})
+		page, err := h.historyReader.ReadHistory(q)
 		if errors.Is(err, conversation.ErrUnauthorized) {
 			h.sendError(conn, "unauthorized", "You don't have access to this conversation")
 			return
 		}
 		if err != nil {
-			log.Printf("[ConversationHub] Error loading history for %s:%s: %v", p.EntryType, p.EntryID, err)
+			log.Printf("[ConversationHub] Error loading %s history for %s:%s: %v", direction, q.EntryType, q.EntryID, err)
 			h.sendError(conn, "history_error", "Failed to load message history")
 			return
 		}
@@ -1880,10 +1811,12 @@ func (h *ConversationHub) handleLoadHistory(conn *WSConnection, payload json.Raw
 		h.sendToConnection(conn, &WSOutgoingMessage{
 			Type: WSEventHistory,
 			Payload: HistoryPayload{
-				EntryID:   p.EntryID,
-				EntryType: p.EntryType,
+				EntryID:   q.EntryID,
+				EntryType: string(q.EntryType),
+				Direction: direction,
 				Messages:  page.Messages,
 				HasMore:   page.HasMore,
+				HasAfter:  page.HasAfter,
 				PageSize:  len(page.Messages),
 			},
 		})
@@ -1901,8 +1834,8 @@ func (h *ConversationHub) handleLoadAround(conn *WSConnection, payload json.RawM
 		return
 	}
 
-	if p.EntryID == "" || p.EntryType == "" || p.Timestamp == "" {
-		h.sendError(conn, "missing_fields", "entry_id, entry_type, and timestamp are required")
+	if p.EntryID == "" || p.EntryType == "" || (p.Timestamp == "") == (p.MessageID == "") {
+		h.sendError(conn, "missing_fields", "entry_id, entry_type and exactly one of timestamp or message_id are required")
 		return
 	}
 
@@ -1911,13 +1844,9 @@ func (h *ConversationHub) handleLoadAround(conn *WSConnection, payload json.RawM
 		return
 	}
 
-	around, err := time.Parse(time.RFC3339Nano, p.Timestamp)
-	if err != nil {
-		around, err = time.Parse(time.RFC3339, p.Timestamp)
-		if err != nil {
-			h.sendError(conn, "invalid_timestamp", "timestamp must be a valid ISO 8601 timestamp")
-			return
-		}
+	around, ok := h.aroundAnchor(conn, p)
+	if !ok {
+		return
 	}
 
 	if h.historyProvider == nil {
@@ -1940,14 +1869,38 @@ func (h *ConversationHub) handleLoadAround(conn *WSConnection, payload json.RawM
 			Payload: HistoryPayload{
 				EntryID:   p.EntryID,
 				EntryType: p.EntryType,
+				Direction: HistoryAround,
 				Messages:  messages,
 				HasMore:   hasBefore,
+				HasAfter:  hasAfter,
 				Total:     total,
 				PageSize:  len(messages),
 			},
 		})
-		_ = hasAfter
 	}()
+}
+
+func (h *ConversationHub) aroundAnchor(conn *WSConnection, p LoadAroundPayload) (time.Time, bool) {
+	if p.MessageID == "" {
+		around, err := parseHistoryCursor(p.Timestamp)
+		if err != nil {
+			h.sendError(conn, "invalid_timestamp", "timestamp must be a valid ISO 8601 timestamp")
+			return time.Time{}, false
+		}
+		return around, true
+	}
+	if h.messageRepo == nil {
+		h.sendError(conn, "not_configured", "Message lookup not configured")
+		return time.Time{}, false
+	}
+	anchor, err := h.messageRepo.GetByID(p.MessageID)
+	if err != nil || !anchor.BelongsTo(p.EntryID, shared.EntryType(p.EntryType)) || anchor.CreatedAt.IsZero() {
+		h.sendToConnection(conn, &WSOutgoingMessage{Type: WSEventError, Payload: ErrorPayload{
+			Code: "not_found", Message: "The message is not in this conversation", EntryID: p.EntryID, EntryType: p.EntryType,
+		}})
+		return time.Time{}, false
+	}
+	return anchor.CreatedAt, true
 }
 
 func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload json.RawMessage) {
@@ -1974,128 +1927,24 @@ func (h *ConversationHub) handleRequestInboxPage(conn *WSConnection, payload jso
 		return
 	}
 
-	viewMode := conn.ViewMode
-	userID := conn.UserID
-	workspaceID := conn.WorkspaceID
-	departmentID := conn.DepartmentID
-	campaignType := conn.CampaignType
-	whatsAppCampaignType := conn.WhatsAppCampaignType
-	containerKind := conn.ContainerKind
-	campaignID := conn.CampaignID
-	campaignWorkspaceID := conn.CampaignWorkspaceID
-	conversationStatus := conn.ConversationStatus
-	isAdmin := conn.IsAdmin
-	seq := conn.viewSeq
-
+	view := inboxViewOf(conn)
 	go func() {
-		var entries []conversation.InboxEntry
-		var totalItems int64
-		var err error
-
-		if conversationStatus != "" {
-			searchInput := conversation.SearchInboxInput{
-				UserID:               userID,
-				WorkspaceID:          workspaceID,
-				SelectedDepartmentID: departmentID,
-				CampaignID:           campaignID,
-				CampaignType:         campaignType,
-				WhatsAppCampaignType: whatsAppCampaignType,
-				ContainerKind:        conversation.ContainerKind(containerKind),
-				ConversationStatus:   conversation.ConversationStatus(conversationStatus),
-				AssignedUserID:       userID,
-				IsAdmin:              isAdmin,
-				Page:                 p.Page,
-				PageSize:             pageSize,
-			}
-			if viewMode != "global" {
-				searchInput.WorkspaceID = ""
-			} else {
-				searchInput.CampaignID = ""
-			}
-			entries, totalItems, err = h.inboxService.SearchInbox(userID, searchInput)
-		} else if viewMode == "global" {
-			entries, totalItems, err = h.inboxService.SearchInbox(
-				userID, conversation.SearchInboxInput{
-					CampaignType:         campaignType,
-					WhatsAppCampaignType: whatsAppCampaignType,
-					WorkspaceID:          workspaceID,
-					SelectedDepartmentID: departmentID,
-					AssignedUserID:       userID,
-					IsAdmin:              isAdmin,
-					Page:                 p.Page,
-					PageSize:             pageSize,
-				},
-			)
-		} else {
-			entries, totalItems, err = h.inboxService.SearchInbox(
-				userID, conversation.SearchInboxInput{
-					CampaignID:           campaignID,
-					CampaignType:         campaignType,
-					ContainerKind:        conversation.ContainerKind(containerKind),
-					WorkspaceID:          campaignWorkspaceID,
-					SelectedDepartmentID: departmentID,
-					AssignedUserID:       userID,
-					IsAdmin:              isAdmin,
-					Page:                 p.Page,
-					PageSize:             pageSize,
-				},
-			)
-		}
+		payload, err := h.loadInboxPage(view, p.Page, pageSize)
 		if err != nil {
-			log.Printf("[ConversationHub] Error getting inbox page %d for user %s: %v", p.Page, userID, err)
+			log.Printf("[ConversationHub] Error getting inbox page %d for user %s: %v", p.Page, view.userID, err)
 			h.sendError(conn, "inbox_error", "Failed to load inbox page")
 			return
 		}
-
-		if conn.viewSeq != seq {
+		if conn.viewSeq != view.seq {
 			return
 		}
-
-		totalPages := 0
-		if totalItems > 0 {
-			totalPages = int((totalItems + int64(pageSize) - 1) / int64(pageSize))
-		}
-
-		var StageCounts map[string]int64
-		if viewMode == "global" {
-			StageCounts, _ = h.inboxService.GetInboxStageCounts(workspaceID, "", campaignType)
-		} else {
-			StageCounts, _ = h.inboxService.GetInboxStageCounts(campaignWorkspaceID, campaignID, campaignType)
-		}
-
-		availableLabels, _ := h.inboxService.GetAvailableLabels(workspaceID)
-
-		var convStatusCounts map[string]int64
-		if viewMode == "global" {
-			convStatusCounts, _ = h.inboxService.GetConversationStatusCounts(workspaceID, "", campaignType)
-		} else {
-			convStatusCounts, _ = h.inboxService.GetConversationStatusCounts("", campaignID, campaignType)
-		}
-
-		h.sendToConnection(conn, &WSOutgoingMessage{
-			Type: WSEventInbox,
-			Payload: InboxPayload{
-				Entries:                  entries,
-				Page:                     p.Page,
-				PageSize:                 pageSize,
-				TotalItems:               totalItems,
-				TotalPages:               totalPages,
-				StageCounts:              StageCounts,
-				ConversationStatusCounts: convStatusCounts,
-				AvailableLabels:          availableLabels,
-			},
-		})
+		h.sendToConnection(conn, &WSOutgoingMessage{Type: WSEventInbox, Payload: payload})
 	}()
 }
 
 func (h *ConversationHub) dropConnectionSubscriptions(connID string) {
 	h.subMu.Lock()
-	defer h.subMu.Unlock()
-
-	subs, exists := h.connSubscriptions[connID]
-	if !exists {
-		return
-	}
+	subs := h.connSubscriptions[connID]
 	for sub := range subs {
 		subscribers, ok := h.entrySubscribers[sub]
 		if !ok {
@@ -2107,6 +1956,11 @@ func (h *ConversationHub) dropConnectionSubscriptions(connID string) {
 		}
 	}
 	delete(h.connSubscriptions, connID)
+	h.subMu.Unlock()
+
+	for sub := range subs {
+		h.scheduleViewersAnnouncement(sub)
+	}
 }
 
 func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.RawMessage) {
@@ -2119,6 +1973,7 @@ func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.Raw
 	sub := entrySubscription{entryID: p.EntryID, entryType: p.EntryType}
 
 	h.subMu.Lock()
+	wasSubscribed := h.connSubscriptions[conn.ID][sub]
 	if subs, exists := h.connSubscriptions[conn.ID]; exists {
 		delete(subs, sub)
 	}
@@ -2129,6 +1984,9 @@ func (h *ConversationHub) handleUnsubscribe(conn *WSConnection, payload json.Raw
 		}
 	}
 	h.subMu.Unlock()
+	if wasSubscribed {
+		h.scheduleViewersAnnouncement(sub)
+	}
 
 	if connSubs, ok := h.sentMessageIDs[conn.ID]; ok {
 		delete(connSubs, sub)
@@ -2189,6 +2047,7 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 			EntryType:    p.EntryType,
 			WorkspaceID:  conn.WorkspaceID,
 			SenderUserID: conn.UserID,
+			RequestID:    p.RequestID,
 			Text:         p.Text,
 			Signed:       p.Signed,
 		}
@@ -2199,18 +2058,27 @@ func (h *ConversationHub) handleSend(conn *WSConnection, payload json.RawMessage
 			in.MediaID, in.MediaType = *p.MediaID, *p.MediaType
 		}
 
-		message, err := h.operatorSend.Execute(context.Background(), in)
-		if err != nil {
-			h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, err.Error(), "send_failed")
-			return
-		}
-
-		h.announceOperatorSend(conn, p.RequestID, p.EntryID, p.EntryType, message)
+		h.answerOperatorSend(conn, p.RequestID, p.EntryID, p.EntryType, in)
 	}()
 }
 
+func (h *ConversationHub) answerOperatorSend(conn *WSConnection, requestID, entryID, entryType string, in conversation.OperatorSendInput) {
+	message, err := h.operatorSend.Execute(context.Background(), in)
+	if errors.Is(err, conversation.ErrSendRequestInFlight) {
+		log.Printf("[ConversationHub] send %s for %s:%s is already in flight", requestID, entryType, entryID)
+		return
+	}
+	if err != nil {
+		h.BroadcastMessageError(conn.UserID, requestID, entryID, entryType, err.Error(), "send_failed")
+		return
+	}
+	h.announceOperatorSend(conn, requestID, entryID, entryType, message)
+}
+
 func (h *ConversationHub) announceOperatorSend(conn *WSConnection, requestID, entryID, entryType string, message *conversation.Message) {
-	h.BroadcastMessageSent(conn.UserID, requestID, entryID, entryType, message)
+	event := messageSentEvent(requestID, entryID, entryType, message)
+	h.sendToConnection(conn, event)
+	h.broadcast <- &broadcastMessage{entryID: entryID, entryType: entryType, event: event, excludeConnID: conn.ID}
 	go h.BroadcastEntryUpdate(entryID, entryType, message)
 }
 
@@ -2252,6 +2120,7 @@ func (h *ConversationHub) handleSendButton(conn *WSConnection, payload json.RawM
 			EntryType:    p.EntryType,
 			WorkspaceID:  conn.WorkspaceID,
 			SenderUserID: conn.UserID,
+			RequestID:    p.RequestID,
 			Buttons: &conversation.SendButtonInput{
 				HeaderType: p.HeaderType,
 				HeaderText: p.HeaderText,
@@ -2264,13 +2133,7 @@ func (h *ConversationHub) handleSendButton(conn *WSConnection, payload json.RawM
 			in.ReplyToMessageID = *p.ReplyToMessageID
 		}
 
-		message, err := h.operatorSend.Execute(context.Background(), in)
-		if err != nil {
-			h.BroadcastMessageError(conn.UserID, p.RequestID, p.EntryID, p.EntryType, err.Error(), "send_failed")
-			return
-		}
-
-		h.announceOperatorSend(conn, p.RequestID, p.EntryID, p.EntryType, message)
+		h.answerOperatorSend(conn, p.RequestID, p.EntryID, p.EntryType, in)
 	}()
 }
 
@@ -2317,6 +2180,8 @@ func (h *ConversationHub) handleMarkRead(conn *WSConnection, payload json.RawMes
 		h.sendError(conn, "unauthorized", "You don't have access to this conversation")
 		return
 	}
+
+	h.clearPersonalUnread(conn, p.EntryID, p.EntryType)
 
 	if h.messageMarker == nil {
 		return
@@ -2396,6 +2261,12 @@ func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.Raw
 		}
 	}
 
+	options, refusal := parseSearchInboxOptions(p)
+	if refusal != nil {
+		h.sendError(conn, refusal.code, refusal.message)
+		return
+	}
+
 	go func() {
 		var dateFrom, dateTo *time.Time
 		if p.DateFrom != "" {
@@ -2423,10 +2294,14 @@ func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.Raw
 			MessageSearch:         p.MessageSearch,
 			WindowOpen:            p.WindowOpen,
 			HasUnread:             p.HasUnread,
+			IsGroup:               p.IsGroup,
 			Channel:               p.Channel,
 			DateFrom:              dateFrom,
 			DateTo:                dateTo,
 			ConversationStatus:    conversation.ConversationStatus(p.ConversationStatus),
+			SortOrder:             options.sortOrder,
+			Personal:              options.personal,
+			LabelID:               options.labelID,
 			AssignedUserID:        conn.UserID,
 			ResponsibleUserID:     p.ResponsibleUserID,
 			ResponsibleUnassigned: p.ResponsibleUnassigned,
@@ -2447,11 +2322,6 @@ func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.Raw
 			return
 		}
 
-		totalPages := 0
-		if totalItems > 0 {
-			totalPages = int((totalItems + int64(pageSize) - 1) / int64(pageSize))
-		}
-
 		h.sendToConnection(conn, &WSOutgoingMessage{
 			Type: WSEventSearchResults,
 			Payload: SearchResultsPayload{
@@ -2464,16 +2334,21 @@ func (h *ConversationHub) handleSearchInbox(conn *WSConnection, payload json.Raw
 					MessageSearch:      p.MessageSearch,
 					WindowOpen:         p.WindowOpen,
 					HasUnread:          p.HasUnread,
+					IsGroup:            p.IsGroup,
 					Channel:            p.Channel,
 					DateFrom:           p.DateFrom,
 					DateTo:             p.DateTo,
 					ConversationStatus: p.ConversationStatus,
+					Sort:               strings.TrimSpace(p.Sort),
+					LabelID:            options.labelID,
+					Personal:           strings.TrimSpace(p.Personal),
 				},
-				Entries:    entries,
-				Page:       p.Page,
-				PageSize:   pageSize,
-				TotalItems: totalItems,
-				TotalPages: totalPages,
+				Entries:       entries,
+				PersonalMarks: h.pageMarks(conn.UserID, entries),
+				Page:          p.Page,
+				PageSize:      pageSize,
+				TotalItems:    totalItems,
+				TotalPages:    totalPagesOf(totalItems, pageSize),
 			},
 		})
 	}()
@@ -2585,118 +2460,18 @@ func (h *ConversationHub) handleSwitchView(conn *WSConnection, payload json.RawM
 	h.scheduleBroadcastConnectedUsers(conn.WorkspaceID)
 
 	if h.inboxService != nil {
-
-		viewMode := conn.ViewMode
-		userID := conn.UserID
-		workspaceID := conn.WorkspaceID
-		departmentID := conn.DepartmentID
-		campaignType := conn.CampaignType
-		whatsAppCampaignType := conn.WhatsAppCampaignType
-		containerKind := conn.ContainerKind
-		campaignID := conn.CampaignID
-		campaignWorkspaceID := conn.CampaignWorkspaceID
-		conversationStatus := conn.ConversationStatus
-		isAdmin := conn.IsAdmin
-		seq := conn.viewSeq
-
+		view := inboxViewOf(conn)
 		go func() {
-			var entries []conversation.InboxEntry
-			var totalItems int64
-			var err error
-
-			if conversationStatus != "" {
-				searchInput := conversation.SearchInboxInput{
-					UserID:               userID,
-					WorkspaceID:          workspaceID,
-					SelectedDepartmentID: departmentID,
-					CampaignID:           campaignID,
-					CampaignType:         campaignType,
-					WhatsAppCampaignType: whatsAppCampaignType,
-					ContainerKind:        conversation.ContainerKind(containerKind),
-					ConversationStatus:   conversation.ConversationStatus(conversationStatus),
-					AssignedUserID:       userID,
-					IsAdmin:              isAdmin,
-					Page:                 1,
-					PageSize:             conversation.DefaultInboxPageSize,
-				}
-				if viewMode != "global" {
-					searchInput.WorkspaceID = ""
-				} else {
-					searchInput.CampaignID = ""
-				}
-				entries, totalItems, err = h.inboxService.SearchInbox(userID, searchInput)
-			} else if viewMode == "global" {
-				entries, totalItems, err = h.inboxService.SearchInbox(
-					userID, conversation.SearchInboxInput{
-						CampaignType:         campaignType,
-						WhatsAppCampaignType: whatsAppCampaignType,
-						WorkspaceID:          workspaceID,
-						SelectedDepartmentID: departmentID,
-						AssignedUserID:       userID,
-						IsAdmin:              isAdmin,
-						Page:                 1,
-						PageSize:             conversation.DefaultInboxPageSize,
-					},
-				)
-			} else {
-				entries, totalItems, err = h.inboxService.SearchInbox(
-					userID, conversation.SearchInboxInput{
-						CampaignID:           campaignID,
-						CampaignType:         campaignType,
-						ContainerKind:        conversation.ContainerKind(containerKind),
-						WorkspaceID:          campaignWorkspaceID,
-						SelectedDepartmentID: departmentID,
-						AssignedUserID:       userID,
-						IsAdmin:              isAdmin,
-						Page:                 1,
-						PageSize:             conversation.DefaultInboxPageSize,
-					},
-				)
-			}
+			payload, err := h.loadInboxPage(view, 1, conversation.DefaultInboxPageSize)
 			if err != nil {
-				log.Printf("[ConversationHub] Error loading inbox after view switch for user %s: %v", userID, err)
+				log.Printf("[ConversationHub] Error loading inbox after view switch for user %s: %v", view.userID, err)
 				return
 			}
-
-			if conn.viewSeq != seq {
-				log.Printf("[ConversationHub] Discarding stale view-switch inbox for connection %s (seq %d < %d)", conn.ID, seq, conn.viewSeq)
+			if conn.viewSeq != view.seq {
+				log.Printf("[ConversationHub] Discarding stale view-switch inbox for connection %s (seq %d < %d)", conn.ID, view.seq, conn.viewSeq)
 				return
 			}
-
-			totalPages := 0
-			if totalItems > 0 {
-				totalPages = int((totalItems + int64(conversation.DefaultInboxPageSize) - 1) / int64(conversation.DefaultInboxPageSize))
-			}
-
-			var StageCounts map[string]int64
-			if viewMode == "global" {
-				StageCounts, _ = h.inboxService.GetInboxStageCounts(workspaceID, "", campaignType)
-			} else {
-				StageCounts, _ = h.inboxService.GetInboxStageCounts(campaignWorkspaceID, campaignID, campaignType)
-			}
-
-			availableLabels, _ := h.inboxService.GetAvailableLabels(workspaceID)
-
-			var convStatusCounts map[string]int64
-			if viewMode == "global" {
-				convStatusCounts, _ = h.inboxService.GetConversationStatusCounts(workspaceID, "", campaignType)
-			} else {
-				convStatusCounts, _ = h.inboxService.GetConversationStatusCounts("", campaignID, campaignType)
-			}
-
-			h.sendToConnection(conn, &WSOutgoingMessage{
-				Type: WSEventInbox,
-				Payload: InboxPayload{
-					Entries:                  entries,
-					Page:                     1,
-					PageSize:                 conversation.DefaultInboxPageSize,
-					TotalItems:               totalItems,
-					TotalPages:               totalPages,
-					StageCounts:              StageCounts,
-					ConversationStatusCounts: convStatusCounts,
-					AvailableLabels:          availableLabels,
-				},
-			})
+			h.sendToConnection(conn, &WSOutgoingMessage{Type: WSEventInbox, Payload: payload})
 		}()
 	}
 }
@@ -2770,14 +2545,18 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 	}
 
 	if status == conversation.ConversationStatusFinished {
-		if err := h.statusUpdater.Finish(p.EntryID, p.EntryType, conversation.FinishOptions{
-			Source:      conversation.CloseSourceHuman,
-			Reason:      conversation.CloseReasonManual,
-			ActorID:     conn.UserID,
-			OutcomeCode: p.OutcomeCode,
-		}); err != nil {
+		if h.personFinish == nil {
+			h.sendError(conn, "not_configured", "Conversation status not configured")
+			return
+		}
+		entry := shared.EntryRef{EntryID: p.EntryID, EntryType: shared.EntryType(p.EntryType)}
+		if err := h.personFinish.Finish(context.Background(), connPerson(conn), conn.WorkspaceID, entry, p.OutcomeCode); err != nil {
 			if code, message, outcomes, handled := h.outcomeCaptureError(err, p); handled {
 				h.sendConversationOutcomeError(conn, code, message, p, currentStatus, outcomes)
+				return
+			}
+			if errors.Is(err, conversation.ErrStatusChangeForbidden) || errors.Is(err, conversation.ErrUnauthorized) {
+				h.sendConversationStatusError(conn, "forbidden", "You don't have permission to change the conversation status", p, currentStatus)
 				return
 			}
 			h.sendConversationStatusError(
@@ -2964,7 +2743,7 @@ func (h *ConversationHub) handleLoadEntryMatches(conn *WSConnection, payload jso
 			}
 			matches = append(matches, conversation.MatchedMessage{
 				MessageID:   msg.ID,
-				Text:        msg.Text,
+				Text:        msg.ReadableText(),
 				From:        fromName,
 				MessageType: string(msg.MessageType),
 				Channel:     string(msg.Channel),
@@ -3301,6 +3080,10 @@ func (h *ConversationHub) handleBroadcast(msg *broadcastMessage) {
 			continue
 		}
 
+		if connID == msg.excludeConnID {
+			continue
+		}
+
 		if broadcastMsgID != "" {
 			if connSubs, ok := h.sentMessageIDs[connID]; ok {
 				if ids, ok := connSubs[sub]; ok && ids[broadcastMsgID] {
@@ -3538,7 +3321,7 @@ func (h *ConversationHub) deliverWorkspaceBroadcast(p redisWorkspaceBroadcast) {
 		h.sendToWorkspaceWithPermission(p.WorkspaceID, "audience", "read", p.Payload)
 	case leadUpdateBroadcastType:
 		h.deliverLeadUpdate(p.WorkspaceID, p.Payload)
-	case notificationCreatedBroadcastType:
+	case notificationCreatedBroadcastType, personalMarkBroadcastType, teamChatBroadcastType:
 		h.sendToUsers(p.WorkspaceID, p.UserIDs, p.Payload)
 	}
 }
@@ -3566,6 +3349,7 @@ func (h *ConversationHub) runReplicaHeartbeat() {
 			h.sharedState.Expire("hub:connected_users:"+wsID, hubKeyTTL)
 			h.sharedState.Expire("replica:active_calls:"+wsID, hubKeyTTL)
 		}
+		h.refreshViewerKeys()
 	}
 
 	refresh()

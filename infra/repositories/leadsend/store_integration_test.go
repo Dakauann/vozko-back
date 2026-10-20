@@ -141,7 +141,7 @@ func TestInRunningCampaignsAgainstPostgres(t *testing.T) {
 	seedEntry(t, db, running, busy, "PENDING", 0, time.Now())
 	seedEntry(t, db, running, done, "SENT", 0, time.Now())
 	seedEntry(t, db, stopped, idle, "PENDING", 0, time.Now())
-	unofficialRunning := schema.UnofficialWhatsAppCampaign{ID: uuid.NewString(), WorkspaceID: ws, InstanceID: uuid.NewString(), Name: "x", Status: "RUNNING"}
+	unofficialRunning := schema.UnofficialWhatsAppCampaign{ID: uuid.NewString(), WorkspaceID: ws, InstanceID: schema.OptionalText(uuid.NewString()), Name: "x", Status: "RUNNING"}
 	if err := db.Create(&unofficialRunning).Error; err != nil {
 		t.Fatalf("unofficial campaign: %v", err)
 	}

@@ -32,7 +32,7 @@ func (t *transferToHumanTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:               TransferToHumanToolName,
 		DisplayName:        "Transferir conversa",
-		DisplayDescription: "Passa a conversa a uma pessoa pela roleta do workspace (o mesmo rodízio da primeira mensagem) e pausa a IA nesta conversa. O departamento é opcional: vazio, usa o da conversa.",
+		DisplayDescription: "Passa a conversa a uma pessoa pela roleta do workspace (a mesma regra de distribuição da primeira mensagem) e pausa a IA nesta conversa. O departamento é opcional: vazio, usa o da conversa.",
 		Description: `Transfere a conversa atual para um atendente humano e encerra a sua participação nela.
 
 QUANDO USAR:

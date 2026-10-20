@@ -61,20 +61,20 @@ func filterExistingToolBindings(index *toolRegistryIndex, bindings []agent.ToolB
 	for _, tb := range bindings {
 		normalized := strings.TrimSpace(strings.ToLower(tb.Name))
 		if def, ok := index.defs[normalized]; ok {
-			canonical := def.Name
-			if _, exists := seen[canonical]; exists {
+			identity := def.BindingIdentity(tb.Config)
+			if _, exists := seen[identity]; exists || identity == "" {
 				continue
 			}
-			seen[canonical] = struct{}{}
+			seen[identity] = struct{}{}
 			result = append(result, agent.ToolBinding{
-				Name:       canonical,
+				Name:       def.Name,
 				Visibility: tb.Visibility,
 				Config:     tb.Config,
 			})
 		}
 	}
 
-	sort.Slice(result, func(i, j int) bool {
+	sort.SliceStable(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
 	return result
@@ -108,19 +108,19 @@ func validateRequestedToolBindings(index *toolRegistryIndex, bindings []agent.To
 		if err := def.ValidateConfig(tb.Config); err != nil {
 			return nil, fmt.Errorf("%w: %s config invalid: %v", agent.ErrAgentInternalToolInvalid, def.Name, err)
 		}
-		canonical := def.Name
-		if _, exists := seen[canonical]; exists {
+		identity := def.BindingIdentity(tb.Config)
+		if _, exists := seen[identity]; exists {
 			continue
 		}
-		seen[canonical] = struct{}{}
+		seen[identity] = struct{}{}
 		result = append(result, agent.ToolBinding{
-			Name:       canonical,
+			Name:       def.Name,
 			Visibility: tb.Visibility,
 			Config:     tb.Config,
 		})
 	}
 
-	sort.Slice(result, func(i, j int) bool {
+	sort.SliceStable(result, func(i, j int) bool {
 		return result[i].Name < result[j].Name
 	})
 	return result, nil

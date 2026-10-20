@@ -28,7 +28,7 @@ func NewCRMBulkHandler(service Service) *CRMBulkHandler {
 }
 
 // @Summary		Aplicar uma ação em massa no CRM
-// @Description	Aplica uma única ação (mover de etapa, mover de funil, atribuir, adicionar ou remover etiqueta) às conversas selecionadas. A seleção tem exatamente um modo: ids (targets escolhidos), all_matching (um filtro não vazio) ou everyone (todo o escopo do usuário, só com expectedCount). Para all_matching e everyone, fingerprint vem de POST /crm/bulk/count e é obrigatório; expectedCount é o matched dessa contagem, tomada antes das exclusões: excludeIds tira conversas da seleção sem mudar a contagem confirmada. Se a contagem mudou, responde 409 selection_changed com a nova contagem. targets junto com all_matching ou everyone é recusado (selection_ambiguous). Sem mode, targets valem como ids, um filtro não vazio como all_matching e um filtro vazio como everyone, com as mesmas exigências. Um departamento fora do escopo do usuário responde 403 selection_scope_denied; um filtro que não se aplica a conversas responde 400 invalid_filter. A contagem passa pelo limitador de agregados: ocupado, responde 503 com Retry-After. No máximo 2000 conversas por chamada (truncated indica que restam outras), em ordem estável por id.
+// @Description	Aplica uma única ação às conversas selecionadas: `move_stage` (mover de etapa, `value` é a etapa), `move_funnel` (mover de funil), `assign` (atribuir, `value` é o usuário), `add_label` e `remove_label` (`value` é a etiqueta), `close` (finalizar; envie `outcomeCode` quando o workspace exige desfecho; exige `conversations:send` e passa pela mesma regra e pelo mesmo serviço de status de finalizar uma conversa pelo WebSocket) ou `mark_read` (marca como lidas as mensagens do contato, como o `mark_read` do WebSocket, e tira a sua marca pessoal de não lida; exige `conversations:read`; não envia confirmação de leitura ao canal). Cada conversa roda a ação sozinha, como a ação de uma conversa: as que falham aparecem em `failed` com o motivo (por exemplo, desfecho obrigatório ou conversa fora do seu alcance) e as demais seguem. Uma ação que o servidor não oferece responde 503 action_unavailable. A seleção tem exatamente um modo: ids (targets escolhidos), all_matching (um filtro não vazio) ou everyone (todo o escopo do usuário, só com expectedCount). Para all_matching e everyone, fingerprint vem de POST /crm/bulk/count e é obrigatório; expectedCount é o matched dessa contagem, tomada antes das exclusões: excludeIds tira conversas da seleção sem mudar a contagem confirmada. Se a contagem mudou, responde 409 selection_changed com a nova contagem. targets junto com all_matching ou everyone é recusado (selection_ambiguous). Sem mode, targets valem como ids, um filtro não vazio como all_matching e um filtro vazio como everyone, com as mesmas exigências. Um departamento fora do escopo do usuário responde 403 selection_scope_denied; um filtro que não se aplica a conversas responde 400 invalid_filter. A contagem passa pelo limitador de agregados: ocupado, responde 503 com Retry-After. No máximo 2000 conversas por chamada (truncated indica que restam outras), em ordem estável por id.
 // @Tags			CRM
 // @Accept			json
 // @Produce		json
@@ -56,13 +56,13 @@ func (h *CRMBulkHandler) Bulk(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
 	}
-
 	result, err := h.service.BulkApply(r.Context(), crmbulk_usecase.BulkInput{
 		WorkspaceID:          workspaceID,
 		ActorID:              claims.UserID,
 		IsAdmin:              claims.Role == "admin",
 		Action:               strings.TrimSpace(req.Action),
 		Value:                strings.TrimSpace(req.Value),
+		OutcomeCode:          strings.TrimSpace(req.OutcomeCode),
 		Targets:              req.targets(),
 		Selection:            req.selection(),
 		SelectedDepartmentID: middleware.SelectedDepartmentID(r),
@@ -137,8 +137,10 @@ func writeBulkError(w http.ResponseWriter, err error) {
 		response.WriteErrorWithCode(w, http.StatusForbidden, selection.ErrorCode(err), "The selection is outside your department scope", nil)
 	case errors.Is(err, crmbulk_usecase.ErrUnknownAction):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "unknown_action", "Unknown bulk action", map[string]string{
-			"action": "move_stage | move_funnel | assign | add_label | remove_label",
+			"action": "move_stage | move_funnel | assign | add_label | remove_label | close | mark_read",
 		})
+	case errors.Is(err, crmbulk_usecase.ErrActionUnavailable):
+		response.WriteErrorWithCode(w, http.StatusServiceUnavailable, "action_unavailable", "This bulk action is not available on this server", nil)
 	case errors.Is(err, selection.ErrResolverUnavailable):
 		response.WriteErrorWithCode(w, http.StatusServiceUnavailable, selection.ErrorCode(err), "Selection by filter is unavailable, retry later", nil)
 	case selection.ErrorCode(err) != "":

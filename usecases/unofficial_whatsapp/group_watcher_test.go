@@ -14,6 +14,7 @@ type recordingWatcher struct {
 	mu       sync.Mutex
 	messages []string
 	changed  []string
+	changes  []uw.GroupParticipantChange
 	seats    []*uw.Group
 }
 
@@ -27,10 +28,11 @@ func (w *recordingWatcher) GroupMessage(_ context.Context, _ *uw.Instance, group
 	w.messages = append(w.messages, groupJID+mark)
 }
 
-func (w *recordingWatcher) GroupChanged(_ context.Context, _ *uw.Instance, groupJID string) {
+func (w *recordingWatcher) GroupChanged(_ context.Context, _ *uw.Instance, groupJID string, change uw.GroupParticipantChange) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.changed = append(w.changed, groupJID)
+	w.changes = append(w.changes, change)
 }
 
 func (w *recordingWatcher) SeatSynced(_ context.Context, _ *uw.Instance, seat *uw.Group) {
@@ -90,5 +92,25 @@ func TestWithoutAWatcherGroupMessagesBehaveAsBefore(t *testing.T) {
 	h.deliver(t, groupMessage("5511111111111", "Bom dia"))
 	if len(h.history.all()) != 1 {
 		t.Fatalf("records = %d, want the message stored as before", len(h.history.all()))
+	}
+}
+
+func TestAGroupChangeHandsTheDeparturesAndTheActorToTheWatcher(t *testing.T) {
+	h := newGroupHarness(t, false)
+	watcher := &recordingWatcher{}
+	h.uc.SetGroupWatcher(watcher)
+
+	body := []byte(`{"EventType": "groups", "instance": "prov-1", "type": "Group",
+		"event": {"JID": "120363012345678901@g.us", "Sender": "5511222222222@s.whatsapp.net", "Leave": ["5511111111111@s.whatsapp.net"]}}`)
+	if err := h.uc.Execute(context.Background(), &QueuedEvent{InstanceID: "inst-1", Body: body}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(watcher.changes) != 1 || watcher.changed[0] != "120363012345678901@g.us" {
+		t.Fatalf("changed = %v", watcher.changed)
+	}
+	change := watcher.changes[0]
+	if len(change.Left) != 1 || change.Left[0] != "5511111111111@s.whatsapp.net" || len(change.Actors) != 1 || change.Actors[0] != "5511222222222@s.whatsapp.net" {
+		t.Fatalf("change = %+v, want who left and who acted", change)
 	}
 }

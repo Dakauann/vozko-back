@@ -29,11 +29,9 @@ func (uc *pauseWorkflowUseCase) Execute(workflowID string) (*workflow.Workflow, 
 		return nil, workflow.ErrWorkflowNotActive
 	}
 
-	w.Status = workflow.WorkflowStatusPaused
-
-	if err := uc.repo.Update(w); err != nil {
+	if err := uc.repo.UpdateStatus(w.ID, workflow.WorkflowStatusPaused); err != nil {
 		return nil, err
 	}
 
-	return uc.repo.FindByID(workflowID)
+	return findWithPublication(uc.repo, workflowID)
 }

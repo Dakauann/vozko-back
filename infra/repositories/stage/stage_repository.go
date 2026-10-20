@@ -32,6 +32,10 @@ var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 		WHERE fbc.workspace_id = ?::uuid AND fbc.deleted_at IS NULL`,
 	shared.EntryTypeWebchat: `SELECT wcc.id::text FROM webchat_conversations wcc
 		WHERE wcc.workspace_id = ?::uuid AND wcc.deleted_at IS NULL`,
+	shared.EntryTypeMercadoLivre: `SELECT mlc.id::text FROM mercadolivre_conversations mlc
+		WHERE mlc.workspace_id = ?::uuid AND mlc.deleted_at IS NULL`,
+	shared.EntryTypeTikTok: `SELECT ttc.id::text FROM tiktok_conversations ttc
+		WHERE ttc.workspace_id = ?::uuid AND ttc.deleted_at IS NULL`,
 }
 
 type repository struct {

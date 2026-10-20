@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/media"
 	businessphone "vozko/domain/whatsapp/business_phone"
 	whatsapp_client "vozko/infra/conversation/whatsapp"
 )
@@ -18,9 +19,10 @@ type clientFactory struct {
 	httpClient       *http.Client
 	dialog360BaseURL string
 	metaAppID        string
+	mediaDownloads   media.RemoteFiles
 }
 
-func NewWhatsAppClientFactory(phoneRepo businessphone.Repository, httpClient *http.Client, dialog360BaseURL string, metaAppID string) conversation.WhatsAppClientFactory {
+func NewWhatsAppClientFactory(phoneRepo businessphone.Repository, httpClient *http.Client, dialog360BaseURL string, metaAppID string, mediaDownloads media.RemoteFiles) conversation.WhatsAppClientFactory {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -32,6 +34,7 @@ func NewWhatsAppClientFactory(phoneRepo businessphone.Repository, httpClient *ht
 		httpClient:       httpClient,
 		dialog360BaseURL: dialog360BaseURL,
 		metaAppID:        metaAppID,
+		mediaDownloads:   mediaDownloads,
 	}
 }
 
@@ -50,6 +53,7 @@ func (f *clientFactory) buildClient(phone *businessphone.WhatsAppBusinessPhoneNu
 			OmitPhoneNumberInPath:  true,
 			TemplatesChannelScoped: true,
 			HTTPClient:             f.httpClient,
+			MediaDownloads:         f.mediaDownloads,
 		}), nil
 	}
 
@@ -60,11 +64,12 @@ func (f *clientFactory) buildClient(phone *businessphone.WhatsAppBusinessPhoneNu
 		return nil, errors.New("business phone has no WABA ID")
 	}
 	return whatsapp_client.NewClient(whatsapp_client.Config{
-		PhoneNumberID: phone.MetaPhoneNumberID,
-		WABAId:        phone.WABAId,
-		AccessToken:   phone.AccessToken,
-		AppID:         f.metaAppID,
-		HTTPClient:    f.httpClient,
+		PhoneNumberID:  phone.MetaPhoneNumberID,
+		WABAId:         phone.WABAId,
+		AccessToken:    phone.AccessToken,
+		AppID:          f.metaAppID,
+		HTTPClient:     f.httpClient,
+		MediaDownloads: f.mediaDownloads,
 	}), nil
 }
 

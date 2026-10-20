@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -558,6 +559,29 @@ func (r *mockEntryRepo) CountByConversationStatusForWorkspace(_ string) (map[str
 	return nil, nil
 }
 
+func (r *mockEntryRepo) EachStored(campaignID string, visit func(wce.StoredEntry) error) error {
+	r.mu.RLock()
+	ids := make([]string, 0, len(r.entries))
+	for id, entry := range r.entries {
+		if entry.CampaignID == campaignID {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	stored := make([]wce.StoredEntry, 0, len(ids))
+	for _, id := range ids {
+		entry := r.entries[id]
+		stored = append(stored, wce.StoredEntry{LeadID: entry.LeadID, Status: entry.Status, Variables: entry.Variables, Metadata: entry.Metadata})
+	}
+	r.mu.RUnlock()
+	for _, entry := range stored {
+		if err := visit(entry); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type mockTemplateRepo struct {
 	mu        sync.RWMutex
 	templates map[string]*template.Template
@@ -706,6 +730,9 @@ func (c *mockWhatsAppClient) SendButtonMessage(_ context.Context, _ conversation
 	return nil, nil
 }
 func (c *mockWhatsAppClient) SendListMessage(_ context.Context, _ conversation.SendListMessageInput) (*conversation.SendTextMessageOutput, error) {
+	return nil, nil
+}
+func (c *mockWhatsAppClient) SendFlowMessage(_ context.Context, _ conversation.SendFlowMessageInput) (*conversation.SendTextMessageOutput, error) {
 	return nil, nil
 }
 func (c *mockWhatsAppClient) SendTypingIndicator(_ context.Context, _ string) error { return nil }

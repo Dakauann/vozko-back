@@ -13,6 +13,7 @@ type WidgetRepository interface {
 	Update(ctx context.Context, w *Widget) error
 	FindByID(ctx context.Context, workspaceID, id string) (*Widget, error)
 	FindByIDUnscoped(ctx context.Context, id string) (*Widget, error)
+	FindByIDsUnscoped(ctx context.Context, ids []string) ([]*Widget, error)
 	FindByPublicKey(ctx context.Context, publicKey string) (*Widget, error)
 	ListByWorkspace(ctx context.Context, in ListWidgetsInput) (*shared.PaginatedResult[*Widget], error)
 	Delete(ctx context.Context, workspaceID, id string) error
@@ -46,6 +47,7 @@ type VisitorSighting struct {
 type ConversationRepository interface {
 	FindOrCreate(ctx context.Context, in FindOrCreateConversationInput) (*Conversation, error)
 	FindByID(ctx context.Context, id string) (*Conversation, error)
+	FindByIDs(ctx context.Context, ids []string) ([]*Conversation, error)
 	FindByVisitor(ctx context.Context, widgetID, visitorID string) (*Conversation, error)
 	WorkspaceIDForEntry(ctx context.Context, entryID string) (string, error)
 	DepartmentIDForEntry(ctx context.Context, entryID string) (string, error)

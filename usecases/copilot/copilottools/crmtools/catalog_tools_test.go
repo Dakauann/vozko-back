@@ -64,14 +64,15 @@ func (f *fakeEvents) Execute(in calendar.ListEventsInput) (*shared.PaginatedResu
 }
 
 type fakeWorkflows struct {
-	input workflow.ListWorkflowsInput
-	calls int
+	input       workflow.ListWorkflowsInput
+	calls       int
+	entryPoints []workflow.EntryPoint
 }
 
 func (f *fakeWorkflows) Execute(in workflow.ListWorkflowsInput) (*shared.PaginatedResult[*workflow.Workflow], error) {
 	f.calls++
 	f.input = in
-	return &shared.PaginatedResult[*workflow.Workflow]{Items: []*workflow.Workflow{{ID: "w1", Name: "Boas-vindas", Status: workflow.WorkflowStatus("active")}}, TotalItems: 1, TotalPages: 1}, nil
+	return &shared.PaginatedResult[*workflow.Workflow]{Items: []*workflow.Workflow{{ID: "w1", Name: "Boas-vindas", Status: workflow.WorkflowStatus("active"), EntryPoints: f.entryPoints}}, TotalItems: 1, TotalPages: 1}, nil
 }
 
 func catalogDeps() (CatalogDeps, *fakeTemplates, *fakeFunnels, *fakeLabels, *fakeEvents, *fakeWorkflows) {
@@ -177,6 +178,25 @@ func TestListWorkflowsStaysInsideTheMembersDepartments(t *testing.T) {
 	res := NewListWorkflowsTool(deps).Execute(context.Background(), tooltest.Member(), nil)
 	if res.Status != copilot.StatusOK || len(workflows.input.DepartmentIDs) != 1 || workflows.input.DepartmentIDs[0] != tooltest.KnownDepartment {
 		t.Fatalf("status %s input %+v", res.Status, workflows.input)
+	}
+}
+
+func TestListWorkflowsTellsWhereEachWorkflowReceivesFromAndWhetherItCanNow(t *testing.T) {
+	deps, _, _, _, _, workflows := catalogDeps()
+	called := time.Date(2026, 9, 25, 11, 0, 0, 0, time.UTC)
+	workflows.entryPoints = []workflow.EntryPoint{
+		{Kind: workflow.EntryWebhook, NodeID: "hook", Readiness: workflow.EntryBlocked, Reason: workflow.EntryBlockedPaused, LastReceivedAt: &called, LastOutcome: workflow.WebhookOutcomeRejected, LastReason: "workflow_not_active"},
+		{Kind: workflow.EntryAgentCall, Readiness: workflow.EntryReady},
+	}
+	res := NewListWorkflowsTool(deps).Execute(context.Background(), tooltest.Member(), nil)
+	b, _ := json.Marshal(res.Data)
+	for _, want := range []string{
+		`"entry_points":[{"kind":"webhook","last_outcome":"rejected","last_reason":"workflow_not_active","last_received_at":"2026-09-25T11:00:00Z","node_id":"hook","readiness":"blocked","reason":"paused"}`,
+		`{"kind":"agent_call","readiness":"ready"}]`,
+	} {
+		if res.Status != copilot.StatusOK || !strings.Contains(string(b), want) {
+			t.Fatalf("data = %s, missing %s", b, want)
+		}
 	}
 }
 

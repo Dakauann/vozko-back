@@ -12,9 +12,22 @@ type SendInputParams struct {
 	HeaderParams          []string
 	FromPhoneNumberID     string
 	BizOpaqueCallbackData string
+	FlowToken             string
 }
 
 func (t *Template) BuildSendInput(p SendInputParams) (conversation.SendTemplateMessageInput, error) {
+	if _, _, ok := t.FormButton(); ok && strings.TrimSpace(p.FlowToken) == "" {
+		return conversation.SendTemplateMessageInput{}, ErrFlowTokenRequired
+	}
+	return t.composeSendInput(p)
+}
+
+func (t *Template) CheckSendInput(p SendInputParams) error {
+	_, err := t.composeSendInput(p)
+	return err
+}
+
+func (t *Template) composeSendInput(p SendInputParams) (conversation.SendTemplateMessageInput, error) {
 	bodyParamNames, _ := t.GetBodyAndHeaderParameterNames()
 
 	out := conversation.SendTemplateMessageInput{
@@ -39,6 +52,14 @@ func (t *Template) BuildSendInput(p SendInputParams) (conversation.SendTemplateM
 	}
 
 	out.Buttons = append(out.Buttons, t.quickReplyParams()...)
+
+	if _, index, ok := t.FormButton(); ok {
+		out.Buttons = append(out.Buttons, conversation.TemplateButtonParam{
+			SubType:   conversation.TemplateButtonSubTypeFlow,
+			Index:     index,
+			FlowToken: strings.TrimSpace(p.FlowToken),
+		})
+	}
 
 	if t.IsAuthentication() {
 		code, err := t.AuthenticationCode(p.BodyParams)

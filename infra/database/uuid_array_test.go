@@ -27,3 +27,24 @@ func TestUUIDArray(t *testing.T) {
 		})
 	}
 }
+
+func TestAllUUIDs(t *testing.T) {
+	const a = "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b"
+	cases := []struct {
+		name string
+		in   []string
+		want bool
+	}{
+		{"every id is a uuid", []string{a, a}, true},
+		{"one id is not a uuid", []string{a, "x"}, false},
+		{"an empty id is not a uuid", []string{""}, false},
+		{"nothing to check", nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AllUUIDs(tc.in...); got != tc.want {
+				t.Fatalf("AllUUIDs(%v) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}

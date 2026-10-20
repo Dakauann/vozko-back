@@ -32,7 +32,7 @@ func (f *refusingWorkflows) Create(_ context.Context, scope workflow.Scope, _ *w
 	return f.refuse("create", scope)
 }
 
-func (f *refusingWorkflows) Update(_ context.Context, scope workflow.Scope, _ string, _ *workflow.Workflow) (*workflow.Workflow, error) {
+func (f *refusingWorkflows) Update(_ context.Context, scope workflow.Scope, _ string, _ *workflow.Workflow, _ int) (*workflow.Workflow, error) {
 	return f.refuse("update", scope)
 }
 
@@ -56,7 +56,7 @@ func TestEveryWorkflowSaveAndActivationAnswersAConsentRefusalWith403(t *testing.
 		},
 		Edges: []workflow.Edge{{Source: "t", Target: "grant"}, {Source: "grant", Target: "end"}},
 	}
-	body, _ := json.Marshal(map[string]interface{}{"name": "optin", "type": "messages", "graph": grantGraph})
+	body, _ := json.Marshal(map[string]interface{}{"name": "optin", "type": "messages", "graph": grantGraph, "revision": 3})
 	routes := []struct {
 		op      string
 		request *http.Request

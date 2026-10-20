@@ -69,7 +69,7 @@ func DigestTranscript(messages []*Message) []TranscriptLine {
 		if !m.Transcribable() {
 			continue
 		}
-		line := TranscriptLine{At: digestTime(m.CreatedAt), From: SpeakerCustomer, Text: clip(m.Text, DigestMessageRunes)}
+		line := TranscriptLine{At: digestTime(m.CreatedAt), From: SpeakerCustomer, Text: clip(m.ReadableText(), DigestMessageRunes)}
 		if !m.FromCustomer() {
 			line.From = SpeakerTeam
 			line.Name = m.SenderName

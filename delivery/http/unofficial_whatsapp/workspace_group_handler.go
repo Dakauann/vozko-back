@@ -228,7 +228,7 @@ func (h *WorkspaceGroupHandler) Categories(w http.ResponseWriter, r *http.Reques
 // @Param			origin		query		string	false	"managed ou external"
 // @Param			category	query		string	false	"Categoria; vazio filtra grupos sem categoria"
 // @Param			instanceId	query		string	false	"Número"
-// @Param			adminsOnly	query		bool	false	"Somente onde um número é admin"
+// @Param			adminsOnly	query		bool	false	"Permissão de envio: true para grupos em que só admins enviam mensagens, false para grupos abertos em que todos enviam; ausente traz os dois"
 // @Param			hasAnalysis	query		bool	false	"Com ou sem análise"
 // @Param			sort		query		string	false	"recent, oldest, name, name_desc ou members"
 // @Param			page		query		int		false	"Página"
@@ -445,13 +445,13 @@ func writeWorkspaceGroupError(w http.ResponseWriter, err error) {
 		response.WriteError(w, http.StatusForbidden, err.Error(), nil)
 
 	case errors.Is(err, uwg.ErrGroupNotFollowed), errors.Is(err, uwg.ErrSeriesNeedsManagedGroup),
-		errors.Is(err, uwg.ErrSeriesPartlyUpdated),
+		errors.Is(err, uwg.ErrSeriesPartlyUpdated), errors.Is(err, uwg.ErrNoInviteLink), errors.Is(err, uwg.ErrNumberAlreadyInGroup),
 		errors.Is(err, uwg.ErrAnalysisBusy):
 		response.WriteError(w, http.StatusConflict, err.Error(), nil)
 
 	case errors.Is(err, uwg.ErrCategoryTooLong), errors.Is(err, uwg.ErrInvalidOrigin),
 		errors.Is(err, uwg.ErrGroupSubjectNeeded), errors.Is(err, uwg.ErrInviteInvalid),
-		errors.Is(err, uwg.ErrNoNumbersSelected), errors.Is(err, uwg.ErrPeriodInvalid),
+		errors.Is(err, uwg.ErrNoNumbersSelected), errors.Is(err, uwg.ErrPeriodInvalid), errors.Is(err, uwg.ErrNoGroupsToExport),
 		errors.Is(err, uwg.ErrAnalysisNameRequired), errors.Is(err, uwg.ErrAnalysisPromptRequired),
 		errors.Is(err, uwg.ErrAnalysisGroupRequired), errors.Is(err, uwg.ErrMessagesPerCycleRange),
 		errors.Is(err, uwg.ErrScheduleInvalid), errors.Is(err, uwg.ErrTriggerInvalid),

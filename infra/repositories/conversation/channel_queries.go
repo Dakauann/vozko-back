@@ -5,6 +5,7 @@ import (
 
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
+	"vozko/infra/database/sqlexpr"
 )
 
 type channelQuery struct {
@@ -20,11 +21,15 @@ type channelQuery struct {
 	ContainerNameField string
 	AutomationFields   string
 
+	LineField string
+
 	AutomationColumn string
 
 	StatusColumn string
 
 	CloseTable string
+
+	MessageClockTable string
 
 	ContainerCTE         string
 	ContainerCTEEntryCol string
@@ -33,7 +38,9 @@ type channelQuery struct {
 	DepartmentColumn   string
 	DepartmentEntryCol string
 
-	WindowSubquery string
+	WindowOpenPredicate string
+
+	GroupPredicate string
 
 	CampaignCTE          string
 	CampaignCTEEntryCol  string
@@ -54,14 +61,17 @@ var channelQueries = []channelQuery{
 		AccountIDField:     "COALESCE(wc.business_phone_id::text, '')",
 		ContainerIDField:   "wc.id::text",
 		ContainerNameField: "wc.name",
+		LineField: "(SELECT COALESCE(NULLIF(bpl.display_phone_number, ''), bpl.verified_name) FROM whatsapp_business_phone_numbers bpl" +
+			" WHERE bpl.id = COALESCE(wce.received_business_phone_id, wc.business_phone_id))",
 		AutomationFields: "COALESCE(wc.agent_id::text, '') AS agent_id, " +
 			"COALESCE(wc.workflow_id::text, '') AS workflow_id, " +
 			"wc.enable_agent_responses AS agent_responses_enabled, " +
 			"wc.enable_workflow AS workflow_enabled",
 
-		AutomationColumn: "wce.automation_enabled",
-		StatusColumn:     "wce.conversation_status",
-		CloseTable:       "wce",
+		AutomationColumn:  "wce.automation_enabled",
+		StatusColumn:      "wce.conversation_status",
+		CloseTable:        "wce",
+		MessageClockTable: "wce",
 
 		ContainerCTE:         `SELECT wce_f.id AS entry_id FROM whatsapp_campaign_entries wce_f WHERE wce_f.campaign_id = ? AND wce_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "wce_f.id",
@@ -74,10 +84,7 @@ var channelQueries = []channelQuery{
 		DepartmentColumn:   "wc_f.department_id",
 		DepartmentEntryCol: "wce_f.id",
 
-		WindowSubquery: `SELECT wce_w.id FROM whatsapp_campaign_entries wce_w
-				JOIN whatsapp_campaigns wc_w ON wc_w.id = wce_w.campaign_id
-				JOIN lead_message_windows lmw ON lmw.lead_id = wce_w.lead_id AND lmw.business_phone_id = wc_w.business_phone_id
-				WHERE wce_w.deleted_at IS NULL AND lmw.last_message_at > NOW() - INTERVAL '24 hours'`,
+		WindowOpenPredicate: officialWindowOpen,
 	},
 	{
 		EntryType:  shared.EntryTypeInstagram,
@@ -93,14 +100,16 @@ var channelQueries = []channelQuery{
 		AccountIDField:     "COALESCE(igc.ig_account_id::text, '')",
 		ContainerIDField:   "iga.id::text",
 		ContainerNameField: "iga.username",
+		LineField:          "COALESCE(NULLIF(iga.username, ''), iga.name)",
 		AutomationFields: "COALESCE(iga.agent_id::text, '') AS agent_id, " +
 			"COALESCE(iga.workflow_id::text, '') AS workflow_id, " +
 			"iga.enable_agent_responses AS agent_responses_enabled, " +
 			"iga.enable_workflow AS workflow_enabled",
 
-		AutomationColumn: "igc.automation_enabled",
-		StatusColumn:     "igc.conversation_status",
-		CloseTable:       "igc",
+		AutomationColumn:  "igc.automation_enabled",
+		StatusColumn:      "igc.conversation_status",
+		CloseTable:        "igc",
+		MessageClockTable: "igc",
 
 		ContainerCTE:         `SELECT igc_f.id AS entry_id FROM instagram_conversations igc_f WHERE igc_f.ig_account_id = ? AND igc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "igc_f.id",
@@ -113,10 +122,7 @@ var channelQueries = []channelQuery{
 		DepartmentColumn:   "iga_f.department_id",
 		DepartmentEntryCol: "igc_f.id",
 
-		WindowSubquery: `SELECT igc_w.id::text FROM instagram_conversations igc_w
-				WHERE igc_w.deleted_at IS NULL
-				  AND igc_w.last_customer_message_at IS NOT NULL
-				  AND igc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
+		WindowOpenPredicate: instagramWindowOpen,
 	},
 	{
 		EntryType:  shared.EntryTypeFacebook,
@@ -134,14 +140,16 @@ var channelQueries = []channelQuery{
 		AccountIDField:     "COALESCE(fbc.page_id::text, '')",
 		ContainerIDField:   "fbp.id::text",
 		ContainerNameField: "fbp.name",
+		LineField:          "COALESCE(NULLIF(fbp.name, ''), fbp.username)",
 		AutomationFields: "COALESCE(fbp.agent_id::text, '') AS agent_id, " +
 			"COALESCE(fbp.workflow_id::text, '') AS workflow_id, " +
 			"fbp.enable_agent_responses AS agent_responses_enabled, " +
 			"fbp.enable_workflow AS workflow_enabled",
 
-		AutomationColumn: "fbc.automation_enabled",
-		StatusColumn:     "fbc.conversation_status",
-		CloseTable:       "fbc",
+		AutomationColumn:  "fbc.automation_enabled",
+		StatusColumn:      "fbc.conversation_status",
+		CloseTable:        "fbc",
+		MessageClockTable: "fbc",
 
 		ContainerCTE:         `SELECT fbc_f.id AS entry_id FROM facebook_conversations fbc_f WHERE fbc_f.page_id = ? AND fbc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "fbc_f.id",
@@ -154,10 +162,7 @@ var channelQueries = []channelQuery{
 		DepartmentColumn:   "fbp_f.department_id",
 		DepartmentEntryCol: "fbc_f.id",
 
-		WindowSubquery: `SELECT fbc_w.id::text FROM facebook_conversations fbc_w
-				WHERE fbc_w.deleted_at IS NULL
-				  AND fbc_w.last_customer_message_at IS NOT NULL
-				  AND fbc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
+		WindowOpenPredicate: facebookWindowOpen(),
 	},
 	{
 		EntryType:  shared.EntryTypeTelegram,
@@ -175,14 +180,16 @@ var channelQueries = []channelQuery{
 		AccountIDField:     "COALESCE(tgc.account_id::text, '')",
 		ContainerIDField:   "tga.id::text",
 		ContainerNameField: "tga.bot_username",
+		LineField:          "COALESCE(NULLIF(tga.bot_username, ''), tga.bot_name)",
 		AutomationFields: "COALESCE(tga.agent_id::text, '') AS agent_id, " +
 			"COALESCE(tga.workflow_id::text, '') AS workflow_id, " +
 			"tga.enable_agent_responses AS agent_responses_enabled, " +
 			"tga.enable_workflow AS workflow_enabled",
 
-		AutomationColumn: "tgc.automation_enabled",
-		StatusColumn:     "tgc.conversation_status",
-		CloseTable:       "tgc",
+		AutomationColumn:  "tgc.automation_enabled",
+		StatusColumn:      "tgc.conversation_status",
+		CloseTable:        "tgc",
+		MessageClockTable: "tgc",
 
 		ContainerCTE:         `SELECT tgc_f.id AS entry_id FROM telegram_conversations tgc_f WHERE tgc_f.account_id = ? AND tgc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "tgc_f.id",
@@ -195,10 +202,7 @@ var channelQueries = []channelQuery{
 		DepartmentColumn:   "tga_f.department_id",
 		DepartmentEntryCol: "tgc_f.id",
 
-		WindowSubquery: `SELECT tgc_w.id::text FROM telegram_conversations tgc_w
-				WHERE tgc_w.deleted_at IS NULL
-				  AND tgc_w.last_customer_message_at IS NOT NULL
-				  AND tgc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
+		WindowOpenPredicate: telegramWindowOpen,
 	},
 	{
 		EntryType:  shared.EntryTypeWebchat,
@@ -216,14 +220,16 @@ var channelQueries = []channelQuery{
 		AccountIDField:     "COALESCE(wcc.widget_id::text, '')",
 		ContainerIDField:   "wcw.id::text",
 		ContainerNameField: "wcw.name",
+		LineField:          "wcw.name",
 		AutomationFields: "COALESCE(wcw.agent_id::text, '') AS agent_id, " +
 			"COALESCE(wcw.workflow_id::text, '') AS workflow_id, " +
 			"wcw.enable_agent_responses AS agent_responses_enabled, " +
 			"wcw.enable_workflow AS workflow_enabled",
 
-		AutomationColumn: "wcc.automation_enabled",
-		StatusColumn:     "wcc.conversation_status",
-		CloseTable:       "wcc",
+		AutomationColumn:  "wcc.automation_enabled",
+		StatusColumn:      "wcc.conversation_status",
+		CloseTable:        "wcc",
+		MessageClockTable: "wcc",
 
 		ContainerCTE:         `SELECT wcc_f.id AS entry_id FROM webchat_conversations wcc_f WHERE wcc_f.widget_id = ? AND wcc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "wcc_f.id",
@@ -236,10 +242,87 @@ var channelQueries = []channelQuery{
 		DepartmentColumn:   "wcw_f.department_id",
 		DepartmentEntryCol: "wcc_f.id",
 
-		WindowSubquery: `SELECT wcc_w.id::text FROM webchat_conversations wcc_w
-				WHERE wcc_w.deleted_at IS NULL
-				  AND wcc_w.last_customer_message_at IS NOT NULL
-				  AND wcc_w.last_customer_message_at > NOW() - INTERVAL '24 hours'`,
+		WindowOpenPredicate: webchatWindowOpen,
+	},
+	{
+		EntryType:  shared.EntryTypeMercadoLivre,
+		EntryTable: "mercadolivre_conversations",
+
+		EntryJoin: `JOIN mercadolivre_conversations mlc ON mlc.id = %[1]s AND mlc.deleted_at IS NULL
+		             JOIN mercadolivre_accounts mla ON mla.id = mlc.account_id`,
+		ContactJoin: `JOIN (
+	SELECT id, COALESCE(NULLIF(nickname, ''), ml_user_id) AS name,
+	       COALESCE(NULLIF(nickname, ''), ml_user_id) AS number,
+	       '' AS profile_picture_url, false AS blocked, deleted_at
+	FROM mercadolivre_contacts
+) l ON l.id = mlc.contact_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(mlc.account_id::text, '')",
+		ContainerIDField:   "mla.id::text",
+		ContainerNameField: "mla.nickname",
+		LineField:          "COALESCE(NULLIF(mla.nickname, ''), mla.ml_user_id)",
+		AutomationFields: "COALESCE(mla.agent_id::text, '') AS agent_id, " +
+			"COALESCE(mla.workflow_id::text, '') AS workflow_id, " +
+			"mla.enable_agent_responses AS agent_responses_enabled, " +
+			"mla.enable_workflow AS workflow_enabled",
+
+		AutomationColumn:  "mlc.automation_enabled",
+		StatusColumn:      "mlc.conversation_status",
+		CloseTable:        "mlc",
+		MessageClockTable: "mlc",
+
+		ContainerCTE:         `SELECT mlc_f.id AS entry_id FROM mercadolivre_conversations mlc_f WHERE mlc_f.account_id = ? AND mlc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "mlc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT mlc_f.id FROM mercadolivre_conversations mlc_f
+				JOIN mercadolivre_accounts mla_f ON mla_f.id = mlc_f.account_id
+				WHERE mlc_f.account_id = ? AND mlc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "mla_f.department_id",
+		DepartmentEntryCol: "mlc_f.id",
+
+		WindowOpenPredicate: mercadoLivreWindowOpen,
+	},
+	{
+		EntryType:  shared.EntryTypeTikTok,
+		EntryTable: "tiktok_conversations",
+
+		EntryJoin: `JOIN tiktok_conversations ttc ON ttc.id = %[1]s AND ttc.deleted_at IS NULL
+		             JOIN tiktok_accounts tta ON tta.id = ttc.account_id`,
+		ContactJoin: `JOIN (
+	SELECT id, COALESCE(NULLIF(display_name, ''), NULLIF(username, ''), unique_identifier) AS name,
+	       COALESCE(NULLIF(username, ''), unique_identifier) AS number,
+	       '' AS profile_picture_url, false AS blocked, deleted_at
+	FROM tiktok_contacts
+) l ON l.id = ttc.contact_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(ttc.account_id::text, '')",
+		ContainerIDField:   "tta.id::text",
+		ContainerNameField: "tta.username",
+		LineField:          "COALESCE(NULLIF(tta.username, ''), NULLIF(tta.display_name, ''), tta.open_id)",
+		AutomationFields: "COALESCE(tta.agent_id::text, '') AS agent_id, " +
+			"COALESCE(tta.workflow_id::text, '') AS workflow_id, " +
+			"tta.enable_agent_responses AS agent_responses_enabled, " +
+			"tta.enable_workflow AS workflow_enabled",
+
+		AutomationColumn:  "ttc.automation_enabled",
+		StatusColumn:      "ttc.conversation_status",
+		CloseTable:        "ttc",
+		MessageClockTable: "ttc",
+
+		ContainerCTE:         `SELECT ttc_f.id AS entry_id FROM tiktok_conversations ttc_f WHERE ttc_f.account_id = ? AND ttc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "ttc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT ttc_f.id FROM tiktok_conversations ttc_f
+				JOIN tiktok_accounts tta_f ON tta_f.id = ttc_f.account_id
+				WHERE ttc_f.account_id = ? AND ttc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "tta_f.department_id",
+		DepartmentEntryCol: "ttc_f.id",
+
+		WindowOpenPredicate: tiktokWindowOpen,
 	},
 	{
 		EntryType:  shared.EntryTypeUnofficialWhatsApp,
@@ -261,6 +344,7 @@ var channelQueries = []channelQuery{
 		AccountIDField:     "COALESCE(uwc.instance_id::text, '')",
 		ContainerIDField:   "COALESCE(camp.id::text, uwi.id::text)",
 		ContainerNameField: "COALESCE(camp.name, uwi.display_name)",
+		LineField:          "COALESCE(NULLIF(uwi.display_name, ''), uwi.phone_number)",
 		AutomationFields: "CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.agent_id::text, '') " +
 			"ELSE COALESCE(uwi.agent_id::text, '') END AS agent_id, " +
 			"CASE WHEN camp.id IS NOT NULL THEN COALESCE(camp.workflow_id::text, '') " +
@@ -270,9 +354,10 @@ var channelQueries = []channelQuery{
 			"CASE WHEN camp.id IS NOT NULL THEN camp.enable_workflow " +
 			"ELSE uwi.enable_workflow END AS workflow_enabled",
 
-		AutomationColumn: "uwc.automation_enabled",
-		StatusColumn:     "uwc.conversation_status",
-		CloseTable:       "uwc",
+		AutomationColumn:  "uwc.automation_enabled",
+		StatusColumn:      "uwc.conversation_status",
+		CloseTable:        "uwc",
+		MessageClockTable: "uwc",
 
 		ContainerCTE:         `SELECT uwc_f.id AS entry_id FROM unofficial_whatsapp_conversations uwc_f WHERE uwc_f.instance_id = ? AND uwc_f.deleted_at IS NULL%[1]s`,
 		ContainerCTEEntryCol: "uwc_f.id",
@@ -285,7 +370,8 @@ var channelQueries = []channelQuery{
 		DepartmentColumn:   "uwi_f.department_id",
 		DepartmentEntryCol: "uwc_f.id",
 
-		WindowSubquery: "",
+		WindowOpenPredicate: unofficialWindowOpen,
+		GroupPredicate:      unofficialGroup,
 
 		CampaignCTE: `SELECT DISTINCT uwce.conversation_id AS entry_id
 			FROM unofficial_whatsapp_campaign_entries uwce
@@ -364,6 +450,7 @@ func (q channelQuery) entryInfoSQL() string {
 		       %s AS automation_enabled,
 		       %s AS conversation_status,
 		       %s,
+		       %s,
 		       COALESCE(cd.automation_kind, '') AS delegate_kind,
 		       COALESCE(cd.automation_id, '') AS delegate_id
 		FROM (SELECT 1) AS entry_anchor
@@ -379,8 +466,19 @@ func (q channelQuery) entryInfoSQL() string {
 		q.AutomationColumn,
 		q.statusColumnOrEmpty(),
 		q.closeFieldsSQL(),
+		q.messageClockFieldsSQL(),
 		q.entryJoinOn("?::uuid"),
 	)
+}
+
+func (q channelQuery) messageClockFieldsSQL() string {
+	if q.MessageClockTable == "" {
+		return "NULL::timestamptz AS last_customer_message_at, NULL::timestamptz AS last_agent_message_at, NULL::timestamptz AS awaiting_reply_since"
+	}
+	t := q.MessageClockTable
+	return t + ".last_customer_message_at AS last_customer_message_at, " +
+		t + ".last_agent_message_at AS last_agent_message_at, " +
+		t + "." + sqlexpr.AwaitingReplySinceColumn + " AS awaiting_reply_since"
 }
 
 func (q channelQuery) closeFieldsSQL() string {

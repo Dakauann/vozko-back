@@ -21,6 +21,22 @@ type simFrame struct {
 
 func startVoiceSimulation(t *testing.T) *websocket.Conn {
 	t.Helper()
+	return startVoiceSimulationWith(t, false, 0)
+}
+
+func TestAVoiceHandshakeNobodyStartsEndsWithStartTimeout(t *testing.T) {
+	conn := startVoiceSimulationWith(t, true, 50*time.Millisecond)
+	readUntil(t, conn, "sim_ready")
+	cancelled, _ := readUntil(t, conn, "run_cancelled")
+	var payload map[string]string
+	_ = json.Unmarshal(cancelled.Payload, &payload)
+	if payload["reason"] != "start_timeout" {
+		t.Fatalf("payload = %v, want start_timeout", payload)
+	}
+}
+
+func startVoiceSimulationWith(t *testing.T, awaitStart bool, idle time.Duration) *websocket.Conn {
+	t.Helper()
 	repo := NewMockWorkflowRepository()
 	_ = repo.Create(voiceWorkflow("wf-1", "trunk-1", "greeting"))
 	sim := NewWSWorkflowSimulationUseCase(WSWorkflowSimulationDeps{
@@ -28,6 +44,7 @@ func startVoiceSimulation(t *testing.T) *websocket.Conn {
 		MediaRepo: audioMediaStub{items: map[string]*media.Media{
 			"greeting": {ID: "greeting", WorkspaceID: "ws1", Type: media.MediaTypeAudio, URL: "https://files/greeting.mp3", Description: "Menu principal"},
 		}},
+		PauseIdleTimeout: idle,
 	})
 	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +53,7 @@ func startVoiceSimulation(t *testing.T) *websocket.Conn {
 			return
 		}
 		defer conn.Close()
-		_ = sim.HandleSession(context.Background(), conn, "wf-1", "ws1")
+		_ = sim.HandleSession(context.Background(), conn, SimulationSession{WorkflowID: "wf-1", WorkspaceID: "ws1", AwaitStart: awaitStart})
 	}))
 	t.Cleanup(server.Close)
 	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)

@@ -90,7 +90,7 @@ func TestAdapterSendsScheduleAnalysisAfterPersistence(t *testing.T) {
 				live := &liveQueue{}
 				sender := &MessageSenderService{messageRepo: repo, analysis: NewAnalysisScheduler(state, live)}
 				sender.SetChannelAdapters(conversation.NewAdapterRegistry(&fakeWindowAdapter{entryType: kind, open: open}))
-				_, err := sender.SendTextMessage("entry", string(kind), "hello", "operator", "")
+				_, err := sender.SendTextMessage("entry", string(kind), "hello", conversation.SendOrigin{SenderUserID: "operator"})
 				if !open {
 					if !errors.Is(err, conversation.ErrOutboundWindowClosed) || len(state.fields) != 0 || len(repo.created) != 0 || len(live.refs) != 0 {
 						t.Fatalf("closed window sent or scheduled: %v", err)
@@ -124,17 +124,18 @@ func (m inboxWindowMessages) GetEntryLastMessage(string, shared.EntryType) (*con
 type officialWindows struct {
 	lmw.Repository
 	reads  int
-	phones []string
+	leads  []string
 	lastAt time.Time
 }
 
-func (w *officialWindows) FindByLeadAndBusinessPhone(string, string) (*lmw.LeadMessageWindow, error) {
+func (w *officialWindows) FindByLeadIDs(leadIDs []string) ([]*lmw.LeadMessageWindow, error) {
 	w.reads++
-	return &lmw.LeadMessageWindow{LastMessageAt: w.lastAt}, nil
-}
-func (w *officialWindows) FindOpenWindowsByLeadIDs(_ []string, phone string) (map[string]*lmw.LeadMessageWindow, error) {
-	w.phones = append(w.phones, phone)
-	return map[string]*lmw.LeadMessageWindow{"lead": {LastMessageAt: w.lastAt}}, nil
+	w.leads = append(w.leads, leadIDs...)
+	out := make([]*lmw.LeadMessageWindow, 0, len(leadIDs))
+	for _, id := range leadIDs {
+		out = append(out, &lmw.LeadMessageWindow{LeadID: id, BusinessPhoneID: "phone-1", LastMessageAt: w.lastAt})
+	}
+	return out, nil
 }
 
 func TestInboxUpdatePreservesChannelWindowsWithoutOfficialLookup(t *testing.T) {
@@ -184,10 +185,11 @@ func TestWindowBatchQueriesOnlyOfficialNumbers(t *testing.T) {
 	svc := &HistoryProviderService{messageWindowRepo: windows}
 	entries := []conversation.EntryWithLastMessage{}
 	for _, kind := range []shared.EntryType{shared.EntryTypeWhatsApp, shared.EntryTypeInstagram, shared.EntryTypeTelegram, shared.EntryTypeUnofficialWhatsApp} {
-		entries = append(entries, conversation.EntryWithLastMessage{EntryID: string(kind), EntryType: kind, LeadID: "lead", BusinessPhoneID: string(kind)})
+		entries = append(entries, conversation.EntryWithLastMessage{EntryID: string(kind), EntryType: kind, LeadID: "lead-" + string(kind), BusinessPhoneID: "phone-1"})
 	}
-	got := svc.batchGetWindowStatus(entries)
-	if len(windows.phones) != 1 || windows.phones[0] != "whatsapp" || len(got) != 1 || !got["whatsapp"].open {
-		t.Fatalf("phones=%v windows=%v", windows.phones, got)
+	got := svc.inboxWindows(entries)
+	official := got[shared.EntryRef{EntryID: "whatsapp", EntryType: shared.EntryTypeWhatsApp}]
+	if windows.reads != 1 || len(windows.leads) != 1 || windows.leads[0] != "lead-whatsapp" || !official.Open {
+		t.Fatalf("reads=%d leads=%v official=%+v", windows.reads, windows.leads, official)
 	}
 }

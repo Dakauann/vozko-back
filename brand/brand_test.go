@@ -21,6 +21,7 @@ var allBrandEnv = map[string]string{
 	"BRAND_PHONE":           "+00 00 0000-0000",
 	"BRAND_FROM_EMAIL":      "no-reply@acme.example",
 	"BRAND_LOGO_URL":        "https://cdn.acme.example/logo.png",
+	"BRAND_GENDER":          "feminine",
 }
 
 func setAllBrandEnv(t *testing.T) {
@@ -51,8 +52,27 @@ func TestFromEnv_LoadsFromEnv(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if b.Name != "Acme" || b.Key != "acme" || b.AIName != "Acme AI" || b.AIAliasPrefix != "acme_" ||
-		b.LegalName != "ACME LTDA" || b.SupportEmail != "suporte@acme.example" || b.LogoURL != "https://cdn.acme.example/logo.png" {
+		b.LegalName != "ACME LTDA" || b.SupportEmail != "suporte@acme.example" || b.LogoURL != "https://cdn.acme.example/logo.png" ||
+		b.Gender != Feminine {
 		t.Fatalf("got %+v", b)
+	}
+}
+
+func TestFromEnv_MissingGenderRefusesLikeEveryOtherBrandField(t *testing.T) {
+	setAllBrandEnv(t)
+	os.Unsetenv("BRAND_GENDER")
+	_, err := fromEnv()
+	if err == nil || !strings.Contains(err.Error(), "BRAND_GENDER") {
+		t.Fatalf("expected a missing-required error mentioning BRAND_GENDER, got %v", err)
+	}
+}
+
+func TestFromEnv_UnknownGenderRefusesInsteadOfPickingOne(t *testing.T) {
+	setAllBrandEnv(t)
+	os.Setenv("BRAND_GENDER", "neutral")
+	_, err := fromEnv()
+	if err == nil || !strings.Contains(err.Error(), "BRAND_GENDER") {
+		t.Fatalf("expected an invalid BRAND_GENDER error, got %v", err)
 	}
 }
 

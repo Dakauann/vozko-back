@@ -14,6 +14,7 @@ import (
 	"vozko/usecases/copilot/copilottools/adtools"
 	"vozko/usecases/copilot/copilottools/attendancetools"
 	"vozko/usecases/copilot/copilottools/crmtools"
+	"vozko/usecases/copilot/copilottools/formtools"
 	"vozko/usecases/copilot/copilottools/leadtools"
 	"vozko/usecases/copilot/copilottools/mediatools"
 	"vozko/usecases/copilot/copilottools/platformtools"
@@ -182,6 +183,7 @@ func registeredTools(t *testing.T) []copilot.Tool {
 	}
 	toolset = append(toolset, adtools.AllAdTools(adtools.AdsDeps{}, adtools.AdManageDeps{}, adtools.AdGrowthDeps{})...)
 	toolset = append(toolset, studiotools.StudioTools(studiotools.StudioDeps{})...)
+	toolset = append(toolset, formtools.FormTools(formtools.FormDeps{})...)
 	return copilot_usecase.NewRegistry(toolset...).Tools()
 }
 

@@ -3,6 +3,7 @@ package scheduled_message_usecase
 import (
 	sm "vozko/domain/scheduled_message"
 	wo "vozko/domain/whatsapp_outreach"
+	"vozko/domain/whatsappform"
 )
 
 const templateIdempotencyPrefix = "scheduled-message:"
@@ -16,5 +17,7 @@ func templateSend(m *sm.ScheduledMessage) wo.ConversationTemplateInput {
 		BodyParams:     m.Template.BodyParams,
 		HeaderParams:   m.Template.HeaderParams,
 		IdempotencyKey: templateIdempotencyPrefix + m.ID,
+		Origin:         whatsappform.OriginTemplateScheduled,
+		OriginRef:      m.ID,
 	}
 }

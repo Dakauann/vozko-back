@@ -20,6 +20,7 @@ var (
 	ErrConversationNotFound       = errors.New("conversation: conversation not found")
 	ErrUnauthorized               = errors.New("conversation: unauthorized access")
 	ErrWindowClosed               = errors.New("conversation: 24-hour messaging window is closed, cannot send message")
+	ErrHistoryCursorConflict      = errors.New("conversation: a history page reads before or after a cursor, not both")
 
 	ErrWhatsAppCallNoPermission  = errors.New("conversation: whatsapp call permission not granted by user (138006)")
 	ErrWhatsAppCallNotConfigured = errors.New("conversation: whatsapp calling not configured")

@@ -18,12 +18,13 @@ func NewPlayAudioExecutor(audio workflow.VoiceAudio) workflow.NodeExecutor {
 
 func (e *playAudioExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionPlayAudio,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeVoice},
-		Label:       "Tocar Áudio",
-		Description: "Toca um áudio da biblioteca de mídias para quem está na ligação.",
-		Icon:        "SpeakerHigh",
+		Type:         workflow.NodeTypeActionPlayAudio,
+		TestBehavior: workflow.NodeTestVoiceOnly,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeVoice},
+		Label:        "Tocar Áudio",
+		Description:  "Toca um áudio da biblioteca de mídias para quem está na ligação.",
+		Icon:         "SpeakerHigh",
 		Guidance: workflow.NodeGuidance{
 			When: "Para falar com quem ligou: saudação, menu de opções ou aviso. Só existe em fluxos de voz.",
 			Behavior: "Toca o áudio escolhido (media_id, use find_resource medias com um arquivo de áudio). Com 'interruptible' " +

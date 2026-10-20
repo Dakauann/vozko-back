@@ -85,6 +85,7 @@ type UnofficialWhatsAppGroupMemberEvent struct {
 	GroupID     string    `gorm:"type:uuid;not null;index:idx_uwgme_group_at,priority:1"`
 	PersonKey   string    `gorm:"size:96;not null"`
 	Kind        string    `gorm:"size:8;not null"`
+	Cause       string    `gorm:"size:16;not null;default:''"`
 	OurNumber   bool      `gorm:"not null;default:false"`
 	OccurredAt  time.Time `gorm:"type:timestamptz;not null;index:idx_uwgme_group_at,priority:2"`
 }
@@ -193,6 +194,7 @@ type UnofficialWhatsAppGroupJoin struct {
 	GroupJID    string `gorm:"column:group_jid;size:64"`
 	Sequence    int    `gorm:"not null;default:0"`
 	Follow      bool   `gorm:"not null;default:false"`
+	Category    string `gorm:"size:60;not null;default:''"`
 	Status      string `gorm:"size:16;not null;index:idx_uwgj_due,priority:1"`
 	Attempts    int    `gorm:"not null;default:0"`
 	Error       string `gorm:"size:500"`

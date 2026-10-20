@@ -59,9 +59,11 @@ func sseServer(chunks []string) *httptest.Server {
 func newTestService(baseURL string, pub *capturingPub) *Service {
 	cfg := openrouter.DefaultConfig("test-key")
 	cfg.BaseURL = baseURL
+	recordingGenerationIDs(cfg)
 	return &Service{
-		client:     openrouter.NewClientWithConfig(*cfg),
-		billingPub: pub,
+		client:         openrouter.NewClientWithConfig(*cfg),
+		billingPub:     pub,
+		billingMetrics: &leakTally{},
 	}
 }
 

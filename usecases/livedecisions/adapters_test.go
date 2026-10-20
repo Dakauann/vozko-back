@@ -229,3 +229,19 @@ func TestTheInboxGetsViewsOnlyForReadsWithLabels(t *testing.T) {
 		t.Fatalf("views = %+v, err = %v", views, err)
 	}
 }
+
+func TestASnapshotHearsTheAudioTranscriptAndSkipsRetractedMessages(t *testing.T) {
+	retractedAt := t0.Add(3 * time.Minute)
+	deleted := message("segredo", true, t0.Add(time.Minute))
+	deleted.RetractedAt = &retractedAt
+	audio := &conversation.Message{Text: conversation.AudioPlaceholder, Transcript: "quero o plano", MessageType: conversation.MessageTypeAudio, Direction: conversation.MessageDirectionInbound, CreatedAt: t0}
+	reader := ConversationSnapshots{Messages: &fakeMessages{messages: []*conversation.Message{deleted, audio}}, Stages: &fakeStages{}}
+
+	snapshot, err := reader.Snapshot(context.Background(), Trigger{WorkspaceID: "ws", EntryID: "e", EntryType: shared.EntryTypeWhatsApp}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Text != conversation.AudioPlaceholder+" quero o plano" {
+		t.Fatalf("turns = %+v", snapshot.Turns)
+	}
+}

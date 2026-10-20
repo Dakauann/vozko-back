@@ -1,0 +1,86 @@
+{
+    "id": 2000009713473608,
+    "date_created": "2024-11-01T09:34:59.000-04:00",
+    "last_updated": "2024-11-01T09:37:20.000-04:00",
+    "date_closed": "2024-11-01T09:35:43.000-04:00",
+    "pack_id": 2000006556183755,
+    "fulfilled": null,
+    "buying_mode": "buy_equals_pay",
+    "shipping_cost": 0.0,
+    "mediations": [],
+    "total_amount": 125.92,
+    "paid_amount": 125.92,
+    "order_items": [
+        {
+            "item": {
+                "id": "MLB3737188005",
+                "title": "Espaçador E Nivelador Para Piso 1,5 Mm 500pçs Eco Cortag Cor Vermelho",
+                "category_id": "MLB188658",
+                "variation_id": null,
+                "seller_custom_field": null,
+                "variation_attributes": [],
+                "warranty": "Garantia de fábrica: 3 meses",
+                "condition": "new",
+                "seller_sku": "ESPAÇADOR NIVELADOR ECO C/500 PÇS CORTAG-2",
+                "global_price": null,
+                "net_weight": null,
+                "user_product_id": "MLBU1458960576",
+                "release_date": null
+            },
+            "quantity": 2,
+            "requested_quantity": {
+                "measure": "unit",
+                "value": 2
+            },
+            "picked_quantity": null,
+            "unit_price": 62.96,
+            "full_unit_price": 72.37,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "sale_fee": 11.07,
+            "listing_type_id": "gold_special",
+            "element_id": 1,
+            "stock": [
+                {
+                    "store_id": "54936888",
+                    "network_node_id": "163942"
+                }
+            ]
+        }
+    ],
+    "currency_id": "BRL",
+    "shipping": {
+        "id": 44028792542
+    },
+    "status": "paid",
+    "status_detail": null,
+    "tags": [
+        "pack_order",
+        "order_has_discount",
+        "catalog",
+        "paid",
+        "not_delivered"
+    ],
+    "context": {
+        "channel": "marketplace",
+        "site": "MLB",
+        "flows": [
+            "catalog"
+        ]
+    },
+    "seller": {
+        "id": 779432305,
+        "user_type": null,
+        "tags": [],
+        "status": null,
+        "buy_restrictions": []
+    },
+    "buyer": {
+        "id": 6427433,
+        "user_type": null,
+        "tags": [],
+        "status": null,
+        "buy_restrictions": []
+    },
+    "cancel_detail": null
+}

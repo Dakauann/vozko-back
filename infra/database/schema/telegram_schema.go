@@ -123,6 +123,7 @@ type TelegramConversation struct {
 	LastMessageAt         *time.Time `gorm:"column:last_message_at;index"`
 	LastCustomerMessageAt *time.Time `gorm:"column:last_customer_message_at"`
 	LastAgentMessageAt    *time.Time `gorm:"column:last_agent_message_at"`
+	AwaitingReplySince    *time.Time `gorm:"column:awaiting_reply_since"`
 
 	StartPayload *string `gorm:"size:64;index"`
 

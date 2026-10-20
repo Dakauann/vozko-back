@@ -155,24 +155,14 @@ func (s *Store) SaveHolder(ctx context.Context, e cp.Entry) error {
 	if !validUUIDs(e.WorkspaceID, e.ID, e.HolderID) {
 		return cp.ErrEntryNotFound
 	}
-	return affectedOne(s.db.WithContext(ctx).Exec(updateHolderSQL, e.HolderID, e.UpdatedAt, e.WorkspaceID, e.ID))
+	return database.AffectedOne(s.db.WithContext(ctx).Exec(updateHolderSQL, e.HolderID, e.UpdatedAt, e.WorkspaceID, e.ID), cp.ErrEntryNotFound)
 }
 
 func (s *Store) Delete(ctx context.Context, workspaceID, id string) error {
 	if !validUUIDs(workspaceID, id) {
 		return cp.ErrEntryNotFound
 	}
-	return affectedOne(s.db.WithContext(ctx).Exec(deleteEntrySQL, workspaceID, id))
-}
-
-func affectedOne(result *gorm.DB) error {
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return cp.ErrEntryNotFound
-	}
-	return nil
+	return database.AffectedOne(s.db.WithContext(ctx).Exec(deleteEntrySQL, workspaceID, id), cp.ErrEntryNotFound)
 }
 
 func (s *Store) ContactOfConversation(ctx context.Context, workspaceID string, ref shared.EntryRef) (cp.Subject, error) {

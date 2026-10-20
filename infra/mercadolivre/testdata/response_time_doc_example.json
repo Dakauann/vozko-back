@@ -1,0 +1,18 @@
+{
+  "user_id": 1111111,
+  "total": {
+    "response_time": 22
+  },
+  "weekend": {
+    "response_time": 8,
+    "sales_percent_increase": null
+  },
+  "weekdays_working_hours": {
+    "response_time": 8,
+    "sales_percent_increase": null
+  },
+  "weekdays_extra_hours": {
+    "response_time": 72,
+    "sales_percent_increase": 10
+  }
+}

@@ -3,6 +3,8 @@ package unofficial_whatsapp_campaign_repository
 import (
 	"encoding/json"
 
+	"github.com/lib/pq"
+
 	"vozko/domain/campaign"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	"vozko/infra/database/schema"
@@ -49,7 +51,8 @@ func toRow(c *uwc.Campaign) *schema.UnofficialWhatsAppCampaign {
 		ID:                   c.ID,
 		WorkspaceID:          c.WorkspaceID,
 		DepartmentID:         ptr(c.DepartmentID),
-		InstanceID:           c.InstanceID,
+		InstanceID:           schema.OptionalText(c.InstanceID),
+		SenderInstanceIDs:    pq.StringArray(c.SenderInstanceIDs),
 		CreatedByID:          ptr(c.CreatedByID),
 		Source:               schema.OptionalText(c.Source),
 		IdempotencyKey:       schema.OptionalText(c.IdempotencyKey),
@@ -86,7 +89,8 @@ func toDomain(r *schema.UnofficialWhatsAppCampaign) *uwc.Campaign {
 		ID:                   r.ID,
 		WorkspaceID:          r.WorkspaceID,
 		DepartmentID:         str(r.DepartmentID),
-		InstanceID:           r.InstanceID,
+		InstanceID:           string(r.InstanceID),
+		SenderInstanceIDs:    []string(r.SenderInstanceIDs),
 		CreatedByID:          str(r.CreatedByID),
 		Source:               string(r.Source),
 		IdempotencyKey:       string(r.IdempotencyKey),
@@ -132,6 +136,7 @@ func entryToRow(e uwc.Entry) schema.UnofficialWhatsAppCampaignEntry {
 		ConversationID:    ptr(e.ConversationID),
 		JID:               e.JID,
 		CheckedAt:         e.CheckedAt,
+		SenderInstanceID:  ptr(e.SenderInstanceID),
 		Status:            string(e.Status),
 		VariantIndex:      e.VariantIndex,
 		ProviderMessageID: e.ProviderMessageID,
@@ -164,6 +169,7 @@ func entryToDomain(r *schema.UnofficialWhatsAppCampaignEntry) *uwc.Entry {
 		ConversationID:    str(r.ConversationID),
 		JID:               r.JID,
 		CheckedAt:         r.CheckedAt,
+		SenderInstanceID:  str(r.SenderInstanceID),
 		Status:            campaign.SendStatus(r.Status),
 		VariantIndex:      r.VariantIndex,
 		ProviderMessageID: r.ProviderMessageID,

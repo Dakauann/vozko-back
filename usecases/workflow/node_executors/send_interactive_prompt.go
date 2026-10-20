@@ -36,6 +36,7 @@ func NewInteractivePromptExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
 		Type:          workflow.NodeTypeActionSendInteractive,
+		TestBehavior:  workflow.NodeTestWaits,
 		Category:      workflow.NodeCategoryAction,
 		Scopes:        []workflow.NodeScope{workflow.NodeScopeShared},
 		Label:         "Enviar Opções",
@@ -50,9 +51,12 @@ func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 				"Sem nenhuma saída de opção conectada, comporta-se como envio simples e segue adiante (compatibilidade). " +
 				"LIMITES POR CANAL: WhatsApp exibe 3 botões ou 10 itens de lista (com descrição por item); Instagram exibe até 13 opções com rótulo de 20 caracteres e SEM descrição; " +
 				"Telegram exibe as opções em teclado inline, sem limite prático de quantidade nem de rótulo, mas o id da opção não pode passar de 64 bytes. " +
-				"Opções além do limite de um canal simplesmente não aparecem nele, o editor mostra quais.",
+				"Opções além do limite de um canal simplesmente não aparecem nele, o editor mostra quais. " +
+				"FORMATO EXATO das opções, com as chaves escritas exatamente assim: buttons é uma string JSON com a lista de {\"Type\":\"reply\",\"ID\":\"...\",\"Title\":\"...\",\"CopyCode\":\"\"}; " +
+				"sections é uma string JSON com a lista de {\"title\":\"...\",\"rows\":[{\"id\":\"...\",\"title\":\"...\",\"description\":\"...\"}]} (minúsculas).",
 			Examples: []string{
 				"config: {\"interactive_type\":\"buttons\",\"body\":\"Deseja continuar?\",\"buttons\":\"[{\\\"Type\\\":\\\"reply\\\",\\\"ID\\\":\\\"sim\\\",\\\"Title\\\":\\\"Sim\\\"},{\\\"Type\\\":\\\"reply\\\",\\\"ID\\\":\\\"nao\\\",\\\"Title\\\":\\\"Não\\\"}]\"}  // saídas: \"sim\", \"nao\", \"no_match\", \"no_reply\", \"send_failed\"",
+				"config: {\"interactive_type\":\"list\",\"body\":\"Qual assunto?\",\"list_button\":\"Ver opções\",\"sections\":\"[{\\\"title\\\":\\\"Assuntos\\\",\\\"rows\\\":[{\\\"id\\\":\\\"horarios\\\",\\\"title\\\":\\\"Horários\\\",\\\"description\\\":\\\"\\\"},{\\\"id\\\":\\\"valores\\\",\\\"title\\\":\\\"Valores\\\",\\\"description\\\":\\\"\\\"}]}]\"}  // saídas: \"horarios\", \"valores\", \"no_match\", \"no_reply\", \"send_failed\"",
 			},
 		},
 		DynamicHandles: true,
@@ -106,43 +110,11 @@ func invalidInteractiveConfig(err error) error {
 }
 
 func AskInteractiveOutputs(config map[string]interface{}) []workflow.HandleDefinition {
-	outputs := make([]workflow.HandleDefinition, 0, 6)
-	seen := make(map[string]struct{})
-	appendOption := func(id, label string) {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			return
-		}
-		if _, dup := seen[id]; dup {
-			return
-		}
-		seen[id] = struct{}{}
-		outputs = append(outputs, workflow.HandleDefinition{ID: id, Label: label})
-	}
-
-	if isListPrompt(config) {
-		sections, _ := workflow.InteractiveListSections(config)
-		for _, section := range sections {
-			for _, row := range section.Rows {
-				appendOption(row.ID, row.Title)
-			}
-		}
-	} else {
-		buttons, _ := workflow.InteractiveButtons(config)
-		for _, b := range buttons {
-			if b.Type == conversation.ButtonTypeCopyCode {
-				continue
-			}
-			appendOption(b.ID, b.Title)
-		}
-	}
-
-	outputs = append(outputs,
+	return append(workflow.InteractiveOptionHandles(config),
 		workflow.HandleDefinition{ID: interactiveHandleNoMatch, Label: "Sem correspondência", Optional: true},
 		workflow.HandleDefinition{ID: interactiveHandleNoReply, Label: "Não respondeu", Optional: true},
 		workflow.HandleDefinition{ID: interactiveHandleSendFailed, Label: "Falha no envio", Optional: true},
 	)
-	return outputs
 }
 
 func isInteractiveWiring(edges []workflow.Edge, config map[string]interface{}) bool {
@@ -158,7 +130,7 @@ func isInteractiveWiring(edges []workflow.Edge, config map[string]interface{}) b
 	return false
 }
 
-func interactiveTimeoutSeconds(config map[string]interface{}) float64 {
+func PromptTimeoutSeconds(config map[string]interface{}) float64 {
 	if secs, ok := config["timeout_seconds"].(float64); ok && secs > 0 {
 		return secs
 	}
@@ -200,7 +172,7 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 		return &workflow.NodeResult{Output: output}, nil
 	}
 
-	timeout := interactiveTimeoutSeconds(ctx.Node.Config)
+	timeout := PromptTimeoutSeconds(ctx.Node.Config)
 	wakeAt := time.Now().UTC().Add(time.Duration(timeout * float64(time.Second))).UnixMilli()
 	return &workflow.NodeResult{
 		Output: output,

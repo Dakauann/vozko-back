@@ -50,6 +50,10 @@ func (ownerWorkflowsStub) FindByIDs([]string) ([]*workflow.Workflow, error) {
 	return []*workflow.Workflow{{ID: "wf-1", Name: "Triagem"}}, nil
 }
 
+func (ownerWorkflowsStub) FindVersion(string, int) (*workflow.WorkflowVersion, error) {
+	return nil, workflow.ErrVersionNotFound
+}
+
 func ownerFixture(agents *ownerAgentsStub, users *ownerUsersStub) *HistoryProviderService {
 	return &HistoryProviderService{
 		assignmentRepo: &ownerAssignmentsStub{rows: []*ia.InboxAssignment{
@@ -142,7 +146,7 @@ func TestTheHandlerChipFollowsTheSharedGovernanceRule(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := buildAIHandler(tc.row.AutomationProfile(), tc.run, map[string]*agent.Agent{}, map[string]*workflow.Workflow{})
+			h := buildAIHandler(tc.row.AutomationProfile(), tc.run, map[string]*agent.Agent{}, map[string]*workflow.Workflow{}, nil)
 			if tc.wantKind == "" {
 				if h != nil {
 					t.Fatalf("handler = %+v, want none", h)
@@ -164,9 +168,38 @@ func TestTheHandlerChipNamesTheDelegatedAutomation(t *testing.T) {
 	profile := conversation.EntryWithLastMessage{WorkflowID: "wf-1", WorkflowEnabled: true}.AutomationProfile()
 	profile.Delegate = &delegate
 
-	h := buildAIHandler(profile, nil, map[string]*agent.Agent{"picked": {ID: "picked", Name: "Ana IA"}}, map[string]*workflow.Workflow{})
+	h := buildAIHandler(profile, nil, map[string]*agent.Agent{"picked": {ID: "picked", Name: "Ana IA"}}, map[string]*workflow.Workflow{}, nil)
 
 	if h == nil || h.Kind != "agent" || h.AgentID != "picked" || h.AgentName != "Ana IA" {
 		t.Fatalf("handler = %+v, want the delegated agent by name", h)
+	}
+}
+
+type pinnedVersions map[int]*workflow.WorkflowVersion
+
+func (p pinnedVersions) FindVersion(_ string, version int) (*workflow.WorkflowVersion, error) {
+	if v, ok := p[version]; ok {
+		return v, nil
+	}
+	return nil, errors.New("db down")
+}
+
+func TestTheChipNamesTheStepOfTheVersionTheRunIsPinnedTo(t *testing.T) {
+	one, two := 1, 2
+	draft := &workflow.Workflow{ID: "wf-1", Name: "Matrícula", PublishedVersion: &two, Graph: workflow.Graph{Nodes: []workflow.Node{{ID: "n1", Type: workflow.NodeTypeEnd}}}}
+	pinnedGraph := workflow.Graph{Nodes: []workflow.Node{{ID: "n1", Type: workflow.NodeTypeActionHTTPRequest}}}
+	versions := pinnedVersions{1: {WorkflowID: "wf-1", Version: 1, Graph: &pinnedGraph}}
+	run := &workflow.WorkflowRun{ID: "run-1", WorkflowID: "wf-1", WorkflowVersion: &one, CurrentNodeID: "n1"}
+	unreadable := &workflow.WorkflowRun{ID: "run-2", WorkflowID: "wf-1", WorkflowVersion: &two, CurrentNodeID: "n1"}
+
+	graphs := pinnedRunWorkflows(map[string]*workflow.WorkflowRun{"e-1": run, "e-2": unreadable}, map[string]*workflow.Workflow{"wf-1": draft}, versions)
+
+	h := buildAIHandler(conversation.AutomationProfile{}, run, map[string]*agent.Agent{}, map[string]*workflow.Workflow{"wf-1": draft}, graphs)
+	if h == nil || h.WorkflowName != "Matrícula" || h.CurrentNodeType != string(workflow.NodeTypeActionHTTPRequest) {
+		t.Fatalf("handler = %+v, want the step type of the pinned version", h)
+	}
+	h = buildAIHandler(conversation.AutomationProfile{}, unreadable, map[string]*agent.Agent{}, map[string]*workflow.Workflow{"wf-1": draft}, graphs)
+	if h == nil || h.CurrentNodeType != "" {
+		t.Fatalf("handler = %+v, an unreadable version must not fall back to the draft step", h)
 	}
 }

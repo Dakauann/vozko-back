@@ -24,6 +24,7 @@ func TestSharedErrorsMapToStableCodes(t *testing.T) {
 		{ca.ErrRuleNotFound, http.StatusNotFound, "not_found"},
 		{fmt.Errorf("%w: like on instagram", ca.ErrActionUnsupported), http.StatusBadRequest, "invalid_rule"},
 		{ca.ErrReplyEmpty, http.StatusBadRequest, "invalid_rule"},
+		{fmt.Errorf("%w: private_reply on instagram allows 1000 bytes", ca.ErrReplyTooLong), http.StatusBadRequest, "invalid_rule"},
 	}
 	for _, tc := range cases {
 		rec := httptest.NewRecorder()

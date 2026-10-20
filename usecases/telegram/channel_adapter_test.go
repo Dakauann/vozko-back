@@ -424,7 +424,23 @@ func TestMarkSeenIsBusinessOnly(t *testing.T) {
 	}
 }
 
-func TestRetractRefusesBeyond48Hours(t *testing.T) {
+func TestTheAdapterDeclaresTelegramEditAndDeleteWindows(t *testing.T) {
+	conv := conversationFor(5041234567)
+	contact := &tgdomain.Contact{ID: "contact-1"}
+	adapter, _, _, _, _, _ := newAdapter(botAccount(), conv, contact)
+
+	got := conversation.MessageCapabilitiesOf(adapter)
+	want := conversation.MessageCapabilities{
+		React: true, Edit: true, Delete: true,
+		EditWindowSeconds:   int64(tgdomain.EditWindow.Seconds()),
+		DeleteWindowSeconds: int64(tgdomain.DeleteWindow.Seconds()),
+	}
+	if got != want {
+		t.Fatalf("capabilities = %+v, want %+v", got, want)
+	}
+}
+
+func TestRetractDeletesTheProviderMessage(t *testing.T) {
 	conv := conversationFor(5041234567)
 	contact := &tgdomain.Contact{ID: "contact-1"}
 	adapter, _, _, _, _, _ := newAdapter(botAccount(), conv, contact)
@@ -433,18 +449,9 @@ func TestRetractRefusesBeyond48Hours(t *testing.T) {
 	if !ok {
 		t.Fatal("the Telegram adapter must implement RetractingAdapter")
 	}
-
-	old := time.Now().UTC().Add(-49 * time.Hour)
-	err := retracting.Retract(context.Background(), entryContext(conv, nil),
-		tgdomain.ProviderMessageID(77777, 5041234567, 1), old)
-	if !errors.Is(err, conversation.ErrCapabilityUnsupported) {
-		t.Errorf("err = %v, want ErrCapabilityUnsupported past the 48h limit", err)
-	}
-
-	recent := time.Now().UTC().Add(-time.Hour)
 	if err := retracting.Retract(context.Background(), entryContext(conv, nil),
-		tgdomain.ProviderMessageID(77777, 5041234567, 1), recent); err != nil {
-		t.Errorf("a one-hour-old message must be retractable: %v", err)
+		tgdomain.ProviderMessageID(77777, 5041234567, 1)); err != nil {
+		t.Errorf("Retract: %v", err)
 	}
 }
 

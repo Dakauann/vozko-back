@@ -112,18 +112,35 @@ func (ceus *ConsumeEmailUseCase) HandleEmailPublication(message []byte, ack mess
 			return
 		}
 
+		errorType := extractErrorType(err)
 		if ceus.metricsService != nil {
-			ceus.metricsService.IncEmailSendError(extractErrorType(err))
+			ceus.metricsService.IncEmailSendError(errorType)
 		}
-		ceus.retryOrDrop(message, ack, notifMessage.Email, err)
+		if permanentEmailErrorTypes[errorType] {
+			log.Printf("CRITICAL: [email] dropping email to %s without retry, the failure is permanent (%s): %v",
+				notifMessage.Email, errorType, err)
+			_ = ack.Ack()
+			return
+		}
+		ceus.retryOrDrop(notifMessage, ack, err)
 	}()
 }
 
-func (ceus *ConsumeEmailUseCase) retryOrDrop(message []byte, ack messaging.MessageAck, recipient string, sendErr error) {
-	attempt := ack.DeliveryCount()
+var permanentEmailErrorTypes = map[string]bool{"auth": true, "validation": true, "not_found": true}
+
+func (ceus *ConsumeEmailUseCase) retryOrDrop(notifMessage notification.NotificationQueueMessage, ack messaging.MessageAck, sendErr error) {
+	recipient := notifMessage.Email
+	attempt := notifMessage.Attempt + 1
 
 	if ceus.publisher != nil && attempt < messaging.MaxRetries {
 		delay := emailRetryBackoff(attempt)
+		notifMessage.Attempt = attempt
+		message, merr := json.Marshal(notifMessage)
+		if merr != nil {
+			log.Printf("[email] failed to encode retry for %s: %v", recipient, merr)
+			_ = ack.Nack(true)
+			return
+		}
 		if perr := ceus.publisher.PublishWithDelay(notification.EmailNotificationTopic, message, delay); perr == nil {
 			log.Printf("[email] send to %s failed (attempt %d/%d), retrying in %v: %v",
 				recipient, attempt, messaging.MaxRetries, delay, sendErr)

@@ -68,6 +68,7 @@ type WhatsAppClient interface {
 	SendStickerMessage(ctx context.Context, input SendStickerMessageInput) (*SendTextMessageOutput, error)
 	SendButtonMessage(ctx context.Context, input SendButtonMessageInput) (*SendTextMessageOutput, error)
 	SendListMessage(ctx context.Context, input SendListMessageInput) (*SendTextMessageOutput, error)
+	SendFlowMessage(ctx context.Context, input SendFlowMessageInput) (*SendTextMessageOutput, error)
 
 	SendCallPermissionRequest(ctx context.Context, input SendCallPermissionRequestInput) (*SendTextMessageOutput, error)
 
@@ -265,14 +266,15 @@ type InteractiveButton struct {
 }
 
 type SendButtonMessageInput struct {
-	To         string
-	HeaderType HeaderType
-	HeaderText string
-	MediaID    string
-	MediaLink  string
-	BodyText   string
-	FooterText string
-	Buttons    []InteractiveButton
+	To               string
+	HeaderType       HeaderType
+	HeaderText       string
+	MediaID          string
+	MediaLink        string
+	BodyText         string
+	FooterText       string
+	Buttons          []InteractiveButton
+	ContextMessageID string
 }
 
 func (in SendButtonMessageInput) Validate() error {
@@ -440,6 +442,7 @@ const (
 	TemplateButtonSubTypeURL        = "url"
 	TemplateButtonSubTypeCopyCode   = "copy_code"
 	TemplateButtonSubTypeQuickReply = "quick_reply"
+	TemplateButtonSubTypeFlow       = "flow"
 )
 
 type TemplateButtonParam struct {
@@ -448,6 +451,7 @@ type TemplateButtonParam struct {
 	Text       string
 	CouponCode string
 	Payload    string
+	FlowToken  string
 }
 
 func (in SendTemplateMessageInput) Validate() error {
@@ -481,12 +485,15 @@ type TemplateComponent struct {
 }
 
 type TemplateButton struct {
-	Type        string `json:"type"`
-	Text        string `json:"text"`
-	URL         string `json:"url,omitempty"`
-	PhoneNumber string `json:"phone_number,omitempty"`
-	Example     string `json:"example,omitempty"`
-	OTPType     string `json:"otp_type,omitempty"`
+	Type           string `json:"type"`
+	Text           string `json:"text"`
+	URL            string `json:"url,omitempty"`
+	PhoneNumber    string `json:"phone_number,omitempty"`
+	Example        string `json:"example,omitempty"`
+	OTPType        string `json:"otp_type,omitempty"`
+	FlowID         string `json:"flow_id,omitempty"`
+	FlowAction     string `json:"flow_action,omitempty"`
+	NavigateScreen string `json:"navigate_screen,omitempty"`
 }
 
 type TemplateExample struct {
@@ -558,4 +565,8 @@ func (in DeleteTemplateInput) Validate() error {
 		return ErrWhatsAppTemplateNameRequired
 	}
 	return nil
+}
+
+type WhatsAppReactionClient interface {
+	SendReaction(ctx context.Context, to, messageID, emoji string) error
 }

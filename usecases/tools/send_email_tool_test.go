@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"vozko/domain/redact"
 	"vozko/domain/tools"
 	email_usecase "vozko/usecases/email"
 )
@@ -153,7 +154,7 @@ func TestRedactToolConfig(t *testing.T) {
 		"smtp_host":     "smtp.example.com",
 	}
 	redacted := redactToolConfig(config)
-	if redacted["smtp_password"] != "[REDACTED]" || redacted["api_key"] != "[REDACTED]" {
+	if redacted["smtp_password"] != redact.Mask || redacted["api_key"] != redact.Mask {
 		t.Fatalf("expected sensitive values to be redacted: %+v", redacted)
 	}
 	if redacted["smtp_host"] != "smtp.example.com" {

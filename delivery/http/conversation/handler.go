@@ -26,6 +26,7 @@ type ConversationHandler struct {
 	requestCallPermission conversationdomain.RequestCallPermissionUseCase
 	automationService     ConversationAutomationService
 	delegationService     ConversationDelegationService
+	toolCalls             ToolCallLister
 }
 
 type ConversationAutomationService interface {

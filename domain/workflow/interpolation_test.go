@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+func TestInterpolate_NullValuesRenderEmptyBecauseCustomersMustNeverSeeNil(t *testing.T) {
+	state := NewRunState()
+	RecordNodeOutput(&state, "n4", map[string]interface{}{"logradouro": nil, "cidade": "Santo Antônio"})
+	state.Set("payload", map[string]interface{}{"bairro": nil})
+
+	cases := []struct {
+		template string
+		want     string
+	}{
+		{"CEP - {{node.n4.logradouro}}, {{node.n4.cidade}}", "CEP - , Santo Antônio"},
+		{"Rua: {{last.logradouro}}", "Rua: "},
+		{"Bairro: {{payload.bairro}}", "Bairro: "},
+	}
+	for _, c := range cases {
+		if got := Interpolate(c.template, &state, nil); got != c.want {
+			t.Fatalf("%q rendered %q, want %q", c.template, got, c.want)
+		}
+	}
+}
+
 func TestInterpolate_VarScope(t *testing.T) {
 	state := NewRunState()
 	state.Set("name", "John")

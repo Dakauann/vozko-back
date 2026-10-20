@@ -32,6 +32,7 @@ type SyncTemplateUseCase interface {
 }
 
 type CreateTemplateInput struct {
+	WorkspaceID     string
 	BusinessPhoneID string
 	Name            string
 	Language        string

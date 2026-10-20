@@ -68,6 +68,39 @@ func IsolatedDBWith(t testing.TB, prefix string, opts Options, models ...interfa
 	return db
 }
 
+func IsolatedTx(t testing.TB, prefix string, models ...interface{}) *gorm.DB {
+	t.Helper()
+	if os.Getenv("VOZKO_TEST_DB") != "1" {
+		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
+	}
+	db, err := gorm.Open(postgres.Open(dsn()), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin: %v", tx.Error)
+	}
+	t.Cleanup(func() {
+		tx.Rollback()
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	schemaName := prefix + "_" + uuid.New().String()[:8]
+	for _, stmt := range []string{"CREATE SCHEMA " + schemaName, "SET LOCAL search_path TO " + schemaName} {
+		if err := tx.Exec(stmt).Error; err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	if len(models) > 0 {
+		if err := tx.AutoMigrate(models...); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+	}
+	return tx
+}
+
 func KeptDB(t testing.TB, schemaName string) *gorm.DB {
 	t.Helper()
 	if os.Getenv("VOZKO_TEST_DB") != "1" {

@@ -13,6 +13,7 @@ type Outbox interface {
 	AddRecipients(ctx context.Context, recipients []Recipient) error
 	MarkDelivered(ctx context.Context, id string, recipients int, at time.Time) error
 	StalePending(ctx context.Context, createdBefore time.Time, limit int) ([]string, error)
+	Withdraw(ctx context.Context, id string) error
 	PurgeBefore(ctx context.Context, cutoff time.Time, limit int) (int, error)
 }
 
@@ -70,4 +71,23 @@ type ImageStore interface {
 
 type Publisher interface {
 	Publish(ctx context.Context, d Draft) (Record, error)
+}
+
+type Resolver interface {
+	Resolve(ctx context.Context, workspaceID string, episodeKeys ...string) error
+}
+
+type EpisodePublisher interface {
+	Publisher
+	Resolver
+}
+
+type EpisodeStore interface {
+	OpenEpisode(ctx context.Context, workspaceID, key string) (Episode, bool, error)
+	StartEpisode(ctx context.Context, e Episode) (Episode, error)
+	SeeEpisode(ctx context.Context, id string, at time.Time) error
+	AdvanceEpisode(ctx context.Context, id string, step EpisodeStep, notificationID string, at time.Time) (bool, error)
+	CloseEpisode(ctx context.Context, id string, at time.Time, reason EpisodeClose) error
+	ResolveEpisodes(ctx context.Context, workspaceID string, keys []string, at time.Time) (int, error)
+	PurgeEpisodesBefore(ctx context.Context, cutoff time.Time, limit int) (int, error)
 }

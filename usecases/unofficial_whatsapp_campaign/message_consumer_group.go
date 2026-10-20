@@ -2,12 +2,13 @@ package unofficial_whatsapp_campaign
 
 import (
 	"context"
-	"errors"
 	"log"
+	"time"
 
+	"vozko/domain/campaign"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
-	"vozko/usecases/campaignguard"
+	uwg "vozko/domain/unofficial_whatsapp_group"
 	"vozko/usecases/campaignqueue"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
@@ -18,27 +19,77 @@ const (
 )
 
 type GroupSending interface {
-	Seat(ctx context.Context, instanceID, groupJID string) (*uw.Group, error)
+	Seats(ctx context.Context, workspaceID, groupJID string) ([]*uw.Group, error)
 	Conversation(ctx context.Context, instance *uw.Instance, groupJID, subject string) (*uwuc.Resolved, error)
 }
 
-func (c *messageConsumerUseCase) admitGroup(ctx context.Context, entry *uwc.Entry, instanceID string) campaignguard.Admission {
+func (c *messageConsumerUseCase) precheckGroups(ctx context.Context, camp *uwc.Campaign) error {
+	pool, err := campaignSenderPool(ctx, c.deps.Instances, camp)
+	if err != nil {
+		return err
+	}
+	if len(pool) > 0 {
+		return nil
+	}
+	_, _ = c.deps.Campaigns.UpdateStatus(camp.ID, campaign.StatusStopped, campaign.StatusRunning)
+	_ = c.deps.Campaigns.UpdateStatusReason(camp.ID, uwc.ErrGroupCampaignNoNumber.Error())
+	return uwc.ErrGroupCampaignNoNumber
+}
+
+func (c *messageConsumerUseCase) handleGroup(ctx context.Context, camp *uwc.Campaign, entry *uwc.Entry) campaignqueue.Result {
 	if c.deps.Groups == nil {
 		log.Printf("[unofficial-whatsapp-campaign] entry %s is held (fail-closed): group sending is not wired", entry.ID)
-		return campaignguard.Admission{Result: campaignqueue.RetryLater(restrictionRequeueDelay)}
+		return campaignqueue.RetryLater(restrictionRequeueDelay)
 	}
-	seat, err := c.deps.Groups.Seat(ctx, instanceID, entry.JID)
-	switch {
-	case errors.Is(err, uw.ErrGroupNotFound):
-		c.failEntry(entry.ID, errGroupSeatGone, "this number is no longer in the group")
-		return campaignguard.Admission{Result: campaignqueue.Drop}
-	case err != nil:
-		return campaignguard.Admission{Result: campaignqueue.Requeue, Err: err}
-	case !seat.CanPost():
-		c.failEntry(entry.ID, errGroupCannotPost, "only admins can send in this group and this number is not an admin")
-		return campaignguard.Admission{Result: campaignqueue.Drop}
+	pool, err := campaignSenderPool(ctx, c.deps.Instances, camp)
+	if err != nil {
+		return campaignqueue.Requeue
 	}
-	return campaignguard.Admission{Admitted: true}
+	seats, err := c.deps.Groups.Seats(ctx, camp.WorkspaceID, entry.JID)
+	if err != nil {
+		return campaignqueue.Requeue
+	}
+	ranked, block := uwg.ChooseSender(pool.presences(seats, time.Now().UTC()), c.deps.Budget.UsedToday)
+	switch block {
+	case uwg.SenderNotInGroup:
+		c.failEntry(entry.ID, errGroupSeatGone, "none of the numbers this campaign may use is in this group")
+		return campaignqueue.Drop
+	case uwg.SenderCannotPost:
+		c.failEntry(entry.ID, errGroupCannotPost, "only admins can send in this group and none of the numbers this campaign may use is an admin there")
+		return campaignqueue.Drop
+	case uwg.SenderOffline:
+		return campaignqueue.RetryLater(restrictionRequeueDelay)
+	}
+
+	wait := time.Duration(0)
+	for _, id := range ranked {
+		result, attempted := c.sendFromGroupNumber(ctx, camp, entry, pool[id])
+		if attempted {
+			return result
+		}
+		if wait == 0 || result.Delay < wait {
+			wait = result.Delay
+		}
+	}
+	return campaignqueue.RetryLater(wait)
+}
+
+func (c *messageConsumerUseCase) sendFromGroupNumber(ctx context.Context, camp *uwc.Campaign, entry *uwc.Entry, instance *uw.Instance) (campaignqueue.Result, bool) {
+	effectiveCap := camp.EffectiveDailyCap(instance.EffectiveDailyCap(time.Now().UTC()))
+	budgeted, err := c.deps.Budget.TryConsumeDaily(instance.ID, effectiveCap)
+	if err != nil || !budgeted {
+		return campaignqueue.RetryLater(capRequeueDelay), false
+	}
+	minMS, maxMS := PacingFor(camp, instance)
+	if acquired, wait := c.deps.Budget.AcquirePace(instance.ID, minMS, maxMS); !acquired {
+		c.deps.Budget.ReleaseDaily(instance.ID, effectiveCap)
+		return campaignqueue.RetryLater(wait), false
+	}
+	result, sent := c.deliver(ctx, camp, entry, instance, entry.JID)
+	if !sent {
+		c.deps.Budget.ReleaseDaily(instance.ID, effectiveCap)
+	}
+	return result, true
 }
 
 func (c *messageConsumerUseCase) openConversation(

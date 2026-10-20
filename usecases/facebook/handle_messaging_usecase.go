@@ -93,7 +93,7 @@ func (uc *HandleMessagingUseCase) handle(ctx context.Context, page *fbdomain.Pag
 		return uc.echo(ctx, page, ev)
 	case mm.EventEditedMessage:
 		return uc.withKnownConversation(ctx, page, ev, func(conv *fbdomain.Conversation) error {
-			return uc.d.Transcript.ApplyEdit(conv.ID, ev.Edit)
+			return uc.d.Transcript.ApplyEdit(conv.ID, ev.Edit, ev.Timestamp)
 		})
 	case mm.EventReaction:
 		return uc.reaction(ctx, page, ev)
@@ -175,7 +175,7 @@ func (uc *HandleMessagingUseCase) reaction(ctx context.Context, page *fbdomain.P
 				return err
 			}
 		}
-		return uc.d.Transcript.ApplyReaction(conv.ID, ev.Reaction, ev.Timestamp)
+		return uc.d.Transcript.ApplyReaction(conv.ID, ev.Reaction, ev.ContactExternalID, ev.Timestamp)
 	})
 }
 

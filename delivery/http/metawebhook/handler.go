@@ -42,7 +42,12 @@ func New(cfg Config) *Handler {
 	}
 	objects := make(map[string]struct{}, len(cfg.Objects))
 	for _, o := range cfg.Objects {
-		objects[o] = struct{}{}
+		if o = strings.TrimSpace(o); o != "" {
+			objects[o] = struct{}{}
+		}
+	}
+	if len(objects) == 0 {
+		panic("metawebhook: " + cfg.Name + " declares no webhook objects; it would accept every object Meta sends")
 	}
 	return &Handler{
 		name:        cfg.Name,
@@ -138,9 +143,6 @@ func (h *Handler) receive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) acceptsObject(object string) bool {
-	if len(h.objects) == 0 {
-		return true
-	}
 	_, ok := h.objects[object]
 	return ok
 }

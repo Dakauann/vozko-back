@@ -63,6 +63,9 @@ func (m *fallbackPolicyWhatsAppClient) SendButtonMessage(context.Context, conver
 func (m *fallbackPolicyWhatsAppClient) SendListMessage(context.Context, conversation.SendListMessageInput) (*conversation.SendTextMessageOutput, error) {
 	return nil, nil
 }
+func (m *fallbackPolicyWhatsAppClient) SendFlowMessage(context.Context, conversation.SendFlowMessageInput) (*conversation.SendTextMessageOutput, error) {
+	return nil, nil
+}
 func (m *fallbackPolicyWhatsAppClient) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
 	return nil, nil
 }

@@ -50,12 +50,15 @@ type WhatsAppTemplateComponent struct {
 }
 
 type WhatsAppTemplateButton struct {
-	Type        string `json:"type"`
-	Text        string `json:"text,omitempty"`
-	URL         string `json:"url,omitempty"`
-	PhoneNumber string `json:"phone_number,omitempty"`
-	Example     string `json:"example,omitempty"`
-	OTPType     string `json:"otp_type,omitempty"`
+	Type           string `json:"type"`
+	Text           string `json:"text,omitempty"`
+	URL            string `json:"url,omitempty"`
+	PhoneNumber    string `json:"phone_number,omitempty"`
+	Example        string `json:"example,omitempty"`
+	OTPType        string `json:"otp_type,omitempty"`
+	FlowID         string `json:"flow_id,omitempty"`
+	FlowAction     string `json:"flow_action,omitempty"`
+	NavigateScreen string `json:"navigate_screen,omitempty"`
 }
 
 type WhatsAppTemplateExample struct {

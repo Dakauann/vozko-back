@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	ca "vozko/domain/commentautomation"
 	"vozko/domain/conversation"
 	igdomain "vozko/domain/instagram"
 	mm "vozko/domain/metamessaging"
@@ -27,7 +28,7 @@ type AssignmentService interface {
 }
 
 type CommentRuleEvaluator interface {
-	Execute(ctx context.Context, comment *igdomain.Comment)
+	Execute(ctx context.Context, comment *igdomain.Comment) error
 }
 
 type AudienceEnqueuer interface {
@@ -170,17 +171,17 @@ func (uc *HandleWebhookUseCase) handleEvent(ctx context.Context, account *igdoma
 		if ev.Message == nil {
 			return nil
 		}
-		return uc.transcript.Tombstone(uc.entryFor(ctx, account, ev), ev.Message.MID)
+		return uc.transcript.Retract(uc.entryFor(ctx, account, ev), ev.Message.MID, ev.Timestamp)
 	case mm.EventEditedMessage:
 		if ev.Edit == nil {
 			return nil
 		}
-		return uc.transcript.ApplyEdit(uc.entryFor(ctx, account, ev), ev.Edit)
+		return uc.transcript.ApplyEdit(uc.entryFor(ctx, account, ev), ev.Edit, ev.Timestamp)
 	case mm.EventReaction:
 		if ev.Reaction == nil {
 			return nil
 		}
-		return uc.transcript.ApplyReaction(uc.entryFor(ctx, account, ev), ev.Reaction, ev.Timestamp)
+		return uc.transcript.ApplyReaction(uc.entryFor(ctx, account, ev), ev.Reaction, ev.ContactExternalID, ev.Timestamp)
 	case mm.EventRead:
 		if ev.Read == nil {
 			return nil
@@ -342,7 +343,12 @@ func (uc *HandleWebhookUseCase) handleComment(ctx context.Context, account *igdo
 	}
 
 	if uc.commentRules != nil {
-		uc.commentRules.Execute(ctx, record)
+		if err := uc.commentRules.Execute(ctx, record); err != nil {
+			if ca.Retryable(err) {
+				return err
+			}
+			log.Printf("[instagram] comment %s rule actions failed: %v", commentID, err)
+		}
 	}
 	if uc.audience != nil {
 		uc.audience.Enqueue(ctx, record)

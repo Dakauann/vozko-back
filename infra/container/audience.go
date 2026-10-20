@@ -1,6 +1,7 @@
 package container
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -29,8 +30,7 @@ type audienceBundle struct {
 	Purge    *cauc.PurgeJob
 	Backfill *cauc.BackfillJob
 
-	InstagramAdapter *iguc.AudienceAdapter
-	FacebookAdapter  *fbuc.AudienceAdapter
+	CommentAdapters map[ca.Source]ca.SourceAdapter
 
 	Stats ca.StatsUseCase
 	List  ca.ListUseCase
@@ -44,13 +44,6 @@ const audienceRetention = 365 * 24 * time.Hour
 func (c *Container) initCommentAnalysis(dashboardURL string) {
 	bundle := &audienceBundle{}
 	c.audience = bundle
-
-	instagramOn := c.instagram != nil && c.instagram.Enabled
-	facebookOn := c.facebook != nil && c.facebook.Enabled
-	if !instagramOn && !facebookOn {
-		log.Printf("[comment-analysis] no comment source enabled; feature not wired")
-		return
-	}
 
 	clock := shared.SystemClock{}
 	state := c.redisProvider.SharedState()
@@ -76,25 +69,29 @@ func (c *Container) initCommentAnalysis(dashboardURL string) {
 	adapters := map[ca.Source]ca.SourceAdapter{}
 	verifiers := map[ca.Source]cauc.AccountVerifier{}
 	repliers := map[ca.Source]ca.CommentReplier{}
-	if instagramOn {
+	if c.instagram != nil && c.instagram.Enabled {
 		ig := c.instagram
-		bundle.InstagramAdapter = iguc.NewAudienceAdapter(
+		adapter := iguc.NewAudienceAdapter(
 			bundle.Ingestor, ig.Comments, ig.Media, ig.Accounts, ig.CommentSvc, repo,
 		)
-		ig.ModerateComment.SetCommentAnalysis(bundle.InstagramAdapter)
-		adapters[ca.SourceInstagram] = bundle.InstagramAdapter
+		ig.ModerateComment.SetCommentAnalysis(adapter)
+		adapters[ca.SourceInstagram] = adapter
 		verifiers[ca.SourceInstagram] = iguc.NewAudienceAccountVerifier(ig.Accounts)
 		repliers[ca.SourceInstagram] = instagramCommentReplier{uc: ig.ReplyComment}
 	}
-	if facebookOn {
+	if c.facebook != nil && c.facebook.Enabled {
 		fb := c.facebook
-		bundle.FacebookAdapter = fbuc.NewAudienceAdapter(fbuc.AudienceDeps{
+		adapters[ca.SourceFacebook] = fbuc.NewAudienceAdapter(fbuc.AudienceDeps{
 			Ingestor: bundle.Ingestor, Pages: fb.Pages, Posts: fb.Posts, Comments: fb.Comments,
 			Service: fb.CommentSvc, Tombstones: repo,
 		})
-		adapters[ca.SourceFacebook] = bundle.FacebookAdapter
 		verifiers[ca.SourceFacebook] = fbuc.NewPageOwnership(fb.Pages)
 		repliers[ca.SourceFacebook] = facebookCommentReplier{bundle: fb}
+	}
+	c.registerTikTokAudience(bundle.Ingestor, repo, adapters, verifiers, repliers)
+	bundle.CommentAdapters = adapters
+	if len(adapters) == 0 {
+		log.Printf("[comment-analysis] no comment source enabled; only conversation analysis is wired")
 	}
 
 	alertRules := ca_repository.NewAlertRuleRepository(c.db)
@@ -256,11 +253,27 @@ func audienceHandler(c *Container) *audiencehttp.Handler {
 	return c.audience.Handler
 }
 
-func audienceEnqueuer(c *Container) iguc.AudienceEnqueuer {
-	if c.audience == nil || !c.audience.Enabled || c.audience.InstagramAdapter == nil {
-		return nil
+func commentAudience[T any](bundle *audienceBundle, source ca.Source) (T, bool) {
+	var none T
+	if bundle == nil || !bundle.Enabled {
+		return none, false
 	}
-	return c.audience.InstagramAdapter
+	adapter, ok := bundle.CommentAdapters[source]
+	if !ok {
+		return none, false
+	}
+	enqueuer, ok := adapter.(T)
+	if !ok {
+		panic(fmt.Sprintf("[comment-analysis] the %s adapter %T cannot enqueue that channel's comments", source, adapter))
+	}
+	return enqueuer, true
+}
+
+func audienceEnqueuer(c *Container) iguc.AudienceEnqueuer {
+	if enqueuer, ok := commentAudience[iguc.AudienceEnqueuer](c.audience, ca.SourceInstagram); ok {
+		return enqueuer
+	}
+	return nil
 }
 
 func sourceList(sources []string) string {

@@ -33,6 +33,7 @@ type WhatsAppCampaignEntry struct {
 	LastMessageAt           *time.Time     `gorm:"column:last_message_at"`
 	LastCustomerMessageAt   *time.Time     `gorm:"column:last_customer_message_at"`
 	LastAgentMessageAt      *time.Time     `gorm:"column:last_agent_message_at"`
+	AwaitingReplySince      *time.Time     `gorm:"column:awaiting_reply_since"`
 	SentAt                  *time.Time     `gorm:"column:sent_at"`
 	DeliveredAt             *time.Time     `gorm:"column:delivered_at"`
 	ReadAt                  *time.Time     `gorm:"column:read_at"`

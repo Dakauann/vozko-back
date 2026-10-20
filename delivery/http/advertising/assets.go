@@ -371,7 +371,7 @@ func presentNumber(n advertising.WorkspaceNumber) NumberResponse {
 }
 
 // @Summary		Pedir código para vincular WhatsApp à página
-// @Description	Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). Responde status code_sent quando o código foi enviado (ele chega no app do WhatsApp do número, não na caixa de entrada do Vozko) ou linked quando a Meta informa que o número já está vinculado; nesse caso o vínculo é registrado e a página atualizada vem em page. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused para qualquer outra resposta da Meta.
+// @Description	Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). Responde status code_sent quando o código foi enviado (ele chega no app do WhatsApp do número, não na caixa de entrada da plataforma) ou linked quando a Meta informa que o número já está vinculado; nesse caso o vínculo é registrado e a página atualizada vem em page. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused para qualquer outra resposta da Meta.
 // @Tags			Anúncios
 // @Accept			json
 // @Produce		json

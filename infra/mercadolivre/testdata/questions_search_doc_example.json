@@ -1,0 +1,49 @@
+{
+    "total": 36,
+   "limit": 2,
+   "questions": [
+       {
+           "date_created": "2021-02-16T14:50:27.938-04:00",
+           "item_id": "MLA903218023",
+           "seller_id": 189394110,
+           "status": "ANSWERED",
+           "text": "Texto de la pregunta.",
+           "id": 11764931832,
+           "deleted_from_listing": false,
+           "hold": false,
+           "suspected_spam": false,
+           "answer": {
+               "text": "",
+               "status": "BANNED",
+               "date_created": "2021-02-16T14:52:13.580-04:00"
+           },
+           "from": {
+               "id": 162981404
+           }
+       },
+       {
+           "date_created": "2021-02-16T14:47:58.950-04:00",
+           "item_id": "MLA903218023",
+           "seller_id": 189394110,
+           "status": "BANNED",
+           "text": "",
+           "id": 11764926522,
+           "deleted_from_listing": false,
+           "hold": false,
+           "suspected_spam": false,
+           "answer": null,
+           "from": {
+               "id": 162981404
+           }
+       }
+   ],
+    "filters": {
+        "limit": 2,
+        "offset": 4,
+        "api_version": "4",
+        "is_admin": false,
+        "sorts": [],
+        "caller": 189394110,
+        "seller": 189394110
+    }
+}

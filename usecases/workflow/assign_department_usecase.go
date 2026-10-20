@@ -40,10 +40,9 @@ func (uc *assignDepartmentUseCase) Execute(ctx context.Context, workflowID strin
 		return nil, err
 	}
 
-	current.DepartmentID = departmentID
-	if err := uc.repo.Update(current); err != nil {
+	if err := uc.repo.UpdateDepartment(workflowID, departmentID); err != nil {
 		return nil, err
 	}
 
-	return uc.repo.FindByID(workflowID)
+	return findWithPublication(uc.repo, workflowID)
 }

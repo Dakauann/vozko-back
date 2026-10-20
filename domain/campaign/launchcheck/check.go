@@ -40,6 +40,7 @@ const (
 	CodeLastRunUndeliverable Code = "last_run_undeliverable"
 	CodeOptedOutPending      Code = "opted_out_pending"
 	CodeCapBelowPending      Code = "cap_below_pending"
+	CodeFormNotSendable      Code = "form_not_sendable"
 )
 
 const (
@@ -49,11 +50,12 @@ const (
 )
 
 type TemplateFacts struct {
-	Ready     bool
-	Quality   string
-	Flagged   bool
-	Category  template.TemplateCategory
-	CreatedAs template.TemplateCategory
+	Ready           bool
+	Quality         string
+	Flagged         bool
+	Category        template.TemplateCategory
+	CreatedAs       template.TemplateCategory
+	FormNotSendable bool
 }
 
 type PhoneFacts struct {
@@ -114,6 +116,9 @@ func blocks(s Snapshot, add adder) {
 	}
 	if s.Template != nil && !s.Template.Ready {
 		add(Block, CodeTemplateNotReady, 0, 0)
+	}
+	if s.Template != nil && s.Template.FormNotSendable {
+		add(Block, CodeFormNotSendable, 0, 0)
 	}
 	if s.Phone != nil && s.Phone.Status.BlocksSending() {
 		add(Block, CodePhoneUnavailable, 0, 0)

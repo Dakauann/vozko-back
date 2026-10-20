@@ -173,7 +173,7 @@ func TestHealthCheckMarksFailingWebhook(t *testing.T) {
 		},
 	}
 
-	if err := NewCheckWebhookHealthUseCase(accounts, api).Execute(context.Background()); err != nil {
+	if err := NewCheckWebhookHealthUseCase(accounts, api, webhookBase).Execute(context.Background()); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 
@@ -200,7 +200,7 @@ func TestHealthCheckRecoversWebhook(t *testing.T) {
 		},
 	}
 
-	if err := NewCheckWebhookHealthUseCase(accounts, api).Execute(context.Background()); err != nil {
+	if err := NewCheckWebhookHealthUseCase(accounts, api, webhookBase).Execute(context.Background()); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if len(accounts.StatusWrites) != 1 || accounts.StatusWrites[0].Status != tgdomain.StatusActive {
@@ -221,7 +221,7 @@ func TestHealthCheckMarksRevokedToken(t *testing.T) {
 		},
 	}
 
-	if err := NewCheckWebhookHealthUseCase(accounts, api).Execute(context.Background()); err != nil {
+	if err := NewCheckWebhookHealthUseCase(accounts, api, webhookBase).Execute(context.Background()); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	if len(accounts.StatusWrites) != 1 || accounts.StatusWrites[0].Status != tgdomain.StatusTokenInvalid {
@@ -247,7 +247,7 @@ func TestHealthCheckIsolatesTenantFailures(t *testing.T) {
 		},
 	}
 
-	if err := NewCheckWebhookHealthUseCase(accounts, api).Execute(context.Background()); err != nil {
+	if err := NewCheckWebhookHealthUseCase(accounts, api, webhookBase).Execute(context.Background()); err != nil {
 		t.Fatalf("Execute must not fail because one tenant did: %v", err)
 	}
 	if len(accounts.HealthWrites) != 2 {

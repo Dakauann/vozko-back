@@ -21,12 +21,13 @@ func NewFinishConversationExecutor(status conversation.ConversationStatusUpdater
 
 func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionFinishConversation,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Finalizar Conversa",
-		Description: "Encerra a conversa atual no CRM (status Finalizada). Reabre se o cliente mandar mensagem de novo.",
-		Icon:        "CheckCircle",
+		Type:         workflow.NodeTypeActionFinishConversation,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Finalizar Conversa",
+		Description:  "Encerra a conversa atual no CRM (status Finalizada). Reabre se o cliente mandar mensagem de novo.",
+		Icon:         "CheckCircle",
 		Guidance: workflow.NodeGuidance{
 			When: "Quando o fluxo concluiu o atendimento e a conversa deve sair do conjunto aberto (ex.: após despedida, resolução, ou fim de automação).",
 			Behavior: "Chama o mesmo serviço de status que humanos e a ferramenta finish_conversation da IA. " +
@@ -77,34 +78,31 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 
 	if e.status == nil {
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   "serviço de status de conversa não configurado",
 			},
-		}, nil
+		}, edges, "erro"), nil
 	}
 
 	entryID := strings.TrimSpace(ctx.Run.EntryID)
 	entryType := strings.TrimSpace(ctx.Run.EntryType)
 	if entryID == "" || entryType == "" {
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   "run sem entry_id/entry_type, finalize só em fluxos de conversa",
 			},
-		}, nil
+		}, edges, "erro"), nil
 	}
 	if !shared.EntryType(entryType).SupportsConversationClosing() {
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   fmt.Sprintf("tipo de entrada %q não suporta finalização", entryType),
 			},
-		}, nil
+		}, edges, "erro"), nil
 	}
 
 	note, _ := ctx.Node.Config["note"].(string)
@@ -119,15 +117,14 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		OutcomeCode: outcomeCode,
 		ActorID:     workflowActor(ctx.Run.WorkflowID),
 	}); err != nil {
-		return &workflow.NodeResult{
-			NextNodeID: resolveEdgeByLabel(edges, "erro"),
+		return routeOutput(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success":    false,
 				"entry_id":   entryID,
 				"entry_type": entryType,
 				"error":      finishFailure(err),
 			},
-		}, nil
+		}, edges, "erro"), nil
 	}
 
 	out := map[string]interface{}{
@@ -144,10 +141,9 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		out["note"] = note
 	}
 
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "sucesso"),
-		Output:     out,
-	}, nil
+	return routeOutput(&workflow.NodeResult{
+		Output: out,
+	}, edges, "sucesso"), nil
 }
 
 func workflowActor(workflowID string) string {

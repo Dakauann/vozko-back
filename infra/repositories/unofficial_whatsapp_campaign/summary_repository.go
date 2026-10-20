@@ -30,7 +30,7 @@ func (r *summaryRepository) CountByStatusForWorkspace(filter uwc.WorkspaceSummar
 		query = query.Where("c.department_id IN ?", filter.DepartmentIDs)
 	}
 	if len(filter.InstanceIDs) > 0 {
-		query = query.Where("c.instance_id IN ?", filter.InstanceIDs)
+		query = query.Where("(c.instance_id IN ? OR unofficial_whatsapp_campaign_entries.sender_instance_id IN ?)", filter.InstanceIDs, filter.InstanceIDs)
 	}
 	if filter.CreatedFrom != nil {
 		query = query.Where("c.created_at >= ?", filter.CreatedFrom.UTC())

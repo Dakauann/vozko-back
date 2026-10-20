@@ -36,11 +36,14 @@ type CampaignHandler struct {
 	delEntry  uwc.DeleteEntryUseCase
 	quickSend uwc.QuickSendUseCase
 	validate  uwc.ValidateTargetsUseCase
+	estimate  uwc.EstimateCampaignUseCase
 
 	departments DepartmentScopeResolver
 	access      uwc.CampaignAccessUseCase
 	actions     uwc.CampaignActionUseCase
 	permissions workspace_domain.CheckAccessUseCase
+	progress    campaign.ProgressUseCase
+	timeline    campaign.TimelineUseCase
 }
 
 type CampaignHandlerDeps struct {
@@ -61,6 +64,7 @@ type CampaignHandlerDeps struct {
 	DeleteEntry uwc.DeleteEntryUseCase
 	QuickSend   uwc.QuickSendUseCase
 	Validate    uwc.ValidateTargetsUseCase
+	Estimate    uwc.EstimateCampaignUseCase
 	Departments DepartmentScopeResolver
 	Permissions workspace_domain.CheckAccessUseCase
 }
@@ -71,7 +75,7 @@ func NewCampaignHandler(d CampaignHandlerDeps) *CampaignHandler {
 		remove: d.Delete, assignDep: d.AssignDep, summary: d.Summary,
 		entries: d.Entries, reset: d.Reset, clear: d.Clear,
 		addEntry: d.AddEntry, updEntry: d.UpdateEntry, delEntry: d.DeleteEntry,
-		quickSend: d.QuickSend, validate: d.Validate, departments: d.Departments, access: d.Access, actions: d.Actions,
+		quickSend: d.QuickSend, validate: d.Validate, estimate: d.Estimate, departments: d.Departments, access: d.Access, actions: d.Actions,
 		permissions: d.Permissions,
 	}
 }
@@ -128,6 +132,22 @@ func (h *CampaignHandler) seesGroups(r *http.Request, workspaceID string) bool {
 	return h.permissions.Execute(claims.UserID, workspaceID, workspace_domain.ResourceUnofficialWhatsAppGroups, workspace_domain.ActionRead) == nil
 }
 
+// @Summary		Listar campanhas não oficiais
+// @Description	Lista as campanhas do WhatsApp não oficial do workspace. `audience` filtra por destino (`leads` ou `groups`); outro valor responde 422. Cada campanha para grupos traz em `targetNames` os nomes dos primeiros grupos; o total está em `metrics.totalNumbers`. `instanceId` filtra pelo número da campanha ou, numa campanha para grupos, pelos números que ela pode usar.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Produce		json
+// @Param			audience	query		string	false	"Destino"	Enums(leads, groups)
+// @Param			instanceId	query		string	false	"Números, separados por vírgula"
+// @Param			status		query		string	false	"RUNNING, PAUSED, STOPPED ou COMPLETED"
+// @Param			search		query		string	false	"Parte do nome"
+// @Param			archived	query		bool	false	"Arquivadas"
+// @Param			page		query		int		false	"Página"
+// @Param			pageSize	query		int		false	"Itens por página"
+// @Success		200			{object}	response.PaginatedPayload{data=[]campaignDTO}
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		422			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns [get]
 func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
 	workspaceID, _, ok := h.campaignScope(w, r)
 	if !ok {
@@ -139,11 +159,17 @@ func (h *CampaignHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	values := r.URL.Query()
+	audience := uwc.Audience(strings.ToLower(strings.TrimSpace(values.Get("audience"))))
+	if audience != "" && !audience.Valid() {
+		response.WriteError(w, http.StatusUnprocessableEntity, uwc.ErrCampaignAudienceInvalid.Error(), nil)
+		return
+	}
 	archived := httpx.ParseBoolQuery(values.Get("archived"))
 	input := uwc.ListCampaignsInput{
 		WorkspaceID:   workspaceID,
 		DepartmentIDs: httpx.DepartmentFilterIDs(r),
 		InstanceIDs:   httpx.ParseCSVQuery(values["instanceId"]),
+		Audience:      audience,
 		Search:        strings.TrimSpace(values.Get("search")),
 		Status:        campaign.Status(strings.ToUpper(strings.TrimSpace(values.Get("status")))),
 		Archived:      archived,
@@ -185,12 +211,68 @@ func (h *CampaignHandler) ListArchived(w http.ResponseWriter, r *http.Request) {
 	h.List(w, r)
 }
 
+// @Summary		Detalhe de uma campanha não oficial
+// @Description	Devolve a campanha com as métricas e, enquanto não terminou, `estimate`: quanto falta para enviar os pendentes (`seconds`), pelo intervalo real entre envios de cada número. Numa campanha para grupos os números enviam em paralelo e cada grupo conta no número que pode publicar nele; `unsendable` conta os grupos em que nenhum número pode publicar agora. Sem estimativa disponível o campo não vem.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Produce		json
+// @Param			id	path		string	true	"Campanha"
+// @Success		200	{object}	campaignDTO
+// @Failure		403	{object}	response.ErrorResponse
+// @Failure		404	{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id} [get]
 func (h *CampaignHandler) Get(w http.ResponseWriter, r *http.Request) {
 	_, _, c, ok := h.ownedCampaign(w, r)
 	if !ok {
 		return
 	}
+	if h.estimate != nil && c.Status != campaign.StatusCompleted {
+		if remaining, err := h.estimate.Remaining(r.Context(), c); err == nil {
+			c.Estimate = remaining
+		}
+	}
 	response.WriteSuccess(w, http.StatusOK, campaignToDTO(c))
+}
+
+// @Summary		Estimar o envio de uma campanha não oficial
+// @Description	Calcula, antes de criar, quanto tempo a campanha leva para enviar (`estimate.seconds`), pelo mesmo intervalo entre envios que o envio usa. Para pessoas (`audience=leads`) usa o número escolhido e `targets`. Para grupos (`audience=groups`) não há número: para cada grupo de `groupJids` mostra quais dos seus números podem publicar nele agora (`senders`) ou por que nenhum pode (`block`: `not_in_group`, `cannot_post` ou `offline`), e os números enviam em paralelo. Grupos pedem também `unofficial_whatsapp_groups:read`.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			body	body		campaignEstimatePayload	true	"Destino, número ou grupos e ritmo"
+// @Success		200		{object}	campaignEstimateDraftDTO
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/estimate [post]
+func (h *CampaignHandler) Estimate(w http.ResponseWriter, r *http.Request) {
+	workspaceID, scope, ok := h.campaignScope(w, r)
+	if !ok {
+		return
+	}
+	var payload campaignEstimatePayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		response.WriteInvalidBodyError(w, nil)
+		return
+	}
+	in := payload.toDomain(workspaceID)
+	if in.Audience == uwc.AudienceGroups && !h.seesGroups(r, workspaceID) {
+		response.WriteError(w, http.StatusForbidden, "you do not have access to this workspace's groups", nil)
+		return
+	}
+	if h.estimate == nil {
+		response.WriteError(w, http.StatusServiceUnavailable, uwcuc.ErrGroupTargetsUnavailable.Error(), nil)
+		return
+	}
+	draft, err := h.estimate.Draft(r.Context(), in, scope)
+	if err != nil {
+		writeCampaignError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, draftEstimateToDTO(draft))
 }
 
 func (h *CampaignHandler) Summary(w http.ResponseWriter, r *http.Request) {
@@ -218,6 +300,21 @@ func (h *CampaignHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, metrics)
 }
 
+// @Summary		Números e grupos de uma campanha não oficial
+// @Description	Lista os destinos da campanha. Depois do envio, `senderInstanceId` e `senderLabel` dizem qual número enviou; numa campanha para grupos cada grupo pode ter saído por um número diferente.
+// @Tags			Unofficial WhatsApp Campaigns
+// @Produce		json
+// @Param			id			path		string	true	"Campanha"
+// @Param			status		query		string	false	"Status do envio"
+// @Param			search		query		string	false	"Número ou nome"
+// @Param			errorCode	query		int		false	"Código de falha"
+// @Param			page		query		int		false	"Página"
+// @Param			pageSize	query		int		false	"Itens por página"
+// @Success		200			{object}	response.PaginatedPayload{data=[]campaignEntryDTO}
+// @Failure		403			{object}	response.ErrorResponse
+// @Failure		404			{object}	response.ErrorResponse
+// @Security		BearerAuth
+// @Router			/unofficial-whatsapp/campaigns/{id}/entries [get]
 func (h *CampaignHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 	if _, _, _, ok := h.ownedCampaign(w, r); !ok {
 		return
@@ -680,7 +777,6 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrCampaignRunning),
 		errors.Is(err, uwc.ErrCampaignResetNotAllowed),
 		errors.Is(err, uwc.ErrCampaignClearNotAllowed),
-		errors.Is(err, uwc.ErrGroupCampaignNumberLocked),
 		errors.Is(err, uwc.ErrCampaignAudienceMismatch),
 		errors.Is(err, uwcuc.ErrQuickSendBusy):
 		response.WriteError(w, http.StatusConflict, err.Error(), nil)
@@ -702,6 +798,8 @@ func writeCampaignError(w http.ResponseWriter, err error) {
 		errors.Is(err, uwc.ErrCampaignTargetsTooMany),
 		errors.Is(err, uwc.ErrCampaignTargetInvalid),
 		errors.Is(err, uwc.ErrCampaignAudienceInvalid),
+		errors.Is(err, uwc.ErrGroupCampaignTakesNoNumber),
+		errors.Is(err, uwc.ErrGroupCampaignNoNumber),
 		errors.Is(err, uwc.ErrGroupCampaignFunnel),
 		errors.Is(err, uwc.ErrCampaignVariablesMismatch),
 		errors.Is(err, uwc.ErrCampaignVariableEmpty),

@@ -95,12 +95,13 @@ func (e *manageOpportunityExecutor) Definition() workflow.NodeDefinition {
 		actions = append(actions, workflow.ConfigFieldOption{Value: string(action), Label: dealActionLabels[action]})
 	}
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionManageOpportunity,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Gerenciar Oportunidade",
-		Description: "Cria ou atualiza oportunidades da conversa: valor, etapa, ganho ou perda.",
-		Icon:        "CurrencyDollar",
+		Type:         workflow.NodeTypeActionManageOpportunity,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Gerenciar Oportunidade",
+		Description:  "Cria ou atualiza oportunidades da conversa: valor, etapa, ganho ou perda.",
+		Icon:         "CurrencyDollar",
 		Guidance: workflow.NodeGuidance{
 			When: "Para registrar a venda da conversa no funil de oportunidades, por exemplo depois que um agente confirma o fechamento.",
 			Behavior: "Sem ID da oportunidade, o nó age na única oportunidade aberta da conversa neste funil; com mais de uma aberta, segue pela saída Erro. " +
@@ -193,14 +194,13 @@ func (e *manageOpportunityExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	out := dealOutput(result.Opportunity)
 	out["success"] = true
 	out["created"] = result.Created
-	return &workflow.NodeResult{NextNodeID: resolveEdgeByLabelStrict(edges, "sucesso"), Output: out}, nil
+	return routeOutput(&workflow.NodeResult{Output: out}, edges, "sucesso"), nil
 }
 
 func failDeal(edges []workflow.Edge, reason string) *workflow.NodeResult {
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(edges, "erro"),
-		Output:     map[string]interface{}{"success": false, "created": false, "error": reason},
-	}
+	return routeOutput(&workflow.NodeResult{
+		Output: map[string]interface{}{"success": false, "created": false, "error": reason},
+	}, edges, "erro")
 }
 
 var nodeRefusals = map[opportunity_usecase.Refusal]string{
@@ -244,12 +244,13 @@ func NewCheckOpportunityExecutor(deals DealDesk) workflow.NodeExecutor {
 
 func (e *checkOpportunityExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionCheckOpportunity,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Verificar Oportunidade",
-		Description: "Verifica as oportunidades da conversa: se existem, se há mais de uma aberta, a situação ou a etapa.",
-		Icon:        "CurrencyDollar",
+		Type:         workflow.NodeTypeConditionCheckOpportunity,
+		TestBehavior: workflow.NodeTestReadsData,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Verificar Oportunidade",
+		Description:  "Verifica as oportunidades da conversa: se existem, se há mais de uma aberta, a situação ou a etapa.",
+		Icon:         "CurrencyDollar",
 		Guidance: workflow.NodeGuidance{
 			When: "Para seguir caminhos diferentes conforme a conversa já tenha uma oportunidade, ela esteja ganha ou em uma etapa.",
 			Behavior: "Considera a oportunidade do ID informado ou a única oportunidade aberta da conversa no funil; sem aberta, a última encerrada. " +
@@ -331,10 +332,9 @@ func (e *checkOpportunityExecutor) Execute(ctx *workflow.NodeContext) (*workflow
 	if out["matched"] == true {
 		branch = "true"
 	}
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(ctx.Graph.OutgoingEdges(ctx.Node.ID), branch),
-		Output:     out,
-	}, nil
+	return routeOutput(&workflow.NodeResult{
+		Output: out,
+	}, ctx.Graph.OutgoingEdges(ctx.Node.ID), branch), nil
 }
 
 func dealCheckOutput(deals opportunity.EntryDeals, deal *opportunity.Opportunity) map[string]interface{} {

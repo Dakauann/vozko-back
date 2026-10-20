@@ -49,12 +49,13 @@ func NewMoveStageExecutor(stages StageReader, mover stage.AssignEntryStageUseCas
 
 func (e *moveStageExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionMoveStage,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Mover Etapa",
-		Description: "Move a conversa para uma etapa do funil.",
-		Icon:        "Kanban",
+		Type:         workflow.NodeTypeActionMoveStage,
+		TestBehavior: workflow.NodeTestWritesData,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Mover Etapa",
+		Description:  "Move a conversa para uma etapa do funil.",
+		Icon:         "Kanban",
 		Guidance: workflow.NodeGuidance{
 			When: "Para avançar a conversa no funil conforme o fluxo (ex.: qualificado, proposta enviada, ganho).",
 			Behavior: "Segue a mesma regra de quem move pelo CRM: a conversa só muda de etapa dentro do próprio funil; " +
@@ -106,7 +107,7 @@ func (e *moveStageExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 	if from != nil {
 		out["from_stage_id"], out["from_stage_name"] = from.StageID, from.StageName
 		if from.StageID == target.ID {
-			return &workflow.NodeResult{NextNodeID: resolveEdgeByLabel(edges, "sucesso"), Output: out}, nil
+			return routeOutput(&workflow.NodeResult{Output: out}, edges, "sucesso"), nil
 		}
 	}
 
@@ -123,19 +124,18 @@ func (e *moveStageExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 	}
 
 	out["changed"] = true
-	return &workflow.NodeResult{NextNodeID: resolveEdgeByLabel(edges, "sucesso"), Output: out}, nil
+	return routeOutput(&workflow.NodeResult{Output: out}, edges, "sucesso"), nil
 }
 
 func failMove(edges []workflow.Edge, stageID, reason string) *workflow.NodeResult {
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabel(edges, "erro"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":  false,
 			"changed":  false,
 			"stage_id": stageID,
 			"error":    reason,
 		},
-	}
+	}, edges, "erro")
 }
 
 func moveFailure(err error) string {
@@ -155,12 +155,13 @@ func NewCheckStageExecutor(stages StageReader) workflow.NodeExecutor {
 
 func (e *checkStageExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeConditionCheckStage,
-		Category:    workflow.NodeCategoryCondition,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Verificar Etapa",
-		Description: "Verifica se a conversa está em uma etapa do funil.",
-		Icon:        "Kanban",
+		Type:         workflow.NodeTypeConditionCheckStage,
+		TestBehavior: workflow.NodeTestReadsData,
+		Category:     workflow.NodeCategoryCondition,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Verificar Etapa",
+		Description:  "Verifica se a conversa está em uma etapa do funil.",
+		Icon:         "Kanban",
 		Outputs: []workflow.HandleDefinition{
 			{ID: "true", Label: "Está na etapa"},
 			{ID: "false", Label: "Não está"},
@@ -197,8 +198,7 @@ func (e *checkStageExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 	if out["matched"] == true {
 		branch = "true"
 	}
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(ctx.Graph.OutgoingEdges(ctx.Node.ID), branch),
-		Output:     out,
-	}, nil
+	return routeOutput(&workflow.NodeResult{
+		Output: out,
+	}, ctx.Graph.OutgoingEdges(ctx.Node.ID), branch), nil
 }

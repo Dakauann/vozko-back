@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"vozko/domain/shared"
+	"vozko/domain/workflow"
 	"vozko/infra/http/middleware"
 )
 
@@ -33,20 +34,9 @@ func CanAccessDepartment(r *http.Request, resourceDepartmentID string) bool {
 	if filter == nil {
 		return true
 	}
-	ids := filter.EffectiveDepartmentIDs()
-	if resourceDepartmentID == "" {
-		if filter.IsOwnerOrAdmin {
-			return len(ids) == 0
-		}
-		return !filter.ShouldFilter()
-	}
-	if len(ids) == 0 {
-		return !filter.ShouldFilter() || filter.IsOwnerOrAdmin
-	}
-	for _, id := range ids {
-		if id == resourceDepartmentID {
-			return true
-		}
-	}
-	return false
+	return filter.CanAccess(resourceDepartmentID)
+}
+
+func WorkflowScope(r *http.Request) workflow.Scope {
+	return workflow.Scope{WorkspaceID: middleware.GetWorkspaceID(r), Departments: middleware.GetDepartmentFilter(r), Requester: RequesterOf(r)}
 }

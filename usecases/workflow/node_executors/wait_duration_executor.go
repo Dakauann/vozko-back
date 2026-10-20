@@ -13,12 +13,13 @@ func NewWaitDurationExecutor() workflow.NodeExecutor {
 
 func (e *waitDurationExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeWaitDuration,
-		Category:    workflow.NodeCategoryWait,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Aguardar Duração",
-		Description: "Pausa o fluxo por um tempo determinado.",
-		Icon:        "Timer",
+		Type:         workflow.NodeTypeWaitDuration,
+		TestBehavior: workflow.NodeTestWaits,
+		Category:     workflow.NodeCategoryWait,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Aguardar Duração",
+		Description:  "Pausa o fluxo por um tempo determinado.",
+		Icon:         "Timer",
 		Guidance: workflow.NodeGuidance{
 			When: "Para pausar o fluxo por um tempo fixo.",
 		},

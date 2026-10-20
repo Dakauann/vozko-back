@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"sort"
 	"strconv"
@@ -16,21 +15,25 @@ import (
 
 	"vozko/domain/ai"
 	"vozko/domain/messaging"
+	"vozko/domain/metrics"
 	"vozko/domain/tools"
 	"vozko/infra/ai/aibilling"
 )
 
 type Service struct {
-	client            *openrouter.Client
-	defaultModel      string
-	toolService       tools.Service
-	defaultTemp       float32
-	maxToolIterations int
-	billingPub        messaging.MessageQueuePub
-	usageFetcher      generationUsageFetcher
-	catalogFetcher    *modelCatalogFetcher
-	usageRetryDelays  []time.Duration
-	recoveries        sync.WaitGroup
+	client             *openrouter.Client
+	defaultModel       string
+	toolService        tools.Service
+	defaultTemp        float32
+	maxToolIterations  int
+	billingPub         messaging.MessageQueuePub
+	usageFetcher       generationUsageFetcher
+	catalogFetcher     *modelCatalogFetcher
+	usageRetryDelays   []time.Duration
+	recoveries         sync.WaitGroup
+	streamDrainTimeout time.Duration
+	completionWait     time.Duration
+	billingMetrics     metrics.BillingMetricsRecorder
 }
 
 type Config struct {
@@ -40,8 +43,8 @@ type Config struct {
 	XTitle       string
 }
 
-func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQueuePub) (*Service, error) {
-	if billingPub == nil {
+func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQueuePub, billingMetrics metrics.BillingMetricsRecorder) (*Service, error) {
+	if billingPub == nil || billingMetrics == nil {
 		return nil, fmt.Errorf("%w: openrouter ai service", ai.ErrBillingNotConfigured)
 	}
 
@@ -52,6 +55,7 @@ func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQ
 	if cfg.XTitle != "" {
 		opts = append(opts, openrouter.WithXTitle(cfg.XTitle))
 	}
+	opts = append(opts, recordingGenerationIDs)
 
 	return &Service{
 		client:            openrouter.NewClient(cfg.APIKey, opts...),
@@ -60,6 +64,7 @@ func NewService(cfg Config, toolSvc tools.Service, billingPub messaging.MessageQ
 		defaultTemp:       0.2,
 		maxToolIterations: ai.DefaultMaxToolIterations,
 		billingPub:        billingPub,
+		billingMetrics:    billingMetrics,
 		usageFetcher:      newHTTPGenerationFetcher(cfg.APIKey, openRouterDefaultBaseURL),
 		catalogFetcher:    newModelCatalogFetcher(cfg.APIKey, openRouterDefaultBaseURL),
 		usageRetryDelays:  generationRetryDelays,
@@ -88,6 +93,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 	execMode := input.ExecutionModeOrDefault()
 	maxIter := s.resolveMaxIterations(input.ToolIterationsOrDefault())
 	hasTools := len(req.Tools) > 0
+	target := billingTarget{workspaceID: input.WorkspaceID, reference: input.BillingReference, model: req.Model}
 
 	go func() {
 		defer close(eventCh)
@@ -97,52 +103,38 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 		shouldEnd := false
 
 		for iter := 0; ; iter++ {
-			stream, err := s.client.CreateChatCompletionStream(ctx, req)
-			if err != nil {
-				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(fmt.Errorf("stream: %w", err))}
+			if err := ctx.Err(); err != nil {
+				s.abandonStream(nil, eventCh, err)
 				return
 			}
+			attempt, items := s.startStream(ctx, req, target)
 
 			toolAcc := make(map[int]*openrouter.ToolCall)
 			var thinking reasoningAccumulator
 			var iterText strings.Builder
 			finishReason := ""
-			var totalUsage *openrouter.Usage
-			var genID string
 
 			for {
+				var item streamItem
+				var open bool
 				select {
 				case <-ctx.Done():
-					stream.Close()
-					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: ctx.Err()}
-					s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
+					s.abandonStream(attempt, eventCh, ctx.Err())
 					return
-				default:
+				case item, open = <-items:
 				}
-
-				resp, err := stream.Recv()
-				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					if isStreamClosedError(err) {
-						break
-					}
-					stream.Close()
-					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(err)}
-					s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
+				if !open {
+					break
+				}
+				if item.err != nil {
+					s.settle(attempt, exitAfter(item.err))
+					eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(item.err)}
 					return
 				}
 
-				if resp.ID != "" {
-					genID = resp.ID
-				}
-				if resp.Usage != nil {
-					totalUsage = resp.Usage
-				}
-
+				resp := item.chunk
 				if len(resp.Choices) == 0 {
-					if totalUsage != nil && finishReason != "" {
+					if _, usage := attempt.ledger.snapshot(); usage != nil && finishReason != "" {
 						break
 					}
 					continue
@@ -155,8 +147,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					select {
 					case eventCh <- ai.StreamEvent{Type: ai.StreamEventReasoning, Token: reasoning}:
 					case <-ctx.Done():
-						stream.Close()
-						s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
+						s.abandonStream(attempt, eventCh, ctx.Err())
 						return
 					}
 				}
@@ -167,8 +158,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					select {
 					case eventCh <- ai.StreamEvent{Type: ai.StreamEventToken, Token: choice.Delta.Content}:
 					case <-ctx.Done():
-						stream.Close()
-						s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
+						s.abandonStream(attempt, eventCh, ctx.Err())
 						return
 					}
 				}
@@ -199,9 +189,8 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 					finishReason = string(choice.FinishReason)
 				}
 			}
-			stream.Close()
-
-			s.billStreamUsage(input.WorkspaceID, input.BillingReference, req.Model, genID, totalUsage)
+			s.settle(attempt, callEnded)
+			genID, totalUsage := attempt.ledger.snapshot()
 
 			if streamUnfinished(finishReason, totalUsage) {
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventError, Error: classified(fmt.Errorf("%w: model=%s generation=%s finish=%q", ai.ErrStreamIncomplete, req.Model, genID, finishReason))}
@@ -243,8 +232,10 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 				}
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventToolCall, ToolCall: &toolCall}
 
+				startedAt := time.Now()
 				result := s.executeTool(ctx, input.ToolConfigs, tc.Function.Name, toolCall.Arguments)
 				toolCall.Result = &result
+				toolCall.DurationMs = time.Since(startedAt).Milliseconds()
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventToolResult, ToolCall: &toolCall, ToolResult: &result}
 
 				if result.ShouldEndSession {
@@ -309,13 +300,14 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 	execMode := input.ExecutionModeOrDefault()
 	maxIter := s.resolveMaxIterations(input.ToolIterationsOrDefault())
 	hasTools := len(req.Tools) > 0
+	target := billingTarget{workspaceID: input.WorkspaceID, reference: input.BillingReference, model: req.Model}
 
 	var totalUsage ai.Usage
 	var executedCalls []ai.ToolCall
 	forced := false
 
 	for iter := 0; ; iter++ {
-		resp, err := s.client.CreateChatCompletion(ctx, req)
+		resp, err := s.complete(ctx, req, target)
 		if err != nil {
 			return nil, fmt.Errorf("openrouter: %w", classified(err))
 		}
@@ -324,12 +316,6 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 			totalUsage.PromptTokens += resp.Usage.PromptTokens
 			totalUsage.CompletionTokens += resp.Usage.CompletionTokens
 			totalUsage.TotalTokens += resp.Usage.TotalTokens
-
-			if input.WorkspaceID == "" {
-				log.Printf("CRITICAL: [ai-billing] missing workspace_id for model=%s, NOT billing (REVENUE LEAK)", req.Model)
-			} else {
-				s.publishBillingEvent(input.WorkspaceID, input.BillingReference, req.Model, callUsageOf(resp.Usage))
-			}
 		}
 
 		if len(resp.Choices) == 0 {
@@ -362,8 +348,9 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 		req.Messages = append(req.Messages, msg)
 		for _, call := range msg.ToolCalls {
 			args := parseToolArguments(call.Function.Arguments)
+			startedAt := time.Now()
 			result := s.executeTool(ctx, input.ToolConfigs, call.Function.Name, args)
-			executedCalls = append(executedCalls, ai.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: args, Result: &result})
+			executedCalls = append(executedCalls, ai.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: args, Result: &result, DurationMs: time.Since(startedAt).Milliseconds()})
 			req.Messages = append(req.Messages, openrouter.ToolMessage(call.ID, serializeToolResult(&result)))
 		}
 		if cachesExplicitly(req.Model) {

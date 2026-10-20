@@ -28,5 +28,5 @@ Uma pergunta por vez no WhatsApp. Contato que não tem necessidade ou prazo não
 - Cadência de referência: cerca de 6 contatos em 3 semanas, cada um trazendo algo novo (resposta a uma dúvida, prova, condição), nunca só "e aí?".
 - Fora da janela de 24 horas do WhatsApp oficial, o retorno precisa de modelo aprovado.
 
-## No Vozko
+## Na plataforma
 create_pipeline e create_stage montam o funil; set_initial_stage define onde o contato entra; move_conversation_stage move; schedule_message agenda retornos; create_deal registra oportunidade com valor. A análise automática das conversas pode mover etapas sozinha quando ligada no canal.

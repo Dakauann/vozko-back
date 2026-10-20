@@ -11,12 +11,17 @@ import (
 type MemberStatus string
 
 const (
-	MemberActive MemberStatus = "active"
-	MemberLeft   MemberStatus = "left"
+	MemberActive  MemberStatus = "active"
+	MemberLeft    MemberStatus = "left"
+	MemberRemoved MemberStatus = "removed"
 )
 
 func (s MemberStatus) Valid() bool {
-	return s == MemberActive || s == MemberLeft
+	return s == MemberActive || s.Departed()
+}
+
+func (s MemberStatus) Departed() bool {
+	return s == MemberLeft || s == MemberRemoved
 }
 
 type Member struct {
@@ -66,6 +71,7 @@ type MemberEvent struct {
 	WorkspaceID string          `json:"workspaceId"`
 	PersonKey   string          `json:"personKey"`
 	Kind        MemberEventKind `json:"kind"`
+	Cause       DepartureCause  `json:"cause,omitempty"`
 	OurNumber   bool            `json:"ourNumber"`
 	OccurredAt  time.Time       `json:"occurredAt"`
 }
@@ -261,4 +267,65 @@ func (m Member) LeadNumbers() []string {
 		}
 	}
 	return numbers
+}
+
+type Memberships []Member
+
+func MembershipsByPerson(members []Member) []Memberships {
+	var out []Memberships
+	index := map[string]int{}
+	for _, m := range members {
+		i, seen := index[m.PersonKey]
+		if !seen {
+			index[m.PersonKey] = len(out)
+			out = append(out, Memberships{m})
+			continue
+		}
+		out[i] = append(out[i], m)
+	}
+	return out
+}
+
+func (ms Memberships) PersonKey() string {
+	if len(ms) == 0 {
+		return ""
+	}
+	return ms[0].PersonKey
+}
+
+func (ms Memberships) LeadID() string {
+	for _, m := range ms {
+		if m.LeadID != "" {
+			return m.LeadID
+		}
+	}
+	return ""
+}
+
+func (ms Memberships) Phone() string {
+	for _, m := range ms {
+		if !m.Hidden() {
+			return m.Phone
+		}
+	}
+	return ""
+}
+
+func (ms Memberships) Name() string {
+	for _, m := range ms {
+		if name := strings.TrimSpace(m.DisplayName); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func (ms Memberships) Unlinked() []Member {
+	var out []Member
+	for _, m := range ms {
+		if m.LeadID == "" {
+			out = append(out, m)
+		}
+	}
+	return out
 }

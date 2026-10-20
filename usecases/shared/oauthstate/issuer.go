@@ -30,12 +30,17 @@ func NewIssuer(secret string, nonces NonceStore, defaultReturnPath string) (*Iss
 }
 
 func (i *Issuer) Issue(in IssueInput) (string, error) {
+	raw, _, err := i.issue(in)
+	return raw, err
+}
+
+func (i *Issuer) issue(in IssueInput) (string, string, error) {
 	if strings.TrimSpace(in.WorkspaceID) == "" {
-		return "", fmt.Errorf("oauth: workspace is required")
+		return "", "", fmt.Errorf("oauth: workspace is required")
 	}
 	nonce, err := NewNonce()
 	if err != nil {
-		return "", fmt.Errorf("oauth: mint nonce: %w", err)
+		return "", "", fmt.Errorf("oauth: mint nonce: %w", err)
 	}
 	raw, err := EncodeState(OAuthState{
 		WorkspaceID: in.WorkspaceID,
@@ -46,12 +51,12 @@ func (i *Issuer) Issue(in IssueInput) (string, error) {
 		Popup:       in.Popup,
 	}, i.secret)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if err := i.nonces.Issue(nonce, in.WorkspaceID); err != nil {
-		return "", err
+		return "", "", err
 	}
-	return raw, nil
+	return raw, nonce, nil
 }
 
 func (i *Issuer) Redeem(raw string) (*OAuthState, error) {

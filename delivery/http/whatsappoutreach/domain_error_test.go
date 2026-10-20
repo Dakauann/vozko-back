@@ -58,6 +58,7 @@ func TestWriteDomainError_AnswersTheDomainCodeOfEveryRefusal(t *testing.T) {
 		balance.ErrMonthlySendCapReached, balance.ErrSendWindowClosed, template.ErrSendInProgress, template.ErrPricingUnavailable, template.ErrQuoteOutOfRange,
 		template.ErrTemplateNotSendable, template.ErrTemplatePhoneMismatch, template.ErrIdempotencyKeyRequired,
 		template.ErrWorkspaceRequired, template.ErrBillingNotConfigured, wo.ErrSendOutcomeUnknown, wo.ErrConversationNotFound,
+		template.ErrFormNotSendable,
 	}
 	for _, err := range refusals {
 		rec := httptest.NewRecorder()

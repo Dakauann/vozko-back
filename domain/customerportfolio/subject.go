@@ -19,6 +19,8 @@ var contactChannels = map[shared.EntryType]bool{
 	shared.EntryTypeInstagram:          true,
 	shared.EntryTypeFacebook:           true,
 	shared.EntryTypeWebchat:            true,
+	shared.EntryTypeMercadoLivre:       true,
+	shared.EntryTypeTikTok:             true,
 }
 
 type Subject struct {

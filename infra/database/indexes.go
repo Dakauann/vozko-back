@@ -9,7 +9,15 @@ import (
 
 	"vozko/domain/balance"
 	ia "vozko/domain/inbox_assignment"
+	"vozko/domain/workflow"
 	"vozko/infra/database/sqlexpr"
+)
+
+const (
+	AgentRunWorkflowBindingsIndex    = "idx_agents_run_workflow_bindings"
+	WorkflowRunOriginIndex           = "idx_wfr_workflow_origin_started"
+	WorkflowRunTriggerDataPruneIndex = "idx_wfr_trigger_data_prune"
+	WorkflowRunLogNodeIndex          = "idx_wfrl_run_node_executed"
 )
 
 func performanceIndexes() []ddl {
@@ -309,6 +317,66 @@ func performanceIndexes() []ddl {
 			sql: `CREATE INDEX IF NOT EXISTS idx_wfrl_run_executed
 				ON workflow_run_logs (run_id, executed_at)`,
 		},
+		{
+			name: "idx_wfwd_workflow_received",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfwd_workflow_received
+				ON workflow_webhook_deliveries (workflow_id, received_at DESC)`,
+		},
+		{
+			name: "idx_wfwd_entry",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfwd_entry
+				ON workflow_webhook_deliveries (entry_id, entry_type)`,
+		},
+		{
+			name: "idx_wfwd_received",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfwd_received
+				ON workflow_webhook_deliveries (received_at)`,
+		},
+		{
+			name: "idx_aitc_entry_created",
+			sql: `CREATE INDEX IF NOT EXISTS idx_aitc_entry_created
+				ON ai_tool_calls (entry_id, entry_type, created_at DESC)`,
+		},
+		{
+			name: "idx_aitc_created",
+			sql: `CREATE INDEX IF NOT EXISTS idx_aitc_created
+				ON ai_tool_calls (created_at)`,
+		},
+		{
+			name: "idx_aitc_failed_created",
+			sql: `CREATE INDEX IF NOT EXISTS idx_aitc_failed_created
+				ON ai_tool_calls (created_at)
+				WHERE outcome = 'error'`,
+		},
+		{
+			name: "idx_wfwd_rejected_received",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfwd_rejected_received
+				ON workflow_webhook_deliveries (received_at)
+				WHERE outcome = 'rejected'`,
+		},
+		{
+			name: "idx_wfra_workflow_last_seen",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfra_workflow_last_seen
+				ON workflow_runtime_alerts (workspace_id, workflow_id, last_seen DESC)`,
+		},
+		{
+			name: "idx_wfra_workspace_open",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfra_workspace_open
+				ON workflow_runtime_alerts (workspace_id, last_seen DESC)
+				WHERE status = 'open'`,
+		},
+		{
+			name: "idx_wfra_resolved",
+			sql: `CREATE INDEX IF NOT EXISTS idx_wfra_resolved
+				ON workflow_runtime_alerts (resolved_at)
+				WHERE status = 'resolved'`,
+		},
+		{
+			name: AgentRunWorkflowBindingsIndex,
+			sql: `CREATE INDEX IF NOT EXISTS ` + AgentRunWorkflowBindingsIndex + `
+				ON agents (workspace_id)
+				WHERE deleted_at IS NULL AND ` + sqlexpr.AgentBindsTool("", workflow.AgentRunWorkflowTool),
+		},
 
 		{
 			name: "idx_wce_campaign_lastmsg",
@@ -428,15 +496,76 @@ func performanceIndexes() []ddl {
 			sql: `CREATE INDEX IF NOT EXISTS idx_ca_rollups_series
 				ON audience_rollups (workspace_id, scope, scope_id, bucket_date)`,
 		},
+
+		{
+			name: "idx_ml_acct_workspace_created",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_acct_workspace_created
+				ON mercadolivre_accounts (workspace_id, created_at DESC)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_acct_refresh_due",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_acct_refresh_due
+				ON mercadolivre_accounts (access_expires_at, id)
+				WHERE status = 'CONNECTED' AND deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_acct_reconcile_due",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_acct_reconcile_due
+				ON mercadolivre_accounts (last_reconciled_at, id)
+				WHERE status = 'CONNECTED' AND deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_acct_health_due",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_acct_health_due
+				ON mercadolivre_accounts (last_health_check_at, id)
+				WHERE status IN ('CONNECTED', 'NEEDS_RECONNECT', 'REVOKED') AND deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_acct_purge_due",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_acct_purge_due
+				ON mercadolivre_accounts (purge_after, id)
+				WHERE purge_after IS NOT NULL`,
+		},
+		{
+			name: "idx_ml_conv_workspace_lastmsg",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_conv_workspace_lastmsg
+				ON mercadolivre_conversations (workspace_id, last_message_at DESC)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_conv_account_lastmsg",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_conv_account_lastmsg
+				ON mercadolivre_conversations (account_id, last_message_at DESC)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_conv_account_created",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_conv_account_created
+				ON mercadolivre_conversations (account_id, created_at DESC, id DESC)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_conv_account_shipment",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_conv_account_shipment
+				ON mercadolivre_conversations (account_id, shipment_id)
+				WHERE shipment_id <> '' AND deleted_at IS NULL`,
+		},
+		{
+			name: "idx_ml_contact_questions_blocked",
+			sql: `CREATE INDEX IF NOT EXISTS idx_ml_contact_questions_blocked
+				ON mercadolivre_contacts (account_id, questions_blocked_at)
+				WHERE questions_blocked_at IS NOT NULL AND deleted_at IS NULL`,
+		},
 	}
 }
 
 func PerformanceIndexSQL(name string) (string, bool) {
-	return lookupDDL(name, slices.Concat(performanceIndexes(), schemaConstraints()))
+	return lookupDDL(name, slices.Concat(performanceIndexes(), tiktokPerformanceIndexes(), schemaConstraints(), tiktokSchemaConstraints()))
 }
 
 func CreatePerformanceIndexes(db *gorm.DB) {
-	for _, idx := range performanceIndexes() {
+	for _, idx := range slices.Concat(performanceIndexes(), tiktokPerformanceIndexes()) {
 		if err := db.Exec(idx.sql).Error; err != nil {
 			log.Printf("[indexes] Warning: failed to create %s: %v", idx.name, err)
 		}
@@ -564,6 +693,25 @@ func schemaConstraints() []ddl {
 			name: "ux_tg_file_cache_account_source",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_tg_file_cache_account_source
 				ON telegram_file_cache (account_id, source_key)`,
+		},
+
+		{
+			name: "ux_ml_account_live_user",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ml_account_live_user
+				ON mercadolivre_accounts (ml_user_id)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_ml_contact_account_user",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ml_contact_account_user
+				ON mercadolivre_contacts (account_id, ml_user_id)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_ml_conversation_account_pack",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_ml_conversation_account_pack
+				ON mercadolivre_conversations (account_id, pack_key)
+				WHERE deleted_at IS NULL`,
 		},
 
 		{
@@ -754,5 +902,5 @@ func schemaConstraints() []ddl {
 }
 
 func createSchemaConstraints(tx *gorm.DB) error {
-	return execDDL(tx, slices.Concat(schemaConstraints(), leadCollectionConstraints(), callListConstraints()))
+	return execDDL(tx, slices.Concat(schemaConstraints(), tiktokSchemaConstraints(), leadCollectionConstraints(), callListConstraints()))
 }

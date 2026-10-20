@@ -3,6 +3,7 @@ package node_executors
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -23,6 +24,8 @@ import (
 type WorkflowAIAttendance interface {
 	RecordAIReply(in aa.StartInput, messageID string)
 }
+
+var errAgentStoreUnavailable = errors.New("os agentes de IA estão indisponíveis neste contexto")
 
 const aiAgentDefaultContextWindow = 50
 const aiAgentTimeout = 90 * time.Second
@@ -90,27 +93,31 @@ func SetAIAttendanceOnExecutor(exec workflow.NodeExecutor, svc WorkflowAIAttenda
 	}
 }
 
+func workflowAgentTurn(run *workflow.WorkflowRun, agentID string) ai.AgentTurn {
+	if run == nil {
+		return ai.AgentTurn{}
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		agentID = run.WorkflowID
+	}
+	return ai.AgentTurn{
+		EntryID:   strings.TrimSpace(run.EntryID),
+		EntryType: strings.TrimSpace(run.EntryType),
+		AgentID:   agentID,
+	}
+}
+
 func (e *aiAgentExecutor) recordWorkflowAIAttendance(ctx *workflow.NodeContext, agentID, model, messageID string) {
 	if e == nil || e.aiAttendance == nil || ctx == nil || ctx.Run == nil {
 		return
 	}
 	wsID := strings.TrimSpace(ctx.Run.WorkspaceID)
-	entryID := strings.TrimSpace(ctx.Run.EntryID)
-	if wsID == "" || entryID == "" {
+	turn := workflowAgentTurn(ctx.Run, agentID)
+	if wsID == "" || !turn.Identified() {
 		return
 	}
-	entryType := strings.TrimSpace(ctx.Run.EntryType)
-	if entryType == "" {
-		entryType = string(shared.EntryTypeWhatsApp)
-	}
-	agentID = strings.TrimSpace(agentID)
-	if agentID == "" && ctx.Run.WorkflowID != "" {
-		agentID = ctx.Run.WorkflowID
-	}
-	if agentID == "" {
-		return
-	}
-	const channel = "whatsapp"
+	entryID, entryType, agentID := turn.EntryID, turn.EntryType, turn.AgentID
 	if messageID == "" {
 		messageID = "wf-ai-" + ctx.Node.ID
 	}
@@ -119,7 +126,7 @@ func (e *aiAgentExecutor) recordWorkflowAIAttendance(ctx *workflow.NodeContext, 
 		EntryID:     entryID,
 		EntryType:   entryType,
 		AgentID:     agentID,
-		Channel:     channel,
+		Channel:     entryType,
 		CampaignID:  "",
 		Model:       model,
 	}, messageID)
@@ -127,12 +134,13 @@ func (e *aiAgentExecutor) recordWorkflowAIAttendance(ctx *workflow.NodeContext, 
 
 func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionAIAgent,
-		Category:    workflow.NodeCategoryAI,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:       "Agente IA",
-		Description: "Gera uma resposta usando o agente de IA e salva em uma variável.",
-		Icon:        "Robot",
+		Type:         workflow.NodeTypeActionAIAgent,
+		TestBehavior: workflow.NodeTestAIModel,
+		Category:     workflow.NodeCategoryAI,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:        "Agente IA",
+		Description:  "Gera uma resposta usando o agente de IA e salva em uma variável.",
+		Icon:         "Robot",
 		Guidance: workflow.NodeGuidance{
 			When: "Para conversar com o contato usando IA, classificar intenção ou orquestrar ferramentas. source=prompt (defina model+instructions) para um agente ad-hoc; source=agent (defina agent_id) para reutilizar um agente salvo.",
 			Behavior: "ENVIO: em response_mode=segmented o PRÓPRIO NÓ envia as mensagens no WhatsApp (divididas, com indicador de 'digitando'), não conecte um send_text depois (envio duplicado, é bloqueado). " +
@@ -211,6 +219,10 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	entryID := ctx.Run.EntryID
 	entryType := shared.EntryType(ctx.Run.EntryType)
 	logPrefix := fmt.Sprintf("[workflow][ai_agent][run:%s]", runID)
+	if strings.TrimSpace(ctx.Run.EntryType) == "" {
+		log.Printf("%s ERROR: the run has no entry type, refusing the agent node", logPrefix)
+		return &workflow.NodeResult{Error: "ai agent node refused: the run has no entry type, so the channel to answer on is unknown"}, nil
+	}
 
 	responseMode, _ := ctx.Node.Config["response_mode"].(string)
 	if responseMode == "" {
@@ -256,6 +268,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		if agentID == "" {
 			log.Printf("%s ERROR: agent mode but agent_id is empty", logPrefix)
 			return nil, workflow.ErrNodeConfigMissing
+		}
+		if e.agentRepo == nil {
+			return nil, workflow.Fail(workflow.ErrorKindConfig, errAgentStoreUnavailable)
 		}
 
 		ag, err := e.agentRepo.FindByID(agentID)
@@ -370,7 +385,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 			if inject {
 				if prevID := ctx.State.GetString("_prev_node_id"); prevID != "" {
 					if prevNode := ctx.Graph.FindNode(prevID); prevNode != nil {
-						if prevNode.Type.ParksForReply() || prevNode.Type.IsTrigger() {
+						if prevNode.Type.AwaitsContact() || prevNode.Type.IsTrigger() {
 							inject = false
 						}
 					}
@@ -380,11 +395,11 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 			if inject {
 				var toolResult map[string]interface{}
 				if targetNode != "" {
-					toolResult = collectNodeOutput(ctx.State, targetNode)
+					toolResult = workflow.NodeOutput(ctx.State, targetNode)
 				}
 				if len(toolResult) == 0 {
 
-					toolResult = collectLastOutput(ctx.State)
+					toolResult = workflow.LastNodeOutput(ctx.State)
 				}
 				resultJSON, _ := json.Marshal(toolResult)
 
@@ -548,6 +563,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		VolatileTail:      contextNoteTail,
 		SessionID:         workflowAgentScope(entryID),
 		BillingReference:  workflowAgentScope(entryID),
+		AgentTurn:         workflowAgentTurn(ctx.Run, agentID),
 	})
 
 	elapsed := time.Since(callStart)
@@ -717,26 +733,23 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 
 		edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-		nextNodeID := resolveEdgeByLabel(edges, tc.Name)
-		if nextNodeID == "" {
-			log.Printf("%s WARNING: no edge found for tool %q, available edges: %v", logPrefix, tc.Name, edgeLabels(edges))
-		} else {
-			log.Printf("%s routing to node %s via tool edge %q", logPrefix, nextNodeID, tc.Name)
+		routed := routeOutput(&workflow.NodeResult{Output: result}, edges, tc.Name)
+		if routed.Error != "" {
+			log.Printf("%s tool %q has no connected output, available edges: %v", logPrefix, tc.Name, edgeLabels(edges))
+			return routed, nil
 		}
+		log.Printf("%s routing to node %s via tool edge %q", logPrefix, routed.NextNodeID, tc.Name)
 
 		ctx.State.Set("_pending_tool_call", map[string]interface{}{
 			"name":           tc.Name,
 			"args":           tc.Arguments,
 			"source_ai_node": ctx.Node.ID,
-			"target_node":    nextNodeID,
+			"target_node":    routed.NextNodeID,
 		})
 
 		persistAIState(ctx.State, responseVar, result)
 
-		return &workflow.NodeResult{
-			NextNodeID: nextNodeID,
-			Output:     result,
-		}, nil
+		return routed, nil
 	}
 
 	if responseText != "" {
@@ -770,10 +783,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 	log.Printf("%s completed: response=%d chars saved to var=%q", logPrefix, len(responseText), responseVar)
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-	return &workflow.NodeResult{
-		NextNodeID: resolveEdgeByLabelStrict(edges, "default"),
-		Output:     result,
-	}, nil
+	return routeOutput(&workflow.NodeResult{
+		Output: result,
+	}, edges, "default"), nil
 }
 
 func composeHistory(history []*conversation.Message, limit int) []ai.Message {
@@ -800,7 +812,7 @@ func composeHistory(history []*conversation.Message, limit int) []ai.Message {
 		if msg.MessageType.IsCallEvent() {
 			continue
 		}
-		if strings.TrimSpace(msg.Text) == "" {
+		if strings.TrimSpace(msg.ReadableText()) == "" {
 			continue
 		}
 		content := msg.PromptContent()
@@ -1143,35 +1155,6 @@ func persistAIState(state *workflow.RunState, responseVar string, result map[str
 	if responseText, ok := result["response_text"]; ok {
 		state.Set("_ai_response", responseText)
 	}
-}
-
-func collectLastOutput(state *workflow.RunState) map[string]interface{} {
-	result := make(map[string]interface{})
-	if state == nil || state.Vars == nil {
-		return result
-	}
-	for k, v := range state.Vars {
-		if strings.HasPrefix(k, "_last_") {
-			key := strings.TrimPrefix(k, "_last_")
-			result[key] = v
-		}
-	}
-	return result
-}
-
-func collectNodeOutput(state *workflow.RunState, nodeID string) map[string]interface{} {
-	result := make(map[string]interface{})
-	if state == nil || state.Vars == nil || nodeID == "" {
-		return result
-	}
-	prefix := "_node_" + nodeID + "_"
-	for k, v := range state.Vars {
-		if strings.HasPrefix(k, prefix) {
-			key := strings.TrimPrefix(k, prefix)
-			result[key] = v
-		}
-	}
-	return result
 }
 
 func parseStringSlice(val interface{}) []string {

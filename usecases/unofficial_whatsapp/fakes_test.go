@@ -114,6 +114,10 @@ type fakeInstanceRepo struct {
 	sessionWrites []uw.SessionUpdate
 	deleted       []string
 	webhookStamps int
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
 }
 
 func newFakeInstanceRepo(instances ...*uw.Instance) *fakeInstanceRepo {
@@ -181,6 +185,9 @@ func (f *fakeInstanceRepo) RotateDeliveryToken(_ context.Context, id, token, has
 }
 
 func (f *fakeInstanceRepo) FindByID(ctx context.Context, id string) (*uw.Instance, error) {
+	f.mu.Lock()
+	f.findByIDCalls++
+	f.mu.Unlock()
 	if f.FindFn != nil {
 		return f.FindFn(ctx, id)
 	}
@@ -190,6 +197,22 @@ func (f *fakeInstanceRepo) FindByID(ctx context.Context, id string) (*uw.Instanc
 		return inst, nil
 	}
 	return nil, uw.ErrInstanceNotFound
+}
+
+func (f *fakeInstanceRepo) FindByIDs(_ context.Context, ids []string) ([]*uw.Instance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*uw.Instance, 0, len(ids))
+	for _, id := range ids {
+		if inst, ok := f.instances[id]; ok {
+			out = append(out, inst)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeInstanceRepo) FindByDeliveryTokenHash(context.Context, string) (*uw.Instance, error) {
@@ -714,6 +737,10 @@ type fakeContactRepo struct {
 	mu       sync.Mutex
 	contacts map[string]*uw.Contact
 	created  []*uw.Contact
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
 }
 
 func newFakeContactRepo(contacts ...*uw.Contact) *fakeContactRepo {
@@ -745,14 +772,27 @@ func (f *fakeContactRepo) FindOrCreate(_ context.Context, in uw.FindOrCreateCont
 func (f *fakeContactRepo) FindByID(_ context.Context, id string) (*uw.Contact, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.findByIDCalls++
 	if c, ok := f.contacts[id]; ok {
 		return c, nil
 	}
 	return nil, uw.ErrContactNotFound
 }
 
-func (f *fakeContactRepo) FindByIDs(context.Context, []string) ([]*uw.Contact, error) {
-	return nil, nil
+func (f *fakeContactRepo) FindByIDs(_ context.Context, ids []string) ([]*uw.Contact, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*uw.Contact, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := f.contacts[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeContactRepo) FindByHandles(_ context.Context, instanceID string, handles []string) ([]*uw.Contact, error) {
@@ -809,6 +849,10 @@ type fakeConversationRepo struct {
 	mu      sync.Mutex
 	convs   map[string]*uw.Conversation
 	created []*uw.Conversation
+
+	findByIDCalls  int
+	findByIDsCalls int
+	findByIDsErr   error
 }
 
 func newFakeConversationRepo(convs ...*uw.Conversation) *fakeConversationRepo {
@@ -850,10 +894,27 @@ func (f *fakeConversationRepo) FindOrCreate(_ context.Context, in uw.FindOrCreat
 func (f *fakeConversationRepo) FindByID(_ context.Context, id string) (*uw.Conversation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.findByIDCalls++
 	if c, ok := f.convs[id]; ok {
 		return c, nil
 	}
 	return nil, uw.ErrConversationNotFound
+}
+
+func (f *fakeConversationRepo) FindByIDs(_ context.Context, ids []string) ([]*uw.Conversation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.findByIDsCalls++
+	if f.findByIDsErr != nil {
+		return nil, f.findByIDsErr
+	}
+	out := make([]*uw.Conversation, 0, len(ids))
+	for _, id := range ids {
+		if c, ok := f.convs[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeConversationRepo) FindByChatID(_ context.Context, instanceID, chatID string) (*uw.Conversation, error) {

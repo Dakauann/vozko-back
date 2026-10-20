@@ -25,6 +25,9 @@ func dataRepairs() []dataRepair {
 		{"wc_consume_used_schedules", consumeUsedSchedules},
 		{"drop_retired_setting_columns", dropRetiredSettingColumns},
 		{"lx_drop_workspace_exit_settings", dropWorkspaceExitSettings},
+		{"cm_backfill_awaiting_reply", backfillAwaitingReply},
+		{"wf_publish_running_workflows", publishRunningWorkflows},
+		{"wf_canonical_structured_configs", canonicalizeWorkflowGraphs},
 	}
 }
 

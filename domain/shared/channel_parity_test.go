@@ -234,7 +234,9 @@ func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 	want := []EntryType{
 		EntryTypeFacebook,
 		EntryTypeInstagram,
+		EntryTypeMercadoLivre,
 		EntryTypeTelegram,
+		EntryTypeTikTok,
 		EntryTypeUnofficialWhatsApp,
 		EntryTypeWebchat,
 		EntryTypeWhatsApp,
@@ -296,5 +298,79 @@ func TestWebchatIsFullyRegistered(t *testing.T) {
 	}
 	if wc.DisplayLabel() == string(wc) {
 		t.Error("webchat needs an operator-facing label")
+	}
+}
+
+func TestMercadoLivreIsFullyRegistered(t *testing.T) {
+	ml := EntryTypeMercadoLivre
+	if string(ml) != "mercadolivre" {
+		t.Fatalf("entry type = %q", ml)
+	}
+
+	checks := map[string]bool{
+		"Valid (messaging pipeline)":   ml.Valid(),
+		"SupportsConversationView":     ml.SupportsConversationView(),
+		"SupportsCRMTagging":           ml.SupportsCRMTagging(),
+		"SupportsConversationClosing":  ml.SupportsConversationClosing(),
+		"SupportsInboxScope":           ml.SupportsInboxScope(),
+		"SupportsContainerScopedInbox": ml.SupportsContainerScopedInbox(),
+		"IsKnown":                      ml.IsKnown(),
+		"SignsWithPlainText":           ml.SignsWithPlainText(),
+	}
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("mercadolivre fails %s", name)
+		}
+	}
+	refused := map[string]bool{
+		"SupportsTemplates":            ml.SupportsTemplates(),
+		"SupportsCommentAnalysis":      ml.SupportsCommentAnalysis(),
+		"SupportsConversationAnalysis": ml.SupportsConversationAnalysis(),
+		"SupportsAnalysis":             ml.SupportsAnalysis(),
+	}
+	for name, ok := range refused {
+		if ok {
+			t.Errorf("mercadolivre must not satisfy %s: the developer terms forbid deriving per-buyer information", name)
+		}
+	}
+	if ml.EventChannel() != string(ml) {
+		t.Errorf("EventChannel() = %q", ml.EventChannel())
+	}
+	if ml.DisplayLabel() != "Mercado Livre" {
+		t.Errorf("DisplayLabel() = %q", ml.DisplayLabel())
+	}
+}
+
+func TestTikTokIsFullyRegistered(t *testing.T) {
+	tt := EntryTypeTikTok
+	if string(tt) != "tiktok" {
+		t.Fatalf("entry type = %q", tt)
+	}
+
+	checks := map[string]bool{
+		"Valid (messaging pipeline)":   tt.Valid(),
+		"SupportsConversationView":     tt.SupportsConversationView(),
+		"SupportsCRMTagging":           tt.SupportsCRMTagging(),
+		"SupportsConversationClosing":  tt.SupportsConversationClosing(),
+		"SupportsInboxScope":           tt.SupportsInboxScope(),
+		"SupportsContainerScopedInbox": tt.SupportsContainerScopedInbox(),
+		"SupportsConversationAnalysis": tt.SupportsConversationAnalysis(),
+		"SupportsCommentAnalysis":      tt.SupportsCommentAnalysis(),
+		"IsKnown":                      tt.IsKnown(),
+		"SignsWithPlainText":           tt.SignsWithPlainText(),
+	}
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("tiktok fails %s", name)
+		}
+	}
+	if tt.SupportsTemplates() {
+		t.Error("tiktok has no template catalogue")
+	}
+	if tt.EventChannel() != string(tt) {
+		t.Errorf("EventChannel() = %q", tt.EventChannel())
+	}
+	if tt.DisplayLabel() != "TikTok" {
+		t.Errorf("DisplayLabel() = %q", tt.DisplayLabel())
 	}
 }

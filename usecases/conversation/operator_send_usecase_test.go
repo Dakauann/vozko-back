@@ -12,11 +12,18 @@ import (
 	"vozko/domain/user"
 )
 
-type opSentText struct{ entryID, entryType, text, userID, replyTo string }
-type opSentMedia struct{ entryID, entryType, mediaID, mediaType, userID, replyTo, caption string }
+type opSentText struct {
+	entryID, entryType, text string
+	origin                   conversation.SendOrigin
+}
+type opSentMedia struct {
+	entryID, entryType, mediaID, mediaType, caption string
+	origin                                          conversation.SendOrigin
+}
 type opSentButtons struct {
-	entryID, entryType, userID, replyTo string
-	input                               conversation.SendButtonInput
+	entryID, entryType string
+	input              conversation.SendButtonInput
+	origin             conversation.SendOrigin
 }
 
 type opRecordingSender struct {
@@ -26,24 +33,24 @@ type opRecordingSender struct {
 	err     error
 }
 
-func (r *opRecordingSender) SendTextMessage(entryID, entryType, text, userID, replyTo string) (*conversation.Message, error) {
-	r.texts = append(r.texts, opSentText{entryID, entryType, text, userID, replyTo})
+func (r *opRecordingSender) SendTextMessage(entryID, entryType, text string, origin conversation.SendOrigin) (*conversation.Message, error) {
+	r.texts = append(r.texts, opSentText{entryID, entryType, text, origin})
 	if r.err != nil {
 		return nil, r.err
 	}
 	return &conversation.Message{ID: "msg-1", EntryID: entryID, EntryType: shared.EntryType(entryType)}, nil
 }
 
-func (r *opRecordingSender) SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyTo, caption string) (*conversation.Message, error) {
-	r.medias = append(r.medias, opSentMedia{entryID, entryType, mediaID, mediaType, userID, replyTo, caption})
+func (r *opRecordingSender) SendMediaMessage(entryID, entryType, mediaID, mediaType, caption string, origin conversation.SendOrigin) (*conversation.Message, error) {
+	r.medias = append(r.medias, opSentMedia{entryID, entryType, mediaID, mediaType, caption, origin})
 	if r.err != nil {
 		return nil, r.err
 	}
 	return &conversation.Message{ID: "msg-2", EntryID: entryID, EntryType: shared.EntryType(entryType)}, nil
 }
 
-func (r *opRecordingSender) SendButtonMessage(entryID, entryType, userID, replyTo string, in conversation.SendButtonInput) (*conversation.Message, error) {
-	r.buttons = append(r.buttons, opSentButtons{entryID, entryType, userID, replyTo, in})
+func (r *opRecordingSender) SendButtonMessage(entryID, entryType string, in conversation.SendButtonInput, origin conversation.SendOrigin) (*conversation.Message, error) {
+	r.buttons = append(r.buttons, opSentButtons{entryID, entryType, in, origin})
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -72,6 +79,7 @@ type operatorSendFixture struct {
 	sender    *opRecordingSender
 	billing   *opStubBilling
 	finalizer *opRecordingFinalizer
+	requests  *opRecordingLedger
 	uc        conversation.OperatorSendUseCase
 }
 
@@ -81,8 +89,9 @@ func newOperatorSendFixture(t *testing.T, u *user.User, userErr error) *operator
 		sender:    &opRecordingSender{},
 		billing:   &opStubBilling{},
 		finalizer: &opRecordingFinalizer{},
+		requests:  newOpRecordingLedger(),
 	}
-	uc, err := NewOperatorSendUseCase(f.sender, opStubUserRepo{u: u, err: userErr}, f.finalizer, f.billing)
+	uc, err := NewOperatorSendUseCase(f.sender, opStubUserRepo{u: u, err: userErr}, f.finalizer, f.billing, f.requests)
 	if err != nil {
 		t.Fatalf("NewOperatorSendUseCase: %v", err)
 	}
@@ -260,14 +269,17 @@ func TestOperatorSendValidatesItsInput(t *testing.T) {
 }
 
 func TestNewOperatorSendUseCaseRefusesMissingDependencies(t *testing.T) {
-	if _, err := NewOperatorSendUseCase(nil, opStubUserRepo{}, &opRecordingFinalizer{}, &opStubBilling{}); err == nil {
+	if _, err := NewOperatorSendUseCase(nil, opStubUserRepo{}, &opRecordingFinalizer{}, &opStubBilling{}, newOpRecordingLedger()); err == nil {
 		t.Error("a nil message sender was accepted")
 	}
-	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, nil, &opRecordingFinalizer{}, &opStubBilling{}); err == nil {
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, nil, &opRecordingFinalizer{}, &opStubBilling{}, newOpRecordingLedger()); err == nil {
 		t.Error("a nil user repository was accepted")
 	}
-	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, nil, &opStubBilling{}); err == nil {
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, nil, &opStubBilling{}, newOpRecordingLedger()); err == nil {
 		t.Error("a nil finalizer was accepted")
+	}
+	if _, err := NewOperatorSendUseCase(&opRecordingSender{}, opStubUserRepo{}, &opRecordingFinalizer{}, &opStubBilling{}, nil); err == nil {
+		t.Error("a nil send request ledger was accepted")
 	}
 }
 

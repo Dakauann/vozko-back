@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"vozko/brand"
 	"vozko/domain/notification"
 	"vozko/domain/workspace"
 	wc "vozko/domain/whatsapp_campaign"
@@ -15,8 +16,16 @@ import (
 )
 
 type recordingPublisher struct {
-	drafts []notification.Draft
-	err    error
+	drafts   []notification.Draft
+	resolved []string
+	err      error
+}
+
+func (r *recordingPublisher) Resolve(_ context.Context, workspaceID string, keys ...string) error {
+	for _, k := range keys {
+		r.resolved = append(r.resolved, workspaceID+"/"+k)
+	}
+	return r.err
 }
 
 func (r *recordingPublisher) Publish(_ context.Context, d notification.Draft) (notification.Record, error) {
@@ -47,8 +56,8 @@ func TestTheCampaignTeamIsNotifiedWhyTheCampaignWasHeld(t *testing.T) {
 	if n.Audience.Kind != want.Kind || *n.Audience.Permission != *want.Permission {
 		t.Fatalf("audience = %+v, want the people who can manage campaigns", n.Audience)
 	}
-	if n.DedupKey != "smart_campaign_hold:c1:template_yellow" || n.DedupWindow != 24*time.Hour || n.Source != notification.SourceSmartCampaign {
-		t.Fatalf("dedup = %q %v %q", n.DedupKey, n.DedupWindow, n.Source)
+	if n.EpisodeKey != "smart_campaign_hold:c1:pause" || n.DedupKey != "" || n.Source != notification.SourceSmartCampaign {
+		t.Fatalf("episode = %q dedup %q source %q", n.EpisodeKey, n.DedupKey, n.Source)
 	}
 	if n.ActionURL != "/dashboard/whatsapp-campaigns/c1" || n.ActionLabel != "Ver campanha" {
 		t.Fatalf("link = %q %q", n.ActionURL, n.ActionLabel)
@@ -87,6 +96,9 @@ func TestAStoppedCampaignIsCriticalAndLongNamesStillFit(t *testing.T) {
 	if n.Severity != notification.SeverityCritical || !strings.HasPrefix(n.Title, "Campanha encerrada") {
 		t.Fatalf("draft = %+v", n)
 	}
+	if n.EpisodeKey != "smart_campaign_hold:c2:stop" {
+		t.Fatalf("a stop is a more serious situation than a pause, so it is its own episode: %q", n.EpisodeKey)
+	}
 	if utf8.RuneCountInString(n.Title) > notification.TitleMaxRunes {
 		t.Fatalf("title has %d runes", utf8.RuneCountInString(n.Title))
 	}
@@ -113,5 +125,36 @@ func TestEveryRuleHasAReasonInPortuguese(t *testing.T) {
 		if reason := Reason(sc.Finding{Rule: rule, Observed: 0.12, Limit: 0.08}); reason == "" || reason == string(rule) {
 			t.Fatalf("rule %s has no reason text", rule)
 		}
+	}
+}
+
+func TestTheAccessRemovedReasonFollowsTheBrandGender(t *testing.T) {
+	t.Cleanup(func() { brand.SetForTest(brand.Brand{}) })
+	cases := map[brand.Gender]string{
+		brand.Feminine:  "o acesso da Acme à conta foi removido (erro 10)",
+		brand.Masculine: "o acesso do Acme à conta foi removido (erro 10)",
+	}
+	for gender, want := range cases {
+		brand.SetForTest(brand.Brand{Name: "Acme", Gender: gender})
+		if got := Reason(sc.Finding{Rule: sc.RuleAccessRemoved}); got != want {
+			t.Fatalf("%s brand: Reason = %q, want %q", gender, got, want)
+		}
+	}
+}
+
+func TestResumingACampaignClosesItsHoldAlertsSoTheNextHoldNotifiesAgain(t *testing.T) {
+	sent := &recordingPublisher{}
+	NewHoldNotice(sent, "https://app.example.com").Resumed(&wc.Campaign{ID: "c1", WorkspaceID: "ws"})
+	want := map[string]bool{"ws/smart_campaign_hold:c1:pause": true, "ws/smart_campaign_hold:c1:stop": true}
+	if len(sent.resolved) != len(want) {
+		t.Fatalf("resolved %v", sent.resolved)
+	}
+	for _, key := range sent.resolved {
+		if !want[key] {
+			t.Fatalf("resolved %v", sent.resolved)
+		}
+	}
+	if len(sent.drafts) != 0 {
+		t.Fatal("a resume sends nothing")
 	}
 }

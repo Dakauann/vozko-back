@@ -54,5 +54,5 @@ func (uc *createWorkflowUseCase) Execute(ctx context.Context, w *workflow.Workfl
 		return nil, err
 	}
 
-	return uc.repo.FindByID(w.ID)
+	return findWithPublication(uc.repo, w.ID)
 }

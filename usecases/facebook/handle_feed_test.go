@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	ca "vozko/domain/commentautomation"
 	fbdomain "vozko/domain/facebook"
 	mm "vozko/domain/metamessaging"
+	webhook_usecase "vozko/usecases/webhook"
 )
 
 func feedEntry(changes ...*mm.Change) *mm.EntryEnvelope {
@@ -19,10 +22,14 @@ func feedChange(field, value string) *mm.Change {
 	return &mm.Change{Field: field, Value: json.RawMessage(value)}
 }
 
-type recordingRules struct{ evaluated []string }
+type recordingRules struct {
+	evaluated []string
+	fail      error
+}
 
-func (r *recordingRules) Evaluate(_ context.Context, _ *fbdomain.Page, c *fbdomain.Comment) {
+func (r *recordingRules) Evaluate(_ context.Context, _ *fbdomain.Page, c *fbdomain.Comment) error {
 	r.evaluated = append(r.evaluated, c.FBCommentID)
+	return r.fail
 }
 
 type recordingAudience struct {
@@ -84,6 +91,37 @@ func TestANewCommentIsMirroredLinkedRuledAndAnalysed(t *testing.T) {
 	}
 	if len(f.rules.evaluated) != 1 || len(f.audience.enqueued) != 1 || f.posts.byFBID["fb-page-1_1"].CommentsCount != 1 {
 		t.Fatalf("rules %v audience %v count %d", f.rules.evaluated, f.audience.enqueued, f.posts.byFBID["fb-page-1_1"].CommentsCount)
+	}
+}
+
+const addedComment = `{"item":"comment","verb":"add","comment_id":"1_c","post_id":"fb-page-1_1","parent_id":"fb-page-1_1","from":{"id":"PSID","name":"Ana"},"created_time":1790000000,"message":"preço?"}`
+
+func TestUnavailableRulesFailTheCommentSoItIsRetriedWithoutCountingTwice(t *testing.T) {
+	f := newFeedFixture()
+	f.posts.byFBID["fb-page-1_1"] = &fbdomain.Post{FBPostID: "fb-page-1_1", PageID: "page-1"}
+	f.rules.fail = fmt.Errorf("%w: timeout", ca.ErrRulesUnavailable)
+
+	err := f.uc.Execute(context.Background(), feedEntry(feedChange("feed", addedComment)))
+
+	if !errors.Is(err, ca.ErrRulesUnavailable) || ClassifyWebhookFailure(err) != webhook_usecase.DispositionRetry {
+		t.Fatalf("err = %v", err)
+	}
+	if f.posts.byFBID["fb-page-1_1"].CommentsCount != 0 || len(f.audience.enqueued) != 0 {
+		t.Fatalf("a retried comment must not be counted or analysed before the retry: count %d audience %v",
+			f.posts.byFBID["fb-page-1_1"].CommentsCount, f.audience.enqueued)
+	}
+}
+
+func TestAFailedRuleActionDoesNotFailTheComment(t *testing.T) {
+	f := newFeedFixture()
+	f.posts.byFBID["fb-page-1_1"] = &fbdomain.Post{FBPostID: "fb-page-1_1", PageID: "page-1"}
+	f.rules.fail = fmt.Errorf("%w: graph 500", ca.ErrActionFailed)
+
+	if err := f.uc.Execute(context.Background(), feedEntry(feedChange("feed", addedComment))); err != nil {
+		t.Fatalf("a failed action after the claim must not trigger a pointless retry: %v", err)
+	}
+	if f.posts.byFBID["fb-page-1_1"].CommentsCount != 1 || len(f.audience.enqueued) != 1 {
+		t.Fatalf("count %d audience %v", f.posts.byFBID["fb-page-1_1"].CommentsCount, f.audience.enqueued)
 	}
 }
 

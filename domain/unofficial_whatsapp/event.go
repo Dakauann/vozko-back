@@ -143,6 +143,8 @@ type Event struct {
 
 	AdReply *AdReply
 
+	GroupChange GroupParticipantChange
+
 	Raw json.RawMessage
 }
 
@@ -563,12 +565,18 @@ func normalizeBlock(instanceID string, env *Envelope) *Event {
 
 func normalizeGroupChange(instanceID string, env *Envelope) *Event {
 	chatID := stringField(env.Data, "groupjid", "groupJID", "JID", "jid", "chatid", "id")
+	if !IsGroupJID(chatID) {
+		if fromEvent := groupJIDOfChange(env.Data); IsGroupJID(fromEvent) {
+			chatID = fromEvent
+		}
+	}
 	return &Event{
 		Kind:          EventGroupChanged,
 		ProviderEvent: env.Event,
 		InstanceID:    instanceID,
 		ChatID:        chatID,
 		IsGroup:       true,
+		GroupChange:   ParseGroupParticipantChange(env.Data),
 		Timestamp:     time.Now().UTC(),
 		Raw:           env.Data,
 	}

@@ -4,16 +4,16 @@ package docs
 import "github.com/swaggo/swag"
 
 const docTemplate = `{
-    "schemes": [[ marshal .Schemes ]],
+    "schemes": {{ marshal .Schemes }},
     "swagger": "2.0",
     "info": {
-        "description": "[[escape .Description]]",
-        "title": "[[.Title]]",
+        "description": "{{escape .Description}}",
+        "title": "{{.Title}}",
         "contact": {},
-        "version": "[[.Version]]"
+        "version": "{{.Version}}"
     },
-    "host": "[[.Host]]",
-    "basePath": "[[.BasePath]]",
+    "host": "{{.Host}}",
+    "basePath": "{{.BasePath}}",
     "paths": {
         "/ads/accounts": {
             "get": {
@@ -266,7 +266,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Rascunhos guardados no Vozko (a Meta não expõe os rascunhos dela pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows traz as linhas que entram na tabela como \"Em rascunho\" e objectCount soma essas linhas, o número de \"Conferir e publicar\". Rascunhos já publicados saem da lista.",
+                "description": "Rascunhos guardados na plataforma (a Meta não expõe os rascunhos dela pela API). Cada rascunho é uma árvore de campanha, conjunto e anúncios; rows traz as linhas que entram na tabela como \"Em rascunho\" e objectCount soma essas linhas, o número de \"Conferir e publicar\". Rascunhos já publicados saem da lista.",
                 "produces": [
                     "application/json"
                 ],
@@ -802,7 +802,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). Responde status code_sent quando o código foi enviado (ele chega no app do WhatsApp do número, não na caixa de entrada do Vozko) ou linked quando a Meta informa que o número já está vinculado; nesse caso o vínculo é registrado e a página atualizada vem em page. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused para qualquer outra resposta da Meta.",
+                "description": "Pede à Meta que envie, por WhatsApp, o código que vincula o número à página. O número precisa estar em linkable da página (oficial do mesmo portfólio, ou não oficial). Responde status code_sent quando o código foi enviado (ele chega no app do WhatsApp do número, não na caixa de entrada da plataforma) ou linked quando a Meta informa que o número já está vinculado; nesse caso o vínculo é registrado e a página atualizada vem em page. 422 com number not_linkable para um número que a página não pode receber; 409 page_link_refused para qualquer outra resposta da Meta.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1010,7 +1010,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas no Vozko) ou portal (url da tela exata da Meta, quando a API não permite), sempre com o negócio dono da conta (business_id) e a própria conta; quando não dá para apontar a tela daquela conta, o item vem sem ação. Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.",
+                "description": "Lista ordenada do que a conta precisa para publicar, como na Meta: conexão, função de anunciante, status, moeda e fuso, forma de pagamento, página, verificações de telefone e email, termos de públicos personalizados e pixel. Cada item vem ready, missing ou unknown; unknown nunca conta como pronto. Itens com required true bloqueiam a publicação e aparecem em blocking. A ação de um item é in_app (reconnect, sync, create_pixel, feitas na plataforma) ou portal (url da tela exata da Meta, quando a API não permite), sempre com o negócio dono da conta (business_id) e a própria conta; quando não dá para apontar a tela daquela conta, o item vem sem ação. Telefone e email não têm leitura na API e vêm sempre unknown, sem bloquear. billing traz o saldo devido e o tipo de cobrança para quem anuncia na conta, e a forma de pagamento só para administradores da conta.",
                 "produces": [
                     "application/json"
                 ],
@@ -1905,7 +1905,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Para onde o Vozko envia os eventos do CRM (negócio criado vira LeadSubmitted, negócio ganho vira Purchase): conjunto de dados do WhatsApp ou pixel.",
+                "description": "Para onde a plataforma envia os eventos do CRM (negócio criado vira LeadSubmitted, negócio ganho vira Purchase): conjunto de dados do WhatsApp ou pixel.",
                 "produces": [
                     "application/json"
                 ],
@@ -3973,7 +3973,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Combinações de público e posicionamentos salvas no Vozko para reaproveitar ao criar anúncios.",
+                "description": "Combinações de público e posicionamentos salvas na plataforma para reaproveitar ao criar anúncios.",
                 "produces": [
                     "application/json"
                 ],
@@ -4641,7 +4641,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Retorna uma seção do relatório de disparos de campanhas (summary, daily, failures, tags ou campaigns) para o painel de atendimento. Os dias são contados no fuso do horário de funcionamento do workspace (ou do departamento), como as demais seções de atendimento. Sem campaign_id, cobre as campanhas de disparo do período; com campaign_id, a campanha inteira. As seções ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After.",
+                "description": "Retorna uma seção do relatório de disparos de campanhas (summary, daily, failures, tags ou campaigns) para o painel de atendimento. Os dias são contados no fuso do horário de funcionamento do workspace (ou do departamento), como as demais seções de atendimento. Sem campaign_id, cobre as campanhas de disparo do período; com campaign_id, a campanha inteira. As seções ficam em cache por 60 segundos; quando o limite de consultas analíticas simultâneas está ocupado, responde 503 com Retry-After. Períodos de mais de 92 dias são recusados com 400; para eles, peça o relatório ` + "`" + `whatsapp_dispatch` + "`" + ` em POST /reports. Sem escopo de departamento resolvido para quem pede, nada é lido.",
                 "produces": [
                     "application/json"
                 ],
@@ -9969,6 +9969,211 @@ const docTemplate = `{
                 }
             }
         },
+        "/conversation-notes/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Apaga uma nota interna. Só o autor apaga, e só enquanto ainda pode ver a conversa. Os inscritos na conversa recebem ` + "`" + `conversation:note_deleted` + "`" + `. Uma nota que não existe, já foi apagada, é de outro workspace ou de uma conversa que você não vê responde 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notas Internas"
+                ],
+                "summary": "Apagar uma nota interna",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da nota",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Apagada"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "not_author: só o autor apaga a nota",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/whatsapp/{entryId}/forms": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Envia o formulário na conversa do WhatsApp oficial, com o texto e o botão informados. Só funciona com a janela de 24 horas aberta: fora dela a resposta é 409 ` + "`" + `whatsapp_form_outside_window` + "`" + `, e o caminho é um modelo de mensagem com botão de formulário. Exige ` + "`" + `whatsapp_forms:send` + "`" + ` e acesso à conversa.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Enviar formulário na conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa do WhatsApp oficial (UUID)",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Formulário e textos",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.SendRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappform.Send"
+                        }
+                    },
+                    "400": {
+                        "description": "whatsapp_form_copy_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden, whatsapp_form_not_owner",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "whatsapp_form_outside_window, whatsapp_form_not_published, whatsapp_form_not_sendable, whatsapp_form_provider_unsupported",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/conversations/{entryType}/{entryId}/ai-tool-calls": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista, da mais recente para a mais antiga, as ferramentas que o agente de IA chamou nesta conversa: nome da ferramenta, argumentos (com credenciais e documentos mascarados), resultado (ok, error ou requested, quando a ferramenta só foi pedida pelo modelo e quem a executa é um fluxo), mensagem de erro, duração e a execução de fluxo ligada, quando houver. toolCallId é o id da chamada (o do modelo, ou um gerado quando o modelo não manda), o mesmo gravado em metadata.tool_call_id nas linhas de ferramenta do histórico da conversa; registros antigos não o têm. Só aparece para quem pode ver a conversa; as chamadas ficam guardadas por 180 dias.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Conversas"
+                ],
+                "summary": "Listar as chamadas de ferramenta da IA em uma conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo da entrada",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da entrada",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/ai_attendance.ToolCall"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Conversa não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations/{entryType}/{entryId}/automation": {
             "patch": {
                 "description": "Liga ou desliga o atendimento automático desta conversa. Envie null para voltar a herdar a configuração da conta/campanha. Desligar devolve para a fila da equipe uma conversa que a IA ou o fluxo detinha; ligar (ou null) devolve a conversa para a IA ou o fluxo que atende o canal. Se o canal não tiver agente ou fluxo ativo, a automação continua pausada e a resposta é 409 com code nothing_to_return_to, para que a IA nunca responda uma conversa que está com uma pessoa. A resposta traz o responsável resultante em assigned_user_id.",
@@ -10465,6 +10670,146 @@ const docTemplate = `{
                 }
             }
         },
+        "/conversations/{entryType}/{entryId}/notes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as notas internas da conversa, da mais nova para a mais antiga. Notas internas são só da equipe: nunca vão para o contato, nem para a IA, a análise, os fluxos, as exportações ou o chat do site. Vale o mesmo acesso de abrir a conversa (departamento, responsável e ` + "`" + `view_others` + "`" + `) mais ` + "`" + `conversations:read` + "`" + `. Para a próxima página, envie em ` + "`" + `before` + "`" + ` o ` + "`" + `created_at` + "`" + ` da nota mais antiga recebida; ` + "`" + `has_more` + "`" + ` diz se ainda há notas mais antigas. Notas apagadas não aparecem.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notas Internas"
+                ],
+                "summary": "Listar notas internas de uma conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal da conversa: whatsapp, unofficial_whatsapp, instagram, facebook, telegram ou webchat",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Só notas criadas antes deste instante (RFC 3339, aceita nanossegundos)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Quantidade (padrão 50, máximo 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/conversationnotehttp.NoteListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_entry_type, invalid_before ou invalid_limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden: sem acesso a esta conversa",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Grava uma nota interna na conversa, visível só para a equipe que pode ver a conversa. O texto tem de 1 a 4000 caracteres (sem contar espaços nas pontas). ` + "`" + `mentions` + "`" + ` traz até 20 IDs de usuários (repetidos contam uma vez); IDs que não são membros do workspace são descartados sem erro e não ficam gravados. Cada mencionado que pode ver a conversa recebe uma notificação na categoria ` + "`" + `conversations` + "`" + `, com o autor e o contato no título e um link para a conversa (nunca o texto da nota); quem não pode ver a conversa não é notificado nem fica sabendo da nota. Os inscritos na conversa recebem ` + "`" + `conversation:note` + "`" + ` pelo WebSocket de conversas.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notas Internas"
+                ],
+                "summary": "Criar uma nota interna",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Canal da conversa",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Texto e menções",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/conversationnotehttp.CreateNoteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/conversationnotehttp.NoteEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_entry_type, body_required, body_too_long ou too_many_mentions",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden: sem acesso a esta conversa",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/conversations/{entryType}/{entryId}/scheduled-messages": {
             "get": {
                 "security": [
@@ -10623,6 +10968,92 @@ const docTemplate = `{
                 }
             }
         },
+        "/conversations/{entryType}/{entryId}/workflow-runs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as execuções de todos os fluxos nesta conversa, da mais recente para a mais antiga, paginado. Cada item traz o nome do fluxo, a versão em que a execução roda, o status, o tipo de gatilho, quem iniciou (startedBy: agent:\u003cid\u003e, webhook:\u003cid\u003e, exit:\u003cid\u003e, manual:\u003cid\u003e ou trigger:\u003ctipo\u003e), o início, o fim e a duração em ms (só para execuções encerradas). Enquanto a execução está rodando ou aguardando, traz também a etapa atual (currentNodeId, currentNodeType e currentNodeName) e o motivo da espera. Exige ` + "`" + `workflows:read` + "`" + ` e que quem pede possa ver a conversa pela mesma regra de departamento e de responsável da caixa de entrada; caso contrário a resposta é 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar as execuções de fluxo de uma conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tipo da entrada (whatsapp, instagram, facebook, telegram, webchat, mercadolivre, tiktok, unofficial_whatsapp)",
+                        "name": "entryType",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da entrada",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/workflow.ConversationRun"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Conversa não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro ao listar as execuções",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/crm/board": {
             "get": {
                 "security": [
@@ -10729,7 +11160,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Aplica uma única ação (mover de etapa, mover de funil, atribuir, adicionar ou remover etiqueta) às conversas selecionadas. A seleção tem exatamente um modo: ids (targets escolhidos), all_matching (um filtro não vazio) ou everyone (todo o escopo do usuário, só com expectedCount). Para all_matching e everyone, fingerprint vem de POST /crm/bulk/count e é obrigatório; expectedCount é o matched dessa contagem, tomada antes das exclusões: excludeIds tira conversas da seleção sem mudar a contagem confirmada. Se a contagem mudou, responde 409 selection_changed com a nova contagem. targets junto com all_matching ou everyone é recusado (selection_ambiguous). Sem mode, targets valem como ids, um filtro não vazio como all_matching e um filtro vazio como everyone, com as mesmas exigências. Um departamento fora do escopo do usuário responde 403 selection_scope_denied; um filtro que não se aplica a conversas responde 400 invalid_filter. A contagem passa pelo limitador de agregados: ocupado, responde 503 com Retry-After. No máximo 2000 conversas por chamada (truncated indica que restam outras), em ordem estável por id.",
+                "description": "Aplica uma única ação às conversas selecionadas: ` + "`" + `move_stage` + "`" + ` (mover de etapa, ` + "`" + `value` + "`" + ` é a etapa), ` + "`" + `move_funnel` + "`" + ` (mover de funil), ` + "`" + `assign` + "`" + ` (atribuir, ` + "`" + `value` + "`" + ` é o usuário), ` + "`" + `add_label` + "`" + ` e ` + "`" + `remove_label` + "`" + ` (` + "`" + `value` + "`" + ` é a etiqueta), ` + "`" + `close` + "`" + ` (finalizar; envie ` + "`" + `outcomeCode` + "`" + ` quando o workspace exige desfecho; exige ` + "`" + `conversations:send` + "`" + ` e passa pela mesma regra e pelo mesmo serviço de status de finalizar uma conversa pelo WebSocket) ou ` + "`" + `mark_read` + "`" + ` (marca como lidas as mensagens do contato, como o ` + "`" + `mark_read` + "`" + ` do WebSocket, e tira a sua marca pessoal de não lida; exige ` + "`" + `conversations:read` + "`" + `; não envia confirmação de leitura ao canal). Cada conversa roda a ação sozinha, como a ação de uma conversa: as que falham aparecem em ` + "`" + `failed` + "`" + ` com o motivo (por exemplo, desfecho obrigatório ou conversa fora do seu alcance) e as demais seguem. Uma ação que o servidor não oferece responde 503 action_unavailable. A seleção tem exatamente um modo: ids (targets escolhidos), all_matching (um filtro não vazio) ou everyone (todo o escopo do usuário, só com expectedCount). Para all_matching e everyone, fingerprint vem de POST /crm/bulk/count e é obrigatório; expectedCount é o matched dessa contagem, tomada antes das exclusões: excludeIds tira conversas da seleção sem mudar a contagem confirmada. Se a contagem mudou, responde 409 selection_changed com a nova contagem. targets junto com all_matching ou everyone é recusado (selection_ambiguous). Sem mode, targets valem como ids, um filtro não vazio como all_matching e um filtro vazio como everyone, com as mesmas exigências. Um departamento fora do escopo do usuário responde 403 selection_scope_denied; um filtro que não se aplica a conversas responde 400 invalid_filter. A contagem passa pelo limitador de agregados: ocupado, responde 503 com Retry-After. No máximo 2000 conversas por chamada (truncated indica que restam outras), em ordem estável por id.",
                 "consumes": [
                     "application/json"
                 ],
@@ -15375,7 +15806,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Relê o disparo parado que POST /leads/actions (` + "`" + `send_template` + "`" + ` ou ` + "`" + `send_unofficial` + "`" + `) preparou: contagens congeladas por motivo (` + "`" + `skipped` + "`" + `: ` + "`" + `no_identity` + "`" + `, ` + "`" + `blocked` + "`" + `, ` + "`" + `opted_out` + "`" + `, ` + "`" + `cooldown` + "`" + `, ` + "`" + `already_in_running_campaign` + "`" + `, ` + "`" + `missing_variable` + "`" + `, ` + "`" + `over_cap` + "`" + `), ` + "`" + `missingVariables` + "`" + ` (lista por variável do modelo: ` + "`" + `slot` + "`" + ` é o número de {{N}}, ` + "`" + `source` + "`" + ` a origem do valor, como ` + "`" + `lead.district` + "`" + ` ou ` + "`" + `lead.custom:\u003cchave\u003e` + "`" + `, e ` + "`" + `count` + "`" + ` quantos leads ficaram sem ela; um lead sem várias variáveis conta em cada uma, então a soma pode passar de ` + "`" + `skipped.missing_variable` + "`" + `, e uma variável pode faltar na lista em envios preparados antes desse detalhe), ` + "`" + `cooldownDays` + "`" + ` (os dias de proteção contra spam que valiam quando os leads foram pulados, o maior registrado nas entradas; ausente quando nenhuma entrada de ` + "`" + `cooldown` + "`" + ` registrou os dias, como as preparadas antes desse detalhe ou puladas durante o envio), as contadas mas enviadas (` + "`" + `counted` + "`" + `: ` + "`" + `window_open` + "`" + `, a Vozko cobra o modelo mesmo assim, e ` + "`" + `no_consent_recorded` + "`" + `, só informativo: um lead sem consentimento registrado nunca é pulado por isso), e a cotação atual (` + "`" + `quote` + "`" + `: custo em micros de US$ com a moeda do saldo, saldo, ` + "`" + `capRemaining` + "`" + ` do limite mensal, ` + "`" + `fits` + "`" + ` e ` + "`" + `refusal` + "`" + ` quando nem todos cabem; no não oficial, ` + "`" + `dailyCap` + "`" + ` e ` + "`" + `estimatedDays` + "`" + `). ` + "`" + `campaignIds` + "`" + ` são todas as partes do envio (até 10, uma por campanha de até 150.000 leads). ` + "`" + `channel` + "`" + `: ` + "`" + `official` + "`" + ` ou ` + "`" + `unofficial` + "`" + `. Exige ` + "`" + `leads.send_template` + "`" + ` ou ` + "`" + `leads.send_unofficial` + "`" + `, e as campanhas precisam ser visíveis pelo departamento de quem pede.",
+                "description": "Relê o disparo parado que POST /leads/actions (` + "`" + `send_template` + "`" + ` ou ` + "`" + `send_unofficial` + "`" + `) preparou: contagens congeladas por motivo (` + "`" + `skipped` + "`" + `: ` + "`" + `no_identity` + "`" + `, ` + "`" + `blocked` + "`" + `, ` + "`" + `opted_out` + "`" + `, ` + "`" + `cooldown` + "`" + `, ` + "`" + `already_in_running_campaign` + "`" + `, ` + "`" + `missing_variable` + "`" + `, ` + "`" + `over_cap` + "`" + `), ` + "`" + `missingVariables` + "`" + ` (lista por variável do modelo: ` + "`" + `slot` + "`" + ` é o número de {{N}}, ` + "`" + `source` + "`" + ` a origem do valor, como ` + "`" + `lead.district` + "`" + ` ou ` + "`" + `lead.custom:\u003cchave\u003e` + "`" + `, e ` + "`" + `count` + "`" + ` quantos leads ficaram sem ela; um lead sem várias variáveis conta em cada uma, então a soma pode passar de ` + "`" + `skipped.missing_variable` + "`" + `, e uma variável pode faltar na lista em envios preparados antes desse detalhe), ` + "`" + `cooldownDays` + "`" + ` (os dias de proteção contra spam que valiam quando os leads foram pulados, o maior registrado nas entradas; ausente quando nenhuma entrada de ` + "`" + `cooldown` + "`" + ` registrou os dias, como as preparadas antes desse detalhe ou puladas durante o envio), as contadas mas enviadas (` + "`" + `counted` + "`" + `: ` + "`" + `window_open` + "`" + `, a plataforma cobra o modelo mesmo assim, e ` + "`" + `no_consent_recorded` + "`" + `, só informativo: um lead sem consentimento registrado nunca é pulado por isso), e a cotação atual (` + "`" + `quote` + "`" + `: custo em micros de US$ com a moeda do saldo, saldo, ` + "`" + `capRemaining` + "`" + ` do limite mensal, ` + "`" + `fits` + "`" + ` e ` + "`" + `refusal` + "`" + ` quando nem todos cabem; no não oficial, ` + "`" + `dailyCap` + "`" + ` e ` + "`" + `estimatedDays` + "`" + `). ` + "`" + `campaignIds` + "`" + ` são todas as partes do envio (até 10, uma por campanha de até 150.000 leads). ` + "`" + `channel` + "`" + `: ` + "`" + `official` + "`" + ` ou ` + "`" + `unofficial` + "`" + `. Exige ` + "`" + `leads.send_template` + "`" + ` ou ` + "`" + `leads.send_unofficial` + "`" + `, e as campanhas precisam ser visíveis pelo departamento de quem pede.",
                 "consumes": [
                     "application/json"
                 ],
@@ -18535,7 +18966,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista, da mais recente para a mais antiga e página por página, tudo o que aconteceu com o lead: conversas em todos os canais (` + "`" + `conversation` + "`" + `, na primeira mensagem de cada conversa; um envio de campanha que nunca saiu e uma conversa aberta só pela importação não aparecem), envios de campanha oficiais e não oficiais (` + "`" + `campaign_sent` + "`" + `, ` + "`" + `campaign_delivered` + "`" + `, ` + "`" + `campaign_read` + "`" + `, ` + "`" + `campaign_failed` + "`" + `; marcados desde 2026-09-25), ligações (` + "`" + `call` + "`" + `, pelo lead ou, nas mais antigas, pelo número de WhatsApp do lead; telefones de contato, que outras pessoas podem dividir, não servem; uma ligação feita por uma lista de ligação traz ` + "`" + `callListId` + "`" + ` e, depois que o operador registra o resultado, ` + "`" + `disposition` + "`" + ` com o código do resultado no catálogo do workspace, ou ` + "`" + `_callback` + "`" + ` com ` + "`" + `callbackAt` + "`" + ` quando ficou para retornar (sem ` + "`" + `callbackAt` + "`" + ` quando a lista adiou o contato por uma recusa temporária, porque essa data é da lista e não do operador); uma recusa da lista não é resultado da ligação e não aparece; ` + "`" + `callListId` + "`" + `, ` + "`" + `disposition` + "`" + ` e ` + "`" + `callbackAt` + "`" + ` só vêm para quem vê aquela lista, com ` + "`" + `call_lists:read` + "`" + ` e sendo um dos responsáveis por ela, ou gerenciando listas com ` + "`" + `call_lists:manage` + "`" + `; para os demais a ligação aparece sem esses campos), negócios (` + "`" + `deal` + "`" + `, os que têm este lead e os ligados a uma conversa dele, sem repetir), movimentos desses negócios (` + "`" + `deal_event` + "`" + `, com ` + "`" + `event` + "`" + ` ` + "`" + `stage_moved` + "`" + `, ` + "`" + `won` + "`" + `, ` + "`" + `lost` + "`" + ` ou ` + "`" + `reopened` + "`" + `, ` + "`" + `stageName` + "`" + ` e ` + "`" + `fromStageName` + "`" + `, no mesmo escopo de negócios), memórias (` + "`" + `memory` + "`" + `) e alterações do cadastro (` + "`" + `record` + "`" + `, só com o nome de cada campo alterado, nunca os valores; um campo sensível só é nomeado para quem tem ` + "`" + `leads:read_sensitive` + "`" + `, e uma alteração só de campos que você não vê não aparece). Cada item passa pela mesma regra de acesso da sua origem: conversas e envios só aparecem quando você pode abrir a conversa (outro departamento, ou de outra pessoa quando você não pode ver as conversas dos colegas, não aparecem); ligações só com ` + "`" + `call_history:read` + "`" + `, e só as suas a menos que você tenha ` + "`" + `call_history:view_others` + "`" + `; negócios só dentro do seu escopo de negócios. ` + "`" + `ref` + "`" + ` aponta para o que abrir: ` + "`" + `entry` + "`" + ` (com ` + "`" + `entryType` + "`" + `), ` + "`" + `call` + "`" + ` (o ` + "`" + `callId` + "`" + ` de GET /calls/{callId}), ` + "`" + `deal` + "`" + ` (o negócio, também num ` + "`" + `deal_event` + "`" + `), ` + "`" + `memory` + "`" + ` ou ` + "`" + `lead_event` + "`" + `. Para a próxima página, envie o ` + "`" + `next` + "`" + ` recebido em ` + "`" + `before` + "`" + `; sem ` + "`" + `next` + "`" + `, a linha do tempo acabou. Uma página pode vir com menos itens que ` + "`" + `limit` + "`" + ` (até vazia) e ainda trazer ` + "`" + `next` + "`" + `, quando muitos itens seguidos não são seus: continue pedindo. Substitui GET /leads/{id}/conversations, que foi removida. Exige ` + "`" + `leads:read` + "`" + `. Códigos: 400 ` + "`" + `lead_page_invalid` + "`" + ` (` + "`" + `limit` + "`" + ` negativo ou que não é número, ` + "`" + `before` + "`" + ` que não veio desta rota); 403 ` + "`" + `forbidden` + "`" + `; 404 ` + "`" + `lead_not_found` + "`" + `; 503 ` + "`" + `lead_history_unavailable` + "`" + `.",
+                "description": "Lista, da mais recente para a mais antiga e página por página, tudo o que aconteceu com o lead: conversas em todos os canais (` + "`" + `conversation` + "`" + `, na primeira mensagem de cada conversa; um envio de campanha que nunca saiu e uma conversa aberta só pela importação não aparecem; ` + "`" + `line` + "`" + ` nomeia a linha em que a conversa corre: o número do WhatsApp oficial que a recebeu (ou o nome verificado, sem número), o nome da instância do WhatsApp não oficial (ou o número dela), a conta do Instagram, a página do Facebook, o bot do Telegram ou o widget do chat do site), envios de campanha oficiais e não oficiais (` + "`" + `campaign_sent` + "`" + `, ` + "`" + `campaign_delivered` + "`" + `, ` + "`" + `campaign_read` + "`" + `, ` + "`" + `campaign_failed` + "`" + `; marcados desde 2026-09-25), ligações (` + "`" + `call` + "`" + `, pelo lead ou, nas mais antigas, pelo número de WhatsApp do lead; telefones de contato, que outras pessoas podem dividir, não servem; uma ligação feita por uma lista de ligação traz ` + "`" + `callListId` + "`" + ` e, depois que o operador registra o resultado, ` + "`" + `disposition` + "`" + ` com o código do resultado no catálogo do workspace, ou ` + "`" + `_callback` + "`" + ` com ` + "`" + `callbackAt` + "`" + ` quando ficou para retornar (sem ` + "`" + `callbackAt` + "`" + ` quando a lista adiou o contato por uma recusa temporária, porque essa data é da lista e não do operador); uma recusa da lista não é resultado da ligação e não aparece; ` + "`" + `callListId` + "`" + `, ` + "`" + `disposition` + "`" + ` e ` + "`" + `callbackAt` + "`" + ` só vêm para quem vê aquela lista, com ` + "`" + `call_lists:read` + "`" + ` e sendo um dos responsáveis por ela, ou gerenciando listas com ` + "`" + `call_lists:manage` + "`" + `; para os demais a ligação aparece sem esses campos), negócios (` + "`" + `deal` + "`" + `, os que têm este lead e os ligados a uma conversa dele, sem repetir), movimentos desses negócios (` + "`" + `deal_event` + "`" + `, com ` + "`" + `event` + "`" + ` ` + "`" + `stage_moved` + "`" + `, ` + "`" + `won` + "`" + `, ` + "`" + `lost` + "`" + ` ou ` + "`" + `reopened` + "`" + `, ` + "`" + `stageName` + "`" + ` e ` + "`" + `fromStageName` + "`" + `, no mesmo escopo de negócios), memórias (` + "`" + `memory` + "`" + `) e alterações do cadastro (` + "`" + `record` + "`" + `, só com o nome de cada campo alterado, nunca os valores; um campo sensível só é nomeado para quem tem ` + "`" + `leads:read_sensitive` + "`" + `, e uma alteração só de campos que você não vê não aparece). Cada item passa pela mesma regra de acesso da sua origem: conversas e envios só aparecem quando você pode abrir a conversa (outro departamento, ou de outra pessoa quando você não pode ver as conversas dos colegas, não aparecem); ligações só com ` + "`" + `call_history:read` + "`" + `, e só as suas a menos que você tenha ` + "`" + `call_history:view_others` + "`" + `; negócios só dentro do seu escopo de negócios. ` + "`" + `ref` + "`" + ` aponta para o que abrir: ` + "`" + `entry` + "`" + ` (com ` + "`" + `entryType` + "`" + `), ` + "`" + `call` + "`" + ` (o ` + "`" + `callId` + "`" + ` de GET /calls/{callId}), ` + "`" + `deal` + "`" + ` (o negócio, também num ` + "`" + `deal_event` + "`" + `), ` + "`" + `memory` + "`" + ` ou ` + "`" + `lead_event` + "`" + `. Para a próxima página, envie o ` + "`" + `next` + "`" + ` recebido em ` + "`" + `before` + "`" + `; sem ` + "`" + `next` + "`" + `, a linha do tempo acabou. Uma página pode vir com menos itens que ` + "`" + `limit` + "`" + ` (até vazia) e ainda trazer ` + "`" + `next` + "`" + `, quando muitos itens seguidos não são seus: continue pedindo. Substitui GET /leads/{id}/conversations, que foi removida. Exige ` + "`" + `leads:read` + "`" + `. Códigos: 400 ` + "`" + `lead_page_invalid` + "`" + ` (` + "`" + `limit` + "`" + ` negativo ou que não é número, ` + "`" + `before` + "`" + ` que não veio desta rota); 403 ` + "`" + `forbidden` + "`" + `; 404 ` + "`" + `lead_not_found` + "`" + `; 503 ` + "`" + `lead_history_unavailable` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -18611,7 +19042,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind sfx: prompt descrevendo o efeito sonoro (whoosh, impacto, riser, clique, ambiente), model e durationMs de 500 a 22000; o efeito chega sem silêncio nas pontas e nunca passa de durationMs. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo), denoise (áudio limpo de um áudio ou vídeo) e proxy (cópia de edição de um vídeo em até 720p com um quadro chave a cada meio segundo, fora da biblioteca; uma cópia pronta da mesma origem é devolvida de novo sem reprocessar): sourceMediaId da biblioteca, sem model; processados no Vozko, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música, locução e efeito sonoro são cobrados do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.",
+                "description": "Coloca na fila uma geração. kind image: prompt, aspect (square 1080x1080, portrait 1080x1350, story 1080x1920), model e até 16 referenceMediaIds de imagens. kind music: prompt e model (clipes de cerca de 30 s). kind voice: prompt com o roteiro exato, model e voice opcional. kind sfx: prompt descrevendo o efeito sonoro (whoosh, impacto, riser, clique, ambiente), model e durationMs de 500 a 22000; o efeito chega sem silêncio nas pontas e nunca passa de durationMs. kind video: aspect e video, uma linha do tempo (durationMs até 90000, background #rrggbb, faixas visual de baixo para cima e audio, cada clipe com mediaId da biblioteca, startMs, durationMs, trimInMs, fit cover ou contain, transform normalizado de 0 a 1 com centro, volume de 0 a 2 e fades; clipes de uma faixa não se sobrepõem); sem model. kind cutout (remove o fundo de uma imagem, PNG transparente), captions (legendas WebVTT da fala de um áudio ou vídeo), denoise (áudio limpo de um áudio ou vídeo) e proxy (cópia de edição de um vídeo em até 720p com um quadro chave a cada meio segundo, fora da biblioteca; uma cópia pronta da mesma origem é devolvida de novo sem reprocessar): sourceMediaId da biblioteca, sem model; processados na plataforma, no máximo 2 ao mesmo tempo por workspace (429 too_many_jobs). Campos inválidos respondem 422 com o código por campo. Responde 202 com o job; acompanhe por GET /media/generations/{id}. Imagem, música, locução e efeito sonoro são cobrados do saldo pelo custo informado pelo provedor; o resultado só é entregue depois de cobrado (status settling enquanto o provedor não informa o custo). Um pedido igual do mesmo usuário ainda em andamento devolve o mesmo job sem nova cobrança.",
                 "consumes": [
                     "application/json"
                 ],
@@ -18720,7 +19151,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Modelos que geram o tipo pedido (kind: image, music, voice ou sfx), do mais usado para o menos usado segundo o provedor; default marca o recomendado. O id escolhido vai no campo model de POST /media/generations. Vídeos são montados pelo Vozko e não têm modelo. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nada desse tipo pode ser pedido.",
+                "description": "Modelos que geram o tipo pedido (kind: image, music, voice ou sfx), do mais usado para o menos usado segundo o provedor; default marca o recomendado. O id escolhido vai no campo model de POST /media/generations. Vídeos são montados pela plataforma e não têm modelo. Responde 503 (models_unavailable) quando a lista não pode ser carregada; nesse caso nada desse tipo pode ser pedido.",
                 "produces": [
                     "application/json"
                 ],
@@ -18960,6 +19391,1234 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Listar contas do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Busca por apelido ou ID do vendedor",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "CONNECTED, NEEDS_RECONNECT, REVOKED ou DISCONNECTED",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Tamanho da página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.AccountListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Obter conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.AccountResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Apaga os tokens na hora, revoga a autorização no Mercado Livre quando possível e agenda a remoção dos dados da conta para daqui a 30 dias.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Desconectar a conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.DisconnectResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Altera departamento, funil, agente, fluxo, interruptores de automação e o aviso de automação. Campos ausentes ficam como estão; string vazia limpa a referência.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Atualizar a conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos a alterar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.UpdateAccountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.AccountResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/comment-rules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Listar regras de perguntas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/commentautomationhttp.RuleResponse"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ações aceitas no Mercado Livre: public_reply (a resposta, até 2.000 caracteres) e delete. containerId é o código do anúncio; vazio vale para todos.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Criar regra de perguntas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Regra",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/comment-rules/{ruleId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Remover regra de perguntas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "ruleId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleDeletedResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Recebe a regra inteira; cada campo substitui o guardado.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Atualizar regra de perguntas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "ruleId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Regra",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/entries/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca na fila um relatório com as conversas pós-venda da conta.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Exportar conversas de uma conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do Mercado Livre",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Relatorio na fila; acompanhe por /reports/{id}",
+                        "schema": {
+                            "$ref": "#/definitions/report.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/health-check": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Refaz as sondagens de permissão, atualiza o apelido e devolve a conta.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Verificar a conexão da conta do Mercado Livre agora",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.AccountResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/listings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Espelho dos anúncios do vendedor, atualizado a cada 6 horas e a cada notificação de anúncio. Paginação por cursor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Listar anúncios da conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Busca no título ou pelo código MLB",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Status do anúncio no Mercado Livre (active, paused, closed)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor devolvido em nextCursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (até 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.ListingListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/listings/{itemId}/questions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Listar perguntas de um anúncio",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Código do anúncio (MLB...)",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Status da pergunta",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor devolvido em nextCursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (até 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/listings/{itemId}/thumbnail": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Redireciona para a miniatura do anúncio guardada no armazenamento próprio.",
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Miniatura do anúncio",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Código do anúncio (MLB...)",
+                        "name": "itemId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Found"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/questions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Perguntas de todos os anúncios, as sem resposta primeiro e depois as mais recentes. Paginação por cursor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Listar perguntas da conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UNANSWERED, ANSWERED, CLOSED_UNANSWERED, UNDER_REVIEW, BANNED, DELETED ou DISABLED",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Código do anúncio (MLB...)",
+                        "name": "itemId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor devolvido em nextCursor",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (até 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/questions/response-time": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Tempo de resposta medido pelo Mercado Livre nos últimos 14 dias, guardado por 1 hora. Sem perguntas no período, available é false.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Tempo de resposta às perguntas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.ResponseTimeResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/questions/{questionId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A pergunta como está no espelho da plataforma, com quem perguntou e o anúncio, para atualizar uma linha (por exemplo depois de um 409). Não consulta o Mercado Livre. asker.blocked diz se quem perguntou está na lista de bloqueio de perguntas da conta: bloqueios feitos aqui aparecem na hora e os feitos no Mercado Livre aparecem na verificação diária da conta.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Ler uma pergunta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da pergunta no Mercado Livre",
+                        "name": "questionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Apagar uma pergunta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da pergunta no Mercado Livre",
+                        "name": "questionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionActionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/questions/{questionId}/answer": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A resposta é pública e definitiva no Mercado Livre. A pergunta é relida antes; se já não estiver sem resposta, nada é enviado (409).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Responder uma pergunta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da pergunta no Mercado Livre",
+                        "name": "questionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Texto da resposta (até 2.000 caracteres)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.AnswerQuestionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/accounts/{id}/questions/{questionId}/block-author": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca quem perguntou na lista de bloqueio de perguntas do vendedor.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Bloquear perguntas do autor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da pergunta no Mercado Livre",
+                        "name": "questionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionActionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Desbloquear perguntas do autor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da pergunta no Mercado Livre",
+                        "name": "questionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.QuestionActionResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/conversations/{entryId}/pack": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Itens, situação do pedido e do envio e total da venda desta conversa, guardados na plataforma e atualizados pelas notificações de pedido e envio e no máximo a cada 24 horas. Um resumo mais antigo é devolvido como está e uma atualização é pedida em segundo plano. As miniaturas vêm do armazenamento próprio, nunca do Mercado Livre. Sem resumo ainda, responde 404 com o código pack_summary_pending.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Resumo da venda da conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.PackSummaryResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mercadolivre/conversations/{entryId}/reasons": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Opções que o Mercado Livre oferece para o vendedor escrever primeiro nesta venda, com o saldo de usos de cada uma. Ação só de pessoas. description é o internal_description do Mercado Livre e templates[].text é o texto do modelo no site da conta, com os marcadores (%s, %d) como vieram; ambos são omitidos quando o Mercado Livre não os envia. As variáveis não têm rótulo no Mercado Livre.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Motivos para iniciar a conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.ReasonListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Envia uma das opções oferecidas (modelo com variáveis, ou texto livre em OTHER). Ação manual de quem pode enviar mensagens; agentes e fluxos nunca usam motivos.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Iniciar a conversa com um motivo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Motivo escolhido",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.SendReasonRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.SendReasonResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -19220,7 +20879,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista as notificações de quem está logado no workspace do cabeçalho ` + "`" + `X-Workspace-ID` + "`" + `, da mais nova para a mais antiga. Cada pessoa só vê as próprias notificações; nenhuma permissão extra é exigida.\n\nFiltros: ` + "`" + `category` + "`" + ` (uma das categorias abaixo), ` + "`" + `unread=true` + "`" + ` (só não lidas), ` + "`" + `limit` + "`" + ` (1 a 50, padrão 20) e ` + "`" + `cursor` + "`" + ` (o ` + "`" + `next` + "`" + ` da página anterior; vazio quando não há mais páginas).\n\n| Categoria | Assunto |\n|---|---|\n| ` + "`" + `announcements` + "`" + ` | Comunicados e novidades do Vozko |\n| ` + "`" + `campaigns` + "`" + ` | Campanhas |\n| ` + "`" + `templates` + "`" + ` | Modelos de mensagem |\n| ` + "`" + `channels` + "`" + ` | Números e canais |\n| ` + "`" + `billing` + "`" + ` | Financeiro e saldo |\n| ` + "`" + `advertising` + "`" + ` | Anúncios |\n| ` + "`" + `team` + "`" + ` | Equipe |\n| ` + "`" + `support` + "`" + ` | Suporte |\n| ` + "`" + `system` + "`" + ` | Sistema |\n\n` + "`" + `severity` + "`" + ` é ` + "`" + `info` + "`" + `, ` + "`" + `success` + "`" + `, ` + "`" + `warning` + "`" + ` ou ` + "`" + `critical` + "`" + `. ` + "`" + `actionUrl` + "`" + ` é um caminho do app (` + "`" + `/dashboard/...` + "`" + `) ou um endereço ` + "`" + `https` + "`" + `. Códigos: 400 ` + "`" + `notification_category_unknown` + "`" + `, ` + "`" + `notification_cursor_invalid` + "`" + `, ` + "`" + `notification_limit_invalid` + "`" + `, ` + "`" + `notification_unread_invalid` + "`" + `.",
+                "description": "Lista as notificações de quem está logado no workspace do cabeçalho ` + "`" + `X-Workspace-ID` + "`" + `, da mais nova para a mais antiga. Cada pessoa só vê as próprias notificações; nenhuma permissão extra é exigida.\n\nFiltros: ` + "`" + `category` + "`" + ` (uma das categorias abaixo), ` + "`" + `unread=true` + "`" + ` (só não lidas), ` + "`" + `limit` + "`" + ` (1 a 50, padrão 20) e ` + "`" + `cursor` + "`" + ` (o ` + "`" + `next` + "`" + ` da página anterior; vazio quando não há mais páginas).\n\n| Categoria | Assunto |\n|---|---|\n| ` + "`" + `announcements` + "`" + ` | Comunicados e novidades da plataforma |\n| ` + "`" + `campaigns` + "`" + ` | Campanhas |\n| ` + "`" + `templates` + "`" + ` | Modelos de mensagem |\n| ` + "`" + `channels` + "`" + ` | Números e canais |\n| ` + "`" + `billing` + "`" + ` | Financeiro e saldo |\n| ` + "`" + `advertising` + "`" + ` | Anúncios |\n| ` + "`" + `team` + "`" + ` | Equipe |\n| ` + "`" + `support` + "`" + ` | Suporte |\n| ` + "`" + `system` + "`" + ` | Sistema |\n\n` + "`" + `severity` + "`" + ` é ` + "`" + `info` + "`" + `, ` + "`" + `success` + "`" + `, ` + "`" + `warning` + "`" + ` ou ` + "`" + `critical` + "`" + `. ` + "`" + `actionUrl` + "`" + ` é um caminho do app (` + "`" + `/dashboard/...` + "`" + `) ou um endereço ` + "`" + `https` + "`" + `. Códigos: 400 ` + "`" + `notification_category_unknown` + "`" + `, ` + "`" + `notification_cursor_invalid` + "`" + `, ` + "`" + `notification_limit_invalid` + "`" + `, ` + "`" + `notification_unread_invalid` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -19595,6 +21254,110 @@ const docTemplate = `{
                 }
             }
         },
+        "/oauth/mercadolivre/callback": {
+            "get": {
+                "description": "Conclui o OAuth: devolve o resultado ao popup (postMessage com source, status, nickname, accountId e reason) ou redireciona ao painel com ?mercadolivre=\u003cstatus\u003e\u0026reason=\u003cmotivo\u003e.",
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Callback de conexão do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Código de autorização",
+                        "name": "code",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Estado assinado emitido no início",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Erro devolvido pelo Mercado Livre",
+                        "name": "error",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Descrição do erro",
+                        "name": "error_description",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "302": {
+                        "description": "Found"
+                    }
+                }
+            }
+        },
+        "/oauth/mercadolivre/start": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retorna a URL de autorização do Mercado Livre (PKCE). Com redirect=1 redireciona direto. Só o administrador da conta do Mercado Livre consegue autorizar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Iniciar conexão de conta do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Caminho do painel para voltar depois da conexão",
+                        "name": "returnPath",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 quando a conexão roda em popup",
+                        "name": "popup",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 para redirecionar em vez de responder JSON",
+                        "name": "redirect",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.ConnectStartResponse"
+                        }
+                    },
+                    "302": {
+                        "description": "Found"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/oauth/meta-ads/callback": {
             "get": {
                 "description": "Finaliza o OAuth da Meta: devolve o resultado ao popup ou redireciona ao gerenciador de anúncios.",
@@ -19788,6 +21551,65 @@ const docTemplate = `{
                         "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/oauth/tiktok/callback/": {
+            "get": {
+                "description": "Recebe o código de autorização do TikTok, conecta a conta e volta ao painel (ou ao popup) com o resultado.",
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Callback de conexão do TikTok",
+                "responses": {
+                    "302": {
+                        "description": "Found"
+                    }
+                }
+            }
+        },
+        "/oauth/tiktok/start": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Gera a URL de autorização do TikTok para conectar uma conta comercial. Com ` + "`" + `redirect=1` + "`" + ` responde com um redirecionamento; com ` + "`" + `popup=1` + "`" + ` o resultado volta ao painel por mensagem de janela.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Iniciar conexão de conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "1 para redirecionar direto ao TikTok",
+                        "name": "redirect",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 quando aberto em janela popup",
+                        "name": "popup",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Caminho do painel para voltar",
+                        "name": "returnPath",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.ConnectStartResponse"
                         }
                     }
                 }
@@ -21382,7 +23204,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Server-Sent Events lidos com fetch (o token vai no cabeçalho Authorization, nunca na URL).\n\n| evento | dados |\n|---|---|\n| message | { kind: \"message\", message: { id, author: visitor, team ou assistant, text, media, options, createdAt } } |\n| typing | { kind: \"typing\", typing } |\n| status | { kind: \"status\", state: human ou blocked } |\n| ping | a cada 20 s |\n\nA conexão fecha depois de 30 minutos; o chat reconecta e busca o que perdeu com GET .../messages?after=. No máximo 3 conexões por visitante (429).",
+                "description": "Server-Sent Events lidos com fetch (o token vai no cabeçalho Authorization, nunca na URL).\n\n| evento | dados |\n|---|---|\n| message | { kind: \"message\", message: { id, author: visitor, team ou assistant, text, media, options, quote, createdAt } }. quote ({ id, text }) aparece quando a equipe responde citando uma mensagem que o visitante pode ver: text é a linha citada, curta (até 140 caracteres) |\n| typing | { kind: \"typing\", typing } |\n| status | { kind: \"status\", state: human ou blocked } |\n| ping | a cada 20 s |\n\nA conexão fecha depois de 30 minutos; o chat reconecta e busca o que perdeu com GET .../messages?after=. No máximo 3 conexões por visitante (429).",
                 "produces": [
                     "text/event-stream"
                 ],
@@ -21682,7 +23504,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Lista os relatórios solicitados recentemente pelo workspace, do mais novo para o mais antigo, deixando de fora, já na contagem e na paginação, os que quem pergunta não pode abrir (pedidos por outra pessoa e de um tipo cujas permissões ela não tem). Os tipos gerados com o escopo de quem pediu (` + "`" + `conversation_entries` + "`" + ` e ` + "`" + `opportunities` + "`" + `) só são lidos por quem pediu.",
+                "description": "Lista os relatórios solicitados recentemente pelo workspace, do mais novo para o mais antigo, deixando de fora, já na contagem e na paginação, os que quem pergunta não pode abrir (pedidos por outra pessoa e de um tipo cujas permissões ela não tem). Os tipos gerados com o escopo de quem pediu (` + "`" + `conversation_entries` + "`" + `, ` + "`" + `opportunities` + "`" + ` e ` + "`" + `whatsapp_dispatch` + "`" + `) só são lidos por quem pediu.",
                 "produces": [
                     "application/json"
                 ],
@@ -21743,7 +23565,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Coloca a geração do relatório na fila e devolve o identificador do trabalho. O arquivo fica pronto de forma assíncrona; acompanhe pelo status. Cada tipo declara as permissões que exige (por exemplo ` + "`" + `attendance:read` + "`" + ` para a visão de atendimento), conferidas na criação e de novo na geração para quem pediu; sem elas responde 403 ` + "`" + `report_forbidden` + "`" + `. O escopo de departamento e de responsável é calculado na geração a partir de quem pediu, nunca dos parâmetros enviados. O tipo ` + "`" + `leads` + "`" + ` só nasce em POST /leads/actions e aqui responde 400 ` + "`" + `report_kind_not_offered` + "`" + `. A reutilização de um pedido igual considera quem pediu.",
+                "description": "Coloca a geração do relatório na fila e devolve o identificador do trabalho. O arquivo fica pronto de forma assíncrona; acompanhe pelo status. Cada tipo declara as permissões que exige (por exemplo ` + "`" + `attendance:read` + "`" + ` para a visão de atendimento), conferidas na criação e de novo na geração para quem pediu; sem elas responde 403 ` + "`" + `report_forbidden` + "`" + `. O escopo de departamento e de responsável é calculado na geração a partir de quem pediu, nunca dos parâmetros enviados. O tipo ` + "`" + `leads` + "`" + ` só nasce em POST /leads/actions e aqui responde 400 ` + "`" + `report_kind_not_offered` + "`" + `. O tipo ` + "`" + `whatsapp_dispatch` + "`" + ` gera o bloco de disparo de campanhas da visão de atendimento (funil, dias, campanhas, motivos de falha e etiquetas) para qualquer período de até 731 dias, com os parâmetros ` + "`" + `dateFrom` + "`" + `, ` + "`" + `dateTo` + "`" + ` (YYYY-MM-DD), ` + "`" + `campaignId` + "`" + ` e ` + "`" + `departmentId` + "`" + ` opcionais; exige ` + "`" + `attendance:read` + "`" + ` e ` + "`" + `whatsapp_campaigns:read` + "`" + `. Parâmetros que o tipo não consegue gerar, como um período maior que o limite do tipo, respondem 400 ` + "`" + `report_invalid_params` + "`" + `. A reutilização de um pedido igual considera quem pediu.",
                 "consumes": [
                     "application/json"
                 ],
@@ -21831,7 +23653,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Devolve a situação do relatório solicitado: na fila, processando, pronto, com falha ou expirado. Só quem pediu o relatório ou quem tem as mesmas permissões do tipo o enxerga; para os demais responde 404. Os tipos gerados com o escopo de quem pediu (` + "`" + `conversation_entries` + "`" + ` e ` + "`" + `opportunities` + "`" + `) só são lidos por quem pediu.",
+                "description": "Devolve a situação do relatório solicitado: na fila, processando, pronto, com falha ou expirado. Só quem pediu o relatório ou quem tem as mesmas permissões do tipo o enxerga; para os demais responde 404. Os tipos gerados com o escopo de quem pediu (` + "`" + `conversation_entries` + "`" + `, ` + "`" + `opportunities` + "`" + ` e ` + "`" + `whatsapp_dispatch` + "`" + `) só são lidos por quem pediu.",
                 "produces": [
                     "application/json"
                 ],
@@ -21871,7 +23693,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Devolve o arquivo gerado. Responde 409 enquanto o relatório não está pronto e 410 quando já expirou. Só quem pediu o relatório ou quem tem as mesmas permissões do tipo baixa o arquivo; para os demais responde 404. Os tipos gerados com o escopo de quem pediu (` + "`" + `conversation_entries` + "`" + ` e ` + "`" + `opportunities` + "`" + `) só são lidos por quem pediu.",
+                "description": "Devolve o arquivo gerado. Responde 409 enquanto o relatório não está pronto e 410 quando já expirou. Só quem pediu o relatório ou quem tem as mesmas permissões do tipo baixa o arquivo; para os demais responde 404. Os tipos gerados com o escopo de quem pediu (` + "`" + `conversation_entries` + "`" + `, ` + "`" + `opportunities` + "`" + ` e ` + "`" + `whatsapp_dispatch` + "`" + `) só são lidos por quem pediu.",
                 "produces": [
                     "application/json"
                 ],
@@ -24540,7 +26362,1983 @@ const docTemplate = `{
                 }
             }
         },
+        "/team-chat/direct": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Abre a conversa direta com a pessoa (ou devolve a que já existe: há uma só por par de pessoas). A pessoa precisa ser membro do workspace; senão ` + "`" + `member_unavailable` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Abrir conversa direta",
+                "parameters": [
+                    {
+                        "description": "Com quem",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.OpenDirectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ThreadEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_body, person_required ou same_person",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden: você não é membro deste workspace",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "member_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/groups": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria um grupo com título (1 a 80 caracteres) e as pessoas escolhidas (você entra como administrador; no máximo 256 pessoas). Todas precisam ser membros do workspace; senão ` + "`" + `member_unavailable` + "`" + ` e nada é criado. Precisa de ` + "`" + `team_chat:create` + "`" + `. Os outros participantes recebem ` + "`" + `team_chat:thread` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Criar grupo",
+                "parameters": [
+                    {
+                        "description": "Título e participantes",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.CreateGroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ThreadEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_body, title_required, title_too_long, members_required ou too_many_members",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden: sem team_chat:create",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "member_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/messages/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só o autor. A mensagem continua no histórico como apagada (` + "`" + `deleted_at` + "`" + `, sem texto nem menções) e os participantes recebem ` + "`" + `team_chat:message_updated` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Apagar mensagem da equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mensagem",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.MessageEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden ou not_author",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "message_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "system_message",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só o autor, e só mensagens de texto ainda não apagadas. A mensagem ganha ` + "`" + `edited_at` + "`" + ` e os participantes recebem ` + "`" + `team_chat:message_updated` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Editar mensagem da equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mensagem",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novo texto",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.EditRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.MessageEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "body_required ou body_too_long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden ou not_author",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "message_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "system_message",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/people": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista todos os membros do workspace, com nome e foto, em ordem de nome. Todo membro usa o chat da equipe, sem permissão; só criar grupos depende de ` + "`" + `team_chat:create` + "`" + `. É com essas pessoas que você pode abrir uma conversa direta ou formar um grupo. Os departamentos não limitam a lista.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Pessoas do chat da equipe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.PeopleResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden: você não é membro deste workspace",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/scheduled/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cancela uma mensagem sua ainda pendente.",
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Cancelar mensagem agendada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mensagem agendada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Cancelada"
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "scheduled_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "scheduled_final",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Muda o texto e ou o horário de uma mensagem sua ainda pendente. Uma mensagem já enviada, cancelada ou que falhou responde ` + "`" + `scheduled_final` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Alterar mensagem agendada",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da mensagem agendada",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "O que muda",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.RescheduleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ScheduledEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "send_at_too_soon, send_at_too_far, body_required ou body_too_long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "scheduled_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "scheduled_final",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/summary": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Quantas conversas da equipe têm mensagens que você não leu e quantas mensagens são. Conversas silenciadas não contam, a não ser que tenham uma menção a você ainda não lida. Serve para o selo do botão Equipe; atualize ao receber ` + "`" + `team_chat:message` + "`" + ` ou ` + "`" + `team_chat:read` + "`" + ` pelo WebSocket de conversas, ou a cada minuto quando não há WebSocket.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Não lidas do chat da equipe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.SummaryResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Suas conversas da equipe (diretas e grupos de que você participa), da atividade mais recente para a mais antiga, com os participantes, a última mensagem, ` + "`" + `unread` + "`" + ` (mensagens depois da sua última leitura) e ` + "`" + `unread_mentions` + "`" + `. Para a próxima página, envie ` + "`" + `next` + "`" + ` em ` + "`" + `cursor` + "`" + `; ` + "`" + `next` + "`" + ` vazio indica a última página.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Conversas da equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Valor de next da página anterior",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Quantidade (padrão 30, máximo 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ThreadListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_cursor ou invalid_limit",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uma conversa de que você participa, com os participantes e o ` + "`" + `last_read_seq` + "`" + ` de cada um (a confirmação de leitura). Quem não participa recebe 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Uma conversa da equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ThreadEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só administradores do grupo. Grava uma mensagem de sistema ` + "`" + `renamed` + "`" + ` e os participantes recebem ` + "`" + `team_chat:message` + "`" + ` e ` + "`" + `team_chat:thread` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Renomear grupo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Novo título",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.RenameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ThreadEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "title_required ou title_too_long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden ou not_admin",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "direct_thread",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/leave": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Você deixa de participar e perde o acesso ao grupo e ao histórico. Se era o último administrador, quem entrou primeiro vira administrador. Conversas diretas não podem ser deixadas (` + "`" + `direct_thread` + "`" + `).",
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Sair do grupo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Saiu"
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "direct_thread",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/members": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só administradores do grupo. Quem já participa é ignorado; quem entra começa com o histórico lido até agora e vê o histórico do grupo. Todas as pessoas precisam ser membros do workspace.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Adicionar pessoas ao grupo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Pessoas",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.AddMembersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ThreadEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "members_required ou too_many_members",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden ou not_admin",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "direct_thread ou member_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/members/{userId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só administradores do grupo (tirar a si mesmo é sair). A pessoa perde o acesso ao grupo na hora e recebe ` + "`" + `team_chat:thread_removed` + "`" + `. Se ela era a última administradora, quem entrou primeiro vira administrador.",
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Tirar uma pessoa do grupo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da pessoa",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Removida"
+                    },
+                    "403": {
+                        "description": "forbidden ou not_admin",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "direct_thread",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mensagens da mais antiga para a mais nova. Sem ` + "`" + `before_seq` + "`" + ` nem ` + "`" + `after_seq` + "`" + `: as mais recentes. Com ` + "`" + `before_seq` + "`" + `: as anteriores a essa sequência (` + "`" + `has_more` + "`" + ` diz se há ainda mais antigas). Com ` + "`" + `after_seq` + "`" + `: as seguintes, para recuperar o que chegou durante uma queda de conexão (` + "`" + `has_more` + "`" + ` diz se há mais novas; repita com o maior ` + "`" + `seq` + "`" + ` recebido). Mensagens apagadas vêm com ` + "`" + `deleted_at` + "`" + ` e sem texto.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Mensagens de uma conversa da equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Só mensagens com seq menor",
+                        "name": "before_seq",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Só mensagens com seq maior",
+                        "name": "after_seq",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Quantidade (padrão 50, máximo 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.MessageListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_seq, invalid_limit ou page_direction",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Texto de 1 a 4000 caracteres. ` + "`" + `mentions` + "`" + ` traz até 50 IDs; só ficam os de quem participa da conversa. ` + "`" + `reply_to_id` + "`" + ` cita uma mensagem da mesma conversa. ` + "`" + `client_id` + "`" + ` (até 128 caracteres, um UUID por envio) torna o envio idempotente: repetir o mesmo ` + "`" + `client_id` + "`" + ` devolve a mensagem já gravada com 200, sem enviar de novo. Os participantes recebem ` + "`" + `team_chat:message` + "`" + `. Numa conversa direta cuja outra pessoa saiu do workspace, ` + "`" + `recipient_unavailable` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Enviar mensagem para a equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Mensagem",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.SendRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Já enviada com este client_id",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.MessageEnvelope"
+                        }
+                    },
+                    "201": {
+                        "description": "Enviada",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.MessageEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_body, body_required, body_too_long, too_many_mentions, client_id_too_long ou reply_outside_thread",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden: você não é membro deste workspace",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "recipient_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/mute": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Só para você: uma conversa silenciada não conta no selo de não lidas e não toca som nem mostra notificação no computador, a não ser que a mensagem mencione você. As suas outras abas recebem ` + "`" + `team_chat:thread` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Silenciar conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Silenciar ou não",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.MuteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Gravado"
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/read": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Marca a conversa como lida até ` + "`" + `seq` + "`" + `. Nunca volta para trás nem passa da última mensagem; a resposta traz onde a sua leitura ficou. Quando muda, os participantes recebem ` + "`" + `team_chat:read` + "`" + ` (confirmação de leitura e sincronia entre as suas abas).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Marcar como lida",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Até qual seq",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ReadRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ReadResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/team-chat/threads/{id}/scheduled": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "As suas mensagens ainda pendentes nesta conversa, da mais próxima para a mais distante. Ninguém mais vê as suas mensagens agendadas.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Mensagens agendadas nesta conversa",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ScheduledListResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Agenda uma mensagem para ` + "`" + `send_at` + "`" + ` (de 1 minuto a 30 dias à frente). Valem as mesmas regras de enviar agora, conferidas de novo na hora do envio: se você saiu da conversa ou do workspace, ou a outra pessoa da conversa direta saiu do workspace, a mensagem fica ` + "`" + `failed` + "`" + ` com o motivo em ` + "`" + `failure_reason` + "`" + ` e nada é enviado. O envio nunca se repete, mesmo se o servidor reiniciar no meio. Você recebe ` + "`" + `team_chat:scheduled` + "`" + ` a cada mudança.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat da equipe"
+                ],
+                "summary": "Agendar mensagem para a equipe",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conversa",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Mensagem e horário",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ScheduleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/teamchathttp.ScheduledEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "send_at_required, send_at_too_soon, send_at_too_far, body_required, body_too_long ou reply_outside_thread",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "thread_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "recipient_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Listar contas do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Busca por nome ou usuário",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "CONNECTED, NEEDS_RECONNECT, REVOKED ou DISCONNECTED",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/tiktok.AccountResponse"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Detalhar conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.AccountResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Define departamento, funil, agente, fluxo, as chaves de automação e o aviso de atendimento automático. Agente, fluxo, funil e departamento precisam ser do mesmo workspace.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Atualizar automação da conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Campos a alterar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.UpdateAccountRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.AccountResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revoga o acesso no TikTok, apaga os tokens na hora e agenda a exclusão das conversas, contatos, comentários e análises da conta para daqui a 30 dias. Conectar de novo antes disso cancela a exclusão.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Desconectar conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.DisconnectResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comment-rules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Regras que respondem, ocultam ou curtem comentários automaticamente. No TikTok as ações são resposta pública, ocultar e curtir.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Listar regras de comentário da conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/commentautomationhttp.RuleResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Criar regra de comentário no TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Regra",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comment-rules/{ruleId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Atualizar regra de comentário no TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "ruleId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Regra",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/commentautomationhttp.RuleResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Excluir regra de comentário no TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da regra",
+                        "name": "ruleId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comments/{commentId}/hide": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Ocultar comentário do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário no TikTok",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comments/{commentId}/like": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Curtir comentário do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário no TikTok",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comments/{commentId}/replies": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Publica uma resposta pública (até 1.200 caracteres) na conversa do comentário. Só vale para comentários das publicações da própria conta.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Responder comentário do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário no TikTok",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Texto da resposta",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.ReplyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comments/{commentId}/unhide": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Pede ao TikTok para mostrar o comentário de novo e confere o resultado, porque a moderação do TikTok pode manter o comentário oculto.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Reexibir comentário do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário no TikTok",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/comments/{commentId}/unlike": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Descurtir comentário do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do comentário no TikTok",
+                        "name": "commentId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.CommentResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/entries/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca na fila um relatório com as conversas de mensagens diretas da conta.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Exportar conversas de uma conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta do TikTok",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Relatorio na fila; acompanhe por /reports/{id}",
+                        "schema": {
+                            "$ref": "#/definitions/report.Job"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/health-check": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Confere agora permissões, perfil, mensagens diretas e a assinatura dos webhooks, sem esperar a verificação diária.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Verificar a saúde da conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.AccountResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/videos": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lê uma página das publicações da conta direto do TikTok (até 20) e guarda uma cópia com as miniaturas.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Listar publicações da conta do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor da próxima página",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.VideoPageResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/tiktok/accounts/{id}/videos/{videoId}/comments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Listar comentários de uma publicação do TikTok",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da conta",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da publicação no TikTok",
+                        "name": "videoId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor da próxima página",
+                        "name": "cursor",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Inclui comentários ocultos",
+                        "name": "includeHidden",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tiktok.CommentPageResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/unofficial-whatsapp/campaigns": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista as campanhas do WhatsApp não oficial do workspace. ` + "`" + `audience` + "`" + ` filtra por destino (` + "`" + `leads` + "`" + ` ou ` + "`" + `groups` + "`" + `); outro valor responde 422. Cada campanha para grupos traz em ` + "`" + `targetNames` + "`" + ` os nomes dos primeiros grupos; o total está em ` + "`" + `metrics.totalNumbers` + "`" + `. ` + "`" + `instanceId` + "`" + ` filtra pelo número da campanha ou, numa campanha para grupos, pelos números que ela pode usar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Campaigns"
+                ],
+                "summary": "Listar campanhas não oficiais",
+                "parameters": [
+                    {
+                        "enum": [
+                            "leads",
+                            "groups"
+                        ],
+                        "type": "string",
+                        "description": "Destino",
+                        "name": "audience",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Números, separados por vírgula",
+                        "name": "instanceId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RUNNING, PAUSED, STOPPED ou COMPLETED",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Parte do nome",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Arquivadas",
+                        "name": "archived",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/unofficial_whatsapp.campaignDTO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -24610,7 +28408,120 @@ const docTemplate = `{
                 }
             }
         },
+        "/unofficial-whatsapp/campaigns/estimate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calcula, antes de criar, quanto tempo a campanha leva para enviar (` + "`" + `estimate.seconds` + "`" + `), pelo mesmo intervalo entre envios que o envio usa. Para pessoas (` + "`" + `audience=leads` + "`" + `) usa o número escolhido e ` + "`" + `targets` + "`" + `. Para grupos (` + "`" + `audience=groups` + "`" + `) não há número: para cada grupo de ` + "`" + `groupJids` + "`" + ` mostra quais dos seus números podem publicar nele agora (` + "`" + `senders` + "`" + `) ou por que nenhum pode (` + "`" + `block` + "`" + `: ` + "`" + `not_in_group` + "`" + `, ` + "`" + `cannot_post` + "`" + ` ou ` + "`" + `offline` + "`" + `), e os números enviam em paralelo. Grupos pedem também ` + "`" + `unofficial_whatsapp_groups:read` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Campaigns"
+                ],
+                "summary": "Estimar o envio de uma campanha não oficial",
+                "parameters": [
+                    {
+                        "description": "Destino, número ou grupos e ritmo",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp.campaignEstimatePayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp.campaignEstimateDraftDTO"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/unofficial-whatsapp/campaigns/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Devolve a campanha com as métricas e, enquanto não terminou, ` + "`" + `estimate` + "`" + `: quanto falta para enviar os pendentes (` + "`" + `seconds` + "`" + `), pelo intervalo real entre envios de cada número. Numa campanha para grupos os números enviam em paralelo e cada grupo conta no número que pode publicar nele; ` + "`" + `unsendable` + "`" + ` conta os grupos em que nenhum número pode publicar agora. Sem estimativa disponível o campo não vem.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Campaigns"
+                ],
+                "summary": "Detalhe de uma campanha não oficial",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Campanha",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp.campaignDTO"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -24694,6 +28605,95 @@ const docTemplate = `{
             }
         },
         "/unofficial-whatsapp/campaigns/{id}/entries": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os destinos da campanha. Depois do envio, ` + "`" + `senderInstanceId` + "`" + ` e ` + "`" + `senderLabel` + "`" + ` dizem qual número enviou; numa campanha para grupos cada grupo pode ter saído por um número diferente.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Campaigns"
+                ],
+                "summary": "Números e grupos de uma campanha não oficial",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Campanha",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Status do envio",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Número ou nome",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Código de falha",
+                        "name": "errorCode",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/unofficial_whatsapp.campaignEntryDTO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -24841,6 +28841,58 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/unofficial-whatsapp/campaigns/{id}/progress": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mesmas regras do progresso da campanha oficial: contagens por status, métricas e ritmo de envio em cache compartilhado por campanha (4 segundos em execução, 30 segundos nos demais estados), status sempre lido agora e ` + "`" + `refreshAfterSeconds` + "`" + ` dizendo quando pedir de novo.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Campaigns"
+                ],
+                "summary": "Progresso ao vivo de uma campanha não oficial",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Campanha",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/campaign.Progress"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "campaign_live_unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -25111,6 +29163,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/unofficial-whatsapp/campaigns/{id}/timeline": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mesmas regras da linha do tempo da campanha oficial: envios, entregas, leituras e falhas por minuto, hora ou dia, no fuso do workspace, com a escala escolhida pelo servidor quando ` + "`" + `bucket` + "`" + ` vem vazio, cache compartilhado e o limite de consultas analíticas.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Campaigns"
+                ],
+                "summary": "Linha do tempo de uma campanha não oficial",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Campanha",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "minute, hour ou day",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/campaign.Timeline"
+                        }
+                    },
+                    "400": {
+                        "description": "campaign_timeline_bucket_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "campaign_live_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/unofficial-whatsapp/groups": {
             "get": {
                 "security": [
@@ -25159,7 +29281,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "Somente onde um número é admin",
+                        "description": "Permissão de envio: true para grupos em que só admins enviam mensagens, false para grupos abertos em que todos enviam; ausente traz os dois",
                         "name": "adminsOnly",
                         "in": "query"
                     },
@@ -25909,7 +30031,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "O primeiro número entra na hora; os outros entram um a cada 10 minutos, para não parecer automação ao WhatsApp. Um convite revogado ou inválido para o plano inteiro; falhas passageiras tentam de novo até 3 vezes.",
+                "description": "O primeiro número entra na hora; os outros entram um a cada 10 minutos, para não parecer automação ao WhatsApp. Um convite revogado ou inválido para o plano inteiro; falhas passageiras tentam de novo até 3 vezes. Com ` + "`" + `category` + "`" + ` o grupo fica nessa categoria (até 60 caracteres): a primeira entrada do plano define a categoria, as seguintes só preenchem um grupo ainda sem categoria.",
                 "consumes": [
                     "application/json"
                 ],
@@ -25998,6 +30120,63 @@ const docTemplate = `{
                                 "type": "integer",
                                 "format": "int64"
                             }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/unofficial-whatsapp/groups/members/export": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uma única planilha CSV (separada por ponto e vírgula, com BOM) com os membros dos grupos escolhidos e/ou de uma série inteira: grupo, JID do grupo, nossos números no grupo, nome, telefone, JID, número oculto (LID), status (ativo, saiu, removido), papel (superadmin, admin, membro), datas no fuso do workspace, lead, outros grupos e qual dos nossos números é o membro. Um grupo fora do escopo de quem pede recusa a exportação inteira.",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Groups"
+                ],
+                "summary": "Exportar os membros de vários grupos",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "IDs dos grupos separados por vírgula",
+                        "name": "groupIds",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Série: exporta todos os grupos dela",
+                        "name": "seriesId",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "arquivo CSV",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "403": {
@@ -26165,6 +30344,57 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/unofficial-whatsapp/groups/people/leads": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Para cada pessoa escolhida na lista de pessoas dos grupos, cria ou reaproveita um lead pelo telefone e vincula a ele todas as participações dela nos grupos acompanhados do escopo de quem pede. Pessoas com o telefone oculto não viram lead.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Groups"
+                ],
+                "summary": "Cadastrar pessoas dos grupos como leads",
+                "parameters": [
+                    {
+                        "description": "Pessoas",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp.membersToLeadsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp_group_usecase.LeadLinkResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     },
                     "403": {
@@ -26599,7 +30829,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "active ou left",
+                        "description": "active, left (saiu, por conta própria ou sem autor conhecido) ou removed (removido por um admin)",
                         "name": "status",
                         "in": "query"
                     },
@@ -26690,7 +30920,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Planilha CSV (separada por ponto e vírgula, com BOM) com nome, telefone, status, papel, datas de entrada e saída e se é um dos nossos números.",
+                "description": "A mesma planilha CSV da exportação de vários grupos (` + "`" + `/unofficial-whatsapp/groups/members/export` + "`" + `), só com este grupo.",
                 "produces": [
                     "text/csv"
                 ],
@@ -26786,6 +31016,141 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/unofficial-whatsapp/groups/{id}/messages": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Mensagens da conversa do grupo lida por um número do escopo de departamentos de quem consulta, da mais antiga para a mais recente, com a mídia guardada (tamanho e thumbhash) e o nome de quem escreveu, vindo dos membros e dos contatos. Nossas mensagens saem como \"Nossa equipe\" (` + "`" + `ourTeam` + "`" + `), nunca com o operador. Sem ` + "`" + `before` + "`" + ` responde a página mais recente; para carregar as anteriores, mande ` + "`" + `before` + "`" + ` com o ` + "`" + `nextBefore` + "`" + ` da página. Sem ` + "`" + `nextBefore` + "`" + `, é o início do histórico. Grupo fora do escopo responde 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Groups"
+                ],
+                "summary": "Mensagens de um grupo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor RFC 3339: mensagens anteriores a este instante",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 50,
+                        "description": "Mensagens por página (até 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp_group_usecase.GroupMessagesPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/unofficial-whatsapp/groups/{id}/numbers": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Coloca no grupo números seus que ainda não estão nele, pela mesma fila de entradas: o primeiro entra na hora e os outros um a cada 10 minutos. O convite vem de um número seu que é admin do grupo; sem admin, usa o convite de uma entrada anterior do grupo. Sem nenhum dos dois o pedido é recusado e o grupo precisa ser aberto com um convite. Categoria e acompanhamento do grupo continuam como estão.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Unofficial WhatsApp Groups"
+                ],
+                "summary": "Adicionar números a um grupo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do grupo",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Números que vão entrar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp.addGroupNumbersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/unofficial_whatsapp_group_usecase.JoinResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -28003,6 +32368,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/webhooks/mercadolivre/{token}": {
+            "post": {
+                "description": "Recebe as notificações do Mercado Livre (questions, messages, orders_v2, shipments, items). O token do caminho é comparado em tempo constante; a notificação só é validada e enfileirada, sem acesso ao banco, e responde em bem menos de 500 ms.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Mercado Livre"
+                ],
+                "summary": "Notificações do Mercado Livre",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Token secreto do caminho (MERCADOLIVRE_NOTIFICATION_TOKEN)",
+                        "name": "token",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/mercadolivre.NotificationAck"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/webhooks/meta-ads": {
             "get": {
                 "description": "Endpoint público da Meta para o objeto ad_account. GET responde à verificação (hub.challenge); POST recebe as mudanças, valida a assinatura X-Hub-Signature-256 e agenda a sincronização da conta.",
@@ -28054,6 +32472,47 @@ const docTemplate = `{
                         "description": "token de verificação inválido",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/tiktok": {
+            "post": {
+                "description": "Recebe eventos do TikTok (mensagens diretas, ecos, leituras, indicações e comentários). A assinatura ` + "`" + `Tiktok-Signature` + "`" + ` (HMAC-SHA256 de ` + "`" + `timestamp.corpo` + "`" + ` com o segredo do app) é verificada antes de qualquer processamento, com tolerância de 5 minutos. O evento é colocado na fila e a resposta é imediata.",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TikTok"
+                ],
+                "summary": "Webhook do TikTok",
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -29232,7 +33691,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza nome, modelo, número, fluxo e agente. Trocar o modelo passa pela mesma regra da criação: um modelo cujo veredito de saída é ` + "`" + `none` + "`" + ` exige ` + "`" + `exitRiskAcknowledged: true` + "`" + ` no corpo (422 ` + "`" + `exit_risk_not_acknowledged` + "`" + ` sem ele), e o reconhecimento fica gravado com quem reconheceu e quando. Uma campanha preparada a partir de leads (origem ` + "`" + `lead_selection` + "`" + `) recusa a troca do modelo, do número ou da mensagem com 409 ` + "`" + `send_selection_locked` + "`" + `. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (` + "`" + `workflowId` + "`" + `, ` + "`" + `agentId` + "`" + `), variável obrigatória ausente 400 (` + "`" + `AGENT_REQUIRED_VARIABLE_MISSING` + "`" + ` ou ` + "`" + `metadata` + "`" + `).",
+                "description": "Atualiza só as configurações: nome, modelo, número, funil, fluxo, agente, ferramentas de IA e agendamento. Os contatos não mudam por aqui; ` + "`" + `phoneNumbers` + "`" + ` no corpo é ignorado (use POST /whatsapp/campaigns/{id}/entries). Arquivar não muda por aqui (use /archive e /unarchive). O modelo e o número só são conferidos quando mudam: modelo pronto para envio (422 ` + "`" + `campaign_template_not_ready` + "`" + `), da mesma conta do número (422 ` + "`" + `campaign_template_phone_mismatch` + "`" + `) e preenchível pelos contatos que ainda aguardam envio (400 ` + "`" + `campaign_template_variables_missing` + "`" + `). Trocar o modelo passa pela regra de saída da criação (422 ` + "`" + `exit_risk_not_acknowledged` + "`" + ` sem ` + "`" + `exitRiskAcknowledged: true` + "`" + `). Uma campanha preparada a partir de leads recusa a troca do modelo ou do número com 409 ` + "`" + `send_selection_locked` + "`" + `. Quando o fluxo ou o agente mudam, cada contato salvo precisa ter as variáveis que ele pede (400 ` + "`" + `campaign_workflow_vars_missing` + "`" + ` ou ` + "`" + `AGENT_REQUIRED_VARIABLE_MISSING` + "`" + `); fluxo de outro workspace 403 ` + "`" + `campaign_workflow_forbidden` + "`" + `, inexistente 400 ` + "`" + `campaign_workflow_not_found` + "`" + ` ou ` + "`" + `campaign_agent_not_found` + "`" + `. ` + "`" + `scheduledStart` + "`" + ` vazio desliga o agendamento; um novo horário precisa ficar entre 5 minutos e 1 ano (400 ` + "`" + `campaign_schedule_in_past` + "`" + ` ou ` + "`" + `campaign_schedule_out_of_window` + "`" + `) e não vale para campanha em execução (409 ` + "`" + `campaign_running` + "`" + `).",
                 "consumes": [
                     "application/json"
                 ],
@@ -29252,7 +33711,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Campos da campanha ou números a incluir",
+                        "description": "Configurações da campanha",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -29289,6 +33748,18 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -29754,6 +34225,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/whatsapp/campaigns/{id}/progress": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Contagens por status, métricas e ritmo de envio (contatos processados por minuto e tempo restante estimado). As contagens ficam em cache compartilhado por campanha: 4 segundos enquanto ela está em execução e 30 segundos nos demais estados, então qualquer número de pessoas olhando custa uma contagem por janela. O status vem sempre da campanha lida agora. ` + "`" + `refreshAfterSeconds` + "`" + ` diz quando pedir de novo; 0 quer dizer que não há o que acompanhar. O ritmo só aparece em execução e depois de pelo menos 20 segundos de amostra.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp Campaigns"
+                ],
+                "summary": "Progresso ao vivo de uma campanha oficial",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Campanha",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/campaign.Progress"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "campaign_live_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/whatsapp/campaigns/{id}/quick-send": {
             "post": {
                 "security": [
@@ -30090,6 +34613,1138 @@ const docTemplate = `{
                         "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/campaigns/{id}/timeline": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Envios, entregas, leituras e falhas contados por minuto, hora ou dia a partir dos carimbos de cada contato, no fuso do horário de funcionamento do workspace (ou do departamento). Sem ` + "`" + `bucket` + "`" + `, o servidor escolhe o menor que cobre o período de envio: minuto até 3 horas, hora até 7 dias, dia depois disso. Cada escala mostra a janela mais recente que cabe nela (180 minutos, 168 horas ou 92 dias); em execução a janela vai até agora. Contatos enviados antes dos carimbos existirem não aparecem. O resultado fica em cache compartilhado (10 segundos em execução, 5 minutos nos demais estados) e passa pelo limite de consultas analíticas, que responde 503 com Retry-After quando está cheio.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp Campaigns"
+                ],
+                "summary": "Linha do tempo de uma campanha oficial",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Campanha",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "minute, hour ou day",
+                        "name": "bucket",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/campaign.Timeline"
+                        }
+                    },
+                    "400": {
+                        "description": "campaign_timeline_bucket_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "campaign_live_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Formulários do workspace com onde estão publicados (uma linha por conta do WhatsApp), quantos envios e respostas tiveram e quando chegou a última resposta. ` + "`" + `archived=true` + "`" + ` inclui os arquivados. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Listar formulários",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parte do nome",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Incluir arquivados",
+                        "name": "archived",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.FormListResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria um formulário em branco ou a partir de um modelo pronto (` + "`" + `starter` + "`" + `). O primeiro rascunho já vem conferido: ` + "`" + `draft.problems` + "`" + ` lista o que falta corrigir antes de publicar. Exige ` + "`" + `whatsapp_forms:create` + "`" + ` e ` + "`" + `whatsapp_forms:update` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Criar formulário",
+                "parameters": [
+                    {
+                        "description": "Nome e modelo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.CreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.FormDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "whatsapp_form_name_required, whatsapp_form_name_too_long, whatsapp_form_starter_unknown",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "whatsapp_form_name_taken",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/check": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Confere um documento sem salvar: regras e limites da Meta, rotas entre telas, condições de exibição e onde cada resposta é salva no lead. Cada problema traz a tela, o bloco e a propriedade para o construtor marcar. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Conferir documento",
+                "parameters": [
+                    {
+                        "description": "Documento",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.CheckRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.ProblemsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/options": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Tipos de campo, blocos de exibição, categorias da Meta, os limites de texto e de quantidade que a Meta aplica, onde cada tipo de campo pode ser salvo no lead (inclusive os campos personalizados do workspace, sem os sensíveis) e os modelos prontos. O construtor usa só estes dados: nenhuma regra é repetida no navegador. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Opções do construtor de formulários",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.OptionsResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/responses/{responseId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "A resposta com a versão do formulário preenchida, o lead e o que foi salvo nele. ` + "`" + `revealed` + "`" + ` diz se as respostas sensíveis vieram abertas. Exige ` + "`" + `whatsapp_form_responses:read` + "`" + ` e alcance da conversa.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Ver resposta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da resposta (UUID)",
+                        "name": "responseId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.ResponseDetailResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "whatsapp_form_response_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Exclui a resposta. Exige ` + "`" + `whatsapp_form_responses:delete` + "`" + ` e alcance da conversa.",
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Excluir resposta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da resposta (UUID)",
+                        "name": "responseId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "whatsapp_form_response_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/sendable": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Formulários publicados e liberados pela Meta na conta do número (` + "`" + `phoneId` + "`" + `) ou da conta (` + "`" + `metaWabaId` + "`" + `); informe só um dos dois. ` + "`" + `metaFlowId` + "`" + ` e ` + "`" + `firstScreen` + "`" + ` são o que um botão de formulário num modelo de mensagem usa. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Formulários que um número pode enviar",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do número oficial",
+                        "name": "phoneId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta do WhatsApp na Meta",
+                        "name": "metaWabaId",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.SendableResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "whatsapp_form_not_owner",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "O formulário, o rascunho atual com os problemas a corrigir, a versão publicada e a publicação em cada conta do WhatsApp com o status da Meta. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Ver formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.FormDetailResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "whatsapp_form_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Troca o nome e a descrição. O nome na Meta não muda: os modelos de mensagem continuam apontando para o mesmo formulário. Exige ` + "`" + `whatsapp_forms:update` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Renomear formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Nome e descrição",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.RenameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappform.Form"
+                        }
+                    },
+                    "400": {
+                        "description": "whatsapp_form_name_required, whatsapp_form_description_too_long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "whatsapp_form_name_taken, whatsapp_form_archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/archive": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Descontinua o formulário na Meta em todas as contas e então arquiva. Se a Meta não confirmar em alguma conta, nada é arquivado. As respostas continuam guardadas. Exige ` + "`" + `whatsapp_forms:delete` + "`" + `.",
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Arquivar formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "forbidden, whatsapp_form_not_owner",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/automations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Fluxos de automação que começam quando o formulário é respondido ou que enviam o formulário. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Automações do formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.AutomationsResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria um fluxo de automação desligado, já ligado ao formulário: quando ele é respondido, adiciona uma etiqueta, cria um negócio no funil padrão e avisa o responsável. Você edita e liga no editor de fluxos. Exige ` + "`" + `whatsapp_forms:read` + "`" + ` e ` + "`" + `workflows:create` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Criar automação para o formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.AutomationCreatedResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/compiled": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "O Flow JSON que o rascunho gera para a Meta, só para leitura. 422 com os problemas quando o rascunho ainda não pode ser gerado. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Ver o JSON do rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "422": {
+                        "description": "whatsapp_form_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/draft": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Salva uma nova versão do rascunho. ` + "`" + `baseVersionId` + "`" + ` é o rascunho que o construtor abriu: se outra pessoa salvou depois, a resposta é 409 ` + "`" + `whatsapp_form_stale_draft` + "`" + ` e nada é perdido. Problemas nunca impedem salvar; eles voltam em ` + "`" + `draft.problems` + "`" + `. Um documento igual ao atual não cria versão. Exige ` + "`" + `whatsapp_forms:update` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Salvar rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Documento e versão de base",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.DraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.DraftResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "whatsapp_form_stale_draft, whatsapp_form_archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/duplicate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cria um formulário novo com uma cópia do rascunho, chamado \"(cópia)\". Exige ` + "`" + `whatsapp_forms:create` + "`" + ` e ` + "`" + `whatsapp_forms:update` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Duplicar formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.FormDetailResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/fields/{fieldKey}/distribution": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Quantas respostas escolheram cada opção do campo, no período. Exige ` + "`" + `whatsapp_form_responses:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Distribuição de um campo de escolha",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Chave do campo",
+                        "name": "fieldKey",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Início do período",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fim do período",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.DistributionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Gera a pré-visualização oficial da Meta para o rascunho, sem mexer no formulário publicado. O link vale por até 30 dias e pode ser aberto num iframe. Exige ` + "`" + `whatsapp_forms:update` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Pré-visualizar na Meta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.PreviewResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "whatsapp_form_no_account",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "whatsapp_form_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/publications/{metaWabaId}/deprecate": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Descontinua o formulário na Meta em uma conta do WhatsApp. A Meta não permite reverter; publicar de novo cria um formulário novo nessa conta. Exige ` + "`" + `whatsapp_forms:configure` + "`" + `.",
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Descontinuar em uma conta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da conta do WhatsApp na Meta",
+                        "name": "metaWabaId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "whatsapp_form_publication_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Publica o rascunho em todas as contas do WhatsApp onde o workspace é dono de um número oficial conectado. Uma conta que já tem o formulário recebe a nova versão no mesmo formulário da Meta, então os modelos de mensagem continuam funcionando. ` + "`" + `outcomes` + "`" + ` traz o resultado de cada conta; uma conta com problema não impede as outras. 422 com os problemas quando o rascunho tem algo a corrigir (nada é enviado à Meta). Exige ` + "`" + `whatsapp_forms:configure` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Publicar formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.PublishResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "whatsapp_form_no_account, whatsapp_form_archived",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "whatsapp_form_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/responses": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Respostas recebidas, da mais recente para a mais antiga, só das conversas que quem consulta alcança. Respostas sensíveis, fotos e documentos aparecem como •••• sem ` + "`" + `whatsapp_form_responses:read_sensitive` + "`" + `. ` + "`" + `match=unmatched` + "`" + ` traz respostas que não vieram de um envio deste workspace (por exemplo, um formulário enviado pelo WhatsApp Manager). Datas inclusivas (YYYY-MM-DD ou RFC3339). Paginado por cursor (` + "`" + `after` + "`" + `). Exige ` + "`" + `whatsapp_form_responses:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Respostas do formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Recebidas a partir de",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Recebidas até",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "inbox",
+                            "template_start",
+                            "template_scheduled",
+                            "template_bulk",
+                            "template",
+                            "campaign",
+                            "workflow",
+                            "elo"
+                        ],
+                        "type": "string",
+                        "description": "Origens separadas por vírgula",
+                        "name": "origin",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "IDs de números, separados por vírgula",
+                        "name": "phoneId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "IDs de versões, separados por vírgula",
+                        "name": "versionId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID da campanha",
+                        "name": "campaignId",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "matched",
+                            "unmatched"
+                        ],
+                        "type": "string",
+                        "description": "Correspondência",
+                        "name": "match",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Nome do lead ou número",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor da próxima página",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (até 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.ResponsesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "whatsapp_form_list_invalid",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/sends": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Cada envio do formulário, do mais recente para o mais antigo, com a origem, o status e o motivo da falha. Respeita os departamentos de quem consulta. Paginado por cursor (` + "`" + `after` + "`" + `). Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Envios do formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor da próxima página",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página (até 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.SendsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Envios por status, entregues, lidos, respostas, tempo mediano até a resposta, por origem e por dia, no período. Formulários sem servidor não informam em qual tela a pessoa parou. Exige ` + "`" + `whatsapp_form_responses:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Desempenho do formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Início do período",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Fim do período",
+                        "name": "to",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappform.Stats"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/forms/{formId}/versions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Todas as versões salvas, da mais nova para a mais antiga. As respostas apontam para a versão que foi preenchida. Exige ` + "`" + `whatsapp_forms:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Versões do formulário",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do formulário (UUID)",
+                        "name": "formId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.VersionsResponse"
                         }
                     }
                 }
@@ -30691,7 +36346,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mostra o que cada botão de resposta rápida do modelo faz quando o lead toca nele e a confirmação de saída do modelo. São dados do Vozko: salvá-los nunca reenvia o modelo para a Meta. ` + "`" + `buttons` + "`" + ` lista cada botão de resposta rápida (` + "`" + `index` + "`" + `, ` + "`" + `text` + "`" + `) com a ação que vale hoje (` + "`" + `action` + "`" + `, ou null) e de onde ela vem (` + "`" + `source` + "`" + `); uma ação cujo botão mudou de texto na Meta aparece com ` + "`" + `stale: true` + "`" + ` e não roda. ` + "`" + `actions` + "`" + ` traz as ações gravadas, inclusive as desatualizadas. ` + "`" + `allowedKinds` + "`" + ` lista os tipos de ação que quem pede pode configurar, pelas mesmas permissões que o salvamento exige (por exemplo, ` + "`" + `consent_grant` + "`" + ` só com ` + "`" + `leads.consent` + "`" + `). Envie ` + "`" + `version` + "`" + ` no cabeçalho If-Match ao salvar.",
+                "description": "Mostra o que cada botão de resposta rápida do modelo faz quando o lead toca nele e a confirmação de saída do modelo. São dados da plataforma: salvá-los nunca reenvia o modelo para a Meta. ` + "`" + `buttons` + "`" + ` lista cada botão de resposta rápida (` + "`" + `index` + "`" + `, ` + "`" + `text` + "`" + `) com a ação que vale hoje (` + "`" + `action` + "`" + `, ou null) e de onde ela vem (` + "`" + `source` + "`" + `); uma ação cujo botão mudou de texto na Meta aparece com ` + "`" + `stale: true` + "`" + ` e não roda. ` + "`" + `actions` + "`" + ` traz as ações gravadas, inclusive as desatualizadas. ` + "`" + `allowedKinds` + "`" + ` lista os tipos de ação que quem pede pode configurar, pelas mesmas permissões que o salvamento exige (por exemplo, ` + "`" + `consent_grant` + "`" + ` só com ` + "`" + `leads.consent` + "`" + `). Envie ` + "`" + `version` + "`" + ` no cabeçalho If-Match ao salvar.",
                 "produces": [
                     "application/json"
                 ],
@@ -30729,7 +36384,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Substitui as ações dos botões de resposta rápida e a confirmação de saída do modelo, a partir da ` + "`" + `version` + "`" + ` lida (If-Match; 428 ` + "`" + `version_required` + "`" + ` sem ela, 409 ` + "`" + `version_conflict` + "`" + ` com o estado atual em ` + "`" + `current` + "`" + `). Nunca reenvia o modelo para a Meta. Cada ação vale para um botão de resposta rápida (` + "`" + `buttonIndex` + "`" + `) e tem um tipo: ` + "`" + `opt_out` + "`" + ` (sem parâmetros), ` + "`" + `consent_grant` + "`" + ` (` + "`" + `purpose` + "`" + `), ` + "`" + `hand_off` + "`" + ` (` + "`" + `departmentId` + "`" + ` para a roleta da equipe ou ` + "`" + `userId` + "`" + ` para um membro, exatamente um), ` + "`" + `start_workflow` + "`" + ` (` + "`" + `workflowId` + "`" + `), ` + "`" + `call_list` + "`" + ` (` + "`" + `callListId` + "`" + `), ` + "`" + `classify` + "`" + ` (` + "`" + `fieldKey` + "`" + ` e ` + "`" + `option` + "`" + ` de um campo de seleção do lead) e ` + "`" + `create_deal` + "`" + ` (` + "`" + `pipelineId` + "`" + ` e ` + "`" + `stageId` + "`" + `). Além de gerenciar modelos, cada tipo novo, alterado ou removido exige a permissão dele: ` + "`" + `leads.consent` + "`" + ` para ` + "`" + `consent_grant` + "`" + `, ` + "`" + `leads.assign` + "`" + ` para ` + "`" + `hand_off` + "`" + `, ` + "`" + `call_lists.manage` + "`" + ` para ` + "`" + `call_list` + "`" + `, ` + "`" + `leads:update` + "`" + ` para ` + "`" + `classify` + "`" + `, ` + "`" + `workflows.edit` + "`" + ` para ` + "`" + `start_workflow` + "`" + ` e ` + "`" + `deals.edit` + "`" + ` para ` + "`" + `create_deal` + "`" + ` (403 ` + "`" + `button_action_forbidden` + "`" + `). As palavras de saída do modelo não são gravadas aqui: são os comandos ` + "`" + `/palavra` + "`" + ` que o próprio texto do modelo mostra ao lead (cabeçalho de texto, corpo, rodapé ou texto de um botão de resposta rápida). A confirmação de saída é enviada quando o lead usa uma delas; sem confirmação, nenhuma confirmação é enviada. Cada ação leva ` + "`" + `buttonText` + "`" + `, o texto do botão que a pessoa viu ao salvar: com o texto atual do botão, a ação vale para ele; uma ação desatualizada reenviada sem nenhuma mudança e com o texto que ela guarda continua gravada e desatualizada; qualquer outro texto é recusado com 422 ` + "`" + `button_action_stale` + "`" + `, e nada é gravado. ` + "`" + `purpose` + "`" + ` de ` + "`" + `consent_grant` + "`" + ` é opcional, até 200 caracteres. Códigos: 400 ` + "`" + `button_action_kind_unknown` + "`" + `, ` + "`" + `button_action_not_quick_reply` + "`" + `, ` + "`" + `button_action_params_invalid` + "`" + `, ` + "`" + `button_action_confirmation_too_long` + "`" + `, ` + "`" + `button_action_duplicate_button` + "`" + `, ` + "`" + `exit_confirmation_too_long` + "`" + `; 422 ` + "`" + `button_action_params_not_found` + "`" + `, ` + "`" + `button_action_stale` + "`" + `; 404 ` + "`" + `button_action_template_not_found` + "`" + `.",
+                "description": "Substitui as ações dos botões de resposta rápida e a confirmação de saída do modelo, a partir da ` + "`" + `version` + "`" + ` lida (If-Match; 428 ` + "`" + `version_required` + "`" + ` sem ela, 409 ` + "`" + `version_conflict` + "`" + ` com o estado atual em ` + "`" + `current` + "`" + `). Nunca reenvia o modelo para a Meta. Cada ação vale para um botão de resposta rápida (` + "`" + `buttonIndex` + "`" + `) e tem um tipo: ` + "`" + `opt_out` + "`" + ` (sem parâmetros), ` + "`" + `consent_grant` + "`" + ` (` + "`" + `purpose` + "`" + `), ` + "`" + `hand_off` + "`" + ` (` + "`" + `departmentId` + "`" + ` para a roleta da equipe ou ` + "`" + `userId` + "`" + ` para um membro, exatamente um), ` + "`" + `delegate` + "`" + ` (` + "`" + `agentId` + "`" + ` de um agente de IA ativo ou ` + "`" + `workflowId` + "`" + ` de um fluxo que atende conversas, exatamente um: a conversa passa a ser do agente ou do fluxo, como na delegação do atendimento, até alguém assumir), ` + "`" + `start_workflow` + "`" + ` (` + "`" + `workflowId` + "`" + `, só roda o fluxo, sem passar a conversa), ` + "`" + `call_list` + "`" + ` (` + "`" + `callListId` + "`" + `), ` + "`" + `classify` + "`" + ` (` + "`" + `fieldKey` + "`" + ` e ` + "`" + `option` + "`" + ` de um campo de seleção do lead) e ` + "`" + `create_deal` + "`" + ` (` + "`" + `pipelineId` + "`" + ` e ` + "`" + `stageId` + "`" + `). Além de gerenciar modelos, cada tipo novo, alterado ou removido exige a permissão dele: ` + "`" + `leads.consent` + "`" + ` para ` + "`" + `consent_grant` + "`" + `, ` + "`" + `leads.assign` + "`" + ` para ` + "`" + `hand_off` + "`" + `, ` + "`" + `inbox.delegate` + "`" + ` para ` + "`" + `delegate` + "`" + `, ` + "`" + `call_lists.manage` + "`" + ` para ` + "`" + `call_list` + "`" + `, ` + "`" + `leads:update` + "`" + ` para ` + "`" + `classify` + "`" + `, ` + "`" + `workflows.edit` + "`" + ` para ` + "`" + `start_workflow` + "`" + ` e ` + "`" + `deals.edit` + "`" + ` para ` + "`" + `create_deal` + "`" + ` (403 ` + "`" + `button_action_forbidden` + "`" + `). As palavras de saída do modelo não são gravadas aqui: são os comandos ` + "`" + `/palavra` + "`" + ` que o próprio texto do modelo mostra ao lead (cabeçalho de texto, corpo, rodapé ou texto de um botão de resposta rápida). A confirmação de saída é enviada quando o lead usa uma delas; sem confirmação, nenhuma confirmação é enviada. Cada ação leva ` + "`" + `buttonText` + "`" + `, o texto do botão que a pessoa viu ao salvar: com o texto atual do botão, a ação vale para ele; uma ação desatualizada reenviada sem nenhuma mudança e com o texto que ela guarda continua gravada e desatualizada; qualquer outro texto é recusado com 422 ` + "`" + `button_action_stale` + "`" + `, e nada é gravado. ` + "`" + `purpose` + "`" + ` de ` + "`" + `consent_grant` + "`" + ` é opcional, até 200 caracteres. Códigos: 400 ` + "`" + `button_action_kind_unknown` + "`" + `, ` + "`" + `button_action_not_quick_reply` + "`" + `, ` + "`" + `button_action_params_invalid` + "`" + `, ` + "`" + `button_action_confirmation_too_long` + "`" + `, ` + "`" + `button_action_duplicate_button` + "`" + `, ` + "`" + `exit_confirmation_too_long` + "`" + `; 422 ` + "`" + `button_action_params_not_found` + "`" + `, ` + "`" + `button_action_stale` + "`" + `; 404 ` + "`" + `button_action_template_not_found` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -30830,7 +36485,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Envia à Meta uma nova versão do modelo, que volta para a revisão. Nome e idioma não mudam; a categoria só muda em modelos REJECTED ou PAUSED. O corpo traz todos os componentes que o modelo deve ter (cabeçalho, corpo, rodapé e botões): o que não vier é removido. Partes que o Vozko não edita (por exemplo oferta por tempo limitado ou carrossel) são mantidas como estão na Meta; botões que o Vozko não edita (fluxo, código) impedem trocar os botões (409 ` + "`" + `template_edit_unsupported` + "`" + `). Um cabeçalho de mídia é reenviado à Meta a partir de ` + "`" + `headerMediaUrl` + "`" + ` (precisa estar no armazenamento do Vozko), da mídia guardada do modelo ou da cópia que a Meta tem, então a imagem não se perde. Só modelos APPROVED, REJECTED ou PAUSED podem ser editados (409 ` + "`" + `template_not_editable` + "`" + `); um modelo APPROVED aceita uma edição por dia e dez a cada 30 dias (429 ` + "`" + `template_edit_window` + "`" + `, com ` + "`" + `expected.nextEditAt` + "`" + `). Só um workspace com número na conta do modelo pode editá-lo (403 ` + "`" + `template_edit_not_owner` + "`" + `), e nunca enquanto uma campanha em andamento ou agendada o usa (409 ` + "`" + `template_in_use` + "`" + `). O corpo pode trazer a saída do lead junto, como na criação: ` + "`" + `buttonActions` + "`" + ` (pelo ` + "`" + `buttonIndex` + "`" + ` e com ` + "`" + `buttonText` + "`" + ` igual ao texto do botão na nova versão) e ` + "`" + `exitConfirmation` + "`" + `; elas só são gravadas depois que a Meta aceita a edição. Um modelo de MARKETING precisa continuar mostrando uma saída ao lead, um botão de resposta rápida com ação ` + "`" + `opt_out` + "`" + ` ou ` + "`" + `consent_grant` + "`" + ` ou um comando ` + "`" + `/palavra` + "`" + ` no texto (422 ` + "`" + `marketing_template_needs_exit` + "`" + `); as recusas das ações usam os códigos ` + "`" + `button_action_*` + "`" + ` da rota de ações. Modelos de AUTHENTICATION não são editados aqui.",
+                "description": "Envia à Meta uma nova versão do modelo, que volta para a revisão. Nome e idioma não mudam; a categoria só muda em modelos REJECTED ou PAUSED. O corpo traz todos os componentes que o modelo deve ter (cabeçalho, corpo, rodapé e botões): o que não vier é removido. Partes que a plataforma não edita (por exemplo oferta por tempo limitado ou carrossel) são mantidas como estão na Meta; botões que a plataforma não edita (fluxo, código) impedem trocar os botões (409 ` + "`" + `template_edit_unsupported` + "`" + `). Um cabeçalho de mídia é reenviado à Meta a partir de ` + "`" + `headerMediaUrl` + "`" + ` (precisa estar no armazenamento da plataforma), da mídia guardada do modelo ou da cópia que a Meta tem, então a imagem não se perde. Só modelos APPROVED, REJECTED ou PAUSED podem ser editados (409 ` + "`" + `template_not_editable` + "`" + `); um modelo APPROVED aceita uma edição por dia e dez a cada 30 dias (429 ` + "`" + `template_edit_window` + "`" + `, com ` + "`" + `expected.nextEditAt` + "`" + `). Só um workspace com número na conta do modelo pode editá-lo (403 ` + "`" + `template_edit_not_owner` + "`" + `), e nunca enquanto uma campanha em andamento ou agendada o usa (409 ` + "`" + `template_in_use` + "`" + `). O corpo pode trazer a saída do lead junto, como na criação: ` + "`" + `buttonActions` + "`" + ` (pelo ` + "`" + `buttonIndex` + "`" + ` e com ` + "`" + `buttonText` + "`" + ` igual ao texto do botão na nova versão) e ` + "`" + `exitConfirmation` + "`" + `; elas só são gravadas depois que a Meta aceita a edição. Um modelo de MARKETING precisa continuar mostrando uma saída ao lead, um botão de resposta rápida com ação ` + "`" + `opt_out` + "`" + ` ou ` + "`" + `consent_grant` + "`" + ` ou um comando ` + "`" + `/palavra` + "`" + ` no texto (422 ` + "`" + `marketing_template_needs_exit` + "`" + `); as recusas das ações usam os códigos ` + "`" + `button_action_*` + "`" + ` da rota de ações. Modelos de AUTHENTICATION não são editados aqui.",
                 "consumes": [
                     "application/json"
                 ],
@@ -31258,6 +36913,685 @@ const docTemplate = `{
                 }
             }
         },
+        "/workflow-alerts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os alertas de execução abertos de todos os workflows do workspace, do visto mais recentemente para o mais antigo, paginado. Inclui inbound_lookup_failed (mensagens que ficaram sem resposta automática porque não foi possível verificar se algum fluxo esperava a resposta), que não pertence a um workflow e só aparece para quem pode ver a conversa que ele aponta (mesma regra de departamento e de responsável da caixa de entrada). Quem só enxerga alguns departamentos vê apenas os alertas dos workflows desses departamentos. Os campos são os mesmos de GET /workflows/{id}/alerts. Exige ` + "`" + `workflows:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar os alertas de execução abertos do workspace",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/workflowalerthttp.AlertResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Erro ao listar os alertas",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflow-runs/{runId}": {
+            "get": {
+                "description": "Retorna a execução com seu estado e os registros das etapas em logs, em ordem de execução e paginados: sem parâmetros vêm as primeiras 500 etapas (todas, numa execução comum). steps traz offset, limit, total e hasMore; com hasMore, peça a próxima página com stepsOffset = offset + limit. stepsLimit vai até 1000. Só encontra execuções do workspace atual em conversas que quem pede pode ver (mesma regra de departamento e de responsável da caixa de entrada); fora disso a resposta é 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Obter uma execução de workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da execução",
+                        "name": "runId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Primeira etapa a devolver, a partir de 0",
+                        "name": "stepsOffset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Quantas etapas devolver (padrão 500, máximo 1000)",
+                        "name": "stepsLimit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.RunDetail"
+                        }
+                    },
+                    "400": {
+                        "description": "stepsOffset ou stepsLimit inválido",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Execução não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflow-runs/{runId}/cancel": {
+            "post": {
+                "description": "Cancela uma execução ainda ativa. Só encontra execuções do workspace atual em conversas que quem pede pode ver (mesma regra de departamento e de responsável da caixa de entrada); fora disso a resposta é 404.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Cancelar uma execução de workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID da execução",
+                        "name": "runId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "status: cancelled",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Execução não encontrada",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "A execução já terminou",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflow-secrets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os segredos que os fluxos do workspace podem usar, só com nome, data da última alteração e quem alterou. O valor nunca é retornado por nenhuma rota. Nos fluxos, use {{secret.\u003cnome\u003e}} na URL, nos cabeçalhos ou no corpo de um nó de requisição HTTP, e secrets.get('\u003cnome\u003e') no nó de código. Exige ` + "`" + `workflows:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar os segredos do workspace",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workflowsecrethttp.SecretListResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflow-secrets/{name}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Grava o valor do segredo com o nome informado, criptografado. Se o nome já existe, o valor é substituído e quem criou é mantido. O nome usa só letras minúsculas, dígitos e _, com 1 a 64 caracteres; o valor tem até 8 KB. O valor é só de escrita: a resposta traz o nome, a data e quem alterou, nunca o valor. Nos fluxos o valor só é lido quando um nó de requisição HTTP monta a chamada ou um nó de código chama secrets.get, e nunca é gravado no estado, nas etapas da execução nem nos logs. Exige ` + "`" + `workflows:update` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Criar ou substituir um segredo do workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Nome do segredo (ex.: unifecaf_senha)",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Valor do segredo",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/workflowsecrethttp.PutSecretRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workflowsecrethttp.SecretResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_body, invalid_name, value_required ou value_too_long",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Apaga o segredo de vez. Fluxos que ainda usam {{secret.\u003cnome\u003e}} passam a falhar nesse nó com um erro que cita o nome, sem enviar a requisição. Exige ` + "`" + `workflows:update` + "`" + `.",
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Remover um segredo do workspace",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Nome do segredo",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "invalid_name",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows": {
+            "get": {
+                "description": "Lista paginada dos workflows do workspace (filtrada pelos departamentos de quem pede). Cada item traz entryPoints (as mesmas entradas do GET /workflows/{id}), carregados para a página inteira num número fixo de consultas. entryKind filtra no banco, antes da paginação (totalItems e totalPages contam só os que passam), os fluxos que têm uma entrada desse tipo em entryPoints, pronta ou bloqueada: um gatilho desse tipo na versão publicada (no rascunho quando nunca foi publicado) ou, para webhook, agent_call e lead_exit, a ligação externa (webhook ativo, agente ativo com Executar fluxo, saída do lead de campanha ou de template).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar os workflows",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Busca pelo nome",
+                        "name": "search",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "draft, active, paused ou archived",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "messages ou voice",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Gatilho (com status=active, o gatilho da versão publicada)",
+                        "name": "triggerType",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "message_received",
+                            "first_message",
+                            "webhook",
+                            "form_submitted",
+                            "agent_call",
+                            "campaign_sent",
+                            "stage_added",
+                            "no_reply",
+                            "call_received",
+                            "manual",
+                            "lead_exit"
+                        ],
+                        "type": "string",
+                        "description": "Tipo de entrada",
+                        "name": "entryKind",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/workflow.Workflow"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "invalid_entry_kind: entryKind fora da lista",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/resolve-handles": {
+            "post": {
+                "description": "Devolve, para cada nó enviado, as saídas (handles) atuais segundo a regra do servidor: opções de botões e listas, ferramentas do agente, casos de texto e teclas, mais as saídas fixas do catálogo. O editor desenha as saídas e as opções dos nós só a partir desta resposta. Envie apenas os nós cuja configuração mudou. O corpo tem limite de 2 MB (body_too_large) e de 200 nós por pedido, o máximo de um workflow (graph_too_many_nodes).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Resolver as saídas dos nós",
+                "parameters": [
+                    {
+                        "description": "Nós com id, type e config",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.resolveHandlesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Saídas por id de nó",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.resolveHandlesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Corpo inválido (invalid_body) ou maior que 2 MB (body_too_large)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Mais nós do que um workflow pode ter (graph_too_many_nodes)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}": {
+            "get": {
+                "description": "Retorna o rascunho (graph) com a revisão em version, que é a revisão a mandar como revision ao salvar; é a leitura a usar para recarregar depois de um 409 draft_conflict. handles traz as saídas atuais de cada nó com saídas dinâmicas (botões e listas, agente com ferramentas, casos de texto, teclas), pela mesma regra de POST /workflows/resolve-handles, para o editor abrir sem outra chamada. entryPoints lista de onde o fluxo recebe execuções, derivado da versão publicada (do rascunho quando nunca foi publicado): cada gatilho e cada ligação externa (webhook, agentes com Executar fluxo, canais, formulários, saídas do lead), com readiness ready ou blocked, o motivo quando bloqueado, os detalhes e a última chamada (lastReceivedAt; no webhook, a última entrega com lastOutcome e lastReason, recusas incluídas). Nenhum detalhe revela uma conversa.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Obter o workflow para o editor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow com version (revisão do rascunho), handles e entryPoints",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.Workflow"
+                        }
+                    },
+                    "403": {
+                        "description": "Sem acesso ao departamento do workflow",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Grava o rascunho a partir da revisão lida (revision = o campo version do workflow lido). A gravação só acontece se o rascunho guardado ainda está nessa revisão; a resposta traz a nova revisão em version. Se outra sessão (outra pessoa, outra aba ou a Elo) salvou antes, a resposta é 409 draft_conflict com details.revision = revisão guardada agora, e nada é gravado. Sem revision (ou revision \u003c 1) a resposta é 400 draft_revision_required. Salvar nunca muda o que roda: só Publicar muda a versão publicada. Salvar não exige um fluxo completo: gatilho sem conexão, falta de Fim e campos vazios são salvos e só bloqueiam a publicação.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Salvar o rascunho do workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rascunho e a revisão em que foi editado",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.updateWorkflowRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow salvo; version é a nova revisão do rascunho",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.Workflow"
+                        }
+                    },
+                    "400": {
+                        "description": "Corpo inválido ou revision ausente (draft_revision_required)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "draft_conflict: o rascunho foi salvo por outra sessão; details.revision é a revisão atual",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "$ref": "#/definitions/handlers.draftConflictDetails"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "422": {
+                        "description": "workflow_invalid (ou um código específico): o rascunho tem um valor inválido; details.detail traz o texto técnico",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "$ref": "#/definitions/handlers.workflowValidationDetails"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/activate": {
+            "post": {
+                "description": "Sem versão publicada, publica o rascunho (como Publicar). Com versão publicada e pausado, volta a rodar a versão publicada, sem publicar o rascunho. Se a versão a rodar tem problemas que bloqueiam, a resposta 422 workflow_not_publishable lista todos em details.issues.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Ativar o workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.Workflow"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "O workflow já está ativo ou arquivado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "workflow_not_publishable: details.issues lista todos os problemas que bloqueiam",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "$ref": "#/definitions/handlers.workflowNotPublishableDetails"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/alerts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Lista os alertas de execução do workflow que estão abertos e os resolvidos nas últimas 24 horas, do mais recente para o mais antigo. Os alertas são calculados a cada 2 minutos a partir das execuções, das chamadas ao webhook e das chamadas de ferramentas dos agentes: workflow_called_inactive (chamado pelo webhook ou por um agente enquanto não está ativo ou nunca foi publicado), node_failing (um nó falhou em pelo menos 3 das suas últimas 10 execuções nas últimas 24 horas), webhook_rejecting (pelo menos 5 recusas do webhook pelo mesmo motivo em 1 hora, motivo em subject), run_stuck (uma execução ficou parada e foi encerrada com erro), agent_tool_failing (a ferramenta subject de um agente falhou pelo menos 3 vezes em 1 hora). fixAction diz o que fazer: publish, open_run (abrir runId e selecionar nodeId), open_node, view_deliveries, open_agent (agentId) ou open_conversation (entryId e entryType). Cada alerta aberto também gera um aviso na central de notificações para quem pode editar workflows. Exige ` + "`" + `workflows:read` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar os alertas de execução de um workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workflowalerthttp.WorkflowAlertsResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Workflow de outro departamento",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro ao listar os alertas",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/workflows/{id}/builder-sessions": {
             "get": {
                 "security": [
@@ -31302,6 +37636,558 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/nodes/{nodeId}/pin-from-run": {
+            "post": {
+                "description": "Copia a saída e a conexão seguida por um nó numa execução de produção para o rascunho, como saída fixada (source run:\u003cid da execução\u003e). Nos testes o nó passa a devolver essa saída sem executar; a publicação remove as saídas fixadas, então produção nunca as lê. A saída copiada é a gravada, já com os valores sensíveis mascarados. Sem stepId usa a última etapa concluída do nó na execução. A execução precisa ser deste fluxo e de uma conversa que quem pede pode ver; caso contrário a resposta é 404. Fixar a partir de um teste, à mão ou remover a fixação é feito salvando o rascunho com o campo pinned do nó. revision é a revisão do rascunho que a pessoa está vendo; se outra sessão salvou antes, a resposta é 409 draft_conflict e nada é gravado.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Fixar a saída de um nó a partir de uma execução",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do nó no rascunho",
+                        "name": "nodeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Execução e, opcionalmente, a etapa",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.pinFromRunRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow com o rascunho salvo; version é a nova revisão",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.Workflow"
+                        }
+                    },
+                    "400": {
+                        "description": "Corpo inválido ou revision ausente (draft_revision_required)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow ou execução não encontrados",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "draft_conflict: o rascunho foi salvo por outra sessão",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "$ref": "#/definitions/handlers.draftConflictDetails"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "422": {
+                        "description": "O nó não existe no rascunho, não pode ser fixado ou não tem etapa concluída na execução",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/nodes/{nodeId}/test": {
+            "post": {
+                "description": "Executa um único nó no ambiente de teste (nunca no registro de produção) com um estado simulado (mockedState e triggerVars). Devolve o mesmo registro de etapa da produção e da simulação em step (parâmetros usados, saída, tipo e cadeia do erro, pilha, HTTP, logs do script, tempos em ms, saída seguida e se veio de uma saída fixada), e em execute_until também upstream_steps, cada etapa anterior que rodou, em ordem. Mensagens são sempre simuladas; HTTP, código com fetch, e-mail e agenda só fazem chamadas reais com confirmRealCalls, caso contrário falham com error_kind real_call_not_confirmed. Nós de espera descrevem a espera em wait sem esperar. Quando o caminho não chega ao nó, path_stop explica onde parou, onde divergiu e quais correções aplicar; com continueWaits e waitAnswers o teste segue por esperas no caminho (timer pulado, resposta ou formulário informados). O teste inteiro tem limite de 60 s (error_kind timeout); saídas grandes são cortadas e valores sensíveis mascarados. Com skipExecution, só resolve a configuração sem executar efeitos.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Testar um nó do workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID do nó",
+                        "name": "nodeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Estado simulado para o teste",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.testNodeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workflow_usecase.TestNodeOutput"
+                        }
+                    },
+                    "400": {
+                        "description": "Corpo inválido",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Workflow de outro departamento",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow ou nó não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "501": {
+                        "description": "Teste de nó não configurado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/publish": {
+            "post": {
+                "description": "Valida o rascunho com todas as regras que bloqueiam (avisos não bloqueiam), grava uma nova versão publicada com o próximo número e deixa o workflow ativo. Novas execuções passam a usar essa versão; execuções em andamento continuam na versão em que começaram. Se o rascunho é igual à versão publicada, nenhuma versão nova é criada. Quando o rascunho não pode ser publicado, a resposta 422 workflow_not_publishable lista em details.issues todos os problemas que bloqueiam (as mesmas regras do painel Alertas em POST /workflows/validate, mais as referências conferidas no banco: agente, template, etiqueta, etapa, funil, departamento, atendente, modelo, workflow, número, mídia, MCP e base de conhecimento). Avisos nunca bloqueiam.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Publicar o rascunho do workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow com publishedVersion, publishedAt e hasUnpublishedChanges=false",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.Workflow"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Workflow arquivado ou publicação simultânea",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "workflow_not_publishable: details.issues lista todos os problemas que bloqueiam, cada um com code, severity, nodeId, path e message",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "$ref": "#/definitions/handlers.workflowNotPublishableDetails"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/runs": {
+            "get": {
+                "description": "Lista as execuções do workflow no workspace atual, da mais recente para a mais antiga, com filtro opcional por conversa e status. Só entram execuções em conversas que quem pede pode ver (mesma regra de departamento e de responsável da caixa de entrada), filtradas na própria consulta, então as páginas ficam completas.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar execuções de um workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtra pela conversa",
+                        "name": "entryId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filtra pelo status (running, waiting, completed, failed, cancelled)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/workflow.WorkflowRun"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "Workflow de outro departamento",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Inicia manualmente uma execução da versão publicada do workflow para uma conversa (entryId e entryType) do workspace atual, e a execução começa a rodar na hora. Exige acesso ao departamento do workflow e que quem pede possa ver a conversa (mesma regra de departamento e de responsável da caixa de entrada); caso contrário a resposta é 403 ou 404.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Iniciar uma execução de workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Conversa em que a execução roda",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.startRunRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.WorkflowRun"
+                        }
+                    },
+                    "400": {
+                        "description": "Corpo inválido",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Workflow de outro departamento",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow ou conversa não encontrados",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Workflow inativo ou execução já em andamento",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/versions": {
+            "get": {
+                "description": "Lista as versões publicadas, da mais recente para a mais antiga, sem o grafo de cada uma.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar as versões publicadas do workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/workflow.WorkflowVersion"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/versions/{version}": {
+            "get": {
+                "description": "Retorna a versão com o grafo exatamente como foi publicado (sem saídas fixadas) e handles, as saídas atuais dos nós com saídas dinâmicas pela regra de POST /workflows/resolve-handles, para mostrar uma execução na versão em que ela rodou ou para comparar com o rascunho.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Obter uma versão publicada do workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Número da versão",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Versão com o grafo",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.WorkflowVersion"
+                        }
+                    },
+                    "400": {
+                        "description": "Número de versão inválido",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow ou versão não encontrados",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/versions/{version}/restore": {
+            "post": {
+                "description": "Copia o grafo da versão escolhida para o rascunho, com as mesmas validações e a mesma checagem de revisão de salvar (revision = o version do rascunho que a pessoa está vendo). Não publica: a versão publicada continua rodando até a próxima publicação.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Restaurar uma versão no rascunho",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Número da versão",
+                        "name": "version",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Revisão do rascunho que será substituído",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.draftRevisionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Workflow com o rascunho restaurado; version é a nova revisão",
+                        "schema": {
+                            "$ref": "#/definitions/workflow.Workflow"
+                        }
+                    },
+                    "400": {
+                        "description": "Número de versão inválido ou revision ausente (draft_revision_required)",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow ou versão não encontrados",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "draft_conflict: o rascunho foi salvo por outra sessão",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.ErrorResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "details": {
+                                            "$ref": "#/definitions/handlers.draftConflictDetails"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -31448,6 +38334,86 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/workflows/{id}/webhook/deliveries": {
+            "get": {
+                "description": "Lista as chamadas ao webhook público deste workflow, da mais recente para a mais antiga: resultado (accepted, duplicate, already_running ou rejected), motivo da recusa (por exemplo workflow_not_active, entry_not_found, unauthorized), código HTTP devolvido, como a conversa foi identificada (entry_id ou phone), a execução iniciada, a latência e apenas os nomes dos campos do corpo, nunca os valores. Chamadas com token desconhecido não aparecem porque não pertencem a nenhum workflow. Chamadas que identificaram uma conversa só aparecem para quem pode ver essa conversa (mesma regra de departamento e de responsável da caixa de entrada); recusas sem conversa aparecem para quem tem ` + "`" + `workflows:read` + "`" + ` e acesso ao departamento do workflow. As chamadas ficam guardadas por 30 dias.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflows"
+                ],
+                "summary": "Listar as últimas chamadas recebidas pelo webhook de um workflow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ID do workflow",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Página, a partir de 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Itens por página",
+                        "name": "pageSize",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.PaginatedPayload"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/workflow.WebhookDelivery"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Workflow de outro departamento",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Workflow não encontrado",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Erro ao listar as chamadas",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -32449,7 +39415,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Atualiza as preferências do workspace: atribuição de administradores, modo da roleta (online ou última vez online, com janela e resgate), música de espera, política da fila de atendimento e encerramento automático de conversas.",
+                "description": "Atualiza as preferências do workspace: atribuição de administradores, roleta (quem participa: online ou última vez online, com janela e resgate; como escolhe: rodízio, prioridade por níveis, peso, menos ocupado, mais tempo sem receber, aleatório ou livre; limite de conversas abertas por pessoa e lista de quem recebe), música de espera, política da fila de atendimento e encerramento automático de conversas.",
                 "consumes": [
                     "application/json"
                 ],
@@ -33497,7 +40463,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Leva o áudio das ligações entre o navegador e a Vozko: faz ligações por troncos SIP e pelo WhatsApp, recebe chamadas, transfere para colegas e filas e mostra quem está disponível.\n\n## Conectar\n\n` + "`" + `` + "`" + `` + "`" + `text\nwss://SUA_URL_BASE/ws/call-session?token=SEU_ACCESS_TOKEN\u0026workspaceId=SEU_WORKSPACE_ID\u0026workspace_id=SEU_WORKSPACE_ID\n` + "`" + `` + "`" + `` + "`" + `\n\n- Permissão: ` + "`" + `call_session:use` + "`" + ` no workspace.\n\nAo conectar você recebe ` + "`" + `conversation:connected` + "`" + ` com ` + "`" + `{\"feature\": \"call-session\", \"workspace_id\": string, \"user_id\": string}` + "`" + ` e, em seguida, a presença da equipe em ` + "`" + `call-session:presence` + "`" + `.\n\n## Áudio\n\nNos dois sentidos o áudio é PCM de 16 bits little-endian, mono, codificado em base64.\n\n- Você envia em ` + "`" + `call_audio` + "`" + `, informando ` + "`" + `sample_rate` + "`" + `. O servidor converte 16000, 22050, 24000, 32000, 44100 e 48000 Hz para 8000 Hz; outras taxas são descartadas.\n- Você recebe em ` + "`" + `call:audio` + "`" + `, sempre a 8000 Hz.\n\n## Mensagens que você envia\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `. Tipos desconhecidos são ignorados.\n\n| type | payload | O que faz |\n|---|---|---|\n| ` + "`" + `start_call` + "`" + ` | ` + "`" + `{\"phone_number\": string, \"trunk_id\"?: string, \"whatsapp_phone_id\"?: string, \"lead_id\"?: string, \"call_list_item_id\"?: string, \"request_id\"?: string}` + "`" + ` | Faz uma ligação. Com ` + "`" + `trunk_id` + "`" + ` sai pelo tronco SIP (exige ` + "`" + `sip_trunks:call` + "`" + `); sem ele, pelo número de WhatsApp em ` + "`" + `whatsapp_phone_id` + "`" + `. O andamento chega em ` + "`" + `call:status` + "`" + `. Veja Ligar para um lead. |\n| ` + "`" + `end_call` + "`" + ` | ` + "`" + `{}` + "`" + ` | Desliga a ligação atual. |\n| ` + "`" + `call_audio` + "`" + ` | ` + "`" + `{\"audio\": string, \"sample_rate\"?: number}` + "`" + ` | Áudio do microfone. Sem resposta. |\n| ` + "`" + `call:incoming_accept` + "`" + ` | ` + "`" + `{\"offer_id\": string}` + "`" + ` | Atende uma chamada oferecida em ` + "`" + `call:incoming` + "`" + `. Precisa vir da mesma conexão que recebeu a oferta. |\n| ` + "`" + `call:incoming_decline` + "`" + ` | ` + "`" + `{\"offer_id\": string, \"reason\"?: string}` + "`" + ` | Recusa a chamada; ela segue para o próximo atendente. |\n| ` + "`" + `call:transfer` + "`" + ` | ` + "`" + `{\"target_kind\": \"member\" \\| \"queue\", \"user_id\"?: string, \"queue_id\"?: string, \"notes\"?: string}` + "`" + ` | Transfere a ligação atual para um colega (` + "`" + `user_id` + "`" + `) ou uma fila (` + "`" + `queue_id` + "`" + `). ` + "`" + `notes` + "`" + ` chega a quem atender, até 500 caracteres. O andamento chega em ` + "`" + `call:transfer_status` + "`" + `. |\n| ` + "`" + `call:transfer_cancel` + "`" + ` | ` + "`" + `{\"call_id\": string}` + "`" + ` | Cancela uma transferência para colega ainda tocando; a ligação volta para você. |\n\nPara transferir é preciso ` + "`" + `call_session:transfer` + "`" + ` e poder atender aquele tipo de ligação. Colegas e filas disponíveis vêm de ` + "`" + `call-session:presence` + "`" + ` e de ` + "`" + `GET /call-queues/transfer-targets` + "`" + `.\n\n### Ligar para um lead\n\n- Com ` + "`" + `lead_id` + "`" + `, o lead precisa ser deste workspace, não pode estar bloqueado (` + "`" + `lead_blocked` + "`" + `) e ` + "`" + `phone_number` + "`" + ` precisa ser o WhatsApp dele ou um dos telefones de contato, com ou sem o nono dígito (` + "`" + `lead_not_dialable` + "`" + `). Uma ligação direta para um lead que pediu para não receber mensagens é permitida; só as listas de ligação o deixam de fora. Se o número for o WhatsApp de outro lead, as regras desse lead também valem: bloqueado dá ` + "`" + `lead_blocked` + "`" + `. A ligação fica registrada no lead: no histórico de chamadas, na gravação e na cobrança.\n- Sem ` + "`" + `lead_id` + "`" + `, o número é procurado entre os leads do workspace e, se for o WhatsApp de um lead, valem as mesmas regras: bloqueado dá ` + "`" + `lead_blocked` + "`" + `. Se a ligação seguir, ela fica registrada nesse lead.\n- ` + "`" + `call_list_item_id` + "`" + ` liga o item de uma lista de ligações que você está trabalhando e exige ` + "`" + `lead_id` + "`" + `, o lead do item. A ligação fica registrada como a última do item e renova a reserva dele. O item precisa estar reservado por você (veja POST /call-lists/{listId}/next), ser desse lead e ` + "`" + `phone_number` + "`" + ` precisa ser o número do item, senão ` + "`" + `call_list_item_unavailable` + "`" + `. As regras da lista também valem: quem pediu para não receber mensagens não é chamado.\n- Os números e as linhas que podem ligar para um lead vêm de ` + "`" + `GET /dial-targets?leadId=` + "`" + `.\n\n## Mensagens que você recebe\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `conversation:connected` + "`" + ` | ` + "`" + `{\"feature\": \"call-session\", \"workspace_id\", \"user_id\"}` + "`" + ` | Ao conectar. |\n| ` + "`" + `call:status` + "`" + ` | ` + "`" + `{\"status\": \"ringing\" \\| \"answered\", \"reason\"?, \"call_id\", \"phone_number\"?, \"request_id\"?}` + "`" + ` | A ligação está chamando ou foi atendida. Também chega com ` + "`" + `answered` + "`" + ` quando você assume uma ligação transferida ou retomada. |\n| ` + "`" + `call:audio` + "`" + ` | ` + "`" + `{\"audio\": string, \"sample_rate\": 8000}` + "`" + ` | Áudio de quem está do outro lado. Em ligações feitas por você, também traz os tons de progresso padrão brasileiros (ITU-T E.180, 425 Hz): o tom de chamada enquanto o número toca, ou o áudio da própria operadora quando ela envia; e, por 3 segundos antes de ` + "`" + `call:ended` + "`" + `, o tom de ocupado (número ocupado ou recusa) ou de congestionamento (falha). |\n| ` + "`" + `call:ended` + "`" + ` | ` + "`" + `{\"call_id\", \"phone_number\"?, \"reason\"?, \"duration_seconds\": number, \"request_id\"?}` + "`" + ` | A ligação terminou. ` + "`" + `reason` + "`" + `: ` + "`" + `ended` + "`" + `, ` + "`" + `failed` + "`" + `, ` + "`" + `busy` + "`" + `, ` + "`" + `no_answer` + "`" + `, ` + "`" + `declined` + "`" + `, ` + "`" + `cancelled` + "`" + `, ` + "`" + `insufficient_balance` + "`" + ` ou ` + "`" + `balance_check_error` + "`" + `. |\n| ` + "`" + `call:waiting_slot` + "`" + ` | ` + "`" + `{\"reason\": string}` + "`" + ` | Todas as linhas estão ocupadas; a ligação começa quando uma liberar. |\n| ` + "`" + `call:incoming` + "`" + ` | Veja Chamada oferecida | Uma chamada foi oferecida a você. |\n| ` + "`" + `call:incoming_withdrawn` + "`" + ` | ` + "`" + `{\"offer_id\": string, \"reason\": \"no_answer\" \\| \"caller_hung_up\"}` + "`" + ` | A oferta expirou ou quem ligou desistiu. |\n| ` + "`" + `call:transfer_status` + "`" + ` | Veja Transferências | Andamento da sua transferência. |\n| ` + "`" + `call-session:presence` + "`" + ` | ` + "`" + `{\"users\": [{\"user_id\", \"username\"?, \"busy\": boolean, \"on_call\"?: boolean, \"ringing\"?: boolean, \"has_browser\": boolean}]}` + "`" + ` | Alguém conectou, desconectou, entrou ou saiu de uma ligação. Sem ` + "`" + `call_session:list_members` + "`" + `, a lista traz só você. |\n| ` + "`" + `telephony:board` + "`" + ` | Veja Painel de telefonia | Junto com a presença, para quem tem ` + "`" + `call_session:list_members` + "`" + `. |\n| ` + "`" + `conversation:error` + "`" + ` | ` + "`" + `{\"code\": string, \"message\": string, \"entry_id\"?: string}` + "`" + ` | Veja Erros. |\n\n### Chamada oferecida\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"offer_id\": \"string\",\n\"call_id\": \"string\",\n\"workspace_id\": \"string\",\n\"from_number\": \"string\",\n\"to_number\": \"string (opcional)\",\n\"channel\": \"sip | whatsapp\",\n\"expires_at\": \"RFC 3339\",\n\"transfer\": {\n\"from_user_id\": \"string (opcional)\",\n\"from_name\": \"string (opcional)\",\n\"queue_id\": \"string (opcional)\",\n\"queue_name\": \"string (opcional)\",\n\"notes\": \"string (opcional)\"\n},\n\"resume\": true\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n- ` + "`" + `transfer` + "`" + ` aparece quando a chamada vem de um colega, de uma fila ou de um fluxo de voz.\n- ` + "`" + `resume: true` + "`" + ` indica que é a sua própria ligação voltando depois de a conexão cair (veja abaixo).\n\n### Transferências\n\n` + "`" + `call:transfer_status` + "`" + ` chega apenas para quem transferiu:\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"transfer_id\": \"string\",\n\"call_id\": \"string\",\n\"status\": \"ringing | queued | connected | returned | ended\",\n\"target_user_id\": \"string (opcional)\",\n\"target_name\": \"string (opcional)\",\n\"queue_id\": \"string (opcional)\",\n\"queue_name\": \"string (opcional)\",\n\"reason\": \"string (opcional)\"\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n- **Para um colega**: quem ligou ouve a música de espera e você recebe ` + "`" + `ringing` + "`" + `. Se o colega atender, ` + "`" + `connected` + "`" + ` e a ligação sai do seu discador. Se recusar, não atender (20 segundos) ou você cancelar, a ligação volta para você com ` + "`" + `call:status` + "`" + ` ` + "`" + `answered` + "`" + ` e ` + "`" + `returned` + "`" + ` com ` + "`" + `reason` + "`" + ` ` + "`" + `declined` + "`" + `, ` + "`" + `no_answer` + "`" + ` ou ` + "`" + `cancelled` + "`" + `. Se quem ligou desistir, ` + "`" + `ended` + "`" + ` com ` + "`" + `reason: \"caller_hung_up\"` + "`" + `.\n- **Para uma fila**: você recebe ` + "`" + `queued` + "`" + ` e a ligação sai do seu discador na hora. Se ninguém da fila atender até a espera máxima, a ligação toca de novo para você como uma nova ` + "`" + `call:incoming` + "`" + `.\n- **Ligações do WhatsApp**: a conversa do contato vai junto e passa a ser de quem atender, com as mesmas regras da atribuição manual. Por isso só tocam colegas que podem receber essa conversa; para um colega que não pode, a transferência é recusada com ` + "`" + `conversation_out_of_reach` + "`" + `.\n\n### Conexão perdida durante uma ligação\n\nSe a sua conexão cair com uma ligação atendida, quem ligou ouve a música de espera por até 30 segundos. Ao reconectar, você recebe ` + "`" + `call:incoming` + "`" + ` com ` + "`" + `resume: true` + "`" + `: aceite para continuar a mesma ligação ou recuse para encerrá-la. Sem reconexão nesse tempo, a ligação é encerrada. Ligações ainda chamando terminam na hora.\n\n### Painel de telefonia\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"workspace_id\": \"string\",\n\"rev\": 0,\n\"as_of\": \"RFC 3339\",\n\"capacity\": {\"used\": 0, \"max\": 0, \"pct\": 0},\n\"humans\": [{\"user_id\": \"string\", \"username\": \"string (opcional)\", \"state\": \"free | ringing | on_call\", \"has_browser\": true, \"since\": \"RFC 3339\"}],\n\"queue\": {\"depth\": 0, \"available\": true},\n\"online\": 0,\n\"free\": 0,\n\"in_call\": 0,\n\"ringing\": 0,\n\"idle_pct\": 0\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n## Erros\n\n` + "`" + `conversation:error` + "`" + ` traz ` + "`" + `code` + "`" + ` e ` + "`" + `message` + "`" + `. Em erros de chamada oferecida, ` + "`" + `entry_id` + "`" + ` é o ` + "`" + `offer_id` + "`" + `; em erros de transferência, é o ` + "`" + `call_id` + "`" + `.\n\n| code | Significado |\n|---|---|\n| ` + "`" + `invalid_payload` + "`" + ` | Mensagem ou ` + "`" + `payload` + "`" + ` fora do formato. |\n| ` + "`" + `missing_fields` + "`" + ` | Falta ` + "`" + `phone_number` + "`" + `, ` + "`" + `offer_id` + "`" + ` ou ` + "`" + `call_id` + "`" + `, ou ` + "`" + `lead_id` + "`" + ` junto com ` + "`" + `call_list_item_id` + "`" + `. |\n| ` + "`" + `unauthorized` + "`" + ` | Falta permissão para ligar, para usar o tronco ou para transferir esse tipo de ligação. |\n| ` + "`" + `already_in_call` + "`" + ` | Você já está em uma ligação ou atendendo uma chamada. |\n| ` + "`" + `no_active_call` + "`" + ` | Não há ligação para desligar. |\n| ` + "`" + `dial_failed` + "`" + ` | Não foi possível iniciar a ligação. |\n| ` + "`" + `no_call_slots` + "`" + ` | Todas as linhas ocupadas; tente em instantes. |\n| ` + "`" + `insufficient_balance` + "`" + ` | Saldo insuficiente para ligar. |\n| ` + "`" + `not_configured` + "`" + ` | Origem de ligação, ligações para leads ou listas de ligação não configuradas neste servidor. |\n| ` + "`" + `lead_not_dialable` + "`" + ` | O lead não existe neste workspace, o número não é dele, ou as regras do workspace ou da lista não permitem ligar para ele. |\n| ` + "`" + `lead_blocked` + "`" + ` | O lead está bloqueado e não recebe ligações. |\n| ` + "`" + `call_list_item_unavailable` + "`" + ` | O item da lista não está reservado por você, não é do lead ou do número enviados, ou a lista não está ativa ou você não liga nela. Peça o próximo em POST /call-lists/{listId}/next. |\n| ` + "`" + `whatsapp_permission_required` + "`" + ` | O contato não autorizou receber ligações pelo WhatsApp. |\n| ` + "`" + `trunk_unavailable` + "`" + ` | O tronco não existe, está desativado ou não faz ligações. |\n| ` + "`" + `trunk_not_registered` + "`" + ` | O tronco não está registrado no provedor. |\n| ` + "`" + `invalid_number` + "`" + ` | O número só pode ter dígitos, ` + "`" + `*` + "`" + `, ` + "`" + `#` + "`" + ` e um ` + "`" + `+` + "`" + ` no início. |\n| ` + "`" + `inbound_unavailable` + "`" + ` | Chamadas recebidas não estão disponíveis neste servidor. |\n| ` + "`" + `offer_not_found` + "`" + ` | A oferta não está mais disponível. |\n| ` + "`" + `not_for_user` + "`" + ` | A oferta não é sua ou foi enviada para outra conexão. |\n| ` + "`" + `offer_resolved` + "`" + ` | A oferta já foi atendida ou recusada. |\n| ` + "`" + `inbound_failed` + "`" + ` | Falha ao atender. |\n| ` + "`" + `transfer_unavailable` + "`" + ` | Transferências não estão disponíveis neste servidor. |\n| ` + "`" + `no_call_to_transfer` + "`" + ` | Não há ligação em andamento para transferir. |\n| ` + "`" + `call_not_found` + "`" + ` | A ligação já terminou. |\n| ` + "`" + `not_call_owner` + "`" + ` | Só quem está na ligação pode transferi-la. |\n| ` + "`" + `target_unavailable` + "`" + ` | O colega não está livre ou não pode atender esse tipo de ligação. |\n| ` + "`" + `conversation_out_of_reach` + "`" + ` | Em ligações do WhatsApp, a conversa do contato não pode ser passada para esse colega. |\n| ` + "`" + `transfer_to_self` + "`" + ` | Não é possível transferir para você mesmo. |\n| ` + "`" + `transfer_in_progress` + "`" + ` | Essa ligação já está sendo transferida. |\n| ` + "`" + `no_transfer` + "`" + ` | Não há transferência para cancelar. |\n| ` + "`" + `queue_not_found` + "`" + ` | A fila não existe neste workspace. |\n| ` + "`" + `notes_too_long` + "`" + ` | A nota pode ter até 500 caracteres. |\n| ` + "`" + `invalid_target` + "`" + ` | Escolha um colega ou uma fila. |\n| ` + "`" + `transfer_failed` + "`" + ` | A transferência não pôde ser iniciada. |\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho ` + "`" + `Authorization: Bearer SEU_ACCESS_TOKEN` + "`" + ` (clientes fora do navegador), no parâmetro ` + "`" + `token` + "`" + ` da URL ou no cookie ` + "`" + `accessToken` + "`" + ` do login em modo cookie. Com o cookie, a conexão só é aceita quando o ` + "`" + `Origin` + "`" + ` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em ` + "`" + `workspace_id` + "`" + ` e em ` + "`" + `workspaceId` + "`" + `, com o mesmo valor (ou o cabeçalho ` + "`" + `X-Workspace-ID` + "`" + ` junto com ` + "`" + `workspaceId` + "`" + `). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
+                "description": "Leva o áudio das ligações entre o navegador e a plataforma: faz ligações por troncos SIP e pelo WhatsApp, recebe chamadas, transfere para colegas e filas e mostra quem está disponível.\n\n## Conectar\n\n` + "`" + `` + "`" + `` + "`" + `text\nwss://SUA_URL_BASE/ws/call-session?token=SEU_ACCESS_TOKEN\u0026workspaceId=SEU_WORKSPACE_ID\u0026workspace_id=SEU_WORKSPACE_ID\n` + "`" + `` + "`" + `` + "`" + `\n\n- Permissão: ` + "`" + `call_session:use` + "`" + ` no workspace.\n\nAo conectar você recebe ` + "`" + `conversation:connected` + "`" + ` com ` + "`" + `{\"feature\": \"call-session\", \"workspace_id\": string, \"user_id\": string}` + "`" + ` e, em seguida, a presença da equipe em ` + "`" + `call-session:presence` + "`" + `.\n\n## Áudio\n\nNos dois sentidos o áudio é PCM de 16 bits little-endian, mono, codificado em base64.\n\n- Você envia em ` + "`" + `call_audio` + "`" + `, informando ` + "`" + `sample_rate` + "`" + `. O servidor converte 16000, 22050, 24000, 32000, 44100 e 48000 Hz para 8000 Hz; outras taxas são descartadas.\n- Você recebe em ` + "`" + `call:audio` + "`" + `, sempre a 8000 Hz.\n\n## Mensagens que você envia\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `. Tipos desconhecidos são ignorados.\n\n| type | payload | O que faz |\n|---|---|---|\n| ` + "`" + `start_call` + "`" + ` | ` + "`" + `{\"phone_number\": string, \"trunk_id\"?: string, \"whatsapp_phone_id\"?: string, \"lead_id\"?: string, \"call_list_item_id\"?: string, \"request_id\"?: string}` + "`" + ` | Faz uma ligação. Com ` + "`" + `trunk_id` + "`" + ` sai pelo tronco SIP (exige ` + "`" + `sip_trunks:call` + "`" + `); sem ele, pelo número de WhatsApp em ` + "`" + `whatsapp_phone_id` + "`" + `. O andamento chega em ` + "`" + `call:status` + "`" + `. Veja Ligar para um lead. |\n| ` + "`" + `end_call` + "`" + ` | ` + "`" + `{}` + "`" + ` | Desliga a ligação atual. |\n| ` + "`" + `call_audio` + "`" + ` | ` + "`" + `{\"audio\": string, \"sample_rate\"?: number}` + "`" + ` | Áudio do microfone. Sem resposta. |\n| ` + "`" + `call:incoming_accept` + "`" + ` | ` + "`" + `{\"offer_id\": string}` + "`" + ` | Atende uma chamada oferecida em ` + "`" + `call:incoming` + "`" + `. Precisa vir da mesma conexão que recebeu a oferta. |\n| ` + "`" + `call:incoming_decline` + "`" + ` | ` + "`" + `{\"offer_id\": string, \"reason\"?: string}` + "`" + ` | Recusa a chamada; ela segue para o próximo atendente. |\n| ` + "`" + `call:transfer` + "`" + ` | ` + "`" + `{\"target_kind\": \"member\" \\| \"queue\", \"user_id\"?: string, \"queue_id\"?: string, \"notes\"?: string}` + "`" + ` | Transfere a ligação atual para um colega (` + "`" + `user_id` + "`" + `) ou uma fila (` + "`" + `queue_id` + "`" + `). ` + "`" + `notes` + "`" + ` chega a quem atender, até 500 caracteres. O andamento chega em ` + "`" + `call:transfer_status` + "`" + `. |\n| ` + "`" + `call:transfer_cancel` + "`" + ` | ` + "`" + `{\"call_id\": string}` + "`" + ` | Cancela uma transferência para colega ainda tocando; a ligação volta para você. |\n\nPara transferir é preciso ` + "`" + `call_session:transfer` + "`" + ` e poder atender aquele tipo de ligação. Colegas e filas disponíveis vêm de ` + "`" + `call-session:presence` + "`" + ` e de ` + "`" + `GET /call-queues/transfer-targets` + "`" + `.\n\n### Ligar para um lead\n\n- Com ` + "`" + `lead_id` + "`" + `, o lead precisa ser deste workspace, não pode estar bloqueado (` + "`" + `lead_blocked` + "`" + `) e ` + "`" + `phone_number` + "`" + ` precisa ser o WhatsApp dele ou um dos telefones de contato, com ou sem o nono dígito (` + "`" + `lead_not_dialable` + "`" + `). Uma ligação direta para um lead que pediu para não receber mensagens é permitida; só as listas de ligação o deixam de fora. Se o número for o WhatsApp de outro lead, as regras desse lead também valem: bloqueado dá ` + "`" + `lead_blocked` + "`" + `. A ligação fica registrada no lead: no histórico de chamadas, na gravação e na cobrança.\n- Sem ` + "`" + `lead_id` + "`" + `, o número é procurado entre os leads do workspace e, se for o WhatsApp de um lead, valem as mesmas regras: bloqueado dá ` + "`" + `lead_blocked` + "`" + `. Se a ligação seguir, ela fica registrada nesse lead.\n- ` + "`" + `call_list_item_id` + "`" + ` liga o item de uma lista de ligações que você está trabalhando e exige ` + "`" + `lead_id` + "`" + `, o lead do item. A ligação fica registrada como a última do item e renova a reserva dele. O item precisa estar reservado por você (veja POST /call-lists/{listId}/next), ser desse lead e ` + "`" + `phone_number` + "`" + ` precisa ser o número do item, senão ` + "`" + `call_list_item_unavailable` + "`" + `. As regras da lista também valem: quem pediu para não receber mensagens não é chamado.\n- Os números e as linhas que podem ligar para um lead vêm de ` + "`" + `GET /dial-targets?leadId=` + "`" + `.\n\n## Mensagens que você recebe\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `conversation:connected` + "`" + ` | ` + "`" + `{\"feature\": \"call-session\", \"workspace_id\", \"user_id\"}` + "`" + ` | Ao conectar. |\n| ` + "`" + `call:status` + "`" + ` | ` + "`" + `{\"status\": \"ringing\" \\| \"answered\", \"reason\"?, \"call_id\", \"phone_number\"?, \"request_id\"?}` + "`" + ` | A ligação está chamando ou foi atendida. Também chega com ` + "`" + `answered` + "`" + ` quando você assume uma ligação transferida ou retomada. |\n| ` + "`" + `call:audio` + "`" + ` | ` + "`" + `{\"audio\": string, \"sample_rate\": 8000}` + "`" + ` | Áudio de quem está do outro lado. Em ligações feitas por você, também traz os tons de progresso padrão brasileiros (ITU-T E.180, 425 Hz): o tom de chamada enquanto o número toca, ou o áudio da própria operadora quando ela envia; e, por 3 segundos antes de ` + "`" + `call:ended` + "`" + `, o tom de ocupado (número ocupado ou recusa) ou de congestionamento (falha). |\n| ` + "`" + `call:ended` + "`" + ` | ` + "`" + `{\"call_id\", \"phone_number\"?, \"reason\"?, \"duration_seconds\": number, \"request_id\"?}` + "`" + ` | A ligação terminou. ` + "`" + `reason` + "`" + `: ` + "`" + `ended` + "`" + `, ` + "`" + `failed` + "`" + `, ` + "`" + `busy` + "`" + `, ` + "`" + `no_answer` + "`" + `, ` + "`" + `declined` + "`" + `, ` + "`" + `cancelled` + "`" + `, ` + "`" + `insufficient_balance` + "`" + ` ou ` + "`" + `balance_check_error` + "`" + `. |\n| ` + "`" + `call:waiting_slot` + "`" + ` | ` + "`" + `{\"reason\": string}` + "`" + ` | Todas as linhas estão ocupadas; a ligação começa quando uma liberar. |\n| ` + "`" + `call:incoming` + "`" + ` | Veja Chamada oferecida | Uma chamada foi oferecida a você. |\n| ` + "`" + `call:incoming_withdrawn` + "`" + ` | ` + "`" + `{\"offer_id\": string, \"reason\": \"no_answer\" \\| \"caller_hung_up\"}` + "`" + ` | A oferta expirou ou quem ligou desistiu. |\n| ` + "`" + `call:transfer_status` + "`" + ` | Veja Transferências | Andamento da sua transferência. |\n| ` + "`" + `call-session:presence` + "`" + ` | ` + "`" + `{\"users\": [{\"user_id\", \"username\"?, \"busy\": boolean, \"on_call\"?: boolean, \"ringing\"?: boolean, \"has_browser\": boolean}]}` + "`" + ` | Alguém conectou, desconectou, entrou ou saiu de uma ligação. Sem ` + "`" + `call_session:list_members` + "`" + `, a lista traz só você. |\n| ` + "`" + `telephony:board` + "`" + ` | Veja Painel de telefonia | Junto com a presença, para quem tem ` + "`" + `call_session:list_members` + "`" + `. |\n| ` + "`" + `conversation:error` + "`" + ` | ` + "`" + `{\"code\": string, \"message\": string, \"entry_id\"?: string}` + "`" + ` | Veja Erros. |\n\n### Chamada oferecida\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"offer_id\": \"string\",\n\"call_id\": \"string\",\n\"workspace_id\": \"string\",\n\"from_number\": \"string\",\n\"to_number\": \"string (opcional)\",\n\"channel\": \"sip | whatsapp\",\n\"expires_at\": \"RFC 3339\",\n\"transfer\": {\n\"from_user_id\": \"string (opcional)\",\n\"from_name\": \"string (opcional)\",\n\"queue_id\": \"string (opcional)\",\n\"queue_name\": \"string (opcional)\",\n\"notes\": \"string (opcional)\"\n},\n\"resume\": true\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n- ` + "`" + `transfer` + "`" + ` aparece quando a chamada vem de um colega, de uma fila ou de um fluxo de voz.\n- ` + "`" + `resume: true` + "`" + ` indica que é a sua própria ligação voltando depois de a conexão cair (veja abaixo).\n\n### Transferências\n\n` + "`" + `call:transfer_status` + "`" + ` chega apenas para quem transferiu:\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"transfer_id\": \"string\",\n\"call_id\": \"string\",\n\"status\": \"ringing | queued | connected | returned | ended\",\n\"target_user_id\": \"string (opcional)\",\n\"target_name\": \"string (opcional)\",\n\"queue_id\": \"string (opcional)\",\n\"queue_name\": \"string (opcional)\",\n\"reason\": \"string (opcional)\"\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n- **Para um colega**: quem ligou ouve a música de espera e você recebe ` + "`" + `ringing` + "`" + `. Se o colega atender, ` + "`" + `connected` + "`" + ` e a ligação sai do seu discador. Se recusar, não atender (20 segundos) ou você cancelar, a ligação volta para você com ` + "`" + `call:status` + "`" + ` ` + "`" + `answered` + "`" + ` e ` + "`" + `returned` + "`" + ` com ` + "`" + `reason` + "`" + ` ` + "`" + `declined` + "`" + `, ` + "`" + `no_answer` + "`" + ` ou ` + "`" + `cancelled` + "`" + `. Se quem ligou desistir, ` + "`" + `ended` + "`" + ` com ` + "`" + `reason: \"caller_hung_up\"` + "`" + `.\n- **Para uma fila**: você recebe ` + "`" + `queued` + "`" + ` e a ligação sai do seu discador na hora. Se ninguém da fila atender até a espera máxima, a ligação toca de novo para você como uma nova ` + "`" + `call:incoming` + "`" + `.\n- **Ligações do WhatsApp**: a conversa do contato vai junto e passa a ser de quem atender, com as mesmas regras da atribuição manual. Por isso só tocam colegas que podem receber essa conversa; para um colega que não pode, a transferência é recusada com ` + "`" + `conversation_out_of_reach` + "`" + `.\n\n### Conexão perdida durante uma ligação\n\nSe a sua conexão cair com uma ligação atendida, quem ligou ouve a música de espera por até 30 segundos. Ao reconectar, você recebe ` + "`" + `call:incoming` + "`" + ` com ` + "`" + `resume: true` + "`" + `: aceite para continuar a mesma ligação ou recuse para encerrá-la. Sem reconexão nesse tempo, a ligação é encerrada. Ligações ainda chamando terminam na hora.\n\n### Painel de telefonia\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"workspace_id\": \"string\",\n\"rev\": 0,\n\"as_of\": \"RFC 3339\",\n\"capacity\": {\"used\": 0, \"max\": 0, \"pct\": 0},\n\"humans\": [{\"user_id\": \"string\", \"username\": \"string (opcional)\", \"state\": \"free | ringing | on_call\", \"has_browser\": true, \"since\": \"RFC 3339\"}],\n\"queue\": {\"depth\": 0, \"available\": true},\n\"online\": 0,\n\"free\": 0,\n\"in_call\": 0,\n\"ringing\": 0,\n\"idle_pct\": 0\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n## Erros\n\n` + "`" + `conversation:error` + "`" + ` traz ` + "`" + `code` + "`" + ` e ` + "`" + `message` + "`" + `. Em erros de chamada oferecida, ` + "`" + `entry_id` + "`" + ` é o ` + "`" + `offer_id` + "`" + `; em erros de transferência, é o ` + "`" + `call_id` + "`" + `.\n\n| code | Significado |\n|---|---|\n| ` + "`" + `invalid_payload` + "`" + ` | Mensagem ou ` + "`" + `payload` + "`" + ` fora do formato. |\n| ` + "`" + `missing_fields` + "`" + ` | Falta ` + "`" + `phone_number` + "`" + `, ` + "`" + `offer_id` + "`" + ` ou ` + "`" + `call_id` + "`" + `, ou ` + "`" + `lead_id` + "`" + ` junto com ` + "`" + `call_list_item_id` + "`" + `. |\n| ` + "`" + `unauthorized` + "`" + ` | Falta permissão para ligar, para usar o tronco ou para transferir esse tipo de ligação. |\n| ` + "`" + `already_in_call` + "`" + ` | Você já está em uma ligação ou atendendo uma chamada. |\n| ` + "`" + `no_active_call` + "`" + ` | Não há ligação para desligar. |\n| ` + "`" + `dial_failed` + "`" + ` | Não foi possível iniciar a ligação. |\n| ` + "`" + `no_call_slots` + "`" + ` | Todas as linhas ocupadas; tente em instantes. |\n| ` + "`" + `insufficient_balance` + "`" + ` | Saldo insuficiente para ligar. |\n| ` + "`" + `not_configured` + "`" + ` | Origem de ligação, ligações para leads ou listas de ligação não configuradas neste servidor. |\n| ` + "`" + `lead_not_dialable` + "`" + ` | O lead não existe neste workspace, o número não é dele, ou as regras do workspace ou da lista não permitem ligar para ele. |\n| ` + "`" + `lead_blocked` + "`" + ` | O lead está bloqueado e não recebe ligações. |\n| ` + "`" + `call_list_item_unavailable` + "`" + ` | O item da lista não está reservado por você, não é do lead ou do número enviados, ou a lista não está ativa ou você não liga nela. Peça o próximo em POST /call-lists/{listId}/next. |\n| ` + "`" + `whatsapp_permission_required` + "`" + ` | O contato não autorizou receber ligações pelo WhatsApp. |\n| ` + "`" + `trunk_unavailable` + "`" + ` | O tronco não existe, está desativado ou não faz ligações. |\n| ` + "`" + `trunk_not_registered` + "`" + ` | O tronco não está registrado no provedor. |\n| ` + "`" + `invalid_number` + "`" + ` | O número só pode ter dígitos, ` + "`" + `*` + "`" + `, ` + "`" + `#` + "`" + ` e um ` + "`" + `+` + "`" + ` no início. |\n| ` + "`" + `inbound_unavailable` + "`" + ` | Chamadas recebidas não estão disponíveis neste servidor. |\n| ` + "`" + `offer_not_found` + "`" + ` | A oferta não está mais disponível. |\n| ` + "`" + `not_for_user` + "`" + ` | A oferta não é sua ou foi enviada para outra conexão. |\n| ` + "`" + `offer_resolved` + "`" + ` | A oferta já foi atendida ou recusada. |\n| ` + "`" + `inbound_failed` + "`" + ` | Falha ao atender. |\n| ` + "`" + `transfer_unavailable` + "`" + ` | Transferências não estão disponíveis neste servidor. |\n| ` + "`" + `no_call_to_transfer` + "`" + ` | Não há ligação em andamento para transferir. |\n| ` + "`" + `call_not_found` + "`" + ` | A ligação já terminou. |\n| ` + "`" + `not_call_owner` + "`" + ` | Só quem está na ligação pode transferi-la. |\n| ` + "`" + `target_unavailable` + "`" + ` | O colega não está livre ou não pode atender esse tipo de ligação. |\n| ` + "`" + `conversation_out_of_reach` + "`" + ` | Em ligações do WhatsApp, a conversa do contato não pode ser passada para esse colega. |\n| ` + "`" + `transfer_to_self` + "`" + ` | Não é possível transferir para você mesmo. |\n| ` + "`" + `transfer_in_progress` + "`" + ` | Essa ligação já está sendo transferida. |\n| ` + "`" + `no_transfer` + "`" + ` | Não há transferência para cancelar. |\n| ` + "`" + `queue_not_found` + "`" + ` | A fila não existe neste workspace. |\n| ` + "`" + `notes_too_long` + "`" + ` | A nota pode ter até 500 caracteres. |\n| ` + "`" + `invalid_target` + "`" + ` | Escolha um colega ou uma fila. |\n| ` + "`" + `transfer_failed` + "`" + ` | A transferência não pôde ser iniciada. |\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho ` + "`" + `Authorization: Bearer SEU_ACCESS_TOKEN` + "`" + ` (clientes fora do navegador), no parâmetro ` + "`" + `token` + "`" + ` da URL ou no cookie ` + "`" + `accessToken` + "`" + ` do login em modo cookie. Com o cookie, a conexão só é aceita quando o ` + "`" + `Origin` + "`" + ` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em ` + "`" + `workspace_id` + "`" + ` e em ` + "`" + `workspaceId` + "`" + `, com o mesmo valor (ou o cabeçalho ` + "`" + `X-Workspace-ID` + "`" + ` junto com ` + "`" + `workspaceId` + "`" + `). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
                 "tags": [
                     "WebSockets"
                 ],
@@ -33557,7 +40523,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Mantém a caixa de entrada e as conversas abertas atualizadas em tempo real: novas mensagens, leituras, digitação, mudanças de etapa, etiquetas, responsável e status. Também é por ele que o atendente envia mensagens e muda o status da conversa.\n\n## Conectar\n\n` + "`" + `` + "`" + `` + "`" + `text\nwss://SUA_URL_BASE/ws/conversations?token=SEU_ACCESS_TOKEN\u0026workspaceId=SEU_WORKSPACE_ID\n` + "`" + `` + "`" + `` + "`" + `\n\n| Parâmetro | Obrigatório | Descrição |\n|---|---|---|\n| ` + "`" + `workspaceId` + "`" + ` | não | Workspace da conexão. Sem ele, vale o workspace padrão do usuário. |\n| ` + "`" + `departmentId` + "`" + ` | não | Departamento selecionado; filtra a caixa de entrada. |\n| ` + "`" + `campaignId` + "`" + ` + ` + "`" + `campaignType` + "`" + ` | não | Abre a conexão já na caixa de uma campanha. ` + "`" + `campaignType` + "`" + `: ` + "`" + `whatsapp` + "`" + `, ` + "`" + `unofficial_whatsapp` + "`" + `, ` + "`" + `instagram` + "`" + `, ` + "`" + `facebook` + "`" + ` ou ` + "`" + `telegram` + "`" + `. |\n\n- Permissão: ` + "`" + `conversations:read` + "`" + ` no workspace.\n- O servidor envia um ping a cada 54 segundos; navegadores respondem sozinhos. Sem resposta em 60 segundos, a conexão é encerrada.\n- Mensagens do cliente podem ter até 512 KiB.\n\nAo conectar, você recebe ` + "`" + `conversation:connected` + "`" + `, depois ` + "`" + `conversation:connected_users` + "`" + ` e a primeira página da caixa de entrada em ` + "`" + `conversation:inbox` + "`" + `.\n\n## Mensagens que você envia\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `. Tipos desconhecidos recebem ` + "`" + `conversation:error` + "`" + ` com ` + "`" + `code: \"unknown_event\"` + "`" + `.\n\n| type | Permissão | payload | Resposta |\n|---|---|---|---|\n| ` + "`" + `subscribe` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:subscribed` + "`" + ` e ` + "`" + `conversation:history` + "`" + `. A partir daí você recebe os eventos dessa conversa. ` + "`" + `page_size` + "`" + ` padrão 50, máximo 100. |\n| ` + "`" + `unsubscribe` + "`" + ` | | ` + "`" + `{\"entry_id\": string, \"entry_type\": string}` + "`" + ` | ` + "`" + `conversation:unsubscribed` + "`" + ` |\n| ` + "`" + `send` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"text\"?: string, \"media_id\"?: string, \"media_type\"?: \"image\" \\| \"video\" \\| \"audio\" \\| \"document\" \\| \"sticker\", \"signed\"?: boolean, \"request_id\": string, \"reply_to_message_id\"?: string}` + "`" + ` | ` + "`" + `conversation:message_sent` + "`" + ` para todos os inscritos, ou ` + "`" + `conversation:message_error` + "`" + `. Informe ` + "`" + `text` + "`" + ` ou ` + "`" + `media_id` + "`" + `. |\n| ` + "`" + `send_button` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"body_text\": string, \"buttons\": [{\"id\": string, \"title\": string}], \"header_type\"?: string, \"header_text\"?: string, \"footer_text\"?: string, \"request_id\": string, \"reply_to_message_id\"?: string}` + "`" + ` | Igual a ` + "`" + `send` + "`" + `. De 1 a 3 botões. |\n| ` + "`" + `mark_read` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"message_ids\": string[]}` + "`" + ` | ` + "`" + `conversation:read` + "`" + ` para todos os inscritos. |\n| ` + "`" + `typing` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"is_typing\"?: boolean}` + "`" + ` | ` + "`" + `conversation:typing` + "`" + ` para os outros inscritos. Sem erros. |\n| ` + "`" + `request_connected_users` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{}` + "`" + ` | ` + "`" + `conversation:connected_users` + "`" + ` |\n| ` + "`" + `load_history` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"before\": string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:history` + "`" + ` com mensagens anteriores a ` + "`" + `before` + "`" + ` (RFC 3339). |\n| ` + "`" + `load_around` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"timestamp\": string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:history` + "`" + ` em torno de ` + "`" + `timestamp` + "`" + ` (RFC 3339). |\n| ` + "`" + `request_inbox_page` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"page\"?: number, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:inbox` + "`" + `. ` + "`" + `page_size` + "`" + ` padrão 20, máximo 50. |\n| ` + "`" + `search_inbox` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | Veja Busca na caixa de entrada | ` + "`" + `conversation:search_results` + "`" + ` |\n| ` + "`" + `search_messages` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"query\": string, \"page\"?: number, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:search_messages_results` + "`" + ` |\n| ` + "`" + `load_entry_matches` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | Igual a ` + "`" + `search_messages` + "`" + ` (` + "`" + `page_size` + "`" + ` padrão 10, máximo 50) | ` + "`" + `conversation:entry_matches_results` + "`" + ` |\n| ` + "`" + `reopen_window` + "`" + ` | ` + "`" + `conversations:reopen` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"template_id\": string, \"parameters\"?: string[], \"request_id\"?: string}` + "`" + ` | Envia um template para reabrir a janela de atendimento. Resposta ` + "`" + `conversation:window_reopened` + "`" + `. |\n| ` + "`" + `assign_to` + "`" + ` | ` + "`" + `conversations:assign` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"user_id\": string}` + "`" + ` | Sem resposta direta: você recebe ` + "`" + `conversation:entry_update` + "`" + `. |\n| ` + "`" + `request_funnel_column` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"stage_id\": string, \"page\"?: number, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:funnel_column` + "`" + ` |\n| ` + "`" + `request_funnel_summary` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"stage_ids\": string[]}` + "`" + ` | ` + "`" + `conversation:funnel_summary` + "`" + ` |\n| ` + "`" + `switch_view` + "`" + ` | | ` + "`" + `{\"campaign_id\"?: string, \"campaign_type\"?: string, \"whatsapp_campaign_type\"?: \"standard\" \\| \"organic\", \"container_kind\"?: \"\" \\| \"campaign\", \"conversation_status\"?: \"new\" \\| \"ongoing\" \\| \"finished\"}` + "`" + ` | ` + "`" + `conversation:view_switched` + "`" + ` e a primeira página em ` + "`" + `conversation:inbox` + "`" + `. Cancela todas as inscrições em conversas. |\n| ` + "`" + `set_conversation_status` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"status\": \"ongoing\" \\| \"finished\", \"outcome_code\"?: string}` + "`" + ` | Sem resposta direta: você recebe ` + "`" + `conversation:conversation_status_update` + "`" + `. |\n\n` + "`" + `entry_type` + "`" + ` é o canal da conversa: ` + "`" + `whatsapp` + "`" + `, ` + "`" + `unofficial_whatsapp` + "`" + `, ` + "`" + `instagram` + "`" + `, ` + "`" + `facebook` + "`" + ` ou ` + "`" + `telegram` + "`" + `.\n\nRegras de ` + "`" + `set_conversation_status` + "`" + `: uma conversa volta a ` + "`" + `new` + "`" + ` só quando o contato manda uma mensagem nova; uma conversa finalizada só reabre da mesma forma. Se o workspace exige um desfecho, envie ` + "`" + `outcome_code` + "`" + `; sem ele você recebe ` + "`" + `outcome_required` + "`" + ` com a lista em ` + "`" + `outcomes` + "`" + `.\n\nEm ` + "`" + `switch_view` + "`" + ` com ` + "`" + `campaign_type: \"whatsapp\"` + "`" + `, é preciso ` + "`" + `whatsapp_campaigns:read` + "`" + `; com ` + "`" + `unofficial_whatsapp` + "`" + ` e ` + "`" + `container_kind: \"campaign\"` + "`" + `, ` + "`" + `unofficial_whatsapp_campaigns:read` + "`" + `.\n\n### Busca na caixa de entrada\n\nTodos os campos de ` + "`" + `search_inbox` + "`" + ` são opcionais:\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"query\": \"string\",\n\"stage_id\": \"string\",\n\"stage_name\": \"string\",\n\"min_message_count\": 0,\n\"max_message_count\": 0,\n\"message_search\": \"string\",\n\"window_open\": true,\n\"has_unread\": true,\n\"channel\": \"string\",\n\"date_from\": \"RFC 3339\",\n\"date_to\": \"RFC 3339\",\n\"conversation_status\": \"new | ongoing | finished\",\n\"responsible_user_id\": \"string\",\n\"responsible_unassigned\": true,\n\"responsible_kind\": \"ai | workflow\",\n\"page\": 1,\n\"page_size\": 20\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n## Mensagens que você recebe\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `.\n\n### Respostas aos seus pedidos\n\n| type | payload |\n|---|---|\n| ` + "`" + `conversation:connected` + "`" + ` | ` + "`" + `{\"user_id\": string, \"connection_id\": string}` + "`" + ` |\n| ` + "`" + `conversation:subscribed` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"lead_id\"?, \"lead_name\": string, \"lead_number\": string, \"lead_version\": number, \"blocked\": boolean, \"lead_picture\": string, \"lead_metadata\"?: object, \"entry_variables\"?: string[], \"unread_count\": number, \"automation_enabled\": boolean, \"window_open\": boolean, \"window_expires_at\"?: string, \"window_closed_reason\"?: string, \"window_tier\"?: \"standard\" \\| \"human_agent\", \"ad_origin\"?: AdOrigin}` + "`" + `. ` + "`" + `lead_name` + "`" + `, ` + "`" + `lead_number` + "`" + `, ` + "`" + `lead_version` + "`" + ` e ` + "`" + `lead_picture` + "`" + ` vêm sempre (texto vazio ou 0 quando não há valor), para que um valor apagado substitua o anterior na tela. |\n| ` + "`" + `conversation:unsubscribed` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string}` + "`" + ` |\n| ` + "`" + `conversation:history` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"messages\": Message[], \"has_more\": boolean, \"total\": number, \"page_size\": number}` + "`" + ` |\n| ` + "`" + `conversation:inbox` + "`" + ` | ` + "`" + `{\"entries\": InboxEntry[], \"page\", \"page_size\", \"total_items\", \"total_pages\", \"stage_counts\"?: object, \"conversation_status_counts\"?: object, \"available_labels\"?: Label[]}` + "`" + ` |\n| ` + "`" + `conversation:search_results` + "`" + ` | ` + "`" + `{\"query\"?, \"filters\": object, \"entries\": InboxEntry[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:search_messages_results` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"query\", \"messages\": Message[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:entry_matches_results` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"query\", \"matches\": MatchedMessage[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:window_reopened` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"request_id\"?, \"template_id\", \"message_id\"}` + "`" + ` |\n| ` + "`" + `conversation:funnel_column` + "`" + ` | ` + "`" + `{\"stage_id\", \"entries\": InboxEntry[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:funnel_summary` + "`" + ` | ` + "`" + `{\"columns\": [{\"stage_id\": string, \"total_items\": number}]}` + "`" + ` |\n| ` + "`" + `conversation:view_switched` + "`" + ` | ` + "`" + `{\"view_mode\": \"global\" \\| \"campaign\", \"campaign_id\"?, \"campaign_type\"?, \"whatsapp_campaign_type\"?, \"container_kind\"?, \"conversation_status\"?}` + "`" + ` |\n| ` + "`" + `conversation:connected_users` + "`" + ` | ` + "`" + `{\"users\": [{\"user_id\", \"workspace_id\", \"campaign_id\", \"campaign_type\", \"campaign_name\"?, \"view_mode\", \"username\"?, \"email\"?, \"connected_at\"}]}` + "`" + `. Também chega sozinho quando alguém entra, sai ou troca de visão. Você só vê colegas dos seus departamentos, salvo se tiver acesso a todo o workspace. |\n| ` + "`" + `conversation:message_error` + "`" + ` | ` + "`" + `{\"request_id\", \"entry_id\", \"entry_type\", \"error\": string, \"code\"?: string}` + "`" + `. Falha de ` + "`" + `send` + "`" + ` ou ` + "`" + `send_button` + "`" + `. |\n| ` + "`" + `conversation:error` + "`" + ` | Veja Erros. |\n\n### Eventos das conversas em que você se inscreveu\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `conversation:message` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message\": Message}` + "`" + ` | Chegou ou foi enviada uma mensagem (contato, IA, fluxo, agendamento, chamadas). |\n| ` + "`" + `conversation:message_sent` + "`" + ` | ` + "`" + `{\"request_id\", \"entry_id\", \"entry_type\", \"message\": Message}` + "`" + ` | Um atendente enviou uma mensagem. Chega para todos os inscritos. |\n| ` + "`" + `conversation:read` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message_ids\": string[], \"read_by\": string, \"read_at\": string}` + "`" + ` | Mensagens foram marcadas como lidas. |\n| ` + "`" + `conversation:typing` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"user_id\"?, \"is_typing\": boolean}` + "`" + ` | Um colega está digitando. |\n| ` + "`" + `conversation:message_status` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message_id\", \"status\": \"sent\" \\| \"delivered\" \\| \"read\" \\| \"failed\"}` + "`" + ` | O canal confirmou a entrega. |\n| ` + "`" + `conversation:analysis_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"analysis\": Analysis \\| null, \"pending\": boolean}` + "`" + ` | A análise da conversa mudou. |\n| ` + "`" + `conversation:ad_origin` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"ad_origin\": AdOrigin}` + "`" + ` | O contato chegou por um anúncio (WhatsApp, Instagram ou Facebook). Só a primeira vez: o anúncio de origem não muda. |\n| ` + "`" + `conversation:conversation_status_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"status\", \"close_source\"?, \"close_reason\"?, \"close_outcome\"?, \"closed_at\"?}` + "`" + ` | O status da conversa mudou. |\n\nUma mesma mensagem chega uma vez só por conexão: como ` + "`" + `conversation:message` + "`" + ` ou como ` + "`" + `conversation:message_sent` + "`" + `.\n\n### Eventos do workspace\n\nChegam mesmo sem inscrição, para quem tem acesso à conversa e está na visão correspondente:\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `conversation:entry_update` + "`" + ` | ` + "`" + `{\"entry\": InboxEntry, \"silent\"?: boolean}` + "`" + ` | Nova mensagem, envio, troca de responsável, status ou etapa. ` + "`" + `silent: true` + "`" + ` indica atualização sem novidade para o atendente. |\n| ` + "`" + `conversation:conversation_status_counts_update` + "`" + ` | ` + "`" + `{\"counts\": {\"new\": number, \"ongoing\": number, \"finished\": number}}` + "`" + ` | Os totais por status mudaram. |\n| ` + "`" + `conversation:stage_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"stage\": Stage \\| null}` + "`" + ` | A etapa da conversa mudou. |\n| ` + "`" + `conversation:label_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"labels\": Label[]}` + "`" + ` | As etiquetas mudaram. |\n| ` + "`" + `conversation:entry_removed` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"reason\": \"assigned\"}` + "`" + ` | A conversa foi para outra pessoa e você não a vê mais. |\n| ` + "`" + `audience:analyzed` + "`" + ` | ` + "`" + `{\"workspaceId\", \"source\", \"accountId\", \"containerId\", \"items\": CommentAnalyzed[], \"more\": number}` + "`" + ` | Um lote de comentários foi analisado. Só para quem tem ` + "`" + `audience:read` + "`" + `. |\n| ` + "`" + `notification:created` + "`" + ` | ` + "`" + `{\"workspaceId\", \"item\": {\"id\", \"category\", \"severity\", \"title\", \"body\", \"imageUrl\"?, \"actionUrl\"?, \"actionLabel\"?, \"createdAt\"}}` + "`" + ` | Uma notificação nova chegou para você neste workspace (a mesma forma de GET /notifications). Só para os destinatários dela. Atualize o contador com GET /notifications/summary. |\n| ` + "`" + `conversation:lead_update` + "`" + ` | ` + "`" + `{\"leadId\": string, \"version\": number, \"fields\": string[]}` + "`" + ` | Um lead mudou (edição, nome, bloqueio, responsável, opt-out, família, anonimização). Traz só os nomes dos campos, nunca os valores; um campo personalizado aparece como ` + "`" + `customFields.\u003cchave\u003e` + "`" + `, e ` + "`" + `anonymized` + "`" + ` diz que o lead foi anonimizado e não existe mais (a nova leitura responde 404): busque o lead de novo por uma rota que você pode usar (GET /leads/{id} com ` + "`" + `leads:read` + "`" + `, ou a própria conversa). Chega para quem tem ` + "`" + `leads:read` + "`" + ` e para quem está inscrito em uma conversa desse lead. Use ` + "`" + `version` + "`" + ` no ` + "`" + `If-Match` + "`" + ` da próxima edição. |\n| ` + "`" + `conversation:leads_bulk_update` + "`" + ` | ` + "`" + `{\"runId\": string}` + "`" + ` | Um lote de uma ação em massa sobre leads (classificar, atribuir, bloquear) foi gravado. Chega uma vez por lote, só para quem tem ` + "`" + `leads:read` + "`" + `; não traz ids de leads nem valores. Recarregue a lista e consulte o andamento em GET /leads/actions/{runId}. |\n\n## Tipos usados nas mensagens\n\n**InboxEntry**: ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `campaign_id` + "`" + `?, ` + "`" + `campaign_name` + "`" + `?, ` + "`" + `lead_id` + "`" + `?, ` + "`" + `lead_name` + "`" + `?, ` + "`" + `lead_number` + "`" + `?, ` + "`" + `lead_version` + "`" + `?, ` + "`" + `blocked` + "`" + `, ` + "`" + `lead_picture` + "`" + `?, ` + "`" + `is_group` + "`" + `?, ` + "`" + `lead_metadata` + "`" + `?, ` + "`" + `entry_variables` + "`" + `?, ` + "`" + `unread_count` + "`" + `, ` + "`" + `last_message_preview` + "`" + `?, ` + "`" + `last_message_at` + "`" + `, ` + "`" + `last_message_type` + "`" + `?, ` + "`" + `last_message_sender` + "`" + `?, ` + "`" + `last_message_sender_avatar` + "`" + `?, ` + "`" + `last_message_author` + "`" + `? (groups: name of the member who sent the last message), ` + "`" + `last_message_from_us` + "`" + `? (groups: the last message was ours), ` + "`" + `window_open` + "`" + `, ` + "`" + `window_expires_at` + "`" + `?, ` + "`" + `window_closed_reason` + "`" + `?, ` + "`" + `business_phone_id` + "`" + `?, ` + "`" + `assigned_user_id` + "`" + `?, ` + "`" + `assigned_username` + "`" + `?, ` + "`" + `automation_enabled` + "`" + `, ` + "`" + `stage` + "`" + `?: Stage, ` + "`" + `labels` + "`" + `?: Label[], ` + "`" + `available_stages` + "`" + `?: Stage[], ` + "`" + `matched_messages` + "`" + `?: MatchedMessage[], ` + "`" + `total_matches` + "`" + `?, ` + "`" + `latest_analysis` + "`" + `?: Analysis, ` + "`" + `analysis_phase` + "`" + `?: ` + "`" + `\"awaiting\" | \"queued\"` + "`" + `, ` + "`" + `live_read` + "`" + `?: LiveRead, ` + "`" + `conversation_status` + "`" + `?: ` + "`" + `new | ongoing | finished` + "`" + `, ` + "`" + `close_source` + "`" + `?: ` + "`" + `human | ai | system` + "`" + `, ` + "`" + `close_reason` + "`" + `?: ` + "`" + `manual | customer_idle | ai_resolved | max_age | workflow` + "`" + `, ` + "`" + `closed_at` + "`" + `?, ` + "`" + `close_outcome` + "`" + `?, ` + "`" + `ai_handler` + "`" + `?: AIHandler.\n\n**Message** (chaves em camelCase): ` + "`" + `id` + "`" + `, ` + "`" + `entryId` + "`" + `, ` + "`" + `entryType` + "`" + `, ` + "`" + `channel` + "`" + `, ` + "`" + `messageType` + "`" + `, ` + "`" + `direction` + "`" + `?: ` + "`" + `INBOUND | OUTBOUND` + "`" + `, ` + "`" + `from` + "`" + `, ` + "`" + `to` + "`" + `, ` + "`" + `text` + "`" + `, ` + "`" + `mediaId` + "`" + `?, ` + "`" + `mediaType` + "`" + `?, ` + "`" + `read` + "`" + `, ` + "`" + `readAt` + "`" + `?, ` + "`" + `readBy` + "`" + `?, ` + "`" + `whatsappMessageId` + "`" + `?, ` + "`" + `externalMessageId` + "`" + `?, ` + "`" + `replyToMessageId` + "`" + `?, ` + "`" + `deliveryStatus` + "`" + `?: ` + "`" + `sent | delivered | read | failed` + "`" + `, ` + "`" + `senderName` + "`" + `?, ` + "`" + `senderAvatar` + "`" + `?, ` + "`" + `sentVia` + "`" + `?: ` + "`" + `business_app` + "`" + `, ` + "`" + `sentBy` + "`" + `: ` + "`" + `{\"kind\": \"contact\" | \"human\" | \"ai\" | \"workflow\" | \"campaign\" | \"external\" | \"system\", \"id\": string}` + "`" + `, ` + "`" + `metadata` + "`" + `?, ` + "`" + `location` + "`" + `?: ` + "`" + `{\"latitude\": number, \"longitude\": number, \"name\"?: string, \"address\"?: string, \"candidate\": boolean}` + "`" + `, ` + "`" + `createdAt` + "`" + `, ` + "`" + `updatedAt` + "`" + `.\n\n` + "`" + `location` + "`" + ` aparece em toda mensagem de localização (WhatsApp oficial e coexistência, Telegram), recebida ou enviada, para desenhar o cartão do mapa. ` + "`" + `candidate: true` + "`" + ` marca a localização que o lead mandou, dentro do Brasil, que pode virar a posição dele por ` + "`" + `POST /leads/{id}/location-candidates/{messageId}/accept` + "`" + ` (exige ` + "`" + `leads:update` + "`" + `; o servidor confere de novo a conversa e o lead).\n\nValores de ` + "`" + `messageType` + "`" + `: ` + "`" + `user_message` + "`" + `, ` + "`" + `ai_response` + "`" + `, ` + "`" + `tool_call` + "`" + `, ` + "`" + `tool_result` + "`" + `, ` + "`" + `audio` + "`" + `, ` + "`" + `system` + "`" + `, ` + "`" + `media` + "`" + `, ` + "`" + `operator` + "`" + `, ` + "`" + `template` + "`" + `, ` + "`" + `call_permission_request` + "`" + `, ` + "`" + `call_permission_granted` + "`" + `, ` + "`" + `call_permission_rejected` + "`" + `, ` + "`" + `call_received` + "`" + `, ` + "`" + `call_answered` + "`" + `, ` + "`" + `call_missed` + "`" + `, ` + "`" + `call_ended` + "`" + `, ` + "`" + `story_reply` + "`" + `, ` + "`" + `story_mention` + "`" + `, ` + "`" + `reaction` + "`" + `, ` + "`" + `unsupported` + "`" + `, ` + "`" + `post_share` + "`" + `, ` + "`" + `sticker` + "`" + `, ` + "`" + `link_share` + "`" + `.\n\n**Stage**: ` + "`" + `stage_id` + "`" + `, ` + "`" + `name` + "`" + `, ` + "`" + `color` + "`" + `?. **Label**: ` + "`" + `label_id` + "`" + `, ` + "`" + `name` + "`" + `, ` + "`" + `color` + "`" + `?.\n\n**MatchedMessage**: ` + "`" + `message_id` + "`" + `, ` + "`" + `text` + "`" + `, ` + "`" + `from` + "`" + `, ` + "`" + `message_type` + "`" + `, ` + "`" + `channel` + "`" + `, ` + "`" + `created_at` + "`" + `, ` + "`" + `position` + "`" + `, ` + "`" + `page` + "`" + `.\n\n**AIHandler**: ` + "`" + `kind` + "`" + `, ` + "`" + `agent_id` + "`" + `?, ` + "`" + `agent_name` + "`" + `?, ` + "`" + `agent_avatar` + "`" + `?, ` + "`" + `agent_active` + "`" + `, ` + "`" + `workflow_id` + "`" + `?, ` + "`" + `workflow_name` + "`" + `?, ` + "`" + `workflow_run_id` + "`" + `?, ` + "`" + `run_status` + "`" + `?, ` + "`" + `current_node_id` + "`" + `?, ` + "`" + `current_node_type` + "`" + `?.\n\n**AdOrigin** (camelCase): o primeiro anúncio que trouxe o contato. ` + "`" + `adId` + "`" + `?, ` + "`" + `platform` + "`" + `?: ` + "`" + `facebook | instagram` + "`" + `, ` + "`" + `title` + "`" + `?, ` + "`" + `sourceUrl` + "`" + `?, ` + "`" + `image` + "`" + `?: ` + "`" + `{\"url\", \"mimeType\"?, \"layout\": {\"width\"?, \"height\"?, \"thumbhash\"?}}` + "`" + ` (cópia guardada pela Vozko), ` + "`" + `arrivedAt` + "`" + `.\n\n**LiveRead** (camelCase): ` + "`" + `interest` + "`" + `?, ` + "`" + `disposition` + "`" + `?, ` + "`" + `sentiment` + "`" + `?, ` + "`" + `qualification` + "`" + `?, ` + "`" + `nextAction` + "`" + `?, ` + "`" + `language` + "`" + `?, ` + "`" + `attendanceQuality` + "`" + `, ` + "`" + `certainty` + "`" + `?: object, ` + "`" + `decidedAt` + "`" + `.\n\n**Analysis** (camelCase): análise da conversa com ` + "`" + `id` + "`" + `, ` + "`" + `status` + "`" + `, ` + "`" + `sentiment` + "`" + `?, ` + "`" + `intent` + "`" + `?, ` + "`" + `interest` + "`" + `?, ` + "`" + `productInterest` + "`" + `?, ` + "`" + `disposition` + "`" + `?, ` + "`" + `qualification` + "`" + `?, ` + "`" + `nextAction` + "`" + `?, ` + "`" + `summary` + "`" + `?, ` + "`" + `attendanceQuality` + "`" + `?, ` + "`" + `messageCount` + "`" + `?, ` + "`" + `requiresAction` + "`" + `, ` + "`" + `excerpt` + "`" + `, ` + "`" + `analyzedAt` + "`" + `? e demais campos de identificação (` + "`" + `workspaceId` + "`" + `, ` + "`" + `source` + "`" + `, ` + "`" + `accountId` + "`" + `, ` + "`" + `containerId` + "`" + `, ` + "`" + `subjectId` + "`" + `, ` + "`" + `createdAt` + "`" + `, ` + "`" + `updatedAt` + "`" + `).\n\n**CommentAnalyzed** (camelCase): ` + "`" + `commentId` + "`" + `, ` + "`" + `subjectKind` + "`" + `, ` + "`" + `authorExternalId` + "`" + `, ` + "`" + `authorHandle` + "`" + `?, ` + "`" + `stance` + "`" + `?, ` + "`" + `sentiment` + "`" + `?, ` + "`" + `intent` + "`" + `?, ` + "`" + `topicKey` + "`" + `?, ` + "`" + `severity` + "`" + `, ` + "`" + `requiresAction` + "`" + `, ` + "`" + `isSpam` + "`" + `, ` + "`" + `excerpt` + "`" + `, ` + "`" + `interest` + "`" + `?, ` + "`" + `productInterest` + "`" + `?, ` + "`" + `disposition` + "`" + `?, ` + "`" + `qualification` + "`" + `?, ` + "`" + `nextAction` + "`" + `?, ` + "`" + `summary` + "`" + `?, ` + "`" + `occurredAt` + "`" + `, ` + "`" + `analyzedAt` + "`" + `.\n\nValores de ` + "`" + `window_closed_reason` + "`" + `: ` + "`" + `expired` + "`" + `, ` + "`" + `no_inbound` + "`" + `, ` + "`" + `contact_blocked` + "`" + `, ` + "`" + `session_down` + "`" + `, ` + "`" + `account_restricted` + "`" + `, ` + "`" + `reply_revoked` + "`" + ` e ` + "`" + `channel_unavailable` + "`" + `.\n\nDatas são strings RFC 3339.\n\n## Erros\n\n` + "`" + `conversation:error` + "`" + ` traz ` + "`" + `{\"code\": string, \"message\": string}` + "`" + `; recusas de ` + "`" + `reopen_window` + "`" + ` também trazem ` + "`" + `request_id` + "`" + `, ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `; em mudanças de status, também ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `status` + "`" + `, ` + "`" + `previous_status` + "`" + ` e ` + "`" + `outcomes` + "`" + ` (` + "`" + `[{\"code\", \"label\", \"isDurable\", \"position\"}]` + "`" + `).\n\n| code | Significado |\n|---|---|\n| ` + "`" + `forbidden` + "`" + ` | Falta permissão, a campanha é de outro workspace ou a regra de status não permite a mudança. Se o acesso ao workspace for revogado, a conexão é encerrada logo depois. |\n| ` + "`" + `unauthorized` + "`" + ` | Você não tem acesso a essa conversa, ou o responsável escolhido não pode recebê-la. |\n| ` + "`" + `unknown_event` + "`" + ` | ` + "`" + `type` + "`" + ` desconhecido. |\n| ` + "`" + `invalid_payload` + "`" + ` | O ` + "`" + `payload` + "`" + ` não tem o formato esperado. |\n| ` + "`" + `missing_fields` + "`" + ` | Falta um campo obrigatório. |\n| ` + "`" + `missing_content` + "`" + ` | Mensagem sem texto nem mídia. |\n| ` + "`" + `invalid_buttons` + "`" + ` | É preciso de 1 a 3 botões. |\n| ` + "`" + `invalid_entry_type` + "`" + ` | ` + "`" + `entry_type` + "`" + ` inválido. |\n| ` + "`" + `invalid_timestamp` + "`" + ` | Data fora do formato RFC 3339. |\n| ` + "`" + `invalid_status` + "`" + ` | Status diferente de ` + "`" + `new` + "`" + `, ` + "`" + `ongoing` + "`" + ` ou ` + "`" + `finished` + "`" + `. |\n| ` + "`" + `invalid_campaign_type` + "`" + `, ` + "`" + `invalid_container_kind` + "`" + `, ` + "`" + `invalid_whatsapp_campaign_type` + "`" + ` | Filtro de visão inválido. |\n| ` + "`" + `not_found` + "`" + ` | Campanha não encontrada. |\n| ` + "`" + `not_configured` + "`" + ` | O recurso não está disponível neste servidor. |\n| ` + "`" + `outcome_required` + "`" + ` | Escolha um desfecho (lista em ` + "`" + `outcomes` + "`" + `) para finalizar. |\n| ` + "`" + `outcome_unknown` + "`" + ` | O desfecho não existe no workspace (lista em ` + "`" + `outcomes` + "`" + `). |\n| ` + "`" + `history_error` + "`" + `, ` + "`" + `inbox_error` + "`" + `, ` + "`" + `search_error` + "`" + `, ` + "`" + `fetch_error` + "`" + `, ` + "`" + `template_send_failed` + "`" + `, ` + "`" + `assign_failed` + "`" + `, ` + "`" + `internal_error` + "`" + ` | Falha ao processar o pedido; tente de novo. |\n| ` + "`" + `lead_opted_out` + "`" + `, ` + "`" + `lead_blocked` + "`" + `, ` + "`" + `within_spam_window` + "`" + `, ` + "`" + `window_already_open` + "`" + `, ` + "`" + `insufficient_balance` + "`" + `, ` + "`" + `monthly_send_cap_reached` + "`" + `, ` + "`" + `pricing_unavailable` + "`" + `, ` + "`" + `quote_out_of_range` + "`" + `, ` + "`" + `template_not_sendable` + "`" + `, ` + "`" + `template_phone_mismatch` + "`" + `, ` + "`" + `invalid_phone` + "`" + `, ` + "`" + `phone_not_connected` + "`" + `, ` + "`" + `send_in_progress` + "`" + `, ` + "`" + `idempotency_key_required` + "`" + `, ` + "`" + `billing_unavailable` + "`" + `, ` + "`" + `conversation_not_found` + "`" + ` | Recusa de ` + "`" + `reopen_window` + "`" + `, com ` + "`" + `request_id` + "`" + ` (o mesmo do pedido), ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `: o mesmo código que POST /whatsapp/outreach/conversations responde para a mesma recusa (inclusive ` + "`" + `forbidden` + "`" + ` e ` + "`" + `not_found` + "`" + ` para número ou modelo). Uma falha sem motivo conhecido chega como ` + "`" + `template_send_failed` + "`" + `. |\n| ` + "`" + `send_outcome_unknown` + "`" + ` | ` + "`" + `reopen_window` + "`" + ` sem resposta do WhatsApp: o modelo pode ter sido entregue e cobrado. Confira a conversa antes de enviar de novo; não repita automaticamente. Traz ` + "`" + `request_id` + "`" + `, ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `. |\n\nCódigos de ` + "`" + `conversation:message_error` + "`" + `: ` + "`" + `unauthorized` + "`" + `, ` + "`" + `not_configured` + "`" + `, ` + "`" + `send_failed` + "`" + ` e ` + "`" + `internal_error` + "`" + `.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho ` + "`" + `Authorization: Bearer SEU_ACCESS_TOKEN` + "`" + ` (clientes fora do navegador), no parâmetro ` + "`" + `token` + "`" + ` da URL ou no cookie ` + "`" + `accessToken` + "`" + ` do login em modo cookie. Com o cookie, a conexão só é aceita quando o ` + "`" + `Origin` + "`" + ` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em ` + "`" + `workspace_id` + "`" + ` e em ` + "`" + `workspaceId` + "`" + `, com o mesmo valor (ou o cabeçalho ` + "`" + `X-Workspace-ID` + "`" + ` junto com ` + "`" + `workspaceId` + "`" + `). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
+                "description": "Mantém a caixa de entrada e as conversas abertas atualizadas em tempo real: novas mensagens, leituras, digitação, mudanças de etapa, etiquetas, responsável e status. Também é por ele que o atendente envia mensagens e muda o status da conversa.\n\n## Conectar\n\n` + "`" + `` + "`" + `` + "`" + `text\nwss://SUA_URL_BASE/ws/conversations?token=SEU_ACCESS_TOKEN\u0026workspaceId=SEU_WORKSPACE_ID\n` + "`" + `` + "`" + `` + "`" + `\n\n| Parâmetro | Obrigatório | Descrição |\n|---|---|---|\n| ` + "`" + `workspaceId` + "`" + ` | não | Workspace da conexão. Sem ele, vale o workspace padrão do usuário. |\n| ` + "`" + `departmentId` + "`" + ` | não | Departamento selecionado; filtra a caixa de entrada. |\n| ` + "`" + `campaignId` + "`" + ` + ` + "`" + `campaignType` + "`" + ` | não | Abre a conexão já na caixa de uma campanha. ` + "`" + `campaignType` + "`" + `: ` + "`" + `whatsapp` + "`" + `, ` + "`" + `unofficial_whatsapp` + "`" + `, ` + "`" + `instagram` + "`" + `, ` + "`" + `facebook` + "`" + ` ou ` + "`" + `telegram` + "`" + `. |\n\n- Permissão: ` + "`" + `conversations:read` + "`" + ` no workspace.\n- O servidor envia um ping a cada 54 segundos; navegadores respondem sozinhos. Sem resposta em 60 segundos, a conexão é encerrada.\n- Mensagens do cliente podem ter até 512 KiB.\n\nAo conectar, você recebe ` + "`" + `conversation:connected` + "`" + `, depois ` + "`" + `conversation:connected_users` + "`" + ` e a primeira página da caixa de entrada em ` + "`" + `conversation:inbox` + "`" + `.\n\n## Mensagens que você envia\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `. Tipos desconhecidos recebem ` + "`" + `conversation:error` + "`" + ` com ` + "`" + `code: \"unknown_event\"` + "`" + `.\n\n| type | Permissão | payload | Resposta |\n|---|---|---|---|\n| ` + "`" + `subscribe` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:subscribed` + "`" + ` e ` + "`" + `conversation:history` + "`" + `. A partir daí você recebe os eventos dessa conversa. ` + "`" + `page_size` + "`" + ` padrão 50, máximo 100. Abrir a conversa tira a sua marca pessoal de não lida (chega ` + "`" + `conversation:personal_mark` + "`" + ` se havia uma). Logo depois chega ` + "`" + `conversation:viewers` + "`" + ` com quem está com a conversa aberta, e todos os inscritos recebem a lista nova. |\n| ` + "`" + `unsubscribe` + "`" + ` | | ` + "`" + `{\"entry_id\": string, \"entry_type\": string}` + "`" + ` | ` + "`" + `conversation:unsubscribed` + "`" + `. Os inscritos que ficam recebem ` + "`" + `conversation:viewers` + "`" + ` sem você (quando era a sua última conexão inscrita). |\n| ` + "`" + `send` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"text\"?: string, \"media_id\"?: string, \"media_type\"?: \"image\" \\| \"video\" \\| \"audio\" \\| \"document\" \\| \"sticker\", \"signed\"?: boolean, \"request_id\": string, \"reply_to_message_id\"?: string}` + "`" + ` | ` + "`" + `conversation:message_sent` + "`" + ` para todos os inscritos e sempre para a conexão que enviou (mesmo sem inscrição, ou quando ela já recebeu a mensagem no histórico), ou ` + "`" + `conversation:message_error` + "`" + `. Informe ` + "`" + `text` + "`" + ` ou ` + "`" + `media_id` + "`" + `. ` + "`" + `request_id` + "`" + ` (até 128 caracteres, um UUID por envio) torna o envio idempotente: repetir o mesmo ` + "`" + `request_id` + "`" + ` na mesma conversa nunca envia de novo; se a mensagem já foi gravada, a resposta é o mesmo ` + "`" + `conversation:message_sent` + "`" + ` de antes (mesmo ` + "`" + `request_id` + "`" + `); se o primeiro envio ainda está em andamento, a repetição fica sem resposta e vale a resposta do primeiro. Sem ` + "`" + `request_id` + "`" + ` (clientes antigos) não há essa proteção. |\n| ` + "`" + `send_button` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"body_text\": string, \"buttons\": [{\"id\": string, \"title\": string}], \"header_type\"?: string, \"header_text\"?: string, \"footer_text\"?: string, \"request_id\": string, \"reply_to_message_id\"?: string}` + "`" + ` | Igual a ` + "`" + `send` + "`" + `, inclusive a idempotência por ` + "`" + `request_id` + "`" + `. De 1 a 3 botões. Os botões ficam guardados em ` + "`" + `metadata.buttons` + "`" + ` da mensagem, para que ela possa ser reenviada. |\n| ` + "`" + `resend_message` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"message_id\": string, \"request_id\": string}` + "`" + ` | Reenvia uma mensagem que falhou, pelo mesmo caminho de ` + "`" + `send` + "`" + ` (saldo, janela, limite mensal, permissões e cobrança valem iguais), com o conteúdo original (texto, mídia, botões e resposta citada). Só vale para mensagem dessa conversa, enviada por um atendente, com ` + "`" + `deliveryStatus: \"failed\"` + "`" + ` e ainda não reenviada; senão ` + "`" + `conversation:error` + "`" + ` com ` + "`" + `not_found` + "`" + `, ` + "`" + `not_allowed` + "`" + ` ou ` + "`" + `invalid` + "`" + ` (falta ` + "`" + `request_id` + "`" + `). O reenvio cria uma mensagem nova: chega ` + "`" + `conversation:message_updated` + "`" + ` da mensagem que falhou, agora com ` + "`" + `resent_as` + "`" + ` apontando para a nova, e depois ` + "`" + `conversation:message_sent` + "`" + ` da nova com o seu ` + "`" + `request_id` + "`" + `. Se o canal recusar, ` + "`" + `conversation:message_error` + "`" + ` com esse ` + "`" + `request_id` + "`" + ` e ` + "`" + `code: \"send_failed\"` + "`" + `, e a mensagem que falhou fica como estava. Repetir o mesmo ` + "`" + `request_id` + "`" + ` responde com a mesma mensagem nova, sem enviar de novo. |\n| ` + "`" + `react_message` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"message_id\": string, \"emoji\": string, \"request_id\": string}` + "`" + ` | Reage a uma mensagem no canal; ` + "`" + `emoji: \"\"` + "`" + ` tira a sua reação. Deu certo: ` + "`" + `conversation:message_updated` + "`" + ` com a reação em ` + "`" + `reactions` + "`" + ` (` + "`" + `direction: \"outbound\"` + "`" + `, ` + "`" + `actor_id` + "`" + ` é você). Falhou: ` + "`" + `conversation:error` + "`" + `, e nada muda. |\n| ` + "`" + `edit_message` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"message_id\": string, \"text\": string, \"request_id\": string}` + "`" + ` | Edita o texto de uma mensagem sua. Deu certo: ` + "`" + `conversation:message_updated` + "`" + ` com o novo ` + "`" + `text` + "`" + ` e ` + "`" + `edited_at` + "`" + `. Falhou: ` + "`" + `conversation:error` + "`" + `, e nada muda. |\n| ` + "`" + `delete_message` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"message_id\": string, \"request_id\": string}` + "`" + ` | Apaga para todos uma mensagem sua. Deu certo: ` + "`" + `conversation:message_updated` + "`" + ` com ` + "`" + `retracted_at` + "`" + ` e sem o conteúdo. Falhou: ` + "`" + `conversation:error` + "`" + `, e nada muda. |\n| ` + "`" + `mark_read` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"message_ids\": string[]}` + "`" + ` | ` + "`" + `conversation:read` + "`" + ` para todos os inscritos. Também tira a sua marca pessoal de não lida dessa conversa (veja Marcas pessoais). |\n| ` + "`" + `pin_conversation` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"pinned\": boolean, \"request_id\": string}` + "`" + ` | Fixa (` + "`" + `pinned: true` + "`" + `) ou desafixa a conversa só para você. Resposta ` + "`" + `conversation:personal_mark` + "`" + ` em todas as suas conexões deste workspace, ou ` + "`" + `conversation:error` + "`" + `. |\n| ` + "`" + `mark_unread` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"request_id\": string}` + "`" + ` | Marca a conversa como não lida só para você. Resposta ` + "`" + `conversation:personal_mark` + "`" + ` em todas as suas conexões deste workspace, ou ` + "`" + `conversation:error` + "`" + `. |\n| ` + "`" + `clear_unread_mark` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"request_id\": string}` + "`" + ` | Tira só a sua marca pessoal de não lida (o desfazer de ` + "`" + `mark_unread` + "`" + `): não marca nenhuma mensagem como lida e não manda confirmação de leitura ao contato. Resposta ` + "`" + `conversation:personal_mark` + "`" + ` em todas as suas conexões deste workspace (mesmo quando não havia marca), ou ` + "`" + `conversation:error` + "`" + `. |\n| ` + "`" + `typing` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"is_typing\"?: boolean}` + "`" + ` | ` + "`" + `conversation:typing` + "`" + ` para os outros inscritos. Sem erros. |\n| ` + "`" + `request_connected_users` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{}` + "`" + ` | ` + "`" + `conversation:connected_users` + "`" + ` |\n| ` + "`" + `load_history` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"before\": string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:history` + "`" + ` com mensagens anteriores a ` + "`" + `before` + "`" + ` (RFC 3339). ` + "`" + `has_more` + "`" + ` diz se há mensagens ainda mais antigas. |\n| ` + "`" + `load_around` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"timestamp\"?: string, \"message_id\"?: string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:history` + "`" + ` em torno de ` + "`" + `timestamp` + "`" + ` (RFC 3339) ou da mensagem ` + "`" + `message_id` + "`" + ` (informe exatamente um dos dois). Com ` + "`" + `message_id` + "`" + ` (por exemplo o ` + "`" + `replyToMessageId` + "`" + ` de uma citação que ainda não está carregada), o servidor confere o acesso à conversa, carrega a mensagem e usa o ` + "`" + `createdAt` + "`" + ` dela; se ela não existe ou não é dessa conversa, ` + "`" + `conversation:error` + "`" + ` com ` + "`" + `code: \"not_found\"` + "`" + `, ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `. ` + "`" + `has_after` + "`" + ` diz se há mensagens mais novas depois da página. |\n| ` + "`" + `load_after` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"after\": string, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:history` + "`" + ` com ` + "`" + `direction: \"after\"` + "`" + ` e as mensagens logo depois de ` + "`" + `after` + "`" + ` (RFC 3339 com nanossegundos, por exemplo o ` + "`" + `createdAt` + "`" + ` da mensagem mais nova que você já tem). ` + "`" + `has_after: true` + "`" + ` indica que há mais páginas depois; repita com o ` + "`" + `createdAt` + "`" + ` da última mensagem recebida. Serve para recuperar o que chegou durante uma queda de conexão e para voltar ao presente depois de um salto. Mesma checagem de acesso e mesmos limites de ` + "`" + `page_size` + "`" + ` de ` + "`" + `load_history` + "`" + `. |\n| ` + "`" + `request_inbox_page` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"page\"?: number, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:inbox` + "`" + `. ` + "`" + `page_size` + "`" + ` padrão 20, máximo 50. |\n| ` + "`" + `search_inbox` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | Veja Busca na caixa de entrada | ` + "`" + `conversation:search_results` + "`" + ` |\n| ` + "`" + `search_messages` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"query\": string, \"page\"?: number, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:search_messages_results` + "`" + ` |\n| ` + "`" + `load_entry_matches` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | Igual a ` + "`" + `search_messages` + "`" + ` (` + "`" + `page_size` + "`" + ` padrão 10, máximo 50) | ` + "`" + `conversation:entry_matches_results` + "`" + ` |\n| ` + "`" + `reopen_window` + "`" + ` | ` + "`" + `conversations:reopen` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"template_id\": string, \"parameters\"?: string[], \"request_id\"?: string}` + "`" + ` | Envia um template para reabrir a janela de atendimento. Resposta ` + "`" + `conversation:window_reopened` + "`" + `. |\n| ` + "`" + `assign_to` + "`" + ` | ` + "`" + `conversations:assign` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"user_id\": string}` + "`" + ` | Sem resposta direta: você recebe ` + "`" + `conversation:entry_update` + "`" + `. |\n| ` + "`" + `request_funnel_column` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"stage_id\": string, \"page\"?: number, \"page_size\"?: number}` + "`" + ` | ` + "`" + `conversation:funnel_column` + "`" + ` |\n| ` + "`" + `request_funnel_summary` + "`" + ` | ` + "`" + `conversations:read` + "`" + ` | ` + "`" + `{\"stage_ids\": string[]}` + "`" + ` | ` + "`" + `conversation:funnel_summary` + "`" + ` |\n| ` + "`" + `switch_view` + "`" + ` | | ` + "`" + `{\"campaign_id\"?: string, \"campaign_type\"?: string, \"whatsapp_campaign_type\"?: \"standard\" \\| \"organic\", \"container_kind\"?: \"\" \\| \"campaign\", \"conversation_status\"?: \"new\" \\| \"ongoing\" \\| \"finished\"}` + "`" + ` | ` + "`" + `conversation:view_switched` + "`" + ` e a primeira página em ` + "`" + `conversation:inbox` + "`" + `. Cancela todas as inscrições em conversas. |\n| ` + "`" + `set_conversation_status` + "`" + ` | ` + "`" + `conversations:send` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string, \"status\": \"ongoing\" \\| \"finished\", \"outcome_code\"?: string}` + "`" + ` | Sem resposta direta: você recebe ` + "`" + `conversation:conversation_status_update` + "`" + `. |\n\n` + "`" + `entry_type` + "`" + ` é o canal da conversa: ` + "`" + `whatsapp` + "`" + `, ` + "`" + `unofficial_whatsapp` + "`" + `, ` + "`" + `instagram` + "`" + `, ` + "`" + `facebook` + "`" + ` ou ` + "`" + `telegram` + "`" + `.\n\nRegras de ` + "`" + `react_message` + "`" + `, ` + "`" + `edit_message` + "`" + ` e ` + "`" + `delete_message` + "`" + `: o servidor confere o mesmo acesso de ` + "`" + `send` + "`" + ` e a regra da ação antes de chamar o canal, então um cliente desatualizado nunca age fora dela. Reagir exige um canal que reage e uma mensagem que o canal identifica e que não foi apagada. Editar exige um canal que edita, uma mensagem só de texto enviada por você e dentro da janela de edição do canal. Apagar exige um canal que apaga, uma mensagem enviada por você e dentro da janela de exclusão do canal. Hoje: WhatsApp por QR Code reage, edita por 15 minutos e apaga por 48 horas; Telegram reage, edita e apaga por 48 horas; Instagram, Facebook e WhatsApp oficial só reagem; o site não tem nenhuma ação. ` + "`" + `conversation:subscribed` + "`" + ` traz o que o canal da conversa permite em ` + "`" + `message_capabilities` + "`" + `.\n\nRegras de ` + "`" + `set_conversation_status` + "`" + `: uma conversa volta a ` + "`" + `new` + "`" + ` só quando o contato manda uma mensagem nova; uma conversa finalizada só reabre da mesma forma. Se o workspace exige um desfecho, envie ` + "`" + `outcome_code` + "`" + `; sem ele você recebe ` + "`" + `outcome_required` + "`" + ` com a lista em ` + "`" + `outcomes` + "`" + `.\n\nEm ` + "`" + `switch_view` + "`" + ` com ` + "`" + `campaign_type: \"whatsapp\"` + "`" + `, é preciso ` + "`" + `whatsapp_campaigns:read` + "`" + `; com ` + "`" + `unofficial_whatsapp` + "`" + ` e ` + "`" + `container_kind: \"campaign\"` + "`" + `, ` + "`" + `unofficial_whatsapp_campaigns:read` + "`" + `.\n\n### Busca na caixa de entrada\n\nTodos os campos de ` + "`" + `search_inbox` + "`" + ` são opcionais:\n\n` + "`" + `` + "`" + `` + "`" + `json\n{\n\"query\": \"string\",\n\"stage_id\": \"string\",\n\"stage_name\": \"string\",\n\"min_message_count\": 0,\n\"max_message_count\": 0,\n\"message_search\": \"string\",\n\"window_open\": true,\n\"has_unread\": true,\n\"is_group\": true,\n\"channel\": \"string\",\n\"date_from\": \"RFC 3339\",\n\"date_to\": \"RFC 3339\",\n\"conversation_status\": \"new | ongoing | finished\",\n\"responsible_user_id\": \"string\",\n\"responsible_unassigned\": true,\n\"responsible_kind\": \"ai | workflow\",\n\"sort\": \"recent | waiting\",\n\"label_id\": \"string\",\n\"personal\": \"pinned\",\n\"page\": 1,\n\"page_size\": 20\n}\n` + "`" + `` + "`" + `` + "`" + `\n\n- ` + "`" + `sort` + "`" + `: ` + "`" + `recent` + "`" + ` (padrão, a ordem de sempre: a mensagem mais recente primeiro) ou ` + "`" + `waiting` + "`" + `: primeiro as conversas que esperam resposta (as que têm ` + "`" + `waiting_since` + "`" + `), a que espera desde mais cedo no topo, depois as demais pela mais recente. É a mesma regra de ` + "`" + `waiting_since` + "`" + `: conversa finalizada não espera. Outro valor responde ` + "`" + `conversation:error` + "`" + ` com ` + "`" + `invalid_sort` + "`" + `.\n- ` + "`" + `label_id` + "`" + `: só conversas com essa etiqueta. Um id ilegível responde ` + "`" + `invalid_label` + "`" + `.\n- ` + "`" + `is_group` + "`" + `: ` + "`" + `true` + "`" + `, só conversas de grupo (hoje, grupos do WhatsApp não oficial); ` + "`" + `false` + "`" + `, só conversas com pessoas. Num canal sem grupos, ` + "`" + `true` + "`" + ` não traz nada.\n- ` + "`" + `personal` + "`" + `: sem valor, a sua caixa de entrada (as suas fixadas primeiro, todas as outras em seguida); ` + "`" + `pinned` + "`" + `, só as que você fixou. Outro valor responde ` + "`" + `invalid_personal` + "`" + `.\n- Em qualquer ` + "`" + `sort` + "`" + `, as conversas que você fixou vêm primeiro. ` + "`" + `request_inbox_page` + "`" + `, a primeira página ao conectar e ` + "`" + `switch_view` + "`" + ` usam a sua caixa de entrada (sem ` + "`" + `personal` + "`" + `) com ` + "`" + `sort: \"recent\"` + "`" + `. As colunas do funil (` + "`" + `request_funnel_column` + "`" + `, ` + "`" + `request_funnel_summary` + "`" + `) não usam marcas pessoais.\n\n### Marcas pessoais\n\nFixar e marcar como não lida são só seus: ninguém da equipe vê as suas marcas, e elas nunca mostram uma conversa que você não pode ver (valem as mesmas regras de ` + "`" + `subscribe` + "`" + `: departamento, responsável e ` + "`" + `view_others` + "`" + `). Uma conversa que você deixou de ver some das suas marcas.\n\n- Toda mudança chega em ` + "`" + `conversation:personal_mark` + "`" + ` a todas as suas conexões neste workspace (abas e janelas, em qualquer servidor), com ` + "`" + `mark: null` + "`" + ` quando não sobrou marca.\n- Abrir a conversa (` + "`" + `subscribe` + "`" + `) ou ` + "`" + `mark_read` + "`" + ` tira a sua marca de não lida. Para desfazer ` + "`" + `mark_unread` + "`" + ` use ` + "`" + `clear_unread_mark` + "`" + `, que tira só a marca: ` + "`" + `mark_read` + "`" + ` marca as mensagens do contato como lidas e manda a confirmação de leitura a ele.\n- ` + "`" + `conversation:inbox` + "`" + ` e ` + "`" + `conversation:search_results` + "`" + ` trazem ` + "`" + `personal_marks` + "`" + ` com as suas marcas das conversas da página.\n- Os totais por status (` + "`" + `conversation_status_counts` + "`" + `) são da equipe: as suas marcas não os mudam.\n\nRecusas de ` + "`" + `pin_conversation` + "`" + `, ` + "`" + `mark_unread` + "`" + ` e ` + "`" + `clear_unread_mark` + "`" + ` chegam em ` + "`" + `conversation:error` + "`" + ` com ` + "`" + `request_id` + "`" + `, ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + ` e o código: ` + "`" + `not_allowed` + "`" + ` (sem ` + "`" + `conversations:read` + "`" + ` ou sem acesso à conversa), ` + "`" + `invalid` + "`" + ` (falta ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + ` ou ` + "`" + `pinned` + "`" + `), ` + "`" + `unsupported` + "`" + ` (servidor sem marcas pessoais) ou ` + "`" + `failed` + "`" + ` (não foi possível gravar).\n\n## Mensagens que você recebe\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `.\n\n### Respostas aos seus pedidos\n\n| type | payload |\n|---|---|\n| ` + "`" + `conversation:connected` + "`" + ` | ` + "`" + `{\"user_id\": string, \"connection_id\": string}` + "`" + ` |\n| ` + "`" + `conversation:subscribed` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"lead_id\"?, \"lead_name\": string, \"lead_number\": string, \"lead_version\": number, \"blocked\": boolean, \"lead_picture\": string, \"lead_metadata\"?: object, \"entry_variables\"?: string[], \"unread_count\": number, \"automation_enabled\": boolean, \"window_open\": boolean, \"window_expires_at\"?: string, \"window_closed_reason\"?: string, \"window_closed_detail\"?: string, \"window_tier\"?: \"standard\" | \"human_agent\", \"ad_origin\"?: AdOrigin, \"message_capabilities\": {\"react\": boolean, \"edit\": boolean, \"delete\": boolean, \"edit_window_seconds\": number, \"delete_window_seconds\": number}, \"media_limits\"?: [{\"kind\": \"image\" | \"video\" | \"audio\" | \"document\", \"max_bytes\": number, \"mime_types\": string[]}]}` + "`" + `. ` + "`" + `message_capabilities` + "`" + ` diz o que o canal da conversa permite fazer com as mensagens (veja as regras de ` + "`" + `react_message` + "`" + `, ` + "`" + `edit_message` + "`" + ` e ` + "`" + `delete_message` + "`" + `); as janelas contam a partir do ` + "`" + `createdAt` + "`" + ` da mensagem e valem 0 quando a ação não existe. ` + "`" + `media_limits` + "`" + ` diz quais anexos o canal aceita, um item por tipo, com o tamanho máximo em bytes; ` + "`" + `mime_types` + "`" + ` vazio aceita qualquer formato daquele tipo; um tipo fora da lista não é aceito; a lista vazia quer dizer que o canal não aceita anexos; sem o campo, os limites do canal não são conhecidos e o cliente não deve enviar anexos. ` + "`" + `lead_name` + "`" + `, ` + "`" + `lead_number` + "`" + `, ` + "`" + `lead_version` + "`" + ` e ` + "`" + `lead_picture` + "`" + ` vêm sempre (texto vazio ou 0 quando não há valor), para que um valor apagado substitua o anterior na tela. |\n| ` + "`" + `conversation:unsubscribed` + "`" + ` | ` + "`" + `{\"entry_id\": string, \"entry_type\": string}` + "`" + ` |\n| ` + "`" + `conversation:history` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"direction\": \"latest\" \\| \"before\" \\| \"around\" \\| \"after\", \"messages\": Message[], \"has_more\": boolean, \"has_after\": boolean, \"total\": number, \"page_size\": number}` + "`" + `. ` + "`" + `direction` + "`" + ` diz qual pedido a página responde: ` + "`" + `latest` + "`" + ` (primeira página de ` + "`" + `subscribe` + "`" + `), ` + "`" + `before` + "`" + ` (` + "`" + `load_history` + "`" + `), ` + "`" + `around` + "`" + ` (` + "`" + `load_around` + "`" + `) ou ` + "`" + `after` + "`" + ` (` + "`" + `load_after` + "`" + `). As mensagens vêm sempre da mais antiga para a mais nova. ` + "`" + `has_more` + "`" + `: há mensagens mais antigas que a página (não se aplica a ` + "`" + `after` + "`" + `). ` + "`" + `has_after` + "`" + `: há mensagens mais novas que a página (só em ` + "`" + `around` + "`" + ` e ` + "`" + `after` + "`" + `). ` + "`" + `total` + "`" + ` vem em ` + "`" + `latest` + "`" + ` e ` + "`" + `around` + "`" + `. |\n| ` + "`" + `conversation:inbox` + "`" + ` | ` + "`" + `{\"entries\": InboxEntry[], \"personal_marks\": PersonalMark[], \"page\", \"page_size\", \"total_items\", \"total_pages\", \"stage_counts\"?: object, \"conversation_status_counts\"?: object, \"available_labels\"?: Label[]}` + "`" + `. ` + "`" + `personal_marks` + "`" + ` traz as suas marcas das conversas da página (lista vazia quando não há). |\n| ` + "`" + `conversation:search_results` + "`" + ` | ` + "`" + `{\"query\"?, \"filters\": object, \"entries\": InboxEntry[], \"personal_marks\": PersonalMark[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + `. ` + "`" + `filters` + "`" + ` repete os filtros pedidos, inclusive ` + "`" + `sort` + "`" + `, ` + "`" + `label_id` + "`" + ` e ` + "`" + `personal` + "`" + `. |\n| ` + "`" + `conversation:personal_mark` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"mark\": {\"pinned_at\"?: string, \"unread_marked_at\"?: string} \\| null}` + "`" + `. Só para as suas conexões neste workspace: resposta a ` + "`" + `pin_conversation` + "`" + `, ` + "`" + `mark_unread` + "`" + ` e ` + "`" + `clear_unread_mark` + "`" + `, e também quando a sua marca muda sozinha (abrir ou ler a conversa). ` + "`" + `mark: null` + "`" + `: nenhuma marca. |\n| ` + "`" + `conversation:search_messages_results` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"query\", \"messages\": Message[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:entry_matches_results` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"query\", \"matches\": MatchedMessage[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:window_reopened` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"request_id\"?, \"template_id\", \"message_id\"}` + "`" + ` |\n| ` + "`" + `conversation:funnel_column` + "`" + ` | ` + "`" + `{\"stage_id\", \"entries\": InboxEntry[], \"page\", \"page_size\", \"total_items\", \"total_pages\"}` + "`" + ` |\n| ` + "`" + `conversation:funnel_summary` + "`" + ` | ` + "`" + `{\"columns\": [{\"stage_id\": string, \"total_items\": number}]}` + "`" + ` |\n| ` + "`" + `conversation:view_switched` + "`" + ` | ` + "`" + `{\"view_mode\": \"global\" \\| \"campaign\", \"campaign_id\"?, \"campaign_type\"?, \"whatsapp_campaign_type\"?, \"container_kind\"?, \"conversation_status\"?}` + "`" + ` |\n| ` + "`" + `conversation:connected_users` + "`" + ` | ` + "`" + `{\"users\": [{\"user_id\", \"workspace_id\", \"campaign_id\", \"campaign_type\", \"campaign_name\"?, \"view_mode\", \"username\"?, \"email\"?, \"connected_at\"}]}` + "`" + `. Também chega sozinho quando alguém entra, sai ou troca de visão. Você só vê colegas dos seus departamentos, salvo se tiver acesso a todo o workspace. |\n| ` + "`" + `conversation:message_error` + "`" + ` | ` + "`" + `{\"request_id\", \"entry_id\", \"entry_type\", \"error\": string, \"code\"?: string}` + "`" + `. Falha de ` + "`" + `send` + "`" + `, ` + "`" + `send_button` + "`" + ` ou do envio de ` + "`" + `resend_message` + "`" + `. |\n| ` + "`" + `conversation:error` + "`" + ` | Veja Erros. |\n\n### Eventos das conversas em que você se inscreveu\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `conversation:message` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message\": Message}` + "`" + ` | Chegou ou foi enviada uma mensagem (contato, IA, fluxo, agendamento, chamadas). |\n| ` + "`" + `conversation:message_sent` + "`" + ` | ` + "`" + `{\"request_id\", \"entry_id\", \"entry_type\", \"message\": Message}` + "`" + ` | Um atendente enviou uma mensagem. Chega para todos os inscritos. |\n| ` + "`" + `conversation:message_updated` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message\": Message}` + "`" + ` | Uma mensagem já entregue mudou: foi editada ou apagada (pelo contato ou pela equipe), recebeu ou perdeu uma reação, ganhou a transcrição do áudio, ou falhou e foi reenviada (` + "`" + `resent_as` + "`" + `). Traz a mensagem inteira no mesmo formato de ` + "`" + `conversation:message` + "`" + `; substitua a que você tem pelo ` + "`" + `id` + "`" + `. Chega só para quem está inscrito na conversa. |\n| ` + "`" + `conversation:read` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message_ids\": string[], \"read_by\": string, \"read_at\": string}` + "`" + ` | Mensagens foram marcadas como lidas. |\n| ` + "`" + `conversation:typing` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"user_id\"?, \"is_typing\": boolean}` + "`" + ` | Um colega está digitando. |\n| ` + "`" + `conversation:message_status` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"message_id\", \"status\": \"sent\" \\| \"delivered\" \\| \"read\" \\| \"failed\"}` + "`" + ` | O canal confirmou a entrega. |\n| ` + "`" + `conversation:analysis_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"analysis\": Analysis \\| null, \"pending\": boolean}` + "`" + ` | A análise da conversa mudou. |\n| ` + "`" + `conversation:ad_origin` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"ad_origin\": AdOrigin}` + "`" + ` | O contato chegou por um anúncio (WhatsApp, Instagram ou Facebook). Só a primeira vez: o anúncio de origem não muda. |\n| ` + "`" + `conversation:conversation_status_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"status\", \"close_source\"?, \"close_reason\"?, \"close_outcome\"?, \"closed_at\"?}` + "`" + ` | O status da conversa mudou. |\n| ` + "`" + `conversation:viewers` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"viewers\": [{\"user_id\": string, \"name\": string}]}` + "`" + ` | Quem está com a conversa aberta agora mudou: alguém se inscreveu, cancelou a inscrição ou desconectou (em qualquer servidor). Também chega logo depois do seu ` + "`" + `subscribe` + "`" + `, com a lista atual. Traz todos os inscritos, inclusive você (filtre o seu ` + "`" + `user_id` + "`" + `); cada pessoa aparece uma vez, mesmo com várias abas ou janelas destacadas. ` + "`" + `name` + "`" + ` é o nome de usuário (texto vazio quando não foi encontrado). A lista é a fotografia completa: substitua a anterior. |\n| ` + "`" + `conversation:note` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"note\": Note}` + "`" + ` | Alguém da equipe gravou uma nota interna na conversa (POST /conversations/{entryType}/{entryId}/notes). |\n| ` + "`" + `conversation:note_deleted` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"note_id\": string}` + "`" + ` | O autor apagou uma nota interna; tire-a da tela. |\n\nUma mesma mensagem chega uma vez só por conexão: como ` + "`" + `conversation:message` + "`" + ` ou como ` + "`" + `conversation:message_sent` + "`" + `.\n\n### Eventos do workspace\n\nChegam mesmo sem inscrição, para quem tem acesso à conversa e está na visão correspondente:\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `conversation:entry_update` + "`" + ` | ` + "`" + `{\"entry\": InboxEntry, \"silent\"?: boolean}` + "`" + ` | Nova mensagem, envio, troca de responsável, status ou etapa. ` + "`" + `silent: true` + "`" + ` indica atualização sem novidade para o atendente. |\n| ` + "`" + `conversation:conversation_status_counts_update` + "`" + ` | ` + "`" + `{\"counts\": {\"new\": number, \"ongoing\": number, \"finished\": number}}` + "`" + ` | Os totais por status mudaram. |\n| ` + "`" + `conversation:stage_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"stage\": Stage \\| null}` + "`" + ` | A etapa da conversa mudou. |\n| ` + "`" + `conversation:label_update` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"labels\": Label[]}` + "`" + ` | As etiquetas mudaram. |\n| ` + "`" + `conversation:entry_removed` + "`" + ` | ` + "`" + `{\"entry_id\", \"entry_type\", \"reason\": \"assigned\"}` + "`" + ` | A conversa foi para outra pessoa e você não a vê mais. |\n| ` + "`" + `audience:analyzed` + "`" + ` | ` + "`" + `{\"workspaceId\", \"source\", \"accountId\", \"containerId\", \"items\": CommentAnalyzed[], \"more\": number}` + "`" + ` | Um lote de comentários foi analisado. Só para quem tem ` + "`" + `audience:read` + "`" + `. |\n| ` + "`" + `notification:created` + "`" + ` | ` + "`" + `{\"workspaceId\", \"item\": {\"id\", \"category\", \"severity\", \"title\", \"body\", \"imageUrl\"?, \"actionUrl\"?, \"actionLabel\"?, \"createdAt\"}}` + "`" + ` | Uma notificação nova chegou para você neste workspace (a mesma forma de GET /notifications). Só para os destinatários dela. Atualize o contador com GET /notifications/summary. |\n| ` + "`" + `conversation:lead_update` + "`" + ` | ` + "`" + `{\"leadId\": string, \"version\": number, \"fields\": string[]}` + "`" + ` | Um lead mudou (edição, nome, bloqueio, responsável, opt-out, família, anonimização). Traz só os nomes dos campos, nunca os valores; um campo personalizado aparece como ` + "`" + `customFields.\u003cchave\u003e` + "`" + `, e ` + "`" + `anonymized` + "`" + ` diz que o lead foi anonimizado e não existe mais (a nova leitura responde 404): busque o lead de novo por uma rota que você pode usar (GET /leads/{id} com ` + "`" + `leads:read` + "`" + `, ou a própria conversa). Chega para quem tem ` + "`" + `leads:read` + "`" + ` e para quem está inscrito em uma conversa desse lead. Use ` + "`" + `version` + "`" + ` no ` + "`" + `If-Match` + "`" + ` da próxima edição. |\n| ` + "`" + `conversation:leads_bulk_update` + "`" + ` | ` + "`" + `{\"runId\": string}` + "`" + ` | Um lote de uma ação em massa sobre leads (classificar, atribuir, bloquear) foi gravado. Chega uma vez por lote, só para quem tem ` + "`" + `leads:read` + "`" + `; não traz ids de leads nem valores. Recarregue a lista e consulte o andamento em GET /leads/actions/{runId}. |\n\n### Chat da equipe\n\nConversas internas entre colegas (veja a seção Chat da equipe da API). Os eventos chegam só para quem participa da conversa, em todas as suas conexões deste workspace, em qualquer servidor. Os comandos são pela API HTTP; o socket só traz os eventos e a digitação. Quem não tem ` + "`" + `conversations:read` + "`" + ` não abre este socket: atualize GET /team-chat/summary a cada minuto. Ao reconectar, recupere o que perdeu com GET /team-chat/threads e, em cada conversa aberta, GET /team-chat/threads/{id}/messages com ` + "`" + `after_seq` + "`" + ` igual ao maior ` + "`" + `seq` + "`" + ` que você já tem.\n\n| type | Direção | payload | Quando |\n|---|---|---|---|\n| ` + "`" + `team_chat_typing` + "`" + ` | você envia | ` + "`" + `{\"thread_id\": string}` + "`" + ` | Você está digitando. Envie no máximo um a cada 3 segundos. Precisa participar da conversa; recusas não têm resposta. |\n| ` + "`" + `team_chat:message` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\", \"message\": TeamChatMessage}` + "`" + ` | Mensagem nova, inclusive as suas (para as suas outras abas), as de sistema e as agendadas no momento do envio. |\n| ` + "`" + `team_chat:message_updated` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\", \"message\": TeamChatMessage}` + "`" + ` | Uma mensagem foi editada (` + "`" + `edited_at` + "`" + `) ou apagada (` + "`" + `deleted_at` + "`" + `, sem texto). |\n| ` + "`" + `team_chat:read` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\", \"user_id\", \"seq\"}` + "`" + ` | Alguém leu a conversa até ` + "`" + `seq` + "`" + ` (confirmação de leitura; quando é você, sincroniza as suas abas). |\n| ` + "`" + `team_chat:thread` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\"}` + "`" + ` | A conversa mudou (criada com você, título, participantes, silenciada): busque GET /team-chat/threads/{id}. |\n| ` + "`" + `team_chat:thread_removed` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\"}` + "`" + ` | Você saiu ou foi tirado do grupo: remova a conversa da tela. |\n| ` + "`" + `team_chat:typing` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\", \"user_id\"}` + "`" + ` | Alguém está digitando. Some sozinho depois de 5 segundos sem um novo aviso. |\n| ` + "`" + `team_chat:scheduled` + "`" + ` | você recebe | ` + "`" + `{\"thread_id\", \"scheduled\": TeamChatScheduled}` + "`" + ` | Uma mensagem que você agendou mudou: criada, alterada, cancelada, enviada ou falhou (` + "`" + `failure_reason` + "`" + `). Só para o autor. |\n\n**TeamChatMessage**: ` + "`" + `id` + "`" + `, ` + "`" + `thread_id` + "`" + `, ` + "`" + `seq` + "`" + ` (ordem na conversa, sem buracos), ` + "`" + `author_id` + "`" + `, ` + "`" + `author_name` + "`" + `, ` + "`" + `kind` + "`" + ` (` + "`" + `text | system` + "`" + `), ` + "`" + `body` + "`" + `, ` + "`" + `event` + "`" + `? (só em ` + "`" + `system` + "`" + `: ` + "`" + `created | renamed | members_added | member_removed | member_left` + "`" + `), ` + "`" + `subject_ids` + "`" + ` (quem a mensagem de sistema afeta), ` + "`" + `reply_to_id` + "`" + `?, ` + "`" + `mentions` + "`" + `, ` + "`" + `client_id` + "`" + `?, ` + "`" + `created_at` + "`" + `, ` + "`" + `edited_at` + "`" + `?, ` + "`" + `deleted_at` + "`" + `?. **TeamChatScheduled**: ` + "`" + `id` + "`" + `, ` + "`" + `thread_id` + "`" + `, ` + "`" + `body` + "`" + `, ` + "`" + `mentions` + "`" + `, ` + "`" + `reply_to_id` + "`" + `?, ` + "`" + `send_at` + "`" + `, ` + "`" + `status` + "`" + ` (` + "`" + `pending | sent | canceled | failed` + "`" + `), ` + "`" + `failure_reason` + "`" + `?, ` + "`" + `sent_message_id` + "`" + `?, ` + "`" + `created_at` + "`" + `, ` + "`" + `updated_at` + "`" + `.\n\n## Tipos usados nas mensagens\n\n**InboxEntry**: ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `campaign_id` + "`" + `?, ` + "`" + `campaign_name` + "`" + `?, ` + "`" + `lead_id` + "`" + `?, ` + "`" + `lead_name` + "`" + `?, ` + "`" + `lead_number` + "`" + `?, ` + "`" + `lead_version` + "`" + `?, ` + "`" + `blocked` + "`" + `, ` + "`" + `lead_picture` + "`" + `?, ` + "`" + `is_group` + "`" + `?, ` + "`" + `lead_metadata` + "`" + `?, ` + "`" + `entry_variables` + "`" + `?, ` + "`" + `unread_count` + "`" + `, ` + "`" + `last_message_preview` + "`" + `?, ` + "`" + `last_message_at` + "`" + `, ` + "`" + `last_message_type` + "`" + `?, ` + "`" + `last_message_sender` + "`" + `?, ` + "`" + `last_message_sender_avatar` + "`" + `?, ` + "`" + `last_message_sender_kind` + "`" + `? (` + "`" + `contact | human | ai | workflow | campaign | system | external` + "`" + `: quem mandou a última mensagem, para o cliente nomear o remetente no idioma de quem lê; ` + "`" + `external` + "`" + ` é uma mensagem enviada pela conta fora da plataforma, no app do próprio canal ou no celular; ausente em mensagens antigas sem remetente gravado), ` + "`" + `last_message_author` + "`" + `? (groups: name of the member who sent the last message), ` + "`" + `last_message_from_us` + "`" + `? (groups: the last message was ours), ` + "`" + `last_customer_message_at` + "`" + `? (quando o contato escreveu por último, em todos os canais), ` + "`" + `last_agent_message_at` + "`" + `? (quando a equipe, uma IA, um fluxo ou uma campanha escreveu por último), ` + "`" + `waiting_since` + "`" + `? (RFC 3339: desde quando o contato espera resposta, a primeira mensagem dele depois da última resposta da equipe, de uma IA ou de um fluxo, inclusive a digitada no celular fora da plataforma; campanha e aviso do sistema não são resposta; ausente quando ninguém espera ou a conversa está finalizada; finalizar a conversa encerra a espera e a próxima mensagem do contato começa outra), ` + "`" + `window_open` + "`" + `, ` + "`" + `window_expires_at` + "`" + `?, ` + "`" + `window_closed_reason` + "`" + `?, ` + "`" + `window_closed_detail` + "`" + `? (o mesmo estado da janela que ` + "`" + `conversation:subscribed` + "`" + ` informa, em todos os canais; sem como confirmar o estado, a linha vem fechada com ` + "`" + `channel_unavailable` + "`" + `), ` + "`" + `business_phone_id` + "`" + `?, ` + "`" + `assigned_user_id` + "`" + `?, ` + "`" + `assigned_username` + "`" + `?, ` + "`" + `automation_enabled` + "`" + `, ` + "`" + `stage` + "`" + `?: Stage, ` + "`" + `labels` + "`" + `?: Label[], ` + "`" + `available_stages` + "`" + `?: Stage[], ` + "`" + `matched_messages` + "`" + `?: MatchedMessage[], ` + "`" + `total_matches` + "`" + `?, ` + "`" + `latest_analysis` + "`" + `?: Analysis, ` + "`" + `analysis_phase` + "`" + `?: ` + "`" + `\"awaiting\" | \"queued\"` + "`" + `, ` + "`" + `live_read` + "`" + `?: LiveRead, ` + "`" + `conversation_status` + "`" + `?: ` + "`" + `new | ongoing | finished` + "`" + `, ` + "`" + `close_source` + "`" + `?: ` + "`" + `human | ai | system` + "`" + `, ` + "`" + `close_reason` + "`" + `?: ` + "`" + `manual | customer_idle | ai_resolved | max_age | workflow` + "`" + `, ` + "`" + `closed_at` + "`" + `?, ` + "`" + `close_outcome` + "`" + `?, ` + "`" + `ai_handler` + "`" + `?: AIHandler.\n\n**Message** (chaves em camelCase): ` + "`" + `id` + "`" + `, ` + "`" + `entryId` + "`" + `, ` + "`" + `entryType` + "`" + `, ` + "`" + `channel` + "`" + `, ` + "`" + `messageType` + "`" + `, ` + "`" + `direction` + "`" + `?: ` + "`" + `INBOUND | OUTBOUND` + "`" + `, ` + "`" + `from` + "`" + `, ` + "`" + `to` + "`" + `, ` + "`" + `text` + "`" + `, ` + "`" + `mediaId` + "`" + `?, ` + "`" + `mediaType` + "`" + `?, ` + "`" + `read` + "`" + `, ` + "`" + `readAt` + "`" + `?, ` + "`" + `readBy` + "`" + `?, ` + "`" + `whatsappMessageId` + "`" + `?, ` + "`" + `externalMessageId` + "`" + `?, ` + "`" + `replyToMessageId` + "`" + `?, ` + "`" + `deliveryStatus` + "`" + `?: ` + "`" + `sent | delivered | read | failed` + "`" + `, ` + "`" + `senderName` + "`" + `?, ` + "`" + `senderAvatar` + "`" + `?, ` + "`" + `sentVia` + "`" + `?: ` + "`" + `business_app` + "`" + `, ` + "`" + `sentBy` + "`" + `: ` + "`" + `{\"kind\": \"contact\" | \"human\" | \"ai\" | \"workflow\" | \"campaign\" | \"external\" | \"system\", \"id\": string}` + "`" + `, ` + "`" + `metadata` + "`" + `?, ` + "`" + `location` + "`" + `?: ` + "`" + `{\"latitude\": number, \"longitude\": number, \"name\"?: string, \"address\"?: string, \"candidate\": boolean}` + "`" + `, ` + "`" + `createdAt` + "`" + `, ` + "`" + `updatedAt` + "`" + `. Em snake_case: ` + "`" + `transcript` + "`" + `? (transcrição de um áudio recebido; hoje só no WhatsApp oficial; o ` + "`" + `text` + "`" + ` do áudio continua sendo o marcador ` + "`" + `[Áudio]` + "`" + `), ` + "`" + `edited_at` + "`" + `? (a mensagem foi editada, pelo contato ou por um atendente; ` + "`" + `text` + "`" + ` já é o novo texto), ` + "`" + `retracted_at` + "`" + `? (a mensagem foi apagada, pelo contato ou por um atendente: ` + "`" + `text` + "`" + ` vem vazio e ` + "`" + `transcript` + "`" + `, ` + "`" + `mediaId` + "`" + `, ` + "`" + `mediaType` + "`" + `, ` + "`" + `media` + "`" + `, ` + "`" + `metadata` + "`" + ` e ` + "`" + `location` + "`" + ` não vêm), ` + "`" + `reactions` + "`" + `?: Reaction[] (ausente quando não há reações), ` + "`" + `sender_user_id` + "`" + `? (o usuário da equipe que enviou a mensagem; ausente quando não foi um atendente), ` + "`" + `client_request_id` + "`" + `? (o ` + "`" + `request_id` + "`" + ` do envio de um atendente, para casar a mensagem com o balão pendente), ` + "`" + `resent_as` + "`" + `? (esta mensagem falhou e foi reenviada como a mensagem com esse ` + "`" + `id` + "`" + `; esconda esta e mostre a nova).\n\n` + "`" + `location` + "`" + ` aparece em toda mensagem de localização (WhatsApp oficial e coexistência, Telegram), recebida ou enviada, para desenhar o cartão do mapa. ` + "`" + `candidate: true` + "`" + ` marca a localização que o lead mandou, dentro do Brasil, que pode virar a posição dele por ` + "`" + `POST /leads/{id}/location-candidates/{messageId}/accept` + "`" + ` (exige ` + "`" + `leads:update` + "`" + `; o servidor confere de novo a conversa e o lead).\n\nValores de ` + "`" + `messageType` + "`" + `: ` + "`" + `user_message` + "`" + `, ` + "`" + `ai_response` + "`" + `, ` + "`" + `tool_call` + "`" + `, ` + "`" + `tool_result` + "`" + `, ` + "`" + `audio` + "`" + `, ` + "`" + `system` + "`" + `, ` + "`" + `media` + "`" + `, ` + "`" + `operator` + "`" + `, ` + "`" + `template` + "`" + `, ` + "`" + `call_permission_request` + "`" + `, ` + "`" + `call_permission_granted` + "`" + `, ` + "`" + `call_permission_rejected` + "`" + `, ` + "`" + `call_received` + "`" + `, ` + "`" + `call_answered` + "`" + `, ` + "`" + `call_missed` + "`" + `, ` + "`" + `call_ended` + "`" + `, ` + "`" + `story_reply` + "`" + `, ` + "`" + `story_mention` + "`" + `, ` + "`" + `reaction` + "`" + `, ` + "`" + `unsupported` + "`" + `, ` + "`" + `post_share` + "`" + `, ` + "`" + `sticker` + "`" + `, ` + "`" + `link_share` + "`" + `.\n\n**Stage**: ` + "`" + `stage_id` + "`" + `, ` + "`" + `name` + "`" + `, ` + "`" + `color` + "`" + `?. **Label**: ` + "`" + `label_id` + "`" + `, ` + "`" + `name` + "`" + `, ` + "`" + `color` + "`" + `?.\n\n**PersonalMark**: ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `pinned_at` + "`" + `? (fixada por você), ` + "`" + `unread_marked_at` + "`" + `? (marcada por você como não lida). Só as marcas de quem pediu.\n\n**Note** (nota interna, só da equipe; nunca vai para o contato, a IA, a análise, os fluxos, as exportações ou o chat do site): ` + "`" + `id` + "`" + `, ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `author_id` + "`" + `, ` + "`" + `author_name` + "`" + `, ` + "`" + `body` + "`" + `, ` + "`" + `mentions` + "`" + `: string[] (IDs de usuários mencionados; lista vazia quando não há), ` + "`" + `created_at` + "`" + `. A mesma forma de GET /conversations/{entryType}/{entryId}/notes.\n\n**Reaction**: ` + "`" + `emoji` + "`" + `, ` + "`" + `direction` + "`" + `: ` + "`" + `inbound | outbound` + "`" + ` (` + "`" + `inbound` + "`" + ` é do contato, ` + "`" + `outbound` + "`" + ` é nossa), ` + "`" + `actor_id` + "`" + `? (quem reagiu: o identificador do contato no canal ou o usuário da equipe), ` + "`" + `at` + "`" + `. Há no máximo uma reação de cada contato e uma só nossa (` + "`" + `outbound` + "`" + `), porque a conta da empresa reage uma vez por mensagem: uma reação nova substitui a anterior do mesmo lado e remover a reação a tira da lista. Na reação ` + "`" + `outbound` + "`" + `, ` + "`" + `actor_id` + "`" + ` é o atendente que reagiu pelo sistema; reações feitas direto no celular chegam sem ` + "`" + `actor_id` + "`" + `. Mensagens antigas do Instagram e do Facebook com a reação guardada no formato anterior chegam na mesma forma.\n\n**MatchedMessage**: ` + "`" + `message_id` + "`" + `, ` + "`" + `text` + "`" + `, ` + "`" + `from` + "`" + `, ` + "`" + `message_type` + "`" + `, ` + "`" + `channel` + "`" + `, ` + "`" + `created_at` + "`" + `, ` + "`" + `position` + "`" + `, ` + "`" + `page` + "`" + `.\n\n**AIHandler**: ` + "`" + `kind` + "`" + `, ` + "`" + `agent_id` + "`" + `?, ` + "`" + `agent_name` + "`" + `?, ` + "`" + `agent_avatar` + "`" + `?, ` + "`" + `agent_active` + "`" + `, ` + "`" + `workflow_id` + "`" + `?, ` + "`" + `workflow_name` + "`" + `?, ` + "`" + `workflow_run_id` + "`" + `?, ` + "`" + `run_status` + "`" + `?, ` + "`" + `current_node_id` + "`" + `?, ` + "`" + `current_node_type` + "`" + `?.\n\n**AdOrigin** (camelCase): o primeiro anúncio que trouxe o contato. ` + "`" + `adId` + "`" + `?, ` + "`" + `platform` + "`" + `?: ` + "`" + `facebook | instagram` + "`" + `, ` + "`" + `title` + "`" + `?, ` + "`" + `sourceUrl` + "`" + `?, ` + "`" + `image` + "`" + `?: ` + "`" + `{\"url\", \"mimeType\"?, \"layout\": {\"width\"?, \"height\"?, \"thumbhash\"?}}` + "`" + ` (cópia guardada pela plataforma), ` + "`" + `arrivedAt` + "`" + `.\n\n**LiveRead** (camelCase): ` + "`" + `interest` + "`" + `?, ` + "`" + `disposition` + "`" + `?, ` + "`" + `sentiment` + "`" + `?, ` + "`" + `qualification` + "`" + `?, ` + "`" + `nextAction` + "`" + `?, ` + "`" + `language` + "`" + `?, ` + "`" + `attendanceQuality` + "`" + `, ` + "`" + `certainty` + "`" + `?: object, ` + "`" + `decidedAt` + "`" + `.\n\n**Analysis** (camelCase): análise da conversa com ` + "`" + `id` + "`" + `, ` + "`" + `status` + "`" + `, ` + "`" + `sentiment` + "`" + `?, ` + "`" + `intent` + "`" + `?, ` + "`" + `interest` + "`" + `?, ` + "`" + `productInterest` + "`" + `?, ` + "`" + `disposition` + "`" + `?, ` + "`" + `qualification` + "`" + `?, ` + "`" + `nextAction` + "`" + `?, ` + "`" + `summary` + "`" + `?, ` + "`" + `attendanceQuality` + "`" + `?, ` + "`" + `messageCount` + "`" + `?, ` + "`" + `requiresAction` + "`" + `, ` + "`" + `excerpt` + "`" + `, ` + "`" + `analyzedAt` + "`" + `? e demais campos de identificação (` + "`" + `workspaceId` + "`" + `, ` + "`" + `source` + "`" + `, ` + "`" + `accountId` + "`" + `, ` + "`" + `containerId` + "`" + `, ` + "`" + `subjectId` + "`" + `, ` + "`" + `createdAt` + "`" + `, ` + "`" + `updatedAt` + "`" + `).\n\n**CommentAnalyzed** (camelCase): ` + "`" + `commentId` + "`" + `, ` + "`" + `subjectKind` + "`" + `, ` + "`" + `authorExternalId` + "`" + `, ` + "`" + `authorHandle` + "`" + `?, ` + "`" + `stance` + "`" + `?, ` + "`" + `sentiment` + "`" + `?, ` + "`" + `intent` + "`" + `?, ` + "`" + `topicKey` + "`" + `?, ` + "`" + `severity` + "`" + `, ` + "`" + `requiresAction` + "`" + `, ` + "`" + `isSpam` + "`" + `, ` + "`" + `excerpt` + "`" + `, ` + "`" + `interest` + "`" + `?, ` + "`" + `productInterest` + "`" + `?, ` + "`" + `disposition` + "`" + `?, ` + "`" + `qualification` + "`" + `?, ` + "`" + `nextAction` + "`" + `?, ` + "`" + `summary` + "`" + `?, ` + "`" + `occurredAt` + "`" + `, ` + "`" + `analyzedAt` + "`" + `.\n\nValores de ` + "`" + `window_closed_reason` + "`" + `: ` + "`" + `expired` + "`" + `, ` + "`" + `no_inbound` + "`" + `, ` + "`" + `contact_blocked` + "`" + `, ` + "`" + `session_down` + "`" + `, ` + "`" + `account_restricted` + "`" + `, ` + "`" + `reply_revoked` + "`" + ` e ` + "`" + `channel_unavailable` + "`" + `.\n\nDatas são strings RFC 3339.\n\n## Erros\n\n` + "`" + `conversation:error` + "`" + ` traz ` + "`" + `{\"code\": string, \"message\": string}` + "`" + `; recusas de ` + "`" + `reopen_window` + "`" + `, ` + "`" + `react_message` + "`" + `, ` + "`" + `edit_message` + "`" + `, ` + "`" + `delete_message` + "`" + `, ` + "`" + `resend_message` + "`" + `, ` + "`" + `pin_conversation` + "`" + `, ` + "`" + `mark_unread` + "`" + ` e ` + "`" + `clear_unread_mark` + "`" + ` também trazem ` + "`" + `request_id` + "`" + `, ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `; em mudanças de status, também ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `status` + "`" + `, ` + "`" + `previous_status` + "`" + ` e ` + "`" + `outcomes` + "`" + ` (` + "`" + `[{\"code\", \"label\", \"isDurable\", \"position\"}]` + "`" + `).\n\n| code | Significado |\n|---|---|\n| ` + "`" + `forbidden` + "`" + ` | Falta permissão, a campanha é de outro workspace ou a regra de status não permite a mudança. Se o acesso ao workspace for revogado, a conexão é encerrada logo depois. |\n| ` + "`" + `unauthorized` + "`" + ` | Você não tem acesso a essa conversa, ou o responsável escolhido não pode recebê-la. |\n| ` + "`" + `unknown_event` + "`" + ` | ` + "`" + `type` + "`" + ` desconhecido. |\n| ` + "`" + `invalid_payload` + "`" + ` | O ` + "`" + `payload` + "`" + ` não tem o formato esperado. |\n| ` + "`" + `missing_fields` + "`" + ` | Falta um campo obrigatório. |\n| ` + "`" + `missing_content` + "`" + ` | Mensagem sem texto nem mídia. |\n| ` + "`" + `invalid_buttons` + "`" + ` | É preciso de 1 a 3 botões. |\n| ` + "`" + `invalid_entry_type` + "`" + ` | ` + "`" + `entry_type` + "`" + ` inválido. |\n| ` + "`" + `invalid_timestamp` + "`" + ` | Data fora do formato RFC 3339. |\n| ` + "`" + `invalid_status` + "`" + ` | Status diferente de ` + "`" + `new` + "`" + `, ` + "`" + `ongoing` + "`" + ` ou ` + "`" + `finished` + "`" + `. |\n| ` + "`" + `invalid_sort` + "`" + `, ` + "`" + `invalid_personal` + "`" + `, ` + "`" + `invalid_label` + "`" + ` | ` + "`" + `search_inbox` + "`" + ` com ` + "`" + `sort` + "`" + `, ` + "`" + `personal` + "`" + ` ou ` + "`" + `label_id` + "`" + ` inválido. |\n| ` + "`" + `invalid_campaign_type` + "`" + `, ` + "`" + `invalid_container_kind` + "`" + `, ` + "`" + `invalid_whatsapp_campaign_type` + "`" + ` | Filtro de visão inválido. |\n| ` + "`" + `not_found` + "`" + ` | Campanha não encontrada, ou mensagem que não existe ou não é dessa conversa. |\n| ` + "`" + `not_configured` + "`" + ` | O recurso não está disponível neste servidor. |\n| ` + "`" + `not_allowed` + "`" + ` | Ações sobre mensagens: falta ` + "`" + `conversations:send` + "`" + ` ou acesso à conversa, a mensagem não é sua, já foi apagada ou não pode receber essa ação (por exemplo, editar uma mídia ou reenviar uma mensagem que não falhou). Marcas pessoais: falta ` + "`" + `conversations:read` + "`" + ` ou acesso à conversa. |\n| ` + "`" + `invalid` + "`" + ` | Ações sobre mensagens: falta ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + `, ` + "`" + `message_id` + "`" + `, o texto da edição ou o ` + "`" + `request_id` + "`" + ` do reenvio, ou o ` + "`" + `request_id` + "`" + ` passa de 128 caracteres. Marcas pessoais: falta ` + "`" + `entry_id` + "`" + `, ` + "`" + `entry_type` + "`" + ` ou ` + "`" + `pinned` + "`" + `. |\n| ` + "`" + `unsupported` + "`" + ` | O canal da conversa não tem essa ação. Em marcas pessoais: o servidor não oferece marcas pessoais. |\n| ` + "`" + `window_expired` + "`" + ` | A janela do canal para essa ação já passou, ou a janela de atendimento está fechada. |\n| ` + "`" + `failed` + "`" + ` | O canal recusou a ação ou ela não pôde ser gravada; nada mudou na conversa. Em marcas pessoais: a marca não pôde ser gravada. |\n| ` + "`" + `outcome_required` + "`" + ` | Escolha um desfecho (lista em ` + "`" + `outcomes` + "`" + `) para finalizar. |\n| ` + "`" + `outcome_unknown` + "`" + ` | O desfecho não existe no workspace (lista em ` + "`" + `outcomes` + "`" + `). |\n| ` + "`" + `history_error` + "`" + `, ` + "`" + `inbox_error` + "`" + `, ` + "`" + `search_error` + "`" + `, ` + "`" + `fetch_error` + "`" + `, ` + "`" + `template_send_failed` + "`" + `, ` + "`" + `assign_failed` + "`" + `, ` + "`" + `internal_error` + "`" + ` | Falha ao processar o pedido; tente de novo. |\n| ` + "`" + `lead_opted_out` + "`" + `, ` + "`" + `lead_blocked` + "`" + `, ` + "`" + `within_spam_window` + "`" + `, ` + "`" + `window_already_open` + "`" + `, ` + "`" + `insufficient_balance` + "`" + `, ` + "`" + `monthly_send_cap_reached` + "`" + `, ` + "`" + `pricing_unavailable` + "`" + `, ` + "`" + `quote_out_of_range` + "`" + `, ` + "`" + `template_not_sendable` + "`" + `, ` + "`" + `template_phone_mismatch` + "`" + `, ` + "`" + `invalid_phone` + "`" + `, ` + "`" + `phone_not_connected` + "`" + `, ` + "`" + `send_in_progress` + "`" + `, ` + "`" + `idempotency_key_required` + "`" + `, ` + "`" + `billing_unavailable` + "`" + `, ` + "`" + `conversation_not_found` + "`" + ` | Recusa de ` + "`" + `reopen_window` + "`" + `, com ` + "`" + `request_id` + "`" + ` (o mesmo do pedido), ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `: o mesmo código que POST /whatsapp/outreach/conversations responde para a mesma recusa (inclusive ` + "`" + `forbidden` + "`" + ` e ` + "`" + `not_found` + "`" + ` para número ou modelo). Uma falha sem motivo conhecido chega como ` + "`" + `template_send_failed` + "`" + `. |\n| ` + "`" + `send_outcome_unknown` + "`" + ` | ` + "`" + `reopen_window` + "`" + ` sem resposta do WhatsApp: o modelo pode ter sido entregue e cobrado. Confira a conversa antes de enviar de novo; não repita automaticamente. Traz ` + "`" + `request_id` + "`" + `, ` + "`" + `entry_id` + "`" + ` e ` + "`" + `entry_type` + "`" + `. |\n\nCódigos de ` + "`" + `conversation:message_error` + "`" + `: ` + "`" + `unauthorized` + "`" + `, ` + "`" + `not_configured` + "`" + `, ` + "`" + `send_failed` + "`" + ` e ` + "`" + `internal_error` + "`" + `.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho ` + "`" + `Authorization: Bearer SEU_ACCESS_TOKEN` + "`" + ` (clientes fora do navegador), no parâmetro ` + "`" + `token` + "`" + ` da URL ou no cookie ` + "`" + `accessToken` + "`" + ` do login em modo cookie. Com o cookie, a conexão só é aceita quando o ` + "`" + `Origin` + "`" + ` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em ` + "`" + `workspace_id` + "`" + ` e em ` + "`" + `workspaceId` + "`" + `, com o mesmo valor (ou o cabeçalho ` + "`" + `X-Workspace-ID` + "`" + ` junto com ` + "`" + `workspaceId` + "`" + `). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
                 "tags": [
                     "WebSockets"
                 ],
@@ -33763,7 +40729,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Executa um fluxo em modo de teste, sem enviar mensagens nem fazer ligações de verdade. Você faz o papel do contato: responde mensagens, aperta teclas e acompanha cada nó executado.\n\n## Conectar\n\n` + "`" + `` + "`" + `` + "`" + `text\nwss://SUA_URL_BASE/ws/workflows/{id}/simulate?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\n` + "`" + `` + "`" + `` + "`" + `\n\n- ` + "`" + `id` + "`" + `: ID do fluxo.\n- Permissão: ` + "`" + `workflows:update` + "`" + ` no workspace.\n\nO modo depende do tipo do fluxo: fluxos ` + "`" + `voice` + "`" + ` simulam uma ligação; os demais simulam uma conversa de mensagens.\n\n## Mensagens que você envia\n\nFormato: ` + "`" + `{\"type\": \"...\", \"data\": {...}}` + "`" + `.\n\n### Fluxos de mensagens\n\n| type | data | O que faz |\n|---|---|---|\n| ` + "`" + `reply` + "`" + ` | ` + "`" + `{\"text\": string}` + "`" + ` (obrigatório) | Mensagem do contato. Dispara o fluxo depois de ` + "`" + `waiting_trigger` + "`" + ` ou responde um ` + "`" + `waiting_reply` + "`" + `. Em mensagens interativas, o texto é usado como a opção escolhida. |\n| ` + "`" + `set_variable` + "`" + ` | ` + "`" + `{\"key\": string, \"value\": any}` + "`" + ` | Grava uma variável no estado da execução antes do próximo passo. |\n| ` + "`" + `cancel` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Cancela a execução. O servidor responde ` + "`" + `run_cancelled` + "`" + `. |\n\n### Fluxos de voz\n\n| type | data | O que faz |\n|---|---|---|\n| ` + "`" + `key` + "`" + ` | ` + "`" + `{\"key\": string}` + "`" + ` | Tecla do telefone: um caractere entre ` + "`" + `0-9` + "`" + `, ` + "`" + `*` + "`" + ` e ` + "`" + `#` + "`" + `. |\n| ` + "`" + `cancel` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Desliga a ligação simulada. O servidor responde ` + "`" + `run_cancelled` + "`" + `. |\n\nFechar a conexão tem o mesmo efeito de ` + "`" + `cancel` + "`" + `.\n\n## Mensagens que você recebe\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `.\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `waiting_trigger` + "`" + ` | ` + "`" + `{\"triggerType\": string}` + "`" + ` | Só em fluxos disparados por mensagem: envie um ` + "`" + `reply` + "`" + ` para começar. |\n| ` + "`" + `sim_started` + "`" + ` | ` + "`" + `{\"runId\": string, \"workflowId\": string}` + "`" + ` | A execução começou. |\n| ` + "`" + `state_update` + "`" + ` | ` + "`" + `{\"vars\": object}` + "`" + ` | Antes e depois de cada passo, com todas as variáveis. |\n| ` + "`" + `node_executed` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"nodeType\": string, \"output\"?: object, \"error\"?: string}` + "`" + ` | Um nó terminou. |\n| ` + "`" + `message_sent` + "`" + ` | ` + "`" + `{\"direction\": \"outbound\", \"text\": string, \"msgType\": string, \"nodeId\"?: string, \"messageId\": string, \"audioBase64\"?: string, \"audioMime\"?: string, \"audioUrl\"?: string}` + "`" + ` | O fluxo enviou uma mensagem ou, em voz, tocou um áudio (` + "`" + `msgType: \"audio\"` + "`" + ` com ` + "`" + `audioUrl` + "`" + `). |\n| ` + "`" + `waiting_reply` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"timeoutSeconds\": number}` + "`" + ` | O fluxo espera uma resposta do contato. |\n| ` + "`" + `wait_skipped` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"reason\": \"duration\" \\| \"event\"}` + "`" + ` | Uma espera por tempo ou evento foi pulada para agilizar o teste. |\n| ` + "`" + `waiting_key` + "`" + ` | ` + "`" + `{\"timeoutSeconds\": number}` + "`" + ` | Voz: o fluxo espera uma tecla. |\n| ` + "`" + `call_transferred` + "`" + ` | ` + "`" + `{\"queueId\": string, \"queueName\": string, \"notes\"?: string}` + "`" + ` | Voz: a ligação foi para a fila. Na simulação ela é considerada atendida e o fluxo termina. |\n| ` + "`" + `run_completed` + "`" + ` | ` + "`" + `{\"vars\": object}` + "`" + ` | A execução terminou. |\n| ` + "`" + `run_cancelled` + "`" + ` | sem ` + "`" + `payload` + "`" + ` | A execução foi cancelada. |\n| ` + "`" + `run_error` + "`" + ` | ` + "`" + `{\"error\": string, \"status\"?: \"error\" \\| \"cancelled\"}` + "`" + ` | A execução parou com erro. |\n| ` + "`" + `error` + "`" + ` | ` + "`" + `{\"error\": string}` + "`" + ` | Não foi possível simular (fluxo inexistente, de outro workspace ou sem gatilho). A conexão é encerrada. |\n\nValores de ` + "`" + `msgType` + "`" + ` em fluxos de mensagens: ` + "`" + `text` + "`" + `, ` + "`" + `button` + "`" + `, ` + "`" + `list` + "`" + `, ` + "`" + `media` + "`" + `, ` + "`" + `audio` + "`" + `, ` + "`" + `template` + "`" + ` e ` + "`" + `call_permission_request` + "`" + `.\n\nA sessão termina depois de ` + "`" + `run_completed` + "`" + `, ` + "`" + `run_cancelled` + "`" + `, ` + "`" + `run_error` + "`" + ` ou ` + "`" + `error` + "`" + `.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho ` + "`" + `Authorization: Bearer SEU_ACCESS_TOKEN` + "`" + ` (clientes fora do navegador), no parâmetro ` + "`" + `token` + "`" + ` da URL ou no cookie ` + "`" + `accessToken` + "`" + ` do login em modo cookie. Com o cookie, a conexão só é aceita quando o ` + "`" + `Origin` + "`" + ` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em ` + "`" + `workspace_id` + "`" + ` e em ` + "`" + `workspaceId` + "`" + `, com o mesmo valor (ou o cabeçalho ` + "`" + `X-Workspace-ID` + "`" + ` junto com ` + "`" + `workspaceId` + "`" + `). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
+                "description": "Executa um fluxo em modo de teste, sem enviar mensagens nem fazer ligações de verdade. Você faz o papel do contato: responde mensagens, aperta teclas e acompanha cada nó executado.\n\n## Conectar\n\n` + "`" + `` + "`" + `` + "`" + `text\nwss://SUA_URL_BASE/ws/workflows/{id}/simulate?token=SEU_ACCESS_TOKEN\u0026workspace_id=SEU_WORKSPACE_ID\n` + "`" + `` + "`" + `` + "`" + `\n\n- ` + "`" + `id` + "`" + `: ID do fluxo.\n- Permissão: ` + "`" + `workflows:update` + "`" + ` no workspace.\n\nO modo depende do tipo do fluxo: fluxos ` + "`" + `voice` + "`" + ` simulam uma ligação; os demais simulam uma conversa de mensagens.\n\n- ` + "`" + `await_start=1` + "`" + ` (opcional): o servidor envia ` + "`" + `sim_ready` + "`" + ` e só começa depois de um ` + "`" + `start` + "`" + ` ou de um ` + "`" + `reproduce_run` + "`" + `. Use para ligar pontos de parada e confirmar chamadas reais antes do primeiro passo. Sem ele, a execução começa logo (ou depois do ` + "`" + `reply` + "`" + ` inicial em fluxos disparados por mensagem).\n\n## Depuração\n\n- O simulador usa o rascunho. Um nó com ` + "`" + `pinned` + "`" + ` (saída fixada) devolve essa saída e segue a conexão fixada, sem executar; a etapa vem com ` + "`" + `pinned: true` + "`" + `.\n- Chamadas reais: nós de requisição HTTP sem saída fixada, nós de código que usam ` + "`" + `fetch` + "`" + `, e-mail e agenda (agendar, reagendar, consultar disponibilidade) chamam serviços externos de verdade. Eles aparecem em ` + "`" + `realCallNodes` + "`" + ` e só executam depois de ` + "`" + `confirm_real_calls` + "`" + ` (vale para a sessão inteira). Sem a confirmação o nó falha com ` + "`" + `errorKind: \"real_call_not_confirmed\"` + "`" + `. Envios de mensagem já são simulados.\n- Pontos de parada ficam só nesta sessão (não são gravados no fluxo). A pausa acontece antes de executar o nó. Uma pausa sem comando por 10 minutos encerra com ` + "`" + `run_cancelled` + "`" + ` e ` + "`" + `reason: \"paused_timeout\"` + "`" + `.\n- Saída fixada de produção (` + "`" + `source: \"run:\u003cid\u003e\"` + "`" + `) só vale para quem pode ver a conversa daquela execução (mesma regra da caixa de entrada). Para os demais, o nó roda como se não tivesse saída fixada (inclusive a regra de chamadas reais) e a etapa vem com ` + "`" + `notice: \"saída fixada indisponível para você\"` + "`" + `.\n- Nós que mexem no CRM (etiqueta, etapa, atribuir membro, transferir departamento, oportunidade e campos do lead) não gravam nada: conferem o alvo no workspace (etiqueta, etapa, membro, departamento, funil ou campo) e devolvem o que fariam. A etapa vem com ` + "`" + `simulated: true` + "`" + ` e ` + "`" + `output.would_do` + "`" + `: lista de ` + "`" + `{\"kind\": \"label\" \\| \"stage\" \\| \"member\" \\| \"department\" \\| \"deal\" \\| \"lead_field\", \"action\": string, \"target_id\"?: string, \"target_name\"?: string, \"field\"?: string, \"value\"?: any, \"description\": string}` + "`" + `. Um alvo que não existe (ou é de outro workspace) faz o nó falhar pela saída de erro, sem ` + "`" + `would_do` + "`" + `.\n- Cada etapa que enviou mensagens traz, em ` + "`" + `output` + "`" + `, a lista ` + "`" + `sent_messages` + "`" + ` com as mesmas mensagens de ` + "`" + `message_sent` + "`" + `, no formato ` + "`" + `message` + "`" + ` descrito abaixo.\n- Reproduzir uma execução de produção (` + "`" + `reproduce_run` + "`" + `) exige ` + "`" + `workflows:read` + "`" + ` e poder ver a conversa da execução (mesma regra da caixa de entrada). O teste começa com os dados do gatilho daquela execução, fixa a saída e a conexão gravadas de cada nó HTTP, de código ou com efeito externo que rodou nela (só nesta sessão, sem gravar no rascunho) e pausa antes do primeiro passo. Nós que não rodaram na execução seguem a regra de chamadas reais. Valores mascarados na execução continuam mascarados. Só para fluxos de mensagens.\n\n## Mensagens que você envia\n\nFormato: ` + "`" + `{\"type\": \"...\", \"data\": {...}}` + "`" + `.\n\n### Fluxos de mensagens\n\n| type | data | O que faz |\n|---|---|---|\n| ` + "`" + `reply` + "`" + ` | ` + "`" + `{\"text\": string}` + "`" + ` (obrigatório) | Mensagem de texto do contato. Dispara o fluxo depois de ` + "`" + `waiting_trigger` + "`" + ` ou responde um ` + "`" + `waiting_reply` + "`" + `. Em mensagens interativas, o texto ainda é usado como o id da opção escolhida (compatibilidade); prefira ` + "`" + `reply_selection` + "`" + `. |\n| ` + "`" + `reply_selection` + "`" + ` | ` + "`" + `{\"kind\": \"button\" \\| \"list\", \"id\": string, \"title\": string}` + "`" + ` (todos obrigatórios) | O contato tocou um botão ou uma linha de lista, como o webhook entrega: ` + "`" + `message` + "`" + ` = ` + "`" + `title` + "`" + `, ` + "`" + `message_type: \"text\"` + "`" + `, ` + "`" + `selected_option_id` + "`" + `, ` + "`" + `selected_option_title` + "`" + ` e ` + "`" + `selected_option_type` + "`" + ` (` + "`" + `button` + "`" + ` ou ` + "`" + `list` + "`" + `). O ramo segue a saída com o id da opção, senão ` + "`" + `no_match` + "`" + `. |\n| ` + "`" + `reply_location` + "`" + ` | ` + "`" + `{\"latitude\": number, \"longitude\": number, \"name\"?: string, \"address\"?: string}` + "`" + ` | O contato enviou uma localização: ` + "`" + `message` + "`" + ` = \"📍 nome, endereço (lat, lng)\" e ` + "`" + `message_type: \"text\"` + "`" + `, como no webhook. |\n| ` + "`" + `reply_media` + "`" + ` | ` + "`" + `{\"kind\": \"image\" \\| \"video\" \\| \"audio\" \\| \"document\" \\| \"sticker\", \"url\": string, \"mime\"?: string, \"filename\"?: string, \"caption\"?: string}` + "`" + ` | O contato enviou uma mídia: ` + "`" + `message_type: \"media\"` + "`" + ` e ` + "`" + `media_type` + "`" + ` (áudio: ` + "`" + `message_type: \"audio\"` + "`" + `). ` + "`" + `message` + "`" + ` é a legenda (imagem, vídeo), o nome do arquivo (documento), vazio (figurinha) ou a legenda como transcrição (áudio). |\n| ` + "`" + `set_variable` + "`" + ` | ` + "`" + `{\"key\": string, \"value\": any}` + "`" + ` | Grava uma variável no estado da execução antes do próximo passo. |\n| ` + "`" + `form_reply` + "`" + ` | ` + "`" + `{\"answers\": {chave_do_campo: valor}}` + "`" + ` ou ` + "`" + `{\"outcome\": \"no_reply\"}` + "`" + ` | Responde um ` + "`" + `waiting_form` + "`" + `: as respostas ficam nas variáveis ` + "`" + `form.\u003cchave\u003e` + "`" + `; ` + "`" + `no_reply` + "`" + ` segue a saída Sem resposta. Um ` + "`" + `reply` + "`" + ` de texto não conclui o formulário. |\n| ` + "`" + `cancel` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Cancela a execução. O servidor responde ` + "`" + `run_cancelled` + "`" + `. |\n\n### Depuração (mensagens e voz)\n\n| type | data | O que faz |\n|---|---|---|\n| ` + "`" + `start` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Com ` + "`" + `await_start=1` + "`" + `: começa o teste depois do ` + "`" + `sim_ready` + "`" + `. |\n| ` + "`" + `reproduce_run` + "`" + ` | ` + "`" + `{\"runId\": string}` + "`" + ` | Com ` + "`" + `await_start=1` + "`" + ` (ou durante ` + "`" + `waiting_trigger` + "`" + `): começa o teste reproduzindo a execução. Se for recusado, chega ` + "`" + `command_refused` + "`" + ` e a sessão continua esperando. |\n| ` + "`" + `set_breakpoints` + "`" + ` | ` + "`" + `{\"nodeIds\": [string]}` + "`" + ` | Troca os pontos de parada da sessão. A execução pausa antes de cada um desses nós. |\n| ` + "`" + `run_until` + "`" + ` | ` + "`" + `{\"nodeId\": string}` + "`" + ` | Para uma vez antes desse nó. Se estiver pausado, continua até ele. |\n| ` + "`" + `step` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Pausado: executa um nó e pausa antes do próximo. |\n| ` + "`" + `continue` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Pausado: segue até o próximo ponto de parada. |\n| ` + "`" + `confirm_real_calls` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Libera as chamadas reais pelo resto da sessão. Pode ser enviado a qualquer momento, inclusive antes do ` + "`" + `start` + "`" + `. |\n\n### Fluxos de voz\n\n| type | data | O que faz |\n|---|---|---|\n| ` + "`" + `key` + "`" + ` | ` + "`" + `{\"key\": string}` + "`" + ` | Tecla do telefone: um caractere entre ` + "`" + `0-9` + "`" + `, ` + "`" + `*` + "`" + ` e ` + "`" + `#` + "`" + `. |\n| ` + "`" + `cancel` + "`" + ` | sem ` + "`" + `data` + "`" + ` | Desliga a ligação simulada. O servidor responde ` + "`" + `run_cancelled` + "`" + `. |\n\nFechar a conexão tem o mesmo efeito de ` + "`" + `cancel` + "`" + `.\n\n## Mensagens que você recebe\n\nFormato: ` + "`" + `{\"type\": \"...\", \"payload\": {...}}` + "`" + `.\n\n| type | payload | Quando |\n|---|---|---|\n| ` + "`" + `sim_ready` + "`" + ` | ` + "`" + `{\"workflowId\": string, \"triggerType\": string, \"realCallNodes\": [string]}` + "`" + ` | Só com ` + "`" + `await_start=1` + "`" + `: a sessão espera ` + "`" + `start` + "`" + ` ou ` + "`" + `reproduce_run` + "`" + `. |\n| ` + "`" + `waiting_trigger` + "`" + ` | ` + "`" + `{\"triggerType\": string}` + "`" + ` | Só em fluxos disparados por mensagem: envie um ` + "`" + `reply` + "`" + ` para começar. |\n| ` + "`" + `sim_started` + "`" + ` | ` + "`" + `{\"runId\": string, \"workflowId\": string, \"realCallNodes\": [string], \"reproducing\"?: {\"runId\": string, \"workflowVersion\"?: number, \"pinnedNodes\": [string]}}` + "`" + ` | A execução começou. ` + "`" + `realCallNodes` + "`" + ` lista os nós que fariam chamadas reais; ` + "`" + `reproducing` + "`" + ` aparece ao reproduzir uma execução, com os nós fixados nesta sessão. |\n| ` + "`" + `state_update` + "`" + ` | ` + "`" + `{\"vars\": object}` + "`" + ` | Antes e depois de cada passo, com todas as variáveis. |\n| ` + "`" + `node_executed` + "`" + ` | Registro da etapa, o mesmo de ` + "`" + `GET /workflow-runs/{runId}` + "`" + ` (` + "`" + `id` + "`" + `, ` + "`" + `runId` + "`" + `, ` + "`" + `nodeId` + "`" + `, ` + "`" + `nodeType` + "`" + `, ` + "`" + `status` + "`" + `, ` + "`" + `input` + "`" + `?, ` + "`" + `output` + "`" + `?, ` + "`" + `error` + "`" + `?, ` + "`" + `executedAt` + "`" + `, ` + "`" + `attempt` + "`" + `, ` + "`" + `startedAt` + "`" + `?, ` + "`" + `finishedAt` + "`" + `?, ` + "`" + `durationMs` + "`" + `, ` + "`" + `branch` + "`" + `?, ` + "`" + `errorKind` + "`" + `?, ` + "`" + `errorChain` + "`" + `?, ` + "`" + `stack` + "`" + `?, ` + "`" + `scriptLogs` + "`" + `?, ` + "`" + `http` + "`" + `?), com valores sensíveis mascarados, mais ` + "`" + `stepIndex` + "`" + ` (número da etapa na sessão, a partir de 0), ` + "`" + `pinned` + "`" + `? (` + "`" + `true` + "`" + ` quando veio de uma saída fixada), ` + "`" + `simulated` + "`" + `? (` + "`" + `true` + "`" + ` quando um nó de CRM só descreveu o que faria, em ` + "`" + `output.would_do` + "`" + `), ` + "`" + `notice` + "`" + `? (por exemplo a saída fixada indisponível) e, quando o nó enviou mensagens, ` + "`" + `output.sent_messages` + "`" + ` | Um nó terminou. |\n| ` + "`" + `paused` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"nodeType\": string, \"stepIndex\": number, \"reason\": \"breakpoint\" \\| \"run_until\" \\| \"step\", \"state\": object}` + "`" + ` | A execução parou antes desse nó. ` + "`" + `stepIndex` + "`" + ` é o número que a próxima etapa terá; ` + "`" + `state` + "`" + ` são as variáveis naquele momento, mascaradas. Responda ` + "`" + `step` + "`" + `, ` + "`" + `continue` + "`" + `, ` + "`" + `run_until` + "`" + ` ou ` + "`" + `cancel` + "`" + `. |\n| ` + "`" + `command_refused` + "`" + ` | ` + "`" + `{\"command\": string, \"error\": string}` + "`" + ` | Um comando foi recusado (por exemplo ` + "`" + `reproduce_run` + "`" + ` sem permissão, execução invisível, de outro fluxo ou sem dados do gatilho). A sessão continua. |\n| ` + "`" + `message_sent` + "`" + ` | ` + "`" + `{\"direction\": \"outbound\", \"text\": string, \"msgType\": string, \"nodeId\"?: string, \"messageId\": string, \"audioBase64\"?: string, \"audioMime\"?: string, \"audioUrl\"?: string, \"message\"?: object}` + "`" + ` | O fluxo enviou uma mensagem ou, em voz, tocou um áudio (` + "`" + `msgType: \"audio\"` + "`" + ` com ` + "`" + `audioUrl` + "`" + `). Em fluxos de mensagens, ` + "`" + `message` + "`" + ` é a mensagem como a conversa do CRM a guardaria (formato abaixo); ` + "`" + `text` + "`" + ` continua com o resumo antigo. |\n| ` + "`" + `message_received` + "`" + ` | ` + "`" + `{\"direction\": \"inbound\", \"message\": object}` + "`" + ` | Uma resposta sua (` + "`" + `reply` + "`" + `, ` + "`" + `reply_selection` + "`" + `, ` + "`" + `reply_location` + "`" + `, ` + "`" + `reply_media` + "`" + `) como a conversa do CRM a guardaria. |\n| ` + "`" + `reply_ignored` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"reason\": \"interactive_reply_unhandled\"}` + "`" + ` | A mensagem interativa não tem saída para essa resposta (nem ` + "`" + `no_match` + "`" + `, nem saída padrão). Como em produção, o fluxo continua esperando. |\n| ` + "`" + `waiting_reply` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"timeoutSeconds\": number}` + "`" + ` | O fluxo espera uma resposta do contato. |\n| ` + "`" + `waiting_form` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"formId\": string, \"timeoutSeconds\": number}` + "`" + ` | O fluxo enviou um formulário do WhatsApp e espera as respostas: envie um ` + "`" + `form_reply` + "`" + `. |\n| ` + "`" + `wait_skipped` + "`" + ` | ` + "`" + `{\"nodeId\": string, \"reason\": \"duration\" \\| \"event\"}` + "`" + ` | Uma espera por tempo ou evento foi pulada para agilizar o teste. |\n| ` + "`" + `waiting_key` + "`" + ` | ` + "`" + `{\"timeoutSeconds\": number}` + "`" + ` | Voz: o fluxo espera uma tecla. |\n| ` + "`" + `call_transferred` + "`" + ` | ` + "`" + `{\"queueId\": string, \"queueName\": string, \"notes\"?: string}` + "`" + ` | Voz: a ligação foi para a fila. Na simulação ela é considerada atendida e o fluxo termina. |\n| ` + "`" + `run_completed` + "`" + ` | ` + "`" + `{\"vars\": object}` + "`" + ` | A execução terminou. |\n| ` + "`" + `run_cancelled` + "`" + ` | ` + "`" + `{\"reason\": \"cancelled\" \\| \"paused_timeout\"}` + "`" + ` | A execução foi cancelada: pelo ` + "`" + `cancel` + "`" + ` (ou pela conexão fechada) ou por uma pausa abandonada por 10 minutos. |\n| ` + "`" + `run_error` + "`" + ` | ` + "`" + `{\"error\": string, \"status\"?: \"error\" \\| \"cancelled\"}` + "`" + ` | A execução parou com erro. |\n| ` + "`" + `error` + "`" + ` | ` + "`" + `{\"error\": string}` + "`" + ` | Não foi possível simular (fluxo inexistente, de outro workspace ou sem gatilho). A conexão é encerrada. |\n\nValores de ` + "`" + `msgType` + "`" + ` em fluxos de mensagens: ` + "`" + `text` + "`" + `, ` + "`" + `button` + "`" + `, ` + "`" + `list` + "`" + `, ` + "`" + `media` + "`" + `, ` + "`" + `audio` + "`" + `, ` + "`" + `template` + "`" + `, ` + "`" + `form` + "`" + `, ` + "`" + `flow` + "`" + ` e ` + "`" + `call_permission_request` + "`" + `.\n\n### Formato de ` + "`" + `message` + "`" + `\n\nO mesmo das mensagens de ` + "`" + `GET /conversations/...` + "`" + ` (o CRM renderiza com os mesmos componentes): ` + "`" + `id` + "`" + ` (igual a ` + "`" + `messageId` + "`" + `), ` + "`" + `entryId` + "`" + `, ` + "`" + `entryType` + "`" + `, ` + "`" + `channel` + "`" + `, ` + "`" + `messageType` + "`" + ` (` + "`" + `ai_response` + "`" + `, ` + "`" + `media` + "`" + `, ` + "`" + `template` + "`" + `, ` + "`" + `user_message` + "`" + `, ` + "`" + `audio` + "`" + `), ` + "`" + `direction` + "`" + ` (` + "`" + `OUTBOUND` + "`" + ` ou ` + "`" + `INBOUND` + "`" + `), ` + "`" + `sentBy` + "`" + `, ` + "`" + `from` + "`" + `, ` + "`" + `to` + "`" + `, ` + "`" + `text` + "`" + `, ` + "`" + `deliveryStatus` + "`" + ` (` + "`" + `sent` + "`" + `), ` + "`" + `createdAt` + "`" + ` e, quando houver:\n\n- ` + "`" + `mediaType` + "`" + ` (` + "`" + `image` + "`" + `, ` + "`" + `video` + "`" + `, ` + "`" + `audio` + "`" + `, ` + "`" + `document` + "`" + `, ` + "`" + `sticker` + "`" + `) e ` + "`" + `media` + "`" + `: ` + "`" + `{\"url\": string, \"mimeType\"?: string, \"filename\"?: string, \"size\"?: number, \"layout\": object}` + "`" + `; a legenda fica em ` + "`" + `text` + "`" + `.\n- ` + "`" + `metadata.buttons` + "`" + `: ` + "`" + `{\"header_text\"?: string, \"body_text\": string, \"footer_text\"?: string, \"buttons\": [{\"id\": string, \"title\": string}]}` + "`" + ` (botões e também as linhas de uma lista, achatadas).\n- ` + "`" + `metadata.list` + "`" + `: ` + "`" + `{\"header_text\"?: string, \"body_text\": string, \"footer_text\"?: string, \"button_text\": string, \"sections\": [{\"title\"?: string, \"rows\": [{\"id\": string, \"title\": string, \"description\"?: string}]}]}` + "`" + `.\n- Template (` + "`" + `messageType: \"template\"` + "`" + `): ` + "`" + `metadata` + "`" + ` com ` + "`" + `template_name` + "`" + `, ` + "`" + `language` + "`" + `, ` + "`" + `category` + "`" + `, ` + "`" + `body_text` + "`" + ` (corpo com os parâmetros), ` + "`" + `components` + "`" + ` (com os botões) e ` + "`" + `header_media_url` + "`" + `?; ` + "`" + `text` + "`" + ` é o corpo renderizado.\n- ` + "`" + `metadata.form` + "`" + `: ` + "`" + `{\"kind\": \"message\", \"formId\": string, \"formName\": string, \"sendId\": string, \"cta\": string}` + "`" + ` (formulário do WhatsApp; ` + "`" + `formName` + "`" + ` vem vazio no teste).\n- ` + "`" + `location` + "`" + `: ` + "`" + `{\"latitude\": number, \"longitude\": number, \"name\"?: string, \"address\"?: string, \"candidate\": boolean}` + "`" + `.\n\nAs respostas segmentadas do nó de IA chegam como um ` + "`" + `message_sent` + "`" + ` por segmento.\n\nA sessão termina depois de ` + "`" + `run_completed` + "`" + `, ` + "`" + `run_cancelled` + "`" + `, ` + "`" + `run_error` + "`" + ` ou ` + "`" + `error` + "`" + `.\n\n## Autenticação\n\nUse o mesmo access token da API HTTP. Navegadores não permitem cabeçalhos em WebSockets, então o token pode ir no cabeçalho ` + "`" + `Authorization: Bearer SEU_ACCESS_TOKEN` + "`" + ` (clientes fora do navegador), no parâmetro ` + "`" + `token` + "`" + ` da URL ou no cookie ` + "`" + `accessToken` + "`" + ` do login em modo cookie. Com o cookie, a conexão só é aceita quando o ` + "`" + `Origin` + "`" + ` é o próprio painel ou uma origem confiável; o token no cabeçalho ou na URL vale de qualquer origem.\n\n## Workspace\n\nInforme o workspace em ` + "`" + `workspace_id` + "`" + ` e em ` + "`" + `workspaceId` + "`" + `, com o mesmo valor (ou o cabeçalho ` + "`" + `X-Workspace-ID` + "`" + ` junto com ` + "`" + `workspaceId` + "`" + `). O primeiro é usado na checagem de permissão da conexão; o segundo define o workspace da sessão.\n\n## Formato das mensagens\n\nCada quadro de texto carrega um único objeto JSON com o tipo da mensagem. Datas são strings RFC 3339. Antes de abrir o WebSocket, erros de autenticação, workspace e permissão voltam como HTTP comum (401, 400, 403, 429, 501).",
                 "tags": [
                     "WebSockets"
                 ],
@@ -33786,6 +40752,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Workspace usado na checagem de permissão da conexão",
                         "name": "workspace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1 para esperar start ou reproduce_run antes de começar",
+                        "name": "await_start",
                         "in": "query"
                     }
                 ],
@@ -37722,6 +44694,73 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "ai_attendance.ToolCall": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "args": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "durationMs": {
+                    "type": "integer"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "errorCode": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "$ref": "#/definitions/ai_attendance.ToolCallOutcome"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "sessionId": {
+                    "type": "string"
+                },
+                "toolCallId": {
+                    "type": "string"
+                },
+                "toolName": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "ai_attendance.ToolCallOutcome": {
+            "type": "string",
+            "enum": [
+                "ok",
+                "error",
+                "requested"
+            ],
+            "x-enum-varnames": [
+                "ToolCallOK",
+                "ToolCallError",
+                "ToolCallRequested"
+            ]
         },
         "attendance.AIAgentStats": {
             "type": "object",
@@ -42894,6 +49933,20 @@ const docTemplate = `{
                 "BindOwnerName"
             ]
         },
+        "campaign.CategoryDispatches": {
+            "type": "object",
+            "properties": {
+                "authentication": {
+                    "type": "integer"
+                },
+                "marketing": {
+                    "type": "integer"
+                },
+                "utility": {
+                    "type": "integer"
+                }
+            }
+        },
         "campaign.Channel": {
             "type": "string",
             "enum": [
@@ -42904,6 +49957,50 @@ const docTemplate = `{
                 "ChannelOfficial",
                 "ChannelUnofficial"
             ]
+        },
+        "campaign.Metrics": {
+            "type": "object",
+            "properties": {
+                "byCategory": {
+                    "$ref": "#/definitions/campaign.CategoryDispatches"
+                },
+                "completionRate": {
+                    "type": "number"
+                },
+                "delivered": {
+                    "type": "integer"
+                },
+                "dispatches": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "notEligiblePossibleSpam": {
+                    "type": "integer"
+                },
+                "pending": {
+                    "type": "integer"
+                },
+                "processed": {
+                    "type": "integer"
+                },
+                "read": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                },
+                "skippedNotOnWhatsApp": {
+                    "type": "integer"
+                },
+                "successRate": {
+                    "type": "number"
+                },
+                "totalNumbers": {
+                    "type": "integer"
+                }
+            }
         },
         "campaign.MissingVariableCount": {
             "type": "object",
@@ -42916,6 +50013,37 @@ const docTemplate = `{
                 },
                 "source": {
                     "$ref": "#/definitions/campaign.BindingSource"
+                }
+            }
+        },
+        "campaign.Pace": {
+            "type": "object",
+            "properties": {
+                "processedPerMinute": {
+                    "type": "number"
+                },
+                "remainingSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "campaign.Progress": {
+            "type": "object",
+            "properties": {
+                "metrics": {
+                    "$ref": "#/definitions/campaign.Metrics"
+                },
+                "pace": {
+                    "$ref": "#/definitions/campaign.Pace"
+                },
+                "refreshAfterSeconds": {
+                    "type": "integer"
+                },
+                "sampledAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/campaign.Status"
                 }
             }
         },
@@ -43051,6 +50179,65 @@ const docTemplate = `{
                 "StatusCompleted"
             ]
         },
+        "campaign.Timeline": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "$ref": "#/definitions/campaign.TimelineBucket"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "points": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/campaign.TimelinePoint"
+                    }
+                },
+                "refreshAfterSeconds": {
+                    "type": "integer"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
+                }
+            }
+        },
+        "campaign.TimelineBucket": {
+            "type": "string",
+            "enum": [
+                "minute",
+                "hour",
+                "day"
+            ],
+            "x-enum-varnames": [
+                "TimelineMinute",
+                "TimelineHour",
+                "TimelineDay"
+            ]
+        },
+        "campaign.TimelinePoint": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "delivered": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "read": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                }
+            }
+        },
         "campaign.VariableBinding": {
             "type": "object",
             "properties": {
@@ -43143,6 +50330,125 @@ const docTemplate = `{
                 "uf": {
                     "type": "string",
                     "example": "SP"
+                }
+            }
+        },
+        "commentautomationhttp.RuleDeletedResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentautomationhttp.RuleRequest": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "match": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "privateReplyText": {
+                    "type": "string"
+                },
+                "publicReplyText": {
+                    "type": "string"
+                }
+            }
+        },
+        "commentautomationhttp.RuleResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "containerId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "match": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer"
+                },
+                "privateReplyText": {
+                    "type": "string"
+                },
+                "publicReplyText": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "conversation.AttachedMedia": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
+                },
+                "layout": {
+                    "$ref": "#/definitions/conversation.MediaLayout"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
                 }
             }
         },
@@ -43272,6 +50578,23 @@ const docTemplate = `{
                 }
             }
         },
+        "conversation.DeliveryStatus": {
+            "type": "string",
+            "enum": [
+                "",
+                "sent",
+                "delivered",
+                "read",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "DeliveryStatusNone",
+                "DeliveryStatusSent",
+                "DeliveryStatusDelivered",
+                "DeliveryStatusRead",
+                "DeliveryStatusFailed"
+            ]
+        },
         "conversation.EntryWithLastMessage": {
             "type": "object",
             "properties": {
@@ -43286,6 +50609,9 @@ const docTemplate = `{
                 },
                 "automationEnabled": {
                     "type": "boolean"
+                },
+                "awaitingReplySince": {
+                    "type": "string"
                 },
                 "businessPhoneID": {
                     "type": "string"
@@ -43311,11 +50637,20 @@ const docTemplate = `{
                 "hasMedia": {
                     "type": "boolean"
                 },
+                "lastAgentMessageAt": {
+                    "type": "string"
+                },
+                "lastCustomerMessageAt": {
+                    "type": "string"
+                },
                 "lastMessageAt": {
                     "type": "string"
                 },
                 "lastMessageFrom": {
                     "type": "string"
+                },
+                "lastMessageRetracted": {
+                    "type": "boolean"
                 },
                 "lastMessageSenderID": {
                     "type": "string"
@@ -43434,7 +50769,9 @@ const docTemplate = `{
                 "telegram",
                 "unofficial_whatsapp",
                 "facebook",
-                "webchat"
+                "webchat",
+                "mercadolivre",
+                "tiktok"
             ],
             "x-enum-varnames": [
                 "MessageChannelWhatsApp",
@@ -43442,7 +50779,9 @@ const docTemplate = `{
                 "MessageChannelTelegram",
                 "MessageChannelUnofficialWhatsApp",
                 "MessageChannelFacebook",
-                "MessageChannelWebchat"
+                "MessageChannelWebchat",
+                "MessageChannelMercadoLivre",
+                "MessageChannelTikTok"
             ]
         },
         "conversation.MessageEnvelopeResponse": {
@@ -43452,6 +50791,19 @@ const docTemplate = `{
                     "$ref": "#/definitions/conversation.MessageResponse"
                 }
             }
+        },
+        "conversation.MessageHistoryDirection": {
+            "type": "string",
+            "enum": [
+                "INBOUND",
+                "OUTBOUND",
+                ""
+            ],
+            "x-enum-varnames": [
+                "MessageDirectionInbound",
+                "MessageDirectionOutbound",
+                "MessageDirectionUnknown"
+            ]
         },
         "conversation.MessageLocationResponse": {
             "type": "object",
@@ -43751,7 +51103,8 @@ const docTemplate = `{
                 "queue_overflow",
                 "call_linked",
                 "lead_exit_action",
-                "lead_send_refused"
+                "lead_send_refused",
+                "agent_reply_withheld"
             ],
             "x-enum-varnames": [
                 "EventAssigned",
@@ -43787,8 +51140,85 @@ const docTemplate = `{
                 "EventQueueOverflow",
                 "EventCallLinked",
                 "EventLeadExitAction",
-                "EventLeadSendRefused"
+                "EventLeadSendRefused",
+                "EventAgentReplyWithheld"
             ]
+        },
+        "conversationnotehttp.CreateNoteRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "@Ana o cliente pediu desconto, pode aprovar?"
+                },
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "conversationnotehttp.NoteEnvelope": {
+            "type": "object",
+            "properties": {
+                "note": {
+                    "$ref": "#/definitions/conversationnoteview.Note"
+                }
+            }
+        },
+        "conversationnotehttp.NoteListResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/conversationnoteview.Note"
+                    }
+                }
+            }
+        },
+        "conversationnoteview.Note": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string",
+                    "example": "0e9d8c7b-6a5f-4e3d-2c1b-0a9f8e7d6c5b"
+                },
+                "author_name": {
+                    "type": "string",
+                    "example": "Carla"
+                },
+                "body": {
+                    "type": "string",
+                    "example": "Cliente pediu desconto, aguardando o gerente."
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-10-18T12:00:00Z"
+                },
+                "entry_id": {
+                    "type": "string",
+                    "example": "8a3c2f4e-1b5d-4c6a-9e7f-2d1b3c4a5e6f"
+                },
+                "entry_type": {
+                    "type": "string",
+                    "example": "whatsapp"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "5b8f7a0e-2d7c-4f6e-9a51-0c3b7e2f9d10"
+                },
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
         },
         "copilot.Attachment": {
             "type": "object",
@@ -43967,6 +51397,10 @@ const docTemplate = `{
                         "everyone"
                     ],
                     "example": "all_matching"
+                },
+                "outcomeCode": {
+                    "type": "string",
+                    "example": "sold"
                 },
                 "targets": {
                     "type": "array",
@@ -45032,6 +52466,39 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.draftConflictDetails": {
+            "type": "object",
+            "properties": {
+                "revision": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "handlers.draftRevisionRequest": {
+            "type": "object",
+            "properties": {
+                "revision": {
+                    "type": "integer",
+                    "example": 4
+                }
+            }
+        },
+        "handlers.pinFromRunRequest": {
+            "type": "object",
+            "properties": {
+                "revision": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "stepId": {
+                    "type": "string"
+                }
+            }
+        },
         "handlers.projectOpenedRequest": {
             "type": "object",
             "properties": {
@@ -45063,6 +52530,31 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.resolveHandlesRequest": {
+            "type": "object",
+            "properties": {
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.Node"
+                    }
+                }
+            }
+        },
+        "handlers.resolveHandlesResponse": {
+            "type": "object",
+            "properties": {
+                "handles": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/workflow.HandleDefinition"
+                        }
+                    }
+                }
+            }
+        },
         "handlers.screenClaimRequest": {
             "type": "object",
             "properties": {
@@ -45071,9 +52563,99 @@ const docTemplate = `{
                 }
             }
         },
+        "handlers.startRunRequest": {
+            "type": "object",
+            "properties": {
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.testNodeRequest": {
+            "type": "object",
+            "properties": {
+                "confirmRealCalls": {
+                    "type": "boolean"
+                },
+                "continueWaits": {
+                    "type": "boolean"
+                },
+                "mockedState": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "skipExecution": {
+                    "type": "boolean"
+                },
+                "triggerVars": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "waitAnswers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/workflow_usecase.TestWaitAnswer"
+                    }
+                }
+            }
+        },
+        "handlers.updateWorkflowRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "graph": {
+                    "$ref": "#/definitions/workflow.Graph"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer",
+                    "example": 4
+                },
+                "triggerConfig": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "triggerType": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.workflowNotPublishableDetails": {
+            "type": "object",
+            "properties": {
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.LintIssue"
+                    }
+                }
+            }
+        },
+        "handlers.workflowValidationDetails": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "type": "string",
+                    "example": "workflow: at least one trigger node must be connected to the flow: \"t1\""
+                }
+            }
+        },
         "httpx.ButtonActionParams": {
             "type": "object",
             "properties": {
+                "agentId": {
+                    "type": "string"
+                },
                 "callListId": {
                     "type": "string"
                 },
@@ -45128,6 +52710,7 @@ const docTemplate = `{
                         "opt_out",
                         "consent_grant",
                         "hand_off",
+                        "delegate",
                         "start_workflow",
                         "call_list",
                         "classify",
@@ -45152,6 +52735,20 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "inbox_assignment.Recipient": {
+            "type": "object",
+            "properties": {
+                "tier": {
+                    "type": "integer"
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "weight": {
+                    "type": "integer"
                 }
             }
         },
@@ -45856,7 +53453,8 @@ const docTemplate = `{
                 "last_run_engagement",
                 "last_run_undeliverable",
                 "opted_out_pending",
-                "cap_below_pending"
+                "cap_below_pending",
+                "form_not_sendable"
             ],
             "x-enum-varnames": [
                 "CodeNothingPending",
@@ -45876,7 +53474,8 @@ const docTemplate = `{
                 "CodeLastRunEngagement",
                 "CodeLastRunUndeliverable",
                 "CodeOptedOutPending",
-                "CodeCapBelowPending"
+                "CodeCapBelowPending",
+                "CodeFormNotSendable"
             ]
         },
         "launchcheck.Finding": {
@@ -49054,6 +56653,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "Novo contato"
                 },
+                "line": {
+                    "type": "string",
+                    "example": "+55 11 4000-1000"
+                },
                 "pipelineId": {
                     "type": "string"
                 },
@@ -49786,6 +57389,524 @@ const docTemplate = `{
                 "url": {
                     "type": "string",
                     "example": "https://cdn.example.com/medias/a1b2c3.mp3"
+                }
+            }
+        },
+        "mercadolivre.AccountListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.AccountResponse"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/mercadolivre.PaginationMeta"
+                }
+            }
+        },
+        "mercadolivre.AccountResponse": {
+            "type": "object",
+            "properties": {
+                "accessExpiresAt": {
+                    "type": "string"
+                },
+                "agentId": {
+                    "type": "string"
+                },
+                "automationDisclosure": {
+                    "type": "string"
+                },
+                "canAnswerQuestions": {
+                    "type": "boolean"
+                },
+                "canReadMessages": {
+                    "type": "boolean"
+                },
+                "canReadQuestions": {
+                    "type": "boolean"
+                },
+                "canSendMessages": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "grantedScopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastHealthCheckAt": {
+                    "type": "string"
+                },
+                "lastReconciledAt": {
+                    "type": "string"
+                },
+                "mlUserId": {
+                    "type": "string"
+                },
+                "needsReconnect": {
+                    "type": "boolean"
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "purgeAfter": {
+                    "type": "string"
+                },
+                "siteId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "statusReason": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.AnswerQuestionRequest": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.ConnectStartResponse": {
+            "type": "object",
+            "properties": {
+                "authorizeUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.DisconnectResponse": {
+            "type": "object",
+            "properties": {
+                "purgeAfter": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.ListingListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.ListingResponse"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.ListingResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "itemId": {
+                    "type": "string"
+                },
+                "permalink": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "syncedAt": {
+                    "type": "string"
+                },
+                "thumbnailUrl": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.NotificationAck": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.PackItemResponse": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string"
+                },
+                "itemId": {
+                    "type": "string"
+                },
+                "permalink": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "thumbnailUrl": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "unitPrice": {
+                    "type": "number"
+                }
+            }
+        },
+        "mercadolivre.PackSummaryResponse": {
+            "type": "object",
+            "properties": {
+                "currency": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.PackItemResponse"
+                    }
+                },
+                "orderStatus": {
+                    "type": "string"
+                },
+                "refreshedAt": {
+                    "type": "string"
+                },
+                "shippingStatus": {
+                    "type": "string"
+                },
+                "shippingSubstatus": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "number"
+                }
+            }
+        },
+        "mercadolivre.PaginationMeta": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "pageSize": {
+                    "type": "integer"
+                },
+                "totalItems": {
+                    "type": "integer"
+                },
+                "totalPages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "mercadolivre.QuestionActionResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.QuestionAskerResponse": {
+            "type": "object",
+            "properties": {
+                "blocked": {
+                    "type": "boolean"
+                },
+                "contactId": {
+                    "type": "string"
+                },
+                "mlUserId": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.QuestionListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.QuestionResponse"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.QuestionResponse": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "answerStatus": {
+                    "type": "string"
+                },
+                "answerText": {
+                    "type": "string"
+                },
+                "answeredAt": {
+                    "type": "string"
+                },
+                "answeredBy": {
+                    "type": "string"
+                },
+                "answeredByUserId": {
+                    "type": "string"
+                },
+                "askedAt": {
+                    "type": "string"
+                },
+                "asker": {
+                    "$ref": "#/definitions/mercadolivre.QuestionAskerResponse"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "itemId": {
+                    "type": "string"
+                },
+                "listing": {
+                    "$ref": "#/definitions/mercadolivre.ListingResponse"
+                },
+                "questionId": {
+                    "type": "string"
+                },
+                "ruleId": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "suspectedSpam": {
+                    "type": "boolean"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.ReasonListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.ReasonOptionResponse"
+                    }
+                }
+            }
+        },
+        "mercadolivre.ReasonOptionResponse": {
+            "type": "object",
+            "properties": {
+                "actionable": {
+                    "type": "boolean"
+                },
+                "capAvailable": {
+                    "type": "integer"
+                },
+                "charLimit": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "templates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.ReasonTemplateResponse"
+                    }
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.ReasonTemplateResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "vars": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.ReasonVarResponse"
+                    }
+                }
+            }
+        },
+        "mercadolivre.ReasonVarRequest": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "integer"
+                }
+            }
+        },
+        "mercadolivre.ReasonVarResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.ResponseTimeResponse": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "total": {
+                    "$ref": "#/definitions/mercadolivre.ResponseTimeSlotResponse"
+                },
+                "weekdaysExtraHours": {
+                    "$ref": "#/definitions/mercadolivre.ResponseTimeSlotResponse"
+                },
+                "weekdaysWorkingHours": {
+                    "$ref": "#/definitions/mercadolivre.ResponseTimeSlotResponse"
+                },
+                "weekend": {
+                    "$ref": "#/definitions/mercadolivre.ResponseTimeSlotResponse"
+                }
+            }
+        },
+        "mercadolivre.ResponseTimeSlotResponse": {
+            "type": "object",
+            "properties": {
+                "minutes": {
+                    "type": "integer"
+                },
+                "salesPercentIncrease": {
+                    "type": "number"
+                }
+            }
+        },
+        "mercadolivre.SendReasonRequest": {
+            "type": "object",
+            "properties": {
+                "optionId": {
+                    "type": "string"
+                },
+                "templateId": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "vars": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/mercadolivre.ReasonVarRequest"
+                    }
+                }
+            }
+        },
+        "mercadolivre.SendReasonResponse": {
+            "type": "object",
+            "properties": {
+                "providerMessageId": {
+                    "type": "string"
+                }
+            }
+        },
+        "mercadolivre.UpdateAccountRequest": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "automationDisclosure": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
                 }
             }
         },
@@ -50732,7 +58853,6 @@ const docTemplate = `{
         "report.FailureCode": {
             "type": "string",
             "enum": [
-                "forbidden",
                 "unknown_kind",
                 "unsupported_format",
                 "too_many_rows",
@@ -50742,10 +58862,10 @@ const docTemplate = `{
                 "source_unavailable",
                 "cancelled",
                 "workspace_required",
-                "empty_result"
+                "empty_result",
+                "forbidden"
             ],
             "x-enum-varnames": [
-                "FailureForbidden",
                 "FailureUnknownKind",
                 "FailureUnsupported",
                 "FailureTooManyRows",
@@ -50755,7 +58875,8 @@ const docTemplate = `{
                 "FailureSourceFailed",
                 "FailureCancelled",
                 "FailureWorkspaceEmpty",
-                "FailureEmptyResult"
+                "FailureEmptyResult",
+                "FailureForbidden"
             ]
         },
         "report.Format": {
@@ -50833,18 +58954,22 @@ const docTemplate = `{
         "report.Kind": {
             "type": "string",
             "enum": [
-                "leads",
                 "attendance_overview",
                 "conversation_entries",
                 "balance_transactions",
-                "opportunities"
+                "opportunities",
+                "leads",
+                "whatsapp_dispatch",
+                "whatsapp_form_responses"
             ],
             "x-enum-varnames": [
-                "KindLeads",
                 "KindAttendanceOverview",
                 "KindConversationEntries",
                 "KindBalanceTransactions",
-                "KindOpportunities"
+                "KindOpportunities",
+                "KindLeads",
+                "KindWhatsAppDispatch",
+                "KindWhatsAppFormResponses"
             ]
         },
         "report.KindDescriptor": {
@@ -50918,6 +59043,7 @@ const docTemplate = `{
                 "code": {
                     "type": "string"
                 },
+                "details": {},
                 "error": {
                     "type": "boolean"
                 },
@@ -51380,7 +59506,9 @@ const docTemplate = `{
                 "telegram",
                 "unofficial_whatsapp",
                 "facebook",
-                "webchat"
+                "webchat",
+                "mercadolivre",
+                "tiktok"
             ],
             "x-enum-varnames": [
                 "EntryTypeWhatsApp",
@@ -51388,7 +59516,9 @@ const docTemplate = `{
                 "EntryTypeTelegram",
                 "EntryTypeUnofficialWhatsApp",
                 "EntryTypeFacebook",
-                "EntryTypeWebchat"
+                "EntryTypeWebchat",
+                "EntryTypeMercadoLivre",
+                "EntryTypeTikTok"
             ]
         },
         "shared.QualityLevel": {
@@ -52018,7 +60148,7 @@ const docTemplate = `{
                 },
                 "userAgent": {
                     "type": "string",
-                    "example": "Vozko"
+                    "example": "MinhaMarca"
                 }
             }
         },
@@ -53003,6 +61133,485 @@ const docTemplate = `{
                 }
             }
         },
+        "teamchathttp.AddMembersRequest": {
+            "type": "object",
+            "properties": {
+                "user_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "teamchathttp.CreateGroupRequest": {
+            "type": "object",
+            "properties": {
+                "member_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Vendas"
+                }
+            }
+        },
+        "teamchathttp.EditRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "Pode assumir o cliente da loja 4?"
+                }
+            }
+        },
+        "teamchathttp.MessageEnvelope": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "$ref": "#/definitions/teamchatview.Message"
+                }
+            }
+        },
+        "teamchathttp.MessageListResponse": {
+            "type": "object",
+            "properties": {
+                "has_more": {
+                    "type": "boolean"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/teamchatview.Message"
+                    }
+                }
+            }
+        },
+        "teamchathttp.MuteRequest": {
+            "type": "object",
+            "properties": {
+                "muted": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "teamchathttp.OpenDirectRequest": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "string",
+                    "example": "0e9d8c7b-6a5f-4e3d-2c1b-0a9f8e7d6c5b"
+                }
+            }
+        },
+        "teamchathttp.PeopleResponse": {
+            "type": "object",
+            "properties": {
+                "people": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/teamchatview.Person"
+                    }
+                }
+            }
+        },
+        "teamchathttp.ReadRequest": {
+            "type": "object",
+            "properties": {
+                "seq": {
+                    "type": "integer",
+                    "example": 42
+                }
+            }
+        },
+        "teamchathttp.ReadResponse": {
+            "type": "object",
+            "properties": {
+                "last_read_seq": {
+                    "type": "integer",
+                    "example": 42
+                }
+            }
+        },
+        "teamchathttp.RenameRequest": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "example": "Vendas Sul"
+                }
+            }
+        },
+        "teamchathttp.RescheduleRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "send_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "teamchathttp.ScheduleRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "Lembrete: reunião às 15h"
+                },
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reply_to_id": {
+                    "type": "string"
+                },
+                "send_at": {
+                    "type": "string",
+                    "example": "2026-10-20T15:00:00Z"
+                }
+            }
+        },
+        "teamchathttp.ScheduledEnvelope": {
+            "type": "object",
+            "properties": {
+                "scheduled": {
+                    "$ref": "#/definitions/teamchatview.Scheduled"
+                }
+            }
+        },
+        "teamchathttp.ScheduledListResponse": {
+            "type": "object",
+            "properties": {
+                "scheduled": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/teamchatview.Scheduled"
+                    }
+                }
+            }
+        },
+        "teamchathttp.SendRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "@Carla pode assumir o cliente da loja 3?"
+                },
+                "client_id": {
+                    "type": "string",
+                    "example": "3f1c9a52-1e0b-4d6f-8f0e-2a7c4b9d1e33"
+                },
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reply_to_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "teamchathttp.SummaryResponse": {
+            "type": "object",
+            "properties": {
+                "unread_messages": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "unread_threads": {
+                    "type": "integer",
+                    "example": 2
+                }
+            }
+        },
+        "teamchathttp.ThreadEnvelope": {
+            "type": "object",
+            "properties": {
+                "thread": {
+                    "$ref": "#/definitions/teamchatview.Thread"
+                }
+            }
+        },
+        "teamchathttp.ThreadListResponse": {
+            "type": "object",
+            "properties": {
+                "next": {
+                    "type": "string",
+                    "example": "MjAyNi0xMC0xOVQxMjowMDowMFp8OGEzYw"
+                },
+                "threads": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/teamchatview.Thread"
+                    }
+                }
+            }
+        },
+        "teamchatview.Me": {
+            "type": "object",
+            "properties": {
+                "last_read_seq": {
+                    "type": "integer",
+                    "example": 40
+                },
+                "muted": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "member"
+                    ],
+                    "example": "admin"
+                }
+            }
+        },
+        "teamchatview.Message": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "type": "string",
+                    "example": "0e9d8c7b-6a5f-4e3d-2c1b-0a9f8e7d6c5b"
+                },
+                "author_name": {
+                    "type": "string",
+                    "example": "Carla"
+                },
+                "body": {
+                    "type": "string",
+                    "example": "Pode assumir o cliente da loja 3?"
+                },
+                "client_id": {
+                    "type": "string",
+                    "example": "3f1c9a52-1e0b-4d6f-8f0e-2a7c4b9d1e33"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-10-19T12:00:00Z"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "edited_at": {
+                    "type": "string"
+                },
+                "event": {
+                    "type": "string",
+                    "enum": [
+                        "created",
+                        "renamed",
+                        "members_added",
+                        "member_removed",
+                        "member_left"
+                    ],
+                    "example": "members_added"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "5b8f7a0e-2d7c-4f6e-9a51-0c3b7e2f9d10"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "text",
+                        "system"
+                    ],
+                    "example": "text"
+                },
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reply_to_id": {
+                    "type": "string"
+                },
+                "seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "subject_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "thread_id": {
+                    "type": "string",
+                    "example": "8a3c2f4e-1b5d-4c6a-9e7f-2d1b3c4a5e6f"
+                }
+            }
+        },
+        "teamchatview.Participant": {
+            "type": "object",
+            "properties": {
+                "last_read_seq": {
+                    "type": "integer",
+                    "example": 41
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Carla"
+                },
+                "picture": {
+                    "type": "string",
+                    "example": "https://cdn.exemplo.com/carla.png"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "member"
+                    ],
+                    "example": "member"
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "0e9d8c7b-6a5f-4e3d-2c1b-0a9f8e7d6c5b"
+                }
+            }
+        },
+        "teamchatview.Person": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "Carla"
+                },
+                "picture": {
+                    "type": "string",
+                    "example": "https://cdn.exemplo.com/carla.png"
+                },
+                "user_id": {
+                    "type": "string",
+                    "example": "0e9d8c7b-6a5f-4e3d-2c1b-0a9f8e7d6c5b"
+                }
+            }
+        },
+        "teamchatview.Scheduled": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "Lembrete: reunião às 15h"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "failure_reason": {
+                    "type": "string",
+                    "enum": [
+                        "not_member",
+                        "recipient_unavailable",
+                        "left_workspace",
+                        "thread_unavailable"
+                    ],
+                    "example": "recipient_unavailable"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "c4a1d2e3-5f6a-4b7c-8d9e-0f1a2b3c4d5e"
+                },
+                "mentions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reply_to_id": {
+                    "type": "string"
+                },
+                "send_at": {
+                    "type": "string",
+                    "example": "2026-10-20T15:00:00Z"
+                },
+                "sent_message_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "pending",
+                        "sent",
+                        "canceled",
+                        "failed"
+                    ],
+                    "example": "pending"
+                },
+                "thread_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "teamchatview.Thread": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string",
+                    "example": "2026-10-01T09:00:00Z"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "8a3c2f4e-1b5d-4c6a-9e7f-2d1b3c4a5e6f"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "direct",
+                        "group"
+                    ],
+                    "example": "group"
+                },
+                "last_message": {
+                    "$ref": "#/definitions/teamchatview.Message"
+                },
+                "last_message_at": {
+                    "type": "string",
+                    "example": "2026-10-19T12:00:00Z"
+                },
+                "last_seq": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "me": {
+                    "$ref": "#/definitions/teamchatview.Me"
+                },
+                "members": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/teamchatview.Participant"
+                    }
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Vendas"
+                },
+                "unread": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "unread_mentions": {
+                    "type": "integer",
+                    "example": 1
+                }
+            }
+        },
         "template.NamedParamExample": {
             "type": "object",
             "properties": {
@@ -53079,6 +61688,15 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "example": {
+                    "type": "string"
+                },
+                "flowAction": {
+                    "type": "string"
+                },
+                "flowId": {
+                    "type": "string"
+                },
+                "navigateScreen": {
                     "type": "string"
                 },
                 "otpType": {
@@ -53268,6 +61886,320 @@ const docTemplate = `{
                 }
             }
         },
+        "tiktok.AccountResponse": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "automationDisclosure": {
+                    "type": "string"
+                },
+                "avatarUrl": {
+                    "type": "string"
+                },
+                "capabilities": {
+                    "$ref": "#/definitions/tiktok.CapabilitiesResponse"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoMemory": {
+                    "type": "boolean"
+                },
+                "enableAutoStaging": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "grantedScopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hasAdvancedAccess": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isBusinessAccount": {
+                    "type": "boolean"
+                },
+                "lastHealthCheckAt": {
+                    "type": "string"
+                },
+                "openId": {
+                    "type": "string"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "purgeAfter": {
+                    "type": "string"
+                },
+                "reconnectBy": {
+                    "type": "string"
+                },
+                "reconnectSoon": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "statusReason": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                },
+                "webhooksHealthy": {
+                    "type": "boolean"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.CapabilitiesResponse": {
+            "type": "object",
+            "properties": {
+                "canManageComments": {
+                    "type": "boolean"
+                },
+                "canManageInboxProfile": {
+                    "type": "boolean"
+                },
+                "canReadComments": {
+                    "type": "boolean"
+                },
+                "canReadVideos": {
+                    "type": "boolean"
+                },
+                "canReceiveMessages": {
+                    "type": "boolean"
+                },
+                "canSendMessages": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "tiktok.CommentPageResponse": {
+            "type": "object",
+            "properties": {
+                "comments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tiktok.CommentResponse"
+                    }
+                },
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.CommentResponse": {
+            "type": "object",
+            "properties": {
+                "authorDisplayName": {
+                    "type": "string"
+                },
+                "authorUsername": {
+                    "type": "string"
+                },
+                "canHide": {
+                    "type": "boolean"
+                },
+                "canLike": {
+                    "type": "boolean"
+                },
+                "canReply": {
+                    "type": "boolean"
+                },
+                "commentId": {
+                    "type": "string"
+                },
+                "commentedAt": {
+                    "type": "string"
+                },
+                "contactId": {
+                    "type": "string"
+                },
+                "imageUrl": {
+                    "type": "string"
+                },
+                "isOurs": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "likedByUs": {
+                    "type": "boolean"
+                },
+                "likes": {
+                    "type": "integer"
+                },
+                "parentCommentId": {
+                    "type": "string"
+                },
+                "replies": {
+                    "type": "integer"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "videoId": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.ConnectStartResponse": {
+            "type": "object",
+            "properties": {
+                "authorizeUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.DisconnectResponse": {
+            "type": "object",
+            "properties": {
+                "purgeAfter": {
+                    "type": "string"
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.ReplyRequest": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.UpdateAccountRequest": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "automationDisclosure": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoMemory": {
+                    "type": "boolean"
+                },
+                "enableAutoStaging": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "tiktok.VideoPageResponse": {
+            "type": "object",
+            "properties": {
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "nextCursor": {
+                    "type": "string"
+                },
+                "videos": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/tiktok.VideoResponse"
+                    }
+                }
+            }
+        },
+        "tiktok.VideoResponse": {
+            "type": "object",
+            "properties": {
+                "caption": {
+                    "type": "string"
+                },
+                "comments": {
+                    "type": "integer"
+                },
+                "embedUrl": {
+                    "type": "string"
+                },
+                "isAd": {
+                    "type": "boolean"
+                },
+                "itemId": {
+                    "type": "string"
+                },
+                "likes": {
+                    "type": "integer"
+                },
+                "mediaType": {
+                    "type": "string"
+                },
+                "postedAt": {
+                    "type": "string"
+                },
+                "shareUrl": {
+                    "type": "string"
+                },
+                "shares": {
+                    "type": "integer"
+                },
+                "thumbnailUrl": {
+                    "type": "string"
+                },
+                "views": {
+                    "type": "integer"
+                }
+            }
+        },
         "unofficial_whatsapp.GroupRole": {
             "type": "string",
             "enum": [
@@ -53330,6 +62262,17 @@ const docTemplate = `{
                 },
                 "style": {
                     "type": "string"
+                }
+            }
+        },
+        "unofficial_whatsapp.addGroupNumbersRequest": {
+            "type": "object",
+            "properties": {
+                "instanceIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -53397,6 +62340,279 @@ const docTemplate = `{
                 }
             }
         },
+        "unofficial_whatsapp.campaignDTO": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "aiModel": {
+                    "type": "string"
+                },
+                "archived": {
+                    "type": "boolean"
+                },
+                "audience": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "dailyCap": {
+                    "type": "integer"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "enableAgentResponses": {
+                    "type": "boolean"
+                },
+                "enableAnalysis": {
+                    "type": "boolean"
+                },
+                "enableAutoMemory": {
+                    "type": "boolean"
+                },
+                "enableAutoStaging": {
+                    "type": "boolean"
+                },
+                "enableWorkflow": {
+                    "type": "boolean"
+                },
+                "estimate": {
+                    "$ref": "#/definitions/unofficial_whatsapp.campaignEstimateDTO"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "instanceId": {
+                    "type": "string"
+                },
+                "instanceLabel": {
+                    "type": "string"
+                },
+                "instanceSessionLive": {
+                    "type": "boolean"
+                },
+                "instanceStatus": {
+                    "type": "string"
+                },
+                "message": {
+                    "$ref": "#/definitions/unofficial_whatsapp.MessageSpecDTO"
+                },
+                "metrics": {
+                    "$ref": "#/definitions/campaign.Metrics"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pipelineId": {
+                    "type": "string"
+                },
+                "scheduledStart": {
+                    "type": "string"
+                },
+                "sendDelayMaxMs": {
+                    "type": "integer"
+                },
+                "sendDelayMinMs": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "statusReason": {
+                    "type": "string"
+                },
+                "targetNames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "unofficial_whatsapp.campaignEntryDTO": {
+            "type": "object",
+            "properties": {
+                "automationEnabled": {
+                    "type": "boolean"
+                },
+                "campaignId": {
+                    "type": "string"
+                },
+                "conversationId": {
+                    "type": "string"
+                },
+                "conversationStatus": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "errorCode": {
+                    "type": "integer"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isGroup": {
+                    "type": "boolean"
+                },
+                "jid": {
+                    "type": "string"
+                },
+                "lastMessageAt": {
+                    "type": "string"
+                },
+                "leadId": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "name": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "string"
+                },
+                "senderInstanceId": {
+                    "type": "string"
+                },
+                "senderLabel": {
+                    "type": "string"
+                },
+                "sentAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "variables": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "variantIndex": {
+                    "type": "integer"
+                }
+            }
+        },
+        "unofficial_whatsapp.campaignEstimateDTO": {
+            "type": "object",
+            "properties": {
+                "pending": {
+                    "type": "integer"
+                },
+                "seconds": {
+                    "type": "integer"
+                },
+                "senders": {
+                    "type": "integer"
+                },
+                "unsendable": {
+                    "type": "integer"
+                }
+            }
+        },
+        "unofficial_whatsapp.campaignEstimateDraftDTO": {
+            "type": "object",
+            "properties": {
+                "estimate": {
+                    "$ref": "#/definitions/unofficial_whatsapp.campaignEstimateDTO"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/unofficial_whatsapp.campaignGroupSendersDTO"
+                    }
+                }
+            }
+        },
+        "unofficial_whatsapp.campaignEstimatePayload": {
+            "type": "object",
+            "properties": {
+                "audience": {
+                    "type": "string",
+                    "enum": [
+                        "leads",
+                        "groups"
+                    ]
+                },
+                "groupJids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "instanceId": {
+                    "type": "string"
+                },
+                "sendDelayMaxMs": {
+                    "type": "integer"
+                },
+                "sendDelayMinMs": {
+                    "type": "integer"
+                },
+                "targets": {
+                    "type": "integer"
+                }
+            }
+        },
+        "unofficial_whatsapp.campaignGroupSendersDTO": {
+            "type": "object",
+            "properties": {
+                "block": {
+                    "type": "string",
+                    "enum": [
+                        "not_in_group",
+                        "cannot_post",
+                        "offline"
+                    ]
+                },
+                "jid": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "senders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/unofficial_whatsapp.campaignSenderDTO"
+                    }
+                }
+            }
+        },
+        "unofficial_whatsapp.campaignSenderDTO": {
+            "type": "object",
+            "properties": {
+                "instanceId": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
         "unofficial_whatsapp.createWorkspaceGroupRequest": {
             "type": "object",
             "properties": {
@@ -53434,6 +62650,9 @@ const docTemplate = `{
         "unofficial_whatsapp.joinWorkspaceGroupRequest": {
             "type": "object",
             "properties": {
+                "category": {
+                    "type": "string"
+                },
                 "follow": {
                     "type": "boolean"
                 },
@@ -54021,6 +63240,9 @@ const docTemplate = `{
                 "attempts": {
                     "type": "integer"
                 },
+                "category": {
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -54086,6 +63308,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "left30d": {
+                    "type": "integer"
+                },
+                "oursRemoved": {
+                    "type": "integer"
+                },
+                "removed30d": {
                     "type": "integer"
                 },
                 "withLead": {
@@ -54156,11 +63384,13 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "active",
-                "left"
+                "left",
+                "removed"
             ],
             "x-enum-varnames": [
                 "MemberActive",
-                "MemberLeft"
+                "MemberLeft",
+                "MemberRemoved"
             ]
         },
         "unofficial_whatsapp_group.MembershipStat": {
@@ -54943,6 +64173,9 @@ const docTemplate = `{
                 "group": {
                     "$ref": "#/definitions/unofficial_whatsapp_group.Group"
                 },
+                "groupCreatedAt": {
+                    "type": "string"
+                },
                 "growth": {
                     "type": "array",
                     "items": {
@@ -54981,6 +64214,94 @@ const docTemplate = `{
                 }
             }
         },
+        "unofficial_whatsapp_group_usecase.GroupMessage": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "$ref": "#/definitions/conversation.MessageChannel"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deliveryStatus": {
+                    "$ref": "#/definitions/conversation.DeliveryStatus"
+                },
+                "direction": {
+                    "$ref": "#/definitions/conversation.MessageHistoryDirection"
+                },
+                "editedAt": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "media": {
+                    "$ref": "#/definitions/conversation.AttachedMedia"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "mediaType": {
+                    "$ref": "#/definitions/conversation.MediaType"
+                },
+                "messageType": {
+                    "$ref": "#/definitions/conversation.MessageType"
+                },
+                "metadata": {
+                    "type": "object"
+                },
+                "ourTeam": {
+                    "type": "boolean"
+                },
+                "read": {
+                    "type": "boolean"
+                },
+                "replyToMessageId": {
+                    "type": "string"
+                },
+                "retractedAt": {
+                    "type": "string"
+                },
+                "senderAvatar": {
+                    "type": "string"
+                },
+                "senderName": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "transcript": {
+                    "type": "string"
+                }
+            }
+        },
+        "unofficial_whatsapp_group_usecase.GroupMessagesPage": {
+            "type": "object",
+            "properties": {
+                "conversationId": {
+                    "type": "string"
+                },
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/unofficial_whatsapp_group_usecase.GroupMessage"
+                    }
+                },
+                "nextBefore": {
+                    "type": "string"
+                }
+            }
+        },
         "unofficial_whatsapp_group_usecase.GroupRow": {
             "type": "object",
             "properties": {
@@ -54989,6 +64310,9 @@ const docTemplate = `{
                 },
                 "group": {
                     "$ref": "#/definitions/unofficial_whatsapp_group.Group"
+                },
+                "groupCreatedAt": {
+                    "type": "string"
                 },
                 "hasAnalysis": {
                     "type": "boolean"
@@ -55513,6 +64837,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/webchat.OptionResponse"
                     }
                 },
+                "quote": {
+                    "$ref": "#/definitions/webchat.QuoteResponse"
+                },
                 "text": {
                     "type": "string"
                 }
@@ -55575,6 +64902,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "welcomeTitle": {
+                    "type": "string"
+                }
+            }
+        },
+        "webchat.QuoteResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "text": {
                     "type": "string"
                 }
             }
@@ -56126,6 +65464,1564 @@ const docTemplate = `{
                 }
             }
         },
+        "whatsappform.Answer": {
+            "type": "object",
+            "properties": {
+                "checked": {
+                    "type": "boolean"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.File"
+                    }
+                },
+                "key": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/whatsappform.FieldKind"
+                },
+                "masked": {
+                    "type": "boolean"
+                },
+                "optionIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "range": {
+                    "$ref": "#/definitions/whatsappform.DateRange"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.AnswerProblem": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Answers": {
+            "type": "object",
+            "properties": {
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.AnswerProblem"
+                    }
+                },
+                "unknown": {
+                    "type": "object"
+                },
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/whatsappform.Answer"
+                    }
+                }
+            }
+        },
+        "whatsappform.ApplyReport": {
+            "type": "object",
+            "properties": {
+                "changed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "consent": {
+                    "type": "string"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.FileOutcome"
+                    }
+                },
+                "refused": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "resumed": {
+                    "type": "string"
+                },
+                "triggered": {
+                    "type": "boolean"
+                },
+                "written": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "whatsappform.ApplyStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "applied",
+                "partial",
+                "skipped"
+            ],
+            "x-enum-varnames": [
+                "ApplyPending",
+                "ApplyApplied",
+                "ApplyPartial",
+                "ApplySkipped"
+            ]
+        },
+        "whatsappform.Binding": {
+            "type": "object",
+            "properties": {
+                "customFieldKey": {
+                    "type": "string"
+                },
+                "target": {
+                    "$ref": "#/definitions/whatsappform.BindingTarget"
+                }
+            }
+        },
+        "whatsappform.BindingTarget": {
+            "type": "string",
+            "enum": [
+                "name",
+                "email",
+                "birth_date",
+                "address.zip",
+                "address.city",
+                "address.state",
+                "custom_field",
+                "consent_whatsapp"
+            ],
+            "x-enum-varnames": [
+                "BindName",
+                "BindEmail",
+                "BindBirthDate",
+                "BindAddressZip",
+                "BindAddressCity",
+                "BindAddressState",
+                "BindCustomField",
+                "BindWhatsAppConsent"
+            ]
+        },
+        "whatsappform.Block": {
+            "type": "object",
+            "properties": {
+                "display": {
+                    "$ref": "#/definitions/whatsappform.Display"
+                },
+                "field": {
+                    "$ref": "#/definitions/whatsappform.Field"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "visibleIf": {
+                    "$ref": "#/definitions/whatsappform.Condition"
+                }
+            }
+        },
+        "whatsappform.Branch": {
+            "type": "object",
+            "properties": {
+                "next": {
+                    "type": "string"
+                },
+                "optionId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Category": {
+            "type": "string",
+            "enum": [
+                "SIGN_UP",
+                "SIGN_IN",
+                "APPOINTMENT_BOOKING",
+                "LEAD_GENERATION",
+                "CONTACT_US",
+                "CUSTOMER_SUPPORT",
+                "SURVEY",
+                "OTHER"
+            ],
+            "x-enum-varnames": [
+                "CategorySignUp",
+                "CategorySignIn",
+                "CategoryAppointmentBooking",
+                "CategoryLeadGeneration",
+                "CategoryContactUs",
+                "CategoryCustomerSupport",
+                "CategorySurvey",
+                "CategoryOther"
+            ]
+        },
+        "whatsappform.Condition": {
+            "type": "object",
+            "properties": {
+                "fieldKey": {
+                    "type": "string"
+                },
+                "negate": {
+                    "type": "boolean"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.DateRange": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.DayStat": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "string"
+                },
+                "responses": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                }
+            }
+        },
+        "whatsappform.Display": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "$ref": "#/definitions/whatsappform.DisplayKind"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.DisplayKind": {
+            "type": "string",
+            "enum": [
+                "heading",
+                "subheading",
+                "paragraph",
+                "caption",
+                "image",
+                "link"
+            ],
+            "x-enum-varnames": [
+                "DisplayHeading",
+                "DisplaySubheading",
+                "DisplayParagraph",
+                "DisplayCaption",
+                "DisplayImage",
+                "DisplayLink"
+            ]
+        },
+        "whatsappform.Document": {
+            "type": "object",
+            "properties": {
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Category"
+                    }
+                },
+                "schema": {
+                    "type": "integer"
+                },
+                "screens": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Screen"
+                    }
+                }
+            }
+        },
+        "whatsappform.Field": {
+            "type": "object",
+            "properties": {
+                "binding": {
+                    "$ref": "#/definitions/whatsappform.Binding"
+                },
+                "help": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/whatsappform.FieldKind"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "max": {
+                    "type": "integer"
+                },
+                "maxDate": {
+                    "type": "string"
+                },
+                "mimeTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "min": {
+                    "type": "integer"
+                },
+                "minDate": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Option"
+                    }
+                },
+                "pattern": {
+                    "type": "string"
+                },
+                "question": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "sensitive": {
+                    "type": "boolean"
+                },
+                "termsUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.FieldKind": {
+            "type": "string",
+            "enum": [
+                "short_text",
+                "email",
+                "phone",
+                "number",
+                "long_text",
+                "single_choice_radio",
+                "single_choice_dropdown",
+                "multi_choice_checkbox",
+                "multi_choice_chips",
+                "date",
+                "date_range",
+                "opt_in",
+                "photo",
+                "document"
+            ],
+            "x-enum-varnames": [
+                "FieldShortText",
+                "FieldEmail",
+                "FieldPhone",
+                "FieldNumber",
+                "FieldLongText",
+                "FieldRadio",
+                "FieldDropdown",
+                "FieldCheckbox",
+                "FieldMultiChips",
+                "FieldDate",
+                "FieldDateRange",
+                "FieldOptIn",
+                "FieldPhoto",
+                "FieldDocument"
+            ]
+        },
+        "whatsappform.File": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sha256": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.FileOutcome": {
+            "type": "object",
+            "properties": {
+                "fileId": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "mediaId": {
+                    "type": "string"
+                },
+                "problem": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Form": {
+            "type": "object",
+            "properties": {
+                "archivedAt": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "draftVersionId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/whatsappform.FormKind"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "publishedVersionId": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.FormKind": {
+            "type": "string",
+            "enum": [
+                "built",
+                "external"
+            ],
+            "x-enum-varnames": [
+                "KindBuilt",
+                "KindExternal"
+            ]
+        },
+        "whatsappform.FormSummary": {
+            "type": "object",
+            "properties": {
+                "form": {
+                    "$ref": "#/definitions/whatsappform.Form"
+                },
+                "lastResponseAt": {
+                    "type": "string"
+                },
+                "publications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.PublicationBrief"
+                    }
+                },
+                "responses": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                }
+            }
+        },
+        "whatsappform.Limits": {
+            "type": "object",
+            "properties": {
+                "componentsPerScreen": {
+                    "type": "integer"
+                },
+                "displayText": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "documentMimeTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "help": {
+                    "type": "integer"
+                },
+                "imageBytes": {
+                    "type": "integer"
+                },
+                "imagesPerScreen": {
+                    "type": "integer"
+                },
+                "labels": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "linksPerScreen": {
+                    "type": "integer"
+                },
+                "optInsPerScreen": {
+                    "type": "integer"
+                },
+                "optionDescription": {
+                    "type": "integer"
+                },
+                "optionTitle": {
+                    "type": "integer"
+                },
+                "options": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "pickersPerScreen": {
+                    "type": "integer"
+                },
+                "routeBranches": {
+                    "type": "integer"
+                },
+                "submitLabel": {
+                    "type": "integer"
+                },
+                "textAreaMaxChars": {
+                    "type": "integer"
+                },
+                "textInputMaxChars": {
+                    "type": "integer"
+                },
+                "uploadSizeKb": {
+                    "type": "integer"
+                },
+                "uploads": {
+                    "type": "integer"
+                }
+            }
+        },
+        "whatsappform.MatchResult": {
+            "type": "string",
+            "enum": [
+                "token",
+                "context",
+                "unmatched_no_token",
+                "unmatched_unknown_token",
+                "unmatched_sender"
+            ],
+            "x-enum-varnames": [
+                "MatchByToken",
+                "MatchByContext",
+                "UnmatchedNoToken",
+                "UnmatchedUnknownToken",
+                "UnmatchedSender"
+            ]
+        },
+        "whatsappform.Option": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.OriginStat": {
+            "type": "object",
+            "properties": {
+                "origin": {
+                    "$ref": "#/definitions/whatsappform.SendOrigin"
+                },
+                "responses": {
+                    "type": "integer"
+                },
+                "sent": {
+                    "type": "integer"
+                }
+            }
+        },
+        "whatsappform.Problem": {
+            "type": "object",
+            "properties": {
+                "block": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "property": {
+                    "type": "string"
+                },
+                "screen": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Publication": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "formId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "metaFlowId": {
+                    "type": "string"
+                },
+                "metaName": {
+                    "type": "string"
+                },
+                "metaWabaId": {
+                    "type": "string"
+                },
+                "previewExpiresAt": {
+                    "type": "string"
+                },
+                "previewUrl": {
+                    "type": "string"
+                },
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Problem"
+                    }
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/whatsappform.PublicationStatus"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "versionId": {
+                    "type": "string"
+                },
+                "wabaId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.PublicationBrief": {
+            "type": "object",
+            "properties": {
+                "metaWabaId": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/whatsappform.PublicationStatus"
+                },
+                "versionId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.PublicationStatus": {
+            "type": "string",
+            "enum": [
+                "creating",
+                "draft",
+                "published",
+                "throttled",
+                "blocked",
+                "deprecated",
+                "failed"
+            ],
+            "x-enum-varnames": [
+                "PublicationCreating",
+                "PublicationDraft",
+                "PublicationPublished",
+                "PublicationThrottled",
+                "PublicationBlocked",
+                "PublicationDeprecated",
+                "PublicationFailed"
+            ]
+        },
+        "whatsappform.Response": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "$ref": "#/definitions/whatsappform.Answers"
+                },
+                "applyStatus": {
+                    "$ref": "#/definitions/whatsappform.ApplyStatus"
+                },
+                "businessPhoneId": {
+                    "type": "string"
+                },
+                "campaignId": {
+                    "type": "string"
+                },
+                "contactNumber": {
+                    "type": "string"
+                },
+                "conversationId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "formId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "inboundMessageId": {
+                    "type": "string"
+                },
+                "leadId": {
+                    "type": "string"
+                },
+                "match": {
+                    "$ref": "#/definitions/whatsappform.MatchResult"
+                },
+                "origin": {
+                    "$ref": "#/definitions/whatsappform.SendOrigin"
+                },
+                "report": {
+                    "$ref": "#/definitions/whatsappform.ApplyReport"
+                },
+                "sendId": {
+                    "type": "string"
+                },
+                "submittedAt": {
+                    "type": "string"
+                },
+                "versionId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Route": {
+            "type": "object",
+            "properties": {
+                "branchOn": {
+                    "type": "string"
+                },
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Branch"
+                    }
+                },
+                "next": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Screen": {
+            "type": "object",
+            "properties": {
+                "blocks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Block"
+                    }
+                },
+                "key": {
+                    "type": "string"
+                },
+                "route": {
+                    "$ref": "#/definitions/whatsappform.Route"
+                },
+                "submitLabel": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Send": {
+            "type": "object",
+            "properties": {
+                "businessPhoneId": {
+                    "type": "string"
+                },
+                "contactNumber": {
+                    "type": "string"
+                },
+                "conversationId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "failureReason": {
+                    "type": "string"
+                },
+                "formId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "leadId": {
+                    "type": "string"
+                },
+                "messageId": {
+                    "type": "string"
+                },
+                "origin": {
+                    "$ref": "#/definitions/whatsappform.SendOrigin"
+                },
+                "originRef": {
+                    "type": "string"
+                },
+                "publicationId": {
+                    "type": "string"
+                },
+                "respondedAt": {
+                    "type": "string"
+                },
+                "sentAt": {
+                    "type": "string"
+                },
+                "sentBy": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/whatsappform.SendStatus"
+                },
+                "templateId": {
+                    "type": "string"
+                },
+                "versionId": {
+                    "type": "string"
+                },
+                "workflowRunId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.SendCopy": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string"
+                },
+                "cta": {
+                    "type": "string"
+                },
+                "footer": {
+                    "type": "string"
+                },
+                "header": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.SendOrigin": {
+            "type": "string",
+            "enum": [
+                "inbox",
+                "template_start",
+                "template_scheduled",
+                "template_bulk",
+                "template",
+                "campaign",
+                "workflow",
+                "elo"
+            ],
+            "x-enum-varnames": [
+                "OriginInbox",
+                "OriginTemplateStart",
+                "OriginTemplateScheduled",
+                "OriginTemplateBulk",
+                "OriginTemplate",
+                "OriginCampaign",
+                "OriginWorkflow",
+                "OriginElo"
+            ]
+        },
+        "whatsappform.SendStatus": {
+            "type": "string",
+            "enum": [
+                "prepared",
+                "sent",
+                "failed",
+                "responded"
+            ],
+            "x-enum-varnames": [
+                "SendPrepared",
+                "SendSent",
+                "SendFailed",
+                "SendResponded"
+            ]
+        },
+        "whatsappform.Starter": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "document": {
+                    "$ref": "#/definitions/whatsappform.Document"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappform.Stats": {
+            "type": "object",
+            "properties": {
+                "byDay": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.DayStat"
+                    }
+                },
+                "byOrigin": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.OriginStat"
+                    }
+                },
+                "delivered": {
+                    "type": "integer"
+                },
+                "medianSecondsToRespond": {
+                    "type": "number"
+                },
+                "read": {
+                    "type": "integer"
+                },
+                "responses": {
+                    "type": "integer"
+                },
+                "sends": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            }
+        },
+        "whatsappform.Version": {
+            "type": "object",
+            "properties": {
+                "compilerVersion": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdBy": {
+                    "type": "string"
+                },
+                "document": {
+                    "$ref": "#/definitions/whatsappform.Document"
+                },
+                "flowVersion": {
+                    "type": "string"
+                },
+                "formId": {
+                    "type": "string"
+                },
+                "hash": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "number": {
+                    "type": "integer"
+                },
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Problem"
+                    }
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.AutomationCreatedResponse": {
+            "type": "object",
+            "properties": {
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.AutomationResponse": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "use": {
+                    "type": "string",
+                    "enum": [
+                        "trigger",
+                        "node"
+                    ]
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.AutomationsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappformhttp.AutomationResponse"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.BindingOptionResponse": {
+            "type": "object",
+            "properties": {
+                "fieldKinds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.FieldKind"
+                    }
+                },
+                "target": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/whatsappform.BindingTarget"
+                        }
+                    ],
+                    "example": "email"
+                }
+            }
+        },
+        "whatsappformhttp.CheckRequest": {
+            "type": "object",
+            "properties": {
+                "document": {
+                    "$ref": "#/definitions/whatsappform.Document"
+                }
+            }
+        },
+        "whatsappformhttp.CreateRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "example": "Formulário dos anúncios de outubro"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Captação de lead"
+                },
+                "starter": {
+                    "type": "string",
+                    "enum": [
+                        "lead_capture",
+                        "appointment",
+                        "nps",
+                        "sign_up",
+                        "contact_us",
+                        "quote",
+                        "documents"
+                    ],
+                    "example": "lead_capture"
+                }
+            }
+        },
+        "whatsappformhttp.CustomFieldOptionResponse": {
+            "type": "object",
+            "properties": {
+                "fieldKinds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.FieldKind"
+                    }
+                },
+                "key": {
+                    "type": "string",
+                    "example": "plano"
+                },
+                "label": {
+                    "type": "string",
+                    "example": "Plano"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "type": {
+                    "type": "string",
+                    "example": "select"
+                }
+            }
+        },
+        "whatsappformhttp.DistributionResponse": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.DraftRequest": {
+            "type": "object",
+            "properties": {
+                "baseVersionId": {
+                    "type": "string",
+                    "example": "5d1c2b3a-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+                },
+                "document": {
+                    "$ref": "#/definitions/whatsappform.Document"
+                }
+            }
+        },
+        "whatsappformhttp.DraftResponse": {
+            "type": "object",
+            "properties": {
+                "draft": {
+                    "$ref": "#/definitions/whatsappform.Version"
+                }
+            }
+        },
+        "whatsappformhttp.FormDetailResponse": {
+            "type": "object",
+            "properties": {
+                "draft": {
+                    "$ref": "#/definitions/whatsappform.Version"
+                },
+                "form": {
+                    "$ref": "#/definitions/whatsappform.Form"
+                },
+                "publications": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Publication"
+                    }
+                },
+                "published": {
+                    "$ref": "#/definitions/whatsappform.Version"
+                }
+            }
+        },
+        "whatsappformhttp.FormListResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.FormSummary"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.FormRefResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.OptionsResponse": {
+            "type": "object",
+            "properties": {
+                "bindings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappformhttp.BindingOptionResponse"
+                    }
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Category"
+                    }
+                },
+                "customFields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappformhttp.CustomFieldOptionResponse"
+                    }
+                },
+                "displayKinds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.DisplayKind"
+                    }
+                },
+                "fieldKinds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.FieldKind"
+                    }
+                },
+                "flowJsonVersion": {
+                    "type": "string",
+                    "example": "7.3"
+                },
+                "limits": {
+                    "$ref": "#/definitions/whatsappform.Limits"
+                },
+                "starters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Starter"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.OutcomeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "whatsapp_form_provider_unsupported"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "metaWabaId": {
+                    "type": "string",
+                    "example": "104857629384756"
+                },
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Problem"
+                    }
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/whatsappform.PublicationStatus"
+                        }
+                    ],
+                    "example": "published"
+                }
+            }
+        },
+        "whatsappformhttp.PreviewResponse": {
+            "type": "object",
+            "properties": {
+                "expiresAt": {
+                    "type": "string"
+                },
+                "previewUrl": {
+                    "type": "string",
+                    "example": "https://business.facebook.com/wa/manage/flows/123/preview"
+                }
+            }
+        },
+        "whatsappformhttp.ProblemsResponse": {
+            "type": "object",
+            "properties": {
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Problem"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.PublishResponse": {
+            "type": "object",
+            "properties": {
+                "form": {
+                    "$ref": "#/definitions/whatsappformhttp.FormDetailResponse"
+                },
+                "outcomes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappformhttp.OutcomeResponse"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.RenameRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Captação de lead"
+                }
+            }
+        },
+        "whatsappformhttp.ResponseDetailResponse": {
+            "type": "object",
+            "properties": {
+                "form": {
+                    "$ref": "#/definitions/whatsappformhttp.FormRefResponse"
+                },
+                "leadName": {
+                    "type": "string"
+                },
+                "response": {
+                    "$ref": "#/definitions/whatsappform.Response"
+                },
+                "revealed": {
+                    "type": "boolean"
+                },
+                "version": {
+                    "$ref": "#/definitions/whatsappform.Version"
+                }
+            }
+        },
+        "whatsappformhttp.ResponseRowResponse": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "$ref": "#/definitions/whatsappform.Answers"
+                },
+                "applyStatus": {
+                    "$ref": "#/definitions/whatsappform.ApplyStatus"
+                },
+                "businessPhoneId": {
+                    "type": "string"
+                },
+                "campaignId": {
+                    "type": "string"
+                },
+                "contactNumber": {
+                    "type": "string"
+                },
+                "conversationId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "formId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "inboundMessageId": {
+                    "type": "string"
+                },
+                "leadId": {
+                    "type": "string"
+                },
+                "leadName": {
+                    "type": "string",
+                    "example": "Ana Souza"
+                },
+                "match": {
+                    "$ref": "#/definitions/whatsappform.MatchResult"
+                },
+                "origin": {
+                    "$ref": "#/definitions/whatsappform.SendOrigin"
+                },
+                "report": {
+                    "$ref": "#/definitions/whatsappform.ApplyReport"
+                },
+                "sendId": {
+                    "type": "string"
+                },
+                "submittedAt": {
+                    "type": "string"
+                },
+                "versionId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.ResponsesResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappformhttp.ResponseRowResponse"
+                    }
+                },
+                "next": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.SendRequest": {
+            "type": "object",
+            "properties": {
+                "copy": {
+                    "$ref": "#/definitions/whatsappform.SendCopy"
+                },
+                "formId": {
+                    "type": "string",
+                    "example": "0f8c2d1e-5b6a-4c3d-9e8f-7a6b5c4d3e2f"
+                }
+            }
+        },
+        "whatsappformhttp.SendableFormResponse": {
+            "type": "object",
+            "properties": {
+                "firstScreen": {
+                    "type": "string",
+                    "example": "SCREEN_A"
+                },
+                "formId": {
+                    "type": "string"
+                },
+                "metaFlowId": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "versionId": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.SendableResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappformhttp.SendableFormResponse"
+                    }
+                }
+            }
+        },
+        "whatsappformhttp.SendsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Send"
+                    }
+                },
+                "next": {
+                    "type": "string"
+                }
+            }
+        },
+        "whatsappformhttp.VersionsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/whatsappform.Version"
+                    }
+                }
+            }
+        },
         "whatsappoutreach.SendQuoteResponse": {
             "type": "object",
             "properties": {
@@ -56327,6 +67223,18 @@ const docTemplate = `{
                     "type": "string",
                     "example": "https://exemplo.com.br/promo"
                 },
+                "flowAction": {
+                    "type": "string",
+                    "example": "navigate"
+                },
+                "flowId": {
+                    "type": "string",
+                    "example": "1234567890"
+                },
+                "navigateScreen": {
+                    "type": "string",
+                    "example": "S_INICIO"
+                },
                 "otp_type": {
                     "type": "string",
                     "example": "COPY_CODE"
@@ -56427,6 +67335,1544 @@ const docTemplate = `{
                 "headerMediaUrl": {
                     "type": "string",
                     "example": "https://cdn.exemplo.com/cabecalho.jpg"
+                }
+            }
+        },
+        "workflow.ConversationRun": {
+            "type": "object",
+            "properties": {
+                "completedAt": {
+                    "type": "string"
+                },
+                "currentNodeId": {
+                    "type": "string"
+                },
+                "currentNodeName": {
+                    "type": "string"
+                },
+                "currentNodeType": {
+                    "$ref": "#/definitions/workflow.NodeType"
+                },
+                "durationMs": {
+                    "type": "integer"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "startedBy": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/workflow.RunStatus"
+                },
+                "triggerType": {
+                    "$ref": "#/definitions/workflow.TriggerType"
+                },
+                "waitReason": {
+                    "$ref": "#/definitions/workflow.WaitReason"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workflowName": {
+                    "type": "string"
+                },
+                "workflowVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "workflow.Edge": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.EntryAgent": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.EntryBlockReason": {
+            "type": "string",
+            "enum": [
+                "not_published",
+                "paused",
+                "webhook_inactive",
+                "no_webhook",
+                "no_form",
+                "form_inactive",
+                "no_agent_bound",
+                "no_channel",
+                "channel_paused",
+                "no_trigger"
+            ],
+            "x-enum-varnames": [
+                "EntryBlockedNotPublished",
+                "EntryBlockedPaused",
+                "EntryBlockedWebhookInactive",
+                "EntryBlockedNoWebhook",
+                "EntryBlockedNoForm",
+                "EntryBlockedFormInactive",
+                "EntryBlockedNoAgentBound",
+                "EntryBlockedNoChannel",
+                "EntryBlockedChannelPaused",
+                "EntryBlockedNoTrigger"
+            ]
+        },
+        "workflow.EntryChannel": {
+            "type": "object",
+            "properties": {
+                "bound": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/workflow.EntryChannelKind"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "workflowEnabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "workflow.EntryChannelKind": {
+            "type": "string",
+            "enum": [
+                "whatsapp_campaign",
+                "unofficial_whatsapp_campaign",
+                "unofficial_whatsapp_instance",
+                "facebook_page",
+                "instagram_account",
+                "telegram_account",
+                "tiktok_account",
+                "mercadolivre_account",
+                "webchat_widget"
+            ],
+            "x-enum-varnames": [
+                "ChannelWhatsAppCampaign",
+                "ChannelUnofficialWhatsAppCampaign",
+                "ChannelUnofficialWhatsAppInstance",
+                "ChannelFacebookPage",
+                "ChannelInstagramAccount",
+                "ChannelTelegramAccount",
+                "ChannelTikTokAccount",
+                "ChannelMercadoLivreAccount",
+                "ChannelWebchatWidget"
+            ]
+        },
+        "workflow.EntryForm": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "missing": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.EntryPoint": {
+            "type": "object",
+            "properties": {
+                "details": {
+                    "$ref": "#/definitions/workflow.EntryPointDetails"
+                },
+                "kind": {
+                    "$ref": "#/definitions/workflow.EntryPointKind"
+                },
+                "lastOutcome": {
+                    "$ref": "#/definitions/workflow.WebhookOutcome"
+                },
+                "lastReason": {
+                    "type": "string"
+                },
+                "lastReceivedAt": {
+                    "type": "string"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "readiness": {
+                    "$ref": "#/definitions/workflow.EntryReadiness"
+                },
+                "reason": {
+                    "$ref": "#/definitions/workflow.EntryBlockReason"
+                }
+            }
+        },
+        "workflow.EntryPointDetails": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.EntryAgent"
+                    }
+                },
+                "anyForm": {
+                    "type": "boolean"
+                },
+                "channels": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.EntryChannel"
+                    }
+                },
+                "forms": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.EntryForm"
+                    }
+                },
+                "leadExits": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.LeadExitEntry"
+                    }
+                },
+                "webhook": {
+                    "$ref": "#/definitions/workflow.WebhookEntry"
+                }
+            }
+        },
+        "workflow.EntryPointKind": {
+            "type": "string",
+            "enum": [
+                "message_received",
+                "first_message",
+                "webhook",
+                "form_submitted",
+                "agent_call",
+                "campaign_sent",
+                "stage_added",
+                "no_reply",
+                "call_received",
+                "manual",
+                "lead_exit"
+            ],
+            "x-enum-varnames": [
+                "EntryMessageReceived",
+                "EntryFirstMessage",
+                "EntryWebhook",
+                "EntryFormSubmitted",
+                "EntryAgentCall",
+                "EntryCampaignSent",
+                "EntryStageAdded",
+                "EntryNoReply",
+                "EntryCallReceived",
+                "EntryManual",
+                "EntryLeadExit"
+            ]
+        },
+        "workflow.EntryReadiness": {
+            "type": "string",
+            "enum": [
+                "ready",
+                "blocked"
+            ],
+            "x-enum-varnames": [
+                "EntryReady",
+                "EntryBlocked"
+            ]
+        },
+        "workflow.ErrorKind": {
+            "type": "string",
+            "enum": [
+                "config",
+                "timeout",
+                "http_status",
+                "transport",
+                "script",
+                "panic",
+                "guard",
+                "gate",
+                "validation",
+                "cancelled",
+                "internal",
+                "real_call_not_confirmed",
+                "wrong_workflow_type",
+                "missing_mocks",
+                "target_not_reached"
+            ],
+            "x-enum-varnames": [
+                "ErrorKindConfig",
+                "ErrorKindTimeout",
+                "ErrorKindHTTPStatus",
+                "ErrorKindTransport",
+                "ErrorKindScript",
+                "ErrorKindPanic",
+                "ErrorKindGuard",
+                "ErrorKindGate",
+                "ErrorKindValidation",
+                "ErrorKindCancelled",
+                "ErrorKindInternal",
+                "ErrorKindRealCallNotConfirmed",
+                "ErrorKindWrongWorkflowType",
+                "ErrorKindMissingMocks",
+                "ErrorKindTargetNotReached"
+            ]
+        },
+        "workflow.Graph": {
+            "type": "object",
+            "properties": {
+                "edges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.Edge"
+                    }
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.Node"
+                    }
+                }
+            }
+        },
+        "workflow.HTTPExchange": {
+            "type": "object",
+            "properties": {
+                "egressRefusal": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "latencyMs": {
+                    "type": "integer"
+                },
+                "method": {
+                    "type": "string"
+                },
+                "redirects": {
+                    "type": "integer"
+                },
+                "requestBody": {
+                    "type": "string"
+                },
+                "requestHeaders": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "responseBody": {
+                    "type": "string"
+                },
+                "responseHeaders": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "tlsFallback": {
+                    "type": "boolean"
+                },
+                "truncated": {
+                    "type": "boolean"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.HandleDefinition": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "optional": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "workflow.LeadExitEntry": {
+            "type": "object",
+            "properties": {
+                "button": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/workflow.LeadExitSource"
+                }
+            }
+        },
+        "workflow.LeadExitSource": {
+            "type": "string",
+            "enum": [
+                "template",
+                "campaign"
+            ],
+            "x-enum-varnames": [
+                "LeadExitFromTemplate",
+                "LeadExitFromCampaign"
+            ]
+        },
+        "workflow.LintIssue": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/workflow.LintIssueCode"
+                },
+                "edgeRef": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "hint": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "severity": {
+                    "$ref": "#/definitions/workflow.LintSeverity"
+                }
+            }
+        },
+        "workflow.LintIssueCode": {
+            "type": "string",
+            "enum": [
+                "NODE_AGENT_CALL_INPUTS_INVALID",
+                "NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER",
+                "NODE_CONSENT_GRANT_NEEDS_REPLY",
+                "GRAPH_EMPTY",
+                "GRAPH_TOO_MANY_NODES",
+                "GRAPH_TOO_MANY_EDGES",
+                "GRAPH_INVALID_WORKFLOW_TYPE",
+                "GRAPH_DUPLICATE_NODE_ID",
+                "NODE_INVALID_TYPE",
+                "EDGE_INVALID_REF",
+                "GRAPH_NO_TRIGGER",
+                "GRAPH_NO_END",
+                "TRIGGER_INCOMPATIBLE_WITH_TYPE",
+                "GRAPH_DUPLICATE_TRIGGER_TYPE",
+                "TRIGGER_HAS_INCOMING_EDGE",
+                "TRIGGER_NOT_CONNECTED",
+                "NODE_NO_INCOMING",
+                "NODE_NO_OUTGOING",
+                "GRAPH_ORPHAN_NODE",
+                "GRAPH_CYCLE_DETECTED",
+                "GRAPH_STRUCTURE",
+                "NODE_INCOMPATIBLE_SCOPE",
+                "NODE_MISSING_REQUIRED_OUTPUT",
+                "NODE_MISSING_REQUIRED_FIELD",
+                "NODE_FIELD_OUT_OF_RANGE",
+                "NODE_SEGMENTED_SEND_CONFLICT",
+                "NODE_INVALID_TOOL_PARAM_TYPE",
+                "NODE_INVALID_INTERACTIVE_CONFIG",
+                "NODE_INVALID_DTMF_CONFIG",
+                "NODE_INVALID_RESOURCE_REF",
+                "NODE_INVALID_CONFIG_VALUE",
+                "NODE_REASONING_UNSUPPORTED",
+                "NODE_PIN_INVALID",
+                "WORKFLOW_VOICE_TRUNK_INVALID",
+                "WORKFLOW_INVALID",
+                "EDGE_BAD_HANDLE_LABEL",
+                "DATA_REF_DANGLING",
+                "DATA_REF_UNKNOWN_KEY",
+                "NODE_MISSING_RESOURCE_REF",
+                "NODE_UNKNOWN_CONFIG_KEY",
+                "NODE_CONFIG_SHAPE_MISMATCH",
+                "NODE_CODE_READS_TEMPLATE",
+                "NODE_SECRET_IN_PLAIN_TEXT",
+                "NODE_PINNED_OUTPUT"
+            ],
+            "x-enum-varnames": [
+                "LintAgentCallInputsInvalid",
+                "LintReplyToAgentWithoutTrigger",
+                "LintConsentGrantNeedsReply",
+                "LintGraphEmpty",
+                "LintGraphTooManyNodes",
+                "LintGraphTooManyEdges",
+                "LintInvalidWorkflowType",
+                "LintDuplicateNodeID",
+                "LintInvalidNodeType",
+                "LintInvalidEdgeRef",
+                "LintNoTrigger",
+                "LintNoEnd",
+                "LintTriggerIncompatible",
+                "LintDuplicateTriggerType",
+                "LintTriggerHasIncoming",
+                "LintTriggerNotConnected",
+                "LintNodeNoIncoming",
+                "LintNodeNoOutgoing",
+                "LintOrphanNode",
+                "LintCycleDetected",
+                "LintGraphStructure",
+                "LintNodeIncompatibleScope",
+                "LintMissingRequiredOutput",
+                "LintMissingRequiredField",
+                "LintFieldOutOfRange",
+                "LintSegmentedSendConflict",
+                "LintInvalidToolParamType",
+                "LintInvalidInteractiveConfig",
+                "LintInvalidDTMFConfig",
+                "LintInvalidResourceRef",
+                "LintInvalidConfigValue",
+                "LintReasoningUnsupported",
+                "LintPinInvalid",
+                "LintVoiceTrunkInvalid",
+                "LintWorkflowInvalid",
+                "LintBadHandleLabel",
+                "LintDanglingDataRef",
+                "LintUnknownOutputKey",
+                "LintMissingResourceRef",
+                "LintUnknownConfigKey",
+                "LintConfigShapeMismatch",
+                "LintCodeReadsTemplate",
+                "LintSecretInPlainText",
+                "LintPinnedOutput"
+            ]
+        },
+        "workflow.LintSeverity": {
+            "type": "string",
+            "enum": [
+                "blocking",
+                "advisory",
+                "info"
+            ],
+            "x-enum-varnames": [
+                "SeverityBlocking",
+                "SeverityAdvisory",
+                "SeverityInfo"
+            ]
+        },
+        "workflow.LogStatus": {
+            "type": "string",
+            "enum": [
+                "executed",
+                "skipped",
+                "failed",
+                "cancelled",
+                "waiting",
+                "gate"
+            ],
+            "x-enum-varnames": [
+                "LogStatusExecuted",
+                "LogStatusSkipped",
+                "LogStatusFailed",
+                "LogStatusCancelled",
+                "LogStatusWaiting",
+                "LogStatusGate"
+            ]
+        },
+        "workflow.Node": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "id": {
+                    "type": "string"
+                },
+                "pinned": {
+                    "$ref": "#/definitions/workflow.NodePin"
+                },
+                "position": {
+                    "$ref": "#/definitions/workflow.Position"
+                },
+                "type": {
+                    "$ref": "#/definitions/workflow.NodeType"
+                }
+            }
+        },
+        "workflow.NodePin": {
+            "type": "object",
+            "properties": {
+                "edge": {
+                    "type": "string"
+                },
+                "output": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "pinned_at": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/workflow.PinSource"
+                },
+                "withheld": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "workflow.NodeType": {
+            "type": "string",
+            "enum": [
+                "trigger_first_message",
+                "trigger_message_received",
+                "trigger_campaign_sent",
+                "trigger_stage_added",
+                "trigger_manual",
+                "trigger_no_reply",
+                "trigger_webhook",
+                "trigger_call_received",
+                "trigger_form_submitted",
+                "trigger_agent_call",
+                "action_play_audio",
+                "wait_dtmf",
+                "action_transfer_to_queue",
+                "action_send_text",
+                "action_send_template",
+                "action_send_email",
+                "action_send_interactive",
+                "action_send_form",
+                "action_send_media",
+                "action_ai_agent",
+                "action_ai_extract",
+                "action_set_variable",
+                "action_http_request",
+                "action_run_tool",
+                "action_format_date",
+                "action_code",
+                "action_run_workflow",
+                "action_loop",
+                "action_get_current_time",
+                "action_schedule_meeting",
+                "action_reschedule_meeting",
+                "action_check_calendar_availability",
+                "action_assign_label",
+                "action_assign_member",
+                "action_transfer_department",
+                "action_finish_conversation",
+                "action_move_stage",
+                "action_manage_opportunity",
+                "action_update_lead",
+                "action_consent",
+                "action_reply_to_agent",
+                "wait_duration",
+                "wait_for_reply",
+                "wait_schedule",
+                "condition_branch",
+                "condition_ai_classify",
+                "condition_text_match",
+                "condition_filter",
+                "condition_check_label",
+                "condition_check_stage",
+                "condition_check_opportunity",
+                "condition_channel",
+                "condition_consent",
+                "end",
+                "decoration_background",
+                "action_send_whatsapp_button"
+            ],
+            "x-enum-varnames": [
+                "NodeTypeTriggerFirstMessage",
+                "NodeTypeTriggerMessageReceived",
+                "NodeTypeTriggerCampaignSent",
+                "NodeTypeTriggerStageAdded",
+                "NodeTypeTriggerManual",
+                "NodeTypeTriggerNoReply",
+                "NodeTypeTriggerWebhook",
+                "NodeTypeTriggerCallReceived",
+                "NodeTypeTriggerFormSubmitted",
+                "NodeTypeTriggerAgentCall",
+                "NodeTypeActionPlayAudio",
+                "NodeTypeWaitDTMF",
+                "NodeTypeTransferToQueue",
+                "NodeTypeActionSendText",
+                "NodeTypeActionSendTemplate",
+                "NodeTypeActionSendEmail",
+                "NodeTypeActionSendInteractive",
+                "NodeTypeActionSendForm",
+                "NodeTypeActionSendMedia",
+                "NodeTypeActionAIAgent",
+                "NodeTypeActionAIExtract",
+                "NodeTypeActionSetVariable",
+                "NodeTypeActionHTTPRequest",
+                "NodeTypeActionRunTool",
+                "NodeTypeActionFormatDate",
+                "NodeTypeActionCode",
+                "NodeTypeActionRunWorkflow",
+                "NodeTypeActionLoop",
+                "NodeTypeActionGetCurrentTime",
+                "NodeTypeActionScheduleMeeting",
+                "NodeTypeActionRescheduleMeeting",
+                "NodeTypeActionCheckCalendarAvailability",
+                "NodeTypeActionAssignLabel",
+                "NodeTypeActionAssignMember",
+                "NodeTypeActionTransferDepartment",
+                "NodeTypeActionFinishConversation",
+                "NodeTypeActionMoveStage",
+                "NodeTypeActionManageOpportunity",
+                "NodeTypeActionUpdateLead",
+                "NodeTypeActionConsent",
+                "NodeTypeActionReplyToAgent",
+                "NodeTypeWaitDuration",
+                "NodeTypeWaitForReply",
+                "NodeTypeWaitSchedule",
+                "NodeTypeConditionBranch",
+                "NodeTypeConditionAIClassfy",
+                "NodeTypeConditionTextMatch",
+                "NodeTypeConditionFilter",
+                "NodeTypeConditionCheckLabel",
+                "NodeTypeConditionCheckStage",
+                "NodeTypeConditionCheckOpportunity",
+                "NodeTypeConditionChannel",
+                "NodeTypeConditionConsent",
+                "NodeTypeEnd",
+                "NodeTypeDecorationBackground",
+                "NodeTypeActionSendWhatsappButtonLegacy"
+            ]
+        },
+        "workflow.PinSource": {
+            "type": "string",
+            "enum": [
+                "manual",
+                "simulation"
+            ],
+            "x-enum-varnames": [
+                "PinSourceManual",
+                "PinSourceSimulation"
+            ]
+        },
+        "workflow.Position": {
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            }
+        },
+        "workflow.RunDetail": {
+            "type": "object",
+            "properties": {
+                "logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.WorkflowRunLog"
+                    }
+                },
+                "run": {
+                    "$ref": "#/definitions/workflow.WorkflowRun"
+                },
+                "steps": {
+                    "$ref": "#/definitions/workflow.RunStepsPage"
+                }
+            }
+        },
+        "workflow.RunState": {
+            "type": "object",
+            "properties": {
+                "vars": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "workflow.RunStatus": {
+            "type": "string",
+            "enum": [
+                "running",
+                "waiting",
+                "completed",
+                "error",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "RunStatusRunning",
+                "RunStatusWaiting",
+                "RunStatusCompleted",
+                "RunStatusError",
+                "RunStatusCancelled"
+            ]
+        },
+        "workflow.RunStepsPage": {
+            "type": "object",
+            "properties": {
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "offset": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "workflow.ScriptLog": {
+            "type": "object",
+            "properties": {
+                "level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.TriggerType": {
+            "type": "string",
+            "enum": [
+                "trigger_first_message",
+                "trigger_message_received",
+                "trigger_campaign_sent",
+                "trigger_stage_added",
+                "trigger_manual",
+                "trigger_no_reply",
+                "trigger_webhook",
+                "trigger_call_received",
+                "trigger_form_submitted",
+                "trigger_agent_call"
+            ],
+            "x-enum-varnames": [
+                "TriggerFirstMessage",
+                "TriggerMessageReceived",
+                "TriggerCampaignSent",
+                "TriggerStageAdded",
+                "TriggerManual",
+                "TriggerNoReply",
+                "TriggerWebhook",
+                "TriggerCallReceived",
+                "TriggerFormSubmitted",
+                "TriggerAgentCall"
+            ]
+        },
+        "workflow.WaitPreview": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "reason": {
+                    "$ref": "#/definitions/workflow.WaitReason"
+                },
+                "seconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "workflow.WaitReason": {
+            "type": "string",
+            "enum": [
+                "duration",
+                "reply",
+                "event",
+                "insufficient_balance",
+                "retry",
+                "form"
+            ],
+            "x-enum-varnames": [
+                "WaitReasonDuration",
+                "WaitReasonReply",
+                "WaitReasonEvent",
+                "WaitReasonBalance",
+                "WaitReasonRetry",
+                "WaitReasonForm"
+            ]
+        },
+        "workflow.WebhookAuthMode": {
+            "type": "string",
+            "enum": [
+                "none",
+                "header_token",
+                "hmac"
+            ],
+            "x-enum-varnames": [
+                "WebhookAuthNone",
+                "WebhookAuthHeaderToken",
+                "WebhookAuthHMAC"
+            ]
+        },
+        "workflow.WebhookDelivery": {
+            "type": "object",
+            "properties": {
+                "entryId": {
+                    "type": "string"
+                },
+                "entryResolution": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "httpStatus": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "latencyMs": {
+                    "type": "integer"
+                },
+                "outcome": {
+                    "$ref": "#/definitions/workflow.WebhookOutcome"
+                },
+                "payloadKeys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "receivedAt": {
+                    "type": "string"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "webhookId": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.WebhookEntry": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "authMode": {
+                    "$ref": "#/definitions/workflow.WebhookAuthMode"
+                },
+                "method": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.WebhookOutcome": {
+            "type": "string",
+            "enum": [
+                "accepted",
+                "duplicate",
+                "already_running",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "WebhookOutcomeAccepted",
+                "WebhookOutcomeDuplicate",
+                "WebhookOutcomeAlreadyRunning",
+                "WebhookOutcomeRejected"
+            ]
+        },
+        "workflow.Workflow": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "departmentId": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entryPoints": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.EntryPoint"
+                    }
+                },
+                "graph": {
+                    "$ref": "#/definitions/workflow.Graph"
+                },
+                "handles": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/workflow.HandleDefinition"
+                        }
+                    }
+                },
+                "hasUnpublishedChanges": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "publishedVersion": {
+                    "type": "integer"
+                },
+                "requiredCampaignVars": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "$ref": "#/definitions/workflow.WorkflowStatus"
+                },
+                "triggerConfig": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "triggerType": {
+                    "$ref": "#/definitions/workflow.TriggerType"
+                },
+                "type": {
+                    "$ref": "#/definitions/workflow.WorkflowType"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.WorkflowRun": {
+            "type": "object",
+            "properties": {
+                "agentResult": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "completedAt": {
+                    "type": "string"
+                },
+                "currentNodeId": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "retryCount": {
+                    "type": "integer"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "startedBy": {
+                    "type": "string"
+                },
+                "state": {
+                    "$ref": "#/definitions/workflow.RunState"
+                },
+                "status": {
+                    "$ref": "#/definitions/workflow.RunStatus"
+                },
+                "triggerData": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "triggerNodeId": {
+                    "type": "string"
+                },
+                "triggerType": {
+                    "$ref": "#/definitions/workflow.TriggerType"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "waitReason": {
+                    "$ref": "#/definitions/workflow.WaitReason"
+                },
+                "wakeAt": {
+                    "type": "integer"
+                },
+                "workflowId": {
+                    "type": "string"
+                },
+                "workflowVersion": {
+                    "type": "integer"
+                },
+                "workspaceId": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow.WorkflowRunLog": {
+            "type": "object",
+            "properties": {
+                "attempt": {
+                    "type": "integer"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "durationMs": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "errorChain": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "errorKind": {
+                    "$ref": "#/definitions/workflow.ErrorKind"
+                },
+                "executedAt": {
+                    "type": "string"
+                },
+                "finishedAt": {
+                    "type": "string"
+                },
+                "http": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.HTTPExchange"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "input": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "nodeType": {
+                    "$ref": "#/definitions/workflow.NodeType"
+                },
+                "notice": {
+                    "type": "string"
+                },
+                "output": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "pinned": {
+                    "type": "boolean"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "scriptLogs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.ScriptLog"
+                    }
+                },
+                "simulated": {
+                    "type": "boolean"
+                },
+                "stack": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/workflow.LogStatus"
+                }
+            }
+        },
+        "workflow.WorkflowStatus": {
+            "type": "string",
+            "enum": [
+                "draft",
+                "active",
+                "paused",
+                "archived"
+            ],
+            "x-enum-varnames": [
+                "WorkflowStatusDraft",
+                "WorkflowStatusActive",
+                "WorkflowStatusPaused",
+                "WorkflowStatusArchived"
+            ]
+        },
+        "workflow.WorkflowType": {
+            "type": "string",
+            "enum": [
+                "messages",
+                "voice"
+            ],
+            "x-enum-varnames": [
+                "WorkflowTypeMessages",
+                "WorkflowTypeVoice"
+            ]
+        },
+        "workflow.WorkflowVersion": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "graph": {
+                    "$ref": "#/definitions/workflow.Graph"
+                },
+                "handles": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/workflow.HandleDefinition"
+                        }
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "publishedBy": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/workflow.WorkflowType"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow_usecase.NodeTestFix": {
+            "type": "object",
+            "properties": {
+                "edge": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mock_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "needs": {
+                    "type": "string"
+                },
+                "node_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflow_usecase.NodeTestPathStop": {
+            "type": "object",
+            "properties": {
+                "diverged_at": {
+                    "type": "string"
+                },
+                "diverged_at_label": {
+                    "type": "string"
+                },
+                "diverged_at_type": {
+                    "$ref": "#/definitions/workflow.NodeType"
+                },
+                "expected_branch": {
+                    "type": "string"
+                },
+                "fixes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow_usecase.NodeTestFix"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "stopped_at": {
+                    "type": "string"
+                },
+                "stopped_at_label": {
+                    "type": "string"
+                },
+                "stopped_at_type": {
+                    "$ref": "#/definitions/workflow.NodeType"
+                },
+                "taken_branch": {
+                    "type": "string"
+                },
+                "wait": {
+                    "$ref": "#/definitions/workflow.WaitPreview"
+                }
+            }
+        },
+        "workflow_usecase.TestNodeOutput": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "error_kind": {
+                    "$ref": "#/definitions/workflow.ErrorKind"
+                },
+                "execution_duration_ms": {
+                    "type": "integer"
+                },
+                "execution_output": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "interpolated_config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "node_id": {
+                    "type": "string"
+                },
+                "node_type": {
+                    "$ref": "#/definitions/workflow.NodeType"
+                },
+                "path_stop": {
+                    "$ref": "#/definitions/workflow_usecase.NodeTestPathStop"
+                },
+                "pinned": {
+                    "type": "boolean"
+                },
+                "state_after": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "step": {
+                    "$ref": "#/definitions/workflow.WorkflowRunLog"
+                },
+                "success": {
+                    "type": "boolean"
+                },
+                "upstream_steps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflow.WorkflowRunLog"
+                    }
+                },
+                "wait": {
+                    "$ref": "#/definitions/workflow.WaitPreview"
+                }
+            }
+        },
+        "workflow_usecase.TestWaitAnswer": {
+            "type": "object",
+            "properties": {
+                "form": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "optionId": {
+                    "type": "string"
+                },
+                "reply": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflowalerthttp.AlertResponse": {
+            "type": "object",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "entryType": {
+                    "type": "string"
+                },
+                "firstSeen": {
+                    "type": "string"
+                },
+                "fixAction": {
+                    "type": "string",
+                    "enum": [
+                        "publish",
+                        "open_run",
+                        "open_node",
+                        "view_deliveries",
+                        "open_agent",
+                        "open_conversation"
+                    ]
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "workflow_called_inactive",
+                        "node_failing",
+                        "webhook_rejecting",
+                        "run_stuck",
+                        "agent_tool_failing",
+                        "inbound_lookup_failed"
+                    ]
+                },
+                "lastSeen": {
+                    "type": "string"
+                },
+                "nodeId": {
+                    "type": "string"
+                },
+                "resolvedAt": {
+                    "type": "string"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "sample": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string",
+                    "enum": [
+                        "high",
+                        "medium"
+                    ]
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "resolved"
+                    ]
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "workflowId": {
+                    "type": "string"
+                }
+            }
+        },
+        "workflowalerthttp.WorkflowAlertsResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflowalerthttp.AlertResponse"
+                    }
+                }
+            }
+        },
+        "workflowsecrethttp.PutSecretRequest": {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "string",
+                    "example": "s3nh4-do-portal"
+                }
+            }
+        },
+        "workflowsecrethttp.SecretListResponse": {
+            "type": "object",
+            "properties": {
+                "secrets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/workflowsecrethttp.SecretResponse"
+                    }
+                }
+            }
+        },
+        "workflowsecrethttp.SecretResponse": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "unifecaf_senha"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string",
+                    "example": "5b0c1d4e-9a7f-4f4a-8a52-3b7e1e2f9c10"
                 }
             }
         },
@@ -57197,14 +69643,26 @@ const docTemplate = `{
                 "rouletteLastSeenWindowHours": {
                     "type": "integer"
                 },
+                "rouletteMaxOpenPerMember": {
+                    "type": "integer"
+                },
                 "rouletteMode": {
                     "type": "string"
+                },
+                "rouletteRecipients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/inbox_assignment.Recipient"
+                    }
                 },
                 "rouletteRescueAfterMinutes": {
                     "type": "integer"
                 },
                 "rouletteRescueEnabled": {
                     "type": "boolean"
+                },
+                "rouletteStrategy": {
+                    "type": "string"
                 },
                 "skipAdminAssignment": {
                     "type": "boolean"
@@ -57323,9 +69781,19 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 48
                 },
+                "rouletteMaxOpenPerMember": {
+                    "type": "integer",
+                    "example": 8
+                },
                 "rouletteMode": {
                     "type": "string",
                     "example": "online"
+                },
+                "rouletteRecipients": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/inbox_assignment.Recipient"
+                    }
                 },
                 "rouletteRescueAfterMinutes": {
                     "type": "integer",
@@ -57334,6 +69802,19 @@ const docTemplate = `{
                 "rouletteRescueEnabled": {
                     "type": "boolean",
                     "example": true
+                },
+                "rouletteStrategy": {
+                    "type": "string",
+                    "enum": [
+                        "round_robin",
+                        "priority",
+                        "weighted",
+                        "least_busy",
+                        "longest_idle",
+                        "random",
+                        "claim"
+                    ],
+                    "example": "priority"
                 },
                 "skipAdminAssignment": {
                     "type": "boolean",
@@ -57496,8 +69977,8 @@ var SwaggerInfo = &swag.Spec{
 	Description:      "API de comunicação omnichannel e call center.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
-	LeftDelim:        "[[",
-	RightDelim:       "]]",
+	LeftDelim:        "{{",
+	RightDelim:       "}}",
 }
 
 func init() {

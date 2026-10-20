@@ -72,6 +72,8 @@ func (c *Container) initRouter() {
 		c.handlers.issue,
 		c.handlers.workflow,
 		c.handlers.workflowWebhook,
+		c.handlers.workflowSecret,
+		c.handlers.workflowAlert,
 		c.handlers.wsWorkflowSimulator,
 		c.handlers.wsWorkflowAIBuilder,
 		c.handlers.builderSession,
@@ -116,6 +118,11 @@ func (c *Container) initRouter() {
 		c.notificationHandler(),
 		c.notificationAdminHandler(),
 		c.customerPortfolioHandler(),
+		c.conversationNoteHandler(),
+		c.teamChatHandler(),
+		c.whatsappFormHandler(),
+		mercadoLivreRoutes(c),
+		tiktokRoutes(c),
 	)
 
 }

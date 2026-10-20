@@ -23,12 +23,13 @@ func NewScheduleMeetingExecutor(repo calendar.Repository, google calendar.Google
 
 func (s *scheduleMeetingExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:        workflow.NodeTypeActionScheduleMeeting,
-		Category:    workflow.NodeCategoryAction,
-		Scopes:      []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:       "Agendar Reunião",
-		Description: "Cria um evento no Google Calendar do workspace e retorna o link da reunião.",
-		Icon:        "CalendarCheck",
+		Type:         workflow.NodeTypeActionScheduleMeeting,
+		TestBehavior: workflow.NodeTestExternalCall,
+		Category:     workflow.NodeCategoryAction,
+		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:        "Agendar Reunião",
+		Description:  "Cria um evento no Google Calendar do workspace e retorna o link da reunião.",
+		Icon:         "CalendarCheck",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para criar um evento no Google Calendar e retornar o link.",
 			Behavior: "Requer uma conexão ativa com o Google Calendar do workspace.",
@@ -235,8 +236,7 @@ func (s *scheduleMeetingExecutor) Execute(ctx *workflow.NodeContext) (*workflow.
 		meetingLink != "",
 	)
 
-	return &workflow.NodeResult{
-		NextNodeID: scheduleMeetingResolveEdge(ctx, "sucesso"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":         true,
 			"title":           title,
@@ -248,19 +248,18 @@ func (s *scheduleMeetingExecutor) Execute(ctx *workflow.NodeContext) (*workflow.
 			"attendees":       attendees,
 			"calendar_email":  conn.Email,
 		},
-	}, nil
+	}, outgoingEdges(ctx), "sucesso"), nil
 }
 
 func scheduleMeetingFailure(ctx *workflow.NodeContext, message string) *workflow.NodeResult {
 	log.Printf("[workflow][schedule_meeting][node:%s][run:%s] FAILED: %s",
 		scheduleMeetingNodeID(ctx), scheduleMeetingRunID(ctx), message)
-	return &workflow.NodeResult{
-		NextNodeID: scheduleMeetingResolveEdgeStrict(ctx, "erro"),
+	return routeOutput(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   message,
 		},
-	}
+	}, outgoingEdges(ctx), "erro")
 }
 
 func scheduleMeetingNodeID(ctx *workflow.NodeContext) string {
@@ -268,20 +267,6 @@ func scheduleMeetingNodeID(ctx *workflow.NodeContext) string {
 		return ""
 	}
 	return ctx.Node.ID
-}
-
-func scheduleMeetingResolveEdge(ctx *workflow.NodeContext, label string) string {
-	if ctx == nil || ctx.Graph == nil || ctx.Node == nil {
-		return ""
-	}
-	return resolveEdgeByLabel(ctx.Graph.OutgoingEdges(ctx.Node.ID), label)
-}
-
-func scheduleMeetingResolveEdgeStrict(ctx *workflow.NodeContext, label string) string {
-	if ctx == nil || ctx.Graph == nil || ctx.Node == nil {
-		return ""
-	}
-	return resolveEdgeByLabelStrict(ctx.Graph.OutgoingEdges(ctx.Node.ID), label)
 }
 
 func scheduleMeetingWorkspaceID(ctx *workflow.NodeContext) string {
@@ -314,7 +299,7 @@ func scheduleMeetingInterpolatedString(ctx *workflow.NodeContext, key string) st
 	}
 	str, ok := val.(string)
 	if !ok {
-		return fmt.Sprintf("%v", val)
+		return workflow.TemplateText(val)
 	}
 	return strings.TrimSpace(workflow.Interpolate(str, ctx.State, nil))
 }
@@ -408,10 +393,10 @@ func parseScheduleMeetingAttendees(raw interface{}, state *workflow.RunState) ([
 		values = append(values, v...)
 	case []interface{}:
 		for _, item := range v {
-			values = append(values, fmt.Sprintf("%v", item))
+			values = append(values, workflow.TemplateText(item))
 		}
 	default:
-		values = append(values, fmt.Sprintf("%v", v))
+		values = append(values, workflow.TemplateText(v))
 	}
 
 	attendees := make([]calendar.Attendee, 0, len(values))

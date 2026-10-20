@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/conversation"
+	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/working_hours"
 	wsc "vozko/domain/workspace_config"
 	"vozko/infra/database/schema"
@@ -44,6 +45,7 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 				RouletteLastSeenWindowHours: wsc.DefaultRouletteLastSeenWindowHours,
 				RouletteRescueEnabled:       wsc.DefaultRouletteRescueEnabled,
 				RouletteRescueAfterMinutes:  wsc.DefaultRouletteRescueAfterMinutes,
+				RouletteStrategy:            ia.DefaultStrategy,
 			}, nil
 		}
 		return nil, err
@@ -71,6 +73,10 @@ func (r *Repository) GetByWorkspaceID(ctx context.Context, workspaceID string) (
 		RouletteLastSeenWindowHours: wsc.ClampRouletteLastSeenWindowHours(row.RouletteLastSeenWindowHours),
 		RouletteRescueEnabled:       row.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(row.RouletteRescueAfterMinutes),
+
+		RouletteStrategy:         ia.NormalizeStrategy(row.RouletteStrategy),
+		RouletteMaxOpenPerMember: row.RouletteMaxOpenPerMember,
+		RouletteRecipients:       decodeRouletteRecipients(row.WorkspaceID, row.RouletteRecipients),
 
 		WorkingHours:   decodeWorkingHours(row.WorkspaceID, row.WorkingHours),
 		OutcomeCapture: decodeOutcomeCapture(row.WorkspaceID, row.OutcomeCapture),
@@ -104,6 +110,9 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 		RouletteRescueEnabled:       cfg.RouletteRescueEnabled,
 		RouletteRescueAfterMinutes:  wsc.ClampRouletteRescueMinutes(cfg.RouletteRescueAfterMinutes),
 
+		RouletteStrategy:         string(cfg.EffectiveRouletteStrategy()),
+		RouletteMaxOpenPerMember: cfg.EffectiveRouletteMaxOpenPerMember(),
+
 		AudienceDailyCap:        cfg.AudienceDailyCap,
 		AudienceDebounceMinutes: cfg.AudienceDebounceMinutes,
 		MetaPayer:               string(cfg.EffectiveMetaPayer()),
@@ -122,6 +131,12 @@ func (r *Repository) Upsert(ctx context.Context, cfg *wsc.WorkspaceConfig) error
 		return err
 	}
 	row.OutcomeCapture = capture
+
+	recipients, err := encodeRouletteRecipients(cfg.RouletteRecipients)
+	if err != nil {
+		return err
+	}
+	row.RouletteRecipients = recipients
 
 	if row.ID == "" {
 		row.ID = uuid.New().String()
@@ -183,6 +198,7 @@ func (r *Repository) EnsureExists(ctx context.Context, workspaceID string) error
 		RouletteLastSeenWindowHours: wsc.DefaultRouletteLastSeenWindowHours,
 		RouletteRescueEnabled:       wsc.DefaultRouletteRescueEnabled,
 		RouletteRescueAfterMinutes:  wsc.DefaultRouletteRescueAfterMinutes,
+		RouletteStrategy:            string(ia.DefaultStrategy),
 	}
 	return r.db.WithContext(ctx).Omit("UpdatedBy").Create(row).Error
 }
@@ -242,4 +258,33 @@ func (r *Repository) ListRoulettePolicies(ctx context.Context) ([]wsc.RoulettePo
 		})
 	}
 	return out, nil
+}
+
+func decodeRouletteRecipients(workspaceID string, raw *string) []ia.Recipient {
+	if raw == nil || strings.TrimSpace(*raw) == "" || strings.TrimSpace(*raw) == "null" {
+		return nil
+	}
+	var stored []ia.Recipient
+	if err := json.Unmarshal([]byte(*raw), &stored); err != nil {
+		log.Printf("[workspace_config] workspace %s has an unreadable roulette recipient list; nobody receives through it: %v", workspaceID, err)
+		return nil
+	}
+	recipients, err := ia.NormalizeRecipients(stored)
+	if err != nil {
+		log.Printf("[workspace_config] workspace %s has a roulette recipient list that breaks the rules; nobody receives through it: %v", workspaceID, err)
+		return nil
+	}
+	return recipients
+}
+
+func encodeRouletteRecipients(recipients []ia.Recipient) (*string, error) {
+	if len(recipients) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(recipients)
+	if err != nil {
+		return nil, fmt.Errorf("workspace_config: encoding the roulette recipients: %w", err)
+	}
+	out := string(raw)
+	return &out, nil
 }

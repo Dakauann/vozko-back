@@ -478,7 +478,7 @@ func (h *PublicHandler) Typing(w http.ResponseWriter, r *http.Request) {
 // @Description
 // @Description	| evento | dados |
 // @Description	|---|---|
-// @Description	| message | { kind: "message", message: { id, author: visitor, team ou assistant, text, media, options, createdAt } } |
+// @Description	| message | { kind: "message", message: { id, author: visitor, team ou assistant, text, media, options, quote, createdAt } }. quote ({ id, text }) aparece quando a equipe responde citando uma mensagem que o visitante pode ver: text é a linha citada, curta (até 140 caracteres) |
 // @Description	| typing | { kind: "typing", typing } |
 // @Description	| status | { kind: "status", state: human ou blocked } |
 // @Description	| ping | a cada 20 s |

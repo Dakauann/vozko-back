@@ -366,6 +366,7 @@ func (r *entryRepository) RecordSend(entryID string, in uwc.RecordSendInput) err
 		Where("id = ?", entryID).
 		Updates(map[string]interface{}{
 			"status":              string(campaign.SendStatusSent),
+			"sender_instance_id":  ptr(in.SenderInstanceID),
 			"contact_id":          ptr(in.ContactID),
 			"conversation_id":     ptr(in.ConversationID),
 			"provider_message_id": in.ProviderMessageID,
@@ -407,6 +408,7 @@ func (r *entryRepository) ResetAllStatuses(campaignID string) (int64, error) {
 	updates["status"] = string(campaign.SendStatusPending)
 	updates["provider_message_id"] = ""
 	updates["message_id"] = nil
+	updates["sender_instance_id"] = nil
 	updates["error_code"] = 0
 	updates["error_message"] = ""
 	updates["updated_at"] = time.Now().UTC()
@@ -439,10 +441,67 @@ func (r *entryRepository) ConversationIDsForCampaign(campaignID string) ([]strin
 	return ids, err
 }
 
+func (r *entryRepository) TargetNamesForCampaigns(campaignIDs []string, limit int) (map[string][]string, error) {
+	out := map[string][]string{}
+	if len(campaignIDs) == 0 || limit <= 0 {
+		return out, nil
+	}
+	type row struct {
+		CampaignID string
+		Name       string
+	}
+	var rows []row
+	err := r.db.Raw(`
+		SELECT campaign_id, name FROM (
+			SELECT campaign_id, name, ROW_NUMBER() OVER (PARTITION BY campaign_id ORDER BY created_at, name, id) AS position
+			  FROM unofficial_whatsapp_campaign_entries
+			 WHERE campaign_id IN ? AND lead_id IS NULL AND deleted_at IS NULL
+		) ranked
+		WHERE position <= ?
+		ORDER BY campaign_id, position`, campaignIDs, limit).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, rw := range rows {
+		out[rw.CampaignID] = append(out[rw.CampaignID], rw.Name)
+	}
+	return out, nil
+}
+
 func mapEntryRows(rows []schema.UnofficialWhatsAppCampaignEntry) []uwc.Entry {
 	out := make([]uwc.Entry, 0, len(rows))
 	for i := range rows {
 		out = append(out, *entryToDomain(&rows[i]))
 	}
 	return out
+}
+
+func (r *entryRepository) EachAutomationMetadata(campaignID string, visit func(campaign.EntryMetadata) error) error {
+	rows, err := r.db.Model(&schema.UnofficialWhatsAppCampaignEntry{}).
+		Select("lead_id, number, metadata").
+		Where("campaign_id = ?", campaignID).
+		Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			leadID   *string
+			number   string
+			metadata schema.LeadMetadata
+		)
+		if err := rows.Scan(&leadID, &number, &metadata); err != nil {
+			return err
+		}
+		lead := ""
+		if leadID != nil {
+			lead = *leadID
+		}
+		if err := visit(campaign.EntryMetadataOf(lead, number, map[string]any(metadata))); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }

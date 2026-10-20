@@ -5,7 +5,6 @@ import (
 	"log"
 
 	conversation "vozko/domain/conversation"
-	"vozko/domain/workspace"
 )
 
 type inboxService struct {
@@ -118,6 +117,7 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 	if s.historyProvider == nil {
 		return nil, 0, nil
 	}
+	input.UserID = userID
 
 	workspaceForOwnerCheck := input.WorkspaceID
 	if workspaceForOwnerCheck == "" && input.CampaignID != "" && s.workspaceResolver != nil {
@@ -158,11 +158,7 @@ func (s *inboxService) SearchInbox(userID string, input conversation.SearchInbox
 			input.RestrictDepartments = true
 		}
 	}
-	if input.IsAdmin {
-		input.AssignedUserID = ""
-	} else if s.authorizer != nil && workspaceForOwnerCheck != "" && s.authorizer.IsWorkspaceOwnerOrAdmin(userID, workspaceForOwnerCheck) {
-		input.AssignedUserID = ""
-	} else if s.canViewOthers(userID, workspaceForOwnerCheck) {
+	if input.IsAdmin || (s.authorizer != nil && workspaceForOwnerCheck != "" && conversation.SeesOthers(s.authorizer, userID, workspaceForOwnerCheck)) {
 		input.AssignedUserID = ""
 	}
 
@@ -383,11 +379,4 @@ func (s *inboxService) GetAvailableLabels(workspaceID string) ([]conversation.In
 		return nil, nil
 	}
 	return s.labelProvider.GetAvailableLabels(workspaceID)
-}
-
-func (s *inboxService) canViewOthers(userID, workspaceID string) bool {
-	if s.authorizer == nil || workspaceID == "" {
-		return false
-	}
-	return s.authorizer.HasWorkspacePermission(userID, workspaceID, string(workspace.ResourceConversations), string(workspace.ActionViewOthers), false)
 }

@@ -6,6 +6,7 @@ import (
 	"vozko/domain/actor"
 	"vozko/domain/audience"
 	"vozko/domain/livedecision"
+	"vozko/domain/personalinbox"
 	"vozko/domain/shared"
 )
 
@@ -44,11 +45,16 @@ type InboxEntry struct {
 	LastMessageType         string                     `json:"last_message_type,omitempty"`
 	LastMessageSender       string                     `json:"last_message_sender,omitempty"`
 	LastMessageSenderAvatar string                     `json:"last_message_sender_avatar,omitempty"`
-	LastMessageAuthor       string                     `json:"last_message_author,omitempty"`
+	LastMessageSenderKind   string                     `json:"last_message_sender_kind,omitempty"`
+	LastMessageAuthor      string                     `json:"last_message_author,omitempty"`
 	LastMessageFromUs       bool                       `json:"last_message_from_us,omitempty"`
+	LastCustomerMessageAt   *time.Time                 `json:"last_customer_message_at,omitempty"`
+	LastAgentMessageAt      *time.Time                 `json:"last_agent_message_at,omitempty"`
+	WaitingSince            *time.Time                 `json:"waiting_since,omitempty"`
 	WindowOpen              bool                       `json:"window_open"`
 	WindowExpiresAt         *time.Time                 `json:"window_expires_at,omitempty"`
 	WindowClosedReason      string                     `json:"window_closed_reason,omitempty"`
+	WindowClosedDetail      string                     `json:"window_closed_detail,omitempty"`
 	BusinessPhoneID         string                     `json:"business_phone_id,omitempty"`
 	AssignedUserID          string                     `json:"assigned_user_id,omitempty"`
 	AssignedUsername        string                     `json:"assigned_username,omitempty"`
@@ -116,10 +122,14 @@ type SearchFilters struct {
 	MessageSearch      string `json:"message_search,omitempty"`
 	WindowOpen         *bool  `json:"window_open,omitempty"`
 	HasUnread          *bool  `json:"has_unread,omitempty"`
+	IsGroup            *bool  `json:"is_group,omitempty"`
 	Channel            string `json:"channel,omitempty"`
 	DateFrom           string `json:"date_from,omitempty"`
 	DateTo             string `json:"date_to,omitempty"`
 	ConversationStatus string `json:"conversation_status,omitempty"`
+	Sort               string `json:"sort,omitempty"`
+	LabelID            string `json:"label_id,omitempty"`
+	Personal           string `json:"personal,omitempty"`
 }
 
 type SearchInboxInput struct {
@@ -144,13 +154,17 @@ type SearchInboxInput struct {
 	MessageSearch    string
 	WindowOpen       *bool
 	HasUnread        *bool
+	IsGroup          *bool
 	Channel          string
 	DateFrom         *time.Time
 	DateTo           *time.Time
+	LabelID          string
 
 	ConversationStatus ConversationStatus
 
 	SortOrder string
+
+	Personal personalinbox.View
 
 	AssignedUserID string
 
@@ -255,11 +269,11 @@ type CampaignWorkspaceResolver interface {
 }
 
 type SendButtonInput struct {
-	HeaderType string
-	HeaderText string
-	BodyText   string
-	FooterText string
-	Buttons    []ButtonPayload
+	HeaderType string          `json:"header_type,omitempty"`
+	HeaderText string          `json:"header_text,omitempty"`
+	BodyText   string          `json:"body_text"`
+	FooterText string          `json:"footer_text,omitempty"`
+	Buttons    []ButtonPayload `json:"buttons"`
 }
 
 type ButtonPayload struct {
@@ -267,10 +281,16 @@ type ButtonPayload struct {
 	Title string `json:"title"`
 }
 
+type SendOrigin struct {
+	SenderUserID     string
+	ReplyToMessageID string
+	ClientRequestID  string
+}
+
 type MessageSender interface {
-	SendTextMessage(entryID, entryType, text, userID, replyToMessageID string) (*Message, error)
-	SendMediaMessage(entryID, entryType, mediaID, mediaType, userID, replyToMessageID string, caption string) (*Message, error)
-	SendButtonMessage(entryID, entryType, userID, replyToMessageID string, input SendButtonInput) (*Message, error)
+	SendTextMessage(entryID, entryType, text string, origin SendOrigin) (*Message, error)
+	SendMediaMessage(entryID, entryType, mediaID, mediaType, caption string, origin SendOrigin) (*Message, error)
+	SendButtonMessage(entryID, entryType string, input SendButtonInput, origin SendOrigin) (*Message, error)
 }
 
 type EntryInfo struct {
@@ -312,7 +332,7 @@ type EventBroadcaster interface {
 	BroadcastMessageSent(userID, requestID, entryID, entryType string, message *Message)
 	BroadcastMessageError(userID, requestID, entryID, entryType, errorMsg, errorCode string)
 	BroadcastRead(entryID, entryType string, messageIDs []string, readBy string, readAt time.Time)
-	BroadcastUnreadCount(entryID, entryType string, count int64)
+	BroadcastMessageUpdated(entryID, entryType string, message *Message)
 	BroadcastTyping(entryID, entryType, fromUserID string, isTyping bool)
 	BroadcastStageUpdate(workspaceID, entryID, entryType string)
 	BroadcastLabelUpdate(workspaceID, entryID, entryType string)

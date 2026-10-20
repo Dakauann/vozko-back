@@ -92,6 +92,10 @@ func PacingFor(c *uwc.Campaign, instance *uw.Instance) (minMS, maxMS int) {
 	return minMS, maxMS
 }
 
+func sendInterval(c *uwc.Campaign, instance *uw.Instance) time.Duration {
+	return uwc.PacingInterval(PacingFor(c, instance))
+}
+
 func defaultJitter(minMS, maxMS int) int {
 	if maxMS <= minMS {
 		return minMS

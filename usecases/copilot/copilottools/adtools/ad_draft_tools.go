@@ -349,8 +349,8 @@ func (t *createLeadFormTool) Meta() copilot.Meta { return adsMeta(workspace.Acti
 func (t *createLeadFormTool) Definition() tools.Definition {
 	return copilottools.Definition("create_lead_form",
 		"Cria na Meta um formulário instantâneo de cadastro para anúncios com destino ON_AD. A página precisa ter aceitado os termos de cadastros "+
-			"(lead_terms_accepted em list_ad_pages); se não aceitou, leve o usuário com open_screen ads_forms, onde ele aceita e o Vozko confere. "+
-			"Os cadastros chegam ao CRM do Vozko. Só depois da aprovação do usuário.",
+			"(lead_terms_accepted em list_ad_pages); se não aceitou, leve o usuário com open_screen ads_forms, onde ele aceita e a plataforma confere. "+
+			"Os cadastros chegam ao CRM da plataforma. Só depois da aprovação do usuário.",
 		createLeadFormArgs{})
 }
 
@@ -415,7 +415,7 @@ func (t *saveAdDraftTool) Meta() copilot.Meta { return adsMeta(workspace.ActionC
 
 func (t *saveAdDraftTool) Definition() tools.Definition {
 	return adDraftDefinition("save_ad_draft",
-		"Monta o anúncio completo e guarda como rascunho no Vozko, sem publicar e sem cobrar nada. Funciona mesmo quando a conta ainda não pode gastar "+
+		"Monta o anúncio completo e guarda como rascunho na plataforma, sem publicar e sem cobrar nada. Funciona mesmo quando a conta ainda não pode gastar "+
 			"(sem forma de pagamento): o rascunho aparece em Campanhas como Em rascunho e o usuário publica depois em Conferir e publicar, ou pede para "+
 			"você com publish_ad_draft. Recebe os mesmos campos de create_ad; para mudar depois, use update_ad_draft. Só depois da aprovação do usuário.",
 		adDraftArgs{})

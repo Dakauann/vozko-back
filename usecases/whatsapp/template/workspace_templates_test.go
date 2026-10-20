@@ -89,11 +89,27 @@ func (g *grantsStub) Create(a *workspace_template_access.WorkspaceTemplateAccess
 	return nil
 }
 
-type createStub struct{ calls int }
+type createStub struct {
+	calls int
+	last  domain.CreateTemplateInput
+}
 
 func (c *createStub) Execute(in domain.CreateTemplateInput) (*domain.CreateTemplateOutput, error) {
 	c.calls++
+	c.last = in
 	return &domain.CreateTemplateOutput{ID: "t-new", Name: in.Name}, nil
+}
+
+func TestWorkspaceTemplatesCreateNamesTheCreatingWorkspace(t *testing.T) {
+	create, grants := &createStub{}, &grantsStub{}
+	uc := NewWorkspaceTemplatesUseCase(WorkspaceTemplatesDeps{Phones: phonesStub{"p1": "ws1"}, Grants: grants, Create: create})
+
+	if _, err := uc.Create("ws1", "u1", domain.CreateTemplateInput{WorkspaceID: "ws-spoofed", BusinessPhoneID: "p1", Name: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if create.last.WorkspaceID != "ws1" {
+		t.Fatalf("workspace = %q, want the one the phone was checked against", create.last.WorkspaceID)
+	}
 }
 
 func TestWorkspaceTemplatesCreateRefusesAnotherWorkspacesPhone(t *testing.T) {

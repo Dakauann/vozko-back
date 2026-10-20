@@ -7,13 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"vozko/brand"
 	"vozko/domain/notification"
 	"vozko/domain/workspace"
 	wc "vozko/domain/whatsapp_campaign"
 	sc "vozko/domain/whatsapp_campaign/smartcampaign"
 )
-
-const holdDedup = 24 * time.Hour
 
 var brasilia = loadBrasilia()
 
@@ -28,11 +27,11 @@ func loadBrasilia() *time.Location {
 const holdAdvice = "Revise o motivo, corrija o modelo, o número ou a lista e retome a campanha. Ao retomar, a próxima onda começa no tamanho mínimo."
 
 type HoldNotice struct {
-	publisher    notification.Publisher
+	publisher    notification.EpisodePublisher
 	dashboardURL string
 }
 
-func NewHoldNotice(publisher notification.Publisher, dashboardURL string) *HoldNotice {
+func NewHoldNotice(publisher notification.EpisodePublisher, dashboardURL string) *HoldNotice {
 	return &HoldNotice{publisher: publisher, dashboardURL: strings.TrimRight(dashboardURL, "/")}
 }
 
@@ -74,13 +73,22 @@ func (h *HoldNotice) Held(c *wc.Campaign, wave int, d sc.Decision, at time.Time)
 				"DashboardURL": h.dashboardURL + path,
 			},
 		},
-		DedupKey:    "smart_campaign_hold:" + c.ID + ":" + string(primary.Rule),
-		DedupWindow: holdDedup,
-		Source:      notification.SourceSmartCampaign,
+		EpisodeKey: holdEpisodeKey(c.ID, d.Action),
+		Source:     notification.SourceSmartCampaign,
 	})
 	if err != nil {
 		log.Printf("[smart-campaign] could not notify the hold of %s: %v", c.ID, err)
 	}
+}
+
+func (h *HoldNotice) Resumed(c *wc.Campaign) {
+	if err := h.publisher.Resolve(context.Background(), c.WorkspaceID, holdEpisodeKey(c.ID, sc.Pause), holdEpisodeKey(c.ID, sc.Stop)); err != nil {
+		log.Printf("[smart-campaign] could not close the hold alerts of %s: %v", c.ID, err)
+	}
+}
+
+func holdEpisodeKey(campaignID string, action sc.Action) string {
+	return "smart_campaign_hold:" + campaignID + ":" + string(action)
 }
 
 func waveLabel(wave int) string {
@@ -99,7 +107,7 @@ func Reason(f sc.Finding) string {
 	case sc.RulePaymentProblem:
 		return "há um problema de pagamento na conta da Meta (131042)"
 	case sc.RuleAccessRemoved:
-		return "o acesso da Vozko à conta foi removido (erro 10)"
+		return "o acesso " + brand.Active().Portuguese().OfBrand + " à conta foi removido (erro 10)"
 	case sc.RuleTemplateDisabled:
 		return "o modelo foi desativado ou rejeitado pela Meta"
 	case sc.RuleTemplatePaused:

@@ -11,6 +11,7 @@ import (
 	"vozko/domain/lead"
 	lmw "vozko/domain/lead_message_window"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/infra/remotefile"
 )
 
 type stubAudioEntryRepo struct{ wce.Repository }
@@ -100,6 +101,7 @@ func newAudioSender(t *testing.T, out *conversation.SendTextMessageOutput, sendE
 		mediaRepo:             stubAudioMediaRepo{url: cdn.URL},
 		whatsappClientFactory: stubAudioClientFactory{client: stubAudioClient{out: out, err: sendErr}},
 		messageRepo:           msgRepo,
+		mediaDownloads:        remotefile.NewDownloader(cdn.Client()),
 	}, msgRepo
 }
 
@@ -113,7 +115,7 @@ func TestSendMediaMessage_AudioSendFailure_ReturnsErrorWithoutPanic(t *testing.T
 		}
 	}()
 
-	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "user-1", "", "")
+	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "", conversation.SendOrigin{SenderUserID: "user-1"})
 
 	if err == nil {
 		t.Fatal("expected the audio send failure to surface as an error, got nil")
@@ -138,7 +140,7 @@ func TestSendMediaMessage_NilOutputWithNilError_ReturnsErrorWithoutPanic(t *test
 		}
 	}()
 
-	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "user-1", "", "")
+	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "", conversation.SendOrigin{SenderUserID: "user-1"})
 
 	if err == nil {
 		t.Fatal("expected an error when the client returns no output, got nil")
@@ -155,7 +157,7 @@ func TestSendMediaMessage_AudioSuccess_StillSends(t *testing.T) {
 	out := &conversation.SendTextMessageOutput{MessageID: "wamid.TEST123"}
 	svc, msgRepo := newAudioSender(t, out, nil)
 
-	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "user-1", "", "caption here")
+	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "caption here", conversation.SendOrigin{SenderUserID: "user-1"})
 	if err != nil {
 		t.Fatalf("expected a successful audio send, got error: %v", err)
 	}
@@ -178,7 +180,7 @@ func TestSendMediaMessage_AudioConversionFailure_StillReturnsError(t *testing.T)
 	convertAudioToOGGOpusFn = func([]byte) ([]byte, error) { return nil, convErr }
 	t.Cleanup(func() { convertAudioToOGGOpusFn = original })
 
-	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "user-1", "", "")
+	msg, err := svc.SendMediaMessage("entry-1", "whatsapp", "media-1", "audio", "", conversation.SendOrigin{SenderUserID: "user-1"})
 	if err == nil {
 		t.Fatal("expected a conversion failure to surface as an error, got nil")
 	}

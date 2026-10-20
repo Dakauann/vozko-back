@@ -13,12 +13,12 @@ import (
 )
 
 type handlePhoneWebhook struct {
-	repo         businessphone.Repository
-	wabaRepo     waba.Repository
-	recorder     quality.Recorder
-	optOuts      optout.Recorder
-	notices      businessphone.PhoneNotifier
-	now          func() time.Time
+	repo     businessphone.Repository
+	wabaRepo waba.Repository
+	recorder quality.Recorder
+	optOuts  optout.Recorder
+	notices  businessphone.PhoneNotifier
+	now      func() time.Time
 }
 
 var _ businessphone.HandlePhoneWebhookUseCase = (*handlePhoneWebhook)(nil)
@@ -38,6 +38,15 @@ func (h *handlePhoneWebhook) notifyPhone(phone *businessphone.WhatsAppBusinessPh
 	}
 	if err := h.notices.NotifyPhone(phone, notice); err != nil {
 		log.Printf("[phone-webhook] %s notification for phone %s failed: %v", notice.State, phone.ID, err)
+	}
+}
+
+func (h *handlePhoneWebhook) clearPhone(phone *businessphone.WhatsAppBusinessPhoneNumber, states ...string) {
+	if h.notices == nil {
+		return
+	}
+	if err := h.notices.ClearPhone(phone, states...); err != nil {
+		log.Printf("[phone-webhook] alerts %v of phone %s could not be closed: %v", states, phone.ID, err)
 	}
 }
 
@@ -121,6 +130,8 @@ func (h *handlePhoneWebhook) handleQualityUpdate(v businessphone.PhoneWebhookVal
 			log.Printf("[phone-webhook] quality_update: phone %s updated (event=%s, limit=%s)", phoneNumber, v.Event, v.CurrentLimit)
 			if phone.Status == businessphone.StatusFlagged || phone.Status == businessphone.StatusRestricted {
 				h.notifyPhone(phone, businessphone.QualityNotice(phone.Status == businessphone.StatusRestricted))
+			} else if phone.Status == businessphone.StatusConnected {
+				h.clearPhone(phone, businessphone.QualityNoticeStates...)
 			}
 		}
 	}
@@ -404,8 +415,11 @@ func (h *handlePhoneWebhook) handleAccountUpdate(wabaID string, v businessphone.
 						phone.Status = businessphone.StatusConnected
 						if err := h.repo.Update(phone.ID, phone); err != nil {
 							log.Printf("[phone-webhook] account_update: failed to reinstate phone %s: %v", phone.DisplayPhoneNumber, err)
-						} else if reinstated == nil {
-							reinstated = phone
+						} else {
+							h.clearPhone(phone, businessphone.ReinstatedNotice().Ends...)
+							if reinstated == nil {
+								reinstated = phone
+							}
 						}
 					}
 				}

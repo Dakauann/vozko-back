@@ -1,15 +1,24 @@
 package businessphone
 
-import (
-	"time"
+import "vozko/domain/notification"
 
-	"vozko/domain/notification"
+const (
+	qualityFlaggedState    = "quality:" + string(StatusFlagged)
+	qualityRestrictedState = "quality:" + string(StatusRestricted)
+	nameApprovedState      = "name_approved"
+	nameRejectedState      = "name_rejected"
+	bannedState            = "banned"
+	scheduledDisableState  = "scheduled_disable"
+	SuspendedNoticeState   = "suspended"
+	onboardingFailedState  = "onboarding_failed"
 )
 
+var QualityNoticeStates = []string{qualityFlaggedState, qualityRestrictedState}
+
 func QualityNotice(restricted bool) PhoneNotice {
-	label, severity, state := "Em risco", notification.SeverityWarning, "quality:"+string(StatusFlagged)
+	label, severity, state, ends := "Em risco", notification.SeverityWarning, qualityFlaggedState, qualityRestrictedState
 	if restricted {
-		label, severity, state = "Restrita", notification.SeverityCritical, "quality:"+string(StatusRestricted)
+		label, severity, state, ends = "Restrita", notification.SeverityCritical, qualityRestrictedState, qualityFlaggedState
 	}
 	return PhoneNotice{
 		State:    state,
@@ -19,16 +28,19 @@ func QualityNotice(restricted bool) PhoneNotice {
 		Subject:  "Qualidade do número em risco",
 		Template: "whatsapp_quality_alert.html",
 		Extra:    map[string]interface{}{"Quality": label},
+		Ends:     []string{ends},
 	}
 }
 
 func NameApprovedNotice(verifiedName string) PhoneNotice {
-	return accountUpdateNotice("name_approved", notification.SeveritySuccess, "Nome de exibição aprovado", verifiedName,
+	n := accountUpdateNotice(nameApprovedState, notification.SeveritySuccess, "Nome de exibição aprovado", verifiedName,
 		"O nome de exibição do seu número de WhatsApp foi aprovado e já está ativo.", "Aprovado", "success", "check")
+	n.Ends = []string{nameRejectedState}
+	return n
 }
 
 func NameRejectedNotice() PhoneNotice {
-	return accountUpdateNotice("name_rejected", notification.SeverityWarning, "Nome de exibição reprovado", "Ação necessária",
+	return accountUpdateNotice(nameRejectedState, notification.SeverityWarning, "Nome de exibição reprovado", "Ação necessária",
 		"O nome de exibição solicitado para o seu número de WhatsApp não foi aprovado. Acesse o painel para enviar um novo nome.", "Reprovado", "warning", "alert")
 }
 
@@ -43,6 +55,7 @@ func ReinstatedNotice() PhoneNotice {
 	n := accountUpdateNotice("reinstated", notification.SeveritySuccess, "Conta restaurada", "Os seus números estão ativos novamente",
 		"A sua conta WhatsApp foi restaurada. Os seus números já podem enviar e receber mensagens normalmente.", "Ativo", "success", "check")
 	n.Subject = "Conta WhatsApp restaurada"
+	n.Ends = []string{bannedState, scheduledDisableState}
 	return n
 }
 
@@ -63,7 +76,7 @@ func accountUpdateNotice(state string, severity notification.Severity, headline,
 
 func BannedNotice() PhoneNotice {
 	return PhoneNotice{
-		State:    "banned",
+		State:    bannedState,
 		Severity: notification.SeverityCritical,
 		Title:    "Número de WhatsApp bloqueado",
 		Body:     "A Meta bloqueou o número. Enquanto estiver bloqueado, ele não envia nem recebe mensagens.",
@@ -74,7 +87,7 @@ func BannedNotice() PhoneNotice {
 
 func ScheduledDisableNotice(disableDate string) PhoneNotice {
 	return PhoneNotice{
-		State:    "scheduled_disable",
+		State:    scheduledDisableState,
 		Severity: notification.SeverityCritical,
 		Title:    "Número agendado para desativação",
 		Body:     "A Meta agendou a desativação do número para " + disableDate + ". Aja antes dessa data para não perder o número.",
@@ -86,14 +99,13 @@ func ScheduledDisableNotice(disableDate string) PhoneNotice {
 
 func SuspendedNotice() PhoneNotice {
 	return PhoneNotice{
-		State:    "suspended",
+		State:    SuspendedNoticeState,
 		Severity: notification.SeverityCritical,
 		Title:    "Número de WhatsApp suspenso",
 		Body:     "O número foi suspenso porque o complemento ou o plano que o cobria deixou de estar ativo. Ele não envia nem recebe mensagens enquanto estiver suspenso.",
 		Subject:  "Número de WhatsApp suspenso",
 		Template: "whatsapp_number_suspended.html",
 		Extra:    map[string]interface{}{"Reason": "Complemento ou plano inativo"},
-		Window:   time.Hour,
 	}
 }
 
@@ -105,19 +117,18 @@ func NumberLiveNotice() PhoneNotice {
 		Body:     "A configuração do número foi concluída. Ele já pode enviar e receber mensagens pelos seus agentes e campanhas.",
 		Subject:  "Seu número de WhatsApp está ativo",
 		Template: "whatsapp_number_live.html",
-		Window:   30 * 24 * time.Hour,
+		Ends:     []string{onboardingFailedState},
 	}
 }
 
 func OnboardingFailedNotice(reason string) PhoneNotice {
 	return PhoneNotice{
-		State:    "onboarding_failed",
+		State:    onboardingFailedState,
 		Severity: notification.SeverityCritical,
 		Title:    "Falha na configuração do número",
 		Body:     "Não foi possível concluir a configuração do número. Ele continua visível no painel e você pode tentar novamente.",
 		Subject:  "Falha na configuração do número",
 		Template: "whatsapp_onboarding_failed.html",
 		Extra:    map[string]interface{}{"Reason": reason},
-		Window:   24 * time.Hour,
 	}
 }

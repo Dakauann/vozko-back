@@ -56,6 +56,8 @@ type WhatsAppCampaignHandler struct {
 	activeSubscription      workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase
 	getAgentUseCase         agent.GetAgentUseCase
 	summaryUseCase          wc.GetSummaryUseCase
+	progress                campaigndomain.ProgressUseCase
+	timeline                campaigndomain.TimelineUseCase
 }
 
 func NewWhatsAppCampaignHandler(
@@ -224,17 +226,19 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 }
 
 // @Summary		Editar uma campanha oficial
-// @Description	Atualiza nome, modelo, número, fluxo e agente. Trocar o modelo passa pela mesma regra da criação: um modelo cujo veredito de saída é `none` exige `exitRiskAcknowledged: true` no corpo (422 `exit_risk_not_acknowledged` sem ele), e o reconhecimento fica gravado com quem reconheceu e quando. Uma campanha preparada a partir de leads (origem `lead_selection`) recusa a troca do modelo, do número ou da mensagem com 409 `send_selection_locked`. O fluxo e o agente são conferidos pelo passo compartilhado da campanha: fluxo de outro workspace responde 403, fluxo ou agente inexistente 400 (`workflowId`, `agentId`), variável obrigatória ausente 400 (`AGENT_REQUIRED_VARIABLE_MISSING` ou `metadata`).
+// @Description	Atualiza só as configurações: nome, modelo, número, funil, fluxo, agente, ferramentas de IA e agendamento. Os contatos não mudam por aqui; `phoneNumbers` no corpo é ignorado (use POST /whatsapp/campaigns/{id}/entries). Arquivar não muda por aqui (use /archive e /unarchive). O modelo e o número só são conferidos quando mudam: modelo pronto para envio (422 `campaign_template_not_ready`), da mesma conta do número (422 `campaign_template_phone_mismatch`) e preenchível pelos contatos que ainda aguardam envio (400 `campaign_template_variables_missing`). Trocar o modelo passa pela regra de saída da criação (422 `exit_risk_not_acknowledged` sem `exitRiskAcknowledged: true`). Uma campanha preparada a partir de leads recusa a troca do modelo ou do número com 409 `send_selection_locked`. Quando o fluxo ou o agente mudam, cada contato salvo precisa ter as variáveis que ele pede (400 `campaign_workflow_vars_missing` ou `AGENT_REQUIRED_VARIABLE_MISSING`); fluxo de outro workspace 403 `campaign_workflow_forbidden`, inexistente 400 `campaign_workflow_not_found` ou `campaign_agent_not_found`. `scheduledStart` vazio desliga o agendamento; um novo horário precisa ficar entre 5 minutos e 1 ano (400 `campaign_schedule_in_past` ou `campaign_schedule_out_of_window`) e não vale para campanha em execução (409 `campaign_running`).
 // @Tags			WhatsApp Campaigns
 // @Accept			json
 // @Produce		json
 // @Param			id		path		string	true	"Campanha"
-// @Param			body	body		object	true	"Campos da campanha ou números a incluir"
+// @Param			body	body		object	true	"Configurações da campanha"
 // @Success		200		{object}	map[string]interface{}
 // @Failure		400		{object}	response.ErrorResponse
 // @Failure		403		{object}	response.ErrorResponse
 // @Failure		404		{object}	response.ErrorResponse
 // @Failure		409		{object}	response.ErrorResponse
+// @Failure		422		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/whatsapp/campaigns/{id} [put]
 func (h *WhatsAppCampaignHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -499,9 +503,8 @@ func (h *WhatsAppCampaignHandler) Archive(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	existing.Archived = true
-	if _, err := h.updateUseCase.Execute(r.Context(), campaignID, existing); err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to archive campaign", nil)
+	if err := h.updateUseCase.SetArchived(r.Context(), campaignID, true); err != nil {
+		h.handleDomainError(w, err)
 		return
 	}
 
@@ -526,9 +529,8 @@ func (h *WhatsAppCampaignHandler) Unarchive(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	existing.Archived = false
-	if _, err := h.updateUseCase.Execute(r.Context(), campaignID, existing); err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to unarchive campaign", nil)
+	if err := h.updateUseCase.SetArchived(r.Context(), campaignID, false); err != nil {
+		h.handleDomainError(w, err)
 		return
 	}
 
@@ -886,7 +888,7 @@ func (h *WhatsAppCampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *
 }
 
 func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err error) {
-	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) || buttonactionhttp.WriteRefusal(w, err) || smartcampaignhttp.WriteRefusal(w, err) {
+	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) || writeCampaignEditRefusal(w, err) || buttonactionhttp.WriteRefusal(w, err) || smartcampaignhttp.WriteRefusal(w, err) {
 		return
 	}
 	switch {
@@ -898,10 +900,6 @@ func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err e
 		response.WriteValidationError(w, map[string]string{"templateId": "required"})
 	case errors.Is(err, wc.ErrCampaignBusinessPhoneIDRequired):
 		response.WriteValidationError(w, map[string]string{"businessPhoneId": "required"})
-	case errors.Is(err, wc.ErrCampaignBusinessPhoneNotFound):
-		response.WriteError(w, http.StatusNotFound, "Business phone number not found", nil)
-	case errors.Is(err, wc.ErrCampaignBusinessPhoneNoAccess):
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this business phone number", nil)
 	case errors.Is(err, wc.ErrCampaignPhoneNumbersRequired):
 		response.WriteValidationError(w, map[string]string{"phoneNumbers": "at least one phone number is required"})
 	case errors.Is(err, wc.ErrCampaignPhoneNumbersTooMany):
@@ -912,10 +910,6 @@ func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err e
 		response.WriteValidationError(w, map[string]string{"departmentId": "required when you belong to multiple departments"})
 	case errors.Is(err, workspace_department.ErrDepartmentAccessDenied), errors.Is(err, workspace_department.ErrDepartmentNotFound):
 		response.WriteValidationError(w, map[string]string{"departmentId": "invalid or not accessible"})
-	case errors.Is(err, wc.ErrCampaignTemplateVariablesMismatch):
-		response.WriteValidationError(w, map[string]string{"variables": "some phone numbers have fewer variables than required by the template"})
-	case errors.Is(err, wc.ErrCampaignTemplateVariableEmpty):
-		response.WriteValidationError(w, map[string]string{"variables": "template variables cannot be empty"})
 	case errors.Is(err, wc.ErrCampaignTemplateNamedParameters):
 		response.WriteValidationError(w, map[string]string{"templateId": "WhatsApp campaigns only support templates with positional parameters {{1}}, {{2}}, etc. - templates with named parameters like {{name}} are not allowed"})
 	case errors.Is(err, campaigndomain.ErrIdempotencyUnavailable):
@@ -927,19 +921,20 @@ func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err e
 }
 
 func writeCampaignAutomationRefusal(w http.ResponseWriter, err error) bool {
+	code := campaigndomain.ErrorCode(err)
 	switch {
 	case errors.Is(err, wc.ErrCampaignWorkflowVarsMissing):
-		response.WriteValidationError(w, map[string]string{"metadata": err.Error()})
+		response.WriteErrorWithCode(w, http.StatusBadRequest, code, err.Error(), map[string]string{"metadata": err.Error()})
 	case errors.Is(err, agent.ErrAgentRequiredVariableMissing):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "AGENT_REQUIRED_VARIABLE_MISSING", err.Error(), map[string]string{"phoneNumbers": err.Error()})
 	case errors.Is(err, campaigndomain.ErrWorkflowNotFound):
-		response.WriteValidationError(w, map[string]string{"workflowId": "invalid or not found"})
+		response.WriteErrorWithCode(w, http.StatusBadRequest, code, "invalid or not found", map[string]string{"workflowId": "invalid or not found"})
 	case errors.Is(err, campaigndomain.ErrWorkflowForbidden):
-		response.WriteError(w, http.StatusForbidden, "You don't have access to this workflow", nil)
+		response.WriteErrorWithCode(w, http.StatusForbidden, code, "You don't have access to this workflow", nil)
 	case errors.Is(err, campaigndomain.ErrAgentNotFound):
-		response.WriteValidationError(w, map[string]string{"agentId": "invalid or not found"})
+		response.WriteErrorWithCode(w, http.StatusBadRequest, code, "invalid or not found", map[string]string{"agentId": "invalid or not found"})
 	case errors.Is(err, campaigndomain.ErrAutomationUnavailable):
-		response.WriteError(w, http.StatusInternalServerError, "Workflow validation unavailable", nil)
+		response.WriteErrorWithCode(w, http.StatusServiceUnavailable, code, "Workflow validation unavailable", nil)
 	default:
 		return false
 	}

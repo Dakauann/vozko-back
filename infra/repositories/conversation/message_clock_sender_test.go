@@ -1,6 +1,7 @@
 package conversation_repository
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestWorkflowMediaMovesTheBusinessClockNotTheCustomers(t *testing.T) {
 	defer sqlDB.Close()
 
 	mock.ExpectExec(`INSERT INTO "conversation_messages"`).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE unofficial_whatsapp_conversations SET last_message_at = .*, last_agent_message_at = .* WHERE id = \$\d+$`).
+	mock.ExpectExec(`UPDATE unofficial_whatsapp_conversations SET last_message_at = .*, last_agent_message_at = .*, awaiting_reply_since = .* WHERE id = \$\d+$`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := NewRepository(db).Create(clockMessage(conversation.SentByWorkflow("wf-1"))); err != nil {
@@ -38,7 +39,7 @@ func TestAContactMessageMovesTheCustomerClock(t *testing.T) {
 	defer sqlDB.Close()
 
 	mock.ExpectExec(`INSERT INTO "conversation_messages"`).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE unofficial_whatsapp_conversations SET last_message_at = .*, last_customer_message_at = .* WHERE id = \$\d+$`).
+	mock.ExpectExec(`UPDATE unofficial_whatsapp_conversations SET last_message_at = .*, last_customer_message_at = .*, awaiting_reply_since = .* WHERE id = \$\d+$`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := NewRepository(db).Create(clockMessage(conversation.SentByContact("5511"))); err != nil {
@@ -46,5 +47,48 @@ func TestAContactMessageMovesTheCustomerClock(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestACampaignBlastMovesTheBusinessClockButNotTheWait(t *testing.T) {
+	db, mock, sqlDB := newStatusDB(t)
+	defer sqlDB.Close()
+
+	mock.ExpectExec(`INSERT INTO "conversation_messages"`).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE unofficial_whatsapp_conversations SET last_message_at = .*, last_agent_message_at = .* WHERE id = \$\d+$`).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := NewRepository(db).Create(clockMessage(conversation.SentByCampaign("camp-1"))); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTheMessageClockUpdateBindsEveryPlaceholder(t *testing.T) {
+	at := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		sender      conversation.SentBy
+		touchesWait bool
+	}{
+		{conversation.SentByContact("5511"), true},
+		{conversation.SentByPerson("4f1c3a52-6c55-4d4e-9d6e-0d3f4b1a2c3d"), true},
+		{conversation.SentByAI("agent-1"), true},
+		{conversation.SentByWorkflow("wf-1"), true},
+		{conversation.SentExternally(), true},
+		{conversation.SentByCampaign("camp-1"), false},
+		{conversation.SentBySystem(), false},
+	}
+	for _, c := range cases {
+		t.Run(string(c.sender.Kind()), func(t *testing.T) {
+			sql, args := messageClockUpdate("telegram_conversations", "entry-1", "telegram", c.sender, at)
+			if strings.Count(sql, "?") != len(args) {
+				t.Fatalf("%d placeholders for %d arguments:\n%s", strings.Count(sql, "?"), len(args), sql)
+			}
+			if got := strings.Contains(sql, "awaiting_reply_since ="); got != c.touchesWait {
+				t.Fatalf("touches awaiting_reply_since = %v, want %v:\n%s", got, c.touchesWait, sql)
+			}
+		})
 	}
 }

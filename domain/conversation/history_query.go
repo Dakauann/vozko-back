@@ -17,12 +17,14 @@ type HistoryQuery struct {
 	EntryID   string
 	EntryType shared.EntryType
 	Before    *time.Time
+	After     *time.Time
 	Limit     int
 }
 
 type HistoryPage struct {
 	Messages []*Message
 	HasMore  bool
+	HasAfter bool
 	Total    int64
 	AdOrigin *AdOrigin
 }
