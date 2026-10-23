@@ -62,8 +62,9 @@ var resourceKinds = []string{
 }
 
 type ResourceMatch struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID      string      `json:"id"`
+	Name    string      `json:"name"`
+	Details interface{} `json:"details,omitempty"`
 }
 
 type ResourceResolver interface {
@@ -95,6 +96,7 @@ type AIBuilderUseCaseDeps struct {
 	AIService                 ai.Service
 	NodeCatalogFn             func() []workflow.NodeDefinition
 	ResourceResolver          ResourceResolver
+	Linter                    workflow.WorkflowLinter
 	ModelLookup               ModelLookup
 	AuditSink                 BuilderAuditSink
 	Model                     string
@@ -207,6 +209,7 @@ type hydrateData struct {
 }
 
 type builderState struct {
+	lintContext context.Context
 	workspaceID string
 	workflowID  string
 	mode        string
@@ -220,7 +223,6 @@ type builderState struct {
 	graph       *workflow.Graph
 	fullCatalog []workflow.NodeDefinition
 
-	exempt     map[string]bool
 	lastReport workflow.LintReport
 
 	actionLog []string
@@ -250,6 +252,7 @@ func (uc *aiBuilderUC) HandleSession(ctx context.Context, conn BuilderConn, work
 		return uc.sendError(conn, &writeMu, err.Error())
 	}
 
+	st.lintContext = ctx
 	uc.relint(st)
 	emit("builder_ready", builderReadyPayload{
 		WorkflowType: string(st.wfType), NodeCount: len(st.graph.Nodes), Mode: st.mode, Model: st.model,
@@ -500,8 +503,19 @@ func (uc *aiBuilderUC) guardModel(ctx context.Context, emit agentloop.Emit, st *
 }
 
 func (uc *aiBuilderUC) relint(st *builderState) {
-	st.exempt = collectExecuteModeLeafNodes(st.graph)
-	st.lastReport = workflow.LintGraph(st.graph, st.wfType, st.fullCatalog, st.exempt, builderHandleResolver)
+	st.lastReport = workflow.LintReport{Issues: []workflow.LintIssue{{Code: workflow.LintWorkflowInvalid, Severity: workflow.SeverityBlocking, Message: "Não foi possível validar os recursos do workflow.", Hint: "Tente novamente; não finalize como válido enquanto a validação estiver indisponível."}}}
+	if uc.deps.Linter == nil {
+		return
+	}
+	ctx := st.lintContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	report, err := uc.deps.Linter.Lint(ctx, &workflow.Workflow{ID: st.workflowID, WorkspaceID: st.workspaceID, Name: st.name, Description: st.description, Type: st.wfType, Graph: *st.graph})
+	if err != nil {
+		return
+	}
+	st.lastReport = report
 }
 
 func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) {
@@ -675,6 +689,7 @@ func (d *builderDriver) Dispatch(ctx context.Context, tc ai.ToolCall, emit agent
 }
 
 func (d *builderDriver) FinishVerdict(call ai.ToolCall) agentloop.FinishResult {
+	d.uc.relint(d.st)
 	summary, _ := call.Arguments["summary"].(string)
 	if d.st.lastReport.IsGreen() {
 		if summary == "" {
@@ -988,6 +1003,12 @@ func (uc *aiBuilderUC) handleGetNodeSpec(st *builderState, tc ai.ToolCall) strin
 				}
 			}
 			fmt.Fprintf(&b, "    - %s (%s)%s%s%s\n", f.Key, f.Type, req, opts, rng)
+			if f.Description != "" {
+				fmt.Fprintf(&b, "      %s\n", f.Description)
+			}
+			if f.Placeholder != "" {
+				fmt.Fprintf(&b, "      formato/exemplo: %s\n", f.Placeholder)
+			}
 		}
 	}
 	if len(def.Outputs) > 0 {
@@ -1045,7 +1066,8 @@ func (uc *aiBuilderUC) handleFindResource(ctx context.Context, emit agentloop.Em
 	} else {
 		parts := make([]string, 0, len(matches))
 		for _, m := range matches {
-			parts = append(parts, fmt.Sprintf("%s=%s", m.ID, m.Name))
+			encoded, _ := json.Marshal(m)
+			parts = append(parts, string(encoded))
 		}
 		result = fmt.Sprintf("find_resource(%s, %q) → %s", kind, query, strings.Join(parts, "; "))
 	}

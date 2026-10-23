@@ -62,6 +62,20 @@ func (a agentDirectory) FindByID(id string) (*agent.Agent, error) {
 
 type workflowDirectory map[string]*workflow.Workflow
 
+type delegationRuns struct {
+	stopped, started  []string
+	stopErr, startErr error
+}
+
+func (r *delegationRuns) StopConversationRuns(_ context.Context, workspaceID, entryID, entryType string) error {
+	r.stopped = append(r.stopped, workspaceID+"|"+entryID+"|"+entryType)
+	return r.stopErr
+}
+func (r *delegationRuns) StartConversationWorkflow(_ context.Context, workspaceID, entryID, entryType, workflowID, by string) error {
+	r.started = append(r.started, workflowID)
+	return r.startErr
+}
+
 func (w workflowDirectory) FindByID(id string) (*workflow.Workflow, error) {
 	if found, ok := w[id]; ok {
 		return found, nil
@@ -83,10 +97,36 @@ func newDelegation(f *aiFixture) (*AutomationDelegation, *profileBackedDelegatio
 			"draft": {ID: "draft", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusDraft},
 			"ivr":   {ID: "ivr", WorkspaceID: "ws-1", Status: workflow.WorkflowStatusActive, Type: workflow.WorkflowTypeVoice, PublishedVersion: &publishedVersion},
 		},
-	}), store, access
+	}, &delegationRuns{}), store, access
 }
 
 var publishedVersion = 1
+
+func TestDelegationDoesNotChangeOwnerOrStartANewWorkflowWhenStoppingOldRunsFails(t *testing.T) {
+	f := newAIFixture(noAutomation)
+	f.seed("entry-1", "bob")
+	delegation, store, _ := newDelegation(f)
+	runs := &delegationRuns{stopErr: errors.New("database unavailable")}
+	delegation.runs = runs
+	_, err := delegation.Delegate(context.Background(), delegateInput(conversation.AutomationWorkflow, "wf-9"))
+	require.Error(t, err)
+	assert.Empty(t, store.saved)
+	assert.Empty(t, runs.started)
+	assert.Equal(t, "bob", f.owner("entry-1"))
+}
+
+func TestDelegationStartsTheSelectedWorkflowAndPausesIfStartingFails(t *testing.T) {
+	f := newAIFixture(noAutomation)
+	f.seed("entry-1", "bob")
+	delegation, _, _ := newDelegation(f)
+	runs := &delegationRuns{startErr: errors.New("could not launch")}
+	delegation.runs = runs
+	_, err := delegation.Delegate(context.Background(), delegateInput(conversation.AutomationWorkflow, "wf-9"))
+	require.Error(t, err)
+	assert.Equal(t, []string{"ws-1|entry-1|whatsapp"}, runs.stopped)
+	assert.Equal(t, []string{"wf-9"}, runs.started)
+	assert.Equal(t, []string{"resume:entry-1", "whatsapp:entry-1"}, f.pauser.paused)
+}
 
 func delegateInput(kind conversation.AutomationKind, id string) DelegateInput {
 	return DelegateInput{

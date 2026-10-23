@@ -13,6 +13,14 @@ import (
 
 const healthProblemRows = 50
 
+func (m *Manager) ListRows(ctx context.Context, workspaceID, id string, pagination shared.Pagination) (*shared.PaginatedResult[*googlesheet.Row], error) {
+	if _, err := m.sheets.FindInWorkspace(ctx, workspaceID, id); err != nil {
+		return nil, err
+	}
+	pagination = shared.NormalizePagination(pagination)
+	return m.rows.ListRows(ctx, workspaceID, id, pagination)
+}
+
 type ManagerDeps struct {
 	Sheets  googlesheet.SheetRepository
 	Rows    googlesheet.RowRepository

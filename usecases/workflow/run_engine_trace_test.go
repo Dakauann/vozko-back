@@ -140,6 +140,25 @@ func linearWorkflow(nodes ...workflow.Node) *workflow.Workflow {
 	return w
 }
 
+func TestHandledNodeFailureIsTracedAsFailedAndRecoveryStillRuns(t *testing.T) {
+	h := newTraceHarness()
+	h.register(workflow.NodeTypeActionCheckCalendarAvailability, func(*workflow.NodeContext) (*workflow.NodeResult, error) {
+		return &workflow.NodeResult{NextNodeID: "recover", Branch: "erro", ErrorKind: workflow.ErrorKindValidation, Output: map[string]interface{}{"success": false, "error": "invalid date"}}, nil
+	})
+	recovered := false
+	h.register(workflow.NodeTypeActionSetVariable, func(*workflow.NodeContext) (*workflow.NodeResult, error) {
+		recovered = true
+		return &workflow.NodeResult{}, nil
+	})
+	w := linearWorkflow(workflow.Node{ID: "check", Type: workflow.NodeTypeActionCheckCalendarAvailability}, workflow.Node{ID: "recover", Type: workflow.NodeTypeActionSetVariable})
+	w.Graph.Edges = []workflow.Edge{{Source: "t1", Target: "check"}, {Source: "check", Target: "recover", Label: "sucesso"}, {Source: "check", Target: "recover", Label: "erro"}, {Source: "recover", Target: "end"}}
+	h.start(w)
+	logged := h.step(t, "check")
+	if logged.Status != workflow.LogStatusFailed || logged.Branch != "erro" || logged.Error != "invalid date" || !recovered {
+		t.Fatalf("handled failure not observable or recovery stopped: %+v recovered=%v", logged, recovered)
+	}
+}
+
 func TestAnExecutedStepRecordsTheParametersActuallyUsedWithSecretsLeftAsPlaceholders(t *testing.T) {
 	h := newTraceHarness()
 	h.register(workflow.NodeTypeActionHTTPRequest, func(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {

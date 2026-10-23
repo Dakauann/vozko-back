@@ -21,8 +21,16 @@ type stubSheets struct {
 	sheet *googlesheet.Sheet
 }
 
-func (s *stubSheets) Create(context.Context, gsuc.CreateInput) (*googlesheet.Sheet, error) { return s.sheet, s.err }
-func (s *stubSheets) Get(context.Context, string, string) (*googlesheet.Sheet, error)      { return s.sheet, s.err }
+func (s *stubSheets) ListRows(context.Context, string, string, shared.Pagination) (*shared.PaginatedResult[*googlesheet.Row], error) {
+	return &shared.PaginatedResult[*googlesheet.Row]{Items: []*googlesheet.Row{}}, s.err
+}
+
+func (s *stubSheets) Create(context.Context, gsuc.CreateInput) (*googlesheet.Sheet, error) {
+	return s.sheet, s.err
+}
+func (s *stubSheets) Get(context.Context, string, string) (*googlesheet.Sheet, error) {
+	return s.sheet, s.err
+}
 func (s *stubSheets) List(context.Context, googlesheet.ListInput) (*shared.PaginatedResult[*googlesheet.Sheet], error) {
 	return &shared.PaginatedResult[*googlesheet.Sheet]{Items: []*googlesheet.Sheet{s.sheet}, Page: 1, PageSize: 20, TotalItems: 1, TotalPages: 1}, s.err
 }

@@ -29,12 +29,9 @@ const (
 
 type Origin string
 
-const (
-	OriginAPI    Origin = "api"
-	OriginSystem Origin = "system"
-)
+const OriginAPI Origin = "api"
 
-func (o Origin) Valid() bool { return o == OriginAPI || o == OriginSystem }
+func (o Origin) Valid() bool { return o == OriginAPI }
 
 type Role string
 

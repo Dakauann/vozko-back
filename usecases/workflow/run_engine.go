@@ -581,8 +581,11 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 	}
 }
 
-func branchHint(output map[string]interface{}) string {
-	hint, _ := output["next_edge"].(string)
+func resultBranchHint(result *workflow.NodeResult) string {
+	if result.Branch != "" {
+		return result.Branch
+	}
+	hint, _ := result.Output["next_edge"].(string)
 	return hint
 }
 
@@ -660,8 +663,11 @@ func judgeStep(ran *step, g *workflow.Graph, node *workflow.Node, result *workfl
 	if result.Skipped {
 		ran.status = workflow.LogStatusSkipped
 	}
-	ran.branch = g.BranchLabel(node.ID, next, branchHint(result.Output))
+	ran.branch = g.BranchLabel(node.ID, next, resultBranchHint(result))
 	ran.message, ran.kind = routedFailure(result)
+	if ran.message != "" {
+		ran.status = workflow.LogStatusFailed
+	}
 	return verdictNext, next
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"vozko/domain/balance"
@@ -158,6 +159,7 @@ func (c *LaunchCheck) readForm(ctx context.Context, camp *wc.Campaign, tmpl *tem
 func (c *LaunchCheck) readExit(ctx context.Context, camp *wc.Campaign, facts *launchFacts) {
 	configured, err := c.d.Exits.ExitConfigured(ctx, camp.WorkspaceID, camp.TemplateID, camp.ID)
 	if err != nil {
+		slog.Warn("campaign.launch_check.unreadable", "workspace_id", camp.WorkspaceID, "campaign_id", camp.ID, "signal", unreadExit, "error", err.Error())
 		facts.unread(unreadExit)
 		return
 	}

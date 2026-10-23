@@ -1,7 +1,6 @@
 package container
 
 import (
-	"context"
 	"log"
 	"time"
 
@@ -10,16 +9,12 @@ import (
 	"vozko/delivery/http/apikeys"
 	"vozko/delivery/http/emailapihttp"
 	"vozko/domain/emailwebhook"
-	"vozko/domain/notification"
-	"vozko/infra/config"
 	cronPackage "vozko/infra/cron"
 	"vozko/infra/crypto/piigorm"
 	"vozko/infra/emailwiring"
 	"vozko/infra/netguard"
-	notification_service "vozko/infra/notifications"
 	apikey_repository "vozko/infra/repositories/apikey"
 	apikey_usecase "vozko/usecases/apikey"
-	emailapi_usecase "vozko/usecases/emailapi"
 )
 
 const (
@@ -97,7 +92,6 @@ func (c *Container) initEmailAPI() {
 			log.Fatalf("[email-api] webhook consumer: %v", err)
 		}
 	}
-	c.emailAPIRelay.Bind(api.Service)
 	c.emailAPI = &emailAPIBundle{EmailAPI: api, Handler: emailapihttp.NewHandler(api.Service, api.Service, api.Webhooks)}
 }
 
@@ -107,24 +101,4 @@ func (c *Container) registerEmailAPIJobs() {
 	}
 	webhooks := c.emailAPI.Webhooks
 	c.jobRunner.SetEmailWebhookJobs(cronPackage.CtxJobFunc(webhooks.Sweep), cronPackage.CtxJobFunc(webhooks.Purge))
-	if c.systemEmailReserve != nil {
-		c.jobRunner.SetSystemEmailReserveJob(c.systemEmailReserve)
-	}
-}
-
-func (c *Container) systemEmailService(loader notification.TemplateLoader) notification.EmailService {
-	cfg := config.LoadSystemEmailConfig()
-	svc, err := notification_service.NewSystemEmailService(c.emailAPIRelay, loader, notification_service.SystemEmailConfig{WorkspaceID: cfg.WorkspaceID, SenderID: cfg.SenderID})
-	if err != nil {
-		log.Fatalf("[system-email] %v", err)
-	}
-	c.systemEmailReserve = func(ctx context.Context) error {
-		if c.email == nil || c.repositories == nil || c.repositories.balance == nil {
-			return emailapi_usecase.ErrIncomplete
-		}
-		return emailapi_usecase.ReserveWatch{
-			WorkspaceID: cfg.WorkspaceID, Balances: c.repositories.balance, Quotes: c.email.Billing, Alerts: c.notifications().Publisher,
-		}.Execute(ctx)
-	}
-	return svc
 }

@@ -1,10 +1,15 @@
 package workflow
 
 import (
+	"context"
 	"time"
 
 	"vozko/domain/shared"
 )
+
+type ConversationRunCanceller interface {
+	CancelConversationRuns(ctx context.Context, workspaceID, entryID, entryType, reason string) ([]CancelledRun, error)
+}
 
 type WorkflowRepository interface {
 	Create(workflow *Workflow) error

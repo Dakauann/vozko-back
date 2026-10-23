@@ -1249,6 +1249,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		aiModelValidator = openrouter_service.NewModelValidator(orSvc, 1*time.Hour)
 	}
 	c.useCases.wsWorkflowAIBuilder = workflow_usecase.NewAIBuilderUseCase(workflow_usecase.AIBuilderUseCaseDeps{
+		Linter:        c.useCases.activateWorkflow.(workflow_domain.WorkflowLinter),
 		WorkflowRepo:  c.repositories.workflow,
 		AIService:     c.services.ai,
 		NodeCatalogFn: wfRegistry.Catalog,

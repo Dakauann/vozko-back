@@ -209,10 +209,6 @@ func (r *JobRunner) SetEmailWebhookJobs(sweep, purge ctxJob) {
 	r.addChannelJob("email_webhook_purge", 24*time.Hour, purge)
 }
 
-func (r *JobRunner) SetSystemEmailReserveJob(watch ctxJob) {
-	r.addChannelJob("system_email_reserve", 10*time.Minute, watch)
-}
-
 func (r *JobRunner) SetEmailSESLimitJobs(sendQuota, capacity, tenantHealth ctxJob) {
 	r.addChannelJob("email_ses_send_quota_refresh", time.Minute, sendQuota)
 	r.addChannelJob("email_ses_capacity_check", 24*time.Hour, capacity)

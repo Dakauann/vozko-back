@@ -83,6 +83,17 @@ type AddRowRequest struct {
 	Values map[string]any `json:"values" swaggertype:"object"`
 }
 
+type RowResponse struct {
+	ID        string            `json:"id"`
+	Values    googlesheet.Cells `json:"values"`
+	Status    string            `json:"status"`
+	RowNumber int               `json:"rowNumber,omitempty"`
+	Origin    string            `json:"origin"`
+	CreatedAt time.Time         `json:"createdAt"`
+	WrittenAt *time.Time        `json:"writtenAt,omitempty"`
+	ErrorCode string            `json:"errorCode,omitempty"`
+}
+
 type ColumnResponse struct {
 	Key         string   `json:"key" example:"nome_do_cliente"`
 	Header      string   `json:"header" example:"Nome do cliente"`

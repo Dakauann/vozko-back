@@ -32,7 +32,7 @@ func replyMenuWorkflow() *workflow.Workflow {
 
 func waitingMenuRun() *workflow.WorkflowRun {
 	return &workflow.WorkflowRun{
-		ID: "run-woken", WorkflowID: "wf-1", WorkspaceID: "ws-1", EntryID: "entry-1",
+		ID: "run-woken", WorkflowID: "wf-1", WorkspaceID: "ws-1", EntryID: "entry-1", EntryType: "telegram",
 		Status: workflow.RunStatusWaiting, WaitReason: workflow.WaitReasonReply, CurrentNodeID: "menu", State: workflow.NewRunState(),
 	}
 }

@@ -283,6 +283,19 @@ func codeProvisions(np nodeProvisions, n *Node, stateVar func(ref, text string, 
 
 func outputKeysOf(n *Node, def NodeDefinition) []OutputKeyDefinition {
 	var keys []OutputKeyDefinition
+	if n.Type == NodeTypeActionAIAgent {
+		customTools, _ := n.Config["custom_tools"].([]interface{})
+		for _, raw := range customTools {
+			tool, _ := raw.(map[string]interface{})
+			parameters, _ := tool["parameters"].([]interface{})
+			for _, rawParameter := range parameters {
+				parameter, _ := rawParameter.(map[string]interface{})
+				if name, _ := parameter["name"].(string); strings.TrimSpace(name) != "" {
+					keys = append(keys, OutputKeyDefinition{Key: name, Label: name, Type: VariableTypeUnknown})
+				}
+			}
+		}
+	}
 	for _, ok := range def.OutputKeys {
 		switch {
 		case n.Type == NodeTypeActionReplyToAgent && strings.Contains(ok.Key, "<"):

@@ -33,7 +33,8 @@ func (e *checkCalendarAvailabilityExecutor) Definition() workflow.NodeDefinition
 		Description:  "Consulta o Google Calendar do workspace e retorna horários livres no período informado.",
 		Icon:         "CalendarBlank",
 		Guidance: workflow.NodeGuidance{
-			When: "Para consultar horários livres no Google Calendar.",
+			When:     "Para consultar horários livres no Google Calendar.",
+			Behavior: "date_from/date_to aceitam YYYY-MM-DD (dia de expediente inteiro) ou data/hora ISO/RFC3339. date_to vazio consulta até o fim do expediente. Datas iguais sem hora consultam um único dia. Use timezone do workspace. Não invente disponibilidade; só confirme após success=true.",
 		},
 		Outputs: []workflow.HandleDefinition{
 			{ID: "sucesso", Label: "Sucesso"},
@@ -60,7 +61,7 @@ func (e *checkCalendarAvailabilityExecutor) Definition() workflow.NodeDefinition
 			"work_days":     "weekdays",
 		},
 		ConfigSchema: []workflow.ConfigField{
-			{Key: "date_from", Label: "Data/hora início", Type: "text", Placeholder: "2026-04-10T08:00:00-03:00 ou {{var.date_from}}", Required: true},
+			{Key: "date_from", Label: "Data/hora início", Type: "text", Placeholder: "YYYY-MM-DD ou 2026-04-10T08:00:00-03:00 ou {{var.date_from}}", Required: true},
 			{Key: "date_to", Label: "Data/hora fim", Type: "text", Placeholder: "Opcional. Se vazio, consulta até o fim do horário comercial do dia"},
 			{Key: "timezone", Label: "Timezone", Type: "text", Placeholder: "America/Sao_Paulo", Required: true},
 			{Key: "slot_duration", Label: "Duração do slot (minutos)", Type: "number", Placeholder: "30"},
@@ -108,29 +109,9 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 	if fromRaw == "" {
 		return calAvailFailure(ctx, "o campo Data/hora início é obrigatório"), nil
 	}
-	dateFrom, err := parseCalendarTime(fromRaw, loc)
+	dateFrom, dateTo, err := calendar.AvailabilityRange(fromRaw, calendarConfigText(ctx, "date_to"), calendarConfigText(ctx, "working_start"), calendarConfigText(ctx, "working_end"), loc)
 	if err != nil {
-		return calAvailFailure(ctx, fmt.Sprintf("data/hora início inválida: %v", err)), nil
-	}
-
-	toRaw := strings.TrimSpace(calendarConfigText(ctx, "date_to"))
-	var dateTo time.Time
-	if toRaw != "" {
-		dateTo, err = parseCalendarTime(toRaw, loc)
-		if err != nil {
-			return calAvailFailure(ctx, fmt.Sprintf("data/hora fim inválida: %v", err)), nil
-		}
-	} else {
-
-		workEnd := parseHHMM(calendarConfigText(ctx, "working_end"), 18, 0)
-		dateTo = time.Date(dateFrom.Year(), dateFrom.Month(), dateFrom.Day(), workEnd.hour, workEnd.minute, 0, 0, loc)
-		if !dateTo.After(dateFrom) {
-			dateTo = dateFrom.Add(8 * time.Hour)
-		}
-	}
-
-	if !dateTo.After(dateFrom) {
-		return calAvailFailure(ctx, "a data de fim precisa ser depois da data de início"), nil
+		return calAvailFailure(ctx, err.Error()), nil
 	}
 
 	slotMinutes := 30

@@ -82,6 +82,7 @@ func TestValidateRefusals(t *testing.T) {
 		}, ErrAttachmentInvalid},
 		{"attachment over http", func(r *Request) { r.Attachments = []AttachmentSource{{FileName: "a.pdf", URL: "http://x.com/a.pdf"}} }, ErrAttachmentInvalid},
 		{"unknown origin", func(r *Request) { r.Origin = "mars" }, ErrOriginInvalid},
+		{"system origin", func(r *Request) { r.Origin = "system" }, ErrOriginInvalid},
 		{"no workspace", func(r *Request) { r.WorkspaceID = "" }, ErrWorkspaceRequired},
 	}
 	for _, c := range cases {

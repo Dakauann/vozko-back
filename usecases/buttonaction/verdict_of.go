@@ -2,6 +2,7 @@ package buttonaction_usecase
 
 import (
 	"context"
+	"strings"
 
 	"vozko/domain/buttonaction"
 	"vozko/domain/whatsapp/template"
@@ -20,9 +21,12 @@ func (s *Service) ExitConfigured(ctx context.Context, workspaceID, templateID, c
 	if err != nil {
 		return false, err
 	}
-	routes, err := s.deps.Routes.Get(ctx, workspaceID, campaignID)
-	if err != nil {
-		return false, err
+	routes := buttonaction.CampaignRoutes{}
+	if strings.TrimSpace(campaignID) != "" {
+		routes, err = s.deps.Routes.Get(ctx, workspaceID, campaignID)
+		if err != nil {
+			return false, err
+		}
 	}
 	verdict, err := s.verdictOf(ctx, workspaceID, tmpl, routes)
 	if err != nil {

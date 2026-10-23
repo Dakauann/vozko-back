@@ -33,7 +33,6 @@ const (
 	SourceGoogleAccount   = "google_account"
 	SourceGoogleSheet     = "google_sheet"
 	SourceEmailWebhook    = "email_webhook"
-	SourceSystemEmail     = "system_email"
 
 	SourceConversationNoteMention = "conversation_note_mention"
 )

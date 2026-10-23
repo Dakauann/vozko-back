@@ -120,5 +120,3 @@ func Outstanding(messages []Message) []Message {
 }
 
 func RecipientID(position int) string { return fmt.Sprintf("r%d", position) }
-
-const SystemEmailReserve = 2000

@@ -39,6 +39,10 @@ func outgoingEdges(ctx *workflow.NodeContext) []workflow.Edge {
 func routeOutput(result *workflow.NodeResult, edges []workflow.Edge, output string, fallbacks ...string) *workflow.NodeResult {
 	next, err := workflow.RouteOutput(edges, output, fallbacks...)
 	if err == nil {
+		result.Branch = output
+		if message, _ := result.Output["error"].(string); strings.TrimSpace(message) != "" && result.ErrorKind == "" && (output == "erro" || output == "falha" || output == "error" || output == "timeout") {
+			result.ErrorKind = workflow.ErrorKindInternal
+		}
 		result.NextNodeID = next
 		return result
 	}

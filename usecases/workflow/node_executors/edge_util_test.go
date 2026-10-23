@@ -1,11 +1,24 @@
 package node_executors
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"vozko/domain/workflow"
 )
+
+func TestRoutingPreservesTheSelectedBranchWithoutChangingTheNodeOutput(t *testing.T) {
+	edges := []workflow.Edge{{Source: "n", Target: "agent", Label: "sucesso"}, {Source: "n", Target: "agent", Label: "erro"}}
+	output := map[string]interface{}{"success": false, "error": "invalid date"}
+	result := routeOutput(&workflow.NodeResult{Output: output}, edges, "erro")
+	if result.Branch != "erro" || result.NextNodeID != "agent" || result.Error != "" || result.ErrorKind == "" {
+		t.Fatalf("incorrect handled error: %+v", result)
+	}
+	if !reflect.DeepEqual(result.Output, map[string]interface{}{"success": false, "error": "invalid date"}) {
+		t.Fatalf("routing changed business output: %+v", result.Output)
+	}
+}
 
 func TestRouteOutputFollowsTheOutputOrTheDeclaredFallbackOrFailsTheStep(t *testing.T) {
 	edges := []workflow.Edge{{Source: "n", Target: "ok", Label: "sucesso"}, {Source: "n", Target: "nm", Label: "no_match"}}

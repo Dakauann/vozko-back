@@ -8,9 +8,23 @@ import (
 
 	"vozko/domain/googleaccount"
 	"vozko/domain/googlesheet"
+	"vozko/domain/shared"
 )
 
 const testWorkspace = "ws-1"
+
+func TestWrittenRowsRemainReadableWithTheirCellsAndAreWorkspaceScoped(t *testing.T) {
+	w := newWorld(t)
+	queued := w.enqueue(t, "visible-row", map[string]any{"nome": "Dakauann", "valor": 12.5})
+	w.write(t)
+	page, err := w.manager.ListRows(context.Background(), testWorkspace, w.sheet.ID, shared.Pagination{Page: 1, PageSize: 25})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != queued.RowID || page.Items[0].Status != googlesheet.RowWritten || page.Items[0].Cells["nome"] != "Dakauann" {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	if _, err := w.manager.ListRows(context.Background(), "another-workspace", w.sheet.ID, shared.Pagination{}); !errors.Is(err, googlesheet.ErrSheetNotFound) {
+		t.Fatalf("cross-workspace rows exposed: %v", err)
+	}
+}
 
 type world struct {
 	sheets   *memorySheets

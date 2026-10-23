@@ -340,13 +340,3 @@ func TestDesignsRenderPerRecipientWithTheVariables(t *testing.T) {
 		t.Fatalf("content = %+v", c)
 	}
 }
-
-func TestSystemSendsNeedNoKey(t *testing.T) {
-	h := newHarness()
-	r := request("ana@example.com")
-	r.Origin, r.APIKeyID = emailapi.OriginSystem, ""
-	res, err := h.service(t).Send(context.Background(), r)
-	if err != nil || res.Send.Origin != emailapi.OriginSystem {
-		t.Fatalf("system send = %+v %v", res, err)
-	}
-}

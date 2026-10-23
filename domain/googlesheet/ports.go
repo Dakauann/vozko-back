@@ -105,6 +105,7 @@ type Health struct {
 }
 
 type RowRepository interface {
+	ListRows(ctx context.Context, workspaceID, sheetID string, pagination shared.Pagination) (*shared.PaginatedResult[*Row], error)
 	Insert(ctx context.Context, row *Row) (stored *Row, duplicate bool, err error)
 	PendingSheets(ctx context.Context, readyAt time.Time, limit int) ([]PendingSheet, error)
 	Claim(ctx context.Context, sheetID, batchID string, limit int, now time.Time) ([]*Row, error)

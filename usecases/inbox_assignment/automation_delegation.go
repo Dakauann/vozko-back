@@ -68,10 +68,16 @@ type AutomationDelegation struct {
 	delegations conversation.DelegationRepository
 	toggle      *OperatorAutomationToggle
 	directory   AutomationDirectory
+	runs        ConversationAutomationRuns
 }
 
-func NewAutomationDelegation(delegations conversation.DelegationRepository, toggle *OperatorAutomationToggle, directory AutomationDirectory) *AutomationDelegation {
-	return &AutomationDelegation{delegations: delegations, toggle: toggle, directory: directory}
+type ConversationAutomationRuns interface {
+	StopConversationRuns(ctx context.Context, workspaceID, entryID, entryType string) error
+	StartConversationWorkflow(ctx context.Context, workspaceID, entryID, entryType, workflowID, by string) error
+}
+
+func NewAutomationDelegation(delegations conversation.DelegationRepository, toggle *OperatorAutomationToggle, directory AutomationDirectory, runs ConversationAutomationRuns) *AutomationDelegation {
+	return &AutomationDelegation{delegations: delegations, toggle: toggle, directory: directory, runs: runs}
 }
 
 type SystemDelegation struct {
@@ -107,6 +113,12 @@ func (d *AutomationDelegation) delegate(ctx context.Context, in DelegateInput) (
 	if err != nil {
 		return OperatorAutomationResult{}, fmt.Errorf("delegate %s (%s): %w", in.EntryID, in.EntryType, err)
 	}
+	if d.runs == nil {
+		return OperatorAutomationResult{}, fmt.Errorf("delegate: conversation run switching is unavailable")
+	}
+	if err := d.runs.StopConversationRuns(ctx, in.WorkspaceID, in.EntryID, string(in.EntryType)); err != nil {
+		return OperatorAutomationResult{}, err
+	}
 	if err := d.delegations.Save(ctx, conversation.Delegation{
 		WorkspaceID: in.WorkspaceID,
 		EntryID:     in.EntryID,
@@ -123,6 +135,11 @@ func (d *AutomationDelegation) delegate(ctx context.Context, in DelegateInput) (
 			return result, fmt.Errorf("%w; the previous delegation could not be restored: %v", err, restoreErr)
 		}
 		return result, err
+	}
+	if in.Automation.Kind == conversation.AutomationWorkflow {
+		if err := d.runs.StartConversationWorkflow(ctx, in.WorkspaceID, in.EntryID, string(in.EntryType), in.Automation.ID, in.ActorUserID); err != nil {
+			return result, d.toggle.pauseAgain(ctx, in.toggle(), fmt.Errorf("start the delegated workflow: %w", err))
+		}
 	}
 	return result, nil
 }

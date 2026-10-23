@@ -151,7 +151,11 @@ func (te *triggerEvaluator) blockingRun(w *workflow.Workflow, trigger *workflow.
 	if event.StartsRunPerEvent() {
 		return nil, nil
 	}
-	return te.runRepo.FindActiveByEntryAndTrigger(w.ID, event.EntryID, trigger.ID)
+	run, err := te.runRepo.FindActiveByEntryAndTrigger(w.ID, event.EntryID, trigger.ID)
+	if err != nil {
+		return nil, err
+	}
+	return conversationRunCurrent(te.runRepo, te.engine, run, w, event)
 }
 
 func (te *triggerEvaluator) routeReply(event workflow.TriggerEvent) (workflow.ReplyRouting, bool) {

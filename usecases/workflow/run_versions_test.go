@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"vozko/domain/workflow"
+	"vozko/usecases/workflow/node_executors"
 )
 
 func waitingGraph(waitID, endID string) workflow.Graph {
@@ -53,7 +54,7 @@ func versionedWorkflow(t *testing.T) *MockWorkflowRepository {
 func parkedOn(nodeID string, version *int) *workflow.WorkflowRun {
 	return &workflow.WorkflowRun{
 		ID: "run-1", WorkflowID: "wf-1", WorkspaceID: "ws1", EntryID: "entry-1", EntryType: "whatsapp",
-		Status: workflow.RunStatusWaiting, WaitReason: workflow.WaitReasonDuration, TriggerNodeID: "t", CurrentNodeID: nodeID,
+		Status: workflow.RunStatusWaiting, WaitReason: workflow.WaitReasonDuration, TriggerType: workflow.TriggerMessageReceived, TriggerNodeID: "t", CurrentNodeID: nodeID,
 		State: workflow.NewRunState(), WorkflowVersion: version,
 	}
 }
@@ -187,19 +188,25 @@ func TestATriggeredRunRecordsThePublishedVersion(t *testing.T) {
 	}
 }
 
-func TestAMessageWakesAWaitOnTheVersionTheRunStartedOn(t *testing.T) {
+func TestAMessageRestartsAConversationOnTheLatestPublishedVersion(t *testing.T) {
 	repo := versionedWorkflow(t)
 	runs := NewMockWorkflowRunRepository()
 	one := 1
 	run := parkedOn("wait-v1", &one)
 	_ = runs.Create(run)
-	te := NewTriggerEvaluator(repo, runs, automationOnEngine(runs), nil).(*triggerEvaluator)
+	engine := automationOnEngine(runs)
+	engine.registry.Register(workflow.NodeTypeWaitDuration, node_executors.NewWaitDurationExecutor())
+	te := NewTriggerEvaluator(repo, runs, engine, nil).(*triggerEvaluator)
 
 	te.Evaluate(workflow.TriggerEvent{WorkspaceID: "ws1", EntryID: "entry-1", EntryType: "whatsapp", TriggerType: workflow.TriggerMessageReceived, Data: map[string]interface{}{"message": "oi"}})
 
 	woken, _ := runs.FindByID("run-1")
-	if woken.Status != workflow.RunStatusCompleted || woken.State.GetString("_wait_outcome") != "message_received" {
-		t.Fatalf("status = %s outcome = %q, want the version 1 wait to take its message edge", woken.Status, woken.State.GetString("_wait_outcome"))
+	if woken.Status != workflow.RunStatusCancelled || woken.Error != cancelReasonPublishedVersionChanged {
+		t.Fatalf("old run = %+v, want the previous version cancelled", woken)
+	}
+	current, err := runs.FindActiveByEntry("wf-1", "entry-1")
+	if err != nil || current == nil || current.ID == run.ID || current.WorkflowVersion == nil || *current.WorkflowVersion != 2 || current.CurrentNodeID != "wait-v2" {
+		t.Fatalf("current=%+v err=%v, want a fresh version 2 run", current, err)
 	}
 }
 

@@ -179,7 +179,6 @@ import (
 	customerportfolio_usecase "vozko/usecases/customerportfolio"
 	customfield_usecase "vozko/usecases/customfield"
 	dealautomation_usecase "vozko/usecases/dealautomation"
-	emailapi_usecase "vozko/usecases/emailapi"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	leadarea_usecase "vozko/usecases/leadarea"
 	leadcompany_usecase "vozko/usecases/leadcompany"
@@ -259,10 +258,8 @@ type Container struct {
 	formSenderRelay          *node_executors.FormSenderRelay
 	carrierSenderRelay       *node_executors.CarrierSenderRelay
 	platformEmailRelay       *transactionalemail.Relay
-	emailAPIRelay            *emailapi_usecase.Relay
 	emailAPI                 *emailAPIBundle
 	apiKeyService            *apikey_usecase.Service
-	systemEmailReserve       cronPackage.CtxJobFunc
 	workflowLeadTriggers     workflowLeadTriggerBundle
 	formRuns                 *workflow_usecase.FormRunResumer
 	formTriggerFirer         *workflow_usecase.FormTriggerFirer

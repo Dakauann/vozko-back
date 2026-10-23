@@ -4,7 +4,9 @@ import (
 	"log"
 
 	conversation_domain "vozko/domain/conversation"
+	workflow_repository "vozko/infra/repositories/workflow"
 	ia_usecase "vozko/usecases/inbox_assignment"
+	workflow_usecase "vozko/usecases/workflow"
 )
 
 type delegationSetter interface {
@@ -34,7 +36,8 @@ func (c *Container) automationToggle() *ia_usecase.OperatorAutomationToggle {
 }
 
 func (c *Container) automationDelegation(toggle *ia_usecase.OperatorAutomationToggle) *ia_usecase.AutomationDelegation {
-	return ia_usecase.NewAutomationDelegation(c.services.delegations, toggle, c.automationDirectory())
+	runs := workflow_usecase.NewConversationRunSwitch(workflow_repository.NewConversationRunCanceller(c.db), c.tapWorkflows(), c.repositories.workflowRunLog)
+	return ia_usecase.NewAutomationDelegation(c.services.delegations, toggle, c.automationDirectory(), runs)
 }
 
 func (c *Container) buttonDelegations() *ia_usecase.AutomationDelegation {

@@ -262,6 +262,7 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 	lintDataRefAvailability(g, defs, add)
 	lintFunctionalResourceRefs(g, add)
 	lintNodeShape(g, defs, add)
+	lintCalendarConfig(g, add)
 	lintCodeReadsTemplates(g, add)
 	lintSecretsInPlainText(g, add)
 	lintPinnedOutputs(g, add)
@@ -533,7 +534,7 @@ func lintDataFlow(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssue
 				continue
 			}
 			found := false
-			for _, ok := range pdef.OutputKeys {
+			for _, ok := range outputKeysOf(producer, pdef) {
 				if ok.Key == dep.Key {
 					found = true
 					break

@@ -558,3 +558,19 @@ func (r *fakeResolver) Resolve(context.Context, string, googlesheet.Origin) (goo
 	r.calls++
 	return r.values, nil
 }
+
+func (m *memoryRows) ListRows(_ context.Context, workspaceID, sheetID string, p shared.Pagination) (*shared.PaginatedResult[*googlesheet.Row], error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var rows []*googlesheet.Row
+	for _, row := range m.rows {
+		if row.WorkspaceID == workspaceID && row.SheetID == sheetID {
+			rows = append(rows, row)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].CreatedAt.After(rows[j].CreatedAt) })
+	total := len(rows)
+	start := min(p.Offset(), total)
+	end := min(start+p.PageSize, total)
+	return shared.NewPaginatedResult(rows[start:end], p, int64(total)), nil
+}

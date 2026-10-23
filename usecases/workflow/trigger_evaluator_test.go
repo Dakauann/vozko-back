@@ -70,6 +70,7 @@ func TestEvaluateStillStartsOtherWorkflowsWhenAnotherOnesRunWasResumed(t *testin
 
 	waiting := &workflow.WorkflowRun{
 		ID:            "run-stale",
+		EntryType:     "telegram",
 		WorkflowID:    stale.ID,
 		WorkspaceID:   workspaceID,
 		EntryID:       entryID,

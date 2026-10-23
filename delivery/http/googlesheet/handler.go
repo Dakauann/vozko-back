@@ -23,6 +23,7 @@ import (
 const maxRequestBody = 256 << 10
 
 type Sheets interface {
+	ListRows(ctx context.Context, workspaceID, id string, pagination shared.Pagination) (*shared.PaginatedResult[*googlesheet.Row], error)
 	Create(ctx context.Context, in gsuc.CreateInput) (*googlesheet.Sheet, error)
 	Get(ctx context.Context, workspaceID, id string) (*googlesheet.Sheet, error)
 	List(ctx context.Context, in googlesheet.ListInput) (*shared.PaginatedResult[*googlesheet.Sheet], error)
@@ -32,6 +33,19 @@ type Sheets interface {
 	Health(ctx context.Context, workspaceID, id string) (*gsuc.HealthView, error)
 	RetryProblems(ctx context.Context, workspaceID, id string) (int, error)
 	Reactivate(ctx context.Context, in gsuc.ReactivateInput) (*googlesheet.Sheet, error)
+}
+
+func (h *Handler) ListRows(w http.ResponseWriter, r *http.Request) {
+	page, err := h.sheets.ListRows(r.Context(), middleware.GetWorkspaceID(r), mux.Vars(r)["id"], httpx.ParsePagination(r.URL.Query()))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	items := make([]RowResponse, 0, len(page.Items))
+	for _, row := range page.Items {
+		items = append(items, RowResponse{ID: row.ID, Values: row.Cells, Status: string(row.Status), RowNumber: row.RowNumber, Origin: string(row.Origin.Kind), CreatedAt: row.CreatedAt, WrittenAt: row.WrittenAt, ErrorCode: row.ErrorCode})
+	}
+	response.WriteSuccess(w, http.StatusOK, shared.PaginatedResult[RowResponse]{Items: items, Page: page.Page, PageSize: page.PageSize, TotalItems: page.TotalItems, TotalPages: page.TotalPages})
 }
 
 type Rows interface {

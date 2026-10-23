@@ -23,6 +23,13 @@ func NewReplyWaiters(workflows workflow.WorkflowRepository, runs workflow.Workfl
 
 func (w *ReplyWaiters) WaitingForReply(event workflow.TriggerEvent) (*workflow.WorkflowRun, error) {
 	run, err := w.runs.FindWaitingReplyByEntry(event.EntryID)
+	if err == nil && run != nil && run.FollowsConversationOwner() {
+		var published *workflow.Workflow
+		published, err = w.workflows.FindByID(run.WorkflowID)
+		if err == nil {
+			run, err = conversationRunCurrent(w.runs, w.engine, run, published, event)
+		}
+	}
 	if err == nil {
 		return run, nil
 	}

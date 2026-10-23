@@ -36,12 +36,14 @@ type AgentCallRuns interface {
 	LatestForEntry(workspaceID, entryID, entryType string) (*AgentCallRun, error)
 }
 
-type CancelledAgentRun struct {
+type CancelledRun struct {
 	RunID         string
 	WorkspaceID   string
 	WorkflowID    string
 	CurrentNodeID string
 }
+
+type CancelledAgentRun = CancelledRun
 
 type AgentRunCanceller interface {
 	CancelActiveAgentRuns(entryID, entryType, reason string) ([]CancelledAgentRun, error)

@@ -148,6 +148,7 @@ type NodeContext struct {
 }
 
 type NodeResult struct {
+	Branch     string
 	NextNodeID string
 	Output     map[string]interface{}
 	Wait       *WaitInstruction

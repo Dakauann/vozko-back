@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-	emailapi_usecase "vozko/usecases/emailapi"
 	"vozko/usecases/transactionalemail"
 	"vozko/usecases/workflow/node_executors"
 
@@ -26,7 +25,7 @@ import (
 )
 
 func New() *Container {
-	c := &Container{formSenderRelay: node_executors.NewFormSenderRelay(), carrierSenderRelay: node_executors.NewCarrierSenderRelay(), platformEmailRelay: transactionalemail.NewRelay(), emailAPIRelay: emailapi_usecase.NewRelay()}
+	c := &Container{formSenderRelay: node_executors.NewFormSenderRelay(), carrierSenderRelay: node_executors.NewCarrierSenderRelay(), platformEmailRelay: transactionalemail.NewRelay()}
 	c.cfg = config.LoadConfig()
 
 	c.validatePortLayout()

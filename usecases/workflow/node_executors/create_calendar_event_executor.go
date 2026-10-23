@@ -342,34 +342,7 @@ func calendarConfigBool(raw interface{}, fallback bool) bool {
 }
 
 func parseCalendarTime(raw string, location *time.Location) (time.Time, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return time.Time{}, fmt.Errorf("valor vazio")
-	}
-
-	for _, layout := range []string{
-		time.RFC3339,
-		time.RFC3339Nano,
-		"2006-01-02T15:04:05",
-		"2006-01-02T15:04",
-		"2006-01-02 15:04:05",
-		"2006-01-02 15:04",
-	} {
-		var (
-			parsed time.Time
-			err    error
-		)
-		if layout == time.RFC3339 || layout == time.RFC3339Nano {
-			parsed, err = time.Parse(layout, raw)
-		} else {
-			parsed, err = time.ParseInLocation(layout, raw, location)
-		}
-		if err == nil {
-			return parsed, nil
-		}
-	}
-
-	return time.Time{}, fmt.Errorf("use RFC3339 ou formatos como 2026-03-31 14:00")
+	return calendar.ParseDateTime(raw, location)
 }
 
 func parseCalendarAttendees(raw interface{}, state *workflow.RunState) ([]calendar.Attendee, error) {

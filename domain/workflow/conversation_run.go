@@ -10,6 +10,10 @@ func (r *WorkflowRun) OnConversation() bool {
 	return r.EntryType != EntryTypeSIPCall && !r.OnLead()
 }
 
+func (r *WorkflowRun) FollowsConversationOwner() bool {
+	return r.OnConversation() && !StartedByAnAgent(r.StartedBy) && (r.TriggerType == TriggerMessageReceived || r.TriggerType == TriggerFirstMessage)
+}
+
 type StepNamer interface {
 	StepName(nodeType NodeType) string
 }

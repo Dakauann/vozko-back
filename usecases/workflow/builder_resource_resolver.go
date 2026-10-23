@@ -326,7 +326,16 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 		}
 		out := make([]ResourceMatch, 0, len(page.Items))
 		for _, s := range page.Items {
-			out = append(out, ResourceMatch{ID: s.ID, Name: s.Title})
+			if s == nil || s.WorkspaceID != workspaceID {
+				continue
+			}
+			columns := make([]googlesheet.Column, 0, len(s.Columns))
+			for _, column := range s.Columns {
+				if column.TakesInput() {
+					columns = append(columns, column)
+				}
+			}
+			out = append(out, ResourceMatch{ID: s.ID, Name: s.Title, Details: map[string]interface{}{"columns": columns, "status": s.Status, "mapping_instruction": "Use columns[].key como chave de values; header é apenas o rótulo. Preencha todas as colunas required. Não use colunas automáticas ou arquivadas."}})
 		}
 		return out, nil
 
