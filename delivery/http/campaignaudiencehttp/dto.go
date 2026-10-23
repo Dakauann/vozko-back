@@ -5,10 +5,12 @@ import (
 	"strings"
 
 	"vozko/delivery/http/audiencex"
+	"vozko/delivery/http/lead"
 	"vozko/delivery/http/unofficial_whatsapp"
 	"vozko/domain/campaign"
 	"vozko/domain/campaignaudience"
 	"vozko/domain/emaildesign"
+	"vozko/domain/leadmap"
 	campaignaudience_usecase "vozko/usecases/campaignaudience"
 )
 
@@ -137,4 +139,30 @@ type SuggestionsRequest struct {
 
 type DeletedResponse struct {
 	ID string `json:"id"`
+}
+
+type MapRequest struct {
+	audiencex.AudienceRequest
+}
+
+type MapResponse struct {
+	Layer     lead.MapLayerResponse `json:"layer"`
+	Located   int                   `json:"located" example:"128"`
+	Positions int                   `json:"positions" example:"96"`
+	Sampled   bool                  `json:"sampled" example:"false"`
+	Bounds    *lead.MapBBoxResponse `json:"bounds"`
+}
+
+func mapResponse(s leadmap.Sample) MapResponse {
+	out := MapResponse{
+		Layer:     lead.MapLayerOf(leadmap.Layer{Kind: leadmap.LayerPoints, Points: s.Points}),
+		Located:   s.Located,
+		Positions: s.Positions,
+		Sampled:   s.Sampled(),
+	}
+	if s.Bounds != nil {
+		box := lead.MapBBoxOf(*s.Bounds)
+		out.Bounds = &box
+	}
+	return out
 }

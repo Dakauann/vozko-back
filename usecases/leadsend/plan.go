@@ -133,12 +133,18 @@ func (s *Service) priceOfficial(q *campaign.SendQuote, workspaceID string, tmpl 
 	if err != nil {
 		return err
 	}
+	rate, err := s.deps.Rates.CurrentRate()
+	if err != nil {
+		return err
+	}
 	remaining, err := s.capRemaining(workspaceID)
 	if err != nil {
 		return err
 	}
 	q.Category, q.UnitPriceMicros, q.CostMicros = cost.Category, cost.UnitPriceMicros, cost.CostMicros
 	q.BalanceMicros, q.Currency, q.Affordable = cost.BalanceMicros, cost.Currency, cost.Affordable
+	brl := cost.InBRL(rate)
+	q.UnitPriceBRL, q.CostBRL, q.BalanceBRL = brl.UnitPriceBRL, brl.CostBRL, brl.BalanceBRL
 	q.Judge(campaign.SendBudget{Eligible: q.Count, Priced: true, UnitPriceMicros: cost.UnitPriceMicros, BalanceMicros: cost.BalanceMicros, CapRemaining: remaining})
 	return nil
 }

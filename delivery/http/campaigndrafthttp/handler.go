@@ -265,7 +265,7 @@ func (h *Handler) request(w http.ResponseWriter, r *http.Request) (*campaigndraf
 }
 
 // @Summary		Revisar um rascunho antes do envio
-// @Description	Calcula no servidor, a partir do rascunho salvo, o público (a mesma contagem do passo de público), o custo (oficial: `quote`; não oficial: `estimate`) e a verificação de início em `check` (`findings`, `fingerprint`, `blocks`, `needsConfirmation`), com as mesmas regras do Iniciar. Nada é criado.
+// @Description	Calcula no servidor, a partir do rascunho salvo, o público (a mesma contagem do passo de público), o custo (oficial: `quote`, com `unitPriceBrl`, `costBrl` e `balanceBrl` já em reais pela cotação da carteira, ao lado dos micros em `currency`; não oficial: `estimate`) e a verificação de início em `check` (`findings`, `fingerprint`, `blocks`, `needsConfirmation`), com as mesmas regras do Iniciar. Nada é criado.
 // @Tags			Rascunhos de campanha
 // @Produce		json
 // @Param			channel	path		string	true	"whatsapp ou unofficial_whatsapp"

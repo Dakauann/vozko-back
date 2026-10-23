@@ -107,6 +107,14 @@ func (uc *handlePaymentWebhookUseCase) Execute(event *payment.WebhookEvent) erro
 		return nil
 	}
 
+	superseded, err := uc.invoiceRepo.GetBySupersededCharge(event.Provider, event.Payment.ID)
+	if err != nil {
+		return fmt.Errorf("superseded charge lookup failed: %w", err)
+	}
+	if superseded != nil {
+		return uc.handleSuperseded(superseded, meaning, event)
+	}
+
 	inv, err := uc.findInvoice(event)
 	if err != nil || inv == nil {
 		return err
@@ -119,6 +127,10 @@ func (uc *handlePaymentWebhookUseCase) Execute(event *payment.WebhookEvent) erro
 		}
 		return uc.settle(inv)
 	case payment.MeaningOverdue:
+		if inv.Status == invoice.StatusExpired || inv.Status == invoice.StatusCancelled {
+			log.Printf("[invoice-webhook] %s for invoice %s ignored: it is already %s", event.Event, inv.ID, inv.Status)
+			return nil
+		}
 		return uc.moveUnsettled(inv, invoice.StatusOverdue)
 	case payment.MeaningCancelled:
 		return uc.moveUnsettled(inv, invoice.StatusCancelled)
@@ -165,6 +177,27 @@ func (uc *handlePaymentWebhookUseCase) findInvoice(event *payment.WebhookEvent) 
 	}
 	inv.ExternalID = event.Payment.ID
 	return inv, nil
+}
+
+func (uc *handlePaymentWebhookUseCase) handleSuperseded(inv *invoice.Invoice, meaning payment.EventMeaning, event *payment.WebhookEvent) error {
+	detail := fmt.Sprintf("invoice=%s workspace=%s superseded=%s current=%s event=%s provider=%s status=%s",
+		inv.ID, inv.WorkspaceID, event.Payment.ID, inv.ExternalID, event.Event, event.Provider, inv.Status)
+	switch {
+	case meaning == payment.MeaningSettled && isSettled(inv.Status):
+		uc.alert("Second payment for a settled invoice", detail+": not credited again, review the duplicate by hand")
+		return nil
+	case meaning == payment.MeaningSettled:
+		if inv.ExternalID != event.Payment.ID {
+			uc.alert("Payment on a superseded PIX charge", detail+": the invoice is settled by it, cancel the current charge at the provider")
+		}
+		return uc.settle(inv)
+	case meaning.TakesMoneyBack(), meaning == payment.MeaningReversalInDispute, meaning == payment.MeaningReversalReleased:
+		uc.alert("Reversal on a superseded PIX charge", detail+": no balance moved, review by hand")
+		return nil
+	default:
+		log.Printf("[invoice-webhook] %s for superseded charge %s of invoice %s ignored", event.Event, event.Payment.ID, inv.ID)
+		return nil
+	}
 }
 
 func (uc *handlePaymentWebhookUseCase) moveUnsettled(inv *invoice.Invoice, status invoice.Status) error {

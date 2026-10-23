@@ -12,6 +12,7 @@ import (
 	"vozko/domain/redact"
 	"vozko/domain/tracepayload"
 	"vozko/domain/workflow"
+	"vozko/usecases/workflow/node_executors"
 )
 
 type traceExecutor struct {
@@ -142,9 +143,7 @@ func linearWorkflow(nodes ...workflow.Node) *workflow.Workflow {
 
 func TestHandledNodeFailureIsTracedAsFailedAndRecoveryStillRuns(t *testing.T) {
 	h := newTraceHarness()
-	h.register(workflow.NodeTypeActionCheckCalendarAvailability, func(*workflow.NodeContext) (*workflow.NodeResult, error) {
-		return &workflow.NodeResult{NextNodeID: "recover", Branch: "erro", ErrorKind: workflow.ErrorKindValidation, Output: map[string]interface{}{"success": false, "error": "invalid date"}}, nil
-	})
+	h.registry.Register(workflow.NodeTypeActionCheckCalendarAvailability, node_executors.NewCheckCalendarAvailabilityExecutor(nil, nil, nil))
 	recovered := false
 	h.register(workflow.NodeTypeActionSetVariable, func(*workflow.NodeContext) (*workflow.NodeResult, error) {
 		recovered = true
@@ -154,7 +153,7 @@ func TestHandledNodeFailureIsTracedAsFailedAndRecoveryStillRuns(t *testing.T) {
 	w.Graph.Edges = []workflow.Edge{{Source: "t1", Target: "check"}, {Source: "check", Target: "recover", Label: "sucesso"}, {Source: "check", Target: "recover", Label: "erro"}, {Source: "recover", Target: "end"}}
 	h.start(w)
 	logged := h.step(t, "check")
-	if logged.Status != workflow.LogStatusFailed || logged.Branch != "erro" || logged.Error != "invalid date" || !recovered {
+	if logged.Status != workflow.LogStatusFailed || logged.Branch != "erro" || logged.ErrorKind != workflow.ErrorKindHandled || logged.Error == "" || !recovered {
 		t.Fatalf("handled failure not observable or recovery stopped: %+v recovered=%v", logged, recovered)
 	}
 }

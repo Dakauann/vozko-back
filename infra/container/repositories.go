@@ -137,6 +137,7 @@ func (c *Container) initRepositories() {
 		shortLinkClick:          shortlink_repository.NewClickRepository(c.db),
 		waba:                    whatsapp_repository.NewWABARepository(c.db),
 		invoice:                 invoice_repository.NewRepository(c.db),
+		invoiceChargeRenewals:   invoice_repository.NewChargeRenewals(c.db),
 		callBilling:             call_billing_repository.NewRepository(c.db),
 		analytics:               analytics_repository.NewRepository(c.db),
 		workspacePlan:           workspace_plan_repository.NewPlanRepository(c.db),

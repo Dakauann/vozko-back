@@ -95,6 +95,7 @@ type Invoice struct {
 	PixCopy          *string           `json:"pixCopy,omitempty"`
 	BankSlipUrl      *string           `json:"bankSlipUrl,omitempty"`
 	InvoiceUrl       *string           `json:"invoiceUrl,omitempty"`
+	ChargeExpiresAt  *time.Time        `json:"chargeExpiresAt,omitempty"`
 	PaidAt           *int64            `json:"paidAt,omitempty"`
 	Description      string            `json:"description"`
 	DueDate          *time.Time        `json:"dueDate,omitempty"`

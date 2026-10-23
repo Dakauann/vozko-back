@@ -59,7 +59,7 @@ func (e *assignMemberExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 
 	if e.workspaceRepo == nil || e.handOff == nil {
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   "atribuição indisponível neste contexto (ex.: simulação)",
@@ -70,7 +70,7 @@ func (e *assignMemberExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 	member, err := e.workspaceRepo.GetMember(ctx.Run.WorkspaceID, memberID)
 	if err != nil || member == nil {
 		errMsg := fmt.Sprintf("membro %q não encontrado no workspace", memberID)
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   errMsg,
@@ -80,7 +80,7 @@ func (e *assignMemberExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 
 	if err := e.handOff.HandOffToHuman(ctx.Run.WorkspaceID, ctx.Run.EntryID, ctx.Run.EntryType, member.UserID); err != nil {
 		errMsg := fmt.Sprintf("erro ao atribuir conversa: %v", err)
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   errMsg,

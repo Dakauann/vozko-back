@@ -44,6 +44,7 @@ type Status struct {
 type Snapshot struct {
 	SubscriptionActive bool     `json:"subscriptionActive"`
 	BalanceMicros      int64    `json:"balanceMicros"`
+	BalanceBRL         *float64 `json:"balanceBrl,omitempty"`
 	Capabilities       []Status `json:"capabilities"`
 }
 

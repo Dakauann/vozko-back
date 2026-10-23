@@ -63,6 +63,7 @@ var validationClasses = []validationClass{
 	{ErrNodeInvalidKnowledgeBaseID, LintInvalidResourceRef, resourceRefHint},
 	{ErrNodeInvalidSheetID, LintInvalidResourceRef, "Em Adicionar linha na planilha, escolha uma planilha deste workspace."},
 	{ErrNodeSheetMappingInvalid, LintSheetMappingInvalid, "Em Adicionar linha na planilha, preencha toda coluna obrigatória e use só colunas ativas da planilha."},
+	{ErrValidationUnavailable, LintValidationUnavailable, "Não foi possível conferir um recurso deste passo agora. Tente validar de novo; nada é publicado sem essa conferência."},
 	{ErrNodeInvalidModelID, LintInvalidResourceRef, "Escolha um modelo de IA da lista (find_resource ai_models)."},
 	{ErrNodeReasoningLevelUnsupported, LintReasoningUnsupported, "Escolha um nível de raciocínio que o modelo oferece ou deixe o padrão."},
 	{ErrNodeInvalidToolMode, LintInvalidConfigValue, "O modo de ferramentas do agente de IA deve ser 'route' ou 'execute'."},

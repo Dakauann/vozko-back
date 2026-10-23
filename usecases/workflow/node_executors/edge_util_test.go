@@ -8,15 +8,31 @@ import (
 	"vozko/domain/workflow"
 )
 
-func TestRoutingPreservesTheSelectedBranchWithoutChangingTheNodeOutput(t *testing.T) {
-	edges := []workflow.Edge{{Source: "n", Target: "agent", Label: "sucesso"}, {Source: "n", Target: "agent", Label: "erro"}}
+func TestAHandledFailureKeepsItsBranchAndIsMarkedAsAnError(t *testing.T) {
+	edges := []workflow.Edge{{Source: "n", Target: "agent", Label: "sucesso"}, {Source: "n", Target: "agent", Label: "falha"}}
 	output := map[string]interface{}{"success": false, "error": "invalid date"}
-	result := routeOutput(&workflow.NodeResult{Output: output}, edges, "erro")
-	if result.Branch != "erro" || result.NextNodeID != "agent" || result.Error != "" || result.ErrorKind == "" {
-		t.Fatalf("incorrect handled error: %+v", result)
+	result := routeFailure(&workflow.NodeResult{Output: output}, edges, outputTimeout, timeoutFallback(outputTimeout)...)
+	if result.Branch != outputFailure || result.NextNodeID != "agent" || result.Error != "" || result.ErrorKind != workflow.ErrorKindHandled {
+		t.Fatalf("incorrect handled failure: %+v", result)
 	}
 	if !reflect.DeepEqual(result.Output, map[string]interface{}{"success": false, "error": "invalid date"}) {
 		t.Fatalf("routing changed business output: %+v", result.Output)
+	}
+}
+
+func TestAHandledFailureKeepsTheKindItsNodeDeclared(t *testing.T) {
+	edges := []workflow.Edge{{Source: "n", Target: "next", Label: outputFailure}}
+	result := routeFailure(&workflow.NodeResult{ErrorKind: workflow.ErrorKindHTTPStatus, Output: map[string]interface{}{"error": "HTTP 500"}}, edges, outputFailure)
+	if result.ErrorKind != workflow.ErrorKindHTTPStatus || result.Branch != outputFailure {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestASuccessfulRouteCarriesNoErrorEvenWhenTheOutputHasAnErrorField(t *testing.T) {
+	edges := []workflow.Edge{{Source: "n", Target: "next", Label: "sucesso"}}
+	result := routeOutput(&workflow.NodeResult{Output: map[string]interface{}{"error": ""}}, edges, "sucesso")
+	if result.ErrorKind != "" || result.Branch != "sucesso" || result.NextNodeID != "next" {
+		t.Fatalf("result = %+v", result)
 	}
 }
 

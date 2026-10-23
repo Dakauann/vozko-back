@@ -34,6 +34,7 @@ func dataRepairs() []dataRepair {
 		{"wf_canonical_structured_configs", canonicalizeWorkflowGraphs},
 		{"wf_canonical_node_types", canonicalizeLegacyNodeTypes},
 		{"inv_external_id_per_provider", repairInvoiceExternalIDs},
+		{"em_recheck_unconfirmed_no_mail", recheckUnconfirmedNoMail},
 	}
 }
 

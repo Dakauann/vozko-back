@@ -176,6 +176,7 @@ func (c *Container) numberAutomationTools(getAgent agent.GetAgentUseCase) []copi
 
 func (c *Container) campaignTools() []copilot.Tool {
 	deps := crmtools.CampaignDeps{
+		Rates:     c.walletRate(),
 		Preview:   c.useCases.wcImportPreview,
 		Create:    c.useCases.createWCCampaign,
 		Start:     c.useCases.startWCCampaign,
@@ -409,6 +410,7 @@ func (c *Container) conversationActionTools() []copilot.Tool {
 		Broadcast: c.services.conversationHub,
 	}
 	templates := crmtools.TemplateSendDeps{
+		Rates:     c.walletRate(),
 		Scheduler: c.useCases.personScheduler,
 		Send:      c.services.personTemplateSend,
 		Templates: c.useCases.workspaceTemplates,
@@ -528,6 +530,7 @@ func (c *Container) leadTools() []copilot.Tool {
 	}
 	memories := leadtools.LeadMemoryDeps{Leads: c.useCases.leadQueries, Create: c.useCases.createLeadMemory, Update: c.useCases.updateLeadMemory}
 	actions := leadtools.LeadActionDeps{
+		Rates:     c.walletRate(),
 		Leads:     deps,
 		Actions:   c.leadActions(),
 		Sends:     c.leadSends(),

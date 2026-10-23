@@ -1,10 +1,40 @@
 package calendar
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
+
+const wholeDayLayout = "2006-01-02"
+
+var (
+	ErrDateTimeFormat  = errors.New("use RFC3339 ou formatos como 2026-03-31 14:00")
+	ErrRangeNotForward = errors.New("a data de fim precisa ser depois da data de início")
+)
+
+type Clock struct {
+	Hour   int
+	Minute int
+}
+
+var (
+	DefaultWorkStart = Clock{Hour: 8}
+	DefaultWorkEnd   = Clock{Hour: 18}
+)
+
+func ParseClock(raw string, fallback Clock) Clock {
+	parsed, err := time.Parse("15:04", strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+	return Clock{Hour: parsed.Hour(), Minute: parsed.Minute()}
+}
+
+func (c Clock) On(day time.Time, loc *time.Location) time.Time {
+	return time.Date(day.Year(), day.Month(), day.Day(), c.Hour, c.Minute, 0, 0, loc)
+}
 
 func ParseDateTime(raw string, location *time.Location) (time.Time, error) {
 	raw = strings.TrimSpace(raw)
@@ -14,39 +44,38 @@ func ParseDateTime(raw string, location *time.Location) (time.Time, error) {
 			return parsed, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("use RFC3339 ou formatos como 2026-03-31 14:00")
+	return time.Time{}, ErrDateTimeFormat
 }
 
-func AvailabilityRange(from, to, workingStart, workingEnd string, loc *time.Location) (time.Time, time.Time, error) {
-	parse := func(raw, clock string) (time.Time, error) {
-		if date, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(raw), loc); err == nil {
-			parsedClock, err := time.Parse("15:04", clock)
-			if err != nil {
-				return time.Time{}, fmt.Errorf("horário de expediente inválido: %s", clock)
-			}
-			return time.Date(date.Year(), date.Month(), date.Day(), parsedClock.Hour(), parsedClock.Minute(), 0, 0, loc), nil
-		}
-		return ParseDateTime(raw, loc)
-	}
-	if workingStart == "" {
-		workingStart = "08:00"
-	}
-	if workingEnd == "" {
-		workingEnd = "18:00"
-	}
-	start, err := parse(from, workingStart)
+func AvailabilityRange(from, to string, workStart, workEnd Clock, loc *time.Location) (time.Time, time.Time, error) {
+	start, err := availabilityBound(from, workStart, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("data/hora início inválida: %w", err)
 	}
-	if strings.TrimSpace(to) == "" {
-		to = start.In(loc).Format("2006-01-02")
-	}
-	end, err := parse(to, workingEnd)
+	end, err := availabilityEnd(start, to, workEnd, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("data/hora fim inválida: %w", err)
 	}
 	if !end.After(start) {
-		return time.Time{}, time.Time{}, fmt.Errorf("a data de fim precisa ser depois da data de início")
+		return time.Time{}, time.Time{}, ErrRangeNotForward
 	}
 	return start, end, nil
+}
+
+func availabilityEnd(start time.Time, to string, workEnd Clock, loc *time.Location) (time.Time, error) {
+	if strings.TrimSpace(to) != "" {
+		return availabilityBound(to, workEnd, loc)
+	}
+	day := start.In(loc)
+	if closing := workEnd.On(day, loc); closing.After(start) {
+		return closing, nil
+	}
+	return time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, loc), nil
+}
+
+func availabilityBound(raw string, wholeDayClock Clock, loc *time.Location) (time.Time, error) {
+	if day, err := time.ParseInLocation(wholeDayLayout, strings.TrimSpace(raw), loc); err == nil {
+		return wholeDayClock.On(day, loc), nil
+	}
+	return ParseDateTime(raw, loc)
 }

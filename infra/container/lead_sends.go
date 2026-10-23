@@ -132,6 +132,7 @@ func (c *Container) buildLeadSends() *leadsend_usecase.Service {
 		Costs:               c.useCases.consumeWhatsappTemplate,
 		Balances:            c.services.cachedBalanceChecker,
 		Caps:                caps,
+		Rates:               c.walletRate(),
 		Official: leadsend_usecase.Official{
 			Create: c.useCases.createWCCampaign, Access: c.useCases.wcCampaignAccess, Start: reviewedStart,
 			Cache: campaignCache,

@@ -46,6 +46,7 @@ func TestSelectionStatements_BindEveryPlaceholder(t *testing.T) {
 			"page":   func() (string, []interface{}) { return s.pageSQL("", 500) },
 			"after":  func() (string, []interface{}) { return s.pageSQL(firstLead, 500) },
 			"freeze": func() (string, []interface{}) { return s.freezeSQL(snapshotID, time.Unix(0, 0)) },
+			"sample": func() (string, []interface{}) { return s.sampleSQL(pageWorkspace, 100) },
 		} {
 			sql, args := stmt()
 			assertPlaceholders(t, name+" "+label, sql, args)

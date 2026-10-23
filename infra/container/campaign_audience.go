@@ -19,6 +19,7 @@ func (c *Container) campaignAudienceModule() *campaignaudiencewiring.Module {
 	}
 	module, err := campaignaudiencewiring.New(c.db, campaignaudiencewiring.Adapters{
 		Selections:  c.leadSelection(),
+		Places:      c.leadSelection(),
 		Leads:       c.repositories.lead,
 		Definitions: c.repositories.customField,
 		Templates:   c.useCases.workspaceTemplates,

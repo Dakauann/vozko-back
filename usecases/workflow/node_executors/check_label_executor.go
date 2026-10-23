@@ -1,6 +1,7 @@
 package node_executors
 
 import (
+	"fmt"
 	"strings"
 
 	"vozko/domain/label"
@@ -10,6 +11,8 @@ import (
 type checkLabelExecutor struct {
 	labelRepo label.Repository
 }
+
+const checkLabelFailed = "erro"
 
 func NewCheckLabelExecutor(labelRepo label.Repository) workflow.NodeExecutor {
 	return &checkLabelExecutor{labelRepo: labelRepo}
@@ -30,11 +33,13 @@ func (e *checkLabelExecutor) Definition() workflow.NodeDefinition {
 		Outputs: []workflow.HandleDefinition{
 			{ID: "true", Label: "Possui"},
 			{ID: "false", Label: "Não Possui"},
+			{ID: checkLabelFailed, Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
 			{Key: "matched", Description: "true se a entrada possui a etiqueta", Label: "Tem a etiqueta", Type: workflow.VariableTypeBoolean},
 			{Key: "label_id", Description: "ID da etiqueta verificada", RepeatsConfig: true},
 			{Key: "label_name", Description: "Nome da etiqueta (se encontrada)", Label: "Nome da etiqueta", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Motivo quando as etiquetas não puderam ser lidas (saída Erro)", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{
 			"label_id": "",
@@ -63,13 +68,12 @@ func (e *checkLabelExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 
 	entryLabels, err := e.labelRepo.GetEntryLabels(ctx.Run.EntryID, ctx.Run.EntryType, ctx.Run.WorkspaceID)
 	if err != nil {
-
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
-				"matched":  false,
 				"label_id": labelID,
+				"error":    fmt.Sprintf("não foi possível ler as etiquetas da conversa: %v", err),
 			},
-		}, edges, "false"), nil
+		}, edges, checkLabelFailed), nil
 	}
 
 	matched := false

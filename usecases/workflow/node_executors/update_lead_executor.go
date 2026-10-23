@@ -126,7 +126,7 @@ func fieldList(fields []string) []string {
 }
 
 func failLeadUpdate(edges []workflow.Edge, reason string) *workflow.NodeResult {
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{"success": false, "lead_id": "", "changed": []string{}, "conflicts": []string{}, "error": reason},
 	}, edges, "erro")
 }

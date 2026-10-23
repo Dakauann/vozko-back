@@ -220,7 +220,7 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 			IsError: true,
 		}, nil
 	}
-	startTime, err := parseToolTime(startRaw, loc)
+	startTime, err := calendar.ParseDateTime(startRaw, loc)
 	if err != nil {
 		return tools.ExecutionResult{
 			Result:  fmt.Sprintf("Data/hora de início inválida: %v", err),
@@ -231,7 +231,7 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 	endRaw := toolStringParamOrConfig(params, config, "end_time", "")
 	var endTime time.Time
 	if endRaw != "" {
-		endTime, err = parseToolTime(endRaw, loc)
+		endTime, err = calendar.ParseDateTime(endRaw, loc)
 		if err != nil {
 			return tools.ExecutionResult{
 				Result:  fmt.Sprintf("Data/hora de fim inválida: %v", err),
@@ -261,28 +261,24 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 
 	accessToken := googleAccess.Token
 
-	conflictEvents, conflictErr := t.google.ListGoogleEvents(accessToken, startTime, endTime, "", 10)
-	if conflictErr == nil {
-		conflictEvents = mergeLocalCalToolEvents(t.repo, workspaceID, startTime, endTime, conflictEvents)
-		for _, ev := range conflictEvents {
-			if ev == nil || ev.Transparency == "transparent" {
-				continue
-			}
-			if ev.StartTime.Before(endTime) && ev.EndTime.After(startTime) {
-				log.Printf("[ScheduleMeeting] CONFLICT: event %q (%s–%s) overlaps requested slot %s–%s workspace=%s",
-					ev.Title, ev.StartTime.Format(time.RFC3339), ev.EndTime.Format(time.RFC3339),
-					startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), workspaceID)
-				return tools.ExecutionResult{
-					Result: fmt.Sprintf(
-						"O horário %s – %s já está ocupado (conflito com: %s). Escolha outro horário.",
-						startTime.In(loc).Format("02/01 15:04"),
-						endTime.In(loc).Format("15:04"),
-						ev.Title,
-					),
-					IsError: true,
-				}, nil
-			}
-		}
+	conflict, err := calendar.ConflictCheck{Google: t.google, AccessToken: accessToken, Local: t.repo}.Conflict(workspaceID, startTime, endTime)
+	if err != nil {
+		return tools.ExecutionResult{Result: err.Error(), IsError: true, ErrorCode: calendar.ErrorCode(err)}, nil
+	}
+	if conflict != nil {
+		log.Printf("[ScheduleMeeting] CONFLICT: event %q (%s to %s) overlaps requested slot %s to %s workspace=%s",
+			conflict.Title, conflict.StartTime.Format(time.RFC3339), conflict.EndTime.Format(time.RFC3339),
+			startTime.Format(time.RFC3339), endTime.Format(time.RFC3339), workspaceID)
+		return tools.ExecutionResult{
+			Result: fmt.Sprintf(
+				"O horário %s a %s já está ocupado (conflito com: %s). Escolha outro horário.",
+				startTime.In(loc).Format("02/01 15:04"),
+				endTime.In(loc).Format("15:04"),
+				conflict.Title,
+			),
+			IsError:   true,
+			ErrorCode: calendar.CodeSlotConflict,
+		}, nil
 	}
 
 	event := &calendar.CalendarEvent{

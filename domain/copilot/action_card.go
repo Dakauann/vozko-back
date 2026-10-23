@@ -59,6 +59,7 @@ type ActionCard struct {
 	Kind               ActionKind          `json:"kind"`
 	Status             *readiness.Status   `json:"status,omitempty"`
 	BalanceMicros      int64               `json:"balanceMicros"`
+	BalanceBRL         *float64            `json:"balanceBrl,omitempty"`
 	SubscriptionActive bool                `json:"subscriptionActive"`
 	Destination        *Destination        `json:"destination,omitempty"`
 	Call               *CallIntent         `json:"call,omitempty"`
@@ -77,7 +78,7 @@ func NewAdReadinessCard(adAccountID string) *ActionCard {
 }
 
 func NewActionCard(kind ActionKind, snap *readiness.Snapshot) (*ActionCard, bool) {
-	card := &ActionCard{Kind: kind, BalanceMicros: snap.BalanceMicros, SubscriptionActive: snap.SubscriptionActive}
+	card := &ActionCard{Kind: kind, BalanceMicros: snap.BalanceMicros, BalanceBRL: snap.BalanceBRL, SubscriptionActive: snap.SubscriptionActive}
 	capability, needsStatus := kind.Capability()
 	if !needsStatus {
 		return card, true

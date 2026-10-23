@@ -279,16 +279,15 @@ func campaignList(items []emailcampaign_usecase.ListItem, total int64, page, siz
 }
 
 type QuoteDTO struct {
-	Units          int64   `json:"units" example:"1200"`
-	UnitMicros     int64   `json:"unit_micros" example:"583"`
-	UnitCostMicros int64   `json:"unit_cost_micros" example:"165"`
-	TotalMicros    int64   `json:"total_micros" example:"699600"`
-	UnitBRL        float64 `json:"unit_brl" example:"0.003207"`
-	TotalBRL       float64 `json:"total_brl" example:"3.848"`
+	Units       int64   `json:"units" example:"1200"`
+	UnitMicros  int64   `json:"unit_micros" example:"583"`
+	TotalMicros int64   `json:"total_micros" example:"699600"`
+	UnitBRL     float64 `json:"unit_brl" example:"0.003207"`
+	TotalBRL    float64 `json:"total_brl" example:"3.848"`
 }
 
 func quoteDTO(q emailcampaign_usecase.PricedQuote) QuoteDTO {
-	return QuoteDTO{Units: q.Units, UnitMicros: q.UnitMicros, UnitCostMicros: q.UnitCostMicros, TotalMicros: q.TotalMicros, UnitBRL: q.UnitBRL, TotalBRL: q.TotalBRL}
+	return QuoteDTO{Units: q.Units, UnitMicros: q.UnitMicros, TotalMicros: q.TotalMicros, UnitBRL: q.UnitBRL, TotalBRL: q.TotalBRL}
 }
 
 type AudienceDTO struct {

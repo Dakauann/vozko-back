@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	billing "vozko/domain/billing"
 	"vozko/domain/payment"
 )
 
@@ -93,16 +94,52 @@ func (g *gatewayAdapter) CreateCharge(ctx context.Context, req payment.ChargeReq
 	out := g.toCharge(created, method)
 
 	if method == payment.MethodPix && created.ID != "" {
-		qr, copyPaste, qrErr := g.svc.GetPaymentQrCode(created.ID)
-		if qrErr != nil {
+		qr, qrErr := g.svc.GetPaymentQrCode(created.ID)
+		switch {
+		case qrErr != nil:
 			log.Printf("[asaas-gateway] charge %s created but PIX QR code fetch failed: %v", created.ID, qrErr)
-		} else {
-			out.PixQRCodeBase64 = qr
-			out.PixCopyPaste = copyPaste
+		case qr != nil:
+			out.PixQRCodeBase64 = qr.EncodedImage
+			out.PixCopyPaste = qr.Payload
+			out.ExpiresAt = qrExpiry(qr.ExpirationDate)
 		}
 	}
 
 	return out, nil
+}
+
+const qrExpiryLayout = "2006-01-02 15:04:05"
+
+func qrExpiry(raw string) *time.Time {
+	parsed, err := time.ParseInLocation(qrExpiryLayout, strings.TrimSpace(raw), billing.LocationBRT())
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func statusFromAsaas(p *AsaasPayment) payment.Status {
+	if p.Deleted {
+		return payment.StatusCancelled
+	}
+	switch raw := strings.ToUpper(strings.TrimSpace(p.Status)); raw {
+	case "", "PENDING", "AWAITING_RISK_ANALYSIS":
+		return payment.StatusPending
+	case "RECEIVED", "CONFIRMED":
+		return payment.StatusReceived
+	case "RECEIVED_IN_CASH":
+		return payment.StatusReceivedInCash
+	case "OVERDUE":
+		return payment.StatusOverdue
+	case "REFUNDED":
+		return payment.StatusRefunded
+	case "REFUND_REQUESTED":
+		return payment.StatusRefundRequested
+	case "REFUND_IN_PROGRESS":
+		return payment.StatusRefundInProgress
+	default:
+		return payment.Status(raw)
+	}
 }
 
 func (g *gatewayAdapter) GetCharge(ctx context.Context, chargeID string) (*payment.Charge, error) {
@@ -148,7 +185,8 @@ func (g *gatewayAdapter) toCharge(p *AsaasPayment, method payment.Method) *payme
 		ExternalReference: p.ExternalReference,
 		BoletoURL:         p.BankSlipUrl,
 		InvoiceURL:        p.InvoiceUrl,
-		Status:            payment.StatusPending,
+		Status:            statusFromAsaas(p),
+		ProviderStatus:    p.Status,
 	}
 	if due, err := time.Parse("2006-01-02", p.DueDate); err == nil {
 		out.DueDate = &due

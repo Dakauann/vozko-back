@@ -127,7 +127,7 @@ func (t *rescheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config ma
 	if startRaw == "" {
 		return toolError("O parâmetro 'start_time' (novo horário) é obrigatório."), nil
 	}
-	newStart, err := parseToolTime(startRaw, loc)
+	newStart, err := calendar.ParseDateTime(startRaw, loc)
 	if err != nil {
 		return toolError(fmt.Sprintf("Nova data/hora de início inválida: %v", err)), nil
 	}
@@ -139,7 +139,7 @@ func (t *rescheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config ma
 		SendUpdates:  toolStringParamOrConfig(params, config, "send_updates", "all"),
 	}
 	if endRaw := strings.TrimSpace(toolStringParamOrConfig(params, config, "end_time", "")); endRaw != "" {
-		newEnd, endErr := parseToolTime(endRaw, loc)
+		newEnd, endErr := calendar.ParseDateTime(endRaw, loc)
 		if endErr != nil {
 			return toolError(fmt.Sprintf("Nova data/hora de fim inválida: %v", endErr)), nil
 		}

@@ -40,6 +40,7 @@ func campaignDraftRoutes(c *Container) deliveryHttp.CampaignDraftRoutes {
 		Start:    start,
 		Check:    c.launchCheck(),
 		Audience: campaignaudience_usecase.NewOfficialCounter(c.campaignAudience()),
+		Rates:    c.walletRate(),
 	})
 	routes := deliveryHttp.CampaignDraftRoutes{
 		WhatsApp: campaigndrafthttp.NewHandler(drafts, campaigndraft.ChannelWhatsApp,

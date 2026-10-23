@@ -33,10 +33,11 @@ func NewMailDomains(resolver MailResolver, timeout time.Duration) *MailDomains {
 }
 
 func (m *MailDomains) Resolve(ctx context.Context, domain string) emailhygiene.DNSAnswer {
-	name, err := emailaddress.NormalizeDomain(domain)
+	normalized, err := emailaddress.NormalizeDomain(domain)
 	if err != nil {
 		return emailhygiene.DNSAnswer{MX: emailhygiene.LookupFailed}
 	}
+	name := normalized + "."
 	mxCtx, cancel := context.WithTimeout(ctx, m.timeout)
 	records, err := m.resolver.LookupMX(mxCtx, name)
 	cancel()

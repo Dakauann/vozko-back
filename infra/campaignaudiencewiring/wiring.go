@@ -22,6 +22,7 @@ const (
 
 type Adapters struct {
 	Selections  campaignaudience_usecase.Selections
+	Places      campaignaudience_usecase.Places
 	Leads       lead_repository.Repository
 	Definitions campaignaudience_usecase.Definitions
 	Templates   campaignaudience_usecase.TemplateReader
@@ -49,7 +50,7 @@ func New(db *gorm.DB, a Adapters) (*Module, error) {
 	}
 	suggestions := campaignaudience_repository.NewSuggestions(db)
 	deps := campaignaudience_usecase.Deps{
-		Selections: a.Selections, Lists: campaignaudience_repository.New(db), Sheets: sheetfile.Reader{},
+		Selections: a.Selections, Places: a.Places, Lists: campaignaudience_repository.New(db), Sheets: sheetfile.Reader{},
 		Phones: phones, Emails: a.Leads, EmailLeads: a.Leads, EmailsSeen: a.EmailsSeen, Definitions: a.Definitions,
 		Suggestions: suggestions, Gate: a.Gate, Flight: flight,
 	}

@@ -137,7 +137,7 @@ func moveCauseOf(ctx *workflow.NodeContext) stage.MoveCause {
 }
 
 func failMove(edges []workflow.Edge, stageID, reason string) *workflow.NodeResult {
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success":  false,
 			"changed":  false,

@@ -10,7 +10,7 @@ import (
 	"vozko/domain/customfield"
 	"vozko/domain/leadaction"
 	"vozko/domain/selection"
-	"vozko/usecases/copilot/copilottools"
+	"vozko/domain/shared"
 )
 
 func (t *prepareLeadActionTool) actionLabel(cc copilot.Context, p leadActionPlan) string {
@@ -130,8 +130,8 @@ func (t *prepareLeadActionTool) sendFields(_ copilot.Context, p leadActionPlan, 
 	fields := []copilot.Field{{Key: "parts", Value: strconv.Itoa(q.Parts)}}
 	if p.request.Action == leadaction.ActionSendTemplate {
 		fields = append(fields,
-			copilot.Field{Key: "estimatedCost", Value: copilottools.FormatUSD(q.CostMicros)},
-			copilot.Field{Key: "balance", Value: copilottools.FormatUSD(q.BalanceMicros)},
+			copilot.Field{Key: "estimatedCost", Value: shared.FormatBRL(q.CostBRL)},
+			copilot.Field{Key: "balance", Value: shared.FormatBRL(q.BalanceBRL)},
 		)
 	}
 	if q.CapRemaining != nil {

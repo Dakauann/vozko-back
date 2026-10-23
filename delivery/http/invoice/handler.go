@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
@@ -16,20 +17,23 @@ import (
 )
 
 type InvoiceHandler struct {
-	createUseCase invoicedomain.CreateInvoiceUseCase
-	listUseCase   invoicedomain.ListInvoicesUseCase
-	getUseCase    invoicedomain.GetInvoiceUseCase
+	createUseCase   invoicedomain.CreateInvoiceUseCase
+	listUseCase     invoicedomain.ListInvoicesUseCase
+	getUseCase      invoicedomain.GetInvoiceUseCase
+	renewPixUseCase invoicedomain.RenewPixUseCase
 }
 
 func NewInvoiceHandler(
 	createUseCase invoicedomain.CreateInvoiceUseCase,
 	listUseCase invoicedomain.ListInvoicesUseCase,
 	getUseCase invoicedomain.GetInvoiceUseCase,
+	renewPixUseCase invoicedomain.RenewPixUseCase,
 ) *InvoiceHandler {
 	return &InvoiceHandler{
-		createUseCase: createUseCase,
-		listUseCase:   listUseCase,
-		getUseCase:    getUseCase,
+		createUseCase:   createUseCase,
+		listUseCase:     listUseCase,
+		getUseCase:      getUseCase,
+		renewPixUseCase: renewPixUseCase,
 	}
 }
 
@@ -94,7 +98,7 @@ func (h *InvoiceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusCreated, map[string]interface{}{"invoice": toInvoiceResponsePtr(output.Invoice)})
+	response.WriteSuccess(w, http.StatusCreated, map[string]interface{}{"invoice": toInvoiceResponsePtr(output.Invoice, time.Now())})
 }
 
 // @Summary		Listar faturas
@@ -131,7 +135,7 @@ func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 	totalPages := (int(total) + pageSize - 1) / pageSize
 
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"invoices":   toInvoiceResponses(invoices),
+		"invoices":   toInvoiceResponses(invoices, time.Now()),
 		"page":       page,
 		"pageSize":   pageSize,
 		"total":      total,
@@ -179,7 +183,63 @@ func (h *InvoiceHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{"invoice": toInvoiceResponsePtr(inv)})
+	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{"invoice": toInvoiceResponsePtr(inv, time.Now())})
+}
+
+// @Summary		Gerar um novo PIX para a fatura
+// @Description	Emite uma nova cobrança PIX para a mesma fatura e o mesmo valor quando o PIX atual expirou ou quando a fatura venceu e ainda pode ser paga (a fatura mensal pode ser paga até o dia do corte). A cobrança anterior é cancelada no provedor antes, então cada fatura tem um único PIX pagável por vez. Se o PIX atual ainda é válido, ele é devolvido sem gerar outro. Faturas pagas, canceladas ou expiradas nunca recebem um novo PIX. A resposta traz em payment o estado do pagamento, a validade do código e o prazo final para pagar.
+// @Tags			Faturas
+// @Produce		json
+// @Param			id	path		string	true	"Identificador da fatura"
+// @Success		200	{object}	InvoiceEnvelope
+// @Failure		400	{object}	response.ErrorResponse	"workspace_required"
+// @Failure		404	{object}	response.ErrorResponse	"invoice_not_found"
+// @Failure		409	{object}	response.ErrorResponse	"invoice_not_payable, invoice_already_paid ou invoice_pix_renew_in_progress"
+// @Failure		422	{object}	response.ErrorResponse	"customer_document_required"
+// @Failure		502	{object}	response.ErrorResponse	"invoice_pix_unavailable"
+// @Failure		500	{object}	response.ErrorResponse	"invoice_pix_unavailable"
+// @Security		BearerAuth
+// @Router			/user/invoices/{id}/pix [post]
+func (h *InvoiceHandler) RenewPix(w http.ResponseWriter, r *http.Request) {
+	workspaceID := middleware.GetWorkspaceID(r)
+	if workspaceID == "" {
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "workspace_required", "workspace ID required", nil)
+		return
+	}
+	invoiceID := strings.TrimSpace(mux.Vars(r)["id"])
+	if invoiceID == "" {
+		response.WriteRefusal(w, refusalInvoiceNotFound)
+		return
+	}
+
+	inv, err := h.renewPixUseCase.Execute(r.Context(), invoicedomain.RenewPixInput{WorkspaceID: workspaceID, InvoiceID: invoiceID})
+	if err != nil {
+		if !response.WriteErrorRefusal(w, err, renewPixRefusals) {
+			log.Printf("[invoice] renew PIX of invoice %s failed: %v", invoiceID, err)
+			response.WriteRefusal(w, refusalRenewPixFailed)
+		}
+		return
+	}
+
+	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{"invoice": toInvoiceResponsePtr(inv, time.Now())})
+}
+
+var (
+	refusalInvoiceNotFound = response.Refusal{Status: http.StatusNotFound, Code: "invoice_not_found", Message: "Fatura não encontrada"}
+	refusalRenewPixFailed  = response.Refusal{Status: http.StatusInternalServerError, Code: "invoice_pix_unavailable", Message: "Não foi possível gerar um novo PIX agora. Tente novamente em instantes."}
+)
+
+var renewPixRefusals = []response.ErrorRefusal{
+	{Err: invoicedomain.ErrInvoiceNotFound, Refusal: refusalInvoiceNotFound},
+	{Err: invoicedomain.ErrAlreadyPaid, Refusal: response.Refusal{Status: http.StatusConflict, Code: "invoice_already_paid", Message: "O pagamento desta fatura já foi recebido"}},
+	{Err: invoicedomain.ErrNotPayable, Refusal: response.Refusal{Status: http.StatusConflict, Code: "invoice_not_payable", Message: "Esta fatura não pode mais ser paga"}},
+	{Err: invoicedomain.ErrPixRenewInProgress, Refusal: response.Refusal{Status: http.StatusConflict, Code: "invoice_pix_renew_in_progress", Message: "Um novo PIX já está sendo gerado para esta fatura"}},
+	{Err: invoicedomain.ErrCustomerDocumentRequired, Refusal: response.Refusal{Status: http.StatusUnprocessableEntity, Code: "customer_document_required", Message: invoicedomain.ErrCustomerDocumentRequired.Error()}},
+	{Err: invoicedomain.ErrPixUnavailable, Refusal: response.Refusal{Status: http.StatusBadGateway, Code: "invoice_pix_unavailable", Message: refusalRenewPixFailed.Message}},
+}
+
+func RenewPixRefusalCodes() []string {
+	return response.RefusalCodes(response.ErrorRefusalsOf(renewPixRefusals))
 }
 
 func (h *InvoiceHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +290,7 @@ func (h *InvoiceHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusCreated, map[string]interface{}{"invoice": toInvoiceResponsePtr(output.Invoice)})
+	response.WriteSuccess(w, http.StatusCreated, map[string]interface{}{"invoice": toInvoiceResponsePtr(output.Invoice, time.Now())})
 }
 
 func (h *InvoiceHandler) AdminGet(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +321,7 @@ func (h *InvoiceHandler) AdminGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{"invoice": toInvoiceResponsePtr(inv)})
+	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{"invoice": toInvoiceResponsePtr(inv, time.Now())})
 }
 
 func (h *InvoiceHandler) AdminList(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +347,7 @@ func (h *InvoiceHandler) AdminList(w http.ResponseWriter, r *http.Request) {
 	totalPages := (int(total) + pageSize - 1) / pageSize
 
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
-		"invoices":   toInvoiceResponses(invoices),
+		"invoices":   toInvoiceResponses(invoices, time.Now()),
 		"page":       page,
 		"pageSize":   pageSize,
 		"total":      total,

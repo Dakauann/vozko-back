@@ -753,9 +753,10 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getOrCreateBalance:      balance_usecase.NewGetOrCreateBalanceUseCase(c.repositories.balance),
 		getOrCreateFullSummary:  balance_usecase.NewGetOrCreateFullBalanceSummaryUseCase(c.repositories.balance),
 
-		createInvoice: createInvoiceUC,
-		listInvoices:  invoice_usecase.NewListInvoicesUseCase(c.repositories.invoice),
-		getInvoice:    invoice_usecase.NewGetInvoiceUseCase(c.repositories.invoice),
+		createInvoice:   createInvoiceUC,
+		listInvoices:    invoice_usecase.NewListInvoicesUseCase(c.repositories.invoice),
+		getInvoice:      invoice_usecase.NewGetInvoiceUseCase(c.repositories.invoice),
+		renewInvoicePix: invoice_usecase.NewRenewInvoicePixUseCase(c.repositories.invoice, c.repositories.invoiceChargeRenewals, c.repositories.user, c.services.paymentGateway, c.repositories.affiliate, opsAlerter),
 
 		emitMonthlyInvoices:     emitMonthlyInvoicesUC,
 		cancelBillingSweep:      cancelSweepUC,
@@ -1248,42 +1249,6 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 	if orSvc, ok := c.services.ai.(*openrouter_service.Service); ok {
 		aiModelValidator = openrouter_service.NewModelValidator(orSvc, 1*time.Hour)
 	}
-	c.useCases.wsWorkflowAIBuilder = workflow_usecase.NewAIBuilderUseCase(workflow_usecase.AIBuilderUseCaseDeps{
-		Linter:        c.useCases.activateWorkflow.(workflow_domain.WorkflowLinter),
-		WorkflowRepo:  c.repositories.workflow,
-		AIService:     c.services.ai,
-		NodeCatalogFn: wfRegistry.Catalog,
-		ResourceResolver: workflow_usecase.NewBuilderResourceResolver(workflow_usecase.BuilderResourceResolverDeps{
-			Models:      c.services.ai,
-			Agents:      c.repositories.agent,
-			Departments: c.repositories.workspaceDepartment,
-			Labels:      c.repositories.label,
-			Stages:      c.repositories.stage,
-			Deals:       opportunitySvc,
-			Workflows:   c.repositories.workflow,
-			Members:     builderMemberLister{repo: c.repositories.workspace},
-			Trunks:      c.sipTrunks.Repository,
-			Queues:      c.callRouting.Queues,
-			Sheets:      c.googleSheets.Manager,
-		}),
-
-		NoProgressStop:            30,
-		ModelLookup:               aiModelValidator,
-		MaxTokens:                 1_000_000,
-		MaxConcurrentPerWorkspace: 3,
-		BalanceGate:               cachedBalanceChecker,
-		MinBalanceMicros:          0,
-	})
-	c.useCases.testWorkflowNode = workflow_usecase.NewTestNodeUseCase(workflow_usecase.TestNodeDeps{
-		WorkflowRepo:  c.repositories.workflow,
-		Steps:         wfRegistry,
-		ExecutorDeps:  executorDeps,
-		PinSources:    workflowPinSources,
-		ViewerOf:      httpx.PersonFromContext,
-		TriggerInputs: c.workflowTriggerInputs(),
-		Variables:     c.workflowVariables(),
-	})
-
 	if setter, ok := c.useCases.activateWorkflow.(interface {
 		SetCatalogFn(func() []workflow_domain.NodeDefinition)
 	}); ok {
@@ -1384,6 +1349,41 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			setter.SetModelCatalog(c.services.ai)
 		}
 	}
+	c.useCases.wsWorkflowAIBuilder = workflow_usecase.NewAIBuilderUseCase(workflow_usecase.AIBuilderUseCaseDeps{
+		Linter:        c.workflowLinter(),
+		WorkflowRepo:  c.repositories.workflow,
+		AIService:     c.services.ai,
+		NodeCatalogFn: wfRegistry.Catalog,
+		ResourceResolver: workflow_usecase.NewBuilderResourceResolver(workflow_usecase.BuilderResourceResolverDeps{
+			Models:      c.services.ai,
+			Agents:      c.repositories.agent,
+			Departments: c.repositories.workspaceDepartment,
+			Labels:      c.repositories.label,
+			Stages:      c.repositories.stage,
+			Deals:       opportunitySvc,
+			Workflows:   c.repositories.workflow,
+			Members:     builderMemberLister{repo: c.repositories.workspace},
+			Trunks:      c.sipTrunks.Repository,
+			Queues:      c.callRouting.Queues,
+			Sheets:      c.googleSheets.Manager,
+		}),
+
+		NoProgressStop:            30,
+		ModelLookup:               aiModelValidator,
+		MaxTokens:                 1_000_000,
+		MaxConcurrentPerWorkspace: 3,
+		BalanceGate:               cachedBalanceChecker,
+		MinBalanceMicros:          0,
+	})
+	c.useCases.testWorkflowNode = workflow_usecase.NewTestNodeUseCase(workflow_usecase.TestNodeDeps{
+		WorkflowRepo:  c.repositories.workflow,
+		Steps:         wfRegistry,
+		ExecutorDeps:  executorDeps,
+		PinSources:    workflowPinSources,
+		ViewerOf:      httpx.PersonFromContext,
+		TriggerInputs: c.workflowTriggerInputs(),
+		Variables:     c.workflowVariables(),
+	})
 
 	if c.services.assignmentService != nil {
 		if setter, ok := c.useCases.handleWhatsAppMessage.(interface {

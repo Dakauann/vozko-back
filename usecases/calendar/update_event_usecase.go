@@ -156,8 +156,12 @@ func (uc *updateEventUseCase) Execute(input calendar.UpdateEventInput) (*calenda
 	}
 
 	if input.CheckConflict && googleEventID != "" && !existing.AllDay {
-		if busy, other := uc.slotOccupied(accessToken, googleEventID, existing.StartTime, existing.EndTime); busy {
-			log.Printf("[calendar] reschedule conflict: slot %s–%s overlaps %q",
+		busy, other, err := uc.slotOccupied(accessToken, googleEventID, existing.StartTime, existing.EndTime)
+		if err != nil {
+			return nil, err
+		}
+		if busy {
+			log.Printf("[calendar] reschedule conflict: slot %s to %s overlaps %q",
 				existing.StartTime.Format(time.RFC3339), existing.EndTime.Format(time.RFC3339), other)
 			return nil, calendar.ErrSlotConflict
 		}
@@ -187,10 +191,10 @@ func (uc *updateEventUseCase) Execute(input calendar.UpdateEventInput) (*calenda
 	return existing, nil
 }
 
-func (uc *updateEventUseCase) slotOccupied(accessToken, excludeGoogleID string, start, end time.Time) (bool, string) {
+func (uc *updateEventUseCase) slotOccupied(accessToken, excludeGoogleID string, start, end time.Time) (bool, string, error) {
 	events, err := uc.google.ListGoogleEvents(accessToken, start, end, "", 20)
 	if err != nil {
-		return false, ""
+		return false, "", fmt.Errorf("%w: %v", calendar.ErrConflictCheckUnavailable, err)
 	}
 	for _, ev := range events {
 		if ev == nil || ev.AllDay || ev.Transparency == "transparent" {
@@ -200,8 +204,8 @@ func (uc *updateEventUseCase) slotOccupied(accessToken, excludeGoogleID string, 
 			continue
 		}
 		if ev.StartTime.Before(end) && ev.EndTime.After(start) {
-			return true, ev.Title
+			return true, ev.Title, nil
 		}
 	}
-	return false, ""
+	return false, "", nil
 }

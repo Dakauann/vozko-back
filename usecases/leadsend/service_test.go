@@ -522,3 +522,36 @@ func TestStartingASendWhereNobodyCanReceiveIsRefused(t *testing.T) {
 		t.Fatal("a send nobody can receive was started")
 	}
 }
+
+type fakeRate struct {
+	rate float64
+	err  error
+}
+
+func (f fakeRate) CurrentRate() (float64, error) { return f.rate, f.err }
+
+func TestTheOfficialQuoteIsPricedInReaisWithTheWalletRate(t *testing.T) {
+	h := newHarness(nil)
+	h.seed(5)
+	review, err := prepare(h, scoped(), leadaction.ActionSendTemplate, templateParams())
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if review.Quote.UnitPriceBRL != 0.3125 || review.Quote.CostBRL != 1.5625 || review.Quote.BalanceBRL != 500 {
+		t.Fatalf("quote in reais = %+v, want 0.3125 / 1.5625 / 500 at a rate of 5", review.Quote)
+	}
+	q, err := h.svc.Quote(scoped(), requester(), leadaction.ActionSendTemplate, templateParams(), 2)
+	if err != nil || q.CostBRL != 0.625 {
+		t.Fatalf("preview quote = %+v, %v, want R$ 0,625 for 2 sends", q, err)
+	}
+}
+
+func TestTheOfficialQuoteFailsClosedWithoutTheWalletRate(t *testing.T) {
+	h := newHarness(func(d *Deps) { d.Rates = fakeRate{err: errors.New("no rate")} })
+	if _, err := h.svc.Quote(scoped(), requester(), leadaction.ActionSendTemplate, templateParams(), 2); err == nil {
+		t.Fatal("a quote without the wallet rate must not show a cost in another currency")
+	}
+	if _, err := h.svc.Quote(scoped(), requester(), leadaction.ActionSendUnofficial, unofficialParams(), 2); err != nil {
+		t.Fatalf("the unofficial quote has no cost and needs no rate: %v", err)
+	}
+}

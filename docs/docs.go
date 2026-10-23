@@ -8839,6 +8839,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/campaign-audience/{channel}/map": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "As posições dos leads do público, pela mesma seleção de ` + "`" + `POST /campaign-audience/{channel}/count` + "`" + ` (mesmo ` + "`" + `source` + "`" + ` e ` + "`" + `selection` + "`" + `; só a origem ` + "`" + `leads` + "`" + `), para a prévia do mapa no passo de público. O servidor decide quem está em cada área desenhada do filtro, como na contagem. ` + "`" + `layer` + "`" + ` vem no formato dos pontos de ` + "`" + `GET /leads/map/tiles/{z}/{x}/{y}` + "`" + `: um ponto por posição e classe (` + "`" + `placement` + "`" + ` ` + "`" + `on_map` + "`" + ` ou ` + "`" + `approximate` + "`" + `), com ` + "`" + `count` + "`" + ` pessoas e até 5 ` + "`" + `leadIds` + "`" + `. ` + "`" + `located` + "`" + ` conta os leads com posição, ` + "`" + `positions` + "`" + ` as posições distintas e, quando passam de 1.000, ` + "`" + `sampled` + "`" + ` é verdadeiro e ` + "`" + `layer` + "`" + ` traz uma amostra estável de 1.000 posições. ` + "`" + `bounds` + "`" + ` é a caixa que junta as áreas desenhadas do filtro (nula sem área). Pedidos iguais ao mesmo tempo fazem uma só leitura. Exige a ação ` + "`" + `create` + "`" + ` do recurso do canal, ` + "`" + `leads:read` + "`" + ` e ` + "`" + `leads:read_addresses` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Campaign audience"
+                ],
+                "summary": "Mapa do público de uma campanha",
+                "parameters": [
+                    {
+                        "enum": [
+                            "email",
+                            "whatsapp",
+                            "unofficial",
+                            "carrier"
+                        ],
+                        "type": "string",
+                        "description": "Canal",
+                        "name": "channel",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Público",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/campaignaudiencehttp.MapRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/campaignaudiencehttp.MapResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "audience_source_invalid, audience_source_ambiguous, audience_selection_required, selection_*",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "audience_source_unsupported",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "audience_busy, audience_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/campaign-audience/{channel}/sample": {
             "post": {
                 "security": [
@@ -9257,7 +9333,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calcula no servidor, a partir do rascunho salvo, o público (a mesma contagem do passo de público), o custo (oficial: ` + "`" + `quote` + "`" + `; não oficial: ` + "`" + `estimate` + "`" + `) e a verificação de início em ` + "`" + `check` + "`" + ` (` + "`" + `findings` + "`" + `, ` + "`" + `fingerprint` + "`" + `, ` + "`" + `blocks` + "`" + `, ` + "`" + `needsConfirmation` + "`" + `), com as mesmas regras do Iniciar. Nada é criado.",
+                "description": "Calcula no servidor, a partir do rascunho salvo, o público (a mesma contagem do passo de público), o custo (oficial: ` + "`" + `quote` + "`" + `, com ` + "`" + `unitPriceBrl` + "`" + `, ` + "`" + `costBrl` + "`" + ` e ` + "`" + `balanceBrl` + "`" + ` já em reais pela cotação da carteira, ao lado dos micros em ` + "`" + `currency` + "`" + `; não oficial: ` + "`" + `estimate` + "`" + `) e a verificação de início em ` + "`" + `check` + "`" + ` (` + "`" + `findings` + "`" + `, ` + "`" + `fingerprint` + "`" + `, ` + "`" + `blocks` + "`" + `, ` + "`" + `needsConfirmation` + "`" + `), com as mesmas regras do Iniciar. Nada é criado.",
                 "produces": [
                     "application/json"
                 ],
@@ -38753,6 +38829,76 @@ const docTemplate = `{
                 }
             }
         },
+        "/user/invoices/{id}/pix": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Emite uma nova cobrança PIX para a mesma fatura e o mesmo valor quando o PIX atual expirou ou quando a fatura venceu e ainda pode ser paga (a fatura mensal pode ser paga até o dia do corte). A cobrança anterior é cancelada no provedor antes, então cada fatura tem um único PIX pagável por vez. Se o PIX atual ainda é válido, ele é devolvido sem gerar outro. Faturas pagas, canceladas ou expiradas nunca recebem um novo PIX. A resposta traz em payment o estado do pagamento, a validade do código e o prazo final para pagar.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Faturas"
+                ],
+                "summary": "Gerar um novo PIX para a fatura",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Identificador da fatura",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/invoice.InvoiceEnvelope"
+                        }
+                    },
+                    "400": {
+                        "description": "workspace_required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "invoice_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "invoice_not_payable, invoice_already_paid ou invoice_pix_renew_in_progress",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "customer_document_required",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "invoice_pix_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "invoice_pix_unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/user/me": {
             "get": {
                 "security": [
@@ -49363,26 +49509,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG"
+                "CATALOG",
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT"
             ],
             "x-enum-varnames": [
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog"
+                "DestinationCatalog",
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect"
             ]
         },
         "advertising.ExportLabels": {
@@ -49801,7 +49947,6 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
-                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -49814,10 +49959,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS"
+                "APP_INSTALLS",
+                "CONVERSATIONS"
             ],
             "x-enum-varnames": [
-                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -49830,7 +49975,8 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls"
+                "GoalAppInstalls",
+                "GoalConversations"
             ]
         },
         "advertising.Pixel": {
@@ -58112,6 +58258,9 @@ const docTemplate = `{
                 "affordable": {
                     "type": "boolean"
                 },
+                "balanceBrl": {
+                    "type": "number"
+                },
                 "balanceMicros": {
                     "type": "integer"
                 },
@@ -58120,6 +58269,9 @@ const docTemplate = `{
                 },
                 "category": {
                     "type": "string"
+                },
+                "costBrl": {
+                    "type": "number"
                 },
                 "costMicros": {
                     "type": "integer"
@@ -58150,6 +58302,9 @@ const docTemplate = `{
                 },
                 "splitRequired": {
                     "type": "boolean"
+                },
+                "unitPriceBrl": {
+                    "type": "number"
                 },
                 "unitPriceMicros": {
                     "type": "integer"
@@ -58968,6 +59123,54 @@ const docTemplate = `{
                 "workflowId": {
                     "type": "string",
                     "example": "0d6c2f1a-4b5e-4c7d-8e9f-222222222222"
+                }
+            }
+        },
+        "campaignaudiencehttp.MapRequest": {
+            "type": "object",
+            "properties": {
+                "listId": {
+                    "type": "string"
+                },
+                "selection": {
+                    "$ref": "#/definitions/httpx.LeadSelectionRequest"
+                },
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "leads",
+                        "list"
+                    ],
+                    "example": "leads"
+                },
+                "variables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/audiencex.VariableRequest"
+                    }
+                }
+            }
+        },
+        "campaignaudiencehttp.MapResponse": {
+            "type": "object",
+            "properties": {
+                "bounds": {
+                    "$ref": "#/definitions/lead.MapBBoxResponse"
+                },
+                "layer": {
+                    "$ref": "#/definitions/lead.MapLayerResponse"
+                },
+                "located": {
+                    "type": "integer",
+                    "example": 128
+                },
+                "positions": {
+                    "type": "integer",
+                    "example": 96
+                },
+                "sampled": {
+                    "type": "boolean",
+                    "example": false
                 }
             }
         },
@@ -62022,6 +62225,31 @@ const docTemplate = `{
         "crmfilter.Field": {
             "type": "string",
             "enum": [
+                "id",
+                "phone_any",
+                "email",
+                "nickname",
+                "birthday",
+                "birth_date",
+                "zip",
+                "state",
+                "city",
+                "district",
+                "geo_precision",
+                "geo_status",
+                "has_address",
+                "has_identity",
+                "opted_out",
+                "whatsapp_opt_in",
+                "relation_kind",
+                "relatives_count",
+                "referred_count",
+                "referred_by",
+                "geo_placement",
+                "opt_out_source",
+                "opted_out_at",
+                "company",
+                "area_approximate",
                 "owner",
                 "carteira",
                 "pipeline",
@@ -62052,34 +62280,34 @@ const docTemplate = `{
                 "memory_count",
                 "memory_updated_at",
                 "custom",
-                "area",
-                "id",
-                "phone_any",
-                "email",
-                "nickname",
-                "birthday",
-                "birth_date",
-                "zip",
-                "state",
-                "city",
-                "district",
-                "geo_precision",
-                "geo_status",
-                "has_address",
-                "has_identity",
-                "opted_out",
-                "whatsapp_opt_in",
-                "relation_kind",
-                "relatives_count",
-                "referred_count",
-                "referred_by",
-                "geo_placement",
-                "opt_out_source",
-                "opted_out_at",
-                "company",
-                "area_approximate"
+                "area"
             ],
             "x-enum-varnames": [
+                "FieldID",
+                "FieldPhoneAny",
+                "FieldEmail",
+                "FieldNickname",
+                "FieldBirthday",
+                "FieldBirthDate",
+                "FieldZip",
+                "FieldState",
+                "FieldCity",
+                "FieldDistrict",
+                "FieldGeoPrecision",
+                "FieldGeoStatus",
+                "FieldHasAddress",
+                "FieldHasIdentity",
+                "FieldOptedOut",
+                "FieldWhatsAppOptIn",
+                "FieldRelationKind",
+                "FieldRelativesCount",
+                "FieldReferredCount",
+                "FieldReferredBy",
+                "FieldGeoPlacement",
+                "FieldOptOutSource",
+                "FieldOptedOutAt",
+                "FieldCompany",
+                "FieldAreaApproximate",
                 "FieldOwner",
                 "FieldCarteira",
                 "FieldPipeline",
@@ -62110,32 +62338,7 @@ const docTemplate = `{
                 "FieldMemoryCount",
                 "FieldMemoryUpdatedAt",
                 "FieldCustom",
-                "FieldArea",
-                "FieldID",
-                "FieldPhoneAny",
-                "FieldEmail",
-                "FieldNickname",
-                "FieldBirthday",
-                "FieldBirthDate",
-                "FieldZip",
-                "FieldState",
-                "FieldCity",
-                "FieldDistrict",
-                "FieldGeoPrecision",
-                "FieldGeoStatus",
-                "FieldHasAddress",
-                "FieldHasIdentity",
-                "FieldOptedOut",
-                "FieldWhatsAppOptIn",
-                "FieldRelationKind",
-                "FieldRelativesCount",
-                "FieldReferredCount",
-                "FieldReferredBy",
-                "FieldGeoPlacement",
-                "FieldOptOutSource",
-                "FieldOptedOutAt",
-                "FieldCompany",
-                "FieldAreaApproximate"
+                "FieldArea"
             ]
         },
         "crmfilter.Filter": {
@@ -64397,10 +64600,6 @@ const docTemplate = `{
                 "unit_brl": {
                     "type": "number",
                     "example": 0.003207
-                },
-                "unit_cost_micros": {
-                    "type": "integer",
-                    "example": 165
                 },
                 "unit_micros": {
                     "type": "integer",
@@ -67426,6 +67625,30 @@ const docTemplate = `{
                 }
             }
         },
+        "invoice.InvoicePaymentResponse": {
+            "type": "object",
+            "properties": {
+                "canRenew": {
+                    "type": "boolean",
+                    "example": false
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "payableUntil": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string",
+                    "enum": [
+                        "OPEN",
+                        "RENEWABLE",
+                        "CLOSED"
+                    ],
+                    "example": "OPEN"
+                }
+            }
+        },
         "invoice.InvoiceResponse": {
             "type": "object",
             "properties": {
@@ -67493,13 +67716,16 @@ const docTemplate = `{
                     "type": "integer",
                     "example": 1752883200
                 },
+                "payment": {
+                    "$ref": "#/definitions/invoice.InvoicePaymentResponse"
+                },
                 "pixCopy": {
                     "type": "string",
                     "example": "00020126"
                 },
                 "pixQrCode": {
                     "type": "string",
-                    "example": "data:image/png;base64,iVBORw0KGgo"
+                    "example": "iVBORw0KGgo"
                 },
                 "planDefinitionId": {
                     "type": "string",
@@ -82360,6 +82586,7 @@ const docTemplate = `{
                 "validation",
                 "cancelled",
                 "internal",
+                "handled",
                 "real_call_not_confirmed",
                 "wrong_workflow_type",
                 "missing_mocks",
@@ -82378,6 +82605,7 @@ const docTemplate = `{
                 "ErrorKindValidation",
                 "ErrorKindCancelled",
                 "ErrorKindInternal",
+                "ErrorKindHandled",
                 "ErrorKindRealCallNotConfirmed",
                 "ErrorKindWrongWorkflowType",
                 "ErrorKindMissingMocks",
@@ -82530,12 +82758,7 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "NODE_INVALID_PLATFORM_EMAIL",
-                "DATA_REF_NEVER_SET",
-                "DATA_REF_SOME_PATHS",
-                "NODE_CONSENT_GRANT_NEEDS_REPLY",
                 "SEND_OUTSIDE_WINDOW_RISK",
-                "NODE_AGENT_CALL_INPUTS_INVALID",
-                "NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER",
                 "GRAPH_EMPTY",
                 "GRAPH_TOO_MANY_NODES",
                 "GRAPH_TOO_MANY_EDGES",
@@ -82574,6 +82797,7 @@ const docTemplate = `{
                 "NODE_SHEET_MAPPING_INVALID",
                 "WORKFLOW_VOICE_TRUNK_INVALID",
                 "WORKFLOW_INVALID",
+                "WORKFLOW_VALIDATION_UNAVAILABLE",
                 "EDGE_BAD_HANDLE_LABEL",
                 "DATA_REF_DANGLING",
                 "DATA_REF_UNKNOWN_KEY",
@@ -82582,16 +82806,16 @@ const docTemplate = `{
                 "NODE_CONFIG_SHAPE_MISMATCH",
                 "NODE_CODE_READS_TEMPLATE",
                 "NODE_SECRET_IN_PLAIN_TEXT",
-                "NODE_PINNED_OUTPUT"
+                "NODE_PINNED_OUTPUT",
+                "NODE_CONSENT_GRANT_NEEDS_REPLY",
+                "NODE_AGENT_CALL_INPUTS_INVALID",
+                "NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER",
+                "DATA_REF_NEVER_SET",
+                "DATA_REF_SOME_PATHS"
             ],
             "x-enum-varnames": [
                 "LintInvalidPlatformEmail",
-                "LintDataRefNeverSet",
-                "LintDataRefSomePaths",
-                "LintConsentGrantNeedsReply",
                 "LintSendOutsideWindowRisk",
-                "LintAgentCallInputsInvalid",
-                "LintReplyToAgentWithoutTrigger",
                 "LintGraphEmpty",
                 "LintGraphTooManyNodes",
                 "LintGraphTooManyEdges",
@@ -82630,6 +82854,7 @@ const docTemplate = `{
                 "LintSheetMappingInvalid",
                 "LintVoiceTrunkInvalid",
                 "LintWorkflowInvalid",
+                "LintValidationUnavailable",
                 "LintBadHandleLabel",
                 "LintDanglingDataRef",
                 "LintUnknownOutputKey",
@@ -82638,7 +82863,12 @@ const docTemplate = `{
                 "LintConfigShapeMismatch",
                 "LintCodeReadsTemplate",
                 "LintSecretInPlainText",
-                "LintPinnedOutput"
+                "LintPinnedOutput",
+                "LintConsentGrantNeedsReply",
+                "LintAgentCallInputsInvalid",
+                "LintReplyToAgentWithoutTrigger",
+                "LintDataRefNeverSet",
+                "LintDataRefSomePaths"
             ]
         },
         "workflow.LintSeverity": {

@@ -480,6 +480,31 @@ func TestGateway_ToChargeMapsExpiration(t *testing.T) {
 	if charge.DueDate == nil || !charge.DueDate.Equal(expiry) {
 		t.Fatalf("due date: got %v", charge.DueDate)
 	}
+	if charge.ExpiresAt == nil || !charge.ExpiresAt.Equal(expiry) {
+		t.Fatalf("a PIX charge expires at its date of expiration, got %v", charge.ExpiresAt)
+	}
+}
+
+func TestGateway_ThePayableDeadlineOutranksTheDueDateForThePixExpiry(t *testing.T) {
+	f := &fakeClient{}
+	g := newTestGateway(f)
+
+	if _, err := g.CreateCharge(context.Background(), payment.ChargeRequest{
+		Method:    payment.MethodPix,
+		Amount:    10,
+		DueDate:   fixedNow.Add(24 * time.Hour),
+		ExpiresAt: fixedNow.Add(96 * time.Hour),
+		Customer:  validCustomer(),
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	parsed, err := time.Parse(ExpirationLayout, f.createReq.DateOfExpiration)
+	if err != nil {
+		t.Fatalf("bad expiration: %v", err)
+	}
+	if !parsed.Equal(fixedNow.Add(96 * time.Hour)) {
+		t.Fatalf("the PIX must stay payable until the deadline, got %v", parsed)
+	}
 }
 
 func TestGateway_SandboxPayerEmailOverride(t *testing.T) {

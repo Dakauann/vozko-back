@@ -1,9 +1,9 @@
 package copilottools
 
 import (
-	"fmt"
 	"strings"
 
+	"vozko/domain/balance"
 	"vozko/domain/shared"
 )
 
@@ -19,6 +19,13 @@ func ClipText(s string, max int) string {
 	return text
 }
 
-func FormatUSD(micros int64) string {
-	return fmt.Sprintf("US$ %.2f", float64(micros)/1_000_000)
+func ReaisOf(rates balance.ExchangeRate) (func(micros int64) string, bool) {
+	if rates == nil {
+		return nil, false
+	}
+	rate, err := rates.CurrentRate()
+	if err != nil || rate <= 0 {
+		return nil, false
+	}
+	return func(micros int64) string { return shared.FormatBRL(shared.EstimateBRLFromMicros(micros, rate)) }, true
 }

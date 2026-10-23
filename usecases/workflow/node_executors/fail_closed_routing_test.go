@@ -29,10 +29,11 @@ type labelRouted struct {
 type entryLabelsStub struct {
 	label.Repository
 	labels []*label.EntryLabel
+	err    error
 }
 
 func (s *entryLabelsStub) GetEntryLabels(string, string, string) ([]*label.EntryLabel, error) {
-	return s.labels, nil
+	return s.labels, s.err
 }
 
 type toolCallingAI struct {
@@ -264,5 +265,21 @@ func TestEveryLabelRoutedNodeFollowsItsOutputOrItsFallbackAndNeverAnArbitraryEdg
 				t.Fatalf("result = %+v, want a config failure for the unconnected %q", result, node.output)
 			}
 		})
+	}
+}
+
+func TestCheckLabelRoutesAnUnreadableLabelListToTheErrorBranchNeverToFalse(t *testing.T) {
+	edges := []workflow.Edge{{Source: "n1", Target: "yes", Label: "true"}, {Source: "n1", Target: "no", Label: "false"}, {Source: "n1", Target: "recover", Label: "erro"}}
+	result := executed(t, NewCheckLabelExecutor(&entryLabelsStub{err: errors.New("database down")}), routedCtx(workflow.NodeTypeConditionCheckLabel, map[string]interface{}{"label_id": "vip"}, edges))
+	if result.NextNodeID != "recover" || result.Branch != "erro" || result.ErrorKind != workflow.ErrorKindHandled {
+		t.Fatalf("an unreadable label list was treated as a result: %+v", result)
+	}
+}
+
+func TestCheckLabelFailsTheStepWhenTheReadFailsAndNoErrorBranchIsConnected(t *testing.T) {
+	edges := []workflow.Edge{{Source: "n1", Target: "yes", Label: "true"}, {Source: "n1", Target: "no", Label: "false"}}
+	result := executed(t, NewCheckLabelExecutor(&entryLabelsStub{err: errors.New("database down")}), routedCtx(workflow.NodeTypeConditionCheckLabel, map[string]interface{}{"label_id": "vip"}, edges))
+	if result.NextNodeID != "" || result.Error == "" {
+		t.Fatalf("the run continued without knowing the labels: %+v", result)
 	}
 }

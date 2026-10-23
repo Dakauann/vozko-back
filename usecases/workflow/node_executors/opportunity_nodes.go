@@ -198,7 +198,7 @@ func (e *manageOpportunityExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 }
 
 func failDeal(edges []workflow.Edge, reason string) *workflow.NodeResult {
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{"success": false, "created": false, "error": reason},
 	}, edges, "erro")
 }

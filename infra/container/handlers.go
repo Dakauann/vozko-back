@@ -508,6 +508,7 @@ func (c *Container) initHandlers() {
 			c.useCases.createInvoice,
 			c.useCases.listInvoices,
 			c.useCases.getInvoice,
+			c.useCases.renewInvoicePix,
 		),
 		callBilling: callbillinghttp.NewCallBillingHandler(
 			c.useCases.listBillingRecords,

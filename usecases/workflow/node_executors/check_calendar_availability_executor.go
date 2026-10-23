@@ -4,12 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"time"
 
 	"vozko/domain/calendar"
-	"vozko/domain/shared"
 	"vozko/domain/workflow"
 )
 
@@ -109,7 +107,13 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 	if fromRaw == "" {
 		return calAvailFailure(ctx, "o campo Data/hora início é obrigatório"), nil
 	}
-	dateFrom, dateTo, err := calendar.AvailabilityRange(fromRaw, calendarConfigText(ctx, "date_to"), calendarConfigText(ctx, "working_start"), calendarConfigText(ctx, "working_end"), loc)
+	hours := calendar.WorkingHours{
+		Start:    calendar.ParseClock(calendarConfigText(ctx, "working_start"), calendar.DefaultWorkStart),
+		End:      calendar.ParseClock(calendarConfigText(ctx, "working_end"), calendar.DefaultWorkEnd),
+		Days:     calendar.ParseWorkDays(calendarConfigText(ctx, "work_days")),
+		Location: loc,
+	}
+	dateFrom, dateTo, err := calendar.AvailabilityRange(fromRaw, calendarConfigText(ctx, "date_to"), hours.Start, hours.End, loc)
 	if err != nil {
 		return calAvailFailure(ctx, err.Error()), nil
 	}
@@ -128,11 +132,6 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 		}
 	}
 
-	workStart := parseHHMM(calendarConfigText(ctx, "working_start"), 8, 0)
-	workEnd := parseHHMM(calendarConfigText(ctx, "working_end"), 18, 0)
-
-	workDays := parseWorkDays(calendarConfigText(ctx, "work_days"))
-
 	accessToken := googleAccess.Token
 
 	events, err := e.google.ListGoogleEvents(accessToken, dateFrom, dateTo, "", 250)
@@ -140,14 +139,17 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 		return calAvailFailure(ctx, fmt.Sprintf("falha ao consultar eventos: %v", err)), nil
 	}
 
-	events = mergeLocalEvents(e.repo, workspaceID, dateFrom, dateTo, events)
+	events, err = calendar.WithLocalEvents(e.repo, workspaceID, dateFrom, dateTo, events)
+	if err != nil {
+		return calAvailFailure(ctx, err.Error()), nil
+	}
 
-	slots := computeFreeSlots(dateFrom, dateTo, events, slotMinutes, workStart, workEnd, loc, workDays)
+	slots := calendar.FreeSlots(dateFrom, dateTo, events, time.Duration(slotMinutes)*time.Minute, hours)
 
 	var textParts []string
 	var jsonSlots []map[string]string
 	for _, s := range slots {
-		textParts = append(textParts, fmt.Sprintf("%s – %s",
+		textParts = append(textParts, fmt.Sprintf("%s a %s",
 			s.Start.In(loc).Format("02/01 15:04"),
 			s.End.In(loc).Format("15:04"),
 		))
@@ -180,185 +182,11 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 	}, outgoingEdges(ctx), "sucesso"), nil
 }
 
-type timeSlot struct {
-	Start time.Time
-	End   time.Time
-}
-
-func computeFreeSlots(from, to time.Time, events []*calendar.CalendarEvent, slotMinutes int, workStart, workEnd hhMM, loc *time.Location, workDays map[time.Weekday]bool) []timeSlot {
-	slotDuration := time.Duration(slotMinutes) * time.Minute
-
-	busy := make([]timeSlot, 0, len(events))
-	for _, ev := range events {
-		if ev == nil || ev.Transparency == "transparent" {
-			continue
-		}
-		if ev.EndTime.After(from) && ev.StartTime.Before(to) {
-			busy = append(busy, timeSlot{Start: ev.StartTime, End: ev.EndTime})
-		}
-	}
-	sort.Slice(busy, func(i, j int) bool { return busy[i].Start.Before(busy[j].Start) })
-
-	merged := make([]timeSlot, 0, len(busy))
-	for _, b := range busy {
-		if len(merged) > 0 && !b.Start.After(merged[len(merged)-1].End) {
-			if b.End.After(merged[len(merged)-1].End) {
-				merged[len(merged)-1].End = b.End
-			}
-		} else {
-			merged = append(merged, b)
-		}
-	}
-
-	var slots []timeSlot
-	current := from
-	for current.Before(to) {
-		dayInLoc := current.In(loc)
-		weekday := dayInLoc.Weekday()
-
-		if workDays != nil && !workDays[weekday] {
-			current = time.Date(dayInLoc.Year(), dayInLoc.Month(), dayInLoc.Day()+1, 0, 0, 0, 0, loc)
-			continue
-		}
-
-		dayStart := time.Date(dayInLoc.Year(), dayInLoc.Month(), dayInLoc.Day(), workStart.hour, workStart.minute, 0, 0, loc)
-		dayEnd := time.Date(dayInLoc.Year(), dayInLoc.Month(), dayInLoc.Day(), workEnd.hour, workEnd.minute, 0, 0, loc)
-
-		if dayStart.Before(from) {
-			dayStart = from
-		}
-		if dayEnd.After(to) {
-			dayEnd = to
-		}
-
-		if dayEnd.After(dayStart) {
-			slots = append(slots, findSlotsInWindow(dayStart, dayEnd, merged, slotDuration)...)
-		}
-
-		current = time.Date(dayInLoc.Year(), dayInLoc.Month(), dayInLoc.Day()+1, 0, 0, 0, 0, loc)
-	}
-
-	return slots
-}
-
-func findSlotsInWindow(windowStart, windowEnd time.Time, busy []timeSlot, slotDuration time.Duration) []timeSlot {
-	var slots []timeSlot
-	cursor := windowStart
-
-	for _, b := range busy {
-		if b.End.Before(cursor) || b.End.Equal(cursor) {
-			continue
-		}
-		if b.Start.After(windowEnd) || b.Start.Equal(windowEnd) {
-			break
-		}
-
-		gapEnd := b.Start
-		if gapEnd.After(windowEnd) {
-			gapEnd = windowEnd
-		}
-		slots = append(slots, generateSlots(cursor, gapEnd, slotDuration)...)
-		if b.End.After(cursor) {
-			cursor = b.End
-		}
-	}
-
-	if cursor.Before(windowEnd) {
-		slots = append(slots, generateSlots(cursor, windowEnd, slotDuration)...)
-	}
-
-	return slots
-}
-
-func generateSlots(from, to time.Time, duration time.Duration) []timeSlot {
-	var slots []timeSlot
-	cursor := from
-	for cursor.Add(duration).Before(to) || cursor.Add(duration).Equal(to) {
-		slots = append(slots, timeSlot{Start: cursor, End: cursor.Add(duration)})
-		cursor = cursor.Add(duration)
-	}
-	return slots
-}
-
-type hhMM struct {
-	hour   int
-	minute int
-}
-
-func parseHHMM(raw string, defaultH, defaultM int) hhMM {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return hhMM{hour: defaultH, minute: defaultM}
-	}
-	var h, m int
-	if _, err := fmt.Sscanf(raw, "%d:%d", &h, &m); err == nil && h >= 0 && h <= 23 && m >= 0 && m <= 59 {
-		return hhMM{hour: h, minute: m}
-	}
-	return hhMM{hour: defaultH, minute: defaultM}
-}
-
 func calAvailFailure(ctx *workflow.NodeContext, message string) *workflow.NodeResult {
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   message,
 		},
 	}, outgoingEdges(ctx), "erro")
-}
-
-func parseWorkDays(raw string) map[time.Weekday]bool {
-	switch strings.TrimSpace(strings.ToLower(raw)) {
-	case "all_week":
-		return map[time.Weekday]bool{
-			time.Sunday: true, time.Monday: true, time.Tuesday: true,
-			time.Wednesday: true, time.Thursday: true, time.Friday: true,
-			time.Saturday: true,
-		}
-	case "weekdays_saturday":
-		return map[time.Weekday]bool{
-			time.Monday: true, time.Tuesday: true, time.Wednesday: true,
-			time.Thursday: true, time.Friday: true, time.Saturday: true,
-		}
-	default:
-		return map[time.Weekday]bool{
-			time.Monday: true, time.Tuesday: true, time.Wednesday: true,
-			time.Thursday: true, time.Friday: true,
-		}
-	}
-}
-
-func mergeLocalEvents(repo calendar.Repository, workspaceID string, from, to time.Time, googleEvents []*calendar.CalendarEvent) []*calendar.CalendarEvent {
-	if repo == nil {
-		return googleEvents
-	}
-	localResult, err := repo.ListEvents(calendar.ListEventsInput{
-		WorkspaceID: workspaceID,
-		From:        &from,
-		To:          &to,
-		Pagination:  shared.Pagination{Page: 1, PageSize: 500},
-	})
-	if err != nil || localResult == nil || len(localResult.Items) == 0 {
-		return googleEvents
-	}
-
-	seen := make(map[string]bool, len(googleEvents))
-	for _, ev := range googleEvents {
-		if ev != nil && ev.GoogleEventID != "" {
-			seen[ev.GoogleEventID] = true
-		}
-	}
-
-	merged := make([]*calendar.CalendarEvent, len(googleEvents))
-	copy(merged, googleEvents)
-	for _, ev := range localResult.Items {
-		if ev == nil {
-			continue
-		}
-		if ev.GoogleEventID != "" && seen[ev.GoogleEventID] {
-			continue
-		}
-		merged = append(merged, ev)
-	}
-
-	return merged
 }

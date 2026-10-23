@@ -500,7 +500,7 @@ func newHarness(change func(*Deps)) *harness {
 		Permissions: fakePermissions{}, Snapshots: h.snapshots, Leads: h.leads, Contacts: h.contacts, Names: fakeNames{},
 		Definitions: fakeDefinitions{}, Store: w, Gate: openGate{}, Departments: fakeDepartments{}, CreationDepartments: fakeResolver{},
 		Templates: fakeTemplates{byID: map[string]*template.Template{"tpl-1": approvedTemplate("Olá {{1}}, do bairro {{2}}"), "tpl-literal": approvedTemplate("Matrículas abertas {{1}}"), "tpl-header": header}},
-		Costs:     fakeCosts{unit: 62500}, Balances: fakeBalances{micros: 100_000_000}, Caps: fakeCaps{},
+		Costs:     fakeCosts{unit: 62500}, Balances: fakeBalances{micros: 100_000_000}, Caps: fakeCaps{}, Rates: fakeRate{rate: 5},
 		Official:   Official{Create: h.create, Access: officialAccess{w: w}, Start: h.start, Cache: h.cached},
 		Unofficial: &Unofficial{Create: &unofficialCreate{w: w}, Access: unofficialAccess{w: w}, Start: h.act, Instances: fakeInstances{}, Scopes: fakeScopes{}},
 		Metrics:    h.metrics,

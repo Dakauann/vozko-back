@@ -69,7 +69,7 @@ func httpRequestTimeout(config map[string]interface{}) time.Duration {
 }
 
 func httpFailure(ctx *workflow.NodeContext, label, message string, kind workflow.ErrorKind) *workflow.NodeResult {
-	result := routeOutput(&workflow.NodeResult{
+	result := routeFailure(&workflow.NodeResult{
 		ErrorKind: kind,
 		Output: map[string]interface{}{
 			"success":   false,

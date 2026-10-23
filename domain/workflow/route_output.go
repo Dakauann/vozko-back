@@ -10,19 +10,24 @@ const defaultOutput = "default"
 
 var ErrOutputNotConnected = errors.New("workflow: the output the node produced is not connected")
 
-func RouteOutput(edges []Edge, output string, fallbacks ...string) (string, error) {
+type Route struct {
+	Target string
+	Branch string
+}
+
+func RouteOutput(edges []Edge, output string, fallbacks ...string) (Route, error) {
 	if len(edges) == 0 {
-		return "", nil
+		return Route{}, nil
 	}
 	for _, label := range append([]string{output}, fallbacks...) {
 		if target := edgeLeaving(edges, label); target != "" {
-			return target, nil
+			return Route{Target: target, Branch: label}, nil
 		}
 	}
 	if len(fallbacks) == 0 {
-		return "", fmt.Errorf("%w: %q", ErrOutputNotConnected, output)
+		return Route{}, fmt.Errorf("%w: %q", ErrOutputNotConnected, output)
 	}
-	return "", fmt.Errorf("%w: %q, nor its fallback %s", ErrOutputNotConnected, output, strings.Join(quoteAll(fallbacks), ", "))
+	return Route{}, fmt.Errorf("%w: %q, nor its fallback %s", ErrOutputNotConnected, output, strings.Join(quoteAll(fallbacks), ", "))
 }
 
 func edgeLeaving(edges []Edge, label string) string {

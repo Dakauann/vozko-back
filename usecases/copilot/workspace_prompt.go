@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"vozko/domain/readiness"
+	"vozko/domain/shared"
 )
 
 var capabilityLabels = map[readiness.Capability]string{
@@ -38,7 +39,11 @@ func workspacePrompt(snap *readiness.Snapshot) string {
 	if !snap.SubscriptionActive {
 		subscription = "inativa (números, modelos e campanhas pagos não funcionam)"
 	}
-	fmt.Fprintf(&b, "- Assinatura: %s\n- Saldo: US$ %.2f\n", subscription, float64(snap.BalanceMicros)/1_000_000)
+	funds := "indisponível"
+	if snap.BalanceBRL != nil {
+		funds = shared.FormatBRL(*snap.BalanceBRL)
+	}
+	fmt.Fprintf(&b, "- Assinatura: %s\n- Saldo: %s\n", subscription, funds)
 	for _, s := range snap.Capabilities {
 		b.WriteString("- " + capabilityLine(s) + "\n")
 	}

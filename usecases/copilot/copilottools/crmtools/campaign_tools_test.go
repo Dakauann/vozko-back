@@ -97,7 +97,7 @@ func newCampaignFixture() campaignFixture {
 	f := campaignFixture{preview: &fakeImportPreview{}, create: &fakeCampaignCreate{}, start: &fakeCampaignStart{}, exit: &fakeExitVerdicts{state: buttonaction.VerdictOK}}
 	f.deps = CampaignDeps{
 		Preview: f.preview, Create: f.create, Start: f.start, Access: fakeCampaignAccess{},
-		Templates: grantedTemplates{}, Phones: &fakeWorkspacePhones{}, Costs: fakeCosts{}, Balance: fakeBalance(2_000_000),
+		Templates: grantedTemplates{}, Phones: &fakeWorkspacePhones{}, Costs: fakeCosts{}, Balance: fakeBalance(2_000_000), Rates: walletRate{rate: 5},
 		Exit: f.exit,
 	}
 	return f
@@ -143,7 +143,7 @@ func TestPreviewCampaignImportReportsRowsCostAndIssuesForTheWorkspace(t *testing
 		t.Fatalf("status %s: %s", res.Status, res.Message)
 	}
 	data := res.Data.(map[string]interface{})
-	if data["valid_rows"] != 2 || data["estimated_cost"] != "US$ 0.12" || data["balance_suffices"] != true {
+	if data["valid_rows"] != 2 || data["estimated_cost"] != "R$ 0,60" || data["unit_cost"] != "R$ 0,30" || data["balance"] != "R$ 25,00" || data["balance_suffices"] != true {
 		t.Fatalf("data = %+v", data)
 	}
 	if f.preview.req.WorkspaceID != "ws-1" || f.preview.req.Mapping.Number != "fone" || len(f.preview.req.Mapping.Variables) != 2 {
@@ -227,7 +227,7 @@ func TestCreateCampaignApprovalShowsWhatWillBeCreated(t *testing.T) {
 	cc := tooltest.Member()
 	fields := NewCreateCampaignTool(newCampaignFixture().deps).(copilot.Describer).Describe(creating(cc), cc, createCampaignArgsFor(nil))
 	if tooltest.FieldValue(fields, "phone") != "+55 84 99440-9624" || tooltest.FieldValue(fields, "template") != "pedido_saiu" ||
-		tooltest.FieldValue(fields, "contacts") != "2 de 3 linhas" || tooltest.FieldValue(fields, "estimatedCost") != "US$ 0.12" {
+		tooltest.FieldValue(fields, "contacts") != "2 de 3 linhas" || tooltest.FieldValue(fields, "estimatedCost") != "R$ 0,60" {
 		t.Fatalf("fields = %+v", fields)
 	}
 }
@@ -235,7 +235,7 @@ func TestCreateCampaignApprovalShowsWhatWillBeCreated(t *testing.T) {
 func TestStartCampaignApprovalShowsTheFinalCostAndBalance(t *testing.T) {
 	fields := NewStartCampaignTool(newCampaignFixture().deps).(copilot.Describer).Describe(context.Background(), tooltest.Member(), map[string]interface{}{"campaign_id": knownCampaign})
 	if tooltest.FieldValue(fields, "campaign") != "Black Friday" || tooltest.FieldValue(fields, "contacts") != "40" ||
-		tooltest.FieldValue(fields, "finalCost") != "US$ 0.34" || tooltest.FieldValue(fields, "balance") != "US$ 2.00" {
+		tooltest.FieldValue(fields, "finalCost") != "R$ 1,70" || tooltest.FieldValue(fields, "balance") != "R$ 10,00" {
 		t.Fatalf("fields = %+v", fields)
 	}
 }
@@ -276,5 +276,22 @@ func TestStartCampaignExplainsWhyItCannotStart(t *testing.T) {
 	f.start.err = errors.New("queue down")
 	if res := NewStartCampaignTool(f.deps).Execute(context.Background(), tooltest.Member(), map[string]interface{}{"campaign_id": knownCampaign}); res.Status != copilot.StatusError {
 		t.Fatalf("unexpected error result = %+v", res)
+	}
+}
+
+func TestCampaignCostsStayHiddenWithoutTheWalletRate(t *testing.T) {
+	f := newCampaignFixture()
+	f.deps.Rates = walletRate{err: errors.New("no rate")}
+	res := NewPreviewCampaignImportTool(f.deps).Execute(context.Background(), tooltest.Member(), map[string]interface{}{
+		"media_id": knownSheet, "template_id": knownTemplate, "number_column": "fone", "variable_columns": []interface{}{"nome", "cupom"},
+	})
+	data := res.Data.(map[string]interface{})
+	if res.Status != copilot.StatusOK || data["estimated_cost"] != costUnavailable || data["unit_cost"] != costUnavailable || data["balance"] != costUnavailable {
+		t.Fatalf("data = %+v, no amount is shown without the wallet rate", data)
+	}
+	cc := tooltest.Member()
+	fields := NewCreateCampaignTool(f.deps).(copilot.Describer).Describe(creating(cc), cc, createCampaignArgsFor(nil))
+	if tooltest.FieldValue(fields, "estimatedCost") != costUnavailable || tooltest.FieldValue(fields, "balance") != "" {
+		t.Fatalf("fields = %+v", fields)
 	}
 }

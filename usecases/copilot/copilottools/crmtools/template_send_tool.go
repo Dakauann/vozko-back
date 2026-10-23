@@ -25,6 +25,7 @@ type TemplateSendDeps struct {
 	Templates tmpl.WorkspaceTemplatesUseCase
 	Costs     tmpl.TemplateCostReader
 	Balance   balance.BalanceReader
+	Rates     balance.ExchangeRate
 	Entries   conversation.EntryLookup
 }
 
@@ -62,11 +63,7 @@ func (t *sendTemplateTool) Describe(_ context.Context, cc copilot.Context, args 
 		return append(fields, copilot.Field{Key: "template", Value: "modelo desconhecido ou sem acesso"})
 	}
 	fields = append(fields, copilot.Field{Key: "template", Value: template.Name})
-	return append(fields, templateCostFields(t.deps.Costs, t.deps.Balance, cc.WorkspaceID, template, 1, "cost", formatUnitUSD)...)
-}
-
-func formatUnitUSD(micros int64) string {
-	return fmt.Sprintf("US$ %.4f", float64(micros)/1_000_000)
+	return append(fields, templateCostFields(t.deps.Costs, t.deps.Balance, t.deps.Rates, cc.WorkspaceID, template, 1, "cost")...)
 }
 
 func (t *sendTemplateTool) template(cc copilot.Context, raw string) (*tmpl.Template, error) {

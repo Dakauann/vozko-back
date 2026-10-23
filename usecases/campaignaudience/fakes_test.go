@@ -224,6 +224,7 @@ func (c *fakeChannel) Prepare(_ context.Context, _ Actor, params Params) (Prepar
 type world struct {
 	service    *Service
 	selections *fakeSelections
+	places     *fakePlaces
 	lists      *audiencetest.Lists
 	channel    *fakeChannel
 	email      *fakeChannel
@@ -237,6 +238,7 @@ type world struct {
 func newWorld(t interface{ Fatal(...any) }) *world {
 	w := &world{
 		selections: &fakeSelections{},
+		places:     &fakePlaces{},
 		lists:      audiencetest.NewLists(),
 		channel:    &fakeChannel{name: campaignaudience.ChannelWhatsApp},
 		email:      &fakeChannel{name: campaignaudience.ChannelEmail},
@@ -247,6 +249,7 @@ func newWorld(t interface{ Fatal(...any) }) *world {
 	}
 	service, err := New(Deps{
 		Selections:  w.selections,
+		Places:      w.places,
 		Lists:       w.lists,
 		Sheets:      csvSheets{},
 		Phones:      fakePhones{"5511900010142": "lead-maria"},

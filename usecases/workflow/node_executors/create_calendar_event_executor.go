@@ -172,27 +172,21 @@ func (s *createCalendarEventExecutor) Execute(ctx *workflow.NodeContext) (*workf
 
 	accessToken := googleAccess.Token
 
-	conflictEvents, conflictErr := s.google.ListGoogleEvents(accessToken, startTime, endTime, "", 10)
-	if conflictErr == nil {
-
-		conflictEvents = mergeLocalEvents(s.repo, workspaceID, startTime, endTime, conflictEvents)
-		for _, ev := range conflictEvents {
-			if ev == nil || ev.Transparency == "transparent" {
-				continue
-			}
-			if ev.StartTime.Before(endTime) && ev.EndTime.After(startTime) {
-				log.Printf("[workflow][create_calendar_event][run:%s] CONFLICT: event %q (%s–%s) overlaps requested slot %s–%s",
-					calendarRunID(ctx), ev.Title,
-					ev.StartTime.Format(time.RFC3339), ev.EndTime.Format(time.RFC3339),
-					startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
-				return createCalendarEventFailure(ctx, fmt.Sprintf(
-					"O horário %s – %s já está ocupado (conflito com: %s). Escolha outro horário.",
-					startTime.In(location).Format("02/01 15:04"),
-					endTime.In(location).Format("15:04"),
-					ev.Title,
-				)), nil
-			}
-		}
+	conflict, err := calendar.ConflictCheck{Google: s.google, AccessToken: accessToken, Local: s.repo}.Conflict(workspaceID, startTime, endTime)
+	if err != nil {
+		return createCalendarEventRefused(ctx, err, err.Error()), nil
+	}
+	if conflict != nil {
+		log.Printf("[workflow][create_calendar_event][run:%s] CONFLICT: event %q (%s to %s) overlaps requested slot %s to %s",
+			calendarRunID(ctx), conflict.Title,
+			conflict.StartTime.Format(time.RFC3339), conflict.EndTime.Format(time.RFC3339),
+			startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+		return createCalendarEventRefused(ctx, calendar.ErrSlotConflict, fmt.Sprintf(
+			"O horário %s a %s já está ocupado (conflito com: %s). Escolha outro horário.",
+			startTime.In(location).Format("02/01 15:04"),
+			endTime.In(location).Format("15:04"),
+			conflict.Title,
+		)), nil
 	}
 
 	event := &calendar.CalendarEvent{
@@ -250,7 +244,7 @@ func (s *createCalendarEventExecutor) Execute(ctx *workflow.NodeContext) (*workf
 func createCalendarEventFailure(ctx *workflow.NodeContext, message string) *workflow.NodeResult {
 	log.Printf("[workflow][create_calendar_event][node:%s][run:%s] FAILED: %s",
 		calendarNodeID(ctx), calendarRunID(ctx), message)
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   message,
@@ -381,4 +375,10 @@ func calendarAccessFailure(err error) string {
 		return "nenhuma conta Google Calendar conectada neste workspace"
 	}
 	return fmt.Sprintf("falha ao autenticar no Google Calendar: %v", err)
+}
+
+func createCalendarEventRefused(ctx *workflow.NodeContext, cause error, message string) *workflow.NodeResult {
+	result := createCalendarEventFailure(ctx, message)
+	result.Output["error_code"] = calendar.ErrorCode(cause)
+	return result
 }

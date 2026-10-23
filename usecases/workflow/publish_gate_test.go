@@ -3,6 +3,7 @@ package workflow_usecase
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	label_domain "vozko/domain/label"
@@ -120,11 +121,17 @@ func TestPublishFailsClosedWhenAReferenceCannotBeChecked(t *testing.T) {
 	uc.SetDealFunnels(unreachableFunnels{})
 
 	_, err := uc.Publish(publisherCtx(), "wf-1")
-	if err == nil || workflow.IsValidationError(err) {
-		t.Fatalf("err = %v, want the lookup failure itself so nothing publishes unchecked", err)
+	blocked, ok := workflow.NotPublishableOf(err)
+	if !ok || !reflect.DeepEqual(issueCodes(blocked.Issues)[workflow.LintValidationUnavailable], []string{"deal"}) {
+		t.Fatalf("err = %v, want a validation-unavailable blocker on the deal step", err)
 	}
 	if repo.VersionCount("wf-1") != 0 {
 		t.Fatal("nothing may be published when a reference could not be checked")
+	}
+	stored, _ := repo.FindByID("wf-1")
+	report, err := uc.Lint(context.Background(), stored)
+	if err != nil || !reflect.DeepEqual(issueCodes(report.Issues), issueCodes(blocked.Issues)) {
+		t.Fatalf("alerts and publish disagree: %v %+v", err, report.Issues)
 	}
 }
 

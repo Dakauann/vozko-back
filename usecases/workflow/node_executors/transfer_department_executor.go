@@ -123,7 +123,7 @@ func (e *transferDepartmentExecutor) memberEmail(workspaceID, userID string) str
 }
 
 func failTransfer(edges []workflow.Edge, msg string) *workflow.NodeResult {
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   msg,

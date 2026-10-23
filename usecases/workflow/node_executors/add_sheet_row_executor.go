@@ -143,5 +143,5 @@ func sheetRowCode(err error) string {
 
 func sheetRowRefused(ctx *workflow.NodeContext, code, message string) *workflow.NodeResult {
 	output := map[string]interface{}{"error": message, "error_code": code}
-	return routeOutput(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), addSheetRowRefused)
+	return routeFailure(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), addSheetRowRefused)
 }

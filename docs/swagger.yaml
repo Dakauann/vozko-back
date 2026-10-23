@@ -496,26 +496,26 @@ definitions:
     type: object
   advertising.Destination:
     enum:
-    - WHATSAPP
-    - MESSENGER
-    - INSTAGRAM_DIRECT
     - WEBSITE
     - ON_AD
     - APP
     - ON_POST
     - NONE
     - CATALOG
+    - WHATSAPP
+    - MESSENGER
+    - INSTAGRAM_DIRECT
     type: string
     x-enum-varnames:
-    - DestinationWhatsApp
-    - DestinationMessenger
-    - DestinationInstagramDirect
     - DestinationWebsite
     - DestinationInstantForm
     - DestinationApp
     - DestinationOnPost
     - DestinationNone
     - DestinationCatalog
+    - DestinationWhatsApp
+    - DestinationMessenger
+    - DestinationInstagramDirect
   advertising.ExportLabels:
     properties:
       breakdowns:
@@ -806,7 +806,6 @@ definitions:
     - ObjectiveAppPromotion
   advertising.OptimizationGoal:
     enum:
-    - CONVERSATIONS
     - REACH
     - IMPRESSIONS
     - AD_RECALL_LIFT
@@ -820,9 +819,9 @@ definitions:
     - OFFSITE_CONVERSIONS
     - VALUE
     - APP_INSTALLS
+    - CONVERSATIONS
     type: string
     x-enum-varnames:
-    - GoalConversations
     - GoalReach
     - GoalImpressions
     - GoalAdRecallLift
@@ -836,6 +835,7 @@ definitions:
     - GoalOffsiteConversion
     - GoalValue
     - GoalAppInstalls
+    - GoalConversations
   advertising.Pixel:
     properties:
       creationTime:
@@ -6526,12 +6526,16 @@ definitions:
     properties:
       affordable:
         type: boolean
+      balanceBrl:
+        type: number
       balanceMicros:
         type: integer
       capRemaining:
         type: integer
       category:
         type: string
+      costBrl:
+        type: number
       costMicros:
         type: integer
       count:
@@ -6552,6 +6556,8 @@ definitions:
         type: string
       splitRequired:
         type: boolean
+      unitPriceBrl:
+        type: number
       unitPriceMicros:
         type: integer
     type: object
@@ -7112,6 +7118,39 @@ definitions:
       workflowId:
         example: 0d6c2f1a-4b5e-4c7d-8e9f-222222222222
         type: string
+    type: object
+  campaignaudiencehttp.MapRequest:
+    properties:
+      listId:
+        type: string
+      selection:
+        $ref: '#/definitions/httpx.LeadSelectionRequest'
+      source:
+        enum:
+        - leads
+        - list
+        example: leads
+        type: string
+      variables:
+        items:
+          $ref: '#/definitions/audiencex.VariableRequest'
+        type: array
+    type: object
+  campaignaudiencehttp.MapResponse:
+    properties:
+      bounds:
+        $ref: '#/definitions/lead.MapBBoxResponse'
+      layer:
+        $ref: '#/definitions/lead.MapLayerResponse'
+      located:
+        example: 128
+        type: integer
+      positions:
+        example: 96
+        type: integer
+      sampled:
+        example: false
+        type: boolean
     type: object
   campaignaudiencehttp.RowRequest:
     properties:
@@ -9212,6 +9251,31 @@ definitions:
     - Or
   crmfilter.Field:
     enum:
+    - id
+    - phone_any
+    - email
+    - nickname
+    - birthday
+    - birth_date
+    - zip
+    - state
+    - city
+    - district
+    - geo_precision
+    - geo_status
+    - has_address
+    - has_identity
+    - opted_out
+    - whatsapp_opt_in
+    - relation_kind
+    - relatives_count
+    - referred_count
+    - referred_by
+    - geo_placement
+    - opt_out_source
+    - opted_out_at
+    - company
+    - area_approximate
     - owner
     - carteira
     - pipeline
@@ -9243,33 +9307,33 @@ definitions:
     - memory_updated_at
     - custom
     - area
-    - id
-    - phone_any
-    - email
-    - nickname
-    - birthday
-    - birth_date
-    - zip
-    - state
-    - city
-    - district
-    - geo_precision
-    - geo_status
-    - has_address
-    - has_identity
-    - opted_out
-    - whatsapp_opt_in
-    - relation_kind
-    - relatives_count
-    - referred_count
-    - referred_by
-    - geo_placement
-    - opt_out_source
-    - opted_out_at
-    - company
-    - area_approximate
     type: string
     x-enum-varnames:
+    - FieldID
+    - FieldPhoneAny
+    - FieldEmail
+    - FieldNickname
+    - FieldBirthday
+    - FieldBirthDate
+    - FieldZip
+    - FieldState
+    - FieldCity
+    - FieldDistrict
+    - FieldGeoPrecision
+    - FieldGeoStatus
+    - FieldHasAddress
+    - FieldHasIdentity
+    - FieldOptedOut
+    - FieldWhatsAppOptIn
+    - FieldRelationKind
+    - FieldRelativesCount
+    - FieldReferredCount
+    - FieldReferredBy
+    - FieldGeoPlacement
+    - FieldOptOutSource
+    - FieldOptedOutAt
+    - FieldCompany
+    - FieldAreaApproximate
     - FieldOwner
     - FieldCarteira
     - FieldPipeline
@@ -9301,31 +9365,6 @@ definitions:
     - FieldMemoryUpdatedAt
     - FieldCustom
     - FieldArea
-    - FieldID
-    - FieldPhoneAny
-    - FieldEmail
-    - FieldNickname
-    - FieldBirthday
-    - FieldBirthDate
-    - FieldZip
-    - FieldState
-    - FieldCity
-    - FieldDistrict
-    - FieldGeoPrecision
-    - FieldGeoStatus
-    - FieldHasAddress
-    - FieldHasIdentity
-    - FieldOptedOut
-    - FieldWhatsAppOptIn
-    - FieldRelationKind
-    - FieldRelativesCount
-    - FieldReferredCount
-    - FieldReferredBy
-    - FieldGeoPlacement
-    - FieldOptOutSource
-    - FieldOptedOutAt
-    - FieldCompany
-    - FieldAreaApproximate
   crmfilter.Filter:
     properties:
       groups:
@@ -10884,9 +10923,6 @@ definitions:
       unit_brl:
         example: 0.003207
         type: number
-      unit_cost_micros:
-        example: 165
-        type: integer
       unit_micros:
         example: 583
         type: integer
@@ -12941,6 +12977,23 @@ definitions:
         example: 7
         type: integer
     type: object
+  invoice.InvoicePaymentResponse:
+    properties:
+      canRenew:
+        example: false
+        type: boolean
+      expiresAt:
+        type: string
+      payableUntil:
+        type: string
+      state:
+        enum:
+        - OPEN
+        - RENEWABLE
+        - CLOSED
+        example: OPEN
+        type: string
+    type: object
   invoice.InvoiceResponse:
     properties:
       amountBRL:
@@ -12990,11 +13043,13 @@ definitions:
       paidAt:
         example: 1752883200
         type: integer
+      payment:
+        $ref: '#/definitions/invoice.InvoicePaymentResponse'
       pixCopy:
         example: "00020126"
         type: string
       pixQrCode:
-        example: data:image/png;base64,iVBORw0KGgo
+        example: iVBORw0KGgo
         type: string
       planDefinitionId:
         example: plan_a1b2c3
@@ -23242,6 +23297,7 @@ definitions:
     - validation
     - cancelled
     - internal
+    - handled
     - real_call_not_confirmed
     - wrong_workflow_type
     - missing_mocks
@@ -23260,6 +23316,7 @@ definitions:
     - ErrorKindValidation
     - ErrorKindCancelled
     - ErrorKindInternal
+    - ErrorKindHandled
     - ErrorKindRealCallNotConfirmed
     - ErrorKindWrongWorkflowType
     - ErrorKindMissingMocks
@@ -23361,12 +23418,7 @@ definitions:
   workflow.LintIssueCode:
     enum:
     - NODE_INVALID_PLATFORM_EMAIL
-    - DATA_REF_NEVER_SET
-    - DATA_REF_SOME_PATHS
-    - NODE_CONSENT_GRANT_NEEDS_REPLY
     - SEND_OUTSIDE_WINDOW_RISK
-    - NODE_AGENT_CALL_INPUTS_INVALID
-    - NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER
     - GRAPH_EMPTY
     - GRAPH_TOO_MANY_NODES
     - GRAPH_TOO_MANY_EDGES
@@ -23405,6 +23457,7 @@ definitions:
     - NODE_SHEET_MAPPING_INVALID
     - WORKFLOW_VOICE_TRUNK_INVALID
     - WORKFLOW_INVALID
+    - WORKFLOW_VALIDATION_UNAVAILABLE
     - EDGE_BAD_HANDLE_LABEL
     - DATA_REF_DANGLING
     - DATA_REF_UNKNOWN_KEY
@@ -23414,15 +23467,15 @@ definitions:
     - NODE_CODE_READS_TEMPLATE
     - NODE_SECRET_IN_PLAIN_TEXT
     - NODE_PINNED_OUTPUT
+    - NODE_CONSENT_GRANT_NEEDS_REPLY
+    - NODE_AGENT_CALL_INPUTS_INVALID
+    - NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER
+    - DATA_REF_NEVER_SET
+    - DATA_REF_SOME_PATHS
     type: string
     x-enum-varnames:
     - LintInvalidPlatformEmail
-    - LintDataRefNeverSet
-    - LintDataRefSomePaths
-    - LintConsentGrantNeedsReply
     - LintSendOutsideWindowRisk
-    - LintAgentCallInputsInvalid
-    - LintReplyToAgentWithoutTrigger
     - LintGraphEmpty
     - LintGraphTooManyNodes
     - LintGraphTooManyEdges
@@ -23461,6 +23514,7 @@ definitions:
     - LintSheetMappingInvalid
     - LintVoiceTrunkInvalid
     - LintWorkflowInvalid
+    - LintValidationUnavailable
     - LintBadHandleLabel
     - LintDanglingDataRef
     - LintUnknownOutputKey
@@ -23470,6 +23524,11 @@ definitions:
     - LintCodeReadsTemplate
     - LintSecretInPlainText
     - LintPinnedOutput
+    - LintConsentGrantNeedsReply
+    - LintAgentCallInputsInvalid
+    - LintReplyToAgentWithoutTrigger
+    - LintDataRefNeverSet
+    - LintDataRefSomePaths
   workflow.LintSeverity:
     enum:
     - blocking
@@ -31345,6 +31404,67 @@ paths:
       summary: Listar as linhas de uma lista
       tags:
       - Campaign audience
+  /campaign-audience/{channel}/map:
+    post:
+      consumes:
+      - application/json
+      description: 'As posições dos leads do público, pela mesma seleção de `POST
+        /campaign-audience/{channel}/count` (mesmo `source` e `selection`; só a origem
+        `leads`), para a prévia do mapa no passo de público. O servidor decide quem
+        está em cada área desenhada do filtro, como na contagem. `layer` vem no formato
+        dos pontos de `GET /leads/map/tiles/{z}/{x}/{y}`: um ponto por posição e classe
+        (`placement` `on_map` ou `approximate`), com `count` pessoas e até 5 `leadIds`.
+        `located` conta os leads com posição, `positions` as posições distintas e,
+        quando passam de 1.000, `sampled` é verdadeiro e `layer` traz uma amostra
+        estável de 1.000 posições. `bounds` é a caixa que junta as áreas desenhadas
+        do filtro (nula sem área). Pedidos iguais ao mesmo tempo fazem uma só leitura.
+        Exige a ação `create` do recurso do canal, `leads:read` e `leads:read_addresses`.'
+      parameters:
+      - description: Canal
+        enum:
+        - email
+        - whatsapp
+        - unofficial
+        - carrier
+        in: path
+        name: channel
+        required: true
+        type: string
+      - description: Público
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/campaignaudiencehttp.MapRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/campaignaudiencehttp.MapResponse'
+        "400":
+          description: audience_source_invalid, audience_source_ambiguous, audience_selection_required,
+            selection_*
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: audience_source_unsupported
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "503":
+          description: audience_busy, audience_unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Mapa do público de uma campanha
+      tags:
+      - Campaign audience
   /campaign-audience/{channel}/sample:
     post:
       consumes:
@@ -31654,9 +31774,11 @@ paths:
   /campaign-drafts/{channel}/{id}/review:
     post:
       description: 'Calcula no servidor, a partir do rascunho salvo, o público (a
-        mesma contagem do passo de público), o custo (oficial: `quote`; não oficial:
-        `estimate`) e a verificação de início em `check` (`findings`, `fingerprint`,
-        `blocks`, `needsConfirmation`), com as mesmas regras do Iniciar. Nada é criado.'
+        mesma contagem do passo de público), o custo (oficial: `quote`, com `unitPriceBrl`,
+        `costBrl` e `balanceBrl` já em reais pela cotação da carteira, ao lado dos
+        micros em `currency`; não oficial: `estimate`) e a verificação de início em
+        `check` (`findings`, `fingerprint`, `blocks`, `needsConfirmation`), com as
+        mesmas regras do Iniciar. Nada é criado.'
       parameters:
       - description: whatsapp ou unofficial_whatsapp
         in: path
@@ -52473,6 +52595,58 @@ paths:
       security:
       - BearerAuth: []
       summary: Consultar uma fatura
+      tags:
+      - Faturas
+  /user/invoices/{id}/pix:
+    post:
+      description: Emite uma nova cobrança PIX para a mesma fatura e o mesmo valor
+        quando o PIX atual expirou ou quando a fatura venceu e ainda pode ser paga
+        (a fatura mensal pode ser paga até o dia do corte). A cobrança anterior é
+        cancelada no provedor antes, então cada fatura tem um único PIX pagável por
+        vez. Se o PIX atual ainda é válido, ele é devolvido sem gerar outro. Faturas
+        pagas, canceladas ou expiradas nunca recebem um novo PIX. A resposta traz
+        em payment o estado do pagamento, a validade do código e o prazo final para
+        pagar.
+      parameters:
+      - description: Identificador da fatura
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/invoice.InvoiceEnvelope'
+        "400":
+          description: workspace_required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: invoice_not_found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: invoice_not_payable, invoice_already_paid ou invoice_pix_renew_in_progress
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: customer_document_required
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: invoice_pix_unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "502":
+          description: invoice_pix_unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Gerar um novo PIX para a fatura
       tags:
       - Faturas
   /user/me:

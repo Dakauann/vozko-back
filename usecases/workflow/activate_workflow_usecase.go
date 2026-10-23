@@ -303,12 +303,6 @@ func (uc *activateWorkflowUseCase) referenceValidators(w *workflow.Workflow) []w
 	if uc.agentRepo != nil {
 		validators = append(validators, &agentValidator{repo: uc.agentRepo, workspaceID: workflowWorkspaceID})
 	}
-	if uc.mcpCollectionRepo != nil {
-		validators = append(validators, &mcpCollectionValidator{repo: uc.mcpCollectionRepo, workspaceID: workflowWorkspaceID})
-	}
-	if uc.knowledgeBaseRepo != nil {
-		validators = append(validators, &knowledgeBaseValidator{repo: uc.knowledgeBaseRepo, workspaceID: workflowWorkspaceID})
-	}
 	if uc.mediaRepo != nil {
 		validators = append(validators, &mediaValidator{repo: uc.mediaRepo, workspaceID: workflowWorkspaceID})
 	}
@@ -330,13 +324,13 @@ func (uc *activateWorkflowUseCase) referenceValidators(w *workflow.Workflow) []w
 	if uc.workspaceRepo != nil {
 		validators = append(validators, &memberValidator{repo: uc.workspaceRepo, workspaceID: workflowWorkspaceID})
 	}
-	if uc.modelLookup != nil {
-		validators = append(validators, &modelValidator{lookup: uc.modelLookup})
-	}
-	if uc.googleSheets != nil {
-		validators = append(validators, &googleSheetValidator{sheets: uc.googleSheets, workspaceID: workflowWorkspaceID})
-	}
-	return append(validators, &workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID})
+	return append(validators,
+		&mcpCollectionValidator{repo: uc.mcpCollectionRepo, workspaceID: workflowWorkspaceID},
+		&knowledgeBaseValidator{repo: uc.knowledgeBaseRepo, workspaceID: workflowWorkspaceID},
+		&modelValidator{lookup: uc.modelLookup},
+		&googleSheetValidator{sheets: uc.googleSheets, workspaceID: workflowWorkspaceID},
+		&workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID},
+	)
 }
 
 func collectExecuteModeLeafNodes(g *workflow.Graph) map[string]bool {
@@ -411,7 +405,10 @@ func (v *templateValidator) Validate(n *workflow.Node) error {
 	}
 
 	phone, err := v.businessPhoneRepo.FindByID(businessPhoneID)
-	if err != nil || phone == nil || !phone.BelongsToWorkspace(v.workspaceID) {
+	if err != nil {
+		return err
+	}
+	if phone == nil || !phone.BelongsToWorkspace(v.workspaceID) {
 		return nil
 	}
 	if strings.TrimSpace(tmpl.WABAId) != "" && strings.TrimSpace(phone.WABAId) != "" && strings.TrimSpace(tmpl.WABAId) != strings.TrimSpace(phone.WABAId) {
@@ -470,6 +467,9 @@ func (v *mcpCollectionValidator) Validate(n *workflow.Node) error {
 	if len(ids) == 0 {
 		return nil
 	}
+	if v.repo == nil {
+		return lookupNotWired("mcp collections")
+	}
 	found, err := v.repo.ListByIDs(context.Background(), v.workspaceID, ids)
 	if err != nil {
 		return err
@@ -498,6 +498,9 @@ func (v *knowledgeBaseValidator) Validate(n *workflow.Node) error {
 	ids := extractStringSlice(n.Config["knowledge_base_ids"])
 	if len(ids) == 0 {
 		return nil
+	}
+	if v.repo == nil {
+		return lookupNotWired("knowledge bases")
 	}
 	found, err := v.repo.FindByIDs(context.Background(), ids)
 	if err != nil {
@@ -549,9 +552,12 @@ func (v *modelValidator) Validate(n *workflow.Node) error {
 	if model == "" || strings.Contains(model, "{{") {
 		return nil
 	}
+	if v.lookup == nil {
+		return lookupNotWired("ai models")
+	}
 	valid, err := v.lookup.IsValidModel(context.Background(), model)
 	if err != nil {
-		return nil
+		return err
 	}
 	if !valid {
 		return fmt.Errorf("%w: node %q model %q", workflow.ErrNodeInvalidModelID, n.ID, model)
@@ -822,4 +828,33 @@ func (v *workflowReferenceValidator) Validate(n *workflow.Node) error {
 
 func sameWorkspaceID(workflowWorkspaceID, resourceWorkspaceID string) bool {
 	return strings.TrimSpace(workflowWorkspaceID) != "" && strings.TrimSpace(workflowWorkspaceID) == strings.TrimSpace(resourceWorkspaceID)
+}
+
+func (uc *activateWorkflowUseCase) MissingDependencies() []string {
+	required := []struct {
+		name  string
+		wired bool
+	}{
+		{"catalog", uc.catalogFn != nil},
+		{"templates", uc.templateRepo != nil},
+		{"agents", uc.agentRepo != nil},
+		{"media", uc.mediaRepo != nil},
+		{"labels", uc.labelRepo != nil},
+		{"custom_fields", uc.customFields != nil},
+		{"stages", uc.stageRepo != nil},
+		{"deal_funnels", uc.dealFunnels != nil},
+		{"departments", uc.departmentRepo != nil},
+		{"members", uc.workspaceRepo != nil},
+		{"business_phones", uc.businessPhoneRepo != nil},
+		{"google_sheets", uc.googleSheets != nil},
+		{"model_catalog", uc.modelCatalog != nil},
+		{"call_queues", uc.callQueues != nil},
+	}
+	var missing []string
+	for _, dependency := range required {
+		if !dependency.wired {
+			missing = append(missing, dependency.name)
+		}
+	}
+	return missing
 }

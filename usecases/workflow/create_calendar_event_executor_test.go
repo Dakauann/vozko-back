@@ -2,6 +2,7 @@ package workflow_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -77,6 +78,7 @@ type calendarEventGoogleMock struct {
 	lastSendUpdates string
 	lastEvent       *calendar.CalendarEvent
 	createCallCount int
+	listErr         error
 }
 
 func (m *calendarEventGoogleMock) CreateGoogleEvent(accessToken string, event *calendar.CalendarEvent, createMeet bool, sendUpdates string) (string, string, error) {
@@ -108,7 +110,7 @@ func (m *calendarEventGoogleMock) DeleteGoogleEvent(accessToken string, googleEv
 }
 
 func (m *calendarEventGoogleMock) ListGoogleEvents(accessToken string, timeMin, timeMax time.Time, query string, maxResults int) ([]*calendar.CalendarEvent, error) {
-	return nil, nil
+	return nil, m.listErr
 }
 
 func (m *calendarEventGoogleMock) WatchEvents(accessToken, channelID, token, webhookURL string) (*calendar.WatchResponse, error) {
@@ -421,3 +423,21 @@ func (m *calendarEventRepoMock) CalendarAccess(_ context.Context, workspaceID st
 func (m *calendarEventRepoMock) GetSyncToken(string) (string, error) { return "", nil }
 
 func (m *calendarEventRepoMock) SaveSyncToken(string, string) error { return nil }
+
+func TestCreateCalendarEventExecutor_RefusesToBookWhenTheConflictCheckCannotRun(t *testing.T) {
+	repo := &calendarEventRepoMock{connection: &calendarEventConnection{ID: "conn-1", WorkspaceID: "ws-1", AccessToken: "access-token"}}
+	google := &calendarEventGoogleMock{listErr: errors.New("google unavailable")}
+	exec := node_executors.NewCreateCalendarEventExecutor(repo, google, repo)
+	ctx := newCreateCalendarEventContext(map[string]interface{}{"title": "Consulta", "start_time": "2026-03-31T14:00:00-03:00", "duration": 30, "timezone": "America/Sao_Paulo"})
+
+	result, err := exec.Execute(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NextNodeID != "error-node" || result.ErrorKind != workflow.ErrorKindHandled || result.Output["error_code"] != calendar.CodeConflictCheckUnavailable {
+		t.Fatalf("booking without a conflict check: %+v", result)
+	}
+	if google.createCallCount != 0 {
+		t.Fatalf("an event was created without checking conflicts: %d", google.createCallCount)
+	}
+}

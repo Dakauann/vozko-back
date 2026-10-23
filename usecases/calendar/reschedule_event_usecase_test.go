@@ -187,3 +187,21 @@ func TestReschedule_ConstructorNilGuards(t *testing.T) {
 		t.Fatal("nil update use case should yield nil use case")
 	}
 }
+
+func TestUpdateEvent_CheckConflictRefusesWhenTheCalendarCannotBeRead(t *testing.T) {
+	id := uuid.NewString()
+	start := time.Date(2026, 4, 27, 14, 0, 0, 0, time.UTC)
+	existing := &calendar.CalendarEvent{ID: id, WorkspaceID: "ws-1", GoogleEventID: "self-g", Title: "Consulta", StartTime: start, EndTime: start.Add(time.Hour), Status: "confirmed"}
+	repo := &watchRepoMock{connection: validWatchConnection(), event: existing}
+	google := &watchGoogleMock{listGoogleEventsErr: errors.New("google unavailable")}
+	uc := NewUpdateEventUseCase(repo, google, repo)
+
+	ns, ne := start.Add(time.Hour), start.Add(2*time.Hour)
+	_, err := uc.Execute(calendar.UpdateEventInput{EventID: id, WorkspaceID: "ws-1", StartTime: &ns, EndTime: &ne, CheckConflict: true})
+	if !errors.Is(err, calendar.ErrConflictCheckUnavailable) {
+		t.Fatalf("expected ErrConflictCheckUnavailable, got %v", err)
+	}
+	if google.updatedGoogleEventID != "" {
+		t.Fatal("an unchecked reschedule must not update the Google event")
+	}
+}

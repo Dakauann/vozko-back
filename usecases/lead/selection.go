@@ -9,6 +9,8 @@ import (
 
 	"vozko/domain/crmfilter"
 	"vozko/domain/lead"
+	"vozko/domain/leadarea"
+	"vozko/domain/leadmap"
 	"vozko/domain/selection"
 	"vozko/domain/workspace"
 )
@@ -22,6 +24,7 @@ type SelectionDeps struct {
 	Definitions DefinitionSource
 	Zones       WorkspaceZones
 	Areas       AreaFilters
+	Places      leadmap.SampleReader
 	Now         func() time.Time
 }
 
@@ -98,6 +101,26 @@ func (r *SelectionResolver) Selected(ctx context.Context, scope selection.Scope,
 		return min(n, limit), nil
 	}
 	return n, nil
+}
+
+func (r *SelectionResolver) Sample(ctx context.Context, scope selection.Scope, s selection.Selection, limit int) (leadmap.Sample, error) {
+	if r.deps.Places == nil {
+		return leadmap.Sample{}, selection.ErrResolverUnavailable
+	}
+	a := Actor{WorkspaceID: strings.TrimSpace(scope.WorkspaceID), UserID: scope.ActorID, IsAdmin: scope.IsAdmin}
+	if err := r.viewers.permit(a, leadarea.RequiredActions()...); err != nil {
+		return leadmap.Sample{}, err
+	}
+	q, err := r.query(ctx, scope, s)
+	if err != nil {
+		return leadmap.Sample{}, err
+	}
+	sample, err := r.deps.Places.SelectionSample(ctx, q, limit)
+	if err != nil {
+		return leadmap.Sample{}, err
+	}
+	sample.Bounds = leadmap.AreaBox(q.Filter.BoundAreas())
+	return sample, nil
 }
 
 func (r *SelectionResolver) Freeze(ctx context.Context, scope selection.Scope, s selection.Selection, snapshotID string, pending *lead.Assignment) (lead.Frozen, error) {

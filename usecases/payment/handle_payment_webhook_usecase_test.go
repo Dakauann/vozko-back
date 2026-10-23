@@ -14,6 +14,7 @@ import (
 
 type webhookInvoiceRepo struct {
 	byExternal    map[string]*invoice.Invoice
+	bySuperseded  map[string]*invoice.Invoice
 	byID          map[string]*invoice.Invoice
 	attached      map[string]string
 	markPaidCalls []string
@@ -38,6 +39,13 @@ func (r *webhookInvoiceRepo) GetByID(id string) (*invoice.Invoice, error) {
 }
 func (r *webhookInvoiceRepo) GetByExternalID(provider payment.Provider, externalID string) (*invoice.Invoice, error) {
 	inv := r.byExternal[externalID]
+	if inv != nil && inv.Provider != "" && provider != "" && inv.Provider != provider {
+		return nil, nil
+	}
+	return inv, nil
+}
+func (r *webhookInvoiceRepo) GetBySupersededCharge(provider payment.Provider, externalID string) (*invoice.Invoice, error) {
+	inv := r.bySuperseded[externalID]
 	if inv != nil && inv.Provider != "" && provider != "" && inv.Provider != provider {
 		return nil, nil
 	}

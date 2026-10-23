@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"vozko/domain/actor"
+	"vozko/domain/balance"
 	"vozko/domain/campaign"
 	"vozko/domain/copilot"
 	"vozko/domain/crmfilter"
@@ -59,6 +60,7 @@ type LeadTemplates interface {
 }
 
 type LeadActionDeps struct {
+	Rates     balance.ExchangeRate
 	Leads     LeadDeps
 	Actions   LeadActions
 	Sends     LeadSends
@@ -576,7 +578,7 @@ func sendReviewData(r *campaign.SendReview, next string) map[string]interface{} 
 		"skipped": skipped, "counted": countedOnly, "started": r.Started, "fits": r.Quote.Fits, "next": next,
 	}
 	if r.Channel == campaign.ChannelOfficial {
-		data["estimated_cost"], data["balance"], data["affordable"] = copilottools.FormatUSD(r.Quote.CostMicros), copilottools.FormatUSD(r.Quote.BalanceMicros), r.Quote.Affordable
+		data["estimated_cost"], data["balance"], data["affordable"] = shared.FormatBRL(r.Quote.CostBRL), shared.FormatBRL(r.Quote.BalanceBRL), r.Quote.Affordable
 	}
 	if r.Quote.Refusal != "" {
 		data["refusal"] = r.Quote.Refusal

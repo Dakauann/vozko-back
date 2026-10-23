@@ -241,21 +241,24 @@ func (b SendBudget) Refusal() error {
 }
 
 type SendQuote struct {
-	Count           int    `json:"count"`
-	Parts           int    `json:"parts"`
-	SplitRequired   bool   `json:"splitRequired"`
-	MaxPerCampaign  int    `json:"maxPerCampaign"`
-	Category        string `json:"category,omitempty"`
-	UnitPriceMicros int64  `json:"unitPriceMicros"`
-	CostMicros      int64  `json:"costMicros"`
-	BalanceMicros   int64  `json:"balanceMicros"`
-	Currency        string `json:"currency,omitempty"`
-	Affordable      bool   `json:"affordable"`
-	CapRemaining    *int64 `json:"capRemaining,omitempty"`
-	Fits            int    `json:"fits"`
-	Refusal         string `json:"refusal,omitempty"`
-	DailyCap        int    `json:"dailyCap,omitempty"`
-	EstimatedDays   int    `json:"estimatedDays,omitempty"`
+	Count           int     `json:"count"`
+	Parts           int     `json:"parts"`
+	SplitRequired   bool    `json:"splitRequired"`
+	MaxPerCampaign  int     `json:"maxPerCampaign"`
+	Category        string  `json:"category,omitempty"`
+	UnitPriceMicros int64   `json:"unitPriceMicros"`
+	CostMicros      int64   `json:"costMicros"`
+	BalanceMicros   int64   `json:"balanceMicros"`
+	Currency        string  `json:"currency,omitempty"`
+	Affordable      bool    `json:"affordable"`
+	UnitPriceBRL    float64 `json:"unitPriceBrl"`
+	CostBRL         float64 `json:"costBrl"`
+	BalanceBRL      float64 `json:"balanceBrl"`
+	CapRemaining    *int64  `json:"capRemaining,omitempty"`
+	Fits            int     `json:"fits"`
+	Refusal         string  `json:"refusal,omitempty"`
+	DailyCap        int     `json:"dailyCap,omitempty"`
+	EstimatedDays   int     `json:"estimatedDays,omitempty"`
 }
 
 type SendPart struct {

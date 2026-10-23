@@ -144,3 +144,70 @@ func TestResolveFailsClosedWhenTheCacheCannotBeRead(t *testing.T) {
 		t.Fatal("an unreadable cache is an error, never a guess")
 	}
 }
+
+func TestRunDueRefusesMailOnlyAfterTwoEmptyAnswersInARow(t *testing.T) {
+	r, checks := newResolver(), newChecks()
+	r.set("morto.com.br", h.DNSAnswer{MX: h.LookupAbsent, Address: h.LookupAbsent})
+	d := newDomains(r, checks, &fakeKick{})
+	if _, err := checks.Request(context.Background(), []string{"morto.com.br"}, clock); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.RunDue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	first := checks.rows["morto.com.br"]
+	if first.State != h.DomainUnknown || first.Detail != h.DetailNoRecords {
+		t.Fatalf("first empty answer = %+v, a single answer is never enough to refuse mail for every workspace", first)
+	}
+	due, ok := checks.due["morto.com.br"]
+	if !ok || !due.Equal(clock.Add(30*time.Minute)) {
+		t.Fatalf("the empty answer is checked again after thirty minutes, due %v", due)
+	}
+	d.now = func() time.Time { return due }
+	if err := d.RunDue(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	second := checks.rows["morto.com.br"]
+	if second.State != h.DomainNoMail || second.Detail != h.DetailNoRecordsConfirmed {
+		t.Fatalf("second empty answer = %+v, want a confirmed refusal", second)
+	}
+}
+
+func TestRunDueStoresNothingWhenTheCanaryFailsAfterTheBatch(t *testing.T) {
+	r, checks := newResolver(), newChecks()
+	healthy := h.DNSAnswer{MX: h.LookupFound, MXHosts: []string{"gmail-smtp-in.l.google.com"}}
+	r.then(h.CanaryDomain, healthy, h.DNSAnswer{MX: h.LookupFailed})
+	r.set("loja.com.br", h.DNSAnswer{MX: h.LookupAbsent, Address: h.LookupAbsent})
+	d := newDomains(r, checks, &fakeKick{})
+	if _, err := checks.Request(context.Background(), []string{"loja.com.br"}, clock); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.RunDue(context.Background()); !errors.Is(err, ErrResolverUnhealthy) {
+		t.Fatalf("err = %v, a resolver that broke during the batch makes every answer of the batch untrustworthy", err)
+	}
+	if len(checks.saved) != 0 || checks.rows["loja.com.br"].State != h.DomainPending {
+		t.Fatalf("nothing is stored when the canary fails after the lookups, saved %+v", checks.saved)
+	}
+}
+
+func TestResolveConfirmsAnEmptyAnswerAgainstTheStoredOne(t *testing.T) {
+	r, checks := newResolver(), newChecks()
+	r.set("morto.com.br", h.DNSAnswer{MX: h.LookupAbsent, Address: h.LookupAbsent})
+	checks.rows["morto.com.br"] = h.DomainCheck{Domain: "morto.com.br", State: h.DomainUnknown, Detail: h.DetailNoRecords, ExpiresAt: clock, Attempts: 1}
+	d := newDomains(r, checks, &fakeKick{})
+	got, err := d.Resolve(context.Background(), []string{"morto.com.br", "novo-morto.com.br"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["morto.com.br"] != h.DomainNoMail {
+		t.Fatalf("got %+v, a repeated empty answer refuses mail", got)
+	}
+	r.set("novo-morto.com.br", h.DNSAnswer{MX: h.LookupAbsent, Address: h.LookupAbsent})
+	got, err = newDomains(r, newChecks(), &fakeKick{}).Resolve(context.Background(), []string{"novo-morto.com.br"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["novo-morto.com.br"] != h.DomainUnknown {
+		t.Fatalf("got %+v, a first empty answer is unknown", got)
+	}
+}

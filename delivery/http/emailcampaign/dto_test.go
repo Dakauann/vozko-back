@@ -98,8 +98,8 @@ func TestReviewResponseIsSnakeCase(t *testing.T) {
 	body := string(raw)
 	for _, want := range []string{
 		`"audience":{"matched":10,"with_email":9,"sendable":7,"never_mailed":0,"skipped":{"no_email":1,"unsubscribed":2},"variables":[]}`,
-		`"send":{"units":8,"unit_micros":583,"unit_cost_micros":0,"total_micros":4664,"unit_brl":0.003207,"total_brl":0.025652}`,
-		`"first_batch":{"units":8,"unit_micros":583,"unit_cost_micros":0,"total_micros":4664,"unit_brl":0.003207,"total_brl":0.025652}`, `"batch_size":1000`,
+		`"send":{"units":8,"unit_micros":583,"total_micros":4664,"unit_brl":0.003207,"total_brl":0.025652}`,
+		`"first_batch":{"units":8,"unit_micros":583,"total_micros":4664,"unit_brl":0.003207,"total_brl":0.025652}`, `"batch_size":1000`,
 		`"exchange_rate":5.5`, `"balance_brl":5.5`, `"missing_brl":0`, `"after_first_batch_micros":995336`, `"after_first_batch_brl":5.474348`, `"time_zone":"America/Sao_Paulo"`,
 		`"check":{"blocking":`,
 	} {
@@ -122,5 +122,16 @@ func TestRecipientsCarryTheLeadName(t *testing.T) {
 	raw, _ := json.Marshal(recipientList(page))
 	if !strings.Contains(string(raw), `"lead_name":"Ana Souza"`) {
 		t.Fatalf("body = %s", raw)
+	}
+}
+
+func TestTheCustomerQuoteNeverCarriesOurCost(t *testing.T) {
+	q := emailcampaign_usecase.PricedQuote{Quote: emailcampaign_usecase.Quote{Units: 2, UnitMicros: 583, UnitCostMicros: 165, TotalMicros: 1166}}
+	raw, err := json.Marshal(quoteDTO(q))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "cost") || strings.Contains(string(raw), "165") {
+		t.Fatalf("the quote a customer reads exposes our cost: %s", raw)
 	}
 }

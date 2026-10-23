@@ -26,6 +26,14 @@ type AsaasPayment struct {
 	Callback                                   *AsaasCallback `json:"callback,omitempty"`
 	BankSlipUrl                                string         `json:"bankSlipUrl,omitempty"`
 	InvoiceUrl                                 string         `json:"invoiceUrl,omitempty"`
+	Status                                     string         `json:"status,omitempty"`
+	Deleted                                    bool           `json:"deleted,omitempty"`
+}
+
+type AsaasPixQrCode struct {
+	EncodedImage   string `json:"encodedImage"`
+	Payload        string `json:"payload"`
+	ExpirationDate string `json:"expirationDate"`
 }
 
 type AsaasDiscount struct {

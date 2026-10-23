@@ -82,6 +82,7 @@ func snapshotWith(access accessRules, phoneCount, phoneQuota int, canProvision b
 	return NewSnapshotUseCase(SnapshotDeps{
 		Subscription: subscription{},
 		Balance:      balanceOf(2_500_000),
+		Rates:        walletRate{rate: 5},
 		Probes: []readiness.Probe{
 			NewOfficialWhatsAppProbe(OfficialWhatsAppDeps{Phones: phones{phoneCount}, Entitlements: entitlements{phoneQuota}, Gate: gate{ok: canProvision}, Access: access}),
 			NewTemplatesProbe(TemplatesDeps{Templates: templates{approved}, Phones: phones{phoneCount}, Access: access}),
@@ -156,5 +157,31 @@ func TestSnapshotWithoutSubscription(t *testing.T) {
 	}
 	if _, err := uc.Snapshot(context.Background(), readiness.Person{}); err == nil {
 		t.Fatal("a snapshot without a workspace was built")
+	}
+}
+
+type walletRate struct {
+	rate float64
+	err  error
+}
+
+func (w walletRate) CurrentRate() (float64, error) { return w.rate, w.err }
+
+func TestSnapshotStatesTheBalanceInReaisFromTheWalletRate(t *testing.T) {
+	snap, err := NewSnapshotUseCase(SnapshotDeps{Balance: balanceOf(2_500_000), Rates: walletRate{rate: 5}}).Snapshot(context.Background(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snap.BalanceBRL == nil || *snap.BalanceBRL != 12.5 {
+		t.Fatalf("balance in reais = %v, want 12.5", snap.BalanceBRL)
+	}
+	for name, rates := range map[string]SnapshotDeps{
+		"no rate":        {Balance: balanceOf(2_500_000), Rates: walletRate{err: errors.New("no rate")}},
+		"no rate reader": {Balance: balanceOf(2_500_000)},
+	} {
+		snap, err := NewSnapshotUseCase(rates).Snapshot(context.Background(), owner)
+		if err != nil || snap.BalanceBRL != nil {
+			t.Fatalf("%s: balance in reais = %v, %v; nothing is stated without the wallet rate", name, snap.BalanceBRL, err)
+		}
 	}
 }

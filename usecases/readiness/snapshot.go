@@ -7,6 +7,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/readiness"
+	"vozko/domain/shared"
 	"vozko/domain/workspace/workspace_plan"
 )
 
@@ -15,6 +16,7 @@ var ErrWorkspaceRequired = errors.New("readiness: workspace is required")
 type SnapshotDeps struct {
 	Subscription workspace_plan.EnsureActiveWorkspaceSubscriptionUseCase
 	Balance      balance.BalanceReader
+	Rates        balance.ExchangeRate
 	Probes       []readiness.Probe
 }
 
@@ -36,6 +38,7 @@ func (uc *snapshotUseCase) Snapshot(ctx context.Context, person readiness.Person
 	if uc.deps.Balance != nil {
 		if micros, err := uc.deps.Balance.GetBalance(person.WorkspaceID); err == nil {
 			snap.BalanceMicros = micros
+			snap.BalanceBRL = reaisOf(micros, uc.deps.Rates)
 		}
 	}
 	for _, probe := range uc.deps.Probes {
@@ -46,4 +49,16 @@ func (uc *snapshotUseCase) Snapshot(ctx context.Context, person readiness.Person
 		snap.Capabilities = append(snap.Capabilities, status)
 	}
 	return snap, nil
+}
+
+func reaisOf(micros int64, rates balance.ExchangeRate) *float64 {
+	if rates == nil {
+		return nil
+	}
+	rate, err := rates.CurrentRate()
+	if err != nil || rate <= 0 {
+		return nil
+	}
+	reais := shared.EstimateBRLFromMicros(micros, rate)
+	return &reais
 }

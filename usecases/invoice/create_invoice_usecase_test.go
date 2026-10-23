@@ -67,6 +67,9 @@ func (r *stubInvoiceRepo) GetByID(string) (*invoice.Invoice, error) { return nil
 func (r *stubInvoiceRepo) GetByExternalID(payment.Provider, string) (*invoice.Invoice, error) {
 	return nil, nil
 }
+func (r *stubInvoiceRepo) GetBySupersededCharge(payment.Provider, string) (*invoice.Invoice, error) {
+	return nil, nil
+}
 func (r *stubInvoiceRepo) ListUnpaidByPurpose(invoice.Purpose, string, int) ([]invoice.Invoice, error) {
 	return nil, nil
 }

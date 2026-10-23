@@ -133,8 +133,12 @@ func (g *gatewayAdapter) CreateCharge(ctx context.Context, req payment.ChargeReq
 		}
 	}
 
-	if !req.DueDate.IsZero() {
-		apiReq.DateOfExpiration = FormatExpiration(req.DueDate, g.now(), method == payment.MethodPix)
+	expiry := req.DueDate
+	if !req.ExpiresAt.IsZero() {
+		expiry = req.ExpiresAt
+	}
+	if !expiry.IsZero() {
+		apiReq.DateOfExpiration = FormatExpiration(expiry, g.now(), method == payment.MethodPix)
 	}
 
 	created, err := g.client.CreatePayment(ctx, apiReq, req.IdempotencyKey)
@@ -215,7 +219,9 @@ func (g *gatewayAdapter) toCharge(p *Payment) *payment.Charge {
 	}
 	if p.DateOfExpiration != nil && !p.DateOfExpiration.IsZero() {
 		due := *p.DateOfExpiration
+		expires := due
 		out.DueDate = &due
+		out.ExpiresAt = &expires
 	}
 	return out
 }

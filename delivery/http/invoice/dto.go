@@ -37,8 +37,9 @@ type InvoiceResponse struct {
 	BillingCycle     string                    `json:"billingCycle" example:"MONTHLY"`
 	ExternalID       string                    `json:"externalId" example:"pay_a1b2c3"`
 	IdempotencyKey   string                    `json:"idempotencyKey,omitempty" example:"monthly:ws_a1b2c3:2026-07-18"`
-	PixQrCode        *string                   `json:"pixQrCode,omitempty" example:"data:image/png;base64,iVBORw0KGgo"`
+	PixQrCode        *string                   `json:"pixQrCode,omitempty" example:"iVBORw0KGgo"`
 	PixCopy          *string                   `json:"pixCopy,omitempty" example:"00020126"`
+	Payment          InvoicePaymentResponse    `json:"payment"`
 	BankSlipUrl      *string                   `json:"bankSlipUrl,omitempty" example:"https://exemplo.com/boleto/a1b2c3"`
 	InvoiceUrl       *string                   `json:"invoiceUrl,omitempty" example:"https://exemplo.com/fatura/a1b2c3"`
 	PaidAt           *int64                    `json:"paidAt,omitempty" example:"1752883200"`
@@ -47,6 +48,13 @@ type InvoiceResponse struct {
 	LineItems        []InvoiceLineItemResponse `json:"lineItems,omitempty"`
 	CreatedAt        time.Time                 `json:"createdAt"`
 	UpdatedAt        time.Time                 `json:"updatedAt"`
+}
+
+type InvoicePaymentResponse struct {
+	State        string     `json:"state" enums:"OPEN,RENEWABLE,CLOSED" example:"OPEN"`
+	CanRenew     bool       `json:"canRenew" example:"false"`
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
+	PayableUntil *time.Time `json:"payableUntil,omitempty"`
 }
 
 type InvoiceEnvelope struct {
@@ -79,7 +87,12 @@ func toInvoiceLineItems(items []invoicedomain.InvoiceLineItem) []InvoiceLineItem
 	return out
 }
 
-func toInvoiceResponse(i invoicedomain.Invoice) InvoiceResponse {
+func toInvoiceResponse(i invoicedomain.Invoice, now time.Time) InvoiceResponse {
+	view := i.PaymentAt(now)
+	var bankSlipURL *string
+	if i.AwaitingPayment() {
+		bankSlipURL = i.BankSlipUrl
+	}
 	return InvoiceResponse{
 		ID:               i.ID,
 		WorkspaceID:      i.WorkspaceID,
@@ -95,9 +108,10 @@ func toInvoiceResponse(i invoicedomain.Invoice) InvoiceResponse {
 		BillingCycle:     i.BillingCycle,
 		ExternalID:       i.ExternalID,
 		IdempotencyKey:   i.IdempotencyKey,
-		PixQrCode:        i.PixQrCode,
-		PixCopy:          i.PixCopy,
-		BankSlipUrl:      i.BankSlipUrl,
+		PixQrCode:        view.PixQrCode,
+		PixCopy:          view.PixCopy,
+		Payment:          toInvoicePaymentResponse(view),
+		BankSlipUrl:      bankSlipURL,
 		InvoiceUrl:       i.InvoiceUrl,
 		PaidAt:           i.PaidAt,
 		Description:      i.Description,
@@ -108,21 +122,30 @@ func toInvoiceResponse(i invoicedomain.Invoice) InvoiceResponse {
 	}
 }
 
-func toInvoiceResponsePtr(i *invoicedomain.Invoice) *InvoiceResponse {
+func toInvoiceResponsePtr(i *invoicedomain.Invoice, now time.Time) *InvoiceResponse {
 	if i == nil {
 		return nil
 	}
-	resp := toInvoiceResponse(*i)
+	resp := toInvoiceResponse(*i, now)
 	return &resp
 }
 
-func toInvoiceResponses(items []invoicedomain.Invoice) []InvoiceResponse {
+func toInvoiceResponses(items []invoicedomain.Invoice, now time.Time) []InvoiceResponse {
 	if items == nil {
 		return nil
 	}
 	out := make([]InvoiceResponse, len(items))
 	for i := range items {
-		out[i] = toInvoiceResponse(items[i])
+		out[i] = toInvoiceResponse(items[i], now)
 	}
 	return out
+}
+
+func toInvoicePaymentResponse(view invoicedomain.PaymentView) InvoicePaymentResponse {
+	return InvoicePaymentResponse{
+		State:        string(view.State),
+		CanRenew:     view.CanRenew(),
+		ExpiresAt:    view.ExpiresAt,
+		PayableUntil: view.PayableUntil,
+	}
 }

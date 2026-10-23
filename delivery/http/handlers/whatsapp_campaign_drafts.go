@@ -42,20 +42,24 @@ func NewWhatsAppDraftFinisher(h *WhatsAppCampaignHandler, launch *whatsapp_campa
 }
 
 type SendQuoteResponse struct {
-	Category        string `json:"category"`
-	UnitPriceMicros int64  `json:"unitPriceMicros"`
-	Eligible        int64  `json:"eligible"`
-	CostMicros      int64  `json:"costMicros"`
-	BalanceMicros   int64  `json:"balanceMicros"`
-	Currency        string `json:"currency"`
-	Affordable      bool   `json:"affordable"`
+	Category        string  `json:"category"`
+	UnitPriceMicros int64   `json:"unitPriceMicros"`
+	Eligible        int64   `json:"eligible"`
+	CostMicros      int64   `json:"costMicros"`
+	BalanceMicros   int64   `json:"balanceMicros"`
+	Currency        string  `json:"currency"`
+	Affordable      bool    `json:"affordable"`
+	UnitPriceBRL    float64 `json:"unitPriceBrl"`
+	CostBRL         float64 `json:"costBrl"`
+	BalanceBRL      float64 `json:"balanceBrl"`
 }
 
-func quoteResponse(q *template.SendCost) *SendQuoteResponse {
-	if q == nil {
+func quoteResponse(q *template.SendCost, brl *template.SendCostBRL) *SendQuoteResponse {
+	if q == nil || brl == nil {
 		return nil
 	}
-	return &SendQuoteResponse{Category: q.Category, UnitPriceMicros: q.UnitPriceMicros, Eligible: q.Eligible, CostMicros: q.CostMicros, BalanceMicros: q.BalanceMicros, Currency: q.Currency, Affordable: q.Affordable}
+	return &SendQuoteResponse{Category: q.Category, UnitPriceMicros: q.UnitPriceMicros, Eligible: q.Eligible, CostMicros: q.CostMicros, BalanceMicros: q.BalanceMicros, Currency: q.Currency, Affordable: q.Affordable,
+		UnitPriceBRL: brl.UnitPriceBRL, CostBRL: brl.CostBRL, BalanceBRL: brl.BalanceBRL}
 }
 
 func (f *WhatsAppDraftFinisher) decode(w http.ResponseWriter, r *http.Request, raw json.RawMessage) (whatsappDraftRequest, *wc.Campaign, bool) {
@@ -93,7 +97,7 @@ func (f *WhatsAppDraftFinisher) Review(w http.ResponseWriter, r *http.Request, r
 		f.h.handleDomainError(w, err)
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, campaigndrafthttp.ReviewResponse{Audience: review.Audience, Quote: quoteResponse(review.Quote), Check: campaigndrafthttp.CheckOf(review.Report)})
+	response.WriteSuccess(w, http.StatusOK, campaigndrafthttp.ReviewResponse{Audience: review.Audience, Quote: quoteResponse(review.Quote, review.QuoteBRL), Check: campaigndrafthttp.CheckOf(review.Report)})
 }
 
 func (f *WhatsAppDraftFinisher) Launch(w http.ResponseWriter, r *http.Request, raw json.RawMessage, launch campaign.Launch, confirmedFingerprint string) bool {

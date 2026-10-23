@@ -36,6 +36,7 @@ func (c *Container) leadSelection() *lead_usecase.SelectionResolver {
 		Definitions: c.repositories.customField,
 		Zones:       c.attendanceScheduleResolver(),
 		Areas:       c.leadAreas(),
+		Places:      c.repositories.lead,
 	})
 	if err != nil {
 		log.Fatalf("[lead-selection] %v", err)

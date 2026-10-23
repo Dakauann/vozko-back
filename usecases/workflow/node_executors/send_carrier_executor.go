@@ -251,7 +251,7 @@ func carrierFailed(ctx *workflow.NodeContext, channel carriermessaging.Channel, 
 		"reason":  reason,
 		"error":   cause.Error(),
 	}
-	return routeOutput(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), workflow.CarrierHandleFailed)
+	return routeFailure(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), workflow.CarrierHandleFailed)
 }
 
 func refusalReason(err error) string {

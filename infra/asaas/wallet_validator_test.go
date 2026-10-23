@@ -285,8 +285,8 @@ func (s *stubAsaasSvc) GetOrCreateCustomer(name, cpf string) (*AsaasCustomer, er
 func (s *stubAsaasSvc) CreatePayment(name, cpf string, p *AsaasPayment) (*AsaasPayment, error) {
 	return nil, nil
 }
-func (s *stubAsaasSvc) GetPaymentQrCode(id string) (string, string, error) { return "", "", nil }
-func (s *stubAsaasSvc) GetPayment(id string) (*AsaasPayment, error)        { return nil, nil }
+func (s *stubAsaasSvc) GetPaymentQrCode(id string) (*AsaasPixQrCode, error) { return nil, nil }
+func (s *stubAsaasSvc) GetPayment(id string) (*AsaasPayment, error)         { return nil, nil }
 func (s *stubAsaasSvc) RefundPayment(id string, amount float64, desc string) error {
 	return nil
 }

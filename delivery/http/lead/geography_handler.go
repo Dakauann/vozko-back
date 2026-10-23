@@ -172,7 +172,7 @@ func (h *GeographyHandler) MapTile(w http.ResponseWriter, r *http.Request) {
 		writeMapError(w, err)
 		return
 	}
-	response.WriteSuccess(w, http.StatusOK, mapLayerResponse(layer))
+	response.WriteSuccess(w, http.StatusOK, MapLayerOf(layer))
 }
 
 func tileQueryOf(vars map[string]string, colorBy string) (lead_usecase.TileQuery, bool) {

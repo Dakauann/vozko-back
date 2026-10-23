@@ -224,11 +224,18 @@ func ReferenceProblems(g *Graph, catalog []NodeDefinition, validators ...ConfigV
 	eachConfiguredNode(g, catalog, func(n *Node, _ NodeDefinition) {
 		for _, v := range validators {
 			if err := v.Validate(n); err != nil {
-				problems = append(problems, err)
+				problems = append(problems, referenceProblem(n, err))
 			}
 		}
 	})
 	return problems
+}
+
+func referenceProblem(n *Node, err error) error {
+	if IsValidationError(err) {
+		return err
+	}
+	return fmt.Errorf("%w: node %q: %v", ErrValidationUnavailable, n.ID, err)
 }
 
 func eachConfiguredNode(g *Graph, catalog []NodeDefinition, visit func(n *Node, def NodeDefinition)) {

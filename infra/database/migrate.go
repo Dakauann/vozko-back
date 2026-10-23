@@ -128,6 +128,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.PricingItem{},
 			&schema.PricingAuditLog{},
 			&schema.Invoice{},
+			&schema.InvoiceSupersededCharge{},
 			&schema.CallBillingRecord{},
 			&schema.ConversationEvent{},
 			&schema.WorkspaceConfig{},

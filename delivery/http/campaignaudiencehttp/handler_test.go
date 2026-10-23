@@ -17,6 +17,9 @@ import (
 	"vozko/domain/auth"
 	"vozko/domain/campaign"
 	"vozko/domain/campaignaudience"
+	"vozko/domain/geo"
+	"vozko/domain/leadmap"
+	"vozko/domain/lead"
 	"vozko/domain/whatsapp/template"
 	"vozko/domain/workspace"
 	"vozko/infra/http/middleware"
@@ -35,6 +38,7 @@ type fakeAPI struct {
 	ids      []string
 	err      error
 	sample   campaignaudience_usecase.File
+	places   leadmap.Sample
 	saved    []campaignaudience.Suggestion
 	actorIDs []string
 }
@@ -372,5 +376,64 @@ func TestTheAudienceLeadsAreFilteredAndPagedLikeTheCount(t *testing.T) {
 	api.err = campaignaudience_usecase.ErrPageInvalid
 	if rec := call(router, http.MethodPost, "/campaign-audience/email/leads", []byte(`{"page":0}`), "application/json"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), CodePageInvalid) {
 		t.Fatalf("bad page = %d %s", rec.Code, rec.Body)
+	}
+}
+
+func (f *fakeAPI) Map(_ context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, s campaignaudience.Spec) (leadmap.Sample, error) {
+	f.seen(a, ch)
+	f.spec = s
+	return f.places, f.err
+}
+
+func TestTheMapReadsTheCountedSpecUnderTheChannelGuard(t *testing.T) {
+	api := &fakeAPI{places: leadmap.Sample{
+		Points:    []leadmap.Point{leadmap.NewPoint(geo.Point{Lat: -23.56, Lng: -46.65}, geo.PrecisionStreet, "on_map", 2, []string{"lead-1", "lead-2"}, "")},
+		Located:   2,
+		Positions: 3,
+		Bounds:    &geo.BBox{South: -23.6, West: -46.7, North: -23.5, East: -46.6},
+	}}
+	router, guards := server(t, api)
+	body := `{"source":"leads","selection":{"mode":"all_matching","filter":{"groups":[{"conjunction":"and","predicates":[{"field":"area","operator":"in","values":["area-1"]}]}]},"excludeIds":["lead-9"]}}`
+	for channel, resource := range map[string]workspace.Resource{
+		"email": workspace.ResourceEmailMarketing, "whatsapp": workspace.ResourceWhatsAppCampaigns, "unofficial": workspace.ResourceUnofficialWhatsAppCampaigns,
+	} {
+		*guards = nil
+		rec := call(router, http.MethodPost, "/campaign-audience/"+channel+"/map", []byte(body), "application/json")
+		if rec.Code != http.StatusOK || len(*guards) != 1 || (*guards)[0] != (guard{resource, workspace.ActionCreate}) || api.channel != campaignaudience.Channel(channel) {
+			t.Fatalf("%s map = %d %+v %s", channel, rec.Code, *guards, rec.Body)
+		}
+		if api.spec.Selection == nil || len(api.spec.Selection.ExcludeIDs) != 1 || api.spec.Selection.Filter == nil {
+			t.Fatalf("%s spec = %+v", channel, api.spec)
+		}
+		var got MapResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Layer.Kind != "points" || got.Layer.Points == nil || len(*got.Layer.Points) != 1 || (*got.Layer.Points)[0].Count != 2 || got.Located != 2 || got.Positions != 3 || !got.Sampled || got.Bounds == nil || got.Bounds.South != -23.6 {
+			t.Fatalf("%s body = %s", channel, rec.Body)
+		}
+	}
+	api.places = leadmap.Sample{}
+	rec := call(router, http.MethodPost, "/campaign-audience/whatsapp/map", []byte(body), "application/json")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"bounds":null`) || !strings.Contains(rec.Body.String(), `"points":[]`) {
+		t.Fatalf("an empty map = %d %s", rec.Code, rec.Body)
+	}
+	for _, refusal := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{lead.ErrLeadForbidden, http.StatusForbidden, "forbidden"},
+		{campaignaudience.ErrSourceUnsupported, http.StatusUnprocessableEntity, "audience_source_unsupported"},
+		{campaignaudience.ErrUnavailable, http.StatusServiceUnavailable, "audience_unavailable"},
+	} {
+		api.err = refusal.err
+		if rec := call(router, http.MethodPost, "/campaign-audience/whatsapp/map", []byte(body), "application/json"); rec.Code != refusal.status || !strings.Contains(rec.Body.String(), refusal.code) {
+			t.Fatalf("%v = %d %s", refusal.err, rec.Code, rec.Body)
+		}
+	}
+	api.err = nil
+	if rec := call(router, http.MethodPost, "/campaign-audience/whatsapp/map", []byte(`{`), "application/json"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), codeBodyInvalid) {
+		t.Fatalf("broken body = %d %s", rec.Code, rec.Body)
 	}
 }

@@ -149,7 +149,7 @@ func emailFailureResult(ctx *workflow.NodeContext, message *email_usecase.EmailM
 		output["bcc"] = message.Bcc
 		output["subject"] = message.Subject
 	}
-	routed := routeOutput(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), label, timeoutFallback(label)...)
+	routed := routeFailure(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), label, timeoutFallback(label)...)
 	output["next_node_id"] = routed.NextNodeID
 	return routed
 }

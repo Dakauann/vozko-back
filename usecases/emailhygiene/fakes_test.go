@@ -16,6 +16,7 @@ var clock = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 type fakeResolver struct {
 	mu      sync.Mutex
 	answers map[string]h.DNSAnswer
+	queued  map[string][]h.DNSAnswer
 	calls   map[string]int
 	active  int
 	peak    int
@@ -28,12 +29,22 @@ func newResolver() *fakeResolver {
 
 func (f *fakeResolver) set(domain string, a h.DNSAnswer) { f.answers[domain] = a }
 
+func (f *fakeResolver) then(domain string, answers ...h.DNSAnswer) {
+	if f.queued == nil {
+		f.queued = map[string][]h.DNSAnswer{}
+	}
+	f.queued[domain] = append(f.queued[domain], answers...)
+}
+
 func (f *fakeResolver) Resolve(_ context.Context, domain string) h.DNSAnswer {
 	f.mu.Lock()
 	f.calls[domain]++
 	f.active++
 	f.peak = max(f.peak, f.active)
 	answer, ok := f.answers[domain]
+	if next := f.queued[domain]; len(next) > 0 {
+		answer, ok, f.queued[domain] = next[0], true, next[1:]
+	}
 	f.mu.Unlock()
 	if f.delay > 0 {
 		time.Sleep(f.delay)

@@ -89,7 +89,7 @@ func (e *assignLabelExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Node
 }
 
 func labelFailure(edges []workflow.Edge, err error) *workflow.NodeResult {
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   fmt.Sprintf("erro ao mudar a etiqueta: %v", err),

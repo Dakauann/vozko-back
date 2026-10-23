@@ -161,7 +161,7 @@ func (s *rescheduleCalendarEventExecutor) Execute(ctx *workflow.NodeContext) (*w
 func rescheduleCalendarEventFailure(ctx *workflow.NodeContext, message string) *workflow.NodeResult {
 	log.Printf("[workflow][reschedule_calendar_event][node:%s][run:%s] FAILED: %s",
 		calendarNodeID(ctx), calendarRunID(ctx), message)
-	return routeOutput(&workflow.NodeResult{
+	return routeFailure(&workflow.NodeResult{
 		Output: map[string]interface{}{
 			"success": false,
 			"error":   message,

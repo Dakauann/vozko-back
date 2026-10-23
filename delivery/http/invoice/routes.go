@@ -19,6 +19,7 @@ func RegisterUserRoutes(
 	invoiceRoutes.HandleFunc("", ac(pl, workspace_domain.ActionCreate, h.Create)).Methods(http.MethodPost)
 	invoiceRoutes.HandleFunc("", ac(bl, workspace_domain.ActionRead, h.List)).Methods(http.MethodGet)
 	invoiceRoutes.HandleFunc("/{id}", ac(bl, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
+	invoiceRoutes.HandleFunc("/{id}/pix", ac(bl, workspace_domain.ActionRead, h.RenewPix)).Methods(http.MethodPost)
 }
 
 func RegisterAdminRoutes(adminRoutes *mux.Router, h *InvoiceHandler) {

@@ -40,11 +40,12 @@ func (r *repository) AttachCharge(id string, charge invoice.ChargeAttachment) er
 	result := r.db.Model(&schema.Invoice{}).
 		Where("id = ? AND (external_id IS NULL OR external_id = ?)", id, charge.ExternalID).
 		Updates(map[string]interface{}{
-			"external_id":   charge.ExternalID,
-			"pix_qr_code":   charge.PixQrCode,
-			"pix_copy":      charge.PixCopy,
-			"bank_slip_url": charge.BankSlipUrl,
-			"invoice_url":   charge.InvoiceUrl,
+			"external_id":       charge.ExternalID,
+			"pix_qr_code":       charge.PixQrCode,
+			"pix_copy":          charge.PixCopy,
+			"bank_slip_url":     charge.BankSlipUrl,
+			"invoice_url":       charge.InvoiceUrl,
+			"charge_expires_at": charge.ExpiresAt,
 		})
 	if result.Error != nil {
 		return result.Error

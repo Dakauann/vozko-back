@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -528,5 +529,34 @@ func TestCheckCalendarAvailability_ResultContainsCalendarEmail(t *testing.T) {
 
 	if result["calendar_email"] != "cal@workspace.com" {
 		t.Errorf("expected calendar_email=cal@workspace.com, got %v", result["calendar_email"])
+	}
+}
+
+func TestCheckCalendarAvailability_AcceptsAWholeDayLikeTheWorkflowStep(t *testing.T) {
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{events: []*calendar.CalendarEvent{}})
+
+	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{"__workspace_id": "ws-1"}, map[string]interface{}{
+		"date_from":     "2026-04-10",
+		"date_to":       "2026-04-10",
+		"timezone":      "America/Sao_Paulo",
+		"working_start": "08:00",
+		"working_end":   "12:00",
+		"slot_duration": float64(60),
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("whole day refused: %v %v", err, res.Result)
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(res.Result.(string)), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result["date_from"] != "2026-04-10T08:00:00-03:00" || result["date_to"] != "2026-04-10T12:00:00-03:00" {
+		t.Fatalf("range = %v to %v", result["date_from"], result["date_to"])
+	}
+	if text, _ := result["available_slots"].(string); !strings.HasPrefix(text, "10/04 08:00 a 09:00") {
+		t.Fatalf("slot text = %q", text)
+	}
+	if slots, _ := result["available_slots_json"].([]interface{}); len(slots) != 4 {
+		t.Fatalf("slots = %v", result["available_slots_json"])
 	}
 }

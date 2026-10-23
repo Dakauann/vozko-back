@@ -3,9 +3,12 @@ package tools_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"vozko/domain/calendar"
 )
 
 func TestScheduleMeeting_Definition(t *testing.T) {
@@ -452,7 +455,6 @@ func TestScheduleMeeting_WithDescriptionAndLocation(t *testing.T) {
 	}
 }
 
-
 func TestScheduleMeeting_CreateGoogleMeetBoolean(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -484,5 +486,25 @@ func TestScheduleMeeting_CreateGoogleMeetBoolean(t *testing.T) {
 				t.Fatalf("expected success, got error: %s", res.Result)
 			}
 		})
+	}
+}
+
+func TestScheduleMeeting_RefusesToBookWhenTheConflictCheckCannotRun(t *testing.T) {
+	google := &mockGoogleCalendarService{listErr: errors.New("google unavailable"), createID: "g-1"}
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
+
+	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{"__workspace_id": "ws-1"}, map[string]interface{}{
+		"title":      "Consulta",
+		"start_time": "2026-04-10T10:00:00-03:00",
+		"timezone":   "America/Sao_Paulo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError || res.ErrorCode != calendar.CodeConflictCheckUnavailable {
+		t.Fatalf("booking without a conflict check: %+v", res)
+	}
+	if google.createdEvent != nil {
+		t.Fatal("an event was created without checking conflicts")
 	}
 }

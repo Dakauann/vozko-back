@@ -17,6 +17,7 @@ import (
 	"vozko/delivery/http/response"
 	"vozko/domain/campaignaudience"
 	"vozko/domain/emaildesign"
+	"vozko/domain/leadmap"
 	"vozko/domain/whatsapp/template"
 	"vozko/domain/workspace"
 	campaignaudience_usecase "vozko/usecases/campaignaudience"
@@ -36,6 +37,7 @@ const (
 type API interface {
 	Count(ctx context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, params campaignaudience_usecase.Params, spec campaignaudience.Spec) (campaignaudience.Count, error)
 	Leads(ctx context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, params campaignaudience_usecase.Params, spec campaignaudience.Spec, q campaignaudience_usecase.LeadsQuery) (campaignaudience_usecase.LeadsPage, error)
+	Map(ctx context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, spec campaignaudience.Spec) (leadmap.Sample, error)
 	Upload(ctx context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, up campaignaudience_usecase.Upload, view campaignaudience_usecase.View) (campaignaudience_usecase.Preview, error)
 	Preview(ctx context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, listID string, view campaignaudience_usecase.View) (campaignaudience_usecase.Preview, error)
 	Rows(ctx context.Context, a campaignaudience_usecase.Actor, ch campaignaudience.Channel, listID string, q campaignaudience_usecase.RowsQuery) (campaignaudience_usecase.RowPage, error)
@@ -166,6 +168,37 @@ func (h *Handler) Leads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writePage(w, page.Items, page.Page, page.Limit, page.Total)
+}
+
+// @Summary		Mapa do público de uma campanha
+// @Description	As posições dos leads do público, pela mesma seleção de `POST /campaign-audience/{channel}/count` (mesmo `source` e `selection`; só a origem `leads`), para a prévia do mapa no passo de público. O servidor decide quem está em cada área desenhada do filtro, como na contagem. `layer` vem no formato dos pontos de `GET /leads/map/tiles/{z}/{x}/{y}`: um ponto por posição e classe (`placement` `on_map` ou `approximate`), com `count` pessoas e até 5 `leadIds`. `located` conta os leads com posição, `positions` as posições distintas e, quando passam de 1.000, `sampled` é verdadeiro e `layer` traz uma amostra estável de 1.000 posições. `bounds` é a caixa que junta as áreas desenhadas do filtro (nula sem área). Pedidos iguais ao mesmo tempo fazem uma só leitura. Exige a ação `create` do recurso do canal, `leads:read` e `leads:read_addresses`.
+// @Tags			Campaign audience
+// @Accept			json
+// @Produce		json
+// @Param			channel	path		string							true	"Canal"	Enums(email, whatsapp, unofficial, carrier)
+// @Param			body	body		campaignaudiencehttp.MapRequest	true	"Público"
+// @Success		200		{object}	campaignaudiencehttp.MapResponse
+// @Failure		400		{object}	response.ErrorResponse	"audience_source_invalid, audience_source_ambiguous, audience_selection_required, selection_*"
+// @Failure		403		{object}	response.ErrorResponse	"forbidden"
+// @Failure		422		{object}	response.ErrorResponse	"audience_source_unsupported"
+// @Failure		503		{object}	response.ErrorResponse	"audience_busy, audience_unavailable"
+// @Security		BearerAuth
+// @Router			/campaign-audience/{channel}/map [post]
+func (h *Handler) Map(w http.ResponseWriter, r *http.Request) {
+	a, ok := actor(w, r)
+	if !ok {
+		return
+	}
+	var req MapRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	sample, err := h.api.Map(r.Context(), a, channelOf(r), req.Spec())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, mapResponse(sample))
 }
 
 // @Summary		Enviar a lista de uma campanha
@@ -587,6 +620,7 @@ func RegisterRoutes(protected *mux.Router, h *Handler, ac AccessControl) {
 		create := func(f http.HandlerFunc) http.HandlerFunc { return ac(c.resource, workspace.ActionCreate, f) }
 		protected.HandleFunc(base+"/count", create(h.Count)).Methods(http.MethodPost)
 		protected.HandleFunc(base+"/leads", create(h.Leads)).Methods(http.MethodPost)
+		protected.HandleFunc(base+"/map", create(h.Map)).Methods(http.MethodPost)
 		protected.HandleFunc(base+"/lists", create(h.Upload)).Methods(http.MethodPost)
 		protected.HandleFunc(base+"/lists/{"+pathList+"}/preview", create(h.Preview)).Methods(http.MethodPost)
 		protected.HandleFunc(base+"/lists/{"+pathList+"}/rows/search", create(h.Rows)).Methods(http.MethodPost)

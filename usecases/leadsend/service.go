@@ -95,6 +95,7 @@ type Deps struct {
 	Costs               template.TemplateCostReader
 	Balances            balance.BalanceReader
 	Caps                balance.MonthlySendCapUsageReader
+	Rates               balance.ExchangeRate
 	Official            Official
 	Unofficial          *Unofficial
 	Metrics             metrics.LeadActionMetricsRecorder
@@ -121,6 +122,7 @@ func NewService(deps Deps) (*Service, error) {
 		"costs":                deps.Costs == nil,
 		"balances":             deps.Balances == nil,
 		"caps":                 deps.Caps == nil,
+		"rates":                deps.Rates == nil,
 		"official create":      deps.Official.Create == nil,
 		"official access":      deps.Official.Access == nil,
 		"official start":       deps.Official.Start == nil,

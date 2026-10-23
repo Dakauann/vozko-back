@@ -32,6 +32,9 @@ func (v *googleSheetValidator) Validate(n *workflow.Node) error {
 	if strings.TrimSpace(sheetID) == "" {
 		return nil
 	}
+	if v.sheets == nil {
+		return lookupNotWired("google sheets")
+	}
 	sheet, err := v.sheets.Get(context.Background(), v.workspaceID, strings.TrimSpace(sheetID))
 	if errors.Is(err, googlesheet.ErrSheetNotFound) {
 		return fmt.Errorf("%w: node %q sheet_id %q", workflow.ErrNodeInvalidSheetID, n.ID, sheetID)
@@ -56,4 +59,8 @@ func sheetMapping(raw interface{}) map[string]string {
 		mapping[key] = text
 	}
 	return mapping
+}
+
+func lookupNotWired(name string) error {
+	return fmt.Errorf("the %s lookup is not wired, this step cannot be checked", name)
 }

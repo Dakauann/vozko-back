@@ -354,6 +354,7 @@ type repositories struct {
 	shortLinkClick          shortlink_domain.ClickRepository
 	waba                    waba_domain.Repository
 	invoice                 invoice_domain.Repository
+	invoiceChargeRenewals   invoice_domain.ChargeRenewals
 	callBilling             call_billing_domain.Repository
 	analytics               analytics_domain.Repository
 	workspacePlan           workspace_plan_domain.PlanRepository
@@ -645,9 +646,10 @@ type useCases struct {
 	getOrCreateBalance      balance_domain.GetOrCreateBalanceUseCase
 	getOrCreateFullSummary  balance_domain.GetOrCreateFullBalanceSummaryUseCase
 
-	createInvoice invoice_domain.CreateInvoiceUseCase
-	listInvoices  invoice_domain.ListInvoicesUseCase
-	getInvoice    invoice_domain.GetInvoiceUseCase
+	createInvoice   invoice_domain.CreateInvoiceUseCase
+	listInvoices    invoice_domain.ListInvoicesUseCase
+	getInvoice      invoice_domain.GetInvoiceUseCase
+	renewInvoicePix invoice_domain.RenewPixUseCase
 
 	emitMonthlyInvoices     billing_domain.EmitMonthlyInvoicesUseCase
 	cancelBillingSweep      billing_domain.CancelSweepUseCase

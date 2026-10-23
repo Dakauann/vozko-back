@@ -11,17 +11,17 @@ func TestRouteOutputNeverTakesAnArbitraryEdge(t *testing.T) {
 		edges     []Edge
 		output    string
 		fallbacks []string
-		want      string
+		want      Route
 		wantErr   error
 	}{
-		{"the produced output", []Edge{{Target: "ok", Label: "sucesso"}, {Target: "bad", Label: "erro"}}, "erro", nil, "bad", nil},
-		{"the declared fallback when the output is not connected", []Edge{{Target: "a", Label: "1"}, {Target: "nm", Label: "no_match"}}, "7", []string{"no_match"}, "nm", nil},
-		{"the first connected fallback in declared order", []Edge{{Target: "d", Label: "default"}, {Target: "nm", Label: "no_match"}}, "7", []string{"no_match", "default"}, "nm", nil},
-		{"an unlabeled edge is the default output, as the editor draws it", []Edge{{Target: "plain", Label: ""}}, "default", nil, "plain", nil},
-		{"an unlabeled edge is not any other output", []Edge{{Target: "plain", Label: ""}}, "sucesso", nil, "", ErrOutputNotConnected},
-		{"the first edge is never a fallback", []Edge{{Target: "ok", Label: "sucesso"}}, "erro", nil, "", ErrOutputNotConnected},
-		{"a fallback that is not connected does not help", []Edge{{Target: "a", Label: "1"}}, "7", []string{"no_match"}, "", ErrOutputNotConnected},
-		{"a node without edges ends its path", nil, "sucesso", nil, "", nil},
+		{"the produced output", []Edge{{Target: "ok", Label: "sucesso"}, {Target: "bad", Label: "erro"}}, "erro", nil, Route{Target: "bad", Branch: "erro"}, nil},
+		{"the declared fallback when the output is not connected", []Edge{{Target: "a", Label: "1"}, {Target: "nm", Label: "no_match"}}, "7", []string{"no_match"}, Route{Target: "nm", Branch: "no_match"}, nil},
+		{"the first connected fallback in declared order", []Edge{{Target: "d", Label: "default"}, {Target: "nm", Label: "no_match"}}, "7", []string{"no_match", "default"}, Route{Target: "nm", Branch: "no_match"}, nil},
+		{"an unlabeled edge is the default output, as the editor draws it", []Edge{{Target: "plain", Label: ""}}, "default", nil, Route{Target: "plain", Branch: "default"}, nil},
+		{"an unlabeled edge is not any other output", []Edge{{Target: "plain", Label: ""}}, "sucesso", nil, Route{}, ErrOutputNotConnected},
+		{"the first edge is never a fallback", []Edge{{Target: "ok", Label: "sucesso"}}, "erro", nil, Route{}, ErrOutputNotConnected},
+		{"a fallback that is not connected does not help", []Edge{{Target: "a", Label: "1"}}, "7", []string{"no_match"}, Route{}, ErrOutputNotConnected},
+		{"a node without edges ends its path", nil, "sucesso", nil, Route{}, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			got, err := RouteOutput(c.edges, c.output, c.fallbacks...)
@@ -30,7 +30,7 @@ func TestRouteOutputNeverTakesAnArbitraryEdge(t *testing.T) {
 				t.Fatalf("err = %v, want %v", err, c.wantErr)
 			}
 			if got != c.want {
-				t.Fatalf("target = %q, want %q", got, c.want)
+				t.Fatalf("route = %+v, want %+v", got, c.want)
 			}
 		})
 	}

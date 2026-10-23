@@ -195,7 +195,11 @@ func mapSummaryResponse(s leadmap.Summary) MapSummaryResponse {
 	return MapSummaryResponse(s)
 }
 
-func mapLayerResponse(l leadmap.Layer) MapLayerResponse {
+func MapBBoxOf(b geo.BBox) MapBBoxResponse {
+	return MapBBoxResponse{South: b.South, West: b.West, North: b.North, East: b.East}
+}
+
+func MapLayerOf(l leadmap.Layer) MapLayerResponse {
 	if l.Kind == leadmap.LayerCells {
 		cells := make([]MapCellResponse, 0, len(l.Cells))
 		for _, c := range l.Cells {
@@ -228,7 +232,7 @@ func mapDistrictResponses(districts []leadmap.District) []MapDistrictResponse {
 
 func mapViewportResponse(v leadmap.Viewport) MapViewportResponse {
 	out := MapViewportResponse{
-		BBox:  MapBBoxResponse{South: v.BBox.South, West: v.BBox.West, North: v.BBox.North, East: v.BBox.East},
+		BBox:  MapBBoxOf(v.BBox),
 		Basis: string(v.Basis),
 		View:  string(v.View),
 	}

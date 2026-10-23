@@ -61,7 +61,7 @@ type draftFixture struct {
 
 func newDraftFixture(deps LaunchCheckDeps) draftFixture {
 	f := draftFixture{audience: &draftAudience{sendable: 120}, create: &draftCreate{}, start: &draftStart{}}
-	f.launch = NewDraftLaunch(DraftLaunchDeps{Create: f.create, Start: f.start, Check: NewLaunchCheck(deps), Audience: f.audience})
+	f.launch = NewDraftLaunch(DraftLaunchDeps{Create: f.create, Start: f.start, Check: NewLaunchCheck(deps), Audience: f.audience, Rates: draftRate{rate: 5}})
 	return f
 }
 
@@ -223,5 +223,31 @@ func TestDraftLaunchFailsClosedWhenNotWired(t *testing.T) {
 	}
 	if _, err := NewDraftLaunch(DraftLaunchDeps{}).Review(context.Background(), draftCampaign()); !errors.Is(err, ErrDraftLaunchUnavailable) {
 		t.Fatalf("review got %v", err)
+	}
+}
+
+type draftRate struct {
+	rate float64
+	err  error
+}
+
+func (d draftRate) CurrentRate() (float64, error) { return d.rate, d.err }
+
+func TestDraftReviewPricesTheQuoteInReaisWithTheWalletRate(t *testing.T) {
+	f := newDraftFixture(launchDeps())
+	review, err := f.launch.Review(context.Background(), draftCampaign())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.QuoteBRL == nil || review.QuoteBRL.CostBRL != 0.6 || review.QuoteBRL.UnitPriceBRL != 0.005 {
+		t.Fatalf("quote in reais %+v, want 120 sends at R$ 0,005 = R$ 0,60", review.QuoteBRL)
+	}
+}
+
+func TestDraftReviewFailsClosedWithoutTheWalletRate(t *testing.T) {
+	f := newDraftFixture(launchDeps())
+	f.launch.d.Rates = draftRate{err: errors.New("no rate")}
+	if _, err := f.launch.Review(context.Background(), draftCampaign()); err == nil {
+		t.Fatal("a review without the wallet rate must not show a cost in another currency")
 	}
 }

@@ -170,5 +170,5 @@ func platformEmailFailed(ctx *workflow.NodeContext, reason string, cause error) 
 		"reason": reason,
 		"error":  cause.Error(),
 	}
-	return routeOutput(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), workflow.PlatformEmailHandleFailed)
+	return routeFailure(&workflow.NodeResult{Output: output}, outgoingEdges(ctx), workflow.PlatformEmailHandleFailed)
 }

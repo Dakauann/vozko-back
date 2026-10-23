@@ -13,18 +13,19 @@ const costUnavailable = "indisponível"
 func templateCostFields(
 	costs tmpl.TemplateCostReader,
 	balances balance.BalanceReader,
+	rates balance.ExchangeRate,
 	workspaceID string,
 	template *tmpl.Template,
 	eligible int64,
 	costKey string,
-	formatCost func(int64) string,
 ) []copilot.Field {
 	quote, err := template_usecase.QuoteSend(costs, balances, workspaceID, template, eligible)
-	if err != nil {
+	reais, priced := copilottools.ReaisOf(rates)
+	if err != nil || !priced {
 		return []copilot.Field{{Key: costKey, Value: costUnavailable}}
 	}
 	return []copilot.Field{
-		{Key: costKey, Value: formatCost(quote.CostMicros)},
-		{Key: "balance", Value: copilottools.FormatUSD(quote.BalanceMicros)},
+		{Key: costKey, Value: reais(quote.CostMicros)},
+		{Key: "balance", Value: reais(quote.BalanceMicros)},
 	}
 }

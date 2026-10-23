@@ -79,7 +79,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 
 	if e.status == nil {
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   "serviço de status de conversa não configurado",
@@ -90,7 +90,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 	entryID := strings.TrimSpace(ctx.Run.EntryID)
 	entryType := strings.TrimSpace(ctx.Run.EntryType)
 	if entryID == "" || entryType == "" {
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   "run sem entry_id/entry_type, finalize só em fluxos de conversa",
@@ -98,7 +98,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		}, edges, "erro"), nil
 	}
 	if !shared.EntryType(entryType).SupportsConversationClosing() {
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success": false,
 				"error":   fmt.Sprintf("tipo de entrada %q não suporta finalização", entryType),
@@ -118,7 +118,7 @@ func (e *finishConversationExecutor) Execute(ctx *workflow.NodeContext) (*workfl
 		OutcomeCode: outcomeCode,
 		ActorID:     workflowActor(ctx.Run.WorkflowID),
 	}); err != nil {
-		return routeOutput(&workflow.NodeResult{
+		return routeFailure(&workflow.NodeResult{
 			Output: map[string]interface{}{
 				"success":    false,
 				"entry_id":   entryID,

@@ -33,6 +33,7 @@ type CampaignDeps struct {
 	Phones    businessphone.WorkspacePhonesUseCase
 	Costs     tmpl.TemplateCostReader
 	Balance   balance.BalanceReader
+	Rates     balance.ExchangeRate
 	Exit      copilottools.ExitVerdicts
 }
 
@@ -103,13 +104,17 @@ func (t *previewCampaignImportTool) Execute(ctx context.Context, cc copilot.Cont
 	if err != nil {
 		return campaignFailure(err)
 	}
-	data := previewData(preview)
+	data := previewData(preview, t.deps.Rates)
 	data["lead_exit"] = string(verdict.State)
 	data["lead_exit_note"] = copilottools.ExitVerdictField(verdict).Value
 	return copilot.Result{Status: copilot.StatusOK, Data: data}
 }
 
-func previewData(p *wc.ImportPreview) map[string]interface{} {
+func previewData(p *wc.ImportPreview, rates balance.ExchangeRate) map[string]interface{} {
+	unit, cost, funds := costUnavailable, costUnavailable, costUnavailable
+	if reais, priced := copilottools.ReaisOf(rates); priced {
+		unit, cost, funds = reais(p.UnitCostMicros), reais(p.CostMicros), reais(p.BalanceMicros)
+	}
 	sample := p.Rows
 	if len(sample) > campaignSampleRows {
 		sample = sample[:campaignSampleRows]
@@ -123,9 +128,9 @@ func previewData(p *wc.ImportPreview) map[string]interface{} {
 		"issue_counts":     p.IssueCounts,
 		"issues":           p.Issues,
 		"sample":           sample,
-		"unit_cost":        copilottools.FormatUSD(p.UnitCostMicros),
-		"estimated_cost":   copilottools.FormatUSD(p.CostMicros),
-		"balance":          copilottools.FormatUSD(p.BalanceMicros),
+		"unit_cost":        unit,
+		"estimated_cost":   cost,
+		"balance":          funds,
 		"balance_suffices": p.Affordable,
 	}
 }
@@ -173,10 +178,14 @@ func (t *createCampaignTool) Describe(ctx context.Context, cc copilot.Context, a
 	if err != nil {
 		return append(fields, copilot.Field{Key: "contacts", Value: "não foi possível ler a planilha"})
 	}
+	fields = append(fields, copilot.Field{Key: "contacts", Value: fmt.Sprintf("%d de %d linhas", preview.ValidRows, preview.TotalRows)})
+	reais, priced := copilottools.ReaisOf(t.deps.Rates)
+	if !priced {
+		return append(fields, copilot.Field{Key: "estimatedCost", Value: costUnavailable})
+	}
 	return append(fields,
-		copilot.Field{Key: "contacts", Value: fmt.Sprintf("%d de %d linhas", preview.ValidRows, preview.TotalRows)},
-		copilot.Field{Key: "estimatedCost", Value: copilottools.FormatUSD(preview.CostMicros)},
-		copilot.Field{Key: "balance", Value: copilottools.FormatUSD(preview.BalanceMicros)},
+		copilot.Field{Key: "estimatedCost", Value: reais(preview.CostMicros)},
+		copilot.Field{Key: "balance", Value: reais(preview.BalanceMicros)},
 	)
 }
 
@@ -274,7 +283,7 @@ func (t *startCampaignTool) Describe(_ context.Context, cc copilot.Context, args
 		return append(fields, copilot.Field{Key: "finalCost", Value: costUnavailable})
 	}
 	fields = append(fields, copilot.Field{Key: "template", Value: template.Name})
-	return append(fields, templateCostFields(t.deps.Costs, t.deps.Balance, cc.WorkspaceID, template, pending, "finalCost", copilottools.FormatUSD)...)
+	return append(fields, templateCostFields(t.deps.Costs, t.deps.Balance, t.deps.Rates, cc.WorkspaceID, template, pending, "finalCost")...)
 }
 
 func (t *startCampaignTool) owned(cc copilot.Context, raw string) (*wc.Campaign, error) {

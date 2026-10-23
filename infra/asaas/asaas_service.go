@@ -17,7 +17,7 @@ type AsaasServiceUseCases interface {
 	GetOrCreateCustomer(name string, cpf string) (*AsaasCustomer, error)
 
 	CreatePayment(customerName string, customerCpf string, payment *AsaasPayment) (*AsaasPayment, error)
-	GetPaymentQrCode(paymentID string) (qrCode string, copyPaste string, err error)
+	GetPaymentQrCode(paymentID string) (*AsaasPixQrCode, error)
 
 	GetPayment(paymentID string) (*AsaasPayment, error)
 	RefundPayment(paymentID string, amountBRL float64, description string) error
@@ -165,37 +165,33 @@ func (s *AsaasService) CreatePayment(customerName string, customerCpf string, pa
 	return &createdPayment, nil
 }
 
-func (s *AsaasService) GetPaymentQrCode(paymentID string) (qrCode string, copyPaste string, err error) {
+func (s *AsaasService) GetPaymentQrCode(paymentID string) (*AsaasPixQrCode, error) {
 	if err := validateAsaasID(paymentID, "payment ID"); err != nil {
-		return "", "", err
+		return nil, err
 	}
 	qrCodeUrl := fmt.Sprintf("%s/payments/%s/pixQrCode", s.endpoint, paymentID)
 
 	req, err := http.NewRequest(http.MethodGet, qrCodeUrl, nil)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	req.Header.Set("access_token", s.apiToken)
 
 	res, err := s.client.Do(req)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("asaas get payment QR code request failed with status %d", res.StatusCode)
+		return nil, fmt.Errorf("asaas get payment QR code request failed with status %d", res.StatusCode)
 	}
 
-	var qrCodeResponse struct {
-		EncodedImage string `json:"encodedImage"`
-		Payload      string `json:"payload"`
+	var qrCode AsaasPixQrCode
+	if err := json.NewDecoder(res.Body).Decode(&qrCode); err != nil {
+		return nil, err
 	}
-	if err := json.NewDecoder(res.Body).Decode(&qrCodeResponse); err != nil {
-		return "", "", err
-	}
-
-	return qrCodeResponse.EncodedImage, qrCodeResponse.Payload, nil
+	return &qrCode, nil
 }
 
 func (s *AsaasService) GetPayment(paymentID string) (*AsaasPayment, error) {
@@ -216,6 +212,9 @@ func (s *AsaasService) GetPayment(paymentID string) (*AsaasPayment, error) {
 	}
 	defer res.Body.Close()
 
+	if res.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("asaas get payment request failed with status %d", res.StatusCode)
 	}

@@ -58,6 +58,7 @@ const (
 	LintSheetMappingInvalid      LintIssueCode = "NODE_SHEET_MAPPING_INVALID"
 	LintVoiceTrunkInvalid        LintIssueCode = "WORKFLOW_VOICE_TRUNK_INVALID"
 	LintWorkflowInvalid          LintIssueCode = "WORKFLOW_INVALID"
+	LintValidationUnavailable    LintIssueCode = "WORKFLOW_VALIDATION_UNAVAILABLE"
 
 	LintBadHandleLabel      LintIssueCode = "EDGE_BAD_HANDLE_LABEL"
 	LintDanglingDataRef     LintIssueCode = "DATA_REF_DANGLING"

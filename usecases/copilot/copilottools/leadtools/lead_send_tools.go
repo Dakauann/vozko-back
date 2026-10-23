@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"vozko/domain/balance"
 	"vozko/domain/buttonaction"
 	"vozko/domain/campaign"
 	"vozko/domain/copilot"
@@ -160,8 +161,21 @@ func (t *startLeadSendTool) allowed(ctx context.Context, cc copilot.Context, arg
 	return review, recipients, nil
 }
 
-func finalCost(r *campaign.SendReview, recipients int) (tmpl.SendCost, error) {
-	return tmpl.Quote(r.Quote.UnitPriceMicros, int64(recipients), r.Quote.BalanceMicros, r.Quote.Currency)
+var errRateUnavailable = fmt.Errorf("%w: a cotação da carteira está indisponível, então o custo em reais não pode ser mostrado; tente de novo em instantes", copilottools.ErrInvalidArgs)
+
+func finalCost(r *campaign.SendReview, recipients int, rates balance.ExchangeRate) (tmpl.SendCostBRL, error) {
+	cost, err := tmpl.Quote(r.Quote.UnitPriceMicros, int64(recipients), r.Quote.BalanceMicros, r.Quote.Currency)
+	if err != nil {
+		return tmpl.SendCostBRL{}, err
+	}
+	if rates == nil {
+		return tmpl.SendCostBRL{}, errRateUnavailable
+	}
+	rate, err := rates.CurrentRate()
+	if err != nil {
+		return tmpl.SendCostBRL{}, errRateUnavailable
+	}
+	return cost.InBRL(rate), nil
 }
 
 func (t *startLeadSendTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
@@ -172,7 +186,7 @@ func (t *startLeadSendTool) Validate(ctx context.Context, cc copilot.Context, ar
 	if review.Channel != campaign.ChannelOfficial {
 		return nil
 	}
-	if _, err := finalCost(review, recipients); err != nil {
+	if _, err := finalCost(review, recipients, t.deps.Rates); err != nil {
 		return refusalOf(err)
 	}
 	return nil
@@ -194,13 +208,13 @@ func (t *startLeadSendTool) Describe(ctx context.Context, cc copilot.Context, ar
 		fields = append(fields, copilot.Field{Key: "counted", Value: countedOnly})
 	}
 	if review.Channel == campaign.ChannelOfficial {
-		cost, err := finalCost(review, recipients)
+		cost, err := finalCost(review, recipients, t.deps.Rates)
 		if err != nil {
 			return append(fields, copilot.Field{Key: "finalCost", Value: "não foi possível calcular: " + refusalOf(err).Error()})
 		}
 		fields = append(fields,
-			copilot.Field{Key: "finalCost", Value: copilottools.FormatUSD(cost.CostMicros)},
-			copilot.Field{Key: "balance", Value: copilottools.FormatUSD(cost.BalanceMicros)},
+			copilot.Field{Key: "finalCost", Value: shared.FormatBRL(cost.CostBRL)},
+			copilot.Field{Key: "balance", Value: shared.FormatBRL(cost.BalanceBRL)},
 		)
 	}
 	if review.Quote.DailyCap > 0 {

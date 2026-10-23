@@ -48,3 +48,11 @@ func TestQuote(t *testing.T) {
 		})
 	}
 }
+
+func TestSendCostInBRLKeepsSubCentavoPrecision(t *testing.T) {
+	cost := SendCost{UnitPriceMicros: 1_250, Eligible: 1, CostMicros: 1_250, BalanceMicros: 2_000_000, Currency: "USD"}
+	got := cost.InBRL(5.4)
+	if got.UnitPriceBRL != 0.00675 || got.CostBRL != 0.00675 || got.BalanceBRL != 10.8 {
+		t.Fatalf("InBRL = %+v, want 0.00675 / 0.00675 / 10.8", got)
+	}
+}

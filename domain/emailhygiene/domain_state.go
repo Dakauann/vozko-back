@@ -1,6 +1,7 @@
 package emailhygiene
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,13 +26,14 @@ func (s DomainState) Valid() bool {
 type DomainDetail string
 
 const (
-	DetailNone       DomainDetail = ""
-	DetailMX         DomainDetail = "mx"
-	DetailImplicitMX DomainDetail = "implicit_mx"
-	DetailNullMX     DomainDetail = "null_mx"
-	DetailNoRecords  DomainDetail = "no_records"
-	DetailTimeout    DomainDetail = "timeout"
-	DetailError      DomainDetail = "error"
+	DetailNone               DomainDetail = ""
+	DetailMX                 DomainDetail = "mx"
+	DetailImplicitMX         DomainDetail = "implicit_mx"
+	DetailNullMX             DomainDetail = "null_mx"
+	DetailNoRecords          DomainDetail = "no_records"
+	DetailNoRecordsConfirmed DomainDetail = "no_records_twice"
+	DetailTimeout            DomainDetail = "timeout"
+	DetailError              DomainDetail = "error"
 )
 
 type LookupOutcome int
@@ -96,11 +98,31 @@ func classifyAddress(outcome LookupOutcome) DomainVerdict {
 	case LookupFound:
 		return DomainVerdict{State: DomainAccepts, Detail: DetailImplicitMX}
 	case LookupAbsent:
-		return DomainVerdict{State: DomainNoMail, Detail: DetailNoRecords}
+		return DomainVerdict{State: DomainUnknown, Detail: DetailNoRecords}
 	case LookupTimedOut:
 		return DomainVerdict{State: DomainUnknown, Detail: DetailTimeout}
 	}
 	return DomainVerdict{State: DomainUnknown, Detail: DetailError}
+}
+
+func Confirm(v DomainVerdict, prior DomainCheck) DomainVerdict {
+	if v.Detail != DetailNoRecords {
+		return v
+	}
+	if (prior.State == DomainUnknown && prior.Detail == DetailNoRecords) || (prior.State == DomainNoMail && prior.Detail == DetailNoRecordsConfirmed) {
+		return DomainVerdict{State: DomainNoMail, Detail: DetailNoRecordsConfirmed}
+	}
+	return v
+}
+
+var definiteNoMail = []DomainDetail{DetailNullMX, DetailNoRecordsConfirmed}
+
+func DefiniteNoMailDetails() []DomainDetail {
+	return slices.Clone(definiteNoMail)
+}
+
+func DefiniteNoMail(d DomainDetail) bool {
+	return slices.Contains(definiteNoMail, d)
 }
 
 func CanaryHealthy(v DomainVerdict) bool {

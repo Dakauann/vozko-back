@@ -481,17 +481,15 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 			log.Printf("%s workspace %s balance (%d micros) below minimum floor (%d micros), blocking AI call", logPrefix, ctx.Workflow.WorkspaceID, bal, balance.MinAIFloorMicros)
 
 			edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
-			errorNodeID := resolveEdgeByLabelStrict(edges, "erro")
-			if errorNodeID != "" {
-				return &workflow.NodeResult{
-					NextNodeID: errorNodeID,
+			if resolveEdgeByLabelStrict(edges, "erro") != "" {
+				return routeFailure(&workflow.NodeResult{
 					Output: map[string]interface{}{
 						"response_text": "",
 						"error":         "insufficient balance",
 						"agent_id":      agentID,
 						"model":         model,
 					},
-				}, nil
+				}, edges, "erro"), nil
 			}
 			return nil, fmt.Errorf("insufficient balance for AI call (workspace %s)", ctx.Workflow.WorkspaceID)
 		}
@@ -536,15 +534,14 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		errorNodeID := resolveEdgeByLabelStrict(edges, "erro")
 		if errorNodeID != "" {
 			log.Printf("%s routing to error edge node %s", logPrefix, errorNodeID)
-			return &workflow.NodeResult{
-				NextNodeID: errorNodeID,
+			return routeFailure(&workflow.NodeResult{
 				Output: map[string]interface{}{
 					"response_text": "",
 					"error":         err.Error(),
 					"agent_id":      agentID,
 					"model":         model,
 				},
-			}, nil
+			}, edges, "erro"), nil
 		}
 		return nil, fmt.Errorf("ai generate failed after %s: %w", elapsed.Round(time.Millisecond), err)
 	}

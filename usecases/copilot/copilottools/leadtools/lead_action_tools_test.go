@@ -162,7 +162,7 @@ func newActionHarness(preview *leadaction.Preview) *actionHarness {
 	}
 	h.at = time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	h.exit = &fakeExitVerdicts{state: buttonaction.VerdictOK}
-	h.deps = LeadActionDeps{Leads: leads, Actions: h.actions, Sends: h.sends, Proposals: h.proposals, Exit: h.exit, Now: func() time.Time { return h.at }}
+	h.deps = LeadActionDeps{Leads: leads, Actions: h.actions, Sends: h.sends, Proposals: h.proposals, Exit: h.exit, Rates: walletRate{rate: 5}, Now: func() time.Time { return h.at }}
 	return h
 }
 
@@ -428,7 +428,7 @@ func TestPrepareLeadActionRefusesBeforeTheCard(t *testing.T) {
 
 func TestPrepareLeadActionPreparesASendAndPointsToItsStart(t *testing.T) {
 	preview := counted(1200, 1200, nil)
-	preview.Send = &campaign.SendQuote{Count: 1200, Parts: 1, UnitPriceMicros: 8000, CostMicros: 9600000, BalanceMicros: 50000000, Affordable: true, Currency: "USD", Fits: 1200}
+	preview.Send = &campaign.SendQuote{Count: 1200, Parts: 1, UnitPriceMicros: 8000, CostMicros: 9600000, BalanceMicros: 50000000, Affordable: true, Currency: "USD", Fits: 1200, CostBRL: 48, BalanceBRL: 250}
 	h := newActionHarness(preview)
 	h.actions.outcome = leadaction_usecase.Outcome{Send: &campaign.SendReview{
 		Channel: campaign.ChannelOfficial, Parts: []campaign.SendPart{{CampaignID: firstPart, Name: "Convite", Status: campaign.StatusStopped, Entries: 1200, Eligible: 1150}},
@@ -439,7 +439,7 @@ func TestPrepareLeadActionPreparesASendAndPointsToItsStart(t *testing.T) {
 	tool := NewPrepareLeadActionTool(h.deps)
 	args := map[string]interface{}{"action": "send_template", "name": "Convite", "business_phone_id": somePhone, "template_id": someTmpl, "cidade": "sp:campinas"}
 	fields := propose(t, tool, manager(), args)
-	if !strings.Contains(tooltest.FieldValue(fields, "estimatedCost"), "US$ 9.60") || !strings.Contains(tooltest.FieldValue(fields, "balance"), "US$ 50.00") {
+	if !strings.Contains(tooltest.FieldValue(fields, "estimatedCost"), "R$ 48,00") || !strings.Contains(tooltest.FieldValue(fields, "balance"), "R$ 250,00") {
 		t.Fatalf("card = %+v", fields)
 	}
 	res := tool.Execute(context.Background(), manager(), args)
@@ -499,7 +499,7 @@ func TestStartLeadSendShowsTheFinalCostAndStartsTheReviewedParts(t *testing.T) {
 	tool := NewStartLeadSendTool(h.deps)
 	args := map[string]interface{}{"channel": "official", "campaign_ids": []interface{}{firstPart, secondPart}}
 	fields := propose(t, tool, manager(), args)
-	for key, want := range map[string]string{"recipients": "178000", "finalCost": "US$ 1424.00", "balance": "US$ 2000.00", "skipped": "1000", "counted": "5000"} {
+	for key, want := range map[string]string{"recipients": "178000", "finalCost": "R$ 7.120,00", "balance": "R$ 10.000,00", "skipped": "1000", "counted": "5000"} {
 		if !strings.Contains(tooltest.FieldValue(fields, key), want) {
 			t.Fatalf("card %s = %q, want %q (%+v)", key, tooltest.FieldValue(fields, key), want, fields)
 		}
@@ -526,7 +526,7 @@ func TestStartLeadSendRefusesWhatTheBudgetDoesNotCover(t *testing.T) {
 	}
 	args := map[string]interface{}{"channel": "official", "campaign_ids": []interface{}{firstPart, secondPart}, "first_n": 120000}
 	fields := propose(t, tool, manager(), args)
-	if !strings.Contains(tooltest.FieldValue(fields, "recipients"), "120000") || !strings.Contains(tooltest.FieldValue(fields, "finalCost"), "US$ 960.00") {
+	if !strings.Contains(tooltest.FieldValue(fields, "recipients"), "120000") || !strings.Contains(tooltest.FieldValue(fields, "finalCost"), "R$ 4.800,00") {
 		t.Fatalf("card = %+v", fields)
 	}
 	if res := tool.Execute(context.Background(), manager(), args); res.Status != copilot.StatusOK || h.sends.starts[0].FirstN != 120000 {
@@ -740,5 +740,30 @@ func TestStartLeadSendRefusesWhatTheBudgetRuleRefuses(t *testing.T) {
 				t.Fatalf("Validate = %v, want a refusal naming %q", err, tc.want)
 			}
 		})
+	}
+}
+
+type walletRate struct {
+	rate float64
+	err  error
+}
+
+func (w walletRate) CurrentRate() (float64, error) { return w.rate, w.err }
+
+func TestStartLeadSendFailsClosedWithoutTheWalletRate(t *testing.T) {
+	h := newActionHarness(counted(1, 1, nil))
+	h.sends.review = sendReview()
+	h.deps.Rates = walletRate{err: errors.New("no rate")}
+	tool := NewStartLeadSendTool(h.deps)
+	args := map[string]interface{}{"channel": "official", "campaign_ids": []interface{}{firstPart, secondPart}}
+	if err := tool.(copilot.Validator).Validate(context.Background(), manager(), args); err == nil {
+		t.Fatal("a send whose cost cannot be shown in reais must not be proposed")
+	}
+	describer := tool.(interface {
+		Describe(context.Context, copilot.Context, map[string]interface{}) []copilot.Field
+	})
+	fields := describer.Describe(context.Background(), manager(), args)
+	if cost := tooltest.FieldValue(fields, "finalCost"); strings.Contains(cost, "US$") || strings.Contains(cost, "R$") {
+		t.Fatalf("finalCost = %q, no amount is shown without the wallet rate", cost)
 	}
 }

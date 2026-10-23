@@ -15,6 +15,7 @@ import (
 	"vozko/domain/lead"
 	"vozko/domain/leadaction"
 	"vozko/domain/leadcompany"
+	"vozko/domain/leadmap"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
 )
@@ -42,6 +43,7 @@ type Repository interface {
 	lead.TimelineSource
 	lead.SelectionReader
 	lead.SelectionSnapshots
+	leadmap.SampleReader
 	lead.MembershipStore
 	leadcompany.Repository
 	leadaction.BulkWriter

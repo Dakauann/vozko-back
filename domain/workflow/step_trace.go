@@ -28,6 +28,7 @@ const (
 	ErrorKindValidation ErrorKind = "validation"
 	ErrorKindCancelled  ErrorKind = "cancelled"
 	ErrorKindInternal   ErrorKind = "internal"
+	ErrorKindHandled    ErrorKind = "handled"
 
 	ErrorKindRealCallNotConfirmed ErrorKind = "real_call_not_confirmed"
 	ErrorKindWrongWorkflowType    ErrorKind = "wrong_workflow_type"

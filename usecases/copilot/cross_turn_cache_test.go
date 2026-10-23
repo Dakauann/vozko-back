@@ -59,11 +59,12 @@ func TestHistoryKeepsAStablePrefixFromTheStartUntilTheNextCheckpoint(t *testing.
 
 func TestTheWorkspaceSnapshotRidesInTheTrailingNoteNotTheSystemPrompt(t *testing.T) {
 	drv := NewDriver(ownerCtx, "m", NewRegistry(), &fakeAccess{}, openFunds{}, nil)
-	drv.state = &readiness.Snapshot{SubscriptionActive: true, BalanceMicros: 2_500_000}
+	reais := 12.5
+	drv.state = &readiness.Snapshot{SubscriptionActive: true, BalanceMicros: 2_500_000, BalanceBRL: &reais}
 	if strings.Contains(drv.SystemPrompt(), "Estado do workspace") {
 		t.Fatal("the balance changes every turn, so it must stay out of the cached system prompt")
 	}
-	if note := drv.Reground(1, 10, 0); !strings.Contains(note, "Estado do workspace") || !strings.Contains(note, "2.50") {
+	if note := drv.Reground(1, 10, 0); !strings.Contains(note, "Estado do workspace") || !strings.Contains(note, "R$ 12,50") {
 		t.Fatalf("the trailing note must carry the snapshot, got %q", note)
 	}
 }

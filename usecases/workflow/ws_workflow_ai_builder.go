@@ -3,6 +3,7 @@ package workflow_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -60,6 +61,8 @@ var resourceKinds = []string{
 	"labels", "stages", "opportunity_pipelines", "opportunity_stages", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
 	"sip_trunks", "call_queues", "google_sheets",
 }
+
+var errBuilderLinterMissing = errors.New("workflow builder: the shared workflow linter is not wired")
 
 type ResourceMatch struct {
 	ID      string      `json:"id"`
@@ -503,19 +506,33 @@ func (uc *aiBuilderUC) guardModel(ctx context.Context, emit agentloop.Emit, st *
 }
 
 func (uc *aiBuilderUC) relint(st *builderState) {
-	st.lastReport = workflow.LintReport{Issues: []workflow.LintIssue{{Code: workflow.LintWorkflowInvalid, Severity: workflow.SeverityBlocking, Message: "Não foi possível validar os recursos do workflow.", Hint: "Tente novamente; não finalize como válido enquanto a validação estiver indisponível."}}}
+	report, err := uc.lintDraft(st)
+	if err != nil {
+		log.Printf("[wf-ai-builder] s%d validation unavailable: %v", st.sessionID, err)
+		report = validationUnavailableReport()
+	}
+	st.lastReport = report
+}
+
+func (uc *aiBuilderUC) lintDraft(st *builderState) (workflow.LintReport, error) {
 	if uc.deps.Linter == nil {
-		return
+		return workflow.LintReport{}, errBuilderLinterMissing
 	}
 	ctx := st.lintContext
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	report, err := uc.deps.Linter.Lint(ctx, &workflow.Workflow{ID: st.workflowID, WorkspaceID: st.workspaceID, Name: st.name, Description: st.description, Type: st.wfType, Graph: *st.graph})
-	if err != nil {
-		return
-	}
-	st.lastReport = report
+	draft := &workflow.Workflow{ID: st.workflowID, WorkspaceID: st.workspaceID, Name: st.name, Description: st.description, Type: st.wfType, Graph: st.graph.Clone()}
+	return uc.deps.Linter.Lint(ctx, draft)
+}
+
+func validationUnavailableReport() workflow.LintReport {
+	return workflow.LintReport{Issues: []workflow.LintIssue{{
+		Code:     workflow.LintValidationUnavailable,
+		Severity: workflow.SeverityBlocking,
+		Message:  "Não foi possível conferir os recursos do workflow.",
+		Hint:     "Tente validar de novo; o workflow só pode ser finalizado depois de uma validação completa.",
+	}}}
 }
 
 func builderHandleResolver(n workflow.Node) ([]workflow.HandleDefinition, bool) {

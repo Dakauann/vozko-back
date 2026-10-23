@@ -74,6 +74,7 @@ type ChargeRequest struct {
 	Method            Method
 	Amount            float64
 	DueDate           time.Time
+	ExpiresAt         time.Time
 	Description       string
 	ExternalReference string
 	Customer          GatewayCustomer
@@ -94,6 +95,7 @@ type Charge struct {
 	BoletoURL            string
 	InvoiceURL           string
 	DueDate              *time.Time
+	ExpiresAt            *time.Time
 	ProviderStatus       string
 	ProviderStatusDetail string
 }

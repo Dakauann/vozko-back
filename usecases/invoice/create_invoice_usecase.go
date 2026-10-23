@@ -23,9 +23,8 @@ import (
 
 type createInvoiceUseCase struct {
 	invoiceRepo         invoice.Repository
-	userRepo            user.UserRepository
-	addressRepo         address.AddressRepository
 	gateway             payment.Gateway
+	charges             *chargeComposer
 	exchangeRateRepo    workspace_pricing.Repository
 	currentSubscription workspace_plan.EnsureCurrentWorkspaceSubscriptionUseCase
 	affiliateRepo       affiliate.Repository
@@ -43,10 +42,14 @@ func NewCreateInvoiceUseCase(
 	trackReferral affiliate.TrackReferralUseCase,
 ) invoice.CreateInvoiceUseCase {
 	return &createInvoiceUseCase{
-		invoiceRepo:         invoiceRepo,
-		userRepo:            userRepo,
-		addressRepo:         addressRepo,
-		gateway:             gateway,
+		invoiceRepo: invoiceRepo,
+		gateway:     gateway,
+		charges: &chargeComposer{
+			userRepo:      userRepo,
+			addressRepo:   addressRepo,
+			gateway:       gateway,
+			affiliateRepo: affiliateRepo,
+		},
 		exchangeRateRepo:    exchangeRateRepo,
 		currentSubscription: currentSubscription,
 		affiliateRepo:       affiliateRepo,
@@ -76,9 +79,16 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		}
 	}
 
-	u, err := uc.userRepo.FindByID(input.UserID)
+	billingType := input.BillingType
+	if billingType == "" {
+		billingType = "PIX"
+	}
+	billingType = strings.ToUpper(strings.TrimSpace(billingType))
+	method := payment.NormalizeMethod(billingType)
+
+	customer, err := uc.charges.customer(input.UserID, method)
 	if err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
+		return nil, err
 	}
 
 	exchangeRate := uc.getExchangeRate()
@@ -94,13 +104,7 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	invoiceID := uuid.New().String()
 	externalRef := invoice.ExternalReference(invoiceID)
 
-	billingType := input.BillingType
-	if billingType == "" {
-		billingType = "PIX"
-	}
-	billingType = strings.ToUpper(strings.TrimSpace(billingType))
-
-	dueDate := time.Now().AddDate(0, 0, 3)
+	dueDate := time.Now().Add(invoice.DefaultChargeLifetime)
 	if input.DueDate != nil {
 		dueDate = *input.DueDate
 	}
@@ -116,35 +120,9 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		}
 	}
 
-	var paymentDescription string
-	switch purpose {
-	case invoice.PurposeSubscription:
-		paymentDescription = fmt.Sprintf("Assinatura de plano - %s", description)
-	case invoice.PurposeMonthlyBilling:
-		paymentDescription = fmt.Sprintf("Cobrança mensal %s - %s", brand.Active().Name, description)
-	default:
-		paymentDescription = fmt.Sprintf("Recarga de saldo - %s", description)
-	}
-
-	cpf := strings.TrimSpace(u.CPF)
-	if cpf == "" {
-		cpf = strings.TrimSpace(u.CNPJ)
-	}
-	if cpf == "" {
-		return nil, invoice.ErrCustomerDocumentRequired
-	}
-
-	customerName := u.Username
-	if customerName == "" {
-		customerName = u.Email
-	}
-
-	method := payment.NormalizeMethod(billingType)
-
-	billingAddress := uc.billingAddress(method, input.UserID)
-	if method == payment.MethodBoleto && uc.gateway.Capabilities().BoletoRequiresAddress && !billingAddress.Complete() {
+	if method == payment.MethodBoleto && uc.gateway.Capabilities().BoletoRequiresAddress && !customer.Address.Complete() {
 		log.Printf("[invoice] boleto rejected for user %s: address incomplete (missing %v)",
-			input.UserID, payment.MissingAddressFields(billingAddress))
+			input.UserID, payment.MissingAddressFields(customer.Address))
 		return nil, invoice.ErrBillingAddressRequired
 	}
 
@@ -152,15 +130,11 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		Method:            method,
 		Amount:            input.AmountBRL,
 		DueDate:           dueDate,
-		Description:       paymentDescription,
+		ExpiresAt:         chargeExpiry(purpose, input.DueDate),
+		Description:       chargeDescription(purpose, description),
 		ExternalReference: externalRef,
-		Customer: payment.GatewayCustomer{
-			Name:     customerName,
-			Email:    strings.TrimSpace(u.Email),
-			Document: cpf,
-			Address:  billingAddress,
-		},
-		IdempotencyKey: externalRef,
+		Customer:          customer,
+		IdempotencyKey:    externalRef,
 	}
 
 	var planDefinitionIDPtr *string
@@ -199,14 +173,7 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 
 	uc.attributeReferralIfNew(input.WorkspaceID, input.UserID, input.ReferralCode)
 
-	if split := uc.buildAffiliateSplit(input.WorkspaceID); split != nil {
-		if uc.gateway.Capabilities().Split {
-			chargeReq.Splits = []payment.SplitRecipient{*split}
-		} else {
-			log.Printf("[invoice] WARNING: provider %s cannot split charges; affiliate commission for workspace %s must be paid out manually",
-				uc.gateway.Provider(), input.WorkspaceID)
-		}
-	}
+	chargeReq.Splits = uc.charges.splits(input.WorkspaceID)
 
 	createdPayment, err := uc.gateway.CreateCharge(context.Background(), chargeReq)
 	if err != nil {
@@ -216,7 +183,7 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		return nil, fmt.Errorf("failed to create payment: %w", err)
 	}
 
-	attachment := chargeAttachment(createdPayment)
+	attachment := chargeAttachment(createdPayment, chargeReq.ExpiresAt)
 	if err := uc.invoiceRepo.AttachCharge(reserved.ID, attachment); err != nil {
 		return nil, fmt.Errorf("failed to attach charge %s to invoice %s: %w", createdPayment.ID, reserved.ID, err)
 	}
@@ -225,25 +192,9 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	reserved.PixCopy = attachment.PixCopy
 	reserved.BankSlipUrl = attachment.BankSlipUrl
 	reserved.InvoiceUrl = attachment.InvoiceUrl
+	reserved.ChargeExpiresAt = attachment.ExpiresAt
 
 	return &invoice.CreateInvoiceOutput{Invoice: reserved}, nil
-}
-
-func chargeAttachment(charge *payment.Charge) invoice.ChargeAttachment {
-	return invoice.ChargeAttachment{
-		ExternalID:  charge.ID,
-		PixQrCode:   optionalText(charge.PixQRCodeBase64),
-		PixCopy:     optionalText(charge.PixCopyPaste),
-		BankSlipUrl: optionalText(charge.BoletoURL),
-		InvoiceUrl:  optionalText(charge.InvoiceURL),
-	}
-}
-
-func optionalText(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
 }
 
 func (uc *createInvoiceUseCase) ensureRechargeAllowed(workspaceID string) error {
@@ -269,29 +220,6 @@ func (uc *createInvoiceUseCase) getExchangeRate() float64 {
 	return workspace_pricing.USDToBRLRate(defaults)
 }
 
-func (uc *createInvoiceUseCase) buildAffiliateSplit(workspaceID string) *payment.SplitRecipient {
-	if uc.affiliateRepo == nil || strings.TrimSpace(workspaceID) == "" {
-		return nil
-	}
-	ctx := context.Background()
-	ref, err := uc.affiliateRepo.GetReferralByWorkspaceID(ctx, workspaceID)
-	if err != nil || ref == nil {
-		return nil
-	}
-	aff, err := uc.affiliateRepo.GetByID(ctx, ref.AffiliateID)
-	if err != nil || aff == nil || !aff.Active {
-		return nil
-	}
-	if aff.CommissionPct <= 0 || aff.AsaasWalletID == "" {
-		return nil
-	}
-
-	return &payment.SplitRecipient{
-		RecipientID: aff.AsaasWalletID,
-		Percentage:  aff.CommissionPct * 100,
-	}
-}
-
 func (uc *createInvoiceUseCase) attributeReferralIfNew(workspaceID, userID, rawCode string) {
 	code := strings.TrimSpace(rawCode)
 	if code == "" || uc.trackReferral == nil || uc.affiliateRepo == nil || strings.TrimSpace(workspaceID) == "" {
@@ -309,37 +237,5 @@ func (uc *createInvoiceUseCase) attributeReferralIfNew(workspaceID, userID, rawC
 		WorkspaceOwnerUserID: userID,
 	}); err != nil {
 		log.Printf("[invoice] referral attribution on conversion failed ws=%s code=%s: %v", workspaceID, code, err)
-	}
-}
-
-func (uc *createInvoiceUseCase) billingAddress(method payment.Method, userID string) *payment.GatewayAddress {
-	if method != payment.MethodBoleto || uc.addressRepo == nil || strings.TrimSpace(userID) == "" {
-		return nil
-	}
-	addresses, err := uc.addressRepo.GetAllByUserID(userID)
-	if err != nil || len(addresses) == 0 {
-		if err != nil {
-			log.Printf("[invoice] WARNING: could not load billing address for user %s: %v", userID, err)
-		}
-		return nil
-	}
-
-	chosen := addresses[0]
-	for _, a := range addresses {
-		if a != nil && a.IsDefault {
-			chosen = a
-			break
-		}
-	}
-	if chosen == nil {
-		return nil
-	}
-	return &payment.GatewayAddress{
-		ZipCode:      chosen.ZipCode,
-		StreetName:   chosen.Street,
-		StreetNumber: chosen.Number,
-		Neighborhood: chosen.District,
-		City:         chosen.City,
-		FederalUnit:  chosen.State,
 	}
 }

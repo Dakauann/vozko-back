@@ -30,6 +30,7 @@ var ErrPageInvalid = errors.New("campaign audience: the page must be 1 or more a
 
 type Deps struct {
 	Selections  Selections
+	Places      Places
 	Lists       Lists
 	Sheets      Sheets
 	Phones      Phones
@@ -110,47 +111,55 @@ type walk struct {
 type visitor func(c campaignaudience.Candidate, d campaignaudience.Decision) error
 
 func (s *Service) Count(ctx context.Context, a Actor, ch campaignaudience.Channel, params Params, spec campaignaudience.Spec) (campaignaudience.Count, error) {
-	key, err := countKey(a, ch, params, spec)
-	if err != nil {
-		return campaignaudience.Count{}, err
-	}
-	raw, err := s.deps.Flight.Share(ctx, key, func(ctx context.Context) ([]byte, error) {
-		var count campaignaudience.Count
-		err := cache.Gated(ctx, s.deps.Gate, func(ctx context.Context) error {
-			_, counted, err := s.walk(ctx, walk{actor: a, channel: ch, params: params, spec: spec}, nil)
-			count = counted
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(count)
-	})
-	if errors.Is(err, cache.ErrSharedRunUnavailable) {
-		return campaignaudience.Count{}, fmt.Errorf("%w: %w", campaignaudience.ErrUnavailable, err)
-	}
-	if err != nil {
-		return campaignaudience.Count{}, err
-	}
-	var count campaignaudience.Count
-	if err := json.Unmarshal(raw, &count); err != nil {
-		return campaignaudience.Count{}, fmt.Errorf("%w: %w", campaignaudience.ErrUnavailable, err)
-	}
-	return count, nil
-}
-
-func countKey(a Actor, ch campaignaudience.Channel, params Params, spec campaignaudience.Spec) (string, error) {
-	raw, err := json.Marshal(struct {
+	key, err := sharedKey(countPrefix, struct {
 		Actor   Actor
 		Channel campaignaudience.Channel
 		Params  Params
 		Spec    campaignaudience.Spec
 	}{a, ch, params, spec.Normalized()})
 	if err != nil {
+		return campaignaudience.Count{}, err
+	}
+	return sharedRun(ctx, s, key, func(ctx context.Context) (campaignaudience.Count, error) {
+		_, counted, err := s.walk(ctx, walk{actor: a, channel: ch, params: params, spec: spec}, nil)
+		return counted, err
+	})
+}
+
+func sharedRun[T any](ctx context.Context, s *Service, key string, read func(context.Context) (T, error)) (T, error) {
+	var zero T
+	raw, err := s.deps.Flight.Share(ctx, key, func(ctx context.Context) ([]byte, error) {
+		var out T
+		err := cache.Gated(ctx, s.deps.Gate, func(ctx context.Context) error {
+			var err error
+			out, err = read(ctx)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(out)
+	})
+	if errors.Is(err, cache.ErrSharedRunUnavailable) {
+		return zero, fmt.Errorf("%w: %w", campaignaudience.ErrUnavailable, err)
+	}
+	if err != nil {
+		return zero, err
+	}
+	var out T
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return zero, fmt.Errorf("%w: %w", campaignaudience.ErrUnavailable, err)
+	}
+	return out, nil
+}
+
+func sharedKey(prefix string, identity any) (string, error) {
+	raw, err := json.Marshal(identity)
+	if err != nil {
 		return "", fmt.Errorf("%w: %w", campaignaudience.ErrUnavailable, err)
 	}
 	sum := sha256.Sum256(raw)
-	return countPrefix + hex.EncodeToString(sum[:]), nil
+	return prefix + hex.EncodeToString(sum[:]), nil
 }
 
 func (s *Service) Walk(ctx context.Context, a Actor, ch campaignaudience.Channel, params Params, spec campaignaudience.Spec, owner string, visit func(campaignaudience.Candidate, campaignaudience.Decision) error) (campaignaudience.Count, error) {

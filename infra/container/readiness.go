@@ -85,6 +85,7 @@ func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 	return readiness_usecase.NewSnapshotUseCase(readiness_usecase.SnapshotDeps{
 		Subscription: c.useCases.ensureActiveWorkspaceSubscription,
 		Balance:      c.services.cachedBalanceChecker,
+		Rates:        c.walletRate(),
 		Probes:       probes,
 	})
 }

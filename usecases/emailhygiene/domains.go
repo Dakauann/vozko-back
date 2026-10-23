@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -111,10 +113,14 @@ func (s *Domains) Resolve(ctx context.Context, domains []string) (map[string]h.D
 }
 
 func (s *Domains) resolveAndSave(ctx context.Context, domains []string, prior map[string]h.DomainCheck) (map[string]h.DomainVerdict, error) {
-	if !h.CanaryHealthy(h.Classify(s.d.Resolver.Resolve(ctx, h.CanaryDomain))) {
+	if !s.canaryHealthy(ctx) {
 		return nil, ErrResolverUnhealthy
 	}
-	verdicts := s.lookup(ctx, domains)
+	verdicts := s.lookup(ctx, domains, prior)
+	if !s.canaryHealthy(ctx) {
+		log.Printf("[emailhygiene] the canary %s stopped resolving during a batch of %d domains; nothing was stored and the batch is retried", h.CanaryDomain, len(domains))
+		return nil, ErrResolverUnhealthy
+	}
 	now := s.now()
 	results := make([]h.DomainResult, 0, len(domains))
 	for _, domain := range domains {
@@ -128,10 +134,32 @@ func (s *Domains) resolveAndSave(ctx context.Context, domains []string, prior ma
 	if err := s.d.Checks.Save(ctx, results, now); err != nil {
 		return nil, err
 	}
+	log.Printf("[emailhygiene] checked %d domains: %s", len(results), tally(results))
 	return verdicts, nil
 }
 
-func (s *Domains) lookup(ctx context.Context, domains []string) map[string]h.DomainVerdict {
+func tally(results []h.DomainResult) string {
+	counts := map[string]int{}
+	for _, r := range results {
+		counts[string(r.Verdict.State)+"/"+string(r.Verdict.Detail)]++
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", key, counts[key]))
+	}
+	return strings.Join(parts, " ")
+}
+
+func (s *Domains) canaryHealthy(ctx context.Context) bool {
+	return h.CanaryHealthy(h.Classify(s.d.Resolver.Resolve(ctx, h.CanaryDomain)))
+}
+
+func (s *Domains) lookup(ctx context.Context, domains []string, prior map[string]h.DomainCheck) map[string]h.DomainVerdict {
 	out := make(map[string]h.DomainVerdict, len(domains))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -141,7 +169,7 @@ func (s *Domains) lookup(ctx context.Context, domains []string) map[string]h.Dom
 		go func(domain string) {
 			defer wg.Done()
 			defer func() { <-s.sem }()
-			v := h.Classify(s.d.Resolver.Resolve(ctx, domain))
+			v := h.Confirm(h.Classify(s.d.Resolver.Resolve(ctx, domain)), prior[domain])
 			mu.Lock()
 			out[domain] = v
 			mu.Unlock()

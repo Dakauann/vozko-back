@@ -145,10 +145,14 @@ func newFinisherFixture(phone businessphone.Status) *finisherFixture {
 		Templates: draftTemplates{}, Quality: draftQuality{}, Phones: draftPhones{status: phone}, TemplateGrants: draftGrants{},
 		Exits: draftExits{}, Costs: draftCosts{}, Balances: draftBalances{}, Caps: draftCaps{}, Now: time.Now,
 	})
-	launch := whatsapp_campaign_usecase.NewDraftLaunch(whatsapp_campaign_usecase.DraftLaunchDeps{Create: f.create, Start: f.start, Check: check, Audience: draftCount{}})
+	launch := whatsapp_campaign_usecase.NewDraftLaunch(whatsapp_campaign_usecase.DraftLaunchDeps{Create: f.create, Start: f.start, Check: check, Audience: draftCount{}, Rates: draftRate{}})
 	f.finisher = NewWhatsAppDraftFinisher(&WhatsAppCampaignHandler{}, launch, f.deals, f.routes)
 	return f
 }
+
+type draftRate struct{}
+
+func (draftRate) CurrentRate() (float64, error) { return 5, nil }
 
 func draftHTTPRequest() *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/campaign-drafts/whatsapp/d1/launch", nil)
@@ -224,7 +228,7 @@ func TestDraftReviewAnswersCountQuoteAndCheck(t *testing.T) {
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
-	if *body.Audience.Sendable != 25 || body.Quote == nil || body.Quote.CostMicros != 25000 || body.Check.Blocks || body.Check.Findings == nil {
+	if *body.Audience.Sendable != 25 || body.Quote == nil || body.Quote.CostMicros != 25000 || body.Quote.CostBRL != 0.125 || body.Check.Blocks || body.Check.Findings == nil {
 		t.Fatalf("body %+v", body)
 	}
 	if len(f.create.got) != 0 {

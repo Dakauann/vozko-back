@@ -1,6 +1,9 @@
 package invoice
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type CreateInvoiceInput struct {
 	WorkspaceID      string
@@ -33,4 +36,13 @@ type ListInvoicesUseCase interface {
 
 type GetInvoiceUseCase interface {
 	Execute(id string) (*Invoice, error)
+}
+
+type RenewPixInput struct {
+	WorkspaceID string
+	InvoiceID   string
+}
+
+type RenewPixUseCase interface {
+	Execute(ctx context.Context, input RenewPixInput) (*Invoice, error)
 }

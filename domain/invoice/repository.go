@@ -12,6 +12,7 @@ type ChargeAttachment struct {
 	PixCopy     *string
 	BankSlipUrl *string
 	InvoiceUrl  *string
+	ExpiresAt   *time.Time
 }
 
 type Repository interface {
@@ -19,6 +20,7 @@ type Repository interface {
 	AttachCharge(id string, charge ChargeAttachment) error
 	GetByID(id string) (*Invoice, error)
 	GetByExternalID(provider payment.Provider, externalID string) (*Invoice, error)
+	GetBySupersededCharge(provider payment.Provider, externalID string) (*Invoice, error)
 
 	ListUnpaidByPurpose(purpose Purpose, afterID string, limit int) ([]Invoice, error)
 	UpdateStatus(id string, status Status) error
@@ -27,4 +29,15 @@ type Repository interface {
 
 	CancelStaleReservations(createdBefore time.Time) (int64, error)
 	OpenObligations(now time.Time) ([]payment.Obligations, error)
+}
+
+type SupersededCharge struct {
+	Provider   payment.Provider
+	ExternalID string
+}
+
+type ChargeRenewals interface {
+	BeginRenewal(invoiceID string, previous SupersededCharge, leaseUntil, now time.Time) (bool, error)
+	CompleteRenewal(invoiceID, previousExternalID string, charge ChargeAttachment) (bool, error)
+	AbortRenewal(invoiceID string, previous SupersededCharge, previousStillPayable bool) error
 }

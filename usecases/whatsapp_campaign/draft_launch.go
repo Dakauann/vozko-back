@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"vozko/domain/balance"
 	"vozko/domain/campaign"
 	"vozko/domain/campaign/launchcheck"
 	"vozko/domain/campaignaudience"
@@ -25,6 +26,7 @@ type DraftLaunchDeps struct {
 	Start    wc.ConfirmedStartUseCase
 	Check    *LaunchCheck
 	Audience AudienceCounter
+	Rates    balance.ExchangeRate
 }
 
 type DraftLaunch struct {
@@ -38,6 +40,7 @@ func NewDraftLaunch(deps DraftLaunchDeps) *DraftLaunch {
 type DraftReview struct {
 	Audience campaignaudience.Count
 	Quote    *template.SendCost
+	QuoteBRL *template.SendCostBRL
 	Report   launchcheck.Report
 }
 
@@ -50,13 +53,27 @@ type DraftLaunchInput struct {
 }
 
 func (u *DraftLaunch) ready() error {
-	if u == nil || u.d.Create == nil || u.d.Start == nil || u.d.Check == nil || u.d.Audience == nil {
+	if u == nil || u.d.Create == nil || u.d.Start == nil || u.d.Check == nil || u.d.Audience == nil || u.d.Rates == nil {
 		return ErrDraftLaunchUnavailable
 	}
 	return nil
 }
 
 func (u *DraftLaunch) Review(ctx context.Context, camp *wc.Campaign) (DraftReview, error) {
+	review, err := u.review(ctx, camp)
+	if err != nil || review.Quote == nil {
+		return review, err
+	}
+	rate, err := u.d.Rates.CurrentRate()
+	if err != nil {
+		return DraftReview{}, err
+	}
+	priced := review.Quote.InBRL(rate)
+	review.QuoteBRL = &priced
+	return review, nil
+}
+
+func (u *DraftLaunch) review(ctx context.Context, camp *wc.Campaign) (DraftReview, error) {
 	if err := u.ready(); err != nil {
 		return DraftReview{}, err
 	}
@@ -88,7 +105,7 @@ func (u *DraftLaunch) Launch(ctx context.Context, in DraftLaunchInput) (campaign
 		Launch:               in.Launch,
 		ConfirmedFingerprint: in.ConfirmedFingerprint,
 		Check: func(ctx context.Context) (launchcheck.Report, error) {
-			review, err := u.Review(ctx, in.Campaign)
+			review, err := u.review(ctx, in.Campaign)
 			return review.Report, err
 		},
 		Create: func(ctx context.Context, scheduledStart time.Time) (*wc.Campaign, error) {

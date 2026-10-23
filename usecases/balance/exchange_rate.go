@@ -31,3 +31,15 @@ func CurrentExchangeRate(reader ExchangeRateReader) (float64, error) {
 	rate, err := ReadExchangeRate(reader)
 	return rate.Rate, err
 }
+
+type ExchangeRateSource struct {
+	reader ExchangeRateReader
+}
+
+func NewExchangeRateSource(reader ExchangeRateReader) ExchangeRateSource {
+	return ExchangeRateSource{reader: reader}
+}
+
+func (s ExchangeRateSource) CurrentRate() (float64, error) {
+	return CurrentExchangeRate(s.reader)
+}
