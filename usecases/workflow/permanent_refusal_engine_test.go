@@ -49,3 +49,17 @@ func TestATransientSendFailureIsStillRetried(t *testing.T) {
 		t.Fatalf("run = %s/%s retry %d, want a retry wait", run.Status, run.WaitReason, run.RetryCount)
 	}
 }
+
+func TestAFailedCodeNodeFailsTheRunAtOnceBecauseItsSideEffectsCannotBeReplayed(t *testing.T) {
+	h := newTraceHarness()
+	h.register(workflow.NodeTypeActionCode, func(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
+		return nil, workflow.Fail(workflow.ErrorKindTimeout, errors.New("action_code: scriptvm: execution timeout"))
+	})
+	run := h.start(linearWorkflow(workflow.Node{ID: "matricula", Type: workflow.NodeTypeActionCode}))
+	if run.Status != workflow.RunStatusError || run.RetryCount != 0 || run.WaitReason == workflow.WaitReasonRetry {
+		t.Fatalf("run = %s/%s retry %d, want it failed with no retry", run.Status, run.WaitReason, run.RetryCount)
+	}
+	if step := h.step(t, "matricula"); step.Status != workflow.LogStatusFailed || step.Attempt != 1 {
+		t.Fatalf("step = %+v", step)
+	}
+}

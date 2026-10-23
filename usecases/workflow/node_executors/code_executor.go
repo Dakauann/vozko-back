@@ -20,7 +20,9 @@ type codeExecutor struct {
 }
 
 func NewCodeExecutor(secrets workflowsecret.Resolver) workflow.NodeExecutor {
-	return &codeExecutor{sandbox: scriptvm.New(scriptvm.DefaultLimits()), secrets: secrets}
+	limits := scriptvm.DefaultLimits()
+	limits.Wallclock = workflow.CodeNodeMaxTimeout
+	return &codeExecutor{sandbox: scriptvm.New(limits), secrets: secrets}
 }
 
 const defaultCodeNodeSnippet = `// ─────────────────────────────────────────────────────────────────────
@@ -95,7 +97,7 @@ const defaultCodeNodeSnippet = `// ───────────────
 //   sleep(250)                  pausa 250 ms
 
 // ── Limites (padrão; podem ser menores no seu plano) ───────────────
-//   tempo 5 s · saída ≤ 256 KB · log ≤ 64 KB
+//   tempo 5 s (até 30 s em Timeout) · saída ≤ 256 KB · log ≤ 64 KB
 //   fetch ≤ 20 chamadas · resposta ≤ 5 MB
 
 // ─────────────────────────────────────────────────────────────────────
@@ -106,6 +108,11 @@ return {
   em: new Date().toISOString(),
 };
 `
+
+var (
+	codeTimeoutMinMs = float64(1)
+	codeTimeoutMaxMs = float64(workflow.CodeNodeMaxTimeout.Milliseconds())
+)
 
 func (e *codeExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
@@ -133,7 +140,7 @@ func (e *codeExecutor) Definition() workflow.NodeDefinition {
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "code", Label: "Código JavaScript", Type: "code", Placeholder: defaultCodeNodeSnippet, Required: true},
 			{Key: "output_variable", Label: "Salvar retorno em variável", Type: "text", Placeholder: "ex.: minha_resposta", Description: "Opcional. Se preenchido, o valor retornado pelo script também é gravado no estado do fluxo sob este nome (acessível por {{state.<nome>}} ou via state.get('<nome>') em nós seguintes)."},
-			{Key: "timeout_ms", Label: "Timeout (ms)", Type: "number", Placeholder: "5000"},
+			{Key: "timeout_ms", Label: "Timeout (ms)", Type: "number", Placeholder: "5000", Description: "Tempo máximo do script, até 30000 ms (30 s).", Min: &codeTimeoutMinMs, Max: &codeTimeoutMaxMs},
 		},
 	}
 }
@@ -149,7 +156,7 @@ func (e *codeExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 		return nil, workflow.ErrNodeConfigMissing
 	}
 
-	timeout := 5 * time.Second
+	timeout := workflow.CodeNodeDefaultTimeout
 	switch v := ctx.Node.Config["timeout_ms"].(type) {
 	case float64:
 		if v > 0 {
@@ -172,7 +179,7 @@ func (e *codeExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult,
 
 	callCtx, releaseCall := ctx.CallContext()
 	defer releaseCall()
-	execCtx, cancel := context.WithTimeout(callCtx, timeout+time.Second)
+	execCtx, cancel := context.WithTimeout(callCtx, min(timeout, workflow.CodeNodeMaxTimeout))
 	defer cancel()
 
 	caps := scriptvm.Capabilities{

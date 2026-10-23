@@ -516,7 +516,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				return e.save(run)
 			}
 			permanent := workflow.IsPermanentRefusal(err)
-			if run.RetryCount < workflow.MaxRetriesPerNode && !workflow.InCall(runtime) && !permanent {
+			if run.RetryCount < workflow.MaxRetriesPerNode && node.Type.RetriesOnFailure() && !workflow.InCall(runtime) && !permanent {
 				run.RetryCount++
 				delay := waitForRetry(run, run.RetryCount, workflow.WaitReasonRetry)
 				slog.Warn("workflow.engine.node_retrying", append(runLogAttrs(run, node.ID),

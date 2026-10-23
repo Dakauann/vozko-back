@@ -199,6 +199,10 @@ func (n NodeType) WaitsForCaller() bool {
 	return n == NodeTypeWaitDTMF
 }
 
+func (n NodeType) RetriesOnFailure() bool {
+	return n != NodeTypeActionCode
+}
+
 func (n NodeType) IsWait() bool {
 	switch n {
 	case NodeTypeWaitDuration, NodeTypeWaitForReply, NodeTypeWaitSchedule:
@@ -602,6 +606,11 @@ const (
 	MaxDurableExecutionsPerRun = 10000
 	MaxRetriesPerNode          = 3
 	StuckRunTimeoutMinutes     = 5
+)
+
+const (
+	CodeNodeDefaultTimeout = 5 * time.Second
+	CodeNodeMaxTimeout     = 30 * time.Second
 )
 
 const StateKeyDurableSteps = "_engine_total_steps"
