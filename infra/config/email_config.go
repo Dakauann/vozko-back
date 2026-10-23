@@ -38,8 +38,6 @@ type EmailConfig struct {
 
 	TokenSecret string
 
-	PostmasterClientID     string
-	PostmasterClientSecret string
 	PostmasterRefreshToken string
 
 	PublicBaseURL string
@@ -80,8 +78,6 @@ func readEmailConfig() (EmailConfig, []string) {
 		Route53ProbationZoneID: required("EMAIL_ROUTE53_PROBATION_ZONE_ID"),
 		Route53TrustedZoneID:   required("EMAIL_ROUTE53_TRUSTED_ZONE_ID"),
 		TokenSecret:            required("EMAIL_TOKEN_SECRET"),
-		PostmasterClientID:     required("GOOGLE_POSTMASTER_CLIENT_ID"),
-		PostmasterClientSecret: required("GOOGLE_POSTMASTER_CLIENT_SECRET"),
 		PostmasterRefreshToken: required("GOOGLE_POSTMASTER_REFRESH_TOKEN"),
 		PublicBaseURL:          strings.TrimRight(required("API_BASE_URL"), "/"),
 	}

@@ -79,7 +79,7 @@ func (c *Container) buildEmailSending() *emailSendingBundle {
 		log.Fatalf("[email] dns: %v", err)
 	}
 	monitor, err := postmaster.New(postmaster.Config{
-		ClientID: cfg.PostmasterClientID, ClientSecret: cfg.PostmasterClientSecret, RefreshToken: cfg.PostmasterRefreshToken,
+		ClientID: c.cfg.Google.ClientID, ClientSecret: c.cfg.Google.ClientSecret, RefreshToken: cfg.PostmasterRefreshToken,
 	})
 	if err != nil {
 		log.Fatalf("[email] deliverability monitor: %v", err)

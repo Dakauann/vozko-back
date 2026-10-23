@@ -20,8 +20,6 @@ func validEmailConfig() EmailConfig {
 		Route53ProbationZoneID: "Z09850153216WRIE11RKP",
 		Route53TrustedZoneID:   "Z06895732Z3BD5VGPWD6P",
 		TokenSecret:            strings.Repeat("k", 32),
-		PostmasterClientID:     "client",
-		PostmasterClientSecret: "client-secret",
 		PostmasterRefreshToken: "refresh",
 		PublicBaseURL:          "https://api.example.com",
 	}
@@ -74,6 +72,8 @@ func TestValidateEmailConfig(t *testing.T) {
 }
 
 func TestLoadEmailConfigReadsEveryVariable(t *testing.T) {
+	t.Setenv("GOOGLE_POSTMASTER_CLIENT_ID", "")
+	t.Setenv("GOOGLE_POSTMASTER_CLIENT_SECRET", "")
 	cfg := validEmailConfig()
 	env := map[string]string{
 		"EMAIL_AWS_REGION":                cfg.AWSRegion,
@@ -89,8 +89,6 @@ func TestLoadEmailConfigReadsEveryVariable(t *testing.T) {
 		"EMAIL_ROUTE53_PROBATION_ZONE_ID": " " + cfg.Route53ProbationZoneID + " ",
 		"EMAIL_ROUTE53_TRUSTED_ZONE_ID":   cfg.Route53TrustedZoneID,
 		"EMAIL_TOKEN_SECRET":              cfg.TokenSecret,
-		"GOOGLE_POSTMASTER_CLIENT_ID":     cfg.PostmasterClientID,
-		"GOOGLE_POSTMASTER_CLIENT_SECRET": cfg.PostmasterClientSecret,
 		"GOOGLE_POSTMASTER_REFRESH_TOKEN": cfg.PostmasterRefreshToken,
 		"API_BASE_URL":                    cfg.PublicBaseURL + "/",
 		"EMAIL_AWS_ENDPOINT_URL":          "https://ses.test/",
