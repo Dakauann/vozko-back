@@ -14,7 +14,7 @@ import (
 )
 
 type sampleRow struct {
-	pointRow
+	Point     pointRow `gorm:"embedded"`
 	Positions int
 	Located   int
 }
@@ -57,7 +57,7 @@ func (r *repository) SelectionSample(ctx context.Context, sq lead.SelectionQuery
 	points := make([]pointRow, 0, len(rows))
 	sample := leadmap.Sample{}
 	for _, row := range rows {
-		points = append(points, row.pointRow)
+		points = append(points, row.Point)
 		sample.Positions, sample.Located = row.Positions, row.Located
 	}
 	layer, err := pointLayer(points)
