@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"vozko/domain/copilot"
-	"vozko/domain/emaildesign"
 	"vozko/domain/tools"
 	"vozko/usecases/copilot/copilottools"
 	"vozko/usecases/copilot/copilottools/screencall"
@@ -25,26 +24,33 @@ func (t *emailReadTool) Meta() copilot.Meta { return readMeta() }
 
 func (t *emailReadTool) Definition() tools.Definition {
 	return copilottools.Definition("email_read",
-		"Lê o design de e-mail aberto como ele está agora na tela, inclusive o que o usuário mudou desde a sua última leitura: "+
+		"Lê o e-mail aberto (um design ou o conteúdo de uma campanha) como ele está agora na tela, inclusive o que o usuário mudou desde a sua última leitura: "+
 			"nome, bloco selecionado, settings (largura, cores, fonte, preheader) e os blocos de cima para baixo com id, kind e os mesmos campos que email_edit aceita "+
 			"(texto de bloco de texto em marcação curta; colunas trazem os blocos de cada coluna). "+
+			"Numa campanha traz também subject (o assunto) e campaign_status. "+
 			"review traz hints e checks (contraste, hierarquia, ações, largura); open_gaps, no fim, lista o que impede salvar e enviar. Use antes de editar e sempre que precisar de ids.",
 		emailReadArgs{})
 }
 
 func (t *emailReadTool) Execute(ctx context.Context, cc copilot.Context, _ map[string]interface{}) copilot.Result {
-	if _, err := t.deps.openDesign(ctx, cc); err != nil {
+	h, err := t.deps.openHolder(ctx, cc, forReading)
+	if err != nil {
 		return failure(err.Error())
 	}
 	live, err := readLive(ctx, cc)
 	if err != nil {
 		return screencall.Result(cc, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(map[string]interface{}{
+	shown := live.shown()
+	body := map[string]interface{}{
 		"name":     live.Name,
 		"selected": live.Selected,
-		"settings": live.Document.Settings,
-		"blocks":   blockView(live.Document.Blocks),
-		"review":   emaildesign.Review(live.Document),
-	}, live.Document)}
+		"settings": shown.Settings,
+		"blocks":   blockView(shown.Blocks),
+		"review":   live.review(),
+	}
+	if live.Envelope != nil {
+		body["subject"] = live.Envelope.Subject
+	}
+	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(withFacts(body, h.facts()), live)}
 }

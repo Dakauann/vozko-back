@@ -28,28 +28,6 @@ type ListPayload struct {
 	Sections   []ListSectionPayload `json:"sections"`
 }
 
-func ListPayloadOf(input SendListMessageInput) ListPayload {
-	payload := ListPayload{
-		HeaderText: input.HeaderText,
-		BodyText:   input.BodyText,
-		FooterText: input.FooterText,
-		ButtonText: input.ButtonText,
-		Sections:   make([]ListSectionPayload, 0, len(input.Sections)),
-	}
-	for _, section := range input.Sections {
-		rows := make([]ListRowPayload, 0, len(section.Rows))
-		for _, row := range section.Rows {
-			rows = append(rows, ListRowPayload{ID: row.ID, Title: row.Title, Description: row.Description})
-		}
-		payload.Sections = append(payload.Sections, ListSectionPayload{Title: section.Title, Rows: rows})
-	}
-	return payload
-}
-
-func (m *Message) AttachList(input SendListMessageInput) error {
-	return m.AttachMetadata(ListMetadataKey, ListPayloadOf(input))
-}
-
 func (m *Message) List() (ListPayload, bool) {
 	if m == nil || !bytes.Contains(m.Metadata, listMetadataMarker) {
 		return ListPayload{}, false

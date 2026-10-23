@@ -19,30 +19,75 @@ type ReopenWindowRequest struct {
 }
 
 type MessageResponse struct {
-	ID                string                   `json:"id"`
-	EntryID           string                   `json:"entryId"`
-	EntryType         string                   `json:"entryType"`
-	Channel           string                   `json:"channel"`
-	MessageType       string                   `json:"messageType"`
-	From              string                   `json:"from"`
-	To                string                   `json:"to"`
-	Text              string                   `json:"text"`
-	Image             []byte                   `json:"image,omitempty"`
-	Video             []byte                   `json:"video,omitempty"`
-	MediaID           *string                  `json:"mediaId,omitempty"`
-	MediaType         string                   `json:"mediaType,omitempty"`
-	Read              bool                     `json:"read"`
-	ReadAt            *time.Time               `json:"readAt,omitempty"`
-	ReadBy            *string                  `json:"readBy,omitempty"`
-	WhatsAppMessageID *string                  `json:"whatsappMessageId,omitempty"`
-	ReplyToMessageID  *string                  `json:"replyToMessageId,omitempty"`
-	DeliveryStatus    string                   `json:"deliveryStatus,omitempty"`
-	SenderName        string                   `json:"senderName,omitempty"`
-	SenderAvatar      string                   `json:"senderAvatar,omitempty"`
-	Metadata          map[string]interface{}   `json:"metadata,omitempty"`
-	Location          *MessageLocationResponse `json:"location,omitempty"`
-	CreatedAt         time.Time                `json:"createdAt"`
-	UpdatedAt         time.Time                `json:"updatedAt"`
+	ID                string                    `json:"id"`
+	EntryID           string                    `json:"entryId"`
+	EntryType         string                    `json:"entryType"`
+	Channel           string                    `json:"channel"`
+	MessageType       string                    `json:"messageType"`
+	From              string                    `json:"from"`
+	To                string                    `json:"to"`
+	Text              string                    `json:"text"`
+	Image             []byte                    `json:"image,omitempty"`
+	Video             []byte                    `json:"video,omitempty"`
+	MediaID           *string                   `json:"mediaId,omitempty"`
+	MediaType         string                    `json:"mediaType,omitempty"`
+	Read              bool                      `json:"read"`
+	ReadAt            *time.Time                `json:"readAt,omitempty"`
+	ReadBy            *string                   `json:"readBy,omitempty"`
+	WhatsAppMessageID *string                   `json:"whatsappMessageId,omitempty"`
+	ReplyToMessageID  *string                   `json:"replyToMessageId,omitempty"`
+	DeliveryStatus    string                    `json:"deliveryStatus,omitempty"`
+	SenderName        string                    `json:"senderName,omitempty"`
+	SenderAvatar      string                    `json:"senderAvatar,omitempty"`
+	Metadata          map[string]interface{}    `json:"metadata,omitempty"`
+	Location          *MessageLocationResponse  `json:"location,omitempty"`
+	Interactive       *InteractiveResponse      `json:"interactive,omitempty"`
+	InteractiveReply  *InteractiveReplyResponse `json:"interactive_reply,omitempty"`
+	CreatedAt         time.Time                 `json:"createdAt"`
+	UpdatedAt         time.Time                 `json:"updatedAt"`
+}
+
+type InteractiveResponse struct {
+	Kind         string                       `json:"kind" example:"list" enums:"buttons,list,cta_url,template"`
+	Header       *InteractiveHeaderResponse   `json:"header,omitempty"`
+	Body         string                       `json:"body" example:"Selecione alguma das opções abaixo"`
+	Footer       string                       `json:"footer,omitempty" example:"Atendimento 24h"`
+	ButtonLabel  string                       `json:"button_label,omitempty" example:"Ver opções"`
+	Sections     []InteractiveSectionResponse `json:"sections,omitempty"`
+	Buttons      []InteractiveActionResponse  `json:"buttons,omitempty"`
+	TemplateName string                       `json:"template_name,omitempty" example:"boas_vindas"`
+}
+
+type InteractiveHeaderResponse struct {
+	Type     string `json:"type" example:"text" enums:"text,image,video,document"`
+	Text     string `json:"text,omitempty" example:"Atendimento"`
+	MediaURL string `json:"media_url,omitempty" example:"https://cdn.exemplo.com/banner.jpg"`
+}
+
+type InteractiveSectionResponse struct {
+	Title string                   `json:"title,omitempty" example:"Assuntos"`
+	Rows  []InteractiveRowResponse `json:"rows"`
+}
+
+type InteractiveRowResponse struct {
+	ID          string `json:"id" example:"agendar"`
+	Title       string `json:"title" example:"Agendar consulta"`
+	Description string `json:"description,omitempty" example:"Escolha dia e horário"`
+}
+
+type InteractiveActionResponse struct {
+	Kind  string `json:"kind" example:"reply" enums:"reply,url,phone,copy_code,flow"`
+	ID    string `json:"id,omitempty" example:"sim"`
+	Title string `json:"title" example:"Sim"`
+	URL   string `json:"url,omitempty" example:"https://exemplo.com/pedido"`
+	Phone string `json:"phone,omitempty" example:"+5511999999999"`
+	Code  string `json:"code,omitempty" example:"PROMO10"`
+}
+
+type InteractiveReplyResponse struct {
+	Kind     string `json:"kind" example:"list" enums:"button,list,template_button,option,quick_reply,postback"`
+	OptionID string `json:"option_id" example:"agendar"`
+	Title    string `json:"title,omitempty" example:"Agendar consulta"`
 }
 
 type MessageLocationResponse struct {

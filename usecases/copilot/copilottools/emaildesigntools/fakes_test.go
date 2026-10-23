@@ -93,10 +93,39 @@ func (f fakeFiles) DownloadFile(_ context.Context, key string) ([]byte, string, 
 
 type fakeEditor struct {
 	live     emaildesign.Document
+	envelope *envelope
+	typing   func(*fakeEditor)
 	selected string
 	replies  map[copilot.ScreenCommandName]copilot.ScreenReply
 	err      error
 	commands []copilot.ScreenCommand
+}
+
+func (f *fakeEditor) reply(fields map[string]interface{}) copilot.ScreenReply {
+	if f.envelope != nil {
+		fields["subject"], fields["preheader"] = f.envelope.Subject, f.envelope.Preheader
+	}
+	data, _ := json.Marshal(fields)
+	return copilot.ScreenReply{OK: true, Data: data}
+}
+
+func (f *fakeEditor) mergeEnvelope(edit *envelopeEdit) []string {
+	if edit == nil || f.envelope == nil {
+		return nil
+	}
+	var conflicts []string
+	pick := func(path string, base, next string, live *string) {
+		switch {
+		case next == base || next == *live:
+		case *live == base:
+			*live = next
+		default:
+			conflicts = append(conflicts, path)
+		}
+	}
+	pick("subject", edit.Base.Subject, edit.Next.Subject, &f.envelope.Subject)
+	pick("preheader", edit.Base.Preheader, edit.Next.Preheader, &f.envelope.Preheader)
+	return conflicts
 }
 
 func (f *fakeEditor) Run(_ context.Context, cmd copilot.ScreenCommand) (copilot.ScreenReply, error) {
@@ -109,14 +138,16 @@ func (f *fakeEditor) Run(_ context.Context, cmd copilot.ScreenCommand) (copilot.
 	}
 	switch cmd.Name {
 	case copilot.ScreenRead:
-		data, _ := json.Marshal(map[string]interface{}{"document": f.live, "selected": f.selected, "name": "Black Friday"})
-		return copilot.ScreenReply{OK: true, Data: data}, nil
+		return f.reply(map[string]interface{}{"document": f.live, "selected": f.selected, "name": "Black Friday"}), nil
 	case copilot.ScreenEdit:
+		if f.typing != nil {
+			f.typing(f)
+		}
 		payload := cmd.Args.(editPayload)
 		final := replayed(payload)
 		f.live = final
-		data, _ := json.Marshal(map[string]interface{}{"document": final, "conflicts": []string{}, "skipped": []int{}})
-		return copilot.ScreenReply{OK: true, Data: data}, nil
+		conflicts := append([]string{}, f.mergeEnvelope(payload.Envelope)...)
+		return f.reply(map[string]interface{}{"document": final, "conflicts": conflicts, "skipped": []int{}}), nil
 	case copilot.ScreenLook:
 		return copilot.ScreenReply{OK: true, Data: []byte(`{"marks":[]}`), Images: []string{"data:image/jpeg;base64,AAAA"}}, nil
 	}

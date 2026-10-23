@@ -14,6 +14,7 @@ type stored struct {
 	Sort          []crmfilter.Sort  `json:"sort,omitempty"`
 	Limit         int               `json:"limit,omitempty"`
 	ExcludeIDs    []string          `json:"exclude_ids,omitempty"`
+	IncludeIDs    []string          `json:"include_ids,omitempty"`
 	ExpectedCount int               `json:"expected_count,omitempty"`
 	Fingerprint   string            `json:"fingerprint,omitempty"`
 	Require       *crmfilter.Filter `json:"require,omitempty"`
@@ -21,7 +22,7 @@ type stored struct {
 
 func Encode(s selection.Selection) ([]byte, error) {
 	return json.Marshal(stored{
-		Mode: s.Mode, IDs: s.IDs, Filter: s.Filter, Sort: s.Sort, Limit: s.Limit, ExcludeIDs: s.ExcludeIDs,
+		Mode: s.Mode, IDs: s.IDs, Filter: s.Filter, Sort: s.Sort, Limit: s.Limit, ExcludeIDs: s.ExcludeIDs, IncludeIDs: s.IncludeIDs,
 		ExpectedCount: s.ExpectedCount, Fingerprint: s.Fingerprint, Require: s.Require,
 	})
 }
@@ -35,7 +36,7 @@ func Decode(raw []byte) (selection.Selection, error) {
 		return selection.Selection{}, err
 	}
 	return selection.Selection{
-		Mode: s.Mode, IDs: s.IDs, Filter: s.Filter, Sort: s.Sort, Limit: s.Limit, ExcludeIDs: s.ExcludeIDs,
+		Mode: s.Mode, IDs: s.IDs, Filter: s.Filter, Sort: s.Sort, Limit: s.Limit, ExcludeIDs: s.ExcludeIDs, IncludeIDs: s.IncludeIDs,
 		ExpectedCount: s.ExpectedCount, Fingerprint: s.Fingerprint, Require: s.Require,
 	}, nil
 }

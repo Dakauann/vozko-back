@@ -355,9 +355,11 @@ func (s *channelSender) SendInteractive(
 
 	providerID := ""
 	var shown []string
+	var content *conversation.InteractiveContent
 	if outcome != nil {
 		providerID = outcome.ProviderMessageID
 		shown = outcome.ShownOptionIDs
+		content = outcome.Interactive
 	}
 
 	if s.history != nil {
@@ -370,6 +372,7 @@ func (s *channelSender) SendInteractive(
 			From:              ec.AccountID,
 			To:                ec.ContactRef,
 			Text:              req.Body,
+			Interactive:       content,
 			Timestamp:         time.Now().UTC(),
 		}); err != nil {
 			return nil, err

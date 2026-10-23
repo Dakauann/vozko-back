@@ -26,7 +26,6 @@ const (
 	metadataAutoMessage    = "tiktok_auto_message"
 	metadataSharedVideo    = "tiktok_shared_video_id"
 	metadataSharedURL      = "tiktok_shared_url"
-	metadataButton         = "tiktok_button_id"
 	metadataReplyTo        = "tiktok_reply_to"
 )
 
@@ -304,7 +303,7 @@ func (h *HandleWebhook) record(ctx context.Context, account *ttdomain.Account, c
 		meta[metadataAutoMessage] = m.AutoMessageType
 	}
 	if m.ButtonID != "" {
-		meta[metadataButton] = m.ButtonID
+		meta[conversation.InteractiveReplyMetadataKey] = conversation.InteractiveReply{Kind: conversation.InteractiveReplyQuickReply, OptionID: m.ButtonID, Title: strings.TrimSpace(m.Text)}
 	}
 	if m.ReferencedMessageID != "" {
 		meta[metadataReplyTo] = m.ReferencedMessageID

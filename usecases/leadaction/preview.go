@@ -55,7 +55,7 @@ func (s *Service) Preview(ctx context.Context, req Request) (*leadaction.Preview
 	p := &leadaction.Preview{
 		ID: s.deps.NewID(), WorkspaceID: req.Actor.WorkspaceID, ActorID: req.Actor.UserID, Action: req.Action,
 		Status: leadaction.PreviewRunning, UpdatedAt: s.now(),
-		Result: leadaction.PreviewResult{Fingerprint: selection.Fingerprint(req.Selection.EffectiveFilter()), Skipped: map[leadaction.SkipReason]int{}},
+		Result: leadaction.PreviewResult{Fingerprint: req.Selection.CountFingerprint(), Skipped: map[leadaction.SkipReason]int{}},
 	}
 	scope := scopeOf(req.Actor, req.DepartmentID)
 	deadline := s.now().Add(leadaction.PreviewBudget)

@@ -418,7 +418,7 @@ func (uc *HandleWebhookUseCase) handleCallbackQuery(ctx context.Context, account
 	uc.ensureAssignment(conv, account)
 
 	metadata, _ := json.Marshal(map[string]any{
-		"telegram_callback_data": ev.CallbackData,
+		conversation.InteractiveReplyMetadataKey: conversation.InteractiveReply{Kind: conversation.InteractiveReplyOption, OptionID: ev.CallbackData, Title: ev.Text},
 	})
 	if err := uc.recordFromContact(ctx, conv, historyInput{
 		MessageType:       conversation.MessageTypeUserMessage,

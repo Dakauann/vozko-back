@@ -36,6 +36,7 @@ type InteractiveOption struct {
 	ID          string
 	Title       string
 	Description string
+	Section     string
 }
 
 type SendMenuInput struct {

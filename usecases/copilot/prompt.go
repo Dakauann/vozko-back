@@ -20,7 +20,7 @@ func screenPrompt(view copilot.View) string {
 	if view.OnStudio() {
 		return studioPrompt(view.ProjectKind)
 	}
-	if view.OnEmailDesign() {
+	if view.OnEmailDocument() {
 		return emailDesignPrompt(view)
 	}
 	if view.OnLeads() {

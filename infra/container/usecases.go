@@ -314,6 +314,9 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		conversation_usecase.NewMessageHistoryManagerWithHub(c.repositories.conversation, c.services.conversationHub),
 		c.adOriginRecorder(),
 	)
+	optionsTool.(interface {
+		SetHistory(conversation_domain.MessageHistoryManager)
+	}).SetHistory(messageHistoryManager)
 	messageConsumerWCCampaignUC := wc_usecase.NewMessageConsumerUseCase(c.services.wcQueueSub, c.services.wcQueuePub, c.repositories.wcCampaign, c.observedCampaignEntries(), c.repositories.whatsappTemplate, c.repositories.businessPhone, c.services.whatsappClientFactory, consumeWhatsappTemplateUC, checkBalanceUC, messageHistoryManager, c.redisProvider.SharedState(), sendEligibility, c.repositories.leadCampaignSend, inflightReserver, cachedBalanceChecker)
 	formSendsSetter, ok := messageConsumerWCCampaignUC.(interface {
 		SetFormSends(whatsapp_template_usecase.FormSends)

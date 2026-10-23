@@ -186,7 +186,7 @@ func (a *channelAdapter) SendInteractive(ctx context.Context, ec *conversation.E
 	for _, o := range options {
 		shown = append(shown, conversation.InteractiveOption{ID: o.ID, Title: o.Title})
 	}
-	return conversation.ShowingOptions(out, shown), err
+	return conversation.ShowingOptions(out, req.Composed().ShowingAs(channel.InteractiveStyleButtons, shown)), err
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

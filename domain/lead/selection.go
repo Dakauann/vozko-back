@@ -58,6 +58,7 @@ type SelectionQuery struct {
 	Today       time.Time
 	IDs         []string
 	ExcludeIDs  []string
+	IncludeIDs  []string
 	Require     crmfilter.Filter
 	Pending     *Assignment
 	Order       []shared.Sort
@@ -74,6 +75,9 @@ func (q SelectionQuery) Validate() error {
 	}
 	if q.Limit < 0 || (q.Limit > 0 && len(q.IDs) > 0) {
 		return selection.ErrLimitRequired
+	}
+	if len(q.IncludeIDs) > 0 && len(q.IDs) > 0 {
+		return selection.ErrAmbiguousSelection
 	}
 	if q.Pending != nil {
 		return q.Pending.Validate()

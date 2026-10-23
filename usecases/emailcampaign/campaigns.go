@@ -111,6 +111,25 @@ func (s *Service) Update(ctx context.Context, a Actor, campaignID string, d emai
 	return s.deps.Campaigns.Get(ctx, a.WorkspaceID, campaignID)
 }
 
+func (s *Service) ReviseContent(ctx context.Context, a Actor, campaignID string, content emailcampaign.Content) (*emailcampaign.Campaign, error) {
+	c, err := s.deps.Campaigns.Get(ctx, a.WorkspaceID, campaignID)
+	if err != nil {
+		return nil, err
+	}
+	if !c.Status.ContentRevisable() {
+		return nil, emailcampaign.ErrNotRevisable
+	}
+	from := c.Status
+	if err := c.ReviseContent(content); err != nil {
+		return nil, err
+	}
+	c.Status = from.AfterEdit()
+	if err := s.deps.Campaigns.Update(ctx, c, from); err != nil {
+		return nil, err
+	}
+	return s.deps.Campaigns.Get(ctx, a.WorkspaceID, campaignID)
+}
+
 func (s *Service) Delete(ctx context.Context, a Actor, campaignID string) error {
 	c, err := s.deps.Campaigns.Get(ctx, a.WorkspaceID, campaignID)
 	if err != nil {

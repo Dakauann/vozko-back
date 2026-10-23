@@ -282,7 +282,7 @@ func (s *Service) walkLeads(ctx context.Context, w walk, judge Judge, add func(c
 	}
 	out := campaignaudience.SelectionCount{Selected: selected, ConfirmCount: sel.ConfirmableCount(selected)}
 	if sel.Mode != selection.ModeIDs {
-		out.Fingerprint = selection.Fingerprint(sel.EffectiveFilter())
+		out.Fingerprint = sel.CountFingerprint()
 	}
 	after := ""
 	for {

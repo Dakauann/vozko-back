@@ -41,7 +41,7 @@ func (s Skill) OfferedOn(view View) bool {
 	case SkillPanelOnly:
 		return !view.Focused()
 	case SkillEmailWork:
-		return view.OnEmailDesign() || !view.Focused()
+		return view.OnEmailDocument() || !view.Focused()
 	}
 	return true
 }

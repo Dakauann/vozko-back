@@ -58,7 +58,7 @@ func (a *channelAdapter) SendInteractive(
 	for _, o := range options {
 		shown = append(shown, conversation.InteractiveOption{ID: o.Payload, Title: o.Title})
 	}
-	return conversation.ShowingOptions(&conversation.SendOutcome{ProviderMessageID: result.MessageID}, shown), nil
+	return conversation.ShowingOptions(&conversation.SendOutcome{ProviderMessageID: result.MessageID}, req.Composed().ShowingAs(channel.InteractiveStyleButtons, shown)), nil
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

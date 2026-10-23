@@ -52,6 +52,7 @@ type emailFieldArgs struct {
 	ButtonTextColor        *string               `json:"button_text_color,omitempty" desc:"settings: #rrggbb padrão do texto dos botões"`
 	FontFamily             *string               `json:"font_family,omitempty" desc:"settings: fonte"`
 	Preheader              *string               `json:"preheader,omitempty" desc:"settings: prévia que aparece ao lado do assunto na caixa de entrada"`
+	Subject                *string               `json:"subject,omitempty" desc:"settings, só numa campanha: o assunto, uma linha, aceita merge tags"`
 }
 
 type emailPlacementArgs struct {
@@ -105,21 +106,26 @@ var operationWords = map[string]string{
 }
 
 type editPayload struct {
-	Base  emaildesign.Document    `json:"base"`
-	Steps []emaildesign.StepPatch `json:"steps"`
+	Base     emaildesign.Document    `json:"base"`
+	Steps    []emaildesign.StepPatch `json:"steps"`
+	Envelope *envelopeEdit           `json:"envelope,omitempty"`
 }
 
 type editReply struct {
 	Document  json.RawMessage `json:"document"`
 	Conflicts []string        `json:"conflicts"`
 	Skipped   []int           `json:"skipped"`
+	Subject   *string         `json:"subject,omitempty"`
+	Preheader *string         `json:"preheader,omitempty"`
 }
 
 type batchOutcome struct {
-	document  emaildesign.Document
+	after     liveDesign
+	batch     editBatch
 	plan      emaildesign.Plan
 	conflicts []string
 	skipped   []int
+	facts     map[string]interface{}
 }
 
 type emailEditTool struct {
@@ -137,14 +143,14 @@ func (t *emailEditTool) NeedsApproval(mode copilot.Mode) bool { return mode == c
 
 func (t *emailEditTool) Definition() tools.Definition {
 	def := copilottools.Definition("email_edit",
-		"Edita o design de e-mail aberto, ao vivo no editor do usuário, com um lote de operações aplicadas em ordem, todas ou nenhuma. "+
+		"Edita o e-mail aberto (um design em Modelos ou o conteúdo de uma campanha), ao vivo no editor do usuário, com um lote de operações aplicadas em ordem, todas ou nenhuma. "+
 			"Blocos: heading (text, level, align, color), text (text em marcação curta, align), button (label, href, align, full_width, color, text_color), "+
 			"image (src ou media_id, alt, href, width, align), divider (color, thickness), spacer (height), columns (ratio; filhos entram com at.into), "+
 			"social (links, align) e footer (company_name, address, text; um só, sempre por último). Todo bloco aceita padding e background_color. "+
-			"settings muda o e-mail todo: width, background_color, content_background_color, text_color, link_color, button_color, button_text_color, font_family e preheader. "+
+			"settings muda o e-mail todo: width, background_color, content_background_color, text_color, link_color, button_color, button_text_color, font_family e preheader; numa campanha, também subject. "+
 			"Textos aceitam merge tags como {{first_name|cliente}}, {{name}}, {{email}}, {{company}} e {{field.chave}}. "+
-			"Lacunas que dependem do usuário (link de um botão, imagem, dados do rodapé) entram no rascunho e voltam em open_gaps; só um e-mail malformado é recusado. "+
-			"O retorno traz created (ref para id), conflicts (onde o usuário mudou o mesmo ponto e a versão dele ficou) e review do resultado.",
+			"Lacunas que dependem do usuário (link de um botão, imagem, dados do rodapé, assunto) entram no rascunho e voltam em open_gaps; só um e-mail malformado é recusado. "+
+			"O retorno traz created (ref para id), conflicts (onde o usuário mudou o mesmo ponto e a versão dele ficou) e review do resultado; numa campanha, campaign_status e returned_to_draft quando uma campanha pronta voltou a rascunho.",
 		emailEditArgs{})
 	if ops, ok := def.Parameters["operations"]; ok && ops.Items != nil {
 		if fields, ok := ops.Items.Properties["fields"]; ok && fields.Items != nil {
@@ -160,10 +166,15 @@ func (t *emailEditTool) Definition() tools.Definition {
 }
 
 func (t *emailEditTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
-	if _, err := t.deps.operations(cc, args); err != nil {
+	batch, err := t.deps.operations(cc, args)
+	if err != nil {
 		return err
 	}
-	if _, err := t.deps.openDesign(ctx, cc); err != nil {
+	h, err := t.deps.openHolder(ctx, cc, forEditing)
+	if err != nil {
+		return fmt.Errorf("%w: %v", copilottools.ErrInvalidArgs, err)
+	}
+	if err := batch.fits(h); err != nil {
 		return fmt.Errorf("%w: %v", copilottools.ErrInvalidArgs, err)
 	}
 	return nil
@@ -183,25 +194,26 @@ func (t *emailEditTool) Describe(_ context.Context, _ copilot.Context, args map[
 }
 
 func (t *emailEditTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	ops, err := t.deps.operations(cc, args)
+	batch, err := t.deps.operations(cc, args)
 	if err != nil {
 		return failure(err.Error())
 	}
-	if _, err := t.deps.openDesign(ctx, cc); err != nil {
+	h, err := t.deps.openHolder(ctx, cc, forEditing)
+	if err != nil {
 		return failure(err.Error())
 	}
-	outcome, err := t.deps.applyBatch(ctx, cc, ops)
+	outcome, err := t.deps.applyBatch(ctx, cc, h, batch)
 	if err != nil {
 		return screencall.Result(cc, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(outcome.data(), outcome.document)}
+	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(outcome.data(), outcome.after)}
 }
 
 func (o batchOutcome) data() map[string]interface{} {
 	data := map[string]interface{}{
-		"applied": len(o.plan.Steps),
+		"applied": o.batch.requested,
 		"created": o.plan.Refs,
-		"review":  emaildesign.Review(o.document),
+		"review":  o.after.review(),
 	}
 	if len(o.plan.Created) > 0 {
 		data["new_blocks"] = o.plan.Created
@@ -212,26 +224,30 @@ func (o batchOutcome) data() map[string]interface{} {
 	if len(o.skipped) > 0 {
 		data["skipped"] = o.skipped
 	}
-	return data
+	return withFacts(data, o.facts)
 }
 
-func (d Deps) operations(cc copilot.Context, args map[string]interface{}) ([]emaildesign.Operation, error) {
+func (d Deps) operations(cc copilot.Context, args map[string]interface{}) (editBatch, error) {
 	var a emailEditArgs
 	if err := copilottools.DecodeArgs(args, &a); err != nil {
-		return nil, fmt.Errorf("%w: %v", copilottools.ErrInvalidArgs, err)
+		return editBatch{}, fmt.Errorf("%w: %v", copilottools.ErrInvalidArgs, err)
 	}
 	if len(a.Operations) == 0 {
-		return nil, fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, emailNoOperations)
+		return editBatch{}, fmt.Errorf("%w: %s", copilottools.ErrInvalidArgs, emailNoOperations)
 	}
 	ops := make([]emaildesign.Operation, 0, len(a.Operations))
 	for i, raw := range a.Operations {
 		op, err := d.operation(cc, raw)
 		if err != nil {
-			return nil, fmt.Errorf("%w: operação %d: %v", copilottools.ErrInvalidArgs, i+1, err)
+			return editBatch{}, fmt.Errorf("%w: operação %d: %v", copilottools.ErrInvalidArgs, i+1, err)
 		}
 		ops = append(ops, op)
 	}
-	return ops, nil
+	batch, err := splitEnvelope(ops)
+	if err != nil {
+		return editBatch{}, fmt.Errorf("%w: %v", copilottools.ErrInvalidArgs, err)
+	}
+	return batch, nil
 }
 
 func knownOperation(name string) bool {
@@ -362,34 +378,4 @@ func operationFailure(err error) error {
 		code += ", campo " + opErr.Field
 	}
 	return fmt.Errorf(emailOpFailed, opErr.Index+1, code, words)
-}
-
-func (d Deps) applyBatch(ctx context.Context, cc copilot.Context, ops []emaildesign.Operation) (batchOutcome, error) {
-	live, err := readLive(ctx, cc)
-	if err != nil {
-		return batchOutcome{}, err
-	}
-	plan, err := emaildesign.Apply(live.Document, ops, d.ids())
-	if err != nil {
-		return batchOutcome{}, operationFailure(err)
-	}
-	added := addedIssues(emaildesign.Validate(live.Document), emaildesign.Validate(plan.Final(live.Document)))
-	if broken := emaildesign.StructuralIssues(added); len(broken) > 0 {
-		return batchOutcome{}, fmt.Errorf(emailBreaks, describeIssues(broken))
-	}
-	reply, err := screencall.Run(ctx, cc, copilot.ScreenEdit, editPayload{Base: live.Document, Steps: emaildesign.EncodeSteps(live.Document, plan.Steps)}, editorWords)
-	if err != nil {
-		return batchOutcome{}, err
-	}
-	var got editReply
-	dec := json.NewDecoder(bytes.NewReader(reply.Data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&got); err != nil {
-		return batchOutcome{}, errors.New(emailUnreadable)
-	}
-	doc, err := emaildesign.Decode(got.Document)
-	if err != nil {
-		return batchOutcome{}, errors.New(emailUnreadable)
-	}
-	return batchOutcome{document: doc, plan: plan, conflicts: got.Conflicts, skipped: got.Skipped}, nil
 }

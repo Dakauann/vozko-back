@@ -73,7 +73,7 @@ func Classify(msg *mm.Message, prefix string) (conversation.MessageType, json.Ra
 		addReferral(meta, prefix, msg.Referral)
 	}
 	if msg.QuickReply != nil && msg.QuickReply.Payload != "" {
-		meta[key("quick_reply_payload")] = msg.QuickReply.Payload
+		meta[conversation.InteractiveReplyMetadataKey] = conversation.InteractiveReply{Kind: conversation.InteractiveReplyQuickReply, OptionID: msg.QuickReply.Payload, Title: strings.TrimSpace(msg.Text)}
 	}
 	if msg.Unsupported() {
 		msgType = conversation.MessageTypeUnsupported

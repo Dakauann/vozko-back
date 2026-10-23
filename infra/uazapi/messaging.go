@@ -136,13 +136,17 @@ func (c *Client) SendMenu(ctx context.Context, ref uw.InstanceRef, in uw.SendMen
 	return resp.result(), nil
 }
 
-func encodeChoices(options []uw.InteractiveOption, withDescription bool) []string {
+func encodeChoices(options []uw.InteractiveOption, asList bool) []string {
 	out := make([]string, 0, len(options))
-	for _, opt := range options {
+	for i, opt := range options {
+		section := strings.TrimSpace(opt.Section)
+		if asList && section != "" && (i == 0 || section != strings.TrimSpace(options[i-1].Section)) {
+			out = append(out, "["+strings.NewReplacer("[", "(", "]", ")").Replace(section)+"]")
+		}
 		title := strings.ReplaceAll(opt.Title, "|", "/")
 		id := strings.ReplaceAll(opt.ID, "|", "/")
 		choice := title + "|" + id
-		if withDescription && opt.Description != "" {
+		if asList && opt.Description != "" {
 			choice += "|" + strings.ReplaceAll(opt.Description, "|", "/")
 		}
 		out = append(out, choice)

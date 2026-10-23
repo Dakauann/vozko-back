@@ -10,15 +10,18 @@ const ButtonsMetadataKey = "buttons"
 var buttonsMetadataMarker = []byte(`"` + ButtonsMetadataKey + `"`)
 
 func (m *Message) AttachButtons(input SendButtonInput) error {
-	updated, err := withMetadataValue(m.Metadata, ButtonsMetadataKey, input)
-	if err != nil {
-		return err
-	}
-	m.Metadata = updated
-	return nil
+	content := ButtonInputContent(input)
+	return m.AttachInteractive(&content)
 }
 
 func (m *Message) Buttons() (SendButtonInput, bool) {
+	if content, ok := m.storedInteractive(); ok {
+		return content.buttonInput()
+	}
+	return m.legacyButtons()
+}
+
+func (m *Message) legacyButtons() (SendButtonInput, bool) {
 	if m == nil || !bytes.Contains(m.Metadata, buttonsMetadataMarker) {
 		return SendButtonInput{}, false
 	}

@@ -83,9 +83,15 @@ func parseSimInbound(msg simClientMsg) (simInbound, error) {
 			return simInbound{}, errSimSelection
 		}
 		selection := &workflow.OptionSelection{ID: d.ID, Title: d.Title, Kind: d.Kind}
+		reply, err := json.Marshal(map[string]conversation.InteractiveReply{
+			conversation.InteractiveReplyMetadataKey: {Kind: d.Kind, OptionID: d.ID, Title: d.Title},
+		})
+		if err != nil {
+			return simInbound{}, errSimReplyMalformed
+		}
 		return simInbound{
 			data: workflow.InboundMessageData(d.Title, "text", "", selection),
-			text: d.Title, kind: conversation.MessageTypeUserMessage,
+			text: d.Title, kind: conversation.MessageTypeUserMessage, metadata: reply,
 		}, nil
 	case simReplyLocation:
 		var d conversation.WhatsAppLocation

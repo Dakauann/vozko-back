@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"vozko/domain/crmfilter"
@@ -57,6 +58,7 @@ type Selection struct {
 	Sort          []crmfilter.Sort
 	Limit         int
 	ExcludeIDs    []string
+	IncludeIDs    []string
 	ExpectedCount int
 	Fingerprint   string
 	Require       *crmfilter.Filter
@@ -134,8 +136,13 @@ func (s Selection) validate(confirmed bool) error {
 	if s.ExpectedCount < 0 {
 		return ErrInvalidCount
 	}
-	if len(s.ExcludeIDs) > MaxExplicitIDs {
+	if len(s.ExcludeIDs) > MaxExplicitIDs || len(s.IncludeIDs) > MaxExplicitIDs {
 		return ErrTooManyIDs
+	}
+	for _, id := range s.IncludeIDs {
+		if strings.TrimSpace(id) == "" {
+			return ErrInvalidIDs
+		}
 	}
 	if s.Require != nil {
 		if err := s.Require.ValidateForSelection(); err != nil {
@@ -161,10 +168,17 @@ func (s Selection) ConfirmableCount(matched int) int {
 	case ModeIDs:
 		return 0
 	case ModeFirstN:
+		if s.LimitedCount() {
+			return matched
+		}
 		return min(s.Limit, matched)
 	default:
 		return matched
 	}
+}
+
+func (s Selection) LimitedCount() bool {
+	return s.Mode == ModeFirstN && len(s.IncludeIDs) > 0
 }
 
 func (s Selection) Exceeds(matched, max int) bool {
@@ -189,7 +203,7 @@ func (s Selection) ConfirmCount(matched int) error {
 }
 
 func (s Selection) validateIDs() error {
-	if s.Filter != nil || s.Limit != 0 || len(s.ExcludeIDs) > 0 {
+	if s.Filter != nil || s.Limit != 0 || len(s.ExcludeIDs) > 0 || len(s.IncludeIDs) > 0 {
 		return ErrAmbiguousSelection
 	}
 	if len(s.IDs) > MaxExplicitIDs {
@@ -239,13 +253,21 @@ func (s Selection) validateEveryone(confirmed bool) error {
 }
 
 func (s Selection) matchesFingerprint() error {
-	if s.Fingerprint == "" || s.Fingerprint != Fingerprint(s.EffectiveFilter()) {
+	if s.Fingerprint == "" || s.Fingerprint != s.CountFingerprint() {
 		return ErrFingerprintMismatch
 	}
 	return nil
 }
 
+func (s Selection) CountFingerprint() string {
+	return fingerprintOf(s.EffectiveFilter(), s.IncludeIDs)
+}
+
 func Fingerprint(f crmfilter.Filter) string {
+	return fingerprintOf(f, nil)
+}
+
+func fingerprintOf(f crmfilter.Filter, included []string) string {
 	canonical := crmfilter.Filter{Groups: make([]crmfilter.Group, 0, len(f.Groups))}
 	for _, g := range f.Groups {
 		if len(g.Predicates) == 0 {
@@ -257,8 +279,26 @@ func Fingerprint(f crmfilter.Filter) string {
 	if err != nil {
 		encoded = []byte(err.Error())
 	}
+	if ids := canonicalIDs(included); len(ids) > 0 {
+		encoded = append(encoded, "|include:"+strings.Join(ids, ",")...)
+	}
 	sum := sha256.Sum256(append([]byte(fingerprintVersion+"|"), encoded...))
 	return hex.EncodeToString(sum[:])
+}
+
+func canonicalIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, raw := range ids {
+		id := strings.ToLower(strings.TrimSpace(raw))
+		if _, dup := seen[id]; dup || id == "" {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	slices.Sort(out)
+	return out
 }
 
 func ValidatePage(limit int) error {

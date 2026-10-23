@@ -6,17 +6,30 @@ import (
 	"vozko/domain/copilot"
 )
 
-const emailDesignSection = `
+const emailDesignOpen = `
 
 # Editor de e-mail
 O usuário está no editor de e-mail com o design %s aberto, e você trabalha nele ao lado dele. Cada edição sua aparece
 na tela com o seu cursor, vira um passo que o usuário desfaz com Ctrl+Z e entra no documento como qualquer edição. O
 usuário continua editando enquanto você trabalha: o que ele mudar no mesmo lugar vence, e o retorno conta o que ficou
-com ele. As mudanças ficam no editor; quem guarda o design é o usuário, no botão Salvar, então avise isso ao terminar.
+com ele. As mudanças ficam no editor; quem guarda o design é o usuário, no botão Salvar, então avise isso ao terminar.`
+
+const emailCampaignOpen = `
+
+# Editor de e-mail
+O usuário está na etapa Conteúdo da campanha de e-mail %s, com o e-mail dela aberto no editor, e você trabalha nele ao
+lado dele. Cada edição sua aparece na tela com o seu cursor; no documento, vira um passo que o usuário desfaz com Ctrl+Z.
+O usuário continua editando enquanto você trabalha: o que ele mudar no mesmo lugar vence, e o retorno conta o que ficou
+com ele. Você edita o conteúdo desta campanha: o assunto (subject em settings), o preheader e o documento, que é uma
+cópia da campanha; um design salvo em Modelos não muda. Cada edição fica guardada no rascunho da campanha. Só um
+rascunho ou uma campanha pronta aceita edição; quando o retorno traz returned_to_draft, a campanha pronta voltou a
+rascunho: avise o usuário que ele precisa deixá-la pronta ou agendá-la de novo.`
+
+const emailWorkSection = `
 O usuário escolhe um modo: Perguntar (toda edição e geração pede aprovação), Editar sozinha (edições aplicam direto,
 gerações pagas pedem aprovação) ou Acesso total (tudo roda direto, com o modelo recomendado). Chame as ferramentas
 normalmente: o sistema pede aprovação quando o modo exigir.
-- Comece com email_read. Ids de blocos vêm dele ou do retorno de email_edit; nunca invente.
+- Comece com email_read: ele lê o e-mail aberto, sem id. Ids de blocos vêm dele ou do retorno de email_edit; nunca invente.
 - Edite em lotes com email_edit. O lote entra inteiro ou nada entra; o erro diz qual operação falhou e por quê. Dê "ref"
   ao que criar e use "@ref" nas operações seguintes do mesmo lote.
 - email_read, email_edit e email_look terminam com open_gaps, o que ainda impede salvar e enviar, lido do editor na
@@ -30,16 +43,29 @@ normalmente: o sistema pede aprovação quando o modo exigir.
 - Para o ofício do e-mail, carregue com load_skill a habilidade design-de-email antes de criar ou refazer um e-mail.`
 
 func emailDesignPrompt(view copilot.View) string {
-	return fmt.Sprintf(emailDesignSection, view.ProjectID)
+	if view.OnEmailCampaign() {
+		return fmt.Sprintf(emailCampaignOpen, view.ProjectID) + emailWorkSection
+	}
+	return fmt.Sprintf(emailDesignOpen, view.ProjectID) + emailWorkSection
+}
+
+func emailDocumentNoun(view copilot.View) string {
+	if view.OnEmailCampaign() {
+		return "o conteúdo da campanha de e-mail (campaign_id " + view.ProjectID + ")"
+	}
+	return "o design de e-mail (design_id " + view.ProjectID + ")"
 }
 
 func emailDesignOpenedNote(view copilot.View) string {
+	if view.OnEmailCampaign() {
+		return emailEditorBackNote(view)
+	}
 	return fmt.Sprintf("o usuário abriu no editor de e-mail o design que você criou (design_id %s). O editor está aberto nesta resposta e as ferramentas do editor de e-mail já estão disponíveis: "+
 		"continue agora o trabalho que você combinou, começando por email_read. Não peça que ele confirme que abriu.", view.ProjectID)
 }
 
 func emailEditorBackNote(view copilot.View) string {
-	return fmt.Sprintf("a aba do design de e-mail (design_id %s) voltou a ficar visível e o editor responde de novo nesta resposta. "+
+	return fmt.Sprintf("a aba com %s voltou a ficar visível e o editor responde de novo nesta resposta. "+
 		"Pedidos que expiraram enquanto ele estava calado não foram aplicados; um pedido que ficou sem confirmação pode ter entrado. "+
-		"Confira o estado com email_read e continue o trabalho que você combinou, sem repetir o que já entrou e sem pedir confirmação ao usuário.", view.ProjectID)
+		"Confira o estado com email_read e continue o trabalho que você combinou, sem repetir o que já entrou e sem pedir confirmação ao usuário.", emailDocumentNoun(view))
 }

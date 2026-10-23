@@ -17,6 +17,7 @@ type sendWhatsappButtonMessageTool struct {
 	ctx                   context.Context
 	whatsappClientFactory conversation.WhatsAppClientFactory
 	adapters              conversation.AdapterRegistry
+	history               conversation.MessageHistoryManager
 }
 
 func (uc *sendWhatsappButtonMessageTool) SetAdapters(r conversation.AdapterRegistry) {
@@ -300,7 +301,7 @@ func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, c
 			Footer:  footer,
 			Options: options,
 			Style:   channel.InteractiveStyleButtons,
-		})
+		}, func(record conversation.MessageHistoryRecord) { uc.recordOptions(ctx, config, record) })
 	}
 
 	input := conversation.SendButtonMessageInput{
@@ -330,6 +331,7 @@ func (uc *sendWhatsappButtonMessageTool) executeWithPhone(ctx context.Context, c
 		return tools.ExecutionResult{Result: result}, err
 	}
 	log.Printf("[WhatsApp Button Tool] SUCCESS: MessageID=%s, Status=%s", result.MessageID, result.MessageStatus)
+	uc.recordOptions(activeCtx, config, officialOptionsRecord(config, input, result.MessageID))
 
 	return tools.ExecutionResult{
 		Result: map[string]interface{}{

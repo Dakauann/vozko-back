@@ -38,6 +38,7 @@ type SendOutcome struct {
 	DeliveryStatus    DeliveryStatus
 	Metadata          map[string]any
 	ShownOptionIDs    []string
+	Interactive       *InteractiveContent
 }
 
 type SendTextRequest struct {
@@ -170,8 +171,10 @@ type MessageActionChannel interface {
 }
 
 type InteractiveOption struct {
-	ID    string
-	Title string
+	ID          string
+	Title       string
+	Description string
+	Section     string
 }
 
 type SendInteractiveRequest struct {
@@ -180,7 +183,8 @@ type SendInteractiveRequest struct {
 	Footer  string
 	Options []InteractiveOption
 
-	Style string
+	Style      string
+	ListButton string
 }
 
 type TypingAdapter interface {

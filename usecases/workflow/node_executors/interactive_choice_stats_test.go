@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"vozko/domain/channel"
@@ -29,6 +30,7 @@ func (s *spyChoices) RecordClick(_ context.Context, click choicestats.Click) {
 type interactiveFakeAdapter struct {
 	fakeAdapter
 	shown []string
+	sent  []conversation.SendInteractiveRequest
 }
 
 func (a *interactiveFakeAdapter) SendInteractive(_ context.Context, _ *conversation.EntryContext, req conversation.SendInteractiveRequest) (*conversation.SendOutcome, error) {
@@ -36,7 +38,14 @@ func (a *interactiveFakeAdapter) SendInteractive(_ context.Context, _ *conversat
 	if a.sendErr != nil {
 		return nil, a.sendErr
 	}
-	return &conversation.SendOutcome{ProviderMessageID: "ig-mid-1", ShownOptionIDs: a.shown}, nil
+	a.sent = append(a.sent, req)
+	var kept []conversation.InteractiveOption
+	for _, opt := range req.Options {
+		if slices.Contains(a.shown, opt.ID) {
+			kept = append(kept, opt)
+		}
+	}
+	return conversation.ShowingOptions(&conversation.SendOutcome{ProviderMessageID: "ig-mid-1"}, req.ShowingAs(req.Style, kept)), nil
 }
 
 func (a *interactiveFakeAdapter) InteractiveLimits() channel.InteractiveLimits {
@@ -130,5 +139,43 @@ func TestAnExecutorWithoutARecorderStillSends(t *testing.T) {
 	adapter := &interactiveFakeAdapter{fakeAdapter: fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}}
 	if _, err := choiceExecutor(adapter, nil).Execute(choiceNodeContext(true)); err != nil || adapter.sendCalls != 1 {
 		t.Fatalf("err = %v, calls = %d", err, adapter.sendCalls)
+	}
+}
+
+func TestTheWorkflowTranscriptKeepsTheListAsTheChannelShowedIt(t *testing.T) {
+	adapter := &interactiveFakeAdapter{fakeAdapter: fakeAdapter{entryType: shared.EntryTypeInstagram, windowOpen: true}, shown: []string{"beneficios", "agendar"}}
+	executor := choiceExecutor(adapter, &spyChoices{})
+	history := executor.channel.history.(*recordingHistory)
+	ctx := choiceNodeContext(true)
+	ctx.Node.Config = map[string]interface{}{
+		"interactive_type": "list",
+		"body":             "Para seguir com seu atendimento, selecione alguma das opções abaixo",
+		"footer":           "Atendimento",
+		"list_button":      "Ver opções",
+		"sections": `[{"title":"Atendimento","rows":[{"id":"beneficios","title":"Saber sobre beneficios","description":"Rede"},` +
+			`{"id":"agendar","title":"Agendar consulta","description":""},{"id":"outros","title":"Outros","description":""}]}]`,
+	}
+	ctx.Graph.Edges = []workflow.Edge{{Source: "ask", Target: "next", Label: "agendar"}}
+
+	if _, err := executor.Execute(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	req := adapter.sent[0]
+	if req.ListButton != "Ver opções" || req.Options[0].Description != "Rede" || req.Options[0].Section != "Atendimento" {
+		t.Fatalf("request = %+v", req)
+	}
+	if len(history.records) != 1 {
+		t.Fatalf("records = %+v", history.records)
+	}
+	shown := history.records[0].Interactive
+	want := &conversation.InteractiveContent{
+		Kind: conversation.InteractiveKindList, Body: "Para seguir com seu atendimento, selecione alguma das opções abaixo", Footer: "Atendimento", ButtonLabel: "Ver opções",
+		Sections: []conversation.InteractiveSection{{Title: "Atendimento", Rows: []conversation.InteractiveRow{
+			{ID: "beneficios", Title: "Saber sobre beneficios", Description: "Rede"}, {ID: "agendar", Title: "Agendar consulta"},
+		}}},
+	}
+	if !reflect.DeepEqual(shown, want) {
+		t.Fatalf("interactive = %+v", shown)
 	}
 }

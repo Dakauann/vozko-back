@@ -28,13 +28,15 @@ func notBlocked() crmfilter.Filter {
 func TestSelectionStatements_BindEveryPlaceholder(t *testing.T) {
 	r := &repository{}
 	queries := map[string]lead.SelectionQuery{
-		"workspace":       {WorkspaceID: pageWorkspace},
-		"picked":          {WorkspaceID: pageWorkspace, IDs: []string{firstLead, secondLead}},
-		"filtered":        {WorkspaceID: pageWorkspace, Filter: blockedSelection(), ExcludeIDs: []string{firstLead}, Require: notBlocked()},
-		"first n ordered": {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, ExcludeIDs: []string{firstLead}},
-		"pending field":   {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, Pending: &lead.Assignment{Kind: lead.AssignCustomField, Key: "interesse", Value: "alto"}},
-		"pending owner":   {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, Pending: &lead.Assignment{Kind: lead.AssignOwner, Value: "ai:" + firstLead}},
-		"pending block":   {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, Pending: &lead.Assignment{Kind: lead.AssignBlocked, Value: true}},
+		"workspace":        {WorkspaceID: pageWorkspace},
+		"picked":           {WorkspaceID: pageWorkspace, IDs: []string{firstLead, secondLead}},
+		"filtered":         {WorkspaceID: pageWorkspace, Filter: blockedSelection(), ExcludeIDs: []string{firstLead}, Require: notBlocked()},
+		"first n ordered":  {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, ExcludeIDs: []string{firstLead}},
+		"pending field":    {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, Pending: &lead.Assignment{Kind: lead.AssignCustomField, Key: "interesse", Value: "alto"}},
+		"pending owner":    {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, Pending: &lead.Assignment{Kind: lead.AssignOwner, Value: "ai:" + firstLead}},
+		"pending block":    {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, Pending: &lead.Assignment{Kind: lead.AssignBlocked, Value: true}},
+		"included":         {WorkspaceID: pageWorkspace, Filter: blockedSelection(), IncludeIDs: []string{secondLead}, ExcludeIDs: []string{firstLead}, Require: notBlocked()},
+		"first n included": {WorkspaceID: pageWorkspace, Filter: blockedSelection(), Order: []shared.Sort{lead.DefaultSort}, Limit: 10, IncludeIDs: []string{secondLead}, ExcludeIDs: []string{firstLead}, Require: notBlocked(), Pending: &lead.Assignment{Kind: lead.AssignBlocked, Value: true}},
 	}
 	for name, sq := range queries {
 		s, err := r.selection(sq)

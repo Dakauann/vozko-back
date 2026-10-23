@@ -76,10 +76,11 @@ func (c *Container) emailDesignTools() []copilot.Tool {
 		log.Fatalf("[email-design] the Elo email design tools need the email campaigns")
 	}
 	return emaildesigntools.EmailDesignTools(emaildesigntools.Deps{
-		Designs: c.email.Campaigns.Campaigns,
-		Library: c.useCases.getMedia,
-		Files:   c.services.fileReader,
-		Media:   c.mediaGeneration().Service,
+		Designs:   c.email.Campaigns.Campaigns,
+		Campaigns: c.email.Campaigns.Campaigns,
+		Library:   c.useCases.getMedia,
+		Files:     c.services.fileReader,
+		Media:     c.mediaGeneration().Service,
 	})
 }
 

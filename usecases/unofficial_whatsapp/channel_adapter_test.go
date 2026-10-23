@@ -3,6 +3,7 @@ package unofficial_whatsapp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -454,5 +455,57 @@ func TestTheMenuOutcomeNamesOnlyTheRowsWhatsAppShows(t *testing.T) {
 	}
 	if len(out.ShownOptionIDs) != uw.MaxListOptions || out.ShownOptionIDs[0] != "opta" {
 		t.Fatalf("shown = %v, want the first %d rows", out.ShownOptionIDs, uw.MaxListOptions)
+	}
+}
+
+func TestAWorkflowListReachesUazapiAndTheTranscriptAsShown(t *testing.T) {
+	adapter, messaging, ec, _ := adapterFixture(t, nil)
+	options := []conversation.InteractiveOption{
+		{ID: "beneficios", Title: "Saber sobre beneficios", Description: "Rede e descontos", Section: "Atendimento"},
+		{ID: "agendar", Title: "Agendar consulta", Section: "Atendimento"},
+		{ID: "pagar", Title: "Pagar Mensalidade", Section: "Financeiro"},
+	}
+	for i := len(options); i < uw.MaxListOptions+1; i++ {
+		options = append(options, conversation.InteractiveOption{ID: fmt.Sprintf("extra%d", i), Title: "Outros", Section: "Financeiro"})
+	}
+
+	out, err := adapter.(conversation.InteractiveAdapter).SendInteractive(context.Background(), ec, conversation.SendInteractiveRequest{
+		Header: "Cartão", Body: "Para seguir com seu atendimento, selecione alguma das opções abaixo", Footer: "Atendimento",
+		ListButton: "Menu", Style: "list", Options: options,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	menu := messaging.menus[0]
+	if menu.Button != "Menu" || menu.Body != "Cartão\n\nPara seguir com seu atendimento, selecione alguma das opções abaixo" || menu.Options[0].Description != "Rede e descontos" || menu.Options[2].Section != "Financeiro" {
+		t.Fatalf("menu = %+v", menu)
+	}
+	shown := out.Interactive
+	if shown == nil || shown.Kind != conversation.InteractiveKindList || shown.ButtonLabel != "Menu" || shown.Header != nil || shown.Body != menu.Body || shown.Footer != "Atendimento" {
+		t.Fatalf("interactive = %+v", shown)
+	}
+	rows := 0
+	for _, section := range shown.Sections {
+		rows += len(section.Rows)
+	}
+	if rows != uw.MaxListOptions || len(shown.Sections) != 2 || shown.Sections[0].Rows[0].Description != "Rede e descontos" {
+		t.Fatalf("sections = %+v, want only the %d rows WhatsApp shows", shown.Sections, uw.MaxListOptions)
+	}
+}
+
+func TestAListWithoutALabelUsesTheDefaultOne(t *testing.T) {
+	adapter, messaging, ec, _ := adapterFixture(t, nil)
+	out, err := adapter.(conversation.InteractiveAdapter).SendInteractive(context.Background(), ec, conversation.SendInteractiveRequest{
+		Body: "escolha", Style: "buttons", Options: []conversation.InteractiveOption{{ID: "a", Title: "Sim", Description: "não aparece em botões"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messaging.menus[0].Button != conversation.DefaultListButtonLabel {
+		t.Fatalf("button = %q", messaging.menus[0].Button)
+	}
+	if out.Interactive.Kind != conversation.InteractiveKindButtons || out.Interactive.Buttons[0] != (conversation.InteractiveAction{Kind: conversation.InteractiveActionReply, ID: "a", Title: "Sim"}) {
+		t.Fatalf("interactive = %+v", out.Interactive)
 	}
 }

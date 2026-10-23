@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"strings"
 	"time"
 
@@ -48,6 +49,9 @@ type MessageHistoryRecord struct {
 	MediaURL  string
 
 	Metadata json.RawMessage
+
+	Interactive      *InteractiveContent
+	InteractiveReply *InteractiveReply
 
 	SenderName   string
 	SenderAvatar string
@@ -108,6 +112,12 @@ func (r MessageHistoryRecord) Message() *Message {
 		mediaID := r.MediaID
 		message.MediaID = &mediaID
 		message.MediaType = r.MediaType
+	}
+	if err := message.AttachInteractive(r.Interactive); err != nil {
+		log.Printf("[history] interactive content not stored on %s message: %v", entryType, err)
+	}
+	if err := message.AttachInteractiveReply(r.InteractiveReply); err != nil {
+		log.Printf("[history] interactive reply not stored on %s message: %v", entryType, err)
 	}
 	if r.Read {
 		readAt := time.Now().UTC()

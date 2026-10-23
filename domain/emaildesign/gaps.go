@@ -75,3 +75,12 @@ func excerpt(text string) string {
 	}
 	return clipped
 }
+
+func SubjectGaps(subject string) []Gap {
+	issues := ValidateSubject(subject)
+	gaps := make([]Gap, 0, len(issues))
+	for _, issue := range issues {
+		gaps = append(gaps, Gap{Code: issue.Code, Field: issue.Field})
+	}
+	return gaps
+}

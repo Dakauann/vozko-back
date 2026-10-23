@@ -80,7 +80,7 @@ func (t *emailLookTool) Execute(ctx context.Context, cc copilot.Context, args ma
 	if !cc.SeesImages {
 		return failure(emailBlind)
 	}
-	if _, err := t.deps.openDesign(ctx, cc); err != nil {
+	if _, err := t.deps.openHolder(ctx, cc, forReading); err != nil {
 		return failure(err.Error())
 	}
 	live, err := readLive(ctx, cc)
@@ -91,11 +91,11 @@ func (t *emailLookTool) Execute(ctx context.Context, cc copilot.Context, args ma
 	if _, found := emaildesign.FindBlock(live.Document.Blocks, payload.FocusID); payload.FocusID != "" && !found {
 		return failure(fmt.Sprintf(emailFocusAbsent, payload.FocusID))
 	}
-	preview, err := t.deps.Designs.Render(emailcampaign_usecase.PreviewInput{Document: live.Document, Annotate: true, Draft: true})
+	preview, err := t.deps.Designs.Render(emailcampaign_usecase.PreviewInput{Document: live.shown(), Annotate: true, Draft: true})
 	if err != nil {
 		return failure(previewFailure(err))
 	}
-	page, reports := t.deps.inlineImages(ctx, live.Document, preview.HTML, maxInlinedBytes)
+	page, reports := t.deps.inlineImages(ctx, live.shown(), preview.HTML, maxInlinedBytes)
 	payload.HTML = page
 	reply, err := screencall.Run(ctx, cc, copilot.ScreenLook, payload, editorWords)
 	if err != nil {
@@ -110,7 +110,7 @@ func (t *emailLookTool) Execute(ctx context.Context, cc copilot.Context, args ma
 	}
 	data["images"] = reports
 	data["image_checks"] = imageChecks(reports)
-	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(data, live.Document), Images: reply.Images}
+	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(data, live), Images: reply.Images}
 }
 
 func previewFailure(err error) string {

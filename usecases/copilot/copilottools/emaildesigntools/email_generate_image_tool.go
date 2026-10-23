@@ -121,7 +121,7 @@ func (t *emailGenerateImageTool) Validate(ctx context.Context, cc copilot.Contex
 	if _, err := t.placement(args); err != nil {
 		return err
 	}
-	if _, err := t.deps.openDesign(ctx, cc); err != nil {
+	if _, err := t.deps.openHolder(ctx, cc, forEditing); err != nil {
 		return fmt.Errorf("%w: %v", copilottools.ErrInvalidArgs, err)
 	}
 	return t.inner.Validate(ctx, cc, args)
@@ -174,7 +174,8 @@ func (t *emailGenerateImageTool) Execute(ctx context.Context, cc copilot.Context
 	if err != nil {
 		return failure(err.Error())
 	}
-	if _, err := t.deps.openDesign(ctx, cc); err != nil {
+	h, err := t.deps.openHolder(ctx, cc, forEditing)
+	if err != nil {
 		return failure(err.Error())
 	}
 	live, err := readLive(ctx, cc)
@@ -199,7 +200,7 @@ func (t *emailGenerateImageTool) Execute(ctx context.Context, cc copilot.Context
 	if err != nil {
 		return failure(err.Error())
 	}
-	outcome, err := t.deps.applyBatch(ctx, cc, []emaildesign.Operation{op})
+	outcome, err := t.deps.applyBatch(ctx, cc, h, singleBatch(op))
 	if err != nil {
 		res := screencall.Result(cc, err)
 		res.Message += fmt.Sprintf(emailPlaceLater, result.MediaID, result.MediaURL)
@@ -211,5 +212,5 @@ func (t *emailGenerateImageTool) Execute(ctx context.Context, cc copilot.Context
 	}
 	data := outcome.data()
 	data["media_id"], data["media_url"], data["model"], data["block_id"] = result.MediaID, result.MediaURL, result.Model, blockID
-	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(data, outcome.document), Media: &copilot.Media{Kind: copilot.MediaImage, URL: result.MediaURL, MediaID: result.MediaID, Alt: job.Prompt}}
+	return copilot.Result{Status: copilot.StatusOK, Data: withOpenGaps(data, outcome.after), Media: &copilot.Media{Kind: copilot.MediaImage, URL: result.MediaURL, MediaID: result.MediaID, Alt: job.Prompt}}
 }
