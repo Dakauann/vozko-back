@@ -105,6 +105,35 @@ func TestTallyWaitsForASourceOnEveryWhatsAppSlot(t *testing.T) {
 	}
 }
 
+func TestEmptyFixedTextKeepsTheVariableEditableAndBlocksCreation(t *testing.T) {
+	for _, source := range []Source{SourceLeads, SourceList} {
+		t.Run(string(source), func(t *testing.T) {
+			bound := []Bound{{Variable: Variable{Key: "1", Source: campaign.BindLiteral, Value: "  "}, Name: "1"}}
+			if _, err := campaign.PlanBindings(Bindings(bound), 1, nil); err != nil {
+				t.Fatalf("draft binding plan: %v", err)
+			}
+			tally := NewTally(ChannelWhatsApp, source, bound)
+			tally.Add(Candidate{LeadID: "a", HasContact: true, Values: []string{"-"}})
+			count := tally.Count()
+			if count.Sendable != nil || !reflect.DeepEqual(count.Blockers, []Blocker{BlockerSourceRequired}) {
+				t.Fatalf("incomplete fixed text must block sending: %+v", count)
+			}
+			if len(count.Variables) != 1 || count.Variables[0].Source != campaign.BindLiteral {
+				t.Fatalf("variable metadata was lost: %+v", count.Variables)
+			}
+			if err := tally.Creatable(); err != ErrSourceRequired {
+				t.Fatalf("creation must stay blocked: %v", err)
+			}
+			bound[0].Value = "Dakauann"
+			complete := NewTally(ChannelWhatsApp, source, bound)
+			complete.Add(Candidate{LeadID: "a", HasContact: true, Values: []string{"Dakauann"}})
+			if err := complete.Creatable(); err != nil {
+				t.Fatalf("completed fixed text should be accepted: %v", err)
+			}
+		})
+	}
+}
+
 func TestTallyOfAListCountsEveryRowMissingAColumnWithoutHidingTheSendableNumber(t *testing.T) {
 	bounds := []Bound{{Variable: Variable{Key: "1"}}, {Variable: Variable{Key: "2"}}}
 	tally := NewTally(ChannelWhatsApp, SourceList, bounds)

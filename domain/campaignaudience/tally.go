@@ -125,7 +125,8 @@ func (t *Tally) sourcesRequired() bool {
 }
 
 func (t *Tally) skipsSlot(i int) bool {
-	return t.sourcesRequired() && Unbound(t.bound[i])
+	b := t.bound[i]
+	return Unbound(b) && (t.sourcesRequired() || b.Source == campaign.BindLiteral)
 }
 
 func (t *Tally) Add(c Candidate) Decision {
@@ -207,12 +208,10 @@ func (t *Tally) blockers() []Blocker {
 	if t.awaits != "" {
 		blockers = append(blockers, t.awaits)
 	}
-	if t.sourcesRequired() {
-		for _, b := range t.bound {
-			if Unbound(b) {
-				blockers = append(blockers, BlockerSourceRequired)
-				break
-			}
+	for i := range t.bound {
+		if t.skipsSlot(i) {
+			blockers = append(blockers, BlockerSourceRequired)
+			break
 		}
 	}
 	if t.undecided > 0 {

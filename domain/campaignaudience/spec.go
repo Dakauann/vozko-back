@@ -219,7 +219,7 @@ func Bind(slots []Slot, vars []Variable) ([]Bound, error) {
 const unboundPlaceholder = "-"
 
 func Unbound(b Bound) bool {
-	return b.Source == ""
+	return b.Source == "" || b.Source == campaign.BindLiteral && strings.TrimSpace(b.Value) == ""
 }
 
 func Bindings(bound []Bound) []campaign.VariableBinding {
