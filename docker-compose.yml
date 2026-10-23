@@ -2,6 +2,7 @@ services:
   app:
     build: .
     container_name: vozko-api
+    stop_grace_period: 30s
     logging:
       driver: json-file
       options:

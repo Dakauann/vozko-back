@@ -52,3 +52,7 @@ type Repository interface {
 
 	AggregateDailyCosts(date time.Time) ([]DailyCostRow, error)
 }
+
+type ChargeClock interface {
+	ChargedAt(referenceID string) (time.Time, bool, error)
+}

@@ -30,6 +30,7 @@ import (
 const messageSendDelay = 15 * time.Millisecond
 const pauseRequeueDelay = 3 * time.Second
 const balanceRequeueDelay = 5 * time.Second
+const interruptedSendGrace = 2 * time.Minute
 
 const (
 	internalWhatsAppCampaignErrNoBusinessPhoneConfigured = 900002
@@ -64,6 +65,8 @@ type messageConsumerUseCase struct {
 	choices                 choicestats.Recorder
 	clickLinkBase           string
 	clickTokens             *choicestats.ClickTokens
+	charges                 balance.ChargeClock
+	now                     func() time.Time
 
 	runner *campaignqueue.Runner
 }
@@ -330,8 +333,7 @@ func (c *messageConsumerUseCase) handle(msg campaignqueue.Message) campaignqueue
 
 	charge, consumeErr := c.ConsumeWhatsappTemplate.Execute(campaignItem.WorkspaceID, entry.ChargeReference(), templateCategory)
 	if consumeErr == nil && charge == nil {
-		fmt.Printf("whatsapp campaign consumer: %s was already charged by another delivery, not sending it again\n", entry.ChargeReference())
-		return campaignqueue.Drop
+		return c.settleEarlierCharge(campaignItem, entry, templateCategory)
 	}
 	if consumeErr != nil {
 		if errors.Is(consumeErr, balance.ErrInsufficientBalance) || errors.Is(consumeErr, balance.ErrBalanceNotFound) {
@@ -381,6 +383,41 @@ const (
 	sendResultAPIError
 	sendResultUnknown
 )
+
+func (c *messageConsumerUseCase) SetChargeClock(charges balance.ChargeClock) {
+	c.charges = charges
+}
+
+func (c *messageConsumerUseCase) settleEarlierCharge(campaignItem *wc.Campaign, entry *wce.WhatsAppCampaignEntry, templateCategory string) campaignqueue.Result {
+	reference := entry.ChargeReference()
+	if c.charges == nil {
+		fmt.Printf("CRITICAL: whatsapp campaign consumer, charge clock is nil, cannot tell whether %s is still being sent\n", reference)
+		return campaignqueue.RetryLater(interruptedSendGrace)
+	}
+	chargedAt, found, err := c.charges.ChargedAt(reference)
+	if err != nil || !found {
+		fmt.Printf("whatsapp campaign consumer: could not read when %s was charged (found=%v): %v, checking again later\n", reference, found, err)
+		return campaignqueue.RetryLater(interruptedSendGrace)
+	}
+	if age := c.currentTime().Sub(chargedAt); age < interruptedSendGrace {
+		fmt.Printf("whatsapp campaign consumer: %s was charged %s ago by another delivery that may still be sending, checking again later\n", reference, age.Round(time.Second))
+		return campaignqueue.RetryLater(interruptedSendGrace - age)
+	}
+	if err := c.ConsumeWhatsappTemplate.Refund(campaignItem.WorkspaceID, reference, templateCategory); err != nil {
+		fmt.Printf("whatsapp campaign consumer: could not refund interrupted send %s: %v, checking again later\n", reference, err)
+		return campaignqueue.RetryLater(interruptedSendGrace)
+	}
+	fmt.Printf("whatsapp campaign consumer: %s was charged at %s and its send never finished, refunded and failed\n", reference, chargedAt.Format(time.RFC3339))
+	c.updateEntryStatusWithError(entry.ID, wce.SendStatusFailed, "", wce.ErrorCodeSendInterrupted, "Envio interrompido antes da confirmação; o valor foi devolvido")
+	return campaignqueue.Drop
+}
+
+func (c *messageConsumerUseCase) currentTime() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
+}
 
 func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl *template.Template, entry *wce.WhatsAppCampaignEntry, phoneNumber string) sendTemplateMessageResult {
 	entryID := entry.ID

@@ -24,6 +24,8 @@ import (
 	workspace_plan_usecase "vozko/usecases/workspace_plan"
 )
 
+const queueDrainTimeout = 20 * time.Second
+
 func New() *Container {
 	c := &Container{formSenderRelay: node_executors.NewFormSenderRelay(), carrierSenderRelay: node_executors.NewCarrierSenderRelay(), platformEmailRelay: transactionalemail.NewRelay()}
 	c.cfg = config.LoadConfig()
@@ -142,6 +144,13 @@ func (c *Container) Start(port string) error {
 }
 
 func (c *Container) Shutdown() {
+	if c.services != nil && c.services.amqpPool != nil {
+		log.Println("waiting for queue deliveries in progress...")
+		if !c.services.amqpPool.DrainDeliveries(queueDrainTimeout) {
+			log.Printf("queue deliveries still running after %s, shutting down anyway", queueDrainTimeout)
+		}
+	}
+
 	log.Println("shutting down HTTP server...")
 	if err := c.server.Shutdown(); err != nil {
 		log.Printf("HTTP shutdown error: %v", err)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -36,6 +37,7 @@ type ConnectionPool struct {
 	entries      []*poolEntry
 	maxChPerConn int
 	closed       bool
+	deliveries   deliveryGate
 }
 
 type poolEntry struct {
@@ -133,6 +135,10 @@ func (p *ConnectionPool) Stats() (connections, channels int) {
 		channels += e.chanCount
 	}
 	return
+}
+
+func (p *ConnectionPool) DrainDeliveries(timeout time.Duration) bool {
+	return p.deliveries.drain(timeout)
 }
 
 func (p *ConnectionPool) Close() error {

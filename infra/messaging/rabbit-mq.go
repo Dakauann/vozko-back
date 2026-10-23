@@ -484,6 +484,11 @@ func (q *RabbitMQQueueSub) consumeLoop(topic string, ch *amqp.Channel, handler f
 		for msg := range msgs {
 			func(d amqp.Delivery) {
 				a := &amqpMessageAck{delivery: d}
+				if !q.pool.deliveries.enter() {
+					_ = a.Nack(true)
+					return
+				}
+				defer q.pool.deliveries.leave()
 				defer func() {
 					if r := recover(); r != nil {
 						log.Printf("rabbitmq: handler panic for topic %s: %v", topic, r)

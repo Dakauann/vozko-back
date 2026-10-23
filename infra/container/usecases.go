@@ -332,6 +332,13 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		log.Fatalf("[choice-stats] the campaign consumer cannot record template sends")
 	}
 	choiceSetter.SetChoiceStats(c.choiceStatsRecorder(), c.cfg.ShortLinkBaseURL, c.choiceClickTokens())
+	chargeClockSetter, ok := messageConsumerWCCampaignUC.(interface {
+		SetChargeClock(balance_domain.ChargeClock)
+	})
+	if !ok {
+		log.Fatalf("[campaign-consumer] the campaign consumer cannot settle interrupted sends")
+	}
+	chargeClockSetter.SetChargeClock(balance_repository.NewChargeClock(c.db))
 	dispatchWCCampaignUC := wc_usecase.NewDispatchCampaignUseCase(c.services.wcQueuePub, c.repositories.wcCampaign, c.repositories.wcEntry, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	quickSendWCCampaignUC, err := wc_usecase.NewQuickSendUseCase(c.repositories.wcCampaign, c.repositories.wcEntry, c.repositories.lead, c.services.wcQueuePub, messageConsumerWCCampaignUC, c.redisProvider.SharedState())
 	if err != nil {

@@ -802,6 +802,7 @@ type mockConsumeWhatsappTemplate struct {
 	zeroCost       bool
 	costErr        error
 	executeErr     error
+	refundErr      error
 	executeCalls   []string
 	executeRefs    []string
 	refundRefs     []string
@@ -830,6 +831,9 @@ func (m *mockConsumeWhatsappTemplate) Execute(_, reference, templateCategory str
 }
 
 func (m *mockConsumeWhatsappTemplate) Refund(_, reference, _ string) error {
+	if m.refundErr != nil {
+		return m.refundErr
+	}
 	m.mu.Lock()
 	m.refundRefs = append(m.refundRefs, reference)
 	m.mu.Unlock()

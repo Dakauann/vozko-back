@@ -10,6 +10,7 @@ const (
 	ErrorCodeMonthlySendCapReached = 900009
 	ErrorCodeSendWindowClosed      = 900010
 	ErrorCodeFormNotSendable       = 900011
+	ErrorCodeSendInterrupted       = 900012
 )
 
 func FailureCode(err error) int {
