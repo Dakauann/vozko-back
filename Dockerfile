@@ -49,9 +49,6 @@ COPY --from=builder /server /server
 
 COPY infra/notifications/templates /infra/notifications/templates
 
-# Copy static assets (keyboard background sound, logos) — resolved relative to WORKDIR "/"
-COPY assets /assets
-
 # Create recordings directory with proper permissions
 RUN mkdir -p /recordings /home/app && chown 65534:65534 /recordings /home/app
 
