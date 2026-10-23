@@ -39,7 +39,7 @@ func newChannelSender(deps SenderDeps) *channelSender {
 	}
 }
 
-func (s *channelSender) refuseUnreachableContact(ctx context.Context, run *workflow.WorkflowRun) error {
+func (s *channelSender) refuseUnreachableContact(ctx context.Context, run *workflow.WorkflowRun, ec *conversation.EntryContext) error {
 	if s.entryLeads == nil || s.leads == nil {
 		return fmt.Errorf("%w: the lead of this conversation cannot be checked", errRecipientRefused)
 	}
@@ -58,10 +58,36 @@ func (s *channelSender) refuseUnreachableContact(ctx context.Context, run *workf
 	if err != nil {
 		return fmt.Errorf("%w: lead %s could not be read: %w", errRecipientRefused, leadID, err)
 	}
-	if err := campaign.ContactRefusal(contact); err != nil {
+	if err := campaign.ContactReplyRefusal(contact, lastInboundOf(ec)); err != nil {
 		return s.lines.refuse(run, leadID, err)
 	}
 	return nil
+}
+
+func lastInboundOf(ec *conversation.EntryContext) *time.Time {
+	if ec == nil {
+		return nil
+	}
+	return ec.LastInboundAt
+}
+
+func (s *channelSender) CheckReply(ctx context.Context, run *workflow.WorkflowRun) error {
+	if s == nil || run == nil {
+		return nil
+	}
+	entryType := shared.EntryType(run.EntryType)
+	if entryType == shared.EntryTypeWhatsApp {
+		return s.whatsapp.CheckReply(run)
+	}
+	adapter := s.adapterFor(entryType)
+	if adapter == nil {
+		return nil
+	}
+	ec, err := adapter.ResolveEntry(ctx, run.EntryID)
+	if err != nil {
+		return err
+	}
+	return s.refuseUnreachableContact(ctx, run, ec)
 }
 
 type SentMessage struct {
@@ -117,7 +143,7 @@ func (s *channelSender) SendText(
 			run.ID, entryType, run.EntryID)
 		return nil, nil
 	}
-	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+	if err := s.refuseUnreachableContact(ctx, run, ec); err != nil {
 		return nil, err
 	}
 
@@ -194,7 +220,7 @@ func (s *channelSender) SendMedia(
 			run.ID, entryType, run.EntryID)
 		return nil, nil
 	}
-	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+	if err := s.refuseUnreachableContact(ctx, run, ec); err != nil {
 		return nil, err
 	}
 
@@ -318,7 +344,7 @@ func (s *channelSender) SendInteractive(
 			run.ID, run.EntryType, run.EntryID)
 		return nil, nil
 	}
-	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+	if err := s.refuseUnreachableContact(ctx, run, ec); err != nil {
 		return nil, err
 	}
 
@@ -426,7 +452,7 @@ func (s *channelSender) SendSegments(
 			run.ID, run.EntryType, len(segments))
 		return false, nil
 	}
-	if err := s.refuseUnreachableContact(ctx, run); err != nil {
+	if err := s.refuseUnreachableContact(ctx, run, ec); err != nil {
 		return false, err
 	}
 

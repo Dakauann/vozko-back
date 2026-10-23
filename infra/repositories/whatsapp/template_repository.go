@@ -12,11 +12,14 @@ import (
 
 const recordTemplateVersionSQL = `
 INSERT INTO whatsapp_template_versions (external_id, waba_id, content_hash, name, language, category, parameter_format, components, status, captured_at)
-SELECT external_id, waba_id, md5(concat_ws('|', name, language, category, parameter_format, COALESCE(components::text, ''))),
+SELECT external_id, waba_id, md5(concat_ws('|', name, language, category, parameter_format,
+       COALESCE(regexp_replace(components::text, ?, '\1', 'g'), ''))),
        name, language, category, parameter_format, components, status, now()
 FROM whatsapp_templates
 WHERE id = ? AND external_id <> ''
 ON CONFLICT (external_id, waba_id, content_hash) DO NOTHING`
+
+const signedMediaLinkQueryPattern = `(https://scontent[^"/?]*\.whatsapp\.net/[^"?]*)\?[^"]*`
 
 type repository struct {
 	db *gorm.DB
@@ -32,7 +35,7 @@ func (r *repository) Create(t *template.Template) error {
 		if err := tx.Create(&record).Error; err != nil {
 			return err
 		}
-		return tx.Exec(recordTemplateVersionSQL, record.ID).Error
+		return tx.Exec(recordTemplateVersionSQL, signedMediaLinkQueryPattern, record.ID).Error
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
@@ -55,6 +58,7 @@ func (r *repository) Update(templateID string, t *template.Template) error {
 		"language":         t.Language,
 		"category":         string(t.Category),
 		"status":           string(t.Status),
+		"quality":          t.Quality,
 		"parameter_format": paramFormat,
 		"components":       mapComponentsToSchema(t.Components),
 		"header_media_url": t.HeaderMediaURL,
@@ -68,7 +72,7 @@ func (r *repository) Update(templateID string, t *template.Template) error {
 		if result.RowsAffected == 0 {
 			return template.ErrTemplateNotFound
 		}
-		return tx.Exec(recordTemplateVersionSQL, templateID).Error
+		return tx.Exec(recordTemplateVersionSQL, signedMediaLinkQueryPattern, templateID).Error
 	})
 }
 
@@ -313,6 +317,7 @@ func mapToSchema(t *template.Template) *schema.WhatsAppTemplate {
 		Language:        t.Language,
 		Category:        string(t.Category),
 		Status:          string(t.Status),
+		Quality:         t.Quality,
 		ParameterFormat: paramFormat,
 		Components:      mapComponentsToSchema(t.Components),
 		HeaderMediaURL:  t.HeaderMediaURL,
@@ -419,6 +424,7 @@ func mapToDomain(record *schema.WhatsAppTemplate) *template.Template {
 		Language:        record.Language,
 		Category:        template.TemplateCategory(record.Category),
 		Status:          template.TemplateStatus(record.Status),
+		Quality:         record.Quality,
 		ParameterFormat: template.ParameterFormat(record.ParameterFormat),
 		Components:      components,
 		HeaderMediaURL:  record.HeaderMediaURL,

@@ -1,6 +1,8 @@
 package buttonaction_usecase
 
 import (
+	"errors"
+	"slices"
 	"testing"
 
 	"vozko/domain/buttonaction"
@@ -47,8 +49,20 @@ func TestTheDraftVerdictSaysWhichGatesNeedTheAcknowledgement(t *testing.T) {
 	if view.Gates != (buttonaction.ExitGates{CampaignAcknowledgementRequired: true}) {
 		t.Fatalf("view = %+v", view.Gates)
 	}
-	if len(view.AllowedKinds) != 3 || view.AllowedKinds[0] != buttonaction.KindOptOut || view.AllowedKinds[2] != buttonaction.KindClassify {
-		t.Fatalf("the draft lists %v", view.AllowedKinds)
+}
+
+func TestTheAllowedKindsDoNotDependOnAnyDraft(t *testing.T) {
+	f := newFixture(t)
+	kinds, err := f.svc.AllowedKinds(actor())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []buttonaction.Kind{buttonaction.KindOptOut, buttonaction.KindHandOff, buttonaction.KindClassify}
+	if !slices.Equal(kinds, want) {
+		t.Fatalf("allowed = %v, want %v", kinds, want)
+	}
+	if _, err := f.svc.AllowedKinds(Actor{WorkspaceID: actor().WorkspaceID}); !errors.Is(err, buttonaction.ErrActorRequired) {
+		t.Fatalf("an anonymous actor is refused, got %v", err)
 	}
 }
 

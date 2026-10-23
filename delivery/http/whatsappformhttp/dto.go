@@ -22,6 +22,10 @@ type DraftRequest struct {
 	Document      whatsappform.Document `json:"document"`
 }
 
+type PublishRequest struct {
+	MetaWABAIDs []string `json:"metaWabaIds" example:"810731194926395"`
+}
+
 type CheckRequest struct {
 	Document whatsappform.Document `json:"document"`
 }

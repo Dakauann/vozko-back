@@ -38,6 +38,8 @@ type Policy struct {
 	FailureRateStop     float64             `json:"failureRateStop"`
 	EngagementRateSlow  float64             `json:"engagementRateSlow"`
 	OnTemplateYellow    Action              `json:"onTemplateYellow"`
+	OnPhoneYellow       Action              `json:"onPhoneYellow"`
+	OnPhoneRed          Action              `json:"onPhoneRed"`
 	SendHours           *working_hours.Spec `json:"sendHours"`
 }
 
@@ -66,6 +68,8 @@ func PresetPolicy(preset Preset, sendHours *working_hours.Spec) Policy {
 		FailureRateStop:     0.15,
 		EngagementRateSlow:  0.03,
 		OnTemplateYellow:    Pause,
+		OnPhoneYellow:       SlowDown,
+		OnPhoneRed:          Pause,
 		SendHours:           sendHours,
 	}
 	switch preset {
@@ -75,6 +79,7 @@ func PresetPolicy(preset Preset, sendHours *working_hours.Spec) Policy {
 		p.FirstWaveSize, p.MaxWaveSize, p.Growth = 100, 2000, 1.5
 		p.ObserveWait = 3 * time.Hour
 		p.FailureRateSlow, p.FailureRateStop, p.EngagementRateSlow = 0.05, 0.10, 0.02
+		p.OnPhoneYellow, p.OnPhoneRed = Pause, Stop
 		return p
 	case Aggressive:
 		p := standard
@@ -87,6 +92,17 @@ func PresetPolicy(preset Preset, sendHours *working_hours.Spec) Policy {
 	default:
 		return standard
 	}
+}
+
+func (p Policy) WithPhoneDefaults() Policy {
+	preset := PresetPolicy(p.Preset, p.SendHours)
+	if p.OnPhoneYellow == "" {
+		p.OnPhoneYellow = preset.OnPhoneYellow
+	}
+	if p.OnPhoneRed == "" {
+		p.OnPhoneRed = preset.OnPhoneRed
+	}
+	return p
 }
 
 func (p Policy) Validate() error {
@@ -110,6 +126,8 @@ func (p Policy) Validate() error {
 	check(p.FailureRateSlow > 0 && p.FailureRateSlow < p.FailureRateStop && p.FailureRateStop <= 0.5, "failure rates must satisfy 0 < slow < stop <= 50%")
 	check(p.EngagementRateSlow > 0 && p.EngagementRateSlow < 1, "engagement rate must be between 0 and 100%")
 	check(p.OnTemplateYellow.protects(), "a yellow template must at least slow down")
+	check(p.OnPhoneYellow.protects(), "a yellow phone must at least slow down")
+	check(p.OnPhoneRed.protects(), "a red phone must at least slow down")
 	check(p.SendHours != nil, "send hours are required")
 	if p.SendHours != nil {
 		if err := p.SendHours.Validate(); err != nil {

@@ -136,10 +136,15 @@ func (p Postal) Validate() error {
 			return InvalidFieldError{Field: limit.field, Rule: RuleTooLong}
 		}
 	}
-	if n.ZipCode == "" && (n.City == "" || n.State == "") {
+	if !n.Locatable() {
 		return InvalidFieldError{Field: FieldZipCode, Rule: RuleZipOrCityRequired}
 	}
 	return nil
+}
+
+func (p Postal) Locatable() bool {
+	n := p.Normalize()
+	return n.ZipCode != "" || (n.City != "" && n.State != "")
 }
 
 func (p Postal) Missing() []Field {

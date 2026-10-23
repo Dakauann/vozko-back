@@ -197,7 +197,7 @@ func (c *Container) initJobRunner() {
 		cronPackage.CtxJobFunc(c.ads.GrantHealth.Execute),
 	)
 	forms := c.whatsappForms()
-	c.jobRunner.SetWhatsAppFormJobs(cronPackage.CtxJobFunc(forms.RecoverStuck), cronPackage.CtxJobFunc(forms.ReconcileAll))
+	c.jobRunner.SetWhatsAppFormJobs(cronPackage.CtxJobFunc(forms.RecoverStuck))
 	c.jobRunner.SetMediaGenerationJobs(cronPackage.CtxJobFunc(c.mediaGeneration().Service.Reap))
 
 	if c.audience != nil && c.audience.Enabled {

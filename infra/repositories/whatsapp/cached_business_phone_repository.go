@@ -290,6 +290,14 @@ func (r *CachedBusinessPhoneRepository) UpdateStatus(id string, status businessp
 	return err
 }
 
+func (r *CachedBusinessPhoneRepository) UpdateQualityRating(id string, rating businessphone.QualityRating) error {
+	err := r.inner.UpdateQualityRating(id, rating)
+	if err == nil {
+		r.invalidateByID(id)
+	}
+	return err
+}
+
 func (r *CachedBusinessPhoneRepository) UpdateCallsEnabled(id string, enabled bool) error {
 	err := r.inner.UpdateCallsEnabled(id, enabled)
 	if err == nil {

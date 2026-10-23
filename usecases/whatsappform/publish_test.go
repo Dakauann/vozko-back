@@ -10,6 +10,8 @@ import (
 	wf "vozko/domain/whatsappform"
 )
 
+var everyAccount = []string{wabaA, wabaB}
+
 func outcomeOn(t *testing.T, result PublishResult, waba string) PublishOutcome {
 	t.Helper()
 	for _, o := range result.Outcomes {
@@ -24,7 +26,7 @@ func outcomeOn(t *testing.T, result PublishResult, waba string) PublishOutcome {
 func TestPublishCreatesAndPublishesTheFlowOnEveryOwnedAccount(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "lead_capture")
-	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +59,7 @@ func TestPublishRefusesWithoutTheCapabilityOrWithAnInvalidDraft(t *testing.T) {
 	reader := newWorld(t, wf.CapabilityView)
 	reader.forms, reader.pubs = w.forms, w.pubs
 	reader.build()
-	if _, err := reader.svc.Publish(ctx, reader.viewer, detail.Form.ID); !errors.Is(err, wf.ErrForbidden) {
+	if _, err := reader.svc.Publish(ctx, reader.viewer, detail.Form.ID, everyAccount); !errors.Is(err, wf.ErrForbidden) {
 		t.Fatalf("err = %v", err)
 	}
 	doc := detail.Draft.Document
@@ -65,7 +67,7 @@ func TestPublishRefusesWithoutTheCapabilityOrWithAnInvalidDraft(t *testing.T) {
 	if _, err := w.svc.SaveDraft(ctx, w.viewer, detail.Form.ID, doc, detail.Draft.ID); err != nil {
 		t.Fatal(err)
 	}
-	_, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	_, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	var problems wf.Problems
 	if !errors.As(err, &problems) || len(problems) == 0 {
 		t.Fatalf("an invalid draft is never sent to Meta, got %v", err)
@@ -88,7 +90,7 @@ func TestPublishRecheckBindingsAgainstTodaysCustomFields(t *testing.T) {
 	}
 	w.defs.defs = w.defs.defs[:2]
 	w.build()
-	_, err = w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	_, err = w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	var problems wf.Problems
 	if !errors.As(err, &problems) || problems[0].Code != wf.ProblemBindingUnknown {
 		t.Fatalf("a binding to a field deleted since the save must block publishing, got %v", err)
@@ -99,26 +101,44 @@ func TestPublishWithoutAnOwnedOfficialNumber(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
 	w.phones.phones = []*businessphone.WhatsAppBusinessPhoneNumber{phone("p4", otherWS, "waba-other", businessphone.ProviderMeta)}
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); !errors.Is(err, wf.ErrNoEligibleAccount) {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); !errors.Is(err, wf.ErrNoEligibleAccount) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestNumbersOutsideTheMetaProviderAreReportedNotPublished(t *testing.T) {
+func TestPublishReachesOnlyTheChosenAccounts(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
-	w.phones.phones = append(w.phones.phones, phone("p360", ws, wabaD360, businessphone.ProviderDialog360))
-	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, []string{wabaB, wabaB})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o := outcomeOn(t, result, wabaD360); o.Code != wf.ErrorCode(wf.ErrProviderUnsupported) {
-		t.Fatalf("outcome = %+v", o)
+	if got := w.gateway.ops(); !reflect.DeepEqual(got, []string{"create:" + wabaB, "get:" + wabaB}) {
+		t.Fatalf("calls = %v", got)
 	}
-	for _, op := range w.gateway.ops() {
-		if op == "create:"+wabaD360 {
-			t.Fatal("no Meta call on a provider that is not supported")
+	if len(result.Outcomes) != 1 || len(w.pubs.rows) != 1 {
+		t.Fatalf("outcomes %+v publications %d", result.Outcomes, len(w.pubs.rows))
+	}
+}
+
+func TestPublishRefusesAChoiceItCannotHonourBeforeCallingMeta(t *testing.T) {
+	w := builder(t)
+	detail := w.create("Cadastro", "")
+	w.phones.phones = append(w.phones.phones, phone("p360", ws, wabaD360, businessphone.ProviderDialog360))
+	for name, tc := range map[string]struct {
+		chosen []string
+		want   error
+	}{
+		"nothing chosen":        {nil, wf.ErrNoAccountChosen},
+		"unsupported provider":  {[]string{wabaA, wabaD360}, wf.ErrProviderUnsupported},
+		"account of another ws": {[]string{wabaA, "waba-other"}, wf.ErrNotOwner},
+	} {
+		if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, tc.chosen); !errors.Is(err, tc.want) {
+			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+	if ops := w.gateway.ops(); len(ops) != 0 || len(w.pubs.rows) != 0 {
+		t.Fatalf("a refused choice reaches no account, got %v", ops)
 	}
 }
 
@@ -130,11 +150,11 @@ func TestDisconnectedNumbersDoNotMakeAnAccountEligible(t *testing.T) {
 			p.Status = businessphone.StatusDisconnected
 		}
 	}
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
-		t.Fatal(err)
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, []string{wabaB}); !errors.Is(err, wf.ErrNotOwner) {
+		t.Fatalf("err = %v", err)
 	}
-	if got := w.gateway.ops(); !reflect.DeepEqual(got, []string{"create:" + wabaA, "get:" + wabaA}) {
-		t.Fatalf("calls = %v", got)
+	if len(w.gateway.ops()) != 0 {
+		t.Fatal("an account with no connected number is never published on")
 	}
 }
 
@@ -142,7 +162,7 @@ func TestMetaValidationErrorsLandOnTheBlocks(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
 	w.gateway.createValid = []wf.MetaValidationError{{Message: "Label is too long", Paths: []string{"screens[0].layout.children[0].label"}}}
-	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +181,7 @@ func TestMetaValidationErrorsLandOnTheBlocks(t *testing.T) {
 func TestRepublishUploadsTheNewVersionToTheSameFlow(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	first := w.pubs.only(t, wabaA)
@@ -172,7 +192,7 @@ func TestRepublishUploadsTheNewVersionToTheSameFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.gateway.calls = nil
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	if got := w.gateway.ops(); !reflect.DeepEqual(got, []string{"upload:" + wabaA, "publish:" + wabaA, "upload:" + wabaB, "publish:" + wabaB}) {
@@ -187,7 +207,7 @@ func TestRepublishUploadsTheNewVersionToTheSameFlow(t *testing.T) {
 func TestAnUploadMetaRefusesKeepsTheLiveVersion(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	doc := detail.Draft.Document
@@ -196,7 +216,7 @@ func TestAnUploadMetaRefusesKeepsTheLiveVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.gateway.uploadValid = []wf.MetaValidationError{{Message: "bad"}}
-	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +232,7 @@ func TestAPublicationLeftCreatingIsRecoveredByNameNotCreatedTwice(t *testing.T) 
 	w := builder(t)
 	detail := w.create("Cadastro", "")
 	w.gateway.createErr = errors.New("connection reset")
-	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +243,7 @@ func TestAPublicationLeftCreatingIsRecoveredByNameNotCreatedTwice(t *testing.T) 
 	w.gateway.flows[wabaA+"/"+name] = wf.RemoteFlow{ID: "flow-meta-made", Name: name, Status: "DRAFT"}
 	w.gateway.createErr = nil
 	w.gateway.calls = nil
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	ops := w.gateway.ops()
@@ -239,7 +259,7 @@ func TestRecoverStuckPublishesWhatAnInterruptedRunLeft(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
 	w.gateway.createErr = errors.New("timeout")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	w.gateway.createErr = nil
@@ -258,7 +278,7 @@ func TestMetaRejectionsAreFailedOutcomes(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
 	w.gateway.createErr = &wf.MetaRejection{Code: 139000, Message: "Blocked by integrity"}
-	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID)
+	result, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +290,7 @@ func TestMetaRejectionsAreFailedOutcomes(t *testing.T) {
 func TestDeprecate(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.svc.Deprecate(ctx, w.viewer, detail.Form.ID, wabaA); err != nil {
@@ -287,7 +307,7 @@ func TestDeprecate(t *testing.T) {
 func TestArchiveDeprecatesEveryLivePublicationFirst(t *testing.T) {
 	w := builder(t)
 	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	w.gateway.deprecErr = errors.New("meta down")
@@ -333,44 +353,15 @@ func TestPreviewUsesItsOwnDraftFlow(t *testing.T) {
 	}
 }
 
-func TestReconcilePublishesThePublishedVersionOnANewAccount(t *testing.T) {
-	w := builder(t)
-	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
-		t.Fatal(err)
-	}
-	w.phones.phones = append(w.phones.phones, phone("p9", ws, "waba-new", businessphone.ProviderMeta))
-	if err := w.svc.Reconcile(ctx, ws); err != nil {
-		t.Fatal(err)
-	}
-	if pub := w.pubs.only(t, "waba-new"); pub.Status != wf.PublicationPublished || pub.VersionID != detail.Draft.ID {
-		t.Fatalf("publication = %+v", pub)
-	}
-}
-
-func TestReconcileAllVisitsEveryWorkspaceWithAPublishedForm(t *testing.T) {
-	w := builder(t)
-	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
-		t.Fatal(err)
-	}
-	w.phones.phones = append(w.phones.phones, phone("p9", ws, "waba-new", businessphone.ProviderMeta))
-	if err := w.svc.ReconcileAll(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if pub := w.pubs.only(t, "waba-new"); pub.Status != wf.PublicationPublished {
-		t.Fatalf("publication = %+v", pub)
-	}
-}
-
 func TestPublishTargetsNameTheAccountsAPublishWillReach(t *testing.T) {
 	w := builder(t)
 	w.phones.phones = append(w.phones.phones, phone("p360", ws, wabaD360, businessphone.ProviderDialog360))
+	w.phones.phones[1].BusinessVerificationStatus = "verified"
 	targets, err := w.svc.PublishTargets(ctx, w.viewer)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []PublishTarget{{MetaWABAID: wabaD360}, {MetaWABAID: wabaA, Supported: true}, {MetaWABAID: wabaB, Supported: true}}
+	want := []PublishTarget{{MetaWABAID: wabaD360}, {MetaWABAID: wabaA, Supported: true, BusinessVerified: true}, {MetaWABAID: wabaB, Supported: true}}
 	if !reflect.DeepEqual(targets, want) {
 		t.Fatalf("targets = %+v", targets)
 	}

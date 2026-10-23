@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"strings"
+	"time"
 
 	"vozko/domain/shared"
 )
@@ -41,6 +42,10 @@ type PauseWorkflowUseCase interface {
 
 type PublishWorkflowUseCase interface {
 	Publish(ctx context.Context, workflowID string) (*Workflow, error)
+}
+
+type WorkflowLinter interface {
+	Lint(ctx context.Context, w *Workflow) (LintReport, error)
 }
 
 type WorkflowVersionsUseCase interface {
@@ -181,6 +186,7 @@ type TriggerEvent struct {
 	EntryType   string
 	TriggerType TriggerType
 	StartedBy   string
+	SentAt      time.Time
 	Data        map[string]interface{}
 	Reply       *ReplyRouting
 	Occurrence  string

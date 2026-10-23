@@ -42,6 +42,7 @@ func (r *Repository) FindPolicy(campaignID string) (*sc.Policy, error) {
 	if err := json.Unmarshal(rows[0].Policy, &policy); err != nil {
 		return nil, fmt.Errorf("decode wave policy of %s: %w", campaignID, err)
 	}
+	policy = policy.WithPhoneDefaults()
 	return &policy, nil
 }
 

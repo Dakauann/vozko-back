@@ -25,6 +25,13 @@ func TestAStaleSaveIsRefusedWithItsCode(t *testing.T) {
 	}
 }
 
+func TestTheAllowedKindsAreReadWithoutAnyDraft(t *testing.T) {
+	rec := serve(t, &fakeService{}, http.MethodGet, "/whatsapp/button-action-kinds", "", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"allowedKinds":["opt_out","classify"]`) {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+}
+
 func TestTheDraftVerdictReadsTheDraftAndStoresNothing(t *testing.T) {
 	svc := &fakeService{}
 	body := `{"category":"MARKETING","header":"Aviso","body":"Ofertas da semana","footer":"Responda /sair",` +
@@ -34,7 +41,7 @@ func TestTheDraftVerdictReadsTheDraftAndStoresNothing(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
-	for _, want := range []string{`"verdict":{"state":"none"`, `"templateExitRequired":true`, `"campaignAcknowledgementRequired":true`, `"allowedKinds":["opt_out"]`} {
+	for _, want := range []string{`"verdict":{"state":"none"`, `"templateExitRequired":true`, `"campaignAcknowledgementRequired":true`} {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("body misses %s: %s", want, rec.Body)
 		}

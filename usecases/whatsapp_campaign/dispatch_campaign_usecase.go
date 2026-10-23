@@ -133,24 +133,12 @@ func (c *dispatchCampaignUseCase) Dispatch(input wc.DispatchCampaignInput) error
 		if c.messageConsumerUC != nil {
 			switch action {
 			case wc.CampaignActionStart:
-				if currentStatus == wc.CampaignStatusPaused {
-					if c.messageConsumerUC.IsSubscribed(input.CampaignID) {
-						if err := c.messageConsumerUC.ResumeCampaignConsumer(input.CampaignID); err != nil {
-							log.Printf("failed to resume whatsapp campaign consumer: %v", err)
-							return err
-						}
-					} else {
-						if err := c.messageConsumerUC.SubscribeToCampaign(input.CampaignID); err != nil {
-							if _, revertErr := c.CampaignRepo.UpdateStatus(input.CampaignID, revertStatus, targetStatus); revertErr != nil {
-								return fmt.Errorf("failed to subscribe to campaign: %w (status revert failed: %v)", err, revertErr)
-							}
-							return fmt.Errorf("failed to subscribe to campaign: %w", err)
-						}
+				if currentStatus == wc.CampaignStatusPaused && c.messageConsumerUC.IsSubscribed(input.CampaignID) {
+					if err := c.messageConsumerUC.ResumeCampaignConsumer(input.CampaignID); err != nil {
+						log.Printf("failed to resume whatsapp campaign consumer: %v", err)
+						return err
 					}
-					return nil
-				}
-
-				if err := c.messageConsumerUC.SubscribeToCampaign(input.CampaignID); err != nil {
+				} else if err := c.messageConsumerUC.SubscribeToCampaign(input.CampaignID); err != nil {
 					if _, revertErr := c.CampaignRepo.UpdateStatus(input.CampaignID, revertStatus, targetStatus); revertErr != nil {
 						return fmt.Errorf("failed to subscribe to campaign: %w (status revert failed: %v)", err, revertErr)
 					}

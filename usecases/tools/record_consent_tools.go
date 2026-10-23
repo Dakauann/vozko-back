@@ -81,7 +81,7 @@ func citedMessageParameter(description string) tools.Parameter {
 func (t *recordOptOutTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:               RecordOptOutToolName,
-		DisplayName:        "Registrar opt-out",
+		DisplayName:        "Parar de receber templates (opt-out)",
 		DisplayDescription: "Registra que o lead pediu para não receber mais mensagens, com a mensagem dele como prova.",
 		Description: `Registra que este lead pediu para não receber mais mensagens (opt-out), com a mensagem dele como prova.
 
@@ -256,9 +256,9 @@ type consentAnswers struct {
 }
 
 var optOutAnswers = consentAnswers{
-	changed:   "Opt-out registrado. Novos envios de campanhas, fluxos e modelos para este lead serão recusados.",
+	changed:   "O lead parou de receber templates. Novos envios de campanhas, fluxos e modelos para este lead serão recusados.",
 	unchanged: "Este lead já tinha pedido para não receber mensagens; nada mudou.",
-	context:   "Opt-out do lead registrado",
+	context:   "O lead parou de receber templates",
 }
 
 var grantAnswers = consentAnswers{

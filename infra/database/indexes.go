@@ -573,7 +573,7 @@ func PerformanceIndexSQL(name string) (string, bool) {
 
 func CreatePerformanceIndexes(db *gorm.DB) {
 	for _, idx := range slices.Concat(performanceIndexes(), tiktokPerformanceIndexes(), googlePerformanceIndexes(), choiceStatsPerformanceIndexes()) {
-		if err := db.Exec(idx.sql).Error; err != nil {
+		if err := createUnlessPresent(db, idx); err != nil {
 			log.Printf("[indexes] Warning: failed to create %s: %v", idx.name, err)
 		}
 	}

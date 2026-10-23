@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"vozko/domain/conversation"
 	lead_domain "vozko/domain/lead"
@@ -20,6 +21,10 @@ type answeredWindow struct {
 func (w *answeredWindow) IsWindowOpen(leadID, businessPhoneID string) (bool, error) {
 	w.asks = append(w.asks, leadID+"|"+businessPhoneID)
 	return w.open, w.err
+}
+
+func (w *answeredWindow) GetLastMessageTime(string, string) (*time.Time, error) {
+	return nil, w.err
 }
 
 type entryWithout struct {

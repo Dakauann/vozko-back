@@ -49,7 +49,6 @@ type FormRepository interface {
 	Rename(ctx context.Context, workspaceID, formID, name, description string, at time.Time) error
 	SetPublished(ctx context.Context, workspaceID, formID, versionID string, at time.Time) error
 	Archive(ctx context.Context, workspaceID, formID string, at time.Time) error
-	PublishedWorkspaces(ctx context.Context) ([]string, error)
 }
 
 type VersionRepository interface {

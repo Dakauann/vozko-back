@@ -17,10 +17,16 @@ type DraftTemplate struct {
 }
 
 type DraftVerdictView struct {
-	Template     *template.Template
-	Verdict      buttonaction.Verdict
-	Gates        buttonaction.ExitGates
-	AllowedKinds []buttonaction.Kind
+	Template *template.Template
+	Verdict  buttonaction.Verdict
+	Gates    buttonaction.ExitGates
+}
+
+func (s *Service) AllowedKinds(a Actor) ([]buttonaction.Kind, error) {
+	if err := requireActor(a); err != nil {
+		return nil, err
+	}
+	return s.allowedKinds(a), nil
 }
 
 func (s *Service) DraftExitVerdict(_ context.Context, a Actor, draft DraftTemplate) (*DraftVerdictView, error) {
@@ -34,10 +40,9 @@ func (s *Service) DraftExitVerdict(_ context.Context, a Actor, draft DraftTempla
 	}
 	verdict := buttonaction.ExitVerdict(probe, settings, buttonaction.CampaignRoutes{})
 	return &DraftVerdictView{
-		Template:     probe,
-		Verdict:      verdict,
-		Gates:        buttonaction.ExitGatesOf(draft.Category, verdict),
-		AllowedKinds: s.allowedKinds(a),
+		Template: probe,
+		Verdict:  verdict,
+		Gates:    buttonaction.ExitGatesOf(draft.Category, verdict),
 	}, nil
 }
 

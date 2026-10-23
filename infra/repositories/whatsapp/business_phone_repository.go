@@ -270,6 +270,19 @@ func (r *businessPhoneRepository) UpdateStatus(phoneID string, status businessph
 	return nil
 }
 
+func (r *businessPhoneRepository) UpdateQualityRating(phoneID string, rating businessphone.QualityRating) error {
+	result := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
+		Where("id = ?", phoneID).
+		Update("quality_rating", string(rating))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return businessphone.ErrPhoneNumberNotFound
+	}
+	return nil
+}
+
 func (r *businessPhoneRepository) UpdateBusinessProfile(phoneID string, profile businessphone.BusinessProfile) error {
 	result := r.db.Model(&schema.WhatsAppBusinessPhoneNumber{}).
 		Where("id = ?", phoneID).

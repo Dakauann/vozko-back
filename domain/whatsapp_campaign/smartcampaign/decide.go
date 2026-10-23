@@ -25,7 +25,7 @@ type Decision struct {
 	Action    Action    `json:"action"`
 	Findings  []Finding `json:"findings,omitempty"`
 	NextSize  int       `json:"nextSize,omitempty"`
-	WaitUntil time.Time `json:"waitUntil,omitempty"`
+	WaitUntil time.Time `json:"waitUntil,omitzero"`
 }
 
 func (d Decision) Primary() (Finding, bool) {

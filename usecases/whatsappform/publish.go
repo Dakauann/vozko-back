@@ -36,9 +36,10 @@ type Preview struct {
 }
 
 type account struct {
-	metaWABAID string
-	flow       wf.FlowAccount
-	supported  bool
+	metaWABAID       string
+	flow             wf.FlowAccount
+	supported        bool
+	businessVerified bool
 }
 
 func publishable(p *businessphone.WhatsAppBusinessPhoneNumber, workspaceID string) bool {
@@ -55,17 +56,13 @@ func (s *Service) accounts(ctx context.Context, workspaceID string) ([]account, 
 		if !publishable(p, workspaceID) {
 			continue
 		}
-		current, seen := byWABA[p.WABAId]
-		if seen && current.supported {
-			continue
+		current := byWABA[p.WABAId]
+		current.metaWABAID = p.WABAId
+		current.businessVerified = current.businessVerified || p.BusinessVerified()
+		if !current.supported && p.Provider.Normalized() == businessphone.ProviderMeta && p.AccessToken != "" {
+			current.supported, current.flow = true, wf.FlowAccount{MetaWABAID: p.WABAId, AccessToken: p.AccessToken}
 		}
-		next := account{metaWABAID: p.WABAId}
-		if p.Provider.Normalized() == businessphone.ProviderMeta && p.AccessToken != "" {
-			next.supported, next.flow = true, wf.FlowAccount{MetaWABAID: p.WABAId, AccessToken: p.AccessToken}
-		}
-		if !seen || next.supported {
-			byWABA[p.WABAId] = next
-		}
+		byWABA[p.WABAId] = current
 	}
 	out := make([]account, 0, len(byWABA))
 	for _, a := range byWABA {
@@ -80,6 +77,10 @@ func (s *Service) accountFor(ctx context.Context, workspaceID, metaWABAID string
 	if err != nil {
 		return account{}, err
 	}
+	return pick(accounts, metaWABAID)
+}
+
+func pick(accounts []account, metaWABAID string) (account, error) {
 	for _, a := range accounts {
 		if a.metaWABAID == metaWABAID {
 			if !a.supported {
@@ -119,7 +120,34 @@ func (s *Service) prepared(ctx context.Context, form *wf.Form, versionID string)
 	return publishing{form: form, version: *version, sources: compiled.SourceMap}, nil
 }
 
-func (s *Service) Publish(ctx context.Context, a Actor, formID string) (PublishResult, error) {
+func (s *Service) chosen(ctx context.Context, workspaceID string, metaWABAIDs []string) ([]account, error) {
+	accounts, err := s.accounts(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if len(accounts) == 0 {
+		return nil, wf.ErrNoEligibleAccount
+	}
+	out := make([]account, 0, len(metaWABAIDs))
+	seen := map[string]bool{}
+	for _, id := range metaWABAIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		acct, err := pick(accounts, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, acct)
+	}
+	if len(out) == 0 {
+		return nil, wf.ErrNoAccountChosen
+	}
+	return out, nil
+}
+
+func (s *Service) Publish(ctx context.Context, a Actor, formID string, metaWABAIDs []string) (PublishResult, error) {
 	if err := s.require(a, wf.CapabilityView, wf.CapabilityPublish); err != nil {
 		return PublishResult{}, err
 	}
@@ -127,16 +155,13 @@ func (s *Service) Publish(ctx context.Context, a Actor, formID string) (PublishR
 	if err != nil {
 		return PublishResult{}, err
 	}
+	accounts, err := s.chosen(ctx, a.WorkspaceID, metaWABAIDs)
+	if err != nil {
+		return PublishResult{}, err
+	}
 	job, err := s.prepared(ctx, form, form.DraftVersionID)
 	if err != nil {
 		return PublishResult{}, err
-	}
-	accounts, err := s.accounts(ctx, a.WorkspaceID)
-	if err != nil {
-		return PublishResult{}, err
-	}
-	if len(accounts) == 0 {
-		return PublishResult{}, wf.ErrNoEligibleAccount
 	}
 	result := PublishResult{}
 	for _, acct := range accounts {
@@ -196,9 +221,6 @@ func (s *Service) save(ctx context.Context, pub *wf.Publication) error {
 }
 
 func (s *Service) publishOn(ctx context.Context, job publishing, acct account) PublishOutcome {
-	if !acct.supported {
-		return failure(acct, "", wf.ErrProviderUnsupported)
-	}
 	pub, fresh, err := s.claim(ctx, job, acct)
 	if err != nil {
 		return failure(acct, "", err)
@@ -440,39 +462,6 @@ func (s *Service) previewOn(ctx context.Context, job publishing, acct account) (
 	return Preview{URL: shown.PreviewURL, ExpiresAt: shown.PreviewExpiresAt}, nil
 }
 
-func (s *Service) Reconcile(ctx context.Context, workspaceID string) error {
-	summaries, err := s.deps.Forms.List(ctx, wf.FormQuery{WorkspaceID: workspaceID})
-	if err != nil {
-		return err
-	}
-	accounts, err := s.accounts(ctx, workspaceID)
-	if err != nil {
-		return err
-	}
-	var failures []error
-	for _, summary := range summaries {
-		form := summary.Form
-		if form.PublishedVersionID == "" || form.ArchivedAt != nil {
-			continue
-		}
-		job, err := s.prepared(ctx, &form, form.PublishedVersionID)
-		if err != nil {
-			failures = append(failures, fmt.Errorf("form %s: %w", form.ID, err))
-			continue
-		}
-		for _, acct := range accounts {
-			_, err := s.deps.Publications.Find(ctx, workspaceID, form.ID, acct.metaWABAID)
-			if !errors.Is(err, wf.ErrPublicationNotFound) || !acct.supported {
-				continue
-			}
-			if o := s.publishOn(ctx, job, acct); o.Error != "" {
-				failures = append(failures, fmt.Errorf("form %s on %s: %s", form.ID, acct.metaWABAID, o.Error))
-			}
-		}
-	}
-	return errors.Join(failures...)
-}
-
 func (s *Service) RecoverStuck(ctx context.Context) error {
 	stuck, err := s.deps.Publications.ListStuck(ctx, s.now().Add(-stuckAfter), stuckBatch)
 	if err != nil {
@@ -511,23 +500,10 @@ func (s *Service) recover(ctx context.Context, pub wf.Publication) error {
 	return nil
 }
 
-func (s *Service) ReconcileAll(ctx context.Context) error {
-	workspaces, err := s.deps.Forms.PublishedWorkspaces(ctx)
-	if err != nil {
-		return err
-	}
-	var failures []error
-	for _, workspaceID := range workspaces {
-		if err := s.Reconcile(ctx, workspaceID); err != nil {
-			failures = append(failures, fmt.Errorf("workspace %s: %w", workspaceID, err))
-		}
-	}
-	return errors.Join(failures...)
-}
-
 type PublishTarget struct {
-	MetaWABAID string `json:"metaWabaId"`
-	Supported  bool   `json:"supported"`
+	MetaWABAID       string `json:"metaWabaId"`
+	Supported        bool   `json:"supported"`
+	BusinessVerified bool   `json:"businessVerified"`
 }
 
 func (s *Service) PublishTargets(ctx context.Context, a Actor) ([]PublishTarget, error) {
@@ -540,7 +516,7 @@ func (s *Service) PublishTargets(ctx context.Context, a Actor) ([]PublishTarget,
 	}
 	out := make([]PublishTarget, 0, len(accounts))
 	for _, acct := range accounts {
-		out = append(out, PublishTarget{MetaWABAID: acct.metaWABAID, Supported: acct.supported})
+		out = append(out, PublishTarget{MetaWABAID: acct.metaWABAID, Supported: acct.supported, BusinessVerified: acct.businessVerified})
 	}
 	return out, nil
 }

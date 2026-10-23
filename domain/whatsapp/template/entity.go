@@ -165,6 +165,7 @@ type Template struct {
 	ExternalID      string              `json:"externalId"`
 	WABAId          string              `json:"wabaId"`
 	WABAName        string              `json:"wabaName,omitempty"`
+	Quality         string              `json:"quality,omitempty"`
 	Name            string              `json:"name"`
 	Language        string              `json:"language"`
 	Category        TemplateCategory    `json:"category"`
@@ -221,6 +222,15 @@ func (t *Template) AddComponent(componentType, format, text string, parameters [
 		Text:       text,
 		Parameters: parameters,
 	})
+}
+
+func (t *Template) RateQuality(score string) bool {
+	score = strings.ToUpper(strings.TrimSpace(score))
+	if score == "" || score == t.Quality {
+		return false
+	}
+	t.Quality = score
+	return true
 }
 
 func (t *Template) IsApproved() bool {

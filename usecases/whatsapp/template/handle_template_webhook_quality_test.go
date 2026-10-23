@@ -54,6 +54,20 @@ func TestQualityUpdateIsRecordedAtTheMomentMetaReports(t *testing.T) {
 	}
 }
 
+func TestQualityUpdateIsStoredOnTheTemplate(t *testing.T) {
+	repo := newMockTemplateRepo()
+	seedTemplate(repo, "t1", "2096955574574516", "waba1", "refiliaxao_taxa_zero_correta", template.TemplateStatusApproved, template.TemplateCategoryUtility)
+	uc := NewHandleTemplateWebhook(repo, &fakeQualityRecorder{})
+
+	err := uc.Execute(signalPayload(template.FieldMessageTemplateQualityUpdate, 1791990878, template.TemplateWebhookValue{
+		MessageTemplateID: 2096955574574516, PreviousQualityScore: "YELLOW", NewQualityScore: "red",
+	}))
+
+	if err != nil || repo.templates["t1"].Quality != "RED" {
+		t.Fatalf("err %v, quality %q", err, repo.templates["t1"].Quality)
+	}
+}
+
 func TestStatusAndCategoryUpdatesAreRecordedButComponentsAreNot(t *testing.T) {
 	recorder := &fakeQualityRecorder{}
 	repo := newMockTemplateRepo()

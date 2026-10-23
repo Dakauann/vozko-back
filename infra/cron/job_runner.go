@@ -92,9 +92,8 @@ func (r *JobRunner) SetAdsJobs(recentSync, settledSync, reviewRefresh, fundsWatc
 	r.addChannelJob("ads_grant_health", 6*time.Hour, grantHealth)
 }
 
-func (r *JobRunner) SetWhatsAppFormJobs(recoverStuck, reconcile ctxJob) {
+func (r *JobRunner) SetWhatsAppFormJobs(recoverStuck ctxJob) {
 	r.addChannelJob("whatsapp_form_recover", 15*time.Minute, recoverStuck)
-	r.addChannelJob("whatsapp_form_reconcile", 24*time.Hour, reconcile)
 }
 
 func (r *JobRunner) SetMediaGenerationJobs(reaper ctxJob) {

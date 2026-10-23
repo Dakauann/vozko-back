@@ -114,6 +114,10 @@ func (m *ownershipBusinessPhoneRepo) BatchUpdate(phones []*businessphone.WhatsAp
 	return nil
 }
 
+func (*ownershipBusinessPhoneRepo) UpdateQualityRating(string, businessphone.QualityRating) error {
+	return nil
+}
+
 func (m *ownershipBusinessPhoneRepo) UpdateStatus(string, businessphone.Status) error { return nil }
 
 func (m *ownershipBusinessPhoneRepo) UpdateBusinessProfile(string, businessphone.BusinessProfile) error {

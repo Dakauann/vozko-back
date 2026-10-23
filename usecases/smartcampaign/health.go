@@ -88,6 +88,9 @@ func (h *HealthReader) Phone(ctx context.Context, phoneID string, fresh bool) (s
 	if change, ok := latest[quality.SignalStatus]; ok {
 		state.ChangedAt = change.OccurredAt
 	}
+	if change, ok := latest[quality.SignalQuality]; ok {
+		state.QualityAt = change.OccurredAt
+	}
 	return state, nil
 }
 

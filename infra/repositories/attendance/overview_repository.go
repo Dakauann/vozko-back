@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"vozko/domain/actor"
 	"vozko/domain/attendance"
 	"vozko/infra/database"
 	"vozko/infra/database/sqlexpr"
@@ -637,7 +638,7 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 	sql := `
 		SELECT
 			m.assigned_user_id AS actor_id,
-			COALESCE(NULLIF(u.username, ''), NULLIF(u.email, ''), m.assigned_user_id) AS display_name,
+			COALESCE(NULLIF(u.username, ''), NULLIF(u.email, ''), NULLIF(wf.name, ''), NULLIF(ag.name, ''), m.assigned_user_id) AS display_name,
 			COALESCE(u.email, '') AS email,
 			COUNT(*) FILTER (WHERE m.status_bucket = 'ongoing') AS open_count,
 			COUNT(*) FILTER (WHERE m.status_bucket = 'pending') AS pending_count,
@@ -661,9 +662,11 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 			) AS avg_response_secs
 		FROM ` + msgTmp + ` m
 		LEFT JOIN users u ON u.id::text = m.assigned_user_id
+		LEFT JOIN workflows wf ON '` + actor.WorkflowPrefix + `' || wf.id::text = m.assigned_user_id
+		LEFT JOIN agents ag ON '` + actor.AIPrefix + `' || ag.id::text = m.assigned_user_id
 		WHERE m.assigned_user_id <> ''
 		  AND m.total_msgs > 0
-		GROUP BY m.assigned_user_id, u.username, u.email
+		GROUP BY m.assigned_user_id, u.username, u.email, wf.name, ag.name
 		ORDER BY resolved_count DESC, open_count DESC
 	`
 	type row struct {
@@ -703,7 +706,7 @@ func overviewByMemberTX(tx *gorm.DB, workspaceID, msgTmp string, filter attendan
 		}
 		out = append(out, attendance.MemberRow{
 			ActorID:         rw.ActorID,
-			ActorKind:       attendance.ActorKindHuman,
+			ActorKind:       attendance.ActorKindOf(rw.ActorID),
 			DisplayName:     rw.DisplayName,
 			Email:           rw.Email,
 			Presence:        state,
@@ -756,16 +759,17 @@ func openPresenceTX(tx *gorm.DB, workspaceID string) (map[string]string, error) 
 func aiMemberRowsTX(tx *gorm.DB, workspaceID string, filter attendance.OverviewFilter) ([]attendance.MemberRow, error) {
 	query := newSQLQuery().add(`
 		SELECT s.agent_id::text AS actor_id,
-			COALESCE(NULLIF(a.name, ''), s.agent_id::text) AS display_name,
+			COALESCE(NULLIF(a.name, ''), NULLIF(wf.name, ''), s.agent_id::text) AS display_name,
 			COUNT(*) FILTER (WHERE s.outcome = '' OR s.ended_at IS NULL) AS open_count,
 			COUNT(*) FILTER (WHERE s.outcome = 'contained' OR s.outcome = 'handed_off') AS resolved_count,
 			COUNT(*) AS sessions
 		FROM ai_attendance_sessions s
 		LEFT JOIN agents a ON a.id::text = s.agent_id
+		LEFT JOIN workflows wf ON wf.id::text = s.agent_id
 		WHERE s.workspace_id = ?::uuid
 	`, workspaceID)
 	query.addQuery(aiSessionScope("s.", filter))
-	query.add(" GROUP BY s.agent_id, a.name ORDER BY sessions DESC")
+	query.add(" GROUP BY s.agent_id, a.name, wf.name ORDER BY sessions DESC")
 
 	type aiRow struct {
 		ActorID       string

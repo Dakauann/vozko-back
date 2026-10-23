@@ -48,6 +48,41 @@ func TestTemplateVersionIntegration_ANewVersionOnlyWhenTheTextChanges(t *testing
 	}
 }
 
+func TestTemplateVersionIntegration_ARefreshedMediaLinkIsNotANewVersion(t *testing.T) {
+	db := qualityIntegrationDB(t)
+	if err := db.AutoMigrate(&schema.WhatsAppTemplate{}, &schema.WhatsAppTemplateVersion{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewTemplateRepository(db)
+	header := func(link string) []template.TemplateComponent {
+		return []template.TemplateComponent{
+			{Type: "HEADER", Format: "IMAGE", Example: &template.TemplateExample{HeaderHandle: []string{link}}},
+			{Type: "BODY", Text: "Olá {{1}}"},
+		}
+	}
+	tmpl := &template.Template{ExternalID: "5678", WABAId: "waba-1", Name: "mensalidade", Language: "pt_BR",
+		Category: template.TemplateCategoryUtility, Status: template.TemplateStatusApproved,
+		Components: header("https://scontent.whatsapp.net/v/t61/123_n.jpg?_nc_gid=first&oh=a")}
+
+	if err := repo.Create(tmpl); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	tmpl.Components = header("https://scontent.whatsapp.net/v/t61/123_n.jpg?_nc_gid=second&oh=b")
+	if err := repo.SyncFromExternal(tmpl); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	tmpl.Components = header("https://scontent.whatsapp.net/v/t61/456_n.jpg?_nc_gid=third&oh=c")
+	if err := repo.SyncFromExternal(tmpl); err != nil {
+		t.Fatalf("new image: %v", err)
+	}
+
+	var versions int64
+	db.Model(&schema.WhatsAppTemplateVersion{}).Where("external_id = ?", "5678").Count(&versions)
+	if versions != 2 {
+		t.Fatalf("only the new image is a new version, got %d", versions)
+	}
+}
+
 func TestQualityHistoryIntegration_LatestValueWinsPerPhone(t *testing.T) {
 	db := qualityIntegrationDB(t)
 	repo := NewQualityChangeRepository(db)
@@ -105,5 +140,48 @@ func TestOptOutIntegration_ARedeliveredWebhookIsStoredOnce(t *testing.T) {
 	db.Find(&stored)
 	if len(stored) != 1 || stored[0].RecipientHash == "5511999990001" {
 		t.Fatalf("stored %+v", stored)
+	}
+}
+
+func TestTemplateListIntegration_ReadsTheQualityStoredOnTheTemplate(t *testing.T) {
+	db := qualityIntegrationDB(t)
+	if err := db.AutoMigrate(&schema.WhatsAppTemplate{}, &schema.WhatsAppTemplateVersion{}, &schema.WhatsAppBusinessAccount{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewTemplateRepository(db)
+	created := map[string]*template.Template{}
+	for _, ext := range []string{"rated", "unrated"} {
+		tmpl := &template.Template{ExternalID: ext, WABAId: "waba-1", Name: ext, Language: "pt_BR",
+			Category: template.TemplateCategoryUtility, Status: template.TemplateStatusApproved, Components: []template.TemplateComponent{{Type: "BODY", Text: "Oi"}}}
+		if err := repo.Create(tmpl); err != nil {
+			t.Fatalf("create %s: %v", ext, err)
+		}
+		created[ext] = tmpl
+	}
+	rated := created["rated"]
+	rated.RateQuality("green")
+	if err := repo.Update(rated.ID, rated); err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+	rated.RateQuality("RED")
+	if err := repo.Update(rated.ID, rated); err != nil {
+		t.Fatalf("re-rate: %v", err)
+	}
+
+	page, err := repo.List(template.ListInput{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	got := map[string]string{}
+	for _, item := range page.Items {
+		got[item.ExternalID] = item.Quality
+	}
+	if len(got) != 2 || got["rated"] != "RED" || got["unrated"] != "" {
+		t.Fatalf("qualities %v", got)
+	}
+	var versions int64
+	db.Model(&schema.WhatsAppTemplateVersion{}).Where("external_id = ?", "rated").Count(&versions)
+	if versions != 1 {
+		t.Fatalf("a new rating is not a new text version, got %d", versions)
 	}
 }

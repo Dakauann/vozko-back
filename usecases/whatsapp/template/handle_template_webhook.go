@@ -166,6 +166,13 @@ func (h *handleTemplateWebhook) handleQualityUpdate(wabaID string, v template.Te
 	log.Printf("[template-webhook] quality_update: template %s (%s) quality %s → %s",
 		v.MessageTemplateName, externalID, v.PreviousQualityScore, v.NewQualityScore)
 
+	tmpl := h.findTemplate(externalID, wabaID)
+	if tmpl == nil || !tmpl.RateQuality(v.NewQualityScore) {
+		return
+	}
+	if err := h.repo.Update(tmpl.ID, tmpl); err != nil {
+		log.Printf("[template-webhook] quality_update: failed to update template %s: %v", externalID, err)
+	}
 }
 
 func (h *handleTemplateWebhook) handleComponentsUpdate(wabaID string, v template.TemplateWebhookValue) {

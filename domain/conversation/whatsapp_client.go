@@ -472,6 +472,8 @@ type Template struct {
 	Language        string
 	ParameterFormat string
 	Components      []TemplateComponent
+	QualityScore    string
+	QualityScoreAt  int64
 }
 
 type TemplateComponent struct {

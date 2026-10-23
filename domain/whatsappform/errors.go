@@ -20,6 +20,7 @@ var (
 	ErrNotOwner               = errors.New("whatsappform: only the workspace that owns the number can use forms on it")
 	ErrProviderUnsupported    = errors.New("whatsappform: forms are not available for this number's provider")
 	ErrNoEligibleAccount      = errors.New("whatsappform: the workspace owns no connected official number to publish on")
+	ErrNoAccountChosen        = errors.New("whatsappform: choose at least one WhatsApp account to publish on")
 	ErrNoPublication          = errors.New("whatsappform: the form is not published on this number's WhatsApp account")
 	ErrPublicationNotSendable = errors.New("whatsappform: Meta is not delivering this form right now")
 	ErrPublicationNotFound    = errors.New("whatsappform: publication not found")
@@ -102,6 +103,7 @@ var errorCodes = []struct {
 	{ErrNotOwner, "whatsapp_form_not_owner"},
 	{ErrProviderUnsupported, "whatsapp_form_provider_unsupported"},
 	{ErrNoEligibleAccount, "whatsapp_form_no_account"},
+	{ErrNoAccountChosen, "whatsapp_form_no_account_chosen"},
 	{ErrNoPublication, "whatsapp_form_not_published"},
 	{ErrPublicationNotSendable, "whatsapp_form_not_sendable"},
 	{ErrPublicationNotFound, "whatsapp_form_publication_not_found"},
@@ -123,7 +125,7 @@ var errorCodes = []struct {
 }
 
 var inputRefusals = []error{
-	ErrNameRequired, ErrNameTooLong, ErrStarterUnknown, ErrDescriptionTooLong, ErrDocumentInvalid, ErrCopyInvalid, ErrListQueryInvalid, ErrWorkspaceRequired,
+	ErrNameRequired, ErrNameTooLong, ErrStarterUnknown, ErrDescriptionTooLong, ErrDocumentInvalid, ErrCopyInvalid, ErrListQueryInvalid, ErrWorkspaceRequired, ErrNoAccountChosen,
 }
 
 func ErrorCode(err error) string {

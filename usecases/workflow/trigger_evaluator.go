@@ -211,14 +211,14 @@ func (te *triggerEvaluator) wakeRunForMessage(run *workflow.WorkflowRun, w *work
 
 func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event workflow.TriggerEvent) bool {
 
-	if campaignWfID, ok := event.Data["campaign_workflow_id"].(string); ok && campaignWfID != "" {
+	if campaignWfID, ok := event.Data[workflow.DataKeyCampaignWorkflowID].(string); ok && campaignWfID != "" {
 		if w.ID != campaignWfID {
 			slog.Debug("workflow.trigger.skip_campaign_linked_elsewhere", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("linked_workflow_id", campaignWfID))...)
 			return false
 		}
 	}
 
-	if accountWfID, ok := event.Data["account_workflow_id"].(string); ok && accountWfID != "" {
+	if accountWfID, ok := event.Data[workflow.DataKeyAccountWorkflowID].(string); ok && accountWfID != "" {
 		if w.ID != accountWfID {
 			slog.Debug("workflow.trigger.skip_account_linked_elsewhere", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("linked_workflow_id", accountWfID))...)
 			return false

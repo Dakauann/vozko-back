@@ -3,6 +3,7 @@ package formtools
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"vozko/domain/copilot"
@@ -19,6 +20,16 @@ var statusWords = map[wf.PublicationStatus]string{
 	wf.PublicationDeprecated: "descontinuado", wf.PublicationFailed: "falhou",
 }
 
+type publishArgs struct {
+	FormID   string   `json:"form_id" id:"true" desc:"form_id exato de list_whatsapp_forms"`
+	FormName string   `json:"form_name" desc:"ou o nome exato do formulário, quando não tiver o form_id"`
+	Accounts []string `json:"accounts" desc:"ids das contas do WhatsApp (WABA) onde publicar; pergunte ao usuário quando houver mais de uma"`
+}
+
+func (p publishArgs) ref() formRef {
+	return formRef{FormID: p.FormID, FormName: p.FormName}
+}
+
 type publishWhatsAppFormTool struct {
 	gate
 	deps FormDeps
@@ -30,10 +41,10 @@ func NewPublishWhatsAppFormTool(deps FormDeps) copilot.Tool {
 
 func (t *publishWhatsAppFormTool) Definition() tools.Definition {
 	return copilottools.Definition("publish_whatsapp_form",
-		"Publica o rascunho de um formulário do WhatsApp na Meta, em todas as contas do WhatsApp oficial conectadas ao workspace; depois disso ele pode "+
+		"Publica o rascunho de um formulário do WhatsApp na Meta, nas contas do WhatsApp oficial escolhidas em accounts; depois disso ele pode "+
 			"ser enviado nas conversas. O rascunho é conferido antes da aprovação, e um rascunho com problemas volta com a lista para corrigir. "+
 			"Depois da aprovação devolve o resultado de cada conta. Só depois da aprovação do usuário.",
-		formRef{})
+		publishArgs{})
 }
 
 func activeForm(ctx context.Context, forms FormService, cc copilot.Context, ref formRef) (whatsappform_usecase.FormDetail, error) {
@@ -48,13 +59,16 @@ func activeForm(ctx context.Context, forms FormService, cc copilot.Context, ref 
 }
 
 func (t *publishWhatsAppFormTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {
-	ref, err := copilottools.ValidateArgs[formRef](nil, cc, args)
+	in, err := copilottools.ValidateArgs[publishArgs](nil, cc, args)
 	if err != nil {
 		return err
 	}
-	detail, err := activeForm(ctx, t.deps.Forms, cc, ref)
+	detail, err := activeForm(ctx, t.deps.Forms, cc, in.ref())
 	if err != nil {
 		return refusalOf(err)
+	}
+	if len(in.Accounts) == 0 {
+		return fmt.Errorf("%w: diga em accounts em quais contas publicar; contas do workspace: %s", copilottools.ErrInvalidArgs, t.destination(ctx, cc, detail.Publications, nil))
 	}
 	if len(detail.Draft.Problems) > 0 {
 		return fmt.Errorf("%w: o rascunho tem problemas; corrija e proponha de novo: %s", copilottools.ErrInvalidArgs, problemsText(detail.Draft.Problems))
@@ -63,20 +77,20 @@ func (t *publishWhatsAppFormTool) Validate(ctx context.Context, cc copilot.Conte
 }
 
 func (t *publishWhatsAppFormTool) Describe(ctx context.Context, cc copilot.Context, args map[string]interface{}) []copilot.Field {
-	var ref formRef
-	copilottools.BindArgs(args, &ref)
-	detail, err := ref.resolve(ctx, t.deps.Forms, actorOf(cc))
+	var in publishArgs
+	copilottools.BindArgs(args, &in)
+	detail, err := in.ref().resolve(ctx, t.deps.Forms, actorOf(cc))
 	if err != nil {
 		return []copilot.Field{{Key: "form", Value: "formulário desconhecido ou sem acesso"}}
 	}
 	return []copilot.Field{
 		{Key: "form", Value: detail.Form.Name},
 		{Key: "draft", Value: fmt.Sprintf("versão %d", detail.Draft.Number)},
-		{Key: "destination", Value: copilottools.ClipText(t.destination(ctx, cc, detail.Publications), copilot.MaxFieldRunes)},
+		{Key: "destination", Value: copilottools.ClipText(t.destination(ctx, cc, detail.Publications, in.Accounts), copilot.MaxFieldRunes)},
 	}
 }
 
-func (t *publishWhatsAppFormTool) destination(ctx context.Context, cc copilot.Context, pubs []wf.Publication) string {
+func (t *publishWhatsAppFormTool) destination(ctx context.Context, cc copilot.Context, pubs []wf.Publication, chosen []string) string {
 	targets, err := t.deps.Forms.PublishTargets(ctx, actorOf(cc))
 	if err != nil || len(targets) == 0 {
 		return "nenhuma conta do WhatsApp oficial conectada ao workspace"
@@ -87,14 +101,22 @@ func (t *publishWhatsAppFormTool) destination(ctx context.Context, cc copilot.Co
 	}
 	parts := make([]string, 0, len(targets))
 	for _, target := range targets {
+		if len(chosen) > 0 && !slices.Contains(chosen, target.MetaWABAID) {
+			continue
+		}
+		var state string
 		switch status, published := current[target.MetaWABAID]; {
 		case !target.Supported:
-			parts = append(parts, target.MetaWABAID+" (provedor sem suporte, fica de fora)")
+			state = "provedor sem suporte a formulários"
 		case published:
-			parts = append(parts, target.MetaWABAID+" ("+statusOf(status)+")")
+			state = statusOf(status)
 		default:
-			parts = append(parts, target.MetaWABAID+" (primeira publicação)")
+			state = "primeira publicação"
 		}
+		if target.Supported && !target.BusinessVerified {
+			state += "; empresa não verificada na Meta, a Meta pode recusar"
+		}
+		parts = append(parts, target.MetaWABAID+" ("+state+")")
 	}
 	return strings.Join(parts, ", ")
 }
@@ -107,16 +129,16 @@ func statusOf(status wf.PublicationStatus) string {
 }
 
 func (t *publishWhatsAppFormTool) Execute(ctx context.Context, cc copilot.Context, args map[string]interface{}) copilot.Result {
-	var ref formRef
-	if err := copilottools.DecodeArgs(args, &ref); err != nil {
+	var in publishArgs
+	if err := copilottools.DecodeArgs(args, &in); err != nil {
 		return copilot.Result{Status: copilot.StatusError, Message: err.Error()}
 	}
 	a := actorOf(cc)
-	detail, err := ref.resolve(ctx, t.deps.Forms, a)
+	detail, err := in.ref().resolve(ctx, t.deps.Forms, a)
 	if err != nil {
 		return failure(err)
 	}
-	result, err := t.deps.Forms.Publish(ctx, a, detail.Form.ID)
+	result, err := t.deps.Forms.Publish(ctx, a, detail.Form.ID, in.Accounts)
 	if err != nil {
 		return failure(err)
 	}

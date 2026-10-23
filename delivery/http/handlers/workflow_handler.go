@@ -28,6 +28,7 @@ type WorkflowHandler struct {
 	testNodeUC         workflow_usecase.TestNodeUseCase
 	catalogFn          func() []workflow.NodeDefinition
 	nodePins           NodePinner
+	linter             workflow.WorkflowLinter
 	lastTriggerInput   LastTriggerInputReader
 	variables          NodeVariableReader
 }
@@ -59,6 +60,7 @@ func NewWorkflowHandler(
 	testNodeUC workflow_usecase.TestNodeUseCase,
 	catalogFn func() []workflow.NodeDefinition,
 	nodePins NodePinner,
+	linter workflow.WorkflowLinter,
 	lastTriggerInput LastTriggerInputReader,
 	variables NodeVariableReader,
 ) *WorkflowHandler {
@@ -73,6 +75,7 @@ func NewWorkflowHandler(
 		testNodeUC:         testNodeUC,
 		catalogFn:          catalogFn,
 		nodePins:           nodePins,
+		linter:             linter,
 		lastTriggerInput:   lastTriggerInput,
 		variables:          variables,
 	}

@@ -543,6 +543,7 @@ func (c *Container) initHandlers() {
 			c.useCases.testWorkflowNode,
 			c.useCases.nodeCatalogFn,
 			workflow_usecase.NewNodePinsUseCase(c.useCases.scopedWorkflows, c.useCases.getWorkflowRun),
+			c.workflowLinter(),
 			c.lastTriggerInput(),
 			c.workflowVariables(),
 		),

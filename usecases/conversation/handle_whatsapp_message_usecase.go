@@ -219,33 +219,31 @@ func (uc *handleWhatsAppMessageUseCase) fireWorkflowTriggers(agentCtx *agentCont
 	uc.triggerEvaluator.Evaluate(event)
 
 	if isFirstInboundMessage(history) {
-		first := event
-		first.TriggerType = workflow_domain.TriggerFirstMessage
-		first.Reply = nil
-		uc.triggerEvaluator.Evaluate(first)
+		uc.triggerEvaluator.Evaluate(event.AsFirstMessage())
 	}
 }
 
-func (uc *handleWhatsAppMessageUseCase) messageEvent(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, inboundWamid string, messageText string, msgType string, mediaType string, selected *workflow_domain.OptionSelection) workflow_domain.TriggerEvent {
-	data := workflow_domain.InboundMessageData(messageText, msgType, mediaType, selected)
-	contact := ""
+func (uc *handleWhatsAppMessageUseCase) messageEvent(agentCtx *agentContext, entryID string, entryType shared.EntryType, senderNumber string, inboundWamid string, sentAt time.Time, messageText string, media conversation.MediaType, selected *workflow_domain.OptionSelection) workflow_domain.TriggerEvent {
+	trigger := workflow_domain.InboundTrigger{
+		EntryID:          entryID,
+		EntryType:        string(entryType),
+		Text:             messageText,
+		SentAt:           sentAt,
+		Media:            media,
+		Selection:        selected,
+		TriggerMessageID: uc.storedInboundID(inboundWamid),
+	}
 	if agentCtx != nil && agentCtx.wcLeadRecord != nil {
-		contact = agentCtx.wcLeadRecord.Number
+		trigger.ContactNumber = agentCtx.wcLeadRecord.Number
 	}
-	if contact == "" {
-		contact = lead.NormalizeWhatsAppNumber(senderNumber)
+	if trigger.ContactNumber == "" {
+		trigger.ContactNumber = lead.NormalizeWhatsAppNumber(senderNumber)
 	}
-	workflow_domain.ApplyContactNumber(data, contact)
-	workflow_domain.ApplyTriggerMessage(data, uc.storedInboundID(inboundWamid))
-	workspaceID := ""
 	if agentCtx != nil {
-		workspaceID = agentCtx.getWorkspaceID()
-		if cID, _ := agentCtx.getCampaignInfo(); cID != "" {
-			data["campaign_id"] = cID
-		}
-
-		if ref := agentCtx.automation.WorkflowRef(); agentCtx.wcCampaign != nil && ref != "" {
-			data["campaign_workflow_id"] = ref
+		trigger.WorkspaceID = agentCtx.getWorkspaceID()
+		trigger.CampaignID, _ = agentCtx.getCampaignInfo()
+		if agentCtx.wcCampaign != nil {
+			trigger.WorkflowID = agentCtx.automation.WorkflowRef()
 		}
 
 		if agentCtx.wcEntry != nil {
@@ -263,17 +261,11 @@ func (uc *handleWhatsAppMessageUseCase) messageEvent(agentCtx *agentContext, ent
 			if agentCtx.wcCampaign != nil {
 				campvars["campaign_name"] = agentCtx.wcCampaign.Name
 			}
-			data["campvars"] = campvars
+			trigger.CampaignVars = campvars
 		}
 	}
 
-	return workflow_domain.TriggerEvent{
-		WorkspaceID: workspaceID,
-		EntryID:     entryID,
-		EntryType:   string(entryType),
-		TriggerType: workflow_domain.TriggerMessageReceived,
-		Data:        data,
-	}
+	return trigger.Event()
 }
 
 func isFirstInboundMessage(history []*conversation.Message) bool {
@@ -710,9 +702,9 @@ func (uc *handleWhatsAppMessageUseCase) Execute(ctx context.Context, payload *co
 	selected := selectedOptionFromMessage(message, exit.Selection)
 
 	resumedByForm := formReply != nil && formReply.ResumedRunID != ""
-	inboundEvent := uc.messageEvent(agentCtx, entryID, entryType, message.From, message.ID, message.Text.Body, "text", "", selected)
+	inboundEvent := uc.messageEvent(agentCtx, entryID, entryType, message.From, message.ID, parseWhatsAppTimestamp(message.Timestamp), message.Text.Body, "", selected)
 	route := uc.routeInbound(agentCtx, inboundEvent, resumedByForm)
-	uc.deliverInbound(agentCtx, route, inboundEvent, history, agentCtx.firesWorkflow() && !resumedByForm)
+	uc.deliverInbound(agentCtx, route, inboundEvent, history, agentCtx.firesWorkflow() && !resumedByForm && !exit.OptedOut)
 
 	if agentCtx != nil && (agentCtx.skipResponse || exit.OptedOut || !route.Consumer.AgentReplies()) {
 		log.Printf("[whatsapp-usecase] message recorded, but skipping AI response (agent responses disabled=%v, lead opted out=%v, consumer=%s)", agentCtx.skipResponse, exit.OptedOut, route.Consumer)
@@ -1966,7 +1958,7 @@ func (uc *handleWhatsAppMessageUseCase) handleMediaMessage(
 		}
 	}
 
-	inboundEvent := uc.messageEvent(agentCtx, entryID, entryType, message.From, message.ID, captionOrFilename, "media", mediaType, nil)
+	inboundEvent := uc.messageEvent(agentCtx, entryID, entryType, message.From, message.ID, parseWhatsAppTimestamp(message.Timestamp), captionOrFilename, conversation.MediaType(mediaType), nil)
 	route := uc.routeInbound(agentCtx, inboundEvent, false)
 
 	if extractedText != "" && !route.Consumer.AgentReplies() {
@@ -2232,7 +2224,7 @@ func (uc *handleWhatsAppMessageUseCase) handleAudioMessage(ctx context.Context, 
 
 	ctx = withAgentTurn(ctx, agentCtx)
 
-	inboundEvent := uc.messageEvent(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, transcribedText, "audio", "audio", nil)
+	inboundEvent := uc.messageEvent(agentCtx, audioEntryID, audioEntryType, message.From, message.ID, parseWhatsAppTimestamp(message.Timestamp), transcribedText, conversation.MediaTypeAudio, nil)
 	route := uc.routeInbound(agentCtx, inboundEvent, false)
 
 	if agentCtx != nil && (agentCtx.skipResponse || !route.Consumer.AgentReplies()) {

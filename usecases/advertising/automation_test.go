@@ -115,6 +115,25 @@ func TestPolledLeadsReachTheCRMOnceByPhone(t *testing.T) {
 	}
 }
 
+func TestSyncNowLooksBackTheWholeWindowWhileThePollOnlyLooksSinceItsLastRun(t *testing.T) {
+	w, uc, forms, _, _ := formsWorld()
+	lastPoll := testNow.Add(-10 * time.Minute)
+	forms.byID["f-1"] = &ads.TrackedForm{MetaID: "f-1", WorkspaceID: "ws-1", AdAccountID: "acc-1", PageID: "page-1", LastPolledAt: &lastPoll}
+
+	if _, err := uc.Sync(context.Background(), "ws-1", "f-1"); err != nil {
+		t.Fatal(err)
+	}
+	forms.byID["f-1"].LastPolledAt = &lastPoll
+	if err := uc.PollAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []time.Time{testNow.Add(-leadLookback), lastPoll.Add(-time.Hour)}
+	if !slices.EqualFunc(w.gateway.leadsSince, want, time.Time.Equal) {
+		t.Fatalf("asked since %v, want %v", w.gateway.leadsSince, want)
+	}
+}
+
 func TestFormsOfAnotherWorkspaceAreInvisible(t *testing.T) {
 	_, uc, forms, _, _ := formsWorld()
 	forms.byID["f-1"] = &ads.TrackedForm{MetaID: "f-1", WorkspaceID: "ws-2"}

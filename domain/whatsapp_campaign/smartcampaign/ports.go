@@ -30,8 +30,8 @@ type State struct {
 	Hold             *Hold     `json:"hold,omitempty"`
 	Waiting          *Decision `json:"waiting,omitempty"`
 	ResumedAfterHold bool      `json:"resumedAfterHold"`
-	UnreadSince      time.Time `json:"unreadSince,omitempty"`
-	DueAt            time.Time `json:"dueAt,omitempty"`
+	UnreadSince      time.Time `json:"unreadSince,omitzero"`
+	DueAt            time.Time `json:"dueAt,omitzero"`
 }
 
 func (s State) History(currentSize, slowStreak int) History {

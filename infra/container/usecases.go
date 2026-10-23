@@ -704,8 +704,8 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 			Get:    whatsapp_template_usecase.NewGetTemplateUseCase(c.repositories.whatsappTemplate),
 			Create: whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader, c.formPublications()),
 		}),
-		syncWhatsAppTemplates:         whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
-		reconcileWhatsAppTemplates:    whatsapp_template_usecase.NewReconcileTemplatesUseCase(c.repositories.businessPhone, whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory)),
+		syncWhatsAppTemplates:         whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.repositories.whatsappQualityHistory, c.repositories.whatsappQuality),
+		reconcileWhatsAppTemplates:    whatsapp_template_usecase.NewReconcileTemplatesUseCase(c.repositories.businessPhone, whatsapp_template_usecase.NewSyncTemplatesUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory, c.repositories.whatsappQualityHistory, c.repositories.whatsappQuality)),
 		reconcileWhatsAppEntitlements: businessphone_usecase.NewReconcileWhatsAppEntitlementsUseCase(c.repositories.ownerPhoneReader, batchEntitlementResolverUC, addonPhoneDeactivatorUC),
 		syncWhatsAppTemplate:          whatsapp_template_usecase.NewSyncTemplateUseCase(c.repositories.whatsappTemplate, c.services.whatsappClientFactory),
 		createWhatsAppTemplate:        whatsapp_template_usecase.NewCreateTemplateUseCase(c.services.whatsappClientFactory, c.repositories.whatsappTemplate, setHeaderMediaUC, c.services.fileReader, c.formPublications()),
@@ -1334,6 +1334,11 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		SetDealFunnels(workflow_usecase.DealFunnels)
 	}); ok {
 		setter.SetDealFunnels(opportunitySvc)
+	}
+	if setter, ok := c.useCases.activateWorkflow.(interface {
+		SetCustomFieldRepo(workflow_usecase.CustomFieldLister)
+	}); ok {
+		setter.SetCustomFieldRepo(c.repositories.customField)
 	}
 	if setter, ok := c.useCases.activateWorkflow.(interface {
 		SetDepartmentRepo(workspace_department_domain.Repository)

@@ -232,6 +232,13 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	isWhatsApp := entryType == shared.EntryTypeWhatsApp
 	isSegmented := responseMode == "segmented"
 
+	if e.sender.Supports(ctx.Run) {
+		if err := e.sender.CheckReply(context.Background(), ctx.Run); failsTheStep(err) {
+			log.Printf("%s reply refused before calling the model: %v", logPrefix, err)
+			return nil, err
+		}
+	}
+
 	var typingClient conversation.WhatsAppClient
 	var latestWamid string
 	if isWhatsApp && e.waSender != nil {

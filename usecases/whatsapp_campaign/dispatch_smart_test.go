@@ -117,3 +117,28 @@ func TestAStopWhoseQueueSurvivesIsRevertedAndReported(t *testing.T) {
 		t.Fatalf("status = %s, want paused as before", got)
 	}
 }
+
+func TestResumingAPausedCampaignThatWasSmartQueuesItsPendingEntries(t *testing.T) {
+	r := newDispatchRig(wc.CampaignStatusPaused)
+
+	if err := r.dispatch.Dispatch(wc.DispatchCampaignInput{CampaignID: "c1", Action: wc.CampaignActionStart}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !r.consumer.IsSubscribed("c1") || r.pub.count() != 2 {
+		t.Fatalf("subscribed %v, published %d, want the two pending entries queued", r.consumer.IsSubscribed("c1"), r.pub.count())
+	}
+}
+
+func TestResumingAPausedCampaignWhoseWavesAlreadySentStillQueuesWhatIsPending(t *testing.T) {
+	r := newDispatchRig(wc.CampaignStatusPaused)
+	r.consumer.subscribed["c1"] = true
+
+	if err := r.dispatch.Dispatch(wc.DispatchCampaignInput{CampaignID: "c1", Action: wc.CampaignActionStart}); err != nil {
+		t.Fatal(err)
+	}
+
+	if r.pub.count() != 2 {
+		t.Fatalf("published %d, want every pending entry queued; the consumer drops the ones already queued", r.pub.count())
+	}
+}

@@ -41,7 +41,7 @@ func updateLead(t *testing.T, profiles LeadProfileWriter, config map[string]inte
 func TestUpdateLeadNodeWritesTheConversationLeadAsTheWorkflow(t *testing.T) {
 	stub := &leadProfilesStub{result: lead_usecase.ProfileResult{LeadID: "l-1", Version: 4, Changed: []string{lead.FieldAddresses, lead.CustomFieldName("interesse")}, Conflicts: []string{lead.FieldBirthDate}}}
 	result := updateLead(t, stub, map[string]interface{}{
-		"zip_code": "{{last.cep}}", "number": " 1000 ", "district": "Bela Vista", "birth_date": "15/03/1980",
+		"name": " Ana Souza ", "zip_code": "{{last.cep}}", "number": " 1000 ", "district": "Bela Vista", "birth_date": "15/03/1980",
 		"custom_fields": map[string]interface{}{"interesse": "{{last.interesse}}", "cor": " "},
 	})
 
@@ -53,6 +53,7 @@ func TestUpdateLeadNodeWritesTheConversationLeadAsTheWorkflow(t *testing.T) {
 			Address:      address.Postal{ZipCode: "01310-100", Number: "1000", District: "Bela Vista"},
 			BirthDate:    "15/03/1980",
 			CustomFields: map[string]string{"interesse": "alto"},
+			Name:         "Ana Souza",
 		},
 	}, stub.updates[0])
 	require.Equal(t, true, result.Output["success"])

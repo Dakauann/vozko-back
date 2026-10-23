@@ -758,6 +758,36 @@ func TestRequestPasswordReset_Success(t *testing.T) {
 	}
 }
 
+func TestRequestPasswordReset_FindsTheAccountWhateverTheCaseTyped(t *testing.T) {
+	repo := newTestUserRepo()
+	repo.users["user@test.com"] = &user.User{ID: "u1", Email: "user@test.com"}
+	repo.byID["u1"] = repo.users["user@test.com"]
+	resetRepo := newTestPasswordResetRepo()
+	uc := NewRequestPasswordResetUseCase(repo, resetRepo, &testEmailService{})
+
+	if err := uc.Execute(auth.RequestPasswordResetInput{Email: " User@Test.com "}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resetRepo.tokens) != 1 {
+		t.Fatalf("a capitalised email must still get its code, tokens: %d", len(resetRepo.tokens))
+	}
+}
+
+func TestResetPassword_AcceptsTheCodeWhateverTheCaseTyped(t *testing.T) {
+	userRepo := newTestUserRepo()
+	seedResetUser(userRepo, "u1", "user@test.com", "old-hash")
+	resetRepo := newTestPasswordResetRepo()
+	seedResetToken(resetRepo, "u1", "user@test.com", "123456", time.Now().UTC().Add(1*time.Hour))
+	uc := NewResetPasswordUseCase(userRepo, resetRepo, &testPasswordService{}, newTestSessionRepo(), newTestSharedState())
+
+	if err := uc.Execute(auth.ResetPasswordInput{Email: "User@Test.com", Token: "123456", NewPassword: "NewStrong1Pass"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userRepo.byID["u1"].Password == "old-hash" {
+		t.Error("expected password to be updated")
+	}
+}
+
 func TestRequestPasswordReset_UserNotFound_SilentSuccess(t *testing.T) {
 	repo := newTestUserRepo()
 

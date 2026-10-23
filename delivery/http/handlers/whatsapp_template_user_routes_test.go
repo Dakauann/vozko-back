@@ -144,6 +144,10 @@ func (s *stubPhoneRepoForTemplates) ListAll() ([]*businessphone.WhatsAppBusiness
 func (s *stubPhoneRepoForTemplates) BatchUpdate(_ []*businessphone.WhatsAppBusinessPhoneNumber) error {
 	return nil
 }
+func (*stubPhoneRepoForTemplates) UpdateQualityRating(string, businessphone.QualityRating) error {
+	return nil
+}
+
 func (s *stubPhoneRepoForTemplates) UpdateStatus(_ string, _ businessphone.Status) error { return nil }
 func (s *stubPhoneRepoForTemplates) UpdateCallsEnabled(_ string, _ bool) error           { return nil }
 func (s *stubPhoneRepoForTemplates) UpdateBusinessProfile(_ string, _ businessphone.BusinessProfile) error {

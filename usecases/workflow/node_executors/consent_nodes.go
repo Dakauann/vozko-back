@@ -76,7 +76,7 @@ func (e *consentExecutor) Definition() workflow.NodeDefinition {
 		ConfigSchema: []workflow.ConfigField{
 			{Key: workflow.ConsentModeKey, Label: "Ação", Type: "select", Required: true, Options: []workflow.ConfigFieldOption{
 				{Value: workflow.ConsentModeGrant, Label: "Registrar consentimento"},
-				{Value: workflow.ConsentModeWithdraw, Label: "Retirar consentimento (opt-out)"},
+				{Value: workflow.ConsentModeWithdraw, Label: "Retirar consentimento (parar de receber)"},
 			}},
 			{Key: workflow.ConsentPurposeKey, Label: "Finalidade", Type: "text", Placeholder: "receber ofertas pelo WhatsApp",
 				Description: "Opcional. Para que o lead aceitou receber mensagens. Aceita variáveis.",

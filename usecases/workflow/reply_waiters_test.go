@@ -3,6 +3,7 @@ package workflow_usecase
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"vozko/domain/workflow"
 )
@@ -106,5 +107,21 @@ func TestAnUnroutedMessageWhoseLookupFailsStartsNothing(t *testing.T) {
 
 	if inner.created != 0 {
 		t.Fatalf("created %d runs although the waiting run could not be read", inner.created)
+	}
+}
+
+func TestAMessageSentBeforeTheQuestionDoesNotAnswerTheWait(t *testing.T) {
+	wf := replyMenuWorkflow()
+	run := waitingMenuRun()
+	asked := time.Date(2026, 10, 22, 15, 11, 23, 0, time.UTC)
+	run.WaitingSince = &asked
+	runs := &recordingRunRepo{waitingReply: run}
+	waiters := NewReplyWaiters(stubWorkflowRepo{byID: map[string]*workflow.Workflow{wf.ID: wf}}, runs, NewRunEngine(runs, stubRunLogRepo{}, NewNodeExecutorRegistry()))
+
+	early := messageEvent()
+	early.SentAt = asked.Add(-44 * time.Second)
+
+	if waiters.WakeForReply(run, early) || runs.updates != 0 {
+		t.Fatalf("updates = %d; a message the customer sent before the question woke the run", runs.updates)
 	}
 }

@@ -419,6 +419,10 @@ func (r *simBusinessPhoneRepo) ListAll() ([]*businessphone.WhatsAppBusinessPhone
 func (r *simBusinessPhoneRepo) BatchUpdate(_ []*businessphone.WhatsAppBusinessPhoneNumber) error {
 	return nil
 }
+func (*simBusinessPhoneRepo) UpdateQualityRating(string, businessphone.QualityRating) error {
+	return nil
+}
+
 func (r *simBusinessPhoneRepo) UpdateStatus(_ string, _ businessphone.Status) error { return nil }
 func (r *simBusinessPhoneRepo) UpdateCallsEnabled(_ string, _ bool) error           { return nil }
 func (r *simBusinessPhoneRepo) UpdateBusinessProfile(_ string, _ businessphone.BusinessProfile) error {

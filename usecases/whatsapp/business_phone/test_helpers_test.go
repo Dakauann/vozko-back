@@ -121,6 +121,18 @@ func (m *mockRepository) List(input businessphone.ListInput) (*shared.PaginatedR
 	}, nil
 }
 
+func (m *mockRepository) UpdateQualityRating(id string, rating businessphone.QualityRating) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	phone, ok := m.phoneNumbers[id]
+	if !ok {
+		return businessphone.ErrPhoneNumberNotFound
+	}
+	phone.QualityRating = rating
+	return nil
+}
+
 func (m *mockRepository) UpdateStatus(id string, status businessphone.Status) error {
 	if m.updateErr != nil {
 		return m.updateErr

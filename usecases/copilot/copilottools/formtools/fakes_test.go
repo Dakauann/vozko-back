@@ -2,6 +2,7 @@ package formtools
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"vozko/domain/conversation"
@@ -142,8 +143,8 @@ func (f *fakeForms) PublishTargets(_ context.Context, a whatsappform_usecase.Act
 	return f.targets, nil
 }
 
-func (f *fakeForms) Publish(_ context.Context, a whatsappform_usecase.Actor, formID string) (whatsappform_usecase.PublishResult, error) {
-	if err := f.record(a, "Publish:"+formID); err != nil {
+func (f *fakeForms) Publish(_ context.Context, a whatsappform_usecase.Actor, formID string, metaWABAIDs []string) (whatsappform_usecase.PublishResult, error) {
+	if err := f.record(a, "Publish:"+formID+":"+strings.Join(metaWABAIDs, ",")); err != nil {
 		return whatsappform_usecase.PublishResult{}, err
 	}
 	return f.published, nil

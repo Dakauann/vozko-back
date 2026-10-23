@@ -42,7 +42,7 @@ func NewRequestPasswordResetUseCase(
 }
 
 func (uc *requestPasswordResetUseCase) Execute(input auth.RequestPasswordResetInput) error {
-	u, err := uc.userRepo.FindByEmail(input.Email)
+	u, err := uc.userRepo.FindByEmail(user.CanonicalEmail(input.Email))
 	if err != nil {
 		return nil
 	}

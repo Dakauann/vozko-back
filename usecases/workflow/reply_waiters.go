@@ -35,6 +35,9 @@ func (w *ReplyWaiters) WaitingForReply(event workflow.TriggerEvent) (*workflow.W
 }
 
 func (w *ReplyWaiters) WakeForReply(run *workflow.WorkflowRun, event workflow.TriggerEvent) bool {
+	if !answers(run, event) {
+		return false
+	}
 	wf, err := loadRunWorkflow(w.workflows, w.runs, w.engine, run)
 	if wf == nil {
 		if err != nil {
@@ -46,7 +49,19 @@ func (w *ReplyWaiters) WakeForReply(run *workflow.WorkflowRun, event workflow.Tr
 	return true
 }
 
+func answers(run *workflow.WorkflowRun, event workflow.TriggerEvent) bool {
+	if run.AnswersWait(event.SentAt) {
+		return true
+	}
+	slog.Info("workflow.trigger.reply_sent_before_wait", append(runLogAttrs(run, run.CurrentNodeID),
+		slog.Time("sent_at", event.SentAt), slog.Time("waiting_since", *run.WaitingSince))...)
+	return false
+}
+
 func (w *ReplyWaiters) wake(run *workflow.WorkflowRun, wf *workflow.Workflow, event workflow.TriggerEvent) {
+	if !answers(run, event) {
+		return
+	}
 	if !w.engine.TryLockRun(run.ID) {
 		slog.Info("workflow.trigger.reply_wake_locked", runLogAttrs(run, run.CurrentNodeID)...)
 		return

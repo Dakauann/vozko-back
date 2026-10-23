@@ -46,3 +46,11 @@ func (c *Container) mustConsentGrantChecker() {
 		log.Fatalf("[consent-grant] the permission checker must be wired before consent grants can be checked")
 	}
 }
+
+func (c *Container) workflowLinter() workflow_domain.WorkflowLinter {
+	linter, ok := c.useCases.activateWorkflow.(workflow_domain.WorkflowLinter)
+	if !ok {
+		log.Fatalf("[workflows] the activation use case cannot lint drafts")
+	}
+	return linter
+}

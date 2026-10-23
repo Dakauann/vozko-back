@@ -69,7 +69,11 @@ func (f *fakeService) DraftExitVerdict(_ context.Context, _ buttonaction_usecase
 	}
 	tmpl := sampleTemplate()
 	return &buttonaction_usecase.DraftVerdictView{Template: tmpl, Verdict: buttonaction.ExitVerdict(tmpl, buttonaction.TemplateSettings{}, buttonaction.CampaignRoutes{}),
-		Gates: buttonaction.ExitGates{TemplateExitRequired: true, CampaignAcknowledgementRequired: true}, AllowedKinds: []buttonaction.Kind{buttonaction.KindOptOut}}, nil
+		Gates: buttonaction.ExitGates{TemplateExitRequired: true, CampaignAcknowledgementRequired: true}}, nil
+}
+
+func (f *fakeService) AllowedKinds(buttonaction_usecase.Actor) ([]buttonaction.Kind, error) {
+	return []buttonaction.Kind{buttonaction.KindOptOut, buttonaction.KindClassify}, nil
 }
 
 func (f *fakeService) CampaignRoutes(context.Context, buttonaction_usecase.Actor, string) (*buttonaction_usecase.CampaignView, error) {

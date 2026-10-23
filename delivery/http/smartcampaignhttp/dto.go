@@ -23,6 +23,8 @@ type PolicyBody struct {
 	FailureRateStop       float64             `json:"failureRateStop" example:"0.15"`
 	EngagementRateSlow    float64             `json:"engagementRateSlow" example:"0.03"`
 	OnTemplateYellow      string              `json:"onTemplateYellow" example:"pause" enums:"slow_down,pause,stop"`
+	OnPhoneYellow         string              `json:"onPhoneYellow,omitempty" example:"slow_down" enums:"slow_down,pause,stop"`
+	OnPhoneRed            string              `json:"onPhoneRed,omitempty" example:"pause" enums:"slow_down,pause,stop"`
 	SendHours             *working_hours.Spec `json:"sendHours"`
 }
 
@@ -60,8 +62,10 @@ func (b PolicyBody) ToDomain() (smartcampaign.Policy, error) {
 		FailureRateStop:     b.FailureRateStop,
 		EngagementRateSlow:  b.EngagementRateSlow,
 		OnTemplateYellow:    smartcampaign.Action(b.OnTemplateYellow),
+		OnPhoneYellow:       smartcampaign.Action(b.OnPhoneYellow),
+		OnPhoneRed:          smartcampaign.Action(b.OnPhoneRed),
 		SendHours:           b.SendHours,
-	}, nil
+	}.WithPhoneDefaults(), nil
 }
 
 func policyBody(p smartcampaign.Policy) PolicyBody {
@@ -81,6 +85,8 @@ func policyBody(p smartcampaign.Policy) PolicyBody {
 		FailureRateStop:       p.FailureRateStop,
 		EngagementRateSlow:    p.EngagementRateSlow,
 		OnTemplateYellow:      string(p.OnTemplateYellow),
+		OnPhoneYellow:         string(p.OnPhoneYellow),
+		OnPhoneRed:            string(p.OnPhoneRed),
 		SendHours:             p.SendHours,
 	}
 }

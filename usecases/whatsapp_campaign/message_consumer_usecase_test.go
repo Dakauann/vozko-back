@@ -653,6 +653,10 @@ func (r *mockBusinessPhoneRepo) ListAll() ([]*businessphone.WhatsAppBusinessPhon
 func (r *mockBusinessPhoneRepo) BatchUpdate(_ []*businessphone.WhatsAppBusinessPhoneNumber) error {
 	return nil
 }
+func (*mockBusinessPhoneRepo) UpdateQualityRating(string, businessphone.QualityRating) error {
+	return nil
+}
+
 func (r *mockBusinessPhoneRepo) UpdateStatus(_ string, _ businessphone.Status) error { return nil }
 func (r *mockBusinessPhoneRepo) UpdateBusinessProfile(_ string, _ businessphone.BusinessProfile) error {
 	return nil

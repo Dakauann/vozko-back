@@ -2,15 +2,20 @@ package workflow_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"strings"
 
 	"vozko/domain/agent"
 	domainmcp "vozko/domain/agent/mcp"
 	"vozko/domain/callrouting"
 	"vozko/domain/conversation"
+	"vozko/domain/customfield"
 	label_domain "vozko/domain/label"
+	"vozko/domain/lead"
 	media_domain "vozko/domain/media"
 	rag_domain "vozko/domain/rag"
 	stage_domain "vozko/domain/stage"
@@ -44,6 +49,7 @@ type activateWorkflowUseCase struct {
 	businessPhoneRepo businessPhoneLookup
 	mcpCollectionRepo domainmcp.CollectionRepository
 	knowledgeBaseRepo knowledgeBaseLookup
+	customFields      CustomFieldLister
 	googleSheets      GoogleSheetLookup
 
 	modelLookup  ModelLookup
@@ -51,6 +57,14 @@ type activateWorkflowUseCase struct {
 
 	inboundTrunks InboundTrunkLookup
 	callQueues    CallQueueLookup
+}
+
+type CustomFieldLister interface {
+	ListByObject(workspaceID string, objectType customfield.ObjectType) ([]*customfield.Definition, error)
+}
+
+func (uc *activateWorkflowUseCase) SetCustomFieldRepo(repo CustomFieldLister) {
+	uc.customFields = repo
 }
 
 type CallQueueLookup interface {
@@ -222,7 +236,7 @@ func (uc *activateWorkflowUseCase) publish(ctx context.Context, w *workflow.Work
 	return findWithPublication(uc.repo, w.ID)
 }
 
-func (uc *activateWorkflowUseCase) validateRunnable(ctx context.Context, w *workflow.Workflow) error {
+func (uc *activateWorkflowUseCase) graphProblems(ctx context.Context, w *workflow.Workflow) (workflow.LintReport, []error) {
 	var catalog []workflow.NodeDefinition
 	if uc.catalogFn != nil {
 		catalog = uc.catalogFn()
@@ -237,15 +251,37 @@ func (uc *activateWorkflowUseCase) validateRunnable(ctx context.Context, w *work
 		problems = append(problems, workflow.ReferenceProblems(&w.Graph, catalog, uc.referenceValidators(w)...)...)
 	}
 	if w.Type == workflow.WorkflowTypeVoice {
-		if err := uc.validateVoiceTrunk(w); err != nil {
-			problems = append(problems, err)
-		}
 		problems = append(problems, uc.callQueueProblems(w)...)
 	}
+	return report, problems
+}
+
+func validationOnly(problems []error) error {
 	for _, p := range problems {
 		if !workflow.IsValidationError(p) {
 			return p
 		}
+	}
+	return nil
+}
+
+func (uc *activateWorkflowUseCase) Lint(ctx context.Context, w *workflow.Workflow) (workflow.LintReport, error) {
+	report, problems := uc.graphProblems(ctx, w)
+	if err := validationOnly(problems); err != nil {
+		return workflow.LintReport{}, err
+	}
+	return report.WithProblems(problems), nil
+}
+
+func (uc *activateWorkflowUseCase) validateRunnable(ctx context.Context, w *workflow.Workflow) error {
+	report, problems := uc.graphProblems(ctx, w)
+	if w.Type == workflow.WorkflowTypeVoice {
+		if err := uc.validateVoiceTrunk(w); err != nil {
+			problems = append(problems, err)
+		}
+	}
+	if err := validationOnly(problems); err != nil {
+		return err
 	}
 
 	err := workflow.NotPublishableFrom(report, problems)
@@ -278,6 +314,9 @@ func (uc *activateWorkflowUseCase) referenceValidators(w *workflow.Workflow) []w
 	}
 	if uc.labelRepo != nil {
 		validators = append(validators, &labelValidator{repo: uc.labelRepo, workspaceID: workflowWorkspaceID})
+	}
+	if uc.customFields != nil {
+		validators = append(validators, &customFieldValidator{repo: uc.customFields, workspaceID: workflowWorkspaceID})
 	}
 	if uc.stageRepo != nil {
 		validators = append(validators, &stageValidator{repo: uc.stageRepo, workspaceID: workflowWorkspaceID})
@@ -615,6 +654,35 @@ func (v *labelValidator) Validate(n *workflow.Node) error {
 		}
 	}
 	return nil
+}
+
+type customFieldValidator struct {
+	repo        CustomFieldLister
+	workspaceID string
+}
+
+func (v *customFieldValidator) Validate(n *workflow.Node) error {
+	if n.Type != workflow.NodeTypeActionUpdateLead {
+		return nil
+	}
+	keys := slices.Sorted(maps.Keys(workflow.UpdateLeadCustomFieldsOf(n.Config)))
+	if len(keys) == 0 {
+		return nil
+	}
+	defs, err := v.repo.ListByObject(v.workspaceID, customfield.ObjectLead)
+	if err != nil {
+		return fmt.Errorf("lead custom fields of workspace %s: %w", v.workspaceID, err)
+	}
+	err = lead.ProfileFieldsWritable(keys, defs)
+	var refused *customfield.ValueError
+	if !errors.As(err, &refused) {
+		return err
+	}
+	cause := workflow.ErrNodeUnknownCustomField
+	if errors.Is(refused.Err, customfield.ErrValueForbidden) {
+		cause = workflow.ErrNodeSensitiveCustomField
+	}
+	return &workflow.CustomFieldRefError{NodeID: n.ID, Key: refused.Key, Err: cause}
 }
 
 type stageValidator struct {

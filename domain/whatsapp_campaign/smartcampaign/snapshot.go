@@ -32,6 +32,7 @@ func (t TemplateState) Reclassified() bool {
 type PhoneState struct {
 	Status    businessphone.Status
 	Quality   businessphone.QualityRating
+	QualityAt time.Time
 	ChangedAt time.Time
 }
 

@@ -57,8 +57,6 @@ var listFormsSQL = "SELECT " + formColumns +
 	" FROM whatsapp_form_responses r WHERE r.workspace_id = f.workspace_id AND r.form_id = f.id) rc ON true" +
 	" WHERE f.workspace_id = ?"
 
-const publishedWorkspacesSQL = "SELECT DISTINCT workspace_id::text AS workspace_id FROM whatsapp_forms WHERE published_version_id IS NOT NULL AND archived_at IS NULL"
-
 var listFormsSearchSQL = " AND " + database.SearchFold("f.name") + " LIKE " + database.SearchFold("?")
 
 type FormStore struct {
@@ -240,12 +238,4 @@ func (s *FormStore) Archive(ctx context.Context, workspaceID, formID string, at 
 		return whatsappform.ErrFormNotFound
 	}
 	return database.AffectedOne(s.db.WithContext(ctx).Exec(archiveFormSQL, at, at, workspaceID, formID), whatsappform.ErrFormNotFound)
-}
-
-func (s *FormStore) PublishedWorkspaces(ctx context.Context) ([]string, error) {
-	var ids []string
-	if err := s.db.WithContext(ctx).Raw(publishedWorkspacesSQL).Scan(&ids).Error; err != nil {
-		return nil, err
-	}
-	return ids, nil
 }

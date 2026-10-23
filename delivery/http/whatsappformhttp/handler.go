@@ -32,7 +32,8 @@ type Service interface {
 	Versions(ctx context.Context, a Actor, formID string) ([]whatsappform.Version, error)
 	Duplicate(ctx context.Context, a Actor, formID string) (whatsappform_usecase.FormDetail, error)
 	Archive(ctx context.Context, a Actor, formID string) error
-	Publish(ctx context.Context, a Actor, formID string) (whatsappform_usecase.PublishResult, error)
+	Publish(ctx context.Context, a Actor, formID string, metaWABAIDs []string) (whatsappform_usecase.PublishResult, error)
+	PublishTargets(ctx context.Context, a Actor) ([]whatsappform_usecase.PublishTarget, error)
 	Deprecate(ctx context.Context, a Actor, formID, metaWABAID string) error
 	Preview(ctx context.Context, a Actor, formID string) (whatsappform_usecase.Preview, error)
 	Sendable(ctx context.Context, a Actor, q whatsappform_usecase.SendableQuery) ([]whatsappform_usecase.SendableForm, error)
@@ -361,13 +362,38 @@ func (h *Handler) Archive(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// @Summary		Publicar formulário
-// @Description	Publica o rascunho em todas as contas do WhatsApp onde o workspace é dono de um número oficial conectado. Uma conta que já tem o formulário recebe a nova versão no mesmo formulário da Meta, então os modelos de mensagem continuam funcionando. `outcomes` traz o resultado de cada conta; uma conta com problema não impede as outras. 422 com os problemas quando o rascunho tem algo a corrigir (nada é enviado à Meta). Exige `whatsapp_forms:configure`.
+// @Summary		Contas para publicar
+// @Description	As contas do WhatsApp onde o workspace é dono de um número oficial conectado. `supported` diz se o provedor do número permite formulários; `businessVerified` diz se a empresa da conta está verificada na Meta, que costuma ser exigido para a Meta publicar formulários. Exige `whatsapp_forms:configure`.
 // @Tags			Formulários do WhatsApp
 // @Produce		json
-// @Param			formId	path		string	true	"ID do formulário (UUID)"
+// @Success		200	{array}		whatsappform_usecase.PublishTarget
+// @Failure		403	{object}	response.ErrorResponse	"forbidden"
+// @Security		BearerAuth
+// @Router			/whatsapp/forms/publish-targets [get]
+func (h *Handler) PublishTargets(w http.ResponseWriter, r *http.Request) {
+	a, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	targets, err := h.service.PublishTargets(r.Context(), a)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, targets)
+}
+
+// @Summary		Publicar formulário
+// @Description	Publica o rascunho nas contas do WhatsApp escolhidas em `metaWabaIds`, entre as contas onde o workspace é dono de um número oficial conectado. Uma conta que já tem o formulário recebe a nova versão no mesmo formulário da Meta, então os modelos de mensagem continuam funcionando. `outcomes` traz o resultado de cada conta; uma conta com problema não impede as outras. 422 com os problemas quando o rascunho tem algo a corrigir (nada é enviado à Meta). Exige `whatsapp_forms:configure`.
+// @Tags			Formulários do WhatsApp
+// @Accept			json
+// @Produce		json
+// @Param			formId	path		string							true	"ID do formulário (UUID)"
+// @Param			body	body		whatsappformhttp.PublishRequest	true	"Contas onde publicar"
 // @Success		200		{object}	whatsappformhttp.PublishResponse
-// @Failure		409		{object}	response.ErrorResponse	"whatsapp_form_no_account, whatsapp_form_archived"
+// @Failure		400		{object}	response.ErrorResponse	"whatsapp_form_no_account_chosen"
+// @Failure		403		{object}	response.ErrorResponse	"whatsapp_form_not_owner"
+// @Failure		409		{object}	response.ErrorResponse	"whatsapp_form_no_account, whatsapp_form_provider_unsupported, whatsapp_form_archived"
 // @Failure		422		{object}	response.ErrorResponse	"whatsapp_form_invalid"
 // @Security		BearerAuth
 // @Router			/whatsapp/forms/{formId}/publish [post]
@@ -376,7 +402,11 @@ func (h *Handler) Publish(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	result, err := h.service.Publish(r.Context(), a, formID(r))
+	var req PublishRequest
+	if !httpx.DecodeStrictJSON(w, r, &req) {
+		return
+	}
+	result, err := h.service.Publish(r.Context(), a, formID(r), req.MetaWABAIDs)
 	if err != nil {
 		writeError(w, err)
 		return

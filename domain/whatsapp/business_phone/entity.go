@@ -224,6 +224,10 @@ func (p *WhatsAppBusinessPhoneNumber) IsVerified() bool {
 	return p.Status == StatusConnected
 }
 
+func (p *WhatsAppBusinessPhoneNumber) BusinessVerified() bool {
+	return strings.EqualFold(strings.TrimSpace(p.BusinessVerificationStatus), "verified")
+}
+
 func (p *WhatsAppBusinessPhoneNumber) UpdateFromMeta(verifiedName string, status Status, qualityRating QualityRating, nameStatus NameStatus) {
 	p.VerifiedName = verifiedName
 	p.Status = status

@@ -50,6 +50,8 @@ const (
 	LintNodeNeedsConversation    LintIssueCode = "NODE_NEEDS_CONVERSATION"
 	LintInvalidDTMFConfig        LintIssueCode = "NODE_INVALID_DTMF_CONFIG"
 	LintInvalidResourceRef       LintIssueCode = "NODE_INVALID_RESOURCE_REF"
+	LintUnknownCustomField       LintIssueCode = "NODE_UNKNOWN_CUSTOM_FIELD"
+	LintSensitiveCustomField     LintIssueCode = "NODE_SENSITIVE_CUSTOM_FIELD"
 	LintInvalidConfigValue       LintIssueCode = "NODE_INVALID_CONFIG_VALUE"
 	LintReasoningUnsupported     LintIssueCode = "NODE_REASONING_UNSUPPORTED"
 	LintPinInvalid               LintIssueCode = "NODE_PIN_INVALID"
@@ -102,6 +104,14 @@ func (r LintReport) Advisory() []LintIssue {
 		}
 	}
 	return out
+}
+
+func (r LintReport) WithProblems(problems []error) LintReport {
+	for _, p := range problems {
+		r.Issues = append(r.Issues, IssueOf(p))
+		r.causes = append(r.causes, p)
+	}
+	return r
 }
 
 func (r LintReport) IsGreen() bool {
@@ -163,13 +173,18 @@ var PureGraphRules = []GraphRule{
 		Validate: ValidateUpdateLeadConfig,
 	},
 	{
+		Code:     LintMissingRequiredField,
+		Hint:     "No nó action_update_lead, um endereço (logradouro, número, complemento ou bairro) precisa do CEP ou da cidade e UF; sem isso o nó segue pela saída Erro e nada é gravado. O campo número é o número do imóvel, não o telefone: o telefone do lead nunca é alterado por este nó.",
+		Validate: ValidateUpdateLeadAddress,
+	},
+	{
 		Code:     LintInvalidDTMFConfig,
 		Hint:     "No nó wait_dtmf, 'keys' precisa de ao menos uma tecla, só 0-9, * ou #, sem repetir. Cada tecla vira uma saída com o próprio dígito como rótulo.",
 		Validate: ValidateDTMFWaits,
 	},
 	{
 		Code:     LintMissingRequiredField,
-		Hint:     "O nó action_consent precisa de 'mode': 'registrar' (grava o consentimento) ou 'retirar' (grava o opt-out).",
+		Hint:     "O nó action_consent precisa de 'mode': 'registrar' (grava o consentimento) ou 'retirar' (o lead para de receber).",
 		Validate: ValidateConsentModes,
 	},
 	{

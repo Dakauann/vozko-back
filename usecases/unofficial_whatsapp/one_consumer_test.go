@@ -46,7 +46,7 @@ func TestAWaitingRunGetsTheUnofficialMessageAndTheAgentStaysQuiet(t *testing.T) 
 
 	h.deliverInbound(t)
 
-	if woken := waiters.wakes(); len(woken) != 1 || woken[0].Data["text"] != "oi" {
+	if woken := waiters.wakes(); len(woken) != 1 || woken[0].Data[workflow.DataKeyMessage] != "oi" {
 		t.Fatalf("woken = %+v, want the waiting run to receive the message", woken)
 	}
 	if reqs := h.ai.all(); len(reqs) != 0 {

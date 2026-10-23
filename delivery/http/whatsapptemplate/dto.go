@@ -85,6 +85,7 @@ type templateResponse struct {
 	ExternalID        string                                     `json:"externalId"`
 	WABAId            string                                     `json:"wabaId"`
 	WABAName          string                                     `json:"wabaName,omitempty"`
+	Quality           string                                     `json:"quality,omitempty" example:"GREEN"`
 	Name              string                                     `json:"name"`
 	Language          string                                     `json:"language"`
 	Category          whatsapptemplatedomain.TemplateCategory    `json:"category"`
@@ -106,6 +107,7 @@ func toTemplateResponse(t *whatsapptemplatedomain.Template, linkBase string) tem
 		ExternalID:        t.ExternalID,
 		WABAId:            t.WABAId,
 		WABAName:          t.WABAName,
+		Quality:           t.Quality,
 		Name:              t.Name,
 		Language:          t.Language,
 		Category:          t.Category,

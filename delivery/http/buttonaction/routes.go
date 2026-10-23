@@ -15,6 +15,7 @@ func RegisterProtectedRoutes(protected *mux.Router, h *Handler,
 	protected.HandleFunc("/whatsapp/templates/{id}/button-actions", ac(templates, workspace_domain.ActionUpdate, h.SaveTemplateActions)).Methods(http.MethodPut)
 	protected.HandleFunc("/whatsapp/templates/{id}/exit-verdict", ac(templates, workspace_domain.ActionRead, h.GetExitVerdict)).Methods(http.MethodGet)
 	protected.HandleFunc("/whatsapp/templates/exit-verdict", ac(templates, workspace_domain.ActionCreate, h.DraftExitVerdict)).Methods(http.MethodPost)
+	protected.HandleFunc("/whatsapp/button-action-kinds", ac(templates, workspace_domain.ActionRead, h.AllowedKinds)).Methods(http.MethodGet)
 	protected.HandleFunc("/whatsapp/campaigns/{id}/button-routes", ac(campaigns, workspace_domain.ActionRead, h.GetCampaignRoutes)).Methods(http.MethodGet)
 	protected.HandleFunc("/whatsapp/campaigns/{id}/button-routes", ac(campaigns, workspace_domain.ActionCreate, h.SaveCampaignRoutes)).Methods(http.MethodPut)
 }

@@ -15,6 +15,7 @@ type Repository interface {
 	ListAll() ([]*WhatsAppBusinessPhoneNumber, error)
 	BatchUpdate(phones []*WhatsAppBusinessPhoneNumber) error
 	UpdateStatus(id string, status Status) error
+	UpdateQualityRating(id string, rating QualityRating) error
 	UpdateCallsEnabled(id string, enabled bool) error
 	UpdateBusinessProfile(id string, profile BusinessProfile) error
 	SyncFromMeta(phoneNumber *WhatsAppBusinessPhoneNumber) error

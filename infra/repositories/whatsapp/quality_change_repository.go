@@ -19,8 +19,8 @@ func NewQualityChangeRepository(db *gorm.DB) *QualityChangeRepository {
 }
 
 var (
-	_ quality.Recorder = (*QualityChangeRepository)(nil)
-	_ quality.History  = (*QualityChangeRepository)(nil)
+	_ quality.Recorder  = (*QualityChangeRepository)(nil)
+	_ quality.History   = (*QualityChangeRepository)(nil)
 	_ quality.Timeline  = (*QualityChangeRepository)(nil)
 	_ quality.ChangeLog = (*QualityChangeRepository)(nil)
 )

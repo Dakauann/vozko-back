@@ -23,8 +23,8 @@ const (
 type Progress struct {
 	Phase  Phase     `json:"phase"`
 	Wave   int       `json:"wave,omitempty"`
-	Until  time.Time `json:"until,omitempty"`
-	Since  time.Time `json:"since,omitempty"`
+	Until  time.Time `json:"until,omitzero"`
+	Since  time.Time `json:"since,omitzero"`
 	Reason *Decision `json:"reason,omitempty"`
 }
 

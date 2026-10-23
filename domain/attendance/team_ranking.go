@@ -1,6 +1,10 @@
 package attendance
 
-import "sort"
+import (
+	"sort"
+
+	"vozko/domain/actor"
+)
 
 const (
 	ActorKindHuman    = "human"
@@ -8,6 +12,17 @@ const (
 	ActorKindWorkflow = "workflow"
 	ActorKindSystem   = "system"
 )
+
+func ActorKindOf(actorID string) string {
+	switch {
+	case actor.IsWorkflow(actorID):
+		return ActorKindWorkflow
+	case actor.IsAI(actorID):
+		return ActorKindAI
+	default:
+		return ActorKindHuman
+	}
+}
 
 func CountsAsAutomation(actorKind string) bool {
 	return actorKind == ActorKindAI || actorKind == ActorKindWorkflow

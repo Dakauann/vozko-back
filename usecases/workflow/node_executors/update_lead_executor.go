@@ -34,15 +34,17 @@ func (e *updateLeadExecutor) Definition() workflow.NodeDefinition {
 		Category:     workflow.NodeCategoryAction,
 		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
 		Label:        "Atualizar Lead",
-		Description:  "Preenche no cadastro do lead da conversa o endereço, o bairro, a data de nascimento e campos personalizados.",
+		Description:  "Preenche no cadastro do lead da conversa o nome, o endereço, o bairro, a data de nascimento e campos personalizados.",
 		Icon:         "UserCircle",
 		Guidance: workflow.NodeGuidance{
-			When: "Depois de um passo que extraiu dados da conversa (agente de IA, requisição HTTP, variável), para gravar no cadastro do lead o CEP, o endereço, o bairro, a data de nascimento ou campos personalizados.",
+			When: "Depois de um passo que extraiu dados da conversa (agente de IA, requisição HTTP, variável), para gravar no cadastro do lead o nome, o CEP, o endereço, o bairro, a data de nascimento ou campos personalizados.",
 			Behavior: "Só preenche o que está vazio no cadastro: um valor diferente já salvo nunca é substituído e aparece em conflicts. " +
+				"O nome é a exceção: substitui o nome do perfil do WhatsApp ou de uma importação, mas nunca um nome editado por uma pessoa nem o de um formulário. " +
 				"Com CEP, o CEP é conferido e cidade, UF e logradouro vêm dele; sem CEP, informe cidade e UF junto com o bairro ou o logradouro. " +
 				"O endereço vira o endereço principal e aguarda localização no mapa. Campos sensíveis nunca são gravados por fluxos. " +
 				"Campos vazios depois de trocar as variáveis são ignorados; sem nenhum dado, ou com um dado recusado, segue pela saída Erro sem gravar nada. O fluxo fica registrado como autor da mudança.",
 			Examples: []string{
+				"nome {{node.extrair.nome}}",
 				"bairro {{node.extrair.bairro}}, cidade {{node.extrair.cidade}}, UF {{node.extrair.uf}}",
 				"campos personalizados: interesse = {{last.interesse}}",
 			},
@@ -54,15 +56,16 @@ func (e *updateLeadExecutor) Definition() workflow.NodeDefinition {
 		OutputKeys: []workflow.OutputKeyDefinition{
 			{Key: "success", Description: "true quando o cadastro foi conferido sem recusa", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
 			{Key: "lead_id", Description: "ID do lead da conversa", Label: "ID do lead", Type: workflow.VariableTypeText},
-			{Key: "changed", Description: "Campos preenchidos agora: addresses, birthDate ou customFields.<chave>", Label: "Campos preenchidos", Type: workflow.VariableTypeList},
+			{Key: "changed", Description: "Campos preenchidos agora: name, addresses, birthDate ou customFields.<chave>", Label: "Campos preenchidos", Type: workflow.VariableTypeList},
 			{Key: "conflicts", Description: "Campos que já tinham outro valor e foram mantidos", Label: "Campos mantidos", Type: workflow.VariableTypeList},
 			{Key: "error", Description: "Motivo quando nada foi gravado", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{workflow.UpdateLeadCustomFields: map[string]interface{}{}},
 		ConfigSchema: []workflow.ConfigField{
+			field(workflow.UpdateLeadName, "Nome", "{{last.nome}}", "Substitui o nome do perfil do WhatsApp; um nome editado por uma pessoa é mantido."),
 			field(workflow.UpdateLeadZipCode, "CEP", "{{last.cep}}", "8 dígitos, com ou sem hífen. Aceita variáveis."),
 			field(workflow.UpdateLeadStreet, "Logradouro", "{{last.logradouro}}", "Rua ou avenida, sem o número."),
-			field(workflow.UpdateLeadNumber, "Número", "{{last.numero}}", ""),
+			field(workflow.UpdateLeadNumber, "Número do endereço", "{{last.numero}}", "Número do imóvel, não o telefone. Precisa do CEP ou da cidade e UF."),
 			field(workflow.UpdateLeadComplement, "Complemento", "{{last.complemento}}", ""),
 			field(workflow.UpdateLeadDistrict, "Bairro", "{{last.bairro}}", ""),
 			field(workflow.UpdateLeadCity, "Cidade", "{{last.cidade}}", "Obrigatória sem CEP."),
@@ -94,6 +97,7 @@ func (e *updateLeadExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeR
 		},
 		BirthDate:    nodeText(ctx, workflow.UpdateLeadBirthDate),
 		CustomFields: customFields,
+		Name:         nodeText(ctx, workflow.UpdateLeadName),
 	}
 	result, err := e.profiles.UpdateOfEntry(context.Background(),
 		shared.EntryRef{EntryID: ctx.Run.EntryID, EntryType: shared.EntryType(ctx.Run.EntryType)},

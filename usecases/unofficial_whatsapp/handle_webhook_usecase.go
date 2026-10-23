@@ -784,6 +784,9 @@ func (uc *HandleWebhookUseCase) fireWorkflowTriggers(
 		return
 	}
 	uc.workflows.Evaluate(event)
+	if conversation_usecase.IsFirstInbound(uc.messages, event) {
+		uc.workflows.Evaluate(event.AsFirstMessage())
+	}
 }
 
 func (uc *HandleWebhookUseCase) messageEvent(
@@ -793,28 +796,21 @@ func (uc *HandleWebhookUseCase) messageEvent(
 	auto *CampaignAutomation,
 	automation conversation.ChannelAutomation,
 ) workflow.TriggerEvent {
-	scopedWorkflowID := automation.WorkflowRef()
-	data := map[string]any{"text": ev.Text}
-
-	if scopedWorkflowID != "" {
-		if auto != nil {
-			data["campaign_id"] = auto.CampaignID
-			data["campaign_workflow_id"] = scopedWorkflowID
-		} else {
-			data["account_workflow_id"] = scopedWorkflowID
-		}
+	trigger := workflow.InboundTrigger{
+		WorkspaceID:   instance.WorkspaceID,
+		EntryID:       conv.ID,
+		EntryType:     string(shared.EntryTypeUnofficialWhatsApp),
+		Text:          ev.Text,
+		SentAt:        ev.Timestamp,
+		Selection:     &workflow.OptionSelection{ID: ev.OptionID, Title: ev.Text},
+		ContactNumber: uw.PhoneFromJID(conv.ChatID),
+		WorkflowID:    automation.WorkflowRef(),
 	}
-	workflow.ApplySelection(data, &workflow.OptionSelection{ID: ev.OptionID, Title: ev.Text})
-	workflow.ApplyContactNumber(data, uw.PhoneFromJID(conv.ChatID))
-	workflow.ApplyTriggerMessage(data, uc.storedInboundID(conv.ID, ev.ProviderMessageID))
-
-	return workflow.TriggerEvent{
-		WorkspaceID: instance.WorkspaceID,
-		EntryID:     conv.ID,
-		EntryType:   string(shared.EntryTypeUnofficialWhatsApp),
-		TriggerType: workflow.TriggerMessageReceived,
-		Data:        data,
+	trigger.StoredAs(conversation_usecase.StoredInbound(uc.messages, shared.EntryTypeUnofficialWhatsApp, conv.ID, ev.ProviderMessageID))
+	if auto != nil {
+		trigger.CampaignID = auto.CampaignID
 	}
+	return trigger.Event()
 }
 
 func (uc *HandleWebhookUseCase) storedInboundID(conversationID, providerMessageID string) string {
@@ -906,6 +902,8 @@ func messageTypeFor(ev *uw.Event) conversation.MessageType {
 
 func conversationMediaType(kind uw.MediaKind) conversation.MediaType {
 	switch kind {
+	case uw.MediaNone:
+		return ""
 	case uw.MediaImage:
 		return conversation.MediaTypeImage
 	case uw.MediaVideo:

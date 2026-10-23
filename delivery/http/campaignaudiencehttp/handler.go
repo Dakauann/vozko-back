@@ -506,7 +506,7 @@ func (h *Handler) TemplateFields(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Ver os campos sugeridos para as variáveis de um modelo
-// @Description	O campo do lead sugerido para cada variável do modelo, guardado só no Vozko (nunca vai para a Meta). O passo de público usa a sugestão como ligação padrão e o modelo da lista nomeia a coluna pelo campo. Variável livre não tem entrada. Exige `whatsapp_templates:read`.
+// @Description	O campo do lead sugerido para cada variável do modelo, guardado só na plataforma (nunca vai para a Meta). O passo de público usa a sugestão como ligação padrão e o modelo da lista nomeia a coluna pelo campo. Variável livre não tem entrada. Exige `whatsapp_templates:read`.
 // @Tags			Campaign audience
 // @Produce		json
 // @Param			id	path		string	true	"Modelo"

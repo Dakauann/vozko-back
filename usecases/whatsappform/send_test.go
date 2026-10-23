@@ -15,7 +15,7 @@ func sender(t *testing.T) (*world, FormDetail) {
 	t.Helper()
 	w := newWorld(t, wf.CapabilityView, wf.CapabilityBuild, wf.CapabilityPublish, wf.CapabilitySend)
 	detail := w.create("Cadastro", "")
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	return w, detail

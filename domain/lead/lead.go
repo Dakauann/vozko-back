@@ -42,15 +42,16 @@ func (s OptOutSource) Valid() bool {
 type Source string
 
 const (
-	SourceManual  Source = "manual"
-	SourceImport  Source = "import"
-	SourceChannel Source = "channel"
-	SourceForm    Source = "form"
+	SourceManual   Source = "manual"
+	SourceImport   Source = "import"
+	SourceChannel  Source = "channel"
+	SourceForm     Source = "form"
+	SourceWorkflow Source = "workflow"
 )
 
 func (s Source) Valid() bool {
 	switch s {
-	case SourceManual, SourceImport, SourceChannel, SourceForm:
+	case SourceManual, SourceImport, SourceChannel, SourceForm, SourceWorkflow:
 		return true
 	}
 	return false
@@ -92,7 +93,7 @@ type Lead struct {
 	OptedOutAt        *time.Time     `json:"optedOutAt,omitempty"`
 	OptOutSource      OptOutSource   `json:"optOutSource,omitempty"`
 	ConsentRecord     *ConsentRecord `json:"-"`
-	Blocked          bool           `json:"blocked"`
+	Blocked           bool           `json:"blocked"`
 	BlockedAt         time.Time      `json:"blockedAt"`
 	BlockedBy         *string        `json:"blockedBy"`
 	ProfilePictureURL string         `json:"profilePictureUrl,omitempty"`

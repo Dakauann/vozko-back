@@ -57,17 +57,18 @@ func (w *WorkflowSchema) BeforeCreate(tx *gorm.DB) error {
 }
 
 type WorkflowRunSchema struct {
-	ID                        string     `gorm:"primaryKey;type:uuid"`
-	WorkflowID                string     `gorm:"type:uuid;not null;index"`
-	WorkspaceID               string     `gorm:"type:uuid;not null;index"`
-	EntryID                   string     `gorm:"type:uuid;not null;index"`
-	EntryType                 string     `gorm:"not null;size:20"`
-	Status                    string     `gorm:"not null;size:20;default:running;index"`
-	TriggerNodeID             string     `gorm:"size:100;index"`
-	CurrentNodeID             string     `gorm:"size:100"`
-	State                     string     `gorm:"type:jsonb"`
-	WakeAt                    *int64     `gorm:"index"`
-	WaitReason                string     `gorm:"size:30"`
+	ID                        string `gorm:"primaryKey;type:uuid"`
+	WorkflowID                string `gorm:"type:uuid;not null;index"`
+	WorkspaceID               string `gorm:"type:uuid;not null;index"`
+	EntryID                   string `gorm:"type:uuid;not null;index"`
+	EntryType                 string `gorm:"not null;size:20"`
+	Status                    string `gorm:"not null;size:20;default:running;index"`
+	TriggerNodeID             string `gorm:"size:100;index"`
+	CurrentNodeID             string `gorm:"size:100"`
+	State                     string `gorm:"type:jsonb"`
+	WakeAt                    *int64 `gorm:"index"`
+	WaitReason                string `gorm:"size:30"`
+	WaitingSince              *time.Time
 	RetryCount                int        `gorm:"not null;default:0"`
 	Error                     string     `gorm:"type:text"`
 	StartedAt                 time.Time  `gorm:"autoCreateTime"`

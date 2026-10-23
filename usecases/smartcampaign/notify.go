@@ -9,9 +9,9 @@ import (
 
 	"vozko/brand"
 	"vozko/domain/notification"
-	"vozko/domain/workspace"
 	wc "vozko/domain/whatsapp_campaign"
 	sc "vozko/domain/whatsapp_campaign/smartcampaign"
+	"vozko/domain/workspace"
 )
 
 var brasilia = loadBrasilia()
@@ -120,6 +120,10 @@ func Reason(f sc.Finding) string {
 		return "o modelo ficou AMARELO"
 	case sc.RuleCategoryMarketing:
 		return "o modelo foi reclassificado como marketing"
+	case sc.RulePhoneRed:
+		return "o número ficou VERMELHO na Meta"
+	case sc.RulePhoneYellow:
+		return "o número ficou AMARELO na Meta"
 	case sc.RulePhoneBanned:
 		return "o número foi banido"
 	case sc.RulePhoneUnavailable:

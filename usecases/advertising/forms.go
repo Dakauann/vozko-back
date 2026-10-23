@@ -22,8 +22,8 @@ type leadProfiles interface {
 }
 
 const (
-	formPollBatch     = 100
-	firstPollLookback = 90 * 24 * time.Hour
+	formPollBatch = 100
+	leadLookback  = 90 * 24 * time.Hour
 )
 
 type leadGateway interface {
@@ -204,19 +204,22 @@ func (uc *FormsUseCase) Sync(ctx context.Context, workspaceID, formID string) (i
 	if err != nil {
 		return 0, err
 	}
-	return uc.poll(ctx, form)
+	return uc.poll(ctx, form, uc.access.now().Add(-leadLookback))
 }
 
-func (uc *FormsUseCase) poll(ctx context.Context, form *ads.TrackedForm) (int, error) {
+func (uc *FormsUseCase) pollSince(form *ads.TrackedForm) time.Time {
+	if form.LastPolledAt != nil {
+		return form.LastPolledAt.Add(-time.Hour)
+	}
+	return uc.access.now().Add(-leadLookback)
+}
+
+func (uc *FormsUseCase) poll(ctx context.Context, form *ads.TrackedForm, since time.Time) (int, error) {
 	account, token, err := uc.access.open(ctx, form.WorkspaceID, form.AdAccountID, ads.UseRead)
 	if err != nil {
 		return 0, err
 	}
 	now := uc.access.now()
-	since := now.Add(-firstPollLookback)
-	if form.LastPolledAt != nil {
-		since = form.LastPolledAt.Add(-time.Hour)
-	}
 	leads, err := uc.gateway.ListLeads(ctx, token, form.PageID, form.MetaID, since)
 	if err != nil {
 		return 0, uc.access.failed(ctx, account, err)
@@ -242,7 +245,7 @@ func (uc *FormsUseCase) PollAll(ctx context.Context) error {
 			return err
 		}
 		for _, f := range forms {
-			if _, err := uc.poll(ctx, f); err != nil {
+			if _, err := uc.poll(ctx, f, uc.pollSince(f)); err != nil {
 				log.Printf("[ads] polling form %s failed: %v", f.MetaID, err)
 				failures = append(failures, err)
 			}

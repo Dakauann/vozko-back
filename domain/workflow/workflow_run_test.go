@@ -1,6 +1,9 @@
 package workflow
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestRunState_GetInt_SurvivesJSONRoundTrip(t *testing.T) {
 	orig := NewRunState()
@@ -30,5 +33,30 @@ func TestRunState_GetInt_Variants(t *testing.T) {
 		if got := s.GetInt(key); got != want {
 			t.Errorf("GetInt(%q) = %d, want %d", key, got, want)
 		}
+	}
+}
+
+func TestOnlyAMessageSentAfterTheQuestionAnswersTheWait(t *testing.T) {
+	run := &WorkflowRun{}
+	run.SetWaiting(0, WaitReasonReply)
+	asked := *run.WaitingSince
+
+	for name, tc := range map[string]struct {
+		sentAt time.Time
+		want   bool
+	}{
+		"sent after the question":            {asked.Add(4 * time.Second), true},
+		"same second, clock truncated":       {asked.Add(-900 * time.Millisecond), true},
+		"sent before the question was asked": {asked.Add(-44 * time.Second), false},
+		"a channel that reports no time":     {time.Time{}, true},
+	} {
+		if got := run.AnswersWait(tc.sentAt); got != tc.want {
+			t.Errorf("%s: AnswersWait = %v, want %v", name, got, tc.want)
+		}
+	}
+
+	run.SetRunning()
+	if run.WaitingSince != nil || !run.AnswersWait(asked.Add(-time.Hour)) {
+		t.Fatal("a running run is not waiting for anything")
 	}
 }

@@ -134,8 +134,12 @@ func (h *WorkflowHandler) ValidateGraph(w http.ResponseWriter, r *http.Request) 
 		response.WriteRefusal(w, refusalInvalidBody)
 		return
 	}
-	wf := &workflow.Workflow{Type: req.Type, Graph: req.Graph}
-	report := workflow_usecase.LintWorkflowGraph(h.catalogFn(), wf)
+	wf := &workflow.Workflow{WorkspaceID: middleware.GetWorkspaceID(r), Type: req.Type, Graph: req.Graph}
+	report, err := h.linter.Lint(r.Context(), wf)
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"valid":  report.IsGreen(),
 		"issues": report.Issues,

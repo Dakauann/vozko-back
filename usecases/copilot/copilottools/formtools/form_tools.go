@@ -23,7 +23,7 @@ type FormService interface {
 	Create(ctx context.Context, a whatsappform_usecase.Actor, in whatsappform_usecase.CreateInput) (whatsappform_usecase.FormDetail, error)
 	SaveDraft(ctx context.Context, a whatsappform_usecase.Actor, formID string, doc wf.Document, baseVersionID string) (wf.Version, error)
 	Check(ctx context.Context, a whatsappform_usecase.Actor, doc wf.Document) (wf.Problems, error)
-	Publish(ctx context.Context, a whatsappform_usecase.Actor, formID string) (whatsappform_usecase.PublishResult, error)
+	Publish(ctx context.Context, a whatsappform_usecase.Actor, formID string, metaWABAIDs []string) (whatsappform_usecase.PublishResult, error)
 	PublishTargets(ctx context.Context, a whatsappform_usecase.Actor) ([]whatsappform_usecase.PublishTarget, error)
 	Sendable(ctx context.Context, a whatsappform_usecase.Actor, q whatsappform_usecase.SendableQuery) ([]whatsappform_usecase.SendableForm, error)
 	SendInConversation(ctx context.Context, a whatsappform_usecase.Actor, in whatsappform_usecase.SendInput) (wf.Send, error)

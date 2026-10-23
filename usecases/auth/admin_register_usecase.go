@@ -81,7 +81,7 @@ func (uc *adminRegisterUseCase) Execute(input auth.CredentialsInput) (*auth.Toke
 		return nil, auth.ErrInvalidCustomerType
 	}
 
-	sanitizedEmail := strings.ToLower(strings.TrimSpace(input.Email))
+	sanitizedEmail := user.CanonicalEmail(input.Email)
 
 	u := &user.User{
 		Username:      input.Name,

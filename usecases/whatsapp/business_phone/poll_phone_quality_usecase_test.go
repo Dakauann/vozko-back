@@ -31,7 +31,9 @@ func (f fakeSending) PhonesSendingSince(context.Context, time.Time) ([]string, e
 	return f.phones, nil
 }
 
-type fakeHistory struct{ latest map[quality.Signal]map[string]string }
+type fakeHistory struct {
+	latest map[quality.Signal]map[string]string
+}
 
 func (f fakeHistory) LatestValues(_ quality.Subject, signal quality.Signal, _ []string) (map[string]string, error) {
 	return f.latest[signal], nil
@@ -164,5 +166,46 @@ func TestRefreshPhoneFailsWhenMetaDoesNotListTheNumber(t *testing.T) {
 
 	if !errors.Is(err, ErrPhoneNotListed) {
 		t.Fatalf("RefreshPhone = %v, want ErrPhoneNotListed", err)
+	}
+}
+
+func TestPollKeepsTheCurrentColourOnThePhoneEvenWhenTheHistoryDidNotMove(t *testing.T) {
+	repo := newMockRepo()
+	pollPhone(repo, "p1", "m1", "waba-1")
+	repo.phoneNumbers["p1"].QualityRating = businessphone.QualityRatingUnknown
+	meta := &accountsMeta{mockMetaAPIService: newMockMetaAPI(), byWABA: map[string][]businessphone.MetaPhoneNumberInfo{
+		"waba-1": {{ID: "m1", QualityRating: "RED", Status: "CONNECTED"}},
+	}}
+	history := fakeHistory{latest: map[quality.Signal]map[string]string{
+		quality.SignalQuality: {"m1": "RED"},
+		quality.SignalStatus:  {"m1": "CONNECTED"},
+	}}
+	recorder := &fakeQualityRecorder{}
+
+	if err := newPhonePoll(repo, meta, []string{"m1"}, history, recorder).Execute(context.Background()); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if len(recorder.changes) != 0 {
+		t.Fatalf("the history already had RED, got %+v", recorder.changes)
+	}
+	if got := repo.phoneNumbers["p1"].QualityRating; got != businessphone.QualityRatingRed {
+		t.Fatalf("the phone shows its current colour, got %q", got)
+	}
+}
+
+func TestPollReportsWhenTheColourCannotBeKeptOnThePhone(t *testing.T) {
+	boom := errors.New("db down")
+	repo := newMockRepo()
+	pollPhone(repo, "p1", "m1", "waba-1")
+	repo.updateErr = boom
+	meta := &accountsMeta{mockMetaAPIService: newMockMetaAPI(), byWABA: map[string][]businessphone.MetaPhoneNumberInfo{
+		"waba-1": {{ID: "m1", QualityRating: "YELLOW", Status: "CONNECTED"}},
+	}}
+
+	err := newPhonePoll(repo, meta, []string{"m1"}, fakeHistory{}, &fakeQualityRecorder{}).Execute(context.Background())
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("the failure is reported, got %v", err)
 	}
 }

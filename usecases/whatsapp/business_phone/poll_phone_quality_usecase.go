@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	businessphone "vozko/domain/whatsapp/business_phone"
@@ -44,7 +45,7 @@ func (uc *PollPhoneQualityUseCase) Execute(ctx context.Context) error {
 	for _, id := range sending {
 		active[id] = true
 	}
-	accounts, err := uc.accountsOf(active)
+	accounts, polled, err := uc.accountsOf(active)
 	if err != nil {
 		return err
 	}
@@ -72,6 +73,7 @@ func (uc *PollPhoneQualityUseCase) Execute(ctx context.Context) error {
 		for _, info := range infos {
 			if active[info.ID] {
 				changes = append(changes, moved(info, account.wabaID, now, ratings[info.ID], statuses[info.ID])...)
+				errs = append(errs, uc.keepRating(polled[info.ID], info))
 			}
 		}
 	}
@@ -102,9 +104,24 @@ func (uc *PollPhoneQualityUseCase) RefreshPhone(ctx context.Context, phone *busi
 		if err != nil {
 			return info, err
 		}
-		return info, uc.changes.Record(moved(info, phone.WABAId, uc.now().UTC(), ratings[info.ID], statuses[info.ID])...)
+		if err := uc.changes.Record(moved(info, phone.WABAId, uc.now().UTC(), ratings[info.ID], statuses[info.ID])...); err != nil {
+			return info, err
+		}
+		return info, uc.keepRating(phone, info)
 	}
 	return businessphone.MetaPhoneNumberInfo{}, fmt.Errorf("%w: %s", ErrPhoneNotListed, phone.MetaPhoneNumberID)
+}
+
+func (uc *PollPhoneQualityUseCase) keepRating(phone *businessphone.WhatsAppBusinessPhoneNumber, info businessphone.MetaPhoneNumberInfo) error {
+	rating := businessphone.QualityRating(strings.ToUpper(strings.TrimSpace(info.QualityRating)))
+	if phone == nil || rating == "" || rating == phone.QualityRating {
+		return nil
+	}
+	if err := uc.phones.UpdateQualityRating(phone.ID, rating); err != nil {
+		return fmt.Errorf("keep quality of phone %s: %w", phone.ID, err)
+	}
+	phone.QualityRating = rating
+	return nil
 }
 
 func moved(info businessphone.MetaPhoneNumberInfo, wabaID string, now time.Time, previousRating, previousStatus string) []quality.Change {
@@ -123,19 +140,24 @@ func moved(info businessphone.MetaPhoneNumberInfo, wabaID string, now time.Time,
 	return changes
 }
 
-func (uc *PollPhoneQualityUseCase) accountsOf(active map[string]bool) ([]accountToPoll, error) {
+func (uc *PollPhoneQualityUseCase) accountsOf(active map[string]bool) ([]accountToPoll, map[string]*businessphone.WhatsAppBusinessPhoneNumber, error) {
 	phones, err := uc.phones.ListAll()
 	if err != nil {
-		return nil, fmt.Errorf("list phones to poll quality: %w", err)
+		return nil, nil, fmt.Errorf("list phones to poll quality: %w", err)
 	}
 	seen := make(map[string]bool)
+	polled := make(map[string]*businessphone.WhatsAppBusinessPhoneNumber)
 	var accounts []accountToPoll
 	for _, phone := range phones {
-		if !active[phone.MetaPhoneNumberID] || seen[phone.WABAId] || !phone.QualityPollable() {
+		if !active[phone.MetaPhoneNumberID] || !phone.QualityPollable() {
+			continue
+		}
+		polled[phone.MetaPhoneNumberID] = phone
+		if seen[phone.WABAId] {
 			continue
 		}
 		seen[phone.WABAId] = true
 		accounts = append(accounts, accountToPoll{wabaID: phone.WABAId, token: phone.AccessToken})
 	}
-	return accounts, nil
+	return accounts, polled, nil
 }

@@ -53,6 +53,7 @@ type workspacePhoneAccessLookup interface {
 
 type messageWindowLookup interface {
 	IsWindowOpen(leadID, businessPhoneID string) (bool, error)
+	GetLastMessageTime(leadID, businessPhoneID string) (*time.Time, error)
 }
 
 type templateLookup interface {
@@ -126,13 +127,9 @@ func (s *whatsappSender) SendText(ctx context.Context, run *workflow.WorkflowRun
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+	selectedBusinessPhoneID := target.replyPhoneID()
+	if err := s.refuseUnreachableReply(run, target, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
-	}
-
-	selectedBusinessPhoneID := target.receivedBusinessPhoneID
-	if selectedBusinessPhoneID == "" {
-		selectedBusinessPhoneID = target.campaignBusinessPhoneID
 	}
 	if err := s.ensureWindowOpen(target.leadID, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
@@ -186,13 +183,9 @@ func (s *whatsappSender) SendButtons(ctx context.Context, run *workflow.Workflow
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+	selectedBusinessPhoneID := target.replyPhoneID()
+	if err := s.refuseUnreachableReply(run, target, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
-	}
-
-	selectedBusinessPhoneID := target.receivedBusinessPhoneID
-	if selectedBusinessPhoneID == "" {
-		selectedBusinessPhoneID = target.campaignBusinessPhoneID
 	}
 
 	if err := s.ensureWindowOpen(target.leadID, selectedBusinessPhoneID); err != nil {
@@ -250,13 +243,9 @@ func (s *whatsappSender) SendButtonsWithInput(ctx context.Context, run *workflow
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+	selectedBusinessPhoneID := target.replyPhoneID()
+	if err := s.refuseUnreachableReply(run, target, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
-	}
-
-	selectedBusinessPhoneID := target.receivedBusinessPhoneID
-	if selectedBusinessPhoneID == "" {
-		selectedBusinessPhoneID = target.campaignBusinessPhoneID
 	}
 
 	if err := s.ensureWindowOpen(target.leadID, selectedBusinessPhoneID); err != nil {
@@ -314,13 +303,9 @@ func (s *whatsappSender) SendListWithInput(ctx context.Context, run *workflow.Wo
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+	selectedBusinessPhoneID := target.replyPhoneID()
+	if err := s.refuseUnreachableReply(run, target, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
-	}
-
-	selectedBusinessPhoneID := target.receivedBusinessPhoneID
-	if selectedBusinessPhoneID == "" {
-		selectedBusinessPhoneID = target.campaignBusinessPhoneID
 	}
 
 	if err := s.ensureWindowOpen(target.leadID, selectedBusinessPhoneID); err != nil {
@@ -378,13 +363,9 @@ func (s *whatsappSender) SendMedia(ctx context.Context, run *workflow.WorkflowRu
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.refuseUnreachableRecipient(run, target); err != nil {
+	selectedBusinessPhoneID := target.replyPhoneID()
+	if err := s.refuseUnreachableReply(run, target, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
-	}
-
-	selectedBusinessPhoneID := target.receivedBusinessPhoneID
-	if selectedBusinessPhoneID == "" {
-		selectedBusinessPhoneID = target.campaignBusinessPhoneID
 	}
 	if err := s.ensureWindowOpen(target.leadID, selectedBusinessPhoneID); err != nil {
 		return nil, "", err
@@ -630,6 +611,48 @@ func (s *whatsappSender) resolveTargetForRun(run *workflow.WorkflowRun, state *w
 		campaignBusinessPhoneID: "",
 		receivedBusinessPhoneID: "",
 	}, nil
+}
+
+func (t *whatsappSendTarget) replyPhoneID() string {
+	if t.receivedBusinessPhoneID != "" {
+		return t.receivedBusinessPhoneID
+	}
+	return t.campaignBusinessPhoneID
+}
+
+func (s *whatsappSender) CheckReply(run *workflow.WorkflowRun) error {
+	if s == nil || run == nil || shared.EntryType(run.EntryType) != shared.EntryTypeWhatsApp {
+		return nil
+	}
+	target, err := s.resolveTarget(run.EntryID, run.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	return s.refuseUnreachableReply(run, target, target.replyPhoneID())
+}
+
+func (s *whatsappSender) refuseUnreachableReply(run *workflow.WorkflowRun, target *whatsappSendTarget, businessPhoneID string) error {
+	contacts, err := s.recipientLeads(run.WorkspaceID, target)
+	if err != nil {
+		return err
+	}
+	for _, contact := range contacts {
+		lastInbound, err := s.lastInbound(contact.ID, businessPhoneID)
+		if err != nil {
+			return fmt.Errorf("%w: the last message of lead %s could not be read: %w", errRecipientRefused, contact.ID, err)
+		}
+		if err := campaign.ReplyRefusal(contact, lastInbound); err != nil {
+			return refusalLines{events: s.deps.Events}.refuse(run, contact.ID, err)
+		}
+	}
+	return nil
+}
+
+func (s *whatsappSender) lastInbound(leadID, businessPhoneID string) (*time.Time, error) {
+	if s.deps.MessageWindowRepo == nil || leadID == "" || businessPhoneID == "" {
+		return nil, nil
+	}
+	return s.deps.MessageWindowRepo.GetLastMessageTime(leadID, businessPhoneID)
 }
 
 func (s *whatsappSender) refuseUnreachableRecipient(run *workflow.WorkflowRun, target *whatsappSendTarget) error {

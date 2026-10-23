@@ -239,7 +239,7 @@ func TestTheWorkflowRunNamesTheStoredInboundRowAndTheTappedButton(t *testing.T) 
 	actx := exitTarget().agentCtx
 	actx.automation = conversation.ChannelAutomation{EnableWorkflow: true}
 
-	uc.fireWorkflowTriggers(actx, uc.messageEvent(actx, "entry-1", shared.EntryTypeWhatsApp, "5511987654321", "wamid.in", "SAIR", "text", "",
+	uc.fireWorkflowTriggers(actx, uc.messageEvent(actx, "entry-1", shared.EntryTypeWhatsApp, "5511987654321", "wamid.in", time.Time{}, "SAIR", "",
 		workflow.TemplateButtonSelection("SAIR", 1, true)), nil)
 
 	if len(ev.events) == 0 {

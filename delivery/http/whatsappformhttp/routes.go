@@ -25,6 +25,7 @@ func RegisterRoutes(protected *mux.Router, h *Handler,
 	protected.HandleFunc(formsPath+"/options", ac(forms, read, h.Options)).Methods(http.MethodGet)
 	protected.HandleFunc(formsPath+"/check", ac(forms, read, h.Check)).Methods(http.MethodPost)
 	protected.HandleFunc(formsPath+"/sendable", ac(forms, read, h.Sendable)).Methods(http.MethodGet)
+	protected.HandleFunc(formsPath+"/publish-targets", ac(forms, configure, h.PublishTargets)).Methods(http.MethodGet)
 	protected.HandleFunc(formsPath, ac(forms, read, h.List)).Methods(http.MethodGet)
 	protected.HandleFunc(formsPath, ac(forms, create, h.Create)).Methods(http.MethodPost)
 	protected.HandleFunc(responsePath, ac(answers, read, h.Response)).Methods(http.MethodGet)

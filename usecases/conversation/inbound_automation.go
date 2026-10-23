@@ -53,7 +53,6 @@ type InboundAutomation struct {
 	router    *InboundRouter
 
 	delegations conversation.DelegationRepository
-
 }
 
 func NewInboundAutomation(
@@ -111,24 +110,18 @@ func (a *InboundAutomation) consume(ctx context.Context, in InboundAutomationInp
 }
 
 func (a *InboundAutomation) messageEvent(in InboundAutomationInput) workflow.TriggerEvent {
-	data := map[string]interface{}{
-		"message":      in.Text,
-		"channel":      string(in.EntryType),
-		"workspace_id": in.WorkspaceID,
+	trigger := workflow.InboundTrigger{
+		WorkspaceID:   in.WorkspaceID,
+		EntryID:       in.EntryID,
+		EntryType:     string(in.EntryType),
+		Text:          in.Text,
+		SentAt:        in.ReceivedAt,
+		Selection:     in.Selection,
+		ContactNumber: in.ContactRef,
+		WorkflowID:    in.Config.WorkflowRef(),
 	}
-	if ref := in.Config.WorkflowRef(); ref != "" {
-		data["account_workflow_id"] = ref
-	}
-	workflow.ApplySelection(data, in.Selection)
-	workflow.ApplyContactNumber(data, in.ContactRef)
-	workflow.ApplyTriggerMessage(data, a.triggerMessageID(in))
-	return workflow.TriggerEvent{
-		WorkspaceID: in.WorkspaceID,
-		EntryID:     in.EntryID,
-		EntryType:   string(in.EntryType),
-		TriggerType: workflow.TriggerMessageReceived,
-		Data:        data,
-	}
+	trigger.StoredAs(StoredInbound(a.inbound, in.EntryType, in.EntryID, in.ProviderMessageID))
+	return trigger.Event()
 }
 
 func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput, event workflow.TriggerEvent) {
@@ -142,11 +135,8 @@ func (a *InboundAutomation) fireWorkflows(in InboundAutomationInput, event workf
 
 	a.workflows.Evaluate(event)
 
-	if a.isFirstInbound(in) {
-		first := event
-		first.TriggerType = workflow.TriggerFirstMessage
-		first.Reply = nil
-		a.workflows.Evaluate(first)
+	if IsFirstInbound(a.inbound, event) {
+		a.workflows.Evaluate(event.AsFirstMessage())
 	}
 }
 
@@ -177,23 +167,4 @@ func (a *InboundAutomation) ScheduleAnalysis(in InboundAutomationInput) {
 		return
 	}
 	a.analysis.ScheduleAnalysis(in.EntryID, in.EntryType)
-}
-
-func (a *InboundAutomation) triggerMessageID(in InboundAutomationInput) string {
-	if a.inbound == nil {
-		return ""
-	}
-	return StoredInboundMessageID(a.inbound, in.EntryType, in.EntryID, in.ProviderMessageID)
-}
-
-func (a *InboundAutomation) isFirstInbound(in InboundAutomationInput) bool {
-	if a.inbound == nil {
-		return false
-	}
-	count, err := a.inbound.CountInboundByEntry(in.EntryID, in.EntryType)
-	if err != nil {
-		log.Printf("[inbound-automation] could not count inbound messages for %s %s: %v", in.EntryType, in.EntryID, err)
-		return false
-	}
-	return count == 1
 }

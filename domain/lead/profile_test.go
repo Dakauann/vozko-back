@@ -383,6 +383,7 @@ func TestApplyProfileNameAndEmail(t *testing.T) {
 	cases := []struct {
 		name       string
 		lead       func() *Lead
+		source     ProfileSource
 		profile    Profile
 		changed    []string
 		conflicts  []string
@@ -434,12 +435,42 @@ func TestApplyProfileNameAndEmail(t *testing.T) {
 			wantName:   "Ana",
 			wantSource: SourceManual,
 		},
+		{
+			name: "a name a workflow collected replaces the WhatsApp profile name",
+			lead: func() *Lead {
+				l := profileLead()
+				l.Name, l.NameSource = "ana_zap", SourceChannel
+				return l
+			},
+			source:     ProfileFromWorkflow,
+			profile:    Profile{Name: "Ana Souza"},
+			changed:    []string{FieldName},
+			wantName:   "Ana Souza",
+			wantSource: SourceWorkflow,
+		},
+		{
+			name: "a workflow never replaces a name from a form or an operator",
+			lead: func() *Lead {
+				l := profileLead()
+				l.NameSource = SourceForm
+				return l
+			},
+			source:     ProfileFromWorkflow,
+			profile:    Profile{Name: "Ana Souza"},
+			conflicts:  []string{FieldName},
+			wantName:   "Ana",
+			wantSource: SourceForm,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			l := tc.lead()
 			l.Addresses = []Address{}
-			outcome, err := l.ApplyProfile(tc.profile, profileDefs(), profileNow, ProfileFromForm)
+			source := tc.source
+			if source == "" {
+				source = ProfileFromForm
+			}
+			outcome, err := l.ApplyProfile(tc.profile, profileDefs(), profileNow, source)
 			if err != nil {
 				t.Fatal(err)
 			}

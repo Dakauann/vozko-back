@@ -2546,6 +2546,7 @@ func (h *ConversationHub) handleSetConversationStatus(conn *WSConnection, payloa
 
 	if status == conversation.ConversationStatusFinished {
 		if h.personFinish == nil {
+			log.Printf("[ConversationHub] cannot finish %s (%s): the person finish use case is not wired", p.EntryID, p.EntryType)
 			h.sendError(conn, "not_configured", "Conversation status not configured")
 			return
 		}

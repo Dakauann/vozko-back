@@ -44,8 +44,11 @@ func (r DraftExitVerdictRequest) draft() buttonaction_usecase.DraftTemplate {
 }
 
 type DraftExitVerdictResponse struct {
-	Verdict      ExitVerdictResponse `json:"verdict"`
-	AllowedKinds []string            `json:"allowedKinds" example:"opt_out,hand_off"`
+	Verdict ExitVerdictResponse `json:"verdict"`
+}
+
+type AllowedKindsResponse struct {
+	AllowedKinds []string `json:"allowedKinds" example:"opt_out,hand_off"`
 }
 
 type SaveCampaignRoutesRequest struct {

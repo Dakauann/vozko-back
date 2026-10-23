@@ -35,6 +35,8 @@ const (
 	RulePhoneBanned        Rule = "phone_banned"
 	RulePhoneUnavailable   Rule = "phone_unavailable"
 	RuleTemplateYellow     Rule = "template_yellow"
+	RulePhoneYellow        Rule = "phone_yellow"
+	RulePhoneRed           Rule = "phone_red"
 	RuleCategoryMarketing  Rule = "category_marketing"
 	RuleTemplateFlagged    Rule = "template_flagged"
 	RuleFailureRateStop    Rule = "failure_rate_stop"
@@ -113,6 +115,12 @@ func (p Policy) findings(s Snapshot) []Finding {
 	var found []Finding
 	if s.Template.Quality == businessphone.QualityRatingYellow {
 		found = append(found, Finding{Rule: RuleTemplateYellow, Action: p.OnTemplateYellow, At: s.Template.QualityAt})
+	}
+	switch s.Phone.Quality {
+	case businessphone.QualityRatingYellow:
+		found = append(found, Finding{Rule: RulePhoneYellow, Action: p.OnPhoneYellow, At: s.Phone.QualityAt})
+	case businessphone.QualityRatingRed:
+		found = append(found, Finding{Rule: RulePhoneRed, Action: p.OnPhoneRed, At: s.Phone.QualityAt})
 	}
 	if s.Template.Reclassified() {
 		found = append(found, Finding{Rule: RuleCategoryMarketing, Action: Pause, At: s.Template.CategoryAt})

@@ -25,9 +25,9 @@ type Wave struct {
 	Size         int       `json:"size"`
 	State        WaveState `json:"state"`
 	ReleasedAt   time.Time `json:"releasedAt"`
-	DrainedAt    time.Time `json:"drainedAt,omitempty"`
-	ObserveUntil time.Time `json:"observeUntil,omitempty"`
-	DecidedAt    time.Time `json:"decidedAt,omitempty"`
+	DrainedAt    time.Time `json:"drainedAt,omitzero"`
+	ObserveUntil time.Time `json:"observeUntil,omitzero"`
+	DecidedAt    time.Time `json:"decidedAt,omitzero"`
 	Outcome      Outcome   `json:"outcome"`
 	Decision     Decision  `json:"decision"`
 }

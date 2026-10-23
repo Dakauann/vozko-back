@@ -23,25 +23,33 @@ func StoredWhatsAppMessageID(messages StoredWhatsAppLookup, wamid string) string
 		return ""
 	}
 	stored, err := messages.GetByWhatsAppMessageID(wamid)
-	return storedRowID(stored, err, wamid)
+	return storedRowID(storedRow(stored, err, wamid))
+}
+
+func StoredInbound(messages StoredInboundLookup, entryType shared.EntryType, entryID, providerMessageID string) *conversation.Message {
+	providerMessageID = strings.TrimSpace(providerMessageID)
+	if messages == nil || providerMessageID == "" || strings.TrimSpace(entryID) == "" {
+		return nil
+	}
+	stored, err := messages.GetByEntryAndExternalMessageID(entryType, entryID, providerMessageID)
+	return storedRow(stored, err, providerMessageID)
 }
 
 func StoredInboundMessageID(messages StoredInboundLookup, entryType shared.EntryType, entryID, providerMessageID string) string {
-	providerMessageID = strings.TrimSpace(providerMessageID)
-	if messages == nil || providerMessageID == "" || strings.TrimSpace(entryID) == "" {
-		return ""
-	}
-	stored, err := messages.GetByEntryAndExternalMessageID(entryType, entryID, providerMessageID)
-	return storedRowID(stored, err, providerMessageID)
+	return storedRowID(StoredInbound(messages, entryType, entryID, providerMessageID))
 }
 
-func storedRowID(stored *conversation.Message, err error, providerID string) string {
+func storedRow(stored *conversation.Message, err error, providerID string) *conversation.Message {
 	if err != nil {
 		if !errors.Is(err, conversation.ErrMessageNotFound) {
 			log.Printf("[workflow-trigger] stored inbound message %s unreadable, the run carries no trigger message: %v", providerID, err)
 		}
-		return ""
+		return nil
 	}
+	return stored
+}
+
+func storedRowID(stored *conversation.Message) string {
 	if stored == nil {
 		return ""
 	}

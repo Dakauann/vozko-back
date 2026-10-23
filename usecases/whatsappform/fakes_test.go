@@ -155,20 +155,6 @@ func (r *formsRepo) Archive(_ context.Context, workspaceID, formID string, at ti
 	return nil
 }
 
-func (r *formsRepo) PublishedWorkspaces(_ context.Context) ([]string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	seen := map[string]bool{}
-	var out []string
-	for _, f := range r.forms {
-		if f.PublishedVersionID != "" && f.ArchivedAt == nil && !seen[f.WorkspaceID] {
-			seen[f.WorkspaceID] = true
-			out = append(out, f.WorkspaceID)
-		}
-	}
-	return out, nil
-}
-
 func (r *formsRepo) GetVersion(_ context.Context, workspaceID, versionID string) (*wf.Version, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

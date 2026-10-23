@@ -29,6 +29,7 @@ type fakeService struct {
 	gotPeriod  whatsappform_usecase.Period
 	gotSendQ   whatsappform_usecase.SendableQuery
 	gotCreated whatsappform_usecase.CreateInput
+	gotChosen  []string
 }
 
 func (f *fakeService) Create(_ context.Context, _ Actor, in whatsappform_usecase.CreateInput) (whatsappform_usecase.FormDetail, error) {
@@ -61,8 +62,13 @@ func (f *fakeService) Sendable(_ context.Context, _ Actor, q whatsappform_usecas
 	return nil, f.err
 }
 
-func (f *fakeService) Publish(_ context.Context, _ Actor, _ string) (whatsappform_usecase.PublishResult, error) {
+func (f *fakeService) Publish(_ context.Context, _ Actor, _ string, metaWABAIDs []string) (whatsappform_usecase.PublishResult, error) {
+	f.gotChosen = metaWABAIDs
 	return whatsappform_usecase.PublishResult{}, f.err
+}
+
+func (f *fakeService) PublishTargets(_ context.Context, _ Actor) ([]whatsappform_usecase.PublishTarget, error) {
+	return []whatsappform_usecase.PublishTarget{{MetaWABAID: "waba-a", Supported: true}}, f.err
 }
 
 func serve(t *testing.T, svc *fakeService, method, path, body string) *httptest.ResponseRecorder {
@@ -105,6 +111,7 @@ func TestErrorsMapToStatusesAndCodes(t *testing.T) {
 		{whatsappform.ErrPublicationNotSendable, http.StatusConflict, "whatsapp_form_not_sendable"},
 		{whatsappform.ErrProviderUnsupported, http.StatusConflict, "whatsapp_form_provider_unsupported"},
 		{whatsappform.ErrNoEligibleAccount, http.StatusConflict, "whatsapp_form_no_account"},
+		{whatsappform.ErrNoAccountChosen, http.StatusBadRequest, "whatsapp_form_no_account_chosen"},
 		{whatsappform.ErrFormArchived, http.StatusConflict, "whatsapp_form_archived"},
 		{whatsappform.ErrNameRequired, http.StatusBadRequest, "whatsapp_form_name_required"},
 		{whatsappform.ErrCopyInvalid, http.StatusBadRequest, "whatsapp_form_copy_invalid"},
@@ -125,11 +132,11 @@ func TestErrorsMapToStatusesAndCodes(t *testing.T) {
 
 func TestBuilderProblemsAre422WithTheProblemsInDetails(t *testing.T) {
 	problems := whatsappform.Problems{{Screen: "s_a", Block: "b_x", Property: "label", Code: "required"}}
-	rec := serve(t, &fakeService{err: problems}, http.MethodPost, "/whatsapp/forms/form-1x/publish", "")
+	rec := serve(t, &fakeService{err: problems}, http.MethodPost, "/whatsapp/forms/form-1x/publish", `{"metaWabaIds":["waba-a"]}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("a form id that is not a uuid does not route, got %d", rec.Code)
 	}
-	rec = serve(t, &fakeService{err: problems}, http.MethodPost, "/whatsapp/forms/0f8c2d1e-0000-4000-8000-000000000001/publish", "")
+	rec = serve(t, &fakeService{err: problems}, http.MethodPost, "/whatsapp/forms/0f8c2d1e-0000-4000-8000-000000000001/publish", `{"metaWabaIds":["waba-a"]}`)
 	body := decode(t, rec)
 	details, _ := body["details"].(map[string]any)
 	list, _ := details["problems"].([]any)
@@ -203,5 +210,20 @@ func TestStatsPeriod(t *testing.T) {
 	rec := serve(t, svc, http.MethodGet, "/whatsapp/forms/0f8c2d1e-0000-4000-8000-000000000001/stats?from=2026-10-01T00:00:00Z", "")
 	if rec.Code != http.StatusOK || svc.gotPeriod.From == nil || !svc.gotPeriod.From.Equal(time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)) || svc.gotPeriod.To != nil {
 		t.Fatalf("status %d period %+v", rec.Code, svc.gotPeriod)
+	}
+}
+
+func TestPublishSendsOnlyTheChosenAccounts(t *testing.T) {
+	svc := &fakeService{}
+	rec := serve(t, svc, http.MethodPost, "/whatsapp/forms/0f8c2d1e-0000-4000-8000-000000000001/publish", `{"metaWabaIds":["waba-b"]}`)
+	if rec.Code != http.StatusOK || len(svc.gotChosen) != 1 || svc.gotChosen[0] != "waba-b" {
+		t.Fatalf("status %d chosen %v", rec.Code, svc.gotChosen)
+	}
+}
+
+func TestPublishTargetsIsNotReadAsAFormID(t *testing.T) {
+	rec := serve(t, &fakeService{}, http.MethodGet, "/whatsapp/forms/publish-targets", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "waba-a") {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
 }

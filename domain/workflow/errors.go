@@ -43,6 +43,8 @@ var (
 	ErrNodeInvalidMediaID               = errors.New("workflow: media ID is invalid or media not found")
 	ErrNodeInvalidQueueID               = errors.New("workflow: call queue ID is invalid or queue not found")
 	ErrNodeInvalidLabelID               = errors.New("workflow: label ID is invalid or label not found")
+	ErrNodeUnknownCustomField           = errors.New("workflow: the workspace has no lead custom field with this key")
+	ErrNodeSensitiveCustomField         = errors.New("workflow: a sensitive lead custom field is never written by a flow")
 	ErrNodeInvalidStageID               = errors.New("workflow: stage ID is invalid or stage not found")
 	ErrNodeInvalidOpportunityPipeline   = errors.New("workflow: pipeline ID is not a deals pipeline of this workspace")
 	ErrNodeInvalidDepartmentID          = errors.New("workflow: department ID is invalid or department not found")

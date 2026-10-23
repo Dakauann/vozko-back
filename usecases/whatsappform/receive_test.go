@@ -15,7 +15,7 @@ func receiver(t *testing.T, starter string) (*world, FormDetail, wf.Send) {
 	t.Helper()
 	w := newWorld(t, wf.CapabilityView, wf.CapabilityBuild, wf.CapabilityPublish, wf.CapabilitySend, wf.CapabilityResponses)
 	detail := w.create("Cadastro", starter)
-	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID); err != nil {
+	if _, err := w.svc.Publish(ctx, w.viewer, detail.Form.ID, everyAccount); err != nil {
 		t.Fatal(err)
 	}
 	send, err := w.svc.SendInConversation(ctx, w.viewer, SendInput{EntryID: "entry-1", FormID: detail.Form.ID, Copy: formCopy})

@@ -18,6 +18,7 @@ type WhatsAppTemplate struct {
 	Language        string                     `gorm:"size:10;not null;default:pt_BR"`
 	Category        string                     `gorm:"size:20;not null;default:MARKETING"`
 	Status          string                     `gorm:"size:20;not null;default:PENDING;index"`
+	Quality         string                     `gorm:"size:20;not null;default:''"`
 	ParameterFormat string                     `gorm:"size:20;not null;default:positional"`
 	Components      WhatsAppTemplateComponents `gorm:"type:jsonb"`
 	HeaderMediaURL  *string                    `gorm:"size:1024"`

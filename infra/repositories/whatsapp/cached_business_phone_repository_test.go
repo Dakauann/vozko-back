@@ -121,6 +121,17 @@ func (f *fakeBPhoneRepo) BatchUpdate(ps []*businessphone.WhatsAppBusinessPhoneNu
 	}
 	return nil
 }
+func (f *fakeBPhoneRepo) UpdateQualityRating(id string, rating businessphone.QualityRating) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.byID[id]
+	if !ok {
+		return businessphone.ErrPhoneNumberNotFound
+	}
+	p.QualityRating = rating
+	return nil
+}
+
 func (f *fakeBPhoneRepo) UpdateStatus(id string, s businessphone.Status) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -329,6 +340,24 @@ func TestCachedBPhone_UpdateStatus_InvalidatesBoth(t *testing.T) {
 	}
 	if string(got.Status) != "DISCONNECTED" {
 		t.Fatalf("expected DISCONNECTED, got %s", got.Status)
+	}
+}
+
+func TestCachedBPhone_UpdateQualityRating_InvalidatesTheCachedPhone(t *testing.T) {
+	t.Parallel()
+	inner := newFakeBPhoneRepo()
+	inner.put(samplePhone("phone-1", "meta-1"))
+	cached := NewCachedBusinessPhoneRepository(inner, newFakeSharedState())
+
+	_, _ = cached.FindByMetaPhoneNumberID("meta-1")
+
+	if err := cached.UpdateQualityRating("phone-1", businessphone.QualityRatingRed); err != nil {
+		t.Fatalf("update quality: %v", err)
+	}
+
+	got, err := cached.FindByMetaPhoneNumberID("meta-1")
+	if err != nil || got == nil || got.QualityRating != businessphone.QualityRatingRed {
+		t.Fatalf("post-quality: %+v err=%v", got, err)
 	}
 }
 

@@ -299,13 +299,3 @@ func TestFormArchiveKeepsTheFirstArchiveTime(t *testing.T) {
 		})
 	}
 }
-
-func TestPublishedWorkspacesListsEachWorkspaceWithALiveForm(t *testing.T) {
-	db, mock := newMockDB(t)
-	mock.ExpectQuery(exactly(publishedWorkspacesSQL)).WillReturnRows(sqlmock.NewRows([]string{"workspace_id"}).AddRow(wsID))
-	got, err := NewFormStore(db).PublishedWorkspaces(ctx)
-	if err != nil || len(got) != 1 || got[0] != wsID {
-		t.Fatalf("got = %v err = %v", got, err)
-	}
-	expectationsMet(t, mock)
-}

@@ -2,10 +2,13 @@ package template_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"vozko/domain/conversation"
+	"vozko/domain/whatsapp/quality"
 	"vozko/domain/whatsapp/template"
 )
 
@@ -173,7 +176,7 @@ func TestSyncTemplates_PaginatesAndNormalizesCategoryAndStatus(t *testing.T) {
 		},
 	}
 	factory := &syncTemplatesFactoryMock{client: client, wabaID: "waba-1"}
-	uc := NewSyncTemplatesUseCase(repo, factory)
+	uc := NewSyncTemplatesUseCase(repo, factory, templateQualityHistory{}, &fakeQualityRecorder{})
 
 	synced, err := uc.Execute(template.SyncTemplatesInput{BusinessPhoneID: "phone-1", PageSize: 1})
 	if err != nil {
@@ -217,4 +220,52 @@ func TestSyncTemplates_PaginatesAndNormalizesCategoryAndStatus(t *testing.T) {
 
 func (m *syncTemplatesClientMock) SendCallPermissionRequest(context.Context, conversation.SendCallPermissionRequestInput) (*conversation.SendTextMessageOutput, error) {
 	return &conversation.SendTextMessageOutput{}, nil
+}
+
+type templateQualityHistory map[string]string
+
+func (h templateQualityHistory) LatestValues(quality.Subject, quality.Signal, []string) (map[string]string, error) {
+	return h, nil
+}
+
+func TestSyncTemplates_RecordsTheQualityOnlyWhenItIsNewOrMoved(t *testing.T) {
+	rated := func(id, score string) conversation.Template {
+		return conversation.Template{ID: id, Name: id, Language: "pt_BR", Category: "utility", Status: "approved", QualityScore: score, QualityScoreAt: 1760000000}
+	}
+	client := &syncTemplatesClientMock{outputs: []*conversation.ListTemplatesOutput{{Templates: []conversation.Template{
+		rated("seen-green", "GREEN"), rated("turned-yellow", "YELLOW"), rated("first-reading", "GREEN"), rated("unrated", ""),
+	}}}}
+	recorder := &fakeQualityRecorder{}
+	history := templateQualityHistory{"seen-green": "GREEN", "turned-yellow": "GREEN"}
+	repo := newMockTemplateRepo()
+	uc := NewSyncTemplatesUseCase(repo, &syncTemplatesFactoryMock{client: client, wabaID: "waba-1"}, history, recorder)
+
+	if _, err := uc.Execute(template.SyncTemplatesInput{BusinessPhoneID: "phone-1"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(recorder.changes) != 2 {
+		t.Fatalf("only the moved and the first reading are recorded, got %+v", recorder.changes)
+	}
+	moved := recorder.changes[0]
+	if moved.ExternalID != "turned-yellow" || moved.Previous != "GREEN" || moved.Current != "YELLOW" || moved.Source != quality.SourcePoll ||
+		moved.WABAID != "waba-1" || !moved.OccurredAt.Equal(time.Unix(1760000000, 0)) {
+		t.Fatalf("moved change %+v", moved)
+	}
+	if first := recorder.changes[1]; first.ExternalID != "first-reading" || first.Previous != "" || first.Current != "GREEN" {
+		t.Fatalf("first reading %+v", first)
+	}
+	if stored, _ := repo.FindByExternalIDAndWABA("turned-yellow", "waba-1"); stored == nil || stored.Quality != "YELLOW" {
+		t.Fatalf("the template keeps its current quality, got %+v", stored)
+	}
+}
+
+func TestSyncTemplates_FailsWhenTheQualityCannotBeRecorded(t *testing.T) {
+	boom := errors.New("db down")
+	client := &syncTemplatesClientMock{outputs: []*conversation.ListTemplatesOutput{{Templates: []conversation.Template{{ID: "t1", Name: "t1", QualityScore: "RED"}}}}}
+	uc := NewSyncTemplatesUseCase(newMockTemplateRepo(), &syncTemplatesFactoryMock{client: client, wabaID: "waba-1"}, templateQualityHistory{}, &fakeQualityRecorder{err: boom})
+
+	if _, err := uc.Execute(template.SyncTemplatesInput{BusinessPhoneID: "phone-1"}); !errors.Is(err, boom) {
+		t.Fatalf("expected the record failure, got %v", err)
+	}
 }

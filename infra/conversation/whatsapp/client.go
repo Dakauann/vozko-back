@@ -1561,7 +1561,7 @@ func (c *Client) ListTemplates(ctx context.Context, input conversation.ListTempl
 		return c.listTemplatesDialog360(ctx, input)
 	}
 
-	endpoint := fmt.Sprintf("%s/%s/message_templates?fields=id,name,status,category,language,parameter_format,components", c.baseURL, c.wabaID)
+	endpoint := fmt.Sprintf("%s/%s/message_templates?fields=id,name,status,category,language,parameter_format,components,quality_score", c.baseURL, c.wabaID)
 	if input.Status != "" {
 		endpoint += "&status=" + input.Status
 	}
@@ -2132,7 +2132,23 @@ func mapTemplateResponse(t templateResponse) conversation.Template {
 		Language:        t.Language,
 		ParameterFormat: t.ParameterFormat,
 		Components:      components,
+		QualityScore:    t.QualityScore.score(),
+		QualityScoreAt:  t.QualityScore.date(),
 	}
+}
+
+func (q *templateQualityScore) score() string {
+	if q == nil {
+		return ""
+	}
+	return q.Score
+}
+
+func (q *templateQualityScore) date() int64 {
+	if q == nil {
+		return 0
+	}
+	return q.Date
 }
 
 type sendTemplateMessageRequest struct {
@@ -2226,6 +2242,12 @@ type templateResponse struct {
 	Language        string                      `json:"language"`
 	ParameterFormat string                      `json:"parameter_format,omitempty"`
 	Components      []templateComponentResponse `json:"components"`
+	QualityScore    *templateQualityScore       `json:"quality_score,omitempty"`
+}
+
+type templateQualityScore struct {
+	Score string `json:"score"`
+	Date  int64  `json:"date"`
 }
 
 type templateComponentResponse struct {

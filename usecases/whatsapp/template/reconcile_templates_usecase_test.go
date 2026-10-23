@@ -45,6 +45,10 @@ func (m *reconcilePhoneRepoMock) ListAll() ([]*businessphone.WhatsAppBusinessPho
 func (m *reconcilePhoneRepoMock) BatchUpdate([]*businessphone.WhatsAppBusinessPhoneNumber) error {
 	return nil
 }
+func (*reconcilePhoneRepoMock) UpdateQualityRating(string, businessphone.QualityRating) error {
+	return nil
+}
+
 func (m *reconcilePhoneRepoMock) UpdateStatus(string, businessphone.Status) error { return nil }
 func (m *reconcilePhoneRepoMock) UpdateBusinessProfile(string, businessphone.BusinessProfile) error {
 	return nil

@@ -328,6 +328,10 @@ func (c ConsentChange) record() *ConsentRecord {
 	}
 }
 
+func (l *Lead) WroteAfterOptOut(lastInbound *time.Time) bool {
+	return l.OptedOutAt != nil && lastInbound != nil && lastInbound.After(*l.OptedOutAt)
+}
+
 func (l *Lead) ClaimOptOutConfirmation(withdrawalID string, at time.Time) error {
 	if l.OptedOutAt == nil || strings.TrimSpace(withdrawalID) == "" {
 		return ErrOptOutConfirmationStale

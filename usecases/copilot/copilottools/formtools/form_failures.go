@@ -46,6 +46,7 @@ var refusals = []refusal{
 	{wf.ErrNotOwner, copilot.StatusError, "só o workspace dono do número pode usar formulários nele"},
 	{wf.ErrProviderUnsupported, copilot.StatusError, "formulários só funcionam em números do WhatsApp oficial conectados direto à Meta"},
 	{wf.ErrNoEligibleAccount, copilot.StatusError, "o workspace não tem nenhum número do WhatsApp oficial conectado e verificado para publicar o formulário"},
+	{wf.ErrNoAccountChosen, copilot.StatusError, "diga em quais contas do WhatsApp publicar, com os ids de conta mostrados em list_whatsapp_forms ou pelo usuário"},
 	{wf.ErrNoPublication, copilot.StatusError, "o formulário não está publicado na conta do WhatsApp do número desta conversa; publique antes com publish_whatsapp_form"},
 	{wf.ErrPublicationNotSendable, copilot.StatusError, "a Meta não está entregando este formulário agora (bloqueado, limitado ou descontinuado); veja a situação em list_whatsapp_forms"},
 	{wf.ErrPublicationNotFound, copilot.StatusError, "o formulário não tem publicação nesta conta; publique com publish_whatsapp_form"},

@@ -51,6 +51,8 @@ var validationClasses = []validationClass{
 	{ErrNodeInvalidMediaID, LintInvalidResourceRef, resourceRefHint},
 	{ErrNodeInvalidQueueID, LintInvalidResourceRef, "Em Transferir para Fila, escolha uma fila de atendimento deste workspace."},
 	{ErrNodeInvalidLabelID, LintInvalidResourceRef, resourceRefHint},
+	{ErrNodeUnknownCustomField, LintUnknownCustomField, "Em Atualizar Lead, use a chave de um campo personalizado de lead que existe no workspace, ou crie o campo com essa chave."},
+	{ErrNodeSensitiveCustomField, LintSensitiveCustomField, "Em Atualizar Lead, remova o campo sensível: fluxos nunca gravam campos sensíveis."},
 	{ErrNodeInvalidStageID, LintInvalidResourceRef, resourceRefHint},
 	{ErrNodeInvalidOpportunityPipeline, LintInvalidResourceRef, resourceRefHint},
 	{ErrNodeInvalidDepartmentID, LintInvalidResourceRef, resourceRefHint},
@@ -114,7 +116,12 @@ func issueInfo(err error) (LintIssueCode, string) {
 
 func IssueOf(err error) LintIssue {
 	code, hint := issueInfo(err)
-	return LintIssue{Code: code, Severity: SeverityBlocking, NodeID: nodeIDFromErr(err), Path: missingOutputOf(err), Message: err.Error(), Hint: hint}
+	issue := LintIssue{Code: code, Severity: SeverityBlocking, NodeID: nodeIDFromErr(err), Path: missingOutputOf(err), Message: err.Error(), Hint: hint}
+	var ref *CustomFieldRefError
+	if errors.As(err, &ref) {
+		issue.Field, issue.Path = UpdateLeadCustomFields, ref.Key
+	}
+	return issue
 }
 
 type NotPublishableError struct {

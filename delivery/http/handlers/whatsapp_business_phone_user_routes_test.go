@@ -190,6 +190,10 @@ func (s *stubPhoneRepoForPhone) ListAll() ([]*businessphone.WhatsAppBusinessPhon
 func (s *stubPhoneRepoForPhone) BatchUpdate(_ []*businessphone.WhatsAppBusinessPhoneNumber) error {
 	return nil
 }
+func (*stubPhoneRepoForPhone) UpdateQualityRating(string, businessphone.QualityRating) error {
+	return nil
+}
+
 func (s *stubPhoneRepoForPhone) UpdateStatus(_ string, _ businessphone.Status) error { return nil }
 func (s *stubPhoneRepoForPhone) UpdateCallsEnabled(_ string, _ bool) error           { return nil }
 func (s *stubPhoneRepoForPhone) UpdateBusinessProfile(_ string, _ businessphone.BusinessProfile) error {

@@ -21,6 +21,7 @@ type Service interface {
 	SaveTemplateActions(ctx context.Context, a buttonaction_usecase.Actor, templateID string, expectedVersion int64, change buttonaction_usecase.TemplateChange) (*buttonaction_usecase.TemplateView, error)
 	ExitVerdict(ctx context.Context, a buttonaction_usecase.Actor, templateID, campaignID string) (*buttonaction_usecase.VerdictView, error)
 	DraftExitVerdict(ctx context.Context, a buttonaction_usecase.Actor, draft buttonaction_usecase.DraftTemplate) (*buttonaction_usecase.DraftVerdictView, error)
+	AllowedKinds(a buttonaction_usecase.Actor) ([]buttonaction.Kind, error)
 	CampaignRoutes(ctx context.Context, a buttonaction_usecase.Actor, campaignID string) (*buttonaction_usecase.CampaignView, error)
 	SaveCampaignRoutes(ctx context.Context, a buttonaction_usecase.Actor, campaignID string, expectedVersion int64, inputs []buttonaction.Input) (*buttonaction_usecase.CampaignView, error)
 }
@@ -159,7 +160,7 @@ func (h *Handler) GetExitVerdict(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Saída do lead num modelo em rascunho
-// @Description	O mesmo veredito de `GET /whatsapp/templates/{id}/exit-verdict`, calculado sobre um modelo que ainda não existe: os textos do rascunho (`header` quando o cabeçalho é de texto, `body` e `footer`), os botões (`buttons`, na ordem do componente de botões) e as ações dos botões de resposta rápida (`buttonActions`, com `buttonText` igual ao texto do botão no rascunho). As palavras de saída são os comandos `/palavra` que esses textos mostram. Nada é gravado e nada vai para a Meta. `verdict.templateExitRequired` é true quando o modelo não pode ser criado assim (marketing com veredito `none`, recusado com 422 `marketing_template_needs_exit`); `verdict.campaignAcknowledgementRequired` é true quando uma campanha com esse modelo exigiria o reconhecimento (veredito `none`, qualquer categoria). A tela de novo modelo usa o primeiro. `allowedKinds` lista os tipos de ação que quem pede pode configurar, pela mesma regra de permissões do salvamento, para o construtor oferecer só esses. Recusas com os mesmos códigos de salvar ações: 400 `button_action_kind_unknown`, `button_action_not_quick_reply`, `button_action_params_invalid`, `button_action_confirmation_too_long`, `button_action_duplicate_button`; 422 `button_action_stale` quando `buttonText` não é o texto do botão no rascunho.
+// @Description	O mesmo veredito de `GET /whatsapp/templates/{id}/exit-verdict`, calculado sobre um modelo que ainda não existe: os textos do rascunho (`header` quando o cabeçalho é de texto, `body` e `footer`), os botões (`buttons`, na ordem do componente de botões) e as ações dos botões de resposta rápida (`buttonActions`, com `buttonText` igual ao texto do botão no rascunho). As palavras de saída são os comandos `/palavra` que esses textos mostram. Nada é gravado e nada vai para a Meta. `verdict.templateExitRequired` é true quando o modelo não pode ser criado assim (marketing com veredito `none`, recusado com 422 `marketing_template_needs_exit`); `verdict.campaignAcknowledgementRequired` é true quando uma campanha com esse modelo exigiria o reconhecimento (veredito `none`, qualquer categoria). A tela de novo modelo usa o primeiro. Recusas com os mesmos códigos de salvar ações: 400 `button_action_kind_unknown`, `button_action_not_quick_reply`, `button_action_params_invalid`, `button_action_confirmation_too_long`, `button_action_duplicate_button`; 422 `button_action_stale` quando `buttonText` não é o texto do botão no rascunho.
 // @Tags			Modelos de WhatsApp
 // @Accept			json
 // @Produce		json
@@ -184,8 +185,28 @@ func (h *Handler) DraftExitVerdict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteSuccess(w, http.StatusOK, DraftExitVerdictResponse{
-		Verdict: presentVerdict(&view.Verdict, view.Gates, view.Template), AllowedKinds: presentKinds(view.AllowedKinds),
+		Verdict: presentVerdict(&view.Verdict, view.Gates, view.Template),
 	})
+}
+
+// @Summary		Tipos de ação de botão disponíveis
+// @Description	Os tipos de ação que quem pede pode configurar nos botões de resposta rápida, pela mesma regra de permissões do salvamento, para o construtor de modelos oferecer só esses. Não depende do modelo nem do rascunho.
+// @Tags			Modelos de WhatsApp
+// @Produce		json
+// @Success		200	{object}	AllowedKindsResponse
+// @Security		BearerAuth
+// @Router			/whatsapp/button-action-kinds [get]
+func (h *Handler) AllowedKinds(w http.ResponseWriter, r *http.Request) {
+	a, ok := h.actor(w, r)
+	if !ok {
+		return
+	}
+	kinds, err := h.service.AllowedKinds(a)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, AllowedKindsResponse{AllowedKinds: presentKinds(kinds)})
 }
 
 // @Summary		Desvios dos botões na campanha

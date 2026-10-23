@@ -141,6 +141,7 @@ func (c *Container) wireConversationHub() {
 		return ws
 	})
 	c.services.conversationHub.SetConversationStatusUpdater(conversationStatusUpdater)
+	c.services.conversationHub.SetPersonFinish(conversation_usecase.NewPersonFinish(conversationAuthorizer, conversationStatusUpdater))
 	conversationStatusUpdater.SetStatusAnnouncer(c.services.conversationHub)
 	c.services.conversationStatusUpdater = conversationStatusUpdater
 

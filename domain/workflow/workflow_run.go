@@ -137,6 +137,7 @@ type WorkflowRun struct {
 	State           RunState               `json:"state"`
 	WakeAt          *int64                 `json:"wakeAt,omitempty"`
 	WaitReason      WaitReason             `json:"waitReason,omitempty"`
+	WaitingSince    *time.Time             `json:"waitingSince,omitempty"`
 	RetryCount      int                    `json:"retryCount"`
 	Error           string                 `json:"error,omitempty"`
 	StartedAt       time.Time              `json:"startedAt"`
@@ -170,17 +171,29 @@ func (r *WorkflowRun) NodeVisit() string {
 }
 
 func (r *WorkflowRun) SetWaiting(wakeAt int64, reason WaitReason) {
+	now := time.Now().UTC()
 	r.Status = RunStatusWaiting
 	r.WakeAt = &wakeAt
 	r.WaitReason = reason
-	r.UpdatedAt = time.Now().UTC()
+	r.WaitingSince = &now
+	r.UpdatedAt = now
 }
 
 func (r *WorkflowRun) SetRunning() {
 	r.Status = RunStatusRunning
 	r.WakeAt = nil
 	r.WaitReason = ""
+	r.WaitingSince = nil
 	r.UpdatedAt = time.Now().UTC()
+}
+
+const ReplyClockSkew = 5 * time.Second
+
+func (r *WorkflowRun) AnswersWait(sentAt time.Time) bool {
+	if r.WaitingSince == nil || sentAt.IsZero() {
+		return true
+	}
+	return !sentAt.Add(ReplyClockSkew).Before(*r.WaitingSince)
 }
 
 func (r *WorkflowRun) SetCompleted() {

@@ -40527,6 +40527,31 @@ const docTemplate = `{
                 }
             }
         },
+        "/whatsapp/button-action-kinds": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Os tipos de ação que quem pede pode configurar nos botões de resposta rápida, pela mesma regra de permissões do salvamento, para o construtor de modelos oferecer só esses. Não depende do modelo nem do rascunho.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Modelos de WhatsApp"
+                ],
+                "summary": "Tipos de ação de botão disponíveis",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/buttonactionhttp.AllowedKindsResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/whatsapp/campaign-waves/defaults": {
             "get": {
                 "security": [
@@ -42065,6 +42090,40 @@ const docTemplate = `{
                 }
             }
         },
+        "/whatsapp/forms/publish-targets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "As contas do WhatsApp onde o workspace é dono de um número oficial conectado. ` + "`" + `supported` + "`" + ` diz se o provedor do número permite formulários; ` + "`" + `businessVerified` + "`" + ` diz se a empresa da conta está verificada na Meta, que costuma ser exigido para a Meta publicar formulários. Exige ` + "`" + `whatsapp_forms:configure` + "`" + `.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Formulários do WhatsApp"
+                ],
+                "summary": "Contas para publicar",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/whatsappform_usecase.PublishTarget"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/whatsapp/forms/responses/{responseId}": {
             "get": {
                 "security": [
@@ -42672,7 +42731,10 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Publica o rascunho em todas as contas do WhatsApp onde o workspace é dono de um número oficial conectado. Uma conta que já tem o formulário recebe a nova versão no mesmo formulário da Meta, então os modelos de mensagem continuam funcionando. ` + "`" + `outcomes` + "`" + ` traz o resultado de cada conta; uma conta com problema não impede as outras. 422 com os problemas quando o rascunho tem algo a corrigir (nada é enviado à Meta). Exige ` + "`" + `whatsapp_forms:configure` + "`" + `.",
+                "description": "Publica o rascunho nas contas do WhatsApp escolhidas em ` + "`" + `metaWabaIds` + "`" + `, entre as contas onde o workspace é dono de um número oficial conectado. Uma conta que já tem o formulário recebe a nova versão no mesmo formulário da Meta, então os modelos de mensagem continuam funcionando. ` + "`" + `outcomes` + "`" + ` traz o resultado de cada conta; uma conta com problema não impede as outras. 422 com os problemas quando o rascunho tem algo a corrigir (nada é enviado à Meta). Exige ` + "`" + `whatsapp_forms:configure` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -42687,6 +42749,15 @@ const docTemplate = `{
                         "name": "formId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Contas onde publicar",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/whatsappformhttp.PublishRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -42696,8 +42767,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/whatsappformhttp.PublishResponse"
                         }
                     },
+                    "400": {
+                        "description": "whatsapp_form_no_account_chosen",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "whatsapp_form_not_owner",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
                     "409": {
-                        "description": "whatsapp_form_no_account, whatsapp_form_archived",
+                        "description": "whatsapp_form_no_account, whatsapp_form_provider_unsupported, whatsapp_form_archived",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -43312,7 +43395,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "O mesmo veredito de ` + "`" + `GET /whatsapp/templates/{id}/exit-verdict` + "`" + `, calculado sobre um modelo que ainda não existe: os textos do rascunho (` + "`" + `header` + "`" + ` quando o cabeçalho é de texto, ` + "`" + `body` + "`" + ` e ` + "`" + `footer` + "`" + `), os botões (` + "`" + `buttons` + "`" + `, na ordem do componente de botões) e as ações dos botões de resposta rápida (` + "`" + `buttonActions` + "`" + `, com ` + "`" + `buttonText` + "`" + ` igual ao texto do botão no rascunho). As palavras de saída são os comandos ` + "`" + `/palavra` + "`" + ` que esses textos mostram. Nada é gravado e nada vai para a Meta. ` + "`" + `verdict.templateExitRequired` + "`" + ` é true quando o modelo não pode ser criado assim (marketing com veredito ` + "`" + `none` + "`" + `, recusado com 422 ` + "`" + `marketing_template_needs_exit` + "`" + `); ` + "`" + `verdict.campaignAcknowledgementRequired` + "`" + ` é true quando uma campanha com esse modelo exigiria o reconhecimento (veredito ` + "`" + `none` + "`" + `, qualquer categoria). A tela de novo modelo usa o primeiro. ` + "`" + `allowedKinds` + "`" + ` lista os tipos de ação que quem pede pode configurar, pela mesma regra de permissões do salvamento, para o construtor oferecer só esses. Recusas com os mesmos códigos de salvar ações: 400 ` + "`" + `button_action_kind_unknown` + "`" + `, ` + "`" + `button_action_not_quick_reply` + "`" + `, ` + "`" + `button_action_params_invalid` + "`" + `, ` + "`" + `button_action_confirmation_too_long` + "`" + `, ` + "`" + `button_action_duplicate_button` + "`" + `; 422 ` + "`" + `button_action_stale` + "`" + ` quando ` + "`" + `buttonText` + "`" + ` não é o texto do botão no rascunho.",
+                "description": "O mesmo veredito de ` + "`" + `GET /whatsapp/templates/{id}/exit-verdict` + "`" + `, calculado sobre um modelo que ainda não existe: os textos do rascunho (` + "`" + `header` + "`" + ` quando o cabeçalho é de texto, ` + "`" + `body` + "`" + ` e ` + "`" + `footer` + "`" + `), os botões (` + "`" + `buttons` + "`" + `, na ordem do componente de botões) e as ações dos botões de resposta rápida (` + "`" + `buttonActions` + "`" + `, com ` + "`" + `buttonText` + "`" + ` igual ao texto do botão no rascunho). As palavras de saída são os comandos ` + "`" + `/palavra` + "`" + ` que esses textos mostram. Nada é gravado e nada vai para a Meta. ` + "`" + `verdict.templateExitRequired` + "`" + ` é true quando o modelo não pode ser criado assim (marketing com veredito ` + "`" + `none` + "`" + `, recusado com 422 ` + "`" + `marketing_template_needs_exit` + "`" + `); ` + "`" + `verdict.campaignAcknowledgementRequired` + "`" + ` é true quando uma campanha com esse modelo exigiria o reconhecimento (veredito ` + "`" + `none` + "`" + `, qualquer categoria). A tela de novo modelo usa o primeiro. Recusas com os mesmos códigos de salvar ações: 400 ` + "`" + `button_action_kind_unknown` + "`" + `, ` + "`" + `button_action_not_quick_reply` + "`" + `, ` + "`" + `button_action_params_invalid` + "`" + `, ` + "`" + `button_action_confirmation_too_long` + "`" + `, ` + "`" + `button_action_duplicate_button` + "`" + `; 422 ` + "`" + `button_action_stale` + "`" + ` quando ` + "`" + `buttonText` + "`" + ` não é o texto do botão no rascunho.",
                 "consumes": [
                     "application/json"
                 ],
@@ -44075,7 +44158,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "O campo do lead sugerido para cada variável do modelo, guardado só no Vozko (nunca vai para a Meta). O passo de público usa a sugestão como ligação padrão e o modelo da lista nomeia a coluna pelo campo. Variável livre não tem entrada. Exige ` + "`" + `whatsapp_templates:read` + "`" + `.",
+                "description": "O campo do lead sugerido para cada variável do modelo, guardado só na plataforma (nunca vai para a Meta). O passo de público usa a sugestão como ligação padrão e o modelo da lista nomeia a coluna pelo campo. Variável livre não tem entrada. Exige ` + "`" + `whatsapp_templates:read` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -49280,26 +49363,26 @@ const docTemplate = `{
         "advertising.Destination": {
             "type": "string",
             "enum": [
+                "WHATSAPP",
+                "MESSENGER",
+                "INSTAGRAM_DIRECT",
                 "WEBSITE",
                 "ON_AD",
                 "APP",
                 "ON_POST",
                 "NONE",
-                "CATALOG",
-                "WHATSAPP",
-                "MESSENGER",
-                "INSTAGRAM_DIRECT"
+                "CATALOG"
             ],
             "x-enum-varnames": [
+                "DestinationWhatsApp",
+                "DestinationMessenger",
+                "DestinationInstagramDirect",
                 "DestinationWebsite",
                 "DestinationInstantForm",
                 "DestinationApp",
                 "DestinationOnPost",
                 "DestinationNone",
-                "DestinationCatalog",
-                "DestinationWhatsApp",
-                "DestinationMessenger",
-                "DestinationInstagramDirect"
+                "DestinationCatalog"
             ]
         },
         "advertising.ExportLabels": {
@@ -49718,6 +49801,7 @@ const docTemplate = `{
         "advertising.OptimizationGoal": {
             "type": "string",
             "enum": [
+                "CONVERSATIONS",
                 "REACH",
                 "IMPRESSIONS",
                 "AD_RECALL_LIFT",
@@ -49730,10 +49814,10 @@ const docTemplate = `{
                 "QUALITY_LEAD",
                 "OFFSITE_CONVERSIONS",
                 "VALUE",
-                "APP_INSTALLS",
-                "CONVERSATIONS"
+                "APP_INSTALLS"
             ],
             "x-enum-varnames": [
+                "GoalConversations",
                 "GoalReach",
                 "GoalImpressions",
                 "GoalAdRecallLift",
@@ -49746,8 +49830,7 @@ const docTemplate = `{
                 "GoalQualityLead",
                 "GoalOffsiteConversion",
                 "GoalValue",
-                "GoalAppInstalls",
-                "GoalConversations"
+                "GoalAppInstalls"
             ]
         },
         "advertising.Pixel": {
@@ -55993,6 +56076,21 @@ const docTemplate = `{
                 }
             }
         },
+        "buttonactionhttp.AllowedKindsResponse": {
+            "type": "object",
+            "properties": {
+                "allowedKinds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "opt_out",
+                        "hand_off"
+                    ]
+                }
+            }
+        },
         "buttonactionhttp.ButtonResponse": {
             "type": "object",
             "properties": {
@@ -56108,16 +56206,6 @@ const docTemplate = `{
         "buttonactionhttp.DraftExitVerdictResponse": {
             "type": "object",
             "properties": {
-                "allowedKinds": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "opt_out",
-                        "hand_off"
-                    ]
-                },
                 "verdict": {
                     "$ref": "#/definitions/buttonactionhttp.ExitVerdictResponse"
                 }
@@ -61934,31 +62022,6 @@ const docTemplate = `{
         "crmfilter.Field": {
             "type": "string",
             "enum": [
-                "id",
-                "phone_any",
-                "email",
-                "nickname",
-                "birthday",
-                "birth_date",
-                "zip",
-                "state",
-                "city",
-                "district",
-                "geo_precision",
-                "geo_status",
-                "has_address",
-                "has_identity",
-                "opted_out",
-                "whatsapp_opt_in",
-                "relation_kind",
-                "relatives_count",
-                "referred_count",
-                "referred_by",
-                "geo_placement",
-                "opt_out_source",
-                "opted_out_at",
-                "company",
-                "area_approximate",
                 "owner",
                 "carteira",
                 "pipeline",
@@ -61989,34 +62052,34 @@ const docTemplate = `{
                 "memory_count",
                 "memory_updated_at",
                 "custom",
-                "area"
+                "area",
+                "id",
+                "phone_any",
+                "email",
+                "nickname",
+                "birthday",
+                "birth_date",
+                "zip",
+                "state",
+                "city",
+                "district",
+                "geo_precision",
+                "geo_status",
+                "has_address",
+                "has_identity",
+                "opted_out",
+                "whatsapp_opt_in",
+                "relation_kind",
+                "relatives_count",
+                "referred_count",
+                "referred_by",
+                "geo_placement",
+                "opt_out_source",
+                "opted_out_at",
+                "company",
+                "area_approximate"
             ],
             "x-enum-varnames": [
-                "FieldID",
-                "FieldPhoneAny",
-                "FieldEmail",
-                "FieldNickname",
-                "FieldBirthday",
-                "FieldBirthDate",
-                "FieldZip",
-                "FieldState",
-                "FieldCity",
-                "FieldDistrict",
-                "FieldGeoPrecision",
-                "FieldGeoStatus",
-                "FieldHasAddress",
-                "FieldHasIdentity",
-                "FieldOptedOut",
-                "FieldWhatsAppOptIn",
-                "FieldRelationKind",
-                "FieldRelativesCount",
-                "FieldReferredCount",
-                "FieldReferredBy",
-                "FieldGeoPlacement",
-                "FieldOptOutSource",
-                "FieldOptedOutAt",
-                "FieldCompany",
-                "FieldAreaApproximate",
                 "FieldOwner",
                 "FieldCarteira",
                 "FieldPipeline",
@@ -62047,7 +62110,32 @@ const docTemplate = `{
                 "FieldMemoryCount",
                 "FieldMemoryUpdatedAt",
                 "FieldCustom",
-                "FieldArea"
+                "FieldArea",
+                "FieldID",
+                "FieldPhoneAny",
+                "FieldEmail",
+                "FieldNickname",
+                "FieldBirthday",
+                "FieldBirthDate",
+                "FieldZip",
+                "FieldState",
+                "FieldCity",
+                "FieldDistrict",
+                "FieldGeoPrecision",
+                "FieldGeoStatus",
+                "FieldHasAddress",
+                "FieldHasIdentity",
+                "FieldOptedOut",
+                "FieldWhatsAppOptIn",
+                "FieldRelationKind",
+                "FieldRelativesCount",
+                "FieldReferredCount",
+                "FieldReferredBy",
+                "FieldGeoPlacement",
+                "FieldOptOutSource",
+                "FieldOptedOutAt",
+                "FieldCompany",
+                "FieldAreaApproximate"
             ]
         },
         "crmfilter.Filter": {
@@ -63238,22 +63326,22 @@ const docTemplate = `{
         "emailcampaign.HoldReason": {
             "type": "string",
             "enum": [
-                "test_batch_bounces",
-                "test_batch_complaints",
                 "",
                 "daily_cap",
                 "account_paused",
                 "sender_unavailable",
-                "balance_insufficient"
+                "balance_insufficient",
+                "test_batch_bounces",
+                "test_batch_complaints"
             ],
             "x-enum-varnames": [
-                "HoldTestBatchBounces",
-                "HoldTestBatchComplaints",
                 "HoldNone",
                 "HoldDailyCap",
                 "HoldAccountPaused",
                 "HoldSenderUnavailable",
-                "HoldBalanceShort"
+                "HoldBalanceShort",
+                "HoldTestBatchBounces",
+                "HoldTestBatchComplaints"
             ]
         },
         "emailcampaign.Issue": {
@@ -74780,6 +74868,8 @@ const docTemplate = `{
                 "phone_banned",
                 "phone_unavailable",
                 "template_yellow",
+                "phone_yellow",
+                "phone_red",
                 "category_marketing",
                 "template_flagged",
                 "failure_rate_stop",
@@ -74804,6 +74894,8 @@ const docTemplate = `{
                 "RulePhoneBanned",
                 "RulePhoneUnavailable",
                 "RuleTemplateYellow",
+                "RulePhoneYellow",
+                "RulePhoneRed",
                 "RuleCategoryMarketing",
                 "RuleTemplateFlagged",
                 "RuleFailureRateStop",
@@ -74931,6 +75023,24 @@ const docTemplate = `{
                 "observeWaitMinutes": {
                     "type": "integer",
                     "example": 120
+                },
+                "onPhoneRed": {
+                    "type": "string",
+                    "enum": [
+                        "slow_down",
+                        "pause",
+                        "stop"
+                    ],
+                    "example": "pause"
+                },
+                "onPhoneYellow": {
+                    "type": "string",
+                    "enum": [
+                        "slow_down",
+                        "pause",
+                        "stop"
+                    ],
+                    "example": "slow_down"
                 },
                 "onTemplateYellow": {
                     "type": "string",
@@ -76139,6 +76249,9 @@ const docTemplate = `{
                 },
                 "parameterFormat": {
                     "$ref": "#/definitions/template.ParameterFormat"
+                },
+                "quality": {
+                    "type": "string"
                 },
                 "status": {
                     "$ref": "#/definitions/template.TemplateStatus"
@@ -81000,6 +81113,20 @@ const docTemplate = `{
                 }
             }
         },
+        "whatsappform_usecase.PublishTarget": {
+            "type": "object",
+            "properties": {
+                "businessVerified": {
+                    "type": "boolean"
+                },
+                "metaWabaId": {
+                    "type": "string"
+                },
+                "supported": {
+                    "type": "boolean"
+                }
+            }
+        },
         "whatsappformhttp.AutomationCreatedResponse": {
             "type": "object",
             "properties": {
@@ -81294,6 +81421,20 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/whatsappform.Problem"
                     }
+                }
+            }
+        },
+        "whatsappformhttp.PublishRequest": {
+            "type": "object",
+            "properties": {
+                "metaWabaIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "810731194926395"
+                    ]
                 }
             }
         },
@@ -82388,13 +82529,13 @@ const docTemplate = `{
         "workflow.LintIssueCode": {
             "type": "string",
             "enum": [
+                "NODE_INVALID_PLATFORM_EMAIL",
                 "DATA_REF_NEVER_SET",
                 "DATA_REF_SOME_PATHS",
                 "NODE_CONSENT_GRANT_NEEDS_REPLY",
                 "SEND_OUTSIDE_WINDOW_RISK",
                 "NODE_AGENT_CALL_INPUTS_INVALID",
                 "NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER",
-                "NODE_INVALID_PLATFORM_EMAIL",
                 "GRAPH_EMPTY",
                 "GRAPH_TOO_MANY_NODES",
                 "GRAPH_TOO_MANY_EDGES",
@@ -82425,6 +82566,8 @@ const docTemplate = `{
                 "NODE_NEEDS_CONVERSATION",
                 "NODE_INVALID_DTMF_CONFIG",
                 "NODE_INVALID_RESOURCE_REF",
+                "NODE_UNKNOWN_CUSTOM_FIELD",
+                "NODE_SENSITIVE_CUSTOM_FIELD",
                 "NODE_INVALID_CONFIG_VALUE",
                 "NODE_REASONING_UNSUPPORTED",
                 "NODE_PIN_INVALID",
@@ -82442,13 +82585,13 @@ const docTemplate = `{
                 "NODE_PINNED_OUTPUT"
             ],
             "x-enum-varnames": [
+                "LintInvalidPlatformEmail",
                 "LintDataRefNeverSet",
                 "LintDataRefSomePaths",
                 "LintConsentGrantNeedsReply",
                 "LintSendOutsideWindowRisk",
                 "LintAgentCallInputsInvalid",
                 "LintReplyToAgentWithoutTrigger",
-                "LintInvalidPlatformEmail",
                 "LintGraphEmpty",
                 "LintGraphTooManyNodes",
                 "LintGraphTooManyEdges",
@@ -82479,6 +82622,8 @@ const docTemplate = `{
                 "LintNodeNeedsConversation",
                 "LintInvalidDTMFConfig",
                 "LintInvalidResourceRef",
+                "LintUnknownCustomField",
+                "LintSensitiveCustomField",
                 "LintInvalidConfigValue",
                 "LintReasoningUnsupported",
                 "LintPinInvalid",
@@ -83446,6 +83591,9 @@ const docTemplate = `{
                 },
                 "waitReason": {
                     "$ref": "#/definitions/workflow.WaitReason"
+                },
+                "waitingSince": {
+                    "type": "string"
                 },
                 "wakeAt": {
                     "type": "integer"

@@ -431,6 +431,7 @@ type pageLinkCall struct {
 }
 
 type fakeGateway struct {
+	leadsSince     []time.Time
 	metaMedia      map[string]string
 	object         *ads.Object
 	linkStatus     string
@@ -663,7 +664,8 @@ func (g *fakeGateway) CreateForm(context.Context, string, ads.LeadFormDraft) (st
 func (g *fakeGateway) ArchiveForm(context.Context, string, string, string) error {
 	return g.step("archive_form")
 }
-func (g *fakeGateway) ListLeads(context.Context, string, string, string, time.Time) ([]ads.FormLead, error) {
+func (g *fakeGateway) ListLeads(_ context.Context, _, _, _ string, since time.Time) ([]ads.FormLead, error) {
+	g.leadsSince = append(g.leadsSince, since)
 	return g.leads, g.step("leads")
 }
 func (g *fakeGateway) GetLead(_ context.Context, _, _, id string) (*ads.FormLead, error) {

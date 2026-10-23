@@ -3,7 +3,6 @@ package auth_usecase
 import (
 	"errors"
 	"log"
-	"strings"
 	"time"
 
 	"vozko/brand"
@@ -64,7 +63,7 @@ func (uc *credentialsLoginUseCase) notifyAccountLocked(account string) {
 		Template: "login_locked.html",
 		Placeholders: map[string]interface{}{
 			"Email":    account,
-			"ResetURL": uc.dashboardURL + "/reset-password",
+			"ResetURL": uc.dashboardURL + "/forgot-password",
 		},
 		DedupKey: "login_locked:" + account,
 		DedupTTL: 15 * time.Minute,
@@ -72,7 +71,7 @@ func (uc *credentialsLoginUseCase) notifyAccountLocked(account string) {
 }
 
 func (uc *credentialsLoginUseCase) Execute(input auth.CredentialsInput) (*auth.TokenPair, error) {
-	account := strings.ToLower(strings.TrimSpace(input.Email))
+	account := user.CanonicalEmail(input.Email)
 
 	if uc.throttle != nil {
 		allowed, retryAfter, terr := uc.throttle.Allowed(account)

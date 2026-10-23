@@ -24,7 +24,7 @@ const (
 
 var (
 	ErrProfileSourceInvalid = errors.New("lead: the source of a profile update is not a known one")
-	ErrProfileEmpty         = errors.New("lead: a profile update needs an address, a birth date or a custom field")
+	ErrProfileEmpty         = errors.New("lead: a profile update needs a name, an email, an address, a birth date or a custom field")
 	ErrProfileCEPUnknown    = errors.New("lead: the CEP of the profile does not exist")
 	ErrProfileCEPUnchecked  = errors.New("lead: the CEP of the profile could not be checked right now")
 )
@@ -44,8 +44,11 @@ func (s ProfileSource) EventKind() recordevent.Kind {
 }
 
 func (s ProfileSource) nameSource() Source {
-	if s == ProfileFromForm {
+	switch s {
+	case ProfileFromForm:
 		return SourceForm
+	case ProfileFromWorkflow:
+		return SourceWorkflow
 	}
 	return SourceChannel
 }
@@ -129,21 +132,44 @@ func (l *Lead) ApplyProfile(p Profile, defs []*customfield.Definition, now time.
 	return ProfileOutcome{Changed: sortedFields(f.changed), Conflicts: sortedFields(f.conflicts)}, nil
 }
 
-func profileCustomFields(incoming map[string]string, defs []*customfield.Definition) (map[string]any, error) {
+func ProfileFieldsWritable(keys []string, defs []*customfield.Definition) error {
+	index := profileFieldIndex(defs)
+	for _, key := range keys {
+		if _, err := writableProfileField(index, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func profileFieldIndex(defs []*customfield.Definition) map[string]*customfield.Definition {
 	index := make(map[string]*customfield.Definition, len(defs))
 	for _, def := range defs {
 		if def != nil {
 			index[def.Key] = def
 		}
 	}
+	return index
+}
+
+func writableProfileField(index map[string]*customfield.Definition, key string) (*customfield.Definition, error) {
+	def := index[key]
+	if def == nil {
+		return nil, &customfield.ValueError{Key: key, Err: customfield.ErrUnknownKey}
+	}
+	if !customfield.VisibleTo(def, automationFields) {
+		return nil, &customfield.ValueError{Key: key, Err: customfield.ErrValueForbidden}
+	}
+	return def, nil
+}
+
+func profileCustomFields(incoming map[string]string, defs []*customfield.Definition) (map[string]any, error) {
+	index := profileFieldIndex(defs)
 	values := make(map[string]any, len(incoming))
 	for _, key := range slices.Sorted(maps.Keys(incoming)) {
-		def := index[key]
-		if def == nil {
-			return nil, &customfield.ValueError{Key: key, Err: customfield.ErrUnknownKey}
-		}
-		if !customfield.VisibleTo(def, automationFields) {
-			return nil, &customfield.ValueError{Key: key, Err: customfield.ErrValueForbidden}
+		def, err := writableProfileField(index, key)
+		if err != nil {
+			return nil, err
 		}
 		value, err := def.CoerceLocal(incoming[key])
 		if err != nil {
