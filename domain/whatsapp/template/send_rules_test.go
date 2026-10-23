@@ -73,3 +73,17 @@ func TestATemplateWithoutVariablesTakesNoValues(t *testing.T) {
 		t.Fatalf("err = %v, want no values required", err)
 	}
 }
+
+func TestValidateParamsCountsTheSameSlotsTheSendUses(t *testing.T) {
+	repeated := &Template{Components: []TemplateComponent{{Type: "BODY", Text: "Olá {{1}}, sim, {{1}}, até {{2}}."}}}
+	if err := repeated.ValidateParams([]string{"Ana", "amanhã"}, nil); err != nil {
+		t.Fatalf("one value per numbered variable = %v", err)
+	}
+	if err := repeated.ValidateParams([]string{"Ana", "Ana", "amanhã"}, nil); !errors.Is(err, ErrTemplateParamsMismatch) {
+		t.Fatalf("a value per occurrence = %v", err)
+	}
+	body, header := headerAndBody("Loja {{loja}}", "Olá {{nome}}, pedido {{pedido}}").SplitParameters([]string{"Prisma", "Ana", "77"})
+	if err := headerAndBody("Loja {{loja}}", "Olá {{nome}}, pedido {{pedido}}").ValidateParams(body, header); err != nil {
+		t.Fatalf("split values = %v", err)
+	}
+}

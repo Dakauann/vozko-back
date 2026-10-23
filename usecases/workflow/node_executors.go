@@ -8,6 +8,8 @@ import (
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	calendar_domain "vozko/domain/calendar"
+	"vozko/domain/carriermessaging"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	label_domain "vozko/domain/label"
@@ -27,6 +29,7 @@ import (
 	dept_domain "vozko/domain/workspace/workspace_department"
 	workspace_phone_access_domain "vozko/domain/workspace_phone_access"
 	email_usecase "vozko/usecases/email"
+	"vozko/usecases/transactionalemail"
 	"vozko/usecases/workflow/node_executors"
 )
 
@@ -34,7 +37,8 @@ type ExecutorDeps struct {
 	AIService             ai.Service
 	AgentRepo             agent.Repository
 	CalendarRepo          calendar_domain.Repository
-	GoogleCalendar        calendar_domain.GoogleOAuthService
+	GoogleCalendar        calendar_domain.GoogleCalendarAPI
+	CalendarAccess        calendar_domain.AccessProvider
 	RescheduleEventUC     calendar_domain.RescheduleEventUseCase
 	MessageRepo           conversation.MessageRepository
 	HistoryManager        conversation.MessageHistoryManager
@@ -47,6 +51,7 @@ type ExecutorDeps struct {
 	ToolRegistry          tools.Service
 	TemplateRepo          template_domain.Repository
 	MediaRepo             media_domain.MediaRepository
+	MediaURLs             *conversation.MediaURLResolver
 	TemplateSends         template_domain.BilledTemplateSendUseCase
 	WorkspacePhoneAccess  workspace_phone_access_domain.Repository
 	SubWorkflowRunner     node_executors.SubWorkflowRunner
@@ -75,16 +80,24 @@ type ExecutorDeps struct {
 	MediaFetcher          node_executors.MediaFetcher
 	Secrets               workflowsecret.Resolver
 	Forms                 node_executors.FormSender
+	Carrier               node_executors.CarrierSender
+	PlatformEmail         transactionalemail.Sender
+	SheetRows             node_executors.SheetRowSink
 
 	AIAttendance       node_executors.WorkflowAIAttendance
 	ConversationStatus conversation.ConversationStatusUpdater
 	Adapters           conversation.AdapterRegistry
 	ConversationEvents ce.Logger
+	ChoiceStats        choicestats.Recorder
 }
 
 var ErrConversationEventsRequired = errors.New("workflow executors: the conversation event logger is required to record refused sends")
 
 var ErrFormSenderRequired = errors.New("workflow executors: the whatsapp form sender is required to send forms")
+
+var ErrChoiceRecorderRequired = errors.New("workflow executors: the choice click-through recorder is required to count prompt sends")
+
+var ErrMediaURLsRequired = errors.New("workflow executors: the media URL resolver is required to check media sent by URL")
 
 type discardedEvents struct{}
 
@@ -98,6 +111,12 @@ func RegisterProductionExecutors(registry *NodeExecutorRegistry, deps ExecutorDe
 	}
 	if deps.Forms == nil {
 		return ErrFormSenderRequired
+	}
+	if deps.ChoiceStats == nil {
+		return ErrChoiceRecorderRequired
+	}
+	if deps.MediaURLs == nil {
+		return ErrMediaURLsRequired
 	}
 	RegisterDefaultExecutors(registry, deps)
 	return nil
@@ -113,6 +132,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 		HistoryManager:        deps.HistoryManager,
 		TemplateRepo:          deps.TemplateRepo,
 		MediaRepo:             deps.MediaRepo,
+		MediaURLs:             deps.MediaURLs,
 		TemplateSends:         deps.TemplateSends,
 		WorkspacePhoneAccess:  deps.WorkspacePhoneAccess,
 		BillingPub:            deps.BillingPub,
@@ -122,6 +142,7 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 		EntryLeads:            deps.EntryLeads,
 		Events:                deps.ConversationEvents,
 		MediaFetcher:          deps.MediaFetcher,
+		ChoiceStats:           deps.ChoiceStats,
 	}
 
 	emailSender := deps.EmailSender
@@ -131,6 +152,10 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	registry.Register(workflow.NodeTypeActionSendText, node_executors.NewSendTextExecutor(waDeps))
 	registry.Register(workflow.NodeTypeActionSendTemplate, node_executors.NewSendTemplateExecutor(waDeps))
 	registry.Register(workflow.NodeTypeActionSendEmail, node_executors.NewSendEmailExecutor(emailSender))
+	if len(carriermessaging.LaunchedChannels()) > 0 {
+		registry.Register(workflow.NodeTypeActionSendCarrier, node_executors.NewSendCarrierExecutor(node_executors.CarrierNodeDeps{Sender: deps.Carrier, Leads: deps.LeadRepo, EntryLeads: deps.EntryLeads}))
+	}
+	registry.Register(workflow.NodeTypeActionSendPlatformEmail, node_executors.NewSendPlatformEmailExecutor(node_executors.PlatformEmailNodeDeps{Sender: deps.PlatformEmail, EntryLeads: deps.EntryLeads}))
 	registry.Register(workflow.NodeTypeActionSendMedia, node_executors.NewSendMediaExecutor(waDeps))
 	registry.Register(workflow.NodeTypeActionSetVariable, node_executors.NewSetVariableExecutor())
 	registry.Register(workflow.NodeTypeActionHTTPRequest, node_executors.NewHTTPRequestExecutor(deps.HTTPEgress, deps.Secrets))
@@ -143,9 +168,10 @@ func RegisterDefaultExecutors(registry *NodeExecutorRegistry, deps ExecutorDeps)
 	}
 	registry.Register(workflow.NodeTypeActionAIAgent, aiAgentExec)
 
-	registry.Register(workflow.NodeTypeActionScheduleMeeting, node_executors.NewScheduleMeetingExecutor(deps.CalendarRepo, deps.GoogleCalendar))
-	registry.Register(workflow.NodeTypeActionRescheduleMeeting, node_executors.NewRescheduleMeetingExecutor(deps.RescheduleEventUC))
-	registry.Register(workflow.NodeTypeActionCheckCalendarAvailability, node_executors.NewCheckCalendarAvailabilityExecutor(deps.CalendarRepo, deps.GoogleCalendar))
+	registry.Register(workflow.NodeTypeActionCreateCalendarEvent, node_executors.NewCreateCalendarEventExecutor(deps.CalendarRepo, deps.GoogleCalendar, deps.CalendarAccess))
+	registry.Register(workflow.NodeTypeActionRescheduleCalendarEvent, node_executors.NewRescheduleCalendarEventExecutor(deps.RescheduleEventUC))
+	registry.Register(workflow.NodeTypeActionCheckCalendarAvailability, node_executors.NewCheckCalendarAvailabilityExecutor(deps.CalendarRepo, deps.GoogleCalendar, deps.CalendarAccess))
+	registry.Register(workflow.NodeTypeActionAddSheetRow, node_executors.NewAddSheetRowExecutor(deps.SheetRows))
 	registry.Register(workflow.NodeTypeActionAssignLabel, node_executors.NewAssignLabelExecutor(deps.Labeler))
 	registry.Register(workflow.NodeTypeActionMoveStage, node_executors.NewMoveStageExecutor(deps.StageRepo, deps.AssignStage, deps.StageBroadcaster))
 	registry.Register(workflow.NodeTypeActionManageOpportunity, node_executors.NewManageOpportunityExecutor(deps.Deals))

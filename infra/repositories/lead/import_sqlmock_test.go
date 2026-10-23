@@ -153,7 +153,7 @@ func TestWriteLinksReportsAPairThatWasAlreadyLinked(t *testing.T) {
 		WithArgs(wsUUID, sqlmock.AnyArg(), pq.StringArray{relationUUID}, pq.StringArray{rel.LeadID}, pq.StringArray{rel.OtherLeadID},
 			pq.StringArray{"family"}, pq.StringArray{string(rel.Kind)}, pq.StringArray{actorUUID}).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectExec(`INSERT INTO "lead_import_issues"`).WithArgs(importUUID, 7, "relation_exists", "relative_number", false).WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec(`INSERT INTO "lead_import_issues"`).WithArgs(importUUID, 7, "relation_exists", "relative_number", false, nil).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec(exact(importDeleteLinksSQL)).WithArgs(importUUID, pq.StringArray{link.ID}).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(exact(importCheckpointSQL)).WithArgs(0, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), importUUID, claimToken).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(importUUID))

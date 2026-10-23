@@ -54,6 +54,7 @@ type UploadMediaInput struct {
 	Filename  string
 	Data      []byte
 	MimeType  string
+	Purpose   MediaPurpose
 }
 
 type UploadConversationMediaUseCase interface {

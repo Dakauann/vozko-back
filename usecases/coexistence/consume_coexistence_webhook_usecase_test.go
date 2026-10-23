@@ -305,6 +305,7 @@ func (r *mockLeadRepo) Create(*lead.Lead) error                          { retur
 func (r *mockLeadRepo) FindByID(string, string) (*lead.Lead, error)      { return nil, nil }
 func (r *mockLeadRepo) FindByIDs(string, []string) ([]*lead.Lead, error) { return nil, nil }
 func (r *mockLeadRepo) FindByNumber(string, string) (*lead.Lead, error)  { return nil, nil }
+func (r *mockLeadRepo) FindByEmail(string, string) (*lead.Lead, error)   { return nil, lead.ErrLeadNotFound }
 func (r *mockLeadRepo) FindOrCreateMany(string, []lead.BulkLeadInput) (map[string]*lead.Lead, error) {
 	return nil, nil
 }

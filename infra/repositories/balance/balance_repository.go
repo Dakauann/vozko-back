@@ -110,6 +110,9 @@ func (r *BalanceRepositoryImpl) CreditBalance(params balance.CreditBalanceInput)
 		if err := ensureReferenceUnrecorded(tx, params.OncePerReference, params.ReferenceID); err != nil {
 			return err
 		}
+		if err := ensureRefundCovered(tx, params); err != nil {
+			return err
+		}
 
 		balanceBefore := dbBalance.Amount
 		balanceAfter := balanceBefore + params.Amount
@@ -211,6 +214,22 @@ func (r *BalanceRepositoryImpl) DebitBalance(params balance.DebitBalanceInput) (
 		return nil, err
 	}
 	return transaction, nil
+}
+
+const chargedUnderReferenceSQL = `SELECT COALESCE(SUM(amount), 0) FROM balance_transactions WHERE workspace_id = ? AND reference_id = ? AND type = 'debit' AND is_refund = false`
+
+func ensureRefundCovered(tx *gorm.DB, params balance.CreditBalanceInput) error {
+	if params.RefundOf == nil {
+		return nil
+	}
+	if strings.TrimSpace(*params.RefundOf) == "" {
+		return balance.ErrRefundWithoutCharge
+	}
+	var charged int64
+	if err := tx.Raw(chargedUnderReferenceSQL, params.WorkspaceID, *params.RefundOf).Scan(&charged).Error; err != nil {
+		return err
+	}
+	return balance.RefundAllowed(charged, params.Amount)
 }
 
 func ensureReferenceUnrecorded(tx *gorm.DB, once bool, referenceID *string) error {
@@ -515,6 +534,11 @@ func mapTransactionToDomain(db *schema.BalanceTransaction) *balance.Transaction 
 		CreatedAt:          db.CreatedAt,
 	}
 }
+
+const dailyServiceSpendSQL = "SELECT to_char(created_at AT TIME ZONE ?, 'YYYY-MM-DD') AS day," +
+	" COALESCE(SUM(amount) FILTER (WHERE type = 'debit' AND is_refund = false), 0) AS debited_micros," +
+	" COALESCE(SUM(amount) FILTER (WHERE type = 'credit' AND is_refund = true), 0) AS refunded_micros" +
+	" FROM balance_transactions WHERE workspace_id = ? AND service_type = ? AND created_at >= ? GROUP BY 1 ORDER BY 1"
 
 func (r *BalanceRepositoryImpl) AggregateDailyCosts(date time.Time) ([]balance.DailyCostRow, error) {
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)

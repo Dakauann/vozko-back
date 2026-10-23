@@ -305,7 +305,7 @@ func (c *Client) SendAudioMessage(ctx context.Context, input conversation.SendAu
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send audio failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send audio failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -382,7 +382,7 @@ func (c *Client) SendVoiceMessage(ctx context.Context, to string, audioMediaID s
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp voice message failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp voice message failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded struct {
@@ -578,7 +578,7 @@ func (c *Client) SendImageMessage(ctx context.Context, input conversation.SendIm
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send image failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send image failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -656,7 +656,7 @@ func (c *Client) SendVideoMessage(ctx context.Context, input conversation.SendVi
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send video failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send video failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -738,7 +738,7 @@ func (c *Client) SendDocumentMessage(ctx context.Context, input conversation.Sen
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send document failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send document failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -806,7 +806,7 @@ func (c *Client) SendCallPermissionRequest(ctx context.Context, input conversati
 		return nil, fmt.Errorf("failed to read call permission response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send call permission request failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send call permission request failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -878,7 +878,7 @@ func (c *Client) SendStickerMessage(ctx context.Context, input conversation.Send
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send sticker failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send sticker failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -1080,7 +1080,7 @@ func (c *Client) postInteractive(ctx context.Context, payload map[string]interfa
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send %s message failed: status=%d body=%s", kind, resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send %s message failed: status=%d body=%s", kind, resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -1220,7 +1220,7 @@ func (c *Client) SendTextMessage(ctx context.Context, input conversation.SendTex
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("whatsapp send failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		return nil, newSendAPIError(fmt.Sprintf("whatsapp send failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse
@@ -1435,7 +1435,7 @@ func (c *Client) SendTemplateMessage(ctx context.Context, input conversation.Sen
 			RequestPayload:  body,
 			ResponsePayload: respBody,
 			ResponseStatus:  resp.StatusCode,
-		}, fmt.Errorf("whatsapp send template failed: status=%d body=%s", resp.StatusCode, string(respBody))
+		}, newSendAPIError(fmt.Sprintf("whatsapp send template failed: status=%d body=%s", resp.StatusCode, string(respBody)), resp.StatusCode, respBody)
 	}
 
 	var decoded sendTextMessageResponse

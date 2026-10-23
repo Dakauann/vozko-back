@@ -89,6 +89,7 @@ func expectAnonymization(mock sqlmock.Sqlmock) {
 	mock.ExpectExec(exact(redactLeadEventsSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 4))
 	mock.ExpectExec(exact(eraseCallListItemsSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec(exact(eraseCustomerPortfolioSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(exact(eraseGoogleSheetRowsSQL)).WithArgs(wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 8))
 	mock.ExpectExec(exact(eraseCampaignEntriesSQL)).WithArgs(leadUUID).WillReturnResult(sqlmock.NewResult(0, 5))
 	mock.ExpectExec(exact(eraseUnofficialEntriesSQL)).
 		WithArgs(pq.StringArray{"5511987654321"}, pq.StringArray{"••••4321"}, wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 6))
@@ -130,7 +131,7 @@ func TestAnonymizeTouchesEveryErasureTargetInOneTransaction(t *testing.T) {
 	want := map[lead.ErasureTarget]int64{
 		lead.ErasureRecord: 1, lead.ErasurePhones: 1, lead.ErasureAddresses: 2, lead.ErasureRelations: 1, lead.ErasureEvents: 4,
 		lead.ErasureMemories: 3, lead.ErasureCampaignEntries: 5, lead.ErasureUnofficialCampaignEntries: 6,
-		lead.ErasureCallNumbers: 3, lead.ErasureTemplateSendNumbers: 7, lead.ErasureCallListItems: 2, lead.ErasureCustomerPortfolio: 1,
+		lead.ErasureCallNumbers: 3, lead.ErasureTemplateSendNumbers: 7, lead.ErasureCallListItems: 2, lead.ErasureCustomerPortfolio: 1, lead.ErasureGoogleSheetRows: 8,
 	}
 	for _, target := range lead.ErasureTargets() {
 		if got, touched := erasure.Rows[target]; !touched || got != want[target] {
@@ -167,7 +168,7 @@ func TestAnonymizeWithoutNumbersMasksNothing(t *testing.T) {
 	mock.ExpectQuery(exact(contactNumbersSQL)).WillReturnRows(sqlmock.NewRows([]string{"number"}))
 	mock.ExpectQuery(exact(unofficialEntryNumbersSQL)).WillReturnRows(sqlmock.NewRows([]string{"number"}))
 	mock.ExpectQuery(exact(unrelateAllSQL)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	for _, sql := range []string{erasePhonesSQL, eraseAddressesSQL, eraseMemoriesSQL, redactLeadEventsSQL, eraseCallListItemsSQL, eraseCustomerPortfolioSQL, eraseCampaignEntriesSQL} {
+	for _, sql := range []string{erasePhonesSQL, eraseAddressesSQL, eraseMemoriesSQL, redactLeadEventsSQL, eraseCallListItemsSQL, eraseCustomerPortfolioSQL, eraseGoogleSheetRowsSQL, eraseCampaignEntriesSQL} {
 		mock.ExpectExec(exact(sql)).WillReturnResult(sqlmock.NewResult(0, 0))
 	}
 	mock.ExpectExec(exact(eraseUnofficialEntriesSQL)).WithArgs(pq.StringArray{}, pq.StringArray{}, wsUUID, leadUUID).WillReturnResult(sqlmock.NewResult(0, 0))
@@ -238,7 +239,7 @@ func TestAnonymizeMasksOnlyRowsThatBelongToThePerson(t *testing.T) {
 func TestAnonymizeStatementsBindEveryPlaceholder(t *testing.T) {
 	cases := map[string]int{
 		relationCounterpartsSQL: 4, anonymizedLeadSQL: 2, contactNumbersSQL: 2, unofficialEntryNumbersSQL: 2, unrelateAllSQL: 3,
-		heldByOthersSQL: 5, erasePhonesSQL: 2, eraseAddressesSQL: 2, eraseMemoriesSQL: 2, redactLeadEventsSQL: 2, eraseCallListItemsSQL: 2, eraseCustomerPortfolioSQL: 2,
+		heldByOthersSQL: 5, erasePhonesSQL: 2, eraseAddressesSQL: 2, eraseMemoriesSQL: 2, redactLeadEventsSQL: 2, eraseCallListItemsSQL: 2, eraseCustomerPortfolioSQL: 2, eraseGoogleSheetRowsSQL: 2,
 		eraseCampaignEntriesSQL: 1, eraseUnofficialEntriesSQL: 4, maskOwnCallsSQL: 8, maskUnownedCallsSQL: 7,
 		maskOwnSendsSQL: 5, maskUnownedSendsSQL: 4, anonymizeLeadSQL: 23,
 	}

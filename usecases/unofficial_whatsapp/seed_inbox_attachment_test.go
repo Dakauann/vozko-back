@@ -17,7 +17,7 @@ type fakeAssetReader struct {
 	err  error
 }
 
-func (f *fakeAssetReader) GetMediaByID(id string) (*media.Media, error) {
+func (f *fakeAssetReader) GetMediaForWorkspace(_ string, id string) (*media.Media, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -235,6 +235,11 @@ func TestSeededAttachmentDegradesToText(t *testing.T) {
 		},
 		"library unavailable": func() (SeedAssetReader, SeedAttachmentWriter) {
 			return &fakeAssetReader{err: errors.New("database is down")}, &fakeAttachmentWriter{}
+		},
+		"not a sendable kind": func() (SeedAssetReader, SeedAttachmentWriter) {
+			sheet := workspaceAsset()
+			sheet.Type = media.MediaTypeLeadImport
+			return &fakeAssetReader{byID: map[string]*media.Media{"media-1": sheet}}, &fakeAttachmentWriter{}
 		},
 		"media row rejected": func() (SeedAssetReader, SeedAttachmentWriter) {
 			return assetLibrary(), &fakeAttachmentWriter{err: errors.New("constraint violation")}

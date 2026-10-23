@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode"
 
+	"vozko/domain/payment"
+
 	"github.com/google/uuid"
 )
 
@@ -206,17 +208,23 @@ func TestProperty_MapEvent_NeverCreditsUnsettledMoney(t *testing.T) {
 const EventReceivedForTest = "PAYMENT_RECEIVED"
 
 func TestProperty_MapEvent_IsTotalAndKnown(t *testing.T) {
-	known := map[string]bool{
-		"PAYMENT_CREATED": true, "PAYMENT_RECEIVED": true, "PAYMENT_OVERDUE": true,
-		"PAYMENT_REFUNDED": true, "PAYMENT_PARTIALLY_REFUNDED": true,
-		"PAYMENT_DELETED": true, "PAYMENT_AUTHORIZED": true, "PAYMENT_REJECTED": true,
-		"PAYMENT_CHARGEBACK": true, "PAYMENT_IN_ANALYSIS": true,
-	}
 	for _, status := range allStatuses {
 		for _, detail := range allDetails {
 			event := MapEvent(&Payment{Status: status, StatusDetail: detail, TransactionAmount: 10})
-			if event != "" && !known[event] {
-				t.Fatalf("status=%q detail=%q produced unknown event %q", status, detail, event)
+			_, known := payment.MeaningOf(event)
+			switch status {
+			case "":
+				if event != "" {
+					t.Fatalf("an empty status must produce no event, got %q", event)
+				}
+			case "unknown_future_status":
+				if known {
+					t.Fatalf("an unknown status must stay unknown downstream, got %q", event)
+				}
+			default:
+				if !known {
+					t.Fatalf("status=%q detail=%q produced %q, which has no meaning", status, detail, event)
+				}
 			}
 		}
 	}

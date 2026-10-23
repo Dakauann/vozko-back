@@ -37,6 +37,17 @@ CREATE TABLE mercadolivre_conversations (id uuid PRIMARY KEY, account_id uuid, c
 CREATE TABLE tiktok_accounts (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
 CREATE TABLE tiktok_conversations (id uuid PRIMARY KEY, account_id uuid, contact_id uuid, conversation_status text,
 	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
+CREATE TABLE email_inboxes (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
+CREATE TABLE email_contacts (id uuid PRIMARY KEY, lead_id uuid);
+CREATE TABLE email_conversations (id uuid PRIMARY KEY, workspace_id uuid, sender_id uuid, contact_id uuid, conversation_status text,
+	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
+CREATE TABLE rcs_senders (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
+CREATE TABLE rcs_conversations (id uuid PRIMARY KEY, workspace_id uuid, sender_id uuid, contact_id uuid, conversation_status text,
+	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
+CREATE TABLE sms_routes (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
+CREATE TABLE sms_conversations (id uuid PRIMARY KEY, workspace_id uuid, sender_id uuid, contact_id uuid, conversation_status text,
+	created_at timestamptz, updated_at timestamptz, last_message_at timestamptz, deleted_at timestamptz);
+CREATE TABLE carrier_contacts (id uuid PRIMARY KEY, lead_id uuid);
 CREATE TABLE unofficial_whatsapp_instances (id uuid PRIMARY KEY, workspace_id uuid, department_id uuid);
 CREATE TABLE unofficial_whatsapp_contacts (id uuid PRIMARY KEY, lead_id uuid);
 CREATE TABLE unofficial_whatsapp_campaigns (id uuid PRIMARY KEY, deleted_at timestamptz);
@@ -99,6 +110,29 @@ func seedEntryUnion(t *testing.T, db *gorm.DB) seededEntries {
 	seeded.ids = append(seeded.ids, tiktok)
 	exec(`INSERT INTO tiktok_conversations (id, account_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, uuid.NewString(), foreignTTAccount)
 	exec(`INSERT INTO tiktok_conversations (id, account_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, now(), now(), now(), now())`, uuid.NewString(), ttAccount)
+
+	emailInbox, foreignEmailInbox := uuid.NewString(), uuid.NewString()
+	exec(`INSERT INTO email_inboxes (id, workspace_id) VALUES (?, ?), (?, ?)`, emailInbox, ws, foreignEmailInbox, other)
+	email := uuid.NewString()
+	exec(`INSERT INTO email_conversations (id, workspace_id, sender_id, created_at, updated_at, last_message_at) VALUES (?, ?, ?, now(), now(), now())`, email, ws, emailInbox)
+	seeded.ids = append(seeded.ids, email)
+	exec(`INSERT INTO email_conversations (id, workspace_id, sender_id, created_at, updated_at, last_message_at) VALUES (?, ?, ?, now(), now(), now())`, uuid.NewString(), other, foreignEmailInbox)
+	exec(`INSERT INTO email_conversations (id, workspace_id, sender_id, created_at, updated_at, last_message_at) VALUES (?, ?, ?, now(), now(), now())`, uuid.NewString(), other, emailInbox)
+	exec(`INSERT INTO email_conversations (id, workspace_id, sender_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, ?, now(), now(), now(), now())`, uuid.NewString(), ws, emailInbox)
+
+	for _, carrier := range []struct{ containers, conversations string }{
+		{"rcs_senders", "rcs_conversations"},
+		{"sms_routes", "sms_conversations"},
+	} {
+		sender, foreignSender := uuid.NewString(), uuid.NewString()
+		exec(`INSERT INTO `+carrier.containers+` (id, workspace_id) VALUES (?, ?), (?, ?)`, sender, ws, foreignSender, other)
+		mine := uuid.NewString()
+		exec(`INSERT INTO `+carrier.conversations+` (id, workspace_id, sender_id, created_at, updated_at, last_message_at) VALUES (?, ?, ?, now(), now(), now())`, mine, ws, sender)
+		seeded.ids = append(seeded.ids, mine)
+		exec(`INSERT INTO `+carrier.conversations+` (id, workspace_id, sender_id, created_at, updated_at, last_message_at) VALUES (?, ?, ?, now(), now(), now())`, uuid.NewString(), other, foreignSender)
+		exec(`INSERT INTO `+carrier.conversations+` (id, workspace_id, sender_id, created_at, updated_at, last_message_at) VALUES (?, ?, ?, now(), now(), now())`, uuid.NewString(), other, sender)
+		exec(`INSERT INTO `+carrier.conversations+` (id, workspace_id, sender_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, ?, now(), now(), now(), now())`, uuid.NewString(), ws, sender)
+	}
 
 	exec(`INSERT INTO whatsapp_campaign_entries (id, campaign_id, created_at, updated_at, last_message_at) VALUES (?, ?, now(), now(), now())`, uuid.NewString(), foreignCampaign)
 	exec(`INSERT INTO whatsapp_campaign_entries (id, campaign_id, created_at, updated_at, last_message_at, deleted_at) VALUES (?, ?, now(), now(), now(), now())`, uuid.NewString(), campaign)

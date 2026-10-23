@@ -80,6 +80,9 @@ var RolePresets = []RolePreset{
 			"whatsapp_campaigns.view", "whatsapp_campaigns.crm",
 			"team.invite", "departments.edit",
 			"whatsapp_forms.build", "whatsapp_forms.publish", "whatsapp_forms.delete", "whatsapp_forms.responses_sensitive", "whatsapp_forms.export", "whatsapp_forms.responses_delete",
+			"email.view", "email.campaigns", "email.start",
+			"carrier.view", "carrier.campaigns", "carrier.start",
+			"google_sheets.view", "google_sheets.create", "google_sheets.edit", "google_sheets.delete",
 		),
 	},
 	{
@@ -125,6 +128,9 @@ var RolePresets = []RolePreset{
 			"ads.view", "ads.toggle", "ads.edit", "audience.view",
 			"links.view", "links.create", "links.edit",
 			"leads.view", "leads.import", "media.view", "media.upload", "reports.view", "lead_companies.view",
+			"email.view", "email.campaigns", "email.start",
+			"carrier.view", "carrier.campaigns", "carrier.start",
+			"google_sheets.view",
 		},
 	},
 	{
@@ -137,6 +143,7 @@ var RolePresets = []RolePreset{
 			"knowledge_bases.view", "knowledge_bases.create", "knowledge_bases.edit",
 			"workflows.view", "workflows.create", "workflows.edit",
 			"mcp.view", "ai_chat.view", "ai_chat.chat", "ai_chat.manage",
+			"google_sheets.view", "google_sheets.create", "google_sheets.edit",
 		},
 	},
 	{

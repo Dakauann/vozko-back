@@ -107,7 +107,7 @@ func (h *Handler) StartConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Callback de conexão do Mercado Livre
-// @Description	Conclui o OAuth: devolve o resultado ao popup (postMessage com source, status, nickname, accountId e reason) ou redireciona ao painel com ?mercadolivre=<status>&reason=<motivo>.
+// @Description	Conclui o OAuth: devolve o resultado ao popup (postMessage com source, status, nickname com o nome de exibição da conta, accountId e reason) ou redireciona ao painel com ?mercadolivre=<status>&reason=<motivo>.
 // @Tags			Mercado Livre
 // @Param			code				query	string	false	"Código de autorização"
 // @Param			state				query	string	true	"Estado assinado emitido no início"
@@ -132,7 +132,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		if out.Reconnected {
 			result["status"] = "reconnected"
 		}
-		result["nickname"], result["accountId"] = out.Account.DisplayName(), out.Account.ID
+		result["nickname"], result["accountId"] = out.Account.Label(), out.Account.ID
 	}
 	if out != nil && out.Popup {
 		oauthpopup.WriteResult(w, h.frontendBaseURL, result)
@@ -175,7 +175,8 @@ func connectErrorCode(err error) string {
 // @Summary		Listar contas do Mercado Livre
 // @Tags			Mercado Livre
 // @Produce		json
-// @Param			search		query		string	false	"Busca por apelido ou ID do vendedor"
+// @Description	Cada conta traz displayName, o nome do vendedor para exibir (marca, razão social ou nome e sobrenome no Mercado Livre; o apelido enquanto o nome não é conhecido), e nickname, o apelido no Mercado Livre.
+// @Param			search		query		string	false	"Busca por nome, apelido ou ID do vendedor"
 // @Param			status		query		string	false	"CONNECTED, NEEDS_RECONNECT, REVOKED ou DISCONNECTED"
 // @Param			page		query		int		false	"Página"
 // @Param			pageSize	query		int		false	"Tamanho da página"
@@ -285,7 +286,7 @@ func (h *Handler) DisconnectAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Verificar a conexão da conta do Mercado Livre agora
-// @Description	Refaz as sondagens de permissão, atualiza o apelido e devolve a conta.
+// @Description	Refaz as sondagens de permissão, atualiza o apelido e o nome do vendedor e devolve a conta.
 // @Tags			Mercado Livre
 // @Produce		json
 // @Param			id	path		string	true	"ID da conta"
@@ -337,6 +338,7 @@ func toAccountResponse(a *mldomain.Account) AccountResponse {
 		MLUserID:             a.MLUserID,
 		SiteID:               a.SiteID,
 		Nickname:             a.Nickname,
+		DisplayName:          a.Label(),
 		Status:               string(a.Status),
 		StatusReason:         a.StatusReason,
 		NeedsReconnect:       a.Status == mldomain.StatusNeedsReconnect || a.Status == mldomain.StatusRevoked,

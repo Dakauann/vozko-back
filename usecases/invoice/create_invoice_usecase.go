@@ -76,16 +76,6 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		}
 	}
 
-	if key := strings.TrimSpace(input.IdempotencyKey); key != "" {
-		existing, err := uc.invoiceRepo.GetByIdempotencyKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("idempotency lookup failed: %w", err)
-		}
-		if existing != nil {
-			return &invoice.CreateInvoiceOutput{Invoice: existing}, nil
-		}
-	}
-
 	u, err := uc.userRepo.FindByID(input.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
@@ -102,7 +92,7 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 	}
 
 	invoiceID := uuid.New().String()
-	externalRef := "inv:" + invoiceID
+	externalRef := invoice.ExternalReference(invoiceID)
 
 	billingType := input.BillingType
 	if billingType == "" {
@@ -173,6 +163,40 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 		IdempotencyKey: externalRef,
 	}
 
+	var planDefinitionIDPtr *string
+	if planDefinitionID != "" {
+		planDefinitionIDPtr = &planDefinitionID
+	}
+
+	reserved, isNew, err := uc.invoiceRepo.Reserve(&invoice.Invoice{
+		ID:               invoiceID,
+		WorkspaceID:      input.WorkspaceID,
+		UserID:           input.UserID,
+		Purpose:          purpose,
+		PlanDefinitionID: planDefinitionIDPtr,
+		AmountBRL:        input.AmountBRL,
+		AmountUSD:        amountUSD,
+		CreditableUSD:    creditableUSD,
+		ExchangeRate:     exchangeRate,
+		Status:           invoice.StatusPending,
+		BillingType:      billingType,
+		BillingCycle:     input.BillingCycle,
+		Provider:         uc.gateway.Provider(),
+		IdempotencyKey:   strings.TrimSpace(input.IdempotencyKey),
+		Description:      description,
+		DueDate:          input.DueDate,
+		LineItems:        input.LineItems,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to save invoice: %w", err)
+	}
+	if !isNew {
+		if reserved.WorkspaceID != input.WorkspaceID {
+			return nil, invoice.ErrInvalidIdempotencyKey
+		}
+		return &invoice.CreateInvoiceOutput{Invoice: reserved}, nil
+	}
+
 	uc.attributeReferralIfNew(input.WorkspaceID, input.UserID, input.ReferralCode)
 
 	if split := uc.buildAffiliateSplit(input.WorkspaceID); split != nil {
@@ -186,63 +210,40 @@ func (uc *createInvoiceUseCase) Execute(input invoice.CreateInvoiceInput) (*invo
 
 	createdPayment, err := uc.gateway.CreateCharge(context.Background(), chargeReq)
 	if err != nil {
+		if cancelErr := uc.invoiceRepo.UpdateStatus(reserved.ID, invoice.StatusCancelled); cancelErr != nil {
+			log.Printf("[invoice] could not cancel reservation %s after the gateway refused it; the stale sweep will: %v", reserved.ID, cancelErr)
+		}
 		return nil, fmt.Errorf("failed to create payment: %w", err)
 	}
 
-	var pixQrCode, pixCopy *string
-	if createdPayment.PixQRCodeBase64 != "" {
-		qr := createdPayment.PixQRCodeBase64
-		pixQrCode = &qr
+	attachment := chargeAttachment(createdPayment)
+	if err := uc.invoiceRepo.AttachCharge(reserved.ID, attachment); err != nil {
+		return nil, fmt.Errorf("failed to attach charge %s to invoice %s: %w", createdPayment.ID, reserved.ID, err)
 	}
-	if createdPayment.PixCopyPaste != "" {
-		copyPaste := createdPayment.PixCopyPaste
-		pixCopy = &copyPaste
-	}
+	reserved.ExternalID = attachment.ExternalID
+	reserved.PixQrCode = attachment.PixQrCode
+	reserved.PixCopy = attachment.PixCopy
+	reserved.BankSlipUrl = attachment.BankSlipUrl
+	reserved.InvoiceUrl = attachment.InvoiceUrl
 
-	var bankSlipUrl, invoiceUrl *string
-	if createdPayment.BoletoURL != "" {
-		slip := createdPayment.BoletoURL
-		bankSlipUrl = &slip
-	}
-	if createdPayment.InvoiceURL != "" {
-		hosted := createdPayment.InvoiceURL
-		invoiceUrl = &hosted
-	}
+	return &invoice.CreateInvoiceOutput{Invoice: reserved}, nil
+}
 
-	var planDefinitionIDPtr *string
-	if planDefinitionID != "" {
-		planDefinitionIDPtr = &planDefinitionID
+func chargeAttachment(charge *payment.Charge) invoice.ChargeAttachment {
+	return invoice.ChargeAttachment{
+		ExternalID:  charge.ID,
+		PixQrCode:   optionalText(charge.PixQRCodeBase64),
+		PixCopy:     optionalText(charge.PixCopyPaste),
+		BankSlipUrl: optionalText(charge.BoletoURL),
+		InvoiceUrl:  optionalText(charge.InvoiceURL),
 	}
+}
 
-	inv := &invoice.Invoice{
-		ID:               invoiceID,
-		WorkspaceID:      input.WorkspaceID,
-		UserID:           input.UserID,
-		Purpose:          purpose,
-		PlanDefinitionID: planDefinitionIDPtr,
-		AmountBRL:        input.AmountBRL,
-		AmountUSD:        amountUSD,
-		CreditableUSD:    creditableUSD,
-		ExchangeRate:     exchangeRate,
-		Status:           invoice.StatusPending,
-		BillingType:      billingType,
-		BillingCycle:     input.BillingCycle,
-		ExternalID:       createdPayment.ID,
-		IdempotencyKey:   strings.TrimSpace(input.IdempotencyKey),
-		PixQrCode:        pixQrCode,
-		PixCopy:          pixCopy,
-		BankSlipUrl:      bankSlipUrl,
-		InvoiceUrl:       invoiceUrl,
-		Description:      description,
-		DueDate:          input.DueDate,
-		LineItems:        input.LineItems,
+func optionalText(value string) *string {
+	if value == "" {
+		return nil
 	}
-
-	if err := uc.invoiceRepo.Create(inv); err != nil {
-		return nil, fmt.Errorf("failed to save invoice: %w", err)
-	}
-
-	return &invoice.CreateInvoiceOutput{Invoice: inv}, nil
+	return &value
 }
 
 func (uc *createInvoiceUseCase) ensureRechargeAllowed(workspaceID string) error {

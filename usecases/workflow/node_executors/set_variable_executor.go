@@ -29,8 +29,8 @@ func (e *setVariableExecutor) Definition() workflow.NodeDefinition {
 			"value":    "",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "variable", Description: "Nome da variável definida"},
-			{Key: "value", Description: "Valor atribuído"},
+			{Key: "variable", Description: "Nome da variável definida", RepeatsConfig: true},
+			{Key: "value", Description: "Valor atribuído", RepeatsConfig: true},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "variable", Label: "Nome da Variável", Type: "text", Placeholder: "minha_variavel", Required: true},

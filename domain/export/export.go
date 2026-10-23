@@ -19,6 +19,9 @@ const (
 	EntryTypeWebchat            EntryType = "webchat"
 	EntryTypeMercadoLivre       EntryType = "mercadolivre"
 	EntryTypeTikTok             EntryType = "tiktok"
+	EntryTypeEmail              EntryType = "email"
+	EntryTypeRCS                EntryType = "rcs"
+	EntryTypeSMS                EntryType = "sms"
 )
 
 func ExportableEntryTypes() []EntryType {
@@ -31,6 +34,9 @@ func ExportableEntryTypes() []EntryType {
 		EntryTypeWebchat,
 		EntryTypeMercadoLivre,
 		EntryTypeTikTok,
+		EntryTypeEmail,
+		EntryTypeRCS,
+		EntryTypeSMS,
 	}
 }
 

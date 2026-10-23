@@ -130,6 +130,7 @@ func TestVoiceWorkflowsOfferOnlyNodesThatFinishWhileTheCallerWaits(t *testing.T)
 	sort.Strings(offered)
 
 	want := []string{
+		string(workflow.NodeTypeActionAddSheetRow),
 		string(workflow.NodeTypeActionCode),
 		string(workflow.NodeTypeActionFormatDate),
 		string(workflow.NodeTypeActionGetCurrentTime),

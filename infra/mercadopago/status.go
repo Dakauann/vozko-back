@@ -24,6 +24,8 @@ const (
 	DetailExpired                = "expired"
 	DetailPendingWaitingTransfer = "pending_waiting_transfer"
 	DetailPendingWaitingPayment  = "pending_waiting_payment"
+	DetailChargebackSettled      = "settled"
+	DetailChargebackReimbursed   = "reimbursed"
 )
 
 func MapStatus(mpStatus string) payment.Status {
@@ -62,7 +64,10 @@ func MapEvent(p *Payment) string {
 		return payment.EventPaymentRefunded
 
 	case StatusChargedBack:
-		return payment.EventPaymentChargeback
+		return chargebackEvent(detail)
+
+	case StatusInMediation:
+		return payment.EventPaymentInMediation
 
 	case StatusAuthorized:
 		return payment.EventPaymentAuthorized
@@ -76,14 +81,44 @@ func MapEvent(p *Payment) string {
 	case StatusRejected:
 		return payment.EventPaymentRejected
 
-	case StatusInProcess, StatusInMediation:
+	case StatusInProcess:
 		return payment.EventPaymentInAnalysis
 
 	case StatusPending:
 		return payment.EventPaymentCreated
 
-	default:
+	case "":
 		return ""
+
+	default:
+		return unmappedStatusEvent(status)
+	}
+}
+
+func chargebackEvent(detail string) string {
+	switch detail {
+	case DetailChargebackSettled:
+		return payment.EventPaymentChargeback
+	case DetailChargebackReimbursed:
+		return payment.EventPaymentChargebackReversed
+	default:
+		return payment.EventPaymentChargebackRequested
+	}
+}
+
+func unmappedStatusEvent(status string) string {
+	return "MERCADOPAGO_STATUS_" + strings.ToUpper(status)
+}
+
+func ReversedValue(p *Payment) float64 {
+	if p == nil {
+		return 0
+	}
+	switch strings.ToLower(strings.TrimSpace(p.Status)) {
+	case StatusChargedBack, StatusInMediation:
+		return p.TransactionAmount
+	default:
+		return p.TransactionAmountRefunded
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+	emailapi_usecase "vozko/usecases/emailapi"
+	"vozko/usecases/transactionalemail"
 	"vozko/usecases/workflow/node_executors"
 
 	"vozko/domain/workspace/workspace_pricing"
@@ -24,7 +26,7 @@ import (
 )
 
 func New() *Container {
-	c := &Container{formSenderRelay: node_executors.NewFormSenderRelay()}
+	c := &Container{formSenderRelay: node_executors.NewFormSenderRelay(), carrierSenderRelay: node_executors.NewCarrierSenderRelay(), platformEmailRelay: transactionalemail.NewRelay(), emailAPIRelay: emailapi_usecase.NewRelay()}
 	c.cfg = config.LoadConfig()
 
 	c.validatePortLayout()
@@ -38,6 +40,7 @@ func New() *Container {
 	c.initDecisionModel()
 	c.initRepositories()
 	c.wireContainerPipelines()
+	c.announceStageEntries()
 
 	c.seedPricingDefaults()
 	c.services.whatsappClientFactory = template_infra.NewWhatsAppClientFactory(c.repositories.businessPhone, &http.Client{Timeout: 30 * time.Second}, c.cfg.Dialog360MessagingBase, c.cfg.WhatsAppAppID, mediaDownloads())
@@ -75,6 +78,7 @@ func New() *Container {
 	c.initTelegram()
 	c.initMercadoLivre()
 	c.initTikTok()
+	c.initGoogle()
 	c.initWebchat()
 	c.initUnofficialWhatsApp()
 	c.initUseCases(consumeWhatsappTemplateUC)
@@ -92,6 +96,8 @@ func New() *Container {
 	c.wireMercadoLivreConversationStack()
 	c.wireTikTokConversationStack()
 	c.wireWebchatConversationStack()
+	c.wireEmailInboxConversationStack(c.emailInbox)
+	c.wireCarrierConversationStack()
 	c.wireUnofficialWhatsAppConversationStack()
 	c.wireDelegations()
 	c.initHandlers()

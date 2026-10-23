@@ -3,6 +3,7 @@ package attendance_repository
 import (
 	"strings"
 
+	mldomain "vozko/domain/mercadolivre"
 	"vozko/domain/shared"
 )
 
@@ -116,6 +117,69 @@ var channelSources = []channelSource{
 		LeadIDExpr: "COALESCE(wcvt.lead_id::text, '')",
 	},
 	{
+		EntryType:      shared.EntryTypeEmail,
+		EntryTable:     "email_conversations emc",
+		EntryAlias:     "emc",
+		ContainerTable: "email_inboxes emi",
+		ContainerAlias: "emi",
+		ContainerJoin:  "emi.id = emc.sender_id",
+
+		StatusColumn:       "emc.conversation_status",
+		CloseSourceColumn:  "emc.close_source",
+		CloseOutcomeColumn: "emc.close_outcome",
+		ClosedAtColumn:     "emc.closed_at",
+		DepartmentColumn:   "emi.department_id",
+		ContainerIDColumn:  "emc.sender_id",
+		ContainerNameExpr:  "COALESCE(NULLIF(emi.name, ''), NULLIF(emi.address, ''))",
+		WorkspaceColumn:    "emc.workspace_id",
+		LastMessageColumn:  "emc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN email_contacts emct ON emct.id = emc.contact_id",
+		LeadIDExpr: "COALESCE(emct.lead_id::text, '')",
+	},
+	{
+		EntryType:      shared.EntryTypeRCS,
+		EntryTable:     "rcs_conversations rcc",
+		EntryAlias:     "rcc",
+		ContainerTable: "rcs_senders rcsd",
+		ContainerAlias: "rcsd",
+		ContainerJoin:  "rcsd.id = rcc.sender_id",
+
+		StatusColumn:       "rcc.conversation_status",
+		CloseSourceColumn:  "rcc.close_source",
+		CloseOutcomeColumn: "rcc.close_outcome",
+		ClosedAtColumn:     "rcc.closed_at",
+		DepartmentColumn:   "rcsd.department_id",
+		ContainerIDColumn:  "rcc.sender_id",
+		ContainerNameExpr:  "COALESCE(NULLIF(rcsd.brand_name, ''), rcsd.id::text)",
+		WorkspaceColumn:    "rcc.workspace_id",
+		LastMessageColumn:  "rcc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN carrier_contacts rccct ON rccct.id = rcc.contact_id",
+		LeadIDExpr: "COALESCE(rccct.lead_id::text, '')",
+	},
+	{
+		EntryType:      shared.EntryTypeSMS,
+		EntryTable:     "sms_conversations smc",
+		EntryAlias:     "smc",
+		ContainerTable: "sms_routes smr",
+		ContainerAlias: "smr",
+		ContainerJoin:  "smr.id = smc.sender_id",
+
+		StatusColumn:       "smc.conversation_status",
+		CloseSourceColumn:  "smc.close_source",
+		CloseOutcomeColumn: "smc.close_outcome",
+		ClosedAtColumn:     "smc.closed_at",
+		DepartmentColumn:   "smr.department_id",
+		ContainerIDColumn:  "smc.sender_id",
+		ContainerNameExpr:  "COALESCE(NULLIF(smr.brand_prefix, ''), smr.id::text)",
+		WorkspaceColumn:    "smc.workspace_id",
+		LastMessageColumn:  "smc.last_message_at",
+
+		LeadJoin:   "LEFT JOIN carrier_contacts smcct ON smcct.id = smc.contact_id",
+		LeadIDExpr: "COALESCE(smcct.lead_id::text, '')",
+	},
+	{
 		EntryType:      shared.EntryTypeUnofficialWhatsApp,
 		EntryTable:     "unofficial_whatsapp_conversations uwc",
 		EntryAlias:     "uwc",
@@ -171,7 +235,7 @@ var channelSources = []channelSource{
 		ClosedAtColumn:     "mlc.closed_at",
 		DepartmentColumn:   "mla.department_id",
 		ContainerIDColumn:  "mlc.account_id",
-		ContainerNameExpr:  "COALESCE(NULLIF(mla.nickname, ''), NULLIF(mla.ml_user_id, ''))",
+		ContainerNameExpr:  mldomain.AccountNameSQL("mla."),
 		WorkspaceColumn:    "mlc.workspace_id",
 		LastMessageColumn:  "mlc.last_message_at",
 

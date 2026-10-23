@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"vozko/domain/selection"
 	wsc "vozko/domain/workspace_config"
 )
 
@@ -86,10 +87,10 @@ func TestInCooldownManyReadsInBoundedBatchesAndFailsClosed(t *testing.T) {
 		t.Fatalf("InCooldownMany() marked %d leads, want the 12 recent ones", len(got))
 	}
 	if len(sends.batches) != 3 {
-		t.Fatalf("batches = %d, want 3 reads of at most %d", len(sends.batches), FactsChunk)
+		t.Fatalf("batches = %d, want 3 reads of at most %d", len(sends.batches), selection.Chunk)
 	}
 	for _, batch := range sends.batches {
-		if len(batch) > FactsChunk {
+		if len(batch) > selection.Chunk {
 			t.Fatalf("a batch of %d ids exceeds the chunk", len(batch))
 		}
 	}

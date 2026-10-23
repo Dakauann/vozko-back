@@ -50,20 +50,23 @@ func canonicalizeWorkflowGraphs(tx *gorm.DB) error {
 }
 
 func canonicalizeStoredGraphs(tx *gorm.DB) error {
-	path := workflow.StructuredConfigGraphPath()
+	return canonicalizeGraphsMatching(tx, workflow.StructuredConfigGraphPath(), workflowGraphCanonicalBatch)
+}
+
+func canonicalizeGraphsMatching(tx *gorm.DB, path string, batch int) error {
 	for _, table := range storedGraphTables {
-		if err := canonicalizeGraphsOf(tx, table, path); err != nil {
+		if err := canonicalizeGraphsOf(tx, table, path, batch); err != nil {
 			return fmt.Errorf("%s: %w", table.name, err)
 		}
 	}
 	return nil
 }
 
-func canonicalizeGraphsOf(tx *gorm.DB, table storedGraphTable, path string) error {
+func canonicalizeGraphsOf(tx *gorm.DB, table storedGraphTable, path string, batch int) error {
 	after := workflowVersionRepairFirstKey
 	for {
 		var rows []storedGraphRow
-		if err := tx.Raw(table.selectSQL, after, path, workflowGraphCanonicalBatch).Scan(&rows).Error; err != nil {
+		if err := tx.Raw(table.selectSQL, after, path, batch).Scan(&rows).Error; err != nil {
 			return err
 		}
 		if len(rows) == 0 {

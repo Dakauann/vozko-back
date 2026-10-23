@@ -47,7 +47,7 @@ func TestStartingAnImportThatGrantsConsentChecksThePermissionAgainBeforeAnyRow(t
 	job = f.dryRun(t, job, consentColumns())
 	delete(f.perms, "leads:consent")
 
-	_, err := f.imp.Start(context.Background(), importer(), job.ID)
+	_, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{})
 	assertConsentGrantRefused(t, err)
 	if got := f.store.job(job.ID); got.Status != leadimport.StatusAnalyzed || f.base.writes != 0 {
 		t.Fatalf("job = %+v, writes = %d", got, f.base.writes)
@@ -58,7 +58,7 @@ func TestTheWorkerStopsAnImportThatGrantsConsentWhenThePermissionIsGone(t *testi
 	f := newImportFixture(t, allImportPermissions())
 	job := f.upload(t, consentFile)
 	job = f.dryRun(t, job, consentColumns())
-	if _, err := f.imp.Start(context.Background(), importer(), job.ID); err != nil {
+	if _, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{}); err != nil {
 		t.Fatal(err)
 	}
 	delete(f.perms, "leads:consent")

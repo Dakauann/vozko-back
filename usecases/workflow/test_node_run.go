@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -85,6 +87,10 @@ type nodeTest struct {
 	runtime  interface{}
 	done     chan struct{}
 	effects  *simEffects
+	leadID   string
+	specs    []workflow.TriggerInputSpec
+	trigger  string
+	seeded   map[string]interface{}
 
 	mu       sync.Mutex
 	upstream []*workflow.WorkflowRunLog
@@ -111,11 +117,14 @@ func (uc *testNodeUseCase) newNodeTest(wf *workflow.Workflow, node *workflow.Nod
 	run := buildTestRun(wf, input.WorkspaceID)
 	run.EntryType = string(shared.EntryTypeWhatsApp)
 	messages := &simMessageRepo{}
-	outbound := make(chan SimOutboundMessage, 256)
 	effects := newSimEffects()
+	specs := uc.deps.TriggerInputs.Specs(input.WorkspaceID, &wf.Graph)
+	windowOpen := nodeTestWindowOpen(&wf.Graph, node, input.Trigger, specs)
 	confirmed := input.ConfirmRealCalls
+	leadID := uuid.NewString()
 	registry := uc.executors()(SimSandbox{
-		WorkspaceID: input.WorkspaceID, LeadID: uuid.NewString(), Messages: messages, Outbound: outbound, Effects: effects,
+		WorkspaceID: input.WorkspaceID, LeadID: leadID, Messages: messages, Effects: effects,
+		Window:             newSimMessageWindow(leadID, windowOpen),
 		RealCallsConfirmed: func() bool { return confirmed },
 	})
 	if registry == nil {
@@ -128,19 +137,25 @@ func (uc *testNodeUseCase) newNodeTest(wf *workflow.Workflow, node *workflow.Nod
 		runtime: testVoiceRuntime(wf, input.MockedState),
 		done:    make(chan struct{}),
 		effects: effects,
+		leadID:  leadID,
+		specs:   specs,
 	}
-	go discardOutbound(outbound, t.done)
+	if err := t.seedTrigger(input.Trigger); err != nil {
+		slog.Info("workflow.node_test.trigger_input_refused", append(runLogAttrs(run, node.ID), slog.String("error", err.Error()))...)
+		return nil, err
+	}
 	return t, nil
 }
 
-func discardOutbound(outbound <-chan SimOutboundMessage, done <-chan struct{}) {
-	for {
-		select {
-		case <-outbound:
-		case <-done:
-			return
-		}
+func nodeTestWindowOpen(g *workflow.Graph, target *workflow.Node, chosen *TestTrigger, specs []workflow.TriggerInputSpec) bool {
+	nodeID := ""
+	if chosen != nil {
+		nodeID = strings.TrimSpace(chosen.NodeID)
+	} else if start := workflow.PathStartTrigger(g, target.ID); start != nil {
+		nodeID = start.ID
 	}
+	spec, _ := workflow.FindTriggerInputSpec(specs, nodeID)
+	return spec.WindowOpen(nil)
 }
 
 func (t *nodeTest) setCurrent(node *workflow.Node) {
@@ -182,7 +197,7 @@ func (t *nodeTest) perform(ctx *workflow.NodeContext) (*workflow.NodeResult, boo
 	}
 	switch {
 	case node.Type.IsTrigger():
-		result, err := safeExecute(triggerTestExecutor{vars: t.input.TriggerVars}, ctx)
+		result, err := safeExecute(triggerTestExecutor{test: t}, ctx)
 		return result, false, err
 	case node.Type.IsEnd():
 		return &workflow.NodeResult{Complete: true}, false, nil
@@ -221,7 +236,7 @@ func (t *nodeTest) label(node *workflow.Node) string {
 }
 
 type triggerTestExecutor struct {
-	vars map[string]interface{}
+	test *nodeTest
 }
 
 func (e triggerTestExecutor) Definition() workflow.NodeDefinition {
@@ -229,33 +244,67 @@ func (e triggerTestExecutor) Definition() workflow.NodeDefinition {
 }
 
 func (e triggerTestExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
+	t := e.test
+	if ctx.Node.ID == t.trigger {
+		return &workflow.NodeResult{Output: maps.Clone(t.seeded)}, nil
+	}
 	if ctx.Node.Type != workflow.NodeTypeTriggerAgentCall {
-		output := make(map[string]interface{}, len(e.vars))
-		for k, v := range e.vars {
-			output[k] = v
-		}
-		return &workflow.NodeResult{Output: output}, nil
+		return &workflow.NodeResult{Output: maps.Clone(t.input.TriggerVars)}, nil
 	}
-	fields, err := workflow.AgentCallInputsOf(ctx.Node.Config)
-	if err != nil {
-		return nil, workflow.Fail(workflow.ErrorKindConfig, fmt.Errorf("%w: %v", workflow.ErrAgentCallInputsInvalid, err))
+	spec, found := workflow.FindTriggerInputSpec(t.specs, ctx.Node.ID)
+	if !found || !spec.Readable() {
+		return nil, workflow.Fail(workflow.ErrorKindConfig, workflow.ErrAgentCallInputsInvalid)
 	}
-	given, _ := e.vars[workflow.DataKeyAgentInput].(map[string]interface{})
-	cleaned, missing, err := workflow.ValidateAgentCallInputs(fields, given)
-	if err != nil {
-		return &workflow.NodeResult{Error: "Campo enviado pelo agente com tipo errado: " + err.Error(), ErrorKind: workflow.ErrorKindValidation}, nil
+	data, issues := workflow.TriggerRunDataFor(spec, workflow.TriggerInputFromRunData(spec, t.input.TriggerVars), t.subject())
+	if len(issues) > 0 {
+		return &workflow.NodeResult{Error: triggerIssuesText(issues), ErrorKind: workflow.ErrorKindValidation}, nil
 	}
-	if len(missing) > 0 {
-		return &workflow.NodeResult{Error: "Faltam campos obrigatórios do agente: " + strings.Join(missing, ", "), ErrorKind: workflow.ErrorKindValidation}, nil
-	}
-	agent, _ := e.vars[workflow.DataKeyAgent].(map[string]interface{})
-	agentID, _ := agent["id"].(string)
-	agentName, _ := agent["name"].(string)
-	data := workflow.AgentCallRunData(cleaned, agentID, agentName)
 	for k, v := range data {
 		ctx.State.Set(k, v)
 	}
 	return &workflow.NodeResult{Output: data}, nil
+}
+
+var triggerIssueWords = map[workflow.TriggerInputIssueCode]string{
+	workflow.IssueRequired:         "obrigatório",
+	workflow.IssueWrongType:        "tipo errado",
+	workflow.IssueUnknownField:     "campo desconhecido",
+	workflow.IssueEventNotAccepted: "evento não aceito pelo gatilho",
+	workflow.IssueUnknownOption:    "opção desconhecida",
+	workflow.IssueTooLarge:         "maior que 64 KB",
+}
+
+func triggerIssuesText(issues []workflow.TriggerInputIssue) string {
+	parts := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		word := triggerIssueWords[issue.Code]
+		if issue.Key == "" {
+			parts = append(parts, word)
+			continue
+		}
+		parts = append(parts, issue.Key+" ("+word+")")
+	}
+	return "Dados de entrada do gatilho inválidos: " + strings.Join(parts, ", ")
+}
+
+func (t *nodeTest) subject() workflow.TriggerTestSubject {
+	return workflow.TriggerTestSubject{
+		RunID: t.run.ID, EntryID: t.run.EntryID, ContactNumber: simContactNumber,
+		LeadID: t.leadID, LeadName: simLeadName, Today: time.Now().UTC(),
+	}
+}
+
+func (t *nodeTest) seedTrigger(chosen *TestTrigger) error {
+	if chosen == nil {
+		return nil
+	}
+	spec, data, err := startFromTrigger(t.specs, chosen.NodeID, chosen.Input, t.subject())
+	if err != nil {
+		return err
+	}
+	seedTriggerVars(&t.run.State, data)
+	t.trigger, t.seeded = spec.NodeID, data
+	return nil
 }
 
 func (t *nodeTest) settle(out *TestNodeOutput, ran stepRun) {
@@ -320,7 +369,12 @@ func (t *nodeTest) executeUntilTarget(ctx context.Context) *NodeTestPathStop {
 	ancestors := g.AncestorsOf(targetID)
 
 	startNodeID := ""
-	if trigger := g.TriggerNode(); trigger != nil && ancestors[trigger.ID] {
+	if t.trigger != "" {
+		if !ancestors[t.trigger] {
+			return t.plainStop(PathStopNoPath, nil, fmt.Sprintf("O gatilho %s não leva até %s.", t.trigger, targetID))
+		}
+		startNodeID = t.trigger
+	} else if trigger := workflow.PathStartTrigger(g, targetID); trigger != nil {
 		startNodeID = trigger.ID
 	} else {
 		startNodeID = findAncestorRoot(ancestors, g)

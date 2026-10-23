@@ -48,6 +48,7 @@ var entryTables = []keyedTable{
 	entry("lead_exit_runs"),
 	entry("whatsapp_form_sends"),
 	entry("whatsapp_form_responses"),
+	entry("google_sheet_rows"),
 	{table: "lead_memories", idColumn: "source_entry_id", typeColumn: "source_entry_type"},
 	{
 		table: "workflow_runs", idColumn: "entry_id", typeColumn: "entry_type",

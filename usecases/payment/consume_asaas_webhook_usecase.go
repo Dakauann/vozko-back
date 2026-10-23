@@ -2,32 +2,35 @@ package payment_usecase
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"runtime/debug"
-	"time"
+
+	billing "vozko/domain/billing"
 	"vozko/domain/cache"
 	"vozko/domain/messaging"
 	"vozko/domain/payment"
 	"vozko/domain/webhook"
-	webhook_usecase "vozko/usecases/webhook"
 )
 
 type consumeAsaasWebhookUseCase struct {
 	queueSub  messaging.MessageQueueSub
 	handler   payment.HandleAsaasWebhookUseCase
-	dedup     *webhook_usecase.IdempotencyGuard
+	pipe      paymentEventPipe
 	semaphore chan struct{}
 }
 
 func NewConsumeAsaasWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
+	queuePub messaging.MessageQueuePub,
 	handler payment.HandleAsaasWebhookUseCase,
 	sharedState cache.SharedState,
+	alerts billing.OpsAlerter,
 ) payment.ConsumeAsaasWebhookUseCase {
 	return &consumeAsaasWebhookUseCase{
 		queueSub:  queueSub,
 		handler:   handler,
-		dedup:     webhook_usecase.NewIdempotencyGuard(sharedState, 10*time.Minute),
+		pipe:      newPaymentEventPipe("asaas-payment-consumer", webhook.TopicAsaasPayment, queuePub, sharedState, alerts),
 		semaphore: make(chan struct{}, 5),
 	}
 }
@@ -41,36 +44,33 @@ func (uc *consumeAsaasWebhookUseCase) Start() error {
 func (uc *consumeAsaasWebhookUseCase) handle(raw []byte, ack messaging.MessageAck) {
 	var event payment.AsaasWebhookEvent
 	if err := json.Unmarshal(raw, &event); err != nil {
-		log.Printf("[webhook-consumer] invalid asaas webhook payload: %v", err)
-		_ = ack.Nack(false)
+		uc.pipe.dropMalformed(raw, ack, err)
 		return
 	}
+	event.Provider = payment.ProviderAsaas
 
-	dedupKey := event.Payment.ID + ":" + event.Event
-	if dedupKey != ":" && uc.dedup.IsDuplicate("asaas:"+dedupKey) {
-		log.Printf("[webhook-consumer] duplicate asaas event ignored: %s", dedupKey)
-		_ = ack.Ack()
+	key := ""
+	if event.Payment.ID != "" || event.Event != "" {
+		key = "asaas:" + event.Payment.ID + ":" + event.Event
+	}
+	if !uc.pipe.claim(key, raw, ack) {
 		return
 	}
 
 	uc.semaphore <- struct{}{}
 	go func() {
+		defer func() { <-uc.semaphore }()
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[webhook-consumer] panic in asaas handler: %v\n%s", r, debug.Stack())
-				_ = ack.Nack(false)
+				uc.pipe.failed(key, raw, ack, fmt.Errorf("panic: %v", r))
 			}
 		}()
-		defer func() { <-uc.semaphore }()
 
 		if err := uc.handler.Execute(&event); err != nil {
-			log.Printf("[webhook-consumer] failed to process asaas webhook: %v", err)
-			_ = ack.Nack(true)
+			uc.pipe.failed(key, raw, ack, err)
 			return
 		}
-
-		if err := ack.Ack(); err != nil {
-			log.Printf("[webhook-consumer] failed to ack asaas event: %v", err)
-		}
+		uc.pipe.done(key, ack)
 	}()
 }

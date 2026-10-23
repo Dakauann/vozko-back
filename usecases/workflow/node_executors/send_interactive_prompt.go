@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"vozko/domain/channel"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/workflow"
@@ -24,25 +25,28 @@ const interactiveDefaultTimeoutSeconds = 300
 type interactivePromptExecutor struct {
 	sender  *whatsappSender
 	channel *channelSender
+	choices choicestats.Recorder
 }
 
 func NewInteractivePromptExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 	return &interactivePromptExecutor{
 		sender:  newWhatsAppSender(waDeps),
 		channel: newChannelSender(waDeps),
+		choices: waDeps.ChoiceStats,
 	}
 }
 
 func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:          workflow.NodeTypeActionSendInteractive,
-		TestBehavior:  workflow.NodeTestWaits,
-		Category:      workflow.NodeCategoryAction,
-		Scopes:        []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:         "Enviar Opções",
-		Description:   "Envia uma escolha única (botões ou lista) e ramifica o fluxo conforme a opção escolhida pelo contato. Funciona no WhatsApp, Instagram e Telegram, cada canal exibe as opções no formato que suporta.",
-		Icon:          "PaperPlaneTilt",
-		ChannelLimits: e.channelLimits(),
+		Type:              workflow.NodeTypeActionSendInteractive,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestWaits,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:             "Enviar Opções",
+		Description:       "Envia uma escolha única (botões ou lista) e ramifica o fluxo conforme a opção escolhida pelo contato. Funciona no WhatsApp, Instagram e Telegram, cada canal exibe as opções no formato que suporta.",
+		Icon:              "PaperPlaneTilt",
+		ChannelLimits:     e.channelLimits(),
 		Guidance: workflow.NodeGuidance{
 			When: "Para pedir uma escolha ÚNICA e seguir um caminho diferente por opção. Use 'buttons' para poucas opções e 'list' para muitas; cada canal renderiza no formato nativo dele.",
 			Behavior: "Saídas DINÂMICAS: cada opção (botão ou linha da lista) vira uma saída com o MESMO id da opção. Preencha as opções ANTES de conectar. " +
@@ -73,10 +77,10 @@ func (e *interactivePromptExecutor) Definition() workflow.NodeDefinition {
 			"timeout_seconds":  float64(interactiveDefaultTimeoutSeconds),
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "message_id", Description: "ID da mensagem enviada"},
-			{Key: "sent", Description: "true se enviado com sucesso"},
-			{Key: "selected_option_id", Description: "id da opção escolhida (após a resposta)"},
-			{Key: "selected_option_title", Description: "texto da opção escolhida (após a resposta)"},
+			{Key: "message_id", Description: "ID da mensagem enviada", Label: "ID da mensagem", Type: workflow.VariableTypeText},
+			{Key: "sent", Description: "true se enviado com sucesso", Label: "Enviado", Type: workflow.VariableTypeBoolean},
+			{Key: "selected_option_id", Description: "id da opção escolhida (após a resposta)", Label: "ID da opção escolhida", Type: workflow.VariableTypeText},
+			{Key: "selected_option_title", Description: "texto da opção escolhida (após a resposta)", Label: "Opção escolhida", Type: workflow.VariableTypeText},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "interactive_type", Label: "Formato", Type: "select", Options: []workflow.ConfigFieldOption{
@@ -148,13 +152,14 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	if strings.TrimSpace(body) == "" {
 		return nil, workflow.ErrNodeConfigMissing
 	}
-	body = workflow.Interpolate(body, ctx.State, nil)
+	body = workflow.CustomerText(ctx, body)
 
-	footer := workflow.Interpolate(stringConfig(ctx.Node.Config, "footer"), ctx.State, nil)
+	footer := workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "footer"))
 	edges := ctx.Graph.OutgoingEdges(ctx.Node.ID)
 	interactive := isInteractiveWiring(edges, ctx.Node.Config)
 
-	messageID, sendErr := e.send(ctx, body, footer)
+	ctx.State.Set(workflow.StateKeyChoicePrompt, "")
+	messageID, shown, sendErr := e.send(ctx, body, footer)
 	if sendErr != nil {
 		log.Printf("[workflow][node:%s][run:%s] interactive send error: %v", ctx.Node.ID, ctx.Run.ID, sendErr)
 		if target := resolveEdgeByLabelStrict(edges, interactiveHandleSendFailed); target != "" {
@@ -171,6 +176,7 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	if !interactive {
 		return &workflow.NodeResult{Output: output}, nil
 	}
+	e.recordPrompt(ctx, messageID, shown)
 
 	timeout := PromptTimeoutSeconds(ctx.Node.Config)
 	wakeAt := time.Now().UTC().Add(time.Duration(timeout * float64(time.Second))).UnixMilli()
@@ -183,48 +189,68 @@ func (e *interactivePromptExecutor) Execute(ctx *workflow.NodeContext) (*workflo
 	}, nil
 }
 
-func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer string) (string, error) {
+func (e *interactivePromptExecutor) send(ctx *workflow.NodeContext, body, footer string) (string, []string, error) {
 	if shared.EntryType(ctx.Run.EntryType) == shared.EntryTypeWhatsApp {
 		if e.sender == nil {
 			log.Printf("[workflow][node:%s][run:%s] interactive: no WhatsApp sender configured, skipping actual send",
 				ctx.Node.ID, ctx.Run.ID)
-			return "", nil
+			return "", nil, nil
 		}
+		var messageID string
+		var err error
 		if isListPrompt(ctx.Node.Config) {
-			return e.sendList(ctx, body, footer)
+			messageID, err = e.sendList(ctx, body, footer)
+		} else {
+			messageID, err = e.sendButtons(ctx, body, footer)
 		}
-		return e.sendButtons(ctx, body, footer)
+		return messageID, nil, err
 	}
 
 	return e.sendViaAdapter(ctx, body, footer)
 }
 
-func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, body, footer string) (string, error) {
-	options, err := interactiveOptionsOf(ctx.Node.Config, ctx.State)
+func (e *interactivePromptExecutor) recordPrompt(ctx *workflow.NodeContext, messageID string, shown []string) {
+	if e.choices == nil || strings.TrimSpace(messageID) == "" {
+		return
+	}
+	key := workflow.ChoicePromptKey(ctx.Run)
+	ctx.State.Set(workflow.StateKeyChoicePrompt, key)
+	e.choices.RecordSend(context.Background(), choicestats.Send{
+		WorkspaceID:       ctx.Run.WorkspaceID,
+		PromptKey:         key,
+		Source:            workflow.ChoicePromptSource(ctx.Run, ctx.Node.ID, ""),
+		ProviderMessageID: messageID,
+		Shown:             choicestats.ShownOptions(workflow.InteractiveOptionIDs(ctx.Node.Config), shown),
+		SentAt:            time.Now().UTC(),
+	})
+}
+
+func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, body, footer string) (string, []string, error) {
+	options, err := interactiveOptionsOf(ctx.Node.Config, customerTextIn(ctx))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if len(options) == 0 {
-		return "", workflow.ErrNodeConfigMissing
+		return "", nil, workflow.ErrNodeConfigMissing
 	}
 
 	sent, err := e.channel.SendInteractive(context.Background(), ctx.Run, conversation.SendInteractiveRequest{
 		Body:    body,
-		Header:  workflow.Interpolate(stringConfig(ctx.Node.Config, "header_text"), ctx.State, nil),
+		Header:  workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "header_text")),
 		Footer:  footer,
 		Options: options,
 		Style:   workflow.InteractivePromptStyle(ctx.Node.Config),
 	})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if sent == nil {
-		return "", nil
+		return "", nil, nil
 	}
-	return sent.ProviderMessageID, nil
+	return sent.ProviderMessageID, sent.ShownOptionIDs, nil
 }
 
-func interactiveOptionsOf(config map[string]interface{}, state *workflow.RunState) ([]conversation.InteractiveOption, error) {
+func interactiveOptionsOf(config map[string]interface{}, text func(string) string) ([]conversation.InteractiveOption, error) {
 	var out []conversation.InteractiveOption
 	appendOption := func(id, title string) {
 		if strings.TrimSpace(id) == "" {
@@ -232,7 +258,7 @@ func interactiveOptionsOf(config map[string]interface{}, state *workflow.RunStat
 		}
 		out = append(out, conversation.InteractiveOption{
 			ID:    id,
-			Title: workflow.Interpolate(title, state, nil),
+			Title: text(title),
 		})
 	}
 
@@ -268,7 +294,7 @@ func (e *interactivePromptExecutor) sendButtons(ctx *workflow.NodeContext, body,
 		return "", workflow.ErrNodeConfigMissing
 	}
 	for i := range buttons {
-		buttons[i].Title = workflow.Interpolate(buttons[i].Title, ctx.State, nil)
+		buttons[i].Title = workflow.CustomerText(ctx, buttons[i].Title)
 	}
 
 	input := conversation.SendButtonMessageInput{
@@ -276,7 +302,9 @@ func (e *interactivePromptExecutor) sendButtons(ctx *workflow.NodeContext, body,
 		FooterText: footer,
 		Buttons:    buttons,
 	}
-	e.applyHeader(ctx, &input)
+	if err := e.applyHeader(ctx, &input); err != nil {
+		return "", err
+	}
 
 	out, _, err := e.sender.SendButtonsWithInput(context.Background(), ctx.Run, input)
 	if err != nil {
@@ -294,15 +322,15 @@ func (e *interactivePromptExecutor) sendList(ctx *workflow.NodeContext, body, fo
 		return "", invalidInteractiveConfig(err)
 	}
 	for i := range sections {
-		sections[i].Title = workflow.Interpolate(sections[i].Title, ctx.State, nil)
+		sections[i].Title = workflow.CustomerText(ctx, sections[i].Title)
 		for j := range sections[i].Rows {
 			row := &sections[i].Rows[j]
-			row.Title = workflow.Interpolate(row.Title, ctx.State, nil)
-			row.Description = workflow.Interpolate(row.Description, ctx.State, nil)
+			row.Title = workflow.CustomerText(ctx, row.Title)
+			row.Description = workflow.CustomerText(ctx, row.Description)
 		}
 	}
 
-	buttonLabel := strings.TrimSpace(workflow.Interpolate(stringConfig(ctx.Node.Config, "list_button"), ctx.State, nil))
+	buttonLabel := strings.TrimSpace(workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "list_button")))
 	if buttonLabel == "" {
 		buttonLabel = "Ver opções"
 	}
@@ -313,7 +341,7 @@ func (e *interactivePromptExecutor) sendList(ctx *workflow.NodeContext, body, fo
 		ButtonText: buttonLabel,
 		Sections:   sections,
 	}
-	if headerText := strings.TrimSpace(workflow.Interpolate(stringConfig(ctx.Node.Config, "header_text"), ctx.State, nil)); headerText != "" {
+	if headerText := strings.TrimSpace(workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "header_text"))); headerText != "" {
 		input.HeaderText = headerText
 	}
 
@@ -327,18 +355,23 @@ func (e *interactivePromptExecutor) sendList(ctx *workflow.NodeContext, body, fo
 	return "", nil
 }
 
-func (e *interactivePromptExecutor) applyHeader(ctx *workflow.NodeContext, input *conversation.SendButtonMessageInput) {
+func (e *interactivePromptExecutor) applyHeader(ctx *workflow.NodeContext, input *conversation.SendButtonMessageInput) error {
 	headerType, _ := ctx.Node.Config["header_type"].(string)
 	if headerType == "" {
-		return
+		return nil
 	}
 	input.HeaderType = conversation.HeaderType(headerType)
 	switch conversation.HeaderType(headerType) {
 	case conversation.HeaderTypeText:
-		input.HeaderText = workflow.Interpolate(stringConfig(ctx.Node.Config, "header_text"), ctx.State, nil)
+		input.HeaderText = workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "header_text"))
 	case conversation.HeaderTypeImage, conversation.HeaderTypeVideo:
-		input.MediaLink = workflow.Interpolate(stringConfig(ctx.Node.Config, "header_media_url"), ctx.State, nil)
+		link := strings.TrimSpace(workflow.Interpolate(stringConfig(ctx.Node.Config, "header_media_url"), ctx.State, nil))
+		if err := mediaURLsOf(e.sender).SendableURL(runMediaScope(ctx.Run), link); err != nil {
+			return err
+		}
+		input.MediaLink = link
 	}
+	return nil
 }
 
 func stringConfig(config map[string]interface{}, key string) string {

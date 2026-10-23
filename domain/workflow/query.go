@@ -13,9 +13,10 @@ type ListWorkflowsInput struct {
 
 	Type *WorkflowType
 
-	TriggerType *TriggerType
-	EntryKind   *EntryPointKind
-	Options     shared.QueryOptions
+	TriggerType       *TriggerType
+	EntryKind         *EntryPointKind
+	StartsFromMessage bool
+	Options           shared.QueryOptions
 }
 
 type ListRunsInput struct {

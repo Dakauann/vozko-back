@@ -21,6 +21,9 @@ var contactChannels = map[shared.EntryType]bool{
 	shared.EntryTypeWebchat:            true,
 	shared.EntryTypeMercadoLivre:       true,
 	shared.EntryTypeTikTok:             true,
+	shared.EntryTypeEmail:              true,
+	shared.EntryTypeRCS:                true,
+	shared.EntryTypeSMS:                true,
 }
 
 type Subject struct {

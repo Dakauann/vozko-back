@@ -29,11 +29,14 @@ const (
 	ServiceTopUp                ServiceType = "top_up"
 	ServiceAddon                ServiceType = "addon"
 	ServiceAdvertising          ServiceType = "advertising"
+	ServiceEmail                ServiceType = "email"
+	ServiceRCS                  ServiceType = "rcs"
+	ServiceSMS                  ServiceType = "sms"
 )
 
 func (s ServiceType) IsValid() bool {
 	switch s {
-	case ServiceVoiceCampaign, ServiceVoiceCall, ServiceWhatsAppCampaign, ServiceWhatsAppConversation, ServiceAI, ServiceManualAdjustment, ServiceTopUp, ServiceAddon, ServiceAdvertising:
+	case ServiceVoiceCampaign, ServiceVoiceCall, ServiceWhatsAppCampaign, ServiceWhatsAppConversation, ServiceAI, ServiceManualAdjustment, ServiceTopUp, ServiceAddon, ServiceAdvertising, ServiceEmail, ServiceRCS, ServiceSMS:
 		return true
 	default:
 		return false
@@ -51,6 +54,9 @@ func AllServiceTypes() []ServiceType {
 		ServiceTopUp,
 		ServiceAddon,
 		ServiceAdvertising,
+		ServiceEmail,
+		ServiceRCS,
+		ServiceSMS,
 	}
 }
 

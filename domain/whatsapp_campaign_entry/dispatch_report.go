@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/campaign"
+	"vozko/domain/shared"
 )
 
 const (
@@ -14,61 +15,21 @@ const (
 	MaxExportDays  = 731
 	ReportTagLimit = 10
 	ExportPageRows = 500
-	reportDayForm  = "2006-01-02"
 )
 
 var (
-	ErrReportWindowInvalid = errors.New("dispatch report window is invalid")
-	ErrReportWindowTooLong = errors.New("dispatch report window exceeds the maximum number of days")
+	ErrReportWindowInvalid = shared.ErrDayWindowInvalid
+	ErrReportWindowTooLong = shared.ErrDayWindowTooLong
 )
 
-type DayWindow struct {
-	From     time.Time
-	To       time.Time
-	Location *time.Location
-}
+type DayWindow = shared.DayWindow
 
 func NewDayWindow(fromDay, toDay string, loc *time.Location) (DayWindow, error) {
 	return NewDayWindowWithin(fromDay, toDay, loc, MaxReportDays)
 }
 
 func NewDayWindowWithin(fromDay, toDay string, loc *time.Location, maxDays int) (DayWindow, error) {
-	if loc == nil || maxDays <= 0 {
-		return DayWindow{}, ErrReportWindowInvalid
-	}
-	from, err := time.ParseInLocation(reportDayForm, fromDay, loc)
-	if err != nil {
-		return DayWindow{}, ErrReportWindowInvalid
-	}
-	last, err := time.ParseInLocation(reportDayForm, toDay, loc)
-	if err != nil || last.Before(from) {
-		return DayWindow{}, ErrReportWindowInvalid
-	}
-	w := DayWindow{From: from, To: last.AddDate(0, 0, 1), Location: loc}
-	if w.To.After(from.AddDate(0, 0, maxDays)) {
-		return DayWindow{}, ErrReportWindowTooLong
-	}
-	return w, nil
-}
-
-func (w DayWindow) FirstDay() string {
-	return w.From.Format(reportDayForm)
-}
-
-func (w DayWindow) LastDay() string {
-	return w.To.AddDate(0, 0, -1).Format(reportDayForm)
-}
-
-func (w DayWindow) Fingerprint() string {
-	return w.FirstDay() + ":" + w.LastDay() + ":" + w.Location.String()
-}
-
-func (w DayWindow) Days() []string {
-	var days []string
-	for d := w.From; d.Before(w.To); d = d.AddDate(0, 0, 1) {
-		days = append(days, d.Format(reportDayForm))
-	}
-	return days
+	return shared.NewDayWindowWithin(fromDay, toDay, loc, maxDays)
 }
 
 type Funnel struct {

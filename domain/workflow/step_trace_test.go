@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/domain/tracepayload"
 )
@@ -39,6 +40,7 @@ func TestClassifyErrorNamesTheCauseSoTheStepSaysWhatToFix(t *testing.T) {
 		{"lifetime breaker", ErrDurableExecutionsReached, ErrorKindGuard},
 		{"no executor", ErrNodeExecutorNotFound, ErrorKindGuard},
 		{"egress refusal is a transport failure", fmt.Errorf("post: %w", shared.ErrEgressBlocked), ErrorKindTransport},
+		{"a closed service window says a template is needed", fmt.Errorf("send text: %w", conversation.ErrWindowClosed), ErrorKindWindowClosed},
 		{"anything else is internal", errors.New("boom"), ErrorKindInternal},
 	}
 	for _, tc := range cases {
@@ -209,5 +211,25 @@ func TestNewStatusesAreDistinctFromExecutedAndFailed(t *testing.T) {
 			t.Fatalf("status %q repeats or is empty", s)
 		}
 		seen[s] = true
+	}
+}
+
+func TestStepErrorMessageShowsTheCodedMessageOfAKindAndTheTextOtherwise(t *testing.T) {
+	cases := []struct {
+		name      string
+		kind      ErrorKind
+		technical string
+		want      string
+	}{
+		{"a closed window reads as the template advice", ErrorKindWindowClosed, "conversation: 24-hour messaging window is closed", WindowClosedFix},
+		{"a kind with no coded message keeps the text the builder needs", ErrorKindHTTPStatus, "status 502", "status 502"},
+		{"no kind keeps the text", "", "boom", "boom"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := StepErrorMessage(c.kind, c.technical); got != c.want {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
 	}
 }

@@ -16,13 +16,14 @@ func NewSendTextExecutor(deps SenderDeps) workflow.NodeExecutor {
 
 func (e *sendTextExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionSendText,
-		TestBehavior: workflow.NodeTestSendsMessage,
-		Category:     workflow.NodeCategoryAction,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:        "Enviar Texto",
-		Description:  "Envia uma mensagem de texto ao contato.",
-		Icon:         "PaperPlaneTilt",
+		Type:              workflow.NodeTypeActionSendText,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestSendsMessage,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:             "Enviar Texto",
+		Description:       "Envia uma mensagem de texto ao contato.",
+		Icon:              "PaperPlaneTilt",
 		Guidance: workflow.NodeGuidance{
 			When: "Para enviar uma mensagem de texto ao contato (texto fixo ou montado com variáveis). Útil para enviar a saída de um nó anterior, ou em canais onde o agente não envia sozinho.",
 			Examples: []string{
@@ -33,9 +34,9 @@ func (e *sendTextExecutor) Definition() workflow.NodeDefinition {
 			"text": "",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "text", Description: "Texto enviado"},
-			{Key: "sent", Description: "true se enviado com sucesso"},
-			{Key: "message_id", Description: "ID da mensagem no canal"},
+			{Key: "text", Description: "Texto enviado", Label: "Texto enviado", Type: workflow.VariableTypeText},
+			{Key: "sent", Description: "true se enviado com sucesso", Label: "Enviado", Type: workflow.VariableTypeBoolean},
+			{Key: "message_id", Description: "ID da mensagem no canal", Label: "ID da mensagem", Type: workflow.VariableTypeText},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "text", Label: "Texto da Mensagem", Type: "textarea", Placeholder: "Digite o texto...", Required: true},
@@ -48,7 +49,7 @@ func (e *sendTextExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRes
 	if text == "" {
 		return nil, workflow.ErrNodeConfigMissing
 	}
-	text = workflow.Interpolate(text, ctx.State, nil)
+	text = workflow.CustomerText(ctx, text)
 
 	if !e.sender.Supports(ctx.Run) {
 		return skipUnsupportedNode(ctx, "action_send_text"), nil

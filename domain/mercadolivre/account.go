@@ -93,9 +93,10 @@ type Account struct {
 	WorkspaceID  string  `json:"workspaceId"`
 	DepartmentID *string `json:"departmentId,omitempty"`
 
-	MLUserID string `json:"mlUserId"`
-	SiteID   string `json:"siteId"`
-	Nickname string `json:"nickname"`
+	MLUserID    string `json:"mlUserId"`
+	SiteID      string `json:"siteId"`
+	Nickname    string `json:"nickname"`
+	DisplayName string `json:"displayName,omitempty"`
 
 	AccessToken      string     `json:"-"`
 	RefreshToken     string     `json:"-"`
@@ -196,13 +197,6 @@ func (a *Account) PurgeDue(now time.Time) bool {
 }
 
 func PurgeScheduleFrom(now time.Time) time.Time { return now.Add(PurgeGracePeriod) }
-
-func (a *Account) DisplayName() string {
-	if n := strings.TrimSpace(a.Nickname); n != "" {
-		return n
-	}
-	return a.MLUserID
-}
 
 func (a *Account) Automation() conversation.ChannelAutomation {
 	return conversation.ChannelAutomation{

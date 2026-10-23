@@ -186,6 +186,7 @@ func (s *Service) runTurn(ctx context.Context, thread *aichat.Thread, start turn
 
 	driver := NewDriver(cc, model, s.registry, s.access, s.funds, s.newID)
 	driver.state = s.workspaceState(ctx, cc)
+	driver.observeView(ctx)
 	driver.reattach = func(next copilot.Context) copilot.Context {
 		s.turns.Moved(thread.ID, next.View)
 		return s.attachScreen(next, thread.ID, emit)

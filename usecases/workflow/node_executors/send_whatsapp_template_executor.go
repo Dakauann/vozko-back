@@ -18,13 +18,14 @@ func NewSendTemplateExecutor(waDeps SenderDeps) workflow.NodeExecutor {
 
 func (e *sendTemplateExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionSendTemplate,
-		TestBehavior: workflow.NodeTestSendsMessage,
-		Category:     workflow.NodeCategoryAction,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:        "Enviar Template",
-		Description:  "Envia um template pré-aprovado do WhatsApp para o contato. Selecione o número do WhatsApp emissor.",
-		Icon:         "FileText",
+		Type:              workflow.NodeTypeActionSendTemplate,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestSendsMessage,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:             "Enviar Template",
+		Description:       "Envia um template pré-aprovado do WhatsApp para o contato. Selecione o número do WhatsApp emissor.",
+		Icon:              "FileText",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para enviar um template de WhatsApp pré-aprovado (necessário fora da janela de 24h). Em fluxos de voz, envia ao número da chamada.",
 			Behavior: "Em fluxos VoIP o destinatário vem de {{phone_number}} (número da chamada) e o número emissor do WhatsApp precisa ser selecionado em \"Número do WhatsApp\".",
@@ -35,11 +36,11 @@ func (e *sendTemplateExecutor) Definition() workflow.NodeDefinition {
 			"params":            map[string]interface{}{},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "business_phone_id", Description: "ID do número do WhatsApp usado no envio"},
-			{Key: "template_id", Description: "ID do template enviado"},
-			{Key: "template_name", Description: "Nome do template enviado"},
-			{Key: "message_id", Description: "ID da mensagem enviada"},
-			{Key: "sent", Description: "true se enviado com sucesso"},
+			{Key: "business_phone_id", Description: "ID do número do WhatsApp usado no envio", Label: "ID do número", Type: workflow.VariableTypeText},
+			{Key: "template_id", Description: "ID do template enviado", Label: "ID do template", Type: workflow.VariableTypeText},
+			{Key: "template_name", Description: "Nome do template enviado", Label: "Nome do template", Type: workflow.VariableTypeText},
+			{Key: "message_id", Description: "ID da mensagem enviada", Label: "ID da mensagem", Type: workflow.VariableTypeText},
+			{Key: "sent", Description: "true se enviado com sucesso", Label: "Enviado", Type: workflow.VariableTypeBoolean},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "business_phone_id", Label: "Número do WhatsApp", Type: "select", Placeholder: "Selecione um número do workspace", OptionsSource: "business_phones"},
@@ -49,11 +50,15 @@ func (e *sendTemplateExecutor) Definition() workflow.NodeDefinition {
 	}
 }
 
-func templateParamValues(config map[string]interface{}, key string) map[string]string {
+func templateParamValues(ctx *workflow.NodeContext, key string) map[string]string {
 	paramValues := make(map[string]string)
-	if params, ok := config[key].(map[string]interface{}); ok {
+	if params, ok := ctx.Node.Config[key].(map[string]interface{}); ok {
 		for k, v := range params {
-			paramValues[k] = workflow.TemplateText(v)
+			if text, isText := v.(string); isText {
+				paramValues[k] = workflow.CustomerText(ctx, text)
+				continue
+			}
+			paramValues[k] = workflow.CustomerValueText(v)
 		}
 	}
 	return paramValues
@@ -71,7 +76,7 @@ func (e *sendTemplateExecutor) Execute(ctx *workflow.NodeContext) (*workflow.Nod
 	preferredBusinessPhoneID, _ := ctx.Node.Config["business_phone_id"].(string)
 	preferredBusinessPhoneID = strings.TrimSpace(workflow.Interpolate(preferredBusinessPhoneID, ctx.State, nil))
 
-	paramValues := templateParamValues(ctx.Node.Config, "params")
+	paramValues := templateParamValues(ctx, "params")
 
 	if e.sender == nil {
 		log.Printf("[workflow][node:%s][run:%s] send_template: no WhatsApp sender configured, skipping actual send",

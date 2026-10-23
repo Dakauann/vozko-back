@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/campaign"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	"vozko/domain/leadexit"
 	"vozko/domain/media"
@@ -87,6 +88,7 @@ type HandleWebhookUseCase struct {
 	historyWindow time.Duration
 	exitStep      leadexit.Step
 	groupWatcher  GroupWatcher
+	choices       choicestats.Recorder
 }
 
 type HandleWebhookDeps struct {
@@ -110,6 +112,7 @@ type HandleWebhookDeps struct {
 	Leads       LeadLinker
 	Analysis    AnalysisScheduler
 	Delegations conversation.DelegationRepository
+	Choices     choicestats.Recorder
 }
 
 func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
@@ -131,6 +134,7 @@ func NewHandleWebhookUseCase(d HandleWebhookDeps) *HandleWebhookUseCase {
 		leads:         d.Leads,
 		analysis:      d.Analysis,
 		delegations:   d.Delegations,
+		choices:       d.Choices,
 		sessionHost:   sessionHost{sync: sessionSync{instances: d.Instances}},
 		profiles:      profiles,
 		groups:        newGroupMetadata(d, profiles),
@@ -221,6 +225,7 @@ func (uc *HandleWebhookUseCase) handleInbound(ctx context.Context, instance *uw.
 		uc.broadcastEntryUpdate(sub.conversation.ID)
 		return nil
 	}
+	uc.recordMenuTap(ctx, instance, ev)
 
 	exit, err := uc.runLeadExit(ctx, instance, sub, ev)
 	if err != nil {
@@ -799,10 +804,7 @@ func (uc *HandleWebhookUseCase) messageEvent(
 			data["account_workflow_id"] = scopedWorkflowID
 		}
 	}
-	if ev.OptionID != "" {
-		data[workflow.DataKeySelectedOptionID] = ev.OptionID
-		data[workflow.DataKeySelectedOptionTitle] = ev.Text
-	}
+	workflow.ApplySelection(data, &workflow.OptionSelection{ID: ev.OptionID, Title: ev.Text})
 	workflow.ApplyContactNumber(data, uw.PhoneFromJID(conv.ChatID))
 	workflow.ApplyTriggerMessage(data, uc.storedInboundID(conv.ID, ev.ProviderMessageID))
 
@@ -1010,4 +1012,16 @@ func channelAutomation(instance *uw.Instance, conv *uw.Conversation, auto *Campa
 		WorkflowID:           &workflowID,
 		EnableWorkflow:       auto.Automation.RunsWorkflow(conv.AutomationEnabled),
 	}
+}
+
+func (uc *HandleWebhookUseCase) recordMenuTap(ctx context.Context, instance *uw.Instance, ev *uw.Event) {
+	if uc.choices == nil || ev.OptionID == "" || ev.QuotedProviderMessageID == "" {
+		return
+	}
+	uc.choices.RecordClick(ctx, choicestats.Click{
+		WorkspaceID:       instance.WorkspaceID,
+		ProviderMessageID: ev.QuotedProviderMessageID,
+		Option:            ev.OptionID,
+		At:                time.Now().UTC(),
+	})
 }

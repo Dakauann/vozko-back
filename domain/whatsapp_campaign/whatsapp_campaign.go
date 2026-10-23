@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/campaign"
+	"vozko/domain/campaignaudience"
 	"vozko/domain/lead"
 	"vozko/domain/whatsapp_campaign/smartcampaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
@@ -136,6 +137,8 @@ type Campaign struct {
 	ScheduledStart time.Time `json:"scheduledStart,omitzero"`
 
 	WavePolicy *smartcampaign.Policy `json:"-"`
+
+	Recipients *campaignaudience.Request `json:"-"`
 
 	ExitRiskAcknowledgedBy string `json:"-"`
 }

@@ -52,11 +52,11 @@ func (e *updateLeadExecutor) Definition() workflow.NodeDefinition {
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando o cadastro foi conferido sem recusa"},
-			{Key: "lead_id", Description: "ID do lead da conversa"},
-			{Key: "changed", Description: "Campos preenchidos agora: addresses, birthDate ou customFields.<chave>"},
-			{Key: "conflicts", Description: "Campos que já tinham outro valor e foram mantidos"},
-			{Key: "error", Description: "Motivo quando nada foi gravado"},
+			{Key: "success", Description: "true quando o cadastro foi conferido sem recusa", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "lead_id", Description: "ID do lead da conversa", Label: "ID do lead", Type: workflow.VariableTypeText},
+			{Key: "changed", Description: "Campos preenchidos agora: addresses, birthDate ou customFields.<chave>", Label: "Campos preenchidos", Type: workflow.VariableTypeList},
+			{Key: "conflicts", Description: "Campos que já tinham outro valor e foram mantidos", Label: "Campos mantidos", Type: workflow.VariableTypeList},
+			{Key: "error", Description: "Motivo quando nada foi gravado", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{workflow.UpdateLeadCustomFields: map[string]interface{}{}},
 		ConfigSchema: []workflow.ConfigField{

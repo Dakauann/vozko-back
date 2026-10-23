@@ -1,6 +1,7 @@
 package workflow_usecase
 
 import (
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -21,7 +22,7 @@ func NewTriggerEvaluator(
 	runRepo workflow.WorkflowRunRepository,
 	engine *RunEngine,
 	sharedState cache.SharedState,
-) workflow.TriggerEvaluator {
+) workflow.CheckedTriggerEvaluator {
 	return &triggerEvaluator{
 		workflowRepo: workflowRepo,
 		runRepo:      runRepo,
@@ -50,6 +51,10 @@ func eventLogAttrs(event workflow.TriggerEvent) []any {
 }
 
 func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
+	_ = te.EvaluateChecked(event)
+}
+
+func (te *triggerEvaluator) EvaluateChecked(event workflow.TriggerEvent) error {
 	slog.Debug("workflow.trigger.evaluate", eventLogAttrs(event)...)
 
 	handledReplyRun := ""
@@ -57,7 +62,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 	if event.TriggerType == workflow.TriggerMessageReceived && event.EntryID != "" {
 		routed, ok := te.routeReply(event)
 		if !ok {
-			return
+			return nil
 		}
 		handledReplyRun, handledReplyWorkflow = routed.RunID, routed.WorkflowID
 	}
@@ -65,7 +70,7 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 	workflows, err := te.workflowRepo.FindActiveByTrigger(event.WorkspaceID, event.TriggerType)
 	if err != nil {
 		slog.Error("workflow.trigger.find_workflows_failed", append(eventLogAttrs(event), slog.String("error", err.Error()))...)
-		return
+		return fmt.Errorf("find workflows for %s: %w", event.TriggerType, err)
 	}
 
 	slog.Debug("workflow.trigger.candidates", append(eventLogAttrs(event), slog.Int("workflows", len(workflows)))...)
@@ -74,6 +79,11 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 
 		if handledReplyWorkflow != "" && w.ID == handledReplyWorkflow {
 			slog.Info("workflow.trigger.message_already_consumed", append(eventLogAttrs(event), slog.String("workflow_id", w.ID), slog.String("run_id", handledReplyRun))...)
+			continue
+		}
+
+		if !event.MayStart(w.ID) {
+			slog.Info("workflow.trigger.own_move_skipped", append(eventLogAttrs(event), slog.String("workflow_id", w.ID))...)
 			continue
 		}
 
@@ -134,10 +144,11 @@ func (te *triggerEvaluator) Evaluate(event workflow.TriggerEvent) {
 		executeLocked(te.engine, run, w)
 		releaseWorkspaceSlot(te.sharedState, event.WorkspaceID)
 	}
+	return nil
 }
 
 func (te *triggerEvaluator) blockingRun(w *workflow.Workflow, trigger *workflow.Node, event workflow.TriggerEvent) (*workflow.WorkflowRun, error) {
-	if event.TriggerType.StartsRunPerEvent() {
+	if event.StartsRunPerEvent() {
 		return nil, nil
 	}
 	return te.runRepo.FindActiveByEntryAndTrigger(w.ID, event.EntryID, trigger.ID)
@@ -228,24 +239,12 @@ func (te *triggerEvaluator) matchesTriggerConfig(w *workflow.Workflow, event wor
 
 	switch event.TriggerType {
 	case workflow.TriggerStageAdded:
-		StageID, _ := cfg["stage_id"].(string)
+		StageID, _ := cfg[workflow.DataKeyStageID].(string)
 		if StageID == "" {
 			return true
 		}
-		eventTagID, _ := event.Data["stage_id"].(string)
+		eventTagID, _ := event.Data[workflow.DataKeyStageID].(string)
 		return StageID == eventTagID
-
-	case workflow.TriggerCampaignSent:
-		campaignID, _ := cfg[workflow.CampaignTriggerCampaignIDKey].(string)
-		if campaignID == "" {
-			return true
-		}
-		eventCampaignID, _ := event.Data["campaign_id"].(string)
-		return campaignID == eventCampaignID
-
-	case workflow.TriggerNoReply:
-
-		return true
 
 	case workflow.TriggerFormSubmitted:
 		formID, _ := event.Data[workflow.DataKeyFormID].(string)

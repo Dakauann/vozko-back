@@ -1,0 +1,28 @@
+{
+  "id": 202593498,
+  "nickname": "DGCAFEDHB50478",
+  "registration_date": "2016-01-06T11:31:42.000-04:00",
+  "first_name": "Ana",
+  "last_name": "Souza",
+  "country_id": "BR",
+  "email": "test_user_50698062@testuser.com",
+  "user_type": "normal",
+  "tags": [
+    "normal",
+    "test_user"
+  ],
+  "logo": null,
+  "points": 100,
+  "site_id": "MLB",
+  "permalink": "http://perfil.mercadolivre.com.br/DGCAFEDHB50478",
+  "seller_experience": "ADVANCED",
+  "company": {
+    "brand_name": "Café do Vale",
+    "city_tax_id": "",
+    "corporate_name": "Vale Cafés Ltda",
+    "identification": "",
+    "state_tax_id": "",
+    "cust_type_id": "CO",
+    "soft_descriptor": ""
+  }
+}

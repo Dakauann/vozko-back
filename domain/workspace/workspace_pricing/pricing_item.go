@@ -17,9 +17,41 @@ const (
 	CategoryExchangeRate ServiceCategory = "exchange_rate"
 	CategoryMargin       ServiceCategory = "margin"
 	CategoryAdvertising  ServiceCategory = "advertising"
+	CategoryEmail        ServiceCategory = "email"
+	CategoryRCS          ServiceCategory = "rcs"
+	CategorySMS          ServiceCategory = "sms"
 )
 
 const AdvertisingServicePublishedAd = "published_ad"
+
+const (
+	EmailServiceSend      = "send"
+	EmailServiceReceive   = "receive"
+	EmailMetricPerMessage = "per_message"
+	EmailMetricPerChunk   = "per_chunk"
+)
+
+type EmailPriceLine struct {
+	Service string
+	Metric  string
+}
+
+var (
+	EmailSendPerMessage    = EmailPriceLine{Service: EmailServiceSend, Metric: EmailMetricPerMessage}
+	EmailSendPerChunk      = EmailPriceLine{Service: EmailServiceSend, Metric: EmailMetricPerChunk}
+	EmailReceivePerMessage = EmailPriceLine{Service: EmailServiceReceive, Metric: EmailMetricPerMessage}
+	EmailReceivePerChunk   = EmailPriceLine{Service: EmailServiceReceive, Metric: EmailMetricPerChunk}
+)
+
+var ErrEmailServiceUnsupported = errors.New("unsupported email service for pricing")
+
+func (l EmailPriceLine) Valid() bool {
+	switch l {
+	case EmailSendPerMessage, EmailSendPerChunk, EmailReceivePerMessage, EmailReceivePerChunk:
+		return true
+	}
+	return false
+}
 
 var ErrPricingItemNotFound = errors.New("pricing item not found")
 var ErrWhatsAppTemplateCategoryUnsupported = errors.New("unsupported whatsapp template category for pricing")
@@ -91,6 +123,9 @@ var configurableCategories = map[ServiceCategory]bool{
 	CategoryWhatsApp:    true,
 	CategoryTelephony:   true,
 	CategoryAdvertising: true,
+	CategoryEmail:       true,
+	CategoryRCS:         true,
+	CategorySMS:         true,
 }
 
 func IsCategoryConfigurable(c ServiceCategory) bool {
@@ -111,6 +146,19 @@ var DefaultPricingCatalog = []PricingItem{
 	{Category: CategoryLLM, Service: "default_markup", Metric: "percentage", MarkupPct: 0.20, Currency: "USD"},
 
 	{Category: CategoryAdvertising, Service: AdvertisingServicePublishedAd, Metric: "per_ad", CostMicros: 0, PriceMicros: 1_000_000, Currency: "USD"},
+
+	{Category: CategoryEmail, Service: EmailServiceSend, Metric: EmailMetricPerMessage, CostMicros: 165, PriceMicros: 583, Currency: "USD"},
+	{Category: CategoryEmail, Service: EmailServiceSend, Metric: EmailMetricPerChunk, CostMicros: 29, PriceMicros: 102, Currency: "USD"},
+	{Category: CategoryEmail, Service: EmailServiceReceive, Metric: EmailMetricPerMessage, CostMicros: 190, PriceMicros: 583, Currency: "USD"},
+	{Category: CategoryEmail, Service: EmailServiceReceive, Metric: EmailMetricPerChunk, CostMicros: 90, PriceMicros: 315, Currency: "USD"},
+
+	{Category: CategoryRCS, Service: "basic", Metric: "per_message", CostMicros: 19_317, PriceMicros: 31_667, Currency: "USD"},
+	{Category: CategoryRCS, Service: "single", Metric: "per_message", CostMicros: 38_633, PriceMicros: 63_333, Currency: "USD"},
+	{Category: CategoryRCS, Service: "conversation", Metric: "per_conversation", CostMicros: 66_083, PriceMicros: 126_667, Currency: "USD"},
+	{Category: CategoryRCS, Service: "inbound", Metric: "per_message", CostMicros: 19_317, PriceMicros: 31_667, Currency: "USD"},
+
+	{Category: CategorySMS, Service: "segment", Metric: "per_segment", CostMicros: 30_000, PriceMicros: 41_667, Currency: "USD"},
+	{Category: CategorySMS, Service: "inbound", Metric: "per_message", CostMicros: 5_000, PriceMicros: 8_333, Currency: "USD"},
 
 	{Category: CategoryExchangeRate, Service: "usd_to_brl", Metric: "per_unit", PriceMicros: 6_000_000, Currency: "BRL"},
 }

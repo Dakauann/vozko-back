@@ -3,6 +3,7 @@ package tools_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -18,14 +19,15 @@ const CheckCalendarAvailabilityToolName = "check_calendar_availability"
 
 type checkCalendarAvailabilityTool struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewCheckCalendarAvailabilityToolUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) tools.Handler {
-	if repo == nil || google == nil {
+func NewCheckCalendarAvailabilityToolUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) tools.Handler {
+	if repo == nil || google == nil || access == nil {
 		return nil
 	}
-	return &checkCalendarAvailabilityTool{repo: repo, google: google}
+	return &checkCalendarAvailabilityTool{repo: repo, google: google, access: access}
 }
 
 func (t *checkCalendarAvailabilityTool) Definition() tools.Definition {
@@ -154,19 +156,9 @@ func (t *checkCalendarAvailabilityTool) ExecuteWithConfig(ctx context.Context, c
 		}, nil
 	}
 
-	conn, err := t.repo.GetConnection(workspaceID)
+	googleAccess, err := t.access.CalendarAccess(ctx, workspaceID)
 	if err != nil {
-		log.Printf("[CheckCalendarAvailability] failed to query connection for workspace %s: %v", workspaceID, err)
-		return tools.ExecutionResult{
-			Result:  fmt.Sprintf("Falha ao consultar integração do workspace: %v", err),
-			IsError: true,
-		}, nil
-	}
-	if conn == nil {
-		return tools.ExecutionResult{
-			Result:  "Nenhuma conta Google Calendar conectada neste workspace.",
-			IsError: true,
-		}, nil
+		return calendarAccessRefusal(workspaceID, err), nil
 	}
 
 	tzRaw := toolStringParamOrConfig(params, config, "timezone", "America/Sao_Paulo")
@@ -224,14 +216,7 @@ func (t *checkCalendarAvailabilityTool) ExecuteWithConfig(ctx context.Context, c
 
 	slotMinutes := toolIntParamOrConfig(params, config, "slot_duration", 30)
 
-	accessToken, err := ensureValidCalendarToken(t.google, t.repo, conn)
-	if err != nil {
-		log.Printf("[CheckCalendarAvailability] token refresh failed for workspace %s: %v", workspaceID, err)
-		return tools.ExecutionResult{
-			Result:  fmt.Sprintf("Falha ao autenticar no Google Calendar: %v", err),
-			IsError: true,
-		}, nil
-	}
+	accessToken := googleAccess.Token
 
 	events, err := t.google.ListGoogleEvents(accessToken, dateFrom, dateTo, "", 250)
 	if err != nil {
@@ -282,36 +267,13 @@ func (t *checkCalendarAvailabilityTool) ExecuteWithConfig(ctx context.Context, c
 		"date_from":            dateFrom.Format(time.RFC3339),
 		"date_to":              dateTo.Format(time.RFC3339),
 		"timezone":             tzRaw,
-		"calendar_email":       conn.Email,
+		"calendar_email":       googleAccess.Email,
 	}
 
 	resultJSON, _ := json.Marshal(resultMap)
 	return tools.ExecutionResult{
 		Result: string(resultJSON),
 	}, nil
-}
-
-func ensureValidCalendarToken(google calendar.GoogleOAuthService, repo calendar.Repository, conn *calendar.GoogleCalendarConnection) (string, error) {
-	if time.Now().Before(conn.TokenExpiry.Add(-time.Minute)) {
-		return conn.AccessToken, nil
-	}
-
-	refreshed, err := google.RefreshAccessToken(conn.RefreshToken)
-	if err != nil {
-		return "", err
-	}
-
-	expiry := time.Now().Add(time.Duration(refreshed.ExpiresIn) * time.Second)
-	refreshToken := refreshed.RefreshToken
-	if refreshToken == "" {
-		refreshToken = conn.RefreshToken
-	}
-
-	if err := repo.UpdateConnectionTokens(conn.ID, refreshed.AccessToken, refreshToken, expiry); err != nil {
-		log.Printf("[calendar_tool] failed to persist refreshed token for workspace=%s: %v", conn.WorkspaceID, err)
-	}
-
-	return refreshed.AccessToken, nil
 }
 
 func toolParamOrConfig(params map[string]interface{}, config map[string]interface{}, key string) interface{} {
@@ -596,3 +558,11 @@ func mergeLocalCalToolEvents(repo calendar.Repository, workspaceID string, from,
 }
 
 var _ tools.Handler = (*checkCalendarAvailabilityTool)(nil)
+
+func calendarAccessRefusal(workspaceID string, err error) tools.ExecutionResult {
+	if errors.Is(err, calendar.ErrGoogleNotConnected) {
+		return tools.ExecutionResult{Result: "Nenhuma conta Google Calendar conectada neste workspace.", IsError: true}
+	}
+	log.Printf("[calendar_tool] google access failed for workspace %s: %v", workspaceID, err)
+	return tools.ExecutionResult{Result: fmt.Sprintf("Falha ao autenticar no Google Calendar: %v", err), IsError: true}
+}

@@ -58,3 +58,11 @@ func TestSubjectKind(t *testing.T) {
 		t.Fatalf("contact kind = %q", got)
 	}
 }
+
+func TestCarrierContactsAreSubjects(t *testing.T) {
+	for _, entryType := range []shared.EntryType{shared.EntryTypeRCS, shared.EntryTypeSMS} {
+		if !contactChannels[entryType] {
+			t.Errorf("%s contacts cannot be portfolio subjects", entryType)
+		}
+	}
+}

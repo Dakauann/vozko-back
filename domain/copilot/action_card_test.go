@@ -42,3 +42,12 @@ func TestConnectMercadoLivreOffersTheMercadoLivreCapability(t *testing.T) {
 		t.Fatalf("capability = %q, %v", c, ok)
 	}
 }
+
+func TestConnectEmailOffersTheEmailCapability(t *testing.T) {
+	if ActionConnectEmail != "connect_email" || !ActionConnectEmail.Valid() {
+		t.Fatalf("action = %q", ActionConnectEmail)
+	}
+	if c, ok := ActionConnectEmail.Capability(); !ok || c != readiness.Email || string(c) != "email" {
+		t.Fatalf("capability = %q, %v", c, ok)
+	}
+}

@@ -36,9 +36,9 @@ func (e *formatDateExecutor) Definition() workflow.NodeDefinition {
 			"unit":      "hours",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "formatted", Description: "Data formatada como string"},
-			{Key: "timestamp", Description: "Timestamp Unix (segundos)"},
-			{Key: "iso", Description: "Data em formato ISO 8601"},
+			{Key: "formatted", Description: "Data formatada como string", Label: "Data formatada", Type: workflow.VariableTypeText},
+			{Key: "timestamp", Description: "Timestamp Unix (segundos)", Label: "Timestamp Unix", Type: workflow.VariableTypeNumber},
+			{Key: "iso", Description: "Data em formato ISO 8601", Label: "Data ISO 8601", Type: workflow.VariableTypeDate},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "input", Label: "Entrada", Type: "text", Placeholder: "now ou {{var.data}}", Required: true},

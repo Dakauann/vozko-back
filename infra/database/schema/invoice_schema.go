@@ -20,7 +20,8 @@ type Invoice struct {
 	Status           string  `gorm:"not null;size:20;default:'PENDING';index"`
 	BillingType      string  `gorm:"not null;size:20"`
 	BillingCycle     string  `gorm:"size:20;default:'monthly'"`
-	ExternalID       string  `gorm:"not null;size:255;uniqueIndex"`
+	Provider         string  `gorm:"size:20;not null;default:''"`
+	ExternalID       *string `gorm:"size:255"`
 	IdempotencyKey   string  `gorm:"size:160;not null;default:''"`
 	PixQrCode        *string `gorm:"type:text"`
 	PixCopy          *string `gorm:"type:text"`

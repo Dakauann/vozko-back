@@ -125,7 +125,6 @@ func TestSendErrorsKeepTheirStatusAndCode(t *testing.T) {
 		{campaign.ErrCreationScopeMissing, http.StatusForbidden, "send_creation_scope_missing", 0},
 		{campaign.ErrDepartmentRequired, http.StatusBadRequest, "send_department_required", 0},
 		{campaign.ErrSelectionOverCampaignCap, http.StatusRequestEntityTooLarge, "send_selection_over_campaign_cap", 0},
-		{campaign.ErrHeaderVariableUnsupported, http.StatusBadRequest, "send_header_variable_unsupported", 0},
 		{campaign.ErrBindingSensitive, http.StatusBadRequest, "send_binding_sensitive", 0},
 		{campaign.ErrAlreadyStarted, http.StatusConflict, "send_already_started", 0},
 		{campaign.ErrSendIncomplete, http.StatusBadRequest, "send_incomplete", 0},

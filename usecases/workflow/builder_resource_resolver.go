@@ -6,6 +6,7 @@ import (
 
 	"vozko/domain/agent"
 	"vozko/domain/callrouting"
+	"vozko/domain/googlesheet"
 	label_domain "vozko/domain/label"
 	"vozko/domain/pipeline"
 	"vozko/domain/shared"
@@ -46,6 +47,9 @@ type queueLister interface {
 type memberLister interface {
 	ListMembers(ctx context.Context, workspaceID, query string, limit int) ([]ResourceMatch, error)
 }
+type sheetLister interface {
+	List(ctx context.Context, in googlesheet.ListInput) (*shared.PaginatedResult[*googlesheet.Sheet], error)
+}
 
 type BuilderResourceResolverDeps struct {
 	Models      modelLister
@@ -58,6 +62,7 @@ type BuilderResourceResolverDeps struct {
 	Members     memberLister
 	Trunks      trunkLister
 	Queues      queueLister
+	Sheets      sheetLister
 }
 
 type builderResourceResolver struct {
@@ -308,6 +313,20 @@ func (r *builderResourceResolver) Search(ctx context.Context, workspaceID, kind,
 			if len(out) >= limit {
 				break
 			}
+		}
+		return out, nil
+
+	case "google_sheets":
+		if r.deps.Sheets == nil {
+			return nil, nil
+		}
+		page, err := r.deps.Sheets.List(ctx, googlesheet.ListInput{WorkspaceID: workspaceID, Search: query, Pagination: shared.Pagination{Page: 1, PageSize: limit}})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]ResourceMatch, 0, len(page.Items))
+		for _, s := range page.Items {
+			out = append(out, ResourceMatch{ID: s.ID, Name: s.Title})
 		}
 		return out, nil
 

@@ -3,10 +3,12 @@ package shortlink_usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
 	"vozko/domain/cache"
+	"vozko/domain/choicestats"
 	"vozko/domain/messaging"
 	"vozko/domain/shortlink"
 )
@@ -24,6 +26,7 @@ type consumeClickUseCase struct {
 	ipHashSalt    string
 	uniqueWindow  time.Duration
 	semaphore     chan struct{}
+	linkClicks    choicestats.LinkClickRecorder
 }
 
 func NewConsumeClickUseCase(
@@ -36,6 +39,7 @@ func NewConsumeClickUseCase(
 	shared cache.SharedState,
 	ipHashSalt string,
 	uniqueWindow time.Duration,
+	linkClicks choicestats.LinkClickRecorder,
 ) shortlink.ConsumeClickUseCase {
 	return &consumeClickUseCase{
 		queueSub:      queueSub,
@@ -48,10 +52,14 @@ func NewConsumeClickUseCase(
 		ipHashSalt:    ipHashSalt,
 		uniqueWindow:  uniqueWindow,
 		semaphore:     make(chan struct{}, clickConsumerConcurrency),
+		linkClicks:    linkClicks,
 	}
 }
 
 func (uc *consumeClickUseCase) Start() error {
+	if uc.linkClicks == nil {
+		return fmt.Errorf("shortlink click consumer: %w", choicestats.ErrRecorderMissing)
+	}
 	return uc.queueSub.Subscribe(shortlink.ClickTopic, func(payload []byte, ack messaging.MessageAck) {
 		uc.handle(payload, ack)
 	})
@@ -126,6 +134,9 @@ func (uc *consumeClickUseCase) process(msg shortlink.ClickMessage) error {
 	}
 	if !isNew {
 		return nil
+	}
+	if msg.Attribution != "" && !device.IsBot {
+		uc.linkClicks.RecordLinkClick(context.Background(), msg.WorkspaceID, msg.Attribution, msg.OccurredAt)
 	}
 
 	uniqueDelta := uc.uniqueDelta(click.ShortLinkID, ipHash)

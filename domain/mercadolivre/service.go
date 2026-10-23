@@ -51,13 +51,17 @@ type OAuthService interface {
 }
 
 type User struct {
-	ID        string
-	Nickname  string
-	SiteID    string
-	CountryID string
-	UserType  string
-	Permalink string
-	Tags      []string
+	ID            string
+	Nickname      string
+	FirstName     string
+	LastName      string
+	BrandName     string
+	CorporateName string
+	SiteID        string
+	CountryID     string
+	UserType      string
+	Permalink     string
+	Tags          []string
 }
 
 type UserService interface {

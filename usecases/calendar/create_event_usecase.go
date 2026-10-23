@@ -8,11 +8,12 @@ import (
 
 type createEventUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewCreateEventUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.CreateEventUseCase {
-	return &createEventUseCase{repo: repo, google: google}
+func NewCreateEventUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.CreateEventUseCase {
+	return &createEventUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *createEventUseCase) Execute(input calendar.CreateEventInput) (*calendar.CalendarEvent, error) {
@@ -23,17 +24,9 @@ func (uc *createEventUseCase) Execute(input calendar.CreateEventInput) (*calenda
 		return nil, calendar.ErrInvalidTimeRange
 	}
 
-	conn, err := uc.repo.GetConnection(input.WorkspaceID)
+	accessToken, err := calendarToken(uc.access, input.WorkspaceID)
 	if err != nil {
-		return nil, calendar.ErrGoogleNotConnected
-	}
-	if conn == nil {
-		return nil, calendar.ErrGoogleNotConnected
-	}
-
-	accessToken, err := ensureValidToken(uc.google, uc.repo, conn)
-	if err != nil {
-		return nil, fmt.Errorf("google auth: %w", err)
+		return nil, err
 	}
 
 	event := &calendar.CalendarEvent{

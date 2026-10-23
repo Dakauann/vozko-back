@@ -3,6 +3,7 @@ package campaign
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"vozko/domain/customfield"
@@ -22,6 +23,30 @@ const (
 )
 
 const customBindingPrefix = "lead.custom:"
+
+var bindableSources = []BindingSource{BindFirstName, BindName, BindNickname, BindDistrict, BindCity, BindOwnerName}
+
+func BindableSources() []BindingSource {
+	return slices.Clone(bindableSources)
+}
+
+func BindableCustomFields(defs []*customfield.Definition) []*customfield.Definition {
+	var out []*customfield.Definition
+	for _, def := range defs {
+		if def != nil && def.ObjectType == customfield.ObjectLead && !def.Sensitive && strings.TrimSpace(def.Key) != "" {
+			out = append(out, def)
+		}
+	}
+	return out
+}
+
+func ValidateBindingSource(source BindingSource, defs []*customfield.Definition) error {
+	if BindingSource(strings.TrimSpace(string(source))) == BindLiteral {
+		return fmt.Errorf("%w: a suggestion names a lead field", ErrBindingUnknown)
+	}
+	_, err := planSlot(VariableBinding{Source: source}, defs)
+	return err
+}
 
 var (
 	ErrBindingsMismatch    = errors.New("campaign: every template variable needs exactly one binding")
@@ -86,8 +111,7 @@ func planSlot(b VariableBinding, defs []*customfield.Definition) (boundSlot, err
 	if key, custom := strings.CutPrefix(string(source), customBindingPrefix); custom {
 		return planCustomSlot(strings.TrimSpace(key), defs)
 	}
-	switch source {
-	case BindFirstName, BindName, BindNickname, BindDistrict, BindCity, BindOwnerName:
+	if slices.Contains(bindableSources, source) {
 		return boundSlot{source: source}, nil
 	}
 	return boundSlot{}, fmt.Errorf("%w: %q", ErrBindingUnknown, b.Source)
@@ -133,19 +157,32 @@ func (p BindingPlan) uses(source BindingSource) bool {
 }
 
 func (p BindingPlan) Resolve(subject BindingSubject) ([]string, error) {
-	values := make([]string, 0, len(p.slots))
+	values := p.Values(subject)
 	var missing []MissingVariable
-	for i, s := range p.slots {
-		value := strings.TrimSpace(s.value(subject))
+	for i, value := range values {
 		if value == "" {
-			missing = append(missing, MissingVariable{Slot: i + 1, Source: s.source})
+			missing = append(missing, MissingVariable{Slot: i + 1, Source: p.slots[i].source})
 		}
-		values = append(values, value)
 	}
 	if len(missing) > 0 {
 		return nil, &MissingVariableError{Missing: missing}
 	}
 	return values, nil
+}
+
+func (p BindingPlan) Values(subject BindingSubject) []string {
+	values := make([]string, 0, len(p.slots))
+	for _, s := range p.slots {
+		values = append(values, strings.TrimSpace(s.value(subject)))
+	}
+	return values
+}
+
+func (p BindingPlan) SourceOf(slot int) BindingSource {
+	if slot < 1 || slot > len(p.slots) {
+		return ""
+	}
+	return p.slots[slot-1].source
 }
 
 func (s boundSlot) value(subject BindingSubject) string {

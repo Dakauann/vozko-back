@@ -15,6 +15,7 @@ const (
 	MercadoLivre       Capability = "mercadolivre"
 	TikTok             Capability = "tiktok"
 	KnowledgeBases     Capability = "knowledge_bases"
+	Email              Capability = "email"
 )
 
 type Blocker string

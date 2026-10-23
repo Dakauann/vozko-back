@@ -8,6 +8,7 @@ import (
 	"vozko/domain/studio"
 	"vozko/domain/tools"
 	"vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/screencall"
 )
 
 const (
@@ -54,9 +55,9 @@ func (t *studioReadTool) Execute(ctx context.Context, cc copilot.Context, args m
 	}
 	reply, err := runOnEditor(ctx, cc, copilot.ScreenRead, map[string]string{"detail": detail})
 	if err != nil {
-		return screenResult(cc, err)
+		return screencall.Result(cc, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: screenData(reply)}
+	return copilot.Result{Status: copilot.StatusOK, Data: screencall.Data(reply)}
 }
 
 type studioLookRegion struct {
@@ -157,12 +158,12 @@ func (t *studioLookTool) Execute(ctx context.Context, cc copilot.Context, args m
 	}
 	reply, err := runOnEditor(ctx, cc, copilot.ScreenLook, a)
 	if err != nil {
-		return screenResult(cc, err)
+		return screencall.Result(cc, err)
 	}
 	if len(reply.Images) != 1 {
 		return studioFailure(studioNoCapture)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: screenData(reply), Images: reply.Images, Subject: lookSubject(project.ID, reply.Target)}
+	return copilot.Result{Status: copilot.StatusOK, Data: screencall.Data(reply), Images: reply.Images, Subject: lookSubject(project.ID, reply.Target)}
 }
 
 func lookSubject(projectID string, target *copilot.ScreenTarget) *copilot.Subject {

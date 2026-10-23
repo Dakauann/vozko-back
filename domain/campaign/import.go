@@ -2,7 +2,6 @@ package campaign
 
 import (
 	"errors"
-	"strconv"
 	"strings"
 
 	"vozko/domain/sheet"
@@ -100,11 +99,8 @@ func DefaultMapping(headers []string, variables int) ColumnMapping {
 		}
 	}
 	for _, h := range headers {
-		key := strings.ToLower(strings.TrimSpace(h))
-		if strings.HasPrefix(key, "var") {
-			if n, err := strconv.Atoi(strings.TrimPrefix(key, "var")); err == nil && n >= 1 {
-				byVariable[n] = h
-			}
+		if n, ok := VariableColumn(h); ok {
+			byVariable[n] = h
 		}
 	}
 	for i := 1; i <= variables; i++ {

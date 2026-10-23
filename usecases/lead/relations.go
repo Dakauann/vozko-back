@@ -108,8 +108,8 @@ func (c *Commands) AddRelative(ctx context.Context, a Actor, id string, in AddRe
 		return RelativeResult{}, err
 	}
 	relation, _ = relative.RelationWith(anchor.ID, relation.Dimension())
-	c.writer.notify(relative, append(created.Fields(), lead.FieldRelations))
-	updated := c.announceCounterpart(a.WorkspaceID, anchor.ID)
+	c.writer.notify(ctx, relative, append(created.Fields(), lead.FieldRelations))
+	updated := c.announceCounterpart(ctx, a.WorkspaceID, anchor.ID)
 	if updated == nil {
 		updated = anchor
 	}
@@ -183,12 +183,12 @@ func (c *Commands) announceTallies(workspaceID string, tallies map[string]lead.R
 	}
 }
 
-func (c *Commands) announceCounterpart(workspaceID, id string) *lead.Lead {
+func (c *Commands) announceCounterpart(ctx context.Context, workspaceID, id string) *lead.Lead {
 	counterpart, err := c.deps.Store.FindByID(workspaceID, id)
 	if err != nil {
 		log.Printf("[leads] the relation was saved but lead %s could not be read to announce it: %v", id, err)
 		return nil
 	}
-	c.writer.notify(counterpart, []string{lead.FieldRelations})
+	c.writer.notify(ctx, counterpart, []string{lead.FieldRelations})
 	return counterpart
 }

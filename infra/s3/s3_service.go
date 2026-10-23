@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -149,6 +150,34 @@ func (s *S3Service) GetFileURL(key string) string {
 
 func (s *S3Service) KeyFromURL(url string) (string, bool) {
 	return keyFromURL(os.Getenv("CLOUDFLARE_R2_ENDPOINT"), url)
+}
+
+func (s *S3Service) OwnsURL(rawURL string) bool {
+	return ownsURL(os.Getenv("CLOUDFLARE_R2_ENDPOINT"), os.Getenv("CLOUDFLARE_ACCOUNT_ID"), rawURL)
+}
+
+func ownsURL(endpoint, accountID, rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return true
+	}
+	host := hostOf(parsed)
+	if host == "" {
+		return false
+	}
+	if cdn, err := url.Parse(strings.TrimSpace(endpoint)); err == nil && hostOf(cdn) != "" && host == hostOf(cdn) {
+		return true
+	}
+	accountID = strings.ToLower(strings.TrimSpace(accountID))
+	if accountID == "" {
+		return false
+	}
+	bucketHost := accountID + ".r2.cloudflarestorage.com"
+	return host == bucketHost || strings.HasSuffix(host, "."+bucketHost)
+}
+
+func hostOf(u *url.URL) string {
+	return strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 }
 
 func keyFromURL(endpoint, url string) (string, bool) {

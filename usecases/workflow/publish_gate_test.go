@@ -43,7 +43,7 @@ func gate(repo *MockWorkflowRepository) *activateWorkflowUseCase {
 func incompleteGraph() workflow.Graph {
 	return workflow.Graph{
 		Nodes: []workflow.Node{
-			{ID: "t", Type: workflow.NodeTypeTriggerManual, Config: map[string]interface{}{}},
+			{ID: "t", Type: workflow.NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}},
 			{ID: "lbl", Type: workflow.NodeTypeActionAssignLabel, Config: map[string]interface{}{"label_id": "gone"}},
 			{ID: "lbl-empty", Type: workflow.NodeTypeActionAssignLabel, Config: map[string]interface{}{"label_id": ""}},
 		},

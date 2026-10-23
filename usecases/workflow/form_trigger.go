@@ -34,18 +34,12 @@ func (f *FormTriggerFirer) FormSubmitted(_ context.Context, in whatsappform_usec
 			return fmt.Errorf("%w: no %s", ErrFormTriggerIncomplete, name)
 		}
 	}
-	data := make(map[string]interface{}, len(in.Data)+2)
-	for k, v := range in.Data {
-		data[k] = v
-	}
-	data[workflow.DataKeyFormID] = in.FormID
-	data[workflow.DataKeyFormResponseID] = strings.TrimSpace(in.ResponseID)
 	f.evaluator.Evaluate(workflow.TriggerEvent{
 		WorkspaceID: in.WorkspaceID,
 		EntryID:     in.EntryID,
 		EntryType:   in.EntryType,
 		TriggerType: workflow.TriggerFormSubmitted,
-		Data:        data,
+		Data:        workflow.FormSubmissionData(in.Data, in.FormID, in.ResponseID),
 	})
 	return nil
 }

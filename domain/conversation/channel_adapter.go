@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	ErrNoAdapterForEntryType = errors.New("conversation: no channel adapter registered for entry type")
-	ErrOutboundWindowClosed  = errors.New("conversation: outbound messaging window is closed")
-	ErrCapabilityUnsupported = errors.New("conversation: channel does not support this operation")
+	ErrNoAdapterForEntryType  = errors.New("conversation: no channel adapter registered for entry type")
+	ErrOutboundWindowClosed   = errors.New("conversation: outbound messaging window is closed")
+	ErrRecipientUnreachable   = errors.New("conversation: the contact can no longer receive messages on this channel")
+	ErrMessageTypeUnsupported = errors.New("conversation: the provider does not accept this message type")
+	ErrCapabilityUnsupported  = errors.New("conversation: channel does not support this operation")
 )
 
 type EntryContext struct {
@@ -35,6 +37,7 @@ type SendOutcome struct {
 	ProviderMessageID string
 	DeliveryStatus    DeliveryStatus
 	Metadata          map[string]any
+	ShownOptionIDs    []string
 }
 
 type SendTextRequest struct {

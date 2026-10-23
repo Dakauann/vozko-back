@@ -179,18 +179,18 @@ func (h *Handler) DeleteWorkflowWebhook(w http.ResponseWriter, r *http.Request) 
 }
 
 // @Summary Receptor público de webhook que inicia uma execução de workflow
-// @Description Endpoint público, autenticado pelo token na URL e, opcionalmente, por header_token ou HMAC, que inicia uma execução do workflow associado. O corpo JSON identifica a entrada de UMA forma: entry_id + entry_type, quando o chamador já conhece o id interno; OU phone, que é resolvido para a conversa de WhatsApp mais recente da workspace. Redisparos idênticos são deduplicados (status "duplicate"); se já houver execução ativa para a mesma entrada e gatilho, retorna "already_running". Campos extras do provedor ficam disponíveis no workflow em {{webhook.body}}.
+// @Description Endpoint público, autenticado pelo token na URL e, opcionalmente, por header_token ou HMAC, que inicia uma execução do workflow associado. Quando o gatilho inicia em Conversa (o padrão), o corpo JSON identifica a conversa de UMA forma: entry_id + entry_type, quando o chamador já conhece o id interno; OU phone, que é resolvido para a conversa de WhatsApp mais recente da workspace. Quando o gatilho inicia em Lead, o corpo traz phone (o lead é encontrado ou criado, com name no cadastro novo) ou email (lead existente), e a execução roda mesmo sem conversa; event e external_id fazem o mesmo evento iniciar uma única execução mesmo se for reenviado. Se o gatilho lista eventos aceitos e o campo event não está na lista, a chamada é aceita e ignorada (status "ignored"). Redisparos idênticos são deduplicados (status "duplicate"); se já houver execução ativa para a mesma conversa e gatilho, retorna "already_running". Campos extras do provedor ficam disponíveis no workflow em {{webhook.body}}.
 // @Tags webhooks
 // @Accept json
 // @Produce json
 // @Param token path string true "Token do webhook"
 // @Param body body webhookTriggerRequest false "Identificação da entrada e dados do provedor"
-// @Success 202 {object} webhookTriggerResponse "Execução iniciada, já em andamento ou duplicada"
-// @Failure 400 {object} response.ErrorResponse "Payload sem entry_id/entry_type e sem phone"
+// @Success 202 {object} webhookTriggerResponse "Execução iniciada, já em andamento, duplicada ou chamada ignorada"
+// @Failure 400 {object} response.ErrorResponse "Payload sem entry_id/entry_type e sem phone, ou sem phone e sem email no início em Lead"
 // @Failure 401 {object} response.ErrorResponse "Autenticação inválida"
-// @Failure 404 {object} response.ErrorResponse "Webhook ou entrada não encontrados"
+// @Failure 404 {object} response.ErrorResponse "Webhook, conversa ou lead (pelo email) não encontrados"
 // @Failure 409 {object} response.ErrorResponse "O workflow não está ativo"
-// @Failure 422 {object} response.ErrorResponse "O workflow não possui nó de gatilho de webhook"
+// @Failure 422 {object} response.ErrorResponse "O workflow não possui nó de gatilho de webhook, as configurações do gatilho não são válidas ou o phone não é válido"
 // @Failure 429 {object} response.ErrorResponse "Limite de execuções simultâneas atingido"
 // @Router /webhooks/workflow/{token} [post]
 func (h *Handler) HandleWebhookTrigger(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +217,8 @@ func (h *Handler) HandleWebhookTrigger(w http.ResponseWriter, r *http.Request) {
 		answer = webhookTriggerResponse{Status: string(workflow.WebhookOutcomeDuplicate)}
 	case result.AlreadyRunning:
 		answer.Status = string(workflow.WebhookOutcomeAlreadyRunning)
+	case result.Ignored:
+		answer = webhookTriggerResponse{Status: string(workflow.WebhookOutcomeIgnored)}
 	}
 	response.WriteSuccess(w, webhookanswer.AcceptStatus(answer.Status), answer)
 }
@@ -232,6 +234,10 @@ var webhookRejectionMessages = map[string]string{
 	"no_trigger_node":       "O workflow não possui nó de gatilho de webhook",
 	"workflow_not_active":   "O workflow não está ativo",
 	"workspace_at_capacity": "Limite de execuções simultâneas atingido",
+	"lead_contact_required": "O payload precisa conter phone ou email para encontrar o lead",
+	"lead_phone_invalid":    "O phone informado não é um número válido",
+	"lead_not_found":        "Nenhum lead tem o email informado",
+	"trigger_invalid":       "As configurações do gatilho Webhook não são válidas; revise e publique o fluxo de novo",
 }
 
 func handleWebhookTriggerError(w http.ResponseWriter, err error) {

@@ -27,6 +27,35 @@ func (o ownedWorkflows) FindByID(id string) (*workflow.Workflow, error) {
 	return nil, errNotStored
 }
 
+func (o ownedWorkflows) FindVersion(workflowID string, version int) (*workflow.WorkflowVersion, error) {
+	if w, ok := o[workflowID+"@published"]; ok && w.PublishedVersion != nil && *w.PublishedVersion == version {
+		graph := w.Graph
+		return &workflow.WorkflowVersion{WorkflowID: workflowID, Version: version, Type: workflow.WorkflowTypeMessages, Graph: &graph}, nil
+	}
+	return nil, errNotStored
+}
+
+func graphWith(triggers ...workflow.NodeType) workflow.Graph {
+	nodes := []workflow.Node{{ID: "end", Type: workflow.NodeTypeEnd}}
+	for _, t := range triggers {
+		nodes = append(nodes, workflow.Node{ID: string(t), Type: t})
+	}
+	return workflow.Graph{Nodes: nodes}
+}
+
+func publishedWorkflows() ownedWorkflows {
+	one := 1
+	return ownedWorkflows{
+		"wf-1":              {ID: "wf-1", WorkspaceID: ws, Graph: graphWith(workflow.NodeTypeTriggerMessageReceived)},
+		"wf-other":          {ID: "wf-other", WorkspaceID: "ws-2", Graph: graphWith(workflow.NodeTypeTriggerMessageReceived)},
+		"wf-first":          {ID: "wf-first", WorkspaceID: ws, Graph: graphWith(workflow.NodeTypeTriggerAgentCall, workflow.NodeTypeTriggerFirstMessage)},
+		"wf-hook":           {ID: "wf-hook", WorkspaceID: ws, Graph: graphWith(workflow.NodeTypeTriggerWebhook)},
+		"wf-live":           {ID: "wf-live", WorkspaceID: ws, Status: workflow.WorkflowStatusActive, PublishedVersion: &one, Graph: graphWith(workflow.NodeTypeTriggerMessageReceived)},
+		"wf-live@published": {PublishedVersion: &one, Graph: graphWith(workflow.NodeTypeTriggerAgentCall)},
+		"wf-lost":           {ID: "wf-lost", WorkspaceID: ws, Status: workflow.WorkflowStatusActive, PublishedVersion: &one, Graph: graphWith(workflow.NodeTypeTriggerMessageReceived)},
+	}
+}
+
 type ownedCallLists map[string]*calllist.List
 
 func (o ownedCallLists) Get(_ context.Context, workspaceID, id string) (*calllist.List, error) {
@@ -96,7 +125,7 @@ func (o ownedMembers) GetMember(workspaceID, userID string) (*workspace.Member, 
 func ownershipFixture(t *testing.T, fields ownedFields) *WorkspaceOwnership {
 	t.Helper()
 	o, err := NewWorkspaceOwnership(OwnershipDeps{
-		Workflows: ownedWorkflows{"wf-1": {ID: "wf-1", WorkspaceID: ws}, "wf-other": {ID: "wf-other", WorkspaceID: "ws-2"}},
+		Workflows: publishedWorkflows(),
 		CallLists: ownedCallLists{ws + "|list-1": {ID: "list-1"}},
 		Fields:    fields,
 		Pipelines: ownedPipelines{"pipe-1": {ID: "pipe-1", WorkspaceID: ws}},
@@ -107,7 +136,7 @@ func ownershipFixture(t *testing.T, fields ownedFields) *WorkspaceOwnership {
 		Departments: ownedDepartments{"dep-1": {ID: "dep-1", WorkspaceID: ws}, "dep-other": {ID: "dep-other", WorkspaceID: "ws-2"}},
 		Members:     ownedMembers{ws + "|user-ana": {UserID: "user-ana", WorkspaceID: ws}},
 		Automations: usableAutomations{
-			{Kind: conversation.AutomationAgent, ID: "agent-1"}:  true,
+			{Kind: conversation.AutomationAgent, ID: "agent-1"}: true,
 			{Kind: conversation.AutomationWorkflow, ID: "wf-1"}: true,
 		},
 	})
@@ -161,6 +190,37 @@ func TestEveryActionParameterMustBelongToTheWorkspace(t *testing.T) {
 				t.Fatalf("err = %v, want ErrParamsNotInWorkspace", err)
 			}
 		})
+	}
+}
+
+func TestAButtonStartsOnlyAWorkflowWithAMessageTriggerInTheVersionThatRuns(t *testing.T) {
+	o := ownershipFixture(t, interestField())
+	cases := []struct {
+		name string
+		id   string
+		want error
+	}{
+		{"a draft with a message trigger", "wf-1", nil},
+		{"a first message trigger beside an agent call", "wf-first", nil},
+		{"only a webhook trigger", "wf-hook", workflow.ErrWorkflowNeedsMessageTrigger},
+		{"the published version has no message trigger even if the draft does", "wf-live", workflow.ErrWorkflowNeedsMessageTrigger},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := o.Check(context.Background(), ws, buttonaction.KindStartWorkflow, buttonaction.Params{WorkflowID: tc.id})
+			if tc.want == nil && err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if tc.want != nil && (!errors.Is(err, tc.want) || buttonaction.ErrorCode(err) != workflow.NeedsMessageTriggerCode) {
+				t.Fatalf("err = %v code = %q, want %v", err, buttonaction.ErrorCode(err), tc.want)
+			}
+		})
+	}
+	if err := o.Check(context.Background(), ws, buttonaction.KindStartWorkflow, buttonaction.Params{WorkflowID: "wf-lost"}); err == nil || errors.Is(err, buttonaction.ErrParamsNotInWorkspace) {
+		t.Fatalf("an unreadable published version must fail closed, got %v", err)
+	}
+	if err := o.Check(context.Background(), ws, buttonaction.KindDelegate, buttonaction.Params{WorkflowID: "wf-1"}); err != nil {
+		t.Fatalf("a delegation is not a start and keeps its own rule: %v", err)
 	}
 }
 

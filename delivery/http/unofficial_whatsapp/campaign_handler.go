@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/audiencex"
 	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
 	"vozko/domain/campaign"
@@ -353,7 +354,7 @@ func (h *CampaignHandler) ListEntries(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Criar uma campanha não oficial
-// @Description	Cria uma campanha parada do WhatsApp não oficial com os números enviados. O contato só usa a saída que vê: cada variação da mensagem precisa mostrar um comando com barra, como `Responda /sair para não receber mais mensagens.`, e sem ele a criação responde 422 `unofficial_campaign_needs_exit`, sem exceção. Um áudio não mostra legenda ao contato: nele o comando vai em `message.exitText`, um texto curto enviado logo depois do áudio na mesma conversa, e um áudio sem esse texto é recusado do mesmo jeito. Se o texto de saída falhar depois do áudio, o contato fica SENT com o código 910005 e o motivo, sem reenviar o áudio. Um link (`https://loja.com/sair`) ou uma data (`12/10`) não contam. Depois do envio, quem responde o comando mostrado na última mensagem de campanha que recebeu nesta conversa deixa de receber mensagens, sem mensagem de confirmação. O fluxo e o agente são conferidos pelo passo compartilhado.
+// @Description	Cria uma campanha parada do WhatsApp não oficial com os números enviados. O contato só usa a saída que vê: cada variação da mensagem precisa mostrar um comando com barra, como `Responda /sair para não receber mais mensagens.`, e sem ele a criação responde 422 `unofficial_campaign_needs_exit`, sem exceção. Um áudio não mostra legenda ao contato: nele o comando vai em `message.exitText`, um texto curto enviado logo depois do áudio na mesma conversa, e um áudio sem esse texto é recusado do mesmo jeito. Se o texto de saída falhar depois do áudio, o contato fica SENT com o código 910005 e o motivo, sem reenviar o áudio. Um link (`https://loja.com/sair`) ou uma data (`12/10`) não contam. Depois do envio, quem responde o comando mostrado na última mensagem de campanha que recebeu nesta conversa deixa de receber mensagens, sem mensagem de confirmação. O fluxo e o agente são conferidos pelo passo compartilhado. Em vez de `targets`, o passo de público manda `recipients`: `source: list` com o `listId` de `POST /campaign-audience/unofficial/lists` (as mesmas entradas que os números davam) ou `source: leads` com a seleção (com `expectedCount` e `fingerprint` da contagem) e cada variável ligada a um campo do lead; o lead sem o valor precisa de `missing: text` ou `missing: exclude` (entra pulado com `missing_variable`), senão 422 `audience_variable_choice_required`. Com `workflowId` ou `agentId`, cada linha da lista precisa ter nos metadados as chaves que o fluxo ou o agente pede (422 `audience_list_metadata_missing`), e a seleção de leads, que não têm metadados, é recusada com 422 `audience_leads_metadata_unavailable`. `recipients` com `targets` responde 400 `audience_source_ambiguous` e, numa campanha para grupos, 422 `audience_source_unsupported`.
 // @Tags			Unofficial WhatsApp Campaigns
 // @Accept			json
 // @Produce		json
@@ -377,12 +378,8 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	draft := payload.toDomain(workspaceID)
-	if claims := middleware.GetClaims(r); claims == nil || claims.Role != string(user.RoleAdmin) {
-		draft.SeedOutcome = nil
-	}
-	if draft.TargetsGroups() && !h.seesGroups(r, workspaceID) {
-		response.WriteError(w, http.StatusForbidden, "you do not have access to this workspace's groups", nil)
+	draft, ok := h.campaignOf(w, r, workspaceID, payload)
+	if !ok {
 		return
 	}
 
@@ -392,6 +389,25 @@ func (h *CampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.WriteSuccess(w, http.StatusCreated, campaignToDTO(created))
+}
+
+func (h *CampaignHandler) campaignOf(w http.ResponseWriter, r *http.Request, workspaceID string, payload campaignPayload) (*uwc.Campaign, bool) {
+	draft := payload.toDomain(workspaceID)
+	claims := middleware.GetClaims(r)
+	if claims == nil || claims.Role != string(user.RoleAdmin) {
+		draft.SeedOutcome = nil
+	}
+	if claims != nil {
+		draft.Recipients = payload.Recipients.Request(claims.UserID, claims.Role == string(user.RoleAdmin))
+	} else if payload.Recipients != nil {
+		response.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		return nil, false
+	}
+	if draft.TargetsGroups() && !h.seesGroups(r, workspaceID) {
+		response.WriteError(w, http.StatusForbidden, "you do not have access to this workspace's groups", nil)
+		return nil, false
+	}
+	return draft, true
 }
 
 // @Summary		Editar uma campanha não oficial
@@ -760,7 +776,7 @@ func (h *CampaignHandler) DeleteEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeCampaignError(w http.ResponseWriter, err error) {
-	if httpx.WriteSelectionSendRefusal(w, err) {
+	if httpx.WriteSelectionSendRefusal(w, err) || audiencex.WriteRefusal(w, err) {
 		return
 	}
 	var unusable *uwc.InstanceUnusableError

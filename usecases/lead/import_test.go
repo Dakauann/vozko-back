@@ -30,6 +30,7 @@ type importFixture struct {
 	files   *fakeImportFiles
 	seeder  *fakeSeeder
 	metrics *fakeImportMetrics
+	hygiene *fakeImportHygiene
 	perms   fakePermissions
 	runs    *queuedRuns
 	clock   time.Time
@@ -47,7 +48,7 @@ func allImportPermissions() fakePermissions {
 func newImportFixture(t *testing.T, perms fakePermissions, leads ...*lead.Lead) *importFixture {
 	t.Helper()
 	f := &importFixture{store: newFakeImportStore(), base: newFakeLeadBase(leads...), files: &fakeImportFiles{files: map[string][]byte{}},
-		seeder: &fakeSeeder{}, metrics: newFakeImportMetrics(), perms: perms, runs: &queuedRuns{}, clock: importClock}
+		seeder: &fakeSeeder{}, metrics: newFakeImportMetrics(), perms: perms, runs: &queuedRuns{}, clock: importClock, hygiene: &fakeImportHygiene{}}
 	f.writer = &fakeImportWriter{base: f.base, store: f.store}
 	ids := 0
 	imp, err := NewImport(ImportDeps{
@@ -60,6 +61,7 @@ func newImportFixture(t *testing.T, perms fakePermissions, leads ...*lead.Lead) 
 		}},
 		Seeder:     f.seeder,
 		Metrics:    f.metrics,
+		Emails:     f.hygiene,
 		Now:        func() time.Time { return f.clock },
 		NewID:      func() string { ids++; return fmt.Sprintf("id-%d", ids) },
 		Background: f.runs.run,
@@ -109,7 +111,7 @@ func (f *importFixture) dryRun(t *testing.T, job *leadimport.Job, s leadimport.S
 
 func (f *importFixture) start(t *testing.T, job *leadimport.Job) *leadimport.Job {
 	t.Helper()
-	if _, err := f.imp.Start(context.Background(), importer(), job.ID); err != nil {
+	if _, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{}); err != nil {
 		t.Fatal(err)
 	}
 	f.runs.drain()
@@ -254,7 +256,7 @@ func TestEachColumnNeedsItsPermission(t *testing.T) {
 func TestStartNeedsTheDryRun(t *testing.T) {
 	f := newImportFixture(t, allImportPermissions())
 	job := f.upload(t, schoolFile)
-	if _, err := f.imp.Start(context.Background(), importer(), job.ID); !errors.Is(err, leadimport.ErrNotReady) {
+	if _, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{}); !errors.Is(err, leadimport.ErrNotReady) {
 		t.Fatalf("start before a dry run = %v", err)
 	}
 }
@@ -344,7 +346,7 @@ func TestTheWorkerChecksThePermissionsAgain(t *testing.T) {
 	f := newImportFixture(t, allImportPermissions())
 	job := f.upload(t, schoolFile)
 	job = f.dryRun(t, job, suggested(job))
-	if _, err := f.imp.Start(context.Background(), importer(), job.ID); err != nil {
+	if _, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{}); err != nil {
 		t.Fatal(err)
 	}
 	delete(f.perms, "leads:assign")
@@ -378,7 +380,7 @@ func TestASilentWorkerIsResumedFromItsCheckpoint(t *testing.T) {
 	f := newImportFixture(t, allImportPermissions())
 	job := f.upload(t, bigFile(1200))
 	job = f.dryRun(t, job, suggested(job))
-	if _, err := f.imp.Start(context.Background(), importer(), job.ID); err != nil {
+	if _, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{}); err != nil {
 		t.Fatal(err)
 	}
 	f.runs.runs = nil
@@ -426,7 +428,7 @@ func TestAWorkerThatKeepsDyingIsStopped(t *testing.T) {
 	f := newImportFixture(t, allImportPermissions())
 	job := f.upload(t, schoolFile)
 	job = f.dryRun(t, job, suggested(job))
-	if _, err := f.imp.Start(context.Background(), importer(), job.ID); err != nil {
+	if _, err := f.imp.Start(context.Background(), importer(), job.ID, StartChoices{}); err != nil {
 		t.Fatal(err)
 	}
 	f.runs.runs = nil
@@ -505,7 +507,7 @@ func TestSeedingKeepsItsGates(t *testing.T) {
 				t.Fatal(err)
 			}
 			f.runs.drain()
-			if _, err := f.imp.Start(context.Background(), a, job.ID); err != nil {
+			if _, err := f.imp.Start(context.Background(), a, job.ID, StartChoices{}); err != nil {
 				t.Fatal(err)
 			}
 			f.runs.drain()
@@ -867,7 +869,7 @@ func TestOnlyStalledImportsCountAsStalledRuns(t *testing.T) {
 	f := newImportFixture(t, allImportPermissions())
 	uploaded := f.upload(t, schoolFile)
 	importing := f.dryRun(t, uploaded, suggested(uploaded))
-	if _, err := f.imp.Start(context.Background(), importer(), importing.ID); err != nil {
+	if _, err := f.imp.Start(context.Background(), importer(), importing.ID, StartChoices{}); err != nil {
 		t.Fatal(err)
 	}
 	beat := f.clock

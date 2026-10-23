@@ -29,7 +29,7 @@ func sharedDef(t workflow.NodeType, label string) workflow.NodeDefinition {
 
 func singleNodeTester(t *testing.T, node workflow.Node, edges []workflow.Edge, executors ...funcExecutor) (TestNodeUseCase, *NodeExecutorRegistry) {
 	t.Helper()
-	nodes := []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerManual}, node, {ID: "ok", Type: workflow.NodeTypeEnd}, {ID: "bad", Type: workflow.NodeTypeEnd}}
+	nodes := []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived}, node, {ID: "ok", Type: workflow.NodeTypeEnd}, {ID: "bad", Type: workflow.NodeTypeEnd}}
 	if edges == nil {
 		edges = []workflow.Edge{{Source: "trigger1", Target: node.ID}, {Source: node.ID, Target: "ok", Label: "sucesso"}, {Source: node.ID, Target: "bad", Label: "falha"}}
 	}
@@ -100,7 +100,7 @@ func TestAHangingExecutorIsCutAtTheTimeLimit(t *testing.T) {
 		return &workflow.NodeResult{}, nil
 	}}
 	repo := NewMockWorkflowRepository()
-	_ = repo.Create(createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerManual}, {ID: "n1", Type: workflow.NodeTypeActionSetVariable}}, []workflow.Edge{{Source: "trigger1", Target: "n1"}}))
+	_ = repo.Create(createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived}, {ID: "n1", Type: workflow.NodeTypeActionSetVariable}}, []workflow.Edge{{Source: "trigger1", Target: "n1"}}))
 	registry := NewNodeExecutorRegistry()
 	registry.Register(workflow.NodeTypeActionSetVariable, exec)
 	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Executors: fixedExecutors(registry), Timeout: 50 * time.Millisecond})
@@ -139,7 +139,7 @@ func TestTheNodeTestNeverRunsTheProductionRegistry(t *testing.T) {
 	}})
 	repo := NewMockWorkflowRepository()
 	_ = repo.Create(createTestWorkflow("wf1", "ws1", []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "n1", Type: workflow.NodeTypeActionSetVariable, Config: map[string]interface{}{"variable": "x", "value": "1"}},
 	}, []workflow.Edge{{Source: "trigger1", Target: "n1"}}))
 	uc := NewTestNodeUseCase(TestNodeDeps{WorkflowRepo: repo, Steps: live})
@@ -174,7 +174,7 @@ func TestAnExternalCallNeedsAnExplicitConfirmation(t *testing.T) {
 func TestAWaitNodeDescribesTheWaitInsteadOfWaiting(t *testing.T) {
 	repo := NewMockWorkflowRepository()
 	_ = repo.Create(createTestWorkflow("wf1", "ws1", []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "timer", Type: workflow.NodeTypeWaitDuration, Config: map[string]interface{}{"seconds": float64(300)}},
 		{ID: "reply", Type: workflow.NodeTypeWaitForReply, Config: map[string]interface{}{"timeout_seconds": float64(600)}},
 	}, []workflow.Edge{{Source: "trigger1", Target: "timer"}, {Source: "timer", Target: "reply", Label: "completed"}}))
@@ -193,7 +193,7 @@ func TestAWaitNodeDescribesTheWaitInsteadOfWaiting(t *testing.T) {
 func TestANodeOfTheOtherWorkflowTypeIsRefusedClearly(t *testing.T) {
 	repo := NewMockWorkflowRepository()
 	messaging := createTestWorkflow("wf-msg", "ws1", []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "audio", Type: workflow.NodeTypeActionPlayAudio, Config: map[string]interface{}{"media_id": "m1"}},
 	}, []workflow.Edge{{Source: "trigger1", Target: "audio"}})
 	messaging.Type = workflow.WorkflowTypeMessages

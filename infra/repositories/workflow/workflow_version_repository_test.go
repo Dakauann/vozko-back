@@ -363,7 +363,7 @@ func TestActiveWorkflowsRunTheirPublishedGraphReadInOneJoinedQuery(t *testing.T)
 		WithArgs("ws-1").
 		WillReturnRows(publishedJoinRows().
 			AddRow("wf-1", "ws-1", "Com webhook", "active", "messages", 9, 1, "messages", `{"nodes":[{"id":"t","type":"trigger_webhook"}],"edges":[]}`).
-			AddRow("wf-2", "ws-1", "Sem webhook publicado", "active", "messages", 3, 1, "messages", `{"nodes":[{"id":"t","type":"trigger_manual"}],"edges":[]}`).
+			AddRow("wf-2", "ws-1", "Sem webhook publicado", "active", "messages", 3, 1, "messages", `{"nodes":[{"id":"t","type":"trigger_message_received"}],"edges":[]}`).
 			AddRow("wf-3", "ws-1", "Nunca publicado", "active", "messages", 1, nil, nil, nil).
 			AddRow("wf-4", "ws-1", "Versão podada", "active", "messages", 4, 2, nil, nil))
 
@@ -382,7 +382,7 @@ func TestActiveWorkflowsRunTheirPublishedGraphReadInOneJoinedQuery(t *testing.T)
 func TestTheWorkspaceWorkflowsComeWithTheirDraftAndPublishedGraphs(t *testing.T) {
 	db, mock := mockDB(t)
 	rows := sqlmock.NewRows([]string{"id", "workspace_id", "name", "status", "type", "graph", "version", "published_version", "published_type", "published_graph"}).
-		AddRow("wf-1", "ws-1", "Publicado", "active", "messages", `{"nodes":[{"id":"d","type":"trigger_manual"}],"edges":[]}`, 9, 1, "messages", `{"nodes":[{"id":"p","type":"trigger_form_submitted"}],"edges":[]}`).
+		AddRow("wf-1", "ws-1", "Publicado", "active", "messages", `{"nodes":[{"id":"d","type":"trigger_message_received"}],"edges":[]}`, 9, 1, "messages", `{"nodes":[{"id":"p","type":"trigger_form_submitted"}],"edges":[]}`).
 		AddRow("wf-2", "ws-1", "Rascunho", "draft", "messages", `{"nodes":[{"id":"d","type":"trigger_form_submitted"}],"edges":[]}`, 1, nil, nil, nil).
 		AddRow("wf-3", "ws-1", "Podado", "active", "messages", `{"nodes":[],"edges":[]}`, 2, 4, nil, nil)
 	mock.ExpectQuery(sqlPattern(publishedWorkflowsSQL(true, false))).WithArgs("ws-1").WillReturnRows(rows)
@@ -411,14 +411,14 @@ func TestTheActiveListFiltersByTheTriggerOfThePublishedGraph(t *testing.T) {
 		WithArgs("ws-1", "active").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "workspace_id", "name", "status", "type", "graph", "version", "published_version"}).
 			AddRow("wf-draft-only", "ws-1", "Gatilho só no rascunho", "active", "messages", `{"nodes":[{"id":"a","type":"trigger_agent_call"}],"edges":[]}`, 5, 1).
-			AddRow("wf-published", "ws-1", "Gatilho publicado", "active", "messages", `{"nodes":[{"id":"m","type":"trigger_manual"}],"edges":[]}`, 5, 1))
+			AddRow("wf-published", "ws-1", "Gatilho publicado", "active", "messages", `{"nodes":[{"id":"m","type":"trigger_message_received"}],"edges":[]}`, 5, 1))
 	published := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
 	versionRows := func(id, graph string) *sqlmock.Rows {
 		return sqlmock.NewRows([]string{"id", "workflow_id", "version", "type", "graph", "graph_hash", "published_at", "published_by", "created_at"}).
 			AddRow("v-"+id, id, 1, "messages", graph, "h", published, nil, published)
 	}
 	mock.ExpectQuery(`^SELECT \* FROM "workflow_versions"`).WithArgs("wf-draft-only", 1, 1).
-		WillReturnRows(versionRows("wf-draft-only", `{"nodes":[{"id":"m","type":"trigger_manual"}],"edges":[]}`))
+		WillReturnRows(versionRows("wf-draft-only", `{"nodes":[{"id":"m","type":"trigger_message_received"}],"edges":[]}`))
 	mock.ExpectQuery(`^SELECT \* FROM "workflow_versions"`).WithArgs("wf-published", 1, 1).
 		WillReturnRows(versionRows("wf-published", `{"nodes":[{"id":"a","type":"trigger_agent_call"}],"edges":[]}`))
 
@@ -430,7 +430,7 @@ func TestTheActiveListFiltersByTheTriggerOfThePublishedGraph(t *testing.T) {
 	if len(page.Items) != 1 || page.Items[0].ID != "wf-published" {
 		t.Fatalf("items = %+v, want only the workflow whose published graph has the agent-call trigger", page.Items)
 	}
-	if page.Items[0].Graph.Nodes[0].Type != workflow.NodeType(workflow.TriggerManual) {
+	if page.Items[0].Graph.Nodes[0].Type != workflow.NodeType(workflow.TriggerMessageReceived) {
 		t.Fatal("the list must still return the draft graph for the editor")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

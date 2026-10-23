@@ -2,8 +2,6 @@ package attendance_repository
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -15,20 +13,13 @@ import (
 
 	"vozko/domain/attendance"
 	"vozko/domain/conversation"
+	"vozko/infra/testenv"
 )
-
-func attendanceDSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
-}
 
 func attendanceIntegrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run the attendance queries against Postgres")
-	}
-	db, err := gorm.Open(postgres.Open(attendanceDSN()), &gorm.Config{
+	dsn := testenv.Postgres(t).DSN()
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {

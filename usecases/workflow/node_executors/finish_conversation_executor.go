@@ -21,13 +21,14 @@ func NewFinishConversationExecutor(status conversation.ConversationStatusUpdater
 
 func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionFinishConversation,
-		TestBehavior: workflow.NodeTestWritesData,
-		Category:     workflow.NodeCategoryAction,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:        "Finalizar Conversa",
-		Description:  "Encerra a conversa atual no CRM (status Finalizada). Reabre se o cliente mandar mensagem de novo.",
-		Icon:         "CheckCircle",
+		Type:              workflow.NodeTypeActionFinishConversation,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestWritesData,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:             "Finalizar Conversa",
+		Description:       "Encerra a conversa atual no CRM (status Finalizada). Reabre se o cliente mandar mensagem de novo.",
+		Icon:              "CheckCircle",
 		Guidance: workflow.NodeGuidance{
 			When: "Quando o fluxo concluiu o atendimento e a conversa deve sair do conjunto aberto (ex.: após despedida, resolução, ou fim de automação).",
 			Behavior: "Chama o mesmo serviço de status que humanos e a ferramenta finish_conversation da IA. " +
@@ -43,13 +44,13 @@ func (e *finishConversationExecutor) Definition() workflow.NodeDefinition {
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando a conversa foi finalizada (ou já estava)"},
-			{Key: "entry_id", Description: "ID da entrada finalizada"},
-			{Key: "entry_type", Description: "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram, telegram ou support)"},
-			{Key: "close_source", Description: "Proveniência do encerramento (system)"},
-			{Key: "close_reason", Description: "Motivo (workflow)"},
-			{Key: "close_outcome", Description: "Código do desfecho registrado, quando houver"},
-			{Key: "error", Description: "Descrição do erro quando falha"},
+			{Key: "success", Description: "true quando a conversa foi finalizada (ou já estava)", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "entry_id", Description: "ID da entrada finalizada", Label: "ID da conversa", Type: workflow.VariableTypeText},
+			{Key: "entry_type", Description: "Tipo da entrada (whatsapp, unofficial_whatsapp, instagram, telegram ou support)", Label: "Tipo da conversa", Type: workflow.VariableTypeText},
+			{Key: "close_source", Description: "Proveniência do encerramento (system)", Label: "Origem do encerramento", Type: workflow.VariableTypeText},
+			{Key: "close_reason", Description: "Motivo (workflow)", Label: "Motivo do encerramento", Type: workflow.VariableTypeText},
+			{Key: "close_outcome", Description: "Código do desfecho registrado, quando houver", Label: "Desfecho", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Descrição do erro quando falha", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{
 			"note":         "",

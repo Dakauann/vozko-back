@@ -32,7 +32,7 @@ func TestTheAgentMediaToolRefusesInternalAddressesWithoutFallingBackToTheLink(t 
 	} {
 		t.Run(item.ID, func(t *testing.T) {
 			client := &recordingWhatsAppClient{}
-			repo := &fakeMediaRepoForMediaTool{byID: map[string]*media.Media{item.ID: &item}}
+			repo := &fakeMediaRepoForMediaTool{byID: map[string]*media.Media{item.ID: inToolWorkspace(item)}}
 			tool := NewSendWhatsappMediaToolUseCase(context.Background(), &stubFactory{c: client}, repo,
 				remotefile.NewDownloader(netguard.NewHTTPClient(2*time.Second)))
 
@@ -51,7 +51,7 @@ func TestTheAgentMediaToolWithoutTheGuardedDownloaderSendsNothing(t *testing.T) 
 	srv := servePNG(t)
 	defer srv.Close()
 	client := &recordingWhatsAppClient{}
-	repo := &fakeMediaRepoForMediaTool{byID: map[string]*media.Media{"m1": {ID: "m1", URL: srv.URL + "/img.png", Type: media.MediaTypeProductImage}}}
+	repo := &fakeMediaRepoForMediaTool{byID: map[string]*media.Media{"m1": inToolWorkspace(media.Media{ID: "m1", URL: srv.URL + "/img.png", Type: media.MediaTypeProductImage})}}
 	tool := NewSendWhatsappMediaToolUseCase(context.Background(), &stubFactory{c: client}, repo, nil)
 
 	_, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{"to": "5511999999999", "media_id": "m1"})

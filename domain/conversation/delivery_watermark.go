@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"slices"
 	"time"
 
 	"vozko/domain/shared"
@@ -18,4 +19,15 @@ func (s DeliveryStatus) Supersedes() []DeliveryStatus {
 		return []DeliveryStatus{DeliveryStatusNone, DeliveryStatusSent, DeliveryStatusDelivered}
 	}
 	return nil
+}
+
+func (s DeliveryStatus) Replaces() []DeliveryStatus {
+	if s == DeliveryStatusFailed {
+		return []DeliveryStatus{DeliveryStatusNone, DeliveryStatusSent, DeliveryStatusDelivered, DeliveryStatusRead}
+	}
+	return s.Supersedes()
+}
+
+func (s DeliveryStatus) Advances(current DeliveryStatus) bool {
+	return slices.Contains(s.Replaces(), current)
 }

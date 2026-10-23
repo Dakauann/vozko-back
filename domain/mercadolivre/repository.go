@@ -36,7 +36,7 @@ type AccountRepository interface {
 	Update(ctx context.Context, a *Account) error
 	UpdateStatus(ctx context.Context, id string, status Status, reason string) error
 	UpdateCapabilities(ctx context.Context, id string, caps AccountCapabilities) error
-	UpdateNickname(ctx context.Context, id, nickname string) error
+	UpdateNames(ctx context.Context, id, nickname, displayName string) error
 
 	FindByID(ctx context.Context, id string) (*Account, error)
 	FindByIDs(ctx context.Context, ids []string) ([]*Account, error)

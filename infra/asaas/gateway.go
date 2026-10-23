@@ -129,7 +129,7 @@ func (g *gatewayAdapter) RefundCharge(ctx context.Context, chargeID string, amou
 	if amount < 0 {
 		amount = 0
 	}
-	return g.svc.RefundPayment(chargeID, int64(amount), description)
+	return g.svc.RefundPayment(chargeID, amount, description)
 }
 
 func (g *gatewayAdapter) CancelCharge(ctx context.Context, chargeID string) error {

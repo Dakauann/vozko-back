@@ -59,7 +59,7 @@ func TestTheIndexesOnTheHotWorkflowRunTablesAreBuiltConcurrently(t *testing.T) {
 	for _, name := range []string{
 		"idx_wfrl_payload_prune", "idx_wfr_entry_status", "idx_wfr_workflow_started", "idx_wfr_terminal_started",
 		"idx_wfr_agent_entry_started", "idx_wfr_entry_started", "idx_wfrl_failed_executed", "idx_wfr_workflow_updated",
-		"idx_wfr_agent_awaiting_continuation", WorkflowRunTriggerDataPruneIndex,
+		"idx_wfr_agent_awaiting_continuation", WorkflowRunTriggerDataPruneIndex, WorkflowRunTriggerInputIndex,
 	} {
 		if _, ok := ConcurrentIndexSQL(name); !ok {
 			t.Errorf("%s is not in the concurrent index list; a plain CREATE INDEX locks workflow_runs or workflow_run_logs for writes", name)

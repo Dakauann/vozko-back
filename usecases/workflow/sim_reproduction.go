@@ -21,9 +21,20 @@ var (
 )
 
 type simReadyPayload struct {
-	WorkflowID    string   `json:"workflowId"`
-	TriggerType   string   `json:"triggerType"`
-	RealCallNodes []string `json:"realCallNodes"`
+	WorkflowID           string                      `json:"workflowId"`
+	TriggerType          string                      `json:"triggerType"`
+	RealCallNodes        []string                    `json:"realCallNodes"`
+	Triggers             []workflow.TriggerInputSpec `json:"triggers"`
+	DefaultTriggerNodeID string                      `json:"defaultTriggerNodeId"`
+}
+
+type simTriggerRef struct {
+	NodeID      string `json:"nodeId"`
+	TriggerType string `json:"triggerType"`
+}
+
+func simTriggerOf(node *workflow.Node) simTriggerRef {
+	return simTriggerRef{NodeID: node.ID, TriggerType: string(node.Type)}
 }
 
 type simStartedPayload struct {
@@ -31,6 +42,7 @@ type simStartedPayload struct {
 	WorkflowID    string           `json:"workflowId"`
 	RealCallNodes []string         `json:"realCallNodes"`
 	Reproducing   *simReproduction `json:"reproducing,omitempty"`
+	Trigger       simTriggerRef    `json:"trigger"`
 }
 
 type simReproduction struct {
@@ -38,8 +50,9 @@ type simReproduction struct {
 	WorkflowVersion *int     `json:"workflowVersion,omitempty"`
 	PinnedNodes     []string `json:"pinnedNodes"`
 
-	seed map[string]interface{}
-	pins map[string]workflow.NodePin
+	seed          map[string]interface{}
+	pins          map[string]workflow.NodePin
+	triggerNodeID string
 }
 
 func (s *wsWorkflowSimulation) prepareReproduction(session SimulationSession, wf *workflow.Workflow, runID string, behaviors workflow.TestBehaviors) (*simReproduction, error) {
@@ -75,5 +88,6 @@ func (s *wsWorkflowSimulation) prepareReproduction(session SimulationSession, wf
 		WorkflowVersion: detail.Run.WorkflowVersion,
 		seed:            seed,
 		pins:            workflow.ReproductionPins(&wf.Graph, detail.Logs, detail.Run.ID, time.Now().UTC(), behaviors),
+		triggerNodeID:   detail.Run.TriggerNodeID,
 	}, nil
 }

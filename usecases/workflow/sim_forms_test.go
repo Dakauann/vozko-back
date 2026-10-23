@@ -13,7 +13,7 @@ import (
 
 func TestTheSimulatedFormSenderShowsTheFormMessage(t *testing.T) {
 	outbound := make(chan SimOutboundMessage, 1)
-	sender := newSimFormSender(newSimChannel(outbound, nil))
+	sender := newSimFormSender(newSimChannel(sendInto(outbound), nil))
 
 	send, err := sender.SendFromWorkflow(context.Background(), whatsappform_usecase.WorkflowSend{
 		FormID: "form-1", RunID: "run-1", Copy: wf.SendCopy{Body: "Preencha", CTA: "Abrir"},

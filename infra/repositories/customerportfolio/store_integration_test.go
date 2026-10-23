@@ -43,6 +43,8 @@ func newWorld(t *testing.T) *world {
 		&schema.WebchatVisitor{}, &schema.WebchatConversation{},
 		&schema.MercadoLivreContact{}, &schema.MercadoLivreConversation{},
 		&schema.TikTokContact{}, &schema.TikTokConversation{},
+		&schema.EmailContact{}, &schema.EmailConversation{},
+		&schema.CarrierContact{}, &schema.RCSConversation{}, &schema.SMSConversation{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

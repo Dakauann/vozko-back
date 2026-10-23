@@ -63,9 +63,24 @@ func TestMapEvent(t *testing.T) {
 			want: payment.EventPaymentRefunded,
 		},
 		{
-			name: "chargeback",
-			p:    &Payment{Status: StatusChargedBack, TransactionAmount: 100},
+			name: "chargeback still being decided is an opened reversal",
+			p:    &Payment{Status: StatusChargedBack, StatusDetail: "in_process", TransactionAmount: 100},
+			want: payment.EventPaymentChargebackRequested,
+		},
+		{
+			name: "chargeback lost by the seller is final",
+			p:    &Payment{Status: StatusChargedBack, StatusDetail: "settled", TransactionAmount: 100},
 			want: payment.EventPaymentChargeback,
+		},
+		{
+			name: "chargeback won by the seller releases the money",
+			p:    &Payment{Status: StatusChargedBack, StatusDetail: "reimbursed", TransactionAmount: 100},
+			want: payment.EventPaymentChargebackReversed,
+		},
+		{
+			name: "chargeback with an unknown detail is treated as opened",
+			p:    &Payment{Status: StatusChargedBack, StatusDetail: "detail_from_the_future", TransactionAmount: 100},
+			want: payment.EventPaymentChargebackRequested,
 		},
 		{
 			name: "authorized",
@@ -93,9 +108,9 @@ func TestMapEvent(t *testing.T) {
 			want: payment.EventPaymentInAnalysis,
 		},
 		{
-			name: "in_mediation is informational only",
+			name: "in_mediation holds the money, so it opens a reversal",
 			p:    &Payment{Status: StatusInMediation},
-			want: payment.EventPaymentInAnalysis,
+			want: payment.EventPaymentInMediation,
 		},
 		{
 			name: "pending",
@@ -108,9 +123,9 @@ func TestMapEvent(t *testing.T) {
 			want: payment.EventPaymentReceived,
 		},
 		{
-			name: "unknown status moves nothing",
+			name: "unknown status surfaces as an unmapped event instead of being dropped",
 			p:    &Payment{Status: "status_from_the_future"},
-			want: "",
+			want: "MERCADOPAGO_STATUS_STATUS_FROM_THE_FUTURE",
 		},
 		{
 			name: "empty status moves nothing",
@@ -128,6 +143,42 @@ func TestMapEvent(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			if got := MapEvent(c.p); got != c.want {
 				t.Fatalf("MapEvent()=%q want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestEveryMappedEventHasAMeaning(t *testing.T) {
+	for _, status := range []string{StatusPending, StatusApproved, StatusAuthorized, StatusInProcess, StatusInMediation, StatusRejected, StatusCancelled, StatusRefunded, StatusChargedBack} {
+		for _, detail := range []string{"", DetailAccredited, DetailPartiallyRefunded, DetailExpired, "in_process", "settled", "reimbursed"} {
+			event := MapEvent(&Payment{Status: status, StatusDetail: detail, TransactionAmount: 100})
+			if _, ok := payment.MeaningOf(event); !ok {
+				t.Errorf("status=%s detail=%s maps to %q, which has no meaning", status, detail, event)
+			}
+		}
+	}
+}
+
+func TestTheWebhookEventCarriesTheReversedValue(t *testing.T) {
+	cases := []struct {
+		name string
+		p    *Payment
+		want float64
+	}{
+		{"partial refund carries the refunded amount", &Payment{ID: 1, Status: StatusApproved, TransactionAmount: 100, TransactionAmountRefunded: 30}, 30},
+		{"full refund carries the refunded amount", &Payment{ID: 1, Status: StatusRefunded, TransactionAmount: 100, TransactionAmountRefunded: 100}, 100},
+		{"chargeback reverses the whole amount", &Payment{ID: 1, Status: StatusChargedBack, StatusDetail: "in_process", TransactionAmount: 100}, 100},
+		{"mediation holds the whole amount", &Payment{ID: 1, Status: StatusInMediation, TransactionAmount: 100}, 100},
+		{"a received payment reverses nothing", &Payment{ID: 1, Status: StatusApproved, StatusDetail: DetailAccredited, TransactionAmount: 100}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			event, ok := ToWebhookEvent("n-1", tc.p)
+			if !ok {
+				t.Fatal("expected an event")
+			}
+			if event.Payment.ReversedValue != tc.want {
+				t.Fatalf("ReversedValue = %v, want %v", event.Payment.ReversedValue, tc.want)
 			}
 		})
 	}

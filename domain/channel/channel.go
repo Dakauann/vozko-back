@@ -20,6 +20,9 @@ const (
 	KindWebchat            Kind = "webchat"
 	KindMercadoLivre       Kind = "mercadolivre"
 	KindTikTok             Kind = "tiktok"
+	KindEmail              Kind = "email"
+	KindRCS                Kind = "rcs"
+	KindSMS                Kind = "sms"
 
 	KindWhatsApp Kind = "whatsapp"
 )

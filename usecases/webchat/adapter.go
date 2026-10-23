@@ -181,7 +181,12 @@ func (a *channelAdapter) SendInteractive(ctx context.Context, ec *conversation.E
 	if err := a.conversations.SetPendingOptions(ctx, ec.EntryID, options); err != nil {
 		return nil, err
 	}
-	return a.deliver(ctx, ec, wcdomain.VisitorMessage{Author: wcdomain.AuthorAssistant, Text: body, Options: options})
+	out, err := a.deliver(ctx, ec, wcdomain.VisitorMessage{Author: wcdomain.AuthorAssistant, Text: body, Options: options})
+	shown := make([]conversation.InteractiveOption, 0, len(options))
+	for _, o := range options {
+		shown = append(shown, conversation.InteractiveOption{ID: o.ID, Title: o.Title})
+	}
+	return conversation.ShowingOptions(out, shown), err
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

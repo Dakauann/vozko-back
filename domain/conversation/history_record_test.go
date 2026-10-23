@@ -16,6 +16,18 @@ func TestARecordBecomesTheMessageTheConversationStores(t *testing.T) {
 		check  func(t *testing.T, m *Message)
 	}{
 		{
+			name: "a recalled send keeps the delivery status it already reached",
+			record: MessageHistoryRecord{
+				SentBy: SentByCampaign("camp-1"), EntryID: "e1", EntryType: shared.EntryTypeEmail, Channel: MessageChannelEmail,
+				MessageType: MessageTypeOperator, ProviderMessageID: "ses-1", Text: "Oferta", Timestamp: at, DeliveryStatus: DeliveryStatusDelivered,
+			},
+			check: func(t *testing.T, m *Message) {
+				if m.DeliveryStatus != DeliveryStatusDelivered || m.ExternalMessageID == nil || *m.ExternalMessageID != "ses-1" {
+					t.Fatalf("message = %+v", m)
+				}
+			},
+		},
+		{
 			name: "a workflow text keeps its author, channel and provider id",
 			record: MessageHistoryRecord{
 				SentBy: SentByWorkflow("wf-1"), EntryID: " e1 ", EntryType: shared.EntryTypeWhatsApp, Channel: MessageChannelWhatsApp,

@@ -9,12 +9,11 @@ import (
 
 type renewExpiringChannelsUseCase struct {
 	repo       calendar.Repository
-	google     calendar.GoogleOAuthService
 	startWatch calendar.StartWatchUseCase
 }
 
-func NewRenewExpiringChannelsUseCase(repo calendar.Repository, google calendar.GoogleOAuthService, startWatch calendar.StartWatchUseCase) calendar.RenewExpiringChannelsUseCase {
-	return &renewExpiringChannelsUseCase{repo: repo, google: google, startWatch: startWatch}
+func NewRenewExpiringChannelsUseCase(repo calendar.Repository, startWatch calendar.StartWatchUseCase) calendar.RenewExpiringChannelsUseCase {
+	return &renewExpiringChannelsUseCase{repo: repo, startWatch: startWatch}
 }
 
 func (uc *renewExpiringChannelsUseCase) Execute() (int, error) {

@@ -115,46 +115,32 @@ func TestEstimatedDays(t *testing.T) {
 	}
 }
 
-func TestSelectionTemplateShape(t *testing.T) {
-	if err := RefuseSelectionTemplate(0, false); err != nil {
-		t.Fatalf("a body-only positional template was refused: %v", err)
-	}
-	if err := RefuseSelectionTemplate(1, false); !errors.Is(err, ErrHeaderVariableUnsupported) {
-		t.Fatalf("header variable error = %v", err)
-	}
-	if err := RefuseSelectionTemplate(0, true); !errors.Is(err, ErrNamedParametersUnsupported) {
-		t.Fatalf("named parameters error = %v", err)
-	}
-}
-
 func TestSendErrorCodes(t *testing.T) {
 	cases := map[error]string{
-		ErrSelectionOverCampaignCap:   "send_selection_over_campaign_cap",
-		ErrSelectionTooLarge:          "send_selection_too_large",
-		ErrHeaderVariableUnsupported:  "send_header_variable_unsupported",
-		ErrNamedParametersUnsupported: "send_named_parameters_unsupported",
-		ErrUnaffordable:               "unaffordable",
-		ErrOverMonthlyCap:             "over_cap",
-		ErrFirstNInvalid:              "send_first_n_invalid",
-		ErrNothingEligible:            "send_nothing_eligible",
-		ErrCreationScopeMissing:       "send_creation_scope_missing",
-		ErrDepartmentRequired:         "send_department_required",
-		ErrNotFromSelection:           "send_not_from_selection",
-		ErrAlreadyStarted:             "send_already_started",
-		ErrSendIncomplete:             "send_incomplete",
-		ErrBindingsMismatch:           "send_bindings_mismatch",
-		ErrBindingUnknown:             "send_binding_unknown",
-		ErrBindingLiteralEmpty:        "send_binding_literal_empty",
-		ErrBindingFieldUnknown:        "send_binding_field_unknown",
-		ErrBindingSensitive:           "send_binding_sensitive",
-		ErrWorkflowNotFound:           "campaign_workflow_not_found",
-		ErrWorkflowForbidden:          "campaign_workflow_forbidden",
-		ErrWorkflowVarsMissing:        "campaign_workflow_vars_missing",
-		ErrAgentNotFound:              "campaign_agent_not_found",
-		ErrAgentVarsMissing:           "AGENT_REQUIRED_VARIABLE_MISSING",
-		ErrAutomationUnavailable:      "campaign_automation_unavailable",
-		ErrIdempotencyUnavailable:     "campaign_idempotency_unavailable",
-		ErrLeadTargetsUnavailable:     "campaign_lead_targets_unavailable",
+		ErrSelectionOverCampaignCap: "send_selection_over_campaign_cap",
+		ErrSelectionTooLarge:        "send_selection_too_large",
+		ErrUnaffordable:             "unaffordable",
+		ErrOverMonthlyCap:           "over_cap",
+		ErrFirstNInvalid:            "send_first_n_invalid",
+		ErrNothingEligible:          "send_nothing_eligible",
+		ErrCreationScopeMissing:     "send_creation_scope_missing",
+		ErrDepartmentRequired:       "send_department_required",
+		ErrNotFromSelection:         "send_not_from_selection",
+		ErrAlreadyStarted:           "send_already_started",
+		ErrSendIncomplete:           "send_incomplete",
+		ErrBindingsMismatch:         "send_bindings_mismatch",
+		ErrBindingUnknown:           "send_binding_unknown",
+		ErrBindingLiteralEmpty:      "send_binding_literal_empty",
+		ErrBindingFieldUnknown:      "send_binding_field_unknown",
+		ErrBindingSensitive:         "send_binding_sensitive",
+		ErrWorkflowNotFound:         "campaign_workflow_not_found",
+		ErrWorkflowForbidden:        "campaign_workflow_forbidden",
+		ErrWorkflowVarsMissing:      "campaign_workflow_vars_missing",
+		ErrAgentNotFound:            "campaign_agent_not_found",
+		ErrAgentVarsMissing:         "AGENT_REQUIRED_VARIABLE_MISSING",
+		ErrAutomationUnavailable:    "campaign_automation_unavailable",
+		ErrIdempotencyUnavailable:   "campaign_idempotency_unavailable",
+		ErrLeadTargetsUnavailable:   "campaign_lead_targets_unavailable",
 	}
 	for err, want := range cases {
 		if got := ErrorCode(errors.Join(errors.New("context"), err)); got != want {

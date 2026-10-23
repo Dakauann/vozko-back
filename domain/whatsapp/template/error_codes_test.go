@@ -85,6 +85,7 @@ func isErrorsNewCall(expr ast.Expr) bool {
 }
 
 var codedSentinelNames = map[string]bool{
+	"ErrTrackedButtonNotURL": true, "ErrTrackedButtonDynamic": true, "ErrTrackedButtonDestination": true, "ErrTrackedLinkUnreadable": true,
 	"ErrTemplateNotFound": true, "ErrTemplateAccessDenied": true, "ErrHeaderMediaOutsideStorage": true, "ErrPhoneOutsideWorkspace": true, "ErrTemplateAlreadyExists": true,
 	"ErrTemplateLookupUnavailable": true,
 	"ErrExternalIDRequired":        true, "ErrTemplateCategoryUnavailable": true,
@@ -120,6 +121,7 @@ var codedSentinelNames = map[string]bool{
 	"ErrEditWindow": true, "ErrTemplateInUse": true, "ErrEditNotOwner": true,
 	"ErrFlowButtonNeedsFlow": true, "ErrFlowButtonNeedsScreen": true, "ErrInvalidFlowAction": true,
 	"ErrMultipleFlowButtons": true, "ErrFlowTokenRequired": true, "ErrFlowNotPublished": true, "ErrFormNotSendable": true,
+	"ErrParameterNameInvalid": true,
 }
 
 func TestCodedSentinelNamesMatchesTheTable(t *testing.T) {

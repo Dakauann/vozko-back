@@ -234,7 +234,7 @@ func TestAttendanceQueryRefusesInventedIdentifiersBeforeQuerying(t *testing.T) {
 		"a department the workspace does not have": {"department_id": "69e1116ce4b2ef3195a9e834"},
 		"a member id that is not an actor":         {"member_id": "joao"},
 		"an automation id with a malformed tail":   {"member_id": "ai:not-a-uuid"},
-		"a channel attendance does not measure":    {"channel": "email"},
+		"a channel attendance does not measure":    {"channel": "voice"},
 	}
 	for name, args := range cases {
 		t.Run(name, func(t *testing.T) {

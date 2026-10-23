@@ -125,8 +125,10 @@ const (
 )
 
 type Grants struct {
-	Seed   bool `json:"seed"`
-	Script bool `json:"script"`
+	Seed                    bool `json:"seed"`
+	Script                  bool `json:"script"`
+	FixEmailTypos           bool `json:"fixEmailTypos,omitempty"`
+	DropUndeliverableEmails bool `json:"dropUndeliverableEmails,omitempty"`
 }
 
 type Job struct {
@@ -233,6 +235,7 @@ type Counts struct {
 	LinksCreated     int            `json:"linksCreated"`
 	NoAddress        *int           `json:"noAddress,omitempty"`
 	Issues           map[string]int `json:"issues,omitempty"`
+	Emails           map[string]int `json:"emails,omitempty"`
 }
 
 func NewCounts() Counts {
@@ -281,6 +284,12 @@ func (c *Counts) Record(d lead.ImportDecision, matched *lead.Lead) {
 
 func (c *Counts) RecordRow(row lead.ImportRecord, d lead.ImportDecision, matched *lead.Lead) {
 	c.Record(d, matched)
+	if row.EmailVerdict != "" {
+		if c.Emails == nil {
+			c.Emails = map[string]int{}
+		}
+		c.Emails[row.EmailVerdict]++
+	}
 	if c.NoAddress != nil && !row.AddressGiven && d.Verdict != lead.ImportRejected {
 		*c.NoAddress++
 	}
@@ -318,6 +327,12 @@ func (c Counts) Clone() Counts {
 		out.Issues = make(map[string]int, len(c.Issues))
 		for k, v := range c.Issues {
 			out.Issues[k] = v
+		}
+	}
+	if c.Emails != nil {
+		out.Emails = make(map[string]int, len(c.Emails))
+		for k, v := range c.Emails {
+			out.Emails[k] = v
 		}
 	}
 	return out

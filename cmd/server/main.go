@@ -21,6 +21,10 @@ import (
 // @securityDefinitions.apikey	BearerAuth
 // @in				header
 // @name			Authorization
+// @securityDefinitions.apikey	WorkspaceKey
+// @in				header
+// @name			Authorization
+// @description	Chave de API do workspace no formato Bearer wsk_..., criada em Integrações, Chaves de API.
 func main() {
 	resetHistory := flag.Bool("reset-conversation-history", false, "erase all conversation histories before starting the server (development only)")
 	flag.Parse()

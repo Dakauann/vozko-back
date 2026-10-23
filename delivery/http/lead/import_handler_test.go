@@ -28,6 +28,7 @@ const importJobID = "7a1c2f9e-5b1d-4c84-9d0a-2f3b8c7e1a02"
 
 type stubImports struct {
 	err       error
+	choices   lead_usecase.StartChoices
 	job       *leadimport.Job
 	upload    lead_usecase.UploadInput
 	settings  leadimport.Settings
@@ -75,8 +76,8 @@ func (s *stubImports) DryRun(_ context.Context, _ lead_usecase.Actor, _ string, 
 	return s.reply()
 }
 
-func (s *stubImports) Start(_ context.Context, _ lead_usecase.Actor, id string) (*leadimport.Job, error) {
-	s.startedID = id
+func (s *stubImports) Start(_ context.Context, _ lead_usecase.Actor, id string, choices lead_usecase.StartChoices) (*leadimport.Job, error) {
+	s.startedID, s.choices = id, choices
 	return s.reply()
 }
 
@@ -302,15 +303,16 @@ func TestRejectionsDownloadAsALocalizedCSVPageByPage(t *testing.T) {
 		imports.issues = append(imports.issues, leadimport.IssueRow{Seq: int64(i + 1), ImportIssue: leaddomain.ImportIssue{Line: i + 2, Reason: leaddomain.ReasonEmailInvalid, Field: leaddomain.ImportFieldEmail}})
 	}
 	imports.issues[0].Rejected, imports.issues[0].Reason, imports.issues[0].Field = true, leaddomain.ReasonDuplicate, leaddomain.ImportFieldNumber
+	imports.issues[1].Reason, imports.issues[1].Hint = leaddomain.ReasonEmailTypo, "ana@gmail.com"
 	rec := send(t, importRouter(imports), http.MethodGet, "/leads/imports/"+importJobID+"/rejections?locale=en", nil, nil)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") || !strings.Contains(rec.Header().Get("Content-Disposition"), "attachment") {
 		t.Fatalf("status = %d, headers = %v", rec.Code, rec.Header())
 	}
 	lines := strings.Split(strings.TrimSpace(strings.TrimPrefix(rec.Body.String(), "\xEF\xBB\xBF")), "\n")
-	if len(lines) != rejectionsPage+3 || lines[0] != "line;reason;code;column;row imported" {
+	if len(lines) != rejectionsPage+3 || lines[0] != "line;reason;code;column;row imported;suggestion" {
 		t.Fatalf("%d lines, header %q", len(lines), lines[0])
 	}
-	if lines[1] != "2;Number repeated in the file;duplicate;number;no" || !strings.HasSuffix(strings.TrimSpace(lines[2]), ";email_invalid;email;yes") {
+	if lines[1] != "2;Number repeated in the file;duplicate;number;no;" || !strings.HasSuffix(strings.TrimSpace(lines[2]), ";email_typo;email;yes;ana@gmail.com") {
 		t.Fatalf("rows = %q / %q", lines[1], lines[2])
 	}
 	if len(imports.afters) != 2 || imports.afters[1] != rejectionsPage {
@@ -438,5 +440,27 @@ func TestGetImportCarriesThePlacementAndTheStoredScript(t *testing.T) {
 	rec = send(t, importRouter(imports), http.MethodGet, "/leads/imports/"+importJobID, nil, nil)
 	if strings.Contains(rec.Body.String(), `"placement"`) {
 		t.Fatalf("a running import answered a placement: %s", rec.Body)
+	}
+}
+
+func TestStartCarriesTheEmailChoicesAndAcceptsAnEmptyBody(t *testing.T) {
+	imports := &stubImports{job: &leadimport.Job{ID: importJobID, Status: leadimport.StatusImporting}}
+	body := map[string]bool{"fixEmailTypos": true, "dropUndeliverableEmails": true}
+	if rec := send(t, importRouter(imports), http.MethodPost, "/leads/imports/"+importJobID+"/start", nil, body); rec.Code != http.StatusAccepted {
+		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+	}
+	if !imports.choices.FixEmailTypos || !imports.choices.DropUndeliverableEmails {
+		t.Fatalf("choices = %+v", imports.choices)
+	}
+	if rec := send(t, importRouter(imports), http.MethodPost, "/leads/imports/"+importJobID+"/start", nil, nil); rec.Code != http.StatusAccepted || imports.choices.FixEmailTypos {
+		t.Fatalf("an empty body starts with no email changes, status %d choices %+v", rec.Code, imports.choices)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/leads/imports/"+importJobID+"/start", strings.NewReader("{not json"))
+	ctx := context.WithValue(req.Context(), middleware.WorkspaceIDContextKey, "ws-1")
+	ctx = context.WithValue(ctx, middleware.ClaimsContextKey, &auth.Claims{UserID: "user-1", Role: "user"})
+	importRouter(imports).ServeHTTP(rec, req.WithContext(ctx))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("a broken body is refused, got %d", rec.Code)
 	}
 }

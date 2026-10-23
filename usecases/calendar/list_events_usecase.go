@@ -11,24 +11,17 @@ import (
 
 type listEventsUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewListEventsUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.ListEventsUseCase {
-	return &listEventsUseCase{repo: repo, google: google}
+func NewListEventsUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.ListEventsUseCase {
+	return &listEventsUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *listEventsUseCase) Execute(input calendar.ListEventsInput) (*shared.PaginatedResult[*calendar.CalendarEvent], error) {
-
-	conn, err := uc.repo.GetConnection(input.WorkspaceID)
-	if err != nil || conn == nil {
-
-		return uc.repo.ListEvents(input)
-	}
-
-	accessToken, err := ensureValidToken(uc.google, uc.repo, conn)
+	accessToken, err := calendarToken(uc.access, input.WorkspaceID)
 	if err != nil {
-
 		return uc.repo.ListEvents(input)
 	}
 

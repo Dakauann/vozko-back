@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/campaign"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	ce "vozko/domain/conversation_event"
 	lead_domain "vozko/domain/lead"
@@ -35,6 +36,8 @@ type leadLookup interface {
 
 var errRecipientRefused = errors.New("workflow sender: this lead may not receive messages")
 
+var errWindowUnreadable = errors.New("workflow sender: the 24 h window could not be read, the send waits for a retry")
+
 type whatsappEntryLookup interface {
 	FindByID(id string) (*wce.WhatsAppCampaignEntry, error)
 	GetCampaignForEntry(entryID string) (*wce.EntryCampaignInfo, error)
@@ -56,10 +59,6 @@ type templateLookup interface {
 	FindByID(templateID string) (*template_domain.Template, error)
 }
 
-type mediaLookup interface {
-	GetMediaByID(mediaID string) (*media_domain.Media, error)
-}
-
 type SenderDeps struct {
 	ClientFactory        conversation.WhatsAppClientFactory
 	LeadRepo             leadLookup
@@ -68,7 +67,8 @@ type SenderDeps struct {
 	MessageWindowRepo    messageWindowLookup
 	HistoryManager       conversation.MessageHistoryManager
 	TemplateRepo         templateLookup
-	MediaRepo            mediaLookup
+	MediaRepo            conversation.LibraryMediaReader
+	MediaURLs            *conversation.MediaURLResolver
 	TemplateSends        template_domain.BilledTemplateSendUseCase
 	WorkspacePhoneAccess workspacePhoneAccessLookup
 
@@ -85,6 +85,8 @@ type SenderDeps struct {
 	Events ce.Logger
 
 	MediaFetcher MediaFetcher
+
+	ChoiceStats choicestats.Recorder
 }
 
 type whatsappSender struct {
@@ -523,20 +525,16 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		return nil, usedBusinessPhoneID, err
 	}
 
-	bodyParamNames, headerParamNames := tmpl.GetBodyAndHeaderParameterNames()
-
-	params := make([]string, len(bodyParamNames))
-	for i, name := range bodyParamNames {
-		params[i] = workflow.Interpolate(paramValues[name], state, nil)
-	}
-
-	var headerParams []string
-	if len(headerParamNames) > 0 {
-		headerParams = make([]string, len(headerParamNames))
-		for i, name := range headerParamNames {
-			headerParams[i] = workflow.Interpolate(paramValues["header_"+name], state, nil)
+	slots := tmpl.ParameterSlots()
+	values := make([]string, 0, len(slots))
+	for _, slot := range slots {
+		key := slot.Name
+		if slot.Header {
+			key = "header_" + slot.Name
 		}
+		values = append(values, paramValues[key])
 	}
+	params, headerParams := tmpl.SplitParameters(values)
 
 	if s.deps.TemplateSends == nil {
 		return nil, usedBusinessPhoneID, fmt.Errorf("workflow whatsapp sender: billing dependency not configured, refusing to send a paid template")
@@ -550,10 +548,11 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 	log.Printf("[workflow][whatsapp_sender] sending template %s (bodyParams=%d, headerParams=%d) to %s",
 		tmpl.Name, len(params), len(headerParams), target.leadNumber)
 
-	body, metadata, err := tmpl.HistoryRecord(params)
+	body, metadata, err := tmpl.HistoryRecord(params, headerParams)
 	if err != nil {
 		return nil, usedBusinessPhoneID, err
 	}
+	choiceSource := workflow.ChoicePromptSource(run, run.CurrentNodeID, "")
 	sent, err := s.deps.TemplateSends.Execute(ctx, template_domain.BilledSendInput{
 		WorkspaceID:     run.WorkspaceID,
 		IdempotencyKey:  uuid.New().String(),
@@ -567,6 +566,7 @@ func (s *whatsappSender) SendTemplate(ctx context.Context, run *workflow.Workflo
 		OriginRef:       run.WorkflowID,
 		LeadID:          target.leadID,
 		WorkflowRunID:   run.ID,
+		ChoiceSource:    &choiceSource,
 	})
 	if err != nil {
 		return nil, usedBusinessPhoneID, err
@@ -889,17 +889,24 @@ func (s *whatsappSender) resolveWhatsAppClient(campaignBusinessPhoneID, received
 }
 
 func (s *whatsappSender) ensureWindowOpen(leadID, businessPhoneID string) error {
-	if s.deps.MessageWindowRepo == nil || leadID == "" || businessPhoneID == "" {
-		return nil
+	switch {
+	case s.deps.MessageWindowRepo == nil:
+		return windowRefusal("the window directory is not configured")
+	case strings.TrimSpace(leadID) == "" || strings.TrimSpace(businessPhoneID) == "":
+		return windowRefusal(fmt.Sprintf("the window of lead %q on number %q cannot be checked", leadID, businessPhoneID))
 	}
 	isOpen, err := s.deps.MessageWindowRepo.IsWindowOpen(leadID, businessPhoneID)
 	if err != nil {
-		return conversation.ErrWindowClosed
+		return fmt.Errorf("%w: %w", errWindowUnreadable, err)
 	}
 	if !isOpen {
-		return conversation.ErrWindowClosed
+		return windowRefusal("no customer message in the last 24 h")
 	}
 	return nil
+}
+
+func windowRefusal(reason string) error {
+	return fmt.Errorf("%w (%s). %s", conversation.ErrWindowClosed, reason, workflow.WindowClosedFix)
 }
 
 func (s *whatsappSender) resolveBusinessPhoneNumber(businessPhoneID string) string {

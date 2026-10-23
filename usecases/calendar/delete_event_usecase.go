@@ -10,11 +10,12 @@ import (
 
 type deleteEventUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewDeleteEventUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.DeleteEventUseCase {
-	return &deleteEventUseCase{repo: repo, google: google}
+func NewDeleteEventUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.DeleteEventUseCase {
+	return &deleteEventUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *deleteEventUseCase) Execute(eventID, workspaceID, userID string) error {
@@ -40,16 +41,9 @@ func (uc *deleteEventUseCase) Execute(eventID, workspaceID, userID string) error
 	}
 
 	if googleEventID != "" {
-		conn, err := uc.repo.GetConnection(workspaceID)
+		accessToken, err := calendarToken(uc.access, workspaceID)
 		if err != nil {
-			return calendar.ErrGoogleNotConnected
-		}
-		if conn == nil {
-			return calendar.ErrGoogleNotConnected
-		}
-		accessToken, err := ensureValidToken(uc.google, uc.repo, conn)
-		if err != nil {
-			return fmt.Errorf("google auth: %w", err)
+			return err
 		}
 		if err := uc.google.DeleteGoogleEvent(accessToken, googleEventID, "all"); err != nil {
 			return fmt.Errorf("google calendar: %w", err)

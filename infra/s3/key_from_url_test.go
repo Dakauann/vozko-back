@@ -25,3 +25,27 @@ func TestKeyFromURLOnlyAcceptsOurOwnStorage(t *testing.T) {
 		t.Error("an unset endpoint must refuse")
 	}
 }
+
+func TestOwnsURLCoversOurCDNAndOurBucketHost(t *testing.T) {
+	const endpoint, account = "https://files.vozko.test", "acc123"
+	cases := map[string]bool{
+		"https://files.vozko.test/ws1/a.png":                   true,
+		"https://FILES.vozko.test/ws1/a.png?x=1":               true,
+		"http://files.vozko.test/a.png":                        true,
+		"https://acc123.r2.cloudflarestorage.com/bucket/a.png": true,
+		"https://bucket.acc123.r2.cloudflarestorage.com/a.png": true,
+		"https://files.vozko.test.evil.test/a.png":             false,
+		"https://other.r2.cloudflarestorage.com/bucket/a.png":  false,
+		"https://images.example.com/a.png":                     false,
+		"https://evil.test/https://files.vozko.test/ws1/a.png": false,
+		"::not a url": true,
+	}
+	for url, want := range cases {
+		if got := ownsURL(endpoint, account, url); got != want {
+			t.Errorf("ownsURL(%q) = %v, want %v", url, got, want)
+		}
+	}
+	if ownsURL("", "", "https://images.example.com/a.png") {
+		t.Error("with no storage configured nothing is ours")
+	}
+}

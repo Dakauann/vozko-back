@@ -102,7 +102,7 @@ func TestEveryScreenCommandHasABoundedWait(t *testing.T) {
 }
 
 func TestOnlyCommandsThatChangeSomethingWaitForAClaim(t *testing.T) {
-	changing := map[ScreenCommandName]bool{ScreenEdit: true, ScreenSavePreset: true, ScreenCreateProject: true}
+	changing := map[ScreenCommandName]bool{ScreenEdit: true, ScreenSavePreset: true, ScreenCreateProject: true, ScreenOpenDesign: true}
 	for _, name := range ScreenCommandNames() {
 		if name.Commits() != changing[name] {
 			t.Fatalf("%s.Commits() = %v, want %v", name, name.Commits(), changing[name])

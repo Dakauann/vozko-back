@@ -92,25 +92,26 @@ func (r *WorkflowRunSchema) BeforeCreate(tx *gorm.DB) error {
 }
 
 type WorkflowRunLogSchema struct {
-	ID         string     `gorm:"primaryKey;type:uuid"`
-	RunID      string     `gorm:"type:uuid;not null;index"`
-	NodeID     string     `gorm:"not null;size:100"`
-	NodeType   string     `gorm:"not null;size:40"`
-	Status     string     `gorm:"not null;size:20"`
-	Input      *string    `gorm:"type:jsonb"`
-	Output     *string    `gorm:"type:jsonb"`
-	Error      string     `gorm:"type:text"`
-	ExecutedAt time.Time  `gorm:"autoCreateTime"`
-	Attempt    *int       `gorm:"column:attempt"`
-	StartedAt  *time.Time `gorm:"column:started_at"`
-	FinishedAt *time.Time `gorm:"column:finished_at"`
-	DurationMs *int64     `gorm:"column:duration_ms"`
-	Branch     string     `gorm:"size:100"`
-	ErrorKind  string     `gorm:"size:20"`
-	ErrorChain *string    `gorm:"type:jsonb"`
-	Stack      *string    `gorm:"type:text"`
-	ScriptLogs *string    `gorm:"type:jsonb"`
-	HTTP       *string    `gorm:"column:http;type:jsonb"`
+	ID             string     `gorm:"primaryKey;type:uuid"`
+	RunID          string     `gorm:"type:uuid;not null;index"`
+	NodeID         string     `gorm:"not null;size:100"`
+	NodeType       string     `gorm:"not null;size:40"`
+	Status         string     `gorm:"not null;size:20"`
+	Input          *string    `gorm:"type:jsonb"`
+	Output         *string    `gorm:"type:jsonb"`
+	Error          string     `gorm:"type:text"`
+	ExecutedAt     time.Time  `gorm:"autoCreateTime"`
+	Attempt        *int       `gorm:"column:attempt"`
+	StartedAt      *time.Time `gorm:"column:started_at"`
+	FinishedAt     *time.Time `gorm:"column:finished_at"`
+	DurationMs     *int64     `gorm:"column:duration_ms"`
+	Branch         string     `gorm:"size:100"`
+	ErrorKind      string     `gorm:"size:20"`
+	ErrorChain     *string    `gorm:"type:jsonb"`
+	Stack          *string    `gorm:"type:text"`
+	ScriptLogs     *string    `gorm:"type:jsonb"`
+	HTTP           *string    `gorm:"column:http;type:jsonb"`
+	UnresolvedRefs *string    `gorm:"column:unresolved_refs;type:jsonb"`
 }
 
 func (WorkflowRunLogSchema) TableName() string { return "workflow_run_logs" }

@@ -9,9 +9,10 @@ func CodeUsesFetch(code string) bool {
 }
 
 func alwaysCallsOut(t NodeType) bool {
-	switch t {
-	case NodeTypeActionHTTPRequest, NodeTypeActionSendEmail,
-		NodeTypeActionScheduleMeeting, NodeTypeActionRescheduleMeeting, NodeTypeActionCheckCalendarAvailability:
+	switch t.Canonical() {
+	case NodeTypeActionHTTPRequest, NodeTypeActionSendEmail, NodeTypeActionSendPlatformEmail,
+		NodeTypeActionCreateCalendarEvent, NodeTypeActionRescheduleCalendarEvent, NodeTypeActionCheckCalendarAvailability,
+		NodeTypeActionAddSheetRow:
 		return true
 	}
 	return false

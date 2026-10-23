@@ -15,6 +15,7 @@ import (
 	"vozko/domain/messaging"
 	qe "vozko/domain/queue_event"
 	aa_usecase "vozko/usecases/ai_attendance"
+	"vozko/usecases/shared/queueworkers"
 )
 
 type deduper interface {
@@ -31,7 +32,7 @@ type consumer struct {
 	presence  ap.Repository
 	dedupe    deduper
 	drops     crm_telemetry.DropRecorder
-	semaphore chan struct{}
+	workers   *queueworkers.Pool
 }
 
 type ConsumerDeps struct {
@@ -57,7 +58,7 @@ func NewConsumerWithDeps(d ConsumerDeps) crm_telemetry.Consumer {
 		presence:  d.Presence,
 		dedupe:    d.Dedupe,
 		drops:     d.Drops,
-		semaphore: make(chan struct{}, 20),
+		workers:   queueworkers.NewPool(crm_telemetry.ConsumerWorkers),
 	}
 }
 
@@ -77,9 +78,7 @@ func (l *directEventLogger) Log(event *ce.ConversationEvent) {
 
 func (c *consumer) Start() error {
 	go func() {
-		if err := c.queueSub.Subscribe(crm_telemetry.Topic, func(payload []byte, ack messaging.MessageAck) {
-			c.handle(payload, ack)
-		}); err != nil {
+		if err := c.queueSub.Subscribe(crm_telemetry.Topic, c.workers.Handler(c.handle)); err != nil {
 			log.Printf("[crm_telemetry] subscribe failed: %v", err)
 		}
 	}()
@@ -97,35 +96,34 @@ func (c *consumer) handle(payload []byte, ack messaging.MessageAck) {
 		return
 	}
 
-	c.semaphore <- struct{}{}
-	go func(e crm_telemetry.Envelope, a messaging.MessageAck) {
-		defer func() { <-c.semaphore }()
+	c.settle(env, ack)
+}
 
-		if c.dedupe != nil && e.ID != "" {
-			claimed, err := c.dedupe.Claim(e.ID, string(e.Kind))
-			if err != nil {
-				log.Printf("[crm_telemetry] dedupe claim %s: %v", e.ID, err)
-				c.fail(e, a, "dedupe", err, false)
-				return
-			}
-			if !claimed {
-				_ = a.Ack()
-				return
-			}
-		}
-
-		if err := c.dispatch(e); err != nil {
-			permanent := isPermanentError(err)
-			if c.dedupe != nil && e.ID != "" && !permanent {
-				_ = c.dedupe.Release(e.ID)
-			}
-			c.fail(e, a, "dispatch", err, !permanent)
+func (c *consumer) settle(e crm_telemetry.Envelope, a messaging.MessageAck) {
+	if c.dedupe != nil && e.ID != "" {
+		claimed, err := c.dedupe.Claim(e.ID, string(e.Kind))
+		if err != nil {
+			log.Printf("[crm_telemetry] dedupe claim %s: %v", e.ID, err)
+			c.fail(e, a, "dedupe", err, false)
 			return
 		}
-		if err := a.Ack(); err != nil {
-			log.Printf("[crm_telemetry] ack: %v", err)
+		if !claimed {
+			_ = a.Ack()
+			return
 		}
-	}(env, ack)
+	}
+
+	if err := c.dispatch(e); err != nil {
+		permanent := isPermanentError(err)
+		if c.dedupe != nil && e.ID != "" && !permanent {
+			_ = c.dedupe.Release(e.ID)
+		}
+		c.fail(e, a, "dispatch", err, !permanent)
+		return
+	}
+	if err := a.Ack(); err != nil {
+		log.Printf("[crm_telemetry] ack: %v", err)
+	}
 }
 
 func (c *consumer) fail(e crm_telemetry.Envelope, a messaging.MessageAck, reason string, err error, mayRequeue bool) {

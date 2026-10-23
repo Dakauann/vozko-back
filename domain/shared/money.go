@@ -65,3 +65,17 @@ func formatBrazilianInteger(value int64) string {
 
 	return strings.Join(parts, ".")
 }
+
+func BRLFromMicros(micros int64, exchangeRate float64) float64 {
+	if exchangeRate <= 0 {
+		return 0
+	}
+	return math.Round(float64(micros)*exchangeRate/10_000) / 100
+}
+
+func EstimateBRLFromMicros(micros int64, exchangeRate float64) float64 {
+	if exchangeRate <= 0 {
+		return 0
+	}
+	return math.Round(float64(micros)*exchangeRate) / 1_000_000
+}

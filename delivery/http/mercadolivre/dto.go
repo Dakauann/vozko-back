@@ -7,9 +7,10 @@ type AccountResponse struct {
 	WorkspaceID  string  `json:"workspaceId"`
 	DepartmentID *string `json:"departmentId,omitempty"`
 
-	MLUserID string `json:"mlUserId"`
-	SiteID   string `json:"siteId"`
-	Nickname string `json:"nickname"`
+	MLUserID    string `json:"mlUserId"`
+	SiteID      string `json:"siteId"`
+	Nickname    string `json:"nickname"`
+	DisplayName string `json:"displayName"`
 
 	Status         string `json:"status"`
 	StatusReason   string `json:"statusReason,omitempty"`

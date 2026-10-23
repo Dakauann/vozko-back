@@ -24,6 +24,8 @@ type harness struct {
 	notes     *memoryNotes
 	announcer *recordingAnnouncer
 	publisher *recordingPublisher
+	media     *memoryMedia
+	uploader  *recordingUploader
 }
 
 func newHarness(t *testing.T) harness {
@@ -31,6 +33,8 @@ func newHarness(t *testing.T) harness {
 	notes := newMemoryNotes()
 	announcer := &recordingAnnouncer{}
 	publisher := &recordingPublisher{}
+	media := newMemoryMedia()
+	uploader := &recordingUploader{media: media}
 	ids := 0
 	service, err := New(Deps{
 		Notes: notes,
@@ -44,6 +48,8 @@ func newHarness(t *testing.T) harness {
 		Announcer: announcer,
 		Notifier:  publisher,
 		Contacts:  fakeContacts{chat: {LeadName: "João Lima"}},
+		Media:     media,
+		Uploader:  uploader,
 		Now:       func() time.Time { return now },
 		NewID: func() string {
 			ids++
@@ -53,7 +59,7 @@ func newHarness(t *testing.T) harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return harness{service: service, notes: notes, announcer: announcer, publisher: publisher}
+	return harness{service: service, notes: notes, announcer: announcer, publisher: publisher, media: media, uploader: uploader}
 }
 
 func draft(body string, mentions ...string) conversationnote.Draft {

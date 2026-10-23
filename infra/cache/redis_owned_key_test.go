@@ -1,22 +1,19 @@
 package cache
 
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 
 	domainCache "vozko/domain/cache"
+	"vozko/infra/testenv"
 )
 
 func redisSharedStateForTest(t *testing.T) domainCache.SharedState {
 	t.Helper()
-	addr := os.Getenv("VOZKO_TEST_REDIS")
-	if addr == "" {
-		t.Skip("set VOZKO_TEST_REDIS to run against Redis")
-	}
-	provider := NewRedisProvider(addr, os.Getenv("VOZKO_TEST_REDIS_PASSWORD"))
+	target := testenv.Redis(t)
+	provider := NewRedisProvider(target.Addr, target.Password)
 	return provider.SharedState()
 }
 

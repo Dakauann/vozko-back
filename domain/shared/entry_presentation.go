@@ -6,6 +6,9 @@ var plainSignatureEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:      {},
 	EntryTypeMercadoLivre: {},
 	EntryTypeTikTok:       {},
+	EntryTypeEmail:        {},
+	EntryTypeRCS:          {},
+	EntryTypeSMS:          {},
 }
 
 func (e EntryType) SignsWithPlainText() bool {
@@ -20,6 +23,9 @@ var entryTypeDisplayLabels = map[EntryType]string{
 	EntryTypeWebchat:      "WebChat",
 	EntryTypeMercadoLivre: "Mercado Livre",
 	EntryTypeTikTok:       "TikTok",
+	EntryTypeEmail:        "E-mail",
+	EntryTypeRCS:          "RCS",
+	EntryTypeSMS:          "SMS",
 }
 
 func (e EntryType) DisplayLabel() string {

@@ -18,6 +18,7 @@ const (
 	SourceAdsFunds        = "ads_funds"
 	SourceLowBalance      = "low_balance"
 	SourceTopUp           = "wallet_top_up"
+	SourcePaymentReversal = "payment_reversal"
 	SourcePlanExpiry      = "plan_expiry"
 	SourceMonthlyInvoice  = "monthly_invoice"
 	SourceBillingCutoff   = "billing_cutoff"
@@ -27,6 +28,12 @@ const (
 	SourceTikTok          = "tiktok_account"
 	SourceWhatsAppForm    = "whatsapp_form"
 	SourceWorkflowAlert   = "workflow_alert"
+	SourceCarrierSender   = "carrier_sender"
+	SourceCarrierFlood    = "carrier_flood"
+	SourceGoogleAccount   = "google_account"
+	SourceGoogleSheet     = "google_sheet"
+	SourceEmailWebhook    = "email_webhook"
+	SourceSystemEmail     = "system_email"
 
 	SourceConversationNoteMention = "conversation_note_mention"
 )

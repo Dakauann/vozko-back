@@ -16,6 +16,8 @@ func (c *Container) conversationNoteHandler() *conversationnotehttp.Handler {
 		Announcer: c.services.conversationHub,
 		Notifier:  c.notifications().Publisher,
 		Contacts:  c.services.conversationHistory,
+		Media:     c.repositories.conversationMedia,
+		Uploader:  c.useCases.uploadConversationMedia,
 	})
 	if err != nil {
 		log.Fatalf("[container] %v", err)

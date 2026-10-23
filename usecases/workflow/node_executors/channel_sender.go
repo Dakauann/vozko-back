@@ -67,6 +67,7 @@ func (s *channelSender) refuseUnreachableContact(ctx context.Context, run *workf
 type SentMessage struct {
 	ProviderMessageID string
 	AccountID         string
+	ShownOptionIDs    []string
 }
 
 var ErrChannelCannotSend = workflow.ErrNodeConfigMissing
@@ -327,8 +328,10 @@ func (s *channelSender) SendInteractive(
 	}
 
 	providerID := ""
+	var shown []string
 	if outcome != nil {
 		providerID = outcome.ProviderMessageID
+		shown = outcome.ShownOptionIDs
 	}
 
 	if s.history != nil {
@@ -347,7 +350,7 @@ func (s *channelSender) SendInteractive(
 		}
 	}
 
-	return &SentMessage{ProviderMessageID: providerID, AccountID: ec.AccountID}, nil
+	return &SentMessage{ProviderMessageID: providerID, AccountID: ec.AccountID, ShownOptionIDs: shown}, nil
 }
 
 func (s *channelSender) SupportsInteractive(run *workflow.WorkflowRun) bool {

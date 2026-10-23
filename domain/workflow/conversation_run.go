@@ -7,7 +7,7 @@ import (
 )
 
 func (r *WorkflowRun) OnConversation() bool {
-	return r.EntryType != EntryTypeSIPCall
+	return r.EntryType != EntryTypeSIPCall && !r.OnLead()
 }
 
 type StepNamer interface {
@@ -34,14 +34,7 @@ type ConversationRun struct {
 }
 
 func (r ConversationRun) Duration() *int64 {
-	if !r.Status.IsTerminal() || r.CompletedAt == nil {
-		return nil
-	}
-	elapsed := r.CompletedAt.Sub(r.StartedAt).Milliseconds()
-	if elapsed < 0 {
-		elapsed = 0
-	}
-	return &elapsed
+	return RunDuration(r.Status, r.StartedAt, r.CompletedAt)
 }
 
 func (r ConversationRun) Described(steps StepNamer) ConversationRun {

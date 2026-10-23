@@ -232,9 +232,12 @@ func messagingTypesSorted() []EntryType {
 
 func TestMessagingSetContainsEveryTextChannel(t *testing.T) {
 	want := []EntryType{
+		EntryTypeEmail,
 		EntryTypeFacebook,
 		EntryTypeInstagram,
 		EntryTypeMercadoLivre,
+		EntryTypeRCS,
+		EntryTypeSMS,
 		EntryTypeTelegram,
 		EntryTypeTikTok,
 		EntryTypeUnofficialWhatsApp,
@@ -372,5 +375,79 @@ func TestTikTokIsFullyRegistered(t *testing.T) {
 	}
 	if tt.DisplayLabel() != "TikTok" {
 		t.Errorf("DisplayLabel() = %q", tt.DisplayLabel())
+	}
+}
+
+func TestEmailIsFullyRegistered(t *testing.T) {
+	em := EntryTypeEmail
+	if string(em) != "email" {
+		t.Fatalf("entry type = %q", em)
+	}
+
+	checks := map[string]bool{
+		"Valid (messaging pipeline)":   em.Valid(),
+		"SupportsConversationView":     em.SupportsConversationView(),
+		"SupportsCRMTagging":           em.SupportsCRMTagging(),
+		"SupportsConversationClosing":  em.SupportsConversationClosing(),
+		"SupportsInboxScope":           em.SupportsInboxScope(),
+		"SupportsContainerScopedInbox": em.SupportsContainerScopedInbox(),
+		"SupportsConversationAnalysis": em.SupportsConversationAnalysis(),
+		"IsKnown":                      em.IsKnown(),
+		"SignsWithPlainText":           em.SignsWithPlainText(),
+	}
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("email fails %s", name)
+		}
+	}
+	if em.SupportsTemplates() || em.SupportsCommentAnalysis() {
+		t.Error("email has neither templates nor comments")
+	}
+	if em.EventChannel() != string(em) {
+		t.Errorf("EventChannel() = %q", em.EventChannel())
+	}
+	if em.DisplayLabel() != "E-mail" {
+		t.Errorf("DisplayLabel() = %q", em.DisplayLabel())
+	}
+}
+
+func TestCarrierChannelsAreFullyRegistered(t *testing.T) {
+	cases := []struct {
+		entry EntryType
+		value string
+		label string
+	}{
+		{EntryTypeRCS, "rcs", "RCS"},
+		{EntryTypeSMS, "sms", "SMS"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.value, func(t *testing.T) {
+			e := tc.entry
+			if string(e) != tc.value {
+				t.Fatalf("entry type = %q", e)
+			}
+			checks := map[string]bool{
+				"Valid (messaging pipeline)":   e.Valid(),
+				"SupportsConversationView":     e.SupportsConversationView(),
+				"SupportsCRMTagging":           e.SupportsCRMTagging(),
+				"SupportsConversationClosing":  e.SupportsConversationClosing(),
+				"SupportsInboxScope":           e.SupportsInboxScope(),
+				"SupportsContainerScopedInbox": e.SupportsContainerScopedInbox(),
+				"SupportsConversationAnalysis": e.SupportsConversationAnalysis(),
+				"IsKnown":                      e.IsKnown(),
+				"SignsWithPlainText":           e.SignsWithPlainText(),
+			}
+			for name, ok := range checks {
+				if !ok {
+					t.Errorf("%s fails %s", e, name)
+				}
+			}
+			if e.SupportsTemplates() || e.SupportsCommentAnalysis() {
+				t.Errorf("%s has neither templates nor comments", e)
+			}
+			if e.EventChannel() != tc.value || e.DisplayLabel() != tc.label {
+				t.Errorf("event channel %q label %q", e.EventChannel(), e.DisplayLabel())
+			}
+		})
 	}
 }

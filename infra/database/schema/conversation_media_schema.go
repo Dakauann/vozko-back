@@ -21,6 +21,7 @@ type ConversationMedia struct {
 	Width            int            `gorm:"type:integer;not null;default:0"`
 	Height           int            `gorm:"type:integer;not null;default:0"`
 	Thumbhash        string         `gorm:"type:varchar(64);not null;default:''"`
+	Purpose          string         `gorm:"type:varchar(16);not null;default:'message'"`
 	CreatedAt        time.Time      `gorm:"autoCreateTime"`
 	DeletedAt        gorm.DeletedAt `gorm:"index"`
 }

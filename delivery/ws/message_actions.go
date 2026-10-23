@@ -108,7 +108,7 @@ func (h *ConversationHub) handleResendMessage(conn *WSConnection, payload json.R
 			log.Printf("[ConversationHub] resend %s for %s:%s is already in flight", p.RequestID, target.EntryType, target.EntryID)
 			return nil
 		case errors.Is(err, conversation.ErrResendDeliveryFailed):
-			h.BroadcastMessageError(conn.UserID, p.RequestID, target.EntryID, string(target.EntryType), err.Error(), "send_failed")
+			h.BroadcastMessageError(conn.UserID, p.RequestID, target.EntryID, string(target.EntryType), err.Error(), conversation.SendFailureCode(err, "send_failed"))
 			return nil
 		case err != nil:
 			return err

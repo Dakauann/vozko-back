@@ -238,6 +238,7 @@ func ToWebhookEvent(notificationID string, p *Payment) (*payment.WebhookEvent, b
 			BillingType:       string(MapMethod(p.PaymentMethodID)),
 			Value:             p.TransactionAmount,
 			Status:            p.Status,
+			ReversedValue:     ReversedValue(p),
 		},
 	}, true
 }

@@ -110,9 +110,9 @@ func (e *httpRequestExecutor) Definition() workflow.NodeDefinition {
 			{ID: "timeout", Label: "Tempo esgotado", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "status_code", Description: "Código HTTP (ex: 200, 404)"},
-			{Key: "body", Description: "Corpo bruto da resposta (string)"},
-			{Key: "success", Description: "true se status < 400"},
+			{Key: "status_code", Description: "Código HTTP (ex: 200, 404)", Label: "Código HTTP", Type: workflow.VariableTypeNumber},
+			{Key: "body", Description: "Corpo bruto da resposta (string)", Label: "Corpo da resposta", Type: workflow.VariableTypeText},
+			{Key: "success", Description: "true se status < 400", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
 			{Key: "*", Description: "Se a resposta for JSON, cada campo do objeto é extraído automaticamente. Ex: se o body for {\"bairro\":\"Sé\"}, use {{last.bairro}}"},
 		},
 		ConfigSchema: []workflow.ConfigField{

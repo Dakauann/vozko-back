@@ -538,6 +538,16 @@ var Features = []Feature{
 		},
 	},
 	{
+		Key:         "email_inbox",
+		Name:        "Caixas de e-mail",
+		Location:    "Menu lateral › E-mail › Remetentes e domínios",
+		Description: "As respostas dos clientes aos e-mails chegam no atendimento, uma caixa por remetente, com o departamento, o funil e o agente ou fluxo que atende.",
+		Capabilities: []Capability{
+			{Key: "email_inbox.view", Description: "Ver as caixas de e-mail e as suas configurações", Requires: []PermissionEntry{need(ResourceEmailInboxes, ActionRead)}},
+			{Key: "email_inbox.edit", Description: "Editar o departamento, o funil e a automação das caixas de e-mail", Requires: []PermissionEntry{need(ResourceEmailInboxes, ActionRead), need(ResourceEmailInboxes, ActionUpdate)}},
+		},
+	},
+	{
 		Key:         "links",
 		Name:        "Links",
 		Location:    "Menu lateral › Links",
@@ -562,6 +572,28 @@ var Features = []Feature{
 		},
 	},
 	{
+		Key:         "google_sheets",
+		Name:        "Google Planilhas",
+		Location:    "Menu lateral › Integrações › Google Planilhas",
+		Description: "Planilhas criadas no Google Drive do workspace, com as colunas escolhidas, em que agentes de IA, fluxos e o Elo registram linhas.",
+		Capabilities: []Capability{
+			{Key: "google_sheets.view", Description: "Ver as planilhas, as colunas, a saúde das gravações e o estado da conexão", Requires: []PermissionEntry{need(ResourceGoogleSheets, ActionRead)}, Screens: []Screen{ScreenGoogleSheets, ScreenGoogleSheet}},
+			{Key: "google_sheets.create", Description: "Conectar o Google Planilhas e criar planilhas", Requires: []PermissionEntry{need(ResourceGoogleSheets, ActionRead), need(ResourceGoogleSheets, ActionCreate)}},
+			{Key: "google_sheets.edit", Description: "Editar colunas, adicionar linhas, reenviar linhas retidas e reparar o cabeçalho", Requires: []PermissionEntry{need(ResourceGoogleSheets, ActionRead), need(ResourceGoogleSheets, ActionUpdate)}},
+			{Key: "google_sheets.delete", Description: "Remover planilhas e desconectar o Google Planilhas", Requires: []PermissionEntry{need(ResourceGoogleSheets, ActionRead), need(ResourceGoogleSheets, ActionDelete)}},
+		},
+	},
+	{
+		Key:         "api_keys",
+		Name:        "Chaves de API",
+		Location:    "Menu lateral › Integrações › Chaves de API",
+		Description: "Chaves que deixam os sistemas do cliente usar a API em nome do workspace, hoje para enviar e-mails transacionais e ler o registro de envios.",
+		Capabilities: []Capability{
+			{Key: "api_keys.view", Description: "Ver as chaves de API, as permissões e o último uso", Requires: []PermissionEntry{need(ResourceAPIKeys, ActionRead)}, Screens: []Screen{ScreenAPIKeys}},
+			{Key: "api_keys.manage", Description: "Criar e revogar chaves de API (os envios feitos com elas consomem saldo)", Requires: []PermissionEntry{need(ResourceAPIKeys, ActionRead), need(ResourceAPIKeys, ActionCreate), need(ResourceAPIKeys, ActionDelete)}},
+		},
+	},
+	{
 		Key:         "issues",
 		Name:        "Suporte",
 		Location:    "Menu lateral › Suporte",
@@ -570,6 +602,46 @@ var Features = []Feature{
 			{Key: "issues.view", Description: "Ver as solicitações e as respostas", Requires: []PermissionEntry{need(ResourceIssues, ActionRead)}, Screens: []Screen{ScreenIssues, ScreenIssueDetail}},
 			{Key: "issues.create", Description: "Abrir solicitações", Requires: []PermissionEntry{need(ResourceIssues, ActionRead), need(ResourceIssues, ActionCreate)}, Screens: []Screen{ScreenIssueNew}},
 			{Key: "issues.respond", Description: "Responder e encerrar solicitações", Requires: []PermissionEntry{need(ResourceIssues, ActionRead), need(ResourceIssues, ActionUpdate)}},
+		},
+	},
+	{
+		Key:         "email",
+		Name:        "E-mail marketing",
+		Location:    "Menu lateral › E-mail",
+		Description: "Campanhas de e-mail com editor de blocos, teste A/B, validação de lista e métricas, mais os remetentes, os domínios e os custos de envio.",
+		Capabilities: []Capability{
+			{Key: "email.view", Description: "Ver a visão geral, as campanhas e os resultados, os modelos, os remetentes e os custos, o registro de envios da API e os webhooks", Requires: []PermissionEntry{need(ResourceEmailMarketing, ActionRead)},
+				Screens: []Screen{ScreenEmailOverview, ScreenEmailCampaigns, ScreenEmailCampaign, ScreenEmailDesigns, ScreenEmailDesign, ScreenEmailSenders, ScreenEmailAPI, ScreenEmailAPIMessage, ScreenEmailWebhooks}},
+			{Key: "email.campaigns", Description: "Criar, editar e excluir campanhas e modelos, enviar testes, importar consentimentos e validar listas (a validação consome saldo)",
+				Requires: []PermissionEntry{need(ResourceEmailMarketing, ActionRead), need(ResourceEmailMarketing, ActionCreate), need(ResourceEmailMarketing, ActionUpdate), need(ResourceEmailMarketing, ActionDelete)},
+				Screens:  []Screen{ScreenEmailCampaignNew}},
+			{Key: "email.start", Description: "Disparar, agendar, pausar, retomar e parar campanhas e iniciar conversas por e-mail com leads pelo inbox ou pelo perfil do lead (o disparo e cada e-mail consomem saldo)", Requires: []PermissionEntry{need(ResourceEmailMarketing, ActionRead), need(ResourceEmailMarketing, ActionStart), need(ResourceEmailMarketing, ActionStop)}},
+			{Key: "email.senders", Description: "Conectar domínios, criar e editar remetentes e gerenciar a lista de supressão e os webhooks da API de e-mail", Requires: []PermissionEntry{need(ResourceEmailMarketing, ActionRead), need(ResourceEmailMarketing, ActionConfigure)}, ManagersOnly: true},
+		},
+	},
+	{
+		Key:         "carrier",
+		Name:        "RCS e SMS",
+		Location:    "Menu lateral › RCS e SMS",
+		Description: "Campanhas de RCS (mensagens ricas com a marca verificada no app de mensagens do celular) e de SMS, com cartões, carrosséis, botões, teste A/B, envio recorrente, plano B por WhatsApp e SMS, e as métricas de entrega, leitura, cliques e conversões.",
+		Capabilities: []Capability{
+			{Key: "carrier.view", Description: "Ver a visão geral, as campanhas e os resultados, os remetentes e as regras de envio", Requires: []PermissionEntry{need(ResourceCarrierMessaging, ActionRead)},
+				Screens: []Screen{ScreenCarrierOverview, ScreenCarrierCampaigns, ScreenCarrierCampaign, ScreenCarrierRCSSenders, ScreenCarrierRCSSender, ScreenCarrierSMSSenders, ScreenCarrierSettings}},
+			{Key: "carrier.campaigns", Description: "Criar, editar e excluir campanhas e enviar mensagens de teste",
+				Requires: []PermissionEntry{need(ResourceCarrierMessaging, ActionRead), need(ResourceCarrierMessaging, ActionCreate), need(ResourceCarrierMessaging, ActionUpdate), need(ResourceCarrierMessaging, ActionDelete)},
+				Screens:  []Screen{ScreenCarrierCampaignNew}},
+			{Key: "carrier.start", Description: "Disparar, agendar, pausar, retomar e parar campanhas (o disparo consome saldo)", Requires: []PermissionEntry{need(ResourceCarrierMessaging, ActionRead), need(ResourceCarrierMessaging, ActionStart), need(ResourceCarrierMessaging, ActionStop)}},
+			{Key: "carrier.senders", Description: "Cadastrar remetentes RCS e de SMS, mudar as regras de envio e a lista de descadastro", Requires: []PermissionEntry{need(ResourceCarrierMessaging, ActionRead), need(ResourceCarrierMessaging, ActionConfigure)}, ManagersOnly: true},
+		},
+	},
+	{
+		Key:         "carrier_inbox",
+		Name:        "Caixas de RCS e SMS",
+		Location:    "Menu lateral › RCS e SMS › Remetentes",
+		Description: "As respostas aos RCS e SMS chegam no atendimento, uma caixa por remetente, com o agente de IA ou o fluxo que atende.",
+		Capabilities: []Capability{
+			{Key: "carrier_inbox.view", Description: "Ver as caixas de RCS e SMS e a automação de cada uma", Requires: []PermissionEntry{need(ResourceCarrierInboxes, ActionRead)}},
+			{Key: "carrier_inbox.edit", Description: "Escolher o agente ou o fluxo que responde em cada caixa de RCS e SMS", Requires: []PermissionEntry{need(ResourceCarrierInboxes, ActionRead), need(ResourceCarrierInboxes, ActionUpdate)}},
 		},
 	},
 	{

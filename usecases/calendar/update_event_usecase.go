@@ -12,11 +12,12 @@ import (
 
 type updateEventUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewUpdateEventUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.UpdateEventUseCase {
-	return &updateEventUseCase{repo: repo, google: google}
+func NewUpdateEventUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.UpdateEventUseCase {
+	return &updateEventUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *updateEventUseCase) Execute(input calendar.UpdateEventInput) (*calendar.CalendarEvent, error) {
@@ -54,16 +55,9 @@ func (uc *updateEventUseCase) Execute(input calendar.UpdateEventInput) (*calenda
 
 	var accessToken string
 	if googleEventID != "" {
-		conn, err := uc.repo.GetConnection(input.WorkspaceID)
+		accessToken, err = calendarToken(uc.access, input.WorkspaceID)
 		if err != nil {
-			return nil, calendar.ErrGoogleNotConnected
-		}
-		if conn == nil {
-			return nil, calendar.ErrGoogleNotConnected
-		}
-		accessToken, err = ensureValidToken(uc.google, uc.repo, conn)
-		if err != nil {
-			return nil, fmt.Errorf("google auth: %w", err)
+			return nil, err
 		}
 
 		if needsGoogleFetch {
@@ -210,23 +204,4 @@ func (uc *updateEventUseCase) slotOccupied(accessToken, excludeGoogleID string, 
 		}
 	}
 	return false, ""
-}
-
-func ensureValidToken(google calendar.GoogleOAuthService, repo calendar.Repository, conn *calendar.GoogleCalendarConnection) (string, error) {
-	if time.Now().Before(conn.TokenExpiry.Add(-time.Minute)) {
-		return conn.AccessToken, nil
-	}
-	refreshed, err := google.RefreshAccessToken(conn.RefreshToken)
-	if err != nil {
-		return "", err
-	}
-	expiry := time.Now().Add(time.Duration(refreshed.ExpiresIn) * time.Second)
-	rt := refreshed.RefreshToken
-	if rt == "" {
-		rt = conn.RefreshToken
-	}
-	if err := repo.UpdateConnectionTokens(conn.ID, refreshed.AccessToken, rt, expiry); err != nil {
-		log.Printf("[calendar] failed to persist refreshed token: %v", err)
-	}
-	return refreshed.AccessToken, nil
 }

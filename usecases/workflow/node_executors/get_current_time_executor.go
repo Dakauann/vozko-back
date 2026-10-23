@@ -30,14 +30,14 @@ func (e *getCurrentTimeExecutor) Definition() workflow.NodeDefinition {
 			"variable": "current_time",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "datetime", Description: "Data e hora completa (YYYY-MM-DD HH:mm:ss)"},
-			{Key: "date", Description: "Apenas a data (YYYY-MM-DD)"},
-			{Key: "time", Description: "Apenas a hora (HH:mm:ss)"},
-			{Key: "hour", Description: "Hora (0-23)"},
-			{Key: "minute", Description: "Minuto (0-59)"},
-			{Key: "weekday", Description: "Dia da semana (Monday, Tuesday, etc.)"},
-			{Key: "timestamp", Description: "Timestamp Unix (segundos)"},
-			{Key: "iso", Description: "Data em formato ISO 8601"},
+			{Key: "datetime", Description: "Data e hora completa (YYYY-MM-DD HH:mm:ss)", Label: "Data e hora", Type: workflow.VariableTypeText},
+			{Key: "date", Description: "Apenas a data (YYYY-MM-DD)", Label: "Data", Type: workflow.VariableTypeDate},
+			{Key: "time", Description: "Apenas a hora (HH:mm:ss)", Label: "Hora", Type: workflow.VariableTypeText},
+			{Key: "hour", Description: "Hora (0-23)", Label: "Hora (0 a 23)", Type: workflow.VariableTypeNumber},
+			{Key: "minute", Description: "Minuto (0-59)", Label: "Minuto", Type: workflow.VariableTypeNumber},
+			{Key: "weekday", Description: "Dia da semana (Monday, Tuesday, etc.)", Label: "Dia da semana", Type: workflow.VariableTypeText},
+			{Key: "timestamp", Description: "Timestamp Unix (segundos)", Label: "Timestamp Unix", Type: workflow.VariableTypeNumber},
+			{Key: "iso", Description: "Data em formato ISO 8601", Label: "Data ISO 8601", Type: workflow.VariableTypeDate},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "timezone", Label: "Fuso horário", Type: "select", Options: []workflow.ConfigFieldOption{

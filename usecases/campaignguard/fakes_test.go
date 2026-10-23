@@ -56,7 +56,7 @@ func (s *sendLog) GetLastSendTime(leadID, _ string) (*time.Time, error) {
 	return &at, nil
 }
 
-func (s *sendLog) GetLastSendTimesBatch(leadIDs []string, _ string) (map[string]time.Time, error) {
+func (s *sendLog) GetLastSendTimesBatch(_ context.Context, leadIDs []string, _ string) (map[string]time.Time, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.batches = append(s.batches, append([]string(nil), leadIDs...))
@@ -88,6 +88,36 @@ func (b *leadBook) LeadFacts(_ context.Context, _ string, leadIDs []string) (map
 		if f, ok := b.facts[id]; ok {
 			out[id] = f
 		}
+	}
+	return out, nil
+}
+
+type screeningBook struct {
+	leads   *leadBook
+	sends   *sendLog
+	running map[string]bool
+	queries []campaign.ScreeningQuery
+}
+
+func (b *screeningBook) ScreeningFacts(ctx context.Context, q campaign.ScreeningQuery) (map[string]campaign.ScreeningFacts, error) {
+	b.queries = append(b.queries, q)
+	leads, err := b.leads.LeadFacts(ctx, q.WorkspaceID, q.LeadIDs)
+	if err != nil {
+		return nil, err
+	}
+	last := map[string]time.Time{}
+	if q.SenderID != "" {
+		if last, err = b.sends.GetLastSendTimesBatch(ctx, q.LeadIDs, q.SenderID); err != nil {
+			return nil, err
+		}
+	}
+	out := map[string]campaign.ScreeningFacts{}
+	for id, f := range leads {
+		facts := campaign.ScreeningFacts{Lead: f, InRunningCampaign: q.Running && b.running[id]}
+		if at, ok := last[id]; ok {
+			facts.LastSentAt = &at
+		}
+		out[id] = facts
 	}
 	return out, nil
 }

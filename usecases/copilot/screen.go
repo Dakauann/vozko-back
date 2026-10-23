@@ -111,7 +111,7 @@ func (s *Service) attachScreen(cc copilot.Context, threadID string, emit agentlo
 		return cc
 	}
 	projectID := ""
-	if cc.View.OnStudio() {
+	if cc.View.OnEditor() {
 		projectID = cc.View.ProjectID
 	}
 	cc.Screen = &screenSession{

@@ -19,5 +19,6 @@ func (m *moveEntryStage) Execute(workspaceID string, by shared.Person, input sta
 		return nil, stage.ErrEntryAccess
 	}
 	input.ActorID = by.UserID
+	input.Cause = stage.MoveCause{}
 	return m.assign.Execute(workspaceID, input)
 }

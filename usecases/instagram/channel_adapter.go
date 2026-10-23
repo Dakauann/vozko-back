@@ -293,7 +293,7 @@ func (a *channelAdapter) classify(ctx context.Context, account *igdomain.Account
 		return errors.Join(conversation.ErrOutboundWindowClosed, err)
 
 	case apiErr.IsRecipientUnreachable():
-		return fmt.Errorf("instagram recipient is unreachable (blocked or deactivated): %w", err)
+		return fmt.Errorf("instagram recipient is unreachable (blocked or deactivated): %w", errors.Join(conversation.ErrRecipientUnreachable, err))
 	}
 	return err
 }

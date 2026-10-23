@@ -1,6 +1,7 @@
 package lead_campaign_send
 
 import (
+	"context"
 	"time"
 )
 
@@ -17,5 +18,5 @@ type Repository interface {
 
 	GetLastSendTime(leadID, businessPhoneID string) (*time.Time, error)
 
-	GetLastSendTimesBatch(leadIDs []string, businessPhoneID string) (map[string]time.Time, error)
+	GetLastSendTimesBatch(ctx context.Context, leadIDs []string, businessPhoneID string) (map[string]time.Time, error)
 }

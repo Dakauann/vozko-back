@@ -96,9 +96,12 @@ func TestResolver_IgnoresNonActionableState(t *testing.T) {
 	}
 
 	f2 := &fakeClient{getResponse: &Payment{ID: 1, Status: "status_from_the_future"}}
-	_, err = NewWebhookResolver(f2).Resolve(context.Background(), notificationJSON("payment", "payment.updated", "1"))
-	if !errors.Is(err, payment.ErrWebhookIgnored) {
-		t.Fatalf("expected ErrWebhookIgnored for an unknown status, got %v", err)
+	event, err := NewWebhookResolver(f2).Resolve(context.Background(), notificationJSON("payment", "payment.updated", "1"))
+	if err != nil {
+		t.Fatalf("an unknown status must reach the handler as an unmapped event, not be dropped: %v", err)
+	}
+	if _, known := payment.MeaningOf(event.Event); known {
+		t.Fatalf("an unknown status must stay unknown downstream, got %q", event.Event)
 	}
 }
 

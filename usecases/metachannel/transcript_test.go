@@ -61,6 +61,10 @@ func (m *memoryRows) GetByID(string) (*conversation.ConversationMedia, error) {
 	return nil, conversation.ErrMediaNotFound
 }
 func (m *memoryRows) ListByIDs([]string) ([]*conversation.ConversationMedia, error) { return nil, nil }
+func (m *memoryRows) GetInEntry(string, shared.EntryType, string) (*conversation.ConversationMedia, error) {
+	return nil, conversation.ErrMediaNotFound
+}
+
 func (m *memoryRows) GetByWhatsAppMediaID(string) (*conversation.ConversationMedia, error) {
 	return nil, conversation.ErrMediaNotFound
 }

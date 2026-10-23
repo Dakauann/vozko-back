@@ -2,6 +2,7 @@ package conversationnote_usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -39,6 +40,10 @@ type EntryContacts interface {
 	GetEntryInfo(entryID, entryType string) (conversation.EntryInfo, error)
 }
 
+type Media interface {
+	ListByIDs(ids []string) ([]*conversation.ConversationMedia, error)
+}
+
 type Deps struct {
 	Notes     conversationnote.Repository
 	Access    Access
@@ -46,6 +51,8 @@ type Deps struct {
 	Announcer Announcer
 	Notifier  notification.Publisher
 	Contacts  EntryContacts
+	Media     Media
+	Uploader  conversation.UploadConversationMediaUseCase
 	Now       func() time.Time
 	NewID     func() string
 }
@@ -65,6 +72,8 @@ func New(deps Deps) (*Service, error) {
 		"announcer":      deps.Announcer == nil,
 		"notifier":       deps.Notifier == nil,
 		"entry contacts": deps.Contacts == nil,
+		"media":          deps.Media == nil,
+		"media uploader": deps.Uploader == nil,
 	} {
 		if absent {
 			missing = append(missing, name)
@@ -97,7 +106,11 @@ func (s *Service) List(ctx context.Context, by shared.Person, q conversationnote
 	if hasMore {
 		notes = notes[:limit]
 	}
-	return conversationnote.Page{Notes: s.authored(notes), HasMore: hasMore}, nil
+	media, err := s.mediaOf(notes)
+	if err != nil {
+		return conversationnote.Page{}, err
+	}
+	return conversationnote.Page{Notes: s.authored(notes, media), HasMore: hasMore}, nil
 }
 
 func (s *Service) Create(ctx context.Context, by shared.Person, d conversationnote.Draft) (conversationnote.Authored, error) {
@@ -108,8 +121,17 @@ func (s *Service) Create(ctx context.Context, by shared.Person, d conversationno
 	if err != nil {
 		return conversationnote.Authored{}, err
 	}
+	imageIDs, err := conversationnote.NormalizeImageIDs(d.ImageIDs)
+	if err != nil {
+		return conversationnote.Authored{}, err
+	}
+	media, err := s.attachable(d.Entry, imageIDs)
+	if err != nil {
+		return conversationnote.Authored{}, err
+	}
 	d.AuthorID = by.UserID
 	d.Mentions = s.workspaceMembers(d.WorkspaceID, mentions)
+	d.ImageIDs = imageIDs
 	note, err := conversationnote.New(d, s.deps.NewID(), s.deps.Now())
 	if err != nil {
 		return conversationnote.Authored{}, err
@@ -117,10 +139,72 @@ func (s *Service) Create(ctx context.Context, by shared.Person, d conversationno
 	if err := s.deps.Notes.Create(ctx, note); err != nil {
 		return conversationnote.Authored{}, err
 	}
-	written := s.authored([]conversationnote.Note{note})[0]
+	written := s.authored([]conversationnote.Note{note}, media)[0]
 	s.deps.Announcer.AnnounceNote(written)
 	s.notifyMentioned(context.WithoutCancel(ctx), written)
 	return written, nil
+}
+
+func (s *Service) AttachImage(_ context.Context, by shared.Person, in conversationnote.ImageUpload) (conversationnote.Image, error) {
+	if !in.Entry.EntryType.SupportsConversationView() || !s.canSee(by, in.WorkspaceID, in.Entry) {
+		return conversationnote.Image{}, conversation.ErrUnauthorized
+	}
+	sniffed, err := conversationnote.SniffImage(in.Data)
+	if err != nil {
+		return conversationnote.Image{}, err
+	}
+	stored, err := s.deps.Uploader.Execute(conversation.UploadMediaInput{
+		EntryID:   strings.TrimSpace(in.Entry.EntryID),
+		EntryType: string(in.Entry.EntryType),
+		MediaType: conversation.MediaTypeImage,
+		Filename:  sniffed.FileName(in.FileName),
+		Data:      in.Data,
+		MimeType:  sniffed.MIME,
+		Purpose:   conversation.MediaPurposeNote,
+	})
+	if errors.Is(err, conversation.ErrMediaURLRequired) {
+		return conversationnote.Image{}, conversationnote.ErrStorageMissing
+	}
+	if err != nil {
+		return conversationnote.Image{}, err
+	}
+	if stored == nil {
+		return conversationnote.Image{}, conversationnote.ErrStorageMissing
+	}
+	return conversationnote.ImageOf(stored), nil
+}
+
+func (s *Service) attachable(entry shared.EntryRef, ids []string) ([]*conversation.ConversationMedia, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	media, err := s.deps.Media.ListByIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]*conversation.ConversationMedia, len(media))
+	for _, m := range media {
+		if m != nil {
+			byID[m.ID] = m
+		}
+	}
+	for _, id := range ids {
+		if err := conversationnote.Attachable(byID[id], entry); err != nil {
+			return nil, err
+		}
+	}
+	return media, nil
+}
+
+func (s *Service) mediaOf(notes []conversationnote.Note) ([]*conversation.ConversationMedia, error) {
+	var ids []string
+	for _, note := range notes {
+		ids = append(ids, note.ImageIDs...)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return s.deps.Media.ListByIDs(ids)
 }
 
 func (s *Service) Delete(ctx context.Context, by shared.Person, workspaceID, noteID string) error {
@@ -161,7 +245,7 @@ func (s *Service) workspaceMembers(workspaceID string, ids []string) []string {
 	return members
 }
 
-func (s *Service) authored(notes []conversationnote.Note) []conversationnote.Authored {
+func (s *Service) authored(notes []conversationnote.Note, media []*conversation.ConversationMedia) []conversationnote.Authored {
 	names := s.namesOf(notes)
 	out := make([]conversationnote.Authored, 0, len(notes))
 	for _, note := range notes {
@@ -169,7 +253,11 @@ func (s *Service) authored(notes []conversationnote.Note) []conversationnote.Aut
 		if name == "" {
 			name = unknownAuthorName
 		}
-		out = append(out, conversationnote.Authored{Note: note, AuthorName: name})
+		out = append(out, conversationnote.Authored{
+			Note:       note,
+			AuthorName: name,
+			Images:     conversationnote.AttachedImages(note.ImageIDs, media, note.Entry()),
+		})
 	}
 	return out
 }

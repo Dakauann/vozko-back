@@ -13,6 +13,7 @@ import (
 	"vozko/domain/recordevent"
 	"vozko/domain/shared"
 	businessphone "vozko/domain/whatsapp/business_phone"
+	"vozko/usecases/emailhygiene/hygienetest"
 )
 
 const (
@@ -291,6 +292,7 @@ type commandsFixture struct {
 	fields     *fakeDefinitions
 	anonymizer *fakeAnonymizer
 	companies  fakeCompanies
+	seen       *hygienetest.SeenEmails
 	cmds       *Commands
 }
 
@@ -301,7 +303,7 @@ func allPermissions() fakePermissions {
 func newCommandsFixture(t *testing.T, perms fakePermissions, leads ...*lead.Lead) *commandsFixture {
 	t.Helper()
 	f := &commandsFixture{store: newFakeStore(leads...), perms: perms, notifier: &fakeNotifier{}, meta: &fakeMeta{}, entries: &fakeEntries{}, duplicates: &fakeDuplicates{},
-		fields: &fakeDefinitions{defs: leadDefinitions()}, anonymizer: &fakeAnonymizer{}, companies: fakeCompanies{}}
+		fields: &fakeDefinitions{defs: leadDefinitions()}, anonymizer: &fakeAnonymizer{}, companies: fakeCompanies{}, seen: &hygienetest.SeenEmails{}}
 	f.anonymizer.store = f.store
 	cmds, err := NewCommands(CommandDeps{
 		Store:       f.store,
@@ -324,6 +326,7 @@ func newCommandsFixture(t *testing.T, perms fakePermissions, leads ...*lead.Lead
 		Anonymizer:  f.anonymizer,
 		Memberships: f.store,
 		Companies:   f.companies,
+		EmailsSeen:  f.seen,
 		Now:         func() time.Time { return cmdNow },
 	})
 	if err != nil {
@@ -349,6 +352,7 @@ func completeCommandDeps() CommandDeps {
 		Phones: fakePhones{}, PhoneGrants: fakeGrants{}, Meta: &fakeMeta{},
 		Entries: &fakeEntries{}, Relations: newFakeStore(), Duplicates: &fakeDuplicates{},
 		Definitions: &fakeDefinitions{}, Anonymizer: &fakeAnonymizer{}, Memberships: newFakeStore(), Companies: fakeCompanies{},
+		EmailsSeen: &hygienetest.SeenEmails{},
 	}
 }
 
@@ -365,6 +369,7 @@ func TestNewCommandsRefusesAMissingDependency(t *testing.T) {
 		"meta":         func(d *CommandDeps) { d.Meta = nil },
 		"memberships":  func(d *CommandDeps) { d.Memberships = nil },
 		"companies":    func(d *CommandDeps) { d.Companies = nil },
+		"emails seen":  func(d *CommandDeps) { d.EmailsSeen = nil },
 	}
 	for name, drop := range missing {
 		t.Run(name, func(t *testing.T) {
@@ -652,6 +657,7 @@ func TestATargetedCommandThatKeepsLosingRacesIsAConflictNotAFailure(t *testing.T
 		Phones: fakePhones{}, PhoneGrants: fakeGrants{}, Meta: &fakeMeta{},
 		Entries: &fakeEntries{}, Relations: store, Duplicates: &fakeDuplicates{},
 		Definitions: &fakeDefinitions{}, Anonymizer: &fakeAnonymizer{}, Memberships: store, Companies: fakeCompanies{},
+		EmailsSeen: &hygienetest.SeenEmails{},
 	})
 	if err != nil {
 		t.Fatal(err)

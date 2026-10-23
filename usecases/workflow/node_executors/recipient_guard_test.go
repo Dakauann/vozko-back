@@ -45,11 +45,13 @@ func (c *countingWhatsAppClient) UploadMedia(context.Context, []byte, string, st
 
 func guardedSender(contact *lead_domain.Lead, client *countingWhatsAppClient, history *recordingHistory) *whatsappSender {
 	return &whatsappSender{deps: SenderDeps{
+		MessageWindowRepo: &answeredWindow{open: true},
 		ClientFactory:     stubMediaClientFactory{client: client},
 		LeadRepo:          &knownLeadRepo{byID: contact},
 		WhatsAppEntryRepo: stubMediaEntryRepo{},
 		HistoryManager:    history,
 		MediaFetcher:      unguardedTestFetcher(),
+		MediaURLs:         externalOnlyURLs(),
 	}}
 }
 

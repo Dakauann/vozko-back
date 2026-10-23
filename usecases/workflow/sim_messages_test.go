@@ -33,8 +33,11 @@ func newSandboxRun(deps ExecutorDeps) *sandboxRun {
 func newSandboxRunConfirming(deps ExecutorDeps, realCalls bool) *sandboxRun {
 	outbound := make(chan SimOutboundMessage, 32)
 	effects := newSimEffects()
+	if deps.MediaURLs == nil {
+		deps.MediaURLs = externalMediaURLs()
+	}
 	registry := newSimulationRegistry(deps, SimSandbox{
-		WorkspaceID: "ws1", LeadID: "lead-1", Messages: &simMessageRepo{}, Outbound: outbound, Effects: effects,
+		WorkspaceID: "ws1", LeadID: "lead-1", Messages: &simMessageRepo{}, Outbound: sendInto(outbound), Window: newSimMessageWindow("lead-1", true), Effects: effects,
 		RealCallsConfirmed: func() bool { return realCalls },
 	})
 	return &sandboxRun{outbound: outbound, effects: effects, registry: registry}
@@ -321,7 +324,7 @@ func TestTheSimulatedFormIsTheFormCardTheConversationShows(t *testing.T) {
 func TestASendTheSenderNeverRecordedStillReachesTheChat(t *testing.T) {
 	outbound := make(chan SimOutboundMessage, 2)
 	effects := newSimEffects()
-	client := newSimWhatsAppClient(newSimChannel(outbound, effects))
+	client := newSimWhatsAppClient(newSimChannel(sendInto(outbound), effects))
 
 	out, err := client.SendTextMessage(context.Background(), conversation.SendTextMessageInput{To: simContactNumber, Body: "sem registro"})
 	if err != nil {
@@ -338,5 +341,20 @@ func TestASendTheSenderNeverRecordedStillReachesTheChat(t *testing.T) {
 	msg := <-outbound
 	if msg.MessageID != out.MessageID || msg.Message.Text != "sem registro" {
 		t.Fatalf("message = %+v", msg)
+	}
+}
+
+type everythingStoredHere struct{}
+
+func (everythingStoredHere) OwnsURL(string) bool { return true }
+
+func TestASandboxRefusesOurFileThatThisConversationCannotSend(t *testing.T) {
+	node := workflow.Node{ID: "n1", Type: workflow.NodeTypeActionSendMedia, Config: map[string]interface{}{"media_url": "https://cdn.vozko.test/conversations/other/nota.png"}}
+
+	box := newSandboxRunConfirming(ExecutorDeps{MediaFetcher: loopbackMediaFetcher(), MediaURLs: &conversation.MediaURLResolver{Storage: everythingStoredHere{}}}, true)
+	box.execute(t, node)
+
+	if sent := box.sent(); len(sent) != 0 {
+		t.Fatalf("sent = %+v, a file no rule allows must not reach the chat", sent)
 	}
 }

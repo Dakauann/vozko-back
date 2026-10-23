@@ -18,6 +18,7 @@ const (
 	WorkflowRunOriginIndex           = "idx_wfr_workflow_origin_started"
 	WorkflowRunTriggerDataPruneIndex = "idx_wfr_trigger_data_prune"
 	WorkflowRunLogNodeIndex          = "idx_wfrl_run_node_executed"
+	WorkflowRunTriggerInputIndex     = "idx_wfr_workflow_trigger_started"
 )
 
 func performanceIndexes() []ddl {
@@ -111,6 +112,12 @@ func performanceIndexes() []ddl {
 			sql: `CREATE INDEX IF NOT EXISTS idx_leads_workspace_created
 				ON leads (workspace_id, created_at)
 				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "idx_leads_workspace_email_lower",
+			sql: `CREATE INDEX IF NOT EXISTS idx_leads_workspace_email_lower
+				ON leads (workspace_id, lower(email))
+				WHERE deleted_at IS NULL AND email IS NOT NULL`,
 		},
 
 		{
@@ -561,17 +568,18 @@ func performanceIndexes() []ddl {
 }
 
 func PerformanceIndexSQL(name string) (string, bool) {
-	return lookupDDL(name, slices.Concat(performanceIndexes(), tiktokPerformanceIndexes(), schemaConstraints(), tiktokSchemaConstraints()))
+	return lookupDDL(name, slices.Concat(performanceIndexes(), tiktokPerformanceIndexes(), googlePerformanceIndexes(), choiceStatsPerformanceIndexes(), schemaConstraints(), tiktokSchemaConstraints(), googleSchemaConstraints()))
 }
 
 func CreatePerformanceIndexes(db *gorm.DB) {
-	for _, idx := range slices.Concat(performanceIndexes(), tiktokPerformanceIndexes()) {
+	for _, idx := range slices.Concat(performanceIndexes(), tiktokPerformanceIndexes(), googlePerformanceIndexes(), choiceStatsPerformanceIndexes()) {
 		if err := db.Exec(idx.sql).Error; err != nil {
 			log.Printf("[indexes] Warning: failed to create %s: %v", idx.name, err)
 		}
 	}
 	createConcurrentIndexes(db)
 	createCompositeLeadKeys(db)
+	runIndexedRepairs(db)
 }
 
 func schemaConstraints() []ddl {
@@ -605,6 +613,12 @@ func schemaConstraints() []ddl {
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_invoices_idempotency_key
 				ON invoices (idempotency_key)
 				WHERE idempotency_key <> ''`,
+		},
+		{
+			name: "ux_invoices_provider_external_id",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_invoices_provider_external_id
+				ON invoices (provider, external_id)
+				WHERE external_id IS NOT NULL`,
 		},
 		{
 			name: "ux_leads_workspace_number",
@@ -729,6 +743,19 @@ func schemaConstraints() []ddl {
 			name: "ux_wc_conversation_widget_visitor",
 			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_conversation_widget_visitor
 				ON webchat_conversations (widget_id, visitor_id)
+				WHERE deleted_at IS NULL`,
+		},
+
+		{
+			name: "ux_email_contact_workspace_address",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_email_contact_workspace_address
+				ON email_contacts (workspace_id, address)
+				WHERE deleted_at IS NULL`,
+		},
+		{
+			name: "ux_email_conversation_workspace_contact",
+			sql: `CREATE UNIQUE INDEX IF NOT EXISTS ux_email_conversation_workspace_contact
+				ON email_conversations (workspace_id, contact_id)
 				WHERE deleted_at IS NULL`,
 		},
 
@@ -902,5 +929,5 @@ func schemaConstraints() []ddl {
 }
 
 func createSchemaConstraints(tx *gorm.DB) error {
-	return execDDL(tx, slices.Concat(schemaConstraints(), tiktokSchemaConstraints(), leadCollectionConstraints(), callListConstraints()))
+	return execDDL(tx, slices.Concat(schemaConstraints(), tiktokSchemaConstraints(), googleSchemaConstraints(), leadCollectionConstraints(), callListConstraints()))
 }

@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"vozko/domain/campaign"
+	"vozko/domain/selection"
 )
 
 type guardFixture struct {
+	facts    *screeningBook
 	leads    *leadBook
 	days     *fixedDays
 	sends    *sendLog
@@ -28,7 +30,8 @@ func newGuardFixture(t *testing.T) *guardFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.eligible, err = NewEligibility(f.leads, spam)
+	f.facts = &screeningBook{leads: f.leads, sends: f.sends, running: map[string]bool{}}
+	f.eligible, err = NewEligibility(f.facts, spam)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +43,7 @@ func TestNewEligibilityRefusesAMissingDependency(t *testing.T) {
 	if _, err := NewEligibility(nil, spam); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("no lead facts: %v", err)
 	}
-	if _, err := NewEligibility(&leadBook{}, nil); !errors.Is(err, ErrUnavailable) {
+	if _, err := NewEligibility(&screeningBook{}, nil); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("no spam guard: %v", err)
 	}
 }
@@ -102,7 +105,7 @@ func TestScreenReadsLargeSelectionsInChunksAndTheCooldownOnce(t *testing.T) {
 		t.Fatalf("Screen() = (%d skipped, %v), want none", len(got.Skipped), err)
 	}
 	if len(f.leads.batches) != 3 || len(f.sends.batches) != 3 {
-		t.Fatalf("lead reads = %d, send reads = %d, want 3 chunks of at most %d", len(f.leads.batches), len(f.sends.batches), FactsChunk)
+		t.Fatalf("lead reads = %d, send reads = %d, want 3 chunks of at most %d", len(f.leads.batches), len(f.sends.batches), selection.Chunk)
 	}
 	if f.days.calls != 1 {
 		t.Fatalf("cooldown policy reads = %d, want one", f.days.calls)
@@ -163,5 +166,52 @@ func TestFactsLeaveRoomForTheCallerFacts(t *testing.T) {
 	got.MissingVariable = true
 	if ok, reason := campaign.Eligibility(got); ok || reason != campaign.SkipMissingVariable {
 		t.Fatalf("a caller fact must be judged by the same rule, got (%v, %q)", ok, reason)
+	}
+}
+
+func TestScreenWithRunningSkipsALeadPendingInARunningCampaignAfterItsOwnRefusals(t *testing.T) {
+	f := newGuardFixture(t)
+	for _, id := range []string{"running", "blocked-running", "recent-running", "free"} {
+		f.leads.facts[id] = reachable()
+	}
+	f.leads.facts["blocked-running"] = campaign.LeadFacts{Found: true, HasIdentity: true, Blocked: true}
+	f.sends.last["recent-running"] = guardNow.Add(-time.Hour)
+	f.facts.running = map[string]bool{"running": true, "blocked-running": true, "recent-running": true}
+
+	got, err := f.eligible.ScreenWithRunning(context.Background(), "ws-1", []string{"running", "blocked-running", "recent-running", "free"}, "bp-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]campaign.SkipReason{
+		"running":         campaign.SkipAlreadyInRunningCampaign,
+		"blocked-running": campaign.SkipBlocked,
+		"recent-running":  campaign.SkipCooldown,
+	}
+	if len(got.Skipped) != len(want) {
+		t.Fatalf("ScreenWithRunning() = %+v, want %v", got.Skipped, want)
+	}
+	for id, reason := range want {
+		if got.Skipped[id] != reason {
+			t.Fatalf("ScreenWithRunning()[%s] = %q, want %q", id, got.Skipped[id], reason)
+		}
+	}
+	if len(f.facts.queries) != 1 || !f.facts.queries[0].Running || f.facts.queries[0].SenderID != "bp-1" {
+		t.Fatalf("one read per chunk carries the sender and the running check, got %+v", f.facts.queries)
+	}
+}
+
+func TestScreenNeverAsksForRunningCampaignsAndSkipsTheSendLogWithoutACooldown(t *testing.T) {
+	f := newGuardFixture(t)
+	f.leads.facts["l-1"] = reachable()
+	f.facts.running = map[string]bool{"l-1": true}
+	if got, err := f.eligible.Screen(context.Background(), "ws-1", []string{"l-1"}, "bp-1"); err != nil || len(got.Skipped) != 0 {
+		t.Fatalf("Screen() = (%+v, %v), a running campaign is the caller's check", got, err)
+	}
+	f.days.days = 0
+	if _, err := f.eligible.ScreenWithRunning(context.Background(), "ws-2", []string{"l-1"}, "bp-1"); err != nil {
+		t.Fatal(err)
+	}
+	if q := f.facts.queries; len(q) != 2 || q[0].Running || q[1].SenderID != "" {
+		t.Fatalf("queries = %+v, want no running check on Screen and no sender without a cooldown", q)
 	}
 }

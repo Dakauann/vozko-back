@@ -864,6 +864,10 @@ func ValidateComponents(components []TemplateComponent) error {
 		return ErrMixedParameterStyles
 	}
 
+	if err := checkComponentParameterNames(components); err != nil {
+		return err
+	}
+
 	if callPermissionCount > 1 {
 		return ErrMultipleCallPermissionRequests
 	}

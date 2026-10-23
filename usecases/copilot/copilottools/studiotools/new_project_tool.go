@@ -13,6 +13,7 @@ import (
 	"vozko/domain/studio"
 	"vozko/domain/tools"
 	"vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/screencall"
 )
 
 type StudioMediaLibrary interface {
@@ -45,13 +46,13 @@ const (
 	sizeSeparator = "x"
 )
 
-var creationWords = screenWords{silent: newProjectSilent, expired: newProjectExpired, unconfirmed: newProjectUnconfirmed, absent: newProjectAbsent, refused: newProjectRefuse}
+var creationWords = screencall.Words{Silent: newProjectSilent, Expired: newProjectExpired, Unconfirmed: newProjectUnconfirmed, Absent: newProjectAbsent, Refused: newProjectRefuse}
 
 type newStudioProjectTool struct{ deps StudioDeps }
 
 func NewNewStudioProjectTool(deps StudioDeps) copilot.Tool { return &newStudioProjectTool{deps: deps} }
 
-func (t *newStudioProjectTool) OfferedOn(view copilot.View) bool { return !view.OnStudio() }
+func (t *newStudioProjectTool) OfferedOn(view copilot.View) bool { return !view.Focused() }
 
 func (t *newStudioProjectTool) Meta() copilot.Meta { return studioEditMeta() }
 
@@ -81,7 +82,7 @@ func (t *newStudioProjectTool) Execute(ctx context.Context, cc copilot.Context, 
 	if cc.Screen == nil {
 		return studioFailure(newProjectNoApp)
 	}
-	reply, err := runOnScreen(ctx, cc, copilot.ScreenCreateProject, order, creationWords)
+	reply, err := screencall.Run(ctx, cc, copilot.ScreenCreateProject, order, creationWords)
 	if err != nil {
 		return studioFailure(err.Error())
 	}

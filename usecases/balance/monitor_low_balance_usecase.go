@@ -78,7 +78,7 @@ func (uc *MonitorLowBalanceUseCase) Run() (int, error) {
 }
 
 func (uc *MonitorLowBalanceUseCase) notify(row balance.LowBalanceRow) error {
-	rate, err := currentExchangeRate(uc.exchangeRate)
+	rate, err := CurrentExchangeRate(uc.exchangeRate)
 	if err != nil {
 		return err
 	}

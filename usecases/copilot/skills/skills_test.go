@@ -151,7 +151,7 @@ func TestASkillOnlyPointsToSkillsOfferedWhereverItIsOffered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	views := []copilot.View{{Surface: copilot.SurfaceStudio, ProjectID: "p1", ProjectKind: copilot.StudioVideo}, {}}
+	views := []copilot.View{{Surface: copilot.SurfaceStudio, ProjectID: "p1", ProjectKind: copilot.StudioVideo}, {Surface: copilot.SurfaceEmailDesign, ProjectID: "p1"}, {}}
 	for _, from := range lib.All() {
 		for _, to := range lib.All() {
 			if to.Name == from.Name || !regexp.MustCompile(`\b`+regexp.QuoteMeta(to.Name)+`\b`).MatchString(from.Description+"\n"+from.Body) {

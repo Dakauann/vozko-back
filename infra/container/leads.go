@@ -52,6 +52,7 @@ func (c *Container) leadCommandDeps() lead_usecase.CommandDeps {
 		Anonymizer:  c.repositories.lead,
 		Memberships: c.repositories.lead,
 		Companies:   c.repositories.lead,
+		EmailsSeen:  c.emailHygiene().Service,
 	}
 }
 

@@ -16,9 +16,7 @@ import (
 )
 
 type OwnershipDeps struct {
-	Workflows interface {
-		FindByID(id string) (*workflow.Workflow, error)
-	}
+	Workflows workflow.PublishedReader
 	CallLists interface {
 		Get(ctx context.Context, workspaceID, id string) (*calllist.List, error)
 	}
@@ -64,7 +62,22 @@ func (o *WorkspaceOwnership) Check(ctx context.Context, workspaceID string, kind
 	if !owned {
 		return buttonaction.ErrParamsNotInWorkspace
 	}
+	if kind == buttonaction.KindStartWorkflow {
+		return o.startsFromAMessage(p.WorkflowID)
+	}
 	return nil
+}
+
+func (o *WorkspaceOwnership) startsFromAMessage(workflowID string) error {
+	running, err := workflow.LoadPublished(o.deps.Workflows, workflowID)
+	if err != nil {
+		return fmt.Errorf("read the version of workflow %s that runs: %w", workflowID, err)
+	}
+	if running == nil {
+		return buttonaction.ErrParamsNotInWorkspace
+	}
+	_, err = workflow.MessageStartTrigger(running.Graph.Nodes)
+	return err
 }
 
 func (o *WorkspaceOwnership) owns(ctx context.Context, workspaceID string, kind buttonaction.Kind, p buttonaction.Params) (bool, error) {

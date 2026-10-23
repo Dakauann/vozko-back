@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/customfield"
+	"vozko/domain/emailaddress"
+	"vozko/domain/emailhygiene"
 	"vozko/domain/leadimport"
 	"vozko/domain/metrics"
 	"vozko/domain/unofficial_whatsapp"
@@ -39,9 +41,19 @@ type ImportDeps struct {
 	Definitions DefinitionSource
 	Seeder      leadimport.Seeder
 	Metrics     metrics.LeadImportMetricsRecorder
+	Emails      ImportEmails
 	Now         func() time.Time
 	NewID       func() string
 	Background  func(func())
+}
+
+type ImportEmails interface {
+	AssessMany(ctx context.Context, workspaceID string, addresses []emailaddress.Address) (map[emailaddress.Address]emailhygiene.Assessment, error)
+}
+
+type StartChoices struct {
+	FixEmailTypos           bool
+	DropUndeliverableEmails bool
 }
 
 type Import struct {
@@ -60,6 +72,7 @@ func NewImport(deps ImportDeps) (*Import, error) {
 		"visibility":  deps.Visibility == nil,
 		"definitions": deps.Definitions == nil,
 		"metrics":     deps.Metrics == nil,
+		"emails":      deps.Emails == nil,
 	}
 	for name, absent := range missing {
 		if absent {
@@ -272,7 +285,7 @@ func (i *Import) DryRun(ctx context.Context, a Actor, id string, s leadimport.Se
 	return job, nil
 }
 
-func (i *Import) Start(ctx context.Context, a Actor, id string) (*leadimport.Job, error) {
+func (i *Import) Start(ctx context.Context, a Actor, id string, choices StartChoices) (*leadimport.Job, error) {
 	job, err := i.owned(ctx, a, id)
 	if err != nil {
 		return nil, err
@@ -291,7 +304,9 @@ func (i *Import) Start(ctx context.Context, a Actor, id string) (*leadimport.Job
 		return nil, err
 	}
 	job.RequestedByAdmin = a.IsAdmin
-	if err := job.Start(i.grants(a, *job.Settings), i.now()); err != nil {
+	grants := i.grants(a, *job.Settings)
+	grants.FixEmailTypos, grants.DropUndeliverableEmails = choices.FixEmailTypos, choices.DropUndeliverableEmails
+	if err := job.Start(grants, i.now()); err != nil {
 		return nil, err
 	}
 	if err := i.deps.Jobs.Save(ctx, job, leadimport.Guard{From: []leadimport.Status{leadimport.StatusAnalyzed}}); err != nil {

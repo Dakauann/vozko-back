@@ -33,7 +33,7 @@ func wiredTemplateSender(templates wo.ConversationTemplateUseCase) *TemplateSend
 func TestATemplateFromTheConversationGoesThroughTheBilledSend(t *testing.T) {
 	templates := &conversationTemplatesStub{}
 
-	id, err := wiredTemplateSender(templates).SendTemplate("entry-1", "whatsapp", "t1", []string{"Ana"}, "u1", "ws1")
+	id, err := wiredTemplateSender(templates).SendTemplate("entry-1", "whatsapp", "t1", []string{"Ana"}, []string{"Prisma"}, "u1", "ws1")
 
 	if err != nil || id != "wamid.1" {
 		t.Fatalf("id %q err %v", id, err)
@@ -42,7 +42,7 @@ func TestATemplateFromTheConversationGoesThroughTheBilledSend(t *testing.T) {
 	got := templates.sends[0]
 	got.IdempotencyKey = ""
 	if len(templates.sends) != 1 || got.WorkspaceID != want.WorkspaceID || got.UserID != want.UserID ||
-		got.EntryID != want.EntryID || got.TemplateID != want.TemplateID || len(got.BodyParams) != 1 || got.BodyParams[0] != "Ana" {
+		got.EntryID != want.EntryID || got.TemplateID != want.TemplateID || len(got.BodyParams) != 1 || got.BodyParams[0] != "Ana" || len(got.HeaderParams) != 1 || got.HeaderParams[0] != "Prisma" {
 		t.Fatalf("sent %+v, want %+v", templates.sends, want)
 	}
 }
@@ -52,7 +52,7 @@ func TestEverySendOfTheSameTemplateIsItsOwnChargedAttempt(t *testing.T) {
 	sender := wiredTemplateSender(templates)
 
 	for i := 0; i < 2; i++ {
-		if _, err := sender.SendTemplate("entry-1", "whatsapp", "t1", nil, "u1", "ws1"); err != nil {
+		if _, err := sender.SendTemplate("entry-1", "whatsapp", "t1", nil, nil, "u1", "ws1"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -64,7 +64,7 @@ func TestEverySendOfTheSameTemplateIsItsOwnChargedAttempt(t *testing.T) {
 }
 
 func TestATemplateSendFailsClosedWithoutTheBilledSend(t *testing.T) {
-	if _, err := NewTemplateSenderService(nil).SendTemplate("entry-1", "whatsapp", "t1", nil, "u1", "ws1"); !errors.Is(err, whatsappTemplate.ErrBillingNotConfigured) {
+	if _, err := NewTemplateSenderService(nil).SendTemplate("entry-1", "whatsapp", "t1", nil, nil, "u1", "ws1"); !errors.Is(err, whatsappTemplate.ErrBillingNotConfigured) {
 		t.Fatalf("err %v, nothing may go out unbilled", err)
 	}
 }
@@ -72,7 +72,7 @@ func TestATemplateSendFailsClosedWithoutTheBilledSend(t *testing.T) {
 func TestATemplateIsOnlySentOnAnOfficialWhatsAppConversation(t *testing.T) {
 	templates := &conversationTemplatesStub{}
 
-	if _, err := wiredTemplateSender(templates).SendTemplate("entry-1", "instagram", "t1", nil, "u1", "ws1"); !errors.Is(err, conversation.ErrEntryTypeInvalid) || len(templates.sends) != 0 {
+	if _, err := wiredTemplateSender(templates).SendTemplate("entry-1", "instagram", "t1", nil, nil, "u1", "ws1"); !errors.Is(err, conversation.ErrEntryTypeInvalid) || len(templates.sends) != 0 {
 		t.Fatalf("err %v sends %d", err, len(templates.sends))
 	}
 }
@@ -80,7 +80,7 @@ func TestATemplateIsOnlySentOnAnOfficialWhatsAppConversation(t *testing.T) {
 func TestATemplateSendRefusalReachesTheCaller(t *testing.T) {
 	templates := &conversationTemplatesStub{err: wo.ErrTemplateForbidden}
 
-	if _, err := wiredTemplateSender(templates).SendTemplate("entry-1", "whatsapp", "t1", nil, "u1", "ws1"); !errors.Is(err, wo.ErrTemplateForbidden) {
+	if _, err := wiredTemplateSender(templates).SendTemplate("entry-1", "whatsapp", "t1", nil, nil, "u1", "ws1"); !errors.Is(err, wo.ErrTemplateForbidden) {
 		t.Fatalf("err %v", err)
 	}
 }

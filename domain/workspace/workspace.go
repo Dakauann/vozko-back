@@ -64,6 +64,7 @@ var (
 	ResourceIssues                      = registerResource("issues")
 	ResourceWorkflows                   = registerResource("workflows")
 	ResourceCalendar                    = registerResource("calendar")
+	ResourceGoogleSheets                = registerResource("google_sheets")
 	ResourceDepartments                 = registerResource("departments")
 	ResourceMessageShortcuts            = registerResource("message_shortcuts")
 	ResourceCallSession                 = registerResource("call_session")
@@ -78,6 +79,7 @@ var (
 	ResourceMercadoLivreAccounts        = registerResource("mercadolivre_accounts")
 	ResourceTikTokAccounts              = registerResource("tiktok_accounts")
 	ResourceWebchatWidgets              = registerResource("webchat_widgets")
+	ResourceEmailInboxes                = registerResource("email_inboxes")
 	ResourceUnofficialWhatsAppInstances = registerResource("unofficial_whatsapp_instances")
 	ResourceUnofficialWhatsAppCampaigns = registerResource("unofficial_whatsapp_campaigns")
 	ResourceUnofficialWhatsAppGroups    = registerResource("unofficial_whatsapp_groups")
@@ -91,6 +93,10 @@ var (
 	ResourceWhatsAppForms               = registerResource("whatsapp_forms")
 	ResourceWhatsAppFormResponses       = registerResource("whatsapp_form_responses")
 	ResourceTeamChat                    = registerResource("team_chat")
+	ResourceEmailMarketing              = registerResource("email_marketing")
+	ResourceCarrierMessaging            = registerResource("carrier_messaging")
+	ResourceCarrierInboxes              = registerResource("carrier_inboxes")
+	ResourceAPIKeys                     = registerResource("api_keys")
 )
 
 func (r Resource) IsValid() bool {
@@ -169,6 +175,61 @@ var ResourceActions = map[Resource][]ActionDefinition{
 	},
 	ResourceTeamChat: {
 		{ActionName: ActionCreate, Description: "Criar grupos no chat da equipe; conversar com os colegas não precisa de permissão"},
+	},
+	ResourceEmailMarketing: {
+		{ActionName: ActionRead, Description: "Ver as campanhas de e-mail, os modelos, os remetentes, os custos e os resultados"},
+		{ActionName: ActionCreate, Description: "Criar campanhas e modelos de e-mail", Requires: []PermissionEntry{
+			{Resource: ResourceEmailMarketing, Action: ActionRead},
+		}},
+		{ActionName: ActionUpdate, Description: "Editar campanhas e modelos, enviar testes, importar consentimentos e validar listas (a validação consome saldo)", Risks: []RiskKind{RiskSpendsBalance}, Requires: []PermissionEntry{
+			{Resource: ResourceEmailMarketing, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Excluir rascunhos de campanhas e modelos de e-mail", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceEmailMarketing, Action: ActionRead},
+		}},
+		{ActionName: ActionStart, Description: "Disparar e retomar campanhas de e-mail e iniciar conversas por e-mail com leads (consome saldo)", Risks: []RiskKind{RiskSpendsBalance, RiskContactsCustomers}, Requires: []PermissionEntry{
+			{Resource: ResourceEmailMarketing, Action: ActionRead},
+		}},
+		{ActionName: ActionStop, Description: "Pausar e parar campanhas de e-mail", Requires: []PermissionEntry{
+			{Resource: ResourceEmailMarketing, Action: ActionRead},
+		}},
+		{ActionName: ActionConfigure, Description: "Conectar domínios, criar remetentes e gerenciar a lista de supressão", Risks: []RiskKind{RiskConnectsAccounts}, Requires: []PermissionEntry{
+			{Resource: ResourceEmailMarketing, Action: ActionRead},
+		}},
+	},
+	ResourceCarrierMessaging: {
+		{ActionName: ActionRead, Description: "Ver as campanhas de RCS e SMS, os remetentes, as regras de envio e os resultados"},
+		{ActionName: ActionCreate, Description: "Criar campanhas de RCS e SMS", Requires: []PermissionEntry{
+			{Resource: ResourceCarrierMessaging, Action: ActionRead},
+		}},
+		{ActionName: ActionUpdate, Description: "Editar campanhas de RCS e SMS e enviar testes", Requires: []PermissionEntry{
+			{Resource: ResourceCarrierMessaging, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Excluir rascunhos de campanhas de RCS e SMS", Risks: []RiskKind{RiskDeletesData}, Requires: []PermissionEntry{
+			{Resource: ResourceCarrierMessaging, Action: ActionRead},
+		}},
+		{ActionName: ActionStart, Description: "Disparar, agendar e retomar campanhas de RCS e SMS (consome saldo)", Risks: []RiskKind{RiskSpendsBalance, RiskContactsCustomers}, Requires: []PermissionEntry{
+			{Resource: ResourceCarrierMessaging, Action: ActionRead},
+		}},
+		{ActionName: ActionStop, Description: "Pausar e parar campanhas de RCS e SMS", Requires: []PermissionEntry{
+			{Resource: ResourceCarrierMessaging, Action: ActionRead},
+		}},
+		{ActionName: ActionConfigure, Description: "Cadastrar e enviar remetentes RCS para aprovação, criar remetentes de SMS, mudar as regras de envio e a lista de descadastro", Risks: []RiskKind{RiskConnectsAccounts}, Requires: []PermissionEntry{
+			{Resource: ResourceCarrierMessaging, Action: ActionRead},
+		}},
+	},
+	ResourceCarrierInboxes: {
+		{ActionName: ActionRead, Description: "Visualizar os remetentes de RCS e SMS que recebem as respostas no atendimento e a automação de cada um"},
+		{ActionName: ActionUpdate, Description: "Escolher o agente ou o fluxo que responde as conversas de cada remetente de RCS e SMS", Risks: []RiskKind{RiskChangesAutomation}},
+	},
+	ResourceAPIKeys: {
+		{ActionName: ActionRead, Description: "Ver as chaves de API do workspace, com o prefixo, as permissões e o último uso"},
+		{ActionName: ActionCreate, Description: "Criar chaves de API que enviam e-mails e leem os envios em nome do workspace (os envios consomem saldo)", Risks: []RiskKind{RiskSpendsBalance, RiskContactsCustomers, RiskManagesAccess}, Requires: []PermissionEntry{
+			{Resource: ResourceAPIKeys, Action: ActionRead},
+		}},
+		{ActionName: ActionDelete, Description: "Revogar chaves de API; a chave para de funcionar na hora", Risks: []RiskKind{RiskManagesAccess}, Requires: []PermissionEntry{
+			{Resource: ResourceAPIKeys, Action: ActionRead},
+		}},
 	},
 	ResourceWhatsAppCampaigns: {
 		{ActionName: ActionCreate, Description: "Criar campanhas de WhatsApp"},
@@ -474,6 +535,10 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionUpdate, Description: "Editar WebChats: sites permitidos, formulário inicial, aparência, verificação de identidade e automação", Risks: []RiskKind{RiskChangesAutomation}},
 		{ActionName: ActionDelete, Description: "Remover WebChats; o chat some dos sites onde foi instalado", Risks: []RiskKind{RiskConnectsAccounts}},
 	},
+	ResourceEmailInboxes: {
+		{ActionName: ActionRead, Description: "Visualizar as caixas de e-mail que recebem as respostas dos clientes no atendimento e as suas configurações"},
+		{ActionName: ActionUpdate, Description: "Editar o departamento, o funil e o agente ou fluxo que atende as respostas de cada caixa de e-mail", Risks: []RiskKind{RiskChangesAutomation}},
+	},
 	ResourceUnofficialWhatsAppInstances: {
 		{ActionName: ActionCreate, Description: "Conectar números de WhatsApp por QR Code", Risks: []RiskKind{RiskConnectsAccounts}},
 		{ActionName: ActionRead, Description: "Visualizar números de WhatsApp conectados por QR Code"},
@@ -526,6 +591,12 @@ var ResourceActions = map[Resource][]ActionDefinition{
 		{ActionName: ActionRead, Description: "Visualizar eventos do calendário"},
 		{ActionName: ActionUpdate, Description: "Editar eventos do calendário"},
 		{ActionName: ActionDelete, Description: "Excluir eventos do calendário"},
+	},
+	ResourceGoogleSheets: {
+		{ActionName: ActionCreate, Description: "Conectar o Google Planilhas e criar planilhas no Google Drive do workspace", Risks: []RiskKind{RiskConnectsAccounts}},
+		{ActionName: ActionRead, Description: "Ver as planilhas, as colunas e a saúde das gravações"},
+		{ActionName: ActionUpdate, Description: "Editar as colunas, adicionar linhas, reenviar linhas retidas e reparar o cabeçalho", Risks: []RiskKind{RiskChangesAutomation}},
+		{ActionName: ActionDelete, Description: "Remover planilhas e desconectar o Google Planilhas; agentes e fluxos que gravam nelas deixam de gravar", Risks: []RiskKind{RiskDeletesData, RiskChangesAutomation}},
 	},
 	ResourceDepartments: {
 		{ActionName: ActionCreate, Description: "Criar departamentos"},

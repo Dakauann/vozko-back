@@ -1,7 +1,9 @@
 package lead_campaign_send
 
 import (
+	"context"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"regexp"
 	"testing"
@@ -58,7 +60,7 @@ func TestGetLastSendTimesBatch_BindsOneArrayForSeventyThousandLeads(t *testing.T
 		WithArgs(argCounter{&args}, argCounter{&args}).
 		WillReturnRows(sqlmock.NewRows([]string{"lead_id", "last_sent_at"}).AddRow(ids[3], sentAt))
 
-	got, err := NewRepository(db).GetLastSendTimesBatch(ids, "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
+	got, err := NewRepository(db).GetLastSendTimesBatch(context.Background(), ids, "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func TestGetLastSendTimesBatch_BindsOneArrayForSeventyThousandLeads(t *testing.T
 func TestGetLastSendTimesBatch_NothingToLookUp(t *testing.T) {
 	var captured []string
 	db, _ := newCapturingDB(t, &captured)
-	got, err := NewRepository(db).GetLastSendTimesBatch([]string{"bogus", ""}, "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
+	got, err := NewRepository(db).GetLastSendTimesBatch(context.Background(), []string{"bogus", ""}, "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
 	if err != nil || len(got) != 0 || len(captured) != 0 {
 		t.Fatalf("got %v, %v after %d queries", got, err, len(captured))
 	}
@@ -93,11 +95,22 @@ func TestGetLastSendTimesBatch_AMalformedIDHasNoSendAndKeepsTheBatchGuarded(t *t
 	mock.ExpectQuery("lead_campaign_sends").
 		WillReturnRows(sqlmock.NewRows([]string{"lead_id", "last_sent_at"}).AddRow(ids[0], sentAt).AddRow(ids[1], sentAt))
 
-	got, err := NewRepository(db).GetLastSendTimesBatch([]string{ids[0], "not-a-uuid", ids[1]}, "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
+	got, err := NewRepository(db).GetLastSendTimesBatch(context.Background(), []string{ids[0], "not-a-uuid", ids[1]}, "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
 	if err != nil {
 		t.Fatalf("one malformed id must not drop the guard for the whole batch: %v", err)
 	}
 	if len(got) != 2 || !got[ids[0]].Equal(sentAt) || !got[ids[1]].Equal(sentAt) {
 		t.Fatalf("every valid lead keeps its last send, got %v", got)
+	}
+}
+
+func TestGetLastSendTimesBatch_AnAbandonedRequestReadsNothing(t *testing.T) {
+	var captured []string
+	db, _ := newCapturingDB(t, &captured)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewRepository(db).GetLastSendTimesBatch(ctx, leadIDs(3), "7f9c2ba4-e88f-4d0b-a7a2-1c2f3e4d5a6b")
+	if !errors.Is(err, context.Canceled) || len(captured) != 0 {
+		t.Fatalf("a canceled request = %v after %d queries", err, len(captured))
 	}
 }

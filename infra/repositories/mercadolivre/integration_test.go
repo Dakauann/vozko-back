@@ -3,8 +3,6 @@ package mercadolivre_repository
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,16 +16,13 @@ import (
 	mldomain "vozko/domain/mercadolivre"
 	"vozko/infra/database"
 	"vozko/infra/database/schema"
+	"vozko/infra/testenv"
 )
 
 func integrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
+	dsn := testenv.Postgres(t).DSN()
 	withPII(t)
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
 	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
 	admin, err := gorm.Open(postgres.Open(dsn), silent)
 	if err != nil {
@@ -415,5 +410,39 @@ func TestTheQuestionBlockMirrorConvergesOnTheBlacklist(t *testing.T) {
 	}
 	if err := f.contacts.SetQuestionsBlocked(ctx, "00000000-0000-0000-0000-000000000000", &fresh); !errors.Is(err, mldomain.ErrContactNotFound) {
 		t.Fatalf("missing contact = %v", err)
+	}
+}
+
+func TestTheSellerNamesRoundTrip(t *testing.T) {
+	db := integrationDB(t)
+	ctx := context.Background()
+	f := newFixture(t, db)
+
+	got, err := f.accounts.FindByID(ctx, f.account.ID)
+	if err != nil || got.DisplayName != "" || got.Label() != f.account.MLUserID {
+		t.Fatalf("an account without names = %+v %v", got, err)
+	}
+	if err := f.accounts.UpdateNames(ctx, f.account.ID, "DGCAFEDHB50478", "Café do Vale"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = f.accounts.FindByID(ctx, f.account.ID)
+	if err != nil || got.Nickname != "DGCAFEDHB50478" || got.DisplayName != "Café do Vale" || got.Label() != "Café do Vale" {
+		t.Fatalf("named account = %+v %v", got, err)
+	}
+	page, err := f.accounts.ListByWorkspace(ctx, mldomain.ListAccountsInput{WorkspaceID: f.account.WorkspaceID, Search: "café"})
+	if err != nil || len(page.Items) != 1 {
+		t.Fatalf("search by display name = %+v %v", page, err)
+	}
+
+	got.DisplayName, got.AccessToken, got.RefreshToken = "Vale Cafés Ltda", "APP_USR-2", "TG-2"
+	if err := f.accounts.Reconnect(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	got, err = f.accounts.FindByID(ctx, f.account.ID)
+	if err != nil || got.DisplayName != "Vale Cafés Ltda" {
+		t.Fatalf("reconnected account = %+v %v", got, err)
+	}
+	if err := f.accounts.UpdateNames(ctx, uuid.NewString(), "LOJA", "Loja"); !errors.Is(err, mldomain.ErrAccountNotFound) {
+		t.Fatalf("missing account = %v", err)
 	}
 }

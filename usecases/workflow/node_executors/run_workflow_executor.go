@@ -34,8 +34,8 @@ func (e *runWorkflowExecutor) Definition() workflow.NodeDefinition {
 			"pass_variables": true,
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "status", Description: "Status da execução do sub-fluxo (completed/error)"},
-			{Key: "sub_state", Description: "Estado final do sub-fluxo (mapa de variáveis)"},
+			{Key: "status", Description: "Status da execução do sub-fluxo (completed/error)", Label: "Situação do sub-fluxo", Type: workflow.VariableTypeText},
+			{Key: "sub_state", Description: "Estado final do sub-fluxo (mapa de variáveis)", Label: "Estado final do sub-fluxo", Type: workflow.VariableTypeObject},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "workflow_id", Label: "Fluxo de trabalho", Type: "select", Required: true, OptionsSource: "workflows"},

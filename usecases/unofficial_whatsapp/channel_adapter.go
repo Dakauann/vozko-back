@@ -275,19 +275,10 @@ func (a *channelAdapter) SendInteractive(
 		return nil, conversation.ErrCapabilityUnsupported
 	}
 
-	style := req.Style
-	if style != uw.InteractiveStyleList {
-		style = uw.InteractiveStyleButtons
-	}
-	if len(req.Options) > uw.MaxButtonOptions {
-		style = uw.InteractiveStyleList
-	}
-
-	options := make([]uw.InteractiveOption, 0, len(req.Options))
-	for i, opt := range req.Options {
-		if i >= uw.MaxOptionsFor(style) {
-			break
-		}
+	style, fits := uw.FitMenu(req.Style, len(req.Options))
+	shown := req.Options[:fits]
+	options := make([]uw.InteractiveOption, 0, len(shown))
+	for _, opt := range shown {
 		options = append(options, uw.InteractiveOption{ID: opt.ID, Title: opt.Title})
 	}
 
@@ -307,7 +298,8 @@ func (a *channelAdapter) SendInteractive(
 		TrackSource: uw.TrackSource,
 		TrackID:     ec.EntryID,
 	})
-	return a.outcome(ctx, instance, ec, result, err)
+	out, err := a.outcome(ctx, instance, ec, result, err)
+	return conversation.ShowingOptions(out, shown), err
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

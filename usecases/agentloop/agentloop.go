@@ -232,6 +232,10 @@ type Inbox interface {
 	Drain(ctx context.Context, sess *Session) []ai.Message
 }
 
+type Closer interface {
+	ClosingNote(ctx context.Context, reply string) string
+}
+
 type Engine struct {
 	AI ai.Service
 }
@@ -292,6 +296,7 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 	unchangedTurns := 0
 	noMutationStreak := 0
 	truncStreak := 0
+	closingNoted := false
 	prevTurnSig := ""
 	sameTurns := 0
 	var measured contextMeasure
@@ -384,6 +389,13 @@ func (e *Engine) Run(ctx context.Context, emit Emit, drv Driver, cfg Config, ses
 				continue
 			}
 			sess.record(cfg.historyCap(), ai.Message{Role: ai.RoleAssistant, Content: content, Reasoning: out.Message.Reasoning})
+			if closer, closes := drv.(Closer); closes && !closingNoted {
+				closingNoted = true
+				if note := closer.ClosingNote(ctx, content); note != "" {
+					sess.record(cfg.historyCap(), ai.Message{Role: ai.RoleUser, Content: AppNotice(note)})
+					continue
+				}
+			}
 			return Outcome{Kind: OutcomeIdle, Valid: prog.Valid}
 		}
 		if out.FinishReason == "length" {

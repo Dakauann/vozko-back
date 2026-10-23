@@ -123,3 +123,26 @@ func TestAPlainSecretIssueCarriesThePathOfTheLiteral(t *testing.T) {
 		})
 	}
 }
+
+func TestLintWarnsAboutCredentialsTypedIntoASavedTestScenario(t *testing.T) {
+	trigger := Node{ID: "t", Type: NodeTypeTriggerWebhook, TestInputs: []TestInput{
+		{ID: "s1", Name: "Sem senha", Input: map[string]interface{}{"nome": "Ana", "token": "{{secret.k}}"}},
+		{ID: "s2", Name: "Com senha", Input: map[string]interface{}{"nome": "Ana", "auth": map[string]interface{}{"password": "p4ss"}}},
+	}}
+	g := &Graph{Nodes: []Node{trigger, {ID: "end", Type: NodeTypeEnd}}, Edges: []Edge{{Source: "t", Target: "end"}}}
+
+	issues := plainSecretIssues(g)
+	if len(issues) != 1 {
+		t.Fatalf("expected one issue for the scenario holding a password, got %+v", issues)
+	}
+	issue := issues[0]
+	if issue.NodeID != "t" || issue.Field != "testInputs" || issue.Path != "testInputs.Com senha.auth.password" || issue.Severity != SeverityAdvisory {
+		t.Fatalf("unexpected shape: %+v", issue)
+	}
+	if !strings.HasPrefix(issue.Message, "Segredo em texto no fluxo") || !strings.Contains(issue.Message, "Com senha") {
+		t.Fatalf("message must open with the rule name and name the scenario: %q", issue.Message)
+	}
+	if issue.Hint == "" {
+		t.Fatalf("hint must say what to do")
+	}
+}

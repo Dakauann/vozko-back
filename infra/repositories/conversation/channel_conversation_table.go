@@ -2,6 +2,7 @@ package conversation_repository
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"gorm.io/gorm"
@@ -39,6 +40,17 @@ func (t ChannelConversationTable) WorkspaceIDForEntry(ctx context.Context, entry
 		return "", t.NotFound
 	}
 	return workspaceID, nil
+}
+
+func (t ChannelConversationTable) CampaignIDForEntry(ctx context.Context, entryID string) (string, error) {
+	var containers []sql.NullString
+	if err := t.model(ctx).Where("id = ?", entryID).Limit(1).Pluck(t.ContainerColumn+"::text", &containers).Error; err != nil {
+		return "", err
+	}
+	if len(containers) == 0 || !containers[0].Valid {
+		return "", nil
+	}
+	return containers[0].String, nil
 }
 
 func (t ChannelConversationTable) ListEntryIDsByWorkspace(ctx context.Context, workspaceID string) ([]string, error) {

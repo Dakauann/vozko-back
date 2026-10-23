@@ -19,7 +19,6 @@ type harness struct {
 	spam      *fakeSpam
 	assigner  *fakeAssigner
 	metrics   *fakeMetrics
-	workflows *fakeWorkflows
 	pauser    *fakePauser
 	shared    *fakeShared
 }
@@ -41,7 +40,6 @@ func newHarness(t *testing.T) *harness {
 		spam:      &fakeSpam{skip: map[string]bool{}},
 		assigner:  &fakeAssigner{},
 		metrics:   &fakeMetrics{},
-		workflows: &fakeWorkflows{},
 		pauser:    &fakePauser{},
 		shared:    newFakeShared(),
 	}
@@ -50,7 +48,7 @@ func newHarness(t *testing.T) *harness {
 		QueueSub: noopQueueSub{}, QueuePub: noopQueuePub{}, Shared: h.shared,
 		Campaigns: h.campaigns, Entries: h.entries, Instances: h.gateway,
 		Sender: h.sender, Budget: NewSendBudget(h.shared), Spam: h.spam, Eligibility: h.spam,
-		Assignments: h.assigner, Metrics: h.metrics, Workflows: h.workflows,
+		Assignments: h.assigner, Metrics: h.metrics,
 		PauseAll: h.pauser,
 	}}
 	uc.attachRunner()
@@ -108,24 +106,8 @@ func TestSuccessfulSendRecordsEverythingItOwes(t *testing.T) {
 	if len(h.metrics.recorded) != 1 {
 		t.Errorf("metrics = %d, want 1", len(h.metrics.recorded))
 	}
-	if len(h.workflows.fired) != 1 {
-		t.Errorf("workflow triggers = %d, want 1", len(h.workflows.fired))
-	}
 	if conv := h.entries.get(entryID).ConversationID; conv == "" {
 		t.Error("entry has no conversation id")
-	}
-}
-
-func TestWorkflowTriggerRespectsTheCampaignSwitch(t *testing.T) {
-	h := newHarness(t)
-	campID, entryID := h.seed(t)
-	c, _ := h.campaigns.FindByID(campID)
-	c.EnableWorkflow = false
-	h.campaigns.put(c)
-
-	h.run(campID, entryID)
-	if len(h.workflows.fired) != 0 {
-		t.Fatalf("a workflow fired with the switch off")
 	}
 }
 

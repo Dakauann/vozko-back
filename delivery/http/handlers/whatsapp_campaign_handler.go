@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"vozko/delivery/http/audiencex"
 	buttonactionhttp "vozko/delivery/http/buttonaction"
 	"vozko/delivery/http/campaignlaunchhttp"
 	"vozko/delivery/http/httpx"
@@ -23,6 +24,7 @@ import (
 	campaigndomain "vozko/domain/campaign"
 	"vozko/domain/shared"
 	"vozko/domain/stage"
+	"vozko/domain/user"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	workflow_domain "vozko/domain/workflow"
@@ -127,6 +129,7 @@ type whatsappCampaignRequest struct {
 	ScheduledStart       *string                            `json:"scheduledStart,omitempty"`
 	StageGroupID         string                             `json:"StageGroupID,omitempty"`
 	PhoneNumbers         []whatsappCampaignPhoneNumberInput `json:"phoneNumbers"`
+	Recipients           *audiencex.AudienceRequest         `json:"recipients,omitempty"`
 	ExitRiskAcknowledged bool                               `json:"exitRiskAcknowledged,omitempty"`
 	SmartPolicy          *smartcampaignhttp.PolicyBody      `json:"smartPolicy,omitempty"`
 }
@@ -154,6 +157,21 @@ func (req whatsappCampaignRequest) toDomainPhoneInputs() []wc.PhoneInput {
 	return inputs
 }
 
+// @Summary		Criar uma campanha oficial
+// @Description	Cria uma campanha com um modelo aprovado e os contatos de uma de duas formas. `phoneNumbers` (como sempre): cada item vira um lead, casado pelo número em qualquer formato ou criado com origem importação, e uma entrada com `variables` e `metadata`. `recipients` (o passo de público, sem `phoneNumbers`): `source: list` com o `listId` de `POST /campaign-audience/whatsapp/lists`, que vira as mesmas entradas, com as colunas ligadas às variáveis e as células vazias de variável com campo sugerido preenchidas pelo lead (linha sem o valor recusa a criação com 422 `audience_list_variables_missing`); ou `source: leads` com a seleção (com `expectedCount` e `fingerprint` da contagem) e as variáveis ligadas a campos do lead, em que cada lead sem o valor precisa de `missing: text` (texto padrão) ou `missing: exclude` (entra como pulado com `missing_variable`), senão 422 `audience_variable_choice_required`. Com `workflowId` ou `agentId`, cada linha precisa ter nos metadados as chaves que o fluxo ou o agente pede, senão 422 `audience_list_metadata_missing`; leads não têm metadados, então a seleção de leads com essas chaves é recusada com 422 `audience_leads_metadata_unavailable`. Leads bloqueados, sem número, com opt-out, no intervalo entre disparos ou em outra campanha em andamento entram pulados com o motivo. As variáveis seguem a ordem do envio, nas duas formas: a variável do texto do cabeçalho primeiro, depois as do corpo (nomeadas ou numeradas); no envio a do cabeçalho vai no cabeçalho e as do corpo no corpo, com o nome quando o modelo usa variáveis nomeadas. As ondas de `smartPolicy` valem para as duas formas.
+// @Tags			WhatsApp Campaigns
+// @Accept			json
+// @Produce		json
+// @Param			body	body		object	true	"Campanha, com phoneNumbers ou recipients"
+// @Success		201		{object}	map[string]interface{}
+// @Failure		400		{object}	response.ErrorResponse	"audience_source_ambiguous, audience_variable_unknown, selection_*"
+// @Failure		404		{object}	response.ErrorResponse	"audience_list_not_found"
+// @Failure		409		{object}	response.ErrorResponse	"selection_changed"
+// @Failure		410		{object}	response.ErrorResponse	"audience_list_expired"
+// @Failure		422		{object}	response.ErrorResponse	"audience_variable_choice_required, audience_list_variables_missing, audience_list_metadata_missing, audience_leads_metadata_unavailable, audience_list_channel_mismatch"
+// @Failure		503		{object}	response.ErrorResponse	"audience_busy"
+// @Security		BearerAuth
+// @Router			/whatsapp/campaigns [post]
 func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req whatsappCampaignRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -169,6 +187,40 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 
 	workspaceID := middleware.GetWorkspaceID(r)
 
+	campaign, err := req.toCampaign(workspaceID, claims)
+	if errors.Is(err, errScheduledStartFormat) {
+		response.WriteError(w, http.StatusBadRequest, "Invalid scheduledStart format, expected RFC3339 (e.g. 2026-02-23T10:00:00Z)", nil)
+		return
+	}
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	r = withDepartmentCreationScope(r, req.DepartmentID)
+
+	created, err := h.createUseCase.Execute(r.Context(), campaign)
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+
+	h.cloneStages(r, req, created)
+
+	response.WriteSuccess(w, http.StatusCreated, created)
+}
+
+var errScheduledStartFormat = errors.New("scheduledStart must be RFC3339")
+
+func (h *WhatsAppCampaignHandler) cloneStages(r *http.Request, req whatsappCampaignRequest, created *wc.Campaign) {
+	if req.PipelineID == "" && req.StageGroupID != "" && h.cloneStagesUseCase != nil {
+		if err := h.cloneStagesUseCase.Execute(middleware.GetWorkspaceID(r), created.ID, "whatsapp", req.StageGroupID); err != nil {
+			log.Printf("[WhatsAppCampaignHandler] clone stages from group %s: %v", req.StageGroupID, err)
+		}
+	}
+}
+
+func (req whatsappCampaignRequest) toCampaign(workspaceID string, claims *auth.Claims) (*wc.Campaign, error) {
 	campaign := &wc.Campaign{
 		WorkspaceID:          workspaceID,
 		BusinessPhoneID:      req.BusinessPhoneID,
@@ -190,11 +242,11 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 	if req.ExitRiskAcknowledged {
 		campaign.ExitRiskAcknowledgedBy = claims.UserID
 	}
+	campaign.Recipients = req.Recipients.Request(claims.UserID, claims.Role == string(user.RoleAdmin))
 	if req.SmartPolicy != nil {
 		policy, err := req.SmartPolicy.ToDomain()
 		if err != nil {
-			h.handleDomainError(w, err)
-			return
+			return nil, err
 		}
 		campaign.WavePolicy = &policy
 	}
@@ -202,27 +254,11 @@ func (h *WhatsAppCampaignHandler) Create(w http.ResponseWriter, r *http.Request)
 	if req.ScheduledStart != nil && *req.ScheduledStart != "" {
 		parsed, parseErr := time.Parse(time.RFC3339, *req.ScheduledStart)
 		if parseErr != nil {
-			response.WriteError(w, http.StatusBadRequest, "Invalid scheduledStart format, expected RFC3339 (e.g. 2026-02-23T10:00:00Z)", nil)
-			return
+			return nil, errScheduledStartFormat
 		}
 		campaign.ScheduledStart = parsed
 	}
-
-	r = withDepartmentCreationScope(r, req.DepartmentID)
-
-	created, err := h.createUseCase.Execute(r.Context(), campaign)
-	if err != nil {
-		h.handleDomainError(w, err)
-		return
-	}
-
-	if req.PipelineID == "" && req.StageGroupID != "" && h.cloneStagesUseCase != nil {
-		if err := h.cloneStagesUseCase.Execute(middleware.GetWorkspaceID(r), created.ID, "whatsapp", req.StageGroupID); err != nil {
-			log.Printf("[WhatsAppCampaignHandler] clone stages from group %s: %v", req.StageGroupID, err)
-		}
-	}
-
-	response.WriteSuccess(w, http.StatusCreated, created)
+	return campaign, nil
 }
 
 // @Summary		Editar uma campanha oficial
@@ -888,7 +924,7 @@ func (h *WhatsAppCampaignHandler) ConfirmClearHistory(w http.ResponseWriter, r *
 }
 
 func (h *WhatsAppCampaignHandler) handleDomainError(w http.ResponseWriter, err error) {
-	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) || writeCampaignEditRefusal(w, err) || buttonactionhttp.WriteRefusal(w, err) || smartcampaignhttp.WriteRefusal(w, err) {
+	if httpx.WriteSelectionSendRefusal(w, err) || writeCampaignAutomationRefusal(w, err) || writeCampaignEditRefusal(w, err) || buttonactionhttp.WriteRefusal(w, err) || smartcampaignhttp.WriteRefusal(w, err) || audiencex.WriteRefusal(w, err) {
 		return
 	}
 	switch {

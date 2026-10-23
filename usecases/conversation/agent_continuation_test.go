@@ -378,17 +378,24 @@ func TestTheContinuationWaitsForAnInboundTurnOnTheSameConversation(t *testing.T)
 		t.Fatal(err)
 	}
 
-	done := make(chan string)
-	go func() { done <- c.Handle(context.Background(), finished(workflow.RunStatusCompleted, true)) }()
+	ctx := untilSettled(t)
+	done := make(chan string, 1)
+	go func() { done <- c.Handle(ctx, finished(workflow.RunStatusCompleted, true)) }()
 
+	h.lockState.awaitWaiter(t, ctx)
 	select {
 	case outcome := <-done:
 		t.Fatalf("the continuation ran (%q) while an inbound turn held the conversation", outcome)
-	case <-time.After(20 * time.Millisecond):
+	default:
 	}
 	release()
-	if outcome := <-done; outcome != "sent" {
-		t.Fatalf("outcome = %q", outcome)
+	select {
+	case outcome := <-done:
+		if outcome != "sent" {
+			t.Fatalf("outcome = %q", outcome)
+		}
+	case <-ctx.Done():
+		t.Fatal("the continuation never ran after the inbound turn finished")
 	}
 }
 
@@ -396,8 +403,7 @@ func TestTheContinuationHoldsTheConversationWhileItRuns(t *testing.T) {
 	h := newContinuationHarness()
 	held := false
 	h.channels.onTurn = func() {
-		_, err := NewAgentTurnLock(h.lockState).Acquire(timeoutCtx(t), "entry-1", shared.EntryTypeTelegram)
-		held = errors.Is(err, context.DeadlineExceeded)
+		_, held = h.lockState.holder(agentTurnKey("entry-1", shared.EntryTypeTelegram))
 	}
 
 	h.continuation(t).Handle(context.Background(), finished(workflow.RunStatusCompleted, true))
@@ -405,12 +411,6 @@ func TestTheContinuationHoldsTheConversationWhileItRuns(t *testing.T) {
 	if !held {
 		t.Fatal("an inbound turn could start while the continuation was replying")
 	}
-}
-
-func timeoutCtx(t *testing.T) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
-	t.Cleanup(cancel)
-	return ctx
 }
 
 func TestAContinuationReplayedByTheSweepAfterTheOriginalWasDeliveredSendsNothing(t *testing.T) {

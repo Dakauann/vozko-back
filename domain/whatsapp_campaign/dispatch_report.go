@@ -116,3 +116,7 @@ type DispatchExportSink interface {
 type ExportDispatchReportUseCase interface {
 	Export(ctx context.Context, access ReportAccess, period ReportPeriod, sink DispatchExportSink) error
 }
+
+func (a ReportAccess) AllowsCampaign(c *Campaign) bool {
+	return c != nil && a.AllowDepartment != nil && a.WorkspaceID != "" && c.WorkspaceID == a.WorkspaceID && a.AllowDepartment(c.DepartmentID)
+}

@@ -3,6 +3,7 @@ package conversationnotehttp
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +20,11 @@ import (
 	"vozko/infra/http/middleware"
 )
 
+const (
+	uploadOverhead  = 1 << 20
+	multipartMemory = 1 << 20
+)
+
 type Handler struct {
 	notes conversationnote.UseCases
 }
@@ -31,7 +37,7 @@ func NewHandler(notes conversationnote.UseCases) *Handler {
 // @Description	Lista as notas internas da conversa, da mais nova para a mais antiga. Notas internas são só da equipe: nunca vão para o contato, nem para a IA, a análise, os fluxos, as exportações ou o chat do site. Vale o mesmo acesso de abrir a conversa (departamento, responsável e `view_others`) mais `conversations:read`. Para a próxima página, envie em `before` o `created_at` da nota mais antiga recebida; `has_more` diz se ainda há notas mais antigas. Notas apagadas não aparecem.
 // @Tags			Notas Internas
 // @Produce		json
-// @Param			entryType	path		string	true	"Canal da conversa: whatsapp, unofficial_whatsapp, instagram, facebook, telegram ou webchat"
+// @Param			entryType	path		string	true	"Canal da conversa: whatsapp, unofficial_whatsapp, instagram, facebook, telegram, webchat ou email"
 // @Param			entryId		path		string	true	"ID da conversa"
 // @Param			before		query		string	false	"Só notas criadas antes deste instante (RFC 3339, aceita nanossegundos)"
 // @Param			limit		query		int		false	"Quantidade (padrão 50, máximo 100)"
@@ -63,15 +69,15 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Criar uma nota interna
-// @Description	Grava uma nota interna na conversa, visível só para a equipe que pode ver a conversa. O texto tem de 1 a 4000 caracteres (sem contar espaços nas pontas). `mentions` traz até 20 IDs de usuários (repetidos contam uma vez); IDs que não são membros do workspace são descartados sem erro e não ficam gravados. Cada mencionado que pode ver a conversa recebe uma notificação na categoria `conversations`, com o autor e o contato no título e um link para a conversa (nunca o texto da nota); quem não pode ver a conversa não é notificado nem fica sabendo da nota. Os inscritos na conversa recebem `conversation:note` pelo WebSocket de conversas.
+// @Description	Grava uma nota interna na conversa, visível só para a equipe que pode ver a conversa. O texto tem até 4000 caracteres (sem contar espaços nas pontas) e só pode ficar vazio quando a nota leva imagens. `mentions` traz até 20 IDs de usuários (repetidos contam uma vez); IDs que não são membros do workspace são descartados sem erro e não ficam gravados. `image_ids` traz até 4 imagens enviadas antes por `POST /conversations/{entryType}/{entryId}/notes/images`, na ordem em que aparecem (repetidas contam uma vez); cada uma precisa ser uma imagem desta conversa. Cada mencionado que pode ver a conversa recebe uma notificação na categoria `conversations`, com o autor e o contato no título e um link para a conversa (nunca o texto nem as imagens da nota); quem não pode ver a conversa não é notificado nem fica sabendo da nota. Os inscritos na conversa recebem `conversation:note` pelo WebSocket de conversas, já com as imagens.
 // @Tags			Notas Internas
 // @Accept			json
 // @Produce		json
 // @Param			entryType	path		string				true	"Canal da conversa"
 // @Param			entryId		path		string				true	"ID da conversa"
-// @Param			request		body		CreateNoteRequest	true	"Texto e menções"
+// @Param			request		body		CreateNoteRequest	true	"Texto, menções e imagens"
 // @Success		201	{object}	NoteEnvelope
-// @Failure		400	{object}	response.ErrorResponse	"invalid_entry_type, body_required, body_too_long ou too_many_mentions"
+// @Failure		400	{object}	response.ErrorResponse	"invalid_entry_type, body_required, body_too_long, too_many_mentions, too_many_images, image_not_found, image_type ou image_too_large"
 // @Failure		401	{object}	response.ErrorResponse
 // @Failure		403	{object}	response.ErrorResponse	"forbidden: sem acesso a esta conversa"
 // @Security		BearerAuth
@@ -84,8 +90,9 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateNoteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.WriteInvalidBodyError(w, map[string]string{
-			"body":     "string (obrigatório, de 1 a 4000 caracteres)",
-			"mentions": "string[] (opcional, até 20 IDs de usuários)",
+			"body":      "string (até 4000 caracteres; obrigatório sem imagens)",
+			"mentions":  "string[] (opcional, até 20 IDs de usuários)",
+			"image_ids": "string[] (opcional, até 4 IDs de imagens da nota)",
 		})
 		return
 	}
@@ -95,12 +102,70 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 		Entry:       entry,
 		Body:        req.Body,
 		Mentions:    req.Mentions,
+		ImageIDs:    req.ImageIDs,
 	})
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
 	response.WriteSuccess(w, http.StatusCreated, NoteEnvelope{Note: conversationnoteview.Of(note)})
+}
+
+// @Summary		Enviar uma imagem para uma nota interna
+// @Description	Recebe uma imagem (multipart/form-data, campo `image`) para anexar depois a uma nota interna com `image_ids`. O tipo é lido do conteúdo do arquivo, nunca do nome nem do cabeçalho: só JPEG, PNG, WebP e GIF, até 10 MB cada. A imagem fica guardada com as mídias da conversa, com largura, altura e thumbhash quando o arquivo permite medir. Ela nunca vai para o contato, nem para a IA, a análise, os fluxos, as exportações ou o chat do site, e some da conversa junto com a nota quando a nota é apagada; os arquivos saem quando a conversa é removida. Vale o mesmo acesso de ler as notas (departamento, responsável, `view_others` e `conversations:read`).
+// @Tags			Notas Internas
+// @Accept			mpfd
+// @Produce		json
+// @Param			entryType	path		string	true	"Canal da conversa"
+// @Param			entryId		path		string	true	"ID da conversa"
+// @Param			image		formData	file	true	"Imagem JPEG, PNG, WebP ou GIF (até 10 MB)"
+// @Success		201	{object}	NoteImageEnvelope
+// @Failure		400	{object}	response.ErrorResponse	"invalid_entry_type, image_required ou image_type"
+// @Failure		401	{object}	response.ErrorResponse
+// @Failure		403	{object}	response.ErrorResponse	"forbidden: sem acesso a esta conversa"
+// @Failure		413	{object}	response.ErrorResponse	"image_too_large"
+// @Failure		503	{object}	response.ErrorResponse	"storage_unavailable"
+// @Security		BearerAuth
+// @Router			/conversations/{entryType}/{entryId}/notes/images [post]
+func (h *Handler) AttachImage(w http.ResponseWriter, r *http.Request) {
+	entry, ok := entryFromPath(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, conversationnote.MaxImageBytes+uploadOverhead)
+	if err := r.ParseMultipartForm(multipartMemory); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeDomainError(w, conversationnote.ErrImageTooLarge)
+			return
+		}
+		writeDomainError(w, conversationnote.ErrImageRequired)
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		writeDomainError(w, conversationnote.ErrImageRequired)
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, conversationnote.MaxImageBytes+1))
+	if err != nil {
+		writeDomainError(w, conversationnote.ErrImageRequired)
+		return
+	}
+
+	img, err := h.notes.AttachImage(r.Context(), personFrom(r), conversationnote.ImageUpload{
+		WorkspaceID: middleware.GetWorkspaceID(r),
+		Entry:       entry,
+		FileName:    header.Filename,
+		Data:        data,
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusCreated, NoteImageEnvelope{Image: conversationnoteview.ImageOf(img)})
 }
 
 // @Summary		Apagar uma nota interna
@@ -191,6 +256,18 @@ func writeDomainError(w http.ResponseWriter, err error) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "body_too_long", "A note can have at most 4000 characters", nil)
 	case errors.Is(err, conversationnote.ErrTooManyMentions):
 		response.WriteErrorWithCode(w, http.StatusBadRequest, "too_many_mentions", "A note can mention at most 20 people", nil)
+	case errors.Is(err, conversationnote.ErrTooManyImages):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "too_many_images", "Uma nota leva no máximo 4 imagens", nil)
+	case errors.Is(err, conversationnote.ErrImageRequired):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "image_required", "Envie a imagem no campo image", nil)
+	case errors.Is(err, conversationnote.ErrImageType):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "image_type", "Só imagens JPEG, PNG, WebP ou GIF entram em uma nota", nil)
+	case errors.Is(err, conversationnote.ErrImageTooLarge):
+		response.WriteErrorWithCode(w, http.StatusRequestEntityTooLarge, "image_too_large", "Cada imagem pode ter até 10 MB", nil)
+	case errors.Is(err, conversationnote.ErrImageNotFound):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "image_not_found", "A imagem não foi encontrada nesta conversa", nil)
+	case errors.Is(err, conversationnote.ErrStorageMissing):
+		response.WriteErrorWithCode(w, http.StatusServiceUnavailable, "storage_unavailable", "O armazenamento de imagens não está disponível", nil)
 	default:
 		response.WriteError(w, http.StatusInternalServerError, "Internal server error", nil)
 	}

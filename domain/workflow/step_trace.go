@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"time"
 
+	"vozko/domain/conversation"
 	"vozko/domain/redact"
 	"vozko/domain/shared"
 	"vozko/domain/tracepayload"
@@ -31,6 +33,7 @@ const (
 	ErrorKindWrongWorkflowType    ErrorKind = "wrong_workflow_type"
 	ErrorKindMissingMocks         ErrorKind = "missing_mocks"
 	ErrorKindTargetNotReached     ErrorKind = "target_not_reached"
+	ErrorKindWindowClosed         ErrorKind = "window_closed"
 )
 
 type NodeFailure struct {
@@ -75,6 +78,8 @@ func ClassifyError(err error) ErrorKind {
 		return ErrorKindGate
 	case errors.Is(err, shared.ErrEgressBlocked):
 		return ErrorKindTransport
+	case errors.Is(err, conversation.ErrWindowClosed):
+		return ErrorKindWindowClosed
 	}
 	for _, guard := range guardErrors {
 		if errors.Is(err, guard) {
@@ -86,6 +91,17 @@ func ClassifyError(err error) ErrorKind {
 		return ErrorKindTimeout
 	}
 	return ErrorKindInternal
+}
+
+var stepErrorMessages = map[ErrorKind]string{
+	ErrorKindWindowClosed: WindowClosedFix,
+}
+
+func StepErrorMessage(kind ErrorKind, technical string) string {
+	if message, coded := stepErrorMessages[kind]; coded {
+		return message
+	}
+	return technical
 }
 
 const MaxErrorChain = 16
@@ -120,6 +136,12 @@ func ResolvedConfig(node *Node, state *RunState) map[string]interface{} {
 	}
 	if node.Type.Canonical() == NodeTypeActionCode {
 		return node.Config
+	}
+	if node.Type.SendsToCustomer() {
+		return renderConfig(node.Config, func(text string) string {
+			rendered, _ := RenderCustomerText(text, state)
+			return rendered
+		})
 	}
 	return InterpolateMap(node.Config, state, nil)
 }
@@ -224,10 +246,36 @@ func FitScriptLogs(logs []ScriptLog) []ScriptLog {
 }
 
 type StepTrace struct {
-	exchanges []HTTPExchange
-	logs      []ScriptLog
-	stack     string
-	scrubbers []redact.Redactor
+	exchanges  []HTTPExchange
+	logs       []ScriptLog
+	stack      string
+	scrubbers  []redact.Redactor
+	unresolved []string
+}
+
+const (
+	MaxUnresolvedRefs     = 50
+	maxUnresolvedRefBytes = 200
+)
+
+func (t *StepTrace) RecordUnresolved(refs ...string) {
+	if t == nil {
+		return
+	}
+	for _, ref := range refs {
+		ref, _ = tracepayload.Text(ref, maxUnresolvedRefBytes)
+		if len(t.unresolved) >= MaxUnresolvedRefs || slices.Contains(t.unresolved, ref) {
+			continue
+		}
+		t.unresolved = append(t.unresolved, ref)
+	}
+}
+
+func (t *StepTrace) Unresolved() []string {
+	if t == nil {
+		return nil
+	}
+	return t.unresolved
 }
 
 func (t *StepTrace) RecordHTTP(x HTTPExchange) {

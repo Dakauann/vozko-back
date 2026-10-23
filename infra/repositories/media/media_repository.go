@@ -28,15 +28,35 @@ func (r *MediaRepository) GetMediaByID(mediaID string) (*media.Media, error) {
 		return nil, media.ErrMediaNotFound
 	}
 
+	return r.first(r.db.Where("id = ?", mediaID))
+}
+
+func (r *MediaRepository) GetMediaForWorkspace(workspaceID, mediaID string) (*media.Media, error) {
+	if _, err := uuid.Parse(mediaID); err != nil {
+		return nil, media.ErrMediaNotFound
+	}
+	if _, err := uuid.Parse(workspaceID); err != nil {
+		return nil, media.ErrMediaNotFound
+	}
+	return r.first(r.db.Where("id = ? AND workspace_id = ?", mediaID, workspaceID))
+}
+
+func (r *MediaRepository) GetMediaForWorkspaceByURL(workspaceID, url string) (*media.Media, error) {
+	if _, err := uuid.Parse(workspaceID); err != nil || url == "" {
+		return nil, media.ErrMediaNotFound
+	}
+	return r.first(r.db.Where("workspace_id = ? AND url = ?", workspaceID, url))
+}
+
+func (r *MediaRepository) first(scope *gorm.DB) (*media.Media, error) {
 	var mediaSchema schema.Media
-	if err := r.db.First(&mediaSchema, "id = ?", mediaID).Error; err != nil {
+	if err := scope.First(&mediaSchema).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, media.ErrMediaNotFound
 		}
 		return nil, err
 	}
-
-	mediaItem := &media.Media{
+	return &media.Media{
 		ID:          mediaSchema.ID,
 		WorkspaceID: mediaSchema.WorkspaceID,
 		URL:         mediaSchema.URL,
@@ -44,9 +64,7 @@ func (r *MediaRepository) GetMediaByID(mediaID string) (*media.Media, error) {
 		CreatedAt:   mediaSchema.CreatedAt,
 		Type:        media.MediaType(mediaSchema.Type),
 		Description: mediaSchema.Description,
-	}
-
-	return mediaItem, nil
+	}, nil
 }
 
 func (r *MediaRepository) CountByWorkspaceIDAndType(workspaceID string, mediaType media.MediaType) (int64, error) {

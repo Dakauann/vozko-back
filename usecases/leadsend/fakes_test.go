@@ -62,7 +62,7 @@ type fakeLeads struct {
 	calls int
 }
 
-func (f *fakeLeads) FindByIDs(ws string, ids []string) ([]*lead.Lead, error) {
+func (f *fakeLeads) BindingLeads(_ context.Context, ws string, ids []string) ([]*lead.Lead, error) {
 	f.calls++
 	var out []*lead.Lead
 	for _, id := range ids {

@@ -1,0 +1,12 @@
+{
+  "messages": {
+    "msg": {
+      "received": "2026-05-04T15:38:56",
+      "reference": "reference2",
+      "to": "0031612345678",
+      "recipient": { "number": "0031612345678", "whatsapp": { "user_id": "NL.84827364598365" } },
+      "status": { "code": "2", "errorCode": "", "errorDescription": "Delivered" },
+      "operator": ""
+    }
+  }
+}

@@ -12,13 +12,15 @@ import (
 
 type campaignLibraryStub struct {
 	media.MediaRepository
-	row *media.Media
-	err error
-	ids []string
+	row        *media.Media
+	err        error
+	ids        []string
+	workspaces []string
 }
 
-func (s *campaignLibraryStub) GetMediaByID(id string) (*media.Media, error) {
+func (s *campaignLibraryStub) GetMediaForWorkspace(workspaceID, id string) (*media.Media, error) {
 	s.ids = append(s.ids, id)
+	s.workspaces = append(s.workspaces, workspaceID)
 	return s.row, s.err
 }
 
@@ -103,7 +105,7 @@ func campaignMediaInput() SendCampaignMessageInput {
 }
 
 func TestCampaignMediaIsResolvedFromTheWorkspaceLibrary(t *testing.T) {
-	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4"}}
+	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4", Type: media.MediaTypeProductVideo}}
 	svc, adapter, _, _ := newCampaignMediaSender(t, library)
 
 	msg, err := svc.SendCampaignMessage(campaignMediaInput())
@@ -113,8 +115,8 @@ func TestCampaignMediaIsResolvedFromTheWorkspaceLibrary(t *testing.T) {
 	if msg == nil {
 		t.Fatal("no message was recorded for a delivered attachment")
 	}
-	if len(library.ids) != 1 || library.ids[0] != "lib-1" {
-		t.Errorf("library consulted with %v, want the campaign's own media id once", library.ids)
+	if len(library.ids) != 1 || library.ids[0] != "lib-1" || library.workspaces[0] != "ws-1" {
+		t.Errorf("library consulted with %v in %v, want the campaign's own media id once, in its workspace", library.ids, library.workspaces)
 	}
 	if len(adapter.requests) != 1 {
 		t.Fatalf("adapter received %d media sends, want 1", len(adapter.requests))
@@ -132,7 +134,7 @@ func TestCampaignMediaIsResolvedFromTheWorkspaceLibrary(t *testing.T) {
 }
 
 func TestCampaignMediaIsBridgedIntoTheConversationForTheTranscript(t *testing.T) {
-	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4"}}
+	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4", Type: media.MediaTypeProductVideo}}
 	svc, _, convMedia, msgs := newCampaignMediaSender(t, library)
 
 	if _, err := svc.SendCampaignMessage(campaignMediaInput()); err != nil {
@@ -163,7 +165,7 @@ func TestCampaignMediaIsBridgedIntoTheConversationForTheTranscript(t *testing.T)
 }
 
 func TestCampaignSendSurvivesAFailedTranscriptBridge(t *testing.T) {
-	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4"}}
+	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4", Type: media.MediaTypeProductVideo}}
 	svc, adapter, convMedia, msgs := newCampaignMediaSender(t, library)
 	convMedia.failing = true
 
@@ -179,12 +181,15 @@ func TestCampaignSendSurvivesAFailedTranscriptBridge(t *testing.T) {
 }
 
 func TestCampaignMediaFromAnotherWorkspaceIsRefused(t *testing.T) {
-	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-OTHER", URL: "https://cdn/promo.mp4"}}
+	library := &campaignLibraryStub{row: &media.Media{ID: "lib-1", WorkspaceID: "ws-OTHER", URL: "https://cdn/promo.mp4", Type: media.MediaTypeProductVideo}}
 	svc, adapter, _, _ := newCampaignMediaSender(t, library)
 
 	_, err := svc.SendCampaignMessage(campaignMediaInput())
 	if !errors.Is(err, media.ErrMediaNotFound) {
 		t.Errorf("err = %v, want it indistinguishable from a missing row so ids cannot be probed across workspaces", err)
+	}
+	if code := conversation.SendFailureCode(err, "send_failed"); code != conversation.MediaNotSendableCode {
+		t.Errorf("code = %q, want %q", code, conversation.MediaNotSendableCode)
 	}
 	if len(adapter.requests) != 0 {
 		t.Error("another workspace's file reached the contact")
@@ -204,6 +209,30 @@ func TestCampaignMediaMissingFromTheLibraryIsRefused(t *testing.T) {
 			}
 			if len(adapter.requests) != 0 {
 				t.Error("the adapter was called for media that does not resolve")
+			}
+		})
+	}
+}
+
+func TestCampaignMediaIsRefusedWithoutAWorkspaceOrOfANonMessageKind(t *testing.T) {
+	cases := map[string]struct {
+		row       *media.Media
+		workspace string
+	}{
+		"no workspace on the send": {&media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/promo.mp4", Type: media.MediaTypeProductVideo}, ""},
+		"lead import sheet":        {&media.Media{ID: "lib-1", WorkspaceID: "ws-1", URL: "https://cdn/leads.csv", Type: media.MediaTypeLeadImport}, "ws-1"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			svc, adapter, _, _ := newCampaignMediaSender(t, &campaignLibraryStub{row: c.row})
+			in := campaignMediaInput()
+			in.WorkspaceID = c.workspace
+			_, err := svc.SendCampaignMessage(in)
+			if !errors.Is(err, conversation.ErrMediaNotSendable) {
+				t.Fatalf("err = %v, want ErrMediaNotSendable", err)
+			}
+			if len(adapter.requests) != 0 {
+				t.Fatal("a file that is not sendable reached the contact")
 			}
 		})
 	}

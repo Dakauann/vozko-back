@@ -36,6 +36,7 @@ var errorCodes = []struct {
 	{workflow.ErrWorkflowNotActive, "workflow_not_active"},
 	{workflow.ErrInvalidWorkflowType, "workflow_type_invalid"},
 	{workflow.ErrGraphNoTrigger, "workflow_no_trigger"},
+	{workflow.ErrWorkflowNeedsMessageTrigger, workflow.NeedsMessageTriggerCode},
 	{workflow.ErrWorkspaceAtCapacity, "workflow_workspace_at_capacity"},
 }
 
@@ -49,6 +50,7 @@ var refusals = []error{
 	workflow.ErrWorkflowNotActive,
 	workflow.ErrInvalidWorkflowType,
 	workflow.ErrGraphNoTrigger,
+	workflow.ErrWorkflowNeedsMessageTrigger,
 	calllist.ErrLeadNotAdmitted,
 	calllist.ErrListNotFound,
 	calllist.ErrListNotActive,

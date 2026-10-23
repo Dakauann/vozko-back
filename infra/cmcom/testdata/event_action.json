@@ -1,0 +1,10 @@
+{
+  "reference": "a73bc8c0-ecd6-4b7b-a7de-b6b8e527bf73",
+  "messageContext": "your_reference",
+  "from": { "number": "003161234678" },
+  "to": { "number": "00cm.com_agent" },
+  "event": { "type": "SuggestionClick", "custom": { "postbackdata": "Call us", "label": "Call us" } },
+  "groupings": [ "", "", "" ],
+  "timeUtc": "2025-10-23T12:14:17",
+  "channel": "RCS"
+}

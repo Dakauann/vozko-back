@@ -42,6 +42,7 @@ func redactedStep(entry *workflow.WorkflowRunLog, scrubbers ...redact.Redactor) 
 		cp.Stack = r.String(cp.Stack)
 		cp.ScriptLogs = redactedScriptLogs(r, cp.ScriptLogs)
 		cp.HTTP = redactedExchanges(r, cp.HTTP)
+		cp.UnresolvedRefs = r.Strings(cp.UnresolvedRefs)
 	}
 	return &cp
 }

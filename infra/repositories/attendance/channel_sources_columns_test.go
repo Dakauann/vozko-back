@@ -10,26 +10,34 @@ import (
 	gormschema "gorm.io/gorm/schema"
 
 	"vozko/domain/attendance"
+	mldomain "vozko/domain/mercadolivre"
 	"vozko/domain/shared"
 
 	"vozko/infra/database/schema"
 )
 
 var aliasModels = map[string]interface{}{
-	"wce":  &schema.WhatsAppCampaignEntry{},
-	"wc":   &schema.WhatsAppCampaign{},
-	"igc":  &schema.InstagramConversation{},
-	"iga":  &schema.InstagramAccount{},
-	"igct": &schema.InstagramContact{},
-	"tgc":  &schema.TelegramConversation{},
-	"tga":  &schema.TelegramAccount{},
-	"tgct": &schema.TelegramContact{},
-	"uwc":  &schema.UnofficialWhatsAppConversation{},
-	"uwi":  &schema.UnofficialWhatsAppInstance{},
-	"uwct": &schema.UnofficialWhatsAppContact{},
-	"fbc":  &schema.FacebookConversation{},
-	"fbp":  &schema.FacebookPage{},
-	"fbct": &schema.FacebookContact{},
+	"wce":   &schema.WhatsAppCampaignEntry{},
+	"wc":    &schema.WhatsAppCampaign{},
+	"igc":   &schema.InstagramConversation{},
+	"iga":   &schema.InstagramAccount{},
+	"igct":  &schema.InstagramContact{},
+	"tgc":   &schema.TelegramConversation{},
+	"tga":   &schema.TelegramAccount{},
+	"tgct":  &schema.TelegramContact{},
+	"uwc":   &schema.UnofficialWhatsAppConversation{},
+	"uwi":   &schema.UnofficialWhatsAppInstance{},
+	"uwct":  &schema.UnofficialWhatsAppContact{},
+	"fbc":   &schema.FacebookConversation{},
+	"fbp":   &schema.FacebookPage{},
+	"fbct":  &schema.FacebookContact{},
+	"mla":   &schema.MercadoLivreAccount{},
+	"rcc":   &schema.RCSConversation{},
+	"rcsd":  &schema.RCSSender{},
+	"rccct": &schema.CarrierContact{},
+	"smc":   &schema.SMSConversation{},
+	"smr":   &schema.SMSRoute{},
+	"smcct": &schema.CarrierContact{},
 }
 
 var qualifiedColumn = regexp.MustCompile(`\b([a-z]+[a-z0-9]*)\.([a-z_][a-z0-9_]*)\b`)
@@ -87,6 +95,14 @@ func TestChannelSourceProjectionsOnlyReferenceRealColumns(t *testing.T) {
 		assertColumnsExist(t, channel+" last message", src.LastMessageColumn)
 		if src.LastMessageColumn == "" {
 			t.Fatalf("%s has no last message column", channel)
+		}
+	}
+}
+
+func TestMercadoLivreContainerNameIsTheInboxOne(t *testing.T) {
+	for _, src := range channelSources {
+		if src.EntryType == shared.EntryTypeMercadoLivre && src.ContainerNameExpr != mldomain.AccountNameSQL("mla.") {
+			t.Fatalf("container name = %q", src.ContainerNameExpr)
 		}
 	}
 }

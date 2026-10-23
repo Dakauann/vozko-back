@@ -90,34 +90,54 @@ func checkMedia(ctx context.Context, media MediaGeneration, req mediagen.Request
 	return nil
 }
 
-func generateMedia(ctx context.Context, media MediaGeneration, cc copilot.Context, tool string, req mediagen.Request) copilot.Result {
+func AwaitGeneration(ctx context.Context, media MediaGeneration, cc copilot.Context, tool string, req mediagen.Request) (*mediagen.Job, mediagen.Result, string) {
 	if req.Kind.UsesModel() && strings.TrimSpace(req.Model) == "" {
-		return copilot.Result{Status: copilot.StatusError, Message: MediaNoModel}
+		return nil, mediagen.Result{}, MediaNoModel
 	}
 	ctx, cancel := context.WithTimeout(ctx, mediaWaitLimit)
 	defer cancel()
 	job, err := RequestForThread(ctx, media, cc, req)
 	if err != nil {
 		log.Printf("[copilot] %s could not queue: %v", tool, err)
-		return copilot.Result{Status: copilot.StatusError, Message: MediaFailedUnknown}
+		return nil, mediagen.Result{}, MediaFailedUnknown
 	}
 	finished, err := media.Wait(ctx, cc.WorkspaceID, job.ID)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return copilot.Result{Status: copilot.StatusError, Message: mediaStillRunning}
+		return job, mediagen.Result{}, mediaStillRunning
 	}
 	if err != nil {
 		log.Printf("[copilot] %s job %s could not be followed: %v", tool, job.ID, err)
-		return copilot.Result{Status: copilot.StatusError, Message: MediaFailedUnknown}
+		return job, mediagen.Result{}, MediaFailedUnknown
 	}
 	result, ok := finished.Delivered()
 	if !ok {
-		return copilot.Result{Status: copilot.StatusError, Message: MediaFailureMessage(finished.FailureCode)}
+		return finished, mediagen.Result{}, MediaFailureMessage(finished.FailureCode)
+	}
+	return finished, result, ""
+}
+
+func generateMedia(ctx context.Context, media MediaGeneration, cc copilot.Context, tool string, req mediagen.Request) copilot.Result {
+	finished, result, failure := AwaitGeneration(ctx, media, cc, tool, req)
+	if failure != "" {
+		return copilot.Result{Status: copilot.StatusError, Message: failure}
 	}
 	return copilot.Result{
 		Status: copilot.StatusOK,
 		Data:   map[string]interface{}{"media_id": result.MediaID, "media_url": result.MediaURL, "model": result.Model},
 		Media:  &copilot.Media{Kind: deliveredAs[finished.Kind], URL: result.MediaURL, MediaID: result.MediaID, Alt: finished.Prompt},
 	}
+}
+
+func WithPreferredModels(ctx context.Context, media MediaGeneration, kind mediagen.Kind, choices []copilot.ChoiceField) []copilot.ChoiceField {
+	for i, choice := range choices {
+		if choice.Default != "" {
+			continue
+		}
+		if preferred, err := media.DefaultModel(ctx, kind); err == nil {
+			choices[i].Default = preferred.ID
+		}
+	}
+	return choices
 }
 
 func MediaFailureMessage(code mediagen.FailureCode) string {

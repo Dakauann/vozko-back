@@ -43,7 +43,7 @@ func (s *Service) adopt(thread *aichat.Thread, projectID string) error {
 
 func (s *Service) ProjectOpened(parent context.Context, thread *aichat.Thread, cc copilot.Context) (OpenOutcome, error) {
 	view := cc.View
-	if !view.OnStudio() || thread.ProjectID == "" || thread.ProjectID != view.ProjectID {
+	if !view.OnEditor() || thread.ProjectID == "" || thread.ProjectID != view.ProjectID {
 		return OpenIgnored, nil
 	}
 	for range 2 {
@@ -142,6 +142,9 @@ func (s *Service) withOpenings(threadID string, rec *turnRecorder, driver *Drive
 }
 
 func projectOpenedNote(view copilot.View) string {
+	if view.OnEmailDesign() {
+		return emailDesignOpenedNote(view)
+	}
 	kind := "vídeo"
 	if view.ProjectKind == copilot.StudioImage {
 		kind = "imagem"
@@ -151,6 +154,9 @@ func projectOpenedNote(view copilot.View) string {
 }
 
 func editorBackNote(view copilot.View) string {
+	if view.OnEmailDesign() {
+		return emailEditorBackNote(view)
+	}
 	return fmt.Sprintf("a aba do projeto (project_id %s) voltou a ficar visível e o editor responde de novo nesta resposta. "+
 		"Pedidos que expiraram enquanto ele estava calado não foram aplicados; um pedido que ficou sem confirmação pode ter entrado. "+
 		"Confira o estado com studio_read e continue o trabalho que você combinou, sem repetir o que já entrou e sem pedir confirmação ao usuário.", view.ProjectID)

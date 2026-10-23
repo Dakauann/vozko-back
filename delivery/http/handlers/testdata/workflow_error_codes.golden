@@ -27,6 +27,9 @@ invalid_department
 invalid_dtmf_config
 invalid_edge_ref
 invalid_entry_kind
+invalid_filter
+invalid_google_sheet
+invalid_google_sheet_mapping
 invalid_interactive_config
 invalid_knowledge_base
 invalid_label
@@ -48,6 +51,7 @@ invalid_workflow_reference
 invalid_workflow_type
 lead_consent_grant_forbidden
 name_required
+no_recent_input
 node_config_missing
 node_field_out_of_range
 node_incompatible_scope
@@ -65,11 +69,16 @@ run_already_exists
 run_not_found
 run_terminal
 segmented_send_conflict
+test_input_invalid
 trigger_has_incoming_edge
 trigger_incompatible_with_type
+trigger_input_invalid
+trigger_input_unavailable
 trigger_not_allowed
 trigger_not_connected
+trigger_not_found
 trigger_type_mismatch
+variables_unavailable
 version_not_found
 version_number_taken
 voice_trunk_invalid
@@ -77,6 +86,7 @@ voice_trunk_taken
 workflow_access_denied
 workflow_consent_grant_needs_reply
 workflow_invalid
+workflow_needs_message_trigger
 workflow_not_active
 workflow_not_draft
 workflow_not_found

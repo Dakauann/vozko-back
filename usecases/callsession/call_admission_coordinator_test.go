@@ -114,6 +114,15 @@ func (s *stubPricer) PriceWhatsAppCategory(string, string) (workspace_pricing.Pr
 func (s *stubPricer) PriceAdvertising(string, string) (workspace_pricing.PriceResult, error) {
 	return workspace_pricing.PriceResult{}, nil
 }
+func (s *stubPricer) PriceEmail(string, workspace_pricing.EmailPriceLine) (workspace_pricing.PriceResult, error) {
+	return workspace_pricing.PriceResult{}, nil
+}
+func (s *stubPricer) PriceRCS(string, string) (workspace_pricing.PriceResult, error) {
+	return workspace_pricing.PriceResult{}, nil
+}
+func (s *stubPricer) PriceSMS(string, string) (workspace_pricing.PriceResult, error) {
+	return workspace_pricing.PriceResult{}, nil
+}
 func TestCallAdmissionCoordinatorAcquireSuccess(t *testing.T) {
 	checker := &stubCachedBalanceChecker{balance: 100_000}
 	inflight := &stubInflightReserver{reserveOK: true}

@@ -31,7 +31,7 @@ func TestTheSpanRunsFromTheFirstSendOrFailureToTheLastMilestone(t *testing.T) {
 	defer sqlDB.Close()
 	first := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
 	last := time.Date(2026, 10, 20, 11, 30, 0, 0, time.UTC)
-	mock.ExpectQuery(`SELECT MIN\(LEAST\(sent_at, failed_at\)\) AS first, MAX\(GREATEST\(sent_at, delivered_at, read_at, failed_at\)\) AS last FROM whatsapp_campaign_entries WHERE campaign_id = \$1 AND deleted_at IS NULL`).
+	mock.ExpectQuery(`SELECT MIN\(LEAST\(e\.sent_at, e\.failed_at\)\) AS first, MAX\(GREATEST\(e\.sent_at, e\.delivered_at, e\.read_at, e\.failed_at\)\) AS last FROM whatsapp_campaign_entries e WHERE e\.campaign_id = \$1 AND e\.deleted_at IS NULL`).
 		WithArgs("camp-1").
 		WillReturnRows(sqlmock.NewRows([]string{"first", "last"}).AddRow(first, last))
 
@@ -77,6 +77,36 @@ func TestBucketsAreCountedInOnePassOverTheCampaignEntries(t *testing.T) {
 	want := []campaign.TimelinePoint{{At: from, Sent: 4, Delivered: 3}, {At: from.Add(time.Minute), Sent: 2}}
 	if !reflect.DeepEqual(points, want) {
 		t.Fatalf("points = %+v, want %+v", points, want)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAnyRelationCanFeedTheTimeline(t *testing.T) {
+	db, mock, sqlDB := timelineDB(t)
+	defer sqlDB.Close()
+	relation := TimelineRelation{
+		From:  "recipients r JOIN messages e ON e.id = r.message_id",
+		Scope: "r.campaign_id = ? AND e.parent_id IS NULL",
+		Columns: map[campaign.Milestone]string{
+			campaign.MilestoneSent: "e.accepted_at", campaign.MilestoneDelivered: "e.delivered_at",
+			campaign.MilestoneRead: "e.read_at", campaign.MilestoneFailed: "e.failed_at",
+		},
+	}
+	mock.ExpectQuery(`SELECT MIN\(LEAST\(e\.accepted_at, e\.failed_at\)\) AS first, MAX\(GREATEST\(e\.accepted_at, e\.delivered_at, e\.read_at, e\.failed_at\)\) AS last FROM recipients r JOIN messages e ON e\.id = r\.message_id WHERE r\.campaign_id = \$1 AND e\.parent_id IS NULL`).
+		WithArgs("camp-1").WillReturnRows(sqlmock.NewRows([]string{"first", "last"}).AddRow(nil, nil))
+	from := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
+	plan := campaign.TimelinePlan{Bucket: campaign.TimelineHour, From: from, To: from.Add(time.Hour), Location: time.UTC}
+	mock.ExpectQuery(`FROM recipients r JOIN messages e ON e\.id = r\.message_id CROSS JOIN LATERAL \(VALUES \('sent', e\.accepted_at\), \('delivered', e\.delivered_at\), \('read', e\.read_at\), \('failed', e\.failed_at\)\) AS m\(kind, at\) WHERE r\.campaign_id = \$4 AND e\.parent_id IS NULL AND m\.at >= \$5`).
+		WillReturnRows(sqlmock.NewRows([]string{"bucket", "kind", "total"}).AddRow(from, "sent", 2))
+	reader := NewRelationTimelineReader(db, relation)
+	if _, err := reader.Span("camp-1"); err != nil {
+		t.Fatal(err)
+	}
+	points, err := reader.Count("camp-1", plan)
+	if err != nil || len(points) != 1 || points[0].Sent != 2 {
+		t.Fatalf("points %+v %v", points, err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

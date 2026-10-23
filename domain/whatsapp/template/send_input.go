@@ -13,6 +13,7 @@ type SendInputParams struct {
 	FromPhoneNumberID     string
 	BizOpaqueCallbackData string
 	FlowToken             string
+	ClickTracking         ClickTracking
 }
 
 func (t *Template) BuildSendInput(p SendInputParams) (conversation.SendTemplateMessageInput, error) {
@@ -52,6 +53,7 @@ func (t *Template) composeSendInput(p SendInputParams) (conversation.SendTemplat
 	}
 
 	out.Buttons = append(out.Buttons, t.quickReplyParams()...)
+	out.Buttons = append(out.Buttons, t.trackedURLParams(p.ClickTracking)...)
 
 	if _, index, ok := t.FormButton(); ok {
 		out.Buttons = append(out.Buttons, conversation.TemplateButtonParam{

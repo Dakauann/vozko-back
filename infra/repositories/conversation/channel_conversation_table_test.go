@@ -76,3 +76,26 @@ func TestWorkspaceIDForMissingEntry(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestCampaignIDForEntryIsTheConversationsContainer(t *testing.T) {
+	table, mock, done := testTable(t)
+	defer done()
+	mock.ExpectQuery(`SELECT page_id::text FROM "facebook_conversations" WHERE id = \$1 AND "facebook_conversations"."deleted_at" IS NULL LIMIT \$2`).
+		WithArgs("c1", 1).
+		WillReturnRows(sqlmock.NewRows([]string{"page_id"}).AddRow("page-1"))
+	got, err := table.CampaignIDForEntry(context.Background(), "c1")
+	if err != nil || got != "page-1" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+func TestCampaignIDForAMissingEntryIsEmpty(t *testing.T) {
+	table, mock, done := testTable(t)
+	defer done()
+	mock.ExpectQuery(`SELECT page_id::text FROM "facebook_conversations"`).
+		WillReturnRows(sqlmock.NewRows([]string{"page_id"}))
+	got, err := table.CampaignIDForEntry(context.Background(), "c1")
+	if err != nil || got != "" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}

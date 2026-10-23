@@ -5,22 +5,31 @@ import (
 	"strings"
 )
 
-func ValidateEntryMetadata(a *Agent, metadata map[string]interface{}) error {
+func MetadataValueMissing(metadata map[string]any, key string) bool {
+	value, exists := metadata[key]
+	if !exists {
+		return true
+	}
+	text, isText := value.(string)
+	return isText && strings.TrimSpace(text) == ""
+}
+
+func MissingEntryMetadata(a *Agent, metadata map[string]any) []string {
 	if a == nil {
 		return nil
 	}
-	infos := a.RequiredVariableInfos()
-	for _, info := range infos {
-		if !info.Required {
-			continue
+	var missing []string
+	for _, info := range a.RequiredVariableInfos() {
+		if info.Required && MetadataValueMissing(metadata, info.Name) {
+			missing = append(missing, info.Name)
 		}
-		val, exists := metadata[info.Name]
-		if !exists {
-			return fmt.Errorf("%w: variable %q", ErrAgentRequiredVariableMissing, info.Name)
-		}
-		if s, ok := val.(string); ok && strings.TrimSpace(s) == "" {
-			return fmt.Errorf("%w: variable %q is empty", ErrAgentRequiredVariableMissing, info.Name)
-		}
+	}
+	return missing
+}
+
+func ValidateEntryMetadata(a *Agent, metadata map[string]interface{}) error {
+	if missing := MissingEntryMetadata(a, metadata); len(missing) > 0 {
+		return fmt.Errorf("%w: variable %q is missing or empty", ErrAgentRequiredVariableMissing, missing[0])
 	}
 	return nil
 }

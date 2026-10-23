@@ -150,7 +150,7 @@ func (f *fakeAccounts) Reconnect(_ context.Context, a *mldomain.Account) error {
 		return mldomain.ErrAccountNotFound
 	}
 	delete(f.deleted, a.ID)
-	row.SiteID, row.Nickname = a.SiteID, a.Nickname
+	row.SiteID, row.Nickname, row.DisplayName = a.SiteID, a.Nickname, a.DisplayName
 	row.AccessToken, row.RefreshToken = a.AccessToken, a.RefreshToken
 	row.AccessExpiresAt, row.RefreshExpiresAt = a.AccessExpiresAt, a.RefreshExpiresAt
 	row.GrantedScopes = a.GrantedScopes
@@ -184,14 +184,14 @@ func (f *fakeAccounts) UpdateCapabilities(_ context.Context, id string, caps mld
 	return nil
 }
 
-func (f *fakeAccounts) UpdateNickname(_ context.Context, id, nickname string) error {
+func (f *fakeAccounts) UpdateNames(_ context.Context, id, nickname, displayName string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	row, ok := f.rows[id]
 	if !ok {
 		return mldomain.ErrAccountNotFound
 	}
-	row.Nickname = nickname
+	row.Nickname, row.DisplayName = nickname, displayName
 	return nil
 }
 

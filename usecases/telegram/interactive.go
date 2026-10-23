@@ -66,9 +66,15 @@ func (a *channelAdapter) SendInteractive(
 		account.BotUsername, result.ChatID, result.MessageID, len(rows))
 	a.recordOutbound(ctx, ec)
 
-	return &conversation.SendOutcome{
+	shown := make([]conversation.InteractiveOption, 0, len(rows))
+	for _, row := range rows {
+		for _, button := range row {
+			shown = append(shown, conversation.InteractiveOption{ID: button.CallbackData, Title: button.Text})
+		}
+	}
+	return conversation.ShowingOptions(&conversation.SendOutcome{
 		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, result.ChatID, result.MessageID),
-	}, nil
+	}, shown), nil
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

@@ -10,6 +10,7 @@ import (
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	lmw "vozko/domain/lead_message_window"
+	"vozko/domain/shared"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	"vozko/infra/remotefile"
 )
@@ -46,6 +47,12 @@ func (m stubAudioMediaRepo) GetByID(id string) (*conversation.ConversationMedia,
 		MimeType:         "audio/ogg",
 		OriginalFilename: "voice.ogg",
 	}, nil
+}
+
+func (m stubAudioMediaRepo) GetInEntry(entryID string, entryType shared.EntryType, id string) (*conversation.ConversationMedia, error) {
+	row, _ := m.GetByID(id)
+	row.EntryID, row.EntryType, row.Purpose = entryID, entryType, conversation.MediaPurposeMessage
+	return row, nil
 }
 
 type stubAudioClient struct {

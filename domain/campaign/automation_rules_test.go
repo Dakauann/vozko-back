@@ -2,6 +2,7 @@ package campaign
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"vozko/domain/agent"
@@ -68,5 +69,18 @@ func TestEntryMetadataOfNamesTheLeadOrTheNumber(t *testing.T) {
 	}
 	if got := EntryMetadataOf("", "5584", map[string]any{"escola": "A"}); got.Label != "number 5584" || got.Metadata["escola"] != "A" {
 		t.Fatalf("entry = %+v", got)
+	}
+}
+
+func TestMissingWorkflowVarsNamesTheKeysAnEntryLacks(t *testing.T) {
+	keys := []string{"escola", "turma"}
+	if got := MissingWorkflowVars(keys, map[string]any{"escola": "Prisma", "turma": " "}); !reflect.DeepEqual(got, []string{"turma"}) {
+		t.Fatalf("a blank key = %v", got)
+	}
+	if got := MissingWorkflowVars(keys, nil); !reflect.DeepEqual(got, keys) {
+		t.Fatalf("no metadata = %v", got)
+	}
+	if got := MissingWorkflowVars(nil, nil); len(got) != 0 {
+		t.Fatalf("no keys = %v", got)
 	}
 }

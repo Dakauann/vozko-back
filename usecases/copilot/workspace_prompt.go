@@ -18,6 +18,7 @@ var capabilityLabels = map[readiness.Capability]string{
 	readiness.MercadoLivre:       "Contas do Mercado Livre",
 	readiness.TikTok:             "Contas do TikTok",
 	readiness.KnowledgeBases:     "Bases de conhecimento",
+	readiness.Email:              "Remetentes de e-mail prontos para enviar",
 }
 
 var blockerLabels = map[readiness.Blocker]string{

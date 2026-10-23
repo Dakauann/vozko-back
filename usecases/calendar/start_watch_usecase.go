@@ -15,22 +15,18 @@ import (
 
 type startWatchUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewStartWatchUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.StartWatchUseCase {
-	return &startWatchUseCase{repo: repo, google: google}
+func NewStartWatchUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.StartWatchUseCase {
+	return &startWatchUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *startWatchUseCase) Execute(workspaceID string) (*calendar.CalendarWatchChannel, error) {
-	conn, err := uc.repo.GetConnection(workspaceID)
-	if err != nil || conn == nil {
-		return nil, calendar.ErrGoogleNotConnected
-	}
-
-	accessToken, err := ensureValidToken(uc.google, uc.repo, conn)
+	accessToken, err := calendarToken(uc.access, workspaceID)
 	if err != nil {
-		return nil, fmt.Errorf("google auth: %w", err)
+		return nil, err
 	}
 
 	existing, err := uc.repo.GetWatchChannelByWorkspace(workspaceID)
@@ -66,8 +62,10 @@ func (uc *startWatchUseCase) Execute(workspaceID string) (*calendar.CalendarWatc
 		return nil, fmt.Errorf("save watch channel: %w", err)
 	}
 
-	if conn.SyncToken == "" {
-		uc.seedSyncToken(accessToken, conn)
+	if syncToken, err := uc.repo.GetSyncToken(workspaceID); err != nil {
+		log.Printf("[calendar-watch] sync token of workspace %s unreadable, not seeded: %v", workspaceID, err)
+	} else if syncToken == "" {
+		uc.seedSyncToken(accessToken, workspaceID)
 	}
 
 	log.Printf("[calendar-watch] started watch for workspace %s, channelID=%s, expires=%s",
@@ -75,7 +73,7 @@ func (uc *startWatchUseCase) Execute(workspaceID string) (*calendar.CalendarWatc
 	return ch, nil
 }
 
-func (uc *startWatchUseCase) seedSyncToken(accessToken string, conn *calendar.GoogleCalendarConnection) {
+func (uc *startWatchUseCase) seedSyncToken(accessToken, workspaceID string) {
 
 	result, err := uc.google.ListEventsIncremental(accessToken, "")
 	if err != nil || result == nil || result.SyncExpired {
@@ -84,7 +82,7 @@ func (uc *startWatchUseCase) seedSyncToken(accessToken string, conn *calendar.Go
 		return
 	}
 	if result.NextSyncToken != "" {
-		if err := uc.repo.UpdateConnectionSyncToken(conn.ID, result.NextSyncToken); err != nil {
+		if err := uc.repo.SaveSyncToken(workspaceID, result.NextSyncToken); err != nil {
 			log.Printf("[calendar-watch] failed to save initial sync token: %v", err)
 		}
 	}

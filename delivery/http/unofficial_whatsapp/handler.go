@@ -63,7 +63,7 @@ func NewHandler(d HandlerDeps) *Handler {
 	}
 }
 
-func requestScope(departments DepartmentScopeResolver, r *http.Request) (uw.DepartmentScope, bool) {
+func RequestScope(departments DepartmentScopeResolver, r *http.Request) (uw.DepartmentScope, bool) {
 	claims := middleware.GetClaims(r)
 	if claims == nil || departments == nil {
 		return uw.DepartmentScope{}, false
@@ -81,7 +81,7 @@ func requireRequestScope(w http.ResponseWriter, r *http.Request, departments Dep
 		response.WriteError(w, http.StatusForbidden, "workspace is required", nil)
 		return "", uw.DepartmentScope{}, false
 	}
-	scope, allowed := requestScope(departments, r)
+	scope, allowed := RequestScope(departments, r)
 	if !allowed {
 		response.WriteError(w, http.StatusForbidden,
 			"you do not have access to this workspace's numbers", nil)

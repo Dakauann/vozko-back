@@ -142,3 +142,45 @@ func TestTheLastMessageKnowsItWasRetractedAgainstPostgres(t *testing.T) {
 		t.Fatal("the inbox row must know its last message was retracted")
 	}
 }
+
+func TestUpdateMovesTheDeliveryStatusOnlyForwardAgainstPostgres(t *testing.T) {
+	db := repotest.IsolatedDB(t, "msg_state", &schema.ConversationMessage{})
+	repo := NewRepository(db)
+	m := storedMessage(t, repo, uuid.NewString(), time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC), "pedido enviado")
+	legacy := storedMessage(t, repo, uuid.NewString(), time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC), "linha antiga")
+	if err := db.Exec("UPDATE conversation_messages SET delivery_status = NULL WHERE id = ?", legacy.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacy.DeliveryStatus = conversation.DeliveryStatusDelivered
+	if err := repo.Update(legacy.ID, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := repo.GetByID(legacy.ID); err != nil || got.DeliveryStatus != conversation.DeliveryStatusDelivered {
+		t.Fatalf("a row without a stored status = %+v %v, want delivered", got, err)
+	}
+	steps := []struct {
+		write conversation.DeliveryStatus
+		want  conversation.DeliveryStatus
+	}{
+		{conversation.DeliveryStatusDelivered, conversation.DeliveryStatusDelivered},
+		{conversation.DeliveryStatusSent, conversation.DeliveryStatusDelivered},
+		{conversation.DeliveryStatusRead, conversation.DeliveryStatusRead},
+		{conversation.DeliveryStatusDelivered, conversation.DeliveryStatusRead},
+		{conversation.DeliveryStatusFailed, conversation.DeliveryStatusFailed},
+		{conversation.DeliveryStatusDelivered, conversation.DeliveryStatusFailed},
+	}
+	for i, step := range steps {
+		stale := *m
+		stale.DeliveryStatus = step.write
+		if err := repo.Update(m.ID, &stale); err != nil {
+			t.Fatal(err)
+		}
+		got, err := repo.GetByID(m.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.DeliveryStatus != step.want {
+			t.Fatalf("step %d wrote %q and stored %q, want %q", i, step.write, got.DeliveryStatus, step.want)
+		}
+	}
+}

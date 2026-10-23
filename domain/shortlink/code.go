@@ -87,3 +87,15 @@ func ValidateCustomAlias(alias string) error {
 	}
 	return nil
 }
+
+func IsWellFormedCode(code string) bool {
+	if len(code) < MinCodeLength || len(code) > MaxCodeLength {
+		return false
+	}
+	for _, r := range code {
+		if !isCodeRune(r) {
+			return false
+		}
+	}
+	return true
+}

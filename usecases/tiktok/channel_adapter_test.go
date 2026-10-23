@@ -300,3 +300,17 @@ func TestPresenceUsesSenderActions(t *testing.T) {
 		t.Fatalf("actions = %v", h.svc.actions)
 	}
 }
+
+func TestTheCardOutcomeNamesOnlyTheButtonsThatFit(t *testing.T) {
+	h := newAdapterHarness(t)
+	req := conversation.SendInteractiveRequest{Body: "Qual tamanho?", Options: []conversation.InteractiveOption{
+		{ID: "p", Title: "Pequeno"}, {ID: "m", Title: "Médio"}, {ID: "g", Title: "Grande"}, {ID: "gg", Title: "Extra"},
+	}}
+	out, err := h.a.SendInteractive(context.Background(), h.ec, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ShownOptionIDs) != ttdomain.MaxCardButtons || out.ShownOptionIDs[0] != "p" {
+		t.Fatalf("shown = %v, want the first %d", out.ShownOptionIDs, ttdomain.MaxCardButtons)
+	}
+}

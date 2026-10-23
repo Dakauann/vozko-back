@@ -52,8 +52,9 @@ type TemplateSendRequest struct {
 	WorkspaceID string
 	EntryID     string
 	EntryType   string
-	TemplateID  string
-	Variables   []string
+	TemplateID      string
+	Variables       []string
+	HeaderVariables []string
 }
 
 type PersonTemplateSendUseCase interface {

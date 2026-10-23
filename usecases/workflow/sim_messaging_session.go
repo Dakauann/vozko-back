@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -25,14 +26,18 @@ type messagingSim struct {
 	trigger *workflow.Node
 	run     *workflow.WorkflowRun
 	entryID string
+	leadID  string
 
-	outbound chan SimOutboundMessage
-	inbound  chan simInbound
-	forms    chan simFormReply
-	cancel   chan struct{}
-	vars     chan setVariableData
-	starts   chan simStart
-	done     chan *workflow.WorkflowRun
+	specs []workflow.TriggerInputSpec
+	spec  workflow.TriggerInputSpec
+
+	window  *simMessageWindowRepo
+	inbound chan simInbound
+	forms   chan simFormReply
+	cancel  chan struct{}
+	vars    chan setVariableData
+	starts  chan simStart
+	done    chan *workflow.WorkflowRun
 
 	currentMu sync.Mutex
 	current   string
@@ -68,7 +73,8 @@ func (s *wsWorkflowSimulation) newMessagingSim(ctx context.Context, conn *websoc
 	m := &messagingSim{
 		s: s, ctx: ctx, conn: conn, writeMu: writeMu, session: session, wf: wf, trigger: trigger,
 		entryID:  "sim-entry-" + uuid.New().String(),
-		outbound: make(chan SimOutboundMessage, 100),
+		leadID:   "sim-lead-" + uuid.New().String(),
+		specs:    s.deps.TriggerInputs.Specs(wf.WorkspaceID, &wf.Graph),
 		inbound:  make(chan simInbound, 1),
 		forms:    make(chan simFormReply, 1),
 		cancel:   make(chan struct{}, 1),
@@ -77,6 +83,7 @@ func (s *wsWorkflowSimulation) newMessagingSim(ctx context.Context, conn *websoc
 		done:     make(chan *workflow.WorkflowRun, 1),
 		messages: &simMessageRepo{},
 	}
+	m.window = newSimMessageWindow(m.leadID, false)
 	m.debugger = newSimDebugger(ctx, &wf.Graph, m.cancel, s.deps.PauseIdleTimeout, func(p simPausedPayload) {
 		m.write("paused", p)
 	})
@@ -87,10 +94,10 @@ func (s *wsWorkflowSimulation) newMessagingSim(ctx context.Context, conn *websoc
 		m.write("node_executed", m.debugger.nextStep(step))
 	})
 	m.registry = s.newSimulationRegistry(SimSandbox{
-		WorkspaceID: wf.WorkspaceID, LeadID: "sim-lead-" + uuid.New().String(), Messages: m.messages, Outbound: m.outbound, Effects: effects,
+		WorkspaceID: wf.WorkspaceID, LeadID: m.leadID, Messages: m.messages, Outbound: m.deliverOutbound, Window: m.window, Effects: effects,
 		RealCallsConfirmed: m.debugger.realCallsConfirmed,
 	}, nil)
-	m.engine = newSandboxEngine(m.runs, logs, m.registry, m.debugger)
+	m.engine = newSandboxEngine(m.runs, logs, m.registry, steppingGate{gate: m.debugger, stepping: m.setCurrent})
 	now := time.Now().UTC()
 	m.run = &workflow.WorkflowRun{
 		ID:            uuid.New().String(),
@@ -104,7 +111,50 @@ func (s *wsWorkflowSimulation) newMessagingSim(ctx context.Context, conn *websoc
 		StartedAt:     now,
 		UpdatedAt:     now,
 	}
+	m.spec, _ = workflow.FindTriggerInputSpec(m.specs, trigger.ID)
+	m.useTrigger(trigger, m.spec)
 	return m
+}
+
+func (m *messagingSim) useTrigger(node *workflow.Node, spec workflow.TriggerInputSpec) {
+	m.trigger, m.spec = node, spec
+	m.run.CurrentNodeID = node.ID
+	m.run.TriggerNodeID = node.ID
+	m.run.TriggerType = workflow.TriggerType(node.Type)
+	m.window.startAs(spec.WindowOpen(nil))
+}
+
+func (m *messagingSim) subject() workflow.TriggerTestSubject {
+	return workflow.TriggerTestSubject{
+		RunID: m.run.ID, EntryID: m.entryID, ContactNumber: simContactNumber,
+		LeadID: m.leadID, LeadName: simLeadName, Today: time.Now().UTC(),
+	}
+}
+
+func (m *messagingSim) chooseTrigger(req simStart) error {
+	if req.malformed {
+		return errSimStartMalformed
+	}
+	nodeID := req.triggerNodeID
+	if nodeID == "" {
+		nodeID = m.trigger.ID
+	}
+	spec, data, err := startFromTrigger(m.specs, nodeID, req.input, m.subject())
+	if err != nil {
+		slog.Info("workflow.simulation.start_refused",
+			slog.String("run_id", m.run.ID), slog.String("node_id", nodeID), slog.String("workspace_id", m.wf.WorkspaceID), slog.String("error", err.Error()))
+		return err
+	}
+	m.useTrigger(m.wf.Graph.FindNode(spec.NodeID), spec)
+	if req.windowOpen != nil {
+		m.window.startAs(spec.WindowOpen(req.windowOpen))
+	}
+	for k, v := range data {
+		m.run.State.Set(k, v)
+	}
+	slog.Info("workflow.simulation.trigger_chosen",
+		slog.String("run_id", m.run.ID), slog.String("node_id", spec.NodeID), slog.String("workspace_id", m.wf.WorkspaceID))
+	return nil
 }
 
 func (m *messagingSim) write(msgType string, payload interface{}) {
@@ -123,7 +173,6 @@ func (m *messagingSim) onRunUpdate(run *workflow.WorkflowRun) {
 
 func (m *messagingSim) play() error {
 	go m.readClientMessages()
-	go m.forwardOutbound()
 	log.Printf("[workflow-sim] starting simulation for workflow=%s run=%s", m.wf.ID, m.run.ID)
 
 	reproducing, stop, err := m.awaitStart()
@@ -136,11 +185,13 @@ func (m *messagingSim) play() error {
 		}
 	}
 	m.applyReproduction(reproducing)
+	m.run.TriggerData = workflow.TriggerDataOf(m.run.State)
 	m.write("sim_started", simStartedPayload{
 		RunID:         m.run.ID,
 		WorkflowID:    m.wf.ID,
 		RealCallNodes: m.debugger.realCallNodes(),
 		Reproducing:   reproducing,
+		Trigger:       simTriggerOf(m.trigger),
 	})
 	return m.runUntilDone()
 }
@@ -222,24 +273,33 @@ func (m *messagingSim) currentNode() string {
 	return m.current
 }
 
-func (m *messagingSim) forwardOutbound() {
-	for msg := range m.outbound {
-		nodeID := m.currentNode()
-		if msg.Message != nil {
-			stored := *msg.Message
-			_ = m.messages.Create(&stored)
-		}
-		m.write("message_sent", messagePayload{
-			Direction:   "outbound",
-			Text:        msg.Text,
-			MsgType:     msg.Type,
-			NodeID:      nodeID,
-			MessageID:   msg.MessageID,
-			AudioBase64: msg.AudioBase64,
-			AudioMime:   msg.AudioMime,
-			Message:     msg.Message,
-		})
+func (m *messagingSim) deliverOutbound(msg SimOutboundMessage) {
+	nodeID := m.currentNode()
+	if msg.Message != nil {
+		stored := *msg.Message
+		_ = m.messages.Create(&stored)
 	}
+	m.write("message_sent", messagePayload{
+		Direction:   "outbound",
+		Text:        msg.Text,
+		MsgType:     msg.Type,
+		NodeID:      nodeID,
+		NodeName:    workflow.NodeNameOf(m.wf.Graph.FindNode(nodeID), m.registry),
+		MessageID:   msg.MessageID,
+		AudioBase64: msg.AudioBase64,
+		AudioMime:   msg.AudioMime,
+		Message:     msg.Message,
+	})
+}
+
+type steppingGate struct {
+	gate     workflow.StepGate
+	stepping func(nodeID string)
+}
+
+func (g steppingGate) BeforeStep(run *workflow.WorkflowRun, node *workflow.Node) (*workflow.GatedStep, error) {
+	g.stepping(node.ID)
+	return g.gate.BeforeStep(run, node)
 }
 
 func (m *messagingSim) triggerType() workflow.TriggerType {
@@ -247,7 +307,7 @@ func (m *messagingSim) triggerType() workflow.TriggerType {
 }
 
 func (m *messagingSim) needsInitialMessage() bool {
-	return m.wf.HasTriggerType(workflow.TriggerMessageReceived) || m.wf.HasTriggerType(workflow.TriggerFirstMessage)
+	return m.spec.Shape == workflow.TriggerInputMessage
 }
 
 func (m *messagingSim) cancelled(reason string) error {
@@ -258,6 +318,7 @@ func (m *messagingSim) cancelled(reason string) error {
 }
 
 func (m *messagingSim) receive(in simInbound) {
+	m.window.customerWrote()
 	message := in.message(m.entryID)
 	_ = m.messages.Create(&message)
 	m.write("message_received", receivedPayload{Direction: "inbound", Message: message})
@@ -273,16 +334,35 @@ func (m *messagingSim) tryReproduce(req simStart) *simReproduction {
 }
 
 func (m *messagingSim) awaitStart() (*simReproduction, bool, error) {
-	if !m.session.AwaitStart {
+	if m.session.AwaitStart {
+		m.write("sim_ready", simReadyPayload{
+			WorkflowID: m.wf.ID, TriggerType: string(m.triggerType()), RealCallNodes: m.debugger.realCallNodes(),
+			Triggers: m.specs, DefaultTriggerNodeID: m.trigger.ID,
+		})
+		return m.waitForStart()
+	}
+	if m.needsInitialMessage() {
 		return nil, false, nil
 	}
-	m.write("sim_ready", simReadyPayload{WorkflowID: m.wf.ID, TriggerType: string(m.triggerType()), RealCallNodes: m.debugger.realCallNodes()})
+	err := m.chooseTrigger(simStart{})
+	if err == nil {
+		return nil, false, nil
+	}
+	m.s.refuseCommand(m.conn, m.writeMu, "start", err)
+	return m.waitForStart()
+}
+
+func (m *messagingSim) waitForStart() (*simReproduction, bool, error) {
 	idle := m.debugger.idleTimer()
 	defer idle.Stop()
 	for {
 		select {
 		case req := <-m.starts:
 			if !req.reproduce {
+				if err := m.chooseTrigger(req); err != nil {
+					m.s.refuseCommand(m.conn, m.writeMu, "start", err)
+					continue
+				}
 				return nil, false, nil
 			}
 			if reproducing := m.tryReproduce(req); reproducing != nil {
@@ -299,7 +379,7 @@ func (m *messagingSim) awaitStart() (*simReproduction, bool, error) {
 }
 
 func (m *messagingSim) awaitTrigger() (*simReproduction, bool, error) {
-	m.write("waiting_trigger", map[string]string{"triggerType": string(m.triggerType())})
+	m.write("waiting_trigger", map[string]string{"triggerType": string(m.triggerType()), "nodeId": m.trigger.ID})
 	for {
 		select {
 		case initial := <-m.inbound:
@@ -327,6 +407,10 @@ func (m *messagingSim) awaitTrigger() (*simReproduction, bool, error) {
 func (m *messagingSim) applyReproduction(reproducing *simReproduction) {
 	if reproducing == nil {
 		return
+	}
+	if node := m.wf.Graph.FindNode(reproducing.triggerNodeID); node != nil && node.Type.IsTrigger() {
+		spec, _ := workflow.FindTriggerInputSpec(m.specs, node.ID)
+		m.useTrigger(node, spec)
 	}
 	for k, v := range reproducing.seed {
 		m.run.State.Set(k, v)
@@ -466,6 +550,7 @@ func (m *messagingSim) awaitForm(waitNode *workflow.Node) (bool, error) {
 			if !answer.answered() {
 				return m.followOrComplete(unansweredEdge(m.run, m.wf, waitNode)), nil
 			}
+			m.window.customerWrote()
 			if err := AdvanceOnForm(m.run, m.wf, answer.runData()); err != nil {
 				_ = m.s.sendError(m.conn, m.writeMu, err.Error())
 				return true, nil

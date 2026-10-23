@@ -136,3 +136,46 @@ func TestStartRun_AnExistingRunOnTheConversationIsAConflict(t *testing.T) {
 	require.ErrorIs(t, err, workflow.ErrRunAlreadyExists)
 	assert.Len(t, h.launcher.launched, 1)
 }
+
+func TestStartRun_BeginsAtTheMessageTriggerAsTheCustomersMessage(t *testing.T) {
+	h := startRunFixture(t, seesEverything{})
+	in := manualStart("whatsapp")
+	in.Message = "Quero saber das turmas"
+
+	_, err := h.uc.Execute(in)
+	require.NoError(t, err)
+
+	created := h.created(t)
+	assert.Equal(t, "t", created.TriggerNodeID)
+	want := workflow.MessageStartRunData(workflow.MessageStart{Text: "Quero saber das turmas", Channel: "whatsapp", WorkspaceID: "ws1"})
+	for key, value := range want {
+		got, _ := created.State.Get(key)
+		assert.Equal(t, value, got, key)
+	}
+}
+
+func TestStartRun_WithoutAMessageItStartsFromAnEmptyMessage(t *testing.T) {
+	h := startRunFixture(t, seesEverything{})
+
+	_, err := h.uc.Execute(manualStart("whatsapp"))
+	require.NoError(t, err)
+
+	created := h.created(t)
+	assert.Equal(t, "", created.State.GetString(workflow.DataKeyMessage))
+	assert.Equal(t, workflow.InboundTextMessage, created.State.GetString(workflow.DataKeyMessageType))
+}
+
+func TestStartRun_RefusesAWorkflowWithoutAMessageTrigger(t *testing.T) {
+	repo := NewMockWorkflowRepository()
+	graph := waitingGraph("wait", "end")
+	graph.Nodes[0].Type = workflow.NodeTypeTriggerWebhook
+	storedWorkflow(t, repo, workflow.WorkflowStatusActive, graph)
+	runs := NewMockWorkflowRunRepository()
+	launcher := &fakeLauncher{}
+	starter, err := NewConversationRunStarter(repo, runs, launcher, &fakeSharedState{allow: true})
+	require.NoError(t, err)
+
+	_, err = NewStartRunUseCase(starter, runs, seesEverything{}).Execute(manualStart("whatsapp"))
+	require.ErrorIs(t, err, workflow.ErrWorkflowNeedsMessageTrigger)
+	assert.Empty(t, launcher.launched)
+}

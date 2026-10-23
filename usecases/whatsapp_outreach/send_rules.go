@@ -25,15 +25,16 @@ type sendRules struct {
 }
 
 type delivery struct {
-	entry       *wce.WhatsAppCampaignEntry
-	tmpl        *template.Template
-	bodyParams  []string
-	workspaceID string
-	userID      string
-	to          string
-	leadID      string
-	phoneID     string
-	campaignID  string
+	entry        *wce.WhatsAppCampaignEntry
+	tmpl         *template.Template
+	bodyParams   []string
+	headerParams []string
+	workspaceID  string
+	userID       string
+	to           string
+	leadID       string
+	phoneID      string
+	campaignID   string
 }
 
 func (r sendRules) sendablePhone(workspaceID, phoneID string) (*businessphone.WhatsAppBusinessPhoneNumber, error) {
@@ -162,14 +163,14 @@ func (r sendRules) storeTemplateInfo(d delivery) {
 	if meta == nil {
 		meta = map[string]interface{}{}
 	}
-	meta["template_info"] = d.tmpl.RenderInfo(d.bodyParams)
+	meta["template_info"] = d.tmpl.RenderInfo(d.bodyParams, d.headerParams)
 	if err := r.deps.Entries.UpdateMetadata(d.entry.ID, meta); err != nil {
 		log.Printf("[whatsapp-outreach] could not store template info on entry %s: %v", d.entry.ID, err)
 	}
 }
 
 func (r sendRules) recordMessage(ctx context.Context, d delivery, result *template.BilledSendResult) bool {
-	bodyText, metadata, err := d.tmpl.HistoryRecord(d.bodyParams)
+	bodyText, metadata, err := d.tmpl.HistoryRecord(d.bodyParams, d.headerParams)
 	if err != nil {
 		log.Printf("[whatsapp-outreach] could not marshal template metadata for entry %s: %v", d.entry.ID, err)
 		return false
@@ -195,7 +196,7 @@ func (r sendRules) recordMessage(ctx context.Context, d delivery, result *templa
 	return true
 }
 
-func renderedPreview(tmpl *template.Template, bodyParams []string) string {
-	text, _ := tmpl.RenderInfo(bodyParams)["body_text"].(string)
+func renderedPreview(tmpl *template.Template, bodyParams, headerParams []string) string {
+	text, _ := tmpl.RenderInfo(bodyParams, headerParams)["body_text"].(string)
 	return text
 }

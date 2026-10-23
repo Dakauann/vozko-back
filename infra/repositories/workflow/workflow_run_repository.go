@@ -211,23 +211,7 @@ func (r *runRepository) FindWaitingReplyByEntry(entryID string) (*workflow.Workf
 
 func (r *runRepository) List(input workflow.ListRunsInput) (*shared.PaginatedResult[*workflow.WorkflowRun], error) {
 	pagination := shared.NormalizePagination(input.Options.Pagination)
-	query := r.db.Model(&schema.WorkflowRunSchema{})
-
-	if input.WorkspaceID != "" {
-		query = query.Where("workspace_id = ?", input.WorkspaceID)
-	}
-	if input.WorkflowID != "" {
-		query = query.Where("workflow_id = ?", input.WorkflowID)
-	}
-	if input.EntryID != "" {
-		query = query.Where("entry_id = ?", input.EntryID)
-	}
-	if input.Status != nil {
-		query = query.Where("status = ?", string(*input.Status))
-	}
-	if visible, args := visibleRunEntries(input.WorkspaceID, input.Visibility); visible != "" {
-		query = query.Where(visible, args...)
-	}
+	query := filteredRuns(r.db.Model(&schema.WorkflowRunSchema{}), input)
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -253,6 +237,25 @@ func (r *runRepository) List(input workflow.ListRunsInput) (*shared.PaginatedRes
 	}
 
 	return shared.NewPaginatedResult(items, pagination, total), nil
+}
+
+func filteredRuns(query *gorm.DB, input workflow.ListRunsInput) *gorm.DB {
+	if input.WorkspaceID != "" {
+		query = query.Where("workspace_id = ?", input.WorkspaceID)
+	}
+	if input.WorkflowID != "" {
+		query = query.Where("workflow_id = ?", input.WorkflowID)
+	}
+	if input.EntryID != "" {
+		query = query.Where("entry_id = ?", input.EntryID)
+	}
+	if input.Status != nil {
+		query = query.Where("status = ?", string(*input.Status))
+	}
+	if visible, args := visibleRunEntries(input.WorkspaceID, input.Visibility); visible != "" {
+		query = query.Where(visible, args...)
+	}
+	return query
 }
 
 func (r *runRepository) FindWakeableRuns(now int64, limit int) ([]*workflow.WorkflowRun, error) {

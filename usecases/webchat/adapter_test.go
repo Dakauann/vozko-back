@@ -156,3 +156,17 @@ func TestAReplyToWhatTheVisitorCannotSeeGoesOutWithoutAQuote(t *testing.T) {
 		})
 	}
 }
+
+func TestThePromptOutcomeNamesTheOptionsTheVisitorSees(t *testing.T) {
+	adapter, _, _, _, ec := adapterHarness()
+	out, err := adapter.(conversation.InteractiveAdapter).SendInteractive(context.Background(), ec, conversation.SendInteractiveRequest{
+		Body:    "Com quem quer falar?",
+		Options: []conversation.InteractiveOption{{ID: "sales", Title: "Vendas"}, {ID: "", Title: "Sem id"}, {ID: "support", Title: "Suporte"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ShownOptionIDs) != 2 || out.ShownOptionIDs[0] != "sales" || out.ShownOptionIDs[1] != "support" {
+		t.Fatalf("shown = %v", out.ShownOptionIDs)
+	}
+}

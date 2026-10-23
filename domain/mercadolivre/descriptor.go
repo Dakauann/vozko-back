@@ -10,6 +10,10 @@ import (
 
 const TextViolationCharset = "charset"
 
+func AccountNameSQL(columnPrefix string) string {
+	return "COALESCE(NULLIF(" + columnPrefix + "display_name, ''), NULLIF(" + columnPrefix + "nickname, ''), " + columnPrefix + "ml_user_id)"
+}
+
 type charsetTextRule struct{}
 
 func CharsetTextRule() channel.TextRule { return charsetTextRule{} }
@@ -72,7 +76,7 @@ func Descriptor() *channel.Descriptor {
 			ContactIDField:     "mlc.contact_id::text",
 			AccountIDField:     "COALESCE(mlc.account_id::text, '')",
 			ContainerIDField:   "mla.id::text",
-			ContainerNameField: "mla.nickname",
+			ContainerNameField: AccountNameSQL("mla."),
 			AutomationFields: "COALESCE(mla.agent_id::text, '') AS agent_id, " +
 				"COALESCE(mla.workflow_id::text, '') AS workflow_id, " +
 				"mla.enable_agent_responses AS agent_responses_enabled, " +

@@ -218,8 +218,8 @@ func TestAGroupEntrySkipsThePersonRules(t *testing.T) {
 	if h.gateway.checkCalls != 0 || len(h.gateway.resolved) != 0 {
 		t.Fatalf("a group was checked or resolved as a phone number")
 	}
-	if len(h.workflows.fired) != 0 || len(h.assigner.calls) != 0 {
-		t.Fatalf("a group send fired person automations: workflows %d assignments %d", len(h.workflows.fired), len(h.assigner.calls))
+	if len(h.assigner.calls) != 0 {
+		t.Fatalf("a group send fired person automations: assignments %d", len(h.assigner.calls))
 	}
 }
 

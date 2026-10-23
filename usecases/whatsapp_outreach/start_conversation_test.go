@@ -54,6 +54,7 @@ type fakeEntries struct {
 	created           []*wce.WhatsAppCampaignEntry
 	statuses          []string
 	codes             []int
+	metadata          map[string]interface{}
 }
 
 func (f *fakeEntries) FindInboundRouteByNumberAndBusinessPhone(string, string) (*wce.WhatsAppCampaignEntry, error) {
@@ -81,7 +82,10 @@ func (f *fakeEntries) UpdateStatus(_ string, status wce.SendStatus, _ string, co
 	f.codes = append(f.codes, code)
 	return nil
 }
-func (f *fakeEntries) UpdateMetadata(string, map[string]interface{}) error { return nil }
+func (f *fakeEntries) UpdateMetadata(_ string, metadata map[string]interface{}) error {
+	f.metadata = metadata
+	return nil
+}
 
 type fakeOrganic struct{ campaign *wc.Campaign }
 

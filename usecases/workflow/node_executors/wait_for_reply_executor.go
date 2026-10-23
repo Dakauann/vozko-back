@@ -13,13 +13,14 @@ func NewWaitForReplyExecutor() workflow.NodeExecutor {
 
 func (e *waitForReplyExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeWaitForReply,
-		TestBehavior: workflow.NodeTestWaits,
-		Category:     workflow.NodeCategoryWait,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:        "Aguardar Resposta",
-		Description:  "Pausa o fluxo até o contato responder ou expirar o tempo.",
-		Icon:         "ChatTeardropDots",
+		Type:              workflow.NodeTypeWaitForReply,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestWaits,
+		Category:          workflow.NodeCategoryWait,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:             "Aguardar Resposta",
+		Description:       "Pausa o fluxo até o contato responder ou expirar o tempo.",
+		Icon:              "ChatTeardropDots",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para pausar e aguardar a próxima mensagem do contato (essencial para conversa contínua).",
 			Behavior: "Pausa o fluxo até o contato responder. Padrão conversacional: conecte 'replied' de volta ao agente e 'timeout' para encerrar; o ciclo é válido porque o wait garante término.",

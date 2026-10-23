@@ -43,3 +43,14 @@ func (r SendInteractiveRequest) ComposedBody() string {
 	}
 	return strings.Join(parts, "\n\n")
 }
+
+func ShowingOptions(out *SendOutcome, shown []InteractiveOption) *SendOutcome {
+	if out == nil {
+		return nil
+	}
+	out.ShownOptionIDs = make([]string, 0, len(shown))
+	for _, opt := range shown {
+		out.ShownOptionIDs = append(out.ShownOptionIDs, opt.ID)
+	}
+	return out
+}

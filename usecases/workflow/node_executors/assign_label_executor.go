@@ -35,11 +35,11 @@ func (e *assignLabelExecutor) Definition() workflow.NodeDefinition {
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando a conversa fica com a etiqueta pedida"},
-			{Key: "changed", Description: "true quando a etiqueta foi de fato adicionada ou removida agora"},
-			{Key: "label_id", Description: "ID da etiqueta"},
-			{Key: "label_name", Description: "Nome da etiqueta"},
-			{Key: "error", Description: "Descrição do erro quando a mudança falha"},
+			{Key: "success", Description: "true quando a conversa fica com a etiqueta pedida", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "changed", Description: "true quando a etiqueta foi de fato adicionada ou removida agora", Label: "Mudou agora", Type: workflow.VariableTypeBoolean},
+			{Key: "label_id", Description: "ID da etiqueta", Label: "ID da etiqueta", Type: workflow.VariableTypeText},
+			{Key: "label_name", Description: "Nome da etiqueta", Label: "Nome da etiqueta", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Descrição do erro quando a mudança falha", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{
 			"action":   string(label.LabelActionAdd),

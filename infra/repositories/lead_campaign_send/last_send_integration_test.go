@@ -1,6 +1,7 @@
 package lead_campaign_send
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func TestGetLastSendTimesBatchKeepsTheLatestSendPerLeadAcrossSeventyThousandIDs(
 		}
 	}
 
-	got, err := NewRepository(db).GetLastSendTimesBatch(append(leadIDs(70_000), lead), phone)
+	got, err := NewRepository(db).GetLastSendTimesBatch(context.Background(), append(leadIDs(70_000), lead), phone)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ func TestTheCatalogIsBuiltOnceAndRebuiltOnlyWhenADefinitionIsAdded(t *testing.T)
 		t.Fatalf("Catalog allocates %v times per call, want a cached answer", allocs)
 	}
 
-	registry.RegisterDefinition(workflow.NodeDefinition{Type: workflow.NodeTypeTriggerManual})
+	registry.RegisterDefinition(workflow.NodeDefinition{Type: workflow.NodeTypeTriggerMessageReceived})
 	if len(first) != 1 || len(registry.Catalog()) != 2 {
 		t.Fatalf("catalog = %d then %d definitions", len(first), len(registry.Catalog()))
 	}

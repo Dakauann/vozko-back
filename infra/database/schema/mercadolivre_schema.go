@@ -16,9 +16,10 @@ type MercadoLivreAccount struct {
 	WorkspaceID  string  `gorm:"type:uuid;not null;index:idx_ml_acct_ws_del,priority:1"`
 	DepartmentID *string `gorm:"type:uuid;index"`
 
-	MLUserID string `gorm:"column:ml_user_id;size:20;not null;index:idx_ml_acct_ml_user"`
-	SiteID   string `gorm:"size:8;not null"`
-	Nickname string `gorm:"size:255"`
+	MLUserID    string       `gorm:"column:ml_user_id;size:20;not null;index:idx_ml_acct_ml_user"`
+	SiteID      string       `gorm:"size:8;not null"`
+	Nickname    string       `gorm:"size:255"`
+	DisplayName OptionalText `gorm:"size:255"`
 
 	AccessToken      piigorm.EncryptedString `gorm:"type:bytea" json:"-"`
 	RefreshToken     piigorm.EncryptedString `gorm:"type:bytea" json:"-"`

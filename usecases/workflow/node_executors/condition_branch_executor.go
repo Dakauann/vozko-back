@@ -239,9 +239,9 @@ func (e *conditionBranchExecutor) Definition() workflow.NodeDefinition {
 			"value":    "",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "matched", Description: "true ou false (resultado da condição)"},
-			{Key: "variable", Description: "Nome da variável avaliada"},
-			{Key: "operator", Description: "Operador utilizado"},
+			{Key: "matched", Description: "true ou false (resultado da condição)", Label: "Condição atendida", Type: workflow.VariableTypeBoolean},
+			{Key: "variable", Description: "Nome da variável avaliada", RepeatsConfig: true},
+			{Key: "operator", Description: "Operador utilizado", RepeatsConfig: true},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "variable", Label: "Variável", Type: "text", Placeholder: "{{node.n2.count}}", Required: true, Description: "Texto ou referência de estado. Use {{...}} para interpolar (ex.: {{node.n2.count}}, {{var.status}})."},

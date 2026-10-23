@@ -16,7 +16,7 @@ func TestTheHistoryRecordOfASendKeepsTheRenderedBodyAndTheTemplateFacts(t *testi
 		},
 	}
 
-	body, metadata, err := tmpl.HistoryRecord([]string{"Ana"})
+	body, metadata, err := tmpl.HistoryRecord([]string{"Ana"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

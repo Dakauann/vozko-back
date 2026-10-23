@@ -39,7 +39,7 @@ func TestReschedule_PreservesOriginalDuration(t *testing.T) {
 	t0 := time.Date(2026, 4, 10, 14, 0, 0, 0, time.UTC)
 	repo := &watchRepoMock{event: &calendar.CalendarEvent{ID: id, StartTime: t0, EndTime: t0.Add(90 * time.Minute)}}
 	upd := &stubUpdateUC{}
-	uc := NewRescheduleEventUseCase(repo, &watchGoogleMock{}, upd)
+	uc := NewRescheduleEventUseCase(repo, &watchGoogleMock{}, repo, upd)
 
 	newStart := time.Date(2026, 4, 11, 16, 0, 0, 0, time.UTC)
 	if _, err := uc.Execute(calendar.RescheduleEventInput{EventID: id, WorkspaceID: "ws-1", NewStartTime: newStart}); err != nil {
@@ -60,7 +60,7 @@ func TestReschedule_PreservesOriginalDuration(t *testing.T) {
 
 func TestReschedule_ExplicitEndWins(t *testing.T) {
 	upd := &stubUpdateUC{}
-	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, upd)
+	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &watchRepoMock{}, upd)
 
 	start := time.Date(2026, 4, 11, 9, 0, 0, 0, time.UTC)
 	end := start.Add(2 * time.Hour)
@@ -76,7 +76,7 @@ func TestReschedule_ExplicitEndWins(t *testing.T) {
 
 func TestReschedule_DurationComputesEnd(t *testing.T) {
 	upd := &stubUpdateUC{}
-	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, upd)
+	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &watchRepoMock{}, upd)
 
 	start := time.Date(2026, 4, 11, 9, 0, 0, 0, time.UTC)
 	if _, err := uc.Execute(calendar.RescheduleEventInput{
@@ -92,7 +92,7 @@ func TestReschedule_DurationComputesEnd(t *testing.T) {
 
 func TestReschedule_SkipConflictCheckDisablesGuard(t *testing.T) {
 	upd := &stubUpdateUC{}
-	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, upd)
+	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &watchRepoMock{}, upd)
 
 	start := time.Date(2026, 4, 11, 9, 0, 0, 0, time.UTC)
 	end := start.Add(time.Hour)
@@ -108,7 +108,7 @@ func TestReschedule_SkipConflictCheckDisablesGuard(t *testing.T) {
 
 func TestReschedule_PropagatesSlotConflict(t *testing.T) {
 	upd := &stubUpdateUC{err: calendar.ErrSlotConflict}
-	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, upd)
+	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &watchRepoMock{}, upd)
 
 	start := time.Date(2026, 4, 11, 9, 0, 0, 0, time.UTC)
 	end := start.Add(time.Hour)
@@ -119,7 +119,7 @@ func TestReschedule_PropagatesSlotConflict(t *testing.T) {
 }
 
 func TestReschedule_ValidationErrors(t *testing.T) {
-	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &stubUpdateUC{})
+	uc := NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &watchRepoMock{}, &stubUpdateUC{})
 
 	if _, err := uc.Execute(calendar.RescheduleEventInput{WorkspaceID: "ws-1", NewStartTime: time.Now()}); !errors.Is(err, calendar.ErrEventNotFound) {
 		t.Fatalf("empty event id should be ErrEventNotFound, got %v", err)
@@ -142,7 +142,7 @@ func TestUpdateEvent_CheckConflictBlocksOccupiedSlot(t *testing.T) {
 	other := &calendar.CalendarEvent{GoogleEventID: "other-g", Title: "Ocupado", StartTime: start.Add(30 * time.Minute), EndTime: start.Add(90 * time.Minute), Transparency: "opaque"}
 	repo := &watchRepoMock{connection: validWatchConnection(), event: existing}
 	google := &watchGoogleMock{listGoogleEventsResult: []*calendar.CalendarEvent{self, other}}
-	uc := NewUpdateEventUseCase(repo, google)
+	uc := NewUpdateEventUseCase(repo, google, repo)
 
 	ns, ne := start, start.Add(time.Hour)
 	_, err := uc.Execute(calendar.UpdateEventInput{EventID: id, WorkspaceID: "ws-1", StartTime: &ns, EndTime: &ne, CheckConflict: true})
@@ -162,7 +162,7 @@ func TestUpdateEvent_CheckConflictAllowsFreeSlotExcludingSelf(t *testing.T) {
 	transparent := &calendar.CalendarEvent{GoogleEventID: "free-g", StartTime: start, EndTime: start.Add(time.Hour), Transparency: "transparent"}
 	repo := &watchRepoMock{connection: validWatchConnection(), event: existing}
 	google := &watchGoogleMock{listGoogleEventsResult: []*calendar.CalendarEvent{self, transparent}}
-	uc := NewUpdateEventUseCase(repo, google)
+	uc := NewUpdateEventUseCase(repo, google, repo)
 
 	ns, ne := start, start.Add(time.Hour)
 	if _, err := uc.Execute(calendar.UpdateEventInput{EventID: id, WorkspaceID: "ws-1", StartTime: &ns, EndTime: &ne, CheckConflict: true}); err != nil {
@@ -174,13 +174,16 @@ func TestUpdateEvent_CheckConflictAllowsFreeSlotExcludingSelf(t *testing.T) {
 }
 
 func TestReschedule_ConstructorNilGuards(t *testing.T) {
-	if NewRescheduleEventUseCase(nil, &watchGoogleMock{}, &stubUpdateUC{}) != nil {
+	if NewRescheduleEventUseCase(nil, &watchGoogleMock{}, &watchRepoMock{}, &stubUpdateUC{}) != nil {
 		t.Fatal("nil repo should yield nil use case")
 	}
-	if NewRescheduleEventUseCase(&watchRepoMock{}, nil, &stubUpdateUC{}) != nil {
+	if NewRescheduleEventUseCase(&watchRepoMock{}, nil, &watchRepoMock{}, &stubUpdateUC{}) != nil {
 		t.Fatal("nil google should yield nil use case")
 	}
-	if NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, nil) != nil {
+	if NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, nil, &stubUpdateUC{}) != nil {
+		t.Fatal("nil google access should yield nil use case")
+	}
+	if NewRescheduleEventUseCase(&watchRepoMock{}, &watchGoogleMock{}, &watchRepoMock{}, nil) != nil {
 		t.Fatal("nil update use case should yield nil use case")
 	}
 }

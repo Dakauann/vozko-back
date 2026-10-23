@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	template_domain "vozko/domain/whatsapp/template"
+	"vozko/domain/workflow"
 )
 
 type approvedTemplates struct {
@@ -90,5 +91,22 @@ func TestARefusedWorkflowTemplateIsNotRecordedAsSent(t *testing.T) {
 
 	if _, _, err := templateSender(sends, history).SendTemplate(context.Background(), waMediaRun(), "t1", "", nil, nil); err == nil || len(history.records) != 0 {
 		t.Fatalf("err %v history %d", err, len(history.records))
+	}
+}
+
+func TestAWorkflowTemplateNamesItsNodeForTheChoiceCounters(t *testing.T) {
+	sends := &recordingTemplateSends{}
+	run := waMediaRun()
+	version := 3
+	run.WorkflowID = "wf-1"
+	run.CurrentNodeID = "tpl-node"
+	run.WorkflowVersion = &version
+
+	if _, _, err := templateSender(sends, &recordingHistory{}).SendTemplate(context.Background(), run, "t1", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := sends.sends[0].ChoiceSource
+	if got == nil || *got != workflow.ChoicePromptSource(run, "tpl-node", "") {
+		t.Fatalf("choice source = %+v", got)
 	}
 }

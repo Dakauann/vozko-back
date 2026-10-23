@@ -12,9 +12,10 @@ import (
 type Surface string
 
 const (
-	SurfaceAttendance Surface = "attendance"
-	SurfaceStudio     Surface = "studio"
-	SurfaceLeads      Surface = "leads"
+	SurfaceAttendance  Surface = "attendance"
+	SurfaceStudio      Surface = "studio"
+	SurfaceLeads       Surface = "leads"
+	SurfaceEmailDesign Surface = "email_design"
 )
 
 type StudioKind string
@@ -56,6 +57,14 @@ func (v View) OnStudio() bool {
 	return v.Surface == SurfaceStudio
 }
 
+func (v View) OnEmailDesign() bool {
+	return v.Surface == SurfaceEmailDesign
+}
+
+func (v View) OnEditor() bool {
+	return v.OnStudio() || v.OnEmailDesign()
+}
+
 func (v View) Validate() error {
 	switch v.Surface {
 	case "":
@@ -69,6 +78,8 @@ func (v View) Validate() error {
 		return v.validateStudio()
 	case SurfaceLeads:
 		return v.validateLeads()
+	case SurfaceEmailDesign:
+		return v.validateEmailDesign()
 	}
 	return fmt.Errorf("%w: unknown surface %q", ErrInvalidView, v.Surface)
 }
@@ -92,6 +103,16 @@ func (v View) validateAttendance() error {
 		if token != "" && !viewToken.MatchString(token) {
 			return fmt.Errorf("%w: %q is not an identifier", ErrInvalidView, token)
 		}
+	}
+	return nil
+}
+
+func (v View) validateEmailDesign() error {
+	if (View{Surface: v.Surface, ProjectID: v.ProjectID}) != v {
+		return fmt.Errorf("%w: other filters on the email design surface", ErrInvalidView)
+	}
+	if !uuidPattern.MatchString(v.ProjectID) {
+		return fmt.Errorf("%w: the email design is not an id", ErrInvalidView)
 	}
 	return nil
 }

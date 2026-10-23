@@ -75,8 +75,9 @@ type AssignEntryStageInput struct {
 	EntryType string `json:"entryType"`
 	ActorID   string `json:"-"`
 
-	AllowCrossPipeline bool    `json:"-"`
-	Confidence         float64 `json:"-"`
+	AllowCrossPipeline bool      `json:"-"`
+	Cause              MoveCause `json:"-"`
+	Confidence         float64   `json:"-"`
 }
 
 type RemoveEntryStageInput struct {

@@ -1,0 +1,24 @@
+{
+    "reference": "121c38a5-cf77-424a-9ea9-d6c044a845f8",
+    "messageContext": "msg$abeade67-de9c-45ba-bcfd-abcae1d1879f",
+    "from": {
+        "number": "0031612345678"
+    },
+    "to": {
+        "number": "003222556611"
+    },
+    "event": {
+        "type": "SuggestionClick",
+        "custom": {
+          "postbackdata": "btn$123456",
+          "label": "View on our website"
+    }
+    },
+    "groupings": [
+        "Marketing",
+        "Campaign_Party_2025",
+        "Target_Group_A"
+    ],
+    "timeUtc": "2025-09-03T08:00:05",
+    "channel": "RCS"
+}

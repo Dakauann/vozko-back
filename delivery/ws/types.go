@@ -235,11 +235,12 @@ type EntryMatchesResultsPayload struct {
 }
 
 type ReopenWindowPayload struct {
-	EntryID    string   `json:"entry_id"`
-	EntryType  string   `json:"entry_type"`
-	TemplateID string   `json:"template_id"`
-	Parameters []string `json:"parameters,omitempty"`
-	RequestID  string   `json:"request_id,omitempty"`
+	EntryID          string   `json:"entry_id"`
+	EntryType        string   `json:"entry_type"`
+	TemplateID       string   `json:"template_id"`
+	Parameters       []string `json:"parameters,omitempty"`
+	HeaderParameters []string `json:"header_parameters,omitempty"`
+	RequestID        string   `json:"request_id,omitempty"`
 }
 
 type AssignToPayload struct {

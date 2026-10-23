@@ -56,6 +56,7 @@ func TestPermanentRefusalsAreToldApartFromFailures(t *testing.T) {
 		{"workflow paused", fmt.Errorf("start: %w", workflow.ErrWorkflowNotActive), true, "workflow_not_active"},
 		{"voice workflow", workflow.ErrInvalidWorkflowType, true, "workflow_type_invalid"},
 		{"workflow without trigger", workflow.ErrGraphNoTrigger, true, "workflow_no_trigger"},
+		{"workflow without a message trigger", fmt.Errorf("start: %w", workflow.ErrWorkflowNeedsMessageTrigger), true, workflow.NeedsMessageTriggerCode},
 		{"workflow capacity", workflow.ErrWorkspaceAtCapacity, false, "workflow_workspace_at_capacity"},
 		{"lead not callable", fmt.Errorf("add: %w", calllist.AdmissionRefused(calllist.SkipNoNumber)), true, "call_list_lead_not_admitted"},
 		{"call list gone", calllist.ErrListNotFound, true, "call_list_not_found"},

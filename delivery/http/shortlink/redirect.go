@@ -69,6 +69,24 @@ type passwordPageData struct {
 // @Failure		404		{string}	string	"Link não encontrado ou expirado"
 // @Router			/r/{code} [get]
 func (h *ShortLinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
+	h.redirect(w, r, "")
+}
+
+// @Summary		Redirecionar o botão de link rastreado de um template
+// @Description	Rota usada pelos botões de URL de templates com "Rastrear cliques". A URL do botão aprovada pela Meta é o link curto seguido da variável de sufixo ({{1}}); em cada envio o sufixo recebe um token do envio. O link sempre redireciona para o destino real do link curto; o token só atribui o clique ao envio (CTR do botão template_url:<índice>). O token é opaco e assinado pelo servidor (não revela o envio); um token ilegível, truncado ou forjado não impede o redirecionamento, apenas não conta o clique.
+// @Tags			Links Curtos
+// @Produce		html
+// @Param			code	path		string	true	"Código do link curto"
+// @Param			token	path		string	true	"Token do envio preenchido no sufixo do botão"
+// @Success		302		"Redirecionamento para a URL de destino"
+// @Success		200		{string}	string	"Página de senha (link protegido)"
+// @Failure		404		{string}	string	"Link não encontrado ou expirado"
+// @Router			/r/{code}/{token} [get]
+func (h *ShortLinkHandler) RedirectTracked(w http.ResponseWriter, r *http.Request) {
+	h.redirect(w, r, mux.Vars(r)["token"])
+}
+
+func (h *ShortLinkHandler) redirect(w http.ResponseWriter, r *http.Request, attribution string) {
 	code := mux.Vars(r)["code"]
 
 	resolved, err := h.resolveUC.Execute(r.Context(), code)
@@ -79,7 +97,7 @@ func (h *ShortLinkHandler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	switch resolved.State {
 	case shortlinkdomain.ResolveOK:
-		h.enqueueClick(r, resolved)
+		h.enqueueClick(r, resolved, attribution)
 		w.Header().Set("Cache-Control", "no-store")
 		http.Redirect(w, r, resolved.TargetURL, resolved.RedirectType.HTTPStatus())
 	case shortlinkdomain.ResolvePassword:
@@ -117,12 +135,12 @@ func (h *ShortLinkHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.enqueueClick(r, resolved)
+	h.enqueueClick(r, resolved, "")
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, resolved.TargetURL, resolved.RedirectType.HTTPStatus())
 }
 
-func (h *ShortLinkHandler) enqueueClick(r *http.Request, resolved *shortlinkdomain.ResolvedLink) {
+func (h *ShortLinkHandler) enqueueClick(r *http.Request, resolved *shortlinkdomain.ResolvedLink, attribution string) {
 	country, region, city := geoHints(r)
 	query := r.URL.Query()
 
@@ -143,6 +161,7 @@ func (h *ShortLinkHandler) enqueueClick(r *http.Request, resolved *shortlinkdoma
 		UTMMedium:    query.Get("utm_medium"),
 		UTMCampaign:  query.Get("utm_campaign"),
 		Attempt:      1,
+		Attribution:  attribution,
 	}
 	_ = h.publishUC.Execute(r.Context(), msg)
 }

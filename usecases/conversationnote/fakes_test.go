@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -141,4 +142,49 @@ func (c fakeContacts) GetEntryInfo(entryID, entryType string) (conversation.Entr
 		return conversation.EntryInfo{}, errors.New("no such entry")
 	}
 	return info, nil
+}
+
+type memoryMedia struct {
+	rows map[string]*conversation.ConversationMedia
+	err  error
+	asks [][]string
+}
+
+func newMemoryMedia() *memoryMedia {
+	return &memoryMedia{rows: map[string]*conversation.ConversationMedia{}}
+}
+
+func (m *memoryMedia) ListByIDs(ids []string) ([]*conversation.ConversationMedia, error) {
+	m.asks = append(m.asks, append([]string{}, ids...))
+	if m.err != nil {
+		return nil, m.err
+	}
+	var out []*conversation.ConversationMedia
+	for _, id := range ids {
+		if row, ok := m.rows[id]; ok {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+type recordingUploader struct {
+	media    *memoryMedia
+	received []conversation.UploadMediaInput
+	err      error
+}
+
+func (u *recordingUploader) Execute(in conversation.UploadMediaInput) (*conversation.ConversationMedia, error) {
+	u.received = append(u.received, in)
+	if u.err != nil {
+		return nil, u.err
+	}
+	id := "media-" + strings.Repeat("m", len(u.received))
+	row := &conversation.ConversationMedia{
+		ID: id, EntryID: in.EntryID, EntryType: shared.EntryType(in.EntryType), Type: in.MediaType,
+		MimeType: in.MimeType, URL: "https://cdn/" + id, OriginalFilename: in.Filename, SizeBytes: int64(len(in.Data)),
+		Layout: conversation.MediaLayout{Width: 640, Height: 480, Thumbhash: "hash-" + id},
+	}
+	u.media.rows[id] = row
+	return row, nil
 }

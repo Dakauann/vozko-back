@@ -27,6 +27,7 @@ type ConversationHandler struct {
 	automationService     ConversationAutomationService
 	delegationService     ConversationDelegationService
 	toolCalls             ToolCallLister
+	emailHTML             EmailHTMLViewer
 }
 
 type ConversationAutomationService interface {

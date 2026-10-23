@@ -81,7 +81,7 @@ func waitFor(t *testing.T, cond func() bool) bool {
 }
 
 func newMPConsumer(sub *mockAsaasQueueSub, resolver *stubResolver, handler *mockAsaasHandler) payment.ConsumePaymentWebhookUseCase {
-	return NewConsumeMercadoPagoWebhookUseCase(sub, resolver, handler, newMockAsaasSharedState())
+	return NewConsumeMercadoPagoWebhookUseCase(sub, nil, resolver, handler, newMockAsaasSharedState(), &fakeAlerts{})
 }
 
 func TestConsumeMercadoPago_SubscribesToItsOwnTopic(t *testing.T) {
@@ -308,7 +308,7 @@ func TestConsumeMercadoPago_PanicInHandlerIsContained(t *testing.T) {
 	sub := &mockAsaasQueueSub{}
 	resolver := &stubResolver{event: receivedEvent("1")}
 	handler := &panickingHandler{}
-	uc := NewConsumeMercadoPagoWebhookUseCase(sub, resolver, handler, newMockAsaasSharedState())
+	uc := NewConsumeMercadoPagoWebhookUseCase(sub, nil, resolver, handler, newMockAsaasSharedState(), &fakeAlerts{})
 	_ = uc.Start()
 
 	ack := &mockAsaasAck{}

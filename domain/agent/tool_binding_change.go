@@ -28,3 +28,23 @@ func sameBinding(a, b ToolBinding) bool {
 	right, errRight := json.Marshal(b)
 	return errLeft == nil && errRight == nil && bytes.Equal(left, right)
 }
+
+func BindingsAdded(stored, proposed []ToolBinding, name string) []ToolBinding {
+	var added []ToolBinding
+	for _, next := range proposed {
+		if next.Name != name {
+			continue
+		}
+		known := false
+		for _, previous := range stored {
+			if previous.Name == name && sameBinding(previous, next) {
+				known = true
+				break
+			}
+		}
+		if !known {
+			added = append(added, next)
+		}
+	}
+	return added
+}

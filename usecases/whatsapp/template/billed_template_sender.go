@@ -12,6 +12,7 @@ import (
 
 	"vozko/domain/balance"
 	"vozko/domain/billing"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	"vozko/domain/whatsapp/template"
 	whatsappform_usecase "vozko/usecases/whatsappform"
@@ -35,6 +36,9 @@ type BilledTemplateSenderDeps struct {
 	BalanceChecker balance.CachedBalanceChecker
 	Alerter        billing.OpsAlerter
 	Forms          FormSends
+	Choices        choicestats.Recorder
+	ClickLinkBase  string
+	ClickTokens    *choicestats.ClickTokens
 	Now            func() time.Time
 }
 
@@ -67,6 +71,12 @@ func NewBilledTemplateSendUseCase(deps BilledTemplateSenderDeps) (template.Bille
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("%w: %s", template.ErrBillingNotConfigured, strings.Join(missing, ", "))
+	}
+	if deps.Choices == nil {
+		return nil, choicestats.ErrRecorderMissing
+	}
+	if deps.ClickTokens == nil {
+		return nil, choicestats.ErrClickTokenSecretMissing
 	}
 	if deps.Now == nil {
 		deps.Now = func() time.Time { return time.Now().UTC() }
@@ -185,7 +195,10 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 	if err != nil {
 		return nil, err
 	}
-	sendInput, err := tmpl.BuildSendInput(sendParamsOf(in, attempt.ID, form.Token()))
+	promptKey := choicestats.TemplateAttemptPromptKey(attempt.ID)
+	params := sendParamsOf(in, attempt.ID, form.Token())
+	params.ClickTracking = template.ClickTracking{LinkBase: uc.deps.ClickLinkBase, PromptKey: promptKey, Tokens: uc.deps.ClickTokens}
+	sendInput, err := tmpl.BuildSendInput(params)
 	if err != nil {
 		form.Settle(ctx, "", err)
 		return nil, err
@@ -246,6 +259,14 @@ func (uc *billedTemplateSendUseCase) Execute(ctx context.Context, in template.Bi
 			log.Printf("[billed-template-send] delivered but could not mark attempt %s as sent: %v", attempt.ID, markErr)
 		}
 		result.Status = template.SendAttemptSent
+		uc.deps.Choices.RecordSend(ctx, choicestats.Send{
+			WorkspaceID:       in.WorkspaceID,
+			PromptKey:         promptKey,
+			Source:            in.ChoiceSourceFor(tmpl.ID),
+			ProviderMessageID: result.MessageID,
+			Shown:             tmpl.ShownChoiceIDs(uc.deps.ClickLinkBase),
+			SentAt:            uc.deps.Now(),
+		})
 		if outcome == template.OutcomeAcceptedNoID {
 			uc.alert(ctx, "WhatsApp template accepted without a message id",
 				fmt.Sprintf("attempt=%s workspace=%s template=%s", attempt.ID, in.WorkspaceID, tmpl.Name))

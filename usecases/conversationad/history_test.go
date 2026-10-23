@@ -73,6 +73,10 @@ func (s shelfRows) GetByID(id string) (*conversation.ConversationMedia, error) {
 	return nil, conversation.ErrMediaNotFound
 }
 func (s shelfRows) ListByIDs([]string) ([]*conversation.ConversationMedia, error) { return nil, nil }
+func (s shelfRows) GetInEntry(string, shared.EntryType, string) (*conversation.ConversationMedia, error) {
+	return nil, conversation.ErrMediaNotFound
+}
+
 func (s shelfRows) GetByWhatsAppMediaID(string) (*conversation.ConversationMedia, error) {
 	return nil, conversation.ErrMediaNotFound
 }

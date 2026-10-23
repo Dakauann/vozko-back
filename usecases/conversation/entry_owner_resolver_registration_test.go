@@ -86,3 +86,33 @@ func TestAnUnregisteredChannelIsRefusedByName(t *testing.T) {
 		t.Error("an unregistered channel must not resolve to an empty workspace")
 	}
 }
+
+type stubContainerResolver struct {
+	stubOwnerResolver
+	container string
+	asked     *int
+}
+
+func (s stubContainerResolver) CampaignIDForEntry(context.Context, string) (string, error) {
+	*s.asked++
+	return s.container, nil
+}
+
+func TestAnAccountChannelResolvesItsConversationsContainer(t *testing.T) {
+	resolver := NewCampaignWorkspaceResolver(nil, nil)
+	asked := 0
+	resolver.(ownerResolverSetter).SetEntryOwnerResolver(shared.EntryTypeEmail,
+		stubContainerResolver{stubOwnerResolver: stubOwnerResolver{workspace: "ws", department: "dep-1"}, container: "sender-1", asked: &asked})
+
+	container, err := resolver.GetEntryCampaignID("conv-1", string(shared.EntryTypeEmail))
+	if err != nil || container != "sender-1" {
+		t.Fatalf("container = %q, %v", container, err)
+	}
+	department, err := resolver.GetEntryDepartmentID("conv-1", string(shared.EntryTypeEmail))
+	if err != nil || department != "dep-1" {
+		t.Fatalf("department = %q, %v", department, err)
+	}
+	if asked != 1 {
+		t.Fatalf("the container was read %d times, the department lookup must not read it", asked)
+	}
+}

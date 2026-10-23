@@ -59,6 +59,7 @@ func RefundOnce(ledger ReferenceCreditLedger, c ReferenceCharge) error {
 		return fmt.Errorf("%w: cannot refund %s", balance.ErrPriceUnavailable, c.ServiceType)
 	}
 	reference := RefundReference(c.ReferenceID)
+	original := c.ReferenceID
 	description := c.RefundDescription
 	if description == "" {
 		description = "Reembolso: " + c.Description
@@ -73,6 +74,7 @@ func RefundOnce(ledger ReferenceCreditLedger, c ReferenceCharge) error {
 		ProfitMicros:     -c.Price.ProfitMicros,
 		IsRefund:         true,
 		OncePerReference: true,
+		RefundOf:         &original,
 	})
 	if errors.Is(err, balance.ErrReferenceAlreadyRecorded) {
 		return nil

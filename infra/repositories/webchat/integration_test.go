@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -21,13 +19,12 @@ import (
 	"vozko/infra/crypto/piigorm"
 	"vozko/infra/crypto/vault"
 	"vozko/infra/database/schema"
+	"vozko/infra/testenv"
 )
 
 func integrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
+	dsn := testenv.Postgres(t).DSN()
 	v, err := vault.New(bytes.Repeat([]byte{0x11}, 32), 1)
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +36,6 @@ func integrationDB(t *testing.T) *gorm.DB {
 	piigorm.SetService(s)
 	t.Cleanup(func() { piigorm.SetService(nil) })
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
 	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
 	admin, err := gorm.Open(postgres.Open(dsn), silent)
 	if err != nil {

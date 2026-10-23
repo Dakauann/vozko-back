@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"runtime/debug"
 	"time"
 
+	billing "vozko/domain/billing"
 	"vozko/domain/cache"
 	"vozko/domain/messaging"
 	"vozko/domain/payment"
 	"vozko/domain/webhook"
-	webhook_usecase "vozko/usecases/webhook"
 )
 
 const mercadoPagoResolveTimeout = 20 * time.Second
@@ -21,21 +22,23 @@ type consumeMercadoPagoWebhookUseCase struct {
 	queueSub  messaging.MessageQueueSub
 	resolver  payment.WebhookResolver
 	handler   payment.HandlePaymentWebhookUseCase
-	dedup     *webhook_usecase.IdempotencyGuard
+	pipe      paymentEventPipe
 	semaphore chan struct{}
 }
 
 func NewConsumeMercadoPagoWebhookUseCase(
 	queueSub messaging.MessageQueueSub,
+	queuePub messaging.MessageQueuePub,
 	resolver payment.WebhookResolver,
 	handler payment.HandlePaymentWebhookUseCase,
 	sharedState cache.SharedState,
+	alerts billing.OpsAlerter,
 ) payment.ConsumePaymentWebhookUseCase {
 	return &consumeMercadoPagoWebhookUseCase{
 		queueSub:  queueSub,
 		resolver:  resolver,
 		handler:   handler,
-		dedup:     webhook_usecase.NewIdempotencyGuard(sharedState, 10*time.Minute),
+		pipe:      newPaymentEventPipe("mercadopago-payment-consumer", webhook.TopicMercadoPagoPayment, queuePub, sharedState, alerts),
 		semaphore: make(chan struct{}, 5),
 	}
 }
@@ -57,27 +60,27 @@ type notificationEnvelope struct {
 func (uc *consumeMercadoPagoWebhookUseCase) handle(raw []byte, ack messaging.MessageAck) {
 	var envelope notificationEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		log.Printf("[webhook-consumer] invalid mercadopago webhook payload: %v", err)
-		_ = ack.Nack(false)
+		uc.pipe.dropMalformed(raw, ack, err)
 		return
 	}
 
-	dedupKey := envelope.Data.ID + ":" + envelope.Action
-	if dedupKey != ":" && uc.dedup.IsDuplicate("mercadopago:"+dedupKey) {
-		log.Printf("[webhook-consumer] duplicate mercadopago event ignored: %s", dedupKey)
-		_ = ack.Ack()
+	key := ""
+	if envelope.Data.ID != "" || envelope.Action != "" {
+		key = "mercadopago:" + envelope.Data.ID + ":" + envelope.Action
+	}
+	if !uc.pipe.claim(key, raw, ack) {
 		return
 	}
 
 	uc.semaphore <- struct{}{}
 	go func() {
+		defer func() { <-uc.semaphore }()
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("[webhook-consumer] panic in mercadopago handler: %v\n%s", r, debug.Stack())
-				_ = ack.Nack(false)
+				uc.pipe.failed(key, raw, ack, fmt.Errorf("panic: %v", r))
 			}
 		}()
-		defer func() { <-uc.semaphore }()
 
 		ctx, cancel := context.WithTimeout(context.Background(), mercadoPagoResolveTimeout)
 		defer cancel()
@@ -86,22 +89,17 @@ func (uc *consumeMercadoPagoWebhookUseCase) handle(raw []byte, ack messaging.Mes
 		if err != nil {
 			if errors.Is(err, payment.ErrWebhookIgnored) || errors.Is(err, payment.ErrWebhookMalformed) {
 				log.Printf("[webhook-consumer] mercadopago event dropped: %v", err)
-				_ = ack.Ack()
+				uc.pipe.done(key, ack)
 				return
 			}
-			log.Printf("[webhook-consumer] failed to resolve mercadopago webhook: %v", err)
-			_ = ack.Nack(true)
+			uc.pipe.failed(key, raw, ack, fmt.Errorf("resolve: %w", err))
 			return
 		}
 
 		if err := uc.handler.Execute(event); err != nil {
-			log.Printf("[webhook-consumer] failed to process mercadopago webhook: %v", err)
-			_ = ack.Nack(true)
+			uc.pipe.failed(key, raw, ack, err)
 			return
 		}
-
-		if err := ack.Ack(); err != nil {
-			log.Printf("[webhook-consumer] failed to ack mercadopago event: %v", err)
-		}
+		uc.pipe.done(key, ack)
 	}()
 }

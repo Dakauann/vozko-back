@@ -149,6 +149,7 @@ func RunMigrations(db *gorm.DB) error {
 			&schema.CalendarEvent{},
 			&schema.GoogleCalendarConnection{},
 			&schema.CalendarWatchChannel{},
+			&schema.CalendarSyncState{},
 			&schema.WorkspaceDepartment{},
 			&schema.WorkspaceDepartmentMember{},
 			&schema.WorkspacePlanDefinition{},
@@ -281,6 +282,50 @@ func RunMigrations(db *gorm.DB) error {
 		}
 
 		if err := tx.AutoMigrate(schema.TikTokModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.EmailSendingModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.EmailCampaignModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.EmailInboxModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.EmailAPIModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.CarrierMessagingModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.CarrierCampaignModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.CampaignDraftModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.CampaignAudienceModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.GoogleModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.GoogleSheetModels()...); err != nil {
+			return err
+		}
+
+		if err := tx.AutoMigrate(schema.ChoiceStatsModels()...); err != nil {
 			return err
 		}
 

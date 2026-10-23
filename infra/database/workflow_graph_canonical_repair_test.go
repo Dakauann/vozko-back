@@ -104,7 +104,7 @@ func TestTheGraphCanonicalRepairAgainstPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	workflowID, versionID, untouchedID := uuid.NewString(), uuid.NewString(), uuid.NewString()
-	plain := `{"nodes":[{"id":"t","type":"trigger_manual","config":{}}],"edges":[]}`
+	plain := `{"nodes":[{"id":"t","type":"trigger_message_received","config":{}}],"edges":[]}`
 	for _, seed := range []struct {
 		sql  string
 		args []interface{}
@@ -153,7 +153,7 @@ func TestTheGraphCanonicalRepairAgainstPostgres(t *testing.T) {
 	}
 	var untouched string
 	tx.Raw(`SELECT graph::text FROM workflows WHERE id = ?`, untouchedID).Scan(&untouched)
-	if !strings.Contains(untouched, `"trigger_manual"`) {
+	if !strings.Contains(untouched, `"trigger_message_received"`) {
 		t.Fatalf("a graph without structured configs changed: %s", untouched)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	mpuc "vozko/usecases/metaplatform"
 	personalinbox_usecase "vozko/usecases/personalinbox"
 	teamchat_usecase "vozko/usecases/teamchat"
+	"vozko/usecases/transactionalemail"
 
 	"gorm.io/gorm"
 
@@ -89,6 +90,7 @@ import (
 	call_recordings "vozko/domain/calls/recordings"
 	callsession_domain "vozko/domain/callsession"
 	"vozko/domain/cep"
+	"vozko/domain/choicestats"
 	coexistence_domain "vozko/domain/coexistence"
 	config_domain "vozko/domain/config"
 	conversation_domain "vozko/domain/conversation"
@@ -148,12 +150,14 @@ import (
 	workspace_template_access_domain "vozko/domain/workspace_template_access"
 	asaas_service "vozko/infra/asaas"
 	redisCache "vozko/infra/cache"
+	"vozko/infra/campaignaudiencewiring"
 	"vozko/infra/cloudflare"
 	"vozko/infra/config"
 	conversation_infra "vozko/infra/conversation"
 	cronPackage "vozko/infra/cron"
 	queue "vozko/infra/messaging"
 	prometheus_service "vozko/infra/prometheus"
+	choicestats_repository "vozko/infra/repositories/choicestats"
 	customerportfolio_repository "vozko/infra/repositories/customerportfolio"
 	lead_repository "vozko/infra/repositories/lead"
 	"vozko/infra/s3"
@@ -163,16 +167,19 @@ import (
 	ucmcp "vozko/usecases/agent/mcp"
 	aa_usecase "vozko/usecases/ai_attendance"
 	aichat_usecase "vozko/usecases/aichat"
+	apikey_usecase "vozko/usecases/apikey"
 	attendance_usecase "vozko/usecases/attendance"
 	balance_usecase "vozko/usecases/balance"
 	calls_usecase "vozko/usecases/calls"
 	callsession_usecase "vozko/usecases/callsession"
+	choicestats_usecase "vozko/usecases/choicestats"
 	conversation_usecase "vozko/usecases/conversation"
 	copilot_usecase "vozko/usecases/copilot"
 	crm_telemetry_usecase "vozko/usecases/crm_telemetry"
 	customerportfolio_usecase "vozko/usecases/customerportfolio"
 	customfield_usecase "vozko/usecases/customfield"
 	dealautomation_usecase "vozko/usecases/dealautomation"
+	emailapi_usecase "vozko/usecases/emailapi"
 	ia_usecase "vozko/usecases/inbox_assignment"
 	leadarea_usecase "vozko/usecases/leadarea"
 	leadcompany_usecase "vozko/usecases/leadcompany"
@@ -205,12 +212,19 @@ type Container struct {
 	ads                         *adsBundle
 	mediaGenerationBundle       *mediaGenerationBundle
 	leadImportBundle            *leadImportBundle
+	emailHygieneBundle          *emailHygieneBundle
 	leadProfileBundle           *leadProfileBundle
 	metaPlatform                *mpuc.Service
 	audience                    *audienceBundle
 	telegram                    *telegramBundle
 	mercadoLivre                *mercadoLivreBundle
 	tiktok                      *tiktokBundle
+	google                      *googleBundle
+	googleSheets                *googleSheetsBundle
+	email                       *emailBundle
+	emailInbox                  *emailInboxBundle
+	carrier                     *carrierBundle
+	carrierCampaigns            *carrierCampaignBundle
 	webchat                     *webchatBundle
 	sipTrunks                   *sipTrunkBundle
 	callRouting                 *callRoutingBundle
@@ -232,6 +246,10 @@ type Container struct {
 
 	analyticsGate cache.Gate
 
+	choiceStore    *choicestats_repository.Store
+	choiceRecorder *choicestats_usecase.Recorder
+	choiceTokens   *choicestats.ClickTokens
+
 	leadAreaService    *leadarea_usecase.Service
 	leadCompanyService *leadcompany_usecase.Service
 
@@ -239,6 +257,13 @@ type Container struct {
 	customerPortfolioService *customerportfolio_usecase.Service
 	whatsappFormsService     *whatsappform_usecase.Service
 	formSenderRelay          *node_executors.FormSenderRelay
+	carrierSenderRelay       *node_executors.CarrierSenderRelay
+	platformEmailRelay       *transactionalemail.Relay
+	emailAPIRelay            *emailapi_usecase.Relay
+	emailAPI                 *emailAPIBundle
+	apiKeyService            *apikey_usecase.Service
+	systemEmailReserve       cronPackage.CtxJobFunc
+	workflowLeadTriggers     workflowLeadTriggerBundle
 	formRuns                 *workflow_usecase.FormRunResumer
 	formTriggerFirer         *workflow_usecase.FormTriggerFirer
 	formAutomationCatalog    *workflow_usecase.FormAutomations
@@ -246,8 +271,11 @@ type Container struct {
 	leadActionBundle *leadActionBundle
 	callListBundle   *callListBundle
 
-	buttonActionService *buttonaction_usecase.Service
-	launchCheckService  *wc_usecase.LaunchCheck
+	campaignAudienceWiring *campaignaudiencewiring.Module
+
+	buttonActionService           *buttonaction_usecase.Service
+	officialCampaignCreateUseCase wc_domain.CreateCampaignUseCase
+	launchCheckService            *wc_usecase.LaunchCheck
 
 	notificationCenter  *notificationWiring
 	leadExitInboundStep *leadexit_usecase.Step
@@ -455,7 +483,7 @@ type services struct {
 	billingQueueSub       messaging.MessageQueueSub
 	recordingQueuePub     messaging.MessageQueuePub
 	recordingQueueSub     messaging.MessageQueueSub
-	googleCalendar        calendar_domain.GoogleOAuthService
+	googleCalendar        calendar_domain.GoogleCalendarAPI
 	cachedBalanceChecker  balance_domain.CachedBalanceChecker
 	liveGate              *livedecisions_usecase.GateHandle
 	liveSubjects          *conversation_usecase.LiveSubjects
@@ -551,6 +579,7 @@ type useCases struct {
 	billedTemplateSend        whatsapp_template.BilledTemplateSendUseCase
 	reconcileTemplateSends    whatsapp_template.ReconcileSendAttemptsUseCase
 	startOfficialConversation whatsapp_outreach_domain.StartOfficialConversationUseCase
+	conversationTemplate      whatsapp_outreach_domain.ConversationTemplateUseCase
 	quoteTemplateSend         whatsapp_outreach_domain.QuoteTemplateSendUseCase
 	replicateWhatsAppTemplate whatsapp_template.ReplicateTemplateUseCase
 	setHeaderMediaWhatsApp    whatsapp_template.SetTemplateHeaderMediaUseCase
@@ -884,22 +913,19 @@ type useCases struct {
 	workflowManager          workflow_domain.WorkflowManager
 	triggerEvaluator         workflow_domain.TriggerEvaluator
 	consumeWorkflowWake      workflow_domain.ConsumeRunWakeUseCase
+	consumeStageEntered      *workflow_usecase.ConsumeStageEnteredUseCase
 	consumeAgentRunFinished  *conversation_usecase.ConsumeAgentRunFinished
 	workflowRuntimeAlerts    *workflow_usecase.RuntimeAlerts
 	agentContinuationSweep   *workflow_usecase.AgentContinuationSweep
-	nodeCatalogFn          func() []workflow_domain.NodeDefinition
+	nodeCatalogFn            func() []workflow_domain.NodeDefinition
 	wsWorkflowSimulation     workflow_usecase.WSWorkflowSimulationUseCase
 	wsWorkflowAIBuilder      workflow_usecase.AIBuilderUseCase
 
-	createCalendarEvent      calendar_domain.CreateEventUseCase
-	updateCalendarEvent      calendar_domain.UpdateEventUseCase
-	deleteCalendarEvent      calendar_domain.DeleteEventUseCase
-	getCalendarEvent         calendar_domain.GetEventUseCase
-	listCalendarEvents       calendar_domain.ListEventsUseCase
-	connectGoogleCalendar    calendar_domain.ConnectGoogleUseCase
-	disconnectGoogleCalendar calendar_domain.DisconnectGoogleUseCase
-	getGoogleConnection      calendar_domain.GetConnectionUseCase
-	getGoogleAuthURL         calendar_domain.GetAuthURLUseCase
+	createCalendarEvent calendar_domain.CreateEventUseCase
+	updateCalendarEvent calendar_domain.UpdateEventUseCase
+	deleteCalendarEvent calendar_domain.DeleteEventUseCase
+	getCalendarEvent    calendar_domain.GetEventUseCase
+	listCalendarEvents  calendar_domain.ListEventsUseCase
 
 	startCalendarWatch         calendar_domain.StartWatchUseCase
 	handleCalendarNotification calendar_domain.HandleNotificationUseCase

@@ -10,7 +10,7 @@ import (
 func TestSimWhatsAppClientRefusesMoreButtonsThanWhatsAppAllows(t *testing.T) {
 	outCh := make(chan SimOutboundMessage, 1)
 	effects := newSimEffects()
-	client := newSimWhatsAppClient(newSimChannel(outCh, effects))
+	client := newSimWhatsAppClient(newSimChannel(sendInto(outCh), effects))
 	buttons := make([]conversation.InteractiveButton, 0, conversation.WhatsAppButtonMaxCount+1)
 	for _, id := range []string{"a", "b", "c", "d"} {
 		buttons = append(buttons, conversation.InteractiveButton{ID: id, Title: id})
@@ -34,7 +34,7 @@ func TestSimWhatsAppClientRefusesMoreButtonsThanWhatsAppAllows(t *testing.T) {
 func TestSimWhatsAppClientRefusesAListWithoutRows(t *testing.T) {
 	outCh := make(chan SimOutboundMessage, 1)
 	effects := newSimEffects()
-	client := newSimWhatsAppClient(newSimChannel(outCh, effects))
+	client := newSimWhatsAppClient(newSimChannel(sendInto(outCh), effects))
 
 	_, err := client.SendListMessage(context.Background(), conversation.SendListMessageInput{
 		To:         "5511999990000",
@@ -54,7 +54,7 @@ func TestSimWhatsAppClientRefusesAListWithoutRows(t *testing.T) {
 func TestSimWhatsAppClientDeliversAValidButtonMessage(t *testing.T) {
 	outCh := make(chan SimOutboundMessage, 1)
 	effects := newSimEffects()
-	client := newSimWhatsAppClient(newSimChannel(outCh, effects))
+	client := newSimWhatsAppClient(newSimChannel(sendInto(outCh), effects))
 
 	_, err := client.SendButtonMessage(context.Background(), conversation.SendButtonMessageInput{
 		To:       "5511999990000",

@@ -168,3 +168,24 @@ func TestThresholdsAreTheStandardWavePresets(t *testing.T) {
 		t.Fatal("the launch check must speak the same numbers as Disparo Inteligente's Padrão")
 	}
 }
+
+func TestBlockedAndWithJoinReports(t *testing.T) {
+	joined := Blocked(CodeNothingPending, 0).With(Blocked(CodeNumberRestricted, 0))
+	if !joined.Blocks() || len(joined.Findings) != 2 || joined.Findings[1].Code != CodeNumberRestricted {
+		t.Fatalf("joined %+v", joined)
+	}
+	if (Report{}).With(Report{}).Blocks() {
+		t.Fatal("two empty reports block")
+	}
+}
+
+func TestAnEmptyAudienceIsNamedByWhetherTheCampaignEverHadContacts(t *testing.T) {
+	fresh := Check(Snapshot{Pending: 0, Fresh: true, AccessAllowed: true})
+	if !fresh.Blocks() || fresh.Findings[0].Code != CodeAudienceEmpty {
+		t.Fatalf("a campaign with no contacts yet %+v", fresh.Findings)
+	}
+	sent := Check(Snapshot{Pending: 0, AccessAllowed: true})
+	if !sent.Blocks() || sent.Findings[0].Code != CodeNothingPending {
+		t.Fatalf("a campaign whose contacts were processed %+v", sent.Findings)
+	}
+}

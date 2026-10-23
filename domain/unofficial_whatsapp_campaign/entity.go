@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/campaign"
+	"vozko/domain/campaignaudience"
 	uw "vozko/domain/unofficial_whatsapp"
 )
 
@@ -108,6 +109,8 @@ type Campaign struct {
 	Estimate      *SendEstimate     `json:"-"`
 
 	SeedOutcome *campaign.SeededOutcome `json:"seedOutcome,omitempty"`
+
+	Recipients *campaignaudience.Request `json:"-"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`

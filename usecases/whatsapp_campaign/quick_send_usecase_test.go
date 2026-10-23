@@ -301,6 +301,7 @@ func (r *qsLeadRepo) Create(_ *lead.Lead) error                            { ret
 func (r *qsLeadRepo) FindByID(_ string, _ string) (*lead.Lead, error)      { return nil, nil }
 func (r *qsLeadRepo) FindByIDs(_ string, _ []string) ([]*lead.Lead, error) { return nil, nil }
 func (r *qsLeadRepo) FindByNumber(_ string, _ string) (*lead.Lead, error)  { return nil, nil }
+func (r *qsLeadRepo) FindByEmail(_ string, _ string) (*lead.Lead, error)   { return nil, lead.ErrLeadNotFound }
 func (r *qsLeadRepo) Update(_ string, _ string, _ lead.LeadUpdate) error   { return nil }
 func (r *qsLeadRepo) Rename(_ string, _ string, _ string) error            { return nil }
 func (r *qsLeadRepo) Delete(_ string, _ string) error                      { return nil }

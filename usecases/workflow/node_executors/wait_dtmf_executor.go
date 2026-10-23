@@ -48,7 +48,7 @@ func (e *waitDTMFExecutor) Definition() workflow.NodeDefinition {
 		},
 		DynamicHandles: true,
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "key", Description: "Tecla pressionada (vazio quando ninguém apertou)"},
+			{Key: "key", Description: "Tecla pressionada (vazio quando ninguém apertou)", Label: "Tecla pressionada", Type: workflow.VariableTypeText},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "keys", Label: "Teclas", Type: "multi-select", Options: keyOptions, Required: true, Description: "Cada tecla escolhida vira uma saída."},

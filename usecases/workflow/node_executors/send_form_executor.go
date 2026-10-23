@@ -71,13 +71,14 @@ func NewSendFormExecutor(forms FormSender, waDeps SenderDeps) workflow.NodeExecu
 
 func (e *sendFormExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionSendForm,
-		TestBehavior: workflow.NodeTestWaits,
-		Category:     workflow.NodeCategoryAction,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:        "Enviar formulário",
-		Description:  "Envia um formulário do WhatsApp e espera o contato responder. Só no WhatsApp oficial, com a janela de 24 horas aberta.",
-		Icon:         "ClipboardText",
+		Type:              workflow.NodeTypeActionSendForm,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestWaits,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:             "Enviar formulário",
+		Description:       "Envia um formulário do WhatsApp e espera o contato responder. Só no WhatsApp oficial, com a janela de 24 horas aberta.",
+		Icon:              "ClipboardText",
 		Guidance: workflow.NodeGuidance{
 			When: "Para coletar vários dados de uma vez (cadastro, pesquisa, agendamento) com um formulário publicado do WhatsApp.",
 			Behavior: "O nó PAUSA até o contato enviar o formulário. Respostas comuns de texto NÃO avançam o nó. " +
@@ -101,13 +102,13 @@ func (e *sendFormExecutor) Definition() workflow.NodeDefinition {
 			formFallbackParamsKey:      map[string]interface{}{},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "sent", Description: "true se o formulário foi enviado"},
-			{Key: workflow.FormNodeFormIDKey, Description: "ID do formulário enviado"},
-			{Key: "send_id", Description: "ID do envio do formulário"},
-			{Key: "message_id", Description: "ID da mensagem enviada"},
-			{Key: "reason", Description: "Motivo quando o envio falha"},
-			{Key: formFallbackTemplateKey, Description: "ID do template reserva, quando ele foi enviado no lugar do formulário"},
-			{Key: workflow.DataKeyFormResponseID, Description: "ID da resposta (após a resposta)"},
+			{Key: "sent", Description: "true se o formulário foi enviado", Label: "Enviado", Type: workflow.VariableTypeBoolean},
+			{Key: workflow.FormNodeFormIDKey, Description: "ID do formulário enviado", Label: "ID do formulário", Type: workflow.VariableTypeText},
+			{Key: "send_id", Description: "ID do envio do formulário", Label: "ID do envio", Type: workflow.VariableTypeText},
+			{Key: "message_id", Description: "ID da mensagem enviada", Label: "ID da mensagem", Type: workflow.VariableTypeText},
+			{Key: "reason", Description: "Motivo quando o envio falha", Label: "Motivo", Type: workflow.VariableTypeText},
+			{Key: formFallbackTemplateKey, Description: "ID do template reserva, quando ele foi enviado no lugar do formulário", Label: "ID do template reserva", Type: workflow.VariableTypeText},
+			{Key: workflow.DataKeyFormResponseID, Description: "ID da resposta (após a resposta)", Label: "ID da resposta", Type: workflow.VariableTypeText},
 			{Key: "form.<campo>", Description: "Resposta de cada campo pela chave do campo (após a resposta)"},
 		},
 		ConfigSchema: []workflow.ConfigField{
@@ -155,7 +156,7 @@ func (e *sendFormExecutor) sendFallback(ctx *workflow.NodeContext, formID, templ
 	if e.templates == nil {
 		return formNotSent(ctx, formID, "", failed, ErrFormSenderUnavailable)
 	}
-	out, _, err := e.templates.SendTemplate(context.Background(), ctx.Run, templateID, "", templateParamValues(ctx.Node.Config, formFallbackParamsKey), ctx.State)
+	out, _, err := e.templates.SendTemplate(context.Background(), ctx.Run, templateID, "", templateParamValues(ctx, formFallbackParamsKey), ctx.State)
 	if err != nil {
 		return formNotSent(ctx, formID, "", failed, err)
 	}
@@ -192,7 +193,7 @@ func (e *sendFormExecutor) send(ctx *workflow.NodeContext, formID string) (wf.Se
 		return wf.Send{}, ErrFormSenderUnavailable
 	}
 	text := func(key string) string {
-		return workflow.Interpolate(stringConfig(ctx.Node.Config, key), ctx.State, nil)
+		return workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, key))
 	}
 	return e.forms.SendFromWorkflow(context.Background(), whatsappform_usecase.WorkflowSend{
 		WorkspaceID: ctx.Run.WorkspaceID,

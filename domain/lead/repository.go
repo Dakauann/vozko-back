@@ -1,6 +1,7 @@
 package lead
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ type Repository interface {
 	FindByIDs(workspaceID string, ids []string) ([]*Lead, error)
 
 	FindByNumber(workspaceID, number string) (*Lead, error)
+
+	FindByEmail(workspaceID, email string) (*Lead, error)
 
 	FindOrCreate(workspaceID, number string, update LeadUpdate) (*Lead, bool, error)
 
@@ -34,6 +37,17 @@ type BulkLeadInput struct {
 	Source Source
 	Number string
 	Name   string
+}
+
+type BulkEmailInput struct {
+	Source Source
+	Email  string
+	Name   string
+}
+
+type EmailBulk interface {
+	IDsByEmails(ctx context.Context, workspaceID string, addresses []string) (map[string]string, error)
+	FindOrCreateManyByEmail(ctx context.Context, workspaceID string, inputs []BulkEmailInput) (map[string]*Lead, error)
 }
 
 type ListLeadsInput struct {

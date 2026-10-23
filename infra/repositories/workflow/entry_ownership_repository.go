@@ -41,6 +41,18 @@ var ownershipQueries = map[shared.EntryType]string{
 		SELECT 1 FROM tiktok_conversations c
 		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
 	)`,
+	shared.EntryTypeEmail: `SELECT EXISTS (
+		SELECT 1 FROM email_conversations c
+		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
+	)`,
+	shared.EntryTypeRCS: `SELECT EXISTS (
+		SELECT 1 FROM rcs_conversations c
+		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
+	)`,
+	shared.EntryTypeSMS: `SELECT EXISTS (
+		SELECT 1 FROM sms_conversations c
+		WHERE c.id = ?::uuid AND c.workspace_id = ?::uuid AND c.deleted_at IS NULL
+	)`,
 }
 
 type entryOwnershipRepository struct {

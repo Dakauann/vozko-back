@@ -367,8 +367,15 @@ func TestToWebhookEvent_NoActionableState(t *testing.T) {
 	if _, ok := ToWebhookEvent("n", nil); ok {
 		t.Fatal("a nil payment must not produce an event")
 	}
-	if _, ok := ToWebhookEvent("n", &Payment{ID: 1, Status: "some_future_status"}); ok {
-		t.Fatal("an unknown status must not produce an event")
+	if _, ok := ToWebhookEvent("n", &Payment{ID: 1}); ok {
+		t.Fatal("a payment without a status must not produce an event")
+	}
+	event, ok := ToWebhookEvent("n", &Payment{ID: 1, Status: "some_future_status"})
+	if !ok {
+		t.Fatal("an unknown status must reach the handler so it is alerted, not dropped")
+	}
+	if _, known := payment.MeaningOf(event.Event); known {
+		t.Fatalf("an unknown status must stay unknown downstream, got %q", event.Event)
 	}
 }
 

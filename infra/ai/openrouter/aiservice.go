@@ -233,7 +233,7 @@ func (s *Service) GenerateStream(ctx context.Context, input ai.GenerateInput) (<
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventToolCall, ToolCall: &toolCall}
 
 				startedAt := time.Now()
-				result := s.executeTool(ctx, input.ToolConfigs, tc.Function.Name, toolCall.Arguments)
+				result := s.executeTool(tools.WithCallID(ctx, tc.ID), input.ToolConfigs, tc.Function.Name, toolCall.Arguments)
 				toolCall.Result = &result
 				toolCall.DurationMs = time.Since(startedAt).Milliseconds()
 				eventCh <- ai.StreamEvent{Type: ai.StreamEventToolResult, ToolCall: &toolCall, ToolResult: &result}
@@ -349,7 +349,7 @@ func (s *Service) Generate(ctx context.Context, input ai.GenerateInput) (*ai.Gen
 		for _, call := range msg.ToolCalls {
 			args := parseToolArguments(call.Function.Arguments)
 			startedAt := time.Now()
-			result := s.executeTool(ctx, input.ToolConfigs, call.Function.Name, args)
+			result := s.executeTool(tools.WithCallID(ctx, call.ID), input.ToolConfigs, call.Function.Name, args)
 			executedCalls = append(executedCalls, ai.ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: args, Result: &result, DurationMs: time.Since(startedAt).Milliseconds()})
 			req.Messages = append(req.Messages, openrouter.ToolMessage(call.ID, serializeToolResult(&result)))
 		}

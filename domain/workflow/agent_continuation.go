@@ -10,6 +10,8 @@ import (
 
 const TopicAgentRunFinished = "workflow.run.agent_finished"
 
+const AgentRunFinishedWorkers = 10
+
 const maxFailureDetailRunes = 300
 
 type ContinuationKind string

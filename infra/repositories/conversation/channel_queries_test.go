@@ -3,7 +3,18 @@ package conversation_repository
 import (
 	"strings"
 	"testing"
+
+	mldomain "vozko/domain/mercadolivre"
+	"vozko/domain/shared"
 )
+
+func TestMercadoLivreContainerNameIsTheDescriptorOne(t *testing.T) {
+	for _, q := range channelQueries {
+		if q.EntryType == shared.EntryTypeMercadoLivre && q.ContainerNameField != mldomain.AccountNameSQL("mla.") {
+			t.Fatalf("container name = %q", q.ContainerNameField)
+		}
+	}
+}
 
 func TestEntryInfoSQLIsComposedFromTheDescriptor(t *testing.T) {
 	for _, q := range channelQueries {

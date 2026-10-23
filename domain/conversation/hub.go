@@ -324,7 +324,7 @@ type MessageMarker interface {
 }
 
 type TemplateSender interface {
-	SendTemplate(entryID, entryType, templateID string, parameters []string, userID string, workspaceID string) (messageID string, err error)
+	SendTemplate(entryID, entryType, templateID string, parameters, headerParameters []string, userID string, workspaceID string) (messageID string, err error)
 }
 
 type EventBroadcaster interface {

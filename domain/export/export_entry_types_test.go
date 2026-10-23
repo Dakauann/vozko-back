@@ -17,7 +17,7 @@ func TestExportableEntryTypesAreKnownConversationTypes(t *testing.T) {
 			t.Errorf("%s is exportable but not a known entry type", entryType)
 		}
 	}
-	for _, want := range []EntryType{EntryTypeWhatsApp, EntryTypeInstagram, EntryTypeTelegram, EntryTypeUnofficialWhatsApp, EntryTypeFacebook, EntryTypeWebchat, EntryTypeMercadoLivre} {
+	for _, want := range []EntryType{EntryTypeWhatsApp, EntryTypeInstagram, EntryTypeTelegram, EntryTypeUnofficialWhatsApp, EntryTypeFacebook, EntryTypeWebchat, EntryTypeMercadoLivre, EntryTypeEmail, EntryTypeRCS, EntryTypeSMS} {
 		if !seen[want] {
 			t.Errorf("%s is missing from the exportable entry types", want)
 		}

@@ -24,13 +24,14 @@ func NewTransferDepartmentExecutor(deptRepo dept.Repository, workspaceRepo works
 
 func (e *transferDepartmentExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionTransferDepartment,
-		TestBehavior: workflow.NodeTestWritesData,
-		Category:     workflow.NodeCategoryAction,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:        "Transferir conversa",
-		Description:  "Passa a conversa a uma pessoa pela roleta do workspace (a mesma regra de distribuição da primeira mensagem) e pausa a automação. O departamento é opcional: vazio, usa o da conversa.",
-		Icon:         "UsersThree",
+		Type:              workflow.NodeTypeActionTransferDepartment,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestWritesData,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:             "Transferir conversa",
+		Description:       "Passa a conversa a uma pessoa pela roleta do workspace (a mesma regra de distribuição da primeira mensagem) e pausa a automação. O departamento é opcional: vazio, usa o da conversa.",
+		Icon:              "UsersThree",
 		Guidance: workflow.NodeGuidance{
 			When:     "Para passar a conversa a uma pessoa pela roleta, do departamento da conversa ou de um departamento escolhido.",
 			Behavior: "Usa o modo da roleta do workspace (online ou última vez online) e só entrega a quem pode receber conversas. Sem ninguém disponível, a conversa vai para a fila da equipe (queued = true). Pausa a automação desta conversa.",
@@ -40,13 +41,13 @@ func (e *transferDepartmentExecutor) Definition() workflow.NodeDefinition {
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando a conversa foi entregue a alguém ou à fila da equipe"},
-			{Key: "queued", Description: "true quando ninguém estava disponível e a conversa foi para a fila da equipe"},
-			{Key: "department_id", Description: "ID do departamento escolhido (vazio: departamento da conversa)"},
-			{Key: "department_name", Description: "Nome do departamento escolhido"},
-			{Key: "assigned_user_id", Description: "ID de quem recebeu a conversa (vazio na fila da equipe)"},
-			{Key: "assigned_user_email", Description: "E-mail de quem recebeu a conversa"},
-			{Key: "error", Description: "Descrição do erro quando a transferência falha"},
+			{Key: "success", Description: "true quando a conversa foi entregue a alguém ou à fila da equipe", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "queued", Description: "true quando ninguém estava disponível e a conversa foi para a fila da equipe", Label: "Foi para a fila", Type: workflow.VariableTypeBoolean},
+			{Key: "department_id", Description: "ID do departamento escolhido (vazio: departamento da conversa)", Label: "ID do departamento", Type: workflow.VariableTypeText},
+			{Key: "department_name", Description: "Nome do departamento escolhido", Label: "Departamento", Type: workflow.VariableTypeText},
+			{Key: "assigned_user_id", Description: "ID de quem recebeu a conversa (vazio na fila da equipe)", Label: "ID de quem recebeu", Type: workflow.VariableTypeText},
+			{Key: "assigned_user_email", Description: "E-mail de quem recebeu a conversa", Label: "E-mail de quem recebeu", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Descrição do erro quando a transferência falha", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{
 			"department_id": "",

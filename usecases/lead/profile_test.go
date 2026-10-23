@@ -14,6 +14,7 @@ import (
 	"vozko/domain/lead"
 	"vozko/domain/recordevent"
 	"vozko/domain/shared"
+	"vozko/usecases/emailhygiene/hygienetest"
 )
 
 type fakeCEPSearch struct {
@@ -49,14 +50,15 @@ type profileFixture struct {
 	notifier *fakeNotifier
 	fields   *fakeDefinitions
 	lookup   *fakeCEPSearch
+	seen     *hygienetest.SeenEmails
 	profiles *Profiles
 }
 
 func newProfileFixture(t *testing.T, leads ...*lead.Lead) *profileFixture {
 	t.Helper()
-	f := &profileFixture{store: newFakeStore(leads...), notifier: &fakeNotifier{}, fields: &fakeDefinitions{defs: leadDefinitions()}, lookup: paulistaLookup()}
+	f := &profileFixture{store: newFakeStore(leads...), notifier: &fakeNotifier{}, fields: &fakeDefinitions{defs: leadDefinitions()}, lookup: paulistaLookup(), seen: &hygienetest.SeenEmails{}}
 	profiles, err := NewProfiles(ProfileDeps{
-		Store: f.store, Notifier: f.notifier, Definitions: f.fields, CEP: f.lookup,
+		Store: f.store, Notifier: f.notifier, Definitions: f.fields, CEP: f.lookup, EmailsSeen: f.seen,
 		EntryLeads: historyEntryLeads{"e-1": "l-1"},
 		Now:        func() time.Time { return cmdNow },
 	})
@@ -73,7 +75,7 @@ func conversationUpdate(p lead.Profile) ProfileUpdate {
 
 func TestNewProfilesRefusesAMissingDependency(t *testing.T) {
 	complete := func() ProfileDeps {
-		return ProfileDeps{Store: newFakeStore(), Notifier: &fakeNotifier{}, Definitions: &fakeDefinitions{}, EntryLeads: historyEntryLeads{}, CEP: paulistaLookup()}
+		return ProfileDeps{Store: newFakeStore(), Notifier: &fakeNotifier{}, Definitions: &fakeDefinitions{}, EntryLeads: historyEntryLeads{}, CEP: paulistaLookup(), EmailsSeen: &hygienetest.SeenEmails{}}
 	}
 	for name, strip := range map[string]func(*ProfileDeps){
 		"store":       func(d *ProfileDeps) { d.Store = nil },
@@ -81,6 +83,7 @@ func TestNewProfilesRefusesAMissingDependency(t *testing.T) {
 		"definitions": func(d *ProfileDeps) { d.Definitions = nil },
 		"entry leads": func(d *ProfileDeps) { d.EntryLeads = nil },
 		"cep":         func(d *ProfileDeps) { d.CEP = nil },
+		"emails seen": func(d *ProfileDeps) { d.EmailsSeen = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			deps := complete()
@@ -190,7 +193,7 @@ func TestUpdateProfileRetriesAfterLosingARace(t *testing.T) {
 }
 
 func TestUpdateProfileThatKeepsLosingIsAConflict(t *testing.T) {
-	profiles, err := NewProfiles(ProfileDeps{Store: alwaysConflicting{newFakeStore(storedLead())}, Notifier: &fakeNotifier{}, Definitions: &fakeDefinitions{defs: leadDefinitions()}, EntryLeads: historyEntryLeads{}, CEP: paulistaLookup()})
+	profiles, err := NewProfiles(ProfileDeps{Store: alwaysConflicting{newFakeStore(storedLead())}, Notifier: &fakeNotifier{}, Definitions: &fakeDefinitions{defs: leadDefinitions()}, EntryLeads: historyEntryLeads{}, CEP: paulistaLookup(), EmailsSeen: &hygienetest.SeenEmails{}})
 	if err != nil {
 		t.Fatal(err)
 	}

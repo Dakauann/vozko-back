@@ -36,6 +36,12 @@ var workspaceEntryIDSubqueries = map[shared.EntryType]string{
 		WHERE mlc.workspace_id = ?::uuid AND mlc.deleted_at IS NULL`,
 	shared.EntryTypeTikTok: `SELECT ttc.id::text FROM tiktok_conversations ttc
 		WHERE ttc.workspace_id = ?::uuid AND ttc.deleted_at IS NULL`,
+	shared.EntryTypeEmail: `SELECT emc.id::text FROM email_conversations emc
+		WHERE emc.workspace_id = ?::uuid AND emc.deleted_at IS NULL`,
+	shared.EntryTypeRCS: `SELECT rcc.id::text FROM rcs_conversations rcc
+		WHERE rcc.workspace_id = ?::uuid AND rcc.deleted_at IS NULL`,
+	shared.EntryTypeSMS: `SELECT smc.id::text FROM sms_conversations smc
+		WHERE smc.workspace_id = ?::uuid AND smc.deleted_at IS NULL`,
 }
 
 type repository struct {
@@ -505,7 +511,7 @@ func (r *repository) GetInitialStageForCampaign(workspaceID, campaignID, campaig
 	return mapTagToDomain(&dbStage), nil
 }
 
-func (r *repository) AssignStage(et *stage.EntryStage) error {
+func (r *repository) AssignStage(et *stage.EntryStage) (string, error) {
 	dbET := schema.EntryStage{
 		ID:          et.ID,
 		StageID:     et.StageID,
@@ -513,9 +519,20 @@ func (r *repository) AssignStage(et *stage.EntryStage) error {
 		EntryType:   et.EntryType,
 		WorkspaceID: et.WorkspaceID,
 	}
+	previous := ""
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		if err := lockEntryStage(tx, et); err != nil {
 			return err
+		}
+		var current []string
+		if err := tx.Model(&schema.EntryStage{}).
+			Where("entry_id = ? AND entry_type = ? AND workspace_id = ?", et.EntryID, et.EntryType, et.WorkspaceID).
+			Order("created_at DESC").Limit(1).
+			Pluck("stage_id", &current).Error; err != nil {
+			return err
+		}
+		if len(current) > 0 {
+			previous = current[0]
 		}
 		if err := tx.Where("entry_id = ? AND entry_type = ? AND workspace_id = ?", et.EntryID, et.EntryType, et.WorkspaceID).
 			Delete(&schema.EntryStage{}).Error; err != nil {
@@ -524,10 +541,10 @@ func (r *repository) AssignStage(et *stage.EntryStage) error {
 		return tx.Create(&dbET).Error
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	et.CreatedAt = dbET.CreatedAt
-	return nil
+	return previous, nil
 }
 
 func (r *repository) AssignStageIfNone(et *stage.EntryStage) (bool, error) {

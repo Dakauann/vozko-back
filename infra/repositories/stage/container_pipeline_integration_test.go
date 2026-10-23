@@ -2,24 +2,18 @@ package stage_repository
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"vozko/domain/shared"
+	"vozko/infra/testenv"
 )
 
 func pipelineIntegrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 to run against postgres")
-	}
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
+	dsn := testenv.Postgres(t).DSN()
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open: %v", err)

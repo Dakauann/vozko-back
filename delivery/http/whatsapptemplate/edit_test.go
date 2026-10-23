@@ -32,10 +32,20 @@ func (f *fakeEditor) EditTemplate(_ context.Context, a buttonaction_usecase.Acto
 	return &template.Template{ID: in.TemplateID, Status: template.TemplateStatusPending, Category: template.TemplateCategoryMarketing}, nil
 }
 
+func serveEditWith(t *testing.T, h *WhatsAppTemplateHandler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return serveEditAs(t, h, body, true)
+}
+
 func serveEdit(t *testing.T, editor ExitGuardedEditor, body string, withClaims bool) *httptest.ResponseRecorder {
 	t.Helper()
 	h := &WhatsAppTemplateHandler{}
 	h.SetTemplateEditor(editor)
+	return serveEditAs(t, h, body, withClaims)
+}
+
+func serveEditAs(t *testing.T, h *WhatsAppTemplateHandler, body string, withClaims bool) *httptest.ResponseRecorder {
+	t.Helper()
 	router := mux.NewRouter()
 	router.HandleFunc("/whatsapp/templates/{id}/content", h.EditForWorkspace).Methods(http.MethodPut)
 	req := httptest.NewRequest(http.MethodPut, "/whatsapp/templates/tpl-1/content", strings.NewReader(body))

@@ -7,9 +7,10 @@ import (
 )
 
 type CreateInvoiceRequest struct {
-	AmountBRL   float64 `json:"amountBrl" example:"50"`
-	BillingType string  `json:"billingType" example:"PIX"`
-	Description string  `json:"description" example:"Recarga de saldo"`
+	AmountBRL      float64 `json:"amountBrl" example:"50"`
+	BillingType    string  `json:"billingType" example:"PIX"`
+	Description    string  `json:"description" example:"Recarga de saldo"`
+	IdempotencyKey string  `json:"idempotencyKey,omitempty" example:"5f0c6a3e-1d2b-4c5d-9e8f-0a1b2c3d4e5f"`
 }
 
 type InvoiceLineItemResponse struct {

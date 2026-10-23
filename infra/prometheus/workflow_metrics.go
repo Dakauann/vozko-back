@@ -17,6 +17,7 @@ type workflowMetrics struct {
 
 	replyLookupFailures prometheus.Counter
 	continuations       *prometheus.CounterVec
+	choiceWrites        *prometheus.CounterVec
 }
 
 func newWorkflowMetrics(reg prometheus.Registerer) *workflowMetrics {
@@ -50,8 +51,12 @@ func newWorkflowMetrics(reg prometheus.Registerer) *workflowMetrics {
 			Namespace: metricsNamespace, Subsystem: "workflow",
 			Name: "agent_continuations_total", Help: "Agent turns after an agent-started run ended, by outcome (sent|skipped reason|failed)",
 		}, []string{"outcome"}),
+		choiceWrites: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace, Subsystem: "choice_stats",
+			Name: "writes_total", Help: "Choice click-through writes by operation (send|click|link_click) and outcome (recorded|duplicate|skipped|failed|zone_unknown)",
+		}, []string{"op", "outcome"}),
 	}
-	reg.MustRegister(m.runsStarted, m.runsFinished, m.stepDuration, m.deliveries, m.toolCalls, m.replyLookupFailures, m.continuations)
+	reg.MustRegister(m.runsStarted, m.runsFinished, m.stepDuration, m.deliveries, m.toolCalls, m.replyLookupFailures, m.continuations, m.choiceWrites)
 	return m
 }
 
@@ -69,9 +74,17 @@ func (p *PrometheusService) IncWorkflowAgentContinuation(outcome string) {
 	p.workflow.continuations.WithLabelValues(safeLabel(outcome)).Inc()
 }
 
+func (p *PrometheusService) IncChoiceStatsWrite(op, outcome string) {
+	if p == nil || p.workflow == nil {
+		return
+	}
+	p.workflow.choiceWrites.WithLabelValues(safeLabel(op), safeLabel(outcome)).Inc()
+}
+
 var (
-	_ metrics.WorkflowMetricsRecorder   = (*PrometheusService)(nil)
-	_ metrics.AIToolCallMetricsRecorder = (*PrometheusService)(nil)
+	_ metrics.WorkflowMetricsRecorder    = (*PrometheusService)(nil)
+	_ metrics.AIToolCallMetricsRecorder  = (*PrometheusService)(nil)
+	_ metrics.ChoiceStatsMetricsRecorder = (*PrometheusService)(nil)
 )
 
 func (p *PrometheusService) IncWorkflowRunStarted(trigger string) {

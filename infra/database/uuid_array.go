@@ -1,9 +1,11 @@
 package database
 
 import (
+	"database/sql/driver"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/lib/pq"
 )
 
@@ -32,4 +34,60 @@ func AllUUIDs(ids ...string) bool {
 		}
 	}
 	return true
+}
+
+type UUIDs []uuid.UUID
+
+func UUIDsOf(ids []string) UUIDs {
+	valid := UUIDArray(ids)
+	out := make(UUIDs, len(valid))
+	for i, id := range valid {
+		out[i] = uuid.MustParse(id)
+	}
+	return out
+}
+
+func (u UUIDs) Strings() []string {
+	out := make([]string, len(u))
+	for i, id := range u {
+		out[i] = id.String()
+	}
+	return out
+}
+
+func (u UUIDs) Value() (driver.Value, error) {
+	return pq.StringArray(u.Strings()).Value()
+}
+
+func (u UUIDs) Dimensions() []pgtype.ArrayDimension {
+	if u == nil {
+		return nil
+	}
+	return []pgtype.ArrayDimension{{Length: int32(len(u)), LowerBound: 1}}
+}
+
+func (u UUIDs) Index(i int) any {
+	return [16]byte(u[i])
+}
+
+func (u UUIDs) IndexType() any {
+	return [16]byte{}
+}
+
+type Texts []string
+
+func (t Texts) Value() (driver.Value, error) {
+	return pq.StringArray(t).Value()
+}
+
+func (t Texts) Dimensions() []pgtype.ArrayDimension {
+	return pgtype.FlatArray[string](t).Dimensions()
+}
+
+func (t Texts) Index(i int) any {
+	return t[i]
+}
+
+func (t Texts) IndexType() any {
+	return ""
 }

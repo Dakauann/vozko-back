@@ -93,7 +93,10 @@ func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *web
 	}
 
 	if session.AwaitStart {
-		send("sim_ready", simReadyPayload{WorkflowID: wf.ID, TriggerType: string(trigger.Type), RealCallNodes: debugger.realCallNodes()})
+		send("sim_ready", simReadyPayload{
+			WorkflowID: wf.ID, TriggerType: string(trigger.Type), RealCallNodes: debugger.realCallNodes(),
+			Triggers: s.deps.TriggerInputs.Specs(wf.WorkspaceID, &wf.Graph), DefaultTriggerNodeID: trigger.ID,
+		})
 		idle := debugger.idleTimer()
 		defer idle.Stop()
 		for started := false; !started; {
@@ -114,7 +117,7 @@ func (s *wsWorkflowSimulation) runVoiceSimulation(ctx context.Context, conn *web
 		}
 	}
 
-	send("sim_started", simStartedPayload{RunID: run.ID, WorkflowID: wf.ID, RealCallNodes: debugger.realCallNodes()})
+	send("sim_started", simStartedPayload{RunID: run.ID, WorkflowID: wf.ID, RealCallNodes: debugger.realCallNodes(), Trigger: simTriggerOf(trigger)})
 	send("state_update", redactedState(run))
 	engine := newSandboxEngine(runs, logs, registry, debugger)
 	if err := engine.ExecuteWithRuntime(run, wf, call); err != nil {

@@ -11,7 +11,7 @@ func visibleRunEntries(workspaceID string, visibility conversation.VisibilitySco
 	if clause == "" {
 		return "", nil
 	}
-	return "(workflow_runs.entry_type = '" + workflow.EntryTypeSIPCall + "' OR " + clause + ")", args
+	return "(workflow_runs.entry_type IN ('" + workflow.EntryTypeSIPCall + "', '" + workflow.EntryTypeLead + "') OR " + clause + ")", args
 }
 
 func visibleDeliveryEntries(workspaceID string, visibility conversation.VisibilityScope) (string, []interface{}) {

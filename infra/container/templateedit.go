@@ -35,4 +35,5 @@ func (c *Container) wireTemplateEdit() {
 	guarded := c.buttonActions()
 	guarded.SetContentEditor(editor)
 	c.handlers.whatsappTemplate.SetTemplateEditor(guarded)
+	c.handlers.whatsappTemplate.SetClickTracking(c.choiceButtonTracking(), c.cfg.ShortLinkBaseURL)
 }

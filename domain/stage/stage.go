@@ -40,6 +40,8 @@ type EntryStage struct {
 
 	StageName  string `json:"stageName,omitempty"`
 	StageColor string `json:"stageColor,omitempty"`
+
+	Cause MoveCause `json:"-"`
 }
 
 const (

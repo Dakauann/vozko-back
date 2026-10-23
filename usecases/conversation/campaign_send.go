@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	"vozko/domain/conversation"
-	"vozko/domain/media"
 	"vozko/domain/shared"
 )
 
@@ -55,7 +54,7 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 			conversation.MessageTypeOperator, in.Text, "", "")
 
 	case in.MediaID != "":
-		libraryMedia, err := s.lookupCampaignMedia(in.WorkspaceID, in.MediaID)
+		libraryMedia, err := conversation.SendableLibraryMedia(s.mediaLibrary, in.WorkspaceID, in.MediaID)
 		if err != nil {
 			return nil, err
 		}
@@ -84,23 +83,6 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 			},
 			conversation.MessageTypeOperator, in.Text, "", "")
 	}
-}
-
-func (s *MessageSenderService) lookupCampaignMedia(workspaceID, mediaID string) (*media.Media, error) {
-	if s.mediaLibrary == nil {
-		return nil, fmt.Errorf("campaign send: media library is not configured")
-	}
-	record, err := s.mediaLibrary.GetMediaByID(mediaID)
-	if err != nil {
-		return nil, fmt.Errorf("campaign send: media not found: %w", err)
-	}
-	if record == nil || record.URL == "" {
-		return nil, fmt.Errorf("campaign send: %w", media.ErrMediaNotFound)
-	}
-	if workspaceID != "" && record.WorkspaceID != workspaceID {
-		return nil, fmt.Errorf("campaign send: %w", media.ErrMediaNotFound)
-	}
-	return record, nil
 }
 
 func (s *MessageSenderService) registerCampaignMediaInConversation(in SendCampaignMessageInput, url string) string {

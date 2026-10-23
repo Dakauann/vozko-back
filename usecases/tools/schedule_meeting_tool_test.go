@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"vozko/domain/calendar"
 )
 
 func TestScheduleMeeting_Definition(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 	def := tool.Definition()
 
 	if def.Name != ScheduleMeetingToolName {
@@ -66,7 +64,7 @@ func TestScheduleMeeting_Definition(t *testing.T) {
 
 func TestScheduleMeeting_UsesConfiguredDefaults(t *testing.T) {
 	google := &mockGoogleCalendarService{createID: "event-config", meetLink: ""}
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id":     "ws-1",
@@ -105,13 +103,13 @@ func TestScheduleMeeting_UsesConfiguredDefaults(t *testing.T) {
 }
 
 func TestScheduleMeeting_NilDeps_ReturnsNil(t *testing.T) {
-	if NewScheduleMeetingToolUseCase(nil, nil) != nil {
+	if NewScheduleMeetingToolUseCase(nil, nil, nil) != nil {
 		t.Fatal("expected nil handler when deps are nil")
 	}
 }
 
 func TestScheduleMeeting_MissingWorkspaceID(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{}, map[string]interface{}{
 		"title":      "Test Meeting",
@@ -126,7 +124,7 @@ func TestScheduleMeeting_MissingWorkspaceID(t *testing.T) {
 }
 
 func TestScheduleMeeting_NoGoogleConnection(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: nil}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: nil}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -143,7 +141,7 @@ func TestScheduleMeeting_NoGoogleConnection(t *testing.T) {
 }
 
 func TestScheduleMeeting_MissingTitle(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -159,7 +157,7 @@ func TestScheduleMeeting_MissingTitle(t *testing.T) {
 }
 
 func TestScheduleMeeting_MissingStartTime(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -180,7 +178,7 @@ func TestScheduleMeeting_Success_WithMeetLink(t *testing.T) {
 		meetLink: "https://meet.google.com/abc-defg-hij",
 	}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -218,7 +216,7 @@ func TestScheduleMeeting_Success_WithEndTime(t *testing.T) {
 		meetLink: "",
 	}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -249,7 +247,7 @@ func TestScheduleMeeting_WithAttendees(t *testing.T) {
 		meetLink: "https://meet.google.com/xyz",
 	}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -276,7 +274,7 @@ func TestScheduleMeeting_WithAttendees(t *testing.T) {
 
 func TestScheduleMeeting_InvalidAttendeeSkippedWithNote(t *testing.T) {
 	google := &mockGoogleCalendarService{createID: "event-skip", meetLink: "https://meet.google.com/abc"}
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -307,7 +305,7 @@ func TestScheduleMeeting_InvalidAttendeeSkippedWithNote(t *testing.T) {
 }
 
 func TestScheduleMeeting_EndBeforeStart(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -325,7 +323,7 @@ func TestScheduleMeeting_EndBeforeStart(t *testing.T) {
 }
 
 func TestScheduleMeeting_InvalidTimezone(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -347,7 +345,7 @@ func TestScheduleMeeting_GoogleAPIError(t *testing.T) {
 		createErr: fmt.Errorf("Google API error: quota exceeded"),
 	}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -368,7 +366,7 @@ func TestScheduleMeeting_DefaultDuration30Min(t *testing.T) {
 		createID: "event-default-dur",
 	}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -392,7 +390,7 @@ func TestScheduleMeeting_DefaultDuration30Min(t *testing.T) {
 }
 
 func TestScheduleMeeting_ExecuteFallsBackToExecuteWithConfig(t *testing.T) {
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.Execute(context.Background(), map[string]interface{}{
 		"title":      "Test",
@@ -409,7 +407,7 @@ func TestScheduleMeeting_ExecuteFallsBackToExecuteWithConfig(t *testing.T) {
 func TestScheduleMeeting_DeduplicatesAttendees(t *testing.T) {
 	google := &mockGoogleCalendarService{createID: "event-dedup"}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -436,7 +434,7 @@ func TestScheduleMeeting_DeduplicatesAttendees(t *testing.T) {
 func TestScheduleMeeting_WithDescriptionAndLocation(t *testing.T) {
 	google := &mockGoogleCalendarService{createID: "event-full"}
 
-	tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+	tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -454,38 +452,6 @@ func TestScheduleMeeting_WithDescriptionAndLocation(t *testing.T) {
 	}
 }
 
-func TestScheduleMeeting_TokenRefresh(t *testing.T) {
-	expiredConn := validConn()
-	expiredConn.TokenExpiry = expiredConn.TokenExpiry.Add(-2 * expiredConn.TokenExpiry.Sub(expiredConn.CreatedAt))
-
-	repo := &mockCalendarRepo{conn: &calendar.GoogleCalendarConnection{
-		ID:           "conn-1",
-		WorkspaceID:  "ws-1",
-		Email:        "cal@workspace.com",
-		AccessToken:  "expired-token",
-		RefreshToken: "refresh-token",
-		TokenExpiry:  expiredConn.TokenExpiry,
-	}}
-	google := &mockGoogleCalendarService{
-		createID:      "event-refreshed",
-		refreshResult: &calendar.OAuthTokenResponse{AccessToken: "new-token", ExpiresIn: 3600},
-	}
-
-	tool := NewScheduleMeetingToolUseCase(repo, google)
-
-	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
-		"__workspace_id": "ws-1",
-	}, map[string]interface{}{
-		"title":      "Refreshed Meeting",
-		"start_time": "2026-04-10T14:00:00-03:00",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if res.IsError {
-		t.Fatalf("expected success after token refresh, got error: %s", res.Result)
-	}
-}
 
 func TestScheduleMeeting_CreateGoogleMeetBoolean(t *testing.T) {
 	tests := []struct {
@@ -502,7 +468,7 @@ func TestScheduleMeeting_CreateGoogleMeetBoolean(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			google := &mockGoogleCalendarService{createID: "event-meet-test"}
-			tool := NewScheduleMeetingToolUseCase(&mockCalendarRepo{conn: validConn()}, google)
+			tool := newScheduleMeetingTool(&mockCalendarRepo{conn: validConn()}, google)
 
 			res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 				"__workspace_id": "ws-1",

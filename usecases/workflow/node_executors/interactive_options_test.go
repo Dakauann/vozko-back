@@ -48,7 +48,7 @@ func listConfig(t *testing.T, rows ...[3]string) map[string]interface{} {
 
 func mustOptions(t *testing.T, config map[string]interface{}, state *workflow.RunState) []conversation.InteractiveOption {
 	t.Helper()
-	options, err := interactiveOptionsOf(config, state)
+	options, err := interactiveOptionsOf(config, customerTextIn(&workflow.NodeContext{State: state}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestInteractiveOptionsReadsImportedListSectionsArray(t *testing.T) {
 }
 
 func TestInteractiveOptionsReportsButtonsThatAreNotAList(t *testing.T) {
-	_, err := interactiveOptionsOf(map[string]interface{}{"buttons": float64(6)}, newTestState())
+	_, err := interactiveOptionsOf(map[string]interface{}{"buttons": float64(6)}, customerTextIn(&workflow.NodeContext{State: newTestState()}))
 
 	if !errors.Is(err, workflow.ErrNodeInvalidInteractiveConfig) {
 		t.Fatalf("err = %v, want ErrNodeInvalidInteractiveConfig", err)

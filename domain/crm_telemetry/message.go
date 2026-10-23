@@ -7,6 +7,7 @@ const (
 
 	Topic               = "crm_telemetry"
 	MaxDeliveryAttempts = 5
+	ConsumerWorkers     = 20
 )
 
 type Kind string

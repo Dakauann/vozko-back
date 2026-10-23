@@ -11,7 +11,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strings"
 
@@ -20,6 +19,7 @@ import (
 	"vozko/domain/agent"
 	"vozko/domain/conversation"
 	"vozko/domain/media"
+	"vozko/domain/shared"
 	"vozko/domain/tools"
 	media_infra "vozko/infra/media"
 )
@@ -30,10 +30,15 @@ type SendWhatsappMediaTool struct {
 	mediaRepo             media.MediaRepository
 	downloads             media.RemoteFiles
 	adapters              conversation.AdapterRegistry
+	mediaURLs             *conversation.MediaURLResolver
 }
 
 func (uc *SendWhatsappMediaTool) SetAdapters(r conversation.AdapterRegistry) {
 	uc.adapters = r
+}
+
+func (uc *SendWhatsappMediaTool) SetMediaURLs(r *conversation.MediaURLResolver) {
+	uc.mediaURLs = r
 }
 
 const (
@@ -113,8 +118,17 @@ func (uc *SendWhatsappMediaTool) DefinitionWithContext(ctx tools.ToolContext) to
 		return base
 	}
 
-	medias, err := uc.mediaRepo.GetMediasByIDs(ag.MediaIDs)
-	if err != nil || len(medias) == 0 {
+	found, err := uc.mediaRepo.GetMediasByIDs(ag.MediaIDs)
+	if err != nil {
+		return base
+	}
+	medias := make([]media.Media, 0, len(found))
+	for i := range found {
+		if found[i].SendableFor(ag.WorkspaceID) {
+			medias = append(medias, found[i])
+		}
+	}
+	if len(medias) == 0 {
 		return base
 	}
 
@@ -160,7 +174,7 @@ func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config m
 	to, _ := params["to"].(string)
 	caption, _ := params["caption"].(string)
 
-	mediaItem, err := uc.resolveMediaItem(params)
+	mediaItem, err := uc.resolveMediaItem(toolMediaScope(config), params)
 	if err != nil {
 		return tools.ExecutionResult{}, err
 	}
@@ -190,28 +204,26 @@ func (uc *SendWhatsappMediaTool) ExecuteWithConfig(ctx context.Context, config m
 	}
 }
 
-func (uc *SendWhatsappMediaTool) resolveMediaItem(params map[string]interface{}) (*media.Media, error) {
+func toolMediaScope(config map[string]interface{}) conversation.MediaSendScope {
+	return conversation.MediaSendScope{
+		WorkspaceID: configString(config, "__workspace_id"),
+		EntryID:     configString(config, "__entry_id"),
+		EntryType:   shared.EntryType(configString(config, "__entry_type")),
+	}
+}
+
+func (uc *SendWhatsappMediaTool) resolveMediaItem(scope conversation.MediaSendScope, params map[string]interface{}) (*media.Media, error) {
 	mediaID, _ := params["media_id"].(string)
 	mediaID = strings.TrimSpace(mediaID)
 	mediaURL, _ := params["media_url"].(string)
 	mediaURL = strings.TrimSpace(mediaURL)
 
 	if mediaID != "" {
-		item, err := uc.mediaRepo.GetMediaByID(mediaID)
-		if err != nil {
-			return nil, err
-		}
-		if item == nil {
-			return nil, fmt.Errorf("media with ID %s not found", mediaID)
-		}
-		if strings.TrimSpace(item.URL) == "" {
-			return nil, fmt.Errorf("media with ID %s is missing a URL", mediaID)
-		}
-		return item, nil
+		return conversation.SendableLibraryMedia(uc.mediaRepo, scope.WorkspaceID, mediaID)
 	}
 
 	if mediaURL != "" {
-		if err := allowedMediaURL(mediaURL); err != nil {
+		if err := uc.allowedMediaURL(scope, mediaURL); err != nil {
 			return nil, err
 		}
 		return &media.Media{URL: mediaURL, Type: mediaTypeFromURL(mediaURL)}, nil
@@ -220,7 +232,7 @@ func (uc *SendWhatsappMediaTool) resolveMediaItem(params map[string]interface{})
 	return nil, fmt.Errorf("%s requires media_id (from the agent's library) or media_url (a direct CDN link)", ToolNameSendMedia)
 }
 
-func allowedMediaURL(raw string) error {
+func (uc *SendWhatsappMediaTool) allowedMediaURL(scope conversation.MediaSendScope, raw string) error {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("invalid media_url: %w", err)
@@ -228,27 +240,10 @@ func allowedMediaURL(raw string) error {
 	if !strings.EqualFold(parsed.Scheme, "https") {
 		return fmt.Errorf("media_url must use https, got %q", parsed.Scheme)
 	}
-
-	allowed := mediaURLAllowedHost()
-	if allowed == "" {
-		return fmt.Errorf("media_url is unavailable: no CDN host is configured")
+	if !uc.mediaURLs.Owns(raw) {
+		return fmt.Errorf("media_url host %q is not allowed, only files on our own CDN may be sent by URL", parsed.Hostname())
 	}
-	if !strings.EqualFold(parsed.Hostname(), allowed) {
-		return fmt.Errorf("media_url host %q is not allowed, only %s may be sent by URL", parsed.Hostname(), allowed)
-	}
-	return nil
-}
-
-func mediaURLAllowedHost() string {
-	endpoint := strings.TrimSpace(os.Getenv("CLOUDFLARE_R2_ENDPOINT"))
-	if endpoint == "" {
-		return ""
-	}
-	parsed, err := url.Parse(endpoint)
-	if err != nil {
-		return ""
-	}
-	return parsed.Hostname()
+	return uc.mediaURLs.SendableURL(scope, raw)
 }
 
 func mediaTypeFromURL(raw string) media.MediaType {

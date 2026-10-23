@@ -210,6 +210,13 @@ func messageStateUpdates(message *conversation.Message) map[string]interface{} {
 	if message.RetractedAt != nil {
 		updates["retracted_at"] = *message.RetractedAt
 	}
+	if replaces := message.DeliveryStatus.Replaces(); len(replaces) > 0 {
+		earlier := make([]string, len(replaces))
+		for i, status := range replaces {
+			earlier[i] = string(status)
+		}
+		updates["delivery_status"] = gorm.Expr("CASE WHEN COALESCE(delivery_status, '') IN ? THEN ? ELSE delivery_status END", earlier, string(message.DeliveryStatus))
+	}
 	return updates
 }
 

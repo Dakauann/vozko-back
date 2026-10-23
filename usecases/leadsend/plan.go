@@ -55,10 +55,6 @@ func (s *Service) target(ctx context.Context, a Actor, plan *sendPlan) (int, err
 		if err != nil {
 			return 0, err
 		}
-		_, header := tmpl.GetBodyAndHeaderParameterNames()
-		if err := campaign.RefuseSelectionTemplate(len(header), tmpl.IsNamedParameterFormat()); err != nil {
-			return 0, err
-		}
 		plan.template = tmpl
 		return tmpl.ParameterCount(), nil
 	}

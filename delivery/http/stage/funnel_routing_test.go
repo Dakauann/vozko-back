@@ -65,10 +65,10 @@ func (r *funnelRepo) GetEntryStage(entryID, entryType, workspaceID string) (*sta
 	return r.entryStage, nil
 }
 
-func (r *funnelRepo) AssignStage(et *stagedomain.EntryStage) error {
+func (r *funnelRepo) AssignStage(et *stagedomain.EntryStage) (string, error) {
 	r.assigned = append(r.assigned, et)
 	r.entryStage = et
-	return nil
+	return "", nil
 }
 
 type anyFunnel struct{}

@@ -13,6 +13,7 @@ const (
 	ActionCreateWebchat             ActionKind = "create_webchat"
 	ActionConnectMercadoLivre       ActionKind = "connect_mercadolivre"
 	ActionConnectTikTok             ActionKind = "connect_tiktok"
+	ActionConnectEmail              ActionKind = "connect_email"
 	ActionTopUpBalance              ActionKind = "top_up_balance"
 	ActionManageSubscription        ActionKind = "manage_subscription"
 	ActionOpenScreen                ActionKind = "open_screen"
@@ -30,12 +31,13 @@ var actionCapabilities = map[ActionKind]readiness.Capability{
 	ActionCreateWebchat:             readiness.Webchat,
 	ActionConnectMercadoLivre:       readiness.MercadoLivre,
 	ActionConnectTikTok:             readiness.TikTok,
+	ActionConnectEmail:              readiness.Email,
 }
 
 func ActionKinds() []ActionKind {
 	return []ActionKind{
 		ActionConnectWhatsAppBusiness, ActionConnectUnofficialWhatsApp, ActionConnectInstagram,
-		ActionConnectTelegram, ActionConnectFacebook, ActionCreateWebchat, ActionConnectMercadoLivre, ActionConnectTikTok, ActionTopUpBalance, ActionManageSubscription,
+		ActionConnectTelegram, ActionConnectFacebook, ActionCreateWebchat, ActionConnectMercadoLivre, ActionConnectTikTok, ActionConnectEmail, ActionTopUpBalance, ActionManageSubscription,
 	}
 }
 
@@ -63,6 +65,7 @@ type ActionCard struct {
 	AdAccountID        string              `json:"adAccountId,omitempty"`
 	Questions          []Question          `json:"questions,omitempty"`
 	StudioProject      *StudioProjectOrder `json:"studioProject,omitempty"`
+	EmailDesign        *EmailDesignCard    `json:"emailDesign,omitempty"`
 }
 
 func NewConnectAdAccountCard() *ActionCard {

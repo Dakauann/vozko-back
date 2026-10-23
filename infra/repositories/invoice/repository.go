@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 	"vozko/domain/invoice"
+	"vozko/domain/payment"
 	"vozko/infra/database/schema"
 
 	"gorm.io/gorm"
@@ -17,11 +18,6 @@ func NewRepository(db *gorm.DB) invoice.Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) Create(inv *invoice.Invoice) error {
-	model := toSchema(inv)
-	return r.db.Create(&model).Error
-}
-
 func (r *repository) GetByID(id string) (*invoice.Invoice, error) {
 	var model schema.Invoice
 	if err := r.db.Where("id = ?", id).First(&model).Error; err != nil {
@@ -33,9 +29,13 @@ func (r *repository) GetByID(id string) (*invoice.Invoice, error) {
 	return toDomain(&model), nil
 }
 
-func (r *repository) GetByExternalID(externalID string) (*invoice.Invoice, error) {
+func (r *repository) GetByExternalID(provider payment.Provider, externalID string) (*invoice.Invoice, error) {
+	if externalID == "" {
+		return nil, nil
+	}
 	var model schema.Invoice
-	if err := r.db.Where("external_id = ?", externalID).First(&model).Error; err != nil {
+	if err := r.db.Where("external_id = ? AND provider IN ?", externalID, []string{string(provider), ""}).
+		Order("provider DESC").First(&model).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
@@ -44,7 +44,7 @@ func (r *repository) GetByExternalID(externalID string) (*invoice.Invoice, error
 	return toDomain(&model), nil
 }
 
-func (r *repository) GetByIdempotencyKey(key string) (*invoice.Invoice, error) {
+func (r *repository) getByIdempotencyKey(key string) (*invoice.Invoice, error) {
 	if key == "" {
 		return nil, nil
 	}
@@ -135,7 +135,8 @@ func toSchema(inv *invoice.Invoice) *schema.Invoice {
 		Status:           string(inv.Status),
 		BillingType:      inv.BillingType,
 		BillingCycle:     inv.BillingCycle,
-		ExternalID:       inv.ExternalID,
+		Provider:         string(inv.Provider),
+		ExternalID:       nullableText(inv.ExternalID),
 		IdempotencyKey:   inv.IdempotencyKey,
 		CreditableUSD:    inv.CreditableUSD,
 		PixQrCode:        inv.PixQrCode,
@@ -166,7 +167,8 @@ func toDomain(m *schema.Invoice) *invoice.Invoice {
 		Status:           invoice.Status(m.Status),
 		BillingType:      m.BillingType,
 		BillingCycle:     m.BillingCycle,
-		ExternalID:       m.ExternalID,
+		Provider:         payment.Provider(m.Provider),
+		ExternalID:       textOf(m.ExternalID),
 		IdempotencyKey:   m.IdempotencyKey,
 		CreditableUSD:    m.CreditableUSD,
 		PixQrCode:        m.PixQrCode,

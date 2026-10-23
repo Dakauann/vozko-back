@@ -6,15 +6,19 @@ import (
 	"time"
 
 	"vozko/domain/channel"
+	es "vozko/domain/emailsending"
 	fbdomain "vozko/domain/facebook"
 	igdomain "vozko/domain/instagram"
 	lmw "vozko/domain/lead_message_window"
 	mldomain "vozko/domain/mercadolivre"
+	"vozko/domain/rcs"
 	"vozko/domain/shared"
+	"vozko/domain/sms"
 	tgdomain "vozko/domain/telegram"
 	ttdomain "vozko/domain/tiktok"
 	uw "vozko/domain/unofficial_whatsapp"
 	"vozko/infra/database/sqlexpr"
+	emailhygiene_repository "vozko/infra/repositories/emailhygiene"
 )
 
 func (q channelQuery) windowOpenOn(entryIDColumn string) string {
@@ -143,6 +147,25 @@ var webchatWindowOpen = `EXISTS (SELECT 1 FROM webchat_conversations wcc_w
 		WHERE wcc_w.id = %[1]s AND wcc_w.deleted_at IS NULL
 		  AND NOT wcv_w.blocked)`
 
+var emailWindowOpen = `EXISTS (SELECT 1 FROM email_conversations emc_w
+		JOIN email_contacts ect_w ON ect_w.id = emc_w.contact_id AND ect_w.deleted_at IS NULL
+		JOIN email_sender_accounts esa_w ON esa_w.workspace_id = emc_w.workspace_id
+		WHERE emc_w.id = %[1]s AND emc_w.deleted_at IS NULL
+		  AND esa_w.tenant_name <> ''
+		  AND esa_w.mode IN (` + sqlexpr.LiteralList([]string{string(es.ModeProbation), string(es.ModeTrusted), string(es.ModeOwnDomain)}) + `)
+		  AND esa_w.status IN (` + sqlexpr.LiteralList(accountStatuses(es.SendableStatuses())) + `)
+		  AND NOT ` + emailhygiene_repository.RefusedSQL("emc_w.workspace_id", "ect_w.address") + `)`
+
+var rcsWindowOpen = `EXISTS (SELECT 1 FROM rcs_conversations rcc_w
+		JOIN rcs_senders rcsd_w ON rcsd_w.id = rcc_w.sender_id AND rcsd_w.workspace_id = rcc_w.workspace_id AND rcsd_w.deleted_at IS NULL
+		WHERE rcc_w.id = %[1]s AND rcc_w.deleted_at IS NULL
+		  AND rcsd_w.status = ` + sqlexpr.Literal(string(rcs.SenderLaunched)) + `)`
+
+var smsWindowOpen = `EXISTS (SELECT 1 FROM sms_conversations smc_w
+		JOIN sms_routes smr_w ON smr_w.id = smc_w.sender_id AND smr_w.workspace_id = smc_w.workspace_id AND smr_w.deleted_at IS NULL
+		WHERE smc_w.id = %[1]s AND smc_w.deleted_at IS NULL
+		  AND smr_w.status = ` + sqlexpr.Literal(string(sms.RouteActive)) + `)`
+
 var unofficialWindowOpen = `EXISTS (SELECT 1 FROM unofficial_whatsapp_conversations uwc_w
 		JOIN unofficial_whatsapp_instances uwi_w ON uwi_w.id = uwc_w.instance_id AND uwi_w.deleted_at IS NULL
 		JOIN unofficial_whatsapp_contacts uwct_w ON uwct_w.id = uwc_w.contact_id AND uwct_w.deleted_at IS NULL
@@ -172,3 +195,11 @@ var tiktokWindowOpen = `EXISTS (SELECT 1 FROM tiktok_conversations ttc_w
 		  AND (ttc_w.budget_closed_at IS NULL OR ttc_w.last_customer_message_at > ttc_w.budget_closed_at)
 		  AND ttc_w.outbound_since_inbound < ` + fmt.Sprint(ttdomain.OutboundBudget) + `
 		  AND ` + replyClock("ttc_w.last_customer_message_at", ttdomain.ChannelCapabilities()) + `)`
+
+func accountStatuses(statuses []es.AccountStatus) []string {
+	out := make([]string, len(statuses))
+	for i, s := range statuses {
+		out[i] = string(s)
+	}
+	return out
+}

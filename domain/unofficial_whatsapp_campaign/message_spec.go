@@ -187,3 +187,15 @@ func (m MessageSpec) Render(variant int, vars []string) string {
 	}
 	return shared.RenderPositional(m.Bodies[variant], vars)
 }
+
+func (m MessageSpec) ShownOptionIDs() []string {
+	if m.Kind != KindMenu {
+		return nil
+	}
+	_, fits := uw.FitMenu(m.Style, len(m.Options))
+	ids := make([]string, 0, fits)
+	for _, o := range m.Options[:fits] {
+		ids = append(ids, o.ID)
+	}
+	return ids
+}

@@ -7,8 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
-
 	"vozko/domain/cache"
 	"vozko/domain/shared"
 )
@@ -41,25 +39,22 @@ func (l *AgentTurnLock) Acquire(ctx context.Context, entryID string, entryType s
 		return func() {}, errAgentTurnLockUnwired
 	}
 	key := agentTurnKey(entryID, entryType)
-	token := uuid.NewString()
-	for {
-		acquired, err := l.state.SetNX(key, token, l.ttl)
-		if err != nil {
-			return func() {}, fmt.Errorf("agent turn lock %s: %w", key, err)
-		}
-		if acquired {
-			return func() { l.unlock(key, token) }, nil
-		}
-		select {
-		case <-ctx.Done():
-			return func() {}, ctx.Err()
-		case <-time.After(l.poll):
-		}
+	lock, err := cache.NewOwnedLock(l.state, l.ttl, l.poll)
+	if err != nil {
+		return func() {}, errAgentTurnLockUnwired
 	}
+	release, err := lock.Acquire(ctx, key)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			return func() {}, err
+		}
+		return func() {}, fmt.Errorf("agent turn lock %s: %w", key, err)
+	}
+	return func() { reportAgentTurnRelease(key, release) }, nil
 }
 
-func (l *AgentTurnLock) unlock(key, token string) {
-	released, err := l.release.DelIfValue(key, token)
+func reportAgentTurnRelease(key string, release func() (bool, error)) {
+	released, err := release()
 	switch {
 	case err != nil:
 		slog.Warn("conversation.agent_turn.unlock_failed", slog.String("key", key), slog.String("error", err.Error()))

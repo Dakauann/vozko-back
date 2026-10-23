@@ -2,6 +2,7 @@ package unofficial_whatsapp_campaign
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -140,24 +141,41 @@ func (uc *dispatchCampaignUseCase) Dispatch(ctx context.Context, input uwc.Dispa
 }
 
 func (uc *dispatchCampaignUseCase) ensureCanStart(ctx context.Context, camp *uwc.Campaign) error {
-	if camp.TargetsGroups() {
-		return uc.ensureGroupsCanStart(ctx, camp)
+	return NewStartPreflight(uc.instances).Check(ctx, camp)
+}
+
+var ErrStartPreflightUnavailable = errors.New("unofficial whatsapp campaign: the start check is not configured")
+
+type StartPreflight struct {
+	instances InstanceGateway
+}
+
+func NewStartPreflight(instances InstanceGateway) *StartPreflight {
+	return &StartPreflight{instances: instances}
+}
+
+func (p *StartPreflight) Check(ctx context.Context, camp *uwc.Campaign) error {
+	if p == nil || p.instances == nil {
+		return ErrStartPreflightUnavailable
 	}
-	instance, err := uc.instances.Instance(ctx, camp.InstanceID)
+	if camp.TargetsGroups() {
+		return p.groups(ctx, camp)
+	}
+	instance, err := p.instances.Instance(ctx, camp.InstanceID)
 	if err != nil {
 		return err
 	}
-	return ensureNumberCanStart(ctx, uc.instances, instance)
+	return ensureNumberCanStart(ctx, p.instances, instance)
 }
 
-func (uc *dispatchCampaignUseCase) ensureGroupsCanStart(ctx context.Context, camp *uwc.Campaign) error {
-	pool, err := campaignSenderPool(ctx, uc.instances, camp)
+func (p *StartPreflight) groups(ctx context.Context, camp *uwc.Campaign) error {
+	pool, err := campaignSenderPool(ctx, p.instances, camp)
 	if err != nil {
 		return err
 	}
 	refusal := uwc.ErrGroupCampaignNoNumber
 	for _, id := range pool.ids() {
-		err := ensureNumberCanStart(ctx, uc.instances, pool[id])
+		err := ensureNumberCanStart(ctx, p.instances, pool[id])
 		if err == nil {
 			return nil
 		}

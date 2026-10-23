@@ -18,3 +18,28 @@ func TestDeliveryStatusOnlyMovesForward(t *testing.T) {
 		}
 	}
 }
+
+func TestOneMessageReceiptReplacesOnlyEarlierStatuses(t *testing.T) {
+	all := []DeliveryStatus{DeliveryStatusNone, DeliveryStatusSent, DeliveryStatusDelivered, DeliveryStatusRead, DeliveryStatusFailed}
+	cases := map[DeliveryStatus][]DeliveryStatus{
+		DeliveryStatusNone:      nil,
+		DeliveryStatusSent:      nil,
+		DeliveryStatusDelivered: {DeliveryStatusNone, DeliveryStatusSent},
+		DeliveryStatusRead:      {DeliveryStatusNone, DeliveryStatusSent, DeliveryStatusDelivered},
+		DeliveryStatusFailed:    {DeliveryStatusNone, DeliveryStatusSent, DeliveryStatusDelivered, DeliveryStatusRead},
+	}
+	for next, want := range cases {
+		if got := next.Replaces(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("%q replaces %v, want %v", next, got, want)
+		}
+		for _, current := range all {
+			allowed := false
+			for _, w := range want {
+				allowed = allowed || w == current
+			}
+			if got := next.Advances(current); got != allowed {
+				t.Fatalf("%q advances %q = %v, want %v", next, current, got, allowed)
+			}
+		}
+	}
+}

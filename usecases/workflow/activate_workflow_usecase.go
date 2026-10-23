@@ -9,6 +9,7 @@ import (
 	"vozko/domain/agent"
 	domainmcp "vozko/domain/agent/mcp"
 	"vozko/domain/callrouting"
+	"vozko/domain/conversation"
 	label_domain "vozko/domain/label"
 	media_domain "vozko/domain/media"
 	rag_domain "vozko/domain/rag"
@@ -43,6 +44,7 @@ type activateWorkflowUseCase struct {
 	businessPhoneRepo businessPhoneLookup
 	mcpCollectionRepo domainmcp.CollectionRepository
 	knowledgeBaseRepo knowledgeBaseLookup
+	googleSheets      GoogleSheetLookup
 
 	modelLookup  ModelLookup
 	modelCatalog ModelCatalog
@@ -291,6 +293,9 @@ func (uc *activateWorkflowUseCase) referenceValidators(w *workflow.Workflow) []w
 	}
 	if uc.modelLookup != nil {
 		validators = append(validators, &modelValidator{lookup: uc.modelLookup})
+	}
+	if uc.googleSheets != nil {
+		validators = append(validators, &googleSheetValidator{sheets: uc.googleSheets, workspaceID: workflowWorkspaceID})
 	}
 	return append(validators, &workflowReferenceValidator{repo: uc.repo, workspaceID: workflowWorkspaceID})
 }
@@ -584,8 +589,7 @@ func (v *mediaValidator) Validate(n *workflow.Node) error {
 		if strings.TrimSpace(mediaID) == "" {
 			return nil
 		}
-		m, err := v.repo.GetMediaByID(mediaID)
-		if err != nil || m == nil || !sameWorkspaceID(v.workspaceID, m.WorkspaceID) {
+		if _, err := conversation.SendableLibraryMedia(v.repo, v.workspaceID, mediaID); err != nil {
 			return fmt.Errorf("%w: node %q media_id %q", workflow.ErrNodeInvalidMediaID, n.ID, mediaID)
 		}
 		return nil

@@ -20,6 +20,8 @@ const draftRevisionRequiredCode = "draft_revision_required"
 
 const invalidEntryKindCode = "invalid_entry_kind"
 
+const invalidFilterCode = "invalid_filter"
+
 const workflowInvalidCode = "workflow_invalid"
 
 const workflowInvalidMessage = "O workflow tem uma configuração que precisa ser corrigida. Veja o detalhe e ajuste o fluxo."
@@ -34,6 +36,10 @@ type workflowValidationDetails struct {
 
 type workflowNotPublishableDetails struct {
 	Issues []workflow.LintIssue `json:"issues"`
+}
+
+type triggerInputIssuesDetails struct {
+	Issues []workflow.TriggerInputIssue `json:"issues"`
 }
 
 func workflowRefusal(status int, code, message string) response.Refusal {
@@ -53,6 +59,7 @@ var (
 	refusalInvalidBody         = workflowRefusal(http.StatusBadRequest, "invalid_body", "Corpo da requisição inválido")
 	refusalBodyTooLarge        = workflowRefusal(http.StatusBadRequest, "body_too_large", "O corpo da requisição passa de 2 MB")
 	refusalInvalidEntryKind    = workflowRefusal(http.StatusBadRequest, invalidEntryKindCode, "Tipo de entrada desconhecido")
+	refusalInvalidFilter       = workflowRefusal(http.StatusBadRequest, invalidFilterCode, "Filtro inválido")
 	refusalNameRequired        = workflowRefusal(http.StatusBadRequest, "name_required", "O nome do workflow é obrigatório").Expecting(map[string]string{"name": "O nome do workflow é obrigatório"})
 	refusalInvalidTriggerType  = workflowRefusal(http.StatusBadRequest, "invalid_trigger_type", "Tipo de gatilho inválido").Expecting(map[string]string{"triggerType": "Tipo de gatilho inválido"})
 	refusalGraphRequired       = workflowRefusal(http.StatusBadRequest, "graph_empty", "O workflow precisa ter pelo menos um nó").Expecting(map[string]string{"graph": "must have at least one node"})
@@ -64,6 +71,7 @@ var (
 	refusalConversationRuns    = workflowRefusal(http.StatusInternalServerError, "conversation_runs_failed", "Erro ao listar as execuções da conversa")
 	refusalDraftRevision       = workflowRefusal(http.StatusBadRequest, draftRevisionRequiredCode, "Informe a revisão do rascunho que foi editada (campo revision)").Expecting(map[string]string{"revision": "int (required)"})
 	refusalDepartmentDenied    = workflowRefusal(http.StatusBadRequest, "department_denied", "departmentId inválido ou sem acesso").Expecting(map[string]string{"departmentId": "departmentId inválido ou sem acesso"})
+	refusalTriggerInputInvalid = workflowRefusal(http.StatusUnprocessableEntity, workflow_usecase.TriggerInputInvalidCode, "Os dados de entrada não passam nas regras deste gatilho. Corrija os campos indicados.")
 )
 
 var workflowRequestRefusals = []response.Refusal{
@@ -75,11 +83,13 @@ var workflowRequestRefusals = []response.Refusal{
 	refusalInvalidBody,
 	refusalBodyTooLarge,
 	refusalInvalidEntryKind,
+	refusalInvalidFilter,
 	refusalGraphRequired,
 	refusalGraphNodeType,
 	refusalGraphEdgeRef,
 	refusalPinUnavailable,
 	refusalConversationRuns,
+	refusalTriggerInputInvalid,
 	httpx.RefusalWorkflowUnreadable,
 }
 
@@ -106,13 +116,19 @@ var workflowOwnRefusals = []response.ErrorRefusal{
 	{Err: workflow.ErrInvalidWorkflowType, Refusal: workflowRefusal(http.StatusBadRequest, "invalid_workflow_type", "Tipo de workflow inválido")},
 	{Err: workflow.ErrTriggerNotAllowedForType, Refusal: workflowRefusal(http.StatusBadRequest, "trigger_not_allowed", "O gatilho selecionado não é compatível com o tipo do workflow")},
 	{Err: workflow.ErrRunAlreadyExists, Refusal: workflowRefusal(http.StatusConflict, "run_already_exists", "Já existe uma execução ativa para esta entrada")},
+	{Err: workflow.ErrWorkflowNeedsMessageTrigger, Refusal: workflowInvalid(workflow.NeedsMessageTriggerCode, "Este fluxo começa pela mensagem do cliente e precisa do gatilho Mensagem recebida ou Primeira mensagem.")},
 	{Err: workflow.ErrRunTerminal, Refusal: workflowRefusal(http.StatusConflict, "run_terminal", "A execução já foi finalizada")},
 	{Err: workflow.ErrInsufficientBalance, Refusal: workflowRefusal(http.StatusPaymentRequired, "insufficient_balance", "Saldo insuficiente")},
 	{Err: workflow.ErrVoiceTrunkTaken, Refusal: workflowRefusal(http.StatusConflict, "voice_trunk_taken", "Esta linha telefônica já atende ligações com outro fluxo de voz ativo. Pause o outro fluxo antes de ativar este.")},
+	{Err: workflow.ErrTriggerInputNotFound, Refusal: workflowRefusal(http.StatusNotFound, workflow_usecase.TriggerNotFoundCode, "Gatilho não encontrado no rascunho")},
+	{Err: workflow.ErrTriggerInputUnavailable, Refusal: workflowRefusal(http.StatusServiceUnavailable, workflow_usecase.TriggerInputUnavailableCode, "Não foi possível ler agora o que este gatilho recebe (formulários ou etapas). Tente de novo.")},
+	{Err: workflow.ErrNoRecentTriggerInput, Refusal: workflowRefusal(http.StatusNotFound, workflow_usecase.NoRecentTriggerInputCode, "Nenhuma execução recente deste gatilho que você possa ver guardou os dados de entrada")},
+	{Err: workflow.ErrVariablesUnavailable, Refusal: workflowRefusal(http.StatusServiceUnavailable, "variables_unavailable", "Não foi possível ler agora as variáveis deste nó. Tente de novo.")},
 }
 
 var workflowValidationRefusals = []response.ErrorRefusal{
 	{Err: workflow.ErrPinInvalid, Refusal: workflowInvalid("pin_invalid", "Saída fixada inválida")},
+	{Err: workflow.ErrTestInputInvalid, Refusal: workflowInvalid("test_input_invalid", "Cenário de teste inválido")},
 	{Err: workflow.ErrGraphEmpty, Refusal: workflowInvalid("graph_empty", "O workflow precisa ter pelo menos um nó")},
 	{Err: workflow.ErrGraphNoTrigger, Refusal: workflowInvalid("graph_no_trigger", "O workflow precisa ter um nó de gatilho")},
 	{Err: workflow.ErrGraphMultipleTriggers, Refusal: workflowInvalid("graph_multiple_triggers", "O workflow deve ter apenas um nó de gatilho")},
@@ -137,6 +153,8 @@ var workflowValidationRefusals = []response.ErrorRefusal{
 	{Err: workflow.ErrNodeInvalidAgentID, Refusal: workflowInvalid("invalid_agent", "O agente selecionado é inválido ou não foi encontrado")},
 	{Err: workflow.ErrNodeInvalidMCPCollectionID, Refusal: workflowInvalid("invalid_mcp_collection", "Uma coleção MCP selecionada é inválida ou não foi encontrada")},
 	{Err: workflow.ErrNodeInvalidKnowledgeBaseID, Refusal: workflowInvalid("invalid_knowledge_base", "Uma base de conhecimento selecionada é inválida ou não foi encontrada")},
+	{Err: workflow.ErrNodeInvalidSheetID, Refusal: workflowInvalid("invalid_google_sheet", "A planilha selecionada não existe neste workspace")},
+	{Err: workflow.ErrNodeSheetMappingInvalid, Refusal: workflowInvalid("invalid_google_sheet_mapping", "O mapeamento das colunas não corresponde à planilha")},
 	{Err: workflow.ErrNodeInvalidModelID, Refusal: workflowInvalid("invalid_ai_model", "O modelo de IA selecionado é inválido ou não está disponível. Use um modelo da lista (find_resource ai_models).")},
 	{Err: workflow.ErrNodeReasoningLevelUnsupported, Refusal: workflowInvalid("reasoning_unsupported", "O modelo de IA de um nó não oferece o nível de raciocínio escolhido. Escolha um nível da lista do modelo ou deixe o padrão.")},
 	{Err: workflow.ErrNodeInvalidToolParamType, Refusal: workflowInvalid("invalid_tool_param_type", "Um parâmetro de ferramenta (custom_tools) tem um tipo inválido. Use um tipo suportado (string, number, integer, boolean, array, object, date, time, datetime, email, phone, enum).")},
@@ -171,6 +189,10 @@ func (h *WorkflowHandler) handleDomainError(w http.ResponseWriter, err error) {
 	}
 	if current, conflict := workflow.CurrentDraftRevisionOf(err); conflict {
 		response.WriteErrorWithDetails(w, refusalDraftConflict.Status, refusalDraftConflict.Code, refusalDraftConflict.Message, draftConflictDetails{Revision: current})
+		return
+	}
+	if issues, invalid := workflow.TriggerInputIssuesOf(err); invalid {
+		response.WriteErrorWithDetails(w, refusalTriggerInputInvalid.Status, refusalTriggerInputInvalid.Code, refusalTriggerInputInvalid.Message, triggerInputIssuesDetails{Issues: issues})
 		return
 	}
 	if blocked, ok := workflow.NotPublishableOf(err); ok {

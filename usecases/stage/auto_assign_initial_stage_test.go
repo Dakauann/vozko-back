@@ -25,9 +25,9 @@ func (r *initialStageRepo) AssignStageIfNone(et *stage.EntryStage) (bool, error)
 	r.assignedIfNone = append(r.assignedIfNone, et)
 	return !r.stageAppeared, nil
 }
-func (r *initialStageRepo) AssignStage(et *stage.EntryStage) error {
+func (r *initialStageRepo) AssignStage(et *stage.EntryStage) (string, error) {
 	r.overwrote = append(r.overwrote, et)
-	return nil
+	return "", nil
 }
 
 func TestAConversationWithoutAStageGetsTheInitialOne(t *testing.T) {

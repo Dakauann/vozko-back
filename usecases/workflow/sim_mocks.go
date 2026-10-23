@@ -218,6 +218,9 @@ func (r *simLeadRepo) FindByIDs(_ string, _ []string) ([]*lead_domain.Lead, erro
 func (r *simLeadRepo) FindByNumber(_ string, _ string) (*lead_domain.Lead, error) {
 	return nil, nil
 }
+func (r *simLeadRepo) FindByEmail(_ string, _ string) (*lead_domain.Lead, error) {
+	return nil, lead_domain.ErrLeadNotFound
+}
 func (r *simLeadRepo) FindOrCreate(_ string, _ string, _ lead_domain.LeadUpdate) (*lead_domain.Lead, bool, error) {
 	return nil, false, nil
 }
@@ -248,7 +251,7 @@ func (r *simWhatsAppEntryRepo) FindByID(id string) (*wce.WhatsAppCampaignEntry, 
 		CampaignID:              "sim-campaign",
 		LeadID:                  r.leadID,
 		Status:                  wce.SendStatusSent,
-		ReceivedBusinessPhoneID: "sim-business-phone",
+		ReceivedBusinessPhoneID: simBusinessPhoneID,
 		CreatedAt:               time.Now().UTC(),
 		UpdatedAt:               time.Now().UTC(),
 	}, nil
@@ -261,7 +264,7 @@ func (r *simWhatsAppEntryRepo) FindByMessageID(messageID string) (*wce.WhatsAppC
 		LeadID:                  r.leadID,
 		MessageID:               messageID,
 		Status:                  wce.SendStatusSent,
-		ReceivedBusinessPhoneID: "sim-business-phone",
+		ReceivedBusinessPhoneID: simBusinessPhoneID,
 		CreatedAt:               time.Now().UTC(),
 		UpdatedAt:               time.Now().UTC(),
 	}, nil
@@ -431,14 +434,63 @@ func (r *simBusinessPhoneRepo) FindByMetaPhoneNumberIDUnscoped(_ string) (*busin
 }
 func (r *simBusinessPhoneRepo) Restore(_ string) error { return nil }
 
-type simMessageWindowRepo struct{}
+const simBusinessPhoneID = "sim-business-phone"
 
-func (r *simMessageWindowRepo) IsWindowOpen(_, _ string) (bool, error) { return true, nil }
-func (r *simMessageWindowRepo) RecordMessage(_, _ string) (*lead_message_window_domain.LeadMessageWindow, error) {
-	return &lead_message_window_domain.LeadMessageWindow{}, nil
+type simMessageWindowRepo struct {
+	mu      sync.Mutex
+	leadID  string
+	windows map[string]lead_message_window_domain.LeadMessageWindow
 }
-func (r *simMessageWindowRepo) FindByLeadAndBusinessPhone(_, _ string) (*lead_message_window_domain.LeadMessageWindow, error) {
-	return nil, nil
+
+func newSimMessageWindow(leadID string, open bool) *simMessageWindowRepo {
+	r := &simMessageWindowRepo{leadID: leadID}
+	r.startAs(open)
+	return r
+}
+
+func (r *simMessageWindowRepo) startAs(open bool) {
+	r.mu.Lock()
+	r.windows = map[string]lead_message_window_domain.LeadMessageWindow{}
+	r.mu.Unlock()
+	if open {
+		r.customerWrote()
+	}
+}
+
+func (r *simMessageWindowRepo) customerWrote() {
+	_, _ = r.RecordMessage(r.leadID, simBusinessPhoneID)
+}
+
+func simWindowKey(leadID, businessPhoneID string) string {
+	return leadID + "|" + businessPhoneID
+}
+
+func (r *simMessageWindowRepo) IsWindowOpen(leadID, businessPhoneID string) (bool, error) {
+	window, err := r.FindByLeadAndBusinessPhone(leadID, businessPhoneID)
+	if err != nil {
+		return false, nil
+	}
+	return window.IsWindowOpen(), nil
+}
+func (r *simMessageWindowRepo) RecordMessage(leadID, businessPhoneID string) (*lead_message_window_domain.LeadMessageWindow, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now().UTC()
+	window := lead_message_window_domain.LeadMessageWindow{ID: "sim-window", LeadID: leadID, BusinessPhoneID: businessPhoneID, LastMessageAt: now, CreatedAt: now, UpdatedAt: now}
+	if r.windows == nil {
+		r.windows = map[string]lead_message_window_domain.LeadMessageWindow{}
+	}
+	r.windows[simWindowKey(leadID, businessPhoneID)] = window
+	return &window, nil
+}
+func (r *simMessageWindowRepo) FindByLeadAndBusinessPhone(leadID, businessPhoneID string) (*lead_message_window_domain.LeadMessageWindow, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	window, found := r.windows[simWindowKey(leadID, businessPhoneID)]
+	if !found {
+		return nil, lead_message_window_domain.ErrWindowNotFound
+	}
+	return &window, nil
 }
 func (r *simMessageWindowRepo) FindAllByLead(_ string) ([]*lead_message_window_domain.LeadMessageWindow, error) {
 	return nil, nil
@@ -446,8 +498,12 @@ func (r *simMessageWindowRepo) FindAllByLead(_ string) ([]*lead_message_window_d
 func (r *simMessageWindowRepo) FindByLeadIDs(_ []string) ([]*lead_message_window_domain.LeadMessageWindow, error) {
 	return nil, nil
 }
-func (r *simMessageWindowRepo) GetLastMessageTime(_, _ string) (*time.Time, error) {
-	return nil, nil
+func (r *simMessageWindowRepo) GetLastMessageTime(leadID, businessPhoneID string) (*time.Time, error) {
+	window, err := r.FindByLeadAndBusinessPhone(leadID, businessPhoneID)
+	if err != nil {
+		return nil, nil
+	}
+	return &window.LastMessageAt, nil
 }
 
 type simTemplateSends struct {

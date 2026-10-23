@@ -404,3 +404,11 @@ type Service interface {
 	ExecuteWithConfig(ctx context.Context, name string, config map[string]interface{}, params map[string]interface{}) (ExecutionResult, error)
 	Handler(name string) (Handler, bool)
 }
+
+type Previewer interface {
+	Preview(ctx context.Context, config map[string]interface{}, params map[string]interface{}) (ExecutionResult, error)
+}
+
+type BindingValidator interface {
+	ValidateBinding(ctx context.Context, workspaceID string, config map[string]interface{}) error
+}

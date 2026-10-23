@@ -3,8 +3,6 @@ package unofficial_whatsapp_test
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"testing"
 
 	"gorm.io/driver/postgres"
@@ -18,14 +16,13 @@ import (
 	conversation_repository "vozko/infra/repositories/conversation"
 	lead_repository "vozko/infra/repositories/lead"
 	uwrepo "vozko/infra/repositories/unofficial_whatsapp"
+	"vozko/infra/testenv"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 )
 
 func integrationTx(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
+	dsn := testenv.Postgres(t).DSN()
 	piiSvc, err := pii.LoadFromEnv()
 	if err != nil {
 		t.Skipf("PII encryption is not configured in this environment: %v", err)
@@ -33,9 +30,6 @@ func integrationTx(t *testing.T) *gorm.DB {
 	piigorm.SetService(piiSvc)
 	t.Cleanup(func() { piigorm.SetService(nil) })
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})

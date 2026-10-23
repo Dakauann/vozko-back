@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"vozko/domain/balance"
 	"vozko/domain/cache"
 	domaincampaign "vozko/domain/campaign"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	"vozko/domain/lead"
 	lead_campaign_send "vozko/domain/lead_campaign_send"
@@ -20,7 +20,6 @@ import (
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
 	wf "vozko/domain/whatsappform"
-	workflow_domain "vozko/domain/workflow"
 	workspace_plan "vozko/domain/workspace/workspace_plan"
 	"vozko/usecases/campaignguard"
 	"vozko/usecases/campaignqueue"
@@ -60,9 +59,11 @@ type messageConsumerUseCase struct {
 	LeadCampaignSendRepo    lead_campaign_send.Repository
 	InflightReserver        balance.InflightReserver
 	CachedBalanceChecker    balance.CachedBalanceChecker
-	triggerEvaluator        workflow_domain.TriggerEvaluator
 	smart                   SmartCampaigns
 	forms                   template_usecase.FormSends
+	choices                 choicestats.Recorder
+	clickLinkBase           string
+	clickTokens             *choicestats.ClickTokens
 
 	runner *campaignqueue.Runner
 }
@@ -165,17 +166,25 @@ func (p pendingEntryCounter) CountPendingEntries(campaignID string) (int64, erro
 	return counts.Pending, nil
 }
 
-func (c *messageConsumerUseCase) SetTriggerEvaluator(eval workflow_domain.TriggerEvaluator) {
-	c.triggerEvaluator = eval
-}
-
 func (c *messageConsumerUseCase) SetFormSends(forms template_usecase.FormSends) {
 	c.forms = forms
+}
+
+func (c *messageConsumerUseCase) SetChoiceStats(choices choicestats.Recorder, clickLinkBase string, clickTokens *choicestats.ClickTokens) {
+	c.choices = choices
+	c.clickLinkBase = clickLinkBase
+	c.clickTokens = clickTokens
 }
 
 func (c *messageConsumerUseCase) Start() error {
 	if c.MessageQueueSub == nil {
 		return fmt.Errorf("whatsapp campaign consumer: message queue subscriber is required")
+	}
+	if c.choices == nil {
+		return fmt.Errorf("whatsapp campaign consumer: %w", choicestats.ErrRecorderMissing)
+	}
+	if c.clickTokens == nil {
+		return fmt.Errorf("whatsapp campaign consumer: %w", choicestats.ErrClickTokenSecretMissing)
 	}
 	if c.WhatsAppClientFactory == nil {
 		fmt.Println("whatsapp campaign consumer: WhatsApp client factory not configured; skipping subscription")
@@ -423,10 +432,14 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 		return sendResultConfigError
 	}
 
+	bodyParams, headerParams := tmpl.SplitParameters(variables)
+	promptKey := choicestats.WhatsAppCampaignPromptKey(entryID)
 	sendInput, err := tmpl.BuildSendInput(template.SendInputParams{
-		To:         normalizedPhone,
-		BodyParams: variables,
-		FlowToken:  form.Token(),
+		To:            normalizedPhone,
+		BodyParams:    bodyParams,
+		HeaderParams:  headerParams,
+		FlowToken:     form.Token(),
+		ClickTracking: template.ClickTracking{LinkBase: c.clickLinkBase, PromptKey: promptKey, Tokens: c.clickTokens},
 	})
 	if err != nil {
 		form.Settle(ctx, "", err)
@@ -463,6 +476,7 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 	}
 
 	messageID := messageIDOf(result)
+	c.recordChoiceSend(ctx, campaign, tmpl, promptKey, messageID)
 
 	c.storeTemplateInfoOnEntry(entry, tmpl, variables)
 
@@ -475,25 +489,6 @@ func (c *messageConsumerUseCase) sendTemplateMessage(campaign *wc.Campaign, tmpl
 
 	fmt.Printf("whatsapp campaign consumer: successfully sent template to %s, messageId: %s\n", phoneNumber, messageID)
 
-	if c.triggerEvaluator != nil && campaign.EnableWorkflow {
-		log.Printf("[workflow] campaign trigger: dispatching trigger_campaign_sent for campaign=%s entry=%s workspace=%s",
-			campaignID, entryID, campaign.WorkspaceID)
-		go c.triggerEvaluator.Evaluate(workflow_domain.TriggerEvent{
-			WorkspaceID: campaign.WorkspaceID,
-			EntryID:     entryID,
-			EntryType:   "whatsapp_campaign_entry",
-			TriggerType: workflow_domain.TriggerCampaignSent,
-			Data: map[string]interface{}{
-				"campaign_id":                        campaignID,
-				"phone_number":                       phoneNumber,
-				"template_id":                        campaign.TemplateID,
-				"message_id":                         messageID,
-				"entry_id":                           entryID,
-				workflow_domain.DataKeyContactNumber: normalizedPhone,
-			},
-		})
-	}
-
 	return sendResultSuccess
 }
 
@@ -501,7 +496,7 @@ func (c *messageConsumerUseCase) storeTemplateInfoOnEntry(entry *wce.WhatsAppCam
 	if entry == nil || tmpl == nil {
 		return
 	}
-	templateInfo := tmpl.RenderInfo(params)
+	templateInfo := tmpl.RenderSlots(params)
 
 	meta := entry.Metadata
 	if meta == nil {
@@ -518,7 +513,7 @@ func (c *messageConsumerUseCase) recordTemplateMessage(entry *wce.WhatsAppCampai
 	if c.MessageHistoryManager == nil || entry == nil || tmpl == nil {
 		return
 	}
-	bodyText, metadata, err := tmpl.HistoryRecord(params)
+	bodyText, metadata, err := tmpl.SlotsHistoryRecord(params)
 	if err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to marshal template metadata for entry %s: %v\n", entry.ID, err)
 		return
@@ -599,4 +594,19 @@ func (c *messageConsumerUseCase) recordCampaignSend(entry *wce.WhatsAppCampaignE
 	if err := c.LeadCampaignSendRepo.Record(entry.LeadID, businessPhoneID, campaignID); err != nil {
 		fmt.Printf("whatsapp campaign consumer: failed to record campaign send for lead %s: %v\n", entry.LeadID, err)
 	}
+}
+
+func (c *messageConsumerUseCase) recordChoiceSend(ctx context.Context, campaign *wc.Campaign, tmpl *template.Template, promptKey, messageID string) {
+	shown := tmpl.ShownChoiceIDs(c.clickLinkBase)
+	if c.choices == nil || len(shown) == 0 {
+		return
+	}
+	c.choices.RecordSend(ctx, choicestats.Send{
+		WorkspaceID:       campaign.WorkspaceID,
+		PromptKey:         promptKey,
+		Source:            choicestats.Source{Kind: choicestats.SourceWhatsAppCampaign, ID: campaign.ID, TemplateID: tmpl.ID},
+		ProviderMessageID: messageID,
+		Shown:             shown,
+		SentAt:            time.Now().UTC(),
+	})
 }

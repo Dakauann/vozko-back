@@ -165,17 +165,13 @@ func (s *Step) startWorkflow(in leadexit.Inbound, d leadexit.Decision, p buttona
 }
 
 func tapRunData(in leadexit.Inbound, d leadexit.Decision) map[string]interface{} {
-	data := map[string]interface{}{
-		"message":           in.Text,
-		workflow.VarChannel: in.EntryType,
-		"workspace_id":      in.WorkspaceID,
+	start := workflow.MessageStart{
+		Text: in.Text, Channel: in.EntryType, WorkspaceID: in.WorkspaceID, ContactNumber: in.SenderNumber, TriggerMessageID: in.TriggerMessageID,
 	}
 	if in.Tap != nil && d.Action != nil {
-		workflow.ApplySelection(data, workflow.TemplateButtonSelection(in.Tap.Text, d.Action.ButtonIndex, true))
+		start.Selection = workflow.TemplateButtonSelection(in.Tap.Text, d.Action.ButtonIndex, true)
 	}
-	workflow.ApplyContactNumber(data, in.SenderNumber)
-	workflow.ApplyTriggerMessage(data, in.TriggerMessageID)
-	return data
+	return workflow.MessageStartRunData(start)
 }
 
 func (s *Step) addToCallList(ctx context.Context, in leadexit.Inbound, p buttonaction.Params) (effect, error) {

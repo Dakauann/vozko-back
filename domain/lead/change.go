@@ -41,6 +41,10 @@ type EntryLeads interface {
 	LeadOfEntry(ctx context.Context, workspaceID string, ref shared.EntryRef) (string, error)
 }
 
+type BindingLeads interface {
+	BindingLeads(ctx context.Context, workspaceID string, ids []string) ([]*Lead, error)
+}
+
 type ContactDetails interface {
 	AttachContactDetails(ctx context.Context, workspaceID string, leads []*Lead) error
 }

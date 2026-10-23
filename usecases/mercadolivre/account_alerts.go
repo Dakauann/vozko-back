@@ -30,7 +30,7 @@ func (a *accountAlerts) NeedsReconnect(ctx context.Context, account *mldomain.Ac
 		return nil
 	}
 	inBrand := brand.Active().Portuguese().InBrand
-	name := account.DisplayName()
+	name := account.Label()
 	title := "Reconecte a conta " + name + " do Mercado Livre"
 	body := "O Mercado Livre deixou de aceitar o acesso da conta " + name + ". Até o administrador da conta conectá-la de novo, " +
 		"as mensagens pós-venda param de chegar " + inBrand + " e as respostas não são enviadas. " +

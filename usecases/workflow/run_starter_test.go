@@ -102,18 +102,6 @@ func TestExecuteLockedLogsEngineError(t *testing.T) {
 	executeLocked(engine, run, w)
 }
 
-func TestBuildWebhookVars(t *testing.T) {
-	jsonVars := buildWebhookVars(WebhookRequest{Method: "POST"}, map[string]interface{}{"k": "v"})
-	if body, _ := jsonVars["body"].(map[string]interface{}); body["k"] != "v" {
-		t.Fatalf("expected parsed body map, got %v", jsonVars["body"])
-	}
-
-	rawVars := buildWebhookVars(WebhookRequest{Method: "POST", RawBody: []byte("plain")}, nil)
-	if rawVars["body"] != "plain" {
-		t.Fatalf("expected raw string body when not JSON, got %v", rawVars["body"])
-	}
-}
-
 type errorString string
 
 func (e errorString) Error() string { return string(e) }

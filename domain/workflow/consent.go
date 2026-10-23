@@ -3,8 +3,9 @@ package workflow
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
+
+	"vozko/domain/choicestats"
 )
 
 const (
@@ -19,9 +20,9 @@ const (
 	ConsentBranchNone      = "none"
 
 	DataKeyTriggerMessageID  = "trigger_message_id"
-	OptionKindTemplateButton = "template_button"
+	OptionKindTemplateButton = choicestats.TemplateButtonOptionPrefix
 
-	InteractiveHandleNoMatch    = "no_match"
+	InteractiveHandleNoMatch    = choicestats.OptionFreeText
 	InteractiveHandleNoReply    = "no_reply"
 	InteractiveHandleSendFailed = "send_failed"
 
@@ -65,7 +66,7 @@ func TriggerMessageID(state *RunState) string {
 }
 
 func TemplateButtonOptionID(index int) string {
-	return OptionKindTemplateButton + ":" + strconv.Itoa(index)
+	return choicestats.TemplateButtonOptionID(index)
 }
 
 func TemplateButtonSelection(text string, index int, matched bool) *OptionSelection {
@@ -110,30 +111,13 @@ func consentMode(n *Node) string {
 }
 
 func reachableWithoutAReply(g *Graph, target string) bool {
-	var queue []string
-	visited := map[string]bool{}
+	var triggers []string
 	for i := range g.Nodes {
 		if g.Nodes[i].Type.IsTrigger() {
-			queue = append(queue, g.Nodes[i].ID)
-			visited[g.Nodes[i].ID] = true
+			triggers = append(triggers, g.Nodes[i].ID)
 		}
 	}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		if current == target {
-			return true
-		}
-		source := g.FindNode(current)
-		for _, e := range g.OutgoingEdges(current) {
-			if visited[e.Target] || isReplyEdge(source, e) {
-				continue
-			}
-			visited[e.Target] = true
-			queue = append(queue, e.Target)
-		}
-	}
-	return false
+	return reachedFrom(g, triggers, isReplyEdge)[target]
 }
 
 func isReplyEdge(source *Node, e Edge) bool {

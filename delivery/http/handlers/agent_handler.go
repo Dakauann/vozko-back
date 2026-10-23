@@ -866,7 +866,7 @@ func (h *AgentHandler) ListOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AgentHandler) handleDomainError(w http.ResponseWriter, err error) {
-	if httpx.WriteConsentGrantRefusal(w, err) {
+	if httpx.WriteConsentGrantRefusal(w, err) || httpx.WriteSheetBindingRefusal(w, err) {
 		return
 	}
 	switch {

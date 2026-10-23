@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"vozko/domain/shared"
+	"vozko/domain/workflow"
 )
 
 var (
@@ -54,6 +55,7 @@ var errorCodes = []struct {
 	{ErrUnavailable, "button_action_unavailable"},
 	{ErrExitRiskNotAcknowledged, "exit_risk_not_acknowledged"},
 	{ErrMarketingNeedsExit, "marketing_template_needs_exit"},
+	{workflow.ErrWorkflowNeedsMessageTrigger, workflow.NeedsMessageTriggerCode},
 }
 
 func ErrorCode(err error) string {

@@ -12,6 +12,7 @@ import (
 	"vozko/domain/studio/library"
 	"vozko/domain/tools"
 	"vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/screencall"
 )
 
 const studioPresetsBroken = "as predefinições de animação não puderam ser lidas; tente de novo mais tarde"
@@ -198,9 +199,9 @@ func (t *studioSavePresetTool) Execute(ctx context.Context, cc copilot.Context, 
 	}
 	reply, err := runOnEditor(ctx, cc, copilot.ScreenSavePreset, map[string]interface{}{"clip_id": a.ClipID, "name": a.Name, "description": a.Description})
 	if err != nil {
-		return screenResult(cc, err)
+		return screencall.Result(cc, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: screenData(reply)}
+	return copilot.Result{Status: copilot.StatusOK, Data: screencall.Data(reply)}
 }
 
 func (t *studioSavePresetTool) NeedsApproval(mode copilot.Mode) bool { return mode == copilot.ModeAsk }

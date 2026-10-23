@@ -59,6 +59,24 @@ var contactDisplays = []struct {
 			handle: "NULLIF(" + a + ".nickname, '')", number: "NULL", avatar: "NULL",
 		}
 	}},
+	{shared.EntryTypeEmail, func(a string) displayColumns {
+		return displayColumns{
+			name:   "NULLIF(" + a + ".display_name, '')",
+			handle: "NULLIF(" + a + ".address, '')", number: "NULL", avatar: "NULL",
+		}
+	}},
+	{shared.EntryTypeRCS, func(a string) displayColumns {
+		return displayColumns{
+			name:   "NULLIF(" + a + ".display_name, '')",
+			handle: "NULL", number: "NULLIF(" + a + ".phone, '')", avatar: "NULL",
+		}
+	}},
+	{shared.EntryTypeSMS, func(a string) displayColumns {
+		return displayColumns{
+			name:   "NULLIF(" + a + ".display_name, '')",
+			handle: "NULL", number: "NULLIF(" + a + ".phone, '')", avatar: "NULL",
+		}
+	}},
 	{shared.EntryTypeTikTok, func(a string) displayColumns {
 		return displayColumns{
 			name:   "COALESCE(NULLIF(" + a + ".display_name, ''), NULLIF(" + a + ".username, ''))",

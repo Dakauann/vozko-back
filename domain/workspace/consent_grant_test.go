@@ -57,3 +57,15 @@ type adminOnly func(isAdmin bool) bool
 func (a adminOnly) HasWorkspacePermission(_, _, _, _ string, isAdmin bool) bool {
 	return a(isAdmin)
 }
+
+func TestRequireSheetBindingNeedsTheSheetsViewCapability(t *testing.T) {
+	if _, ok := CapabilityByKey(CapabilityGoogleSheetsView); !ok {
+		t.Fatalf("%s is missing from the catalog", CapabilityGoogleSheetsView)
+	}
+	if err := RequireSheetBinding(heldPermissions{"google_sheets:read": true}, "ws", Requester{UserID: "u"}); err != nil {
+		t.Fatalf("a member who sees the sheets was refused: %v", err)
+	}
+	if err := RequireSheetBinding(heldPermissions{"agents:update": true}, "ws", Requester{UserID: "u"}); !errors.Is(err, ErrSheetBindingForbidden) {
+		t.Fatalf("err = %v, want ErrSheetBindingForbidden", err)
+	}
+}

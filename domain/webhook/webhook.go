@@ -32,6 +32,12 @@ const (
 	TopicTikTokMessage = "webhook.tiktok.message"
 	TopicTikTokComment = "webhook.tiktok.comment"
 
+	TopicEmailNotification = "webhook.email.notification"
+
+	TopicCarrierStatus  = "webhook.carrier.status"
+	TopicCarrierInbound = "webhook.carrier.inbound"
+	TopicCarrierEvent   = "webhook.carrier.event"
+
 	TopicUnofficialWhatsAppMessage  = "webhook.unofficialwhatsapp.message"
 	TopicUnofficialWhatsAppHistory  = "webhook.unofficialwhatsapp.history"
 	TopicUnofficialWhatsAppInstance = "webhook.unofficialwhatsapp.instance"

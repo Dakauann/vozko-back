@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"vozko/domain/cache"
+	"vozko/domain/choicestats"
 	"vozko/domain/shortlink"
 )
 
@@ -28,7 +29,11 @@ func TestPublishClick(t *testing.T) {
 }
 
 func newConsumer(clickRepo *fakeClickRepo, linkRepo *fakeShortLinkRepo, ua fakeUA, shared cache.SharedState, pub *fakeQueuePub, sub *fakeQueueSub) *consumeClickUseCase {
-	return NewConsumeClickUseCase(sub, pub, clickRepo, linkRepo, ua, fakeGeo{info: shortlink.GeoInfo{Country: "BR"}}, shared, "salt", time.Hour).(*consumeClickUseCase)
+	return NewConsumeClickUseCase(sub, pub, clickRepo, linkRepo, ua, fakeGeo{info: shortlink.GeoInfo{Country: "BR"}}, shared, "salt", time.Hour, &spyLinkClicks{}).(*consumeClickUseCase)
+}
+
+func newConsumerWith(clickRepo *fakeClickRepo, linkRepo *fakeShortLinkRepo, ua fakeUA, linkClicks choicestats.LinkClickRecorder) *consumeClickUseCase {
+	return NewConsumeClickUseCase(&fakeQueueSub{}, &fakeQueuePub{}, clickRepo, linkRepo, ua, fakeGeo{info: shortlink.GeoInfo{Country: "BR"}}, newFakeSharedState(), "salt", time.Hour, linkClicks).(*consumeClickUseCase)
 }
 
 func validClickMessage() shortlink.ClickMessage {

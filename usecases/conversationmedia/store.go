@@ -36,6 +36,7 @@ func (s *store) Store(input conversation.StoreMediaInput) (*conversation.Convers
 		OriginalFilename: input.OriginalFilename,
 		SizeBytes:        int64(len(input.Data)),
 		WhatsAppMediaID:  input.WhatsAppMediaID,
+		Purpose:          input.Purpose,
 		CreatedAt:        time.Now().UTC(),
 	}
 	record.Normalize()

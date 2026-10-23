@@ -16,6 +16,9 @@ const (
 	EntryTypeWebchat            EntryType = "webchat"
 	EntryTypeMercadoLivre       EntryType = "mercadolivre"
 	EntryTypeTikTok             EntryType = "tiktok"
+	EntryTypeEmail              EntryType = "email"
+	EntryTypeRCS                EntryType = "rcs"
+	EntryTypeSMS                EntryType = "sms"
 )
 
 var messagingEntryTypes = map[EntryType]struct{}{
@@ -27,6 +30,9 @@ var messagingEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 var conversationViewableEntryTypes = map[EntryType]struct{}{
@@ -38,6 +44,9 @@ var conversationViewableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 var crmTaggableEntryTypes = map[EntryType]struct{}{
@@ -49,6 +58,9 @@ var crmTaggableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 var conversationClosableEntryTypes = map[EntryType]struct{}{
@@ -60,6 +72,9 @@ var conversationClosableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 func (e EntryType) Valid() bool {
@@ -94,6 +109,9 @@ var knownEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 func (e EntryType) IsKnown() bool {
@@ -114,6 +132,9 @@ var inboxScopableEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 func (e EntryType) SupportsInboxScope() bool {
@@ -134,6 +155,9 @@ var containerScopedInboxEntryTypes = map[EntryType]struct{}{
 	EntryTypeWebchat:            {},
 	EntryTypeMercadoLivre:       {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 func (e EntryType) SupportsContainerScopedInbox() bool {
@@ -198,6 +222,9 @@ var conversationAnalysableEntryTypes = map[EntryType]struct{}{
 	EntryTypeFacebook:           {},
 	EntryTypeWebchat:            {},
 	EntryTypeTikTok:             {},
+	EntryTypeEmail:              {},
+	EntryTypeRCS:                {},
+	EntryTypeSMS:                {},
 }
 
 func (e EntryType) SupportsCommentAnalysis() bool {

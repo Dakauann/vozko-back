@@ -21,12 +21,16 @@ type webhookConfigResponse struct {
 }
 
 type webhookTriggerRequest struct {
-	EntryID   string `json:"entry_id,omitempty" example:"c7f1e2a0-9b3d-4a1e-8f2c-1d2e3f4a5b6c"`
-	EntryType string `json:"entry_type,omitempty" enums:"whatsapp,unofficial_whatsapp,instagram,telegram" example:"whatsapp"`
-	Phone     string `json:"phone,omitempty" example:"+5511998887777"`
+	EntryID    string `json:"entry_id,omitempty" example:"c7f1e2a0-9b3d-4a1e-8f2c-1d2e3f4a5b6c"`
+	EntryType  string `json:"entry_type,omitempty" enums:"whatsapp,unofficial_whatsapp,instagram,telegram" example:"whatsapp"`
+	Phone      string `json:"phone,omitempty" example:"+5511998887777"`
+	Email      string `json:"email,omitempty" example:"ana@example.com"`
+	Name       string `json:"name,omitempty" example:"Ana Souza"`
+	Event      string `json:"event,omitempty" example:"abandoned_cart"`
+	ExternalID string `json:"external_id,omitempty" example:"cart-9"`
 }
 
 type webhookTriggerResponse struct {
-	Status string `json:"status" enums:"accepted,duplicate,already_running" example:"accepted"`
+	Status string `json:"status" enums:"accepted,duplicate,already_running,ignored" example:"accepted"`
 	RunID  string `json:"run_id,omitempty" example:"run_abc123"`
 }

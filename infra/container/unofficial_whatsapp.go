@@ -185,6 +185,7 @@ func (c *Container) initUnofficialWhatsAppRuntime(history conversation_domain.Me
 		Leads:         uwrepo.NewLeadLinker(c.repositories.lead),
 		Analysis:      c.services.analysisScheduler,
 		Delegations:   c.services.delegations,
+		Choices:       c.choiceStatsRecorder(),
 	})
 	handler.SetLeadExitStep(c.leadExitStep())
 

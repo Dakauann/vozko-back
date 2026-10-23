@@ -157,3 +157,50 @@ func ids(notes []conversationnote.Note) string {
 	}
 	return strings.Join(out, ",")
 }
+
+func TestANotesImagesRoundTripInTheirOrderAgainstPostgres(t *testing.T) {
+	repo := notesRepo(t, "conversation_notes_images")
+	ws := uuid.NewString()
+	chat := shared.EntryRef{EntryID: uuid.NewString(), EntryType: shared.EntryTypeWebchat}
+	first, second := uuid.NewString(), uuid.NewString()
+	note, err := conversationnote.New(conversationnote.Draft{
+		WorkspaceID: ws, Entry: chat, AuthorID: uuid.NewString(), ImageIDs: []string{second, first},
+	}, uuid.NewString(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Create(context.Background(), note); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := repo.Find(context.Background(), ws, note.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got.ImageIDs, ",") != second+","+first || got.Body != "" {
+		t.Fatalf("image ids = %v body = %q, want the stored order and an empty body", got.ImageIDs, got.Body)
+	}
+	page, err := repo.ListByEntry(context.Background(), conversationnote.PageQuery{WorkspaceID: ws, Entry: chat, Limit: 5})
+	if err != nil || len(page) != 1 || strings.Join(page[0].ImageIDs, ",") != second+","+first {
+		t.Fatalf("listed = %+v err = %v", page, err)
+	}
+}
+
+func TestANoteWrittenBeforeImagesExistedReadsBackWithoutImagesAgainstPostgres(t *testing.T) {
+	db := repotest.IsolatedDB(t, "conversation_notes_legacy_images", &schema.ConversationNote{})
+	repo := New(db)
+	ws, id := uuid.NewString(), uuid.NewString()
+	if err := db.Exec(
+		`INSERT INTO conversation_notes (id, workspace_id, entry_id, entry_type, author_id, body, created_at) VALUES (?, ?, ?, 'whatsapp', ?, 'antiga', now())`,
+		id, ws, uuid.NewString(), uuid.NewString(),
+	).Error; err != nil {
+		t.Fatalf("insert without image_ids: %v", err)
+	}
+	got, err := repo.Find(context.Background(), ws, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ImageIDs == nil || len(got.ImageIDs) != 0 || got.Mentions == nil {
+		t.Fatalf("image ids = %#v mentions = %#v, want empty lists from the column defaults", got.ImageIDs, got.Mentions)
+	}
+}

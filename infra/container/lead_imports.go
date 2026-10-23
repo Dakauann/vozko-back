@@ -59,6 +59,7 @@ func (c *Container) buildLeadImports() *lead_usecase.Import {
 		Definitions: c.repositories.customField,
 		Seeder:      seeder,
 		Metrics:     c.services.metrics,
+		Emails:      c.emailHygiene().Service,
 	})
 	if err != nil {
 		log.Fatalf("[lead-import] %v", err)

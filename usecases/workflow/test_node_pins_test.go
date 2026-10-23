@@ -13,7 +13,7 @@ func pinnedLoginWorkflow() *workflow.Workflow {
 		Edge:   "sucesso", Source: workflow.PinSourceManual, PinnedAt: pinTimeForTests(),
 	}
 	return createTestWorkflow("wf1", "ws1", []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "login", Type: workflow.NodeTypeActionHTTPRequest, Config: map[string]interface{}{"url": "https://login.example.com", "capture_variable": "login"}, Pinned: pin},
 		{ID: "matricula", Type: workflow.NodeTypeActionHTTPRequest, Config: map[string]interface{}{"url": "https://api.example.com", "auth_token": "{{login.token}}"}},
 	}, []workflow.Edge{

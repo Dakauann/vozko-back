@@ -32,6 +32,8 @@ type WhatsAppTemplateHandler struct {
 	workspaceTemplates          whatsapptemplatedomain.WorkspaceTemplatesUseCase
 	exitGuardedCreator          ExitGuardedCreator
 	editor                      ExitGuardedEditor
+	tracking                    ButtonTracking
+	linkBase                    string
 }
 
 func NewWhatsAppTemplateHandler(
@@ -145,7 +147,7 @@ func (h *WhatsAppTemplateHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.WritePaginated(w, http.StatusOK, toTemplateResponses(result.Items), response.PaginationMeta{
+	response.WritePaginated(w, http.StatusOK, toTemplateResponses(result.Items, h.linkBase), response.PaginationMeta{
 		Page:       result.Page,
 		PageSize:   result.PageSize,
 		TotalPages: result.TotalPages,
@@ -166,7 +168,7 @@ func (h *WhatsAppTemplateHandler) ListAll(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	response.WritePaginated(w, http.StatusOK, toTemplateResponses(result.Items), response.PaginationMeta{
+	response.WritePaginated(w, http.StatusOK, toTemplateResponses(result.Items, h.linkBase), response.PaginationMeta{
 		Page:       result.Page,
 		PageSize:   result.PageSize,
 		TotalPages: result.TotalPages,
@@ -214,7 +216,7 @@ func (h *WhatsAppTemplateHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusOK, toTemplateResponse(tmpl))
+	response.WriteSuccess(w, http.StatusOK, toTemplateResponse(tmpl, h.linkBase))
 }
 
 func (h *WhatsAppTemplateHandler) GetAdmin(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +236,7 @@ func (h *WhatsAppTemplateHandler) GetAdmin(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	response.WriteSuccess(w, http.StatusOK, toTemplateResponse(tmpl))
+	response.WriteSuccess(w, http.StatusOK, toTemplateResponse(tmpl, h.linkBase))
 }
 
 func (h *WhatsAppTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +257,7 @@ func (h *WhatsAppTemplateHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"message":   "Templates synchronized successfully",
 		"count":     len(templates),
-		"templates": toTemplateResponses(templates),
+		"templates": toTemplateResponses(templates, h.linkBase),
 	})
 }
 
@@ -277,7 +279,7 @@ func (h *WhatsAppTemplateHandler) SyncOne(w http.ResponseWriter, r *http.Request
 
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"message":  "Template synchronized successfully",
-		"template": toTemplateResponse(tmpl),
+		"template": toTemplateResponse(tmpl, h.linkBase),
 	})
 }
 
@@ -361,7 +363,7 @@ func (h *WhatsAppTemplateHandler) Create(w http.ResponseWriter, r *http.Request)
 func writeTemplateError(w http.ResponseWriter, err error) {
 	if whatsapptemplatedomain.IsValidationError(err) {
 		response.WriteErrorWithCode(w, http.StatusBadRequest,
-			whatsapptemplatedomain.ErrorCode(err), err.Error(), nil)
+			whatsapptemplatedomain.ErrorCode(err), err.Error(), validationExpectation(err))
 		return
 	}
 
@@ -475,7 +477,7 @@ func (h *WhatsAppTemplateHandler) verifyTemplateOwnership(w http.ResponseWriter,
 }
 
 // @Summary		Criar modelo de mensagem
-// @Description	Cria um novo modelo (template) de mensagem do WhatsApp para um telefone comercial do workspace e concede acesso ao workspace. O telefone precisa pertencer ao workspace. O corpo pode trazer a saída do lead junto: `buttonActions` (as mesmas ações de PUT /whatsapp/templates/{id}/button-actions, pelo `buttonIndex` dos botões enviados e com `buttonText` igual ao texto desse botão) e `exitConfirmation`; elas nunca vão para a revisão e só são gravadas depois que a Meta aceita o modelo, substituindo a saída já gravada para o mesmo nome e idioma (as permissões de cada tipo de ação valem para o que muda em relação a essa saída). Sem nenhuma delas no corpo, a saída já gravada para esse nome e idioma fica como está. Uma criação recusada pela Meta não muda nada. Um modelo de MARKETING precisa mostrar uma saída ao lead: um botão de resposta rápida com ação `opt_out` ou `consent_grant`, ou um comando `/palavra` no texto (cabeçalho de texto, corpo, rodapé ou texto de um botão de resposta rápida, por exemplo um rodapé "Responda /sair para não receber mais"). Sem isso, é recusado com 422 `marketing_template_needs_exit` antes de chegar à Meta, sem reconhecimento de risco que libere. Modelos UTILITY e AUTHENTICATION não precisam de saída. As recusas das ações usam os códigos `button_action_*` e `exit_*` da rota de ações.
+// @Description	Cria um novo modelo (template) de mensagem do WhatsApp para um telefone comercial do workspace e concede acesso ao workspace. O telefone precisa pertencer ao workspace. O corpo pode trazer a saída do lead junto: `buttonActions` (as mesmas ações de PUT /whatsapp/templates/{id}/button-actions, pelo `buttonIndex` dos botões enviados e com `buttonText` igual ao texto desse botão) e `exitConfirmation`; elas nunca vão para a revisão e só são gravadas depois que a Meta aceita o modelo, substituindo a saída já gravada para o mesmo nome e idioma (as permissões de cada tipo de ação valem para o que muda em relação a essa saída). Sem nenhuma delas no corpo, a saída já gravada para esse nome e idioma fica como está. Uma criação recusada pela Meta não muda nada. Um modelo de MARKETING precisa mostrar uma saída ao lead: um botão de resposta rápida com ação `opt_out` ou `consent_grant`, ou um comando `/palavra` no texto (cabeçalho de texto, corpo, rodapé ou texto de um botão de resposta rápida, por exemplo um rodapé "Responda /sair para não receber mais"). Sem isso, é recusado com 422 `marketing_template_needs_exit` antes de chegar à Meta, sem reconhecimento de risco que libere. Modelos UTILITY e AUTHENTICATION não precisam de saída. As recusas das ações usam os códigos `button_action_*` e `exit_*` da rota de ações. trackedUrlButtons lista os índices (entre todos os botões) dos botões de URL com "Rastrear cliques": a plataforma cria um link curto para o destino informado e troca a URL do botão pelo link curto com a variável de sufixo ({{1}}) e um exemplo, o formato que a Meta aprova; em cada envio a variável recebe um token do envio e o toque sempre abre o destino real. As leituras do template trazem trackedUrlButtons (lista vazia quando nenhum botão é rastreado). Uma recusa do rastreio (template_tracked_button_not_url, template_tracked_button_dynamic, template_tracked_button_destination, template_tracked_link_unreadable) traz expected.buttonIndex, o índice do botão recusado.
 // @Tags			Modelos de WhatsApp
 // @Accept			json
 // @Produce		json
@@ -516,6 +518,10 @@ func (h *WhatsAppTemplateHandler) CreateForWorkspace(w http.ResponseWriter, r *h
 	}
 
 	components := toDomainComponents(req.Components)
+	components, ok := h.trackButtons(w, r, claims.UserID, components, req.TrackedURLButtons)
+	if !ok {
+		return
+	}
 
 	input := whatsapptemplatedomain.CreateTemplateInput{
 		BusinessPhoneID: req.BusinessPhoneID,
@@ -633,7 +639,7 @@ func (h *WhatsAppTemplateHandler) SyncForWorkspace(w http.ResponseWriter, r *htt
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"message":   "Templates synchronized successfully",
 		"count":     len(templates),
-		"templates": toTemplateResponses(templates),
+		"templates": toTemplateResponses(templates, h.linkBase),
 	})
 }
 
@@ -678,7 +684,7 @@ func (h *WhatsAppTemplateHandler) SyncOneForWorkspace(w http.ResponseWriter, r *
 
 	response.WriteSuccess(w, http.StatusOK, map[string]interface{}{
 		"message":  "Template synchronized successfully",
-		"template": toTemplateResponse(tmpl),
+		"template": toTemplateResponse(tmpl, h.linkBase),
 	})
 }
 

@@ -25,7 +25,7 @@ type Repository interface {
 
 	ReorderStages(workspaceID string, tagIDs []string) error
 
-	AssignStage(EntryStage *EntryStage) error
+	AssignStage(EntryStage *EntryStage) (previousStageID string, err error)
 	AssignStageIfNone(EntryStage *EntryStage) (bool, error)
 	RemoveStage(StageID, entryID, entryType, workspaceID string) error
 	RemoveEntryStage(entryID, entryType, workspaceID string) error

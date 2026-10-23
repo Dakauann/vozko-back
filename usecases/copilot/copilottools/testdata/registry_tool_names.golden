@@ -3,6 +3,7 @@ ad_account_readiness
 ad_placement_look
 ad_rule_history
 add_department_member
+add_google_sheet_row
 add_knowledge_document
 add_lead_memory
 ads_breakdown
@@ -47,6 +48,7 @@ create_customer_list_audience
 create_deal
 create_department
 create_form_automation
+create_google_sheet
 create_knowledge_base
 create_label
 create_lead_form
@@ -74,6 +76,12 @@ duplicate_ad
 edit_ad_set
 edit_ad_text
 edit_template
+email_campaign_metrics
+email_edit
+email_generate_image
+email_look
+email_overview
+email_read
 estimate_ad_audience
 explain_permission
 export_ad_report
@@ -112,6 +120,7 @@ list_deal_pipelines
 list_deals
 list_department_members
 list_departments
+list_google_sheets
 list_knowledge_bases
 list_labels
 list_lead_forms
@@ -134,6 +143,7 @@ member_activity
 move_conversation_funnel
 move_conversation_stage
 move_deal
+new_email_design
 new_studio_project
 number_automation
 offer_action
@@ -146,6 +156,7 @@ preview_unofficial_campaign_import
 publish_ad_draft
 publish_whatsapp_form
 query_dataset
+read_choice_stats
 read_conversation
 recent_ad_conversions
 remove_department_member
@@ -165,6 +176,7 @@ search_ad_locations
 search_conversations
 search_knowledge
 search_leads
+send_email
 send_message
 send_template
 send_whatsapp_form

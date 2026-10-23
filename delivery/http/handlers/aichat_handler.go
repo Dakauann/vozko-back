@@ -670,19 +670,19 @@ type projectOpenedRequest struct {
 }
 
 // @Summary		Avisar a Elo que o editor do projeto abriu
-// @Description	A aba manda este aviso quando o editor do projeto do Estúdio ligado à conversa abre na tela (pelo cartão, pela lista do Estúdio ou por um link) e de novo sempre que a aba com o editor volta a ficar visível. Nunca vira mensagem do usuário na conversa.
+// @Description	A aba manda este aviso quando o editor ligado à conversa abre na tela (um projeto do Estúdio ou um design de e-mail, pelo cartão, pela lista ou por um link) e de novo sempre que a aba com o editor volta a ficar visível. Nunca vira mensagem do usuário na conversa.
 // @Description
 // @Description	Se um comando da Elo ficou sem resposta porque a aba estava em segundo plano ou adormecida, o aviso de aba visível diz a ela que o editor responde de novo: no próximo ponto seguro da resposta que está rodando ou, se ela já respondeu, numa resposta retomada uma vez.
 // @Description
 // @Description	| Campo | Tipo | Regra |
 // @Description	|---|---|---|
-// @Description	| view | object | a tela do editor, no formato do envio de mensagem, com `surface: studio` |
+// @Description	| view | object | a tela do editor, no formato do envio de mensagem, com `surface: studio` ou `surface: email_design` |
 // @Description	| mode | string | `ask` (padrão), `edit` ou `full`; vale se a Elo retomar o trabalho |
 // @Description	| timezone | string | fuso do navegador, como no envio de mensagem |
 // @Description
 // @Description	`outcome` diz o que aconteceu:
-// @Description	- `delivered`: uma resposta da Elo está rodando; ela recebe o aviso no próximo ponto seguro, depois do passo de ferramenta em andamento, e segue com as ferramentas do Estúdio, sem chamada extra ao modelo.
-// @Description	- `resumed`: a última resposta dela criou este projeto e ficou esperando o editor abrir, ou ficou sem resposta deste editor; ela retoma o trabalho numa nova resposta, que a aba acompanha por `GET /chat/threads/{id}/turn/events`. Sem ninguém acompanhando, essa resposta é encerrada depois de um curto período, e parar a resposta vale como sempre. Retoma uma vez só.
+// @Description	- `delivered`: uma resposta da Elo está rodando; ela recebe o aviso no próximo ponto seguro, depois do passo de ferramenta em andamento, e segue com as ferramentas desse editor, sem chamada extra ao modelo.
+// @Description	- `resumed`: a última resposta dela criou este projeto ou design e ficou esperando o editor abrir, ou ficou sem resposta deste editor; ela retoma o trabalho numa nova resposta, que a aba acompanha por `GET /chat/threads/{id}/turn/events`. Sem ninguém acompanhando, essa resposta é encerrada depois de um curto período, e parar a resposta vale como sempre. Retoma uma vez só.
 // @Description	- `ignored`: nada a fazer, sem custo. Vale para um projeto que não é o da conversa, para uma conversa sem projeto e para quando a Elo não esperava este editor.
 // @Tags			Elo
 // @Accept			json
@@ -705,7 +705,7 @@ func (h *AIChatHandler) ProjectOpened(w http.ResponseWriter, r *http.Request) {
 		response.WriteError(w, http.StatusBadRequest, "corpo inválido", nil)
 		return
 	}
-	if err := body.View.Validate(); err != nil || !body.View.OnStudio() {
+	if err := body.View.Validate(); err != nil || !body.View.OnEditor() {
 		response.WriteError(w, http.StatusBadRequest, "contexto de tela inválido", nil)
 		return
 	}

@@ -25,6 +25,7 @@ const (
 	MaxExplicitIDs = 5000
 	MaxFirstN      = 200000
 	MaxResolvePage = MaxExplicitIDs + 1
+	Chunk          = MaxExplicitIDs
 )
 
 const fingerprintVersion = "selection.v1"

@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -14,12 +13,10 @@ const (
 	EntryWebhook         EntryPointKind = "webhook"
 	EntryFormSubmitted   EntryPointKind = "form_submitted"
 	EntryAgentCall       EntryPointKind = "agent_call"
-	EntryCampaignSent    EntryPointKind = "campaign_sent"
 	EntryStageAdded      EntryPointKind = "stage_added"
-	EntryNoReply         EntryPointKind = "no_reply"
 	EntryCallReceived    EntryPointKind = "call_received"
-	EntryManual          EntryPointKind = "manual"
 	EntryLeadExit        EntryPointKind = "lead_exit"
+	EntryBirthday        EntryPointKind = "birthday"
 )
 
 var entryKindOfTrigger = map[TriggerType]EntryPointKind{
@@ -28,11 +25,9 @@ var entryKindOfTrigger = map[TriggerType]EntryPointKind{
 	TriggerWebhook:         EntryWebhook,
 	TriggerFormSubmitted:   EntryFormSubmitted,
 	TriggerAgentCall:       EntryAgentCall,
-	TriggerCampaignSent:    EntryCampaignSent,
 	TriggerStageAdded:      EntryStageAdded,
-	TriggerNoReply:         EntryNoReply,
 	TriggerCallReceived:    EntryCallReceived,
-	TriggerManual:          EntryManual,
+	TriggerBirthday:        EntryBirthday,
 }
 
 func EntryKindOfTrigger(t TriggerType) (EntryPointKind, bool) {
@@ -46,7 +41,7 @@ const (
 )
 
 func RunOrigins() []string {
-	origins := []string{RunOriginLeadExit, RunOriginManual}
+	origins := []string{RunOriginLeadExit}
 	for t := range entryKindOfTrigger {
 		origins = append(origins, string(t))
 	}
@@ -55,11 +50,8 @@ func RunOrigins() []string {
 }
 
 func EntryKindOfRunOrigin(origin string) (EntryPointKind, bool) {
-	switch origin {
-	case RunOriginLeadExit:
+	if origin == RunOriginLeadExit {
 		return EntryLeadExit, true
-	case RunOriginManual:
-		return EntryManual, true
 	}
 	return EntryKindOfTrigger(TriggerType(origin))
 }
@@ -76,19 +68,18 @@ const (
 type EntryBlockReason string
 
 const (
-	EntryBlockedNotPublished    EntryBlockReason = "not_published"
-	EntryBlockedPaused          EntryBlockReason = "paused"
-	EntryBlockedWebhookInactive EntryBlockReason = "webhook_inactive"
-	EntryBlockedNoWebhook       EntryBlockReason = "no_webhook"
-	EntryBlockedNoForm          EntryBlockReason = "no_form"
-	EntryBlockedFormInactive    EntryBlockReason = "form_inactive"
-	EntryBlockedNoAgentBound    EntryBlockReason = "no_agent_bound"
-	EntryBlockedNoChannel       EntryBlockReason = "no_channel"
-	EntryBlockedChannelPaused   EntryBlockReason = "channel_paused"
-	EntryBlockedNoTrigger       EntryBlockReason = "no_trigger"
+	EntryBlockedNotPublished        EntryBlockReason = "not_published"
+	EntryBlockedPaused              EntryBlockReason = "paused"
+	EntryBlockedWebhookInactive     EntryBlockReason = "webhook_inactive"
+	EntryBlockedNoWebhook           EntryBlockReason = "no_webhook"
+	EntryBlockedNoForm              EntryBlockReason = "no_form"
+	EntryBlockedFormInactive        EntryBlockReason = "form_inactive"
+	EntryBlockedNoAgentBound        EntryBlockReason = "no_agent_bound"
+	EntryBlockedNoChannel           EntryBlockReason = "no_channel"
+	EntryBlockedChannelPaused       EntryBlockReason = "channel_paused"
+	EntryBlockedNoTrigger           EntryBlockReason = "no_trigger"
+	EntryBlockedNeedsMessageTrigger EntryBlockReason = "needs_message_trigger"
 )
-
-const CampaignTriggerCampaignIDKey = "campaign_id"
 
 const MaxListedChannels = 10
 
@@ -104,11 +95,10 @@ const (
 	ChannelTikTokAccount              EntryChannelKind = "tiktok_account"
 	ChannelMercadoLivreAccount        EntryChannelKind = "mercadolivre_account"
 	ChannelWebchatWidget              EntryChannelKind = "webchat_widget"
+	ChannelEmailInbox                 EntryChannelKind = "email_inbox"
+	ChannelRCSSender                  EntryChannelKind = "rcs_sender"
+	ChannelSMSRoute                   EntryChannelKind = "sms_route"
 )
-
-func (k EntryChannelKind) IsCampaign() bool {
-	return k == ChannelWhatsAppCampaign || k == ChannelUnofficialWhatsAppCampaign
-}
 
 type LeadExitSource string
 
@@ -179,16 +169,14 @@ type EntryDelivery struct {
 }
 
 type EntryPointFacts struct {
-	Webhook             *WebhookEntry
-	Forms               map[string]EntryForm
-	Agents              []EntryAgent
-	Channels            []EntryChannel
-	OpenChannels        []EntryChannel
-	EnabledCampaigns    []EntryChannel
-	ConfiguredCampaigns map[string]EntryChannel
-	LeadExits           []LeadExitEntry
-	LastStarts          map[EntryPointKind]time.Time
-	LastDelivery        *EntryDelivery
+	Webhook      *WebhookEntry
+	Forms        map[string]EntryForm
+	Agents       []EntryAgent
+	Channels     []EntryChannel
+	OpenChannels []EntryChannel
+	LeadExits    []LeadExitEntry
+	LastStarts   map[EntryPointKind]time.Time
+	LastDelivery *EntryDelivery
 }
 
 func WorkflowBlockReason(w *Workflow) EntryBlockReason {
@@ -223,7 +211,7 @@ func EntryPointsOf(w *Workflow, triggers []Node, facts EntryPointFacts) []EntryP
 		out = append(out, bindingEntry(w, EntryAgentCall, EntryBlockedNoTrigger, EntryPointDetails{Agents: facts.Agents}, facts))
 	}
 	if len(facts.LeadExits) > 0 {
-		out = append(out, bindingEntry(w, EntryLeadExit, "", EntryPointDetails{LeadExits: facts.LeadExits}, facts))
+		out = append(out, bindingEntry(w, EntryLeadExit, leadExitReadiness(triggers), EntryPointDetails{LeadExits: facts.LeadExits}, facts))
 	}
 	return out
 }
@@ -273,8 +261,6 @@ func kindReadiness(node Node, kind EntryPointKind, facts EntryPointFacts) (Entry
 		return agentReadiness(facts)
 	case EntryMessageReceived, EntryFirstMessage:
 		return messageReadiness(facts)
-	case EntryCampaignSent:
-		return campaignReadiness(node, facts)
 	}
 	return EntryPointDetails{}, ""
 }
@@ -339,32 +325,14 @@ func agentReadiness(facts EntryPointFacts) (EntryPointDetails, EntryBlockReason)
 }
 
 func messageReadiness(facts EntryPointFacts) (EntryPointDetails, EntryBlockReason) {
-	return channelReadiness(facts.Channels, facts.OpenChannels, func(EntryChannel) bool { return true })
+	return channelReadiness(facts.Channels, facts.OpenChannels)
 }
 
-func campaignReadiness(node Node, facts EntryPointFacts) (EntryPointDetails, EntryBlockReason) {
-	chosen, _ := node.Config[CampaignTriggerCampaignIDKey].(string)
-	if chosen = strings.TrimSpace(chosen); chosen != "" {
-		campaign, found := facts.ConfiguredCampaigns[chosen]
-		switch {
-		case !found:
-			return EntryPointDetails{}, EntryBlockedNoChannel
-		case !campaign.WorkflowEnabled:
-			return EntryPointDetails{Channels: []EntryChannel{campaign}}, EntryBlockedChannelPaused
-		}
-		return EntryPointDetails{Channels: []EntryChannel{campaign}}, ""
-	}
-	return channelReadiness(facts.Channels, facts.EnabledCampaigns, func(c EntryChannel) bool { return c.Kind.IsCampaign() })
-}
-
-func channelReadiness(bound, others []EntryChannel, counts func(EntryChannel) bool) (EntryPointDetails, EntryBlockReason) {
+func channelReadiness(bound, others []EntryChannel) (EntryPointDetails, EntryBlockReason) {
 	var listed []EntryChannel
 	listedKeys := map[EntryChannel]bool{}
 	reason := EntryBlockedNoChannel
 	add := func(c EntryChannel, isBound bool) {
-		if !counts(c) {
-			return
-		}
 		c.Bound = isBound
 		key := EntryChannel{Kind: c.Kind, ID: c.ID}
 		if listedKeys[key] {
@@ -387,4 +355,11 @@ func channelReadiness(bound, others []EntryChannel, counts func(EntryChannel) bo
 		add(c, false)
 	}
 	return EntryPointDetails{Channels: listed}, reason
+}
+
+func leadExitReadiness(triggers []Node) EntryBlockReason {
+	if _, err := MessageStartTrigger(triggers); err != nil {
+		return EntryBlockedNeedsMessageTrigger
+	}
+	return ""
 }

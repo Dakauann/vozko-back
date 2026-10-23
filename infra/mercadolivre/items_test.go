@@ -110,6 +110,9 @@ func TestUsers(t *testing.T) {
 		me.UserType != "real_estate_agency" || len(me.Tags) != 3 {
 		t.Fatalf("user = %+v", me)
 	}
+	if me.FirstName != "Test" || me.LastName != "Test" || me.BrandName != "" || me.CorporateName != "" {
+		t.Fatalf("names without a company block = %+v", me)
+	}
 	if _, err := s.GetUser(context.Background(), sellerCreds, "1944693439"); err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +121,24 @@ func TestUsers(t *testing.T) {
 	}
 	if _, err := s.GetUser(context.Background(), sellerCreds, "me"); err == nil {
 		t.Fatal("GetUser must take a numeric id")
+	}
+}
+
+func TestUsersDecodeTheCompanyNames(t *testing.T) {
+	fs := newFakeServer(t, jsonReply(200, fixture(t, "users_me_constructed_with_company.json")))
+	s, _ := NewUserService(newTestClient(t, fs, newFakeLimiters()))
+	for _, fetch := range []func() (*mldomain.User, error){
+		func() (*mldomain.User, error) { return s.Me(context.Background(), sellerCreds) },
+		func() (*mldomain.User, error) { return s.GetUser(context.Background(), sellerCreds, "202593498") },
+	} {
+		user, err := fetch()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if user.Nickname != "DGCAFEDHB50478" || user.FirstName != "Ana" || user.LastName != "Souza" ||
+			user.BrandName != "Café do Vale" || user.CorporateName != "Vale Cafés Ltda" {
+			t.Fatalf("user = %+v", user)
+		}
 	}
 }
 

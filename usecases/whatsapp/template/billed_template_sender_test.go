@@ -301,6 +301,8 @@ func newHarness(t *testing.T, mutate ...func(*BilledTemplateSenderDeps)) *harnes
 		Ledger:         ledger,
 		Inflight:       inflight,
 		BalanceChecker: &fakeBalanceChecker{micros: 1_000_000},
+		Choices:        &spyChoices{},
+		ClickTokens:    testClickTokens,
 	}
 	for _, m := range mutate {
 		m(&deps)

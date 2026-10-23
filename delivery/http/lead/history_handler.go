@@ -150,7 +150,7 @@ func (h *LeadHandler) GetAnalysisByCampaign(w http.ResponseWriter, r *http.Reque
 // @Tags			Leads
 // @Produce		json
 // @Param			entryId		path		string	true	"ID da entrada (UUID)"
-// @Param			entryType	query		string	false	"Tipo da entrada ('whatsapp', 'unofficial_whatsapp', 'instagram', 'telegram', 'facebook', 'webchat')"
+// @Param			entryType	query		string	false	"Tipo da entrada ('whatsapp', 'unofficial_whatsapp', 'instagram', 'telegram', 'facebook', 'webchat', 'email')"
 // @Success		200	{object}	lead.LeadCardResponse
 // @Failure		400	{object}	response.ErrorResponse
 // @Failure		404	{object}	response.ErrorResponse

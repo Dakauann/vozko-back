@@ -10,7 +10,7 @@ import (
 )
 
 func TestANullTemplateParameterIsSentEmptyNeverAsNilText(t *testing.T) {
-	got := templateParamValues(map[string]interface{}{"body_params": map[string]interface{}{"1": nil, "2": "Natal"}}, "body_params")
+	got := templateParamValues(&workflow.NodeContext{Node: &workflow.Node{Config: map[string]interface{}{"body_params": map[string]interface{}{"1": nil, "2": "Natal"}}}, State: newTestState()}, "body_params")
 	if got["1"] != "" || got["2"] != "Natal" {
 		t.Fatalf("params = %q", got)
 	}
@@ -39,7 +39,7 @@ func TestANullQueryOrHeaderValueIsSentEmptyNeverAsNilText(t *testing.T) {
 }
 
 func TestANullAttendeeInAListIsNeverSentAsNilText(t *testing.T) {
-	attendees, _ := parseScheduleMeetingAttendees([]interface{}{nil, "ana@example.com"}, &workflow.RunState{Vars: map[string]interface{}{}})
+	attendees, _ := parseCalendarAttendees([]interface{}{nil, "ana@example.com"}, &workflow.RunState{Vars: map[string]interface{}{}})
 	for _, a := range attendees {
 		if strings.Contains(a.Email, "<nil>") {
 			t.Fatalf("attendees = %+v", attendees)
@@ -47,9 +47,9 @@ func TestANullAttendeeInAListIsNeverSentAsNilText(t *testing.T) {
 	}
 }
 
-func TestAMeetingFieldThatIsNotTextNeverBecomesNilText(t *testing.T) {
+func TestACalendarEventFieldThatIsNotTextNeverBecomesNilText(t *testing.T) {
 	ctx := &workflow.NodeContext{Node: &workflow.Node{Config: map[string]interface{}{"title": []interface{}{nil}}}, State: &workflow.RunState{Vars: map[string]interface{}{}}}
-	if got := scheduleMeetingInterpolatedString(ctx, "title"); strings.Contains(got, "<nil>") {
+	if got := calendarConfigText(ctx, "title"); strings.Contains(got, "<nil>") {
 		t.Fatalf("title = %q", got)
 	}
 }

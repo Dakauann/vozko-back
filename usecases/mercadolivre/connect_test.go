@@ -252,6 +252,27 @@ func TestReconnectOfALiveAccountRotatesItsTokens(t *testing.T) {
 	}
 }
 
+func TestConnectStoresTheSellerDisplayName(t *testing.T) {
+	f := newConnectFixture(t)
+	f.users.me = &mldomain.User{ID: "415458330", Nickname: "DGCAFEDHB50478", FirstName: "Ana", LastName: "Souza", BrandName: "Café do Vale", SiteID: mldomain.SiteMLB}
+	out, err := f.uc.Complete(context.Background(), CompleteConnectInput{Code: "TG-code", State: f.start(t, "ws-1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.accounts.get(out.Account.ID); got.Nickname != "DGCAFEDHB50478" || got.DisplayName != "Café do Vale" {
+		t.Fatalf("created = %+v", got)
+	}
+
+	f.users.me = &mldomain.User{ID: "415458330", Nickname: "DGCAFEDHB50478", FirstName: "Ana", LastName: "Souza", SiteID: mldomain.SiteMLB}
+	out, err = f.uc.Complete(context.Background(), CompleteConnectInput{Code: "TG-code", State: f.start(t, "ws-1")})
+	if err != nil || !out.Reconnected {
+		t.Fatalf("out = %+v err = %v", out, err)
+	}
+	if got := f.accounts.get(out.Account.ID); got.DisplayName != "Ana Souza" || out.Account.Label() != "Ana Souza" {
+		t.Fatalf("reconnected = %+v", got)
+	}
+}
+
 func TestStartNeedsAWorkspace(t *testing.T) {
 	f := newConnectFixture(t)
 	if _, err := f.uc.Start(context.Background(), StartConnectInput{}); !errors.Is(err, mldomain.ErrWorkspaceIDRequired) {

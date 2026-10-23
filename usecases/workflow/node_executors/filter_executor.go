@@ -29,8 +29,8 @@ func (e *filterExecutor) Definition() workflow.NodeDefinition {
 			"value":    "",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "passed", Description: "true se o filtro deixou passar"},
-			{Key: "variable", Description: "Nome da variável avaliada"},
+			{Key: "passed", Description: "true se o filtro deixou passar", Label: "Passou no filtro", Type: workflow.VariableTypeBoolean},
+			{Key: "variable", Description: "Nome da variável avaliada", RepeatsConfig: true},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "variable", Label: "Variável", Type: "text", Placeholder: "{{node.n2.count}}", Required: true, Description: "Texto ou referência de estado. Use {{...}} para interpolar (ex.: {{node.n2.count}}, {{var.status}})."},

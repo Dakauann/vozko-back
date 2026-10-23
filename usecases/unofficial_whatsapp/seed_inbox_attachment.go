@@ -33,16 +33,10 @@ func (uc *SeedInboxUseCase) resolveAsset(in uw.SeedRequest) *seedAsset {
 		return nil
 	}
 
-	asset, err := uc.assets.GetMediaByID(attachment.MediaID)
-	if err != nil || asset == nil || strings.TrimSpace(asset.URL) == "" {
-		log.Printf("[unofficial-whatsapp] seed attachment %s could not be resolved, seeding the opening plain: %v",
-			attachment.MediaID, err)
-		return nil
-	}
-
-	if asset.WorkspaceID != in.WorkspaceID {
-		log.Printf("[unofficial-whatsapp] seed attachment %s belongs to another workspace, seeding the opening plain",
-			attachment.MediaID)
+	asset, err := conversation.SendableLibraryMedia(uc.assets, in.WorkspaceID, attachment.MediaID)
+	if err != nil {
+		log.Printf("[unofficial-whatsapp] seed attachment %s is not sendable in workspace %s, seeding the opening plain: %v",
+			attachment.MediaID, in.WorkspaceID, err)
 		return nil
 	}
 

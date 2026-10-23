@@ -1,12 +1,14 @@
 package calendar_repository
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"vozko/domain/calendar"
 	"vozko/domain/shared"
@@ -130,79 +132,6 @@ func (r *repository) ListEvents(input calendar.ListEventsInput) (*shared.Paginat
 	return shared.NewPaginatedResult(events, pagination, total), nil
 }
 
-func (r *repository) SaveConnection(conn *calendar.GoogleCalendarConnection) error {
-	dbConn := &schema.GoogleCalendarConnection{
-		ID:           conn.ID,
-		WorkspaceID:  conn.WorkspaceID,
-		Email:        conn.Email,
-		AccessToken:  conn.AccessToken,
-		RefreshToken: conn.RefreshToken,
-		TokenExpiry:  conn.TokenExpiry,
-	}
-
-	update := map[string]interface{}{
-		"email":         conn.Email,
-		"access_token":  conn.AccessToken,
-		"refresh_token": conn.RefreshToken,
-		"token_expiry":  conn.TokenExpiry,
-	}
-
-	var existing schema.GoogleCalendarConnection
-	result := r.db.Unscoped().
-		Where("workspace_id = ?", conn.WorkspaceID).
-		First(&existing)
-	if result.Error != nil {
-		if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return result.Error
-		}
-
-		if err := r.db.Create(dbConn).Error; err != nil {
-			return err
-		}
-		conn.ID = dbConn.ID
-		conn.CreatedAt = dbConn.CreatedAt
-		conn.UpdatedAt = dbConn.UpdatedAt
-		return nil
-	}
-
-	update["deleted_at"] = nil
-	if err := r.db.Unscoped().
-		Model(&schema.GoogleCalendarConnection{}).
-		Where("id = ?", existing.ID).
-		Updates(update).Error; err != nil {
-		return err
-	}
-
-	conn.ID = existing.ID
-	conn.CreatedAt = existing.CreatedAt
-	conn.UpdatedAt = time.Now()
-	return nil
-}
-
-func (r *repository) GetConnection(workspaceID string) (*calendar.GoogleCalendarConnection, error) {
-	var dbConn schema.GoogleCalendarConnection
-	if err := r.db.Where("workspace_id = ?", workspaceID).First(&dbConn).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return mapConnectionToDomain(&dbConn), nil
-}
-
-func (r *repository) DeleteConnection(workspaceID string) error {
-	return r.db.Where("workspace_id = ?", workspaceID).Delete(&schema.GoogleCalendarConnection{}).Error
-}
-
-func (r *repository) UpdateConnectionTokens(id, accessToken, refreshToken string, expiry time.Time) error {
-	update := map[string]interface{}{
-		"access_token":  accessToken,
-		"refresh_token": refreshToken,
-		"token_expiry":  expiry,
-	}
-	return r.db.Model(&schema.GoogleCalendarConnection{}).Where("id = ?", id).Updates(update).Error
-}
-
 func mapEventToSchema(event *calendar.CalendarEvent) *schema.CalendarEvent {
 	return &schema.CalendarEvent{
 		ID:                      event.ID,
@@ -261,20 +190,6 @@ func mapEventToDomain(dbEvent *schema.CalendarEvent) *calendar.CalendarEvent {
 	}
 }
 
-func mapConnectionToDomain(dbConn *schema.GoogleCalendarConnection) *calendar.GoogleCalendarConnection {
-	return &calendar.GoogleCalendarConnection{
-		ID:           dbConn.ID,
-		WorkspaceID:  dbConn.WorkspaceID,
-		Email:        dbConn.Email,
-		AccessToken:  dbConn.AccessToken,
-		RefreshToken: dbConn.RefreshToken,
-		TokenExpiry:  dbConn.TokenExpiry,
-		SyncToken:    dbConn.SyncToken,
-		CreatedAt:    dbConn.CreatedAt,
-		UpdatedAt:    dbConn.UpdatedAt,
-	}
-}
-
 func encodeAttendees(attendees []calendar.Attendee) string {
 	if len(attendees) == 0 {
 		return "[]"
@@ -324,12 +239,6 @@ func decodeReminderOverrides(raw string) []calendar.ReminderOverride {
 	var overrides []calendar.ReminderOverride
 	_ = json.Unmarshal([]byte(raw), &overrides)
 	return overrides
-}
-
-func (r *repository) UpdateConnectionSyncToken(id, syncToken string) error {
-	return r.db.Model(&schema.GoogleCalendarConnection{}).
-		Where("id = ?", id).
-		Update("sync_token", syncToken).Error
 }
 
 func (r *repository) SaveWatchChannel(ch *calendar.CalendarWatchChannel) error {
@@ -423,4 +332,55 @@ func mapWatchChannelToDomain(dbCh *schema.CalendarWatchChannel) *calendar.Calend
 		CreatedAt:   dbCh.CreatedAt,
 		UpdatedAt:   dbCh.UpdatedAt,
 	}
+}
+
+func (r *repository) GetSyncToken(workspaceID string) (string, error) {
+	var state schema.CalendarSyncState
+	if err := r.db.Where("workspace_id = ?", workspaceID).Limit(1).Find(&state).Error; err != nil {
+		return "", err
+	}
+	return state.SyncToken, nil
+}
+
+func (r *repository) SaveSyncToken(workspaceID, syncToken string) error {
+	return r.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "workspace_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"sync_token", "updated_at"}),
+	}).Create(&schema.CalendarSyncState{WorkspaceID: workspaceID, SyncToken: syncToken}).Error
+}
+
+type legacyConnectionStore struct {
+	db *gorm.DB
+}
+
+func NewLegacyConnectionStore(db *gorm.DB) calendar.LegacyConnectionStore {
+	return &legacyConnectionStore{db: db}
+}
+
+func (s *legacyConnectionStore) ListLegacyConnections(ctx context.Context) ([]calendar.LegacyGoogleConnection, error) {
+	var rows []schema.GoogleCalendarConnection
+	if err := s.db.WithContext(ctx).Order("created_at").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]calendar.LegacyGoogleConnection, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, calendar.LegacyGoogleConnection{
+			ID:           row.ID,
+			WorkspaceID:  row.WorkspaceID,
+			Email:        row.Email,
+			AccessToken:  row.AccessToken,
+			RefreshToken: row.RefreshToken,
+			TokenExpiry:  row.TokenExpiry,
+			SyncToken:    row.SyncToken,
+		})
+	}
+	return out, nil
+}
+
+func (s *legacyConnectionStore) RetireLegacyConnection(ctx context.Context, id string) error {
+	return s.db.WithContext(ctx).Model(&schema.GoogleCalendarConnection{}).Where("id = ?", id).Updates(map[string]any{
+		"access_token":  "",
+		"refresh_token": "",
+		"deleted_at":    time.Now().UTC(),
+	}).Error
 }

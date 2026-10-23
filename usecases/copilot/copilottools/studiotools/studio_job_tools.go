@@ -339,15 +339,7 @@ func (t *studioGenerationTool) Choices(ctx context.Context, cc copilot.Context, 
 	if err != nil {
 		return nil, err
 	}
-	for i, choice := range choices {
-		if choice.Default != "" {
-			continue
-		}
-		if preferred, err := t.deps.Media.DefaultModel(ctx, t.kind); err == nil {
-			choices[i].Default = preferred.ID
-		}
-	}
-	return choices, nil
+	return mediatools.WithPreferredModels(ctx, t.deps.Media, t.kind, choices), nil
 }
 
 func (t *studioGenerationTool) Validate(ctx context.Context, cc copilot.Context, args map[string]interface{}) error {

@@ -33,4 +33,5 @@ func RegisterRoutes(
 func RegisterPublicRoutes(public *mux.Router, h *ShortLinkHandler, rl RateLimiter) {
 	public.Handle("/r/{code}", rl.Validate(http.HandlerFunc(h.Redirect))).Methods(http.MethodGet)
 	public.Handle("/r/{code}/unlock", rl.Validate(http.HandlerFunc(h.Unlock))).Methods(http.MethodPost)
+	public.Handle("/r/{code}/{token}", rl.Validate(http.HandlerFunc(h.RedirectTracked))).Methods(http.MethodGet)
 }

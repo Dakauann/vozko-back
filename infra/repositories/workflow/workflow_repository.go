@@ -210,6 +210,9 @@ func (r *repository) List(input workflow.ListWorkflowsInput) (*shared.PaginatedR
 		filter, args := entryKindFilter(input.WorkspaceID, *input.EntryKind)
 		query = query.Where(filter, args...)
 	}
+	if input.StartsFromMessage {
+		query = query.Where(runningTriggerExistsSQL, workflow.MessageStartTriggerTypes())
+	}
 
 	var total int64
 	if input.TriggerType == nil {

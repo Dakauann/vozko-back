@@ -15,6 +15,8 @@ type WebhookPayment struct {
 	Status            string  `json:"status"`
 
 	InvoiceNumber string `json:"invoiceNumber"`
+
+	ReversedValue float64 `json:"-"`
 }
 
 const (
@@ -32,6 +34,13 @@ const (
 	EventPaymentRejected   = "PAYMENT_REJECTED"
 	EventPaymentChargeback = "PAYMENT_CHARGEBACK"
 	EventPaymentInAnalysis = "PAYMENT_IN_ANALYSIS"
+
+	EventPaymentChargebackRequested        = "PAYMENT_CHARGEBACK_REQUESTED"
+	EventPaymentChargebackDispute          = "PAYMENT_CHARGEBACK_DISPUTE"
+	EventPaymentAwaitingChargebackReversal = "PAYMENT_AWAITING_CHARGEBACK_REVERSAL"
+	EventPaymentReceivedInCashUndone       = "PAYMENT_RECEIVED_IN_CASH_UNDONE"
+	EventPaymentInMediation                = "PAYMENT_IN_MEDIATION"
+	EventPaymentChargebackReversed         = "PAYMENT_CHARGEBACK_REVERSED"
 )
 
 type AsaasWebhookEvent = WebhookEvent

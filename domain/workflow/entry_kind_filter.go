@@ -7,7 +7,7 @@ import (
 
 func EntryPointKinds() []EntryPointKind {
 	return []EntryPointKind{EntryMessageReceived, EntryFirstMessage, EntryWebhook, EntryFormSubmitted, EntryAgentCall,
-		EntryCampaignSent, EntryStageAdded, EntryNoReply, EntryCallReceived, EntryManual, EntryLeadExit}
+		EntryStageAdded, EntryCallReceived, EntryLeadExit}
 }
 
 func ParseEntryPointKind(raw string) (EntryPointKind, bool) {

@@ -46,6 +46,13 @@ func (m *mediaRows) GetByID(id string) (*conversation.ConversationMedia, error) 
 	}
 	return nil, conversation.ErrMediaNotFound
 }
+func (m *mediaRows) GetInEntry(entryID string, entryType shared.EntryType, id string) (*conversation.ConversationMedia, error) {
+	r, err := m.GetByID(id)
+	if err != nil || !r.BelongsTo(entryID, entryType) {
+		return nil, conversation.ErrMediaNotFound
+	}
+	return r, nil
+}
 func (m *mediaRows) ListByIDs(ids []string) ([]*conversation.ConversationMedia, error) {
 	var out []*conversation.ConversationMedia
 	for _, id := range ids {
@@ -97,6 +104,26 @@ func TestStoringMediaUploadsMeasuresAndRecordsItOnce(t *testing.T) {
 	}
 	if stored.Layout != inspector.layout || stored.OriginalFilename != "foto.jpg" || inspector.calls != 1 {
 		t.Fatalf("stored = %+v calls=%d", stored, inspector.calls)
+	}
+}
+
+func TestStoringKeepsThePurposeOfTheUpload(t *testing.T) {
+	note := photoInput()
+	note.Purpose = conversation.MediaPurposeNote
+	stored, err := NewStore(&bucket{}, &mediaRows{}, &fixedInspector{}).Store(note)
+	if err != nil || stored.Purpose != conversation.MediaPurposeNote {
+		t.Fatalf("note stored as %+v, err %v", stored, err)
+	}
+
+	plain, err := NewStore(&bucket{}, &mediaRows{}, &fixedInspector{}).Store(photoInput())
+	if err != nil || plain.Purpose != conversation.MediaPurposeMessage {
+		t.Fatalf("an upload without a purpose stored as %+v, err %v; want message media", plain, err)
+	}
+
+	unknown := photoInput()
+	unknown.Purpose = "mystery"
+	if _, err := NewStore(&bucket{}, &mediaRows{}, &fixedInspector{}).Store(unknown); !errors.Is(err, conversation.ErrMediaPurposeInvalid) {
+		t.Fatalf("an unknown purpose must be refused, got %v", err)
 	}
 }
 

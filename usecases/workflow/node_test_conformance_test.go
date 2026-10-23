@@ -144,13 +144,13 @@ func newConformance(t *testing.T) *conformance {
 
 func (c *conformance) executors() TestExecutors {
 	return func(box SimSandbox) *NodeExecutorRegistry {
-		box.Outbound = c.outbound
+		box.Outbound = sendInto(c.outbound)
 		return newSimulationRegistry(c.deps, box)
 	}
 }
 
 func (c *conformance) catalog() []workflow.NodeDefinition {
-	defs := newSimulationRegistry(c.deps, SimSandbox{WorkspaceID: "ws1", Messages: &simMessageRepo{}, Outbound: c.outbound}).Catalog()
+	defs := newSimulationRegistry(c.deps, SimSandbox{WorkspaceID: "ws1", Messages: &simMessageRepo{}, Outbound: sendInto(c.outbound)}).Catalog()
 	sort.Slice(defs, func(i, j int) bool { return defs[i].Type < defs[j].Type })
 	return defs
 }
@@ -459,7 +459,7 @@ func (c *conformance) conformWrapper(def workflow.NodeDefinition, wfType workflo
 		name := label + " " + b.name
 		stub := funcExecutor{def: def, run: b.run}
 		executors := func(box SimSandbox) *NodeExecutorRegistry {
-			box.Outbound = c.outbound
+			box.Outbound = sendInto(c.outbound)
 			registry := newSimulationRegistry(c.deps, box)
 			registry.Register(def.Type, stub)
 			return registry

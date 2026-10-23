@@ -13,13 +13,41 @@ import (
 
 type lockState struct {
 	cache.SharedState
-	mu    sync.Mutex
-	held  map[string]string
-	err   error
-	order []string
+	mu       sync.Mutex
+	held     map[string]string
+	err      error
+	order    []string
+	refusals chan string
 }
 
-func newLockState() *lockState { return &lockState{held: map[string]string{}} }
+func newLockState() *lockState {
+	return &lockState{held: map[string]string{}, refusals: make(chan string, 1)}
+}
+
+const safetyWait = time.Minute
+
+func untilSettled(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), safetyWait)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func (s *lockState) awaitWaiter(t *testing.T, ctx context.Context) {
+	t.Helper()
+	select {
+	case <-s.refusals:
+	case <-ctx.Done():
+		t.Fatal("nobody ever waited for the conversation lock")
+	}
+}
+
+func (s *lockState) holder(key string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value, taken := s.held[key]
+	return value, taken
+}
 
 func (s *lockState) SetNX(key, value string, _ time.Duration) (bool, error) {
 	s.mu.Lock()
@@ -28,6 +56,10 @@ func (s *lockState) SetNX(key, value string, _ time.Duration) (bool, error) {
 		return false, s.err
 	}
 	if _, taken := s.held[key]; taken {
+		select {
+		case s.refusals <- key:
+		default:
+		}
 		return false, nil
 	}
 	s.held[key] = value
@@ -82,12 +114,12 @@ func TestAnOverrunningTurnCannotReleaseTheNextHoldersLock(t *testing.T) {
 	}
 	defer next()
 
+	key := agentTurnKey("e-1", shared.EntryTypeTelegram)
+	newer, _ := state.holder(key)
 	overrun()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-	if _, err := lock.Acquire(ctx, "e-1", shared.EntryTypeTelegram); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("err = %v; a third turn got in because the overrunning turn freed the newer holder's lock", err)
+	if still, taken := state.holder(key); !taken || still != newer {
+		t.Fatal("the overrunning turn freed the newer holder's lock, so a third turn could get in")
 	}
 }
 
@@ -98,7 +130,9 @@ func TestALockStoreWithoutAGuardedDeleteIsRefused(t *testing.T) {
 }
 
 func TestTwoAgentTurnsOnTheSameConversationNeverOverlap(t *testing.T) {
-	lock := NewAgentTurnLock(newLockState())
+	ctx := untilSettled(t)
+	state := newLockState()
+	lock := NewAgentTurnLock(state)
 	lock.poll = time.Millisecond
 
 	release, err := lock.Acquire(context.Background(), "e-1", shared.EntryTypeTelegram)
@@ -107,22 +141,23 @@ func TestTwoAgentTurnsOnTheSameConversationNeverOverlap(t *testing.T) {
 	}
 	second := make(chan struct{})
 	go func() {
-		next, err := lock.Acquire(context.Background(), "e-1", shared.EntryTypeTelegram)
+		next, err := lock.Acquire(ctx, "e-1", shared.EntryTypeTelegram)
 		if err == nil {
 			next()
 		}
 		close(second)
 	}()
 
+	state.awaitWaiter(t, ctx)
 	select {
 	case <-second:
 		t.Fatal("a second turn started while the first held the conversation")
-	case <-time.After(20 * time.Millisecond):
+	default:
 	}
 	release()
 	select {
 	case <-second:
-	case <-time.After(time.Second):
+	case <-ctx.Done():
 		t.Fatal("the second turn never ran after the first finished")
 	}
 }

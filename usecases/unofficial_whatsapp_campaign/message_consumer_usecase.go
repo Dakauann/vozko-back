@@ -9,6 +9,7 @@ import (
 
 	"vozko/domain/cache"
 	"vozko/domain/campaign"
+	"vozko/domain/choicestats"
 	"vozko/domain/conversation"
 	"vozko/domain/messaging"
 	"vozko/domain/shared"
@@ -52,9 +53,9 @@ type ConsumerDeps struct {
 
 	Assignments Assigner
 	Metrics     MetricRecorder
-	Workflows   WorkflowTrigger
 	Broadcaster EntryBroadcaster
 	PauseAll    uwc.PauseCampaignsForInstanceUseCase
+	Choices     choicestats.Recorder
 }
 
 type messageConsumerUseCase struct {
@@ -90,6 +91,9 @@ func (c *messageConsumerUseCase) Start() error {
 	if c.deps.QueueSub == nil {
 		return fmt.Errorf("unofficial whatsapp campaign consumer: message queue subscriber is required")
 	}
+	if c.deps.Choices == nil {
+		return fmt.Errorf("unofficial whatsapp campaign consumer: %w", choicestats.ErrRecorderMissing)
+	}
 	return c.runner.Start()
 }
 
@@ -109,10 +113,6 @@ func (c *messageConsumerUseCase) IsSubscribed(id string) bool { return c.runner.
 
 func (c *messageConsumerUseCase) SetPauseAll(p uwc.PauseCampaignsForInstanceUseCase) {
 	c.deps.PauseAll = p
-}
-
-func (c *messageConsumerUseCase) SetWorkflows(w WorkflowTrigger) {
-	c.deps.Workflows = w
 }
 
 func (c *messageConsumerUseCase) precheck(campaignID string) error {
@@ -371,21 +371,27 @@ func (c *messageConsumerUseCase) recordSuccess(
 		})
 	}
 
-	if person && c.deps.Workflows != nil && camp.EnableWorkflow {
-		c.deps.Workflows.CampaignSent(CampaignSentTrigger{
-			WorkspaceID:       camp.WorkspaceID,
-			CampaignID:        camp.ID,
-			EntryID:           entry.ID,
-			ConversationID:    resolved.Conversation.ID,
-			PhoneNumber:       entry.Number,
-			ProviderMessageID: providerID,
-		})
-	}
+	c.recordMenuSend(ctx, camp, entry, providerID)
 
 	if c.deps.Broadcaster != nil {
 		c.deps.Broadcaster.BroadcastEntryUpdate(
 			resolved.Conversation.ID, string(shared.EntryTypeUnofficialWhatsApp), nil)
 	}
+}
+
+func (c *messageConsumerUseCase) recordMenuSend(ctx context.Context, camp *uwc.Campaign, entry *uwc.Entry, providerID string) {
+	shown := camp.Message.ShownOptionIDs()
+	if c.deps.Choices == nil || len(shown) == 0 {
+		return
+	}
+	c.deps.Choices.RecordSend(ctx, choicestats.Send{
+		WorkspaceID:       camp.WorkspaceID,
+		PromptKey:         choicestats.UnofficialCampaignPromptKey(entry.ID),
+		Source:            choicestats.Source{Kind: choicestats.SourceUnofficialCampaign, ID: camp.ID},
+		ProviderMessageID: providerID,
+		Shown:             shown,
+		SentAt:            time.Now().UTC(),
+	})
 }
 
 func (c *messageConsumerUseCase) resolveJID(

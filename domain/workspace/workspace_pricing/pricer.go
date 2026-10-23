@@ -46,6 +46,12 @@ type Pricer interface {
 	PriceWhatsAppCategory(workspaceID string, metaCategory string) (PriceResult, error)
 
 	PriceAdvertising(workspaceID string, service string) (PriceResult, error)
+
+	PriceEmail(workspaceID string, line EmailPriceLine) (PriceResult, error)
+
+	PriceRCS(workspaceID string, service string) (PriceResult, error)
+
+	PriceSMS(workspaceID string, service string) (PriceResult, error)
 }
 
 type pricer struct {
@@ -221,15 +227,8 @@ func (p *pricer) PriceWhatsAppCategory(workspaceID string, metaCategory string) 
 	if err != nil {
 		return PriceResult{}, err
 	}
-	item := findResolvedItem(resolved, CategoryWhatsApp, metaCategory, "per_message")
-	if item == nil || item.PriceMicros <= 0 {
-		return PriceResult{}, nil
-	}
-	return PriceResult{
-		CostMicros:   item.CostMicros,
-		PriceMicros:  item.PriceMicros,
-		ProfitMicros: item.PriceMicros - item.CostMicros,
-	}, nil
+	price, _ := PriceOf(resolved, CategoryWhatsApp, metaCategory, "per_message")
+	return price, nil
 }
 
 func (p *pricer) PriceAdvertising(workspaceID string, service string) (PriceResult, error) {
@@ -237,15 +236,26 @@ func (p *pricer) PriceAdvertising(workspaceID string, service string) (PriceResu
 	if err != nil {
 		return PriceResult{}, err
 	}
-	item := findResolvedItem(resolved, CategoryAdvertising, service, "per_ad")
-	if item == nil || item.PriceMicros <= 0 {
+	price, ok := PriceOf(resolved, CategoryAdvertising, service, "per_ad")
+	if !ok {
 		return PriceResult{}, fmt.Errorf("%w: advertising/%s/per_ad (workspace %s)", ErrPricingItemNotFound, service, workspaceID)
 	}
-	return PriceResult{
-		CostMicros:   item.CostMicros,
-		PriceMicros:  item.PriceMicros,
-		ProfitMicros: item.PriceMicros - item.CostMicros,
-	}, nil
+	return price, nil
+}
+
+func (p *pricer) PriceEmail(workspaceID string, line EmailPriceLine) (PriceResult, error) {
+	if !line.Valid() {
+		return PriceResult{}, fmt.Errorf("%w: %s/%s", ErrEmailServiceUnsupported, line.Service, line.Metric)
+	}
+	resolved, err := p.ResolveForWorkspace(workspaceID)
+	if err != nil {
+		return PriceResult{}, err
+	}
+	price, ok := PriceOf(resolved, CategoryEmail, line.Service, line.Metric)
+	if !ok {
+		return PriceResult{}, fmt.Errorf("%w: email/%s/%s (workspace %s)", ErrPricingItemNotFound, line.Service, line.Metric, workspaceID)
+	}
+	return price, nil
 }
 
 func findResolved(resolved []ResolvedPricingItem, category ServiceCategory, service, metric string) int64 {

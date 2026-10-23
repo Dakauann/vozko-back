@@ -2,6 +2,8 @@ package conversation_repository_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"testing"
 	"time"
 
@@ -9,12 +11,20 @@ import (
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
+	"vozko/domain/carriermessaging"
 	"vozko/domain/conversation"
+	es "vozko/domain/emailsending"
+	"vozko/domain/media"
 	mldomain "vozko/domain/mercadolivre"
+	"vozko/domain/rcs"
 	"vozko/domain/shared"
+	"vozko/domain/sms"
 	"vozko/infra/crypto/piigorm"
 	"vozko/infra/database/schema"
+	cmrepo "vozko/infra/repositories/carriermessaging"
 	conversation_repository "vozko/infra/repositories/conversation"
+	emailinbox_repository "vozko/infra/repositories/emailinbox"
+	emailsending_repository "vozko/infra/repositories/emailsending"
 	facebook_repository "vozko/infra/repositories/facebook"
 	instagram_repository "vozko/infra/repositories/instagram"
 	mercadolivre_repository "vozko/infra/repositories/mercadolivre"
@@ -22,6 +32,9 @@ import (
 	telegram_repository "vozko/infra/repositories/telegram"
 	unofficial_whatsapp_repository "vozko/infra/repositories/unofficial_whatsapp"
 	webchat_repository "vozko/infra/repositories/webchat"
+	balance_usecase "vozko/usecases/balance"
+	cmuc "vozko/usecases/carriermessaging"
+	emuc "vozko/usecases/emailinbox"
 	fbuc "vozko/usecases/facebook"
 	iguc "vozko/usecases/instagram"
 	mluc "vozko/usecases/mercadolivre"
@@ -415,4 +428,171 @@ func TestWindowFilterFollowsTheOfficialLeadWindow(t *testing.T) {
 			t.Errorf("%s: open filter=%v, closed filter=%v, the lead window says open=%v", names[id], inOpen[id], inClosed[id], open)
 		}
 	}
+}
+
+func TestWindowFilterAgreesWithTheCarrierAdapters(t *testing.T) {
+	type sender struct {
+		name string
+		open bool
+		make func(w *parityWorld) string
+	}
+	now := time.Now().UTC()
+	rcsSender := func(status rcs.SenderStatus, deleted bool) func(w *parityWorld) string {
+		return func(w *parityWorld) string {
+			row := &schema.RCSSender{ID: uuid.NewString(), WorkspaceID: w.workspace, Status: string(status), CreatedAt: now, UpdatedAt: now}
+			w.create(row)
+			if deleted {
+				w.db.Delete(row)
+			}
+			return row.ID
+		}
+	}
+	smsRoute := func(status sms.RouteStatus, deleted bool) func(w *parityWorld) string {
+		return func(w *parityWorld) string {
+			row := &schema.SMSRoute{ID: uuid.NewString(), WorkspaceID: w.workspace, BrandPrefix: "Loja", Kind: string(sms.RouteShared), Status: string(status), CreatedAt: now, UpdatedAt: now}
+			w.create(row)
+			if deleted {
+				w.db.Delete(row)
+			}
+			return row.ID
+		}
+	}
+	cases := []struct {
+		channel carriermessaging.Channel
+		senders []sender
+	}{
+		{carriermessaging.ChannelRCS, []sender{
+			{"launched sender", true, rcsSender(rcs.SenderLaunched, false)},
+			{"paused sender", false, rcsSender(rcs.SenderPaused, false)},
+			{"draft sender", false, rcsSender(rcs.SenderDraft, false)},
+			{"deleted sender", false, rcsSender(rcs.SenderLaunched, true)},
+		}},
+		{carriermessaging.ChannelSMS, []sender{
+			{"active route", true, smsRoute(sms.RouteActive, false)},
+			{"paused route", false, smsRoute(sms.RoutePaused, false)},
+			{"deleted route", false, smsRoute(sms.RouteActive, true)},
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.channel), func(t *testing.T) {
+			w := newParityWorld(t, tc.channel.EntryType(), schema.CarrierMessagingModels()...)
+			repos := cmuc.Repositories{
+				Senders:          cmrepo.NewSenderRepository(w.db),
+				Routes:           cmrepo.NewRouteRepository(w.db),
+				Contacts:         cmrepo.NewContactRepository(w.db),
+				RCSConversations: cmrepo.NewRCSConversationRepository(w.db),
+				SMSConversations: cmrepo.NewSMSConversationRepository(w.db),
+			}
+			conversations := repos.RCSConversations
+			if tc.channel == carriermessaging.ChannelSMS {
+				conversations = repos.SMSConversations
+			}
+			for i, s := range tc.senders {
+				senderID := s.make(w)
+				contact, err := repos.Contacts.FindOrCreate(context.Background(), w.workspace, fmt.Sprintf("551199999%04d", i), s.name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				conv, _, err := conversations.FindOrCreate(context.Background(), w.workspace, senderID, contact.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := conversations.RecordInbound(context.Background(), conv.ID, time.Now().UTC().Add(-time.Minute)); err != nil {
+					t.Fatal(err)
+				}
+				w.expect(s.name, conv.ID, senderID, s.open)
+			}
+			svc := &cmuc.Service{Deps: cmuc.Deps{Repos: repos}}
+			w.assertParity(svc.Adapter(tc.channel))
+		})
+	}
+}
+
+func TestWindowFilterAgreesWithTheEmailAdapter(t *testing.T) {
+	cases := []struct {
+		name    string
+		account *schema.EmailSenderAccount
+	}{
+		{"active account", &schema.EmailSenderAccount{Provider: "ses", TenantName: "ws-active", Mode: "probation", Status: "active", Slug: "active"}},
+		{"paused account", &schema.EmailSenderAccount{Provider: "ses", TenantName: "ws-paused", Mode: "trusted", Status: "paused_by_provider", Slug: "paused"}},
+		{"no account", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newParityWorld(t, shared.EntryTypeEmail, append(schema.EmailInboxModels(), schema.EmailSendingModels()...)...)
+			now := time.Now().UTC()
+			active := tc.account != nil && tc.account.Status == "active"
+			if tc.account != nil {
+				tc.account.ID, tc.account.WorkspaceID, tc.account.CreatedAt, tc.account.UpdatedAt = uuid.NewString(), w.workspace, now, now
+				w.create(tc.account)
+			}
+			inbox := &schema.EmailInbox{ID: uuid.NewString(), WorkspaceID: w.workspace, Name: "Vendas", Address: "vendas@loja.com.br"}
+			w.create(inbox)
+			conv := func(name, address string, suppressed, open bool) {
+				contact := &schema.EmailContact{WorkspaceID: w.workspace, Address: address}
+				w.create(contact)
+				if suppressed {
+					w.create(&schema.EmailSuppression{ID: uuid.NewString(), WorkspaceID: w.workspace, Address: address, Reason: "hard_bounce", SuppressedAt: now, CreatedAt: now, UpdatedAt: now})
+				}
+				c := &schema.EmailConversation{WorkspaceID: w.workspace, ContactID: contact.ID, SenderID: inbox.ID, LastMessageAt: ago(time.Minute)}
+				w.create(c)
+				w.expect(name, c.ID, inbox.ID, open)
+			}
+			conv("reachable", "ana@cliente.com", false, active)
+			conv("suppressed", "bia@cliente.com", true, false)
+			w.create(&schema.EmailBadAddress{AddressHash: hashOf("caio@cliente.com"), Reason: "hard_bounce", FirstSeenAt: now, LastSeenAt: now})
+			conv("bounced for another customer", "caio@cliente.com", false, false)
+			w.create(&schema.EmailDomainCheck{Domain: "semcorreio.com.br", State: "no_mail", Detail: "null_mx", ExpiresAt: now.Add(time.Hour), CreatedAt: now, UpdatedAt: now})
+			conv("domain without mail", "duda@semcorreio.com.br", false, false)
+
+			adapter := emuc.NewChannelAdapter(emuc.AdapterDeps{
+				Conversations: emailinbox_repository.NewConversationRepository(w.db),
+				Contacts:      emailinbox_repository.NewContactRepository(w.db),
+				Accounts:      emailsending_repository.NewAccountRepository(w.db),
+				Suppressions:  emailsending_repository.NewSuppressionRepository(w.db),
+				Billing:       parityBilling{},
+				Gateway:       parityGateway{},
+				Files:         parityFiles{},
+				Media:         parityMedia{},
+			})
+			w.assertParity(adapter)
+		})
+	}
+}
+
+type parityBilling struct{}
+
+func (parityBilling) ChargeMessage(context.Context, string, string) (balance_usecase.EmailQuote, error) {
+	return balance_usecase.EmailQuote{}, nil
+}
+
+func (parityBilling) ChargeMessageWithAttachments(context.Context, string, string, int64) (balance_usecase.EmailQuote, error) {
+	return balance_usecase.EmailQuote{}, nil
+}
+
+func (parityBilling) RefundMessage(context.Context, string, string, balance_usecase.EmailQuote) error {
+	return nil
+}
+
+type parityFiles struct{}
+
+func (parityFiles) Download(context.Context, string, int64) (media.RemoteFile, error) {
+	return media.RemoteFile{}, media.ErrRemoteFileMissing
+}
+
+type parityGateway struct{}
+
+func (parityGateway) Send(context.Context, es.SendRequest, es.ComposeFunc) (*es.Message, error) {
+	return nil, nil
+}
+
+func hashOf(address string) []byte {
+	sum := sha256.Sum256([]byte(address))
+	return sum[:]
+}
+
+type parityMedia struct{}
+
+func (parityMedia) Store(conversation.StoreMediaInput) (*conversation.ConversationMedia, error) {
+	return nil, media.ErrRemoteFileMissing
 }

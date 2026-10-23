@@ -4,6 +4,10 @@ const (
 	Exchange = "workflow_wake_exchange"
 
 	TopicRunWake = "workflow.run.wake"
+
+	TopicStageEntered = "workflow.stage.entered"
+
+	StageEnteredWorkers = 8
 )
 
 type RunWakeMessage struct {

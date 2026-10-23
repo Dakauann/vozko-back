@@ -66,43 +66,79 @@ func Interpolate(text string, state *RunState, sysCtx map[string]interface{}) st
 }
 
 func InterpolateWithSecrets(text string, state *RunState, sysCtx map[string]interface{}, secrets map[string]string) string {
+	return interpolation{sysCtx: sysCtx, secrets: secrets}.apply(text, state)
+}
+
+func InterpolateStrict(text string, state *RunState, sysCtx map[string]interface{}) (string, []string) {
+	var missing []string
+	resolved := interpolation{sysCtx: sysCtx, unresolved: func(ref string) { missing = append(missing, ref) }}.apply(text, state)
+	return resolved, missing
+}
+
+type interpolation struct {
+	sysCtx       map[string]interface{}
+	secrets      map[string]string
+	unresolved   func(string)
+	valueText    func(interface{}) string
+	blankMissing bool
+}
+
+func (in interpolation) text(val interface{}) string {
+	if in.valueText != nil {
+		return in.valueText(val)
+	}
+	return TemplateText(val)
+}
+
+func (in interpolation) apply(text string, state *RunState) string {
 	if !strings.Contains(text, "{{") {
 		return text
+	}
+	miss := func(ref, match string) string {
+		if in.unresolved != nil {
+			in.unresolved(ref)
+		}
+		if in.blankMissing {
+			return ""
+		}
+		return match
 	}
 	return interpolationPattern.ReplaceAllStringFunc(text, func(match string) string {
 		inner := normalizeIndexing(strings.TrimSpace(match[2 : len(match)-2]))
 		if name, isSecret := strings.CutPrefix(inner, SecretScope+"."); isSecret {
-			if val, ok := secrets[name]; ok {
+			if val, ok := in.secrets[name]; ok {
 				return val
 			}
-			return match
+			return miss(inner, match)
 		}
 		if key, isSys := strings.CutPrefix(inner, "sys."); isSys {
-			if sysCtx != nil {
-				if val, ok := sysCtx[key]; ok {
-					return TemplateText(val)
+			if in.sysCtx != nil {
+				if val, ok := in.sysCtx[key]; ok {
+					return in.text(val)
 				}
 			}
-			return resolveBuiltinSys(key)
+			if builtin, ok := builtinSys(key); ok {
+				return in.text(builtin)
+			}
+			return miss(inner, match)
 		}
 		if val, ok := ResolveVariable(inner, state); ok {
-			return TemplateText(val)
+			return in.text(val)
 		}
-		return match
+		return miss(inner, match)
 	})
 }
 
-func resolveBuiltinSys(key string) string {
+func builtinSys(key string) (string, bool) {
 	switch key {
 	case "date":
-		return time.Now().UTC().Format("2006-01-02")
+		return time.Now().UTC().Format("2006-01-02"), true
 	case "time":
-		return time.Now().UTC().Format("15:04:05")
+		return time.Now().UTC().Format("15:04:05"), true
 	case "timestamp":
-		return fmt.Sprintf("%d", time.Now().Unix())
-	default:
-		return "{{sys." + key + "}}"
+		return fmt.Sprintf("%d", time.Now().Unix()), true
 	}
+	return "", false
 }
 
 func ResolveVariable(ref string, state *RunState) (interface{}, bool) {
@@ -200,21 +236,34 @@ func ResolveVariable(ref string, state *RunState) (interface{}, bool) {
 }
 
 func InterpolateMap(m map[string]interface{}, state *RunState, sysCtx map[string]interface{}) map[string]interface{} {
+	return renderConfig(m, func(text string) string { return Interpolate(text, state, sysCtx) })
+}
+
+func renderConfig(m map[string]interface{}, render func(string) string) map[string]interface{} {
 	if m == nil {
 		return nil
 	}
 	result := make(map[string]interface{}, len(m))
 	for k, v := range m {
-		switch val := v.(type) {
-		case string:
-			result[k] = Interpolate(val, state, sysCtx)
-		case map[string]interface{}:
-			result[k] = InterpolateMap(val, state, sysCtx)
-		default:
-			result[k] = v
-		}
+		result[k] = renderConfigValue(v, render)
 	}
 	return result
+}
+
+func renderConfigValue(v interface{}, render func(string) string) interface{} {
+	switch val := v.(type) {
+	case string:
+		return render(val)
+	case map[string]interface{}:
+		return renderConfig(val, render)
+	case []interface{}:
+		items := make([]interface{}, len(val))
+		for i, item := range val {
+			items[i] = renderConfigValue(item, render)
+		}
+		return items
+	}
+	return v
 }
 
 type VariableDependency struct {

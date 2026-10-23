@@ -36,10 +36,14 @@ func (r *coherenceRepo) GetEntryStage(entryID, entryType, workspaceID string) (*
 	return r.entryStage, nil
 }
 
-func (r *coherenceRepo) AssignStage(et *stage.EntryStage) error {
+func (r *coherenceRepo) AssignStage(et *stage.EntryStage) (string, error) {
+	previous := ""
+	if r.entryStage != nil {
+		previous = r.entryStage.StageID
+	}
 	r.assigned = append(r.assigned, et)
 	r.entryStage = et
-	return nil
+	return previous, nil
 }
 
 func (r *coherenceRepo) ListByPipeline(workspaceID, pipelineID string) ([]*stage.Stage, error) {

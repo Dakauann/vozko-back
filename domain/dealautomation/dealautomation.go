@@ -26,6 +26,9 @@ var channelResources = map[Channel]workspace.Resource{
 	{EntryType: shared.EntryTypeWebchat, Kind: conversation.ContainerKindAccount}:             workspace.ResourceWebchatWidgets,
 	{EntryType: shared.EntryTypeMercadoLivre, Kind: conversation.ContainerKindAccount}:        workspace.ResourceMercadoLivreAccounts,
 	{EntryType: shared.EntryTypeTikTok, Kind: conversation.ContainerKindAccount}:              workspace.ResourceTikTokAccounts,
+	{EntryType: shared.EntryTypeEmail, Kind: conversation.ContainerKindAccount}:               workspace.ResourceEmailInboxes,
+	{EntryType: shared.EntryTypeRCS, Kind: conversation.ContainerKindAccount}:                 workspace.ResourceCarrierInboxes,
+	{EntryType: shared.EntryTypeSMS, Kind: conversation.ContainerKindAccount}:                 workspace.ResourceCarrierInboxes,
 }
 
 func (c Channel) Resource() (workspace.Resource, bool) {

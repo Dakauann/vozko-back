@@ -455,7 +455,7 @@ func insertIssues(tx *gorm.DB, importID string, issues []lead.ImportIssue) error
 	}
 	rows := make([]schema.LeadImportIssue, len(issues))
 	for i, issue := range issues {
-		rows[i] = schema.LeadImportIssue{ImportID: importID, Line: issue.Line, Reason: string(issue.Reason), Field: schema.OptionalText(issue.Field), Rejected: issue.Rejected}
+		rows[i] = schema.LeadImportIssue{ImportID: importID, Line: issue.Line, Reason: string(issue.Reason), Field: schema.OptionalText(issue.Field), Rejected: issue.Rejected, Hint: schema.OptionalText(issue.Hint)}
 	}
 	return tx.CreateInBatches(&rows, importWriteChunk).Error
 }

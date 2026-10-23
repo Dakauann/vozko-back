@@ -6,6 +6,7 @@ type MediaRepository interface {
 	DeleteMedia(mediaID string) error
 	CountWorkspaceUploadsToday(workspaceID string) (int64, error)
 	GetMediaByID(mediaID string) (*Media, error)
+	GetMediaForWorkspace(workspaceID, mediaID string) (*Media, error)
 	GetMediasByIDs(mediaIDs []string) ([]Media, error)
 	MediaExists(mediaID string) (bool, error)
 	CountByWorkspaceID(workspaceID string) (int64, error)

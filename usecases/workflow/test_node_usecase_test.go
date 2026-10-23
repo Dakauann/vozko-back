@@ -18,7 +18,7 @@ func createTestWorkflow(id, workspaceID string, nodes []workflow.Node, edges []w
 		ID:          id,
 		WorkspaceID: workspaceID,
 		Name:        "Test Workflow",
-		TriggerType: workflow.TriggerManual,
+		TriggerType: workflow.TriggerMessageReceived,
 		Graph: workflow.Graph{
 			Nodes: nodes,
 			Edges: edges,
@@ -37,7 +37,7 @@ func createTestRegistry() *NodeExecutorRegistry {
 }
 
 func TestBuildTestRun_UsesUUIDIdentifiers(t *testing.T) {
-	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerManual}}, nil)
+	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived}}, nil)
 	run := buildTestRun(wf, "ws1")
 
 	if _, err := uuid.Parse(run.ID); err != nil {
@@ -53,7 +53,7 @@ func fixedExecutors(registry *NodeExecutorRegistry) TestExecutors {
 }
 
 func TestTheNodeTestSandboxSimulatesTheConversationAndSeedsTheTriggerVariables(t *testing.T) {
-	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerManual}}, nil)
+	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived}}, nil)
 	uc := &testNodeUseCase{deps: TestNodeDeps{}}
 
 	prepared, err := uc.newNodeTest(wf, &wf.Graph.Nodes[0], TestNodeInput{WorkspaceID: "ws1", TriggerVars: map[string]interface{}{"message": "oi"}})
@@ -175,7 +175,7 @@ func TestExecute_RunsUpstreamHTTPProducerForCaptureDep(t *testing.T) {
 	registry.Register(workflow.NodeTypeActionAIAgent, &countingAIExecutor{executed: &aiRan})
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "ana", Type: workflow.NodeTypeActionAIAgent, Config: map[string]interface{}{"response_variable": "ana_response"}},
 		{ID: "s2_1", Type: workflow.NodeTypeActionHTTPRequest, Config: map[string]interface{}{
 			"url": "https://tokens.example.com", "method": "GET", "capture_variable": "token_consulta_cadastro",
@@ -236,7 +236,7 @@ func TestAnalyze_NodeWithNoDependencies(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -290,7 +290,7 @@ func TestAnalyze_NodeWithLastDependency(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "http1",
@@ -353,7 +353,7 @@ func TestAnalyze_NodeWithAIDependency(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -398,7 +398,7 @@ func TestAnalyze_NodeWithCustomCaptureVariable(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -445,7 +445,7 @@ func TestAnalyze_NodeWithAIResponseVariableDependency(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "ai1",
 			Type: workflow.NodeTypeActionAIAgent,
@@ -500,7 +500,7 @@ func TestAnalyze_NodeWithBareAIResponseVariableDependency(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "ai1",
 			Type: workflow.NodeTypeActionAIAgent,
@@ -559,7 +559,7 @@ func TestAnalyze_NodeWithNodeScopeDependency(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "http1",
@@ -612,7 +612,7 @@ func TestAnalyze_NodeWithVarScopeDependency(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -677,7 +677,7 @@ func TestAnalyze_WorkspaceMismatch(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 	}
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
@@ -704,7 +704,7 @@ func TestAnalyze_NodeNotFound(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 	}
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
@@ -733,7 +733,7 @@ func TestExecute_SimpleNode(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -781,7 +781,7 @@ func TestExecute_WithInterpolation(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -829,7 +829,7 @@ func TestExecute_WithMockedState(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -875,7 +875,7 @@ func TestExecute_WithMissingAIMockedStateReturnsValidationError(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "setvar1",
 			Type: workflow.NodeTypeActionSetVariable,
@@ -919,7 +919,7 @@ func TestExecute_ExecuteUntilUsesUpstreamState(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "ai_seed",
@@ -979,7 +979,7 @@ func TestExecute_ExecuteUntilWithIncompleteMockInputDoesNotRunUpstreamExecution(
 	registry.Register(workflow.NodeTypeActionAIAgent, &countingAIExecutor{executed: &executed})
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "ai1", Type: workflow.NodeTypeActionAIAgent, Config: map[string]interface{}{"prompt": "hi"}},
 		{
 			ID:   "setvar1",
@@ -1037,7 +1037,7 @@ func TestExecute_WithMissingAIResponseVariableMockReturnsValidationError(t *test
 	registry.Register(workflow.NodeTypeActionAIAgent, &countingAIExecutor{executed: &executed})
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "ai1",
 			Type: workflow.NodeTypeActionAIAgent,
@@ -1097,7 +1097,7 @@ func TestExecute_WithMissingBareAIResponseVariableMockReturnsValidationError(t *
 	registry.Register(workflow.NodeTypeActionAIAgent, &countingAIExecutor{executed: &executed})
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "ai1",
 			Type: workflow.NodeTypeActionAIAgent,
@@ -1157,7 +1157,7 @@ func TestExecute_WithNestedAIMockedState(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "setvar1",
 			Type: workflow.NodeTypeActionSetVariable,
@@ -1197,7 +1197,7 @@ func TestExecute_ExecuteUntilUsesProvidedCustomMocksWithoutReachingTarget(t *tes
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{
 			ID:   "calendar1",
 			Type: workflow.NodeTypeActionSetVariable,
@@ -1239,7 +1239,7 @@ func TestExecute_SkipExecutionFlag(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -1291,7 +1291,7 @@ func TestExecute_MergesOutputsIntoStateAfter(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -1345,7 +1345,7 @@ func TestExecute_HTTPRequest(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "http1",
@@ -1394,7 +1394,7 @@ func TestExecute_NoExecutor(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "unknown1",
@@ -1457,7 +1457,7 @@ func TestExecute_WorkspaceMismatch(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 	}
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
@@ -1484,7 +1484,7 @@ func TestExecute_NodeNotFound(t *testing.T) {
 	registry := createTestRegistry()
 
 	nodes := []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 	}
 	wf := createTestWorkflow("wf1", "ws1", nodes, nil)
 	repo.Create(wf)
@@ -1592,7 +1592,7 @@ func TestAnalyze_MixedDependencies(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "setvar1",
@@ -1643,7 +1643,7 @@ func TestAnalyze_NestedConfig(t *testing.T) {
 	nodes := []workflow.Node{
 		{
 			ID:   "trigger1",
-			Type: workflow.NodeTypeTriggerManual,
+			Type: workflow.NodeTypeTriggerMessageReceived,
 		},
 		{
 			ID:   "http1",

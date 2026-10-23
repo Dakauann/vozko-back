@@ -137,18 +137,6 @@ func (g *Graph) HasPins() bool {
 	return false
 }
 
-func StripPins(g Graph) Graph {
-	if !g.HasPins() {
-		return g
-	}
-	out := Graph{Nodes: make([]Node, len(g.Nodes)), Edges: g.Edges}
-	for i, n := range g.Nodes {
-		n.Pinned = nil
-		out.Nodes[i] = n
-	}
-	return out
-}
-
 func RunPinIDs(g *Graph) []string {
 	seen := map[string]bool{}
 	ids := []string{}

@@ -118,7 +118,7 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 // @Description	Diz se o cliente da conversa está numa carteira e de quem. O cliente é o lead da conversa; quando a conversa não tem lead (Instagram, Facebook, Telegram sem telefone, chat do site sem cadastro), é o contato do canal. `entry` é null quando o cliente não está em nenhuma carteira. Exige `customer_portfolios:read` e acesso à conversa.
 // @Tags			Carteira de clientes
 // @Produce		json
-// @Param			entryType	path		string	true	"Canal da conversa"	Enums(whatsapp, unofficial_whatsapp, telegram, instagram, facebook, webchat)
+// @Param			entryType	path		string	true	"Canal da conversa"	Enums(whatsapp, unofficial_whatsapp, telegram, instagram, facebook, webchat, email)
 // @Param			entryId		path		string	true	"ID da conversa (UUID)"
 // @Success		200			{object}	customerportfoliohttp.HoldingResponse
 // @Failure		400			{object}	response.ErrorResponse	"customer_portfolio_subject_invalid"
@@ -148,7 +148,7 @@ func (h *Handler) ForConversation(w http.ResponseWriter, r *http.Request) {
 // @Tags			Carteira de clientes
 // @Accept			json
 // @Produce		json
-// @Param			entryType	path		string			true	"Canal da conversa"	Enums(whatsapp, unofficial_whatsapp, telegram, instagram, facebook, webchat)
+// @Param			entryType	path		string			true	"Canal da conversa"	Enums(whatsapp, unofficial_whatsapp, telegram, instagram, facebook, webchat, email)
 // @Param			entryId		path		string			true	"ID da conversa (UUID)"
 // @Param			request		body		PlaceRequest	true	"Dono da carteira (vazio para a própria)"
 // @Success		200			{object}	customerportfoliohttp.HoldingResponse

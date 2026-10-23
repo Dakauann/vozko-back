@@ -232,8 +232,8 @@ func TestRefreshOutcomeShapes(t *testing.T) {
 
 func TestListAccountsEscapesTheSearch(t *testing.T) {
 	db, mock, _ := newMockDB(t)
-	mock.ExpectQuery(`SELECT count\(\*\) FROM "mercadolivre_accounts" WHERE workspace_id = \$1 AND \(\(nickname ILIKE \$2 OR ml_user_id = \$3\)\)`).
-		WithArgs("ws-1", `%50\%\_off%`, "50%_off").
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "mercadolivre_accounts" WHERE workspace_id = \$1 AND \(\(nickname ILIKE \$2 OR display_name ILIKE \$3 OR ml_user_id = \$4\)\)`).
+		WithArgs("ws-1", `%50\%\_off%`, `%50\%\_off%`, "50%_off").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(`ORDER BY created_at DESC,id`).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	result, err := NewAccountRepository(db).ListByWorkspace(context.Background(), mldomain.ListAccountsInput{WorkspaceID: "ws-1", Search: "50%_off"})
@@ -242,6 +242,59 @@ func TestListAccountsEscapesTheSearch(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUpdateNamesWritesNicknameAndDisplayNameInOneStatement(t *testing.T) {
+	cases := []struct {
+		name        string
+		display     string
+		wantDisplay any
+	}{
+		{"display name stored trimmed", " Café do Vale ", "Café do Vale"},
+		{"blank display name stored as null", "  ", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			db, mock, _ := newMockDB(t)
+			mock.ExpectExec(`^UPDATE "mercadolivre_accounts" SET "display_name"=\$1,"nickname"=\$2,"updated_at"=\$3 WHERE id = \$4 AND "mercadolivre_accounts"."deleted_at" IS NULL$`).
+				WithArgs(c.wantDisplay, "DGCAFEDHB50478", sqlmock.AnyArg(), "a-1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			if err := NewAccountRepository(db).UpdateNames(context.Background(), "a-1", " DGCAFEDHB50478 ", c.display); err != nil {
+				t.Fatal(err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestUpdateNamesReportsAMissingAccount(t *testing.T) {
+	db, mock, _ := newMockDB(t)
+	mock.ExpectExec(`UPDATE "mercadolivre_accounts" SET "display_name"`).WillReturnResult(sqlmock.NewResult(0, 0))
+	err := NewAccountRepository(db).UpdateNames(context.Background(), "a-1", "LOJA", "Café do Vale")
+	if !errors.Is(err, mldomain.ErrAccountNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDisplayNameMapsBetweenDomainAndSchema(t *testing.T) {
+	a := validAccount()
+	a.DisplayName = " Café do Vale "
+	record := toAccountSchema(a)
+	if record.DisplayName != "Café do Vale" {
+		t.Fatalf("stored display name = %q", record.DisplayName)
+	}
+	if got := toAccountDomain(record).DisplayName; got != "Café do Vale" {
+		t.Fatalf("read display name = %q", got)
+	}
+	a.DisplayName = " "
+	if stored, err := toAccountSchema(a).DisplayName.Value(); err != nil || stored != nil {
+		t.Fatalf("blank display name stored as %v %v", stored, err)
+	}
+	if got := toAccountDomain(toAccountSchema(a)).DisplayName; got != "" {
+		t.Fatalf("null display name read as %q", got)
 	}
 }
 

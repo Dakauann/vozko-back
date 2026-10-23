@@ -1,11 +1,14 @@
 package webhook_usecase
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
 	"vozko/domain/cache"
 )
+
+var errNoIdempotencyStore = errors.New("idempotency guard has no shared state")
 
 type IdempotencyAcquireResult int
 
@@ -25,8 +28,11 @@ func NewIdempotencyGuard(state cache.SharedState, ttl time.Duration) *Idempotenc
 }
 
 func (g *IdempotencyGuard) Acquire(key string) (IdempotencyAcquireResult, error) {
-	if key == "" || g.state == nil {
+	if key == "" {
 		return IdempotencyAcquireProceed, nil
+	}
+	if g.state == nil {
+		return IdempotencyAcquireProceed, errNoIdempotencyStore
 	}
 
 	completed, err := g.state.Exists(g.completedKey(key))

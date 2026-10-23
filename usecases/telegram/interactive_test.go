@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -107,5 +108,19 @@ func TestInteractiveLimitsComeFromTheDescriptor(t *testing.T) {
 	}
 	if limits.SupportsOptionDescriptions {
 		t.Error("inline buttons have no description slot")
+	}
+}
+
+func TestTheKeyboardOutcomeNamesOnlyTheButtonsThatFit(t *testing.T) {
+	conv := conversationFor(5041234567)
+	adapter, _, _, _, _, _ := newAdapter(botAccount(), conv, &tgdomain.Contact{ID: "contact-1"})
+	long := strings.Repeat("a", tgdomain.MaxCallbackDataBytes+1)
+	out, err := adapter.(conversation.InteractiveAdapter).SendInteractive(context.Background(), entryContext(conv, nil),
+		conversation.SendInteractiveRequest{Body: "Escolha", Options: opts("ok", "Certo", long, "Longo", "fim", "Fim")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ShownOptionIDs) != 2 || out.ShownOptionIDs[0] != "ok" || out.ShownOptionIDs[1] != "fim" {
+		t.Fatalf("shown = %v", out.ShownOptionIDs)
 	}
 }

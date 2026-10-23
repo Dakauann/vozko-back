@@ -34,6 +34,9 @@ var entryResources = map[export.EntryType]workspace.Resource{
 	export.EntryTypeWebchat:            workspace.ResourceWebchatWidgets,
 	export.EntryTypeMercadoLivre:       workspace.ResourceMercadoLivreAccounts,
 	export.EntryTypeTikTok:             workspace.ResourceTikTokAccounts,
+	export.EntryTypeEmail:              workspace.ResourceEmailInboxes,
+	export.EntryTypeRCS:                workspace.ResourceCarrierInboxes,
+	export.EntryTypeSMS:                workspace.ResourceCarrierInboxes,
 }
 
 func readPolicy(resource workspace.Resource) report.Policy {

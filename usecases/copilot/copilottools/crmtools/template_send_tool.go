@@ -33,7 +33,7 @@ type sendTemplateArgs struct {
 	EntryID     string   `json:"entry_id" req:"true" desc:"entry_id exato de search_conversations"`
 	EntryType   string   `json:"entry_type" req:"true" desc:"entry_type exato de search_conversations"`
 	TemplateID  string   `json:"template_id" req:"true" desc:"template_id exato de list_templates" id:"true"`
-	Variables   []string `json:"variables" desc:"valores de {{1}}, {{2}}..., na ordem; exatamente quantos o modelo pede"`
+	Variables   []string `json:"variables" desc:"valores das variáveis na ordem do envio: a do texto do cabeçalho primeiro, depois as do corpo na ordem em que aparecem; exatamente quantos o modelo pede"`
 }
 
 type sendTemplateTool struct{ deps TemplateSendDeps }
@@ -96,6 +96,7 @@ func (t *sendTemplateTool) Execute(ctx context.Context, cc copilot.Context, args
 	if want := template.ParameterCount(); len(a.Variables) != want {
 		return copilot.Result{Status: copilot.StatusError, Message: fmt.Sprintf("o modelo pede %d variáveis e vieram %d", want, len(a.Variables))}
 	}
+	body, header := template.SplitParameters(a.Variables)
 	if a.ScheduledAt != "" {
 		at, err := time.Parse(time.RFC3339, strings.TrimSpace(a.ScheduledAt))
 		if err != nil {
@@ -106,7 +107,7 @@ func (t *sendTemplateTool) Execute(ctx context.Context, cc copilot.Context, args
 		}
 		out, err := t.deps.Scheduler.Schedule(ctx, copilottools.PersonOf(cc), sm.ScheduleInput{
 			WorkspaceID: cc.WorkspaceID, EntryID: target.EntryID, EntryType: string(target.EntryType), ScheduledAt: at,
-			Template: &sm.TemplateContent{ID: template.ID, BodyParams: a.Variables},
+			Template: &sm.TemplateContent{ID: template.ID, BodyParams: body, HeaderParams: header},
 		})
 		if err != nil {
 			if errors.Is(err, sm.ErrEntryAccess) || errors.Is(err, sm.ErrTemplatePermission) || errors.Is(err, sm.ErrScheduledAtTooSoon) || errors.Is(err, sm.ErrScheduledAtTooFar) {
@@ -120,7 +121,7 @@ func (t *sendTemplateTool) Execute(ctx context.Context, cc copilot.Context, args
 	}
 	if _, err := t.deps.Send.Execute(copilottools.PersonOf(cc), conversation.TemplateSendRequest{
 		WorkspaceID: cc.WorkspaceID, EntryID: target.EntryID, EntryType: string(target.EntryType),
-		TemplateID: template.ID, Variables: a.Variables,
+		TemplateID: template.ID, Variables: body, HeaderVariables: header,
 	}); err != nil {
 		return templateSendFailure(err)
 	}

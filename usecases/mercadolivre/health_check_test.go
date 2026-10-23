@@ -65,6 +65,37 @@ func TestHealthCheckRefreshesNicknameAndCapabilities(t *testing.T) {
 	}
 }
 
+func TestHealthCheckRefreshesTheSellerDisplayName(t *testing.T) {
+	cases := []struct {
+		name        string
+		stored      string
+		me          mldomain.User
+		wantNick    string
+		wantDisplay string
+	}{
+		{"fills the name of an account connected before names", "", mldomain.User{ID: "415458330", Nickname: "LOJA", CorporateName: "Vale Cafés Ltda"}, "LOJA", "Vale Cafés Ltda"},
+		{"follows a renamed brand", "Café do Vale", mldomain.User{ID: "415458330", Nickname: "LOJA", BrandName: "Café do Vale Premium"}, "LOJA", "Café do Vale Premium"},
+		{"keeps the stored name when Mercado Livre sends none", "Café do Vale", mldomain.User{ID: "415458330", Nickname: " "}, "LOJA", "Café do Vale"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newHealthFixture()
+			account := connectedAccount()
+			account.DisplayName = c.stored
+			f.accounts.put(account)
+			me := c.me
+			f.users.me = &me
+			got, err := f.uc.Check(context.Background(), f.accounts.get("acct-1"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Nickname != c.wantNick || got.DisplayName != c.wantDisplay {
+				t.Fatalf("names = %q / %q", got.Nickname, got.DisplayName)
+			}
+		})
+	}
+}
+
 func TestAnInconclusiveProbeKeepsTheCapabilities(t *testing.T) {
 	f := newHealthFixture()
 	f.accounts.put(connectedAccount())

@@ -44,3 +44,12 @@ func TestRegisterPublicRoutes(t *testing.T) {
 		t.Fatal("unlock route not registered")
 	}
 }
+
+func TestTheTrackedButtonRouteIsPublic(t *testing.T) {
+	r := mux.NewRouter()
+	RegisterPublicRoutes(r, defaultDeps().build(), passthroughLimiter{})
+	var match mux.RouteMatch
+	if !r.Match(httptest.NewRequest(http.MethodGet, "/r/abc/2.dGVzdA", nil), &match) || match.Vars["token"] != "2.dGVzdA" {
+		t.Fatalf("tracked route not registered: %+v", match.Vars)
+	}
+}

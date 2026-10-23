@@ -11,12 +11,13 @@ import (
 	"vozko/domain/address"
 	"vozko/domain/cep"
 	"vozko/domain/customfield"
+	"vozko/domain/emailhygiene"
 	"vozko/domain/lead"
 	"vozko/domain/recordevent"
 	"vozko/domain/shared"
 )
 
-var errProfilesIncomplete = errors.New("lead profiles: a store, a notifier, the lead fields, the conversation directory and the CEP lookup are required")
+var errProfilesIncomplete = errors.New("lead profiles: a store, a notifier, the lead fields, the conversation directory, the CEP lookup and the seen emails are required")
 
 type ProfileDeps struct {
 	Store       lead.Store
@@ -24,6 +25,7 @@ type ProfileDeps struct {
 	Definitions DefinitionSource
 	EntryLeads  lead.EntryLeads
 	CEP         cep.CEPSearchUseCase
+	EmailsSeen  emailhygiene.AddressSeen
 	Now         func() time.Time
 }
 
@@ -51,14 +53,14 @@ type ProfileResult struct {
 }
 
 func NewProfiles(deps ProfileDeps) (*Profiles, error) {
-	if deps.Store == nil || deps.Notifier == nil || deps.Definitions == nil || deps.EntryLeads == nil || deps.CEP == nil {
+	if deps.Store == nil || deps.Notifier == nil || deps.Definitions == nil || deps.EntryLeads == nil || deps.CEP == nil || deps.EmailsSeen == nil {
 		return nil, errProfilesIncomplete
 	}
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
 	return &Profiles{
-		writer:      recordWriter{store: deps.Store, notifier: deps.Notifier},
+		writer:      recordWriter{store: deps.Store, notifier: deps.Notifier, emailsSeen: deps.EmailsSeen},
 		definitions: deps.Definitions,
 		entryLeads:  deps.EntryLeads,
 		cep:         deps.CEP,

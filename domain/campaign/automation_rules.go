@@ -34,16 +34,20 @@ func (a Automation) Configured() bool {
 	return strings.TrimSpace(a.AgentID) != "" || strings.TrimSpace(a.WorkflowID) != ""
 }
 
+func MissingWorkflowVars(keys []string, metadata map[string]any) []string {
+	var missing []string
+	for _, key := range keys {
+		if agent.MetadataValueMissing(metadata, key) {
+			missing = append(missing, key)
+		}
+	}
+	return missing
+}
+
 func RequireWorkflowVars(keys []string, entries []EntryMetadata) error {
 	for _, entry := range entries {
-		for _, key := range keys {
-			value, exists := entry.Metadata[key]
-			if !exists {
-				return fmt.Errorf("%w: key %q missing for %s", ErrWorkflowVarsMissing, key, entry.Label)
-			}
-			if text, isText := value.(string); isText && strings.TrimSpace(text) == "" {
-				return fmt.Errorf("%w: key %q is empty for %s", ErrWorkflowVarsMissing, key, entry.Label)
-			}
+		if missing := MissingWorkflowVars(keys, entry.Metadata); len(missing) > 0 {
+			return fmt.Errorf("%w: key %q is missing or empty for %s", ErrWorkflowVarsMissing, missing[0], entry.Label)
 		}
 	}
 	return nil

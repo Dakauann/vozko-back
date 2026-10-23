@@ -54,6 +54,7 @@ func TestHandleWebhookTrigger_Outcomes(t *testing.T) {
 		{"accepted", &workflow_usecase.WebhookResult{RunID: "r1"}, http.StatusAccepted},
 		{"duplicate", &workflow_usecase.WebhookResult{Duplicate: true}, http.StatusOK},
 		{"already", &workflow_usecase.WebhookResult{AlreadyRunning: true, RunID: "r1"}, http.StatusOK},
+		{"ignored", &workflow_usecase.WebhookResult{Ignored: true}, http.StatusAccepted},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -81,6 +82,10 @@ func TestHandleWebhookTrigger_ErrorMappings(t *testing.T) {
 		{workflow.ErrWebhookNoTriggerNode, http.StatusUnprocessableEntity},
 		{workflow.ErrWorkflowNotActive, http.StatusConflict},
 		{workflow.ErrWorkspaceAtCapacity, http.StatusTooManyRequests},
+		{workflow.ErrWebhookLeadContactRequired, http.StatusBadRequest},
+		{workflow.ErrWebhookLeadPhoneInvalid, http.StatusUnprocessableEntity},
+		{workflow.ErrWebhookLeadNotFound, http.StatusNotFound},
+		{workflow.ErrWebhookTriggerInvalid, http.StatusUnprocessableEntity},
 		{workflow.ErrWorkflowNotFound, http.StatusInternalServerError},
 	}
 	for _, c := range cases {
@@ -196,4 +201,23 @@ func TestWebhookConfigHandlers(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestAnIgnoredCallSaysSo(t *testing.T) {
+	h := &Handler{triggerUC: &stubTriggerUC{res: &workflow_usecase.WebhookResult{Ignored: true}}}
+	rec := httptest.NewRecorder()
+	h.HandleWebhookTrigger(rec, triggerReq("tok"))
+	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"ignored"`) || strings.Contains(rec.Body.String(), "run_id") {
+		t.Fatalf("code = %d body = %s", rec.Code, rec.Body)
+	}
+}
+
+func TestEveryWebhookRejectionHasAMessage(t *testing.T) {
+	for _, err := range []error{workflow.ErrWebhookLeadContactRequired, workflow.ErrWebhookLeadPhoneInvalid, workflow.ErrWebhookLeadNotFound, workflow.ErrWebhookTriggerInvalid} {
+		rec := httptest.NewRecorder()
+		handleWebhookTriggerError(rec, err)
+		if strings.Contains(rec.Body.String(), "Erro ao processar webhook") || !strings.Contains(rec.Body.String(), workflow.WebhookRejectionReason(err)) {
+			t.Errorf("%v answered %s", err, rec.Body)
+		}
+	}
 }

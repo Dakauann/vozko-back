@@ -9,11 +9,12 @@ import (
 
 type stopWatchUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewStopWatchUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.StopWatchUseCase {
-	return &stopWatchUseCase{repo: repo, google: google}
+func NewStopWatchUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.StopWatchUseCase {
+	return &stopWatchUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *stopWatchUseCase) Execute(workspaceID string) error {
@@ -25,16 +26,9 @@ func (uc *stopWatchUseCase) Execute(workspaceID string) error {
 		return nil
 	}
 
-	conn, err := uc.repo.GetConnection(workspaceID)
-	if err != nil || conn == nil {
-
-		log.Printf("[calendar-watch] no connection for workspace %s, deleting channel locally only", workspaceID)
-		return uc.repo.DeleteWatchChannel(ch.ID)
-	}
-
-	accessToken, err := ensureValidToken(uc.google, uc.repo, conn)
+	accessToken, err := calendarToken(uc.access, workspaceID)
 	if err != nil {
-		log.Printf("[calendar-watch] token refresh failed for workspace %s, deleting channel locally only: %v", workspaceID, err)
+		log.Printf("[calendar-watch] no usable google access for workspace %s, deleting channel locally only: %v", workspaceID, err)
 		return uc.repo.DeleteWatchChannel(ch.ID)
 	}
 

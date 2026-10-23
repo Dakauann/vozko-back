@@ -983,3 +983,30 @@ func TestParseVariableRef_DeepPath(t *testing.T) {
 		t.Fatalf("expected key 'tool_args.cep', got %q", dep.Key)
 	}
 }
+
+func TestInterpolateStrictReportsEveryUnresolvedReference(t *testing.T) {
+	state := NewRunState()
+	state.Set("nome", "Ana")
+	got, missing := InterpolateStrict("{{var.nome}} pediu {{var.produto}} em {{sys.date}} {{secret.token}}", &state, nil)
+	if len(missing) != 2 || missing[0] != "var.produto" || missing[1] != "secret.token" {
+		t.Fatalf("missing = %v", missing)
+	}
+	if !strings.HasPrefix(got, "Ana pediu ") {
+		t.Fatalf("got = %q", got)
+	}
+	if _, missing := InterpolateStrict("{{var.nome}}", &state, nil); len(missing) != 0 {
+		t.Fatalf("a resolved reference was reported: %v", missing)
+	}
+}
+
+func TestInterpolateStrictMatchesInterpolateWhenEverythingResolves(t *testing.T) {
+	state := NewRunState()
+	state.Set("itens", []interface{}{"a", "b"})
+	state.Set("_last_total", 12.5)
+	for _, text := range []string{"{{var.itens[1]}}", "total {{last.total}}", "{{sys.date}}", "sem variáveis"} {
+		strict, missing := InterpolateStrict(text, &state, nil)
+		if len(missing) != 0 || strict != Interpolate(text, &state, nil) {
+			t.Fatalf("%q: strict %q (%v) differs from %q", text, strict, missing, Interpolate(text, &state, nil))
+		}
+	}
+}

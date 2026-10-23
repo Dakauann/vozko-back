@@ -2069,7 +2069,7 @@ func (h *ConversationHub) answerOperatorSend(conn *WSConnection, requestID, entr
 		return
 	}
 	if err != nil {
-		h.BroadcastMessageError(conn.UserID, requestID, entryID, entryType, err.Error(), "send_failed")
+		h.BroadcastMessageError(conn.UserID, requestID, entryID, entryType, err.Error(), conversation.SendFailureCode(err, "send_failed"))
 		return
 	}
 	h.announceOperatorSend(conn, requestID, entryID, entryType, message)
@@ -2971,7 +2971,7 @@ func (h *ConversationHub) handleReopenWindow(conn *WSConnection, payload json.Ra
 	}
 
 	go func() {
-		messageID, err := h.templateSender.SendTemplate(p.EntryID, p.EntryType, p.TemplateID, p.Parameters, conn.UserID, conn.WorkspaceID)
+		messageID, err := h.templateSender.SendTemplate(p.EntryID, p.EntryType, p.TemplateID, p.Parameters, p.HeaderParameters, conn.UserID, conn.WorkspaceID)
 		if err != nil {
 			log.Printf("[ConversationHub] Error sending template for reopen window: %v", err)
 			h.sendToConnection(conn, &WSOutgoingMessage{Type: WSEventError, Payload: reopenWindowRefusal(p.RequestID, p.EntryID, p.EntryType, err)})
@@ -3215,7 +3215,7 @@ func (h *ConversationHub) SendTemplateForEntry(entryID, entryType, templateID st
 	if h.authorizer != nil && !h.authorizer.CanAccessEntry(userID, workspaceID, entryID, entryType, isAdmin) {
 		return "", fmt.Errorf("unauthorized: you don't have access to this entry")
 	}
-	return h.templateSender.SendTemplate(entryID, entryType, templateID, parameters, userID, workspaceID)
+	return h.templateSender.SendTemplate(entryID, entryType, templateID, parameters, nil, userID, workspaceID)
 }
 
 type redisBroadcastPayload struct {

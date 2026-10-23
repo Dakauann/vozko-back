@@ -135,7 +135,7 @@ func blockingCodes(report LintReport) map[LintIssueCode]int {
 
 func TestLintReportsEveryStructuralProblemAtOnceInsteadOfTheFirst(t *testing.T) {
 	g := &Graph{Nodes: []Node{
-		{ID: "t", Type: NodeTypeTriggerManual, Config: map[string]interface{}{}},
+		{ID: "t", Type: NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}},
 		{ID: "a", Type: NodeTypeActionSendText, Config: map[string]interface{}{}},
 		{ID: "b", Type: NodeTypeActionSendText, Config: map[string]interface{}{}},
 	}}
@@ -153,7 +153,7 @@ func TestLintReportsEveryStructuralProblemAtOnceInsteadOfTheFirst(t *testing.T) 
 
 func TestLintPointsTheUnconnectedTriggerProblemAtTheTrigger(t *testing.T) {
 	g := &Graph{Nodes: []Node{
-		{ID: "t", Type: NodeTypeTriggerManual, Config: map[string]interface{}{}},
+		{ID: "t", Type: NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}},
 		{ID: "end", Type: NodeTypeEnd, Config: map[string]interface{}{}},
 	}}
 	for _, i := range LintGraph(g, WorkflowTypeMessages, nil, nil, nil).Blocking() {
@@ -184,7 +184,7 @@ func TestLintReportsEveryMissingRequiredFieldAcrossNodes(t *testing.T) {
 func TestATriggerWithAnIncomingEdgeIsAClassifiedProblem(t *testing.T) {
 	g := &Graph{
 		Nodes: []Node{
-			{ID: "t", Type: NodeTypeTriggerManual, Config: map[string]interface{}{}},
+			{ID: "t", Type: NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}},
 			{ID: "end", Type: NodeTypeEnd, Config: map[string]interface{}{}},
 		},
 		Edges: []Edge{{Source: "t", Target: "end"}, {Source: "end", Target: "t"}},
@@ -195,7 +195,7 @@ func TestATriggerWithAnIncomingEdgeIsAClassifiedProblem(t *testing.T) {
 }
 
 func TestNotPublishableCollectsTheLintBlockersAndTheExtraProblems(t *testing.T) {
-	g := &Graph{Nodes: []Node{{ID: "t", Type: NodeTypeTriggerManual, Config: map[string]interface{}{}}}}
+	g := &Graph{Nodes: []Node{{ID: "t", Type: NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}}}}
 	report := LintGraph(g, WorkflowTypeMessages, nil, nil, nil)
 	labelProblem := fmt.Errorf("%w: node %q label_id %q", ErrNodeInvalidLabelID, "n1", "l1")
 

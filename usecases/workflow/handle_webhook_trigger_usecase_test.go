@@ -26,6 +26,7 @@ type webhookHarness struct {
 	state      *fakeSharedState
 	deliveries *fakeDeliveryLog
 	metrics    *metricsSpy
+	leads      *fakeWebhookLeads
 }
 
 func newWebhookHarness() *webhookHarness {
@@ -40,13 +41,14 @@ func newWebhookHarness() *webhookHarness {
 		state:      &fakeSharedState{allow: true},
 		deliveries: &fakeDeliveryLog{},
 		metrics:    &metricsSpy{},
+		leads:      newFakeWebhookLeads(),
 	}
 	h.wfRepo.workflows["wf1"] = webhookWorkflow()
 	h.webhooks.put(&workflow.WorkflowWebhook{
 		ID: "whid", WorkflowID: "wf1", WorkspaceID: "ws1", Token: "tok",
 		AuthMode: workflow.WebhookAuthNone, Method: "POST", Active: true,
 	})
-	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, h.dedup, h.state, h.deliveries, h.metrics)
+	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, h.dedup, h.state, h.deliveries, h.metrics, h.leadStart())
 	return h
 }
 
@@ -264,7 +266,7 @@ func (d *rememberingDedup) Forget(key string) error {
 func TestARetryAfterARefusalIsDeliveredInsteadOfCountedAsDuplicate(t *testing.T) {
 	h := newWebhookHarness()
 	dedup := &rememberingDedup{seen: map[string]bool{}}
-	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, dedup, h.state, h.deliveries, h.metrics)
+	h.uc = NewHandleWebhookTriggerUseCase(h.webhooks, h.wfRepo, h.runRepo, h.entries, h.resolver, h.launcher, dedup, h.state, h.deliveries, h.metrics, h.leadStart())
 	req := baseReq()
 	req.Header = headerFunc(map[string]string{"X-Idempotency-Key": "evt-7"})
 
@@ -287,7 +289,7 @@ func TestARetryAfterARefusalIsDeliveredInsteadOfCountedAsDuplicate(t *testing.T)
 func TestWebhookTrigger_NoTriggerNode(t *testing.T) {
 	h := newWebhookHarness()
 	h.wfRepo.workflows["wf1"].Graph.Nodes = []workflow.Node{
-		{ID: "tm", Type: workflow.NodeTypeTriggerManual},
+		{ID: "tm", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "e1", Type: workflow.NodeTypeEnd},
 	}
 	if _, err := h.uc.Execute(baseReq()); !errors.Is(err, workflow.ErrWebhookNoTriggerNode) {
@@ -376,4 +378,12 @@ func TestWebhookTrigger_EmptyBody(t *testing.T) {
 	if _, err := h.uc.Execute(req); !errors.Is(err, workflow.ErrWebhookEntryRequired) {
 		t.Fatalf("empty body should require entry: %v", err)
 	}
+}
+
+func (h *webhookHarness) leadStart() WebhookLeadStart {
+	starter, err := NewLeadRunStarter(h.runRepo, h.launcher, h.state)
+	if err != nil {
+		panic(err)
+	}
+	return WebhookLeadStart{Leads: h.leads, Starter: starter}
 }

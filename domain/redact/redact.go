@@ -138,6 +138,10 @@ func (r Redactor) String(s string) string {
 	return maskDocuments(s)
 }
 
+func IsMasked(s string) bool {
+	return strings.Contains(s, documentDigitMask)
+}
+
 func maskedValue(v interface{}) interface{} {
 	if v == nil {
 		return nil

@@ -187,6 +187,60 @@ func (r *JobRunner) SetSmartCampaignJobs(tick ctxJob) {
 	r.addChannelJob("smart_campaign_waves", time.Minute, tick)
 }
 
+func (r *JobRunner) SetEmailSendingJobs(verification, promotion, deliverability ctxJob) {
+	r.addChannelJob("email_domain_verification", 10*time.Minute, verification)
+	r.addChannelJob("email_promotion_sweep", 24*time.Hour, promotion)
+	r.addChannelJob("email_deliverability_sweep", 24*time.Hour, deliverability)
+}
+
+func (r *JobRunner) SetEmailTenantRetirementJob(sweep ctxJob) {
+	r.addChannelJob("email_tenant_retirement_sweep", 24*time.Hour, sweep)
+}
+
+func (r *JobRunner) SetEmailUnusedReleaseJob(sweep ctxJob) {
+	r.addChannelJob("email_unused_account_release", 24*time.Hour, sweep)
+}
+
+func (r *JobRunner) SetEmailReplySweepJob(sweep ctxJob) {
+	r.addChannelJob("email_reply_sweep", time.Minute, sweep)
+}
+
+func (r *JobRunner) SetEmailWebhookJobs(sweep, purge ctxJob) {
+	r.addChannelJob("email_webhook_sweep", 15*time.Second, sweep)
+	r.addChannelJob("email_webhook_purge", 24*time.Hour, purge)
+}
+
+func (r *JobRunner) SetSystemEmailReserveJob(watch ctxJob) {
+	r.addChannelJob("system_email_reserve", 10*time.Minute, watch)
+}
+
+func (r *JobRunner) SetEmailSESLimitJobs(sendQuota, capacity, tenantHealth ctxJob) {
+	r.addChannelJob("email_ses_send_quota_refresh", time.Minute, sendQuota)
+	r.addChannelJob("email_ses_capacity_check", 24*time.Hour, capacity)
+	r.addChannelJob("email_tenant_health_sweep", 24*time.Hour, tenantHealth)
+}
+
+func (r *JobRunner) SetEmailHygieneJobs(domainChecks, disposableRefresh, prune ctxJob) {
+	r.addChannelJob("email_domain_checks", time.Minute, domainChecks)
+	r.addChannelJob("email_disposable_refresh", 24*time.Hour, disposableRefresh)
+	r.addChannelJob("email_hygiene_prune", 24*time.Hour, prune)
+}
+
+func (r *JobRunner) SetEmailCampaignJobs(startScheduled, tick ctxJob) {
+	r.addChannelJob("email_campaign_scheduled_start", time.Minute, startScheduled)
+	r.addChannelJob("email_campaign_tick", 5*time.Minute, tick)
+}
+
+func (r *JobRunner) SetWorkflowBirthdayJob(sweep ctxJob) {
+	r.addChannelJob("workflow_birthday_sweep", workflow_domain.BirthdaySweepPeriod, sweep)
+}
+
+func (r *JobRunner) SetCarrierJobs(expire, syncSenders, schedules ctxJob) {
+	r.addChannelJob("carrier_message_expiry", time.Minute, expire)
+	r.addChannelJob("carrier_sender_status_sync", 15*time.Minute, syncSenders)
+	r.addChannelJob("carrier_campaign_schedules", time.Minute, schedules)
+}
+
 func (r *JobRunner) SetWhatsAppMessageStatusJobs(sweep, purge ctxJob) {
 	r.addChannelJob("whatsapp_message_status_sweep", 10*time.Minute, sweep)
 	r.addChannelJob("whatsapp_message_status_purge", 24*time.Hour, purge)
@@ -194,6 +248,10 @@ func (r *JobRunner) SetWhatsAppMessageStatusJobs(sweep, purge ctxJob) {
 
 func (r *JobRunner) SetLeadImportJobs(sweep ctxJob) {
 	r.addChannelJob("lead_import_sweep", time.Minute, sweep)
+}
+
+func (r *JobRunner) SetCampaignAudienceJobs(sweep ctxJob) {
+	r.addChannelJob("campaign_audience_list_sweep", 15*time.Minute, sweep)
 }
 
 func (r *JobRunner) SetGeocodingJobs(sweep ctxJob) {
@@ -227,8 +285,21 @@ func (r *JobRunner) SetScheduledMessageJobs(sweep, purge ctxJob) {
 	r.addChannelJob("scheduled_message_purge", 24*time.Hour, purge)
 }
 
+func (r *JobRunner) SetInvoiceReservationJobs(sweep ctxJob) {
+	r.addChannelJob("invoice_reservation_sweep", 5*time.Minute, sweep)
+}
+
 func (r *JobRunner) SetTeamChatJobs(sweep ctxJob) {
 	r.addChannelJob("team_chat_scheduled_sweep", time.Minute, sweep)
+}
+
+func (r *JobRunner) SetGoogleAccountJobs(tokenRefresh ctxJob) {
+	r.addChannelJob("google_token_refresh", 30*time.Minute, tokenRefresh)
+}
+
+func (r *JobRunner) SetGoogleSheetsJobs(dispatch, retention ctxJob) {
+	r.addChannelJob("google_sheets_dispatch", time.Minute, dispatch)
+	r.addChannelJob("google_sheets_retention", 24*time.Hour, retention)
 }
 
 func (r *JobRunner) addChannelJob(name string, period time.Duration, job ctxJob) {

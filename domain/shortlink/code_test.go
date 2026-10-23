@@ -90,3 +90,20 @@ func TestShortURL(t *testing.T) {
 		t.Fatalf("no slash = %q", got)
 	}
 }
+
+func TestIsWellFormedCodeAcceptsGeneratedAndAliasCodesOnly(t *testing.T) {
+	generated, err := GenerateCode(DefaultCodeLength)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ok := range []string{generated, "promo_julho-1", "Ab3x"} {
+		if !IsWellFormedCode(ok) {
+			t.Fatalf("%q was refused", ok)
+		}
+	}
+	for _, bad := range []string{"", "ab", "has/slash", "bad space", strings.Repeat("a", MaxCodeLength+1), "{{1}}"} {
+		if IsWellFormedCode(bad) {
+			t.Fatalf("%q was accepted", bad)
+		}
+	}
+}

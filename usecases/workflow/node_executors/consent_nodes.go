@@ -68,9 +68,9 @@ func (e *consentExecutor) Definition() workflow.NodeDefinition {
 		},
 		Outputs: []workflow.HandleDefinition{{ID: "sucesso", Label: "Registrado"}},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "lead_id", Description: "ID do lead da conversa"},
-			{Key: "changed", Description: "true quando a vontade do lead mudou agora; false quando já estava registrada"},
-			{Key: "event_id", Description: "ID do evento na linha do tempo do lead, quando mudou"},
+			{Key: "lead_id", Description: "ID do lead da conversa", Label: "ID do lead", Type: workflow.VariableTypeText},
+			{Key: "changed", Description: "true quando a vontade do lead mudou agora; false quando já estava registrada", Label: "Mudou agora", Type: workflow.VariableTypeBoolean},
+			{Key: "event_id", Description: "ID do evento na linha do tempo do lead, quando mudou", Label: "ID do evento", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{workflow.ConsentModeKey: "", workflow.ConsentPurposeKey: "", workflow.ConsentNoteKey: ""},
 		ConfigSchema: []workflow.ConfigField{
@@ -107,8 +107,8 @@ func (e *checkConsentExecutor) Definition() workflow.NodeDefinition {
 			{ID: workflow.ConsentBranchNone, Label: "Sem registro"},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "state", Description: "granted, withdrawn ou none"},
-			{Key: "lead_id", Description: "ID do lead da conversa (vazio se não há)"},
+			{Key: "state", Description: "granted, withdrawn ou none", Label: "Situação do consentimento", Type: workflow.VariableTypeText},
+			{Key: "lead_id", Description: "ID do lead da conversa (vazio se não há)", Label: "ID do lead", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{},
 	}

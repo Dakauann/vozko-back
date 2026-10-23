@@ -117,47 +117,6 @@ func TestHandleAsaasWebhook_MonthlyBillingOverdueMarksOverdue(t *testing.T) {
 	}
 }
 
-func TestHandleAsaasWebhook_MonthlyBillingRefundDebitsWhenPaid(t *testing.T) {
-	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-		"pay-r": {ID: "inv-r", ExternalID: "pay-r", WorkspaceID: "ws-1", Purpose: invoice.PurposeMonthlyBilling,
-			AmountBRL: 1099, AmountUSD: 10_000_000, CreditableUSD: 8_000_000, Status: invoice.StatusPaid, ExchangeRate: 6},
-	}}
-	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(repo, nil, &webhookCreditBalance{}, debit, nil)
-
-	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-r"}}); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if len(debit.calls) != 1 || debit.calls[0].Amount != 8_000_000 {
-		t.Fatalf("expected one debit of the creditable plan portion (8_000_000), got %+v", debit.calls)
-	}
-	if !debit.calls[0].IsRefund {
-		t.Fatal("a refund debit must be marked IsRefund")
-	}
-	if last := repo.statusUpdates[len(repo.statusUpdates)-1]; last != invoice.StatusRefunded {
-		t.Fatalf("expected status Refunded, got %v", repo.statusUpdates)
-	}
-}
-
-func TestHandleAsaasWebhook_MonthlyBillingRefundSkipsDebitWhenNeverPaid(t *testing.T) {
-	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-		"pay-rn": {ID: "inv-rn", ExternalID: "pay-rn", WorkspaceID: "ws-1", Purpose: invoice.PurposeMonthlyBilling,
-			AmountUSD: 10_000_000, CreditableUSD: 8_000_000, Status: invoice.StatusPending, ExchangeRate: 6},
-	}}
-	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(repo, nil, &webhookCreditBalance{}, debit, nil)
-
-	if err := uc.Execute(&payment.AsaasWebhookEvent{Event: "PAYMENT_PARTIALLY_REFUNDED", Payment: payment.AsaasWebhookPayment{ID: "pay-rn"}}); err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if len(debit.calls) != 0 {
-		t.Fatalf("a never-paid invoice must not be debited on refund, got %+v", debit.calls)
-	}
-	if last := repo.statusUpdates[len(repo.statusUpdates)-1]; last != invoice.StatusRefunded {
-		t.Fatalf("expected status Refunded, got %v", repo.statusUpdates)
-	}
-}
-
 func TestHandleAsaasWebhook_MonthlyBillingCreditFailureRollsBackToPending(t *testing.T) {
 	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
 		"pay-f": {ID: "inv-f", ExternalID: "pay-f", WorkspaceID: "ws-1", Purpose: invoice.PurposeMonthlyBilling,

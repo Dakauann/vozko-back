@@ -3,6 +3,7 @@ package lead
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 const (
 	importMultipartOverhead = 1 << 20
 	rejectionsPage          = 5000
+	startBodyLimit          = 4 << 10
 )
 
 type Imports interface {
@@ -31,7 +33,7 @@ type Imports interface {
 	List(ctx context.Context, a lead_usecase.Actor) ([]leadimport.Job, error)
 	Catalog(ctx context.Context, a lead_usecase.Actor) (lead_usecase.ImportCatalog, error)
 	DryRun(ctx context.Context, a lead_usecase.Actor, id string, s leadimport.Settings) (*leadimport.Job, error)
-	Start(ctx context.Context, a lead_usecase.Actor, id string) (*leadimport.Job, error)
+	Start(ctx context.Context, a lead_usecase.Actor, id string, choices lead_usecase.StartChoices) (*leadimport.Job, error)
 	Rejections(ctx context.Context, a lead_usecase.Actor, id string, after int64, limit int) ([]leadimport.IssueRow, error)
 }
 
@@ -269,14 +271,18 @@ func (h *LeadHandler) DryRunImport(w http.ResponseWriter, r *http.Request) {
 
 // @Summary		Iniciar uma importação de leads
 // @Description	Começa a importação com o mapeamento da última simulação concluída (409 `lead_import_not_ready` antes dela). As permissões são conferidas de novo aqui e no servidor que executa, antes de gravar qualquer linha (403 `lead_import_forbidden`; uma importação com a coluna de consentimento sem `leads:consent` dá 403 `lead_consent_grant_forbidden`). A importação roda em lotes de 500 linhas, cada lote numa transação, e continua do último lote gravado se o servidor reiniciar ou se um erro passageiro (banco fora do ar, tempo esgotado) interromper; depois de 3 tentativas ela para com `failureCode` `stalled`. Permissão retirada, arquivo apagado ou mapeamento que deixou de servir param na hora (`forbidden`, `file_unavailable`, `internal`); uma importação da rota antiga interrompida no meio para com `interrupted`. Leads novos entram com origem `import`; leads existentes só ganham o que estava vazio (o nome que veio do canal, como o perfil do WhatsApp, é trocado pelo da planilha; um nome dado pela equipe ou por outra importação nunca), e cada mudança aumenta a `version` do lead (a importação é a exceção documentada ao `If-Match`, porque nunca troca um valor existente). Telefones novos entram como contato; um endereço entra como principal quando o lead não tem nenhum, com posição exata quando a linha traz latitude e longitude válidas dentro do Brasil, e pendente para o mapa nos outros casos; quando o lead já tem endereço, só as partes vazias do principal são completadas (uma parte diferente vira conflito e nada muda) e um pino manual nunca é trocado. Telefones compartilhados por mais de 5.000 leads não servem para achar a pessoa: a linha sem WhatsApp é recusada com `contact_ambiguous`. Um vínculo de família que já existe entre os dois é informado com `relation_exists`. Um lead criado sem um campo personalizado obrigatório que você vê é informado com `custom_field_required`. Os vínculos de família são resolvidos depois das linhas: `relative_number` é o WhatsApp de um lead do arquivo ou da base e `relation_kind` é o que a pessoa da linha é desse familiar (por exemplo `filha`). Acompanhe por GET /leads/imports/{id}.
+// @Description	Os e-mails são verificados de graça durante a simulação e a importação, uma busca de DNS por domínio distinto: `dryRun.emails` e `result.emails` contam cada veredito (`valid`, `typo`, `disposable`, `no_mail_domain`, `bad_address`, `suppressed`, `domain_unknown`, `domain_pending`, `role`, `inactive`) e cada problema entra em `issues` com o código `email_*`. O corpo é opcional: `fixEmailTypos` troca um domínio com provável erro de digitação pela sugestão (por exemplo gmial.com por gmail.com) e `dropUndeliverableEmails` importa o lead sem o e-mail quando ele é temporário, quando o domínio não recebe mensagens ou quando o endereço já voltou como inexistente. Sem corpo, os e-mails entram como vieram. As escolhas voltam em `emailFixes`.
 // @Tags			Leads
+// @Accept			json
 // @Produce		json
-// @Param			id	path		string	true	"ID da importação"
-// @Success		202	{object}	lead.LeadImportResponse
-// @Failure		403	{object}	response.ErrorResponse
-// @Failure		404	{object}	response.ErrorResponse
-// @Failure		409	{object}	response.ErrorResponse
-// @Failure		503	{object}	response.ErrorResponse
+// @Param			id		path		string					true	"ID da importação"
+// @Param			body	body		LeadImportStartRequest	false	"Correções de e-mail"
+// @Success		202		{object}	lead.LeadImportResponse
+// @Failure		400		{object}	response.ErrorResponse
+// @Failure		403		{object}	response.ErrorResponse
+// @Failure		404		{object}	response.ErrorResponse
+// @Failure		409		{object}	response.ErrorResponse
+// @Failure		503		{object}	response.ErrorResponse
 // @Security		BearerAuth
 // @Router			/leads/imports/{id}/start [post]
 func (h *LeadHandler) StartImport(w http.ResponseWriter, r *http.Request) {
@@ -284,8 +290,13 @@ func (h *LeadHandler) StartImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	var req LeadImportStartRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, startBodyLimit)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.WriteInvalidBodyError(w, nil)
+		return
+	}
 	id := mux.Vars(r)["id"]
-	job, err := h.imports.Start(r.Context(), a, id)
+	job, err := h.imports.Start(r.Context(), a, id, lead_usecase.StartChoices{FixEmailTypos: req.FixEmailTypos, DropUndeliverableEmails: req.DropUndeliverableEmails})
 	if err != nil {
 		writeImportError(w, a, id, err)
 		return
@@ -294,7 +305,7 @@ func (h *LeadHandler) StartImport(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary		Baixar as linhas recusadas de uma importação
-// @Description	CSV (separado por ponto e vírgula, UTF-8 com BOM) com uma linha por problema: número da linha na planilha, motivo legível no idioma pedido (`locale` pt, en, es ou de; padrão pt), código do motivo, coluna e se a linha foi importada mesmo assim (um campo inválido é descartado e o resto da linha entra). Não repete nenhum dado da planilha. Só quem enviou a importação pode baixar; o arquivo deixa de existir com a importação, 7 dias depois do envio.
+// @Description	CSV (separado por ponto e vírgula, UTF-8 com BOM) com uma linha por problema: número da linha na planilha, motivo legível no idioma pedido (`locale` pt, en, es ou de; padrão pt), código do motivo, coluna, se a linha foi importada mesmo assim (um campo inválido é descartado e o resto da linha entra) e a sugestão (o endereço corrigido de um e-mail com provável erro de digitação). Não repete nenhum dado da planilha. Só quem enviou a importação pode baixar; o arquivo deixa de existir com a importação, 7 dias depois do envio.
 // @Tags			Leads
 // @Produce		text/csv
 // @Param			id		path		string	true	"ID da importação"
@@ -325,7 +336,7 @@ func (h *LeadHandler) ImportRejections(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, "\xEF\xBB\xBF")
 	out := csv.NewWriter(w)
 	out.Comma = ';'
-	_ = out.Write([]string{columns.Line, columns.Reason, columns.Code, columns.Field, columns.Imported})
+	_ = out.Write([]string{columns.Line, columns.Reason, columns.Code, columns.Field, columns.Imported, columns.Hint})
 	page := first
 	for len(page) > 0 {
 		for _, row := range page {
@@ -333,7 +344,7 @@ func (h *LeadHandler) ImportRejections(w http.ResponseWriter, r *http.Request) {
 			if row.Rejected {
 				imported = columns.No
 			}
-			_ = out.Write([]string{strconv.Itoa(row.Line), leadimport.ReasonLabel(row.Reason, locale), string(row.Reason), row.Field, imported})
+			_ = out.Write([]string{strconv.Itoa(row.Line), leadimport.ReasonLabel(row.Reason, locale), string(row.Reason), row.Field, imported, row.Hint})
 		}
 		out.Flush()
 		if len(page) < rejectionsPage {

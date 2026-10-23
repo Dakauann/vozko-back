@@ -2,6 +2,7 @@ package campaign
 
 import (
 	"strings"
+	"time"
 
 	"vozko/domain/lead"
 )
@@ -77,6 +78,19 @@ type LeadFacts struct {
 	Blocked     bool
 	OptedOut    bool
 	HasConsent  bool
+}
+
+type ScreeningQuery struct {
+	WorkspaceID string
+	LeadIDs     []string
+	SenderID    string
+	Running     bool
+}
+
+type ScreeningFacts struct {
+	Lead              LeadFacts
+	LastSentAt        *time.Time
+	InRunningCampaign bool
 }
 
 type EligibilityFacts struct {

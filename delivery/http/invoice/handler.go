@@ -72,13 +72,21 @@ func (h *InvoiceHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	billingType := strings.ToUpper(strings.TrimSpace(req.BillingType))
 
+	idempotencyKey, err := invoicedomain.ClientIdempotencyKey(workspaceID, req.IdempotencyKey)
+	if err != nil {
+		h.writeCreateInvoiceError(w, err)
+		return
+	}
+
 	output, err := h.createUseCase.Execute(invoicedomain.CreateInvoiceInput{
-		WorkspaceID:  workspaceID,
-		UserID:       claims.UserID,
-		AmountBRL:    req.AmountBRL,
-		BillingType:  billingType,
-		Description:  req.Description,
-		ReferralCode: middleware.ExtractReferralCode(r),
+		WorkspaceID:    workspaceID,
+		UserID:         claims.UserID,
+		Purpose:        invoicedomain.PurposeTopUp,
+		AmountBRL:      req.AmountBRL,
+		BillingType:    billingType,
+		Description:    req.Description,
+		IdempotencyKey: idempotencyKey,
+		ReferralCode:   middleware.ExtractReferralCode(r),
 	})
 	if err != nil {
 		log.Printf("[invoice] create failed: %v", err)
@@ -211,6 +219,7 @@ func (h *InvoiceHandler) AdminCreate(w http.ResponseWriter, r *http.Request) {
 	output, err := h.createUseCase.Execute(invoicedomain.CreateInvoiceInput{
 		WorkspaceID: workspaceID,
 		UserID:      claims.UserID,
+		Purpose:     invoicedomain.PurposeTopUp,
 		AmountBRL:   req.AmountBRL,
 		BillingType: billingType,
 		Description: desc,
@@ -292,6 +301,8 @@ func (h *InvoiceHandler) writeCreateInvoiceError(w http.ResponseWriter, err erro
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "customer_document_required", err.Error(), nil)
 	case errors.Is(err, invoicedomain.ErrBillingAddressRequired):
 		response.WriteErrorWithCode(w, http.StatusUnprocessableEntity, "billing_address_required", err.Error(), nil)
+	case errors.Is(err, invoicedomain.ErrInvalidIdempotencyKey):
+		response.WriteErrorWithCode(w, http.StatusBadRequest, "invalid_idempotency_key", "Chave de idempotência inválida", nil)
 	case errors.Is(err, invoicedomain.ErrInvalidAmount), errors.Is(err, invoicedomain.ErrInvalidPurpose), errors.Is(err, invoicedomain.ErrPlanDefinitionRequired):
 		response.WriteError(w, http.StatusBadRequest, err.Error(), nil)
 	case errors.Is(err, invoicedomain.ErrActiveSubscriptionRequired):

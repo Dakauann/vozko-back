@@ -3,6 +3,8 @@ package conversation_repository
 import (
 	"errors"
 
+	"github.com/google/uuid"
+
 	"vozko/domain/conversation"
 	"vozko/domain/shared"
 	"vozko/infra/database/schema"
@@ -30,6 +32,41 @@ func (r *mediaRepository) Create(media *conversation.ConversationMedia) error {
 func (r *mediaRepository) GetByID(id string) (*conversation.ConversationMedia, error) {
 	var dbMedia schema.ConversationMedia
 	if err := r.db.Where("id = ?", id).First(&dbMedia).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, conversation.ErrMediaNotFound
+		}
+		return nil, err
+	}
+	return mapMediaSchemaToDomain(&dbMedia), nil
+}
+
+func (r *mediaRepository) GetInEntry(entryID string, entryType shared.EntryType, id string) (*conversation.ConversationMedia, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, conversation.ErrMediaNotFound
+	}
+	if _, err := uuid.Parse(entryID); err != nil {
+		return nil, conversation.ErrMediaNotFound
+	}
+	var dbMedia schema.ConversationMedia
+	if err := r.db.Where("id = ? AND entry_id = ? AND entry_type = ?", id, entryID, string(entryType)).First(&dbMedia).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, conversation.ErrMediaNotFound
+		}
+		return nil, err
+	}
+	return mapMediaSchemaToDomain(&dbMedia), nil
+}
+
+func NewMediaURLReader(db *gorm.DB) conversation.EntryMediaURLReader {
+	return &mediaRepository{db: db}
+}
+
+func (r *mediaRepository) GetInEntryByURL(entryID string, entryType shared.EntryType, url string) (*conversation.ConversationMedia, error) {
+	if _, err := uuid.Parse(entryID); err != nil || url == "" {
+		return nil, conversation.ErrMediaNotFound
+	}
+	var dbMedia schema.ConversationMedia
+	if err := r.db.Where("entry_id = ? AND entry_type = ? AND url = ?", entryID, string(entryType), url).Order("created_at DESC").First(&dbMedia).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, conversation.ErrMediaNotFound
 		}
@@ -113,6 +150,7 @@ func mapMediaDomainToSchema(media *conversation.ConversationMedia) *schema.Conve
 		Width:            media.Layout.Width,
 		Height:           media.Layout.Height,
 		Thumbhash:        media.Layout.Thumbhash,
+		Purpose:          string(media.Purpose),
 		CreatedAt:        media.CreatedAt,
 	}
 }
@@ -133,6 +171,7 @@ func mapMediaSchemaToDomain(media *schema.ConversationMedia) *conversation.Conve
 		DurationSeconds:  media.DurationSeconds,
 		WhatsAppMediaID:  media.WhatsAppMediaID,
 		Layout:           conversation.MediaLayout{Width: media.Width, Height: media.Height, Thumbhash: media.Thumbhash},
+		Purpose:          conversation.MediaPurpose(media.Purpose),
 		CreatedAt:        media.CreatedAt,
 	}
 }

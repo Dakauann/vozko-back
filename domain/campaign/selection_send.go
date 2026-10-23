@@ -29,23 +29,21 @@ func (c Channel) Valid() bool {
 }
 
 var (
-	ErrSelectionEmpty             = errors.New("campaign: the selection holds no lead")
-	ErrSelectionOverCampaignCap   = fmt.Errorf("campaign: one campaign takes at most %d leads, narrow the selection or split it into several campaigns", MaxEntries)
-	ErrSelectionTooLarge          = fmt.Errorf("campaign: a send from a selection takes at most %d campaigns of %d leads", MaxSelectionParts, MaxEntries)
-	ErrHeaderVariableUnsupported  = errors.New("campaign: templates with a variable in the header text cannot be sent to a selection yet")
-	ErrNamedParametersUnsupported = errors.New("campaign: templates with named variables cannot be sent to a selection, use {{1}}, {{2}}")
-	ErrUnaffordable               = errors.New("campaign: the balance does not cover this send")
-	ErrOverMonthlyCap             = errors.New("campaign: this send goes over what is left of the workspace's monthly send cap")
-	ErrFirstNInvalid              = errors.New("campaign: the number of leads to send to must be between 1 and the eligible count")
-	ErrNothingEligible            = errors.New("campaign: no lead of this send can receive it")
-	ErrCreationScopeMissing       = errors.New("campaign: the person creating the send is unknown, nothing was created")
-	ErrDepartmentRequired         = errors.New("campaign: this workspace has departments, choose the department of the send")
-	ErrNotFromSelection           = errors.New("campaign: this campaign was not prepared from a lead selection")
-	ErrAlreadyStarted             = errors.New("campaign: this send already started and can no longer be cancelled")
-	ErrSendIncomplete             = errors.New("campaign: not every campaign of this send was found, prepare it again")
-	ErrSelectionSendLocked        = errors.New("campaign: a send prepared from a lead selection cannot be changed, cancel it and prepare it again")
-	ErrSendPreparing              = errors.New("campaign: this send is still being prepared, try again in a moment")
-	ErrSelectionStartNeedsReview  = errors.New("campaign: a send prepared from a lead selection starts from its review in the leads page, which skips leads already sending elsewhere and checks the balance and the monthly cap")
+	ErrSelectionEmpty            = errors.New("campaign: the selection holds no lead")
+	ErrSelectionOverCampaignCap  = fmt.Errorf("campaign: one campaign takes at most %d leads, narrow the selection or split it into several campaigns", MaxEntries)
+	ErrSelectionTooLarge         = fmt.Errorf("campaign: a send from a selection takes at most %d campaigns of %d leads", MaxSelectionParts, MaxEntries)
+	ErrUnaffordable              = errors.New("campaign: the balance does not cover this send")
+	ErrOverMonthlyCap            = errors.New("campaign: this send goes over what is left of the workspace's monthly send cap")
+	ErrFirstNInvalid             = errors.New("campaign: the number of leads to send to must be between 1 and the eligible count")
+	ErrNothingEligible           = errors.New("campaign: no lead of this send can receive it")
+	ErrCreationScopeMissing      = errors.New("campaign: the person creating the send is unknown, nothing was created")
+	ErrDepartmentRequired        = errors.New("campaign: this workspace has departments, choose the department of the send")
+	ErrNotFromSelection          = errors.New("campaign: this campaign was not prepared from a lead selection")
+	ErrAlreadyStarted            = errors.New("campaign: this send already started and can no longer be cancelled")
+	ErrSendIncomplete            = errors.New("campaign: not every campaign of this send was found, prepare it again")
+	ErrSelectionSendLocked       = errors.New("campaign: a send prepared from a lead selection cannot be changed, cancel it and prepare it again")
+	ErrSendPreparing             = errors.New("campaign: this send is still being prepared, try again in a moment")
+	ErrSelectionStartNeedsReview = errors.New("campaign: a send prepared from a lead selection starts from its review in the leads page, which skips leads already sending elsewhere and checks the balance and the monthly cap")
 )
 
 func CheckSelectionSize(selected int, split bool) (int, error) {
@@ -209,16 +207,6 @@ func EstimatedDays(eligible, dailyCap int) int {
 		return 1
 	}
 	return (eligible + dailyCap - 1) / dailyCap
-}
-
-func RefuseSelectionTemplate(headerVariables int, namedParameters bool) error {
-	if namedParameters {
-		return ErrNamedParametersUnsupported
-	}
-	if headerVariables > 0 {
-		return ErrHeaderVariableUnsupported
-	}
-	return nil
 }
 
 var (

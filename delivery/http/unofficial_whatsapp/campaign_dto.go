@@ -3,6 +3,8 @@ package unofficial_whatsapp
 import (
 	"time"
 
+	"vozko/delivery/http/audiencex"
+
 	"vozko/domain/campaign"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
@@ -96,6 +98,7 @@ type campaignPayload struct {
 	ScheduledStart *time.Time          `json:"scheduledStart,omitempty"`
 	Archived       bool                `json:"archived"`
 	Targets        []campaignTargetDTO `json:"targets,omitempty"`
+	Recipients     *audiencex.AudienceRequest `json:"recipients,omitempty"`
 
 	SeedOutcome *seedOutcomeDTO `json:"seedOutcome,omitempty"`
 }
@@ -181,6 +184,7 @@ type campaignDTO struct {
 
 	Status       string `json:"status"`
 	StatusReason string `json:"statusReason,omitempty"`
+	ReadyToStart bool   `json:"readyToStart"`
 
 	ScheduledStart *time.Time `json:"scheduledStart,omitempty"`
 	Archived       bool       `json:"archived"`
@@ -220,6 +224,7 @@ func campaignToDTO(c *uwc.Campaign) campaignDTO {
 		DailyCap:             c.DailyCap,
 		Status:               string(c.Status),
 		StatusReason:         c.StatusReason,
+		ReadyToStart:         c.Metrics.ReadyToStart(c.Status, !c.ScheduledStart.IsZero()),
 		Archived:             c.Archived,
 		Metrics:              c.Metrics,
 		TargetNames:          c.TargetNames,

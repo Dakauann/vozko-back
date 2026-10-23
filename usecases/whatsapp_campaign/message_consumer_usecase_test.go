@@ -929,7 +929,7 @@ type mockLeadCampaignSendRepo struct{}
 
 func (m *mockLeadCampaignSendRepo) Record(_, _, _ string) error                     { return nil }
 func (m *mockLeadCampaignSendRepo) GetLastSendTime(_, _ string) (*time.Time, error) { return nil, nil }
-func (m *mockLeadCampaignSendRepo) GetLastSendTimesBatch(_ []string, _ string) (map[string]time.Time, error) {
+func (m *mockLeadCampaignSendRepo) GetLastSendTimesBatch(_ context.Context, _ []string, _ string) (map[string]time.Time, error) {
 	return nil, nil
 }
 
@@ -992,6 +992,7 @@ func newTestHarness() *testHarness {
 		InflightReserver:        inflightReserver,
 		CachedBalanceChecker:    cachedBal,
 	}
+	uc.SetChoiceStats(&spyChoices{}, "", testClickTokens)
 	uc.attachRunner(queueSub, queuePub, sharedState)
 
 	return &testHarness{

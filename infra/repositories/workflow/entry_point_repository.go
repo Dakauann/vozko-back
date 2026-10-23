@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"vozko/domain/buttonaction"
+	mldomain "vozko/domain/mercadolivre"
 	"vozko/domain/workflow"
 	"vozko/infra/database/sqlexpr"
 )
@@ -157,8 +158,11 @@ var channelTables = []channelTable{
 	{kind: workflow.ChannelInstagramAccount, table: "instagram_accounts", name: "COALESCE(NULLIF(username, ''), name)"},
 	{kind: workflow.ChannelTelegramAccount, table: "telegram_accounts", name: "COALESCE(NULLIF(bot_name, ''), bot_username)"},
 	{kind: workflow.ChannelTikTokAccount, table: "tiktok_accounts", name: "COALESCE(NULLIF(display_name, ''), username)"},
-	{kind: workflow.ChannelMercadoLivreAccount, table: "mercadolivre_accounts", name: "nickname"},
+	{kind: workflow.ChannelMercadoLivreAccount, table: "mercadolivre_accounts", name: mldomain.AccountNameSQL("")},
 	{kind: workflow.ChannelWebchatWidget, table: "webchat_widgets", name: "name"},
+	{kind: workflow.ChannelEmailInbox, table: "email_inboxes", name: "COALESCE(NULLIF(name, ''), address)"},
+	{kind: workflow.ChannelRCSSender, table: "rcs_senders", name: "COALESCE(NULLIF(brand_name, ''), id::text)"},
+	{kind: workflow.ChannelSMSRoute, table: "sms_routes", name: "COALESCE(NULLIF(brand_prefix, ''), number)"},
 }
 
 func (c channelTable) selectLive() string {
@@ -171,9 +175,6 @@ func (c channelTable) selectLive() string {
 }
 
 func (c channelTable) linked() string {
-	if c.kind.IsCampaign() {
-		return c.selectLive() + " AND (workflow_id IN ? OR id IN ?)"
-	}
 	return c.selectLive() + " AND workflow_id IN ?"
 }
 
@@ -193,13 +194,10 @@ func channelUnions() (string, string) {
 		"SELECT kind, id, name, workflow_id, enable_workflow FROM (\n" + strings.Join(enabled, "\nUNION ALL\n") + "\n) enabled ORDER BY kind, updated_at DESC, id"
 }
 
-func linkedChannelArgs(workspaceID string, workflowIDs, campaignIDs []string) []interface{} {
+func linkedChannelArgs(workspaceID string, workflowIDs []string) []interface{} {
 	var args []interface{}
-	for _, c := range channelTables {
+	for range channelTables {
 		args = append(args, workspaceID, workflowIDs)
-		if c.kind.IsCampaign() {
-			args = append(args, campaignIDs)
-		}
 	}
 	return args
 }
@@ -383,7 +381,7 @@ func (row channelRow) workspaceChannel() workflow.WorkspaceChannel {
 
 func (r *entryPointRepository) channels(q workflow.EntryPointSourceQuery, ids []string, s *workflow.EntryPointSources) error {
 	var linked, enabled []channelRow
-	if err := r.db.Raw(linkedChannelsSQL, linkedChannelArgs(q.WorkspaceID, ids, uuidsOf(q.CampaignIDs))...).Scan(&linked).Error; err != nil {
+	if err := r.db.Raw(linkedChannelsSQL, linkedChannelArgs(q.WorkspaceID, ids)...).Scan(&linked).Error; err != nil {
 		return err
 	}
 	if err := r.db.Raw(enabledChannelsSQL, enabledChannelArgs(q.WorkspaceID)...).Scan(&enabled).Error; err != nil {

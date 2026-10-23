@@ -142,6 +142,10 @@ type Config struct {
 
 	SIP SIPConfig
 
+	Email EmailConfig
+
+	Carrier CarrierConfig
+
 	RecordingsStagingDir   string
 	RecordingUploadWorkers int
 
@@ -154,12 +158,11 @@ type Config struct {
 	CFKVAPIToken  string
 	CFKVKeyPrefix string
 
-	MCPVaultKey             string
-	MCPVaultKEKVersion      int
-	MCPStateSignerKey       string
-	MCPCallbackURL          string
-	GoogleOAuthClientID     string
-	GoogleOAuthClientSecret string
+	MCPVaultKey        string
+	MCPVaultKEKVersion int
+	MCPStateSignerKey  string
+	MCPCallbackURL     string
+	Google             GoogleConfig
 
 	ShortLinkBaseURL            string
 	ShortLinkCodeLength         int
@@ -287,8 +290,7 @@ func LoadConfig() Config {
 		UnofficialWhatsAppHistoryEnabled: getBoolEnv("UW_HISTORY_ENABLED", true),
 		UnofficialWhatsAppHistoryDays:    envInt("UW_HISTORY_WINDOW_DAYS", 30),
 
-		GoogleOAuthClientID:     trimEnv("GOOGLE_OAUTH_CLIENT_ID"),
-		GoogleOAuthClientSecret: trimEnv("GOOGLE_OAUTH_CLIENT_SECRET"),
+		Google: loadGoogleConfig(),
 
 		Dialog360PartnerID:          mustGetEnvTrimmed("D360_PARTNER_ID"),
 		Dialog360PartnerAPIKey:      mustGetEnvTrimmed("D360_PARTNER_API_KEY"),
@@ -309,6 +311,10 @@ func LoadConfig() Config {
 		WhatsAppMediaUDPMuxPort: mustGetIntEnv("WHATSAPP_MEDIA_UDP_MUX_PORT"),
 
 		SIP: loadSIPConfig(),
+
+		Email: loadEmailConfig(),
+
+		Carrier: loadCarrierConfig(),
 
 		RecordingsStagingDir:   getEnvTrimmed("RECORDINGS_STAGING_DIR", ""),
 		RecordingUploadWorkers: getIntEnv("RECORDING_UPLOAD_WORKERS", 8),

@@ -58,7 +58,7 @@ func boundedGet(ctx context.Context, client *http.Client, url string, maxBytes i
 		return media.RemoteFile{}, err
 	}
 	if int64(len(data)) > maxBytes {
-		return media.RemoteFile{}, fmt.Errorf("remote file is larger than %d bytes", maxBytes)
+		return media.RemoteFile{}, fmt.Errorf("%w: remote file is larger than %d bytes", media.ErrMediaTooLarge, maxBytes)
 	}
 	return media.RemoteFile{Data: data, ContentType: resp.Header.Get("Content-Type")}, nil
 }

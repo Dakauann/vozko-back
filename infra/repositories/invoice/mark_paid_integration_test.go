@@ -16,7 +16,7 @@ func TestARefundedInvoiceIsNeverPaidAgainByAReplayedPayment(t *testing.T) {
 	seed := func(status invoice.Status) string {
 		id := uuid.NewString()
 		row := &schema.Invoice{ID: id, WorkspaceID: uuid.NewString(), UserID: uuid.NewString(), AmountBRL: 10, ExchangeRate: 5,
-			Status: string(status), BillingType: "PIX", ExternalID: uuid.NewString()}
+			Status: string(status), BillingType: "PIX", ExternalID: ptr(uuid.NewString())}
 		if err := db.Create(row).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -29,6 +29,7 @@ func TestARefundedInvoiceIsNeverPaidAgainByAReplayedPayment(t *testing.T) {
 		invoice.StatusExpired:  true,
 		invoice.StatusPaid:     false,
 		invoice.StatusRefunded: false,
+		invoice.StatusReversed: false,
 	} {
 		transitioned, err := repo.MarkPaid(seed(status), 2_000_000)
 		if err != nil || transitioned != want {
@@ -36,3 +37,5 @@ func TestARefundedInvoiceIsNeverPaidAgainByAReplayedPayment(t *testing.T) {
 		}
 	}
 }
+
+func ptr(value string) *string { return &value }

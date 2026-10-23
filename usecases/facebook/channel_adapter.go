@@ -202,7 +202,8 @@ func (a *ChannelAdapter) SendInteractive(ctx context.Context, ec *conversation.E
 	} else {
 		msg.QuickReplies = optionsOf(kept)
 	}
-	return a.dispatch(ctx, target, ec, msg)
+	out, err := a.dispatch(ctx, target, ec, msg)
+	return conversation.ShowingOptions(out, kept), err
 }
 
 func (a *ChannelAdapter) InteractiveLimits() channel.InteractiveLimits { return a.caps.Interactive }
@@ -348,7 +349,7 @@ func (a *ChannelAdapter) classify(ctx context.Context, page *fbdomain.Page, ec *
 		if markErr := a.d.Contacts.MarkUnreachable(ctx, ec.ContactID, string(failure)); markErr != nil {
 			log.Printf("[facebook] contact %s not marked unreachable: %v", ec.ContactID, markErr)
 		}
-		return fmt.Errorf("this person can no longer receive messages from the page: %w", err)
+		return fmt.Errorf("this person can no longer receive messages from the page: %w", errors.Join(conversation.ErrRecipientUnreachable, err))
 	case fbdomain.FailureReauth, fbdomain.FailureRoleLost:
 		return fmt.Errorf("facebook page %s needs to be reconnected: %w", page.Name, err)
 	case fbdomain.FailurePageRestricted:

@@ -116,6 +116,7 @@ func newMediaSender(client conversation.WhatsAppClient, history conversation.Mes
 		HistoryManager:        history,
 		ConversationMediaRepo: mediaRepo,
 		MediaFetcher:          unguardedTestFetcher(),
+		MessageWindowRepo:     &answeredWindow{open: true},
 	}}
 }
 

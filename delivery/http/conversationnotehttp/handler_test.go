@@ -27,6 +27,8 @@ type fakeNotes struct {
 	draft     conversationnote.Draft
 	created   conversationnote.Authored
 	deleted   string
+	upload    conversationnote.ImageUpload
+	image     conversationnote.Image
 	err       error
 }
 
@@ -75,8 +77,8 @@ var sampleNote = conversationnote.Authored{
 func TestEveryNoteRouteIsGuardedByConversationsRead(t *testing.T) {
 	g := &guard{}
 	RegisterRoutes(mux.NewRouter(), NewHandler(&fakeNotes{}), g.ac)
-	if len(g.checked) != 3 {
-		t.Fatalf("guarded routes = %v, want 3", g.checked)
+	if len(g.checked) != 4 {
+		t.Fatalf("guarded routes = %v, want 4", g.checked)
 	}
 	for _, c := range g.checked {
 		if c != "conversations:read" {
@@ -129,7 +131,7 @@ func TestListRefusesUnreadableInput(t *testing.T) {
 		{"before is not a date", "/conversations/whatsapp/entry-1/notes?before=ontem", "invalid_before"},
 		{"limit is not a number", "/conversations/whatsapp/entry-1/notes?limit=muitos", "invalid_limit"},
 		{"limit below one", "/conversations/whatsapp/entry-1/notes?limit=0", "invalid_limit"},
-		{"unknown channel", "/conversations/sms/entry-1/notes", "invalid_entry_type"},
+		{"unknown channel", "/conversations/voice/entry-1/notes", "invalid_entry_type"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -211,4 +213,9 @@ func TestDomainRefusalsMapToStableCodes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (f *fakeNotes) AttachImage(_ context.Context, _ shared.Person, in conversationnote.ImageUpload) (conversationnote.Image, error) {
+	f.upload = in
+	return f.image, f.err
 }

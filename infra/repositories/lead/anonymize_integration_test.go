@@ -33,7 +33,7 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 	db, repo := collectionsDB(t)
 	db.Config.DisableForeignKeyConstraintWhenMigrating = true
 	if err := db.AutoMigrate(&schema.LeadMemory{}, &schema.WhatsAppCampaignEntry{}, &schema.UnofficialWhatsAppCampaignEntry{},
-		&schema.Call{}, &schema.WhatsAppTemplateSend{}, &schema.CallListItem{}, &schema.CustomerPortfolioEntry{}); err != nil {
+		&schema.Call{}, &schema.WhatsAppTemplateSend{}, &schema.CallListItem{}, &schema.CustomerPortfolioEntry{}, &schema.GoogleSheetRow{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	ws := uuid.NewString()
@@ -89,6 +89,8 @@ func newAnonymizationWorld(t *testing.T) anonymizationWorld {
 		" VALUES (?, ?, ?, ?, '5511987654321', 1, 'closed', 'mora com a filha', now(), now())", uuid.NewString(), ws, uuid.NewString(), w.maria.ID).Error)
 	must(db.Exec("INSERT INTO customer_portfolio_entries (id, workspace_id, holder_id, lead_id, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())",
 		uuid.NewString(), ws, uuid.NewString(), w.maria.ID).Error)
+	must(db.Exec("INSERT INTO google_sheet_rows (id, workspace_id, sheet_id, idempotency_key, cells, sheet_version, origin_kind, lead_id, next_attempt_at, created_at)"+
+		" VALUES (?, ?, ?, 'k', '\\x00'::bytea, 1, 'agent', ?, now(), now())", uuid.NewString(), ws, uuid.NewString(), w.maria.ID).Error)
 	return w
 }
 
@@ -213,6 +215,9 @@ func TestAnonymizeErasesThePersonEverywhereAgainstPostgres(t *testing.T) {
 	}
 	if n := w.count(t, "SELECT count(*) FROM customer_portfolio_entries WHERE lead_id = ?", w.maria.ID); n != 0 {
 		t.Errorf("an anonymized person must leave every carteira, found %d entries", n)
+	}
+	if n := w.count(t, "SELECT count(*) FROM google_sheet_rows WHERE lead_id = ?", w.maria.ID); n != 0 {
+		t.Errorf("the rows kept for the Google Sheets of an anonymized person must be erased, found %d", n)
 	}
 }
 

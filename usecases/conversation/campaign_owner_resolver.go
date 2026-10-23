@@ -98,12 +98,11 @@ func (r *campaignWorkspaceResolver) GetEntryWorkspaceID(entryID, entryType strin
 }
 
 func (r *campaignWorkspaceResolver) GetEntryDepartmentID(entryID, entryType string) (string, error) {
-	campaignID, err := r.GetEntryCampaignID(entryID, entryType)
-	if err != nil {
-		return "", err
-	}
-
 	if entryType == string(shared.EntryTypeWhatsApp) {
+		campaignID, err := r.GetEntryCampaignID(entryID, entryType)
+		if err != nil {
+			return "", err
+		}
 		return r.GetCampaignDepartmentID(campaignID, string(shared.EntryTypeWhatsApp))
 	}
 	if resolver, ok := r.resolverFor(entryType); ok {

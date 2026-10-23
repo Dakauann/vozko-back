@@ -18,7 +18,7 @@ func viewerIs(person shared.Person) func(context.Context) (shared.Person, bool) 
 
 func sandboxNodeWorkflow(node workflow.Node) *workflow.Workflow {
 	return createTestWorkflow("wf1", "ws1", []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		node,
 		{ID: "end", Type: workflow.NodeTypeEnd},
 	}, []workflow.Edge{

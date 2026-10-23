@@ -19,6 +19,8 @@ func RegisterRoutes(
 		ac(cv, workspace_domain.ActionRead, h.List)).Methods(http.MethodGet)
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/notes",
 		ac(cv, workspace_domain.ActionRead, h.Create)).Methods(http.MethodPost)
+	protected.HandleFunc("/conversations/{entryType}/{entryId}/notes/images",
+		ac(cv, workspace_domain.ActionRead, h.AttachImage)).Methods(http.MethodPost)
 	protected.HandleFunc("/conversation-notes/{id}",
 		ac(cv, workspace_domain.ActionRead, h.Delete)).Methods(http.MethodDelete)
 }

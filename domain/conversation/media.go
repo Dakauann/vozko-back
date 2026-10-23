@@ -19,6 +19,7 @@ type ConversationMedia struct {
 	DurationSeconds  *int             `json:"durationSeconds,omitempty"`
 	WhatsAppMediaID  string           `json:"whatsappMediaId,omitempty"`
 	Layout           MediaLayout      `json:"layout"`
+	Purpose          MediaPurpose     `json:"-"`
 	CreatedAt        time.Time        `json:"createdAt"`
 }
 
@@ -46,6 +47,7 @@ type StoreMediaInput struct {
 	Data             []byte
 	OriginalFilename string
 	WhatsAppMediaID  string
+	Purpose          MediaPurpose
 }
 
 type MediaStore interface {
@@ -78,6 +80,9 @@ func (m *ConversationMedia) Normalize() {
 	m.URL = strings.TrimSpace(m.URL)
 	m.OriginalFilename = strings.TrimSpace(m.OriginalFilename)
 	m.WhatsAppMediaID = strings.TrimSpace(m.WhatsAppMediaID)
+	if m.Purpose == "" {
+		m.Purpose = MediaPurposeMessage
+	}
 }
 
 func (m *ConversationMedia) Validate() error {
@@ -96,10 +101,14 @@ func (m *ConversationMedia) Validate() error {
 	if m.URL == "" {
 		return ErrMediaURLRequired
 	}
+	if !m.Purpose.Valid() {
+		return ErrMediaPurposeInvalid
+	}
 	return nil
 }
 
 type ConversationMediaRepository interface {
+	EntryMediaReader
 	Create(media *ConversationMedia) error
 	GetByID(id string) (*ConversationMedia, error)
 	ListByIDs(ids []string) ([]*ConversationMedia, error)

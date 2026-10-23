@@ -254,8 +254,9 @@ func TestUnreachableCustomerIsMarked(t *testing.T) {
 	f := newAdapterFixture(t, false, time.Hour)
 	f.messaging.sendErrs = []error{&meta.Error{Code: meta.CodePermission, Subcode: meta.SubcodeCannotReceive}}
 
-	if _, err := f.adapter.SendText(context.Background(), f.ec, conversation.SendTextRequest{Body: "oi", HumanInitiated: true}); err == nil {
-		t.Fatal("an unreachable customer must fail the send")
+	_, err := f.adapter.SendText(context.Background(), f.ec, conversation.SendTextRequest{Body: "oi", HumanInitiated: true})
+	if !errors.Is(err, conversation.ErrRecipientUnreachable) {
+		t.Fatalf("err = %v, want the unreachable refusal", err)
 	}
 	if !f.contacts.byID[f.ec.ContactID].Unreachable {
 		t.Fatal("contact not marked unreachable")
@@ -423,5 +424,17 @@ func TestAFailedCaptionSendsNoAttachment(t *testing.T) {
 	}
 	if len(f.messaging.sent) != 1 {
 		t.Fatalf("sends = %d, want only the failed caption", len(f.messaging.sent))
+	}
+}
+
+func TestTheMessengerOutcomeNamesOnlyTheOptionsThatFit(t *testing.T) {
+	f := newAdapterFixture(t, false, time.Hour)
+	options := []conversation.InteractiveOption{{ID: "a", Title: "A"}, {ID: "", Title: "Sem id"}, {ID: "b", Title: "B"}}
+	out, err := f.adapter.SendInteractive(context.Background(), f.ec, conversation.SendInteractiveRequest{Body: "Escolha", Options: options, Style: channel.InteractiveStyleButtons})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ShownOptionIDs) != 2 || out.ShownOptionIDs[0] != "a" || out.ShownOptionIDs[1] != "b" {
+		t.Fatalf("shown = %v", out.ShownOptionIDs)
 	}
 }

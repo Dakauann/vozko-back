@@ -10,7 +10,7 @@ import (
 
 type templateSenderStub struct{ calls []string }
 
-func (s *templateSenderStub) SendTemplate(entryID, entryType, templateID string, parameters []string, userID string, workspaceID string) (string, error) {
+func (s *templateSenderStub) SendTemplate(entryID, entryType, templateID string, parameters, headerParameters []string, userID string, workspaceID string) (string, error) {
 	s.calls = append(s.calls, userID+"|"+workspaceID+"|"+entryID+"|"+templateID)
 	return "msg-1", nil
 }

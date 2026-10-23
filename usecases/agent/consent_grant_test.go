@@ -72,8 +72,8 @@ func agentFixture(checker workspace.PermissionChecker) (agent.CreateAgentUseCase
 	create := NewCreateAgentUseCase(store, nil, consentRegistry{}, nil, nil)
 	update := NewUpdateAgentUseCase(store, nil, consentRegistry{}, nil, nil)
 	if checker != nil {
-		create.(ConsentGrantGuarded).GuardConsentGrants(checker)
-		update.(ConsentGrantGuarded).GuardConsentGrants(checker)
+		create.(ToolBindingGuarded).GuardToolBindings(checker)
+		update.(ToolBindingGuarded).GuardToolBindings(checker)
 	}
 	return create, update, store
 }

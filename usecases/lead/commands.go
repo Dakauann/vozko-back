@@ -12,6 +12,7 @@ import (
 
 	"vozko/domain/actor"
 	"vozko/domain/conversation"
+	"vozko/domain/emailhygiene"
 	"vozko/domain/lead"
 	"vozko/domain/leadcompany"
 	"vozko/domain/recordevent"
@@ -57,6 +58,7 @@ type CommandDeps struct {
 	Anonymizer  lead.Anonymizer
 	Memberships lead.MembershipStore
 	Companies   leadcompany.Reader
+	EmailsSeen  emailhygiene.AddressSeen
 	Now         func() time.Time
 	NewID       func() string
 }
@@ -87,6 +89,7 @@ func NewCommands(deps CommandDeps) (*Commands, error) {
 		"anonymizer":   deps.Anonymizer == nil,
 		"memberships":  deps.Memberships == nil,
 		"companies":    deps.Companies == nil,
+		"emails seen":  deps.EmailsSeen == nil,
 	}
 	for name, absent := range missing {
 		if absent {
@@ -114,7 +117,7 @@ func NewCommands(deps CommandDeps) (*Commands, error) {
 	return &Commands{
 		deps:    deps,
 		consent: consent,
-		writer:  recordWriter{store: deps.Store, notifier: deps.Notifier},
+		writer:  recordWriter{store: deps.Store, notifier: deps.Notifier, emailsSeen: deps.EmailsSeen},
 		viewers: viewers{permissions: deps.Permissions, definitions: deps.Definitions},
 		blocker: blocker,
 		reach:   reach,
@@ -154,7 +157,7 @@ func (c *Commands) Create(ctx context.Context, a Actor, d lead.Draft) (CreateRes
 	if err := c.deps.Store.Insert(ctx, created, []recordevent.Event{event}); err != nil {
 		return CreateResult{}, err
 	}
-	c.writer.notify(created, event.Fields())
+	c.writer.notify(ctx, created, event.Fields())
 	return CreateResult{Lead: created.VisibleTo(v, event.Fields()), Duplicates: duplicates}, nil
 }
 
@@ -230,7 +233,7 @@ func (c *Commands) edit(ctx context.Context, a Actor, id string, expected *int64
 		}
 		return nil, err
 	}
-	c.writer.notify(&next, event.Fields())
+	c.writer.notify(ctx, &next, event.Fields())
 	return next.VisibleTo(v, sent), nil
 }
 

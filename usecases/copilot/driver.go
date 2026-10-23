@@ -51,17 +51,19 @@ type Driver struct {
 	reattach   func(copilot.Context) copilot.Context
 	adopt      func(projectID string) error
 	checkpoint func(text string) error
+	viewNote   string
 }
 
 const msgProjectUnbound = "o projeto foi criado, mas esta conversa não pôde ser ligada a ele agora, então o editor não entrou nesta resposta. " +
 	"Avise o usuário que o projeto está no cartão e que ele pode abrir a Elo de dentro do projeto"
 
 func (d *Driver) show(view copilot.View) bool {
-	if !view.OnStudio() || view.Validate() != nil || d.cc.View == view {
+	if !view.OnEditor() || view.Validate() != nil || d.cc.View == view {
 		return false
 	}
 	d.cc.View = view
 	d.state = nil
+	d.viewNote = ""
 	if d.reattach != nil {
 		d.cc = d.reattach(d.cc)
 	}
@@ -138,7 +140,31 @@ func (d *Driver) SystemPrompt() string {
 }
 
 func (d *Driver) Reground(iter, maxIter, noMutationStreak int) string {
-	return "OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta): use ferramentas quando úteis; conclua respondendo ao usuário." + workspacePrompt(d.state)
+	return "OBSERVAÇÃO DO SISTEMA (não é uma nova pergunta): use ferramentas quando úteis; conclua respondendo ao usuário." + workspacePrompt(d.state) + d.viewNote
+}
+
+func (d *Driver) watcher() (copilot.SurfaceWatch, bool) {
+	for _, tool := range d.registry.Tools() {
+		watch, ok := tool.(copilot.SurfaceWatch)
+		if ok && d.cc.View.Offers(tool) && d.permitTool(tool) == nil {
+			return watch, true
+		}
+	}
+	return nil, false
+}
+
+func (d *Driver) observeView(ctx context.Context) {
+	if watch, ok := d.watcher(); ok {
+		d.viewNote = watch.ViewSnapshot(ctx, d.cc)
+	}
+}
+
+func (d *Driver) ClosingNote(ctx context.Context, reply string) string {
+	watch, ok := d.watcher()
+	if !ok {
+		return ""
+	}
+	return watch.ClosingNote(ctx, d.cc, reply)
 }
 
 func (d *Driver) Refresh()                   {}

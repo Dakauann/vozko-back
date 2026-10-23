@@ -3,6 +3,8 @@ package whatsapp_outreach
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,7 +71,7 @@ func (f *fakeCampaignSends) Record(leadID, _, _ string) error {
 func (f *fakeCampaignSends) GetLastSendTime(string, string) (*time.Time, error) {
 	return f.lastSent, f.err
 }
-func (f *fakeCampaignSends) GetLastSendTimesBatch([]string, string) (map[string]time.Time, error) {
+func (f *fakeCampaignSends) GetLastSendTimesBatch(context.Context, []string, string) (map[string]time.Time, error) {
 	return nil, nil
 }
 
@@ -367,5 +369,31 @@ func TestConversationTemplate_UnknownOutcomeIsNamed(t *testing.T) {
 	}
 	if !errors.Is(err, upstream) {
 		t.Fatal("the provider's own error must stay in the chain")
+	}
+}
+
+func TestConversationTemplate_AHeaderVariableGoesInTheHeaderAndTheHistory(t *testing.T) {
+	f := newConversationUC(t, func(d *Deps) {
+		d.Templates = &fakeTemplates{tmpl: &template.Template{
+			ID: "tpl-1", Name: "aviso", Language: "pt_BR", WABAId: "waba-1",
+			Category: template.TemplateCategoryUtility, Status: template.TemplateStatusApproved,
+			Components: []template.TemplateComponent{{Type: "HEADER", Format: "TEXT", Text: "Loja {{1}}"}, {Type: "BODY", Text: "Oi {{1}}, tudo certo?"}},
+		}}
+	})
+	in := conversationInput()
+	in.HeaderParams = []string{"Prisma"}
+	if _, err := f.uc.Send(context.Background(), in); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if got := f.sender.lastIn; len(got.HeaderParams) != 1 || got.HeaderParams[0] != "Prisma" || got.BodyParams[0] != "Ana" {
+		t.Fatalf("billed input = %+v", got)
+	}
+	record := f.history.records[0]
+	if record.Text != "Oi Ana, tudo certo?" || !strings.Contains(string(record.Metadata), "Loja Prisma") {
+		t.Fatalf("history = %q %s", record.Text, record.Metadata)
+	}
+	stored, _ := f.entries.metadata["template_info"].(map[string]interface{})
+	if stored == nil || !strings.Contains(fmt.Sprint(stored["components"]), "Loja Prisma") {
+		t.Fatalf("stored template info = %+v", f.entries.metadata)
 	}
 }

@@ -18,6 +18,7 @@ func RegisterProtectedRoutes(
 	protected.HandleFunc("/whatsapp/templates/{id}", ac(wt, workspace_domain.ActionRead, h.Get)).Methods(http.MethodGet)
 
 	protected.HandleFunc("/whatsapp/templates", ac(wt, workspace_domain.ActionCreate, h.CreateForWorkspace)).Methods(http.MethodPost)
+	protected.HandleFunc("/whatsapp/templates/variable-names/check", ac(wt, workspace_domain.ActionCreate, h.CheckVariableNames)).Methods(http.MethodPost)
 	protected.HandleFunc("/whatsapp/templates/{id}", ac(wt, workspace_domain.ActionDelete, h.DeleteForWorkspace)).Methods(http.MethodDelete)
 	protected.HandleFunc("/whatsapp/templates/sync", ac(wt, workspace_domain.ActionUpdate, h.SyncForWorkspace)).Methods(http.MethodPost)
 	protected.HandleFunc("/whatsapp/templates/{id}/sync", ac(wt, workspace_domain.ActionUpdate, h.SyncOneForWorkspace)).Methods(http.MethodPost)

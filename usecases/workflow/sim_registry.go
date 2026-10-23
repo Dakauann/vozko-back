@@ -37,7 +37,8 @@ type SimSandbox struct {
 	WorkspaceID        string
 	LeadID             string
 	Messages           *simMessageRepo
-	Outbound           chan<- SimOutboundMessage
+	Outbound           func(SimOutboundMessage)
+	Window             *simMessageWindowRepo
 	Effects            *simEffects
 	RealCallsConfirmed func() bool
 }
@@ -60,11 +61,12 @@ func newSimulationRegistry(deps ExecutorDeps, box SimSandbox) *NodeExecutorRegis
 		LeadRepo:              &simLeadRepo{},
 		WhatsAppEntryRepo:     &simWhatsAppEntryRepo{leadID: box.LeadID},
 		BusinessPhoneRepo:     &simBusinessPhoneRepo{workspaceID: box.WorkspaceID},
-		MessageWindowRepo:     &simMessageWindowRepo{},
+		MessageWindowRepo:     box.window(),
 		WhatsAppClientFactory: simClients,
 		ToolRegistry:          deps.ToolRegistry,
 		TemplateRepo:          deps.TemplateRepo,
 		MediaRepo:             deps.MediaRepo,
+		MediaURLs:             deps.MediaURLs,
 		TemplateSends:         &simTemplateSends{client: simClients.client, templates: deps.TemplateRepo},
 		SubWorkflowRunner:     &simSubWorkflowRunner{},
 		SharedState:           deps.SharedState,
@@ -89,4 +91,11 @@ func newSimulationRegistry(deps ExecutorDeps, box SimSandbox) *NodeExecutorRegis
 		ConversationHandOff:   handOff,
 	})
 	return registry
+}
+
+func (box SimSandbox) window() *simMessageWindowRepo {
+	if box.Window == nil {
+		return newSimMessageWindow(box.LeadID, false)
+	}
+	return box.Window
 }

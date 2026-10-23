@@ -7,7 +7,7 @@ import (
 
 func TestEveryEntryKindTheReadModelProducesCanBeFiltered(t *testing.T) {
 	want := []EntryPointKind{EntryMessageReceived, EntryFirstMessage, EntryWebhook, EntryFormSubmitted, EntryAgentCall,
-		EntryCampaignSent, EntryStageAdded, EntryNoReply, EntryCallReceived, EntryManual, EntryLeadExit}
+		EntryStageAdded, EntryCallReceived, EntryLeadExit}
 	for _, kind := range want {
 		parsed, ok := ParseEntryPointKind(" " + string(kind) + " ")
 		if !ok || parsed != kind {
@@ -28,7 +28,6 @@ func TestAnEntryKindIsReachedByTheTriggersThatProduceIt(t *testing.T) {
 	cases := map[EntryPointKind][]TriggerType{
 		EntryWebhook:   {TriggerWebhook},
 		EntryAgentCall: {TriggerAgentCall},
-		EntryManual:    {TriggerManual},
 		EntryLeadExit:  nil,
 	}
 	for kind, want := range cases {

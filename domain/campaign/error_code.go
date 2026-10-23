@@ -13,8 +13,6 @@ var errorCodes = []struct {
 	{ErrSelectionEmpty, "send_selection_empty"},
 	{ErrSelectionOverCampaignCap, "send_selection_over_campaign_cap"},
 	{ErrSelectionTooLarge, "send_selection_too_large"},
-	{ErrHeaderVariableUnsupported, "send_header_variable_unsupported"},
-	{ErrNamedParametersUnsupported, "send_named_parameters_unsupported"},
 	{ErrUnaffordable, "unaffordable"},
 	{ErrOverMonthlyCap, "over_cap"},
 	{ErrFirstNInvalid, "send_first_n_invalid"},
@@ -41,6 +39,9 @@ var errorCodes = []struct {
 	{ErrAutomationUnavailable, "campaign_automation_unavailable"},
 	{ErrIdempotencyUnavailable, "campaign_idempotency_unavailable"},
 	{ErrLeadTargetsUnavailable, "campaign_lead_targets_unavailable"},
+	{ErrLaunchModeInvalid, "campaign_launch_mode_invalid"},
+	{ErrLaunchScheduleMissing, "campaign_launch_schedule_missing"},
+	{ErrSettingsNotApplied, "campaign_settings_not_applied"},
 }
 
 func ErrorCode(err error) string {

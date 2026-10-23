@@ -72,7 +72,7 @@ func TestTheVersionRepairNeverPublishesAPin(t *testing.T) {
 	if err := json.Unmarshal([]byte(draft), &g); err != nil {
 		t.Fatal(err)
 	}
-	stripped, _ := json.Marshal(workflow.StripPins(g))
+	stripped, _ := json.Marshal(workflow.StripDraftOnly(g))
 	mock.ExpectQuery(sqlOf(unpublishedRunningWorkflowsSQL)).WithArgs(workflowVersionRepairFirstKey, workflowVersionRepairBatch).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "type", "graph"}).AddRow("wf-a", "messages", draft))
 	mock.ExpectExec(sqlOf(insertFirstVersionSQL)).WithArgs(sqlmock.AnyArg(), "wf-a", "messages", string(stripped), workflow.GraphHash(&g)).
@@ -112,7 +112,7 @@ func TestTheVersionRepairAgainstPostgres(t *testing.T) {
 			t.Fatalf("fixture: %v", err)
 		}
 	}
-	graph := `{"nodes":[{"id":"t","type":"trigger_manual","position":{"x":0,"y":0},"config":{}}],"edges":[]}`
+	graph := `{"nodes":[{"id":"t","type":"trigger_message_received","position":{"x":0,"y":0},"config":{}}],"edges":[]}`
 	seed := func(status string, published interface{}, deleted bool) string {
 		id := uuid.NewString()
 		deletedAt := interface{}(nil)

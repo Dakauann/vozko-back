@@ -20,7 +20,7 @@ type AsaasServiceUseCases interface {
 	GetPaymentQrCode(paymentID string) (qrCode string, copyPaste string, err error)
 
 	GetPayment(paymentID string) (*AsaasPayment, error)
-	RefundPayment(paymentID string, amount int64, description string) error
+	RefundPayment(paymentID string, amountBRL float64, description string) error
 
 	ValidateWalletID(customerName string, customerDoc string, walletID string) error
 
@@ -228,14 +228,14 @@ func (s *AsaasService) GetPayment(paymentID string) (*AsaasPayment, error) {
 	return &payment, nil
 }
 
-func (s *AsaasService) RefundPayment(paymentID string, amount int64, description string) error {
+func (s *AsaasService) RefundPayment(paymentID string, amountBRL float64, description string) error {
 	if err := validateAsaasID(paymentID, "payment ID"); err != nil {
 		return err
 	}
 	refundUrl := fmt.Sprintf("%s/payments/%s/refund", s.endpoint, paymentID)
 
 	refundData := map[string]interface{}{
-		"value":       amount,
+		"value":       amountBRL,
 		"description": description,
 	}
 

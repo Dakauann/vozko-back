@@ -163,15 +163,16 @@ func (uc *startConversationUseCase) Execute(ctx context.Context, in wo.StartConv
 	}
 
 	d := delivery{
-		entry:       entry,
-		tmpl:        tmpl,
-		bodyParams:  in.BodyParams,
-		workspaceID: in.WorkspaceID,
-		userID:      in.UserID,
-		to:          leadRecord.Number,
-		leadID:      leadRecord.ID,
-		phoneID:     phone.ID,
-		campaignID:  campaign.ID,
+		entry:        entry,
+		tmpl:         tmpl,
+		bodyParams:   in.BodyParams,
+		headerParams: in.HeaderParams,
+		workspaceID:  in.WorkspaceID,
+		userID:       in.UserID,
+		to:           leadRecord.Number,
+		leadID:       leadRecord.ID,
+		phoneID:      phone.ID,
+		campaignID:   campaign.ID,
 	}
 	sendResult, err := uc.charge(ctx, d, template.BilledSendInput{
 		WorkspaceID:     in.WorkspaceID,

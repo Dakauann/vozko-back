@@ -226,9 +226,18 @@ func concurrentIndexes() []ddl {
 				WHERE trigger_data IS NOT NULL`,
 		},
 		{
+			name: WorkflowRunTriggerInputIndex,
+			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + WorkflowRunTriggerInputIndex + `
+				ON workflow_runs (workflow_id, trigger_type, started_at DESC)`,
+		},
+		{
 			name: WorkflowRunLogNodeIndex,
 			sql: `CREATE INDEX CONCURRENTLY IF NOT EXISTS ` + WorkflowRunLogNodeIndex + `
 				ON workflow_run_logs (run_id, node_id, executed_at DESC, id DESC)`,
+		},
+		{
+			name: LegacyRunStepTypeIndex,
+			sql:  legacyRunStepTypeIndexSQL(),
 		},
 	}, append(append(append(placeSearchIndexes(), leadSearchIndexes()...), messageSearchIndexes()...), messageClientRequestIndexes()...)...)
 }

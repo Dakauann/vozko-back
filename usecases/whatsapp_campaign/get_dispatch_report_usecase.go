@@ -144,7 +144,7 @@ func (t dispatchTargets) resolve(ctx context.Context, access wc.ReportAccess, pe
 	if err != nil {
 		return reportTarget{}, err
 	}
-	if campaign.WorkspaceID != access.WorkspaceID || !access.AllowDepartment(campaign.DepartmentID) {
+	if !access.AllowsCampaign(campaign) {
 		return reportTarget{}, wc.ErrCampaignAccessDenied
 	}
 	window, err := t.window(ctx, access.WorkspaceID, campaign.DepartmentID, period, maxDays)

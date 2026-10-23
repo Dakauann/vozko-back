@@ -136,7 +136,7 @@ func (c *Container) initServices() {
 		scheduledMsgQueuePub:       queue.NewRabbitMQQueuePub(amqpPool, scheduledMessageExchange),
 		scheduledMsgQueueSub:       queue.NewRabbitMQQueueSub(amqpPool, scheduledMessageExchange),
 		recordingQueueSub:          queue.NewRabbitMQQueueSub(amqpPool, recordingExchange),
-		googleCalendar:             google_calendar.NewService(c.cfg.GoogleOAuthClientID, c.cfg.GoogleOAuthClientSecret),
+		googleCalendar:             google_calendar.NewService(),
 	}
 
 	if c.cfg.WhatsAppAccessToken == "" || c.cfg.WhatsAppPhoneNumberID == "" {

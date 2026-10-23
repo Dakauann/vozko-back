@@ -4,18 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"vozko/delivery/http/httpx"
 	"vozko/delivery/http/response"
-	"vozko/domain/conversation"
-	user_domain "vozko/domain/user"
 	wo "vozko/domain/whatsapp_outreach"
 	"vozko/infra/http/middleware"
 )
 
 const idempotencyHeader = "Idempotency-Key"
 
-type DepartmentScopeResolver interface {
-	GetDepartmentScope(userID, workspaceID string, isAdmin bool) (conversation.DepartmentAccessScope, bool)
-}
+type DepartmentScopeResolver = httpx.DepartmentScopeResolver
 
 type Handler struct {
 	start       wo.StartOfficialConversationUseCase
@@ -34,35 +31,14 @@ func NewHandler(d HandlerDeps) *Handler {
 }
 
 func (h *Handler) scope(w http.ResponseWriter, r *http.Request) (workspaceID string, departmentIDs []string, isAdmin bool, ok bool) {
-	workspaceID = middleware.GetWorkspaceID(r)
-	if workspaceID == "" {
-		response.WriteErrorWithCode(w, http.StatusForbidden, "workspace_required", "workspace is required", nil)
+	scope, ok := httpx.RequireSenderScope(w, r, h.departments)
+	if !ok {
 		return "", nil, false, false
 	}
-
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		response.WriteErrorWithCode(w, http.StatusForbidden, "forbidden", "you may not send from this workspace", nil)
-		return "", nil, false, false
+	if scope.Departments.Restrict {
+		departmentIDs = scope.Departments.DepartmentIDs
 	}
-	isAdmin = claims.Role == string(user_domain.RoleAdmin)
-
-	if h.departments == nil {
-		response.WriteErrorWithCode(w, http.StatusInternalServerError, "scope_unavailable",
-			"department scope is unavailable, refusing to send", nil)
-		return "", nil, false, false
-	}
-
-	resolved, allowed := h.departments.GetDepartmentScope(claims.UserID, workspaceID, isAdmin)
-	if !allowed {
-		response.WriteErrorWithCode(w, http.StatusForbidden, "forbidden",
-			"you do not have access to this workspace's conversations", nil)
-		return "", nil, false, false
-	}
-	if resolved.Restrict {
-		departmentIDs = resolved.DepartmentIDs
-	}
-	return workspaceID, departmentIDs, isAdmin, true
+	return scope.WorkspaceID, departmentIDs, scope.IsAdmin, true
 }
 
 // @Summary		Iniciar conversa no WhatsApp oficial enviando um modelo

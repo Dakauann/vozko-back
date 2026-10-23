@@ -6,6 +6,7 @@ import (
 
 	"vozko/delivery/http/response"
 	"vozko/domain/buttonaction"
+	"vozko/domain/workflow"
 )
 
 var refusalStatuses = []struct {
@@ -23,6 +24,7 @@ var refusalStatuses = []struct {
 	{buttonaction.ErrButtonActionStale, http.StatusUnprocessableEntity},
 	{buttonaction.ErrExitRiskNotAcknowledged, http.StatusUnprocessableEntity},
 	{buttonaction.ErrMarketingNeedsExit, http.StatusUnprocessableEntity},
+	{workflow.ErrWorkflowNeedsMessageTrigger, http.StatusUnprocessableEntity},
 	{buttonaction.ErrUnavailable, http.StatusServiceUnavailable},
 }
 

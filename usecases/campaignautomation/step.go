@@ -2,6 +2,7 @@ package campaignautomation
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"vozko/domain/agent"
@@ -42,6 +43,20 @@ func (r Rule) Check(entries []campaign.EntryMetadata) error {
 		return nil
 	}
 	return campaign.RequireAgentVars(r.agent, entries)
+}
+
+func (r Rule) Requires() bool {
+	return len(r.Missing(nil)) > 0
+}
+
+func (r Rule) Missing(metadata map[string]any) []string {
+	missing := campaign.MissingWorkflowVars(r.workflowKeys, metadata)
+	for _, key := range agent.MissingEntryMetadata(r.agent, metadata) {
+		if !slices.Contains(missing, key) {
+			missing = append(missing, key)
+		}
+	}
+	return missing
 }
 
 func (s *Step) Check(workspaceID string, a campaign.Automation, entries []campaign.EntryMetadata) error {

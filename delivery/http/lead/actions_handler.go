@@ -17,7 +17,6 @@ import (
 	"vozko/delivery/http/response"
 	"vozko/domain/advertising"
 	"vozko/domain/campaign"
-	"vozko/domain/crmfilter"
 	"vozko/domain/customfield"
 	leaddomain "vozko/domain/lead"
 	"vozko/domain/leadaction"
@@ -61,21 +60,10 @@ type LeadActionParams struct {
 	ConfirmCount    int                        `json:"confirmCount,omitempty" example:"120"`
 }
 
-type LeadSelectionRequest struct {
-	Mode          string            `json:"mode" example:"all_matching"`
-	IDs           []string          `json:"ids,omitempty"`
-	Filter        *crmfilter.Filter `json:"filter,omitempty"`
-	Sort          []crmfilter.Sort  `json:"sort,omitempty"`
-	Limit         int               `json:"limit,omitempty"`
-	ExcludeIDs    []string          `json:"excludeIds,omitempty"`
-	ExpectedCount int               `json:"expectedCount,omitempty"`
-	Fingerprint   string            `json:"fingerprint,omitempty"`
-}
-
 type LeadActionRequest struct {
-	Action    string               `json:"action" example:"classify"`
-	Params    LeadActionParams     `json:"params"`
-	Selection LeadSelectionRequest `json:"selection"`
+	Action    string                     `json:"action" example:"classify"`
+	Params    LeadActionParams           `json:"params"`
+	Selection httpx.LeadSelectionRequest `json:"selection"`
 }
 
 type LeadActionRunResponse struct {
@@ -143,11 +131,7 @@ func (req LeadActionRequest) toUseCase(a lead_usecase.Actor, r *http.Request) le
 			AdAccountID: p.AdAccountID, Name: p.Name, Description: p.Description, CallList: p.CallList, Send: p.Send.toDomain(),
 			Note: p.Note, ConfirmCount: p.ConfirmCount,
 		},
-		Selection: selection.Selection{
-			Mode: selection.Mode(strings.TrimSpace(req.Selection.Mode)), IDs: req.Selection.IDs, Filter: req.Selection.Filter,
-			Sort: req.Selection.Sort, Limit: req.Selection.Limit, ExcludeIDs: req.Selection.ExcludeIDs,
-			ExpectedCount: req.Selection.ExpectedCount, Fingerprint: req.Selection.Fingerprint,
-		},
+		Selection:      req.Selection.Selection(),
 		IdempotencyKey: strings.TrimSpace(r.Header.Get("Idempotency-Key")),
 		Locale:         httpx.RequestLocale(r),
 	}
@@ -202,7 +186,7 @@ func (h *LeadHandler) actionRequest(w http.ResponseWriter, r *http.Request) (lea
 }
 
 // @Summary		Prévia de uma ação em massa sobre leads
-// @Description	Conta a seleção (sem cache) e quantos leads a ação mudaria, por motivo de pulo, lendo a seleção em blocos de 5.000 ids. Ações: `classify` (params `key` e `value`; `null` limpa o campo; campo sensível exige `leads:read_sensitive`), `assign_owner` (`ownerId`, vazio remove o responsável), `block` (`blocked` e, opcional, `businessPhoneId` para bloquear também no WhatsApp), `export` (`format` csv, `addresses` e `sensitive` para as colunas de endereço completo e de campos sensíveis) e `meta_audience` (`adAccountId`, `name`, `description`; não aceita o modo first_n e recusa filtro em campo sensível). A seleção tem um modo: `ids` (até 5.000 escolhidos), `all_matching` (filtro não vazio, o mesmo filtro efetivo da lista, com a busca incluída), `first_n` (os primeiros `limit` pela ordem `sort`, com exclusões e, numa edição, os leads que já têm o valor pulados antes do limite) ou `everyone` (todos os leads do workspace). Não precisa de `fingerprint` nem de `expectedCount`: a resposta traz `fingerprint` e `expectedCount` para enviar em POST /leads/actions. Para `export` e `meta_audience` a prévia só conta a seleção uma vez (`selected`, sem leads bloqueados no público). Um bloqueio com `businessPhoneId` de número que o workspace não pode usar responde 422 `lead_action_phone_unavailable`. Responde 200 quando termina em até 3 segundos; senão responde 202 com a prévia em andamento e o resultado parcial, e o restante continua em segundo plano (consulte GET /leads/actions/previews/{previewId}). Exige as permissões da ação: `leads.bulk_edit` para classificar, `leads.bulk_edit` e `leads.assign` para atribuir, `leads.bulk_edit` e `leads.block` para bloquear, `leads.export` (mais `leads.read_addresses` e `leads.read_sensitive` conforme as colunas) para exportar e `leads.meta_audience` para o público e `call_lists.manage` para a lista de ligação. `send_template` e `send_unofficial` (params `send`: `name`, `departmentId` numa conta com departamentos, `split` para dividir acima de 150.000 leads, `bindings` com uma ligação por variável, cada uma `{source, value}` com `source` `literal` (e `value`), `lead.first_name`, `lead.name`, `lead.nickname`, `lead.district`, `lead.city`, `lead.owner_name` ou `lead.custom:<chave>` de campo não sensível; no oficial `businessPhoneId` e `templateId`, sem variável no cabeçalho nem variáveis nomeadas; no não oficial `instanceId`, `message`, `sendDelayMinMs`, `sendDelayMaxMs` e `dailyCap`) contam a seleção uma vez e respondem `send` com a cotação dos selecionados: `parts`, `splitRequired`, custo em micros de US$ com a moeda do saldo, `capRemaining`, `fits` e `refusal`, ou `dailyCap` e `estimatedDays` no não oficial; os motivos de pulo aparecem na revisão do disparo preparado. Exigem `leads.send_template` ou `leads.send_unofficial`. `restore_opt_out` ("Desfazer saída", exige `leads.consent`) conta quantos leads selecionados teriam a saída desfeita (`eligible`) e quantos seriam pulados, por motivo em `skipped`: `unchanged` (o lead não está com saída registrada), `gone` e `lead_opt_out_not_restorable` (a saída foi registrada por um operador, por Elo, por API, num pedido na conversa ou antes do registro de consentimento, ou é posterior a esta prévia). Só desfaz a saída atual registrada por automação: botão do modelo (`button_reply`), palavra de saída (`keyword`), agente de IA (`ai_agent`) ou fluxo (`workflow`). Na prévia, `note` e `confirmCount` podem faltar. Quando o limite de consultas analíticas está ocupado, responde 503 com Retry-After.
+// @Description	Conta a seleção (sem cache) e quantos leads a ação mudaria, por motivo de pulo, lendo a seleção em blocos de 5.000 ids. Ações: `classify` (params `key` e `value`; `null` limpa o campo; campo sensível exige `leads:read_sensitive`), `assign_owner` (`ownerId`, vazio remove o responsável), `block` (`blocked` e, opcional, `businessPhoneId` para bloquear também no WhatsApp), `export` (`format` csv, `addresses` e `sensitive` para as colunas de endereço completo e de campos sensíveis) e `meta_audience` (`adAccountId`, `name`, `description`; não aceita o modo first_n e recusa filtro em campo sensível). A seleção tem um modo: `ids` (até 5.000 escolhidos), `all_matching` (filtro não vazio, o mesmo filtro efetivo da lista, com a busca incluída), `first_n` (os primeiros `limit` pela ordem `sort`, com exclusões e, numa edição, os leads que já têm o valor pulados antes do limite) ou `everyone` (todos os leads do workspace). Não precisa de `fingerprint` nem de `expectedCount`: a resposta traz `fingerprint` e `expectedCount` para enviar em POST /leads/actions. Para `export` e `meta_audience` a prévia só conta a seleção uma vez (`selected`, sem leads bloqueados no público). Um bloqueio com `businessPhoneId` de número que o workspace não pode usar responde 422 `lead_action_phone_unavailable`. Responde 200 quando termina em até 3 segundos; senão responde 202 com a prévia em andamento e o resultado parcial, e o restante continua em segundo plano (consulte GET /leads/actions/previews/{previewId}). Exige as permissões da ação: `leads.bulk_edit` para classificar, `leads.bulk_edit` e `leads.assign` para atribuir, `leads.bulk_edit` e `leads.block` para bloquear, `leads.export` (mais `leads.read_addresses` e `leads.read_sensitive` conforme as colunas) para exportar e `leads.meta_audience` para o público e `call_lists.manage` para a lista de ligação. `send_template` e `send_unofficial` (params `send`: `name`, `departmentId` numa conta com departamentos, `split` para dividir acima de 150.000 leads, `bindings` com uma ligação por variável, cada uma `{source, value}` com `source` `literal` (e `value`), `lead.first_name`, `lead.name`, `lead.nickname`, `lead.district`, `lead.city`, `lead.owner_name` ou `lead.custom:<chave>` de campo não sensível; no oficial `businessPhoneId` e `templateId` (uma ligação por variável do modelo na ordem do envio: a variável do texto do cabeçalho primeiro, depois as do corpo na ordem em que aparecem, nomeadas ou numeradas); no não oficial `instanceId`, `message`, `sendDelayMinMs`, `sendDelayMaxMs` e `dailyCap`) contam a seleção uma vez e respondem `send` com a cotação dos selecionados: `parts`, `splitRequired`, custo em micros de US$ com a moeda do saldo, `capRemaining`, `fits` e `refusal`, ou `dailyCap` e `estimatedDays` no não oficial; os motivos de pulo aparecem na revisão do disparo preparado. Exigem `leads.send_template` ou `leads.send_unofficial`. `restore_opt_out` ("Desfazer saída", exige `leads.consent`) conta quantos leads selecionados teriam a saída desfeita (`eligible`) e quantos seriam pulados, por motivo em `skipped`: `unchanged` (o lead não está com saída registrada), `gone` e `lead_opt_out_not_restorable` (a saída foi registrada por um operador, por Elo, por API, num pedido na conversa ou antes do registro de consentimento, ou é posterior a esta prévia). Só desfaz a saída atual registrada por automação: botão do modelo (`button_reply`), palavra de saída (`keyword`), agente de IA (`ai_agent`) ou fluxo (`workflow`). Na prévia, `note` e `confirmCount` podem faltar. Quando o limite de consultas analíticas está ocupado, responde 503 com Retry-After.
 // @Tags			Leads
 // @Accept			json
 // @Produce		json

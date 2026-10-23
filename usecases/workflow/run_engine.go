@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"vozko/domain/choicestats"
 	"vozko/domain/metrics"
 	"vozko/domain/workflow"
 	"vozko/usecases/workflow/node_executors"
@@ -91,6 +92,7 @@ type RunEngine struct {
 	agentRunEnds   workflow.AgentRunFinishedPublisher
 	alerts         workflow.RuntimeAlertRecorder
 	gate           workflow.StepGate
+	choices        choicestats.Recorder
 }
 
 const runLockTTL = 5 * time.Minute
@@ -121,6 +123,10 @@ func (e *RunEngine) SetAutomationGate(gate workflow.AutomationGate) {
 
 func (e *RunEngine) SetMetrics(recorder metrics.WorkflowMetricsRecorder) {
 	e.metrics = recorder
+}
+
+func (e *RunEngine) SetChoiceRecorder(recorder choicestats.Recorder) {
+	e.choices = recorder
 }
 
 func (e *RunEngine) SetRunStatusReader(statuses workflow.RunStatusReader) {
@@ -505,7 +511,8 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				e.writeStep(run, ran)
 				return e.save(run)
 			}
-			if run.RetryCount < workflow.MaxRetriesPerNode && !workflow.InCall(runtime) {
+			permanent := workflow.IsPermanentRefusal(err)
+			if run.RetryCount < workflow.MaxRetriesPerNode && !workflow.InCall(runtime) && !permanent {
 				run.RetryCount++
 				delay := waitForRetry(run, run.RetryCount, workflow.WaitReasonRetry)
 				slog.Warn("workflow.engine.node_retrying", append(runLogAttrs(run, node.ID),
@@ -515,7 +522,7 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 				return e.save(run)
 			}
 			slog.Error("workflow.engine.node_failed", append(runLogAttrs(run, node.ID),
-				slog.Int("retry", run.RetryCount), slog.Bool("in_call", workflow.InCall(runtime)),
+				slog.Int("retry", run.RetryCount), slog.Bool("in_call", workflow.InCall(runtime)), slog.Bool("permanent", permanent),
 				slog.String("error", outbound.String(err.Error())))...)
 			run.SetError(err.Error())
 			e.writeStep(run, ran)
@@ -699,7 +706,7 @@ func (s step) failure() (string, []string, workflow.ErrorKind) {
 		if kind == "" {
 			kind = workflow.ClassifyError(s.err)
 		}
-		return s.err.Error(), workflow.ErrorChain(s.err), kind
+		return workflow.StepErrorMessage(kind, s.err.Error()), workflow.ErrorChain(s.err), kind
 	case s.message != "":
 		kind := s.kind
 		if kind == "" {
@@ -723,26 +730,27 @@ func stepRow(runID string, s step) *workflow.WorkflowRunLog {
 	message, chain, kind := s.failure()
 	started, finished := s.started, s.finished
 	return &workflow.WorkflowRunLog{
-		ID:         uuid.New().String(),
-		RunID:      runID,
-		NodeID:     s.nodeID,
-		NodeType:   s.nodeType,
-		Status:     s.status,
-		Input:      s.input,
-		Output:     s.output,
-		Error:      message,
-		ExecutedAt: time.Now().UTC(),
-		Attempt:    s.attempt,
-		StartedAt:  &started,
-		FinishedAt: &finished,
-		DurationMs: workflow.StepDuration(started, finished),
-		Branch:     s.branch,
-		ErrorKind:  kind,
-		ErrorChain: chain,
-		Stack:      s.trace.StackText(),
-		ScriptLogs: s.trace.Logs(),
-		HTTP:       s.trace.Exchanges(),
-		Pinned:     s.pinned,
+		ID:             uuid.New().String(),
+		RunID:          runID,
+		NodeID:         s.nodeID,
+		NodeType:       s.nodeType,
+		Status:         s.status,
+		Input:          s.input,
+		Output:         s.output,
+		Error:          message,
+		ExecutedAt:     time.Now().UTC(),
+		Attempt:        s.attempt,
+		StartedAt:      &started,
+		FinishedAt:     &finished,
+		DurationMs:     workflow.StepDuration(started, finished),
+		Branch:         s.branch,
+		ErrorKind:      kind,
+		ErrorChain:     chain,
+		Stack:          s.trace.StackText(),
+		ScriptLogs:     s.trace.Logs(),
+		HTTP:           s.trace.Exchanges(),
+		UnresolvedRefs: s.trace.Unresolved(),
+		Pinned:         s.pinned,
 	}
 }
 

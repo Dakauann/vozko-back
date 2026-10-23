@@ -208,7 +208,7 @@ func (c *Container) initHandlers() {
 		metrics:      metricsHandler,
 		metricsQuery: metricsQueryHandler,
 		whatsappCampaign: withCampaignAccess(c, handlers.NewWhatsAppCampaignHandler(
-			c.createWithWavePolicy(c.useCases.createWCCampaign, c.useCases.deleteWCCampaign),
+			c.officialCampaignCreate(),
 			c.useCases.updateWCCampaign,
 			c.useCases.assignWCCampaignDepartment,
 			c.useCases.deleteWCCampaign,
@@ -311,6 +311,7 @@ func (c *Container) initHandlers() {
 				h.SetDelegationService(c.automationDelegation(toggle))
 			}
 			h.SetToolCalls(c.listAIToolCalls())
+			h.SetEmailHTML(c.emailHTMLViewer())
 			return h
 		}(),
 		conversationWS: wsdelivery.NewConversationWSHandler(
@@ -542,6 +543,8 @@ func (c *Container) initHandlers() {
 			c.useCases.testWorkflowNode,
 			c.useCases.nodeCatalogFn,
 			workflow_usecase.NewNodePinsUseCase(c.useCases.scopedWorkflows, c.useCases.getWorkflowRun),
+			c.lastTriggerInput(),
+			c.workflowVariables(),
 		),
 		workflowWebhook: workflowwebhookhttp.NewHandler(
 			c.useCases.workflowWebhookConfig,
@@ -566,15 +569,9 @@ func (c *Container) initHandlers() {
 			c.useCases.deleteCalendarEvent,
 			c.useCases.getCalendarEvent,
 			c.useCases.listCalendarEvents,
-			c.useCases.connectGoogleCalendar,
-			c.useCases.disconnectGoogleCalendar,
-			c.useCases.getGoogleConnection,
-			c.useCases.getGoogleAuthURL,
 			c.useCases.startCalendarWatch,
 			c.useCases.stopCalendarWatch,
 			c.useCases.handleCalendarNotification,
-			c.cfg.GoogleOAuthClientID != "" && c.cfg.GoogleOAuthClientSecret != "",
-			c.cfg.AuthJWTSecret,
 		),
 		workspaceDepartment: workspacedepartmenthttp.NewWorkspaceDepartmentHandler(
 			c.useCases.createWorkspaceDepartment,
@@ -790,7 +787,7 @@ func (c *Container) newAuthHandler() *authhttp.AuthHandler {
 }
 
 func (c *Container) buildMercadoPagoWebhookHandler() *mercadopagohttp.WebhookHandler {
-	if c.cfg.PaymentProvider != payment_domain.ProviderMercadoPago {
+	if !c.reachablePaymentProviders()[payment_domain.ProviderMercadoPago] {
 		return nil
 	}
 	return mercadopagohttp.NewWebhookHandler(

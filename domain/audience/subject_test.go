@@ -13,7 +13,7 @@ func TestSourceValidFollowsTheAnalysisSets(t *testing.T) {
 			t.Errorf("%q should be an analysable source", s)
 		}
 	}
-	for _, s := range []Source{"sms", "voice", "", "Instagram", "messenger", "instagram "} {
+	for _, s := range []Source{"fax", "voice", "", "Instagram", "messenger", "instagram "} {
 		if s.Valid() {
 			t.Errorf("%q should not be an analysable source", s)
 		}
@@ -229,10 +229,10 @@ func TestConversationRequiresActionOnEscalate(t *testing.T) {
 func TestNewPendingRefusesImpossibleSubjects(t *testing.T) {
 	now := time.Now().UTC()
 	for name, ref := range map[string]ContainerRef{
-		"comment on telegram":     {Kind: SubjectKindComment, Source: SourceTelegram, AccountID: "a", ContainerID: "c"},
-		"conversation on voice":   {Kind: SubjectKindConversation, Source: "voice", AccountID: "a", ContainerID: "c"},
-		"conversation on sms": {Kind: SubjectKindConversation, Source: "sms", AccountID: "a", ContainerID: "c"},
-		"unknown channel":         {Kind: SubjectKindConversation, Source: "myspace", AccountID: "a", ContainerID: "c"},
+		"comment on telegram":   {Kind: SubjectKindComment, Source: SourceTelegram, AccountID: "a", ContainerID: "c"},
+		"conversation on voice": {Kind: SubjectKindConversation, Source: "voice", AccountID: "a", ContainerID: "c"},
+		"conversation on fax":   {Kind: SubjectKindConversation, Source: "fax", AccountID: "a", ContainerID: "c"},
+		"unknown channel":       {Kind: SubjectKindConversation, Source: "myspace", AccountID: "a", ContainerID: "c"},
 	} {
 		if _, err := NewPending(NewInput{
 			WorkspaceID: "ws", Container: ref, SubjectID: "x", Text: "hi", Now: now,

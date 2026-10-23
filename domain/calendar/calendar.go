@@ -1,9 +1,11 @@
 package calendar
 
 import (
+	"context"
 	"errors"
 	"time"
 
+	"vozko/domain/googleaccount"
 	"vozko/domain/shared"
 )
 
@@ -16,16 +18,23 @@ var (
 	ErrSlotConflict         = errors.New("the requested time slot is already occupied")
 )
 
-type GoogleCalendarConnection struct {
-	ID           string    `json:"id"`
-	WorkspaceID  string    `json:"workspaceId"`
-	Email        string    `json:"email"`
-	AccessToken  string    `json:"-"`
-	RefreshToken string    `json:"-"`
-	TokenExpiry  time.Time `json:"-"`
-	SyncToken    string    `json:"-"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+type AccessProvider interface {
+	CalendarAccess(ctx context.Context, workspaceID string) (googleaccount.Access, error)
+}
+
+type LegacyGoogleConnection struct {
+	ID           string
+	WorkspaceID  string
+	Email        string
+	AccessToken  string
+	RefreshToken string
+	TokenExpiry  time.Time
+	SyncToken    string
+}
+
+type LegacyConnectionStore interface {
+	ListLegacyConnections(ctx context.Context) ([]LegacyGoogleConnection, error)
+	RetireLegacyConnection(ctx context.Context, id string) error
 }
 
 type CalendarWatchChannel struct {
@@ -157,12 +166,6 @@ type ListEventsInput struct {
 	Pagination  shared.Pagination
 }
 
-type ConnectGoogleInput struct {
-	WorkspaceID string
-	Code        string
-	RedirectURI string
-}
-
 type Repository interface {
 	CreateEvent(event *CalendarEvent) error
 	UpdateEvent(eventID string, event *CalendarEvent) error
@@ -170,11 +173,8 @@ type Repository interface {
 	GetEvent(eventID, workspaceID string) (*CalendarEvent, error)
 	ListEvents(input ListEventsInput) (*shared.PaginatedResult[*CalendarEvent], error)
 
-	SaveConnection(conn *GoogleCalendarConnection) error
-	GetConnection(workspaceID string) (*GoogleCalendarConnection, error)
-	DeleteConnection(workspaceID string) error
-	UpdateConnectionTokens(id, accessToken, refreshToken string, expiry time.Time) error
-	UpdateConnectionSyncToken(id, syncToken string) error
+	GetSyncToken(workspaceID string) (string, error)
+	SaveSyncToken(workspaceID, syncToken string) error
 
 	SaveWatchChannel(ch *CalendarWatchChannel) error
 	GetWatchChannelByChannelID(channelID string) (*CalendarWatchChannel, error)
@@ -210,22 +210,6 @@ type ListEventsUseCase interface {
 	Execute(input ListEventsInput) (*shared.PaginatedResult[*CalendarEvent], error)
 }
 
-type ConnectGoogleUseCase interface {
-	Execute(input ConnectGoogleInput) (*GoogleCalendarConnection, error)
-}
-
-type DisconnectGoogleUseCase interface {
-	Execute(workspaceID string) error
-}
-
-type GetConnectionUseCase interface {
-	Execute(workspaceID string) (*GoogleCalendarConnection, error)
-}
-
-type GetAuthURLUseCase interface {
-	Execute(redirectURI, state string) string
-}
-
 type StartWatchUseCase interface {
 	Execute(workspaceID string) (*CalendarWatchChannel, error)
 }
@@ -242,13 +226,7 @@ type RenewExpiringChannelsUseCase interface {
 	Execute() (renewed int, err error)
 }
 
-type GoogleOAuthService interface {
-	GetAuthURL(redirectURI, state string) string
-	ExchangeCode(code, redirectURI string) (*OAuthTokenResponse, error)
-	RefreshAccessToken(refreshToken string) (*OAuthTokenResponse, error)
-	GetUserInfo(accessToken string) (*OAuthUserInfo, error)
-	RevokeToken(token string) error
-
+type GoogleCalendarAPI interface {
 	CreateGoogleEvent(accessToken string, event *CalendarEvent, createMeet bool, sendUpdates string) (googleEventID string, meetLink string, err error)
 	GetGoogleEvent(accessToken string, googleEventID string) (*CalendarEvent, error)
 	UpdateGoogleEvent(accessToken string, googleEventID string, event *CalendarEvent, sendUpdates string) error
@@ -270,16 +248,4 @@ type IncrementalSyncResult struct {
 	Events        []*CalendarEvent
 	NextSyncToken string
 	SyncExpired   bool
-}
-
-type OAuthTokenResponse struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresIn    int
-}
-
-type OAuthUserInfo struct {
-	Email   string
-	Name    string
-	Picture string
 }

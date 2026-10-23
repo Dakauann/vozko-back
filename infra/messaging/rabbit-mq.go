@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"vozko/domain/crm_telemetry"
 	"vozko/domain/messaging"
+	"vozko/domain/workflow"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -318,8 +320,11 @@ func NewRabbitMQQueueSub(
 }
 
 var prefetchByTopic = map[string]int{
-	"webhook.whatsapp.message": 20,
-	"notification.fanout":      8,
+	"webhook.whatsapp.message":     20,
+	"notification.fanout":          8,
+	workflow.TopicStageEntered:     workflow.StageEnteredWorkers,
+	workflow.TopicAgentRunFinished: workflow.AgentRunFinishedWorkers,
+	crm_telemetry.Topic:            crm_telemetry.ConsumerWorkers,
 }
 
 const defaultChannelPrefetch = 1

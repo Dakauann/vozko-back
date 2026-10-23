@@ -52,7 +52,7 @@ const (
 
 	importDeleteAllLinksSQL = "DELETE FROM lead_import_links WHERE import_id = ?"
 
-	importIssuesSQL = "SELECT seq, line, reason, field, rejected FROM lead_import_issues WHERE import_id = ? AND seq > ? ORDER BY seq LIMIT ?"
+	importIssuesSQL = "SELECT seq, line, reason, field, rejected, hint FROM lead_import_issues WHERE import_id = ? AND seq > ? ORDER BY seq LIMIT ?"
 
 	importUnusedSQL = "SELECT * FROM lead_imports WHERE workspace_id = ? AND requested_by = ?" +
 		" AND (status IN ('uploaded', 'analyzed') OR (status = 'failed' AND started_at IS NULL)) ORDER BY created_at LIMIT ?"
@@ -228,6 +228,7 @@ type issueRow struct {
 	Reason   string
 	Field    schema.OptionalText
 	Rejected bool
+	Hint     schema.OptionalText
 }
 
 func (s *Imports) Issues(ctx context.Context, importID string, after int64, limit int) ([]leadimport.IssueRow, error) {
@@ -242,7 +243,7 @@ func (s *Imports) Issues(ctx context.Context, importID string, after int64, limi
 	out := make([]leadimport.IssueRow, len(rows))
 	for i, row := range rows {
 		out[i] = leadimport.IssueRow{Seq: row.Seq, ImportIssue: lead.ImportIssue{
-			Line: row.Line, Reason: lead.RejectReason(row.Reason), Field: string(row.Field), Rejected: row.Rejected,
+			Line: row.Line, Reason: lead.RejectReason(row.Reason), Field: string(row.Field), Rejected: row.Rejected, Hint: string(row.Hint),
 		}}
 	}
 	return out, nil

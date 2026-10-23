@@ -26,6 +26,9 @@ func awaitingReplyFixtures(t *testing.T) *gorm.DB {
 		&schema.MercadoLivreConversation{},
 		&schema.TikTokConversation{},
 		&schema.UnofficialWhatsAppConversation{},
+		&schema.EmailConversation{},
+		&schema.RCSConversation{},
+		&schema.SMSConversation{},
 	)
 	var constraints []struct {
 		Table string `gorm:"column:table_name"`
@@ -52,6 +55,9 @@ var awaitingSeedColumns = map[shared.EntryType]string{
 	shared.EntryTypeUnofficialWhatsApp: `workspace_id, instance_id, contact_id`,
 	shared.EntryTypeMercadoLivre:       `workspace_id, account_id, contact_id`,
 	shared.EntryTypeTikTok:             `workspace_id, account_id, contact_id`,
+	shared.EntryTypeEmail:              `workspace_id, sender_id, contact_id`,
+	shared.EntryTypeRCS:                `workspace_id, sender_id, contact_id`,
+	shared.EntryTypeSMS:                `workspace_id, sender_id, contact_id`,
 }
 
 type awaitingSeed struct {
@@ -81,6 +87,8 @@ func seedAwaitingConversation(t *testing.T, db *gorm.DB, entryType shared.EntryT
 		extra, values = ", pack_key", ", '2000000001'"
 	case shared.EntryTypeTikTok:
 		extra, values = ", conversation_id", ", 'S:1:0:seed'"
+	case shared.EntryTypeEmail, shared.EntryTypeRCS, shared.EntryTypeSMS:
+		extra, values = ", created_at, updated_at", ", NOW(), NOW()"
 	}
 	uuids := strings.Repeat(", gen_random_uuid()", strings.Count(columns, ",")+1)
 	var customer, agent *time.Time

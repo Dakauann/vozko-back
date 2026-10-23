@@ -70,3 +70,14 @@ func TestAnOpenedEditorNeedsAStudioScreenAndTheOwner(t *testing.T) {
 		t.Fatalf("someone else's thread: status %d", w.Code)
 	}
 }
+
+func TestAnOpenedEmailDesignReachesTheRunningAnswer(t *testing.T) {
+	h, copilot := openedHandler("u1", openedProject)
+	_, release := runningAnswer(t, copilot)
+	defer close(release)
+	body := `{"view":{"surface":"email_design","projectId":"` + openedProject + `"},"mode":"edit"}`
+	w := call(h.ProjectOpened, turnRequest(context.Background(), http.MethodPost, "/chat/threads/th1/project-opened", "u1", body))
+	if w.Code != http.StatusAccepted || outcomeOf(t, w.Body) != string(copilot_usecase.OpenDelivered) {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+}

@@ -9,11 +9,12 @@ import (
 
 type handleNotificationUseCase struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewHandleNotificationUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) calendar.HandleNotificationUseCase {
-	return &handleNotificationUseCase{repo: repo, google: google}
+func NewHandleNotificationUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) calendar.HandleNotificationUseCase {
+	return &handleNotificationUseCase{repo: repo, google: google, access: access}
 }
 
 func (uc *handleNotificationUseCase) Execute(channelID, resourceID, token, resourceState string) error {
@@ -32,29 +33,29 @@ func (uc *handleNotificationUseCase) Execute(channelID, resourceID, token, resou
 		return fmt.Errorf("token mismatch for channel %s", channelID)
 	}
 
-	conn, err := uc.repo.GetConnection(ch.WorkspaceID)
-	if err != nil || conn == nil {
-		return fmt.Errorf("no google connection for workspace %s", ch.WorkspaceID)
-	}
-
-	accessToken, err := ensureValidToken(uc.google, uc.repo, conn)
+	accessToken, err := calendarToken(uc.access, ch.WorkspaceID)
 	if err != nil {
-		return fmt.Errorf("google auth: %w", err)
+		return err
 	}
 
-	if conn.SyncToken == "" {
+	syncToken, err := uc.repo.GetSyncToken(ch.WorkspaceID)
+	if err != nil {
+		return fmt.Errorf("read sync token: %w", err)
+	}
+
+	if syncToken == "" {
 		log.Printf("[calendar-watch] no sync token for workspace %s, performing full sync", ch.WorkspaceID)
-		return uc.fullSync(accessToken, conn)
+		return uc.fullSync(accessToken, ch.WorkspaceID)
 	}
 
-	result, err := uc.google.ListEventsIncremental(accessToken, conn.SyncToken)
+	result, err := uc.google.ListEventsIncremental(accessToken, syncToken)
 	if err != nil {
 		return fmt.Errorf("incremental sync: %w", err)
 	}
 
 	if result.SyncExpired {
 		log.Printf("[calendar-watch] sync token expired for workspace %s, performing full sync", ch.WorkspaceID)
-		return uc.fullSync(accessToken, conn)
+		return uc.fullSync(accessToken, ch.WorkspaceID)
 	}
 
 	for _, ev := range result.Events {
@@ -62,7 +63,7 @@ func (uc *handleNotificationUseCase) Execute(channelID, resourceID, token, resou
 	}
 
 	if result.NextSyncToken != "" {
-		if err := uc.repo.UpdateConnectionSyncToken(conn.ID, result.NextSyncToken); err != nil {
+		if err := uc.repo.SaveSyncToken(ch.WorkspaceID, result.NextSyncToken); err != nil {
 			log.Printf("[calendar-watch] failed to update sync token: %v", err)
 		}
 	}
@@ -120,7 +121,7 @@ func (uc *handleNotificationUseCase) processEventChange(workspaceID string, goog
 	}
 }
 
-func (uc *handleNotificationUseCase) fullSync(accessToken string, conn *calendar.GoogleCalendarConnection) error {
+func (uc *handleNotificationUseCase) fullSync(accessToken, workspaceID string) error {
 
 	result, err := uc.google.ListEventsIncremental(accessToken, "")
 	if err != nil {
@@ -130,7 +131,7 @@ func (uc *handleNotificationUseCase) fullSync(accessToken string, conn *calendar
 	}
 
 	if result.NextSyncToken != "" {
-		if err := uc.repo.UpdateConnectionSyncToken(conn.ID, result.NextSyncToken); err != nil {
+		if err := uc.repo.SaveSyncToken(workspaceID, result.NextSyncToken); err != nil {
 			log.Printf("[calendar-watch] failed to save sync token after full sync: %v", err)
 		}
 	}

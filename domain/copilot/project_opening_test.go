@@ -44,12 +44,12 @@ func TestAnUnusableCreatedProjectIsRefused(t *testing.T) {
 	}
 }
 
-func TestOnlyTheCreateCommandRunsWithoutAProject(t *testing.T) {
-	if ScreenCreateProject.NeedsProject() {
-		t.Fatal("creating a project is the one command that comes before any project")
+func TestOnlyAppCommandsRunWithoutAProject(t *testing.T) {
+	if ScreenCreateProject.NeedsProject() || ScreenOpenDesign.NeedsProject() {
+		t.Fatal("creating a project and opening a design come before any editor")
 	}
 	for _, name := range ScreenCommandNames() {
-		if name != ScreenCreateProject && !name.NeedsProject() {
+		if name != ScreenCreateProject && name != ScreenOpenDesign && !name.NeedsProject() {
 			t.Errorf("%s acts on the open project and must need one", name)
 		}
 	}

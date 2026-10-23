@@ -3,36 +3,34 @@ package tools_usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"vozko/domain/calendar"
+	"vozko/domain/googleaccount"
 	"vozko/domain/shared"
+	"vozko/domain/tools"
 )
 
+type testCalendarConnection struct {
+	Email       string
+	AccessToken string
+}
+
 type mockCalendarRepo struct {
-	conn   *calendar.GoogleCalendarConnection
-	getErr error
-
-	updatedTokenID          string
-	updatedTokenAccess      string
-	updatedTokenRefresh     string
-	updatedTokenExpiry      time.Time
-	updateConnectionCallCnt int
+	conn *testCalendarConnection
 }
 
-func (m *mockCalendarRepo) GetConnection(workspaceID string) (*calendar.GoogleCalendarConnection, error) {
-	return m.conn, m.getErr
+func (m *mockCalendarRepo) CalendarAccess(context.Context, string) (googleaccount.Access, error) {
+	if m.conn == nil {
+		return googleaccount.Access{}, fmt.Errorf("%w: %w", calendar.ErrGoogleNotConnected, googleaccount.ErrNotConnected)
+	}
+	return googleaccount.Access{Email: m.conn.Email, Token: m.conn.AccessToken}, nil
 }
 
-func (m *mockCalendarRepo) UpdateConnectionTokens(id, access, refresh string, expiry time.Time) error {
-	m.updateConnectionCallCnt++
-	m.updatedTokenID = id
-	m.updatedTokenAccess = access
-	m.updatedTokenRefresh = refresh
-	m.updatedTokenExpiry = expiry
-	return nil
-}
+func (m *mockCalendarRepo) GetSyncToken(string) (string, error) { return "", nil }
+func (m *mockCalendarRepo) SaveSyncToken(string, string) error  { return nil }
 
 func (m *mockCalendarRepo) CreateEvent(*calendar.CalendarEvent) error                { return nil }
 func (m *mockCalendarRepo) UpdateEvent(string, *calendar.CalendarEvent) error        { return nil }
@@ -41,9 +39,6 @@ func (m *mockCalendarRepo) GetEvent(string, string) (*calendar.CalendarEvent, er
 func (m *mockCalendarRepo) ListEvents(calendar.ListEventsInput) (*shared.PaginatedResult[*calendar.CalendarEvent], error) {
 	return nil, nil
 }
-func (m *mockCalendarRepo) SaveConnection(*calendar.GoogleCalendarConnection) error { return nil }
-func (m *mockCalendarRepo) DeleteConnection(string) error                           { return nil }
-func (m *mockCalendarRepo) UpdateConnectionSyncToken(string, string) error          { return nil }
 func (m *mockCalendarRepo) SaveWatchChannel(*calendar.CalendarWatchChannel) error   { return nil }
 func (m *mockCalendarRepo) GetWatchChannelByChannelID(string) (*calendar.CalendarWatchChannel, error) {
 	return nil, nil
@@ -69,24 +64,8 @@ type mockGoogleCalendarService struct {
 	createdEvent  *calendar.CalendarEvent
 	createdMeet   bool
 	sendUpdates   string
-	refreshResult *calendar.OAuthTokenResponse
-	refreshErr    error
 }
 
-func (m *mockGoogleCalendarService) GetAuthURL(string, string) string { return "" }
-func (m *mockGoogleCalendarService) ExchangeCode(string, string) (*calendar.OAuthTokenResponse, error) {
-	return nil, nil
-}
-func (m *mockGoogleCalendarService) RefreshAccessToken(string) (*calendar.OAuthTokenResponse, error) {
-	if m.refreshResult != nil {
-		return m.refreshResult, m.refreshErr
-	}
-	return &calendar.OAuthTokenResponse{AccessToken: "refreshed-token", ExpiresIn: 3600}, m.refreshErr
-}
-func (m *mockGoogleCalendarService) GetUserInfo(string) (*calendar.OAuthUserInfo, error) {
-	return nil, nil
-}
-func (m *mockGoogleCalendarService) RevokeToken(string) error { return nil }
 func (m *mockGoogleCalendarService) CreateGoogleEvent(accessToken string, event *calendar.CalendarEvent, createMeet bool, sendUpdates string) (string, string, error) {
 	m.createdEvent = event
 	m.createdMeet = createMeet
@@ -111,19 +90,20 @@ func (m *mockGoogleCalendarService) ListEventsIncremental(string, string) (*cale
 	return nil, nil
 }
 
-func validConn() *calendar.GoogleCalendarConnection {
-	return &calendar.GoogleCalendarConnection{
-		ID:           "conn-1",
-		WorkspaceID:  "ws-1",
-		Email:        "cal@workspace.com",
-		AccessToken:  "valid-token",
-		RefreshToken: "refresh-token",
-		TokenExpiry:  time.Now().Add(1 * time.Hour),
-	}
+func validConn() *testCalendarConnection {
+	return &testCalendarConnection{Email: "cal@workspace.com", AccessToken: "valid-token"}
+}
+
+func newAvailabilityTool(repo *mockCalendarRepo, google *mockGoogleCalendarService) tools.Handler {
+	return NewCheckCalendarAvailabilityToolUseCase(repo, google, repo)
+}
+
+func newScheduleMeetingTool(repo *mockCalendarRepo, google *mockGoogleCalendarService) tools.Handler {
+	return NewScheduleMeetingToolUseCase(repo, google, repo)
 }
 
 func TestCheckCalendarAvailability_Definition(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 	def := tool.Definition()
 
 	if def.Name != CheckCalendarAvailabilityToolName {
@@ -175,7 +155,7 @@ func TestCheckCalendarAvailability_Definition(t *testing.T) {
 
 func TestCheckCalendarAvailability_UsesConfiguredDefaults(t *testing.T) {
 	google := &mockGoogleCalendarService{}
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		google,
 	)
@@ -210,13 +190,13 @@ func TestCheckCalendarAvailability_UsesConfiguredDefaults(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_NilDeps_ReturnsNil(t *testing.T) {
-	if NewCheckCalendarAvailabilityToolUseCase(nil, nil) != nil {
+	if NewCheckCalendarAvailabilityToolUseCase(nil, nil, nil) != nil {
 		t.Fatal("expected nil handler when deps are nil")
 	}
 }
 
 func TestCheckCalendarAvailability_MissingWorkspaceID(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{}, map[string]interface{}{
 		"date_from": "2026-04-10T08:00:00-03:00",
@@ -230,7 +210,7 @@ func TestCheckCalendarAvailability_MissingWorkspaceID(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_NoGoogleConnection(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: nil}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: nil}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -246,7 +226,7 @@ func TestCheckCalendarAvailability_NoGoogleConnection(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_MissingDateFrom(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -260,7 +240,7 @@ func TestCheckCalendarAvailability_MissingDateFrom(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_InvalidTimezone(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -277,7 +257,7 @@ func TestCheckCalendarAvailability_InvalidTimezone(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_EmptyCalendar_AllSlotsFree(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{}},
 	)
@@ -317,7 +297,7 @@ func TestCheckCalendarAvailability_BusyEvents_SlotsReduced(t *testing.T) {
 	busyStart := time.Date(2026, 4, 10, 9, 0, 0, 0, loc)
 	busyEnd := time.Date(2026, 4, 10, 10, 0, 0, 0, loc)
 
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{
 			{StartTime: busyStart, EndTime: busyEnd, Transparency: "opaque"},
@@ -359,7 +339,7 @@ func TestCheckCalendarAvailability_TransparentEvents_Ignored(t *testing.T) {
 	transparentStart := time.Date(2026, 4, 10, 9, 0, 0, 0, loc)
 	transparentEnd := time.Date(2026, 4, 10, 10, 0, 0, 0, loc)
 
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{
 			{StartTime: transparentStart, EndTime: transparentEnd, Transparency: "transparent"},
@@ -392,7 +372,7 @@ func TestCheckCalendarAvailability_TransparentEvents_Ignored(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_DefaultDateTo_EndOfBusiness(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{}},
 	)
@@ -421,42 +401,9 @@ func TestCheckCalendarAvailability_DefaultDateTo_EndOfBusiness(t *testing.T) {
 	}
 }
 
-func TestCheckCalendarAvailability_TokenRefresh(t *testing.T) {
-	expiredConn := validConn()
-	expiredConn.TokenExpiry = time.Now().Add(-1 * time.Hour)
-
-	repo := &mockCalendarRepo{conn: expiredConn}
-	google := &mockGoogleCalendarService{
-		events:        []*calendar.CalendarEvent{},
-		refreshResult: &calendar.OAuthTokenResponse{AccessToken: "new-token", ExpiresIn: 3600},
-	}
-
-	tool := NewCheckCalendarAvailabilityToolUseCase(repo, google)
-
-	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
-		"__workspace_id": "ws-1",
-	}, map[string]interface{}{
-		"date_from": "2026-04-10T08:00:00-03:00",
-		"date_to":   "2026-04-10T09:00:00-03:00",
-		"timezone":  "America/Sao_Paulo",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if res.IsError {
-		t.Fatalf("expected success after token refresh, got error: %s", res.Result)
-	}
-
-	if repo.updateConnectionCallCnt != 1 {
-		t.Errorf("expected token update call, got %d calls", repo.updateConnectionCallCnt)
-	}
-	if repo.updatedTokenAccess != "new-token" {
-		t.Errorf("expected refreshed token to be saved, got %q", repo.updatedTokenAccess)
-	}
-}
 
 func TestCheckCalendarAvailability_DateToBeforeFrom(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -473,7 +420,7 @@ func TestCheckCalendarAvailability_DateToBeforeFrom(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_InvalidDateFromFormat(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{
 		"__workspace_id": "ws-1",
@@ -489,7 +436,7 @@ func TestCheckCalendarAvailability_InvalidDateFromFormat(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_ExecuteFallsBackToExecuteWithConfig(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
+	tool := newAvailabilityTool(&mockCalendarRepo{conn: validConn()}, &mockGoogleCalendarService{})
 
 	res, err := tool.Execute(context.Background(), map[string]interface{}{
 		"date_from": "2026-04-10T08:00:00-03:00",
@@ -503,7 +450,7 @@ func TestCheckCalendarAvailability_ExecuteFallsBackToExecuteWithConfig(t *testin
 }
 
 func TestCheckCalendarAvailability_DateOnlyFormat(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{}},
 	)
@@ -527,7 +474,7 @@ func TestCheckCalendarAvailability_DateOnlyFormat(t *testing.T) {
 func TestCheckCalendarAvailability_MultipleOverlappingBusy(t *testing.T) {
 	loc, _ := time.LoadLocation("America/Sao_Paulo")
 
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{
 			{StartTime: time.Date(2026, 4, 10, 9, 0, 0, 0, loc), EndTime: time.Date(2026, 4, 10, 10, 0, 0, 0, loc), Transparency: "opaque"},
@@ -561,7 +508,7 @@ func TestCheckCalendarAvailability_MultipleOverlappingBusy(t *testing.T) {
 }
 
 func TestCheckCalendarAvailability_ResultContainsCalendarEmail(t *testing.T) {
-	tool := NewCheckCalendarAvailabilityToolUseCase(
+	tool := newAvailabilityTool(
 		&mockCalendarRepo{conn: validConn()},
 		&mockGoogleCalendarService{events: []*calendar.CalendarEvent{}},
 	)

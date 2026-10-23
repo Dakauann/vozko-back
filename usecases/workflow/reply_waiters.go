@@ -1,11 +1,13 @@
 package workflow_usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"vozko/domain/choicestats"
 	"vozko/domain/workflow"
 )
 
@@ -53,6 +55,8 @@ func (w *ReplyWaiters) wake(run *workflow.WorkflowRun, wf *workflow.Workflow, ev
 
 	slog.Info("workflow.trigger.reply_wake", runLogAttrs(run, run.CurrentNodeID)...)
 
+	parked := wf.Graph.FindNode(run.CurrentNodeID)
+	promptKey := run.State.GetString(workflow.StateKeyChoicePrompt)
 	if err := AdvanceOnReply(run, wf, event.Data); err != nil {
 		if errors.Is(err, ErrInteractiveReplyUnhandled) {
 			slog.Info("workflow.trigger.interactive_reply_unhandled", runLogAttrs(run, run.CurrentNodeID)...)
@@ -72,8 +76,22 @@ func (w *ReplyWaiters) wake(run *workflow.WorkflowRun, wf *workflow.Workflow, ev
 		slog.Error("workflow.trigger.reply_wake_save_failed", append(runLogAttrs(run, run.CurrentNodeID), slog.String("error", err.Error()))...)
 		return
 	}
+	w.engine.recordChoiceClick(run, parked, promptKey, event.Data)
 
 	if err := w.engine.Execute(run, wf); err != nil {
 		slog.Error("workflow.trigger.engine_error", append(runLogAttrs(run, run.CurrentNodeID), slog.String("error", outbound.String(err.Error())))...)
 	}
+}
+
+func (e *RunEngine) recordChoiceClick(run *workflow.WorkflowRun, parked *workflow.Node, promptKey string, data map[string]interface{}) {
+	if e.choices == nil || parked == nil || !parked.Type.IsInteractivePrompt() || promptKey == "" {
+		return
+	}
+	selected, _ := data[workflow.DataKeySelectedOptionID].(string)
+	e.choices.RecordClick(context.Background(), choicestats.Click{
+		WorkspaceID: run.WorkspaceID,
+		PromptKey:   promptKey,
+		Option:      choicestats.ResponseOption(workflow.InteractiveOptionIDs(parked.Config), selected),
+		At:          time.Now().UTC(),
+	})
 }

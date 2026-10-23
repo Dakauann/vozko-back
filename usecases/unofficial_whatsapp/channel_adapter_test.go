@@ -440,3 +440,19 @@ func TestTheAdapterDeclaresWhatsAppEditAndDeleteWindows(t *testing.T) {
 		t.Errorf("WhatsApp lets a sender edit for 15 minutes, declared %v", uw.EditWindow)
 	}
 }
+
+func TestTheMenuOutcomeNamesOnlyTheRowsWhatsAppShows(t *testing.T) {
+	adapter, _, ec, _ := adapterFixture(t, nil)
+	options := make([]conversation.InteractiveOption, 0, uw.MaxListOptions+2)
+	for i := 0; i < uw.MaxListOptions+2; i++ {
+		options = append(options, conversation.InteractiveOption{ID: "opt" + string(rune('a'+i)), Title: "opção"})
+	}
+	out, err := adapter.(conversation.InteractiveAdapter).SendInteractive(context.Background(), ec,
+		conversation.SendInteractiveRequest{Body: "escolha", Style: "list", Options: options})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ShownOptionIDs) != uw.MaxListOptions || out.ShownOptionIDs[0] != "opta" {
+		t.Fatalf("shown = %v, want the first %d rows", out.ShownOptionIDs, uw.MaxListOptions)
+	}
+}

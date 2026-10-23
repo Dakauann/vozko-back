@@ -1,16 +1,25 @@
 package calendar_usecase
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"vozko/domain/calendar"
+	"vozko/domain/googleaccount"
 	"vozko/domain/shared"
 )
 
+type testConnection struct {
+	Email       string
+	AccessToken string
+	SyncToken   string
+}
+
 type watchRepoMock struct {
-	connection       *calendar.GoogleCalendarConnection
+	connection       *testConnection
 	getConnErr       error
 	updatedSyncToken string
 
@@ -56,13 +65,22 @@ func (m *watchRepoMock) GetEvent(eventID, workspaceID string) (*calendar.Calenda
 func (m *watchRepoMock) ListEvents(input calendar.ListEventsInput) (*shared.PaginatedResult[*calendar.CalendarEvent], error) {
 	return nil, nil
 }
-func (m *watchRepoMock) SaveConnection(conn *calendar.GoogleCalendarConnection) error { return nil }
-func (m *watchRepoMock) GetConnection(workspaceID string) (*calendar.GoogleCalendarConnection, error) {
-	return m.connection, m.getConnErr
+func (m *watchRepoMock) CalendarAccess(_ context.Context, workspaceID string) (googleaccount.Access, error) {
+	if m.getConnErr != nil {
+		return googleaccount.Access{}, m.getConnErr
+	}
+	if m.connection == nil {
+		return googleaccount.Access{}, fmt.Errorf("%w: %w", calendar.ErrGoogleNotConnected, googleaccount.ErrNotConnected)
+	}
+	return googleaccount.Access{AccountID: "acct-1", Email: m.connection.Email, Token: m.connection.AccessToken}, nil
 }
-func (m *watchRepoMock) DeleteConnection(workspaceID string) error                     { return nil }
-func (m *watchRepoMock) UpdateConnectionTokens(id, at, rt string, exp time.Time) error { return nil }
-func (m *watchRepoMock) UpdateConnectionSyncToken(id, syncToken string) error {
+func (m *watchRepoMock) GetSyncToken(workspaceID string) (string, error) {
+	if m.connection == nil {
+		return "", nil
+	}
+	return m.connection.SyncToken, nil
+}
+func (m *watchRepoMock) SaveSyncToken(workspaceID, syncToken string) error {
 	m.updatedSyncToken = syncToken
 	return nil
 }
@@ -115,9 +133,6 @@ type watchGoogleMock struct {
 	incrementalErr    error
 	incrementalCalls  int
 
-	refreshResp *calendar.OAuthTokenResponse
-	refreshErr  error
-
 	getGoogleEventResult *calendar.CalendarEvent
 	getGoogleEventErr    error
 	gotGoogleEventID     string
@@ -131,20 +146,6 @@ type watchGoogleMock struct {
 	listGoogleEventsErr    error
 }
 
-func (m *watchGoogleMock) GetAuthURL(redirectURI, state string) string { return "" }
-func (m *watchGoogleMock) ExchangeCode(code, redirectURI string) (*calendar.OAuthTokenResponse, error) {
-	return nil, nil
-}
-func (m *watchGoogleMock) RefreshAccessToken(refreshToken string) (*calendar.OAuthTokenResponse, error) {
-	if m.refreshErr != nil {
-		return nil, m.refreshErr
-	}
-	return m.refreshResp, nil
-}
-func (m *watchGoogleMock) GetUserInfo(accessToken string) (*calendar.OAuthUserInfo, error) {
-	return nil, nil
-}
-func (m *watchGoogleMock) RevokeToken(token string) error { return nil }
 func (m *watchGoogleMock) CreateGoogleEvent(accessToken string, event *calendar.CalendarEvent, createMeet bool, sendUpdates string) (string, string, error) {
 	return "", "", nil
 }
@@ -198,16 +199,8 @@ func (m *startWatchMock) Execute(workspaceID string) (*calendar.CalendarWatchCha
 	return m.result, m.err
 }
 
-func validConnection() *calendar.GoogleCalendarConnection {
-	return &calendar.GoogleCalendarConnection{
-		ID:           "conn-1",
-		WorkspaceID:  "ws-1",
-		Email:        "user@example.com",
-		AccessToken:  "access-token",
-		RefreshToken: "refresh-token",
-		TokenExpiry:  time.Now().Add(2 * time.Hour),
-		SyncToken:    "sync-token-1",
-	}
+func validConnection() *testConnection {
+	return &testConnection{Email: "user@example.com", AccessToken: "access-token", SyncToken: "sync-token-1"}
 }
 
 func validWatchChannel() *calendar.CalendarWatchChannel {
@@ -224,7 +217,7 @@ func validWatchChannel() *calendar.CalendarWatchChannel {
 func TestHandleNotification_SyncAcknowledged(t *testing.T) {
 	repo := &watchRepoMock{}
 	google := &watchGoogleMock{}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute("ch-1", "res-1", "tok", "sync")
 	if err != nil {
@@ -239,7 +232,7 @@ func TestHandleNotification_SyncAcknowledged(t *testing.T) {
 func TestHandleNotification_UnknownChannel(t *testing.T) {
 	repo := &watchRepoMock{getChannelByIDErr: errors.New("not found")}
 	google := &watchGoogleMock{}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute("unknown-ch", "res-1", "tok", "exists")
 	if err == nil {
@@ -255,7 +248,7 @@ func TestHandleNotification_TokenMismatch(t *testing.T) {
 		connection:  validConnection(),
 	}
 	google := &watchGoogleMock{}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute(ch.ChannelID, ch.ResourceID, "wrong-token", "exists")
 	if err == nil {
@@ -286,7 +279,7 @@ func TestHandleNotification_CancelledEvent(t *testing.T) {
 			NextSyncToken: "sync-token-2",
 		},
 	}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute(ch.ChannelID, ch.ResourceID, ch.Token, "exists")
 	if err != nil {
@@ -333,7 +326,7 @@ func TestHandleNotification_UpdatedEvent(t *testing.T) {
 			NextSyncToken: "sync-token-3",
 		},
 	}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute(ch.ChannelID, ch.ResourceID, ch.Token, "exists")
 	if err != nil {
@@ -393,7 +386,7 @@ func TestHandleNotification_SyncTokenExpired_FullResync(t *testing.T) {
 	_ = google
 	_ = google2
 
-	uc := NewHandleNotificationUseCase(repo2, googleAdaptive)
+	uc := NewHandleNotificationUseCase(repo2, googleAdaptive, repo2)
 	err := uc.Execute(ch.ChannelID, ch.ResourceID, ch.Token, "exists")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -413,7 +406,7 @@ func TestHandleNotification_NoConnection(t *testing.T) {
 		connection:  nil,
 	}
 	google := &watchGoogleMock{}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute(ch.ChannelID, ch.ResourceID, ch.Token, "exists")
 	if err == nil {
@@ -438,7 +431,7 @@ func TestHandleNotification_ExternalEvent_NotImported(t *testing.T) {
 			NextSyncToken: "sync-token-4",
 		},
 	}
-	uc := NewHandleNotificationUseCase(repo, google)
+	uc := NewHandleNotificationUseCase(repo, google, repo)
 
 	err := uc.Execute(ch.ChannelID, ch.ResourceID, ch.Token, "exists")
 	if err != nil {
@@ -464,7 +457,7 @@ func TestStartWatch_Success(t *testing.T) {
 			Expiration: time.Now().Add(7 * 24 * time.Hour),
 		},
 	}
-	uc := NewStartWatchUseCase(repo, google)
+	uc := NewStartWatchUseCase(repo, google, repo)
 
 	ch, err := uc.Execute("ws-1")
 	if err != nil {
@@ -502,7 +495,7 @@ func TestStartWatch_StopsExistingChannel(t *testing.T) {
 			Expiration: time.Now().Add(7 * 24 * time.Hour),
 		},
 	}
-	uc := NewStartWatchUseCase(repo, google)
+	uc := NewStartWatchUseCase(repo, google, repo)
 
 	_, err := uc.Execute("ws-1")
 	if err != nil {
@@ -523,7 +516,7 @@ func TestStartWatch_StopsExistingChannel(t *testing.T) {
 func TestStartWatch_NoConnection(t *testing.T) {
 	repo := &watchRepoMock{connection: nil}
 	google := &watchGoogleMock{}
-	uc := NewStartWatchUseCase(repo, google)
+	uc := NewStartWatchUseCase(repo, google, repo)
 
 	_, err := uc.Execute("ws-1")
 	if err == nil {
@@ -541,7 +534,7 @@ func TestStartWatch_GoogleWatchFails(t *testing.T) {
 		channelByWorkspace: nil,
 	}
 	google := &watchGoogleMock{watchErr: errors.New("google API error")}
-	uc := NewStartWatchUseCase(repo, google)
+	uc := NewStartWatchUseCase(repo, google, repo)
 
 	_, err := uc.Execute("ws-1")
 	if err == nil {
@@ -567,7 +560,7 @@ func TestStartWatch_SaveChannelFails_Cleanup(t *testing.T) {
 			Expiration: time.Now().Add(7 * 24 * time.Hour),
 		},
 	}
-	uc := NewStartWatchUseCase(repo, google)
+	uc := NewStartWatchUseCase(repo, google, repo)
 
 	_, err := uc.Execute("ws-1")
 	if err == nil {
@@ -596,7 +589,7 @@ func TestStartWatch_SeedsSyncToken(t *testing.T) {
 			NextSyncToken: "seeded-sync-token",
 		},
 	}
-	uc := NewStartWatchUseCase(repo, google)
+	uc := NewStartWatchUseCase(repo, google, repo)
 
 	_, err := uc.Execute("ws-1")
 	if err != nil {
@@ -618,7 +611,7 @@ func TestStopWatch_Success(t *testing.T) {
 		connection:         conn,
 	}
 	google := &watchGoogleMock{}
-	uc := NewStopWatchUseCase(repo, google)
+	uc := NewStopWatchUseCase(repo, google, repo)
 
 	err := uc.Execute("ws-1")
 	if err != nil {
@@ -635,7 +628,7 @@ func TestStopWatch_Success(t *testing.T) {
 func TestStopWatch_NoExistingChannel(t *testing.T) {
 	repo := &watchRepoMock{channelByWorkspace: nil}
 	google := &watchGoogleMock{}
-	uc := NewStopWatchUseCase(repo, google)
+	uc := NewStopWatchUseCase(repo, google, repo)
 
 	err := uc.Execute("ws-1")
 	if err != nil {
@@ -653,7 +646,7 @@ func TestStopWatch_NoConnection_DeletesLocally(t *testing.T) {
 		connection:         nil,
 	}
 	google := &watchGoogleMock{}
-	uc := NewStopWatchUseCase(repo, google)
+	uc := NewStopWatchUseCase(repo, google, repo)
 
 	err := uc.Execute("ws-1")
 	if err != nil {
@@ -674,9 +667,8 @@ func TestRenewChannels_RenewsExpiring(t *testing.T) {
 			{ID: "ch-2", WorkspaceID: "ws-2"},
 		},
 	}
-	google := &watchGoogleMock{}
 	sw := &startWatchMock{result: validWatchChannel()}
-	uc := NewRenewExpiringChannelsUseCase(repo, google, sw)
+	uc := NewRenewExpiringChannelsUseCase(repo, sw)
 
 	renewed, err := uc.Execute()
 	if err != nil {
@@ -695,9 +687,8 @@ func TestRenewChannels_RenewsExpiring(t *testing.T) {
 
 func TestRenewChannels_NoExpiring(t *testing.T) {
 	repo := &watchRepoMock{expiringChannels: nil}
-	google := &watchGoogleMock{}
 	sw := &startWatchMock{}
-	uc := NewRenewExpiringChannelsUseCase(repo, google, sw)
+	uc := NewRenewExpiringChannelsUseCase(repo, sw)
 
 	renewed, err := uc.Execute()
 	if err != nil {
@@ -716,7 +707,6 @@ func TestRenewChannels_SkipsFailures(t *testing.T) {
 			{ID: "ch-3", WorkspaceID: "ws-3"},
 		},
 	}
-	google := &watchGoogleMock{}
 	sw := &startWatchMock{}
 
 	adaptiveSW := &adaptiveStartWatchMock{
@@ -726,7 +716,7 @@ func TestRenewChannels_SkipsFailures(t *testing.T) {
 			{ch: validWatchChannel(), err: nil},
 		},
 	}
-	uc := NewRenewExpiringChannelsUseCase(repo, google, adaptiveSW)
+	uc := NewRenewExpiringChannelsUseCase(repo, adaptiveSW)
 	_ = sw
 
 	renewed, err := uc.Execute()

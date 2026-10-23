@@ -62,21 +62,28 @@ type LeadImportSettingsResponse struct {
 }
 
 type LeadImportCountsResponse struct {
-	Rows             int            `json:"rows" example:"8214"`
-	Created          int            `json:"created" example:"4611"`
-	Enriched         int            `json:"enriched" example:"482"`
-	Unchanged        int            `json:"unchanged" example:"30"`
-	Skipped          int            `json:"skipped" example:"0"`
-	Rejected         int            `json:"rejected" example:"71"`
-	Conflicting      int            `json:"conflicting" example:"12"`
-	Blocked          int            `json:"blocked" example:"3"`
-	AddressesAdded   int            `json:"addressesAdded" example:"5000"`
-	AddressesLocated int            `json:"addressesLocated" example:"120"`
-	AddressesFilled  int            `json:"addressesFilled" example:"340"`
-	LinksPlanned     int            `json:"linksPlanned" example:"1130"`
-	LinksCreated     int            `json:"linksCreated" example:"1126"`
-	NoAddress        *int           `json:"noAddress,omitempty" example:"197"`
-	Issues           map[string]int `json:"issues"`
+	Rows             int                    `json:"rows" example:"8214"`
+	Created          int                    `json:"created" example:"4611"`
+	Enriched         int                    `json:"enriched" example:"482"`
+	Unchanged        int                    `json:"unchanged" example:"30"`
+	Skipped          int                    `json:"skipped" example:"0"`
+	Rejected         int                    `json:"rejected" example:"71"`
+	Conflicting      int                    `json:"conflicting" example:"12"`
+	Blocked          int                    `json:"blocked" example:"3"`
+	AddressesAdded   int                    `json:"addressesAdded" example:"5000"`
+	AddressesLocated int                    `json:"addressesLocated" example:"120"`
+	AddressesFilled  int                    `json:"addressesFilled" example:"340"`
+	LinksPlanned     int                    `json:"linksPlanned" example:"1130"`
+	LinksCreated     int                    `json:"linksCreated" example:"1126"`
+	NoAddress        *int                   `json:"noAddress,omitempty" example:"197"`
+	Issues           map[string]int         `json:"issues"`
+	Emails           map[string]int         `json:"emails"`
+	EmailFixable     LeadImportEmailFixable `json:"emailFixable"`
+}
+
+type LeadImportEmailFixable struct {
+	Typos         int `json:"typos" example:"12"`
+	Undeliverable int `json:"undeliverable" example:"40"`
 }
 
 type LeadImportSeedResponse struct {
@@ -103,6 +110,17 @@ type LeadImportSummaryResponse struct {
 	StartedAt   *string                   `json:"startedAt,omitempty"`
 	FinishedAt  *string                   `json:"finishedAt,omitempty"`
 	ExpiresAt   string                    `json:"expiresAt"`
+	EmailFixes  LeadImportEmailFixes      `json:"emailFixes"`
+}
+
+type LeadImportEmailFixes struct {
+	FixEmailTypos           bool `json:"fixEmailTypos"`
+	DropUndeliverableEmails bool `json:"dropUndeliverableEmails"`
+}
+
+type LeadImportStartRequest struct {
+	FixEmailTypos           bool `json:"fixEmailTypos"`
+	DropUndeliverableEmails bool `json:"dropUndeliverableEmails"`
 }
 
 type LeadImportPlacementResponse struct {
@@ -155,10 +173,16 @@ func countsResponse(c *leadimport.Counts) *LeadImportCountsResponse {
 	if issues == nil {
 		issues = map[string]int{}
 	}
+	fixable := c.EmailFixable()
+	emails := c.Emails
+	if emails == nil {
+		emails = map[string]int{}
+	}
 	return &LeadImportCountsResponse{
 		Rows: c.Rows, Created: c.Created, Enriched: c.Enriched, Unchanged: c.Unchanged, Skipped: c.Skipped, Rejected: c.Rejected,
 		Conflicting: c.Conflicting, Blocked: c.Blocked, AddressesAdded: c.AddressesAdded, AddressesLocated: c.AddressesLocated, AddressesFilled: c.AddressesFilled,
-		LinksPlanned: c.LinksPlanned, LinksCreated: c.LinksCreated, NoAddress: c.NoAddress, Issues: issues,
+		LinksPlanned: c.LinksPlanned, LinksCreated: c.LinksCreated, NoAddress: c.NoAddress, Issues: issues, Emails: emails,
+		EmailFixable: LeadImportEmailFixable{Typos: fixable.Typos, Undeliverable: fixable.Undeliverable},
 	}
 }
 
@@ -194,6 +218,7 @@ func toLeadImportSummary(j *leadimport.Job) LeadImportSummaryResponse {
 		TotalRows: j.TotalRows, Processed: j.Processed, FailureCode: string(j.FailureCode),
 		DryRun: countsResponse(j.DryRun), Result: countsResponse(j.Result), Seed: seedResponse(j.Seed),
 		CreatedAt: fmtRFC3339(j.CreatedAt), StartedAt: optionalTime(j.StartedAt), FinishedAt: optionalTime(j.FinishedAt), ExpiresAt: fmtRFC3339(j.ExpiresAt),
+		EmailFixes: LeadImportEmailFixes{FixEmailTypos: j.Grants.FixEmailTypos, DropUndeliverableEmails: j.Grants.DropUndeliverableEmails},
 	}
 }
 

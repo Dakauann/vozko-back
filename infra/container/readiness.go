@@ -81,6 +81,7 @@ func (c *Container) workspaceReadiness() readiness.SnapshotUseCase {
 			}), 0, access))
 	}
 	probes = append(probes, c.tiktokReadinessProbe(access))
+	probes = append(probes, c.emailReadinessProbe(access))
 	return readiness_usecase.NewSnapshotUseCase(readiness_usecase.SnapshotDeps{
 		Subscription: c.useCases.ensureActiveWorkspaceSubscription,
 		Balance:      c.services.cachedBalanceChecker,

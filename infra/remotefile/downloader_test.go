@@ -59,8 +59,8 @@ func TestADownloadOverTheLimitIsRefused(t *testing.T) {
 		_, _ = w.Write([]byte(strings.Repeat("x", 100)))
 	}))
 	defer server.Close()
-	if _, err := NewDownloader(server.Client()).Download(context.Background(), server.URL, 64); err == nil {
-		t.Fatal("a file over the limit must be refused")
+	if _, err := NewDownloader(server.Client()).Download(context.Background(), server.URL, 64); !errors.Is(err, media.ErrMediaTooLarge) {
+		t.Fatalf("err = %v, a file over the limit must be refused as too large", err)
 	}
 }
 

@@ -28,6 +28,9 @@ var awaitingReplyTables = []awaitingReplyTable{
 	{shared.EntryTypeWebchat, "webchat_conversations"},
 	{shared.EntryTypeMercadoLivre, "mercadolivre_conversations"},
 	{shared.EntryTypeTikTok, "tiktok_conversations"},
+	{shared.EntryTypeEmail, "email_conversations"},
+	{shared.EntryTypeRCS, "rcs_conversations"},
+	{shared.EntryTypeSMS, "sms_conversations"},
 	{shared.EntryTypeUnofficialWhatsApp, "unofficial_whatsapp_conversations"},
 }
 

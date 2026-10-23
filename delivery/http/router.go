@@ -10,6 +10,7 @@ import (
 	advertisinghttp "vozko/delivery/http/advertising"
 	affiliatehttp "vozko/delivery/http/affiliate"
 	analyticshttp "vozko/delivery/http/analytics"
+	apikeyshttp "vozko/delivery/http/apikeys"
 	attendancehttp "vozko/delivery/http/attendance"
 	audiencehttp "vozko/delivery/http/audience"
 	authhttp "vozko/delivery/http/auth"
@@ -22,10 +23,12 @@ import (
 	calllisthttp "vozko/delivery/http/calllist"
 	callrecordinghttp "vozko/delivery/http/callrecording"
 	callroutinghttp "vozko/delivery/http/callrouting"
+	campaignaudiencehttp "vozko/delivery/http/campaignaudiencehttp"
 	campaignexithttp "vozko/delivery/http/campaignexit"
 	campaignlaunchhttp "vozko/delivery/http/campaignlaunchhttp"
 	campaignreporthttp "vozko/delivery/http/campaignreport"
 	cephttp "vozko/delivery/http/cep"
+	choicestatshttp "vozko/delivery/http/choicestatshttp"
 	conversationhttp "vozko/delivery/http/conversation"
 	"vozko/delivery/http/conversationnotehttp"
 	crmboardhttp "vozko/delivery/http/crmboard"
@@ -33,8 +36,11 @@ import (
 	customerportfoliohttp "vozko/delivery/http/customerportfolio"
 	customfieldhttp "vozko/delivery/http/customfield"
 	dealautomationhttp "vozko/delivery/http/dealautomation"
+	"vozko/delivery/http/emailapihttp"
 	exporthttp "vozko/delivery/http/export"
 	facebookhttp "vozko/delivery/http/facebook"
+	googleaccounthttp "vozko/delivery/http/googleaccount"
+	googlesheethttp "vozko/delivery/http/googlesheet"
 	"vozko/delivery/http/handlers"
 	instagramhttp "vozko/delivery/http/instagram"
 	invoicehttp "vozko/delivery/http/invoice"
@@ -77,6 +83,7 @@ import (
 	whatsappoutreachhttp "vozko/delivery/http/whatsappoutreach"
 	whatsapptemplatehttp "vozko/delivery/http/whatsapptemplate"
 	workflowalerthttp "vozko/delivery/http/workflowalerthttp"
+	workflowrunexporthttp "vozko/delivery/http/workflowrunexporthttp"
 	workflowsecrethttp "vozko/delivery/http/workflowsecrethttp"
 	workflowwebhookhttp "vozko/delivery/http/workflowwebhook"
 	workspacehttp "vozko/delivery/http/workspace"
@@ -177,6 +184,14 @@ type router struct {
 	telegramHandler                *telegramhttp.Handler
 	mercadoLivre                   MercadoLivreRoutes
 	tiktok                         TikTokRoutes
+	email                          EmailRoutes
+	carrier                        CarrierRoutes
+	campaignDrafts                 CampaignDraftRoutes
+	google                         GoogleRoutes
+	apiKeys                        APIKeyRoutes
+	choiceStatsHandler             *choicestatshttp.Handler
+	workflowRunExportHandler       *workflowrunexporthttp.Handler
+	campaignAudienceHandler        *campaignaudiencehttp.Handler
 	sipTrunkHandler                *siptrunkhttp.Handler
 	callRoutingHandler             *callroutinghttp.Handler
 	telegramWebhookHandler         *telegramhttp.WebhookHandler
@@ -341,10 +356,26 @@ func NewRouter(
 	whatsappFormHandler *whatsappformhttp.Handler,
 	mercadoLivre MercadoLivreRoutes,
 	tiktok TikTokRoutes,
+	email EmailRoutes,
+	carrier CarrierRoutes,
+	google GoogleRoutes,
+	campaignAudienceHandler *campaignaudiencehttp.Handler,
+	apiKeys APIKeyRoutes,
+	choiceStatsHandler *choicestatshttp.Handler,
+	workflowRunExportHandler *workflowrunexporthttp.Handler,
+	campaignDrafts CampaignDraftRoutes,
 ) Router {
 	r := &router{
+		campaignDrafts:                 campaignDrafts,
+		workflowRunExportHandler:       workflowRunExportHandler,
+		apiKeys:                        apiKeys,
+		choiceStatsHandler:             choiceStatsHandler,
+		campaignAudienceHandler:        campaignAudienceHandler,
 		mercadoLivre:                   mercadoLivre,
 		tiktok:                         tiktok,
+		email:                          email,
+		carrier:                        carrier,
+		google:                         google,
 		conversationNoteHandler:        conversationNoteHandler,
 		teamChatHandler:                teamChatHandler,
 		whatsappFormHandler:            whatsappFormHandler,
@@ -449,7 +480,7 @@ func NewRouter(
 		rateLimiterMiddleware: middleware.NewRateLimiterMiddleware(rateLimiterFactory("global", 500, 60*time.Second)).
 			Named("global").WithMetrics(rateLimitMetrics).
 			WithUserIdentity(middleware.UserFromToken(verifier)).
-			SkipPathPrefixes("/webhooks/", "/health"),
+			SkipPathPrefixes("/webhooks/", "/health", emailapihttp.KeyRoutesPrefix),
 		cepRateLimiter:               middleware.NewRateLimiterMiddleware(rateLimiterFactory("cep", 20, 60*time.Second)).Named("cep").WithMetrics(rateLimitMetrics),
 		shortLinkRateLimiter:         middleware.NewRateLimiterMiddleware(rateLimiterFactory("shortlink_redirect", 120, 60*time.Second)).Named("shortlink_redirect").WithMetrics(rateLimitMetrics),
 		workflowWebhookRateLimiter:   middleware.NewRateLimiterMiddleware(rateLimiterFactory("wf_webhook", 120, 60*time.Second)).Named("wf_webhook").WithMetrics(rateLimitMetrics),
@@ -493,6 +524,7 @@ func (r *router) setupRoutes() {
 	r.setupReportPublicRoutes()
 	r.setupPublicAffiliateRoutes()
 	r.setupPublicMCPRoutes()
+	r.setupKeyRoutes()
 
 	protected := r.mux.PathPrefix("").Subrouter()
 	protected.Use(r.authMiddleware.Authenticate)
@@ -522,6 +554,13 @@ func (r *router) setupRoutes() {
 	mercadolivrehttp.RegisterProtectedRoutes(protected, r.mercadoLivre.Handler, r.ac)
 	mercadolivrehttp.RegisterCatalogRoutes(protected, r.mercadoLivre.Catalog, r.ac)
 	tiktokhttp.RegisterProtectedRoutes(protected, r.tiktok.Handler, r.ac)
+	googleaccounthttp.RegisterProtectedRoutes(protected, r.google.Accounts, r.ac)
+	googlesheethttp.RegisterProtectedRoutes(protected, r.google.Sheets, r.ac)
+	r.setupEmailProtectedRoutes(protected)
+	apikeyshttp.RegisterProtectedRoutes(protected, r.apiKeys.Handler, r.ac)
+	r.setupCarrierProtectedRoutes(protected)
+	r.setupCampaignDraftRoutes(protected)
+	campaignaudiencehttp.RegisterRoutes(protected, r.campaignAudienceHandler, r.ac)
 	siptrunkhttp.RegisterProtectedRoutes(protected, r.sipTrunkHandler, r.ac)
 	callroutinghttp.RegisterProtectedRoutes(protected, r.callRoutingHandler, r.ac)
 	calllisthttp.RegisterProtectedRoutes(protected, r.callListHandler, r.ac)
@@ -552,6 +591,8 @@ func (r *router) setupRoutes() {
 
 	r.setupAdminSystemConfigRoutes(adminRoutes)
 	r.setupAdminMetricsRoutes(adminRoutes)
+	r.setupEmailAdminRoutes(adminRoutes)
+	r.setupCarrierAdminRoutes(adminRoutes)
 
 	r.setupAdminWhatsAppTemplateRoutes(adminRoutes)
 	r.setupAdminWhatsAppBusinessPhoneRoutes(adminRoutes)
@@ -594,6 +635,7 @@ func (r *router) setupRoutes() {
 	r.setupWorkspaceRoutes(protected)
 	r.setupIssueRoutes(protected)
 	r.setupWorkflowRoutes(protected)
+	choicestatshttp.RegisterRoutes(protected, r.choiceStatsHandler, r.ac)
 	r.setupCalendarRoutes(protected)
 	r.setupDepartmentRoutes(protected)
 	r.setupAffiliateRoutes(protected)
@@ -719,6 +761,9 @@ func (r *router) setupWebhookRoutes() {
 	telegramhttp.RegisterPublicRoutes(r.mux, r.telegramWebhookHandler)
 	mercadolivrehttp.RegisterPublicRoutes(r.mux, r.mercadoLivre.Handler, r.mercadoLivre.Notifications)
 	tiktokhttp.RegisterPublicRoutes(r.mux, r.tiktok.Handler, r.tiktok.Webhook)
+	googleaccounthttp.RegisterPublicRoutes(r.mux, r.google.Accounts)
+	r.setupEmailPublicRoutes()
+	r.setupCarrierPublicRoutes()
 	unofficialwahttp.RegisterPublicRoutes(r.mux, r.unofficialWhatsAppWebhook)
 	webchathttp.RegisterPublicRoutes(r.mux, r.webchat.Public)
 	r.mux.HandleFunc("/webhooks/360dialog/messages", r.webhookHandler.HandleDialog360MessageWebhook).Methods(http.MethodGet, http.MethodPost)
@@ -1076,13 +1121,16 @@ func (r *router) setupWorkflowRoutes(protected *mux.Router) {
 	protected.HandleFunc("/workflows/{id}/versions/{version}", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.GetVersion)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/versions/{version}/restore", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.RestoreVersion)).Methods(http.MethodPost)
 	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/pin-from-run", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.PinFromRun)).Methods(http.MethodPost)
+	protected.HandleFunc("/workflows/{id}/triggers/{nodeId}/last-input", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.LastTriggerInput)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/runs", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.ListRuns)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/runs", r.ac(wf, workspace_domain.ActionCreate, r.workflowHandler.StartRun)).Methods(http.MethodPost)
 	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/analyze", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.AnalyzeNode)).Methods(http.MethodGet)
+	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/variables", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.NodeVariables)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflows/{id}/nodes/{nodeId}/test", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.TestNode)).Methods(http.MethodPost)
 	workflowwebhookhttp.RegisterRoutes(protected, r.workflowWebhookHandler, r.ac)
 	workflowsecrethttp.RegisterRoutes(protected, r.workflowSecretHandler, r.ac)
 	workflowalerthttp.RegisterRoutes(protected, r.workflowAlertHandler, r.ac)
+	workflowrunexporthttp.RegisterRoutes(protected, r.workflowRunExportHandler, r.ac)
 	protected.HandleFunc("/workflow-runs/{runId}", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.GetRun)).Methods(http.MethodGet)
 	protected.HandleFunc("/workflow-runs/{runId}/cancel", r.ac(wf, workspace_domain.ActionUpdate, r.workflowHandler.CancelRun)).Methods(http.MethodPost)
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/workflow-runs", r.ac(wf, workspace_domain.ActionRead, r.workflowHandler.ListConversationRuns)).Methods(http.MethodGet)

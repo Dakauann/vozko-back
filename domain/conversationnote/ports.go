@@ -24,6 +24,14 @@ type Repository interface {
 type Authored struct {
 	Note
 	AuthorName string
+	Images     []Image
+}
+
+type ImageUpload struct {
+	WorkspaceID string
+	Entry       shared.EntryRef
+	FileName    string
+	Data        []byte
 }
 
 type Page struct {
@@ -34,5 +42,6 @@ type Page struct {
 type UseCases interface {
 	List(ctx context.Context, by shared.Person, q PageQuery) (Page, error)
 	Create(ctx context.Context, by shared.Person, d Draft) (Authored, error)
+	AttachImage(ctx context.Context, by shared.Person, in ImageUpload) (Image, error)
 	Delete(ctx context.Context, by shared.Person, workspaceID, noteID string) error
 }

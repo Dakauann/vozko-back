@@ -1,0 +1,829 @@
+{
+  "base": {
+    "version": 1,
+    "settings": {
+      "width": 600,
+      "preheader": "Novidades"
+    },
+    "blocks": [
+      {
+        "id": "title",
+        "kind": "heading",
+        "heading": {
+          "text": "Oi",
+          "level": 1
+        }
+      },
+      {
+        "id": "intro",
+        "kind": "text",
+        "text": {
+          "paragraphs": [
+            {
+              "runs": [
+                {
+                  "text": "Texto"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "cols",
+        "kind": "columns",
+        "columns": {
+          "ratio": "50-50",
+          "columns": [
+            {
+              "blocks": [
+                {
+                  "id": "left",
+                  "kind": "heading",
+                  "heading": {
+                    "text": "Esquerda",
+                    "level": 2
+                  }
+                }
+              ]
+            },
+            {
+              "blocks": []
+            }
+          ]
+        }
+      },
+      {
+        "id": "footer",
+        "kind": "footer",
+        "footer": {
+          "company_name": "Loja Exemplo",
+          "address": "Rua A, 1"
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "add, set and move at the root",
+      "operations": [
+        {
+          "op": "add",
+          "kind": "button",
+          "ref": "cta",
+          "fields": {
+            "label": "Comprar",
+            "href": "https://loja.example.com"
+          },
+          "at": {
+            "after": "intro"
+          }
+        },
+        {
+          "op": "set",
+          "id": "@cta",
+          "fields": {
+            "full_width": true
+          }
+        },
+        {
+          "op": "move",
+          "id": "title",
+          "at": {
+            "before": "cols"
+          }
+        }
+      ],
+      "created": [
+        "button-a00000"
+      ],
+      "final": {
+        "version": 1,
+        "settings": {
+          "width": 600,
+          "preheader": "Novidades"
+        },
+        "blocks": [
+          {
+            "id": "intro",
+            "kind": "text",
+            "text": {
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Texto"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "button-a00000",
+            "kind": "button",
+            "button": {
+              "label": "Comprar",
+              "href": "https://loja.example.com",
+              "full_width": true
+            }
+          },
+          {
+            "id": "title",
+            "kind": "heading",
+            "heading": {
+              "text": "Oi",
+              "level": 1
+            }
+          },
+          {
+            "id": "cols",
+            "kind": "columns",
+            "columns": {
+              "ratio": "50-50",
+              "columns": [
+                {
+                  "blocks": [
+                    {
+                      "id": "left",
+                      "kind": "heading",
+                      "heading": {
+                        "text": "Esquerda",
+                        "level": 2
+                      }
+                    }
+                  ]
+                },
+                {
+                  "blocks": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "footer",
+            "kind": "footer",
+            "footer": {
+              "company_name": "Loja Exemplo",
+              "address": "Rua A, 1"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "add",
+          "focus": "button-a00000",
+          "order": [
+            "title",
+            "intro",
+            "button-a00000",
+            "cols",
+            "footer"
+          ],
+          "blocks": {
+            "button-a00000": {
+              "id": "button-a00000",
+              "kind": "button",
+              "button": {
+                "label": "Comprar",
+                "href": "https://loja.example.com"
+              }
+            }
+          }
+        },
+        {
+          "op": "set",
+          "focus": "button-a00000",
+          "blocks": {
+            "button-a00000": {
+              "id": "button-a00000",
+              "kind": "button",
+              "button": {
+                "label": "Comprar",
+                "href": "https://loja.example.com",
+                "full_width": true
+              }
+            }
+          }
+        },
+        {
+          "op": "move",
+          "focus": "title",
+          "order": [
+            "intro",
+            "button-a00000",
+            "title",
+            "cols",
+            "footer"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "add inside a column and past the footer",
+      "operations": [
+        {
+          "op": "add",
+          "kind": "text",
+          "fields": {
+            "text": "Na **coluna**"
+          },
+          "at": {
+            "into": "cols",
+            "column": 1
+          }
+        },
+        {
+          "op": "add",
+          "kind": "spacer",
+          "at": {
+            "after": "footer"
+          }
+        }
+      ],
+      "created": [
+        "text-a00000",
+        "spacer-b00000"
+      ],
+      "final": {
+        "version": 1,
+        "settings": {
+          "width": 600,
+          "preheader": "Novidades"
+        },
+        "blocks": [
+          {
+            "id": "title",
+            "kind": "heading",
+            "heading": {
+              "text": "Oi",
+              "level": 1
+            }
+          },
+          {
+            "id": "intro",
+            "kind": "text",
+            "text": {
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Texto"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "cols",
+            "kind": "columns",
+            "columns": {
+              "ratio": "50-50",
+              "columns": [
+                {
+                  "blocks": [
+                    {
+                      "id": "left",
+                      "kind": "heading",
+                      "heading": {
+                        "text": "Esquerda",
+                        "level": 2
+                      }
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "id": "text-a00000",
+                      "kind": "text",
+                      "text": {
+                        "paragraphs": [
+                          {
+                            "runs": [
+                              {
+                                "text": "Na "
+                              },
+                              {
+                                "text": "coluna",
+                                "bold": true
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "spacer-b00000",
+            "kind": "spacer",
+            "spacer": {
+              "height": 24
+            }
+          },
+          {
+            "id": "footer",
+            "kind": "footer",
+            "footer": {
+              "company_name": "Loja Exemplo",
+              "address": "Rua A, 1"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "add",
+          "focus": "text-a00000",
+          "blocks": {
+            "cols": {
+              "id": "cols",
+              "kind": "columns",
+              "columns": {
+                "ratio": "50-50",
+                "columns": [
+                  {
+                    "blocks": [
+                      {
+                        "id": "left",
+                        "kind": "heading",
+                        "heading": {
+                          "text": "Esquerda",
+                          "level": 2
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "blocks": [
+                      {
+                        "id": "text-a00000",
+                        "kind": "text",
+                        "text": {
+                          "paragraphs": [
+                            {
+                              "runs": [
+                                {
+                                  "text": "Na "
+                                },
+                                {
+                                  "text": "coluna",
+                                  "bold": true
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "op": "add",
+          "focus": "spacer-b00000",
+          "order": [
+            "title",
+            "intro",
+            "cols",
+            "spacer-b00000",
+            "footer"
+          ],
+          "blocks": {
+            "spacer-b00000": {
+              "id": "spacer-b00000",
+              "kind": "spacer",
+              "spacer": {
+                "height": 24
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "move a child out of its column and remove a block",
+      "operations": [
+        {
+          "op": "move",
+          "id": "left",
+          "at": {
+            "after": "cols"
+          }
+        },
+        {
+          "op": "remove",
+          "id": "intro"
+        }
+      ],
+      "final": {
+        "version": 1,
+        "settings": {
+          "width": 600,
+          "preheader": "Novidades"
+        },
+        "blocks": [
+          {
+            "id": "title",
+            "kind": "heading",
+            "heading": {
+              "text": "Oi",
+              "level": 1
+            }
+          },
+          {
+            "id": "cols",
+            "kind": "columns",
+            "columns": {
+              "ratio": "50-50",
+              "columns": [
+                {
+                  "blocks": []
+                },
+                {
+                  "blocks": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "left",
+            "kind": "heading",
+            "heading": {
+              "text": "Esquerda",
+              "level": 2
+            }
+          },
+          {
+            "id": "footer",
+            "kind": "footer",
+            "footer": {
+              "company_name": "Loja Exemplo",
+              "address": "Rua A, 1"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "move",
+          "focus": "left",
+          "order": [
+            "title",
+            "intro",
+            "cols",
+            "left",
+            "footer"
+          ],
+          "blocks": {
+            "cols": {
+              "id": "cols",
+              "kind": "columns",
+              "columns": {
+                "ratio": "50-50",
+                "columns": [
+                  {
+                    "blocks": []
+                  },
+                  {
+                    "blocks": []
+                  }
+                ]
+              }
+            },
+            "left": {
+              "id": "left",
+              "kind": "heading",
+              "heading": {
+                "text": "Esquerda",
+                "level": 2
+              }
+            }
+          }
+        },
+        {
+          "op": "remove",
+          "order": [
+            "title",
+            "cols",
+            "left",
+            "footer"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "duplicate columns with fresh ids",
+      "operations": [
+        {
+          "op": "duplicate",
+          "id": "cols",
+          "ref": "copy"
+        }
+      ],
+      "created": [
+        "columns-a00000"
+      ],
+      "final": {
+        "version": 1,
+        "settings": {
+          "width": 600,
+          "preheader": "Novidades"
+        },
+        "blocks": [
+          {
+            "id": "title",
+            "kind": "heading",
+            "heading": {
+              "text": "Oi",
+              "level": 1
+            }
+          },
+          {
+            "id": "intro",
+            "kind": "text",
+            "text": {
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Texto"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "cols",
+            "kind": "columns",
+            "columns": {
+              "ratio": "50-50",
+              "columns": [
+                {
+                  "blocks": [
+                    {
+                      "id": "left",
+                      "kind": "heading",
+                      "heading": {
+                        "text": "Esquerda",
+                        "level": 2
+                      }
+                    }
+                  ]
+                },
+                {
+                  "blocks": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "columns-a00000",
+            "kind": "columns",
+            "columns": {
+              "ratio": "50-50",
+              "columns": [
+                {
+                  "blocks": [
+                    {
+                      "id": "heading-b00000",
+                      "kind": "heading",
+                      "heading": {
+                        "text": "Esquerda",
+                        "level": 2
+                      }
+                    }
+                  ]
+                },
+                {
+                  "blocks": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "footer",
+            "kind": "footer",
+            "footer": {
+              "company_name": "Loja Exemplo",
+              "address": "Rua A, 1"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "duplicate",
+          "focus": "columns-a00000",
+          "order": [
+            "title",
+            "intro",
+            "cols",
+            "columns-a00000",
+            "footer"
+          ],
+          "blocks": {
+            "columns-a00000": {
+              "id": "columns-a00000",
+              "kind": "columns",
+              "columns": {
+                "ratio": "50-50",
+                "columns": [
+                  {
+                    "blocks": [
+                      {
+                        "id": "heading-b00000",
+                        "kind": "heading",
+                        "heading": {
+                          "text": "Esquerda",
+                          "level": 2
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "blocks": []
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "settings and ratio",
+      "operations": [
+        {
+          "op": "settings",
+          "fields": {
+            "preheader": "",
+            "button_color": "#0f766e"
+          }
+        },
+        {
+          "op": "set",
+          "id": "cols",
+          "fields": {
+            "ratio": "33-33-33",
+            "background_color": "#f5f3ff"
+          }
+        }
+      ],
+      "final": {
+        "version": 1,
+        "settings": {
+          "width": 600,
+          "button_color": "#0f766e"
+        },
+        "blocks": [
+          {
+            "id": "title",
+            "kind": "heading",
+            "heading": {
+              "text": "Oi",
+              "level": 1
+            }
+          },
+          {
+            "id": "intro",
+            "kind": "text",
+            "text": {
+              "paragraphs": [
+                {
+                  "runs": [
+                    {
+                      "text": "Texto"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "cols",
+            "kind": "columns",
+            "background_color": "#f5f3ff",
+            "columns": {
+              "ratio": "33-33-33",
+              "columns": [
+                {
+                  "blocks": [
+                    {
+                      "id": "left",
+                      "kind": "heading",
+                      "heading": {
+                        "text": "Esquerda",
+                        "level": 2
+                      }
+                    }
+                  ]
+                },
+                {
+                  "blocks": []
+                },
+                {
+                  "blocks": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "footer",
+            "kind": "footer",
+            "footer": {
+              "company_name": "Loja Exemplo",
+              "address": "Rua A, 1"
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "settings",
+          "settings": {
+            "width": 600,
+            "button_color": "#0f766e"
+          }
+        },
+        {
+          "op": "set",
+          "focus": "cols",
+          "blocks": {
+            "cols": {
+              "id": "cols",
+              "kind": "columns",
+              "background_color": "#f5f3ff",
+              "columns": {
+                "ratio": "33-33-33",
+                "columns": [
+                  {
+                    "blocks": [
+                      {
+                        "id": "left",
+                        "kind": "heading",
+                        "heading": {
+                          "text": "Esquerda",
+                          "level": 2
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "blocks": []
+                  },
+                  {
+                    "blocks": []
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the footer stays put",
+      "operations": [
+        {
+          "op": "move",
+          "id": "footer",
+          "at": {
+            "before": "title"
+          }
+        }
+      ],
+      "refusal": {
+        "index": 0,
+        "code": "footer_locked"
+      }
+    },
+    {
+      "name": "columns never nest",
+      "operations": [
+        {
+          "op": "add",
+          "kind": "columns",
+          "at": {
+            "into": "cols",
+            "column": 0
+          }
+        }
+      ],
+      "refusal": {
+        "index": 0,
+        "code": "not_allowed_in_columns"
+      }
+    }
+  ]
+}

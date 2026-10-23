@@ -3,91 +3,9 @@ package payment_usecase
 import (
 	"testing"
 
-	"vozko/domain/balance"
 	"vozko/domain/invoice"
 	"vozko/domain/payment"
 )
-
-func TestHandleWebhook_Chargeback_DebitsLikeARefund(t *testing.T) {
-	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-		"1234567890": {
-			ID: "inv-1", ExternalID: "1234567890", Purpose: invoice.PurposeTopUp,
-			AmountUSD: 5000, WorkspaceID: "ws-1", Status: invoice.StatusPaid,
-			AmountBRL: 30, ExchangeRate: 6,
-		},
-	}}
-	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
-
-	err := uc.Execute(&payment.WebhookEvent{
-		Event:    payment.EventPaymentChargeback,
-		Provider: payment.ProviderMercadoPago,
-		Payment:  payment.WebhookPayment{ID: "1234567890"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(debit.calls) != 1 {
-		t.Fatalf("expected the chargeback to debit the balance, got %d debits", len(debit.calls))
-	}
-	if !debit.calls[0].IsRefund {
-		t.Fatal("a chargeback debit must be flagged as a refund")
-	}
-	if debit.calls[0].Amount != 5000 {
-		t.Fatalf("expected the full credited amount to be reversed, got %d", debit.calls[0].Amount)
-	}
-	if len(repo.statusUpdates) != 1 || repo.statusUpdates[0] != invoice.StatusRefunded {
-		t.Fatalf("expected the invoice to move to REFUNDED, got %v", repo.statusUpdates)
-	}
-}
-
-func TestHandleWebhook_Chargeback_Subscription(t *testing.T) {
-	planID := "plan-1"
-	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-		"1": {
-			ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeSubscription,
-			PlanDefinitionID: &planID, AmountUSD: 8000, WorkspaceID: "ws-1",
-			Status: invoice.StatusPaid, AmountBRL: 48, ExchangeRate: 6,
-		},
-	}}
-	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
-
-	if err := uc.Execute(&payment.WebhookEvent{
-		Event:   payment.EventPaymentChargeback,
-		Payment: payment.WebhookPayment{ID: "1"},
-	}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(debit.calls) != 1 || debit.calls[0].ServiceType != balance.ServiceTopUp {
-		t.Fatalf("expected one top-up debit, got %+v", debit.calls)
-	}
-}
-
-func TestHandleWebhook_Chargeback_MonthlyBilling_ReversesOnlyCreditablePortion(t *testing.T) {
-	repo := &webhookInvoiceRepo{byExternal: map[string]*invoice.Invoice{
-		"1": {
-			ID: "inv-1", ExternalID: "1", Purpose: invoice.PurposeMonthlyBilling,
-			AmountUSD: 10000, CreditableUSD: 4000, WorkspaceID: "ws-1",
-			Status: invoice.StatusPaid, AmountBRL: 60, ExchangeRate: 6,
-		},
-	}}
-	debit := &webhookDebitBalance{}
-	uc := NewHandlePaymentWebhookUseCase(repo, nil, nil, debit, nil)
-
-	if err := uc.Execute(&payment.WebhookEvent{
-		Event:   payment.EventPaymentChargeback,
-		Payment: payment.WebhookPayment{ID: "1"},
-	}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(debit.calls) != 1 {
-		t.Fatalf("expected one debit, got %d", len(debit.calls))
-	}
-	if debit.calls[0].Amount != 4000 {
-		t.Fatalf("expected only the creditable portion (4000) to be reversed, got %d", debit.calls[0].Amount)
-	}
-}
 
 func TestHandleWebhook_Rejected_CancelsInvoice(t *testing.T) {
 	for _, purpose := range []invoice.Purpose{invoice.PurposeTopUp, invoice.PurposeSubscription, invoice.PurposeMonthlyBilling} {

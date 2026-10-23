@@ -46,7 +46,7 @@ func (uc *conversationTemplateUseCase) Check(ctx context.Context, in wo.Conversa
 	}
 	return &wo.ConversationTemplate{
 		Name:    target.tmpl.Name,
-		Preview: renderedPreview(target.tmpl, in.BodyParams),
+		Preview: renderedPreview(target.tmpl, in.BodyParams, in.HeaderParams),
 	}, nil
 }
 
@@ -64,15 +64,16 @@ func (uc *conversationTemplateUseCase) Send(ctx context.Context, in wo.Conversat
 	}
 
 	d := delivery{
-		entry:       target.entry,
-		tmpl:        target.tmpl,
-		bodyParams:  in.BodyParams,
-		workspaceID: in.WorkspaceID,
-		userID:      in.UserID,
-		to:          target.contact.Number,
-		leadID:      target.contact.ID,
-		phoneID:     target.phone.ID,
-		campaignID:  target.campaign.ID,
+		entry:        target.entry,
+		tmpl:         target.tmpl,
+		bodyParams:   in.BodyParams,
+		headerParams: in.HeaderParams,
+		workspaceID:  in.WorkspaceID,
+		userID:       in.UserID,
+		to:           target.contact.Number,
+		leadID:       target.contact.ID,
+		phoneID:      target.phone.ID,
+		campaignID:   target.campaign.ID,
 	}
 	result, err := uc.charge(ctx, d, template.BilledSendInput{
 		WorkspaceID:     in.WorkspaceID,

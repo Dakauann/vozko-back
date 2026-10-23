@@ -33,6 +33,8 @@ func declaredDDL() []ddlSection {
 		{"call list keys", callListConstraints()},
 		{"tiktok indexes", tiktokPerformanceIndexes()},
 		{"tiktok constraints", tiktokSchemaConstraints()},
+		{"google indexes", googlePerformanceIndexes()},
+		{"google constraints", googleSchemaConstraints()},
 		{"composite lead keys", compositeLeadKeyDDL()},
 		{"concurrent indexes", concurrentIndexes()},
 	}

@@ -237,3 +237,22 @@ func TestRedactionIsLinearOnLargePayloads(t *testing.T) {
 		t.Fatal("secret survived")
 	}
 }
+
+func TestIsMaskedRecognisesEveryMaskTheRedactorWrites(t *testing.T) {
+	r := New()
+	cases := []struct {
+		value string
+		want  bool
+	}{
+		{r.Map(map[string]interface{}{"password": "x"})["password"].(string), true},
+		{r.String("CPF 529.982.247-25"), true},
+		{r.String("Bearer abc.def"), true},
+		{"Ana", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := IsMasked(tc.value); got != tc.want {
+			t.Fatalf("IsMasked(%q) = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}

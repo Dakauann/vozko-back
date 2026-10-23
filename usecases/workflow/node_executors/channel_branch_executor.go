@@ -30,8 +30,8 @@ func (e *channelBranchExecutor) Definition() workflow.NodeDefinition {
 		Outputs:       workflow.ChannelBranchHandles(),
 		DefaultConfig: map[string]interface{}{},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "channel", Description: "Canal da execução (whatsapp, instagram, telegram, ...)"},
-			{Key: "matched", Description: "true quando havia uma aresta para esse canal; false quando caiu no padrão"},
+			{Key: "channel", Description: "Canal da execução (whatsapp, instagram, telegram, ...)", Label: "Canal", Type: workflow.VariableTypeText},
+			{Key: "matched", Description: "true quando havia uma aresta para esse canal; false quando caiu no padrão", Label: "Tinha caminho para o canal", Type: workflow.VariableTypeBoolean},
 		},
 		ConfigSchema: []workflow.ConfigField{},
 	}

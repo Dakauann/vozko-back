@@ -67,8 +67,8 @@ func publishFirstVersion(tx *gorm.DB, row unpublishedWorkflowRow) error {
 		slog.Error("workflow.version_repair.graph_unreadable", slog.String("workflow_id", row.ID), slog.String("error", err.Error()))
 		return nil
 	}
-	if graph.HasPins() {
-		published, err := json.Marshal(workflow.StripPins(graph))
+	if graph.HasDraftOnly() {
+		published, err := json.Marshal(workflow.StripDraftOnly(graph))
 		if err != nil {
 			return err
 		}

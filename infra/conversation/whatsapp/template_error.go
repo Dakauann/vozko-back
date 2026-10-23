@@ -49,6 +49,10 @@ func (e *TemplateAPIError) Retryable() bool {
 }
 
 func newTemplateAPIError(op string, status int, body []byte) *TemplateAPIError {
+	return &TemplateAPIError{Op: op, Meta: parseMetaError(status, body)}
+}
+
+func parseMetaError(status int, body []byte) *meta.Error {
 	parsed := &meta.Error{HTTPStatus: status}
 
 	var envelope struct {
@@ -61,8 +65,7 @@ func newTemplateAPIError(op string, status int, body []byte) *TemplateAPIError {
 	} else {
 		parsed.Message = truncateForMessage(string(body))
 	}
-
-	return &TemplateAPIError{Op: op, Meta: parsed}
+	return parsed
 }
 
 func envelopeIsPopulated(e meta.Error) bool {

@@ -39,8 +39,8 @@ func (e *scheduleWaitExecutor) Definition() workflow.NodeDefinition {
 			"timezone": "America/Sao_Paulo",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "scheduled_at", Description: "Data/hora agendada (ISO 8601)"},
-			{Key: "wait_minutes", Description: "Minutos de espera calculados"},
+			{Key: "scheduled_at", Description: "Data/hora agendada (ISO 8601)", Label: "Agendado para", Type: workflow.VariableTypeDate},
+			{Key: "wait_minutes", Description: "Minutos de espera calculados", Label: "Minutos de espera", Type: workflow.VariableTypeNumber},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "mode", Label: "Modo", Type: "select", Required: true, Options: []workflow.ConfigFieldOption{

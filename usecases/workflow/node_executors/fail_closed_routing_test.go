@@ -225,13 +225,13 @@ func labelRoutedNodes(t *testing.T) map[string]labelRouted {
 		"agent calls a tool":    {output: "agendar", run: agentRouted(&ai.GenerateOutput{ToolCalls: []ai.ToolCall{{Name: "agendar"}}}, agentTools)},
 		"agent answers in text": {output: "default", run: agentRouted(&ai.GenerateOutput{Message: ai.Message{Role: ai.RoleAssistant, Content: "Oi"}}, nil)},
 		"calendar availability fails": {output: "erro", run: func(t *testing.T, edges []workflow.Edge) *workflow.NodeResult {
-			return executed(t, NewCheckCalendarAvailabilityExecutor(nil, nil), routedCtx(workflow.NodeTypeActionCheckCalendarAvailability, map[string]interface{}{}, edges))
+			return executed(t, NewCheckCalendarAvailabilityExecutor(nil, nil, nil), routedCtx(workflow.NodeTypeActionCheckCalendarAvailability, map[string]interface{}{}, edges))
 		}},
-		"schedule meeting fails": {output: "erro", run: func(t *testing.T, edges []workflow.Edge) *workflow.NodeResult {
-			return executed(t, NewScheduleMeetingExecutor(nil, nil), routedCtx(workflow.NodeTypeActionScheduleMeeting, map[string]interface{}{}, edges))
+		"create calendar event fails": {output: "erro", run: func(t *testing.T, edges []workflow.Edge) *workflow.NodeResult {
+			return executed(t, NewCreateCalendarEventExecutor(nil, nil, nil), routedCtx(workflow.NodeTypeActionCreateCalendarEvent, map[string]interface{}{}, edges))
 		}},
-		"reschedule meeting fails": {output: "erro", run: func(t *testing.T, edges []workflow.Edge) *workflow.NodeResult {
-			return executed(t, NewRescheduleMeetingExecutor(nil), routedCtx(workflow.NodeTypeActionRescheduleMeeting, map[string]interface{}{}, edges))
+		"reschedule calendar event fails": {output: "erro", run: func(t *testing.T, edges []workflow.Edge) *workflow.NodeResult {
+			return executed(t, NewRescheduleCalendarEventExecutor(nil), routedCtx(workflow.NodeTypeActionRescheduleCalendarEvent, map[string]interface{}{}, edges))
 		}},
 	}
 }

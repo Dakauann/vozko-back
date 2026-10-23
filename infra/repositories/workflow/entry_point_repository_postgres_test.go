@@ -33,6 +33,7 @@ func entryPointTables() []interface{} {
 		&schema.WhatsAppCampaign{}, &schema.UnofficialWhatsAppCampaign{}, &schema.UnofficialWhatsAppInstance{},
 		&schema.FacebookPage{}, &schema.InstagramAccount{}, &schema.TelegramAccount{}, &schema.TikTokAccount{},
 		&schema.MercadoLivreAccount{}, &schema.WebchatWidget{}, &schema.TemplateButtonAction{}, &schema.WhatsAppCampaignButtonRoutes{},
+		&schema.EmailInbox{}, &schema.RCSSender{}, &schema.SMSRoute{},
 	}
 }
 
@@ -78,7 +79,7 @@ func seedEntryPoints(t *testing.T) *entryPointFixture {
 		{ID: "hook", Type: workflow.NodeTypeTriggerWebhook},
 		{ID: "end", Type: workflow.NodeTypeEnd},
 	}}
-	draftGraph := workflow.Graph{Nodes: []workflow.Node{{ID: "manual", Type: workflow.NodeTypeTriggerManual}, {ID: "end", Type: workflow.NodeTypeEnd}}}
+	draftGraph := workflow.Graph{Nodes: []workflow.Node{{ID: "message", Type: workflow.NodeTypeTriggerMessageReceived}, {ID: "end", Type: workflow.NodeTypeEnd}}}
 	f.create(t,
 		&schema.WorkflowSchema{ID: f.published, WorkspaceID: f.workspace, Name: "Matrícula", Status: "active", Type: "messages", TriggerConfig: "{}", Graph: jsonOf(t, draftGraph), Version: 3, PublishedVersion: &one},
 		&schema.WorkflowVersionSchema{WorkflowID: f.published, Version: 1, Type: "messages", Graph: jsonOf(t, publishedGraph), GraphHash: "h", PublishedAt: f.at},
@@ -134,11 +135,15 @@ func TestEntryPointSourcesAgainstPostgres(t *testing.T) {
 	for kind, want := range map[workflow.EntryPointKind]time.Time{
 		workflow.EntryAgentCall: f.at.Add(-time.Hour),
 		workflow.EntryLeadExit:  f.at.Add(-30 * time.Minute),
-		workflow.EntryManual:    f.at.Add(-20 * time.Minute),
 		workflow.EntryWebhook:   f.at.Add(-10 * time.Minute),
 	} {
 		if !starts[kind].Equal(want) {
 			t.Fatalf("last %s = %v, want %v (starts %+v)", kind, starts[kind], want, starts)
+		}
+	}
+	for kind, at := range starts {
+		if at.Equal(f.at.Add(-20 * time.Minute)) {
+			t.Fatalf("an operator start counted as the last call of %s: %+v", kind, starts)
 		}
 	}
 	if len(sources.LastStarts[f.draft]) != 0 {
@@ -250,8 +255,7 @@ func TestEntryPointBindingsAgainstPostgres(t *testing.T) {
 	repo := NewEntryPointRepository(f.db)
 	sources, err := repo.EntryPointSources(workflow.EntryPointSourceQuery{
 		WorkspaceID: f.workspace, WorkflowIDs: []string{f.published, f.draft},
-		FormIDs:     []string{published, draftForm, archivedForm, foreignForm, "not-a-uuid"},
-		CampaignIDs: []string{chosenCampaign, "not-a-uuid"},
+		FormIDs: []string{published, draftForm, archivedForm, foreignForm, "not-a-uuid"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -274,7 +278,7 @@ func TestEntryPointBindingsAgainstPostgres(t *testing.T) {
 		linked = append(linked, string(c.Kind)+":"+c.Name+":"+map[bool]string{true: "on", false: "off"}[c.WorkflowEnabled])
 	}
 	sort.Strings(linked)
-	if want := "facebook_page:Loja:on,instagram_account:loja:off,whatsapp_campaign:Black Friday:on,whatsapp_campaign:Escolhida:off"; strings.Join(linked, ",") != want {
+	if want := "facebook_page:Loja:on,instagram_account:loja:off,whatsapp_campaign:Black Friday:on"; strings.Join(linked, ",") != want {
 		t.Fatalf("linked channels = %v\nwant %s", linked, want)
 	}
 	enabled := map[string]string{}
@@ -301,7 +305,7 @@ func TestEntryPointBindingsAgainstPostgres(t *testing.T) {
 	for _, e := range entries {
 		kinds[e.Kind] = e
 	}
-	if kinds[workflow.EntryAgentCall].Readiness != workflow.EntryReady || kinds[workflow.EntryWebhook].Readiness != workflow.EntryReady || kinds[workflow.EntryLeadExit].Readiness != workflow.EntryReady || len(entries) != 3 {
+	if kinds[workflow.EntryAgentCall].Readiness != workflow.EntryReady || kinds[workflow.EntryWebhook].Readiness != workflow.EntryReady || kinds[workflow.EntryLeadExit].Reason != workflow.EntryBlockedNeedsMessageTrigger || len(entries) != 3 {
 		t.Fatalf("entries = %+v", entries)
 	}
 }

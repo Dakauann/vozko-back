@@ -22,14 +22,21 @@ var leadLinkedContactTables = map[shared.EntryType]string{
 	shared.EntryTypeWebchat:            "webchat_visitors",
 	shared.EntryTypeMercadoLivre:       "mercadolivre_contacts",
 	shared.EntryTypeTikTok:             "tiktok_contacts",
+	shared.EntryTypeEmail:              "email_contacts",
+	shared.EntryTypeRCS:                "carrier_contacts",
+	shared.EntryTypeSMS:                "carrier_contacts",
 }
 
 var leadViaContactsQuery = buildLeadViaContactsSQL()
 
 func sortedContactTables() []string {
+	seen := make(map[string]bool, len(leadLinkedContactTables))
 	tables := make([]string, 0, len(leadLinkedContactTables))
 	for _, table := range leadLinkedContactTables {
-		tables = append(tables, table)
+		if !seen[table] {
+			seen[table] = true
+			tables = append(tables, table)
+		}
 	}
 	sort.Strings(tables)
 	return tables
@@ -51,9 +58,10 @@ func leadViaContactsSQL() string {
 }
 
 func leadViaContactsArgs(workspaceID, ref string) []any {
-	args := make([]any, 0, 1+2*len(leadLinkedContactTables))
+	tables := sortedContactTables()
+	args := make([]any, 0, 1+2*len(tables))
 	args = append(args, workspaceID)
-	for range leadLinkedContactTables {
+	for range tables {
 		args = append(args, ref, workspaceID)
 	}
 	return args

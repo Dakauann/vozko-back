@@ -15,9 +15,14 @@ type RedisProvider struct {
 }
 
 func NewRedisProvider(addr, password string) *RedisProvider {
+	return NewRedisProviderOnDB(addr, password, 0)
+}
+
+func NewRedisProviderOnDB(addr, password string, db int) *RedisProvider {
 	client := redis.NewClient(&redis.Options{
 		Addr:         addr,
 		Password:     password,
+		DB:           db,
 		PoolSize:     50,
 		MinIdleConns: 5,
 	})

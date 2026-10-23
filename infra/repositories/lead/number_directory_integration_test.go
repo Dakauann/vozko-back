@@ -2,23 +2,19 @@ package lead
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"vozko/infra/testenv"
 )
 
 func dialDirectoryDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
+	dsn := testenv.Postgres(t).DSN()
 	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
 	admin, err := gorm.Open(postgres.Open(dsn), silent)
 	if err != nil {

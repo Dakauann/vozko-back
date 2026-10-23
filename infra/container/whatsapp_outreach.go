@@ -44,6 +44,9 @@ func (c *Container) buildWhatsAppOutreach(d whatsAppOutreachDeps) whatsAppOutrea
 		BalanceChecker: c.services.cachedBalanceChecker,
 		Alerter:        d.alerter,
 		Forms:          lazyFormSends{c: c},
+		Choices:        c.choiceStatsRecorder(),
+		ClickLinkBase:  c.cfg.ShortLinkBaseURL,
+		ClickTokens:    c.choiceClickTokens(),
 	})
 	if err != nil {
 		log.Fatalf("[container] whatsapp outreach: %v", err)

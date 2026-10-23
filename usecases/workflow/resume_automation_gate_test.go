@@ -251,3 +251,19 @@ func TestAReadableGateClearsEarlierGateAttemptsSoALaterOutageGetsAFullBudget(t *
 		t.Error("the gate attempt counter must be cleared once the gate answers")
 	}
 }
+
+func TestALeadRunHasNoConversationPauseSwitchToRead(t *testing.T) {
+	gate := &gateStub{err: errors.New("lead is not a conversation entry")}
+	engine := NewRunEngine(nil, nil, nil)
+	engine.SetAutomationGate(gate)
+	run := parkedRun()
+	run.EntryID, run.EntryType = "lead-1", workflow.EntryTypeLead
+
+	cancelled, err := cancelWhenAutomationOff(&runRepoStub{}, engine, run)
+	if err != nil || cancelled {
+		t.Fatalf("cancelled = %v, err = %v", cancelled, err)
+	}
+	if gate.asked != 0 {
+		t.Fatalf("the conversation switch was read %d time(s) for a lead run", gate.asked)
+	}
+}

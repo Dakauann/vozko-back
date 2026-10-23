@@ -23,6 +23,7 @@ type Code string
 
 const (
 	CodeNothingPending       Code = "nothing_pending"
+	CodeAudienceEmpty        Code = "audience_empty"
 	CodeAccessRevoked        Code = "access_revoked"
 	CodeHealthUnreadable     Code = "health_unreadable"
 	CodeTemplateNotReady     Code = "template_not_ready"
@@ -41,6 +42,10 @@ const (
 	CodeOptedOutPending      Code = "opted_out_pending"
 	CodeCapBelowPending      Code = "cap_below_pending"
 	CodeFormNotSendable      Code = "form_not_sendable"
+	CodeNumberUnusable       Code = "number_unusable"
+	CodeNumberRestricted     Code = "number_restricted"
+	CodeNumberCannotSend     Code = "number_cannot_send"
+	CodeGroupsUnsendable     Code = "groups_unsendable"
 )
 
 const (
@@ -69,6 +74,7 @@ type Run struct {
 
 type Snapshot struct {
 	Pending         int
+	Fresh           bool
 	AccessAllowed   bool
 	Unread          []string
 	Template        *TemplateFacts
@@ -106,7 +112,7 @@ type adder func(level Level, code Code, observed, limit float64)
 
 func blocks(s Snapshot, add adder) {
 	if s.Pending <= 0 {
-		add(Block, CodeNothingPending, 0, 0)
+		add(Block, emptyCode(s.Fresh), 0, 0)
 	}
 	if !s.AccessAllowed {
 		add(Block, CodeAccessRevoked, 0, 0)
@@ -227,4 +233,19 @@ func (r Report) Fingerprint() string {
 
 func (r Report) Confirmed(fingerprint string) bool {
 	return !r.NeedsConfirmation() || fingerprint == r.Fingerprint()
+}
+
+func Blocked(code Code, observed float64) Report {
+	return Report{Findings: []Finding{{Code: code, Level: Block, Observed: observed}}}
+}
+
+func (r Report) With(other Report) Report {
+	return Report{Findings: append(append([]Finding{}, r.Findings...), other.Findings...)}
+}
+
+func emptyCode(fresh bool) Code {
+	if fresh {
+		return CodeAudienceEmpty
+	}
+	return CodeNothingPending
 }

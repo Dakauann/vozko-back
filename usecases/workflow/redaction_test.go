@@ -147,7 +147,7 @@ func TestNodeTestResponseIsRedacted(t *testing.T) {
 	registry := NewNodeExecutorRegistry()
 	registry.Register(workflow.NodeTypeActionHTTPRequest, credentialEchoExecutor{})
 	wf := createTestWorkflow("wf1", "ws1", []workflow.Node{
-		{ID: "trigger1", Type: workflow.NodeTypeTriggerManual},
+		{ID: "trigger1", Type: workflow.NodeTypeTriggerMessageReceived},
 		{ID: "h1", Type: workflow.NodeTypeActionHTTPRequest, Config: map[string]interface{}{"url": "https://api.test/alunos/{{cpf}}", "auth_token": "{{senha_informada}}"}},
 	}, []workflow.Edge{{Source: "trigger1", Target: "h1"}})
 	_ = repo.Create(wf)

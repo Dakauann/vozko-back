@@ -14,6 +14,7 @@ type ConversationNote struct {
 	AuthorID    string         `gorm:"type:uuid;not null"`
 	Body        string         `gorm:"type:text;not null"`
 	Mentions    pq.StringArray `gorm:"type:uuid[];not null;default:'{}'"`
+	ImageIDs    pq.StringArray `gorm:"column:image_ids;type:uuid[];not null;default:'{}'"`
 	CreatedAt   time.Time      `gorm:"type:timestamptz;not null;index:idx_conversation_notes_entry,priority:3,sort:desc"`
 	DeletedAt   *time.Time     `gorm:"type:timestamptz"`
 }

@@ -11,6 +11,7 @@ import (
 	"vozko/domain/lead"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/usecases/campaignguard"
 )
 
 type deleteEntryUseCase struct {
@@ -247,10 +248,15 @@ type addEntriesUseCase struct {
 	entryRepo    wce.Repository
 	leadRepo     lead.Repository
 	automation   AutomationCheck
+	eligibility  campaignguard.Screener
 }
 
 func (uc *addEntriesUseCase) SetAutomation(automation AutomationCheck) {
 	uc.automation = automation
+}
+
+func (uc *addEntriesUseCase) SetEligibility(eligibility campaignguard.Screener) {
+	uc.eligibility = eligibility
 }
 
 func NewAddEntriesUseCase(
@@ -283,6 +289,10 @@ func (uc *addEntriesUseCase) Execute(input wc.AddEntriesInput) (*wc.AddEntriesOu
 		return nil, err
 	}
 
+	if uc.eligibility == nil {
+		return nil, campaignguard.ErrUnavailable
+	}
+
 	currentCount, err := uc.entryRepo.CountByCampaignID(input.CampaignID)
 	if err != nil {
 		return nil, err
@@ -302,6 +312,13 @@ func (uc *addEntriesUseCase) Execute(input wc.AddEntriesInput) (*wc.AddEntriesOu
 		Entries: make([]wc.EntryOutput, 0),
 	}
 
+	type addedEntry struct {
+		entry    *wce.WhatsAppCampaignEntry
+		lead     *lead.Lead
+		metadata map[string]interface{}
+	}
+	added := make([]addedEntry, 0, len(input.PhoneNumbers))
+	leadIDs := make([]string, 0, len(input.PhoneNumbers))
 	for _, phoneInput := range input.PhoneNumbers {
 		normalizedNumber := lead.NormalizeNumber(phoneInput.Number)
 
@@ -320,14 +337,25 @@ func (uc *addEntriesUseCase) Execute(input wc.AddEntriesInput) (*wc.AddEntriesOu
 			return nil, err
 		}
 
-		entry := &wce.WhatsAppCampaignEntry{
+		added = append(added, addedEntry{lead: l, metadata: phoneInput.Metadata, entry: &wce.WhatsAppCampaignEntry{
 			ID:         uuid.New().String(),
 			CampaignID: input.CampaignID,
 			LeadID:     l.ID,
 			Status:     wce.SendStatusPending,
 			Variables:  phoneInput.Variables,
 			Metadata:   phoneInput.Metadata,
-		}
+		}})
+		leadIDs = append(leadIDs, l.ID)
+	}
+
+	screening, err := uc.eligibility.Screen(context.Background(), c.WorkspaceID, leadIDs, c.BusinessPhoneID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, a := range added {
+		entry, l := a.entry, a.lead
+		markIneligible(entry, screening.Skipped[l.ID], screening.Detail(nil))
 		if err := uc.entryRepo.Create(entry); err != nil {
 			return nil, err
 		}
@@ -341,7 +369,7 @@ func (uc *addEntriesUseCase) Execute(input wc.AddEntriesInput) (*wc.AddEntriesOu
 			Name:       l.Name,
 			Variables:  entry.Variables,
 			Status:     string(entry.Status),
-			Metadata:   phoneInput.Metadata,
+			Metadata:   a.metadata,
 			CreatedAt:  entry.CreatedAt.Format(time.RFC3339),
 			UpdatedAt:  entry.UpdatedAt.Format(time.RFC3339),
 		})

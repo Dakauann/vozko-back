@@ -22,6 +22,8 @@ func RegisterProtectedRoutes(
 
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/media/{mediaId}", ac(cv, workspace_domain.ActionRead, h.GetMedia)).Methods(http.MethodGet)
 
+	protected.HandleFunc("/conversations/{entryType}/{entryId}/messages/{messageId}/email-html", ac(cv, workspace_domain.ActionRead, h.GetEmailHTML)).Methods(http.MethodGet)
+
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/events", ac(cv, workspace_domain.ActionRead, h.ListConversationEvents)).Methods(http.MethodGet)
 	protected.HandleFunc("/conversations/{entryType}/{entryId}/ai-tool-calls", ac(cv, workspace_domain.ActionRead, h.ListAIToolCalls)).Methods(http.MethodGet)
 

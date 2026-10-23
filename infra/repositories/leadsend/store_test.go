@@ -264,3 +264,22 @@ func TestKeyedPartsRefusesAKeyThatCouldMatchOtherKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestTheRunningLeadsOfAChunkShareThePendingInRunningRuleOfBothChannels(t *testing.T) {
+	sql, args := RunningPendingSQL("ws-1", "IN (SELECT lead_id FROM chunk)")
+	for _, tb := range []tables{officialTables, unofficialTables} {
+		if !strings.Contains(sql, pendingInRunningSQL(tb)+` AND e.lead_id IN (SELECT lead_id FROM chunk)`) {
+			t.Fatalf("the running leads of %s do not share the rule:\n%s", tb.entries, sql)
+		}
+	}
+	if inRunningCampaignsSQL != pendingInRunningAmong(`= ANY(?::uuid[])`) {
+		t.Fatalf("the running check of a list drifted:\n%s", inRunningCampaignsSQL)
+	}
+	if got := strings.Count(sql, "?"); got != len(args) {
+		t.Fatalf("%d placeholders for %d args", got, len(args))
+	}
+	want := []any{"ws-1", string(campaign.StatusRunning), string(campaign.SendStatusPending), "ws-1", string(campaign.StatusRunning), string(campaign.SendStatusPending)}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+}

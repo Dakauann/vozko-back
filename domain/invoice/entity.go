@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"vozko/domain/payment"
 )
 
 var (
@@ -14,6 +16,10 @@ var (
 	ErrActiveSubscriptionRequired = errors.New("active workspace subscription required to recharge balance")
 	ErrCustomerDocumentRequired   = errors.New("CPF/CNPJ obrigatório para gerar a cobrança")
 	ErrBillingAddressRequired     = errors.New("endereço obrigatório para gerar boleto")
+	ErrTopUpBelowMinimum          = errors.New("top-up amount is below the minimum")
+	ErrTopUpAboveMaximum          = errors.New("top-up amount is above the maximum")
+	ErrInvalidIdempotencyKey      = errors.New("idempotency key is malformed")
+	ErrUnknownPurpose             = errors.New("invoice has no known purpose to settle")
 )
 
 type Purpose string
@@ -25,11 +31,7 @@ const (
 )
 
 func (p Purpose) Normalize() Purpose {
-	normalized := strings.ToUpper(strings.TrimSpace(string(p)))
-	if normalized == "" {
-		return PurposeTopUp
-	}
-	return Purpose(normalized)
+	return Purpose(strings.ToUpper(strings.TrimSpace(string(p))))
 }
 
 func (p Purpose) Valid() bool {
@@ -65,11 +67,12 @@ const (
 	StatusOverdue   Status = "OVERDUE"
 	StatusCancelled Status = "CANCELLED"
 	StatusRefunded  Status = "REFUNDED"
+	StatusReversed  Status = "REVERSED"
 	StatusExpired   Status = "EXPIRED"
 )
 
 func SettledStatuses() []string {
-	return []string{string(StatusPaid), string(StatusRefunded)}
+	return []string{string(StatusPaid), string(StatusRefunded), string(StatusReversed)}
 }
 
 type Invoice struct {
@@ -85,6 +88,7 @@ type Invoice struct {
 	Status           Status            `json:"status"`
 	BillingType      string            `json:"billingType"`
 	BillingCycle     string            `json:"billingCycle"`
+	Provider         payment.Provider  `json:"provider"`
 	ExternalID       string            `json:"externalId"`
 	IdempotencyKey   string            `json:"idempotencyKey,omitempty"`
 	PixQrCode        *string           `json:"pixQrCode,omitempty"`
@@ -101,7 +105,11 @@ type Invoice struct {
 
 func (i *Invoice) NormalizedPurpose() Purpose {
 	if i == nil {
-		return PurposeTopUp
+		return ""
 	}
 	return i.Purpose.Normalize()
+}
+
+func (i *Invoice) Reserved() bool {
+	return strings.TrimSpace(i.ExternalID) == ""
 }

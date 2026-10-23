@@ -3,6 +3,7 @@ package buttonactionhttp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"vozko/domain/auth"
 	"vozko/domain/buttonaction"
 	"vozko/domain/whatsapp/template"
+	"vozko/domain/workflow"
 	workspace_domain "vozko/domain/workspace"
 	"vozko/infra/http/middleware"
 	buttonaction_usecase "vozko/usecases/buttonaction"
@@ -177,6 +179,7 @@ func TestRefusalsCarryTheirCodes(t *testing.T) {
 		{buttonaction.ErrParamsInvalid, http.StatusBadRequest, "button_action_params_invalid"},
 		{buttonaction.ErrExitRiskNotAcknowledged, http.StatusUnprocessableEntity, "exit_risk_not_acknowledged"},
 		{buttonaction.ErrMarketingNeedsExit, http.StatusUnprocessableEntity, "marketing_template_needs_exit"},
+		{fmt.Errorf("check start_workflow parameters: %w", workflow.ErrWorkflowNeedsMessageTrigger), http.StatusUnprocessableEntity, "workflow_needs_message_trigger"},
 	}
 	for _, tc := range cases {
 		rec := serve(t, &fakeService{routesErr: tc.err}, http.MethodPut, "/whatsapp/campaigns/camp-1/button-routes", "2", `{"routes":[]}`)

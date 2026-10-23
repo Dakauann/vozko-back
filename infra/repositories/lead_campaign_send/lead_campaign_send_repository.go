@@ -1,6 +1,7 @@
 package lead_campaign_send
 
 import (
+	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,10 @@ import (
 
 type repository struct {
 	db *gorm.DB
+}
+
+func LastSentSQL(leadIn string) string {
+	return "SELECT s.lead_id, MAX(s.sent_at) AS last_sent_at FROM lead_campaign_sends s WHERE s.lead_id " + leadIn + " AND s.business_phone_id = ?::uuid GROUP BY s.lead_id"
 }
 
 func NewRepository(db *gorm.DB) domain.Repository {
@@ -45,8 +50,11 @@ func (r *repository) GetLastSendTime(leadID, businessPhoneID string) (*time.Time
 	return &record.SentAt, nil
 }
 
-func (r *repository) GetLastSendTimesBatch(leadIDs []string, businessPhoneID string) (map[string]time.Time, error) {
-	valid := database.UUIDArray(leadIDs)
+func (r *repository) GetLastSendTimesBatch(ctx context.Context, leadIDs []string, businessPhoneID string) (map[string]time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	valid := database.UUIDsOf(leadIDs)
 	if len(valid) == 0 {
 		return make(map[string]time.Time), nil
 	}
@@ -56,11 +64,7 @@ func (r *repository) GetLastSendTimesBatch(leadIDs []string, businessPhoneID str
 		LastSentAt time.Time
 	}
 
-	err := r.db.Model(&schema.LeadCampaignSend{}).
-		Select("lead_id, MAX(sent_at) as last_sent_at").
-		Where("lead_id = ANY(?::uuid[]) AND business_phone_id = ?", valid, businessPhoneID).
-		Group("lead_id").
-		Scan(&results).Error
+	err := r.db.WithContext(ctx).Raw(LastSentSQL("= ANY(?::uuid[])"), valid, businessPhoneID).Find(&results).Error
 	if err != nil {
 		return nil, err
 	}

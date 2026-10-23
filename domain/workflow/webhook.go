@@ -104,4 +104,8 @@ var (
 	ErrWebhookEntryNotFound    = errors.New("workflow: webhook could not resolve an entry from the payload")
 	ErrWebhookEntryForbidden   = errors.New("workflow: webhook entry does not belong to this workspace")
 	ErrWorkspaceAtCapacity     = errors.New("workflow: workspace is at its concurrent run limit")
+
+	ErrWebhookLeadContactRequired = errors.New("workflow: a webhook that starts on a lead needs a phone or an email")
+	ErrWebhookLeadPhoneInvalid    = errors.New("workflow: the webhook phone is not a valid number")
+	ErrWebhookLeadNotFound        = errors.New("workflow: no lead has the webhook email")
 )

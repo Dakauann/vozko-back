@@ -9,19 +9,21 @@ import (
 
 type rescheduleEventUseCase struct {
 	repo     calendar.Repository
-	google   calendar.GoogleOAuthService
+	google   calendar.GoogleCalendarAPI
+	access   calendar.AccessProvider
 	updateUC calendar.UpdateEventUseCase
 }
 
 func NewRescheduleEventUseCase(
 	repo calendar.Repository,
-	google calendar.GoogleOAuthService,
+	google calendar.GoogleCalendarAPI,
+	access calendar.AccessProvider,
 	updateUC calendar.UpdateEventUseCase,
 ) calendar.RescheduleEventUseCase {
-	if repo == nil || google == nil || updateUC == nil {
+	if repo == nil || google == nil || access == nil || updateUC == nil {
 		return nil
 	}
-	return &rescheduleEventUseCase{repo: repo, google: google, updateUC: updateUC}
+	return &rescheduleEventUseCase{repo: repo, google: google, access: access, updateUC: updateUC}
 }
 
 func (uc *rescheduleEventUseCase) Execute(input calendar.RescheduleEventInput) (*calendar.CalendarEvent, error) {
@@ -84,11 +86,7 @@ func (uc *rescheduleEventUseCase) resolveExisting(eventID, workspaceID string) *
 	if ev, err := uc.repo.GetEventByGoogleEventID(googleEventID, workspaceID); err == nil && ev != nil {
 		return ev
 	}
-	conn, err := uc.repo.GetConnection(workspaceID)
-	if err != nil || conn == nil {
-		return nil
-	}
-	token, err := ensureValidToken(uc.google, uc.repo, conn)
+	token, err := calendarToken(uc.access, workspaceID)
 	if err != nil {
 		return nil
 	}

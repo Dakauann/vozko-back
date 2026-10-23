@@ -117,5 +117,9 @@ func (c *Container) buildExportEntriesUseCase() export_domain.ExportEntriesUseCa
 	}
 	setter.SetChannelEntryLister(export_domain.EntryTypeMercadoLivre, mercadolivre_repository.NewExportRepository(c.db))
 	setter.SetChannelEntryLister(export_domain.EntryTypeTikTok, c.tiktokExportLister())
+	setter.SetChannelEntryLister(export_domain.EntryTypeEmail, c.emailInboxExportLister())
+	for entryType, lister := range c.carrierExportListers() {
+		setter.SetChannelEntryLister(entryType, lister)
+	}
 	return uc
 }

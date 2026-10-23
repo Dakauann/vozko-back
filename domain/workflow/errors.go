@@ -51,6 +51,8 @@ var (
 	ErrNodeInvalidWorkflowID            = errors.New("workflow: referenced workflow ID is invalid or workflow not found")
 	ErrNodeInvalidMCPCollectionID       = errors.New("workflow: MCP collection ID is invalid or collection not found")
 	ErrNodeInvalidKnowledgeBaseID       = errors.New("workflow: knowledge base ID is invalid or not found")
+	ErrNodeInvalidSheetID               = errors.New("workflow: google sheet ID is invalid or not a sheet of this workspace")
+	ErrNodeSheetMappingInvalid          = errors.New("workflow: the column mapping does not fit the google sheet")
 	ErrNodeInvalidModelID               = errors.New("workflow: AI model ID is invalid or not available from the provider")
 	ErrNodeIncompatibleScope            = errors.New("workflow: node is incompatible with workflow trigger scope")
 	ErrNodeInvalidToolMode              = errors.New("workflow: invalid tool_mode value (must be 'route' or 'execute')")

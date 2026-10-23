@@ -18,10 +18,11 @@ import (
 type startRunRequest struct {
 	EntryID   string `json:"entryId"`
 	EntryType string `json:"entryType"`
+	Message   string `json:"message,omitempty" example:"Quero saber das turmas"`
 }
 
 // @Summary Iniciar uma execução de workflow
-// @Description Inicia manualmente uma execução da versão publicada do workflow para uma conversa (entryId e entryType) do workspace atual, e a execução começa a rodar na hora. Exige acesso ao departamento do workflow e que quem pede possa ver a conversa (mesma regra de departamento e de responsável da caixa de entrada); caso contrário a resposta é 403 ou 404.
+// @Description Inicia uma execução da versão publicada do workflow para uma conversa (entryId e entryType) do workspace atual, e a execução começa a rodar na hora. A execução começa como se o cliente tivesse mandado message na conversa (texto opcional, vazio por padrão): no gatilho Mensagem recebida, ou em Primeira mensagem quando o fluxo não tem Mensagem recebida, com os mesmos dados que uma mensagem real traz (message, message_type, channel). Um fluxo sem nenhum desses dois gatilhos recusa com 422 workflow_needs_message_trigger; nenhum outro gatilho é usado. Exige acesso ao departamento do workflow e que quem pede possa ver a conversa (mesma regra de departamento e de responsável da caixa de entrada); caso contrário a resposta é 403 ou 404.
 // @Tags workflows
 // @Accept json
 // @Produce json
@@ -33,6 +34,7 @@ type startRunRequest struct {
 // @Failure 403 {object} response.ErrorResponse "Workflow de outro departamento"
 // @Failure 404 {object} response.ErrorResponse "Workflow ou conversa não encontrados"
 // @Failure 409 {object} response.ErrorResponse "Workflow inativo ou execução já em andamento"
+// @Failure 422 {object} response.ErrorResponse "workflow_needs_message_trigger: o fluxo não tem gatilho Mensagem recebida nem Primeira mensagem"
 // @Router /workflows/{id}/runs [post]
 func (h *WorkflowHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 	viewer, ok := httpx.RequirePerson(w, r)
@@ -50,6 +52,7 @@ func (h *WorkflowHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		response.WriteRefusal(w, refusalInvalidBody.Expecting(map[string]string{
 			"entryId":   "string (required)",
 			"entryType": "string (required)",
+			"message":   "string (optional)",
 		}))
 		return
 	}
@@ -59,6 +62,7 @@ func (h *WorkflowHandler) StartRun(w http.ResponseWriter, r *http.Request) {
 		WorkspaceID: middleware.GetWorkspaceID(r),
 		EntryID:     req.EntryID,
 		EntryType:   req.EntryType,
+		Message:     req.Message,
 		StartedBy:   workflow.StartedByManual(viewer.UserID),
 		Viewer:      viewer,
 	}
@@ -179,7 +183,7 @@ func (h *WorkflowHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 // @Description Lista as execuções de todos os fluxos nesta conversa, da mais recente para a mais antiga, paginado. Cada item traz o nome do fluxo, a versão em que a execução roda, o status, o tipo de gatilho, quem iniciou (startedBy: agent:<id>, webhook:<id>, exit:<id>, manual:<id> ou trigger:<tipo>), o início, o fim e a duração em ms (só para execuções encerradas). Enquanto a execução está rodando ou aguardando, traz também a etapa atual (currentNodeId, currentNodeType e currentNodeName) e o motivo da espera. Exige `workflows:read` e que quem pede possa ver a conversa pela mesma regra de departamento e de responsável da caixa de entrada; caso contrário a resposta é 404.
 // @Tags workflows
 // @Produce json
-// @Param entryType path string true "Tipo da entrada (whatsapp, instagram, facebook, telegram, webchat, mercadolivre, tiktok, unofficial_whatsapp)"
+// @Param entryType path string true "Tipo da entrada (whatsapp, instagram, facebook, telegram, webchat, mercadolivre, tiktok, unofficial_whatsapp, email)"
 // @Param entryId path string true "ID da entrada"
 // @Param page query int false "Página, a partir de 1"
 // @Param pageSize query int false "Itens por página"

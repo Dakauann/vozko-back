@@ -14,13 +14,38 @@ type Note struct {
 	AuthorName string    `json:"author_name" example:"Carla"`
 	Body       string    `json:"body" example:"Cliente pediu desconto, aguardando o gerente."`
 	Mentions   []string  `json:"mentions"`
+	Images     []Image   `json:"images"`
 	CreatedAt  time.Time `json:"created_at" example:"2026-10-18T12:00:00Z"`
+}
+
+type Image struct {
+	ID        string `json:"id" example:"3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"`
+	URL       string `json:"url" example:"https://cdn.exemplo.com/conversations/whatsapp/8a3c2f4e/3f2a1b0c.png"`
+	MimeType  string `json:"mime_type" example:"image/png"`
+	Width     int    `json:"width,omitempty" example:"1280"`
+	Height    int    `json:"height,omitempty" example:"720"`
+	Thumbhash string `json:"thumbhash,omitempty" example:"1QcSHQRnh493V4dIh4eXh1h4kJUI"`
+}
+
+func ImageOf(img conversationnote.Image) Image {
+	return Image{
+		ID:        img.ID,
+		URL:       img.URL,
+		MimeType:  img.MimeType,
+		Width:     img.Layout.Width,
+		Height:    img.Layout.Height,
+		Thumbhash: img.Layout.Thumbhash,
+	}
 }
 
 func Of(n conversationnote.Authored) Note {
 	mentions := n.Mentions
 	if mentions == nil {
 		mentions = []string{}
+	}
+	images := make([]Image, 0, len(n.Images))
+	for _, img := range n.Images {
+		images = append(images, ImageOf(img))
 	}
 	return Note{
 		ID:         n.ID,
@@ -30,6 +55,7 @@ func Of(n conversationnote.Authored) Note {
 		AuthorName: n.AuthorName,
 		Body:       n.Body,
 		Mentions:   mentions,
+		Images:     images,
 		CreatedAt:  n.CreatedAt,
 	}
 }

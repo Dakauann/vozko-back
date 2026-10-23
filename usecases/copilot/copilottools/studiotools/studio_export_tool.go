@@ -8,6 +8,7 @@ import (
 	"vozko/domain/studio"
 	"vozko/domain/tools"
 	"vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/screencall"
 )
 
 const (
@@ -160,7 +161,7 @@ func (t *studioExportTool) Execute(ctx context.Context, cc copilot.Context, args
 	}
 	reply, err := runOnEditor(ctx, cc, copilot.ScreenExport, a)
 	if err != nil {
-		return screenResult(cc, err)
+		return screencall.Result(cc, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: screenData(reply)}
+	return copilot.Result{Status: copilot.StatusOK, Data: screencall.Data(reply)}
 }

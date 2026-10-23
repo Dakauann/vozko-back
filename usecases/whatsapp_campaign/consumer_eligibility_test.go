@@ -150,11 +150,11 @@ func TestTheConsumerKeepsTheClaimAfterASendAndFreesItOtherwise(t *testing.T) {
 
 type leadFactsBook map[string]campaign.LeadFacts
 
-func (b leadFactsBook) LeadFacts(_ context.Context, _ string, leadIDs []string) (map[string]campaign.LeadFacts, error) {
-	out := map[string]campaign.LeadFacts{}
-	for _, id := range leadIDs {
+func (b leadFactsBook) ScreeningFacts(_ context.Context, q campaign.ScreeningQuery) (map[string]campaign.ScreeningFacts, error) {
+	out := map[string]campaign.ScreeningFacts{}
+	for _, id := range q.LeadIDs {
 		if f, ok := b[id]; ok {
-			out[id] = f
+			out[id] = campaign.ScreeningFacts{Lead: f}
 		}
 	}
 	return out, nil

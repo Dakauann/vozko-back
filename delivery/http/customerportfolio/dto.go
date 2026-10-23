@@ -19,7 +19,7 @@ type MoveRequest struct {
 type SubjectResponse struct {
 	Kind        string `json:"kind" enums:"lead,contact" example:"contact"`
 	LeadID      string `json:"leadId,omitempty" example:"3c2b1a00-7d1a-4c61-9a0e-2f8d4c1b2a10"`
-	ContactType string `json:"contactType,omitempty" enums:"unofficial_whatsapp,telegram,instagram,facebook,webchat" example:"instagram"`
+	ContactType string `json:"contactType,omitempty" enums:"unofficial_whatsapp,telegram,instagram,facebook,webchat,email" example:"instagram"`
 	ContactID   string `json:"contactId,omitempty" example:"0b9a8c7d-6e5f-4a3b-9c2d-1e0f9a8b7c6d"`
 }
 

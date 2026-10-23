@@ -39,8 +39,8 @@ func (e *textMatchExecutor) Definition() workflow.NodeDefinition {
 		},
 		DynamicHandles: true,
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "matched", Description: "Valor do caso que correspondeu (vazio se padrão)"},
-			{Key: "text", Description: "Texto avaliado"},
+			{Key: "matched", Description: "Valor do caso que correspondeu (vazio se padrão)", Label: "Caso escolhido", Type: workflow.VariableTypeText},
+			{Key: "text", Description: "Texto avaliado", RepeatsConfig: true},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "text", Label: "Texto", Type: "text", Placeholder: "{{message}}", Required: true},

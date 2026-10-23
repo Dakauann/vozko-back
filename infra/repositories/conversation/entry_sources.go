@@ -182,6 +182,66 @@ var entrySources = []entrySource{
 		Department: "tta.department_id",
 	},
 	{
+		EntryType: shared.EntryTypeEmail,
+		From:      "email_conversations emc",
+
+		WorkspaceJoin: "JOIN email_inboxes emi ON emi.id = emc.sender_id AND emi.workspace_id = emc.workspace_id AND emi.workspace_id = ?",
+
+		EntryID: "emc.id",
+
+		Account: "COALESCE(emc.sender_id::text, '')",
+
+		ConversationStatus: "emc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "emc.created_at",
+		UpdatedAt:     "emc.updated_at",
+		LastMessageAt: "emc.last_message_at",
+		Deleted:       "emc.deleted_at IS NULL",
+
+		Department: "emi.department_id",
+	},
+	{
+		EntryType: shared.EntryTypeRCS,
+		From:      "rcs_conversations rcc",
+
+		WorkspaceJoin: "JOIN rcs_senders rcsd ON rcsd.id = rcc.sender_id AND rcsd.workspace_id = rcc.workspace_id AND rcsd.workspace_id = ?",
+
+		EntryID: "rcc.id",
+
+		Account: "COALESCE(rcc.sender_id::text, '')",
+
+		ConversationStatus: "rcc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "rcc.created_at",
+		UpdatedAt:     "rcc.updated_at",
+		LastMessageAt: "rcc.last_message_at",
+		Deleted:       "rcc.deleted_at IS NULL",
+
+		Department: "rcsd.department_id",
+	},
+	{
+		EntryType: shared.EntryTypeSMS,
+		From:      "sms_conversations smc",
+
+		WorkspaceJoin: "JOIN sms_routes smr ON smr.id = smc.sender_id AND smr.workspace_id = smc.workspace_id AND smr.workspace_id = ?",
+
+		EntryID: "smc.id",
+
+		Account: "COALESCE(smc.sender_id::text, '')",
+
+		ConversationStatus: "smc.conversation_status",
+		CampaignID:         "",
+
+		CreatedAt:     "smc.created_at",
+		UpdatedAt:     "smc.updated_at",
+		LastMessageAt: "smc.last_message_at",
+		Deleted:       "smc.deleted_at IS NULL",
+
+		Department: "smr.department_id",
+	},
+	{
 		EntryType:     shared.EntryTypeUnofficialWhatsApp,
 		From:          "unofficial_whatsapp_conversations uwc",
 		WorkspaceJoin: "JOIN unofficial_whatsapp_instances uwi ON uwi.id = uwc.instance_id AND uwi.workspace_id = ?",

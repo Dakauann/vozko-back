@@ -22,6 +22,21 @@ var contactRefs = map[shared.EntryType]string{
 		  WHERE wcv.id = wcc.visitor_id AND wcv.lead_id IS NOT NULL),
 		wcc.visitor_id)`,
 
+	shared.EntryTypeEmail: `COALESCE(
+		(SELECT ect.lead_id FROM email_contacts ect
+		  WHERE ect.id = emc.contact_id AND ect.lead_id IS NOT NULL),
+		emc.contact_id)`,
+
+	shared.EntryTypeRCS: `COALESCE(
+		(SELECT cct.lead_id FROM carrier_contacts cct
+		  WHERE cct.id = rcc.contact_id AND cct.lead_id IS NOT NULL),
+		rcc.contact_id)`,
+
+	shared.EntryTypeSMS: `COALESCE(
+		(SELECT cct.lead_id FROM carrier_contacts cct
+		  WHERE cct.id = smc.contact_id AND cct.lead_id IS NOT NULL),
+		smc.contact_id)`,
+
 	shared.EntryTypeUnofficialWhatsApp: `COALESCE(
 		(SELECT uwct.lead_id FROM unofficial_whatsapp_contacts uwct
 		  WHERE uwct.id = uwc.contact_id AND uwct.lead_id IS NOT NULL),

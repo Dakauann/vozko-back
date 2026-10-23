@@ -28,6 +28,7 @@ type testNodeRequest struct {
 	ConfirmRealCalls bool                                       `json:"confirmRealCalls"`
 	ContinueWaits    bool                                       `json:"continueWaits"`
 	WaitAnswers      map[string]workflow_usecase.TestWaitAnswer `json:"waitAnswers"`
+	Trigger          *workflow_usecase.TestTrigger              `json:"trigger,omitempty"`
 }
 
 // @Summary Fixar a saída de um nó a partir de uma execução
@@ -141,6 +142,16 @@ func (h *WorkflowHandler) ValidateGraph(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// @Summary Analisar um nó antes do teste
+// @Description Diz como o teste do nó vai rodar: modo (direct, mock ou execute_until), as dependências que precisam de valor simulado (mock_fields) e, em trigger, a entrada do gatilho de onde o caminho até o nó começa (o mesmo formato de sim_ready.triggers do Testar). O caminho começa no gatilho principal quando ele leva até o nó, senão no primeiro gatilho do rascunho que leva. trigger é omitido quando o caminho não começa num gatilho com entrada (gatilhos de mensagem, ligação recebida ou nenhum gatilho no caminho). Envie a entrada em POST /workflows/{id}/nodes/{nodeId}/test no campo trigger.
+// @Tags workflows
+// @Produce json
+// @Param id path string true "ID do workflow"
+// @Param nodeId path string true "ID do nó"
+// @Success 200 {object} workflow_usecase.UIAnalysis
+// @Failure 404 {object} response.ErrorResponse "Workflow ou nó não encontrado"
+// @Failure 501 {object} response.ErrorResponse "Teste de nó não configurado"
+// @Router /workflows/{id}/nodes/{nodeId}/analyze [get]
 func (h *WorkflowHandler) AnalyzeNode(w http.ResponseWriter, r *http.Request) {
 	wfID := mux.Vars(r)["id"]
 	nodeID := mux.Vars(r)["nodeId"]
@@ -168,7 +179,7 @@ func (h *WorkflowHandler) AnalyzeNode(w http.ResponseWriter, r *http.Request) {
 }
 
 // @Summary Testar um nó do workflow
-// @Description Executa um único nó no ambiente de teste (nunca no registro de produção) com um estado simulado (mockedState e triggerVars). Devolve o mesmo registro de etapa da produção e da simulação em step (parâmetros usados, saída, tipo e cadeia do erro, pilha, HTTP, logs do script, tempos em ms, saída seguida e se veio de uma saída fixada), e em execute_until também upstream_steps, cada etapa anterior que rodou, em ordem. Mensagens são sempre simuladas; HTTP, código com fetch, e-mail e agenda só fazem chamadas reais com confirmRealCalls, caso contrário falham com error_kind real_call_not_confirmed. Nós de espera descrevem a espera em wait sem esperar. Quando o caminho não chega ao nó, path_stop explica onde parou, onde divergiu e quais correções aplicar; com continueWaits e waitAnswers o teste segue por esperas no caminho (timer pulado, resposta ou formulário informados). O teste inteiro tem limite de 60 s (error_kind timeout); saídas grandes são cortadas e valores sensíveis mascarados. Com skipExecution, só resolve a configuração sem executar efeitos.
+// @Description Executa um único nó no ambiente de teste (nunca no registro de produção) com um estado simulado (mockedState e triggerVars). Devolve o mesmo registro de etapa da produção e da simulação em step (parâmetros usados, saída, tipo e cadeia do erro, pilha, HTTP, logs do script, tempos em ms, saída seguida e se veio de uma saída fixada), e em execute_until também upstream_steps, cada etapa anterior que rodou, em ordem. Mensagens são sempre simuladas; HTTP, código com fetch, e-mail e agenda só fazem chamadas reais com confirmRealCalls, caso contrário falham com error_kind real_call_not_confirmed. Nós de espera descrevem a espera em wait sem esperar. Quando o caminho não chega ao nó, path_stop explica onde parou, onde divergiu e quais correções aplicar; com continueWaits e waitAnswers o teste segue por esperas no caminho (timer pulado, resposta ou formulário informados). O teste inteiro tem limite de 60 s (error_kind timeout); saídas grandes são cortadas e valores sensíveis mascarados. Com skipExecution, só resolve a configuração sem executar efeitos. Com trigger {nodeId, input} o teste começa pelo gatilho escolhido, com a mesma entrada e as mesmas regras do Testar (sim_ready.triggers): input segue o formato do gatilho (campos planos por chave, o corpo JSON do webhook, ignorado em gatilhos de mensagem ou sem entrada) e é validado como em produção; dados inválidos respondem 422 trigger_input_invalid com details.issues ({code, key}). O caminho do execute_until começa nesse gatilho; se ele não leva até o nó, path_stop vem com reason no_path.
 // @Tags workflows
 // @Accept json
 // @Produce json
@@ -178,9 +189,11 @@ func (h *WorkflowHandler) AnalyzeNode(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} workflow_usecase.TestNodeOutput
 // @Failure 400 {object} response.ErrorResponse "Corpo inválido"
 // @Failure 403 {object} response.ErrorResponse "Workflow de outro departamento"
-// @Failure 404 {object} response.ErrorResponse "Workflow ou nó não encontrado"
+// @Failure 404 {object} response.ErrorResponse "Workflow ou nó não encontrado; trigger_not_found quando trigger.nodeId não é um gatilho do rascunho"
+// @Failure 422 {object} response.ErrorResponse{details=triggerInputIssuesDetails} "trigger_input_invalid: a entrada do gatilho não passa nas regras dele"
 // @Failure 501 {object} response.ErrorResponse "Teste de nó não configurado"
 // @Router /workflows/{id}/nodes/{nodeId}/test [post]
+// @Failure 503 {object} response.ErrorResponse "trigger_input_unavailable: não foi possível ler os formulários ou as etapas do gatilho"
 func (h *WorkflowHandler) TestNode(w http.ResponseWriter, r *http.Request) {
 	wfID := mux.Vars(r)["id"]
 	nodeID := mux.Vars(r)["nodeId"]
@@ -203,6 +216,7 @@ func (h *WorkflowHandler) TestNode(w http.ResponseWriter, r *http.Request) {
 			"confirmRealCalls": "boolean (optional)",
 			"continueWaits":    "boolean (optional)",
 			"waitAnswers":      "object by node id (optional)",
+			"trigger":          "{nodeId: string, input: object} (optional)",
 		}))
 		return
 	}
@@ -217,6 +231,7 @@ func (h *WorkflowHandler) TestNode(w http.ResponseWriter, r *http.Request) {
 		ConfirmRealCalls: req.ConfirmRealCalls,
 		ContinueWaits:    req.ContinueWaits,
 		WaitAnswers:      req.WaitAnswers,
+		Trigger:          req.Trigger,
 	})
 	if err != nil {
 		h.handleDomainError(w, err)
@@ -224,4 +239,67 @@ func (h *WorkflowHandler) TestNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.WriteSuccess(w, http.StatusOK, result)
+}
+
+// @Summary Última entrada real de um gatilho
+// @Description Devolve a entrada da execução mais recente deste fluxo iniciada pelo tipo do gatilho nodeId e que guardou os dados do gatilho, no mesmo formato de input do Testar (sim_ready.triggers): campos planos por chave para gatilhos com campos, o corpo JSON para webhook, {"message"} para gatilhos de mensagem e {} sem entrada. Só valem execuções que quem pede pode ver (mesma regra da caixa de entrada; ligações e execuções de lead são visíveis); uma execução invisível conta como nenhuma. A busca olha só as 200 execuções mais recentes deste gatilho que guardaram dados; se nenhuma delas é visível, responde no_recent_input. Os valores vêm mascarados como na execução gravada (CPF, tokens, senhas); maskedKeys lista as chaves (no webhook, os caminhos com ponto) que precisam ser preenchidas de novo. Campos que o gatilho não declara mais ficam de fora.
+// @Tags workflows
+// @Produce json
+// @Param id path string true "ID do workflow"
+// @Param nodeId path string true "ID do nó de gatilho no rascunho"
+// @Success 200 {object} workflow_usecase.LastTriggerInput "Entrada, chaves mascaradas e a execução de origem"
+// @Failure 404 {object} response.ErrorResponse "Workflow não encontrado, trigger_not_found (o nó não é um gatilho do rascunho) ou no_recent_input (nenhuma execução visível com os dados do gatilho entre as 200 mais recentes)"
+// @Failure 503 {object} response.ErrorResponse "trigger_input_unavailable: não foi possível ler os formulários ou as etapas do gatilho"
+// @Router /workflows/{id}/triggers/{nodeId}/last-input [get]
+func (h *WorkflowHandler) LastTriggerInput(w http.ResponseWriter, r *http.Request) {
+	viewer, ok := httpx.RequirePerson(w, r)
+	if !ok {
+		return
+	}
+	if h.lastTriggerInput == nil {
+		h.handleDomainError(w, workflow.ErrNoRecentTriggerInput)
+		return
+	}
+	vars := mux.Vars(r)
+	wf, err := h.workflows.Get(workflowScope(r), vars["id"])
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	result, err := h.lastTriggerInput.Execute(viewer, wf, vars["nodeId"])
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, result)
+}
+
+// @Summary Variáveis disponíveis num nó
+// @Description Lista as variáveis que o nó nodeId do rascunho pode usar em {{...}}, calculadas pelo servidor a partir do grafo: os dados de cada gatilho que leva ao nó (campos do agente, corpo do webhook, respostas de formulário, etapa, aniversário), as saídas e variáveis dos passos anteriores (envios, definir variável, captura do HTTP, chaves de state.set legíveis no código, resposta da IA, respostas de formulário e de espera), os dados do contato e da conversa, os valores do sistema e os nomes dos segredos do workspace (nunca os valores). Cada item traz ref (o que vai entre {{ e }}), label em português, group (trigger, nodes, contact, system ou secrets, nesta ordem; os passos do mais próximo ao mais distante), kind (default para os valores padrão do sistema, trigger, node, system para contato e conversa, secret), source com o nó que fornece o dado (null para sistema e segredos), type (text, number, boolean, object, list, date ou unknown), example (ou null) e availability: always quando todo caminho até o nó fornece o dado, some_paths quando só alguns fornecem. Cada ref aparece uma vez; last.<campo> aparece uma vez, com o passo mais próximo que o fornece. O mesmo resultado vem em variables na análise do nó (GET /workflows/{id}/nodes/{nodeId}/analyze).
+// @Tags workflows
+// @Produce json
+// @Param id path string true "ID do workflow"
+// @Param nodeId path string true "ID do nó no rascunho"
+// @Success 200 {object} workflow.VariableCatalog
+// @Failure 403 {object} response.ErrorResponse "Workflow de outro departamento"
+// @Failure 404 {object} response.ErrorResponse "Workflow não encontrado ou node_not_found (o nó não existe no rascunho)"
+// @Failure 503 {object} response.ErrorResponse "variables_unavailable: não foi possível ler os segredos do workspace agora"
+// @Router /workflows/{id}/nodes/{nodeId}/variables [get]
+func (h *WorkflowHandler) NodeVariables(w http.ResponseWriter, r *http.Request) {
+	if h.variables == nil {
+		h.handleDomainError(w, workflow.ErrVariablesUnavailable)
+		return
+	}
+	vars := mux.Vars(r)
+	wf, err := h.workflows.Get(workflowScope(r), vars["id"])
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	catalog, err := h.variables.At(r.Context(), wf, vars["nodeId"])
+	if err != nil {
+		h.handleDomainError(w, err)
+		return
+	}
+	response.WriteSuccess(w, http.StatusOK, catalog)
 }

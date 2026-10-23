@@ -1,0 +1,10 @@
+{
+    "reference": "121c38a5-cf77-424a-9ea9-d6c044a845f9",
+    "messageContext": "msg$abeade67-de9c-45ba-bcfd-abcae1d1879f",
+    "from": { "number": "0031612345678" },
+    "to": { "number": "003222556611" },
+    "event": { "type": "Typing", "custom": {} },
+    "groupings": [ "", "", "" ],
+    "timeUtc": "2025-09-03T08:00:05",
+    "channel": "RCS"
+}

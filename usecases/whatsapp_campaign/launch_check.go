@@ -73,6 +73,7 @@ type launchFacts struct {
 	snapshot launchcheck.Snapshot
 	template *template.Template
 	phone    *businessphone.WhatsAppBusinessPhoneNumber
+	quote    *template.SendCost
 }
 
 func (f *launchFacts) unread(what string) {
@@ -88,7 +89,19 @@ func (c *LaunchCheck) Run(ctx context.Context, campaignID string) (launchcheck.R
 	if err != nil {
 		return launchcheck.Report{}, fmt.Errorf("count the campaign's contacts: %w", err)
 	}
-	facts := &launchFacts{snapshot: launchcheck.Snapshot{Pending: int(counts.Pending)}}
+	facts := &launchFacts{snapshot: launchcheck.Snapshot{Pending: int(counts.Pending), Fresh: counts.Total == 0}}
+	c.readHealth(ctx, camp, facts)
+	c.readLastRun(camp, counts, facts)
+	return launchcheck.Check(facts.snapshot), nil
+}
+
+func (c *LaunchCheck) Preview(ctx context.Context, camp *wc.Campaign, pending int) (launchcheck.Report, *template.SendCost) {
+	facts := &launchFacts{snapshot: launchcheck.Snapshot{Pending: pending, Fresh: true}}
+	c.readHealth(ctx, camp, facts)
+	return launchcheck.Check(facts.snapshot), facts.quote
+}
+
+func (c *LaunchCheck) readHealth(ctx context.Context, camp *wc.Campaign, facts *launchFacts) {
 	c.readPhone(camp, facts)
 	if !camp.IsOrganic() {
 		c.readTemplate(ctx, camp, facts)
@@ -96,9 +109,7 @@ func (c *LaunchCheck) Run(ctx context.Context, campaignID string) (launchcheck.R
 		c.readBalance(camp, facts)
 	}
 	c.readAccess(camp, facts)
-	c.readLastRun(camp, counts, facts)
 	c.readCap(camp, facts)
-	return launchcheck.Check(facts.snapshot), nil
 }
 
 func (c *LaunchCheck) readPhone(camp *wc.Campaign, facts *launchFacts) {
@@ -162,6 +173,7 @@ func (c *LaunchCheck) readBalance(camp *wc.Campaign, facts *launchFacts) {
 		facts.unread(unreadBalance)
 		return
 	}
+	facts.quote = &quote
 	facts.snapshot.BalanceShort = !quote.Affordable
 }
 

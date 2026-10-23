@@ -100,7 +100,7 @@ func TestMoveStageMovesTheConversationAsTheWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "ok", res.NextNodeID)
 	require.Len(t, mover.calls, 1)
-	require.Equal(t, stage.AssignEntryStageInput{StageID: "st-won", EntryID: "e-1", EntryType: "unofficial_whatsapp", ActorID: actor.FormatWorkflow("wf-1")}, mover.calls[0])
+	require.Equal(t, stage.AssignEntryStageInput{StageID: "st-won", EntryID: "e-1", EntryType: "unofficial_whatsapp", ActorID: actor.FormatWorkflow("wf-1"), Cause: stage.MoveCause{WorkflowID: "wf-1", RunID: "run1"}}, mover.calls[0])
 	require.Equal(t, []string{"e-1"}, screens.entries)
 	require.Equal(t, true, res.Output["changed"])
 	require.Equal(t, "Ganho", res.Output["stage_name"])
@@ -164,4 +164,16 @@ func TestCheckStageBranchesOnTheCurrentStage(t *testing.T) {
 	res, err = exec.Execute(stageNodeCtx(workflow.NodeTypeConditionCheckStage, map[string]interface{}{"stage_id": "st-new"}, checkEdges()))
 	require.NoError(t, err)
 	require.Equal(t, "no", res.NextNodeID, "a conversation in no stage is not in the chosen one")
+}
+
+func TestMoveStageTellsTheMoveWhichRunMadeItAndHowFarTheChainWent(t *testing.T) {
+	mover := &stageMoverStub{}
+	ctx := stageNodeCtx(workflow.NodeTypeActionMoveStage, map[string]interface{}{"stage_id": "st-won"}, moveEdges())
+	ctx.State.Set(workflow.StageChainKey, float64(2))
+
+	_, err := NewMoveStageExecutor(stagePipelines(), mover, nil).Execute(ctx)
+
+	require.NoError(t, err)
+	require.Len(t, mover.calls, 1)
+	require.Equal(t, stage.MoveCause{WorkflowID: "wf-1", RunID: "run1", Chain: 2}, mover.calls[0].Cause)
 }

@@ -10,6 +10,7 @@ import (
 
 	"vozko/domain/buttonaction"
 	"vozko/domain/calls/calllist"
+	"vozko/domain/choicestats"
 	ce "vozko/domain/conversation_event"
 	ia "vozko/domain/inbox_assignment"
 	"vozko/domain/lead"
@@ -83,6 +84,7 @@ type Deps struct {
 	Delegations Delegations
 	CallLists   CallLists
 	Events      ce.Logger
+	Choices     choicestats.Recorder
 	Now         func() time.Time
 }
 
@@ -94,7 +96,7 @@ var _ leadexit.Step = (*Step)(nil)
 
 func NewStep(deps Deps) (*Step, error) {
 	if deps.Buttons == nil || deps.Sent == nil || deps.Campaigns == nil || deps.Runs == nil || deps.Consent == nil || deps.Leads == nil ||
-		deps.HandOff == nil || deps.Profiles == nil || deps.Deals == nil || deps.Workflows == nil || deps.Delegations == nil || deps.CallLists == nil || deps.Events == nil {
+		deps.HandOff == nil || deps.Profiles == nil || deps.Deals == nil || deps.Workflows == nil || deps.Delegations == nil || deps.CallLists == nil || deps.Events == nil || deps.Choices == nil {
 		return nil, leadexit.ErrUnavailable
 	}
 	if deps.Now == nil {
@@ -117,6 +119,7 @@ func (s *Step) Run(ctx context.Context, in leadexit.Inbound, replier leadexit.Re
 	if err != nil {
 		return leadexit.Result{}, err
 	}
+	s.recordChoice(ctx, in, tc)
 	result := leadexit.Result{Selection: selectionOf(in, tc)}
 	if tc.mismatch || strings.TrimSpace(in.LeadID) == "" {
 		return result, nil
@@ -270,4 +273,23 @@ func (s *Step) writeLine(in leadexit.Inbound, d leadexit.Decision, run leadexit.
 		WithDetails(run.Details(d)).
 		Build()
 	s.deps.Events.Log(event)
+}
+
+func (s *Step) recordChoice(ctx context.Context, in leadexit.Inbound, tc tapContext) {
+	if tc.replied == nil {
+		return
+	}
+	option := choicestats.OptionFreeText
+	if in.Tap != nil {
+		if !leadexit.ButtonMatched(tc.resolution) {
+			return
+		}
+		option = choicestats.TemplateButtonOptionID(tc.resolution.ButtonIndex)
+	}
+	s.deps.Choices.RecordClick(ctx, choicestats.Click{
+		WorkspaceID:       in.WorkspaceID,
+		ProviderMessageID: tc.replied.MessageID,
+		Option:            option,
+		At:                s.deps.Now().UTC(),
+	})
 }

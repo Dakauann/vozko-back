@@ -3,7 +3,6 @@ package audience_repository
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -17,20 +16,14 @@ import (
 	ca "vozko/domain/audience"
 	"vozko/domain/shared"
 	"vozko/infra/database/schema"
+	"vozko/infra/testenv"
 )
-
-func baseDSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
-}
 
 func integrationDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
+	dsn := testenv.Postgres(t).DSN()
 	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
-	admin, err := gorm.Open(postgres.Open(baseDSN()), silent)
+	admin, err := gorm.Open(postgres.Open(dsn), silent)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -38,7 +31,7 @@ func integrationDB(t *testing.T) *gorm.DB {
 	if err := admin.Exec("CREATE SCHEMA " + schemaName).Error; err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
-	db, err := gorm.Open(postgres.Open(baseDSN()+" search_path="+schemaName), silent)
+	db, err := gorm.Open(postgres.Open(dsn+" search_path="+schemaName), silent)
 	if err != nil {
 		t.Fatalf("open schema: %v", err)
 	}

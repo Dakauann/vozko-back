@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"vozko/domain/campaign"
-	"vozko/domain/lead"
 	"vozko/domain/leadaction"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
 	wc "vozko/domain/whatsapp_campaign"
 	wd "vozko/domain/workspace/workspace_department"
+	"vozko/usecases/campaigncreate"
 )
 
 type PrepareRequest struct {
@@ -155,41 +155,7 @@ func (s *Service) chunkTargets(ctx context.Context, workspaceID string, ids []st
 }
 
 func (s *Service) subjects(ctx context.Context, workspaceID string, ids []string, bindings campaign.BindingPlan) (map[string]campaign.BindingSubject, error) {
-	subjects := make(map[string]campaign.BindingSubject, len(ids))
-	if !bindings.NeedsLead() {
-		return subjects, nil
-	}
-	found, err := s.deps.Leads.FindByIDs(workspaceID, ids)
-	if err != nil {
-		return nil, fmt.Errorf("leads of the send: %w", err)
-	}
-	leads := make([]*lead.Lead, 0, len(found))
-	for _, l := range found {
-		if l != nil && l.WorkspaceID == workspaceID {
-			leads = append(leads, l)
-		}
-	}
-	if bindings.NeedsAddresses() {
-		if err := s.deps.Contacts.AttachContactDetails(ctx, workspaceID, leads); err != nil {
-			return nil, fmt.Errorf("addresses of the send: %w", err)
-		}
-	}
-	names := map[string]string{}
-	if bindings.NeedsOwnerNames() {
-		var owners []string
-		for _, l := range leads {
-			if l.Owner != "" {
-				owners = append(owners, l.Owner)
-			}
-		}
-		if len(owners) > 0 {
-			names = s.deps.Names.Names(owners...)
-		}
-	}
-	for _, l := range leads {
-		subjects[l.ID] = campaign.BindingSubject{Lead: l, OwnerName: names[l.Owner]}
-	}
-	return subjects, nil
+	return campaigncreate.SubjectSource{Leads: s.deps.Leads, Contacts: s.deps.Contacts, Names: s.deps.Names}.Subjects(ctx, workspaceID, ids, bindings)
 }
 
 func (s *Service) createPart(ctx context.Context, a Actor, plan *sendPlan, name, key string, targets []target) (string, error) {

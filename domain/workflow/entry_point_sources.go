@@ -1,7 +1,6 @@
 package workflow
 
 import (
-	"strings"
 	"time"
 )
 
@@ -9,7 +8,6 @@ type EntryPointSourceQuery struct {
 	WorkspaceID string
 	WorkflowIDs []string
 	FormIDs     []string
-	CampaignIDs []string
 }
 
 type WorkspaceChannel struct {
@@ -49,27 +47,23 @@ func RunningTriggers(w *Workflow, published map[string][]Node) []Node {
 
 func EntryPointQueryOf(workspaceID string, workflows []*Workflow, published map[string][]Node) EntryPointSourceQuery {
 	q := EntryPointSourceQuery{WorkspaceID: workspaceID}
-	forms, campaigns := map[string]bool{}, map[string]bool{}
+	forms := map[string]bool{}
 	for _, w := range workflows {
 		if w == nil {
 			continue
 		}
 		q.WorkflowIDs = append(q.WorkflowIDs, w.ID)
 		for _, node := range RunningTriggers(w, published) {
-			switch TriggerType(node.Type) {
-			case TriggerFormSubmitted:
-				ids, _ := formIDList(node.Config[FormTriggerFormIDsKey])
-				for _, id := range ids {
-					forms[id] = true
-				}
-			case TriggerCampaignSent:
-				if id, _ := node.Config[CampaignTriggerCampaignIDKey].(string); strings.TrimSpace(id) != "" {
-					campaigns[strings.TrimSpace(id)] = true
-				}
+			if TriggerType(node.Type) != TriggerFormSubmitted {
+				continue
+			}
+			ids, _ := formIDList(node.Config[FormTriggerFormIDsKey])
+			for _, id := range ids {
+				forms[id] = true
 			}
 		}
 	}
-	q.FormIDs, q.CampaignIDs = keysOf(forms), keysOf(campaigns)
+	q.FormIDs = keysOf(forms)
 	return q
 }
 
@@ -101,22 +95,10 @@ func (s *EntryPointSources) FactsOf(workflowID string) EntryPointFacts {
 		if c.WorkflowID == workflowID {
 			facts.Channels = append(facts.Channels, c.EntryChannel)
 		}
-		if c.Kind.IsCampaign() {
-			if facts.ConfiguredCampaigns == nil {
-				facts.ConfiguredCampaigns = map[string]EntryChannel{}
-			}
-			facts.ConfiguredCampaigns[c.ID] = c.EntryChannel
-		}
 	}
 	for _, c := range s.EnabledChannels {
-		if !c.WorkflowEnabled {
-			continue
-		}
-		if c.WorkflowID == "" {
+		if c.WorkflowEnabled && c.WorkflowID == "" {
 			facts.OpenChannels = append(facts.OpenChannels, c.EntryChannel)
-		}
-		if c.Kind.IsCampaign() {
-			facts.EnabledCampaigns = append(facts.EnabledCampaigns, c.EntryChannel)
 		}
 	}
 	return facts

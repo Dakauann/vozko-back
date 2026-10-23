@@ -55,8 +55,9 @@ func (a *interactiveToolAdapter) InteractiveLimits() channel.InteractiveLimits {
 
 func telegramSeeds() map[string]interface{} {
 	return map[string]interface{}{
-		"__entry_id":   "conv-1",
-		"__entry_type": string(shared.EntryTypeTelegram),
+		"__entry_id":     "conv-1",
+		"__entry_type":   string(shared.EntryTypeTelegram),
+		"__workspace_id": "ws-1",
 	}
 }
 

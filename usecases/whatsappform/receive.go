@@ -11,6 +11,7 @@ import (
 	"vozko/domain/actor"
 	"vozko/domain/lead"
 	wf "vozko/domain/whatsappform"
+	"vozko/domain/workflow"
 	lead_usecase "vozko/usecases/lead"
 )
 
@@ -19,9 +20,6 @@ const (
 	ConsentUnchanged = "unchanged"
 	FileStoreFailed  = "store_failed"
 	refusedNoLead    = "lead_missing"
-	runDataResponse  = "form_response_id"
-	runDataForm      = "form_id"
-	runDataPrefix    = "form."
 )
 
 type InboundForm struct {
@@ -283,11 +281,11 @@ func (s *Service) storeFiles(ctx context.Context, doc wf.Document, resp *wf.Resp
 }
 
 func runData(doc wf.Document, resp wf.Response) map[string]any {
-	data := map[string]any{runDataResponse: resp.ID, runDataForm: resp.FormID}
+	answers := map[string]any{}
 	for _, ref := range doc.Fields() {
 		if answer, ok := resp.Answers.Values[ref.Field.Key]; ok {
-			data[runDataPrefix+ref.Field.Key] = answer.Shown(ref.Field, false)
+			answers[ref.Field.Key] = answer.Shown(ref.Field, false)
 		}
 	}
-	return data
+	return workflow.FormSubmittedRunData(resp.FormID, resp.ID, answers)
 }

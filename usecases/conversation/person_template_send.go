@@ -21,5 +21,5 @@ func (uc *personTemplateSend) Execute(by shared.Person, in conversation.Template
 	if !by.MayActOn(uc.access, in.WorkspaceID, in.EntryID, in.EntryType) {
 		return "", conversation.ErrUnauthorized
 	}
-	return uc.sender.SendTemplate(in.EntryID, in.EntryType, in.TemplateID, in.Variables, by.UserID, in.WorkspaceID)
+	return uc.sender.SendTemplate(in.EntryID, in.EntryType, in.TemplateID, in.Variables, in.HeaderVariables, by.UserID, in.WorkspaceID)
 }

@@ -2,6 +2,7 @@ package campaignautomation
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"vozko/domain/agent"
@@ -240,4 +241,29 @@ type countingWorkflows struct {
 func (c *countingWorkflows) Execute(string) (*workflow.Workflow, error) {
 	c.calls++
 	return c.wf, nil
+}
+
+func TestRuleMissingNamesEveryKeyTheAutomationNeedsOnce(t *testing.T) {
+	needsClass := &agent.Agent{ID: "agent-2", WorkspaceID: "ws-1", Variables: []agent.AgentVariable{{Name: "escola"}, {Name: "turma"}}}
+	step := newStep(t, fakeWorkflows{byID: map[string]*workflow.Workflow{"wf-1": needsSchoolWorkflow("ws-1")}}, fakeAgents{byID: map[string]*agent.Agent{"agent-2": needsClass}})
+	rule, err := step.Rule("ws-1", campaign.Automation{WorkflowID: "wf-1", AgentID: "agent-2"})
+	if err != nil {
+		t.Fatalf("Rule: %v", err)
+	}
+	if got := rule.Missing(nil); !reflect.DeepEqual(got, []string{"escola", "turma"}) {
+		t.Fatalf("no metadata = %v", got)
+	}
+	if got := rule.Missing(map[string]any{"escola": "Prisma", "turma": " "}); !reflect.DeepEqual(got, []string{"turma"}) {
+		t.Fatalf("a blank key = %v", got)
+	}
+	if !rule.Requires() {
+		t.Fatal("a rule with keys requires metadata")
+	}
+	none, err := step.Rule("ws-1", campaign.Automation{})
+	if err != nil {
+		t.Fatalf("Rule without automation: %v", err)
+	}
+	if none.Requires() || len(none.Missing(nil)) != 0 {
+		t.Fatalf("no automation requires nothing: %v", none.Missing(nil))
+	}
 }

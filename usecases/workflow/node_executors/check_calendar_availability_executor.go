@@ -1,6 +1,7 @@
 package node_executors
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sort"
@@ -14,11 +15,12 @@ import (
 
 type checkCalendarAvailabilityExecutor struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewCheckCalendarAvailabilityExecutor(repo calendar.Repository, google calendar.GoogleOAuthService) workflow.NodeExecutor {
-	return &checkCalendarAvailabilityExecutor{repo: repo, google: google}
+func NewCheckCalendarAvailabilityExecutor(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) workflow.NodeExecutor {
+	return &checkCalendarAvailabilityExecutor{repo: repo, google: google, access: access}
 }
 
 func (e *checkCalendarAvailabilityExecutor) Definition() workflow.NodeDefinition {
@@ -38,15 +40,15 @@ func (e *checkCalendarAvailabilityExecutor) Definition() workflow.NodeDefinition
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando a consulta foi bem-sucedida"},
-			{Key: "available_slots", Description: "Lista de horários livres formatados"},
-			{Key: "available_slots_json", Description: "JSON array com objetos {start, end} dos slots livres"},
-			{Key: "busy_count", Description: "Quantidade de eventos ocupados encontrados"},
-			{Key: "date_from", Description: "Início do período consultado (RFC3339)"},
-			{Key: "date_to", Description: "Fim do período consultado (RFC3339)"},
-			{Key: "timezone", Description: "Timezone efetivamente usada"},
-			{Key: "calendar_email", Description: "Conta Google conectada ao workspace"},
-			{Key: "error", Description: "Descrição do erro quando a consulta falha"},
+			{Key: "success", Description: "true quando a consulta foi bem-sucedida", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "available_slots", Description: "Lista de horários livres formatados", Label: "Horários livres", Type: workflow.VariableTypeText},
+			{Key: "available_slots_json", Description: "JSON array com objetos {start, end} dos slots livres", Label: "Horários livres (JSON)", Type: workflow.VariableTypeText},
+			{Key: "busy_count", Description: "Quantidade de eventos ocupados encontrados", Label: "Eventos ocupados", Type: workflow.VariableTypeNumber},
+			{Key: "date_from", Description: "Início do período consultado (RFC3339)", Label: "Início do período", Type: workflow.VariableTypeDate},
+			{Key: "date_to", Description: "Fim do período consultado (RFC3339)", Label: "Fim do período", Type: workflow.VariableTypeDate},
+			{Key: "timezone", Description: "Timezone efetivamente usada", Label: "Fuso horário", Type: workflow.VariableTypeText},
+			{Key: "calendar_email", Description: "Conta Google conectada ao workspace", Label: "Conta Google", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Descrição do erro quando a consulta falha", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{
 			"date_from":     "{{var.date_from}}",
@@ -79,24 +81,21 @@ func (e *checkCalendarAvailabilityExecutor) Definition() workflow.NodeDefinition
 }
 
 func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResult, error) {
-	if e.repo == nil || e.google == nil {
+	if e.repo == nil || e.google == nil || e.access == nil {
 		return calAvailFailure(ctx, "integração Google Calendar indisponível no servidor"), nil
 	}
 
-	workspaceID := scheduleMeetingWorkspaceID(ctx)
+	workspaceID := calendarWorkspaceID(ctx)
 	if workspaceID == "" {
 		return calAvailFailure(ctx, "workspace do fluxo não encontrado"), nil
 	}
 
-	conn, err := e.repo.GetConnection(workspaceID)
+	googleAccess, err := e.access.CalendarAccess(context.Background(), workspaceID)
 	if err != nil {
-		return calAvailFailure(ctx, fmt.Sprintf("falha ao consultar integração do workspace: %v", err)), nil
-	}
-	if conn == nil {
-		return calAvailFailure(ctx, "nenhuma conta Google Calendar conectada neste workspace"), nil
+		return calAvailFailure(ctx, calendarAccessFailure(err)), nil
 	}
 
-	timezoneName := strings.TrimSpace(scheduleMeetingInterpolatedString(ctx, "timezone"))
+	timezoneName := strings.TrimSpace(calendarConfigText(ctx, "timezone"))
 	if timezoneName == "" {
 		timezoneName = "America/Sao_Paulo"
 	}
@@ -105,25 +104,25 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 		return calAvailFailure(ctx, fmt.Sprintf("timezone inválida: %s", timezoneName)), nil
 	}
 
-	fromRaw := strings.TrimSpace(scheduleMeetingInterpolatedString(ctx, "date_from"))
+	fromRaw := strings.TrimSpace(calendarConfigText(ctx, "date_from"))
 	if fromRaw == "" {
 		return calAvailFailure(ctx, "o campo Data/hora início é obrigatório"), nil
 	}
-	dateFrom, err := parseScheduleMeetingTime(fromRaw, loc)
+	dateFrom, err := parseCalendarTime(fromRaw, loc)
 	if err != nil {
 		return calAvailFailure(ctx, fmt.Sprintf("data/hora início inválida: %v", err)), nil
 	}
 
-	toRaw := strings.TrimSpace(scheduleMeetingInterpolatedString(ctx, "date_to"))
+	toRaw := strings.TrimSpace(calendarConfigText(ctx, "date_to"))
 	var dateTo time.Time
 	if toRaw != "" {
-		dateTo, err = parseScheduleMeetingTime(toRaw, loc)
+		dateTo, err = parseCalendarTime(toRaw, loc)
 		if err != nil {
 			return calAvailFailure(ctx, fmt.Sprintf("data/hora fim inválida: %v", err)), nil
 		}
 	} else {
 
-		workEnd := parseHHMM(scheduleMeetingInterpolatedString(ctx, "working_end"), 18, 0)
+		workEnd := parseHHMM(calendarConfigText(ctx, "working_end"), 18, 0)
 		dateTo = time.Date(dateFrom.Year(), dateFrom.Month(), dateFrom.Day(), workEnd.hour, workEnd.minute, 0, 0, loc)
 		if !dateTo.After(dateFrom) {
 			dateTo = dateFrom.Add(8 * time.Hour)
@@ -148,15 +147,12 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 		}
 	}
 
-	workStart := parseHHMM(scheduleMeetingInterpolatedString(ctx, "working_start"), 8, 0)
-	workEnd := parseHHMM(scheduleMeetingInterpolatedString(ctx, "working_end"), 18, 0)
+	workStart := parseHHMM(calendarConfigText(ctx, "working_start"), 8, 0)
+	workEnd := parseHHMM(calendarConfigText(ctx, "working_end"), 18, 0)
 
-	workDays := parseWorkDays(scheduleMeetingInterpolatedString(ctx, "work_days"))
+	workDays := parseWorkDays(calendarConfigText(ctx, "work_days"))
 
-	accessToken, err := ensureValidScheduleMeetingToken(e.google, e.repo, conn)
-	if err != nil {
-		return calAvailFailure(ctx, fmt.Sprintf("falha ao autenticar no Google Calendar: %v", err)), nil
-	}
+	accessToken := googleAccess.Token
 
 	events, err := e.google.ListGoogleEvents(accessToken, dateFrom, dateTo, "", 250)
 	if err != nil {
@@ -181,7 +177,7 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 	}
 
 	log.Printf("[workflow][check_calendar_availability][run:%s] workspace=%s found %d busy events, %d free slots in [%s..%s]",
-		scheduleMeetingRunID(ctx), workspaceID, len(events), len(slots),
+		calendarRunID(ctx), workspaceID, len(events), len(slots),
 		dateFrom.Format(time.RFC3339), dateTo.Format(time.RFC3339))
 
 	availableText := strings.Join(textParts, "\n")
@@ -198,7 +194,7 @@ func (e *checkCalendarAvailabilityExecutor) Execute(ctx *workflow.NodeContext) (
 			"date_from":            dateFrom.Format(time.RFC3339),
 			"date_to":              dateTo.Format(time.RFC3339),
 			"timezone":             timezoneName,
-			"calendar_email":       conn.Email,
+			"calendar_email":       googleAccess.Email,
 		},
 	}, outgoingEdges(ctx), "sucesso"), nil
 }

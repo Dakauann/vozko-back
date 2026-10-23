@@ -375,6 +375,7 @@ func newFixture(t *testing.T, leads ...*lead.Lead) *fixture {
 	step, err := NewStep(Deps{
 		Buttons: f.buttons, Sent: f.sent, Campaigns: f.campaigns, Runs: f.runs, Consent: consent, Leads: f.leads,
 		HandOff: f.handOff, Profiles: f.profiles, Deals: f.deals, Workflows: f.workflows, Delegations: f.delegates, CallLists: f.callLists, Events: f.events,
+		Choices: &spyChoices{},
 		Now: func() time.Time { return f.now },
 	})
 	if err != nil {

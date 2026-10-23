@@ -40,21 +40,20 @@ type TriggerType string
 const (
 	TriggerFirstMessage    TriggerType = "trigger_first_message"
 	TriggerMessageReceived TriggerType = "trigger_message_received"
-	TriggerCampaignSent    TriggerType = "trigger_campaign_sent"
 	TriggerStageAdded      TriggerType = "trigger_stage_added"
-	TriggerManual          TriggerType = "trigger_manual"
-	TriggerNoReply         TriggerType = "trigger_no_reply"
 	TriggerWebhook         TriggerType = "trigger_webhook"
 	TriggerCallReceived    TriggerType = "trigger_call_received"
 	TriggerFormSubmitted   TriggerType = "trigger_form_submitted"
 	TriggerAgentCall       TriggerType = "trigger_agent_call"
+	TriggerBirthday        TriggerType = "trigger_birthday"
 )
 
 func (t TriggerType) Valid() bool {
 	switch t {
-	case TriggerFirstMessage, TriggerMessageReceived, TriggerCampaignSent,
-		TriggerStageAdded, TriggerManual, TriggerNoReply, TriggerWebhook,
-		TriggerCallReceived, TriggerFormSubmitted, TriggerAgentCall:
+	case TriggerFirstMessage, TriggerMessageReceived,
+		TriggerStageAdded, TriggerWebhook,
+		TriggerCallReceived, TriggerFormSubmitted, TriggerAgentCall,
+		TriggerBirthday:
 		return true
 	}
 	return false
@@ -72,22 +71,22 @@ type NodeType string
 const (
 	NodeTypeTriggerFirstMessage    NodeType = "trigger_first_message"
 	NodeTypeTriggerMessageReceived NodeType = "trigger_message_received"
-	NodeTypeTriggerCampaignSent    NodeType = "trigger_campaign_sent"
 	NodeTypeTriggerStageAdded      NodeType = "trigger_stage_added"
-	NodeTypeTriggerManual          NodeType = "trigger_manual"
-	NodeTypeTriggerNoReply         NodeType = "trigger_no_reply"
 	NodeTypeTriggerWebhook         NodeType = "trigger_webhook"
 	NodeTypeTriggerCallReceived    NodeType = "trigger_call_received"
 	NodeTypeTriggerFormSubmitted   NodeType = "trigger_form_submitted"
 	NodeTypeTriggerAgentCall       NodeType = "trigger_agent_call"
+	NodeTypeTriggerBirthday        NodeType = "trigger_birthday"
 
 	NodeTypeActionPlayAudio NodeType = "action_play_audio"
 	NodeTypeWaitDTMF        NodeType = "wait_dtmf"
 	NodeTypeTransferToQueue NodeType = "action_transfer_to_queue"
 
-	NodeTypeActionSendText                 NodeType = "action_send_text"
+	NodeTypeActionSendText                  NodeType = "action_send_text"
 	NodeTypeActionSendTemplate              NodeType = "action_send_template"
 	NodeTypeActionSendEmail                 NodeType = "action_send_email"
+	NodeTypeActionSendCarrier               NodeType = "action_send_carrier"
+	NodeTypeActionSendPlatformEmail         NodeType = "action_send_platform_email"
 	NodeTypeActionSendInteractive           NodeType = "action_send_interactive"
 	NodeTypeActionSendForm                  NodeType = "action_send_form"
 	NodeTypeActionSendMedia                 NodeType = "action_send_media"
@@ -101,9 +100,10 @@ const (
 	NodeTypeActionRunWorkflow               NodeType = "action_run_workflow"
 	NodeTypeActionLoop                      NodeType = "action_loop"
 	NodeTypeActionGetCurrentTime            NodeType = "action_get_current_time"
-	NodeTypeActionScheduleMeeting           NodeType = "action_schedule_meeting"
-	NodeTypeActionRescheduleMeeting         NodeType = "action_reschedule_meeting"
+	NodeTypeActionCreateCalendarEvent       NodeType = "action_create_calendar_event"
+	NodeTypeActionRescheduleCalendarEvent   NodeType = "action_reschedule_calendar_event"
 	NodeTypeActionCheckCalendarAvailability NodeType = "action_check_calendar_availability"
+	NodeTypeActionAddSheetRow               NodeType = "action_add_sheet_row"
 	NodeTypeActionAssignLabel               NodeType = "action_assign_label"
 	NodeTypeActionAssignMember              NodeType = "action_assign_member"
 	NodeTypeActionTransferDepartment        NodeType = "action_transfer_department"
@@ -134,14 +134,15 @@ const (
 func (n NodeType) Valid() bool {
 	switch n {
 	case NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
-		NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
-		NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
+		NodeTypeTriggerStageAdded,
+		NodeTypeTriggerWebhook,
 		NodeTypeTriggerCallReceived, NodeTypeTriggerFormSubmitted,
 		NodeTypeTriggerAgentCall,
+		NodeTypeTriggerBirthday,
 		NodeTypeActionPlayAudio, NodeTypeWaitDTMF,
 		NodeTypeTransferToQueue,
 		NodeTypeActionSendText, NodeTypeActionSendTemplate,
-		NodeTypeActionSendEmail,
+		NodeTypeActionSendEmail, NodeTypeActionSendCarrier, NodeTypeActionSendPlatformEmail,
 		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,
 		NodeTypeActionSendForm,
 		NodeTypeActionAIAgent, NodeTypeActionAIExtract,
@@ -151,11 +152,12 @@ func (n NodeType) Valid() bool {
 		NodeTypeActionRunWorkflow, NodeTypeActionLoop,
 		NodeTypeActionGetCurrentTime,
 		NodeTypeActionCheckCalendarAvailability,
+		NodeTypeActionAddSheetRow,
 		NodeTypeWaitDuration, NodeTypeWaitForReply,
 		NodeTypeWaitSchedule,
 		NodeTypeConditionBranch, NodeTypeConditionAIClassfy,
 		NodeTypeConditionTextMatch, NodeTypeConditionFilter,
-		NodeTypeActionScheduleMeeting, NodeTypeActionRescheduleMeeting,
+		NodeTypeActionCreateCalendarEvent, NodeTypeActionRescheduleCalendarEvent,
 		NodeTypeActionAssignLabel, NodeTypeActionAssignMember,
 		NodeTypeActionTransferDepartment,
 		NodeTypeActionFinishConversation,
@@ -178,10 +180,11 @@ func (n NodeType) Valid() bool {
 
 var triggerNodeTypes = []NodeType{
 	NodeTypeTriggerFirstMessage, NodeTypeTriggerMessageReceived,
-	NodeTypeTriggerCampaignSent, NodeTypeTriggerStageAdded,
-	NodeTypeTriggerManual, NodeTypeTriggerNoReply, NodeTypeTriggerWebhook,
+	NodeTypeTriggerStageAdded,
+	NodeTypeTriggerWebhook,
 	NodeTypeTriggerCallReceived, NodeTypeTriggerFormSubmitted,
 	NodeTypeTriggerAgentCall,
+	NodeTypeTriggerBirthday,
 }
 
 func TriggerNodeTypes() []NodeType {
@@ -220,10 +223,25 @@ func (n NodeType) AwaitsContact() bool {
 	return n.ParksForReply() || n.IsFormPrompt()
 }
 
-const NodeTypeActionSendWhatsappButtonLegacy NodeType = "action_send_whatsapp_button"
+const (
+	NodeTypeActionSendWhatsappButtonLegacy NodeType = "action_send_whatsapp_button"
+	NodeTypeActionScheduleMeetingLegacy    NodeType = "action_schedule_meeting"
+	NodeTypeActionRescheduleMeetingLegacy  NodeType = "action_reschedule_meeting"
+)
 
 var legacyNodeTypes = map[NodeType]NodeType{
 	NodeTypeActionSendWhatsappButtonLegacy: NodeTypeActionSendInteractive,
+	NodeTypeActionScheduleMeetingLegacy:    NodeTypeActionCreateCalendarEvent,
+	NodeTypeActionRescheduleMeetingLegacy:  NodeTypeActionRescheduleCalendarEvent,
+}
+
+func LegacyNodeTypes() []NodeType {
+	legacy := make([]NodeType, 0, len(legacyNodeTypes))
+	for nodeType := range legacyNodeTypes {
+		legacy = append(legacy, nodeType)
+	}
+	slices.Sort(legacy)
+	return legacy
 }
 
 func (n NodeType) Canonical() NodeType {
@@ -254,6 +272,10 @@ func (n NodeType) IsEnd() bool {
 	return n == NodeTypeEnd
 }
 
+func (n NodeType) EndsPath() bool {
+	return n.IsEnd() || n == NodeTypeActionReplyToAgent
+}
+
 func (n NodeType) IsLogic() bool {
 	switch n {
 	case NodeTypeActionLoop, NodeTypeActionCode, NodeTypeActionFormatDate,
@@ -274,12 +296,17 @@ func (n NodeType) IsAI() bool {
 func (n NodeType) IsMessaging() bool {
 	switch n {
 	case NodeTypeActionSendText, NodeTypeActionSendTemplate,
-		NodeTypeActionSendEmail,
+		NodeTypeActionSendEmail, NodeTypeActionSendCarrier, NodeTypeActionSendPlatformEmail,
 		NodeTypeActionSendInteractive, NodeTypeActionSendMedia,
 		NodeTypeActionSendForm:
 		return true
 	}
 	return false
+}
+
+func (n NodeType) SendsToCustomer() bool {
+	canonical := n.Canonical()
+	return canonical.IsMessaging() && canonical != NodeTypeActionSendEmail
 }
 
 func (n NodeType) IsDecoration() bool {
@@ -296,6 +323,8 @@ type Node struct {
 	Position Position               `json:"position"`
 	Config   map[string]interface{} `json:"config"`
 	Pinned   *NodePin               `json:"pinned,omitempty"`
+
+	TestInputs []TestInput `json:"testInputs,omitempty"`
 }
 
 type Position struct {
@@ -360,6 +389,8 @@ func (w *Workflow) Normalize() {
 	if !w.TriggerType.Valid() {
 		if primary := w.Graph.PrimaryTriggerType(); primary != "" {
 			w.TriggerType = primary
+		} else {
+			w.TriggerType = ""
 		}
 	}
 	if w.Type == "" {
@@ -409,6 +440,9 @@ func (w *Workflow) Validate() error {
 	}
 
 	if err := ValidatePins(&w.Graph); err != nil {
+		return err
+	}
+	if err := ValidateTestInputs(&w.Graph); err != nil {
 		return err
 	}
 
@@ -530,24 +564,35 @@ func (g *Graph) AncestorsOf(targetNodeID string) map[string]bool {
 
 func (g *Graph) AncestorsAvoiding(targetNodeID, avoidNodeID string) map[string]bool {
 	ancestors := make(map[string]bool)
-	queue := []string{targetNodeID}
-	visited := map[string]bool{targetNodeID: true}
-
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		for _, e := range g.IncomingEdges(cur) {
-			if e.Source == avoidNodeID && avoidNodeID != "" {
-				continue
-			}
-			if !visited[e.Source] {
-				visited[e.Source] = true
-				ancestors[e.Source] = true
-				queue = append(queue, e.Source)
-			}
+	for nodeID := range g.AncestorDistances(targetNodeID, avoidNodeID) {
+		if nodeID != targetNodeID {
+			ancestors[nodeID] = true
 		}
 	}
 	return ancestors
+}
+
+func (g *Graph) AncestorDistances(targetNodeID, avoidNodeID string) map[string]int {
+	sources := make(map[string][]string, len(g.Nodes))
+	for _, e := range g.Edges {
+		sources[e.Target] = append(sources[e.Target], e.Source)
+	}
+	distance := map[string]int{targetNodeID: 0}
+	queue := []string{targetNodeID}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, source := range sources[cur] {
+			if avoidNodeID != "" && source == avoidNodeID {
+				continue
+			}
+			if _, seen := distance[source]; !seen {
+				distance[source] = distance[cur] + 1
+				queue = append(queue, source)
+			}
+		}
+	}
+	return distance
 }
 
 const (

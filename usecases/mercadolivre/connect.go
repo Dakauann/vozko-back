@@ -166,7 +166,6 @@ func (uc *ConnectUseCase) complete(ctx context.Context, workspaceID, verifier st
 		WorkspaceID:      workspaceID,
 		MLUserID:         grant.UserID,
 		SiteID:           me.SiteID,
-		Nickname:         strings.TrimSpace(me.Nickname),
 		AccessToken:      grant.AccessToken,
 		RefreshToken:     grant.RefreshToken,
 		AccessExpiresAt:  &accessExpires,
@@ -174,6 +173,7 @@ func (uc *ConnectUseCase) complete(ctx context.Context, workspaceID, verifier st
 		GrantedScopes:    grant.Scopes,
 		Status:           mldomain.StatusConnected,
 	}
+	account.RefreshNames(*me)
 	account.SetCapabilities(caps)
 	reconnected, err := uc.persist(ctx, account)
 	if err != nil {

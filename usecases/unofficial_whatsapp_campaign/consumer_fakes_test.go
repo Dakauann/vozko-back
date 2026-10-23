@@ -567,10 +567,6 @@ type fakeMetrics struct{ recorded []RecordSendMetric }
 
 func (f *fakeMetrics) RecordCampaignSend(in RecordSendMetric) { f.recorded = append(f.recorded, in) }
 
-type fakeWorkflows struct{ fired []CampaignSentTrigger }
-
-func (f *fakeWorkflows) CampaignSent(in CampaignSentTrigger) { f.fired = append(f.fired, in) }
-
 type fakePauser struct {
 	calls   int
 	reasons []string

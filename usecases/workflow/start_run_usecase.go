@@ -28,11 +28,13 @@ func (uc *startRunUseCase) Execute(input workflow.StartRunInput) (*workflow.Work
 	if err := conversationVisibleTo(uc.visibility, input.Viewer, input.WorkspaceID, input.EntryID, input.EntryType); err != nil {
 		return nil, err
 	}
-	data := make(map[string]interface{}, len(input.Variables)+1)
+	data := make(map[string]interface{}, len(input.Variables))
 	for k, v := range input.Variables {
 		data[k] = v
 	}
-	data[workflow.VarChannel] = input.EntryType
+	for k, v := range workflow.MessageStartRunData(workflow.MessageStart{Text: input.Message, Channel: input.EntryType, WorkspaceID: input.WorkspaceID}) {
+		data[k] = v
+	}
 	started, err := uc.starter.StartForConversation(ConversationStart{
 		WorkspaceID: input.WorkspaceID,
 		WorkflowID:  input.WorkflowID,

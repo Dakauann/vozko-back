@@ -1,18 +1,11 @@
 package calendar
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -29,15 +22,9 @@ type CalendarHandler struct {
 	deleteEvent        calendardomain.DeleteEventUseCase
 	getEvent           calendardomain.GetEventUseCase
 	listEvents         calendardomain.ListEventsUseCase
-	connectGoogle      calendardomain.ConnectGoogleUseCase
-	disconnectGoogle   calendardomain.DisconnectGoogleUseCase
-	getConnection      calendardomain.GetConnectionUseCase
-	getAuthURL         calendardomain.GetAuthURLUseCase
 	startWatch         calendardomain.StartWatchUseCase
 	stopWatch          calendardomain.StopWatchUseCase
 	handleNotification calendardomain.HandleNotificationUseCase
-	googleOAuthEnabled bool
-	stateSignerKey     string
 }
 
 func NewCalendarHandler(
@@ -46,15 +33,9 @@ func NewCalendarHandler(
 	deleteEvent calendardomain.DeleteEventUseCase,
 	getEvent calendardomain.GetEventUseCase,
 	listEvents calendardomain.ListEventsUseCase,
-	connectGoogle calendardomain.ConnectGoogleUseCase,
-	disconnectGoogle calendardomain.DisconnectGoogleUseCase,
-	getConnection calendardomain.GetConnectionUseCase,
-	getAuthURL calendardomain.GetAuthURLUseCase,
 	startWatch calendardomain.StartWatchUseCase,
 	stopWatch calendardomain.StopWatchUseCase,
 	handleNotification calendardomain.HandleNotificationUseCase,
-	googleOAuthEnabled bool,
-	stateSignerKey string,
 ) *CalendarHandler {
 	return &CalendarHandler{
 		createEvent:        createEvent,
@@ -62,15 +43,9 @@ func NewCalendarHandler(
 		deleteEvent:        deleteEvent,
 		getEvent:           getEvent,
 		listEvents:         listEvents,
-		connectGoogle:      connectGoogle,
-		disconnectGoogle:   disconnectGoogle,
-		getConnection:      getConnection,
-		getAuthURL:         getAuthURL,
 		startWatch:         startWatch,
 		stopWatch:          stopWatch,
 		handleNotification: handleNotification,
-		googleOAuthEnabled: googleOAuthEnabled,
-		stateSignerKey:     stateSignerKey,
 	}
 }
 
@@ -357,217 +332,6 @@ func (h *CalendarHandler) List(w http.ResponseWriter, r *http.Request) {
 		TotalPages: result.TotalPages,
 		TotalItems: result.TotalItems,
 	})
-}
-
-// @Summary		Conectar o Google Agenda
-// @Description	Conclui a conexão com o Google Agenda trocando o código de autorização OAuth pelas credenciais de acesso do workspace.
-// @Tags			Agenda
-// @Accept			json
-// @Produce		json
-// @Param			request	body		ConnectGoogleRequest	true	"Código de autorização OAuth"
-// @Success		200	{object}	ConnectionEnvelope
-// @Failure		400	{object}	response.ErrorResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/calendar/google/connect [post]
-func (h *CalendarHandler) ConnectGoogle(w http.ResponseWriter, r *http.Request) {
-	wsID := middleware.GetWorkspaceID(r)
-
-	var req ConnectGoogleRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.WriteInvalidBodyError(w, map[string]string{
-			"code":        "string (required)",
-			"redirectUri": "string (required)",
-		})
-		return
-	}
-
-	conn, err := h.connectGoogle.Execute(calendardomain.ConnectGoogleInput{
-		WorkspaceID: wsID,
-		Code:        req.Code,
-		RedirectURI: req.RedirectURI,
-	})
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to connect Google Calendar", nil)
-		return
-	}
-
-	response.WriteSuccess(w, http.StatusOK, ConnectionEnvelope{Connection: toConnectionResponse(conn)})
-}
-
-// @Summary		Desconectar o Google Agenda
-// @Description	Remove a conexão com o Google Agenda do workspace.
-// @Tags			Agenda
-// @Produce		json
-// @Success		200	{object}	DisconnectedResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/calendar/google/disconnect [delete]
-func (h *CalendarHandler) DisconnectGoogle(w http.ResponseWriter, r *http.Request) {
-	wsID := middleware.GetWorkspaceID(r)
-
-	if err := h.disconnectGoogle.Execute(wsID); err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to disconnect Google Calendar", nil)
-		return
-	}
-
-	response.WriteSuccess(w, http.StatusOK, DisconnectedResponse{Disconnected: true})
-}
-
-// @Summary		Consultar a conexão com o Google Agenda
-// @Description	Retorna o status da conexão do workspace com o Google Agenda.
-// @Tags			Agenda
-// @Produce		json
-// @Success		200	{object}	ConnectionStatusResponse
-// @Failure		500	{object}	response.ErrorResponse
-// @Security		BearerAuth
-// @Router			/calendar/google/status [get]
-func (h *CalendarHandler) GetConnection(w http.ResponseWriter, r *http.Request) {
-	wsID := middleware.GetWorkspaceID(r)
-
-	conn, err := h.getConnection.Execute(wsID)
-	if err != nil {
-		response.WriteError(w, http.StatusInternalServerError, "Failed to get connection status", nil)
-		return
-	}
-
-	response.WriteSuccess(w, http.StatusOK, ConnectionStatusResponse{
-		Connected:  conn != nil,
-		Connection: toConnectionResponse(conn),
-	})
-}
-
-// @Summary		Obter a URL de autorização do Google Agenda
-// @Description	Retorna a URL de autorização OAuth para iniciar a conexão do workspace com o Google Agenda.
-// @Tags			Agenda
-// @Produce		json
-// @Success		200	{object}	AuthURLResponse
-// @Security		BearerAuth
-// @Router			/calendar/google/auth-url [get]
-func (h *CalendarHandler) GetAuthURL(w http.ResponseWriter, r *http.Request) {
-	if !h.googleOAuthEnabled {
-		response.WriteError(w, http.StatusServiceUnavailable, "Google Calendar integration is not configured", nil)
-		return
-	}
-
-	wsID := middleware.GetWorkspaceID(r)
-
-	apiBase := os.Getenv("API_BASE_URL")
-	if apiBase == "" {
-		apiBase = "http://localhost:8080"
-	}
-	redirectURI := strings.TrimRight(apiBase, "/") + "/calendar/google/callback"
-
-	statePayload := fmt.Sprintf("%s:%d", wsID, time.Now().Unix())
-	sig := signState(statePayload, h.stateSignerKey)
-	state := base64.URLEncoding.EncodeToString([]byte(statePayload + "." + sig))
-
-	authURL := h.getAuthURL.Execute(redirectURI, state)
-
-	response.WriteSuccess(w, http.StatusOK, AuthURLResponse{AuthURL: authURL})
-}
-
-// @Summary		Callback de autorização do Google Agenda
-// @Description	Endpoint público que recebe o retorno do fluxo OAuth do Google Agenda e redireciona o usuário de volta ao painel de integrações.
-// @Tags			Agenda
-// @Produce		json
-// @Param			code	query	string	false	"Código de autorização retornado pelo Google"
-// @Param			state	query	string	false	"Estado assinado gerado ao iniciar o fluxo"
-// @Param			error	query	string	false	"Erro retornado pelo Google, quando houver"
-// @Success		302	{string}	string	"Redireciona para o painel de integrações"
-// @Router			/calendar/google/callback [get]
-func (h *CalendarHandler) GoogleOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	frontendURL := strings.TrimRight(os.Getenv("FRONTEND_URL"), "/")
-	if frontendURL == "" {
-		frontendURL = "http://localhost:3000"
-	}
-	redirectError := func(reason string) {
-		http.Redirect(w, r, frontendURL+"/dashboard/integrations?error="+reason, http.StatusFound)
-	}
-	if !h.googleOAuthEnabled {
-		redirectError("not_configured")
-		return
-	}
-
-	code := r.URL.Query().Get("code")
-	stateB64 := r.URL.Query().Get("state")
-
-	if errParam := r.URL.Query().Get("error"); errParam != "" {
-		log.Printf("[GoogleOAuthCallback] Google returned error: %s", errParam)
-		redirectError("access_denied")
-		return
-	}
-
-	if code == "" || stateB64 == "" {
-		redirectError("missing_params")
-		return
-	}
-
-	stateBytes, err := base64.URLEncoding.DecodeString(stateB64)
-	if err != nil {
-		log.Printf("[GoogleOAuthCallback] Invalid state encoding: %v", err)
-		redirectError("invalid_state")
-		return
-	}
-
-	stateStr := string(stateBytes)
-	dotIdx := strings.LastIndex(stateStr, ".")
-	if dotIdx < 0 {
-		redirectError("invalid_state")
-		return
-	}
-
-	payload := stateStr[:dotIdx]
-	sig := stateStr[dotIdx+1:]
-	if !verifyState(payload, sig, h.stateSignerKey) {
-		log.Printf("[GoogleOAuthCallback] State signature verification failed")
-		redirectError("invalid_state")
-		return
-	}
-
-	parts := strings.SplitN(payload, ":", 2)
-	if len(parts) != 2 {
-		redirectError("invalid_state")
-		return
-	}
-
-	wsID := parts[0]
-	ts, _ := strconv.ParseInt(parts[1], 10, 64)
-
-	if time.Now().Unix()-ts > 600 {
-		redirectError("expired")
-		return
-	}
-
-	apiBase := os.Getenv("API_BASE_URL")
-	if apiBase == "" {
-		apiBase = "http://localhost:8080"
-	}
-	redirectURI := strings.TrimRight(apiBase, "/") + "/calendar/google/callback"
-
-	_, err = h.connectGoogle.Execute(calendardomain.ConnectGoogleInput{
-		WorkspaceID: wsID,
-		Code:        code,
-		RedirectURI: redirectURI,
-	})
-	if err != nil {
-		log.Printf("[GoogleOAuthCallback] Failed to connect: %v", err)
-		redirectError("connect_failed")
-		return
-	}
-
-	http.Redirect(w, r, frontendURL+"/dashboard/integrations?connected=true", http.StatusFound)
-}
-
-func signState(payload, signerKey string) string {
-	mac := hmac.New(sha256.New, []byte(signerKey))
-	mac.Write([]byte(payload))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func verifyState(payload, signature, signerKey string) bool {
-	expected := signState(payload, signerKey)
-	return hmac.Equal([]byte(expected), []byte(signature))
 }
 
 // @Summary		Iniciar o monitoramento do Google Agenda

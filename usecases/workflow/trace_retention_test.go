@@ -61,6 +61,14 @@ func (s *retentionStore) DeleteResolvedBefore(before time.Time, limit int) (int6
 	return s.take("runtime_alerts", before, limit)
 }
 
+func (s *retentionStore) PrunePrompts(before time.Time, limit int) (int64, error) {
+	return s.take("choice_prompts", before, limit)
+}
+
+func (s *retentionStore) PruneCounts(before time.Time, limit int) (int64, error) {
+	return s.take("choice_counts", before, limit)
+}
+
 type retentionDeliveries struct {
 	fakeDeliveryLog
 	store *retentionStore
@@ -85,7 +93,7 @@ func (r *retentionToolCalls) DeleteCreatedBefore(before time.Time, limit int) (i
 }
 
 func retentionJob(store *retentionStore, now time.Time) *TraceRetention {
-	job := NewTraceRetention(store, &retentionDeliveries{store: store}, &retentionToolCalls{store: store}, store)
+	job := NewTraceRetention(store, &retentionDeliveries{store: store}, &retentionToolCalls{store: store}, store, store)
 	job.now = func() time.Time { return now }
 	return job
 }
@@ -105,6 +113,8 @@ func TestRetentionKeepsThirtyDaysOfPayloadsAndHalfAYearOfRuns(t *testing.T) {
 		"tool_calls":     now.AddDate(0, 0, -180),
 		"runtime_alerts": now.AddDate(0, 0, -30),
 		"versions":       {},
+		"choice_prompts": now.AddDate(0, 0, -30),
+		"choice_counts":  now.AddDate(0, 0, -400),
 	}
 	order := []string{}
 	for _, c := range store.calls {
@@ -113,7 +123,7 @@ func TestRetentionKeepsThirtyDaysOfPayloadsAndHalfAYearOfRuns(t *testing.T) {
 			t.Errorf("%s cut at %v limit %d, want %v limit %d", c.name, c.before, c.limit, want[c.name], retentionBatchSize)
 		}
 	}
-	if strings.Join(order, ",") != "payloads,trigger_data,steps,runs,deliveries,tool_calls,runtime_alerts,versions" {
+	if strings.Join(order, ",") != "payloads,trigger_data,steps,runs,deliveries,tool_calls,runtime_alerts,versions,choice_prompts,choice_counts" {
 		t.Fatalf("order = %v, steps must go before their runs", order)
 	}
 	if store.keptVersions != workflow.VersionsKeptPerWorkflow {

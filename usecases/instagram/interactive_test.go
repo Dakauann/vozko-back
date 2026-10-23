@@ -1,6 +1,7 @@
 package instagram
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -73,5 +74,21 @@ func TestInteractiveLimitsComeFromTheDescriptor(t *testing.T) {
 	}
 	if limits.SupportsOptionDescriptions {
 		t.Error("quick replies have no description slot")
+	}
+}
+
+func TestTheQuickReplyOutcomeNamesOnlyTheRepliesThatFit(t *testing.T) {
+	f := newAdapterFixture(t, []*igdomain.Account{connectedAccount()}, openWindow())
+	ec, err := f.adapter.ResolveEntry(context.Background(), "conv-"+connectedAccount().ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.adapter.(conversation.InteractiveAdapter).SendInteractive(context.Background(), ec,
+		conversation.SendInteractiveRequest{Body: "Escolha", Options: opts("sim", "Sim", "", "Sem id", "nao", "Não")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ShownOptionIDs) != 2 || out.ShownOptionIDs[0] != "sim" || out.ShownOptionIDs[1] != "nao" {
+		t.Fatalf("shown = %v", out.ShownOptionIDs)
 	}
 }

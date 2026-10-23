@@ -18,6 +18,7 @@ func (c *Container) initLeadProfiles(cepSearch cep.CEPSearchUseCase) *lead_useca
 		Definitions: c.repositories.customField,
 		EntryLeads:  c.repositories.lead,
 		CEP:         cepSearch,
+		EmailsSeen:  c.emailHygiene().Service,
 	})
 	if err != nil {
 		log.Fatalf("[lead-profiles] %v", err)

@@ -394,3 +394,19 @@ func TestAdapterRegistry_RoutesByEntryType(t *testing.T) {
 		t.Error("Has(whatsapp) = true, but WhatsApp has not been migrated")
 	}
 }
+
+func TestChannelAdapter_UnreachableRecipientSurfacesTheDomainRefusal(t *testing.T) {
+	account := connectedAccount()
+	f := newAdapterFixture(t, []*igdomain.Account{account}, openWindow())
+
+	f.messaging.SendTextFn = func(context.Context, string, string, igdomain.SendTextInput) (*igdomain.SendResult, error) {
+		return nil, &meta.Error{Code: meta.CodePersonUnavailable, Message: "this person isn't available right now"}
+	}
+
+	ec, _ := f.adapter.ResolveEntry(context.Background(), "conv-"+account.ID)
+	_, err := f.adapter.SendText(context.Background(), ec, conversation.SendTextRequest{Body: "hi"})
+
+	if !errors.Is(err, conversation.ErrRecipientUnreachable) {
+		t.Fatalf("err = %v, want it to wrap ErrRecipientUnreachable", err)
+	}
+}

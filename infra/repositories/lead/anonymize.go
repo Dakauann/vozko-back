@@ -46,6 +46,8 @@ const (
 
 	eraseCustomerPortfolioSQL = "DELETE FROM customer_portfolio_entries WHERE workspace_id = ? AND lead_id = ?"
 
+	eraseGoogleSheetRowsSQL = "DELETE FROM google_sheet_rows WHERE workspace_id = ? AND lead_id = ?"
+
 	eraseCampaignEntriesSQL = "UPDATE whatsapp_campaign_entries SET variables = NULL, metadata = '{}'::jsonb WHERE lead_id = ?"
 
 	anonymizeLeadSQL = "UPDATE leads SET " + recordColumnsSQL + ", whatsapp_consent_record = NULL, relatives_count = 0, referred_count = 0, company_id = NULL, updated_at = ?, deleted_at = ?, version = version + 1" +
@@ -87,6 +89,7 @@ var leadScopedErasures = []erasureStep{
 	{lead.ErasureEvents, redactLeadEventsSQL},
 	{lead.ErasureCallListItems, eraseCallListItemsSQL},
 	{lead.ErasureCustomerPortfolio, eraseCustomerPortfolioSQL},
+	{lead.ErasureGoogleSheetRows, eraseGoogleSheetRowsSQL},
 }
 
 type maskMapping struct {

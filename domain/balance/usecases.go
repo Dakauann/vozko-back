@@ -22,6 +22,7 @@ type CreditBalanceInput struct {
 	ExchangeRateMicros int64
 
 	OncePerReference bool
+	RefundOf         *string
 }
 
 type DebitBalanceInput struct {

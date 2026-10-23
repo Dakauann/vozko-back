@@ -2,6 +2,7 @@ package template
 
 import (
 	"errors"
+	"sort"
 )
 
 const (
@@ -58,6 +59,7 @@ const (
 	CodeMultipleCallPermissionRequests = "template_multiple_call_permission"
 
 	CodeMixedParameterStyles = "template_mixed_parameter_styles"
+	CodeParameterNameInvalid = "template_variable_name_invalid"
 
 	CodeInvalidComponentType = "template_invalid_component_type"
 	CodeInvalidHeaderFormat  = "template_invalid_header_format"
@@ -95,11 +97,21 @@ const (
 	CodeInUse              = "template_in_use"
 	CodeEditNotOwner       = "template_edit_not_owner"
 
+	CodeTrackedButtonNotURL      = "template_tracked_button_not_url"
+	CodeTrackedButtonDynamic     = "template_tracked_button_dynamic"
+	CodeTrackedButtonDestination = "template_tracked_button_destination"
+	CodeTrackedLinkUnreadable    = "template_tracked_link_unreadable"
+
 	CodeProviderRejected    = "template_provider_rejected"
 	CodeProviderUnavailable = "template_provider_unavailable"
 )
 
 var errorCodes = map[error]string{
+	ErrTrackedButtonNotURL:      CodeTrackedButtonNotURL,
+	ErrTrackedButtonDynamic:     CodeTrackedButtonDynamic,
+	ErrTrackedButtonDestination: CodeTrackedButtonDestination,
+	ErrTrackedLinkUnreadable:    CodeTrackedLinkUnreadable,
+
 	ErrTemplateNotFound:            CodeNotFound,
 	ErrTemplateAccessDenied:        CodeAccessDenied,
 	ErrHeaderMediaOutsideStorage:   CodeHeaderMediaOutside,
@@ -164,6 +176,7 @@ var errorCodes = map[error]string{
 	ErrMultipleCallPermissionRequests: CodeMultipleCallPermissionRequests,
 
 	ErrMixedParameterStyles: CodeMixedParameterStyles,
+	ErrParameterNameInvalid: CodeParameterNameInvalid,
 
 	ErrInvalidComponentType: CodeInvalidComponentType,
 	ErrInvalidHeaderFormat:  CodeInvalidHeaderFormat,
@@ -187,6 +200,15 @@ var errorCodes = map[error]string{
 	ErrEditWindow:          CodeEditWindow,
 	ErrTemplateInUse:       CodeInUse,
 	ErrEditNotOwner:        CodeEditNotOwner,
+}
+
+func ErrorCodes() []string {
+	codes := []string{CodeUnknown, CodeProviderRejected, CodeProviderUnavailable}
+	for _, code := range errorCodes {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	return codes
 }
 
 func ErrorCode(err error) string {

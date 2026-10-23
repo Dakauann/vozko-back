@@ -25,6 +25,9 @@ func replyWaitDB(t *testing.T) *gorm.DB {
 		&schema.MercadoLivreConversation{},
 		&schema.TikTokConversation{},
 		&schema.UnofficialWhatsAppConversation{},
+		&schema.EmailConversation{},
+		&schema.RCSConversation{},
+		&schema.SMSConversation{},
 	)
 	var constraints []struct {
 		Table string `gorm:"column:table_name"`
@@ -53,6 +56,9 @@ func seedChannelConversation(t *testing.T, db *gorm.DB, ch channelQuery, status 
 		shared.EntryTypeWebchat:            `INSERT INTO webchat_conversations (id, workspace_id, widget_id, visitor_id, conversation_status) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), ?)`,
 		shared.EntryTypeUnofficialWhatsApp: `INSERT INTO unofficial_whatsapp_conversations (id, workspace_id, instance_id, contact_id, chat_id, conversation_status) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'chat', ?)`,
 		shared.EntryTypeMercadoLivre:       `INSERT INTO mercadolivre_conversations (id, workspace_id, account_id, contact_id, pack_key, conversation_status) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), '2000000001', ?)`,
+		shared.EntryTypeEmail:              `INSERT INTO email_conversations (id, workspace_id, sender_id, contact_id, conversation_status) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), ?)`,
+		shared.EntryTypeRCS:                `INSERT INTO rcs_conversations (id, workspace_id, sender_id, contact_id, conversation_status, created_at, updated_at) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), ?, now(), now())`,
+		shared.EntryTypeSMS:                `INSERT INTO sms_conversations (id, workspace_id, sender_id, contact_id, conversation_status, created_at, updated_at) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), ?, now(), now())`,
 		shared.EntryTypeTikTok:             `INSERT INTO tiktok_conversations (id, workspace_id, account_id, contact_id, conversation_id, conversation_status) VALUES (?, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'S:1:0:wait', ?)`,
 	}
 	insert, ok := inserts[ch.EntryType]

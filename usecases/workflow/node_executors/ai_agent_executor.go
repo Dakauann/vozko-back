@@ -134,13 +134,14 @@ func (e *aiAgentExecutor) recordWorkflowAIAttendance(ctx *workflow.NodeContext, 
 
 func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionAIAgent,
-		TestBehavior: workflow.NodeTestAIModel,
-		Category:     workflow.NodeCategoryAI,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeWhatsApp},
-		Label:        "Agente IA",
-		Description:  "Gera uma resposta usando o agente de IA e salva em uma variável.",
-		Icon:         "Robot",
+		Type:              workflow.NodeTypeActionAIAgent,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestAIModel,
+		Category:          workflow.NodeCategoryAI,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeWhatsApp},
+		Label:             "Agente IA",
+		Description:       "Gera uma resposta usando o agente de IA e salva em uma variável.",
+		Icon:              "Robot",
 		Guidance: workflow.NodeGuidance{
 			When: "Para conversar com o contato usando IA, classificar intenção ou orquestrar ferramentas. source=prompt (defina model+instructions) para um agente ad-hoc; source=agent (defina agent_id) para reutilizar um agente salvo.",
 			Behavior: "ENVIO: em response_mode=segmented o PRÓPRIO NÓ envia as mensagens no WhatsApp (divididas, com indicador de 'digitando'), não conecte um send_text depois (envio duplicado, é bloqueado). " +
@@ -174,13 +175,13 @@ func (e *aiAgentExecutor) Definition() workflow.NodeDefinition {
 		},
 		DynamicHandles: true,
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "response_text", Description: "Resposta gerada pela IA"},
-			{Key: "messages", Description: "Lista de mensagens segmentadas (quando modo segmentado)"},
-			{Key: "delivered", Description: "true se as mensagens foram enviadas diretamente pelo nó"},
-			{Key: "agent_id", Description: "ID do agente utilizado"},
-			{Key: "model", Description: "Modelo de IA utilizado"},
-			{Key: "tool_name", Description: "Nome da ferramenta chamada pela IA (se houver)"},
-			{Key: "tool_args", Description: "Argumentos da ferramenta chamada (objeto JSON)"},
+			{Key: "response_text", Description: "Resposta gerada pela IA", Label: "Resposta da IA", Type: workflow.VariableTypeText},
+			{Key: "messages", Description: "Lista de mensagens segmentadas (quando modo segmentado)", Label: "Mensagens", Type: workflow.VariableTypeList},
+			{Key: "delivered", Description: "true se as mensagens foram enviadas diretamente pelo nó", Label: "Mensagens enviadas pelo nó", Type: workflow.VariableTypeBoolean},
+			{Key: "agent_id", Description: "ID do agente utilizado", Label: "ID do agente", Type: workflow.VariableTypeText},
+			{Key: "model", Description: "Modelo de IA utilizado", Label: "Modelo", Type: workflow.VariableTypeText},
+			{Key: "tool_name", Description: "Nome da ferramenta chamada pela IA (se houver)", Label: "Ferramenta chamada", Type: workflow.VariableTypeText},
+			{Key: "tool_args", Description: "Argumentos da ferramenta chamada (objeto JSON)", Label: "Argumentos da ferramenta", Type: workflow.VariableTypeObject},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "input_mode", Label: "Modo de entrada", Type: "select", Options: []workflow.ConfigFieldOption{
@@ -628,7 +629,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 	var segmentedMessages []string
 	if isSegmented && responseText != "" {
-		segmentedMessages = splitIntoSegments(responseText)
+		segmentedMessages = customerSegments(ctx, splitIntoSegments(responseText))
 	}
 
 	result := map[string]interface{}{
@@ -706,7 +707,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	}
 
 	if !isSegmented && responseText != "" && len(output.ToolCalls) == 0 && e.sender.Supports(ctx.Run) {
-		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, responseText, conversation.MessageTypeAIResponse)
+		sent, sendErr := e.sender.SendText(context.Background(), ctx.Run, workflow.CustomerText(ctx, responseText), conversation.MessageTypeAIResponse)
 		if failsTheStep(sendErr) {
 			return nil, sendErr
 		}

@@ -59,6 +59,10 @@ func storeFor(storage media.FileStorage, rows conversation.ConversationMediaRepo
 	return conversationmedia.NewStore(storage, rows, blindInspector{})
 }
 
+func (f *fakeConvMedia) GetInEntry(string, shared.EntryType, string) (*conversation.ConversationMedia, error) {
+	return nil, conversation.ErrMediaNotFound
+}
+
 func (f *fakeConvMedia) GetByWhatsAppMediaID(string) (*conversation.ConversationMedia, error) {
 	return nil, conversation.ErrMediaNotFound
 }

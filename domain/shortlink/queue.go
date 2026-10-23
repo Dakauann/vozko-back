@@ -26,4 +26,5 @@ type ClickMessage struct {
 	UTMMedium    string    `json:"utm_medium"`
 	UTMCampaign  string    `json:"utm_campaign"`
 	Attempt      int       `json:"attempt"`
+	Attribution  string    `json:"attribution,omitempty"`
 }

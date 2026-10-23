@@ -153,11 +153,11 @@ func TestRunEngine_EnqueuesWakeOnWait(t *testing.T) {
 	w := &workflow.Workflow{
 		ID:          "w1",
 		WorkspaceID: "ws1",
-		TriggerType: workflow.TriggerManual,
+		TriggerType: workflow.TriggerMessageReceived,
 		Status:      workflow.WorkflowStatusActive,
 		Graph: workflow.Graph{
 			Nodes: []workflow.Node{
-				{ID: "t1", Type: workflow.NodeTypeTriggerManual},
+				{ID: "t1", Type: workflow.NodeTypeTriggerMessageReceived},
 				{ID: "wd", Type: workflow.NodeTypeWaitDuration, Config: map[string]interface{}{"seconds": float64(5)}},
 				{ID: "e1", Type: workflow.NodeTypeEnd},
 			},
@@ -214,11 +214,11 @@ func TestConsumeRunWake_ResumesMatchingRun(t *testing.T) {
 	w := &workflow.Workflow{
 		ID:          "w1",
 		WorkspaceID: "ws1",
-		TriggerType: workflow.TriggerManual,
+		TriggerType: workflow.TriggerMessageReceived,
 		Status:      workflow.WorkflowStatusActive,
 		Graph: workflow.Graph{
 			Nodes: []workflow.Node{
-				{ID: "t1", Type: workflow.NodeTypeTriggerManual},
+				{ID: "t1", Type: workflow.NodeTypeTriggerMessageReceived},
 				{ID: "wd", Type: workflow.NodeTypeWaitDuration, Config: map[string]interface{}{"seconds": float64(5)}},
 				{ID: "e1", Type: workflow.NodeTypeEnd},
 			},
@@ -281,7 +281,7 @@ func TestConsumeRunWake_IgnoresStaleWakeMessage(t *testing.T) {
 	w := &workflow.Workflow{
 		ID:          "w1",
 		WorkspaceID: "ws1",
-		TriggerType: workflow.TriggerManual,
+		TriggerType: workflow.TriggerMessageReceived,
 		Status:      workflow.WorkflowStatusActive,
 		Graph:       workflow.Graph{Nodes: []workflow.Node{{ID: "wd", Type: workflow.NodeTypeWaitDuration}}},
 	}

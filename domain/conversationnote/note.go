@@ -36,6 +36,7 @@ type Note struct {
 	AuthorID    string
 	Body        string
 	Mentions    []string
+	ImageIDs    []string
 	CreatedAt   time.Time
 	DeletedAt   *time.Time
 }
@@ -46,6 +47,7 @@ type Draft struct {
 	AuthorID    string
 	Body        string
 	Mentions    []string
+	ImageIDs    []string
 }
 
 func New(d Draft, id string, now time.Time) (Note, error) {
@@ -61,7 +63,11 @@ func New(d Draft, id string, now time.Time) (Note, error) {
 	if err := note.validateIdentity(); err != nil {
 		return Note{}, err
 	}
-	if err := validateBody(note.Body); err != nil {
+	images, err := NormalizeImageIDs(d.ImageIDs)
+	if err != nil {
+		return Note{}, err
+	}
+	if err := validateBody(note.Body, len(images) > 0); err != nil {
 		return Note{}, err
 	}
 	mentions, err := NormalizeMentions(d.Mentions)
@@ -69,6 +75,7 @@ func New(d Draft, id string, now time.Time) (Note, error) {
 		return Note{}, err
 	}
 	note.Mentions = mentions
+	note.ImageIDs = images
 	return note, nil
 }
 
@@ -86,8 +93,8 @@ func (n Note) validateIdentity() error {
 	return nil
 }
 
-func validateBody(body string) error {
-	if body == "" {
+func validateBody(body string, hasImages bool) error {
+	if body == "" && !hasImages {
 		return ErrBodyRequired
 	}
 	if utf8.RuneCountInString(body) > MaxBodyRunes {

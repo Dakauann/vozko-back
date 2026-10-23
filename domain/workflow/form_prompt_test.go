@@ -53,15 +53,15 @@ func TestTheFormSubmittedTriggerIsAMessagesTrigger(t *testing.T) {
 }
 
 func TestOnlyTheFormTriggerStartsARunPerEvent(t *testing.T) {
-	for _, trig := range []TriggerType{TriggerFirstMessage, TriggerMessageReceived, TriggerCampaignSent, TriggerStageAdded, TriggerManual, TriggerNoReply, TriggerWebhook, TriggerCallReceived} {
-		if trig.StartsRunPerEvent() {
+	for _, trig := range []TriggerType{TriggerFirstMessage, TriggerMessageReceived, TriggerStageAdded, TriggerWebhook, TriggerCallReceived} {
+		if (TriggerEvent{TriggerType: trig, EntryType: "whatsapp"}).StartsRunPerEvent() {
 			t.Errorf("%s keeps one run per entry", trig)
 		}
 		if key := (TriggerEvent{TriggerType: trig, Data: map[string]interface{}{DataKeyFormResponseID: "resp-1"}}).OccurrenceKey(); key != "" {
 			t.Errorf("%s has occurrence key %q", trig, key)
 		}
 	}
-	if !TriggerFormSubmitted.StartsRunPerEvent() {
+	if !(TriggerEvent{TriggerType: TriggerFormSubmitted, EntryType: "whatsapp"}).StartsRunPerEvent() {
 		t.Error("each form response starts its own run")
 	}
 	cases := []struct {
@@ -121,10 +121,10 @@ func TestFormUseNamesHowAWorkflowUsesAForm(t *testing.T) {
 		{"a trigger on the form", []Node{trigger(map[string]interface{}{FormTriggerFormIDsKey: []interface{}{"f1"}})}, FormUseTrigger, true},
 		{"a trigger on any form", []Node{trigger(nil)}, FormUseTrigger, true},
 		{"a trigger on another form", []Node{trigger(map[string]interface{}{FormTriggerFormIDsKey: []interface{}{"f2"}})}, "", false},
-		{"a node sending the form", []Node{{ID: "t", Type: NodeTypeTriggerManual}, sendForm("f1")}, FormUseNode, true},
-		{"a node sending another form", []Node{{ID: "t", Type: NodeTypeTriggerManual}, sendForm("f2")}, "", false},
+		{"a node sending the form", []Node{{ID: "t", Type: NodeTypeTriggerMessageReceived}, sendForm("f1")}, FormUseNode, true},
+		{"a node sending another form", []Node{{ID: "t", Type: NodeTypeTriggerMessageReceived}, sendForm("f2")}, "", false},
 		{"the trigger wins over a node", []Node{trigger(nil), sendForm("f1")}, FormUseTrigger, true},
-		{"no form at all", []Node{{ID: "t", Type: NodeTypeTriggerManual}}, "", false},
+		{"no form at all", []Node{{ID: "t", Type: NodeTypeTriggerMessageReceived}}, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

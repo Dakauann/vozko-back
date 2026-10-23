@@ -27,14 +27,11 @@ func (d *Definition) CoerceLocal(raw string) (any, error) {
 		}
 		value = date.String()
 	case TypeBoolean:
-		switch shared.FoldForMatch(raw) {
-		case "sim", "s", "yes", "y", "1", "true", "verdadeiro", "x":
-			value = true
-		case "nao", "n", "no", "0", "false", "falso":
-			value = false
-		default:
+		answer, err := shared.ParseYesNo(raw)
+		if err != nil {
 			return nil, ErrValueType
 		}
+		value = answer
 	default:
 		coerced, err := d.Coerce(raw)
 		if err != nil {

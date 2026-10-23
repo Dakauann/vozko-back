@@ -84,6 +84,14 @@ const (
 	ReasonNameTooLong              RejectReason = "name_too_long"
 	ReasonNicknameTooLong          RejectReason = "nickname_too_long"
 	ReasonEmailInvalid             RejectReason = "email_invalid"
+	ReasonEmailTypo                RejectReason = "email_typo"
+	ReasonEmailDisposable          RejectReason = "email_disposable"
+	ReasonEmailNoMailDomain        RejectReason = "email_no_mail_domain"
+	ReasonEmailBadAddress          RejectReason = "email_bad_address"
+	ReasonEmailSuppressed          RejectReason = "email_suppressed"
+	ReasonEmailDomainUnknown       RejectReason = "email_domain_unknown"
+	ReasonEmailRole                RejectReason = "email_role"
+	ReasonEmailInactive            RejectReason = "email_inactive"
 	ReasonBirthDateInvalid         RejectReason = "birth_date_invalid"
 	ReasonPhoneInvalid             RejectReason = "phone_invalid"
 	ReasonPhoneLimit               RejectReason = "phone_limit"
@@ -111,6 +119,7 @@ type ImportIssue struct {
 	Reason   RejectReason `json:"reason"`
 	Field    string       `json:"field,omitempty"`
 	Rejected bool         `json:"rejected"`
+	Hint     string       `json:"hint,omitempty"`
 }
 
 type ImportPhone struct {
@@ -143,6 +152,7 @@ type ImportRelative struct {
 }
 
 type ImportRecord struct {
+	EmailVerdict string
 	WorkspaceID  string
 	At           time.Time
 	Line         int

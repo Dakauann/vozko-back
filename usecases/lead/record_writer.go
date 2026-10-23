@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"vozko/domain/emailaddress"
+	"vozko/domain/emailhygiene"
 	"vozko/domain/lead"
 	"vozko/domain/recordevent"
 	"vozko/domain/shared"
@@ -38,8 +41,9 @@ type editChange func(current, next *lead.Lead) (recordEdit, error)
 type recordSave func(ctx context.Context, l *lead.Lead, expectedVersion int64, events []recordevent.Event) error
 
 type recordWriter struct {
-	store    lead.Store
-	notifier lead.ChangeNotifier
+	store      lead.Store
+	notifier   lead.ChangeNotifier
+	emailsSeen emailhygiene.AddressSeen
 }
 
 func (w recordWriter) record(workspaceID, id string) (*lead.Lead, error) {
@@ -104,7 +108,7 @@ func (w recordWriter) retryingSave(ctx context.Context, workspaceID, id string, 
 		}
 		err = save(ctx, &next, current.Version, edit.events)
 		if err == nil {
-			w.notify(&next, edit.notified())
+			w.notify(ctx, &next, edit.notified())
 			return &next, nil
 		}
 		if !errors.Is(err, shared.ErrVersionConflict) {
@@ -114,11 +118,21 @@ func (w recordWriter) retryingSave(ctx context.Context, workspaceID, id string, 
 	return nil, errStillContended
 }
 
-func (w recordWriter) notify(l *lead.Lead, fields []string) {
+func (w recordWriter) notify(ctx context.Context, l *lead.Lead, fields []string) {
 	w.notifier.LeadChanged(lead.Change{
 		WorkspaceID: l.WorkspaceID,
 		LeadID:      l.ID,
 		Version:     l.Version,
 		Fields:      fields,
 	})
+	w.emailSeen(ctx, l, fields)
+}
+
+func (w recordWriter) emailSeen(ctx context.Context, l *lead.Lead, fields []string) {
+	if w.emailsSeen == nil || !slices.Contains(fields, lead.FieldEmail) {
+		return
+	}
+	if address, err := emailaddress.Normalize(l.Email); err == nil {
+		w.emailsSeen.AddressesSeen(ctx, []emailaddress.Address{address})
+	}
 }

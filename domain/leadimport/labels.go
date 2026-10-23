@@ -18,6 +18,14 @@ var labels = map[lead.RejectReason]reasonLabels{
 	lead.ReasonNameTooLong:              {"Nome longo demais", "Name too long", "Nombre demasiado largo", "Name zu lang"},
 	lead.ReasonNicknameTooLong:          {"Apelido longo demais", "Nickname too long", "Apodo demasiado largo", "Spitzname zu lang"},
 	lead.ReasonEmailInvalid:             {"E-mail inválido", "Invalid e-mail", "Correo electrónico no válido", "Ungültige E-Mail"},
+	lead.ReasonEmailTypo:                {"E-mail com provável erro de digitação no domínio", "E-mail domain looks mistyped", "Dominio del correo con probable error de escritura", "E-Mail-Domain vermutlich vertippt"},
+	lead.ReasonEmailDisposable:          {"E-mail temporário", "Disposable e-mail", "Correo temporal", "Wegwerf-E-Mail"},
+	lead.ReasonEmailNoMailDomain:        {"Domínio do e-mail não recebe mensagens", "The e-mail domain receives no mail", "El dominio del correo no recibe mensajes", "Die E-Mail-Domain empfängt keine Nachrichten"},
+	lead.ReasonEmailBadAddress:          {"E-mail já voltou como inexistente", "E-mail already bounced as nonexistent", "El correo ya rebotó como inexistente", "E-Mail kam bereits als nicht vorhanden zurück"},
+	lead.ReasonEmailSuppressed:          {"E-mail na lista de bloqueio", "E-mail on the block list", "Correo en la lista de bloqueo", "E-Mail auf der Sperrliste"},
+	lead.ReasonEmailDomainUnknown:       {"Domínio do e-mail não respondeu à verificação", "The e-mail domain did not answer the check", "El dominio del correo no respondió a la verificación", "Die E-Mail-Domain hat auf die Prüfung nicht geantwortet"},
+	lead.ReasonEmailRole:                {"E-mail de setor, como contato@", "Shared mailbox, such as contact@", "Correo de sector, como contacto@", "Sammelpostfach, wie kontakt@"},
+	lead.ReasonEmailInactive:            {"E-mail sem interação há mais de 6 meses", "E-mail without engagement for over 6 months", "Correo sin interacción hace más de 6 meses", "E-Mail seit über 6 Monaten ohne Interaktion"},
 	lead.ReasonBirthDateInvalid:         {"Data de nascimento inválida", "Invalid birth date", "Fecha de nacimiento no válida", "Ungültiges Geburtsdatum"},
 	lead.ReasonPhoneInvalid:             {"Telefone de contato inválido", "Invalid contact phone", "Teléfono de contacto no válido", "Ungültige Kontaktnummer"},
 	lead.ReasonPhoneLimit:               {"O lead já tem o máximo de telefones", "The lead already has the most phones allowed", "El lead ya tiene el máximo de teléfonos", "Der Lead hat bereits die Höchstzahl an Telefonnummern"},
@@ -43,7 +51,9 @@ var labels = map[lead.RejectReason]reasonLabels{
 func Reasons() []lead.RejectReason {
 	return []lead.RejectReason{
 		lead.ReasonInvalid, lead.ReasonDuplicate, lead.ReasonIdentityRequired, lead.ReasonNameTooLong, lead.ReasonNicknameTooLong,
-		lead.ReasonEmailInvalid, lead.ReasonBirthDateInvalid, lead.ReasonPhoneInvalid, lead.ReasonPhoneLimit, lead.ReasonAddressInvalid,
+		lead.ReasonEmailInvalid, lead.ReasonEmailTypo, lead.ReasonEmailDisposable, lead.ReasonEmailNoMailDomain, lead.ReasonEmailBadAddress,
+		lead.ReasonEmailSuppressed, lead.ReasonEmailDomainUnknown, lead.ReasonEmailRole, lead.ReasonEmailInactive,
+		lead.ReasonBirthDateInvalid, lead.ReasonPhoneInvalid, lead.ReasonPhoneLimit, lead.ReasonAddressInvalid,
 		lead.ReasonCoordinatesInvalid, lead.ReasonCoordinatesOutsideBrazil, lead.ReasonOwnerNotFound, lead.ReasonOwnerOutOfReach,
 		lead.ReasonConsentDateInvalid, lead.ReasonConsentPurposeTooLong, lead.ReasonCustomFieldInvalid, lead.ReasonCustomFieldRequired,
 		lead.ReasonRelativeNumberInvalid, lead.ReasonRelationKindInvalid, lead.ReasonRelativeNotFound, lead.ReasonRelationSelf, lead.ReasonRelationExists, lead.ReasonContactAmbiguous,
@@ -68,19 +78,19 @@ func ReasonLabel(reason lead.RejectReason, locale string) string {
 }
 
 type ColumnLabels struct {
-	Line, Reason, Code, Field, Imported, Yes, No string
+	Line, Reason, Code, Field, Imported, Yes, No, Hint string
 }
 
 func RejectionColumns(locale string) ColumnLabels {
 	switch strings.ToLower(strings.TrimSpace(locale)) {
 	case "en":
-		return ColumnLabels{"line", "reason", "code", "column", "row imported", "yes", "no"}
+		return ColumnLabels{"line", "reason", "code", "column", "row imported", "yes", "no", "suggestion"}
 	case "es":
-		return ColumnLabels{"línea", "motivo", "código", "columna", "fila importada", "sí", "no"}
+		return ColumnLabels{"línea", "motivo", "código", "columna", "fila importada", "sí", "no", "sugerencia"}
 	case "de":
-		return ColumnLabels{"Zeile", "Grund", "Code", "Spalte", "Zeile importiert", "ja", "nein"}
+		return ColumnLabels{"Zeile", "Grund", "Code", "Spalte", "Zeile importiert", "ja", "nein", "Vorschlag"}
 	}
-	return ColumnLabels{"linha", "motivo", "código", "coluna", "linha importada", "sim", "não"}
+	return ColumnLabels{"linha", "motivo", "código", "coluna", "linha importada", "sim", "não", "sugestão"}
 }
 
 var errorCodes = []struct {

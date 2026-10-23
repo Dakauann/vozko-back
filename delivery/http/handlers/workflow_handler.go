@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"vozko/delivery/http/httpx"
@@ -27,6 +28,16 @@ type WorkflowHandler struct {
 	testNodeUC         workflow_usecase.TestNodeUseCase
 	catalogFn          func() []workflow.NodeDefinition
 	nodePins           NodePinner
+	lastTriggerInput   LastTriggerInputReader
+	variables          NodeVariableReader
+}
+
+type NodeVariableReader interface {
+	At(ctx context.Context, wf *workflow.Workflow, nodeID string) (workflow.VariableCatalog, error)
+}
+
+type LastTriggerInputReader interface {
+	Execute(viewer shared.Person, wf *workflow.Workflow, nodeID string) (*workflow_usecase.LastTriggerInput, error)
 }
 
 type ConversationRunLister interface {
@@ -48,6 +59,8 @@ func NewWorkflowHandler(
 	testNodeUC workflow_usecase.TestNodeUseCase,
 	catalogFn func() []workflow.NodeDefinition,
 	nodePins NodePinner,
+	lastTriggerInput LastTriggerInputReader,
+	variables NodeVariableReader,
 ) *WorkflowHandler {
 	return &WorkflowHandler{
 		workflows:          workflows,
@@ -60,6 +73,8 @@ func NewWorkflowHandler(
 		testNodeUC:         testNodeUC,
 		catalogFn:          catalogFn,
 		nodePins:           nodePins,
+		lastTriggerInput:   lastTriggerInput,
+		variables:          variables,
 	}
 }
 
@@ -198,9 +213,10 @@ func (h *WorkflowHandler) Get(w http.ResponseWriter, r *http.Request) {
 // @Param status query string false "draft, active, paused ou archived"
 // @Param type query string false "messages ou voice"
 // @Param triggerType query string false "Gatilho (com status=active, o gatilho da versão publicada)"
-// @Param entryKind query string false "Tipo de entrada" Enums(message_received, first_message, webhook, form_submitted, agent_call, campaign_sent, stage_added, no_reply, call_received, manual, lead_exit)
+// @Param entryKind query string false "Tipo de entrada" Enums(message_received, first_message, webhook, form_submitted, agent_call, stage_added, call_received, lead_exit)
 // @Success 200 {object} response.PaginatedPayload{data=[]workflow.Workflow}
-// @Failure 400 {object} response.ErrorResponse "invalid_entry_kind: entryKind fora da lista"
+// @Param startsFromMessage query bool false "true lista só os fluxos que um botão (saída do lead) ou um início pela API conseguem iniciar: os que têm o gatilho Mensagem recebida ou Primeira mensagem na versão publicada (no rascunho quando nunca foi publicado). Filtra no banco, antes da paginação."
+// @Failure 400 {object} response.ErrorResponse "invalid_entry_kind: entryKind fora da lista; invalid_filter: startsFromMessage não é true nem false"
 // @Router /workflows [get]
 func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
@@ -243,6 +259,14 @@ func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		input.EntryKind = &kind
+	}
+	if raw := values.Get("startsFromMessage"); raw != "" {
+		on, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.WriteRefusal(w, refusalInvalidFilter.Expecting(map[string]string{"startsFromMessage": "true ou false"}))
+			return
+		}
+		input.StartsFromMessage = on
 	}
 
 	result, err := h.listUC.Execute(input)
@@ -321,7 +345,7 @@ func (h *WorkflowHandler) Export(w http.ResponseWriter, r *http.Request) {
 		Type:          string(wf.Type),
 		TriggerType:   string(wf.TriggerType),
 		TriggerConfig: wf.TriggerConfig,
-		Graph:         workflow.StripPins(wf.Graph),
+		Graph:         workflow.StripDraftOnly(wf.Graph),
 		ExportedAt:    wf.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		Version:       wf.Version,
 	}

@@ -129,11 +129,15 @@ func CanonicalizeGraphJSON(raw []byte) ([]byte, bool, error) {
 	changed := false
 	for _, item := range nodes {
 		node, _ := item.(map[string]interface{})
+		nodeType, _ := node["type"].(string)
+		if current := NodeType(nodeType).Canonical(); string(current) != nodeType {
+			node["type"] = string(current)
+			changed = true
+		}
 		config, isMap := node["config"].(map[string]interface{})
 		if !isMap {
 			continue
 		}
-		nodeType, _ := node["type"].(string)
 		if CanonicalizeNodeConfig(&Node{Type: NodeType(nodeType), Config: config}) {
 			changed = true
 		}
@@ -158,6 +162,19 @@ func StructuredConfigGraphPath() string {
 			types = append(types, string(legacy))
 		}
 	}
+	return nodeTypeGraphPath(types)
+}
+
+func LegacyNodeTypeGraphPath() string {
+	legacy := LegacyNodeTypes()
+	types := make([]string, len(legacy))
+	for i, nodeType := range legacy {
+		types[i] = string(nodeType)
+	}
+	return nodeTypeGraphPath(types)
+}
+
+func nodeTypeGraphPath(types []string) string {
 	sort.Strings(types)
 	conditions := make([]string, len(types))
 	for i, nodeType := range types {

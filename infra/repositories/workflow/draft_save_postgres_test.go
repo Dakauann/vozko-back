@@ -63,7 +63,7 @@ func TestDraftSavesAgainstPostgres(t *testing.T) {
 
 func manualTriggerGraph(endID string) workflow.Graph {
 	return workflow.Graph{
-		Nodes: []workflow.Node{{ID: "t", Type: workflow.NodeTypeTriggerManual}, {ID: endID, Type: workflow.NodeTypeEnd}},
+		Nodes: []workflow.Node{{ID: "t", Type: workflow.NodeTypeTriggerMessageReceived}, {ID: endID, Type: workflow.NodeTypeEnd}},
 		Edges: []workflow.Edge{{Source: "t", Target: endID}},
 	}
 }

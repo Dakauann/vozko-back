@@ -48,9 +48,10 @@ func (uc *AssignEntryStageUseCase) Execute(workspaceID string, input stage.Assig
 		EntryID:     input.EntryID,
 		EntryType:   input.EntryType,
 		WorkspaceID: workspaceID,
+		Cause:       input.Cause,
 	}
 
-	if err := uc.repo.AssignStage(et); err != nil {
+	if _, err := uc.repo.AssignStage(et); err != nil {
 		return nil, err
 	}
 

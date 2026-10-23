@@ -60,6 +60,16 @@ func TestDescriptor(t *testing.T) {
 	}
 }
 
+func TestInboxNamesTheAccountBySellerNameFirst(t *testing.T) {
+	want := "COALESCE(NULLIF(mla.display_name, ''), NULLIF(mla.nickname, ''), mla.ml_user_id)"
+	if got := Descriptor().InboxSQL.ContainerNameField; got != want {
+		t.Fatalf("container name = %q", got)
+	}
+	if got := AccountNameSQL(""); got != "COALESCE(NULLIF(display_name, ''), NULLIF(nickname, ''), ml_user_id)" {
+		t.Fatalf("unqualified account name = %q", got)
+	}
+}
+
 func TestDescriptorCarriesTheCharsetRule(t *testing.T) {
 	c := Descriptor().Capabilities
 	if len(c.ProviderTextRules) != 1 {

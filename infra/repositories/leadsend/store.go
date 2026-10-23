@@ -12,10 +12,9 @@ import (
 
 	"vozko/domain/campaign"
 	lmw "vozko/domain/lead_message_window"
+	"vozko/domain/selection"
 	"vozko/infra/database"
 )
-
-const runningChunk = 5000
 
 var (
 	errWorkspaceRequired = errors.New("lead send store: workspace is required")
@@ -43,13 +42,21 @@ func pendingInRunningSQL(t tables) string {
 		` c WHERE c.workspace_id = ?::uuid AND c.status = ? AND c.deleted_at IS NULL) AND e.status = ? AND e.deleted_at IS NULL`
 }
 
+func pendingInRunningAmong(leadIn string) string {
+	return pendingInRunningSQL(officialTables) + ` AND e.lead_id ` + leadIn + ` UNION ` + pendingInRunningSQL(unofficialTables) + ` AND e.lead_id ` + leadIn
+}
+
+func RunningPendingSQL(workspaceID, leadIn string) (string, []any) {
+	running, pending := string(campaign.StatusRunning), string(campaign.SendStatusPending)
+	return pendingInRunningAmong(leadIn), []any{workspaceID, running, pending, workspaceID, running, pending}
+}
+
 var (
 	officialTables   = tables{campaigns: "whatsapp_campaigns", entries: "whatsapp_campaign_entries"}
 	unofficialTables = tables{campaigns: "unofficial_whatsapp_campaigns", entries: "unofficial_whatsapp_campaign_entries"}
 )
 
-var inRunningCampaignsSQL = pendingInRunningSQL(officialTables) + ` AND e.lead_id = ANY(?::uuid[]) UNION ` +
-	pendingInRunningSQL(unofficialTables) + ` AND e.lead_id = ANY(?::uuid[])`
+var inRunningCampaignsSQL = pendingInRunningAmong(`= ANY(?::uuid[])`)
 
 var pendingInAnyRunningSQL = pendingInRunningSQL(officialTables) + ` UNION ALL ` + pendingInRunningSQL(unofficialTables)
 
@@ -123,14 +130,14 @@ func (s *Store) InRunningCampaigns(ctx context.Context, workspaceID string, lead
 		return nil, errWorkspaceRequired
 	}
 	running := map[string]bool{}
-	ids := database.UUIDArray(leadIDs)
-	for start := 0; start < len(ids); start += runningChunk {
-		chunk := pq.StringArray(ids[start:min(start+runningChunk, len(ids))])
+	ids := database.UUIDsOf(leadIDs)
+	for start := 0; start < len(ids); start += selection.Chunk {
+		chunk := ids[start:min(start+selection.Chunk, len(ids))]
 		var found []string
 		err := s.db.WithContext(ctx).Raw(inRunningCampaignsSQL,
 			workspaceID, string(campaign.StatusRunning), string(campaign.SendStatusPending), chunk,
 			workspaceID, string(campaign.StatusRunning), string(campaign.SendStatusPending), chunk,
-		).Scan(&found).Error
+		).Find(&found).Error
 		if err != nil {
 			return nil, fmt.Errorf("leads already in a running campaign: %w", err)
 		}

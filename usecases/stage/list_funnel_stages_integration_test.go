@@ -1,8 +1,6 @@
 package stage_usecase_test
 
 import (
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -13,17 +11,13 @@ import (
 	pipeline_domain "vozko/domain/pipeline"
 	pipeline_repository "vozko/infra/repositories/pipeline"
 	stage_repository "vozko/infra/repositories/stage"
+	"vozko/infra/testenv"
 	stage_usecase "vozko/usecases/stage"
 )
 
 func funnelTx(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" {
-		t.Skip("set VOZKO_TEST_DB=1 (and DB_* vars) to run against Postgres")
-	}
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
+	dsn := testenv.Postgres(t).DSN()
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})

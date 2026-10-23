@@ -7,15 +7,8 @@ import (
 	"vozko/domain/calendar"
 )
 
-func validWatchConnection() *calendar.GoogleCalendarConnection {
-	return &calendar.GoogleCalendarConnection{
-		ID:           "conn-1",
-		WorkspaceID:  "ws-1",
-		Email:        "cal@example.com",
-		AccessToken:  "access-token",
-		RefreshToken: "refresh-token",
-		TokenExpiry:  time.Now().Add(time.Hour),
-	}
+func validWatchConnection() *testConnection {
+	return &testConnection{Email: "cal@example.com", AccessToken: "access-token"}
 }
 
 func TestUpdateEvent_GoogleRouteIDFetchesFromGoogleWithoutLocalCache(t *testing.T) {
@@ -34,7 +27,7 @@ func TestUpdateEvent_GoogleRouteIDFetchesFromGoogleWithoutLocalCache(t *testing.
 			RemindersUseDefault:     true,
 		},
 	}
-	useCase := NewUpdateEventUseCase(repo, google)
+	useCase := NewUpdateEventUseCase(repo, google, repo)
 
 	title := "Updated title"
 	event, err := useCase.Execute(calendar.UpdateEventInput{
@@ -94,7 +87,7 @@ func TestGetEvent_GoogleRouteIDUsesGoogleIDLookup(t *testing.T) {
 func TestDeleteEvent_GoogleRouteIDDeletesGoogleWithoutLocalCache(t *testing.T) {
 	repo := &watchRepoMock{connection: validWatchConnection()}
 	google := &watchGoogleMock{}
-	useCase := NewDeleteEventUseCase(repo, google)
+	useCase := NewDeleteEventUseCase(repo, google, repo)
 
 	if err := useCase.Execute("gcal_google-event-2", "ws-1", "user-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -121,7 +114,7 @@ func TestDeleteEvent_GoogleRouteIDAlsoDeletesLocalCacheWhenPresent(t *testing.T)
 		},
 	}
 	google := &watchGoogleMock{}
-	useCase := NewDeleteEventUseCase(repo, google)
+	useCase := NewDeleteEventUseCase(repo, google, repo)
 
 	if err := useCase.Execute("gcal_google-event-3", "ws-1", "user-1"); err != nil {
 		t.Fatalf("unexpected error: %v", err)

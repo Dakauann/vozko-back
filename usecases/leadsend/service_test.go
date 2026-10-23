@@ -205,12 +205,6 @@ func TestTemplatesThatCannotGoToASelectionAreRefused(t *testing.T) {
 	h := newHarness(nil)
 	h.seed(2)
 	params := templateParams()
-	params.TemplateID = "tpl-header"
-	params.Bindings = params.Bindings[:1]
-	if _, err := prepare(h, scoped(), leadaction.ActionSendTemplate, params); !errors.Is(err, campaign.ErrHeaderVariableUnsupported) {
-		t.Fatalf("header variable = %v", err)
-	}
-	params = templateParams()
 	params.Bindings = []campaign.VariableBinding{{Source: campaign.BindFirstName}, {Source: campaign.CustomBinding("classificacao")}}
 	if _, err := prepare(h, scoped(), leadaction.ActionSendTemplate, params); !errors.Is(err, campaign.ErrBindingSensitive) {
 		t.Fatalf("sensitive binding = %v", err)

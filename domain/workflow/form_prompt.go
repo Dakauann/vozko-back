@@ -21,11 +21,17 @@ const (
 	FormUseNode    FormUse = "node"
 )
 
-func (t TriggerType) StartsRunPerEvent() bool {
-	return t == TriggerFormSubmitted
+func (e TriggerEvent) StartsRunPerEvent() bool {
+	return e.TriggerType == TriggerFormSubmitted || e.StartsOnLead()
 }
 
 func (e TriggerEvent) OccurrenceKey() string {
+	if e.StartsOnLead() {
+		return leadOccurrenceKey(e)
+	}
+	if e.TriggerType == TriggerStageAdded {
+		return stageOccurrenceKey(e)
+	}
 	if e.TriggerType != TriggerFormSubmitted {
 		return ""
 	}

@@ -21,7 +21,7 @@ func TestTheWorkspaceReadsAreSharedAcrossAWholeCampaignRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	leads := &leadBook{facts: map[string]campaign.LeadFacts{"l-1": reachable()}}
-	eligible, err := NewEligibility(leads, spam)
+	eligible, err := NewEligibility(&screeningBook{leads: leads, sends: sends}, spam)
 	if err != nil {
 		t.Fatal(err)
 	}

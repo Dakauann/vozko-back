@@ -135,3 +135,29 @@ func TestUnlock(t *testing.T) {
 		}
 	})
 }
+
+func TestATrackedButtonLinkRedirectsToTheRealDestinationAndCarriesItsToken(t *testing.T) {
+	pub := &fakePublish{}
+	deps := defaultDeps()
+	deps.publish = pub
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/r/abc/2.dGVzdA", nil)
+	r = mux.SetURLVars(r, map[string]string{"code": "abc", "token": "2.dGVzdA"})
+	deps.build().RedirectTracked(rec, r)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "https://x.com" {
+		t.Fatalf("status = %d location = %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if pub.last.Attribution != "2.dGVzdA" {
+		t.Fatalf("click = %+v", pub.last)
+	}
+}
+
+func TestAPlainRedirectCarriesNoAttribution(t *testing.T) {
+	pub := &fakePublish{}
+	deps := defaultDeps()
+	deps.publish = pub
+	deps.build().Redirect(httptest.NewRecorder(), codeRequest(http.MethodGet, "/r/abc", nil))
+	if pub.last.Attribution != "" {
+		t.Fatalf("attribution = %q", pub.last.Attribution)
+	}
+}

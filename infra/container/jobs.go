@@ -18,6 +18,7 @@ import (
 	workspace_config_repository "vozko/infra/repositories/workspace_config"
 	conversation_usecase "vozko/usecases/conversation"
 	ia_usecase "vozko/usecases/inbox_assignment"
+	invoice_usecase "vozko/usecases/invoice"
 	tools_usecase "vozko/usecases/tools"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
 	whatsapp_campaign_usecase "vozko/usecases/whatsapp_campaign"
@@ -57,6 +58,8 @@ func (c *Container) initJobRunner() {
 		channels = append(channels, analysisChannel{shared.EntryTypeWebchat, webchatAnalysisResolver(c.webchat)})
 	}
 	channels = append(channels, c.tiktokAnalysisChannel())
+	channels = append(channels, emailInboxAnalysisChannel(c.emailInbox))
+	channels = append(channels, c.carrierAnalysisChannels()...)
 	if c.unofficialWhatsApp != nil && c.unofficialWhatsApp.Enabled {
 		resolver := campaignAwareResolver(
 			unofficialWhatsAppAnalysisResolver(c.unofficialWhatsApp),
@@ -158,6 +161,7 @@ func (c *Container) initJobRunner() {
 	if imports := c.leadImports(); imports != nil {
 		c.jobRunner.SetLeadImportJobs(cronPackage.CtxJobFunc(imports.Sweep))
 	}
+	c.jobRunner.SetCampaignAudienceJobs(cronPackage.CtxJobFunc(c.campaignAudience().SweepExpired))
 	if sweeper := c.geocodingSweeper(); sweeper != nil {
 		c.jobRunner.SetGeocodingJobs(cronPackage.CtxJobFunc(sweeper.Sweep))
 	}
@@ -166,6 +170,7 @@ func (c *Container) initJobRunner() {
 	}
 	c.jobRunner.SetLeadActionJobs(cronPackage.CtxJobFunc(c.leadActions().Sweep))
 	c.jobRunner.SetCallListJobs(cronPackage.CtxJobFunc(c.callLists().Sweep))
+	c.jobRunner.SetInvoiceReservationJobs(invoice_usecase.NewCancelStaleReservations(c.repositories.invoice))
 
 	c.jobRunner.SetWebhookEventPurgeJob(webhook_usecase.NewPurgeProcessedEventsUseCase(
 		webhook_repository.NewProcessedEventRepository(c.db), 30*24*time.Hour))
@@ -209,6 +214,11 @@ func (c *Container) initJobRunner() {
 		c.jobRunner.SetMercadoLivrePurgeJob(ml.Purge)
 	}
 	c.registerTikTokJobs()
+	c.registerGoogleJobs()
+	c.registerGoogleSheetsJobs()
+	c.registerEmailJobs()
+	c.registerCarrierJobs()
+	c.jobRunner.SetWorkflowBirthdayJob(c.workflowLeadTriggers.Birthday)
 	if c.unofficialWhatsAppCampaigns != nil && c.unofficialWhatsAppCampaigns.Enabled {
 		c.jobRunner.SetUnofficialWhatsAppCampaignJobs(
 			cronPackage.CtxJobFunc(func(context.Context) error {

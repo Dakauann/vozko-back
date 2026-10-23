@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -83,6 +85,34 @@ func TestStartingARunChecksTheWorkflowsDepartmentAndTheConversation(t *testing.T
 				t.Fatalf("input = %+v", start.input)
 			}
 		})
+	}
+}
+
+func TestStartingARunCarriesTheMessageTheCustomerWouldHaveSent(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want string
+	}{
+		{`{"entryId":"entry-1","entryType":"whatsapp","message":"Quero saber das turmas"}`, "Quero saber das turmas"},
+		{`{"entryId":"entry-1","entryType":"whatsapp"}`, ""},
+	} {
+		start := &recordingStartRun{}
+		h := &WorkflowHandler{workflows: &departmentGuardedWorkflows{}, startRunUC: start}
+		rec := httptest.NewRecorder()
+		h.StartRun(rec, workflowRequestAs(http.MethodPost, "/workflows/w1/runs", []byte(tc.body), &auth.Claims{UserID: "u1"}))
+		if rec.Code != http.StatusCreated || start.input == nil || start.input.Message != tc.want {
+			t.Fatalf("status = %d input = %+v", rec.Code, start.input)
+		}
+	}
+}
+
+func TestStartingARunOnAWorkflowWithoutAMessageTriggerIsRefusedWithItsCode(t *testing.T) {
+	start := &recordingStartRun{err: fmt.Errorf("start: %w", workflow.ErrWorkflowNeedsMessageTrigger)}
+	h := &WorkflowHandler{workflows: &departmentGuardedWorkflows{}, startRunUC: start}
+	rec := httptest.NewRecorder()
+	h.StartRun(rec, workflowRequestAs(http.MethodPost, "/workflows/w1/runs", []byte(`{"entryId":"entry-1","entryType":"whatsapp"}`), &auth.Claims{UserID: "u1"}))
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), workflow.NeedsMessageTriggerCode) {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
 

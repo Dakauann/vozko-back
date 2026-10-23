@@ -7,11 +7,11 @@ import (
 	wsdelivery "vozko/delivery/ws"
 	uw "vozko/domain/unofficial_whatsapp"
 	uwc "vozko/domain/unofficial_whatsapp_campaign"
-	workflow_domain "vozko/domain/workflow"
 	workspace_department "vozko/domain/workspace/workspace_department"
 	"vozko/infra/repositories/campaignstamp"
 	uwrepo "vozko/infra/repositories/unofficial_whatsapp"
 	uwc_repo "vozko/infra/repositories/unofficial_whatsapp_campaign"
+	campaignaudience_usecase "vozko/usecases/campaignaudience"
 	conversation_usecase "vozko/usecases/conversation"
 	uwuc "vozko/usecases/unofficial_whatsapp"
 	uwcuc "vozko/usecases/unofficial_whatsapp_campaign"
@@ -34,6 +34,8 @@ type unofficialWhatsAppCampaignBundle struct {
 	PauseForInst uwc.PauseCampaignsForInstanceUseCase
 	Senders      uwcuc.GroupSenderDirectory
 	Estimate     uwc.EstimateCampaignUseCase
+	Preflight    *uwcuc.StartPreflight
+	CreateFlow   uwc.CreateCampaignUseCase
 
 	Handler *uwhttp.CampaignHandler
 }
@@ -86,6 +88,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 		Assignments: c.services.assignmentService,
 		Broadcaster: &campaignEntryBroadcaster{hub: c.services.conversationHub},
 		Groups:      gateway,
+		Choices:     c.choiceStatsRecorder(),
 	})
 	bundle.Consumer = consumer
 	bundle.PauseForInst = uwcuc.NewPauseCampaignsForInstanceUseCase(bundle.Campaigns, consumer)
@@ -108,8 +111,11 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	bundle.Actions = uwcuc.NewCampaignActionUseCase(bundle.Access, bundle.Dispatch)
 	bundle.Preview = uwcuc.NewImportPreviewUseCase(c.useCases.readMedia)
 	bundle.Instances = uwcuc.NewCampaignInstanceUseCase(gateway)
+	c.addUnofficialAudience(bundle.Instances)
 	bundle.Senders = gateway
 	bundle.Estimate = uwcuc.NewEstimateCampaignUseCase(bundle.Entries, gateway, gateway)
+	bundle.Preflight = uwcuc.NewStartPreflight(gateway)
+	bundle.CreateFlow = campaignaudience_usecase.UnofficialCreate(bundle.Create, c.campaignAudience())
 
 	logChannelCapabilities("unofficial-whatsapp-campaigns", map[string]bool{
 		"sender":         sender != nil,
@@ -121,7 +127,7 @@ func (c *Container) initUnofficialWhatsAppCampaigns(
 	})
 
 	bundle.Handler = uwhttp.NewCampaignHandler(uwhttp.CampaignHandlerDeps{
-		Create:      bundle.Create,
+		Create:      bundle.CreateFlow,
 		Update:      c.automateCampaignEdits("unofficial update", uwcuc.NewUpdateCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway)).(uwc.UpdateCampaignUseCase),
 		Get:         uwcuc.NewGetCampaignUseCase(bundle.Campaigns, bundle.Entries, gateway),
 		Access:      bundle.Access,
@@ -203,28 +209,6 @@ func (g *unofficialCampaignGateway) CacheRestriction(ctx context.Context, instan
 
 func (g *unofficialCampaignGateway) Resolve(ctx context.Context, instance *uw.Instance, in uwuc.ResolveInput) (*uwuc.Resolved, error) {
 	return g.resolver.Resolve(ctx, instance, in)
-}
-
-type campaignWorkflowTrigger struct {
-	evaluator workflow_domain.TriggerEvaluator
-}
-
-func (t *campaignWorkflowTrigger) CampaignSent(in uwcuc.CampaignSentTrigger) {
-	if t.evaluator == nil {
-		return
-	}
-	go t.evaluator.Evaluate(workflow_domain.TriggerEvent{
-		WorkspaceID: in.WorkspaceID,
-		EntryID:     in.ConversationID,
-		EntryType:   "unofficial_whatsapp",
-		TriggerType: workflow_domain.TriggerCampaignSent,
-		Data: map[string]interface{}{
-			"campaign_id":  in.CampaignID,
-			"entry_id":     in.EntryID,
-			"phone_number": in.PhoneNumber,
-			"message_id":   in.ProviderMessageID,
-		},
-	})
 }
 
 type campaignEntryBroadcaster struct{ hub *wsdelivery.ConversationHub }

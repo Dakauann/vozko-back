@@ -111,7 +111,9 @@ func TestStartForConversationRefusesWhatTheWorkflowRuleRefuses(t *testing.T) {
 		{"another workspace", func(w *workflow.Workflow) { w.WorkspaceID = "ws-other" }, workflow.ErrWorkflowNotFound},
 		{"paused", func(w *workflow.Workflow) { w.Status = workflow.WorkflowStatusPaused }, workflow.ErrWorkflowNotActive},
 		{"voice", func(w *workflow.Workflow) { w.Type = workflow.WorkflowTypeVoice }, workflow.ErrInvalidWorkflowType},
-		{"no trigger", func(w *workflow.Workflow) { w.Graph.Nodes = w.Graph.Nodes[1:] }, workflow.ErrGraphNoTrigger},
+		{"no trigger", func(w *workflow.Workflow) { w.Graph.Nodes = w.Graph.Nodes[1:] }, workflow.ErrWorkflowNeedsMessageTrigger},
+		{"only a webhook trigger", func(w *workflow.Workflow) { w.Graph.Nodes[0].Type = workflow.NodeTypeTriggerWebhook }, workflow.ErrWorkflowNeedsMessageTrigger},
+		{"only an agent call trigger", func(w *workflow.Workflow) { w.Graph.Nodes[0].Type = workflow.NodeTypeTriggerAgentCall }, workflow.ErrWorkflowNeedsMessageTrigger},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -228,5 +230,26 @@ func TestNewConversationRunStarterRefusesMissingDependencies(t *testing.T) {
 	}
 	if _, err := NewConversationRunStarter(NewMockWorkflowRepository(), NewMockWorkflowRunRepository(), nil, &fakeSharedState{}); err == nil {
 		t.Fatal("expected a refusal without the launcher")
+	}
+}
+
+func TestAStartWithoutATriggerTypeBeginsAtTheMessageTriggerNotThePrimary(t *testing.T) {
+	h := newConversationStartHarness()
+	w := tapWorkflow()
+	w.TriggerType = workflow.TriggerAgentCall
+	w.Graph.Nodes = []workflow.Node{
+		{ID: "tac", Type: workflow.NodeTypeTriggerAgentCall},
+		{ID: "tfm", Type: workflow.NodeTypeTriggerFirstMessage},
+		{ID: "e1", Type: workflow.NodeTypeEnd},
+	}
+	w.Graph.Edges = []workflow.Edge{{Source: "tac", Target: "e1"}, {Source: "tfm", Target: "e1"}}
+	h.wfRepo.workflows["wf-tap"] = w
+
+	if _, err := h.starter.StartForConversation(tapStart()); err != nil {
+		t.Fatal(err)
+	}
+	run := h.launcher.launched[0]
+	if run.TriggerNodeID != "tfm" || run.CurrentNodeID != "tfm" || run.TriggerType != workflow.TriggerFirstMessage {
+		t.Fatalf("run = %s/%s (%s), want the first message trigger", run.TriggerNodeID, run.CurrentNodeID, run.TriggerType)
 	}
 }

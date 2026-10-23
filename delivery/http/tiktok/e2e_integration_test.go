@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -42,6 +41,7 @@ import (
 	commentautomation_repository "vozko/infra/repositories/commentautomation"
 	tiktok_repository "vozko/infra/repositories/tiktok"
 	webhook_repository "vozko/infra/repositories/webhook"
+	"vozko/infra/testenv"
 	infratiktok "vozko/infra/tiktok"
 	commentautomation "vozko/usecases/commentautomation"
 	conversation_usecase "vozko/usecases/conversation"
@@ -62,9 +62,8 @@ const (
 
 func e2eDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" || os.Getenv("VOZKO_TEST_REDIS") == "" {
-		t.Skip("set VOZKO_TEST_DB=1, the DB_* vars and VOZKO_TEST_REDIS to run the TikTok end-to-end test")
-	}
+	dsn := testenv.Postgres(t).DSN()
+	testenv.Redis(t)
 	v, err := vault.New(bytes.Repeat([]byte{0x11}, 32), 1)
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +74,6 @@ func e2eDB(t *testing.T) *gorm.DB {
 	}
 	piigorm.SetService(svc)
 	t.Cleanup(func() { piigorm.SetService(nil) })
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
 	silent := &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)}
 	admin, err := gorm.Open(postgres.Open(dsn), silent)
 	if err != nil {
@@ -363,7 +360,7 @@ func deliver(t *testing.T, h *WebhookHandler, queue *syncQueue, event string, co
 func TestTikTokEndToEnd(t *testing.T) {
 	db := e2eDB(t)
 	ctx := context.Background()
-	redis := infracache.NewRedisProvider(os.Getenv("VOZKO_TEST_REDIS"), "")
+	redis := infracache.NewRedisProvider(testenv.Redis(t).Addr, "")
 	platform := newFakePlatform(t)
 	metrics := &e2eMetrics{}
 

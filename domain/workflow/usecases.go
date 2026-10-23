@@ -58,6 +58,7 @@ type StartRunInput struct {
 	EntryID     string
 	EntryType   string
 	StartedBy   string
+	Message     string
 	Variables   map[string]interface{}
 	Viewer      shared.Person
 }
@@ -164,6 +165,11 @@ type TriggerEvaluator interface {
 	Evaluate(event TriggerEvent)
 }
 
+type CheckedTriggerEvaluator interface {
+	TriggerEvaluator
+	EvaluateChecked(event TriggerEvent) error
+}
+
 type ReplyWaiters interface {
 	WaitingForReply(event TriggerEvent) (*WorkflowRun, error)
 	WakeForReply(run *WorkflowRun, event TriggerEvent) bool
@@ -177,6 +183,8 @@ type TriggerEvent struct {
 	StartedBy   string
 	Data        map[string]interface{}
 	Reply       *ReplyRouting
+	Occurrence  string
+	CausedBy    string
 }
 
 func (e TriggerEvent) Starter() string {

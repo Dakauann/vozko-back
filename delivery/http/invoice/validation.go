@@ -1,16 +1,26 @@
 package invoice
 
-import "strings"
+import (
+	"errors"
+	"strings"
+
+	invoicedomain "vozko/domain/invoice"
+)
+
+func topUpAmountError(amountBRL float64) map[string]string {
+	switch err := invoicedomain.ValidateTopUpAmount(amountBRL); {
+	case errors.Is(err, invoicedomain.ErrTopUpBelowMinimum):
+		return map[string]string{"amountBrl": "minimum amount is R$ 5.00"}
+	case errors.Is(err, invoicedomain.ErrTopUpAboveMaximum):
+		return map[string]string{"amountBrl": "maximum amount is R$ 50,000.00"}
+	default:
+		return nil
+	}
+}
 
 func (r *CreateInvoiceRequest) Validate() map[string]string {
-	if r.AmountBRL <= 0 {
-		return map[string]string{"amountBrl": "must be positive"}
-	}
-	if r.AmountBRL < 5.0 {
-		return map[string]string{"amountBrl": "minimum amount is R$ 5.00"}
-	}
-	if r.AmountBRL > 50000.0 {
-		return map[string]string{"amountBrl": "maximum amount is R$ 50,000.00"}
+	if errs := topUpAmountError(r.AmountBRL); errs != nil {
+		return errs
 	}
 	billingType := strings.ToUpper(strings.TrimSpace(r.BillingType))
 	if billingType != "PIX" && billingType != "BOLETO" {
@@ -20,11 +30,5 @@ func (r *CreateInvoiceRequest) Validate() map[string]string {
 }
 
 func (r *CreateInvoiceRequest) ValidateAdmin() map[string]string {
-	if r.AmountBRL < 5.0 {
-		return map[string]string{"amountBrl": "minimum amount is R$ 5.00"}
-	}
-	if r.AmountBRL > 50000.0 {
-		return map[string]string{"amountBrl": "maximum amount is R$ 50,000.00"}
-	}
-	return nil
+	return topUpAmountError(r.AmountBRL)
 }

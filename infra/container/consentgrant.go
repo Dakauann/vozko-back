@@ -33,11 +33,11 @@ func (c *Container) consentGuardedWorkflows() workflow_domain.ScopedWorkflowsUse
 func (c *Container) guardAgentConsentGrants() {
 	c.mustConsentGrantChecker()
 	for name, uc := range map[string]any{"create agent": c.useCases.createAgent, "update agent": c.useCases.updateAgent} {
-		guarded, ok := uc.(agent_usecase.ConsentGrantGuarded)
+		guarded, ok := uc.(agent_usecase.ToolBindingGuarded)
 		if !ok {
-			log.Fatalf("[consent-grant] the %s use case cannot check the leads:consent permission", name)
+			log.Fatalf("[consent-grant] the %s use case cannot check the permissions its tool bindings need", name)
 		}
-		guarded.GuardConsentGrants(c.services.conversationAuthImpl)
+		guarded.GuardToolBindings(c.services.conversationAuthImpl)
 	}
 }
 

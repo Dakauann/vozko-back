@@ -3,11 +3,13 @@ package lead_usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
 	"vozko/domain/actor"
 	"vozko/domain/customfield"
+	"vozko/domain/emailaddress"
 	"vozko/domain/lead"
 	"vozko/domain/leadimport"
 	"vozko/domain/sheet"
@@ -105,6 +107,11 @@ func (p *importPass) prepare(ctx context.Context, rows []lead.ImportRow) ([]lead
 			records = append(records, record)
 		}
 	}
+	emailIssues, err := p.screenEmails(ctx, records)
+	if err != nil {
+		return nil, nil, err
+	}
+	issues = append(issues, emailIssues...)
 	ownerIssues, err := p.owners.resolve(ctx, records)
 	if err != nil {
 		return nil, nil, err
@@ -527,4 +534,35 @@ func linkWrite(l leadimport.PendingLink, relativeID, actorID string) leadimport.
 		return fail(lead.ReasonRelationKindInvalid)
 	}
 	return leadimport.LinkWrite{Link: l, Relation: &rel}
+}
+
+func (p *importPass) screenEmails(ctx context.Context, records []lead.ImportRecord) ([]lead.ImportIssue, error) {
+	addresses := make([]emailaddress.Address, len(records))
+	var distinct []emailaddress.Address
+	for idx, r := range records {
+		address, err := emailaddress.Normalize(r.Email)
+		if err != nil {
+			continue
+		}
+		addresses[idx] = address
+		distinct = append(distinct, address)
+	}
+	if len(distinct) == 0 {
+		return nil, nil
+	}
+	assessed, err := p.i.deps.Emails.AssessMany(ctx, p.job.WorkspaceID, distinct)
+	if err != nil {
+		return nil, fmt.Errorf("lead import: checking the emails of the batch: %w", err)
+	}
+	var issues []lead.ImportIssue
+	for idx := range records {
+		a, ok := assessed[addresses[idx]]
+		if addresses[idx] == "" || !ok {
+			continue
+		}
+		if issue, raised := leadimport.ApplyEmailAssessment(&records[idx], a, p.job.Grants); raised {
+			issues = append(issues, issue)
+		}
+	}
+	return issues, nil
 }

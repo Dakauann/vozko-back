@@ -37,11 +37,11 @@ func (e *loopExecutor) Definition() workflow.NodeDefinition {
 			"item_variable": "item",
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "item", Description: "Item atual da iteração"},
-			{Key: "index", Description: "Índice da iteração atual (0-based)"},
-			{Key: "total", Description: "Total de itens na lista"},
-			{Key: "is_first", Description: "true se é o primeiro item"},
-			{Key: "is_last", Description: "true se é o último item"},
+			{Key: "item", Description: "Item atual da iteração", Label: "Item atual", Type: workflow.VariableTypeUnknown},
+			{Key: "index", Description: "Índice da iteração atual (0-based)", Label: "Posição do item", Type: workflow.VariableTypeNumber},
+			{Key: "total", Description: "Total de itens na lista", Label: "Total de itens", Type: workflow.VariableTypeNumber},
+			{Key: "is_first", Description: "true se é o primeiro item", Label: "É o primeiro", Type: workflow.VariableTypeBoolean},
+			{Key: "is_last", Description: "true se é o último item", Label: "É o último", Type: workflow.VariableTypeBoolean},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "list_variable", Label: "Variável da lista", Type: "text", Placeholder: "var.items", Required: true},

@@ -8,9 +8,15 @@ import (
 const (
 	CapabilityLeadConsent     CapabilityKey = "leads.consent"
 	CodeConsentGrantForbidden               = "lead_consent_grant_forbidden"
+
+	CapabilityGoogleSheetsView CapabilityKey = "google_sheets.view"
+	CodeSheetBindingForbidden                = "google_sheet_binding_forbidden"
 )
 
-var ErrConsentGrantForbidden = errors.New("workspace: granting lead consent needs the leads.consent capability")
+var (
+	ErrConsentGrantForbidden = errors.New("workspace: granting lead consent needs the leads.consent capability")
+	ErrSheetBindingForbidden = errors.New("workspace: giving an agent a google sheet needs the google_sheets.view capability")
+)
 
 type Requester struct {
 	UserID      string
@@ -18,12 +24,20 @@ type Requester struct {
 }
 
 func RequireConsentGrant(checker PermissionChecker, workspaceID string, by Requester) error {
-	needed, err := CapabilitiesRequire([]CapabilityKey{CapabilityLeadConsent})
+	return requireCapability(checker, workspaceID, by, CapabilityLeadConsent, ErrConsentGrantForbidden)
+}
+
+func RequireSheetBinding(checker PermissionChecker, workspaceID string, by Requester) error {
+	return requireCapability(checker, workspaceID, by, CapabilityGoogleSheetsView, ErrSheetBindingForbidden)
+}
+
+func requireCapability(checker PermissionChecker, workspaceID string, by Requester, key CapabilityKey, forbidden error) error {
+	needed, err := CapabilitiesRequire([]CapabilityKey{key})
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrConsentGrantForbidden, err)
+		return fmt.Errorf("%w: %w", forbidden, err)
 	}
 	if !HoldsAll(checker, workspaceID, by.UserID, by.SystemAdmin, needed) {
-		return ErrConsentGrantForbidden
+		return forbidden
 	}
 	return nil
 }

@@ -287,7 +287,7 @@ func (s *stubAsaasSvc) CreatePayment(name, cpf string, p *AsaasPayment) (*AsaasP
 }
 func (s *stubAsaasSvc) GetPaymentQrCode(id string) (string, string, error) { return "", "", nil }
 func (s *stubAsaasSvc) GetPayment(id string) (*AsaasPayment, error)        { return nil, nil }
-func (s *stubAsaasSvc) RefundPayment(id string, amount int64, desc string) error {
+func (s *stubAsaasSvc) RefundPayment(id string, amount float64, desc string) error {
 	return nil
 }
 func (s *stubAsaasSvc) ValidateWalletID(name, doc, wallet string) error {

@@ -26,7 +26,7 @@ func formWorkflow(edges ...workflow.Edge) *workflow.Workflow {
 		ID: "wf-form", WorkspaceID: "ws-1", Name: "Cadastro", Status: workflow.WorkflowStatusActive, Type: workflow.WorkflowTypeMessages,
 		Graph: workflow.Graph{
 			Nodes: []workflow.Node{
-				{ID: "t", Type: workflow.NodeTypeTriggerManual},
+				{ID: "t", Type: workflow.NodeTypeTriggerMessageReceived},
 				{ID: "form", Type: workflow.NodeTypeActionSendForm, Config: map[string]interface{}{
 					workflow.FormNodeFormIDKey: "form-1", "body": "Preencha", "cta": "Abrir",
 				}},

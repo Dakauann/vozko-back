@@ -67,12 +67,12 @@ func TestSetPinValidatesBeforeTouchingTheGraph(t *testing.T) {
 	}
 }
 
-func TestStripPinsNeverChangesTheDraftItCopies(t *testing.T) {
+func TestStripDraftOnlyNeverChangesTheDraftsPins(t *testing.T) {
 	g := pinnedGraph()
 	if err := SetPin(&g, "http", NodePin{Output: map[string]interface{}{"a": 1.0}, Source: PinSourceManual, PinnedAt: pinTime}); err != nil {
 		t.Fatal(err)
 	}
-	stripped := StripPins(g)
+	stripped := StripDraftOnly(g)
 	if stripped.HasPins() {
 		t.Fatal("a published version must never carry a pin")
 	}

@@ -30,3 +30,28 @@ func TestBindingChangedFindsANewOrReconfiguredBinding(t *testing.T) {
 		})
 	}
 }
+
+func TestBindingsAddedListsEveryNewBindingOfATool(t *testing.T) {
+	const name = "add_sheet_row"
+	sheetA := ToolBinding{Name: name, Config: map[string]interface{}{"sheet_id": "a"}}
+	sheetB := ToolBinding{Name: name, Config: map[string]interface{}{"sheet_id": "b"}}
+	other := ToolBinding{Name: "record_opt_out"}
+	cases := []struct {
+		name     string
+		stored   []ToolBinding
+		proposed []ToolBinding
+		want     int
+	}{
+		{"a second sheet next to a kept one", []ToolBinding{sheetA}, []ToolBinding{sheetA, sheetB}, 1},
+		{"kept as they were", []ToolBinding{sheetA, sheetB}, []ToolBinding{sheetB, sheetA, other}, 0},
+		{"first bindings", nil, []ToolBinding{sheetA, sheetB}, 2},
+		{"removed", []ToolBinding{sheetA}, []ToolBinding{other}, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := BindingsAdded(tc.stored, tc.proposed, name); len(got) != tc.want {
+				t.Fatalf("BindingsAdded = %v, want %d", got, tc.want)
+			}
+		})
+	}
+}

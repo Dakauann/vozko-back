@@ -24,7 +24,6 @@ import (
 	"vozko/domain/workflowsecret"
 	"vozko/domain/workspace"
 	"vozko/domain/workspace/workspace_department"
-	calendar_usecase "vozko/usecases/calendar"
 	"vozko/usecases/workflow/node_executors"
 )
 
@@ -38,6 +37,7 @@ type messagePayload struct {
 	Text        string                `json:"text"`
 	MsgType     string                `json:"msgType"`
 	NodeID      string                `json:"nodeId,omitempty"`
+	NodeName    string                `json:"nodeName,omitempty"`
 	MessageID   string                `json:"messageId"`
 	AudioBase64 string                `json:"audioBase64,omitempty"`
 	AudioMime   string                `json:"audioMime,omitempty"`
@@ -91,20 +91,24 @@ type setVariableData struct {
 }
 
 type WSWorkflowSimulationDeps struct {
-	WorkflowRepo   workflow.WorkflowRepository
-	TemplateRepo   template_domain.Repository
-	MediaRepo      media_domain.MediaRepository
-	AIService      ai.Service
-	AgentRepo      agent.Repository
-	ToolRegistry   tools.Service
-	SharedState    cache.SharedState
-	CalendarRepo   calendar.Repository
-	GoogleCalendar calendar.GoogleOAuthService
-	BillingPub     messaging.MessageQueuePub
-	CallQueues     CallQueueLookup
-	HTTPEgress     node_executors.HTTPEgress
-	MediaFetcher   node_executors.MediaFetcher
-	Secrets        workflowsecret.Resolver
+	WorkflowRepo      workflow.WorkflowRepository
+	TemplateRepo      template_domain.Repository
+	MediaRepo         media_domain.MediaRepository
+	MediaURLs         *conversation.MediaURLResolver
+	AIService         ai.Service
+	AgentRepo         agent.Repository
+	ToolRegistry      tools.Service
+	SharedState       cache.SharedState
+	CalendarRepo      calendar.Repository
+	GoogleCalendar    calendar.GoogleCalendarAPI
+	CalendarAccess    calendar.AccessProvider
+	RescheduleEventUC calendar.RescheduleEventUseCase
+	SheetRows         node_executors.SheetRowSink
+	BillingPub        messaging.MessageQueuePub
+	CallQueues        CallQueueLookup
+	HTTPEgress        node_executors.HTTPEgress
+	MediaFetcher      node_executors.MediaFetcher
+	Secrets           workflowsecret.Resolver
 
 	LabelRepo      label.Repository
 	StageRepo      node_executors.StageReader
@@ -116,6 +120,7 @@ type WSWorkflowSimulationDeps struct {
 	Runs             workflow.GetRunUseCase
 	Permissions      workspace.PermissionChecker
 	PinSources       PinSources
+	TriggerInputs    TriggerInputReaders
 	PauseIdleTimeout time.Duration
 }
 
@@ -148,7 +153,6 @@ func (s *wsWorkflowSimulation) HandleSession(ctx context.Context, conn *websocke
 		return s.runVoiceSimulation(ctx, conn, &writeMu, wf, trigger, session)
 	}
 	sim := s.newMessagingSim(ctx, conn, &writeMu, session, wf, trigger)
-	defer close(sim.outbound)
 	if err := sim.runs.Create(sim.run); err != nil {
 		return s.sendError(conn, &writeMu, "failed to create sim run: "+err.Error())
 	}
@@ -167,7 +171,7 @@ func (s *wsWorkflowSimulation) sendCancelled(conn *websocket.Conn, mu *sync.Mute
 }
 
 func (s *wsWorkflowSimulation) refuseCommand(conn *websocket.Conn, mu *sync.Mutex, command string, err error) {
-	_ = s.writeJSON(conn, mu, simServerMsg{Type: "command_refused", Payload: map[string]string{"command": command, "error": err.Error()}})
+	_ = s.writeJSON(conn, mu, simServerMsg{Type: "command_refused", Payload: refusalOf(command, err)})
 }
 
 func (s *wsWorkflowSimulation) sendError(conn *websocket.Conn, mu *sync.Mutex, errMsg string) error {
@@ -177,29 +181,28 @@ func (s *wsWorkflowSimulation) sendError(conn *websocket.Conn, mu *sync.Mutex, e
 
 func (s *wsWorkflowSimulation) newSimulationRegistry(box SimSandbox, voice workflow.VoiceAudio) *NodeExecutorRegistry {
 	return newSimulationRegistry(ExecutorDeps{
-		VoiceAudio:     voice,
-		AIService:      s.deps.AIService,
-		AgentRepo:      s.deps.AgentRepo,
-		ToolRegistry:   s.deps.ToolRegistry,
-		TemplateRepo:   s.deps.TemplateRepo,
-		MediaRepo:      s.deps.MediaRepo,
-		SharedState:    s.deps.SharedState,
-		CalendarRepo:   s.deps.CalendarRepo,
-		GoogleCalendar: s.deps.GoogleCalendar,
-		RescheduleEventUC: calendar_usecase.NewRescheduleEventUseCase(
-			s.deps.CalendarRepo,
-			s.deps.GoogleCalendar,
-			calendar_usecase.NewUpdateEventUseCase(s.deps.CalendarRepo, s.deps.GoogleCalendar),
-		),
-		BillingPub:     s.deps.BillingPub,
-		HTTPEgress:     s.deps.HTTPEgress,
-		MediaFetcher:   s.deps.MediaFetcher,
-		Secrets:        s.deps.Secrets,
-		LabelRepo:      s.deps.LabelRepo,
-		StageRepo:      s.deps.StageRepo,
-		WorkspaceRepo:  s.deps.WorkspaceRepo,
-		DepartmentRepo: s.deps.DepartmentRepo,
-		DealPreviews:   s.deps.DealPreviews,
-		LeadPreviews:   s.deps.LeadPreviews,
+		VoiceAudio:        voice,
+		AIService:         s.deps.AIService,
+		AgentRepo:         s.deps.AgentRepo,
+		ToolRegistry:      s.deps.ToolRegistry,
+		TemplateRepo:      s.deps.TemplateRepo,
+		MediaRepo:         s.deps.MediaRepo,
+		MediaURLs:         s.deps.MediaURLs,
+		SharedState:       s.deps.SharedState,
+		CalendarRepo:      s.deps.CalendarRepo,
+		GoogleCalendar:    s.deps.GoogleCalendar,
+		CalendarAccess:    s.deps.CalendarAccess,
+		RescheduleEventUC: s.deps.RescheduleEventUC,
+		SheetRows:         s.deps.SheetRows,
+		BillingPub:        s.deps.BillingPub,
+		HTTPEgress:        s.deps.HTTPEgress,
+		MediaFetcher:      s.deps.MediaFetcher,
+		Secrets:           s.deps.Secrets,
+		LabelRepo:         s.deps.LabelRepo,
+		StageRepo:         s.deps.StageRepo,
+		WorkspaceRepo:     s.deps.WorkspaceRepo,
+		DepartmentRepo:    s.deps.DepartmentRepo,
+		DealPreviews:      s.deps.DealPreviews,
+		LeadPreviews:      s.deps.LeadPreviews,
 	}, box)
 }

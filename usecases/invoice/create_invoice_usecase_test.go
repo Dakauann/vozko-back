@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"vozko/domain/affiliate"
 	"vozko/domain/invoice"
@@ -15,29 +16,74 @@ import (
 )
 
 type stubInvoiceRepo struct {
-	created *invoice.Invoice
+	created    *invoice.Invoice
+	byKey      map[string]*invoice.Invoice
+	steps      *[]string
+	reserveErr error
+	attachErr  error
 }
 
-func (r *stubInvoiceRepo) Create(inv *invoice.Invoice) error {
-	r.created = inv
+func (r *stubInvoiceRepo) record(step string) {
+	if r.steps != nil {
+		*r.steps = append(*r.steps, step)
+	}
+}
+
+func (r *stubInvoiceRepo) Reserve(inv *invoice.Invoice) (*invoice.Invoice, bool, error) {
+	r.record("reserve")
+	if r.reserveErr != nil {
+		return nil, false, r.reserveErr
+	}
+	if existing := r.byKey[inv.IdempotencyKey]; inv.IdempotencyKey != "" && existing != nil {
+		return existing, false, nil
+	}
+	stored := *inv
+	r.created = &stored
+	if inv.IdempotencyKey != "" {
+		if r.byKey == nil {
+			r.byKey = map[string]*invoice.Invoice{}
+		}
+		r.byKey[inv.IdempotencyKey] = &stored
+	}
+	return &stored, true, nil
+}
+
+func (r *stubInvoiceRepo) AttachCharge(id string, charge invoice.ChargeAttachment) error {
+	r.record("attach")
+	if r.attachErr != nil {
+		return r.attachErr
+	}
+	if r.created != nil && r.created.ID == id {
+		r.created.ExternalID = charge.ExternalID
+		r.created.PixQrCode = charge.PixQrCode
+		r.created.PixCopy = charge.PixCopy
+		r.created.BankSlipUrl = charge.BankSlipUrl
+		r.created.InvoiceUrl = charge.InvoiceUrl
+	}
 	return nil
 }
 
-func (r *stubInvoiceRepo) GetByID(string) (*invoice.Invoice, error)         { return nil, nil }
-func (r *stubInvoiceRepo) GetByExternalID(string) (*invoice.Invoice, error) { return nil, nil }
-func (r *stubInvoiceRepo) GetByIdempotencyKey(key string) (*invoice.Invoice, error) {
-	if key != "" && r.created != nil && r.created.IdempotencyKey == key {
-		return r.created, nil
-	}
+func (r *stubInvoiceRepo) GetByID(string) (*invoice.Invoice, error) { return nil, nil }
+func (r *stubInvoiceRepo) GetByExternalID(payment.Provider, string) (*invoice.Invoice, error) {
 	return nil, nil
 }
 func (r *stubInvoiceRepo) ListUnpaidByPurpose(invoice.Purpose, string, int) ([]invoice.Invoice, error) {
 	return nil, nil
 }
-func (r *stubInvoiceRepo) UpdateStatus(string, invoice.Status) error { return nil }
-func (r *stubInvoiceRepo) MarkPaid(string, int64) (bool, error)      { return false, nil }
+func (r *stubInvoiceRepo) UpdateStatus(id string, status invoice.Status) error {
+	r.record("status:" + string(status))
+	if r.created != nil && r.created.ID == id {
+		r.created.Status = status
+	}
+	return nil
+}
+func (r *stubInvoiceRepo) MarkPaid(string, int64) (bool, error) { return false, nil }
 func (r *stubInvoiceRepo) ListByWorkspace(string, int, int) ([]invoice.Invoice, int64, error) {
 	return nil, 0, nil
+}
+func (r *stubInvoiceRepo) CancelStaleReservations(time.Time) (int64, error) { return 0, nil }
+func (r *stubInvoiceRepo) OpenObligations(time.Time) ([]payment.Obligations, error) {
+	return nil, nil
 }
 
 type stubUserRepo struct {
@@ -61,6 +107,7 @@ func (r *stubUserRepo) GetTokenVersion(string) (int, error)       { return 0, ni
 func (r *stubUserRepo) IncrementTokenVersion(string) (int, error) { return 0, nil }
 
 type stubGateway struct {
+	steps              *[]string
 	createCalls        int
 	provider           payment.Provider
 	splitSupported     bool
@@ -89,6 +136,9 @@ func (s *stubGateway) Capabilities() payment.GatewayCapabilities {
 }
 
 func (s *stubGateway) CreateCharge(_ context.Context, req payment.ChargeRequest) (*payment.Charge, error) {
+	if s.steps != nil {
+		*s.steps = append(*s.steps, "charge")
+	}
 	s.createCalls++
 	s.lastRequest = req
 	if s.createErr != nil {
@@ -165,6 +215,7 @@ func TestCreateInvoiceUseCase_TopUpRequiresCurrentSubscription(t *testing.T) {
 	_, err := uc.Execute(invoice.CreateInvoiceInput{
 		WorkspaceID: "ws-1",
 		UserID:      "user-1",
+		Purpose:     invoice.PurposeTopUp,
 		AmountBRL:   50,
 		BillingType: "PIX",
 		Description: "Recarga",
@@ -222,12 +273,11 @@ type errStubInvoiceRepo struct {
 	createErr error
 }
 
-func (r *errStubInvoiceRepo) Create(inv *invoice.Invoice) error {
+func (r *errStubInvoiceRepo) Reserve(inv *invoice.Invoice) (*invoice.Invoice, bool, error) {
 	if r.createErr != nil {
-		return r.createErr
+		return nil, false, r.createErr
 	}
-	r.created = inv
-	return nil
+	return r.stubInvoiceRepo.Reserve(inv)
 }
 
 type errStubUserRepo struct {

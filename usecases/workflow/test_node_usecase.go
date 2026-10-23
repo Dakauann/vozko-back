@@ -40,6 +40,8 @@ type AnalyzeNodeOutput struct {
 	TestMode      TestMode                      `json:"test_mode"`
 	HasAIDeps     bool                          `json:"has_ai_deps"`
 	CanRunDirect  bool                          `json:"can_run_direct"`
+	Trigger       *workflow.TriggerInputSpec    `json:"trigger,omitempty"`
+	Variables     []workflow.CatalogVariable    `json:"variables,omitempty"`
 }
 
 type TestNodeInput struct {
@@ -52,6 +54,12 @@ type TestNodeInput struct {
 	ConfirmRealCalls bool                      `json:"confirm_real_calls"`
 	ContinueWaits    bool                      `json:"continue_waits"`
 	WaitAnswers      map[string]TestWaitAnswer `json:"wait_answers"`
+	Trigger          *TestTrigger              `json:"trigger,omitempty"`
+}
+
+type TestTrigger struct {
+	NodeID string                 `json:"nodeId"`
+	Input  map[string]interface{} `json:"input"`
 }
 
 type TestNodeOutput struct {
@@ -82,13 +90,15 @@ type TestExecutors func(box SimSandbox) *NodeExecutorRegistry
 const DefaultNodeTestTimeout = 60 * time.Second
 
 type TestNodeDeps struct {
-	WorkflowRepo workflow.WorkflowRepository
-	Steps        StepNamer
-	ExecutorDeps ExecutorDeps
-	Executors    TestExecutors
-	Timeout      time.Duration
-	PinSources   PinSources
-	ViewerOf     func(context.Context) (shared.Person, bool)
+	WorkflowRepo  workflow.WorkflowRepository
+	Steps         StepNamer
+	ExecutorDeps  ExecutorDeps
+	Executors     TestExecutors
+	Timeout       time.Duration
+	PinSources    PinSources
+	ViewerOf      func(context.Context) (shared.Person, bool)
+	TriggerInputs TriggerInputReaders
+	Variables     *VariableCatalogReader
 }
 
 var ErrNodeTestUnavailable = errors.New("workflow: the node test has no workflow store to read from")
@@ -202,6 +212,7 @@ func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) 
 	}
 
 	nodeLabel := uc.stepName(node.Type)
+	pathTrigger := uc.pathTriggerSpec(wf, node.ID)
 
 	return &AnalyzeNodeOutput{
 		NodeID:        node.ID,
@@ -212,7 +223,32 @@ func (uc *testNodeUseCase) Analyze(ctx context.Context, input AnalyzeNodeInput) 
 		TestMode:      testMode,
 		HasAIDeps:     hasAIDeps,
 		CanRunDirect:  canRunDirect,
+		Trigger:       pathTrigger,
+		Variables:     uc.variablesAt(ctx, wf, node.ID),
 	}, nil
+}
+
+func (uc *testNodeUseCase) variablesAt(ctx context.Context, wf *workflow.Workflow, nodeID string) []workflow.CatalogVariable {
+	if uc.deps.Variables == nil {
+		return nil
+	}
+	catalog, err := uc.deps.Variables.At(ctx, wf, nodeID)
+	if err != nil {
+		return nil
+	}
+	return catalog.Variables
+}
+
+func (uc *testNodeUseCase) pathTriggerSpec(wf *workflow.Workflow, targetID string) *workflow.TriggerInputSpec {
+	start := workflow.PathStartTrigger(&wf.Graph, targetID)
+	if start == nil {
+		return nil
+	}
+	spec, found := workflow.FindTriggerInputSpec(uc.deps.TriggerInputs.Specs(wf.WorkspaceID, &wf.Graph), start.ID)
+	if !found || !spec.TakesInput() {
+		return nil
+	}
+	return &spec
 }
 
 func (uc *testNodeUseCase) Execute(ctx context.Context, input TestNodeInput) (*TestNodeOutput, error) {
@@ -284,7 +320,7 @@ func (t *nodeTest) execute(ctx context.Context) *TestNodeOutput {
 			return &TestNodeOutput{
 				NodeID:             node.ID,
 				NodeType:           node.Type,
-				InterpolatedConfig: workflow.InterpolateMap(node.Config, state, nil),
+				InterpolatedConfig: workflow.ResolvedConfig(node, state),
 				Error:              message,
 				ErrorKind:          workflow.ErrorKindTargetNotReached,
 				UpstreamSteps:      upstream,
@@ -298,7 +334,7 @@ func (t *nodeTest) execute(ctx context.Context) *TestNodeOutput {
 	out := &TestNodeOutput{
 		NodeID:             node.ID,
 		NodeType:           node.Type,
-		InterpolatedConfig: workflow.InterpolateMap(node.Config, state, nil),
+		InterpolatedConfig: workflow.ResolvedConfig(node, state),
 		UpstreamSteps:      upstream,
 	}
 	if input.SkipExecution {
@@ -500,7 +536,7 @@ func buildMissingMocksOutput(node *workflow.Node, triggerVars, mockedState map[s
 		NodeType:           node.Type,
 		Error:              fmt.Sprintf("Forneca valores simulados para continuar o teste: %s", strings.Join(missing, ", ")),
 		ErrorKind:          workflow.ErrorKindMissingMocks,
-		InterpolatedConfig: workflow.InterpolateMap(node.Config, &state, nil),
+		InterpolatedConfig: workflow.ResolvedConfig(node, &state),
 	}
 }
 
@@ -594,14 +630,16 @@ type MockFieldSpec struct {
 }
 
 type UIAnalysis struct {
-	NodeID       string          `json:"node_id"`
-	NodeType     string          `json:"node_type"`
-	NodeLabel    string          `json:"node_label"`
-	TestMode     TestMode        `json:"test_mode"`
-	MockFields   []MockFieldSpec `json:"mock_fields"`
-	CanRunDirect bool            `json:"can_run_direct"`
-	HasAIDeps    bool            `json:"has_ai_deps"`
-	Message      string          `json:"message"`
+	NodeID       string                     `json:"node_id"`
+	NodeType     string                     `json:"node_type"`
+	NodeLabel    string                     `json:"node_label"`
+	TestMode     TestMode                   `json:"test_mode"`
+	MockFields   []MockFieldSpec            `json:"mock_fields"`
+	CanRunDirect bool                       `json:"can_run_direct"`
+	HasAIDeps    bool                       `json:"has_ai_deps"`
+	Message      string                     `json:"message"`
+	Trigger      *workflow.TriggerInputSpec `json:"trigger,omitempty"`
+	Variables    []workflow.CatalogVariable `json:"variables,omitempty"`
 }
 
 func (a *AnalyzeNodeOutput) ToUIAnalysis() UIAnalysis {
@@ -639,5 +677,7 @@ func (a *AnalyzeNodeOutput) ToUIAnalysis() UIAnalysis {
 		CanRunDirect: a.CanRunDirect,
 		HasAIDeps:    a.HasAIDeps,
 		Message:      message,
+		Trigger:      a.Trigger,
+		Variables:    a.Variables,
 	}
 }

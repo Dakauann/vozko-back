@@ -1884,11 +1884,12 @@ func (s *MessageSenderService) markCallPermissionGranted(workspaceID, entryID, e
 }
 
 func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, mediaType, caption string, origin conversation.SendOrigin) (*conversation.Message, error) {
+	mediaRecord, err := conversation.SendableUpload(s.mediaRepo, entryID, shared.EntryType(entryType), mediaID)
+	if err != nil {
+		return nil, err
+	}
+
 	if adapter := s.adapterFor(entryType); adapter != nil {
-		mediaRecord, err := s.mediaRepo.GetByID(mediaID)
-		if err != nil || mediaRecord == nil {
-			return nil, fmt.Errorf("media not found: %w", err)
-		}
 		replyProviderID := s.resolveProviderMessageID(origin.ReplyToMessageID)
 
 		return s.sendViaAdapter(adapter, entryID, entryType, conversation.SentByPerson(origin.SenderUserID), origin,
@@ -1919,16 +1920,6 @@ func (s *MessageSenderService) SendMediaMessage(entryID, entryType, mediaID, med
 	if err != nil {
 		log.Printf("[MessageSender] Failed to resolve WhatsApp client for business phone %s: %v", businessPhoneID, err)
 		return nil, fmt.Errorf("failed to resolve WhatsApp client: %w", err)
-	}
-
-	mediaRecord, err := s.mediaRepo.GetByID(mediaID)
-	if err != nil {
-		log.Printf("[MessageSender] Failed to get media record: %v", err)
-		return nil, fmt.Errorf("media not found: %w", err)
-	}
-
-	if mediaRecord == nil {
-		return nil, errors.New("media not found")
 	}
 
 	mediaData, mimeType, fileName, err := s.downloadMediaFromCDN(mediaRecord.URL, mediaRecord.OriginalFilename)
@@ -2354,6 +2345,7 @@ func (uc *uploadConversationMediaUseCase) Execute(input conversation.UploadMedia
 		MimeType:         input.MimeType,
 		Data:             input.Data,
 		OriginalFilename: input.Filename,
+		Purpose:          input.Purpose,
 	})
 }
 
@@ -2402,7 +2394,7 @@ func (s *TemplateSenderService) UseConversationTemplates(templates wo.Conversati
 	s.templates = templates
 }
 
-func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID string, parameters []string, userID string, workspaceID string) (string, error) {
+func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID string, parameters, headerParameters []string, userID string, workspaceID string) (string, error) {
 	if shared.EntryType(entryType) != shared.EntryTypeWhatsApp {
 		return "", conversation.ErrEntryTypeInvalid
 	}
@@ -2416,6 +2408,7 @@ func (s *TemplateSenderService) SendTemplate(entryID, entryType, templateID stri
 		EntryID:        entryID,
 		TemplateID:     templateID,
 		BodyParams:     parameters,
+		HeaderParams:   headerParameters,
 		IdempotencyKey: uuid.New().String(),
 	})
 	if err != nil {

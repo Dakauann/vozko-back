@@ -30,6 +30,9 @@ func TestEntrySourcesRegistryCoversEveryChannel(t *testing.T) {
 		shared.EntryTypeWebchat,
 		shared.EntryTypeMercadoLivre,
 		shared.EntryTypeTikTok,
+		shared.EntryTypeEmail,
+		shared.EntryTypeRCS,
+		shared.EntryTypeSMS,
 	}
 	if len(entrySources) != len(want) {
 		t.Fatalf("registry holds %d sources, want %d", len(entrySources), len(want))
@@ -386,6 +389,45 @@ func TestCampaignKindReachesBothReadPaths(t *testing.T) {
 		}
 		if len(args) < 2 || args[1] != "organic" {
 			t.Errorf("%s: campaign kind must be bound, got args %v", name, args)
+		}
+		assertPlaceholdersMatchArgs(t, sql, args)
+	}
+}
+
+func TestEmailSourceScopesByTheInboxDepartmentAndBothWorkspaces(t *testing.T) {
+	em := sourceFor(t, shared.EntryTypeEmail)
+	if em.Department != "emi.department_id" {
+		t.Fatalf("email must scope by its inbox department, got %q", em.Department)
+	}
+	scope := entrySourceScope{DepartmentIDs: []string{"d1"}, RestrictDepartments: true}
+	sql, args := em.inboxSelect(scope, "ws-1")
+	if !strings.Contains(sql, "emi.department_id = ANY(?::uuid[])") {
+		t.Errorf("email should scope by its inbox department:\n%s", sql)
+	}
+	if !strings.Contains(sql, "emi.workspace_id = emc.workspace_id") {
+		t.Errorf("an inbox must never surface another workspace's conversation:\n%s", sql)
+	}
+	assertPlaceholdersMatchArgs(t, sql, args)
+}
+
+func TestCarrierSourcesScopeBySenderDepartmentAndBothWorkspaces(t *testing.T) {
+	cases := []struct {
+		entryType  shared.EntryType
+		department string
+		sameTenant string
+	}{
+		{shared.EntryTypeRCS, "rcsd.department_id", "rcsd.workspace_id = rcc.workspace_id"},
+		{shared.EntryTypeSMS, "smr.department_id", "smr.workspace_id = smc.workspace_id"},
+	}
+	for _, tc := range cases {
+		src := sourceFor(t, tc.entryType)
+		if src.Department != tc.department {
+			t.Fatalf("%s must scope by its sender department, got %q", tc.entryType, src.Department)
+		}
+		scope := entrySourceScope{DepartmentIDs: []string{"d1"}, RestrictDepartments: true}
+		sql, args := src.inboxSelect(scope, "ws-1")
+		if !strings.Contains(sql, tc.department+" = ANY(?::uuid[])") || !strings.Contains(sql, tc.sameTenant) {
+			t.Errorf("%s scope:\n%s", tc.entryType, sql)
 		}
 		assertPlaceholdersMatchArgs(t, sql, args)
 	}

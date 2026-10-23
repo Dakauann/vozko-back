@@ -68,7 +68,7 @@ func (nullArg) Match(v driver.Value) bool { return v == nil }
 
 var stepColumns = []string{
 	"id", "run_id", "node_id", "node_type", "status", "input", "output", "error", "executed_at",
-	"attempt", "started_at", "finished_at", "duration_ms", "branch", "error_kind", "error_chain", "stack", "script_logs", "http",
+	"attempt", "started_at", "finished_at", "duration_ms", "branch", "error_kind", "error_chain", "stack", "script_logs", "http", "unresolved_refs",
 }
 
 func TestAStepIsStoredWithOneInsertCarryingTheWholeTrace(t *testing.T) {
@@ -81,8 +81,9 @@ func TestAStepIsStoredWithOneInsertCarryingTheWholeTrace(t *testing.T) {
 		Input: map[string]interface{}{"url": "https://api"}, Error: "HTTP 500",
 		Attempt: 2, StartedAt: &started, FinishedAt: &finished, DurationMs: 1200, Branch: "falha",
 		ErrorKind: workflow.ErrorKindHTTPStatus, ErrorChain: []string{"HTTP 500"},
-		ScriptLogs: []workflow.ScriptLog{{Level: "info", Message: "etapa"}},
-		HTTP:       []workflow.HTTPExchange{{Method: "POST", URL: "https://api", Status: 500, LatencyMs: 30}},
+		ScriptLogs:     []workflow.ScriptLog{{Level: "info", Message: "etapa"}},
+		HTTP:           []workflow.HTTPExchange{{Method: "POST", URL: "https://api", Status: 500, LatencyMs: 30}},
+		UnresolvedRefs: []string{"input.cpf"},
 	}
 
 	insert := `^INSERT INTO "workflow_run_logs" \(` + strings.Join(quoted(stepColumns), ",") + `\) VALUES \(` + placeholders(len(stepColumns)) + `\)$`
@@ -92,7 +93,7 @@ func TestAStepIsStoredWithOneInsertCarryingTheWholeTrace(t *testing.T) {
 		jsonArg{t, `{"url":"https://api"}`}, nullArg{}, "HTTP 500", sqlmock.AnyArg(),
 		2, started, finished, int64(1200), "falha", "http_status",
 		jsonArg{t, `["HTTP 500"]`}, nullArg{}, jsonArg{t, `[{"level":"info","message":"etapa"}]`},
-		jsonArg{t, `[{"method":"POST","url":"https://api","status":500,"latencyMs":30}]`},
+		jsonArg{t, `[{"method":"POST","url":"https://api","status":500,"latencyMs":30}]`}, jsonArg{t, `["input.cpf"]`},
 	).WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
@@ -111,7 +112,7 @@ func TestAPageOfStepsIsReadInRunOrderWithItsBounds(t *testing.T) {
 		WithArgs("run-1", 50, 100).
 		WillReturnRows(sqlmock.NewRows(stepColumns).AddRow(
 			"l1", "run-1", "n56", "action_code", "executed", nil, `{"a":1}`, "", started,
-			1, started, started, int64(1), "", "", nil, nil, nil, nil,
+			1, started, started, int64(1), "", "", nil, nil, nil, nil, nil,
 		))
 
 	logs, err := NewWorkflowRunLogRepository(db).PageByRunID("run-1", 100, 50)
@@ -129,10 +130,10 @@ func TestAStepReadsBackItsTraceAndPrunedPayloadsAsMissing(t *testing.T) {
 	rows := sqlmock.NewRows(stepColumns).AddRow(
 		"l1", "run-1", "n56", "action_code", "failed", nil, nil, "boom", started,
 		3, started, started.Add(time.Second), int64(1000), "", "script", `["action_code: boom","boom"]`, "Error: boom\n\tat (3:5)",
-		`[{"level":"warn","message":"x"}]`, nil,
+		`[{"level":"warn","message":"x"}]`, nil, `["lead_name"]`,
 	).AddRow(
 		"l0", "run-1", "n1", "trigger_webhook", "executed", `null`, `{}`, "", started,
-		nil, nil, nil, nil, "", "", nil, nil, nil, nil,
+		nil, nil, nil, nil, "", "", nil, nil, nil, nil, nil,
 	)
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "workflow_run_logs" WHERE run_id = $1 ORDER BY executed_at ASC`)).
 		WithArgs("run-1").WillReturnRows(rows)
@@ -145,7 +146,7 @@ func TestAStepReadsBackItsTraceAndPrunedPayloadsAsMissing(t *testing.T) {
 	if step.Input != nil || step.Output != nil || step.Attempt != 3 || step.DurationMs != 1000 || step.ErrorKind != workflow.ErrorKindScript {
 		t.Fatalf("step = %+v", step)
 	}
-	if len(step.ErrorChain) != 2 || step.Stack == "" || len(step.ScriptLogs) != 1 || step.StartedAt == nil || step.FinishedAt == nil {
+	if len(step.ErrorChain) != 2 || step.Stack == "" || len(step.ScriptLogs) != 1 || step.StartedAt == nil || step.FinishedAt == nil || len(step.UnresolvedRefs) != 1 {
 		t.Fatalf("trace = %+v", step)
 	}
 	legacy := logs[1]

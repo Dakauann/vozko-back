@@ -49,19 +49,6 @@ type RecordSendMetric struct {
 	ProviderMessageID string
 }
 
-type WorkflowTrigger interface {
-	CampaignSent(in CampaignSentTrigger)
-}
-
-type CampaignSentTrigger struct {
-	WorkspaceID       string
-	CampaignID        string
-	EntryID           string
-	ConversationID    string
-	PhoneNumber       string
-	ProviderMessageID string
-}
-
 type LeadResolver interface {
 	FindOrCreateMany(workspaceID string, inputs []lead.BulkLeadInput) (map[string]*lead.Lead, error)
 }

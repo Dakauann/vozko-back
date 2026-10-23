@@ -32,6 +32,8 @@ type CreateTemplateRequest struct {
 
 	ButtonActions    []httpx.ButtonActionRequest `json:"buttonActions,omitempty"`
 	ExitConfirmation string                      `json:"exitConfirmation,omitempty" example:"Pronto, você não receberá mais mensagens."`
+
+	TrackedURLButtons []int `json:"trackedUrlButtons,omitempty" example:"2"`
 }
 
 type TemplateComponentRequest struct {
@@ -79,49 +81,51 @@ type MessageResponse struct {
 }
 
 type templateResponse struct {
-	ID               string                                     `json:"id"`
-	ExternalID       string                                     `json:"externalId"`
-	WABAId           string                                     `json:"wabaId"`
-	WABAName         string                                     `json:"wabaName,omitempty"`
-	Name             string                                     `json:"name"`
-	Language         string                                     `json:"language"`
-	Category         whatsapptemplatedomain.TemplateCategory    `json:"category"`
-	Status           whatsapptemplatedomain.TemplateStatus      `json:"status"`
-	ParameterFormat  whatsapptemplatedomain.ParameterFormat     `json:"parameterFormat"`
-	Components       []whatsapptemplatedomain.TemplateComponent `json:"components"`
-	HeaderMediaURL   *string                                    `json:"headerMediaUrl,omitempty"`
-	HeaderMediaID    *string                                    `json:"headerMediaId,omitempty"`
-	UsabilityStatus  whatsapptemplatedomain.UsabilityStatus     `json:"usabilityStatus"`
-	UsabilityMessage string                                     `json:"usabilityMessage,omitempty"`
-	CreatedAt        time.Time                                  `json:"createdAt"`
-	UpdatedAt        time.Time                                  `json:"updatedAt"`
+	ID                string                                     `json:"id"`
+	ExternalID        string                                     `json:"externalId"`
+	WABAId            string                                     `json:"wabaId"`
+	WABAName          string                                     `json:"wabaName,omitempty"`
+	Name              string                                     `json:"name"`
+	Language          string                                     `json:"language"`
+	Category          whatsapptemplatedomain.TemplateCategory    `json:"category"`
+	Status            whatsapptemplatedomain.TemplateStatus      `json:"status"`
+	ParameterFormat   whatsapptemplatedomain.ParameterFormat     `json:"parameterFormat"`
+	Components        []whatsapptemplatedomain.TemplateComponent `json:"components"`
+	HeaderMediaURL    *string                                    `json:"headerMediaUrl,omitempty"`
+	HeaderMediaID     *string                                    `json:"headerMediaId,omitempty"`
+	UsabilityStatus   whatsapptemplatedomain.UsabilityStatus     `json:"usabilityStatus"`
+	UsabilityMessage  string                                     `json:"usabilityMessage,omitempty"`
+	TrackedURLButtons []int                                      `json:"trackedUrlButtons"`
+	CreatedAt         time.Time                                  `json:"createdAt"`
+	UpdatedAt         time.Time                                  `json:"updatedAt"`
 }
 
-func toTemplateResponse(t *whatsapptemplatedomain.Template) templateResponse {
+func toTemplateResponse(t *whatsapptemplatedomain.Template, linkBase string) templateResponse {
 	return templateResponse{
-		ID:               t.ID,
-		ExternalID:       t.ExternalID,
-		WABAId:           t.WABAId,
-		WABAName:         t.WABAName,
-		Name:             t.Name,
-		Language:         t.Language,
-		Category:         t.Category,
-		Status:           t.Status,
-		ParameterFormat:  t.GetEffectiveParameterFormat(),
-		Components:       t.Components,
-		HeaderMediaURL:   t.HeaderMediaURL,
-		HeaderMediaID:    t.HeaderMediaID,
-		UsabilityStatus:  t.GetUsabilityStatus(),
-		UsabilityMessage: t.GetUsabilityMessage(),
-		CreatedAt:        t.CreatedAt,
-		UpdatedAt:        t.UpdatedAt,
+		ID:                t.ID,
+		ExternalID:        t.ExternalID,
+		WABAId:            t.WABAId,
+		WABAName:          t.WABAName,
+		Name:              t.Name,
+		Language:          t.Language,
+		Category:          t.Category,
+		Status:            t.Status,
+		ParameterFormat:   t.GetEffectiveParameterFormat(),
+		Components:        t.Components,
+		HeaderMediaURL:    t.HeaderMediaURL,
+		HeaderMediaID:     t.HeaderMediaID,
+		UsabilityStatus:   t.GetUsabilityStatus(),
+		UsabilityMessage:  t.GetUsabilityMessage(),
+		TrackedURLButtons: t.TrackedURLButtons(linkBase),
+		CreatedAt:         t.CreatedAt,
+		UpdatedAt:         t.UpdatedAt,
 	}
 }
 
-func toTemplateResponses(templates []*whatsapptemplatedomain.Template) []templateResponse {
+func toTemplateResponses(templates []*whatsapptemplatedomain.Template, linkBase string) []templateResponse {
 	responses := make([]templateResponse, len(templates))
 	for i, t := range templates {
-		responses[i] = toTemplateResponse(t)
+		responses[i] = toTemplateResponse(t, linkBase)
 	}
 	return responses
 }

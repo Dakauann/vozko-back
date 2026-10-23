@@ -1,6 +1,7 @@
 package lead
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ type Repository interface {
 	lead.RelationStore
 	lead.EntryLeads
 	lead.ContactDetails
+	lead.BindingLeads
 	lead.DuplicateFinder
 	lead.Anonymizer
 	lead.SectionReader
@@ -43,6 +45,7 @@ type Repository interface {
 	lead.MembershipStore
 	leadcompany.Repository
 	leadaction.BulkWriter
+	lead.EmailBulk
 }
 
 func NewRepository(db *gorm.DB) Repository {
@@ -107,6 +110,26 @@ func (r *repository) FindByNumber(workspaceID, number string) (*lead.Lead, error
 	return r.findByFormats(workspaceID, formats)
 }
 
+func (r *repository) FindByEmail(workspaceID, email string) (*lead.Lead, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, lead.ErrLeadWorkspaceRequired
+	}
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if normalized == "" || lead.ValidateEmail(normalized) != nil {
+		return nil, lead.ErrLeadInvalid
+	}
+	var row schema.Lead
+	err := r.scope(workspaceID).Where("lower(email) = ?", normalized).Order("created_at ASC").First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, lead.ErrLeadNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return toDomain(&row)
+}
+
 func (r *repository) findByFormats(workspaceID string, formats []string) (*lead.Lead, error) {
 	var row schema.Lead
 	if err := r.scope(workspaceID).Where("number IN ?", formats).First(&row).Error; err != nil {
@@ -141,12 +164,15 @@ func (r *repository) FindByNumbers(workspaceID string, numbers []string) ([]*lea
 	return leads, nil
 }
 
+const bindingLeadsSQL = "SELECT id, workspace_id, number, COALESCE(name, ''), nickname, owner_id, owner_kind, custom_fields" +
+	" FROM leads WHERE workspace_id = ? AND id = ANY(?::uuid[]) AND deleted_at IS NULL"
+
 func (r *repository) FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return nil, lead.ErrLeadWorkspaceRequired
 	}
-	valid := database.UUIDArray(ids)
+	valid := database.UUIDsOf(ids)
 	if len(valid) == 0 {
 		return []*lead.Lead{}, nil
 	}
@@ -156,6 +182,40 @@ func (r *repository) FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, 
 		return nil, err
 	}
 	return toDomainAll(rows)
+}
+
+func (r *repository) BindingLeads(ctx context.Context, workspaceID string, ids []string) ([]*lead.Lead, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, lead.ErrLeadWorkspaceRequired
+	}
+	valid := database.UUIDsOf(ids)
+	out := make([]*lead.Lead, 0, len(valid))
+	if len(valid) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.WithContext(ctx).Raw(bindingLeadsSQL, workspaceID, valid).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var row schema.Lead
+		var custom []byte
+		if err := rows.Scan(&row.ID, &row.WorkspaceID, &row.Number, &row.Name, &row.Nickname, &row.OwnerID, &row.OwnerKind, &custom); err != nil {
+			return nil, err
+		}
+		row.CustomFields = custom
+		l, err := toDomain(&row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 func (r *repository) FindOrCreate(workspaceID, number string, update lead.LeadUpdate) (*lead.Lead, bool, error) {

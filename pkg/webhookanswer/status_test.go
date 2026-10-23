@@ -14,6 +14,10 @@ func TestEveryRejectionReasonAnswersWithTheStatusTheCallerSees(t *testing.T) {
 		"entry_required":        http.StatusBadRequest,
 		"entry_not_found":       http.StatusNotFound,
 		"entry_forbidden":       http.StatusForbidden,
+		"lead_contact_required": http.StatusBadRequest,
+		"lead_phone_invalid":    http.StatusUnprocessableEntity,
+		"lead_not_found":        http.StatusNotFound,
+		"trigger_invalid":       http.StatusUnprocessableEntity,
 		"no_trigger_node":       http.StatusUnprocessableEntity,
 		"workflow_not_active":   http.StatusConflict,
 		"workspace_at_capacity": http.StatusTooManyRequests,
@@ -28,7 +32,7 @@ func TestEveryRejectionReasonAnswersWithTheStatusTheCallerSees(t *testing.T) {
 }
 
 func TestAcceptedOutcomesAnswerWithTheirStatus(t *testing.T) {
-	if AcceptStatus("accepted") != http.StatusAccepted || AcceptStatus("duplicate") != http.StatusOK || AcceptStatus("already_running") != http.StatusOK {
+	if AcceptStatus("accepted") != http.StatusAccepted || AcceptStatus("duplicate") != http.StatusOK || AcceptStatus("already_running") != http.StatusOK || AcceptStatus("ignored") != http.StatusAccepted {
 		t.Fatal("accepted is 202, duplicate and already running are 200")
 	}
 }

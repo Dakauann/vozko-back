@@ -14,6 +14,8 @@ import (
 	"vozko/usecases/copilot/copilottools/adtools"
 	"vozko/usecases/copilot/copilottools/attendancetools"
 	"vozko/usecases/copilot/copilottools/crmtools"
+	"vozko/usecases/copilot/copilottools/emaildesigntools"
+	"vozko/usecases/copilot/copilottools/emailtools"
 	"vozko/usecases/copilot/copilottools/formtools"
 	"vozko/usecases/copilot/copilottools/leadtools"
 	"vozko/usecases/copilot/copilottools/mediatools"
@@ -35,6 +37,7 @@ var snapshotViews = []snapshotView{
 	{name: "leads", view: copilot.View{Surface: copilot.SurfaceLeads}},
 	{name: "studio-image", view: copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: copilot.StudioImage}},
 	{name: "studio-video", view: copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: copilot.StudioVideo}},
+	{name: "email-design", view: copilot.View{Surface: copilot.SurfaceEmailDesign, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f"}},
 }
 
 func registeredTools(t *testing.T) []copilot.Tool {
@@ -72,6 +75,7 @@ func registeredTools(t *testing.T) []copilot.Tool {
 		attendancetools.NewAttendanceReworkTool(attendance),
 		attendancetools.NewAttendanceLiveTool(attendance),
 		attendancetools.NewCampaignDispatchTool(nil, attendance),
+		attendancetools.NewReadChoiceStatsTool(attendancetools.ChoiceStatsDeps{}),
 		attendancetools.NewConversationInsightsTool(nil, nil, nil),
 		attendancetools.NewCalculateTool(),
 		attendancetools.NewQueryDatasetTool(),
@@ -175,6 +179,9 @@ func registeredTools(t *testing.T) []copilot.Tool {
 		mediatools.NewGenerateVoiceoverTool(nil),
 		mediatools.NewRenderVideoTool(nil),
 		crmtools.NewCreateCalendarEventTool(nil),
+		crmtools.NewListGoogleSheetsTool(nil),
+		crmtools.NewCreateGoogleSheetTool(nil),
+		crmtools.NewAddGoogleSheetRowTool(nil),
 		crmtools.NewPauseWorkflowTool(nil),
 		crmtools.NewActivateWorkflowTool(nil),
 		platformtools.NewNumberAutomationTool(platformtools.NumberAutomationDeps{}),
@@ -184,6 +191,8 @@ func registeredTools(t *testing.T) []copilot.Tool {
 	toolset = append(toolset, adtools.AllAdTools(adtools.AdsDeps{}, adtools.AdManageDeps{}, adtools.AdGrowthDeps{})...)
 	toolset = append(toolset, studiotools.StudioTools(studiotools.StudioDeps{})...)
 	toolset = append(toolset, formtools.FormTools(formtools.FormDeps{})...)
+	toolset = append(toolset, emailtools.EmailTools(emailtools.EmailDeps{})...)
+	toolset = append(toolset, emaildesigntools.EmailDesignTools(emaildesigntools.Deps{})...)
 	return copilot_usecase.NewRegistry(toolset...).Tools()
 }
 

@@ -20,11 +20,14 @@ const (
 	WebhookOutcomeDuplicate      WebhookOutcome = "duplicate"
 	WebhookOutcomeAlreadyRunning WebhookOutcome = "already_running"
 	WebhookOutcomeRejected       WebhookOutcome = "rejected"
+	WebhookOutcomeIgnored        WebhookOutcome = "ignored"
 )
 
 const (
-	WebhookEntryByID    = "entry_id"
-	WebhookEntryByPhone = "phone"
+	WebhookEntryByID        = "entry_id"
+	WebhookEntryByPhone     = "phone"
+	WebhookEntryByLeadPhone = "lead_phone"
+	WebhookEntryByLeadEmail = "lead_email"
 )
 
 const WebhookReasonInternal = "internal_error"
@@ -70,6 +73,10 @@ var webhookRejections = []webhookRejection{
 	{ErrWebhookEntryRequired, "entry_required"},
 	{ErrWebhookEntryNotFound, "entry_not_found"},
 	{ErrWebhookEntryForbidden, "entry_forbidden"},
+	{ErrWebhookLeadContactRequired, "lead_contact_required"},
+	{ErrWebhookLeadPhoneInvalid, "lead_phone_invalid"},
+	{ErrWebhookLeadNotFound, "lead_not_found"},
+	{ErrWebhookTriggerInvalid, "trigger_invalid"},
 	{ErrWebhookNoTriggerNode, "no_trigger_node"},
 	{ErrWorkflowNotActive, WorkflowNotActiveCode},
 	{ErrWorkspaceAtCapacity, "workspace_at_capacity"},

@@ -45,6 +45,9 @@ CREATE INDEX IF NOT EXISTS idx_leads_number ON leads (number);
 -- idx_leads_workspace_created
 CREATE INDEX IF NOT EXISTS idx_leads_workspace_created ON leads (workspace_id, created_at) WHERE deleted_at IS NULL;
 
+-- idx_leads_workspace_email_lower
+CREATE INDEX IF NOT EXISTS idx_leads_workspace_email_lower ON leads (workspace_id, lower(email)) WHERE deleted_at IS NULL AND email IS NOT NULL;
+
 -- idx_wa_campaign_ws_del
 CREATE INDEX IF NOT EXISTS idx_wa_campaign_ws_del ON whatsapp_campaigns (workspace_id, deleted_at);
 
@@ -281,6 +284,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_addon_subscription_current ON workspace_ad
 -- ux_invoices_idempotency_key
 CREATE UNIQUE INDEX IF NOT EXISTS ux_invoices_idempotency_key ON invoices (idempotency_key) WHERE idempotency_key <> '';
 
+-- ux_invoices_provider_external_id
+CREATE UNIQUE INDEX IF NOT EXISTS ux_invoices_provider_external_id ON invoices (provider, external_id) WHERE external_id IS NOT NULL;
+
 -- ux_leads_workspace_number
 CREATE UNIQUE INDEX IF NOT EXISTS ux_leads_workspace_number ON leads (workspace_id, number) WHERE deleted_at IS NULL;
 
@@ -340,6 +346,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_visitor_widget_external ON webchat_visit
 
 -- ux_wc_conversation_widget_visitor
 CREATE UNIQUE INDEX IF NOT EXISTS ux_wc_conversation_widget_visitor ON webchat_conversations (widget_id, visitor_id) WHERE deleted_at IS NULL;
+
+-- ux_email_contact_workspace_address
+CREATE UNIQUE INDEX IF NOT EXISTS ux_email_contact_workspace_address ON email_contacts (workspace_id, address) WHERE deleted_at IS NULL;
+
+-- ux_email_conversation_workspace_contact
+CREATE UNIQUE INDEX IF NOT EXISTS ux_email_conversation_workspace_contact ON email_conversations (workspace_id, contact_id) WHERE deleted_at IS NULL;
 
 -- ux_uw_instance_live_jid
 CREATE UNIQUE INDEX IF NOT EXISTS ux_uw_instance_live_jid ON unofficial_whatsapp_instances (jid) WHERE jid <> '' AND deleted_at IS NULL AND status = 'CONNECTED';
@@ -490,6 +502,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_video_account_item ON tiktok_videos (acc
 -- ux_tt_comment_account_comment
 CREATE UNIQUE INDEX IF NOT EXISTS ux_tt_comment_account_comment ON tiktok_comments (account_id, comment_id);
 
+## google indexes
+
+-- idx_google_acct_refresh_due
+CREATE INDEX IF NOT EXISTS idx_google_acct_refresh_due ON google_accounts (access_expires_at, id) WHERE status = 'connected';
+
+-- idx_google_acct_email
+CREATE INDEX IF NOT EXISTS idx_google_acct_email ON google_accounts (email) WHERE status <> 'disconnected';
+
+-- idx_google_sheet_ws_created
+CREATE INDEX IF NOT EXISTS idx_google_sheet_ws_created ON google_sheets (workspace_id, created_at DESC, id) WHERE deleted_at IS NULL;
+
+-- idx_google_sheet_rows_claim
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_claim ON google_sheet_rows (sheet_id, created_at, id) WHERE status = 'pending';
+
+-- idx_google_sheet_rows_ready
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_ready ON google_sheet_rows (next_attempt_at, sheet_id) WHERE status = 'pending';
+
+-- idx_google_sheet_rows_in_flight
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_in_flight ON google_sheet_rows (sheet_id, claimed_at) WHERE status = 'in_flight';
+
+-- idx_google_sheet_rows_problems
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_problems ON google_sheet_rows (sheet_id, created_at DESC) WHERE status IN ('held', 'failed');
+
+-- idx_google_sheet_rows_written
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_written ON google_sheet_rows (sheet_id, written_at) WHERE status = 'written';
+
+-- idx_google_sheet_rows_purge
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_purge ON google_sheet_rows (written_at) WHERE status = 'written';
+
+-- idx_google_sheet_rows_lead
+CREATE INDEX IF NOT EXISTS idx_google_sheet_rows_lead ON google_sheet_rows (workspace_id, lead_id) WHERE lead_id IS NOT NULL;
+
+## google constraints
+
+-- ux_google_account_workspace_email
+CREATE UNIQUE INDEX IF NOT EXISTS ux_google_account_workspace_email ON google_accounts (workspace_id, email);
+
+-- ux_google_sheet_tab
+CREATE UNIQUE INDEX IF NOT EXISTS ux_google_sheet_tab ON google_sheets (workspace_id, spreadsheet_id, tab_id) WHERE deleted_at IS NULL;
+
+-- ux_google_sheet_rows_key
+CREATE UNIQUE INDEX IF NOT EXISTS ux_google_sheet_rows_key ON google_sheet_rows (sheet_id, idempotency_key);
+
 ## composite lead keys
 
 -- fk_lead_phones_workspace_lead
@@ -620,8 +675,14 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_agent_awaiting_continuation ON w
 -- idx_wfr_trigger_data_prune
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_trigger_data_prune ON workflow_runs (started_at) WHERE trigger_data IS NOT NULL;
 
+-- idx_wfr_workflow_trigger_started
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfr_workflow_trigger_started ON workflow_runs (workflow_id, trigger_type, started_at DESC);
+
 -- idx_wfrl_run_node_executed
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_run_node_executed ON workflow_run_logs (run_id, node_id, executed_at DESC, id DESC);
+
+-- idx_wfrl_legacy_node_type
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_wfrl_legacy_node_type ON workflow_run_logs (id) WHERE node_type IN ('action_reschedule_meeting', 'action_schedule_meeting', 'action_send_whatsapp_button');
 
 -- idx_geo_cities_name_prefix
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_geo_cities_name_prefix ON geo_cities (name_key text_pattern_ops);
@@ -673,6 +734,12 @@ CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_cm_entry_client_request ON con
 wc_consume_used_schedules
 drop_retired_setting_columns
 lx_drop_workspace_exit_settings
+em_drop_list_validation
+em_drop_run_charge_columns
 cm_backfill_awaiting_reply
+cm_mark_note_images
+cm_mark_email_bodies
 wf_publish_running_workflows
 wf_canonical_structured_configs
+wf_canonical_node_types
+inv_external_id_per_provider

@@ -26,7 +26,7 @@ func (f *versionReadingWorkflows) Version(_ workflow.Scope, id string, version i
 	if version == 9 {
 		return nil, fmt.Errorf("%w: workflow %s version %d", workflow.ErrVersionNotFound, id, version)
 	}
-	g := workflow.Graph{Nodes: []workflow.Node{{ID: "t", Type: workflow.NodeTypeTriggerManual}}}
+	g := workflow.Graph{Nodes: []workflow.Node{{ID: "t", Type: workflow.NodeTypeTriggerMessageReceived}}}
 	return &workflow.WorkflowVersion{WorkflowID: id, Version: version, Graph: &g}, nil
 }
 

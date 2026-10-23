@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"sync"
 	"testing"
-	"time"
 
 	"vozko/domain/messaging"
 	"vozko/domain/workflow"
@@ -62,12 +61,21 @@ func (h *handledEvents) Handle(_ context.Context, ev workflow.AgentRunFinished) 
 	return "sent"
 }
 
-func waitAck(t *testing.T, ack *recordedAck) {
+func waitAck(t *testing.T, ctx context.Context, ack *recordedAck) {
 	t.Helper()
 	select {
 	case <-ack.done:
-	case <-time.After(time.Second):
+	case <-ctx.Done():
 		t.Fatal("the message was never settled")
+	}
+}
+
+func settled(ack *recordedAck) bool {
+	select {
+	case <-ack.done:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -83,7 +91,7 @@ func TestTheConsumerHandsEachFinishedAgentRunToTheContinuationAndAcks(t *testing
 	payload, _ := json.Marshal(workflow.AgentRunFinished{RunID: "run-1", Status: workflow.RunStatusCompleted, HasAgentResult: true})
 	ack := newRecordedAck()
 	sub.handler(payload, ack)
-	waitAck(t, ack)
+	waitAck(t, untilSettled(t), ack)
 
 	if !ack.acked || len(handled.events) != 1 || handled.events[0].RunID != "run-1" {
 		t.Fatalf("acked = %v, handled = %+v", ack.acked, handled.events)
@@ -96,9 +104,63 @@ func TestAnUnreadableEventIsDroppedWithoutRequeue(t *testing.T) {
 
 	ack := newRecordedAck()
 	sub.handler([]byte("{"), ack)
-	waitAck(t, ack)
+	waitAck(t, untilSettled(t), ack)
 
 	if !ack.nacked || ack.requeue || len(handled.events) != 0 {
 		t.Fatalf("nacked = %v requeue = %v handled = %d", ack.nacked, ack.requeue, len(handled.events))
+	}
+}
+
+func TestTwoDeliveriesOfOneContinuationOnTheSameConversationNeverRunTwoAgentTurns(t *testing.T) {
+	ctx := untilSettled(t)
+	h := newContinuationHarness()
+	var mu sync.Mutex
+	inTurn, mostAtOnce := 0, 0
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	h.channels.onTurn = func() {
+		mu.Lock()
+		inTurn++
+		if inTurn > mostAtOnce {
+			mostAtOnce = inTurn
+		}
+		mu.Unlock()
+		entered <- struct{}{}
+		<-release
+		mu.Lock()
+		inTurn--
+		mu.Unlock()
+	}
+	sub := &capturingSub{}
+	if err := NewConsumeAgentRunFinished(sub, h.continuation(t)).Start(); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(finished(workflow.RunStatusCompleted, true))
+
+	first, second := newRecordedAck(), newRecordedAck()
+	sub.handler(payload, first)
+	sub.handler(payload, second)
+
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("no agent turn started")
+	}
+	h.lockState.awaitWaiter(t, ctx)
+	if settled(first) || settled(second) {
+		t.Fatal("a delivery settled while the agent turn was still running, so the other did not wait for the turn lock")
+	}
+	close(release)
+	waitAck(t, ctx, first)
+	waitAck(t, ctx, second)
+
+	h.metrics.mu.Lock()
+	outcomes := append([]string(nil), h.metrics.outcomes...)
+	h.metrics.mu.Unlock()
+	if mostAtOnce != 1 || len(h.turns()) != 1 || len(outcomes) != 2 {
+		t.Fatalf("turns at once = %d, turns = %d, outcomes = %v", mostAtOnce, len(h.turns()), outcomes)
+	}
+	if !(outcomes[0] == "sent" && outcomes[1] == "already_continued") && !(outcomes[1] == "sent" && outcomes[0] == "already_continued") {
+		t.Fatalf("outcomes = %v, want one sent and one already_continued", outcomes)
 	}
 }

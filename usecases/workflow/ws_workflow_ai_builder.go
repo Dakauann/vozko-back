@@ -58,7 +58,7 @@ func builderCacheScope(workflowID string) string {
 var resourceKinds = []string{
 	"ai_models", "agents", "templates", "departments", "medias",
 	"labels", "stages", "opportunity_pipelines", "opportunity_stages", "members", "mcp_collections", "knowledge_bases", "business_phones", "workflows",
-	"sip_trunks", "call_queues",
+	"sip_trunks", "call_queues", "google_sheets",
 }
 
 type ResourceMatch struct {
@@ -1316,7 +1316,7 @@ func parseConfigJSON(raw interface{}) (map[string]interface{}, error) {
 }
 
 func serializeGraph(g *workflow.Graph) string {
-	unpinned := workflow.StripPins(*g)
+	unpinned := workflow.StripDraftOnly(*g)
 	b, err := json.MarshalIndent(&unpinned, "", "  ")
 	if err != nil {
 		return "{}"
@@ -1399,8 +1399,8 @@ func truncate(s string, n int) string {
 
 func allTriggerTypes() []workflow.TriggerType {
 	return []workflow.TriggerType{
-		workflow.TriggerFirstMessage, workflow.TriggerMessageReceived, workflow.TriggerCampaignSent,
-		workflow.TriggerStageAdded, workflow.TriggerManual, workflow.TriggerNoReply,
+		workflow.TriggerFirstMessage, workflow.TriggerMessageReceived,
+		workflow.TriggerStageAdded,
 		workflow.TriggerCallReceived, workflow.TriggerFormSubmitted,
 	}
 }

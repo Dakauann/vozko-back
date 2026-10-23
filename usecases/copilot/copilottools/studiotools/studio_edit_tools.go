@@ -14,6 +14,7 @@ import (
 	"vozko/domain/studio"
 	"vozko/domain/tools"
 	"vozko/usecases/copilot/copilottools"
+	"vozko/usecases/copilot/copilottools/screencall"
 )
 
 const (
@@ -523,12 +524,12 @@ func (t *studioEditTool) Execute(ctx context.Context, cc copilot.Context, args m
 	}
 	reply, err := runOnEditor(ctx, cc, copilot.ScreenEdit, payload)
 	if err != nil {
-		if editorDidNotApply(err) {
+		if screencall.DidNotApply(err) {
 			t.deps.Links.discard(ctx, cc, created)
 		}
-		return screenResult(cc, err)
+		return screencall.Result(cc, err)
 	}
-	return copilot.Result{Status: copilot.StatusOK, Data: screenData(reply)}
+	return copilot.Result{Status: copilot.StatusOK, Data: screencall.Data(reply)}
 }
 
 func (t *studioEditTool) operations(args map[string]interface{}) (any, error) {

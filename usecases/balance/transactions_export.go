@@ -69,7 +69,7 @@ func (e *TransactionsExporter) Rows(input balancedomain.ListTransactionsInput) (
 		}
 	}
 
-	currentRate, _ := currentExchangeRate(e.exchangeRate)
+	currentRate, _ := CurrentExchangeRate(e.exchangeRate)
 
 	rows := make([][]string, 0, len(all))
 	for _, t := range all {

@@ -61,5 +61,6 @@ func (c *Container) workflowTraceRetention() *workflow_usecase.TraceRetention {
 		c.webhookDeliveries(),
 		c.aiToolCallLog(),
 		c.runtimeAlertStore(),
+		c.choiceStatsStore(),
 	)
 }

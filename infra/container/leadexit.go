@@ -48,6 +48,7 @@ func (c *Container) leadExitStep() leadexit.Step {
 		Delegations: c.buttonDelegations(),
 		CallLists:   c.callLists(),
 		Events:      ce_usecase.NewLogger(c.services.crmTelemetryPublisher),
+		Choices:     c.choiceStatsRecorder(),
 	})
 	if err != nil {
 		log.Fatalf("[lead-exit] step: %v", err)

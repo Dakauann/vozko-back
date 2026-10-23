@@ -8,7 +8,7 @@ func TestServiceTypes_ValidAndEnumeratedAgree(t *testing.T) {
 			t.Errorf("%q is enumerated but not valid", s)
 		}
 	}
-	for _, s := range []ServiceType{ServiceAI, ServiceAddon} {
+	for _, s := range []ServiceType{ServiceAI, ServiceAddon, ServiceEmail, ServiceRCS, ServiceSMS} {
 		found := false
 		for _, e := range AllServiceTypes() {
 			if e == s {

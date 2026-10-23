@@ -54,7 +54,11 @@ func (a *channelAdapter) SendInteractive(
 		account.Username, ec.ContactRef, result.MessageID, len(options))
 
 	a.recordOutbound(ctx, ec)
-	return &conversation.SendOutcome{ProviderMessageID: result.MessageID}, nil
+	shown := make([]conversation.InteractiveOption, 0, len(options))
+	for _, o := range options {
+		shown = append(shown, conversation.InteractiveOption{ID: o.Payload, Title: o.Title})
+	}
+	return conversation.ShowingOptions(&conversation.SendOutcome{ProviderMessageID: result.MessageID}, shown), nil
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

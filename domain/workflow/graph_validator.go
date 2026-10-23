@@ -50,7 +50,7 @@ func GraphProblems(g *Graph, wfType WorkflowType, exempt map[string]bool) []erro
 		if n.Type.IsTrigger() {
 			triggers = append(triggers, n)
 		}
-		if n.Type.IsEnd() {
+		if n.Type.EndsPath() {
 			hasEnd = true
 		}
 	}
@@ -92,7 +92,7 @@ func graphShapeProblems(g *Graph) (map[string]*Node, []error) {
 			continue
 		}
 		if !n.Type.Valid() {
-			problems = append(problems, fmt.Errorf("%w: %s", ErrInvalidNodeType, n.Type))
+			problems = append(problems, fmt.Errorf("%w: node %q (%s)", ErrInvalidNodeType, n.ID, n.Type))
 		}
 		nodeMap[n.ID] = n
 	}
@@ -147,7 +147,7 @@ func connectionProblems(g *Graph, nodeMap map[string]*Node, triggers []*Node, ou
 			withoutIncoming[n.ID] = true
 			problems = append(problems, fmt.Errorf("%w: %q", ErrGraphNodeNoIncoming, n.ID))
 		}
-		if !n.Type.IsEnd() && !exempt[n.ID] && len(outgoing[n.ID]) == 0 && !(notConnected && n.Type.IsTrigger()) {
+		if !n.Type.EndsPath() && !exempt[n.ID] && len(outgoing[n.ID]) == 0 && !(notConnected && n.Type.IsTrigger()) {
 			problems = append(problems, fmt.Errorf("%w: %q", ErrGraphNodeNoOutgoing, n.ID))
 		}
 	}
@@ -338,7 +338,7 @@ func canReachEnd(start string, nodeMap map[string]*Node, outgoing map[string][]s
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		if nodeMap[current].Type.IsEnd() {
+		if nodeMap[current].Type.EndsPath() {
 			return true
 		}
 		for _, next := range outgoing[current] {

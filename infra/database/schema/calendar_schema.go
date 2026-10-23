@@ -91,3 +91,11 @@ func (c *CalendarWatchChannel) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+type CalendarSyncState struct {
+	WorkspaceID string    `gorm:"primaryKey;type:uuid"`
+	SyncToken   string    `gorm:"type:text;not null;default:''"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+}
+
+func (CalendarSyncState) TableName() string { return "calendar_sync_states" }

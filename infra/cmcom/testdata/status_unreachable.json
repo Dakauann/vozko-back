@@ -1,0 +1,11 @@
+{
+  "messages": {
+    "msg": {
+      "received": "2026-01-15T09:12:00",
+      "reference": "9c5ac3abb8c94775b8d7ceb274ba335a",
+      "to": "0031612345678",
+      "status": { "code": "3", "errorCode": "42", "errorDescription": "Message not delivered because recipient is not capable to receive a message from this channel" },
+      "operator": "20416"
+    }
+  }
+}

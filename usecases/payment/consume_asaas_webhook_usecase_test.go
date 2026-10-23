@@ -71,11 +71,13 @@ func (m *mockAsaasAck) wasNacked() bool {
 type mockAsaasSharedState struct {
 	mu       sync.Mutex
 	store    map[string]bool
+	counters map[string]int64
 	setNXErr error
+	incrErr  error
 }
 
 func newMockAsaasSharedState() *mockAsaasSharedState {
-	return &mockAsaasSharedState{store: make(map[string]bool)}
+	return &mockAsaasSharedState{store: make(map[string]bool), counters: make(map[string]int64)}
 }
 
 func (m *mockAsaasSharedState) SetNX(key, value string, ttl time.Duration) (bool, error) {
@@ -91,10 +93,27 @@ func (m *mockAsaasSharedState) SetNX(key, value string, ttl time.Duration) (bool
 	return true, nil
 }
 
-func (m *mockAsaasSharedState) SetString(string, string, time.Duration) error    { return nil }
+func (m *mockAsaasSharedState) SetString(key, _ string, _ time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.store[key] = true
+	return nil
+}
 func (m *mockAsaasSharedState) GetString(string) (string, error)                 { return "", nil }
-func (m *mockAsaasSharedState) Del(...string) error                              { return nil }
-func (m *mockAsaasSharedState) Exists(string) (bool, error)                      { return false, nil }
+func (m *mockAsaasSharedState) Del(keys ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, k := range keys {
+		delete(m.store, k)
+		delete(m.counters, k)
+	}
+	return nil
+}
+func (m *mockAsaasSharedState) Exists(key string) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.store[key], nil
+}
 func (m *mockAsaasSharedState) Incr(string) (int64, error)                       { return 0, nil }
 func (m *mockAsaasSharedState) Decr(string) (int64, error)                       { return 0, nil }
 func (m *mockAsaasSharedState) TryIncr(string, int64) (bool, error)              { return false, nil }
@@ -106,7 +125,15 @@ func (m *mockAsaasSharedState) Subscribe(context.Context, string, func([]byte)) 
 func (m *mockAsaasSharedState) HSet(string, string, string) error                { return nil }
 func (m *mockAsaasSharedState) HDel(string, string) error                        { return nil }
 func (m *mockAsaasSharedState) HGetAll(string) (map[string]string, error)        { return nil, nil }
-func (m *mockAsaasSharedState) IncrWithTTL(string, time.Duration) (int64, error) { return 1, nil }
+func (m *mockAsaasSharedState) IncrWithTTL(key string, _ time.Duration) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.incrErr != nil {
+		return 0, m.incrErr
+	}
+	m.counters[key]++
+	return m.counters[key], nil
+}
 func (m *mockAsaasSharedState) HIncrBy(string, string, int64) (int64, error)     { return 0, nil }
 func (m *mockAsaasSharedState) Expire(string, time.Duration) (bool, error)       { return true, nil }
 func (m *mockAsaasSharedState) IncrBy(string, int64) (int64, error)              { return 0, nil }
@@ -159,7 +186,7 @@ func TestConsumeAsaas_SubscribesToCorrectTopic(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	if err := uc.Start(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -174,7 +201,7 @@ func TestConsumeAsaas_SubscribeError(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	if err := uc.Start(); err == nil {
 		t.Fatal("expected error from subscribe failure")
 	}
@@ -185,7 +212,7 @@ func TestConsumeAsaas_ProcessesPaymentEvent(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	ack := &mockAsaasAck{}
@@ -213,7 +240,7 @@ func TestConsumeAsaas_DuplicateEventIgnored(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	payload := makeAsaasPayload("PAYMENT_RECEIVED", "pay_dup", 50)
@@ -239,7 +266,7 @@ func TestConsumeAsaas_DifferentEventsForSamePaymentNotDuplicate(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	events := []string{"PAYMENT_CREATED", "PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"}
@@ -261,7 +288,7 @@ func TestConsumeAsaas_InvalidJSONNacks(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	ack := &mockAsaasAck{}
@@ -282,15 +309,13 @@ func TestConsumeAsaas_HandlerErrorNacksWithRequeue(t *testing.T) {
 	handler := &mockAsaasHandler{execErr: errors.New("db error")}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	ack := &mockAsaasAck{}
 	sub.handler(makeAsaasPayload("PAYMENT_RECEIVED", "pay_err", 100), ack)
 
-	time.Sleep(100 * time.Millisecond)
-
-	if !ack.wasNacked() {
+	if !waitFor(t, ack.wasNacked) {
 		t.Fatal("should nack with requeue when handler returns error")
 	}
 	if !ack.requeued {
@@ -304,24 +329,19 @@ func (h *panicAsaasHandler) Execute(event *payment.AsaasWebhookEvent) error {
 	panic("handler exploded")
 }
 
-func TestConsumeAsaas_PanicRecovery(t *testing.T) {
+func TestConsumeAsaas_APanicIsRequeuedNotDropped(t *testing.T) {
 	sub := &mockAsaasQueueSub{}
 	handler := &panicAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	ack := &mockAsaasAck{}
 	sub.handler(makeAsaasPayload("PAYMENT_RECEIVED", "pay_panic", 100), ack)
 
-	time.Sleep(200 * time.Millisecond)
-
-	if !ack.wasNacked() {
-		t.Fatal("should nack after panic")
-	}
-	if ack.requeued {
-		t.Fatal("should not requeue after panic")
+	if !waitFor(t, ack.wasNacked) || !ack.requeued {
+		t.Fatal("a panic must put the payment event back, never drop it")
 	}
 }
 
@@ -338,7 +358,7 @@ func TestConsumeAsaas_AckError(t *testing.T) {
 	handler := &mockAsaasHandler{}
 	state := newMockAsaasSharedState()
 
-	uc := NewConsumeAsaasWebhookUseCase(sub, handler, state)
+	uc := NewConsumeAsaasWebhookUseCase(sub, nil, handler, state, &fakeAlerts{})
 	_ = uc.Start()
 
 	ack := &errMockAsaasAck{}

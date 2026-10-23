@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	"vozko/domain/campaign"
+	lcs "vozko/domain/lead_campaign_send"
+	"vozko/domain/selection"
 )
 
-type LeadFactsReader interface {
-	LeadFacts(ctx context.Context, workspaceID string, leadIDs []string) (map[string]campaign.LeadFacts, error)
+type ScreeningFactsReader interface {
+	ScreeningFacts(ctx context.Context, q campaign.ScreeningQuery) (map[string]campaign.ScreeningFacts, error)
 }
 
 type Screener interface {
@@ -23,43 +25,46 @@ type EntryGate interface {
 }
 
 type Eligibility struct {
-	leads LeadFactsReader
+	facts ScreeningFactsReader
 	spam  *SpamGuard
 }
 
-func NewEligibility(leads LeadFactsReader, spam *SpamGuard) (*Eligibility, error) {
-	if leads == nil || spam == nil {
+func NewEligibility(facts ScreeningFactsReader, spam *SpamGuard) (*Eligibility, error) {
+	if facts == nil || spam == nil {
 		return nil, ErrUnavailable
 	}
-	return &Eligibility{leads: leads, spam: spam}, nil
+	return &Eligibility{facts: facts, spam: spam}, nil
 }
 
 func (e *Eligibility) Facts(ctx context.Context, workspaceID string, leadIDs []string, senderID string) (map[string]campaign.EligibilityFacts, error) {
-	facts, _, err := e.factsWithin(ctx, workspaceID, leadIDs, senderID)
+	facts, _, err := e.factsWithin(ctx, campaign.ScreeningQuery{WorkspaceID: workspaceID, LeadIDs: leadIDs, SenderID: senderID})
 	return facts, err
 }
 
-func (e *Eligibility) factsWithin(ctx context.Context, workspaceID string, leadIDs []string, senderID string) (map[string]campaign.EligibilityFacts, int, error) {
-	if strings.TrimSpace(workspaceID) == "" {
+func (e *Eligibility) factsWithin(ctx context.Context, q campaign.ScreeningQuery) (map[string]campaign.EligibilityFacts, int, error) {
+	if strings.TrimSpace(q.WorkspaceID) == "" {
 		return nil, 0, ErrWorkspaceRequired
 	}
-	days, err := e.spam.days(ctx, workspaceID)
+	days, err := e.spam.days(ctx, q.WorkspaceID)
 	if err != nil {
 		return nil, 0, err
 	}
-	ids := distinct(leadIDs)
+	if days <= 0 {
+		q.SenderID = ""
+	}
+	q.SenderID = strings.TrimSpace(q.SenderID)
+	ids := distinct(q.LeadIDs)
 	out := make(map[string]campaign.EligibilityFacts, len(ids))
-	for _, chunk := range chunks(ids, FactsChunk) {
-		leads, err := e.leads.LeadFacts(ctx, workspaceID, chunk)
+	now := e.spam.now()
+	for _, chunk := range chunks(ids, selection.Chunk) {
+		q.LeadIDs = chunk
+		facts, err := e.facts.ScreeningFacts(ctx, q)
 		if err != nil {
 			return nil, 0, fmt.Errorf("campaign guard: could not read the leads of this send: %w", err)
 		}
-		cooling, err := e.spam.inCooldownWithin(days, chunk, senderID)
-		if err != nil {
-			return nil, 0, err
-		}
 		for _, id := range chunk {
-			out[id] = campaign.EligibilityFacts{Lead: leads[id], InCooldown: cooling[id]}
+			f := facts[id]
+			out[id] = campaign.EligibilityFacts{Lead: f.Lead, InCooldown: lcs.WithinSpamWindow(f.LastSentAt, days, now), InRunningCampaign: f.InRunningCampaign}
 		}
 	}
 	return out, days, nil
@@ -75,7 +80,16 @@ func (s Screening) Detail(missing []campaign.MissingVariable) campaign.SkipDetai
 }
 
 func (e *Eligibility) Screen(ctx context.Context, workspaceID string, leadIDs []string, senderID string) (Screening, error) {
-	facts, days, err := e.factsWithin(ctx, workspaceID, leadIDs, senderID)
+	return e.screen(ctx, campaign.ScreeningQuery{WorkspaceID: workspaceID, LeadIDs: leadIDs, SenderID: senderID})
+}
+
+func (e *Eligibility) ScreenWithRunning(ctx context.Context, workspaceID string, leadIDs []string, senderID string) (Screening, error) {
+	return e.screen(ctx, campaign.ScreeningQuery{WorkspaceID: workspaceID, LeadIDs: leadIDs, SenderID: senderID, Running: true})
+}
+
+func (e *Eligibility) screen(ctx context.Context, q campaign.ScreeningQuery) (Screening, error) {
+	leadIDs := q.LeadIDs
+	facts, days, err := e.factsWithin(ctx, q)
 	if err != nil {
 		return Screening{}, err
 	}

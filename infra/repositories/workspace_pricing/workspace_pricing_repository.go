@@ -77,6 +77,12 @@ func (r *WorkspacePricingRepositoryImpl) SeedDefaults(items []workspace_pricing.
 				if err := tx.Delete(&row).Error; err != nil {
 					return err
 				}
+				continue
+			}
+			if cost, stale := workspace_pricing.CorrectedDefaultCost(*mapPricingItem(row)); stale {
+				if err := tx.Model(&schema.PricingItem{}).Where("id = ? AND cost_micros = ?", row.ID, row.CostMicros).Update("cost_micros", cost).Error; err != nil {
+					return err
+				}
 			}
 		}
 

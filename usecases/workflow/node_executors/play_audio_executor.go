@@ -35,7 +35,7 @@ func (e *playAudioExecutor) Definition() workflow.NodeDefinition {
 		},
 		DefaultConfig: map[string]interface{}{"media_id": "", "interruptible": true},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "interrupted", Description: "Verdadeiro quando uma tecla cortou o áudio"},
+			{Key: "interrupted", Description: "Verdadeiro quando uma tecla cortou o áudio", Label: "Áudio interrompido", Type: workflow.VariableTypeBoolean},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "media_id", Label: "Áudio", Type: "select", OptionsSource: "medias", Required: true, Description: "Arquivo de áudio da biblioteca de mídias."},

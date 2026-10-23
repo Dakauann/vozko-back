@@ -546,3 +546,9 @@ func TestAnalysis_ResetStale(t *testing.T) {
 		t.Fatalf("after reset: %+v", a)
 	}
 }
+
+func TestCarrierSourcesNameTheirEntryTypes(t *testing.T) {
+	if SourceRCS.EntryType() != shared.EntryTypeRCS || SourceSMS.EntryType() != shared.EntryTypeSMS {
+		t.Fatalf("carrier sources = %q %q", SourceRCS, SourceSMS)
+	}
+}

@@ -3,6 +3,7 @@ package leadexit_usecase
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"vozko/domain/actor"
@@ -137,6 +138,13 @@ func TestAStartWorkflowButtonStartsThatWorkflowOnceWithTheTapAndItsMessage(t *te
 		got.Data[workflow.DataKeyContactNumber] != leadNumber || got.Data["message"] != "Ver opções" || got.Data[workflow.VarChannel] != "whatsapp" {
 		t.Fatalf("data = %+v", got.Data)
 	}
+	want := workflow.MessageStartRunData(workflow.MessageStart{
+		Text: "Ver opções", Channel: "whatsapp", WorkspaceID: workspaceA, Selection: workflow.TemplateButtonSelection("Ver opções", 2, true),
+		ContactNumber: leadNumber, TriggerMessageID: "row-in",
+	})
+	if !reflect.DeepEqual(got.Data, want) || got.TriggerType != "" {
+		t.Fatalf("data = %+v trigger = %q, want what a live tap carries %+v, started at the message trigger", got.Data, got.TriggerType, want)
+	}
 	if len(replier.sent) != 1 || replier.sent[0] != "Vamos lá." {
 		t.Fatalf("sent = %+v", replier.sent)
 	}
@@ -173,6 +181,25 @@ func TestAStartWorkflowButtonWhoseWorkflowCannotStartIsRefusedWithItsReason(t *t
 	}
 	if line := f.events.last(t); line["outcome"] != "refused" || line["reason"] != "workflow_not_active" {
 		t.Fatalf("line = %+v", line)
+	}
+}
+
+func TestAStartWorkflowButtonIntoAWorkflowWithoutAMessageTriggerIsRefused(t *testing.T) {
+	f := tapFixture(t, buttonaction.ButtonAction{ButtonIndex: 0, ButtonText: "Ver opções", Kind: buttonaction.KindStartWorkflow,
+		Params: buttonaction.Params{WorkflowID: "wf-1"}, Confirmation: "Vamos lá."})
+	f.workflows.err = workflow.ErrWorkflowNeedsMessageTrigger
+	replier := &fakeReplier{}
+
+	tap(t, f, replier)
+
+	if run := f.runs.of("wamid.in"); run.Outcome != leadexit.OutcomeRefused || run.Reason != workflow.NeedsMessageTriggerCode {
+		t.Fatalf("run = %+v", run)
+	}
+	if line := f.events.last(t); line["reason"] != workflow.NeedsMessageTriggerCode {
+		t.Fatalf("line = %+v", line)
+	}
+	if len(replier.sent) != 0 {
+		t.Fatalf("sent = %+v", replier.sent)
 	}
 }
 

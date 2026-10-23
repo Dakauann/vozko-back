@@ -1,8 +1,6 @@
 package stage_repository
 
 import (
-	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"vozko/domain/stage"
+	"vozko/infra/testenv"
 )
 
 const (
@@ -33,9 +32,7 @@ func isolatedStageDB(t *testing.T) *gorm.DB {
 	}
 	t.Cleanup(func() { admin.Exec("DROP SCHEMA " + schemaName + " CASCADE") })
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable search_path=%s",
-		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_NAME"), os.Getenv("DB_PORT"), schemaName)
+	dsn := testenv.Postgres(t).DSN() + " search_path=" + schemaName
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +74,7 @@ func liveStages(t *testing.T, db *gorm.DB) []string {
 func TestAMoveNeverLeavesTheConversationWithoutAStage(t *testing.T) {
 	db := isolatedStageDB(t)
 	repo := NewRepository(db)
-	if err := repo.AssignStage(entryStage(movedStageB)); err != nil {
+	if _, err := repo.AssignStage(entryStage(movedStageB)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +102,7 @@ func TestAMoveNeverLeavesTheConversationWithoutAStage(t *testing.T) {
 				}
 			}()
 		}
-		if err := repo.AssignStage(entryStage(target)); err != nil {
+		if _, err := repo.AssignStage(entryStage(target)); err != nil {
 			t.Error(err)
 		}
 		close(moved)
@@ -126,7 +123,7 @@ func TestTheInitialStageIsAssignedOnlyToAConversationWithoutOne(t *testing.T) {
 	if err != nil || !assigned {
 		t.Fatalf("a conversation without a stage gets the initial one: assigned=%v err=%v", assigned, err)
 	}
-	if err := repo.AssignStage(entryStage(movedStageC)); err != nil {
+	if _, err := repo.AssignStage(entryStage(movedStageC)); err != nil {
 		t.Fatal(err)
 	}
 	assigned, err = repo.AssignStageIfNone(entryStage(initialStage))
@@ -141,7 +138,7 @@ func TestTheInitialStageIsAssignedOnlyToAConversationWithoutOne(t *testing.T) {
 func TestTwoMovesAtOnceLeaveExactlyOneStage(t *testing.T) {
 	db := isolatedStageDB(t)
 	repo := NewRepository(db)
-	if err := repo.AssignStage(entryStage(movedStageB)); err != nil {
+	if _, err := repo.AssignStage(entryStage(movedStageB)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,7 +148,7 @@ func TestTwoMovesAtOnceLeaveExactlyOneStage(t *testing.T) {
 			wg.Add(1)
 			go func(target string) {
 				defer wg.Done()
-				if err := repo.AssignStage(entryStage(target)); err != nil {
+				if _, err := repo.AssignStage(entryStage(target)); err != nil {
 					t.Error(err)
 				}
 			}(target)
@@ -184,6 +181,62 @@ func TestAnEmptyConversationGetsOneInitialStageUnderConcurrency(t *testing.T) {
 		wg.Wait()
 		if live := liveStages(t, db); len(live) != 1 {
 			t.Fatalf("round %d: live stages = %v", round, live)
+		}
+	}
+}
+
+func TestAMoveReportsTheStageTheConversationLeft(t *testing.T) {
+	db := isolatedStageDB(t)
+	repo := NewRepository(db)
+
+	for _, step := range []struct {
+		target   string
+		previous string
+	}{
+		{movedStageB, ""},
+		{movedStageC, movedStageB},
+		{movedStageC, movedStageC},
+	} {
+		previous, err := repo.AssignStage(entryStage(step.target))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if previous != step.previous {
+			t.Fatalf("move to %s reported %q, want %q", step.target, previous, step.previous)
+		}
+	}
+}
+
+func TestConcurrentMovesToOneStageReportTheChangeExactlyOnce(t *testing.T) {
+	db := isolatedStageDB(t)
+	repo := NewRepository(db)
+
+	for round := 0; round < 50; round++ {
+		if _, err := repo.AssignStage(entryStage(movedStageB)); err != nil {
+			t.Fatal(err)
+		}
+		var mu sync.Mutex
+		changes := 0
+		var wg sync.WaitGroup
+		for worker := 0; worker < 4; worker++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				previous, err := repo.AssignStage(entryStage(movedStageC))
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if previous != movedStageC {
+					mu.Lock()
+					changes++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		if changes != 1 {
+			t.Fatalf("round %d: %d moves reported leaving another stage, want exactly 1", round, changes)
 		}
 	}
 }

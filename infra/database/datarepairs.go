@@ -25,9 +25,15 @@ func dataRepairs() []dataRepair {
 		{"wc_consume_used_schedules", consumeUsedSchedules},
 		{"drop_retired_setting_columns", dropRetiredSettingColumns},
 		{"lx_drop_workspace_exit_settings", dropWorkspaceExitSettings},
+		{"em_drop_list_validation", dropEmailListValidation},
+		{"em_drop_run_charge_columns", dropEmailRunChargeColumns},
 		{"cm_backfill_awaiting_reply", backfillAwaitingReply},
+		{"cm_mark_note_images", markNoteImages},
+		{"cm_mark_email_bodies", markEmailBodies},
 		{"wf_publish_running_workflows", publishRunningWorkflows},
 		{"wf_canonical_structured_configs", canonicalizeWorkflowGraphs},
+		{"wf_canonical_node_types", canonicalizeLegacyNodeTypes},
+		{"inv_external_id_per_provider", repairInvoiceExternalIDs},
 	}
 }
 

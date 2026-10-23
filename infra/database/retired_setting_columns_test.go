@@ -16,6 +16,7 @@ func TestRetiredSettingColumnsAreGoneFromTheSchema(t *testing.T) {
 		"agents":                        &schema.Agent{},
 		"unofficial_whatsapp_instances": &schema.UnofficialWhatsAppInstance{},
 		"template_exit_settings":        &schema.TemplateExitSettings{},
+		"email_sending_domains":         &schema.EmailSendingDomain{},
 	}
 	for _, column := range retiredSettingColumns {
 		model, ok := models[column.table]
@@ -38,11 +39,12 @@ func TestRetiredSettingColumnsAreGoneFromTheSchema(t *testing.T) {
 func TestDropRetiredSettingColumnsAgainstPostgres(t *testing.T) {
 	tx := postgresTx(t)
 	for _, ddl := range []string{
-		`DROP TABLE IF EXISTS whatsapp_campaigns, unofficial_whatsapp_campaigns, agents, unofficial_whatsapp_instances CASCADE`,
+		`DROP TABLE IF EXISTS whatsapp_campaigns, unofficial_whatsapp_campaigns, agents, unofficial_whatsapp_instances, email_sending_domains CASCADE`,
 		`CREATE TABLE whatsapp_campaigns (id uuid PRIMARY KEY, name text, prefer_audio boolean NOT NULL DEFAULT false)`,
 		`CREATE TABLE unofficial_whatsapp_campaigns (id uuid PRIMARY KEY, name text, prefer_audio boolean NOT NULL DEFAULT false)`,
 		`CREATE TABLE agents (id uuid PRIMARY KEY, name text, initial_message text NOT NULL, use_initial_message boolean NOT NULL DEFAULT true)`,
 		`CREATE TABLE unofficial_whatsapp_instances (id uuid PRIMARY KEY, display_name text, auto_reject_calls boolean NOT NULL DEFAULT false)`,
+		`CREATE TABLE email_sending_domains (id uuid PRIMARY KEY, domain text, verified_at timestamptz, warmup_started_at timestamptz)`,
 	} {
 		if err := tx.Exec(ddl).Error; err != nil {
 			t.Fatalf("fixture table: %v", err)
@@ -66,6 +68,7 @@ func TestDropRetiredSettingColumnsAgainstPostgres(t *testing.T) {
 		"unofficial_whatsapp_campaigns": "name",
 		"agents":                        "name",
 		"unofficial_whatsapp_instances": "display_name",
+		"email_sending_domains":         "verified_at",
 	} {
 		if !tx.Migrator().HasColumn(table, kept) {
 			t.Fatalf("%s.%s was dropped too", table, kept)

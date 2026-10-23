@@ -8,14 +8,12 @@ import (
 	"time"
 
 	lcs "vozko/domain/lead_campaign_send"
+	"vozko/domain/selection"
 	"vozko/domain/shared"
 	wsc "vozko/domain/workspace_config"
 )
 
-const (
-	FactsChunk = 5000
-	ClaimTTL   = 10 * time.Minute
-)
+const ClaimTTL = 10 * time.Minute
 
 var (
 	ErrUnavailable       = errors.New("campaign guard: the send eligibility check is not configured")
@@ -69,17 +67,17 @@ func (g *SpamGuard) InCooldownMany(ctx context.Context, workspaceID string, lead
 	if err != nil {
 		return nil, err
 	}
-	return g.inCooldownWithin(days, distinct(leadIDs), senderID)
+	return g.inCooldownWithin(ctx, days, distinct(leadIDs), senderID)
 }
 
-func (g *SpamGuard) inCooldownWithin(days int, leadIDs []string, senderID string) (map[string]bool, error) {
+func (g *SpamGuard) inCooldownWithin(ctx context.Context, days int, leadIDs []string, senderID string) (map[string]bool, error) {
 	out := map[string]bool{}
 	if days <= 0 || strings.TrimSpace(senderID) == "" || len(leadIDs) == 0 {
 		return out, nil
 	}
 	now := g.now()
-	for _, chunk := range chunks(leadIDs, FactsChunk) {
-		lastSends, err := g.sends.GetLastSendTimesBatch(chunk, senderID)
+	for _, chunk := range chunks(leadIDs, selection.Chunk) {
+		lastSends, err := g.sends.GetLastSendTimesBatch(ctx, chunk, senderID)
 		if err != nil {
 			return nil, fmt.Errorf("campaign guard: could not read the last sends to these contacts: %w", err)
 		}

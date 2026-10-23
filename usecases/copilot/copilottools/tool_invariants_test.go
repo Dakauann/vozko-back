@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"vozko/domain/copilot"
+	"vozko/usecases/copilot/copilottools/emaildesigntools"
 	"vozko/usecases/copilot/copilottools/studiotools"
 )
 
@@ -133,6 +134,25 @@ func TestStudioToolsLiveOnlyInsideTheStudio(t *testing.T) {
 		for _, tool := range studiotools.StudioTools(studiotools.StudioDeps{}) {
 			if tool.Definition().Name == name && (!view.Offers(tool) || (view == video && image.Offers(tool)) || (view == image && video.Offers(tool))) {
 				t.Fatalf("%s must be offered only on its project kind", name)
+			}
+		}
+	}
+}
+
+func TestEmailEditorToolsLiveOnlyInsideTheEmailEditor(t *testing.T) {
+	email := copilot.View{Surface: copilot.SurfaceEmailDesign, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f"}
+	studio := copilot.View{Surface: copilot.SurfaceStudio, ProjectID: "5f0c7c1e-1d2a-4b8e-9d11-3a2b1c0d9e8f", ProjectKind: copilot.StudioImage}
+	for _, tool := range emaildesigntools.EmailDesignTools(emaildesigntools.Deps{}) {
+		name := tool.Definition().Name
+		if name == "new_email_design" {
+			continue
+		}
+		if !strings.HasPrefix(name, "email_") || !email.Offers(tool) {
+			t.Fatalf("%s must be an email_ tool offered in the email editor", name)
+		}
+		for _, elsewhere := range []copilot.View{{}, {Surface: copilot.SurfaceAttendance}, studio} {
+			if elsewhere.Offers(tool) {
+				t.Fatalf("%s leaks outside the email editor", name)
 			}
 		}
 	}

@@ -56,3 +56,36 @@ func TestTheWorkflowListFiltersByEntryKindAcrossPages(t *testing.T) {
 		})
 	}
 }
+
+func TestTheWorkflowListOffersOnlyWhatAButtonCanStartWhenAsked(t *testing.T) {
+	cases := []struct {
+		query string
+		code  int
+		want  bool
+	}{
+		{"", http.StatusOK, false},
+		{"?startsFromMessage=true", http.StatusOK, true},
+		{"?startsFromMessage=false", http.StatusOK, false},
+		{"?startsFromMessage=talvez", http.StatusBadRequest, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			list := &recordingWorkflowList{}
+			h := &WorkflowHandler{listUC: list}
+			rec := httptest.NewRecorder()
+			h.List(rec, workflowRequestAs(http.MethodGet, "/workflows"+tc.query, nil, &auth.Claims{UserID: "u1"}))
+			if rec.Code != tc.code {
+				t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+			}
+			if tc.code == http.StatusBadRequest {
+				if list.input != nil || !strings.Contains(rec.Body.String(), invalidFilterCode) {
+					t.Fatalf("an unreadable filter must be refused before listing: %s", rec.Body.String())
+				}
+				return
+			}
+			if list.input.StartsFromMessage != tc.want {
+				t.Fatalf("startsFromMessage = %v, want %v", list.input.StartsFromMessage, tc.want)
+			}
+		})
+	}
+}

@@ -31,24 +31,28 @@ type HandleDefinition struct {
 }
 
 type OutputKeyDefinition struct {
-	Key         string `json:"key"`
-	Description string `json:"description"`
+	Key           string       `json:"key"`
+	Description   string       `json:"description"`
+	Label         string       `json:"label,omitempty"`
+	Type          VariableType `json:"type,omitempty"`
+	RepeatsConfig bool         `json:"repeatsConfig,omitempty"`
 }
 
 type NodeDefinition struct {
-	Type           NodeType               `json:"type"`
-	Category       NodeCategory           `json:"category"`
-	Scopes         []NodeScope            `json:"scopes,omitempty"`
-	Label          string                 `json:"label"`
-	Description    string                 `json:"description"`
-	Icon           string                 `json:"icon"`
-	Outputs        []HandleDefinition     `json:"outputs,omitempty"`
-	DynamicHandles bool                   `json:"dynamicHandles,omitempty"`
-	OutputKeys     []OutputKeyDefinition  `json:"outputKeys,omitempty"`
-	DefaultConfig  map[string]interface{} `json:"defaultConfig"`
-	ConfigSchema   []ConfigField          `json:"configSchema"`
-	Guidance       NodeGuidance           `json:"guidance"`
-	TestBehavior   NodeTestBehavior       `json:"testBehavior"`
+	Type              NodeType               `json:"type"`
+	Category          NodeCategory           `json:"category"`
+	Scopes            []NodeScope            `json:"scopes,omitempty"`
+	Label             string                 `json:"label"`
+	Description       string                 `json:"description"`
+	Icon              string                 `json:"icon"`
+	Outputs           []HandleDefinition     `json:"outputs,omitempty"`
+	DynamicHandles    bool                   `json:"dynamicHandles,omitempty"`
+	OutputKeys        []OutputKeyDefinition  `json:"outputKeys,omitempty"`
+	DefaultConfig     map[string]interface{} `json:"defaultConfig"`
+	ConfigSchema      []ConfigField          `json:"configSchema"`
+	Guidance          NodeGuidance           `json:"guidance"`
+	TestBehavior      NodeTestBehavior       `json:"testBehavior"`
+	NeedsConversation bool                   `json:"needsConversation,omitempty"`
 
 	ChannelLimits map[string]ChannelInteractiveLimits `json:"channelLimits,omitempty"`
 }
@@ -257,11 +261,23 @@ func BuiltinDefinitions() []NodeDefinition {
 			Label:         "Webhook",
 			Description:   "Dispara quando um sistema externo faz um POST na URL do webhook.",
 			Icon:          "Webhooks",
-			DefaultConfig: map[string]interface{}{},
-			ConfigSchema:  nil,
+			DefaultConfig: map[string]interface{}{WebhookStartOnKey: string(WebhookStartConversation)},
+			ConfigSchema: []ConfigField{
+				{Key: WebhookStartOnKey, Label: "Iniciar em", Type: "select", Options: []ConfigFieldOption{
+					{Value: string(WebhookStartConversation), Label: "Conversa"},
+					{Value: string(WebhookStartLead), Label: "Lead"},
+				}, Description: "Conversa: a conversa existente pelo entry_id e entry_type ou pelo phone. Lead: o lead pelo phone (criado se não existir) ou pelo email, mesmo sem conversa."},
+				{Key: WebhookEventsKey, Label: "Eventos aceitos", Type: "tags", Placeholder: "abandoned_cart",
+					Description: "Opcional. Com eventos, só chamadas cujo campo event esteja na lista começam o fluxo; as outras são aceitas e ignoradas."},
+			},
+			OutputKeys: leadTriggerOutputKeys(),
 			Guidance: NodeGuidance{
-				When:     "Inicia o fluxo a partir de um evento externo (POST HTTP). Configure a URL, o segredo e o modo de autenticação no painel do nó.",
-				Behavior: "Disponibiliza {{var.webhook.body.*}} com o corpo recebido e {{var.webhook.method}}. O payload precisa conter entry_id e entry_type.",
+				When: "Inicia o fluxo a partir de um evento externo (POST HTTP), por exemplo carrinho abandonado, pagamento pendente ou pedido pago de uma loja. Configure a URL, o segredo e o modo de autenticação no painel do nó.",
+				Behavior: "Disponibiliza {{var.webhook.body.*}} com o corpo recebido e {{var.webhook.method}}. " +
+					"Iniciar em Conversa: o payload traz entry_id e entry_type, ou phone de uma conversa existente. " +
+					"Iniciar em Lead: o payload traz phone (o lead é encontrado ou criado, com name no cadastro novo) ou email (lead existente), e o fluxo roda mesmo sem conversa, com {{lead_id}} e {{lead_name}}. " +
+					"event e external_id no payload evitam execuções repetidas quando a loja reenvia o mesmo evento. Nós que dependem de uma conversa seguem sem efeito em execuções de lead.",
+				Examples: []string{"{\"event\":\"abandoned_cart\",\"external_id\":\"cart-9\",\"phone\":\"5511999990000\",\"name\":\"Ana\",\"cart_url\":\"https://loja.example/c/9\"}"},
 			},
 		},
 		{
@@ -335,6 +351,8 @@ func BuiltinDefinitions() []NodeDefinition {
 					"Use o nó Responder ao agente para devolver um resultado ao agente.",
 			},
 		},
+		birthdayTriggerDefinition(),
+		stageAddedTriggerDefinition(),
 		{
 			Type:          NodeTypeEnd,
 			Category:      NodeCategoryEnd,

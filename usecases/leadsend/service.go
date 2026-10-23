@@ -38,9 +38,7 @@ type Snapshots interface {
 	DropSnapshot(ctx context.Context, workspaceID, snapshotID string) error
 }
 
-type Leads interface {
-	FindByIDs(workspaceID string, ids []string) ([]*lead.Lead, error)
-}
+type Leads = lead.BindingLeads
 
 type Definitions interface {
 	ListByObject(workspaceID string, objectType customfield.ObjectType) ([]*customfield.Definition, error)

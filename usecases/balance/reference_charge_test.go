@@ -97,6 +97,9 @@ func TestRefundOnceReversesTheChargeUnderItsOwnReference(t *testing.T) {
 	if *c.ReferenceID != "refund:ref-1" || c.Amount != 1_000 || c.ProfitMicros != -900 || !c.IsRefund {
 		t.Fatalf("credit %+v", c)
 	}
+	if c.RefundOf == nil || *c.RefundOf != "ref-1" {
+		t.Fatalf("the refund must name the charge it reverses so the ledger can bound it, got %v", c.RefundOf)
+	}
 	ledger.existing["refund:ref-1"] = true
 	if err := RefundOnce(ledger, sampleCharge()); err != nil || len(ledger.credits) != 1 {
 		t.Fatalf("refund paid twice: err=%v credits=%d", err, len(ledger.credits))

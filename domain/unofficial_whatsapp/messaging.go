@@ -148,3 +148,13 @@ func MaxOptionsFor(style string) int {
 	}
 	return MaxButtonOptions
 }
+
+func FitMenu(style string, count int) (string, int) {
+	if style != InteractiveStyleList {
+		style = InteractiveStyleButtons
+	}
+	if count > MaxButtonOptions {
+		style = InteractiveStyleList
+	}
+	return style, min(count, MaxOptionsFor(style))
+}

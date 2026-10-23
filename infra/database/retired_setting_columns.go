@@ -20,6 +20,7 @@ var retiredSettingColumns = []retiredColumn{
 	{"template_exit_settings", "exit_words"},
 	{"template_exit_settings", "exit_risk_acknowledged_by"},
 	{"template_exit_settings", "exit_risk_acknowledged_at"},
+	{"email_sending_domains", "warmup_started_at"},
 }
 
 func dropRetiredSettingColumns(tx *gorm.DB) error {

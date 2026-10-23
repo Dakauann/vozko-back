@@ -46,6 +46,22 @@ func (r *fakeMediaRepoForMediaTool) GetMediaByID(id string) (*media.Media, error
 	return nil, nil
 }
 
+func (r *fakeMediaRepoForMediaTool) GetMediaForWorkspace(workspaceID, id string) (*media.Media, error) {
+	if m, ok := r.byID[id]; ok && m.WorkspaceID == workspaceID {
+		return m, nil
+	}
+	return nil, media.ErrMediaNotFound
+}
+
+const toolWorkspace = "ws-1"
+
+func inToolWorkspace(m media.Media) *media.Media {
+	if m.WorkspaceID == "" {
+		m.WorkspaceID = toolWorkspace
+	}
+	return &m
+}
+
 func (r *fakeMediaRepoForMediaTool) GetMediasByIDs(ids []string) ([]media.Media, error) {
 	out := make([]media.Media, 0, len(ids))
 	for _, id := range ids {
@@ -234,9 +250,8 @@ func (f *stubFactory) WABAIdForPhone(string) (string, error) { return "waba-stub
 func newMediaToolWith(t *testing.T, client *recordingWhatsAppClient, medias ...media.Media) *SendWhatsappMediaTool {
 	t.Helper()
 	repo := &fakeMediaRepoForMediaTool{byID: make(map[string]*media.Media, len(medias))}
-	for i := range medias {
-		m := medias[i]
-		repo.byID[m.ID] = &m
+	for _, m := range medias {
+		repo.byID[m.ID] = inToolWorkspace(m)
 	}
 	return NewSendWhatsappMediaToolUseCase(context.Background(), &stubFactory{c: client}, repo, loopbackDownloads())
 }
@@ -267,17 +282,17 @@ func serveBytes(payload []byte, contentType string) *httptest.Server {
 }
 
 func cfg() map[string]interface{} {
-	return map[string]interface{}{"__business_phone_id": "phone-1"}
+	return map[string]interface{}{"__business_phone_id": "phone-1", "__workspace_id": toolWorkspace}
 }
 
 func TestSendWhatsappMediaTool_DefinitionWithContext_PopulatesEnumAcrossAllTypes(t *testing.T) {
 	client := &recordingWhatsAppClient{}
 	tool := newMediaToolWith(t, client,
-		media.Media{ID: "m-img", Description: "Brochure", Type: media.MediaTypeProductImage},
-		media.Media{ID: "m-vid", Description: "Demo Video", Type: media.MediaTypeProductVideo},
-		media.Media{ID: "m-aud", Description: "Welcome Audio", Type: media.MediaTypeAudio},
-		media.Media{ID: "m-pdf", Description: "Price List", Type: media.MediaTypeDocumentPdf},
-		media.Media{ID: "m-stk", Description: "Logo Sticker", Type: media.MediaTypeSticker},
+		media.Media{ID: "m-img", Description: "Brochure", URL: "https://cdn/b.png", Type: media.MediaTypeProductImage},
+		media.Media{ID: "m-vid", Description: "Demo Video", URL: "https://cdn/d.mp4", Type: media.MediaTypeProductVideo},
+		media.Media{ID: "m-aud", Description: "Welcome Audio", URL: "https://cdn/w.ogg", Type: media.MediaTypeAudio},
+		media.Media{ID: "m-pdf", Description: "Price List", URL: "https://cdn/p.pdf", Type: media.MediaTypeDocumentPdf},
+		media.Media{ID: "m-stk", Description: "Logo Sticker", URL: "https://cdn/l.webp", Type: media.MediaTypeSticker},
 	)
 
 	def := tool.DefinitionWithContext(tools.ToolContext{
@@ -561,21 +576,86 @@ func TestSendWhatsappMediaTool_Execute_MissingBusinessPhoneIDFails(t *testing.T)
 func TestSendWhatsappMediaTool_Execute_MediaNotFound(t *testing.T) {
 	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
 
-	if _, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{
+	_, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{
 		"to": "5511999", "media_id": "ghost",
-	}); err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("expected not-found error, got %v", err)
-	}
+	})
+	assertToolMediaRefused(t, err)
 }
 
 func TestSendWhatsappMediaTool_Execute_MediaWithoutURLFails(t *testing.T) {
 	tool := newMediaToolWith(t, &recordingWhatsAppClient{},
 		media.Media{ID: "broken", URL: "   ", Type: media.MediaTypeProductImage})
 
-	if _, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{
+	_, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{
 		"to": "5511", "media_id": "broken",
-	}); err == nil || !strings.Contains(err.Error(), "missing a URL") {
-		t.Fatalf("expected missing-URL error, got %v", err)
+	})
+	assertToolMediaRefused(t, err)
+}
+
+func assertToolMediaRefused(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, conversation.ErrMediaNotSendable) {
+		t.Fatalf("err = %v, want ErrMediaNotSendable", err)
+	}
+	if code := conversation.SendFailureCode(err, "send_failed"); code != conversation.MediaNotSendableCode {
+		t.Fatalf("code = %q, want %q", code, conversation.MediaNotSendableCode)
+	}
+}
+
+func TestSendWhatsappMediaTool_MediaOfAnotherWorkspaceIsRefused(t *testing.T) {
+	client := &recordingWhatsAppClient{}
+	tool := newMediaToolWith(t, client,
+		media.Media{ID: "foreign", WorkspaceID: "ws-2", URL: "https://cdn.example.com/a.png", Type: media.MediaTypeProductImage})
+
+	_, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{"to": "5511999999999", "media_id": "foreign"})
+	assertToolMediaRefused(t, err)
+	if !nothingSent(client) {
+		t.Fatal("another workspace's file reached the contact")
+	}
+}
+
+func TestSendWhatsappMediaTool_WithoutAWorkspaceNoLibraryMediaIsSent(t *testing.T) {
+	client := &recordingWhatsAppClient{}
+	tool := newMediaToolWith(t, client,
+		media.Media{ID: "m1", URL: "https://cdn.example.com/a.png", Type: media.MediaTypeProductImage})
+
+	_, err := tool.ExecuteWithConfig(context.Background(), map[string]interface{}{"__business_phone_id": "phone-1"}, map[string]interface{}{"to": "5511999999999", "media_id": "m1"})
+	assertToolMediaRefused(t, err)
+	if !nothingSent(client) {
+		t.Fatal("library media went out without knowing whose library it is")
+	}
+}
+
+func TestSendWhatsappMediaTool_ANoteImageIdIsNoLibraryMedia(t *testing.T) {
+	client := &recordingWhatsAppClient{}
+	tool := newMediaToolWith(t, client,
+		media.Media{ID: "m1", URL: "https://cdn.example.com/a.png", Type: media.MediaTypeProductImage})
+
+	_, err := tool.ExecuteWithConfig(context.Background(), cfg(), map[string]interface{}{"to": "5511999999999", "media_id": "note-image-1"})
+	assertToolMediaRefused(t, err)
+	if !nothingSent(client) {
+		t.Fatal("an id outside the library was sent")
+	}
+}
+
+func TestSendWhatsappMediaTool_DefinitionListsOnlySendableMediaOfTheAgentsWorkspace(t *testing.T) {
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{},
+		media.Media{ID: "own", Description: "Catalogo", URL: "https://cdn/own.png", Type: media.MediaTypeProductImage},
+		media.Media{ID: "foreign", WorkspaceID: "ws-2", Description: "Segredo", URL: "https://cdn/foreign.png", Type: media.MediaTypeProductImage},
+		media.Media{ID: "sheet", Description: "Planilha", URL: "https://cdn/leads.csv", Type: media.MediaTypeLeadImport},
+	)
+
+	def := tool.DefinitionWithContext(tools.ToolContext{
+		WorkspaceID: toolWorkspace,
+		Agent:       &agent_domain.Agent{WorkspaceID: toolWorkspace, MediaIDs: []string{"own", "foreign", "sheet"}},
+	})
+
+	enum := def.Parameters["media_id"].Enum
+	if len(enum) != 1 || enum[0] != "own" {
+		t.Fatalf("enum = %v, want only the agent workspace's sendable media", enum)
+	}
+	if strings.Contains(def.Parameters["media_id"].Description, "Segredo") {
+		t.Fatal("another workspace's media description was shown to the model")
 	}
 }
 
@@ -622,68 +702,109 @@ func (f *recordingWhatsAppClient) SendCallPermissionRequest(context.Context, con
 	return &conversation.SendTextMessageOutput{}, nil
 }
 
-func TestSendWhatsappMediaTool_MediaURL_SendsWithoutALibraryEntry(t *testing.T) {
-	t.Setenv("CLOUDFLARE_R2_ENDPOINT", "https://cdn.vozkoia.com")
+const toolCDN = "https://cdn.vozkoia.com"
 
+type toolCDNHosts struct{}
+
+func (toolCDNHosts) OwnsURL(rawURL string) bool {
+	return strings.HasPrefix(strings.ToLower(rawURL), toolCDN+"/") || strings.HasPrefix(strings.ToLower(rawURL), "http://cdn.vozkoia.com/")
+}
+
+func (r *fakeMediaRepoForMediaTool) GetMediaForWorkspaceByURL(workspaceID, url string) (*media.Media, error) {
+	for _, m := range r.byID {
+		if m.URL == url && m.WorkspaceID == workspaceID {
+			return m, nil
+		}
+	}
+	return nil, media.ErrMediaNotFound
+}
+
+type toolUploads map[string]*conversation.ConversationMedia
+
+func (u toolUploads) GetInEntryByURL(entryID string, entryType shared.EntryType, url string) (*conversation.ConversationMedia, error) {
+	row, ok := u[url]
+	if !ok || row.EntryID != entryID || row.EntryType != entryType {
+		return nil, conversation.ErrMediaNotFound
+	}
+	return row, nil
+}
+
+func telegramUpload(url, entryID string, purpose conversation.MediaPurpose) *conversation.ConversationMedia {
+	return &conversation.ConversationMedia{ID: "up-" + entryID, EntryID: entryID, EntryType: shared.EntryTypeTelegram, Type: conversation.MediaTypeImage, URL: url, Purpose: purpose}
+}
+
+func mediaToolOnTelegram(t *testing.T, uploads toolUploads, medias ...media.Media) (*SendWhatsappMediaTool, *toolAdapter) {
+	t.Helper()
 	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
-	tool := newMediaToolWith(t, &recordingWhatsAppClient{})
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{}, medias...)
 	tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
+	tool.SetMediaURLs(&conversation.MediaURLResolver{Storage: toolCDNHosts{}, Library: tool.mediaRepo.(*fakeMediaRepoForMediaTool), Uploads: uploads})
+	return tool, adapter
+}
 
-	config := telegramSeeds()
-	const url = "https://cdn.vozkoia.com/eventobaleia/84994409624.jpeg"
+func TestSendWhatsappMediaTool_MediaURL_SendsOurFileOfThisWorkspaceOrConversation(t *testing.T) {
+	library := toolCDN + "/eventobaleia/84994409624.jpeg"
+	upload := toolCDN + "/conversations/conv-1/foto.jpg"
+	for name, url := range map[string]string{"library item": library, "upload of this conversation": upload} {
+		t.Run(name, func(t *testing.T) {
+			tool, adapter := mediaToolOnTelegram(t,
+				toolUploads{upload: telegramUpload(upload, "conv-1", conversation.MediaPurposeMessage)},
+				media.Media{ID: "lib-1", URL: library, Type: media.MediaTypeProductImage})
 
-	if _, err := tool.ExecuteWithConfig(context.Background(), config, map[string]interface{}{
-		"media_url": url, "caption": "sua foto",
-	}); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-
-	if adapter.sentMedia == nil {
-		t.Fatal("nothing was sent")
-	}
-	if adapter.sentMedia.URL != url {
-		t.Errorf("URL = %q, want %q", adapter.sentMedia.URL, url)
-	}
-	if adapter.sentMedia.Kind != "image" {
-		t.Errorf("Kind = %q, want image", adapter.sentMedia.Kind)
-	}
-	if adapter.sentMedia.Caption != "sua foto" {
-		t.Errorf("Caption = %q", adapter.sentMedia.Caption)
+			if _, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{
+				"media_url": url, "caption": "sua foto",
+			}); err != nil {
+				t.Fatalf("execute: %v", err)
+			}
+			if adapter.sentMedia == nil || adapter.sentMedia.URL != url || adapter.sentMedia.Kind != "image" || adapter.sentMedia.Caption != "sua foto" {
+				t.Fatalf("sent %+v, want %s as an image", adapter.sentMedia, url)
+			}
+		})
 	}
 }
 
-func TestSendWhatsappMediaTool_MediaURL_OnlyTheCDNIsAccepted(t *testing.T) {
-	cases := []struct {
-		name     string
-		endpoint string
-		url      string
-	}{
-		{"foreign host", "https://cdn.vozkoia.com", "https://evil.example.com/x.jpeg"},
-		{"internal address", "https://cdn.vozkoia.com", "https://169.254.169.254/latest/meta-data"},
-		{"loopback", "https://cdn.vozkoia.com", "https://127.0.0.1:8080/admin"},
-		{"plain http", "https://cdn.vozkoia.com", "http://cdn.vozkoia.com/x.jpeg"},
-		{"host is a prefix of ours", "https://cdn.vozkoia.com", "https://cdn.vozkoia.com.evil.net/x.jpeg"},
-		{"no cdn configured", "", "https://cdn.vozkoia.com/x.jpeg"},
+func TestSendWhatsappMediaTool_MediaURL_OnlyASendableCDNFileIsAccepted(t *testing.T) {
+	note := toolCDN + "/conversations/conv-1/nota.jpg"
+	elsewhere := toolCDN + "/conversations/conv-2/foto.jpg"
+	foreign := toolCDN + "/ws-2/segredo.png"
+	uploads := toolUploads{
+		note:      telegramUpload(note, "conv-1", conversation.MediaPurposeNote),
+		elsewhere: telegramUpload(elsewhere, "conv-2", conversation.MediaPurposeMessage),
 	}
+	other := media.Media{ID: "lib-2", WorkspaceID: "ws-2", URL: foreign, Type: media.MediaTypeProductImage}
+	cases := map[string]string{
+		"foreign host":                   "https://evil.example.com/x.jpeg",
+		"internal address":               "https://169.254.169.254/latest/meta-data",
+		"loopback":                       "https://127.0.0.1:8080/admin",
+		"plain http":                     "http://cdn.vozkoia.com/x.jpeg",
+		"host is a prefix of ours":       "https://cdn.vozkoia.com.evil.net/x.jpeg",
+		"our file with no row":           toolCDN + "/guessed.png",
+		"note image":                     note,
+		"upload of another conversation": elsewhere,
+		"another workspace's file":       foreign,
+	}
+	for name, url := range cases {
+		t.Run(name, func(t *testing.T) {
+			tool, adapter := mediaToolOnTelegram(t, uploads, other)
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("CLOUDFLARE_R2_ENDPOINT", tc.endpoint)
-
-			adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
-			tool := newMediaToolWith(t, &recordingWhatsAppClient{})
-			tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
-
-			_, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{
-				"media_url": tc.url,
-			})
+			_, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{"media_url": url})
 			if err == nil {
-				t.Fatalf("%s must be refused", tc.url)
+				t.Fatalf("%s must be refused", url)
 			}
 			if adapter.sentMedia != nil {
 				t.Errorf("refused URL must not reach the channel, got %q", adapter.sentMedia.URL)
 			}
 		})
+	}
+}
+
+func TestSendWhatsappMediaTool_MediaURL_WithoutTheResolverNothingIsSent(t *testing.T) {
+	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
+	tool := newMediaToolWith(t, &recordingWhatsAppClient{}, media.Media{ID: "lib-1", URL: toolCDN + "/a.png", Type: media.MediaTypeProductImage})
+	tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
+
+	if _, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{"media_url": toolCDN + "/a.png"}); err == nil || adapter.sentMedia != nil {
+		t.Fatalf("err = %v sent = %+v, want a refusal", err, adapter.sentMedia)
 	}
 }
 
@@ -704,12 +825,8 @@ func TestSendWhatsappMediaTool_NeitherMediaIDNorURL_NamesBoth(t *testing.T) {
 }
 
 func TestSendWhatsappMediaTool_MediaIDWinsOverURL(t *testing.T) {
-	t.Setenv("CLOUDFLARE_R2_ENDPOINT", "https://cdn.vozkoia.com")
-
-	adapter := &toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}
-	tool := newMediaToolWith(t, &recordingWhatsAppClient{},
+	tool, adapter := mediaToolOnTelegram(t, toolUploads{},
 		media.Media{ID: "m1", URL: "https://cdn.vozkoia.com/library.png", Type: media.MediaTypeProductImage})
-	tool.SetAdapters(conversation.NewAdapterRegistry(adapter))
 
 	if _, err := tool.ExecuteWithConfig(context.Background(), telegramSeeds(), map[string]interface{}{
 		"media_id": "m1", "media_url": "https://cdn.vozkoia.com/guessed.png",

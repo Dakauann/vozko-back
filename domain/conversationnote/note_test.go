@@ -56,7 +56,7 @@ func TestNewNoteRefusesWhatCannotBeStored(t *testing.T) {
 		{"no author", func(d *Draft) { d.AuthorID = " " }, "note-1", ErrAuthorRequired},
 		{"no workspace", func(d *Draft) { d.WorkspaceID = "" }, "note-1", ErrWorkspaceRequired},
 		{"no conversation", func(d *Draft) { d.Entry.EntryID = "" }, "note-1", ErrEntryRequired},
-		{"a channel without a conversation view", func(d *Draft) { d.Entry.EntryType = "sms" }, "note-1", ErrEntryRequired},
+		{"a channel without a conversation view", func(d *Draft) { d.Entry.EntryType = "voice" }, "note-1", ErrEntryRequired},
 		{"no id", func(d *Draft) {}, "", ErrIDRequired},
 		{"too many distinct mentions", func(d *Draft) { d.Mentions = distinctIDs(MaxMentions + 1) }, "note-1", ErrTooManyMentions},
 	}

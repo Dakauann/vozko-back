@@ -93,7 +93,7 @@ func (e *simEffects) drain() workflow.SandboxEffects {
 }
 
 type simChannel struct {
-	outbound chan<- SimOutboundMessage
+	outbound func(SimOutboundMessage)
 	effects  *simEffects
 
 	mu      sync.Mutex
@@ -102,7 +102,7 @@ type simChannel struct {
 	uploads map[string]simUpload
 }
 
-func newSimChannel(outbound chan<- SimOutboundMessage, effects *simEffects) *simChannel {
+func newSimChannel(outbound func(SimOutboundMessage), effects *simEffects) *simChannel {
 	if effects == nil {
 		effects = newSimEffects()
 	}
@@ -199,10 +199,10 @@ func (c *simChannel) deliver(record conversation.MessageHistoryRecord, send simC
 	if summary == "" {
 		summary = message.Text
 	}
-	c.outbound <- SimOutboundMessage{
+	c.outbound(SimOutboundMessage{
 		Type: msgType, Text: summary, To: record.To, MessageID: record.MessageID, Extra: send.extra,
 		AudioBase64: send.audioBase64, AudioMime: send.audioMime, Message: &message,
-	}
+	})
 }
 
 func sandboxStep(row *workflow.WorkflowRunLog, effects workflow.SandboxEffects, pin *workflow.NodePin) *workflow.WorkflowRunLog {

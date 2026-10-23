@@ -46,18 +46,42 @@ type simNodeData struct {
 }
 
 type simStart struct {
-	reproduce bool
-	runID     string
+	reproduce     bool
+	runID         string
+	triggerNodeID string
+	input         map[string]interface{}
+	windowOpen    *bool
+	malformed     bool
 }
+
+type simStartData struct {
+	TriggerNodeID string                 `json:"triggerNodeId"`
+	Input         map[string]interface{} `json:"input"`
+	WindowOpen    *bool                  `json:"windowOpen"`
+}
+
+var errSimStartMalformed = errors.New("Os dados do start devem ser {\"triggerNodeId\": string, \"input\": objeto, \"windowOpen\": booleano}.")
 
 type simReproduceData struct {
 	RunID string `json:"runId"`
+}
+
+func startRequestOf(raw json.RawMessage) simStart {
+	if len(raw) == 0 || string(raw) == "null" {
+		return simStart{}
+	}
+	var data simStartData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return simStart{malformed: true}
+	}
+	return simStart{triggerNodeID: data.TriggerNodeID, input: data.Input, windowOpen: data.WindowOpen}
 }
 
 func offerSimStart(msg simClientMsg, starts chan<- simStart) {
 	var start simStart
 	switch msg.Type {
 	case "start":
+		start = startRequestOf(msg.Data)
 	case "reproduce_run":
 		var data simReproduceData
 		_ = json.Unmarshal(msg.Data, &data)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	aa "vozko/domain/ai_attendance"
+	"vozko/domain/choicestats"
 	"vozko/domain/workflow"
 )
 
@@ -25,19 +26,25 @@ type ResolvedAlertPruner interface {
 	DeleteResolvedBefore(cutoff time.Time, limit int) (int64, error)
 }
 
+type ChoiceStatsPruner interface {
+	PrunePrompts(before time.Time, limit int) (int64, error)
+	PruneCounts(before time.Time, limit int) (int64, error)
+}
+
 type TraceRetention struct {
 	traces     workflow.TraceRetentionRepository
 	deliveries workflow.WebhookDeliveryRepository
 	toolCalls  aa.ToolCallLog
 	alerts     ResolvedAlertPruner
+	choices    ChoiceStatsPruner
 	now        func() time.Time
 }
 
-func NewTraceRetention(traces workflow.TraceRetentionRepository, deliveries workflow.WebhookDeliveryRepository, toolCalls aa.ToolCallLog, alerts ResolvedAlertPruner) *TraceRetention {
-	if traces == nil || deliveries == nil || toolCalls == nil || alerts == nil {
-		panic("workflow: trace retention needs the step, delivery, tool call and runtime alert stores")
+func NewTraceRetention(traces workflow.TraceRetentionRepository, deliveries workflow.WebhookDeliveryRepository, toolCalls aa.ToolCallLog, alerts ResolvedAlertPruner, choices ChoiceStatsPruner) *TraceRetention {
+	if traces == nil || deliveries == nil || toolCalls == nil || alerts == nil || choices == nil {
+		panic("workflow: trace retention needs the step, delivery, tool call, runtime alert and choice stats stores")
 	}
-	return &TraceRetention{traces: traces, deliveries: deliveries, toolCalls: toolCalls, alerts: alerts, now: func() time.Time { return time.Now().UTC() }}
+	return &TraceRetention{traces: traces, deliveries: deliveries, toolCalls: toolCalls, alerts: alerts, choices: choices, now: func() time.Time { return time.Now().UTC() }}
 }
 
 func (j *TraceRetention) pruneVersions(_ time.Time, limit int) (int64, error) {
@@ -65,6 +72,8 @@ func (j *TraceRetention) Execute(ctx context.Context) error {
 		{name: "ai_tool_calls", before: now.Add(-ToolCallRetention), run: j.toolCalls.DeleteCreatedBefore},
 		{name: "runtime_alerts", before: now.Add(-workflow.RuntimeAlertRetention), run: j.alerts.DeleteResolvedBefore},
 		{name: "workflow_versions", run: j.pruneVersions},
+		{name: "choice_prompts", before: choicestats.AttributionCutoff(now), run: j.choices.PrunePrompts},
+		{name: "choice_daily_counts", before: choicestats.CounterCutoff(now), run: j.choices.PruneCounts},
 	}
 	failed := map[string]bool{}
 	var errs []error

@@ -66,14 +66,14 @@ func (e *moveStageExecutor) Definition() workflow.NodeDefinition {
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando a conversa está na etapa escolhida"},
-			{Key: "changed", Description: "true quando a conversa mudou de etapa (false se já estava nela)"},
-			{Key: "stage_id", Description: "ID da etapa escolhida"},
-			{Key: "stage_name", Description: "Nome da etapa escolhida"},
-			{Key: "pipeline_id", Description: "ID do funil da etapa"},
-			{Key: "from_stage_id", Description: "ID da etapa anterior (vazio se não havia)"},
-			{Key: "from_stage_name", Description: "Nome da etapa anterior"},
-			{Key: "error", Description: "Descrição do erro quando a conversa não pôde ser movida"},
+			{Key: "success", Description: "true quando a conversa está na etapa escolhida", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "changed", Description: "true quando a conversa mudou de etapa (false se já estava nela)", Label: "Mudou agora", Type: workflow.VariableTypeBoolean},
+			{Key: "stage_id", Description: "ID da etapa escolhida", Label: "ID da etapa", Type: workflow.VariableTypeText},
+			{Key: "stage_name", Description: "Nome da etapa escolhida", Label: "Nome da etapa", Type: workflow.VariableTypeText},
+			{Key: "pipeline_id", Description: "ID do funil da etapa", Label: "ID do funil", Type: workflow.VariableTypeText},
+			{Key: "from_stage_id", Description: "ID da etapa anterior (vazio se não havia)", Label: "ID da etapa anterior", Type: workflow.VariableTypeText},
+			{Key: "from_stage_name", Description: "Nome da etapa anterior", Label: "Etapa anterior", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Descrição do erro quando a conversa não pôde ser movida", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{"stage_id": ""},
 		ConfigSchema:  []workflow.ConfigField{stagePicker("A etapa para onde a conversa vai.")},
@@ -116,6 +116,7 @@ func (e *moveStageExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 		EntryID:   ctx.Run.EntryID,
 		EntryType: ctx.Run.EntryType,
 		ActorID:   workflowActor(ctx.Run.WorkflowID),
+		Cause:     moveCauseOf(ctx),
 	}); err != nil {
 		return failMove(edges, stageID, moveFailure(err)), nil
 	}
@@ -125,6 +126,14 @@ func (e *moveStageExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeRe
 
 	out["changed"] = true
 	return routeOutput(&workflow.NodeResult{Output: out}, edges, "sucesso"), nil
+}
+
+func moveCauseOf(ctx *workflow.NodeContext) stage.MoveCause {
+	state := ctx.Run.State
+	if ctx.State != nil {
+		state = *ctx.State
+	}
+	return stage.MoveCause{WorkflowID: ctx.Run.WorkflowID, RunID: ctx.Run.ID, Chain: workflow.StageChainOf(state)}
 }
 
 func failMove(edges []workflow.Edge, stageID, reason string) *workflow.NodeResult {
@@ -167,10 +176,10 @@ func (e *checkStageExecutor) Definition() workflow.NodeDefinition {
 			{ID: "false", Label: "Não está"},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "matched", Description: "true se a conversa está na etapa escolhida"},
-			{Key: "stage_id", Description: "ID da etapa verificada"},
-			{Key: "current_stage_id", Description: "ID da etapa atual da conversa (vazio se não há)"},
-			{Key: "current_stage_name", Description: "Nome da etapa atual da conversa"},
+			{Key: "matched", Description: "true se a conversa está na etapa escolhida", Label: "Está na etapa", Type: workflow.VariableTypeBoolean},
+			{Key: "stage_id", Description: "ID da etapa verificada", RepeatsConfig: true},
+			{Key: "current_stage_id", Description: "ID da etapa atual da conversa (vazio se não há)", Label: "ID da etapa atual", Type: workflow.VariableTypeText},
+			{Key: "current_stage_name", Description: "Nome da etapa atual da conversa", Label: "Etapa atual", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{"stage_id": ""},
 		ConfigSchema:  []workflow.ConfigField{stagePicker("A etapa a comparar com a etapa atual da conversa.")},

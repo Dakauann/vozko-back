@@ -1,0 +1,12 @@
+{
+  "messages": {
+    "msg": {
+      "received": "2026-06-17T13:57:13",
+      "reference": "reference2",
+      "to": "0031612345678",
+      "recipient": { "number": "", "whatsapp": null },
+      "status": { "code": "1", "errorCode": "87", "errorDescription": "Message marked as failed by CM after 24 hours without receiving final status from the operator" },
+      "operator": ""
+    }
+  }
+}

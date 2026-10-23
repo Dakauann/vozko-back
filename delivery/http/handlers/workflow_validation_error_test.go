@@ -97,7 +97,7 @@ func TestOnlyATrulyUnknownErrorIsAServerError(t *testing.T) {
 }
 
 func TestADraftThatCannotBePublishedListsEveryBlockingIssue(t *testing.T) {
-	report := workflow.LintGraph(&workflow.Graph{Nodes: []workflow.Node{{ID: "t", Type: workflow.NodeTypeTriggerManual, Config: map[string]interface{}{}}}}, workflow.WorkflowTypeMessages, nil, nil, nil)
+	report := workflow.LintGraph(&workflow.Graph{Nodes: []workflow.Node{{ID: "t", Type: workflow.NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}}}}, workflow.WorkflowTypeMessages, nil, nil, nil)
 	blocked := workflow.NotPublishableFrom(report, []error{fmt.Errorf("%w: node %q label_id %q", workflow.ErrNodeInvalidLabelID, "lbl", "gone")})
 
 	rec := httptest.NewRecorder()

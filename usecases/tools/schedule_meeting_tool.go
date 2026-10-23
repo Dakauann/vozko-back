@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/mail"
 	"strings"
 	"time"
 
@@ -18,14 +17,15 @@ const ScheduleMeetingToolName = "schedule_meeting"
 
 type scheduleMeetingTool struct {
 	repo   calendar.Repository
-	google calendar.GoogleOAuthService
+	google calendar.GoogleCalendarAPI
+	access calendar.AccessProvider
 }
 
-func NewScheduleMeetingToolUseCase(repo calendar.Repository, google calendar.GoogleOAuthService) tools.Handler {
-	if repo == nil || google == nil {
+func NewScheduleMeetingToolUseCase(repo calendar.Repository, google calendar.GoogleCalendarAPI, access calendar.AccessProvider) tools.Handler {
+	if repo == nil || google == nil || access == nil {
 		return nil
 	}
-	return &scheduleMeetingTool{repo: repo, google: google}
+	return &scheduleMeetingTool{repo: repo, google: google, access: access}
 }
 
 func (t *scheduleMeetingTool) Definition() tools.Definition {
@@ -190,19 +190,9 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 		}, nil
 	}
 
-	conn, err := t.repo.GetConnection(workspaceID)
+	googleAccess, err := t.access.CalendarAccess(ctx, workspaceID)
 	if err != nil {
-		log.Printf("[ScheduleMeeting] failed to query connection for workspace %s: %v", workspaceID, err)
-		return tools.ExecutionResult{
-			Result:  fmt.Sprintf("Falha ao consultar integração do workspace: %v", err),
-			IsError: true,
-		}, nil
-	}
-	if conn == nil {
-		return tools.ExecutionResult{
-			Result:  "Nenhuma conta Google Calendar conectada neste workspace.",
-			IsError: true,
-		}, nil
+		return calendarAccessRefusal(workspaceID, err), nil
 	}
 
 	title := toolStringParamOrConfig(params, config, "title", "")
@@ -261,7 +251,7 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 	}
 
 	attendeesRaw := toolParamOrConfig(params, config, "attendees")
-	attendees, skippedAttendees := parseToolAttendees(attendeesRaw)
+	attendees, skippedAttendees := calendar.ParseAttendees(attendeesRaw)
 
 	description := toolStringParamOrConfig(params, config, "description", "")
 	location := toolStringParamOrConfig(params, config, "location", "")
@@ -269,14 +259,7 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 	createGoogleMeet := toolBoolParamOrConfig(params, config, "create_google_meet", true)
 	sendUpdates := toolStringParamOrConfig(params, config, "send_updates", "all")
 
-	accessToken, err := ensureValidCalendarToken(t.google, t.repo, conn)
-	if err != nil {
-		log.Printf("[ScheduleMeeting] token refresh failed for workspace %s: %v", workspaceID, err)
-		return tools.ExecutionResult{
-			Result:  fmt.Sprintf("Falha ao autenticar no Google Calendar: %v", err),
-			IsError: true,
-		}, nil
-	}
+	accessToken := googleAccess.Token
 
 	conflictEvents, conflictErr := t.google.ListGoogleEvents(accessToken, startTime, endTime, "", 10)
 	if conflictErr == nil {
@@ -344,7 +327,7 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 		"end_time":        endTime.Format(time.RFC3339),
 		"timezone":        tzRaw,
 		"attendees":       strings.Join(attendeeEmails, ", "),
-		"calendar_email":  conn.Email,
+		"calendar_email":  googleAccess.Email,
 	}
 
 	if len(skippedAttendees) > 0 {
@@ -360,69 +343,6 @@ func (t *scheduleMeetingTool) ExecuteWithConfig(ctx context.Context, config map[
 	return tools.ExecutionResult{
 		Result: string(resultJSON),
 	}, nil
-}
-
-func parseToolAttendees(raw interface{}) (attendees []calendar.Attendee, skipped []string) {
-	if raw == nil {
-		return nil, nil
-	}
-
-	var tokens []string
-	switch v := raw.(type) {
-	case string:
-		v = strings.TrimSpace(v)
-		if v == "" {
-			return nil, nil
-		}
-		tokens = splitToolAttendeeTokens(v)
-	case []interface{}:
-		for _, item := range v {
-			tokens = append(tokens, fmt.Sprintf("%v", item))
-		}
-	default:
-		tokens = append(tokens, fmt.Sprintf("%v", v))
-	}
-
-	attendees = make([]calendar.Attendee, 0, len(tokens))
-	seen := make(map[string]struct{}, len(tokens))
-	for _, token := range tokens {
-		candidate := strings.TrimSpace(token)
-		if candidate == "" {
-			continue
-		}
-		parsed, err := mail.ParseAddress(candidate)
-		if err != nil {
-			parsed, err = mail.ParseAddress("<" + candidate + ">")
-			if err != nil {
-				skipped = append(skipped, candidate)
-				continue
-			}
-		}
-		email := strings.ToLower(strings.TrimSpace(parsed.Address))
-		if email == "" {
-			continue
-		}
-		if _, exists := seen[email]; exists {
-			continue
-		}
-		seen[email] = struct{}{}
-		attendees = append(attendees, calendar.Attendee{Email: email, Name: strings.TrimSpace(parsed.Name)})
-	}
-
-	return attendees, skipped
-}
-
-func splitToolAttendeeTokens(raw string) []string {
-	replacer := strings.NewReplacer(";", "\n", ",", "\n")
-	parts := strings.Split(replacer.Replace(raw), "\n")
-	out := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
 }
 
 var _ tools.Handler = (*scheduleMeetingTool)(nil)

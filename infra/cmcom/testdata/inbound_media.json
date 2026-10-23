@@ -1,0 +1,13 @@
+{
+    "from": { "number": "0031612345678", "name": "" },
+    "to": { "number": "00cm.com_agent" },
+    "message": {
+        "text": "",
+        "media": { "mediaUri": "https://temp.com/adsadsa", "contentType": "image/png", "title": "Media items can be empty" },
+        "custom": {}
+    },
+    "reference": "2f2d42ac-3809-40fb-bce5-dc720e400001",
+    "groupings": [ "", "", "" ],
+    "timeUtc": "2019-11-05T08:32:33",
+    "channel": "RCS"
+}

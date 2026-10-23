@@ -23,11 +23,19 @@ func NewUserService(c *Client) (*UserService, error) {
 type userWire struct {
 	ID        mldomain.FlexibleID `json:"id"`
 	Nickname  string              `json:"nickname"`
+	FirstName string              `json:"first_name"`
+	LastName  string              `json:"last_name"`
+	Company   *userCompanyWire    `json:"company"`
 	SiteID    string              `json:"site_id"`
 	CountryID string              `json:"country_id"`
 	UserType  string              `json:"user_type"`
 	Permalink string              `json:"permalink"`
 	Tags      []string            `json:"tags"`
+}
+
+type userCompanyWire struct {
+	BrandName     string `json:"brand_name"`
+	CorporateName string `json:"corporate_name"`
 }
 
 func (s *UserService) Me(ctx context.Context, creds mldomain.Credentials) (*mldomain.User, error) {
@@ -49,13 +57,19 @@ func (s *UserService) fetch(ctx context.Context, creds mldomain.Credentials, pat
 	if !mldomain.ValidNumericID(w.ID.String()) {
 		return nil, &Error{Code: CodeDecode, Message: "user answer carries no id"}
 	}
-	return &mldomain.User{
+	user := &mldomain.User{
 		ID:        w.ID.String(),
 		Nickname:  w.Nickname,
+		FirstName: w.FirstName,
+		LastName:  w.LastName,
 		SiteID:    w.SiteID,
 		CountryID: w.CountryID,
 		UserType:  w.UserType,
 		Permalink: w.Permalink,
 		Tags:      w.Tags,
-	}, nil
+	}
+	if w.Company != nil {
+		user.BrandName, user.CorporateName = w.Company.BrandName, w.Company.CorporateName
+	}
+	return user, nil
 }

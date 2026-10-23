@@ -210,3 +210,16 @@ func TestAMissingCampaignIsAnError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestAStoredCampaignNamesItsEmptyAudience(t *testing.T) {
+	deps := launchDeps()
+	deps.Counts = launchCounts{counts: wce.StatusCounts{}}
+	if !found(runCheck(t, deps), launchcheck.Block, launchcheck.CodeAudienceEmpty) {
+		t.Fatal("a campaign created without contacts has an empty audience")
+	}
+	deps.Counts = launchCounts{counts: wce.StatusCounts{Total: 10, Sent: 10}}
+	report := runCheck(t, deps)
+	if !found(report, launchcheck.Block, launchcheck.CodeNothingPending) || found(report, launchcheck.Block, launchcheck.CodeAudienceEmpty) {
+		t.Fatalf("a campaign whose contacts were all processed has nothing pending: %+v", report.Findings)
+	}
+}

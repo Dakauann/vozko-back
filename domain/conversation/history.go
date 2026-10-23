@@ -55,6 +55,8 @@ type MessageHistoryRecord struct {
 	Read   bool
 	Silent bool
 
+	DeliveryStatus DeliveryStatus
+
 	AdReferral *AdReferral
 }
 
@@ -86,20 +88,21 @@ func (r MessageHistoryRecord) Message() *Message {
 		}
 	}
 	message := &Message{
-		EntryID:      strings.TrimSpace(r.GetEntryID()),
-		EntryType:    entryType,
-		Channel:      channel,
-		MessageType:  msgType,
-		Direction:    r.SentBy.Direction(),
-		SentBy:       r.SentBy,
-		From:         strings.TrimSpace(r.From),
-		To:           strings.TrimSpace(r.To),
-		Text:         strings.TrimSpace(r.Text),
-		Metadata:     r.Metadata,
-		SenderName:   strings.TrimSpace(r.SenderName),
-		SenderAvatar: strings.TrimSpace(r.SenderAvatar),
-		CreatedAt:    timestamp,
-		UpdatedAt:    timestamp,
+		EntryID:        strings.TrimSpace(r.GetEntryID()),
+		EntryType:      entryType,
+		Channel:        channel,
+		MessageType:    msgType,
+		Direction:      r.SentBy.Direction(),
+		SentBy:         r.SentBy,
+		From:           strings.TrimSpace(r.From),
+		To:             strings.TrimSpace(r.To),
+		Text:           strings.TrimSpace(r.Text),
+		Metadata:       r.Metadata,
+		SenderName:     strings.TrimSpace(r.SenderName),
+		SenderAvatar:   strings.TrimSpace(r.SenderAvatar),
+		DeliveryStatus: r.DeliveryStatus,
+		CreatedAt:      timestamp,
+		UpdatedAt:      timestamp,
 	}
 	if r.MediaID != "" {
 		mediaID := r.MediaID

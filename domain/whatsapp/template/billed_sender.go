@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"vozko/domain/choicestats"
 	"vozko/domain/whatsappform"
 )
 
@@ -36,6 +37,8 @@ type BilledSendInput struct {
 	OriginRef     string
 	LeadID        string
 	WorkflowRunID string
+
+	ChoiceSource *choicestats.Source
 }
 
 type BilledSendResult struct {

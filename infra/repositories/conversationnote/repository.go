@@ -93,11 +93,21 @@ func readableIDs(ids ...string) bool {
 	return true
 }
 
-func rowOf(note conversationnote.Note) schema.ConversationNote {
-	mentions := pq.StringArray(note.Mentions)
-	if mentions == nil {
-		mentions = pq.StringArray{}
+func uuidArray(ids []string) pq.StringArray {
+	if ids == nil {
+		return pq.StringArray{}
 	}
+	return pq.StringArray(ids)
+}
+
+func idList(ids pq.StringArray) []string {
+	if ids == nil {
+		return []string{}
+	}
+	return []string(ids)
+}
+
+func rowOf(note conversationnote.Note) schema.ConversationNote {
 	return schema.ConversationNote{
 		ID:          note.ID,
 		WorkspaceID: note.WorkspaceID,
@@ -105,17 +115,14 @@ func rowOf(note conversationnote.Note) schema.ConversationNote {
 		EntryType:   string(note.EntryType),
 		AuthorID:    note.AuthorID,
 		Body:        note.Body,
-		Mentions:    mentions,
+		Mentions:    uuidArray(note.Mentions),
+		ImageIDs:    uuidArray(note.ImageIDs),
 		CreatedAt:   note.CreatedAt.UTC(),
 		DeletedAt:   note.DeletedAt,
 	}
 }
 
 func noteOf(row schema.ConversationNote) conversationnote.Note {
-	mentions := []string(row.Mentions)
-	if mentions == nil {
-		mentions = []string{}
-	}
 	var deletedAt *time.Time
 	if row.DeletedAt != nil {
 		at := row.DeletedAt.UTC()
@@ -128,7 +135,8 @@ func noteOf(row schema.ConversationNote) conversationnote.Note {
 		EntryID:     row.EntryID,
 		AuthorID:    row.AuthorID,
 		Body:        row.Body,
-		Mentions:    mentions,
+		Mentions:    idList(row.Mentions),
+		ImageIDs:    idList(row.ImageIDs),
 		CreatedAt:   row.CreatedAt.UTC(),
 		DeletedAt:   deletedAt,
 	}

@@ -293,9 +293,10 @@ func (a *ChannelAdapter) SendInteractive(ctx context.Context, ec *conversation.E
 		}
 		card.Title = cardFallbackTitle
 	}
-	return a.claimed(ctx, s, func() (string, error) {
+	out, err := a.claimed(ctx, s, func() (string, error) {
 		return a.d.Messaging.SendCard(ctx, s.creds, s.conv.ConversationID, card)
 	})
+	return conversation.ShowingOptions(out, kept), err
 }
 
 func (a *ChannelAdapter) claimed(ctx context.Context, s *sendable, send func() (string, error)) (*conversation.SendOutcome, error) {

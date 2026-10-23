@@ -119,10 +119,7 @@ func (s *ConversationRunStarter) StartForConversation(in ConversationStart) (Sta
 
 func conversationTrigger(w *workflow.Workflow, triggerType workflow.TriggerType) (*workflow.Node, error) {
 	if triggerType == "" {
-		if trigger := w.Graph.TriggerNode(); trigger != nil {
-			return trigger, nil
-		}
-		return nil, workflow.ErrGraphNoTrigger
+		return workflow.MessageStartTrigger(w.Graph.Nodes)
 	}
 	if trigger := w.Graph.TriggerNodeByType(triggerType); trigger != nil {
 		return trigger, nil

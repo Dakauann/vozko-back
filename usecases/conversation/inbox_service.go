@@ -226,7 +226,7 @@ func (s *inboxService) SendTemplateForEntry(entryID, entryType, templateID strin
 	if s.authorizer != nil && !s.authorizer.CanAccessEntry(userID, workspaceID, entryID, entryType, isAdmin) {
 		return "", fmt.Errorf("unauthorized: you don't have access to this entry")
 	}
-	return s.templateSender.SendTemplate(entryID, entryType, templateID, parameters, userID, workspaceID)
+	return s.templateSender.SendTemplate(entryID, entryType, templateID, parameters, nil, userID, workspaceID)
 }
 
 func (s *inboxService) attachAvailableStages(workspaceID string, entries []conversation.InboxEntry) {

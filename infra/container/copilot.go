@@ -66,12 +66,15 @@ func (c *Container) buildCopilot(
 		attendancetools.NewAttendanceReworkTool(attendanceDeps),
 		attendancetools.NewAttendanceLiveTool(attendanceDeps),
 		attendancetools.NewCampaignDispatchTool(c.useCases.getWCDispatchReport, attendanceDeps),
+		attendancetools.NewReadChoiceStatsTool(attendancetools.ChoiceStatsDeps{Reader: c.choiceStatsReader(), Permissions: c.useCases.checkWsAccess, Scopes: c.services.conversationAuthImpl, Now: now}),
 		c.conversationInsightsTool(now),
 		attendancetools.NewCalculateTool(),
 		attendancetools.NewQueryDatasetTool(),
 		attendancetools.NewRenderChartTool(),
 		skilltools.NewLoadSkillTool(skillLibrary),
 	}, append(c.operationTools(), c.numberAutomationTools(getAgent)...)...)
+	toolset = append(toolset, emailCopilotTools(c.email, c.platformEmailRelay)...)
+	toolset = append(toolset, c.emailDesignTools()...)
 	svc := copilot_usecase.NewService(
 		agentloop.Engine{AI: c.services.ai},
 		copilot_usecase.NewRegistry(toolset...),
@@ -122,6 +125,11 @@ func (c *Container) operationTools() []copilot.Tool {
 		},
 		c.studioTools(),
 		{crmtools.NewCreateCalendarEventTool(c.useCases.createCalendarEvent)},
+		{
+			crmtools.NewListGoogleSheetsTool(c.googleSheets.Manager),
+			crmtools.NewCreateGoogleSheetTool(c.googleSheets.Manager),
+			crmtools.NewAddGoogleSheetRowTool(c.googleSheets.Intake),
+		},
 		{
 			crmtools.NewPauseWorkflowTool(c.useCases.scopedWorkflows),
 			crmtools.NewActivateWorkflowTool(c.useCases.scopedWorkflows),

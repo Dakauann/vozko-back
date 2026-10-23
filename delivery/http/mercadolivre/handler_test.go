@@ -122,7 +122,7 @@ func TestTheAccountResponseShape(t *testing.T) {
 	sort.Strings(keys)
 	want := []string{
 		"accessExpiresAt", "agentId", "automationDisclosure", "canAnswerQuestions", "canReadMessages", "canReadQuestions", "canSendMessages",
-		"createdAt", "enableAgentResponses", "enableWorkflow", "grantedScopes", "id", "lastHealthCheckAt", "mlUserId", "needsReconnect",
+		"createdAt", "displayName", "enableAgentResponses", "enableWorkflow", "grantedScopes", "id", "lastHealthCheckAt", "mlUserId", "needsReconnect",
 		"nickname", "siteId", "status", "updatedAt", "workspaceId",
 	}
 	if strings.Join(keys, ",") != strings.Join(want, ",") {
@@ -130,6 +130,28 @@ func TestTheAccountResponseShape(t *testing.T) {
 	}
 	if got["needsReconnect"] != false || got["canSendMessages"] != true {
 		t.Fatalf("body = %s", body)
+	}
+}
+
+func TestTheAccountResponseAlwaysCarriesADisplayName(t *testing.T) {
+	cases := []struct {
+		name     string
+		stored   string
+		nickname string
+		want     string
+	}{
+		{"the stored seller name", "Café do Vale", "DGCAFEDHB50478", "Café do Vale"},
+		{"the nickname before the name is known", "", "DGCAFEDHB50478", "DGCAFEDHB50478"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			account := sampleAccount()
+			account.DisplayName, account.Nickname = c.stored, c.nickname
+			got := toAccountResponse(account)
+			if got.DisplayName != c.want || got.Nickname != c.nickname {
+				t.Fatalf("displayName = %q nickname = %q", got.DisplayName, got.Nickname)
+			}
+		})
 	}
 }
 

@@ -48,7 +48,7 @@ func PublishVersionOf(w *Workflow, publishedBy string, rewriteDraft bool) Publis
 	return PublishVersion{
 		WorkflowID:    w.ID,
 		Type:          w.Type,
-		Graph:         StripPins(w.Graph),
+		Graph:         StripDraftOnly(w.Graph),
 		GraphHash:     GraphHash(&w.Graph),
 		PublishedBy:   publishedBy,
 		DraftRevision: w.Version,
@@ -67,7 +67,7 @@ type PublishedReader interface {
 }
 
 func GraphHash(g *Graph) string {
-	published := StripPins(*g)
+	published := StripDraftOnly(*g)
 	b, err := json.Marshal(&published)
 	if err != nil {
 		return ""
@@ -101,6 +101,7 @@ func (g Graph) Clone() Graph {
 			if n.Pinned != nil {
 				n.Pinned = n.Pinned.clone()
 			}
+			n.TestInputs = cloneTestInputs(n.TestInputs)
 			out.Nodes[i] = n
 		}
 	}

@@ -61,7 +61,15 @@ func (s *SimulatedToolService) Execute(ctx context.Context, name string, params 
 }
 
 func (s *SimulatedToolService) ExecuteWithConfig(ctx context.Context, name string, config, params map[string]interface{}) (tools.ExecutionResult, error) {
-	if s.real == nil || !SimulationRunsForReal(name, config) {
+	if s.real == nil {
+		return s.stub(name), nil
+	}
+	if !SimulationRunsForReal(name, config) {
+		if handler, ok := s.real.Handler(name); ok {
+			if previewer, ok := handler.(tools.Previewer); ok {
+				return previewer.Preview(ctx, config, params)
+			}
+		}
 		return s.stub(name), nil
 	}
 	return s.real.ExecuteWithConfig(ctx, name, config, params)

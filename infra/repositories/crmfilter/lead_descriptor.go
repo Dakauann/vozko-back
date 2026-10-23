@@ -103,6 +103,9 @@ var contactChannels = []contactChannel{
 	{shared.EntryTypeWebchat, "wc", "webchat_conversations", "webchat_visitors", "visitor_id"},
 	{shared.EntryTypeMercadoLivre, "ml", "mercadolivre_conversations", "mercadolivre_contacts", "contact_id"},
 	{shared.EntryTypeTikTok, "tt", "tiktok_conversations", "tiktok_contacts", "contact_id"},
+	{shared.EntryTypeEmail, "em", "email_conversations", "email_contacts", "contact_id"},
+	{shared.EntryTypeRCS, "rc", "rcs_conversations", "carrier_contacts", "contact_id"},
+	{shared.EntryTypeSMS, "sm", "sms_conversations", "carrier_contacts", "contact_id"},
 }
 
 func (c contactChannel) conversationAlias(suffix string) string { return c.alias + "c_" + suffix }

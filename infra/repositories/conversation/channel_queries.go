@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"vozko/domain/conversation"
+	mldomain "vozko/domain/mercadolivre"
 	"vozko/domain/shared"
 	"vozko/infra/database/sqlexpr"
 )
@@ -259,7 +260,7 @@ var channelQueries = []channelQuery{
 
 		AccountIDField:     "COALESCE(mlc.account_id::text, '')",
 		ContainerIDField:   "mla.id::text",
-		ContainerNameField: "mla.nickname",
+		ContainerNameField: mldomain.AccountNameSQL("mla."),
 		LineField:          "COALESCE(NULLIF(mla.nickname, ''), mla.ml_user_id)",
 		AutomationFields: "COALESCE(mla.agent_id::text, '') AS agent_id, " +
 			"COALESCE(mla.workflow_id::text, '') AS workflow_id, " +
@@ -323,6 +324,126 @@ var channelQueries = []channelQuery{
 		DepartmentEntryCol: "ttc_f.id",
 
 		WindowOpenPredicate: tiktokWindowOpen,
+	},
+	{
+		EntryType:  shared.EntryTypeEmail,
+		EntryTable: "email_conversations",
+
+		EntryJoin: `JOIN email_conversations emc ON emc.id = %[1]s AND emc.deleted_at IS NULL
+		             JOIN email_inboxes emi ON emi.id = emc.sender_id`,
+		ContactJoin: `JOIN (
+	SELECT id, COALESCE(NULLIF(display_name, ''), address) AS name,
+	       address AS number,
+	       '' AS profile_picture_url, false AS blocked, deleted_at
+	FROM email_contacts
+) l ON l.id = emc.contact_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(emc.sender_id::text, '')",
+		ContainerIDField:   "emi.id::text",
+		ContainerNameField: "COALESCE(NULLIF(emi.name, ''), emi.address)",
+		LineField:          "COALESCE(NULLIF(emi.address, ''), emi.name)",
+		AutomationFields: "COALESCE(emi.agent_id::text, '') AS agent_id, " +
+			"COALESCE(emi.workflow_id::text, '') AS workflow_id, " +
+			"emi.enable_agent_responses AS agent_responses_enabled, " +
+			"emi.enable_workflow AS workflow_enabled",
+
+		AutomationColumn:  "emc.automation_enabled",
+		StatusColumn:      "emc.conversation_status",
+		CloseTable:        "emc",
+		MessageClockTable: "emc",
+
+		ContainerCTE:         `SELECT emc_f.id AS entry_id FROM email_conversations emc_f WHERE emc_f.sender_id = ? AND emc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "emc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT emc_f.id FROM email_conversations emc_f
+				JOIN email_inboxes emi_f ON emi_f.id = emc_f.sender_id
+				WHERE emc_f.sender_id = ? AND emc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "emi_f.department_id",
+		DepartmentEntryCol: "emc_f.id",
+
+		WindowOpenPredicate: emailWindowOpen,
+	},
+	{
+		EntryType:  shared.EntryTypeRCS,
+		EntryTable: "rcs_conversations",
+
+		EntryJoin: `JOIN rcs_conversations rcc ON rcc.id = %[1]s AND rcc.deleted_at IS NULL
+		             JOIN rcs_senders rcsd ON rcsd.id = rcc.sender_id`,
+		ContactJoin: `JOIN (
+	SELECT id, COALESCE(NULLIF(display_name, ''), phone) AS name,
+	       phone AS number,
+	       '' AS profile_picture_url, false AS blocked, deleted_at
+	FROM carrier_contacts
+) l ON l.id = rcc.contact_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(rcc.sender_id::text, '')",
+		ContainerIDField:   "rcsd.id::text",
+		ContainerNameField: "COALESCE(NULLIF(rcsd.brand_name, ''), rcsd.id::text)",
+		LineField:          "COALESCE(NULLIF(rcsd.brand_name, ''), rcsd.id::text)",
+		AutomationFields: "COALESCE(rcsd.agent_id::text, '') AS agent_id, " +
+			"COALESCE(rcsd.workflow_id::text, '') AS workflow_id, " +
+			"rcsd.enable_agent_responses AS agent_responses_enabled, " +
+			"rcsd.enable_workflow AS workflow_enabled",
+
+		AutomationColumn:  "rcc.automation_enabled",
+		StatusColumn:      "rcc.conversation_status",
+		CloseTable:        "rcc",
+		MessageClockTable: "rcc",
+
+		ContainerCTE:         `SELECT rcc_f.id AS entry_id FROM rcs_conversations rcc_f WHERE rcc_f.sender_id = ? AND rcc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "rcc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT rcc_f.id FROM rcs_conversations rcc_f
+				JOIN rcs_senders rcsd_f ON rcsd_f.id = rcc_f.sender_id
+				WHERE rcc_f.sender_id = ? AND rcc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "rcsd_f.department_id",
+		DepartmentEntryCol: "rcc_f.id",
+
+		WindowOpenPredicate: rcsWindowOpen,
+	},
+	{
+		EntryType:  shared.EntryTypeSMS,
+		EntryTable: "sms_conversations",
+
+		EntryJoin: `JOIN sms_conversations smc ON smc.id = %[1]s AND smc.deleted_at IS NULL
+		             JOIN sms_routes smr ON smr.id = smc.sender_id`,
+		ContactJoin: `JOIN (
+	SELECT id, COALESCE(NULLIF(display_name, ''), phone) AS name,
+	       phone AS number,
+	       '' AS profile_picture_url, false AS blocked, deleted_at
+	FROM carrier_contacts
+) l ON l.id = smc.contact_id AND l.deleted_at IS NULL`,
+
+		AccountIDField:     "COALESCE(smc.sender_id::text, '')",
+		ContainerIDField:   "smr.id::text",
+		ContainerNameField: "COALESCE(NULLIF(smr.brand_prefix, ''), smr.id::text)",
+		LineField:          "COALESCE(NULLIF(smr.number, ''), smr.brand_prefix)",
+		AutomationFields: "COALESCE(smr.agent_id::text, '') AS agent_id, " +
+			"COALESCE(smr.workflow_id::text, '') AS workflow_id, " +
+			"smr.enable_agent_responses AS agent_responses_enabled, " +
+			"smr.enable_workflow AS workflow_enabled",
+
+		AutomationColumn:  "smc.automation_enabled",
+		StatusColumn:      "smc.conversation_status",
+		CloseTable:        "smc",
+		MessageClockTable: "smc",
+
+		ContainerCTE:         `SELECT smc_f.id AS entry_id FROM sms_conversations smc_f WHERE smc_f.sender_id = ? AND smc_f.deleted_at IS NULL%[1]s`,
+		ContainerCTEEntryCol: "smc_f.id",
+
+		ContainerFilter: `cm.entry_id IN (
+				SELECT smc_f.id FROM sms_conversations smc_f
+				JOIN sms_routes smr_f ON smr_f.id = smc_f.sender_id
+				WHERE smc_f.sender_id = ? AND smc_f.deleted_at IS NULL%[1]s
+			)`,
+		DepartmentColumn:   "smr_f.department_id",
+		DepartmentEntryCol: "smc_f.id",
+
+		WindowOpenPredicate: smsWindowOpen,
 	},
 	{
 		EntryType:  shared.EntryTypeUnofficialWhatsApp,

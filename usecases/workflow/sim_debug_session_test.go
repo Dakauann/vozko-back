@@ -97,11 +97,12 @@ type debugSim struct {
 }
 
 type debugSimOptions struct {
-	workflow    *workflow.Workflow
-	awaitStart  bool
-	idle        time.Duration
-	runs        *runDetailStub
-	permissions permissionStub
+	workflow      *workflow.Workflow
+	awaitStart    bool
+	idle          time.Duration
+	runs          *runDetailStub
+	permissions   permissionStub
+	triggerInputs TriggerInputReaders
 }
 
 func startDebugSimulation(t *testing.T, opts debugSimOptions) *debugSim {
@@ -120,6 +121,7 @@ func startDebugSimulation(t *testing.T, opts debugSimOptions) *debugSim {
 		Runs:             opts.runs,
 		Permissions:      opts.permissions,
 		PauseIdleTimeout: opts.idle,
+		TriggerInputs:    opts.triggerInputs,
 	})
 	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

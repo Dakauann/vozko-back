@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	mldomain "vozko/domain/mercadolivre"
 	"vozko/domain/workflow"
 )
 
@@ -21,7 +22,7 @@ func TestEveryEntryPointQueryBindsExactlyTheArgumentsItIsGiven(t *testing.T) {
 		{"agents", boundAgentsSQL, 3},
 		{"template exits", templateExitsSQL, 2},
 		{"campaign exits", campaignExitsSQL, 2},
-		{"linked channels", linkedChannelsSQL, len(linkedChannelArgs("ws", []string{"wf"}, nil))},
+		{"linked channels", linkedChannelsSQL, len(linkedChannelArgs("ws", []string{"wf"}))},
 		{"enabled channels", enabledChannelsSQL, len(enabledChannelArgs("ws"))},
 	} {
 		if got := strings.Count(tc.sql, "?"); got != tc.args {
@@ -50,6 +51,14 @@ func TestEveryChannelTableIsAskedForItsLiveRowsInTheWorkspace(t *testing.T) {
 		if !strings.Contains(linkedChannelsSQL, "FROM "+c.table+" WHERE workspace_id = ? AND deleted_at IS NULL") ||
 			!strings.Contains(enabledChannelsSQL, "FROM "+c.table+" WHERE workspace_id = ? AND deleted_at IS NULL") {
 			t.Errorf("%s is not read by workspace and liveness", c.table)
+		}
+	}
+}
+
+func TestTheMercadoLivreAccountIsNamedBySellerNameFirst(t *testing.T) {
+	for _, c := range channelTables {
+		if c.kind == workflow.ChannelMercadoLivreAccount && c.name != mldomain.AccountNameSQL("") {
+			t.Fatalf("mercado livre account name = %q", c.name)
 		}
 	}
 }

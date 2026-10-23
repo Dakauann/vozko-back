@@ -85,6 +85,7 @@ func (r *accountRepository) Reconnect(ctx context.Context, a *mldomain.Account) 
 			"deleted_at":           nil,
 			"site_id":              a.SiteID,
 			"nickname":             a.Nickname,
+			"display_name":         displayNameColumn(a.DisplayName),
 			"access_token":         piigorm.NewEncrypted(a.AccessToken),
 			"refresh_token":        piigorm.NewEncrypted(a.RefreshToken),
 			"access_expires_at":    a.AccessExpiresAt,
@@ -127,8 +128,15 @@ func (r *accountRepository) UpdateCapabilities(ctx context.Context, id string, c
 	}), mldomain.ErrAccountNotFound)
 }
 
-func (r *accountRepository) UpdateNickname(ctx context.Context, id, nickname string) error {
-	return database.AffectedOne(r.model(ctx).Where("id = ?", id).Update("nickname", strings.TrimSpace(nickname)), mldomain.ErrAccountNotFound)
+func (r *accountRepository) UpdateNames(ctx context.Context, id, nickname, displayName string) error {
+	return database.AffectedOne(r.model(ctx).Where("id = ?", id).Updates(map[string]any{
+		"nickname":     strings.TrimSpace(nickname),
+		"display_name": displayNameColumn(displayName),
+	}), mldomain.ErrAccountNotFound)
+}
+
+func displayNameColumn(displayName string) schema.OptionalText {
+	return schema.OptionalText(strings.TrimSpace(displayName))
 }
 
 func (r *accountRepository) FindByID(ctx context.Context, id string) (*mldomain.Account, error) {
@@ -193,7 +201,8 @@ func (r *accountRepository) ListByWorkspace(ctx context.Context, in mldomain.Lis
 	}
 	query := r.model(ctx).Where("workspace_id = ?", in.WorkspaceID)
 	if s := strings.TrimSpace(in.Search); s != "" {
-		query = query.Where("(nickname ILIKE ? OR ml_user_id = ?)", "%"+escapeLike(s)+"%", s)
+		pattern := "%" + escapeLike(s) + "%"
+		query = query.Where("(nickname ILIKE ? OR display_name ILIKE ? OR ml_user_id = ?)", pattern, pattern, s)
 	}
 	if in.Status != nil {
 		query = query.Where("status = ?", string(*in.Status))
@@ -348,6 +357,7 @@ func toAccountSchema(a *mldomain.Account) *schema.MercadoLivreAccount {
 		MLUserID:             a.MLUserID,
 		SiteID:               a.SiteID,
 		Nickname:             a.Nickname,
+		DisplayName:          displayNameColumn(a.DisplayName),
 		AccessExpiresAt:      a.AccessExpiresAt,
 		RefreshExpiresAt:     a.RefreshExpiresAt,
 		GrantedScopes:        strings.Join(a.GrantedScopes, " "),
@@ -384,6 +394,7 @@ func toAccountDomain(record *schema.MercadoLivreAccount) *mldomain.Account {
 		MLUserID:             record.MLUserID,
 		SiteID:               record.SiteID,
 		Nickname:             record.Nickname,
+		DisplayName:          string(record.DisplayName),
 		AccessToken:          record.AccessToken.Plain,
 		RefreshToken:         record.RefreshToken.Plain,
 		AccessExpiresAt:      record.AccessExpiresAt,

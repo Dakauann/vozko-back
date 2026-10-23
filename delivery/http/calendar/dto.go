@@ -54,11 +54,6 @@ type UpdateEventRequest struct {
 	SendUpdates             string                            `json:"sendUpdates" example:"all"`
 }
 
-type ConnectGoogleRequest struct {
-	Code        string `json:"code" example:"4/0AeanS0b..."`
-	RedirectURI string `json:"redirectUri" example:"https://app.example.com/dashboard/integrations"`
-}
-
 type AttendeeResponse struct {
 	Email    string `json:"email" example:"cliente@empresa.com"`
 	Name     string `json:"name,omitempty" example:"João Silva"`
@@ -104,14 +99,6 @@ type EventResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-type ConnectionResponse struct {
-	ID          string    `json:"id" example:"gcc_a1b2c3"`
-	WorkspaceID string    `json:"workspaceId" example:"ws_a1b2c3"`
-	Email       string    `json:"email" example:"agenda@empresa.com"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
-}
-
 type WatchChannelResponse struct {
 	ChannelID  string    `json:"channelId" example:"chn_a1b2c3"`
 	Expiration time.Time `json:"expiration"`
@@ -126,29 +113,12 @@ type EventListResponse struct {
 	Meta response.PaginationMeta `json:"meta"`
 }
 
-type ConnectionEnvelope struct {
-	Connection *ConnectionResponse `json:"connection"`
-}
-
-type ConnectionStatusResponse struct {
-	Connected  bool                `json:"connected" example:"true"`
-	Connection *ConnectionResponse `json:"connection"`
-}
-
 type WatchEnvelope struct {
 	Channel WatchChannelResponse `json:"channel"`
 }
 
-type AuthURLResponse struct {
-	AuthURL string `json:"authUrl" example:"https://accounts.google.com/o/oauth2/v2/auth?client_id=..."`
-}
-
 type DeletedResponse struct {
 	Deleted bool `json:"deleted" example:"true"`
-}
-
-type DisconnectedResponse struct {
-	Disconnected bool `json:"disconnected" example:"true"`
 }
 
 type StoppedResponse struct {
@@ -227,17 +197,4 @@ func toEventResponses(items []*calendardomain.CalendarEvent) []*EventResponse {
 		out[i] = toEventResponse(it)
 	}
 	return out
-}
-
-func toConnectionResponse(c *calendardomain.GoogleCalendarConnection) *ConnectionResponse {
-	if c == nil {
-		return nil
-	}
-	return &ConnectionResponse{
-		ID:          c.ID,
-		WorkspaceID: c.WorkspaceID,
-		Email:       c.Email,
-		CreatedAt:   c.CreatedAt,
-		UpdatedAt:   c.UpdatedAt,
-	}
 }

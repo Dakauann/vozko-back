@@ -19,13 +19,14 @@ func NewAssignMemberExecutor(workspaceRepo workspace.Repository, handOff Convers
 
 func (e *assignMemberExecutor) Definition() workflow.NodeDefinition {
 	return workflow.NodeDefinition{
-		Type:         workflow.NodeTypeActionAssignMember,
-		TestBehavior: workflow.NodeTestWritesData,
-		Category:     workflow.NodeCategoryAction,
-		Scopes:       []workflow.NodeScope{workflow.NodeScopeShared},
-		Label:        "Atribuir ao Membro",
-		Description:  "Atribui a conversa a um membro específico do workspace.",
-		Icon:         "UserCircle",
+		Type:              workflow.NodeTypeActionAssignMember,
+		NeedsConversation: true,
+		TestBehavior:      workflow.NodeTestWritesData,
+		Category:          workflow.NodeCategoryAction,
+		Scopes:            []workflow.NodeScope{workflow.NodeScopeShared},
+		Label:             "Atribuir ao Membro",
+		Description:       "Atribui a conversa a um membro específico do workspace.",
+		Icon:              "UserCircle",
 		Guidance: workflow.NodeGuidance{
 			When: "Para atribuir a conversa a um atendente específico.",
 		},
@@ -34,10 +35,10 @@ func (e *assignMemberExecutor) Definition() workflow.NodeDefinition {
 			{ID: "erro", Label: "Erro", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "success", Description: "true quando a atribuição é realizada com sucesso"},
-			{Key: "assigned_user_id", Description: "ID do usuário atribuído"},
-			{Key: "assigned_user_email", Description: "E-mail do usuário atribuído"},
-			{Key: "error", Description: "Descrição do erro quando a atribuição falha"},
+			{Key: "success", Description: "true quando a atribuição é realizada com sucesso", Label: "Deu certo", Type: workflow.VariableTypeBoolean},
+			{Key: "assigned_user_id", Description: "ID do usuário atribuído", Label: "ID de quem recebeu", Type: workflow.VariableTypeText},
+			{Key: "assigned_user_email", Description: "E-mail do usuário atribuído", Label: "E-mail de quem recebeu", Type: workflow.VariableTypeText},
+			{Key: "error", Description: "Descrição do erro quando a atribuição falha", Label: "Erro", Type: workflow.VariableTypeText},
 		},
 		DefaultConfig: map[string]interface{}{
 			"member_id": "",

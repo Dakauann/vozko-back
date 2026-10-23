@@ -25,8 +25,14 @@ func (t *Template) BelongsToWABA(wabaID string) bool {
 }
 
 func (t *Template) ValidateParams(body, header []string) error {
-	bodyNames, headerNames := t.GetBodyAndHeaderParameterNames()
-	if !everySlotFilled(body, len(bodyNames)) || !everySlotFilled(header, len(headerNames)) {
+	slots := t.ParameterSlots()
+	headerSlots := 0
+	for _, slot := range slots {
+		if slot.Header {
+			headerSlots++
+		}
+	}
+	if !everySlotFilled(body, len(slots)-headerSlots) || !everySlotFilled(header, headerSlots) {
 		return ErrTemplateParamsMismatch
 	}
 	return nil

@@ -15,7 +15,7 @@ import (
 func manualGraph(endID string) workflow.Graph {
 	return workflow.Graph{
 		Nodes: []workflow.Node{
-			{ID: "t", Type: workflow.NodeTypeTriggerManual, Config: map[string]interface{}{}},
+			{ID: "t", Type: workflow.NodeTypeTriggerMessageReceived, Config: map[string]interface{}{}},
 			{ID: endID, Type: workflow.NodeTypeEnd, Config: map[string]interface{}{}},
 		},
 		Edges: []workflow.Edge{{Source: "t", Target: endID}},

@@ -45,11 +45,15 @@ const (
 	LintSegmentedSendConflict    LintIssueCode = "NODE_SEGMENTED_SEND_CONFLICT"
 	LintInvalidToolParamType     LintIssueCode = "NODE_INVALID_TOOL_PARAM_TYPE"
 	LintInvalidInteractiveConfig LintIssueCode = "NODE_INVALID_INTERACTIVE_CONFIG"
+	LintInvalidCarrierMessage    LintIssueCode = "NODE_INVALID_CARRIER_MESSAGE"
+	LintInvalidWebhookTrigger    LintIssueCode = "NODE_INVALID_WEBHOOK_TRIGGER"
+	LintNodeNeedsConversation    LintIssueCode = "NODE_NEEDS_CONVERSATION"
 	LintInvalidDTMFConfig        LintIssueCode = "NODE_INVALID_DTMF_CONFIG"
 	LintInvalidResourceRef       LintIssueCode = "NODE_INVALID_RESOURCE_REF"
 	LintInvalidConfigValue       LintIssueCode = "NODE_INVALID_CONFIG_VALUE"
 	LintReasoningUnsupported     LintIssueCode = "NODE_REASONING_UNSUPPORTED"
 	LintPinInvalid               LintIssueCode = "NODE_PIN_INVALID"
+	LintSheetMappingInvalid      LintIssueCode = "NODE_SHEET_MAPPING_INVALID"
 	LintVoiceTrunkInvalid        LintIssueCode = "WORKFLOW_VOICE_TRUNK_INVALID"
 	LintWorkflowInvalid          LintIssueCode = "WORKFLOW_INVALID"
 
@@ -139,6 +143,21 @@ var PureGraphRules = []GraphRule{
 		Validate: ValidateInteractivePromptConfig,
 	},
 	{
+		Code:     LintInvalidCarrierMessage,
+		Hint:     "No nó action_send_carrier, 'channel' é 'rcs' (com 'sender_id' e 'content' no formato do compositor RCS: text, media, cards e suggestions) ou 'sms' (com 'route_id' e 'text' de até 8 partes). Variáveis {{...}} são aceitas e conferidas de novo no envio.",
+		Validate: ValidateCarrierSends,
+	},
+	{
+		Code:     LintInvalidWebhookTrigger,
+		Hint:     "No gatilho Webhook, 'start_on' é 'conversation' (o padrão: a conversa existente pelo entry_id ou telefone) ou 'lead' (o lead pelo telefone, criado se não existir, ou pelo e-mail). 'events' é uma lista opcional de nomes de evento aceitos.",
+		Validate: ValidateWebhookTriggers,
+	},
+	{
+		Code:     LintInvalidPlatformEmail,
+		Hint:     "No nó action_send_platform_email, 'body_mode' é 'text' (com 'text') ou 'design' (com 'design_id' escolhido na lista de designs salvos). 'sender_id' vazio usa o remetente padrão; remetente e design vêm da lista, não de variáveis. Assunto, destinatário e texto aceitam variáveis {{...}}.",
+		Validate: ValidatePlatformEmailSends,
+	},
+	{
 		Code:     LintMissingRequiredField,
 		Hint:     "O nó action_update_lead precisa de ao menos um dado para gravar: CEP, logradouro, número, complemento, bairro, cidade, UF, data de nascimento ou um campo personalizado em custom_fields (chave do campo e valor, que aceita variáveis).",
 		Validate: ValidateUpdateLeadConfig,
@@ -225,11 +244,14 @@ func LintGraph(g *Graph, wfType WorkflowType, catalog []NodeDefinition, exempt m
 	defs := NodeCatalogMap(catalog)
 	lintEdgeHandles(g, defs, resolveHandles, add)
 	lintDataFlow(g, defs, add)
+	lintDataRefAvailability(g, defs, add)
 	lintFunctionalResourceRefs(g, add)
 	lintNodeShape(g, defs, add)
 	lintCodeReadsTemplates(g, add)
 	lintSecretsInPlainText(g, add)
 	lintPinnedOutputs(g, add)
+	lintConversationNodesOnLeadRuns(g, defs, add)
+	lintSendsOutsideWindow(g, add)
 
 	return report
 }
@@ -302,6 +324,20 @@ func lintSecretsInPlainText(g *Graph, add func(LintIssue)) {
 					fmt.Sprintf("Mova o valor para os segredos do workspace e leia com secrets.get('%s').", suggestedSecretName(name)))
 			}
 		}
+		lintTestInputCredentials(n, add)
+	}
+}
+
+func lintTestInputCredentials(n Node, add func(LintIssue)) {
+	for _, scenario := range n.TestInputs {
+		path, ok := plainCredentialInJSON(scenario.Input)
+		if !ok {
+			continue
+		}
+		key := path[len(path)-1]
+		addPlainSecretIssue(add, n, "testInputs", "testInputs."+scenario.Name+"."+strings.Join(path, "."),
+			fmt.Sprintf("o campo %q do cenário de teste %q", key, scenario.Name),
+			"Apague o valor do cenário salvo e digite-o só na hora do teste; cenários ficam salvos no rascunho.")
 	}
 }
 
@@ -521,6 +557,9 @@ func lintNodeShape(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssu
 		}
 
 		for key, val := range n.Config {
+			if IsCommonNodeConfigKey(key) {
+				continue
+			}
 			if !known[key] {
 				add(LintIssue{
 					Code: LintUnknownConfigKey, Severity: SeverityAdvisory,
@@ -668,4 +707,28 @@ func quotedParts(s string) []string {
 		s = s[i+2+j:]
 	}
 	return out
+}
+
+func lintConversationNodesOnLeadRuns(g *Graph, defs map[NodeType]NodeDefinition, add func(LintIssue)) {
+	startsOnLead := false
+	for _, n := range g.Nodes {
+		if TriggerNodeStartsOnLead(n) {
+			startsOnLead = true
+			break
+		}
+	}
+	if !startsOnLead {
+		return
+	}
+	for _, n := range g.Nodes {
+		if !defs[n.Type].NeedsConversation {
+			continue
+		}
+		add(LintIssue{
+			Code: LintNodeNeedsConversation, Severity: SeverityAdvisory,
+			NodeID:  n.ID,
+			Message: fmt.Sprintf("O nó %q precisa de uma conversa, mas este fluxo começa em um lead", n.ID),
+			Hint:    "Execuções que começam em um lead (Aniversário, ou Webhook iniciando em Lead) não têm conversa aberta, então este nó segue sem efeito. Use nós que funcionam sem conversa, como e-mail, CRM e requisição HTTP.",
+		})
+	}
 }

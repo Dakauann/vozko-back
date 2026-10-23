@@ -49,6 +49,7 @@ type LeadImportIssue struct {
 	Reason   string       `gorm:"type:varchar(48);not null"`
 	Field    OptionalText `gorm:"type:text"`
 	Rejected bool         `gorm:"not null;default:false"`
+	Hint     OptionalText `gorm:"type:varchar(254)"`
 }
 
 func (LeadImportIssue) TableName() string {

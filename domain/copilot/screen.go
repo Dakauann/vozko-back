@@ -46,6 +46,7 @@ const (
 	ScreenListen        ScreenCommandName = "listen"
 	ScreenSavePreset    ScreenCommandName = "save_preset"
 	ScreenCreateProject ScreenCommandName = "create_project"
+	ScreenOpenDesign    ScreenCommandName = "open_design"
 )
 
 var screenTimeouts = map[ScreenCommandName]time.Duration{
@@ -58,10 +59,11 @@ var screenTimeouts = map[ScreenCommandName]time.Duration{
 	ScreenListen:        45 * time.Second,
 	ScreenSavePreset:    20 * time.Second,
 	ScreenCreateProject: 45 * time.Second,
+	ScreenOpenDesign:    30 * time.Second,
 }
 
 func ScreenCommandNames() []ScreenCommandName {
-	return []ScreenCommandName{ScreenRead, ScreenEdit, ScreenLook, ScreenResolveSource, ScreenFollowJob, ScreenExport, ScreenListen, ScreenSavePreset, ScreenCreateProject}
+	return []ScreenCommandName{ScreenRead, ScreenEdit, ScreenLook, ScreenResolveSource, ScreenFollowJob, ScreenExport, ScreenListen, ScreenSavePreset, ScreenCreateProject, ScreenOpenDesign}
 }
 
 func (n ScreenCommandName) Known() bool {
@@ -70,7 +72,7 @@ func (n ScreenCommandName) Known() bool {
 }
 
 func (n ScreenCommandName) NeedsProject() bool {
-	return n != ScreenCreateProject
+	return n != ScreenCreateProject && n != ScreenOpenDesign
 }
 
 func (n ScreenCommandName) Timeout() time.Duration {
@@ -78,7 +80,7 @@ func (n ScreenCommandName) Timeout() time.Duration {
 }
 
 func (n ScreenCommandName) Commits() bool {
-	return n == ScreenEdit || n == ScreenSavePreset || n == ScreenCreateProject
+	return n == ScreenEdit || n == ScreenSavePreset || n == ScreenCreateProject || n == ScreenOpenDesign
 }
 
 type ScreenGo struct {
@@ -195,7 +197,7 @@ func (v View) Offers(tool Tool) bool {
 }
 
 func (v View) Focused() bool {
-	return v.OnStudio()
+	return v.OnEditor()
 }
 
 func ScreenKey(threadID, commandID string) string {

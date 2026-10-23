@@ -1,0 +1,10 @@
+expired_state
+google_account_authorization_declined
+google_account_connect_failed
+google_account_failed
+google_account_needs_reconnect
+google_account_not_connected
+google_account_scope_not_granted
+google_account_unknown_product
+invalid_state
+workspace_required

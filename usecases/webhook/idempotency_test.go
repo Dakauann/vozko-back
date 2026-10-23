@@ -217,3 +217,11 @@ func TestIdempotencyGuard_AcquireRedisErrorFailsClosed(t *testing.T) {
 		t.Fatal("expected acquire error when shared state fails")
 	}
 }
+
+func TestIdempotencyGuard_AcquireWithoutAStoreFailsClosed(t *testing.T) {
+	guard := NewIdempotencyGuard(nil, 5*time.Minute)
+
+	if _, err := guard.Acquire("my-key"); err == nil {
+		t.Fatal("a guard with no store must refuse to claim a key instead of letting every copy through")
+	}
+}

@@ -42,7 +42,7 @@ func (e *transferToQueueExecutor) Definition() workflow.NodeDefinition {
 			{ID: queueTimeoutHandle, Label: "Ninguém atendeu", Optional: true},
 		},
 		OutputKeys: []workflow.OutputKeyDefinition{
-			{Key: "transferred", Description: "Verdadeiro quando um atendente assumiu a ligação"},
+			{Key: "transferred", Description: "Verdadeiro quando um atendente assumiu a ligação", Label: "Atendente assumiu", Type: workflow.VariableTypeBoolean},
 		},
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "queue_id", Label: "Fila", Type: "select", OptionsSource: "call_queues", Required: true, Description: "Fila de atendimento que recebe a ligação."},

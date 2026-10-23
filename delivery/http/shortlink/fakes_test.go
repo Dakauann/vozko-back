@@ -79,10 +79,12 @@ func (f fakeUnlock) Execute(ctx context.Context, code, password string) (*shortl
 type fakePublish struct {
 	called bool
 	err    error
+	last   shortlinkdomain.ClickMessage
 }
 
 func (f *fakePublish) Execute(ctx context.Context, msg shortlinkdomain.ClickMessage) error {
 	f.called = true
+	f.last = msg
 	return f.err
 }
 

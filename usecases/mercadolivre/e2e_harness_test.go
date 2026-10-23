@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -54,6 +53,7 @@ import (
 	mercadolivre_repository "vozko/infra/repositories/mercadolivre"
 	"vozko/infra/repositories/repotest"
 	webhook_repository "vozko/infra/repositories/webhook"
+	"vozko/infra/testenv"
 	cauc "vozko/usecases/commentautomation"
 	conversation_usecase "vozko/usecases/conversation"
 	"vozko/usecases/conversationmedia"
@@ -77,9 +77,8 @@ const (
 
 func e2eDB(t testing.TB) *gorm.DB {
 	t.Helper()
-	if os.Getenv("VOZKO_TEST_DB") != "1" || os.Getenv("VOZKO_TEST_REDIS") == "" {
-		t.Skip("set VOZKO_TEST_DB=1, the DB_* vars and VOZKO_TEST_REDIS to run the Mercado Livre pipeline end to end")
-	}
+	testenv.Postgres(t)
+	testenv.Redis(t)
 	v, err := vault.New(bytes.Repeat([]byte{0x11}, 32), 1)
 	if err != nil {
 		t.Fatal(err)
@@ -510,9 +509,10 @@ func (h *handlerTimes) snapshot() []time.Duration {
 func newHarness(t testing.TB) *harness {
 	t.Helper()
 	db := e2eDB(t)
-	redis := infracache.NewRedisProvider(os.Getenv("VOZKO_TEST_REDIS"), os.Getenv("VOZKO_TEST_REDIS_PASSWORD"))
+	target := testenv.Redis(t)
+	redis := infracache.NewRedisProvider(target.Addr, target.Password)
 	if _, err := redis.SharedState().Exists("ml:e2e:ping"); err != nil {
-		t.Fatalf("redis at %s is not reachable: %v", os.Getenv("VOZKO_TEST_REDIS"), err)
+		t.Fatalf("redis at %s is not reachable: %v", target.Addr, err)
 	}
 	fake := mlfake.New(mlfake.Config{AppID: e2eAppID, ClientSecret: e2eSecret, RedirectURI: e2eRedirect, IDBase: 13000000000 + rand.Int64N(800000000)*10}).Start()
 	t.Cleanup(fake.Close)

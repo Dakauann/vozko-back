@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	mldomain "vozko/domain/mercadolivre"
@@ -122,8 +121,8 @@ func (h *HealthCheck) check(ctx context.Context, account *mldomain.Account) erro
 		}
 		return fmt.Errorf("%w: %v", ErrProbeInconclusive, err)
 	}
-	if nickname := strings.TrimSpace(me.Nickname); nickname != "" && nickname != account.Nickname {
-		if err := h.accounts.UpdateNickname(ctx, account.ID, nickname); err != nil {
+	if account.RefreshNames(*me) {
+		if err := h.accounts.UpdateNames(ctx, account.ID, account.Nickname, account.DisplayName); err != nil {
 			return err
 		}
 	}

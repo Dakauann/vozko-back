@@ -24,7 +24,7 @@ type InboxPlaceholderWriter interface {
 }
 
 type SeedAssetReader interface {
-	GetMediaByID(mediaID string) (*media.Media, error)
+	GetMediaForWorkspace(workspaceID, mediaID string) (*media.Media, error)
 }
 
 type SeedAttachmentWriter interface {

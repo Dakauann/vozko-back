@@ -39,7 +39,7 @@ func (f *sqlFixture) workflow(published *int, draft string) string {
 	f.t.Helper()
 	id := uuid.NewString()
 	f.exec(`INSERT INTO workflows (id, workspace_id, name, status, type, trigger_type, trigger_config, graph, version, published_version, created_at, updated_at)
-		VALUES (?, ?, 'Fluxo', 'active', 'messages', 'trigger_manual', '{}'::jsonb, ?::jsonb, 1, ?, ?, ?)`, id, f.workspace, draft, published, f.at, f.at)
+		VALUES (?, ?, 'Fluxo', 'active', 'messages', 'trigger_message_received', '{}'::jsonb, ?::jsonb, 1, ?, ?, ?)`, id, f.workspace, draft, published, f.at, f.at)
 	return id
 }
 
@@ -267,7 +267,7 @@ func alertIDs(alerts []*workflow.RuntimeAlert) map[string]bool {
 func TestThePublishedGraphsOfAWorkspaceAreJoinedInOneReadAgainstPostgres(t *testing.T) {
 	f := newSQLFixture(t)
 	one, four := 1, 4
-	live := f.workflow(&one, graphWithNode("d", workflow.NodeTypeTriggerManual))
+	live := f.workflow(&one, graphWithNode("d", workflow.NodeTypeTriggerMessageReceived))
 	f.version(live, 1, graphWithNode("p", workflow.NodeTypeTriggerWebhook))
 	pruned := f.workflow(&four, graphWithNode("d", workflow.NodeTypeTriggerWebhook))
 	draft := f.workflow(nil, graphWithNode("d", workflow.NodeTypeTriggerWebhook))
@@ -356,6 +356,8 @@ func visibilityTables() []interface{} {
 		&schema.FacebookPage{}, &schema.FacebookConversation{}, &schema.TelegramAccount{}, &schema.TelegramConversation{},
 		&schema.WebchatWidget{}, &schema.WebchatConversation{}, &schema.MercadoLivreAccount{}, &schema.MercadoLivreConversation{},
 		&schema.TikTokAccount{}, &schema.TikTokConversation{}, &schema.UnofficialWhatsAppInstance{}, &schema.UnofficialWhatsAppConversation{},
+		&schema.EmailInbox{}, &schema.EmailConversation{},
+		&schema.RCSSender{}, &schema.RCSConversation{}, &schema.SMSRoute{}, &schema.SMSConversation{},
 		&schema.InboxAssignment{},
 	}
 }

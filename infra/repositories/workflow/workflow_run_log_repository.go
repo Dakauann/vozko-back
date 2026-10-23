@@ -23,24 +23,25 @@ func (r *logRepository) Create(logEntry *workflow.WorkflowRunLog) error {
 	duration := logEntry.DurationMs
 	var columns jsonColumns
 	dbL := &schema.WorkflowRunLogSchema{
-		ID:         logEntry.ID,
-		RunID:      logEntry.RunID,
-		NodeID:     logEntry.NodeID,
-		NodeType:   string(logEntry.NodeType),
-		Status:     string(logEntry.Status),
-		Input:      columns.of(logEntry.Input, logEntry.Input != nil),
-		Output:     columns.of(logEntry.Output, logEntry.Output != nil),
-		Error:      logEntry.Error,
-		Attempt:    &attempt,
-		StartedAt:  logEntry.StartedAt,
-		FinishedAt: logEntry.FinishedAt,
-		DurationMs: &duration,
-		Branch:     logEntry.Branch,
-		ErrorKind:  string(logEntry.ErrorKind),
-		ErrorChain: columns.of(logEntry.ErrorChain, len(logEntry.ErrorChain) > 0),
-		Stack:      nilIfEmpty(logEntry.Stack),
-		ScriptLogs: columns.of(logEntry.ScriptLogs, len(logEntry.ScriptLogs) > 0),
-		HTTP:       columns.of(logEntry.HTTP, len(logEntry.HTTP) > 0),
+		ID:             logEntry.ID,
+		RunID:          logEntry.RunID,
+		NodeID:         logEntry.NodeID,
+		NodeType:       string(logEntry.NodeType),
+		Status:         string(logEntry.Status),
+		Input:          columns.of(logEntry.Input, logEntry.Input != nil),
+		Output:         columns.of(logEntry.Output, logEntry.Output != nil),
+		Error:          logEntry.Error,
+		Attempt:        &attempt,
+		StartedAt:      logEntry.StartedAt,
+		FinishedAt:     logEntry.FinishedAt,
+		DurationMs:     &duration,
+		Branch:         logEntry.Branch,
+		ErrorKind:      string(logEntry.ErrorKind),
+		ErrorChain:     columns.of(logEntry.ErrorChain, len(logEntry.ErrorChain) > 0),
+		Stack:          nilIfEmpty(logEntry.Stack),
+		ScriptLogs:     columns.of(logEntry.ScriptLogs, len(logEntry.ScriptLogs) > 0),
+		HTTP:           columns.of(logEntry.HTTP, len(logEntry.HTTP) > 0),
+		UnresolvedRefs: columns.of(logEntry.UnresolvedRefs, len(logEntry.UnresolvedRefs) > 0),
 	}
 	if columns.err != nil {
 		return columns.err
@@ -194,6 +195,7 @@ func mapLogToDomain(dbL *schema.WorkflowRunLogSchema) (*workflow.WorkflowRunLog,
 		{dbL.ErrorChain, &l.ErrorChain},
 		{dbL.ScriptLogs, &l.ScriptLogs},
 		{dbL.HTTP, &l.HTTP},
+		{dbL.UnresolvedRefs, &l.UnresolvedRefs},
 	} {
 		if err := decodeColumn(column.value, column.into); err != nil {
 			return nil, err

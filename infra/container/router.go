@@ -123,6 +123,14 @@ func (c *Container) initRouter() {
 		c.whatsappFormHandler(),
 		mercadoLivreRoutes(c),
 		tiktokRoutes(c),
+		emailRoutes(c),
+		carrierRoutes(c),
+		googleRoutes(c),
+		c.campaignAudienceHandler(),
+		c.apiKeyRoutes(),
+		c.choiceStatsHandler(),
+		c.workflowRunExportHandler(),
+		campaignDraftRoutes(c),
 	)
 
 }

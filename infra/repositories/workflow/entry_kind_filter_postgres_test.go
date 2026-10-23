@@ -42,16 +42,16 @@ func seedEntryKinds(t *testing.T) (*entryPointFixture, map[string]string) {
 		return id
 	}
 
-	hook := published("hook", graphOf(t, workflow.NodeTypeTriggerManual), graphOf(t, workflow.NodeTypeTriggerWebhook), 1, true)
-	draftOnly := neverPublished("draft", graphOf(t, workflow.NodeTypeTriggerManual))
+	hook := published("hook", graphOf(t, workflow.NodeTypeTriggerMessageReceived), graphOf(t, workflow.NodeTypeTriggerWebhook), 1, true)
+	draftOnly := neverPublished("draft", graphOf(t, workflow.NodeTypeTriggerMessageReceived))
 	unboundHook := published("unbound hook", graphOf(t), graphOf(t, workflow.NodeTypeTriggerMessageReceived), 1, true)
-	agentBound := published("agent bound", graphOf(t), graphOf(t, workflow.NodeTypeTriggerNoReply), 1, true)
+	agentBound := published("agent bound", graphOf(t), graphOf(t, workflow.NodeTypeTriggerStageAdded), 1, true)
 	idleAgent := published("idle agent", graphOf(t), graphOf(t, workflow.NodeTypeTriggerFirstMessage), 1, true)
 	campaignExit := neverPublished("campaign exit", graphOf(t, workflow.NodeTypeTriggerStageAdded))
 	templateExit := neverPublished("template exit", graphOf(t, workflow.NodeTypeTriggerFirstMessage))
 	closedHook := published("closed hook", graphOf(t), graphOf(t, workflow.NodeTypeTriggerFormSubmitted), 1, true)
 	_ = published("pruned version", graphOf(t, workflow.NodeTypeTriggerCallReceived), "", 5, false)
-	_ = neverPublished("campaign sent", graphOf(t, workflow.NodeTypeTriggerCampaignSent, workflow.NodeTypeTriggerAgentCall))
+	_ = neverPublished("legacy campaign sent", graphOf(t, workflow.NodeType("trigger_campaign_sent"), workflow.NodeTypeTriggerAgentCall))
 	foreign := uuid.NewString()
 	f.create(t, &schema.WorkflowSchema{ID: foreign, WorkspaceID: f.other, Name: "foreign", Status: "draft", Type: "messages", TriggerConfig: "{}", Graph: graphOf(t, workflow.NodeTypeTriggerWebhook), Version: 1})
 
@@ -145,11 +145,10 @@ func TestTheEntryKindFilterAgreesWithTheReadModelOnPostgres(t *testing.T) {
 
 	want := map[workflow.EntryPointKind]string{
 		workflow.EntryWebhook:         "hook,unbound hook",
-		workflow.EntryManual:          "draft",
-		workflow.EntryAgentCall:       "agent bound,campaign sent",
+		workflow.EntryAgentCall:       "agent bound,legacy campaign sent",
 		workflow.EntryLeadExit:        "campaign exit,template exit",
 		workflow.EntryCallReceived:    "",
-		workflow.EntryMessageReceived: "unbound hook",
+		workflow.EntryMessageReceived: "draft,unbound hook",
 	}
 	for kind, wanted := range want {
 		if got := sortedNames(expected[kind], names); got != wanted {
@@ -191,5 +190,45 @@ func TestTheEntryKindFilterPagesInSQL(t *testing.T) {
 	}
 	if page.TotalItems != 2 || len(page.Items) != 1 || page.TotalPages != 2 {
 		t.Fatalf("page = %+v items = %d", page, len(page.Items))
+	}
+}
+
+func TestTheButtonStartFilterAgreesWithTheMessageStartRuleOnPostgres(t *testing.T) {
+	f, names := seedEntryKinds(t)
+	repo := NewWorkflowRepository(f.db)
+	all, err := repo.List(workflow.ListWorkflowsInput{WorkspaceID: f.workspace, Options: shared.QueryOptions{Pagination: shared.Pagination{Page: 1, PageSize: 100}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published []string
+	for _, w := range all.Items {
+		if w.PublishedVersion != nil {
+			published = append(published, w.ID)
+		}
+	}
+	triggers, err := NewEntryPointRepository(f.db).PublishedTriggers(published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expected []string
+	for _, w := range all.Items {
+		if _, err := workflow.MessageStartTrigger(workflow.RunningTriggers(w, triggers)); err == nil {
+			expected = append(expected, w.ID)
+		}
+	}
+
+	page, err := repo.List(workflow.ListWorkflowsInput{WorkspaceID: f.workspace, StartsFromMessage: true, Options: shared.QueryOptions{Pagination: shared.Pagination{Page: 1, PageSize: 100}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, w := range page.Items {
+		got = append(got, w.ID)
+	}
+	if sortedNames(got, names) != sortedNames(expected, names) || page.TotalItems != int64(len(expected)) {
+		t.Fatalf("filter = [%s] (total %d), rule = [%s]", sortedNames(got, names), page.TotalItems, sortedNames(expected, names))
+	}
+	if want := "draft,idle agent,template exit,unbound hook"; sortedNames(got, names) != want {
+		t.Fatalf("fixture drifted: %s, want %s", sortedNames(got, names), want)
 	}
 }
