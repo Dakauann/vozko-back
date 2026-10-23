@@ -190,10 +190,10 @@ func TestActivatingAPausedWorkflowResumesThePublishedVersionNotTheDraft(t *testi
 	}
 }
 
-func TestPausingTouchesOnlyTheStatus(t *testing.T) {
+func TestPausingPreservesThePublishedVersion(t *testing.T) {
 	repo := NewMockWorkflowRepository()
 	storedWorkflow(t, repo, workflow.WorkflowStatusActive, manualGraph("end"))
-	got, err := NewPauseWorkflowUseCase(repo).Execute("wf-1")
+	got, err := NewPauseWorkflowUseCase(repo, NewMockWorkflowRunRepository()).Execute("wf-1")
 	if err != nil || got.Status != workflow.WorkflowStatusPaused || got.PublishedVersion == nil {
 		t.Fatalf("got = %+v err = %v", got, err)
 	}
@@ -229,7 +229,7 @@ func versionsFixture(t *testing.T) (*MockWorkflowRepository, workflow.ScopedWork
 	activate := activation(repo)
 	return repo, NewScopedWorkflowsUseCase(ScopedWorkflowsDeps{
 		Create: NewCreateWorkflowUseCase(repo), Get: NewGetWorkflowUseCase(repo), Update: NewUpdateWorkflowUseCase(repo),
-		Delete: NewDeleteWorkflowUseCase(repo, nil), Activate: activate, Publish: activate, Pause: NewPauseWorkflowUseCase(repo),
+		Delete: NewDeleteWorkflowUseCase(repo, nil), Activate: activate, Publish: activate, Pause: NewPauseWorkflowUseCase(repo, NewMockWorkflowRunRepository()),
 		Versions: NewWorkflowVersionsUseCase(repo),
 	})
 }

@@ -381,64 +381,11 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		}
 	}
 
-	if raw, ok := ctx.State.Get("_pending_tool_call"); ok {
-		consumed := false
-		if pending, ok := raw.(map[string]interface{}); ok {
-			toolName, _ := pending["name"].(string)
-			sourceAI, _ := pending["source_ai_node"].(string)
-			targetNode, _ := pending["target_node"].(string)
-
-			inject := toolName != "" && sourceAI == ctx.Node.ID
-
-			if inject {
-				if prevID := ctx.State.GetString("_prev_node_id"); prevID != "" {
-					if prevNode := ctx.Graph.FindNode(prevID); prevNode != nil {
-						if prevNode.Type.AwaitsContact() || prevNode.Type.IsTrigger() {
-							inject = false
-						}
-					}
-				}
-			}
-
-			if inject {
-				var toolResult map[string]interface{}
-				if targetNode != "" {
-					toolResult = workflow.NodeOutput(ctx.State, targetNode)
-				}
-				if len(toolResult) == 0 {
-
-					toolResult = workflow.LastNodeOutput(ctx.State)
-				}
-				resultJSON, _ := json.Marshal(toolResult)
-
-				summary := fmt.Sprintf("[Resultado da ferramenta %s]: %s", toolName, string(resultJSON))
-				messages = append(messages, ai.Message{
-					Role:    ai.RoleUser,
-					Content: summary,
-				})
-				consumed = true
-
-				log.Printf("%s injected tool result from %q (target=%s) as user message (%d chars)",
-					logPrefix, toolName, targetNode, len(summary))
-
-				var existing []interface{}
-				if rawActions, ok := ctx.State.Get("_executed_actions"); ok {
-					if arr, ok := rawActions.([]interface{}); ok {
-						existing = arr
-					}
-				}
-				entry := fmt.Sprintf("Resultado de %s: %s", toolName, truncate(string(resultJSON), 300))
-				existing = append(existing, entry)
-				ctx.State.Set("_executed_actions", existing)
-			}
-		}
-
-		ctx.State.Delete("_pending_tool_call")
-		if !consumed {
-			log.Printf("%s cleared stale _pending_tool_call (previous node was wait/trigger or different AI)", logPrefix)
-		}
+	toolMessages, err := workflowToolMessages(ctx)
+	if err != nil {
+		return &workflow.NodeResult{Error: err.Error(), ErrorKind: workflow.ErrorKindConfig}, nil
 	}
-
+	messages = append(messages, toolMessages...)
 	var additionalContext, knowledge, executedActions string
 
 	if extra, ok := ctx.Node.Config["additional_context"].(string); ok && extra != "" {
@@ -554,6 +501,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		logPrefix, model, len(messages), len(toolDefs), toolChoice, isSegmented)
 
 	callStart := time.Now()
+	if err := ctx.CheckActive(); err != nil {
+		return nil, err
+	}
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), aiAgentTimeout)
 	defer cancel()
 
@@ -575,6 +525,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 	})
 
 	elapsed := time.Since(callStart)
+	if err := ctx.CheckActive(); err != nil {
+		return nil, err
+	}
 
 	if err != nil {
 		log.Printf("%s <<< AI FAILED after %s: %v", logPrefix, elapsed.Round(time.Millisecond), err)
@@ -662,6 +615,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		log.Printf("%s segmented WhatsApp delivery: %d messages", logPrefix, len(segmentedMessages))
 		allSent := true
 		for i, msgText := range segmentedMessages {
+			if err := ctx.CheckActive(); err != nil {
+				return nil, err
+			}
 
 			if i > 0 && typingClient != nil && latestWamid != "" {
 				time.Sleep(segmentedTypingDelay)
@@ -674,6 +630,9 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 				time.Sleep(segmentedTypingMinShow)
 			}
 
+			if err := ctx.CheckActive(); err != nil {
+				return nil, err
+			}
 			sendOutput, _, sendErr := e.waSender.SendText(context.Background(), ctx.Run, msgText, conversation.MessageTypeAIResponse)
 			if sendErr != nil {
 				log.Printf("%s segmented send failed at segment %d/%d: %v", logPrefix, i+1, len(segmentedMessages), sendErr)
@@ -732,6 +691,10 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 
 	if hasCustomTools && len(output.ToolCalls) > 0 {
 		tc := output.ToolCalls[0]
+		tc, err = rememberWorkflowToolCall(ctx, output, tc)
+		if err != nil {
+			return &workflow.NodeResult{Error: err.Error(), ErrorKind: workflow.ErrorKindGuard}, nil
+		}
 		log.Printf("%s AI chose tool %q with args %v → routing via edge label", logPrefix, tc.Name, tc.Arguments)
 
 		result["tool_name"] = tc.Name
@@ -749,6 +712,7 @@ func (e *aiAgentExecutor) Execute(ctx *workflow.NodeContext) (*workflow.NodeResu
 		log.Printf("%s routing to node %s via tool edge %q", logPrefix, routed.NextNodeID, tc.Name)
 
 		ctx.State.Set("_pending_tool_call", map[string]interface{}{
+			"id":             tc.ID,
 			"name":           tc.Name,
 			"args":           tc.Arguments,
 			"source_ai_node": ctx.Node.ID,

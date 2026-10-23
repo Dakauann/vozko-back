@@ -138,13 +138,21 @@ type NodeExecutor interface {
 }
 
 type NodeContext struct {
-	Run      *WorkflowRun
-	Node     *Node
-	Graph    *Graph
-	Workflow *Workflow
-	State    *RunState
-	Runtime  interface{}
-	Trace    *StepTrace
+	Run          *WorkflowRun
+	Node         *Node
+	Graph        *Graph
+	Workflow     *Workflow
+	State        *RunState
+	Runtime      interface{}
+	Trace        *StepTrace
+	EnsureActive func() error
+}
+
+func (c *NodeContext) CheckActive() error {
+	if c.EnsureActive != nil {
+		return c.EnsureActive()
+	}
+	return nil
 }
 
 type NodeResult struct {

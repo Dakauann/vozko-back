@@ -291,7 +291,10 @@ func (r *runRepository) FindStuckRuns(cutoff int64) ([]*workflow.WorkflowRun, er
 func (r *runRepository) CancelByWorkflow(workflowID string) (int64, error) {
 	result := r.db.Model(&schema.WorkflowRunSchema{}).
 		Where("workflow_id = ? AND status IN ?", workflowID, []string{string(workflow.RunStatusRunning), string(workflow.RunStatusWaiting)}).
-		Updates(map[string]interface{}{"status": string(workflow.RunStatusCancelled)})
+		Updates(map[string]interface{}{
+			"status": string(workflow.RunStatusCancelled), "completed_at": time.Now().UTC(),
+			"wake_at": nil, "wait_reason": "", "waiting_since": nil,
+		})
 	return result.RowsAffected, result.Error
 }
 

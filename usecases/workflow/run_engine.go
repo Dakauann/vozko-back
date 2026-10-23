@@ -468,13 +468,14 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 
 		trace := &workflow.StepTrace{}
 		ctx := &workflow.NodeContext{
-			Run:      run,
-			Node:     node,
-			Graph:    &w.Graph,
-			Workflow: w,
-			State:    &run.State,
-			Runtime:  runtime,
-			Trace:    trace,
+			Run:          run,
+			Node:         node,
+			Graph:        &w.Graph,
+			Workflow:     w,
+			State:        &run.State,
+			Runtime:      runtime,
+			Trace:        trace,
+			EnsureActive: func() error { return e.finishedElsewhere(run) },
 		}
 
 		attempt := run.RetryCount + 1
@@ -491,6 +492,9 @@ func (e *RunEngine) execute(run *workflow.WorkflowRun, w *workflow.Workflow, run
 		}
 		finished := time.Now().UTC()
 		releaseScope()
+		if err := e.finishedElsewhere(run); err != nil {
+			return err
+		}
 		guard.executed()
 		if e.metrics != nil {
 			e.metrics.ObserveWorkflowStepDuration(string(node.Type), finished.Sub(started))

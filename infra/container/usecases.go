@@ -1030,7 +1030,7 @@ func (c *Container) initUseCases(consumeWhatsappTemplateUC balance_domain.Consum
 		getWorkflow:              workflow_usecase.NewGetWorkflowUseCase(c.repositories.workflow),
 		listWorkflows:            workflow_usecase.NewListWorkflowsUseCase(c.repositories.workflow),
 		activateWorkflow:         workflow_usecase.NewActivateWorkflowUseCase(c.repositories.workflow),
-		pauseWorkflow:            workflow_usecase.NewPauseWorkflowUseCase(c.repositories.workflow),
+		pauseWorkflow:            workflow_usecase.NewPauseWorkflowUseCase(c.repositories.workflow, c.repositories.workflowRun),
 		cancelWorkflowRun:        c.cancelWorkflowRun(),
 		getWorkflowRun:           workflow_usecase.NewGetRunUseCase(c.repositories.workflowRun, c.repositories.workflowRunLog, c.conversationVisibility()),
 		listWorkflowRuns:         workflow_usecase.NewListRunsUseCase(c.repositories.workflowRun, c.conversationVisibility()),
