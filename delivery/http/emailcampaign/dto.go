@@ -22,20 +22,21 @@ type SelectionDTO struct {
 	Sort       []crmfilter.Sort  `json:"sort,omitempty"`
 	Limit      int               `json:"limit,omitempty" example:"1000"`
 	ExcludeIDs []string          `json:"exclude_ids,omitempty"`
+	IncludeIDs []string          `json:"include_ids,omitempty"`
 }
 
 func (d *SelectionDTO) domain() *selection.Selection {
 	if d == nil {
 		return nil
 	}
-	return &selection.Selection{Mode: selection.Mode(strings.TrimSpace(d.Mode)), IDs: d.IDs, Filter: d.Filter, Sort: d.Sort, Limit: d.Limit, ExcludeIDs: d.ExcludeIDs}
+	return &selection.Selection{Mode: selection.Mode(strings.TrimSpace(d.Mode)), IDs: d.IDs, Filter: d.Filter, Sort: d.Sort, Limit: d.Limit, ExcludeIDs: d.ExcludeIDs, IncludeIDs: d.IncludeIDs}
 }
 
 func selectionDTO(s *selection.Selection) *SelectionDTO {
 	if s == nil {
 		return nil
 	}
-	return &SelectionDTO{Mode: string(s.Mode), IDs: s.IDs, Filter: s.Filter, Sort: s.Sort, Limit: s.Limit, ExcludeIDs: s.ExcludeIDs}
+	return &SelectionDTO{Mode: string(s.Mode), IDs: s.IDs, Filter: s.Filter, Sort: s.Sort, Limit: s.Limit, ExcludeIDs: s.ExcludeIDs, IncludeIDs: s.IncludeIDs}
 }
 
 type MergePolicyDTO struct {

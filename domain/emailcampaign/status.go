@@ -41,8 +41,16 @@ func DeletableStatuses() []Status {
 	return []Status{StatusDraft, StatusReady}
 }
 
+func ContentRevisableStatuses() []Status {
+	return []Status{StatusDraft, StatusReady}
+}
+
 func (s Status) Editable() bool {
 	return slices.Contains(EditableStatuses(), s)
+}
+
+func (s Status) ContentRevisable() bool {
+	return slices.Contains(ContentRevisableStatuses(), s)
 }
 
 func (s Status) Deletable() bool {

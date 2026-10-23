@@ -203,7 +203,7 @@ func (a *ChannelAdapter) SendInteractive(ctx context.Context, ec *conversation.E
 		msg.QuickReplies = optionsOf(kept)
 	}
 	out, err := a.dispatch(ctx, target, ec, msg)
-	return conversation.ShowingOptions(out, kept), err
+	return conversation.ShowingOptions(out, req.Composed().ShowingAs(channel.InteractiveStyleButtons, kept)), err
 }
 
 func (a *ChannelAdapter) InteractiveLimits() channel.InteractiveLimits { return a.caps.Interactive }

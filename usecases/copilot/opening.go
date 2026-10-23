@@ -142,7 +142,7 @@ func (s *Service) withOpenings(threadID string, rec *turnRecorder, driver *Drive
 }
 
 func projectOpenedNote(view copilot.View) string {
-	if view.OnEmailDesign() {
+	if view.OnEmailDocument() {
 		return emailDesignOpenedNote(view)
 	}
 	kind := "vídeo"
@@ -154,7 +154,7 @@ func projectOpenedNote(view copilot.View) string {
 }
 
 func editorBackNote(view copilot.View) string {
-	if view.OnEmailDesign() {
+	if view.OnEmailDocument() {
 		return emailEditorBackNote(view)
 	}
 	return fmt.Sprintf("a aba do projeto (project_id %s) voltou a ficar visível e o editor responde de novo nesta resposta. "+

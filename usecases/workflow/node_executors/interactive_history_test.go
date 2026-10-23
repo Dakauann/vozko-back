@@ -24,7 +24,7 @@ func TestWorkflowButtonsAndListsAreStoredAsAutomatedMessagesWithTheirChoices(t *
 	cases := []struct {
 		name string
 		send func(*whatsappSender) error
-		want conversation.SendButtonInput
+		want wantedPrompt
 	}{
 		{
 			name: "buttons",
@@ -38,10 +38,7 @@ func TestWorkflowButtonsAndListsAreStoredAsAutomatedMessagesWithTheirChoices(t *
 				})
 				return err
 			},
-			want: conversation.SendButtonInput{
-				HeaderType: string(conversation.HeaderTypeText), HeaderText: "Plano", BodyText: "Qual plano?", FooterText: "Responda",
-				Buttons: []conversation.ButtonPayload{{ID: "basico", Title: "Básico"}, {ID: "pro", Title: "Pro"}},
-			},
+			want: wantedPrompt{kind: conversation.InteractiveKindButtons, body: "Qual plano?", options: []string{"basico", "pro"}},
 		},
 		{
 			name: "list",
@@ -55,10 +52,7 @@ func TestWorkflowButtonsAndListsAreStoredAsAutomatedMessagesWithTheirChoices(t *
 				})
 				return err
 			},
-			want: conversation.SendButtonInput{
-				HeaderText: "Agenda", BodyText: "Escolha o horário", FooterText: "Fuso de Brasília",
-				Buttons: []conversation.ButtonPayload{{ID: "h9", Title: "9h"}, {ID: "h14", Title: "14h"}},
-			},
+			want: wantedPrompt{kind: conversation.InteractiveKindList, body: "Escolha o horário", options: []string{"h9", "h14"}},
 		},
 	}
 	for _, tc := range cases {
@@ -74,14 +68,19 @@ func TestWorkflowButtonsAndListsAreStoredAsAutomatedMessagesWithTheirChoices(t *
 				t.Fatalf("records = %+v", history.records)
 			}
 			record := history.records[0]
-			if record.MessageType != conversation.MessageTypeAIResponse || record.Text != tc.want.BodyText {
+			if record.MessageType != conversation.MessageTypeAIResponse || record.Text != tc.want.body {
 				t.Fatalf("record = %+v", record)
 			}
-			stored := &conversation.Message{MessageType: record.MessageType, Metadata: record.Metadata}
-			got, ok := stored.Buttons()
-			if !ok || !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("choices = %+v, %v; want %+v", got, ok, tc.want)
+			got, ok := record.Message().Interactive()
+			if !ok || got.Kind != tc.want.kind || !reflect.DeepEqual(got.OptionIDs(), tc.want.options) {
+				t.Fatalf("interactive = %+v, %v; want %+v", got, ok, tc.want)
 			}
 		})
 	}
+}
+
+type wantedPrompt struct {
+	kind    conversation.InteractiveKind
+	body    string
+	options []string
 }

@@ -74,7 +74,7 @@ func (a *channelAdapter) SendInteractive(
 	}
 	return conversation.ShowingOptions(&conversation.SendOutcome{
 		ProviderMessageID: tgdomain.ProviderMessageID(account.BotUserID, result.ChatID, result.MessageID),
-	}, shown), nil
+	}, req.Composed().ShowingAs(channel.InteractiveStyleButtons, shown)), nil
 }
 
 func (a *channelAdapter) InteractiveLimits() channel.InteractiveLimits {

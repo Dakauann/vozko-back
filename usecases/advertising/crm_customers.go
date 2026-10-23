@@ -184,6 +184,9 @@ func audienceRequire() *crmfilter.Filter {
 }
 
 func AudienceSelection(s selection.Selection) (selection.Selection, error) {
+	if len(s.IncludeIDs) > 0 {
+		return selection.Selection{}, fmt.Errorf("%w: a Meta audience takes no hand-included leads", selection.ErrModeUnsupported)
+	}
 	switch s.Mode {
 	case selection.ModeIDs, selection.ModeAllMatching, selection.ModeEveryone:
 	default:

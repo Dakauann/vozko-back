@@ -28,8 +28,8 @@ type DesignReview struct {
 	Checks []Check `json:"checks"`
 }
 
-func Review(doc Document) DesignReview {
-	review := DesignReview{Hints: Lint(doc, ""), Checks: Checks(doc)}
+func Review(doc Document, subject string) DesignReview {
+	review := DesignReview{Hints: Lint(doc, subject), Checks: Checks(doc)}
 	if review.Hints == nil {
 		review.Hints = []Hint{}
 	}

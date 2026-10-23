@@ -123,6 +123,7 @@ func (s *VisitorService) Send(ctx context.Context, session *Session, in SendInpu
 		Text:              text,
 		Timestamp:         now,
 		SenderName:        v.DisplayName(),
+		InteractiveReply:  webchatReply(selection),
 	}); err != nil {
 		s.releaseInbound(providerID)
 		return nil, err
@@ -475,4 +476,11 @@ func (s *VisitorService) quotedMessages(conversationID string, rows []*conversat
 		}
 	}
 	return quoted
+}
+
+func webchatReply(selection *workflow.OptionSelection) *conversation.InteractiveReply {
+	if selection == nil {
+		return nil
+	}
+	return &conversation.InteractiveReply{Kind: conversation.InteractiveReplyOption, OptionID: selection.ID, Title: selection.Title}
 }

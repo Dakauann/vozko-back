@@ -56,9 +56,12 @@ func NewSelectionResolver(deps SelectionDeps) (*SelectionResolver, error) {
 
 func (r *SelectionResolver) Count(ctx context.Context, scope selection.Scope, s selection.Selection) (int, error) {
 	counted := s.BeforeExclusions()
-	counted.Require, counted.Limit, counted.Sort = nil, 0, nil
-	if counted.Mode == selection.ModeFirstN {
-		counted.Mode = selection.ModeAllMatching
+	counted.Require = nil
+	if !counted.LimitedCount() {
+		counted.Limit, counted.Sort = 0, nil
+		if counted.Mode == selection.ModeFirstN {
+			counted.Mode = selection.ModeAllMatching
+		}
 	}
 	q, err := r.query(ctx, scope, counted)
 	if err != nil {
@@ -90,6 +93,9 @@ func (r *SelectionResolver) Selected(ctx context.Context, scope selection.Scope,
 	q, err := r.query(ctx, scope, s)
 	if err != nil {
 		return 0, err
+	}
+	if s.LimitedCount() {
+		return r.deps.Reader.CountSelection(ctx, q)
 	}
 	limit := q.Limit
 	q.Limit, q.Order = 0, nil
@@ -169,6 +175,9 @@ func (r *SelectionResolver) query(ctx context.Context, scope selection.Scope, s 
 	}
 	q := lead.SelectionQuery{WorkspaceID: a.WorkspaceID, Filter: bound.filter, Today: bound.today}
 	if q.ExcludeIDs, err = lead.SelectionIDs(s.ExcludeIDs); err != nil {
+		return lead.SelectionQuery{}, err
+	}
+	if q.IncludeIDs, err = lead.SelectionIDs(s.IncludeIDs); err != nil {
 		return lead.SelectionQuery{}, err
 	}
 	if s.Require != nil {

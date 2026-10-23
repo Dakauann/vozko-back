@@ -29,32 +29,33 @@ type Library interface {
 }
 
 type Deps struct {
-	Designs Designs
-	Library Library
-	Files   media.FileReader
-	Media   mediatools.MediaGeneration
-	IDs     emaildesign.IDSource
+	Designs   Designs
+	Campaigns Campaigns
+	Library   Library
+	Files     media.FileReader
+	Media     mediatools.MediaGeneration
+	IDs       emaildesign.IDSource
 }
 
 const (
-	emailNotHere       = "esta ferramenta só funciona com um design de e-mail aberto no editor"
-	emailNoEditor      = "o editor de e-mail não está ligado a esta conversa; peça ao usuário para abrir a Elo de dentro do design"
+	emailNotHere       = "esta ferramenta só funciona com um e-mail aberto no editor: um design em Modelos ou o conteúdo de uma campanha"
+	emailNoEditor      = "o editor de e-mail não está ligado a esta conversa; peça ao usuário para abrir a Elo de dentro do editor do e-mail"
 	emailDesignGone    = "o design aberto não foi encontrado neste workspace; peça ao usuário para reabrir o design"
-	emailEditorAwaited = "A aba do design deve estar em segundo plano ou adormecida. Não peça ao usuário para avisar nem para deixar a aba aberta: quando o editor voltar a responder, o app avisa você nesta resposta ou retoma a conversa sozinho. Não repita o pedido agora; siga com o que não depende do editor ou encerre dizendo o que está pronto e o que falta."
-	emailUnreadable    = "o editor devolveu um design que não pôde ser lido; tente de novo"
+	emailEditorAwaited = "A aba do e-mail deve estar em segundo plano ou adormecida. Não peça ao usuário para avisar nem para deixar a aba aberta: quando o editor voltar a responder, o app avisa você nesta resposta ou retoma a conversa sozinho. Não repita o pedido agora; siga com o que não depende do editor ou encerre dizendo o que está pronto e o que falta."
+	emailUnreadable    = "o editor devolveu um e-mail que não pôde ser lido; tente de novo"
 )
 
 var editorWords = screencall.Words{
-	Silent:      "o editor não respondeu a tempo e nada mudou no design. " + emailEditorAwaited,
+	Silent:      "o editor não respondeu a tempo e nada mudou no e-mail. " + emailEditorAwaited,
 	Expired:     "o editor não respondeu a tempo e nada deste pedido foi aplicado: ele expirou e não entra depois, nem quando a aba voltar. " + emailEditorAwaited,
 	Unconfirmed: "o editor começou a aplicar este pedido e não confirmou o resultado a tempo; quando ele voltar a responder, confira com email_read antes de repetir qualquer coisa. " + emailEditorAwaited,
-	Absent:      "nenhuma aba com este design aberto respondeu e nada foi aplicado; se o usuário está com o design aberto, a conexão da aba caiu por um instante e ela se reconecta sozinha: tente de novo uma vez antes de pedir algo ao usuário",
+	Absent:      "nenhuma aba com este e-mail aberto respondeu e nada foi aplicado; se o usuário está com o e-mail aberto, a conexão da aba caiu por um instante e ela se reconecta sozinha: tente de novo uma vez antes de pedir algo ao usuário",
 	Refused:     "o editor recusou o pedido",
 }
 
 type designScope struct{}
 
-func (designScope) OfferedOn(view copilot.View) bool { return view.OnEmailDesign() }
+func (designScope) OfferedOn(view copilot.View) bool { return view.OnEmailDocument() }
 
 func readMeta() copilot.Meta {
 	return copilot.Meta{Resource: workspace.ResourceEmailMarketing, Action: workspace.ActionRead}
@@ -79,36 +80,32 @@ func (d Deps) ids() emaildesign.IDSource {
 	return emaildesign.RandomIDs()
 }
 
-func (d Deps) openDesign(ctx context.Context, cc copilot.Context) (*emailcampaign.Design, error) {
-	if !cc.View.OnEmailDesign() {
-		return nil, errors.New(emailNotHere)
-	}
-	if cc.Screen == nil {
-		return nil, errors.New(emailNoEditor)
-	}
-	if d.Designs == nil {
-		return nil, errors.New(emailDesignGone)
-	}
-	design, err := d.Designs.GetDesign(ctx, actorOf(cc), cc.View.ProjectID)
-	if err != nil || design == nil {
-		return nil, errors.New(emailDesignGone)
-	}
-	return design, nil
-}
-
 type liveDesign struct {
 	Document emaildesign.Document
 	Selected string
 	Name     string
+	Envelope *envelope
 }
 
 type liveReply struct {
-	Document json.RawMessage `json:"document"`
-	Selected string          `json:"selected,omitempty"`
-	Name     string          `json:"name,omitempty"`
+	Document  json.RawMessage `json:"document"`
+	Selected  string          `json:"selected,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Subject   *string         `json:"subject,omitempty"`
+	Preheader *string         `json:"preheader,omitempty"`
 }
 
-func decodeLive(data []byte) (liveDesign, error) {
+func envelopeOf(subject, preheader *string, wanted bool) (*envelope, bool) {
+	if !wanted {
+		return nil, subject == nil && preheader == nil
+	}
+	if subject == nil || preheader == nil {
+		return nil, false
+	}
+	return &envelope{Subject: *subject, Preheader: *preheader}, true
+}
+
+func decodeLive(data []byte, wantEnvelope bool) (liveDesign, error) {
 	var reply liveReply
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -119,7 +116,11 @@ func decodeLive(data []byte) (liveDesign, error) {
 	if err != nil {
 		return liveDesign{}, errors.New(emailUnreadable)
 	}
-	return liveDesign{Document: doc, Selected: strings.TrimSpace(reply.Selected), Name: strings.TrimSpace(reply.Name)}, nil
+	env, ok := envelopeOf(reply.Subject, reply.Preheader, wantEnvelope)
+	if !ok {
+		return liveDesign{}, errors.New(emailUnreadable)
+	}
+	return liveDesign{Document: doc, Selected: strings.TrimSpace(reply.Selected), Name: strings.TrimSpace(reply.Name), Envelope: env}, nil
 }
 
 func readLive(ctx context.Context, cc copilot.Context) (liveDesign, error) {
@@ -127,7 +128,7 @@ func readLive(ctx context.Context, cc copilot.Context) (liveDesign, error) {
 	if err != nil {
 		return liveDesign{}, err
 	}
-	return decodeLive(reply.Data)
+	return decodeLive(reply.Data, cc.View.OnEmailCampaign())
 }
 
 func blockView(blocks []emaildesign.Block) []map[string]interface{} {
@@ -136,6 +137,13 @@ func blockView(blocks []emaildesign.Block) []map[string]interface{} {
 		out = append(out, b.Fields())
 	}
 	return out
+}
+
+func withFacts(body, facts map[string]interface{}) map[string]interface{} {
+	for key, value := range facts {
+		body[key] = value
+	}
+	return body
 }
 
 func EmailDesignTools(deps Deps) []copilot.Tool {

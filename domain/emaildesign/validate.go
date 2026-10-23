@@ -37,6 +37,7 @@ const (
 	issueSocialURLMissing = "social_url_missing"
 	issueCompanyMissing   = "footer_company_missing"
 	issueAddressMissing   = "footer_address_missing"
+	issueSubjectEmpty     = "subject_empty"
 )
 
 var draftGaps = map[string]bool{
@@ -48,6 +49,7 @@ var draftGaps = map[string]bool{
 	issueCompanyMissing:    true,
 	issueAddressMissing:    true,
 	issueFooterMissing:     true,
+	issueSubjectEmpty:      true,
 	issueUnknownMergeTag:   true,
 	issueMergeTagMalformed: true,
 }
@@ -442,7 +444,7 @@ func ValidateSubject(subject string) []Issue {
 		issues = append(issues, Issue{Code: code, Field: "subject"})
 	}
 	if strings.TrimSpace(subject) == "" {
-		add("subject_empty")
+		add(issueSubjectEmpty)
 		return issues
 	}
 	if strings.ContainsAny(subject, "\r\n") {

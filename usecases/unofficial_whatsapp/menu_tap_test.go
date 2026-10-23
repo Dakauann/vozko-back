@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"vozko/domain/choicestats"
+	"vozko/domain/conversation"
 	"vozko/domain/workflow"
 )
 
@@ -70,5 +71,24 @@ func TestATapWithoutAQuotedPromptCountsNowhere(t *testing.T) {
 	h.deliverTap(t, "saber", "")
 	if len(spy.clicks) != 0 {
 		t.Fatalf("clicks = %+v", spy.clicks)
+	}
+}
+
+func TestAMenuTapIsRecordedAsAChoiceQuotingThePrompt(t *testing.T) {
+	h := newAutoHarness(t, nil)
+	history := h.uc.history.(*recordingHistory)
+
+	h.deliverTap(t, "agendar", "menu-msg-1")
+
+	if len(history.records) != 1 {
+		t.Fatalf("records = %+v", history.records)
+	}
+	record := history.records[0]
+	want := conversation.InteractiveReply{Kind: conversation.InteractiveReplyOption, OptionID: "agendar", Title: "Quero saber"}
+	if record.InteractiveReply == nil || *record.InteractiveReply != want || record.ReplyToWAMessageID != "menu-msg-1" {
+		t.Fatalf("record = %+v", record)
+	}
+	if reply, ok := record.Message().InteractiveReply(); !ok || reply != want {
+		t.Fatalf("stored reply = %+v, %v", reply, ok)
 	}
 }

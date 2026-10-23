@@ -87,6 +87,7 @@ func sendOptionsViaAdapter(
 	adapter conversation.ChannelAdapter,
 	ec *conversation.EntryContext,
 	req conversation.SendInteractiveRequest,
+	record func(conversation.MessageHistoryRecord),
 ) (tools.ExecutionResult, error) {
 	interactive, ok := adapter.(conversation.InteractiveAdapter)
 	if !ok {
@@ -107,6 +108,7 @@ func sendOptionsViaAdapter(
 	if outcome != nil {
 		providerID = outcome.ProviderMessageID
 	}
+	record(adapterOptionsRecord(ec, req, outcome))
 	log.Printf("[tools] options sent on %s entry=%s options=%d id=%s",
 		ec.EntryType, ec.EntryID, len(req.Options), providerID)
 	return tools.ExecutionResult{Result: map[string]interface{}{

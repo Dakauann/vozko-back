@@ -36,6 +36,7 @@ func (uc *handleWhatsAppMessageUseCase) inboundTextRecord(message *conversation.
 		Metadata:           inboundMetadata(message),
 		AdReferral:         message.Referral.AdReferral(),
 		ReplyToWAMessageID: quotedProviderMessageID(message),
+		InteractiveReply:   interactiveChoice(message.Interactive),
 	}
 	if leadRecord != nil {
 		record.SenderName = leadRecord.DisplayName()
@@ -57,9 +58,6 @@ func inboundMetadata(message *conversation.WhatsAppMessage) json.RawMessage {
 	if c := message.Context; c != nil && strings.TrimSpace(c.ID) != "" {
 		facts["context"] = map[string]string{"id": strings.TrimSpace(c.ID)}
 	}
-	if choice := interactiveChoice(message.Interactive); choice != nil {
-		facts["interactive"] = choice
-	}
 	if len(facts) == 0 {
 		return nil
 	}
@@ -70,14 +68,14 @@ func inboundMetadata(message *conversation.WhatsAppMessage) json.RawMessage {
 	return raw
 }
 
-func interactiveChoice(i *conversation.WhatsAppInteractive) map[string]string {
+func interactiveChoice(i *conversation.WhatsAppInteractive) *conversation.InteractiveReply {
 	switch {
 	case i == nil:
 		return nil
 	case i.ButtonReply != nil:
-		return map[string]string{"type": i.Type, "id": i.ButtonReply.ID, "title": i.ButtonReply.Title}
+		return &conversation.InteractiveReply{Kind: conversation.InteractiveReplyButton, OptionID: i.ButtonReply.ID, Title: i.ButtonReply.Title}
 	case i.ListReply != nil:
-		return map[string]string{"type": i.Type, "id": i.ListReply.ID, "title": i.ListReply.Title}
+		return &conversation.InteractiveReply{Kind: conversation.InteractiveReplyList, OptionID: i.ListReply.ID, Title: i.ListReply.Title}
 	}
 	return nil
 }

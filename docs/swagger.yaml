@@ -8602,6 +8602,124 @@ definitions:
       workflowID:
         type: string
     type: object
+  conversation.InteractiveActionResponse:
+    properties:
+      code:
+        example: PROMO10
+        type: string
+      id:
+        example: sim
+        type: string
+      kind:
+        enum:
+        - reply
+        - url
+        - phone
+        - copy_code
+        - flow
+        example: reply
+        type: string
+      phone:
+        example: "+5511999999999"
+        type: string
+      title:
+        example: Sim
+        type: string
+      url:
+        example: https://exemplo.com/pedido
+        type: string
+    type: object
+  conversation.InteractiveHeaderResponse:
+    properties:
+      media_url:
+        example: https://cdn.exemplo.com/banner.jpg
+        type: string
+      text:
+        example: Atendimento
+        type: string
+      type:
+        enum:
+        - text
+        - image
+        - video
+        - document
+        example: text
+        type: string
+    type: object
+  conversation.InteractiveReplyResponse:
+    properties:
+      kind:
+        enum:
+        - button
+        - list
+        - template_button
+        - option
+        - quick_reply
+        - postback
+        example: list
+        type: string
+      option_id:
+        example: agendar
+        type: string
+      title:
+        example: Agendar consulta
+        type: string
+    type: object
+  conversation.InteractiveResponse:
+    properties:
+      body:
+        example: Selecione alguma das opções abaixo
+        type: string
+      button_label:
+        example: Ver opções
+        type: string
+      buttons:
+        items:
+          $ref: '#/definitions/conversation.InteractiveActionResponse'
+        type: array
+      footer:
+        example: Atendimento 24h
+        type: string
+      header:
+        $ref: '#/definitions/conversation.InteractiveHeaderResponse'
+      kind:
+        enum:
+        - buttons
+        - list
+        - cta_url
+        - template
+        example: list
+        type: string
+      sections:
+        items:
+          $ref: '#/definitions/conversation.InteractiveSectionResponse'
+        type: array
+      template_name:
+        example: boas_vindas
+        type: string
+    type: object
+  conversation.InteractiveRowResponse:
+    properties:
+      description:
+        example: Escolha dia e horário
+        type: string
+      id:
+        example: agendar
+        type: string
+      title:
+        example: Agendar consulta
+        type: string
+    type: object
+  conversation.InteractiveSectionResponse:
+    properties:
+      rows:
+        items:
+          $ref: '#/definitions/conversation.InteractiveRowResponse'
+        type: array
+      title:
+        example: Assuntos
+        type: string
+    type: object
   conversation.MatchedMessageResult:
     properties:
       channel:
@@ -8725,6 +8843,10 @@ definitions:
         items:
           type: integer
         type: array
+      interactive:
+        $ref: '#/definitions/conversation.InteractiveResponse'
+      interactive_reply:
+        $ref: '#/definitions/conversation.InteractiveReplyResponse'
       location:
         $ref: '#/definitions/conversation.MessageLocationResponse'
       mediaId:
@@ -9064,12 +9186,14 @@ definitions:
     - studio
     - leads
     - email_design
+    - email_campaign
     type: string
     x-enum-varnames:
     - SurfaceAttendance
     - SurfaceStudio
     - SurfaceLeads
     - SurfaceEmailDesign
+    - SurfaceEmailCampaign
   copilot.View:
     properties:
       campaignId:
@@ -9251,31 +9375,6 @@ definitions:
     - Or
   crmfilter.Field:
     enum:
-    - id
-    - phone_any
-    - email
-    - nickname
-    - birthday
-    - birth_date
-    - zip
-    - state
-    - city
-    - district
-    - geo_precision
-    - geo_status
-    - has_address
-    - has_identity
-    - opted_out
-    - whatsapp_opt_in
-    - relation_kind
-    - relatives_count
-    - referred_count
-    - referred_by
-    - geo_placement
-    - opt_out_source
-    - opted_out_at
-    - company
-    - area_approximate
     - owner
     - carteira
     - pipeline
@@ -9307,33 +9406,33 @@ definitions:
     - memory_updated_at
     - custom
     - area
+    - id
+    - phone_any
+    - email
+    - nickname
+    - birthday
+    - birth_date
+    - zip
+    - state
+    - city
+    - district
+    - geo_precision
+    - geo_status
+    - has_address
+    - has_identity
+    - opted_out
+    - whatsapp_opt_in
+    - relation_kind
+    - relatives_count
+    - referred_count
+    - referred_by
+    - geo_placement
+    - opt_out_source
+    - opted_out_at
+    - company
+    - area_approximate
     type: string
     x-enum-varnames:
-    - FieldID
-    - FieldPhoneAny
-    - FieldEmail
-    - FieldNickname
-    - FieldBirthday
-    - FieldBirthDate
-    - FieldZip
-    - FieldState
-    - FieldCity
-    - FieldDistrict
-    - FieldGeoPrecision
-    - FieldGeoStatus
-    - FieldHasAddress
-    - FieldHasIdentity
-    - FieldOptedOut
-    - FieldWhatsAppOptIn
-    - FieldRelationKind
-    - FieldRelativesCount
-    - FieldReferredCount
-    - FieldReferredBy
-    - FieldGeoPlacement
-    - FieldOptOutSource
-    - FieldOptedOutAt
-    - FieldCompany
-    - FieldAreaApproximate
     - FieldOwner
     - FieldCarteira
     - FieldPipeline
@@ -9365,6 +9464,31 @@ definitions:
     - FieldMemoryUpdatedAt
     - FieldCustom
     - FieldArea
+    - FieldID
+    - FieldPhoneAny
+    - FieldEmail
+    - FieldNickname
+    - FieldBirthday
+    - FieldBirthDate
+    - FieldZip
+    - FieldState
+    - FieldCity
+    - FieldDistrict
+    - FieldGeoPrecision
+    - FieldGeoStatus
+    - FieldHasAddress
+    - FieldHasIdentity
+    - FieldOptedOut
+    - FieldWhatsAppOptIn
+    - FieldRelationKind
+    - FieldRelativesCount
+    - FieldReferredCount
+    - FieldReferredBy
+    - FieldGeoPlacement
+    - FieldOptOutSource
+    - FieldOptedOutAt
+    - FieldCompany
+    - FieldAreaApproximate
   crmfilter.Filter:
     properties:
       groups:
@@ -11040,6 +11164,10 @@ definitions:
       filter:
         $ref: '#/definitions/crmfilter.Filter'
       ids:
+        items:
+          type: string
+        type: array
+      include_ids:
         items:
           type: string
         type: array
@@ -12728,6 +12856,10 @@ definitions:
         items:
           type: string
         type: array
+      includeIds:
+        items:
+          type: string
+        type: array
       limit:
         type: integer
       mode:
@@ -13253,6 +13385,8 @@ definitions:
     - audience_empty
     - access_revoked
     - health_unreadable
+    - plan_inactive
+    - template_missing
     - template_not_ready
     - phone_unavailable
     - monthly_cap_full
@@ -13279,6 +13413,8 @@ definitions:
     - CodeAudienceEmpty
     - CodeAccessRevoked
     - CodeHealthUnreadable
+    - CodePlanInactive
+    - CodeTemplateMissing
     - CodeTemplateNotReady
     - CodePhoneUnavailable
     - CodeMonthlyCapFull
@@ -17142,6 +17278,7 @@ definitions:
     type: object
   report.FailureCode:
     enum:
+    - forbidden
     - unknown_kind
     - unsupported_format
     - too_many_rows
@@ -17152,9 +17289,9 @@ definitions:
     - cancelled
     - workspace_required
     - empty_result
-    - forbidden
     type: string
     x-enum-varnames:
+    - FailureForbidden
     - FailureUnknownKind
     - FailureUnsupported
     - FailureTooManyRows
@@ -17165,7 +17302,6 @@ definitions:
     - FailureCancelled
     - FailureWorkspaceEmpty
     - FailureEmptyResult
-    - FailureForbidden
   report.Format:
     enum:
     - csv
@@ -17217,22 +17353,22 @@ definitions:
     type: object
   report.Kind:
     enum:
+    - leads
+    - whatsapp_dispatch
+    - whatsapp_form_responses
     - attendance_overview
     - conversation_entries
     - balance_transactions
     - opportunities
-    - leads
-    - whatsapp_dispatch
-    - whatsapp_form_responses
     type: string
     x-enum-varnames:
+    - KindLeads
+    - KindWhatsAppDispatch
+    - KindWhatsAppFormResponses
     - KindAttendanceOverview
     - KindConversationEntries
     - KindBalanceTransactions
     - KindOpportunities
-    - KindLeads
-    - KindWhatsAppDispatch
-    - KindWhatsAppFormResponses
   report.KindDescriptor:
     properties:
       formats:
@@ -23417,8 +23553,6 @@ definitions:
     type: object
   workflow.LintIssueCode:
     enum:
-    - NODE_INVALID_PLATFORM_EMAIL
-    - SEND_OUTSIDE_WINDOW_RISK
     - GRAPH_EMPTY
     - GRAPH_TOO_MANY_NODES
     - GRAPH_TOO_MANY_EDGES
@@ -23468,14 +23602,14 @@ definitions:
     - NODE_SECRET_IN_PLAIN_TEXT
     - NODE_PINNED_OUTPUT
     - NODE_CONSENT_GRANT_NEEDS_REPLY
+    - SEND_OUTSIDE_WINDOW_RISK
     - NODE_AGENT_CALL_INPUTS_INVALID
     - NODE_REPLY_TO_AGENT_WITHOUT_AGENT_TRIGGER
+    - NODE_INVALID_PLATFORM_EMAIL
     - DATA_REF_NEVER_SET
     - DATA_REF_SOME_PATHS
     type: string
     x-enum-varnames:
-    - LintInvalidPlatformEmail
-    - LintSendOutsideWindowRisk
     - LintGraphEmpty
     - LintGraphTooManyNodes
     - LintGraphTooManyEdges
@@ -23525,8 +23659,10 @@ definitions:
     - LintSecretInPlainText
     - LintPinnedOutput
     - LintConsentGrantNeedsReply
+    - LintSendOutsideWindowRisk
     - LintAgentCallInputsInvalid
     - LintReplyToAgentWithoutTrigger
+    - LintInvalidPlatformEmail
     - LintDataRefNeverSet
     - LintDataRefSomePaths
   workflow.LintSeverity:
@@ -59713,7 +59849,7 @@ paths:
         | `subscribe` | `conversations:read` | `{"entry_id": string, "entry_type": string, "page_size"?: number}` | `conversation:subscribed` e `conversation:history`. A partir daí você recebe os eventos dessa conversa. `page_size` padrão 50, máximo 100. Abrir a conversa tira a sua marca pessoal de não lida (chega `conversation:personal_mark` se havia uma). Logo depois chega `conversation:viewers` com quem está com a conversa aberta, e todos os inscritos recebem a lista nova. |
         | `unsubscribe` | | `{"entry_id": string, "entry_type": string}` | `conversation:unsubscribed`. Os inscritos que ficam recebem `conversation:viewers` sem você (quando era a sua última conexão inscrita). |
         | `send` | `conversations:send` | `{"entry_id": string, "entry_type": string, "text"?: string, "media_id"?: string, "media_type"?: "image" \| "video" \| "audio" \| "document" \| "sticker", "signed"?: boolean, "request_id": string, "reply_to_message_id"?: string}` | `conversation:message_sent` para todos os inscritos e sempre para a conexão que enviou (mesmo sem inscrição, ou quando ela já recebeu a mensagem no histórico), ou `conversation:message_error`. Informe `text` ou `media_id`. `request_id` (até 128 caracteres, um UUID por envio) torna o envio idempotente: repetir o mesmo `request_id` na mesma conversa nunca envia de novo; se a mensagem já foi gravada, a resposta é o mesmo `conversation:message_sent` de antes (mesmo `request_id`); se o primeiro envio ainda está em andamento, a repetição fica sem resposta e vale a resposta do primeiro. Sem `request_id` (clientes antigos) não há essa proteção. |
-        | `send_button` | `conversations:send` | `{"entry_id": string, "entry_type": string, "body_text": string, "buttons": [{"id": string, "title": string}], "header_type"?: string, "header_text"?: string, "footer_text"?: string, "request_id": string, "reply_to_message_id"?: string}` | Igual a `send`, inclusive a idempotência por `request_id`. De 1 a 3 botões. Os botões ficam guardados em `metadata.buttons` da mensagem, para que ela possa ser reenviada. |
+        | `send_button` | `conversations:send` | `{"entry_id": string, "entry_type": string, "body_text": string, "buttons": [{"id": string, "title": string}], "header_type"?: string, "header_text"?: string, "footer_text"?: string, "request_id": string, "reply_to_message_id"?: string}` | Igual a `send`, inclusive a idempotência por `request_id`. De 1 a 3 botões. Os botões ficam guardados na mensagem e chegam em `interactive`, para desenhar o balão e para que ela possa ser reenviada. |
         | `resend_message` | `conversations:send` | `{"entry_id": string, "entry_type": string, "message_id": string, "request_id": string}` | Reenvia uma mensagem que falhou, pelo mesmo caminho de `send` (saldo, janela, limite mensal, permissões e cobrança valem iguais), com o conteúdo original (texto, mídia, botões e resposta citada). Só vale para mensagem dessa conversa, enviada por um atendente, com `deliveryStatus: "failed"` e ainda não reenviada; senão `conversation:error` com `not_found`, `not_allowed` ou `invalid` (falta `request_id`). O reenvio cria uma mensagem nova: chega `conversation:message_updated` da mensagem que falhou, agora com `resent_as` apontando para a nova, e depois `conversation:message_sent` da nova com o seu `request_id`. Se o canal recusar, `conversation:message_error` com esse `request_id` e `code: "send_failed"`, e a mensagem que falhou fica como estava. Repetir o mesmo `request_id` responde com a mesma mensagem nova, sem enviar de novo. |
         | `react_message` | `conversations:send` | `{"entry_id": string, "entry_type": string, "message_id": string, "emoji": string, "request_id": string}` | Reage a uma mensagem no canal; `emoji: ""` tira a sua reação. Deu certo: `conversation:message_updated` com a reação em `reactions` (`direction: "outbound"`, `actor_id` é você). Falhou: `conversation:error`, e nada muda. |
         | `edit_message` | `conversations:send` | `{"entry_id": string, "entry_type": string, "message_id": string, "text": string, "request_id": string}` | Edita o texto de uma mensagem sua. Deu certo: `conversation:message_updated` com o novo `text` e `edited_at`. Falhou: `conversation:error`, e nada muda. |
@@ -59874,7 +60010,9 @@ paths:
 
         **InboxEntry**: `entry_id`, `entry_type`, `campaign_id`?, `campaign_name`?, `lead_id`?, `lead_name`?, `lead_number`?, `lead_version`?, `blocked`, `lead_picture`?, `is_group`?, `lead_metadata`?, `entry_variables`?, `unread_count`, `last_message_preview`?, `last_message_at`, `last_message_type`?, `last_message_sender`?, `last_message_sender_avatar`?, `last_message_sender_kind`? (`contact | human | ai | workflow | campaign | system | external`: quem mandou a última mensagem, para o cliente nomear o remetente no idioma de quem lê; `external` é uma mensagem enviada pela conta fora da plataforma, no app do próprio canal ou no celular; ausente em mensagens antigas sem remetente gravado), `last_message_author`? (groups: name of the member who sent the last message), `last_message_from_us`? (groups: the last message was ours), `last_customer_message_at`? (quando o contato escreveu por último, em todos os canais), `last_agent_message_at`? (quando a equipe, uma IA, um fluxo ou uma campanha escreveu por último), `waiting_since`? (RFC 3339: desde quando o contato espera resposta, a primeira mensagem dele depois da última resposta da equipe, de uma IA ou de um fluxo, inclusive a digitada no celular fora da plataforma; campanha e aviso do sistema não são resposta; ausente quando ninguém espera ou a conversa está finalizada; finalizar a conversa encerra a espera e a próxima mensagem do contato começa outra), `window_open`, `window_expires_at`?, `window_closed_reason`?, `window_closed_detail`? (o mesmo estado da janela que `conversation:subscribed` informa, em todos os canais; sem como confirmar o estado, a linha vem fechada com `channel_unavailable`), `business_phone_id`?, `assigned_user_id`?, `assigned_username`?, `automation_enabled`, `stage`?: Stage, `labels`?: Label[], `available_stages`?: Stage[], `matched_messages`?: MatchedMessage[], `total_matches`?, `latest_analysis`?: Analysis, `analysis_phase`?: `"awaiting" | "queued"`, `live_read`?: LiveRead, `conversation_status`?: `new | ongoing | finished`, `close_source`?: `human | ai | system`, `close_reason`?: `manual | customer_idle | ai_resolved | max_age | workflow`, `closed_at`?, `close_outcome`?, `ai_handler`?: AIHandler.
 
-        **Message** (chaves em camelCase): `id`, `entryId`, `entryType`, `channel`, `messageType`, `direction`?: `INBOUND | OUTBOUND`, `from`, `to`, `text`, `mediaId`?, `mediaType`?, `read`, `readAt`?, `readBy`?, `whatsappMessageId`?, `externalMessageId`?, `replyToMessageId`?, `deliveryStatus`?: `sent | delivered | read | failed`, `senderName`?, `senderAvatar`?, `sentVia`?: `business_app`, `sentBy`: `{"kind": "contact" | "human" | "ai" | "workflow" | "campaign" | "external" | "system", "id": string}`, `metadata`?, `location`?: `{"latitude": number, "longitude": number, "name"?: string, "address"?: string, "candidate": boolean}`, `createdAt`, `updatedAt`. Em snake_case: `transcript`? (transcrição de um áudio recebido; hoje só no WhatsApp oficial; o `text` do áudio continua sendo o marcador `[Áudio]`), `edited_at`? (a mensagem foi editada, pelo contato ou por um atendente; `text` já é o novo texto), `retracted_at`? (a mensagem foi apagada, pelo contato ou por um atendente: `text` vem vazio e `transcript`, `mediaId`, `mediaType`, `media`, `metadata` e `location` não vêm), `reactions`?: Reaction[] (ausente quando não há reações), `sender_user_id`? (o usuário da equipe que enviou a mensagem; ausente quando não foi um atendente), `client_request_id`? (o `request_id` do envio de um atendente, para casar a mensagem com o balão pendente), `resent_as`? (esta mensagem falhou e foi reenviada como a mensagem com esse `id`; esconda esta e mostre a nova).
+        **Message** (chaves em camelCase): `id`, `entryId`, `entryType`, `channel`, `messageType`, `direction`?: `INBOUND | OUTBOUND`, `from`, `to`, `text`, `mediaId`?, `mediaType`?, `read`, `readAt`?, `readBy`?, `whatsappMessageId`?, `externalMessageId`?, `replyToMessageId`?, `deliveryStatus`?: `sent | delivered | read | failed`, `senderName`?, `senderAvatar`?, `sentVia`?: `business_app`, `sentBy`: `{"kind": "contact" | "human" | "ai" | "workflow" | "campaign" | "external" | "system", "id": string}`, `metadata`?, `location`?: `{"latitude": number, "longitude": number, "name"?: string, "address"?: string, "candidate": boolean}`, `createdAt`, `updatedAt`. Em snake_case: `transcript`? (transcrição de um áudio recebido; hoje só no WhatsApp oficial; o `text` do áudio continua sendo o marcador `[Áudio]`), `edited_at`? (a mensagem foi editada, pelo contato ou por um atendente; `text` já é o novo texto), `retracted_at`? (a mensagem foi apagada, pelo contato ou por um atendente: `text` vem vazio e `transcript`, `mediaId`, `mediaType`, `media`, `metadata` e `location` não vêm), `reactions`?: Reaction[] (ausente quando não há reações), `sender_user_id`? (o usuário da equipe que enviou a mensagem; ausente quando não foi um atendente), `client_request_id`? (o `request_id` do envio de um atendente, para casar a mensagem com o balão pendente), `resent_as`? (esta mensagem falhou e foi reenviada como a mensagem com esse `id`; esconda esta e mostre a nova), `interactive`?: Interactive, `interactive_reply`?: InteractiveReply.
+
+        **Interactive** (mensagem enviada com opções, em qualquer canal e por qualquer remetente: fluxo, agente de IA, atendente, campanha ou modelo do WhatsApp oficial; traz só o que o contato recebeu, depois dos limites do canal): `{"kind": "buttons" | "list" | "cta_url" | "template", "header"?: {"type": "text" | "image" | "video" | "document", "text"?: string, "media_url"?: string}, "body": string, "footer"?: string, "button_label"?: string (o rótulo que abre a lista), "sections"?: [{"title"?: string, "rows": [{"id": string, "title": string, "description"?: string}]}], "buttons"?: [{"kind": "reply" | "url" | "phone" | "copy_code" | "flow", "id"?: string, "title": string, "url"?: string, "phone"?: string, "code"?: string}], "template_name"?: string}`. **InteractiveReply** (resposta do contato que escolheu uma opção; `replyToMessageId` aponta para a mensagem com as opções quando o canal informa): `{"kind": "button" | "list" | "template_button" | "option" | "quick_reply" | "postback", "option_id": string, "title"?: string}`.
 
         `location` aparece em toda mensagem de localização (WhatsApp oficial e coexistência, Telegram), recebida ou enviada, para desenhar o cartão do mapa. `candidate: true` marca a localização que o lead mandou, dentro do Brasil, que pode virar a posição dele por `POST /leads/{id}/location-candidates/{messageId}/accept` (exige `leads:update`; o servidor confere de novo a conversa e o lead).
 

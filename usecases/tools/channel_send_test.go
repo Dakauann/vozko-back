@@ -47,7 +47,7 @@ type interactiveToolAdapter struct {
 
 func (a *interactiveToolAdapter) SendInteractive(_ context.Context, _ *conversation.EntryContext, req conversation.SendInteractiveRequest) (*conversation.SendOutcome, error) {
 	a.sentOptions = &req
-	return &conversation.SendOutcome{ProviderMessageID: "i1"}, nil
+	return conversation.ShowingOptions(&conversation.SendOutcome{ProviderMessageID: "i1"}, req.Composed().ShowingAs(channel.InteractiveStyleButtons, req.Options[:1])), nil
 }
 func (a *interactiveToolAdapter) InteractiveLimits() channel.InteractiveLimits {
 	return channel.InteractiveLimits{MaxOptionsButtons: 100, MaxOptionsList: 100}
@@ -150,15 +150,66 @@ func TestOptionsAreSentThroughTheInteractiveCapability(t *testing.T) {
 	adapter := &interactiveToolAdapter{toolAdapter: toolAdapter{entryType: shared.EntryTypeTelegram, windowOpen: true}}
 	ec := &conversation.EntryContext{EntryID: "conv-1", EntryType: shared.EntryTypeTelegram}
 
+	var recorded []conversation.MessageHistoryRecord
 	if _, err := sendOptionsViaAdapter(context.Background(), adapter, ec, conversation.SendInteractiveRequest{
 		Body:    "Escolha:",
-		Options: []conversation.InteractiveOption{{ID: "sim", Title: "Sim"}},
-	}); err != nil {
+		Options: []conversation.InteractiveOption{{ID: "sim", Title: "Sim"}, {ID: "nao", Title: "Não"}},
+	}, func(r conversation.MessageHistoryRecord) { recorded = append(recorded, r) }); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if adapter.sentOptions == nil || len(adapter.sentOptions.Options) != 1 {
+	if adapter.sentOptions == nil || len(adapter.sentOptions.Options) != 2 {
 		t.Fatalf("options = %+v", adapter.sentOptions)
 	}
+	if len(recorded) != 1 || recorded[0].ProviderMessageID != "i1" || recorded[0].Text != "Escolha:" {
+		t.Fatalf("recorded = %+v", recorded)
+	}
+	shown := recorded[0].Interactive
+	if shown == nil || shown.Kind != conversation.InteractiveKindButtons || len(shown.Buttons) != 1 || shown.Buttons[0].ID != "sim" {
+		t.Fatalf("the transcript must keep only what the channel showed, got %+v", shown)
+	}
+}
+
+func TestOfficialOptionsAreRecordedOnlyForTheConversationContact(t *testing.T) {
+	input := conversation.SendButtonMessageInput{To: "5511999990000", BodyText: "Escolha", Buttons: []conversation.InteractiveButton{{Type: conversation.ButtonTypeReply, ID: "sim", Title: "Sim"}}}
+	config := map[string]interface{}{"__entry_id": "entry-1", "__recipient_phone": "5511999990000", "__business_phone_id": "bp-1"}
+
+	record := officialOptionsRecord(config, input, "wamid.1")
+	if record.EntryID != "entry-1" || record.MessageID != "wamid.1" || record.Interactive == nil || record.Interactive.Buttons[0].Title != "Sim" {
+		t.Fatalf("record = %+v", record)
+	}
+
+	config["__recipient_phone"] = "5511888880000"
+	if got := officialOptionsRecord(config, input, "wamid.2"); got.EntryID != "" {
+		t.Fatalf("a send to another number must not land on this conversation, got %+v", got)
+	}
+}
+
+func TestTheOptionsToolRecordsTheSendAsTheAgent(t *testing.T) {
+	history := &capturingHistory{}
+	tool := &sendWhatsappButtonMessageTool{history: history}
+	tool.recordOptions(context.Background(), map[string]interface{}{"__agent_id": "agent-1"}, conversation.MessageHistoryRecord{EntryID: "e1", EntryType: shared.EntryTypeTelegram, Text: "Escolha"})
+
+	if len(history.records) != 1 {
+		t.Fatalf("records = %+v", history.records)
+	}
+	got := history.records[0]
+	if got.SentBy != conversation.SentByAI("agent-1") || got.MessageType != conversation.MessageTypeAIResponse || got.Channel != conversation.MessageChannel(shared.EntryTypeTelegram) {
+		t.Fatalf("record = %+v", got)
+	}
+
+	tool.recordOptions(context.Background(), nil, conversation.MessageHistoryRecord{EntryType: shared.EntryTypeTelegram, Text: "Escolha"})
+	if len(history.records) != 1 {
+		t.Fatal("a send outside a conversation has nowhere to be recorded")
+	}
+}
+
+type capturingHistory struct {
+	records []conversation.MessageHistoryRecord
+}
+
+func (h *capturingHistory) Record(_ context.Context, r conversation.MessageHistoryRecord) error {
+	h.records = append(h.records, r)
+	return nil
 }
 
 func TestAChannelWithoutChoicesRefusesInsteadOfSendingAQuestion(t *testing.T) {
@@ -168,7 +219,7 @@ func TestAChannelWithoutChoicesRefusesInsteadOfSendingAQuestion(t *testing.T) {
 	res, err := sendOptionsViaAdapter(context.Background(), adapter, ec, conversation.SendInteractiveRequest{
 		Body:    "Escolha:",
 		Options: []conversation.InteractiveOption{{ID: "sim", Title: "Sim"}},
-	})
+	}, func(conversation.MessageHistoryRecord) { t.Fatal("nothing was sent, so nothing is recorded") })
 	if err != nil {
 		t.Fatalf("an unsupported capability must not be an error: %v", err)
 	}

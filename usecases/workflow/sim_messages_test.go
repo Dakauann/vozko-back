@@ -226,8 +226,8 @@ func TestEverySandboxSendReachesTheChatAsTheMessageTheConversationWouldStore(t *
 				}}},
 			}},
 			check: func(t *testing.T, sent []SimOutboundMessage) {
-				list, ok := sent[0].Message.List()
-				if !ok || list.ButtonText != "Ver cursos" || list.Sections[0].Title != "Graduação" || list.Sections[0].Rows[0] != (conversation.ListRowPayload{ID: "dir", Title: "Direito", Description: "Noturno"}) {
+				list, ok := sent[0].Message.Interactive()
+				if !ok || list.Kind != conversation.InteractiveKindList || list.ButtonLabel != "Ver cursos" || list.Sections[0].Title != "Graduação" || list.Sections[0].Rows[0] != (conversation.InteractiveRow{ID: "dir", Title: "Direito", Description: "Noturno"}) {
 					t.Fatalf("list = %+v, %v", list, ok)
 				}
 			},

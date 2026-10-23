@@ -1591,6 +1591,9 @@ func (s *MessageSenderService) sendViaAdapter(
 				log.Printf("[MessageSender] provider metadata %s not stored on %s message: %v", key, entryType, err)
 			}
 		}
+		if err := message.AttachInteractive(outcome.Interactive); err != nil {
+			log.Printf("[MessageSender] options not stored on %s message: %v", entryType, err)
+		}
 	}
 	if origin.ReplyToMessageID != "" {
 		replyTo := origin.ReplyToMessageID

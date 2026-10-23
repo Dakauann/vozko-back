@@ -49,14 +49,16 @@ func TestAnInteractiveReplyKeepsItsChoiceAndALocationKeepsItsCoordinates(t *test
 	uc := &handleWhatsAppMessageUseCase{}
 	reply := &conversation.WhatsAppMessage{From: "5511987654321", ID: "wamid.r", Text: &conversation.WhatsAppTextMessage{Body: "Sim"},
 		Interactive: &conversation.WhatsAppInteractive{Type: "button_reply", ButtonReply: &conversation.WhatsAppButtonReply{ID: "yes", Title: "Sim"}}}
-	var facts struct {
-		Interactive struct{ Type, ID, Title string }
+	got := uc.inboundTextRecord(reply, inboundTarget{entryID: "e"}, nil).InteractiveReply
+	if got == nil || *got != (conversation.InteractiveReply{Kind: conversation.InteractiveReplyButton, OptionID: "yes", Title: "Sim"}) {
+		t.Fatalf("reply = %+v", got)
 	}
-	if err := json.Unmarshal(uc.inboundTextRecord(reply, inboundTarget{entryID: "e"}, nil).Metadata, &facts); err != nil {
-		t.Fatal(err)
-	}
-	if facts.Interactive.Type != "button_reply" || facts.Interactive.ID != "yes" || facts.Interactive.Title != "Sim" {
-		t.Fatalf("facts = %+v", facts)
+	listReply := &conversation.WhatsAppMessage{From: "5511987654321", ID: "wamid.lr", Text: &conversation.WhatsAppTextMessage{Body: "Agendar"},
+		Context:     &conversation.WhatsAppContext{ID: "wamid.prompt"},
+		Interactive: &conversation.WhatsAppInteractive{Type: "list_reply", ListReply: &conversation.WhatsAppListReply{ID: "agendar", Title: "Agendar"}}}
+	listRecord := uc.inboundTextRecord(listReply, inboundTarget{entryID: "e"}, nil)
+	if r := listRecord.InteractiveReply; r == nil || r.Kind != conversation.InteractiveReplyList || r.OptionID != "agendar" || listRecord.ReplyToWAMessageID != "wamid.prompt" {
+		t.Fatalf("list reply = %+v, quoted %q", r, listRecord.ReplyToWAMessageID)
 	}
 
 	located := &conversation.WhatsAppMessage{From: "5511987654321", ID: "wamid.l", Text: &conversation.WhatsAppTextMessage{Body: "aqui"},

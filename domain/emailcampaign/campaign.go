@@ -27,6 +27,7 @@ var (
 	ErrNameTooLong      = errors.New("emailcampaign: the name is too long")
 	ErrPreheaderTooLong = errors.New("emailcampaign: the preheader is too long")
 	ErrAudienceInvalid  = errors.New("emailcampaign: the audience is invalid")
+	ErrNotRevisable     = errors.New("emailcampaign: only drafts and ready campaigns take content revisions")
 )
 
 type HoldReason string
@@ -155,11 +156,35 @@ func (c Campaign) TrackingUTM() emaildesign.UTM {
 }
 
 func (c Campaign) RenderDocument() emaildesign.Document {
+	return c.Content().RenderDocument()
+}
+
+type Content struct {
+	Subject   string
+	Preheader string
+	Document  emaildesign.Document
+}
+
+func (c Content) RenderDocument() emaildesign.Document {
 	doc := c.Document
 	if c.Preheader != "" {
 		doc.Settings.Preheader = c.Preheader
 	}
 	return doc
+}
+
+func (c Campaign) Content() Content {
+	return Content{Subject: c.Subject, Preheader: c.Preheader, Document: c.Document}
+}
+
+func (c *Campaign) ReviseContent(content Content) error {
+	if utf8.RuneCountInString(content.Preheader) > MaxPreheaderRunes {
+		return ErrPreheaderTooLong
+	}
+	c.Subject = strings.TrimSpace(content.Subject)
+	c.Preheader = strings.TrimSpace(content.Preheader)
+	c.Document = content.Document
+	return nil
 }
 
 func (c Campaign) TestWindowOpen(now time.Time) bool {

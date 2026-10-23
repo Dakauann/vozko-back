@@ -38,12 +38,16 @@ const (
 )
 
 type selectionQuery struct {
-	list  *listQuery
-	where string
-	args  []interface{}
-	order string
-	limit int
+	list         *listQuery
+	where        string
+	args         []interface{}
+	included     string
+	includedArgs []interface{}
+	order        string
+	limit        int
 }
+
+const includedLeadsSQL = "leads.workspace_id = ? AND leads.deleted_at IS NULL AND leads.id = ANY(?::uuid[])"
 
 func (r *repository) selection(sq lead.SelectionQuery) (*selectionQuery, error) {
 	if err := sq.Validate(); err != nil {
@@ -58,39 +62,68 @@ func (r *repository) selection(sq lead.SelectionQuery) (*selectionQuery, error) 
 		s.where += " AND leads.id = ANY(?::uuid[])"
 		s.args = append(s.args, pq.StringArray(sq.IDs))
 	}
-	if len(sq.ExcludeIDs) > 0 {
-		s.where += " AND NOT (leads.id = ANY(?::uuid[]))"
-		s.args = append(s.args, pq.StringArray(sq.ExcludeIDs))
+	tail, tailArgs, err := selectionTail(sq, q)
+	if err != nil {
+		return nil, err
 	}
-	if !sq.Require.IsEmpty() {
-		frag, args, err := infracrmfilter.Compile(sq.Require, q.desc, 0)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", lead.ErrLeadFilterInvalid, err)
+	if len(sq.IncludeIDs) > 0 {
+		included := []interface{}{strings.TrimSpace(sq.WorkspaceID), pq.StringArray(sq.IncludeIDs)}
+		if sq.Ordered() {
+			s.included, s.includedArgs = includedLeadsSQL+tail, append(included, tailArgs...)
+		} else {
+			s.where = "((" + s.where + ") OR (" + includedLeadsSQL + "))"
+			s.args = append(s.args, included...)
 		}
-		s.where += " AND (" + frag + ")"
-		s.args = append(s.args, args...)
 	}
-	if sq.Pending != nil {
-		b, err := newBulkEdit(leadaction.Edit{Kind: sq.Pending.Kind, Key: sq.Pending.Key, Value: sq.Pending.Value})
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", lead.ErrAssignmentInvalid, err)
-		}
-		unchanged, args := b.unchanged()
-		s.where += " AND NOT (" + unchanged + ")"
-		s.args = append(s.args, args...)
-	}
+	s.where += tail
+	s.args = append(s.args, tailArgs...)
 	if sq.Ordered() {
 		s.order = orderBy(q.desc, sq.Order)
 	}
 	return s, nil
 }
 
+func selectionTail(sq lead.SelectionQuery, q *listQuery) (string, []interface{}, error) {
+	tail, args := "", []interface{}{}
+	if len(sq.ExcludeIDs) > 0 {
+		tail += " AND NOT (leads.id = ANY(?::uuid[]))"
+		args = append(args, pq.StringArray(sq.ExcludeIDs))
+	}
+	if !sq.Require.IsEmpty() {
+		frag, required, err := infracrmfilter.Compile(sq.Require, q.desc, 0)
+		if err != nil {
+			return "", nil, fmt.Errorf("%w: %w", lead.ErrLeadFilterInvalid, err)
+		}
+		tail += " AND (" + frag + ")"
+		args = append(args, required...)
+	}
+	if sq.Pending != nil {
+		b, err := newBulkEdit(leadaction.Edit{Kind: sq.Pending.Kind, Key: sq.Pending.Key, Value: sq.Pending.Value})
+		if err != nil {
+			return "", nil, fmt.Errorf("%w: %w", lead.ErrAssignmentInvalid, err)
+		}
+		unchanged, pending := b.unchanged()
+		tail += " AND NOT (" + unchanged + ")"
+		args = append(args, pending...)
+	}
+	return tail, args, nil
+}
+
 func (s *selectionQuery) countSQL() (string, []interface{}) {
+	if s.order != "" {
+		members, args := s.chosen()
+		return "SELECT COUNT(*) FROM (" + members + ") counted", args
+	}
 	return "SELECT COUNT(*) FROM leads WHERE " + s.where, s.args
 }
 
 func (s *selectionQuery) chosen() (string, []interface{}) {
-	return "SELECT leads.id FROM leads WHERE " + s.where + " ORDER BY " + s.order + " LIMIT ?", append(append([]interface{}{}, s.args...), s.limit)
+	head := "SELECT leads.id FROM leads WHERE " + s.where + " ORDER BY " + s.order + " LIMIT ?"
+	args := append(append([]interface{}{}, s.args...), s.limit)
+	if s.included == "" {
+		return head, args
+	}
+	return "(" + head + ") UNION SELECT leads.id FROM leads WHERE " + s.included, append(args, s.includedArgs...)
 }
 
 func (s *selectionQuery) pageSQL(after string, limit int) (string, []interface{}) {
@@ -115,7 +148,11 @@ func (s *selectionQuery) pageSQL(after string, limit int) (string, []interface{}
 func (s *selectionQuery) freezeSQL(snapshotID string, at time.Time) (string, []interface{}) {
 	insert := "INSERT INTO lead_selection_snapshots (snapshot_id, workspace_id, lead_id, created_at) SELECT ?::uuid, leads.workspace_id, leads.id, ? FROM leads WHERE " + s.where
 	args := append([]interface{}{snapshotID, at}, s.args...)
-	if s.order != "" {
+	if s.order != "" && s.included != "" {
+		members, memberArgs := s.chosen()
+		insert = "INSERT INTO lead_selection_snapshots (snapshot_id, workspace_id, lead_id, created_at) SELECT ?::uuid, leads.workspace_id, leads.id, ? FROM leads WHERE leads.id IN (" + members + ")"
+		args = append([]interface{}{snapshotID, at}, memberArgs...)
+	} else if s.order != "" {
 		insert += " ORDER BY " + s.order + " LIMIT ?"
 		args = append(args, s.limit)
 	}

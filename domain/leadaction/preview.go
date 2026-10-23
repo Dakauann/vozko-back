@@ -101,7 +101,7 @@ func RequestFingerprint(a Action, p Params, s selection.Selection) string {
 	slices.Sort(ids)
 	slices.Sort(excluded)
 	shape := requestShape{
-		Action: a, Params: p.Normalized(), Mode: s.Mode, IDs: ids, Fingerprint: selection.Fingerprint(s.EffectiveFilter()),
+		Action: a, Params: p.Normalized(), Mode: s.Mode, IDs: ids, Fingerprint: s.CountFingerprint(),
 		Sort: s.Sort, Limit: s.Limit, ExcludeIDs: excluded, Expected: s.ExpectedCount,
 	}
 	encoded, err := json.Marshal(shape)

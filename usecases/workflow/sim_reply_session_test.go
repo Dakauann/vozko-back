@@ -113,9 +113,8 @@ func TestTappingAButtonInTheTesterFollowsItsBranchAndEveryMessageIsTheCRMShape(t
 	if err := json.Unmarshal(menu.Message, &wire); err != nil {
 		t.Fatal(err)
 	}
-	meta, _ := wire["metadata"].(map[string]interface{})
-	buttons, _ := meta["buttons"].(map[string]interface{})
-	if menu.MsgType != "button" || wire["text"] != "Quer se matricular?" || buttons == nil || wire["messageType"] == nil {
+	interactive, _ := wire["interactive"].(map[string]interface{})
+	if menu.MsgType != "button" || wire["text"] != "Quer se matricular?" || interactive["kind"] != "buttons" || wire["messageType"] == nil {
 		t.Fatalf("menu frame = %+v, wire = %v", menu, wire)
 	}
 	reply := decode[sentFrame](t, sent[1])

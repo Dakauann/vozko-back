@@ -197,12 +197,13 @@ func (s *whatsappSender) SendButtons(ctx context.Context, run *workflow.Workflow
 		return nil, usedBusinessPhoneID, err
 	}
 
-	res, err := client.SendButtonMessage(ctx, conversation.SendButtonMessageInput{
+	input := conversation.SendButtonMessageInput{
 		To:         target.leadNumber,
 		HeaderType: conversation.HeaderTypeText,
 		HeaderText: text,
 		Buttons:    buttons,
-	})
+	}
+	res, err := client.SendButtonMessage(ctx, input)
 
 	if err != nil {
 		return nil, usedBusinessPhoneID, err
@@ -210,6 +211,7 @@ func (s *whatsappSender) SendButtons(ctx context.Context, run *workflow.Workflow
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
+		content := conversation.ButtonMessageContent(input)
 		record := conversation.MessageHistoryRecord{
 			EntryID:     run.EntryID,
 			EntryType:   shared.EntryTypeWhatsApp,
@@ -220,6 +222,7 @@ func (s *whatsappSender) SendButtons(ctx context.Context, run *workflow.Workflow
 			To:          target.leadNumber,
 			Text:        text,
 			Timestamp:   time.Now().UTC(),
+			Interactive: &content,
 		}
 		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
@@ -265,10 +268,7 @@ func (s *whatsappSender) SendButtonsWithInput(ctx context.Context, run *workflow
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
-		metadata, err := choicesMetadata(buttonChoices(input))
-		if err != nil {
-			return nil, usedBusinessPhoneID, err
-		}
+		content := conversation.ButtonMessageContent(input)
 		record := conversation.MessageHistoryRecord{
 			EntryID:     run.EntryID,
 			EntryType:   shared.EntryTypeWhatsApp,
@@ -279,7 +279,7 @@ func (s *whatsappSender) SendButtonsWithInput(ctx context.Context, run *workflow
 			To:          target.leadNumber,
 			Text:        input.BodyText,
 			Timestamp:   time.Now().UTC(),
-			Metadata:    metadata,
+			Interactive: &content,
 		}
 		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err
@@ -325,10 +325,7 @@ func (s *whatsappSender) SendListWithInput(ctx context.Context, run *workflow.Wo
 
 	if s.deps.HistoryManager != nil {
 		from := s.resolveBusinessPhoneNumber(usedBusinessPhoneID)
-		metadata, err := listMetadata(input)
-		if err != nil {
-			return nil, usedBusinessPhoneID, err
-		}
+		content := conversation.ListMessageContent(input)
 		record := conversation.MessageHistoryRecord{
 			EntryID:     run.EntryID,
 			EntryType:   shared.EntryTypeWhatsApp,
@@ -339,7 +336,7 @@ func (s *whatsappSender) SendListWithInput(ctx context.Context, run *workflow.Wo
 			To:          target.leadNumber,
 			Text:        input.BodyText,
 			Timestamp:   time.Now().UTC(),
-			Metadata:    metadata,
+			Interactive: &content,
 		}
 		if err := recordWorkflowMessage(ctx, s.deps.HistoryManager, run, record); err != nil {
 			return nil, usedBusinessPhoneID, err

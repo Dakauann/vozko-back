@@ -15,5 +15,5 @@ func (c Campaign) AudienceFingerprint() string {
 	if audience.Mode == "" || audience.Mode == selection.ModeIDs {
 		return ""
 	}
-	return selection.Fingerprint(audience.EffectiveFilter())
+	return audience.CountFingerprint()
 }

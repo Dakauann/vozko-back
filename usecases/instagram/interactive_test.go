@@ -91,4 +91,7 @@ func TestTheQuickReplyOutcomeNamesOnlyTheRepliesThatFit(t *testing.T) {
 	if len(out.ShownOptionIDs) != 2 || out.ShownOptionIDs[0] != "sim" || out.ShownOptionIDs[1] != "nao" {
 		t.Fatalf("shown = %v", out.ShownOptionIDs)
 	}
+	if out.Interactive == nil || out.Interactive.Kind != conversation.InteractiveKindButtons || out.Interactive.Body != "Escolha" || len(out.Interactive.Buttons) != 2 {
+		t.Fatalf("interactive = %+v", out.Interactive)
+	}
 }

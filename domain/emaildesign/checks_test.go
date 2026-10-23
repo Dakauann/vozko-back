@@ -75,7 +75,7 @@ func TestChecksReportStructureAndScanning(t *testing.T) {
 
 func TestReviewJoinsHintsAndChecks(t *testing.T) {
 	doc := docWith(imageBlock("hero", "http://x.com/a.jpg", ""))
-	review := Review(doc)
+	review := Review(doc, "")
 	if !hasHint(review.Hints, "image_missing_alt", "hero") || review.Checks == nil {
 		t.Fatalf("got %+v", review)
 	}

@@ -7,7 +7,6 @@ import (
 
 	"vozko/domain/campaign"
 	"vozko/domain/leadaction"
-	"vozko/domain/selection"
 	wd "vozko/domain/workspace/workspace_department"
 	leadsend_usecase "vozko/usecases/leadsend"
 )
@@ -55,7 +54,7 @@ func (s *Service) previewSend(ctx context.Context, req Request) (*leadaction.Pre
 	p := &leadaction.Preview{
 		ID: s.deps.NewID(), WorkspaceID: req.Actor.WorkspaceID, ActorID: req.Actor.UserID, Action: req.Action,
 		Status: leadaction.PreviewDone, UpdatedAt: s.now(),
-		Result: leadaction.PreviewResult{Fingerprint: selection.Fingerprint(req.Selection.EffectiveFilter()), Skipped: map[leadaction.SkipReason]int{}},
+		Result: leadaction.PreviewResult{Fingerprint: req.Selection.CountFingerprint(), Skipped: map[leadaction.SkipReason]int{}},
 	}
 	scope := scopeOf(req.Actor, req.DepartmentID)
 	err = s.gated(ctx, func(ctx context.Context) error {

@@ -89,7 +89,7 @@
     {
       "name": "a message with buttons cannot be edited",
       "capabilities": "full",
-      "message": { "id": "m-14", "messageType": "operator", "text": "escolha", "externalMessageId": "pm-14", "metadata": { "buttons": { "body_text": "escolha", "buttons": [{ "id": "b1", "title": "Sim" }] } }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "message": { "id": "m-14", "messageType": "operator", "text": "escolha", "externalMessageId": "pm-14", "metadata": { "interactive": { "kind": "buttons", "body": "escolha", "buttons": [{ "kind": "reply", "id": "b1", "title": "Sim" }] } }, "interactive": { "kind": "buttons", "body": "escolha", "buttons": [{ "kind": "reply", "id": "b1", "title": "Sim" }] }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
       "expected": { "react": true, "edit": false, "delete": true, "resend": false }
     },
     {
@@ -150,7 +150,7 @@
     {
       "name": "a failed button message is resent with its stored buttons",
       "capabilities": "none",
-      "message": { "id": "m-24", "messageType": "operator", "text": "escolha", "externalMessageId": "pm-24", "deliveryStatus": "failed", "metadata": { "buttons": { "body_text": "escolha", "buttons": [{ "id": "b1", "title": "Sim" }] } }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
+      "message": { "id": "m-24", "messageType": "operator", "text": "escolha", "externalMessageId": "pm-24", "deliveryStatus": "failed", "metadata": { "interactive": { "kind": "buttons", "body": "escolha", "buttons": [{ "kind": "reply", "id": "b1", "title": "Sim" }] } }, "interactive": { "kind": "buttons", "body": "escolha", "buttons": [{ "kind": "reply", "id": "b1", "title": "Sim" }] }, "sentBy": { "kind": "human", "id": "user-ana" }, "sender_user_id": "user-ana", "createdAt": "2026-10-18T11:55:00Z" },
       "expected": { "react": false, "edit": false, "delete": false, "resend": true }
     },
     {

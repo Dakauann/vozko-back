@@ -11,7 +11,7 @@ import (
 func TestASelectionSurvivesTheStoredJSON(t *testing.T) {
 	filter := crmfilter.Filter{Groups: []crmfilter.Group{{Conjunction: crmfilter.And, Predicates: []crmfilter.Predicate{{Field: crmfilter.FieldName, Operator: crmfilter.OpContains, Values: []string{"Ana"}}}}}}
 	in := selection.Selection{
-		Mode: selection.ModeFirstN, Filter: &filter, Sort: []crmfilter.Sort{{Field: "created_at"}}, Limit: 10, ExcludeIDs: []string{"x"},
+		Mode: selection.ModeFirstN, Filter: &filter, Sort: []crmfilter.Sort{{Field: "created_at"}}, Limit: 10, ExcludeIDs: []string{"x"}, IncludeIDs: []string{"y"},
 		ExpectedCount: 10, Fingerprint: "f", Require: &filter,
 	}
 	raw, err := Encode(in)

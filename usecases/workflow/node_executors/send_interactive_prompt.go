@@ -235,11 +235,12 @@ func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, bo
 	}
 
 	sent, err := e.channel.SendInteractive(context.Background(), ctx.Run, conversation.SendInteractiveRequest{
-		Body:    body,
-		Header:  workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "header_text")),
-		Footer:  footer,
-		Options: options,
-		Style:   workflow.InteractivePromptStyle(ctx.Node.Config),
+		Body:       body,
+		Header:     workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "header_text")),
+		Footer:     footer,
+		Options:    options,
+		Style:      workflow.InteractivePromptStyle(ctx.Node.Config),
+		ListButton: listButtonLabel(ctx),
 	})
 	if err != nil {
 		return "", nil, err
@@ -252,14 +253,12 @@ func (e *interactivePromptExecutor) sendViaAdapter(ctx *workflow.NodeContext, bo
 
 func interactiveOptionsOf(config map[string]interface{}, text func(string) string) ([]conversation.InteractiveOption, error) {
 	var out []conversation.InteractiveOption
-	appendOption := func(id, title string) {
-		if strings.TrimSpace(id) == "" {
+	appendOption := func(option conversation.InteractiveOption) {
+		if strings.TrimSpace(option.ID) == "" {
 			return
 		}
-		out = append(out, conversation.InteractiveOption{
-			ID:    id,
-			Title: text(title),
-		})
+		option.Title, option.Description, option.Section = text(option.Title), text(option.Description), text(option.Section)
+		out = append(out, option)
 	}
 
 	if isListPrompt(config) {
@@ -269,7 +268,7 @@ func interactiveOptionsOf(config map[string]interface{}, text func(string) strin
 		}
 		for _, section := range sections {
 			for _, row := range section.Rows {
-				appendOption(row.ID, row.Title)
+				appendOption(conversation.InteractiveOption{ID: row.ID, Title: row.Title, Description: row.Description, Section: section.Title})
 			}
 		}
 		return out, nil
@@ -280,9 +279,13 @@ func interactiveOptionsOf(config map[string]interface{}, text func(string) strin
 		return nil, invalidInteractiveConfig(err)
 	}
 	for _, b := range buttons {
-		appendOption(b.ID, b.Title)
+		appendOption(conversation.InteractiveOption{ID: b.ID, Title: b.Title})
 	}
 	return out, nil
+}
+
+func listButtonLabel(ctx *workflow.NodeContext) string {
+	return strings.TrimSpace(workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "list_button")))
 }
 
 func (e *interactivePromptExecutor) sendButtons(ctx *workflow.NodeContext, body, footer string) (string, error) {
@@ -330,15 +333,10 @@ func (e *interactivePromptExecutor) sendList(ctx *workflow.NodeContext, body, fo
 		}
 	}
 
-	buttonLabel := strings.TrimSpace(workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "list_button")))
-	if buttonLabel == "" {
-		buttonLabel = "Ver opções"
-	}
-
 	input := conversation.SendListMessageInput{
 		BodyText:   body,
 		FooterText: footer,
-		ButtonText: buttonLabel,
+		ButtonText: conversation.ListButtonLabel(listButtonLabel(ctx)),
 		Sections:   sections,
 	}
 	if headerText := strings.TrimSpace(workflow.CustomerText(ctx, stringConfig(ctx.Node.Config, "header_text"))); headerText != "" {

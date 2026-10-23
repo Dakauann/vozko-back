@@ -474,6 +474,9 @@ func (uc *HandleWebhookUseCase) recordMessage(
 	if ev.QuotedProviderMessageID != "" {
 		record.ReplyToWAMessageID = ev.QuotedProviderMessageID
 	}
+	if sentBy.IsContact() && ev.OptionID != "" {
+		record.InteractiveReply = &conversation.InteractiveReply{Kind: conversation.InteractiveReplyOption, OptionID: ev.OptionID, Title: ev.Text}
+	}
 	record.AdReferral = adReferralOf(ev.AdReply)
 
 	if attachment := uc.storeAttachment(ctx, instance, conv, ev); attachment != nil {
@@ -919,9 +922,6 @@ func conversationMediaType(kind uw.MediaKind) conversation.MediaType {
 
 func inboundMetadata(ev *uw.Event) json.RawMessage {
 	meta := map[string]any{"providerEvent": ev.ProviderEvent}
-	if ev.OptionID != "" {
-		meta["selectedOptionId"] = ev.OptionID
-	}
 	if ev.IsGroup {
 		meta["isGroup"] = true
 	}

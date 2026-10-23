@@ -242,6 +242,7 @@ func (c *messageConsumerUseCase) deliver(
 		Options:     interactiveOptions(camp.Message),
 		Style:       camp.Message.Style,
 		Footer:      camp.Message.Footer,
+		ListButton:  camp.Message.Button,
 	})
 	if err != nil {
 		return c.handleSendFailure(ctx, instance, camp, entry, err), false
@@ -458,7 +459,7 @@ func interactiveOptions(spec uwc.MessageSpec) []conversation.InteractiveOption {
 	}
 	out := make([]conversation.InteractiveOption, 0, len(spec.Options))
 	for _, o := range spec.Options {
-		out = append(out, conversation.InteractiveOption{ID: o.ID, Title: o.Title})
+		out = append(out, conversation.InteractiveOption{ID: o.ID, Title: o.Title, Description: o.Description, Section: o.Section})
 	}
 	return out
 }

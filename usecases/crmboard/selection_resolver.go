@@ -8,6 +8,8 @@ import (
 	"vozko/domain/selection"
 )
 
+var errNoIncludedEntries = fmt.Errorf("%w: board entries take no hand-included ids", selection.ErrModeUnsupported)
+
 type SelectionResolver struct {
 	board *Service
 }
@@ -20,6 +22,9 @@ func (r SelectionResolver) Count(_ context.Context, scope selection.Scope, s sel
 	if r.board == nil {
 		return 0, selection.ErrResolverUnavailable
 	}
+	if len(s.IncludeIDs) > 0 {
+		return 0, errNoIncludedEntries
+	}
 	total, err := r.board.CountEntries(entriesFor(scope, s))
 	if err != nil {
 		return 0, asSelectionError(err)
@@ -30,6 +35,9 @@ func (r SelectionResolver) Count(_ context.Context, scope selection.Scope, s sel
 func (r SelectionResolver) Resolve(_ context.Context, scope selection.Scope, s selection.Selection, after string, limit int) ([]selection.Ref, error) {
 	if r.board == nil {
 		return nil, selection.ErrResolverUnavailable
+	}
+	if len(s.IncludeIDs) > 0 {
+		return nil, errNoIncludedEntries
 	}
 	entries, err := r.board.ResolveEntryRefs(entriesFor(scope, s), after, limit)
 	if err != nil {

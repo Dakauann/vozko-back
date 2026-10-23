@@ -28,6 +28,8 @@ type SendCampaignMessageInput struct {
 	Options []conversation.InteractiveOption
 	Style   string
 	Footer  string
+
+	ListButton string
 }
 
 func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) (*conversation.Message, error) {
@@ -45,10 +47,11 @@ func (s *MessageSenderService) SendCampaignMessage(in SendCampaignMessageInput) 
 		return s.sendViaAdapter(adapter, in.EntryID, in.EntryType, conversation.SentByCampaign(in.CampaignID), conversation.SendOrigin{},
 			func(ec *conversation.EntryContext) (*conversation.SendOutcome, error) {
 				return interactive.SendInteractive(context.Background(), ec, conversation.SendInteractiveRequest{
-					Body:    in.Text,
-					Footer:  in.Footer,
-					Options: in.Options,
-					Style:   in.Style,
+					Body:       in.Text,
+					Footer:     in.Footer,
+					Options:    in.Options,
+					Style:      in.Style,
+					ListButton: in.ListButton,
 				})
 			},
 			conversation.MessageTypeOperator, in.Text, "", "")
