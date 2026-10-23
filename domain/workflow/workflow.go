@@ -610,7 +610,7 @@ const (
 
 const (
 	CodeNodeDefaultTimeout = 5 * time.Second
-	CodeNodeMaxTimeout     = 30 * time.Second
+	CodeNodeMaxTimeout     = 60 * time.Second
 )
 
 const StateKeyDurableSteps = "_engine_total_steps"

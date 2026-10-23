@@ -307,17 +307,7 @@ func (s *Sandbox) Run(ctx context.Context, code string, caps Capabilities) (*Res
 				panic(vm.NewTypeError(err.Error()))
 			}
 
-			var body string
-			if opts.Body != nil {
-				switch b := opts.Body.(type) {
-				case string:
-					body = b
-				default:
-					if encoded, err := json.Marshal(b); err == nil {
-						body = string(encoded)
-					}
-				}
-			}
+			body := requestBody(arg, opts.Body)
 
 			req, err := http.NewRequestWithContext(execCtx, method, u.String(), strings.NewReader(body))
 			if err != nil {

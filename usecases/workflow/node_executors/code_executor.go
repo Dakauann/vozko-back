@@ -97,7 +97,7 @@ const defaultCodeNodeSnippet = `// ───────────────
 //   sleep(250)                  pausa 250 ms
 
 // ── Limites (padrão; podem ser menores no seu plano) ───────────────
-//   tempo 5 s (até 30 s em Timeout) · saída ≤ 256 KB · log ≤ 64 KB
+//   tempo 5 s (até 60 s em Timeout) · saída ≤ 256 KB · log ≤ 64 KB
 //   fetch ≤ 20 chamadas · resposta ≤ 5 MB
 
 // ─────────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ func (e *codeExecutor) Definition() workflow.NodeDefinition {
 		ConfigSchema: []workflow.ConfigField{
 			{Key: "code", Label: "Código JavaScript", Type: "code", Placeholder: defaultCodeNodeSnippet, Required: true},
 			{Key: "output_variable", Label: "Salvar retorno em variável", Type: "text", Placeholder: "ex.: minha_resposta", Description: "Opcional. Se preenchido, o valor retornado pelo script também é gravado no estado do fluxo sob este nome (acessível por {{state.<nome>}} ou via state.get('<nome>') em nós seguintes)."},
-			{Key: "timeout_ms", Label: "Timeout (ms)", Type: "number", Placeholder: "5000", Description: "Tempo máximo do script, até 30000 ms (30 s).", Min: &codeTimeoutMinMs, Max: &codeTimeoutMaxMs},
+			{Key: "timeout_ms", Label: "Timeout (ms)", Type: "number", Placeholder: "5000", Description: "Tempo máximo do script, até 60000 ms (60 s).", Min: &codeTimeoutMinMs, Max: &codeTimeoutMaxMs},
 		},
 	}
 }

@@ -3,6 +3,7 @@ package scriptvm
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -10,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/dop251/goja"
 )
 
 type fetchOptions struct {
@@ -181,4 +184,39 @@ func readCappedBody(r io.Reader, max int) (string, error) {
 		return "", fmt.Errorf("scriptvm: fetch: response body exceeds %d bytes", max)
 	}
 	return string(buf), nil
+}
+
+func requestBody(arg goja.Value, decoded interface{}) string {
+	if raw, ok := binaryBody(arg); ok {
+		return string(raw)
+	}
+	switch b := decoded.(type) {
+	case nil:
+		return ""
+	case string:
+		return b
+	}
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func binaryBody(arg goja.Value) ([]byte, bool) {
+	options, ok := arg.(*goja.Object)
+	if !ok {
+		return nil, false
+	}
+	body := options.Get("body")
+	if body == nil {
+		return nil, false
+	}
+	switch b := body.Export().(type) {
+	case []byte:
+		return b, true
+	case goja.ArrayBuffer:
+		return b.Bytes(), true
+	}
+	return nil, false
 }
