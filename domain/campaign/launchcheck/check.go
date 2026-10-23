@@ -26,6 +26,8 @@ const (
 	CodeAudienceEmpty        Code = "audience_empty"
 	CodeAccessRevoked        Code = "access_revoked"
 	CodeHealthUnreadable     Code = "health_unreadable"
+	CodePlanInactive         Code = "plan_inactive"
+	CodeTemplateMissing      Code = "template_missing"
 	CodeTemplateNotReady     Code = "template_not_ready"
 	CodePhoneUnavailable     Code = "phone_unavailable"
 	CodeMonthlyCapFull       Code = "monthly_cap_full"
@@ -76,6 +78,8 @@ type Snapshot struct {
 	Pending         int
 	Fresh           bool
 	AccessAllowed   bool
+	PlanInactive    bool
+	TemplateMissing bool
 	Unread          []string
 	Template        *TemplateFacts
 	Phone           *PhoneFacts
@@ -116,6 +120,12 @@ func blocks(s Snapshot, add adder) {
 	}
 	if !s.AccessAllowed {
 		add(Block, CodeAccessRevoked, 0, 0)
+	}
+	if s.PlanInactive {
+		add(Block, CodePlanInactive, 0, 0)
+	}
+	if s.TemplateMissing {
+		add(Block, CodeTemplateMissing, 0, 0)
 	}
 	if len(s.Unread) > 0 {
 		add(Block, CodeHealthUnreadable, float64(len(s.Unread)), 0)

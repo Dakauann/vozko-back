@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"vozko/domain/balance"
@@ -15,6 +16,7 @@ import (
 	"vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/domain/workspace/workspace_plan"
 	"vozko/domain/workspace_phone_access"
 	template_usecase "vozko/usecases/whatsapp/template"
 )
@@ -71,13 +73,19 @@ const (
 )
 
 type launchFacts struct {
+	camp     *wc.Campaign
 	snapshot launchcheck.Snapshot
 	template *template.Template
 	phone    *businessphone.WhatsAppBusinessPhoneNumber
 	quote    *template.SendCost
 }
 
-func (f *launchFacts) unread(what string) {
+func (f *launchFacts) unread(what string, err error) {
+	reason := "missing"
+	if err != nil {
+		reason = err.Error()
+	}
+	slog.Warn("campaign.launch_check.unreadable", "workspace_id", f.camp.WorkspaceID, "campaign_id", f.camp.ID, "signal", what, "error", reason)
 	f.snapshot.Unread = append(f.snapshot.Unread, what)
 }
 
@@ -90,21 +98,25 @@ func (c *LaunchCheck) Run(ctx context.Context, campaignID string) (launchcheck.R
 	if err != nil {
 		return launchcheck.Report{}, fmt.Errorf("count the campaign's contacts: %w", err)
 	}
-	facts := &launchFacts{snapshot: launchcheck.Snapshot{Pending: int(counts.Pending), Fresh: counts.Total == 0}}
+	facts := &launchFacts{camp: camp, snapshot: launchcheck.Snapshot{Pending: int(counts.Pending), Fresh: counts.Total == 0}}
 	c.readHealth(ctx, camp, facts)
 	c.readLastRun(camp, counts, facts)
 	return launchcheck.Check(facts.snapshot), nil
 }
 
 func (c *LaunchCheck) Preview(ctx context.Context, camp *wc.Campaign, pending int) (launchcheck.Report, *template.SendCost) {
-	facts := &launchFacts{snapshot: launchcheck.Snapshot{Pending: pending, Fresh: true}}
+	facts := &launchFacts{camp: camp, snapshot: launchcheck.Snapshot{Pending: pending, Fresh: true}}
 	c.readHealth(ctx, camp, facts)
 	return launchcheck.Check(facts.snapshot), facts.quote
 }
 
 func (c *LaunchCheck) readHealth(ctx context.Context, camp *wc.Campaign, facts *launchFacts) {
 	c.readPhone(camp, facts)
-	if !camp.IsOrganic() {
+	switch {
+	case camp.IsOrganic():
+	case strings.TrimSpace(camp.TemplateID) == "":
+		facts.snapshot.TemplateMissing = true
+	default:
 		c.readTemplate(ctx, camp, facts)
 		c.readExit(ctx, camp, facts)
 		c.readBalance(camp, facts)
@@ -116,7 +128,7 @@ func (c *LaunchCheck) readHealth(ctx context.Context, camp *wc.Campaign, facts *
 func (c *LaunchCheck) readPhone(camp *wc.Campaign, facts *launchFacts) {
 	phone, err := c.d.Phones.FindByID(camp.BusinessPhoneID)
 	if err != nil || phone == nil {
-		facts.unread(unreadPhone)
+		facts.unread(unreadPhone, err)
 		return
 	}
 	facts.phone = phone
@@ -126,13 +138,13 @@ func (c *LaunchCheck) readPhone(camp *wc.Campaign, facts *launchFacts) {
 func (c *LaunchCheck) readTemplate(ctx context.Context, camp *wc.Campaign, facts *launchFacts) {
 	tmpl, err := c.d.Templates.FindByID(camp.TemplateID)
 	if err != nil || tmpl == nil {
-		facts.unread(unreadTemplate)
+		facts.unread(unreadTemplate, err)
 		return
 	}
 	facts.template = tmpl
 	latest, err := c.d.Quality.LatestBySignal(quality.SubjectTemplate, tmpl.ExternalID)
 	if err != nil {
-		facts.unread(unreadQuality)
+		facts.unread(unreadQuality, err)
 		return
 	}
 	reading := quality.ReadTemplate(latest)
@@ -152,15 +164,14 @@ func (c *LaunchCheck) readForm(ctx context.Context, camp *wc.Campaign, tmpl *tem
 	case errors.Is(err, template.ErrFlowNotPublished):
 		facts.snapshot.Template.FormNotSendable = true
 	case err != nil:
-		facts.unread(unreadForm)
+		facts.unread(unreadForm, err)
 	}
 }
 
 func (c *LaunchCheck) readExit(ctx context.Context, camp *wc.Campaign, facts *launchFacts) {
 	configured, err := c.d.Exits.ExitConfigured(ctx, camp.WorkspaceID, camp.TemplateID, camp.ID)
 	if err != nil {
-		slog.Warn("campaign.launch_check.unreadable", "workspace_id", camp.WorkspaceID, "campaign_id", camp.ID, "signal", unreadExit, "error", err.Error())
-		facts.unread(unreadExit)
+		facts.unread(unreadExit, err)
 		return
 	}
 	facts.snapshot.ExitConfigured = &configured
@@ -171,8 +182,12 @@ func (c *LaunchCheck) readBalance(camp *wc.Campaign, facts *launchFacts) {
 		return
 	}
 	quote, err := template_usecase.QuoteSend(c.d.Costs, c.d.Balances, camp.WorkspaceID, facts.template, int64(facts.snapshot.Pending))
+	if errors.Is(err, workspace_plan.ErrSubscriptionNotCurrent) || errors.Is(err, workspace_plan.ErrSubscriptionNotActive) {
+		facts.snapshot.PlanInactive = true
+		return
+	}
 	if err != nil {
-		facts.unread(unreadBalance)
+		facts.unread(unreadBalance, err)
 		return
 	}
 	facts.quote = &quote
@@ -181,23 +196,23 @@ func (c *LaunchCheck) readBalance(camp *wc.Campaign, facts *launchFacts) {
 
 func (c *LaunchCheck) readAccess(camp *wc.Campaign, facts *launchFacts) {
 	if facts.phone == nil {
-		facts.unread(unreadAccess)
+		facts.unread(unreadAccess, nil)
 		return
 	}
 	mayUsePhone, err := hasTemporaryCampaignBusinessPhoneAccess(camp.WorkspaceID, camp.BusinessPhoneID, facts.phone, c.d.PhoneAccess)
 	if err != nil {
-		facts.unread(unreadAccess)
+		facts.unread(unreadAccess, err)
 		return
 	}
 	mayUseTemplate := true
-	if !camp.IsOrganic() {
+	if !camp.IsOrganic() && !facts.snapshot.TemplateMissing {
 		if c.d.TemplateGrants == nil {
-			facts.unread(unreadAccess)
+			facts.unread(unreadAccess, nil)
 			return
 		}
 		mayUseTemplate, err = c.d.TemplateGrants.HasAccess(camp.WorkspaceID, camp.TemplateID)
 		if err != nil {
-			facts.unread(unreadAccess)
+			facts.unread(unreadAccess, err)
 			return
 		}
 	}
@@ -207,12 +222,12 @@ func (c *LaunchCheck) readAccess(camp *wc.Campaign, facts *launchFacts) {
 func (c *LaunchCheck) readLastRun(camp *wc.Campaign, counts *wce.StatusCounts, facts *launchFacts) {
 	scope, err := wce.CampaignScope(camp.ID)
 	if err != nil {
-		facts.unread(unreadLastRun)
+		facts.unread(unreadLastRun, err)
 		return
 	}
 	reasons, err := c.d.Failures.FailureReasons(scope)
 	if err != nil {
-		facts.unread(unreadLastRun)
+		facts.unread(unreadLastRun, err)
 		return
 	}
 	run := launchcheck.Run{Processed: int(counts.Dispatches()), Failures: map[int]int{}}
@@ -229,7 +244,7 @@ func (c *LaunchCheck) readLastRun(camp *wc.Campaign, counts *wce.StatusCounts, f
 func (c *LaunchCheck) readCap(camp *wc.Campaign, facts *launchFacts) {
 	usage, err := c.d.Caps.MonthlySendCapUsage(camp.WorkspaceID, c.d.Now())
 	if err != nil {
-		facts.unread(unreadCap)
+		facts.unread(unreadCap, err)
 		return
 	}
 	if usage == nil {

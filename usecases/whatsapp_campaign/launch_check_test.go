@@ -15,6 +15,7 @@ import (
 	"vozko/domain/whatsapp/template"
 	wc "vozko/domain/whatsapp_campaign"
 	wce "vozko/domain/whatsapp_campaign_entry"
+	"vozko/domain/workspace/workspace_plan"
 )
 
 type launchCampaigns map[string]*wc.Campaign
@@ -221,5 +222,33 @@ func TestAStoredCampaignNamesItsEmptyAudience(t *testing.T) {
 	report := runCheck(t, deps)
 	if !found(report, launchcheck.Block, launchcheck.CodeNothingPending) || found(report, launchcheck.Block, launchcheck.CodeAudienceEmpty) {
 		t.Fatalf("a campaign whose contacts were all processed has nothing pending: %+v", report.Findings)
+	}
+}
+
+type expiredPlanCosts struct{}
+
+func (expiredPlanCosts) GetTemplateCostMicros(string, string) (int64, error) {
+	return 0, workspace_plan.ErrSubscriptionNotCurrent
+}
+
+func TestAnExpiredPlanBlocksByNameInsteadOfAsUnreadable(t *testing.T) {
+	deps := launchDeps()
+	deps.Costs = expiredPlanCosts{}
+
+	report := runCheck(t, deps)
+
+	if !found(report, launchcheck.Block, launchcheck.CodePlanInactive) || found(report, launchcheck.Block, launchcheck.CodeHealthUnreadable) {
+		t.Fatalf("findings = %+v", report.Findings)
+	}
+}
+
+func TestADraftWithoutATemplateAsksForOneInsteadOfReadingAnEmptyID(t *testing.T) {
+	deps := launchDeps()
+	deps.Campaigns = launchCampaigns{"camp-1": {ID: "camp-1", WorkspaceID: "ws-1", BusinessPhoneID: "phone-1"}}
+
+	report := runCheck(t, deps)
+
+	if !found(report, launchcheck.Block, launchcheck.CodeTemplateMissing) || found(report, launchcheck.Block, launchcheck.CodeHealthUnreadable) || found(report, launchcheck.Block, launchcheck.CodeAccessRevoked) {
+		t.Fatalf("findings = %+v", report.Findings)
 	}
 }
